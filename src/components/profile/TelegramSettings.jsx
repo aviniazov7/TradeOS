@@ -96,6 +96,22 @@ export default function TelegramSettings() {
                     <ExternalLink className="w-3.5 h-3.5" />
                   </a>
 
+                  <div className="flex items-center gap-2">
+                    <code className="flex-1 text-[10px] bg-bg-primary rounded px-2 py-1.5 text-text-muted font-mono truncate" dir="ltr">
+                      /start {user?.uid}
+                    </code>
+                    <button
+                      onClick={() => {
+                        navigator.clipboard.writeText(`/start ${user?.uid}`);
+                        toast.success('הועתק!');
+                      }}
+                      className="text-[10px] px-2 py-1.5 rounded bg-bg-primary hover:bg-bg-tertiary text-text-muted transition-colors whitespace-nowrap cursor-pointer"
+                    >
+                      העתק
+                    </button>
+                  </div>
+                  <p className="text-[9px] text-text-muted/60 text-center -mt-1">אם הקישור לא עובד, שלח פקודה זו ישירות לבוט</p>
+
                   <button
                     onClick={handleVerify}
                     disabled={verifying}
