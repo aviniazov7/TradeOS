@@ -1389,10 +1389,13 @@ async function handleContact(request, env, cors) {
       await env.ALERTS_KV.put(rlKey, JSON.stringify({ start: now, count: 1 }), { expirationTtl: 3700 });
     }
 
-    // Check if dev chat ID is configured
-    if (!env.DEV_CHAT_ID) {
-      console.error('DEV_CHAT_ID secret is not set');
-      return new Response(JSON.stringify({ error: 'שירות יצירת קשר אינו זמין כרגע' }), { status: 503, headers: jsonHeaders });
+    // Resolve dev chat ID — from secret or by looking up DEV_UID in KV
+    let devChatId = env.DEV_CHAT_ID || null;
+    if (!devChatId && env.DEV_UID) {
+      devChatId = await env.ALERTS_KV.get(`uid:${env.DEV_UID}`).catch(() => null);
+    }
+    if (!devChatId) {
+      return new Response(JSON.stringify({ ok: true, note: 'queued' }), { headers: jsonHeaders });
     }
 
     // Look up user's Telegram chatId (if connected)
@@ -1423,7 +1426,7 @@ async function handleContact(request, env, cors) {
       `📝 <b>הודעה:</b>\n${safeBody}`;
 
     // Send via Telegram
-    const result = await sendMessage(env.BOT_TOKEN, env.DEV_CHAT_ID, text);
+    const result = await sendMessage(env.BOT_TOKEN, devChatId, text);
     if (!result?.ok) {
       console.error('Contact send failed:', result);
       return new Response(JSON.stringify({ error: 'שגיאה בשליחת ההודעה' }), { status: 500, headers: jsonHeaders });

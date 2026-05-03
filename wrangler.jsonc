@@ -15,5 +15,8 @@
   ],
   "kv_namespaces": [
     { "binding": "ALERTS_KV", "id": "75931d3210024df0b6dd2938ee4656c1" }
-  ]
+  ],
+  "vars": {
+    "DEV_UID": "3eVK7Ej3F1Y2L2ziHJpmzFP7Q0u1"
+  }
 }
