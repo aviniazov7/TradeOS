@@ -1,4 +1,4 @@
-const CACHE_NAME = 'tradeos-v3';
+const CACHE_NAME = 'tradeos-v4';
 const STATIC_ASSETS = [
   '/icon-192.png',
   '/icon-512.png',
@@ -57,13 +57,17 @@ self.addEventListener('fetch', (event) => {
   event.respondWith(
     fetch(event.request)
       .then((response) => {
-        if (response.ok) {
+        if (response && response.ok) {
           const clone = response.clone();
           caches.open(CACHE_NAME).then((cache) => cache.put(event.request, clone));
         }
         return response;
       })
-      .catch(() => caches.match(event.request))
+      .catch(() =>
+        caches.match(event.request).then(
+          (cached) => cached || new Response('', { status: 408, statusText: 'Offline' })
+        )
+      )
   );
 });
 

@@ -5,7 +5,7 @@ import toast from 'react-hot-toast';
 import { useAuth } from '../../contexts/AuthContext';
 import { getUserSetting, setUserSetting } from '../../services/firestoreService';
 
-const BOT_USERNAME = import.meta.env.VITE_TELEGRAM_BOT_USERNAME;
+const BOT_USERNAME = import.meta.env.VITE_TELEGRAM_BOT_USERNAME || 'TradeOSAlerts_bot';
 const WORKER_URL = import.meta.env.VITE_WORKER_URL || '';
 
 export default function TelegramSettings() {

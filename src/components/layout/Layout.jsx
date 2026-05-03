@@ -33,7 +33,7 @@ export default function Layout() {
   useDailySummarySync();
 
   return (
-    <div className="min-h-screen overflow-x-hidden relative">
+    <div className="fixed inset-0 overflow-hidden">
       <BackgroundIcons />
       <Sidebar mobileOpen={sidebarOpen} onClose={() => setSidebarOpen(false)} />
 
@@ -43,10 +43,14 @@ export default function Layout() {
         </div>
       )}
 
-      {/* Main content */}
-      <div>
-        <Header onToggleSidebar={() => setSidebarOpen((v) => !v)} sidebarOpen={sidebarOpen} />
-        <main className="p-3 md:p-6 pb-[calc(env(safe-area-inset-bottom,0px)+96px)] lg:pb-6 mt-14 md:mt-16">
+      <Header onToggleSidebar={() => setSidebarOpen((v) => !v)} sidebarOpen={sidebarOpen} />
+
+      {/* Scrollable content — independent scroll context so iOS fixed nav never jumps */}
+      <div
+        className="absolute inset-0 mt-14 md:mt-16 overflow-y-auto overflow-x-hidden"
+        style={{ WebkitOverflowScrolling: 'touch' }}
+      >
+        <main className="p-3 md:p-6 pb-[calc(env(safe-area-inset-bottom,0px)+96px)] lg:pb-6">
           <PullToRefresh>
             <Outlet />
           </PullToRefresh>
