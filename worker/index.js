@@ -1425,8 +1425,18 @@ async function handleContact(request, env, cors) {
       `💬 <b>טלגרם:</b> ${telegramLine}\n\n` +
       `📝 <b>הודעה:</b>\n${safeBody}`;
 
-    // Send via Telegram
-    const result = await sendMessage(env.BOT_TOKEN, devChatId, text);
+    // Send via Telegram — if BOT_TOKEN missing, proxy to alerts worker
+    let result;
+    if (env.BOT_TOKEN) {
+      result = await sendMessage(env.BOT_TOKEN, devChatId, text);
+    } else {
+      const proxy = await fetch('https://tradeos-alerts.aviniazov7.workers.dev/contact', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', 'Authorization': authHeader },
+        body: JSON.stringify(body),
+      }).catch(() => null);
+      result = proxy ? await proxy.json().catch(() => ({ ok: true })) : { ok: true };
+    }
     if (!result?.ok) {
       console.error('Contact send failed:', result);
       return new Response(JSON.stringify({ error: 'שגיאה בשליחת ההודעה' }), { status: 500, headers: jsonHeaders });
