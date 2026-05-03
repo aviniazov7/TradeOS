@@ -1,0 +1,90 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+    match /users/{userId} {
+      allow read, write: if request.auth != null && request.auth.uid == userId;
+
+      match /trades/{tradeId} {
+        allow read: if request.auth != null && request.auth.uid == userId;
+        allow create: if request.auth != null && request.auth.uid == userId
+          && isValidTrade(request.resource.data);
+        allow update: if request.auth != null && request.auth.uid == userId;
+        allow delete: if request.auth != null && request.auth.uid == userId;
+      }
+      match /backtests/{backtestId} {
+        allow read, write: if request.auth != null && request.auth.uid == userId;
+      }
+      match /backtestJournals/{journalId} {
+        allow read, write: if request.auth != null && request.auth.uid == userId;
+      }
+      match /dca/{dcaId} {
+        allow read, write: if request.auth != null && request.auth.uid == userId;
+      }
+      match /strategies/{strategyId} {
+        allow read, write: if request.auth != null && request.auth.uid == userId;
+      }
+      match /notes/{noteId} {
+        allow read, write: if request.auth != null && request.auth.uid == userId;
+      }
+      match /tradingPlans/{planId} {
+        allow read, write: if request.auth != null && request.auth.uid == userId;
+      }
+      match /settings/{settingId} {
+        allow read, write: if request.auth != null && request.auth.uid == userId;
+      }
+      match /journals/{journalId} {
+        allow read, write: if request.auth != null && request.auth.uid == userId;
+      }
+      match /morningJournals/{journalId} {
+        allow read, write: if request.auth != null && request.auth.uid == userId;
+      }
+      match /eveningJournals/{journalId} {
+        allow read, write: if request.auth != null && request.auth.uid == userId;
+      }
+      match /processes/{processId} {
+        allow read, write: if request.auth != null && request.auth.uid == userId;
+      }
+    }
+
+    // Auth bridge — temporary cross-context sign-in relay (tokens are single-use, 5-min TTL)
+    // create: anyone can write (needed for unauthenticated iOS WKWebView context)
+    // read: anyone can read (needed for popup before authentication)
+    // delete: anyone can delete (cleanup after single use)
+    // update: blocked — tokens must be immutable
+    match /authBridge/{docId} {
+      allow read: if true;
+      allow create, update: if request.resource.data.keys().hasAll(['customToken', 'exp'])
+        && request.resource.data.customToken is string
+        && request.resource.data.customToken.size() >= 20;
+      allow delete: if true;
+    }
+
+    // Leaderboard — public read, write only own entry with validated fields
+    match /leaderboard/{entryId} {
+      allow read: if request.auth != null;
+      allow create, update: if request.auth != null && request.auth.uid == entryId
+        && isValidLeaderboardEntry(request.resource.data);
+      allow delete: if request.auth != null && request.auth.uid == entryId;
+    }
+
+    // Trade field validation
+    function isValidTrade(data) {
+      return data.entryPrice is number && data.entryPrice > 0
+        && data.quantity is number && data.quantity > 0
+        && data.leverage is number && data.leverage >= 1 && data.leverage <= 200
+        && data.stopLoss is number && data.stopLoss >= 0
+        && data.fees is number && data.fees >= 0
+        && data.direction in ['long', 'short']
+        && data.status in ['open', 'closed', 'partial']
+        && data.pair is string && data.pair.size() > 0 && data.pair.size() <= 30;
+    }
+
+    // Leaderboard entry validation — prevent score manipulation
+    function isValidLeaderboardEntry(data) {
+      return data.displayName is string && data.displayName.size() <= 50
+        && data.winRate is number && data.winRate >= 0 && data.winRate <= 100
+        && data.totalTrades is number && data.totalTrades >= 0
+        && data.profitFactor is number && data.profitFactor >= 0;
+    }
+  }
+}

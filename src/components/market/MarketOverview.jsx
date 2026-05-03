@@ -1,0 +1,1136 @@
+import { useState, useEffect, useCallback, useRef, useMemo } from 'react';
+import { motion, AnimatePresence } from 'framer-motion';
+import {
+  Activity, TrendingUp, TrendingDown, Bitcoin, DollarSign,
+  PieChart, Flame, ArrowUpRight, ArrowDownRight, Layers, Rocket, Grid3X3,
+  Percent, BarChart3, Zap, Sparkles, Bot,
+} from 'lucide-react';
+import { pageVariants, pageTransition, staggerContainer } from '../../utils/animations';
+import FearGreedGauge from '../dashboard/FearGreedGauge';
+import CoinAnalysis from './CoinAnalysis';
+import AIChat from './AIChat';
+import MarketSessionsCard from './MarketSessionsCard';
+
+const cardVariants = { initial: { opacity: 0, y: 10 }, animate: { opacity: 1, y: 0 } };
+const cardClass = 'bg-bg-secondary border border-border-primary rounded-xl p-3';
+const FUTURES_SYMBOLS = [
+  'BTCUSDT', 'ETHUSDT', 'SOLUSDT', 'XRPUSDT', 'BNBUSDT',
+  'DOGEUSDT', 'ADAUSDT', 'AVAXUSDT', 'DOTUSDT', 'LINKUSDT',
+];
+const MAJOR_COINS = new Set([
+  'BTC', 'ETH', 'SOL', 'XRP', 'BNB', 'DOGE', 'ADA', 'AVAX', 'DOT', 'LINK',
+  'MATIC', 'UNI', 'LTC', 'ATOM', 'APT', 'ARB', 'OP', 'SUI', 'NEAR', 'FIL',
+  'PEPE', 'WIF', 'SHIB', 'TRX', 'ETC', 'INJ', 'SEI', 'TIA', 'FET', 'RENDER',
+]);
+
+function formatNum(n) {
+  if (!n) return '—';
+  if (n >= 1e12) return `$${(n / 1e12).toFixed(2)}T`;
+  if (n >= 1e9) return `$${(n / 1e9).toFixed(1)}B`;
+  if (n >= 1e6) return `$${(n / 1e6).toFixed(1)}M`;
+  return `$${n.toLocaleString()}`;
+}
+
+function formatPrice(p) {
+  if (!p && p !== 0) return '—';
+  if (p >= 1) return `$${p.toLocaleString(undefined, { maximumFractionDigits: 2 })}`;
+  return `$${p.toFixed(6)}`;
+}
+
+// Animated floating bubble for categories
+function CategoryBubble({ name, change, index }) {
+  const isPositive = change >= 0;
+  const absChange = Math.abs(change);
+  const size = Math.max(64, Math.min(110, 64 + absChange * 4));
+  const floatDelay = index * 0.15;
+
+  return (
+    <motion.div
+      initial={{ opacity: 0, scale: 0 }}
+      animate={{ opacity: 1, scale: 1 }}
+      transition={{ delay: 0.3 + index * 0.1, duration: 0.5, type: 'spring', stiffness: 200 }}
+      className="relative"
+    >
+      <motion.div
+        animate={{
+          y: [0, -6, 0, 4, 0],
+          x: [0, 3, -2, 1, 0],
+        }}
+        transition={{
+          duration: 4 + index * 0.5,
+          repeat: Infinity,
+          ease: 'easeInOut',
+          delay: floatDelay,
+        }}
+        className="rounded-full flex flex-col items-center justify-center cursor-default"
+        style={{
+          width: size,
+          height: size,
+          backgroundColor: isPositive ? 'rgba(34, 197, 94, 0.15)' : 'rgba(239, 68, 68, 0.15)',
+          border: `1.5px solid ${isPositive ? 'rgba(34, 197, 94, 0.3)' : 'rgba(239, 68, 68, 0.3)'}`,
+        }}
+      >
+        <span className="text-[10px] text-text-primary font-medium text-center leading-tight px-1.5 line-clamp-2">
+          {name}
+        </span>
+        <span
+          className="text-[11px] font-bold mt-0.5"
+          style={{ color: isPositive ? '#22c55e' : '#ef4444' }}
+        >
+          {isPositive ? '+' : ''}{change.toFixed(1)}%
+        </span>
+      </motion.div>
+    </motion.div>
+  );
+}
+
+function getHeatColor(change) {
+  if (change == null) return 'rgba(100, 100, 100, 0.3)';
+  const clamped = Math.max(-10, Math.min(10, change));
+  if (clamped >= 0) {
+    const t = clamped / 10;
+    const r = Math.round(30 + (34 - 30) * t);
+    const g = Math.round(30 + (197 - 30) * t);
+    const b = Math.round(30 + (94 - 30) * t);
+    return `rgba(${r}, ${g}, ${b}, ${0.25 + t * 0.45})`;
+  } else {
+    const t = Math.abs(clamped) / 10;
+    const r = Math.round(30 + (239 - 30) * t);
+    const g = Math.round(30 + (68 - 30) * t);
+    const b = Math.round(30 + (68 - 30) * t);
+    return `rgba(${r}, ${g}, ${b}, ${0.25 + t * 0.45})`;
+  }
+}
+
+function tvUrl(symbol) {
+  const s = (symbol || '').toUpperCase().replace(/USDT$/i, '');
+  // Try Binance perp first; TradingView will show error if not listed there
+  return `https://www.tradingview.com/chart/?symbol=BINANCE:${s}USDT.P`;
+}
+
+function HeatmapCell({ coin, index, sizeClass }) {
+  const change = coin.price_change_percentage_24h;
+  return (
+    <motion.div
+      key={coin.id}
+      initial={{ opacity: 0, scale: 0.8 }}
+      animate={{ opacity: 1, scale: 1 }}
+      transition={{ delay: 0.05 * index, duration: 0.3 }}
+      whileHover={{ scale: 1.02, transition: { duration: 0.15 } }}
+      className={`${sizeClass} rounded-lg flex flex-col items-center justify-center border border-white/5 cursor-pointer transition-all hover:border-white/15 hover:brightness-125`}
+      style={{ backgroundColor: getHeatColor(change) }}
+      onClick={() => window.open(tvUrl(coin.symbol), '_blank', 'noopener')}
+    >
+      <div className="flex items-center gap-1">
+        <img src={coin.image} alt="" className="w-3.5 h-3.5 rounded-full" />
+        <span className="text-xs font-bold text-white">{coin.symbol?.toUpperCase()}</span>
+      </div>
+      <span className={`text-[11px] font-semibold mt-0.5 ${change >= 0 ? 'text-green-300' : 'text-red-300'}`}>
+        {change != null ? `${change >= 0 ? '+' : ''}${change.toFixed(1)}%` : '—'}
+      </span>
+    </motion.div>
+  );
+}
+
+function FundingCountdown({ nextTime }) {
+  const [remaining, setRemaining] = useState('');
+  useEffect(() => {
+    const tick = () => {
+      const diff = nextTime - Date.now();
+      if (diff <= 0) { setRemaining('עכשיו'); return; }
+      const h = Math.floor(diff / 3600000);
+      const m = Math.floor((diff % 3600000) / 60000);
+      setRemaining(`${h}h ${m}m`);
+    };
+    tick();
+    const id = setInterval(tick, 60000);
+    return () => clearInterval(id);
+  }, [nextTime]);
+  return <span className="text-[9px] text-text-muted">{remaining}</span>;
+}
+
+function FundingRatesCard({ rates, loading }) {
+  const maxAbs = rates.length ? Math.max(...rates.map(r => Math.abs(r.rate))) : 1;
+  return (
+    <motion.div
+      initial={{ opacity: 0, y: 15 }}
+      animate={{ opacity: 1, y: 0 }}
+      transition={{ duration: 0.5, delay: 0.1 }}
+      className={cardClass}
+    >
+      <h2 className="text-sm font-semibold text-text-primary mb-3 flex items-center gap-2 justify-center">
+        <Percent className="w-4 h-4 text-accent-primary" />
+        שיעורי מימון (Funding)
+      </h2>
+      {rates.length > 0 ? (
+        <div className="space-y-1.5">
+          {rates.map((r, i) => {
+            const pct = (r.rate * 100).toFixed(4);
+            const isNeg = r.rate < 0;
+            const barW = (Math.abs(r.rate) / maxAbs) * 44;
+            return (
+              <motion.div
+                key={r.symbol}
+                initial={{ opacity: 0, x: 20 }}
+                animate={{ opacity: 1, x: 0 }}
+                transition={{ delay: 0.04 * i, duration: 0.3 }}
+                className="flex items-center gap-1.5"
+                dir="ltr"
+              >
+                <span
+                  className="text-[10px] font-semibold w-14 text-right shrink-0"
+                  style={{ color: isNeg ? '#22c55e' : '#ef4444' }}
+                >
+                  {isNeg ? '' : '+'}{pct}%
+                </span>
+                <div className="flex-1 relative h-3 bg-bg-tertiary rounded-full overflow-hidden">
+                  <div className="absolute left-1/2 top-0 bottom-0 w-px bg-text-muted/30 z-10" />
+                  <motion.div
+                    initial={{ width: 0 }}
+                    animate={{ width: `${barW}%` }}
+                    transition={{ delay: 0.04 * i + 0.2, duration: 0.6, ease: 'easeOut' }}
+                    className="absolute top-0 h-full"
+                    style={isNeg
+                      ? { right: '50%', borderRadius: '9999px 0 0 9999px', backgroundColor: 'rgba(34, 197, 94, 0.5)' }
+                      : { left: '50%', borderRadius: '0 9999px 9999px 0', backgroundColor: 'rgba(239, 68, 68, 0.5)' }
+                    }
+                  />
+                </div>
+                <span className="text-[11px] font-bold text-text-primary w-10 shrink-0">{r.symbol}</span>
+              </motion.div>
+            );
+          })}
+          <div className="flex items-center justify-center gap-4 mt-2 pt-2 border-t border-border-primary/30">
+            <div className="flex items-center gap-1">
+              <div className="w-2 h-2 rounded-full" style={{ backgroundColor: 'rgba(34, 197, 94, 0.6)' }} />
+              <span className="text-[9px] text-text-muted">Shorts משלמים</span>
+            </div>
+            <div className="flex items-center gap-1">
+              <div className="w-2 h-2 rounded-full" style={{ backgroundColor: 'rgba(239, 68, 68, 0.6)' }} />
+              <span className="text-[9px] text-text-muted">Longs משלמים</span>
+            </div>
+            {rates[0] && <FundingCountdown nextTime={rates[0].nextFundingTime} />}
+          </div>
+        </div>
+      ) : (
+        <p className="text-xs text-text-muted text-center py-8">{loading ? 'טוען...' : 'לא זמין'}</p>
+      )}
+    </motion.div>
+  );
+}
+
+function OpenInterestCard({ data, loading }) {
+  const maxOiUsd = data.length ? Math.max(...data.map(d => d.oiUsd)) : 1;
+  const totalOi = data.reduce((sum, d) => sum + d.oiUsd, 0);
+  return (
+    <motion.div
+      initial={{ opacity: 0, y: 15 }}
+      animate={{ opacity: 1, y: 0 }}
+      transition={{ duration: 0.5, delay: 0.2 }}
+      className={cardClass}
+    >
+      <h2 className="text-sm font-semibold text-text-primary mb-1 flex items-center gap-2 justify-center">
+        <Activity className="w-4 h-4 text-accent-primary" />
+        פוזיציות פתוחות (OI)
+      </h2>
+      {data.length > 0 && (
+        <p className="text-center text-[11px] text-text-muted mb-3">סה״כ {formatNum(totalOi)}</p>
+      )}
+      {data.length > 0 ? (
+        <div className="space-y-0.5">
+          {data.map((d, i) => {
+            const barW = (d.oiUsd / maxOiUsd) * 100;
+            return (
+              <motion.div
+                key={d.symbol}
+                initial={{ opacity: 0, x: 20 }}
+                animate={{ opacity: 1, x: 0 }}
+                transition={{ delay: 0.04 * i, duration: 0.3 }}
+                className="flex items-center gap-1.5 py-0.5"
+                dir="ltr"
+              >
+                <span className="text-[9px] text-text-muted/40 w-3 text-center shrink-0">{i + 1}</span>
+                <span className="text-[11px] font-bold text-text-primary w-10 shrink-0">{d.symbol}</span>
+                <div className="flex-1 h-2.5 bg-bg-tertiary rounded-full overflow-hidden">
+                  <motion.div
+                    initial={{ width: 0 }}
+                    animate={{ width: `${barW}%` }}
+                    transition={{ delay: 0.04 * i + 0.2, duration: 0.8, ease: 'easeOut' }}
+                    className="h-full rounded-full"
+                    style={{ background: 'linear-gradient(to right, #6366f1, #3b82f6, #06b6d4)' }}
+                  />
+                </div>
+                <span className="text-[10px] font-semibold text-text-muted w-12 text-left shrink-0">
+                  {formatNum(d.oiUsd)}
+                </span>
+              </motion.div>
+            );
+          })}
+        </div>
+      ) : (
+        <p className="text-xs text-text-muted text-center py-8">{loading ? 'טוען...' : 'לא זמין'}</p>
+      )}
+    </motion.div>
+  );
+}
+
+function LongShortCard({ data, loading }) {
+  return (
+    <motion.div
+      initial={{ opacity: 0, y: 15 }}
+      animate={{ opacity: 1, y: 0 }}
+      transition={{ duration: 0.5, delay: 0.3 }}
+      className={cardClass}
+    >
+      <h2 className="text-sm font-semibold text-text-primary mb-3 flex items-center gap-2 justify-center">
+        <BarChart3 className="w-4 h-4 text-accent-primary" />
+        יחס לונג / שורט
+      </h2>
+      {data.length > 0 ? (
+        <div className="space-y-1.5">
+          {data.map((d, i) => {
+            const longPct = (d.longAccount * 100).toFixed(1);
+            const shortPct = (d.shortAccount * 100).toFixed(1);
+            return (
+              <motion.div
+                key={d.symbol}
+                initial={{ opacity: 0, x: 20 }}
+                animate={{ opacity: 1, x: 0 }}
+                transition={{ delay: 0.04 * i, duration: 0.3 }}
+              >
+                <div className="flex items-center gap-1.5" dir="ltr">
+                  <span className="text-[11px] font-bold text-text-primary w-10 text-center shrink-0">{d.symbol}</span>
+                  <div className="flex flex-1 h-5 rounded-md overflow-hidden bg-bg-tertiary">
+                    <motion.div
+                      initial={{ width: 0 }}
+                      animate={{ width: `${longPct}%` }}
+                      transition={{ delay: 0.04 * i + 0.2, duration: 0.8, ease: 'easeOut' }}
+                      className="h-full flex items-center justify-center"
+                      style={{ backgroundColor: 'rgba(34, 197, 94, 0.25)', minWidth: 36 }}
+                    >
+                      <span className="text-[9px] font-bold text-green-400">{longPct}%</span>
+                    </motion.div>
+                    <motion.div
+                      initial={{ width: 0 }}
+                      animate={{ width: `${shortPct}%` }}
+                      transition={{ delay: 0.04 * i + 0.2, duration: 0.8, ease: 'easeOut' }}
+                      className="h-full flex items-center justify-center"
+                      style={{ backgroundColor: 'rgba(239, 68, 68, 0.25)', minWidth: 36 }}
+                    >
+                      <span className="text-[9px] font-bold text-red-400">{shortPct}%</span>
+                    </motion.div>
+                  </div>
+                </div>
+              </motion.div>
+            );
+          })}
+          <div className="flex items-center justify-center gap-4 mt-2 pt-2 border-t border-border-primary/30">
+            <div className="flex items-center gap-1">
+              <div className="w-2 h-2 rounded-full" style={{ backgroundColor: 'rgba(34, 197, 94, 0.6)' }} />
+              <span className="text-[9px] text-text-muted">Long (קונים)</span>
+            </div>
+            <div className="flex items-center gap-1">
+              <div className="w-2 h-2 rounded-full" style={{ backgroundColor: 'rgba(239, 68, 68, 0.6)' }} />
+              <span className="text-[9px] text-text-muted">Short (מוכרים)</span>
+            </div>
+          </div>
+        </div>
+      ) : (
+        <p className="text-xs text-text-muted text-center py-8">{loading ? 'טוען...' : 'לא זמין'}</p>
+      )}
+    </motion.div>
+  );
+}
+
+function timeAgo(ts) {
+  const diff = Math.floor((Date.now() - ts) / 1000);
+  if (diff < 5) return 'עכשיו';
+  if (diff < 60) return `לפני ${diff}s`;
+  if (diff < 3600) return `לפני ${Math.floor(diff / 60)}m`;
+  return `לפני ${Math.floor(diff / 3600)}h`;
+}
+
+function LiquidationsCard({ liquidations }) {
+  const longs = liquidations.filter(l => l.side === 'SELL');
+  const shorts = liquidations.filter(l => l.side === 'BUY');
+  const totalLongUsd = longs.reduce((s, l) => s + l.usdValue, 0);
+  const totalShortUsd = shorts.reduce((s, l) => s + l.usdValue, 0);
+  const total = totalLongUsd + totalShortUsd;
+  const longPct = total > 0 ? (totalLongUsd / total) * 100 : 50;
+
+  return (
+    <div className={cardClass}>
+      <h2 className="text-sm font-semibold text-text-primary mb-3 flex items-center gap-2 justify-center">
+        <Zap className="w-4 h-4 text-yellow-500" />
+        חיסולים LIVE
+      </h2>
+
+      {/* Summary bar */}
+      <div className="mb-2">
+        <div className="flex items-center justify-between mb-1">
+          <span className="text-[10px] font-medium text-red-400">
+            Short {shorts.length}
+          </span>
+          <span className="text-[10px] font-medium text-green-400">
+            {longs.length} Long
+          </span>
+        </div>
+        <div className="h-2 bg-bg-tertiary rounded-full overflow-hidden flex" dir="ltr">
+          <motion.div
+            initial={{ width: 0 }}
+            animate={{ width: `${longPct}%` }}
+            transition={{ duration: 0.8, ease: 'easeOut' }}
+            className="h-full rounded-l-full"
+            style={{ backgroundColor: 'rgba(34, 197, 94, 0.6)' }}
+          />
+          <motion.div
+            initial={{ width: 0 }}
+            animate={{ width: `${100 - longPct}%` }}
+            transition={{ duration: 0.8, ease: 'easeOut' }}
+            className="h-full rounded-r-full"
+            style={{ backgroundColor: 'rgba(239, 68, 68, 0.6)' }}
+          />
+        </div>
+        <div className="flex items-center justify-between mt-1">
+          <span className="text-[9px] text-text-muted">{formatNum(totalShortUsd)}</span>
+          <span className="text-[9px] text-text-muted">{formatNum(totalLongUsd)}</span>
+        </div>
+      </div>
+
+      {/* Feed */}
+      {liquidations.length > 0 ? (
+        <div className="space-y-1 max-h-[400px] overflow-y-auto scrollbar-thin">
+          {liquidations.map((liq) => {
+            const isLong = liq.side === 'SELL';
+            const big = liq.usdValue >= 50000;
+            return (
+              <motion.div
+                key={liq.id}
+                initial={{ opacity: 0, x: 15 }}
+                animate={{ opacity: 1, x: 0 }}
+                transition={{ duration: 0.25 }}
+                className={`flex items-center justify-between py-1.5 px-2 rounded-md ${big ? 'border' : ''}`}
+                style={{
+                  backgroundColor: isLong ? 'rgba(239, 68, 68, 0.07)' : 'rgba(34, 197, 94, 0.07)',
+                  borderColor: big ? (isLong ? 'rgba(239, 68, 68, 0.3)' : 'rgba(34, 197, 94, 0.3)') : undefined,
+                }}
+              >
+                <span className="text-[9px] text-text-muted shrink-0">{timeAgo(liq.time)}</span>
+                <div className="flex items-center gap-2">
+                  <span className="text-[11px] font-bold" style={{ color: isLong ? '#ef4444' : '#22c55e' }}>
+                    {formatNum(liq.usdValue)}
+                  </span>
+                  <span className="text-[10px] text-text-muted">
+                    {isLong ? 'L' : 'S'}
+                  </span>
+                  <span className="text-[11px] font-bold text-text-primary">{liq.symbol}</span>
+                  <Zap className="w-3 h-3 shrink-0" style={{ color: isLong ? '#ef4444' : '#22c55e' }} />
+                </div>
+              </motion.div>
+            );
+          })}
+        </div>
+      ) : (
+        <div className="text-center py-8">
+          <Zap className="w-5 h-5 text-yellow-500/40 mx-auto mb-2" />
+          <motion.div
+            animate={{ opacity: [0.3, 1, 0.3] }}
+            transition={{ duration: 2, repeat: Infinity }}
+            className="text-[11px] text-text-muted"
+          >
+            ממתין לחיסולים...
+          </motion.div>
+        </div>
+      )}
+    </div>
+  );
+}
+
+function CryptoHeatmap({ coins, loading }) {
+  if (!coins.length) {
+    return (
+      <motion.div initial={{ opacity: 0, y: 15 }} animate={{ opacity: 1, y: 0 }} className={cardClass}>
+        <h2 className="text-sm font-semibold text-text-primary mb-3 flex items-center gap-2 justify-center">
+          <Grid3X3 className="w-4 h-4 text-accent-primary" />
+          מפת חום
+        </h2>
+        <p className="text-xs text-text-muted text-center py-8">{loading ? 'טוען...' : 'לא זמין'}</p>
+      </motion.div>
+    );
+  }
+
+  const top20 = coins.slice(0, 20);
+
+  return (
+    <motion.div
+      initial={{ opacity: 0, y: 15 }}
+      animate={{ opacity: 1, y: 0 }}
+      transition={{ duration: 0.5, delay: 0.2 }}
+      className={cardClass}
+    >
+      <h2 className="text-sm font-semibold text-text-primary mb-3 flex items-center gap-2 justify-center">
+        <Grid3X3 className="w-4 h-4 text-accent-primary" />
+        מפת חום - Top 20
+      </h2>
+      <div className="flex flex-wrap gap-1.5">
+        {top20.map((coin, i) => {
+          // Desktop: tiered sizing, Mobile: simpler 2-column grid
+          let sizeClass;
+          if (i < 2) sizeClass = 'w-[calc(50%-3px)] h-16 md:h-20';
+          else if (i < 5) sizeClass = 'w-[calc(50%-3px)] md:w-[calc(33.33%-4px)] h-14 md:h-16';
+          else if (i < 10) sizeClass = 'w-[calc(50%-3px)] md:w-[calc(20%-5px)] h-12 md:h-14';
+          else sizeClass = 'w-[calc(50%-3px)] md:w-[calc(20%-5px)] h-11 md:h-12';
+
+          return <HeatmapCell key={coin.id} coin={coin} index={i} sizeClass={sizeClass} />;
+        })}
+      </div>
+      {/* Legend */}
+      <div className="flex items-center justify-center gap-3 mt-3">
+        <div className="flex items-center gap-1">
+          <div className="w-3 h-3 rounded" style={{ backgroundColor: 'rgba(239, 68, 68, 0.6)' }} />
+          <span className="text-[10px] text-text-muted">ירידה</span>
+        </div>
+        <div className="flex items-center gap-1">
+          <div className="w-3 h-3 rounded" style={{ backgroundColor: 'rgba(100, 100, 100, 0.3)' }} />
+          <span className="text-[10px] text-text-muted">ניטרלי</span>
+        </div>
+        <div className="flex items-center gap-1">
+          <div className="w-3 h-3 rounded" style={{ backgroundColor: 'rgba(34, 197, 94, 0.6)' }} />
+          <span className="text-[10px] text-text-muted">עלייה</span>
+        </div>
+      </div>
+    </motion.div>
+  );
+}
+
+export default function MarketOverview() {
+  const [activeTab, setActiveTab] = useState('overview');
+  const [global, setGlobal] = useState(null);
+  const [trending, setTrending] = useState([]);
+  const [topCoins, setTopCoins] = useState([]);
+  const [allCoins, setAllCoins] = useState([]);
+  const [categories, setCategories] = useState([]);
+  const [loading, setLoading] = useState(true);
+  const [realAltSeason, setRealAltSeason] = useState(null);
+  const [fundingRates, setFundingRates] = useState([]);
+  const [openInterest, setOpenInterest] = useState([]);
+  const [longShortRatio, setLongShortRatio] = useState([]);
+  const [liquidations, setLiquidations] = useState([]);
+  const intervalRef = useRef(null);
+
+  // Lock body scroll when AI chat is active on mobile (iOS needs position:fixed)
+  useEffect(() => {
+    if (activeTab !== 'ai-chat') return;
+    const scrollY = window.scrollY;
+    document.documentElement.style.overflow = 'hidden';
+    document.body.style.position = 'fixed';
+    document.body.style.top = `-${scrollY}px`;
+    document.body.style.width = '100%';
+    document.body.style.overflow = 'hidden';
+    return () => {
+      document.documentElement.style.overflow = '';
+      document.body.style.position = '';
+      document.body.style.top = '';
+      document.body.style.width = '';
+      document.body.style.overflow = '';
+      window.scrollTo(0, scrollY);
+    };
+  }, [activeTab]);
+
+  // Helper: fetch with timeout (AbortSignal.timeout may not exist in older Safari)
+  const fetchWithTimeout = useCallback((url, ms = 8000) => {
+    const controller = new AbortController();
+    const timer = setTimeout(() => controller.abort(), ms);
+    return fetch(url, { signal: controller.signal }).finally(() => clearTimeout(timer));
+  }, []);
+
+  // Binance futures data runs independently so it's never blocked by CoinGecko
+  const fetchBinance = useCallback(async () => {
+    try {
+      const [premiumRes, ...oiAndLsRes] = await Promise.allSettled([
+        fetchWithTimeout('https://fapi.binance.com/fapi/v1/premiumIndex', 6000),
+        ...FUTURES_SYMBOLS.map(s => fetchWithTimeout(`https://fapi.binance.com/fapi/v1/openInterest?symbol=${s}`, 6000)),
+        ...FUTURES_SYMBOLS.map(s => fetchWithTimeout(`https://fapi.binance.com/futures/data/globalLongShortAccountRatio?symbol=${s}&period=5m&limit=1`, 6000)),
+      ]);
+
+      if (premiumRes.status === 'fulfilled' && premiumRes.value.ok) {
+        const allPairs = await premiumRes.value.json();
+        const usdtPairs = allPairs
+          .filter(p => {
+            if (!p.symbol?.endsWith('USDT')) return false;
+            if (parseFloat(p.lastFundingRate) === 0) return false;
+            return MAJOR_COINS.has(p.symbol.replace('USDT', ''));
+          })
+          .map(p => ({
+            symbol: p.symbol.replace('USDT', ''),
+            rate: parseFloat(p.lastFundingRate),
+            markPrice: parseFloat(p.markPrice),
+            nextFundingTime: p.nextFundingTime,
+          }))
+          .sort((a, b) => Math.abs(b.rate) - Math.abs(a.rate))
+          .slice(0, 10);
+        setFundingRates(usdtPairs);
+
+        const oiData = [];
+        for (let i = 0; i < FUTURES_SYMBOLS.length; i++) {
+          const res = oiAndLsRes[i];
+          if (res.status === 'fulfilled' && res.value.ok) {
+            const d = await res.value.json();
+            const sym = FUTURES_SYMBOLS[i].replace('USDT', '');
+            const markP = allPairs.find(p => p.symbol === FUTURES_SYMBOLS[i]);
+            const oi = parseFloat(d.openInterest);
+            const price = markP ? parseFloat(markP.markPrice) : 0;
+            oiData.push({ symbol: sym, oi, oiUsd: oi * price });
+          }
+        }
+        setOpenInterest(oiData);
+      }
+
+      const lsData = [];
+      for (let i = 0; i < FUTURES_SYMBOLS.length; i++) {
+        const res = oiAndLsRes[FUTURES_SYMBOLS.length + i];
+        if (res.status === 'fulfilled' && res.value.ok) {
+          const d = await res.value.json();
+          if (d.length) {
+            lsData.push({
+              symbol: FUTURES_SYMBOLS[i].replace('USDT', ''),
+              longAccount: parseFloat(d[0].longAccount),
+              shortAccount: parseFloat(d[0].shortAccount),
+              ratio: parseFloat(d[0].longShortRatio),
+            });
+          }
+        }
+      }
+      setLongShortRatio(lsData);
+    } catch {
+      // silent
+    }
+  }, [fetchWithTimeout]);
+
+  const fetchAll = useCallback(async () => {
+    try {
+      // Batch 1: global + coins (8s timeout each)
+      const [globalRes, coinsRes] = await Promise.allSettled([
+        fetchWithTimeout('https://api.coingecko.com/api/v3/global', 8000),
+        fetchWithTimeout('https://api.coingecko.com/api/v3/coins/markets?vs_currency=usd&order=market_cap_desc&per_page=50&sparkline=false&price_change_percentage=24h,30d', 8000),
+      ]);
+
+      if (globalRes.status === 'fulfilled' && globalRes.value.ok) {
+        const d = await globalRes.value.json();
+        setGlobal(d.data);
+      }
+      if (coinsRes.status === 'fulfilled' && coinsRes.value.ok) {
+        const d = await coinsRes.value.json();
+        setTopCoins(d.slice(0, 10));
+        setAllCoins(d);
+      }
+
+      // Short delay to avoid CoinGecko rate limiting
+      await new Promise(r => setTimeout(r, 800));
+
+      // Batch 2: trending + categories (8s timeout each)
+      const [trendingRes, catsRes] = await Promise.allSettled([
+        fetchWithTimeout('https://api.coingecko.com/api/v3/search/trending', 8000),
+        fetchWithTimeout('https://api.coingecko.com/api/v3/coins/categories?order=market_cap_change_24h_desc', 8000),
+      ]);
+
+      if (trendingRes.status === 'fulfilled' && trendingRes.value.ok) {
+        const d = await trendingRes.value.json();
+        setTrending((d.coins || []).slice(0, 10));
+      }
+      if (catsRes.status === 'fulfilled' && catsRes.value.ok) {
+        const d = await catsRes.value.json();
+        const valid = d.filter(c => c.market_cap_change_24h != null && c.name);
+        const top = valid.slice(0, 3);
+        const bottom = valid.slice(-3).reverse();
+        setCategories([...top, ...bottom].slice(0, 6));
+      }
+
+      // Altcoin Season Index (5s timeout — proxy can be slow)
+      try {
+        const proxyUrl = 'https://api.codetabs.com/v1/proxy/?quest=' + encodeURIComponent('https://www.blockchaincenter.net/en/altcoin-season-index/');
+        const proxyRes = await fetchWithTimeout(proxyUrl, 5000);
+        if (proxyRes.ok) {
+          const html = await proxyRes.text();
+          const idx90 = html.indexOf('\\"90\\":{');
+          if (idx90 !== -1) {
+            const chunk = html.substring(idx90, idx90 + 100000);
+            const closePattern = '},\\"';
+            const closeBrace = chunk.indexOf(closePattern);
+            if (closeBrace > 0) {
+              const section = chunk.substring(0, closeBrace);
+              const allDates = [...section.matchAll(/\\"(\d{4}-\d{2}-\d{2})\\":\\"(\d+)\\"/g)];
+              if (allDates.length) {
+                const lastVal = parseInt(allDates[allDates.length - 1][2], 10);
+                if (lastVal >= 0 && lastVal <= 100) setRealAltSeason(lastVal);
+              }
+            }
+          }
+        }
+      } catch {
+        // silent - will use fallback calculation
+      }
+
+    } catch {
+      // silent fail
+    } finally {
+      setLoading(false);
+    }
+  }, [fetchWithTimeout]);
+
+  useEffect(() => {
+    if (activeTab !== 'overview') {
+      clearInterval(intervalRef.current);
+      return;
+    }
+    // Run CoinGecko and Binance in parallel — Binance won't be blocked by CoinGecko timeouts
+    fetchAll();
+    fetchBinance();
+    intervalRef.current = setInterval(() => {
+      fetchAll();
+      fetchBinance();
+    }, 60_000);
+    return () => clearInterval(intervalRef.current);
+  }, [fetchAll, fetchBinance, activeTab]);
+
+  // Liquidations: load recent via REST, then stream via WebSocket
+  useEffect(() => {
+    let ws;
+    const buffer = [];
+    let flushTimer;
+
+    // Normalize symbol: strip USDT suffix and 1000-prefix (e.g. 1000PEPEUSDT → PEPE)
+    const normalizeSym = (s) => s.replace('USDT', '').replace(/^1000/, '');
+
+    // Load recent liquidations from REST API
+    const loadRecent = async () => {
+      try {
+        const res = await fetch('https://fapi.binance.com/fapi/v1/allForceOrders?limit=200');
+        if (!res.ok) return;
+        const orders = await res.json();
+        if (!Array.isArray(orders)) return;
+        const filtered = orders
+          .map(o => {
+            const sym = normalizeSym(o.symbol || '');
+            const price = parseFloat(o.averagePrice) || parseFloat(o.price) || 0;
+            const qty = parseFloat(o.origQty) || parseFloat(o.executedQty) || 0;
+            const usdValue = qty * price;
+            return { sym, usdValue, o, price, qty };
+          })
+          .filter(({ sym, usdValue }) => MAJOR_COINS.has(sym) && usdValue > 0)
+          .map(({ sym, usdValue, o, price, qty }) => ({
+            id: `${o.symbol}-${o.time}-${Math.random()}`,
+            symbol: sym,
+            side: o.side,
+            qty,
+            price,
+            usdValue,
+            time: o.time,
+          }))
+          .sort((a, b) => b.time - a.time)
+          .slice(0, 50);
+        if (filtered.length > 0) setLiquidations(filtered);
+      } catch {
+        // silent
+      }
+    };
+    loadRecent();
+
+    // WebSocket for real-time updates
+    const connect = () => {
+      ws = new WebSocket('wss://fstream.binance.com/ws/!forceOrder@arr');
+      ws.onmessage = (event) => {
+        const data = JSON.parse(event.data);
+        const o = data.o;
+        const sym = normalizeSym(o.s || '');
+        if (!MAJOR_COINS.has(sym)) return;
+        const usdValue = parseFloat(o.q) * parseFloat(o.ap);
+        if (usdValue < 50) return;
+        buffer.push({
+          id: `${o.s}-${o.T}-${Math.random()}`,
+          symbol: sym,
+          side: o.S,
+          qty: parseFloat(o.q),
+          price: parseFloat(o.ap),
+          usdValue,
+          time: o.T,
+        });
+      };
+      ws.onclose = () => setTimeout(connect, 3000);
+      ws.onerror = () => ws.close();
+    };
+
+    connect();
+    flushTimer = setInterval(() => {
+      if (buffer.length > 0) {
+        const items = buffer.splice(0);
+        setLiquidations(prev => [...items, ...prev].slice(0, 50));
+      }
+    }, 1000);
+
+    return () => {
+      ws?.close();
+      clearInterval(flushTimer);
+    };
+  }, []);
+
+  // Compute gainers and losers from all coins
+  const sorted = [...allCoins].sort((a, b) => (b.price_change_percentage_24h || 0) - (a.price_change_percentage_24h || 0));
+  const gainers = sorted.slice(0, 5);
+  const losers = sorted.slice(-5).reverse();
+
+  // Altcoin Season Index: prefer real BlockchainCenter data (90d), fallback to local 30d calc
+  const EXCLUDED_SYMBOLS = new Set([
+    'usdt', 'usdc', 'dai', 'busd', 'tusd', 'fdusd', 'usdp', 'usdd', 'gusd', 'frax', 'lusd', 'crvusd', 'pyusd', 'usde',
+    'wbtc', 'weth', 'steth', 'wsteth', 'reth', 'cbeth', 'hbtc', 'renbtc',
+  ]);
+  const altSeasonData = useMemo(() => {
+    // Use real BlockchainCenter 90d data if available
+    let index;
+    if (realAltSeason != null) {
+      index = realAltSeason;
+    } else {
+      if (!allCoins.length) return null;
+      const btc = allCoins.find(c => c.symbol === 'btc');
+      if (!btc) return null;
+      const btcChange = btc.price_change_percentage_30d_in_currency ?? btc.price_change_percentage_24h ?? 0;
+      const alts = allCoins.filter(c => !EXCLUDED_SYMBOLS.has(c.symbol?.toLowerCase()));
+      if (!alts.length) return null;
+      const outperforming = alts.filter(c => {
+        const change = c.price_change_percentage_30d_in_currency ?? c.price_change_percentage_24h ?? 0;
+        return change > btcChange;
+      });
+      index = Math.round((outperforming.length / alts.length) * 100);
+    }
+    let label, color;
+    if (index >= 75) { label = 'עונת אלטקוינים'; color = '#22c55e'; }
+    else if (index <= 25) { label = 'עונת ביטקוין'; color = '#f7931a'; }
+    else { label = 'ניטרלי'; color = '#eab308'; }
+    return { index, label, color };
+  }, [allCoins, realAltSeason]);
+
+  return (
+    <motion.div variants={pageVariants} initial="initial" animate="animate" exit="exit" transition={pageTransition}>
+      {/* Tabs */}
+      <div className={`flex items-center justify-center gap-2 ${activeTab === 'ai-chat' ? 'mb-2' : 'mb-6'}`}>
+        {[
+          { key: 'overview', label: 'סקירה', icon: Activity },
+          { key: 'analysis', label: 'ניתוח מטבע', icon: Sparkles },
+          { key: 'ai-chat', label: 'TradeAI', icon: Bot },
+        ].map((tab) => (
+          <button
+            key={tab.key}
+            onClick={() => setActiveTab(tab.key)}
+            className={`flex items-center gap-2 px-5 py-2.5 rounded-xl text-sm font-semibold transition-all cursor-pointer ${
+              activeTab === tab.key
+                ? 'bg-accent-primary text-white shadow-lg shadow-accent-primary/25'
+                : 'bg-bg-secondary border border-border-primary text-text-secondary hover:text-text-primary hover:bg-bg-tertiary'
+            }`}
+          >
+            <tab.icon className="w-4.5 h-4.5" />
+            {tab.label}
+          </button>
+        ))}
+      </div>
+
+      <AnimatePresence mode="wait">
+      {activeTab === 'overview' ? (
+      <motion.div key="overview" initial={{ opacity: 0, x: -20 }} animate={{ opacity: 1, x: 0 }} exit={{ opacity: 0, x: 20 }} transition={{ duration: 0.25 }}>
+
+      {/* Top row: Global stats */}
+      <motion.div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-3 mb-4" variants={staggerContainer} initial="initial" animate="animate">
+        {/* Total Market Cap */}
+        <motion.div className={cardClass} variants={cardVariants}>
+          <div className="flex items-center gap-1.5 mb-1.5 justify-center">
+            <DollarSign className="w-3.5 h-3.5 text-accent-primary" />
+            <span className="text-[11px] text-text-muted">שווי שוק כולל</span>
+          </div>
+          <p className="text-base font-bold text-text-primary text-center">
+            {global ? formatNum(global.total_market_cap?.usd) : '—'}
+          </p>
+          {global?.market_cap_change_percentage_24h_usd != null && (
+            <p className={`text-[11px] text-center mt-0.5 ${global.market_cap_change_percentage_24h_usd >= 0 ? 'text-profit' : 'text-loss'}`}>
+              {global.market_cap_change_percentage_24h_usd >= 0 ? '+' : ''}{global.market_cap_change_percentage_24h_usd.toFixed(2)}%
+            </p>
+          )}
+        </motion.div>
+
+        {/* USDT Dominance */}
+        <motion.div className={cardClass} variants={cardVariants}>
+          <div className="flex items-center gap-1.5 mb-1.5 justify-center">
+            <DollarSign className="w-3.5 h-3.5 text-[#26a17b]" />
+            <span className="text-[11px] text-text-muted">USDT.D</span>
+          </div>
+          <p className="text-base font-bold text-text-primary text-center">
+            {global?.market_cap_percentage?.usdt ? `${global.market_cap_percentage.usdt.toFixed(2)}%` : '—'}
+          </p>
+          <p className="text-[11px] text-text-muted text-center mt-0.5">דומיננטיות USDT</p>
+        </motion.div>
+
+        {/* BTC Dominance */}
+        <motion.div className={cardClass} variants={cardVariants}>
+          <div className="flex items-center gap-1.5 mb-1.5 justify-center">
+            <Bitcoin className="w-3.5 h-3.5 text-[#f7931a]" />
+            <span className="text-[11px] text-text-muted">דומיננטיות BTC</span>
+          </div>
+          <p className="text-base font-bold text-text-primary text-center">
+            {global?.market_cap_percentage?.btc ? `${global.market_cap_percentage.btc.toFixed(1)}%` : '—'}
+          </p>
+          {global?.market_cap_percentage?.eth && (
+            <p className="text-[11px] text-text-muted text-center mt-0.5">
+              ETH: {global.market_cap_percentage.eth.toFixed(1)}%
+            </p>
+          )}
+        </motion.div>
+
+        {/* 24h Volume */}
+        <motion.div className={cardClass} variants={cardVariants}>
+          <div className="flex items-center gap-1.5 mb-1.5 justify-center">
+            <PieChart className="w-3.5 h-3.5 text-accent-primary" />
+            <span className="text-[11px] text-text-muted">נפח מסחר 24h</span>
+          </div>
+          <p className="text-base font-bold text-text-primary text-center">
+            {global ? formatNum(global.total_volume?.usd) : '—'}
+          </p>
+          <p className="text-[11px] text-text-muted text-center mt-0.5">
+            {global?.active_cryptocurrencies ? `${global.active_cryptocurrencies.toLocaleString()} מטבעות` : ''}
+          </p>
+        </motion.div>
+
+        {/* Altcoin Season Index - 2 columns, last = leftmost in RTL = above עולים ויורדים */}
+        <motion.div className={`${cardClass} col-span-2`} variants={cardVariants}>
+          <div className="flex items-center gap-1.5 mb-2 justify-center">
+            <ArrowUpRight className="w-3.5 h-3.5 text-accent-primary" />
+            <span className="text-[11px] text-text-muted font-medium">Altcoin Season</span>
+          </div>
+          {altSeasonData ? (
+            <>
+              <p className="text-2xl font-bold text-text-primary text-center mb-2">
+                {altSeasonData.index}<span className="text-sm font-normal text-text-muted">/100</span>
+              </p>
+              <div className="flex items-center justify-between text-[10px] text-text-muted mb-1.5">
+                <span>Bitcoin</span>
+                <span>Altcoin</span>
+              </div>
+              <div className="relative h-2 rounded-full bg-bg-tertiary overflow-hidden">
+                <div className="absolute inset-y-0 left-0 w-[40%] rounded-full" style={{ background: 'linear-gradient(to right, #f7931a, #c47818)' }} />
+                <div className="absolute inset-y-0 right-0 w-[40%] rounded-full" style={{ background: 'linear-gradient(to left, #3b82f6, #6366f1)' }} />
+                <div
+                  className="absolute top-1/2 -translate-y-1/2 w-3.5 h-3.5 rounded-full bg-bg-secondary border-2 shadow-md"
+                  style={{ left: `calc(${altSeasonData.index}% - 7px)`, borderColor: altSeasonData.color }}
+                />
+              </div>
+            </>
+          ) : (
+            <p className="text-2xl font-bold text-text-primary text-center">—</p>
+          )}
+        </motion.div>
+      </motion.div>
+
+      {/* Market Sessions — full width */}
+      <MarketSessionsCard />
+
+      {/* Middle row: Fear & Greed + Hot Categories + Gainers/Losers */}
+      <div className="grid grid-cols-1 lg:grid-cols-3 gap-4 mb-4">
+        {/* Fear & Greed with history */}
+        <FearGreedGauge expanded />
+
+        {/* Hot Categories - animated bubbles */}
+        <motion.div
+          initial={{ opacity: 0, y: 15 }}
+          animate={{ opacity: 1, y: 0 }}
+          transition={{ duration: 0.5, delay: 0.2 }}
+          className={cardClass}
+        >
+          <h2 className="text-sm font-semibold text-text-primary mb-3 flex items-center gap-2 justify-center">
+            <Layers className="w-4 h-4 text-accent-primary" />
+            קטגוריות חמות
+          </h2>
+          {categories.length > 0 ? (
+            <div className="flex flex-wrap gap-3 justify-center items-center min-h-[140px] py-2">
+              {categories.map((cat, i) => (
+                <CategoryBubble
+                  key={cat.id || cat.name}
+                  name={cat.name}
+                  change={cat.market_cap_change_24h}
+                  index={i}
+                />
+              ))}
+            </div>
+          ) : (
+            <p className="text-xs text-text-muted text-center py-8">{loading ? 'טוען...' : 'לא זמין'}</p>
+          )}
+        </motion.div>
+
+        {/* Top Gainers & Losers */}
+        <motion.div
+          initial={{ opacity: 0, y: 15 }}
+          animate={{ opacity: 1, y: 0 }}
+          transition={{ duration: 0.5, delay: 0.3 }}
+          className={cardClass}
+        >
+          <h2 className="text-sm font-semibold text-text-primary mb-3 flex items-center gap-2 justify-center">
+            <Rocket className="w-4 h-4 text-profit" />
+            עולים ויורדים
+          </h2>
+          {gainers.length > 0 ? (
+            <div className="space-y-1.5">
+              {gainers.slice(0, 4).map((coin) => (
+                <motion.div
+                  key={coin.id}
+                  initial={{ opacity: 0 }}
+                  animate={{ opacity: 1 }}
+                  className="flex items-center justify-between py-1 border-b border-border-primary/30 last:border-0 cursor-pointer hover:bg-white/5 rounded px-1 transition-colors"
+                  onClick={() => window.open(tvUrl(coin.symbol), '_blank', 'noopener')}
+                >
+                  <span className="text-[11px] font-bold text-profit">
+                    +{coin.price_change_percentage_24h?.toFixed(1)}%
+                  </span>
+                  <div className="flex items-center gap-2">
+                    <span className="text-xs font-medium text-text-primary">{coin.symbol?.toUpperCase()}</span>
+                    <img src={coin.image} alt="" className="w-4 h-4 rounded-full" />
+                  </div>
+                </motion.div>
+              ))}
+              <div className="border-t border-border-primary/50 my-1" />
+              {losers.slice(0, 4).map((coin) => (
+                <motion.div
+                  key={coin.id}
+                  initial={{ opacity: 0 }}
+                  animate={{ opacity: 1 }}
+                  className="flex items-center justify-between py-1 border-b border-border-primary/30 last:border-0 cursor-pointer hover:bg-white/5 rounded px-1 transition-colors"
+                  onClick={() => window.open(tvUrl(coin.symbol), '_blank', 'noopener')}
+                >
+                  <span className="text-[11px] font-bold text-loss">
+                    {coin.price_change_percentage_24h?.toFixed(1)}%
+                  </span>
+                  <div className="flex items-center gap-2">
+                    <span className="text-xs font-medium text-text-primary">{coin.symbol?.toUpperCase()}</span>
+                    <img src={coin.image} alt="" className="w-4 h-4 rounded-full" />
+                  </div>
+                </motion.div>
+              ))}
+            </div>
+          ) : (
+            <p className="text-xs text-text-muted text-center py-8">{loading ? 'טוען...' : 'לא זמין'}</p>
+          )}
+        </motion.div>
+
+      </div>
+
+      {/* Top 10 coins + Trending + Liquidations */}
+      <div className="grid grid-cols-1 lg:grid-cols-4 gap-4 mb-4">
+        {/* Top 10 Coins */}
+        <div className={`${cardClass} lg:col-span-2`}>
+          <h2 className="text-sm font-semibold text-text-primary mb-3 flex items-center gap-2 justify-center">
+            <TrendingUp className="w-4 h-4 text-accent-primary" />
+            Top 10 מטבעות
+          </h2>
+          {topCoins.length > 0 ? (
+            <div className="space-y-2">
+              {topCoins.map((coin, i) => (
+                <div key={coin.id} className="flex items-center justify-between py-1.5 border-b border-border-primary/50 last:border-0 cursor-pointer hover:bg-white/5 rounded px-1 transition-colors" onClick={() => window.open(tvUrl(coin.symbol), '_blank', 'noopener')}>
+                  <div className="flex items-center gap-2">
+                    {coin.price_change_percentage_24h >= 0 ? (
+                      <ArrowUpRight className="w-3.5 h-3.5 text-profit" />
+                    ) : (
+                      <ArrowDownRight className="w-3.5 h-3.5 text-loss" />
+                    )}
+                    <span className={`text-xs font-medium ${coin.price_change_percentage_24h >= 0 ? 'text-profit' : 'text-loss'}`}>
+                      {coin.price_change_percentage_24h?.toFixed(2)}%
+                    </span>
+                    <span className="text-sm text-text-primary font-medium">{formatPrice(coin.current_price)}</span>
+                  </div>
+                  <div className="flex items-center gap-3">
+                    <div className="flex items-center gap-1.5 text-right">
+                      <span className="text-sm font-medium text-text-primary">{coin.symbol?.toUpperCase()}</span>
+                      <span className="text-[10px] text-text-muted">{coin.name}</span>
+                    </div>
+                    <img src={coin.image} alt="" className="w-5 h-5 rounded-full shrink-0" />
+                    <span className="text-[10px] text-text-muted w-4 text-center shrink-0">{i + 1}</span>
+                  </div>
+                </div>
+              ))}
+            </div>
+          ) : (
+            <p className="text-xs text-text-muted text-center py-4">{loading ? 'טוען...' : 'לא זמין'}</p>
+          )}
+        </div>
+
+        {/* Trending */}
+        <div className={cardClass}>
+          <h2 className="text-sm font-semibold text-text-primary mb-3 flex items-center gap-2 justify-center">
+            <Flame className="w-4 h-4 text-orange-500" />
+            טרנדינג
+          </h2>
+          {trending.length > 0 ? (
+            <div className="space-y-2">
+              {trending.map((item, i) => {
+                const coin = item.item;
+                return (
+                  <motion.div
+                    key={coin.id}
+                    initial={{ opacity: 0 }}
+                    animate={{ opacity: 1 }}
+                    transition={{ delay: 0.05 * i, duration: 0.3 }}
+                    className="flex items-center justify-between py-1 border-b border-border-primary/30 last:border-0 cursor-pointer hover:bg-white/5 rounded px-1 transition-colors"
+                    onClick={() => window.open(tvUrl(coin.symbol), '_blank', 'noopener')}
+                  >
+                    <div className="flex items-center gap-1.5 w-16 shrink-0">
+                      {coin.data?.price_change_percentage_24h?.usd != null ? (
+                        <>
+                          {coin.data.price_change_percentage_24h.usd >= 0 ? (
+                            <ArrowUpRight className="w-3 h-3 text-profit" />
+                          ) : (
+                            <ArrowDownRight className="w-3 h-3 text-loss" />
+                          )}
+                          <span className={`text-[11px] font-medium ${coin.data.price_change_percentage_24h.usd >= 0 ? 'text-profit' : 'text-loss'}`}>
+                            {coin.data.price_change_percentage_24h.usd >= 0 ? '+' : ''}{coin.data.price_change_percentage_24h.usd.toFixed(1)}%
+                          </span>
+                        </>
+                      ) : (
+                        <span className="text-[11px] text-text-muted">—</span>
+                      )}
+                    </div>
+                    <div className="flex items-center gap-2">
+                      <span className="text-sm font-medium text-text-primary">{coin.symbol?.toUpperCase()}</span>
+                      <img src={coin.thumb} alt="" className="w-4 h-4 rounded-full" />
+                      <span className="text-[10px] text-text-muted">#{i + 1}</span>
+                    </div>
+                  </motion.div>
+                );
+              })}
+            </div>
+          ) : (
+            <p className="text-xs text-text-muted text-center py-4">{loading ? 'טוען...' : 'לא זמין'}</p>
+          )}
+        </div>
+
+        {/* Liquidations */}
+        <LiquidationsCard liquidations={liquidations} />
+      </div>
+
+      {/* Futures Data */}
+      <div className="grid grid-cols-1 lg:grid-cols-3 gap-4 mb-4">
+        <FundingRatesCard rates={fundingRates} loading={loading} />
+        <OpenInterestCard data={openInterest} loading={loading} />
+        <LongShortCard data={longShortRatio} loading={loading} />
+      </div>
+
+      {/* Heatmap */}
+      <CryptoHeatmap coins={allCoins} loading={loading} />
+
+      </motion.div>
+      ) : activeTab === 'analysis' ? (
+      <motion.div key="analysis" initial={{ opacity: 0, x: 20 }} animate={{ opacity: 1, x: 0 }} exit={{ opacity: 0, x: -20 }} transition={{ duration: 0.25 }}>
+        <CoinAnalysis />
+      </motion.div>
+      ) : (
+      <motion.div key="ai-chat" initial={{ opacity: 0, x: 20 }} animate={{ opacity: 1, x: 0 }} exit={{ opacity: 0, x: -20 }} transition={{ duration: 0.25 }} className="overflow-hidden">
+        <AIChat />
+      </motion.div>
+      )}
+      </AnimatePresence>
+    </motion.div>
+  );
+}

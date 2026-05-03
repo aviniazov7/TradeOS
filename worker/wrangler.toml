@@ -1,0 +1,12 @@
+name = "tradeos-alerts"
+main = "index.js"
+compatibility_date = "2024-01-01"
+
+# Cron trigger - runs every 10 minutes (optimized for KV free tier)
+[triggers]
+crons = ["*/10 * * * *"]
+
+# KV namespace for storing alerts
+[[kv_namespaces]]
+binding = "ALERTS_KV"
+id = "75931d3210024df0b6dd2938ee4656c1"

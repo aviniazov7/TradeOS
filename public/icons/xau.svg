@@ -1,0 +1,30 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64">
+  <defs>
+    <linearGradient id="g1" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0%" stop-color="#FFE066"/>
+      <stop offset="50%" stop-color="#D4AF37"/>
+      <stop offset="100%" stop-color="#A67C00"/>
+    </linearGradient>
+    <linearGradient id="g2" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0%" stop-color="#FFE066"/>
+      <stop offset="100%" stop-color="#C9A52C"/>
+    </linearGradient>
+    <linearGradient id="g3" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0%" stop-color="#B8960C"/>
+      <stop offset="100%" stop-color="#8B6914"/>
+    </linearGradient>
+  </defs>
+  <!-- Coin background -->
+  <circle cx="32" cy="32" r="31" fill="url(#g1)" stroke="#A67C00" stroke-width="1.5"/>
+  <circle cx="32" cy="32" r="27" fill="none" stroke="#A67C00" stroke-width="1" opacity="0.4"/>
+  <!-- Gold bar - front face -->
+  <polygon points="18,41 24,27 40,27 46,41" fill="url(#g3)"/>
+  <!-- Gold bar - top face -->
+  <polygon points="24,27 28,21 36,21 40,27" fill="url(#g2)"/>
+  <!-- Gold bar - right face -->
+  <polygon points="40,27 36,21 42,21 46,27" fill="#B8960C" opacity="0.7"/>
+  <!-- Gold bar - bottom edge -->
+  <polygon points="18,41 46,41 44,44 20,44" fill="#7A5A0A"/>
+  <!-- Shine highlight -->
+  <polygon points="25,27 29,22 33,22 29,27" fill="white" opacity="0.25"/>
+</svg>
