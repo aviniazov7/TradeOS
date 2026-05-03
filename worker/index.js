@@ -1499,6 +1499,13 @@ async function handleRequest(request, env) {
     return new Response(JSON.stringify({ error: 'Not found' }), { status: 404, headers: { ...cors, 'Content-Type': 'application/json' } });
   }
 
+  if (path === '/setup-webhook') {
+    const workerUrl = `${url.protocol}//${url.host}/webhook`;
+    const res = await fetch(`https://api.telegram.org/bot${env.BOT_TOKEN}/setWebhook?url=${encodeURIComponent(workerUrl)}&drop_pending_updates=true`);
+    const json = await res.json();
+    return new Response(JSON.stringify(json), { headers: { 'Content-Type': 'application/json' } });
+  }
+
   // AI Chat — Groq proxy with SSE streaming
   if (request.method === 'POST' && path === '/ai-chat') {
     return handleAIChat(request, env, cors);
