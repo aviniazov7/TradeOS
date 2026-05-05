@@ -241,14 +241,21 @@ export default function TradeForm({ isOpen, onClose, trade, onSave, riskSettings
 
     if (!allExits.length) return null;
 
-    const pnl = calculatePartialPnL(form.direction, entry, allExits, calculatedQty);
-    const pnlPercent = calculatePnLPercent(pnl, entry, calculatedQty, form.leverage);
+    // For exchange-imported trades, trust the exchange-reported P&L (quantity may be in contracts, not base asset)
+    const isImported = form.pnlFromExchange != null;
+    const pnl = isImported
+      ? form.pnlFromExchange
+      : calculatePartialPnL(form.direction, entry, allExits, calculatedQty);
+    const pnlPercent = isImported
+      ? (typeof form.pnlPercent === 'number' ? form.pnlPercent : calculatePnLPercent(pnl, entry, calculatedQty, form.leverage))
+      : calculatePnLPercent(pnl, entry, calculatedQty, form.leverage);
     const weightedExit = calculateWeightedExitPrice(allExits);
     const rrRatio = calculateRR(entry, weightedExit, sl);
     const netPnl = calculateNetPnL(pnl, fees);
 
     return { pnl, pnlPercent, rrRatio, netPnl };
-  }, [form.direction, form.entryPrice, form.additionalExits, form.stopLoss, calculatedQty, form.fees]);
+  }, [form.direction, form.entryPrice, form.additionalExits, form.stopLoss, calculatedQty, form.fees,
+      form.pnlFromExchange, form.pnlPercent]);
 
   // Risk warning
   const riskInfo = useMemo(() => {
