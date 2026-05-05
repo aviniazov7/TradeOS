@@ -1543,7 +1543,7 @@ async function handleRequest(request, env) {
     const subPath = path.slice(5); // remove '/bnb/'
     const bnbUrl = `https://api.binance.com/api/v3/${subPath}${url.search}`;
     const cacheKey = `bnb:${subPath}${url.search}`;
-    const ttl = subPath === 'ticker/24hr' ? 15 : 60; // 15s for live prices, 1m for others
+    const ttl = 60; // KV minimum TTL is 60s; prices refresh via client polling anyway
     try {
       const cached = await env.ALERTS_KV.get(cacheKey);
       if (cached) return new Response(cached, { headers: { ...cors, 'Content-Type': 'application/json', 'X-Cache': 'HIT' } });
