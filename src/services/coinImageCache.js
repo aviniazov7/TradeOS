@@ -1,4 +1,5 @@
 const CACHE_KEY = 'tradeos_coin_images';
+const CACHE_VERSION = 2; // bump to invalidate stale localStorage with wrong URLs
 const CACHE_DURATION = 7 * 24 * 60 * 60 * 1000; // 7 days (image URLs are stable)
 
 // Non-crypto assets — hosted locally in /public/icons/
@@ -89,11 +90,13 @@ function loadFromStorage() {
   try {
     const stored = localStorage.getItem(CACHE_KEY);
     if (stored) {
-      const { data, ts } = JSON.parse(stored);
-      if (Date.now() - ts < CACHE_DURATION) {
+      const { data, ts, v } = JSON.parse(stored);
+      if (v === CACHE_VERSION && Date.now() - ts < CACHE_DURATION) {
         memoryCache = data;
         return true;
       }
+      // Stale version — clear it so we re-fetch correct URLs
+      localStorage.removeItem(CACHE_KEY);
     }
   } catch { /* ignore */ }
   return false;
@@ -101,16 +104,19 @@ function loadFromStorage() {
 
 function saveToStorage() {
   try {
-    localStorage.setItem(CACHE_KEY, JSON.stringify({ data: memoryCache, ts: Date.now() }));
+    localStorage.setItem(CACHE_KEY, JSON.stringify({ data: memoryCache, ts: Date.now(), v: CACHE_VERSION }));
   } catch { /* ignore */ }
 }
 
 export function getCachedImage(symbol) {
   const key = symbol.toUpperCase();
+  // 1. Manual overrides (local files, always correct)
   if (MANUAL_ICONS[key]) return MANUAL_ICONS[key];
-  if (STATIC_ICONS[key]) return STATIC_ICONS[key]; // always available
+  // 2. localStorage/memoryCache — API-fetched URLs take priority (more accurate than hardcoded)
   if (!memoryCache) loadFromStorage();
-  return memoryCache?.[key] || null;
+  if (memoryCache?.[key]) return memoryCache[key];
+  // 3. STATIC_ICONS as last resort (hardcoded CDN URLs, may be stale for newer coins)
+  return STATIC_ICONS[key] || null;
 }
 
 export function cacheImage(symbol, url) {

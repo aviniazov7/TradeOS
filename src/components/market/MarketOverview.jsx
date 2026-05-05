@@ -642,15 +642,15 @@ export default function MarketOverview() {
 
   const fetchAll = useCallback(async () => {
     try {
-      // ── PRIMARY: Binance ticker (no rate limits) ─────────────────────────────
-      const symbolsParam = encodeURIComponent(JSON.stringify(TOP_PAIRS));
-      const bnbRes = await fetchWithTimeout(
-        `${BNB_URL}/ticker/24hr?symbols=${symbolsParam}`, 8000
-      );
+      // ── PRIMARY: ALL Binance USDT tickers (short URL → cacheable, no invalid-symbol risk) ──
+      const bnbRes = await fetchWithTimeout(`${BNB_URL}/ticker/24hr`, 10000);
       if (bnbRes.ok) {
-        const tickers = await bnbRes.json();
-        // Convert to CoinGecko-compatible format
-        const coins = tickers.map((t) => {
+        const allTickers = await bnbRes.json();
+        // Keep only USDT spot pairs with meaningful trade count
+        const usdtPairs = allTickers.filter(
+          (t) => t.symbol.endsWith('USDT') && !t.symbol.endsWith('DOWNUSDT') && !t.symbol.endsWith('UPUSDT') && parseFloat(t.count) > 500
+        );
+        const toBinanceCoin = (t) => {
           const sym = t.symbol.replace('USDT', '');
           return {
             id: sym.toLowerCase(),
@@ -660,13 +660,13 @@ export default function MarketOverview() {
             current_price: parseFloat(t.lastPrice),
             price_change_percentage_24h: parseFloat(t.priceChangePercent),
             total_volume: parseFloat(t.quoteVolume),
-            market_cap: 0, // not available from Binance spot
+            market_cap: 0,
           };
-        });
-        // Sort by volume desc for top-10
-        const byVolume = [...coins].sort((a, b) => b.total_volume - a.total_volume);
-        setTopCoins(byVolume.slice(0, 10));
-        setAllCoins(coins);
+        };
+        // Top 10 by volume (volume ≈ market cap proxy)
+        const byVolume = [...usdtPairs].sort((a, b) => parseFloat(b.quoteVolume) - parseFloat(a.quoteVolume));
+        setTopCoins(byVolume.slice(0, 10).map(toBinanceCoin));
+        setAllCoins(usdtPairs.map(toBinanceCoin));
       }
 
       // ── SECONDARY: CoinGecko global (best-effort, cached 1h in Worker) ──────
