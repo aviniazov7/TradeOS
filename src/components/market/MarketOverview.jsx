@@ -11,6 +11,10 @@ import CoinAnalysis from './CoinAnalysis';
 import AIChat from './AIChat';
 import MarketSessionsCard from './MarketSessionsCard';
 
+const CG_PROXY = (import.meta.env.VITE_WORKER_URL || '') + '/cg';
+const CG_DIRECT = 'https://api.coingecko.com/api/v3';
+const CG = CG_PROXY || CG_DIRECT;
+
 const cardVariants = { initial: { opacity: 0, y: 10 }, animate: { opacity: 1, y: 0 } };
 const cardClass = 'bg-bg-secondary border border-border-primary rounded-xl p-3';
 const FUTURES_SYMBOLS = [
@@ -611,8 +615,8 @@ export default function MarketOverview() {
     try {
       // Batch 1: global + coins (8s timeout each)
       const [globalRes, coinsRes] = await Promise.allSettled([
-        fetchWithTimeout('https://api.coingecko.com/api/v3/global', 8000),
-        fetchWithTimeout('https://api.coingecko.com/api/v3/coins/markets?vs_currency=usd&order=market_cap_desc&per_page=50&sparkline=false&price_change_percentage=24h,30d', 8000),
+        fetchWithTimeout(`${CG}/global`, 8000),
+        fetchWithTimeout(`${CG}/coins/markets?vs_currency=usd&order=market_cap_desc&per_page=50&sparkline=false&price_change_percentage=24h,30d`, 8000),
       ]);
 
       if (globalRes.status === 'fulfilled' && globalRes.value.ok) {
@@ -630,8 +634,8 @@ export default function MarketOverview() {
 
       // Batch 2: trending + categories (8s timeout each)
       const [trendingRes, catsRes] = await Promise.allSettled([
-        fetchWithTimeout('https://api.coingecko.com/api/v3/search/trending', 8000),
-        fetchWithTimeout('https://api.coingecko.com/api/v3/coins/categories?order=market_cap_change_24h_desc', 8000),
+        fetchWithTimeout(`${CG}/search/trending`, 8000),
+        fetchWithTimeout(`${CG}/coins/categories?order=market_cap_change_24h_desc`, 8000),
       ]);
 
       if (trendingRes.status === 'fulfilled' && trendingRes.value.ok) {

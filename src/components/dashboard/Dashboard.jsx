@@ -94,7 +94,9 @@ export default function Dashboard() {
     const controller = new AbortController();
     const fetchMarket = async (attempt = 0) => {
       try {
-        const res = await fetch('https://api.coingecko.com/api/v3/global', { signal: controller.signal });
+        const workerUrl = import.meta.env.VITE_WORKER_URL || '';
+        const cgBase = workerUrl ? `${workerUrl}/cg` : 'https://api.coingecko.com/api/v3';
+        const res = await fetch(`${cgBase}/global`, { signal: controller.signal });
         if (!res.ok) throw new Error(`HTTP ${res.status}`);
         const json = await res.json();
         if (!controller.signal.aborted) setGlobalMarket(json.data);
