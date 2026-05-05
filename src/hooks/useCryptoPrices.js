@@ -28,8 +28,8 @@ export function useCryptoPrices({ symbols, extraCoins = [], enabled = true } = {
   const fetchData = useCallback(async (signal) => {
     if (!idsKey) return;
     try {
-      const coingeckoIds = idsKey.split(',');
-      const data = await fetchPrices(coingeckoIds, signal);
+      // Pass full coin objects so fetchPrices can use Binance API (no rate limits)
+      const data = await fetchPrices(targetCoins, signal);
       if (signal?.aborted) return;
       const transformed = transformPriceData(data, targetCoins);
       setPrices(transformed);
@@ -42,7 +42,7 @@ export function useCryptoPrices({ symbols, extraCoins = [], enabled = true } = {
     } finally {
       if (!signal?.aborted) setLoading(false);
     }
-  }, [idsKey]);
+  }, [idsKey]); // eslint-disable-line react-hooks/exhaustive-deps
 
   useEffect(() => {
     if (!enabled) {

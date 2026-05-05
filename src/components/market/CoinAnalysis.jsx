@@ -197,8 +197,8 @@ export default function CoinAnalysis() {
 
     try {
       const [details, chart] = await Promise.all([
-        fetchCoinDetails(coin.coingeckoId),
-        fetchCoinChart(coin.coingeckoId, 30),
+        fetchCoinDetails(coin.coingeckoId, coin.symbol),
+        fetchCoinChart(coin.coingeckoId, 30, coin.symbol),
       ]);
 
       await minDelay;

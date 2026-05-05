@@ -1,7 +1,8 @@
 const CG_BASE = 'https://api.coingecko.com/api/v3';
 const WORKER_URL = import.meta.env.VITE_WORKER_URL || '';
-// Use worker proxy to avoid browser rate-limits; fall back to direct API
+// Use worker proxy for CoinGecko (details/charts); Binance for live prices (no rate limits)
 const BASE_URL = WORKER_URL ? `${WORKER_URL}/cg` : CG_BASE;
+const BINANCE_SPOT = 'https://api.binance.com/api/v3';
 
 const cache = new Map();
 const CACHE_TTL = 5 * 60 * 1000; // 5 minutes
@@ -17,51 +18,145 @@ function setCache(key, data) {
   cache.set(key, { data, ts: Date.now() });
 }
 
-export async function fetchPrices(coingeckoIds, signal) {
-  if (!coingeckoIds.length) return {};
+// ── Prices (Binance — no rate limits) ────────────────────────────────────────
+// Accepts full coin objects [{symbol, coingeckoId}]; returns { coingeckoId: { usd, usd_24h_change } }
+export async function fetchPrices(coinsOrIds, signal) {
+  if (!coinsOrIds?.length) return {};
 
-  const ids = coingeckoIds.join(',');
-  const url = `${BASE_URL}/simple/price?ids=${ids}&vs_currencies=usd&include_24hr_change=true`;
+  const coins = coinsOrIds.filter(c => typeof c === 'object' && c.symbol);
+  if (!coins.length) return {};
+
+  const binanceCoins = coins.filter(c => c.symbol !== 'XAU');
+  if (!binanceCoins.length) return {};
+
+  const symbolsParam = JSON.stringify(binanceCoins.map(c => `${c.symbol}USDT`));
+  const url = `${BINANCE_SPOT}/ticker/24hr?symbols=${encodeURIComponent(symbolsParam)}`;
 
   const response = await fetch(url, { signal });
+  if (!response.ok) throw new Error(`Binance API error: ${response.status}`);
+  const data = await response.json();
 
-  if (!response.ok) {
-    throw new Error(`CoinGecko API error: ${response.status}`);
+  const result = {};
+  for (const item of data) {
+    const sym = item.symbol?.replace('USDT', '');
+    const coin = coins.find(c => c.symbol === sym);
+    if (coin && item.lastPrice) {
+      result[coin.coingeckoId] = {
+        usd: parseFloat(item.lastPrice),
+        usd_24h_change: parseFloat(item.priceChangePercent ?? 0),
+      };
+    }
   }
-
-  return response.json();
+  return result;
 }
 
+// ── Coin search (CoinGecko proxy) ─────────────────────────────────────────────
 export async function searchCoins(query) {
   if (!query) return [];
   const url = `${BASE_URL}/search?query=${encodeURIComponent(query)}`;
-  const response = await fetch(url);
-  if (!response.ok) return [];
-  const data = await response.json();
-  return (data.coins || []).slice(0, 10).map((c) => ({
-    symbol: c.symbol?.toUpperCase(),
-    name: c.name,
-    coingeckoId: c.id,
-    thumb: c.thumb,
-  }));
+  try {
+    const response = await fetch(url);
+    if (!response.ok) return [];
+    const data = await response.json();
+    return (data.coins || []).slice(0, 10).map((c) => ({
+      symbol: c.symbol?.toUpperCase(),
+      name: c.name,
+      coingeckoId: c.id,
+      thumb: c.thumb,
+    }));
+  } catch { return []; }
 }
 
-export async function fetchCoinDetails(coinId) {
+// ── Coin details: Binance-first, CoinGecko fallback ───────────────────────────
+async function fetchCoinDetailsFromBinance(symbol) {
+  const [tickerRes, klinesRes] = await Promise.all([
+    fetch(`${BINANCE_SPOT}/ticker/24hr?symbol=${symbol}USDT`),
+    fetch(`${BINANCE_SPOT}/klines?symbol=${symbol}USDT&interval=1d&limit=31`),
+  ]);
+  if (!tickerRes.ok) throw new Error(`Binance ticker: ${tickerRes.status}`);
+
+  const ticker = await tickerRes.json();
+  const klines = klinesRes.ok ? await klinesRes.json() : [];
+  const closes = klines.map(k => parseFloat(k[4]));
+  const current = parseFloat(ticker.lastPrice);
+  const p7 = closes.length >= 8 ? closes[closes.length - 8] : null;
+  const p30 = closes.length >= 31 ? closes[0] : null;
+
+  return {
+    symbol: symbol.toLowerCase(),
+    name: symbol,
+    image: { small: null, large: null, thumb: null },
+    description: { en: '' },
+    _fromBinance: true,
+    market_data: {
+      current_price: { usd: current },
+      price_change_percentage_24h: parseFloat(ticker.priceChangePercent),
+      price_change_percentage_7d: p7 ? ((current - p7) / p7) * 100 : null,
+      price_change_percentage_30d: p30 ? ((current - p30) / p30) * 100 : null,
+      market_cap: { usd: null },
+      total_volume: { usd: parseFloat(ticker.quoteVolume) },
+      ath: { usd: parseFloat(ticker.highPrice) }, // 24h high as proxy
+      ath_change_percentage: { usd: null },
+      circulating_supply: null,
+      max_supply: null,
+    },
+  };
+}
+
+export async function fetchCoinDetails(coinId, symbol = null) {
   const key = `details:${coinId}`;
   const cached = getCached(key);
   if (cached) return cached;
-  const url = `${BASE_URL}/coins/${coinId}?localization=false&tickers=false&community_data=false&developer_data=false`;
-  const response = await fetch(url);
-  if (!response.ok) throw new Error(`CoinGecko error: ${response.status}`);
-  const data = await response.json();
-  setCache(key, data);
-  return data;
+
+  // Try CoinGecko proxy first (has market cap, ATH, description)
+  try {
+    const url = `${BASE_URL}/coins/${coinId}?localization=false&tickers=false&community_data=false&developer_data=false`;
+    const response = await fetch(url);
+    if (response.ok) {
+      const data = await response.json();
+      setCache(key, data);
+      return data;
+    }
+  } catch { /* fall through */ }
+
+  // Fallback: build data from Binance (always available)
+  if (symbol && symbol !== 'XAU') {
+    const data = await fetchCoinDetailsFromBinance(symbol);
+    // Cache for shorter time (missing market cap etc.)
+    cache.set(key, { data, ts: Date.now() - (CACHE_TTL - 60_000) });
+    return data;
+  }
+  throw new Error('שגיאה בטעינת נתוני המטבע');
 }
 
-export async function fetchCoinChart(coinId, days = 30) {
+// ── Coin chart: Binance klines first, CoinGecko fallback ─────────────────────
+async function fetchBinanceKlines(symbol, days) {
+  const limit = Math.min(days + 2, 1000);
+  const res = await fetch(`${BINANCE_SPOT}/klines?symbol=${symbol}USDT&interval=1d&limit=${limit}`);
+  if (!res.ok) throw new Error(`Binance klines: ${res.status}`);
+  const klines = await res.json();
+  return {
+    prices: klines.map(k => [k[0], parseFloat(k[4])]),
+    total_volumes: klines.map(k => [k[0], parseFloat(k[5])]),
+    market_caps: [],
+  };
+}
+
+export async function fetchCoinChart(coinId, days = 30, symbol = null) {
   const key = `chart:${coinId}:${days}`;
   const cached = getCached(key);
   if (cached) return cached;
+
+  // Try Binance klines first (no rate limits)
+  if (symbol && symbol !== 'XAU') {
+    try {
+      const data = await fetchBinanceKlines(symbol, days);
+      setCache(key, data);
+      return data;
+    } catch { /* fall through */ }
+  }
+
+  // Fallback: CoinGecko proxy
   const url = `${BASE_URL}/coins/${coinId}/market_chart?vs_currency=usd&days=${days}`;
   const response = await fetch(url);
   if (!response.ok) throw new Error(`CoinGecko error: ${response.status}`);
@@ -70,6 +165,7 @@ export async function fetchCoinChart(coinId, days = 30) {
   return data;
 }
 
+// ── Transform price data ──────────────────────────────────────────────────────
 export function transformPriceData(data, coins) {
   const result = {};
   for (const coin of coins) {
