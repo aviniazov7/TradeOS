@@ -1538,6 +1538,25 @@ async function handleRequest(request, env) {
     }
   }
 
+  // Binance proxy with KV cache (avoids browser CORS/geo issues)
+  if (request.method === 'GET' && path.startsWith('/bnb/')) {
+    const subPath = path.slice(5); // remove '/bnb/'
+    const bnbUrl = `https://api.binance.com/api/v3/${subPath}${url.search}`;
+    const cacheKey = `bnb:${subPath}${url.search}`;
+    const ttl = subPath === 'ticker/24hr' ? 15 : 60; // 15s for live prices, 1m for others
+    try {
+      const cached = await env.ALERTS_KV.get(cacheKey);
+      if (cached) return new Response(cached, { headers: { ...cors, 'Content-Type': 'application/json', 'X-Cache': 'HIT' } });
+      const res = await fetch(bnbUrl, { headers: { 'Accept': 'application/json' } });
+      if (!res.ok) return new Response(JSON.stringify({ error: res.status }), { status: res.status, headers: { ...cors, 'Content-Type': 'application/json' } });
+      const text = await res.text();
+      env.ALERTS_KV.put(cacheKey, text, { expirationTtl: ttl }).catch(() => {});
+      return new Response(text, { headers: { ...cors, 'Content-Type': 'application/json', 'X-Cache': 'MISS' } });
+    } catch (err) {
+      return new Response(JSON.stringify({ error: err.message }), { status: 502, headers: { ...cors, 'Content-Type': 'application/json' } });
+    }
+  }
+
   // AI Chat — Groq proxy with SSE streaming
   if (request.method === 'POST' && path === '/ai-chat') {
     return handleAIChat(request, env, cors);

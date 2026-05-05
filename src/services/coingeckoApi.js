@@ -1,8 +1,9 @@
 const CG_BASE = 'https://api.coingecko.com/api/v3';
 const WORKER_URL = import.meta.env.VITE_WORKER_URL || '';
-// Use worker proxy for CoinGecko (details/charts); Binance for live prices (no rate limits)
+// Use worker proxy for CoinGecko (details/charts) and Binance (prices/klines)
 const BASE_URL = WORKER_URL ? `${WORKER_URL}/cg` : CG_BASE;
-const BINANCE_SPOT = 'https://api.binance.com/api/v3';
+// Binance through worker proxy to avoid CORS / geo-restriction issues in browser
+const BINANCE_BASE = WORKER_URL ? `${WORKER_URL}/bnb` : 'https://api.binance.com/api/v3';
 
 const cache = new Map();
 const CACHE_TTL = 5 * 60 * 1000; // 5 minutes
@@ -30,7 +31,7 @@ export async function fetchPrices(coinsOrIds, signal) {
   if (!binanceCoins.length) return {};
 
   const symbolsParam = JSON.stringify(binanceCoins.map(c => `${c.symbol}USDT`));
-  const url = `${BINANCE_SPOT}/ticker/24hr?symbols=${encodeURIComponent(symbolsParam)}`;
+  const url = `${BINANCE_BASE}/ticker/24hr?symbols=${encodeURIComponent(symbolsParam)}`;
 
   const response = await fetch(url, { signal });
   if (!response.ok) throw new Error(`Binance API error: ${response.status}`);
@@ -70,8 +71,8 @@ export async function searchCoins(query) {
 // ── Coin details: Binance-first, CoinGecko fallback ───────────────────────────
 async function fetchCoinDetailsFromBinance(symbol) {
   const [tickerRes, klinesRes] = await Promise.all([
-    fetch(`${BINANCE_SPOT}/ticker/24hr?symbol=${symbol}USDT`),
-    fetch(`${BINANCE_SPOT}/klines?symbol=${symbol}USDT&interval=1d&limit=31`),
+    fetch(`${BINANCE_BASE}/ticker/24hr?symbol=${symbol}USDT`),
+    fetch(`${BINANCE_BASE}/klines?symbol=${symbol}USDT&interval=1d&limit=31`),
   ]);
   if (!tickerRes.ok) throw new Error(`Binance ticker: ${tickerRes.status}`);
 
@@ -132,7 +133,7 @@ export async function fetchCoinDetails(coinId, symbol = null) {
 // ── Coin chart: Binance klines first, CoinGecko fallback ─────────────────────
 async function fetchBinanceKlines(symbol, days) {
   const limit = Math.min(days + 2, 1000);
-  const res = await fetch(`${BINANCE_SPOT}/klines?symbol=${symbol}USDT&interval=1d&limit=${limit}`);
+  const res = await fetch(`${BINANCE_BASE}/klines?symbol=${symbol}USDT&interval=1d&limit=${limit}`);
   if (!res.ok) throw new Error(`Binance klines: ${res.status}`);
   const klines = await res.json();
   return {
