@@ -230,7 +230,12 @@ function SyncModal({ exchange, trades, onClose, onImport, existingExternalIds = 
       style={{ backdropFilter: 'blur(8px)' }} onClick={onClose}>
       <motion.div initial={{ y: 60, opacity: 0 }} animate={{ y: 0, opacity: 1 }} exit={{ y: 60, opacity: 0 }}
         transition={{ type: 'spring', damping: 26, stiffness: 320 }}
-        className="bg-bg-secondary border border-border-primary rounded-t-2xl sm:rounded-2xl w-full sm:max-w-lg max-h-[85vh] flex flex-col shadow-2xl"
+        className="rounded-t-2xl sm:rounded-2xl w-full sm:max-w-lg max-h-[85vh] flex flex-col shadow-2xl"
+        style={{
+          background: 'var(--color-bg-secondary)',
+          border: '1px solid rgba(0,191,255,0.22)',
+          boxShadow: '0 32px 80px rgba(0,0,0,0.5), 0 0 0 1px rgba(255,255,255,0.04) inset',
+        }}
         onClick={e => e.stopPropagation()}>
         {/* Header — single row, RTL: title+stats on right, X+toggle on left */}
         <div className="flex items-center justify-between px-5 py-3 border-b border-border-primary">

@@ -45,23 +45,24 @@ export default function OnboardingWizard() {
   return (
     <AnimatePresence>
       {show && (
-        <div className="fixed inset-0 z-[100] flex items-center justify-center p-4">
-          {/* Backdrop */}
-          <motion.div
-            className="absolute inset-0 bg-black/85 backdrop-blur-sm"
-            variants={modalBackdrop}
-            initial="initial"
-            animate="animate"
-            exit="exit"
-          />
-
+        <motion.div
+          className="fixed inset-0 z-[100] flex items-center justify-center p-4 bg-black/80"
+          style={{ backdropFilter: 'blur(8px)', WebkitBackdropFilter: 'blur(8px)' }}
+          initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}
+          transition={{ duration: 0.22 }}
+        >
           {/* Wizard card */}
           <motion.div
-            className="relative max-w-lg w-full bg-bg-secondary border border-border-primary rounded-2xl overflow-hidden shadow-2xl"
-            variants={modalContent}
-            initial="initial"
-            animate="animate"
-            exit="exit"
+            className="relative max-w-lg w-full rounded-2xl overflow-hidden shadow-2xl"
+            style={{
+              background: 'var(--color-bg-secondary)',
+              border: '1px solid rgba(0,191,255,0.22)',
+              boxShadow: '0 32px 80px rgba(0,0,0,0.5), 0 0 0 1px rgba(255,255,255,0.04) inset',
+            }}
+            initial={{ scale: 0.9, opacity: 0, y: 20 }}
+            animate={{ scale: 1, opacity: 1, y: 0 }}
+            exit={{ scale: 0.9, opacity: 0, y: 20 }}
+            transition={{ type: 'spring', damping: 22, stiffness: 320 }}
           >
             {/* Top glow */}
             <div
@@ -163,7 +164,7 @@ export default function OnboardingWizard() {
               </div>
             </div>
           </motion.div>
-        </div>
+        </motion.div>
       )}
     </AnimatePresence>
   );
