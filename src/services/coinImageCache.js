@@ -62,16 +62,25 @@ export async function prefetchCoinImages() {
 
   fetchPromise = (async () => {
     try {
-      const res = await fetch(
-        'https://api.coingecko.com/api/v3/coins/markets?vs_currency=usd&order=market_cap_desc&per_page=250&page=1'
-      );
-      if (!res.ok) return memoryCache || {};
-      const coins = await res.json();
+      const workerUrl = import.meta.env.VITE_WORKER_URL || '';
+      const base = workerUrl
+        ? `${workerUrl}/cg/coins/markets`
+        : 'https://api.coingecko.com/api/v3/coins/markets';
+      const params = 'vs_currency=usd&order=market_cap_desc&per_page=250';
+      const [res1, res2] = await Promise.allSettled([
+        fetch(`${base}?${params}&page=1`),
+        fetch(`${base}?${params}&page=2`),
+      ]);
       if (!memoryCache) memoryCache = {};
-      coins.forEach((c) => {
-        const img = c.image?.replace('/large/', '/small/');
-        if (img) memoryCache[c.symbol.toUpperCase()] = img;
-      });
+      for (const result of [res1, res2]) {
+        if (result.status === 'fulfilled' && result.value.ok) {
+          const coins = await result.value.json();
+          coins.forEach((c) => {
+            const img = c.image?.replace('/large/', '/small/');
+            if (img) memoryCache[c.symbol.toUpperCase()] = img;
+          });
+        }
+      }
       saveToStorage();
     } catch {
       if (!memoryCache) memoryCache = {};

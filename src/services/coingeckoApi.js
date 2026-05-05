@@ -1,4 +1,7 @@
-const BASE_URL = 'https://api.coingecko.com/api/v3';
+const CG_BASE = 'https://api.coingecko.com/api/v3';
+const WORKER_URL = import.meta.env.VITE_WORKER_URL || '';
+// Use worker proxy to avoid browser rate-limits; fall back to direct API
+const BASE_URL = WORKER_URL ? `${WORKER_URL}/cg` : CG_BASE;
 
 const cache = new Map();
 const CACHE_TTL = 5 * 60 * 1000; // 5 minutes

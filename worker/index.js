@@ -1519,6 +1519,25 @@ async function handleRequest(request, env) {
     return new Response(JSON.stringify(json), { headers: { 'Content-Type': 'application/json' } });
   }
 
+  // CoinGecko proxy with KV cache (avoids browser rate-limits)
+  if (request.method === 'GET' && path.startsWith('/cg/')) {
+    const subPath = path.slice(4); // remove '/cg/'
+    const cgUrl = `https://api.coingecko.com/api/v3/${subPath}${url.search}`;
+    const cacheKey = `cg:${subPath}${url.search}`;
+    const ttl = subPath.startsWith('coins/markets') ? 3600 : 300; // 1h for markets, 5m for details/chart
+    try {
+      const cached = await env.ALERTS_KV.get(cacheKey);
+      if (cached) return new Response(cached, { headers: { ...cors, 'Content-Type': 'application/json', 'X-Cache': 'HIT' } });
+      const res = await fetch(cgUrl, { headers: { 'Accept': 'application/json' } });
+      if (!res.ok) return new Response(JSON.stringify({ error: res.status }), { status: res.status, headers: { ...cors, 'Content-Type': 'application/json' } });
+      const text = await res.text();
+      env.ALERTS_KV.put(cacheKey, text, { expirationTtl: ttl }).catch(() => {});
+      return new Response(text, { headers: { ...cors, 'Content-Type': 'application/json', 'X-Cache': 'MISS' } });
+    } catch (err) {
+      return new Response(JSON.stringify({ error: err.message }), { status: 502, headers: { ...cors, 'Content-Type': 'application/json' } });
+    }
+  }
+
   // AI Chat — Groq proxy with SSE streaming
   if (request.method === 'POST' && path === '/ai-chat') {
     return handleAIChat(request, env, cors);
