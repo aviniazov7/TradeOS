@@ -10,10 +10,39 @@ import FearGreedGauge from '../dashboard/FearGreedGauge';
 import CoinAnalysis from './CoinAnalysis';
 import AIChat from './AIChat';
 import MarketSessionsCard from './MarketSessionsCard';
+import { getCachedImage } from '../../services/coinImageCache';
 
-const CG_PROXY = (import.meta.env.VITE_WORKER_URL || '') + '/cg';
+const WORKER_URL = import.meta.env.VITE_WORKER_URL || '';
+const CG_PROXY = WORKER_URL + '/cg';
 const CG_DIRECT = 'https://api.coingecko.com/api/v3';
 const CG = CG_PROXY || CG_DIRECT;
+const BNB_URL = WORKER_URL ? `${WORKER_URL}/bnb` : 'https://api.binance.com/api/v3';
+
+// Ordered list of top trading pairs for Binance-based coin data
+const TOP_PAIRS = [
+  'BTCUSDT','ETHUSDT','SOLUSDT','XRPUSDT','BNBUSDT',
+  'ADAUSDT','DOGEUSDT','AVAXUSDT','DOTUSDT','LINKUSDT',
+  'SUIUSDT','NEARUSDT','APTUSDT','TRXUSDT','INJUSDT',
+  'UNIUSDT','ATOMUSDT','ARBUSDT','OPUSDT','SHIBUSDT',
+  'PEPEUSDT','WIFUSDT','BONKUSDT','FLOKIUSDT','FTMUSDT',
+  'AAVEUSDT','STRKUSDT','MATICUSDT','LTCUSDT','TIAUSDT',
+  'FETUSDT','RENDERUSDT','WLDUSDT','JUPUSDT','NOTUSDT',
+  'SEIUSDT','TAOUSDT','TRUMPUSDT','PENGUUSDT','IMXUSDT',
+  'EIGENUSDT','GRTUSDT','FILUSUSDT','SANDUSDT','AXSUSDT',
+];
+
+// Map symbol → display name
+const COIN_NAMES = {
+  BTC:'Bitcoin',ETH:'Ethereum',SOL:'Solana',XRP:'Ripple',BNB:'BNB',
+  ADA:'Cardano',DOGE:'Dogecoin',AVAX:'Avalanche',DOT:'Polkadot',LINK:'Chainlink',
+  SUI:'Sui',NEAR:'NEAR',APT:'Aptos',TRX:'TRON',INJ:'Injective',
+  UNI:'Uniswap',ATOM:'Cosmos',ARB:'Arbitrum',OP:'Optimism',SHIB:'Shiba Inu',
+  PEPE:'Pepe',WIF:'dogwifhat',BONK:'Bonk',FLOKI:'Floki',FTM:'Fantom',
+  AAVE:'Aave',STRK:'Starknet',MATIC:'Polygon',LTC:'Litecoin',TIA:'Celestia',
+  FET:'Fetch.ai',RENDER:'Render',WLD:'Worldcoin',JUP:'Jupiter',NOT:'Notcoin',
+  SEI:'Sei',TAO:'Bittensor',TRUMP:'Official Trump',PENGU:'Pudgy Penguins',IMX:'Immutable',
+  EIGEN:'EigenLayer',GRT:'The Graph',FIL:'Filecoin',SAND:'The Sandbox',AXS:'Axie Infinity',
+};
 
 const cardVariants = { initial: { opacity: 0, y: 10 }, animate: { opacity: 1, y: 0 } };
 const cardClass = 'bg-bg-secondary border border-border-primary rounded-xl p-3';
@@ -613,44 +642,62 @@ export default function MarketOverview() {
 
   const fetchAll = useCallback(async () => {
     try {
-      // Batch 1: global + coins (8s timeout each)
-      const [globalRes, coinsRes] = await Promise.allSettled([
-        fetchWithTimeout(`${CG}/global`, 8000),
-        fetchWithTimeout(`${CG}/coins/markets?vs_currency=usd&order=market_cap_desc&per_page=50&sparkline=false&price_change_percentage=24h,30d`, 8000),
-      ]);
-
-      if (globalRes.status === 'fulfilled' && globalRes.value.ok) {
-        const d = await globalRes.value.json();
-        setGlobal(d.data);
-      }
-      if (coinsRes.status === 'fulfilled' && coinsRes.value.ok) {
-        const d = await coinsRes.value.json();
-        setTopCoins(d.slice(0, 10));
-        setAllCoins(d);
-      }
-
-      // Short delay to avoid CoinGecko rate limiting
-      await new Promise(r => setTimeout(r, 800));
-
-      // Batch 2: trending + categories (8s timeout each)
-      const [trendingRes, catsRes] = await Promise.allSettled([
-        fetchWithTimeout(`${CG}/search/trending`, 8000),
-        fetchWithTimeout(`${CG}/coins/categories?order=market_cap_change_24h_desc`, 8000),
-      ]);
-
-      if (trendingRes.status === 'fulfilled' && trendingRes.value.ok) {
-        const d = await trendingRes.value.json();
-        setTrending((d.coins || []).slice(0, 10));
-      }
-      if (catsRes.status === 'fulfilled' && catsRes.value.ok) {
-        const d = await catsRes.value.json();
-        const valid = d.filter(c => c.market_cap_change_24h != null && c.name);
-        const top = valid.slice(0, 3);
-        const bottom = valid.slice(-3).reverse();
-        setCategories([...top, ...bottom].slice(0, 6));
+      // ── PRIMARY: Binance ticker (no rate limits) ─────────────────────────────
+      const symbolsParam = encodeURIComponent(JSON.stringify(TOP_PAIRS));
+      const bnbRes = await fetchWithTimeout(
+        `${BNB_URL}/ticker/24hr?symbols=${symbolsParam}`, 8000
+      );
+      if (bnbRes.ok) {
+        const tickers = await bnbRes.json();
+        // Convert to CoinGecko-compatible format
+        const coins = tickers.map((t) => {
+          const sym = t.symbol.replace('USDT', '');
+          return {
+            id: sym.toLowerCase(),
+            symbol: sym.toLowerCase(),
+            name: COIN_NAMES[sym] || sym,
+            image: getCachedImage(sym) || '',
+            current_price: parseFloat(t.lastPrice),
+            price_change_percentage_24h: parseFloat(t.priceChangePercent),
+            total_volume: parseFloat(t.quoteVolume),
+            market_cap: 0, // not available from Binance spot
+          };
+        });
+        // Sort by volume desc for top-10
+        const byVolume = [...coins].sort((a, b) => b.total_volume - a.total_volume);
+        setTopCoins(byVolume.slice(0, 10));
+        setAllCoins(coins);
       }
 
-      // Altcoin Season Index (5s timeout — proxy can be slow)
+      // ── SECONDARY: CoinGecko global (best-effort, cached 1h in Worker) ──────
+      try {
+        const globalRes = await fetchWithTimeout(`${CG}/global`, 6000);
+        if (globalRes.ok) {
+          const d = await globalRes.json();
+          setGlobal(d.data);
+        }
+      } catch { /* silent — shows "—" */ }
+
+      // ── TERTIARY: trending + categories (best-effort) ─────────────────────
+      try {
+        const [trendingRes, catsRes] = await Promise.allSettled([
+          fetchWithTimeout(`${CG}/search/trending`, 6000),
+          fetchWithTimeout(`${CG}/coins/categories?order=market_cap_change_24h_desc`, 6000),
+        ]);
+        if (trendingRes.status === 'fulfilled' && trendingRes.value.ok) {
+          const d = await trendingRes.value.json();
+          setTrending((d.coins || []).slice(0, 10));
+        }
+        if (catsRes.status === 'fulfilled' && catsRes.value.ok) {
+          const d = await catsRes.value.json();
+          const valid = d.filter(c => c.market_cap_change_24h != null && c.name);
+          const top = valid.slice(0, 3);
+          const bottom = valid.slice(-3).reverse();
+          setCategories([...top, ...bottom].slice(0, 6));
+        }
+      } catch { /* silent */ }
+
+      // ── Altcoin Season Index ──────────────────────────────────────────────
       try {
         const proxyUrl = 'https://api.codetabs.com/v1/proxy/?quest=' + encodeURIComponent('https://www.blockchaincenter.net/en/altcoin-season-index/');
         const proxyRes = await fetchWithTimeout(proxyUrl, 5000);
@@ -671,9 +718,7 @@ export default function MarketOverview() {
             }
           }
         }
-      } catch {
-        // silent - will use fallback calculation
-      }
+      } catch { /* silent */ }
 
     } catch {
       // silent fail
