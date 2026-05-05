@@ -4,8 +4,11 @@ import { formatPrice, formatPercent } from '../../utils/formatters';
 import { TrendingUp, TrendingDown } from 'lucide-react';
 import CoinIcon from '../shared/CoinIcon';
 
+// Ticker shows only these symbols to keep the Binance API request small
+const TICKER_SYMBOLS = ['BTC','ETH','SOL','AVAX','BNB','ADA','XRP','DOGE','TRX','SUI','NEAR','LINK','DOT','PEPE','WIF','ARB','UNI','ATOM'];
+
 export default function PriceTicker() {
-  const { prices, loading } = useCryptoPrices();
+  const { prices, loading } = useCryptoPrices({ symbols: TICKER_SYMBOLS });
 
   if (loading) {
     return (

@@ -1542,15 +1542,20 @@ async function handleRequest(request, env) {
   if (request.method === 'GET' && path.startsWith('/bnb/')) {
     const subPath = path.slice(5); // remove '/bnb/'
     const bnbUrl = `https://api.binance.com/api/v3/${subPath}${url.search}`;
-    const cacheKey = `bnb:${subPath}${url.search}`;
+    const rawKey = `bnb:${subPath}${url.search}`;
+    // KV max key = 512 bytes — skip caching for large symbol lists (ticker with many coins)
+    const canCache = rawKey.length <= 500;
+    const cacheKey = rawKey.slice(0, 500);
     const ttl = 60; // KV minimum TTL is 60s; prices refresh via client polling anyway
     try {
-      const cached = await env.ALERTS_KV.get(cacheKey);
-      if (cached) return new Response(cached, { headers: { ...cors, 'Content-Type': 'application/json', 'X-Cache': 'HIT' } });
+      if (canCache) {
+        const cached = await env.ALERTS_KV.get(cacheKey);
+        if (cached) return new Response(cached, { headers: { ...cors, 'Content-Type': 'application/json', 'X-Cache': 'HIT' } });
+      }
       const res = await fetch(bnbUrl, { headers: { 'Accept': 'application/json' } });
       if (!res.ok) return new Response(JSON.stringify({ error: res.status }), { status: res.status, headers: { ...cors, 'Content-Type': 'application/json' } });
       const text = await res.text();
-      env.ALERTS_KV.put(cacheKey, text, { expirationTtl: ttl }).catch(() => {});
+      if (canCache) env.ALERTS_KV.put(cacheKey, text, { expirationTtl: ttl }).catch(() => {});
       return new Response(text, { headers: { ...cors, 'Content-Type': 'application/json', 'X-Cache': 'MISS' } });
     } catch (err) {
       return new Response(JSON.stringify({ error: err.message }), { status: 502, headers: { ...cors, 'Content-Type': 'application/json' } });
