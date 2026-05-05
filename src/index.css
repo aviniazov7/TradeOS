@@ -47,10 +47,10 @@ body {
   --color-text-secondary: #a0a0b0;
   --color-text-muted: #606070;
 
-  /* Accent (MEXC Blue) */
-  --color-accent-primary: #2B78FF;
-  --color-accent-hover: #1a6aff;
-  --color-accent-muted: #1a5ce8;
+  /* Accent (Cyan) */
+  --color-accent-primary: #00bfff;
+  --color-accent-hover: #00a8e0;
+  --color-accent-muted: #0088bb;
 
   /* Status */
   --color-profit: #22c55e;
@@ -378,7 +378,7 @@ input[type="range"]::-moz-range-thumb {
 /* Price Ticker */
 .ticker-scroll {
   display: flex;
-  animation: ticker-slide 45s linear infinite;
+  animation: ticker-slide 75s linear infinite;
   width: max-content;
   direction: ltr;
 }

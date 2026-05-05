@@ -1,5 +1,5 @@
 const CACHE_KEY = 'tradeos_coin_images';
-const CACHE_VERSION = 2; // bump to invalidate stale localStorage with wrong URLs
+const CACHE_VERSION = 3; // bump to invalidate stale localStorage with wrong URLs
 const CACHE_DURATION = 7 * 24 * 60 * 60 * 1000; // 7 days (image URLs are stable)
 
 // Non-crypto assets — hosted locally in /public/icons/
@@ -81,6 +81,125 @@ const STATIC_ICONS = {
   IMX:    'https://assets.coingecko.com/coins/images/17233/small/immutableX-symbol-BLK-RGB.png',
   MANTA:  'https://assets.coingecko.com/coins/images/34289/small/manta.png',
   PIXEL:  'https://assets.coingecko.com/coins/images/34289/small/manta.png',
+  // Additional commonly-traded coins
+  TON:    'https://assets.coingecko.com/coins/images/17980/small/ton_symbol.png',
+  STX:    'https://assets.coingecko.com/coins/images/2069/small/Stacks_logo_full.png',
+  HIVE:   'https://assets.coingecko.com/coins/images/10840/small/logo_transparent_4x.png',
+  ZEC:    'https://assets.coingecko.com/coins/images/486/small/circle-zcash-color.png',
+  VET:    'https://assets.coingecko.com/coins/images/1167/small/VeChain-Logo-768x768.png',
+  LUNC:   'https://assets.coingecko.com/coins/images/25477/small/LUNC.png',
+  XLM:    'https://assets.coingecko.com/coins/images/100/small/Stellar_symbol_black_RGB.png',
+  EOS:    'https://assets.coingecko.com/coins/images/738/small/eos-eos-logo.png',
+  XTZ:    'https://assets.coingecko.com/coins/images/2011/small/tezos.png',
+  ALGO:   'https://assets.coingecko.com/coins/images/4030/small/Algorand.png',
+  NEO:    'https://assets.coingecko.com/coins/images/440/small/NEO_512_512.png',
+  DASH:   'https://assets.coingecko.com/coins/images/5/small/dash.png',
+  IOTA:   'https://assets.coingecko.com/coins/images/3718/small/iota.png',
+  MIOTA:  'https://assets.coingecko.com/coins/images/3718/small/iota.png',
+  CHZ:    'https://assets.coingecko.com/coins/images/9479/small/Chiliz.png',
+  ENJ:    'https://assets.coingecko.com/coins/images/1102/small/enjin-coin-logo.png',
+  ONT:    'https://assets.coingecko.com/coins/images/3447/small/ONT.png',
+  ZIL:    'https://assets.coingecko.com/coins/images/2687/small/Zilliqa-logo.png',
+  WAVES:  'https://assets.coingecko.com/coins/images/357/small/waves.png',
+  THETA:  'https://assets.coingecko.com/coins/images/2538/small/theta-token-logo.png',
+  VGX:    'https://assets.coingecko.com/coins/images/794/small/Voyager-vgx.png',
+  HOT:    'https://assets.coingecko.com/coins/images/3380/small/Holo_coin.png',
+  BTT:    'https://assets.coingecko.com/coins/images/10868/small/btt_logo.png',
+  LUNA:   'https://assets.coingecko.com/coins/images/25767/small/01_Luna_color.png',
+  CRV:    'https://assets.coingecko.com/coins/images/12124/small/Curve.png',
+  SNX:    'https://assets.coingecko.com/coins/images/3406/small/SNX.png',
+  COMP:   'https://assets.coingecko.com/coins/images/10775/small/COMP.png',
+  BAT:    'https://assets.coingecko.com/coins/images/677/small/basic-attention-token.png',
+  ZRX:    'https://assets.coingecko.com/coins/images/863/small/0x.png',
+  ICX:    'https://assets.coingecko.com/coins/images/1060/small/icon-icx-logo.png',
+  '1INCH': 'https://assets.coingecko.com/coins/images/13469/small/1inch-token.png',
+  CKB:    'https://assets.coingecko.com/coins/images/9566/small/Nervos_White.png',
+  JASMY:  'https://assets.coingecko.com/coins/images/13876/small/JASMY200x200.jpg',
+  AGIX:   'https://assets.coingecko.com/coins/images/2798/small/SingularityNET.png',
+  ACH:    'https://assets.coingecko.com/coins/images/13119/small/ACH_token_logo.png',
+  // Large-cap & well-known
+  BCH:    'https://assets.coingecko.com/coins/images/780/small/bitcoin-cash-circle.png',
+  XMR:    'https://assets.coingecko.com/coins/images/69/small/monero_logo.png',
+  HBAR:   'https://assets.coingecko.com/coins/images/3714/small/HBAR.png',
+  EGLD:   'https://assets.coingecko.com/coins/images/6892/small/multiversx-x-egld-logo.png',
+  MVX:    'https://assets.coingecko.com/coins/images/6892/small/multiversx-x-egld-logo.png',
+  RUNE:   'https://assets.coingecko.com/coins/images/6537/small/rune.png',
+  ICP:    'https://assets.coingecko.com/coins/images/14495/small/Internet_Computer_logo.png',
+  FLOW:   'https://assets.coingecko.com/coins/images/13446/small/5f6294c0c7a8cda55cb1c936_Flow_Wordmark.png',
+  KSM:    'https://assets.coingecko.com/coins/images/9568/small/m4zRhP5e_400x400.jpg',
+  KAVA:   'https://assets.coingecko.com/coins/images/9761/small/kava.png',
+  ONE:    'https://assets.coingecko.com/coins/images/4344/small/Y88JAze.png',
+  ROSE:   'https://assets.coingecko.com/coins/images/13490/small/rose.png',
+  AR:     'https://assets.coingecko.com/coins/images/4343/small/oRt6SiEN_400x400.jpg',
+  DYDX:   'https://assets.coingecko.com/coins/images/17500/small/hjnIm9bV.jpg',
+  HNT:    'https://assets.coingecko.com/coins/images/4284/small/Helium_HNT.png',
+  CELO:   'https://assets.coingecko.com/coins/images/11090/small/InjXBNx9_400x400.jpg',
+  // DeFi
+  SUSHI:  'https://assets.coingecko.com/coins/images/12271/small/512x512_Logo_no_chop.png',
+  YFI:    'https://assets.coingecko.com/coins/images/11172/small/yearn.png',
+  BAL:    'https://assets.coingecko.com/coins/images/11683/small/Balancer.png',
+  LRC:    'https://assets.coingecko.com/coins/images/1558/small/loopring.png',
+  KNC:    'https://assets.coingecko.com/coins/images/14899/small/RwdVsGcw_400x400.jpg',
+  BAND:   'https://assets.coingecko.com/coins/images/9545/small/Band_token_blue_violet_token.png',
+  NMR:    'https://assets.coingecko.com/coins/images/752/small/numeraire.png',
+  REN:    'https://assets.coingecko.com/coins/images/6825/small/Ren.png',
+  OCEAN:  'https://assets.coingecko.com/coins/images/3722/small/ocean-protocol-logo.jpg',
+  STORJ:  'https://assets.coingecko.com/coins/images/949/small/storj.png',
+  ZRX:    'https://assets.coingecko.com/coins/images/863/small/0x.png',
+  PERP:   'https://assets.coingecko.com/coins/images/12381/small/60d18e06844a844ad75901a9_mark_only_03.png',
+  CTSI:   'https://assets.coingecko.com/coins/images/11038/small/cartesi.png',
+  ANKR:   'https://assets.coingecko.com/coins/images/8308/small/ankr.png',
+  // Exchange tokens & ecosystem
+  CAKE:   'https://assets.coingecko.com/coins/images/12632/small/pancakeswap-cake-logo_%281%29.png',
+  TWT:    'https://assets.coingecko.com/coins/images/11085/small/Trust.png',
+  XVS:    'https://assets.coingecko.com/coins/images/12677/small/download.jpg',
+  AUDIO:  'https://assets.coingecko.com/coins/images/12913/small/AudiusCoinLogo_2x.png',
+  LPT:    'https://assets.coingecko.com/coins/images/7137/small/logo-circle-green.png',
+  ALICE:  'https://assets.coingecko.com/coins/images/14375/small/alice_logo.jpg',
+  TLM:    'https://assets.coingecko.com/coins/images/14676/small/kY-C4o7RThfiy7haAF_WGw.png',
+  REEF:   'https://assets.coingecko.com/coins/images/13504/small/Group_10572.png',
+  QUICK:  'https://assets.coingecko.com/coins/images/13970/small/1_pOU6pBMEmiL-ZJVb0CYRjQ.png',
+  C98:    'https://assets.coingecko.com/coins/images/17117/small/logo.png',
+  // Old-gen layer-1
+  LSK:    'https://assets.coingecko.com/coins/images/385/small/Lisk_symbol_-_transparent_background.png',
+  SC:     'https://assets.coingecko.com/coins/images/289/small/siacoin.png',
+  NANO:   'https://assets.coingecko.com/coins/images/756/small/nano-coin-logo.png',
+  STEEM:  'https://assets.coingecko.com/coins/images/398/small/steem.png',
+  ARDR:   'https://assets.coingecko.com/coins/images/392/small/ardor.png',
+  QTUM:   'https://assets.coingecko.com/coins/images/684/small/qtum.png',
+  XEM:    'https://assets.coingecko.com/coins/images/241/small/nem-logo-100x100.jpg',
+  IOST:   'https://assets.coingecko.com/coins/images/2523/small/IOST.png',
+  WAN:    'https://assets.coingecko.com/coins/images/3277/small/Wanchain-circle.png',
+  DGB:    'https://assets.coingecko.com/coins/images/63/small/digibyte.png',
+  ICX:    'https://assets.coingecko.com/coins/images/1060/small/icon-icx-logo.png',
+  DENT:   'https://assets.coingecko.com/coins/images/1152/small/gLCEA4D.png',
+  FUN:    'https://assets.coingecko.com/coins/images/761/small/funfair.png',
+  BTG:    'https://assets.coingecko.com/coins/images/1043/small/bitcoin-gold-logo.png',
+  // Gaming / NFT
+  IMX:    'https://assets.coingecko.com/coins/images/17233/small/immutableX-symbol-BLK-RGB.png',
+  // Newer popular coins
+  SUI:    'https://assets.coingecko.com/coins/images/26375/small/sui_asset.jpeg',
+  PYTH:   'https://assets.coingecko.com/coins/images/31924/small/pyth.png',
+  TIA:    'https://assets.coingecko.com/coins/images/31967/small/tia.jpg',
+  SEI:    'https://assets.coingecko.com/coins/images/28205/small/Sei_Logo_-_Transparent.png',
+  ONDO:   'https://assets.coingecko.com/coins/images/26580/small/ONDO.png',
+  PENDLE: 'https://assets.coingecko.com/coins/images/15069/small/Pendle_Logo_Normal-03.png',
+  BRETT:  'https://assets.coingecko.com/coins/images/34530/small/brett.png',
+  MOG:    'https://assets.coingecko.com/coins/images/31059/small/MOG_LOGO_200x200.png',
+  TURBO:  'https://assets.coingecko.com/coins/images/30223/small/turbotoad.jpeg',
+  MEW:    'https://assets.coingecko.com/coins/images/36440/small/mew.png',
+  NEIRO:  'https://assets.coingecko.com/coins/images/39147/small/neiro.jpeg',
+  POL:    'https://assets.coingecko.com/coins/images/32440/small/polygon.png',
+  PONKE:  'https://assets.coingecko.com/coins/images/36128/small/ponke.png',
+  VIRTUAL:'https://assets.coingecko.com/coins/images/36721/small/VIRTUAL.png',
+  AI16Z:  'https://assets.coingecko.com/coins/images/36842/small/ai16z.jpg',
+  GOAT:   'https://assets.coingecko.com/coins/images/36698/small/goat.jpg',
+  ZEREBRO:'https://assets.coingecko.com/coins/images/37201/small/zerebro.jpg',
+  ACT:    'https://assets.coingecko.com/coins/images/36875/small/act.jpg',
+  PNUT:   'https://assets.coingecko.com/coins/images/36879/small/pnut.jpeg',
+  MOVE:   'https://assets.coingecko.com/coins/images/37736/small/move.jpg',
+  ME:     'https://assets.coingecko.com/coins/images/37514/small/me.png',
+  USUAL:  'https://assets.coingecko.com/coins/images/37209/small/usual.png',
 };
 
 let memoryCache = null;
@@ -106,6 +225,11 @@ function saveToStorage() {
   try {
     localStorage.setItem(CACHE_KEY, JSON.stringify({ data: memoryCache, ts: Date.now(), v: CACHE_VERSION }));
   } catch { /* ignore */ }
+}
+
+export function hasKnownIcon(symbol) {
+  const key = (symbol || '').toUpperCase();
+  return !!(MANUAL_ICONS[key] || STATIC_ICONS[key]);
 }
 
 export function getCachedImage(symbol) {

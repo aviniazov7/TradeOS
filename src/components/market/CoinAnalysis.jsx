@@ -477,44 +477,50 @@ export default function CoinAnalysis() {
                 const tvSymbol = `BINANCE:${TV_SYMBOL_MAP[selectedCoin?.coingeckoId] || `${coinData.symbol?.toUpperCase()}USDT`}`;
                 return (
                   <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
-                    {/* 24h Range */}
-                    {md.high_24h?.usd && md.low_24h?.usd && (
-                      <GlowCard delay={0.05}>
-                        <div className="p-4 flex flex-col justify-center h-full">
-                          <h3 className="text-[10px] font-semibold text-text-muted mb-2 flex items-center gap-1.5 justify-center">
-                            <Gauge className="w-3 h-3 text-accent-primary" /> טווח 24 שעות
-                          </h3>
-                          <div className="flex items-center justify-between text-xs mb-2">
-                            <span className="text-loss font-semibold font-mono">{formatPrice(md.low_24h.usd)}</span>
-                            <span className="text-profit font-semibold font-mono">{formatPrice(md.high_24h.usd)}</span>
-                          </div>
-                          <div className="relative h-3 bg-bg-tertiary rounded-full overflow-hidden">
-                            <motion.div
-                              initial={{ opacity: 0 }}
-                              animate={{ opacity: 1 }}
-                              transition={{ duration: 1 }}
-                              className="absolute inset-0 rounded-full"
-                              style={{ background: 'linear-gradient(to right, rgba(239,68,68,0.4), rgba(234,179,8,0.3), rgba(34,197,94,0.4))' }}
-                            />
-                            {md.current_price?.usd && (() => {
-                              const range = md.high_24h.usd - md.low_24h.usd;
-                              const pos = range > 0 ? ((md.current_price.usd - md.low_24h.usd) / range) * 100 : 50;
-                              return (
-                                <motion.div
-                                  initial={{ left: '50%' }}
-                                  animate={{ left: `calc(${Math.min(100, Math.max(0, pos))}% - 7px)` }}
-                                  transition={{ duration: 1.5, type: 'spring' }}
-                                  className="absolute top-1/2 -translate-y-1/2 w-3.5 h-3.5 rounded-full bg-white border-2 border-accent-primary shadow-lg shadow-accent-primary/30"
-                                />
-                              );
-                            })()}
-                          </div>
-                          <p className="text-[10px] text-text-muted text-center mt-2">
-                            נוכחי: <span className="text-text-primary font-semibold">{formatPrice(md.current_price?.usd)}</span>
+                    {/* 24h Range — always show */}
+                    <GlowCard delay={0.05}>
+                      <div className="p-4 flex flex-col justify-center h-full">
+                        <h3 className="text-[10px] font-semibold text-text-muted mb-2 flex items-center gap-1.5 justify-center">
+                          <Gauge className="w-3 h-3 text-accent-primary" /> טווח 24 שעות
+                        </h3>
+                        {md.high_24h?.usd && md.low_24h?.usd ? (
+                          <>
+                            <div className="flex items-center justify-between text-xs mb-2">
+                              <span className="text-loss font-semibold font-mono">{formatPrice(md.low_24h.usd)}</span>
+                              <span className="text-profit font-semibold font-mono">{formatPrice(md.high_24h.usd)}</span>
+                            </div>
+                            <div className="relative h-3 bg-bg-tertiary rounded-full overflow-hidden">
+                              <motion.div
+                                initial={{ opacity: 0 }}
+                                animate={{ opacity: 1 }}
+                                transition={{ duration: 1 }}
+                                className="absolute inset-0 rounded-full"
+                                style={{ background: 'linear-gradient(to right, rgba(239,68,68,0.4), rgba(234,179,8,0.3), rgba(34,197,94,0.4))' }}
+                              />
+                              {md.current_price?.usd && (() => {
+                                const range = md.high_24h.usd - md.low_24h.usd;
+                                const pos = range > 0 ? ((md.current_price.usd - md.low_24h.usd) / range) * 100 : 50;
+                                return (
+                                  <motion.div
+                                    initial={{ left: '50%' }}
+                                    animate={{ left: `calc(${Math.min(100, Math.max(0, pos))}% - 7px)` }}
+                                    transition={{ duration: 1.5, type: 'spring' }}
+                                    className="absolute top-1/2 -translate-y-1/2 w-3.5 h-3.5 rounded-full bg-white border-2 border-accent-primary shadow-lg shadow-accent-primary/30"
+                                  />
+                                );
+                              })()}
+                            </div>
+                            <p className="text-[10px] text-text-muted text-center mt-2">
+                              נוכחי: <span className="text-text-primary font-semibold">{formatPrice(md.current_price?.usd)}</span>
+                            </p>
+                          </>
+                        ) : (
+                          <p className="text-xs text-text-muted text-center py-4">
+                            {formatPrice(md.current_price?.usd) || '—'}
                           </p>
-                        </div>
-                      </GlowCard>
-                    )}
+                        )}
+                      </div>
+                    </GlowCard>
 
                     {/* TradingView Mini Chart */}
                     <GlowCard delay={0.1}>

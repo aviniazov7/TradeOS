@@ -44,6 +44,9 @@ service cloud.firestore {
       match /processes/{processId} {
         allow read, write: if request.auth != null && request.auth.uid == userId;
       }
+      match /signals/{signalId} {
+        allow read, write: if request.auth != null && request.auth.uid == userId;
+      }
     }
 
     // Auth bridge — temporary cross-context sign-in relay (tokens are single-use, 5-min TTL)

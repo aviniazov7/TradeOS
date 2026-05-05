@@ -23,17 +23,44 @@ export default function CoinIcon({ pair, className = 'w-4 h-4' }) {
   const [imageUrl, setImageUrl] = useState(() => getCachedImage(symbol));
   const [failed, setFailed] = useState(false);
 
+  // Re-resolve image whenever the symbol changes
   useEffect(() => {
-    if (!symbol || imageUrl) return;
-
+    if (!symbol) {
+      setImageUrl(null);
+      setFailed(false);
+      return;
+    }
+    // Always check cache first; if symbol changed we must re-read
+    const cached = getCachedImage(symbol);
+    if (cached) {
+      setImageUrl(cached);
+      setFailed(false);
+      return;
+    }
+    // Not in cache yet — fetch the full map
+    setImageUrl(null);
+    setFailed(false);
     let cancelled = false;
     prefetchCoinImages().then((map) => {
-      if (!cancelled && map[symbol]) {
-        setImageUrl(map[symbol]);
+      if (!cancelled) {
+        setImageUrl(map[symbol] || null);
+        setFailed(false);
       }
     });
     return () => { cancelled = true; };
-  }, [symbol, imageUrl]);
+  }, [symbol]);
+
+  // When image load fails, try re-fetching from API
+  const handleError = () => {
+    setFailed(true);
+    prefetchCoinImages().then((map) => {
+      const fresh = map[symbol];
+      if (fresh && fresh !== imageUrl) {
+        setImageUrl(fresh);
+        setFailed(false);
+      }
+    });
+  };
 
   if (!symbol) return null;
 
@@ -43,7 +70,7 @@ export default function CoinIcon({ pair, className = 'w-4 h-4' }) {
         src={imageUrl}
         alt=""
         className={`${className} flex-shrink-0 rounded-full`}
-        onError={() => setFailed(true)}
+        onError={handleError}
       />
     );
   }

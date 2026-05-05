@@ -443,21 +443,11 @@ export default function TradeForm({ isOpen, onClose, trade, onSave, riskSettings
               );
             })()}
 
-            <div className="grid grid-cols-3 gap-2">
+            <div className="grid gap-2" style={{ gridTemplateColumns: '2fr 96px 2fr' }}>
               <PairSearch
                 value={form.pair}
                 onChange={(pair) => update('pair', pair || 'BTCUSDT')}
               />
-              <div>
-                <StrategySelector
-                  label="אסטרטגיה"
-                  value={form.strategy}
-                  onChange={(s) => update('strategy', s)}
-                  strategies={allStrategies}
-                  onAdd={addStrategy}
-                  onRemove={removeStrategy}
-                />
-              </div>
               <TimeframeSelector
                 label="טווח זמן"
                 value={form.timeframe}
@@ -465,6 +455,14 @@ export default function TradeForm({ isOpen, onClose, trade, onSave, riskSettings
                 timeframes={allTimeframes}
                 onAdd={addTimeframe}
                 onRemove={removeTimeframe}
+              />
+              <StrategySelector
+                label="אסטרטגיה"
+                value={form.strategy}
+                onChange={(s) => update('strategy', s)}
+                strategies={allStrategies}
+                onAdd={addStrategy}
+                onRemove={removeStrategy}
               />
             </div>
 

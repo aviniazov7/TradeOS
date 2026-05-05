@@ -10,7 +10,9 @@ import FearGreedGauge from '../dashboard/FearGreedGauge';
 import CoinAnalysis from './CoinAnalysis';
 import AIChat from './AIChat';
 import MarketSessionsCard from './MarketSessionsCard';
-import { getCachedImage } from '../../services/coinImageCache';
+import QuantumScorer from './QuantumScorer';
+import { getCachedImage, hasKnownIcon } from '../../services/coinImageCache';
+import CoinIcon from '../shared/CoinIcon';
 
 const WORKER_URL = import.meta.env.VITE_WORKER_URL || '';
 const CG_PROXY = WORKER_URL + '/cg';
@@ -19,17 +21,12 @@ const CG = CG_PROXY || CG_DIRECT;
 const BNB_URL = WORKER_URL ? `${WORKER_URL}/bnb` : 'https://api.binance.com/api/v3';
 
 // Ordered list of top trading pairs for Binance-based coin data
-const TOP_PAIRS = [
-  'BTCUSDT','ETHUSDT','SOLUSDT','XRPUSDT','BNBUSDT',
-  'ADAUSDT','DOGEUSDT','AVAXUSDT','DOTUSDT','LINKUSDT',
-  'SUIUSDT','NEARUSDT','APTUSDT','TRXUSDT','INJUSDT',
-  'UNIUSDT','ATOMUSDT','ARBUSDT','OPUSDT','SHIBUSDT',
-  'PEPEUSDT','WIFUSDT','BONKUSDT','FLOKIUSDT','FTMUSDT',
-  'AAVEUSDT','STRKUSDT','MATICUSDT','LTCUSDT','TIAUSDT',
-  'FETUSDT','RENDERUSDT','WLDUSDT','JUPUSDT','NOTUSDT',
-  'SEIUSDT','TAOUSDT','TRUMPUSDT','PENGUUSDT','IMXUSDT',
-  'EIGENUSDT','GRTUSDT','FILUSUSDT','SANDUSDT','AXSUSDT',
-];
+// Stablecoins to exclude from top-10 and gainers/losers
+const STABLECOINS = new Set([
+  'USDC','TUSD','BUSD','FDUSD','DAI','USDP','GUSD','SUSD','USDD','FRAX','USDJ',
+  'AEUR','EURI','EUR','RLUSD','USD1','USDX','USDE','PYUSD','CRVUSD','LUSD',
+  'BUIDL','USTC','EURS','XAUT','PAXG','EURT',
+]);
 
 // Map symbol → display name
 const COIN_NAMES = {
@@ -43,6 +40,29 @@ const COIN_NAMES = {
   SEI:'Sei',TAO:'Bittensor',TRUMP:'Official Trump',PENGU:'Pudgy Penguins',IMX:'Immutable',
   EIGEN:'EigenLayer',GRT:'The Graph',FIL:'Filecoin',SAND:'The Sandbox',AXS:'Axie Infinity',
 };
+
+// Category definitions for Binance-based category computation (no emojis — icons handled in UI)
+const CATEGORY_COINS = {
+  'DeFi':    ['AAVE','UNI','COMP','CRV','MKR','SNX','SUSHI','YFI','BAL','DYDX','PERP','1INCH','KNC','BAND'],
+  'Layer 2': ['ARB','OP','IMX','STRK','ZK','MANTA','LRC','SKL'],
+  'AI':      ['FET','AGIX','OCEAN','RENDER','RNDR','TAO','KAITO','IO','GRT'],
+  'Memes':   ['DOGE','SHIB','PEPE','WIF','BONK','FLOKI','DOGS','POPCAT','NEIRO','BRETT','TURBO','MOG'],
+  'GameFi':  ['AXS','SAND','MANA','GALA','IMX','ALICE','TLM','ENJ','CHZ','MAGIC','ROSE'],
+  'Layer 1': ['SOL','BNB','ADA','AVAX','DOT','NEAR','APT','SUI','ATOM','TRX','TON','ALGO','EGLD','ONE','KAVA','FLOW'],
+  'NFT':     ['APE','BLUR','IMX','MAGIC','GALA','SAND','MANA'],
+  'Infra':   ['LINK','DOT','ATOM','HBAR','ICP','AR','HNT','ANKR','CKB','STORJ','NMR','BAND'],
+};
+
+function computeBinanceCategories(allCoins) {
+  const bySymbol = {};
+  allCoins.forEach(c => { bySymbol[c.symbol?.toUpperCase()] = c.price_change_percentage_24h || 0; });
+  return Object.entries(CATEGORY_COINS).map(([name, symbols]) => {
+    const changes = symbols.map(s => bySymbol[s]).filter(v => v != null);
+    if (changes.length === 0) return null;
+    const avg = changes.reduce((a, b) => a + b, 0) / changes.length;
+    return { name, market_cap_change_24h: avg, count: changes.length };
+  }).filter(Boolean).sort((a, b) => Math.abs(b.market_cap_change_24h) - Math.abs(a.market_cap_change_24h));
+}
 
 const cardVariants = { initial: { opacity: 0, y: 10 }, animate: { opacity: 1, y: 0 } };
 const cardClass = 'bg-bg-secondary border border-border-primary rounded-xl p-3';
@@ -70,12 +90,25 @@ function formatPrice(p) {
   return `$${p.toFixed(6)}`;
 }
 
+const CAT_ICON_MAP = {
+  'DeFi':    Activity,
+  'Layer 2': Zap,
+  'AI':      Bot,
+  'Memes':   Flame,
+  'GameFi':  Rocket,
+  'Layer 1': Layers,
+  'NFT':     Sparkles,
+  'Infra':   BarChart3,
+};
+
 // Animated floating bubble for categories
 function CategoryBubble({ name, change, index }) {
   const isPositive = change >= 0;
   const absChange = Math.abs(change);
   const size = Math.max(64, Math.min(110, 64 + absChange * 4));
   const floatDelay = index * 0.15;
+  const IconComp = CAT_ICON_MAP[name] || Activity;
+  const iconColor = isPositive ? '#22c55e' : '#ef4444';
 
   return (
     <motion.div
@@ -85,16 +118,8 @@ function CategoryBubble({ name, change, index }) {
       className="relative"
     >
       <motion.div
-        animate={{
-          y: [0, -6, 0, 4, 0],
-          x: [0, 3, -2, 1, 0],
-        }}
-        transition={{
-          duration: 4 + index * 0.5,
-          repeat: Infinity,
-          ease: 'easeInOut',
-          delay: floatDelay,
-        }}
+        animate={{ y: [0, -6, 0, 4, 0], x: [0, 3, -2, 1, 0] }}
+        transition={{ duration: 4 + index * 0.5, repeat: Infinity, ease: 'easeInOut', delay: floatDelay }}
         className="rounded-full flex flex-col items-center justify-center cursor-default"
         style={{
           width: size,
@@ -103,13 +128,11 @@ function CategoryBubble({ name, change, index }) {
           border: `1.5px solid ${isPositive ? 'rgba(34, 197, 94, 0.3)' : 'rgba(239, 68, 68, 0.3)'}`,
         }}
       >
-        <span className="text-[10px] text-text-primary font-medium text-center leading-tight px-1.5 line-clamp-2">
+        <IconComp style={{ color: iconColor, width: size * 0.28, height: size * 0.28, marginBottom: 2 }} />
+        <span className="text-[10px] text-text-primary font-medium text-center leading-tight px-1.5">
           {name}
         </span>
-        <span
-          className="text-[11px] font-bold mt-0.5"
-          style={{ color: isPositive ? '#22c55e' : '#ef4444' }}
-        >
+        <span className="text-[11px] font-bold mt-0.5" style={{ color: iconColor }}>
           {isPositive ? '+' : ''}{change.toFixed(1)}%
         </span>
       </motion.div>
@@ -155,7 +178,7 @@ function HeatmapCell({ coin, index, sizeClass }) {
       onClick={() => window.open(tvUrl(coin.symbol), '_blank', 'noopener')}
     >
       <div className="flex items-center gap-1">
-        <img src={coin.image} alt="" className="w-3.5 h-3.5 rounded-full" />
+        <CoinIcon pair={coin.symbol} className="w-3.5 h-3.5" />
         <span className="text-xs font-bold text-white">{coin.symbol?.toUpperCase()}</span>
       </div>
       <span className={`text-[11px] font-semibold mt-0.5 ${change >= 0 ? 'text-green-300' : 'text-red-300'}`}>
@@ -646,10 +669,16 @@ export default function MarketOverview() {
       const bnbRes = await fetchWithTimeout(`${BNB_URL}/ticker/24hr`, 10000);
       if (bnbRes.ok) {
         const allTickers = await bnbRes.json();
-        // Keep only USDT spot pairs with meaningful trade count
-        const usdtPairs = allTickers.filter(
-          (t) => t.symbol.endsWith('USDT') && !t.symbol.endsWith('DOWNUSDT') && !t.symbol.endsWith('UPUSDT') && parseFloat(t.count) > 500
-        );
+        // Keep only real USDT spot pairs (filter leveraged tokens, stablecoins, micro-caps)
+        const usdtPairs = allTickers.filter((t) => {
+          if (!t.symbol.endsWith('USDT')) return false;
+          if (t.symbol.endsWith('DOWNUSDT') || t.symbol.endsWith('UPUSDT')) return false;
+          const sym = t.symbol.replace('USDT', '');
+          if (STABLECOINS.has(sym)) return false;
+          if (parseFloat(t.count) < 1000) return false; // filter dead/micro pairs
+          if (parseFloat(t.quoteVolume) < 1_000_000) return false; // min $1M daily volume
+          return true;
+        });
         const toBinanceCoin = (t) => {
           const sym = t.symbol.replace('USDT', '');
           return {
@@ -663,39 +692,46 @@ export default function MarketOverview() {
             market_cap: 0,
           };
         };
-        // Top 10 by volume (volume ≈ market cap proxy)
-        const byVolume = [...usdtPairs].sort((a, b) => parseFloat(b.quoteVolume) - parseFloat(a.quoteVolume));
+        // Top 10 by volume — only coins with known icons
+        const byVolume = [...usdtPairs]
+          .filter(t => hasKnownIcon(t.symbol.replace('USDT', '')))
+          .sort((a, b) => parseFloat(b.quoteVolume) - parseFloat(a.quoteVolume));
         setTopCoins(byVolume.slice(0, 10).map(toBinanceCoin));
         setAllCoins(usdtPairs.map(toBinanceCoin));
+
+        // ── Trending: volume × |change|, only coins with known icons ──
+        const trendingCoins = [...usdtPairs]
+          .filter(t => parseFloat(t.quoteVolume) >= 5_000_000 && hasKnownIcon(t.symbol.replace('USDT', '')))
+          .sort((a, b) => {
+            const sA = parseFloat(a.quoteVolume) * Math.abs(parseFloat(a.priceChangePercent));
+            const sB = parseFloat(b.quoteVolume) * Math.abs(parseFloat(b.priceChangePercent));
+            return sB - sA;
+          })
+          .slice(0, 10)
+          .map(toBinanceCoin);
+        setTrending(trendingCoins);
+
+        // ── Categories: computed from Binance data (no CoinGecko needed) ──────
+        const binanceCats = computeBinanceCategories(usdtPairs.map(toBinanceCoin));
+        if (binanceCats.length > 0) setCategories(binanceCats.slice(0, 6));
       }
 
-      // ── SECONDARY: CoinGecko global (best-effort, cached 1h in Worker) ──────
+      // ── SECONDARY: CoinPaprika global (free, no key, CORS-enabled) ──────────
       try {
-        const globalRes = await fetchWithTimeout(`${CG}/global`, 6000);
+        const globalRes = await fetchWithTimeout('https://api.coinpaprika.com/v1/global', 6000);
         if (globalRes.ok) {
           const d = await globalRes.json();
-          setGlobal(d.data);
+          setGlobal({
+            total_market_cap: { usd: d.market_cap_usd },
+            total_volume: { usd: d.volume_24h_usd },
+            market_cap_change_percentage_24h_usd: d.market_cap_change_24h,
+            market_cap_percentage: { btc: d.bitcoin_dominance_percentage, usdt: null, eth: null },
+            active_cryptocurrencies: d.cryptocurrencies_number,
+          });
         }
       } catch { /* silent — shows "—" */ }
 
-      // ── TERTIARY: trending + categories (best-effort) ─────────────────────
-      try {
-        const [trendingRes, catsRes] = await Promise.allSettled([
-          fetchWithTimeout(`${CG}/search/trending`, 6000),
-          fetchWithTimeout(`${CG}/coins/categories?order=market_cap_change_24h_desc`, 6000),
-        ]);
-        if (trendingRes.status === 'fulfilled' && trendingRes.value.ok) {
-          const d = await trendingRes.value.json();
-          setTrending((d.coins || []).slice(0, 10));
-        }
-        if (catsRes.status === 'fulfilled' && catsRes.value.ok) {
-          const d = await catsRes.value.json();
-          const valid = d.filter(c => c.market_cap_change_24h != null && c.name);
-          const top = valid.slice(0, 3);
-          const bottom = valid.slice(-3).reverse();
-          setCategories([...top, ...bottom].slice(0, 6));
-        }
-      } catch { /* silent */ }
+      // (categories now computed from Binance data above — no CoinGecko needed)
 
       // ── Altcoin Season Index ──────────────────────────────────────────────
       try {
@@ -823,8 +859,11 @@ export default function MarketOverview() {
     };
   }, []);
 
-  // Compute gainers and losers from all coins
-  const sorted = [...allCoins].sort((a, b) => (b.price_change_percentage_24h || 0) - (a.price_change_percentage_24h || 0));
+  // Compute gainers and losers — $30M+ volume AND must have a real icon
+  const qualityCoins = allCoins.filter(c =>
+    (c.total_volume || 0) >= 30_000_000 && hasKnownIcon(c.symbol)
+  );
+  const sorted = [...qualityCoins].sort((a, b) => (b.price_change_percentage_24h || 0) - (a.price_change_percentage_24h || 0));
   const gainers = sorted.slice(0, 5);
   const losers = sorted.slice(-5).reverse();
 
@@ -861,23 +900,25 @@ export default function MarketOverview() {
   return (
     <motion.div variants={pageVariants} initial="initial" animate="animate" exit="exit" transition={pageTransition}>
       {/* Tabs */}
-      <div className={`flex items-center justify-center gap-2 ${activeTab === 'ai-chat' ? 'mb-2' : 'mb-6'}`}>
+      <div className={`grid grid-cols-2 sm:flex sm:flex-wrap sm:justify-center gap-2 ${activeTab === 'ai-chat' ? 'mb-2' : 'mb-6'}`}>
         {[
-          { key: 'overview', label: 'סקירה', icon: Activity },
-          { key: 'analysis', label: 'ניתוח מטבע', icon: Sparkles },
-          { key: 'ai-chat', label: 'TradeAI', icon: Bot },
+          { key: 'overview', label: 'סקירה',        shortLabel: 'סקירה',    icon: Activity },
+          { key: 'analysis', label: 'ניתוח מטבע',   shortLabel: 'ניתוח',    icon: Sparkles },
+          { key: 'quantum',  label: 'ניתוח קוונטי', shortLabel: 'קוונטי',   icon: Zap },
+          { key: 'ai-chat',  label: 'TradeAI',       shortLabel: 'TradeAI',  icon: Bot },
         ].map((tab) => (
           <button
             key={tab.key}
             onClick={() => setActiveTab(tab.key)}
-            className={`flex items-center gap-2 px-5 py-2.5 rounded-xl text-sm font-semibold transition-all cursor-pointer ${
+            className={`flex items-center justify-center gap-1.5 sm:gap-2 px-3 sm:px-5 py-2.5 rounded-xl text-xs sm:text-sm font-semibold transition-all cursor-pointer ${
               activeTab === tab.key
                 ? 'bg-accent-primary text-white shadow-lg shadow-accent-primary/25'
                 : 'bg-bg-secondary border border-border-primary text-text-secondary hover:text-text-primary hover:bg-bg-tertiary'
             }`}
           >
-            <tab.icon className="w-4.5 h-4.5" />
-            {tab.label}
+            <tab.icon className="w-4 h-4 sm:w-4.5 sm:h-4.5 shrink-0" />
+            <span className="sm:hidden">{tab.shortLabel}</span>
+            <span className="hidden sm:inline">{tab.label}</span>
           </button>
         ))}
       </div>
@@ -1037,7 +1078,7 @@ export default function MarketOverview() {
                   </span>
                   <div className="flex items-center gap-2">
                     <span className="text-xs font-medium text-text-primary">{coin.symbol?.toUpperCase()}</span>
-                    <img src={coin.image} alt="" className="w-4 h-4 rounded-full" />
+                    <CoinIcon pair={coin.symbol} className="w-4 h-4" />
                   </div>
                 </motion.div>
               ))}
@@ -1055,7 +1096,7 @@ export default function MarketOverview() {
                   </span>
                   <div className="flex items-center gap-2">
                     <span className="text-xs font-medium text-text-primary">{coin.symbol?.toUpperCase()}</span>
-                    <img src={coin.image} alt="" className="w-4 h-4 rounded-full" />
+                    <CoinIcon pair={coin.symbol} className="w-4 h-4" />
                   </div>
                 </motion.div>
               ))}
@@ -1095,7 +1136,7 @@ export default function MarketOverview() {
                       <span className="text-sm font-medium text-text-primary">{coin.symbol?.toUpperCase()}</span>
                       <span className="text-[10px] text-text-muted">{coin.name}</span>
                     </div>
-                    <img src={coin.image} alt="" className="w-5 h-5 rounded-full shrink-0" />
+                    <CoinIcon pair={coin.symbol} className="w-5 h-5" />
                     <span className="text-[10px] text-text-muted w-4 text-center shrink-0">{i + 1}</span>
                   </div>
                 </div>
@@ -1114,8 +1155,8 @@ export default function MarketOverview() {
           </h2>
           {trending.length > 0 ? (
             <div className="space-y-2">
-              {trending.map((item, i) => {
-                const coin = item.item;
+              {trending.map((coin, i) => {
+                const chg = coin.price_change_percentage_24h;
                 return (
                   <motion.div
                     key={coin.id}
@@ -1126,24 +1167,18 @@ export default function MarketOverview() {
                     onClick={() => window.open(tvUrl(coin.symbol), '_blank', 'noopener')}
                   >
                     <div className="flex items-center gap-1.5 w-16 shrink-0">
-                      {coin.data?.price_change_percentage_24h?.usd != null ? (
-                        <>
-                          {coin.data.price_change_percentage_24h.usd >= 0 ? (
-                            <ArrowUpRight className="w-3 h-3 text-profit" />
-                          ) : (
-                            <ArrowDownRight className="w-3 h-3 text-loss" />
-                          )}
-                          <span className={`text-[11px] font-medium ${coin.data.price_change_percentage_24h.usd >= 0 ? 'text-profit' : 'text-loss'}`}>
-                            {coin.data.price_change_percentage_24h.usd >= 0 ? '+' : ''}{coin.data.price_change_percentage_24h.usd.toFixed(1)}%
-                          </span>
-                        </>
+                      {chg >= 0 ? (
+                        <ArrowUpRight className="w-3 h-3 text-profit" />
                       ) : (
-                        <span className="text-[11px] text-text-muted">—</span>
+                        <ArrowDownRight className="w-3 h-3 text-loss" />
                       )}
+                      <span className={`text-[11px] font-medium ${chg >= 0 ? 'text-profit' : 'text-loss'}`}>
+                        {chg >= 0 ? '+' : ''}{chg.toFixed(1)}%
+                      </span>
                     </div>
                     <div className="flex items-center gap-2">
                       <span className="text-sm font-medium text-text-primary">{coin.symbol?.toUpperCase()}</span>
-                      <img src={coin.thumb} alt="" className="w-4 h-4 rounded-full" />
+                      <CoinIcon pair={coin.symbol} className="w-4 h-4" />
                       <span className="text-[10px] text-text-muted">#{i + 1}</span>
                     </div>
                   </motion.div>
@@ -1173,6 +1208,10 @@ export default function MarketOverview() {
       ) : activeTab === 'analysis' ? (
       <motion.div key="analysis" initial={{ opacity: 0, x: 20 }} animate={{ opacity: 1, x: 0 }} exit={{ opacity: 0, x: -20 }} transition={{ duration: 0.25 }}>
         <CoinAnalysis />
+      </motion.div>
+      ) : activeTab === 'quantum' ? (
+      <motion.div key="quantum" initial={{ opacity: 0, x: 20 }} animate={{ opacity: 1, x: 0 }} exit={{ opacity: 0, x: -20 }} transition={{ duration: 0.25 }}>
+        <QuantumScorer />
       </motion.div>
       ) : (
       <motion.div key="ai-chat" initial={{ opacity: 0, x: 20 }} animate={{ opacity: 1, x: 0 }} exit={{ opacity: 0, x: -20 }} transition={{ duration: 0.25 }} className="overflow-hidden">
