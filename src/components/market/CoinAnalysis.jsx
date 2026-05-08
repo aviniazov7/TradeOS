@@ -145,7 +145,7 @@ export default function CoinAnalysis() {
   const [error, setError] = useState(null);
   const [scanProgress, setScanProgress] = useState(0);
   const [liquidityData, setLiquidityData] = useState(null);
-  const [volumeProfile, setVolumeProfile] = useState(null);
+  const [heatmapKlines, setHeatmapKlines] = useState(null);
   const searchRef = useRef(null);
   const debounceRef = useRef(null);
 
@@ -236,43 +236,9 @@ export default function CoinAnalysis() {
           forceOrders: forceRes.status === 'fulfilled' && Array.isArray(forceRes.value) ? forceRes.value : null,
         });
 
-        // Compute Volume Profile from klines
+        // Store klines for the Liquidation Heatmap canvas
         const klines = klinesRes.status === 'fulfilled' && Array.isArray(klinesRes.value) ? klinesRes.value : null;
-        if (klines && klines.length > 10) {
-          const candles = klines.map(k => ({
-            high: parseFloat(k[2]),
-            low: parseFloat(k[3]),
-            close: parseFloat(k[4]),
-            vol: parseFloat(k[5]),
-          }));
-          const maxP = Math.max(...candles.map(c => c.high));
-          const minP = Math.min(...candles.map(c => c.low));
-          const range = maxP - minP;
-          const NUM = 60;
-          const bSize = range / NUM;
-          const buckets = Array.from({ length: NUM }, (_, i) => ({
-            priceMid: minP + (i + 0.5) * bSize,
-            priceMin: minP + i * bSize,
-            priceMax: minP + (i + 1) * bSize,
-            vol: 0,
-          }));
-          candles.forEach(({ high, low, vol }) => {
-            const span = high - low;
-            if (span <= 0) {
-              const idx = Math.min(NUM - 1, Math.floor((high - minP) / bSize));
-              if (idx >= 0) buckets[idx].vol += vol;
-              return;
-            }
-            for (let b = 0; b < NUM; b++) {
-              const overlap = Math.min(high, buckets[b].priceMax) - Math.max(low, buckets[b].priceMin);
-              if (overlap > 0) buckets[b].vol += vol * (overlap / span);
-            }
-          });
-          const maxVol = Math.max(...buckets.map(b => b.vol));
-          const pocIdx = buckets.reduce((best, b, i) => b.vol > buckets[best].vol ? i : best, 0);
-          const currentPrice = candles[candles.length - 1].close;
-          setVolumeProfile({ buckets, maxVol, minP, maxP, pocIdx, currentPrice });
-        }
+        if (klines && klines.length > 10) setHeatmapKlines(klines);
       });
     } catch {
       await minDelay;
@@ -292,7 +258,7 @@ export default function CoinAnalysis() {
     setRawPrices([]);
     setError(null);
     setLiquidityData(null);
-    setVolumeProfile(null);
+    setHeatmapKlines(null);
   };
 
   const sentiment = useMemo(() => {
@@ -877,124 +843,8 @@ export default function CoinAnalysis() {
                 </GlowCard>
               )}
 
-              {/* Volume Profile — Liquidity Map */}
-              {volumeProfile && (
-                <GlowCard delay={0.65} glowColor="rgba(0,191,255,0.18)">
-                  <div className="p-4">
-                    <h3 className="text-xs font-semibold text-text-secondary mb-1 flex items-center gap-1.5">
-                      <BarChart3 className="w-3.5 h-3.5 text-cyan-400" />
-                      Volume Profile — Liquidity Map
-                      <span className="text-[9px] text-text-muted font-mono mr-auto">30d · 1h candles</span>
-                      <PulseDot color="bg-cyan-400" />
-                    </h3>
-                    <p className="text-[9px] text-text-muted mb-3">נפח מצטבר לפי רמות מחיר — אזורי נזילות גבוהה</p>
-
-                    {/* Chart */}
-                    <div className="flex gap-2" style={{ height: '320px' }}>
-                      {/* Price labels */}
-                      <div className="flex flex-col justify-between text-right shrink-0 w-16">
-                        {[...Array(7)].map((_, i) => {
-                          const pct = i / 6;
-                          const price = volumeProfile.maxP - pct * (volumeProfile.maxP - volumeProfile.minP);
-                          return (
-                            <span key={i} className="text-[8px] font-mono text-text-muted leading-none">
-                              {formatPrice(price)}
-                            </span>
-                          );
-                        })}
-                      </div>
-
-                      {/* Bars */}
-                      <div className="flex-1 relative overflow-hidden rounded-lg" style={{ background: 'rgba(0,0,0,0.3)' }}>
-                        {/* Grid lines */}
-                        {[0.25, 0.5, 0.75].map(pct => (
-                          <div key={pct} className="absolute inset-x-0 border-t border-white/5" style={{ top: `${pct * 100}%` }} />
-                        ))}
-
-                        {/* Volume bars (rendered bottom-to-top) */}
-                        {volumeProfile.buckets.map((bucket, i) => {
-                          const volPct = volumeProfile.maxVol > 0 ? bucket.vol / volumeProfile.maxVol : 0;
-                          const isPOC = i === volumeProfile.pocIdx;
-                          // Position: bucket 0 = bottom, bucket NUM-1 = top
-                          const totalBuckets = volumeProfile.buckets.length;
-                          const topPct = ((totalBuckets - 1 - i) / totalBuckets) * 100;
-                          const heightPct = 100 / totalBuckets;
-                          // Color: intensity from dark blue → cyan based on volume
-                          const intensity = Math.pow(volPct, 0.5); // sqrt for better visual spread
-                          const r = Math.round(0 + intensity * 20);
-                          const g = Math.round(40 + intensity * 180);
-                          const b2 = Math.round(120 + intensity * 135);
-                          const alpha = 0.15 + intensity * 0.7;
-                          const barColor = isPOC ? 'rgba(0,255,200,0.85)' : `rgba(${r},${g},${b2},${alpha})`;
-
-                          return (
-                            <div
-                              key={i}
-                              className="absolute left-0"
-                              style={{
-                                top: `${topPct}%`,
-                                height: `${heightPct + 0.1}%`,
-                                width: `${Math.max(1, volPct * 100)}%`,
-                                background: barColor,
-                                transition: 'width 0.8s ease',
-                              }}
-                            />
-                          );
-                        })}
-
-                        {/* POC line */}
-                        {(() => {
-                          const pocTopPct = ((volumeProfile.buckets.length - 1 - volumeProfile.pocIdx) / volumeProfile.buckets.length) * 100;
-                          return (
-                            <div
-                              className="absolute inset-x-0 border-t-2 border-cyan-400/80 z-10"
-                              style={{ top: `${pocTopPct}%` }}
-                            >
-                              <span className="absolute right-1 -top-3 text-[8px] font-bold text-cyan-400 font-mono bg-black/60 px-1 rounded">
-                                POC {formatPrice(volumeProfile.buckets[volumeProfile.pocIdx].priceMid)}
-                              </span>
-                            </div>
-                          );
-                        })()}
-
-                        {/* Current price line */}
-                        {(() => {
-                          const range = volumeProfile.maxP - volumeProfile.minP;
-                          const pricePct = range > 0 ? ((volumeProfile.maxP - volumeProfile.currentPrice) / range) * 100 : 50;
-                          const clampedPct = Math.min(98, Math.max(2, pricePct));
-                          return (
-                            <div
-                              className="absolute inset-x-0 border-t border-white/60 border-dashed z-10"
-                              style={{ top: `${clampedPct}%` }}
-                            >
-                              <span className="absolute left-1 -top-3 text-[8px] font-bold text-white font-mono bg-black/70 px-1 rounded">
-                                {formatPrice(volumeProfile.currentPrice)}
-                              </span>
-                            </div>
-                          );
-                        })()}
-                      </div>
-                    </div>
-
-                    {/* Legend */}
-                    <div className="flex items-center justify-between mt-2 text-[9px] text-text-muted">
-                      <div className="flex items-center gap-3">
-                        <span className="flex items-center gap-1">
-                          <span className="w-3 h-0.5 bg-cyan-400 inline-block rounded" />
-                          POC (Point of Control)
-                        </span>
-                        <span className="flex items-center gap-1">
-                          <span className="w-3 h-0.5 bg-white/60 border border-dashed inline-block rounded" />
-                          מחיר נוכחי
-                        </span>
-                      </div>
-                      <span className="font-mono">
-                        Range: {formatPrice(volumeProfile.minP)} – {formatPrice(volumeProfile.maxP)}
-                      </span>
-                    </div>
-                  </div>
-                </GlowCard>
-              )}
+              {/* Liquidation Heatmap */}
+              {heatmapKlines && <LiquidityHeatmap klines={heatmapKlines} />}
 
               {/* Liquidity & Market Microstructure */}
               {liquidityData && (
@@ -1300,6 +1150,239 @@ export default function CoinAnalysis() {
         )}
       </AnimatePresence>
     </div>
+  );
+}
+
+// ---- Liquidity / Volume Heatmap (Canvas) ----
+function heatColor(v) {
+  if (v <= 0) return 'rgba(15,5,40,0)';
+  const stops = [
+    [0,    [15,  5,   40]],
+    [0.15, [70,  15,  120]],
+    [0.35, [150, 20,  180]],
+    [0.55, [220, 60,  80]],
+    [0.75, [255, 140, 20]],
+    [1.0,  [255, 240, 50]],
+  ];
+  let lo = stops[0], hi = stops[stops.length - 1];
+  for (let i = 0; i < stops.length - 1; i++) {
+    if (v >= stops[i][0] && v <= stops[i + 1][0]) { lo = stops[i]; hi = stops[i + 1]; break; }
+  }
+  const t = hi[0] === lo[0] ? 0 : (v - lo[0]) / (hi[0] - lo[0]);
+  const r = Math.round(lo[1][0] + (hi[1][0] - lo[1][0]) * t);
+  const g = Math.round(lo[1][1] + (hi[1][1] - lo[1][1]) * t);
+  const b = Math.round(lo[1][2] + (hi[1][2] - lo[1][2]) * t);
+  const a = Math.min(1, v * 2.5);
+  return `rgba(${r},${g},${b},${a})`;
+}
+
+function buildHeatmap(klines, timeBuckets = 80, priceBuckets = 60) {
+  if (!klines || klines.length < 2) return null;
+  const candles = klines.map(k => ({
+    time:   k[0],
+    open:   parseFloat(k[1]),
+    high:   parseFloat(k[2]),
+    low:    parseFloat(k[3]),
+    close:  parseFloat(k[4]),
+    volume: parseFloat(k[5]),
+  }));
+  const priceMin  = Math.min(...candles.map(c => c.low));
+  const priceMax  = Math.max(...candles.map(c => c.high));
+  const priceRange = priceMax - priceMin;
+  if (priceRange === 0) return null;
+  const timeMin = candles[0].time;
+  const timeMax = candles[candles.length - 1].time;
+  const timeRange = timeMax - timeMin || 1;
+
+  const grid = Array.from({ length: timeBuckets }, () => new Float64Array(priceBuckets));
+  candles.forEach(c => {
+    const tIdx = Math.min(timeBuckets - 1, Math.floor(((c.time - timeMin) / timeRange) * timeBuckets));
+    const pRange = c.high - c.low;
+    if (pRange <= 0) {
+      const pIdx = Math.min(priceBuckets - 1, Math.floor(((c.close - priceMin) / priceRange) * priceBuckets));
+      grid[tIdx][pIdx] += c.volume;
+    } else {
+      for (let pi = 0; pi < priceBuckets; pi++) {
+        const pLo = priceMin + (pi / priceBuckets) * priceRange;
+        const pHi = priceMin + ((pi + 1) / priceBuckets) * priceRange;
+        const overlap = Math.max(0, Math.min(pHi, c.high) - Math.max(pLo, c.low));
+        grid[tIdx][pi] += c.volume * (overlap / pRange);
+      }
+    }
+  });
+
+  let maxVol = 0;
+  for (let t = 0; t < timeBuckets; t++) for (let p = 0; p < priceBuckets; p++) if (grid[t][p] > maxVol) maxVol = grid[t][p];
+  if (maxVol === 0) return null;
+
+  const normalized = grid.map(col => Array.from(col).map(v => v / maxVol));
+  return { normalized, candles, priceMin, priceMax, timeMin, timeMax, timeBuckets, priceBuckets };
+}
+
+function LiquidityHeatmap({ klines }) {
+  const canvasRef = useRef(null);
+  const [period, setPeriod] = useState('7d');
+
+  const filteredKlines = useMemo(() => {
+    if (!klines) return null;
+    const hours = period === '24h' ? 24 : period === '7d' ? 168 : 720;
+    return klines.slice(-hours);
+  }, [klines, period]);
+
+  const heatData = useMemo(() => buildHeatmap(filteredKlines, 80, 60), [filteredKlines]);
+
+  useEffect(() => {
+    const canvas = canvasRef.current;
+    if (!canvas || !heatData) return;
+
+    const draw = () => {
+      const dpr = window.devicePixelRatio || 1;
+      const W   = canvas.offsetWidth;
+      const H   = canvas.offsetHeight;
+      if (!W || !H) return;
+      canvas.width  = W * dpr;
+      canvas.height = H * dpr;
+      const ctx = canvas.getContext('2d');
+      ctx.scale(dpr, dpr);
+
+      const PR = 54, PL = 8, PT = 4, PB = 4;
+      const plotW = W - PR - PL;
+      const plotH = H - PT - PB;
+      const { normalized, candles, priceMin, priceMax, timeBuckets, priceBuckets } = heatData;
+      const priceRange = priceMax - priceMin;
+
+      ctx.clearRect(0, 0, W, H);
+
+      // Heatmap cells
+      const cellW = plotW / timeBuckets;
+      const cellH = plotH / priceBuckets;
+      for (let t = 0; t < timeBuckets; t++) {
+        for (let p = 0; p < priceBuckets; p++) {
+          const v = normalized[t][p];
+          if (v < 0.02) continue;
+          ctx.fillStyle = heatColor(Math.pow(v, 0.55));
+          ctx.fillRect(PL + t * cellW, PT + (priceBuckets - 1 - p) * cellH, cellW + 0.6, cellH + 0.6);
+        }
+      }
+
+      // Candlestick overlay
+      const toX = (time) => PL + ((time - heatData.timeMin) / (heatData.timeMax - heatData.timeMin + 1)) * plotW;
+      const toY = (price) => PT + (1 - (price - priceMin) / priceRange) * plotH;
+      const candleW = Math.max(1.5, (plotW / candles.length) * 0.65);
+      candles.forEach(c => {
+        const x = toX(c.time);
+        const isUp = c.close >= c.open;
+        ctx.strokeStyle = isUp ? 'rgba(34,197,94,0.65)' : 'rgba(239,68,68,0.65)';
+        ctx.fillStyle   = isUp ? 'rgba(34,197,94,0.45)' : 'rgba(239,68,68,0.45)';
+        ctx.lineWidth = 0.7;
+        ctx.beginPath();
+        ctx.moveTo(x, toY(c.high));
+        ctx.lineTo(x, toY(c.low));
+        ctx.stroke();
+        const bTop = toY(Math.max(c.open, c.close));
+        const bBot = toY(Math.min(c.open, c.close));
+        ctx.fillRect(x - candleW / 2, bTop, candleW, Math.max(1, bBot - bTop));
+      });
+
+      // Current-price dashed line
+      const lastPrice = candles[candles.length - 1].close;
+      const ly = toY(lastPrice);
+      ctx.setLineDash([3, 3]);
+      ctx.strokeStyle = 'rgba(255,255,255,0.35)';
+      ctx.lineWidth = 0.8;
+      ctx.beginPath();
+      ctx.moveTo(PL, ly); ctx.lineTo(W - PR + 2, ly);
+      ctx.stroke();
+      ctx.setLineDash([]);
+
+      // Price axis (right)
+      ctx.font = '8.5px monospace';
+      ctx.textAlign = 'left';
+      ctx.fillStyle = 'rgba(140,140,165,0.7)';
+      for (let i = 0; i <= 6; i++) {
+        const price = priceMin + (i / 6) * priceRange;
+        const y = PT + (1 - i / 6) * plotH;
+        const label = price >= 1000 ? `$${price.toLocaleString(undefined,{maximumFractionDigits:0})}` : price >= 1 ? `$${price.toFixed(2)}` : `$${price.toFixed(4)}`;
+        ctx.fillText(label, W - PR + 4, y + 3);
+      }
+
+      // Current price pill
+      const lastLabel = lastPrice >= 1000 ? `$${Math.round(lastPrice).toLocaleString()}` : lastPrice >= 1 ? `$${lastPrice.toFixed(2)}` : `$${lastPrice.toFixed(4)}`;
+      ctx.fillStyle = 'rgba(255,255,255,0.92)';
+      ctx.fillRect(W - PR + 2, ly - 7, PR - 2, 14);
+      ctx.fillStyle = '#0a0d16';
+      ctx.font = '8px monospace';
+      ctx.textAlign = 'center';
+      ctx.fillText(lastLabel, W - PR / 2 + 1, ly + 3.5);
+
+      // Gradient legend strip (left edge)
+      const lgH = 72, lgY = PT + plotH / 2 - lgH / 2;
+      const grad = ctx.createLinearGradient(0, lgY + lgH, 0, lgY);
+      grad.addColorStop(0,    heatColor(0.05));
+      grad.addColorStop(0.33, heatColor(0.4));
+      grad.addColorStop(0.66, heatColor(0.7));
+      grad.addColorStop(1,    heatColor(1.0));
+      ctx.fillStyle = grad;
+      ctx.fillRect(1, lgY, 4, lgH);
+    };
+
+    draw();
+    const ro = new ResizeObserver(draw);
+    ro.observe(canvas);
+    return () => ro.disconnect();
+  }, [heatData]);
+
+  return (
+    <GlowCard delay={0.75} glowColor="rgba(139,92,246,0.22)">
+      <div className="p-4">
+        {/* Header */}
+        <div className="flex items-center justify-between mb-3">
+          <h3 className="text-xs font-semibold text-text-secondary flex items-center gap-1.5">
+            <Flame className="w-3.5 h-3.5 text-violet-400" /> Volume / Liquidity Map
+            <PulseDot color="bg-violet-400" />
+          </h3>
+          <div className="flex items-center gap-1">
+            {['24h', '7d', '30d'].map(p => (
+              <button
+                key={p}
+                onClick={() => setPeriod(p)}
+                className={`px-2.5 py-1 text-[10px] font-bold rounded-md transition-colors cursor-pointer ${
+                  period === p
+                    ? 'bg-violet-500/20 text-violet-300 border border-violet-500/40'
+                    : 'text-text-muted hover:text-text-primary hover:bg-bg-tertiary'
+                }`}
+              >
+                {p}
+              </button>
+            ))}
+          </div>
+        </div>
+
+        {/* Canvas */}
+        <canvas
+          ref={canvasRef}
+          className="w-full rounded-lg"
+          style={{ height: '300px', background: 'rgba(8,6,24,0.65)', display: 'block' }}
+        />
+
+        {/* Legend */}
+        <div className="flex items-center gap-4 mt-2 justify-center">
+          <div className="flex items-center gap-1.5">
+            <div
+              className="w-10 h-2 rounded-sm"
+              style={{ background: 'linear-gradient(to right, rgba(70,15,120,0.5), rgba(220,60,80,0.85), rgba(255,140,20,1), rgba(255,240,50,1))' }}
+            />
+            <span className="text-[9px] text-text-muted">Low → High Volume</span>
+          </div>
+          <div className="flex items-center gap-1">
+            <span className="w-2.5 h-2.5 rounded-sm bg-profit/60 inline-block" />
+            <span className="text-[9px] text-text-muted mr-1.5">Bullish</span>
+            <span className="w-2.5 h-2.5 rounded-sm bg-loss/60 inline-block" />
+            <span className="text-[9px] text-text-muted">Bearish</span>
+          </div>
+        </div>
+      </div>
+    </GlowCard>
   );
 }
 
