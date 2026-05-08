@@ -1,5 +1,5 @@
 const CACHE_KEY = 'tradeos_coin_images';
-const CACHE_VERSION = 3; // bump to invalidate stale localStorage with wrong URLs
+const CACHE_VERSION = 6; // bump to invalidate stale localStorage with wrong URLs
 const CACHE_DURATION = 7 * 24 * 60 * 60 * 1000; // 7 days (image URLs are stable)
 
 // Non-crypto assets — hosted locally in /public/icons/
@@ -51,27 +51,27 @@ const STATIC_ICONS = {
   MANA:   'https://assets.coingecko.com/coins/images/878/small/decentraland-mana.png',
   AXS:    'https://assets.coingecko.com/coins/images/13029/small/axie_infinity_logo.png',
   GALA:   'https://assets.coingecko.com/coins/images/12493/small/GALA-COINGECKO.png',
-  POPCAT: 'https://assets.coingecko.com/coins/images/34884/small/popcat.jpeg',
+  POPCAT: 'https://coin-images.coingecko.com/coins/images/33760/small/image.jpg',
   BONK:   'https://assets.coingecko.com/coins/images/28600/small/bonk.jpg',
   FLOKI:  'https://assets.coingecko.com/coins/images/16746/small/PNG_image.png',
-  TRUMP:  'https://assets.coingecko.com/coins/images/52878/small/trump.png',
-  KAITO:  'https://assets.coingecko.com/coins/images/53885/small/kaito-icon-200x200.png',
-  MOODENG:'https://assets.coingecko.com/coins/images/51667/small/moodeng.jpeg',
-  PENGU:  'https://assets.coingecko.com/coins/images/52716/small/pengu.png',
-  JUP:    'https://assets.coingecko.com/coins/images/34188/small/jup.png',
-  PYTH:   'https://assets.coingecko.com/coins/images/31924/small/pyth.png',
-  JTO:    'https://assets.coingecko.com/coins/images/33769/small/jto.png',
-  W:      'https://assets.coingecko.com/coins/images/35251/small/W.png',
+  TRUMP:  'https://coin-images.coingecko.com/coins/images/53746/small/trump.png',
+  KAITO:  'https://coin-images.coingecko.com/coins/images/54411/small/Qm4DW488_400x400.jpg',
+  MOODENG:'https://coin-images.coingecko.com/coins/images/50264/small/MOODENG.jpg',
+  PENGU:  'https://coin-images.coingecko.com/coins/images/52622/small/PUDGY_PENGUINS_PENGU_PFP.png',
+  JUP:    'https://coin-images.coingecko.com/coins/images/34188/small/jup.png',
+  PYTH:   'https://coin-images.coingecko.com/coins/images/31924/small/pyth.png',
+  JTO:    'https://coin-images.coingecko.com/coins/images/33228/small/jto.png',
+  W:      'https://coin-images.coingecko.com/coins/images/35087/small/W_Token_%283%29.png',
   STRK:   'https://assets.coingecko.com/coins/images/26433/small/starknet.png',
-  EIGEN:  'https://assets.coingecko.com/coins/images/33069/small/eigen.png',
+  EIGEN:  'https://coin-images.coingecko.com/coins/images/37441/small/eigencloud.jpg',
   ZK:     'https://assets.coingecko.com/coins/images/38043/small/ZKTokenBlack.png',
-  IO:     'https://assets.coingecko.com/coins/images/38110/small/io.png',
-  ORDER:  'https://assets.coingecko.com/coins/images/34963/small/order.png',
-  NOT:    'https://assets.coingecko.com/coins/images/35620/small/not.png',
-  DOGS:   'https://assets.coingecko.com/coins/images/37289/small/DOGS.png',
-  HMSTR:  'https://assets.coingecko.com/coins/images/38741/small/hamster_kombat.png',
-  CATI:   'https://assets.coingecko.com/coins/images/37419/small/cati.png',
-  MAJOR:  'https://assets.coingecko.com/coins/images/38699/small/major.png',
+  IO:     'https://coin-images.coingecko.com/coins/images/37754/small/io_blackbg.png',
+  ORDER:  'https://coin-images.coingecko.com/coins/images/38501/small/Orderly_Network_Coingecko_200%2A200.png',
+  NOT:    'https://coin-images.coingecko.com/coins/images/33453/small/rFmThDiD_400x400.jpg',
+  DOGS:   'https://coin-images.coingecko.com/coins/images/39699/small/dogs_logo_200x200.png',
+  HMSTR:  'https://coin-images.coingecko.com/coins/images/39102/small/hamster-removebg-preview.png',
+  CATI:   'https://coin-images.coingecko.com/coins/images/50236/small/cati.png',
+  MAJOR:  'https://coin-images.coingecko.com/coins/images/51362/small/PW838Bvn_400x400.jpg',
   TAO:    'https://assets.coingecko.com/coins/images/28452/small/ARUsPeNQ_400x400.jpeg',
   WLD:    'https://assets.coingecko.com/coins/images/31069/small/worldcoin.jpeg',
   CFX:    'https://assets.coingecko.com/coins/images/13079/small/3vuYMbjN.png',
@@ -79,8 +79,8 @@ const STATIC_ICONS = {
   BLUR:   'https://assets.coingecko.com/coins/images/28453/small/blur.png',
   MAGIC:  'https://assets.coingecko.com/coins/images/18623/small/magic.png',
   IMX:    'https://assets.coingecko.com/coins/images/17233/small/immutableX-symbol-BLK-RGB.png',
-  MANTA:  'https://assets.coingecko.com/coins/images/34289/small/manta.png',
-  PIXEL:  'https://assets.coingecko.com/coins/images/34289/small/manta.png',
+  MANTA:  'https://coin-images.coingecko.com/coins/images/34289/small/manta.jpg',
+  PIXEL:  'https://coin-images.coingecko.com/coins/images/35100/small/pixel-icon.png',
   // Additional commonly-traded coins
   TON:    'https://assets.coingecko.com/coins/images/17980/small/ton_symbol.png',
   STX:    'https://assets.coingecko.com/coins/images/2069/small/Stacks_logo_full.png',
@@ -184,22 +184,43 @@ const STATIC_ICONS = {
   SEI:    'https://assets.coingecko.com/coins/images/28205/small/Sei_Logo_-_Transparent.png',
   ONDO:   'https://assets.coingecko.com/coins/images/26580/small/ONDO.png',
   PENDLE: 'https://assets.coingecko.com/coins/images/15069/small/Pendle_Logo_Normal-03.png',
-  BRETT:  'https://assets.coingecko.com/coins/images/34530/small/brett.png',
+  BRETT:  'https://coin-images.coingecko.com/coins/images/35529/small/1000050750.png',
   MOG:    'https://assets.coingecko.com/coins/images/31059/small/MOG_LOGO_200x200.png',
   TURBO:  'https://assets.coingecko.com/coins/images/30223/small/turbotoad.jpeg',
-  MEW:    'https://assets.coingecko.com/coins/images/36440/small/mew.png',
-  NEIRO:  'https://assets.coingecko.com/coins/images/39147/small/neiro.jpeg',
+  MEW:    'https://coin-images.coingecko.com/coins/images/36440/small/MEW.png',
+  NEIRO:  'https://coin-images.coingecko.com/coins/images/39488/small/neiro.jpg',
   POL:    'https://assets.coingecko.com/coins/images/32440/small/polygon.png',
-  PONKE:  'https://assets.coingecko.com/coins/images/36128/small/ponke.png',
-  VIRTUAL:'https://assets.coingecko.com/coins/images/36721/small/VIRTUAL.png',
-  AI16Z:  'https://assets.coingecko.com/coins/images/36842/small/ai16z.jpg',
-  GOAT:   'https://assets.coingecko.com/coins/images/36698/small/goat.jpg',
-  ZEREBRO:'https://assets.coingecko.com/coins/images/37201/small/zerebro.jpg',
-  ACT:    'https://assets.coingecko.com/coins/images/36875/small/act.jpg',
-  PNUT:   'https://assets.coingecko.com/coins/images/36879/small/pnut.jpeg',
-  MOVE:   'https://assets.coingecko.com/coins/images/37736/small/move.jpg',
-  ME:     'https://assets.coingecko.com/coins/images/37514/small/me.png',
-  USUAL:  'https://assets.coingecko.com/coins/images/37209/small/usual.png',
+  PONKE:  'https://coin-images.coingecko.com/coins/images/33929/small/ponke-logo.png',
+  VIRTUAL:'https://coin-images.coingecko.com/coins/images/34057/small/LOGOMARK.png',
+  AI16Z:  'https://coin-images.coingecko.com/coins/images/51090/small/AI16Z.jpg',
+  GOAT:   'https://coin-images.coingecko.com/coins/images/50717/small/GOAT_LOGO_NEW.jpg',
+  ZEREBRO:'https://coin-images.coingecko.com/coins/images/51289/small/zerebro_2.png',
+  ACT:    'https://coin-images.coingecko.com/coins/images/50984/small/ai_prophecy.jpg',
+  PNUT:   'https://coin-images.coingecko.com/coins/images/51301/small/Peanut_the_Squirrel.png',
+  MOVE:   'https://coin-images.coingecko.com/coins/images/39345/small/movement-testnet-token.png',
+  ME:     'https://coin-images.coingecko.com/coins/images/39850/small/_ME_Profile_Dark_2x.png',
+  USUAL:  'https://coin-images.coingecko.com/coins/images/51091/small/USUAL.jpg',
+  // 2024-2025 popular coins
+  HYPE:   'https://coin-images.coingecko.com/coins/images/50882/small/hyperliquid.jpg',
+  ENA:    'https://coin-images.coingecko.com/coins/images/36530/small/ethena.png',
+  ETHFI:  'https://coin-images.coingecko.com/coins/images/35958/small/etherfi.jpeg',
+  REZ:    'https://coin-images.coingecko.com/coins/images/37327/small/renzo_200x200.png',
+  OMNI:   'https://coin-images.coingecko.com/coins/images/36465/small/Symbol-Color.png',
+  PIXEL:  'https://coin-images.coingecko.com/coins/images/35100/small/pixel-icon.png',
+  PORTAL: 'https://coin-images.coingecko.com/coins/images/35436/small/portal.jpeg',
+  SAGA:   'https://coin-images.coingecko.com/coins/images/25691/small/zcPXETKs_400x400.jpg',
+  BB:     'https://coin-images.coingecko.com/coins/images/37144/small/bb.jpeg',
+  LISTA:  'https://coin-images.coingecko.com/coins/images/38068/small/lista.png',
+  AEVO:   'https://assets.coingecko.com/coins/images/26266/small/aevo.jpg',
+  ALT:    'https://coin-images.coingecko.com/coins/images/34608/small/Logomark_200x200.png',
+  BOME:   'https://coin-images.coingecko.com/coins/images/35855/small/bome.jpeg',
+  DYM:    'https://assets.coingecko.com/coins/images/31911/small/dym.png',
+  MEME:   'https://assets.coingecko.com/coins/images/29220/small/meme.jpg',
+  MYRO:   'https://coin-images.coingecko.com/coins/images/33832/small/myro.jpeg',
+  TNSR:   'https://coin-images.coingecko.com/coins/images/35972/small/tnsr.png',
+  SLERF:  'https://coin-images.coingecko.com/coins/images/35777/small/slerf.jpeg',
+  BEAM:   'https://assets.coingecko.com/coins/images/32417/small/beam.png',
+  MANTA:  'https://assets.coingecko.com/coins/images/34289/small/manta.png',
 };
 
 let memoryCache = null;
@@ -261,6 +282,29 @@ export function clearCachedImage(symbol) {
   saveToStorage();
 }
 
+async function fetchMarketsFromBase(base) {
+  const params = 'vs_currency=usd&order=market_cap_desc&per_page=250';
+  const [res1, res2] = await Promise.allSettled([
+    fetch(`${base}?${params}&page=1`),
+    fetch(`${base}?${params}&page=2`),
+  ]);
+  let fetched = 0;
+  for (const result of [res1, res2]) {
+    if (result.status === 'fulfilled' && result.value.ok) {
+      const coins = await result.value.json();
+      if (!Array.isArray(coins)) continue;
+      coins.forEach((c) => {
+        const img = c.image?.replace('/large/', '/small/');
+        if (img && !img.includes('missing_large')) {
+          memoryCache[c.symbol.toUpperCase()] = img;
+          fetched++;
+        }
+      });
+    }
+  }
+  return fetched;
+}
+
 export async function prefetchCoinImages() {
   // If we have fresh cache with many entries, skip re-fetch
   if (memoryCache && Object.keys(memoryCache).length > 50) return memoryCache;
@@ -269,36 +313,34 @@ export async function prefetchCoinImages() {
   if (fetchPromise) return fetchPromise;
 
   fetchPromise = (async () => {
+    // Seed with static icons so we always have common coins
+    if (!memoryCache) memoryCache = {};
+    // Always merge STATIC_ICONS as baseline (don't overwrite API entries)
+    for (const [k, v] of Object.entries(STATIC_ICONS)) {
+      if (!memoryCache[k]) memoryCache[k] = v;
+    }
+
     try {
       const workerUrl = import.meta.env.VITE_WORKER_URL || '';
-      const base = workerUrl
-        ? `${workerUrl}/cg/coins/markets`
-        : 'https://api.coingecko.com/api/v3/coins/markets';
-      const params = 'vs_currency=usd&order=market_cap_desc&per_page=250';
-
-      // Seed with static icons first so we always have the common ones
-      if (!memoryCache) memoryCache = { ...STATIC_ICONS };
-
-      const [res1, res2] = await Promise.allSettled([
-        fetch(`${base}?${params}&page=1`),
-        fetch(`${base}?${params}&page=2`),
-      ]);
-
       let fetched = 0;
-      for (const result of [res1, res2]) {
-        if (result.status === 'fulfilled' && result.value.ok) {
-          const coins = await result.value.json();
-          coins.forEach((c) => {
-            const img = c.image?.replace('/large/', '/small/');
-            if (img) { memoryCache[c.symbol.toUpperCase()] = img; fetched++; }
-          });
-        }
+
+      // 1. Try Cloudflare Worker proxy
+      if (workerUrl) {
+        try {
+          fetched = await fetchMarketsFromBase(`${workerUrl}/cg/coins/markets`);
+        } catch { /* fall through */ }
       }
 
-      if (fetched > 0) saveToStorage(); // only save if we actually got new data
+      // 2. Direct CoinGecko fallback if worker failed or not configured
+      if (fetched === 0) {
+        try {
+          fetched = await fetchMarketsFromBase('https://api.coingecko.com/api/v3/coins/markets');
+        } catch { /* silent */ }
+      }
+
+      if (fetched > 0) saveToStorage();
     } catch {
-      // If fetch fails, at least STATIC_ICONS are already seeded
-      if (!memoryCache) memoryCache = { ...STATIC_ICONS };
+      // STATIC_ICONS already seeded above
     }
     fetchPromise = null;
     return memoryCache;
