@@ -223,7 +223,7 @@ export default function CoinAnalysis() {
         fetch(`https://fapi.binance.com/fapi/v1/openInterest?symbol=${binanceSymbol}`).then(r => r.json()),
         fetch(`https://fapi.binance.com/fapi/v1/premiumIndex?symbol=${binanceSymbol}`).then(r => r.json()),
         fetch(`https://api.binance.com/api/v3/depth?symbol=${binanceSymbol}&limit=20`).then(r => r.json()),
-        fetch(`https://fapi.binance.com/fapi/v1/allForceOrders?symbol=${binanceSymbol}&limit=100`).then(r => r.json()),
+        fetch(`https://fapi.binance.com/fapi/v1/allForceOrders?symbol=${binanceSymbol}&startTime=${Date.now() - 86400000}&limit=1000`).then(r => r.json()),
       ]).then(([bookRes, oiRes, fundingRes, depthRes, forceRes]) => {
         setLiquidityData({
           symbol: binanceSymbol,
@@ -231,7 +231,7 @@ export default function CoinAnalysis() {
           openInterest: oiRes.status === 'fulfilled' && !oiRes.value?.code ? oiRes.value : null,
           funding: fundingRes.status === 'fulfilled' && !fundingRes.value?.code ? fundingRes.value : null,
           depth: depthRes.status === 'fulfilled' && !depthRes.value?.code ? depthRes.value : null,
-          forceOrders: forceRes.status === 'fulfilled' && Array.isArray(forceRes.value) ? forceRes.value : [],
+          forceOrders: forceRes.status === 'fulfilled' && Array.isArray(forceRes.value) ? forceRes.value : null,
         });
       });
     } catch {
@@ -867,7 +867,15 @@ export default function CoinAnalysis() {
                     {liquidityData.bookTicker && (() => {
                       const bid = parseFloat(liquidityData.bookTicker.bidPrice);
                       const ask = parseFloat(liquidityData.bookTicker.askPrice);
-                      const spreadPct = bid > 0 ? ((ask - bid) / bid) * 100 : 0;
+                      const spreadAbs = Math.abs(ask - bid);
+                      const spreadPct = bid > 0 ? (spreadAbs / bid) * 100 : 0;
+                      // Format spread: show $ absolute + % with enough precision
+                      const spreadDisplay = spreadAbs >= 0.01
+                        ? `$${spreadAbs.toFixed(2)}`
+                        : `$${spreadAbs.toFixed(6)}`;
+                      const spreadPctDisplay = spreadPct < 0.001
+                        ? `${spreadPct.toFixed(6)}%`
+                        : `${spreadPct.toFixed(4)}%`;
                       return (
                         <GlowCard delay={0} glowColor="rgba(99,102,241,0.15)">
                           <div className="p-4">
@@ -879,9 +887,10 @@ export default function CoinAnalysis() {
                                 <p className="text-[9px] text-text-muted font-mono mb-0.5">BID</p>
                                 <p className="text-xs font-bold text-profit font-mono">{formatPrice(bid)}</p>
                               </div>
-                              <div className="text-center px-1">
+                              <div className="text-center px-1 min-w-[60px]">
                                 <p className="text-[9px] text-text-muted">SPREAD</p>
-                                <p className="text-[11px] font-bold text-text-primary">{spreadPct.toFixed(4)}%</p>
+                                <p className="text-[11px] font-bold text-text-primary font-mono">{spreadDisplay}</p>
+                                <p className="text-[9px] text-text-muted font-mono">{spreadPctDisplay}</p>
                               </div>
                               <div className="flex-1 text-center p-2 rounded-lg bg-loss/10 border border-loss/20">
                                 <p className="text-[9px] text-text-muted font-mono mb-0.5">ASK</p>
@@ -1030,11 +1039,13 @@ export default function CoinAnalysis() {
 
                     {/* Liquidation Heatmap */}
                     {(() => {
+                      // null = API error (no futures pair), [] = valid but no events in 24h
+                      const noFutures = liquidityData.forceOrders === null;
                       const orders = liquidityData.forceOrders || [];
                       const longLiqs = orders.filter(o => o.side === 'SELL');
                       const shortLiqs = orders.filter(o => o.side === 'BUY');
-                      const longLiqVal = longLiqs.reduce((s, o) => s + parseFloat(o.origQty || 0) * parseFloat(o.price || 0), 0);
-                      const shortLiqVal = shortLiqs.reduce((s, o) => s + parseFloat(o.origQty || 0) * parseFloat(o.price || 0), 0);
+                      const longLiqVal = longLiqs.reduce((s, o) => s + parseFloat(o.origQty || 0) * parseFloat(o.avgPrice || o.price || 0), 0);
+                      const shortLiqVal = shortLiqs.reduce((s, o) => s + parseFloat(o.origQty || 0) * parseFloat(o.avgPrice || o.price || 0), 0);
                       const total = longLiqVal + shortLiqVal;
                       const longPct = total > 0 ? (longLiqVal / total) * 100 : 50;
                       return (
@@ -1042,9 +1053,22 @@ export default function CoinAnalysis() {
                           <div className="p-4">
                             <h4 className="text-[10px] font-semibold text-text-muted mb-2 flex items-center gap-1.5">
                               <Flame className="w-3 h-3 text-orange-400" /> Liquidation Heatmap
-                              <span className="mr-auto text-[9px] text-text-muted font-mono">{orders.length} events</span>
+                              {!noFutures && <span className="mr-auto text-[9px] text-text-muted font-mono">{orders.length} events / 24h</span>}
                             </h4>
-                            {total > 0 ? (
+                            {noFutures ? (
+                              /* No futures pair — show Coinglass link */
+                              <div className="text-center py-3">
+                                <p className="text-[10px] text-text-muted mb-3">No perpetual futures for this pair</p>
+                                <a
+                                  href={`https://coinglass.com/LiquidationData/${liquidityData.symbol.replace('USDT','')}`}
+                                  target="_blank"
+                                  rel="noopener noreferrer"
+                                  className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-orange-500/15 border border-orange-500/30 text-orange-400 text-[10px] font-semibold hover:bg-orange-500/25 transition-colors"
+                                >
+                                  <Flame className="w-3 h-3" /> View on Coinglass
+                                </a>
+                              </div>
+                            ) : total > 0 ? (
                               <>
                                 <div className="h-1.5 rounded-full overflow-hidden flex mb-3">
                                   <motion.div
@@ -1079,12 +1103,28 @@ export default function CoinAnalysis() {
                                     {longPct > 60 ? 'More Longs Liquidated' : longPct < 40 ? 'More Shorts Squeezed' : 'Balanced'}
                                   </span>
                                 </p>
+                                <a
+                                  href={`https://coinglass.com/LiquidationData/${liquidityData.symbol.replace('USDT','')}`}
+                                  target="_blank"
+                                  rel="noopener noreferrer"
+                                  className="flex items-center justify-center gap-1 mt-2 text-[9px] text-text-muted hover:text-orange-400 transition-colors"
+                                >
+                                  Full heatmap on Coinglass ↗
+                                </a>
                               </>
                             ) : (
-                              <div className="text-center py-5">
-                                <Flame className="w-6 h-6 text-text-muted/30 mx-auto mb-2" />
-                                <p className="text-xs text-text-muted">No liquidation data</p>
-                                <p className="text-[10px] text-text-muted/50 mt-0.5">Futures market only</p>
+                              /* Valid futures pair, but 0 events in 24h */
+                              <div className="text-center py-3">
+                                <p className="text-[10px] text-text-muted mb-1">No liquidations in the last 24h</p>
+                                <p className="text-[9px] text-profit font-semibold">Low volatility environment 🟢</p>
+                                <a
+                                  href={`https://coinglass.com/LiquidationData/${liquidityData.symbol.replace('USDT','')}`}
+                                  target="_blank"
+                                  rel="noopener noreferrer"
+                                  className="inline-flex items-center gap-1 mt-2 text-[9px] text-text-muted hover:text-orange-400 transition-colors"
+                                >
+                                  Full heatmap on Coinglass ↗
+                                </a>
                               </div>
                             )}
                           </div>
