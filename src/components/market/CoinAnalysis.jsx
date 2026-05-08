@@ -145,6 +145,7 @@ export default function CoinAnalysis() {
   const [error, setError] = useState(null);
   const [scanProgress, setScanProgress] = useState(0);
   const [liquidityData, setLiquidityData] = useState(null);
+  const [volumeProfile, setVolumeProfile] = useState(null);
   const searchRef = useRef(null);
   const debounceRef = useRef(null);
 
@@ -224,7 +225,8 @@ export default function CoinAnalysis() {
         fetch(`https://fapi.binance.com/fapi/v1/premiumIndex?symbol=${binanceSymbol}`).then(r => r.json()),
         fetch(`https://api.binance.com/api/v3/depth?symbol=${binanceSymbol}&limit=20`).then(r => r.json()),
         fetch(`https://fapi.binance.com/fapi/v1/allForceOrders?symbol=${binanceSymbol}&startTime=${Date.now() - 86400000}&limit=1000`).then(r => r.json()),
-      ]).then(([bookRes, oiRes, fundingRes, depthRes, forceRes]) => {
+        fetch(`https://api.binance.com/api/v3/klines?symbol=${binanceSymbol}&interval=1h&limit=720`).then(r => r.json()),
+      ]).then(([bookRes, oiRes, fundingRes, depthRes, forceRes, klinesRes]) => {
         setLiquidityData({
           symbol: binanceSymbol,
           bookTicker: bookRes.status === 'fulfilled' && !bookRes.value?.code ? bookRes.value : null,
@@ -233,6 +235,44 @@ export default function CoinAnalysis() {
           depth: depthRes.status === 'fulfilled' && !depthRes.value?.code ? depthRes.value : null,
           forceOrders: forceRes.status === 'fulfilled' && Array.isArray(forceRes.value) ? forceRes.value : null,
         });
+
+        // Compute Volume Profile from klines
+        const klines = klinesRes.status === 'fulfilled' && Array.isArray(klinesRes.value) ? klinesRes.value : null;
+        if (klines && klines.length > 10) {
+          const candles = klines.map(k => ({
+            high: parseFloat(k[2]),
+            low: parseFloat(k[3]),
+            close: parseFloat(k[4]),
+            vol: parseFloat(k[5]),
+          }));
+          const maxP = Math.max(...candles.map(c => c.high));
+          const minP = Math.min(...candles.map(c => c.low));
+          const range = maxP - minP;
+          const NUM = 60;
+          const bSize = range / NUM;
+          const buckets = Array.from({ length: NUM }, (_, i) => ({
+            priceMid: minP + (i + 0.5) * bSize,
+            priceMin: minP + i * bSize,
+            priceMax: minP + (i + 1) * bSize,
+            vol: 0,
+          }));
+          candles.forEach(({ high, low, vol }) => {
+            const span = high - low;
+            if (span <= 0) {
+              const idx = Math.min(NUM - 1, Math.floor((high - minP) / bSize));
+              if (idx >= 0) buckets[idx].vol += vol;
+              return;
+            }
+            for (let b = 0; b < NUM; b++) {
+              const overlap = Math.min(high, buckets[b].priceMax) - Math.max(low, buckets[b].priceMin);
+              if (overlap > 0) buckets[b].vol += vol * (overlap / span);
+            }
+          });
+          const maxVol = Math.max(...buckets.map(b => b.vol));
+          const pocIdx = buckets.reduce((best, b, i) => b.vol > buckets[best].vol ? i : best, 0);
+          const currentPrice = candles[candles.length - 1].close;
+          setVolumeProfile({ buckets, maxVol, minP, maxP, pocIdx, currentPrice });
+        }
       });
     } catch {
       await minDelay;
@@ -252,6 +292,7 @@ export default function CoinAnalysis() {
     setRawPrices([]);
     setError(null);
     setLiquidityData(null);
+    setVolumeProfile(null);
   };
 
   const sentiment = useMemo(() => {
@@ -832,6 +873,125 @@ export default function CoinAnalysis() {
                         </AreaChart>
                       </ResponsiveContainer>
                     </motion.div>
+                  </div>
+                </GlowCard>
+              )}
+
+              {/* Volume Profile — Liquidity Map */}
+              {volumeProfile && (
+                <GlowCard delay={0.65} glowColor="rgba(0,191,255,0.18)">
+                  <div className="p-4">
+                    <h3 className="text-xs font-semibold text-text-secondary mb-1 flex items-center gap-1.5">
+                      <BarChart3 className="w-3.5 h-3.5 text-cyan-400" />
+                      Volume Profile — Liquidity Map
+                      <span className="text-[9px] text-text-muted font-mono mr-auto">30d · 1h candles</span>
+                      <PulseDot color="bg-cyan-400" />
+                    </h3>
+                    <p className="text-[9px] text-text-muted mb-3">נפח מצטבר לפי רמות מחיר — אזורי נזילות גבוהה</p>
+
+                    {/* Chart */}
+                    <div className="flex gap-2" style={{ height: '320px' }}>
+                      {/* Price labels */}
+                      <div className="flex flex-col justify-between text-right shrink-0 w-16">
+                        {[...Array(7)].map((_, i) => {
+                          const pct = i / 6;
+                          const price = volumeProfile.maxP - pct * (volumeProfile.maxP - volumeProfile.minP);
+                          return (
+                            <span key={i} className="text-[8px] font-mono text-text-muted leading-none">
+                              {formatPrice(price)}
+                            </span>
+                          );
+                        })}
+                      </div>
+
+                      {/* Bars */}
+                      <div className="flex-1 relative overflow-hidden rounded-lg" style={{ background: 'rgba(0,0,0,0.3)' }}>
+                        {/* Grid lines */}
+                        {[0.25, 0.5, 0.75].map(pct => (
+                          <div key={pct} className="absolute inset-x-0 border-t border-white/5" style={{ top: `${pct * 100}%` }} />
+                        ))}
+
+                        {/* Volume bars (rendered bottom-to-top) */}
+                        {volumeProfile.buckets.map((bucket, i) => {
+                          const volPct = volumeProfile.maxVol > 0 ? bucket.vol / volumeProfile.maxVol : 0;
+                          const isPOC = i === volumeProfile.pocIdx;
+                          // Position: bucket 0 = bottom, bucket NUM-1 = top
+                          const totalBuckets = volumeProfile.buckets.length;
+                          const topPct = ((totalBuckets - 1 - i) / totalBuckets) * 100;
+                          const heightPct = 100 / totalBuckets;
+                          // Color: intensity from dark blue → cyan based on volume
+                          const intensity = Math.pow(volPct, 0.5); // sqrt for better visual spread
+                          const r = Math.round(0 + intensity * 20);
+                          const g = Math.round(40 + intensity * 180);
+                          const b2 = Math.round(120 + intensity * 135);
+                          const alpha = 0.15 + intensity * 0.7;
+                          const barColor = isPOC ? 'rgba(0,255,200,0.85)' : `rgba(${r},${g},${b2},${alpha})`;
+
+                          return (
+                            <div
+                              key={i}
+                              className="absolute left-0"
+                              style={{
+                                top: `${topPct}%`,
+                                height: `${heightPct + 0.1}%`,
+                                width: `${Math.max(1, volPct * 100)}%`,
+                                background: barColor,
+                                transition: 'width 0.8s ease',
+                              }}
+                            />
+                          );
+                        })}
+
+                        {/* POC line */}
+                        {(() => {
+                          const pocTopPct = ((volumeProfile.buckets.length - 1 - volumeProfile.pocIdx) / volumeProfile.buckets.length) * 100;
+                          return (
+                            <div
+                              className="absolute inset-x-0 border-t-2 border-cyan-400/80 z-10"
+                              style={{ top: `${pocTopPct}%` }}
+                            >
+                              <span className="absolute right-1 -top-3 text-[8px] font-bold text-cyan-400 font-mono bg-black/60 px-1 rounded">
+                                POC {formatPrice(volumeProfile.buckets[volumeProfile.pocIdx].priceMid)}
+                              </span>
+                            </div>
+                          );
+                        })()}
+
+                        {/* Current price line */}
+                        {(() => {
+                          const range = volumeProfile.maxP - volumeProfile.minP;
+                          const pricePct = range > 0 ? ((volumeProfile.maxP - volumeProfile.currentPrice) / range) * 100 : 50;
+                          const clampedPct = Math.min(98, Math.max(2, pricePct));
+                          return (
+                            <div
+                              className="absolute inset-x-0 border-t border-white/60 border-dashed z-10"
+                              style={{ top: `${clampedPct}%` }}
+                            >
+                              <span className="absolute left-1 -top-3 text-[8px] font-bold text-white font-mono bg-black/70 px-1 rounded">
+                                {formatPrice(volumeProfile.currentPrice)}
+                              </span>
+                            </div>
+                          );
+                        })()}
+                      </div>
+                    </div>
+
+                    {/* Legend */}
+                    <div className="flex items-center justify-between mt-2 text-[9px] text-text-muted">
+                      <div className="flex items-center gap-3">
+                        <span className="flex items-center gap-1">
+                          <span className="w-3 h-0.5 bg-cyan-400 inline-block rounded" />
+                          POC (Point of Control)
+                        </span>
+                        <span className="flex items-center gap-1">
+                          <span className="w-3 h-0.5 bg-white/60 border border-dashed inline-block rounded" />
+                          מחיר נוכחי
+                        </span>
+                      </div>
+                      <span className="font-mono">
+                        Range: {formatPrice(volumeProfile.minP)} – {formatPrice(volumeProfile.maxP)}
+                      </span>
+                    </div>
                   </div>
                 </GlowCard>
               )}

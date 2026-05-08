@@ -10,7 +10,6 @@ import FearGreedGauge from '../dashboard/FearGreedGauge';
 import CoinAnalysis from './CoinAnalysis';
 import AIChat from './AIChat';
 import MarketSessionsCard from './MarketSessionsCard';
-import QuantumScorer from './QuantumScorer';
 import { getCachedImage, hasKnownIcon } from '../../services/coinImageCache';
 import CoinIcon from '../shared/CoinIcon';
 
@@ -900,12 +899,11 @@ export default function MarketOverview() {
   return (
     <motion.div variants={pageVariants} initial="initial" animate="animate" exit="exit" transition={pageTransition}>
       {/* Tabs */}
-      <div className={`grid grid-cols-2 sm:flex sm:flex-wrap sm:justify-center gap-2 ${activeTab === 'ai-chat' ? 'mb-2' : 'mb-6'}`}>
+      <div className={`grid grid-cols-3 sm:flex sm:flex-wrap sm:justify-center gap-2 ${activeTab === 'ai-chat' ? 'mb-2' : 'mb-6'}`}>
         {[
-          { key: 'overview', label: 'סקירה',        shortLabel: 'סקירה',    icon: Activity },
-          { key: 'analysis', label: 'ניתוח מטבע',   shortLabel: 'ניתוח',    icon: Sparkles },
-          { key: 'quantum',  label: 'ניתוח קוונטי', shortLabel: 'קוונטי',   icon: Zap },
-          { key: 'ai-chat',  label: 'TradeAI',       shortLabel: 'TradeAI',  icon: Bot },
+          { key: 'overview', label: 'סקירה',      shortLabel: 'סקירה',   icon: Activity },
+          { key: 'analysis', label: 'ניתוח מטבע', shortLabel: 'ניתוח',   icon: Sparkles },
+          { key: 'ai-chat',  label: 'TradeAI',     shortLabel: 'TradeAI', icon: Bot },
         ].map((tab) => (
           <button
             key={tab.key}
@@ -1208,10 +1206,6 @@ export default function MarketOverview() {
       ) : activeTab === 'analysis' ? (
       <motion.div key="analysis" initial={{ opacity: 0, x: 20 }} animate={{ opacity: 1, x: 0 }} exit={{ opacity: 0, x: -20 }} transition={{ duration: 0.25 }}>
         <CoinAnalysis />
-      </motion.div>
-      ) : activeTab === 'quantum' ? (
-      <motion.div key="quantum" initial={{ opacity: 0, x: 20 }} animate={{ opacity: 1, x: 0 }} exit={{ opacity: 0, x: -20 }} transition={{ duration: 0.25 }}>
-        <QuantumScorer />
       </motion.div>
       ) : (
       <motion.div key="ai-chat" initial={{ opacity: 0, x: 20 }} animate={{ opacity: 1, x: 0 }} exit={{ opacity: 0, x: -20 }} transition={{ duration: 0.25 }} className="overflow-hidden">
