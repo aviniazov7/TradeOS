@@ -601,48 +601,36 @@ export default function CoinAnalysis() {
                 );
               })()}
 
-              {/* Performance row */}
-              <div className="grid grid-cols-3 gap-2">
+              {/* Combined performance + stats row */}
+              <div className="grid grid-cols-3 md:grid-cols-6 gap-2">
                 {[
-                  { label: '24 שעות', value: md.price_change_percentage_24h },
-                  { label: '7 ימים', value: md.price_change_percentage_7d },
-                  { label: '30 ימים', value: md.price_change_percentage_30d },
-                ].map((item, i) => (
+                  md.price_change_percentage_24h != null && {
+                    label: '24 שעות',
+                    value: `${md.price_change_percentage_24h >= 0 ? '+' : ''}${md.price_change_percentage_24h.toFixed(2)}%`,
+                    valueColor: md.price_change_percentage_24h >= 0 ? 'text-profit' : 'text-loss',
+                    icon: md.price_change_percentage_24h >= 0 ? TrendingUp : TrendingDown,
+                  },
+                  md.price_change_percentage_7d != null && {
+                    label: '7 ימים',
+                    value: `${md.price_change_percentage_7d >= 0 ? '+' : ''}${md.price_change_percentage_7d.toFixed(2)}%`,
+                    valueColor: md.price_change_percentage_7d >= 0 ? 'text-profit' : 'text-loss',
+                    icon: md.price_change_percentage_7d >= 0 ? TrendingUp : TrendingDown,
+                  },
+                  md.price_change_percentage_30d != null && {
+                    label: '30 ימים',
+                    value: `${md.price_change_percentage_30d >= 0 ? '+' : ''}${md.price_change_percentage_30d.toFixed(2)}%`,
+                    valueColor: md.price_change_percentage_30d >= 0 ? 'text-profit' : 'text-loss',
+                    icon: md.price_change_percentage_30d >= 0 ? TrendingUp : TrendingDown,
+                  },
+                  { label: 'שווי שוק', value: formatNum(md.market_cap?.usd), icon: BarChart3 },
+                  { label: 'נפח 24h', value: formatNum(md.total_volume?.usd), icon: Activity },
+                  { label: 'ATH', value: formatPrice(md.ath?.usd), sub: md.ath_change_percentage?.usd != null ? `${md.ath_change_percentage.usd.toFixed(1)}%` : null, subColor: 'text-loss' },
+                ].filter(Boolean).map((item, i) => (
                   <motion.div
                     key={item.label}
                     initial={{ opacity: 0, scale: 0.9, y: 10 }}
                     animate={{ opacity: 1, scale: 1, y: 0 }}
-                    transition={{ delay: 0.2 + i * 0.08, type: 'spring', stiffness: 120 }}
-                    className="h-full"
-                  >
-                    <ChangeCard label={item.label} value={item.value} />
-                  </motion.div>
-                ))}
-              </div>
-
-              {/* Stats grid */}
-              <div className="grid grid-cols-3 md:grid-cols-6 gap-2">
-                {[
-                  { label: 'שווי שוק', value: formatNum(md.market_cap?.usd), icon: BarChart3 },
-                  { label: 'נפח 24h', value: formatNum(md.total_volume?.usd), icon: Activity },
-                  { label: 'ATH', value: formatPrice(md.ath?.usd), sub: md.ath_change_percentage?.usd != null ? `${md.ath_change_percentage.usd.toFixed(1)}%` : null, subColor: 'text-loss' },
-                  md.fully_diluted_valuation?.usd > 0 && { label: 'FDV', value: formatNum(md.fully_diluted_valuation.usd) },
-                  md.total_volume?.usd > 0 && md.market_cap?.usd > 0 && {
-                    label: 'Vol/MCap', value: `${((md.total_volume.usd / md.market_cap.usd) * 100).toFixed(2)}%`,
-                    sub: md.total_volume.usd / md.market_cap.usd > 0.1 ? 'נזילות גבוהה' : 'נזילות נמוכה',
-                    subColor: md.total_volume.usd / md.market_cap.usd > 0.1 ? 'text-profit' : 'text-amber-500',
-                  },
-                  md.market_cap_change_percentage_24h != null && {
-                    label: 'שינוי MCap 24h',
-                    value: `${md.market_cap_change_percentage_24h >= 0 ? '+' : ''}${md.market_cap_change_percentage_24h.toFixed(2)}%`,
-                    subColor: md.market_cap_change_percentage_24h >= 0 ? 'text-profit' : 'text-loss',
-                  },
-                ].filter(Boolean).map((item, i) => (
-                  <motion.div
-                    key={item.label}
-                    initial={{ opacity: 0, y: 15, scale: 0.95 }}
-                    animate={{ opacity: 1, y: 0, scale: 1 }}
-                    transition={{ delay: 0.25 + i * 0.06, type: 'spring', stiffness: 100 }}
+                    transition={{ delay: 0.2 + i * 0.05, type: 'spring', stiffness: 120 }}
                     className="h-full"
                   >
                     <StatBox {...item} />
@@ -1060,7 +1048,7 @@ export default function CoinAnalysis() {
                               <div className="text-center py-3">
                                 <p className="text-[10px] text-text-muted mb-3">No perpetual futures for this pair</p>
                                 <a
-                                  href={`https://coinglass.com/LiquidationData/${liquidityData.symbol.replace('USDT','')}`}
+                                  href={`https://coinglass.com/LiquidationData`}
                                   target="_blank"
                                   rel="noopener noreferrer"
                                   className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-orange-500/15 border border-orange-500/30 text-orange-400 text-[10px] font-semibold hover:bg-orange-500/25 transition-colors"
@@ -1104,7 +1092,7 @@ export default function CoinAnalysis() {
                                   </span>
                                 </p>
                                 <a
-                                  href={`https://coinglass.com/LiquidationData/${liquidityData.symbol.replace('USDT','')}`}
+                                  href={`https://coinglass.com/LiquidationData`}
                                   target="_blank"
                                   rel="noopener noreferrer"
                                   className="flex items-center justify-center gap-1 mt-2 text-[9px] text-text-muted hover:text-orange-400 transition-colors"
@@ -1118,7 +1106,7 @@ export default function CoinAnalysis() {
                                 <p className="text-[10px] text-text-muted mb-1">No liquidations in the last 24h</p>
                                 <p className="text-[9px] text-profit font-semibold">Low volatility environment 🟢</p>
                                 <a
-                                  href={`https://coinglass.com/LiquidationData/${liquidityData.symbol.replace('USDT','')}`}
+                                  href={`https://coinglass.com/LiquidationData`}
                                   target="_blank"
                                   rel="noopener noreferrer"
                                   className="inline-flex items-center gap-1 mt-2 text-[9px] text-text-muted hover:text-orange-400 transition-colors"
@@ -1174,16 +1162,16 @@ function ChangeCard({ label, value }) {
   );
 }
 
-function StatBox({ label, value, icon: Icon, sub, subColor }) {
+function StatBox({ label, value, icon: Icon, sub, subColor, valueColor }) {
   return (
     <div className="bg-bg-secondary border border-border-primary rounded-xl p-3 text-center relative overflow-hidden group hover:border-accent-primary/20 transition-colors h-full">
       <motion.div
         className="absolute inset-0 opacity-0 group-hover:opacity-100 transition-opacity"
         style={{ background: 'radial-gradient(circle at center, rgba(99,102,241,0.05) 0%, transparent 70%)' }}
       />
-      {Icon && <Icon className="w-3.5 h-3.5 text-accent-primary mx-auto mb-1 relative" />}
+      {Icon && <Icon className={`w-3.5 h-3.5 mx-auto mb-1 relative ${valueColor || 'text-accent-primary'}`} />}
       <p className="text-[11px] text-text-muted mb-0.5 relative">{label}</p>
-      <AnimatedValue value={value} className="text-sm font-bold text-text-primary relative block" />
+      <AnimatedValue value={value} className={`text-sm font-bold relative block ${valueColor || 'text-text-primary'}`} />
       {sub && <p className={`text-[10px] mt-0.5 relative ${subColor || 'text-text-muted'}`}>{sub}</p>}
     </div>
   );
