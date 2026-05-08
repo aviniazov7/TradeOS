@@ -1,6 +1,6 @@
 import { useState, useEffect, useRef, useMemo } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
-import { Search, Sparkles, TrendingUp, TrendingDown, Minus, RotateCcw, Activity, BarChart3, Zap, Shield, ChevronDown, ChevronUp, Target, Gauge } from 'lucide-react';
+import { Search, Sparkles, TrendingUp, TrendingDown, Minus, RotateCcw, Activity, BarChart3, Zap, Shield, ChevronDown, ChevronUp, Target, Gauge, BookOpen, Flame } from 'lucide-react';
 import { AreaChart, Area, XAxis, YAxis, Tooltip, ResponsiveContainer, ReferenceLine } from 'recharts';
 import { searchCoins, fetchCoinDetails, fetchCoinChart } from '../../services/coingeckoApi';
 import { computeRSI, computeMA, computeVolatility } from '../../utils/technicals';
@@ -144,6 +144,7 @@ export default function CoinAnalysis() {
   const [rawPrices, setRawPrices] = useState([]);
   const [error, setError] = useState(null);
   const [scanProgress, setScanProgress] = useState(0);
+  const [liquidityData, setLiquidityData] = useState(null);
   const searchRef = useRef(null);
   const debounceRef = useRef(null);
 
@@ -214,6 +215,25 @@ export default function CoinAnalysis() {
           price,
         })));
       }
+
+      // Fetch Binance liquidity data (non-blocking — runs in background)
+      const binanceSymbol = TV_SYMBOL_MAP[coin.coingeckoId] || `${coin.symbol?.toUpperCase()}USDT`;
+      Promise.allSettled([
+        fetch(`https://api.binance.com/api/v3/ticker/bookTicker?symbol=${binanceSymbol}`).then(r => r.json()),
+        fetch(`https://fapi.binance.com/fapi/v1/openInterest?symbol=${binanceSymbol}`).then(r => r.json()),
+        fetch(`https://fapi.binance.com/fapi/v1/premiumIndex?symbol=${binanceSymbol}`).then(r => r.json()),
+        fetch(`https://api.binance.com/api/v3/depth?symbol=${binanceSymbol}&limit=20`).then(r => r.json()),
+        fetch(`https://fapi.binance.com/fapi/v1/allForceOrders?symbol=${binanceSymbol}&limit=100`).then(r => r.json()),
+      ]).then(([bookRes, oiRes, fundingRes, depthRes, forceRes]) => {
+        setLiquidityData({
+          symbol: binanceSymbol,
+          bookTicker: bookRes.status === 'fulfilled' && !bookRes.value?.code ? bookRes.value : null,
+          openInterest: oiRes.status === 'fulfilled' && !oiRes.value?.code ? oiRes.value : null,
+          funding: fundingRes.status === 'fulfilled' && !fundingRes.value?.code ? fundingRes.value : null,
+          depth: depthRes.status === 'fulfilled' && !depthRes.value?.code ? depthRes.value : null,
+          forceOrders: forceRes.status === 'fulfilled' && Array.isArray(forceRes.value) ? forceRes.value : [],
+        });
+      });
     } catch {
       await minDelay;
       clearInterval(progressInterval);
@@ -231,6 +251,7 @@ export default function CoinAnalysis() {
     setChartData([]);
     setRawPrices([]);
     setError(null);
+    setLiquidityData(null);
   };
 
   const sentiment = useMemo(() => {
@@ -825,6 +846,253 @@ export default function CoinAnalysis() {
                     </motion.div>
                   </div>
                 </GlowCard>
+              )}
+
+              {/* Liquidity & Market Microstructure */}
+              {liquidityData && (
+                <motion.div
+                  initial={{ opacity: 0, y: 10 }}
+                  animate={{ opacity: 1, y: 0 }}
+                  transition={{ delay: 0.1, duration: 0.5 }}
+                >
+                  <div className="flex items-center gap-1.5 mb-2 px-1">
+                    <Activity className="w-3.5 h-3.5 text-accent-primary" />
+                    <h3 className="text-xs font-semibold text-text-secondary">Liquidity &amp; Market Microstructure</h3>
+                    <PulseDot />
+                  </div>
+
+                  {/* Row 1: Spread + OI + Funding */}
+                  <div className="grid grid-cols-1 md:grid-cols-3 gap-3 mb-3">
+                    {/* Bid-Ask Spread */}
+                    {liquidityData.bookTicker && (() => {
+                      const bid = parseFloat(liquidityData.bookTicker.bidPrice);
+                      const ask = parseFloat(liquidityData.bookTicker.askPrice);
+                      const spreadPct = bid > 0 ? ((ask - bid) / bid) * 100 : 0;
+                      return (
+                        <GlowCard delay={0} glowColor="rgba(99,102,241,0.15)">
+                          <div className="p-4">
+                            <h4 className="text-[10px] font-semibold text-text-muted mb-3 flex items-center gap-1.5 justify-center">
+                              <BookOpen className="w-3 h-3 text-accent-primary" /> Bid-Ask Spread
+                            </h4>
+                            <div className="flex justify-between items-center mb-2 gap-2">
+                              <div className="flex-1 text-center p-2 rounded-lg bg-profit/10 border border-profit/20">
+                                <p className="text-[9px] text-text-muted font-mono mb-0.5">BID</p>
+                                <p className="text-xs font-bold text-profit font-mono">{formatPrice(bid)}</p>
+                              </div>
+                              <div className="text-center px-1">
+                                <p className="text-[9px] text-text-muted">SPREAD</p>
+                                <p className="text-[11px] font-bold text-text-primary">{spreadPct.toFixed(4)}%</p>
+                              </div>
+                              <div className="flex-1 text-center p-2 rounded-lg bg-loss/10 border border-loss/20">
+                                <p className="text-[9px] text-text-muted font-mono mb-0.5">ASK</p>
+                                <p className="text-xs font-bold text-loss font-mono">{formatPrice(ask)}</p>
+                              </div>
+                            </div>
+                            <p className={`text-[10px] text-center font-semibold ${spreadPct < 0.01 ? 'text-profit' : spreadPct < 0.05 ? 'text-amber-500' : 'text-loss'}`}>
+                              {spreadPct < 0.01 ? 'Very Tight — High Liquidity' : spreadPct < 0.05 ? 'Normal Spread' : 'Wide Spread — Low Liquidity'}
+                            </p>
+                          </div>
+                        </GlowCard>
+                      );
+                    })()}
+
+                    {/* Open Interest */}
+                    {liquidityData.openInterest && (() => {
+                      const oi = parseFloat(liquidityData.openInterest.openInterest);
+                      const price = md?.current_price?.usd || 0;
+                      const oiUsd = oi * price;
+                      return (
+                        <GlowCard delay={0.05} glowColor="rgba(139,92,246,0.15)">
+                          <div className="p-4">
+                            <h4 className="text-[10px] font-semibold text-text-muted mb-3 flex items-center gap-1.5 justify-center">
+                              <BarChart3 className="w-3 h-3 text-violet-400" /> Open Interest
+                            </h4>
+                            <div className="text-center mb-2">
+                              <AnimatedValue value={formatNum(oiUsd)} className="text-lg font-bold text-violet-400" />
+                              <p className="text-[10px] text-text-muted mt-0.5">{oi.toLocaleString(undefined, { maximumFractionDigits: 2 })} contracts</p>
+                            </div>
+                            <p className="text-[10px] text-center text-text-muted">
+                              {oiUsd > 1e9 ? 'High Institutional Interest' : oiUsd > 1e8 ? 'Moderate OI' : 'Low Open Interest'}
+                            </p>
+                          </div>
+                        </GlowCard>
+                      );
+                    })()}
+
+                    {/* Funding Rate */}
+                    {liquidityData.funding && (() => {
+                      const rate = parseFloat(liquidityData.funding.lastFundingRate) * 100;
+                      const nextTime = liquidityData.funding.nextFundingTime;
+                      const msUntil = nextTime ? nextTime - Date.now() : 0;
+                      const hUntil = Math.floor(msUntil / 3600000);
+                      const mUntil = Math.floor((msUntil % 3600000) / 60000);
+                      return (
+                        <GlowCard delay={0.1} glowColor={rate > 0 ? 'rgba(239,68,68,0.15)' : 'rgba(34,197,94,0.15)'}>
+                          <div className="p-4">
+                            <h4 className="text-[10px] font-semibold text-text-muted mb-3 flex items-center gap-1.5 justify-center">
+                              <Zap className="w-3 h-3 text-amber-400" /> Funding Rate
+                            </h4>
+                            <div className="text-center mb-2">
+                              <AnimatedValue
+                                value={`${rate >= 0 ? '+' : ''}${rate.toFixed(4)}%`}
+                                className={`text-lg font-bold font-mono ${rate > 0 ? 'text-loss' : rate < 0 ? 'text-profit' : 'text-text-secondary'}`}
+                              />
+                              <p className={`text-[10px] mt-0.5 font-semibold ${rate > 0.01 ? 'text-loss' : rate < -0.01 ? 'text-profit' : 'text-text-muted'}`}>
+                                {rate > 0.01 ? 'Longs pay Shorts' : rate < -0.01 ? 'Shorts pay Longs' : 'Neutral Funding'}
+                              </p>
+                            </div>
+                            {nextTime && msUntil > 0 && (
+                              <p className="text-[10px] text-center text-text-muted">
+                                Next: <span className="text-text-secondary font-mono">{hUntil}h {mUntil}m</span>
+                              </p>
+                            )}
+                          </div>
+                        </GlowCard>
+                      );
+                    })()}
+                  </div>
+
+                  {/* Row 2: Order Book Depth + Liquidations */}
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                    {/* Order Book Depth */}
+                    {liquidityData.depth && (() => {
+                      const bids = (liquidityData.depth.bids || []).slice(0, 8).map(([p, q]) => ({ price: parseFloat(p), qty: parseFloat(q) }));
+                      const asks = (liquidityData.depth.asks || []).slice(0, 8).map(([p, q]) => ({ price: parseFloat(p), qty: parseFloat(q) }));
+                      const allQtys = [...bids.map(b => b.qty), ...asks.map(a => a.qty)];
+                      const maxQty = allQtys.length ? Math.max(...allQtys) : 1;
+                      const totalBids = bids.reduce((s, b) => s + b.qty, 0);
+                      const totalAsks = asks.reduce((s, a) => s + a.qty, 0);
+                      const bidPct = totalBids + totalAsks > 0 ? (totalBids / (totalBids + totalAsks)) * 100 : 50;
+                      return (
+                        <GlowCard delay={0.15} glowColor="rgba(34,197,94,0.12)">
+                          <div className="p-4">
+                            <h4 className="text-[10px] font-semibold text-text-muted mb-2 flex items-center gap-1.5">
+                              <Activity className="w-3 h-3 text-accent-primary" /> Order Book Depth
+                              <span className="mr-auto flex items-center gap-2">
+                                <span className="text-[9px] text-profit font-mono">{bidPct.toFixed(0)}% Bids</span>
+                                <span className="text-[9px] text-loss font-mono">{(100 - bidPct).toFixed(0)}% Asks</span>
+                              </span>
+                            </h4>
+                            <div className="h-1.5 rounded-full overflow-hidden flex mb-3">
+                              <motion.div
+                                initial={{ width: 0 }}
+                                animate={{ width: `${bidPct}%` }}
+                                transition={{ duration: 1, ease: 'easeOut' }}
+                                className="h-full bg-profit"
+                              />
+                              <motion.div
+                                initial={{ width: 0 }}
+                                animate={{ width: `${100 - bidPct}%` }}
+                                transition={{ duration: 1, ease: 'easeOut' }}
+                                className="h-full bg-loss"
+                              />
+                            </div>
+                            <div className="grid grid-cols-2 gap-2">
+                              <div className="space-y-0.5">
+                                <p className="text-[9px] text-profit font-bold text-center mb-1 font-mono">BIDS</p>
+                                {bids.map((b, i) => (
+                                  <div key={i} className="relative h-4 rounded overflow-hidden bg-bg-tertiary/30">
+                                    <motion.div
+                                      initial={{ width: 0 }}
+                                      animate={{ width: `${(b.qty / maxQty) * 100}%` }}
+                                      transition={{ duration: 0.7, delay: i * 0.04 }}
+                                      className="absolute inset-y-0 right-0 bg-profit/25"
+                                    />
+                                    <div className="absolute inset-0 flex items-center justify-between px-1">
+                                      <span className="text-[8px] font-mono text-profit">{formatPrice(b.price)}</span>
+                                      <span className="text-[8px] font-mono text-text-muted">{b.qty.toFixed(2)}</span>
+                                    </div>
+                                  </div>
+                                ))}
+                              </div>
+                              <div className="space-y-0.5">
+                                <p className="text-[9px] text-loss font-bold text-center mb-1 font-mono">ASKS</p>
+                                {asks.map((a, i) => (
+                                  <div key={i} className="relative h-4 rounded overflow-hidden bg-bg-tertiary/30">
+                                    <motion.div
+                                      initial={{ width: 0 }}
+                                      animate={{ width: `${(a.qty / maxQty) * 100}%` }}
+                                      transition={{ duration: 0.7, delay: i * 0.04 }}
+                                      className="absolute inset-y-0 left-0 bg-loss/25"
+                                    />
+                                    <div className="absolute inset-0 flex items-center justify-between px-1">
+                                      <span className="text-[8px] font-mono text-loss">{formatPrice(a.price)}</span>
+                                      <span className="text-[8px] font-mono text-text-muted">{a.qty.toFixed(2)}</span>
+                                    </div>
+                                  </div>
+                                ))}
+                              </div>
+                            </div>
+                          </div>
+                        </GlowCard>
+                      );
+                    })()}
+
+                    {/* Liquidation Heatmap */}
+                    {(() => {
+                      const orders = liquidityData.forceOrders || [];
+                      const longLiqs = orders.filter(o => o.side === 'SELL');
+                      const shortLiqs = orders.filter(o => o.side === 'BUY');
+                      const longLiqVal = longLiqs.reduce((s, o) => s + parseFloat(o.origQty || 0) * parseFloat(o.price || 0), 0);
+                      const shortLiqVal = shortLiqs.reduce((s, o) => s + parseFloat(o.origQty || 0) * parseFloat(o.price || 0), 0);
+                      const total = longLiqVal + shortLiqVal;
+                      const longPct = total > 0 ? (longLiqVal / total) * 100 : 50;
+                      return (
+                        <GlowCard delay={0.2} glowColor="rgba(251,146,60,0.12)">
+                          <div className="p-4">
+                            <h4 className="text-[10px] font-semibold text-text-muted mb-2 flex items-center gap-1.5">
+                              <Flame className="w-3 h-3 text-orange-400" /> Liquidation Heatmap
+                              <span className="mr-auto text-[9px] text-text-muted font-mono">{orders.length} events</span>
+                            </h4>
+                            {total > 0 ? (
+                              <>
+                                <div className="h-1.5 rounded-full overflow-hidden flex mb-3">
+                                  <motion.div
+                                    initial={{ width: 0 }}
+                                    animate={{ width: `${longPct}%` }}
+                                    transition={{ duration: 1 }}
+                                    className="h-full bg-loss"
+                                  />
+                                  <motion.div
+                                    initial={{ width: 0 }}
+                                    animate={{ width: `${100 - longPct}%` }}
+                                    transition={{ duration: 1 }}
+                                    className="h-full bg-profit"
+                                  />
+                                </div>
+                                <div className="grid grid-cols-2 gap-3 mb-3">
+                                  <div className="text-center p-2 rounded-lg bg-loss/10 border border-loss/20">
+                                    <p className="text-[9px] text-text-muted mb-0.5 font-mono">LONGS LIQ.</p>
+                                    <p className="text-xs font-bold text-loss">{formatNum(longLiqVal)}</p>
+                                    <p className="text-[9px] text-text-muted">{longLiqs.length} events</p>
+                                  </div>
+                                  <div className="text-center p-2 rounded-lg bg-profit/10 border border-profit/20">
+                                    <p className="text-[9px] text-text-muted mb-0.5 font-mono">SHORTS LIQ.</p>
+                                    <p className="text-xs font-bold text-profit">{formatNum(shortLiqVal)}</p>
+                                    <p className="text-[9px] text-text-muted">{shortLiqs.length} events</p>
+                                  </div>
+                                </div>
+                                <p className="text-[10px] text-center text-text-muted">
+                                  Total <span className="text-text-secondary font-semibold">{formatNum(total)}</span>
+                                  {' · '}
+                                  <span className={`font-semibold ${longPct > 60 ? 'text-loss' : longPct < 40 ? 'text-profit' : 'text-amber-500'}`}>
+                                    {longPct > 60 ? 'More Longs Liquidated' : longPct < 40 ? 'More Shorts Squeezed' : 'Balanced'}
+                                  </span>
+                                </p>
+                              </>
+                            ) : (
+                              <div className="text-center py-5">
+                                <Flame className="w-6 h-6 text-text-muted/30 mx-auto mb-2" />
+                                <p className="text-xs text-text-muted">No liquidation data</p>
+                                <p className="text-[10px] text-text-muted/50 mt-0.5">Futures market only</p>
+                              </div>
+                            )}
+                          </div>
+                        </GlowCard>
+                      );
+                    })()}
+                  </div>
+                </motion.div>
               )}
 
               {/* Footer timestamp */}
