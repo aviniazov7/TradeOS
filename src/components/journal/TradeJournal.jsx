@@ -44,7 +44,7 @@ import { formatCurrency, formatPercent, formatDuration, formatDate } from '../..
 import { TAG_LABELS } from '../../utils/constants';
 import { pageVariants, pageTransition, staggerContainer } from '../../utils/animations';
 
-const defaultFilters = { search: '', direction: '', result: '', strategy: '', tag: '', timeframe: '' };
+const defaultFilters = { search: '', direction: '', result: '', strategy: '', tag: '', timeframe: '', month: '' };
 const tooltipStyle = { background: '#141414', border: '1px solid #1a1a1a', borderRadius: '8px', fontSize: '12px', color: '#f0f0f0' };
 const PIE_COLORS = ['#22c55e', '#ef4444', '#eab308'];
 
@@ -139,6 +139,12 @@ export default function TradeJournal() {
       if (filters.strategy && t.strategy !== filters.strategy) return false;
       if (filters.timeframe && (filters.timeframe === 'N/A' ? !!t.timeframe : t.timeframe !== filters.timeframe)) return false;
       if (filters.tag && !(Array.isArray(t.tags) ? t.tags : []).includes(filters.tag)) return false;
+      if (filters.month) {
+        const raw = t.entryDate;
+        const d = raw ? (typeof raw.toDate === 'function' ? raw.toDate() : new Date(raw)) : null;
+        if (!d || isNaN(d.getTime())) return false;
+        if (`${d.getFullYear()}-${d.getMonth()}` !== filters.month) return false;
+      }
       return true;
     }).sort((a, b) => getTime(b) - getTime(a));
   }, [trades, filters, pendingDeletes]);

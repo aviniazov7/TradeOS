@@ -4,6 +4,14 @@ import { useUserStrategies } from '../../hooks/useUserStrategies';
 import { TAG_LABELS } from '../../utils/constants';
 import SelectDropdown from '../shared/SelectDropdown';
 
+const MONTH_NAMES_HE = ['ינואר','פברואר','מרץ','אפריל','מאי','יוני','יולי','אוגוסט','ספטמבר','אוקטובר','נובמבר','דצמבר'];
+const tradeDate = (t) => {
+  const raw = t.entryDate;
+  if (!raw) return null;
+  const d = typeof raw.toDate === 'function' ? raw.toDate() : new Date(raw);
+  return isNaN(d.getTime()) ? null : d;
+};
+
 const btnClass = (active) =>
   `px-3 py-1.5 rounded-lg text-xs font-medium transition-colors cursor-pointer whitespace-nowrap ${
     active
@@ -16,8 +24,8 @@ export default function TradeFilters({ filters, onChange, trades = [] }) {
   const [open, setOpen] = useState(false);
   const set = (key, value) => onChange({ ...filters, [key]: value });
   const toggle = (key, value) => set(key, filters[key] === value ? '' : value);
-  const hasFilters = filters.search || filters.direction || filters.result || filters.strategy || filters.tag || filters.timeframe;
-  const activeCount = [filters.direction, filters.result, filters.strategy, filters.tag, filters.timeframe].filter(Boolean).length;
+  const hasFilters = filters.search || filters.direction || filters.result || filters.strategy || filters.tag || filters.timeframe || filters.month;
+  const activeCount = [filters.direction, filters.result, filters.strategy, filters.tag, filters.timeframe, filters.month].filter(Boolean).length;
 
   const allTags = useMemo(() => {
     const tagSet = new Set();
@@ -26,6 +34,19 @@ export default function TradeFilters({ filters, onChange, trades = [] }) {
       tags.forEach((tag) => tagSet.add(tag));
     });
     return [...tagSet].sort();
+  }, [trades]);
+
+  const monthOptions = useMemo(() => {
+    const set = new Map();
+    trades.forEach((t) => {
+      const d = tradeDate(t);
+      if (!d) return;
+      const key = `${d.getFullYear()}-${d.getMonth()}`;
+      if (!set.has(key)) {
+        set.set(key, { value: key, label: `${MONTH_NAMES_HE[d.getMonth()]} ${d.getFullYear()}`, sortKey: d.getFullYear() * 12 + d.getMonth() });
+      }
+    });
+    return [...set.values()].sort((a, b) => b.sortKey - a.sortKey).map(({ value, label }) => ({ value, label }));
   }, [trades]);
 
   const strategyOptions = allStrategies.map((s) => ({ value: s, label: s }));
@@ -48,7 +69,7 @@ export default function TradeFilters({ filters, onChange, trades = [] }) {
           )}
           {hasFilters && (
             <button
-              onClick={(e) => { e.stopPropagation(); onChange({ search: '', direction: '', result: '', strategy: '', tag: '', timeframe: '' }); }}
+              onClick={(e) => { e.stopPropagation(); onChange({ search: '', direction: '', result: '', strategy: '', tag: '', timeframe: '', month: '' }); }}
               className="mr-auto p-0.5 rounded text-text-muted hover:text-loss transition-colors cursor-pointer"
             >
               <X className="w-3.5 h-3.5" />
@@ -87,6 +108,17 @@ export default function TradeFilters({ filters, onChange, trades = [] }) {
               allowClear
               compact
             />
+
+            {monthOptions.length > 0 && (
+              <SelectDropdown
+                value={filters.month}
+                onChange={(val) => set('month', val)}
+                options={monthOptions}
+                placeholder="כל החודשים"
+                allowClear
+                compact
+              />
+            )}
 
             {allTags.length > 0 && (
               <SelectDropdown
@@ -130,6 +162,17 @@ export default function TradeFilters({ filters, onChange, trades = [] }) {
           compact
         />
 
+        {monthOptions.length > 0 && (
+          <SelectDropdown
+            value={filters.month}
+            onChange={(val) => set('month', val)}
+            options={monthOptions}
+            placeholder="כל החודשים"
+            allowClear
+            compact
+          />
+        )}
+
         {allTags.length > 0 && (
           <SelectDropdown
             value={filters.tag}
@@ -149,7 +192,7 @@ export default function TradeFilters({ filters, onChange, trades = [] }) {
 
         {hasFilters && (
           <button
-            onClick={() => onChange({ search: '', direction: '', result: '', strategy: '', tag: '', timeframe: '' })}
+            onClick={() => onChange({ search: '', direction: '', result: '', strategy: '', tag: '', timeframe: '', month: '' })}
             className="p-1.5 rounded-lg text-text-muted hover:text-loss hover:bg-bg-tertiary transition-colors cursor-pointer"
           >
             <X className="w-4 h-4" />
