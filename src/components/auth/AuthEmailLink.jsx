@@ -27,6 +27,9 @@ export default function AuthEmailLink() {
       return;
     }
 
+    const controller = new AbortController();
+    const timeoutId = setTimeout(() => controller.abort(), 15000);
+
     (async () => {
       try {
         // Complete sign-in in this Safari tab (not blocked here)
@@ -38,6 +41,7 @@ export default function AuthEmailLink() {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({ idToken }),
+          signal: controller.signal,
         });
         const workerData = await workerRes.json();
         if (!workerRes.ok || !workerData.customToken) {
@@ -53,9 +57,20 @@ export default function AuthEmailLink() {
 
         setStatus('done');
       } catch (err) {
-        setError(err.message || 'שגיאה');
+        if (err.name === 'AbortError') {
+          setError('הבקשה לוקחת יותר מדי זמן — נסה שוב');
+        } else {
+          setError(err.message || 'שגיאה');
+        }
+      } finally {
+        clearTimeout(timeoutId);
       }
     })();
+
+    return () => {
+      clearTimeout(timeoutId);
+      controller.abort();
+    };
   }, []);
 
   return (

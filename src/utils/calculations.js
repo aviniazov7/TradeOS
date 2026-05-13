@@ -147,10 +147,29 @@ export function calculateSharpeRatio(returns) {
 
 /**
  * Calculate Calmar Ratio (totalReturn% / maxDrawdown%)
+ * Returns Infinity when there's been positive return without any drawdown,
+ * matching Sortino's "all-wins" behavior. Callers should clamp via clampRatio
+ * before display.
  */
 export function calculateCalmarRatio(totalReturnPercent, maxDrawdownPercent) {
-  if (maxDrawdownPercent === 0) return 0;
+  if (maxDrawdownPercent === 0) {
+    return totalReturnPercent > 0 ? Infinity : 0;
+  }
   return Math.abs(totalReturnPercent / maxDrawdownPercent);
+}
+
+/**
+ * Clamp a financial ratio (Sortino/Calmar/ProfitFactor/etc.) to a safe display range.
+ * - NaN / undefined / null → 0
+ * - Infinity → cap (default 10)
+ * - Otherwise: pass through
+ * Use this in UI layers so unbounded ratios render as a finite "best case" value
+ * instead of "Infinity" or rendering as 0 inconsistently.
+ */
+export function clampRatio(value, cap = 10) {
+  if (value == null || Number.isNaN(value)) return 0;
+  if (!Number.isFinite(value)) return cap;
+  return value;
 }
 
 /**

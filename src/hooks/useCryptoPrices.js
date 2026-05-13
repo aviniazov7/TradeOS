@@ -24,9 +24,14 @@ export function useCryptoPrices({ symbols, extraCoins = [], enabled = true } = {
   const idsKey = targetCoins.map((c) => c.coingeckoId).filter(Boolean).join(',');
 
   const abortRef = useRef(null);
+  const inFlightRef = useRef(false);
 
   const fetchData = useCallback(async (signal) => {
     if (!idsKey) return;
+    // Skip if the previous tick is still in flight — prevents stacked requests
+    // when the API is slower than POLL_INTERVAL.
+    if (inFlightRef.current) return;
+    inFlightRef.current = true;
     try {
       // Pass full coin objects so fetchPrices can use Binance API (no rate limits)
       const data = await fetchPrices(targetCoins, signal);
@@ -40,6 +45,7 @@ export function useCryptoPrices({ symbols, extraCoins = [], enabled = true } = {
       console.error('Failed to fetch crypto prices:', err);
       setError(err.message);
     } finally {
+      inFlightRef.current = false;
       if (!signal?.aborted) setLoading(false);
     }
   }, [idsKey]); // eslint-disable-line react-hooks/exhaustive-deps

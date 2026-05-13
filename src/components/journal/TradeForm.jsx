@@ -15,6 +15,7 @@ import { useUserTimeframes } from '../../hooks/useUserTimeframes';
 import { useUserTags } from '../../hooks/useUserTags';
 import { useUserMistakes } from '../../hooks/useUserMistakes';
 import { calculatePnLPercent, calculateRR, calculateNetPnL, calculatePartialPnL, calculateWeightedExitPrice } from '../../utils/calculations';
+import { getSessionFromDate } from '../../utils/sessions';
 import { formatCurrency, formatPercent, formatRR } from '../../utils/formatters';
 
 registerLocale('he', he);
@@ -60,15 +61,6 @@ function parseDate(val) {
   return isNaN(d.getTime()) ? null : d;
 }
 
-function getSessionFromDate(date) {
-  if (!date) return '';
-  const utcH = date.getUTCHours();
-  if (utcH >= 12 && utcH < 16) return 'London/NY Overlap';
-  if (utcH >= 7 && utcH < 12) return 'London';
-  if (utcH >= 16 && utcH < 21) return 'New York';
-  return 'Asia';
-}
-
 const MENTAL_RATINGS = [
   { key: 'focusRating', label: 'ריכוז וחדות', emoji: ['😴', '😐', '🙂', '😊', '🎯'] },
   { key: 'planAdherenceRating', label: 'הצמדות לתוכנית', emoji: ['❌', '😬', '🤔', '✅', '🏆'] },
@@ -107,9 +99,12 @@ export default function TradeForm({ isOpen, onClose, trade, onSave, riskSettings
           ? [{ price: String(trade.exitPrice), percent: '100' }]
           : [];
 
-      // Auto-detect reached TPs from live price (use ref to avoid stale closure without re-running on every tick)
+      // Auto-detect reached TPs from live price (use ref to avoid stale closure without re-running on every tick).
+      // Only for non-closed trades — editing a historical closed trade should never overwrite its exit data
+      // based on today's price.
       const currentPrice = livePricesRef.current[trade.pair] || livePricesRef.current[trade.symbol];
-      if (currentPrice && loadedAdditionalExits.length) {
+      const isClosed = trade.status === 'closed';
+      if (currentPrice && loadedAdditionalExits.length && !isClosed) {
         const isLong = trade.direction === 'long';
         let remainingPct = 100 - loadedAdditionalExits.reduce((s, e) => s + (parseFloat(e.percent) || 0), 0);
         loadedAdditionalExits = loadedAdditionalExits.map((exit, i) => {
@@ -323,13 +318,33 @@ export default function TradeForm({ isOpen, onClose, trade, onSave, riskSettings
       return;
     }
 
+    // Future-date guard — prevents the equity curve and drawdown stats from
+    // including events that haven't happened yet
+    const now = new Date();
+    const entryD = parseDate(form.entryDate);
+    const exitD = parseDate(form.exitDate);
+    if (entryD && entryD > now) {
+      toast.error('תאריך הכניסה לא יכול להיות בעתיד');
+      return;
+    }
+    if (exitD && exitD > now) {
+      toast.error('תאריך היציאה לא יכול להיות בעתיד');
+      return;
+    }
+    if (entryD && exitD && exitD < entryD) {
+      toast.error('תאריך היציאה חייב להיות אחרי תאריך הכניסה');
+      return;
+    }
+
     setSaving(true);
     try {
       const finalPair = form.pair;
       const finalStrategy = form.strategy;
       const finalTimeframe = form.timeframe;
       const quantity = ps / entryPrice;
-      const leverage = parseInt(form.leverage) || 1;
+      // Match ImportTrades' clamp range (1–200x) so manual entry can't produce
+      // out-of-range values that break downstream stats.
+      const leverage = Math.min(200, Math.max(1, parseInt(form.leverage) || 1));
 
       const allExits = validAdditional;
       const totalExitPercent = allExits.reduce((s, e) => s + e.percent, 0);
@@ -517,11 +532,13 @@ export default function TradeForm({ isOpen, onClose, trade, onSave, riskSettings
                 <span className="text-xs font-semibold text-profit/90">Take Profit</span>
                 {additionalExitsPercent > 0 && (
                   <span className={`text-[10px] font-semibold px-2 py-0.5 rounded-full ${
-                    additionalExitsPercent >= 100 ? 'bg-profit/20 text-profit' :
                     additionalExitsPercent > 100 ? 'bg-loss/20 text-loss' :
+                    additionalExitsPercent === 100 ? 'bg-profit/20 text-profit' :
                     'bg-amber-400/15 text-amber-400'
                   }`}>
-                    {additionalExitsPercent.toFixed(0)}% נסגר
+                    {additionalExitsPercent > 100
+                      ? `${additionalExitsPercent.toFixed(0)}% — חורג מ-100%`
+                      : `${additionalExitsPercent.toFixed(0)}% נסגר`}
                   </span>
                 )}
               </div>
@@ -709,6 +726,7 @@ export default function TradeForm({ isOpen, onClose, trade, onSave, riskSettings
               <label className={labelClass}>תאריך כניסה</label>
               <DatePicker selected={form.entryDate} onChange={(date) => update('entryDate', date)}
                 showTimeSelect timeFormat="HH:mm" timeIntervals={15} dateFormat="dd/MM/yyyy HH:mm"
+                maxDate={new Date()}
                 locale="he" placeholderText="בחר תאריך..." className={inputClass} wrapperClassName="w-full"
                 popperPlacement="bottom-start" portalId="datepicker-portal" />
             </div>
@@ -716,6 +734,8 @@ export default function TradeForm({ isOpen, onClose, trade, onSave, riskSettings
               <label className={labelClass}>תאריך סגירה</label>
               <DatePicker selected={form.exitDate} onChange={(date) => update('exitDate', date)}
                 showTimeSelect timeFormat="HH:mm" timeIntervals={15} dateFormat="dd/MM/yyyy HH:mm"
+                maxDate={new Date()}
+                minDate={form.entryDate || undefined}
                 locale="he" placeholderText="בחר תאריך..." className={inputClass} wrapperClassName="w-full"
                 popperPlacement="bottom-start" portalId="datepicker-portal" />
             </div>
@@ -751,8 +771,9 @@ export default function TradeForm({ isOpen, onClose, trade, onSave, riskSettings
             className="flex-1 py-2.5 rounded-lg bg-bg-tertiary text-text-primary hover:bg-border-hover transition-colors cursor-pointer">
             ביטול
           </button>
-          <button type="submit" disabled={saving}
-            className="flex-1 py-2.5 rounded-lg bg-accent-primary text-black font-semibold hover:bg-accent-hover transition-colors cursor-pointer disabled:opacity-50">
+          <button type="submit" disabled={saving || additionalExitsPercent > 100}
+            title={additionalExitsPercent > 100 ? 'סך אחוזי היציאות חורג מ-100%' : undefined}
+            className="flex-1 py-2.5 rounded-lg bg-accent-primary text-black font-semibold hover:bg-accent-hover transition-colors cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed">
             {saving ? 'שומר...' : trade ? 'עדכן עסקה' : 'שמור עסקה'}
           </button>
         </div>

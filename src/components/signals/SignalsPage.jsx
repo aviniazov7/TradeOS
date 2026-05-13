@@ -117,7 +117,6 @@ export default function SignalsPage() {
           >
             <Plus className="w-4 h-4" />
             <span className="hidden sm:inline">סיגנל חדש</span>
-            <span className="sm:hidden">הוסף</span>
           </button>
         </div>
 

@@ -114,8 +114,8 @@ export default function StrategyManager() {
     <motion.div variants={pageVariants} initial="initial" animate="animate" exit="exit" transition={pageTransition}>
       <div className="flex items-center justify-between mb-6">
         <h1 className="text-2xl font-bold text-text-primary">אסטרטגיות</h1>
-        <button onClick={openNew} className="flex items-center gap-2 bg-accent-primary text-bg-primary font-semibold px-4 py-2 rounded-lg hover:bg-accent-hover transition-colors cursor-pointer">
-          <Plus className="w-4 h-4" /> אסטרטגיה חדשה
+        <button onClick={openNew} className="flex items-center gap-2 bg-accent-primary text-bg-primary font-semibold px-2.5 py-1.5 md:px-4 md:py-2 rounded-lg hover:bg-accent-hover transition-colors cursor-pointer text-xs md:text-sm">
+          <Plus className="w-4 h-4" /> <span className="hidden sm:inline">אסטרטגיה חדשה</span>
         </button>
       </div>
 

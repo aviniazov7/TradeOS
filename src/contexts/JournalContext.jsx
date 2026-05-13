@@ -48,6 +48,12 @@ export function JournalProvider({ children }) {
 
   // Auto-migration for existing users
   const migratingRef = useRef(false);
+  const cancelledRef = useRef(false);
+
+  useEffect(() => {
+    cancelledRef.current = false;
+    return () => { cancelledRef.current = true; };
+  }, []);
 
   useEffect(() => {
     if (!user || loading) return;
@@ -57,9 +63,11 @@ export function JournalProvider({ children }) {
       migratingRef.current = true;
       try {
         const { data: userData } = await getUserProfile(user.uid);
+        if (cancelledRef.current) return;
         if (userData?.settings?.journalMigrated) return;
 
         const journalsSnap = await getRawCollectionSnapshot(user.uid, 'journals');
+        if (cancelledRef.current) return;
         if (!journalsSnap.empty) {
           // Journals already exist, just mark as migrated
           await setUserProfile(user.uid, { settings: { journalMigrated: true } });
@@ -76,9 +84,11 @@ export function JournalProvider({ children }) {
           createdAt: timestamp(),
           updatedAt: timestamp(),
         });
+        if (cancelledRef.current) return;
 
         // Batch update all existing trades
         const tradesSnap = await getRawCollectionSnapshot(user.uid, 'trades');
+        if (cancelledRef.current) return;
         if (tradesSnap.docs.length > 0) {
           await batchUpdateFromSnapshot(tradesSnap.docs, (tradeDoc) => {
             if (!tradeDoc.data().journalId) {
@@ -86,15 +96,17 @@ export function JournalProvider({ children }) {
             }
             return null;
           });
+          if (cancelledRef.current) return;
         }
 
         // Mark migration complete
         await setUserProfile(user.uid, { settings: { journalMigrated: true } });
+        if (cancelledRef.current) return;
 
         // Auto-select the created journal
         setActiveJournalId(journalRef.id);
       } catch (error) {
-        console.error('Journal migration error:', error);
+        if (!cancelledRef.current) console.error('Journal migration error:', error);
       }
     }
 

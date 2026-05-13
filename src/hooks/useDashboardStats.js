@@ -12,7 +12,9 @@ import {
   calculateSortinoRatio,
   calculateRecoveryFactor,
   pearsonCorrelation,
+  clampRatio,
 } from '../utils/calculations';
+import { getSessionFromDate, SESSION_UNKNOWN } from '../utils/sessions';
 
 function getPeriodStart(period) {
   const now = new Date();
@@ -120,27 +122,19 @@ export function useDashboardStats(trades, initialBalance = 0, period = 'all') {
       monthlyMap[key].pnl += t.netPnl ?? t.pnl ?? 0;
     });
     let cumulativePnl = 0;
+    // Keys are formatted YYYY-MM (zero-padded), so a plain string compare gives
+    // chronological order without depending on locale-specific collation rules.
     const monthlyPerformance = Object.entries(monthlyMap)
-      .sort(([a], [b]) => a.localeCompare(b))
+      .sort(([a], [b]) => (a < b ? -1 : a > b ? 1 : 0))
       .map(([month, d]) => {
         cumulativePnl += d.pnl;
         return { month, ...d, winRate: d.count > 0 ? (d.wins / d.count) * 100 : 0, cumulativePnl };
       });
 
-    // Session Performance — uses Israel timezone (UTC+2/+3)
-    const getSession = (date) => {
-      if (!date) return 'לא צוין';
-      const d = date?.toDate ? date.toDate() : new Date(date);
-      if (isNaN(d.getTime())) return 'לא צוין';
-      const h = parseInt(new Intl.DateTimeFormat('en-US', { hour: 'numeric', hour12: false, timeZone: 'Asia/Jerusalem' }).format(d));
-      if (h >= 14 && h < 18) return 'London/NY Overlap';
-      if (h >= 9 && h < 14) return 'London';
-      if (h >= 18 && h < 23) return 'New York';
-      return 'Asia';
-    };
+    // Session Performance — uses shared utility (Israel timezone, single source of truth)
     const sessionMap = {};
     closed.forEach((t) => {
-      const sess = t.session || getSession(t.entryDate);
+      const sess = t.session || getSessionFromDate(t.entryDate, { fallback: SESSION_UNKNOWN });
       if (!sessionMap[sess]) sessionMap[sess] = { name: sess, count: 0, wins: 0, losses: 0, pnl: 0 };
       sessionMap[sess].count++;
       if (t.result === 'win') sessionMap[sess].wins++;
@@ -222,8 +216,7 @@ export function useDashboardStats(trades, initialBalance = 0, period = 'all') {
   const advancedStats = useMemo(() => {
     const returns = closed.map((t) => t.netPnl ?? t.pnl ?? 0);
     const sharpeRatio = calculateSharpeRatio(returns);
-    const rawSortino = calculateSortinoRatio(returns);
-    const sortinoRatio = isNaN(rawSortino) ? 0 : rawSortino === Infinity ? 10 : rawSortino;
+    const sortinoRatio = clampRatio(calculateSortinoRatio(returns));
 
     let equity = initialBalance || 0;
     const equityCurve = sorted.map((t) => {
@@ -233,8 +226,7 @@ export function useDashboardStats(trades, initialBalance = 0, period = 'all') {
     // Pass initialBalance as the true starting peak so drawdown from
     // the very first losing trade is captured correctly (fixes initialBalance=0 bug)
     const maxDrawdown = equityCurve.length ? calculateMaxDrawdown(equityCurve, initialBalance || 0) : 0;
-    const rawCalmar = calculateCalmarRatio(coreStats.balanceChangePercent, maxDrawdown);
-    const calmarRatio = isNaN(rawCalmar) || !isFinite(rawCalmar) ? 0 : rawCalmar;
+    const calmarRatio = clampRatio(calculateCalmarRatio(coreStats.balanceChangePercent, maxDrawdown));
 
     // Start peak at initialBalance (before first trade) — fixes the case where
     // initialBalance=0 and first trade is a loss: equityCurve[0] would be negative,

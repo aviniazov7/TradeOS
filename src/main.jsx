@@ -9,12 +9,15 @@ createRoot(document.getElementById('root')).render(
   </StrictMode>
 );
 
-// Register Service Worker for PWA — force update so cached SW doesn't intercept auth
+// Register Service Worker for PWA.
+// IMPORTANT: do NOT call reg.update() on every load — combined with the SW's
+// `clients.claim()`, that caused the page to reload every time the iOS PWA
+// returned from a backgrounded state (e.g. after opening a TradingView link).
+// The browser still checks for SW updates on its own schedule.
 if ('serviceWorker' in navigator) {
   window.addEventListener('load', () => {
     navigator.serviceWorker
       .register('/sw.js', { updateViaCache: 'none' })
-      .then((reg) => reg.update())
       .catch(() => {});
   });
 }

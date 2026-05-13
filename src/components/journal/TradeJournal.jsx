@@ -44,7 +44,7 @@ import { formatCurrency, formatPercent, formatDuration, formatDate } from '../..
 import { TAG_LABELS } from '../../utils/constants';
 import { pageVariants, pageTransition, staggerContainer } from '../../utils/animations';
 
-const defaultFilters = { search: '', direction: '', result: '', strategy: '', tag: '', timeframe: '' };
+const defaultFilters = { search: '', direction: '', result: '', strategy: '', tag: '', timeframe: '', month: '' };
 const tooltipStyle = { background: '#141414', border: '1px solid #1a1a1a', borderRadius: '8px', fontSize: '12px', color: '#f0f0f0' };
 const PIE_COLORS = ['#22c55e', '#ef4444', '#eab308'];
 
@@ -60,7 +60,11 @@ export default function TradeJournal() {
   const [filters, setFilters] = useState(() => {
     try {
       const saved = localStorage.getItem('tj_filters');
-      return saved ? { ...defaultFilters, ...JSON.parse(saved) } : defaultFilters;
+      if (!saved) return defaultFilters;
+      const parsed = JSON.parse(saved);
+      // Guard against corrupted/legacy payloads (arrays, primitives, null).
+      if (!parsed || typeof parsed !== 'object' || Array.isArray(parsed)) return defaultFilters;
+      return { ...defaultFilters, ...parsed };
     } catch { return defaultFilters; }
   });
   const [period, setPeriod] = useState('all');
@@ -73,6 +77,7 @@ export default function TradeJournal() {
   const deleteTimersRef = useRef({});
   const deleteBatchRef = useRef(new Set());
   const deleteBatchTimerRef = useRef(null);
+  const mountedRef = useRef(true);
 
   // Helper: filter trades and jump to trades tab
   const filterAndJump = (partialFilter) => {
@@ -85,7 +90,9 @@ export default function TradeJournal() {
   // Cleanup delete timers on unmount — also clears batch timer to avoid
   // setState-after-unmount and orphaned deletes when navigating away mid-undo window
   useEffect(() => {
+    mountedRef.current = true;
     return () => {
+      mountedRef.current = false;
       Object.values(deleteTimersRef.current).forEach(clearTimeout);
       if (deleteBatchTimerRef.current) clearTimeout(deleteBatchTimerRef.current);
     };
@@ -131,6 +138,13 @@ export default function TradeJournal() {
       const d = typeof raw.toDate === 'function' ? raw.toDate() : new Date(raw);
       return isNaN(d.getTime()) ? 0 : d.getTime();
     };
+    const monthKey = (t) => {
+      const raw = t.exitDate || t.entryDate;
+      if (!raw) return '';
+      const d = typeof raw.toDate === 'function' ? raw.toDate() : new Date(raw);
+      if (isNaN(d.getTime())) return '';
+      return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`;
+    };
     return trades.filter((t) => {
       if (pendingDeletes.has(t.id)) return false;
       if (filters.search && !t.pair.toLowerCase().includes(filters.search.toLowerCase())) return false;
@@ -139,6 +153,7 @@ export default function TradeJournal() {
       if (filters.strategy && t.strategy !== filters.strategy) return false;
       if (filters.timeframe && (filters.timeframe === 'N/A' ? !!t.timeframe : t.timeframe !== filters.timeframe)) return false;
       if (filters.tag && !(Array.isArray(t.tags) ? t.tags : []).includes(filters.tag)) return false;
+      if (filters.month && monthKey(t) !== filters.month) return false;
       return true;
     }).sort((a, b) => getTime(b) - getTime(a));
   }, [trades, filters, pendingDeletes]);
@@ -328,20 +343,27 @@ export default function TradeJournal() {
     if (deleteBatchToastRef.current) toast.dismiss(deleteBatchToastRef.current);
     showToast();
 
-    deleteBatchTimerRef.current = setTimeout(() => {
+    const myTimer = setTimeout(() => {
+      // Guard: if this timer was replaced by a newer one (or cleared by undo), bail out.
+      if (deleteBatchTimerRef.current !== myTimer) return;
       const batch = new Set(deleteBatchRef.current);
       deleteBatchRef.current.clear();
       deleteBatchTimerRef.current = null;
       deleteBatchToastRef.current = null;
+      if (batch.size === 0) return;
       batch.forEach((id) => {
-        deleteTrade(id).catch(() => toast.error('שגיאה במחיקת העסקה'));
+        deleteTrade(id).catch(() => {
+          if (mountedRef.current) toast.error('שגיאה במחיקת העסקה');
+        });
       });
+      if (!mountedRef.current) return;
       setPendingDeletes((prev) => {
         const next = new Set(prev);
         batch.forEach((id) => next.delete(id));
         return next;
       });
     }, 5200);
+    deleteBatchTimerRef.current = myTimer;
   };
 
   const handleCloseForm = () => {
@@ -610,7 +632,7 @@ export default function TradeJournal() {
                   <ResponsiveContainer width="100%" height={160}>
                     <PieChart>
                       <Pie data={analytics.pieData} dataKey="value" nameKey="name" cx="50%" cy="50%" innerRadius={40} outerRadius={65} paddingAngle={3}>
-                        {analytics.pieData.map((_, i) => <Cell key={i} fill={PIE_COLORS[i]} />)}
+                        {analytics.pieData.map((d, i) => <Cell key={d.name} fill={PIE_COLORS[i]} />)}
                       </Pie>
                       <Tooltip contentStyle={tooltipStyle} labelStyle={{ color: '#a0a0b8', fontSize: '11px' }} itemStyle={{ color: '#f0f0f0' }} cursor={{ fill: 'rgba(255,255,255,0.04)' }} />
                     </PieChart>
@@ -636,8 +658,8 @@ export default function TradeJournal() {
                       <YAxis tick={{ fill: '#606070', fontSize: 10 }} axisLine={false} tickLine={false} orientation="right" />
                       <Tooltip contentStyle={tooltipStyle} labelStyle={{ color: '#a0a0b8', fontSize: '11px' }} itemStyle={{ color: '#f0f0f0' }} cursor={{ fill: 'rgba(255,255,255,0.04)' }} formatter={(val) => [formatCurrency(val), 'רווח/הפסד']} />
                       <Bar dataKey="pnl" radius={[4, 4, 0, 0]} animationDuration={800}>
-                        {analytics.dailyPnL.map((entry, i) => (
-                          <Cell key={i} fill={entry.pnl >= 0 ? '#22c55e' : '#ef4444'} />
+                        {analytics.dailyPnL.map((entry) => (
+                          <Cell key={entry.date} fill={entry.pnl >= 0 ? '#22c55e' : '#ef4444'} />
                         ))}
                       </Bar>
                     </BarChart>

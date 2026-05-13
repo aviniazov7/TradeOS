@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, useRef, useEffect } from 'react';
 import { useAuth } from '../../contexts/AuthContext';
 import { Navigate } from 'react-router-dom';
 import { TrendingUp, Mail, Eye, EyeOff } from 'lucide-react';
@@ -20,6 +20,21 @@ export default function LoginPage() {
   const [linkEmail, setLinkEmail] = useState('');
   const [linkSent, setLinkSent] = useState(false);
   const [linkSending, setLinkSending] = useState(false);
+
+  // Refs for polling intervals/timeouts so they can be cleared on unmount.
+  const linkPollRef = useRef(null);
+  const linkPollTimeoutRef = useRef(null);
+  const googlePollRef = useRef(null);
+  const googlePollTimeoutRef = useRef(null);
+
+  useEffect(() => {
+    return () => {
+      if (linkPollRef.current) clearInterval(linkPollRef.current);
+      if (linkPollTimeoutRef.current) clearTimeout(linkPollTimeoutRef.current);
+      if (googlePollRef.current) clearInterval(googlePollRef.current);
+      if (googlePollTimeoutRef.current) clearTimeout(googlePollTimeoutRef.current);
+    };
+  }, []);
 
   if (user) return <Navigate to="/" replace />;
 
@@ -44,23 +59,28 @@ export default function LoginPage() {
       localStorage.setItem('tradeos-email-link', linkEmail);
       setLinkSent(true);
       // Poll Firestore for the auth bridge doc written by Safari after clicking the email link
-      let pollInterval;
       const emailToCheck = linkEmail;
-      pollInterval = setInterval(async () => {
+      if (linkPollRef.current) clearInterval(linkPollRef.current);
+      if (linkPollTimeoutRef.current) clearTimeout(linkPollTimeoutRef.current);
+      linkPollRef.current = setInterval(async () => {
         try {
           const snap = await getDoc(doc(db, 'authBridge', emailToCheck));
           if (!snap.exists()) return;
           const data = snap.data();
           if (data.exp < Date.now()) { await deleteDoc(doc(db, 'authBridge', emailToCheck)); return; }
-          clearInterval(pollInterval);
+          if (linkPollRef.current) { clearInterval(linkPollRef.current); linkPollRef.current = null; }
+          if (linkPollTimeoutRef.current) { clearTimeout(linkPollTimeoutRef.current); linkPollTimeoutRef.current = null; }
           await deleteDoc(doc(db, 'authBridge', emailToCheck));
           await signInWithCustomToken(auth, data.customToken);
           // onAuthStateChanged in AuthContext will pick up the new user
-        } catch (e) {
+        } catch {
           // keep polling silently
         }
       }, 3000);
-      setTimeout(() => clearInterval(pollInterval), 300_000);
+      linkPollTimeoutRef.current = setTimeout(() => {
+        if (linkPollRef.current) { clearInterval(linkPollRef.current); linkPollRef.current = null; }
+        linkPollTimeoutRef.current = null;
+      }, 300_000);
     } catch (err) {
       toast.error(err.message || 'שגיאה בשליחת הקישור');
     }
@@ -69,23 +89,30 @@ export default function LoginPage() {
 
   // iOS PWA: open Google sign-in in a regular Safari tab (not blocked there),
   // then poll for the localStorage signal the popup writes on success.
+  // Note: currently unused — kept for future iOS PWA Google sign-in path.
+  // eslint-disable-next-line no-unused-vars
   const handleGooglePopup = () => {
     const signalKey = 'tradeos-auth-signal';
     const prevSignal = localStorage.getItem(signalKey) || '';
 
     window.open('/auth-google', '_blank');
 
-    let checkInterval;
-    checkInterval = setInterval(() => {
+    if (googlePollRef.current) clearInterval(googlePollRef.current);
+    if (googlePollTimeoutRef.current) clearTimeout(googlePollTimeoutRef.current);
+    googlePollRef.current = setInterval(() => {
       const newSignal = localStorage.getItem(signalKey) || '';
       if (newSignal && newSignal !== prevSignal) {
-        clearInterval(checkInterval);
+        if (googlePollRef.current) { clearInterval(googlePollRef.current); googlePollRef.current = null; }
+        if (googlePollTimeoutRef.current) { clearTimeout(googlePollTimeoutRef.current); googlePollTimeoutRef.current = null; }
         window.location.reload();
       }
     }, 500);
 
     // Give up after 5 minutes
-    setTimeout(() => clearInterval(checkInterval), 300_000);
+    googlePollTimeoutRef.current = setTimeout(() => {
+      if (googlePollRef.current) { clearInterval(googlePollRef.current); googlePollRef.current = null; }
+      googlePollTimeoutRef.current = null;
+    }, 300_000);
   };
 
   const { registerWithEmail, loginWithEmail, resetPassword } = useAuth();

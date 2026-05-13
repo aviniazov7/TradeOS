@@ -5,15 +5,23 @@ import { getUserSetting, setUserSetting } from '../services/firestoreService';
 const WORKER_URL = import.meta.env.VITE_WORKER_URL || '';
 
 async function syncToWorker(method, path, body) {
-  if (!WORKER_URL) return;
+  if (!WORKER_URL) {
+    console.warn(`syncToWorker skipped: VITE_WORKER_URL not configured (${method} ${path})`);
+    return;
+  }
   try {
-    await fetch(`${WORKER_URL}${path}`, {
+    const res = await fetch(`${WORKER_URL}${path}`, {
       method,
       headers: { 'Content-Type': 'application/json' },
       body: body ? JSON.stringify(body) : undefined,
     });
-  } catch {
-    // Worker sync is best-effort
+    if (!res.ok) {
+      // Worker sync is best-effort — log so failures surface in devtools rather
+      // than disappearing silently when the Worker is down or misconfigured.
+      console.warn(`syncToWorker ${method} ${path} responded ${res.status}`);
+    }
+  } catch (err) {
+    console.warn(`syncToWorker ${method} ${path} failed:`, err);
   }
 }
 

@@ -23,23 +23,41 @@ const QUICK_QUESTIONS = [
   'חוק מאמץ מול תוצאה',
 ];
 
-const SANITIZE_CONFIG = { ALLOWED_TAGS: ['strong', 'code', 'em'], ALLOWED_ATTR: ['class'] };
+// Sanitize-last invariant: ALL HTML construction (markdown→tags) happens here,
+// then DOMPurify runs as the final step before dangerouslySetInnerHTML. Never
+// pass un-sanitized HTML to the DOM. Tags/attrs are tightly restricted so
+// event handlers (onclick, onerror, etc.) and embedded scripts are stripped.
+const SANITIZE_CONFIG = {
+  ALLOWED_TAGS: ['strong', 'code', 'em'],
+  ALLOWED_ATTR: ['class'],
+  FORBID_TAGS: ['script', 'style', 'iframe', 'object', 'embed', 'link'],
+  ALLOW_DATA_ATTR: false,
+};
+
+function buildLineHtml(line) {
+  let formatted = line.replace(/\*\*(.+?)\*\*/g, '<strong>$1</strong>');
+  formatted = formatted.replace(/`(.+?)`/g, '<code class="bg-bg-tertiary px-1 py-0.5 rounded text-accent-primary text-[11px]">$1</code>');
+  return formatted;
+}
+
+function safeHtml(raw) {
+  return DOMPurify.sanitize(raw, SANITIZE_CONFIG);
+}
 
 function formatAIText(text) {
   const lines = text.split('\n');
   return lines.map((line, i) => {
-    let formatted = line.replace(/\*\*(.+?)\*\*/g, '<strong>$1</strong>');
-    formatted = formatted.replace(/`(.+?)`/g, '<code class="bg-bg-tertiary px-1 py-0.5 rounded text-accent-primary text-[11px]">$1</code>');
+    const formatted = buildLineHtml(line);
 
     if (/^[-•*]\s/.test(formatted)) {
-      return <li key={i} className="mr-4 mb-0.5" dangerouslySetInnerHTML={{ __html: DOMPurify.sanitize(formatted.replace(/^[-•*]\s/, ''), SANITIZE_CONFIG) }} />;
+      return <li key={i} className="mr-4 mb-0.5" dangerouslySetInnerHTML={{ __html: safeHtml(formatted.replace(/^[-•*]\s/, '')) }} />;
     }
     if (/^#{1,3}\s/.test(formatted)) {
       const content = formatted.replace(/^#{1,3}\s/, '');
-      return <p key={i} className="font-bold text-text-primary mt-2 mb-1" dangerouslySetInnerHTML={{ __html: DOMPurify.sanitize(content, SANITIZE_CONFIG) }} />;
+      return <p key={i} className="font-bold text-text-primary mt-2 mb-1" dangerouslySetInnerHTML={{ __html: safeHtml(content) }} />;
     }
     if (!formatted.trim()) return <br key={i} />;
-    return <p key={i} className="mb-0.5" dangerouslySetInnerHTML={{ __html: DOMPurify.sanitize(formatted, SANITIZE_CONFIG) }} />;
+    return <p key={i} className="mb-0.5" dangerouslySetInnerHTML={{ __html: safeHtml(formatted) }} />;
   });
 }
 

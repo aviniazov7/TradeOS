@@ -28,14 +28,17 @@ export default function FearGreedGauge({ expanded = false }) {
   const [error, setError] = useState(false);
 
   useEffect(() => {
+    let cancelled = false;
     const fetchFGI = async () => {
       try {
         const limit = expanded ? 31 : 1;
         const res = await fetch(`https://api.alternative.me/fng/?limit=${limit}`);
-        if (!res.ok) throw new Error();
+        if (!res.ok) throw new Error(`FGI API responded ${res.status}`);
         const json = await res.json();
+        if (cancelled) return;
         if (json.data?.[0]) {
           setFgiData(json.data[0]);
+          setError(false);
           if (expanded && json.data.length > 1) {
             setHistory({
               yesterday: json.data[1],
@@ -43,15 +46,28 @@ export default function FearGreedGauge({ expanded = false }) {
               lastMonth: json.data[30] || json.data[json.data.length - 1] || null,
             });
           }
+        } else {
+          throw new Error('FGI API returned no data');
         }
-      } catch {
+      } catch (err) {
+        if (cancelled) return;
+        console.warn('Fear & Greed Index fetch failed:', err);
         setError(true);
       }
     };
     fetchFGI();
+    return () => { cancelled = true; };
   }, [expanded]);
 
-  if (error || !fgiData) return null;
+  if (error) {
+    return (
+      <div className="bg-bg-secondary border border-border-primary rounded-xl p-3 flex flex-col items-center justify-center text-center min-h-[88px]">
+        <Gauge className="w-4 h-4 text-text-muted mb-1" />
+        <span className="text-[11px] text-text-muted">לא ניתן לטעון מד פחד</span>
+      </div>
+    );
+  }
+  if (!fgiData) return null;
 
   const value = parseInt(fgiData.value);
   const classification = CLASSIFICATIONS[fgiData.value_classification] || { label: fgiData.value_classification, color: '#eab308' };

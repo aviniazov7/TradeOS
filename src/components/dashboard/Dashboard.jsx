@@ -13,7 +13,6 @@ import { useBacktests } from '../../hooks/useBacktests';
 import { useTradingPlans } from '../../hooks/useTradingPlans';
 import { useDCA } from '../../hooks/useDCA';
 import { useMentalityJournals } from '../../hooks/useMentalityJournals';
-import { useAuth } from '../../contexts/AuthContext';
 import DashboardSkeleton from './DashboardSkeleton';
 import PendingLimitOrders from './PendingLimitOrders';
 import ExchangeLogo from '../shared/ExchangeLogo';
@@ -29,7 +28,6 @@ const getExchangeLabel = (value) => EXCHANGES.find((e) => e.value === value)?.la
 
 export default function Dashboard() {
   const navigate = useNavigate();
-  const { user } = useAuth();
   const { journals, setActiveJournalId } = useJournalContext();
   const [showAllJournals, setShowAllJournals] = useState(false);
   const [hideBalances, setHideBalances] = useState(() => localStorage.getItem('tradeos_hideBalances') === 'true');
@@ -196,14 +194,6 @@ export default function Dashboard() {
     return { totalInvested, totalEntries, activeCount, coins };
   }, [dcaPlans]);
 
-  const greeting = useMemo(() => {
-    const hour = new Date().getHours();
-    if (hour >= 5 && hour < 12) return { text: 'בוקר טוב', icon: <Sunrise className="w-5 h-5 text-amber-400" /> };
-    if (hour >= 12 && hour < 18) return { text: 'צהריים טובים', icon: <Sunrise className="w-5 h-5 text-orange-400" /> };
-    if (hour >= 18 && hour < 21) return { text: 'ערב טוב', icon: <Moon className="w-5 h-5 text-indigo-400" /> };
-    return { text: 'לילה טוב', icon: <Moon className="w-5 h-5 text-indigo-300" /> };
-  }, []);
-
   if (loading) return <DashboardSkeleton />;
 
   const cardClass = 'bg-bg-secondary border border-border-primary rounded-xl p-5';
@@ -218,12 +208,6 @@ export default function Dashboard() {
 
   return (
     <motion.div variants={pageVariants} initial="initial" animate="animate" exit="exit" transition={pageTransition}>
-      <div className="flex items-center gap-2 mb-6">
-        {greeting.icon}
-        <h1 className="text-2xl font-bold text-text-primary whitespace-nowrap">{greeting.text}{user?.displayName ? `, ${user.displayName}` : ''}</h1>
-      </div>
-
-
       <PendingLimitOrders trades={globalStats.openTrades} livePrices={livePrices} />
 
       {/* Global summary cards */}

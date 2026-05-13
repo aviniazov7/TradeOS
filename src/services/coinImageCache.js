@@ -225,17 +225,25 @@ const STATIC_ICONS = {
 
 let memoryCache = null;
 let fetchPromise = null;
+// True only after a successful API fetch (not just STATIC_ICONS seeding).
+// Used to decide whether to retry on the next prefetch call.
+let apiFetchSucceeded = false;
+// Throttle retries when the API is failing — avoid hammering during a session.
+let lastApiAttempt = 0;
+const RETRY_BACKOFF_MS = 5 * 60 * 1000; // 5 minutes
 
 function loadFromStorage() {
   try {
     const stored = localStorage.getItem(CACHE_KEY);
     if (stored) {
       const { data, ts, v } = JSON.parse(stored);
-      if (v === CACHE_VERSION && Date.now() - ts < CACHE_DURATION) {
+      if (v === CACHE_VERSION && Date.now() - ts < CACHE_DURATION && data && Object.keys(data).length > 0) {
         memoryCache = data;
+        // localStorage contains data that was saved after a successful API fetch
+        apiFetchSucceeded = true;
         return true;
       }
-      // Stale version — clear it so we re-fetch correct URLs
+      // Stale version or empty payload — clear it so we re-fetch correct URLs
       localStorage.removeItem(CACHE_KEY);
     }
   } catch { /* ignore */ }
@@ -306,9 +314,16 @@ async function fetchMarketsFromBase(base) {
 }
 
 export async function prefetchCoinImages() {
-  // If we have fresh cache with many entries, skip re-fetch
-  if (memoryCache && Object.keys(memoryCache).length > 50) return memoryCache;
-  if (loadFromStorage() && Object.keys(memoryCache).length > 50) return memoryCache;
+  // Skip re-fetch only if we already got a successful API response. STATIC_ICONS
+  // alone can satisfy the >50 entries check, which previously masked persistent
+  // API failures and prevented retry for the rest of the session.
+  if (apiFetchSucceeded && memoryCache && Object.keys(memoryCache).length > 50) return memoryCache;
+  if (loadFromStorage() && apiFetchSucceeded && Object.keys(memoryCache).length > 50) return memoryCache;
+
+  // Avoid hammering a failing API: throttle retry attempts.
+  if (!apiFetchSucceeded && lastApiAttempt && Date.now() - lastApiAttempt < RETRY_BACKOFF_MS) {
+    return memoryCache || {};
+  }
 
   if (fetchPromise) return fetchPromise;
 
@@ -320,6 +335,7 @@ export async function prefetchCoinImages() {
       if (!memoryCache[k]) memoryCache[k] = v;
     }
 
+    lastApiAttempt = Date.now();
     try {
       const workerUrl = import.meta.env.VITE_WORKER_URL || '';
       let fetched = 0;
@@ -338,7 +354,10 @@ export async function prefetchCoinImages() {
         } catch { /* silent */ }
       }
 
-      if (fetched > 0) saveToStorage();
+      if (fetched > 0) {
+        apiFetchSucceeded = true;
+        saveToStorage();
+      }
     } catch {
       // STATIC_ICONS already seeded above
     }

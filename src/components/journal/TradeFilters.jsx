@@ -11,13 +11,17 @@ const btnClass = (active) =>
       : 'bg-bg-tertiary text-text-muted border border-border-primary hover:border-border-hover'
   }`;
 
+const HEBREW_MONTHS = ['ינואר', 'פברואר', 'מרץ', 'אפריל', 'מאי', 'יוני', 'יולי', 'אוגוסט', 'ספטמבר', 'אוקטובר', 'נובמבר', 'דצמבר'];
+
+const EMPTY_FILTERS = { search: '', direction: '', result: '', strategy: '', tag: '', timeframe: '', month: '' };
+
 export default function TradeFilters({ filters, onChange, trades = [] }) {
   const { allStrategies } = useUserStrategies('journal');
   const [open, setOpen] = useState(false);
   const set = (key, value) => onChange({ ...filters, [key]: value });
   const toggle = (key, value) => set(key, filters[key] === value ? '' : value);
-  const hasFilters = filters.search || filters.direction || filters.result || filters.strategy || filters.tag || filters.timeframe;
-  const activeCount = [filters.direction, filters.result, filters.strategy, filters.tag, filters.timeframe].filter(Boolean).length;
+  const hasFilters = filters.search || filters.direction || filters.result || filters.strategy || filters.tag || filters.timeframe || filters.month;
+  const activeCount = [filters.direction, filters.result, filters.strategy, filters.tag, filters.timeframe, filters.month].filter(Boolean).length;
 
   const allTags = useMemo(() => {
     const tagSet = new Set();
@@ -26,6 +30,25 @@ export default function TradeFilters({ filters, onChange, trades = [] }) {
       tags.forEach((tag) => tagSet.add(tag));
     });
     return [...tagSet].sort();
+  }, [trades]);
+
+  // Build month options from actual trade dates (latest first) so the dropdown
+  // only shows months the user has trades in.
+  const monthOptions = useMemo(() => {
+    const seen = new Set();
+    trades.forEach((t) => {
+      const raw = t.exitDate || t.entryDate;
+      if (!raw) return;
+      const d = typeof raw.toDate === 'function' ? raw.toDate() : new Date(raw);
+      if (isNaN(d.getTime())) return;
+      seen.add(`${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`);
+    });
+    return [...seen]
+      .sort((a, b) => (a < b ? 1 : a > b ? -1 : 0))
+      .map((key) => {
+        const [year, month] = key.split('-');
+        return { value: key, label: `${HEBREW_MONTHS[parseInt(month, 10) - 1]} ${year}` };
+      });
   }, [trades]);
 
   const strategyOptions = allStrategies.map((s) => ({ value: s, label: s }));
@@ -48,7 +71,7 @@ export default function TradeFilters({ filters, onChange, trades = [] }) {
           )}
           {hasFilters && (
             <button
-              onClick={(e) => { e.stopPropagation(); onChange({ search: '', direction: '', result: '', strategy: '', tag: '', timeframe: '' }); }}
+              onClick={(e) => { e.stopPropagation(); onChange(EMPTY_FILTERS); }}
               className="mr-auto p-0.5 rounded text-text-muted hover:text-loss transition-colors cursor-pointer"
             >
               <X className="w-3.5 h-3.5" />
@@ -98,6 +121,17 @@ export default function TradeFilters({ filters, onChange, trades = [] }) {
                 compact
               />
             )}
+
+            {monthOptions.length > 0 && (
+              <SelectDropdown
+                value={filters.month}
+                onChange={(val) => set('month', val)}
+                options={monthOptions}
+                placeholder="כל החודשים"
+                allowClear
+                compact
+              />
+            )}
           </div>
         )}
       </div>
@@ -141,6 +175,17 @@ export default function TradeFilters({ filters, onChange, trades = [] }) {
           />
         )}
 
+        {monthOptions.length > 0 && (
+          <SelectDropdown
+            value={filters.month}
+            onChange={(val) => set('month', val)}
+            options={monthOptions}
+            placeholder="כל החודשים"
+            allowClear
+            compact
+          />
+        )}
+
         {filters.timeframe && (
           <button onClick={() => set('timeframe', '')} className={`${btnClass(true)} flex items-center gap-1`}>
             {filters.timeframe} <X className="w-3 h-3" />
@@ -149,7 +194,7 @@ export default function TradeFilters({ filters, onChange, trades = [] }) {
 
         {hasFilters && (
           <button
-            onClick={() => onChange({ search: '', direction: '', result: '', strategy: '', tag: '', timeframe: '' })}
+            onClick={() => onChange(EMPTY_FILTERS)}
             className="p-1.5 rounded-lg text-text-muted hover:text-loss hover:bg-bg-tertiary transition-colors cursor-pointer"
           >
             <X className="w-4 h-4" />

@@ -1395,7 +1395,11 @@ async function handleContact(request, env, cors) {
       devChatId = await env.ALERTS_KV.get(`uid:${env.DEV_UID}`).catch(() => null);
     }
     if (!devChatId) {
-      return new Response(JSON.stringify({ ok: true, note: 'queued' }), { headers: jsonHeaders });
+      console.error('Contact: no dev chat ID — DEV_CHAT_ID secret missing and no uid:DEV_UID in KV');
+      return new Response(
+        JSON.stringify({ error: 'הנמען לא מוגדר במערכת. פנה למפתח להגדיר DEV_CHAT_ID או לחבר את הטלגרם של המפתח.' }),
+        { status: 503, headers: jsonHeaders },
+      );
     }
 
     // Look up user's Telegram chatId (if connected)
@@ -1434,8 +1438,25 @@ async function handleContact(request, env, cors) {
         method: 'POST',
         headers: { 'Content-Type': 'application/json', 'Authorization': authHeader },
         body: JSON.stringify(body),
-      }).catch(() => null);
-      result = proxy ? await proxy.json().catch(() => ({ ok: true })) : { ok: true };
+      }).catch((err) => {
+        console.error('Contact proxy fetch failed:', err);
+        return null;
+      });
+      if (!proxy) {
+        return new Response(
+          JSON.stringify({ error: 'שירות הטלגרם זמנית לא זמין. הגדר BOT_TOKEN על ה-Worker או ודא שה-proxy worker פעיל.' }),
+          { status: 502, headers: jsonHeaders },
+        );
+      }
+      if (!proxy.ok) {
+        const errText = await proxy.text().catch(() => '');
+        console.error('Contact proxy non-OK response:', proxy.status, errText);
+        return new Response(
+          JSON.stringify({ error: `שירות הטלגרם החזיר שגיאה (${proxy.status})` }),
+          { status: 502, headers: jsonHeaders },
+        );
+      }
+      result = await proxy.json().catch(() => ({ ok: false }));
     }
     if (!result?.ok) {
       console.error('Contact send failed:', result);
