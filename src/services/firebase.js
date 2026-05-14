@@ -9,34 +9,34 @@ import { getFirestore } from 'firebase/firestore';
 import { getStorage } from 'firebase/storage';
 import { initializeAppCheck, ReCaptchaV3Provider } from 'firebase/app-check';
 
-const firebaseConfig = {
-  apiKey: import.meta.env.VITE_FIREBASE_API_KEY,
-  authDomain: import.meta.env.VITE_FIREBASE_AUTH_DOMAIN,
-  projectId: import.meta.env.VITE_FIREBASE_PROJECT_ID,
-  storageBucket: import.meta.env.VITE_FIREBASE_STORAGE_BUCKET,
-  messagingSenderId: import.meta.env.VITE_FIREBASE_MESSAGING_SENDER_ID,
-  appId: import.meta.env.VITE_FIREBASE_APP_ID,
+// Firebase web client config is intentionally public — Google's docs are
+// explicit about this. The actual security boundary is Firestore Rules
+// + App Check, not the apiKey. We hardcode it as a fallback so the app
+// never breaks when a deploy environment forgets to set the env vars,
+// and still allow override via VITE_FIREBASE_* if needed.
+const DEFAULTS = {
+  apiKey: 'AIzaSyAL7ni8lEqSmd5i6BfA9P3cvlBWEtOgcQ8',
+  authDomain: 'tradeos-91a58.firebaseapp.com',
+  projectId: 'tradeos-91a58',
+  storageBucket: 'tradeos-91a58.firebasestorage.app',
+  messagingSenderId: '80529278454',
+  appId: '1:80529278454:web:957e19da0d1bd049ff33d7',
 };
 
-// Detect missing/placeholder env vars at module load — `initializeAuth`
-// silently accepts a bad apiKey and only fails later inside an async auth
-// call, leaving the user staring at a blank screen. Throwing here lets the
-// React ErrorBoundary surface a clear setup message.
-const REQUIRED_KEYS = ['apiKey', 'authDomain', 'projectId', 'appId'];
-const missing = REQUIRED_KEYS.filter((k) => {
-  const v = firebaseConfig[k];
-  return !v || typeof v !== 'string' || v.startsWith('your_');
-});
-if (missing.length) {
-  const err = new Error(
-    `Firebase configuration missing: ${missing
-      .map((k) => `VITE_FIREBASE_${k.replace(/[A-Z]/g, (c) => '_' + c).toUpperCase()}`)
-      .join(', ')}`
-  );
-  err.code = 'tradeos/firebase-config-missing';
-  err.missing = missing;
-  throw err;
-}
+const pickEnv = (key, fallback) => {
+  const v = import.meta.env[key];
+  if (!v || typeof v !== 'string' || v.startsWith('your_')) return fallback;
+  return v;
+};
+
+const firebaseConfig = {
+  apiKey: pickEnv('VITE_FIREBASE_API_KEY', DEFAULTS.apiKey),
+  authDomain: pickEnv('VITE_FIREBASE_AUTH_DOMAIN', DEFAULTS.authDomain),
+  projectId: pickEnv('VITE_FIREBASE_PROJECT_ID', DEFAULTS.projectId),
+  storageBucket: pickEnv('VITE_FIREBASE_STORAGE_BUCKET', DEFAULTS.storageBucket),
+  messagingSenderId: pickEnv('VITE_FIREBASE_MESSAGING_SENDER_ID', DEFAULTS.messagingSenderId),
+  appId: pickEnv('VITE_FIREBASE_APP_ID', DEFAULTS.appId),
+};
 
 const app = initializeApp(firebaseConfig);
 
