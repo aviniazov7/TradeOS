@@ -333,7 +333,6 @@ function ExchangeCard({ exchange, data, savedData, syncing, saving, onUpdate, on
   const [editing, setEditing] = useState(false);
   const [guideOpen, setGuideOpen] = useState(false);
   const [hovered, setHovered] = useState(false);
-  const [syncHovered, setSyncHovered] = useState(false);
   const { id, name, tagline, accent, glow, canSync, extraField } = exchange;
 
   const isConnected = !!(savedData?.apiKey && savedData?.apiSecret);
@@ -483,36 +482,16 @@ function ExchangeCard({ exchange, data, savedData, syncing, saving, onUpdate, on
                   נתק
                 </motion.button>
                 {canSync ? (
-                  <motion.button onClick={onSync} disabled={syncing}
-                    onHoverStart={() => setSyncHovered(true)}
-                    onHoverEnd={() => setSyncHovered(false)}
-                    whileTap={{ scale: 0.97 }}
-                    className="flex-1 py-2.5 rounded-xl text-sm font-bold cursor-pointer disabled:opacity-50 flex items-center justify-center gap-2 relative overflow-hidden"
-                    animate={{ boxShadow: syncHovered && !syncing ? `0 0 18px -3px ${accent}60` : '0 0 0px transparent' }}
-                    transition={{ duration: 0.25 }}
-                    style={{ background: `${accent}18`, color: accent, border: `1px solid ${syncHovered && !syncing ? accent + 'aa' : accent + '40'}` }}>
-                    {/* Shimmer sweep */}
-                    <motion.div
-                      className="absolute top-0 bottom-0 pointer-events-none"
-                      style={{ width: '45%', background: `linear-gradient(105deg, transparent 0%, ${accent}35 50%, transparent 100%)`, skewX: '-15deg' }}
-                      initial={{ left: '-50%' }}
-                      animate={syncHovered && !syncing ? { left: ['-50%', '140%'] } : { left: '-50%' }}
-                      transition={syncHovered && !syncing ? { duration: 0.65, ease: 'easeInOut', repeat: Infinity, repeatDelay: 0.9 } : { duration: 0 }}
-                    />
-                    <span className="relative z-10 flex items-center gap-2">
-                      {syncing ? <RefreshCw className="w-4 h-4 animate-spin" /> : (
-                        <>
-                          <motion.span
-                            animate={syncHovered ? { y: [0, -3, 0], scale: [1, 1.25, 1] } : { y: 0, scale: 1 }}
-                            transition={{ duration: 0.45, repeat: syncHovered ? Infinity : 0, repeatDelay: 0.15 }}
-                          >
-                            <Zap className="w-4 h-4" />
-                          </motion.span>
-                          סנכרן עסקאות
-                        </>
-                      )}
-                    </span>
-                  </motion.button>
+                  <button onClick={onSync} disabled={syncing}
+                    className="flex-1 py-2.5 rounded-xl text-sm font-bold cursor-pointer disabled:opacity-50 flex items-center justify-center gap-2 transition-colors"
+                    style={{ background: `${accent}18`, color: accent, border: `1px solid ${accent}40` }}>
+                    {syncing ? <RefreshCw className="w-4 h-4 animate-spin" /> : (
+                      <>
+                        <Zap className="w-4 h-4" />
+                        סנכרן עסקאות
+                      </>
+                    )}
+                  </button>
                 ) : (
                   <div className="flex-1 py-2.5 rounded-xl text-xs text-center text-text-muted border border-dashed border-border-primary flex items-center justify-center gap-1.5">
                     <Link2 className="w-3.5 h-3.5" />ייבוא CSV בלבד

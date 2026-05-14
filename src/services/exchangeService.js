@@ -1,7 +1,7 @@
-const WORKER_URL = import.meta.env.VITE_WORKER_URL || '';
+const WORKER_URL =
+  import.meta.env.VITE_WORKER_URL || 'https://trade-os.aviniazov7.workers.dev';
 
 export async function syncExchangeTrades(exchange, apiKey, apiSecret, passphrase, limit = 50) {
-  if (!WORKER_URL) throw new Error('Worker URL not configured');
   const res = await fetch(`${WORKER_URL}/exchange/sync`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
@@ -13,7 +13,6 @@ export async function syncExchangeTrades(exchange, apiKey, apiSecret, passphrase
 }
 
 export async function syncOpenPositions(exchange, apiKey, apiSecret) {
-  if (!WORKER_URL) throw new Error('Worker URL not configured');
   const res = await fetch(`${WORKER_URL}/exchange/open-positions`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
