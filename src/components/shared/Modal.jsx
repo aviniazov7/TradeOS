@@ -70,13 +70,13 @@ export default function Modal({ isOpen, onClose, title, children, maxWidth = 'ma
                     background: 'rgba(255,255,255,0.02)',
                   }}
                 >
+                  <h2 className="text-base font-bold text-text-primary">{title}</h2>
                   <button
                     onClick={onClose}
                     className="p-1.5 rounded-lg hover:bg-white/10 transition-colors cursor-pointer text-text-muted hover:text-text-primary"
                   >
                     <X className="w-4 h-4" />
                   </button>
-                  <h2 className="text-base font-bold text-text-primary">{title}</h2>
                 </div>
 
                 {/* Content */}
