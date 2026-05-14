@@ -1,3 +1,17 @@
+<div align="center">
+
+<img src="https://readme-typing-svg.demolab.com/?lines=TradeOS+%E2%80%94+Trading+Operating+System;%D7%99%D7%95%D7%9E%D7%9F+%D7%9E%D7%A1%D7%97%D7%A8+%E2%80%A2+%D7%90%D7%A0%D7%9C%D7%99%D7%98%D7%99%D7%A7%D7%A1+%E2%80%A2+%D7%91%D7%95%D7%98+%D7%98%D7%9C%D7%92%D7%A8%D7%9D&font=Fira+Code&size=22&duration=2800&pause=900&color=F7A600&center=true&vCenter=true&width=720&height=50" alt="TradeOS" />
+
+<br/>
+
+![React](https://img.shields.io/badge/React-19-61DAFB?logo=react&logoColor=000&style=for-the-badge)
+![Vite](https://img.shields.io/badge/Vite-7-646CFF?logo=vite&logoColor=fff&style=for-the-badge)
+![Firebase](https://img.shields.io/badge/Firebase-12-FFA000?logo=firebase&logoColor=000&style=for-the-badge)
+![Cloudflare](https://img.shields.io/badge/Cloudflare%20Workers-F38020?logo=cloudflare&logoColor=fff&style=for-the-badge)
+![Tailwind](https://img.shields.io/badge/Tailwind-4-06B6D4?logo=tailwindcss&logoColor=fff&style=for-the-badge)
+
+</div>
+
 # TradeOS — Trading Operating System
 
 <div dir="rtl">
@@ -153,33 +167,60 @@ All notifications are toggleable via the bot settings menu (`/settings`).
 
 ## Architecture
 
-```
-┌─────────────────┐      ┌──────────────┐      ┌──────────────────────────┐
-│   React App     │      │   Firebase   │      │   Cloudflare Worker      │
-│   (Vite)        │─────▶│   Firestore  │      │                          │
-│                 │      │   Auth       │      │  Telegram Bot            │
-│   Firebase      │      │   Hosting    │      │  Exchange Sync Proxy     │
-│   Hosting       │      └──────────────┘      │  ┌────────────────────┐  │
-└────────┬────────┘                            │  │    Workers KV      │  │
-         │                                     │  └────────────────────┘  │
-         │  POST /exchange/sync                │                          │
-         │  POST /daily-stats                  │  Cron: * * * * *         │
-         └────────────────────────────────────▶│                          │
-                                               │  Binance / MEXC / Bybit  │
-                                               │  OKX / Bitget APIs       │
-                                               │  QuickChart.io           │
-                                               │  Telegram API            │
-                                               └──────────────────────────┘
+```mermaid
+flowchart TD
+    user["👤 User<br/>Browser · iOS PWA"] --> app
+
+    %% Web app
+    app["⚛️ React + Vite SPA<br/>Tailwind · Framer Motion · RTL"] --> auth & svc & worker
+
+    %% Firebase
+    auth["🔐 Firebase Auth<br/>Google OAuth · Email Link"] --> store
+    svc["🧩 Service Layer<br/>firestoreService · authService · exchangeService"] --> store & worker
+    store[("🔥 Firestore<br/>trades · journals · plans<br/>backtests · mentality · notes")]
+    hosting["🌐 Firebase Hosting<br/>SPA · SW · cache headers"] -.serves.-> app
+
+    %% Worker
+    worker["☁️ Cloudflare Worker<br/>(edge runtime)"] --> sync & bot & cron
+
+    %% Exchange pipeline
+    sync["🔄 Exchange Sync Proxy<br/>HMAC-SHA256 signing"] --> exchanges
+    exchanges["💱 Bybit · MEXC · OKX · Bitget<br/>(read-only API keys)"]
+
+    %% Telegram bot pipeline
+    bot["🤖 Telegram Bot<br/>commands · inline keyboards"] --> kv & tg & market
+    kv[("📦 Workers KV<br/>users · alerts · watchlists · stats")]
+    tg["📱 Telegram Bot API<br/>sendMessage · sendPhoto"]
+    market["📊 Binance Spot+Futures<br/>QuickChart · ForexFactory<br/>Fear & Greed Index"]
+
+    %% Scheduled
+    cron{{"⏰ Cron · * * * * *"}} --> alerts & summary & calendar
+    alerts["💥 Price alerts"] --> bot
+    summary["📈 Daily P&L summary"] --> bot
+    calendar["🗓️ Economic calendar<br/>(High-Impact USD)"] --> bot
+
+    classDef firebase fill:#FFA000,stroke:#E65100,color:#000,stroke-width:2px
+    classDef cloudflare fill:#F38020,stroke:#A04200,color:#000,stroke-width:2px
+    classDef react fill:#61DAFB,stroke:#0A6E89,color:#000,stroke-width:2px
+    classDef external fill:#2A2A2A,stroke:#666,color:#FFF
+    classDef cron fill:#8B5CF6,stroke:#5B21B6,color:#FFF,stroke-width:2px
+
+    class auth,store,hosting firebase
+    class worker,sync,bot,kv cloudflare
+    class app,svc react
+    class exchanges,tg,market external
+    class cron,alerts,summary,calendar cron
 ```
 
 All Firebase SDK calls are isolated in a **service layer** (`src/services/`). Hooks and components never import directly from `firebase/*` — they use service functions instead.
 
-```
-Components / Contexts / Hooks
-        ↓
-   Service Layer (firestoreService.js, authService.js, exchangeService.js)
-        ↓
-   Firebase SDK / Cloudflare Worker
+```mermaid
+flowchart LR
+    A["Components<br/>Contexts · Hooks"] --> B["Service Layer<br/>firestoreService · authService · exchangeService"]
+    B --> C["Firebase SDK"] & D["Cloudflare Worker"]
+
+    classDef boundary fill:#1f2937,stroke:#F7A600,color:#fff,stroke-width:2px
+    class B boundary
 ```
 
 ---
