@@ -1,6 +1,6 @@
 <div align="center">
 
-<img src="https://readme-typing-svg.demolab.com/?lines=TradeOS+%E2%80%94+Trading+Operating+System;%D7%99%D7%95%D7%9E%D7%9F+%D7%9E%D7%A1%D7%97%D7%A8+%E2%80%A2+%D7%90%D7%A0%D7%9C%D7%99%D7%98%D7%99%D7%A7%D7%A1+%E2%80%A2+%D7%91%D7%95%D7%98+%D7%98%D7%9C%D7%92%D7%A8%D7%9D&font=Fira+Code&size=22&duration=2800&pause=900&color=F7A600&center=true&vCenter=true&width=720&height=50" alt="TradeOS" />
+<img src="https://readme-typing-svg.demolab.com/?lines=TradeOS+%E2%80%94+Trading+Operating+System;Journal+%E2%80%A2+Analytics+%E2%80%A2+Backtest+%E2%80%A2+Telegram+Bot&font=Fira+Code&size=22&duration=2800&pause=900&color=F7A600&center=true&vCenter=true&width=720&height=50" alt="TradeOS" />
 
 <br/>
 
