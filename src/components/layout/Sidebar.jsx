@@ -11,8 +11,10 @@ import {
   Activity,
   Newspaper,
   Calculator,
+  Shield,
 } from 'lucide-react';
 import PositionCalculator from '../calculator/PositionCalculator';
+import { useAuth } from '../../contexts/AuthContext';
 
 const navItems = [
   { to: '/', label: 'דשבורד', icon: LayoutDashboard },
@@ -26,7 +28,11 @@ const navItems = [
 ];
 
 export default function Sidebar({ mobileOpen, onClose }) {
+  const { isAdmin } = useAuth();
   const [calcOpen, setCalcOpen] = useState(false);
+  const items = isAdmin
+    ? [...navItems, { to: '/admin', label: 'ניהול', icon: Shield }]
+    : navItems;
   const handleNavClick = () => {
     onClose();
   };
@@ -65,7 +71,7 @@ export default function Sidebar({ mobileOpen, onClose }) {
 
             {/* Navigation */}
             <nav className="flex-1 px-3 py-4 space-y-1 overflow-y-auto">
-              {navItems.map((item) => (
+              {items.map((item) => (
                   <NavLink
                     key={item.to}
                     to={item.to}

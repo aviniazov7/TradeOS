@@ -131,6 +131,16 @@ export async function deleteUserProfile(uid) {
   return deleteDoc(doc(db, 'users', uid));
 }
 
+// ─── Admin Operations ───────────────────────────────────────────
+
+/** Get all user root documents. Allowed only for admins by Firestore rules. */
+export async function getAllUsers() {
+  return withRetry(async () => {
+    const snap = await getDocs(collection(db, 'users'));
+    return snap.docs.map((d) => ({ id: d.id, ...d.data() }));
+  });
+}
+
 // ─── Batch Operations ───────────────────────────────────────────
 
 /** Batch update documents from a snapshot, chunked to 499 per batch */

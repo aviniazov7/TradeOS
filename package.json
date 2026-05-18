@@ -8,7 +8,7 @@
     "build": "vite build",
     "lint": "eslint .",
     "preview": "npm run build && wrangler dev",
-    "deploy": "npm run build && wrangler deploy && firebase deploy --only hosting --project tradeos-91a58"
+    "deploy": "npm run build && wrangler deploy && firebase deploy --only hosting,firestore:rules --project tradeos-91a58"
   },
   "dependencies": {
     "canvas-confetti": "^1.9.4",

@@ -24,6 +24,7 @@ const AuthContext = createContext(null);
 
 export function AuthProvider({ children }) {
   const [user, setUser] = useState(null);
+  const [profile, setProfile] = useState(null);
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
@@ -38,38 +39,44 @@ export function AuthProvider({ children }) {
         setUser(firebaseUser);
         setLoading(false);
 
-        // Ensure the user profile doc exists (create on first sign-in).
-        // Runs in the background; failure is non-fatal.
+        // Load the profile doc in the background (also creates it on first
+        // sign-in). Used for the `role` field that gates the admin panel.
+        const defaultProfile = {
+          displayName: firebaseUser.displayName || firebaseUser.email?.split('@')[0] || 'User',
+          email: firebaseUser.email,
+          photoURL: firebaseUser.photoURL,
+          createdAt: timestamp(),
+          onboardingCompleted: false,
+          settings: {
+            defaultLeverage: 10,
+            defaultRiskPercent: 1,
+            baseCurrency: 'USDT',
+            strategies: [
+              'SOS (Sign of Strength)',
+              'SOW (Sign of Weakness)',
+              'Trendline Break',
+              'Supply & Demand',
+              'Wyckoff',
+              'AMD',
+              'Order Block',
+              'Heikin Ashi',
+            ],
+            favoriteCoins: ['BTC', 'ETH', 'SOL', 'AVAX', 'BNB', 'DOGE'],
+          },
+        };
         getUserProfile(firebaseUser.uid)
-          .then(({ exists }) => {
-            if (exists) return;
-            return setUserProfile(firebaseUser.uid, {
-              displayName: firebaseUser.displayName || firebaseUser.email?.split('@')[0] || 'User',
-              email: firebaseUser.email,
-              photoURL: firebaseUser.photoURL,
-              createdAt: timestamp(),
-              onboardingCompleted: false,
-              settings: {
-                defaultLeverage: 10,
-                defaultRiskPercent: 1,
-                baseCurrency: 'USDT',
-                strategies: [
-                  'SOS (Sign of Strength)',
-                  'SOW (Sign of Weakness)',
-                  'Trendline Break',
-                  'Supply & Demand',
-                  'Wyckoff',
-                  'AMD',
-                  'Order Block',
-                  'Heikin Ashi',
-                ],
-                favoriteCoins: ['BTC', 'ETH', 'SOL', 'AVAX', 'BNB', 'DOGE'],
-              },
-            }, false);
+          .then(({ exists, data }) => {
+            if (exists) {
+              setProfile(data);
+              return;
+            }
+            setProfile(defaultProfile);
+            return setUserProfile(firebaseUser.uid, defaultProfile, false);
           })
           .catch(() => {});
       } else {
         setUser(null);
+        setProfile(null);
         setLoading(false);
       }
     });
@@ -118,8 +125,9 @@ export function AuthProvider({ children }) {
   };
 
   const isEmailUser = user?.providerData?.some((p) => p.providerId === 'password') || false;
+  const isAdmin = profile?.role === 'admin';
 
-  const value = { user, loading, loginWithGoogle, loginWithGoogleIdToken, registerWithEmail, loginWithEmail, logout, changePassword, resetPassword, deleteAccount, isEmailUser };
+  const value = { user, profile, isAdmin, loading, loginWithGoogle, loginWithGoogleIdToken, registerWithEmail, loginWithEmail, logout, changePassword, resetPassword, deleteAccount, isEmailUser };
 
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;
 }
