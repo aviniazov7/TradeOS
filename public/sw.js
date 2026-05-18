@@ -1,4 +1,4 @@
-const CACHE_NAME = 'tradeos-v10';
+const CACHE_NAME = 'tradeos-v11';
 const STATIC_ASSETS = [
   '/icon-192.png',
   '/icon-512.png',
@@ -23,12 +23,21 @@ function shouldBypass(url) {
   return BYPASS_HOST_PATTERNS.some((p) => url.includes(p));
 }
 
-// Install — cache static assets (NOT index.html)
+// Install — cache static assets (NOT index.html).
+// No skipWaiting() here: a new version stays "waiting" until the user
+// explicitly opts in via the in-app update prompt (SKIP_WAITING message),
+// so updates never reload the app mid-use.
 self.addEventListener('install', (event) => {
   event.waitUntil(
     caches.open(CACHE_NAME).then((cache) => cache.addAll(STATIC_ASSETS))
   );
-  self.skipWaiting();
+});
+
+// Activate the waiting worker on demand (user clicked "update now").
+self.addEventListener('message', (event) => {
+  if (event.data && event.data.type === 'SKIP_WAITING') {
+    self.skipWaiting();
+  }
 });
 
 // Activate — clean old caches

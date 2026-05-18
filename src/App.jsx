@@ -10,6 +10,7 @@ import AuthEmailLink from './components/auth/AuthEmailLink';
 import Layout from './components/layout/Layout';
 import LoadingSpinner from './components/shared/LoadingSpinner';
 import Toast from './components/shared/Toast';
+import UpdatePrompt from './components/shared/UpdatePrompt';
 import ErrorBoundary from './components/shared/ErrorBoundary';
 
 // Lazy-loaded pages — factory refs kept so we can preload them at idle
@@ -102,6 +103,7 @@ function MainApp() {
             </Routes>
           </Suspense>
           <Toast />
+          <UpdatePrompt />
         </BacktestProvider>
       </JournalProvider>
     </AuthProvider>
