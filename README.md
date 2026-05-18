@@ -329,12 +329,80 @@ API keys are **read-only** and signed server-side via the Cloudflare Worker — 
 
 ---
 
-## Deployment
+## Deployment & Release Workflow
+
+### How to ship any change
 
 ```bash
-# Full deploy (build + worker + hosting)
-npm run deploy
+git pull origin main          # get the latest
+# ...make your changes...
+npm run deploy                # build + worker + hosting + Firestore rules
 ```
+
+`npm run deploy` runs: `vite build` → `wrangler deploy` (Cloudflare Worker) →
+`firebase deploy --only hosting,firestore:rules`. Firestore security rules are
+published automatically, so rule changes never get left behind.
+
+### Version bump — required on every release
+
+Two values must be bumped together so users reliably receive the update:
+
+| File | Constant | Why |
+|---|---|---|
+| `src/utils/constants.js` | `APP_VERSION` | Shown in the sidebar; how you confirm a device's version |
+| `public/sw.js` | `CACHE_NAME` (`tradeos-vN`) | Forces the service worker to register a new version |
+
+Bump `APP_VERSION` (e.g. `1.0.0` → `1.0.1`) and increment `CACHE_NAME`
+(`tradeos-v12` → `tradeos-v13`) in the same commit as your change.
+
+### In-app update prompt (how users get updates)
+
+Users are **never** force-reloaded. The flow:
+
+1. You deploy a new version (new `CACHE_NAME`).
+2. The browser downloads the new service worker in the background.
+3. The new version **waits** — it does not take over. `sw.js` deliberately
+   does not call `skipWaiting()` on install.
+4. The app detects the waiting version and shows the banner
+   *"גרסה חדשה זמינה — עדכן עכשיו"* (`src/components/shared/UpdatePrompt.jsx`).
+5. The user clicks update → the app posts `SKIP_WAITING` to the SW → the SW
+   activates → the page reloads **once** (guarded against reload loops in
+   `src/services/swUpdate.js`).
+6. First-time installs never show the banner (it's not an "update").
+
+The very first deploy after introducing this flow still updates the old way
+(close/reopen). Every deploy after that shows the banner automatically.
+
+### Rollback (bad deploy safety net)
+
+A bad release can be reverted in seconds without a redeploy:
+[Firebase Hosting → Release history](https://console.firebase.google.com/project/tradeos-91a58/hosting)
+→ pick the last good version → **Rollback**. End users cannot downgrade
+themselves; version control is centralized with the project owner.
+
+### Admin panel
+
+Route `/admin` (sidebar link "ניהול") is gated on the user's Firestore
+profile having `role: "admin"`. It is read-only. To grant the first admin
+(chicken-and-egg, since rules require `role` to read other users), set the
+`role` field to `admin` on your own document under `users/{uid}` in the
+[Firestore console](https://console.firebase.google.com/project/tradeos-91a58/firestore)
+once.
+
+### AI agent checklist (do this for every code change)
+
+1. Branch/work on `main` unless told otherwise; commit with the project
+   owner's git identity (`Avraham Niazov <aviniazov7@icloud.com>`), no
+   third-party trailers in commit messages.
+2. Make the change. Keep Firebase access inside `src/services/`.
+3. Bump `APP_VERSION` in `src/utils/constants.js` **and** `CACHE_NAME`
+   in `public/sw.js`.
+4. `npm run build` must pass. Pre-existing lint errors (duplicate keys,
+   `worker/index.js`, `motion`/JSX false-positives) are not deploy blockers;
+   do not add new ones in changed files.
+5. Commit + `git push origin main`.
+6. Tell the owner to run `git pull origin main && npm run deploy`.
+   (The remote sandbox cannot deploy — no Firebase/Cloudflare credentials.)
 
 ---
 
