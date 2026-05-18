@@ -15,7 +15,6 @@ import {
 } from 'lucide-react';
 import PositionCalculator from '../calculator/PositionCalculator';
 import { useAuth } from '../../contexts/AuthContext';
-import { APP_VERSION } from '../../utils/constants';
 
 const navItems = [
   { to: '/', label: 'דשבורד', icon: LayoutDashboard },
@@ -101,9 +100,6 @@ export default function Sidebar({ mobileOpen, onClose }) {
                 <Calculator className="w-5 h-5" />
                 מחשבון פוזיציה
               </button>
-              <div className="text-center text-xs text-text-secondary mt-3" dir="ltr">
-                v{APP_VERSION}
-              </div>
             </div>
 
           </motion.aside>

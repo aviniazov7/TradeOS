@@ -18,6 +18,7 @@ import toast from 'react-hot-toast';
 import { getUserCollectionDocs, getUserProfile, setUserProfile, deleteLeaderboardEntry } from '../../services/firestoreService';
 import { useAuth } from '../../contexts/AuthContext';
 import { formatDate } from '../../utils/formatters';
+import { APP_VERSION } from '../../utils/constants';
 import ConfirmDialog from '../shared/ConfirmDialog';
 import { pageVariants, pageTransition } from '../../utils/animations';
 import { useTheme } from '../../hooks/useTheme';
@@ -351,6 +352,10 @@ export default function ProfilePage() {
           <Trash2 className="w-5 h-5" />
           מחיקת חשבון
         </button>
+      </div>
+
+      <div className="text-center text-xs text-text-muted mt-4" dir="ltr">
+        TradeOS v{APP_VERSION}
       </div>
 
       {/* Delete Confirmation */}
