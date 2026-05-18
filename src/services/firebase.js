@@ -5,7 +5,11 @@ import {
   browserLocalPersistence,
   browserPopupRedirectResolver,
 } from 'firebase/auth';
-import { getFirestore } from 'firebase/firestore';
+import {
+  initializeFirestore,
+  persistentLocalCache,
+  persistentMultipleTabManager,
+} from 'firebase/firestore';
 import { getStorage } from 'firebase/storage';
 import { initializeAppCheck, ReCaptchaV3Provider } from 'firebase/app-check';
 
@@ -61,6 +65,15 @@ export const auth = initializeAuth(app, {
 });
 
 export const googleProvider = new GoogleAuthProvider();
-export const db = getFirestore(app);
+
+// Persistent local cache (IndexedDB): on reload, listeners emit the
+// last-known data instantly and the network syncs in the background,
+// instead of every refresh blocking on a cold network fetch. Falls back
+// to an in-memory cache automatically if IndexedDB is unavailable.
+export const db = initializeFirestore(app, {
+  localCache: persistentLocalCache({
+    tabManager: persistentMultipleTabManager(),
+  }),
+});
 export const storage = getStorage(app);
 export default app;
