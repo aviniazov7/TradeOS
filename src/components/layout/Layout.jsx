@@ -4,6 +4,7 @@ import Sidebar from './Sidebar';
 import Header from './Header';
 import MobileNav from './MobileNav';
 import BackgroundIcons from '../shared/BackgroundIcons';
+import PullToRefresh from '../shared/PullToRefresh';
 import OnboardingWizard from '../onboarding/OnboardingWizard';
 import { useTheme } from '../../hooks/useTheme';
 // import { useLeaderboardSync } from '../../hooks/useLeaderboardSync';
@@ -50,7 +51,9 @@ export default function Layout() {
         style={{ WebkitOverflowScrolling: 'touch' }}
       >
         <main className="p-3 md:p-6 pb-[calc(env(safe-area-inset-bottom,0px)+96px)] lg:pb-6">
-          <Outlet />
+          <PullToRefresh>
+            <Outlet />
+          </PullToRefresh>
         </main>
       </div>
 

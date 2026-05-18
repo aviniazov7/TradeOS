@@ -4,13 +4,33 @@ import { RefreshCw } from 'lucide-react';
 const THRESHOLD = 80;
 const MAX_PULL = 120;
 
+// Walk up from the content wrapper to find the nearest vertically
+// scrollable ancestor. In this app the scroll happens inside a div with
+// `overflow-y: auto`, not on `window`, so checking window.scrollY would
+// always be 0 and falsely report "at top" mid-page.
+function getScrollParent(el) {
+  let node = el?.parentElement;
+  while (node) {
+    const { overflowY } = getComputedStyle(node);
+    if ((overflowY === 'auto' || overflowY === 'scroll') && node.scrollHeight > node.clientHeight) {
+      return node;
+    }
+    node = node.parentElement;
+  }
+  return null;
+}
+
 export default function PullToRefresh({ children }) {
   const [pullDistance, setPullDistance] = useState(0);
   const [refreshing, setRefreshing] = useState(false);
   const startY = useRef(0);
   const pulling = useRef(false);
+  const contentRef = useRef(null);
 
-  const isAtTop = () => window.scrollY <= 0;
+  const isAtTop = () => {
+    const scroller = getScrollParent(contentRef.current);
+    return scroller ? scroller.scrollTop <= 0 : window.scrollY <= 0;
+  };
 
   const handleTouchStart = useCallback((e) => {
     // Don't refresh while modal/form is open
@@ -27,6 +47,9 @@ export default function PullToRefresh({ children }) {
       setPullDistance(0);
       return;
     }
+    // Suppress the native iOS rubber-band bounce so our own indicator
+    // is visible instead of being masked by the container overscroll.
+    if (e.cancelable) e.preventDefault();
     // Damped pull effect
     const distance = Math.min(diff * 0.4, MAX_PULL);
     setPullDistance(distance);
@@ -51,7 +74,8 @@ export default function PullToRefresh({ children }) {
     if (!isTouchDevice) return;
 
     document.addEventListener('touchstart', handleTouchStart, { passive: true });
-    document.addEventListener('touchmove', handleTouchMove, { passive: true });
+    // Non-passive so handleTouchMove can preventDefault the iOS overscroll.
+    document.addEventListener('touchmove', handleTouchMove, { passive: false });
     document.addEventListener('touchend', handleTouchEnd, { passive: true });
     return () => {
       document.removeEventListener('touchstart', handleTouchStart);
@@ -78,6 +102,7 @@ export default function PullToRefresh({ children }) {
       </div>
       {/* Content with pull offset */}
       <div
+        ref={contentRef}
         style={{ transform: pullDistance > 0 ? `translateY(${pullDistance * 0.3}px)` : undefined, transition: pulling.current ? 'none' : 'transform 0.3s ease' }}
       >
         {children}

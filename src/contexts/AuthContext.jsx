@@ -30,47 +30,48 @@ export function AuthProvider({ children }) {
     // Handle redirect result from PWA Google Sign-In
     handleRedirectResult().catch(() => {});
 
-    const unsubscribe = onAuthChange(async (firebaseUser) => {
+    const unsubscribe = onAuthChange((firebaseUser) => {
       if (firebaseUser) {
-        try {
-        // Check if user doc exists, create if not
-        const { exists } = await getUserProfile(firebaseUser.uid);
-
-        if (!exists) {
-          await setUserProfile(firebaseUser.uid, {
-            displayName: firebaseUser.displayName || firebaseUser.email?.split('@')[0] || 'User',
-            email: firebaseUser.email,
-            photoURL: firebaseUser.photoURL,
-            createdAt: timestamp(),
-            onboardingCompleted: false,
-            settings: {
-              defaultLeverage: 10,
-              defaultRiskPercent: 1,
-              baseCurrency: 'USDT',
-              strategies: [
-                'SOS (Sign of Strength)',
-                'SOW (Sign of Weakness)',
-                'Trendline Break',
-                'Supply & Demand',
-                'Wyckoff',
-                'AMD',
-                'Order Block',
-                'Heikin Ashi',
-              ],
-              favoriteCoins: ['BTC', 'ETH', 'SOL', 'AVAX', 'BNB', 'DOGE'],
-            },
-          }, false);
-        }
-
+        // Show the app immediately. Firebase already restored the session
+        // from local persistence, so don't block the whole UI on a Firestore
+        // round-trip — that's what made every refresh feel slow.
         setUser(firebaseUser);
-        } catch {
-          // Firestore profile check failed — still mark user as authenticated
-          setUser(firebaseUser);
-        }
+        setLoading(false);
+
+        // Ensure the user profile doc exists (create on first sign-in).
+        // Runs in the background; failure is non-fatal.
+        getUserProfile(firebaseUser.uid)
+          .then(({ exists }) => {
+            if (exists) return;
+            return setUserProfile(firebaseUser.uid, {
+              displayName: firebaseUser.displayName || firebaseUser.email?.split('@')[0] || 'User',
+              email: firebaseUser.email,
+              photoURL: firebaseUser.photoURL,
+              createdAt: timestamp(),
+              onboardingCompleted: false,
+              settings: {
+                defaultLeverage: 10,
+                defaultRiskPercent: 1,
+                baseCurrency: 'USDT',
+                strategies: [
+                  'SOS (Sign of Strength)',
+                  'SOW (Sign of Weakness)',
+                  'Trendline Break',
+                  'Supply & Demand',
+                  'Wyckoff',
+                  'AMD',
+                  'Order Block',
+                  'Heikin Ashi',
+                ],
+                favoriteCoins: ['BTC', 'ETH', 'SOL', 'AVAX', 'BNB', 'DOGE'],
+              },
+            }, false);
+          })
+          .catch(() => {});
       } else {
         setUser(null);
+        setLoading(false);
       }
-      setLoading(false);
     });
 
     return unsubscribe;
