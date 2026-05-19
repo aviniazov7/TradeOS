@@ -13,6 +13,10 @@ concurrency:
   group: deploy-main
   cancel-in-progress: true
 
+# Needed so the auto-version-bump step can push back to main.
+permissions:
+  contents: write
+
 jobs:
   deploy:
     runs-on: ubuntu-latest
@@ -29,6 +33,18 @@ jobs:
           cache: npm
 
       - run: npm ci
+
+      # Auto-bump APP_VERSION + CACHE_NAME so users always get the update
+      # banner without anyone remembering to do it manually. The "[skip ci]"
+      # commit message stops this push from re-triggering the workflow.
+      - name: Bump version
+        run: |
+          node scripts/bump-version.mjs
+          git config user.name 'Avraham Niazov'
+          git config user.email 'aviniazov7@icloud.com'
+          git add src/utils/constants.js public/sw.js
+          git commit -m 'chore: bump version [skip ci]'
+          git push origin HEAD:main
 
       # Firebase web config is hardcoded as a fallback in src/services/firebase.js,
       # so no VITE_FIREBASE_* env vars are needed here for the build to work.
