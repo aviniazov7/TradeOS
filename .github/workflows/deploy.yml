@@ -38,10 +38,15 @@ jobs:
       - name: Write Firebase service account
         run: echo '${{ secrets.FIREBASE_SERVICE_ACCOUNT }}' > "$RUNNER_TEMP/firebase-sa.json"
 
-      - name: Deploy Hosting + Firestore rules
+      # Hosting only. The firebase-adminsdk service account can deploy Hosting
+      # but lacks Service Usage permission to deploy firestore:rules (403 on the
+      # API-enablement check). Firestore rules change rarely — deploy them
+      # manually with `firebase deploy --only firestore:rules` when they change,
+      # or grant the SA roles/serviceusage.serviceUsageViewer to re-enable here.
+      - name: Deploy Hosting
         env:
           GOOGLE_APPLICATION_CREDENTIALS: ${{ runner.temp }}/firebase-sa.json
-        run: npx firebase-tools deploy --only hosting,firestore:rules --project tradeos-91a58 --non-interactive
+        run: npx firebase-tools deploy --only hosting --project tradeos-91a58 --non-interactive
 
       # Cloudflare Worker (Telegram bot + exchange sync proxy). Only runs if the
       # CLOUDFLARE_API_TOKEN secret is set — otherwise skipped, and the Worker
