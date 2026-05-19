@@ -1,121 +1,34 @@
-import { useState, useRef, useEffect } from 'react';
+import { useState } from 'react';
 import { useAuth } from '../../contexts/AuthContext';
 import { Navigate } from 'react-router-dom';
 import { TrendingUp, Mail, Eye, EyeOff } from 'lucide-react';
 import toast from 'react-hot-toast';
 import BackgroundIcons from '../shared/BackgroundIcons';
-import { isStandalone } from '../../services/authService';
-import { auth, db } from '../../services/firebase';
-import { sendSignInLinkToEmail, signInWithCustomToken } from 'firebase/auth';
-import { doc, getDoc, deleteDoc } from 'firebase/firestore';
 
 export default function LoginPage() {
-  const { user, loginWithGoogle } = useAuth();
+  const { user, loginWithGoogle, registerWithEmail, loginWithEmail, resetPassword } = useAuth();
   const [mode, setMode] = useState('login');
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [displayName, setDisplayName] = useState('');
   const [showPassword, setShowPassword] = useState(false);
   const [submitting, setSubmitting] = useState(false);
-  const [linkEmail, setLinkEmail] = useState('');
-  const [linkSent, setLinkSent] = useState(false);
-  const [linkSending, setLinkSending] = useState(false);
-
-  // Refs for polling intervals/timeouts so they can be cleared on unmount.
-  const linkPollRef = useRef(null);
-  const linkPollTimeoutRef = useRef(null);
-  const googlePollRef = useRef(null);
-  const googlePollTimeoutRef = useRef(null);
-
-  useEffect(() => {
-    return () => {
-      if (linkPollRef.current) clearInterval(linkPollRef.current);
-      if (linkPollTimeoutRef.current) clearTimeout(linkPollTimeoutRef.current);
-      if (googlePollRef.current) clearInterval(googlePollRef.current);
-      if (googlePollTimeoutRef.current) clearTimeout(googlePollTimeoutRef.current);
-    };
-  }, []);
+  const [googleLoading, setGoogleLoading] = useState(false);
 
   if (user) return <Navigate to="/" replace />;
 
   const handleGoogle = async () => {
+    setGoogleLoading(true);
     try {
+      // In an installed PWA this does signInWithRedirect (popup is blocked on
+      // iOS standalone); getRedirectResult in AuthContext completes the flow.
       await loginWithGoogle();
     } catch (error) {
       console.error('Google login failed:', error);
       toast.error('שגיאה בהתחברות עם Google');
+      setGoogleLoading(false);
     }
   };
-
-  const handleSendLink = async () => {
-    if (!linkEmail) { toast.error('הכנס אימייל'); return; }
-    setLinkSending(true);
-    try {
-      const continueUrl = `https://tradeos-91a58.web.app/auth-email-link?email=${encodeURIComponent(linkEmail)}`;
-      await sendSignInLinkToEmail(auth, linkEmail, {
-        url: continueUrl,
-        handleCodeInApp: true,
-      });
-      localStorage.setItem('tradeos-email-link', linkEmail);
-      setLinkSent(true);
-      // Poll Firestore for the auth bridge doc written by Safari after clicking the email link
-      const emailToCheck = linkEmail;
-      if (linkPollRef.current) clearInterval(linkPollRef.current);
-      if (linkPollTimeoutRef.current) clearTimeout(linkPollTimeoutRef.current);
-      linkPollRef.current = setInterval(async () => {
-        try {
-          const snap = await getDoc(doc(db, 'authBridge', emailToCheck));
-          if (!snap.exists()) return;
-          const data = snap.data();
-          if (data.exp < Date.now()) { await deleteDoc(doc(db, 'authBridge', emailToCheck)); return; }
-          if (linkPollRef.current) { clearInterval(linkPollRef.current); linkPollRef.current = null; }
-          if (linkPollTimeoutRef.current) { clearTimeout(linkPollTimeoutRef.current); linkPollTimeoutRef.current = null; }
-          await deleteDoc(doc(db, 'authBridge', emailToCheck));
-          await signInWithCustomToken(auth, data.customToken);
-          // onAuthStateChanged in AuthContext will pick up the new user
-        } catch {
-          // keep polling silently
-        }
-      }, 3000);
-      linkPollTimeoutRef.current = setTimeout(() => {
-        if (linkPollRef.current) { clearInterval(linkPollRef.current); linkPollRef.current = null; }
-        linkPollTimeoutRef.current = null;
-      }, 300_000);
-    } catch (err) {
-      toast.error(err.message || 'שגיאה בשליחת הקישור');
-    }
-    setLinkSending(false);
-  };
-
-  // iOS PWA: open Google sign-in in a regular Safari tab (not blocked there),
-  // then poll for the localStorage signal the popup writes on success.
-  // Note: currently unused — kept for future iOS PWA Google sign-in path.
-  // eslint-disable-next-line no-unused-vars
-  const handleGooglePopup = () => {
-    const signalKey = 'tradeos-auth-signal';
-    const prevSignal = localStorage.getItem(signalKey) || '';
-
-    window.open('/auth-google', '_blank');
-
-    if (googlePollRef.current) clearInterval(googlePollRef.current);
-    if (googlePollTimeoutRef.current) clearTimeout(googlePollTimeoutRef.current);
-    googlePollRef.current = setInterval(() => {
-      const newSignal = localStorage.getItem(signalKey) || '';
-      if (newSignal && newSignal !== prevSignal) {
-        if (googlePollRef.current) { clearInterval(googlePollRef.current); googlePollRef.current = null; }
-        if (googlePollTimeoutRef.current) { clearTimeout(googlePollTimeoutRef.current); googlePollTimeoutRef.current = null; }
-        window.location.reload();
-      }
-    }, 500);
-
-    // Give up after 5 minutes
-    googlePollTimeoutRef.current = setTimeout(() => {
-      if (googlePollRef.current) { clearInterval(googlePollRef.current); googlePollRef.current = null; }
-      googlePollTimeoutRef.current = null;
-    }, 300_000);
-  };
-
-  const { registerWithEmail, loginWithEmail, resetPassword } = useAuth();
 
   const handleSubmit = async (e) => {
     e.preventDefault();
@@ -184,42 +97,15 @@ export default function LoginPage() {
             {mode === 'login' ? 'התחבר כדי להתחיל לעקוב אחר העסקאות שלך' : 'צור חשבון חדש'}
           </p>
 
-          {/* Google button / Email-link for PWA */}
-          {isStandalone ? (
-            linkSent ? (
-              <div className="text-center mb-4 p-4 bg-green-900/30 border border-green-700 rounded-lg">
-                <p className="text-green-400 font-semibold text-sm mb-1">נשלח! בדוק את הגמייל שלך</p>
-                <p className="text-text-muted text-xs">לחץ על הקישור במייל — תחובר אוטומטית</p>
-              </div>
-            ) : (
-              <div className="mb-4 space-y-2">
-                <input
-                  type="email"
-                  value={linkEmail}
-                  onChange={(e) => setLinkEmail(e.target.value)}
-                  placeholder="האימייל שלך (Gmail וכו׳)"
-                  dir="ltr"
-                  className="w-full bg-bg-tertiary border border-border-primary rounded-lg px-3 py-2.5 text-sm text-text-primary placeholder-text-muted outline-none focus:border-accent-primary transition-colors"
-                />
-                <button
-                  onClick={handleSendLink}
-                  disabled={linkSending}
-                  className="w-full flex items-center justify-center gap-3 bg-white text-gray-800 font-semibold py-3 px-6 rounded-lg hover:bg-gray-100 transition-colors cursor-pointer disabled:opacity-50"
-                >
-                  {googleSvg}
-                  {linkSending ? 'שולח...' : 'שלח קישור התחברות'}
-                </button>
-              </div>
-            )
-          ) : (
-            <button
-              onClick={handleGoogle}
-              className="w-full flex items-center justify-center gap-3 bg-white text-gray-800 font-semibold py-3 px-6 rounded-lg hover:bg-gray-100 transition-colors cursor-pointer mb-4"
-            >
-              {googleSvg}
-              התחבר עם Google
-            </button>
-          )}
+          {/* Google button */}
+          <button
+            onClick={handleGoogle}
+            disabled={googleLoading}
+            className="w-full flex items-center justify-center gap-3 bg-white text-gray-800 font-semibold py-3 px-6 rounded-lg hover:bg-gray-100 transition-colors cursor-pointer mb-4 disabled:opacity-50"
+          >
+            {googleSvg}
+            {googleLoading ? 'מתחבר...' : 'התחבר עם Google'}
+          </button>
 
           {/* Divider */}
           <div className="flex items-center gap-3 mb-4">
