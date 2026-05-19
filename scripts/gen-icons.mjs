@@ -4,53 +4,51 @@ import { writeFileSync } from 'node:fs';
 // Professional TradeOS app icon: dark rounded-square (iOS app style) with an
 // upward area chart + candlesticks in the brand orange. Content stays inside
 // the maskable safe zone (central ~80%).
-// Clean, professional ascending candlestick chart (the universal symbol of
-// crypto/futures trading) on a premium dark rounded-square app background.
-// Brand cyan accents the final breakout candle; realistic green/red bodies
-// with wicks. Content stays inside the maskable safe zone.
+// App icon = the exact TradeOS splash logo (LoadingSpinner.jsx): the cyan
+// (#38bdf8) line chart with grid, area fill and a glowing tip dot, centered
+// on a premium dark rounded-square app background. Same path coordinates as
+// the splash so the icon and loading screen match 1:1.
 const svg = `
 <svg width="512" height="512" viewBox="0 0 512 512" xmlns="http://www.w3.org/2000/svg">
   <defs>
     <linearGradient id="bg" x1="0" y1="0" x2="1" y2="1">
-      <stop offset="0" stop-color="#1b2231"/>
-      <stop offset="0.55" stop-color="#0e1018"/>
+      <stop offset="0" stop-color="#15171f"/>
+      <stop offset="0.6" stop-color="#0c0d12"/>
       <stop offset="1" stop-color="#08080c"/>
     </linearGradient>
-    <radialGradient id="glow" cx="0.74" cy="0.28" r="0.8">
-      <stop offset="0" stop-color="#00bfff" stop-opacity="0.26"/>
-      <stop offset="1" stop-color="#00bfff" stop-opacity="0"/>
+    <linearGradient id="splashGradient" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0%" stop-color="#38bdf8" stop-opacity="0.30"/>
+      <stop offset="100%" stop-color="#38bdf8" stop-opacity="0"/>
+    </linearGradient>
+    <radialGradient id="glow" cx="0.72" cy="0.30" r="0.85">
+      <stop offset="0" stop-color="#38bdf8" stop-opacity="0.22"/>
+      <stop offset="1" stop-color="#38bdf8" stop-opacity="0"/>
     </radialGradient>
-    <filter id="soft" x="-40%" y="-40%" width="180%" height="180%">
-      <feGaussianBlur stdDeviation="6" result="b"/>
+    <filter id="soft" x="-50%" y="-50%" width="200%" height="200%">
+      <feGaussianBlur stdDeviation="5" result="b"/>
       <feMerge><feMergeNode in="b"/><feMergeNode in="SourceGraphic"/></feMerge>
     </filter>
   </defs>
 
   <rect width="512" height="512" rx="114" fill="url(#bg)"/>
   <rect width="512" height="512" rx="114" fill="url(#glow)"/>
-  <rect x="2.5" y="2.5" width="507" height="507" rx="111.5" fill="none" stroke="#00bfff" stroke-opacity="0.20" stroke-width="3"/>
+  <rect x="2.5" y="2.5" width="507" height="507" rx="111.5" fill="none" stroke="#38bdf8" stroke-opacity="0.20" stroke-width="3"/>
 
-  <!-- faint baseline -->
-  <line x1="104" y1="412" x2="408" y2="412" stroke="#ffffff" stroke-opacity="0.06" stroke-width="4" stroke-linecap="round"/>
+  <!-- Identical to the splash chart (viewBox 140x90), scaled x2.7 and centered -->
+  <g transform="translate(82 154) scale(2.7)">
+    <line x1="10" y1="20" x2="130" y2="20" stroke="#2a3142" stroke-width="0.6"/>
+    <line x1="10" y1="40" x2="130" y2="40" stroke="#2a3142" stroke-width="0.6"/>
+    <line x1="10" y1="60" x2="130" y2="60" stroke="#2a3142" stroke-width="0.6"/>
 
-  <!-- ascending candlesticks: green uptrend with one red pullback,
-       final breakout candle in brand cyan -->
-  <g stroke-linecap="round">
-    <!-- 1: green -->
-    <line x1="138" y1="300" x2="138" y2="392" stroke="#22c55e" stroke-width="6"/>
-    <rect x="121" y="320" width="34" height="56" rx="6" fill="#22c55e"/>
-    <!-- 2: red pullback -->
-    <line x1="206" y1="252" x2="206" y2="350" stroke="#ef4444" stroke-width="6"/>
-    <rect x="189" y="274" width="34" height="58" rx="6" fill="#ef4444"/>
-    <!-- 3: green -->
-    <line x1="274" y1="210" x2="274" y2="312" stroke="#22c55e" stroke-width="6"/>
-    <rect x="257" y="232" width="34" height="62" rx="6" fill="#22c55e"/>
-    <!-- 4: green -->
-    <line x1="342" y1="170" x2="342" y2="270" stroke="#22c55e" stroke-width="6"/>
-    <rect x="325" y="190" width="34" height="60" rx="6" fill="#22c55e"/>
-    <!-- 5: cyan breakout -->
-    <line x1="402" y1="120" x2="402" y2="226" stroke="#00bfff" stroke-width="6" filter="url(#soft)"/>
-    <rect x="385" y="140" width="34" height="64" rx="6" fill="#00bfff" filter="url(#soft)"/>
+    <path d="M 10 70 L 25 58 L 40 63 L 55 42 L 70 48 L 85 28 L 100 32 L 115 12 L 130 8 L 130 80 L 10 80 Z"
+          fill="url(#splashGradient)"/>
+
+    <path d="M 10 70 L 25 58 L 40 63 L 55 42 L 70 48 L 85 28 L 100 32 L 115 12 L 130 8"
+          stroke="#38bdf8" stroke-width="2.5" stroke-linecap="round"
+          stroke-linejoin="round" fill="none" filter="url(#soft)"/>
+
+    <circle cx="130" cy="8" r="8" fill="none" stroke="#38bdf8" stroke-width="1.5" opacity="0.5"/>
+    <circle cx="130" cy="8" r="4" fill="#38bdf8"/>
   </g>
 </svg>`;
 
