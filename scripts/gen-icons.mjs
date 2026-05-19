@@ -12,9 +12,8 @@ const svg = `
 <svg width="512" height="512" viewBox="0 0 512 512" xmlns="http://www.w3.org/2000/svg">
   <defs>
     <linearGradient id="bg" x1="0" y1="0" x2="1" y2="1">
-      <stop offset="0" stop-color="#15171f"/>
-      <stop offset="0.6" stop-color="#0c0d12"/>
-      <stop offset="1" stop-color="#08080c"/>
+      <stop offset="0" stop-color="#000000"/>
+      <stop offset="1" stop-color="#000000"/>
     </linearGradient>
     <linearGradient id="splashGradient" x1="0" y1="0" x2="0" y2="1">
       <stop offset="0%" stop-color="#38bdf8" stop-opacity="0.30"/>
