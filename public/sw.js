@@ -1,4 +1,4 @@
-const CACHE_NAME = 'tradeos-v15';
+const CACHE_NAME = 'tradeos-v16';
 const STATIC_ASSETS = [
   '/icon-192.png',
   '/icon-512.png',
@@ -33,10 +33,17 @@ self.addEventListener('install', (event) => {
   );
 });
 
-// Activate the waiting worker on demand (user clicked "update now").
+// Activate the waiting worker on demand (user clicked "update now"), or
+// answer a version query so the UI can tell whether the user already
+// dismissed the prompt for this exact CACHE_NAME.
 self.addEventListener('message', (event) => {
-  if (event.data && event.data.type === 'SKIP_WAITING') {
+  if (!event.data) return;
+  if (event.data.type === 'SKIP_WAITING') {
     self.skipWaiting();
+    return;
+  }
+  if (event.data.type === 'GET_VERSION' && event.ports && event.ports[0]) {
+    event.ports[0].postMessage({ cacheName: CACHE_NAME });
   }
 });
 
