@@ -4,7 +4,7 @@ import { Search, Sparkles, TrendingUp, TrendingDown, Minus, RotateCcw, Activity,
 import { AreaChart, Area, XAxis, YAxis, Tooltip, ResponsiveContainer, ReferenceLine } from 'recharts';
 import DOMPurify from 'dompurify';
 import { searchCoins, fetchCoinDetails, fetchCoinChart } from '../../services/coingeckoApi';
-import { fetchProjectDescription } from '../../services/geminiApi';
+import { fetchProjectDescription } from '../../services/groqApi';
 import { computeRSI, computeMA, computeVolatility } from '../../utils/technicals';
 
 function formatNum(n) {

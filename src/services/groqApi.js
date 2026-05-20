@@ -1,6 +1,47 @@
 import { getAuth } from 'firebase/auth';
 
-const WORKER_URL = 'https://tradeos-alerts.aviniazov7.workers.dev/ai-chat';
+const WORKER_BASE = 'https://tradeos-alerts.aviniazov7.workers.dev';
+const WORKER_URL = `${WORKER_BASE}/ai-chat`;
+const PROJECT_DESC_URL = `${WORKER_BASE}/ai-project-desc`;
+
+export async function fetchProjectDescription(coinName, symbol, retries = 2) {
+  const auth = getAuth();
+  const user = auth.currentUser;
+  if (!user) throw new Error('יש להתחבר כדי להשתמש בתכונה זו');
+
+  const idToken = await user.getIdToken();
+
+  for (let attempt = 0; attempt <= retries; attempt++) {
+    const response = await fetch(PROJECT_DESC_URL, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        Authorization: `Bearer ${idToken}`,
+      },
+      body: JSON.stringify({ coinName, symbol }),
+    });
+
+    if (response.ok) {
+      const data = await response.json();
+      return data.text || '';
+    }
+
+    if (response.status === 429 && attempt < retries) {
+      await new Promise((r) => setTimeout(r, (attempt + 1) * 3000));
+      continue;
+    }
+
+    const err = await response.json().catch(() => ({}));
+    if (response.status === 429) {
+      throw new Error('המערכת עמוסה. המתן כמה שניות ונסה שוב.');
+    }
+    if (response.status === 401) {
+      throw new Error('יש להתחבר מחדש');
+    }
+    throw new Error(err.error || `שגיאת AI: ${response.status}`);
+  }
+}
+
 
 export async function sendMessageStream(messages, onChunk, retries = 2) {
   const auth = getAuth();
