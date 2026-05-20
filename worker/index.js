@@ -1333,6 +1333,111 @@ async function handleAIChat(request, env, cors) {
   }
 }
 
+// ==================== AI Project Description ====================
+
+const PROJECT_DESC_SYSTEM_PROMPT = `אתה כתב קריפטו מקצועי. תפקידך לכתוב מאמרון קצר, ברור ואובייקטיבי בעברית על הפרויקט שמאחורי מטבע קריפטו.
+
+## הנחיות כתיבה:
+- כתוב ב-3-4 פסקאות קצרות (פסקה = שורה ריקה ביניהן)
+- אורך כולל: 600-900 תווים
+- פסקה ראשונה: מה הפרויקט עושה, מתי הושק, ומי עומד מאחוריו
+- פסקה שנייה: הטכנולוגיה והייחוד (consensus, layer, שפה וכו')
+- פסקה שלישית: שימושים מעשיים והאקוסיסטם
+- פסקה רביעית (אופציונלי): מצב נוכחי / כיוון עתידי
+- אפשר להדגיש מונחים חשובים עם **bold** (לדוגמה: **Proof of Stake**)
+- כתוב בעברית טבעית וזורמת — לא תרגום מילולי
+- מונחים טכניים: בעברית + אנגלית בסוגריים (לדוגמה: שכבה שנייה (Layer 2))
+- בלי כותרות (#), רק טקסט שוטף
+- בלי המלצות השקעה, בלי "בוליש"/"בריש", בלי תחזיות מחיר
+- אם המטבע לא מוכר לך — כתוב את מה שאתה כן יודע ואל תמציא נתונים
+- אל תזכיר מחיר נוכחי, market cap, או נתונים שמשתנים`;
+
+async function handleAIProjectDescription(request, env, cors) {
+  try {
+    const { coinName, symbol } = await request.json();
+    if (!coinName) {
+      return new Response(JSON.stringify({ error: 'Missing coinName' }), { status: 400, headers: { ...cors, 'Content-Type': 'application/json' } });
+    }
+
+    // Extract UID from Firebase ID token for rate limiting
+    const authHeader = request.headers.get('Authorization') || '';
+    const token = authHeader.replace('Bearer ', '');
+    let uid = 'anonymous';
+    let authFailReason = '';
+    if (!token) {
+      authFailReason = 'no-token';
+    } else {
+      try {
+        const parts = token.split('.');
+        if (parts.length !== 3) {
+          authFailReason = 'malformed-jwt';
+        } else {
+          let b64 = parts[1].replace(/-/g, '+').replace(/_/g, '/');
+          while (b64.length % 4) b64 += '=';
+          const payload = JSON.parse(atob(b64));
+          uid = payload.user_id || payload.sub || 'anonymous';
+          if (uid === 'anonymous') authFailReason = 'no-user-id';
+        }
+      } catch (e) {
+        authFailReason = `decode-error: ${e.message}`;
+      }
+    }
+
+    if (uid === 'anonymous') {
+      return new Response(JSON.stringify({ error: 'יש להתחבר כדי להשתמש בתכונה זו', reason: authFailReason }), { status: 401, headers: { ...cors, 'Content-Type': 'application/json' } });
+    }
+
+    // Rate limiting — 20 requests per minute per user (shared bucket with /ai-chat)
+    const rlKey = `ratelimit:ai:${uid}`;
+    const rlData = await env.ALERTS_KV.get(rlKey, 'json');
+    const now = Date.now();
+    if (rlData && now - rlData.start < 60000) {
+      if (rlData.count >= 20) {
+        return new Response(JSON.stringify({ error: 'המערכת עמוסה. המתן כמה שניות ונסה שוב.' }), { status: 429, headers: { ...cors, 'Content-Type': 'application/json' } });
+      }
+      await env.ALERTS_KV.put(rlKey, JSON.stringify({ start: rlData.start, count: rlData.count + 1 }), { expirationTtl: 120 });
+    } else {
+      await env.ALERTS_KV.put(rlKey, JSON.stringify({ start: now, count: 1 }), { expirationTtl: 120 });
+    }
+
+    const userPrompt = `כתוב מאמרון על הפרויקט שמאחורי המטבע ${coinName}${symbol ? ` (${String(symbol).toUpperCase()})` : ''}.`;
+
+    const groqResponse = await fetch(GROQ_URL, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        Authorization: `Bearer ${env.GROQ_API_KEY}`,
+      },
+      body: JSON.stringify({
+        model: GROQ_MODEL,
+        messages: [
+          { role: 'system', content: PROJECT_DESC_SYSTEM_PROMPT },
+          { role: 'user', content: userPrompt },
+        ],
+        temperature: 0.5,
+        max_tokens: 900,
+        stream: false,
+      }),
+    });
+
+    if (!groqResponse.ok) {
+      const errText = await groqResponse.text();
+      console.error('Groq API error:', groqResponse.status, errText);
+      return new Response(JSON.stringify({ error: `שגיאת AI: ${groqResponse.status}` }), { status: 502, headers: { ...cors, 'Content-Type': 'application/json' } });
+    }
+
+    const data = await groqResponse.json();
+    const text = data.choices?.[0]?.message?.content || '';
+
+    return new Response(JSON.stringify({ text }), {
+      headers: { ...cors, 'Content-Type': 'application/json' },
+    });
+  } catch (err) {
+    console.error('AI Project Description error:', err);
+    return new Response(JSON.stringify({ error: 'שגיאה פנימית' }), { status: 500, headers: { ...cors, 'Content-Type': 'application/json' } });
+  }
+}
+
 // ==================== Contact Developer ====================
 
 function escapeHtml(str) {
@@ -1586,6 +1691,11 @@ async function handleRequest(request, env) {
   // AI Chat — Groq proxy with SSE streaming
   if (request.method === 'POST' && path === '/ai-chat') {
     return handleAIChat(request, env, cors);
+  }
+
+  // AI Project Description — short article about a coin's project (non-streaming)
+  if (request.method === 'POST' && path === '/ai-project-desc') {
+    return handleAIProjectDescription(request, env, cors);
   }
 
   // Contact Developer — private message to dev's Telegram

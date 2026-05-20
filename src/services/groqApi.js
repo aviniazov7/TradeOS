@@ -1,6 +1,53 @@
 import { getAuth } from 'firebase/auth';
 
-const WORKER_URL = 'https://tradeos-alerts.aviniazov7.workers.dev/ai-chat';
+const WORKER_BASE = import.meta.env.VITE_WORKER_URL || 'https://trade-os.aviniazov7.workers.dev';
+const WORKER_URL = `${WORKER_BASE}/ai-chat`;
+const PROJECT_DESC_URL = `${WORKER_BASE}/ai-project-desc`;
+
+export async function fetchProjectDescription(coinName, symbol, retries = 2) {
+  const auth = getAuth();
+  const user = auth.currentUser;
+  if (!user) throw new Error('יש להתחבר כדי להשתמש בתכונה זו');
+
+  // Force refresh so we never send a stale/expired token to the worker
+  const idToken = await user.getIdToken(true);
+  if (!idToken) throw new Error('יש להתחבר מחדש');
+
+  for (let attempt = 0; attempt <= retries; attempt++) {
+    const response = await fetch(PROJECT_DESC_URL, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        Authorization: `Bearer ${idToken}`,
+      },
+      body: JSON.stringify({ coinName, symbol }),
+    });
+
+    if (response.ok) {
+      const data = await response.json().catch(() => null);
+      if (!data) {
+        throw new Error('השרת מחזיר תשובה לא צפויה. ייתכן שעדיין לא הותקנה הגרסה החדשה — נסה שוב בעוד רגע.');
+      }
+      return data.text || '';
+    }
+
+    if (response.status === 429 && attempt < retries) {
+      await new Promise((r) => setTimeout(r, (attempt + 1) * 3000));
+      continue;
+    }
+
+    const err = await response.json().catch(() => ({}));
+    if (response.status === 429) {
+      throw new Error('המערכת עמוסה. המתן כמה שניות ונסה שוב.');
+    }
+    if (response.status === 401) {
+      const reason = err.reason ? ` (${err.reason})` : '';
+      throw new Error(`יש להתחבר מחדש${reason}`);
+    }
+    throw new Error(err.error || `שגיאת AI: ${response.status}`);
+  }
+}
+
 
 export async function sendMessageStream(messages, onChunk, retries = 2) {
   const auth = getAuth();
