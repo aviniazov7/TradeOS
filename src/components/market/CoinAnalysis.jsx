@@ -284,9 +284,12 @@ function ProjectDescription({ coin, description, loading, error, expanded, onTog
               </button>
             )}
 
-            <p className="text-[9px] text-text-muted/60 mt-3 font-mono">
-              נוצר ע״י בינה מלאכותית · עשוי להכיל אי־דיוקים
-            </p>
+            <div className="flex items-center gap-1.5 mt-4 pt-3 border-t border-border-primary/40">
+              <Sparkles className="w-3 h-3 text-accent-primary/70" />
+              <p className="text-[11px] text-text-muted">
+                נוצר ע״י בינה מלאכותית · עשוי להכיל אי־דיוקים
+              </p>
+            </div>
           </>
         )}
       </div>
