@@ -1363,15 +1363,28 @@ async function handleAIProjectDescription(request, env, cors) {
     const authHeader = request.headers.get('Authorization') || '';
     const token = authHeader.replace('Bearer ', '');
     let uid = 'anonymous';
-    if (token) {
+    let authFailReason = '';
+    if (!token) {
+      authFailReason = 'no-token';
+    } else {
       try {
-        const payload = JSON.parse(atob(token.split('.')[1].replace(/-/g, '+').replace(/_/g, '/')));
-        uid = payload.user_id || payload.sub || 'anonymous';
-      } catch { /* use anonymous */ }
+        const parts = token.split('.');
+        if (parts.length !== 3) {
+          authFailReason = 'malformed-jwt';
+        } else {
+          let b64 = parts[1].replace(/-/g, '+').replace(/_/g, '/');
+          while (b64.length % 4) b64 += '=';
+          const payload = JSON.parse(atob(b64));
+          uid = payload.user_id || payload.sub || 'anonymous';
+          if (uid === 'anonymous') authFailReason = 'no-user-id';
+        }
+      } catch (e) {
+        authFailReason = `decode-error: ${e.message}`;
+      }
     }
 
     if (uid === 'anonymous') {
-      return new Response(JSON.stringify({ error: 'יש להתחבר כדי להשתמש בתכונה זו' }), { status: 401, headers: { ...cors, 'Content-Type': 'application/json' } });
+      return new Response(JSON.stringify({ error: 'יש להתחבר כדי להשתמש בתכונה זו', reason: authFailReason }), { status: 401, headers: { ...cors, 'Content-Type': 'application/json' } });
     }
 
     // Rate limiting — 20 requests per minute per user (shared bucket with /ai-chat)

@@ -9,7 +9,9 @@ export async function fetchProjectDescription(coinName, symbol, retries = 2) {
   const user = auth.currentUser;
   if (!user) throw new Error('יש להתחבר כדי להשתמש בתכונה זו');
 
-  const idToken = await user.getIdToken();
+  // Force refresh so we never send a stale/expired token to the worker
+  const idToken = await user.getIdToken(true);
+  if (!idToken) throw new Error('יש להתחבר מחדש');
 
   for (let attempt = 0; attempt <= retries; attempt++) {
     const response = await fetch(PROJECT_DESC_URL, {
@@ -39,7 +41,8 @@ export async function fetchProjectDescription(coinName, symbol, retries = 2) {
       throw new Error('המערכת עמוסה. המתן כמה שניות ונסה שוב.');
     }
     if (response.status === 401) {
-      throw new Error('יש להתחבר מחדש');
+      const reason = err.reason ? ` (${err.reason})` : '';
+      throw new Error(`יש להתחבר מחדש${reason}`);
     }
     throw new Error(err.error || `שגיאת AI: ${response.status}`);
   }
