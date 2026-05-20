@@ -6,20 +6,61 @@
 // and reload exactly once.
 
 let waitingWorker = null;
+let waitingVersion = null;
 let updateCb = null;
 let userTriggered = false;
 let refreshing = false;
 
+// Persist which CACHE_NAME the user already dismissed, so the prompt
+// doesn't re-surface for the same version on every focus/reload. A new
+// deploy bumps CACHE_NAME, won't match the stored value, and the prompt
+// shows again exactly once.
+const DISMISSED_KEY = 'sw:dismissedVersion';
+
+function getDismissedVersion() {
+  try { return localStorage.getItem(DISMISSED_KEY); } catch { return null; }
+}
+
+function setDismissedVersion(v) {
+  try { localStorage.setItem(DISMISSED_KEY, v); } catch {}
+}
+
+function askVersion(worker) {
+  return new Promise((resolve) => {
+    if (!worker) return resolve(null);
+    const channel = new MessageChannel();
+    const timer = setTimeout(() => resolve(null), 1500);
+    channel.port1.onmessage = (e) => {
+      clearTimeout(timer);
+      resolve(e.data && e.data.cacheName ? e.data.cacheName : null);
+    };
+    try { worker.postMessage({ type: 'GET_VERSION' }, [channel.port2]); }
+    catch { clearTimeout(timer); resolve(null); }
+  });
+}
+
+async function notifyIfNew(worker) {
+  waitingWorker = worker;
+  waitingVersion = await askVersion(worker);
+  if (waitingVersion && getDismissedVersion() === waitingVersion) return;
+  if (updateCb) updateCb();
+}
+
 export function onUpdateAvailable(cb) {
   updateCb = cb;
-  // If a waiting worker was already detected before the UI subscribed.
-  if (waitingWorker) cb();
+  if (waitingWorker && !(waitingVersion && getDismissedVersion() === waitingVersion)) {
+    cb();
+  }
 }
 
 export function applyUpdate() {
   if (!waitingWorker) return;
   userTriggered = true;
   waitingWorker.postMessage({ type: 'SKIP_WAITING' });
+}
+
+export function dismissUpdate() {
+  if (waitingVersion) setDismissedVersion(waitingVersion);
 }
 
 export function registerSW() {
@@ -29,14 +70,9 @@ export function registerSW() {
     navigator.serviceWorker
       .register('/sw.js', { updateViaCache: 'none' })
       .then((reg) => {
-        const notify = (worker) => {
-          waitingWorker = worker;
-          if (updateCb) updateCb();
-        };
-
         // A new version finished installing during a previous visit.
         if (reg.waiting && navigator.serviceWorker.controller) {
-          notify(reg.waiting);
+          notifyIfNew(reg.waiting);
         }
 
         reg.addEventListener('updatefound', () => {
@@ -46,7 +82,7 @@ export function registerSW() {
             // `controller` exists only when this is an update to an already
             // running app — not the very first install.
             if (nw.state === 'installed' && navigator.serviceWorker.controller) {
-              notify(nw);
+              notifyIfNew(nw);
             }
           });
         });

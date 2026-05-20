@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react';
 import { RefreshCw, X } from 'lucide-react';
-import { onUpdateAvailable, applyUpdate } from '../../services/swUpdate';
+import { onUpdateAvailable, applyUpdate, dismissUpdate } from '../../services/swUpdate';
 
 export default function UpdatePrompt() {
   const [show, setShow] = useState(false);
@@ -38,7 +38,7 @@ export default function UpdatePrompt() {
         </button>
         {!updating && (
           <button
-            onClick={() => setShow(false)}
+            onClick={() => { dismissUpdate(); setShow(false); }}
             aria-label="סגור"
             className="text-text-secondary hover:text-text-primary cursor-pointer"
           >
