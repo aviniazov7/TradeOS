@@ -64,9 +64,11 @@ jobs:
           GOOGLE_APPLICATION_CREDENTIALS: ${{ runner.temp }}/firebase-sa.json
         run: npx firebase-tools deploy --only hosting --project tradeos-91a58 --non-interactive
 
-      # Cloudflare Worker (Telegram bot + exchange sync proxy). Only runs if the
-      # CLOUDFLARE_API_TOKEN secret is set — otherwise skipped, and the Worker
-      # keeps running its previously-deployed version (deploy it manually if it changed).
+      # Cloudflare Worker (Telegram bot + exchange sync proxy + AI proxy).
+      # Only runs if the CLOUDFLARE_API_TOKEN secret is set — otherwise skipped,
+      # and the Worker keeps running its previously-deployed version. The
+      # wrangler.toml lives in worker/, so the step cd's into that directory.
       - name: Deploy Cloudflare Worker
         if: ${{ env.CLOUDFLARE_API_TOKEN != '' }}
+        working-directory: worker
         run: npx wrangler deploy

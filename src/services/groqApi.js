@@ -22,7 +22,10 @@ export async function fetchProjectDescription(coinName, symbol, retries = 2) {
     });
 
     if (response.ok) {
-      const data = await response.json();
+      const data = await response.json().catch(() => null);
+      if (!data) {
+        throw new Error('השרת מחזיר תשובה לא צפויה. ייתכן שעדיין לא הותקנה הגרסה החדשה — נסה שוב בעוד רגע.');
+      }
       return data.text || '';
     }
 
