@@ -1,8 +1,10 @@
 import { useState, useEffect, useRef, useMemo } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
-import { Search, Sparkles, TrendingUp, TrendingDown, Minus, RotateCcw, Activity, BarChart3, Zap, Shield, ChevronDown, ChevronUp, Target, Gauge, BookOpen, Flame } from 'lucide-react';
+import { Search, Sparkles, TrendingUp, TrendingDown, Minus, RotateCcw, Activity, BarChart3, Zap, Shield, ChevronDown, ChevronUp, Target, Gauge, BookOpen, Flame, FileText, Copy, Check, RefreshCw } from 'lucide-react';
 import { AreaChart, Area, XAxis, YAxis, Tooltip, ResponsiveContainer, ReferenceLine } from 'recharts';
+import DOMPurify from 'dompurify';
 import { searchCoins, fetchCoinDetails, fetchCoinChart } from '../../services/coingeckoApi';
+import { fetchProjectDescription } from '../../services/geminiApi';
 import { computeRSI, computeMA, computeVolatility } from '../../utils/technicals';
 
 function formatNum(n) {
@@ -132,6 +134,166 @@ function TVEmbed({ widget, config, minH = '200px' }) {
   );
 }
 
+const PROJECT_DESC_SANITIZE = {
+  ALLOWED_TAGS: ['strong', 'em'],
+  ALLOWED_ATTR: [],
+  FORBID_TAGS: ['script', 'style', 'iframe', 'object', 'embed', 'link', 'a', 'img'],
+  ALLOW_DATA_ATTR: false,
+};
+
+function formatProjectMarkdown(line) {
+  const bolded = line.replace(/\*\*(.+?)\*\*/g, '<strong>$1</strong>');
+  return DOMPurify.sanitize(bolded, PROJECT_DESC_SANITIZE);
+}
+
+function ProjectDescription({ coin, description, loading, error, expanded, onToggle, onRetry }) {
+  const [copied, setCopied] = useState(false);
+
+  const paragraphs = useMemo(() => {
+    if (!description) return [];
+    return description
+      .split(/\n\s*\n/)
+      .map((p) => p.trim())
+      .filter(Boolean);
+  }, [description]);
+
+  const visible = expanded ? paragraphs : paragraphs.slice(0, 1);
+  const hasMore = paragraphs.length > 1;
+
+  const handleCopy = async () => {
+    if (!description) return;
+    try {
+      await navigator.clipboard.writeText(description);
+      setCopied(true);
+      setTimeout(() => setCopied(false), 1500);
+    } catch {
+      // Clipboard blocked — silently fail; icon stays as Copy
+    }
+  };
+
+  return (
+    <GlowCard delay={0.35} glowColor="rgba(168,85,247,0.18)">
+      <div className="p-4">
+        <div className="flex items-center justify-between mb-3 gap-2">
+          <h3 className="text-xs font-semibold text-text-secondary flex items-center gap-1.5">
+            <FileText className="w-3.5 h-3.5 text-accent-primary" />
+            על הפרויקט
+            <span className="hidden sm:inline-flex items-center gap-1 mr-1.5 px-1.5 py-0.5 rounded-md bg-accent-primary/10 border border-accent-primary/20 text-[9px] font-mono text-accent-primary uppercase tracking-wider">
+              <Sparkles className="w-2.5 h-2.5" />
+              AI
+            </span>
+          </h3>
+          <div className="flex items-center gap-1">
+            {description && !loading && (
+              <>
+                <button
+                  onClick={onRetry}
+                  title="צור מחדש"
+                  className="p-1.5 rounded-lg text-text-muted hover:text-text-primary hover:bg-bg-tertiary transition-colors cursor-pointer"
+                >
+                  <RefreshCw className="w-3.5 h-3.5" />
+                </button>
+                <button
+                  onClick={handleCopy}
+                  title={copied ? 'הועתק' : 'העתק'}
+                  className={`p-1.5 rounded-lg transition-colors cursor-pointer ${copied ? 'text-profit bg-profit/10' : 'text-text-muted hover:text-text-primary hover:bg-bg-tertiary'}`}
+                >
+                  {copied ? <Check className="w-3.5 h-3.5" /> : <Copy className="w-3.5 h-3.5" />}
+                </button>
+              </>
+            )}
+          </div>
+        </div>
+
+        {loading && (
+          <div className="space-y-2">
+            {[0, 1, 2].map((i) => (
+              <motion.div
+                key={i}
+                animate={{ opacity: [0.3, 0.7, 0.3] }}
+                transition={{ duration: 1.4, repeat: Infinity, delay: i * 0.15 }}
+                className="h-3 rounded bg-bg-tertiary"
+                style={{ width: `${[100, 92, 70][i]}%` }}
+              />
+            ))}
+            <p className="text-[10px] text-text-muted font-mono mt-3 flex items-center gap-1.5">
+              <Sparkles className="w-3 h-3 text-accent-primary animate-pulse" />
+              מייצר מאמר על {coin?.name}…
+            </p>
+          </div>
+        )}
+
+        {!loading && error && (
+          <div className="text-center py-3">
+            <p className="text-xs text-loss mb-2">{error}</p>
+            <button
+              onClick={onRetry}
+              className="text-[11px] text-text-muted hover:text-text-primary transition-colors cursor-pointer underline"
+            >
+              נסה שוב
+            </button>
+          </div>
+        )}
+
+        {!loading && !error && description && (
+          <>
+            <motion.div
+              initial={false}
+              animate={{ height: 'auto' }}
+              className="text-sm text-text-secondary leading-relaxed space-y-2.5"
+              style={{ overflow: 'hidden' }}
+            >
+              <AnimatePresence initial={false} mode="wait">
+                <motion.div
+                  key={expanded ? 'full' : 'short'}
+                  initial={{ opacity: 0 }}
+                  animate={{ opacity: 1 }}
+                  exit={{ opacity: 0 }}
+                  transition={{ duration: 0.25 }}
+                  className="space-y-2.5"
+                >
+                  {visible.map((p, i) => (
+                    <p
+                      key={i}
+                      dangerouslySetInnerHTML={{ __html: formatProjectMarkdown(p) }}
+                    />
+                  ))}
+                  {!expanded && hasMore && (
+                    <div className="relative -mt-6 h-6 pointer-events-none bg-gradient-to-t from-bg-secondary to-transparent" />
+                  )}
+                </motion.div>
+              </AnimatePresence>
+            </motion.div>
+
+            {hasMore && (
+              <button
+                onClick={onToggle}
+                className="mt-3 flex items-center gap-1.5 text-xs font-semibold text-accent-primary hover:text-accent-hover transition-colors cursor-pointer"
+              >
+                {expanded ? (
+                  <>
+                    <ChevronUp className="w-3.5 h-3.5" />
+                    הצג פחות
+                  </>
+                ) : (
+                  <>
+                    <ChevronDown className="w-3.5 h-3.5" />
+                    קרא עוד
+                  </>
+                )}
+              </button>
+            )}
+
+            <p className="text-[9px] text-text-muted/60 mt-3 font-mono">
+              נוצר ע״י בינה מלאכותית · עשוי להכיל אי־דיוקים
+            </p>
+          </>
+        )}
+      </div>
+    </GlowCard>
+  );
+}
+
 export default function CoinAnalysis() {
   const [query, setQuery] = useState('');
   const [suggestions, setSuggestions] = useState([]);
@@ -146,8 +308,13 @@ export default function CoinAnalysis() {
   const [scanProgress, setScanProgress] = useState(0);
   const [liquidityData, setLiquidityData] = useState(null);
   const [heatmapKlines, setHeatmapKlines] = useState(null);
+  const [projectDesc, setProjectDesc] = useState('');
+  const [projectDescLoading, setProjectDescLoading] = useState(false);
+  const [projectDescError, setProjectDescError] = useState(null);
+  const [projectDescExpanded, setProjectDescExpanded] = useState(false);
   const searchRef = useRef(null);
   const debounceRef = useRef(null);
+  const descCacheRef = useRef(new Map());
 
   useEffect(() => {
     const handler = (e) => {
@@ -168,6 +335,34 @@ export default function CoinAnalysis() {
     return () => clearTimeout(debounceRef.current);
   }, [query, selectedCoin]);
 
+  const loadProjectDescription = async (coin, { force = false } = {}) => {
+    if (!coin) return;
+    const cacheKey = coin.coingeckoId || coin.symbol;
+    if (!force && descCacheRef.current.has(cacheKey)) {
+      setProjectDesc(descCacheRef.current.get(cacheKey));
+      setProjectDescLoading(false);
+      setProjectDescError(null);
+      return;
+    }
+    setProjectDescLoading(true);
+    setProjectDescError(null);
+    setProjectDesc('');
+    setProjectDescExpanded(false);
+    try {
+      const text = await fetchProjectDescription(coin.name, coin.symbol);
+      if (text) {
+        descCacheRef.current.set(cacheKey, text);
+        setProjectDesc(text);
+      } else {
+        setProjectDescError('לא הצלחנו לייצר תיאור כרגע.');
+      }
+    } catch (e) {
+      setProjectDescError(e?.message || 'שגיאה ביצירת התיאור.');
+    } finally {
+      setProjectDescLoading(false);
+    }
+  };
+
   const selectCoin = (coin) => {
     setSelectedCoin(coin);
     setQuery(coin.name);
@@ -187,6 +382,9 @@ export default function CoinAnalysis() {
     setChartData([]);
     setRawPrices([]);
     setError(null);
+
+    // Kick off AI project description in parallel (non-blocking)
+    loadProjectDescription(coin);
 
     const stepTimers = ANALYSIS_STEPS.map((_, i) =>
       setTimeout(() => setActiveStep(i), i * 550)
@@ -259,6 +457,10 @@ export default function CoinAnalysis() {
     setError(null);
     setLiquidityData(null);
     setHeatmapKlines(null);
+    setProjectDesc('');
+    setProjectDescLoading(false);
+    setProjectDescError(null);
+    setProjectDescExpanded(false);
   };
 
   const sentiment = useMemo(() => {
@@ -644,6 +846,19 @@ export default function CoinAnalysis() {
                   </motion.div>
                 ))}
               </div>
+
+              {/* AI Project Description */}
+              {(projectDesc || projectDescLoading || projectDescError) && (
+                <ProjectDescription
+                  coin={selectedCoin}
+                  description={projectDesc}
+                  loading={projectDescLoading}
+                  error={projectDescError}
+                  expanded={projectDescExpanded}
+                  onToggle={() => setProjectDescExpanded((v) => !v)}
+                  onRetry={() => loadProjectDescription(selectedCoin, { force: true })}
+                />
+              )}
 
               {/* Technical Indicators */}
               {technicals && (
