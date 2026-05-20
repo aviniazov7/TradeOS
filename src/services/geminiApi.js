@@ -51,6 +51,64 @@ const SYSTEM_PROMPT = `אתה מנטור מסחר מקצועי ומומחה בש
 - אם שואלים שאלה שלא קשורה לויקוף או מסחר, ענה בקצרה וכוון חזרה למסחר
 - אל תמליץ על מטבעות ספציפיים לקנייה/מכירה`;
 
+const PROJECT_DESC_PROMPT = `אתה כתב קריפטו מקצועי. תפקידך לכתוב מאמרון קצר, ברור ואובייקטיבי בעברית על הפרויקט שמאחורי מטבע קריפטו.
+
+## הנחיות כתיבה:
+- כתוב ב-3-4 פסקאות קצרות (פסקה = שורה ריקה ביניהן)
+- אורך כולל: 600-900 תווים
+- פסקה ראשונה: מה הפרויקט עושה, מתי הושק, ומי עומד מאחוריו
+- פסקה שנייה: הטכנולוגיה והייחוד (consensus, layer, שפה וכו')
+- פסקה שלישית: שימושים מעשיים והאקוסיסטם
+- פסקה רביעית (אופציונלי): מצב נוכחי / כיוון עתידי
+- אפשר להדגיש מונחים חשובים עם **bold** (לדוגמה: **Proof of Stake**)
+- כתוב בעברית טבעית וזורמת — לא תרגום מילולי
+- מונחים טכניים: בעברית + אנגלית בסוגריים (לדוגמה: שכבה שנייה (Layer 2))
+- בלי כותרות (#), רק טקסט שוטף
+- בלי המלצות השקעה, בלי "בול-יש"/"בריש", בלי תחזיות מחיר
+- אם המטבע לא מוכר לך — כתוב את מה שאתה כן יודע ואל תמציא נתונים
+- אל תזכיר מחיר נוכחי, market cap, או נתונים שמשתנים`;
+
+export async function fetchProjectDescription(coinName, symbol, retries = 2) {
+  if (!API_KEY) {
+    throw new Error('מפתח API לא מוגדר. הוסף VITE_GEMINI_API_KEY ל-.env');
+  }
+
+  const userPrompt = `כתוב מאמרון על הפרויקט שמאחורי המטבע ${coinName} (${symbol?.toUpperCase()}).`;
+
+  const body = JSON.stringify({
+    system_instruction: { parts: [{ text: PROJECT_DESC_PROMPT }] },
+    contents: [{ role: 'user', parts: [{ text: userPrompt }] }],
+    generationConfig: {
+      temperature: 0.5,
+      maxOutputTokens: 800,
+    },
+  });
+
+  for (let attempt = 0; attempt <= retries; attempt++) {
+    const response = await fetch(`${BASE_URL}?key=${API_KEY}`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body,
+    });
+
+    if (response.ok) {
+      const data = await response.json();
+      return data.candidates?.[0]?.content?.parts?.[0]?.text || '';
+    }
+
+    if (response.status === 429 && attempt < retries) {
+      await new Promise((r) => setTimeout(r, (attempt + 1) * 3000));
+      continue;
+    }
+
+    const err = await response.json().catch(() => ({}));
+    if (response.status === 429) {
+      throw new Error('המערכת עמוסה. המתן כמה שניות ונסה שוב.');
+    }
+    throw new Error(err.error?.message || `שגיאת API: ${response.status}`);
+  }
+}
+
 export async function sendMessage(messages, retries = 2) {
   if (!API_KEY) {
     throw new Error('מפתח API לא מוגדר. הוסף VITE_GEMINI_API_KEY ל-.env');
