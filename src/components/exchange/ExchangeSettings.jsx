@@ -85,11 +85,11 @@ const EXCHANGES = [
     accent: '#7B5EA7', glow: 'rgba(123,94,167,0.35)',
     apiUrl: '', canSync: false, csvOnly: true,
     steps: [
-      { text: 'פתח MT5 → Tools → History Center', n: '1' },
-      { text: 'בחר את תיק ההשקעות הרצוי', n: '2' },
-      { text: 'לחץ ימני → Export to CSV', n: '3', ok: true },
-      { text: 'שמור את הקובץ', n: '4' },
-      { text: 'ב-TradeOS → ייבוא → בחר קובץ CSV', n: '5', ok: true },
+      { text: 'פתח MT5 → Toolbox → לשונית History', n: '1' },
+      { text: 'לחץ ימני על הרשימה → בחר טווח תאריכים', n: '2' },
+      { text: 'לחץ ימני → Report → Save as CSV', n: '3', ok: true },
+      { text: 'ודא שיש עמודות Symbol, Type, Open/Close Price, Profit', n: '!', warn: true },
+      { text: 'ב-TradeOS → ייבוא → בחר קובץ CSV (המיפוי אוטומטי)', n: '5', ok: true },
     ],
   },
 ];

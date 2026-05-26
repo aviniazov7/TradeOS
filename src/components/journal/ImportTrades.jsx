@@ -4,16 +4,19 @@ import toast from 'react-hot-toast';
 import Modal from '../shared/Modal';
 
 const COLUMN_MAP = {
-  pair: ['pair', 'symbol', 'coin', 'market', 'זוג'],
+  pair: ['pair', 'symbol', 'coin', 'market', 'instrument', 'זוג'],
   direction: ['direction', 'side', 'type', 'כיוון'],
-  entryPrice: ['entryprice', 'entry_price', 'entry', 'open_price', 'openprice', 'מחיר כניסה', 'כניסה'],
-  exitPrice: ['exitprice', 'exit_price', 'exit', 'close_price', 'closeprice', 'מחיר יציאה', 'סגירה'],
-  stopLoss: ['stoploss', 'stop_loss', 'sl', 'סטופ', 'סטופ לוס'],
-  positionSize: ['positionsize', 'position_size', 'size', 'amount', 'qty', 'quantity', 'גודל', 'גודל עסקה'],
+  entryPrice: ['entryprice', 'entry_price', 'entry', 'open_price', 'openprice', 'open price', 'price open', 'מחיר כניסה', 'כניסה'],
+  exitPrice: ['exitprice', 'exit_price', 'exit', 'close_price', 'closeprice', 'close price', 'price close', 'מחיר יציאה', 'סגירה'],
+  stopLoss: ['stoploss', 'stop_loss', 'sl', 's/l', 'סטופ', 'סטופ לוס'],
+  positionSize: ['positionsize', 'position_size', 'size', 'amount', 'qty', 'quantity', 'volume', 'lots', 'lot', 'גודל', 'גודל עסקה'],
   leverage: ['leverage', 'lev', 'מינוף'],
   fees: ['fees', 'fee', 'commission', 'עמלות'],
-  entryDate: ['entrydate', 'entry_date', 'open_date', 'opendate', 'date', 'תאריך כניסה', 'תאריך'],
-  exitDate: ['exitdate', 'exit_date', 'close_date', 'closedate', 'תאריך יציאה'],
+  // MT5 / forex brokers report realized profit directly — use it instead of
+  // recomputing from price×qty, which is wrong when contract sizes vary (lots).
+  profit: ['profit', 'pnl', 'p/l', 'p&l', 'net p/l', 'realized', 'realized pnl', 'רווח', 'רווח/הפסד'],
+  entryDate: ['entrydate', 'entry_date', 'open_date', 'opendate', 'open time', 'date', 'תאריך כניסה', 'תאריך'],
+  exitDate: ['exitdate', 'exit_date', 'close_date', 'closedate', 'close time', 'תאריך יציאה'],
   strategy: ['strategy', 'אסטרטגיה'],
   notes: ['notes', 'comment', 'הערות'],
 };
@@ -123,7 +126,10 @@ export default function ImportTrades({ isOpen, onClose, onImport }) {
         ? positionSize / entryPrice
         : 0;
 
-      const status = exitPrice > 0 ? 'closed' : 'open';
+      const profitRaw = get('profit');
+      const hasProfit = profitRaw !== '' && profitRaw != null && !isNaN(parseFloat(profitRaw));
+      // A broker-reported profit means the position is closed even if no exit price column exists
+      const status = exitPrice > 0 || hasProfit ? 'closed' : 'open';
 
       return {
         pair: pair.toUpperCase().replace(/[^A-Z0-9]/g, ''),
@@ -138,6 +144,9 @@ export default function ImportTrades({ isOpen, onClose, onImport }) {
         positionSize,
         leverage,
         fees: parseFloat(get('fees')) || 0,
+        // Realized profit from the broker (MT5/forex) — useTrades uses this verbatim
+        // as PnL, avoiding wrong price×qty math when contract sizes vary.
+        ...(hasProfit ? { pnlFromExchange: parseFloat(profitRaw) } : {}),
         entryDate: parseDate(get('entryDate')) || new Date(),
         // Do NOT default exitDate to new Date() — historical imports would appear
         // as closed today, corrupting the equity curve and today's PnL stats
@@ -188,6 +197,7 @@ export default function ImportTrades({ isOpen, onClose, onImport }) {
     { key: 'stopLoss', label: 'סטופ לוס' },
     { key: 'positionSize', label: 'גודל עסקה' },
     { key: 'leverage', label: 'מינוף' },
+    { key: 'profit', label: 'רווח/הפסד' },
     { key: 'fees', label: 'עמלות' },
     { key: 'entryDate', label: 'תאריך כניסה' },
     { key: 'exitDate', label: 'תאריך יציאה' },
@@ -211,7 +221,7 @@ export default function ImportTrades({ isOpen, onClose, onImport }) {
           >
             <Upload className="w-10 h-10 text-text-muted mx-auto mb-3" />
             <p className="text-sm text-text-primary font-medium">גרור קובץ CSV או לחץ לבחירה</p>
-            <p className="text-xs text-text-muted mt-1">תומך בייצוא מ-Bybit, MEXC ופורמטים נפוצים</p>
+            <p className="text-xs text-text-muted mt-1">תומך בייצוא מ-MetaTrader 5, Bybit, MEXC ופורמטים נפוצים</p>
           </div>
           <input ref={fileRef} type="file" accept=".csv" onChange={handleFile} className="hidden" />
         </div>
