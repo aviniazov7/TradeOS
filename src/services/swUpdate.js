@@ -56,7 +56,20 @@ export function onUpdateAvailable(cb) {
 export function applyUpdate() {
   if (!waitingWorker) return;
   userTriggered = true;
+  // Mark this version handled so the prompt never re-surfaces for it after the
+  // reload. Without this, if a waiting worker for the same CACHE_NAME was still
+  // detected on the reloaded page, the banner came back. A genuinely newer
+  // deploy bumps CACHE_NAME, so it will still prompt for real updates.
+  if (waitingVersion) setDismissedVersion(waitingVersion);
   waitingWorker.postMessage({ type: 'SKIP_WAITING' });
+  // Fallback: Safari does not always fire `controllerchange` after skipWaiting,
+  // which left the button stuck spinning and the banner never dismissed. Force
+  // the one-time reload if the controllerchange handler hasn't already done it.
+  setTimeout(() => {
+    if (refreshing) return;
+    refreshing = true;
+    window.location.reload();
+  }, 2000);
 }
 
 export function dismissUpdate() {
