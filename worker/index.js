@@ -893,6 +893,12 @@ async function checkPriceAlerts(env, activeAlerts) {
     if (!pd) continue;
     const hit = alert.direction === 'above' ? pd.price >= alert.targetPrice : pd.price <= alert.targetPrice;
     if (hit) {
+      // Dedup guard: KV is eventually consistent, so the `active:false` write
+      // below may not be visible on the next cron tick. Claim a sent key first
+      // so the alert can't fire twice (mirrors the other cron checks).
+      const sentKey = `sent:alert:${alert.id}`;
+      if (await env.ALERTS_KV.get(sentKey)) continue;
+      await env.ALERTS_KV.put(sentKey, '1', { expirationTtl: 86400 });
       const dir = alert.direction === 'above' ? '📈 מעל' : '📉 מתחת';
       const chg = `${pd.change24h >= 0 ? '📈' : '📉'} שינוי 24h: ${fmtPct(pd.change24h)}`;
       const msg = `🔔 <b>התראת מחיר!</b>\n\n<b>${alert.pair.replace('USDT', '')}</b>\n💰 מחיר נוכחי: ${fmtPrice(pd.price)}\n🎯 יעד: ${dir} ${fmtPrice(alert.targetPrice)}\n${chg}\n\n✅ ההתראה הושלמה`;
