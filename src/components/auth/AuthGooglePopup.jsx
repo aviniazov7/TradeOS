@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from 'react';
 import { auth } from '../../services/firebase';
 import { GoogleAuthProvider, signInWithCredential } from 'firebase/auth';
+import { authErrorHe } from '../../utils/authErrors';
 
 const GOOGLE_CLIENT_ID = import.meta.env.VITE_GOOGLE_CLIENT_ID;
 
@@ -42,7 +43,7 @@ export default function AuthGooglePopup() {
                 window.close();
               }
             } catch (err) {
-              setError((err.code || '') + ' ' + (err.message || String(err)));
+              setError(authErrorHe(err));
               setLoading(false);
             }
           },
@@ -62,7 +63,7 @@ export default function AuthGooglePopup() {
           });
         }
       } catch (err) {
-        if (!cancelled) setError(err.message || String(err));
+        if (!cancelled) setError(authErrorHe(err, 'שירות ההתחברות אינו זמין כעת'));
       }
     })();
 

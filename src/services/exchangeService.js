@@ -8,7 +8,7 @@ export async function syncExchangeTrades(exchange, apiKey, apiSecret, passphrase
     body: JSON.stringify({ exchange, apiKey, apiSecret, passphrase, limit }),
   });
   const data = await res.json();
-  if (!res.ok || data.error) throw new Error(data.error || 'Sync failed');
+  if (!res.ok || data.error) throw new Error(data.error || 'הסנכרון נכשל');
   return data.trades || [];
 }
 
@@ -19,6 +19,6 @@ export async function syncOpenPositions(exchange, apiKey, apiSecret) {
     body: JSON.stringify({ exchange, apiKey, apiSecret }),
   });
   const data = await res.json();
-  if (!data.ok) throw new Error(data.error || 'Failed to fetch open positions');
+  if (!data.ok) throw new Error(data.error || 'שגיאה בטעינת הפוזיציות הפתוחות');
   return data.positions || [];
 }

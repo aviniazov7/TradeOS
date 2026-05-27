@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react';
 import { auth, db } from '../../services/firebase';
 import { isSignInWithEmailLink, signInWithEmailLink } from 'firebase/auth';
 import { doc, setDoc } from 'firebase/firestore';
+import { authErrorHe } from '../../utils/authErrors';
 
 const WORKER_URL = import.meta.env.VITE_GOOGLE_AUTH_WORKER_URL || '';
 
@@ -60,7 +61,7 @@ export default function AuthEmailLink() {
         if (err.name === 'AbortError') {
           setError('הבקשה לוקחת יותר מדי זמן — נסה שוב');
         } else {
-          setError(err.message || 'שגיאה');
+          setError(authErrorHe(err, 'שגיאה באימות הקישור'));
         }
       } finally {
         clearTimeout(timeoutId);
