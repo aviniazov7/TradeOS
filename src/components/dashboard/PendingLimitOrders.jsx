@@ -648,9 +648,12 @@ export default function PendingLimitOrders({ trades, livePrices }) {
   const marketCount = openTrades.length - limitCount;
   const visible = showAll ? openTrades : openTrades.slice(0, 1);
 
-  // Combined P&L + % across all active trades
+  // Combined P&L + % across all active trades. The % is on the same basis as
+  // each position card (leveraged return on margin), so the header stays
+  // consistent with the per-position percentages — dividing by notional here
+  // made the aggregate look far smaller than the individual rows.
   let totalPnlDollar = 0;
-  let totalPositionDollar = 0;
+  let totalMarginDollar = 0;
   for (const trade of openTrades) {
     const pair = trade.pair || trade.symbol || '';
     const cp = livePrices[pair];
@@ -659,12 +662,13 @@ export default function PendingLimitOrders({ trades, livePrices }) {
     if (!cp || !(cp > 0) || !(entry > 0) || !isTradeActive) continue;
     const posSize = parseFloat(trade.positionSize);
     if (!(posSize > 0)) continue;
+    const lev = parseFloat(trade.leverage) || 1;
     const qty = posSize / entry;
     totalPnlDollar += trade.direction === 'long' ? (cp - entry) * qty : (entry - cp) * qty;
-    totalPositionDollar += posSize;
+    totalMarginDollar += posSize / lev;
   }
-  const totalPnlPct = totalPositionDollar > 0 ? (totalPnlDollar / totalPositionDollar) * 100 : null;
-  const hasPnl = totalPositionDollar > 0;
+  const totalPnlPct = totalMarginDollar > 0 ? (totalPnlDollar / totalMarginDollar) * 100 : null;
+  const hasPnl = totalMarginDollar > 0;
 
   return (
     <motion.div
