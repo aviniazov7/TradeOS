@@ -103,36 +103,44 @@ export default function TradeFilters({ filters, onChange, trades = [] }) {
               <button className={`${btnClass(filters.result === 'loss')} flex-1`} onClick={() => toggle('result', 'loss')}>הפסד</button>
             </div>
 
-            <SelectDropdown
-              value={filters.strategy}
-              onChange={(val) => set('strategy', val)}
-              options={strategyOptions}
-              placeholder="כל האסטרטגיות"
-              allowClear
-              compact
-            />
+            <div className="flex gap-2">
+              <div className="flex-1 min-w-0">
+                <SelectDropdown
+                  value={filters.strategy}
+                  onChange={(val) => set('strategy', val)}
+                  options={strategyOptions}
+                  placeholder="כל האסטרטגיות"
+                  allowClear
+                  compact
+                />
+              </div>
 
-            {allTags.length > 0 && (
-              <SelectDropdown
-                value={filters.tag}
-                onChange={(val) => set('tag', val)}
-                options={tagOptions}
-                placeholder="כל התגיות"
-                allowClear
-                compact
-              />
-            )}
+              {allTags.length > 0 && (
+                <div className="flex-1 min-w-0">
+                  <SelectDropdown
+                    value={filters.tag}
+                    onChange={(val) => set('tag', val)}
+                    options={tagOptions}
+                    placeholder="כל התגיות"
+                    allowClear
+                    compact
+                  />
+                </div>
+              )}
 
-            {monthOptions.length > 0 && (
-              <SelectDropdown
-                value={filters.month}
-                onChange={(val) => set('month', val)}
-                options={monthOptions}
-                placeholder="כל החודשים"
-                allowClear
-                compact
-              />
-            )}
+              {monthOptions.length > 0 && (
+                <div className="flex-1 min-w-0">
+                  <SelectDropdown
+                    value={filters.month}
+                    onChange={(val) => set('month', val)}
+                    options={monthOptions}
+                    placeholder="כל החודשים"
+                    allowClear
+                    compact
+                  />
+                </div>
+              )}
+            </div>
           </div>
         )}
       </div>
