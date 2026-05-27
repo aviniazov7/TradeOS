@@ -72,6 +72,9 @@ export default function TradeJournal() {
   const [importOpen, setImportOpen] = useState(false);
   const [settingsOpen, setSettingsOpen] = useState(false);
   const [shareTarget, setShareTarget] = useState(null);
+  // Render only a window of rows so the table stays fast with hundreds of trades.
+  // Analytics/calendar still use the full `trades` array — this caps the DOM only.
+  const [visibleCount, setVisibleCount] = useState(50);
   const [archiveAnimating, setArchiveAnimating] = useState(false);
   const [archiveTargetName, setArchiveTargetName] = useState('');
   const deleteTimersRef = useRef({});
@@ -108,6 +111,11 @@ export default function TradeJournal() {
   useEffect(() => {
     try { localStorage.setItem('tj_filters', JSON.stringify(filters)); } catch {}
   }, [filters]);
+
+  // Reset the rendered window when the visible set changes
+  useEffect(() => {
+    setVisibleCount(50);
+  }, [filters, activeJournalId]);
 
   const stats = useDashboardStats(trades, activeJournal?.initialBalance || 0, period);
 
@@ -567,7 +575,17 @@ export default function TradeJournal() {
               }
             />
           ) : (
-            <TradeTable trades={filteredTrades} onEdit={handleEdit} onDelete={handleDeleteWithUndo} onShare={setShareTarget} isLimitPending={isLimitPending} />
+            <>
+              <TradeTable trades={filteredTrades.slice(0, visibleCount)} onEdit={handleEdit} onDelete={handleDeleteWithUndo} onShare={setShareTarget} isLimitPending={isLimitPending} />
+              {filteredTrades.length > visibleCount && (
+                <button
+                  onClick={() => setVisibleCount((c) => c + 50)}
+                  className="mt-3 w-full py-2.5 rounded-lg bg-bg-tertiary text-text-primary border border-border-primary hover:bg-border-hover transition-colors cursor-pointer text-sm"
+                >
+                  טען עוד ({filteredTrades.length - visibleCount})
+                </button>
+              )}
+            </>
           )}
         </>
       )}
