@@ -1,5 +1,8 @@
 const CG_BASE = 'https://api.coingecko.com/api/v3';
-const WORKER_URL = import.meta.env.VITE_WORKER_URL || '';
+// Default to the deployed worker (same as exchangeService/NewsPage) so CI builds
+// without VITE_WORKER_URL still proxy through the worker instead of hitting
+// Binance/CoinGecko directly from the browser (which caused 503/408 on prices).
+const WORKER_URL = import.meta.env.VITE_WORKER_URL || 'https://trade-os.aviniazov7.workers.dev';
 // Use worker proxy for CoinGecko (details/charts) and Binance (prices/klines)
 const BASE_URL = WORKER_URL ? `${WORKER_URL}/cg` : CG_BASE;
 // Binance through worker proxy to avoid CORS / geo-restriction issues in browser
@@ -30,22 +33,34 @@ export async function fetchPrices(coinsOrIds, signal) {
   const binanceCoins = coins.filter(c => c.symbol !== 'XAU');
   if (!binanceCoins.length) return {};
 
-  const symbolsParam = JSON.stringify(binanceCoins.map(c => `${c.symbol}USDT`));
-  const url = `${BINANCE_BASE}/ticker/24hr?symbols=${encodeURIComponent(symbolsParam)}`;
+  // Split into chunks — Binance returns 503/408 for very long `symbols=[...]`
+  // lists, so request ~25 at a time and merge (a short request returns 200).
+  const CHUNK = 25;
+  const chunks = [];
+  for (let i = 0; i < binanceCoins.length; i += CHUNK) {
+    chunks.push(binanceCoins.slice(i, i + CHUNK));
+  }
 
-  const response = await fetch(url, { signal });
-  if (!response.ok) throw new Error(`Binance API error: ${response.status}`);
-  const data = await response.json();
+  const responses = await Promise.all(chunks.map(async (chunk) => {
+    const symbolsParam = JSON.stringify(chunk.map(c => `${c.symbol}USDT`));
+    const url = `${BINANCE_BASE}/ticker/24hr?symbols=${encodeURIComponent(symbolsParam)}`;
+    const response = await fetch(url, { signal });
+    if (!response.ok) throw new Error(`Binance API error: ${response.status}`);
+    return response.json();
+  }));
 
   const result = {};
-  for (const item of data) {
-    const sym = item.symbol?.replace('USDT', '');
-    const coin = coins.find(c => c.symbol === sym);
-    if (coin && item.lastPrice) {
-      result[coin.coingeckoId] = {
-        usd: parseFloat(item.lastPrice),
-        usd_24h_change: parseFloat(item.priceChangePercent ?? 0),
-      };
+  for (const data of responses) {
+    if (!Array.isArray(data)) continue;
+    for (const item of data) {
+      const sym = item.symbol?.replace('USDT', '');
+      const coin = coins.find(c => c.symbol === sym);
+      if (coin && item.lastPrice) {
+        result[coin.coingeckoId] = {
+          usd: parseFloat(item.lastPrice),
+          usd_24h_change: parseFloat(item.priceChangePercent ?? 0),
+        };
+      }
     }
   }
   return result;
