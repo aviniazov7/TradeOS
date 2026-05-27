@@ -311,6 +311,9 @@ export default function CoinAnalysis() {
   const [scanProgress, setScanProgress] = useState(0);
   const [liquidityData, setLiquidityData] = useState(null);
   const [heatmapKlines, setHeatmapKlines] = useState(null);
+  // Which exchange the TradingView chart should use. Falls back to Bybit for
+  // coins Binance doesn't list (otherwise the embed shows "Invalid symbol").
+  const [chartExchange, setChartExchange] = useState('BINANCE');
   const [projectDesc, setProjectDesc] = useState('');
   const [projectDescLoading, setProjectDescLoading] = useState(false);
   const [projectDescError, setProjectDescError] = useState(null);
@@ -384,6 +387,7 @@ export default function CoinAnalysis() {
     setCoinData(null);
     setChartData([]);
     setRawPrices([]);
+    setChartExchange('BINANCE');
     setError(null);
 
     // Kick off AI project description in parallel (non-blocking)
@@ -428,6 +432,11 @@ export default function CoinAnalysis() {
         fetch(`https://fapi.binance.com/fapi/v1/allForceOrders?symbol=${binanceSymbol}&startTime=${Date.now() - 86400000}&limit=1000`).then(r => r.json()),
         fetch(`https://api.binance.com/api/v3/klines?symbol=${binanceSymbol}&interval=1h&limit=720`).then(r => r.json()),
       ]).then(([bookRes, oiRes, fundingRes, depthRes, forceRes, klinesRes]) => {
+        // Binance returns a `code` (e.g. -1121 Invalid symbol) when it doesn't
+        // list the coin — in that case point the chart at Bybit instead.
+        const onBinance = bookRes.status === 'fulfilled' && !bookRes.value?.code;
+        setChartExchange(onBinance ? 'BINANCE' : 'BYBIT');
+
         setLiquidityData({
           symbol: binanceSymbol,
           bookTicker: bookRes.status === 'fulfilled' && !bookRes.value?.code ? bookRes.value : null,
@@ -707,7 +716,7 @@ export default function CoinAnalysis() {
 
               {/* === TOP ROW: Sentiment + Coin Info + 24h Range === */}
               {(() => {
-                const tvSymbol = `BINANCE:${TV_SYMBOL_MAP[selectedCoin?.coingeckoId] || `${coinData.symbol?.toUpperCase()}USDT`}`;
+                const tvSymbol = `${chartExchange}:${TV_SYMBOL_MAP[selectedCoin?.coingeckoId] || `${coinData.symbol?.toUpperCase()}USDT`}`;
                 return (
                   <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
                     {/* 24h Range — always show */}

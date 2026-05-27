@@ -53,7 +53,7 @@ export default function SelectDropdown({ value, onChange, options = [], placehol
       </button>
 
       {open && (
-        <div className="absolute z-50 top-full mt-1 right-0 left-0 bg-bg-secondary border border-border-primary rounded-xl shadow-xl overflow-hidden min-w-max">
+        <div className="absolute z-50 top-full mt-1 right-0 left-0 bg-bg-secondary border border-border-primary rounded-xl shadow-xl overflow-hidden">
           <div className="max-h-48 overflow-y-auto">
             {allowClear && hasValue && (
               <button

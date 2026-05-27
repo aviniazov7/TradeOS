@@ -61,15 +61,16 @@ export default function BacktestFilters({ filters, onChange }) {
               />
             </div>
 
-            <div className="flex items-center gap-1.5 flex-wrap">
-              <span className="text-[11px] text-text-muted flex-shrink-0">כיוון</span>
-              <button className={btnClass(filters.direction === 'long')} onClick={() => toggle('direction', 'long')}>Long</button>
-              <button className={btnClass(filters.direction === 'short')} onClick={() => toggle('direction', 'short')}>Short</button>
-              <div className="w-px h-4 bg-border-primary mx-1" />
-              <span className="text-[11px] text-text-muted flex-shrink-0">תוצאה</span>
-              <button className={btnClass(filters.result === 'win')} onClick={() => toggle('result', 'win')}>Win</button>
-              <button className={btnClass(filters.result === 'breakeven')} onClick={() => toggle('result', 'breakeven')}>BE</button>
-              <button className={btnClass(filters.result === 'loss')} onClick={() => toggle('result', 'loss')}>Loss</button>
+            <div className="flex items-center gap-1.5">
+              <span className="text-[11px] text-text-muted w-12 flex-shrink-0">כיוון</span>
+              <button className={`${btnClass(filters.direction === 'long')} flex-1`} onClick={() => toggle('direction', 'long')}>Long</button>
+              <button className={`${btnClass(filters.direction === 'short')} flex-1`} onClick={() => toggle('direction', 'short')}>Short</button>
+            </div>
+            <div className="flex items-center gap-1.5">
+              <span className="text-[11px] text-text-muted w-12 flex-shrink-0">תוצאה</span>
+              <button className={`${btnClass(filters.result === 'win')} flex-1`} onClick={() => toggle('result', 'win')}>Win</button>
+              <button className={`${btnClass(filters.result === 'breakeven')} flex-1`} onClick={() => toggle('result', 'breakeven')}>BE</button>
+              <button className={`${btnClass(filters.result === 'loss')} flex-1`} onClick={() => toggle('result', 'loss')}>Loss</button>
             </div>
 
             <div className="grid grid-cols-2 gap-2">
