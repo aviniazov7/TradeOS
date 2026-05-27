@@ -1648,6 +1648,22 @@ async function handleRequest(request, env) {
     return new Response(JSON.stringify({ error: 'Not found' }), { status: 404, headers: { ...cors, 'Content-Type': 'application/json' } });
   }
 
+  // Economic calendar proxy — fetch Forex Factory server-side (no CORS, no
+  // dependency on the flaky public allorigins proxy), with edge caching.
+  if (request.method === 'GET' && path === '/calendar') {
+    try {
+      const r = await fetch('https://nfs.faireconomy.media/ff_calendar_thisweek.json', {
+        headers: { 'User-Agent': 'Mozilla/5.0 TradeOS' },
+        cf: { cacheTtl: 1800, cacheEverything: true },
+      });
+      if (!r.ok) return new Response(JSON.stringify({ error: 'upstream' }), { status: 502, headers: { ...cors, 'Content-Type': 'application/json' } });
+      const body = await r.text();
+      return new Response(body, { headers: { ...cors, 'Content-Type': 'application/json', 'Cache-Control': 'public, max-age=1800' } });
+    } catch {
+      return new Response(JSON.stringify({ error: 'fetch failed' }), { status: 502, headers: { ...cors, 'Content-Type': 'application/json' } });
+    }
+  }
+
   if (path === '/setup-webhook') {
     const workerUrl = `${url.protocol}//${url.host}/webhook`;
     const res = await fetch(`https://api.telegram.org/bot${env.BOT_TOKEN}/setWebhook?url=${encodeURIComponent(workerUrl)}&drop_pending_updates=true`);

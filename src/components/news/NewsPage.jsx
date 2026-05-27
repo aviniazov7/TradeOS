@@ -17,6 +17,7 @@ const SOURCES = [
 const RSS2JSON_BASE = 'https://api.rss2json.com/v1/api.json?rss_url=';
 
 // ─── Economic Calendar (Forex Factory via allorigins proxy) ───
+const WORKER_URL = import.meta.env.VITE_WORKER_URL || 'https://trade-os.aviniazov7.workers.dev';
 const CALENDAR_URL = 'https://nfs.faireconomy.media/ff_calendar_thisweek.json';
 const CALENDAR_CACHE_KEY = 'tradeos_econ_calendar_v3';
 const CALENDAR_CACHE_TTL = 60 * 60 * 1000; // 1 hour
@@ -127,8 +128,13 @@ function EconomicCalendar() {
     else setLoading(true);
     setError(null);
 
-    // Try allorigins/raw first, then allorigins/get as fallback
+    // Try our own worker first (reliable, server-side fetch), then fall back
+    // to the public allorigins proxy if the worker is unavailable.
     const strategies = [
+      {
+        url: `${WORKER_URL}/calendar`,
+        parse: (res) => res.json(),
+      },
       {
         url: `https://api.allorigins.win/raw?url=${encodeURIComponent(CALENDAR_URL)}`,
         parse: (res) => res.json(),
