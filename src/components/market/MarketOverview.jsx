@@ -157,10 +157,43 @@ function getHeatColor(change) {
   }
 }
 
-function tvUrl(symbol) {
+function tvSymbol(symbol) {
   const s = (symbol || '').toUpperCase().replace(/USDT$/i, '');
+  return `BINANCE:${s}USDT.P`;
+}
+
+function tvUrl(symbol) {
   // Try Binance perp first; TradingView will show error if not listed there
-  return `https://www.tradingview.com/chart/?symbol=BINANCE:${s}USDT.P`;
+  return `https://www.tradingview.com/chart/?symbol=${tvSymbol(symbol)}`;
+}
+
+// Open the chart in the TradingView app (desktop `tradingview://` protocol or
+// the mobile app link) when it's installed, and fall back to the browser when
+// it isn't. We fire the deep link, then open the web URL only if the page never
+// lost focus/visibility — i.e. no app took over.
+function openChart(symbol) {
+  const webUrl = tvUrl(symbol);
+  const appUrl = `tradingview://chart/?symbol=${tvSymbol(symbol)}`;
+
+  let handled = false;
+  const finish = () => { handled = true; };
+  const onVis = () => { if (document.hidden) finish(); };
+
+  window.addEventListener('blur', finish, { once: true });
+  document.addEventListener('visibilitychange', onVis);
+
+  try {
+    window.location.href = appUrl;
+  } catch {
+    window.open(webUrl, '_blank', 'noopener');
+    handled = true;
+  }
+
+  setTimeout(() => {
+    window.removeEventListener('blur', finish);
+    document.removeEventListener('visibilitychange', onVis);
+    if (!handled) window.open(webUrl, '_blank', 'noopener');
+  }, 1200);
 }
 
 function HeatmapCell({ coin, index, sizeClass }) {
@@ -174,7 +207,7 @@ function HeatmapCell({ coin, index, sizeClass }) {
       whileHover={{ scale: 1.02, transition: { duration: 0.15 } }}
       className={`${sizeClass} rounded-lg flex flex-col items-center justify-center border border-white/5 cursor-pointer transition-all hover:border-white/15 hover:brightness-125`}
       style={{ backgroundColor: getHeatColor(change) }}
-      onClick={() => window.open(tvUrl(coin.symbol), '_blank', 'noopener')}
+      onClick={() => openChart(coin.symbol)}
     >
       <div className="flex items-center gap-1">
         <CoinIcon pair={coin.symbol} className="w-3.5 h-3.5" />
@@ -1069,7 +1102,7 @@ export default function MarketOverview() {
                   initial={{ opacity: 0 }}
                   animate={{ opacity: 1 }}
                   className="flex items-center justify-between py-1 border-b border-border-primary/30 last:border-0 cursor-pointer hover:bg-white/5 rounded px-1 transition-colors"
-                  onClick={() => window.open(tvUrl(coin.symbol), '_blank', 'noopener')}
+                  onClick={() => openChart(coin.symbol)}
                 >
                   <span className="text-[11px] font-bold text-profit">
                     +{coin.price_change_percentage_24h?.toFixed(1)}%
@@ -1087,7 +1120,7 @@ export default function MarketOverview() {
                   initial={{ opacity: 0 }}
                   animate={{ opacity: 1 }}
                   className="flex items-center justify-between py-1 border-b border-border-primary/30 last:border-0 cursor-pointer hover:bg-white/5 rounded px-1 transition-colors"
-                  onClick={() => window.open(tvUrl(coin.symbol), '_blank', 'noopener')}
+                  onClick={() => openChart(coin.symbol)}
                 >
                   <span className="text-[11px] font-bold text-loss">
                     {coin.price_change_percentage_24h?.toFixed(1)}%
@@ -1117,7 +1150,7 @@ export default function MarketOverview() {
           {topCoins.length > 0 ? (
             <div className="space-y-2">
               {topCoins.map((coin, i) => (
-                <div key={coin.id} className="flex items-center justify-between py-1.5 border-b border-border-primary/50 last:border-0 cursor-pointer hover:bg-white/5 rounded px-1 transition-colors" onClick={() => window.open(tvUrl(coin.symbol), '_blank', 'noopener')}>
+                <div key={coin.id} className="flex items-center justify-between py-1.5 border-b border-border-primary/50 last:border-0 cursor-pointer hover:bg-white/5 rounded px-1 transition-colors" onClick={() => openChart(coin.symbol)}>
                   <div className="flex items-center gap-2">
                     {coin.price_change_percentage_24h >= 0 ? (
                       <ArrowUpRight className="w-3.5 h-3.5 text-profit" />
@@ -1162,7 +1195,7 @@ export default function MarketOverview() {
                     animate={{ opacity: 1 }}
                     transition={{ delay: 0.05 * i, duration: 0.3 }}
                     className="flex items-center justify-between py-1 border-b border-border-primary/30 last:border-0 cursor-pointer hover:bg-white/5 rounded px-1 transition-colors"
-                    onClick={() => window.open(tvUrl(coin.symbol), '_blank', 'noopener')}
+                    onClick={() => openChart(coin.symbol)}
                   >
                     <div className="flex items-center gap-1.5 w-16 shrink-0">
                       {chg >= 0 ? (
