@@ -126,6 +126,13 @@ async function fetchPrices(pairs) {
   } catch { return {}; }
 }
 
+// Short, stable hash (FNV-1a) for building KV keys that fit the 512-byte limit.
+function hashStr(s) {
+  let h = 2166136261;
+  for (let i = 0; i < s.length; i++) { h ^= s.charCodeAt(i); h = Math.imul(h, 16777619); }
+  return (h >>> 0).toString(36);
+}
+
 async function fetchFundingRates(pairs) {
   try {
     const res = await fetch(`${BINANCE_FUTURES}/premiumIndex`);
@@ -1695,19 +1702,25 @@ async function handleRequest(request, env) {
     const subPath = path.slice(5); // remove '/bnb/'
     const bnbUrl = `https://api.binance.com/api/v3/${subPath}${url.search}`;
     const rawKey = `bnb:${subPath}${url.search}`;
-    // KV max key = 512 bytes — skip caching for large symbol lists (ticker with many coins)
-    const canCache = rawKey.length <= 500;
-    const cacheKey = rawKey.slice(0, 500);
+    // KV keys max 512 bytes — hash long keys (e.g. ticker with many symbols) so
+    // even large requests stay cached and don't hammer Binance every poll, which
+    // was causing repeated 408 timeouts on the journal screen.
+    const cacheKey = rawKey.length <= 500 ? rawKey : `bnb:h:${hashStr(rawKey)}`;
+    const staleKey = `${cacheKey}:stale`;
     const ttl = 60; // KV minimum TTL is 60s; prices refresh via client polling anyway
     try {
-      if (canCache) {
-        const cached = await env.ALERTS_KV.get(cacheKey);
-        if (cached) return new Response(cached, { headers: { ...cors, 'Content-Type': 'application/json', 'X-Cache': 'HIT' } });
-      }
+      const cached = await env.ALERTS_KV.get(cacheKey);
+      if (cached) return new Response(cached, { headers: { ...cors, 'Content-Type': 'application/json', 'X-Cache': 'HIT' } });
       const res = await fetch(bnbUrl, { headers: { 'Accept': 'application/json' } });
-      if (!res.ok) return new Response(JSON.stringify({ error: res.status }), { status: res.status, headers: { ...cors, 'Content-Type': 'application/json' } });
+      if (!res.ok) {
+        // Transient Binance hiccup (e.g. 408/429) — serve the last good copy if we have one
+        const stale = await env.ALERTS_KV.get(staleKey);
+        if (stale) return new Response(stale, { headers: { ...cors, 'Content-Type': 'application/json', 'X-Cache': 'STALE' } });
+        return new Response(JSON.stringify({ error: res.status }), { status: res.status, headers: { ...cors, 'Content-Type': 'application/json' } });
+      }
       const text = await res.text();
-      if (canCache) env.ALERTS_KV.put(cacheKey, text, { expirationTtl: ttl }).catch(() => {});
+      env.ALERTS_KV.put(cacheKey, text, { expirationTtl: ttl }).catch(() => {});
+      env.ALERTS_KV.put(staleKey, text, { expirationTtl: 3600 }).catch(() => {});
       return new Response(text, { headers: { ...cors, 'Content-Type': 'application/json', 'X-Cache': 'MISS' } });
     } catch (err) {
       return new Response(JSON.stringify({ error: err.message }), { status: 502, headers: { ...cors, 'Content-Type': 'application/json' } });
