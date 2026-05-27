@@ -167,33 +167,20 @@ function tvUrl(symbol) {
   return `https://www.tradingview.com/chart/?symbol=${tvSymbol(symbol)}`;
 }
 
-// Open the chart in the TradingView app (desktop `tradingview://` protocol or
-// the mobile app link) when it's installed, and fall back to the browser when
-// it isn't. We fire the deep link, then open the web URL only if the page never
-// lost focus/visibility — i.e. no app took over.
+// Open the coin chart. The TradingView desktop app can't deep-link to a
+// specific symbol (the tradingview:// scheme only wakes the app on whatever was
+// last open), so on desktop we open the web chart on the correct coin. On
+// mobile a top-level navigation to the tradingview.com URL lets the OS route to
+// the TradingView app at the right symbol via universal links, falling back to
+// the web chart when the app isn't installed.
 function openChart(symbol) {
   const webUrl = tvUrl(symbol);
-  const appUrl = `tradingview://chart/?symbol=${tvSymbol(symbol)}`;
-
-  let handled = false;
-  const finish = () => { handled = true; };
-  const onVis = () => { if (document.hidden) finish(); };
-
-  window.addEventListener('blur', finish, { once: true });
-  document.addEventListener('visibilitychange', onVis);
-
-  try {
-    window.location.href = appUrl;
-  } catch {
+  const isMobile = /Android|iPhone|iPad|iPod/i.test(navigator.userAgent || '');
+  if (isMobile) {
+    window.location.href = webUrl;
+  } else {
     window.open(webUrl, '_blank', 'noopener');
-    handled = true;
   }
-
-  setTimeout(() => {
-    window.removeEventListener('blur', finish);
-    document.removeEventListener('visibilitychange', onVis);
-    if (!handled) window.open(webUrl, '_blank', 'noopener');
-  }, 1200);
 }
 
 function HeatmapCell({ coin, index, sizeClass }) {
