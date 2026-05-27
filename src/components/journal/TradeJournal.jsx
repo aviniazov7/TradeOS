@@ -381,22 +381,35 @@ export default function TradeJournal() {
 
   const exportCSV = () => {
     if (!filteredTrades.length) return;
-    const headers = ['תאריך', 'זוג', 'כיוון', 'כניסה', 'סגירה', 'סטופ לוס', 'גודל עסקה', 'מינוף', 'עמלות', 'רווח/הפסד', '%', 'R:R', 'אסטרטגיה', 'טווח זמן', 'סטטוס'];
+    // Escape a CSV cell: quote when it contains a comma/quote/newline, and
+    // neutralize spreadsheet formula injection on a leading =,+,-,@.
+    const cell = (v) => {
+      let s = v == null ? '' : String(v);
+      if (/^[=+\-@]/.test(s)) s = `'${s}`;
+      if (/[",\n\r]/.test(s)) s = `"${s.replace(/"/g, '""')}"`;
+      return s;
+    };
+    const toDate = (raw) => (raw ? (raw.toDate ? raw.toDate() : new Date(raw)) : null);
+    const headers = ['תאריך', 'תאריך סגירה', 'זוג', 'כיוון', 'כניסה', 'סגירה', 'סטופ לוס', 'גודל עסקה', 'מינוף', 'עמלות', 'רווח/הפסד', '%', 'R:R', 'אסטרטגיה', 'טווח זמן', 'סטטוס', 'סיבת כניסה', 'הערות', 'תגיות', 'רגש לפני', 'רגש אחרי', 'טעויות', 'ביטחון'];
     const rows = filteredTrades.map((t) => {
-      const d = t.entryDate?.toDate ? t.entryDate.toDate() : new Date(t.entryDate);
+      const d = toDate(t.entryDate) || new Date();
+      const xd = toDate(t.exitDate);
       const pnl = t.netPnl ?? t.pnl ?? 0;
       const pnlPct = t.pnlPercent != null
         ? t.pnlPercent
         : (t.entryPrice > 0 && t.quantity > 0 ? (pnl / (t.entryPrice * t.quantity)) * 100 * (t.leverage || 1) : 0);
+      const tags = Array.isArray(t.tags) ? t.tags.join(' ') : (t.tags || '');
+      const mistakes = Array.isArray(t.mistakes) ? t.mistakes.join(' ') : (t.mistakes || '');
       return [
-        formatDate(d), t.pair, t.direction, t.entryPrice, t.exitPrice,
+        formatDate(d), xd ? formatDate(xd) : '', t.pair, t.direction, t.entryPrice, t.exitPrice,
         t.stopLoss, t.positionSize, t.leverage, t.fees, pnl.toFixed(2),
         (isNaN(pnlPct) ? 0 : pnlPct).toFixed(2), (t.rrRatio ?? 0).toFixed(2), t.strategy || '',
         t.timeframe || '', t.exitPrice > 0 ? 'סגורה' : 'פתוחה',
+        t.entryReason || '', t.notes || '', tags, t.emotionBefore || '', t.emotionAfter || '', mistakes, t.confidenceRating ?? '',
       ];
     });
     const bom = '\uFEFF';
-    const csv = bom + [headers.join(','), ...rows.map((r) => r.join(','))].join('\n');
+    const csv = bom + [headers, ...rows].map((r) => r.map(cell).join(',')).join('\n');
     const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' });
     const url = URL.createObjectURL(blob);
     const a = document.createElement('a');
