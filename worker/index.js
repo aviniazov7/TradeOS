@@ -391,6 +391,10 @@ async function handleFunding(env, chatId) {
     caption += `<b>${sym}</b>: ${re} ${fmtPct(r.fundingRate)}\n`;
   }
   if (timeLeft > 0) caption += `\n⏰ Funding הבא: ${hoursLeft}h ${minsLeft}m`;
+  // Tell the user which watchlist coins have no funding data (e.g. not listed
+  // on Binance Futures) instead of silently dropping them.
+  const missing = watchlist.filter((p) => !rates[p]).map((p) => p.replace('USDT', ''));
+  if (missing.length) caption += `\n\nℹ️ אין נתוני Funding ל: ${missing.join(', ')}`;
 
   const keyboard = [
     [{ text: '🔄 רענן', callback_data: 'mkt_funding' }, { text: '🔙 חזרה', callback_data: 'menu_market' }],
