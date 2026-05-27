@@ -41,13 +41,18 @@ export async function fetchPrices(coinsOrIds, signal) {
     chunks.push(binanceCoins.slice(i, i + CHUNK));
   }
 
-  const responses = await Promise.all(chunks.map(async (chunk) => {
+  // allSettled — Binance rejects the WHOLE batch with 400 if a single symbol
+  // isn't a valid pair, so one bad chunk must not drop prices for the others.
+  const settled = await Promise.allSettled(chunks.map(async (chunk) => {
     const symbolsParam = JSON.stringify(chunk.map(c => `${c.symbol}USDT`));
     const url = `${BINANCE_BASE}/ticker/24hr?symbols=${encodeURIComponent(symbolsParam)}`;
     const response = await fetch(url, { signal });
     if (!response.ok) throw new Error(`Binance API error: ${response.status}`);
     return response.json();
   }));
+
+  if (signal?.aborted) return {};
+  const responses = settled.filter(s => s.status === 'fulfilled').map(s => s.value);
 
   const result = {};
   for (const data of responses) {
