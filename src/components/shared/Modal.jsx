@@ -44,7 +44,7 @@ export default function Modal({ isOpen, onClose, title, children, maxWidth = 'ma
             <motion.div
               className={`relative ${maxWidth} w-full rounded-2xl overflow-hidden shadow-2xl pointer-events-auto`}
               style={{
-                background: 'rgba(10, 13, 22, 0.78)',
+                background: 'var(--color-bg-overlay)',
                 border: '1px solid rgba(0,191,255,0.22)',
                 boxShadow: '0 32px 80px rgba(0,0,0,0.55), 0 0 0 1px rgba(255,255,255,0.04) inset',
                 maxHeight: 'calc(100vh - 4.5rem)',
