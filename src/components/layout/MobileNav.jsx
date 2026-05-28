@@ -95,6 +95,12 @@ export default function MobileNav() {
               to={item.to}
               end={item.to === '/'}
               ref={(el) => (itemRefs.current[i] = el)}
+              onClick={() => {
+                // Tapping the already-active tab scrolls the page back to the top.
+                if (isActive) {
+                  document.getElementById('app-scroll')?.scrollTo({ top: 0, behavior: 'smooth' });
+                }
+              }}
               className="relative z-10 flex-1 flex flex-col items-center justify-center gap-0.5 rounded-full px-2 py-1.5 text-[11px] font-medium"
             >
               <motion.span
