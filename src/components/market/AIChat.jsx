@@ -1,6 +1,6 @@
 import { useState, useEffect, useRef } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
-import { Bot, Send, RotateCcw, User, Sparkles, BarChart3 } from 'lucide-react';
+import { Bot, Send, RotateCcw, User, Sparkles, BarChart3, History, Trash2 } from 'lucide-react';
 import DOMPurify from 'dompurify';
 import { sendMessageStream } from '../../services/groqApi';
 import { detectCoinFromText } from '../../utils/technicals';
@@ -8,7 +8,44 @@ import { fetchCoinChart } from '../../services/coingeckoApi';
 import { useAiUsage } from '../../hooks/useAiUsage';
 import ChatChart from './ChatChart';
 
-const STORAGE_KEY = 'tradeos-ai-chat-history';
+const STORAGE_KEY = 'tradeos-ai-conversations';
+const LEGACY_KEY = 'tradeos-ai-chat-history';
+const MAX_CONVERSATIONS = 30;
+
+function convTitle(messages) {
+  const firstUser = messages.find((m) => m.role === 'user');
+  return (firstUser?.text || 'שיחה חדשה').slice(0, 40);
+}
+
+function loadConversations() {
+  try {
+    const saved = localStorage.getItem(STORAGE_KEY);
+    if (saved) {
+      const parsed = JSON.parse(saved);
+      if (Array.isArray(parsed)) return parsed;
+    }
+    // Migrate the old single-history key to the first conversation
+    const legacy = localStorage.getItem(LEGACY_KEY);
+    if (legacy) {
+      const msgs = JSON.parse(legacy);
+      if (Array.isArray(msgs) && msgs.some((m) => m.role === 'user')) {
+        const conv = { id: String(Date.now()), title: convTitle(msgs), messages: msgs, updatedAt: Date.now() };
+        localStorage.setItem(STORAGE_KEY, JSON.stringify([conv]));
+        localStorage.removeItem(LEGACY_KEY);
+        return [conv];
+      }
+      localStorage.removeItem(LEGACY_KEY);
+    }
+  } catch { /* ignore */ }
+  return [];
+}
+
+function saveConversations(list) {
+  try {
+    const sorted = [...list].sort((a, b) => b.updatedAt - a.updatedAt).slice(0, MAX_CONVERSATIONS);
+    localStorage.setItem(STORAGE_KEY, JSON.stringify(sorted));
+  } catch { /* ignore */ }
+}
 
 const WELCOME_MESSAGE = {
   role: 'model',
@@ -100,30 +137,40 @@ export default function AIChat() {
   const lastSentRef = useRef(0);
   const chartPromiseRef = useRef(null);
 
-  // Load from localStorage
+  const [conversations, setConversations] = useState(() => loadConversations());
+  const [currentConvId, setCurrentConvId] = useState(null);
+  const [historyOpen, setHistoryOpen] = useState(false);
+
+  // On mount: open the most recent conversation if any, otherwise show welcome.
   useEffect(() => {
-    try {
-      const saved = localStorage.getItem(STORAGE_KEY);
-      if (saved) {
-        const parsed = JSON.parse(saved);
-        if (parsed.length > 0) {
-          setMessages(parsed);
-          return;
-        }
-      }
-    } catch { /* ignore */ }
-    setMessages([WELCOME_MESSAGE]);
+    if (conversations.length > 0) {
+      const recent = conversations[0];
+      setMessages(recent.messages);
+      setCurrentConvId(recent.id);
+    } else {
+      setMessages([WELCOME_MESSAGE]);
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  // Save to localStorage (keep last 50 messages, strip chart data to save space)
+  // Save current conversation whenever messages change (only once the user has sent
+  // something — the lone welcome message is not a real conversation).
   useEffect(() => {
-    if (messages.length > 0) {
-      const toSave = (messages.length > 50 ? messages.slice(-50) : messages).map(
-        ({ chart, ...rest }) => rest
-      );
-      localStorage.setItem(STORAGE_KEY, JSON.stringify(toSave));
-    }
-  }, [messages]);
+    if (messages.length === 0) return;
+    if (!messages.some((m) => m.role === 'user')) return;
+    const stripped = messages.map(({ chart, ...rest }) => rest);
+    const title = convTitle(stripped);
+    const updatedAt = Date.now();
+    setConversations((prev) => {
+      let id = currentConvId;
+      if (!id) { id = String(Date.now()); }
+      const others = prev.filter((c) => c.id !== id);
+      const next = [{ id, title, messages: stripped, updatedAt }, ...others].slice(0, MAX_CONVERSATIONS);
+      saveConversations(next);
+      if (!currentConvId) setCurrentConvId(id);
+      return next;
+    });
+  }, [messages]); // eslint-disable-line react-hooks/exhaustive-deps
 
   // Scroll to bottom
   useEffect(() => {
@@ -222,10 +269,31 @@ export default function AIChat() {
     }
   };
 
+  // Start a fresh chat — the previous one stays in the history list.
   const clearChat = () => {
     setMessages([WELCOME_MESSAGE]);
-    localStorage.removeItem(STORAGE_KEY);
+    setCurrentConvId(null);
     setError(null);
+    setHistoryOpen(false);
+  };
+
+  const loadConversation = (id) => {
+    const conv = conversations.find((c) => c.id === id);
+    if (!conv) return;
+    setMessages(conv.messages);
+    setCurrentConvId(id);
+    setError(null);
+    setHistoryOpen(false);
+  };
+
+  const deleteConversation = (id, e) => {
+    if (e) e.stopPropagation();
+    setConversations((prev) => {
+      const next = prev.filter((c) => c.id !== id);
+      saveConversations(next);
+      return next;
+    });
+    if (id === currentConvId) clearChat();
   };
 
   const showQuickQuestions = messages.length <= 1 && !streaming;
@@ -249,13 +317,64 @@ export default function AIChat() {
               className="w-2 h-2 rounded-full bg-profit"
             />
           </div>
-          <button
-            onClick={clearChat}
-            className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs text-text-muted hover:text-text-primary hover:bg-bg-tertiary transition-colors cursor-pointer border border-border-primary"
-          >
-            <RotateCcw className="w-3 h-3" />
-            שיחה חדשה
-          </button>
+          <div className="flex items-center gap-2 relative">
+            <button
+              onClick={() => setHistoryOpen((v) => !v)}
+              className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs text-text-muted hover:text-text-primary hover:bg-bg-tertiary transition-colors cursor-pointer border border-border-primary"
+              title="היסטוריית שיחות"
+            >
+              <History className="w-3 h-3" />
+              היסטוריה
+              {conversations.length > 0 && (
+                <span className="text-[9px] px-1.5 py-0.5 rounded-full bg-accent-primary/15 text-accent-primary">
+                  {conversations.length}
+                </span>
+              )}
+            </button>
+            <button
+              onClick={clearChat}
+              className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs text-text-muted hover:text-text-primary hover:bg-bg-tertiary transition-colors cursor-pointer border border-border-primary"
+            >
+              <RotateCcw className="w-3 h-3" />
+              שיחה חדשה
+            </button>
+
+            {historyOpen && (
+              <>
+                <div className="fixed inset-0 z-40" onClick={() => setHistoryOpen(false)} />
+                <div className="absolute top-full left-0 mt-2 w-72 bg-bg-overlay border border-border-primary rounded-xl shadow-xl z-50 overflow-hidden">
+                  <div className="px-3 py-2 text-[11px] text-text-muted border-b border-border-primary/50">
+                    {conversations.length === 0 ? 'אין שיחות שמורות' : `${conversations.length} שיחות אחרונות (עד ${MAX_CONVERSATIONS})`}
+                  </div>
+                  <div className="max-h-80 overflow-y-auto">
+                    {conversations.map((c) => (
+                      <div
+                        key={c.id}
+                        onClick={() => loadConversation(c.id)}
+                        className={`group flex items-center gap-2 px-3 py-2 cursor-pointer hover:bg-bg-tertiary transition-colors ${
+                          c.id === currentConvId ? 'bg-accent-primary/10' : ''
+                        }`}
+                      >
+                        <div className="flex-1 min-w-0">
+                          <div className="text-xs text-text-primary truncate">{c.title}</div>
+                          <div className="text-[10px] text-text-muted">
+                            {new Date(c.updatedAt).toLocaleString('he-IL', { day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' })}
+                          </div>
+                        </div>
+                        <button
+                          onClick={(e) => deleteConversation(c.id, e)}
+                          className="p-1 rounded text-text-muted hover:text-loss opacity-0 group-hover:opacity-100 transition-opacity"
+                          title="מחק שיחה"
+                        >
+                          <Trash2 className="w-3.5 h-3.5" />
+                        </button>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              </>
+            )}
+          </div>
         </div>
 
         {/* Messages */}

@@ -1387,7 +1387,7 @@ async function handleAIChat(request, env, cors) {
     if (!groqResponse.ok) {
       const errText = await groqResponse.text();
       console.error('Groq API error:', groqResponse.status, errText);
-      return new Response(JSON.stringify({ error: `שגיאת AI: ${groqResponse.status}` }), { status: 502, headers: { ...cors, 'Content-Type': 'application/json' } });
+      return new Response(JSON.stringify({ error: groqResponse.status === 429 ? 'ספק ה-AI עמוס כרגע, נסה שוב בעוד רגע' : `שגיאת AI: ${groqResponse.status}` }), { status: 502, headers: { ...cors, 'Content-Type': 'application/json' } });
     }
 
     // Stream SSE response back to client
@@ -1505,7 +1505,7 @@ async function handleAIProjectDescription(request, env, cors) {
     if (!groqResponse.ok) {
       const errText = await groqResponse.text();
       console.error('Groq API error:', groqResponse.status, errText);
-      return new Response(JSON.stringify({ error: `שגיאת AI: ${groqResponse.status}` }), { status: 502, headers: { ...cors, 'Content-Type': 'application/json' } });
+      return new Response(JSON.stringify({ error: groqResponse.status === 429 ? 'ספק ה-AI עמוס כרגע, נסה שוב בעוד רגע' : `שגיאת AI: ${groqResponse.status}` }), { status: 502, headers: { ...cors, 'Content-Type': 'application/json' } });
     }
 
     const data = await groqResponse.json();
