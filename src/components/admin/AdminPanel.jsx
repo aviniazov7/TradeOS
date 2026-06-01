@@ -1,9 +1,11 @@
 import { useState, useEffect, useMemo } from 'react';
 import { Navigate } from 'react-router-dom';
-import { Users, UserPlus, ShieldCheck, CheckCircle2, Search, RefreshCw, Download, ChevronUp, ChevronDown } from 'lucide-react';
+import { Users, UserPlus, ShieldCheck, CheckCircle2, Search, RefreshCw, Download, ChevronUp, ChevronDown, Mail, Calendar, Coins, TrendingUp, Percent, Sparkles, Star } from 'lucide-react';
 import { useAuth } from '../../contexts/AuthContext';
 import { getAllUsers } from '../../services/firestoreService';
 import LoadingSpinner from '../shared/LoadingSpinner';
+import SelectDropdown from '../shared/SelectDropdown';
+import Modal from '../shared/Modal';
 
 function toDate(v) {
   if (!v) return null;
@@ -63,6 +65,7 @@ export default function AdminPanel() {
   const [onboardFilter, setOnboardFilter] = useState('all');
   const [sortKey, setSortKey] = useState('createdAt');
   const [sortDir, setSortDir] = useState('desc');
+  const [selectedUser, setSelectedUser] = useState(null);
 
   const load = () => {
     setLoading(true);
@@ -178,24 +181,30 @@ export default function AdminPanel() {
             className="w-full bg-bg-secondary border border-border-primary rounded-lg py-2.5 pr-10 pl-3 text-sm text-text-primary placeholder:text-text-secondary focus:outline-none focus:border-accent-primary"
           />
         </div>
-        <select
-          value={roleFilter}
-          onChange={(e) => setRoleFilter(e.target.value)}
-          className="bg-bg-secondary border border-border-primary rounded-lg py-2.5 px-3 text-sm text-text-primary focus:outline-none focus:border-accent-primary cursor-pointer"
-        >
-          <option value="all">כל התפקידים</option>
-          <option value="admin">אדמינים בלבד</option>
-          <option value="user">משתמשים בלבד</option>
-        </select>
-        <select
-          value={onboardFilter}
-          onChange={(e) => setOnboardFilter(e.target.value)}
-          className="bg-bg-secondary border border-border-primary rounded-lg py-2.5 px-3 text-sm text-text-primary focus:outline-none focus:border-accent-primary cursor-pointer"
-        >
-          <option value="all">כל הסטטוסים</option>
-          <option value="yes">סיימו אונבורדינג</option>
-          <option value="no">לא סיימו אונבורדינג</option>
-        </select>
+        <div className="md:w-48">
+          <SelectDropdown
+            value={roleFilter === 'all' ? '' : roleFilter}
+            onChange={(v) => setRoleFilter(v || 'all')}
+            options={[
+              { value: 'admin', label: 'אדמינים בלבד' },
+              { value: 'user', label: 'משתמשים בלבד' },
+            ]}
+            placeholder="כל התפקידים"
+            allowClear
+          />
+        </div>
+        <div className="md:w-56">
+          <SelectDropdown
+            value={onboardFilter === 'all' ? '' : onboardFilter}
+            onChange={(v) => setOnboardFilter(v || 'all')}
+            options={[
+              { value: 'yes', label: 'סיימו אונבורדינג' },
+              { value: 'no', label: 'לא סיימו אונבורדינג' },
+            ]}
+            placeholder="כל הסטטוסים"
+            allowClear
+          />
+        </div>
         <button
           onClick={exportCsv}
           disabled={filtered.length === 0}
@@ -248,7 +257,11 @@ export default function AdminPanel() {
                     </tr>
                   ) : (
                     filtered.map((u) => (
-                      <tr key={u.id} className="border-b border-border-primary/50 last:border-0">
+                      <tr
+                        key={u.id}
+                        onClick={() => setSelectedUser(u)}
+                        className="border-b border-border-primary/50 last:border-0 cursor-pointer hover:bg-bg-tertiary/40 transition-colors"
+                      >
                         <td className="px-4 py-3">
                           <div className="flex items-center gap-3">
                             {u.photoURL ? (
@@ -288,6 +301,106 @@ export default function AdminPanel() {
           </div>
         </>
       )}
+
+      <UserDetailModal user={selectedUser} onClose={() => setSelectedUser(null)} />
     </div>
+  );
+}
+
+// ── User detail modal ────────────────────────────────────────────────────────
+function DetailRow({ icon, label, value }) {
+  return (
+    <div className="flex items-start gap-3 py-2">
+      <div className="mt-0.5 text-text-muted">{icon}</div>
+      <div className="flex-1 min-w-0">
+        <div className="text-[11px] text-text-muted">{label}</div>
+        <div className="text-sm text-text-primary break-words">{value || '—'}</div>
+      </div>
+    </div>
+  );
+}
+
+function UserDetailModal({ user, onClose }) {
+  if (!user) return null;
+  const settings = user.settings || {};
+  const fav = Array.isArray(settings.favoriteCoins) ? settings.favoriteCoins : [];
+  const strategies = Array.isArray(settings.strategies) ? settings.strategies : [];
+
+  return (
+    <Modal isOpen={!!user} onClose={onClose} title="פרטי משתמש" maxWidth="max-w-lg">
+      <div className="space-y-5">
+        {/* Header */}
+        <div className="flex items-center gap-4">
+          {user.photoURL ? (
+            <img src={user.photoURL} alt="" className="w-14 h-14 rounded-full object-cover" referrerPolicy="no-referrer" />
+          ) : (
+            <div className="w-14 h-14 rounded-full bg-bg-tertiary flex items-center justify-center text-text-secondary font-bold text-lg">
+              {(user.displayName || user.email || '?').charAt(0).toUpperCase()}
+            </div>
+          )}
+          <div className="flex-1 min-w-0">
+            <div className="text-lg font-bold text-text-primary truncate">{user.displayName || '—'}</div>
+            <div className="text-sm text-text-secondary truncate">{user.email || '—'}</div>
+            <div className="mt-1 flex items-center gap-2">
+              {user.role === 'admin' ? (
+                <span className="inline-flex items-center gap-1 text-[11px] px-2 py-0.5 rounded-full bg-accent-primary/15 text-accent-primary border border-accent-primary/30">
+                  <ShieldCheck className="w-3 h-3" /> אדמין
+                </span>
+              ) : (
+                <span className="text-[11px] px-2 py-0.5 rounded-full bg-bg-tertiary text-text-secondary border border-border-primary">משתמש</span>
+              )}
+              {user.onboardingCompleted ? (
+                <span className="inline-flex items-center gap-1 text-[11px] px-2 py-0.5 rounded-full bg-profit/15 text-profit border border-profit/30">
+                  <CheckCircle2 className="w-3 h-3" /> אונבורדינג הושלם
+                </span>
+              ) : (
+                <span className="text-[11px] px-2 py-0.5 rounded-full bg-bg-tertiary text-text-secondary border border-border-primary">אונבורדינג לא הושלם</span>
+              )}
+            </div>
+          </div>
+        </div>
+
+        {/* General */}
+        <div className="bg-bg-tertiary/40 border border-border-primary rounded-xl px-4 py-2 divide-y divide-border-primary/40">
+          <DetailRow icon={<Mail className="w-4 h-4" />} label="אימייל" value={user.email} />
+          <DetailRow icon={<Calendar className="w-4 h-4" />} label="הצטרף" value={formatDate(user.createdAt)} />
+          <DetailRow icon={<Coins className="w-4 h-4" />} label="מטבע בסיס" value={settings.baseCurrency} />
+          <DetailRow icon={<TrendingUp className="w-4 h-4" />} label="מינוף ברירת מחדל" value={settings.defaultLeverage ? `${settings.defaultLeverage}x` : null} />
+          <DetailRow icon={<Percent className="w-4 h-4" />} label="סיכון ברירת מחדל" value={settings.defaultRiskPercent != null ? `${settings.defaultRiskPercent}%` : null} />
+        </div>
+
+        {/* Favorites */}
+        {fav.length > 0 && (
+          <div>
+            <div className="text-[11px] text-text-muted mb-2 flex items-center gap-1.5">
+              <Star className="w-3.5 h-3.5" /> מטבעות מועדפים
+            </div>
+            <div className="flex flex-wrap gap-1.5">
+              {fav.map((c) => (
+                <span key={c} className="text-xs px-2 py-1 rounded-md bg-bg-tertiary border border-border-primary text-text-primary">{c}</span>
+              ))}
+            </div>
+          </div>
+        )}
+
+        {/* Strategies */}
+        {strategies.length > 0 && (
+          <div>
+            <div className="text-[11px] text-text-muted mb-2 flex items-center gap-1.5">
+              <Sparkles className="w-3.5 h-3.5" /> אסטרטגיות
+            </div>
+            <div className="flex flex-wrap gap-1.5">
+              {strategies.map((s) => (
+                <span key={s} className="text-xs px-2 py-1 rounded-md bg-bg-tertiary border border-border-primary text-text-primary">{s}</span>
+              ))}
+            </div>
+          </div>
+        )}
+
+        <p className="text-[11px] text-text-muted">
+          נתונים מהפרופיל בלבד (read-only). כדי להציג כאן גם כמות יומנים/עסקאות/תוכניות לכל משתמש, צריך להרחיב את כללי ה-Firestore.
+        </p>
+      </div>
+    </Modal>
   );
 }
