@@ -1,8 +1,8 @@
 import { useState, useEffect, useMemo } from 'react';
 import { Navigate } from 'react-router-dom';
-import { Users, UserPlus, ShieldCheck, CheckCircle2, Search, RefreshCw, Download, ChevronUp, ChevronDown, Mail, Calendar, Coins, TrendingUp, Percent, Sparkles, Star } from 'lucide-react';
+import { Users, UserPlus, ShieldCheck, CheckCircle2, Search, RefreshCw, Download, ChevronUp, ChevronDown, Mail, Calendar, Coins, TrendingUp, Percent, Sparkles, Star, BookOpen, FlaskConical, Activity, FileText, Brain } from 'lucide-react';
 import { useAuth } from '../../contexts/AuthContext';
-import { getAllUsers } from '../../services/firestoreService';
+import { getAllUsers, getUserSubcollectionCount } from '../../services/firestoreService';
 import LoadingSpinner from '../shared/LoadingSpinner';
 import SelectDropdown from '../shared/SelectDropdown';
 import Modal from '../shared/Modal';
@@ -156,7 +156,7 @@ export default function AdminPanel() {
         <button
           onClick={load}
           disabled={loading}
-          className="flex items-center gap-2 px-3 py-2 rounded-lg text-sm font-medium bg-bg-secondary border border-border-primary text-text-secondary hover:text-text-primary disabled:opacity-50 cursor-pointer"
+          className="flex items-center gap-2 px-3 py-2 rounded-lg text-sm font-medium bg-bg-tertiary border border-border-primary text-text-secondary hover:text-text-primary disabled:opacity-50 cursor-pointer"
         >
           <RefreshCw className={`w-4 h-4 ${loading ? 'animate-spin' : ''}`} />
           רענן
@@ -178,7 +178,7 @@ export default function AdminPanel() {
             value={search}
             onChange={(e) => setSearch(e.target.value)}
             placeholder="חיפוש לפי שם או אימייל…"
-            className="w-full bg-bg-secondary border border-border-primary rounded-lg py-2.5 pr-10 pl-3 text-sm text-text-primary placeholder:text-text-secondary focus:outline-none focus:border-accent-primary"
+            className="w-full bg-bg-tertiary border border-border-primary rounded-lg py-2.5 pr-10 pl-3 text-sm text-text-primary placeholder:text-text-secondary focus:outline-none focus:border-accent-primary"
           />
         </div>
         <div className="md:w-48">
@@ -208,7 +208,7 @@ export default function AdminPanel() {
         <button
           onClick={exportCsv}
           disabled={filtered.length === 0}
-          className="flex items-center justify-center gap-2 px-3 py-2.5 rounded-lg text-sm font-medium bg-bg-secondary border border-border-primary text-text-secondary hover:text-text-primary disabled:opacity-50 cursor-pointer"
+          className="flex items-center justify-center gap-2 px-3 py-2.5 rounded-lg text-sm font-medium bg-bg-tertiary border border-border-primary text-text-secondary hover:text-text-primary disabled:opacity-50 cursor-pointer"
         >
           <Download className="w-4 h-4" />
           ייצוא CSV
@@ -320,7 +320,42 @@ function DetailRow({ icon, label, value }) {
   );
 }
 
+const COUNT_COLLECTIONS = [
+  { key: 'trades', label: 'עסקאות', icon: Activity },
+  { key: 'journals', label: 'יומני מסחר', icon: BookOpen },
+  { key: 'backtests', label: 'בקטסטים', icon: FlaskConical },
+  { key: 'backtestJournals', label: 'יומני בקטסט', icon: FlaskConical },
+  { key: 'dca', label: 'תוכניות DCA', icon: Coins },
+  { key: 'tradingPlans', label: 'תוכניות מסחר', icon: FileText },
+  { key: 'morningJournals', label: 'יומן בוקר', icon: Brain },
+  { key: 'eveningJournals', label: 'יומן ערב', icon: Brain },
+];
+
 function UserDetailModal({ user, onClose }) {
+  const [counts, setCounts] = useState(null);
+  const [countsError, setCountsError] = useState(null);
+
+  useEffect(() => {
+    if (!user) { setCounts(null); setCountsError(null); return; }
+    let cancelled = false;
+    setCounts(null);
+    setCountsError(null);
+    Promise.all(
+      COUNT_COLLECTIONS.map((c) =>
+        getUserSubcollectionCount(user.id, c.key).then((n) => [c.key, n]).catch(() => [c.key, null])
+      )
+    ).then((entries) => {
+      if (cancelled) return;
+      const map = Object.fromEntries(entries);
+      setCounts(map);
+      // If every count failed → rules probably haven't been redeployed yet
+      if (Object.values(map).every((v) => v === null)) {
+        setCountsError('לא ניתן לטעון ספירות — ודא שכללי ה-Firestore נפרסו (firebase deploy --only firestore:rules).');
+      }
+    });
+    return () => { cancelled = true; };
+  }, [user]);
+
   if (!user) return null;
   const settings = user.settings || {};
   const fav = Array.isArray(settings.favoriteCoins) ? settings.favoriteCoins : [];
@@ -369,6 +404,33 @@ function UserDetailModal({ user, onClose }) {
           <DetailRow icon={<Percent className="w-4 h-4" />} label="סיכון ברירת מחדל" value={settings.defaultRiskPercent != null ? `${settings.defaultRiskPercent}%` : null} />
         </div>
 
+        {/* Activity counts (read-only — uses Firestore count aggregation) */}
+        <div>
+          <div className="text-[11px] text-text-muted mb-2 flex items-center gap-1.5">
+            <Activity className="w-3.5 h-3.5" /> שימוש (קריאה בלבד)
+          </div>
+          <div className="grid grid-cols-2 gap-2">
+            {COUNT_COLLECTIONS.map((c) => {
+              const Icon = c.icon;
+              const n = counts?.[c.key];
+              return (
+                <div key={c.key} className="bg-bg-tertiary/40 border border-border-primary rounded-lg px-3 py-2 flex items-center gap-2">
+                  <Icon className="w-4 h-4 text-text-muted" />
+                  <div className="flex-1 min-w-0">
+                    <div className="text-[10px] text-text-muted truncate">{c.label}</div>
+                    <div className="text-sm font-semibold text-text-primary">
+                      {counts === null ? '…' : n == null ? '—' : n}
+                    </div>
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+          {countsError && (
+            <div className="mt-2 text-[11px] text-loss">{countsError}</div>
+          )}
+        </div>
+
         {/* Favorites */}
         {fav.length > 0 && (
           <div>
@@ -397,9 +459,6 @@ function UserDetailModal({ user, onClose }) {
           </div>
         )}
 
-        <p className="text-[11px] text-text-muted">
-          נתונים מהפרופיל בלבד (read-only). כדי להציג כאן גם כמות יומנים/עסקאות/תוכניות לכל משתמש, צריך להרחיב את כללי ה-Firestore.
-        </p>
       </div>
     </Modal>
   );
