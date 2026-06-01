@@ -31,13 +31,17 @@ export async function fetchProjectDescription(coinName, symbol, retries = 2) {
       return data.text || '';
     }
 
-    if (response.status === 429 && attempt < retries) {
-      await new Promise((r) => setTimeout(r, (attempt + 1) * 3000));
-      continue;
-    }
-
-    const err = await response.json().catch(() => ({}));
+    // Read body once so we can distinguish quota-exceeded (don't retry) from
+    // a transient rate-limit (retry with backoff).
+    const err = response.ok ? null : await response.json().catch(() => ({}));
     if (response.status === 429) {
+      if (err?.quotaExceeded) {
+        throw new Error(err.error || 'הגעת למכסה היומית. תוכל להמשיך מחר.');
+      }
+      if (attempt < retries) {
+        await new Promise((r) => setTimeout(r, (attempt + 1) * 3000));
+        continue;
+      }
       throw new Error('המערכת עמוסה. המתן כמה שניות ונסה שוב.');
     }
     if (response.status === 401) {
@@ -100,13 +104,17 @@ export async function sendMessageStream(messages, onChunk, retries = 2) {
       return;
     }
 
-    if (response.status === 429 && attempt < retries) {
-      await new Promise((r) => setTimeout(r, (attempt + 1) * 3000));
-      continue;
-    }
-
-    const err = await response.json().catch(() => ({}));
+    // Read body once so we can distinguish quota-exceeded (don't retry) from
+    // a transient rate-limit (retry with backoff).
+    const err = response.ok ? null : await response.json().catch(() => ({}));
     if (response.status === 429) {
+      if (err?.quotaExceeded) {
+        throw new Error(err.error || 'הגעת למכסה היומית. תוכל להמשיך מחר.');
+      }
+      if (attempt < retries) {
+        await new Promise((r) => setTimeout(r, (attempt + 1) * 3000));
+        continue;
+      }
       throw new Error('המערכת עמוסה. המתן כמה שניות ונסה שוב.');
     }
     if (response.status === 401) {

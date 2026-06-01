@@ -5,6 +5,7 @@ import DOMPurify from 'dompurify';
 import { sendMessageStream } from '../../services/groqApi';
 import { detectCoinFromText } from '../../utils/technicals';
 import { fetchCoinChart } from '../../services/coingeckoApi';
+import { useAiUsage } from '../../hooks/useAiUsage';
 import ChatChart from './ChatChart';
 
 const STORAGE_KEY = 'tradeos-ai-chat-history';
@@ -95,6 +96,7 @@ export default function AIChat() {
   const inputRef = useRef(null);
   const streamingTextRef = useRef('');
   const batchTimeoutRef = useRef(null);
+  const aiUsage = useAiUsage();
   const lastSentRef = useRef(0);
   const chartPromiseRef = useRef(null);
 
@@ -209,6 +211,7 @@ export default function AIChat() {
       setPendingChart(null);
       chartPromiseRef.current = null;
       inputRef.current?.focus();
+      aiUsage.refresh();
     }
   };
 
@@ -382,6 +385,28 @@ export default function AIChat() {
 
         {/* Input */}
         <div className="border-t border-border-primary px-4 py-3 bg-bg-secondary/50">
+          {/* Daily AI quota — resets at Israel midnight */}
+          {!aiUsage.loading && (() => {
+            const remaining = Math.max(0, aiUsage.limit - aiUsage.used);
+            const pct = Math.min(100, (aiUsage.used / aiUsage.limit) * 100);
+            const low = remaining <= 3;
+            return (
+              <div className="mb-2">
+                <div className="flex items-center justify-between text-[10px] mb-1">
+                  <span className="text-text-muted">מכסה יומית</span>
+                  <span className={low ? 'text-loss font-semibold' : 'text-text-secondary'}>
+                    נשארו {remaining} מתוך {aiUsage.limit}
+                  </span>
+                </div>
+                <div className="h-1 bg-bg-tertiary rounded-full overflow-hidden">
+                  <div
+                    className={`h-full rounded-full transition-all ${low ? 'bg-loss' : 'bg-accent-primary'}`}
+                    style={{ width: `${pct}%` }}
+                  />
+                </div>
+              </div>
+            );
+          })()}
           <div className="flex items-end gap-2">
             <textarea
               ref={inputRef}

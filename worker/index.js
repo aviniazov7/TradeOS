@@ -133,6 +133,50 @@ function hashStr(s) {
   return (h >>> 0).toString(36);
 }
 
+// ── AI usage quota (daily, resets at Israel midnight) ────────────────────────
+const AI_DAILY_LIMIT = 20;
+const FIREBASE_PROJECT_ID = 'tradeos-91a58';
+
+function decodeUidFromToken(token) {
+  if (!token) return null;
+  try {
+    const payload = JSON.parse(atob(token.split('.')[1].replace(/-/g, '+').replace(/_/g, '/')));
+    return payload.user_id || payload.sub || null;
+  } catch { return null; }
+}
+
+async function getAiUsage(env, uid) {
+  const date = getIsraelDateStr();
+  const key = `aiusage:${uid}:${date}`;
+  const v = await env.ALERTS_KV.get(key);
+  return { used: v ? parseInt(v, 10) || 0 : 0, limit: AI_DAILY_LIMIT, date };
+}
+
+async function incrementAiUsage(env, uid) {
+  const date = getIsraelDateStr();
+  const key = `aiusage:${uid}:${date}`;
+  const v = await env.ALERTS_KV.get(key);
+  const used = (v ? parseInt(v, 10) || 0 : 0) + 1;
+  // 48h TTL so the entry survives across midnight and a small clock skew
+  await env.ALERTS_KV.put(key, String(used), { expirationTtl: 172800 });
+  return used;
+}
+
+// Confirm the caller is an admin by reading their own user doc via Firestore
+// REST with their ID token — admin reads are allowed by our rules, so we don't
+// need a service account here.
+async function verifyAdminFromToken(token) {
+  const uid = decodeUidFromToken(token);
+  if (!uid || !token) return null;
+  try {
+    const url = `https://firestore.googleapis.com/v1/projects/${FIREBASE_PROJECT_ID}/databases/(default)/documents/users/${uid}`;
+    const r = await fetch(url, { headers: { Authorization: `Bearer ${token}` } });
+    if (!r.ok) return null;
+    const data = await r.json();
+    return data.fields?.role?.stringValue === 'admin' ? uid : null;
+  } catch { return null; }
+}
+
 async function fetchFundingRates(pairs) {
   try {
     const res = await fetch(`${BINANCE_FUTURES}/premiumIndex`);
@@ -1304,6 +1348,17 @@ async function handleAIChat(request, env, cors) {
       await env.ALERTS_KV.put(rlKey, JSON.stringify({ start: now, count: 1 }), { expirationTtl: 120 });
     }
 
+    // Daily quota — 20 requests per Israel day. Marked with quotaExceeded so
+    // the client knows not to retry (unlike the transient per-minute limit).
+    const quota = await getAiUsage(env, uid);
+    if (quota.used >= quota.limit) {
+      return new Response(JSON.stringify({
+        error: `הגעת למכסה היומית (${quota.limit} בקשות). תוכל להמשיך מחר.`,
+        quotaExceeded: true, used: quota.used, limit: quota.limit,
+      }), { status: 429, headers: { ...cors, 'Content-Type': 'application/json' } });
+    }
+    await incrementAiUsage(env, uid);
+
     // Build messages for Groq
     const apiMessages = [
       { role: 'system', content: WYCKOFF_SYSTEM_PROMPT },
@@ -1416,6 +1471,16 @@ async function handleAIProjectDescription(request, env, cors) {
     } else {
       await env.ALERTS_KV.put(rlKey, JSON.stringify({ start: now, count: 1 }), { expirationTtl: 120 });
     }
+
+    // Daily quota — shared with /ai-chat
+    const quota = await getAiUsage(env, uid);
+    if (quota.used >= quota.limit) {
+      return new Response(JSON.stringify({
+        error: `הגעת למכסה היומית (${quota.limit} בקשות). תוכל להמשיך מחר.`,
+        quotaExceeded: true, used: quota.used, limit: quota.limit,
+      }), { status: 429, headers: { ...cors, 'Content-Type': 'application/json' } });
+    }
+    await incrementAiUsage(env, uid);
 
     const userPrompt = `כתוב מאמרון על הפרויקט שמאחורי המטבע ${coinName}${symbol ? ` (${String(symbol).toUpperCase()})` : ''}.`;
 
@@ -1743,6 +1808,27 @@ async function handleRequest(request, env) {
   }
 
   if (path === '/health') return new Response(JSON.stringify({ status: 'ok', time: new Date().toISOString() }), { headers: { ...cors, 'Content-Type': 'application/json' } });
+
+  // Caller's own AI usage for the current day — used by the progress bar.
+  if (request.method === 'GET' && path === '/ai-usage') {
+    const token = (request.headers.get('Authorization') || '').replace('Bearer ', '');
+    const uid = decodeUidFromToken(token);
+    if (!uid) return new Response(JSON.stringify({ error: 'unauthorized' }), { status: 401, headers: { ...cors, 'Content-Type': 'application/json' } });
+    const usage = await getAiUsage(env, uid);
+    return new Response(JSON.stringify(usage), { headers: { ...cors, 'Content-Type': 'application/json' } });
+  }
+
+  // Admin-only: another user's AI usage. Verifies admin role via the caller's
+  // own user doc (reads allowed by Firestore rules).
+  if (request.method === 'GET' && path.startsWith('/admin/ai-usage/')) {
+    const token = (request.headers.get('Authorization') || '').replace('Bearer ', '');
+    const adminUid = await verifyAdminFromToken(token);
+    if (!adminUid) return new Response(JSON.stringify({ error: 'forbidden' }), { status: 403, headers: { ...cors, 'Content-Type': 'application/json' } });
+    const targetUid = path.split('/')[3];
+    if (!targetUid) return new Response(JSON.stringify({ error: 'missing uid' }), { status: 400, headers: { ...cors, 'Content-Type': 'application/json' } });
+    const usage = await getAiUsage(env, targetUid);
+    return new Response(JSON.stringify(usage), { headers: { ...cors, 'Content-Type': 'application/json' } });
+  }
 
   // Trade event notifications
   if (request.method === 'POST' && path === '/notify') {

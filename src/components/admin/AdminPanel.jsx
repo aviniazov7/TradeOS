@@ -3,6 +3,7 @@ import { Navigate } from 'react-router-dom';
 import { Users, UserPlus, ShieldCheck, CheckCircle2, Search, RefreshCw, Download, ChevronUp, ChevronDown, Mail, Calendar, Coins, TrendingUp, Percent, Sparkles, Star, BookOpen, FlaskConical, Activity, FileText, Brain } from 'lucide-react';
 import { useAuth } from '../../contexts/AuthContext';
 import { getAllUsers, getUserSubcollectionCount } from '../../services/firestoreService';
+import { fetchUserAiUsage } from '../../hooks/useAiUsage';
 import LoadingSpinner from '../shared/LoadingSpinner';
 import SelectDropdown from '../shared/SelectDropdown';
 import Modal from '../shared/Modal';
@@ -334,6 +335,14 @@ const COUNT_COLLECTIONS = [
 function UserDetailModal({ user, onClose }) {
   const [counts, setCounts] = useState(null);
   const [countsError, setCountsError] = useState(null);
+  const [aiUsage, setAiUsage] = useState(null);
+
+  useEffect(() => {
+    if (!user) { setAiUsage(null); return; }
+    let cancelled = false;
+    fetchUserAiUsage(user.id).then((u) => { if (!cancelled) setAiUsage(u); });
+    return () => { cancelled = true; };
+  }, [user]);
 
   useEffect(() => {
     if (!user) { setCounts(null); setCountsError(null); return; }
@@ -428,6 +437,30 @@ function UserDetailModal({ user, onClose }) {
           </div>
           {countsError && (
             <div className="mt-2 text-[11px] text-loss">{countsError}</div>
+          )}
+        </div>
+
+        {/* AI daily usage */}
+        <div>
+          <div className="text-[11px] text-text-muted mb-2 flex items-center gap-1.5">
+            <Sparkles className="w-3.5 h-3.5" /> שימוש ב-AI היום
+          </div>
+          {aiUsage ? (() => {
+            const pct = Math.min(100, (aiUsage.used / aiUsage.limit) * 100);
+            const low = (aiUsage.limit - aiUsage.used) <= 3;
+            return (
+              <div className="bg-bg-tertiary/40 border border-border-primary rounded-lg px-3 py-2.5">
+                <div className="flex items-center justify-between text-xs mb-1.5">
+                  <span className="text-text-secondary">בקשות שנוצלו</span>
+                  <span className={`font-semibold ${low ? 'text-loss' : 'text-text-primary'}`}>{aiUsage.used} / {aiUsage.limit}</span>
+                </div>
+                <div className="h-1.5 bg-bg-tertiary rounded-full overflow-hidden">
+                  <div className={`h-full rounded-full ${low ? 'bg-loss' : 'bg-accent-primary'}`} style={{ width: `${pct}%` }} />
+                </div>
+              </div>
+            );
+          })() : (
+            <div className="text-xs text-text-muted">…</div>
           )}
         </div>
 
