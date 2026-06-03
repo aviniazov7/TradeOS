@@ -59,6 +59,33 @@ export async function unsubscribeFromPush() {
   await sub.unsubscribe();
 }
 
+// Register read-only exchange keys with the worker so it can poll the exchange
+// in the background (closed-trade + daily-summary push notifications).
+export async function registerExchangeForPush(exchange, apiKey, apiSecret, passphrase) {
+  if (!exchange || !apiKey || !apiSecret) return false;
+  try {
+    const res = await fetch(`${WORKER_BASE}/push/exchange-register`, {
+      method: 'POST',
+      headers: await authHeader(),
+      body: JSON.stringify({ exchange, apiKey, apiSecret, passphrase: passphrase || '' }),
+    });
+    return res.ok;
+  } catch {
+    return false;
+  }
+}
+
+// Remove stored exchange keys (pass no exchange to clear all of them).
+export async function unregisterExchangeForPush(exchange) {
+  try {
+    await fetch(`${WORKER_BASE}/push/exchange-unregister`, {
+      method: 'POST',
+      headers: await authHeader(),
+      body: JSON.stringify(exchange ? { exchange } : {}),
+    });
+  } catch { /* best effort */ }
+}
+
 // Ask the worker to send a real push to all of the user's devices.
 export async function sendTestPush() {
   const res = await fetch(`${WORKER_BASE}/push/test`, { method: 'POST', headers: await authHeader() });

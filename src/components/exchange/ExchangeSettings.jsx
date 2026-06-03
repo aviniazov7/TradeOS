@@ -6,6 +6,7 @@ import {
 } from 'lucide-react';
 import toast from 'react-hot-toast';
 import { getUserSetting, setUserSetting, addToUserCollection } from '../../services/firestoreService';
+import { registerExchangeForPush, unregisterExchangeForPush } from '../../services/pushService';
 import { syncExchangeTrades, syncOpenPositions, fetchExchangeBalance } from '../../services/exchangeService';
 import { useAuth } from '../../contexts/AuthContext';
 import { useJournalContext } from '../../contexts/JournalContext';
@@ -563,10 +564,26 @@ export default function ExchangeSettings({ journalId: propJournalId, onImportTra
   const [syncing, setSyncing] = useState(null);
   const [syncModal, setSyncModal] = useState(null);
 
+  // Push notifications need the worker to hold read-only exchange keys. Only
+  // register when the user has actually granted notification permission.
+  const pushEligible = () => typeof Notification !== 'undefined' && Notification.permission === 'granted';
+  const registerForPush = (id, conf) => {
+    if (!pushEligible() || !conf?.apiKey || !conf?.apiSecret) return;
+    const extraKey = EXCHANGES.find(e => e.id === id)?.extraField?.key;
+    registerExchangeForPush(id, conf.apiKey, conf.apiSecret, extraKey ? conf[extraKey] : undefined);
+  };
+
   useEffect(() => {
     if (!user) return;
     getUserSetting(user.uid, 'exchanges').then(data => {
-      if (data) { setExchanges(data); setSavedExchanges(data); }
+      if (data) {
+        setExchanges(data);
+        setSavedExchanges(data);
+        // Re-sync stored keys for background push on every visit (idempotent).
+        if (pushEligible()) {
+          for (const [id, conf] of Object.entries(data)) registerForPush(id, conf);
+        }
+      }
       setLoading(false);
     });
   }, [user]);
@@ -579,6 +596,7 @@ export default function ExchangeSettings({ journalId: propJournalId, onImportTra
     try {
       await setUserSetting(user.uid, 'exchanges', exchanges, true);
       setSavedExchanges({ ...exchanges });
+      registerForPush(id, exchanges[id]);
       toast.success('המפתחות נשמרו ✓');
     } catch { toast.error('שגיאה בשמירה'); } finally { setSaving(null); }
   };
@@ -589,6 +607,7 @@ export default function ExchangeSettings({ journalId: propJournalId, onImportTra
     try {
       await setUserSetting(user.uid, 'exchanges', updated, true);
       setSavedExchanges({ ...updated });
+      unregisterExchangeForPush(id);
       toast.success('הבורסה נותקה');
     } catch { toast.error('שגיאה בניתוק'); }
   };

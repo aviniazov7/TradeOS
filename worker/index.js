@@ -56,6 +56,11 @@ function fmtPct(v) {
   const sign = v >= 0 ? '+' : '';
   return `${sign}${v.toFixed(2)}%`;
 }
+// Signed USD amount for P&L notifications, e.g. +$12.34 / -$5.00
+function fmtPnl(v) {
+  const sign = v >= 0 ? '+' : '-';
+  return `${sign}$${Math.abs(v).toFixed(2)}`;
+}
 function fmtBigNum(n) {
   if (n >= 1e9) return `$${(n / 1e9).toFixed(2)}B`;
   if (n >= 1e6) return `$${(n / 1e6).toFixed(1)}M`;
@@ -262,6 +267,121 @@ async function sendPushToUser(env, uid, data) {
     } catch { /* skip */ }
   }
   return sent;
+}
+
+// ---- Background exchange polling for push notifications ----------------------
+// Bybit v5 HMAC-SHA256 signature (hex).
+async function bybitHmacHex(secret, msg) {
+  const enc = new TextEncoder();
+  const key = await crypto.subtle.importKey('raw', enc.encode(secret), { name: 'HMAC', hash: 'SHA-256' }, false, ['sign']);
+  const sig = await crypto.subtle.sign('HMAC', key, enc.encode(msg));
+  return Array.from(new Uint8Array(sig)).map((b) => b.toString(16).padStart(2, '0')).join('');
+}
+
+// Fetch recent closed positions from Bybit, normalized. Returns null on error.
+async function fetchBybitClosedPnl(apiKey, apiSecret, limit = 50) {
+  const ts = Date.now().toString();
+  const recvWindow = '5000';
+  const qs = `category=linear&limit=${Math.min(limit, 200)}`;
+  const sign = await bybitHmacHex(apiSecret, ts + apiKey + recvWindow + qs);
+  const res = await fetch(`https://api.bybit.com/v5/position/closed-pnl?${qs}`, {
+    headers: { 'X-BAPI-API-KEY': apiKey, 'X-BAPI-TIMESTAMP': ts, 'X-BAPI-SIGN': sign, 'X-BAPI-RECV-WINDOW': recvWindow },
+  });
+  const data = await res.json().catch(() => ({}));
+  if (data.retCode !== 0) return null;
+  return (data.result?.list || []).map((p) => {
+    const exitMs = parseInt(p.updatedTime) || parseInt(p.createdTime) || 0;
+    const pnl = parseFloat(p.closedPnl) || 0;
+    const entryPrice = parseFloat(p.avgEntryPrice || p.entryPrice) || 0;
+    const qty = parseFloat(p.qty) || 0;
+    const leverage = parseFloat(p.leverage) || 1;
+    // ROI% on the margin actually committed ≈ pnl / (notional / leverage).
+    const margin = entryPrice > 0 && qty > 0 ? (entryPrice * qty) / leverage : 0;
+    const roiPct = margin > 0 ? (pnl / margin) * 100 : 0;
+    return {
+      externalId: p.orderId || String(p.updatedTime || p.createdTime || Math.random()),
+      pair: p.symbol,
+      direction: p.side === 'Buy' ? 'long' : 'short',
+      pnl,
+      roiPct,
+      exitMs,
+    };
+  });
+}
+
+// Poll each registered exchange (read-only keys stored by the client in
+// pushexch:{uid}:{exchange}) for newly closed trades → push a result
+// notification, plus a once-a-day summary. Runs from the 10-minute cron.
+async function checkExchangeClosedTrades(env) {
+  if (!env.VAPID_JWK) return; // can't sign pushes without the private key
+  const list = await env.ALERTS_KV.list({ prefix: 'pushexch:' });
+  if (!list.keys.length) return;
+
+  const hhmm = getIsraelHHMM();
+  const israelDate = getIsraelDateStr();
+  // Daily summary fires once, in the 22:00 cron tick (cron runs every 10 min).
+  const summaryWindow = hhmm >= '22:00' && hhmm < '22:10';
+  const it = getIsraelTime();
+  const dayStartMs = Date.now() - ((it.getHours() * 3600 + it.getMinutes() * 60 + it.getSeconds()) * 1000);
+
+  for (const k of list.keys) {
+    const [, uid, exchange] = k.name.split(':');
+    if (exchange !== 'bybit') continue; // only Bybit polling for now
+    const creds = await env.ALERTS_KV.get(k.name, 'json');
+    if (!creds?.apiKey || !creds?.apiSecret) continue;
+
+    const trades = await fetchBybitClosedPnl(creds.apiKey, creds.apiSecret, 50);
+    if (!trades || !trades.length) continue;
+
+    // ---- New-closed notifications ----
+    const cursorKey = `pushcursor:${uid}:${exchange}`;
+    const cursorRaw = await env.ALERTS_KV.get(cursorKey);
+    const maxExit = Math.max(...trades.map((t) => t.exitMs));
+    if (cursorRaw === null) {
+      // First run for this user: start watching from now, don't replay history.
+      await env.ALERTS_KV.put(cursorKey, String(maxExit), { expirationTtl: 60 * 60 * 24 * 60 });
+    } else {
+      const cursor = parseInt(cursorRaw) || 0;
+      const fresh = trades
+        .filter((t) => t.exitMs > cursor)
+        .sort((a, b) => a.exitMs - b.exitMs)
+        .slice(0, 5); // anti-flood per tick
+      for (const t of fresh) {
+        const dedupKey = `pushsent:${uid}:${t.externalId}`;
+        if (await env.ALERTS_KV.get(dedupKey)) continue;
+        await env.ALERTS_KV.put(dedupKey, '1', { expirationTtl: 60 * 60 * 24 * 3 });
+        const win = t.pnl >= 0;
+        const dir = t.direction === 'long' ? 'Long' : 'Short';
+        await sendPushToUser(env, uid, {
+          title: `${win ? '🟢' : '🔴'} ${t.pair} ${dir} נסגרה`,
+          body: `${win ? 'רווח' : 'הפסד'}: ${fmtPnl(t.pnl)} (${fmtPct(t.roiPct)})`,
+          url: '/journal',
+          tag: `closed-${t.externalId}`,
+        });
+      }
+      if (maxExit > cursor) await env.ALERTS_KV.put(cursorKey, String(maxExit), { expirationTtl: 60 * 60 * 24 * 60 });
+    }
+
+    // ---- Daily summary (once per Israel day, ~22:00) ----
+    if (summaryWindow) {
+      const sentKey = `pushdaily:${uid}:${israelDate}`;
+      if (!(await env.ALERTS_KV.get(sentKey))) {
+        await env.ALERTS_KV.put(sentKey, '1', { expirationTtl: 60 * 60 * 48 });
+        const todays = trades.filter((t) => t.exitMs >= dayStartMs);
+        if (todays.length) {
+          const total = todays.reduce((s, t) => s + t.pnl, 0);
+          const wins = todays.filter((t) => t.pnl >= 0).length;
+          const wr = Math.round((wins / todays.length) * 100);
+          await sendPushToUser(env, uid, {
+            title: `📊 סיכום יומי — ${todays.length} עסקאות`,
+            body: `P&L יומי: ${fmtPnl(total)} · אחוז הצלחה ${wr}%`,
+            url: '/dashboard',
+            tag: `daily-${israelDate}`,
+          });
+        }
+      }
+    }
+  }
 }
 
 function decodeUidFromToken(token) {
@@ -1156,7 +1276,9 @@ async function checkEconomicCalendar(env, settingsMap) {
 }
 
 async function handleCron(env) {
-  if (!env.BOT_TOKEN) return;
+  // Web-push exchange polling is independent of Telegram, so run it first and
+  // don't let a missing BOT_TOKEN skip it.
+  if (!env.BOT_TOKEN) { await checkExchangeClosedTrades(env).catch(() => {}); return; }
 
   // Pre-fetch all KV lists once (2 list ops instead of 4)
   const [alertsList, settingsList] = await Promise.all([
@@ -1188,6 +1310,7 @@ async function handleCron(env) {
     checkJournalReminders(env, settingsMap),
     checkDailySummaries(env, settingsMap),
     checkEconomicCalendar(env, settingsMap),
+    checkExchangeClosedTrades(env),
   ]);
 }
 
@@ -1971,6 +2094,33 @@ async function handleRequest(request, env) {
       tag: 'test',
     });
     return new Response(JSON.stringify({ ok: true, sent }), { headers: { ...cors, 'Content-Type': 'application/json' } });
+  }
+
+  // Web Push — store read-only exchange keys so the cron can poll the exchange
+  // in the background and notify on closed trades / daily summary.
+  if (request.method === 'POST' && path === '/push/exchange-register') {
+    const token = (request.headers.get('Authorization') || '').replace('Bearer ', '');
+    const uid = decodeUidFromToken(token);
+    if (!uid) return new Response(JSON.stringify({ error: 'unauthorized' }), { status: 401, headers: { ...cors, 'Content-Type': 'application/json' } });
+    const { exchange, apiKey, apiSecret, passphrase } = await request.json().catch(() => ({}));
+    if (!exchange || !apiKey || !apiSecret) return new Response(JSON.stringify({ error: 'missing fields' }), { status: 400, headers: { ...cors, 'Content-Type': 'application/json' } });
+    await env.ALERTS_KV.put(`pushexch:${uid}:${exchange}`, JSON.stringify({ exchange, apiKey, apiSecret, passphrase: passphrase || '' }));
+    return new Response(JSON.stringify({ ok: true }), { headers: { ...cors, 'Content-Type': 'application/json' } });
+  }
+
+  // Web Push — drop stored exchange keys (on disconnect / disable).
+  if (request.method === 'POST' && path === '/push/exchange-unregister') {
+    const token = (request.headers.get('Authorization') || '').replace('Bearer ', '');
+    const uid = decodeUidFromToken(token);
+    if (!uid) return new Response(JSON.stringify({ error: 'unauthorized' }), { status: 401, headers: { ...cors, 'Content-Type': 'application/json' } });
+    const { exchange } = await request.json().catch(() => ({}));
+    if (exchange) {
+      await env.ALERTS_KV.delete(`pushexch:${uid}:${exchange}`);
+    } else {
+      const l = await env.ALERTS_KV.list({ prefix: `pushexch:${uid}:` });
+      for (const kk of l.keys) await env.ALERTS_KV.delete(kk.name);
+    }
+    return new Response(JSON.stringify({ ok: true }), { headers: { ...cors, 'Content-Type': 'application/json' } });
   }
 
   // Caller's own AI usage for the current day — used by the progress bar.
