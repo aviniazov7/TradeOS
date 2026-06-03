@@ -879,6 +879,31 @@ export default function TradeJournal() {
               const exitD = safeTs(t.exitDate) || entryD;
               const fees = typeof t.fees === 'number' ? Math.abs(t.fees) : 0;
 
+              // Open positions from the exchange: keep status=open and save
+              // every field the worker provided (stopLoss, tps, leverage,
+              // qty, …) instead of squashing them into a closed-trade shape.
+              if (t._isOpen) {
+                const ep = t.entryPrice > 0 ? t.entryPrice : 0;
+                const qty = t.quantity > 0 ? t.quantity : 0;
+                const lev = Math.min(200, Math.max(1, t.leverage || 1));
+                return addToUserCollection(user.uid, 'trades', {
+                  pair: t.pair, direction: t.direction,
+                  entryPrice: ep, quantity: qty, leverage: lev,
+                  stopLoss: parseFloat(t.stopLoss) || 0,
+                  tps: Array.isArray(t.tps) ? t.tps : [],
+                  fees,
+                  status: 'open',
+                  orderType: t.orderType || 'market',
+                  entryDate: entryD,
+                  source: t.source, externalId: t.externalId,
+                  positionSize: t.positionSize || ep * qty,
+                  margin: ep * qty / lev,
+                  journalId: activeJournalId || null,
+                  createdAt: timestamp(),
+                  updatedAt: timestamp(),
+                });
+              }
+
               // Upsert: update existing trade if externalId already in journal
               const existing = t.externalId
                 ? trades.find(tr => tr.externalId === t.externalId)
@@ -901,7 +926,9 @@ export default function TradeJournal() {
               // and derive result from netPnl (not gross pnl) so a small win
               // eaten by large fees is correctly classified as a loss
               const ep = t.entryPrice > 0 ? t.entryPrice : 1;
-              const xp = t.exitPrice > 0 ? t.exitPrice : 1;
+              // exitPrice fallback: use entry price (yields 0 PnL) instead of
+              // 1, which previously surfaced as a phantom TP at price 1.
+              const xp = t.exitPrice > 0 ? t.exitPrice : ep;
               const qty = t.quantity > 0 ? t.quantity : 1;
               const lev = Math.min(200, Math.max(1, t.leverage || 1));
               const pnl = t.pnlFromExchange ?? 0;
@@ -910,7 +937,9 @@ export default function TradeJournal() {
               return addToUserCollection(user.uid, 'trades', {
                 pair: t.pair, direction: t.direction,
                 entryPrice: ep, exitPrice: xp, quantity: qty, leverage: lev,
-                stopLoss: 0, fees, status: 'closed',
+                stopLoss: parseFloat(t.stopLoss) || 0,
+                tps: Array.isArray(t.tps) ? t.tps : [],
+                fees, status: 'closed',
                 entryDate: entryD, exitDate: exitD,
                 source: t.source, externalId: t.externalId,
                 pnlFromExchange: pnl, pnl, netPnl: netPnlImport,
