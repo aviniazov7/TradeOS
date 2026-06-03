@@ -72,3 +72,18 @@ jobs:
         if: ${{ env.CLOUDFLARE_API_TOKEN != '' }}
         working-directory: worker
         run: npx wrangler deploy
+
+      # Ensure the Web Push signing key (VAPID private JWK) is present on the
+      # Worker. Secrets survive deploys, but setting it here makes it
+      # reproducible and self-healing. No-op if the GitHub secret isn't set.
+      - name: Set Worker secrets
+        if: ${{ env.CLOUDFLARE_API_TOKEN != '' }}
+        working-directory: worker
+        env:
+          VAPID_JWK: ${{ secrets.VAPID_JWK }}
+        run: |
+          if [ -n "$VAPID_JWK" ]; then
+            printf '%s' "$VAPID_JWK" | npx wrangler secret put VAPID_JWK
+          else
+            echo "VAPID_JWK secret not set — skipping."
+          fi
