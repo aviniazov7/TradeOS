@@ -2021,9 +2021,16 @@ ${pad('Lev', `${pnlSign}${pnlPctLev}%`)}` : ''}` : ''}</code>
             fees: 0,
             status: 'open',
             source: 'bybit',
-            externalId: String(p.positionIdx != null ? `${p.symbol}_${p.positionIdx}_${p.createdTime}` : `${p.symbol}_${p.createdTime}`),
+            externalId: String(p.positionIdx != null ? `${p.symbol}_${p.positionIdx}_${p.updatedTime || p.createdTime}` : `${p.symbol}_${p.updatedTime || p.createdTime}`),
             orderType: 'market',
-            entryDate: p.createdTime ? new Date(parseInt(p.createdTime)).toISOString() : new Date().toISOString(),
+            // Bybit's `createdTime` is the FIRST time a position was ever
+            // opened on this symbol — for a freshly opened position it can be
+            // months old. `updatedTime` matches the latest activity (≈ open
+            // time when the position was just opened), which is what the user
+            // expects in their journal.
+            entryDate: p.updatedTime
+              ? new Date(parseInt(p.updatedTime)).toISOString()
+              : (p.createdTime ? new Date(parseInt(p.createdTime)).toISOString() : new Date().toISOString()),
             tps: [],
             exits: null,
             tpReached: [],
