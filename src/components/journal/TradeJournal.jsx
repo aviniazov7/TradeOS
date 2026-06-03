@@ -118,13 +118,24 @@ export default function TradeJournal() {
     setVisibleCount(50);
   }, [filters, activeJournalId]);
 
-  const stats = useDashboardStats(trades, activeJournal?.initialBalance || 0, period);
-
-  // When the journal is linked to a connected exchange, take "current balance"
-  // straight from the live futures wallet instead of (initial + PnL).
+  // When the journal is linked to a connected exchange, derive the starting
+  // balance so currentBalance + every percentage-based stat (drawdown,
+  // Recovery, Sortino, Calmar, Sharpe…) is calibrated to the real wallet:
+  //   effectiveInitial = liveBalance − totalPnL(closed)
+  // so stats.currentBalance = effectiveInitial + totalPnL = liveBalance.
   const liveExchangeBalance = useLinkedExchangeBalance(activeJournal?.exchange);
-  const displayedCurrentBalance = liveExchangeBalance != null ? liveExchangeBalance : stats.currentBalance;
   const balanceIsLive = liveExchangeBalance != null;
+  const totalClosedPnL = useMemo(
+    () => trades
+      .filter((t) => t.status === 'closed' || (parseFloat(t.exitPrice) > 0 && t.status !== 'partial'))
+      .reduce((s, t) => s + (t.netPnl ?? t.pnl ?? 0), 0),
+    [trades]
+  );
+  const effectiveInitial = balanceIsLive
+    ? Math.max(0, liveExchangeBalance - totalClosedPnL)
+    : (activeJournal?.initialBalance || 0);
+  const stats = useDashboardStats(trades, effectiveInitial, period);
+  const displayedCurrentBalance = stats.currentBalance;
 
   useEffect(() => {
     if (searchParams.get('new') === '1') setFormOpen(true);

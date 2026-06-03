@@ -62,16 +62,23 @@ export default function Dashboard() {
     const totalPnL = closed.reduce((s, t) => s + (t.netPnl ?? t.pnl ?? 0), 0);
     const wins = closed.filter((t) => t.result === 'win').length;
     const winRate = closed.length > 0 ? (wins / closed.length) * 100 : 0;
-    const totalInitial = journals.reduce((s, j) => s + (j.initialBalance || 0), 0);
-    // For each journal: prefer the live exchange wallet (when linked & connected),
-    // otherwise fall back to (initial + that journal's closed PnL).
-    const totalBalance = journals.reduce((s, j) => {
-      if (linkedBalances[j.id] != null) return s + linkedBalances[j.id];
+    // Per-journal: prefer live wallet when linked. Derive a synthetic
+    // initialBalance for linked journals so percentages stay consistent with
+    // the wallet (effInit = live − that journal's closed PnL).
+    let totalInitial = 0;
+    let totalBalance = 0;
+    for (const j of journals) {
       const jPnL = closed
         .filter((t) => t.journalId === j.id)
         .reduce((acc, t) => acc + (t.netPnl ?? t.pnl ?? 0), 0);
-      return s + (j.initialBalance || 0) + jPnL;
-    }, 0);
+      if (linkedBalances[j.id] != null) {
+        totalInitial += Math.max(0, linkedBalances[j.id] - jPnL);
+        totalBalance += linkedBalances[j.id];
+      } else {
+        totalInitial += (j.initialBalance || 0);
+        totalBalance += (j.initialBalance || 0) + jPnL;
+      }
+    }
     const pnlPercent = totalInitial > 0 ? (totalPnL / totalInitial) * 100 : 0;
 
     // Average R:R — only for closed trades that have a valid stop loss
