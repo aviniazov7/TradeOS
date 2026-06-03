@@ -13,6 +13,7 @@ import { useBacktests } from '../../hooks/useBacktests';
 import { useTradingPlans } from '../../hooks/useTradingPlans';
 import { useDCA } from '../../hooks/useDCA';
 import { useMentalityJournals } from '../../hooks/useMentalityJournals';
+import { useLinkedJournalsBalance } from '../../hooks/useLinkedExchangeBalance';
 import DashboardSkeleton from './DashboardSkeleton';
 import PendingLimitOrders from './PendingLimitOrders';
 import ExchangeLogo from '../shared/ExchangeLogo';
@@ -48,6 +49,9 @@ export default function Dashboard() {
 
   const loading = tradesLoading || backtestsLoading || plansLoading || dcaLoading;
 
+  // Live wallet balance for every journal that's linked to a connected exchange.
+  const linkedBalances = useLinkedJournalsBalance(journals);
+
   // Cross-journal trade stats (only trades belonging to existing journals)
   const globalStats = useMemo(() => {
     const journalIds = new Set(journals.map((j) => j.id));
@@ -59,7 +63,15 @@ export default function Dashboard() {
     const wins = closed.filter((t) => t.result === 'win').length;
     const winRate = closed.length > 0 ? (wins / closed.length) * 100 : 0;
     const totalInitial = journals.reduce((s, j) => s + (j.initialBalance || 0), 0);
-    const totalBalance = totalInitial + totalPnL;
+    // For each journal: prefer the live exchange wallet (when linked & connected),
+    // otherwise fall back to (initial + that journal's closed PnL).
+    const totalBalance = journals.reduce((s, j) => {
+      if (linkedBalances[j.id] != null) return s + linkedBalances[j.id];
+      const jPnL = closed
+        .filter((t) => t.journalId === j.id)
+        .reduce((acc, t) => acc + (t.netPnl ?? t.pnl ?? 0), 0);
+      return s + (j.initialBalance || 0) + jPnL;
+    }, 0);
     const pnlPercent = totalInitial > 0 ? (totalPnL / totalInitial) * 100 : 0;
 
     // Average R:R — only for closed trades that have a valid stop loss
@@ -82,7 +94,7 @@ export default function Dashboard() {
       : null;
 
     return { totalPnL, totalTrades: closed.length, winRate, totalBalance, pnlPercent, openTrades, avgRR };
-  }, [allTrades, journals]);
+  }, [allTrades, journals, linkedBalances]);
 
   // Global market data + latest news
   const [globalMarket, setGlobalMarket] = useState(null);
@@ -161,10 +173,12 @@ export default function Dashboard() {
       const pnl = closed.reduce((s, t) => s + (t.netPnl ?? t.pnl ?? 0), 0);
       const wins = closed.filter((t) => t.result === 'win').length;
       const winRate = closed.length > 0 ? (wins / closed.length) * 100 : 0;
-      const balance = (j.initialBalance || 0) + pnl;
+      const balance = linkedBalances[j.id] != null
+        ? linkedBalances[j.id]
+        : (j.initialBalance || 0) + pnl;
       return { ...j, tradesCount: closed.length, pnl, winRate, balance };
     });
-  }, [journals, allTrades]);
+  }, [journals, allTrades, linkedBalances]);
 
   // Active plans
   const activePlans = useMemo(() => plans.filter((p) => p.isActive), [plans]);

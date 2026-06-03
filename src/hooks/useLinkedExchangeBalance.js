@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { useAuth } from '../contexts/AuthContext';
 import { getUserSetting } from '../services/firestoreService';
 import { fetchExchangeBalance } from '../services/exchangeService';
@@ -35,4 +35,60 @@ export function useLinkedExchangeBalance(exchangeId) {
   }, [user, exchangeId]);
 
   return balance;
+}
+
+// Live balance for every journal that's linked to a connected exchange.
+// Returns a `{ [journalId]: balance }` map so the dashboard can override the
+// computed (initial + PnL) balance with the real wallet figure.
+export function useLinkedJournalsBalance(journals) {
+  const { user } = useAuth();
+  const [byJournal, setByJournal] = useState({});
+
+  // Distinct exchange ids referenced by the journals (string for stable key).
+  const exchangeIdsKey = useMemo(() => {
+    const ids = new Set();
+    for (const j of journals || []) if (j.exchange) ids.add(j.exchange);
+    return [...ids].sort().join(',');
+  }, [journals]);
+
+  // Journal-id → exchange-id, also stable-keyed for the effect.
+  const journalsKey = useMemo(() =>
+    (journals || []).filter((j) => j.exchange).map((j) => `${j.id}:${j.exchange}`).sort().join('|'),
+    [journals]
+  );
+
+  useEffect(() => {
+    if (!user || !exchangeIdsKey) { setByJournal({}); return; }
+    const exchangeIds = exchangeIdsKey.split(',').filter(Boolean);
+    let cancelled = false;
+    let timer = null;
+
+    const tick = async () => {
+      try {
+        const allCreds = (await getUserSetting(user.uid, 'exchanges')) || {};
+        const balances = {};
+        await Promise.all(exchangeIds.map(async (exId) => {
+          const creds = allCreds[exId];
+          if (!creds?.apiKey || !creds?.apiSecret) return;
+          try {
+            const res = await fetchExchangeBalance(exId, creds.apiKey, creds.apiSecret, creds.passphrase);
+            balances[exId] = res.balance;
+          } catch { /* skip this exchange */ }
+        }));
+        if (cancelled) return;
+        const next = {};
+        for (const entry of journalsKey.split('|')) {
+          const [jid, exId] = entry.split(':');
+          if (balances[exId] != null) next[jid] = balances[exId];
+        }
+        setByJournal(next);
+      } catch { /* keep last */ }
+    };
+
+    tick();
+    timer = setInterval(tick, REFRESH_MS);
+    return () => { cancelled = true; if (timer) clearInterval(timer); };
+  }, [user, exchangeIdsKey, journalsKey]);
+
+  return byJournal;
 }
