@@ -1,5 +1,6 @@
 import { useState, useEffect, useCallback } from 'react';
-import { Bell, BellRing, BellOff, Send } from 'lucide-react';
+import { motion, AnimatePresence } from 'framer-motion';
+import { Bell, BellRing, Send } from 'lucide-react';
 import toast from 'react-hot-toast';
 import { useAuth } from '../../contexts/AuthContext';
 import { subscribeToUserSetting, setUserSetting } from '../../services/firestoreService';
@@ -78,52 +79,60 @@ export default function NotificationSettings() {
 
   const isActive = settings.pushEnabled && permission === 'granted';
 
-  if (!supported) {
-    return (
-      <div className="bg-bg-secondary border border-border-primary rounded-xl p-4 flex items-center gap-3">
-        <BellOff className="w-5 h-5 text-text-muted" />
-        <div className="text-sm text-text-secondary">הדפדפן לא תומך בהתראות Push.</div>
-      </div>
-    );
-  }
+  if (!supported) return null;
 
   return (
-    <div className="bg-bg-secondary border border-border-primary rounded-xl p-4 space-y-3">
-      <div className="flex items-center gap-3">
-        <div className={`rounded-lg p-2 ${isActive ? 'bg-accent-primary/15 text-accent-primary' : 'bg-bg-tertiary text-text-muted'}`}>
-          {isActive ? <BellRing className="w-5 h-5" /> : <Bell className="w-5 h-5" />}
+    <div>
+      <button
+        onClick={isActive ? disablePush : enablePush}
+        disabled={busy}
+        className="w-full flex items-center justify-between px-5 py-4 text-sm text-text-primary hover:bg-bg-tertiary transition-colors cursor-pointer border-b border-border-primary disabled:opacity-50"
+      >
+        <div className="flex items-center gap-3">
+          {isActive
+            ? <BellRing className="w-5 h-5 text-accent-primary" />
+            : <Bell className="w-5 h-5 text-text-muted" />}
+          התראות Push
         </div>
-        <div className="flex-1">
-          <div className="text-sm font-semibold text-text-primary">התראות Push</div>
-          <div className="text-xs text-text-secondary">
-            {isActive ? 'מופעל — תקבל התראה כשנפתחת עסקה חדשה' : 'קבל התראות גם כשהאפליקציה סגורה'}
-          </div>
+        <div className={`w-10 h-5 rounded-full transition-colors ${isActive ? 'bg-accent-primary' : 'bg-border-primary'} relative`}>
+          <div className={`absolute top-0.5 w-4 h-4 rounded-full bg-white transition-transform ${isActive ? 'right-0.5' : 'left-0.5'}`} />
         </div>
-        <button
-          onClick={isActive ? disablePush : enablePush}
-          disabled={busy}
-          className={`relative w-11 h-6 rounded-full transition-colors cursor-pointer disabled:opacity-50 ${isActive ? 'bg-accent-primary' : 'bg-bg-tertiary border border-border-primary'}`}
-          aria-label="הפעל/כבה התראות"
-        >
-          <span className={`absolute top-0.5 w-5 h-5 rounded-full bg-white transition-all ${isActive ? 'right-0.5' : 'left-0.5'}`} />
-        </button>
-      </div>
+      </button>
 
-      {permission === 'denied' && (
-        <div className="text-xs text-loss bg-loss/10 border border-loss/30 rounded-lg p-2">
-          ההתראות חסומות בדפדפן. כדי להפעיל — אשר התראות עבור האתר בהגדרות הדפדפן/המכשיר.
-        </div>
-      )}
-
-      {isActive && (
-        <button
-          onClick={test}
-          disabled={busy}
-          className="w-full flex items-center justify-center gap-2 py-2 rounded-lg bg-bg-tertiary border border-border-primary text-sm text-text-primary hover:bg-border-hover transition-colors cursor-pointer disabled:opacity-50"
-        >
-          <Send className="w-4 h-4" /> שלח התראת בדיקה
-        </button>
-      )}
+      <AnimatePresence>
+        {(isActive || permission === 'denied') && (
+          <motion.div
+            initial={{ height: 0, opacity: 0 }}
+            animate={{ height: 'auto', opacity: 1 }}
+            exit={{ height: 0, opacity: 0 }}
+            transition={{ duration: 0.25 }}
+            className="overflow-hidden border-b border-border-primary"
+          >
+            <div className="px-5 py-4 space-y-3 bg-bg-tertiary/50">
+              {permission === 'denied' ? (
+                <p className="text-xs text-loss bg-loss/10 border border-loss/30 rounded-lg p-2">
+                  ההתראות חסומות בדפדפן. כדי להפעיל — אשר התראות עבור האתר בהגדרות הדפדפן/המכשיר.
+                </p>
+              ) : (
+                <>
+                  <div className="flex items-center gap-2 text-xs text-profit">
+                    <BellRing className="w-4 h-4" />
+                    <span>מופעל — תקבל התראה כשנפתחת עסקה חדשה, גם כשהאפליקציה סגורה</span>
+                  </div>
+                  <button
+                    onClick={test}
+                    disabled={busy}
+                    className="flex items-center justify-center gap-2 w-full py-2.5 rounded-lg bg-accent-primary/10 text-accent-primary text-sm font-medium hover:bg-accent-primary/20 transition-colors cursor-pointer disabled:opacity-50"
+                  >
+                    <Send className="w-4 h-4" />
+                    שלח התראת בדיקה
+                  </button>
+                </>
+              )}
+            </div>
+          </motion.div>
+        )}
+      </AnimatePresence>
     </div>
   );
 }
