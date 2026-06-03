@@ -1989,6 +1989,51 @@ ${pad('Lev', `${pnlSign}${pnlPctLev}%`)}` : ''}` : ''}</code>
         });
         return new Response(JSON.stringify({ ok: true, positions, count: positions.length }), { headers: { ...cors, 'Content-Type': 'application/json' } });
       }
+
+      if (exchange === 'bybit') {
+        const enc = new TextEncoder();
+        const hmac = async (secret, msg) => {
+          const key = await crypto.subtle.importKey('raw', enc.encode(secret), { name: 'HMAC', hash: 'SHA-256' }, false, ['sign']);
+          const sig = await crypto.subtle.sign('HMAC', key, enc.encode(msg));
+          return Array.from(new Uint8Array(sig)).map(b => b.toString(16).padStart(2, '0')).join('');
+        };
+        const ts = Date.now().toString();
+        const recvWindow = '5000';
+        const qs = 'category=linear&settleCoin=USDT';
+        const sign = await hmac(apiSecret, ts + apiKey + recvWindow + qs);
+        const res = await fetch(`https://api.bybit.com/v5/position/list?${qs}`, {
+          headers: { 'X-BAPI-API-KEY': apiKey, 'X-BAPI-TIMESTAMP': ts, 'X-BAPI-SIGN': sign, 'X-BAPI-RECV-WINDOW': recvWindow },
+        });
+        const data = await res.json();
+        if (data.retCode !== 0) return new Response(JSON.stringify({ ok: false, error: data.retMsg || `Bybit ${data.retCode}` }), { headers: { ...cors, 'Content-Type': 'application/json' }, status: 400 });
+        const list = (data.result?.list || []).filter((p) => parseFloat(p.size) > 0);
+        const positions = list.map((p) => {
+          const entryPrice = parseFloat(p.avgPrice) || 0;
+          const qty = parseFloat(p.size) || 0;
+          return {
+            pair: p.symbol,
+            direction: p.side === 'Buy' ? 'long' : 'short',
+            entryPrice,
+            quantity: qty,
+            leverage: parseFloat(p.leverage) || 1,
+            stopLoss: parseFloat(p.stopLoss) || 0,
+            positionSize: qty * entryPrice,
+            fees: 0,
+            status: 'open',
+            source: 'bybit',
+            externalId: String(p.positionIdx != null ? `${p.symbol}_${p.positionIdx}_${p.createdTime}` : `${p.symbol}_${p.createdTime}`),
+            orderType: 'market',
+            entryDate: p.createdTime ? new Date(parseInt(p.createdTime)).toISOString() : new Date().toISOString(),
+            tps: [],
+            exits: null,
+            tpReached: [],
+            result: null,
+            journalId: null,
+          };
+        });
+        return new Response(JSON.stringify({ ok: true, positions, count: positions.length }), { headers: { ...cors, 'Content-Type': 'application/json' } });
+      }
+
       return new Response(JSON.stringify({ ok: false, error: 'Exchange not supported for open positions sync' }), { headers: { ...cors, 'Content-Type': 'application/json' }, status: 400 });
     } catch (err) {
       return new Response(JSON.stringify({ ok: false, error: err.message }), { headers: { ...cors, 'Content-Type': 'application/json' }, status: 500 });
