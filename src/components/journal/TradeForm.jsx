@@ -523,6 +523,11 @@ export default function TradeForm({ isOpen, onClose, trade, onSave, riskSettings
               <div>
                 <label className={labelClass}>סטופ לוס</label>
                 <input type="number" step="any" value={form.stopLoss} onChange={(e) => update('stopLoss', e.target.value)} className={inputClass} placeholder="0.00" inputMode="decimal" />
+                {trade?.liquidationPrice > 0 && (
+                  <p className="text-[10px] text-loss/80 mt-1">
+                    ליקווידציה: {parseFloat(trade.liquidationPrice).toLocaleString('en-US', { maximumFractionDigits: 8 })}
+                  </p>
+                )}
               </div>
             </div>
 

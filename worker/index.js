@@ -133,6 +133,19 @@ function hashStr(s) {
   return (h >>> 0).toString(36);
 }
 
+// Map an entry timestamp to one of the SESSIONS the journal supports.
+// UTC bands: London 08:00-13:00, London/NY Overlap 13:00-17:00,
+// New York 17:00-22:00, Asia the rest.
+function sessionFromDate(isoOrMs) {
+  if (!isoOrMs) return null;
+  const h = new Date(isoOrMs).getUTCHours();
+  if (Number.isNaN(h)) return null;
+  if (h >= 13 && h < 17) return 'London/NY Overlap';
+  if (h >= 8 && h < 13) return 'London';
+  if (h >= 17 && h < 22) return 'New York';
+  return 'Asia';
+}
+
 // ── AI usage quota (daily, resets at Israel midnight) ────────────────────────
 const AI_DAILY_LIMIT = 20;
 const FIREBASE_PROJECT_ID = 'tradeos-91a58';
@@ -2011,6 +2024,15 @@ ${pad('Lev', `${pnlSign}${pnlPctLev}%`)}` : ''}` : ''}</code>
           const entryPrice = parseFloat(p.avgPrice) || 0;
           const qty = parseFloat(p.size) || 0;
           const tp = parseFloat(p.takeProfit) || 0;
+          // Bybit's `createdTime` is the FIRST time a position was ever
+          // opened on this symbol — for a freshly opened position it can be
+          // months old. `updatedTime` matches the latest activity (≈ open
+          // time when the position was just opened), which is what the user
+          // expects in their journal.
+          const entryDate = p.updatedTime
+            ? new Date(parseInt(p.updatedTime)).toISOString()
+            : (p.createdTime ? new Date(parseInt(p.createdTime)).toISOString() : new Date().toISOString());
+          const liqPrice = parseFloat(p.liqPrice) || 0;
           return {
             pair: p.symbol,
             direction: p.side === 'Buy' ? 'long' : 'short',
@@ -2024,14 +2046,7 @@ ${pad('Lev', `${pnlSign}${pnlPctLev}%`)}` : ''}` : ''}</code>
             source: 'bybit',
             externalId: String(p.positionIdx != null ? `${p.symbol}_${p.positionIdx}_${p.updatedTime || p.createdTime}` : `${p.symbol}_${p.updatedTime || p.createdTime}`),
             orderType: 'market',
-            // Bybit's `createdTime` is the FIRST time a position was ever
-            // opened on this symbol — for a freshly opened position it can be
-            // months old. `updatedTime` matches the latest activity (≈ open
-            // time when the position was just opened), which is what the user
-            // expects in their journal.
-            entryDate: p.updatedTime
-              ? new Date(parseInt(p.updatedTime)).toISOString()
-              : (p.createdTime ? new Date(parseInt(p.createdTime)).toISOString() : new Date().toISOString()),
+            entryDate,
             // Carry the live TP from Bybit so the imported trade already has
             // the planned target set (the trade form stores `tps` as plain
             // price numbers).
@@ -2040,6 +2055,9 @@ ${pad('Lev', `${pnlSign}${pnlPctLev}%`)}` : ''}` : ''}</code>
             tpReached: [],
             result: null,
             journalId: null,
+            // Bybit-only extras the journal can show alongside the trade.
+            liquidationPrice: liqPrice > 0 ? liqPrice : null,
+            session: sessionFromDate(entryDate),
           };
         });
         return new Response(JSON.stringify({ ok: true, positions, count: positions.length }), { headers: { ...cors, 'Content-Type': 'application/json' } });
@@ -2286,10 +2304,38 @@ ${pad('Lev', `${pnlSign}${pnlPctLev}%`)}` : ''}` : ''}</code>
         const data = await res.json();
         if (data.retCode !== 0) throw new Error(data.retMsg || `Bybit error ${data.retCode}`);
         const list = data.result?.list || [];
+
+        // Pull the recent order history once so we can recover the SL/TP that
+        // each closed position had configured — closed-pnl itself doesn't
+        // expose them, so we match the opening order by symbol+side+time.
+        const ohTs = Date.now().toString();
+        const ohQs = 'category=linear&limit=50';
+        const ohSig = await hmac(apiSecret, ohTs + apiKey + recvWindow + ohQs);
+        const ohRes = await fetch(`https://api.bybit.com/v5/order/history?${ohQs}`, {
+          headers: { 'X-BAPI-API-KEY': apiKey, 'X-BAPI-TIMESTAMP': ohTs, 'X-BAPI-SIGN': ohSig, 'X-BAPI-RECV-WINDOW': recvWindow },
+        });
+        const ohData = await ohRes.json().catch(() => ({}));
+        const openingOrders = (ohData.retCode === 0 ? (ohData.result?.list || []) : []).filter((o) =>
+          o.orderStatus === 'Filled' && o.reduceOnly !== true && parseFloat(o.qty) > 0
+        );
+
         trades = list.map(p => {
           const entryDate = p.createdTime ? new Date(parseInt(p.createdTime)).toISOString() : new Date().toISOString();
           const exitDate = p.updatedTime ? new Date(parseInt(p.updatedTime)).toISOString() : entryDate;
           const fees = Math.abs(parseFloat(p.execFee || p.tradingFee || p.cumExecFee || 0) || 0);
+          // Match the opening order: Bybit's closed-pnl `side` is the
+          // position side (Buy=long, Sell=short — same convention used in the
+          // direction mapping below), and the order that opened the position
+          // has that same side. We look for a Filled order with the same
+          // symbol+side around the position's createdTime.
+          const positionStart = parseInt(p.createdTime) || 0;
+          const match = openingOrders.find((o) =>
+            o.symbol === p.symbol &&
+            o.side === p.side &&
+            Math.abs(parseInt(o.createdTime || 0) - positionStart) < 5 * 60 * 1000 // ±5 min
+          );
+          const stopLoss = match ? (parseFloat(match.stopLoss) || 0) : 0;
+          const tp = match ? (parseFloat(match.takeProfit) || 0) : 0;
           return {
             pair: p.symbol,
             direction: p.side === 'Buy' ? 'long' : 'short',
@@ -2301,8 +2347,11 @@ ${pad('Lev', `${pnlSign}${pnlPctLev}%`)}` : ''}` : ''}</code>
             fees,
             entryDate,
             exitDate,
+            stopLoss,
+            tps: tp > 0 ? [tp] : [],
             source: 'bybit',
             externalId: p.orderId || String(p.createdTime || Math.random()),
+            session: sessionFromDate(entryDate),
           };
         });
       }
