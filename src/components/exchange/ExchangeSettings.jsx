@@ -630,12 +630,19 @@ export default function ExchangeSettings({ journalId: propJournalId, onImportTra
           });
         }
         const pnl = t.pnlFromExchange || 0;
+        // Preserve every field the worker provided (stopLoss, tps, fees,
+        // exitDate, pnlFromExchange, …) instead of hand-picking a few — that
+        // dropped SL/TP whenever the upstream endpoint did include them.
+        const { _isOpen: _o, entryDate, exitDate, ...rest } = t;
         return addToUserCollection(user.uid, 'trades', {
-          pair: t.pair, direction: t.direction, entryPrice: t.entryPrice, exitPrice: t.exitPrice,
-          quantity: t.quantity, leverage: t.leverage, status: 'closed', orderType: 'market',
-          entryDate: Timestamp.fromDate(new Date(t.entryDate)), pnl,
-          pnlPercent: t.entryPrice > 0 ? (pnl / (t.entryPrice * t.quantity)) * 100 : 0,
-          result: pnl >= 0 ? 'win' : 'loss', source: t.source, externalId: t.externalId,
+          ...rest,
+          status: 'closed',
+          orderType: 'market',
+          entryDate: Timestamp.fromDate(new Date(entryDate)),
+          ...(exitDate ? { exitDate: Timestamp.fromDate(new Date(exitDate)) } : {}),
+          pnl,
+          pnlPercent: t.entryPrice > 0 && t.quantity > 0 ? (pnl / (t.entryPrice * t.quantity)) * 100 : 0,
+          result: pnl > 0 ? 'win' : pnl < 0 ? 'loss' : 'breakeven',
           importedAt: Timestamp.now(),
           journalId: activeJournalId || null,
         });
