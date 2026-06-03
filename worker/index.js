@@ -1995,6 +1995,97 @@ ${pad('Lev', `${pnlSign}${pnlPctLev}%`)}` : ''}` : ''}</code>
     }
   }
 
+  // Futures wallet balance — read-only across the supported exchanges so the
+  // app can show "Bybit: $1,234" on each connected exchange card instead of
+  // making the user type a starting balance every time.
+  if (request.method === 'POST' && path === '/exchange/balance') {
+    try {
+      const { exchange, apiKey, apiSecret, passphrase } = await request.json().catch(() => ({}));
+      if (!exchange || !apiKey || !apiSecret) {
+        return new Response(JSON.stringify({ ok: false, error: 'Missing credentials' }), { status: 400, headers: { ...cors, 'Content-Type': 'application/json' } });
+      }
+      const enc = new TextEncoder();
+      const hmacHex = async (secret, msg) => {
+        const key = await crypto.subtle.importKey('raw', enc.encode(secret), { name: 'HMAC', hash: 'SHA-256' }, false, ['sign']);
+        const sig = await crypto.subtle.sign('HMAC', key, enc.encode(msg));
+        return Array.from(new Uint8Array(sig)).map(b => b.toString(16).padStart(2, '0')).join('');
+      };
+      const hmacB64 = async (secret, msg) => {
+        const key = await crypto.subtle.importKey('raw', enc.encode(secret), { name: 'HMAC', hash: 'SHA-256' }, false, ['sign']);
+        const sig = await crypto.subtle.sign('HMAC', key, enc.encode(msg));
+        return btoa(String.fromCharCode(...new Uint8Array(sig)));
+      };
+
+      let balance = 0;
+
+      if (exchange === 'bybit') {
+        const ts = Date.now().toString();
+        const recvWindow = '5000';
+        const qs = 'accountType=UNIFIED';
+        const sig = await hmacHex(apiSecret, ts + apiKey + recvWindow + qs);
+        const res = await fetch(`https://api.bybit.com/v5/account/wallet-balance?${qs}`, {
+          headers: { 'X-BAPI-API-KEY': apiKey, 'X-BAPI-TIMESTAMP': ts, 'X-BAPI-SIGN': sig, 'X-BAPI-RECV-WINDOW': recvWindow },
+        });
+        const data = await res.json();
+        if (data.retCode !== 0) throw new Error(data.retMsg || `Bybit ${data.retCode}`);
+        balance = parseFloat(data.result?.list?.[0]?.totalEquity) || 0;
+      }
+
+      else if (exchange === 'mexc') {
+        const ts = String(Date.now());
+        const sig = await hmacHex(apiSecret, apiKey + ts);
+        const res = await fetch('https://contract.mexc.com/api/v1/private/account/assets', {
+          headers: { ApiKey: apiKey, 'Request-Time': ts, Signature: sig, 'Content-Type': 'application/json' },
+        });
+        const data = await res.json();
+        if (!(data.success === true || data.code === 0)) throw new Error(data.message || data.msg || 'MEXC error');
+        const rawList = Array.isArray(data.data) ? data.data : (data.data?.list || []);
+        // Sum equity across stablecoin assets (USDT/USDC) as USD-equivalent
+        for (const a of rawList) {
+          const cur = (a.currency || a.coin || '').toUpperCase();
+          if (cur === 'USDT' || cur === 'USDC') {
+            balance += parseFloat(a.equity || a.available || 0) || 0;
+          }
+        }
+      }
+
+      else if (exchange === 'okx') {
+        const ts = new Date().toISOString();
+        const p = '/api/v5/account/balance';
+        const sign = await hmacB64(apiSecret, ts + 'GET' + p);
+        const res = await fetch(`https://www.okx.com${p}`, {
+          headers: { 'OK-ACCESS-KEY': apiKey, 'OK-ACCESS-SIGN': sign, 'OK-ACCESS-TIMESTAMP': ts, 'OK-ACCESS-PASSPHRASE': passphrase || '', 'Content-Type': 'application/json' },
+        });
+        const data = await res.json();
+        if (data.code !== '0') throw new Error(`OKX ${data.code}: ${data.msg || 'error'}`);
+        balance = parseFloat(data.data?.[0]?.totalEq) || 0;
+      }
+
+      else if (exchange === 'bitget') {
+        const ts = String(Date.now());
+        const p = '/api/v2/mix/account/accounts?productType=USDT-FUTURES';
+        const sign = await hmacB64(apiSecret, ts + 'GET' + p);
+        const res = await fetch(`https://api.bitget.com${p}`, {
+          headers: { 'ACCESS-KEY': apiKey, 'ACCESS-SIGN': sign, 'ACCESS-TIMESTAMP': ts, 'ACCESS-PASSPHRASE': passphrase || '', 'Content-Type': 'application/json' },
+        });
+        const data = await res.json();
+        if (data.code !== '00000') throw new Error(`Bitget ${data.code}: ${data.msg || 'error'}`);
+        const list = Array.isArray(data.data) ? data.data : [];
+        for (const a of list) {
+          balance += parseFloat(a.usdtEquity || a.equity || 0) || 0;
+        }
+      }
+
+      else {
+        return new Response(JSON.stringify({ ok: false, error: 'Exchange not supported' }), { status: 400, headers: { ...cors, 'Content-Type': 'application/json' } });
+      }
+
+      return new Response(JSON.stringify({ ok: true, balance, currency: 'USD' }), { headers: { ...cors, 'Content-Type': 'application/json' } });
+    } catch (err) {
+      return new Response(JSON.stringify({ ok: false, error: err.message }), { status: 400, headers: { ...cors, 'Content-Type': 'application/json' } });
+    }
+  }
+
   // Exchange trade sync — signs HMAC on behalf of the frontend so secrets stay server-side
   if (request.method === 'POST' && path === '/exchange/sync') {
     try {

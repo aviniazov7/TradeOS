@@ -22,3 +22,14 @@ export async function syncOpenPositions(exchange, apiKey, apiSecret) {
   if (!data.ok) throw new Error(data.error || 'שגיאה בטעינת הפוזיציות הפתוחות');
   return data.positions || [];
 }
+
+export async function fetchExchangeBalance(exchange, apiKey, apiSecret, passphrase) {
+  const res = await fetch(`${WORKER_URL}/exchange/balance`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ exchange, apiKey, apiSecret, passphrase }),
+  });
+  const data = await res.json();
+  if (!data.ok) throw new Error(data.error || 'שגיאה בטעינת היתרה');
+  return { balance: data.balance || 0, currency: data.currency || 'USD' };
+}

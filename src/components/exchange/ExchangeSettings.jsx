@@ -6,7 +6,7 @@ import {
 } from 'lucide-react';
 import toast from 'react-hot-toast';
 import { getUserSetting, setUserSetting, addToUserCollection } from '../../services/firestoreService';
-import { syncExchangeTrades, syncOpenPositions } from '../../services/exchangeService';
+import { syncExchangeTrades, syncOpenPositions, fetchExchangeBalance } from '../../services/exchangeService';
 import { useAuth } from '../../contexts/AuthContext';
 import { useJournalContext } from '../../contexts/JournalContext';
 import { pageVariants, pageTransition } from '../../utils/animations';
@@ -333,12 +333,25 @@ function ExchangeCard({ exchange, data, savedData, syncing, saving, onUpdate, on
   const [editing, setEditing] = useState(false);
   const [guideOpen, setGuideOpen] = useState(false);
   const [hovered, setHovered] = useState(false);
+  const [balance, setBalance] = useState(null);
   const { id, name, tagline, accent, glow, canSync, extraField } = exchange;
 
   const isConnected = !!(savedData?.apiKey && savedData?.apiSecret);
   const hasChanges = (data?.apiKey || '') !== (savedData?.apiKey || '') ||
     (data?.apiSecret || '') !== (savedData?.apiSecret || '') ||
     (extraField ? (data?.[extraField.key] || '') !== (savedData?.[extraField.key] || '') : false);
+
+  // Pull the futures wallet balance once the exchange is connected, so the
+  // card shows "Bybit: $1,234" without asking the user to type a starting value.
+  useEffect(() => {
+    if (!isConnected || !canSync) { setBalance(null); return; }
+    let cancelled = false;
+    setBalance(null);
+    fetchExchangeBalance(id, savedData.apiKey, savedData.apiSecret, extraField ? savedData[extraField.key] : undefined)
+      .then((res) => { if (!cancelled) setBalance(res.balance); })
+      .catch(() => { if (!cancelled) setBalance(false); }); // false = failed; row hidden
+    return () => { cancelled = true; };
+  }, [isConnected, canSync, id, savedData?.apiKey, savedData?.apiSecret, extraField, savedData]);
 
   const startEdit = () => {
     onUpdate('apiKey', savedData?.apiKey || '');
@@ -398,6 +411,11 @@ function ExchangeCard({ exchange, data, savedData, syncing, saving, onUpdate, on
               <span className="text-base font-bold text-text-primary">{name}</span>
             </div>
             <p className="text-[11px] text-text-muted text-left" dir="ltr">{tagline}</p>
+            {isConnected && !editing && typeof balance === 'number' && (
+              <p className="text-[11px] font-bold text-left mt-0.5" dir="ltr" style={{ color: accent }}>
+                ${balance.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+              </p>
+            )}
           </div>
           <motion.button onClick={() => setGuideOpen(true)} whileHover={{ scale: 1.15, rotate: 15 }}
             whileTap={{ scale: 0.9 }} transition={{ type: 'spring', stiffness: 400 }}
