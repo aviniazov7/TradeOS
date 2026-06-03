@@ -17,6 +17,7 @@ import { useJournalContext } from '../../contexts/JournalContext';
 import { useAuth } from '../../contexts/AuthContext';
 import { calculatePnL } from '../../utils/calculations';
 import { useDashboardStats } from '../../hooks/useDashboardStats';
+import { useLinkedExchangeBalance } from '../../hooks/useLinkedExchangeBalance';
 import { addToUserCollection, timestamp } from '../../services/firestoreService';
 import { Timestamp } from 'firebase/firestore';
 import JournalSwitcher from './JournalSwitcher';
@@ -118,6 +119,12 @@ export default function TradeJournal() {
   }, [filters, activeJournalId]);
 
   const stats = useDashboardStats(trades, activeJournal?.initialBalance || 0, period);
+
+  // When the journal is linked to a connected exchange, take "current balance"
+  // straight from the live futures wallet instead of (initial + PnL).
+  const liveExchangeBalance = useLinkedExchangeBalance(activeJournal?.exchange);
+  const displayedCurrentBalance = liveExchangeBalance != null ? liveExchangeBalance : stats.currentBalance;
+  const balanceIsLive = liveExchangeBalance != null;
 
   useEffect(() => {
     if (searchParams.get('new') === '1') setFormOpen(true);
@@ -607,9 +614,10 @@ export default function TradeJournal() {
         <>
           {/* Row 1: Main Stats */}
           <motion.div className="grid grid-cols-2 md:grid-cols-4 gap-2.5 md:gap-3 mb-3 md:mb-4" variants={staggerContainer} initial="initial" animate="animate">
-            <StatCard label="יתרה נוכחית" value={formatCurrency(stats.currentBalance).replace('+', '')}
-              subtitle={activeJournal?.initialBalance > 0 ? `${formatPercent(stats.balanceChangePercent)} מההתחלה` : `${stats.totalTrades} עסקאות`}
-              subtitleColor={stats.balanceChangePercent >= 0 ? 'text-profit' : 'text-loss'} icon={Wallet} color="text-accent-primary"
+            <StatCard label={balanceIsLive ? `יתרה נוכחית · ${activeJournal.exchange}` : 'יתרה נוכחית'}
+              value={formatCurrency(displayedCurrentBalance).replace('+', '')}
+              subtitle={balanceIsLive ? 'מסונכרן עם הבורסה' : (activeJournal?.initialBalance > 0 ? `${formatPercent(stats.balanceChangePercent)} מההתחלה` : `${stats.totalTrades} עסקאות`)}
+              subtitleColor={balanceIsLive ? 'text-accent-primary' : (stats.balanceChangePercent >= 0 ? 'text-profit' : 'text-loss')} icon={Wallet} color="text-accent-primary"
               gradient={stats.totalPnL >= 0 ? 'profit' : 'loss'} />
             <StatCard label="רווח נקי" value={formatCurrency(stats.totalPnL)} subtitle={`${stats.totalTrades} עסקאות`}
               icon={DollarSign} color={stats.totalPnL >= 0 ? 'text-profit' : 'text-loss'} />
