@@ -67,6 +67,10 @@ export default function NotificationSettings() {
   const test = async () => {
     setBusy(true);
     try {
+      // Make sure THIS device is registered before testing — the toggle state
+      // is synced from Firestore across devices, so a device that never ran
+      // the enable flow won't have a subscription stored on the worker yet.
+      await subscribeToPush();
       const sent = await sendTestPush();
       if (sent > 0) toast.success('נשלחה התראת בדיקה 🔔');
       else toast.error('לא נמצא מכשיר רשום — הפעל התראות מחדש');
@@ -78,6 +82,13 @@ export default function NotificationSettings() {
   };
 
   const isActive = settings.pushEnabled && permission === 'granted';
+
+  // If push is enabled (synced from another device) and permission is already
+  // granted here, register this device with the worker so it actually receives
+  // pushes — otherwise the toggle reads "on" but no subscription exists.
+  useEffect(() => {
+    if (isActive) subscribeToPush().catch(() => {});
+  }, [isActive]);
 
   if (!supported) return null;
 
