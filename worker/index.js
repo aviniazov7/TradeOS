@@ -2010,6 +2010,7 @@ ${pad('Lev', `${pnlSign}${pnlPctLev}%`)}` : ''}` : ''}</code>
         const positions = list.map((p) => {
           const entryPrice = parseFloat(p.avgPrice) || 0;
           const qty = parseFloat(p.size) || 0;
+          const tp = parseFloat(p.takeProfit) || 0;
           return {
             pair: p.symbol,
             direction: p.side === 'Buy' ? 'long' : 'short',
@@ -2031,7 +2032,10 @@ ${pad('Lev', `${pnlSign}${pnlPctLev}%`)}` : ''}` : ''}</code>
             entryDate: p.updatedTime
               ? new Date(parseInt(p.updatedTime)).toISOString()
               : (p.createdTime ? new Date(parseInt(p.createdTime)).toISOString() : new Date().toISOString()),
-            tps: [],
+            // Carry the live TP from Bybit so the imported trade already has
+            // the planned target set (the trade form stores `tps` as plain
+            // price numbers).
+            tps: tp > 0 ? [tp] : [],
             exits: null,
             tpReached: [],
             result: null,
