@@ -1,4 +1,4 @@
-const CACHE_NAME = 'tradeos-v96';
+const CACHE_NAME = 'tradeos-v97';
 const STATIC_ASSETS = [
   '/icon-192.png',
   '/icon-512.png',
@@ -84,6 +84,26 @@ self.addEventListener('fetch', (event) => {
           (cached) => cached || new Response('', { status: 408, statusText: 'Offline' })
         )
       )
+  );
+});
+
+// Web Push — show a notification from a server-sent push payload (works even
+// when the app is closed). Payload shape: { title, body, url, tag }.
+self.addEventListener('push', (event) => {
+  let data = {};
+  try { data = event.data ? event.data.json() : {}; } catch { data = { body: event.data && event.data.text() }; }
+  const title = data.title || 'TradeOS';
+  event.waitUntil(
+    self.registration.showNotification(title, {
+      body: data.body || '',
+      icon: '/icon-192.png',
+      badge: '/icon-192.png',
+      dir: 'rtl',
+      lang: 'he',
+      tag: data.tag || undefined,
+      renotify: !!data.tag,
+      data: { url: data.url || '/' },
+    })
   );
 });
 

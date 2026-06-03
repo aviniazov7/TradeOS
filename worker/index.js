@@ -150,6 +150,120 @@ function sessionFromDate(isoOrMs) {
 const AI_DAILY_LIMIT = 20;
 const FIREBASE_PROJECT_ID = 'tradeos-91a58';
 
+// ── Web Push (RFC 8291 aes128gcm + RFC 8292 VAPID) ───────────────────────────
+// Public key is safe to expose (the client uses it as applicationServerKey).
+// The matching private key is provided to the worker as env.VAPID_JWK.
+const VAPID_PUBLIC_KEY = 'BLFZCOugKM1d2jqTwgmGTF9VjFwQEMNo92l2gfNVk7eBYz1Gnrr0jFBS5jR1bRJ5MchpVkVNiqS8wtzUqouBHRk';
+const VAPID_SUBJECT = 'mailto:aviniazov7@icloud.com';
+
+function b64urlToBytes(s) {
+  s = s.replace(/-/g, '+').replace(/_/g, '/');
+  while (s.length % 4) s += '=';
+  const bin = atob(s);
+  const out = new Uint8Array(bin.length);
+  for (let i = 0; i < bin.length; i++) out[i] = bin.charCodeAt(i);
+  return out;
+}
+function bytesToB64url(bytes) {
+  let bin = '';
+  const b = new Uint8Array(bytes);
+  for (let i = 0; i < b.length; i++) bin += String.fromCharCode(b[i]);
+  return btoa(bin).replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, '');
+}
+function concatBytes(...arrays) {
+  const len = arrays.reduce((s, a) => s + a.length, 0);
+  const out = new Uint8Array(len);
+  let off = 0;
+  for (const a of arrays) { out.set(a, off); off += a.length; }
+  return out;
+}
+
+// Sign the VAPID JWT (ES256) with the private key JWK from env.
+async function vapidAuthHeader(env, audience) {
+  const jwk = JSON.parse(env.VAPID_JWK);
+  const key = await crypto.subtle.importKey('jwk', jwk, { name: 'ECDSA', namedCurve: 'P-256' }, false, ['sign']);
+  const header = bytesToB64url(new TextEncoder().encode(JSON.stringify({ typ: 'JWT', alg: 'ES256' })));
+  const payload = bytesToB64url(new TextEncoder().encode(JSON.stringify({
+    aud: audience, exp: Math.floor(Date.now() / 1000) + 12 * 3600, sub: VAPID_SUBJECT,
+  })));
+  const signingInput = `${header}.${payload}`;
+  const sig = await crypto.subtle.sign({ name: 'ECDSA', hash: 'SHA-256' }, key, new TextEncoder().encode(signingInput));
+  return `vapid t=${signingInput}.${bytesToB64url(sig)}, k=${VAPID_PUBLIC_KEY}`;
+}
+
+async function hkdf(salt, ikm, info, length) {
+  const key = await crypto.subtle.importKey('raw', ikm, 'HKDF', false, ['deriveBits']);
+  const bits = await crypto.subtle.deriveBits({ name: 'HKDF', hash: 'SHA-256', salt, info }, key, length * 8);
+  return new Uint8Array(bits);
+}
+
+// Encrypt `payload` (string) for a subscription's p256dh + auth keys.
+async function encryptPush(p256dhB64, authB64, payload) {
+  const uaPublic = b64urlToBytes(p256dhB64);
+  const authSecret = b64urlToBytes(authB64);
+
+  // Ephemeral server keypair
+  const asKeyPair = await crypto.subtle.generateKey({ name: 'ECDH', namedCurve: 'P-256' }, true, ['deriveBits']);
+  const asPublicRaw = new Uint8Array(await crypto.subtle.exportKey('raw', asKeyPair.publicKey));
+  const uaPublicKey = await crypto.subtle.importKey('raw', uaPublic, { name: 'ECDH', namedCurve: 'P-256' }, false, []);
+  const ecdhBits = await crypto.subtle.deriveBits({ name: 'ECDH', public: uaPublicKey }, asKeyPair.privateKey, 256);
+  const ecdhSecret = new Uint8Array(ecdhBits);
+
+  const enc = new TextEncoder();
+  const keyInfo = concatBytes(enc.encode('WebPush: info\0'), uaPublic, asPublicRaw);
+  const ikm = await hkdf(authSecret, ecdhSecret, keyInfo, 32);
+
+  const salt = crypto.getRandomValues(new Uint8Array(16));
+  const cek = await hkdf(salt, ikm, enc.encode('Content-Encoding: aes128gcm\0'), 16);
+  const nonce = await hkdf(salt, ikm, enc.encode('Content-Encoding: nonce\0'), 12);
+
+  const plaintext = concatBytes(enc.encode(payload), new Uint8Array([0x02])); // single record delimiter
+  const aesKey = await crypto.subtle.importKey('raw', cek, { name: 'AES-GCM' }, false, ['encrypt']);
+  const ct = new Uint8Array(await crypto.subtle.encrypt({ name: 'AES-GCM', iv: nonce, tagLength: 128 }, aesKey, plaintext));
+
+  // aes128gcm header: salt(16) | rs(4, =4096) | idlen(1, =65) | keyid(as_public, 65)
+  const rs = new Uint8Array([0, 0, 0x10, 0]); // 4096
+  const header = concatBytes(salt, rs, new Uint8Array([asPublicRaw.length]), asPublicRaw);
+  return concatBytes(header, ct);
+}
+
+// Send one web-push message. Returns the upstream status (404/410 = expired).
+async function sendWebPush(env, subscription, data) {
+  if (!env.VAPID_JWK) return 0;
+  const endpoint = subscription.endpoint;
+  const { p256dh, auth } = subscription.keys || {};
+  if (!endpoint || !p256dh || !auth) return 0;
+  const body = await encryptPush(p256dh, auth, JSON.stringify(data));
+  const audience = new URL(endpoint).origin;
+  const res = await fetch(endpoint, {
+    method: 'POST',
+    headers: {
+      'Authorization': await vapidAuthHeader(env, audience),
+      'Content-Encoding': 'aes128gcm',
+      'Content-Type': 'application/octet-stream',
+      'TTL': '2419200',
+    },
+    body,
+  });
+  return res.status;
+}
+
+// Send to every subscription stored for a uid (push:{uid}:{hash} keys).
+async function sendPushToUser(env, uid, data) {
+  const list = await env.ALERTS_KV.list({ prefix: `push:${uid}:` });
+  let sent = 0;
+  for (const k of list.keys) {
+    const sub = await env.ALERTS_KV.get(k.name, 'json');
+    if (!sub) continue;
+    try {
+      const status = await sendWebPush(env, sub, data);
+      if (status === 404 || status === 410) await env.ALERTS_KV.delete(k.name); // expired
+      else if (status >= 200 && status < 300) sent++;
+    } catch { /* skip */ }
+  }
+  return sent;
+}
+
 function decodeUidFromToken(token) {
   if (!token) return null;
   try {
@@ -1821,6 +1935,43 @@ async function handleRequest(request, env) {
   }
 
   if (path === '/health') return new Response(JSON.stringify({ status: 'ok', time: new Date().toISOString() }), { headers: { ...cors, 'Content-Type': 'application/json' } });
+
+  // Web Push — register a browser push subscription for the signed-in user.
+  if (request.method === 'POST' && path === '/push/subscribe') {
+    const token = (request.headers.get('Authorization') || '').replace('Bearer ', '');
+    const uid = decodeUidFromToken(token);
+    if (!uid) return new Response(JSON.stringify({ error: 'unauthorized' }), { status: 401, headers: { ...cors, 'Content-Type': 'application/json' } });
+    const { subscription } = await request.json().catch(() => ({}));
+    if (!subscription?.endpoint) return new Response(JSON.stringify({ error: 'missing subscription' }), { status: 400, headers: { ...cors, 'Content-Type': 'application/json' } });
+    // One KV entry per endpoint (hashed) so multiple devices each get pushes.
+    const key = `push:${uid}:${hashStr(subscription.endpoint)}`;
+    await env.ALERTS_KV.put(key, JSON.stringify(subscription));
+    return new Response(JSON.stringify({ ok: true }), { headers: { ...cors, 'Content-Type': 'application/json' } });
+  }
+
+  // Web Push — remove a subscription (on disable / logout).
+  if (request.method === 'POST' && path === '/push/unsubscribe') {
+    const token = (request.headers.get('Authorization') || '').replace('Bearer ', '');
+    const uid = decodeUidFromToken(token);
+    if (!uid) return new Response(JSON.stringify({ error: 'unauthorized' }), { status: 401, headers: { ...cors, 'Content-Type': 'application/json' } });
+    const { endpoint } = await request.json().catch(() => ({}));
+    if (endpoint) await env.ALERTS_KV.delete(`push:${uid}:${hashStr(endpoint)}`);
+    return new Response(JSON.stringify({ ok: true }), { headers: { ...cors, 'Content-Type': 'application/json' } });
+  }
+
+  // Web Push — send a test notification to all of the user's devices.
+  if (request.method === 'POST' && path === '/push/test') {
+    const token = (request.headers.get('Authorization') || '').replace('Bearer ', '');
+    const uid = decodeUidFromToken(token);
+    if (!uid) return new Response(JSON.stringify({ error: 'unauthorized' }), { status: 401, headers: { ...cors, 'Content-Type': 'application/json' } });
+    const sent = await sendPushToUser(env, uid, {
+      title: 'TradeOS 🔔',
+      body: 'ההתראות עובדות! תקבל התראה כשנפתחת עסקה חדשה.',
+      url: '/profile',
+      tag: 'test',
+    });
+    return new Response(JSON.stringify({ ok: true, sent }), { headers: { ...cors, 'Content-Type': 'application/json' } });
+  }
 
   // Caller's own AI usage for the current day — used by the progress bar.
   if (request.method === 'GET' && path === '/ai-usage') {

@@ -23,6 +23,7 @@ import ConfirmDialog from '../shared/ConfirmDialog';
 import { pageVariants, pageTransition } from '../../utils/animations';
 import { useTheme } from '../../hooks/useTheme';
 import TelegramSettings from './TelegramSettings';
+import NotificationSettings from './NotificationSettings';
 import ContactDeveloper from './ContactDeveloper';
 
 const APP_URL = 'https://tradeos-91a58.web.app';
@@ -268,6 +269,9 @@ export default function ProfilePage() {
           {isDark ? <Sun className="w-5 h-5 text-text-muted" /> : <Moon className="w-5 h-5 text-text-muted" />}
           {isDark ? 'מצב בהיר' : 'מצב כהה'}
         </button>
+
+        {/* Push notifications */}
+        <NotificationSettings />
 
         {/* Telegram Bot */}
         <TelegramSettings />
