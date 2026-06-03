@@ -87,9 +87,12 @@ export async function unregisterExchangeForPush(exchange) {
 }
 
 // Ask the worker to send a real push to all of the user's devices.
+// Returns the full diagnostic payload: { sent, total, results, hasVapid }.
 export async function sendTestPush() {
   const res = await fetch(`${WORKER_BASE}/push/test`, { method: 'POST', headers: await authHeader() });
   const data = await res.json().catch(() => ({}));
   if (!res.ok) throw new Error(data.error || 'שליחת ההתראה נכשלה');
-  return data.sent || 0;
+  // eslint-disable-next-line no-console
+  console.log('[push/test] result:', data);
+  return data;
 }

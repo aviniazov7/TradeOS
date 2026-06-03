@@ -80,9 +80,20 @@ export default function NotificationSettings() {
       // is synced from Firestore across devices, so a device that never ran
       // the enable flow won't have a subscription stored on the worker yet.
       await subscribeToPush();
-      const sent = await sendTestPush();
-      if (sent > 0) toast.success('נשלחה התראת בדיקה 🔔');
-      else toast.error('לא נמצא מכשיר רשום — הפעל התראות מחדש');
+      const r = await sendTestPush();
+      if (r.sent > 0) {
+        toast.success('נשלחה התראת בדיקה 🔔');
+      } else if (!r.hasVapid) {
+        toast.error('חסר מפתח חתימה בשרת (VAPID). פנה למפתח.');
+      } else if (r.total === 0) {
+        toast.error('המכשיר לא נרשם. כבה והפעל התראות מחדש.');
+      } else {
+        // Registered but delivery failed — surface the upstream reason.
+        const reason = r.results?.[0]?.status
+          ? `שגיאה ${r.results[0].status}${r.results[0].body ? `: ${r.results[0].body}` : ''}`
+          : 'השליחה נכשלה';
+        toast.error(`רשום ${r.total} מכשירים אך השליחה נכשלה — ${reason}`);
+      }
     } catch (e) {
       toast.error(e.message || 'שליחת הבדיקה נכשלה');
     } finally {

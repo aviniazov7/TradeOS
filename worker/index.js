@@ -232,41 +232,50 @@ async function encryptPush(p256dhB64, authB64, payload) {
   return concatBytes(header, ct);
 }
 
-// Send one web-push message. Returns the upstream status (404/410 = expired).
+// Send one web-push message. Returns { status, body } where status is the
+// upstream HTTP status (404/410 = expired). On a thrown error during signing/
+// encryption, status is 0 and body holds the error message.
 async function sendWebPush(env, subscription, data) {
-  if (!env.VAPID_JWK) return 0;
+  if (!env.VAPID_JWK) return { status: 0, body: 'no VAPID_JWK' };
   const endpoint = subscription.endpoint;
   const { p256dh, auth } = subscription.keys || {};
-  if (!endpoint || !p256dh || !auth) return 0;
-  const body = await encryptPush(p256dh, auth, JSON.stringify(data));
-  const audience = new URL(endpoint).origin;
-  const res = await fetch(endpoint, {
-    method: 'POST',
-    headers: {
-      'Authorization': await vapidAuthHeader(env, audience),
-      'Content-Encoding': 'aes128gcm',
-      'Content-Type': 'application/octet-stream',
-      'TTL': '2419200',
-    },
-    body,
-  });
-  return res.status;
+  if (!endpoint || !p256dh || !auth) return { status: 0, body: 'bad subscription' };
+  try {
+    const body = await encryptPush(p256dh, auth, JSON.stringify(data));
+    const audience = new URL(endpoint).origin;
+    const res = await fetch(endpoint, {
+      method: 'POST',
+      headers: {
+        'Authorization': await vapidAuthHeader(env, audience),
+        'Content-Encoding': 'aes128gcm',
+        'Content-Type': 'application/octet-stream',
+        'TTL': '2419200',
+      },
+      body,
+    });
+    let respBody = '';
+    if (res.status < 200 || res.status >= 300) respBody = (await res.text().catch(() => '')).slice(0, 200);
+    return { status: res.status, body: respBody };
+  } catch (e) {
+    return { status: 0, body: (e && e.message ? e.message : String(e)).slice(0, 200) };
+  }
 }
 
 // Send to every subscription stored for a uid (push:{uid}:{hash} keys).
+// Returns { sent, total, results } so callers (e.g. /push/test) can diagnose.
 async function sendPushToUser(env, uid, data) {
   const list = await env.ALERTS_KV.list({ prefix: `push:${uid}:` });
   let sent = 0;
+  const results = [];
   for (const k of list.keys) {
     const sub = await env.ALERTS_KV.get(k.name, 'json');
     if (!sub) continue;
-    try {
-      const status = await sendWebPush(env, sub, data);
-      if (status === 404 || status === 410) await env.ALERTS_KV.delete(k.name); // expired
-      else if (status >= 200 && status < 300) sent++;
-    } catch { /* skip */ }
+    const { status, body } = await sendWebPush(env, sub, data);
+    results.push(body ? { status, body } : { status });
+    if (status === 404 || status === 410) await env.ALERTS_KV.delete(k.name); // expired
+    else if (status >= 200 && status < 300) sent++;
   }
-  return sent;
+  return { sent, total: list.keys.length, results };
 }
 
 // ---- Background exchange polling for push notifications ----------------------
@@ -2087,13 +2096,13 @@ async function handleRequest(request, env) {
     const token = (request.headers.get('Authorization') || '').replace('Bearer ', '');
     const uid = decodeUidFromToken(token);
     if (!uid) return new Response(JSON.stringify({ error: 'unauthorized' }), { status: 401, headers: { ...cors, 'Content-Type': 'application/json' } });
-    const sent = await sendPushToUser(env, uid, {
+    const result = await sendPushToUser(env, uid, {
       title: 'TradeOS 🔔',
       body: 'ההתראות עובדות! תקבל התראה כשנפתחת עסקה חדשה.',
       url: '/profile',
       tag: 'test',
     });
-    return new Response(JSON.stringify({ ok: true, sent }), { headers: { ...cors, 'Content-Type': 'application/json' } });
+    return new Response(JSON.stringify({ ok: true, ...result, hasVapid: !!env.VAPID_JWK }), { headers: { ...cors, 'Content-Type': 'application/json' } });
   }
 
   // Web Push — store read-only exchange keys so the cron can poll the exchange
