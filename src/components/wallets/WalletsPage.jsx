@@ -1,0 +1,216 @@
+import { useState, useEffect, useCallback } from 'react';
+import { motion } from 'framer-motion';
+import { Wallet, Plus, RefreshCw, Trash2, Copy, X, ExternalLink } from 'lucide-react';
+import toast from 'react-hot-toast';
+import { useAuth } from '../../contexts/AuthContext';
+import { getUserSetting, setUserSetting } from '../../services/firestoreService';
+import { fetchWalletData } from '../../services/walletService';
+import { formatCurrency } from '../../utils/formatters';
+import { pageVariants, pageTransition } from '../../utils/animations';
+
+const CHAIN_LABELS = {
+  eth: 'Ethereum', bsc: 'BNB Chain', polygon: 'Polygon', arbitrum: 'Arbitrum',
+  base: 'Base', optimism: 'Optimism', avalanche: 'Avalanche', fantom: 'Fantom',
+};
+const chainLabel = (c) => CHAIN_LABELS[c] || c;
+const shortAddr = (a) => (a ? `${a.slice(0, 6)}…${a.slice(-4)}` : '');
+
+export default function WalletsPage() {
+  const { user } = useAuth();
+  const [wallets, setWallets] = useState([]);      // [{ id, address, label }]
+  const [data, setData] = useState({});            // address -> { totalUsd, chains, tokens } | { error }
+  const [loadingAddr, setLoadingAddr] = useState({});
+  const [adding, setAdding] = useState(false);
+  const [address, setAddress] = useState('');
+  const [label, setLabel] = useState('');
+  const [loaded, setLoaded] = useState(false);
+
+  const load = useCallback(async (addr) => {
+    setLoadingAddr((s) => ({ ...s, [addr]: true }));
+    try {
+      const res = await fetchWalletData(addr);
+      setData((s) => ({ ...s, [addr]: res }));
+    } catch (e) {
+      setData((s) => ({ ...s, [addr]: { error: e.message } }));
+    } finally {
+      setLoadingAddr((s) => ({ ...s, [addr]: false }));
+    }
+  }, []);
+
+  useEffect(() => {
+    if (!user) return;
+    getUserSetting(user.uid, 'wallets').then((d) => {
+      const list = Array.isArray(d?.list) ? d.list : [];
+      setWallets(list);
+      setLoaded(true);
+      list.forEach((w) => load(w.address));
+    });
+  }, [user, load]);
+
+  const persist = async (list) => {
+    setWallets(list);
+    await setUserSetting(user.uid, 'wallets', { list }, true);
+  };
+
+  const addWallet = async () => {
+    const addr = address.trim();
+    if (!/^0x[a-fA-F0-9]{40}$/.test(addr)) {
+      toast.error('כתובת ארנק לא תקינה (EVM, מתחילה ב-0x)');
+      return;
+    }
+    if (wallets.some((w) => w.address.toLowerCase() === addr.toLowerCase())) {
+      toast.error('הארנק כבר קיים');
+      return;
+    }
+    const w = { id: Date.now().toString(36), address: addr, label: label.trim() };
+    await persist([...wallets, w]);
+    setAddress(''); setLabel(''); setAdding(false);
+    load(addr);
+  };
+
+  const removeWallet = async (id, addr) => {
+    await persist(wallets.filter((w) => w.id !== id));
+    setData((s) => { const n = { ...s }; delete n[addr]; return n; });
+  };
+
+  const copy = (addr) => { navigator.clipboard.writeText(addr); toast.success('הכתובת הועתקה'); };
+
+  const grandTotal = wallets.reduce((sum, w) => sum + (data[w.address]?.totalUsd || 0), 0);
+
+  return (
+    <motion.div variants={pageVariants} initial="initial" animate="animate" exit="exit" transition={pageTransition}
+      className="min-h-[calc(100vh-4rem)] px-4 py-6">
+      <div className="max-w-3xl mx-auto space-y-4">
+
+        {/* Header / total */}
+        <div className="bg-bg-secondary border border-border-primary rounded-2xl p-5 flex items-center justify-between">
+          <div>
+            <div className="flex items-center gap-2 text-text-primary">
+              <Wallet className="w-5 h-5 text-accent-primary" />
+              <h1 className="text-lg font-bold">ארנקים</h1>
+            </div>
+            <p className="text-xs text-text-muted mt-1">מעקב שווי על-שרשרת · קריאה בלבד</p>
+          </div>
+          <div className="text-left">
+            <div className="text-[11px] text-text-muted">שווי כולל</div>
+            <div className="text-2xl font-bold text-text-primary" dir="ltr">{formatCurrency(grandTotal)}</div>
+          </div>
+        </div>
+
+        {/* Add wallet */}
+        {adding ? (
+          <div className="bg-bg-secondary border border-border-primary rounded-2xl p-4 space-y-3">
+            <div className="flex items-center justify-between">
+              <span className="text-sm font-semibold text-text-primary">הוספת ארנק</span>
+              <button onClick={() => { setAdding(false); setAddress(''); setLabel(''); }} className="text-text-muted hover:text-text-primary cursor-pointer">
+                <X className="w-4 h-4" />
+              </button>
+            </div>
+            <input value={address} onChange={(e) => setAddress(e.target.value)} placeholder="כתובת ארנק (0x...)" dir="ltr"
+              className="w-full bg-bg-tertiary border border-border-primary rounded-lg px-3 py-2.5 text-sm text-text-primary outline-none focus:border-accent-primary transition-colors font-mono" />
+            <input value={label} onChange={(e) => setLabel(e.target.value)} placeholder="כינוי (לא חובה) — לדוגמה: ארנק קר"
+              className="w-full bg-bg-tertiary border border-border-primary rounded-lg px-3 py-2.5 text-sm text-text-primary outline-none focus:border-accent-primary transition-colors" />
+            <button onClick={addWallet}
+              className="w-full py-2.5 rounded-lg bg-accent-primary text-bg-primary text-sm font-bold hover:bg-accent-hover transition-colors cursor-pointer">
+              הוסף ארנק
+            </button>
+          </div>
+        ) : (
+          <button onClick={() => setAdding(true)}
+            className="w-full py-3 rounded-2xl border border-dashed border-border-primary text-sm text-text-secondary hover:text-text-primary hover:border-accent-primary transition-colors cursor-pointer flex items-center justify-center gap-2">
+            <Plus className="w-4 h-4" /> הוסף ארנק
+          </button>
+        )}
+
+        {/* Empty state */}
+        {loaded && wallets.length === 0 && !adding && (
+          <div className="text-center text-sm text-text-muted py-10">
+            עדיין אין ארנקים. הוסף כתובת ארנק כדי לראות את השווי והאחזקות.
+          </div>
+        )}
+
+        {/* Wallet cards */}
+        {wallets.map((w) => {
+          const d = data[w.address];
+          const busy = loadingAddr[w.address];
+          return (
+            <div key={w.id} className="bg-bg-secondary border border-border-primary rounded-2xl p-4 space-y-3">
+              <div className="flex items-center justify-between">
+                <div className="min-w-0">
+                  <div className="text-sm font-semibold text-text-primary truncate">{w.label || 'ארנק'}</div>
+                  <button onClick={() => copy(w.address)} className="flex items-center gap-1 text-xs text-text-muted hover:text-text-primary cursor-pointer" dir="ltr">
+                    {shortAddr(w.address)} <Copy className="w-3 h-3" />
+                  </button>
+                </div>
+                <div className="flex items-center gap-2">
+                  <div className="text-left">
+                    <div className="text-[10px] text-text-muted">שווי</div>
+                    <div className="text-base font-bold text-text-primary" dir="ltr">
+                      {d?.error ? '—' : formatCurrency(d?.totalUsd || 0)}
+                    </div>
+                  </div>
+                  <button onClick={() => load(w.address)} disabled={busy}
+                    className="p-2 rounded-lg hover:bg-bg-tertiary text-text-muted cursor-pointer disabled:opacity-50" title="רענן">
+                    <RefreshCw className={`w-4 h-4 ${busy ? 'animate-spin' : ''}`} />
+                  </button>
+                  <button onClick={() => removeWallet(w.id, w.address)}
+                    className="p-2 rounded-lg hover:bg-loss/10 text-text-muted hover:text-loss cursor-pointer" title="הסר">
+                    <Trash2 className="w-4 h-4" />
+                  </button>
+                </div>
+              </div>
+
+              {d?.error && (
+                <div className="text-xs text-loss bg-loss/10 border border-loss/30 rounded-lg p-2">{d.error}</div>
+              )}
+
+              {/* Per-chain split */}
+              {d?.chains?.length > 0 && (
+                <div className="flex flex-wrap gap-1.5">
+                  {d.chains.map((c) => (
+                    <span key={c.chain} className="text-[10px] px-2 py-0.5 rounded-full bg-bg-tertiary text-text-secondary border border-border-primary" dir="ltr">
+                      {chainLabel(c.chain)} · {formatCurrency(c.usd)}
+                    </span>
+                  ))}
+                </div>
+              )}
+
+              {/* Holdings */}
+              {d?.tokens?.length > 0 && (
+                <div className="divide-y divide-border-primary border-t border-border-primary pt-1">
+                  {d.tokens.map((t, i) => (
+                    <div key={`${t.chain}-${t.symbol}-${i}`} className="flex items-center justify-between py-2">
+                      <div className="flex items-center gap-2 min-w-0">
+                        {t.logo
+                          ? <img src={t.logo} alt="" className="w-6 h-6 rounded-full" />
+                          : <div className="w-6 h-6 rounded-full bg-bg-tertiary flex items-center justify-center text-[9px] text-text-muted">{(t.symbol || '?').slice(0, 3)}</div>}
+                        <div className="min-w-0">
+                          <div className="text-sm text-text-primary truncate">{t.symbol}</div>
+                          <div className="text-[10px] text-text-muted" dir="ltr">{chainLabel(t.chain)}</div>
+                        </div>
+                      </div>
+                      <div className="text-left">
+                        <div className="text-sm text-text-primary" dir="ltr">{formatCurrency(t.usd)}</div>
+                        <div className="text-[10px] text-text-muted" dir="ltr">{t.amount.toLocaleString('en-US', { maximumFractionDigits: 4 })}</div>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              )}
+
+              {busy && !d && (
+                <div className="flex items-center gap-2 text-xs text-text-muted py-2">
+                  <RefreshCw className="w-3.5 h-3.5 animate-spin" /> טוען נתוני ארנק...
+                </div>
+              )}
+            </div>
+          );
+        })}
+
+        <div className="flex items-center justify-center gap-1.5 text-[11px] text-text-muted pt-2">
+          <ExternalLink className="w-3 h-3" /> נתונים מסופקים ע"י Moralis · רשתות EVM
+        </div>
+      </div>
+    </motion.div>
+  );
+}

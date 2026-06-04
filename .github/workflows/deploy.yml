@@ -81,9 +81,15 @@ jobs:
         working-directory: worker
         env:
           VAPID_JWK: ${{ secrets.VAPID_JWK }}
+          MORALIS_API_KEY: ${{ secrets.MORALIS_API_KEY }}
         run: |
           if [ -n "$VAPID_JWK" ]; then
             printf '%s' "$VAPID_JWK" | npx wrangler secret put VAPID_JWK
           else
             echo "VAPID_JWK secret not set — skipping."
+          fi
+          if [ -n "$MORALIS_API_KEY" ]; then
+            printf '%s' "$MORALIS_API_KEY" | npx wrangler secret put MORALIS_API_KEY
+          else
+            echo "MORALIS_API_KEY secret not set — skipping."
           fi

@@ -2620,6 +2620,62 @@ ${pad('Lev', `${pnlSign}${pnlPctLev}%`)}` : ''}` : ''}</code>
     }
   }
 
+  // On-chain wallet net worth + holdings via Moralis (read-only public data).
+  // Auth-gated so it can't be used to burn the Moralis quota anonymously.
+  if (request.method === 'POST' && path === '/wallet') {
+    const token = (request.headers.get('Authorization') || '').replace('Bearer ', '');
+    const uid = decodeUidFromToken(token);
+    if (!uid) return new Response(JSON.stringify({ ok: false, error: 'unauthorized' }), { status: 401, headers: { ...cors, 'Content-Type': 'application/json' } });
+    if (!env.MORALIS_API_KEY) return new Response(JSON.stringify({ ok: false, error: 'מעקב ארנקים לא מוגדר בשרת' }), { status: 400, headers: { ...cors, 'Content-Type': 'application/json' } });
+    try {
+      const { address } = await request.json().catch(() => ({}));
+      if (!address || !/^0x[a-fA-F0-9]{40}$/.test(address)) {
+        return new Response(JSON.stringify({ ok: false, error: 'כתובת ארנק לא תקינה (EVM/0x...)' }), { status: 400, headers: { ...cors, 'Content-Type': 'application/json' } });
+      }
+      const base = 'https://deep-index.moralis.io/api/v2.2';
+      const mHeaders = { 'X-API-Key': env.MORALIS_API_KEY, accept: 'application/json' };
+
+      // 1) Net worth (total + per-chain).
+      const nwRes = await fetch(`${base}/wallets/${address}/net-worth?exclude_spam=true&exclude_unverified_contracts=true`, { headers: mHeaders });
+      const nw = await nwRes.json().catch(() => ({}));
+      if (!nwRes.ok) return new Response(JSON.stringify({ ok: false, error: nw.message || `Moralis ${nwRes.status}` }), { status: 400, headers: { ...cors, 'Content-Type': 'application/json' } });
+      const totalUsd = parseFloat(nw.total_networth_usd) || 0;
+      const chains = (nw.chains || [])
+        .map((c) => ({ chain: c.chain, usd: parseFloat(c.networth_usd) || 0 }))
+        .filter((c) => c.usd > 0)
+        .sort((a, b) => b.usd - a.usd);
+
+      // 2) Token holdings for the top chains that actually hold value (bounded).
+      let tokens = [];
+      for (const c of chains.slice(0, 4)) {
+        try {
+          const tRes = await fetch(`${base}/wallets/${address}/tokens?chain=${c.chain}&exclude_spam=true`, { headers: mHeaders });
+          const t = await tRes.json().catch(() => ({}));
+          if (tRes.ok && Array.isArray(t.result)) {
+            for (const tok of t.result) {
+              const usd = parseFloat(tok.usd_value) || 0;
+              if (usd < 1) continue; // ignore dust
+              tokens.push({
+                symbol: tok.symbol || '?',
+                name: tok.name || '',
+                usd,
+                amount: parseFloat(tok.balance_formatted) || 0,
+                chain: c.chain,
+                logo: tok.logo || null,
+              });
+            }
+          }
+        } catch { /* one chain failing shouldn't drop the whole wallet */ }
+      }
+      tokens.sort((a, b) => b.usd - a.usd);
+      tokens = tokens.slice(0, 30);
+
+      return new Response(JSON.stringify({ ok: true, totalUsd, chains, tokens }), { headers: { ...cors, 'Content-Type': 'application/json' } });
+    } catch (err) {
+      return new Response(JSON.stringify({ ok: false, error: err.message }), { status: 500, headers: { ...cors, 'Content-Type': 'application/json' } });
+    }
+  }
+
   // Exchange trade sync — signs HMAC on behalf of the frontend so secrets stay server-side
   if (request.method === 'POST' && path === '/exchange/sync') {
     try {

@@ -12,6 +12,7 @@ import {
   Newspaper,
   Calculator,
   Shield,
+  Wallet,
 } from 'lucide-react';
 import PositionCalculator from '../calculator/PositionCalculator';
 import { useAuth } from '../../contexts/AuthContext';
@@ -22,6 +23,7 @@ const navItems = [
   { to: '/mentality', label: 'האזור המנטלי', icon: Brain },
   { to: '/backtest', label: 'בקטסט', icon: FlaskConical },
   { to: '/dca', label: 'מעקב DCA', icon: Coins },
+  { to: '/wallets', label: 'ארנקים', icon: Wallet },
   { to: '/plans', label: 'תוכניות מסחר', icon: ClipboardList },
   { to: '/market', label: 'סקירת שוק', icon: Activity },
   { to: '/news', label: 'חדשות', icon: Newspaper },

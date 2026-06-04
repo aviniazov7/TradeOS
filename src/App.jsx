@@ -28,6 +28,7 @@ const loadMentalStats = () => import('./components/mentality/MentalStats');
 const loadMarketOverview = () => import('./components/market/MarketOverview');
 const loadNewsPage = () => import('./components/news/NewsPage');
 const loadExchangeSettings = () => import('./components/exchange/ExchangeSettings');
+const loadWalletsPage = () => import('./components/wallets/WalletsPage');
 const loadAdminPanel = () => import('./components/admin/AdminPanel');
 
 const Dashboard = lazy(loadDashboard);
@@ -44,6 +45,7 @@ const MentalStats = lazy(loadMentalStats);
 const MarketOverview = lazy(loadMarketOverview);
 const NewsPage = lazy(loadNewsPage);
 const ExchangeSettings = lazy(loadExchangeSettings);
+const WalletsPage = lazy(loadWalletsPage);
 const AdminPanel = lazy(loadAdminPanel);
 
 // Preload all routes during idle time so tab switches feel instant
@@ -65,6 +67,7 @@ if (typeof window !== 'undefined') {
     loadMarketOverview();
     loadNewsPage();
     loadExchangeSettings();
+    loadWalletsPage();
   });
 }
 
@@ -97,6 +100,7 @@ function MainApp() {
                 <Route path="market" element={<MarketOverview />} />
                 <Route path="news" element={<NewsPage />} />
                 <Route path="exchange" element={<ExchangeSettings />} />
+                <Route path="wallets" element={<WalletsPage />} />
                 <Route path="admin" element={<AdminPanel />} />
                 <Route path="profile" element={<ProfilePage />} />
               </Route>
