@@ -1,6 +1,6 @@
 import { useState, useEffect, useRef } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
-import { Bot, Send, RotateCcw, User, Sparkles, BarChart3, History, Trash2 } from 'lucide-react';
+import { Bot, Send, RotateCcw, User, Sparkles, BarChart3, History, Trash2, Crown } from 'lucide-react';
 import DOMPurify from 'dompurify';
 import { sendMessageStream } from '../../services/groqApi';
 import { detectCoinFromText } from '../../utils/technicals';
@@ -504,8 +504,13 @@ export default function AIChat() {
 
         {/* Input */}
         <div className="border-t border-border-primary px-4 py-3 bg-bg-secondary/50">
-          {/* Daily AI quota — resets at Israel midnight */}
-          {!aiUsage.loading && (() => {
+          {/* Daily AI quota — resets at Israel midnight (premium = unlimited) */}
+          {!aiUsage.loading && aiUsage.unlimited && (
+            <div className="mb-2 flex items-center justify-center gap-1.5 text-[10px] text-accent-primary">
+              <Crown className="w-3 h-3" /> Premium · שימוש ללא הגבלה
+            </div>
+          )}
+          {!aiUsage.loading && !aiUsage.unlimited && (() => {
             const remaining = Math.max(0, aiUsage.limit - aiUsage.used);
             const pct = Math.min(100, (aiUsage.used / aiUsage.limit) * 100);
             const low = remaining <= 3;

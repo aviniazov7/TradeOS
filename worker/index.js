@@ -564,6 +564,32 @@ async function verifyAdminFromToken(token) {
   } catch { return null; }
 }
 
+// Is the user on an active premium plan? Reads users/{uid} via Firestore REST
+// with the caller's own (verified) token, cached 10 min in KV to avoid a read
+// on every request. Admins count as premium. Plan is admin/server-writable
+// only (enforced by Firestore rules), so this can't be spoofed by the client.
+async function isUserPremium(env, token, uid) {
+  if (!uid) return false;
+  const cacheKey = `planflag:${uid}`;
+  const cached = await env.ALERTS_KV.get(cacheKey);
+  if (cached !== null) return cached === '1';
+  let premium = false;
+  try {
+    const url = `https://firestore.googleapis.com/v1/projects/${FIREBASE_PROJECT_ID}/databases/(default)/documents/users/${uid}`;
+    const r = await fetch(url, { headers: { Authorization: `Bearer ${token}` } });
+    if (r.ok) {
+      const f = (await r.json()).fields || {};
+      const plan = f.plan?.stringValue;
+      const role = f.role?.stringValue;
+      const expRaw = f.planExpires?.timestampValue || f.planExpires?.stringValue;
+      const notExpired = !expRaw || new Date(expRaw).getTime() > Date.now();
+      premium = role === 'admin' || (plan === 'premium' && notExpired);
+    }
+  } catch { /* default free */ }
+  await env.ALERTS_KV.put(cacheKey, premium ? '1' : '0', { expirationTtl: 600 });
+  return premium;
+}
+
 async function fetchFundingRates(pairs) {
   try {
     const res = await fetch(`${BINANCE_FUTURES}/premiumIndex`);
@@ -1710,20 +1736,16 @@ async function handleAIChat(request, env, cors) {
       return new Response(JSON.stringify({ error: 'Missing messages' }), { status: 400, headers: { ...cors, 'Content-Type': 'application/json' } });
     }
 
-    // Extract UID from Firebase ID token for rate limiting
+    // Verify the Firebase ID token (signature-checked) and resolve the uid.
     const authHeader = request.headers.get('Authorization') || '';
     const token = authHeader.replace('Bearer ', '');
-    let uid = 'anonymous';
-    if (token) {
-      try {
-        const payload = JSON.parse(atob(token.split('.')[1].replace(/-/g, '+').replace(/_/g, '/')));
-        uid = payload.user_id || payload.sub || 'anonymous';
-      } catch { /* use anonymous */ }
-    }
+    const uid = await verifyFirebaseToken(token);
 
-    if (uid === 'anonymous') {
+    if (!uid) {
       return new Response(JSON.stringify({ error: 'יש להתחבר כדי להשתמש בצ׳אט' }), { status: 401, headers: { ...cors, 'Content-Type': 'application/json' } });
     }
+
+    const premium = await isUserPremium(env, token, uid);
 
     // Rate limiting — 20 requests per minute per user
     const rlKey = `ratelimit:ai:${uid}`;
@@ -1738,16 +1760,18 @@ async function handleAIChat(request, env, cors) {
       await env.ALERTS_KV.put(rlKey, JSON.stringify({ start: now, count: 1 }), { expirationTtl: 120 });
     }
 
-    // Daily quota — 20 requests per Israel day. Marked with quotaExceeded so
-    // the client knows not to retry (unlike the transient per-minute limit).
-    const quota = await getAiUsage(env, uid);
-    if (quota.used >= quota.limit) {
-      return new Response(JSON.stringify({
-        error: `הגעת למכסה היומית (${quota.limit} בקשות). תוכל להמשיך מחר.`,
-        quotaExceeded: true, used: quota.used, limit: quota.limit,
-      }), { status: 429, headers: { ...cors, 'Content-Type': 'application/json' } });
+    // Daily quota — 20 requests per Israel day for free users. Premium is
+    // unlimited (no daily cap, and we don't accrue usage for them).
+    if (!premium) {
+      const quota = await getAiUsage(env, uid);
+      if (quota.used >= quota.limit) {
+        return new Response(JSON.stringify({
+          error: `הגעת למכסה היומית (${quota.limit} בקשות). שדרג ל-Premium לשימוש ללא הגבלה.`,
+          quotaExceeded: true, used: quota.used, limit: quota.limit,
+        }), { status: 429, headers: { ...cors, 'Content-Type': 'application/json' } });
+      }
+      await incrementAiUsage(env, uid);
     }
-    await incrementAiUsage(env, uid);
 
     // Build messages for Groq
     const apiMessages = [
@@ -2268,6 +2292,9 @@ async function handleRequest(request, env) {
     const token = (request.headers.get('Authorization') || '').replace('Bearer ', '');
     const uid = await verifyFirebaseToken(token);
     if (!uid) return new Response(JSON.stringify({ error: 'unauthorized' }), { status: 401, headers: { ...cors, 'Content-Type': 'application/json' } });
+    if (await isUserPremium(env, token, uid)) {
+      return new Response(JSON.stringify({ used: 0, limit: null, unlimited: true, date: getIsraelDateStr() }), { headers: { ...cors, 'Content-Type': 'application/json' } });
+    }
     const usage = await getAiUsage(env, uid);
     return new Response(JSON.stringify(usage), { headers: { ...cors, 'Content-Type': 'application/json' } });
   }

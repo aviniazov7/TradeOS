@@ -1,9 +1,11 @@
 import { useState, useRef, useEffect } from 'react';
+import { useNavigate } from 'react-router-dom';
 import { ChevronDown, Plus, BookOpen, Star, Archive, ArchiveRestore, Trash2 } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
 import toast from 'react-hot-toast';
 import { useJournalContext } from '../../contexts/JournalContext';
-import { EXCHANGES } from '../../utils/constants';
+import { useAuth } from '../../contexts/AuthContext';
+import { EXCHANGES, FREE_LIMITS } from '../../utils/constants';
 import ExchangeLogo from '../shared/ExchangeLogo';
 import JournalFormModal from './JournalFormModal';
 import Modal from '../shared/Modal';
@@ -11,11 +13,24 @@ import ConfirmDialog from '../shared/ConfirmDialog';
 
 export default function JournalSwitcher({ compact }) {
   const { journals, archivedJournals, activeJournal, activeJournalId, setActiveJournalId, addJournal, toggleStarJournal, unarchiveJournal, deleteJournal } = useJournalContext();
+  const { isPremium } = useAuth();
+  const navigate = useNavigate();
   const [open, setOpen] = useState(false);
   const [formOpen, setFormOpen] = useState(false);
   const [archiveOpen, setArchiveOpen] = useState(false);
   const [deleteTarget, setDeleteTarget] = useState(null);
   const dropdownRef = useRef(null);
+
+  // Free tier caps the number of journals; premium is unlimited.
+  const openNewJournal = () => {
+    setOpen(false);
+    if (!isPremium && journals.length >= FREE_LIMITS.journals) {
+      toast.error(`במסלול החינמי אפשר עד ${FREE_LIMITS.journals} יומנים. שדרג ל-Premium ליומנים ללא הגבלה.`);
+      navigate('/premium');
+      return;
+    }
+    setFormOpen(true);
+  };
 
   useEffect(() => {
     const handleClick = (e) => {
@@ -109,7 +124,7 @@ export default function JournalSwitcher({ compact }) {
               </div>
               <div className="border-t border-border-primary">
                 <button
-                  onClick={() => { setFormOpen(true); setOpen(false); }}
+                  onClick={openNewJournal}
                   className="w-full flex items-center gap-2 px-3 py-2.5 text-sm text-accent-primary hover:bg-bg-tertiary transition-colors cursor-pointer"
                 >
                   <Plus className="w-3.5 h-3.5" />

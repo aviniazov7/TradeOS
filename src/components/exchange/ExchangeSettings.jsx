@@ -22,7 +22,8 @@ const SYNC_PERIODS = [
   { value: '180', label: '6 חודשים' },
   { value: '365', label: 'שנה' },
 ];
-import { getExchangeLogo } from '../../utils/constants';
+import { getExchangeLogo, FREE_LIMITS } from '../../utils/constants';
+import { useNavigate } from 'react-router-dom';
 import { Timestamp } from 'firebase/firestore';
 
 // ── Exchange config ───────────────────────────────────────────────────────────
@@ -577,7 +578,8 @@ function ExchangeCard({ exchange, data, savedData, syncing, saving, onUpdate, on
 
 // ── Main ──────────────────────────────────────────────────────────────────────
 export default function ExchangeSettings({ journalId: propJournalId, onImportTrade, existingExternalIds = new Set() } = {}) {
-  const { user } = useAuth();
+  const { user, isPremium } = useAuth();
+  const navigate = useNavigate();
   const { activeJournalId: contextJournalId } = useJournalContext();
   const activeJournalId = propJournalId ?? contextJournalId;
   const [exchanges, setExchanges] = useState({});
@@ -615,6 +617,14 @@ export default function ExchangeSettings({ journalId: propJournalId, onImportTra
     setExchanges(p => ({ ...p, [id]: { ...p[id], [field]: value } }));
 
   const handleSave = async (id) => {
+    // Free tier caps how many exchanges can be connected at once.
+    const alreadyConnected = !!(savedExchanges[id]?.apiKey && savedExchanges[id]?.apiSecret);
+    const connectedNow = Object.values(savedExchanges).filter((e) => e?.apiKey && e?.apiSecret).length;
+    if (!isPremium && !alreadyConnected && connectedNow >= FREE_LIMITS.exchanges) {
+      toast.error(`במסלול החינמי אפשר לחבר בורסה אחת. שדרג ל-Premium לחיבורים ללא הגבלה.`);
+      navigate('/premium');
+      return;
+    }
     setSaving(id);
     try {
       await setUserSetting(user.uid, 'exchanges', exchanges, true);
