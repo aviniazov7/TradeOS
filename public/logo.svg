@@ -1,0 +1,33 @@
+<svg width="512" height="512" viewBox="0 0 512 512" xmlns="http://www.w3.org/2000/svg">
+  <defs>
+    <linearGradient id="g" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#2dd4ee"/>
+      <stop offset="1" stop-color="#3b6ef6"/>
+    </linearGradient>
+    <radialGradient id="bg" cx="0.5" cy="0.32" r="0.9">
+      <stop offset="0" stop-color="#16243f"/>
+      <stop offset="1" stop-color="#070a11"/>
+    </radialGradient>
+    <filter id="glow" x="-40%" y="-40%" width="180%" height="180%">
+      <feGaussianBlur stdDeviation="7" result="b"/>
+      <feMerge><feMergeNode in="b"/><feMergeNode in="SourceGraphic"/></feMerge>
+    </filter>
+  </defs>
+
+  <rect width="512" height="512" rx="115" fill="url(#bg)"/>
+  <rect x="6" y="6" width="500" height="500" rx="110" fill="none" stroke="#2dd4ee" stroke-opacity="0.18" stroke-width="3"/>
+
+  <!-- T crossbar -->
+  <rect x="146" y="132" width="220" height="44" rx="22" fill="url(#g)" filter="url(#glow)"/>
+  <!-- T stem -->
+  <rect x="234" y="132" width="44" height="150" rx="22" fill="url(#g)"/>
+
+  <!-- rising uptrend line, ending top-right -->
+  <path d="M146 388 L206 352 L252 368 L312 300 L372 262"
+        fill="none" stroke="url(#g)" stroke-width="24"
+        stroke-linecap="round" stroke-linejoin="round" filter="url(#glow)"/>
+  <!-- arrow head pointing up-right at the tip -->
+  <path d="M372 262 L330 262 M372 262 L372 304"
+        fill="none" stroke="url(#g)" stroke-width="24"
+        stroke-linecap="round" stroke-linejoin="round"/>
+</svg>
