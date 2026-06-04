@@ -318,7 +318,27 @@ async function fetchBybitClosedPnl(apiKey, apiSecret, limit = 50) {
   });
 }
 
-// Poll each registered exchange (read-only keys stored by the client in
+// Fetch currently-open Bybit positions, normalized. Returns null on error.
+async function fetchBybitOpen(apiKey, apiSecret) {
+  const ts = Date.now().toString();
+  const recvWindow = '5000';
+  const qs = 'category=linear&settleCoin=USDT';
+  const sign = await bybitHmacHex(apiSecret, ts + apiKey + recvWindow + qs);
+  const res = await fetch(`https://api.bybit.com/v5/position/list?${qs}`, {
+    headers: { 'X-BAPI-API-KEY': apiKey, 'X-BAPI-TIMESTAMP': ts, 'X-BAPI-SIGN': sign, 'X-BAPI-RECV-WINDOW': recvWindow },
+  });
+  const data = await res.json().catch(() => ({}));
+  if (data.retCode !== 0) return null;
+  return (data.result?.list || []).filter((p) => parseFloat(p.size) > 0).map((p) => ({
+    id: `${p.symbol}_${p.side}`,
+    pair: p.symbol,
+    direction: p.side === 'Buy' ? 'long' : 'short',
+    entryPrice: parseFloat(p.avgPrice) || 0,
+    leverage: parseFloat(p.leverage) || 1,
+  }));
+}
+
+
 // pushexch:{uid}:{exchange}) for newly closed trades → push a result
 // notification, plus a once-a-day summary. Runs from the 10-minute cron.
 async function checkExchangeClosedTrades(env) {
@@ -338,6 +358,30 @@ async function checkExchangeClosedTrades(env) {
     if (exchange !== 'bybit') continue; // only Bybit polling for now
     const creds = await env.ALERTS_KV.get(k.name, 'json');
     if (!creds?.apiKey || !creds?.apiSecret) continue;
+
+    // ---- Position-opened notifications ----
+    // Compare the live open positions to the snapshot from the previous tick;
+    // anything new → "position opened". First run only seeds the snapshot.
+    const openPositions = await fetchBybitOpen(creds.apiKey, creds.apiSecret);
+    if (openPositions) {
+      const openKey = `pushopen:${uid}:${exchange}`;
+      const prevRaw = await env.ALERTS_KV.get(openKey);
+      const curIds = openPositions.map((p) => p.id);
+      if (prevRaw !== null) {
+        const prev = new Set(JSON.parse(prevRaw));
+        const opened = openPositions.filter((p) => !prev.has(p.id)).slice(0, 5);
+        for (const p of opened) {
+          const dir = p.direction === 'long' ? 'Long' : 'Short';
+          await sendPushToUser(env, uid, {
+            title: `🔵 נפתחה עסקה — ${p.pair} ${dir}`,
+            body: `כניסה: ${fmtPrice(p.entryPrice)}${p.leverage > 1 ? ` · מינוף ${p.leverage}x` : ''}`,
+            url: '/journal',
+            tag: `open-${p.id}`,
+          });
+        }
+      }
+      await env.ALERTS_KV.put(openKey, JSON.stringify(curIds), { expirationTtl: 60 * 60 * 24 * 7 });
+    }
 
     const trades = await fetchBybitClosedPnl(creds.apiKey, creds.apiSecret, 50);
     if (!trades || !trades.length) continue;
@@ -361,8 +405,11 @@ async function checkExchangeClosedTrades(env) {
         await env.ALERTS_KV.put(dedupKey, '1', { expirationTtl: 60 * 60 * 24 * 3 });
         const win = t.pnl >= 0;
         const dir = t.direction === 'long' ? 'Long' : 'Short';
+        // A profitable close ≈ take-profit hit; a losing close ≈ stop-loss hit.
         await sendPushToUser(env, uid, {
-          title: `${win ? '🟢' : '🔴'} ${t.pair} ${dir} נסגרה`,
+          title: win
+            ? `🎯 טייק פרופיט — ${t.pair} ${dir}`
+            : `🛑 סטופ לוס — ${t.pair} ${dir}`,
           body: `${win ? 'רווח' : 'הפסד'}: ${fmtPnl(t.pnl)} (${fmtPct(t.roiPct)})`,
           url: '/journal',
           tag: `closed-${t.externalId}`,

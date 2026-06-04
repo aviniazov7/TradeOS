@@ -1,6 +1,6 @@
 import { useState, useEffect, useCallback } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
-import { Bell, BellRing, Send } from 'lucide-react';
+import { Bell, BellRing, BellOff, Send } from 'lucide-react';
 import toast from 'react-hot-toast';
 import { useAuth } from '../../contexts/AuthContext';
 import { subscribeToUserSetting, setUserSetting, getUserSetting } from '../../services/firestoreService';
@@ -65,7 +65,7 @@ export default function NotificationSettings() {
       await unsubscribeFromPush();
       await unregisterExchangeForPush(); // drop stored exchange keys
       await save({ pushEnabled: false });
-      toast('ההתראות כובו', { icon: '🔕' });
+      toast('ההתראות כובו', { icon: <BellOff className="w-5 h-5 text-text-muted" /> });
     } catch (e) {
       toast.error(e.message || 'כיבוי ההתראות נכשל');
     } finally {
@@ -82,7 +82,7 @@ export default function NotificationSettings() {
       await subscribeToPush();
       const r = await sendTestPush();
       if (r.sent > 0) {
-        toast.success('נשלחה התראת בדיקה 🔔');
+        toast.success('נשלחה התראת בדיקה', { icon: <BellRing className="w-5 h-5 text-accent-primary" /> });
       } else if (!r.hasVapid) {
         toast.error('חסר מפתח חתימה בשרת (VAPID). פנה למפתח.');
       } else if (r.total === 0) {
