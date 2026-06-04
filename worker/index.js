@@ -570,6 +570,69 @@ async function isUserPremium(env, token, uid) {
   return premium;
 }
 
+// ---- AI rate limiting (per-user multi-window + global circuit breaker) -----
+// Soft caps the "unlimited" premium tier so a runaway client or a leaked
+// account can't burn the AI bill. Free users still get a single per-minute
+// burst cap; their hard limit is the daily quota in getAiUsage.
+const AI_PREMIUM_LIMITS = { minute: 5, hour: 50, day: 200 };
+const AI_FREE_BURST_PER_MIN = 20; // same as before, just named
+const AI_GLOBAL_DAILY_CEILING = 50_000; // circuit breaker across ALL users
+const AI_WINDOWS_SEC = { minute: 60, hour: 3600, day: 86400 };
+
+// Increment a rolling-window counter atomically-enough via read-modify-write.
+// Returns the new count after the increment. start is reset whenever a window
+// elapses, so consecutive bursts inside the window accumulate as expected.
+async function bumpWindow(env, key, windowSec) {
+  const now = Date.now();
+  const cur = await env.ALERTS_KV.get(key, 'json');
+  if (cur && now - cur.start < windowSec * 1000) {
+    const next = cur.count + 1;
+    await env.ALERTS_KV.put(key, JSON.stringify({ start: cur.start, count: next }), { expirationTtl: windowSec + 60 });
+    return { count: next, start: cur.start };
+  }
+  await env.ALERTS_KV.put(key, JSON.stringify({ start: now, count: 1 }), { expirationTtl: windowSec + 60 });
+  return { count: 1, start: now };
+}
+
+// Check (and on success, accrue) all applicable AI rate-limit windows.
+// Returns null when allowed, or a { status, body } object to short-circuit.
+async function aiRateGate(env, uid, premium) {
+  // Global circuit breaker — protects against runaway-cost surprises.
+  const israelDate = getIsraelDateStr();
+  const gKey = `aiglobal:${israelDate}`;
+  const g = await env.ALERTS_KV.get(gKey, 'json');
+  if (g && g.count >= AI_GLOBAL_DAILY_CEILING) {
+    return { status: 503, body: { error: 'המערכת בעומס שיא היום. נסה מאוחר יותר.' } };
+  }
+
+  if (premium) {
+    // Premium: 5/min, 50/hr, 200/day (soft caps for "unlimited").
+    const minute = await bumpWindow(env, `airl:min:${uid}`, AI_WINDOWS_SEC.minute);
+    if (minute.count > AI_PREMIUM_LIMITS.minute) {
+      return { status: 429, body: { error: 'יותר מדי בקשות בדקה. המתן רגע ונסה שוב.' } };
+    }
+    const hour = await bumpWindow(env, `airl:hr:${uid}`, AI_WINDOWS_SEC.hour);
+    if (hour.count > AI_PREMIUM_LIMITS.hour) {
+      return { status: 429, body: { error: 'הגעת לתקרה השעתית של Premium (50). נסה בעוד שעה.' } };
+    }
+    const day = await bumpWindow(env, `airl:day:${uid}`, AI_WINDOWS_SEC.day);
+    if (day.count > AI_PREMIUM_LIMITS.day) {
+      return { status: 429, body: { error: 'הגעת לתקרה היומית של Premium (200). נסה מחר.', quotaExceeded: true } };
+    }
+  } else {
+    // Free: keep the original per-minute burst cap; daily quota is enforced
+    // separately by getAiUsage / incrementAiUsage in the route handler.
+    const minute = await bumpWindow(env, `airl:min:${uid}`, AI_WINDOWS_SEC.minute);
+    if (minute.count > AI_FREE_BURST_PER_MIN) {
+      return { status: 429, body: { error: 'המערכת עמוסה. המתן כמה שניות ונסה שוב.' } };
+    }
+  }
+
+  // All windows passed — increment the global counter.
+  await bumpWindow(env, gKey, AI_WINDOWS_SEC.day);
+  return null;
+}
+
 async function fetchFundingRates(pairs) {
   try {
     const res = await fetch(`${BINANCE_FUTURES}/premiumIndex`);
@@ -1750,21 +1813,12 @@ async function handleAIChat(request, env, cors) {
 
     const premium = await isUserPremium(env, token, uid);
 
-    // Rate limiting — 20 requests per minute per user
-    const rlKey = `ratelimit:ai:${uid}`;
-    const rlData = await env.ALERTS_KV.get(rlKey, 'json');
-    const now = Date.now();
-    if (rlData && now - rlData.start < 60000) {
-      if (rlData.count >= 20) {
-        return new Response(JSON.stringify({ error: 'המערכת עמוסה. המתן כמה שניות ונסה שוב.' }), { status: 429, headers: { ...cors, 'Content-Type': 'application/json' } });
-      }
-      await env.ALERTS_KV.put(rlKey, JSON.stringify({ start: rlData.start, count: rlData.count + 1 }), { expirationTtl: 120 });
-    } else {
-      await env.ALERTS_KV.put(rlKey, JSON.stringify({ start: now, count: 1 }), { expirationTtl: 120 });
-    }
+    // Multi-window rate limiting (+ global circuit breaker). Premium gets soft
+    // caps (5/min, 50/hr, 200/day) so 'unlimited' can't be weaponized.
+    const gate = await aiRateGate(env, uid, premium);
+    if (gate) return new Response(JSON.stringify(gate.body), { status: gate.status, headers: { ...cors, 'Content-Type': 'application/json' } });
 
-    // Daily quota — 20 requests per Israel day for free users. Premium is
-    // unlimited (no daily cap, and we don't accrue usage for them).
+    // Free-tier daily quota (Premium has its own daily soft cap inside aiRateGate).
     if (!premium) {
       const quota = await getAiUsage(env, uid);
       if (quota.used >= quota.limit) {
@@ -1850,60 +1904,35 @@ const PROJECT_DESC_SYSTEM_PROMPT = `אתה כתב קריפטו מקצועי. ת�
 async function handleAIProjectDescription(request, env, cors) {
   try {
     const { coinName, symbol } = await request.json();
-    if (!coinName) {
-      return new Response(JSON.stringify({ error: 'Missing coinName' }), { status: 400, headers: { ...cors, 'Content-Type': 'application/json' } });
+    if (!coinName || String(coinName).length > 80 || (symbol && String(symbol).length > 20)) {
+      return new Response(JSON.stringify({ error: 'Missing or invalid coinName' }), { status: 400, headers: { ...cors, 'Content-Type': 'application/json' } });
     }
 
-    // Extract UID from Firebase ID token for rate limiting
+    // Verify the Firebase ID token (signature-checked).
     const authHeader = request.headers.get('Authorization') || '';
     const token = authHeader.replace('Bearer ', '');
-    let uid = 'anonymous';
-    let authFailReason = '';
-    if (!token) {
-      authFailReason = 'no-token';
-    } else {
-      try {
-        const parts = token.split('.');
-        if (parts.length !== 3) {
-          authFailReason = 'malformed-jwt';
-        } else {
-          let b64 = parts[1].replace(/-/g, '+').replace(/_/g, '/');
-          while (b64.length % 4) b64 += '=';
-          const payload = JSON.parse(atob(b64));
-          uid = payload.user_id || payload.sub || 'anonymous';
-          if (uid === 'anonymous') authFailReason = 'no-user-id';
-        }
-      } catch (e) {
-        authFailReason = `decode-error: ${e.message}`;
+    const uid = await verifyFirebaseToken(token);
+    if (!uid) {
+      return new Response(JSON.stringify({ error: 'יש להתחבר כדי להשתמש בתכונה זו' }), { status: 401, headers: { ...cors, 'Content-Type': 'application/json' } });
+    }
+
+    const premium = await isUserPremium(env, token, uid);
+
+    // Multi-window rate limiting + global circuit breaker (shared with /ai-chat).
+    const gate = await aiRateGate(env, uid, premium);
+    if (gate) return new Response(JSON.stringify(gate.body), { status: gate.status, headers: { ...cors, 'Content-Type': 'application/json' } });
+
+    // Free-tier daily quota.
+    if (!premium) {
+      const quota = await getAiUsage(env, uid);
+      if (quota.used >= quota.limit) {
+        return new Response(JSON.stringify({
+          error: `הגעת למכסה היומית (${quota.limit} בקשות). שדרג ל-Premium לשימוש ללא הגבלה.`,
+          quotaExceeded: true, used: quota.used, limit: quota.limit,
+        }), { status: 429, headers: { ...cors, 'Content-Type': 'application/json' } });
       }
+      await incrementAiUsage(env, uid);
     }
-
-    if (uid === 'anonymous') {
-      return new Response(JSON.stringify({ error: 'יש להתחבר כדי להשתמש בתכונה זו', reason: authFailReason }), { status: 401, headers: { ...cors, 'Content-Type': 'application/json' } });
-    }
-
-    // Rate limiting — 20 requests per minute per user (shared bucket with /ai-chat)
-    const rlKey = `ratelimit:ai:${uid}`;
-    const rlData = await env.ALERTS_KV.get(rlKey, 'json');
-    const now = Date.now();
-    if (rlData && now - rlData.start < 60000) {
-      if (rlData.count >= 20) {
-        return new Response(JSON.stringify({ error: 'המערכת עמוסה. המתן כמה שניות ונסה שוב.' }), { status: 429, headers: { ...cors, 'Content-Type': 'application/json' } });
-      }
-      await env.ALERTS_KV.put(rlKey, JSON.stringify({ start: rlData.start, count: rlData.count + 1 }), { expirationTtl: 120 });
-    } else {
-      await env.ALERTS_KV.put(rlKey, JSON.stringify({ start: now, count: 1 }), { expirationTtl: 120 });
-    }
-
-    // Daily quota — shared with /ai-chat
-    const quota = await getAiUsage(env, uid);
-    if (quota.used >= quota.limit) {
-      return new Response(JSON.stringify({
-        error: `הגעת למכסה היומית (${quota.limit} בקשות). תוכל להמשיך מחר.`,
-        quotaExceeded: true, used: quota.used, limit: quota.limit,
-      }), { status: 429, headers: { ...cors, 'Content-Type': 'application/json' } });
-    }
-    await incrementAiUsage(env, uid);
 
     const userPrompt = `כתוב מאמרון על הפרויקט שמאחורי המטבע ${coinName}${symbol ? ` (${String(symbol).toUpperCase()})` : ''}.`;
 
