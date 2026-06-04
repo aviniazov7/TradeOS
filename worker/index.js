@@ -1776,12 +1776,18 @@ async function handleAIChat(request, env, cors) {
       await incrementAiUsage(env, uid);
     }
 
-    // Build messages for Groq
+    // Build messages for Groq. Trim history to keep the payload under Groq's
+    // request-size cap (we saw HTTP 413 once a long Wyckoff reply was in the
+    // history plus more user turns). The system prompt is large; cap user/
+    // assistant turns to the most recent N, and clamp any one turn's length.
+    const MAX_TURNS = 12;
+    const MAX_TURN_CHARS = 4000;
+    const recent = messages.slice(-MAX_TURNS);
     const apiMessages = [
       { role: 'system', content: WYCKOFF_SYSTEM_PROMPT },
-      ...messages.map((msg) => ({
+      ...recent.map((msg) => ({
         role: msg.role === 'user' ? 'user' : 'assistant',
-        content: msg.text,
+        content: String(msg.text || '').slice(0, MAX_TURN_CHARS),
       })),
     ];
 
