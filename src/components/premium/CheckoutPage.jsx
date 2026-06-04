@@ -11,11 +11,14 @@ import { pageVariants, pageTransition } from '../../utils/animations';
 export default function CheckoutPage() {
   const { isPremium } = useAuth();
   const navigate = useNavigate();
-  const [cycle, setCycle] = useState('monthly');
+  const [cycle, setCycle] = useState('yearly'); // anchor the best-value plan
   const [busy, setBusy] = useState(false);
 
   const plan = PREMIUM_PRICING[cycle];
   const monthlyEq = cycle === 'yearly' ? (plan.price / 12).toFixed(0) : plan.price;
+  // Honest anchoring: how much the yearly plan saves vs paying monthly.
+  const yearlyFull = PREMIUM_PRICING.monthly.price * 12;
+  const yearlySavePct = Math.round((1 - PREMIUM_PRICING.yearly.price / yearlyFull) * 100);
 
   const pay = async () => {
     setBusy(true);
@@ -65,21 +68,27 @@ export default function CheckoutPage() {
 
         {/* Billing cycle */}
         <div className="grid grid-cols-2 gap-2">
-          {Object.values(PREMIUM_PRICING).map((p) => (
-            <button key={p.id} onClick={() => setCycle(p.id)}
-              className={`relative rounded-xl border p-3 text-right transition-colors cursor-pointer ${
-                cycle === p.id ? 'border-accent-primary bg-accent-primary/10' : 'border-border-primary bg-bg-secondary hover:bg-bg-tertiary'
-              }`}>
-              {p.note && (
-                <span className="absolute -top-2 left-2 text-[9px] font-bold px-1.5 py-0.5 rounded-full bg-accent-primary text-bg-primary">{p.note}</span>
-              )}
-              <div className="text-sm font-semibold text-text-primary">{p.label}</div>
-              <div className="text-text-primary mt-1" dir="ltr">
-                <span className="text-lg font-bold">₪{p.price}</span>
-                <span className="text-xs text-text-muted"> / {p.per}</span>
-              </div>
-            </button>
-          ))}
+          {Object.values(PREMIUM_PRICING).map((p) => {
+            const badge = p.id === 'yearly' ? `מומלץ · חיסכון ${yearlySavePct}%` : p.note;
+            return (
+              <button key={p.id} onClick={() => setCycle(p.id)}
+                className={`relative rounded-xl border p-3 text-right transition-colors cursor-pointer ${
+                  cycle === p.id ? 'border-accent-primary bg-accent-primary/10' : 'border-border-primary bg-bg-secondary hover:bg-bg-tertiary'
+                }`}>
+                {badge && (
+                  <span className="absolute -top-2 left-2 text-[9px] font-bold px-1.5 py-0.5 rounded-full bg-accent-primary text-bg-primary">{badge}</span>
+                )}
+                <div className="text-sm font-semibold text-text-primary">{p.label}</div>
+                <div className="text-text-primary mt-1" dir="ltr">
+                  <span className="text-lg font-bold">₪{p.price}</span>
+                  <span className="text-xs text-text-muted"> / {p.per}</span>
+                </div>
+                {p.id === 'yearly' && (
+                  <div className="text-[10px] text-text-muted mt-0.5" dir="ltr">≈ ₪{(p.price / 12).toFixed(0)} / חודש</div>
+                )}
+              </button>
+            );
+          })}
         </div>
 
         {/* Order summary */}
