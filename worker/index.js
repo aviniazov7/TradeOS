@@ -441,12 +441,12 @@ async function checkExchangeClosedTrades(env) {
 }
 
 // ---- Firebase ID-token verification ----------------------------------------
-// Google publishes the X.509 certs Firebase uses to sign ID tokens. We cache
-// the imported CryptoKeys for the lifetime of the worker instance — they're
-// rotated by Google every few hours and a stale kid just falls back to a
-// refresh on the next request.
+// Google publishes the RSA public keys (JWK form) used to sign Firebase ID
+// tokens. Using the JWK endpoint lets SubtleCrypto.importKey('jwk', …) consume
+// them directly — no fragile X.509/DER parsing. Imported keys are cached for
+// the worker instance lifetime (refreshed every 30 min).
 let GOOGLE_KEYS_CACHE = { keys: null, fetchedAt: 0 };
-const GOOGLE_KEYS_URL = 'https://www.googleapis.com/robot/v1/metadata/x509/securetoken@system.gserviceaccount.com';
+const GOOGLE_JWK_URL = 'https://www.googleapis.com/service_accounts/v1/jwk/securetoken@system.gserviceaccount.com';
 
 function b64urlToBytesLocal(s) {
   s = s.replace(/-/g, '+').replace(/_/g, '/');
@@ -457,44 +457,24 @@ function b64urlToBytesLocal(s) {
   return out;
 }
 
-// Convert a PEM-encoded X.509 cert to a SPKI public key suitable for SubtleCrypto.
-async function pemCertToKey(pem) {
-  const m = pem.match(/-----BEGIN CERTIFICATE-----([\s\S]+?)-----END CERTIFICATE-----/);
-  if (!m) throw new Error('bad cert');
-  const der = b64urlToBytesLocal(m[1].replace(/\s+/g, '').replace(/\+/g, '-').replace(/\//g, '_'));
-  // Extract the SubjectPublicKeyInfo from the X.509 cert. Tiny DER walker: we
-  // descend into the outer SEQUENCE → tbsCertificate SEQUENCE → skip optional
-  // version, serial, sig alg, issuer, validity, subject → SPKI SEQUENCE.
-  let i = 0;
-  const readLen = () => {
-    let l = der[i++]; if (l & 0x80) { const n = l & 0x7f; l = 0; for (let j = 0; j < n; j++) l = (l << 8) | der[i++]; }
-    return l;
-  };
-  const expectSeq = () => { if (der[i++] !== 0x30) throw new Error('exp seq'); return readLen(); };
-  expectSeq(); // Certificate
-  expectSeq(); // tbsCertificate
-  // Optional [0] version
-  if (der[i] === 0xa0) { i++; i += readLen(); }
-  // skip serial INTEGER, sig alg SEQ, issuer SEQ, validity SEQ, subject SEQ
-  for (let k = 0; k < 5; k++) { i++; const l = readLen(); i += l; }
-  // SubjectPublicKeyInfo SEQUENCE
-  if (der[i] !== 0x30) throw new Error('exp spki');
-  const start = i; i++; const spkiLen = readLen();
-  const spki = der.slice(start, i + spkiLen);
-  return crypto.subtle.importKey('spki', spki, { name: 'RSASSA-PKCS1-v1_5', hash: 'SHA-256' }, false, ['verify']);
-}
-
 async function getGoogleKeys() {
-  // Refresh every 30 min — the certs themselves rotate ~hourly but we don't
-  // want a missed-rotation to cascade into auth-down.
   const fresh = GOOGLE_KEYS_CACHE.keys && (Date.now() - GOOGLE_KEYS_CACHE.fetchedAt) < 30 * 60 * 1000;
   if (fresh) return GOOGLE_KEYS_CACHE.keys;
-  const res = await fetch(GOOGLE_KEYS_URL);
+  const res = await fetch(GOOGLE_JWK_URL);
   if (!res.ok) throw new Error('fetch keys failed');
-  const pems = await res.json();
+  const { keys } = await res.json();
   const map = {};
-  for (const kid of Object.keys(pems)) {
-    try { map[kid] = await pemCertToKey(pems[kid]); } catch { /* skip bad cert */ }
+  for (const jwk of (keys || [])) {
+    if (!jwk.kid) continue;
+    try {
+      map[jwk.kid] = await crypto.subtle.importKey(
+        'jwk',
+        { kty: jwk.kty, n: jwk.n, e: jwk.e, alg: 'RS256', ext: true },
+        { name: 'RSASSA-PKCS1-v1_5', hash: 'SHA-256' },
+        false,
+        ['verify'],
+      );
+    } catch { /* skip bad key */ }
   }
   GOOGLE_KEYS_CACHE = { keys: map, fetchedAt: Date.now() };
   return map;
