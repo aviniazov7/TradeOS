@@ -440,13 +440,97 @@ async function checkExchangeClosedTrades(env) {
   }
 }
 
-function decodeUidFromToken(token) {
+// ---- Firebase ID-token verification ----------------------------------------
+// Google publishes the X.509 certs Firebase uses to sign ID tokens. We cache
+// the imported CryptoKeys for the lifetime of the worker instance — they're
+// rotated by Google every few hours and a stale kid just falls back to a
+// refresh on the next request.
+let GOOGLE_KEYS_CACHE = { keys: null, fetchedAt: 0 };
+const GOOGLE_KEYS_URL = 'https://www.googleapis.com/robot/v1/metadata/x509/securetoken@system.gserviceaccount.com';
+
+function b64urlToBytesLocal(s) {
+  s = s.replace(/-/g, '+').replace(/_/g, '/');
+  const pad = s.length % 4; if (pad) s += '='.repeat(4 - pad);
+  const raw = atob(s);
+  const out = new Uint8Array(raw.length);
+  for (let i = 0; i < raw.length; i++) out[i] = raw.charCodeAt(i);
+  return out;
+}
+
+// Convert a PEM-encoded X.509 cert to a SPKI public key suitable for SubtleCrypto.
+async function pemCertToKey(pem) {
+  const m = pem.match(/-----BEGIN CERTIFICATE-----([\s\S]+?)-----END CERTIFICATE-----/);
+  if (!m) throw new Error('bad cert');
+  const der = b64urlToBytesLocal(m[1].replace(/\s+/g, '').replace(/\+/g, '-').replace(/\//g, '_'));
+  // Extract the SubjectPublicKeyInfo from the X.509 cert. Tiny DER walker: we
+  // descend into the outer SEQUENCE → tbsCertificate SEQUENCE → skip optional
+  // version, serial, sig alg, issuer, validity, subject → SPKI SEQUENCE.
+  let i = 0;
+  const readLen = () => {
+    let l = der[i++]; if (l & 0x80) { const n = l & 0x7f; l = 0; for (let j = 0; j < n; j++) l = (l << 8) | der[i++]; }
+    return l;
+  };
+  const expectSeq = () => { if (der[i++] !== 0x30) throw new Error('exp seq'); return readLen(); };
+  expectSeq(); // Certificate
+  expectSeq(); // tbsCertificate
+  // Optional [0] version
+  if (der[i] === 0xa0) { i++; i += readLen(); }
+  // skip serial INTEGER, sig alg SEQ, issuer SEQ, validity SEQ, subject SEQ
+  for (let k = 0; k < 5; k++) { i++; const l = readLen(); i += l; }
+  // SubjectPublicKeyInfo SEQUENCE
+  if (der[i] !== 0x30) throw new Error('exp spki');
+  const start = i; i++; const spkiLen = readLen();
+  const spki = der.slice(start, i + spkiLen);
+  return crypto.subtle.importKey('spki', spki, { name: 'RSASSA-PKCS1-v1_5', hash: 'SHA-256' }, false, ['verify']);
+}
+
+async function getGoogleKeys() {
+  // Refresh every 30 min — the certs themselves rotate ~hourly but we don't
+  // want a missed-rotation to cascade into auth-down.
+  const fresh = GOOGLE_KEYS_CACHE.keys && (Date.now() - GOOGLE_KEYS_CACHE.fetchedAt) < 30 * 60 * 1000;
+  if (fresh) return GOOGLE_KEYS_CACHE.keys;
+  const res = await fetch(GOOGLE_KEYS_URL);
+  if (!res.ok) throw new Error('fetch keys failed');
+  const pems = await res.json();
+  const map = {};
+  for (const kid of Object.keys(pems)) {
+    try { map[kid] = await pemCertToKey(pems[kid]); } catch { /* skip bad cert */ }
+  }
+  GOOGLE_KEYS_CACHE = { keys: map, fetchedAt: Date.now() };
+  return map;
+}
+
+// Verify a Firebase ID token: signature + standard claims. Returns the uid on
+// success, null on any failure. Pinned to the tradeos-91a58 project so a token
+// from a different project (or a forged unsigned token) is rejected.
+async function verifyFirebaseToken(token) {
   if (!token) return null;
   try {
-    const payload = JSON.parse(atob(token.split('.')[1].replace(/-/g, '+').replace(/_/g, '/')));
-    return payload.user_id || payload.sub || null;
+    const parts = token.split('.');
+    if (parts.length !== 3) return null;
+    const header = JSON.parse(atob(parts[0].replace(/-/g, '+').replace(/_/g, '/')));
+    const payload = JSON.parse(atob(parts[1].replace(/-/g, '+').replace(/_/g, '/')));
+    if (header.alg !== 'RS256' || !header.kid) return null;
+
+    const keys = await getGoogleKeys();
+    const key = keys[header.kid];
+    if (!key) return null;
+
+    const sig = b64urlToBytesLocal(parts[2]);
+    const data = new TextEncoder().encode(`${parts[0]}.${parts[1]}`);
+    const ok = await crypto.subtle.verify({ name: 'RSASSA-PKCS1-v1_5' }, key, sig, data);
+    if (!ok) return null;
+
+    const now = Math.floor(Date.now() / 1000);
+    if (payload.exp && payload.exp < now) return null;
+    if (payload.iat && payload.iat > now + 60) return null;
+    if (payload.aud !== FIREBASE_PROJECT_ID) return null;
+    if (payload.iss !== `https://securetoken.google.com/${FIREBASE_PROJECT_ID}`) return null;
+    if (!payload.sub) return null;
+    return payload.sub;
   } catch { return null; }
 }
+
 
 async function getAiUsage(env, uid) {
   const date = getIsraelDateStr();
@@ -469,7 +553,7 @@ async function incrementAiUsage(env, uid) {
 // REST with their ID token — admin reads are allowed by our rules, so we don't
 // need a service account here.
 async function verifyAdminFromToken(token) {
-  const uid = decodeUidFromToken(token);
+  const uid = await verifyFirebaseToken(token);
   if (!uid || !token) return null;
   try {
     const url = `https://firestore.googleapis.com/v1/projects/${FIREBASE_PROJECT_ID}/databases/(default)/documents/users/${uid}`;
@@ -2118,7 +2202,7 @@ async function handleRequest(request, env) {
   // Web Push — register a browser push subscription for the signed-in user.
   if (request.method === 'POST' && path === '/push/subscribe') {
     const token = (request.headers.get('Authorization') || '').replace('Bearer ', '');
-    const uid = decodeUidFromToken(token);
+    const uid = await verifyFirebaseToken(token);
     if (!uid) return new Response(JSON.stringify({ error: 'unauthorized' }), { status: 401, headers: { ...cors, 'Content-Type': 'application/json' } });
     const { subscription } = await request.json().catch(() => ({}));
     if (!subscription?.endpoint) return new Response(JSON.stringify({ error: 'missing subscription' }), { status: 400, headers: { ...cors, 'Content-Type': 'application/json' } });
@@ -2131,7 +2215,7 @@ async function handleRequest(request, env) {
   // Web Push — remove a subscription (on disable / logout).
   if (request.method === 'POST' && path === '/push/unsubscribe') {
     const token = (request.headers.get('Authorization') || '').replace('Bearer ', '');
-    const uid = decodeUidFromToken(token);
+    const uid = await verifyFirebaseToken(token);
     if (!uid) return new Response(JSON.stringify({ error: 'unauthorized' }), { status: 401, headers: { ...cors, 'Content-Type': 'application/json' } });
     const { endpoint } = await request.json().catch(() => ({}));
     if (endpoint) await env.ALERTS_KV.delete(`push:${uid}:${hashStr(endpoint)}`);
@@ -2141,7 +2225,7 @@ async function handleRequest(request, env) {
   // Web Push — send a test notification to all of the user's devices.
   if (request.method === 'POST' && path === '/push/test') {
     const token = (request.headers.get('Authorization') || '').replace('Bearer ', '');
-    const uid = decodeUidFromToken(token);
+    const uid = await verifyFirebaseToken(token);
     if (!uid) return new Response(JSON.stringify({ error: 'unauthorized' }), { status: 401, headers: { ...cors, 'Content-Type': 'application/json' } });
     const result = await sendPushToUser(env, uid, {
       title: 'TradeOS 🔔',
@@ -2156,7 +2240,7 @@ async function handleRequest(request, env) {
   // in the background and notify on closed trades / daily summary.
   if (request.method === 'POST' && path === '/push/exchange-register') {
     const token = (request.headers.get('Authorization') || '').replace('Bearer ', '');
-    const uid = decodeUidFromToken(token);
+    const uid = await verifyFirebaseToken(token);
     if (!uid) return new Response(JSON.stringify({ error: 'unauthorized' }), { status: 401, headers: { ...cors, 'Content-Type': 'application/json' } });
     const { exchange, apiKey, apiSecret, passphrase } = await request.json().catch(() => ({}));
     if (!exchange || !apiKey || !apiSecret) return new Response(JSON.stringify({ error: 'missing fields' }), { status: 400, headers: { ...cors, 'Content-Type': 'application/json' } });
@@ -2167,7 +2251,7 @@ async function handleRequest(request, env) {
   // Web Push — drop stored exchange keys (on disconnect / disable).
   if (request.method === 'POST' && path === '/push/exchange-unregister') {
     const token = (request.headers.get('Authorization') || '').replace('Bearer ', '');
-    const uid = decodeUidFromToken(token);
+    const uid = await verifyFirebaseToken(token);
     if (!uid) return new Response(JSON.stringify({ error: 'unauthorized' }), { status: 401, headers: { ...cors, 'Content-Type': 'application/json' } });
     const { exchange } = await request.json().catch(() => ({}));
     if (exchange) {
@@ -2182,7 +2266,7 @@ async function handleRequest(request, env) {
   // Caller's own AI usage for the current day — used by the progress bar.
   if (request.method === 'GET' && path === '/ai-usage') {
     const token = (request.headers.get('Authorization') || '').replace('Bearer ', '');
-    const uid = decodeUidFromToken(token);
+    const uid = await verifyFirebaseToken(token);
     if (!uid) return new Response(JSON.stringify({ error: 'unauthorized' }), { status: 401, headers: { ...cors, 'Content-Type': 'application/json' } });
     const usage = await getAiUsage(env, uid);
     return new Response(JSON.stringify(usage), { headers: { ...cors, 'Content-Type': 'application/json' } });
@@ -2624,7 +2708,7 @@ ${pad('Lev', `${pnlSign}${pnlPctLev}%`)}` : ''}` : ''}</code>
   // Auth-gated so it can't be used to burn the Moralis quota anonymously.
   if (request.method === 'POST' && path === '/wallet') {
     const token = (request.headers.get('Authorization') || '').replace('Bearer ', '');
-    const uid = decodeUidFromToken(token);
+    const uid = await verifyFirebaseToken(token);
     if (!uid) return new Response(JSON.stringify({ ok: false, error: 'unauthorized' }), { status: 401, headers: { ...cors, 'Content-Type': 'application/json' } });
     if (!env.MORALIS_API_KEY) return new Response(JSON.stringify({ ok: false, error: 'מעקב ארנקים לא מוגדר בשרת' }), { status: 400, headers: { ...cors, 'Content-Type': 'application/json' } });
     try {
