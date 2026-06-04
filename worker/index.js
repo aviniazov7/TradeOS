@@ -2576,10 +2576,13 @@ ${pad('Lev', `${pnlSign}${pnlPctLev}%`)}` : ''}` : ''}</code>
   // Exchange trade sync — signs HMAC on behalf of the frontend so secrets stay server-side
   if (request.method === 'POST' && path === '/exchange/sync') {
     try {
-      const { exchange, apiKey, apiSecret, passphrase, limit = 50, days = 0 } = await request.json();
+      const { exchange, apiKey, apiSecret, passphrase, limit = 50, days = 0, debug = false } = await request.json();
       if (!exchange || !apiKey || !apiSecret) {
         return new Response(JSON.stringify({ error: 'Missing fields' }), { status: 400, headers: { ...cors, 'Content-Type': 'application/json' } });
       }
+      // When debug is set we echo back the raw upstream rows (first few) so we
+      // can see exactly which fields an exchange returns (e.g. hunting for SL/TP).
+      let debugRaw = null;
 
       // Optional time-window import. days=0 → keep the legacy "recent N" behavior.
       // Otherwise paginate per-exchange back to `sinceMs`, bounded so a single
@@ -2651,6 +2654,8 @@ ${pad('Lev', `${pnlSign}${pnlPctLev}%`)}` : ''}` : ''}</code>
           const rawPos = posData.data;
           positions = Array.isArray(rawPos) ? rawPos : (rawPos?.resultList || rawPos?.list || []);
         }
+
+        if (debug) debugRaw = positions.slice(0, 3);
 
         // ── Step 2: Fetch close-order history to get accurate exit times ─
         // MEXC order sides: 1=OpenLong 2=CloseShort 3=OpenShort 4=CloseLong
@@ -2957,7 +2962,7 @@ ${pad('Lev', `${pnlSign}${pnlPctLev}%`)}` : ''}` : ''}</code>
           .slice(0, MAX_TRADES);
       }
 
-      return new Response(JSON.stringify({ ok: true, trades }), { headers: { ...cors, 'Content-Type': 'application/json' } });
+      return new Response(JSON.stringify({ ok: true, trades, ...(debug ? { _raw: debugRaw } : {}) }), { headers: { ...cors, 'Content-Type': 'application/json' } });
     } catch (e) {
       return new Response(JSON.stringify({ error: String(e) }), { status: 400, headers: { ...cors, 'Content-Type': 'application/json' } });
     }

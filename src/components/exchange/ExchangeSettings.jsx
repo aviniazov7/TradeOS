@@ -640,10 +640,13 @@ export default function ExchangeSettings({ journalId: propJournalId, onImportTra
     const exchConf = EXCHANGES.find(e => e.id === id);
     const extraKey = exchConf?.extraField?.key;
     const passphrase = extraKey ? saved[extraKey] : undefined;
+    // One-time diagnostic: set localStorage.tradeos_sync_debug='1' to log the
+    // raw upstream rows to the console (helps map missing fields like SL/TP).
+    const debug = typeof localStorage !== 'undefined' && localStorage.getItem('tradeos_sync_debug') === '1';
     setSyncing(id);
     try {
       const [tradesResult, openResult] = await Promise.allSettled([
-        syncExchangeTrades(id, saved.apiKey, saved.apiSecret, passphrase, { days }),
+        syncExchangeTrades(id, saved.apiKey, saved.apiSecret, passphrase, { days, debug }),
         syncOpenPositions(id, saved.apiKey, saved.apiSecret, passphrase),
       ]);
       const closedTrades = tradesResult.status === 'fulfilled' ? tradesResult.value : [];
