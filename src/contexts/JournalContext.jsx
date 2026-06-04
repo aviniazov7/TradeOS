@@ -12,11 +12,12 @@ import {
   timestamp,
 } from '../services/firestoreService';
 import { useAuth } from './AuthContext';
+import { FREE_LIMITS } from '../utils/constants';
 
 const JournalContext = createContext(null);
 
 export function JournalProvider({ children }) {
-  const { user } = useAuth();
+  const { user, isPremium } = useAuth();
   const [journals, setJournals] = useState([]);
   const [activeJournalId, setActiveJournalId] = useState(
     () => localStorage.getItem('tradeos_activeJournal') || null
@@ -143,6 +144,14 @@ export function JournalProvider({ children }) {
 
   const addJournal = useCallback(async (data) => {
     if (!user) throw new Error('No user');
+    // Single enforcement point for the free-tier journal cap — covers every
+    // path that creates a journal, not just the switcher button.
+    const activeCount = journals.filter((j) => !j.archived).length;
+    if (!isPremium && activeCount >= FREE_LIMITS.journals) {
+      const err = new Error('free-limit');
+      err.code = 'free-limit';
+      throw err;
+    }
     const ref = await addToUserCollection(user.uid, 'journals', {
       ...data,
       isDefault: false,
@@ -151,7 +160,7 @@ export function JournalProvider({ children }) {
     });
     setActiveJournalId(ref.id);
     return ref.id;
-  }, [user]);
+  }, [user, isPremium, journals]);
 
   const updateJournal = useCallback(async (journalId, data) => {
     if (!user) throw new Error('No user');

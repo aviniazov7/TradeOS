@@ -47,6 +47,11 @@ export default function JournalSwitcher({ compact }) {
       await addJournal(data);
       toast.success('היומן נוצר');
     } catch (err) {
+      if (err.code === 'free-limit') {
+        toast.error(`במסלול החינמי אפשר עד ${FREE_LIMITS.journals} יומנים. שדרג ל-Premium ליומנים ללא הגבלה.`);
+        navigate('/premium');
+        return;
+      }
       toast.error(err.code === 'permission-denied' ? 'אין הרשאה ליצור יומן' : 'שגיאה ביצירת היומן — נסה שוב');
     }
   };
