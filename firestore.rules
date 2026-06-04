@@ -7,11 +7,28 @@ service cloud.firestore {
         && get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role == 'admin';
     }
 
+    // Privileged fields a user must NOT be able to set/change on themselves.
+    // (Granted only server-side via the Admin SDK / Firebase Console, which
+    // bypass these rules.) Without this, anyone could write plan:"premium" or
+    // role:"admin" to their own doc and self-escalate.
+    function noPrivilegeEscalation() {
+      return request.resource.data.get('role', 'user') == resource.data.get('role', 'user')
+        && request.resource.data.get('plan', 'free') == resource.data.get('plan', 'free')
+        && request.resource.data.get('planExpires', '') == resource.data.get('planExpires', '');
+    }
+
     match /users/{userId} {
-      // Owners read/write their own doc; admins may read any user doc
+      // Owners read their own doc; admins may read any user doc
       // (read-only — admins cannot write to other users' data).
       allow read: if request.auth != null && (request.auth.uid == userId || isAdmin());
-      allow write: if request.auth != null && request.auth.uid == userId;
+      // On create, role/plan may only be the safe defaults.
+      allow create: if request.auth != null && request.auth.uid == userId
+        && request.resource.data.get('role', 'user') == 'user'
+        && request.resource.data.get('plan', 'free') == 'free';
+      // On update, the owner can change anything EXCEPT role/plan/planExpires.
+      allow update: if request.auth != null && request.auth.uid == userId
+        && noPrivilegeEscalation();
+      allow delete: if request.auth != null && request.auth.uid == userId;
 
       // Owners write their own data; admins may read (read-only, for the admin panel).
       match /trades/{tradeId} {
