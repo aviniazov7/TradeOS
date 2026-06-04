@@ -11,9 +11,15 @@ import { pageVariants, pageTransition } from '../../utils/animations';
 const CHAIN_LABELS = {
   eth: 'Ethereum', bsc: 'BNB Chain', polygon: 'Polygon', arbitrum: 'Arbitrum',
   base: 'Base', optimism: 'Optimism', avalanche: 'Avalanche', fantom: 'Fantom',
+  solana: 'Solana',
 };
 const chainLabel = (c) => CHAIN_LABELS[c] || c;
 const shortAddr = (a) => (a ? `${a.slice(0, 6)}…${a.slice(-4)}` : '');
+
+// EVM (0x…) or Solana (base58) address.
+const EVM_RE = /^0x[a-fA-F0-9]{40}$/;
+const SOL_RE = /^[1-9A-HJ-NP-Za-km-z]{32,44}$/;
+const isValidAddress = (a) => EVM_RE.test(a) || SOL_RE.test(a);
 
 export default function WalletsPage() {
   const { user } = useAuth();
@@ -54,8 +60,8 @@ export default function WalletsPage() {
 
   const addWallet = async () => {
     const addr = address.trim();
-    if (!/^0x[a-fA-F0-9]{40}$/.test(addr)) {
-      toast.error('כתובת ארנק לא תקינה (EVM, מתחילה ב-0x)');
+    if (!isValidAddress(addr)) {
+      toast.error('כתובת ארנק לא תקינה (EVM 0x... או Solana)');
       return;
     }
     if (wallets.some((w) => w.address.toLowerCase() === addr.toLowerCase())) {
@@ -106,7 +112,7 @@ export default function WalletsPage() {
                 <X className="w-4 h-4" />
               </button>
             </div>
-            <input value={address} onChange={(e) => setAddress(e.target.value)} placeholder="כתובת ארנק (0x...)" dir="ltr"
+            <input value={address} onChange={(e) => setAddress(e.target.value)} placeholder="כתובת ארנק — EVM (0x...) או Solana" dir="ltr"
               className="w-full bg-bg-tertiary border border-border-primary rounded-lg px-3 py-2.5 text-sm text-text-primary outline-none focus:border-accent-primary transition-colors font-mono" />
             <input value={label} onChange={(e) => setLabel(e.target.value)} placeholder="כינוי (לא חובה) — לדוגמה: ארנק קר"
               className="w-full bg-bg-tertiary border border-border-primary rounded-lg px-3 py-2.5 text-sm text-text-primary outline-none focus:border-accent-primary transition-colors" />
@@ -208,7 +214,7 @@ export default function WalletsPage() {
         })}
 
         <div className="flex items-center justify-center gap-1.5 text-[11px] text-text-muted pt-2">
-          <ExternalLink className="w-3 h-3" /> נתונים מסופקים ע"י Moralis · רשתות EVM
+          <ExternalLink className="w-3 h-3" /> נתונים מסופקים ע"י Moralis · רשתות EVM + Solana
         </div>
       </div>
     </motion.div>

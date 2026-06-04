@@ -2629,11 +2629,57 @@ ${pad('Lev', `${pnlSign}${pnlPctLev}%`)}` : ''}` : ''}</code>
     if (!env.MORALIS_API_KEY) return new Response(JSON.stringify({ ok: false, error: 'מעקב ארנקים לא מוגדר בשרת' }), { status: 400, headers: { ...cors, 'Content-Type': 'application/json' } });
     try {
       const { address } = await request.json().catch(() => ({}));
-      if (!address || !/^0x[a-fA-F0-9]{40}$/.test(address)) {
-        return new Response(JSON.stringify({ ok: false, error: 'כתובת ארנק לא תקינה (EVM/0x...)' }), { status: 400, headers: { ...cors, 'Content-Type': 'application/json' } });
+      const isEvm = /^0x[a-fA-F0-9]{40}$/.test(address || '');
+      const isSol = !isEvm && /^[1-9A-HJ-NP-Za-km-z]{32,44}$/.test(address || '');
+      if (!isEvm && !isSol) {
+        return new Response(JSON.stringify({ ok: false, error: 'כתובת ארנק לא תקינה (EVM 0x... או Solana)' }), { status: 400, headers: { ...cors, 'Content-Type': 'application/json' } });
       }
-      const base = 'https://deep-index.moralis.io/api/v2.2';
       const mHeaders = { 'X-API-Key': env.MORALIS_API_KEY, accept: 'application/json' };
+
+      // ---- Solana ----
+      if (isSol) {
+        const sol = 'https://solana-gateway.moralis.io';
+        const pRes = await fetch(`${sol}/account/mainnet/${address}/portfolio`, { headers: mHeaders });
+        const pData = await pRes.json().catch(() => ({}));
+        if (!pRes.ok) return new Response(JSON.stringify({ ok: false, error: pData.message || `Moralis ${pRes.status}` }), { status: 400, headers: { ...cors, 'Content-Type': 'application/json' } });
+
+        const price = async (mint) => {
+          try {
+            const r = await fetch(`${sol}/token/mainnet/${mint}/price`, { headers: mHeaders });
+            if (!r.ok) return 0;
+            const d = await r.json();
+            return parseFloat(d.usdPrice) || 0;
+          } catch { return 0; }
+        };
+
+        let totalUsd = 0;
+        let tokens = [];
+
+        // Native SOL.
+        const nativeSol = parseFloat(pData.nativeBalance?.solana ?? pData.nativeBalance?.lamports / 1e9) || 0;
+        if (nativeSol > 0) {
+          const sp = await price('So11111111111111111111111111111111111111112'); // wrapped SOL
+          const usd = nativeSol * sp;
+          if (usd > 0) { totalUsd += usd; tokens.push({ symbol: 'SOL', name: 'Solana', usd, amount: nativeSol, chain: 'solana', logo: null }); }
+        }
+
+        // SPL tokens — price the top handful (bounded to protect the quota).
+        for (const tok of (pData.tokens || []).slice(0, 15)) {
+          const amount = parseFloat(tok.amount ?? tok.amountFormatted) || 0;
+          if (amount <= 0 || !tok.mint) continue;
+          const pr = await price(tok.mint);
+          const usd = amount * pr;
+          if (usd < 1) continue;
+          totalUsd += usd;
+          tokens.push({ symbol: tok.symbol || '?', name: tok.name || '', usd, amount, chain: 'solana', logo: tok.logo || null });
+        }
+
+        tokens.sort((a, b) => b.usd - a.usd);
+        return new Response(JSON.stringify({ ok: true, totalUsd, chains: [{ chain: 'solana', usd: totalUsd }], tokens }), { headers: { ...cors, 'Content-Type': 'application/json' } });
+      }
+
+      // ---- EVM ----
+      const base = 'https://deep-index.moralis.io/api/v2.2';
 
       // 1) Net worth (total + per-chain).
       const nwRes = await fetch(`${base}/wallets/${address}/net-worth?exclude_spam=true&exclude_unverified_contracts=true`, { headers: mHeaders });
