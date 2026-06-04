@@ -141,6 +141,12 @@ export const FREE_LIMITS = {
   aiPerDay: 20,
 };
 
+// Premium pricing (ILS). Yearly gives ~2 months free — tweak freely.
+export const PREMIUM_PRICING = {
+  monthly: { id: 'monthly', price: 29, label: 'חודשי', per: 'חודש', note: '' },
+  yearly: { id: 'yearly', price: 290, label: 'שנתי', per: 'שנה', note: 'חודשיים חינם' },
+};
+
 // Marketing copy for the upgrade page (free vs premium comparison).
 export const PREMIUM_FEATURES = [
   { icon: 'Bot', title: 'TradeAI ללא הגבלה', free: `${FREE_LIMITS.aiPerDay} ליום`, premium: 'ללא הגבלה' },

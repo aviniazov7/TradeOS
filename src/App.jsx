@@ -30,6 +30,7 @@ const loadNewsPage = () => import('./components/news/NewsPage');
 const loadExchangeSettings = () => import('./components/exchange/ExchangeSettings');
 const loadWalletsPage = () => import('./components/wallets/WalletsPage');
 const loadPremiumPage = () => import('./components/premium/PremiumPage');
+const loadCheckoutPage = () => import('./components/premium/CheckoutPage');
 const loadAdminPanel = () => import('./components/admin/AdminPanel');
 
 const Dashboard = lazy(loadDashboard);
@@ -48,6 +49,7 @@ const NewsPage = lazy(loadNewsPage);
 const ExchangeSettings = lazy(loadExchangeSettings);
 const WalletsPage = lazy(loadWalletsPage);
 const PremiumPage = lazy(loadPremiumPage);
+const CheckoutPage = lazy(loadCheckoutPage);
 const AdminPanel = lazy(loadAdminPanel);
 
 // Preload all routes during idle time so tab switches feel instant
@@ -71,6 +73,7 @@ if (typeof window !== 'undefined') {
     loadExchangeSettings();
     loadWalletsPage();
     loadPremiumPage();
+    loadCheckoutPage();
   });
 }
 
@@ -105,6 +108,7 @@ function MainApp() {
                 <Route path="exchange" element={<ExchangeSettings />} />
                 <Route path="wallets" element={<WalletsPage />} />
                 <Route path="premium" element={<PremiumPage />} />
+                <Route path="premium/checkout" element={<CheckoutPage />} />
                 <Route path="admin" element={<AdminPanel />} />
                 <Route path="profile" element={<ProfilePage />} />
               </Route>

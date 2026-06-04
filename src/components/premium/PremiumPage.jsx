@@ -1,15 +1,17 @@
+import { useNavigate } from 'react-router-dom';
 import { motion } from 'framer-motion';
 import {
   Crown, Check, Bot, BookOpen, Wallet, Link2, Bell, BarChart3, Sparkles,
 } from 'lucide-react';
 import { useAuth } from '../../contexts/AuthContext';
-import { PREMIUM_FEATURES } from '../../utils/constants';
+import { PREMIUM_FEATURES, PREMIUM_PRICING } from '../../utils/constants';
 import { pageVariants, pageTransition } from '../../utils/animations';
 
 const ICONS = { Bot, BookOpen, Wallet, Link2, Bell, BarChart3 };
 
 export default function PremiumPage() {
   const { isPremium } = useAuth();
+  const navigate = useNavigate();
 
   return (
     <motion.div variants={pageVariants} initial="initial" animate="animate" exit="exit" transition={pageTransition}
@@ -62,16 +64,16 @@ export default function PremiumPage() {
         {!isPremium && (
           <div className="bg-bg-secondary border border-border-primary rounded-2xl p-5 text-center space-y-3">
             <div className="flex items-center justify-center gap-1.5">
-              <span className="text-3xl font-bold text-text-primary" dir="ltr">₪29</span>
+              <span className="text-3xl font-bold text-text-primary" dir="ltr">₪{PREMIUM_PRICING.monthly.price}</span>
               <span className="text-sm text-text-muted">/ חודש</span>
             </div>
             <button
-              disabled
-              className="w-full py-3 rounded-xl bg-accent-primary text-bg-primary text-sm font-bold opacity-60 cursor-not-allowed flex items-center justify-center gap-2"
+              onClick={() => navigate('/premium/checkout')}
+              className="w-full py-3 rounded-xl bg-accent-primary text-bg-primary text-sm font-bold hover:bg-accent-hover transition-colors cursor-pointer flex items-center justify-center gap-2"
             >
-              <Crown className="w-4 h-4" /> שדרוג — בקרוב
+              <Crown className="w-4 h-4" /> שדרג עכשיו
             </button>
-            <p className="text-[11px] text-text-muted">הסליקה תיפתח בקרוב. תוכל לשדרג ישירות מכאן.</p>
+            <p className="text-[11px] text-text-muted">אפשר גם מסלול שנתי עם חודשיים חינם.</p>
           </div>
         )}
 
