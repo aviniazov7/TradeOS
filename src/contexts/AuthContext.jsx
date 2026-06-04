@@ -126,8 +126,14 @@ export function AuthProvider({ children }) {
 
   const isEmailUser = user?.providerData?.some((p) => p.providerId === 'password') || false;
   const isAdmin = profile?.role === 'admin';
+  // Premium gate. Admins are always premium. A plan with an expiry only counts
+  // while it hasn't lapsed.
+  const planActive = profile?.plan === 'premium'
+    && (!profile?.planExpires || new Date(profile.planExpires).getTime() > Date.now());
+  const isPremium = isAdmin || planActive;
+  const plan = isPremium ? 'premium' : 'free';
 
-  const value = { user, profile, isAdmin, loading, loginWithGoogle, loginWithGoogleIdToken, registerWithEmail, loginWithEmail, logout, changePassword, resetPassword, deleteAccount, isEmailUser };
+  const value = { user, profile, isAdmin, isPremium, plan, loading, loginWithGoogle, loginWithGoogleIdToken, registerWithEmail, loginWithEmail, logout, changePassword, resetPassword, deleteAccount, isEmailUser };
 
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;
 }

@@ -13,6 +13,7 @@ import {
   Calculator,
   Shield,
   Wallet,
+  Crown,
 } from 'lucide-react';
 import PositionCalculator from '../calculator/PositionCalculator';
 import { useAuth } from '../../contexts/AuthContext';
@@ -27,6 +28,7 @@ const navItems = [
   { to: '/plans', label: 'תוכניות מסחר', icon: ClipboardList },
   { to: '/market', label: 'סקירת שוק', icon: Activity },
   { to: '/news', label: 'חדשות', icon: Newspaper },
+  { to: '/premium', label: 'שדרוג Premium', icon: Crown, highlight: true },
 ];
 
 export default function Sidebar({ mobileOpen, onClose }) {
@@ -83,7 +85,9 @@ export default function Sidebar({ mobileOpen, onClose }) {
                       `flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-medium transition-colors ${
                         isActive
                           ? 'bg-accent-primary/10 text-accent-primary'
-                          : 'text-text-secondary hover:text-text-primary hover:bg-bg-tertiary'
+                          : item.highlight
+                            ? 'text-accent-primary hover:bg-accent-primary/10'
+                            : 'text-text-secondary hover:text-text-primary hover:bg-bg-tertiary'
                       }`
                     }
                   >

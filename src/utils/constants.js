@@ -131,6 +131,26 @@ export const TRADE_RESULTS = ['win', 'loss', 'breakeven'];
 
 export const TRADE_STATUSES = ['open', 'closed'];
 
+// ---- Plans / Premium -------------------------------------------------------
+// Soft limits for the free tier. Premium removes them. Enforced client-side as
+// a freemium gate (server-authoritative billing comes with the checkout phase).
+export const FREE_LIMITS = {
+  journals: 2,
+  wallets: 2,
+  exchanges: 1,
+  aiPerDay: 20,
+};
+
+// Marketing copy for the upgrade page (free vs premium comparison).
+export const PREMIUM_FEATURES = [
+  { icon: 'Bot', title: 'TradeAI ללא הגבלה', free: `${FREE_LIMITS.aiPerDay} ליום`, premium: 'ללא הגבלה' },
+  { icon: 'BookOpen', title: 'יומני מסחר', free: `עד ${FREE_LIMITS.journals}`, premium: 'ללא הגבלה' },
+  { icon: 'Wallet', title: 'ארנקים על-שרשרת', free: `עד ${FREE_LIMITS.wallets}`, premium: 'ללא הגבלה' },
+  { icon: 'Link2', title: 'חיבורי בורסה', free: `עד ${FREE_LIMITS.exchanges}`, premium: 'ללא הגבלה' },
+  { icon: 'Bell', title: 'התראות עסקאות', free: 'בסיסי', premium: 'מתקדם' },
+  { icon: 'BarChart3', title: 'ניתוחים מתקדמים', free: '—', premium: 'כלול' },
+];
+
 export const EXCHANGES = [
   // בורסות
   { value: 'binance', label: 'Binance', domain: 'binance.com', type: 'exchange' },

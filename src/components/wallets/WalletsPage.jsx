@@ -1,4 +1,5 @@
 import { useState, useEffect, useCallback } from 'react';
+import { useNavigate } from 'react-router-dom';
 import { motion } from 'framer-motion';
 import { Wallet, Plus, RefreshCw, Trash2, Copy, X, ExternalLink } from 'lucide-react';
 import toast from 'react-hot-toast';
@@ -6,6 +7,7 @@ import { useAuth } from '../../contexts/AuthContext';
 import { getUserSetting, setUserSetting } from '../../services/firestoreService';
 import { fetchWalletData } from '../../services/walletService';
 import { formatCurrency } from '../../utils/formatters';
+import { FREE_LIMITS } from '../../utils/constants';
 import { pageVariants, pageTransition } from '../../utils/animations';
 
 const CHAIN_LABELS = {
@@ -45,7 +47,8 @@ const SOL_RE = /^[1-9A-HJ-NP-Za-km-z]{32,44}$/;
 const isValidAddress = (a) => EVM_RE.test(a) || SOL_RE.test(a);
 
 export default function WalletsPage() {
-  const { user } = useAuth();
+  const { user, isPremium } = useAuth();
+  const navigate = useNavigate();
   const [wallets, setWallets] = useState([]);      // [{ id, address, label }]
   const [data, setData] = useState({});            // address -> { totalUsd, chains, tokens } | { error }
   const [loadingAddr, setLoadingAddr] = useState({});
@@ -89,6 +92,11 @@ export default function WalletsPage() {
     }
     if (wallets.some((w) => w.address.toLowerCase() === addr.toLowerCase())) {
       toast.error('הארנק כבר קיים');
+      return;
+    }
+    if (!isPremium && wallets.length >= FREE_LIMITS.wallets) {
+      toast.error(`במסלול החינמי אפשר עד ${FREE_LIMITS.wallets} ארנקים. שדרג ל-Premium לארנקים ללא הגבלה.`);
+      navigate('/premium');
       return;
     }
     const w = { id: Date.now().toString(36), address: addr, label: label.trim() };
