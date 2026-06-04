@@ -13,8 +13,31 @@ const CHAIN_LABELS = {
   base: 'Base', optimism: 'Optimism', avalanche: 'Avalanche', fantom: 'Fantom',
   solana: 'Solana',
 };
+// DefiLlama hosts free chain icons under their canonical slug. Map our worker's
+// chain keys to those slugs so we can render a 16-20px logo next to the label.
+const CHAIN_ICON_SLUG = {
+  eth: 'ethereum', bsc: 'bsc', polygon: 'polygon', arbitrum: 'arbitrum',
+  base: 'base', optimism: 'optimism', avalanche: 'avalanche', fantom: 'fantom',
+  solana: 'solana',
+};
 const chainLabel = (c) => CHAIN_LABELS[c] || c;
+const chainIcon = (c) => {
+  const slug = CHAIN_ICON_SLUG[c];
+  return slug ? `https://icons.llamao.fi/icons/chains/rsz_${slug}?w=24&h=24` : null;
+};
 const shortAddr = (a) => (a ? `${a.slice(0, 6)}…${a.slice(-4)}` : '');
+
+function ChainBadge({ chain, usd }) {
+  const icon = chainIcon(chain);
+  return (
+    <span className="inline-flex items-center gap-1.5 text-[10px] px-2 py-1 rounded-full bg-bg-tertiary text-text-secondary border border-border-primary">
+      {icon
+        ? <img src={icon} alt="" className="w-3.5 h-3.5 rounded-full" onError={(e) => { e.currentTarget.style.display = 'none'; }} />
+        : <span className="w-3.5 h-3.5 rounded-full bg-border-primary" />}
+      <span dir="ltr">{chainLabel(chain)}{usd != null ? ` · ${formatCurrency(usd)}` : ''}</span>
+    </span>
+  );
+}
 
 // EVM (0x…) or Solana (base58) address.
 const EVM_RE = /^0x[a-fA-F0-9]{40}$/;
@@ -174,9 +197,7 @@ export default function WalletsPage() {
               {d?.chains?.length > 0 && (
                 <div className="flex flex-wrap gap-1.5">
                   {d.chains.map((c) => (
-                    <span key={c.chain} className="text-[10px] px-2 py-0.5 rounded-full bg-bg-tertiary text-text-secondary border border-border-primary" dir="ltr">
-                      {chainLabel(c.chain)} · {formatCurrency(c.usd)}
-                    </span>
+                    <ChainBadge key={c.chain} chain={c.chain} usd={c.usd} />
                   ))}
                 </div>
               )}
@@ -192,7 +213,12 @@ export default function WalletsPage() {
                           : <div className="w-6 h-6 rounded-full bg-bg-tertiary flex items-center justify-center text-[9px] text-text-muted">{(t.symbol || '?').slice(0, 3)}</div>}
                         <div className="min-w-0">
                           <div className="text-sm text-text-primary truncate">{t.symbol}</div>
-                          <div className="text-[10px] text-text-muted" dir="ltr">{chainLabel(t.chain)}</div>
+                          <div className="flex items-center gap-1 text-[10px] text-text-muted" dir="ltr">
+                            {chainIcon(t.chain) && (
+                              <img src={chainIcon(t.chain)} alt="" className="w-3 h-3 rounded-full" onError={(e) => { e.currentTarget.style.display = 'none'; }} />
+                            )}
+                            <span>{chainLabel(t.chain)}</span>
+                          </div>
                         </div>
                       </div>
                       <div className="text-left">
