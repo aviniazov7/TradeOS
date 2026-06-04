@@ -2258,7 +2258,7 @@ ${pad('Lev', `${pnlSign}${pnlPctLev}%`)}` : ''}` : ''}</code>
   // Open positions sync — fetches currently open futures positions from the exchange
   if (request.method === 'POST' && path === '/exchange/open-positions') {
     try {
-      const { exchange, apiKey, apiSecret } = await request.json().catch(() => ({}));
+      const { exchange, apiKey, apiSecret, passphrase } = await request.json().catch(() => ({}));
       if (!apiKey || !apiSecret) return new Response(JSON.stringify({ ok: false, error: 'Missing credentials' }), { headers: { ...cors, 'Content-Type': 'application/json' }, status: 400 });
 
       if (exchange === 'mexc') {
@@ -2289,6 +2289,9 @@ ${pad('Lev', `${pnlSign}${pnlPctLev}%`)}` : ''}` : ''}</code>
           // MEXC uses openAvgPrice or holdAvgPrice for average entry
           const entryPrice = parseFloat(p.openAvgPrice || p.open_avg_price || p.holdAvgPrice || p.hold_avg_price) || 0;
           const qty = parseFloat(p.holdVol || p.hold_vol || p.positionAmt || p.vol) || 0;
+          const entryDate = new Date(Number(p.createTime || p.openTime || p.create_time || Date.now())).toISOString();
+          const tpMx = parseFloat(p.takeProfitPrice || p.take_profit_price || 0) || 0;
+          const liqMx = parseFloat(p.liquidatePrice || p.liquidate_price || p.liqPrice || 0) || 0;
           return {
             pair: sym,
             direction: posType === 1 ? 'long' : 'short',
@@ -2302,12 +2305,14 @@ ${pad('Lev', `${pnlSign}${pnlPctLev}%`)}` : ''}` : ''}</code>
             source: 'mexc',
             externalId: String(p.positionId || p.position_id || sym + '_' + ts),
             orderType: 'market',
-            entryDate: new Date(Number(p.createTime || p.openTime || p.create_time || Date.now())).toISOString(),
-            tps: [],
+            entryDate,
+            tps: tpMx > 0 ? [tpMx] : [],
             exits: null,
             tpReached: [],
             result: null,
             journalId: null,
+            liquidationPrice: liqMx > 0 ? liqMx : null,
+            session: sessionFromDate(entryDate),
           };
         });
         return new Response(JSON.stringify({ ok: true, positions, count: positions.length }), { headers: { ...cors, 'Content-Type': 'application/json' } });
@@ -2367,6 +2372,104 @@ ${pad('Lev', `${pnlSign}${pnlPctLev}%`)}` : ''}` : ''}</code>
             journalId: null,
             // Bybit-only extras the journal can show alongside the trade.
             liquidationPrice: liqPrice > 0 ? liqPrice : null,
+            session: sessionFromDate(entryDate),
+          };
+        });
+        return new Response(JSON.stringify({ ok: true, positions, count: positions.length }), { headers: { ...cors, 'Content-Type': 'application/json' } });
+      }
+
+      if (exchange === 'okx') {
+        const enc = new TextEncoder();
+        const hmacB64 = async (secret, msg) => {
+          const key = await crypto.subtle.importKey('raw', enc.encode(secret), { name: 'HMAC', hash: 'SHA-256' }, false, ['sign']);
+          const sig = await crypto.subtle.sign('HMAC', key, enc.encode(msg));
+          return btoa(String.fromCharCode(...new Uint8Array(sig)));
+        };
+        const tsIso = new Date().toISOString();
+        const p = '/api/v5/account/positions?instType=SWAP';
+        const sign = await hmacB64(apiSecret, tsIso + 'GET' + p);
+        const res = await fetch(`https://www.okx.com${p}`, {
+          headers: { 'OK-ACCESS-KEY': apiKey, 'OK-ACCESS-SIGN': sign, 'OK-ACCESS-TIMESTAMP': tsIso, 'OK-ACCESS-PASSPHRASE': passphrase || '', 'Content-Type': 'application/json' },
+        });
+        const data = await res.json();
+        if (data.code !== '0') return new Response(JSON.stringify({ ok: false, error: `OKX ${data.code}: ${data.msg || 'error'}` }), { headers: { ...cors, 'Content-Type': 'application/json' }, status: 400 });
+        const positions = (data.data || []).filter((p2) => parseFloat(p2.pos) !== 0).map((p2) => {
+          const parts = (p2.instId || '').split('-');
+          const pair = parts.length >= 2 ? (parts[0] + parts[1]).toUpperCase() : (p2.instId || '').toUpperCase();
+          const entryPrice = parseFloat(p2.avgPx) || 0;
+          const qty = Math.abs(parseFloat(p2.pos) || 0);
+          const entryDate = p2.cTime ? new Date(parseInt(p2.cTime)).toISOString() : new Date().toISOString();
+          const liq = parseFloat(p2.liqPx) || 0;
+          const tp = parseFloat(p2.tpTriggerPx || 0) || 0;
+          return {
+            pair,
+            direction: p2.posSide === 'short' || parseFloat(p2.pos) < 0 ? 'short' : 'long',
+            entryPrice,
+            quantity: qty,
+            leverage: parseFloat(p2.lever) || 1,
+            stopLoss: parseFloat(p2.slTriggerPx || 0) || 0,
+            positionSize: qty * entryPrice,
+            fees: 0,
+            status: 'open',
+            source: 'okx',
+            externalId: String(p2.posId || `${pair}_${p2.cTime}`),
+            orderType: 'market',
+            entryDate,
+            tps: tp > 0 ? [tp] : [],
+            exits: null,
+            tpReached: [],
+            result: null,
+            journalId: null,
+            liquidationPrice: liq > 0 ? liq : null,
+            session: sessionFromDate(entryDate),
+          };
+        });
+        return new Response(JSON.stringify({ ok: true, positions, count: positions.length }), { headers: { ...cors, 'Content-Type': 'application/json' } });
+      }
+
+      if (exchange === 'bitget') {
+        const enc = new TextEncoder();
+        const hmacB64 = async (secret, msg) => {
+          const key = await crypto.subtle.importKey('raw', enc.encode(secret), { name: 'HMAC', hash: 'SHA-256' }, false, ['sign']);
+          const sig = await crypto.subtle.sign('HMAC', key, enc.encode(msg));
+          return btoa(String.fromCharCode(...new Uint8Array(sig)));
+        };
+        const ts = String(Date.now());
+        const p = '/api/v2/mix/position/all-position?productType=USDT-FUTURES&marginCoin=USDT';
+        const sign = await hmacB64(apiSecret, ts + 'GET' + p);
+        const res = await fetch(`https://api.bitget.com${p}`, {
+          headers: { 'ACCESS-KEY': apiKey, 'ACCESS-SIGN': sign, 'ACCESS-TIMESTAMP': ts, 'ACCESS-PASSPHRASE': passphrase || '', 'Content-Type': 'application/json' },
+        });
+        const data = await res.json();
+        if (data.code !== '00000') return new Response(JSON.stringify({ ok: false, error: `Bitget ${data.code}: ${data.msg || 'error'}` }), { headers: { ...cors, 'Content-Type': 'application/json' }, status: 400 });
+        const list = (Array.isArray(data.data) ? data.data : (data.data?.list || [])).filter((p2) => parseFloat(p2.total || p2.openSize || 0) > 0);
+        const positions = list.map((p2) => {
+          const pair = (p2.symbol || '').replace(/_.*/, '').toUpperCase();
+          const entryPrice = parseFloat(p2.openPriceAvg || p2.averageOpenPrice) || 0;
+          const qty = parseFloat(p2.total || p2.openSize) || 0;
+          const entryDate = p2.cTime ? new Date(parseInt(p2.cTime)).toISOString() : new Date().toISOString();
+          const liq = parseFloat(p2.liquidationPrice || 0) || 0;
+          const tp = parseFloat(p2.presetStopSurplusPrice || 0) || 0;
+          return {
+            pair,
+            direction: p2.holdSide === 'short' ? 'short' : 'long',
+            entryPrice,
+            quantity: qty,
+            leverage: parseFloat(p2.leverage) || 1,
+            stopLoss: parseFloat(p2.presetStopLossPrice || 0) || 0,
+            positionSize: qty * entryPrice,
+            fees: 0,
+            status: 'open',
+            source: 'bitget',
+            externalId: String(p2.positionId || `${pair}_${p2.cTime}`),
+            orderType: 'market',
+            entryDate,
+            tps: tp > 0 ? [tp] : [],
+            exits: null,
+            tpReached: [],
+            result: null,
+            journalId: null,
+            liquidationPrice: liq > 0 ? liq : null,
             session: sessionFromDate(entryDate),
           };
         });
@@ -2586,6 +2689,8 @@ ${pad('Lev', `${pnlSign}${pnlPctLev}%`)}` : ''}` : ''}</code>
               : entryDate;
           const posType = p.positionType ?? p.position_type;
           const fees = Math.abs(parseFloat(p.fee || p.fees || p.closeFee || p.close_fee || p.holdFee || p.totalFee || 0) || 0);
+          const slMexc = parseFloat(p.stopLossPrice || p.stop_loss_price || 0) || 0;
+          const tpMexc = parseFloat(p.takeProfitPrice || p.take_profit_price || 0) || 0;
           return {
             pair: sym.replace(/_/g, ''),
             direction: posType === 1 ? 'long' : 'short',
@@ -2597,8 +2702,11 @@ ${pad('Lev', `${pnlSign}${pnlPctLev}%`)}` : ''}` : ''}</code>
             fees,
             entryDate,
             exitDate,
+            stopLoss: slMexc,
+            tps: tpMexc > 0 ? [tpMexc] : [],
             source: 'mexc',
             externalId: posId,
+            session: sessionFromDate(entryDate),
           };
         });
       }
@@ -2684,6 +2792,9 @@ ${pad('Lev', `${pnlSign}${pnlPctLev}%`)}` : ''}` : ''}</code>
         trades = (data.data || []).map(p => {
           const parts = (p.instId || '').split('-');
           const pair = parts.length >= 2 ? (parts[0] + parts[1]).toUpperCase() : (p.instId || '').toUpperCase();
+          const entryDate = p.cTime ? new Date(parseInt(p.cTime)).toISOString() : new Date().toISOString();
+          const slOkx = parseFloat(p.slTriggerPx || p.slOrdPx || 0) || 0;
+          const tpOkx = parseFloat(p.tpTriggerPx || p.tpOrdPx || 0) || 0;
           return {
             pair,
             direction: p.direction === 'long' ? 'long' : 'short',
@@ -2693,10 +2804,13 @@ ${pad('Lev', `${pnlSign}${pnlPctLev}%`)}` : ''}` : ''}</code>
             leverage: parseFloat(p.lever) || 1,
             pnlFromExchange: parseFloat(p.pnl) || 0,
             fees: Math.abs(parseFloat(p.fee) || 0),
-            entryDate: p.cTime ? new Date(parseInt(p.cTime)).toISOString() : new Date().toISOString(),
+            entryDate,
             exitDate: p.uTime ? new Date(parseInt(p.uTime)).toISOString() : new Date().toISOString(),
+            stopLoss: slOkx,
+            tps: tpOkx > 0 ? [tpOkx] : [],
             source: 'okx',
             externalId: p.posId || (pair + '_' + p.cTime),
+            session: sessionFromDate(entryDate),
           };
         });
       }
@@ -2718,6 +2832,9 @@ ${pad('Lev', `${pnlSign}${pnlPctLev}%`)}` : ''}` : ''}</code>
         if (data.code !== '00000') throw new Error(`Bitget ${data.code}: ${data.msg || 'error'}`);
         trades = (data.data?.list || (Array.isArray(data.data) ? data.data : [])).map(p => {
           const pair = (p.symbol || '').replace(/_.*/, '').toUpperCase();
+          const entryDate = p.ctime ? new Date(parseInt(p.ctime)).toISOString() : new Date().toISOString();
+          const slBg = parseFloat(p.presetStopLossPrice || p.stopLossPrice || 0) || 0;
+          const tpBg = parseFloat(p.presetStopSurplusPrice || p.takeProfitPrice || 0) || 0;
           return {
             pair,
             direction: p.holdSide === 'long' ? 'long' : 'short',
@@ -2727,10 +2844,13 @@ ${pad('Lev', `${pnlSign}${pnlPctLev}%`)}` : ''}` : ''}</code>
             leverage: parseFloat(p.leverage) || 1,
             pnlFromExchange: parseFloat(p.pnl) || 0,
             fees: Math.abs(parseFloat(p.fee || p.totalFee) || 0),
-            entryDate: p.ctime ? new Date(parseInt(p.ctime)).toISOString() : new Date().toISOString(),
+            entryDate,
             exitDate: p.utime ? new Date(parseInt(p.utime)).toISOString() : new Date().toISOString(),
+            stopLoss: slBg,
+            tps: tpBg > 0 ? [tpBg] : [],
             source: 'bitget',
             externalId: p.positionId || (pair + '_' + p.ctime),
+            session: sessionFromDate(entryDate),
           };
         });
       }

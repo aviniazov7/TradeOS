@@ -12,11 +12,11 @@ export async function syncExchangeTrades(exchange, apiKey, apiSecret, passphrase
   return data.trades || [];
 }
 
-export async function syncOpenPositions(exchange, apiKey, apiSecret) {
+export async function syncOpenPositions(exchange, apiKey, apiSecret, passphrase) {
   const res = await fetch(`${WORKER_URL}/exchange/open-positions`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ exchange, apiKey, apiSecret }),
+    body: JSON.stringify({ exchange, apiKey, apiSecret, passphrase }),
   });
   const data = await res.json();
   if (!data.ok) throw new Error(data.error || 'שגיאה בטעינת הפוזיציות הפתוחות');

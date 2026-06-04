@@ -620,7 +620,7 @@ export default function ExchangeSettings({ journalId: propJournalId, onImportTra
     try {
       const [tradesResult, openResult] = await Promise.allSettled([
         syncExchangeTrades(id, saved.apiKey, saved.apiSecret, extraKey ? saved[extraKey] : undefined),
-        syncOpenPositions(id, saved.apiKey, saved.apiSecret),
+        syncOpenPositions(id, saved.apiKey, saved.apiSecret, extraKey ? saved[extraKey] : undefined),
       ]);
       const closedTrades = tradesResult.status === 'fulfilled' ? tradesResult.value : [];
       const openPos = openResult.status === 'fulfilled' ? openResult.value : [];
