@@ -180,6 +180,13 @@ export default function AIChat() {
   const handleSend = async (text = input.trim()) => {
     if (!text || streaming || cooldown) return;
 
+    // Block trivially short messages that just burn the daily quota without
+    // producing a useful answer.
+    if (text.length < 3) {
+      setError('שאל שאלה ברורה (לפחות 3 תווים)');
+      return;
+    }
+
     const now = Date.now();
     if (now - lastSentRef.current < 3000) {
       setError('המתן כמה שניות בין הודעות');
@@ -250,6 +257,12 @@ export default function AIChat() {
           chart: chartResult?.prices && detectedCoin ? { prices: chartResult.prices, symbol: detectedCoin.symbol } : undefined,
         };
         setMessages((prev) => [...prev, aiMsg]);
+      } else {
+        // Failed before any token streamed back → roll the user message out so
+        // a retry doesn't pile up duplicate 'hey' bubbles like in the report.
+        setMessages((prev) => prev.filter((m) => m !== userMsg));
+        // And restore the typed text so the user can edit + resend.
+        setInput(text);
       }
     } finally {
       setStreaming(false);

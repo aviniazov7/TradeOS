@@ -1727,6 +1727,17 @@ async function handleAIChat(request, env, cors) {
     if (!messages || !Array.isArray(messages) || messages.length === 0) {
       return new Response(JSON.stringify({ error: 'Missing messages' }), { status: 400, headers: { ...cors, 'Content-Type': 'application/json' } });
     }
+    // Reject trivial last user messages so they don't burn a quota slot or
+    // produce an unhelpful answer. Client also guards but server is authoritative.
+    const lastUserText = (() => {
+      for (let i = messages.length - 1; i >= 0; i--) {
+        if (messages[i]?.role === 'user') return String(messages[i].text || '').trim();
+      }
+      return '';
+    })();
+    if (lastUserText.length < 3) {
+      return new Response(JSON.stringify({ error: 'שאל שאלה ברורה (לפחות 3 תווים)' }), { status: 400, headers: { ...cors, 'Content-Type': 'application/json' } });
+    }
 
     // Verify the Firebase ID token (signature-checked) and resolve the uid.
     const authHeader = request.headers.get('Authorization') || '';
