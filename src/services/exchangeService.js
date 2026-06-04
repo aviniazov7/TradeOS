@@ -1,11 +1,11 @@
 const WORKER_URL =
   import.meta.env.VITE_WORKER_URL || 'https://trade-os.aviniazov7.workers.dev';
 
-export async function syncExchangeTrades(exchange, apiKey, apiSecret, passphrase, limit = 50) {
+export async function syncExchangeTrades(exchange, apiKey, apiSecret, passphrase, { limit = 50, days = 0 } = {}) {
   const res = await fetch(`${WORKER_URL}/exchange/sync`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ exchange, apiKey, apiSecret, passphrase, limit }),
+    body: JSON.stringify({ exchange, apiKey, apiSecret, passphrase, limit, days }),
   });
   const data = await res.json();
   if (!res.ok || data.error) throw new Error(data.error || 'הסנכרון נכשל');

@@ -335,6 +335,7 @@ function ExchangeCard({ exchange, data, savedData, syncing, saving, onUpdate, on
   const [guideOpen, setGuideOpen] = useState(false);
   const [hovered, setHovered] = useState(false);
   const [balance, setBalance] = useState(null);
+  const [syncDays, setSyncDays] = useState(0); // 0 = last 50; else import window in days
   const { id, name, tagline, accent, glow, canSync, extraField } = exchange;
 
   const isConnected = !!(savedData?.apiKey && savedData?.apiSecret);
@@ -501,16 +502,29 @@ function ExchangeCard({ exchange, data, savedData, syncing, saving, onUpdate, on
                   נתק
                 </motion.button>
                 {canSync ? (
-                  <button onClick={onSync} disabled={syncing}
-                    className="flex-1 py-2.5 rounded-xl text-sm font-bold cursor-pointer disabled:opacity-50 flex items-center justify-center gap-2 transition-colors"
-                    style={{ background: `${accent}18`, color: accent, border: `1px solid ${accent}40` }}>
-                    {syncing ? <RefreshCw className="w-4 h-4 animate-spin" /> : (
-                      <>
-                        <Zap className="w-4 h-4" />
-                        סנכרן עסקאות
-                      </>
-                    )}
-                  </button>
+                  <div className="flex-1 flex gap-2">
+                    <select value={syncDays} onChange={(e) => setSyncDays(Number(e.target.value))}
+                      disabled={syncing}
+                      className="rounded-xl bg-bg-tertiary border border-border-primary text-xs text-text-primary px-2 py-2.5 outline-none cursor-pointer disabled:opacity-50"
+                      style={{ direction: 'rtl' }}
+                      aria-label="תקופת ייבוא">
+                      <option value={0}>50 אחרונות</option>
+                      <option value={30}>חודש</option>
+                      <option value={90}>3 חודשים</option>
+                      <option value={180}>6 חודשים</option>
+                      <option value={365}>שנה</option>
+                    </select>
+                    <button onClick={() => onSync(syncDays)} disabled={syncing}
+                      className="flex-1 py-2.5 rounded-xl text-sm font-bold cursor-pointer disabled:opacity-50 flex items-center justify-center gap-2 transition-colors"
+                      style={{ background: `${accent}18`, color: accent, border: `1px solid ${accent}40` }}>
+                      {syncing ? <RefreshCw className="w-4 h-4 animate-spin" /> : (
+                        <>
+                          <Zap className="w-4 h-4" />
+                          סנכרן עסקאות
+                        </>
+                      )}
+                    </button>
+                  </div>
                 ) : (
                   <div className="flex-1 py-2.5 rounded-xl text-xs text-center text-text-muted border border-dashed border-border-primary flex items-center justify-center gap-1.5">
                     <Link2 className="w-3.5 h-3.5" />ייבוא CSV בלבד
@@ -612,15 +626,16 @@ export default function ExchangeSettings({ journalId: propJournalId, onImportTra
     } catch { toast.error('שגיאה בניתוק'); }
   };
 
-  const handleSync = async (id) => {
+  const handleSync = async (id, days = 0) => {
     const saved = savedExchanges[id] || {};
     const exchConf = EXCHANGES.find(e => e.id === id);
     const extraKey = exchConf?.extraField?.key;
+    const passphrase = extraKey ? saved[extraKey] : undefined;
     setSyncing(id);
     try {
       const [tradesResult, openResult] = await Promise.allSettled([
-        syncExchangeTrades(id, saved.apiKey, saved.apiSecret, extraKey ? saved[extraKey] : undefined),
-        syncOpenPositions(id, saved.apiKey, saved.apiSecret, extraKey ? saved[extraKey] : undefined),
+        syncExchangeTrades(id, saved.apiKey, saved.apiSecret, passphrase, { days }),
+        syncOpenPositions(id, saved.apiKey, saved.apiSecret, passphrase),
       ]);
       const closedTrades = tradesResult.status === 'fulfilled' ? tradesResult.value : [];
       const openPos = openResult.status === 'fulfilled' ? openResult.value : [];
@@ -718,7 +733,7 @@ export default function ExchangeSettings({ journalId: propJournalId, onImportTra
               onUpdate={(field, val) => updateField(exchange.id, field, val)}
               onSave={() => handleSave(exchange.id)}
               onDisconnect={() => handleDisconnect(exchange.id)}
-              onSync={() => handleSync(exchange.id)} />
+              onSync={(days) => handleSync(exchange.id, days)} />
           ))}
         </div>
 

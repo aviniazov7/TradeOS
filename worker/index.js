@@ -2576,10 +2576,18 @@ ${pad('Lev', `${pnlSign}${pnlPctLev}%`)}` : ''}` : ''}</code>
   // Exchange trade sync — signs HMAC on behalf of the frontend so secrets stay server-side
   if (request.method === 'POST' && path === '/exchange/sync') {
     try {
-      const { exchange, apiKey, apiSecret, passphrase, limit = 50 } = await request.json();
+      const { exchange, apiKey, apiSecret, passphrase, limit = 50, days = 0 } = await request.json();
       if (!exchange || !apiKey || !apiSecret) {
         return new Response(JSON.stringify({ error: 'Missing fields' }), { status: 400, headers: { ...cors, 'Content-Type': 'application/json' } });
       }
+
+      // Optional time-window import. days=0 → keep the legacy "recent N" behavior.
+      // Otherwise paginate per-exchange back to `sinceMs`, bounded so a single
+      // request can't run away (Worker CPU + exchange rate limits).
+      const DAY_MS = 24 * 60 * 60 * 1000;
+      const sinceMs = days > 0 ? Date.now() - days * DAY_MS : 0;
+      const MAX_TRADES = 1500;   // hard cap on returned rows
+      const MAX_REQUESTS = 30;   // hard cap on upstream calls per sync
 
       const enc = new TextEncoder();
       const hmac = async (secret, msg) => {
@@ -2608,19 +2616,41 @@ ${pad('Lev', `${pnlSign}${pnlPctLev}%`)}` : ''}` : ''}</code>
         const buildParams = (obj) =>
           Object.keys(obj).sort().map(k => `${k}=${obj[k]}`).join('&');
 
-        const startTime = String(Date.now() - 89 * 24 * 60 * 60 * 1000);
+        // MEXC retains ~90 days of position history. Use the requested window
+        // (capped at 90d), else the legacy 89-day default.
+        const mexcFloor = Date.now() - 89 * DAY_MS;
+        const startTime = String(days > 0 ? Math.max(sinceMs, mexcFloor) : mexcFloor);
 
-        // ── Step 1: Fetch position history ───────────────────────────────
-        const ts1 = Date.now().toString();
-        const posParamStr = buildParams({ page_num: '1', page_size: String(Math.min(limit, 100)), start_time: startTime });
-        const posRes = await fetch(
-          `https://contract.mexc.com/api/v1/private/position/list/history_positions?${posParamStr}`,
-          { headers: { ...mexcHeaders(ts1), ...(await mexcSign(ts1, posParamStr)) } }
-        );
-        const posData = await posRes.json();
-        if (posData.code !== 0) throw new Error(`MEXC ${posData.code}: ${posData.message || 'error'}`);
-        const rawPos = posData.data;
-        const positions = Array.isArray(rawPos) ? rawPos : (rawPos?.resultList || rawPos?.list || []);
+        // ── Step 1: Fetch position history (paginated when a window is set) ──
+        let positions = [];
+        if (days > 0) {
+          for (let page = 1; page <= MAX_REQUESTS && positions.length < MAX_TRADES; page++) {
+            const tsP = Date.now().toString();
+            const ps = buildParams({ page_num: String(page), page_size: '100', start_time: startTime });
+            const r = await fetch(
+              `https://contract.mexc.com/api/v1/private/position/list/history_positions?${ps}`,
+              { headers: { ...mexcHeaders(tsP), ...(await mexcSign(tsP, ps)) } }
+            );
+            const d = await r.json();
+            if (d.code !== 0) throw new Error(`MEXC ${d.code}: ${d.message || 'error'}`);
+            const raw = d.data;
+            const chunk = Array.isArray(raw) ? raw : (raw?.resultList || raw?.list || []);
+            if (!chunk.length) break;
+            positions = positions.concat(chunk);
+            if (chunk.length < 100) break; // last page
+          }
+        } else {
+          const ts1 = Date.now().toString();
+          const posParamStr = buildParams({ page_num: '1', page_size: String(Math.min(limit, 100)), start_time: startTime });
+          const posRes = await fetch(
+            `https://contract.mexc.com/api/v1/private/position/list/history_positions?${posParamStr}`,
+            { headers: { ...mexcHeaders(ts1), ...(await mexcSign(ts1, posParamStr)) } }
+          );
+          const posData = await posRes.json();
+          if (posData.code !== 0) throw new Error(`MEXC ${posData.code}: ${posData.message || 'error'}`);
+          const rawPos = posData.data;
+          positions = Array.isArray(rawPos) ? rawPos : (rawPos?.resultList || rawPos?.list || []);
+        }
 
         // ── Step 2: Fetch close-order history to get accurate exit times ─
         // MEXC order sides: 1=OpenLong 2=CloseShort 3=OpenShort 4=CloseLong
@@ -2712,16 +2742,40 @@ ${pad('Lev', `${pnlSign}${pnlPctLev}%`)}` : ''}` : ''}</code>
       }
 
       else if (exchange === 'bybit') {
-        const timestamp = Date.now().toString();
         const recvWindow = '5000';
-        const queryString = `category=linear&limit=${Math.min(limit, 200)}`;
-        const signature = await hmac(apiSecret, timestamp + apiKey + recvWindow + queryString);
-        const res = await fetch(`https://api.bybit.com/v5/position/closed-pnl?${queryString}`, {
-          headers: { 'X-BAPI-API-KEY': apiKey, 'X-BAPI-TIMESTAMP': timestamp, 'X-BAPI-SIGN': signature, 'X-BAPI-RECV-WINDOW': recvWindow },
-        });
-        const data = await res.json();
-        if (data.retCode !== 0) throw new Error(data.retMsg || `Bybit error ${data.retCode}`);
-        const list = data.result?.list || [];
+        const bybitClosed = async (qs) => {
+          const tsW = Date.now().toString();
+          const sigW = await hmac(apiSecret, tsW + apiKey + recvWindow + qs);
+          const r = await fetch(`https://api.bybit.com/v5/position/closed-pnl?${qs}`, {
+            headers: { 'X-BAPI-API-KEY': apiKey, 'X-BAPI-TIMESTAMP': tsW, 'X-BAPI-SIGN': sigW, 'X-BAPI-RECV-WINDOW': recvWindow },
+          });
+          const d = await r.json();
+          if (d.retCode !== 0) throw new Error(d.retMsg || `Bybit error ${d.retCode}`);
+          return d.result || {};
+        };
+
+        let list = [];
+        if (days > 0) {
+          // closed-pnl allows a max 7-day window per request → walk windows back
+          // to sinceMs, paging within each window via nextPageCursor.
+          const WIN = 7 * DAY_MS;
+          let reqs = 0;
+          for (let winEnd = Date.now(); winEnd > sinceMs && reqs < MAX_REQUESTS && list.length < MAX_TRADES;) {
+            const winStart = Math.max(sinceMs, winEnd - WIN);
+            let cursor = '';
+            do {
+              const qs = `category=linear&limit=100&startTime=${winStart}&endTime=${winEnd}${cursor ? `&cursor=${cursor}` : ''}`;
+              const result = await bybitClosed(qs);
+              reqs++;
+              list = list.concat(result.list || []);
+              cursor = result.nextPageCursor || '';
+            } while (cursor && reqs < MAX_REQUESTS && list.length < MAX_TRADES);
+            winEnd = winStart;
+          }
+        } else {
+          const result = await bybitClosed(`category=linear&limit=${Math.min(limit, 200)}`);
+          list = result.list || [];
+        }
 
         // Pull the recent order history once so we can recover the SL/TP that
         // each closed position had configured — closed-pnl itself doesn't
@@ -2780,16 +2834,34 @@ ${pad('Lev', `${pnlSign}${pnlPctLev}%`)}` : ''}` : ''}</code>
           const sig = await crypto.subtle.sign('HMAC', key, enc.encode(msg));
           return btoa(String.fromCharCode(...new Uint8Array(sig)));
         };
-        const ts = new Date().toISOString();
-        const qs = `instType=SWAP&limit=${Math.min(limit, 100)}`;
-        const path = `/api/v5/account/positions-history?${qs}`;
-        const sign = await hmacBase64(apiSecret, ts + 'GET' + path);
-        const res = await fetch(`https://www.okx.com${path}`, {
-          headers: { 'OK-ACCESS-KEY': apiKey, 'OK-ACCESS-SIGN': sign, 'OK-ACCESS-TIMESTAMP': ts, 'OK-ACCESS-PASSPHRASE': passphrase || '', 'Content-Type': 'application/json' },
-        });
-        const data = await res.json();
-        if (data.code !== '0') throw new Error(`OKX ${data.code}: ${data.msg || 'error'}`);
-        trades = (data.data || []).map(p => {
+        const okxFetch = async (extra) => {
+          const ts = new Date().toISOString();
+          const path = `/api/v5/account/positions-history?instType=SWAP&limit=100${extra}`;
+          const sign = await hmacBase64(apiSecret, ts + 'GET' + path);
+          const r = await fetch(`https://www.okx.com${path}`, {
+            headers: { 'OK-ACCESS-KEY': apiKey, 'OK-ACCESS-SIGN': sign, 'OK-ACCESS-TIMESTAMP': ts, 'OK-ACCESS-PASSPHRASE': passphrase || '', 'Content-Type': 'application/json' },
+          });
+          const d = await r.json();
+          if (d.code !== '0') throw new Error(`OKX ${d.code}: ${d.msg || 'error'}`);
+          return d.data || [];
+        };
+
+        let okxRows = [];
+        if (days > 0) {
+          let after = '';
+          for (let reqs = 0; reqs < MAX_REQUESTS && okxRows.length < MAX_TRADES; reqs++) {
+            const chunk = await okxFetch(after ? `&after=${after}` : '');
+            if (!chunk.length) break;
+            okxRows = okxRows.concat(chunk);
+            const oldest = chunk[chunk.length - 1];
+            after = oldest.posId || '';
+            if (parseInt(oldest.cTime || 0) < sinceMs || chunk.length < 100 || !after) break;
+          }
+          okxRows = okxRows.filter((p) => parseInt(p.cTime || 0) >= sinceMs);
+        } else {
+          okxRows = await okxFetch('');
+        }
+        trades = okxRows.map(p => {
           const parts = (p.instId || '').split('-');
           const pair = parts.length >= 2 ? (parts[0] + parts[1]).toUpperCase() : (p.instId || '').toUpperCase();
           const entryDate = p.cTime ? new Date(parseInt(p.cTime)).toISOString() : new Date().toISOString();
@@ -2821,16 +2893,34 @@ ${pad('Lev', `${pnlSign}${pnlPctLev}%`)}` : ''}` : ''}</code>
           const sig = await crypto.subtle.sign('HMAC', key, enc.encode(msg));
           return btoa(String.fromCharCode(...new Uint8Array(sig)));
         };
-        const ts = String(Date.now());
-        const qs = `productType=USDT-FUTURES&limit=${Math.min(limit, 100)}`;
-        const path = `/api/v2/mix/position/history-position?${qs}`;
-        const sign = await hmacBase64(apiSecret, ts + 'GET' + path);
-        const res = await fetch(`https://api.bitget.com${path}`, {
-          headers: { 'ACCESS-KEY': apiKey, 'ACCESS-SIGN': sign, 'ACCESS-TIMESTAMP': ts, 'ACCESS-PASSPHRASE': passphrase || '', 'Content-Type': 'application/json' },
-        });
-        const data = await res.json();
-        if (data.code !== '00000') throw new Error(`Bitget ${data.code}: ${data.msg || 'error'}`);
-        trades = (data.data?.list || (Array.isArray(data.data) ? data.data : [])).map(p => {
+        const bitgetFetch = async (extra) => {
+          const ts = String(Date.now());
+          const path = `/api/v2/mix/position/history-position?productType=USDT-FUTURES&limit=100${extra}`;
+          const sign = await hmacBase64(apiSecret, ts + 'GET' + path);
+          const r = await fetch(`https://api.bitget.com${path}`, {
+            headers: { 'ACCESS-KEY': apiKey, 'ACCESS-SIGN': sign, 'ACCESS-TIMESTAMP': ts, 'ACCESS-PASSPHRASE': passphrase || '', 'Content-Type': 'application/json' },
+          });
+          const d = await r.json();
+          if (d.code !== '00000') throw new Error(`Bitget ${d.code}: ${d.msg || 'error'}`);
+          return d.data?.list || (Array.isArray(d.data) ? d.data : []);
+        };
+
+        let bgRows = [];
+        if (days > 0) {
+          const startExtra = `&startTime=${sinceMs}&endTime=${Date.now()}`;
+          let idLessThan = '';
+          for (let reqs = 0; reqs < MAX_REQUESTS && bgRows.length < MAX_TRADES; reqs++) {
+            const chunk = await bitgetFetch(startExtra + (idLessThan ? `&idLessThan=${idLessThan}` : ''));
+            if (!chunk.length) break;
+            bgRows = bgRows.concat(chunk);
+            const oldest = chunk[chunk.length - 1];
+            idLessThan = oldest.positionId || '';
+            if (chunk.length < 100 || !idLessThan) break;
+          }
+        } else {
+          bgRows = await bitgetFetch('');
+        }
+        trades = bgRows.map(p => {
           const pair = (p.symbol || '').replace(/_.*/, '').toUpperCase();
           const entryDate = p.ctime ? new Date(parseInt(p.ctime)).toISOString() : new Date().toISOString();
           const slBg = parseFloat(p.presetStopLossPrice || p.stopLossPrice || 0) || 0;
@@ -2857,6 +2947,14 @@ ${pad('Lev', `${pnlSign}${pnlPctLev}%`)}` : ''}` : ''}</code>
 
       else {
         throw new Error(`Unsupported exchange: ${exchange}`);
+      }
+
+      // When a time window was requested, drop anything older than the cutoff
+      // and cap the total so the payload stays sane.
+      if (days > 0) {
+        trades = trades
+          .filter((t) => !t.entryDate || new Date(t.entryDate).getTime() >= sinceMs)
+          .slice(0, MAX_TRADES);
       }
 
       return new Response(JSON.stringify({ ok: true, trades }), { headers: { ...cors, 'Content-Type': 'application/json' } });
