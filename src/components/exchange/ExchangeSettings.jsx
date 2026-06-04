@@ -2,7 +2,7 @@ import { useState, useEffect, useRef } from 'react';
 import { motion, AnimatePresence, useMotionValue, useTransform } from 'framer-motion';
 import {
   Shield, Eye, EyeOff, Check, ExternalLink,
-  RefreshCw, Download, X, Zap, HelpCircle, Pencil, Link2,
+  RefreshCw, Download, X, Zap, HelpCircle, Pencil, Link2, CalendarRange,
 } from 'lucide-react';
 import toast from 'react-hot-toast';
 import { getUserSetting, setUserSetting, addToUserCollection } from '../../services/firestoreService';
@@ -12,6 +12,16 @@ import { useAuth } from '../../contexts/AuthContext';
 import { useJournalContext } from '../../contexts/JournalContext';
 import { pageVariants, pageTransition } from '../../utils/animations';
 import LoadingSpinner from '../shared/LoadingSpinner';
+import SelectDropdown from '../shared/SelectDropdown';
+
+// Import-window options for the exchange sync (value in days; '0' = last 50).
+const SYNC_PERIODS = [
+  { value: '0', label: '50 אחרונות' },
+  { value: '30', label: 'חודש אחרון' },
+  { value: '90', label: '3 חודשים' },
+  { value: '180', label: '6 חודשים' },
+  { value: '365', label: 'שנה' },
+];
 import { getExchangeLogo } from '../../utils/constants';
 import { Timestamp } from 'firebase/firestore';
 
@@ -335,7 +345,7 @@ function ExchangeCard({ exchange, data, savedData, syncing, saving, onUpdate, on
   const [guideOpen, setGuideOpen] = useState(false);
   const [hovered, setHovered] = useState(false);
   const [balance, setBalance] = useState(null);
-  const [syncDays, setSyncDays] = useState(0); // 0 = last 50; else import window in days
+  const [syncDays, setSyncDays] = useState('0'); // '0' = last 50; else import window in days
   const { id, name, tagline, accent, glow, canSync, extraField } = exchange;
 
   const isConnected = !!(savedData?.apiKey && savedData?.apiSecret);
@@ -496,25 +506,24 @@ function ExchangeCard({ exchange, data, savedData, syncing, saving, onUpdate, on
           {/* Action buttons */}
           <div className="flex gap-2">
             {isConnected && !editing && !hasChanges ? (
-              <>
-                <motion.button onClick={onDisconnect} whileHover={{ scale: 1.03 }} whileTap={{ scale: 0.97 }}
-                  className="px-3 py-2.5 rounded-xl border border-border-primary text-xs text-text-muted hover:border-loss hover:text-loss transition-colors cursor-pointer">
-                  נתק
-                </motion.button>
-                {canSync ? (
-                  <div className="flex-1 flex gap-2">
-                    <select value={syncDays} onChange={(e) => setSyncDays(Number(e.target.value))}
-                      disabled={syncing}
-                      className="rounded-xl bg-bg-tertiary border border-border-primary text-xs text-text-primary px-2 py-2.5 outline-none cursor-pointer disabled:opacity-50"
-                      style={{ direction: 'rtl' }}
-                      aria-label="תקופת ייבוא">
-                      <option value={0}>50 אחרונות</option>
-                      <option value={30}>חודש</option>
-                      <option value={90}>3 חודשים</option>
-                      <option value={180}>6 חודשים</option>
-                      <option value={365}>שנה</option>
-                    </select>
-                    <button onClick={() => onSync(syncDays)} disabled={syncing}
+              <div className="w-full flex flex-col gap-2">
+                {canSync && (
+                  <div className="flex items-center gap-2">
+                    <span className="flex items-center gap-1 text-[11px] text-text-muted whitespace-nowrap">
+                      <CalendarRange className="w-3.5 h-3.5" />תקופת ייבוא
+                    </span>
+                    <div className="flex-1">
+                      <SelectDropdown compact value={syncDays} onChange={setSyncDays} options={SYNC_PERIODS} />
+                    </div>
+                  </div>
+                )}
+                <div className="flex gap-2">
+                  <motion.button onClick={onDisconnect} whileHover={{ scale: 1.03 }} whileTap={{ scale: 0.97 }}
+                    className="px-3 py-2.5 rounded-xl border border-border-primary text-xs text-text-muted hover:border-loss hover:text-loss transition-colors cursor-pointer">
+                    נתק
+                  </motion.button>
+                  {canSync ? (
+                    <button onClick={() => onSync(Number(syncDays))} disabled={syncing}
                       className="flex-1 py-2.5 rounded-xl text-sm font-bold cursor-pointer disabled:opacity-50 flex items-center justify-center gap-2 transition-colors"
                       style={{ background: `${accent}18`, color: accent, border: `1px solid ${accent}40` }}>
                       {syncing ? <RefreshCw className="w-4 h-4 animate-spin" /> : (
@@ -524,13 +533,13 @@ function ExchangeCard({ exchange, data, savedData, syncing, saving, onUpdate, on
                         </>
                       )}
                     </button>
-                  </div>
-                ) : (
-                  <div className="flex-1 py-2.5 rounded-xl text-xs text-center text-text-muted border border-dashed border-border-primary flex items-center justify-center gap-1.5">
-                    <Link2 className="w-3.5 h-3.5" />ייבוא CSV בלבד
-                  </div>
-                )}
-              </>
+                  ) : (
+                    <div className="flex-1 py-2.5 rounded-xl text-xs text-center text-text-muted border border-dashed border-border-primary flex items-center justify-center gap-1.5">
+                      <Link2 className="w-3.5 h-3.5" />ייבוא CSV בלבד
+                    </div>
+                  )}
+                </div>
+              </div>
             ) : editing && !hasChanges ? (
               <motion.button onClick={() => setEditing(false)} whileHover={{ scale: 1.02 }} whileTap={{ scale: 0.97 }}
                 className="flex-1 py-2.5 rounded-xl border border-border-primary text-sm text-text-muted hover:bg-bg-tertiary transition-colors cursor-pointer">
