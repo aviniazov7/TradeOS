@@ -2657,10 +2657,11 @@ ${pad('Lev', `${pnlSign}${pnlPctLev}%`)}` : ''}` : ''}</code>
 
         if (debug) debugRaw = positions.slice(0, 3);
 
-        // ── Step 2: Fetch close-order history to get accurate exit times ─
-        // MEXC order sides: 1=OpenLong 2=CloseShort 3=OpenShort 4=CloseLong
-        // We only care about close sides (2 and 4).
-        // pool[symbol][closeSide] = sorted array of {fillTime, used}
+        // ── Step 2: Fetch order history to (a) recover accurate exit times
+        // from close orders (sides 2/4) and (b) recover the configured SL/TP
+        // for each position from its opening order (sides 1/3). MEXC's
+        // position-history endpoint doesn't expose SL/TP.
+        // pool[symbol][side] = sorted array of { fillTime, used, sl, tp }
         const pool = {};
         try {
           const ts2 = Date.now().toString();
@@ -2674,13 +2675,21 @@ ${pad('Lev', `${pnlSign}${pnlPctLev}%`)}` : ''}` : ''}</code>
             const orders = ordData.data?.resultList || ordData.data?.list || (Array.isArray(ordData.data) ? ordData.data : []);
             for (const o of orders) {
               const side = parseInt(o.side);
-              if (side !== 2 && side !== 4) continue;
+              if (side !== 1 && side !== 2 && side !== 3 && side !== 4) continue;
               const sym = o.symbol;
               const fillTime = toMs(o.updateTime || o.update_time || o.createTime || o.create_time);
               if (!fillTime) continue;
               if (!pool[sym]) pool[sym] = {};
               if (!pool[sym][side]) pool[sym][side] = [];
-              pool[sym][side].push({ fillTime, used: false });
+              // SL/TP only exist on opening orders. Names vary in MEXC's
+              // contract endpoints — try the common shapes.
+              const sl = side === 1 || side === 3
+                ? parseFloat(o.stopLossPrice || o.stop_loss_price || o.slPrice || o.sl_price || 0) || 0
+                : 0;
+              const tp = side === 1 || side === 3
+                ? parseFloat(o.takeProfitPrice || o.take_profit_price || o.tpPrice || o.tp_price || 0) || 0
+                : 0;
+              pool[sym][side].push({ fillTime, used: false, sl, tp });
             }
             for (const sym of Object.keys(pool))
               for (const side of Object.keys(pool[sym]))
@@ -2688,24 +2697,50 @@ ${pad('Lev', `${pnlSign}${pnlPctLev}%`)}` : ''}` : ''}</code>
           }
         } catch (_) { /* order history optional — fall back to entryDate */ }
 
-        // ── Step 3: Match positions → close orders (chronologically) ─────
-        // Process positions oldest-first so each close order is consumed once.
+        // ── Step 3: Match positions → opening + closing orders ───────────
+        // Each position is paired with the earliest close order after its open
+        // (for exitDate) and the latest open order at-or-before its open (for
+        // SL/TP). Process oldest-first so each order is consumed once.
         const exitTimeById = new Map();
+        const slTpById = new Map();
         const sorted = [...positions].sort((a, b) =>
           toMs(a.createTime || a.openTime || 0) - toMs(b.createTime || b.openTime || 0)
         );
         for (const p of sorted) {
           const posType = p.positionType ?? p.position_type;
+          const openSide = posType === 1 ? 1 : 3;
           const closeSide = posType === 1 ? 4 : 2;
           const sym = p.symbol;
           const openMs = toMs(p.createTime || p.openTime || p.create_time || p.openTimestamp);
           const posId = String(p.id || sym + '_' + openMs);
-          const candidates = pool[sym]?.[closeSide];
-          if (!candidates) continue;
-          const idx = candidates.findIndex(o => !o.used && o.fillTime > openMs);
-          if (idx >= 0) {
-            candidates[idx].used = true;
-            exitTimeById.set(posId, candidates[idx].fillTime);
+
+          // Closing order → exit time.
+          const closes = pool[sym]?.[closeSide];
+          if (closes) {
+            const idx = closes.findIndex(o => !o.used && o.fillTime > openMs);
+            if (idx >= 0) {
+              closes[idx].used = true;
+              exitTimeById.set(posId, closes[idx].fillTime);
+            }
+          }
+
+          // Opening order → SL/TP. Allow ±2 min tolerance around the
+          // position's createTime to absorb minor clock skew.
+          const opens = pool[sym]?.[openSide];
+          if (opens) {
+            const TOL = 2 * 60 * 1000;
+            let bestIdx = -1;
+            let bestDelta = Infinity;
+            for (let i = 0; i < opens.length; i++) {
+              const o = opens[i];
+              if (o.used) continue;
+              const d = Math.abs(o.fillTime - openMs);
+              if (d <= TOL && d < bestDelta) { bestDelta = d; bestIdx = i; }
+            }
+            if (bestIdx >= 0) {
+              opens[bestIdx].used = true;
+              slTpById.set(posId, { sl: opens[bestIdx].sl, tp: opens[bestIdx].tp });
+            }
           }
         }
 
@@ -2724,8 +2759,11 @@ ${pad('Lev', `${pnlSign}${pnlPctLev}%`)}` : ''}` : ''}</code>
               : entryDate;
           const posType = p.positionType ?? p.position_type;
           const fees = Math.abs(parseFloat(p.fee || p.fees || p.closeFee || p.close_fee || p.holdFee || p.totalFee || 0) || 0);
-          const slMexc = parseFloat(p.stopLossPrice || p.stop_loss_price || 0) || 0;
-          const tpMexc = parseFloat(p.takeProfitPrice || p.take_profit_price || 0) || 0;
+          // Prefer SL/TP captured from the opening order; fall back to any
+          // values that happened to live on the position object itself.
+          const slTp = slTpById.get(posId) || {};
+          const slMexc = (slTp.sl > 0 ? slTp.sl : parseFloat(p.stopLossPrice || p.stop_loss_price || 0)) || 0;
+          const tpMexc = (slTp.tp > 0 ? slTp.tp : parseFloat(p.takeProfitPrice || p.take_profit_price || 0)) || 0;
           return {
             pair: sym.replace(/_/g, ''),
             direction: posType === 1 ? 'long' : 'short',
