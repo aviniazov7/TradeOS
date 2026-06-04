@@ -724,11 +724,15 @@ function mainMenuKeyboard() {
 
 // ==================== Command Handlers ====================
 
-async function handleStart(env, chatId, text) {
+async function handleStart(env, chatId, text, username = null) {
   const uid = text.split(' ')[1] || null;
   if (uid) {
-    await env.ALERTS_KV.put(`user:${chatId}`, JSON.stringify({ uid, chatId, connectedAt: new Date().toISOString() }));
+    await env.ALERTS_KV.put(`user:${chatId}`, JSON.stringify({ uid, chatId, username, connectedAt: new Date().toISOString() }));
     await env.ALERTS_KV.put(`uid:${uid}`, String(chatId));
+    // Store the @username (if any) so the "open chat" link in dev notifications
+    // can use https://t.me/<username>, which actually opens a chat (unlike
+    // tg://user?id=, which Telegram can't resolve from an id alone).
+    if (username) await env.ALERTS_KV.put(`tgusername:${chatId}`, username);
     const welcome =
       '🤖 <b>ברוך הבא ל-TradeOS Bot!</b>\n\n' +
       '💰 <b>מחירים</b> — ווצ\'ליסט אישי עם מחירים חיים\n' +
@@ -1329,8 +1333,16 @@ async function handleWebhook(request, env) {
     if (!message) return new Response('OK');
     const chatId = message.chat.id;
     const text = (message.text || '').trim();
+    const username = message.from?.username || null;
+    // Backfill the @username for already-connected users (any message), so the
+    // dev's "open chat" link works without them re-running /start. One write
+    // per user (skipped once stored).
+    if (username) {
+      const uk = `tgusername:${chatId}`;
+      if ((await env.ALERTS_KV.get(uk)) !== username) await env.ALERTS_KV.put(uk, username);
+    }
 
-    if (text.startsWith('/start')) await handleStart(env, chatId, text);
+    if (text.startsWith('/start')) await handleStart(env, chatId, text, username);
     else if (!(await requireAuth(env, chatId))) { /* silent */ }
     else if (text === '/prices') await handlePrices(env, chatId);
     else if (text === '/alerts') await handleAlerts(env, chatId);
@@ -2003,11 +2015,13 @@ async function handleContact(request, env, cors) {
       );
     }
 
-    // Look up user's Telegram chatId (if connected)
+    // Look up user's Telegram chatId + @username (if connected)
     let userChatId = null;
+    let userUsername = null;
     try {
       const stored = await env.ALERTS_KV.get(`uid:${uid}`);
       if (stored) userChatId = stored;
+      if (userChatId) userUsername = await env.ALERTS_KV.get(`tgusername:${userChatId}`);
     } catch { /* ignore */ }
 
     // Optional display info from client (not trusted for security, just UI)
@@ -2017,9 +2031,16 @@ async function handleContact(request, env, cors) {
     const name = escapeHtml(clientName || tokenName || 'משתמש ללא שם');
     const mail = escapeHtml(tokenEmail || '—');
     const safeUid = escapeHtml(uid);
-    const telegramLine = userChatId
-      ? `<a href="tg://user?id=${escapeHtml(userChatId)}">פתח שיחה</a> (ID: <code>${escapeHtml(userChatId)}</code>)`
-      : 'לא מחובר';
+    // Prefer a t.me/<username> link (always opens a chat). Fall back to the
+    // tg://user?id= deep link + raw id when the user has no @username.
+    let telegramLine;
+    if (userUsername) {
+      telegramLine = `<a href="https://t.me/${escapeHtml(userUsername)}">פתח שיחה 💬</a> (@${escapeHtml(userUsername)})`;
+    } else if (userChatId) {
+      telegramLine = `<a href="tg://user?id=${escapeHtml(userChatId)}">פתח שיחה 💬</a> (ID: <code>${escapeHtml(userChatId)}</code>) — ללא שם משתמש, ייתכן שלא ייפתח`;
+    } else {
+      telegramLine = 'לא מחובר';
+    }
     const safeBody = escapeHtml(message);
 
     const text =
