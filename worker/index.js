@@ -2761,12 +2761,32 @@ ${pad('Lev', `${pnlSign}${pnlPctLev}%`)}` : ''}` : ''}</code>
     if (!env.MORALIS_API_KEY) return new Response(JSON.stringify({ ok: false, error: 'מעקב ארנקים לא מוגדר בשרת' }), { status: 400, headers: { ...cors, 'Content-Type': 'application/json' } });
     try {
       const { address } = await request.json().catch(() => ({}));
-      const isEvm = /^0x[a-fA-F0-9]{40}$/.test(address || '');
-      const isSol = !isEvm && /^[1-9A-HJ-NP-Za-km-z]{32,44}$/.test(address || '');
-      if (!isEvm && !isSol) {
-        return new Response(JSON.stringify({ ok: false, error: 'כתובת ארנק לא תקינה (EVM 0x... או Solana)' }), { status: 400, headers: { ...cors, 'Content-Type': 'application/json' } });
+      const a = address || '';
+      const isEvm = /^0x[a-fA-F0-9]{40}$/.test(a);
+      // Bitcoin: bech32 (bc1…) or legacy/P2SH (1…/3…, ≤35 chars). Checked
+      // before Solana since legacy BTC and Solana both use base58 — length
+      // disambiguates (Solana keys are 40–44 chars).
+      const isBtc = /^bc1[a-z0-9]{25,62}$/.test(a) || /^[13][a-km-zA-HJ-NP-Z1-9]{25,34}$/.test(a);
+      const isSol = !isEvm && !isBtc && /^[1-9A-HJ-NP-Za-km-z]{40,44}$/.test(a);
+      if (!isEvm && !isBtc && !isSol) {
+        return new Response(JSON.stringify({ ok: false, error: 'כתובת ארנק לא תקינה (EVM / Solana / Bitcoin)' }), { status: 400, headers: { ...cors, 'Content-Type': 'application/json' } });
       }
       const mHeaders = { 'X-API-Key': env.MORALIS_API_KEY, accept: 'application/json' };
+
+      // ---- Bitcoin (mempool.space for balance + Binance for price) ----
+      if (isBtc) {
+        const r = await fetch(`https://mempool.space/api/address/${a}`);
+        if (!r.ok) return new Response(JSON.stringify({ ok: false, error: `Bitcoin lookup failed (${r.status})` }), { status: 400, headers: { ...cors, 'Content-Type': 'application/json' } });
+        const d = await r.json().catch(() => ({}));
+        const cs = d.chain_stats || {}; const ms = d.mempool_stats || {};
+        const sats = (cs.funded_txo_sum || 0) - (cs.spent_txo_sum || 0) + (ms.funded_txo_sum || 0) - (ms.spent_txo_sum || 0);
+        const btc = sats / 1e8;
+        let price = 0;
+        try { const pr = await fetch('https://api.binance.com/api/v3/ticker/price?symbol=BTCUSDT'); price = parseFloat((await pr.json()).price) || 0; } catch { /* price optional */ }
+        const usd = btc * price;
+        const tokens = btc > 0 ? [{ symbol: 'BTC', name: 'Bitcoin', usd, amount: btc, chain: 'bitcoin', logo: null }] : [];
+        return new Response(JSON.stringify({ ok: true, totalUsd: usd, chains: usd > 0 ? [{ chain: 'bitcoin', usd }] : [], tokens }), { headers: { ...cors, 'Content-Type': 'application/json' } });
+      }
 
       // ---- Solana ----
       if (isSol) {

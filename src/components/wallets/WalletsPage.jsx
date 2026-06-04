@@ -13,14 +13,14 @@ import { pageVariants, pageTransition } from '../../utils/animations';
 const CHAIN_LABELS = {
   eth: 'Ethereum', bsc: 'BNB Chain', polygon: 'Polygon', arbitrum: 'Arbitrum',
   base: 'Base', optimism: 'Optimism', avalanche: 'Avalanche', fantom: 'Fantom',
-  solana: 'Solana',
+  solana: 'Solana', bitcoin: 'Bitcoin',
 };
 // DefiLlama hosts free chain icons under their canonical slug. Map our worker's
 // chain keys to those slugs so we can render a 16-20px logo next to the label.
 const CHAIN_ICON_SLUG = {
   eth: 'ethereum', bsc: 'bsc', polygon: 'polygon', arbitrum: 'arbitrum',
   base: 'base', optimism: 'optimism', avalanche: 'avalanche', fantom: 'fantom',
-  solana: 'solana',
+  solana: 'solana', bitcoin: 'bitcoin',
 };
 const chainLabel = (c) => CHAIN_LABELS[c] || c;
 const chainIcon = (c) => {
@@ -41,10 +41,11 @@ function ChainBadge({ chain, usd }) {
   );
 }
 
-// EVM (0x…) or Solana (base58) address.
+// EVM (0x…), Bitcoin (bc1…/1…/3…), or Solana (base58) address.
 const EVM_RE = /^0x[a-fA-F0-9]{40}$/;
-const SOL_RE = /^[1-9A-HJ-NP-Za-km-z]{32,44}$/;
-const isValidAddress = (a) => EVM_RE.test(a) || SOL_RE.test(a);
+const BTC_RE = /^(bc1[a-z0-9]{25,62}|[13][a-km-zA-HJ-NP-Z1-9]{25,34})$/;
+const SOL_RE = /^[1-9A-HJ-NP-Za-km-z]{40,44}$/;
+const isValidAddress = (a) => EVM_RE.test(a) || BTC_RE.test(a) || SOL_RE.test(a);
 
 export default function WalletsPage() {
   const { user, isPremium } = useAuth();
@@ -87,7 +88,7 @@ export default function WalletsPage() {
   const addWallet = async () => {
     const addr = address.trim();
     if (!isValidAddress(addr)) {
-      toast.error('כתובת ארנק לא תקינה (EVM 0x... או Solana)');
+      toast.error('כתובת ארנק לא תקינה (EVM / Solana / Bitcoin)');
       return;
     }
     if (wallets.some((w) => w.address.toLowerCase() === addr.toLowerCase())) {
@@ -143,7 +144,7 @@ export default function WalletsPage() {
                 <X className="w-4 h-4" />
               </button>
             </div>
-            <input value={address} onChange={(e) => setAddress(e.target.value)} placeholder="כתובת ארנק — EVM (0x...) או Solana" dir="ltr"
+            <input value={address} onChange={(e) => setAddress(e.target.value)} placeholder="כתובת ארנק — EVM / Solana / Bitcoin" dir="ltr"
               className="w-full bg-bg-tertiary border border-border-primary rounded-lg px-3 py-2.5 text-sm text-text-primary outline-none focus:border-accent-primary transition-colors font-mono" />
             <input value={label} onChange={(e) => setLabel(e.target.value)} placeholder="כינוי (לא חובה) — לדוגמה: ארנק קר"
               className="w-full bg-bg-tertiary border border-border-primary rounded-lg px-3 py-2.5 text-sm text-text-primary outline-none focus:border-accent-primary transition-colors" />
@@ -248,7 +249,7 @@ export default function WalletsPage() {
         })}
 
         <div className="flex items-center justify-center gap-1.5 text-[11px] text-text-muted pt-2">
-          <ExternalLink className="w-3 h-3" /> נתונים מסופקים ע"י Moralis · רשתות EVM + Solana
+          <ExternalLink className="w-3 h-3" /> רשתות EVM + Solana + Bitcoin · Moralis & mempool.space
         </div>
       </div>
     </motion.div>
