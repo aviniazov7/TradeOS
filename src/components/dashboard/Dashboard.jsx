@@ -4,7 +4,7 @@ import { motion, AnimatePresence } from 'framer-motion';
 import {
   Wallet, BookOpen, FlaskConical, ClipboardList, Target, AlertCircle, Trash2, Undo2,
   TrendingUp, DollarSign, Coins, Brain, Sunrise, Moon, CheckCircle2, Clock, ChevronDown, Eye, EyeOff,
-  Activity, Newspaper, ExternalLink,
+  Activity, Newspaper, ExternalLink, Flame, Award, TrendingDown, CalendarDays, LineChart,
 } from 'lucide-react';
 import toast from 'react-hot-toast';
 import { useTrades } from '../../hooks/useTrades';
@@ -24,6 +24,30 @@ import { EXCHANGES, MENTALITY_EMOTIONS } from '../../utils/constants';
 import { pageVariants, pageTransition, staggerContainer } from '../../utils/animations';
 
 const cardVariants = { initial: { opacity: 0, y: 10 }, animate: { opacity: 1, y: 0 } };
+
+// Lightweight inline equity sparkline — no chart dependency, scales to width.
+function Sparkline({ data, positive }) {
+  if (!data || data.length < 2) {
+    return <div className="h-10 flex items-center text-[11px] text-text-muted">אין מספיק נתונים</div>;
+  }
+  const w = 100, h = 32;
+  const min = Math.min(...data, 0);
+  const max = Math.max(...data, 0);
+  const range = max - min || 1;
+  const pts = data.map((v, i) => {
+    const x = (i / (data.length - 1)) * w;
+    const y = h - ((v - min) / range) * h;
+    return `${x.toFixed(1)},${y.toFixed(1)}`;
+  }).join(' ');
+  const zeroY = h - ((0 - min) / range) * h;
+  const stroke = positive ? '#22c55e' : '#ef4444';
+  return (
+    <svg viewBox={`0 0 ${w} ${h}`} preserveAspectRatio="none" className="w-full h-10 text-text-muted">
+      <line x1="0" x2={w} y1={zeroY} y2={zeroY} stroke="currentColor" strokeOpacity="0.2" strokeWidth="0.5" strokeDasharray="2 2" />
+      <polyline points={pts} fill="none" stroke={stroke} strokeWidth="1.6" strokeLinejoin="round" strokeLinecap="round" />
+    </svg>
+  );
+}
 
 const getExchangeLabel = (value) => EXCHANGES.find((e) => e.value === value)?.label || value;
 
@@ -215,6 +239,64 @@ export default function Dashboard() {
     return { totalInvested, totalEntries, activeCount, coins };
   }, [dcaPlans]);
 
+  // Extra insight widgets — equity curve, streak, this-month, best/worst, top pair/session.
+  const extraStats = useMemo(() => {
+    const journalIds = new Set(journals.map((j) => j.id));
+    const closed = allTrades
+      .filter((t) => !t.journalId || journalIds.has(t.journalId))
+      .filter((t) => t.status === 'closed' || (parseFloat(t.exitPrice) > 0 && t.status !== 'partial'));
+    const pnlOf = (t) => (t.netPnl ?? t.pnl ?? 0);
+    const tradeMs = (t) => {
+      const d = t.exitDate || t.entryDate || t.createdAt;
+      if (!d) return 0;
+      if (typeof d?.toDate === 'function') return d.toDate().getTime();
+      if (typeof d === 'number') return d;
+      const ms = new Date(d).getTime();
+      return Number.isNaN(ms) ? 0 : ms;
+    };
+    const sorted = [...closed].sort((a, b) => tradeMs(a) - tradeMs(b));
+
+    let cum = 0;
+    const equity = sorted.map((t) => (cum += pnlOf(t)));
+
+    // current win/loss streak, walking back from the latest trade
+    let streak = 0; let streakWin = null;
+    for (let i = sorted.length - 1; i >= 0; i--) {
+      const win = pnlOf(sorted[i]) >= 0;
+      if (streakWin === null) { streakWin = win; streak = 1; }
+      else if (win === streakWin) streak++;
+      else break;
+    }
+
+    const now = new Date();
+    const monthStart = new Date(now.getFullYear(), now.getMonth(), 1).getTime();
+    const monthTrades = sorted.filter((t) => tradeMs(t) >= monthStart);
+    const monthPnl = monthTrades.reduce((s, t) => s + pnlOf(t), 0);
+
+    let best = null; let worst = null;
+    for (const t of closed) {
+      if (best === null || pnlOf(t) > pnlOf(best)) best = t;
+      if (worst === null || pnlOf(t) < pnlOf(worst)) worst = t;
+    }
+
+    const pairCount = {};
+    for (const t of closed) { const p = t.pair || t.symbol; if (p) pairCount[p] = (pairCount[p] || 0) + 1; }
+    const topPair = Object.entries(pairCount).sort((a, b) => b[1] - a[1])[0];
+
+    const sessionPnl = {};
+    for (const t of closed) { if (t.session) sessionPnl[t.session] = (sessionPnl[t.session] || 0) + pnlOf(t); }
+    const bestSession = Object.entries(sessionPnl).sort((a, b) => b[1] - a[1])[0];
+
+    return {
+      equity, count: closed.length,
+      streak, streakWin,
+      monthPnl, monthCount: monthTrades.length,
+      best, worst, bestPnl: best ? pnlOf(best) : 0, worstPnl: worst ? pnlOf(worst) : 0,
+      topPair: topPair?.[0], topPairCount: topPair?.[1] || 0,
+      bestSession: bestSession?.[0], bestSessionPnl: bestSession?.[1] || 0,
+    };
+  }, [allTrades, journals]);
+
   if (loading) return <DashboardSkeleton />;
 
   const cardClass = 'bg-bg-secondary border border-border-primary rounded-xl p-5';
@@ -318,6 +400,94 @@ export default function Dashboard() {
           )}
         </motion.div>
       </motion.div>
+
+      {/* Insight widgets */}
+      {extraStats.count > 0 && (
+        <motion.div className="grid grid-cols-2 lg:grid-cols-4 gap-3 mb-6" variants={staggerContainer} initial="initial" animate="animate">
+          {/* Equity curve */}
+          <motion.div className={`${cardClass} col-span-2`} variants={cardVariants}>
+            <div className="flex items-center justify-between mb-2">
+              <div className="flex items-center gap-2">
+                <LineChart className="w-4 h-4 text-accent-primary" />
+                <span className="text-xs text-text-muted">עקומת הון (P&L מצטבר)</span>
+              </div>
+              <span className={`text-sm font-bold ${pnlColor(extraStats.equity[extraStats.equity.length - 1] || 0)}`}>
+                {m(formatCurrency(extraStats.equity[extraStats.equity.length - 1] || 0))}
+              </span>
+            </div>
+            <Sparkline data={extraStats.equity} positive={(extraStats.equity[extraStats.equity.length - 1] || 0) >= 0} />
+          </motion.div>
+
+          {/* Current streak */}
+          <motion.div className={cardClass} variants={cardVariants}>
+            <div className="flex items-center gap-2 mb-2">
+              <Flame className={`w-4 h-4 ${extraStats.streakWin ? 'text-profit' : 'text-loss'}`} />
+              <span className="text-xs text-text-muted">רצף נוכחי</span>
+            </div>
+            <span className={`text-xl font-bold ${extraStats.streakWin ? 'text-profit' : 'text-loss'}`}>
+              {extraStats.streak} {extraStats.streakWin ? 'רווחים' : 'הפסדים'}
+            </span>
+          </motion.div>
+
+          {/* This month */}
+          <motion.div className={cardClass} variants={cardVariants}>
+            <div className="flex items-center gap-2 mb-2">
+              <CalendarDays className="w-4 h-4 text-accent-primary" />
+              <span className="text-xs text-text-muted">החודש</span>
+            </div>
+            <span className={`text-xl font-bold ${pnlColor(extraStats.monthPnl)}`}>{m(formatCurrency(extraStats.monthPnl))}</span>
+            <span className="text-[11px] text-text-muted block mt-0.5">{extraStats.monthCount} עסקאות</span>
+          </motion.div>
+
+          {/* Best trade */}
+          <motion.div className={cardClass} variants={cardVariants}>
+            <div className="flex items-center gap-2 mb-2">
+              <Award className="w-4 h-4 text-profit" />
+              <span className="text-xs text-text-muted">העסקה הטובה</span>
+            </div>
+            <span className="text-xl font-bold text-profit">{m(formatCurrency(extraStats.bestPnl))}</span>
+            {extraStats.best?.pair && <span className="text-[11px] text-text-muted block mt-0.5">{extraStats.best.pair}</span>}
+          </motion.div>
+
+          {/* Worst trade */}
+          <motion.div className={cardClass} variants={cardVariants}>
+            <div className="flex items-center gap-2 mb-2">
+              <TrendingDown className="w-4 h-4 text-loss" />
+              <span className="text-xs text-text-muted">העסקה הגרועה</span>
+            </div>
+            <span className="text-xl font-bold text-loss">{m(formatCurrency(extraStats.worstPnl))}</span>
+            {extraStats.worst?.pair && <span className="text-[11px] text-text-muted block mt-0.5">{extraStats.worst.pair}</span>}
+          </motion.div>
+
+          {/* Top pair */}
+          <motion.div className={cardClass} variants={cardVariants}>
+            <div className="flex items-center gap-2 mb-2">
+              <Coins className="w-4 h-4 text-accent-primary" />
+              <span className="text-xs text-text-muted">מטבע מוביל</span>
+            </div>
+            {extraStats.topPair ? (
+              <>
+                <span className="text-xl font-bold text-text-primary">{extraStats.topPair}</span>
+                <span className="text-[11px] text-text-muted block mt-0.5">{extraStats.topPairCount} עסקאות</span>
+              </>
+            ) : <span className="text-sm text-text-muted">—</span>}
+          </motion.div>
+
+          {/* Best session */}
+          <motion.div className={cardClass} variants={cardVariants}>
+            <div className="flex items-center gap-2 mb-2">
+              <Clock className="w-4 h-4 text-accent-primary" />
+              <span className="text-xs text-text-muted">סשן מוביל</span>
+            </div>
+            {extraStats.bestSession ? (
+              <>
+                <span className="text-base font-bold text-text-primary">{extraStats.bestSession}</span>
+                <span className={`text-[11px] block mt-0.5 ${pnlColor(extraStats.bestSessionPnl)}`}>{m(formatCurrency(extraStats.bestSessionPnl))}</span>
+              </>
+            ) : <span className="text-sm text-text-muted">—</span>}
+          </motion.div>
+        </motion.div>
+      )}
 
       {/* Journals overview */}
       <div className={`${cardClass} mb-6`}>
