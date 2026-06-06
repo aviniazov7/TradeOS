@@ -356,8 +356,11 @@ export default function AIChat() {
               <>
                 <div className="fixed inset-0 z-40 bg-black/40" onClick={() => setHistoryOpen(false)} />
                 <div
-                  className="absolute top-full left-0 mt-2 w-72 border border-border-primary rounded-xl shadow-2xl z-50 overflow-hidden bg-bg-overlay"
-                  style={{ backdropFilter: 'blur(20px)', WebkitBackdropFilter: 'blur(20px)' }}
+                  className="absolute top-full left-0 mt-2 w-72 border border-border-primary rounded-xl shadow-2xl z-50 overflow-hidden"
+                  // Inline a fully opaque background — the themed CSS var
+                  // bg-bg-overlay is only 88% opaque (glassmorphism), which
+                  // still lets the chat content behind bleed through.
+                  style={{ backgroundColor: '#0a0e16' }}
                 >
                   <div className="px-3 py-2 text-[11px] text-text-muted border-b border-border-primary/50">
                     {conversations.length === 0 ? 'אין שיחות שמורות' : `${conversations.length} שיחות אחרונות (עד ${MAX_CONVERSATIONS})`}
