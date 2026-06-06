@@ -1927,19 +1927,27 @@ async function handleAIChat(request, env, cors) {
       if (!gemRes.ok) {
         const errText = await gemRes.text().catch(() => '');
         console.error('Gemini API error:', gemRes.status, errText);
-        // Fall back to Groq on any Gemini failure (404 model name, 401 bad key,
-        // 5xx upstream) so premium users keep getting answers instead of an
-        // error toast while we investigate.
-        const groqFallback = await fetch(GROQ_URL, {
+        // Fall back to Groq. Retry once with a short delay if it also 429s —
+        // the free-tier shared-key quotas on both providers are tight, so a
+        // single retry typically clears it instead of failing the whole turn.
+        const callGroq = () => fetch(GROQ_URL, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${env.GROQ_API_KEY}` },
           body: JSON.stringify({ model: GROQ_MODEL, messages: apiMessages, temperature: 0.7, max_tokens: 2048, stream: true }),
         });
+        let groqFallback = await callGroq();
+        if (!groqFallback.ok && groqFallback.status === 429) {
+          await new Promise((r) => setTimeout(r, 1500));
+          groqFallback = await callGroq();
+        }
         if (groqFallback.ok) return new Response(groqFallback.body, { headers: sseHeaders });
         const fbErrText = await groqFallback.text().catch(() => '');
         console.error('Groq fallback also failed:', groqFallback.status, fbErrText);
+        const friendly = (gemRes.status === 429 || groqFallback.status === 429)
+          ? 'שני ספקי ה-AI עמוסים. המתן 10–20 שניות ונסה שוב.'
+          : `שגיאת AI: ${gemRes.status}/${groqFallback.status}`;
         return new Response(JSON.stringify({
-          error: gemRes.status === 429 ? 'ספק ה-AI עמוס כרגע, נסה שוב בעוד רגע' : `שגיאת AI: ${gemRes.status}`,
+          error: friendly,
           gemini: gemRes.status,
           groq: groqFallback.status,
         }), { status: 502, headers: { ...cors, 'Content-Type': 'application/json' } });

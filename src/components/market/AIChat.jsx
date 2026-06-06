@@ -1,4 +1,5 @@
 import { useState, useEffect, useRef } from 'react';
+import { createPortal } from 'react-dom';
 import { motion, AnimatePresence } from 'framer-motion';
 import { Bot, Send, RotateCcw, User, Sparkles, BarChart3, History, Trash2, Crown } from 'lucide-react';
 import DOMPurify from 'dompurify';
@@ -140,6 +141,33 @@ export default function AIChat() {
   const [conversations, setConversations] = useState(() => loadConversations());
   const [currentConvId, setCurrentConvId] = useState(null);
   const [historyOpen, setHistoryOpen] = useState(false);
+  const historyBtnRef = useRef(null);
+  const [historyPos, setHistoryPos] = useState(null); // { top, left, width }
+
+  // Recalculate dropdown position when it opens (and on resize/scroll). We
+  // render the menu in a portal at document.body so no parent stacking
+  // context or clip-path can ever hide it or leak content through it.
+  useEffect(() => {
+    if (!historyOpen) { setHistoryPos(null); return; }
+    const place = () => {
+      const el = historyBtnRef.current;
+      if (!el) return;
+      const r = el.getBoundingClientRect();
+      const W = 288; // w-72
+      setHistoryPos({
+        top: r.bottom + 8,
+        left: Math.max(8, Math.min(window.innerWidth - W - 8, r.left)),
+        width: W,
+      });
+    };
+    place();
+    window.addEventListener('resize', place);
+    window.addEventListener('scroll', place, true);
+    return () => {
+      window.removeEventListener('resize', place);
+      window.removeEventListener('scroll', place, true);
+    };
+  }, [historyOpen]);
 
   // On mount: open the most recent conversation if any, otherwise show welcome.
   useEffect(() => {
@@ -332,6 +360,7 @@ export default function AIChat() {
           </div>
           <div className="flex items-center gap-2 relative">
             <button
+              ref={historyBtnRef}
               onClick={() => setHistoryOpen((v) => !v)}
               className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs text-text-muted hover:text-text-primary hover:bg-bg-tertiary transition-colors cursor-pointer border border-border-primary"
               title="היסטוריית שיחות"
@@ -352,49 +381,51 @@ export default function AIChat() {
               שיחה חדשה
             </button>
 
-            {historyOpen && (
-              <>
-                <div className="fixed inset-0 z-40 bg-black/40" onClick={() => setHistoryOpen(false)} />
-                <div
-                  className="absolute top-full left-0 mt-2 w-72 border border-border-primary rounded-xl shadow-2xl z-50 overflow-hidden"
-                  // Inline a fully opaque background — the themed CSS var
-                  // bg-bg-overlay is only 88% opaque (glassmorphism), which
-                  // still lets the chat content behind bleed through.
-                  style={{ backgroundColor: '#0a0e16' }}
-                >
-                  <div className="px-3 py-2 text-[11px] text-text-muted border-b border-border-primary/50">
-                    {conversations.length === 0 ? 'אין שיחות שמורות' : `${conversations.length} שיחות אחרונות (עד ${MAX_CONVERSATIONS})`}
-                  </div>
-                  <div className="max-h-80 overflow-y-auto">
-                    {conversations.map((c) => (
-                      <div
-                        key={c.id}
-                        onClick={() => loadConversation(c.id)}
-                        className={`group flex items-center gap-2 px-3 py-2 cursor-pointer hover:bg-bg-tertiary transition-colors ${
-                          c.id === currentConvId ? 'bg-accent-primary/10' : ''
-                        }`}
-                      >
-                        <div className="flex-1 min-w-0">
-                          <div className="text-xs text-text-primary truncate">{c.title}</div>
-                          <div className="text-[10px] text-text-muted">
-                            {new Date(c.updatedAt).toLocaleString('he-IL', { day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' })}
-                          </div>
-                        </div>
-                        <button
-                          onClick={(e) => deleteConversation(c.id, e)}
-                          className="p-1 rounded text-text-muted hover:text-loss opacity-0 group-hover:opacity-100 transition-opacity"
-                          title="מחק שיחה"
-                        >
-                          <Trash2 className="w-3.5 h-3.5" />
-                        </button>
-                      </div>
-                    ))}
-                  </div>
-                </div>
-              </>
-            )}
           </div>
         </div>
+
+        {/* History dropdown — rendered in a portal at document.body so no
+            parent stacking context, transform, or overflow can clip it or
+            leak content through it. */}
+        {historyOpen && historyPos && createPortal(
+          <>
+            <div className="fixed inset-0 z-[9998] bg-black/50" onClick={() => setHistoryOpen(false)} />
+            <div
+              className="fixed z-[9999] border border-border-primary rounded-xl shadow-2xl overflow-hidden"
+              style={{ top: historyPos.top, left: historyPos.left, width: historyPos.width, backgroundColor: '#0a0e16' }}
+            >
+              <div className="px-3 py-2 text-[11px] text-text-muted border-b border-border-primary/50">
+                {conversations.length === 0 ? 'אין שיחות שמורות' : `${conversations.length} שיחות אחרונות (עד ${MAX_CONVERSATIONS})`}
+              </div>
+              <div className="max-h-80 overflow-y-auto">
+                {conversations.map((c) => (
+                  <div
+                    key={c.id}
+                    onClick={() => loadConversation(c.id)}
+                    className={`group flex items-center gap-2 px-3 py-2 cursor-pointer hover:bg-bg-tertiary transition-colors ${
+                      c.id === currentConvId ? 'bg-accent-primary/10' : ''
+                    }`}
+                  >
+                    <div className="flex-1 min-w-0">
+                      <div className="text-xs text-text-primary truncate">{c.title}</div>
+                      <div className="text-[10px] text-text-muted">
+                        {new Date(c.updatedAt).toLocaleString('he-IL', { day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' })}
+                      </div>
+                    </div>
+                    <button
+                      onClick={(e) => deleteConversation(c.id, e)}
+                      className="p-1 rounded text-text-muted hover:text-loss opacity-0 group-hover:opacity-100 transition-opacity"
+                      title="מחק שיחה"
+                    >
+                      <Trash2 className="w-3.5 h-3.5" />
+                    </button>
+                  </div>
+                ))}
+              </div>
+            </div>
+          </>,
+          document.body,
+        )}
 
         {/* Messages */}
         <div className="flex-1 overflow-y-auto px-4 py-4 space-y-4">
