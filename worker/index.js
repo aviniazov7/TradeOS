@@ -1542,7 +1542,9 @@ const GROQ_MODEL = 'llama-3.3-70b-versatile';
 
 // Gemini 1.5 Flash — used for premium users. Cheap, huge context window, and
 // produces noticeably better Hebrew than Groq's Llama.
-const GEMINI_MODEL = 'gemini-1.5-flash';
+// gemini-2.0-flash is the current stable production alias. 1.5-flash is being
+// retired and was returning 404 on the v1beta endpoint for new requests.
+const GEMINI_MODEL = 'gemini-2.0-flash';
 const GEMINI_STREAM_URL = (key) =>
   `https://generativelanguage.googleapis.com/v1beta/models/${GEMINI_MODEL}:streamGenerateContent?alt=sse&key=${encodeURIComponent(key)}`;
 
@@ -1923,7 +1925,7 @@ async function handleAIChat(request, env, cors) {
         body: JSON.stringify(toGeminiBody(apiMessages)),
       });
       if (!gemRes.ok) {
-        const errText = await gemRes.text();
+        const errText = await gemRes.text().catch(() => '');
         console.error('Gemini API error:', gemRes.status, errText);
         // Fall back to Groq on any Gemini failure (404 model name, 401 bad key,
         // 5xx upstream) so premium users keep getting answers instead of an
@@ -1934,7 +1936,13 @@ async function handleAIChat(request, env, cors) {
           body: JSON.stringify({ model: GROQ_MODEL, messages: apiMessages, temperature: 0.7, max_tokens: 2048, stream: true }),
         });
         if (groqFallback.ok) return new Response(groqFallback.body, { headers: sseHeaders });
-        return new Response(JSON.stringify({ error: gemRes.status === 429 ? 'ספק ה-AI עמוס כרגע, נסה שוב בעוד רגע' : `שגיאת AI: ${gemRes.status}` }), { status: 502, headers: { ...cors, 'Content-Type': 'application/json' } });
+        const fbErrText = await groqFallback.text().catch(() => '');
+        console.error('Groq fallback also failed:', groqFallback.status, fbErrText);
+        return new Response(JSON.stringify({
+          error: gemRes.status === 429 ? 'ספק ה-AI עמוס כרגע, נסה שוב בעוד רגע' : `שגיאת AI: ${gemRes.status}`,
+          gemini: gemRes.status,
+          groq: groqFallback.status,
+        }), { status: 502, headers: { ...cors, 'Content-Type': 'application/json' } });
       }
       return new Response(await geminiStreamToOpenAI(gemRes.body), { headers: sseHeaders });
     }
