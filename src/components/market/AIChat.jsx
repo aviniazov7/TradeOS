@@ -354,8 +354,11 @@ export default function AIChat() {
 
             {historyOpen && (
               <>
-                <div className="fixed inset-0 z-40" onClick={() => setHistoryOpen(false)} />
-                <div className="absolute top-full left-0 mt-2 w-72 bg-bg-overlay border border-border-primary rounded-xl shadow-xl z-50 overflow-hidden">
+                <div className="fixed inset-0 z-40 bg-black/40" onClick={() => setHistoryOpen(false)} />
+                <div
+                  className="absolute top-full left-0 mt-2 w-72 border border-border-primary rounded-xl shadow-2xl z-50 overflow-hidden"
+                  style={{ background: 'var(--color-bg-secondary, #0f172a)', backdropFilter: 'blur(20px)', WebkitBackdropFilter: 'blur(20px)' }}
+                >
                   <div className="px-3 py-2 text-[11px] text-text-muted border-b border-border-primary/50">
                     {conversations.length === 0 ? 'אין שיחות שמורות' : `${conversations.length} שיחות אחרונות (עד ${MAX_CONVERSATIONS})`}
                   </div>
