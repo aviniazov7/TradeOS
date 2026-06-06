@@ -1540,6 +1540,67 @@ async function handleCron(env) {
 const GROQ_URL = 'https://api.groq.com/openai/v1/chat/completions';
 const GROQ_MODEL = 'llama-3.3-70b-versatile';
 
+// Gemini 1.5 Flash — used for premium users. Cheap, huge context window, and
+// produces noticeably better Hebrew than Groq's Llama.
+const GEMINI_MODEL = 'gemini-1.5-flash-latest';
+const GEMINI_STREAM_URL = (key) =>
+  `https://generativelanguage.googleapis.com/v1beta/models/${GEMINI_MODEL}:streamGenerateContent?alt=sse&key=${encodeURIComponent(key)}`;
+
+// Convert OpenAI-style chat messages to Gemini's REST payload shape. The system
+// prompt becomes systemInstruction; everything else maps role→Gemini role.
+function toGeminiBody(apiMessages) {
+  const system = apiMessages.find((m) => m.role === 'system')?.content || '';
+  const turns = apiMessages.filter((m) => m.role !== 'system');
+  return {
+    systemInstruction: system ? { parts: [{ text: system }] } : undefined,
+    contents: turns.map((m) => ({
+      role: m.role === 'assistant' ? 'model' : 'user',
+      parts: [{ text: m.content }],
+    })),
+    generationConfig: { temperature: 0.7, maxOutputTokens: 2048 },
+  };
+}
+
+// Stream Gemini SSE → forward as OpenAI-compatible SSE so the existing client
+// stream parser (looks for `data: …{delta.content}`) just works.
+async function geminiStreamToOpenAI(geminiBody) {
+  const reader = geminiBody.getReader();
+  const decoder = new TextDecoder();
+  const encoder = new TextEncoder();
+  let leftover = '';
+  return new ReadableStream({
+    async start(controller) {
+      const send = (text) => {
+        const chunk = { choices: [{ delta: { content: text } }] };
+        controller.enqueue(encoder.encode(`data: ${JSON.stringify(chunk)}\n\n`));
+      };
+      try {
+        while (true) {
+          const { value, done } = await reader.read();
+          if (done) break;
+          leftover += decoder.decode(value, { stream: true });
+          let nl;
+          while ((nl = leftover.indexOf('\n')) !== -1) {
+            const line = leftover.slice(0, nl).trim();
+            leftover = leftover.slice(nl + 1);
+            if (!line.startsWith('data:')) continue;
+            const payload = line.slice(5).trim();
+            if (!payload || payload === '[DONE]') continue;
+            try {
+              const obj = JSON.parse(payload);
+              const text = obj.candidates?.[0]?.content?.parts?.map((p) => p.text || '').join('') || '';
+              if (text) send(text);
+            } catch { /* skip malformed */ }
+          }
+        }
+      } finally {
+        controller.enqueue(encoder.encode('data: [DONE]\n\n'));
+        controller.close();
+      }
+    },
+  });
+}
+
 const WYCKOFF_SYSTEM_PROMPT = `אתה מנטור מסחר מקצועי ומומחה בשיטת ויקוף (Wyckoff Method). תפקידך לעזור לסוחרים להבין ולזהות דפוסי שוק, לנתח גרפים ולשפר את המסחר שלהם.
 
 ## מטרות הסוחר לפי ויקוף:
@@ -1845,7 +1906,31 @@ async function handleAIChat(request, env, cors) {
       })),
     ];
 
-    // Call Groq API with streaming
+    // Route by plan: premium → Gemini 1.5 Flash; free → Groq Llama.
+    // Both end up streaming OpenAI-compatible SSE so the client doesn't care
+    // which provider answered.
+    const sseHeaders = {
+      ...cors,
+      'Content-Type': 'text/event-stream',
+      'Cache-Control': 'no-cache',
+      Connection: 'keep-alive',
+    };
+
+    if (premium && env.GEMINI_API_KEY) {
+      const gemRes = await fetch(GEMINI_STREAM_URL(env.GEMINI_API_KEY), {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(toGeminiBody(apiMessages)),
+      });
+      if (!gemRes.ok) {
+        const errText = await gemRes.text();
+        console.error('Gemini API error:', gemRes.status, errText);
+        return new Response(JSON.stringify({ error: gemRes.status === 429 ? 'ספק ה-AI עמוס כרגע, נסה שוב בעוד רגע' : `שגיאת AI: ${gemRes.status}` }), { status: 502, headers: { ...cors, 'Content-Type': 'application/json' } });
+      }
+      return new Response(await geminiStreamToOpenAI(gemRes.body), { headers: sseHeaders });
+    }
+
+    // Free tier (or premium without a Gemini key configured) → Groq.
     const groqResponse = await fetch(GROQ_URL, {
       method: 'POST',
       headers: {
@@ -1867,15 +1952,7 @@ async function handleAIChat(request, env, cors) {
       return new Response(JSON.stringify({ error: groqResponse.status === 429 ? 'ספק ה-AI עמוס כרגע, נסה שוב בעוד רגע' : `שגיאת AI: ${groqResponse.status}` }), { status: 502, headers: { ...cors, 'Content-Type': 'application/json' } });
     }
 
-    // Stream SSE response back to client
-    return new Response(groqResponse.body, {
-      headers: {
-        ...cors,
-        'Content-Type': 'text/event-stream',
-        'Cache-Control': 'no-cache',
-        Connection: 'keep-alive',
-      },
-    });
+    return new Response(groqResponse.body, { headers: sseHeaders });
   } catch (err) {
     console.error('AI Chat error:', err);
     return new Response(JSON.stringify({ error: 'שגיאה פנימית' }), { status: 500, headers: { ...cors, 'Content-Type': 'application/json' } });

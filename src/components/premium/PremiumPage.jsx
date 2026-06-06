@@ -7,7 +7,7 @@ import { useAuth } from '../../contexts/AuthContext';
 import { PREMIUM_FEATURES, PREMIUM_PRICING } from '../../utils/constants';
 import { pageVariants, pageTransition } from '../../utils/animations';
 
-const ICONS = { Bot, BookOpen, Wallet, Link2, Bell, BarChart3 };
+const ICONS = { Bot, BookOpen, Wallet, Link2, Bell, BarChart3, Sparkles };
 
 export default function PremiumPage() {
   const { isPremium } = useAuth();

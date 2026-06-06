@@ -149,6 +149,7 @@ export const PREMIUM_PRICING = {
 
 // Marketing copy for the upgrade page (free vs premium comparison).
 export const PREMIUM_FEATURES = [
+  { icon: 'Sparkles', title: 'מודל AI מתקדם (Gemini)', free: 'בסיסי', premium: 'Gemini 1.5' },
   { icon: 'Bot', title: 'TradeAI ללא הגבלה', free: `${FREE_LIMITS.aiPerDay} ליום`, premium: 'ללא הגבלה' },
   { icon: 'BookOpen', title: 'יומני מסחר', free: `עד ${FREE_LIMITS.journals}`, premium: 'ללא הגבלה' },
   { icon: 'Wallet', title: 'ארנקים על-שרשרת', free: `עד ${FREE_LIMITS.wallets}`, premium: 'ללא הגבלה' },
