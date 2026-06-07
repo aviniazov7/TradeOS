@@ -16,6 +16,7 @@ import {
   getUserProfile,
   setUserProfile,
   setUserSetting,
+  subscribeToUserProfile,
   deleteUserProfile,
   deleteUserSubcollection,
   timestamp,
@@ -32,7 +33,13 @@ export function AuthProvider({ children }) {
     // Handle redirect result from PWA Google Sign-In
     handleRedirectResult().catch(() => {});
 
+    // Live profile subscription so admin-side updates (e.g. plan changes) show
+    // up in the user's UI within seconds. Re-bound on every auth change.
+    let profileUnsub = null;
+
     const unsubscribe = onAuthChange((firebaseUser) => {
+      // Drop any prior profile listener before opening a new one.
+      if (profileUnsub) { profileUnsub(); profileUnsub = null; }
       if (firebaseUser) {
         // Show the app immediately. Firebase already restored the session
         // from local persistence, so don't block the whole UI on a Firestore
@@ -69,16 +76,22 @@ export function AuthProvider({ children }) {
           .then(({ exists, data }) => {
             if (exists) {
               setProfile(data);
-              return;
+            } else {
+              setProfile(defaultProfile);
+              // On first sign-in: also pre-create the notifications setting so
+              // the toggle defaults to ON (the user still has to grant browser
+              // permission before pushes actually deliver, but the intent is
+              // set).
+              Promise.all([
+                setUserProfile(firebaseUser.uid, defaultProfile, false),
+                setUserSetting(firebaseUser.uid, 'notifications', { pushEnabled: true, tradeOpenAlerts: true }, true),
+              ]).catch(() => {});
             }
-            setProfile(defaultProfile);
-            // On first sign-in: also pre-create the notifications setting so the
-            // toggle defaults to ON (the user still has to grant browser
-            // permission before pushes actually deliver, but the intent is set).
-            return Promise.all([
-              setUserProfile(firebaseUser.uid, defaultProfile, false),
-              setUserSetting(firebaseUser.uid, 'notifications', { pushEnabled: true, tradeOpenAlerts: true }, true),
-            ]);
+            // Open a live subscription AFTER the initial load so future writes
+            // (e.g. admin granting Premium) refresh the UI without a reload.
+            profileUnsub = subscribeToUserProfile(firebaseUser.uid, (data) => {
+              setProfile(data);
+            });
           })
           .catch(() => {});
       } else {
@@ -88,7 +101,10 @@ export function AuthProvider({ children }) {
       }
     });
 
-    return unsubscribe;
+    return () => {
+      if (profileUnsub) profileUnsub();
+      unsubscribe();
+    };
   }, []);
 
   const loginWithGoogle = () => authLoginWithGoogle();

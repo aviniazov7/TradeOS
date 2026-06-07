@@ -122,6 +122,17 @@ export async function getUserProfile(uid) {
   return { exists: snap.exists(), data: snap.exists() ? snap.data() : null };
 }
 
+/**
+ * Subscribe to live profile changes. Used by AuthContext so that admin-side
+ * updates (e.g. granting Premium) reflect in the user's UI within seconds —
+ * no logout / refresh required.
+ */
+export function subscribeToUserProfile(uid, onData) {
+  return onSnapshot(doc(db, 'users', uid), (snap) => {
+    if (snap.exists()) onData(snap.data());
+  });
+}
+
 /** Create or update the user's main document */
 export async function setUserProfile(uid, data, merge = true) {
   return withRetry(() => setDoc(doc(db, 'users', uid), data, merge ? { merge: true } : undefined));
