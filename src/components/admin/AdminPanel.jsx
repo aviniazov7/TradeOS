@@ -338,36 +338,37 @@ export default function AdminPanel() {
 
   return (
     <div dir="rtl" className="max-w-6xl mx-auto space-y-6">
-      <div className="flex items-center justify-between gap-3 flex-wrap">
+      <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
         <h1 className="text-xl md:text-2xl font-bold text-text-primary">פאנל ניהול</h1>
-        <div className="flex items-center gap-2">
+        {/* On mobile: a 2×2 grid of equal-width buttons. On desktop: inline. */}
+        <div className="grid grid-cols-2 sm:flex sm:items-center gap-2">
           <button
             onClick={() => setAnalyticsOpen(true)}
-            className="flex items-center gap-2 px-3 py-2 rounded-lg text-sm font-medium bg-accent-primary/10 border border-accent-primary/30 text-accent-primary hover:bg-accent-primary/20 cursor-pointer"
+            className="flex items-center justify-center gap-2 px-3 py-2 rounded-lg text-sm font-medium bg-accent-primary/10 border border-accent-primary/30 text-accent-primary hover:bg-accent-primary/20 cursor-pointer"
           >
-            <BarChart3 className="w-4 h-4" />
+            <BarChart3 className="w-4 h-4 shrink-0" />
             אנליטיקס
           </button>
           <button
-            onClick={() => setAuditOpen(true)}
-            className="flex items-center gap-2 px-3 py-2 rounded-lg text-sm font-medium bg-bg-tertiary border border-border-primary text-text-secondary hover:text-text-primary cursor-pointer"
+            onClick={() => setCouponsOpen(true)}
+            className="flex items-center justify-center gap-2 px-3 py-2 rounded-lg text-sm font-medium bg-amber-500/15 border border-amber-500/30 text-amber-400 hover:bg-amber-500/20 cursor-pointer"
           >
-            <ScrollText className="w-4 h-4" />
-            יומן פעולות
+            <Ticket className="w-4 h-4 shrink-0" />
+            קופונים
           </button>
           <button
-            onClick={() => setCouponsOpen(true)}
-            className="flex items-center gap-2 px-3 py-2 rounded-lg text-sm font-medium bg-amber-500/15 border border-amber-500/30 text-amber-400 hover:bg-amber-500/20 cursor-pointer"
+            onClick={() => setAuditOpen(true)}
+            className="flex items-center justify-center gap-2 px-3 py-2 rounded-lg text-sm font-medium bg-bg-tertiary border border-border-primary text-text-secondary hover:text-text-primary cursor-pointer"
           >
-            <Ticket className="w-4 h-4" />
-            קופונים
+            <ScrollText className="w-4 h-4 shrink-0" />
+            יומן פעולות
           </button>
           <button
             onClick={load}
             disabled={loading}
-            className="flex items-center gap-2 px-3 py-2 rounded-lg text-sm font-medium bg-bg-tertiary border border-border-primary text-text-secondary hover:text-text-primary disabled:opacity-50 cursor-pointer"
+            className="flex items-center justify-center gap-2 px-3 py-2 rounded-lg text-sm font-medium bg-bg-tertiary border border-border-primary text-text-secondary hover:text-text-primary disabled:opacity-50 cursor-pointer"
           >
-            <RefreshCw className={`w-4 h-4 ${loading ? 'animate-spin' : ''}`} />
+            <RefreshCw className={`w-4 h-4 shrink-0 ${loading ? 'animate-spin' : ''}`} />
             רענן
           </button>
         </div>
@@ -431,31 +432,34 @@ export default function AdminPanel() {
             className="w-full bg-bg-tertiary border border-border-primary rounded-lg py-2.5 pr-10 pl-3 text-sm text-text-primary placeholder:text-text-secondary focus:outline-none focus:border-accent-primary"
           />
         </div>
-        <div className="md:w-48">
-          <SelectDropdown
-            value={roleFilter === 'all' ? '' : roleFilter}
-            onChange={(v) => setRoleFilter(v || 'all')}
-            options={[
-              { value: 'admin', label: 'אדמינים בלבד' },
-              { value: 'user', label: 'משתמשים בלבד' },
-              { value: 'premium', label: 'Premium בלבד' },
-              { value: 'free', label: 'חינמיים בלבד' },
-            ]}
-            placeholder="כל התפקידים"
-            allowClear
-          />
-        </div>
-        <div className="md:w-56">
-          <SelectDropdown
-            value={onboardFilter === 'all' ? '' : onboardFilter}
-            onChange={(v) => setOnboardFilter(v || 'all')}
-            options={[
-              { value: 'yes', label: 'סיימו אונבורדינג' },
-              { value: 'no', label: 'לא סיימו אונבורדינג' },
-            ]}
-            placeholder="כל הסטטוסים"
-            allowClear
-          />
+        {/* Role + status filters share one row on mobile. */}
+        <div className="grid grid-cols-2 gap-2 md:flex md:gap-3">
+          <div className="md:w-44">
+            <SelectDropdown
+              value={roleFilter === 'all' ? '' : roleFilter}
+              onChange={(v) => setRoleFilter(v || 'all')}
+              options={[
+                { value: 'admin', label: 'אדמינים בלבד' },
+                { value: 'user', label: 'משתמשים בלבד' },
+                { value: 'premium', label: 'Premium בלבד' },
+                { value: 'free', label: 'חינמיים בלבד' },
+              ]}
+              placeholder="כל התפקידים"
+              allowClear
+            />
+          </div>
+          <div className="md:w-52">
+            <SelectDropdown
+              value={onboardFilter === 'all' ? '' : onboardFilter}
+              onChange={(v) => setOnboardFilter(v || 'all')}
+              options={[
+                { value: 'yes', label: 'סיימו אונבורדינג' },
+                { value: 'no', label: 'לא סיימו אונבורדינג' },
+              ]}
+              placeholder="כל הסטטוסים"
+              allowClear
+            />
+          </div>
         </div>
         <button
           onClick={exportCsv}
@@ -666,7 +670,10 @@ export default function AdminPanel() {
                         <td className="px-4 py-3 text-text-secondary">{formatDate(u.createdAt)}</td>
                         <td className="px-4 py-3">
                           {(() => {
-                            const churn = u.role !== 'admin' && isUserPremium(u) && daysSinceActive(u) >= 7;
+                            // Only flag real churn in red: a Premium customer we
+                            // HAVE seen, who's now been gone 7+ days. "Never seen"
+                            // (no data yet) stays muted — it isn't churn.
+                            const churn = u.role !== 'admin' && isUserPremium(u) && lastActiveMs(u) > 0 && daysSinceActive(u) >= 7;
                             return (
                               <span className={`inline-flex items-center gap-1 ${churn ? 'text-loss' : lastActiveMs(u) ? 'text-text-secondary' : 'text-text-muted'}`}>
                                 <Clock className="w-3.5 h-3.5" />
@@ -891,8 +898,8 @@ function UserDetailModal({ user, onClose, onUserChanged }) {
   const strategies = Array.isArray(settings.strategies) ? settings.strategies : [];
 
   return (
-    <Modal isOpen={!!user} onClose={onClose} title="פרטי משתמש" maxWidth="max-w-lg">
-      <div className="space-y-5">
+    <Modal isOpen={!!user} onClose={onClose} title="פרטי משתמש" maxWidth="max-w-3xl">
+      <div className="space-y-4">
         {/* Header */}
         <div className="flex items-center gap-4">
           {user.photoURL ? (
@@ -1024,119 +1031,133 @@ function UserDetailModal({ user, onClose, onUserChanged }) {
           </div>
         )}
 
-        {/* Private admin note — only admins can see this (separate collection). */}
-        <div>
-          <div className="text-[11px] text-text-muted mb-2 flex items-center gap-1.5">
-            <StickyNote className="w-3.5 h-3.5 text-amber-400" /> הערה פרטית (רק אתה רואה)
-          </div>
-          <textarea
-            value={note}
-            onChange={(e) => setNote(e.target.value)}
-            placeholder='לדוגמה: "שילם בביט", "מבקש החזר", "חבר של דני"…'
-            rows={3}
-            maxLength={1000}
-            className="w-full bg-bg-tertiary/40 border border-border-primary rounded-lg px-3 py-2 text-sm text-text-primary placeholder:text-text-muted outline-none focus:border-amber-500/50 resize-none"
-          />
-          <div className="flex items-center justify-between mt-1.5">
-            <span className="text-[10px] text-text-muted">{note.trim() !== noteLoaded.trim() ? 'יש שינויים שלא נשמרו' : 'נשמר'}</span>
-            <button
-              onClick={saveNote}
-              disabled={noteSaving || note.trim() === noteLoaded.trim()}
-              className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-amber-500/15 border border-amber-500/30 text-amber-400 text-xs font-semibold hover:bg-amber-500/20 transition-colors cursor-pointer disabled:opacity-50"
-            >
-              <Save className="w-3.5 h-3.5" /> {noteSaving ? 'שומר…' : 'שמור הערה'}
-            </button>
-          </div>
-        </div>
+        {/* Details — two professional columns on desktop so the modal fits the
+            screen without scrolling; stacks to one column on mobile. */}
+        <div className="grid lg:grid-cols-2 gap-4">
+          {/* Left column: identity & settings */}
+          <div className="space-y-4">
+            <div>
+              <div className="text-[11px] text-text-muted mb-2 flex items-center gap-1.5">
+                <FileText className="w-3.5 h-3.5" /> פרטים כלליים
+              </div>
+              <div className="bg-bg-tertiary/40 border border-border-primary rounded-xl px-4 py-1 divide-y divide-border-primary/40">
+                <DetailRow icon={<Mail className="w-4 h-4" />} label="אימייל" value={user.email} />
+                <DetailRow icon={<Calendar className="w-4 h-4" />} label="הצטרף" value={formatDate(user.createdAt)} />
+                <DetailRow icon={<Clock className="w-4 h-4" />} label="פעילות אחרונה" value={relativeActive(user.lastActive)} />
+                <DetailRow icon={<Coins className="w-4 h-4" />} label="מטבע בסיס" value={settings.baseCurrency} />
+                <DetailRow icon={<TrendingUp className="w-4 h-4" />} label="מינוף ברירת מחדל" value={settings.defaultLeverage ? `${settings.defaultLeverage}x` : null} />
+                <DetailRow icon={<Percent className="w-4 h-4" />} label="סיכון ברירת מחדל" value={settings.defaultRiskPercent != null ? `${settings.defaultRiskPercent}%` : null} />
+              </div>
+            </div>
 
-        {/* General */}
-        <div className="bg-bg-tertiary/40 border border-border-primary rounded-xl px-4 py-2 divide-y divide-border-primary/40">
-          <DetailRow icon={<Mail className="w-4 h-4" />} label="אימייל" value={user.email} />
-          <DetailRow icon={<Calendar className="w-4 h-4" />} label="הצטרף" value={formatDate(user.createdAt)} />
-          <DetailRow icon={<Clock className="w-4 h-4" />} label="פעילות אחרונה" value={relativeActive(user.lastActive)} />
-          <DetailRow icon={<Coins className="w-4 h-4" />} label="מטבע בסיס" value={settings.baseCurrency} />
-          <DetailRow icon={<TrendingUp className="w-4 h-4" />} label="מינוף ברירת מחדל" value={settings.defaultLeverage ? `${settings.defaultLeverage}x` : null} />
-          <DetailRow icon={<Percent className="w-4 h-4" />} label="סיכון ברירת מחדל" value={settings.defaultRiskPercent != null ? `${settings.defaultRiskPercent}%` : null} />
-        </div>
-
-        {/* Activity counts (read-only — uses Firestore count aggregation) */}
-        <div>
-          <div className="text-[11px] text-text-muted mb-2 flex items-center gap-1.5">
-            <Activity className="w-3.5 h-3.5" /> שימוש (קריאה בלבד)
-          </div>
-          <div className="grid grid-cols-2 gap-2">
-            {COUNT_COLLECTIONS.map((c) => {
-              const Icon = c.icon;
-              const n = counts?.[c.key];
-              return (
-                <div key={c.key} className="bg-bg-tertiary/40 border border-border-primary rounded-lg px-3 py-2 flex items-center gap-2">
-                  <Icon className="w-4 h-4 text-text-muted" />
-                  <div className="flex-1 min-w-0">
-                    <div className="text-[10px] text-text-muted truncate">{c.label}</div>
-                    <div className="text-sm font-semibold text-text-primary">
-                      {counts === null ? '…' : n == null ? '—' : n}
+            {/* AI daily usage */}
+            <div>
+              <div className="text-[11px] text-text-muted mb-2 flex items-center gap-1.5">
+                <Sparkles className="w-3.5 h-3.5" /> שימוש ב-AI היום
+              </div>
+              {aiUsage ? (() => {
+                const pct = Math.min(100, (aiUsage.used / aiUsage.limit) * 100);
+                const low = (aiUsage.limit - aiUsage.used) <= 3;
+                return (
+                  <div className="bg-bg-tertiary/40 border border-border-primary rounded-lg px-3 py-2.5">
+                    <div className="flex items-center justify-between text-xs mb-1.5">
+                      <span className="text-text-secondary">בקשות שנוצלו</span>
+                      <span className={`font-semibold ${low ? 'text-loss' : 'text-text-primary'}`}>{aiUsage.used} / {aiUsage.limit}</span>
+                    </div>
+                    <div className="h-1.5 bg-bg-tertiary rounded-full overflow-hidden">
+                      <div className={`h-full rounded-full ${low ? 'bg-loss' : 'bg-accent-primary'}`} style={{ width: `${pct}%` }} />
                     </div>
                   </div>
-                </div>
-              );
-            })}
-          </div>
-          {countsError && (
-            <div className="mt-2 text-[11px] text-loss">{countsError}</div>
-          )}
-        </div>
+                );
+              })() : (
+                <div className="text-xs text-text-muted">…</div>
+              )}
+            </div>
 
-        {/* AI daily usage */}
-        <div>
-          <div className="text-[11px] text-text-muted mb-2 flex items-center gap-1.5">
-            <Sparkles className="w-3.5 h-3.5" /> שימוש ב-AI היום
-          </div>
-          {aiUsage ? (() => {
-            const pct = Math.min(100, (aiUsage.used / aiUsage.limit) * 100);
-            const low = (aiUsage.limit - aiUsage.used) <= 3;
-            return (
-              <div className="bg-bg-tertiary/40 border border-border-primary rounded-lg px-3 py-2.5">
-                <div className="flex items-center justify-between text-xs mb-1.5">
-                  <span className="text-text-secondary">בקשות שנוצלו</span>
-                  <span className={`font-semibold ${low ? 'text-loss' : 'text-text-primary'}`}>{aiUsage.used} / {aiUsage.limit}</span>
+            {/* Favorites */}
+            {fav.length > 0 && (
+              <div>
+                <div className="text-[11px] text-text-muted mb-2 flex items-center gap-1.5">
+                  <Star className="w-3.5 h-3.5" /> מטבעות מועדפים
                 </div>
-                <div className="h-1.5 bg-bg-tertiary rounded-full overflow-hidden">
-                  <div className={`h-full rounded-full ${low ? 'bg-loss' : 'bg-accent-primary'}`} style={{ width: `${pct}%` }} />
+                <div className="flex flex-wrap gap-1.5">
+                  {fav.map((c) => (
+                    <span key={c} className="text-xs px-2 py-1 rounded-md bg-bg-tertiary border border-border-primary text-text-primary">{c}</span>
+                  ))}
                 </div>
               </div>
-            );
-          })() : (
-            <div className="text-xs text-text-muted">…</div>
-          )}
+            )}
+
+            {/* Strategies */}
+            {strategies.length > 0 && (
+              <div>
+                <div className="text-[11px] text-text-muted mb-2 flex items-center gap-1.5">
+                  <Sparkles className="w-3.5 h-3.5" /> אסטרטגיות
+                </div>
+                <div className="flex flex-wrap gap-1.5">
+                  {strategies.map((s) => (
+                    <span key={s} className="text-xs px-2 py-1 rounded-md bg-bg-tertiary border border-border-primary text-text-primary">{s}</span>
+                  ))}
+                </div>
+              </div>
+            )}
+          </div>
+
+          {/* Right column: private note & activity counts */}
+          <div className="space-y-4">
+            {/* Private admin note — only admins can see this (separate collection). */}
+            <div>
+              <div className="text-[11px] text-text-muted mb-2 flex items-center gap-1.5">
+                <StickyNote className="w-3.5 h-3.5 text-amber-400" /> הערה פרטית (רק אתה רואה)
+              </div>
+              <textarea
+                value={note}
+                onChange={(e) => setNote(e.target.value)}
+                placeholder='לדוגמה: "שילם בביט", "מבקש החזר", "חבר של דני"…'
+                rows={3}
+                maxLength={1000}
+                className="w-full bg-bg-tertiary/40 border border-border-primary rounded-lg px-3 py-2 text-sm text-text-primary placeholder:text-text-muted outline-none focus:border-amber-500/50 resize-none"
+              />
+              <div className="flex items-center justify-between mt-1.5">
+                <span className="text-[10px] text-text-muted">{note.trim() !== noteLoaded.trim() ? 'יש שינויים שלא נשמרו' : 'נשמר'}</span>
+                <button
+                  onClick={saveNote}
+                  disabled={noteSaving || note.trim() === noteLoaded.trim()}
+                  className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-amber-500/15 border border-amber-500/30 text-amber-400 text-xs font-semibold hover:bg-amber-500/20 transition-colors cursor-pointer disabled:opacity-50"
+                >
+                  <Save className="w-3.5 h-3.5" /> {noteSaving ? 'שומר…' : 'שמור הערה'}
+                </button>
+              </div>
+            </div>
+
+            {/* Activity counts (read-only — uses Firestore count aggregation) */}
+            <div>
+              <div className="text-[11px] text-text-muted mb-2 flex items-center gap-1.5">
+                <Activity className="w-3.5 h-3.5" /> שימוש (קריאה בלבד)
+              </div>
+              <div className="grid grid-cols-2 gap-2">
+                {COUNT_COLLECTIONS.map((c) => {
+                  const Icon = c.icon;
+                  const n = counts?.[c.key];
+                  return (
+                    <div key={c.key} className="bg-bg-tertiary/40 border border-border-primary rounded-lg px-3 py-2 flex items-center gap-2">
+                      <Icon className="w-4 h-4 text-text-muted shrink-0" />
+                      <div className="flex-1 min-w-0">
+                        <div className="text-[10px] text-text-muted truncate">{c.label}</div>
+                        <div className="text-sm font-semibold text-text-primary">
+                          {counts === null ? '…' : n == null ? '—' : n}
+                        </div>
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+              {countsError && (
+                <div className="mt-2 text-[11px] text-loss">{countsError}</div>
+              )}
+            </div>
+          </div>
         </div>
-
-        {/* Favorites */}
-        {fav.length > 0 && (
-          <div>
-            <div className="text-[11px] text-text-muted mb-2 flex items-center gap-1.5">
-              <Star className="w-3.5 h-3.5" /> מטבעות מועדפים
-            </div>
-            <div className="flex flex-wrap gap-1.5">
-              {fav.map((c) => (
-                <span key={c} className="text-xs px-2 py-1 rounded-md bg-bg-tertiary border border-border-primary text-text-primary">{c}</span>
-              ))}
-            </div>
-          </div>
-        )}
-
-        {/* Strategies */}
-        {strategies.length > 0 && (
-          <div>
-            <div className="text-[11px] text-text-muted mb-2 flex items-center gap-1.5">
-              <Sparkles className="w-3.5 h-3.5" /> אסטרטגיות
-            </div>
-            <div className="flex flex-wrap gap-1.5">
-              {strategies.map((s) => (
-                <span key={s} className="text-xs px-2 py-1 rounded-md bg-bg-tertiary border border-border-primary text-text-primary">{s}</span>
-              ))}
-            </div>
-          </div>
-        )}
 
       </div>
     </Modal>
