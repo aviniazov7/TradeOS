@@ -3150,12 +3150,19 @@ async function handleRequest(request, env) {
     const looksLikeBrowser = /Mozilla/i.test(ua);
     const isCrawler = !looksLikeBrowser && /WhatsApp\/|TelegramBot|facebookexternalhit|Twitterbot|LinkedInBot|Slackbot|Discordbot|SkypeUriPreview|Googlebot|bingbot|Pinterest|redditbot|vkShare|Applebot|bot|crawler|spider/i.test(ua);
 
-    // Humans → instant server-side redirect. No blank page, no JS needed.
+    // Humans → server-side 302 + visible HTML fallback. Empty-body 302s were
+    // unreliable on some iOS Safari builds (the browser stayed on the worker
+    // URL and showed nothing); a small HTML body with a clickable link plus
+    // meta-refresh + JS guarantees the user always sees SOMETHING and gets
+    // forwarded to the app even if the 302 itself doesn't fire.
     if (!isCrawler) {
-      return new Response(null, {
+      const escUrl = String(appUrl).replace(/"/g, '&quot;');
+      const body = `<!DOCTYPE html><html lang="he" dir="rtl"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"><title>TradeOS</title><meta http-equiv="refresh" content="0; url=${escUrl}"><script>location.replace("${escUrl}");</script><style>html,body{margin:0;padding:0;background:#0a0e16;color:#e5e7eb;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;height:100%}.box{position:absolute;inset:0;display:flex;align-items:center;justify-content:center;text-align:center}a{color:#00bfff;text-decoration:none;font-size:16px;padding:14px 28px;border:1px solid #00bfff;border-radius:10px}</style></head><body><div class="box"><a href="${escUrl}">פתחו את הקופון ב-TradeOS ↩</a></div></body></html>`;
+      return new Response(body, {
         status: 302,
         headers: {
           Location: appUrl,
+          'Content-Type': 'text/html; charset=utf-8',
           'Cache-Control': 'no-store',
         },
       });
