@@ -318,6 +318,14 @@ async function fetchBybitClosedPnl(apiKey, apiSecret, limit = 50) {
   });
 }
 
+// ---- Premium coupons --------------------------------------------------------
+// KV-stored single-use-per-user codes. Lighter than a Firestore collection and
+// keeps the admin's CRUD off the client's Firestore quota.
+//   coupon:{CODE}                → { days, maxUses, used, expiresAt?, label?, createdBy, createdAt }
+//   coupon-redeemed:{CODE}:{uid} → "1"   (presence = this user already redeemed)
+const COUPON_CODE_RE = /^[A-Z0-9_-]{3,32}$/;
+const normalizeCouponCode = (s) => String(s || '').trim().toUpperCase();
+
 // ---- Premium expiry reminders ----------------------------------------------
 // Push the user a heads-up 3 days before their Premium ends, and one on the
 // day it ends. Indexed by date so the cron is O(1) per day (lists keys with
@@ -627,6 +635,88 @@ async function verifyAdminFromToken(token) {
 // with the caller's own (verified) token, cached 10 min in KV to avoid a read
 // on every request. Admins count as premium. Plan is admin/server-writable
 // only (enforced by Firestore rules), so this can't be spoofed by the client.
+// ---- Firebase Admin (service account) --------------------------------------
+// Signs a service-account JWT, exchanges it for an OAuth2 access token at
+// oauth2.googleapis.com/token, and uses that to call Firestore REST as admin.
+// Required when the worker must write to a user doc (the user can't change
+// their own plan/planExpires under our Firestore rules, and admin role is
+// resolved on the client). Token cached in module-global for its lifetime.
+
+let GAPI_TOKEN_CACHE = { token: null, expiresAt: 0 };
+
+function pemToPkcs8(pem) {
+  const body = pem.replace(/-----BEGIN PRIVATE KEY-----/, '').replace(/-----END PRIVATE KEY-----/, '').replace(/\s+/g, '');
+  return b64urlToBytesLocal(body.replace(/\+/g, '-').replace(/\//g, '_'));
+}
+
+async function getFirebaseAdminToken(env) {
+  if (GAPI_TOKEN_CACHE.token && Date.now() < GAPI_TOKEN_CACHE.expiresAt - 60_000) {
+    return GAPI_TOKEN_CACHE.token;
+  }
+  if (!env.FIREBASE_SERVICE_ACCOUNT) throw new Error('FIREBASE_SERVICE_ACCOUNT missing');
+  const sa = JSON.parse(env.FIREBASE_SERVICE_ACCOUNT);
+
+  const now = Math.floor(Date.now() / 1000);
+  const header = { alg: 'RS256', typ: 'JWT' };
+  const payload = {
+    iss: sa.client_email,
+    sub: sa.client_email,
+    aud: 'https://oauth2.googleapis.com/token',
+    scope: 'https://www.googleapis.com/auth/datastore https://www.googleapis.com/auth/cloud-platform',
+    iat: now,
+    exp: now + 3600,
+  };
+  const enc = (o) => bytesToB64url(new TextEncoder().encode(JSON.stringify(o)));
+  const signingInput = `${enc(header)}.${enc(payload)}`;
+
+  const keyBytes = pemToPkcs8(sa.private_key);
+  const key = await crypto.subtle.importKey(
+    'pkcs8',
+    keyBytes,
+    { name: 'RSASSA-PKCS1-v1_5', hash: 'SHA-256' },
+    false,
+    ['sign'],
+  );
+  const sig = await crypto.subtle.sign('RSASSA-PKCS1-v1_5', key, new TextEncoder().encode(signingInput));
+  const jwt = `${signingInput}.${bytesToB64url(new Uint8Array(sig))}`;
+
+  const res = await fetch('https://oauth2.googleapis.com/token', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+    body: `grant_type=${encodeURIComponent('urn:ietf:params:oauth:grant-type:jwt-bearer')}&assertion=${encodeURIComponent(jwt)}`,
+  });
+  if (!res.ok) throw new Error(`oauth ${res.status}: ${await res.text().catch(() => '')}`);
+  const data = await res.json();
+  GAPI_TOKEN_CACHE = { token: data.access_token, expiresAt: Date.now() + (data.expires_in * 1000) };
+  return data.access_token;
+}
+
+// PATCH /users/{uid} as admin. `fields` is a partial Firestore field map
+// (each value an object like { stringValue: 'x' } / { timestampValue: ... }).
+// `mask` lists the field names so the patch is field-level rather than a full
+// document overwrite.
+async function firebaseAdminPatchUser(env, uid, fields, mask) {
+  try {
+    const accessToken = await getFirebaseAdminToken(env);
+    const mp = mask.map((m) => `updateMask.fieldPaths=${encodeURIComponent(m)}`).join('&');
+    const url = `https://firestore.googleapis.com/v1/projects/${FIREBASE_PROJECT_ID}/databases/(default)/documents/users/${uid}?${mp}`;
+    const res = await fetch(url, {
+      method: 'PATCH',
+      headers: { Authorization: `Bearer ${accessToken}`, 'Content-Type': 'application/json' },
+      body: JSON.stringify({ fields }),
+    });
+    if (!res.ok) {
+      const detail = await res.text().catch(() => '');
+      console.error('Firestore admin write failed:', res.status, detail);
+      return { ok: false, error: `${res.status}` };
+    }
+    return { ok: true };
+  } catch (e) {
+    console.error('Firestore admin write threw:', e);
+    return { ok: false, error: e.message || String(e) };
+  }
+}
+
 async function isUserPremium(env, token, uid) {
   if (!uid) return false;
   const cacheKey = `planflag:${uid}`;
@@ -2669,6 +2759,155 @@ async function handleRequest(request, env) {
       tag: `admin-${Date.now()}`,
     });
     return new Response(JSON.stringify({ ok: true, sent: result.sent, total: result.total }), { headers: { ...cors, 'Content-Type': 'application/json' } });
+  }
+
+  // Admin-only: list all coupon codes.
+  if (request.method === 'GET' && path === '/admin/coupons') {
+    const token = (request.headers.get('Authorization') || '').replace('Bearer ', '');
+    const adminUid = await verifyAdminFromToken(token);
+    if (!adminUid) return new Response(JSON.stringify({ error: 'forbidden' }), { status: 403, headers: { ...cors, 'Content-Type': 'application/json' } });
+    const list = await env.ALERTS_KV.list({ prefix: 'coupon:' });
+    const coupons = [];
+    for (const k of list.keys) {
+      const code = k.name.slice('coupon:'.length);
+      const data = await env.ALERTS_KV.get(k.name, 'json');
+      if (data) coupons.push({ code, ...data });
+    }
+    coupons.sort((a, b) => (b.createdAt || '').localeCompare(a.createdAt || ''));
+    return new Response(JSON.stringify({ ok: true, coupons }), { headers: { ...cors, 'Content-Type': 'application/json' } });
+  }
+
+  // Admin-only: create a new coupon code.
+  if (request.method === 'POST' && path === '/admin/coupons') {
+    const token = (request.headers.get('Authorization') || '').replace('Bearer ', '');
+    const adminUid = await verifyAdminFromToken(token);
+    if (!adminUid) return new Response(JSON.stringify({ error: 'forbidden' }), { status: 403, headers: { ...cors, 'Content-Type': 'application/json' } });
+    const body = await request.json().catch(() => ({}));
+    const code = normalizeCouponCode(body.code);
+    const days = parseInt(body.days, 10);
+    if (!COUPON_CODE_RE.test(code)) {
+      return new Response(JSON.stringify({ error: 'קוד לא תקין. אותיות/ספרות, 3–32 תווים.' }), { status: 400, headers: { ...cors, 'Content-Type': 'application/json' } });
+    }
+    if (!Number.isFinite(days) || days < 1 || days > 3650) {
+      return new Response(JSON.stringify({ error: 'מספר ימים חייב להיות בין 1 ל-3650.' }), { status: 400, headers: { ...cors, 'Content-Type': 'application/json' } });
+    }
+    const existing = await env.ALERTS_KV.get(`coupon:${code}`);
+    if (existing) {
+      return new Response(JSON.stringify({ error: 'קוד עם השם הזה כבר קיים.' }), { status: 409, headers: { ...cors, 'Content-Type': 'application/json' } });
+    }
+    const doc = {
+      days,
+      maxUses: Number.isFinite(parseInt(body.maxUses, 10)) && parseInt(body.maxUses, 10) > 0 ? parseInt(body.maxUses, 10) : null,
+      used: 0,
+      expiresAt: body.expiresAt && !Number.isNaN(new Date(body.expiresAt).getTime()) ? new Date(body.expiresAt).toISOString() : null,
+      label: typeof body.label === 'string' && body.label.length <= 80 ? body.label : null,
+      createdBy: adminUid,
+      createdAt: new Date().toISOString(),
+    };
+    await env.ALERTS_KV.put(`coupon:${code}`, JSON.stringify(doc));
+    return new Response(JSON.stringify({ ok: true, code, ...doc }), { headers: { ...cors, 'Content-Type': 'application/json' } });
+  }
+
+  // Admin-only: delete a coupon (won't refund users who already redeemed).
+  if (request.method === 'DELETE' && path.startsWith('/admin/coupons/')) {
+    const token = (request.headers.get('Authorization') || '').replace('Bearer ', '');
+    const adminUid = await verifyAdminFromToken(token);
+    if (!adminUid) return new Response(JSON.stringify({ error: 'forbidden' }), { status: 403, headers: { ...cors, 'Content-Type': 'application/json' } });
+    const code = normalizeCouponCode(decodeURIComponent(path.split('/')[3] || ''));
+    if (!code) return new Response(JSON.stringify({ error: 'missing code' }), { status: 400, headers: { ...cors, 'Content-Type': 'application/json' } });
+    await env.ALERTS_KV.delete(`coupon:${code}`);
+    return new Response(JSON.stringify({ ok: true }), { headers: { ...cors, 'Content-Type': 'application/json' } });
+  }
+
+  // Authenticated user: redeem a coupon. Adds `days` to whatever Premium they
+  // currently have (or starts a fresh window if free). Each user can redeem
+  // each code at most once; the global maxUses, if set, is enforced too.
+  // The plan write is done by the worker as Firebase admin (service account)
+  // because the regular self-write rule forbids users from changing their own
+  // plan/planExpires.
+  if (request.method === 'POST' && path === '/coupons/redeem') {
+    const token = (request.headers.get('Authorization') || '').replace('Bearer ', '');
+    const uid = await verifyFirebaseToken(token);
+    if (!uid) return new Response(JSON.stringify({ error: 'יש להתחבר כדי לממש קוד' }), { status: 401, headers: { ...cors, 'Content-Type': 'application/json' } });
+    if (!env.FIREBASE_SERVICE_ACCOUNT) {
+      return new Response(JSON.stringify({ error: 'מערכת הקופונים לא מוגדרת בשרת' }), { status: 503, headers: { ...cors, 'Content-Type': 'application/json' } });
+    }
+
+    const code = normalizeCouponCode((await request.json().catch(() => ({}))).code);
+    if (!code) return new Response(JSON.stringify({ error: 'הזן קוד קופון' }), { status: 400, headers: { ...cors, 'Content-Type': 'application/json' } });
+
+    const coupon = await env.ALERTS_KV.get(`coupon:${code}`, 'json');
+    if (!coupon) return new Response(JSON.stringify({ error: 'הקוד לא נמצא' }), { status: 404, headers: { ...cors, 'Content-Type': 'application/json' } });
+    if (coupon.expiresAt && new Date(coupon.expiresAt).getTime() < Date.now()) {
+      return new Response(JSON.stringify({ error: 'תוקף הקוד פג' }), { status: 410, headers: { ...cors, 'Content-Type': 'application/json' } });
+    }
+    if (coupon.maxUses != null && coupon.used >= coupon.maxUses) {
+      return new Response(JSON.stringify({ error: 'הקוד נוצל במלואו' }), { status: 410, headers: { ...cors, 'Content-Type': 'application/json' } });
+    }
+    const redeemKey = `coupon-redeemed:${code}:${uid}`;
+    if (await env.ALERTS_KV.get(redeemKey)) {
+      return new Response(JSON.stringify({ error: 'כבר מימשת את הקוד הזה' }), { status: 409, headers: { ...cors, 'Content-Type': 'application/json' } });
+    }
+
+    // Read the user's current planExpires (via their own token; the firestore
+    // rule allows owner reads) so we can extend, not overwrite, an existing
+    // Premium window.
+    let currentExpiryMs = 0;
+    try {
+      const me = await fetch(`https://firestore.googleapis.com/v1/projects/${FIREBASE_PROJECT_ID}/databases/(default)/documents/users/${uid}`, {
+        headers: { Authorization: `Bearer ${token}` },
+      });
+      if (me.ok) {
+        const f = (await me.json()).fields || {};
+        const raw = f.planExpires?.timestampValue || f.planExpires?.stringValue;
+        if (raw) currentExpiryMs = new Date(raw).getTime() || 0;
+      }
+    } catch { /* default to 0 → start from now */ }
+
+    const now = Date.now();
+    const startFrom = Math.max(currentExpiryMs, now);
+    const newExpiry = new Date(startFrom + coupon.days * 86400000).toISOString();
+
+    // Mark the code as redeemed BEFORE writing the plan to prevent a double-
+    // grant race; if the plan write below fails, the user can try again — the
+    // marker is per-uid so they won't double-redeem either way.
+    await env.ALERTS_KV.put(redeemKey, '1');
+    const fresh = await env.ALERTS_KV.get(`coupon:${code}`, 'json');
+    if (fresh) {
+      fresh.used = (fresh.used || 0) + 1;
+      await env.ALERTS_KV.put(`coupon:${code}`, JSON.stringify(fresh));
+    }
+
+    // Apply the plan as Firebase admin.
+    const wrote = await firebaseAdminPatchUser(env, uid, {
+      plan: { stringValue: 'premium' },
+      planExpires: { timestampValue: newExpiry },
+      planGrantedAt: { stringValue: new Date().toISOString() },
+      planSource: { stringValue: `coupon:${code}` },
+    }, ['plan', 'planExpires', 'planGrantedAt', 'planSource']);
+    if (!wrote.ok) {
+      // Roll back the marker so the user can retry, but keep the use-counter
+      // bump (it's just a global counter; +1 of slack is fine and avoids a
+      // race window where the counter is now-correct but the marker is gone).
+      await env.ALERTS_KV.delete(redeemKey);
+      return new Response(JSON.stringify({ error: 'מימוש הקופון נכשל. נסה שוב.', detail: wrote.error }), { status: 502, headers: { ...cors, 'Content-Type': 'application/json' } });
+    }
+
+    // Schedule the expiry reminders and push a confirmation. Both best-effort.
+    schedulePlanExpiryReminders(env, uid, newExpiry).catch(() => {});
+    sendPushToUser(env, uid, {
+      title: '🎉 קוד הקופון מומש בהצלחה',
+      body: `קיבלת ${coupon.days} ימי Premium. תוקף עד ${new Date(newExpiry).toLocaleDateString('he-IL')}.`,
+      url: '/premium',
+      tag: `coupon-${code}-${uid}`,
+    }).catch(() => {});
+
+    return new Response(JSON.stringify({
+      ok: true,
+      days: coupon.days,
+      planExpires: newExpiry,
+      label: coupon.label || null,
+    }), { headers: { ...cors, 'Content-Type': 'application/json' } });
   }
 
   // Admin-only: schedule the two expiry reminders (3 days before + day of) for

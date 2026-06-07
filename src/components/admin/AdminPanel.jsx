@@ -1,11 +1,12 @@
 import { useState, useEffect, useMemo } from 'react';
 import { Navigate } from 'react-router-dom';
-import { Users, UserPlus, ShieldCheck, CheckCircle2, Search, RefreshCw, Download, ChevronUp, ChevronDown, Mail, Calendar, Coins, TrendingUp, Percent, Sparkles, Star, BookOpen, FlaskConical, Activity, FileText, Brain, Crown, Send, X } from 'lucide-react';
+import { Users, UserPlus, ShieldCheck, CheckCircle2, Search, RefreshCw, Download, ChevronUp, ChevronDown, Mail, Calendar, Coins, TrendingUp, Percent, Sparkles, Star, BookOpen, FlaskConical, Activity, FileText, Brain, Crown, Send, X, Ticket, Plus, Trash2, Copy } from 'lucide-react';
 import toast from 'react-hot-toast';
 import { useAuth } from '../../contexts/AuthContext';
 import { getAllUsers, getUserSubcollectionCount, adminGrantPremium, adminRevokePremium } from '../../services/firestoreService';
 import { fetchUserAiUsage } from '../../hooks/useAiUsage';
 import { adminSendNotification, adminScheduleExpiryReminders, adminCancelExpiryReminders } from '../../services/pushService';
+import { adminListCoupons, adminCreateCoupon, adminDeleteCoupon } from '../../services/couponService';
 import LoadingSpinner from '../shared/LoadingSpinner';
 import SelectDropdown from '../shared/SelectDropdown';
 import Modal from '../shared/Modal';
@@ -79,6 +80,7 @@ export default function AdminPanel() {
   const [sortKey, setSortKey] = useState('createdAt');
   const [sortDir, setSortDir] = useState('desc');
   const [selectedUser, setSelectedUser] = useState(null);
+  const [couponsOpen, setCouponsOpen] = useState(false);
 
   // After load() refreshes `users`, keep `selectedUser` pointing at the fresh
   // copy so the open detail modal reflects the new plan/role immediately
@@ -178,16 +180,25 @@ export default function AdminPanel() {
 
   return (
     <div dir="rtl" className="max-w-6xl mx-auto space-y-6">
-      <div className="flex items-center justify-between gap-3">
+      <div className="flex items-center justify-between gap-3 flex-wrap">
         <h1 className="text-xl md:text-2xl font-bold text-text-primary">פאנל ניהול</h1>
-        <button
-          onClick={load}
-          disabled={loading}
-          className="flex items-center gap-2 px-3 py-2 rounded-lg text-sm font-medium bg-bg-tertiary border border-border-primary text-text-secondary hover:text-text-primary disabled:opacity-50 cursor-pointer"
-        >
-          <RefreshCw className={`w-4 h-4 ${loading ? 'animate-spin' : ''}`} />
-          רענן
-        </button>
+        <div className="flex items-center gap-2">
+          <button
+            onClick={() => setCouponsOpen(true)}
+            className="flex items-center gap-2 px-3 py-2 rounded-lg text-sm font-medium bg-amber-500/15 border border-amber-500/30 text-amber-400 hover:bg-amber-500/20 cursor-pointer"
+          >
+            <Ticket className="w-4 h-4" />
+            קופונים
+          </button>
+          <button
+            onClick={load}
+            disabled={loading}
+            className="flex items-center gap-2 px-3 py-2 rounded-lg text-sm font-medium bg-bg-tertiary border border-border-primary text-text-secondary hover:text-text-primary disabled:opacity-50 cursor-pointer"
+          >
+            <RefreshCw className={`w-4 h-4 ${loading ? 'animate-spin' : ''}`} />
+            רענן
+          </button>
+        </div>
       </div>
 
       <div className="grid grid-cols-2 lg:grid-cols-5 gap-3">
@@ -339,6 +350,7 @@ export default function AdminPanel() {
       )}
 
       <UserDetailModal user={selectedUser} onClose={() => setSelectedUser(null)} onUserChanged={load} />
+      <CouponsModal isOpen={couponsOpen} onClose={() => setCouponsOpen(false)} />
     </div>
   );
 }
@@ -711,6 +723,180 @@ function UserDetailModal({ user, onClose, onUserChanged }) {
           </div>
         )}
 
+      </div>
+    </Modal>
+  );
+}
+
+// ── Coupons modal ────────────────────────────────────────────────────────────
+function CouponsModal({ isOpen, onClose }) {
+  const [coupons, setCoupons] = useState([]);
+  const [loading, setLoading] = useState(false);
+  const [code, setCode] = useState('');
+  const [days, setDays] = useState(7);
+  const [maxUses, setMaxUses] = useState('');
+  const [label, setLabel] = useState('');
+  const [creating, setCreating] = useState(false);
+
+  const load = async () => {
+    setLoading(true);
+    try {
+      setCoupons(await adminListCoupons());
+    } catch (e) {
+      toast.error(e.message || 'טעינה נכשלה');
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  useEffect(() => { if (isOpen) load(); }, [isOpen]);
+
+  const create = async () => {
+    const c = code.trim().toUpperCase();
+    if (!c || !Number.isFinite(parseInt(days, 10))) return;
+    setCreating(true);
+    try {
+      await adminCreateCoupon({
+        code: c,
+        days: parseInt(days, 10),
+        maxUses: maxUses ? parseInt(maxUses, 10) : undefined,
+        label: label.trim() || undefined,
+      });
+      toast.success(`קוד ${c} נוצר`);
+      setCode(''); setMaxUses(''); setLabel('');
+      load();
+    } catch (e) {
+      toast.error(e.message || 'יצירת הקוד נכשלה');
+    } finally {
+      setCreating(false);
+    }
+  };
+
+  const del = async (codeToDelete) => {
+    if (!window.confirm(`למחוק את הקוד ${codeToDelete}?`)) return;
+    try {
+      await adminDeleteCoupon(codeToDelete);
+      toast.success('הקוד נמחק');
+      load();
+    } catch (e) {
+      toast.error(e.message || 'המחיקה נכשלה');
+    }
+  };
+
+  const copy = (c) => {
+    navigator.clipboard?.writeText(c);
+    toast.success(`${c} הועתק`);
+  };
+
+  // Random A-Z0-9 code helper
+  const randomCode = () => {
+    const chars = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ23456789';
+    let out = '';
+    for (let i = 0; i < 8; i++) out += chars[Math.floor(Math.random() * chars.length)];
+    setCode(out);
+  };
+
+  return (
+    <Modal isOpen={isOpen} onClose={onClose} title="קופוני Premium" maxWidth="max-w-2xl">
+      <div className="space-y-5">
+        {/* Create */}
+        <div className="bg-amber-500/5 border border-amber-500/30 rounded-xl p-4 space-y-3">
+          <div className="text-sm font-semibold text-text-primary">צור קוד חדש</div>
+          <div className="grid grid-cols-2 gap-2">
+            <div className="col-span-2 flex gap-2">
+              <input
+                value={code}
+                onChange={(e) => setCode(e.target.value.toUpperCase())}
+                placeholder="קוד (לדוגמה TRADEOS7)"
+                className="flex-1 bg-bg-secondary border border-border-primary rounded-lg px-3 py-2 text-sm text-text-primary outline-none focus:border-amber-500 font-mono uppercase"
+                dir="ltr"
+                maxLength={32}
+              />
+              <button onClick={randomCode} className="px-3 rounded-lg border border-border-primary text-xs text-text-secondary hover:text-text-primary cursor-pointer">
+                אקראי
+              </button>
+            </div>
+            <div>
+              <label className="text-[11px] text-text-muted">ימי Premium</label>
+              <input
+                type="number"
+                min="1"
+                max="3650"
+                value={days}
+                onChange={(e) => setDays(e.target.value)}
+                className="w-full bg-bg-secondary border border-border-primary rounded-lg px-3 py-2 text-sm text-text-primary outline-none focus:border-amber-500"
+              />
+            </div>
+            <div>
+              <label className="text-[11px] text-text-muted">מקסימום שימושים (ריק = ללא הגבלה)</label>
+              <input
+                type="number"
+                min="1"
+                value={maxUses}
+                onChange={(e) => setMaxUses(e.target.value)}
+                placeholder="ללא הגבלה"
+                className="w-full bg-bg-secondary border border-border-primary rounded-lg px-3 py-2 text-sm text-text-primary outline-none focus:border-amber-500"
+              />
+            </div>
+            <div className="col-span-2">
+              <label className="text-[11px] text-text-muted">תיוג פנימי (לא חובה)</label>
+              <input
+                value={label}
+                onChange={(e) => setLabel(e.target.value)}
+                placeholder='לדוגמה: "קמפיין אינסטגרם נובמבר"'
+                maxLength={80}
+                className="w-full bg-bg-secondary border border-border-primary rounded-lg px-3 py-2 text-sm text-text-primary outline-none focus:border-amber-500"
+              />
+            </div>
+          </div>
+          <button
+            onClick={create}
+            disabled={creating || !code.trim() || !days}
+            className="w-full flex items-center justify-center gap-1.5 py-2 rounded-lg bg-amber-500 text-bg-primary text-sm font-bold hover:bg-amber-400 transition-colors cursor-pointer disabled:opacity-50"
+          >
+            <Plus className="w-4 h-4" /> {creating ? 'יוצר…' : 'צור קוד'}
+          </button>
+        </div>
+
+        {/* List */}
+        <div>
+          <div className="flex items-center justify-between mb-2">
+            <span className="text-sm font-semibold text-text-primary">קודים קיימים ({coupons.length})</span>
+            <button onClick={load} disabled={loading} className="text-xs text-text-muted hover:text-text-primary cursor-pointer">
+              <RefreshCw className={`w-3.5 h-3.5 inline ${loading ? 'animate-spin' : ''}`} /> רענן
+            </button>
+          </div>
+          {coupons.length === 0 ? (
+            <div className="text-sm text-text-muted text-center py-6 border border-dashed border-border-primary rounded-xl">
+              עדיין אין קודים. צור את הראשון למעלה.
+            </div>
+          ) : (
+            <div className="space-y-1.5 max-h-80 overflow-y-auto">
+              {coupons.map((c) => (
+                <div key={c.code} className="bg-bg-secondary border border-border-primary rounded-lg px-3 py-2 flex items-center gap-3">
+                  <div className="flex-1 min-w-0">
+                    <div className="flex items-center gap-2">
+                      <button onClick={() => copy(c.code)} className="font-mono text-sm font-bold text-amber-400 hover:text-amber-300 cursor-pointer flex items-center gap-1" dir="ltr">
+                        {c.code} <Copy className="w-3 h-3" />
+                      </button>
+                      <span className="text-[11px] text-text-muted">· {c.days} ימים</span>
+                      {c.maxUses && (
+                        <span className="text-[11px] text-text-muted">· {c.used}/{c.maxUses}</span>
+                      )}
+                      {!c.maxUses && (
+                        <span className="text-[11px] text-text-muted">· נוצל {c.used} פעמים</span>
+                      )}
+                    </div>
+                    {c.label && <div className="text-[10px] text-text-muted truncate">{c.label}</div>}
+                  </div>
+                  <button onClick={() => del(c.code)} className="p-1.5 rounded-lg text-text-muted hover:text-loss cursor-pointer" title="מחק">
+                    <Trash2 className="w-3.5 h-3.5" />
+                  </button>
+                </div>
+              ))}
+            </div>
+          )}
+        </div>
       </div>
     </Modal>
   );

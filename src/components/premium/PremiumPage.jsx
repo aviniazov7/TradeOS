@@ -1,11 +1,14 @@
+import { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { motion } from 'framer-motion';
 import {
-  Crown, Check, Bot, BookOpen, Wallet, Link2, Bell, BarChart3, Sparkles,
+  Crown, Check, Bot, BookOpen, Wallet, Link2, Bell, BarChart3, Sparkles, Ticket, Loader2,
 } from 'lucide-react';
+import toast from 'react-hot-toast';
 import { useAuth } from '../../contexts/AuthContext';
 import { PREMIUM_FEATURES, PREMIUM_PRICING } from '../../utils/constants';
 import { pageVariants, pageTransition } from '../../utils/animations';
+import { redeemCoupon } from '../../services/couponService';
 
 const ICONS = { Bot, BookOpen, Wallet, Link2, Bell, BarChart3, Sparkles };
 
@@ -35,6 +38,25 @@ export default function PremiumPage() {
     ? new Date(profile.planExpires).toLocaleDateString('he-IL', { day: '2-digit', month: '2-digit', year: 'numeric' })
     : null;
   const timeLeft = timeLeftLabel(profile?.planExpires);
+  const [couponCode, setCouponCode] = useState('');
+  const [redeeming, setRedeeming] = useState(false);
+
+  const handleRedeem = async () => {
+    const code = couponCode.trim();
+    if (!code) return;
+    setRedeeming(true);
+    try {
+      const r = await redeemCoupon(code);
+      toast.success(`קיבלת ${r.days} ימי Premium 🎉`);
+      setCouponCode('');
+      // The live profile subscription in AuthContext will flip the UI; the
+      // toast lands first so the user gets immediate confirmation.
+    } catch (e) {
+      toast.error(e.message || 'מימוש הקופון נכשל');
+    } finally {
+      setRedeeming(false);
+    }
+  };
 
   return (
     <motion.div variants={pageVariants} initial="initial" animate="animate" exit="exit" transition={pageTransition}
@@ -107,6 +129,37 @@ export default function PremiumPage() {
               <Crown className="w-4 h-4" /> שדרג עכשיו
             </button>
             <p className="text-[11px] text-text-muted">אפשר גם מסלול שנתי עם חודשיים חינם.</p>
+          </div>
+        )}
+
+        {/* Coupon redeem — free users only. Premium users could 'extend' here
+            but we'd surface this differently; for V1 keep it on the upgrade
+            flow only. */}
+        {!isPremium && (
+          <div className="bg-bg-secondary border border-border-primary rounded-2xl p-4 space-y-2">
+            <div className="flex items-center gap-2 text-sm font-semibold text-text-primary">
+              <Ticket className="w-4 h-4 text-accent-primary" /> יש לך קוד קופון?
+            </div>
+            <div className="flex gap-2">
+              <input
+                type="text"
+                value={couponCode}
+                onChange={(e) => setCouponCode(e.target.value.toUpperCase())}
+                onKeyDown={(e) => { if (e.key === 'Enter') handleRedeem(); }}
+                placeholder="הזן קוד"
+                disabled={redeeming}
+                className="flex-1 bg-bg-tertiary border border-border-primary rounded-lg px-3 py-2 text-sm text-text-primary outline-none focus:border-accent-primary font-mono uppercase"
+                dir="ltr"
+                maxLength={32}
+              />
+              <button
+                onClick={handleRedeem}
+                disabled={redeeming || !couponCode.trim()}
+                className="px-4 py-2 rounded-lg bg-accent-primary text-bg-primary text-sm font-bold hover:bg-accent-hover transition-colors cursor-pointer disabled:opacity-50 flex items-center gap-1.5"
+              >
+                {redeeming ? <Loader2 className="w-4 h-4 animate-spin" /> : 'מימוש'}
+              </button>
+            </div>
           </div>
         )}
 
