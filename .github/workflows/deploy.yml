@@ -84,6 +84,9 @@ jobs:
           MORALIS_API_KEY: ${{ secrets.MORALIS_API_KEY }}
           GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
           FIREBASE_SERVICE_ACCOUNT: ${{ secrets.FIREBASE_SERVICE_ACCOUNT }}
+          RESEND_API_KEY: ${{ secrets.RESEND_API_KEY }}
+          MAIL_FROM_ADDRESS: ${{ secrets.MAIL_FROM_ADDRESS }}
+          MAIL_FROM_NAME: ${{ secrets.MAIL_FROM_NAME }}
         run: |
           if [ -n "$VAPID_JWK" ]; then
             printf '%s' "$VAPID_JWK" | npx wrangler secret put VAPID_JWK
@@ -104,4 +107,17 @@ jobs:
             printf '%s' "$FIREBASE_SERVICE_ACCOUNT" | npx wrangler secret put FIREBASE_SERVICE_ACCOUNT
           else
             echo "FIREBASE_SERVICE_ACCOUNT secret not set — skipping."
+          fi
+          if [ -n "$RESEND_API_KEY" ]; then
+            printf '%s' "$RESEND_API_KEY" | npx wrangler secret put RESEND_API_KEY
+          else
+            echo "RESEND_API_KEY secret not set — skipping (emails will be silently no-op)."
+          fi
+          if [ -n "$MAIL_FROM_ADDRESS" ]; then
+            printf '%s' "$MAIL_FROM_ADDRESS" | npx wrangler secret put MAIL_FROM_ADDRESS
+          else
+            echo "MAIL_FROM_ADDRESS secret not set — falling back to onboarding@resend.dev (sends only to verified email)."
+          fi
+          if [ -n "$MAIL_FROM_NAME" ]; then
+            printf '%s' "$MAIL_FROM_NAME" | npx wrangler secret put MAIL_FROM_NAME
           fi

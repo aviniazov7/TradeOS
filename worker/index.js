@@ -447,6 +447,7 @@ async function listAllUsersAdmin(env) {
         planGrantedAt: f.planGrantedAt?.timestampValue || f.planGrantedAt?.stringValue || null,
         createdAt: f.createdAt?.timestampValue || f.createdAt?.stringValue || null,
         lastActive: f.lastActive?.timestampValue || f.lastActive?.stringValue || null,
+        email: f.email?.stringValue || null,
         displayName: f.displayName?.stringValue || f.email?.stringValue || 'משתמש',
       });
     }
@@ -498,6 +499,87 @@ async function checkChurnedPremium(env) {
   }
 }
 
+// ---- Email sending (Resend) -----------------------------------------------
+// Thin wrapper around Resend's REST API. Returns {ok, status} so callers can
+// log without blowing up the cron. Skips silently if RESEND_API_KEY isn't set
+// — the rest of the cron (push) keeps working.
+async function sendEmail(env, { to, subject, html, replyTo }) {
+  if (!env.RESEND_API_KEY) return { ok: false, status: 0, skipped: 'no-api-key' };
+  if (!to) return { ok: false, status: 0, skipped: 'no-recipient' };
+  const from = env.MAIL_FROM_ADDRESS
+    ? `${env.MAIL_FROM_NAME || 'TradeOS'} <${env.MAIL_FROM_ADDRESS}>`
+    : 'TradeOS <onboarding@resend.dev>';
+  try {
+    const res = await fetch('https://api.resend.com/emails', {
+      method: 'POST',
+      headers: {
+        Authorization: `Bearer ${env.RESEND_API_KEY}`,
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({
+        from,
+        to: Array.isArray(to) ? to : [to],
+        subject,
+        html,
+        ...(replyTo ? { reply_to: replyTo } : {}),
+      }),
+    });
+    if (!res.ok) {
+      const detail = await res.text().catch(() => '');
+      console.error('Resend send failed:', res.status, detail);
+      return { ok: false, status: res.status };
+    }
+    return { ok: true, status: res.status };
+  } catch (e) {
+    console.error('Resend send threw:', e);
+    return { ok: false, status: 0, error: e.message };
+  }
+}
+
+// Branded RTL email shell. All CSS is inlined because most mail clients strip
+// <style> blocks. The CTA button uses table-based layout for Outlook
+// compatibility.
+function emailShell({ headline, intro, ctaText, ctaUrl, body, footer }) {
+  const APP_URL = 'https://tradeos-91a58.web.app';
+  const esc = (s) => String(s || '').replace(/[&<>"']/g, (c) => (
+    { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]
+  ));
+  const cta = ctaUrl && ctaText ? `
+    <table role="presentation" cellspacing="0" cellpadding="0" border="0" align="center" style="margin:28px auto 8px">
+      <tr><td align="center" bgcolor="#00bfff" style="border-radius:10px">
+        <a href="${esc(ctaUrl)}" target="_blank" style="display:inline-block;padding:14px 32px;font-family:Arial,sans-serif;font-size:15px;font-weight:bold;color:#0a0e16;text-decoration:none;border-radius:10px">${esc(ctaText)}</a>
+      </td></tr>
+    </table>` : '';
+  return `<!DOCTYPE html><html lang="he" dir="rtl"><head><meta charset="utf-8" /><meta name="viewport" content="width=device-width, initial-scale=1" /></head>
+<body style="margin:0;padding:0;background:#0a0e16;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Arial,sans-serif">
+  <table role="presentation" width="100%" cellspacing="0" cellpadding="0" border="0" style="background:#0a0e16">
+    <tr><td align="center" style="padding:32px 16px">
+      <table role="presentation" width="100%" cellspacing="0" cellpadding="0" border="0" style="max-width:560px;background:#0f1521;border:1px solid rgba(0,191,255,0.18);border-radius:16px;overflow:hidden">
+        <!-- Header / brand -->
+        <tr><td style="padding:24px 28px;border-bottom:1px solid rgba(255,255,255,0.06);text-align:right">
+          <div style="display:inline-block;vertical-align:middle">
+            <span style="font-size:20px;font-weight:bold;color:#e5e7eb">TradeOS</span>
+            <span style="display:inline-block;margin-right:6px;color:#00bfff;font-size:12px;letter-spacing:1px">— יומן מסחר חכם</span>
+          </div>
+        </td></tr>
+        <!-- Body -->
+        <tr><td style="padding:32px 28px;color:#e5e7eb;text-align:right;line-height:1.6">
+          <h1 style="margin:0 0 12px;font-size:22px;color:#e5e7eb;font-weight:bold">${esc(headline)}</h1>
+          ${intro ? `<p style="margin:0 0 16px;font-size:15px;color:#cbd0d8">${esc(intro)}</p>` : ''}
+          ${body || ''}
+          ${cta}
+        </td></tr>
+        <!-- Footer -->
+        <tr><td style="padding:18px 28px;border-top:1px solid rgba(255,255,255,0.06);text-align:right">
+          <p style="margin:0;font-size:12px;color:#7d8492">${footer || `קיבלת את ההודעה הזו כי יש לך חשבון פעיל ב-TradeOS. <a href="${APP_URL}" style="color:#00bfff;text-decoration:none">פתח את האפליקציה</a>`}</p>
+        </td></tr>
+      </table>
+      <p style="margin:16px 0 0;font-size:11px;color:#5a6171;text-align:center">TradeOS &copy; ${new Date().getFullYear()}</p>
+    </td></tr>
+  </table>
+</body></html>`;
+}
+
 // ---- Weekly admin digest ---------------------------------------------------
 // Every Sunday morning, push the admin(s) a one-line summary of the week:
 // new signups, upgrades, customers about to expire, and churn risk. Lets the
@@ -547,6 +629,40 @@ async function checkWeeklyDigest(env) {
       url: '/admin',
       tag: 'weekly-digest',
     });
+  }
+
+  // Email digest — same content as push, prettier presentation. Each admin
+  // gets a one-glance dashboard in their inbox.
+  const adminUsers = users.filter((u) => u.role === 'admin' && u.email);
+  if (adminUsers.length === 0) return;
+  const emailBody = `
+    <div style="display:grid;gap:10px;margin:8px 0 4px">
+      <div style="background:rgba(0,191,255,0.08);border:1px solid rgba(0,191,255,0.25);border-radius:10px;padding:14px 16px;text-align:right">
+        <div style="font-size:11px;color:#7d8492">חדשים השבוע</div>
+        <div style="font-size:24px;font-weight:bold;color:#00bfff">📈 ${newUsers}</div>
+      </div>
+      <div style="background:rgba(245,158,11,0.08);border:1px solid rgba(245,158,11,0.3);border-radius:10px;padding:14px 16px;text-align:right">
+        <div style="font-size:11px;color:#7d8492">שדרגו ל-Premium</div>
+        <div style="font-size:24px;font-weight:bold;color:#f59e0b">👑 ${upgrades}</div>
+      </div>
+      <div style="background:rgba(245,158,11,0.05);border:1px solid rgba(245,158,11,0.25);border-radius:10px;padding:14px 16px;text-align:right">
+        <div style="font-size:11px;color:#7d8492">מנויים שעומדים להסתיים השבוע</div>
+        <div style="font-size:24px;font-weight:bold;color:#f59e0b">⏳ ${expiringSoon}</div>
+      </div>
+      <div style="background:rgba(239,68,68,0.06);border:1px solid rgba(239,68,68,0.3);border-radius:10px;padding:14px 16px;text-align:right">
+        <div style="font-size:11px;color:#7d8492">לקוחות בסיכון נטישה</div>
+        <div style="font-size:24px;font-weight:bold;color:#ef4444">⚠️ ${churn}</div>
+      </div>
+    </div>`;
+  const html = emailShell({
+    headline: '📊 הסיכום השבועי שלך',
+    intro: `הנה הדופק של TradeOS השבוע, ${il.toLocaleDateString('he-IL', { day: '2-digit', month: 'long' })}.`,
+    body: emailBody,
+    ctaText: 'פתח את פאנל הניהול',
+    ctaUrl: 'https://tradeos-91a58.web.app/admin',
+  });
+  for (const a of adminUsers) {
+    await sendEmail(env, { to: a.email, subject: '📊 הסיכום השבועי שלך — TradeOS', html });
   }
 }
 
