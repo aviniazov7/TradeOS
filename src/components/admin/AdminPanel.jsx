@@ -548,8 +548,10 @@ function UserDetailModal({ user, onClose, onUserChanged }) {
                 <X className="w-4 h-4" />
               </button>
             </div>
-            <div className="grid grid-cols-2 sm:grid-cols-4 gap-1.5">
+            <div className="grid grid-cols-3 sm:grid-cols-4 gap-1.5">
               {[
+                { d: 1, label: 'יום' },
+                { d: 7, label: 'שבוע' },
                 { d: 30, label: 'חודש' },
                 { d: 90, label: '3 חודשים' },
                 { d: 180, label: '6 חודשים' },

@@ -9,9 +9,32 @@ import { pageVariants, pageTransition } from '../../utils/animations';
 
 const ICONS = { Bot, BookOpen, Wallet, Link2, Bell, BarChart3, Sparkles };
 
+// Human-friendly "time remaining" string for a Premium plan with an expiry.
+// Returns null when the plan is lifetime (no expiry) or invalid.
+function timeLeftLabel(planExpires) {
+  if (!planExpires) return null;
+  const ms = new Date(planExpires).getTime() - Date.now();
+  if (!Number.isFinite(ms) || ms <= 0) return null;
+  const minutes = Math.floor(ms / 60_000);
+  const hours = Math.floor(minutes / 60);
+  const days = Math.floor(hours / 24);
+  if (days >= 30) {
+    const months = Math.floor(days / 30);
+    const extraDays = days - months * 30;
+    return extraDays > 0 ? `${months} חודשים ו-${extraDays} ימים` : `${months} חודשים`;
+  }
+  if (days >= 1) return `${days} ימים`;
+  if (hours >= 1) return `${hours} שעות`;
+  return `${minutes} דקות`;
+}
+
 export default function PremiumPage() {
-  const { isPremium } = useAuth();
+  const { isPremium, profile } = useAuth();
   const navigate = useNavigate();
+  const expiresAt = profile?.planExpires
+    ? new Date(profile.planExpires).toLocaleDateString('he-IL', { day: '2-digit', month: '2-digit', year: 'numeric' })
+    : null;
+  const timeLeft = timeLeftLabel(profile?.planExpires);
 
   return (
     <motion.div variants={pageVariants} initial="initial" animate="animate" exit="exit" transition={pageTransition}
@@ -27,6 +50,16 @@ export default function PremiumPage() {
             <>
               <h1 className="text-xl font-bold text-text-primary">אתה במנוי Premium 👑</h1>
               <p className="text-sm text-text-secondary mt-1">כל הפיצ'רים פתוחים. תודה על התמיכה!</p>
+              {timeLeft ? (
+                <div className="mt-3 inline-flex items-center gap-2 px-3 py-1.5 rounded-full bg-amber-500/10 border border-amber-500/30 text-xs">
+                  <span className="text-amber-400 font-semibold">נשארו {timeLeft}</span>
+                  <span className="text-text-muted">· מסתיים ב-{expiresAt}</span>
+                </div>
+              ) : (
+                <div className="mt-3 inline-flex items-center gap-1 px-3 py-1.5 rounded-full bg-amber-500/10 border border-amber-500/30 text-xs text-amber-400 font-semibold">
+                  גישה ללא הגבלת זמן
+                </div>
+              )}
             </>
           ) : (
             <>
