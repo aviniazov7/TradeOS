@@ -2956,6 +2956,60 @@ async function handleRequest(request, env) {
     }), { headers: { ...cors, 'Content-Type': 'application/json' } });
   }
 
+  // Coupon share preview. WhatsApp/Telegram crawlers don't run the SPA, so a
+  // link straight to the app shows the generic site card. This route returns a
+  // tiny HTML page with coupon-specific Open Graph tags (so the share looks
+  // nice — "X ימי Premium במתנה") and instantly redirects a real human to the
+  // app's redeem page. Reachable as /r/:code (short) or /share/redeem/:code.
+  if (request.method === 'GET' && (path.startsWith('/r/') || path.startsWith('/share/redeem/'))) {
+    const code = normalizeCouponCode(decodeURIComponent(path.split('/').pop() || ''));
+    const appUrl = `https://tradeos-91a58.web.app/redeem/${encodeURIComponent(code)}`;
+    const esc = (s) => String(s || '').replace(/[&<>"']/g, (c) => (
+      { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]
+    ));
+    const ogImage = 'https://tradeos-91a58.web.app/og-image.png?v=coupon';
+
+    let title = '🎁 קוד מתנה ל-TradeOS Premium';
+    let desc = 'מימשו את הקוד וקבלו גישה מלאה: מנטור AI בעברית, סנכרון בורסות, מעקב ארנקים והתראות חכמות.';
+    const coupon = code ? await env.ALERTS_KV.get(`coupon:${code}`, 'json') : null;
+    if (coupon) {
+      const expired = coupon.expiresAt && new Date(coupon.expiresAt).getTime() < Date.now();
+      const usedUp = coupon.maxUses != null && coupon.used >= coupon.maxUses;
+      title = `🎁 ${coupon.days} ימי TradeOS Premium במתנה`;
+      desc = `${coupon.label ? esc(coupon.label) + ' · ' : ''}הקוד ${esc(code)} ממתין לך — לחצו לממש ולפתוח את כל הפיצ'רים.`;
+      if (expired || usedUp) desc = `הקוד ${esc(code)} כבר אינו פעיל. היכנסו לראות מבצעים נוספים ב-TradeOS.`;
+    }
+
+    const html = `<!DOCTYPE html><html lang="he" dir="rtl"><head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>${esc(title)}</title>
+<meta property="og:type" content="website" />
+<meta property="og:title" content="${esc(title)}" />
+<meta property="og:description" content="${esc(desc)}" />
+<meta property="og:image" content="${ogImage}" />
+<meta property="og:image:width" content="1200" />
+<meta property="og:image:height" content="630" />
+<meta property="og:url" content="${esc(appUrl)}" />
+<meta name="twitter:card" content="summary_large_image" />
+<meta name="twitter:title" content="${esc(title)}" />
+<meta name="twitter:description" content="${esc(desc)}" />
+<meta name="twitter:image" content="${ogImage}" />
+<meta http-equiv="refresh" content="0; url=${esc(appUrl)}" />
+<link rel="canonical" href="${esc(appUrl)}" />
+<script>location.replace(${JSON.stringify(appUrl)});</script>
+<style>body{background:#0a0e16;color:#e5e7eb;font-family:system-ui,sans-serif;display:flex;min-height:100vh;align-items:center;justify-content:center;margin:0}a{color:#f59e0b}</style>
+</head><body><p>מעבירים אותך אל הקופון… <a href="${esc(appUrl)}">לחצו כאן אם זה לא קורה</a></p></body></html>`;
+
+    return new Response(html, {
+      headers: {
+        'Content-Type': 'text/html; charset=utf-8',
+        // Short cache so crawlers can re-fetch but we don't recompute every hit.
+        'Cache-Control': 'public, max-age=300',
+      },
+    });
+  }
+
   // Authenticated user: redeem a coupon. Adds `days` to whatever Premium they
   // currently have (or starts a fresh window if free). Each user can redeem
   // each code at most once; the global maxUses, if set, is enforced too.

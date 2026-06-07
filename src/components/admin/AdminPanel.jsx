@@ -6,7 +6,7 @@ import { useAuth } from '../../contexts/AuthContext';
 import { getAllUsers, getUserSubcollectionCount, adminGrantPremium, adminRevokePremium, getAdminNote, setAdminNote } from '../../services/firestoreService';
 import { fetchUserAiUsage } from '../../hooks/useAiUsage';
 import { adminSendNotification, adminScheduleExpiryReminders, adminCancelExpiryReminders, adminListAuditEvents } from '../../services/pushService';
-import { adminListCoupons, adminCreateCoupon, adminDeleteCoupon } from '../../services/couponService';
+import { adminListCoupons, adminCreateCoupon, adminDeleteCoupon, couponShareUrl } from '../../services/couponService';
 import LoadingSpinner from '../shared/LoadingSpinner';
 import SelectDropdown from '../shared/SelectDropdown';
 import Modal from '../shared/Modal';
@@ -114,6 +114,7 @@ export default function AdminPanel() {
   const [couponsOpen, setCouponsOpen] = useState(false);
   const [auditOpen, setAuditOpen] = useState(false);
   const [analyticsOpen, setAnalyticsOpen] = useState(false);
+  const [selectMode, setSelectMode] = useState(false);
   const [selectedIds, setSelectedIds] = useState(new Set());
   const [bulkBusy, setBulkBusy] = useState(false);
   const [bulkGrantOpen, setBulkGrantOpen] = useState(false);
@@ -478,32 +479,45 @@ export default function AdminPanel() {
             <div className="text-sm text-text-secondary">
               מציג {filtered.length} מתוך {users.length} משתמשים
             </div>
-            {selectedIds.size > 0 && (
-              <div className="flex items-center gap-2 text-xs">
-                <span className="text-text-secondary">{selectedIds.size} נבחרו</span>
+            <div className="flex items-center gap-2 text-xs">
+              {!selectMode ? (
                 <button
-                  onClick={() => setBulkGrantOpen(true)}
-                  disabled={bulkBusy}
-                  className="px-3 py-1.5 rounded-lg bg-amber-500/15 border border-amber-500/30 text-amber-400 hover:bg-amber-500/20 cursor-pointer disabled:opacity-50 inline-flex items-center gap-1"
+                  onClick={() => setSelectMode(true)}
+                  className="px-3 py-1.5 rounded-lg bg-bg-tertiary border border-border-primary text-text-secondary hover:text-text-primary cursor-pointer inline-flex items-center gap-1.5"
                 >
-                  <Crown className="w-3.5 h-3.5" /> הענק Premium לכולם
+                  <CheckCircle2 className="w-3.5 h-3.5" /> בחירה מרובה
                 </button>
-                <button
-                  onClick={() => setBulkNotifyOpen(true)}
-                  disabled={bulkBusy}
-                  className="px-3 py-1.5 rounded-lg bg-accent-primary/10 border border-accent-primary/30 text-accent-primary hover:bg-accent-primary/20 cursor-pointer disabled:opacity-50 inline-flex items-center gap-1"
-                >
-                  <Send className="w-3.5 h-3.5" /> שלח Push לכולם
-                </button>
-                <button
-                  onClick={() => setSelectedIds(new Set())}
-                  className="px-2 py-1.5 rounded-lg text-text-muted hover:text-text-primary cursor-pointer"
-                  title="נקה בחירה"
-                >
-                  <X className="w-3.5 h-3.5" />
-                </button>
-              </div>
-            )}
+              ) : (
+                <>
+                  <span className="text-text-secondary">{selectedIds.size} נבחרו</span>
+                  {selectedIds.size > 0 && (
+                    <>
+                      <button
+                        onClick={() => setBulkGrantOpen(true)}
+                        disabled={bulkBusy}
+                        className="px-3 py-1.5 rounded-lg bg-amber-500/15 border border-amber-500/30 text-amber-400 hover:bg-amber-500/20 cursor-pointer disabled:opacity-50 inline-flex items-center gap-1"
+                      >
+                        <Crown className="w-3.5 h-3.5" /> הענק Premium לכולם
+                      </button>
+                      <button
+                        onClick={() => setBulkNotifyOpen(true)}
+                        disabled={bulkBusy}
+                        className="px-3 py-1.5 rounded-lg bg-accent-primary/10 border border-accent-primary/30 text-accent-primary hover:bg-accent-primary/20 cursor-pointer disabled:opacity-50 inline-flex items-center gap-1"
+                      >
+                        <Send className="w-3.5 h-3.5" /> שלח Push לכולם
+                      </button>
+                    </>
+                  )}
+                  <button
+                    onClick={() => { setSelectMode(false); setSelectedIds(new Set()); }}
+                    className="px-3 py-1.5 rounded-lg text-text-muted hover:text-text-primary cursor-pointer inline-flex items-center gap-1"
+                    title="סיום בחירה"
+                  >
+                    <X className="w-3.5 h-3.5" /> סיום
+                  </button>
+                </>
+              )}
+            </div>
           </div>
 
           {/* Bulk grant: pick a duration and apply to all selected. */}
@@ -577,21 +591,23 @@ export default function AdminPanel() {
               <table className="w-full text-sm">
                 <thead>
                   <tr className="text-text-secondary border-b border-border-primary text-right">
-                    <th className="px-3 py-3 w-8">
-                      <input
-                        type="checkbox"
-                        onChange={toggleSelectAll}
-                        checked={filtered.length > 0 && filtered.every((u) => selectedIds.has(u.id))}
-                        ref={(el) => {
-                          if (!el) return;
-                          const some = filtered.some((u) => selectedIds.has(u.id));
-                          const all = filtered.length > 0 && filtered.every((u) => selectedIds.has(u.id));
-                          el.indeterminate = some && !all;
-                        }}
-                        className="w-4 h-4 cursor-pointer accent-accent-primary"
-                        aria-label="בחר הכל"
-                      />
-                    </th>
+                    {selectMode && (
+                      <th className="px-3 py-3 w-8">
+                        <input
+                          type="checkbox"
+                          onChange={toggleSelectAll}
+                          checked={filtered.length > 0 && filtered.every((u) => selectedIds.has(u.id))}
+                          ref={(el) => {
+                            if (!el) return;
+                            const some = filtered.some((u) => selectedIds.has(u.id));
+                            const all = filtered.length > 0 && filtered.every((u) => selectedIds.has(u.id));
+                            el.indeterminate = some && !all;
+                          }}
+                          className="w-4 h-4 cursor-pointer accent-accent-primary"
+                          aria-label="בחר הכל"
+                        />
+                      </th>
+                    )}
                     {COLUMNS.map((col) => (
                       <th key={col.key} className="font-medium px-4 py-3">
                         <button
@@ -612,7 +628,7 @@ export default function AdminPanel() {
                 <tbody>
                   {filtered.length === 0 ? (
                     <tr>
-                      <td colSpan={7} className="px-4 py-10 text-center text-text-secondary">
+                      <td colSpan={selectMode ? 7 : 6} className="px-4 py-10 text-center text-text-secondary">
                         לא נמצאו משתמשים
                       </td>
                     </tr>
@@ -620,18 +636,20 @@ export default function AdminPanel() {
                     filtered.map((u) => (
                       <tr
                         key={u.id}
-                        onClick={() => setSelectedUser(u)}
-                        className={`border-b border-border-primary/50 last:border-0 cursor-pointer hover:bg-bg-tertiary/40 transition-colors ${selectedIds.has(u.id) ? 'bg-accent-primary/5' : ''}`}
+                        onClick={() => (selectMode ? toggleSelected(u.id) : setSelectedUser(u))}
+                        className={`border-b border-border-primary/50 last:border-0 cursor-pointer hover:bg-bg-tertiary/40 transition-colors ${selectMode && selectedIds.has(u.id) ? 'bg-accent-primary/5' : ''}`}
                       >
-                        <td className="px-3 py-3" onClick={(e) => { e.stopPropagation(); toggleSelected(u.id); }}>
-                          <input
-                            type="checkbox"
-                            checked={selectedIds.has(u.id)}
-                            onChange={() => {}}
-                            className="w-4 h-4 cursor-pointer accent-accent-primary"
-                            aria-label="בחר משתמש"
-                          />
-                        </td>
+                        {selectMode && (
+                          <td className="px-3 py-3" onClick={(e) => { e.stopPropagation(); toggleSelected(u.id); }}>
+                            <input
+                              type="checkbox"
+                              checked={selectedIds.has(u.id)}
+                              onChange={() => {}}
+                              className="w-4 h-4 cursor-pointer accent-accent-primary"
+                              aria-label="בחר משתמש"
+                            />
+                          </td>
+                        )}
                         <td className="px-4 py-3">
                           <div className="flex items-center gap-3">
                             {u.photoURL ? (
@@ -1448,7 +1466,7 @@ function CouponsModal({ isOpen, onClose }) {
     navigator.clipboard?.writeText(c);
     toast.success(`${c} הועתק`);
   };
-  const shareLink = (c) => `${window.location.origin}/redeem/${encodeURIComponent(c)}`;
+  const shareLink = (c) => couponShareUrl(c);
   const copyShare = (c) => {
     navigator.clipboard?.writeText(shareLink(c));
     toast.success('קישור השיתוף הועתק 🔗');
