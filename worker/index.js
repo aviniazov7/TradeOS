@@ -3206,18 +3206,46 @@ async function handleRequest(request, env) {
     const looksLikeBrowser = /Mozilla/i.test(ua);
     const isCrawler = !looksLikeBrowser && /WhatsApp\/|TelegramBot|facebookexternalhit|Twitterbot|LinkedInBot|Slackbot|Discordbot|SkypeUriPreview|Googlebot|bingbot|Pinterest|redditbot|vkShare|Applebot|bot|crawler|spider/i.test(ua);
 
-    // Humans → server-side 302 + visible HTML fallback. Empty-body 302s were
-    // unreliable on some iOS Safari builds (the browser stayed on the worker
-    // URL and showed nothing); a small HTML body with a clickable link plus
-    // meta-refresh + JS guarantees the user always sees SOMETHING and gets
-    // forwarded to the app even if the 302 itself doesn't fire.
+    // Humans → plain 200 HTML page that shows a visible coupon teaser + button
+    // immediately, then auto-redirects via JS/meta-refresh. We deliberately
+    // do NOT return a 302 here: when the Location target is a different-origin
+    // SPA (tradeos-91a58.web.app), some Chrome and iOS Safari builds follow
+    // the redirect, render NOTHING during the bootstrap, and the user ends up
+    // staring at a blank page. With 200+HTML the page is always visible from
+    // millisecond zero and the redirect happens on top of that.
     if (!isCrawler) {
       const escUrl = String(appUrl).replace(/"/g, '&quot;');
-      const body = `<!DOCTYPE html><html lang="he" dir="rtl"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"><title>TradeOS</title><meta http-equiv="refresh" content="0; url=${escUrl}"><script>location.replace("${escUrl}");</script><style>html,body{margin:0;padding:0;background:#0a0e16;color:#e5e7eb;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;height:100%}.box{position:absolute;inset:0;display:flex;align-items:center;justify-content:center;text-align:center}a{color:#00bfff;text-decoration:none;font-size:16px;padding:14px 28px;border:1px solid #00bfff;border-radius:10px}</style></head><body><div class="box"><a href="${escUrl}">פתחו את הקופון ב-TradeOS ↩</a></div></body></html>`;
-      return new Response(body, {
-        status: 302,
+      const html = `<!DOCTYPE html><html lang="he" dir="rtl"><head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>🎁 קוד מתנה — TradeOS Premium</title>
+<meta http-equiv="refresh" content="1; url=${escUrl}">
+<style>
+  *{box-sizing:border-box}
+  html,body{margin:0;padding:0;background:#0a0e16;color:#e5e7eb;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Arial,sans-serif;min-height:100vh}
+  .wrap{min-height:100vh;display:flex;align-items:center;justify-content:center;padding:24px}
+  .card{max-width:380px;width:100%;background:#0f1521;border:1px solid rgba(245,158,11,0.3);border-radius:20px;padding:32px 24px;text-align:center}
+  .gift{font-size:48px;margin-bottom:12px}
+  h1{margin:0 0 8px;font-size:22px;color:#f59e0b}
+  p{margin:0 0 24px;font-size:14px;color:#9ca3af}
+  a.btn{display:block;background:#f59e0b;color:#0a0e16;padding:16px 24px;border-radius:12px;text-decoration:none;font-weight:bold;font-size:16px}
+  a.btn:active{background:#d97706}
+</style>
+</head>
+<body>
+<div class="wrap">
+  <div class="card">
+    <div class="gift">🎁</div>
+    <h1>קוד מתנה ל-TradeOS Premium</h1>
+    <p>פותחים את הקופון…</p>
+    <a class="btn" href="${escUrl}">פתחו עכשיו ↩</a>
+  </div>
+</div>
+<script>setTimeout(function(){window.location.href="${escUrl}"},50);</script>
+</body></html>`;
+      return new Response(html, {
+        status: 200,
         headers: {
-          Location: appUrl,
           'Content-Type': 'text/html; charset=utf-8',
           'Cache-Control': 'no-store',
         },
