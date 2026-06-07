@@ -15,6 +15,7 @@ import {
 import {
   getUserProfile,
   setUserProfile,
+  setUserSetting,
   deleteUserProfile,
   deleteUserSubcollection,
   timestamp,
@@ -71,7 +72,13 @@ export function AuthProvider({ children }) {
               return;
             }
             setProfile(defaultProfile);
-            return setUserProfile(firebaseUser.uid, defaultProfile, false);
+            // On first sign-in: also pre-create the notifications setting so the
+            // toggle defaults to ON (the user still has to grant browser
+            // permission before pushes actually deliver, but the intent is set).
+            return Promise.all([
+              setUserProfile(firebaseUser.uid, defaultProfile, false),
+              setUserSetting(firebaseUser.uid, 'notifications', { pushEnabled: true, tradeOpenAlerts: true }, true),
+            ]);
           })
           .catch(() => {});
       } else {

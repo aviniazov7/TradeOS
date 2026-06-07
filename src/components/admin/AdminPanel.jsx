@@ -380,7 +380,28 @@ function UserDetailModal({ user, onClose, onUserChanged }) {
     setGranting(true);
     try {
       await adminGrantPremium(user.id, days);
-      toast.success(days === Infinity ? 'ניתן Premium ללא הגבלה' : `ניתן Premium ל-${days} ימים`);
+      const lifetime = !Number.isFinite(days);
+      const expiresAt = lifetime
+        ? null
+        : new Date(Date.now() + days * 24 * 60 * 60 * 1000);
+      toast.success(lifetime ? 'ניתן Premium ללא הגבלה' : `ניתן Premium ל-${days} ימים`);
+
+      // Notify the user via push. Best-effort: ignore failures (e.g. user has
+      // never registered a device — they'll see the change next time they open
+      // the app anyway).
+      const expiryStr = expiresAt
+        ? expiresAt.toLocaleDateString('he-IL', { day: '2-digit', month: '2-digit', year: 'numeric' })
+        : null;
+      const body = lifetime
+        ? '🎉 קיבלת Premium ללא הגבלה. כל הפיצ\'רים פתוחים — בהצלחה במסחר!'
+        : `🎉 קיבלת Premium עד ${expiryStr}. כל הפיצ\'רים פתוחים — בהצלחה במסחר!`;
+      adminSendNotification({
+        uid: user.id,
+        title: '🎁 שודרגת ל-TradeOS Premium',
+        body,
+        url: '/premium',
+      }).catch(() => { /* best-effort */ });
+
       setGrantOpen(false);
       onUserChanged?.();
     } catch (e) {

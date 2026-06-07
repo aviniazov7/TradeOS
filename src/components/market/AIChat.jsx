@@ -556,20 +556,19 @@ export default function AIChat() {
 
         {/* Input */}
         <div className="border-t border-border-primary px-4 py-3 bg-bg-secondary/50">
-          {/* Daily AI quota — resets at Israel midnight (premium = unlimited) */}
-          {!aiUsage.loading && aiUsage.unlimited && (
-            <div className="mb-2 flex items-center justify-center gap-1.5 text-[10px] text-accent-primary">
-              <Crown className="w-3 h-3" /> Premium · שימוש ללא הגבלה
-            </div>
-          )}
-          {!aiUsage.loading && !aiUsage.unlimited && (() => {
+          {/* Daily AI quota — resets at Israel midnight. Both tiers see a bar
+              so premium users know they have a (generous) cap too. */}
+          {!aiUsage.loading && aiUsage.limit && (() => {
             const remaining = Math.max(0, aiUsage.limit - aiUsage.used);
             const pct = Math.min(100, (aiUsage.used / aiUsage.limit) * 100);
             const low = remaining <= 3;
             return (
               <div className="mb-2">
                 <div className="flex items-center justify-between text-[10px] mb-1">
-                  <span className="text-text-muted">מכסה יומית</span>
+                  <span className="text-text-muted flex items-center gap-1">
+                    {aiUsage.premium && <Crown className="w-2.5 h-2.5 text-accent-primary" />}
+                    {aiUsage.premium ? 'מכסה יומית · Premium' : 'מכסה יומית'}
+                  </span>
                   <span className={low ? 'text-loss font-semibold' : 'text-text-secondary'}>
                     נשארו {remaining} מתוך {aiUsage.limit}
                   </span>

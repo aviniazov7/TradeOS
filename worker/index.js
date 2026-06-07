@@ -1881,17 +1881,18 @@ async function handleAIChat(request, env, cors) {
     const gate = await aiRateGate(env, uid, premium);
     if (gate) return new Response(JSON.stringify(gate.body), { status: gate.status, headers: { ...cors, 'Content-Type': 'application/json' } });
 
-    // Free-tier daily quota (Premium has its own daily soft cap inside aiRateGate).
+    // Daily AI usage counter — kept for BOTH tiers so each user sees their
+    // own progress bar. Premium just has a higher cap (handled in aiRateGate).
     if (!premium) {
       const quota = await getAiUsage(env, uid);
       if (quota.used >= quota.limit) {
         return new Response(JSON.stringify({
-          error: `הגעת למכסה היומית (${quota.limit} בקשות). שדרג ל-Premium לשימוש ללא הגבלה.`,
+          error: `הגעת למכסה היומית (${quota.limit} בקשות). שדרג ל-Premium ל-${AI_PREMIUM_LIMITS.day} בקשות ביום.`,
           quotaExceeded: true, used: quota.used, limit: quota.limit,
         }), { status: 429, headers: { ...cors, 'Content-Type': 'application/json' } });
       }
-      await incrementAiUsage(env, uid);
     }
+    await incrementAiUsage(env, uid);
 
     // Build messages for Groq. Trim history to keep the payload under Groq's
     // request-size cap (we saw HTTP 413 once a long Wyckoff reply was in the
@@ -2541,13 +2542,26 @@ async function handleRequest(request, env) {
     return new Response(JSON.stringify({ ok: true }), { headers: { ...cors, 'Content-Type': 'application/json' } });
   }
 
-  // Caller's own AI usage for the current day — used by the progress bar.
+  // Caller's own AI usage for the current day — drives the progress bar.
+  // Both tiers now report a real limit so premium users see how many requests
+  // they've used today (we don't want a 'unlimited' label to lull anyone into
+  // burning the shared token quota).
   if (request.method === 'GET' && path === '/ai-usage') {
     const token = (request.headers.get('Authorization') || '').replace('Bearer ', '');
     const uid = await verifyFirebaseToken(token);
     if (!uid) return new Response(JSON.stringify({ error: 'unauthorized' }), { status: 401, headers: { ...cors, 'Content-Type': 'application/json' } });
-    if (await isUserPremium(env, token, uid)) {
-      return new Response(JSON.stringify({ used: 0, limit: null, unlimited: true, date: getIsraelDateStr() }), { headers: { ...cors, 'Content-Type': 'application/json' } });
+    const premium = await isUserPremium(env, token, uid);
+    if (premium) {
+      // Premium uses the same daily counter we accrue in /ai-chat, capped by
+      // the soft AI_PREMIUM_LIMITS.day for cost safety.
+      const usage = await getAiUsage(env, uid);
+      return new Response(JSON.stringify({
+        used: usage.used,
+        limit: AI_PREMIUM_LIMITS.day,
+        unlimited: false,
+        premium: true,
+        date: usage.date,
+      }), { headers: { ...cors, 'Content-Type': 'application/json' } });
     }
     const usage = await getAiUsage(env, uid);
     return new Response(JSON.stringify(usage), { headers: { ...cors, 'Content-Type': 'application/json' } });
