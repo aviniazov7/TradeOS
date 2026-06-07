@@ -527,7 +527,10 @@ async function sendEmail(env, { to, subject, html, replyTo }) {
     if (!res.ok) {
       const detail = await res.text().catch(() => '');
       console.error('Resend send failed:', res.status, detail);
-      return { ok: false, status: res.status };
+      // Try to extract Resend's human-readable error message.
+      let message = '';
+      try { message = JSON.parse(detail).message || ''; } catch { /* not JSON */ }
+      return { ok: false, status: res.status, message: message || detail.slice(0, 200) };
     }
     return { ok: true, status: res.status };
   } catch (e) {
@@ -3044,7 +3047,9 @@ async function handleRequest(request, env) {
     });
     const r = await sendEmail(env, { to: me.email, subject: '[TEST] 📊 הסיכום השבועי שלך — TradeOS', html });
     if (!r.ok) {
-      return new Response(JSON.stringify({ error: `Resend החזיר ${r.status}` }), { status: 502, headers: { ...cors, 'Content-Type': 'application/json' } });
+      // Pass the actual Resend message back so the admin sees the real reason
+      // (e.g. "you can only send testing emails to your own email address").
+      return new Response(JSON.stringify({ error: `Resend ${r.status}: ${r.message || 'unknown error'}`, sentTo: me.email }), { status: 502, headers: { ...cors, 'Content-Type': 'application/json' } });
     }
     return new Response(JSON.stringify({ ok: true, sentTo: me.email, stats: { newUsers: digest.newUsers, upgrades: digest.upgrades, expiringSoon: digest.expiringSoon, churn: digest.churn } }), { headers: { ...cors, 'Content-Type': 'application/json' } });
   }
