@@ -19,8 +19,18 @@ import {
   subscribeToUserProfile,
   deleteUserProfile,
   deleteUserSubcollection,
+  touchLastActive,
   timestamp,
 } from '../services/firestoreService';
+
+// Read a Firestore Timestamp / ISO / millis into epoch millis (0 if absent).
+function toMillis(v) {
+  if (!v) return 0;
+  if (typeof v.toDate === 'function') return v.toDate().getTime();
+  if (typeof v === 'number') return v;
+  const t = new Date(v).getTime();
+  return isNaN(t) ? 0 : t;
+}
 
 const AuthContext = createContext(null);
 
@@ -54,6 +64,7 @@ export function AuthProvider({ children }) {
           email: firebaseUser.email,
           photoURL: firebaseUser.photoURL,
           createdAt: timestamp(),
+          lastActive: timestamp(),
           onboardingCompleted: false,
           settings: {
             defaultLeverage: 10,
@@ -76,6 +87,12 @@ export function AuthProvider({ children }) {
           .then(({ exists, data }) => {
             if (exists) {
               setProfile(data);
+              // Stamp activity at most once an hour so the admin panel can show
+              // who's active and flag churning Premium users. Throttled to
+              // avoid a Firestore write on every page refresh.
+              if (Date.now() - toMillis(data.lastActive) > 60 * 60 * 1000) {
+                touchLastActive(firebaseUser.uid).catch(() => {});
+              }
             } else {
               setProfile(defaultProfile);
               // On first sign-in: also pre-create the notifications setting so

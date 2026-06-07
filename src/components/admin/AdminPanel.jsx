@@ -1,9 +1,9 @@
 import { useState, useEffect, useMemo, useRef } from 'react';
 import { Navigate } from 'react-router-dom';
-import { Users, UserPlus, ShieldCheck, CheckCircle2, Search, RefreshCw, Download, ChevronUp, ChevronDown, Mail, Calendar, Coins, TrendingUp, Percent, Sparkles, Star, BookOpen, FlaskConical, Activity, FileText, Brain, Crown, Send, X, Ticket, Plus, Minus, Trash2, Copy, ScrollText, Share2, Link2 } from 'lucide-react';
+import { Users, UserPlus, ShieldCheck, CheckCircle2, Search, RefreshCw, Download, ChevronUp, ChevronDown, Mail, Calendar, Coins, TrendingUp, Percent, Sparkles, Star, BookOpen, FlaskConical, Activity, FileText, Brain, Crown, Send, X, Ticket, Plus, Minus, Trash2, Copy, ScrollText, Share2, Link2, BarChart3, AlertTriangle, Clock, StickyNote, Save } from 'lucide-react';
 import toast from 'react-hot-toast';
 import { useAuth } from '../../contexts/AuthContext';
-import { getAllUsers, getUserSubcollectionCount, adminGrantPremium, adminRevokePremium } from '../../services/firestoreService';
+import { getAllUsers, getUserSubcollectionCount, adminGrantPremium, adminRevokePremium, getAdminNote, setAdminNote } from '../../services/firestoreService';
 import { fetchUserAiUsage } from '../../hooks/useAiUsage';
 import { adminSendNotification, adminScheduleExpiryReminders, adminCancelExpiryReminders, adminListAuditEvents } from '../../services/pushService';
 import { adminListCoupons, adminCreateCoupon, adminDeleteCoupon } from '../../services/couponService';
@@ -34,6 +34,35 @@ function formatDate(v) {
   return d ? d.toLocaleDateString('he-IL', { day: '2-digit', month: '2-digit', year: 'numeric' }) : '—';
 }
 
+const DAY_MS = 24 * 60 * 60 * 1000;
+function lastActiveMs(u) {
+  return toDate(u?.lastActive)?.getTime() || 0;
+}
+function daysSinceActive(u) {
+  const t = lastActiveMs(u);
+  return t ? Math.floor((Date.now() - t) / DAY_MS) : Infinity;
+}
+// Hebrew relative "last seen" label.
+function relativeActive(v) {
+  const d = toDate(v);
+  if (!d) return 'מעולם לא';
+  const diff = Date.now() - d.getTime();
+  if (diff < 60 * 1000) return 'עכשיו';
+  const mins = Math.floor(diff / 60000);
+  if (mins < 60) return `לפני ${mins} ד'`;
+  const hrs = Math.floor(mins / 60);
+  if (hrs < 24) return `לפני ${hrs} שע'`;
+  const days = Math.floor(hrs / 24);
+  if (days === 1) return 'אתמול';
+  if (days < 30) return `לפני ${days} ימים`;
+  const months = Math.floor(days / 30);
+  return months === 1 ? 'לפני חודש' : `לפני ${months} חודשים`;
+}
+// Active = opened the app within the last `days` days.
+function activeWithin(u, days) {
+  return daysSinceActive(u) <= days;
+}
+
 function StatCard({ icon, label, value }) {
   return (
     <div className="bg-bg-secondary border border-border-primary rounded-xl p-4 flex items-center gap-4">
@@ -52,12 +81,14 @@ const COLUMNS = [
   { key: 'displayName', label: 'משתמש' },
   { key: 'email', label: 'אימייל' },
   { key: 'createdAt', label: 'הצטרף' },
+  { key: 'lastActive', label: 'פעילות אחרונה' },
   { key: 'onboardingCompleted', label: 'אונבורדינג' },
   { key: 'role', label: 'תפקיד' },
 ];
 
 function sortValue(u, key) {
   if (key === 'createdAt') return toDate(u.createdAt)?.getTime() || 0;
+  if (key === 'lastActive') return lastActiveMs(u);
   if (key === 'onboardingCompleted') return u.onboardingCompleted ? 1 : 0;
   if (key === 'role') return u.role === 'admin' ? 1 : 0;
   return (u[key] || '').toString().toLowerCase();
@@ -82,6 +113,7 @@ export default function AdminPanel() {
   const [selectedUser, setSelectedUser] = useState(null);
   const [couponsOpen, setCouponsOpen] = useState(false);
   const [auditOpen, setAuditOpen] = useState(false);
+  const [analyticsOpen, setAnalyticsOpen] = useState(false);
   const [selectedIds, setSelectedIds] = useState(new Set());
   const [bulkBusy, setBulkBusy] = useState(false);
   const [bulkGrantOpen, setBulkGrantOpen] = useState(false);
@@ -130,6 +162,57 @@ export default function AdminPanel() {
     return { total: users.length, newThisWeek, onboarded, admins, premium };
   }, [users, loadedAt]);
 
+  // Premium customers who haven't opened the app in 7+ days — the "churn risk"
+  // list. Sorted by how long they've been gone (longest first).
+  const churned = useMemo(() => {
+    return users
+      .filter((u) => u.role !== 'admin' && isUserPremium(u) && lastActiveMs(u) > 0 && daysSinceActive(u) >= 7)
+      .sort((a, b) => daysSinceActive(b) - daysSinceActive(a));
+  }, [users]);
+
+  // Customer analytics: signups per week, conversion, activity, retention.
+  const analytics = useMemo(() => {
+    const now = Date.now();
+    const customers = users.filter((u) => u.role !== 'admin');
+    const totalC = customers.length;
+    const premiumC = customers.filter((u) => isUserPremium(u)).length;
+    const onboardedC = customers.filter((u) => u.onboardingCompleted).length;
+    const active7 = customers.filter((u) => activeWithin(u, 7)).length;
+    const active30 = customers.filter((u) => activeWithin(u, 30)).length;
+    const everActive = customers.filter((u) => lastActiveMs(u) > 0).length;
+
+    // Signups in each of the last 8 weeks (oldest → newest).
+    const weeks = [];
+    for (let i = 7; i >= 0; i--) {
+      const end = now - i * 7 * DAY_MS;
+      const start = end - 7 * DAY_MS;
+      const count = users.filter((u) => {
+        const t = toDate(u.createdAt)?.getTime() || 0;
+        return t > start && t <= end;
+      }).length;
+      weeks.push({ count, weeksAgo: i });
+    }
+
+    // Most active customers — most recently seen first (only those we've seen).
+    const topActive = [...customers]
+      .filter((u) => lastActiveMs(u) > 0)
+      .sort((a, b) => lastActiveMs(b) - lastActiveMs(a))
+      .slice(0, 6);
+
+    return {
+      totalC,
+      premiumC,
+      conversion: totalC ? Math.round((premiumC / totalC) * 100) : 0,
+      onboardRate: totalC ? Math.round((onboardedC / totalC) * 100) : 0,
+      openRate: totalC ? Math.round((active7 / totalC) * 100) : 0,
+      active7,
+      active30,
+      everActive,
+      weeks,
+      topActive,
+    };
+  }, [users]);
+
   const filtered = useMemo(() => {
     const q = search.trim().toLowerCase();
     const list = users.filter((u) => {
@@ -158,7 +241,7 @@ export default function AdminPanel() {
       setSortDir((d) => (d === 'asc' ? 'desc' : 'asc'));
     } else {
       setSortKey(key);
-      setSortDir(key === 'createdAt' ? 'desc' : 'asc');
+      setSortDir(key === 'createdAt' || key === 'lastActive' ? 'desc' : 'asc');
     }
   };
 
@@ -258,6 +341,13 @@ export default function AdminPanel() {
         <h1 className="text-xl md:text-2xl font-bold text-text-primary">פאנל ניהול</h1>
         <div className="flex items-center gap-2">
           <button
+            onClick={() => setAnalyticsOpen(true)}
+            className="flex items-center gap-2 px-3 py-2 rounded-lg text-sm font-medium bg-accent-primary/10 border border-accent-primary/30 text-accent-primary hover:bg-accent-primary/20 cursor-pointer"
+          >
+            <BarChart3 className="w-4 h-4" />
+            אנליטיקס
+          </button>
+          <button
             onClick={() => setAuditOpen(true)}
             className="flex items-center gap-2 px-3 py-2 rounded-lg text-sm font-medium bg-bg-tertiary border border-border-primary text-text-secondary hover:text-text-primary cursor-pointer"
           >
@@ -289,6 +379,45 @@ export default function AdminPanel() {
         <StatCard icon={<Crown className="w-6 h-6 text-amber-400" />} label="לקוחות Premium" value={stats.premium} />
         <StatCard icon={<ShieldCheck className="w-6 h-6" />} label="אדמינים" value={stats.admins} />
       </div>
+
+      {/* Churn-risk: Premium customers who haven't opened the app in 7+ days. */}
+      {churned.length > 0 && (
+        <div className="bg-loss/5 border border-loss/30 rounded-xl p-4">
+          <div className="flex items-center gap-2 mb-3">
+            <div className="bg-loss/15 text-loss rounded-lg p-1.5">
+              <AlertTriangle className="w-4 h-4" />
+            </div>
+            <span className="text-sm font-semibold text-text-primary">לקוחות בסיכון נטישה</span>
+            <span className="text-[11px] text-text-muted">— מנויי Premium שלא נכנסו 7+ ימים</span>
+            <span className="mr-auto text-xs font-bold text-loss bg-loss/10 px-2 py-0.5 rounded-full">{churned.length}</span>
+          </div>
+          <div className="grid sm:grid-cols-2 gap-2">
+            {churned.slice(0, 6).map((u) => (
+              <button
+                key={u.id}
+                onClick={() => setSelectedUser(u)}
+                className="flex items-center gap-3 bg-bg-secondary border border-border-primary rounded-lg px-3 py-2 text-right hover:border-loss/40 transition-colors cursor-pointer"
+              >
+                {u.photoURL ? (
+                  <img src={u.photoURL} alt="" className="w-8 h-8 rounded-full object-cover" referrerPolicy="no-referrer" />
+                ) : (
+                  <div className="w-8 h-8 rounded-full bg-bg-tertiary flex items-center justify-center text-text-secondary text-sm font-semibold">
+                    {(u.displayName || u.email || '?').charAt(0).toUpperCase()}
+                  </div>
+                )}
+                <div className="flex-1 min-w-0">
+                  <div className="text-sm font-medium text-text-primary truncate">{u.displayName || u.email}</div>
+                  <div className="text-[11px] text-loss">לא נכנס {daysSinceActive(u)} ימים</div>
+                </div>
+                <Send className="w-4 h-4 text-text-muted shrink-0" />
+              </button>
+            ))}
+          </div>
+          {churned.length > 6 && (
+            <div className="text-[11px] text-text-muted mt-2">ועוד {churned.length - 6}… (מיין לפי "פעילות אחרונה" בטבלה)</div>
+          )}
+        </div>
+      )}
 
       <div className="flex flex-col md:flex-row gap-3">
         <div className="relative flex-1">
@@ -483,7 +612,7 @@ export default function AdminPanel() {
                 <tbody>
                   {filtered.length === 0 ? (
                     <tr>
-                      <td colSpan={6} className="px-4 py-10 text-center text-text-secondary">
+                      <td colSpan={7} className="px-4 py-10 text-center text-text-secondary">
                         לא נמצאו משתמשים
                       </td>
                     </tr>
@@ -517,6 +646,17 @@ export default function AdminPanel() {
                         </td>
                         <td className="px-4 py-3 text-text-secondary">{u.email || '—'}</td>
                         <td className="px-4 py-3 text-text-secondary">{formatDate(u.createdAt)}</td>
+                        <td className="px-4 py-3">
+                          {(() => {
+                            const churn = u.role !== 'admin' && isUserPremium(u) && daysSinceActive(u) >= 7;
+                            return (
+                              <span className={`inline-flex items-center gap-1 ${churn ? 'text-loss' : lastActiveMs(u) ? 'text-text-secondary' : 'text-text-muted'}`}>
+                                <Clock className="w-3.5 h-3.5" />
+                                {relativeActive(u.lastActive)}
+                              </span>
+                            );
+                          })()}
+                        </td>
                         <td className="px-4 py-3">
                           {u.onboardingCompleted ? (
                             <span className="text-profit">הושלם</span>
@@ -552,6 +692,7 @@ export default function AdminPanel() {
       <UserDetailModal user={selectedUser} onClose={() => setSelectedUser(null)} onUserChanged={load} />
       <CouponsModal isOpen={couponsOpen} onClose={() => setCouponsOpen(false)} />
       <AuditLogModal isOpen={auditOpen} onClose={() => setAuditOpen(false)} users={users} />
+      <AnalyticsModal isOpen={analyticsOpen} onClose={() => setAnalyticsOpen(false)} a={analytics} onPickUser={(u) => { setAnalyticsOpen(false); setSelectedUser(u); }} />
     </div>
   );
 }
@@ -581,6 +722,7 @@ const COUNT_COLLECTIONS = [
 ];
 
 function UserDetailModal({ user, onClose, onUserChanged }) {
+  const { user: adminUser } = useAuth();
   const [counts, setCounts] = useState(null);
   const [countsError, setCountsError] = useState(null);
   const [aiUsage, setAiUsage] = useState(null);
@@ -590,6 +732,34 @@ function UserDetailModal({ user, onClose, onUserChanged }) {
   const [notifyTitle, setNotifyTitle] = useState('');
   const [notifyBody, setNotifyBody] = useState('');
   const [notifying, setNotifying] = useState(false);
+  const [note, setNote] = useState('');
+  const [noteLoaded, setNoteLoaded] = useState('');
+  const [noteSaving, setNoteSaving] = useState(false);
+
+  // Load the admin-only private note for this user (separate collection so the
+  // user themselves can never see it).
+  useEffect(() => {
+    if (!user) { setNote(''); setNoteLoaded(''); return; }
+    let cancelled = false;
+    getAdminNote(user.id)
+      .then((t) => { if (!cancelled) { setNote(t); setNoteLoaded(t); } })
+      .catch(() => {});
+    return () => { cancelled = true; };
+  }, [user]);
+
+  const saveNote = async () => {
+    if (!user) return;
+    setNoteSaving(true);
+    try {
+      await setAdminNote(user.id, note.trim(), adminUser?.uid);
+      setNoteLoaded(note.trim());
+      toast.success('ההערה נשמרה');
+    } catch {
+      toast.error('שמירת ההערה נכשלה');
+    } finally {
+      setNoteSaving(false);
+    }
+  };
 
   useEffect(() => {
     if (!user) { setAiUsage(null); return; }
@@ -836,10 +1006,36 @@ function UserDetailModal({ user, onClose, onUserChanged }) {
           </div>
         )}
 
+        {/* Private admin note — only admins can see this (separate collection). */}
+        <div>
+          <div className="text-[11px] text-text-muted mb-2 flex items-center gap-1.5">
+            <StickyNote className="w-3.5 h-3.5 text-amber-400" /> הערה פרטית (רק אתה רואה)
+          </div>
+          <textarea
+            value={note}
+            onChange={(e) => setNote(e.target.value)}
+            placeholder='לדוגמה: "שילם בביט", "מבקש החזר", "חבר של דני"…'
+            rows={3}
+            maxLength={1000}
+            className="w-full bg-bg-tertiary/40 border border-border-primary rounded-lg px-3 py-2 text-sm text-text-primary placeholder:text-text-muted outline-none focus:border-amber-500/50 resize-none"
+          />
+          <div className="flex items-center justify-between mt-1.5">
+            <span className="text-[10px] text-text-muted">{note.trim() !== noteLoaded.trim() ? 'יש שינויים שלא נשמרו' : 'נשמר'}</span>
+            <button
+              onClick={saveNote}
+              disabled={noteSaving || note.trim() === noteLoaded.trim()}
+              className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-amber-500/15 border border-amber-500/30 text-amber-400 text-xs font-semibold hover:bg-amber-500/20 transition-colors cursor-pointer disabled:opacity-50"
+            >
+              <Save className="w-3.5 h-3.5" /> {noteSaving ? 'שומר…' : 'שמור הערה'}
+            </button>
+          </div>
+        </div>
+
         {/* General */}
         <div className="bg-bg-tertiary/40 border border-border-primary rounded-xl px-4 py-2 divide-y divide-border-primary/40">
           <DetailRow icon={<Mail className="w-4 h-4" />} label="אימייל" value={user.email} />
           <DetailRow icon={<Calendar className="w-4 h-4" />} label="הצטרף" value={formatDate(user.createdAt)} />
+          <DetailRow icon={<Clock className="w-4 h-4" />} label="פעילות אחרונה" value={relativeActive(user.lastActive)} />
           <DetailRow icon={<Coins className="w-4 h-4" />} label="מטבע בסיס" value={settings.baseCurrency} />
           <DetailRow icon={<TrendingUp className="w-4 h-4" />} label="מינוף ברירת מחדל" value={settings.defaultLeverage ? `${settings.defaultLeverage}x` : null} />
           <DetailRow icon={<Percent className="w-4 h-4" />} label="סיכון ברירת מחדל" value={settings.defaultRiskPercent != null ? `${settings.defaultRiskPercent}%` : null} />
@@ -926,6 +1122,120 @@ function UserDetailModal({ user, onClose, onUserChanged }) {
 
       </div>
     </Modal>
+  );
+}
+
+// ── Analytics modal ──────────────────────────────────────────────────────────
+// A circular progress ring rendered with SVG (no chart lib → keeps the admin
+// bundle light). `color` is a Tailwind text-color class used via currentColor.
+function Ring({ pct, label, sub, color = 'text-accent-primary' }) {
+  const r = 30;
+  const c = 2 * Math.PI * r;
+  const off = c * (1 - Math.max(0, Math.min(100, pct)) / 100);
+  return (
+    <div className="flex flex-col items-center justify-center bg-bg-tertiary/40 border border-border-primary rounded-xl py-4">
+      <div className={`relative ${color}`}>
+        <svg width="78" height="78" viewBox="0 0 78 78" className="-rotate-90">
+          <circle cx="39" cy="39" r={r} fill="none" stroke="currentColor" strokeWidth="7" className="opacity-15" />
+          <circle cx="39" cy="39" r={r} fill="none" stroke="currentColor" strokeWidth="7" strokeLinecap="round"
+            strokeDasharray={c} strokeDashoffset={off} style={{ transition: 'stroke-dashoffset .6s ease' }} />
+        </svg>
+        <div className="absolute inset-0 flex items-center justify-center">
+          <span className="text-lg font-bold text-text-primary">{pct}%</span>
+        </div>
+      </div>
+      <div className="text-xs font-medium text-text-primary mt-2">{label}</div>
+      {sub && <div className="text-[10px] text-text-muted">{sub}</div>}
+    </div>
+  );
+}
+
+function AnalyticsModal({ isOpen, onClose, a, onPickUser }) {
+  const maxWeek = Math.max(1, ...a.weeks.map((w) => w.count));
+  return (
+    <Modal isOpen={isOpen} onClose={onClose} title="אנליטיקס לקוחות" maxWidth="max-w-2xl">
+      <div className="space-y-5">
+        {/* Key rates */}
+        <div className="grid grid-cols-3 gap-2">
+          <Ring pct={a.conversion} label="המרה לפרימיום" sub={`${a.premiumC}/${a.totalC}`} color="text-amber-400" />
+          <Ring pct={a.openRate} label="פתחו השבוע" sub={`${a.active7} פעילים`} color="text-profit" />
+          <Ring pct={a.onboardRate} label="סיימו אונבורדינג" color="text-accent-primary" />
+        </div>
+
+        {/* Signups per week */}
+        <div className="bg-bg-tertiary/40 border border-border-primary rounded-xl p-4">
+          <div className="flex items-center gap-1.5 text-xs text-text-muted mb-3">
+            <BarChart3 className="w-3.5 h-3.5" /> הצטרפות חדשה — 8 שבועות אחרונים
+          </div>
+          <div className="flex items-end justify-between gap-1.5 h-28">
+            {a.weeks.map((w, i) => (
+              <div key={i} className="flex-1 flex flex-col items-center justify-end gap-1 h-full">
+                <span className="text-[10px] text-text-secondary">{w.count || ''}</span>
+                <div
+                  className={`w-full rounded-t ${i === a.weeks.length - 1 ? 'bg-accent-primary' : 'bg-accent-primary/40'}`}
+                  style={{ height: `${(w.count / maxWeek) * 100}%`, minHeight: w.count ? '4px' : '0' }}
+                  title={`${w.count} משתמשים`}
+                />
+                <span className="text-[9px] text-text-muted">{w.weeksAgo === 0 ? 'השבוע' : `-${w.weeksAgo}`}</span>
+              </div>
+            ))}
+          </div>
+        </div>
+
+        {/* Activity snapshot */}
+        <div className="grid grid-cols-3 gap-2">
+          <MiniStat label="פעילים 7 ימים" value={a.active7} icon={<Activity className="w-4 h-4" />} />
+          <MiniStat label="פעילים 30 יום" value={a.active30} icon={<Activity className="w-4 h-4" />} />
+          <MiniStat label="נכנסו אי פעם" value={a.everActive} icon={<Users className="w-4 h-4" />} />
+        </div>
+
+        {/* Most active customers */}
+        <div>
+          <div className="flex items-center gap-1.5 text-xs text-text-muted mb-2">
+            <Sparkles className="w-3.5 h-3.5 text-amber-400" /> הלקוחות הכי פעילים
+          </div>
+          {a.topActive.length === 0 ? (
+            <div className="text-sm text-text-muted text-center py-4 border border-dashed border-border-primary rounded-xl">
+              עדיין אין נתוני פעילות. הם יופיעו אחרי שמשתמשים יפתחו את האפליקציה.
+            </div>
+          ) : (
+            <div className="space-y-1.5">
+              {a.topActive.map((u, idx) => (
+                <button
+                  key={u.id}
+                  onClick={() => onPickUser(u)}
+                  className="w-full flex items-center gap-3 bg-bg-tertiary/40 border border-border-primary rounded-lg px-3 py-2 text-right hover:border-accent-primary/40 transition-colors cursor-pointer"
+                >
+                  <span className="text-xs font-bold text-text-muted w-4">{idx + 1}</span>
+                  {u.photoURL ? (
+                    <img src={u.photoURL} alt="" className="w-7 h-7 rounded-full object-cover" referrerPolicy="no-referrer" />
+                  ) : (
+                    <div className="w-7 h-7 rounded-full bg-bg-tertiary flex items-center justify-center text-text-secondary text-xs font-semibold">
+                      {(u.displayName || u.email || '?').charAt(0).toUpperCase()}
+                    </div>
+                  )}
+                  <span className="flex-1 min-w-0 text-sm text-text-primary truncate">{u.displayName || u.email}</span>
+                  {isUserPremium(u) && <Crown className="w-3.5 h-3.5 text-amber-400 shrink-0" />}
+                  <span className="text-[11px] text-text-muted shrink-0">{relativeActive(u.lastActive)}</span>
+                </button>
+              ))}
+            </div>
+          )}
+        </div>
+      </div>
+    </Modal>
+  );
+}
+
+function MiniStat({ label, value, icon }) {
+  return (
+    <div className="bg-bg-tertiary/40 border border-border-primary rounded-xl px-3 py-3 flex items-center gap-2.5">
+      <div className="text-text-muted">{icon}</div>
+      <div>
+        <div className="text-lg font-bold text-text-primary leading-none">{value}</div>
+        <div className="text-[10px] text-text-muted mt-1">{label}</div>
+      </div>
+    </div>
   );
 }
 
@@ -1043,7 +1353,7 @@ function AuditLogModal({ isOpen, onClose, users }) {
 
 // Styled number stepper with − / + buttons. value is a string (so the field
 // can be cleared); onChange receives the new string.
-function NumberStepper({ value, onChange, min = 1, max = 99999, step = 1, placeholder, allowEmpty = false }) {
+function NumberStepper({ value, onChange, min = 1, max = 99999, step = 1, placeholder }) {
   const num = parseInt(value, 10);
   const set = (n) => onChange(String(Math.max(min, Math.min(max, n))));
   const dec = () => set((Number.isFinite(num) ? num : min) - step);
@@ -1188,7 +1498,7 @@ function CouponsModal({ isOpen, onClose }) {
             </div>
             <div>
               <label className="text-[11px] text-text-muted block mb-1">מקסימום שימושים (ריק = ללא הגבלה)</label>
-              <NumberStepper value={maxUses} onChange={setMaxUses} min={1} placeholder="∞" allowEmpty />
+              <NumberStepper value={maxUses} onChange={setMaxUses} min={1} placeholder="∞" />
             </div>
             <div className="col-span-2">
               <label className="text-[11px] text-text-muted">תיוג פנימי (לא חובה)</label>

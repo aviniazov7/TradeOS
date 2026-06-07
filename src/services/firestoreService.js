@@ -162,9 +162,36 @@ export async function adminRevokePremium(uid) {
   ));
 }
 
+/**
+ * Stamp the user's `lastActive` timestamp. Called on app open (throttled by
+ * the caller) so the admin panel can show who's active and detect churn.
+ * `lastActive` is not a privileged field, so the owner-update rule allows it.
+ */
+export async function touchLastActive(uid) {
+  return setDoc(doc(db, 'users', uid), { lastActive: serverTimestamp() }, { merge: true });
+}
+
 /** Delete the user's main document */
 export async function deleteUserProfile(uid) {
   return deleteDoc(doc(db, 'users', uid));
+}
+
+// ─── Admin private notes ────────────────────────────────────────
+// Stored in a separate top-level `adminNotes/{uid}` collection (NOT on the
+// user's own doc) so the note stays invisible to the user — only admins can
+// read/write it per the Firestore rules.
+
+export async function getAdminNote(uid) {
+  const snap = await getDoc(doc(db, 'adminNotes', uid));
+  return snap.exists() ? (snap.data().text || '') : '';
+}
+
+export async function setAdminNote(uid, text, authorUid) {
+  return withRetry(() => setDoc(
+    doc(db, 'adminNotes', uid),
+    { text: text || '', updatedAt: serverTimestamp(), updatedBy: authorUid || null },
+    { merge: true },
+  ));
 }
 
 // ─── Admin Operations ───────────────────────────────────────────

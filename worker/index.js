@@ -423,6 +423,79 @@ async function checkPlanExpiryReminders(env) {
   }
 }
 
+// ---- Churn detection -------------------------------------------------------
+// Once a day, list all users (as admin), find Premium customers who haven't
+// opened the app in 7+ days, and push the admin(s) a heads-up so they can
+// reach out before the customer drifts away. De-duped per customer for 7 days
+// so the same churned user isn't re-reported every morning.
+async function listAllUsersAdmin(env) {
+  const token = await getFirebaseAdminToken(env);
+  const out = [];
+  let pageToken = '';
+  for (let page = 0; page < 20; page++) { // hard cap so we never loop forever
+    const url = `https://firestore.googleapis.com/v1/projects/${FIREBASE_PROJECT_ID}/databases/(default)/documents/users?pageSize=300${pageToken ? `&pageToken=${encodeURIComponent(pageToken)}` : ''}`;
+    const res = await fetch(url, { headers: { Authorization: `Bearer ${token}` } });
+    if (!res.ok) break;
+    const data = await res.json();
+    for (const doc of data.documents || []) {
+      const f = doc.fields || {};
+      out.push({
+        uid: doc.name.split('/').pop(),
+        role: f.role?.stringValue || 'user',
+        plan: f.plan?.stringValue || 'free',
+        planExpires: f.planExpires?.timestampValue || f.planExpires?.stringValue || null,
+        lastActive: f.lastActive?.timestampValue || f.lastActive?.stringValue || null,
+        displayName: f.displayName?.stringValue || f.email?.stringValue || 'משתמש',
+      });
+    }
+    if (!data.nextPageToken) break;
+    pageToken = data.nextPageToken;
+  }
+  return out;
+}
+
+async function checkChurnedPremium(env) {
+  const hhmm = getIsraelHHMM();
+  if (hhmm < '10:00' || hhmm >= '10:10') return; // run once per day
+  if (!env.FIREBASE_SERVICE_ACCOUNT) return;     // needs admin token to list users
+
+  let users;
+  try { users = await listAllUsersAdmin(env); }
+  catch (e) { console.error('churn: list users failed', e); return; }
+  if (!users.length) return;
+
+  const now = Date.now();
+  const SEVEN_DAYS = 7 * 86400000;
+  const admins = users.filter((u) => u.role === 'admin').map((u) => u.uid);
+  if (!admins.length) return;
+
+  const isPrem = (u) => u.role === 'admin'
+    || (u.plan === 'premium' && (!u.planExpires || new Date(u.planExpires).getTime() > now));
+
+  for (const u of users) {
+    if (u.role === 'admin' || !isPrem(u)) continue;
+    const la = u.lastActive ? new Date(u.lastActive).getTime() : 0;
+    if (!la) continue;                       // never seen — skip (not "churn")
+    const gone = now - la;
+    if (gone < SEVEN_DAYS) continue;
+
+    // De-dupe: only report each churned customer once per 7 days.
+    const dedupeKey = `churn:${u.uid}`;
+    if (await env.ALERTS_KV.get(dedupeKey)) continue;
+    await env.ALERTS_KV.put(dedupeKey, '1', { expirationTtl: 60 * 60 * 24 * 7 });
+
+    const days = Math.floor(gone / 86400000);
+    for (const adminUid of admins) {
+      await sendPushToUser(env, adminUid, {
+        title: '⚠️ לקוח בסיכון נטישה',
+        body: `${u.displayName} לא נכנס ${days} ימים — אולי כדאי לשלוח הודעה.`,
+        url: '/admin',
+        tag: `churn-${u.uid}`,
+      });
+    }
+  }
+}
+
 // Fetch currently-open Bybit positions, normalized. Returns null on error.
 async function fetchBybitOpen(apiKey, apiSecret) {
   const ts = Date.now().toString();
@@ -1690,6 +1763,7 @@ async function handleCron(env) {
     await Promise.allSettled([
       checkExchangeClosedTrades(env),
       checkPlanExpiryReminders(env),
+      checkChurnedPremium(env),
     ]);
     return;
   }
@@ -1726,6 +1800,7 @@ async function handleCron(env) {
     checkEconomicCalendar(env, settingsMap),
     checkExchangeClosedTrades(env),
     checkPlanExpiryReminders(env),
+    checkChurnedPremium(env),
   ]);
 }
 

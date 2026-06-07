@@ -93,6 +93,13 @@ service cloud.firestore {
       }
     }
 
+    // Admin private notes — a per-user note only admins can read or write.
+    // Kept OUT of the user's own document so the note is never visible to the
+    // user themselves (they can read their own user doc, but not this).
+    match /adminNotes/{userId} {
+      allow read, write: if isAdmin();
+    }
+
     // Auth bridge — temporary cross-context sign-in relay (tokens are single-use, 5-min TTL)
     // create: anyone can write (needed for unauthenticated iOS WKWebView context)
     // read: anyone can read (needed for popup before authentication)
