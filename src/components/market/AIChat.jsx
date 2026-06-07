@@ -215,14 +215,16 @@ export default function AIChat() {
       return;
     }
 
+    // Min 6s between sends so we stay under the shared upstream rate limits
+    // (Gemini free 15 RPM ≈ one every 4s; we add buffer).
     const now = Date.now();
-    if (now - lastSentRef.current < 3000) {
+    if (now - lastSentRef.current < 6000) {
       setError('המתן כמה שניות בין הודעות');
       return;
     }
     lastSentRef.current = now;
     setCooldown(true);
-    setTimeout(() => setCooldown(false), 3000);
+    setTimeout(() => setCooldown(false), 6000);
 
     setInput('');
     setError(null);

@@ -1927,20 +1927,22 @@ async function handleAIChat(request, env, cors) {
       if (!gemRes.ok) {
         const errText = await gemRes.text().catch(() => '');
         console.error('Gemini API error:', gemRes.status, errText);
-        // Fall back to Groq. Retry once with a short delay if it also 429s —
-        // the free-tier shared-key quotas on both providers are tight, so a
-        // single retry typically clears it instead of failing the whole turn.
+        // Fall back to Groq with up to 3 attempts (exponential backoff). The
+        // free-tier shared key quotas are tight (Gemini 15 RPM, Groq 30 RPM)
+        // so spaced retries usually clear the limit within a few seconds.
         const callGroq = () => fetch(GROQ_URL, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${env.GROQ_API_KEY}` },
           body: JSON.stringify({ model: GROQ_MODEL, messages: apiMessages, temperature: 0.7, max_tokens: 2048, stream: true }),
         });
-        let groqFallback = await callGroq();
-        if (!groqFallback.ok && groqFallback.status === 429) {
-          await new Promise((r) => setTimeout(r, 1500));
+        const delays = [0, 2000, 4000]; // immediate, +2s, +4s = ~6s total worst-case
+        let groqFallback;
+        for (const wait of delays) {
+          if (wait) await new Promise((r) => setTimeout(r, wait));
           groqFallback = await callGroq();
+          if (groqFallback.ok) return new Response(groqFallback.body, { headers: sseHeaders });
+          if (groqFallback.status !== 429) break; // non-retryable
         }
-        if (groqFallback.ok) return new Response(groqFallback.body, { headers: sseHeaders });
         const fbErrText = await groqFallback.text().catch(() => '');
         console.error('Groq fallback also failed:', groqFallback.status, fbErrText);
         const friendly = (gemRes.status === 429 || groqFallback.status === 429)
