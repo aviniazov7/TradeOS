@@ -25,9 +25,14 @@ service cloud.firestore {
       allow create: if request.auth != null && request.auth.uid == userId
         && request.resource.data.get('role', 'user') == 'user'
         && request.resource.data.get('plan', 'free') == 'free';
-      // On update, the owner can change anything EXCEPT role/plan/planExpires.
-      allow update: if request.auth != null && request.auth.uid == userId
-        && noPrivilegeEscalation();
+      // On update, either:
+      // - the owner is editing their own non-privileged fields, or
+      // - an admin is editing any field on any user (including plan/role).
+      // Admins are trusted because the isAdmin() check itself reads the
+      // caller's own role from Firestore, which they can't write to themselves
+      // (the noPrivilegeEscalation rule blocks them).
+      allow update: if isAdmin()
+        || (request.auth != null && request.auth.uid == userId && noPrivilegeEscalation());
       allow delete: if request.auth != null && request.auth.uid == userId;
 
       // Owners write their own data; admins may read (read-only, for the admin panel).

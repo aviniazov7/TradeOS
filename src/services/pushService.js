@@ -59,6 +59,18 @@ export async function unsubscribeFromPush() {
   await sub.unsubscribe();
 }
 
+// Admin-only: send a custom push notification to a target user via the worker.
+export async function adminSendNotification({ uid, title, body, url }) {
+  const res = await fetch(`${WORKER_BASE}/admin/notify`, {
+    method: 'POST',
+    headers: await authHeader(),
+    body: JSON.stringify({ uid, title, body, url }),
+  });
+  const data = await res.json().catch(() => ({}));
+  if (!res.ok) throw new Error(data.error || 'שליחת ההתראה נכשלה');
+  return data; // { ok, sent, total }
+}
+
 // Register read-only exchange keys with the worker so it can poll the exchange
 // in the background (closed-trade + daily-summary push notifications).
 export async function registerExchangeForPush(exchange, apiKey, apiSecret, passphrase) {

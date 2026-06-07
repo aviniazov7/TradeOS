@@ -1,12 +1,24 @@
 import { useState, useEffect, useMemo } from 'react';
 import { Navigate } from 'react-router-dom';
-import { Users, UserPlus, ShieldCheck, CheckCircle2, Search, RefreshCw, Download, ChevronUp, ChevronDown, Mail, Calendar, Coins, TrendingUp, Percent, Sparkles, Star, BookOpen, FlaskConical, Activity, FileText, Brain } from 'lucide-react';
+import { Users, UserPlus, ShieldCheck, CheckCircle2, Search, RefreshCw, Download, ChevronUp, ChevronDown, Mail, Calendar, Coins, TrendingUp, Percent, Sparkles, Star, BookOpen, FlaskConical, Activity, FileText, Brain, Crown, Send, X } from 'lucide-react';
+import toast from 'react-hot-toast';
 import { useAuth } from '../../contexts/AuthContext';
-import { getAllUsers, getUserSubcollectionCount } from '../../services/firestoreService';
+import { getAllUsers, getUserSubcollectionCount, adminGrantPremium, adminRevokePremium } from '../../services/firestoreService';
 import { fetchUserAiUsage } from '../../hooks/useAiUsage';
+import { adminSendNotification } from '../../services/pushService';
 import LoadingSpinner from '../shared/LoadingSpinner';
 import SelectDropdown from '../shared/SelectDropdown';
 import Modal from '../shared/Modal';
+
+// Compute effective premium status from a user doc (admins are always premium;
+// otherwise plan='premium' and planExpires (if set) must be in the future).
+function isUserPremium(u) {
+  if (!u) return false;
+  if (u.role === 'admin') return true;
+  if (u.plan !== 'premium') return false;
+  if (!u.planExpires) return true; // lifetime
+  return new Date(u.planExpires).getTime() > Date.now();
+}
 
 function toDate(v) {
   if (!v) return null;
@@ -88,13 +100,15 @@ export default function AdminPanel() {
     let newThisWeek = 0;
     let onboarded = 0;
     let admins = 0;
+    let premium = 0;
     for (const u of users) {
       const created = toDate(u.createdAt);
       if (created && created.getTime() >= weekAgo) newThisWeek++;
       if (u.onboardingCompleted) onboarded++;
       if (u.role === 'admin') admins++;
+      if (isUserPremium(u) && u.role !== 'admin') premium++;
     }
-    return { total: users.length, newThisWeek, onboarded, admins };
+    return { total: users.length, newThisWeek, onboarded, admins, premium };
   }, [users, loadedAt]);
 
   const filtered = useMemo(() => {
@@ -104,6 +118,8 @@ export default function AdminPanel() {
           !(u.email || '').toLowerCase().includes(q)) return false;
       if (roleFilter === 'admin' && u.role !== 'admin') return false;
       if (roleFilter === 'user' && u.role === 'admin') return false;
+      if (roleFilter === 'premium' && !isUserPremium(u)) return false;
+      if (roleFilter === 'free' && isUserPremium(u)) return false;
       if (onboardFilter === 'yes' && !u.onboardingCompleted) return false;
       if (onboardFilter === 'no' && u.onboardingCompleted) return false;
       return true;
@@ -164,10 +180,11 @@ export default function AdminPanel() {
         </button>
       </div>
 
-      <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
+      <div className="grid grid-cols-2 lg:grid-cols-5 gap-3">
         <StatCard icon={<Users className="w-6 h-6" />} label="סה״כ משתמשים" value={stats.total} />
         <StatCard icon={<UserPlus className="w-6 h-6" />} label="חדשים השבוע" value={stats.newThisWeek} />
         <StatCard icon={<CheckCircle2 className="w-6 h-6" />} label="סיימו אונבורדינג" value={stats.onboarded} />
+        <StatCard icon={<Crown className="w-6 h-6 text-amber-400" />} label="לקוחות Premium" value={stats.premium} />
         <StatCard icon={<ShieldCheck className="w-6 h-6" />} label="אדמינים" value={stats.admins} />
       </div>
 
@@ -189,6 +206,8 @@ export default function AdminPanel() {
             options={[
               { value: 'admin', label: 'אדמינים בלבד' },
               { value: 'user', label: 'משתמשים בלבד' },
+              { value: 'premium', label: 'Premium בלבד' },
+              { value: 'free', label: 'חינמיים בלבד' },
             ]}
             placeholder="כל התפקידים"
             allowClear
@@ -285,13 +304,19 @@ export default function AdminPanel() {
                           )}
                         </td>
                         <td className="px-4 py-3">
-                          {u.role === 'admin' ? (
-                            <span className="inline-flex items-center gap-1 text-accent-primary font-medium">
-                              <ShieldCheck className="w-4 h-4" /> אדמין
-                            </span>
-                          ) : (
-                            <span className="text-text-secondary">משתמש</span>
-                          )}
+                          <div className="flex items-center gap-1.5 flex-wrap">
+                            {u.role === 'admin' ? (
+                              <span className="inline-flex items-center gap-1 text-accent-primary font-medium">
+                                <ShieldCheck className="w-4 h-4" /> אדמין
+                              </span>
+                            ) : isUserPremium(u) ? (
+                              <span className="inline-flex items-center gap-1 text-[11px] px-2 py-0.5 rounded-full bg-amber-500/15 text-amber-400 border border-amber-500/30 font-semibold">
+                                <Crown className="w-3 h-3" /> Premium
+                              </span>
+                            ) : (
+                              <span className="text-text-secondary">משתמש</span>
+                            )}
+                          </div>
                         </td>
                       </tr>
                     ))
@@ -303,7 +328,7 @@ export default function AdminPanel() {
         </>
       )}
 
-      <UserDetailModal user={selectedUser} onClose={() => setSelectedUser(null)} />
+      <UserDetailModal user={selectedUser} onClose={() => setSelectedUser(null)} onUserChanged={load} />
     </div>
   );
 }
@@ -332,10 +357,16 @@ const COUNT_COLLECTIONS = [
   { key: 'eveningJournals', label: 'יומן ערב', icon: Brain },
 ];
 
-function UserDetailModal({ user, onClose }) {
+function UserDetailModal({ user, onClose, onUserChanged }) {
   const [counts, setCounts] = useState(null);
   const [countsError, setCountsError] = useState(null);
   const [aiUsage, setAiUsage] = useState(null);
+  const [grantOpen, setGrantOpen] = useState(false);
+  const [granting, setGranting] = useState(false);
+  const [notifyOpen, setNotifyOpen] = useState(false);
+  const [notifyTitle, setNotifyTitle] = useState('');
+  const [notifyBody, setNotifyBody] = useState('');
+  const [notifying, setNotifying] = useState(false);
 
   useEffect(() => {
     if (!user) { setAiUsage(null); return; }
@@ -343,6 +374,55 @@ function UserDetailModal({ user, onClose }) {
     fetchUserAiUsage(user.id).then((u) => { if (!cancelled) setAiUsage(u); });
     return () => { cancelled = true; };
   }, [user]);
+
+  const grant = async (days) => {
+    if (!user) return;
+    setGranting(true);
+    try {
+      await adminGrantPremium(user.id, days);
+      toast.success(days === Infinity ? 'ניתן Premium ללא הגבלה' : `ניתן Premium ל-${days} ימים`);
+      setGrantOpen(false);
+      onUserChanged?.();
+    } catch (e) {
+      toast.error(e.code === 'permission-denied'
+        ? 'אין הרשאה — ייתכן שכללי Firestore לא פורסו מחדש'
+        : 'הענקת ה-Premium נכשלה');
+    } finally {
+      setGranting(false);
+    }
+  };
+
+  const revoke = async () => {
+    if (!user) return;
+    if (!window.confirm('לבטל את ה-Premium של המשתמש?')) return;
+    setGranting(true);
+    try {
+      await adminRevokePremium(user.id);
+      toast.success('ה-Premium בוטל');
+      onUserChanged?.();
+    } catch {
+      toast.error('הביטול נכשל');
+    } finally {
+      setGranting(false);
+    }
+  };
+
+  const sendNotify = async () => {
+    if (!notifyTitle.trim() || !notifyBody.trim()) return;
+    setNotifying(true);
+    try {
+      const r = await adminSendNotification({ uid: user.id, title: notifyTitle.trim(), body: notifyBody.trim() });
+      if (r.sent > 0) toast.success(`ההתראה נשלחה ל-${r.sent} מכשירים`);
+      else if (r.total === 0) toast.error('למשתמש אין התראות מופעלות');
+      else toast.error('שליחה נכשלה');
+      setNotifyOpen(false);
+      setNotifyTitle(''); setNotifyBody('');
+    } catch (e) {
+      toast.error(e.message || 'השליחה נכשלה');
+    } finally {
+      setNotifying(false);
+    }
+  };
 
   useEffect(() => {
     if (!user) { setCounts(null); setCountsError(null); return; }
@@ -385,13 +465,18 @@ function UserDetailModal({ user, onClose }) {
           <div className="flex-1 min-w-0">
             <div className="text-lg font-bold text-text-primary truncate">{user.displayName || '—'}</div>
             <div className="text-sm text-text-secondary truncate">{user.email || '—'}</div>
-            <div className="mt-1 flex items-center gap-2">
+            <div className="mt-1 flex items-center gap-2 flex-wrap">
               {user.role === 'admin' ? (
                 <span className="inline-flex items-center gap-1 text-[11px] px-2 py-0.5 rounded-full bg-accent-primary/15 text-accent-primary border border-accent-primary/30">
                   <ShieldCheck className="w-3 h-3" /> אדמין
                 </span>
+              ) : isUserPremium(user) ? (
+                <span className="inline-flex items-center gap-1 text-[11px] px-2 py-0.5 rounded-full bg-amber-500/15 text-amber-400 border border-amber-500/30 font-semibold">
+                  <Crown className="w-3 h-3" /> Premium
+                  {user.planExpires && <span className="text-text-muted font-normal">· עד {formatDate(user.planExpires)}</span>}
+                </span>
               ) : (
-                <span className="text-[11px] px-2 py-0.5 rounded-full bg-bg-tertiary text-text-secondary border border-border-primary">משתמש</span>
+                <span className="text-[11px] px-2 py-0.5 rounded-full bg-bg-tertiary text-text-secondary border border-border-primary">חינמי</span>
               )}
               {user.onboardingCompleted ? (
                 <span className="inline-flex items-center gap-1 text-[11px] px-2 py-0.5 rounded-full bg-profit/15 text-profit border border-profit/30">
@@ -403,6 +488,99 @@ function UserDetailModal({ user, onClose }) {
             </div>
           </div>
         </div>
+
+        {/* Admin actions */}
+        <div className="grid grid-cols-2 gap-2">
+          {user.role !== 'admin' && (
+            isUserPremium(user) ? (
+              <button
+                onClick={revoke}
+                disabled={granting}
+                className="flex items-center justify-center gap-1.5 px-3 py-2 rounded-lg border border-border-primary text-sm text-text-secondary hover:text-loss hover:border-loss/40 transition-colors cursor-pointer disabled:opacity-50"
+              >
+                <X className="w-4 h-4" /> בטל Premium
+              </button>
+            ) : (
+              <button
+                onClick={() => setGrantOpen(true)}
+                disabled={granting}
+                className="flex items-center justify-center gap-1.5 px-3 py-2 rounded-lg bg-amber-500/15 border border-amber-500/30 text-amber-400 text-sm font-semibold hover:bg-amber-500/20 transition-colors cursor-pointer disabled:opacity-50"
+              >
+                <Crown className="w-4 h-4" /> הענק Premium
+              </button>
+            )
+          )}
+          <button
+            onClick={() => setNotifyOpen(true)}
+            className="flex items-center justify-center gap-1.5 px-3 py-2 rounded-lg bg-accent-primary/10 border border-accent-primary/30 text-accent-primary text-sm font-semibold hover:bg-accent-primary/20 transition-colors cursor-pointer"
+          >
+            <Send className="w-4 h-4" /> שלח הודעת Push
+          </button>
+        </div>
+
+        {/* Grant Premium duration picker */}
+        {grantOpen && (
+          <div className="bg-amber-500/5 border border-amber-500/30 rounded-xl p-3">
+            <div className="flex items-center justify-between mb-2">
+              <span className="text-sm font-semibold text-text-primary">בחר משך Premium</span>
+              <button onClick={() => setGrantOpen(false)} className="text-text-muted hover:text-text-primary cursor-pointer">
+                <X className="w-4 h-4" />
+              </button>
+            </div>
+            <div className="grid grid-cols-2 sm:grid-cols-4 gap-1.5">
+              {[
+                { d: 30, label: 'חודש' },
+                { d: 90, label: '3 חודשים' },
+                { d: 180, label: '6 חודשים' },
+                { d: 365, label: 'שנה' },
+                { d: Infinity, label: 'ללא הגבלה' },
+              ].map((opt) => (
+                <button
+                  key={String(opt.d)}
+                  onClick={() => grant(opt.d)}
+                  disabled={granting}
+                  className="text-xs px-2 py-2 rounded-lg bg-bg-secondary border border-border-primary text-text-primary hover:border-amber-500/40 hover:text-amber-400 transition-colors cursor-pointer disabled:opacity-50"
+                >
+                  {opt.label}
+                </button>
+              ))}
+            </div>
+          </div>
+        )}
+
+        {/* Notification composer */}
+        {notifyOpen && (
+          <div className="bg-accent-primary/5 border border-accent-primary/30 rounded-xl p-3 space-y-2">
+            <div className="flex items-center justify-between">
+              <span className="text-sm font-semibold text-text-primary">הודעת Push למשתמש</span>
+              <button onClick={() => setNotifyOpen(false)} className="text-text-muted hover:text-text-primary cursor-pointer">
+                <X className="w-4 h-4" />
+              </button>
+            </div>
+            <input
+              value={notifyTitle}
+              onChange={(e) => setNotifyTitle(e.target.value)}
+              placeholder="כותרת"
+              maxLength={120}
+              className="w-full bg-bg-secondary border border-border-primary rounded-lg px-3 py-2 text-sm text-text-primary outline-none focus:border-accent-primary"
+            />
+            <textarea
+              value={notifyBody}
+              onChange={(e) => setNotifyBody(e.target.value)}
+              placeholder="גוף ההודעה"
+              maxLength={400}
+              rows={3}
+              className="w-full bg-bg-secondary border border-border-primary rounded-lg px-3 py-2 text-sm text-text-primary outline-none focus:border-accent-primary resize-none"
+            />
+            <button
+              onClick={sendNotify}
+              disabled={notifying || !notifyTitle.trim() || !notifyBody.trim()}
+              className="w-full flex items-center justify-center gap-1.5 px-3 py-2 rounded-lg bg-accent-primary text-bg-primary text-sm font-bold hover:bg-accent-hover transition-colors cursor-pointer disabled:opacity-50"
+            >
+              <Send className="w-4 h-4" /> {notifying ? 'שולח...' : 'שלח עכשיו'}
+            </button>
+          </div>
+        )}
 
         {/* General */}
         <div className="bg-bg-tertiary/40 border border-border-primary rounded-xl px-4 py-2 divide-y divide-border-primary/40">

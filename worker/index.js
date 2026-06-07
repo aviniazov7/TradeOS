@@ -2553,6 +2553,24 @@ async function handleRequest(request, env) {
     return new Response(JSON.stringify(usage), { headers: { ...cors, 'Content-Type': 'application/json' } });
   }
 
+  // Admin-only: send a push notification to a specific user.
+  if (request.method === 'POST' && path === '/admin/notify') {
+    const token = (request.headers.get('Authorization') || '').replace('Bearer ', '');
+    const adminUid = await verifyAdminFromToken(token);
+    if (!adminUid) return new Response(JSON.stringify({ error: 'forbidden' }), { status: 403, headers: { ...cors, 'Content-Type': 'application/json' } });
+    const { uid, title, body, url } = await request.json().catch(() => ({}));
+    if (!uid || !title || !body) {
+      return new Response(JSON.stringify({ error: 'missing fields' }), { status: 400, headers: { ...cors, 'Content-Type': 'application/json' } });
+    }
+    const result = await sendPushToUser(env, uid, {
+      title: String(title).slice(0, 120),
+      body: String(body).slice(0, 400),
+      url: typeof url === 'string' && url ? url : '/',
+      tag: `admin-${Date.now()}`,
+    });
+    return new Response(JSON.stringify({ ok: true, sent: result.sent, total: result.total }), { headers: { ...cors, 'Content-Type': 'application/json' } });
+  }
+
   // Admin-only: another user's AI usage. Verifies admin role via the caller's
   // own user doc (reads allowed by Firestore rules).
   if (request.method === 'GET' && path.startsWith('/admin/ai-usage/')) {

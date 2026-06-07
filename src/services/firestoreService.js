@@ -127,6 +127,30 @@ export async function setUserProfile(uid, data, merge = true) {
   return withRetry(() => setDoc(doc(db, 'users', uid), data, merge ? { merge: true } : undefined));
 }
 
+/**
+ * Admin-only: grant a user a Premium plan for `days` (Infinity for lifetime).
+ * Bypasses noPrivilegeEscalation via the admin-write Firestore rule.
+ */
+export async function adminGrantPremium(uid, days) {
+  const planExpires = Number.isFinite(days)
+    ? new Date(Date.now() + days * 24 * 60 * 60 * 1000).toISOString()
+    : null; // null = lifetime
+  return withRetry(() => setDoc(
+    doc(db, 'users', uid),
+    { plan: 'premium', planExpires, planGrantedAt: new Date().toISOString() },
+    { merge: true },
+  ));
+}
+
+/** Admin-only: revoke Premium and clear the expiry. */
+export async function adminRevokePremium(uid) {
+  return withRetry(() => setDoc(
+    doc(db, 'users', uid),
+    { plan: 'free', planExpires: null },
+    { merge: true },
+  ));
+}
+
 /** Delete the user's main document */
 export async function deleteUserProfile(uid) {
   return deleteDoc(doc(db, 'users', uid));
