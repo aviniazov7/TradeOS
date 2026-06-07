@@ -1,6 +1,7 @@
 import { useEffect, useRef } from 'react';
 import { useAuth } from '../contexts/AuthContext';
 import { getTodayClosedTrades, getUserSetting } from '../services/firestoreService';
+import { auth } from '../services/firebase';
 
 const WORKER_URL = import.meta.env.VITE_WORKER_URL || '';
 
@@ -44,9 +45,14 @@ export function useDailySummarySync() {
         };
 
         // Fire-and-forget push to worker
+        const token = await auth.currentUser?.getIdToken();
+        if (!token) return;
         fetch(`${WORKER_URL}/daily-stats`, {
           method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
+          headers: {
+            'Content-Type': 'application/json',
+            Authorization: `Bearer ${token}`,
+          },
           body: JSON.stringify({ uid: user.uid, stats }),
         }).catch(() => {});
       } catch {

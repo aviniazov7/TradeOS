@@ -105,19 +105,6 @@ service cloud.firestore {
       allow read, write: if isAdmin();
     }
 
-    // Auth bridge — temporary cross-context sign-in relay (tokens are single-use, 5-min TTL)
-    // create: anyone can write (needed for unauthenticated iOS WKWebView context)
-    // read: anyone can read (needed for popup before authentication)
-    // delete: anyone can delete (cleanup after single use)
-    // update: blocked — tokens must be immutable
-    match /authBridge/{docId} {
-      allow read: if true;
-      allow create, update: if request.resource.data.keys().hasAll(['customToken', 'exp'])
-        && request.resource.data.customToken is string
-        && request.resource.data.customToken.size() >= 20;
-      allow delete: if true;
-    }
-
     // Leaderboard — public read, write only own entry with validated fields
     match /leaderboard/{entryId} {
       allow read: if request.auth != null;
