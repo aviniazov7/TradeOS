@@ -3013,13 +3013,38 @@ async function handleRequest(request, env) {
   }
 
   // Coupon share preview. WhatsApp/Telegram crawlers don't run the SPA, so a
-  // link straight to the app shows the generic site card. This route returns a
-  // tiny HTML page with coupon-specific Open Graph tags (so the share looks
-  // nice — "X ימי Premium במתנה") and instantly redirects a real human to the
-  // app's redeem page. Reachable as /r/:code (short) or /share/redeem/:code.
+  // link straight to the app shows the generic site card. This route handles
+  // both audiences:
+  //   - Crawlers (WhatsApp/Telegram/Twitter/etc) get HTML with coupon-specific
+  //     Open Graph tags so the share looks nice ("X ימי Premium במתנה").
+  //   - Real humans get a 302 redirect straight to the app's /redeem/:code page
+  //     so they never see the worker's "redirect" page (in-app browsers like
+  //     WhatsApp's WKWebView often block JS/meta-refresh and would otherwise
+  //     leave the visitor stuck on a blank page).
+  // Reachable as /r/:code (short) or /share/redeem/:code.
   if (request.method === 'GET' && (path.startsWith('/r/') || path.startsWith('/share/redeem/'))) {
     const code = normalizeCouponCode(decodeURIComponent(path.split('/').pop() || ''));
     const appUrl = `https://tradeos-91a58.web.app/redeem/${encodeURIComponent(code)}`;
+    const ua = request.headers.get('User-Agent') || '';
+    // Preview crawlers / social bots that need OG tags. We're strict here:
+    // real in-app browsers (e.g. WhatsApp's WKWebView) also include 'WhatsApp'
+    // in the UA, so matching that loosely would trap real users. The actual
+    // preview crawler sends 'WhatsApp/<version>' WITHOUT a Mozilla prefix,
+    // hence the no-Mozilla guard.
+    const looksLikeBrowser = /Mozilla/i.test(ua);
+    const isCrawler = !looksLikeBrowser && /WhatsApp\/|TelegramBot|facebookexternalhit|Twitterbot|LinkedInBot|Slackbot|Discordbot|SkypeUriPreview|Googlebot|bingbot|Pinterest|redditbot|vkShare|Applebot|bot|crawler|spider/i.test(ua);
+
+    // Humans → instant server-side redirect. No blank page, no JS needed.
+    if (!isCrawler) {
+      return new Response(null, {
+        status: 302,
+        headers: {
+          Location: appUrl,
+          'Cache-Control': 'no-store',
+        },
+      });
+    }
+
     const esc = (s) => String(s || '').replace(/[&<>"']/g, (c) => (
       { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]
     ));
@@ -3051,11 +3076,8 @@ async function handleRequest(request, env) {
 <meta name="twitter:title" content="${esc(title)}" />
 <meta name="twitter:description" content="${esc(desc)}" />
 <meta name="twitter:image" content="${ogImage}" />
-<meta http-equiv="refresh" content="0; url=${esc(appUrl)}" />
 <link rel="canonical" href="${esc(appUrl)}" />
-<script>location.replace(${JSON.stringify(appUrl)});</script>
-<style>body{background:#0a0e16;color:#e5e7eb;font-family:system-ui,sans-serif;display:flex;min-height:100vh;align-items:center;justify-content:center;margin:0}a{color:#f59e0b}</style>
-</head><body><p>מעבירים אותך אל הקופון… <a href="${esc(appUrl)}">לחצו כאן אם זה לא קורה</a></p></body></html>`;
+</head><body><a href="${esc(appUrl)}">${esc(title)}</a></body></html>`;
 
     return new Response(html, {
       headers: {
