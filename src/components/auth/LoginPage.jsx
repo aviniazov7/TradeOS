@@ -1,12 +1,13 @@
 import { useState } from 'react';
 import { useAuth } from '../../contexts/AuthContext';
-import { Navigate } from 'react-router-dom';
+import { Navigate, useSearchParams } from 'react-router-dom';
 import { TrendingUp, Mail, Eye, EyeOff } from 'lucide-react';
 import toast from 'react-hot-toast';
 import BackgroundIcons from '../shared/BackgroundIcons';
 
 export default function LoginPage() {
   const { user, loginWithGoogle, registerWithEmail, loginWithEmail, resetPassword } = useAuth();
+  const [params] = useSearchParams();
   const [mode, setMode] = useState('login');
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
@@ -15,7 +16,13 @@ export default function LoginPage() {
   const [submitting, setSubmitting] = useState(false);
   const [googleLoading, setGoogleLoading] = useState(false);
 
-  if (user) return <Navigate to="/" replace />;
+  // After a successful login, honour ?redirect=… (used by the coupon share
+  // link) but only allow same-app relative paths to avoid open-redirects.
+  if (user) {
+    const redirect = params.get('redirect');
+    const safe = redirect && redirect.startsWith('/') && !redirect.startsWith('//') ? redirect : '/';
+    return <Navigate to={safe} replace />;
+  }
 
   const handleGoogle = async () => {
     setGoogleLoading(true);

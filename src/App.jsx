@@ -31,6 +31,7 @@ const loadExchangeSettings = () => import('./components/exchange/ExchangeSetting
 const loadWalletsPage = () => import('./components/wallets/WalletsPage');
 const loadPremiumPage = () => import('./components/premium/PremiumPage');
 const loadCheckoutPage = () => import('./components/premium/CheckoutPage');
+const loadCouponLanding = () => import('./components/premium/CouponLandingPage');
 const loadAdminPanel = () => import('./components/admin/AdminPanel');
 
 const Dashboard = lazy(loadDashboard);
@@ -50,6 +51,7 @@ const ExchangeSettings = lazy(loadExchangeSettings);
 const WalletsPage = lazy(loadWalletsPage);
 const PremiumPage = lazy(loadPremiumPage);
 const CheckoutPage = lazy(loadCheckoutPage);
+const CouponLandingPage = lazy(loadCouponLanding);
 const AdminPanel = lazy(loadAdminPanel);
 
 // Preload all routes during idle time so tab switches feel instant
@@ -85,6 +87,10 @@ function MainApp() {
           <Suspense fallback={<LoadingSpinner />}>
             <Routes>
               <Route path="/login" element={<LoginPage />} />
+              {/* Public coupon share landing — accessible without auth so a
+                  shared link works for logged-out friends; redeeming itself
+                  sends them through /login and back. */}
+              <Route path="/redeem/:code" element={<CouponLandingPage />} />
               <Route
                 element={
                   <ProtectedRoute>

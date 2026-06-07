@@ -1,6 +1,6 @@
 import { useState, useEffect, useMemo, useRef } from 'react';
 import { Navigate } from 'react-router-dom';
-import { Users, UserPlus, ShieldCheck, CheckCircle2, Search, RefreshCw, Download, ChevronUp, ChevronDown, Mail, Calendar, Coins, TrendingUp, Percent, Sparkles, Star, BookOpen, FlaskConical, Activity, FileText, Brain, Crown, Send, X, Ticket, Plus, Trash2, Copy, ScrollText } from 'lucide-react';
+import { Users, UserPlus, ShieldCheck, CheckCircle2, Search, RefreshCw, Download, ChevronUp, ChevronDown, Mail, Calendar, Coins, TrendingUp, Percent, Sparkles, Star, BookOpen, FlaskConical, Activity, FileText, Brain, Crown, Send, X, Ticket, Plus, Minus, Trash2, Copy, ScrollText, Share2, Link2 } from 'lucide-react';
 import toast from 'react-hot-toast';
 import { useAuth } from '../../contexts/AuthContext';
 import { getAllUsers, getUserSubcollectionCount, adminGrantPremium, adminRevokePremium } from '../../services/firestoreService';
@@ -1041,6 +1041,44 @@ function AuditLogModal({ isOpen, onClose, users }) {
   );
 }
 
+// Styled number stepper with − / + buttons. value is a string (so the field
+// can be cleared); onChange receives the new string.
+function NumberStepper({ value, onChange, min = 1, max = 99999, step = 1, placeholder, allowEmpty = false }) {
+  const num = parseInt(value, 10);
+  const set = (n) => onChange(String(Math.max(min, Math.min(max, n))));
+  const dec = () => set((Number.isFinite(num) ? num : min) - step);
+  const inc = () => set((Number.isFinite(num) ? num : min) + step);
+  return (
+    <div className="flex items-stretch rounded-lg border border-border-primary overflow-hidden bg-bg-secondary">
+      <button
+        type="button"
+        onClick={dec}
+        className="w-9 flex items-center justify-center text-text-secondary hover:text-loss hover:bg-bg-tertiary transition-colors cursor-pointer border-l border-border-primary"
+        aria-label="הפחת"
+      >
+        <Minus className="w-4 h-4" />
+      </button>
+      <input
+        type="number"
+        value={value}
+        onChange={(e) => onChange(e.target.value)}
+        placeholder={placeholder}
+        min={min}
+        max={max}
+        className="flex-1 w-full text-center bg-transparent text-sm text-text-primary outline-none py-2 [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none"
+      />
+      <button
+        type="button"
+        onClick={inc}
+        className="w-9 flex items-center justify-center text-text-secondary hover:text-profit hover:bg-bg-tertiary transition-colors cursor-pointer border-r border-border-primary"
+        aria-label="הוסף"
+      >
+        <Plus className="w-4 h-4" />
+      </button>
+    </div>
+  );
+}
+
 // ── Coupons modal ────────────────────────────────────────────────────────────
 function CouponsModal({ isOpen, onClose }) {
   const [coupons, setCoupons] = useState([]);
@@ -1100,6 +1138,21 @@ function CouponsModal({ isOpen, onClose }) {
     navigator.clipboard?.writeText(c);
     toast.success(`${c} הועתק`);
   };
+  const shareLink = (c) => `${window.location.origin}/redeem/${encodeURIComponent(c)}`;
+  const copyShare = (c) => {
+    navigator.clipboard?.writeText(shareLink(c));
+    toast.success('קישור השיתוף הועתק 🔗');
+  };
+  const shareNative = async (c) => {
+    const url = shareLink(c);
+    const text = `🎁 קוד מתנה ל-TradeOS Premium! לחצו לקבל: ${url}`;
+    if (navigator.share) {
+      try { await navigator.share({ title: 'TradeOS Premium', text, url }); } catch { /* cancelled */ }
+    } else {
+      navigator.clipboard?.writeText(text);
+      toast.success('הקישור הועתק לשיתוף');
+    }
+  };
 
   // Random A-Z0-9 code helper
   const randomCode = () => {
@@ -1130,26 +1183,12 @@ function CouponsModal({ isOpen, onClose }) {
               </button>
             </div>
             <div>
-              <label className="text-[11px] text-text-muted">ימי Premium</label>
-              <input
-                type="number"
-                min="1"
-                max="3650"
-                value={days}
-                onChange={(e) => setDays(e.target.value)}
-                className="w-full bg-bg-secondary border border-border-primary rounded-lg px-3 py-2 text-sm text-text-primary outline-none focus:border-amber-500"
-              />
+              <label className="text-[11px] text-text-muted block mb-1">ימי Premium</label>
+              <NumberStepper value={String(days)} onChange={setDays} min={1} max={3650} />
             </div>
             <div>
-              <label className="text-[11px] text-text-muted">מקסימום שימושים (ריק = ללא הגבלה)</label>
-              <input
-                type="number"
-                min="1"
-                value={maxUses}
-                onChange={(e) => setMaxUses(e.target.value)}
-                placeholder="ללא הגבלה"
-                className="w-full bg-bg-secondary border border-border-primary rounded-lg px-3 py-2 text-sm text-text-primary outline-none focus:border-amber-500"
-              />
+              <label className="text-[11px] text-text-muted block mb-1">מקסימום שימושים (ריק = ללא הגבלה)</label>
+              <NumberStepper value={maxUses} onChange={setMaxUses} min={1} placeholder="∞" allowEmpty />
             </div>
             <div className="col-span-2">
               <label className="text-[11px] text-text-muted">תיוג פנימי (לא חובה)</label>
@@ -1202,6 +1241,20 @@ function CouponsModal({ isOpen, onClose }) {
                     </div>
                     {c.label && <div className="text-[10px] text-text-muted truncate">{c.label}</div>}
                   </div>
+                  <button
+                    onClick={() => shareNative(c.code)}
+                    className="p-1.5 rounded-lg text-text-muted hover:text-amber-400 cursor-pointer"
+                    title="שתף קישור"
+                  >
+                    <Share2 className="w-3.5 h-3.5" />
+                  </button>
+                  <button
+                    onClick={() => copyShare(c.code)}
+                    className="p-1.5 rounded-lg text-text-muted hover:text-accent-primary cursor-pointer"
+                    title="העתק קישור שיתוף"
+                  >
+                    <Link2 className="w-3.5 h-3.5" />
+                  </button>
                   <button onClick={() => del(c.code)} className="p-1.5 rounded-lg text-text-muted hover:text-loss cursor-pointer" title="מחק">
                     <Trash2 className="w-3.5 h-3.5" />
                   </button>

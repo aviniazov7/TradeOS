@@ -23,6 +23,18 @@ export async function redeemCoupon(code) {
   return data; // { ok, days, planExpires, label }
 }
 
+// Public: fetch a coupon's display info for the share landing page (no auth).
+export async function getCouponInfo(code) {
+  const res = await fetch(`${WORKER_BASE}/coupons/info/${encodeURIComponent(code)}`);
+  const data = await res.json().catch(() => ({}));
+  if (!res.ok || !data.ok) {
+    const err = new Error(data.error || 'הקוד לא נמצא');
+    err.notFound = res.status === 404;
+    throw err;
+  }
+  return data; // { code, days, label, valid, reason }
+}
+
 // Admin: CRUD on coupon codes.
 export async function adminListCoupons() {
   const res = await fetch(`${WORKER_BASE}/admin/coupons`, { headers: await authHeader() });

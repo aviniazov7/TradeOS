@@ -2861,6 +2861,26 @@ async function handleRequest(request, env) {
     return new Response(JSON.stringify({ ok: true }), { headers: { ...cors, 'Content-Type': 'application/json' } });
   }
 
+  // Public: look up a coupon's display info (no auth) so the share landing
+  // page can render the offer before the visitor signs in. Never leaks
+  // createdBy or per-user redemption data.
+  if (request.method === 'GET' && path.startsWith('/coupons/info/')) {
+    const code = normalizeCouponCode(decodeURIComponent(path.split('/')[3] || ''));
+    if (!code) return new Response(JSON.stringify({ error: 'missing code' }), { status: 400, headers: { ...cors, 'Content-Type': 'application/json' } });
+    const coupon = await env.ALERTS_KV.get(`coupon:${code}`, 'json');
+    if (!coupon) return new Response(JSON.stringify({ ok: false, error: 'not-found' }), { status: 404, headers: { ...cors, 'Content-Type': 'application/json' } });
+    const expired = coupon.expiresAt && new Date(coupon.expiresAt).getTime() < Date.now();
+    const usedUp = coupon.maxUses != null && coupon.used >= coupon.maxUses;
+    return new Response(JSON.stringify({
+      ok: true,
+      code,
+      days: coupon.days,
+      label: coupon.label || null,
+      valid: !expired && !usedUp,
+      reason: expired ? 'expired' : usedUp ? 'used-up' : null,
+    }), { headers: { ...cors, 'Content-Type': 'application/json' } });
+  }
+
   // Authenticated user: redeem a coupon. Adds `days` to whatever Premium they
   // currently have (or starts a fresh window if free). Each user can redeem
   // each code at most once; the global maxUses, if set, is enforced too.
@@ -2945,6 +2965,30 @@ async function handleRequest(request, env) {
       url: '/premium',
       tag: `coupon-${code}-${uid}`,
     }).catch(() => {});
+
+    // Notify the admin who created the coupon that someone just redeemed it.
+    if (coupon.createdBy) {
+      (async () => {
+        let who = 'משתמש';
+        try {
+          const me = await fetch(`https://firestore.googleapis.com/v1/projects/${FIREBASE_PROJECT_ID}/databases/(default)/documents/users/${uid}`, {
+            headers: { Authorization: `Bearer ${token}` },
+          });
+          if (me.ok) {
+            const f = (await me.json()).fields || {};
+            who = f.displayName?.stringValue || f.email?.stringValue || who;
+          }
+        } catch { /* keep default */ }
+        const used = fresh ? fresh.used : coupon.used + 1;
+        const cap = coupon.maxUses ? `${used}/${coupon.maxUses}` : `${used}`;
+        await sendPushToUser(env, coupon.createdBy, {
+          title: `🎫 הקופון ${code} מומש`,
+          body: `${who} מימש את הקוד (${cap} שימושים). ${coupon.days} ימי Premium ניתנו.`,
+          url: '/admin',
+          tag: `coupon-redeem-${code}-${uid}`,
+        });
+      })().catch(() => {});
+    }
 
     return new Response(JSON.stringify({
       ok: true,
