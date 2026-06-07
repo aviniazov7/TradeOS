@@ -1,11 +1,11 @@
 import { useState, useEffect, useMemo } from 'react';
 import { Navigate } from 'react-router-dom';
-import { Users, UserPlus, ShieldCheck, CheckCircle2, Search, RefreshCw, Download, ChevronUp, ChevronDown, Mail, Calendar, Coins, TrendingUp, Percent, Sparkles, Star, BookOpen, FlaskConical, Activity, FileText, Brain, Crown, Send, X, Ticket, Plus, Trash2, Copy } from 'lucide-react';
+import { Users, UserPlus, ShieldCheck, CheckCircle2, Search, RefreshCw, Download, ChevronUp, ChevronDown, Mail, Calendar, Coins, TrendingUp, Percent, Sparkles, Star, BookOpen, FlaskConical, Activity, FileText, Brain, Crown, Send, X, Ticket, Plus, Trash2, Copy, ScrollText } from 'lucide-react';
 import toast from 'react-hot-toast';
 import { useAuth } from '../../contexts/AuthContext';
 import { getAllUsers, getUserSubcollectionCount, adminGrantPremium, adminRevokePremium } from '../../services/firestoreService';
 import { fetchUserAiUsage } from '../../hooks/useAiUsage';
-import { adminSendNotification, adminScheduleExpiryReminders, adminCancelExpiryReminders } from '../../services/pushService';
+import { adminSendNotification, adminScheduleExpiryReminders, adminCancelExpiryReminders, adminListAuditEvents } from '../../services/pushService';
 import { adminListCoupons, adminCreateCoupon, adminDeleteCoupon } from '../../services/couponService';
 import LoadingSpinner from '../shared/LoadingSpinner';
 import SelectDropdown from '../shared/SelectDropdown';
@@ -81,6 +81,7 @@ export default function AdminPanel() {
   const [sortDir, setSortDir] = useState('desc');
   const [selectedUser, setSelectedUser] = useState(null);
   const [couponsOpen, setCouponsOpen] = useState(false);
+  const [auditOpen, setAuditOpen] = useState(false);
 
   // After load() refreshes `users`, keep `selectedUser` pointing at the fresh
   // copy so the open detail modal reflects the new plan/role immediately
@@ -183,6 +184,13 @@ export default function AdminPanel() {
       <div className="flex items-center justify-between gap-3 flex-wrap">
         <h1 className="text-xl md:text-2xl font-bold text-text-primary">פאנל ניהול</h1>
         <div className="flex items-center gap-2">
+          <button
+            onClick={() => setAuditOpen(true)}
+            className="flex items-center gap-2 px-3 py-2 rounded-lg text-sm font-medium bg-bg-tertiary border border-border-primary text-text-secondary hover:text-text-primary cursor-pointer"
+          >
+            <ScrollText className="w-4 h-4" />
+            יומן פעולות
+          </button>
           <button
             onClick={() => setCouponsOpen(true)}
             className="flex items-center gap-2 px-3 py-2 rounded-lg text-sm font-medium bg-amber-500/15 border border-amber-500/30 text-amber-400 hover:bg-amber-500/20 cursor-pointer"
@@ -351,6 +359,7 @@ export default function AdminPanel() {
 
       <UserDetailModal user={selectedUser} onClose={() => setSelectedUser(null)} onUserChanged={load} />
       <CouponsModal isOpen={couponsOpen} onClose={() => setCouponsOpen(false)} />
+      <AuditLogModal isOpen={auditOpen} onClose={() => setAuditOpen(false)} users={users} />
     </div>
   );
 }
@@ -723,6 +732,118 @@ function UserDetailModal({ user, onClose, onUserChanged }) {
           </div>
         )}
 
+      </div>
+    </Modal>
+  );
+}
+
+// ── Audit log modal ──────────────────────────────────────────────────────────
+const KIND_META = {
+  premium_grant: { label: 'הענקת Premium', color: 'text-amber-400', Icon: Crown },
+  premium_revoke: { label: 'ביטול Premium', color: 'text-loss', Icon: X },
+  notify: { label: 'שליחת Push', color: 'text-accent-primary', Icon: Send },
+  coupon_create: { label: 'יצירת קופון', color: 'text-amber-400', Icon: Plus },
+  coupon_delete: { label: 'מחיקת קופון', color: 'text-loss', Icon: Trash2 },
+  coupon_redeem: { label: 'מימוש קופון', color: 'text-profit', Icon: Ticket },
+};
+const KIND_FILTER_OPTIONS = [
+  { value: '', label: 'כל הסוגים' },
+  ...Object.entries(KIND_META).map(([value, m]) => ({ value, label: m.label })),
+];
+
+function AuditLogModal({ isOpen, onClose, users }) {
+  const [events, setEvents] = useState([]);
+  const [loading, setLoading] = useState(false);
+  const [kindFilter, setKindFilter] = useState('');
+
+  const usersById = useMemo(() => {
+    const m = {};
+    for (const u of (users || [])) m[u.id] = u;
+    return m;
+  }, [users]);
+  const userLabel = (uid) => {
+    if (!uid) return '—';
+    const u = usersById[uid];
+    return u ? (u.displayName || u.email || uid.slice(0, 6)) : uid.slice(0, 8) + '…';
+  };
+
+  const load = async () => {
+    setLoading(true);
+    try {
+      const ev = await adminListAuditEvents({ kind: kindFilter || undefined, limit: 300 });
+      setEvents(ev);
+    } catch (e) {
+      toast.error(e.message || 'טעינת היומן נכשלה');
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  useEffect(() => { if (isOpen) load(); /* eslint-disable-next-line */ }, [isOpen, kindFilter]);
+
+  const fmtTs = (iso) => {
+    if (!iso) return '';
+    const d = new Date(iso);
+    return d.toLocaleString('he-IL', { day: '2-digit', month: '2-digit', year: '2-digit', hour: '2-digit', minute: '2-digit' });
+  };
+
+  return (
+    <Modal isOpen={isOpen} onClose={onClose} title="יומן פעולות" maxWidth="max-w-3xl">
+      <div className="space-y-3">
+        <div className="flex items-center gap-2">
+          <div className="flex-1">
+            <SelectDropdown
+              value={kindFilter}
+              onChange={(v) => setKindFilter(v || '')}
+              options={KIND_FILTER_OPTIONS.slice(1)}
+              placeholder="כל הסוגים"
+              allowClear
+            />
+          </div>
+          <button onClick={load} disabled={loading} className="px-3 py-2 rounded-lg border border-border-primary text-xs text-text-secondary hover:text-text-primary cursor-pointer">
+            <RefreshCw className={`w-3.5 h-3.5 inline ${loading ? 'animate-spin' : ''}`} /> רענן
+          </button>
+        </div>
+
+        {loading && events.length === 0 ? (
+          <div className="py-10"><LoadingSpinner /></div>
+        ) : events.length === 0 ? (
+          <div className="text-sm text-text-muted text-center py-10 border border-dashed border-border-primary rounded-xl">
+            אין פעולות להציג.
+          </div>
+        ) : (
+          <div className="max-h-96 overflow-y-auto pr-1 space-y-1">
+            {events.map((ev, i) => {
+              const meta = KIND_META[ev.kind] || { label: ev.kind, color: 'text-text-secondary', Icon: ScrollText };
+              const Icon = meta.Icon;
+              return (
+                <div key={i} className="bg-bg-secondary border border-border-primary rounded-lg px-3 py-2 flex items-start gap-2.5">
+                  <Icon className={`w-4 h-4 mt-0.5 shrink-0 ${meta.color}`} />
+                  <div className="flex-1 min-w-0 text-sm">
+                    <div className="flex items-baseline gap-2 flex-wrap">
+                      <span className={`font-semibold ${meta.color}`}>{meta.label}</span>
+                      <span className="text-[10px] text-text-muted">{fmtTs(ev.ts_iso)}</span>
+                    </div>
+                    <div className="text-xs text-text-secondary mt-0.5 break-words">
+                      {ev.actor && <span>בוצע ע"י <span className="text-text-primary">{userLabel(ev.actor)}</span></span>}
+                      {ev.target && <span> · יעד <span className="text-text-primary">{userLabel(ev.target)}</span></span>}
+                      {ev.code && <span> · קוד <span className="font-mono text-amber-400">{ev.code}</span></span>}
+                      {ev.days != null && <span> · {ev.days} ימים</span>}
+                      {ev.planExpires && <span> · עד {new Date(ev.planExpires).toLocaleDateString('he-IL')}</span>}
+                      {ev.maxUses != null && <span> · מקסימום {ev.maxUses}</span>}
+                      {ev.sent != null && <span> · נשלח ל-{ev.sent}/{ev.total}</span>}
+                    </div>
+                    {ev.title && (
+                      <div className="text-[11px] text-text-muted mt-1 italic truncate">
+                        "{ev.title}" — {ev.body}
+                      </div>
+                    )}
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+        )}
       </div>
     </Modal>
   );

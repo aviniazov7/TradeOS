@@ -82,6 +82,18 @@ export async function adminCancelExpiryReminders(uid) {
   } catch { /* best-effort */ }
 }
 
+// Admin-only: list recent admin actions (grants/revokes/pushes/coupons).
+// Optional kind filter; up to 500 events.
+export async function adminListAuditEvents({ kind, limit = 200 } = {}) {
+  const qs = new URLSearchParams();
+  if (kind) qs.set('kind', kind);
+  qs.set('limit', String(limit));
+  const res = await fetch(`${WORKER_BASE}/admin/audit?${qs}`, { headers: await authHeader() });
+  const data = await res.json().catch(() => ({}));
+  if (!res.ok) throw new Error(data.error || 'טעינת היומן נכשלה');
+  return data.events || [];
+}
+
 // Admin-only: send a custom push notification to a target user via the worker.
 export async function adminSendNotification({ uid, title, body, url }) {
   const res = await fetch(`${WORKER_BASE}/admin/notify`, {

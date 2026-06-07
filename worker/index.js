@@ -318,6 +318,24 @@ async function fetchBybitClosedPnl(apiKey, apiSecret, limit = 50) {
   });
 }
 
+// ---- Audit log --------------------------------------------------------------
+// Persistent record of every admin action (Premium grants/revokes, push
+// notifications, coupon CRUD, redemptions). Keys are time-sortable in reverse
+// order so a prefix list returns newest-first without an extra sort.
+//   audit:{INV_TS}:{rand} → JSON event
+// INV_TS = (10^13 - 1) - Date.now(), zero-padded to 13 digits.
+async function appendAudit(env, event) {
+  try {
+    const ts = Date.now();
+    const inv = String(9_999_999_999_999 - ts).padStart(13, '0');
+    const rand = Math.random().toString(36).slice(2, 10);
+    const key = `audit:${inv}:${rand}`;
+    const value = JSON.stringify({ ...event, ts, ts_iso: new Date(ts).toISOString() });
+    // 365-day TTL — long enough to be useful, bounded enough to keep KV slim.
+    await env.ALERTS_KV.put(key, value, { expirationTtl: 60 * 60 * 24 * 365 });
+  } catch { /* never let logging break an admin action */ }
+}
+
 // ---- Premium coupons --------------------------------------------------------
 // KV-stored single-use-per-user codes. Lighter than a Firestore collection and
 // keeps the admin's CRUD off the client's Firestore quota.
@@ -2758,7 +2776,29 @@ async function handleRequest(request, env) {
       url: typeof url === 'string' && url ? url : '/',
       tag: `admin-${Date.now()}`,
     });
+    appendAudit(env, { kind: 'notify', actor: adminUid, target: uid, title: String(title).slice(0, 120), body: String(body).slice(0, 400), sent: result.sent, total: result.total });
     return new Response(JSON.stringify({ ok: true, sent: result.sent, total: result.total }), { headers: { ...cors, 'Content-Type': 'application/json' } });
+  }
+
+  // Admin-only: list recent audit log entries (newest first). Optional ?limit
+  // (default 200, max 500) and ?kind=… filter applied client-side after the
+  // KV list (we keep one prefix to avoid scanning multiple shards).
+  if (request.method === 'GET' && path === '/admin/audit') {
+    const token = (request.headers.get('Authorization') || '').replace('Bearer ', '');
+    const adminUid = await verifyAdminFromToken(token);
+    if (!adminUid) return new Response(JSON.stringify({ error: 'forbidden' }), { status: 403, headers: { ...cors, 'Content-Type': 'application/json' } });
+    const u = new URL(request.url);
+    const limit = Math.min(Math.max(parseInt(u.searchParams.get('limit') || '200', 10) || 200, 1), 500);
+    const kindFilter = u.searchParams.get('kind') || '';
+    const list = await env.ALERTS_KV.list({ prefix: 'audit:', limit });
+    const events = [];
+    for (const k of list.keys) {
+      const v = await env.ALERTS_KV.get(k.name, 'json');
+      if (!v) continue;
+      if (kindFilter && v.kind !== kindFilter) continue;
+      events.push(v);
+    }
+    return new Response(JSON.stringify({ ok: true, events }), { headers: { ...cors, 'Content-Type': 'application/json' } });
   }
 
   // Admin-only: list all coupon codes.
@@ -2805,6 +2845,7 @@ async function handleRequest(request, env) {
       createdAt: new Date().toISOString(),
     };
     await env.ALERTS_KV.put(`coupon:${code}`, JSON.stringify(doc));
+    appendAudit(env, { kind: 'coupon_create', actor: adminUid, code, days, maxUses: doc.maxUses, label: doc.label });
     return new Response(JSON.stringify({ ok: true, code, ...doc }), { headers: { ...cors, 'Content-Type': 'application/json' } });
   }
 
@@ -2816,6 +2857,7 @@ async function handleRequest(request, env) {
     const code = normalizeCouponCode(decodeURIComponent(path.split('/')[3] || ''));
     if (!code) return new Response(JSON.stringify({ error: 'missing code' }), { status: 400, headers: { ...cors, 'Content-Type': 'application/json' } });
     await env.ALERTS_KV.delete(`coupon:${code}`);
+    appendAudit(env, { kind: 'coupon_delete', actor: adminUid, code });
     return new Response(JSON.stringify({ ok: true }), { headers: { ...cors, 'Content-Type': 'application/json' } });
   }
 
@@ -2893,6 +2935,8 @@ async function handleRequest(request, env) {
       return new Response(JSON.stringify({ error: 'מימוש הקופון נכשל. נסה שוב.', detail: wrote.error }), { status: 502, headers: { ...cors, 'Content-Type': 'application/json' } });
     }
 
+    appendAudit(env, { kind: 'coupon_redeem', actor: uid, code, days: coupon.days, planExpires: newExpiry });
+
     // Schedule the expiry reminders and push a confirmation. Both best-effort.
     schedulePlanExpiryReminders(env, uid, newExpiry).catch(() => {});
     sendPushToUser(env, uid, {
@@ -2919,6 +2963,7 @@ async function handleRequest(request, env) {
     const { uid, planExpires } = await request.json().catch(() => ({}));
     if (!uid) return new Response(JSON.stringify({ error: 'missing uid' }), { status: 400, headers: { ...cors, 'Content-Type': 'application/json' } });
     await schedulePlanExpiryReminders(env, uid, planExpires || null);
+    appendAudit(env, { kind: 'premium_grant', actor: adminUid, target: uid, planExpires: planExpires || null });
     return new Response(JSON.stringify({ ok: true }), { headers: { ...cors, 'Content-Type': 'application/json' } });
   }
 
@@ -2930,6 +2975,7 @@ async function handleRequest(request, env) {
     const { uid } = await request.json().catch(() => ({}));
     if (!uid) return new Response(JSON.stringify({ error: 'missing uid' }), { status: 400, headers: { ...cors, 'Content-Type': 'application/json' } });
     await cancelPlanExpiryReminders(env, uid);
+    appendAudit(env, { kind: 'premium_revoke', actor: adminUid, target: uid });
     return new Response(JSON.stringify({ ok: true }), { headers: { ...cors, 'Content-Type': 'application/json' } });
   }
 
