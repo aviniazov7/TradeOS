@@ -2802,8 +2802,13 @@ async function handleRequest(request, env) {
 
   if (request.method === 'POST' && path === '/daily-stats') {
     try {
-      const { uid, stats } = await request.json();
-      if (!uid || !stats) return new Response(JSON.stringify({ error: 'Missing fields' }), { status: 400, headers: { ...cors, 'Content-Type': 'application/json' } });
+      // Auth: require a valid Firebase token; ignore any uid in the body and use
+      // the token's uid so a caller can only write their own daily stats.
+      const token = (request.headers.get('Authorization') || '').replace('Bearer ', '');
+      const uid = await verifyFirebaseToken(token);
+      if (!uid) return new Response(JSON.stringify({ error: 'unauthorized' }), { status: 401, headers: { ...cors, 'Content-Type': 'application/json' } });
+      const { stats } = await request.json();
+      if (!stats) return new Response(JSON.stringify({ error: 'Missing fields' }), { status: 400, headers: { ...cors, 'Content-Type': 'application/json' } });
       const chatId = await env.ALERTS_KV.get(`uid:${uid}`);
       if (!chatId) return new Response(JSON.stringify({ error: 'Not connected' }), { status: 404, headers: { ...cors, 'Content-Type': 'application/json' } });
       await env.ALERTS_KV.put(`dailystats:${chatId}:${getIsraelDateStr()}`, JSON.stringify(stats), { expirationTtl: 172800 });
@@ -2812,20 +2817,43 @@ async function handleRequest(request, env) {
   }
 
   if (request.method === 'POST' && path === '/alerts') {
+    // Auth: require a valid token, then ensure the body's chatId is the caller's
+    // own chat (uid:{uid} mapping) so users can't create alerts on other chats.
+    const token = (request.headers.get('Authorization') || '').replace('Bearer ', '');
+    const uid = await verifyFirebaseToken(token);
+    if (!uid) return new Response(JSON.stringify({ error: 'unauthorized' }), { status: 401, headers: { ...cors, 'Content-Type': 'application/json' } });
     const { chatId, pair, targetPrice, direction, id } = await request.json();
     if (!chatId || !pair || !targetPrice || !direction) return new Response(JSON.stringify({ error: 'Missing fields' }), { status: 400, headers: { ...cors, 'Content-Type': 'application/json' } });
+    const ownChat = await env.ALERTS_KV.get(`uid:${uid}`);
+    if (!ownChat || String(chatId) !== ownChat) return new Response(JSON.stringify({ error: 'forbidden' }), { status: 403, headers: { ...cors, 'Content-Type': 'application/json' } });
     const alertId = id || Date.now().toString();
     await env.ALERTS_KV.put(`alerts:${chatId}:${alertId}`, JSON.stringify({ chatId, pair, targetPrice, direction, active: true, id: alertId, createdAt: new Date().toISOString() }));
     return new Response(JSON.stringify({ ok: true, id: alertId }), { headers: { ...cors, 'Content-Type': 'application/json' } });
   }
 
   if (request.method === 'DELETE' && path.startsWith('/alerts/')) {
+    // Auth: require a valid token and ensure the {chatId} path segment is the
+    // caller's own chat before deleting one of its alerts.
+    const token = (request.headers.get('Authorization') || '').replace('Bearer ', '');
+    const uid = await verifyFirebaseToken(token);
+    if (!uid) return new Response(JSON.stringify({ error: 'unauthorized' }), { status: 401, headers: { ...cors, 'Content-Type': 'application/json' } });
     const parts = path.split('/').filter(Boolean);
-    if (parts.length === 3) { await env.ALERTS_KV.delete(`alerts:${parts[1]}:${parts[2]}`); return new Response(JSON.stringify({ ok: true }), { headers: { ...cors, 'Content-Type': 'application/json' } }); }
+    if (parts.length === 3) {
+      const ownChat = await env.ALERTS_KV.get(`uid:${uid}`);
+      if (!ownChat || parts[1] !== ownChat) return new Response(JSON.stringify({ error: 'forbidden' }), { status: 403, headers: { ...cors, 'Content-Type': 'application/json' } });
+      await env.ALERTS_KV.delete(`alerts:${parts[1]}:${parts[2]}`); return new Response(JSON.stringify({ ok: true }), { headers: { ...cors, 'Content-Type': 'application/json' } });
+    }
   }
 
   if (request.method === 'GET' && path.startsWith('/alerts/')) {
+    // Auth: require a valid token and ensure the {chatId} path segment is the
+    // caller's own chat before listing its alerts.
+    const token = (request.headers.get('Authorization') || '').replace('Bearer ', '');
+    const uid = await verifyFirebaseToken(token);
+    if (!uid) return new Response(JSON.stringify({ error: 'unauthorized' }), { status: 401, headers: { ...cors, 'Content-Type': 'application/json' } });
     const chatId = path.split('/')[2];
+    const ownChat = await env.ALERTS_KV.get(`uid:${uid}`);
+    if (!ownChat || chatId !== ownChat) return new Response(JSON.stringify({ error: 'forbidden' }), { status: 403, headers: { ...cors, 'Content-Type': 'application/json' } });
     const list = await env.ALERTS_KV.list({ prefix: `alerts:${chatId}:` });
     const alerts = [];
     for (const key of list.keys) { const d = await env.ALERTS_KV.get(key.name, 'json'); if (d) alerts.push(d); }
@@ -2833,7 +2861,13 @@ async function handleRequest(request, env) {
   }
 
   if (request.method === 'GET' && path.startsWith('/chatid/')) {
+    // Auth: require a valid token and ensure the {uid} path segment matches the
+    // token's uid so callers can only resolve their own chatId.
+    const token = (request.headers.get('Authorization') || '').replace('Bearer ', '');
+    const authUid = await verifyFirebaseToken(token);
+    if (!authUid) return new Response(JSON.stringify({ error: 'unauthorized' }), { status: 401, headers: { ...cors, 'Content-Type': 'application/json' } });
     const uid = path.split('/')[2];
+    if (uid !== authUid) return new Response(JSON.stringify({ error: 'forbidden' }), { status: 403, headers: { ...cors, 'Content-Type': 'application/json' } });
     const chatId = await env.ALERTS_KV.get(`uid:${uid}`);
     if (chatId) return new Response(JSON.stringify({ chatId }), { headers: { ...cors, 'Content-Type': 'application/json' } });
     return new Response(JSON.stringify({ error: 'Not found' }), { status: 404, headers: { ...cors, 'Content-Type': 'application/json' } });
@@ -3424,8 +3458,13 @@ async function handleRequest(request, env) {
   // Trade event notifications
   if (request.method === 'POST' && path === '/notify') {
     try {
-      const { uid, type, pair, direction, price, pnl, entryPrice, stopLoss, leverage, positionSize, tps, tpIndex, isLastTp } = await request.json();
-      if (!uid || !type) return new Response(JSON.stringify({ error: 'Missing fields' }), { status: 400, headers: { ...cors, 'Content-Type': 'application/json' } });
+      // Auth: require a valid token; ignore any uid in the body and use the
+      // token's uid so a caller can only notify their own connected chat.
+      const token = (request.headers.get('Authorization') || '').replace('Bearer ', '');
+      const uid = await verifyFirebaseToken(token);
+      if (!uid) return new Response(JSON.stringify({ error: 'unauthorized' }), { status: 401, headers: { ...cors, 'Content-Type': 'application/json' } });
+      const { type, pair, direction, price, pnl, entryPrice, stopLoss, leverage, positionSize, tps, tpIndex, isLastTp } = await request.json();
+      if (!type) return new Response(JSON.stringify({ error: 'Missing fields' }), { status: 400, headers: { ...cors, 'Content-Type': 'application/json' } });
       const chatId = await env.ALERTS_KV.get(`uid:${uid}`);
       if (!chatId) return new Response(JSON.stringify({ error: 'Not connected' }), { status: 404, headers: { ...cors, 'Content-Type': 'application/json' } });
 
@@ -3526,6 +3565,10 @@ ${pad('Lev', `${pnlSign}${pnlPctLev}%`)}` : ''}` : ''}</code>
   // Open positions sync — fetches currently open futures positions from the exchange
   if (request.method === 'POST' && path === '/exchange/open-positions') {
     try {
+      // Auth: any authenticated user may call (uses caller-supplied exchange keys).
+      const token = (request.headers.get('Authorization') || '').replace('Bearer ', '');
+      const uid = await verifyFirebaseToken(token);
+      if (!uid) return new Response(JSON.stringify({ error: 'unauthorized' }), { status: 401, headers: { ...cors, 'Content-Type': 'application/json' } });
       const { exchange, apiKey, apiSecret, passphrase } = await request.json().catch(() => ({}));
       if (!apiKey || !apiSecret) return new Response(JSON.stringify({ ok: false, error: 'Missing credentials' }), { headers: { ...cors, 'Content-Type': 'application/json' }, status: 400 });
 
@@ -3755,6 +3798,10 @@ ${pad('Lev', `${pnlSign}${pnlPctLev}%`)}` : ''}` : ''}</code>
   // making the user type a starting balance every time.
   if (request.method === 'POST' && path === '/exchange/balance') {
     try {
+      // Auth: any authenticated user may call (uses caller-supplied exchange keys).
+      const token = (request.headers.get('Authorization') || '').replace('Bearer ', '');
+      const uid = await verifyFirebaseToken(token);
+      if (!uid) return new Response(JSON.stringify({ error: 'unauthorized' }), { status: 401, headers: { ...cors, 'Content-Type': 'application/json' } });
       const { exchange, apiKey, apiSecret, passphrase } = await request.json().catch(() => ({}));
       if (!exchange || !apiKey || !apiSecret) {
         return new Response(JSON.stringify({ ok: false, error: 'Missing credentials' }), { status: 400, headers: { ...cors, 'Content-Type': 'application/json' } });
@@ -3966,6 +4013,10 @@ ${pad('Lev', `${pnlSign}${pnlPctLev}%`)}` : ''}` : ''}</code>
   // Exchange trade sync — signs HMAC on behalf of the frontend so secrets stay server-side
   if (request.method === 'POST' && path === '/exchange/sync') {
     try {
+      // Auth: any authenticated user may call (uses caller-supplied exchange keys).
+      const token = (request.headers.get('Authorization') || '').replace('Bearer ', '');
+      const uid = await verifyFirebaseToken(token);
+      if (!uid) return new Response(JSON.stringify({ error: 'unauthorized' }), { status: 401, headers: { ...cors, 'Content-Type': 'application/json' } });
       const { exchange, apiKey, apiSecret, passphrase, limit = 50, days = 0, debug = false } = await request.json();
       if (!exchange || !apiKey || !apiSecret) {
         return new Response(JSON.stringify({ error: 'Missing fields' }), { status: 400, headers: { ...cors, 'Content-Type': 'application/json' } });

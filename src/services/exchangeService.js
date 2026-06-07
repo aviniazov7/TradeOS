@@ -1,10 +1,16 @@
+import { auth } from './firebase';
+
 const WORKER_URL =
   import.meta.env.VITE_WORKER_URL || 'https://trade-os.aviniazov7.workers.dev';
 
 export async function syncExchangeTrades(exchange, apiKey, apiSecret, passphrase, { limit = 50, days = 0, debug = false } = {}) {
+  const token = await auth.currentUser?.getIdToken();
   const res = await fetch(`${WORKER_URL}/exchange/sync`, {
     method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
+    headers: {
+      'Content-Type': 'application/json',
+      Authorization: `Bearer ${token}`,
+    },
     body: JSON.stringify({ exchange, apiKey, apiSecret, passphrase, limit, days, debug }),
   });
   const data = await res.json();
@@ -17,9 +23,13 @@ export async function syncExchangeTrades(exchange, apiKey, apiSecret, passphrase
 }
 
 export async function syncOpenPositions(exchange, apiKey, apiSecret, passphrase) {
+  const token = await auth.currentUser?.getIdToken();
   const res = await fetch(`${WORKER_URL}/exchange/open-positions`, {
     method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
+    headers: {
+      'Content-Type': 'application/json',
+      Authorization: `Bearer ${token}`,
+    },
     body: JSON.stringify({ exchange, apiKey, apiSecret, passphrase }),
   });
   const data = await res.json();
@@ -28,9 +38,13 @@ export async function syncOpenPositions(exchange, apiKey, apiSecret, passphrase)
 }
 
 export async function fetchExchangeBalance(exchange, apiKey, apiSecret, passphrase) {
+  const token = await auth.currentUser?.getIdToken();
   const res = await fetch(`${WORKER_URL}/exchange/balance`, {
     method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
+    headers: {
+      'Content-Type': 'application/json',
+      Authorization: `Bearer ${token}`,
+    },
     body: JSON.stringify({ exchange, apiKey, apiSecret, passphrase }),
   });
   const data = await res.json();

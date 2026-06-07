@@ -1,77 +1,35 @@
 import { useEffect, useState } from 'react';
-import { auth, db } from '../../services/firebase';
+import { auth } from '../../services/firebase';
 import { isSignInWithEmailLink, signInWithEmailLink } from 'firebase/auth';
-import { doc, setDoc } from 'firebase/firestore';
 import { authErrorHe } from '../../utils/authErrors';
-
-const WORKER_URL = import.meta.env.VITE_GOOGLE_AUTH_WORKER_URL || '';
 
 export default function AuthEmailLink() {
   const [status, setStatus] = useState('');
   const [error, setError] = useState('');
 
   useEffect(() => {
-    const href = window.location.href;
-    const urlParams = new URLSearchParams(window.location.search);
-    const email = urlParams.get('email') || localStorage.getItem('tradeos-email-link');
-
-    if (!isSignInWithEmailLink(auth, href)) {
-      setError('קישור לא תקין');
-      return;
-    }
-    if (!email) {
-      setError('לא נמצא אימייל — נסה שוב מהאפליקציה');
-      return;
-    }
-    if (!WORKER_URL) {
-      setError('שירות אימות אינו זמין');
-      return;
-    }
-
-    const controller = new AbortController();
-    const timeoutId = setTimeout(() => controller.abort(), 15000);
-
     (async () => {
+      const href = window.location.href;
+      const urlParams = new URLSearchParams(window.location.search);
+      const email = urlParams.get('email') || localStorage.getItem('tradeos-email-link');
+
+      if (!isSignInWithEmailLink(auth, href)) {
+        setError('קישור לא תקין');
+        return;
+      }
+      if (!email) {
+        setError('לא נמצא אימייל — נסה שוב מהאפליקציה');
+        return;
+      }
+
       try {
         // Complete sign-in in this Safari tab (not blocked here)
-        const result = await signInWithEmailLink(auth, email, href);
-        const idToken = await result.user.getIdToken();
-
-        // Exchange Firebase ID token for a custom token the PWA can use
-        const workerRes = await fetch(`${WORKER_URL}/email-token`, {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ idToken }),
-          signal: controller.signal,
-        });
-        const workerData = await workerRes.json();
-        if (!workerRes.ok || !workerData.customToken) {
-          throw new Error(workerData.error || 'שגיאה בקבלת טוקן');
-        }
-
-        // Write custom token to Firestore so the PWA can pick it up
-        await setDoc(doc(db, 'authBridge', email), {
-          customToken: workerData.customToken,
-          email,
-          exp: Date.now() + 5 * 60 * 1000,
-        });
-
+        await signInWithEmailLink(auth, email, href);
         setStatus('done');
       } catch (err) {
-        if (err.name === 'AbortError') {
-          setError('הבקשה לוקחת יותר מדי זמן — נסה שוב');
-        } else {
-          setError(authErrorHe(err, 'שגיאה באימות הקישור'));
-        }
-      } finally {
-        clearTimeout(timeoutId);
+        setError(authErrorHe(err, 'שגיאה באימות הקישור'));
       }
     })();
-
-    return () => {
-      clearTimeout(timeoutId);
-      controller.abort();
-    };
   }, []);
 
   return (

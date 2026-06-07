@@ -1,6 +1,7 @@
 import { useState, useEffect, useCallback } from 'react';
 import { useAuth } from '../contexts/AuthContext';
 import { getUserSetting, setUserSetting } from '../services/firestoreService';
+import { auth } from '../services/firebase';
 
 const WORKER_URL = import.meta.env.VITE_WORKER_URL || '';
 
@@ -9,10 +10,18 @@ async function syncToWorker(method, path, body) {
     console.warn(`syncToWorker skipped: VITE_WORKER_URL not configured (${method} ${path})`);
     return;
   }
+  const token = await auth.currentUser?.getIdToken();
+  if (!token) {
+    console.warn(`syncToWorker skipped: no authenticated user (${method} ${path})`);
+    return;
+  }
   try {
     const res = await fetch(`${WORKER_URL}${path}`, {
       method,
-      headers: { 'Content-Type': 'application/json' },
+      headers: {
+        'Content-Type': 'application/json',
+        Authorization: `Bearer ${token}`,
+      },
       body: body ? JSON.stringify(body) : undefined,
     });
     if (!res.ok) {

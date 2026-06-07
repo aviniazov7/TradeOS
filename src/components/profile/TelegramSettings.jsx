@@ -4,6 +4,7 @@ import { MessageSquare, ExternalLink, Check, Loader2 } from 'lucide-react';
 import toast from 'react-hot-toast';
 import { useAuth } from '../../contexts/AuthContext';
 import { getUserSetting, setUserSetting } from '../../services/firestoreService';
+import { auth } from '../../services/firebase';
 
 const BOT_USERNAME = import.meta.env.VITE_TELEGRAM_BOT_USERNAME || 'TradeOSAlerts_bot';
 const WORKER_URL = import.meta.env.VITE_WORKER_URL || '';
@@ -37,7 +38,11 @@ export default function TelegramSettings() {
 
     const check = async () => {
       try {
-        const res = await fetch(`${WORKER_URL}/chatid/${user.uid}`);
+        const token = await auth.currentUser?.getIdToken();
+        if (!token) return;
+        const res = await fetch(`${WORKER_URL}/chatid/${user.uid}`, {
+          headers: { Authorization: `Bearer ${token}` },
+        });
         if (!res.ok) return;
         const { chatId } = await res.json();
         await setUserSetting(user.uid, 'telegram', { chatId: String(chatId), connected: true });

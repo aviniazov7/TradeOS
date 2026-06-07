@@ -20,6 +20,7 @@ import CoinIcon from '../shared/CoinIcon';
 import { useJournalContext } from '../../contexts/JournalContext';
 import { useAuth } from '../../contexts/AuthContext';
 import { updateUserDocument } from '../../services/firestoreService';
+import { auth } from '../../services/firebase';
 
 function fmt(price) {
   if (!price && price !== 0) return '';
@@ -535,11 +536,16 @@ export default function PendingLimitOrders({ trades, livePrices }) {
 
   const workerUrl = import.meta.env.VITE_WORKER_URL || '';
 
-  const sendNotification = useCallback((type, trade, price, pnlDollar = null, extra = {}) => {
+  const sendNotification = useCallback(async (type, trade, price, pnlDollar = null, extra = {}) => {
     if (!user?.uid || !workerUrl) return;
+    const token = await auth.currentUser?.getIdToken();
+    if (!token) return;
     fetch(`${workerUrl}/notify`, {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
+      headers: {
+        'Content-Type': 'application/json',
+        Authorization: `Bearer ${token}`,
+      },
       body: JSON.stringify({
         uid: user.uid,
         type,
