@@ -80,6 +80,16 @@ export default function AdminPanel() {
   const [sortDir, setSortDir] = useState('desc');
   const [selectedUser, setSelectedUser] = useState(null);
 
+  // After load() refreshes `users`, keep `selectedUser` pointing at the fresh
+  // copy so the open detail modal reflects the new plan/role immediately
+  // (otherwise grant/revoke updates the table but the modal still shows the
+  // stale snapshot we took when the row was clicked).
+  useEffect(() => {
+    if (!selectedUser) return;
+    const fresh = users.find((u) => u.id === selectedUser.id);
+    if (fresh && fresh !== selectedUser) setSelectedUser(fresh);
+  }, [users]); // eslint-disable-line react-hooks/exhaustive-deps
+
   const load = () => {
     setLoading(true);
     setError(null);
