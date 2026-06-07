@@ -94,6 +94,18 @@ export async function adminListAuditEvents({ kind, limit = 200 } = {}) {
   return data.events || [];
 }
 
+// Admin-only: ask the worker to send the weekly digest email to the caller's
+// email right now, so you can preview the email without waiting for Sunday.
+export async function adminSendTestDigest() {
+  const res = await fetch(`${WORKER_BASE}/admin/test-digest`, {
+    method: 'POST',
+    headers: await authHeader(),
+  });
+  const data = await res.json().catch(() => ({}));
+  if (!res.ok) throw new Error(data.error || 'שליחת מייל הבדיקה נכשלה');
+  return data; // { ok, sentTo, stats }
+}
+
 // Admin-only: send a custom push notification to a target user via the worker.
 export async function adminSendNotification({ uid, title, body, url }) {
   const res = await fetch(`${WORKER_BASE}/admin/notify`, {

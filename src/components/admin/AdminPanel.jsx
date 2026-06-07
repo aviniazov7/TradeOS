@@ -5,7 +5,7 @@ import toast from 'react-hot-toast';
 import { useAuth } from '../../contexts/AuthContext';
 import { getAllUsers, getUserSubcollectionCount, adminGrantPremium, adminRevokePremium, getAdminMeta, setAdminMeta, getAllAdminMeta, addPayment, getAllPayments } from '../../services/firestoreService';
 import { fetchUserAiUsage } from '../../hooks/useAiUsage';
-import { adminSendNotification, adminScheduleExpiryReminders, adminCancelExpiryReminders, adminListAuditEvents } from '../../services/pushService';
+import { adminSendNotification, adminScheduleExpiryReminders, adminCancelExpiryReminders, adminListAuditEvents, adminSendTestDigest } from '../../services/pushService';
 import { adminListCoupons, adminCreateCoupon, adminDeleteCoupon, couponShareUrl } from '../../services/couponService';
 import LoadingSpinner from '../shared/LoadingSpinner';
 import SelectDropdown from '../shared/SelectDropdown';
@@ -1408,9 +1408,31 @@ function Ring({ pct, label, sub, color = 'text-accent-primary' }) {
 
 function AnalyticsModal({ isOpen, onClose, a, onPickUser }) {
   const maxWeek = Math.max(1, ...a.weeks.map((w) => w.count));
+  const [sendingTest, setSendingTest] = useState(false);
+  const sendTestDigest = async () => {
+    setSendingTest(true);
+    try {
+      const r = await adminSendTestDigest();
+      toast.success(`📧 הדוח נשלח ל-${r.sentTo}`);
+    } catch (e) {
+      toast.error(e.message || 'שליחת המייל נכשלה');
+    } finally {
+      setSendingTest(false);
+    }
+  };
   return (
     <Modal isOpen={isOpen} onClose={onClose} title="אנליטיקס לקוחות" maxWidth="max-w-2xl">
       <div className="space-y-5">
+        {/* Test digest email button */}
+        <button
+          onClick={sendTestDigest}
+          disabled={sendingTest}
+          className="w-full flex items-center justify-center gap-2 py-2.5 rounded-xl bg-accent-primary/10 border border-accent-primary/30 text-accent-primary text-sm font-semibold hover:bg-accent-primary/20 transition-colors cursor-pointer disabled:opacity-50"
+        >
+          <Mail className="w-4 h-4" />
+          {sendingTest ? 'שולח…' : '📧 שלח לי את הדוח עכשיו במייל (לבדיקה)'}
+        </button>
+
         {/* Revenue */}
         <div>
           <div className="flex items-center gap-1.5 text-xs text-text-muted mb-2">

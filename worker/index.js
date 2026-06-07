@@ -580,6 +580,50 @@ function emailShell({ headline, intro, ctaText, ctaUrl, body, footer }) {
 </body></html>`;
 }
 
+// Build the weekly admin digest content (stats + push body + email html).
+// Shared between the Sunday cron and the on-demand /admin/test-digest endpoint
+// so they're guaranteed to look identical.
+function buildAdminDigest(users) {
+  const now = Date.now();
+  const WEEK = 7 * 86400000;
+  const isPrem = (u) => u.plan === 'premium' && (!u.planExpires || new Date(u.planExpires).getTime() > now);
+  const ms = (v) => (v ? new Date(v).getTime() : 0);
+
+  let newUsers = 0, upgrades = 0, expiringSoon = 0, churn = 0;
+  for (const u of users) {
+    if (u.role === 'admin') continue;
+    if (now - ms(u.createdAt) < WEEK && ms(u.createdAt) > 0) newUsers++;
+    if (isPrem(u) && now - ms(u.planGrantedAt) < WEEK && ms(u.planGrantedAt) > 0) upgrades++;
+    if (isPrem(u) && u.planExpires) {
+      const exp = ms(u.planExpires) - now;
+      if (exp > 0 && exp < WEEK) expiringSoon++;
+    }
+    if (isPrem(u) && ms(u.lastActive) > 0 && now - ms(u.lastActive) >= WEEK) churn++;
+  }
+
+  const pushBody = `📈 ${newUsers} נרשמו · 👑 ${upgrades} שדרגו · ⏳ ${expiringSoon} עומדים להסתיים · ⚠️ ${churn} בסיכון נטישה`;
+  const emailBody = `
+    <div style="display:grid;gap:10px;margin:8px 0 4px">
+      <div style="background:rgba(0,191,255,0.08);border:1px solid rgba(0,191,255,0.25);border-radius:10px;padding:14px 16px;text-align:right">
+        <div style="font-size:11px;color:#7d8492">חדשים השבוע</div>
+        <div style="font-size:24px;font-weight:bold;color:#00bfff">📈 ${newUsers}</div>
+      </div>
+      <div style="background:rgba(245,158,11,0.08);border:1px solid rgba(245,158,11,0.3);border-radius:10px;padding:14px 16px;text-align:right">
+        <div style="font-size:11px;color:#7d8492">שדרגו ל-Premium</div>
+        <div style="font-size:24px;font-weight:bold;color:#f59e0b">👑 ${upgrades}</div>
+      </div>
+      <div style="background:rgba(245,158,11,0.05);border:1px solid rgba(245,158,11,0.25);border-radius:10px;padding:14px 16px;text-align:right">
+        <div style="font-size:11px;color:#7d8492">מנויים שעומדים להסתיים השבוע</div>
+        <div style="font-size:24px;font-weight:bold;color:#f59e0b">⏳ ${expiringSoon}</div>
+      </div>
+      <div style="background:rgba(239,68,68,0.06);border:1px solid rgba(239,68,68,0.3);border-radius:10px;padding:14px 16px;text-align:right">
+        <div style="font-size:11px;color:#7d8492">לקוחות בסיכון נטישה</div>
+        <div style="font-size:24px;font-weight:bold;color:#ef4444">⚠️ ${churn}</div>
+      </div>
+    </div>`;
+  return { newUsers, upgrades, expiringSoon, churn, pushBody, emailBody };
+}
+
 // ---- Weekly admin digest ---------------------------------------------------
 // Every Sunday morning, push the admin(s) a one-line summary of the week:
 // new signups, upgrades, customers about to expire, and churn risk. Lets the
@@ -601,31 +645,14 @@ async function checkWeeklyDigest(env) {
   catch (e) { console.error('digest: list users failed', e); return; }
   if (!users.length) return;
 
-  const now = Date.now();
-  const WEEK = 7 * 86400000;
   const admins = users.filter((u) => u.role === 'admin').map((u) => u.uid);
   if (!admins.length) return;
 
-  const isPrem = (u) => u.plan === 'premium' && (!u.planExpires || new Date(u.planExpires).getTime() > now);
-  const ms = (v) => (v ? new Date(v).getTime() : 0);
-
-  let newUsers = 0, upgrades = 0, expiringSoon = 0, churn = 0;
-  for (const u of users) {
-    if (u.role === 'admin') continue;
-    if (now - ms(u.createdAt) < WEEK && ms(u.createdAt) > 0) newUsers++;
-    if (isPrem(u) && now - ms(u.planGrantedAt) < WEEK && ms(u.planGrantedAt) > 0) upgrades++;
-    if (isPrem(u) && u.planExpires) {
-      const exp = ms(u.planExpires) - now;
-      if (exp > 0 && exp < WEEK) expiringSoon++;
-    }
-    if (isPrem(u) && ms(u.lastActive) > 0 && now - ms(u.lastActive) >= WEEK) churn++;
-  }
-
-  const body = `📈 ${newUsers} נרשמו · 👑 ${upgrades} שדרגו · ⏳ ${expiringSoon} עומדים להסתיים · ⚠️ ${churn} בסיכון נטישה`;
+  const digest = buildAdminDigest(users);
   for (const adminUid of admins) {
     await sendPushToUser(env, adminUid, {
       title: '📊 הסיכום השבועי שלך — TradeOS',
-      body,
+      body: digest.pushBody,
       url: '/admin',
       tag: 'weekly-digest',
     });
@@ -635,29 +662,10 @@ async function checkWeeklyDigest(env) {
   // gets a one-glance dashboard in their inbox.
   const adminUsers = users.filter((u) => u.role === 'admin' && u.email);
   if (adminUsers.length === 0) return;
-  const emailBody = `
-    <div style="display:grid;gap:10px;margin:8px 0 4px">
-      <div style="background:rgba(0,191,255,0.08);border:1px solid rgba(0,191,255,0.25);border-radius:10px;padding:14px 16px;text-align:right">
-        <div style="font-size:11px;color:#7d8492">חדשים השבוע</div>
-        <div style="font-size:24px;font-weight:bold;color:#00bfff">📈 ${newUsers}</div>
-      </div>
-      <div style="background:rgba(245,158,11,0.08);border:1px solid rgba(245,158,11,0.3);border-radius:10px;padding:14px 16px;text-align:right">
-        <div style="font-size:11px;color:#7d8492">שדרגו ל-Premium</div>
-        <div style="font-size:24px;font-weight:bold;color:#f59e0b">👑 ${upgrades}</div>
-      </div>
-      <div style="background:rgba(245,158,11,0.05);border:1px solid rgba(245,158,11,0.25);border-radius:10px;padding:14px 16px;text-align:right">
-        <div style="font-size:11px;color:#7d8492">מנויים שעומדים להסתיים השבוע</div>
-        <div style="font-size:24px;font-weight:bold;color:#f59e0b">⏳ ${expiringSoon}</div>
-      </div>
-      <div style="background:rgba(239,68,68,0.06);border:1px solid rgba(239,68,68,0.3);border-radius:10px;padding:14px 16px;text-align:right">
-        <div style="font-size:11px;color:#7d8492">לקוחות בסיכון נטישה</div>
-        <div style="font-size:24px;font-weight:bold;color:#ef4444">⚠️ ${churn}</div>
-      </div>
-    </div>`;
   const html = emailShell({
     headline: '📊 הסיכום השבועי שלך',
     intro: `הנה הדופק של TradeOS השבוע, ${il.toLocaleDateString('he-IL', { day: '2-digit', month: 'long' })}.`,
-    body: emailBody,
+    body: digest.emailBody,
     ctaText: 'פתח את פאנל הניהול',
     ctaUrl: 'https://tradeos-91a58.web.app/admin',
   });
@@ -3009,6 +3017,38 @@ async function handleRequest(request, env) {
   }
 
   // Admin-only: send a push notification to a specific user.
+  // Admin-only: send the weekly digest right now to the caller's email — same
+  // content the Sunday cron would build, so the admin can preview/verify the
+  // email flow without waiting until Sunday.
+  if (request.method === 'POST' && path === '/admin/test-digest') {
+    const token = (request.headers.get('Authorization') || '').replace('Bearer ', '');
+    const adminUid = await verifyAdminFromToken(token);
+    if (!adminUid) return new Response(JSON.stringify({ error: 'forbidden' }), { status: 403, headers: { ...cors, 'Content-Type': 'application/json' } });
+    if (!env.RESEND_API_KEY) return new Response(JSON.stringify({ error: 'RESEND_API_KEY חסר ב-Worker — לא ניתן לשלוח מיילים' }), { status: 503, headers: { ...cors, 'Content-Type': 'application/json' } });
+
+    let users;
+    try { users = await listAllUsersAdmin(env); }
+    catch { return new Response(JSON.stringify({ error: 'failed to list users' }), { status: 500, headers: { ...cors, 'Content-Type': 'application/json' } }); }
+
+    const me = users.find((u) => u.uid === adminUid);
+    if (!me?.email) return new Response(JSON.stringify({ error: 'admin email not found on profile' }), { status: 400, headers: { ...cors, 'Content-Type': 'application/json' } });
+
+    const digest = buildAdminDigest(users);
+    const il = getIsraelTime();
+    const html = emailShell({
+      headline: '📊 הסיכום השבועי שלך',
+      intro: `הנה הדופק של TradeOS היום, ${il.toLocaleDateString('he-IL', { day: '2-digit', month: 'long' })} (בדיקה).`,
+      body: digest.emailBody,
+      ctaText: 'פתח את פאנל הניהול',
+      ctaUrl: 'https://tradeos-91a58.web.app/admin',
+    });
+    const r = await sendEmail(env, { to: me.email, subject: '[TEST] 📊 הסיכום השבועי שלך — TradeOS', html });
+    if (!r.ok) {
+      return new Response(JSON.stringify({ error: `Resend החזיר ${r.status}` }), { status: 502, headers: { ...cors, 'Content-Type': 'application/json' } });
+    }
+    return new Response(JSON.stringify({ ok: true, sentTo: me.email, stats: { newUsers: digest.newUsers, upgrades: digest.upgrades, expiringSoon: digest.expiringSoon, churn: digest.churn } }), { headers: { ...cors, 'Content-Type': 'application/json' } });
+  }
+
   if (request.method === 'POST' && path === '/admin/notify') {
     const token = (request.headers.get('Authorization') || '').replace('Bearer ', '');
     const adminUid = await verifyAdminFromToken(token);
