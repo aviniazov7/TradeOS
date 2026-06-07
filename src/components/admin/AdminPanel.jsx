@@ -1,9 +1,9 @@
 import { useState, useEffect, useMemo, useRef } from 'react';
 import { Navigate } from 'react-router-dom';
-import { Users, UserPlus, ShieldCheck, CheckCircle2, Search, RefreshCw, Download, ChevronUp, ChevronDown, Mail, Calendar, Coins, TrendingUp, Percent, Sparkles, Star, BookOpen, FlaskConical, Activity, FileText, Brain, Crown, Send, X, Ticket, Plus, Minus, Trash2, Copy, ScrollText, Share2, Link2, BarChart3, AlertTriangle, Clock, StickyNote, Save } from 'lucide-react';
+import { Users, UserPlus, ShieldCheck, CheckCircle2, Search, RefreshCw, Download, ChevronUp, ChevronDown, Mail, Calendar, Coins, TrendingUp, Percent, Sparkles, Star, BookOpen, FlaskConical, Activity, FileText, Brain, Crown, Send, X, Ticket, Plus, Minus, Trash2, Copy, ScrollText, Share2, Link2, BarChart3, AlertTriangle, Clock, StickyNote, Save, DollarSign, Hourglass, Tag } from 'lucide-react';
 import toast from 'react-hot-toast';
 import { useAuth } from '../../contexts/AuthContext';
-import { getAllUsers, getUserSubcollectionCount, adminGrantPremium, adminRevokePremium, getAdminNote, setAdminNote } from '../../services/firestoreService';
+import { getAllUsers, getUserSubcollectionCount, adminGrantPremium, adminRevokePremium, getAdminMeta, setAdminMeta, getAllAdminMeta, addPayment, getAllPayments } from '../../services/firestoreService';
 import { fetchUserAiUsage } from '../../hooks/useAiUsage';
 import { adminSendNotification, adminScheduleExpiryReminders, adminCancelExpiryReminders, adminListAuditEvents } from '../../services/pushService';
 import { adminListCoupons, adminCreateCoupon, adminDeleteCoupon, couponShareUrl } from '../../services/couponService';
@@ -63,6 +63,28 @@ function activeWithin(u, days) {
   return daysSinceActive(u) <= days;
 }
 
+// Days until Premium expires (negative if already expired, Infinity if lifetime).
+function daysUntilExpiry(u) {
+  if (!u?.planExpires) return Infinity;
+  return Math.ceil((new Date(u.planExpires).getTime() - Date.now()) / DAY_MS);
+}
+
+// Customer tags. Preset chips + free custom tags; each preset has a colour.
+const PRESET_TAGS = [
+  { label: 'VIP', cls: 'bg-amber-500/15 text-amber-400 border-amber-500/30' },
+  { label: 'ניסיון', cls: 'bg-accent-primary/10 text-accent-primary border-accent-primary/30' },
+  { label: 'שילם', cls: 'bg-profit/15 text-profit border-profit/30' },
+  { label: 'החזר', cls: 'bg-loss/15 text-loss border-loss/30' },
+  { label: 'חבר', cls: 'bg-purple-500/15 text-purple-400 border-purple-500/30' },
+  { label: 'בעייתי', cls: 'bg-loss/15 text-loss border-loss/30' },
+];
+function tagClass(label) {
+  const p = PRESET_TAGS.find((t) => t.label === label);
+  return p ? p.cls : 'bg-bg-tertiary text-text-secondary border-border-primary';
+}
+
+const ILS = (n) => '₪' + Math.round(Number(n) || 0).toLocaleString('he-IL');
+
 function StatCard({ icon, label, value }) {
   return (
     <div className="bg-bg-secondary border border-border-primary rounded-xl p-4 flex items-center gap-4">
@@ -102,12 +124,15 @@ function csvCell(v) {
 export default function AdminPanel() {
   const { isAdmin, profile } = useAuth();
   const [users, setUsers] = useState([]);
+  const [metaById, setMetaById] = useState({});
+  const [payments, setPayments] = useState([]);
   const [loadedAt, setLoadedAt] = useState(0);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
   const [search, setSearch] = useState('');
   const [roleFilter, setRoleFilter] = useState('all');
   const [onboardFilter, setOnboardFilter] = useState('all');
+  const [tagFilter, setTagFilter] = useState('');
   const [sortKey, setSortKey] = useState('createdAt');
   const [sortDir, setSortDir] = useState('desc');
   const [selectedUser, setSelectedUser] = useState(null);
@@ -135,13 +160,23 @@ export default function AdminPanel() {
   const load = () => {
     setLoading(true);
     setError(null);
-    getAllUsers()
-      .then((data) => { setUsers(data); setLoadedAt(Date.now()); })
+    // adminMeta (notes/tags) and payments live in admin-only collections; if
+    // their rules aren't deployed yet we degrade gracefully to empty.
+    Promise.all([
+      getAllUsers(),
+      getAllAdminMeta().catch(() => ({})),
+      getAllPayments().catch(() => []),
+    ])
+      .then(([data, meta, pays]) => {
+        setUsers(data); setMetaById(meta || {}); setPayments(pays || []); setLoadedAt(Date.now());
+      })
       .catch((e) => setError(e?.code === 'permission-denied'
         ? 'אין הרשאת אדמין — ודא שהשדה role מוגדר ל-admin במסמך המשתמש שלך.'
         : 'טעינת המשתמשים נכשלה. נסה שוב.'))
       .finally(() => setLoading(false));
   };
+  const reloadMeta = () => getAllAdminMeta().then((m) => setMetaById(m || {})).catch(() => {});
+  const tagsOf = (u) => metaById[u?.id]?.tags || [];
 
   useEffect(() => {
     if (isAdmin) Promise.resolve().then(load);
@@ -169,6 +204,18 @@ export default function AdminPanel() {
     return users
       .filter((u) => u.role !== 'admin' && isUserPremium(u) && lastActiveMs(u) > 0 && daysSinceActive(u) >= 7)
       .sort((a, b) => daysSinceActive(b) - daysSinceActive(a));
+  }, [users]);
+
+  // Premium customers whose plan expires within the next 7 days — reach out to
+  // renew them before they lapse. Sorted by soonest expiry.
+  const expiringSoon = useMemo(() => {
+    return users
+      .filter((u) => {
+        if (u.role === 'admin' || !isUserPremium(u) || !u.planExpires) return false;
+        const d = daysUntilExpiry(u);
+        return d >= 0 && d <= 7;
+      })
+      .sort((a, b) => daysUntilExpiry(a) - daysUntilExpiry(b));
   }, [users]);
 
   // Customer analytics: signups per week, conversion, activity, retention.
@@ -200,6 +247,22 @@ export default function AdminPanel() {
       .sort((a, b) => lastActiveMs(b) - lastActiveMs(a))
       .slice(0, 6);
 
+    // Revenue: total from the payments log; MRR normalises each active paid
+    // plan to a 30-day rate (lifetime grants are one-off → excluded from MRR).
+    const totalRevenue = payments.reduce((s, p) => s + (Number(p.amount) || 0), 0);
+    const payingUids = new Set(payments.filter((p) => p.uid).map((p) => p.uid));
+    const payingCount = payingUids.size;
+    let mrr = 0;
+    for (const u of customers) {
+      if (!isUserPremium(u)) continue;
+      const amt = Number(u.planAmount);
+      const days = Number(u.planDays);
+      if (amt > 0 && days > 0) mrr += (amt / days) * 30;
+    }
+    const revenueThisMonth = payments
+      .filter((p) => now - (toDate(p.createdAt)?.getTime() || 0) < 30 * DAY_MS)
+      .reduce((s, p) => s + (Number(p.amount) || 0), 0);
+
     return {
       totalC,
       premiumC,
@@ -211,8 +274,13 @@ export default function AdminPanel() {
       everActive,
       weeks,
       topActive,
+      totalRevenue,
+      mrr: Math.round(mrr),
+      arpu: payingCount ? Math.round(totalRevenue / payingCount) : 0,
+      payingCount,
+      revenueThisMonth,
     };
-  }, [users]);
+  }, [users, payments]);
 
   const filtered = useMemo(() => {
     const q = search.trim().toLowerCase();
@@ -225,6 +293,7 @@ export default function AdminPanel() {
       if (roleFilter === 'free' && isUserPremium(u)) return false;
       if (onboardFilter === 'yes' && !u.onboardingCompleted) return false;
       if (onboardFilter === 'no' && u.onboardingCompleted) return false;
+      if (tagFilter && !(metaById[u.id]?.tags || []).includes(tagFilter)) return false;
       return true;
     });
     const dir = sortDir === 'asc' ? 1 : -1;
@@ -235,7 +304,14 @@ export default function AdminPanel() {
       if (va > vb) return 1 * dir;
       return 0;
     });
-  }, [users, search, roleFilter, onboardFilter, sortKey, sortDir]);
+  }, [users, search, roleFilter, onboardFilter, tagFilter, sortKey, sortDir, metaById]);
+
+  // All tags currently in use, for the tag filter dropdown.
+  const allTags = useMemo(() => {
+    const s = new Set();
+    Object.values(metaById).forEach((m) => (m.tags || []).forEach((t) => s.add(t)));
+    return Array.from(s);
+  }, [metaById]);
 
   const toggleSort = (key) => {
     if (sortKey === key) {
@@ -421,6 +497,48 @@ export default function AdminPanel() {
         </div>
       )}
 
+      {/* Expiring soon: Premium customers whose plan ends within 7 days. */}
+      {expiringSoon.length > 0 && (
+        <div className="bg-amber-500/5 border border-amber-500/30 rounded-xl p-4">
+          <div className="flex items-center gap-2 mb-3">
+            <div className="bg-amber-500/15 text-amber-400 rounded-lg p-1.5">
+              <Hourglass className="w-4 h-4" />
+            </div>
+            <span className="text-sm font-semibold text-text-primary">מנויים שעומדים להסתיים</span>
+            <span className="text-[11px] text-text-muted">— Premium שנגמר ב-7 הימים הקרובים</span>
+            <span className="mr-auto text-xs font-bold text-amber-400 bg-amber-500/10 px-2 py-0.5 rounded-full">{expiringSoon.length}</span>
+          </div>
+          <div className="grid sm:grid-cols-2 gap-2">
+            {expiringSoon.slice(0, 6).map((u) => {
+              const d = daysUntilExpiry(u);
+              return (
+                <button
+                  key={u.id}
+                  onClick={() => setSelectedUser(u)}
+                  className="flex items-center gap-3 bg-bg-secondary border border-border-primary rounded-lg px-3 py-2 text-right hover:border-amber-500/40 transition-colors cursor-pointer"
+                >
+                  {u.photoURL ? (
+                    <img src={u.photoURL} alt="" className="w-8 h-8 rounded-full object-cover" referrerPolicy="no-referrer" />
+                  ) : (
+                    <div className="w-8 h-8 rounded-full bg-bg-tertiary flex items-center justify-center text-text-secondary text-sm font-semibold">
+                      {(u.displayName || u.email || '?').charAt(0).toUpperCase()}
+                    </div>
+                  )}
+                  <div className="flex-1 min-w-0">
+                    <div className="text-sm font-medium text-text-primary truncate">{u.displayName || u.email}</div>
+                    <div className="text-[11px] text-amber-400">{d === 0 ? 'נגמר היום' : d === 1 ? 'נגמר מחר' : `עוד ${d} ימים`}</div>
+                  </div>
+                  <Send className="w-4 h-4 text-text-muted shrink-0" />
+                </button>
+              );
+            })}
+          </div>
+          {expiringSoon.length > 6 && (
+            <div className="text-[11px] text-text-muted mt-2">ועוד {expiringSoon.length - 6}…</div>
+          )}
+        </div>
+      )}
+
       <div className="flex flex-col md:flex-row gap-3">
         <div className="relative flex-1">
           <Search className="w-4 h-4 absolute right-3 top-1/2 -translate-y-1/2 text-text-secondary pointer-events-none" />
@@ -460,6 +578,17 @@ export default function AdminPanel() {
               allowClear
             />
           </div>
+          {allTags.length > 0 && (
+            <div className="md:w-44 col-span-2 md:col-span-1">
+              <SelectDropdown
+                value={tagFilter}
+                onChange={(v) => setTagFilter(v || '')}
+                options={allTags.map((t) => ({ value: t, label: t }))}
+                placeholder="כל התגיות"
+                allowClear
+              />
+            </div>
+          )}
         </div>
         <button
           onClick={exportCsv}
@@ -663,7 +792,16 @@ export default function AdminPanel() {
                                 {(u.displayName || u.email || '?').charAt(0).toUpperCase()}
                               </div>
                             )}
-                            <span className="text-text-primary font-medium">{u.displayName || '—'}</span>
+                            <div className="min-w-0">
+                              <span className="text-text-primary font-medium block truncate">{u.displayName || '—'}</span>
+                              {tagsOf(u).length > 0 && (
+                                <div className="flex flex-wrap gap-1 mt-0.5">
+                                  {tagsOf(u).slice(0, 3).map((t) => (
+                                    <span key={t} className={`text-[9px] px-1.5 py-0.5 rounded border ${tagClass(t)}`}>{t}</span>
+                                  ))}
+                                </div>
+                              )}
+                            </div>
                           </div>
                         </td>
                         <td className="px-4 py-3 text-text-secondary">{u.email || '—'}</td>
@@ -714,7 +852,7 @@ export default function AdminPanel() {
         </>
       )}
 
-      <UserDetailModal user={selectedUser} onClose={() => setSelectedUser(null)} onUserChanged={load} />
+      <UserDetailModal user={selectedUser} onClose={() => setSelectedUser(null)} onUserChanged={load} onMetaChanged={reloadMeta} />
       <CouponsModal isOpen={couponsOpen} onClose={() => setCouponsOpen(false)} />
       <AuditLogModal isOpen={auditOpen} onClose={() => setAuditOpen(false)} users={users} />
       <AnalyticsModal isOpen={analyticsOpen} onClose={() => setAnalyticsOpen(false)} a={analytics} onPickUser={(u) => { setAnalyticsOpen(false); setSelectedUser(u); }} />
@@ -746,13 +884,14 @@ const COUNT_COLLECTIONS = [
   { key: 'eveningJournals', label: 'יומן ערב', icon: Brain },
 ];
 
-function UserDetailModal({ user, onClose, onUserChanged }) {
+function UserDetailModal({ user, onClose, onUserChanged, onMetaChanged }) {
   const { user: adminUser } = useAuth();
   const [counts, setCounts] = useState(null);
   const [countsError, setCountsError] = useState(null);
   const [aiUsage, setAiUsage] = useState(null);
   const [grantOpen, setGrantOpen] = useState(false);
   const [granting, setGranting] = useState(false);
+  const [grantAmount, setGrantAmount] = useState('');
   const [notifyOpen, setNotifyOpen] = useState(false);
   const [notifyTitle, setNotifyTitle] = useState('');
   const [notifyBody, setNotifyBody] = useState('');
@@ -760,14 +899,16 @@ function UserDetailModal({ user, onClose, onUserChanged }) {
   const [note, setNote] = useState('');
   const [noteLoaded, setNoteLoaded] = useState('');
   const [noteSaving, setNoteSaving] = useState(false);
+  const [tags, setTags] = useState([]);
+  const [customTag, setCustomTag] = useState('');
 
-  // Load the admin-only private note for this user (separate collection so the
+  // Load the admin-only note + tags for this user (separate collection so the
   // user themselves can never see it).
   useEffect(() => {
-    if (!user) { setNote(''); setNoteLoaded(''); return; }
+    if (!user) { setNote(''); setNoteLoaded(''); setTags([]); return; }
     let cancelled = false;
-    getAdminNote(user.id)
-      .then((t) => { if (!cancelled) { setNote(t); setNoteLoaded(t); } })
+    getAdminMeta(user.id)
+      .then((m) => { if (!cancelled) { setNote(m.text); setNoteLoaded(m.text); setTags(m.tags); } })
       .catch(() => {});
     return () => { cancelled = true; };
   }, [user]);
@@ -776,7 +917,7 @@ function UserDetailModal({ user, onClose, onUserChanged }) {
     if (!user) return;
     setNoteSaving(true);
     try {
-      await setAdminNote(user.id, note.trim(), adminUser?.uid);
+      await setAdminMeta(user.id, { text: note.trim() }, adminUser?.uid);
       setNoteLoaded(note.trim());
       toast.success('ההערה נשמרה');
     } catch {
@@ -784,6 +925,22 @@ function UserDetailModal({ user, onClose, onUserChanged }) {
     } finally {
       setNoteSaving(false);
     }
+  };
+
+  // Tags save immediately on toggle (no separate save button needed).
+  const persistTags = async (next) => {
+    setTags(next);
+    try {
+      await setAdminMeta(user.id, { tags: next }, adminUser?.uid);
+      onMetaChanged?.();
+    } catch {
+      toast.error('שמירת התגית נכשלה');
+    }
+  };
+  const toggleTag = (label) => {
+    const l = label.trim();
+    if (!l) return;
+    persistTags(tags.includes(l) ? tags.filter((t) => t !== l) : [...tags, l]);
   };
 
   useEffect(() => {
@@ -797,7 +954,13 @@ function UserDetailModal({ user, onClose, onUserChanged }) {
     if (!user) return;
     setGranting(true);
     try {
-      await adminGrantPremium(user.id, days);
+      const amount = parseFloat(grantAmount);
+      const paid = Number.isFinite(amount) && amount > 0 ? amount : 0;
+      await adminGrantPremium(user.id, days, { amount: paid });
+      // Record the payment (revenue log) if an amount was entered.
+      if (paid > 0) {
+        addPayment({ uid: user.id, amount: paid, days: Number.isFinite(days) ? days : null }, adminUser?.uid).catch(() => {});
+      }
       const lifetime = !Number.isFinite(days);
       const expiresAt = lifetime
         ? null
@@ -826,6 +989,7 @@ function UserDetailModal({ user, onClose, onUserChanged }) {
       adminScheduleExpiryReminders(user.id, planExpiresISO);
 
       setGrantOpen(false);
+      setGrantAmount('');
       onUserChanged?.();
     } catch (e) {
       toast.error(e.code === 'permission-denied'
@@ -967,12 +1131,27 @@ function UserDetailModal({ user, onClose, onUserChanged }) {
 
         {/* Grant Premium duration picker */}
         {grantOpen && (
-          <div className="bg-amber-500/5 border border-amber-500/30 rounded-xl p-3">
-            <div className="flex items-center justify-between mb-2">
+          <div className="bg-amber-500/5 border border-amber-500/30 rounded-xl p-3 space-y-3">
+            <div className="flex items-center justify-between">
               <span className="text-sm font-semibold text-text-primary">בחר משך Premium</span>
               <button onClick={() => setGrantOpen(false)} className="text-text-muted hover:text-text-primary cursor-pointer">
                 <X className="w-4 h-4" />
               </button>
+            </div>
+            {/* Optional amount paid — feeds revenue / MRR analytics. */}
+            <div>
+              <label className="text-[11px] text-text-muted block mb-1">סכום ששולם (₪) — לא חובה</label>
+              <div className="relative">
+                <span className="absolute right-3 top-1/2 -translate-y-1/2 text-text-muted text-sm pointer-events-none">₪</span>
+                <input
+                  type="number"
+                  min="0"
+                  value={grantAmount}
+                  onChange={(e) => setGrantAmount(e.target.value)}
+                  placeholder="לדוגמה 29"
+                  className="w-full bg-bg-secondary border border-border-primary rounded-lg pr-7 pl-3 py-2 text-sm text-text-primary outline-none focus:border-amber-500"
+                />
+              </div>
             </div>
             <div className="grid grid-cols-3 sm:grid-cols-4 gap-1.5">
               {[
@@ -1103,8 +1282,46 @@ function UserDetailModal({ user, onClose, onUserChanged }) {
             )}
           </div>
 
-          {/* Right column: private note & activity counts */}
+          {/* Right column: tags, private note & activity counts */}
           <div className="space-y-4">
+            {/* Tags / segments — saved instantly on toggle. */}
+            <div>
+              <div className="text-[11px] text-text-muted mb-2 flex items-center gap-1.5">
+                <Tag className="w-3.5 h-3.5 text-amber-400" /> תגיות (רק אתה רואה)
+              </div>
+              <div className="flex flex-wrap gap-1.5">
+                {Array.from(new Set([...PRESET_TAGS.map((t) => t.label), ...tags])).map((label) => {
+                  const on = tags.includes(label);
+                  return (
+                    <button
+                      key={label}
+                      onClick={() => toggleTag(label)}
+                      className={`text-xs px-2.5 py-1 rounded-full border transition-colors cursor-pointer ${on ? tagClass(label) : 'bg-bg-tertiary/40 text-text-muted border-border-primary hover:text-text-secondary'}`}
+                    >
+                      {on ? '✓ ' : ''}{label}
+                    </button>
+                  );
+                })}
+              </div>
+              <div className="flex gap-2 mt-2">
+                <input
+                  value={customTag}
+                  onChange={(e) => setCustomTag(e.target.value)}
+                  onKeyDown={(e) => { if (e.key === 'Enter') { toggleTag(customTag); setCustomTag(''); } }}
+                  placeholder="תגית מותאמת…"
+                  maxLength={20}
+                  className="flex-1 bg-bg-tertiary/40 border border-border-primary rounded-lg px-3 py-1.5 text-xs text-text-primary placeholder:text-text-muted outline-none focus:border-amber-500/50"
+                />
+                <button
+                  onClick={() => { toggleTag(customTag); setCustomTag(''); }}
+                  disabled={!customTag.trim()}
+                  className="px-3 rounded-lg border border-border-primary text-xs text-text-secondary hover:text-text-primary cursor-pointer disabled:opacity-50"
+                >
+                  הוסף
+                </button>
+              </div>
+            </div>
+
             {/* Private admin note — only admins can see this (separate collection). */}
             <div>
               <div className="text-[11px] text-text-muted mb-2 flex items-center gap-1.5">
@@ -1194,6 +1411,34 @@ function AnalyticsModal({ isOpen, onClose, a, onPickUser }) {
   return (
     <Modal isOpen={isOpen} onClose={onClose} title="אנליטיקס לקוחות" maxWidth="max-w-2xl">
       <div className="space-y-5">
+        {/* Revenue */}
+        <div>
+          <div className="flex items-center gap-1.5 text-xs text-text-muted mb-2">
+            <DollarSign className="w-3.5 h-3.5 text-profit" /> הכנסות
+          </div>
+          <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
+            <div className="bg-profit/5 border border-profit/30 rounded-xl px-3 py-3">
+              <div className="text-lg font-bold text-profit leading-none">{ILS(a.totalRevenue)}</div>
+              <div className="text-[10px] text-text-muted mt-1">הכנסה כוללת</div>
+            </div>
+            <div className="bg-bg-tertiary/40 border border-border-primary rounded-xl px-3 py-3">
+              <div className="text-lg font-bold text-text-primary leading-none">{ILS(a.mrr)}</div>
+              <div className="text-[10px] text-text-muted mt-1">MRR (חודשי)</div>
+            </div>
+            <div className="bg-bg-tertiary/40 border border-border-primary rounded-xl px-3 py-3">
+              <div className="text-lg font-bold text-text-primary leading-none">{ILS(a.arpu)}</div>
+              <div className="text-[10px] text-text-muted mt-1">ממוצע ללקוח</div>
+            </div>
+            <div className="bg-bg-tertiary/40 border border-border-primary rounded-xl px-3 py-3">
+              <div className="text-lg font-bold text-text-primary leading-none">{ILS(a.revenueThisMonth)}</div>
+              <div className="text-[10px] text-text-muted mt-1">החודש</div>
+            </div>
+          </div>
+          {a.totalRevenue === 0 && (
+            <div className="text-[11px] text-text-muted mt-1.5">💡 רשום סכום ששולם בעת הענקת Premium כדי לראות כאן נתוני הכנסה.</div>
+          )}
+        </div>
+
         {/* Key rates */}
         <div className="grid grid-cols-3 gap-2">
           <Ring pct={a.conversion} label="המרה לפרימיום" sub={`${a.premiumC}/${a.totalC}`} color="text-amber-400" />

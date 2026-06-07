@@ -444,6 +444,8 @@ async function listAllUsersAdmin(env) {
         role: f.role?.stringValue || 'user',
         plan: f.plan?.stringValue || 'free',
         planExpires: f.planExpires?.timestampValue || f.planExpires?.stringValue || null,
+        planGrantedAt: f.planGrantedAt?.timestampValue || f.planGrantedAt?.stringValue || null,
+        createdAt: f.createdAt?.timestampValue || f.createdAt?.stringValue || null,
         lastActive: f.lastActive?.timestampValue || f.lastActive?.stringValue || null,
         displayName: f.displayName?.stringValue || f.email?.stringValue || 'משתמש',
       });
@@ -493,6 +495,58 @@ async function checkChurnedPremium(env) {
         tag: `churn-${u.uid}`,
       });
     }
+  }
+}
+
+// ---- Weekly admin digest ---------------------------------------------------
+// Every Sunday morning, push the admin(s) a one-line summary of the week:
+// new signups, upgrades, customers about to expire, and churn risk. Lets the
+// owner stay on top of the business without opening the panel.
+async function checkWeeklyDigest(env) {
+  const il = getIsraelTime();
+  if (il.getDay() !== 0) return;                 // Sunday only
+  const hhmm = getIsraelHHMM();
+  if (hhmm < '09:00' || hhmm >= '09:10') return; // once that morning
+  if (!env.FIREBASE_SERVICE_ACCOUNT) return;
+
+  // Dedupe per week so a restart in the window doesn't double-send.
+  const wk = getIsraelDateStr();
+  if (await env.ALERTS_KV.get(`digest:${wk}`)) return;
+  await env.ALERTS_KV.put(`digest:${wk}`, '1', { expirationTtl: 60 * 60 * 24 * 8 });
+
+  let users;
+  try { users = await listAllUsersAdmin(env); }
+  catch (e) { console.error('digest: list users failed', e); return; }
+  if (!users.length) return;
+
+  const now = Date.now();
+  const WEEK = 7 * 86400000;
+  const admins = users.filter((u) => u.role === 'admin').map((u) => u.uid);
+  if (!admins.length) return;
+
+  const isPrem = (u) => u.plan === 'premium' && (!u.planExpires || new Date(u.planExpires).getTime() > now);
+  const ms = (v) => (v ? new Date(v).getTime() : 0);
+
+  let newUsers = 0, upgrades = 0, expiringSoon = 0, churn = 0;
+  for (const u of users) {
+    if (u.role === 'admin') continue;
+    if (now - ms(u.createdAt) < WEEK && ms(u.createdAt) > 0) newUsers++;
+    if (isPrem(u) && now - ms(u.planGrantedAt) < WEEK && ms(u.planGrantedAt) > 0) upgrades++;
+    if (isPrem(u) && u.planExpires) {
+      const exp = ms(u.planExpires) - now;
+      if (exp > 0 && exp < WEEK) expiringSoon++;
+    }
+    if (isPrem(u) && ms(u.lastActive) > 0 && now - ms(u.lastActive) >= WEEK) churn++;
+  }
+
+  const body = `📈 ${newUsers} נרשמו · 👑 ${upgrades} שדרגו · ⏳ ${expiringSoon} עומדים להסתיים · ⚠️ ${churn} בסיכון נטישה`;
+  for (const adminUid of admins) {
+    await sendPushToUser(env, adminUid, {
+      title: '📊 הסיכום השבועי שלך — TradeOS',
+      body,
+      url: '/admin',
+      tag: 'weekly-digest',
+    });
   }
 }
 
@@ -1764,6 +1818,7 @@ async function handleCron(env) {
       checkExchangeClosedTrades(env),
       checkPlanExpiryReminders(env),
       checkChurnedPremium(env),
+      checkWeeklyDigest(env),
     ]);
     return;
   }
@@ -1801,6 +1856,7 @@ async function handleCron(env) {
     checkExchangeClosedTrades(env),
     checkPlanExpiryReminders(env),
     checkChurnedPremium(env),
+    checkWeeklyDigest(env),
   ]);
 }
 

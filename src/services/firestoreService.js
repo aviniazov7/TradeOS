@@ -142,15 +142,19 @@ export async function setUserProfile(uid, data, merge = true) {
  * Admin-only: grant a user a Premium plan for `days` (Infinity for lifetime).
  * Bypasses noPrivilegeEscalation via the admin-write Firestore rule.
  */
-export async function adminGrantPremium(uid, days) {
-  const planExpires = Number.isFinite(days)
-    ? new Date(Date.now() + days * 24 * 60 * 60 * 1000).toISOString()
-    : null; // null = lifetime
-  return withRetry(() => setDoc(
-    doc(db, 'users', uid),
-    { plan: 'premium', planExpires, planGrantedAt: new Date().toISOString() },
-    { merge: true },
-  ));
+export async function adminGrantPremium(uid, days, opts = {}) {
+  const lifetime = !Number.isFinite(days);
+  const planExpires = lifetime
+    ? null // null = lifetime
+    : new Date(Date.now() + days * 24 * 60 * 60 * 1000).toISOString();
+  const fields = { plan: 'premium', planExpires, planGrantedAt: new Date().toISOString() };
+  // Optionally record what the customer paid, so analytics can compute MRR.
+  const amount = Number(opts.amount);
+  if (Number.isFinite(amount) && amount > 0) {
+    fields.planAmount = amount;
+    fields.planDays = lifetime ? null : days;
+  }
+  return withRetry(() => setDoc(doc(db, 'users', uid), fields, { merge: true }));
 }
 
 /** Admin-only: revoke Premium and clear the expiry. */
@@ -176,22 +180,56 @@ export async function deleteUserProfile(uid) {
   return deleteDoc(doc(db, 'users', uid));
 }
 
-// ─── Admin private notes ────────────────────────────────────────
+// ─── Admin private notes & tags ─────────────────────────────────
 // Stored in a separate top-level `adminNotes/{uid}` collection (NOT on the
-// user's own doc) so the note stays invisible to the user — only admins can
-// read/write it per the Firestore rules.
+// user's own doc) so the note/tags stay invisible to the user — only admins
+// can read/write per the Firestore rules. Each doc: { text, tags[], updatedAt }.
 
-export async function getAdminNote(uid) {
+export async function getAdminMeta(uid) {
   const snap = await getDoc(doc(db, 'adminNotes', uid));
-  return snap.exists() ? (snap.data().text || '') : '';
+  const d = snap.exists() ? snap.data() : {};
+  return { text: d.text || '', tags: Array.isArray(d.tags) ? d.tags : [] };
 }
 
-export async function setAdminNote(uid, text, authorUid) {
-  return withRetry(() => setDoc(
-    doc(db, 'adminNotes', uid),
-    { text: text || '', updatedAt: serverTimestamp(), updatedBy: authorUid || null },
-    { merge: true },
-  ));
+export async function setAdminMeta(uid, { text, tags }, authorUid) {
+  const fields = { updatedAt: serverTimestamp(), updatedBy: authorUid || null };
+  if (text !== undefined) fields.text = text || '';
+  if (tags !== undefined) fields.tags = Array.isArray(tags) ? tags : [];
+  return withRetry(() => setDoc(doc(db, 'adminNotes', uid), fields, { merge: true }));
+}
+
+// Load every admin-meta doc as a { [uid]: { text, tags } } map so the panel can
+// show tags inline and filter by them. Admin-only (rules gate the collection).
+export async function getAllAdminMeta() {
+  const snap = await getDocs(collection(db, 'adminNotes'));
+  const map = {};
+  snap.docs.forEach((d) => {
+    const v = d.data();
+    map[d.id] = { text: v.text || '', tags: Array.isArray(v.tags) ? v.tags : [] };
+  });
+  return map;
+}
+
+// ─── Payments (revenue tracking) ────────────────────────────────
+// Admin-only top-level `payments` collection. One row per recorded payment so
+// total revenue keeps full history even as a customer renews.
+
+export async function addPayment({ uid, amount, currency = 'ILS', days, plan = 'premium', note }, authorUid) {
+  return withRetry(() => addDoc(collection(db, 'payments'), {
+    uid: uid || null,
+    amount: Number(amount) || 0,
+    currency,
+    days: Number.isFinite(days) ? days : null,
+    plan,
+    note: note || null,
+    createdAt: serverTimestamp(),
+    createdBy: authorUid || null,
+  }));
+}
+
+export async function getAllPayments() {
+  const snap = await getDocs(collection(db, 'payments'));
+  return snap.docs.map((d) => ({ id: d.id, ...d.data() }));
 }
 
 // ─── Admin Operations ───────────────────────────────────────────

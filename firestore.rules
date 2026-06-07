@@ -93,10 +93,15 @@ service cloud.firestore {
       }
     }
 
-    // Admin private notes — a per-user note only admins can read or write.
-    // Kept OUT of the user's own document so the note is never visible to the
-    // user themselves (they can read their own user doc, but not this).
+    // Admin private notes & tags — per-user, only admins can read or write.
+    // Kept OUT of the user's own document so it's never visible to the user
+    // themselves (they can read their own user doc, but not this).
     match /adminNotes/{userId} {
+      allow read, write: if isAdmin();
+    }
+
+    // Payment records (revenue tracking) — admin-only.
+    match /payments/{paymentId} {
       allow read, write: if isAdmin();
     }
 
