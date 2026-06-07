@@ -1992,6 +1992,90 @@ async function handleAIChat(request, env, cors) {
 
 // ==================== AI Project Description ====================
 
+const COACH_SYSTEM_PROMPT = `אתה מנטור מסחר אישי שמנתח את היומן של הסוחר וכותב לו דו"ח קצר וחד בעברית.
+
+## פלט נדרש:
+- בעברית בלבד, טבעית וזורמת (לא תרגום מילולי)
+- 3 חלקים בלבד, בסדר הזה — כל אחד עם הכותרת המודגשת בדיוק:
+  **חוזקות** — 1-3 בולטים על מה שעובד טוב (לפי הנתונים, לא ניחושים)
+  **חולשות** — 1-3 בולטים על דפוסי הפסד / טעויות חוזרות
+  **המלצות לפעולה** — 2-4 בולטים, קצרים וקונקרטיים (לא כלליים)
+- אם זה דו"ח Premium יבוקש דו"ח מורחב — הוסף חלק רביעי: **תובנות מתקדמות** (זמני סשן רווחיים, השוואות תקופות, דפוסי התנהגות) ועדכן כל חלק ליותר בולטים (עד 5).
+- אסור: תחזיות מחיר, "בוליש/בריש", פסיכולוגיה כללית, פתיחות שיווקיות, אזכור שאתה AI, סלוגנים.
+- אסור להמציא נתונים — השתמש רק במה שמופיע ב-stats.
+- בלי משפטים פתיחיים ("הנה ניתוח שלך..."). תתחיל ישר ב-**חוזקות**.
+- בולטים: מתחילים ב"• " בעברית.
+- המלצות = פעולה ספציפית למסחר ("הפסק לסחור [מטבע] עד שתבקטסט [תנאי]"), לא טיפים גנריים ("התנהל בזהירות").`;
+
+async function handleAICoach(request, env, cors) {
+  try {
+    const body = await request.json().catch(() => ({}));
+    const { stats, depth = 'short' } = body || {};
+    if (!stats || typeof stats !== 'object') {
+      return new Response(JSON.stringify({ error: 'Missing stats' }), { status: 400, headers: { ...cors, 'Content-Type': 'application/json' } });
+    }
+    // Hard cap stats payload to keep the prompt cheap.
+    const statsStr = JSON.stringify(stats).slice(0, 6000);
+
+    const authHeader = request.headers.get('Authorization') || '';
+    const token = authHeader.replace('Bearer ', '');
+    const uid = await verifyFirebaseToken(token);
+    if (!uid) {
+      return new Response(JSON.stringify({ error: 'יש להתחבר כדי להשתמש בתכונה זו' }), { status: 401, headers: { ...cors, 'Content-Type': 'application/json' } });
+    }
+    const premium = await isUserPremium(env, token, uid);
+
+    // Shared rate gate + circuit breaker (same windows as /ai-chat).
+    const gate = await aiRateGate(env, uid, premium);
+    if (gate) return new Response(JSON.stringify(gate.body), { status: gate.status, headers: { ...cors, 'Content-Type': 'application/json' } });
+
+    // Free users get 3 coach runs/month tracked separately from the daily AI
+    // quota — Premium is unmetered (covered by the soft caps in aiRateGate).
+    if (!premium) {
+      const monthKey = `coach:${uid}:${getIsraelDateStr().slice(0, 7)}`;
+      const used = parseInt((await env.ALERTS_KV.get(monthKey)) || '0', 10) || 0;
+      const FREE_COACH_PER_MONTH = 3;
+      if (used >= FREE_COACH_PER_MONTH) {
+        return new Response(JSON.stringify({
+          error: `הגעת למכסה החודשית של ניתוחי AI (${FREE_COACH_PER_MONTH}). שדרג ל-Premium לניתוחים ללא הגבלה.`,
+          quotaExceeded: true, used, limit: FREE_COACH_PER_MONTH,
+        }), { status: 429, headers: { ...cors, 'Content-Type': 'application/json' } });
+      }
+      // 60-day TTL so the entry survives the month it covers.
+      await env.ALERTS_KV.put(monthKey, String(used + 1), { expirationTtl: 60 * 60 * 24 * 60 });
+    }
+
+    const userPrompt =
+      (premium && depth === 'deep' ? 'יבוקש דו"ח Premium מורחב.\n' : 'יבוקש דו"ח קצר.\n') +
+      `נתוני העסקאות (JSON):\n\`\`\`json\n${statsStr}\n\`\`\``;
+
+    const groqRes = await fetch(GROQ_URL, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${env.GROQ_API_KEY}` },
+      body: JSON.stringify({
+        model: GROQ_MODEL,
+        messages: [
+          { role: 'system', content: COACH_SYSTEM_PROMPT },
+          { role: 'user', content: userPrompt },
+        ],
+        temperature: 0.5,
+        max_tokens: premium && depth === 'deep' ? 1400 : 700,
+      }),
+    });
+    if (!groqRes.ok) {
+      const errText = await groqRes.text().catch(() => '');
+      console.error('Coach groq error:', groqRes.status, errText);
+      return new Response(JSON.stringify({ error: groqRes.status === 429 ? 'ה-AI עמוס כרגע, נסה שוב בעוד רגע' : `שגיאת AI: ${groqRes.status}` }), { status: 502, headers: { ...cors, 'Content-Type': 'application/json' } });
+    }
+    const data = await groqRes.json();
+    const text = data.choices?.[0]?.message?.content?.trim() || '';
+    return new Response(JSON.stringify({ ok: true, text, premium }), { headers: { ...cors, 'Content-Type': 'application/json' } });
+  } catch (err) {
+    console.error('AI coach error:', err);
+    return new Response(JSON.stringify({ error: 'שגיאה פנימית' }), { status: 500, headers: { ...cors, 'Content-Type': 'application/json' } });
+  }
+}
+
 const PROJECT_DESC_SYSTEM_PROMPT = `אתה כתב קריפטו מקצועי. תפקידך לכתוב מאמרון קצר, ברור ואובייקטיבי בעברית על הפרויקט שמאחורי מטבע קריפטו.
 
 ## הנחיות כתיבה:
@@ -2369,6 +2453,12 @@ async function handleRequest(request, env) {
   // AI Project Description — short article about a coin's project (non-streaming)
   if (request.method === 'POST' && path === '/ai-project-desc') {
     return handleAIProjectDescription(request, env, cors);
+  }
+
+  // AI Coach — analyze the user's trade journal stats and return a structured
+  // strengths/weaknesses/actions report. Free tier: 3 reports/month, short.
+  if (request.method === 'POST' && path === '/ai-coach') {
+    return handleAICoach(request, env, cors);
   }
 
   // Contact Developer — private message to dev's Telegram

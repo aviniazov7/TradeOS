@@ -34,6 +34,7 @@ import SessionAnalysisChart from '../analytics/SessionAnalysisChart';
 import DayOfWeekChart from '../analytics/DayOfWeekChart';
 import TradeDurationChart from '../analytics/TradeDurationChart';
 import MonthlyCalendar from './MonthlyCalendar';
+import AICoachPanel from './AICoachPanel';
 import ImportTrades from './ImportTrades';
 import JournalSettingsModal from './JournalSettingsModal';
 import ArchiveAnimation from './ArchiveAnimation';
@@ -501,6 +502,15 @@ export default function TradeJournal() {
                 ניתוחים
               </button>
               <button
+                onClick={() => setTab('aiCoach')}
+                className={`px-3.5 py-1.5 text-sm font-medium rounded-lg transition-colors cursor-pointer whitespace-nowrap inline-flex items-center gap-1 ${
+                  tab === 'aiCoach' ? 'bg-accent-primary/15 text-accent-primary' : 'text-text-muted hover:text-text-primary hover:bg-bg-tertiary'
+                }`}
+              >
+                <span className="i-sparkles">✨</span>
+                ניתוח AI
+              </button>
+              <button
                 onClick={() => setTab('calendar')}
                 className={`px-3.5 py-1.5 text-sm font-medium rounded-lg transition-colors cursor-pointer whitespace-nowrap ${
                   tab === 'calendar' ? 'bg-accent-primary/15 text-accent-primary' : 'text-text-muted hover:text-text-primary hover:bg-bg-tertiary'
@@ -556,6 +566,14 @@ export default function TradeJournal() {
               }`}
             >
               ניתוחים
+            </button>
+            <button
+              onClick={() => setTab('aiCoach')}
+              className={`px-2.5 py-1.5 text-xs font-medium rounded-lg transition-colors cursor-pointer whitespace-nowrap ${
+                tab === 'aiCoach' ? 'bg-accent-primary/15 text-accent-primary' : 'text-text-muted hover:text-text-primary hover:bg-bg-tertiary'
+              }`}
+            >
+              ניתוח AI ✨
             </button>
             <button
               onClick={() => setTab('calendar')}
@@ -861,6 +879,10 @@ export default function TradeJournal() {
 
       {tab === 'calendar' && (
         <MonthlyCalendar trades={trades} journalName={activeJournal?.name} />
+      )}
+
+      {tab === 'aiCoach' && (
+        <AICoachPanel trades={trades} />
       )}
 
       {tab === 'exchange' && (
