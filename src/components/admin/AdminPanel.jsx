@@ -1,4 +1,4 @@
-import { useState, useEffect, useMemo } from 'react';
+import { useState, useEffect, useMemo, useRef } from 'react';
 import { Navigate } from 'react-router-dom';
 import { Users, UserPlus, ShieldCheck, CheckCircle2, Search, RefreshCw, Download, ChevronUp, ChevronDown, Mail, Calendar, Coins, TrendingUp, Percent, Sparkles, Star, BookOpen, FlaskConical, Activity, FileText, Brain, Crown, Send, X, Ticket, Plus, Trash2, Copy, ScrollText } from 'lucide-react';
 import toast from 'react-hot-toast';
@@ -82,6 +82,12 @@ export default function AdminPanel() {
   const [selectedUser, setSelectedUser] = useState(null);
   const [couponsOpen, setCouponsOpen] = useState(false);
   const [auditOpen, setAuditOpen] = useState(false);
+  const [selectedIds, setSelectedIds] = useState(new Set());
+  const [bulkBusy, setBulkBusy] = useState(false);
+  const [bulkGrantOpen, setBulkGrantOpen] = useState(false);
+  const [bulkNotifyOpen, setBulkNotifyOpen] = useState(false);
+  const [bulkNotifyTitle, setBulkNotifyTitle] = useState('');
+  const [bulkNotifyBody, setBulkNotifyBody] = useState('');
 
   // After load() refreshes `users`, keep `selectedUser` pointing at the fresh
   // copy so the open detail modal reflects the new plan/role immediately
@@ -154,6 +160,73 @@ export default function AdminPanel() {
       setSortKey(key);
       setSortDir(key === 'createdAt' ? 'desc' : 'asc');
     }
+  };
+
+  const toggleSelected = (id) => {
+    setSelectedIds((prev) => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id); else next.add(id);
+      return next;
+    });
+  };
+  const toggleSelectAll = () => {
+    const visibleIds = filtered.map((u) => u.id);
+    const allSelected = visibleIds.every((id) => selectedIds.has(id));
+    setSelectedIds(allSelected ? new Set() : new Set(visibleIds));
+  };
+
+  // Run an async action over every selected user with a small concurrency
+  // cap so we don't pile a hundred parallel network requests at once. The
+  // progress ref is read by the UI to render 'sending… (3/12)'.
+  const bulkSentCountRef = useRef(0);
+  const runBulk = async (fn) => {
+    setBulkBusy(true);
+    bulkSentCountRef.current = 0;
+    const ids = Array.from(selectedIds);
+    const CONCURRENCY = 4;
+    let i = 0;
+    const workers = Array.from({ length: Math.min(CONCURRENCY, ids.length) }, async () => {
+      while (i < ids.length) {
+        const idx = i++;
+        try { await fn(ids[idx]); } catch { /* per-user error already logged */ }
+        bulkSentCountRef.current += 1;
+      }
+    });
+    await Promise.all(workers);
+    setBulkBusy(false);
+  };
+
+  const bulkGrantPremium = async (days) => {
+    const lifetime = !Number.isFinite(days);
+    const expiresAt = lifetime ? null : new Date(Date.now() + days * 86400000);
+    const planExpiresISO = expiresAt ? expiresAt.toISOString() : null;
+    await runBulk(async (uid) => {
+      await adminGrantPremium(uid, days);
+      adminScheduleExpiryReminders(uid, planExpiresISO);
+      const body = lifetime
+        ? '🎉 קיבלת Premium ללא הגבלה. כל הפיצ\'רים פתוחים — בהצלחה במסחר!'
+        : `🎉 קיבלת Premium ל-${days} ימים. כל הפיצ\'רים פתוחים — בהצלחה במסחר!`;
+      adminSendNotification({ uid, title: '🎁 שודרגת ל-TradeOS Premium', body, url: '/premium' }).catch(() => {});
+    });
+    toast.success(`${selectedIds.size} משתמשים שודרגו ל-Premium`);
+    setBulkGrantOpen(false);
+    setSelectedIds(new Set());
+    load();
+  };
+
+  const bulkSendNotify = async () => {
+    const title = bulkNotifyTitle.trim();
+    const body = bulkNotifyBody.trim();
+    if (!title || !body) return;
+    let totalSent = 0;
+    await runBulk(async (uid) => {
+      const r = await adminSendNotification({ uid, title, body });
+      if (r?.sent) totalSent += r.sent;
+    });
+    toast.success(`ההודעה נשלחה ל-${totalSent} מכשירים (${selectedIds.size} משתמשים)`);
+    setBulkNotifyOpen(false);
+    setBulkNotifyTitle(''); setBulkNotifyBody('');
+    setSelectedIds(new Set());
   };
 
   const exportCsv = () => {
@@ -272,14 +345,124 @@ export default function AdminPanel() {
         <div className="py-16"><LoadingSpinner /></div>
       ) : (
         <>
-          <div className="text-sm text-text-secondary">
-            מציג {filtered.length} מתוך {users.length} משתמשים
+          <div className="flex items-center justify-between gap-3 flex-wrap">
+            <div className="text-sm text-text-secondary">
+              מציג {filtered.length} מתוך {users.length} משתמשים
+            </div>
+            {selectedIds.size > 0 && (
+              <div className="flex items-center gap-2 text-xs">
+                <span className="text-text-secondary">{selectedIds.size} נבחרו</span>
+                <button
+                  onClick={() => setBulkGrantOpen(true)}
+                  disabled={bulkBusy}
+                  className="px-3 py-1.5 rounded-lg bg-amber-500/15 border border-amber-500/30 text-amber-400 hover:bg-amber-500/20 cursor-pointer disabled:opacity-50 inline-flex items-center gap-1"
+                >
+                  <Crown className="w-3.5 h-3.5" /> הענק Premium לכולם
+                </button>
+                <button
+                  onClick={() => setBulkNotifyOpen(true)}
+                  disabled={bulkBusy}
+                  className="px-3 py-1.5 rounded-lg bg-accent-primary/10 border border-accent-primary/30 text-accent-primary hover:bg-accent-primary/20 cursor-pointer disabled:opacity-50 inline-flex items-center gap-1"
+                >
+                  <Send className="w-3.5 h-3.5" /> שלח Push לכולם
+                </button>
+                <button
+                  onClick={() => setSelectedIds(new Set())}
+                  className="px-2 py-1.5 rounded-lg text-text-muted hover:text-text-primary cursor-pointer"
+                  title="נקה בחירה"
+                >
+                  <X className="w-3.5 h-3.5" />
+                </button>
+              </div>
+            )}
           </div>
+
+          {/* Bulk grant: pick a duration and apply to all selected. */}
+          {bulkGrantOpen && (
+            <div className="bg-amber-500/5 border border-amber-500/30 rounded-xl p-3">
+              <div className="flex items-center justify-between mb-2">
+                <span className="text-sm font-semibold text-text-primary">הענק Premium ל-{selectedIds.size} משתמשים</span>
+                <button onClick={() => setBulkGrantOpen(false)} className="text-text-muted hover:text-text-primary cursor-pointer">
+                  <X className="w-4 h-4" />
+                </button>
+              </div>
+              <div className="grid grid-cols-3 sm:grid-cols-4 gap-1.5">
+                {[
+                  { d: 1, label: 'יום' },
+                  { d: 7, label: 'שבוע' },
+                  { d: 30, label: 'חודש' },
+                  { d: 90, label: '3 חודשים' },
+                  { d: 180, label: '6 חודשים' },
+                  { d: 365, label: 'שנה' },
+                  { d: Infinity, label: 'ללא הגבלה' },
+                ].map((opt) => (
+                  <button
+                    key={String(opt.d)}
+                    onClick={() => bulkGrantPremium(opt.d)}
+                    disabled={bulkBusy}
+                    className="text-xs px-2 py-2 rounded-lg bg-bg-secondary border border-border-primary text-text-primary hover:border-amber-500/40 hover:text-amber-400 transition-colors cursor-pointer disabled:opacity-50"
+                  >
+                    {opt.label}
+                  </button>
+                ))}
+              </div>
+            </div>
+          )}
+
+          {/* Bulk notify: shared title+body to all selected. */}
+          {bulkNotifyOpen && (
+            <div className="bg-accent-primary/5 border border-accent-primary/30 rounded-xl p-3 space-y-2">
+              <div className="flex items-center justify-between">
+                <span className="text-sm font-semibold text-text-primary">Push ל-{selectedIds.size} משתמשים</span>
+                <button onClick={() => setBulkNotifyOpen(false)} className="text-text-muted hover:text-text-primary cursor-pointer">
+                  <X className="w-4 h-4" />
+                </button>
+              </div>
+              <input
+                value={bulkNotifyTitle}
+                onChange={(e) => setBulkNotifyTitle(e.target.value)}
+                placeholder="כותרת"
+                maxLength={120}
+                className="w-full bg-bg-secondary border border-border-primary rounded-lg px-3 py-2 text-sm text-text-primary outline-none focus:border-accent-primary"
+              />
+              <textarea
+                value={bulkNotifyBody}
+                onChange={(e) => setBulkNotifyBody(e.target.value)}
+                placeholder="גוף ההודעה"
+                maxLength={400}
+                rows={3}
+                className="w-full bg-bg-secondary border border-border-primary rounded-lg px-3 py-2 text-sm text-text-primary outline-none focus:border-accent-primary resize-none"
+              />
+              <button
+                onClick={bulkSendNotify}
+                disabled={bulkBusy || !bulkNotifyTitle.trim() || !bulkNotifyBody.trim()}
+                className="w-full flex items-center justify-center gap-1.5 px-3 py-2 rounded-lg bg-accent-primary text-bg-primary text-sm font-bold hover:bg-accent-hover transition-colors cursor-pointer disabled:opacity-50"
+              >
+                <Send className="w-4 h-4" /> {bulkBusy ? `שולח... (${bulkSentCountRef.current}/${selectedIds.size})` : 'שלח עכשיו'}
+              </button>
+            </div>
+          )}
+
           <div className="bg-bg-secondary border border-border-primary rounded-xl overflow-hidden">
             <div className="overflow-x-auto">
               <table className="w-full text-sm">
                 <thead>
                   <tr className="text-text-secondary border-b border-border-primary text-right">
+                    <th className="px-3 py-3 w-8">
+                      <input
+                        type="checkbox"
+                        onChange={toggleSelectAll}
+                        checked={filtered.length > 0 && filtered.every((u) => selectedIds.has(u.id))}
+                        ref={(el) => {
+                          if (!el) return;
+                          const some = filtered.some((u) => selectedIds.has(u.id));
+                          const all = filtered.length > 0 && filtered.every((u) => selectedIds.has(u.id));
+                          el.indeterminate = some && !all;
+                        }}
+                        className="w-4 h-4 cursor-pointer accent-accent-primary"
+                        aria-label="בחר הכל"
+                      />
+                    </th>
                     {COLUMNS.map((col) => (
                       <th key={col.key} className="font-medium px-4 py-3">
                         <button
@@ -300,7 +483,7 @@ export default function AdminPanel() {
                 <tbody>
                   {filtered.length === 0 ? (
                     <tr>
-                      <td colSpan={5} className="px-4 py-10 text-center text-text-secondary">
+                      <td colSpan={6} className="px-4 py-10 text-center text-text-secondary">
                         לא נמצאו משתמשים
                       </td>
                     </tr>
@@ -309,8 +492,17 @@ export default function AdminPanel() {
                       <tr
                         key={u.id}
                         onClick={() => setSelectedUser(u)}
-                        className="border-b border-border-primary/50 last:border-0 cursor-pointer hover:bg-bg-tertiary/40 transition-colors"
+                        className={`border-b border-border-primary/50 last:border-0 cursor-pointer hover:bg-bg-tertiary/40 transition-colors ${selectedIds.has(u.id) ? 'bg-accent-primary/5' : ''}`}
                       >
+                        <td className="px-3 py-3" onClick={(e) => { e.stopPropagation(); toggleSelected(u.id); }}>
+                          <input
+                            type="checkbox"
+                            checked={selectedIds.has(u.id)}
+                            onChange={() => {}}
+                            className="w-4 h-4 cursor-pointer accent-accent-primary"
+                            aria-label="בחר משתמש"
+                          />
+                        </td>
                         <td className="px-4 py-3">
                           <div className="flex items-center gap-3">
                             {u.photoURL ? (
