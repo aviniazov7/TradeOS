@@ -5,7 +5,7 @@ import toast from 'react-hot-toast';
 import { useAuth } from '../../contexts/AuthContext';
 import { getAllUsers, getUserSubcollectionCount, adminGrantPremium, adminRevokePremium } from '../../services/firestoreService';
 import { fetchUserAiUsage } from '../../hooks/useAiUsage';
-import { adminSendNotification } from '../../services/pushService';
+import { adminSendNotification, adminScheduleExpiryReminders, adminCancelExpiryReminders } from '../../services/pushService';
 import LoadingSpinner from '../shared/LoadingSpinner';
 import SelectDropdown from '../shared/SelectDropdown';
 import Modal from '../shared/Modal';
@@ -412,6 +412,11 @@ function UserDetailModal({ user, onClose, onUserChanged }) {
         url: '/premium',
       }).catch(() => { /* best-effort */ });
 
+      // Schedule the two expiry reminders (3 days before + day of). For
+      // lifetime grants this just clears any prior schedule (planExpires=null).
+      const planExpiresISO = expiresAt ? expiresAt.toISOString() : null;
+      adminScheduleExpiryReminders(user.id, planExpiresISO);
+
       setGrantOpen(false);
       onUserChanged?.();
     } catch (e) {
@@ -429,6 +434,9 @@ function UserDetailModal({ user, onClose, onUserChanged }) {
     setGranting(true);
     try {
       await adminRevokePremium(user.id);
+      // Cancel the queued expiry reminders so a revoked user isn't pinged
+      // about a subscription they no longer have.
+      adminCancelExpiryReminders(user.id);
       toast.success('ה-Premium בוטל');
       onUserChanged?.();
     } catch {

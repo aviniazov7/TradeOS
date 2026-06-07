@@ -59,6 +59,29 @@ export async function unsubscribeFromPush() {
   await sub.unsubscribe();
 }
 
+// Admin-only: schedule the two Premium-expiry reminders for a user. Called
+// right after granting Premium with an expiry. Best-effort.
+export async function adminScheduleExpiryReminders(uid, planExpires) {
+  try {
+    await fetch(`${WORKER_BASE}/admin/schedule-expiry`, {
+      method: 'POST',
+      headers: await authHeader(),
+      body: JSON.stringify({ uid, planExpires }),
+    });
+  } catch { /* best-effort */ }
+}
+
+// Admin-only: cancel any pending expiry reminders (used on revoke). Best-effort.
+export async function adminCancelExpiryReminders(uid) {
+  try {
+    await fetch(`${WORKER_BASE}/admin/cancel-expiry`, {
+      method: 'POST',
+      headers: await authHeader(),
+      body: JSON.stringify({ uid }),
+    });
+  } catch { /* best-effort */ }
+}
+
 // Admin-only: send a custom push notification to a target user via the worker.
 export async function adminSendNotification({ uid, title, body, url }) {
   const res = await fetch(`${WORKER_BASE}/admin/notify`, {

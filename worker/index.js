@@ -318,6 +318,85 @@ async function fetchBybitClosedPnl(apiKey, apiSecret, limit = 50) {
   });
 }
 
+// ---- Premium expiry reminders ----------------------------------------------
+// Push the user a heads-up 3 days before their Premium ends, and one on the
+// day it ends. Indexed by date so the cron is O(1) per day (lists keys with
+// the prefix of today's IL date instead of scanning the whole user base).
+// Schema:
+//   pxr-warn:{YYYY-MM-DD}:{uid}  → "1" (send 3d-out reminder)
+//   pxr-end:{YYYY-MM-DD}:{uid}   → "1" (send day-of reminder)
+//   pxr-ptr:{uid} → JSON({ warnDate, endDate }) so grant overwrites cleanly
+//                  and revoke can target the old keys for deletion.
+function isoDateOffsetIL(base, dayOffset) {
+  // 'base' is a Date in UTC. We want YYYY-MM-DD in Israel time, +/- dayOffset days.
+  const d = new Date(base.getTime() + dayOffset * 86400000);
+  const il = new Date(d.toLocaleString('en-US', { timeZone: 'Asia/Jerusalem' }));
+  return `${il.getFullYear()}-${String(il.getMonth() + 1).padStart(2, '0')}-${String(il.getDate()).padStart(2, '0')}`;
+}
+
+async function schedulePlanExpiryReminders(env, uid, planExpiresISO) {
+  await cancelPlanExpiryReminders(env, uid); // overwrite any previous schedule
+  if (!planExpiresISO) return; // lifetime — nothing to remind about
+  const end = new Date(planExpiresISO);
+  if (Number.isNaN(end.getTime()) || end.getTime() <= Date.now()) return;
+  const warnDate = isoDateOffsetIL(end, -3);
+  const endDate = isoDateOffsetIL(end, 0);
+  // 95-day TTL: a yearly plan still has its 'end' reminder reachable, and
+  // anything beyond that is a fringe case.
+  const TTL = 60 * 60 * 24 * 95;
+  await env.ALERTS_KV.put(`pxr-warn:${warnDate}:${uid}`, '1', { expirationTtl: TTL });
+  await env.ALERTS_KV.put(`pxr-end:${endDate}:${uid}`, '1', { expirationTtl: TTL });
+  await env.ALERTS_KV.put(`pxr-ptr:${uid}`, JSON.stringify({ warnDate, endDate }), { expirationTtl: TTL });
+}
+
+async function cancelPlanExpiryReminders(env, uid) {
+  const raw = await env.ALERTS_KV.get(`pxr-ptr:${uid}`);
+  if (!raw) return;
+  try {
+    const { warnDate, endDate } = JSON.parse(raw);
+    if (warnDate) await env.ALERTS_KV.delete(`pxr-warn:${warnDate}:${uid}`);
+    if (endDate) await env.ALERTS_KV.delete(`pxr-end:${endDate}:${uid}`);
+  } catch { /* swallow */ }
+  await env.ALERTS_KV.delete(`pxr-ptr:${uid}`);
+}
+
+// Cron entry. Fires the reminders for any uid keyed under today's date, then
+// removes them. Only the first 10-min tick that lands inside the 09:00–09:10
+// IL window each day actually does work — earlier ticks see no matching keys
+// (or the same ones, but the firing is idempotent because we delete on send).
+async function checkPlanExpiryReminders(env) {
+  const hhmm = getIsraelHHMM();
+  if (hhmm < '09:00' || hhmm >= '09:10') return; // run once per day
+  const today = getIsraelDateStr();
+
+  const warns = await env.ALERTS_KV.list({ prefix: `pxr-warn:${today}:` });
+  for (const k of warns.keys) {
+    const uid = k.name.slice(`pxr-warn:${today}:`.length);
+    if (!uid) continue;
+    await sendPushToUser(env, uid, {
+      title: '⏰ המנוי שלך עומד להסתיים',
+      body: 'נשארו לך 3 ימים ל-TradeOS Premium. חדש עכשיו כדי לא לאבד את הגישה לפיצ\'רים המתקדמים.',
+      url: '/premium',
+      tag: `pxr-warn-${uid}`,
+    });
+    await env.ALERTS_KV.delete(k.name);
+  }
+
+  const ends = await env.ALERTS_KV.list({ prefix: `pxr-end:${today}:` });
+  for (const k of ends.keys) {
+    const uid = k.name.slice(`pxr-end:${today}:`.length);
+    if (!uid) continue;
+    await sendPushToUser(env, uid, {
+      title: '🔒 המנוי שלך הסתיים',
+      body: 'תקופת ה-Premium שלך הסתיימה. שדרג שוב כדי לחזור לפיצ\'רים — הנתונים שלך נשמרו.',
+      url: '/premium',
+      tag: `pxr-end-${uid}`,
+    });
+    await env.ALERTS_KV.delete(k.name);
+    await env.ALERTS_KV.delete(`pxr-ptr:${uid}`); // chain is done; clean the pointer
+  }
+}
+
 // Fetch currently-open Bybit positions, normalized. Returns null on error.
 async function fetchBybitOpen(apiKey, apiSecret) {
   const ts = Date.now().toString();
@@ -1499,7 +1578,13 @@ async function checkEconomicCalendar(env, settingsMap) {
 async function handleCron(env) {
   // Web-push exchange polling is independent of Telegram, so run it first and
   // don't let a missing BOT_TOKEN skip it.
-  if (!env.BOT_TOKEN) { await checkExchangeClosedTrades(env).catch(() => {}); return; }
+  if (!env.BOT_TOKEN) {
+    await Promise.allSettled([
+      checkExchangeClosedTrades(env),
+      checkPlanExpiryReminders(env),
+    ]);
+    return;
+  }
 
   // Pre-fetch all KV lists once (2 list ops instead of 4)
   const [alertsList, settingsList] = await Promise.all([
@@ -1532,6 +1617,7 @@ async function handleCron(env) {
     checkDailySummaries(env, settingsMap),
     checkEconomicCalendar(env, settingsMap),
     checkExchangeClosedTrades(env),
+    checkPlanExpiryReminders(env),
   ]);
 }
 
@@ -2583,6 +2669,29 @@ async function handleRequest(request, env) {
       tag: `admin-${Date.now()}`,
     });
     return new Response(JSON.stringify({ ok: true, sent: result.sent, total: result.total }), { headers: { ...cors, 'Content-Type': 'application/json' } });
+  }
+
+  // Admin-only: schedule the two expiry reminders (3 days before + day of) for
+  // a target user. Called by the admin panel right after a Premium grant.
+  if (request.method === 'POST' && path === '/admin/schedule-expiry') {
+    const token = (request.headers.get('Authorization') || '').replace('Bearer ', '');
+    const adminUid = await verifyAdminFromToken(token);
+    if (!adminUid) return new Response(JSON.stringify({ error: 'forbidden' }), { status: 403, headers: { ...cors, 'Content-Type': 'application/json' } });
+    const { uid, planExpires } = await request.json().catch(() => ({}));
+    if (!uid) return new Response(JSON.stringify({ error: 'missing uid' }), { status: 400, headers: { ...cors, 'Content-Type': 'application/json' } });
+    await schedulePlanExpiryReminders(env, uid, planExpires || null);
+    return new Response(JSON.stringify({ ok: true }), { headers: { ...cors, 'Content-Type': 'application/json' } });
+  }
+
+  // Admin-only: cancel pending expiry reminders for a user (used on revoke).
+  if (request.method === 'POST' && path === '/admin/cancel-expiry') {
+    const token = (request.headers.get('Authorization') || '').replace('Bearer ', '');
+    const adminUid = await verifyAdminFromToken(token);
+    if (!adminUid) return new Response(JSON.stringify({ error: 'forbidden' }), { status: 403, headers: { ...cors, 'Content-Type': 'application/json' } });
+    const { uid } = await request.json().catch(() => ({}));
+    if (!uid) return new Response(JSON.stringify({ error: 'missing uid' }), { status: 400, headers: { ...cors, 'Content-Type': 'application/json' } });
+    await cancelPlanExpiryReminders(env, uid);
+    return new Response(JSON.stringify({ ok: true }), { headers: { ...cors, 'Content-Type': 'application/json' } });
   }
 
   // Admin-only: another user's AI usage. Verifies admin role via the caller's
