@@ -15,7 +15,7 @@ import {
   Trophy,
 } from 'lucide-react';
 import toast from 'react-hot-toast';
-import { getUserCollectionDocs, getUserProfile, setUserProfile, deleteLeaderboardEntry } from '../../services/firestoreService';
+import { getUserProfile, setUserProfile, deleteLeaderboardEntry } from '../../services/firestoreService';
 import { useAuth } from '../../contexts/AuthContext';
 import { formatDate } from '../../utils/formatters';
 import { APP_VERSION } from '../../utils/constants';
@@ -152,28 +152,10 @@ export default function ProfilePage() {
     if (!user) return;
     setExporting(true);
     try {
-      const collections = ['trades', 'journals', 'backtests', 'dca', 'tradingPlans', 'notes', 'strategies'];
-      const exportData = { exportedAt: new Date().toISOString(), user: { displayName: user.displayName, email: user.email } };
-
-      for (const col of collections) {
-        const docs = await getUserCollectionDocs(user.uid, col);
-        exportData[col] = docs.map((data) => {
-          // Convert Firestore Timestamps to ISO strings
-          for (const [key, val] of Object.entries(data)) {
-            if (val?.toDate) data[key] = val.toDate().toISOString();
-          }
-          return data;
-        });
-      }
-
-      const blob = new Blob([JSON.stringify(exportData)], { type: 'application/json' });
-      const url = URL.createObjectURL(blob);
-      const a = document.createElement('a');
-      a.href = url;
-      a.download = `tradeos-export-${new Date().toISOString().slice(0, 10)}.json`;
-      a.click();
-      URL.revokeObjectURL(url);
-      toast.success('הנתונים יוצאו בהצלחה');
+      // Lazy-loaded so the xlsx dependency only ships when someone exports.
+      const { exportToExcel } = await import('../../services/exportService');
+      const { filename, total } = await exportToExcel(user);
+      toast.success(`${filename} · ${total} רשומות יוצאו`);
     } catch (err) {
       console.error('Export failed:', err);
       toast.error('שגיאה בייצוא הנתונים');
