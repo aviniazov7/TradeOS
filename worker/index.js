@@ -1918,7 +1918,11 @@ async function handleAIChat(request, env, cors) {
       Connection: 'keep-alive',
     };
 
-    if (premium && env.GEMINI_API_KEY) {
+    // Gemini routing is gated behind GEMINI_ENABLED=true. Free-tier Gemini
+    // has a tight shared quota (≈15 RPM) that we keep blowing through, so by
+    // default everyone runs on Groq (which has been stable at 30 RPM). Flip
+    // the env var once a paid Gemini key is in place.
+    if (premium && env.GEMINI_API_KEY && env.GEMINI_ENABLED === 'true') {
       const gemRes = await fetch(GEMINI_STREAM_URL(env.GEMINI_API_KEY), {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
