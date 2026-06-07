@@ -5,7 +5,7 @@ import {
   Plus, BookOpen, Download, Upload, Settings,
   Wallet, TrendingUp, Target, Zap, Flame, Snowflake, Signal,
   Scale, BarChart3, Activity, Calendar,
-  Clock, DollarSign, Percent, Link2, Undo2,
+  Clock, DollarSign, Percent, Link2, Undo2, BrainCircuit,
 } from 'lucide-react';
 import { BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer, PieChart, Pie, Cell } from 'recharts';
 import { format } from 'date-fns';
@@ -503,11 +503,11 @@ export default function TradeJournal() {
               </button>
               <button
                 onClick={() => setTab('aiCoach')}
-                className={`px-3.5 py-1.5 text-sm font-medium rounded-lg transition-colors cursor-pointer whitespace-nowrap inline-flex items-center gap-1 ${
+                className={`px-3.5 py-1.5 text-sm font-medium rounded-lg transition-colors cursor-pointer whitespace-nowrap inline-flex items-center gap-1.5 ${
                   tab === 'aiCoach' ? 'bg-accent-primary/15 text-accent-primary' : 'text-text-muted hover:text-text-primary hover:bg-bg-tertiary'
                 }`}
               >
-                <span className="i-sparkles">✨</span>
+                <BrainCircuit className="w-3.5 h-3.5" />
                 ניתוח AI
               </button>
               <button
@@ -569,11 +569,12 @@ export default function TradeJournal() {
             </button>
             <button
               onClick={() => setTab('aiCoach')}
-              className={`px-2.5 py-1.5 text-xs font-medium rounded-lg transition-colors cursor-pointer whitespace-nowrap ${
+              className={`px-2.5 py-1.5 text-xs font-medium rounded-lg transition-colors cursor-pointer whitespace-nowrap inline-flex items-center gap-1 ${
                 tab === 'aiCoach' ? 'bg-accent-primary/15 text-accent-primary' : 'text-text-muted hover:text-text-primary hover:bg-bg-tertiary'
               }`}
             >
-              ניתוח AI ✨
+              <BrainCircuit className="w-3 h-3" />
+              ניתוח AI
             </button>
             <button
               onClick={() => setTab('calendar')}
