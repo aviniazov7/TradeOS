@@ -87,6 +87,7 @@ jobs:
           RESEND_API_KEY: ${{ secrets.RESEND_API_KEY }}
           MAIL_FROM_ADDRESS: ${{ secrets.MAIL_FROM_ADDRESS }}
           MAIL_FROM_NAME: ${{ secrets.MAIL_FROM_NAME }}
+          MAIL_TO_ADMIN_OVERRIDE: ${{ secrets.MAIL_TO_ADMIN_OVERRIDE }}
         run: |
           if [ -n "$VAPID_JWK" ]; then
             printf '%s' "$VAPID_JWK" | npx wrangler secret put VAPID_JWK
@@ -120,4 +121,7 @@ jobs:
           fi
           if [ -n "$MAIL_FROM_NAME" ]; then
             printf '%s' "$MAIL_FROM_NAME" | npx wrangler secret put MAIL_FROM_NAME
+          fi
+          if [ -n "$MAIL_TO_ADMIN_OVERRIDE" ]; then
+            printf '%s' "$MAIL_TO_ADMIN_OVERRIDE" | npx wrangler secret put MAIL_TO_ADMIN_OVERRIDE
           fi

@@ -662,9 +662,10 @@ async function checkWeeklyDigest(env) {
   }
 
   // Email digest — same content as push, prettier presentation. Each admin
-  // gets a one-glance dashboard in their inbox.
+  // gets a one-glance dashboard in their inbox. MAIL_TO_ADMIN_OVERRIDE pins
+  // the recipient to a fixed address (see /admin/test-digest for why).
   const adminUsers = users.filter((u) => u.role === 'admin' && u.email);
-  if (adminUsers.length === 0) return;
+  if (adminUsers.length === 0 && !env.MAIL_TO_ADMIN_OVERRIDE) return;
   const html = emailShell({
     headline: '📊 הסיכום השבועי שלך',
     intro: `הנה הדופק של TradeOS השבוע, ${il.toLocaleDateString('he-IL', { day: '2-digit', month: 'long' })}.`,
@@ -672,8 +673,11 @@ async function checkWeeklyDigest(env) {
     ctaText: 'פתח את פאנל הניהול',
     ctaUrl: 'https://tradeos-91a58.web.app/admin',
   });
-  for (const a of adminUsers) {
-    await sendEmail(env, { to: a.email, subject: '📊 הסיכום השבועי שלך — TradeOS', html });
+  const recipients = env.MAIL_TO_ADMIN_OVERRIDE
+    ? [env.MAIL_TO_ADMIN_OVERRIDE]
+    : adminUsers.map((a) => a.email);
+  for (const to of recipients) {
+    await sendEmail(env, { to, subject: '📊 הסיכום השבועי שלך — TradeOS', html });
   }
 }
 
@@ -3034,7 +3038,14 @@ async function handleRequest(request, env) {
     catch { return new Response(JSON.stringify({ error: 'failed to list users' }), { status: 500, headers: { ...cors, 'Content-Type': 'application/json' } }); }
 
     const me = users.find((u) => u.uid === adminUid);
-    if (!me?.email) return new Response(JSON.stringify({ error: 'admin email not found on profile' }), { status: 400, headers: { ...cors, 'Content-Type': 'application/json' } });
+    // Where to send admin emails. On Resend's free default sender, the only
+    // allowed recipient is the email the Resend account itself was registered
+    // with — which is often DIFFERENT from the admin's TradeOS profile email
+    // (Firebase Auth email vs. Resend sign-up email). MAIL_TO_ADMIN_OVERRIDE
+    // lets the owner pin the destination to their Resend-account email so the
+    // 403 'can only send to your own address' error doesn't fire.
+    const adminTo = env.MAIL_TO_ADMIN_OVERRIDE || me?.email;
+    if (!adminTo) return new Response(JSON.stringify({ error: 'admin email not found on profile' }), { status: 400, headers: { ...cors, 'Content-Type': 'application/json' } });
 
     const digest = buildAdminDigest(users);
     const il = getIsraelTime();
@@ -3045,13 +3056,13 @@ async function handleRequest(request, env) {
       ctaText: 'פתח את פאנל הניהול',
       ctaUrl: 'https://tradeos-91a58.web.app/admin',
     });
-    const r = await sendEmail(env, { to: me.email, subject: '[TEST] 📊 הסיכום השבועי שלך — TradeOS', html });
+    const r = await sendEmail(env, { to: adminTo, subject: '[TEST] 📊 הסיכום השבועי שלך — TradeOS', html });
     if (!r.ok) {
       // Pass the actual Resend message back so the admin sees the real reason
       // (e.g. "you can only send testing emails to your own email address").
-      return new Response(JSON.stringify({ error: `Resend ${r.status}: ${r.message || 'unknown error'}`, sentTo: me.email }), { status: 502, headers: { ...cors, 'Content-Type': 'application/json' } });
+      return new Response(JSON.stringify({ error: `Resend ${r.status}: ${r.message || 'unknown error'}`, sentTo: adminTo }), { status: 502, headers: { ...cors, 'Content-Type': 'application/json' } });
     }
-    return new Response(JSON.stringify({ ok: true, sentTo: me.email, stats: { newUsers: digest.newUsers, upgrades: digest.upgrades, expiringSoon: digest.expiringSoon, churn: digest.churn } }), { headers: { ...cors, 'Content-Type': 'application/json' } });
+    return new Response(JSON.stringify({ ok: true, sentTo: adminTo, stats: { newUsers: digest.newUsers, upgrades: digest.upgrades, expiringSoon: digest.expiringSoon, churn: digest.churn } }), { headers: { ...cors, 'Content-Type': 'application/json' } });
   }
 
   if (request.method === 'POST' && path === '/admin/notify') {
