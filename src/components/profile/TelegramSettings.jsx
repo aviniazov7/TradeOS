@@ -60,10 +60,24 @@ export default function TelegramSettings() {
     }, 90000);
   };
 
-  const handleConnect = () => {
-    const deepLink = `https://t.me/${BOT_USERNAME}?start=${user?.uid}`;
-    window.open(deepLink, '_blank');
-    startPolling();
+  const handleConnect = async () => {
+    if (!WORKER_URL) { toast.error('שגיאה בחיבור. נסה שוב.'); return; }
+    try {
+      const token = await auth.currentUser?.getIdToken();
+      if (!token) { toast.error('שגיאה בחיבור. נסה שוב.'); return; }
+      const res = await fetch(`${WORKER_URL}/telegram/connect-code`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
+      });
+      if (!res.ok) { toast.error('שגיאה בחיבור. נסה שוב.'); return; }
+      const { code } = await res.json();
+      if (!code) { toast.error('שגיאה בחיבור. נסה שוב.'); return; }
+      const deepLink = `https://t.me/${BOT_USERNAME}?start=${code}`;
+      window.open(deepLink, '_blank');
+      startPolling();
+    } catch {
+      toast.error('שגיאה בחיבור. נסה שוב.');
+    }
   };
 
   const handleToggle = async () => {

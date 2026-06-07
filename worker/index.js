@@ -1213,14 +1213,25 @@ function mainMenuKeyboard() {
 // ==================== Command Handlers ====================
 
 async function handleStart(env, chatId, text, username = null) {
-  const uid = text.split(' ')[1] || null;
-  if (uid) {
+  // The /start param is a short-lived, server-issued connect code (NOT a raw
+  // uid). We resolve it to a uid via KV; an enumerable uid can no longer be
+  // used to hijack another user's notification link.
+  const param = text.split(' ')[1] || null;
+  if (param) {
+    const uid = await env.ALERTS_KV.get(`tgconnect:${param}`);
+    if (!uid) {
+      // Expired / invalid / forged code — do NOT write any mapping.
+      await sendMessage(env.BOT_TOKEN, chatId, 'קוד החיבור פג תוקף או אינו תקין. חזור לאפליקציה ולחץ שוב על חיבור לטלגרם.');
+      return;
+    }
     await env.ALERTS_KV.put(`user:${chatId}`, JSON.stringify({ uid, chatId, username, connectedAt: new Date().toISOString() }));
     await env.ALERTS_KV.put(`uid:${uid}`, String(chatId));
     // Store the @username (if any) so the "open chat" link in dev notifications
     // can use https://t.me/<username>, which actually opens a chat (unlike
     // tg://user?id=, which Telegram can't resolve from an id alone).
     if (username) await env.ALERTS_KV.put(`tgusername:${chatId}`, username);
+    // Single-use: burn the code so it can't be replayed.
+    await env.ALERTS_KV.delete(`tgconnect:${param}`);
     const welcome =
       '🤖 <b>ברוך הבא ל-TradeOS Bot!</b>\n\n' +
       '💰 <b>מחירים</b> — ווצ\'ליסט אישי עם מחירים חיים\n' +
@@ -1814,6 +1825,15 @@ async function handleTextMessage(env, chatId, text) {
 // ==================== Webhook Handler ====================
 
 async function handleWebhook(request, env) {
+  // Defense in depth: if the owner has configured TG_WEBHOOK_SECRET, require
+  // Telegram's secret-token header to match. When the secret is NOT set, skip
+  // the check so the bot keeps working until the owner configures it (backward
+  // compatible rollout — set the secret, then re-run /setup-webhook).
+  if (env.TG_WEBHOOK_SECRET) {
+    if (request.headers.get('X-Telegram-Bot-Api-Secret-Token') !== env.TG_WEBHOOK_SECRET) {
+      return new Response('Unauthorized', { status: 401 });
+    }
+  }
   try {
     const update = await request.json();
     if (update.callback_query) { await handleCallback(env, update.callback_query); return new Response('OK'); }
@@ -2649,19 +2669,22 @@ async function handleContact(request, env, cors) {
       return new Response(JSON.stringify({ error: 'יש להתחבר כדי לשלוח הודעה' }), { status: 401, headers: jsonHeaders });
     }
 
-    let uid = null;
+    // Verify the token SIGNATURE first — never trust an unverified JWT payload.
+    // The uid used for rate-limiting and identity must come from the verified
+    // result, otherwise an attacker could forge a uid and bypass the limit.
+    const uid = await verifyFirebaseToken(token);
+    if (!uid) {
+      return new Response(JSON.stringify({ error: 'יש להתחבר מחדש' }), { status: 401, headers: jsonHeaders });
+    }
+
+    // Safe to decode the payload now (signature verified) for display fields only.
     let tokenEmail = null;
     let tokenName = null;
     try {
       const payload = JSON.parse(atob(token.split('.')[1].replace(/-/g, '+').replace(/_/g, '/')));
-      uid = payload.user_id || payload.sub || null;
       tokenEmail = payload.email || null;
       tokenName = payload.name || null;
-    } catch { /* invalid token */ }
-
-    if (!uid) {
-      return new Response(JSON.stringify({ error: 'יש להתחבר מחדש' }), { status: 401, headers: jsonHeaders });
-    }
+    } catch { /* display fields only */ }
 
     // Parse body
     const body = await request.json().catch(() => ({}));
@@ -2800,6 +2823,21 @@ async function handleRequest(request, env) {
 
   if (request.method === 'POST' && path === '/webhook') return handleWebhook(request, env);
 
+  if (request.method === 'POST' && path === '/telegram/connect-code') {
+    // Auth: require a valid token, then issue a short-lived, unguessable connect
+    // code that maps to the caller's uid. The bot's /start uses this code (not a
+    // raw uid) to link a Telegram chat, so nobody can redirect another user's
+    // notifications by guessing their (enumerable) uid.
+    const token = (request.headers.get('Authorization') || '').replace('Bearer ', '');
+    const uid = await verifyFirebaseToken(token);
+    if (!uid) return new Response(JSON.stringify({ error: 'unauthorized' }), { status: 401, headers: { ...cors, 'Content-Type': 'application/json' } });
+    // URL-safe code from crypto.getRandomValues, mapped to base36 [A-Za-z0-9].
+    const bytes = crypto.getRandomValues(new Uint8Array(12));
+    const code = Array.from(bytes, (b) => (b % 36).toString(36)).join('');
+    await env.ALERTS_KV.put(`tgconnect:${code}`, uid, { expirationTtl: 900 });
+    return new Response(JSON.stringify({ ok: true, code }), { headers: { ...cors, 'Content-Type': 'application/json' } });
+  }
+
   if (request.method === 'POST' && path === '/daily-stats') {
     try {
       // Auth: require a valid Firebase token; ignore any uid in the body and use
@@ -2891,7 +2929,11 @@ async function handleRequest(request, env) {
 
   if (path === '/setup-webhook') {
     const workerUrl = `${url.protocol}//${url.host}/webhook`;
-    const res = await fetch(`https://api.telegram.org/bot${env.BOT_TOKEN}/setWebhook?url=${encodeURIComponent(workerUrl)}&drop_pending_updates=true`);
+    let setWebhookUrl = `https://api.telegram.org/bot${env.BOT_TOKEN}/setWebhook?url=${encodeURIComponent(workerUrl)}&drop_pending_updates=true`;
+    // If the owner set TG_WEBHOOK_SECRET, register it so Telegram sends the
+    // X-Telegram-Bot-Api-Secret-Token header (verified in handleWebhook).
+    if (env.TG_WEBHOOK_SECRET) setWebhookUrl += `&secret_token=${encodeURIComponent(env.TG_WEBHOOK_SECRET)}`;
+    const res = await fetch(setWebhookUrl);
     const json = await res.json();
     return new Response(JSON.stringify(json), { headers: { 'Content-Type': 'application/json' } });
   }
