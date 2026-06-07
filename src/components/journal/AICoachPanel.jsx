@@ -34,38 +34,194 @@ const SECTION_META = {
 };
 const DEFAULT_META = { Icon: Sparkles, color: 'text-text-primary', bg: 'bg-bg-tertiary', border: 'border-border-primary' };
 
-// Split the model's response into structured sections by **heading** lines,
-// keeping bullet content under each. Inline **bold** is preserved per bullet.
+// Known canonical sections — used to map slipped formats back to the right
+// bucket and to ignore any section the model invents on its own (e.g. "מסקנות").
+const CANONICAL_SECTIONS = ['חוזקות', 'חולשות', 'המלצות לפעולה', 'תובנות מתקדמות'];
+
+function normalizeTitle(raw) {
+  // Strip markdown noise the model sometimes leaks despite the prompt.
+  let t = raw.replace(/^#+\s*/, '')      // "## חוזקות"
+    .replace(/^\d+[.)]\s*/, '')          // "1. חוזקות"
+    .replace(/\*\*/g, '')                // "**חוזקות**"
+    .replace(/[:：]\s*$/, '')            // trailing colon
+    .trim();
+  // Snap to a canonical section if the model used a near match.
+  const match = CANONICAL_SECTIONS.find((c) => t === c || t.includes(c) || c.includes(t));
+  return match || t;
+}
+
+// Split the model's response into structured sections. Tolerates **bold**
+// headings, '##' headings, and numbered headings. Drops anything that isn't
+// one of the four canonical sections so a stray "מסקנות" intro doesn't show
+// up as its own card.
 function parseSections(text) {
   const sections = [];
   let current = null;
+  const isHeading = (l) =>
+    /^\*\*(.+?)\*\*\s*$/.test(l) ||      // **חוזקות**
+    /^#{1,6}\s+\S+/.test(l) ||           // ## חוזקות
+    /^\d+[.)]\s+\S+/.test(l);            // 1. חוזקות
+
   for (const raw of text.split('\n')) {
     const line = raw.trim();
     if (!line) continue;
-    const heading = line.match(/^\*\*(.+?)\*\*\s*$/);
-    if (heading) {
-      current = { title: heading[1].trim(), bullets: [] };
+    if (isHeading(line)) {
+      const title = normalizeTitle(line);
+      current = { title, bullets: [] };
       sections.push(current);
       continue;
     }
     if (!current) {
-      // Stray text before any heading — start an unlabeled section.
       current = { title: '', bullets: [] };
       sections.push(current);
     }
     if (line.startsWith('•') || line.startsWith('-') || line.startsWith('*')) {
       current.bullets.push(line.replace(/^[•\-*]\s*/, ''));
     } else {
-      // Heading-less paragraph: still treat as one bullet for uniform styling.
       current.bullets.push(line);
     }
   }
-  return sections.filter((s) => s.bullets.length);
+  // Keep only canonical sections (drops stray "מסקנות" intros) and re-order
+  // them deterministically for a consistent layout.
+  const known = sections.filter((s) => CANONICAL_SECTIONS.includes(s.title) && s.bullets.length);
+  known.sort((a, b) => CANONICAL_SECTIONS.indexOf(a.title) - CANONICAL_SECTIONS.indexOf(b.title));
+  return known;
 }
 
 function renderBulletHtml(text) {
   const html = text.replace(/\*\*(.+?)\*\*/g, '<b>$1</b>');
   return DOMPurify.sanitize(html, { ALLOWED_TAGS: ['b', 'i'], ALLOWED_ATTR: [] });
+}
+
+// ---- Stats dashboard --------------------------------------------------------
+// Renders deterministic stats + mini charts BEFORE the AI commentary so the
+// numbers come from us (trusted), not the model. The model only contextualizes
+// them in the section cards below.
+
+const fmt$ = (v) => `${v >= 0 ? '+' : '-'}$${Math.abs(v).toFixed(2)}`;
+const fmt$Compact = (v) => {
+  const sign = v >= 0 ? '+' : '-';
+  const a = Math.abs(v);
+  if (a >= 1000) return `${sign}$${(a / 1000).toFixed(1)}K`;
+  return `${sign}$${a.toFixed(0)}`;
+};
+
+function StatCard({ label, value, sub, tone = 'neutral', Icon }) {
+  const toneClass = tone === 'profit' ? 'text-profit' : tone === 'loss' ? 'text-loss' : 'text-text-primary';
+  return (
+    <div className="bg-bg-secondary border border-border-primary rounded-xl p-3">
+      <div className="flex items-center gap-1.5 text-[11px] text-text-muted mb-1">
+        {Icon && <Icon className="w-3.5 h-3.5" />}
+        {label}
+      </div>
+      <div className={`text-lg font-bold ${toneClass}`} dir="ltr">{value}</div>
+      {sub && <div className="text-[10px] text-text-muted mt-0.5">{sub}</div>}
+    </div>
+  );
+}
+
+// Horizontal bars — each row shows a label, its P&L value, and a bar whose
+// width is proportional to the absolute P&L. Profit = green, loss = red.
+function PnlBars({ title, rows, Icon }) {
+  if (!rows || !rows.length) return null;
+  const max = Math.max(...rows.map((r) => Math.abs(r.pnl)), 1);
+  return (
+    <div className="bg-bg-secondary border border-border-primary rounded-xl p-4">
+      <div className="flex items-center gap-2 mb-3">
+        {Icon && <Icon className="w-4 h-4 text-accent-primary" />}
+        <h4 className="text-sm font-semibold text-text-primary">{title}</h4>
+      </div>
+      <div className="space-y-2">
+        {rows.map((r) => {
+          const pct = (Math.abs(r.pnl) / max) * 100;
+          const positive = r.pnl >= 0;
+          return (
+            <div key={r.key}>
+              <div className="flex items-center justify-between text-xs mb-1">
+                <span className="text-text-secondary">{r.key} <span className="text-text-muted">· {r.trades}</span></span>
+                <span className={positive ? 'text-profit font-semibold' : 'text-loss font-semibold'} dir="ltr">{fmt$(r.pnl)}</span>
+              </div>
+              <div className="h-1.5 rounded-full bg-bg-tertiary overflow-hidden">
+                <div
+                  className={`h-full rounded-full ${positive ? 'bg-profit' : 'bg-loss'}`}
+                  style={{ width: `${pct}%` }}
+                />
+              </div>
+            </div>
+          );
+        })}
+      </div>
+    </div>
+  );
+}
+
+// Donut-ish split bar — wins (green) vs losses (red) as a single horizontal bar
+// with their counts. Cheaper than a real donut and reads instantly.
+function WinLossBar({ wins, losses }) {
+  const total = wins + losses;
+  if (!total) return null;
+  const winPct = (wins / total) * 100;
+  return (
+    <div className="bg-bg-secondary border border-border-primary rounded-xl p-4">
+      <div className="flex items-center justify-between text-xs mb-2">
+        <span className="text-text-secondary">פילוח עסקאות</span>
+        <span className="text-text-muted">{total} סה"כ</span>
+      </div>
+      <div className="h-3 rounded-full bg-bg-tertiary overflow-hidden flex">
+        <div className="h-full bg-profit" style={{ width: `${winPct}%` }} />
+        <div className="h-full bg-loss" style={{ width: `${100 - winPct}%` }} />
+      </div>
+      <div className="flex items-center justify-between mt-2 text-[11px]">
+        <span className="text-profit">● {wins} רווחים ({winPct.toFixed(0)}%)</span>
+        <span className="text-loss">● {losses} הפסדים ({(100 - winPct).toFixed(0)}%)</span>
+      </div>
+    </div>
+  );
+}
+
+function StatsDashboard({ stats }) {
+  if (!stats || stats.empty) return null;
+  const s = stats.summary || {};
+  return (
+    <div className="space-y-3">
+      <div className="grid grid-cols-2 md:grid-cols-4 gap-2">
+        <StatCard
+          label="P&L כולל"
+          value={fmt$Compact(s.pnl || 0)}
+          tone={(s.pnl || 0) >= 0 ? 'profit' : 'loss'}
+          Icon={TrendingUp}
+        />
+        <StatCard label="אחוז הצלחה" value={`${s.winRate || 0}%`} sub={`${s.wins}/${s.total} עסקאות`} Icon={Target} />
+        <StatCard
+          label="Profit Factor"
+          value={s.profitFactor != null ? s.profitFactor : '—'}
+          sub={s.profitFactor >= 1.5 ? 'מצוין' : s.profitFactor >= 1 ? 'תקין' : 'לשיפור'}
+          tone={s.profitFactor >= 1 ? 'profit' : 'loss'}
+          Icon={Sparkles}
+        />
+        <StatCard
+          label="רווח מול הפסד ממוצע"
+          value={`${fmt$Compact(s.avgWin || 0)} / ${fmt$Compact(s.avgLoss || 0)}`}
+          Icon={Lightbulb}
+        />
+      </div>
+
+      <WinLossBar wins={s.wins || 0} losses={s.losses || 0} />
+
+      <div className="grid grid-cols-1 md:grid-cols-2 gap-2">
+        <PnlBars title="מטבעות מובילים" rows={(stats.byPair || []).slice(0, 5)} Icon={TrendingUp} />
+        {stats.bySession?.length > 0 && (
+          <PnlBars title="לפי סשן מסחר" rows={stats.bySession} Icon={Target} />
+        )}
+        {stats.byStrategy?.length > 0 && !stats.bySession?.length && (
+          <PnlBars title="לפי אסטרטגיה" rows={stats.byStrategy} Icon={Lightbulb} />
+        )}
+        {!stats.bySession?.length && !stats.byStrategy?.length && (stats.byDirection || []).length > 0 && (
+          <PnlBars title="לפי כיוון" rows={stats.byDirection} Icon={TrendingDown} />
+        )}
+      </div>
+    </div>
+  );
 }
 
 // Animated "AI is thinking" indicator — cycles short labels so it feels like
@@ -118,6 +274,7 @@ export default function AICoachPanel({ trades }) {
   const navigate = useNavigate();
   const [loading, setLoading] = useState(false);
   const [report, setReport] = useState('');
+  const [stats, setStats] = useState(null); // computed snapshot used by the dashboard
   const [error, setError] = useState('');
   const [activePrompt, setActivePrompt] = useState(null);
 
@@ -126,13 +283,15 @@ export default function AICoachPanel({ trades }) {
     setLoading(true);
     setError('');
     try {
-      const stats = buildCoachStats(trades, { premium: isPremium });
-      if (stats.empty) {
+      const built = buildCoachStats(trades, { premium: isPremium });
+      if (built.empty) {
         setError(isPremium ? 'אין עדיין עסקאות סגורות לנתח.' : 'אין עסקאות סגורות החודש. הוסף עסקאות כדי לקבל ניתוח.');
         setReport('');
+        setStats(null);
         return;
       }
-      const text = await generateCoachReport(promptKey ? { ...stats, focus: promptKey } : stats, isPremium ? 'deep' : 'short');
+      setStats(built);
+      const text = await generateCoachReport(promptKey ? { ...built, focus: promptKey } : built, isPremium ? 'deep' : 'short');
       setReport(text);
     } catch (e) {
       setError(e.message || 'הניתוח נכשל. נסה שוב בעוד רגע.');
@@ -248,6 +407,9 @@ export default function AICoachPanel({ trades }) {
               </p>
             </div>
           </div>
+
+          {/* Stats dashboard — deterministic numbers + mini charts */}
+          <StatsDashboard stats={stats} />
 
           {/* Section cards */}
           {sections.map((s, idx) => {
