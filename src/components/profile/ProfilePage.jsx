@@ -208,12 +208,12 @@ export default function ProfilePage() {
                 <div className="relative">
                   <input type={showPasswords ? 'text' : 'password'} value={currentPassword}
                     onChange={(e) => setCurrentPassword(e.target.value)}
-                    placeholder="סיסמה נוכחית" required dir="ltr" className={inputClass} />
+                    placeholder="סיסמה נוכחית" required dir="auto" className={inputClass} />
                 </div>
                 <div className="relative">
                   <input type={showPasswords ? 'text' : 'password'} value={newPassword}
                     onChange={(e) => setNewPassword(e.target.value)}
-                    placeholder="סיסמה חדשה — 8+ תווים, אות גדולה ומספר" required dir="ltr" className={inputClass} />
+                    placeholder="סיסמה חדשה — 8+ תווים, אות גדולה ומספר" required dir="auto" className={inputClass} />
                 </div>
                 <button type="button" onClick={() => setShowPasswords(!showPasswords)}
                   className="flex items-center gap-1 text-xs text-text-muted hover:text-text-primary cursor-pointer">
