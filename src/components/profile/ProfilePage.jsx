@@ -15,7 +15,6 @@ import {
   Trophy,
   Crown,
   ShieldCheck,
-  Sparkles,
   Clock,
   ArrowLeft,
   Check,
@@ -388,9 +387,8 @@ export default function ProfilePage() {
 }
 
 // ── Plan / Premium status card ─────────────────────────────────────────────
-// Shows the user's current plan state above the actions list. Five states:
+// Shows the user's current plan state above the actions list. Four states:
 //   - admin              → cyan, no upgrade prompt
-//   - premium lifetime   → amber, "ללא הגבלה"
 //   - premium expiring   → amber+orange warning when ≤7 days left
 //   - premium normal     → amber with days left + expiry date
 //   - free               → blue, upgrade CTA + feature bullets
@@ -404,7 +402,6 @@ const PREMIUM_BULLETS = [
 
 function PlanCard({ profile, isAdmin, isPremium, onUpgrade }) {
   const planExpires = profile?.planExpires || null;
-  const isLifetime = isPremium && !isAdmin && !planExpires;
   const daysLeft = planExpires
     ? Math.ceil((new Date(planExpires).getTime() - Date.now()) / 86400000)
     : null;
@@ -452,26 +449,9 @@ function PlanCard({ profile, isAdmin, isPremium, onUpgrade }) {
     );
   }
 
-  // 3. Premium — lifetime → amber with sparkles, no renew button
-  if (isLifetime) {
-    return (
-      <div className="relative overflow-hidden bg-gradient-to-br from-amber-500/15 via-bg-secondary to-bg-secondary border border-amber-500/30 rounded-2xl px-5 py-4 mb-4">
-        <div className="flex items-center gap-3">
-          <div className="w-10 h-10 rounded-xl bg-amber-500/20 flex items-center justify-center text-amber-400 shrink-0">
-            <Sparkles className="w-5 h-5" />
-          </div>
-          <div className="flex-1 min-w-0">
-            <div className="text-sm font-bold text-amber-400 flex items-center gap-1.5">
-              <Crown className="w-4 h-4" /> Premium ללא הגבלה
-            </div>
-            <div className="text-xs text-text-secondary mt-0.5">גישה מלאה לכל הפיצ׳רים, לתמיד ✨</div>
-          </div>
-        </div>
-      </div>
-    );
-  }
-
-  // 4. Premium — normal (>7 days) → amber with days + expiry
+  // 3. Premium — normal (>7 days). Defensive: if for any reason there's no
+  //    expiry (legacy admin grants), the days/expiry/renew bits hide
+  //    themselves; we don't sell a lifetime plan so the empty case is rare.
   if (isPremium) {
     return (
       <div className="relative overflow-hidden bg-gradient-to-br from-amber-500/12 via-bg-secondary to-bg-secondary border border-amber-500/30 rounded-2xl px-5 py-4 mb-4">
@@ -481,19 +461,23 @@ function PlanCard({ profile, isAdmin, isPremium, onUpgrade }) {
           </div>
           <div className="flex-1 min-w-0">
             <div className="text-sm font-bold text-amber-400">Premium פעיל</div>
-            <div className="text-xs text-text-secondary mt-1">
-              {daysLeft != null && <>נשארו לך <span className="font-bold text-text-primary">{daysLeft} ימים</span></>}
-            </div>
+            {daysLeft != null && (
+              <div className="text-xs text-text-secondary mt-1">
+                נשארו לך <span className="font-bold text-text-primary">{daysLeft} ימים</span>
+              </div>
+            )}
             {expiryStr && (
               <div className="text-[11px] text-text-muted mt-0.5">תוקף עד {expiryStr}</div>
             )}
-            <button
-              onClick={onUpgrade}
-              className="mt-3 w-full inline-flex items-center justify-center gap-1.5 py-2 rounded-xl bg-amber-500/15 border border-amber-500/30 text-amber-400 text-sm font-semibold hover:bg-amber-500/25 transition-colors cursor-pointer"
-            >
-              חדש מנוי
-              <ArrowLeft className="w-3.5 h-3.5" />
-            </button>
+            {planExpires && (
+              <button
+                onClick={onUpgrade}
+                className="mt-3 w-full inline-flex items-center justify-center gap-1.5 py-2 rounded-xl bg-amber-500/15 border border-amber-500/30 text-amber-400 text-sm font-semibold hover:bg-amber-500/25 transition-colors cursor-pointer"
+              >
+                חדש מנוי
+                <ArrowLeft className="w-3.5 h-3.5" />
+              </button>
+            )}
           </div>
         </div>
       </div>
