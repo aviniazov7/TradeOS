@@ -188,24 +188,33 @@ export async function deleteUserProfile(uid) {
 export async function getAdminMeta(uid) {
   const snap = await getDoc(doc(db, 'adminNotes', uid));
   const d = snap.exists() ? snap.data() : {};
-  return { text: d.text || '', tags: Array.isArray(d.tags) ? d.tags : [] };
+  return {
+    text: d.text || '',
+    tags: Array.isArray(d.tags) ? d.tags : [],
+    phone: d.phone || '',
+  };
 }
 
-export async function setAdminMeta(uid, { text, tags }, authorUid) {
+export async function setAdminMeta(uid, { text, tags, phone }, authorUid) {
   const fields = { updatedAt: serverTimestamp(), updatedBy: authorUid || null };
   if (text !== undefined) fields.text = text || '';
   if (tags !== undefined) fields.tags = Array.isArray(tags) ? tags : [];
+  if (phone !== undefined) fields.phone = phone || '';
   return withRetry(() => setDoc(doc(db, 'adminNotes', uid), fields, { merge: true }));
 }
 
-// Load every admin-meta doc as a { [uid]: { text, tags } } map so the panel can
-// show tags inline and filter by them. Admin-only (rules gate the collection).
+// Load every admin-meta doc as a { [uid]: { text, tags, phone } } map so the
+// panel can show tags inline and filter by them.
 export async function getAllAdminMeta() {
   const snap = await getDocs(collection(db, 'adminNotes'));
   const map = {};
   snap.docs.forEach((d) => {
     const v = d.data();
-    map[d.id] = { text: v.text || '', tags: Array.isArray(v.tags) ? v.tags : [] };
+    map[d.id] = {
+      text: v.text || '',
+      tags: Array.isArray(v.tags) ? v.tags : [],
+      phone: v.phone || '',
+    };
   });
   return map;
 }

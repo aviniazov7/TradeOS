@@ -1,6 +1,6 @@
 import { useState, useEffect, useMemo, useRef } from 'react';
 import { Navigate } from 'react-router-dom';
-import { Users, UserPlus, ShieldCheck, CheckCircle2, Search, RefreshCw, Download, ChevronUp, ChevronDown, Mail, Calendar, Coins, TrendingUp, Percent, Sparkles, Star, BookOpen, FlaskConical, Activity, FileText, Brain, Crown, Send, X, Ticket, Plus, Minus, Trash2, Copy, ScrollText, Share2, Link2, BarChart3, AlertTriangle, Clock, StickyNote, Save, DollarSign, Hourglass, Tag } from 'lucide-react';
+import { Users, UserPlus, ShieldCheck, CheckCircle2, Search, RefreshCw, Download, ChevronUp, ChevronDown, Mail, Calendar, Coins, TrendingUp, Percent, Sparkles, Star, BookOpen, FlaskConical, Activity, FileText, Brain, Crown, Send, X, Ticket, Plus, Minus, Trash2, Copy, ScrollText, Share2, Link2, BarChart3, AlertTriangle, Clock, StickyNote, Save, DollarSign, Hourglass, Tag, MessageCircle, Phone } from 'lucide-react';
 import toast from 'react-hot-toast';
 import { useAuth } from '../../contexts/AuthContext';
 import { getAllUsers, getUserSubcollectionCount, adminGrantPremium, adminRevokePremium, getAdminMeta, setAdminMeta, getAllAdminMeta, addPayment, getAllPayments } from '../../services/firestoreService';
@@ -84,6 +84,52 @@ function tagClass(label) {
 }
 
 const ILS = (n) => '₪' + Math.round(Number(n) || 0).toLocaleString('he-IL');
+
+// WhatsApp click-to-chat URL. Phone is normalised to international format
+// (digits only, leading 0 swapped for Israel country code 972). When no phone
+// is provided we open WhatsApp's contact picker so the admin can still send
+// the prefilled message without us having stored a number.
+function normalizePhoneForWhatsApp(raw) {
+  let digits = String(raw || '').replace(/\D/g, '');
+  if (digits.startsWith('0')) digits = '972' + digits.slice(1);
+  return digits;
+}
+function whatsappUrl(rawPhone, message) {
+  const num = normalizePhoneForWhatsApp(rawPhone);
+  const msg = encodeURIComponent(message || '');
+  return num ? `https://wa.me/${num}?text=${msg}` : `https://wa.me/?text=${msg}`;
+}
+
+// Prefab outreach messages — the admin picks one and is taken to WhatsApp
+// with the message ready, so a follow-up takes 2 taps instead of typing it
+// fresh every time. `name` is the customer's first word so it reads like
+// "היי Avi" rather than "היי Avi Niazov".
+function whatsappTemplates(user, isPremium, daysLeft, daysInactive) {
+  const first = String(user?.displayName || user?.email || '').split(/[\s@]/)[0];
+  const out = [];
+  out.push({ label: 'הודעה ריקה', text: `היי ${first}! 👋` });
+  if (isPremium && daysLeft != null && daysLeft <= 7) {
+    out.push({
+      label: 'תזכורת חידוש',
+      text: `היי ${first}! 👋\n\nרק תזכורת קטנה — ה-Premium שלך ב-TradeOS נגמר ${daysLeft === 0 ? 'היום' : daysLeft === 1 ? 'מחר' : `בעוד ${daysLeft} ימים`}. בא להאריך?`,
+    });
+  }
+  if (daysInactive != null && daysInactive >= 7) {
+    out.push({
+      label: 'לקוח שלא נכנס',
+      text: `היי ${first}! 👋\n\nשמתי לב שלא נכנסת ל-TradeOS ${daysInactive} ימים. הכל בסדר? אם יש משהו שהיית רוצה שנשפר — אשמח לשמוע.`,
+    });
+  }
+  out.push({
+    label: 'ברוך הבא',
+    text: `היי ${first}! 👋\n\nברוך הבא ל-TradeOS! אם נתקעת באיזה שלב או רוצה עזרה לסדר את היומן — אני פה.`,
+  });
+  out.push({
+    label: 'תודה על הרכישה',
+    text: `היי ${first}! 👋\n\nתודה שהצטרפת ל-Premium ב-TradeOS! 🎉 אם יש שאלה — תכתוב לי.`,
+  });
+  return out;
+}
 
 function StatCard({ icon, label, value }) {
   return (
@@ -896,22 +942,49 @@ function UserDetailModal({ user, onClose, onUserChanged, onMetaChanged }) {
   const [notifyTitle, setNotifyTitle] = useState('');
   const [notifyBody, setNotifyBody] = useState('');
   const [notifying, setNotifying] = useState(false);
+  const [whatsappOpen, setWhatsAppOpen] = useState(false);
   const [note, setNote] = useState('');
   const [noteLoaded, setNoteLoaded] = useState('');
   const [noteSaving, setNoteSaving] = useState(false);
   const [tags, setTags] = useState([]);
   const [customTag, setCustomTag] = useState('');
+  const [phone, setPhone] = useState('');
+  const [phoneLoaded, setPhoneLoaded] = useState('');
+  const [phoneSaving, setPhoneSaving] = useState(false);
 
-  // Load the admin-only note + tags for this user (separate collection so the
-  // user themselves can never see it).
+  // Load the admin-only note + tags + phone for this user (separate collection
+  // so the user themselves can never see it).
   useEffect(() => {
-    if (!user) { setNote(''); setNoteLoaded(''); setTags([]); return; }
+    if (!user) {
+      setNote(''); setNoteLoaded(''); setTags([]);
+      setPhone(''); setPhoneLoaded('');
+      return;
+    }
     let cancelled = false;
     getAdminMeta(user.id)
-      .then((m) => { if (!cancelled) { setNote(m.text); setNoteLoaded(m.text); setTags(m.tags); } })
+      .then((m) => {
+        if (cancelled) return;
+        setNote(m.text); setNoteLoaded(m.text);
+        setTags(m.tags);
+        setPhone(m.phone); setPhoneLoaded(m.phone);
+      })
       .catch(() => {});
     return () => { cancelled = true; };
   }, [user]);
+
+  const savePhone = async () => {
+    if (!user) return;
+    setPhoneSaving(true);
+    try {
+      await setAdminMeta(user.id, { phone: phone.trim() }, adminUser?.uid);
+      setPhoneLoaded(phone.trim());
+      toast.success('הטלפון נשמר');
+    } catch {
+      toast.error('שמירת הטלפון נכשלה');
+    } finally {
+      setPhoneSaving(false);
+    }
+  };
 
   const saveNote = async () => {
     if (!user) return;
@@ -1101,7 +1174,7 @@ function UserDetailModal({ user, onClose, onUserChanged, onMetaChanged }) {
         </div>
 
         {/* Admin actions */}
-        <div className="grid grid-cols-2 gap-2">
+        <div className="grid grid-cols-2 sm:grid-cols-3 gap-2">
           {user.role !== 'admin' && (
             isUserPremium(user) ? (
               <button
@@ -1125,9 +1198,94 @@ function UserDetailModal({ user, onClose, onUserChanged, onMetaChanged }) {
             onClick={() => setNotifyOpen(true)}
             className="flex items-center justify-center gap-1.5 px-3 py-2 rounded-lg bg-accent-primary/10 border border-accent-primary/30 text-accent-primary text-sm font-semibold hover:bg-accent-primary/20 transition-colors cursor-pointer"
           >
-            <Send className="w-4 h-4" /> שלח הודעת Push
+            <Send className="w-4 h-4" /> שלח Push
+          </button>
+          <button
+            onClick={() => setWhatsAppOpen(true)}
+            className="flex items-center justify-center gap-1.5 px-3 py-2 rounded-lg bg-profit/10 border border-profit/30 text-profit text-sm font-semibold hover:bg-profit/20 transition-colors cursor-pointer"
+          >
+            <MessageCircle className="w-4 h-4" /> וואטסאפ
           </button>
         </div>
+
+        {/* WhatsApp composer — phone field + template picker. Each template
+            opens wa.me with the message prefilled; admin tweaks and hits send.
+            Phone is stored under adminMeta so the user never sees it. */}
+        {whatsappOpen && (() => {
+          const isPrem = isUserPremium(user);
+          const daysLeft = isPrem && user.planExpires
+            ? Math.ceil((new Date(user.planExpires).getTime() - Date.now()) / DAY_MS)
+            : null;
+          const daysInactive = (() => {
+            const t = toDate(user.lastActive)?.getTime() || 0;
+            return t ? Math.floor((Date.now() - t) / DAY_MS) : null;
+          })();
+          const templates = whatsappTemplates(user, isPrem, daysLeft, daysInactive);
+          const phoneDirty = phone.trim() !== phoneLoaded.trim();
+          return (
+            <div className="bg-profit/5 border border-profit/30 rounded-xl p-3 space-y-3">
+              <div className="flex items-center justify-between">
+                <span className="text-sm font-semibold text-text-primary">שלח וואטסאפ</span>
+                <button onClick={() => setWhatsAppOpen(false)} className="text-text-muted hover:text-text-primary cursor-pointer">
+                  <X className="w-4 h-4" />
+                </button>
+              </div>
+
+              {/* Phone — saved on Enter / blur of the save button. If empty we
+                  still allow sending; wa.me will let the admin pick a contact. */}
+              <div>
+                <label className="text-[11px] text-text-muted block mb-1">מספר טלפון (אופציונלי — נשמר רק לך)</label>
+                <div className="flex gap-2">
+                  <div className="relative flex-1">
+                    <Phone className="absolute right-3 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-text-muted pointer-events-none" />
+                    <input
+                      value={phone}
+                      onChange={(e) => setPhone(e.target.value)}
+                      onKeyDown={(e) => { if (e.key === 'Enter' && phoneDirty) savePhone(); }}
+                      placeholder="050-1234567"
+                      dir="ltr"
+                      className="w-full bg-bg-secondary border border-border-primary rounded-lg pr-9 pl-3 py-2 text-sm text-text-primary outline-none focus:border-profit text-left"
+                    />
+                  </div>
+                  {phoneDirty && (
+                    <button
+                      onClick={savePhone}
+                      disabled={phoneSaving}
+                      className="px-3 rounded-lg bg-profit/15 border border-profit/30 text-profit text-xs font-semibold hover:bg-profit/20 cursor-pointer disabled:opacity-50"
+                    >
+                      {phoneSaving ? '...' : 'שמור'}
+                    </button>
+                  )}
+                </div>
+              </div>
+
+              {/* Template picker — clicking sends the user straight to WhatsApp. */}
+              <div className="space-y-1.5">
+                <div className="text-[11px] text-text-muted">בחר תבנית הודעה</div>
+                {templates.map((t) => (
+                  <a
+                    key={t.label}
+                    href={whatsappUrl(phone, t.text)}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="block bg-bg-secondary border border-border-primary rounded-lg px-3 py-2 hover:border-profit/40 transition-colors cursor-pointer"
+                  >
+                    <div className="flex items-start gap-2">
+                      <MessageCircle className="w-3.5 h-3.5 text-profit mt-0.5 shrink-0" />
+                      <div className="flex-1 min-w-0">
+                        <div className="text-xs font-semibold text-text-primary">{t.label}</div>
+                        <div className="text-[11px] text-text-muted truncate">{t.text.split('\n')[0]}</div>
+                      </div>
+                    </div>
+                  </a>
+                ))}
+                {!normalizePhoneForWhatsApp(phone) && (
+                  <p className="text-[10px] text-text-muted">💡 בלי מספר טלפון — וואטסאפ ייפתח עם רשימת אנשי הקשר שלך כדי שתבחר.</p>
+                )}
+              </div>
+            </div>
+          );
+        })()}
 
         {/* Grant Premium duration picker */}
         {grantOpen && (
