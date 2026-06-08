@@ -1,9 +1,9 @@
-import { useState, useEffect, useMemo, useRef } from 'react';
+import { useState, useEffect, useMemo } from 'react';
 import { Navigate } from 'react-router-dom';
-import { Users, UserPlus, ShieldCheck, CheckCircle2, Search, RefreshCw, Download, ChevronUp, ChevronDown, Mail, Calendar, Coins, TrendingUp, Percent, Sparkles, BookOpen, FlaskConical, Activity, FileText, Brain, Crown, Send, X, Ticket, Plus, Minus, Trash2, Copy, ScrollText, Share2, Link2, BarChart3, AlertTriangle, Clock, StickyNote, Save, DollarSign, Hourglass, Tag } from 'lucide-react';
+import { Users, UserPlus, ShieldCheck, CheckCircle2, Search, RefreshCw, Download, ChevronUp, ChevronDown, Mail, Calendar, Coins, TrendingUp, Percent, Sparkles, BookOpen, FlaskConical, Activity, FileText, Brain, Crown, Send, X, Ticket, Plus, Minus, Trash2, Copy, ScrollText, Share2, Link2, BarChart3, AlertTriangle, Clock, DollarSign, Hourglass } from 'lucide-react';
 import toast from 'react-hot-toast';
 import { useAuth } from '../../contexts/AuthContext';
-import { getAllUsers, getUserSubcollectionCount, adminGrantPremium, adminRevokePremium, getAdminMeta, setAdminMeta, getAllAdminMeta, addPayment, getAllPayments } from '../../services/firestoreService';
+import { getAllUsers, getUserSubcollectionCount, adminGrantPremium, adminRevokePremium, addPayment, getAllPayments } from '../../services/firestoreService';
 import { fetchUserAiUsage } from '../../hooks/useAiUsage';
 import { adminSendNotification, adminScheduleExpiryReminders, adminCancelExpiryReminders, adminListAuditEvents, adminSendTestDigest } from '../../services/pushService';
 import { adminListCoupons, adminCreateCoupon, adminDeleteCoupon, couponShareUrl } from '../../services/couponService';
@@ -69,20 +69,6 @@ function daysUntilExpiry(u) {
   return Math.ceil((new Date(u.planExpires).getTime() - Date.now()) / DAY_MS);
 }
 
-// Customer tags. Preset chips + free custom tags; each preset has a colour.
-const PRESET_TAGS = [
-  { label: 'VIP', cls: 'bg-amber-500/15 text-amber-400 border-amber-500/30' },
-  { label: 'ניסיון', cls: 'bg-accent-primary/10 text-accent-primary border-accent-primary/30' },
-  { label: 'שילם', cls: 'bg-profit/15 text-profit border-profit/30' },
-  { label: 'החזר', cls: 'bg-loss/15 text-loss border-loss/30' },
-  { label: 'חבר', cls: 'bg-purple-500/15 text-purple-400 border-purple-500/30' },
-  { label: 'בעייתי', cls: 'bg-loss/15 text-loss border-loss/30' },
-];
-function tagClass(label) {
-  const p = PRESET_TAGS.find((t) => t.label === label);
-  return p ? p.cls : 'bg-bg-tertiary text-text-secondary border-border-primary';
-}
-
 const ILS = (n) => '₪' + Math.round(Number(n) || 0).toLocaleString('he-IL');
 
 function StatCard({ icon, label, value }) {
@@ -124,7 +110,6 @@ function csvCell(v) {
 export default function AdminPanel() {
   const { isAdmin, profile } = useAuth();
   const [users, setUsers] = useState([]);
-  const [metaById, setMetaById] = useState({});
   const [payments, setPayments] = useState([]);
   const [loadedAt, setLoadedAt] = useState(0);
   const [loading, setLoading] = useState(true);
@@ -132,20 +117,12 @@ export default function AdminPanel() {
   const [search, setSearch] = useState('');
   const [roleFilter, setRoleFilter] = useState('all');
   const [onboardFilter, setOnboardFilter] = useState('all');
-  const [tagFilter, setTagFilter] = useState('');
   const [sortKey, setSortKey] = useState('createdAt');
   const [sortDir, setSortDir] = useState('desc');
   const [selectedUser, setSelectedUser] = useState(null);
   const [couponsOpen, setCouponsOpen] = useState(false);
   const [auditOpen, setAuditOpen] = useState(false);
   const [analyticsOpen, setAnalyticsOpen] = useState(false);
-  const [selectMode, setSelectMode] = useState(false);
-  const [selectedIds, setSelectedIds] = useState(new Set());
-  const [bulkBusy, setBulkBusy] = useState(false);
-  const [bulkGrantOpen, setBulkGrantOpen] = useState(false);
-  const [bulkNotifyOpen, setBulkNotifyOpen] = useState(false);
-  const [bulkNotifyTitle, setBulkNotifyTitle] = useState('');
-  const [bulkNotifyBody, setBulkNotifyBody] = useState('');
 
   // After load() refreshes `users`, keep `selectedUser` pointing at the fresh
   // copy so the open detail modal reflects the new plan/role immediately
@@ -160,23 +137,20 @@ export default function AdminPanel() {
   const load = () => {
     setLoading(true);
     setError(null);
-    // adminMeta (notes/tags) and payments live in admin-only collections; if
-    // their rules aren't deployed yet we degrade gracefully to empty.
+    // payments lives in an admin-only collection; if rules aren't deployed
+    // yet we degrade gracefully to an empty list (revenue widgets just show 0).
     Promise.all([
       getAllUsers(),
-      getAllAdminMeta().catch(() => ({})),
       getAllPayments().catch(() => []),
     ])
-      .then(([data, meta, pays]) => {
-        setUsers(data); setMetaById(meta || {}); setPayments(pays || []); setLoadedAt(Date.now());
+      .then(([data, pays]) => {
+        setUsers(data); setPayments(pays || []); setLoadedAt(Date.now());
       })
       .catch((e) => setError(e?.code === 'permission-denied'
         ? 'אין הרשאת אדמין — ודא שהשדה role מוגדר ל-admin במסמך המשתמש שלך.'
         : 'טעינת המשתמשים נכשלה. נסה שוב.'))
       .finally(() => setLoading(false));
   };
-  const reloadMeta = () => getAllAdminMeta().then((m) => setMetaById(m || {})).catch(() => {});
-  const tagsOf = (u) => metaById[u?.id]?.tags || [];
 
   useEffect(() => {
     if (isAdmin) Promise.resolve().then(load);
@@ -293,7 +267,6 @@ export default function AdminPanel() {
       if (roleFilter === 'free' && isUserPremium(u)) return false;
       if (onboardFilter === 'yes' && !u.onboardingCompleted) return false;
       if (onboardFilter === 'no' && u.onboardingCompleted) return false;
-      if (tagFilter && !(metaById[u.id]?.tags || []).includes(tagFilter)) return false;
       return true;
     });
     const dir = sortDir === 'asc' ? 1 : -1;
@@ -304,14 +277,7 @@ export default function AdminPanel() {
       if (va > vb) return 1 * dir;
       return 0;
     });
-  }, [users, search, roleFilter, onboardFilter, tagFilter, sortKey, sortDir, metaById]);
-
-  // All tags currently in use, for the tag filter dropdown.
-  const allTags = useMemo(() => {
-    const s = new Set();
-    Object.values(metaById).forEach((m) => (m.tags || []).forEach((t) => s.add(t)));
-    return Array.from(s);
-  }, [metaById]);
+  }, [users, search, roleFilter, onboardFilter, sortKey, sortDir]);
 
   const toggleSort = (key) => {
     if (sortKey === key) {
@@ -320,73 +286,6 @@ export default function AdminPanel() {
       setSortKey(key);
       setSortDir(key === 'createdAt' || key === 'lastActive' ? 'desc' : 'asc');
     }
-  };
-
-  const toggleSelected = (id) => {
-    setSelectedIds((prev) => {
-      const next = new Set(prev);
-      if (next.has(id)) next.delete(id); else next.add(id);
-      return next;
-    });
-  };
-  const toggleSelectAll = () => {
-    const visibleIds = filtered.map((u) => u.id);
-    const allSelected = visibleIds.every((id) => selectedIds.has(id));
-    setSelectedIds(allSelected ? new Set() : new Set(visibleIds));
-  };
-
-  // Run an async action over every selected user with a small concurrency
-  // cap so we don't pile a hundred parallel network requests at once. The
-  // progress ref is read by the UI to render 'sending… (3/12)'.
-  const bulkSentCountRef = useRef(0);
-  const runBulk = async (fn) => {
-    setBulkBusy(true);
-    bulkSentCountRef.current = 0;
-    const ids = Array.from(selectedIds);
-    const CONCURRENCY = 4;
-    let i = 0;
-    const workers = Array.from({ length: Math.min(CONCURRENCY, ids.length) }, async () => {
-      while (i < ids.length) {
-        const idx = i++;
-        try { await fn(ids[idx]); } catch { /* per-user error already logged */ }
-        bulkSentCountRef.current += 1;
-      }
-    });
-    await Promise.all(workers);
-    setBulkBusy(false);
-  };
-
-  const bulkGrantPremium = async (days) => {
-    const lifetime = !Number.isFinite(days);
-    const expiresAt = lifetime ? null : new Date(Date.now() + days * 86400000);
-    const planExpiresISO = expiresAt ? expiresAt.toISOString() : null;
-    await runBulk(async (uid) => {
-      await adminGrantPremium(uid, days);
-      adminScheduleExpiryReminders(uid, planExpiresISO);
-      const body = lifetime
-        ? '🎉 קיבלת Premium ללא הגבלה. כל הפיצ\'רים פתוחים — בהצלחה במסחר!'
-        : `🎉 קיבלת Premium ל-${days} ימים. כל הפיצ\'רים פתוחים — בהצלחה במסחר!`;
-      adminSendNotification({ uid, title: '🎁 שודרגת ל-TradeOS Premium', body, url: '/premium' }).catch(() => {});
-    });
-    toast.success(`${selectedIds.size} משתמשים שודרגו ל-Premium`);
-    setBulkGrantOpen(false);
-    setSelectedIds(new Set());
-    load();
-  };
-
-  const bulkSendNotify = async () => {
-    const title = bulkNotifyTitle.trim();
-    const body = bulkNotifyBody.trim();
-    if (!title || !body) return;
-    let totalSent = 0;
-    await runBulk(async (uid) => {
-      const r = await adminSendNotification({ uid, title, body });
-      if (r?.sent) totalSent += r.sent;
-    });
-    toast.success(`ההודעה נשלחה ל-${totalSent} מכשירים (${selectedIds.size} משתמשים)`);
-    setBulkNotifyOpen(false);
-    setBulkNotifyTitle(''); setBulkNotifyBody('');
-    setSelectedIds(new Set());
   };
 
   const exportCsv = () => {
@@ -578,17 +477,6 @@ export default function AdminPanel() {
               allowClear
             />
           </div>
-          {allTags.length > 0 && (
-            <div className="md:w-44 col-span-2 md:col-span-1">
-              <SelectDropdown
-                value={tagFilter}
-                onChange={(v) => setTagFilter(v || '')}
-                options={allTags.map((t) => ({ value: t, label: t }))}
-                placeholder="כל התגיות"
-                allowClear
-              />
-            </div>
-          )}
         </div>
         <button
           onClick={exportCsv}
@@ -608,138 +496,17 @@ export default function AdminPanel() {
         <div className="py-16"><LoadingSpinner /></div>
       ) : (
         <>
-          <div className="flex items-center justify-between gap-3 flex-wrap">
-            <div className="text-sm text-text-secondary">
-              מציג {filtered.length} מתוך {users.length} משתמשים
-            </div>
-            <div className="flex items-center gap-2 text-xs">
-              {!selectMode ? (
-                <button
-                  onClick={() => setSelectMode(true)}
-                  className="px-3 py-1.5 rounded-lg bg-bg-tertiary border border-border-primary text-text-secondary hover:text-text-primary cursor-pointer inline-flex items-center gap-1.5"
-                >
-                  <CheckCircle2 className="w-3.5 h-3.5" /> בחירה מרובה
-                </button>
-              ) : (
-                <>
-                  <span className="text-text-secondary">{selectedIds.size} נבחרו</span>
-                  {selectedIds.size > 0 && (
-                    <>
-                      <button
-                        onClick={() => setBulkGrantOpen(true)}
-                        disabled={bulkBusy}
-                        className="px-3 py-1.5 rounded-lg bg-amber-500/15 border border-amber-500/30 text-amber-400 hover:bg-amber-500/20 cursor-pointer disabled:opacity-50 inline-flex items-center gap-1"
-                      >
-                        <Crown className="w-3.5 h-3.5" /> הענק Premium לכולם
-                      </button>
-                      <button
-                        onClick={() => setBulkNotifyOpen(true)}
-                        disabled={bulkBusy}
-                        className="px-3 py-1.5 rounded-lg bg-accent-primary/10 border border-accent-primary/30 text-accent-primary hover:bg-accent-primary/20 cursor-pointer disabled:opacity-50 inline-flex items-center gap-1"
-                      >
-                        <Send className="w-3.5 h-3.5" /> שלח Push לכולם
-                      </button>
-                    </>
-                  )}
-                  <button
-                    onClick={() => { setSelectMode(false); setSelectedIds(new Set()); }}
-                    className="px-3 py-1.5 rounded-lg text-text-muted hover:text-text-primary cursor-pointer inline-flex items-center gap-1"
-                    title="סיום בחירה"
-                  >
-                    <X className="w-3.5 h-3.5" /> סיום
-                  </button>
-                </>
-              )}
-            </div>
+          <div className="text-sm text-text-secondary">
+            מציג {filtered.length} מתוך {users.length} משתמשים
           </div>
 
-          {/* Bulk grant: pick a duration and apply to all selected. */}
-          {bulkGrantOpen && (
-            <div className="bg-amber-500/5 border border-amber-500/30 rounded-xl p-3">
-              <div className="flex items-center justify-between mb-2">
-                <span className="text-sm font-semibold text-text-primary">הענק Premium ל-{selectedIds.size} משתמשים</span>
-                <button onClick={() => setBulkGrantOpen(false)} className="text-text-muted hover:text-text-primary cursor-pointer">
-                  <X className="w-4 h-4" />
-                </button>
-              </div>
-              <div className="grid grid-cols-3 sm:grid-cols-4 gap-1.5">
-                {[
-                  { d: 1, label: 'יום' },
-                  { d: 7, label: 'שבוע' },
-                  { d: 30, label: 'חודש' },
-                  { d: 90, label: '3 חודשים' },
-                  { d: 180, label: '6 חודשים' },
-                  { d: 365, label: 'שנה' },
-                ].map((opt) => (
-                  <button
-                    key={String(opt.d)}
-                    onClick={() => bulkGrantPremium(opt.d)}
-                    disabled={bulkBusy}
-                    className="text-xs px-2 py-2 rounded-lg bg-bg-secondary border border-border-primary text-text-primary hover:border-amber-500/40 hover:text-amber-400 transition-colors cursor-pointer disabled:opacity-50"
-                  >
-                    {opt.label}
-                  </button>
-                ))}
-              </div>
-            </div>
-          )}
-
-          {/* Bulk notify: shared title+body to all selected. */}
-          {bulkNotifyOpen && (
-            <div className="bg-accent-primary/5 border border-accent-primary/30 rounded-xl p-3 space-y-2">
-              <div className="flex items-center justify-between">
-                <span className="text-sm font-semibold text-text-primary">Push ל-{selectedIds.size} משתמשים</span>
-                <button onClick={() => setBulkNotifyOpen(false)} className="text-text-muted hover:text-text-primary cursor-pointer">
-                  <X className="w-4 h-4" />
-                </button>
-              </div>
-              <input
-                value={bulkNotifyTitle}
-                onChange={(e) => setBulkNotifyTitle(e.target.value)}
-                placeholder="כותרת"
-                maxLength={120}
-                className="w-full bg-bg-secondary border border-border-primary rounded-lg px-3 py-2 text-sm text-text-primary outline-none focus:border-accent-primary"
-              />
-              <textarea
-                value={bulkNotifyBody}
-                onChange={(e) => setBulkNotifyBody(e.target.value)}
-                placeholder="גוף ההודעה"
-                maxLength={400}
-                rows={3}
-                className="w-full bg-bg-secondary border border-border-primary rounded-lg px-3 py-2 text-sm text-text-primary outline-none focus:border-accent-primary resize-none"
-              />
-              <button
-                onClick={bulkSendNotify}
-                disabled={bulkBusy || !bulkNotifyTitle.trim() || !bulkNotifyBody.trim()}
-                className="w-full flex items-center justify-center gap-1.5 px-3 py-2 rounded-lg bg-accent-primary text-bg-primary text-sm font-bold hover:bg-accent-hover transition-colors cursor-pointer disabled:opacity-50"
-              >
-                <Send className="w-4 h-4" /> {bulkBusy ? `שולח... (${bulkSentCountRef.current}/${selectedIds.size})` : 'שלח עכשיו'}
-              </button>
-            </div>
-          )}
-
-          <div className="bg-bg-secondary border border-border-primary rounded-xl overflow-hidden">
+          {/* Table sits on the page background so rows look 'pure' black/white
+              for the theme rather than the previous gray-on-gray look. */}
+          <div className="border border-border-primary rounded-xl overflow-hidden">
             <div className="overflow-x-auto">
               <table className="w-full text-sm">
                 <thead>
                   <tr className="text-text-secondary border-b border-border-primary text-right">
-                    {selectMode && (
-                      <th className="px-3 py-3 w-8">
-                        <input
-                          type="checkbox"
-                          onChange={toggleSelectAll}
-                          checked={filtered.length > 0 && filtered.every((u) => selectedIds.has(u.id))}
-                          ref={(el) => {
-                            if (!el) return;
-                            const some = filtered.some((u) => selectedIds.has(u.id));
-                            const all = filtered.length > 0 && filtered.every((u) => selectedIds.has(u.id));
-                            el.indeterminate = some && !all;
-                          }}
-                          className="w-4 h-4 cursor-pointer accent-accent-primary"
-                          aria-label="בחר הכל"
-                        />
-                      </th>
-                    )}
                     {COLUMNS.map((col) => (
                       <th key={col.key} className="font-medium px-4 py-3">
                         <button
@@ -760,7 +527,7 @@ export default function AdminPanel() {
                 <tbody>
                   {filtered.length === 0 ? (
                     <tr>
-                      <td colSpan={selectMode ? 7 : 6} className="px-4 py-10 text-center text-text-secondary">
+                      <td colSpan={6} className="px-4 py-10 text-center text-text-secondary">
                         לא נמצאו משתמשים
                       </td>
                     </tr>
@@ -768,20 +535,9 @@ export default function AdminPanel() {
                     filtered.map((u) => (
                       <tr
                         key={u.id}
-                        onClick={() => (selectMode ? toggleSelected(u.id) : setSelectedUser(u))}
-                        className={`border-b border-border-primary/50 last:border-0 cursor-pointer hover:bg-bg-tertiary/40 transition-colors ${selectMode && selectedIds.has(u.id) ? 'bg-accent-primary/5' : ''}`}
+                        onClick={() => setSelectedUser(u)}
+                        className="border-b border-border-primary/50 last:border-0 cursor-pointer hover:bg-bg-tertiary/40 transition-colors"
                       >
-                        {selectMode && (
-                          <td className="px-3 py-3" onClick={(e) => { e.stopPropagation(); toggleSelected(u.id); }}>
-                            <input
-                              type="checkbox"
-                              checked={selectedIds.has(u.id)}
-                              onChange={() => {}}
-                              className="w-4 h-4 cursor-pointer accent-accent-primary"
-                              aria-label="בחר משתמש"
-                            />
-                          </td>
-                        )}
                         <td className="px-4 py-3">
                           <div className="flex items-center gap-3">
                             {u.photoURL ? (
@@ -791,16 +547,7 @@ export default function AdminPanel() {
                                 {(u.displayName || u.email || '?').charAt(0).toUpperCase()}
                               </div>
                             )}
-                            <div className="min-w-0">
-                              <span className="text-text-primary font-medium block truncate">{u.displayName || '—'}</span>
-                              {tagsOf(u).length > 0 && (
-                                <div className="flex flex-wrap gap-1 mt-0.5">
-                                  {tagsOf(u).slice(0, 3).map((t) => (
-                                    <span key={t} className={`text-[9px] px-1.5 py-0.5 rounded border ${tagClass(t)}`}>{t}</span>
-                                  ))}
-                                </div>
-                              )}
-                            </div>
+                            <span className="text-text-primary font-medium block truncate">{u.displayName || '—'}</span>
                           </div>
                         </td>
                         <td className="px-4 py-3 text-text-secondary">{u.email || '—'}</td>
@@ -851,7 +598,7 @@ export default function AdminPanel() {
         </>
       )}
 
-      <UserDetailModal user={selectedUser} onClose={() => setSelectedUser(null)} onUserChanged={load} onMetaChanged={reloadMeta} />
+      <UserDetailModal user={selectedUser} onClose={() => setSelectedUser(null)} onUserChanged={load} />
       <CouponsModal isOpen={couponsOpen} onClose={() => setCouponsOpen(false)} />
       <AuditLogModal isOpen={auditOpen} onClose={() => setAuditOpen(false)} users={users} />
       <AnalyticsModal isOpen={analyticsOpen} onClose={() => setAnalyticsOpen(false)} a={analytics} onPickUser={(u) => { setAnalyticsOpen(false); setSelectedUser(u); }} />
@@ -883,8 +630,7 @@ const COUNT_COLLECTIONS = [
   { key: 'eveningJournals', label: 'יומן ערב', icon: Brain },
 ];
 
-function UserDetailModal({ user, onClose, onUserChanged, onMetaChanged }) {
-  const { user: adminUser } = useAuth();
+function UserDetailModal({ user, onClose, onUserChanged }) {
   const [counts, setCounts] = useState(null);
   const [countsError, setCountsError] = useState(null);
   const [aiUsage, setAiUsage] = useState(null);
@@ -895,52 +641,6 @@ function UserDetailModal({ user, onClose, onUserChanged, onMetaChanged }) {
   const [notifyTitle, setNotifyTitle] = useState('');
   const [notifyBody, setNotifyBody] = useState('');
   const [notifying, setNotifying] = useState(false);
-  const [note, setNote] = useState('');
-  const [noteLoaded, setNoteLoaded] = useState('');
-  const [noteSaving, setNoteSaving] = useState(false);
-  const [tags, setTags] = useState([]);
-  const [customTag, setCustomTag] = useState('');
-
-  // Load the admin-only note + tags for this user (separate collection so the
-  // user themselves can never see it).
-  useEffect(() => {
-    if (!user) { setNote(''); setNoteLoaded(''); setTags([]); return; }
-    let cancelled = false;
-    getAdminMeta(user.id)
-      .then((m) => { if (!cancelled) { setNote(m.text); setNoteLoaded(m.text); setTags(m.tags); } })
-      .catch(() => {});
-    return () => { cancelled = true; };
-  }, [user]);
-
-  const saveNote = async () => {
-    if (!user) return;
-    setNoteSaving(true);
-    try {
-      await setAdminMeta(user.id, { text: note.trim() }, adminUser?.uid);
-      setNoteLoaded(note.trim());
-      toast.success('ההערה נשמרה');
-    } catch {
-      toast.error('שמירת ההערה נכשלה');
-    } finally {
-      setNoteSaving(false);
-    }
-  };
-
-  // Tags save immediately on toggle (no separate save button needed).
-  const persistTags = async (next) => {
-    setTags(next);
-    try {
-      await setAdminMeta(user.id, { tags: next }, adminUser?.uid);
-      onMetaChanged?.();
-    } catch {
-      toast.error('שמירת התגית נכשלה');
-    }
-  };
-  const toggleTag = (label) => {
-    const l = label.trim();
-    if (!l) return;
-    persistTags(tags.includes(l) ? tags.filter((t) => t !== l) : [...tags, l]);
-  };
 
   useEffect(() => {
     if (!user) { setAiUsage(null); return; }
@@ -1250,71 +950,8 @@ function UserDetailModal({ user, onClose, onUserChanged, onMetaChanged }) {
             </div>
           </div>
 
-          {/* Right column: tags, private note & activity counts */}
+          {/* Right column: activity counts */}
           <div className="space-y-4">
-            {/* Tags / segments — saved instantly on toggle. */}
-            <div>
-              <div className="text-[11px] text-text-muted mb-2 flex items-center gap-1.5">
-                <Tag className="w-3.5 h-3.5 text-amber-400" /> תגיות (רק אתה רואה)
-              </div>
-              <div className="flex flex-wrap gap-1.5">
-                {Array.from(new Set([...PRESET_TAGS.map((t) => t.label), ...tags])).map((label) => {
-                  const on = tags.includes(label);
-                  return (
-                    <button
-                      key={label}
-                      onClick={() => toggleTag(label)}
-                      className={`text-xs px-2.5 py-1 rounded-full border transition-colors cursor-pointer ${on ? tagClass(label) : 'bg-bg-tertiary/40 text-text-muted border-border-primary hover:text-text-secondary'}`}
-                    >
-                      {on ? '✓ ' : ''}{label}
-                    </button>
-                  );
-                })}
-              </div>
-              <div className="flex gap-2 mt-2">
-                <input
-                  value={customTag}
-                  onChange={(e) => setCustomTag(e.target.value)}
-                  onKeyDown={(e) => { if (e.key === 'Enter') { toggleTag(customTag); setCustomTag(''); } }}
-                  placeholder="תגית מותאמת…"
-                  maxLength={20}
-                  className="flex-1 bg-bg-tertiary/40 border border-border-primary rounded-lg px-3 py-1.5 text-xs text-text-primary placeholder:text-text-muted outline-none focus:border-amber-500/50"
-                />
-                <button
-                  onClick={() => { toggleTag(customTag); setCustomTag(''); }}
-                  disabled={!customTag.trim()}
-                  className="px-3 rounded-lg border border-border-primary text-xs text-text-secondary hover:text-text-primary cursor-pointer disabled:opacity-50"
-                >
-                  הוסף
-                </button>
-              </div>
-            </div>
-
-            {/* Private admin note — only admins can see this (separate collection). */}
-            <div>
-              <div className="text-[11px] text-text-muted mb-2 flex items-center gap-1.5">
-                <StickyNote className="w-3.5 h-3.5 text-amber-400" /> הערה פרטית (רק אתה רואה)
-              </div>
-              <textarea
-                value={note}
-                onChange={(e) => setNote(e.target.value)}
-                placeholder='לדוגמה: "שילם בביט", "מבקש החזר", "חבר של דני"…'
-                rows={3}
-                maxLength={1000}
-                className="w-full bg-bg-tertiary/40 border border-border-primary rounded-lg px-3 py-2 text-sm text-text-primary placeholder:text-text-muted outline-none focus:border-amber-500/50 resize-none"
-              />
-              <div className="flex items-center justify-between mt-1.5">
-                <span className="text-[10px] text-text-muted">{note.trim() !== noteLoaded.trim() ? 'יש שינויים שלא נשמרו' : 'נשמר'}</span>
-                <button
-                  onClick={saveNote}
-                  disabled={noteSaving || note.trim() === noteLoaded.trim()}
-                  className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-amber-500/15 border border-amber-500/30 text-amber-400 text-xs font-semibold hover:bg-amber-500/20 transition-colors cursor-pointer disabled:opacity-50"
-                >
-                  <Save className="w-3.5 h-3.5" /> {noteSaving ? 'שומר…' : 'שמור הערה'}
-                </button>
-              </div>
-            </div>
-
             {/* Activity counts (read-only — uses Firestore count aggregation) */}
             <div>
               <div className="text-[11px] text-text-muted mb-2 flex items-center gap-1.5">
