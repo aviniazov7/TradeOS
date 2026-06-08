@@ -62,12 +62,17 @@ export default function Modal({ isOpen, onClose, title, children, maxWidth = 'ma
 
               {/* Scrollable inner */}
               <div className="relative overflow-y-auto" style={{ maxHeight: 'calc(100vh - 4.5rem)' }}>
-                {/* Header */}
+                {/* Header — solid background that matches the modal card so
+                    scrolled content can't bleed through and turn the title
+                    illegible. backdrop-filter as a secondary safety net on
+                    browsers that respect alpha + blur cleanly. */}
                 <div
                   className="flex items-center justify-between px-5 py-3 sticky top-0 z-10"
                   style={{
                     borderBottom: '1px solid rgba(255,255,255,0.06)',
-                    background: 'rgba(255,255,255,0.02)',
+                    background: 'var(--color-bg-overlay)',
+                    backdropFilter: 'blur(8px)',
+                    WebkitBackdropFilter: 'blur(8px)',
                   }}
                 >
                   <h2 className="text-base font-bold text-text-primary">{title}</h2>

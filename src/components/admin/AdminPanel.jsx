@@ -1,6 +1,6 @@
 import { useState, useEffect, useMemo, useRef } from 'react';
 import { Navigate } from 'react-router-dom';
-import { Users, UserPlus, ShieldCheck, CheckCircle2, Search, RefreshCw, Download, ChevronUp, ChevronDown, Mail, Calendar, Coins, TrendingUp, Percent, Sparkles, Star, BookOpen, FlaskConical, Activity, FileText, Brain, Crown, Send, X, Ticket, Plus, Minus, Trash2, Copy, ScrollText, Share2, Link2, BarChart3, AlertTriangle, Clock, StickyNote, Save, DollarSign, Hourglass, Tag } from 'lucide-react';
+import { Users, UserPlus, ShieldCheck, CheckCircle2, Search, RefreshCw, Download, ChevronUp, ChevronDown, Mail, Calendar, Coins, TrendingUp, Percent, Sparkles, BookOpen, FlaskConical, Activity, FileText, Brain, Crown, Send, X, Ticket, Plus, Minus, Trash2, Copy, ScrollText, Share2, Link2, BarChart3, AlertTriangle, Clock, StickyNote, Save, DollarSign, Hourglass, Tag } from 'lucide-react';
 import toast from 'react-hot-toast';
 import { useAuth } from '../../contexts/AuthContext';
 import { getAllUsers, getUserSubcollectionCount, adminGrantPremium, adminRevokePremium, getAdminMeta, setAdminMeta, getAllAdminMeta, addPayment, getAllPayments } from '../../services/firestoreService';
@@ -479,7 +479,7 @@ export default function AdminPanel() {
                 {u.photoURL ? (
                   <img src={u.photoURL} alt="" className="w-8 h-8 rounded-full object-cover" referrerPolicy="no-referrer" />
                 ) : (
-                  <div className="w-8 h-8 rounded-full bg-bg-tertiary flex items-center justify-center text-text-secondary text-sm font-semibold">
+                  <div className="w-8 h-8 rounded-full bg-bg-primary border border-border-primary flex items-center justify-center text-text-secondary text-sm font-semibold">
                     {(u.displayName || u.email || '?').charAt(0).toUpperCase()}
                   </div>
                 )}
@@ -520,7 +520,7 @@ export default function AdminPanel() {
                   {u.photoURL ? (
                     <img src={u.photoURL} alt="" className="w-8 h-8 rounded-full object-cover" referrerPolicy="no-referrer" />
                   ) : (
-                    <div className="w-8 h-8 rounded-full bg-bg-tertiary flex items-center justify-center text-text-secondary text-sm font-semibold">
+                    <div className="w-8 h-8 rounded-full bg-bg-primary border border-border-primary flex items-center justify-center text-text-secondary text-sm font-semibold">
                       {(u.displayName || u.email || '?').charAt(0).toUpperCase()}
                     </div>
                   )}
@@ -787,7 +787,7 @@ export default function AdminPanel() {
                             {u.photoURL ? (
                               <img src={u.photoURL} alt="" className="w-8 h-8 rounded-full object-cover" referrerPolicy="no-referrer" />
                             ) : (
-                              <div className="w-8 h-8 rounded-full bg-bg-tertiary flex items-center justify-center text-text-secondary font-semibold">
+                              <div className="w-8 h-8 rounded-full bg-bg-primary border border-border-primary flex items-center justify-center text-text-secondary font-semibold">
                                 {(u.displayName || u.email || '?').charAt(0).toUpperCase()}
                               </div>
                             )}
@@ -1057,8 +1057,6 @@ function UserDetailModal({ user, onClose, onUserChanged, onMetaChanged }) {
 
   if (!user) return null;
   const settings = user.settings || {};
-  const fav = Array.isArray(settings.favoriteCoins) ? settings.favoriteCoins : [];
-  const strategies = Array.isArray(settings.strategies) ? settings.strategies : [];
 
   return (
     <Modal isOpen={!!user} onClose={onClose} title="פרטי משתמש" maxWidth="max-w-3xl">
@@ -1068,7 +1066,7 @@ function UserDetailModal({ user, onClose, onUserChanged, onMetaChanged }) {
           {user.photoURL ? (
             <img src={user.photoURL} alt="" className="w-14 h-14 rounded-full object-cover" referrerPolicy="no-referrer" />
           ) : (
-            <div className="w-14 h-14 rounded-full bg-bg-tertiary flex items-center justify-center text-text-secondary font-bold text-lg">
+            <div className="w-14 h-14 rounded-full bg-bg-primary border border-border-primary flex items-center justify-center text-text-secondary font-bold text-lg">
               {(user.displayName || user.email || '?').charAt(0).toUpperCase()}
             </div>
           )}
@@ -1250,34 +1248,6 @@ function UserDetailModal({ user, onClose, onUserChanged, onMetaChanged }) {
                 <div className="text-xs text-text-muted">…</div>
               )}
             </div>
-
-            {/* Favorites */}
-            {fav.length > 0 && (
-              <div>
-                <div className="text-[11px] text-text-muted mb-2 flex items-center gap-1.5">
-                  <Star className="w-3.5 h-3.5" /> מטבעות מועדפים
-                </div>
-                <div className="flex flex-wrap gap-1.5">
-                  {fav.map((c) => (
-                    <span key={c} className="text-xs px-2 py-1 rounded-md bg-bg-tertiary border border-border-primary text-text-primary">{c}</span>
-                  ))}
-                </div>
-              </div>
-            )}
-
-            {/* Strategies */}
-            {strategies.length > 0 && (
-              <div>
-                <div className="text-[11px] text-text-muted mb-2 flex items-center gap-1.5">
-                  <Sparkles className="w-3.5 h-3.5" /> אסטרטגיות
-                </div>
-                <div className="flex flex-wrap gap-1.5">
-                  {strategies.map((s) => (
-                    <span key={s} className="text-xs px-2 py-1 rounded-md bg-bg-tertiary border border-border-primary text-text-primary">{s}</span>
-                  ))}
-                </div>
-              </div>
-            )}
           </div>
 
           {/* Right column: tags, private note & activity counts */}
@@ -1520,7 +1490,7 @@ function AnalyticsModal({ isOpen, onClose, a, onPickUser }) {
                   {u.photoURL ? (
                     <img src={u.photoURL} alt="" className="w-7 h-7 rounded-full object-cover" referrerPolicy="no-referrer" />
                   ) : (
-                    <div className="w-7 h-7 rounded-full bg-bg-tertiary flex items-center justify-center text-text-secondary text-xs font-semibold">
+                    <div className="w-7 h-7 rounded-full bg-bg-primary border border-border-primary flex items-center justify-center text-text-secondary text-xs font-semibold">
                       {(u.displayName || u.email || '?').charAt(0).toUpperCase()}
                     </div>
                   )}
@@ -1940,7 +1910,7 @@ function CustomerTimeline({ user }) {
       if (createdMs) {
         items.push({
           ts: createdMs,
-          icon: '🌟',
+          iconNode: <UserPlus className="w-3.5 h-3.5" />,
           color: 'text-profit border-profit/30 bg-profit/10',
           title: 'נרשם ל-TradeOS',
         });
@@ -2036,7 +2006,7 @@ function CustomerTimeline({ user }) {
           {events.map((ev, i) => (
             <div key={i} className="bg-bg-tertiary/40 border border-border-primary rounded-lg px-3 py-2 flex items-start gap-3">
               <div className={`w-7 h-7 rounded-full border flex items-center justify-center shrink-0 ${ev.color}`}>
-                {ev.iconNode || <span className="text-sm">{ev.icon}</span>}
+                {ev.iconNode}
               </div>
               <div className="flex-1 min-w-0">
                 <div className="text-sm font-medium text-text-primary">{ev.title}</div>
