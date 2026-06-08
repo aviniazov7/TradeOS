@@ -1374,6 +1374,12 @@ function UserDetailModal({ user, onClose, onUserChanged, onMetaChanged }) {
           </div>
         </div>
 
+        {/* Customer timeline — full-width row at the bottom. Combines audit
+            log entries scoped to this user, payments scoped to this user,
+            and synthetic events (registration, last active) into one
+            chronological feed, newest first. */}
+        <CustomerTimeline user={user} />
+
       </div>
     </Modal>
   );
@@ -1879,5 +1885,170 @@ function CouponsModal({ isOpen, onClose }) {
         </div>
       </div>
     </Modal>
+  );
+}
+
+// ── Customer timeline ──────────────────────────────────────────────────────
+// Chronological feed of everything that ever happened to one customer:
+// registration, premium grants/revokes, coupon redemptions, push messages,
+// payments, last active. Pulls from the audit log (filtered to this user as
+// the target), the payments collection (filtered by uid), and synthetic
+// events from the user profile itself. Newest first.
+
+function fmtFullDate(ts) {
+  return new Date(ts).toLocaleString('he-IL', {
+    day: '2-digit', month: '2-digit', year: 'numeric',
+    hour: '2-digit', minute: '2-digit',
+  });
+}
+
+function fmtRelativeTime(ts) {
+  const diff = Date.now() - ts;
+  if (diff < 60 * 1000) return 'הרגע';
+  const mins = Math.floor(diff / 60000);
+  if (mins < 60) return `לפני ${mins} ד'`;
+  const hrs = Math.floor(mins / 60);
+  if (hrs < 24) return `לפני ${hrs} שע'`;
+  const days = Math.floor(hrs / 24);
+  if (days === 1) return 'אתמול';
+  if (days < 7) return `לפני ${days} ימים`;
+  if (days < 30) return `לפני ${Math.floor(days / 7)} שבועות`;
+  const months = Math.floor(days / 30);
+  return months === 1 ? 'לפני חודש' : `לפני ${months} חודשים`;
+}
+
+function CustomerTimeline({ user }) {
+  const [events, setEvents] = useState(null);
+
+  useEffect(() => {
+    if (!user) { setEvents(null); return; }
+    let cancelled = false;
+
+    // Audit log + payments are admin-only collections; both calls degrade to
+    // empty arrays if rules haven't been deployed yet (rather than blowing up
+    // the modal).
+    Promise.all([
+      adminListAuditEvents({ limit: 500 }).catch(() => []),
+      getAllPayments().catch(() => []),
+    ]).then(([allAudit, allPayments]) => {
+      if (cancelled) return;
+
+      const items = [];
+
+      // Synthetic: registration.
+      const createdMs = toDate(user.createdAt)?.getTime();
+      if (createdMs) {
+        items.push({
+          ts: createdMs,
+          icon: '🌟',
+          color: 'text-profit border-profit/30 bg-profit/10',
+          title: 'נרשם ל-TradeOS',
+        });
+      }
+
+      // Synthetic: last active. Only one — the most recent.
+      const lastActiveMs2 = toDate(user.lastActive)?.getTime();
+      if (lastActiveMs2) {
+        items.push({
+          ts: lastActiveMs2,
+          iconNode: <Clock className="w-3.5 h-3.5" />,
+          color: 'text-accent-primary border-accent-primary/30 bg-accent-primary/10',
+          title: 'פעילות אחרונה באפליקציה',
+        });
+      }
+
+      // Audit events scoped to this user as the target.
+      for (const ev of allAudit) {
+        if (ev.target !== user.id) continue;
+        const ts = ev.ts_iso ? new Date(ev.ts_iso).getTime() : 0;
+        if (!ts) continue;
+
+        if (ev.kind === 'premium_grant') {
+          items.push({
+            ts,
+            iconNode: <Crown className="w-3.5 h-3.5" />,
+            color: 'text-amber-400 border-amber-500/30 bg-amber-500/10',
+            title: ev.days ? `קיבל Premium ל-${ev.days} ימים` : 'קיבל Premium',
+            sub: 'הוענק מהפאנל',
+          });
+        } else if (ev.kind === 'premium_revoke') {
+          items.push({
+            ts,
+            iconNode: <X className="w-3.5 h-3.5" />,
+            color: 'text-loss border-loss/30 bg-loss/10',
+            title: 'Premium בוטל',
+          });
+        } else if (ev.kind === 'coupon_redeem') {
+          items.push({
+            ts,
+            iconNode: <Ticket className="w-3.5 h-3.5" />,
+            color: 'text-amber-400 border-amber-500/30 bg-amber-500/10',
+            title: ev.code ? `מימש קופון ${ev.code}` : 'מימש קופון',
+            sub: ev.days ? `קיבל ${ev.days} ימי Premium` : null,
+          });
+        } else if (ev.kind === 'notify') {
+          items.push({
+            ts,
+            iconNode: <Send className="w-3.5 h-3.5" />,
+            color: 'text-accent-primary border-accent-primary/30 bg-accent-primary/10',
+            title: ev.title ? `קיבל Push: "${ev.title}"` : 'קיבל Push',
+          });
+        }
+      }
+
+      // Payments scoped to this user.
+      for (const p of allPayments) {
+        if (p.uid !== user.id) continue;
+        const ts = toDate(p.createdAt)?.getTime();
+        if (!ts) continue;
+        items.push({
+          ts,
+          iconNode: <DollarSign className="w-3.5 h-3.5" />,
+          color: 'text-profit border-profit/30 bg-profit/10',
+          title: `שילם ${ILS(p.amount || 0)}`,
+          sub: p.days ? `מנוי ${p.days} ימים` : null,
+        });
+      }
+
+      items.sort((a, b) => b.ts - a.ts);
+      setEvents(items);
+    }).catch(() => {
+      if (!cancelled) setEvents([]);
+    });
+
+    return () => { cancelled = true; };
+  }, [user]);
+
+  return (
+    <div>
+      <div className="text-[11px] text-text-muted mb-2 flex items-center gap-1.5">
+        <Clock className="w-3.5 h-3.5" /> ציר זמן הלקוח
+      </div>
+
+      {events === null ? (
+        <div className="text-xs text-text-muted text-center py-6">טוען היסטוריה…</div>
+      ) : events.length === 0 ? (
+        <div className="text-xs text-text-muted text-center py-6 border border-dashed border-border-primary rounded-xl">
+          אין אירועים עדיין.
+        </div>
+      ) : (
+        <div className="space-y-1.5">
+          {events.map((ev, i) => (
+            <div key={i} className="bg-bg-tertiary/40 border border-border-primary rounded-lg px-3 py-2 flex items-start gap-3">
+              <div className={`w-7 h-7 rounded-full border flex items-center justify-center shrink-0 ${ev.color}`}>
+                {ev.iconNode || <span className="text-sm">{ev.icon}</span>}
+              </div>
+              <div className="flex-1 min-w-0">
+                <div className="text-sm font-medium text-text-primary">{ev.title}</div>
+                {ev.sub && <div className="text-[11px] text-text-muted">{ev.sub}</div>}
+                <div className="text-[10px] text-text-muted mt-0.5">
+                  {fmtRelativeTime(ev.ts)} · {fmtFullDate(ev.ts)}
+                </div>
+              </div>
+            </div>
+          ))}
+        </div>
+      )}
+    </div>
   );
 }
