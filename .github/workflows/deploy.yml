@@ -3,21 +3,21 @@ name: Deploy TradeOS
 # Three-stage deploy pipeline:
 #
 #   push → main             → 🚀 production (Hosting live + production Worker)
-#   push → develop          → 🧪 staging (Hosting "develop" channel + staging Worker)
+#   push → dev          → 🧪 staging (Hosting "dev" channel + staging Worker)
 #   push → feature/fix/hotfix → 🔍 preview channel (Hosting only, uses staging Worker)
-#   pull_request → main|develop → 🔍 preview channel + comment URL on the PR
+#   pull_request → main|dev → 🔍 preview channel + comment URL on the PR
 #
 # Production is the only target that auto-bumps the cache version.
 on:
   push:
     branches:
       - main
-      - develop
+      - dev
       - 'feature/**'
       - 'fix/**'
       - 'hotfix/**'
   pull_request:
-    branches: [main, develop]
+    branches: [main, dev]
   workflow_dispatch: {}
 
 # Each ref gets its own concurrency group — pushing twice to the same branch
@@ -53,10 +53,10 @@ jobs:
           if [ "${{ github.event_name }}" = "push" ] && [ "${{ github.ref }}" = "refs/heads/main" ]; then
             echo "kind=production" >> $GITHUB_OUTPUT
             echo "worker_url=https://trade-os.aviniazov7.workers.dev" >> $GITHUB_OUTPUT
-          elif [ "${{ github.event_name }}" = "push" ] && [ "${{ github.ref }}" = "refs/heads/develop" ]; then
+          elif [ "${{ github.event_name }}" = "push" ] && [ "${{ github.ref }}" = "refs/heads/dev" ]; then
             echo "kind=staging" >> $GITHUB_OUTPUT
             echo "worker_url=https://tradeos-alerts-staging.aviniazov7.workers.dev" >> $GITHUB_OUTPUT
-            echo "channel=develop" >> $GITHUB_OUTPUT
+            echo "channel=dev" >> $GITHUB_OUTPUT
           else
             # Feature branch push OR pull request — preview channel only.
             echo "kind=preview" >> $GITHUB_OUTPUT

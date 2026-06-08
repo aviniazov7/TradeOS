@@ -12,7 +12,7 @@ binding = "ALERTS_KV"
 id = "75931d3210024df0b6dd2938ee4656c1"
 
 # ─── Staging environment ────────────────────────────────────────────────
-# Deployed by the `develop` branch via GitHub Actions to
+# Deployed by the `dev` branch via GitHub Actions to
 # https://tradeos-alerts-staging.aviniazov7.workers.dev.
 #
 # - Shares the production KV namespace. Solo dev, low risk; full database

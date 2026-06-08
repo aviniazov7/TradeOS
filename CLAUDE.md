@@ -8,18 +8,18 @@ machine. Full product/architecture details are in `README.md`.
 Never push directly to `main`. Always work on a feature branch and open a PR.
 
 ```
-[feature/X] → PR → [develop] → ✅ tested in staging → PR → [main] → 🚀 prod
+[feature/X] → PR → [dev] → ✅ tested in staging → PR → [main] → 🚀 prod
 ```
 
 ### Branch convention
 
-- `main` — production. **No direct pushes.** Only reached via merge from `develop`
+- `main` — production. **No direct pushes.** Only reached via merge from `dev`
   (releases) or `hotfix/*` (emergency fixes).
-- `develop` — staging. Code is auto-deployed to the `develop` Firebase preview
+- `dev` — staging. Code is auto-deployed to the `dev` Firebase preview
   channel + the `tradeos-alerts-staging` Worker. **Merge here first**, validate
   in staging, then promote to `main`.
-- `feature/<short-name>` — new functionality. PR → `develop`.
-- `fix/<short-name>` — bug fix. PR → `develop` (or `main` if production-critical).
+- `feature/<short-name>` — new functionality. PR → `dev`.
+- `fix/<short-name>` — bug fix. PR → `dev` (or `main` if production-critical).
 - `hotfix/<short-name>` — production emergency. PR straight to `main`.
 
 ### Deploy automation (GitHub Actions, `.github/workflows/deploy.yml`)
@@ -27,9 +27,9 @@ Never push directly to `main`. Always work on a feature branch and open a PR.
 | Trigger | What happens |
 |---|---|
 | Push to `main` | Auto-bumps version → builds → deploys Hosting (live) + Worker (production) |
-| Push to `develop` | Builds → deploys Hosting (`develop` channel) + Worker (`--env staging`) |
+| Push to `dev` | Builds → deploys Hosting (`dev` channel) + Worker (`--env staging`) |
 | Push to `feature/*`, `fix/*`, `hotfix/*` | Builds → deploys Hosting preview channel (uses staging Worker) |
-| Pull request to `main` or `develop` | Same as feature push + posts the preview URL as a PR comment |
+| Pull request to `main` or `dev` | Same as feature push + posts the preview URL as a PR comment |
 
 Preview channels live 7 days then auto-delete.
 
