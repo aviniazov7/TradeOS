@@ -2805,11 +2805,21 @@ const ALLOWED_ORIGINS = [
   'https://tradeos-91a58.web.app',
   'https://tradeos-91a58.firebaseapp.com',
   'https://trade-os.aviniazov7.workers.dev',
+  'https://tradeos-alerts-staging.aviniazov7.workers.dev',
 ];
+// Firebase Hosting preview channels have URLs like
+// https://tradeos-91a58--CHANNEL-HASH.web.app and are created automatically
+// by GitHub Actions for every develop/feature branch and PR — they need to be
+// able to call the Worker so we can test changes end-to-end before merging.
+const PREVIEW_ORIGIN_RE = /^https:\/\/tradeos-91a58--[a-z0-9-]+\.web\.app$/i;
+function isAllowedOrigin(origin) {
+  if (!origin) return false;
+  return ALLOWED_ORIGINS.includes(origin) || PREVIEW_ORIGIN_RE.test(origin);
+}
 
 async function handleRequest(request, env) {
   const origin = request.headers.get('Origin') || '';
-  const allowedOrigin = ALLOWED_ORIGINS.includes(origin) ? origin : ALLOWED_ORIGINS[0];
+  const allowedOrigin = isAllowedOrigin(origin) ? origin : ALLOWED_ORIGINS[0];
   const cors = {
     'Access-Control-Allow-Origin': allowedOrigin,
     'Access-Control-Allow-Methods': 'GET, POST, DELETE, OPTIONS',

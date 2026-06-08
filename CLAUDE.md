@@ -3,62 +3,99 @@
 Operational rules for any AI agent (Claude) working in this repo, on any
 machine. Full product/architecture details are in `README.md`.
 
-## Release workflow — MANDATORY on every code change
+## Git workflow — MANDATORY
 
-The current version is the source of truth **in the code itself** — read it,
-then increment. Bump BOTH of these together, in the same commit as the change:
+Never push directly to `main`. Always work on a feature branch and open a PR.
 
-| File | What to change |
+```
+[feature/X] → PR → [develop] → ✅ tested in staging → PR → [main] → 🚀 prod
+```
+
+### Branch convention
+
+- `main` — production. **No direct pushes.** Only reached via merge from `develop`
+  (releases) or `hotfix/*` (emergency fixes).
+- `develop` — staging. Code is auto-deployed to the `develop` Firebase preview
+  channel + the `tradeos-alerts-staging` Worker. **Merge here first**, validate
+  in staging, then promote to `main`.
+- `feature/<short-name>` — new functionality. PR → `develop`.
+- `fix/<short-name>` — bug fix. PR → `develop` (or `main` if production-critical).
+- `hotfix/<short-name>` — production emergency. PR straight to `main`.
+
+### Deploy automation (GitHub Actions, `.github/workflows/deploy.yml`)
+
+| Trigger | What happens |
 |---|---|
-| `src/utils/constants.js` | `APP_VERSION` — read current value, bump patch (e.g. `1.0.1` → `1.0.2`) |
-| `public/sw.js` | `CACHE_NAME` — read current `tradeos-vN`, increment N (e.g. `tradeos-v13` → `tradeos-v14`) |
+| Push to `main` | Auto-bumps version → builds → deploys Hosting (live) + Worker (production) |
+| Push to `develop` | Builds → deploys Hosting (`develop` channel) + Worker (`--env staging`) |
+| Push to `feature/*`, `fix/*`, `hotfix/*` | Builds → deploys Hosting preview channel (uses staging Worker) |
+| Pull request to `main` or `develop` | Same as feature push + posts the preview URL as a PR comment |
 
-Why: `CACHE_NAME` forces the service worker to register a new version, which
-triggers the in-app "new version available" prompt
-(`src/components/shared/UpdatePrompt.jsx` + `src/services/swUpdate.js`). Users
-are never force-reloaded — the SW intentionally does not `skipWaiting()` on
-install.
+Preview channels live 7 days then auto-delete.
 
-Skip the version bump ONLY for docs-only changes (README/CLAUDE.md) that do
-not ship to users.
+### Identity
 
-## Git
+- Author: `Avraham Niazov <aviniazov7@icloud.com>`
+- **No third-party trailers** (no Co-authored-by, no "Generated with…") in commits.
 
-- Work on `main` unless told otherwise.
-- Commit + `git push origin main`.
-- Author identity: `Avraham Niazov <aviniazov7@icloud.com>`. No third-party
-  trailers/co-author lines in commit messages.
+## Release workflow (version bump)
+
+`APP_VERSION` and `CACHE_NAME` are **auto-bumped by the workflow** when pushing
+to `main`. You don't need to bump manually anymore. The bump exists to force
+the service worker to register a new version and trigger the in-app
+"גרסה חדשה זמינה" prompt (`UpdatePrompt.jsx` + `swUpdate.js`).
+
+Only bump manually if you have a strong reason — e.g. the auto-bump script
+broke and you need to ship a release.
 
 ## Build & lint
 
-- `npm run build` must pass.
+- `npm run build` must pass on every PR.
 - The repo has ~160 pre-existing lint errors (duplicate keys in coin lists,
-  `worker/index.js`, and `motion`/JSX-uses-vars false positives). These are
+  `worker/index.js`, motion/JSX-uses-vars false positives). These are
   NOT deploy blockers. Just don't add NEW lint errors in files you change.
 - Keep all Firebase SDK access inside `src/services/`. Hooks/components must
   use service functions, never import `firebase/*` directly.
 
 ## Deploying
 
-The agent CANNOT deploy (no Firebase/Cloudflare credentials in sandboxes).
-After pushing, tell the owner to run:
+Deploys are **fully automated**. Push your branch, GitHub Actions deploys it.
+No manual `npm run deploy` needed for hosting or the Worker.
+
+The only thing that still needs manual deployment is **Firestore rules**:
 
 ```bash
-git pull origin main
-npm run deploy
+firebase deploy --only firestore:rules
 ```
 
-`npm run deploy` = build + `wrangler deploy` + `firebase deploy --only
-hosting,firestore:rules`. Firestore rule changes ship automatically.
+The CI Firebase service account lacks the `serviceusage.serviceUsageViewer`
+permission, so rules deploys 403. Run it manually whenever `firestore.rules`
+changes.
+
+## Environments — what's separated, what's shared
+
+- **Hosting:** fully separated. Production = `tradeos-91a58.web.app`. Each
+  branch/PR gets its own preview URL.
+- **Worker:** two deployments (`tradeos-alerts` production, `tradeos-alerts-staging`).
+  They run independent code but **share the same KV namespace**. Be careful
+  with destructive test operations in staging — they touch production data.
+- **Firestore:** **shared between production and staging.** No separation yet.
+  This is fine for solo dev / low data volume, but be aware: test writes from
+  staging modify real production data. Don't run destructive bulk operations.
+- **Cron triggers:** disabled in staging so admins don't receive duplicate
+  weekly digest / churn / expiry pushes.
 
 ## Admin panel
 
 `/admin` (sidebar "ניהול") is gated on the Firestore profile field
-`role: "admin"` and is read-only. First admin must be set manually once in the
-Firestore console (`users/{uid}.role = "admin"`) — rules require `role` to read
-other users, so it's a chicken-and-egg bootstrap.
+`role: "admin"` and is read-only by default. First admin must be set manually
+once in the Firestore console (`users/{uid}.role = "admin"`) — rules require
+`role` to read other users, so it's a chicken-and-egg bootstrap.
 
 ## Rollback
 
 Bad deploy → Firebase Hosting → Release history → Rollback (seconds, no
 redeploy). End users cannot downgrade themselves.
+
+For the Worker: `wrangler rollback` from the `worker/` directory, or use the
+Cloudflare dashboard's Deployments tab.

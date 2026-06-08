@@ -1,27 +1,38 @@
 name: Deploy TradeOS
 
-# Push to main → build → deploy. Replaces the manual `npm run deploy`.
-# After deploy, the new CACHE_NAME makes the service worker register a new
-# version and the in-app "גרסה חדשה זמינה" banner appears for users.
+# Three-stage deploy pipeline:
+#
+#   push → main             → 🚀 production (Hosting live + production Worker)
+#   push → develop          → 🧪 staging (Hosting "develop" channel + staging Worker)
+#   push → feature/fix/hotfix → 🔍 preview channel (Hosting only, uses staging Worker)
+#   pull_request → main|develop → 🔍 preview channel + comment URL on the PR
+#
+# Production is the only target that auto-bumps the cache version.
 on:
   push:
-    branches: [main]
+    branches:
+      - main
+      - develop
+      - 'feature/**'
+      - 'fix/**'
+      - 'hotfix/**'
+  pull_request:
+    branches: [main, develop]
   workflow_dispatch: {}
 
-# Never run two deploys at once; a newer push cancels an in-flight one.
+# Each ref gets its own concurrency group — pushing twice to the same branch
+# cancels the in-flight run, but different branches deploy in parallel.
 concurrency:
-  group: deploy-main
+  group: deploy-${{ github.ref }}
   cancel-in-progress: true
 
-# Needed so the auto-version-bump step can push back to main.
 permissions:
-  contents: write
+  contents: write       # for the auto-version-bump push back to main
+  pull-requests: write  # for the preview-URL comment on PRs
 
 jobs:
   deploy:
     runs-on: ubuntu-latest
-    # secrets.* can't be used inside an `if:` expression, so expose the
-    # Cloudflare token as an env var here and gate the Worker step on env.*
     env:
       CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
     steps:
@@ -34,10 +45,36 @@ jobs:
 
       - run: npm ci
 
-      # Auto-bump APP_VERSION + CACHE_NAME so users always get the update
-      # banner without anyone remembering to do it manually. The "[skip ci]"
-      # commit message stops this push from re-triggering the workflow.
-      - name: Bump version
+      # Classify the run once so the rest of the workflow is just simple
+      # boolean checks against these outputs.
+      - name: Classify target
+        id: target
+        run: |
+          if [ "${{ github.event_name }}" = "push" ] && [ "${{ github.ref }}" = "refs/heads/main" ]; then
+            echo "kind=production" >> $GITHUB_OUTPUT
+            echo "worker_url=https://trade-os.aviniazov7.workers.dev" >> $GITHUB_OUTPUT
+          elif [ "${{ github.event_name }}" = "push" ] && [ "${{ github.ref }}" = "refs/heads/develop" ]; then
+            echo "kind=staging" >> $GITHUB_OUTPUT
+            echo "worker_url=https://tradeos-alerts-staging.aviniazov7.workers.dev" >> $GITHUB_OUTPUT
+            echo "channel=develop" >> $GITHUB_OUTPUT
+          else
+            # Feature branch push OR pull request — preview channel only.
+            echo "kind=preview" >> $GITHUB_OUTPUT
+            echo "worker_url=https://tradeos-alerts-staging.aviniazov7.workers.dev" >> $GITHUB_OUTPUT
+            if [ "${{ github.event_name }}" = "pull_request" ]; then
+              CHANNEL="pr-${{ github.event.number }}"
+            else
+              CHANNEL="${{ github.ref_name }}"
+            fi
+            CHANNEL=$(echo "$CHANNEL" | tr '/' '-' | tr -cd '[:alnum:]-' | cut -c1-30)
+            echo "channel=$CHANNEL" >> $GITHUB_OUTPUT
+          fi
+
+      # Production gets a cache-busting version bump so the in-app
+      # "new version available" banner triggers. Staging/preview reuse the
+      # current version — they're for testing, not for shipping to users.
+      - name: Bump version (production only)
+        if: steps.target.outputs.kind == 'production'
         run: |
           node scripts/bump-version.mjs
           git config user.name 'Avraham Niazov'
@@ -46,40 +83,58 @@ jobs:
           git commit -m 'chore: bump version [skip ci]'
           git push origin HEAD:main
 
-      # Firebase web config is hardcoded as a fallback in src/services/firebase.js,
-      # so no VITE_FIREBASE_* env vars are needed here for the build to work.
+      # Build with the worker URL appropriate for this target so the client
+      # bundle talks to the right backend.
       - name: Build
+        env:
+          VITE_WORKER_URL: ${{ steps.target.outputs.worker_url }}
         run: npm run build
 
       - name: Write Firebase service account
         run: echo '${{ secrets.FIREBASE_SERVICE_ACCOUNT }}' > "$RUNNER_TEMP/firebase-sa.json"
 
-      # Hosting only. The firebase-adminsdk service account can deploy Hosting
-      # but lacks Service Usage permission to deploy firestore:rules (403 on the
-      # API-enablement check). Firestore rules change rarely — deploy them
-      # manually with `firebase deploy --only firestore:rules` when they change,
-      # or grant the SA roles/serviceusage.serviceUsageViewer to re-enable here.
-      - name: Deploy Hosting
+      # ─── Hosting ─────────────────────────────────────────────────────────
+
+      - name: Deploy Hosting (production)
+        if: steps.target.outputs.kind == 'production'
         env:
           GOOGLE_APPLICATION_CREDENTIALS: ${{ runner.temp }}/firebase-sa.json
         run: npx firebase-tools deploy --only hosting --project tradeos-91a58 --non-interactive
 
-      # Cloudflare Worker (Telegram bot + exchange sync proxy + AI proxy).
-      # Only runs if the CLOUDFLARE_API_TOKEN secret is set — otherwise skipped,
-      # and the Worker keeps running its previously-deployed version. The
-      # wrangler.toml lives in worker/, so the step cd's into that directory.
-      - name: Deploy Cloudflare Worker
-        if: ${{ env.CLOUDFLARE_API_TOKEN != '' }}
+      - name: Deploy Hosting (preview channel)
+        if: steps.target.outputs.kind != 'production'
+        id: preview
+        env:
+          GOOGLE_APPLICATION_CREDENTIALS: ${{ runner.temp }}/firebase-sa.json
+          CHANNEL: ${{ steps.target.outputs.channel }}
+        run: |
+          echo "Deploying to preview channel: $CHANNEL"
+          npx firebase-tools hosting:channel:deploy "$CHANNEL" \
+            --project tradeos-91a58 --expires 7d --non-interactive 2>&1 | tee deploy.log
+          # Pluck the preview URL out of the CLI output for the PR comment.
+          URL=$(grep -oE 'https://tradeos-91a58--[^[:space:]]+web\.app' deploy.log | head -1)
+          echo "url=$URL" >> $GITHUB_OUTPUT
+
+      # ─── Cloudflare Worker ───────────────────────────────────────────────
+
+      - name: Deploy Worker (production)
+        if: steps.target.outputs.kind == 'production' && env.CLOUDFLARE_API_TOKEN != ''
         working-directory: worker
         run: npx wrangler deploy
 
-      # Ensure the Web Push signing key (VAPID private JWK) is present on the
-      # Worker. Secrets survive deploys, but setting it here makes it
-      # reproducible and self-healing. No-op if the GitHub secret isn't set.
+      - name: Deploy Worker (staging)
+        if: steps.target.outputs.kind == 'staging' && env.CLOUDFLARE_API_TOKEN != ''
+        working-directory: worker
+        run: npx wrangler deploy --env staging
+
+      # Push all secrets to whichever Worker just deployed. Skipped for
+      # preview-only runs (no Worker deploy happens then; preview reuses the
+      # last staging deploy).
       - name: Set Worker secrets
-        if: ${{ env.CLOUDFLARE_API_TOKEN != '' }}
+        if: (steps.target.outputs.kind == 'production' || steps.target.outputs.kind == 'staging') && env.CLOUDFLARE_API_TOKEN != ''
         working-directory: worker
         env:
+          ENV_FLAG: ${{ steps.target.outputs.kind == 'staging' && '--env staging' || '' }}
           VAPID_JWK: ${{ secrets.VAPID_JWK }}
           MORALIS_API_KEY: ${{ secrets.MORALIS_API_KEY }}
           GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
@@ -89,39 +144,58 @@ jobs:
           MAIL_FROM_NAME: ${{ secrets.MAIL_FROM_NAME }}
           MAIL_TO_ADMIN_OVERRIDE: ${{ secrets.MAIL_TO_ADMIN_OVERRIDE }}
         run: |
-          if [ -n "$VAPID_JWK" ]; then
-            printf '%s' "$VAPID_JWK" | npx wrangler secret put VAPID_JWK
-          else
-            echo "VAPID_JWK secret not set — skipping."
-          fi
-          if [ -n "$MORALIS_API_KEY" ]; then
-            printf '%s' "$MORALIS_API_KEY" | npx wrangler secret put MORALIS_API_KEY
-          else
-            echo "MORALIS_API_KEY secret not set — skipping."
-          fi
-          if [ -n "$GEMINI_API_KEY" ]; then
-            printf '%s' "$GEMINI_API_KEY" | npx wrangler secret put GEMINI_API_KEY
-          else
-            echo "GEMINI_API_KEY secret not set — skipping."
-          fi
-          if [ -n "$FIREBASE_SERVICE_ACCOUNT" ]; then
-            printf '%s' "$FIREBASE_SERVICE_ACCOUNT" | npx wrangler secret put FIREBASE_SERVICE_ACCOUNT
-          else
-            echo "FIREBASE_SERVICE_ACCOUNT secret not set — skipping."
-          fi
-          if [ -n "$RESEND_API_KEY" ]; then
-            printf '%s' "$RESEND_API_KEY" | npx wrangler secret put RESEND_API_KEY
-          else
-            echo "RESEND_API_KEY secret not set — skipping (emails will be silently no-op)."
-          fi
-          if [ -n "$MAIL_FROM_ADDRESS" ]; then
-            printf '%s' "$MAIL_FROM_ADDRESS" | npx wrangler secret put MAIL_FROM_ADDRESS
-          else
-            echo "MAIL_FROM_ADDRESS secret not set — falling back to onboarding@resend.dev (sends only to verified email)."
-          fi
-          if [ -n "$MAIL_FROM_NAME" ]; then
-            printf '%s' "$MAIL_FROM_NAME" | npx wrangler secret put MAIL_FROM_NAME
-          fi
-          if [ -n "$MAIL_TO_ADMIN_OVERRIDE" ]; then
-            printf '%s' "$MAIL_TO_ADMIN_OVERRIDE" | npx wrangler secret put MAIL_TO_ADMIN_OVERRIDE
-          fi
+          put_secret() {
+            local name="$1"
+            local value="${!name}"
+            if [ -n "$value" ]; then
+              printf '%s' "$value" | npx wrangler secret put "$name" $ENV_FLAG
+            else
+              echo "$name not set — skipping."
+            fi
+          }
+          put_secret VAPID_JWK
+          put_secret MORALIS_API_KEY
+          put_secret GEMINI_API_KEY
+          put_secret FIREBASE_SERVICE_ACCOUNT
+          put_secret RESEND_API_KEY
+          put_secret MAIL_FROM_ADDRESS
+          put_secret MAIL_FROM_NAME
+          put_secret MAIL_TO_ADMIN_OVERRIDE
+
+      # ─── PR Comment with preview URL ─────────────────────────────────────
+      # On every PR push, drop a comment with the preview link so the author
+      # can click and test without hunting through the Actions logs.
+      - name: Comment PR with preview URL
+        if: github.event_name == 'pull_request' && steps.preview.outputs.url != ''
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const url = `${{ steps.preview.outputs.url }}`;
+            const marker = '<!-- tradeos-preview-comment -->';
+            const body = `${marker}
+            🚀 **Preview ready**
+
+            ${url}
+
+            _Channel expires in 7 days. Pushing more commits to this PR updates the preview._`;
+            const { data: comments } = await github.rest.issues.listComments({
+              issue_number: context.issue.number,
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+            });
+            const existing = comments.find(c => c.body && c.body.includes(marker));
+            if (existing) {
+              await github.rest.issues.updateComment({
+                comment_id: existing.id,
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                body,
+              });
+            } else {
+              await github.rest.issues.createComment({
+                issue_number: context.issue.number,
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                body,
+              });
+            }

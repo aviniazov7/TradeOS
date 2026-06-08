@@ -10,3 +10,23 @@ crons = ["*/10 * * * *"]
 [[kv_namespaces]]
 binding = "ALERTS_KV"
 id = "75931d3210024df0b6dd2938ee4656c1"
+
+# ─── Staging environment ────────────────────────────────────────────────
+# Deployed by the `develop` branch via GitHub Actions to
+# https://tradeos-alerts-staging.aviniazov7.workers.dev.
+#
+# - Shares the production KV namespace. Solo dev, low risk; full database
+#   separation is future work. Be careful with destructive test operations.
+# - Cron is disabled here so the weekly digest / churn / expiry pushes only
+#   fire from production and admins don't receive duplicates.
+# - Secrets must be set with `wrangler secret put NAME --env staging`. The
+#   deploy workflow does this automatically from GitHub Secrets.
+[env.staging]
+name = "tradeos-alerts-staging"
+
+[[env.staging.kv_namespaces]]
+binding = "ALERTS_KV"
+id = "75931d3210024df0b6dd2938ee4656c1"
+
+[env.staging.triggers]
+crons = []
