@@ -13,6 +13,11 @@ import {
   Sun,
   Moon,
   Trophy,
+  Crown,
+  ShieldCheck,
+  Clock,
+  ArrowLeft,
+  Check,
 } from 'lucide-react';
 import toast from 'react-hot-toast';
 import { getUserProfile, setUserProfile, deleteLeaderboardEntry } from '../../services/firestoreService';
@@ -29,7 +34,7 @@ import ContactDeveloper from './ContactDeveloper';
 const APP_URL = 'https://tradeos-91a58.web.app';
 
 export default function ProfilePage() {
-  const { user, logout, changePassword, resetPassword, deleteAccount, isEmailUser } = useAuth();
+  const { user, profile, isAdmin, isPremium, logout, changePassword, resetPassword, deleteAccount, isEmailUser } = useAuth();
   const { toggleTheme, isDark } = useTheme();
   const navigate = useNavigate();
 
@@ -189,9 +194,23 @@ export default function ProfilePage() {
         </p>
       </div>
 
+      {/* Plan / Premium status — shows different states (admin, lifetime,
+          expiring soon, normal premium, free). Brings the upgrade/renew CTA
+          out of the sidebar and into the user's main settings hub. */}
+      <PlanCard
+        profile={profile}
+        isAdmin={isAdmin}
+        isPremium={isPremium}
+        onUpgrade={() => navigate('/premium')}
+      />
+
       {/* Actions */}
       <div className="bg-bg-secondary border border-border-primary rounded-2xl overflow-hidden mb-4">
-        {/* Change Password - email users only */}
+        {/* Password management — one entry point, with a 'forgot' link inside
+            the form. The old standalone 'Reset via email' button used to live
+            below as a second row; folding it inside the form keeps the page
+            uncluttered while still covering the case where the user can't
+            recall their current password. */}
         {isEmailUser && (
           <div>
             <button onClick={() => setShowPasswordForm(!showPasswordForm)}
@@ -204,12 +223,16 @@ export default function ProfilePage() {
                 <div className="relative">
                   <input type={showPasswords ? 'text' : 'password'} value={currentPassword}
                     onChange={(e) => setCurrentPassword(e.target.value)}
-                    placeholder="סיסמה נוכחית" required dir="ltr" className={inputClass} />
+                    placeholder="סיסמה נוכחית" required
+                    dir={currentPassword ? 'ltr' : 'rtl'}
+                    className={`${inputClass} ${currentPassword ? 'text-left' : 'text-right'}`} />
                 </div>
                 <div className="relative">
                   <input type={showPasswords ? 'text' : 'password'} value={newPassword}
                     onChange={(e) => setNewPassword(e.target.value)}
-                    placeholder="סיסמה חדשה (לפחות 6 תווים)" required dir="ltr" className={inputClass} />
+                    placeholder="סיסמה חדשה — 8+ תווים, אות גדולה ומספר" required
+                    dir={newPassword ? 'ltr' : 'rtl'}
+                    className={`${inputClass} ${newPassword ? 'text-left' : 'text-right'}`} />
                 </div>
                 <button type="button" onClick={() => setShowPasswords(!showPasswords)}
                   className="flex items-center gap-1 text-xs text-text-muted hover:text-text-primary cursor-pointer">
@@ -226,23 +249,29 @@ export default function ProfilePage() {
                     {saving ? 'שומר...' : 'שנה סיסמה'}
                   </button>
                 </div>
+                {/* 'Forgot password' escape hatch — same Firebase reset email
+                    as the old standalone button, just one click further down
+                    the journey. Most users won't need it. */}
+                <div className="pt-2 mt-2 border-t border-border-primary/40">
+                  <button
+                    type="button"
+                    onClick={async () => {
+                      try {
+                        await resetPassword(user.email);
+                        toast.success('נשלח מייל לאיפוס סיסמה');
+                      } catch {
+                        toast.error('שגיאה בשליחת מייל');
+                      }
+                    }}
+                    className="flex items-center gap-1.5 text-xs text-text-muted hover:text-accent-primary cursor-pointer transition-colors"
+                  >
+                    <Mail className="w-3.5 h-3.5" />
+                    שכחת את הסיסמה? קבל קישור איפוס במייל
+                  </button>
+                </div>
               </form>
             )}
           </div>
-        )}
-
-        {/* Reset Password - email users only */}
-        {isEmailUser && (
-          <button onClick={async () => {
-            try {
-              await resetPassword(user.email);
-              toast.success('נשלח מייל לאיפוס סיסמה');
-            } catch { toast.error('שגיאה בשליחת מייל'); }
-          }}
-            className="w-full flex items-center gap-3 px-5 py-4 text-sm text-text-primary hover:bg-bg-tertiary transition-colors cursor-pointer border-b border-border-primary">
-            <Mail className="w-5 h-5 text-text-muted" />
-            איפוס סיסמה במייל
-          </button>
         )}
 
         {/* Theme Toggle */}
@@ -354,5 +383,136 @@ export default function ProfilePage() {
       />
       </div>
     </motion.div>
+  );
+}
+
+// ── Plan / Premium status card ─────────────────────────────────────────────
+// Shows the user's current plan state above the actions list. Four states:
+//   - admin              → cyan, no upgrade prompt
+//   - premium expiring   → amber+orange warning when ≤7 days left
+//   - premium normal     → amber with days left + expiry date
+//   - free               → blue, upgrade CTA + feature bullets
+const EXPIRY_WARN_DAYS = 7;
+const PREMIUM_BULLETS = [
+  'יומנים ללא הגבלה',
+  'AI Coach לניתוח עסקאות',
+  'סנכרון בורסות אוטומטי',
+  'מעקב ארנקים על-שרשרת',
+];
+
+function PlanCard({ profile, isAdmin, isPremium, onUpgrade }) {
+  const planExpires = profile?.planExpires || null;
+  const daysLeft = planExpires
+    ? Math.ceil((new Date(planExpires).getTime() - Date.now()) / 86400000)
+    : null;
+  const isExpiringSoon = isPremium && !isAdmin && daysLeft != null && daysLeft >= 0 && daysLeft <= EXPIRY_WARN_DAYS;
+  const expiryStr = planExpires
+    ? new Date(planExpires).toLocaleDateString('he-IL', { day: '2-digit', month: '2-digit', year: 'numeric' })
+    : null;
+
+  // 1. Admin → short, neutral, cyan
+  if (isAdmin) {
+    return (
+      <div className="bg-bg-secondary border border-accent-primary/30 rounded-2xl px-5 py-4 mb-4 flex items-center gap-3">
+        <div className="w-10 h-10 rounded-xl bg-accent-primary/15 flex items-center justify-center text-accent-primary">
+          <ShieldCheck className="w-5 h-5" />
+        </div>
+        <div className="flex-1 min-w-0">
+          <div className="text-sm font-bold text-text-primary">חשבון אדמין</div>
+          <div className="text-xs text-text-muted">גישה מלאה לכל הפיצ׳רים</div>
+        </div>
+      </div>
+    );
+  }
+
+  // 2. Premium — expiring soon (≤7 days) → orange-amber warning
+  if (isExpiringSoon) {
+    const daysText = daysLeft === 0 ? 'היום' : daysLeft === 1 ? 'מחר' : `עוד ${daysLeft} ימים`;
+    return (
+      <div className="relative overflow-hidden bg-gradient-to-br from-amber-500/15 via-bg-secondary to-bg-secondary border border-amber-500/40 rounded-2xl px-5 py-4 mb-4">
+        <div className="flex items-start gap-3">
+          <div className="w-10 h-10 rounded-xl bg-amber-500/20 flex items-center justify-center text-amber-400 shrink-0">
+            <Clock className="w-5 h-5" />
+          </div>
+          <div className="flex-1 min-w-0">
+            <div className="text-sm font-bold text-amber-400">המנוי שלך נגמר {daysText}</div>
+            <div className="text-xs text-text-secondary mt-0.5">חדש עכשיו לפני שתאבד גישה לפיצ׳רים</div>
+            <button
+              onClick={onUpgrade}
+              className="mt-3 w-full inline-flex items-center justify-center gap-1.5 py-2.5 rounded-xl bg-amber-500 text-bg-primary text-sm font-bold hover:bg-amber-400 transition-colors cursor-pointer"
+            >
+              🔥 חדש עכשיו
+            </button>
+          </div>
+        </div>
+      </div>
+    );
+  }
+
+  // 3. Premium — normal (>7 days). Defensive: if for any reason there's no
+  //    expiry (legacy admin grants), the days/expiry/renew bits hide
+  //    themselves; we don't sell a lifetime plan so the empty case is rare.
+  if (isPremium) {
+    return (
+      <div className="relative overflow-hidden bg-gradient-to-br from-amber-500/12 via-bg-secondary to-bg-secondary border border-amber-500/30 rounded-2xl px-5 py-4 mb-4">
+        <div className="flex items-start gap-3">
+          <div className="w-10 h-10 rounded-xl bg-amber-500/20 flex items-center justify-center text-amber-400 shrink-0">
+            <Crown className="w-5 h-5" />
+          </div>
+          <div className="flex-1 min-w-0">
+            <div className="text-sm font-bold text-amber-400">Premium פעיל</div>
+            {daysLeft != null && (
+              <div className="text-xs text-text-secondary mt-1">
+                נשארו לך <span className="font-bold text-text-primary">{daysLeft} ימים</span>
+              </div>
+            )}
+            {expiryStr && (
+              <div className="text-[11px] text-text-muted mt-0.5">תוקף עד {expiryStr}</div>
+            )}
+            {planExpires && (
+              <button
+                onClick={onUpgrade}
+                className="mt-3 w-full inline-flex items-center justify-center gap-1.5 py-2 rounded-xl bg-amber-500/15 border border-amber-500/30 text-amber-400 text-sm font-semibold hover:bg-amber-500/25 transition-colors cursor-pointer"
+              >
+                חדש מנוי
+                <ArrowLeft className="w-3.5 h-3.5" />
+              </button>
+            )}
+          </div>
+        </div>
+      </div>
+    );
+  }
+
+  // 5. Free → blue, inviting, feature bullets + CTA
+  return (
+    <div className="relative overflow-hidden bg-gradient-to-br from-accent-primary/12 via-bg-secondary to-bg-secondary border border-accent-primary/30 rounded-2xl px-5 py-5 mb-4">
+      <div className="flex items-center gap-3 mb-3">
+        <div className="w-10 h-10 rounded-xl bg-accent-primary/20 flex items-center justify-center text-accent-primary shrink-0">
+          <Crown className="w-5 h-5" />
+        </div>
+        <div className="flex-1 min-w-0">
+          <div className="text-sm font-bold text-text-primary">פתח את כל הכוח של TradeOS</div>
+          <div className="text-xs text-text-muted mt-0.5">שדרג ל-Premium וקבל גישה מלאה</div>
+        </div>
+      </div>
+
+      <div className="grid grid-cols-1 gap-1.5 mb-4">
+        {PREMIUM_BULLETS.map((b) => (
+          <div key={b} className="flex items-center gap-2 text-xs text-text-secondary">
+            <Check className="w-3.5 h-3.5 text-profit shrink-0" />
+            <span>{b}</span>
+          </div>
+        ))}
+      </div>
+
+      <button
+        onClick={onUpgrade}
+        className="w-full inline-flex items-center justify-center gap-1.5 py-2.5 rounded-xl bg-accent-primary text-bg-primary text-sm font-bold hover:bg-accent-hover transition-colors cursor-pointer"
+      >
+        שדרג ל-Premium
+        <ArrowLeft className="w-3.5 h-3.5" />
+      </button>
+    </div>
   );
 }
