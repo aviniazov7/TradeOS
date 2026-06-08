@@ -191,7 +191,11 @@ export default function ProfilePage() {
 
       {/* Actions */}
       <div className="bg-bg-secondary border border-border-primary rounded-2xl overflow-hidden mb-4">
-        {/* Change Password - email users only */}
+        {/* Password management — one entry point, with a 'forgot' link inside
+            the form. The old standalone 'Reset via email' button used to live
+            below as a second row; folding it inside the form keeps the page
+            uncluttered while still covering the case where the user can't
+            recall their current password. */}
         {isEmailUser && (
           <div>
             <button onClick={() => setShowPasswordForm(!showPasswordForm)}
@@ -209,7 +213,7 @@ export default function ProfilePage() {
                 <div className="relative">
                   <input type={showPasswords ? 'text' : 'password'} value={newPassword}
                     onChange={(e) => setNewPassword(e.target.value)}
-                    placeholder="סיסמה חדשה (לפחות 6 תווים)" required dir="ltr" className={inputClass} />
+                    placeholder="סיסמה חדשה — 8+ תווים, אות גדולה ומספר" required dir="ltr" className={inputClass} />
                 </div>
                 <button type="button" onClick={() => setShowPasswords(!showPasswords)}
                   className="flex items-center gap-1 text-xs text-text-muted hover:text-text-primary cursor-pointer">
@@ -226,23 +230,29 @@ export default function ProfilePage() {
                     {saving ? 'שומר...' : 'שנה סיסמה'}
                   </button>
                 </div>
+                {/* 'Forgot password' escape hatch — same Firebase reset email
+                    as the old standalone button, just one click further down
+                    the journey. Most users won't need it. */}
+                <div className="pt-2 mt-2 border-t border-border-primary/40">
+                  <button
+                    type="button"
+                    onClick={async () => {
+                      try {
+                        await resetPassword(user.email);
+                        toast.success('נשלח מייל לאיפוס סיסמה');
+                      } catch {
+                        toast.error('שגיאה בשליחת מייל');
+                      }
+                    }}
+                    className="flex items-center gap-1.5 text-xs text-text-muted hover:text-accent-primary cursor-pointer transition-colors"
+                  >
+                    <Mail className="w-3.5 h-3.5" />
+                    שכחת את הסיסמה? קבל קישור איפוס במייל
+                  </button>
+                </div>
               </form>
             )}
           </div>
-        )}
-
-        {/* Reset Password - email users only */}
-        {isEmailUser && (
-          <button onClick={async () => {
-            try {
-              await resetPassword(user.email);
-              toast.success('נשלח מייל לאיפוס סיסמה');
-            } catch { toast.error('שגיאה בשליחת מייל'); }
-          }}
-            className="w-full flex items-center gap-3 px-5 py-4 text-sm text-text-primary hover:bg-bg-tertiary transition-colors cursor-pointer border-b border-border-primary">
-            <Mail className="w-5 h-5 text-text-muted" />
-            איפוס סיסמה במייל
-          </button>
         )}
 
         {/* Theme Toggle */}
