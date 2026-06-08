@@ -3,6 +3,9 @@
 Operational rules for any AI agent (Claude) working in this repo, on any
 machine. Full product/architecture details are in `README.md`.
 
+<!-- This file documents the development workflow. Edits should land on
+     develop first, then promote to main once verified in the preview channel. -->
+
 ## Git workflow — MANDATORY
 
 Never push directly to `main`. Always work on a feature branch and open a PR.
