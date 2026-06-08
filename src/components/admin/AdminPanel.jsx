@@ -670,7 +670,6 @@ export default function AdminPanel() {
                   { d: 90, label: '3 חודשים' },
                   { d: 180, label: '6 חודשים' },
                   { d: 365, label: 'שנה' },
-                  { d: Infinity, label: 'ללא הגבלה' },
                 ].map((opt) => (
                   <button
                     key={String(opt.d)}
@@ -1161,7 +1160,6 @@ function UserDetailModal({ user, onClose, onUserChanged, onMetaChanged }) {
                 { d: 90, label: '3 חודשים' },
                 { d: 180, label: '6 חודשים' },
                 { d: 365, label: 'שנה' },
-                { d: Infinity, label: 'ללא הגבלה' },
               ].map((opt) => (
                 <button
                   key={String(opt.d)}
