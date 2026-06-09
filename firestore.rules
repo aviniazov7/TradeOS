@@ -68,8 +68,15 @@ service cloud.firestore {
         allow write: if request.auth != null && request.auth.uid == userId;
       }
       match /settings/{settingId} {
-        allow read: if request.auth != null && (request.auth.uid == userId || isAdmin());
-        allow write: if request.auth != null && request.auth.uid == userId;
+        // Owner-only — admins must NOT be able to read this subcollection.
+        // It holds exchange API keys/secrets (settings/exchanges) in
+        // plaintext; granting isAdmin() read here would expose every user's
+        // exchange credentials (potentially trade/withdraw-capable) to any
+        // admin account, so a single admin compromise would leak them all.
+        // The admin panel reads only the `settings` MAP field on the root
+        // users/{uid} doc (baseCurrency / defaultLeverage / …), never this
+        // subcollection, so owner-only read does not break the panel.
+        allow read, write: if request.auth != null && request.auth.uid == userId;
       }
       match /journals/{journalId} {
         allow read: if request.auth != null && (request.auth.uid == userId || isAdmin());
