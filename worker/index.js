@@ -1824,6 +1824,19 @@ async function handleTextMessage(env, chatId, text) {
 
 // ==================== Webhook Handler ====================
 
+// Bot-usage record for the admin panel: { total, lastUsed, lastCmd }.
+// Read-modify-write per interaction is fine at bot volume; failures are
+// swallowed by callers so stats can never break command handling.
+async function bumpTgUsage(env, chatId, cmd) {
+  const key = `tgusage:${chatId}`;
+  const cur = (await env.ALERTS_KV.get(key, 'json')) || { total: 0 };
+  await env.ALERTS_KV.put(key, JSON.stringify({
+    total: (cur.total || 0) + 1,
+    lastUsed: Date.now(),
+    lastCmd: cmd,
+  }));
+}
+
 async function handleWebhook(request, env) {
   // Defense in depth: if the owner has configured TG_WEBHOOK_SECRET, require
   // Telegram's secret-token header to match. When the secret is NOT set, skip
@@ -1836,7 +1849,12 @@ async function handleWebhook(request, env) {
   }
   try {
     const update = await request.json();
-    if (update.callback_query) { await handleCallback(env, update.callback_query); return new Response('OK'); }
+    if (update.callback_query) {
+      const cbChatId = update.callback_query.message?.chat?.id;
+      if (cbChatId) bumpTgUsage(env, cbChatId, 'button').catch(() => {});
+      await handleCallback(env, update.callback_query);
+      return new Response('OK');
+    }
     const message = update.message;
     if (!message) return new Response('OK');
     const chatId = message.chat.id;
@@ -1849,6 +1867,11 @@ async function handleWebhook(request, env) {
       const uk = `tgusername:${chatId}`;
       if ((await env.ALERTS_KV.get(uk)) !== username) await env.ALERTS_KV.put(uk, username);
     }
+
+    // Lightweight bot-usage stats for the admin panel: total interactions,
+    // last-used timestamp and last command. One KV read+write per message —
+    // bot volume is low, so this is well within the free-tier write budget.
+    bumpTgUsage(env, chatId, text.startsWith('/') ? text.split(' ')[0] : 'text').catch(() => {});
 
     if (text.startsWith('/start')) await handleStart(env, chatId, text, username);
     else if (!(await requireAuth(env, chatId))) { /* silent */ }
@@ -3244,6 +3267,37 @@ async function handleRequest(request, env) {
       events.push(v);
     }
     return new Response(JSON.stringify({ ok: true, events }), { headers: { ...cors, 'Content-Type': 'application/json' } });
+  }
+
+  // Admin-only: a user's Telegram bot link status + usage, for the admin
+  // panel's user detail view. Reads only KV (uid↔chat mapping, username,
+  // usage counters, alert/watchlist counts) — never the user's Firestore
+  // settings subcollection, which is owner-only by design.
+  if (request.method === 'GET' && path.startsWith('/admin/telegram/')) {
+    const token = (request.headers.get('Authorization') || '').replace('Bearer ', '');
+    const adminUid = await verifyAdminFromToken(token);
+    if (!adminUid) return new Response(JSON.stringify({ error: 'forbidden' }), { status: 403, headers: { ...cors, 'Content-Type': 'application/json' } });
+    const targetUid = path.slice('/admin/telegram/'.length);
+    if (!targetUid) return new Response(JSON.stringify({ error: 'missing uid' }), { status: 400, headers: { ...cors, 'Content-Type': 'application/json' } });
+
+    const chatId = await env.ALERTS_KV.get(`uid:${targetUid}`);
+    if (!chatId) {
+      return new Response(JSON.stringify({ ok: true, connected: false }), { headers: { ...cors, 'Content-Type': 'application/json' } });
+    }
+    const [username, usage, alertsList, watchlistRaw] = await Promise.all([
+      env.ALERTS_KV.get(`tgusername:${chatId}`),
+      env.ALERTS_KV.get(`tgusage:${chatId}`, 'json'),
+      env.ALERTS_KV.list({ prefix: `alerts:${chatId}:` }),
+      env.ALERTS_KV.get(`watchlist:${chatId}`, 'json'),
+    ]);
+    return new Response(JSON.stringify({
+      ok: true,
+      connected: true,
+      username: username || null,
+      usage: usage || null, // { total, lastUsed, lastCmd } — null until first interaction after rollout
+      alertsCount: alertsList.keys.length,
+      watchlistCount: Array.isArray(watchlistRaw) ? watchlistRaw.length : null,
+    }), { headers: { ...cors, 'Content-Type': 'application/json' } });
   }
 
   // Admin-only: list all coupon codes.
