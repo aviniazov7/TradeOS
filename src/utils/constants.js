@@ -79,6 +79,41 @@ export const COINS = [
 
 export const PAIRS = COINS.map((c) => `${c.symbol}USDT`);
 
+// ─── CME Futures Contracts (epic #32) ─────────────────────────────
+// pointValue is the dollar value of ONE full index/price point per contract —
+// it drives dollar P&L: (exit − entry) × pointValue × contracts. tickSize is
+// the minimum price increment (one tick = tickSize × pointValue dollars).
+// Source: CME contract specs. Keep in sync with docs/specs/futures-contracts.md.
+export const FUTURES_CONTRACTS = [
+  // Equity indices
+  { symbol: 'ES',  name: 'E-mini S&P 500',        exchange: 'CME',   pointValue: 50,    tickSize: 0.25,  currency: 'USD' },
+  { symbol: 'MES', name: 'Micro E-mini S&P 500',  exchange: 'CME',   pointValue: 5,     tickSize: 0.25,  currency: 'USD' },
+  { symbol: 'NQ',  name: 'E-mini Nasdaq-100',     exchange: 'CME',   pointValue: 20,    tickSize: 0.25,  currency: 'USD' },
+  { symbol: 'MNQ', name: 'Micro E-mini Nasdaq',   exchange: 'CME',   pointValue: 2,     tickSize: 0.25,  currency: 'USD' },
+  { symbol: 'YM',  name: 'E-mini Dow',            exchange: 'CBOT',  pointValue: 5,     tickSize: 1,     currency: 'USD' },
+  { symbol: 'MYM', name: 'Micro E-mini Dow',      exchange: 'CBOT',  pointValue: 0.5,   tickSize: 1,     currency: 'USD' },
+  { symbol: 'RTY', name: 'E-mini Russell 2000',   exchange: 'CME',   pointValue: 50,    tickSize: 0.1,   currency: 'USD' },
+  { symbol: 'M2K', name: 'Micro E-mini Russell',  exchange: 'CME',   pointValue: 5,     tickSize: 0.1,   currency: 'USD' },
+  // Energy
+  { symbol: 'CL',  name: 'Crude Oil WTI',         exchange: 'NYMEX', pointValue: 1000,  tickSize: 0.01,  currency: 'USD' },
+  { symbol: 'MCL', name: 'Micro Crude Oil',       exchange: 'NYMEX', pointValue: 100,   tickSize: 0.01,  currency: 'USD' },
+  { symbol: 'NG',  name: 'Natural Gas',           exchange: 'NYMEX', pointValue: 10000, tickSize: 0.001, currency: 'USD' },
+  // Metals
+  { symbol: 'GC',  name: 'Gold',                  exchange: 'COMEX', pointValue: 100,   tickSize: 0.1,   currency: 'USD' },
+  { symbol: 'MGC', name: 'Micro Gold',            exchange: 'COMEX', pointValue: 10,    tickSize: 0.1,   currency: 'USD' },
+  { symbol: 'SI',  name: 'Silver',                exchange: 'COMEX', pointValue: 5000,  tickSize: 0.005, currency: 'USD' },
+  // Rates
+  { symbol: 'ZB',  name: '30-Year T-Bond',        exchange: 'CBOT',  pointValue: 1000,  tickSize: 0.03125, currency: 'USD' },
+  { symbol: 'ZN',  name: '10-Year T-Note',        exchange: 'CBOT',  pointValue: 1000,  tickSize: 0.015625, currency: 'USD' },
+];
+
+/** Contract spec lookup by symbol (case-insensitive). Returns null when unknown. */
+export function getContractSpec(symbol) {
+  if (!symbol) return null;
+  const s = String(symbol).toUpperCase();
+  return FUTURES_CONTRACTS.find((c) => c.symbol === s) || null;
+}
+
 export const STRATEGIES = [
   'Wyckoff',
   'Order Block',
