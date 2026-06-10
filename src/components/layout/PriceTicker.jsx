@@ -2,7 +2,7 @@ import { useWorkerQuotes } from '../../hooks/useWorkerQuotes';
 import { COINS, FUTURES_CONTRACTS } from '../../utils/constants';
 import { useAuth } from '../../contexts/AuthContext';
 import { formatPrice, formatPercent } from '../../utils/formatters';
-import { TrendingUp, TrendingDown, LineChart, Flame, Gem, Landmark } from 'lucide-react';
+import { TrendingUp, TrendingDown, Droplet, Flame, Gem, Landmark, CandlestickChart } from 'lucide-react';
 import CoinIcon from '../shared/CoinIcon';
 
 // Crypto symbols shown in the ticker (kept small to keep the API request light).
@@ -10,12 +10,16 @@ const TICKER_SYMBOLS = ['BTC','ETH','SOL','AVAX','BNB','ADA','XRP','DOGE','TRX',
 // Headline futures contracts for the ticker.
 const TICKER_FUTURES = ['ES','NQ','YM','RTY','CL','GC','SI','NG'];
 
-// A fitting icon per futures contract, grouped by what it tracks.
+// A fitting, colour-coded icon per futures contract so they read like distinct
+// instruments (gold = amber, silver = slate, oil = orange, gas = blue flame,
+// indices = a candlestick) rather than one generic glyph.
 function futuresIcon(symbol) {
-  if (['CL','MCL','NG'].includes(symbol)) return Flame;     // energy
-  if (['GC','MGC','SI'].includes(symbol)) return Gem;       // metals
-  if (['ZB','ZN'].includes(symbol)) return Landmark;        // rates
-  return LineChart;                                          // equity indices
+  if (symbol === 'GC' || symbol === 'MGC') return { Icon: Gem, className: 'text-amber-400' };     // gold
+  if (symbol === 'SI') return { Icon: Gem, className: 'text-slate-300' };                         // silver
+  if (symbol === 'CL' || symbol === 'MCL') return { Icon: Droplet, className: 'text-orange-500' };// crude oil
+  if (symbol === 'NG') return { Icon: Flame, className: 'text-sky-400' };                         // natural gas
+  if (symbol === 'ZB' || symbol === 'ZN') return { Icon: Landmark, className: 'text-emerald-400' };// rates
+  return { Icon: CandlestickChart, className: 'text-indigo-400' };                                // equity indices
 }
 
 export default function PriceTicker() {
@@ -77,12 +81,12 @@ export default function PriceTicker() {
   const renderItem = (item, index) => {
     const { data } = item;
     const isPositive = data.change24h >= 0;
-    const FutIcon = item.kind === 'futures' ? futuresIcon(item.symbol) : null;
+    const fut = item.kind === 'futures' ? futuresIcon(item.symbol) : null;
     return (
       <div key={`${item.key}-${index}`} className="flex items-center gap-2 px-4 whitespace-nowrap">
         {item.kind === 'crypto'
           ? <CoinIcon pair={`${item.symbol}USDT`} className="w-3.5 h-3.5" />
-          : <FutIcon className="w-3.5 h-3.5 text-accent-primary/80" />}
+          : <fut.Icon className={`w-3.5 h-3.5 ${fut.className}`} />}
         <span className="text-xs font-bold text-text-primary">{item.label}</span>
         <span className="text-xs text-text-secondary">${formatPrice(data.price)}</span>
         <span className={`flex items-center gap-0.5 text-xs font-medium ${isPositive ? 'text-profit' : 'text-loss'}`}>
