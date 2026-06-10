@@ -2997,6 +2997,62 @@ async function handleRequest(request, env) {
     }
   }
 
+  // CME futures quotes (delayed) via Yahoo Finance chart API, KV-cached.
+  // GET /fut/quotes?symbols=ES,NQ,GC — whitelisted symbols only, so this can't
+  // be driven as an open proxy. Returns { ES: { price, change24h }, ... }.
+  if (request.method === 'GET' && path === '/fut/quotes') {
+    // Yahoo continuous-contract tickers for the contracts the app supports.
+    const YAHOO_FUT = {
+      ES: 'ES=F', MES: 'MES=F', NQ: 'NQ=F', MNQ: 'MNQ=F', YM: 'YM=F', MYM: 'MYM=F',
+      RTY: 'RTY=F', M2K: 'M2K=F', CL: 'CL=F', MCL: 'MCL=F', NG: 'NG=F',
+      GC: 'GC=F', MGC: 'MGC=F', SI: 'SI=F', ZB: 'ZB=F', ZN: 'ZN=F',
+    };
+    const wanted = (url.searchParams.get('symbols') || '')
+      .split(',').map((s) => s.trim().toUpperCase()).filter((s) => YAHOO_FUT[s]);
+    if (!wanted.length) return new Response(JSON.stringify({ error: 'no valid symbols' }), { status: 400, headers: { ...cors, 'Content-Type': 'application/json' } });
+
+    const cacheKey = `fut:${wanted.join(',')}`;
+    const staleKey = `${cacheKey}:stale`;
+    try {
+      const cached = await env.ALERTS_KV.get(cacheKey);
+      if (cached) return new Response(cached, { headers: { ...cors, 'Content-Type': 'application/json', 'X-Cache': 'HIT' } });
+
+      const out = {};
+      // Fan out per symbol (Yahoo's chart endpoint is per-ticker). Capped by the
+      // whitelist (≤16) and the 120s KV cache, so upstream load stays tiny.
+      await Promise.all(wanted.map(async (sym) => {
+        try {
+          const r = await fetch(
+            `https://query1.finance.yahoo.com/v8/finance/chart/${encodeURIComponent(YAHOO_FUT[sym])}?interval=1d&range=2d`,
+            { headers: { 'Accept': 'application/json', 'User-Agent': 'Mozilla/5.0' } }
+          );
+          if (!r.ok) return;
+          const j = await r.json();
+          const meta = j?.chart?.result?.[0]?.meta;
+          const price = meta?.regularMarketPrice;
+          const prev = meta?.chartPreviousClose ?? meta?.previousClose;
+          if (typeof price !== 'number') return;
+          out[sym] = {
+            price,
+            change24h: (typeof prev === 'number' && prev > 0) ? ((price - prev) / prev) * 100 : 0,
+          };
+        } catch { /* skip symbol on upstream failure */ }
+      }));
+
+      if (!Object.keys(out).length) {
+        const stale = await env.ALERTS_KV.get(staleKey);
+        if (stale) return new Response(stale, { headers: { ...cors, 'Content-Type': 'application/json', 'X-Cache': 'STALE' } });
+        return new Response(JSON.stringify({ error: 'upstream failed' }), { status: 502, headers: { ...cors, 'Content-Type': 'application/json' } });
+      }
+      const text = JSON.stringify(out);
+      env.ALERTS_KV.put(cacheKey, text, { expirationTtl: 120 }).catch(() => {});
+      env.ALERTS_KV.put(staleKey, text, { expirationTtl: 3600 }).catch(() => {});
+      return new Response(text, { headers: { ...cors, 'Content-Type': 'application/json', 'X-Cache': 'MISS' } });
+    } catch (err) {
+      return new Response(JSON.stringify({ error: err.message }), { status: 502, headers: { ...cors, 'Content-Type': 'application/json' } });
+    }
+  }
+
   // AI Chat — Groq proxy with SSE streaming
   if (request.method === 'POST' && path === '/ai-chat') {
     return handleAIChat(request, env, cors);
