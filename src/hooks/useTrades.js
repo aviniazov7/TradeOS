@@ -100,6 +100,11 @@ export function useTrades(journalId = null) {
 
     return {
       ...tradeData,
+      // Asset class is persisted explicitly so Firestore rules and analytics
+      // can branch on it. Missing/absent means crypto — every pre-existing
+      // trade was written before this field existed and must keep behaving
+      // exactly as before (see docs/specs/futures-contracts.md).
+      assetClass: tradeData.assetClass || 'crypto',
       entryDate: safeEntryDate,
       journalId: journalId || null,
       pnl,

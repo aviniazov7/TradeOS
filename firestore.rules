@@ -120,16 +120,29 @@ service cloud.firestore {
       allow delete: if request.auth != null && request.auth.uid == entryId;
     }
 
-    // Trade field validation
-    function isValidTrade(data) {
+    // Trade field validation — two shapes share the common checks:
+    // crypto perps (the default; a missing assetClass means crypto, for
+    // back-compat with every pre-existing trade) and CME futures, where
+    // leverage is replaced by a contract spec (pointValue × contracts
+    // drives dollar P&L — see docs/specs/futures-contracts.md).
+    function isValidTradeCommon(data) {
       return data.entryPrice is number && data.entryPrice > 0
         && data.quantity is number && data.quantity > 0
-        && data.leverage is number && data.leverage >= 1 && data.leverage <= 200
         && data.stopLoss is number && data.stopLoss >= 0
         && data.fees is number && data.fees >= 0
         && data.direction in ['long', 'short']
         && data.status in ['open', 'closed', 'partial']
         && data.pair is string && data.pair.size() > 0 && data.pair.size() <= 30;
+    }
+
+    function isValidTrade(data) {
+      return isValidTradeCommon(data)
+        && (data.get('assetClass', 'crypto') == 'futures_cme'
+          ? (data.contract is map
+            && data.contract.contracts is number && data.contract.contracts > 0
+            && data.contract.pointValue is number && data.contract.pointValue > 0
+            && data.contract.tickSize is number && data.contract.tickSize > 0)
+          : (data.leverage is number && data.leverage >= 1 && data.leverage <= 200));
     }
 
     // Leaderboard entry validation — prevent score manipulation
