@@ -3037,6 +3037,49 @@ async function handleRequest(request, env) {
   // CME futures quotes (delayed) via Yahoo Finance chart API, KV-cached.
   // GET /fut/quotes?symbols=ES,NQ,GC — whitelisted symbols only, so this can't
   // be driven as an open proxy. Returns { ES: { price, change24h }, ... }.
+  // Crypto spot quotes via Bybit, KV-cached. Binance (api.binance.com AND the
+  // data-api.binance.vision mirror) and CoinGecko all return 403 to Cloudflare
+  // Worker egress IPs, but api.bybit.com is reachable (the /exchange routes
+  // already use it). GET /cx/quotes?symbols=BTC,ETH → { BTC: { price, change24h } }.
+  if (request.method === 'GET' && path === '/cx/quotes') {
+    const wanted = (url.searchParams.get('symbols') || '')
+      .split(',').map((s) => s.trim().toUpperCase()).filter(Boolean).slice(0, 60);
+    if (!wanted.length) return new Response(JSON.stringify({ error: 'no symbols' }), { status: 400, headers: { ...cors, 'Content-Type': 'application/json' } });
+
+    const cacheKey = `cx:${wanted.join(',')}`;
+    const staleKey = `${cacheKey}:stale`;
+    try {
+      const cached = await env.ALERTS_KV.get(cacheKey);
+      if (cached) return new Response(cached, { headers: { ...cors, 'Content-Type': 'application/json', 'X-Cache': 'HIT' } });
+
+      // One call returns every spot ticker; we pick the ones we want.
+      const r = await fetch('https://api.bybit.com/v5/market/tickers?category=spot', { headers: { 'Accept': 'application/json' } });
+      if (!r.ok) {
+        const stale = await env.ALERTS_KV.get(staleKey);
+        if (stale) return new Response(stale, { headers: { ...cors, 'Content-Type': 'application/json', 'X-Cache': 'STALE' } });
+        return new Response(JSON.stringify({ error: r.status }), { status: r.status, headers: { ...cors, 'Content-Type': 'application/json' } });
+      }
+      const j = await r.json();
+      const list = j?.result?.list || [];
+      const bySym = {};
+      for (const t of list) bySym[t.symbol] = t; // e.g. BTCUSDT
+      const out = {};
+      for (const sym of wanted) {
+        const t = bySym[`${sym}USDT`];
+        if (!t) continue;
+        const price = parseFloat(t.lastPrice);
+        if (!Number.isFinite(price)) continue;
+        out[sym] = { price, change24h: (parseFloat(t.price24hPcnt) || 0) * 100 }; // price24hPcnt is a fraction
+      }
+      const text = JSON.stringify(out);
+      env.ALERTS_KV.put(cacheKey, text, { expirationTtl: 60 }).catch(() => {});
+      env.ALERTS_KV.put(staleKey, text, { expirationTtl: 3600 }).catch(() => {});
+      return new Response(text, { headers: { ...cors, 'Content-Type': 'application/json', 'X-Cache': 'MISS' } });
+    } catch (err) {
+      return new Response(JSON.stringify({ error: err.message }), { status: 502, headers: { ...cors, 'Content-Type': 'application/json' } });
+    }
+  }
+
   if (request.method === 'GET' && path === '/fut/quotes') {
     // Yahoo continuous-contract tickers for the contracts the app supports.
     const YAHOO_FUT = {

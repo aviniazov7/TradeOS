@@ -1,5 +1,4 @@
-import { useCryptoPrices } from '../../hooks/useCryptoPrices';
-import { useFuturesPrices } from '../../hooks/useFuturesPrices';
+import { useWorkerQuotes } from '../../hooks/useWorkerQuotes';
 import { COINS, FUTURES_CONTRACTS } from '../../utils/constants';
 import { useAuth } from '../../contexts/AuthContext';
 import { formatPrice, formatPercent } from '../../utils/formatters';
@@ -27,14 +26,10 @@ export default function PriceTicker() {
   const showCrypto = assetClasses.includes('crypto');
   const showFutures = assetClasses.includes('futures_cme');
 
-  const { prices: cryptoPrices, loading: cryptoLoading } = useCryptoPrices({
-    symbols: TICKER_SYMBOLS,
-    enabled: showCrypto,
-  });
-  const { prices: futuresPrices, loading: futuresLoading } = useFuturesPrices({
-    symbols: showFutures ? TICKER_FUTURES : [],
-    enabled: showFutures,
-  });
+  // Crypto via Bybit (/cx) and futures via Yahoo (/fut) — both reachable from
+  // the worker, where Binance + CoinGecko return 403.
+  const { prices: cryptoPrices, loading: cryptoLoading } = useWorkerQuotes('/cx/quotes', TICKER_SYMBOLS, { enabled: showCrypto });
+  const { prices: futuresPrices, loading: futuresLoading } = useWorkerQuotes('/fut/quotes', TICKER_FUTURES, { enabled: showFutures });
 
   // Each source renders independently as soon as its data is in. We only show
   // the skeleton while NOTHING is available yet and something is still loading.
