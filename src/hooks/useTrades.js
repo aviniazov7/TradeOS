@@ -2,6 +2,7 @@ import { useState, useEffect, useMemo } from 'react';
 import {
   subscribeToUserCollection,
   addToUserCollection,
+  addToUserCollectionBulk,
   updateUserDocument,
   deleteUserDocument,
   timestamp,
@@ -86,32 +87,57 @@ export function useTrades(journalId = null) {
     return { pnl, pnlPercent, rrRatio, netPnl, result };
   };
 
+  // Full document for a new trade: computed P&L fields + safe dates + journal
+  // binding. Shared by the single-add and bulk-import paths so both write
+  // identical documents.
+  const buildTradeDoc = (tradeData) => {
+    const { pnl, pnlPercent, rrRatio, netPnl, result } = computeTradeFields(tradeData);
+
+    const rawDate = tradeData.entryDate instanceof Date
+      ? tradeData.entryDate
+      : tradeData.entryDate ? new Date(tradeData.entryDate) : new Date();
+    const safeEntryDate = isNaN(rawDate.getTime()) ? new Date() : rawDate;
+
+    return {
+      ...tradeData,
+      entryDate: safeEntryDate,
+      journalId: journalId || null,
+      pnl,
+      pnlPercent,
+      rrRatio,
+      netPnl,
+      result,
+      positionSize: tradeData.entryPrice * tradeData.quantity,
+      margin: (tradeData.entryPrice * tradeData.quantity) / (tradeData.leverage || 1),
+      createdAt: Timestamp.fromDate(safeEntryDate),
+      updatedAt: timestamp(),
+    };
+  };
+
   const addTrade = async (tradeData) => {
     if (!user) throw new Error('No user');
     try {
-      const { pnl, pnlPercent, rrRatio, netPnl, result } = computeTradeFields(tradeData);
-
-      const rawDate = tradeData.entryDate instanceof Date
-        ? tradeData.entryDate
-        : tradeData.entryDate ? new Date(tradeData.entryDate) : new Date();
-      const safeEntryDate = isNaN(rawDate.getTime()) ? new Date() : rawDate;
-
-      await addToUserCollection(user.uid, 'trades', {
-        ...tradeData,
-        entryDate: safeEntryDate,
-        journalId: journalId || null,
-        pnl,
-        pnlPercent,
-        rrRatio,
-        netPnl,
-        result,
-        positionSize: tradeData.entryPrice * tradeData.quantity,
-        margin: (tradeData.entryPrice * tradeData.quantity) / (tradeData.leverage || 1),
-        createdAt: Timestamp.fromDate(safeEntryDate),
-        updatedAt: timestamp(),
-      });
+      await addToUserCollection(user.uid, 'trades', buildTradeDoc(tradeData));
     } catch (error) {
       console.error('Failed to add trade:', error);
+      throw error;
+    }
+  };
+
+  // Bulk insert for CSV import — batched Firestore writes (one round-trip per
+  // 499 trades) instead of an awaited write per row, which made large imports
+  // slow and failure-prone. onProgress(committedCount) fires per chunk.
+  const addTradesBulk = async (tradesData, onProgress) => {
+    if (!user) throw new Error('No user');
+    try {
+      return await addToUserCollectionBulk(
+        user.uid,
+        'trades',
+        tradesData.map(buildTradeDoc),
+        onProgress
+      );
+    } catch (error) {
+      console.error('Failed to bulk add trades:', error);
       throw error;
     }
   };
@@ -148,5 +174,5 @@ export function useTrades(journalId = null) {
     }
   };
 
-  return { trades, loading, addTrade, updateTrade, deleteTrade };
+  return { trades, loading, addTrade, addTradesBulk, updateTrade, deleteTrade };
 }

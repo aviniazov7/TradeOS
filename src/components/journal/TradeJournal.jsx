@@ -53,7 +53,7 @@ const PIE_COLORS = ['#22c55e', '#ef4444', '#eab308'];
 export default function TradeJournal() {
   const { user } = useAuth();
   const { activeJournal, activeJournalId, journals } = useJournalContext();
-  const { trades, loading, addTrade, updateTrade, deleteTrade } = useTrades(activeJournalId);
+  const { trades, loading, addTrade, addTradesBulk, updateTrade, deleteTrade } = useTrades(activeJournalId);
   const { prices } = useCryptoPrices();
   const [searchParams] = useSearchParams();
   const [formOpen, setFormOpen] = useState(false);
@@ -984,7 +984,7 @@ export default function TradeJournal() {
         riskSettings={{ riskType: activeJournal?.riskType, riskValue: activeJournal?.riskValue, currentBalance: stats.currentBalance }}
         livePrices={prices} />
 
-      <ImportTrades isOpen={importOpen} onClose={() => setImportOpen(false)} onImport={addTrade} />
+      <ImportTrades isOpen={importOpen} onClose={() => setImportOpen(false)} onImport={addTrade} onImportBulk={addTradesBulk} />
 
       <JournalSettingsModal isOpen={settingsOpen} onClose={() => setSettingsOpen(false)} onArchive={(name) => { setArchiveTargetName(name); setArchiveAnimating(true); }} />
 

@@ -59,6 +59,23 @@ export async function addToUserCollection(uid, collectionName, data) {
   return withRetry(() => addDoc(collection(db, 'users', uid, collectionName), data));
 }
 
+/** Add many documents to a user's subcollection in chunked batches (499 per
+ *  batch — Firestore caps a batch at 500 writes). One network round-trip per
+ *  chunk instead of per document, so large CSV imports don't fire hundreds of
+ *  sequential writes. Calls onProgress(committedCount) after each chunk. */
+export async function addToUserCollectionBulk(uid, collectionName, items, onProgress) {
+  let committed = 0;
+  for (let i = 0; i < items.length; i += 499) {
+    const chunk = items.slice(i, i + 499);
+    const batch = writeBatch(db);
+    chunk.forEach((data) => batch.set(doc(collection(db, 'users', uid, collectionName)), data));
+    await withRetry(() => batch.commit());
+    committed += chunk.length;
+    onProgress?.(committed);
+  }
+  return committed;
+}
+
 /** Update a document in a user's subcollection */
 export async function updateUserDocument(uid, collectionName, docId, data) {
   return withRetry(() => updateDoc(doc(db, 'users', uid, collectionName, docId), data));
