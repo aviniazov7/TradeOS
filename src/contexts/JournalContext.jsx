@@ -81,6 +81,7 @@ export function JournalProvider({ children }) {
           exchange: 'other',
           initialBalance: 0,
           currency: 'USDT',
+          assetClass: 'crypto',
           isDefault: true,
           createdAt: timestamp(),
           updatedAt: timestamp(),

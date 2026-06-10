@@ -19,6 +19,7 @@ import {
   calculateWeightedExitPrice,
   calculateFuturesPnL,
   calculateFuturesPartialPnL,
+  calculateFuturesContractsPnL,
   calculateFuturesNotional,
 } from '../utils/calculations';
 
@@ -81,7 +82,10 @@ export function useTrades(journalId = null) {
     } else if (isFutures) {
       const { pointValue, contracts } = tradeData.contract;
       if (tradeData.exits?.length) {
-        pnl = calculateFuturesPartialPnL(tradeData.direction, tradeData.entryPrice, tradeData.exits, pointValue, contracts);
+        // Prefer exact per-exit contract counts; fall back to percent exits.
+        pnl = tradeData.exits.some((e) => e.contracts != null)
+          ? calculateFuturesContractsPnL(tradeData.direction, tradeData.entryPrice, tradeData.exits, pointValue)
+          : calculateFuturesPartialPnL(tradeData.direction, tradeData.entryPrice, tradeData.exits, pointValue, contracts);
         rrRatio = calculateRR(tradeData.entryPrice, calculateWeightedExitPrice(tradeData.exits), tradeData.stopLoss);
       } else {
         pnl = calculateFuturesPnL(tradeData.direction, tradeData.entryPrice, tradeData.exitPrice, pointValue, contracts);

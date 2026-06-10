@@ -11,6 +11,7 @@ import {
   calculatePartialPnL,
   calculateFuturesPnL,
   calculateFuturesPartialPnL,
+  calculateFuturesContractsPnL,
   calculateFuturesNotional,
 } from '../src/utils/calculations.js';
 import { FUTURES_CONTRACTS, getContractSpec } from '../src/utils/constants.js';
@@ -45,9 +46,21 @@ check('CL long 80→80.5 ×3', calculateFuturesPnL('long', 80, 80.5, 1000, 3), 1
 check('GC long 2300→2290 ×1', calculateFuturesPnL('long', 2300, 2290, 100, 1), -1000);
 check('MES micro 5000→5010 ×4', calculateFuturesPnL('long', 5000, 5010, 5, 4), 200);
 
-// Partial exits
+// Partial exits (percent-based)
 check('ES partial 50%@5010 + 50%@5020 ×2',
   calculateFuturesPartialPnL('long', 5000, [{ price: 5010, percent: 50 }, { price: 5020, percent: 50 }], 50, 2), 1500);
+
+// Partial exits by CONTRACT COUNT (exact — the new exit-by-contracts path)
+check('ES contracts 1@5010 + 1@5020 (of 2)',
+  calculateFuturesContractsPnL('long', 5000, [{ price: 5010, contracts: 1 }, { price: 5020, contracts: 1 }], 50), 1500);
+check('ES contracts 1@5030 + 2@5010 (of 3)',
+  calculateFuturesContractsPnL('long', 5000, [{ price: 5030, contracts: 1 }, { price: 5010, contracts: 2 }], 50), 2500);
+check('NQ short contracts 2@17990 (of 2)',
+  calculateFuturesContractsPnL('short', 18000, [{ price: 17990, contracts: 2 }], 20), 400);
+check('contracts exact full close 1/3+1/3+1/3 matches single',
+  calculateFuturesContractsPnL('long', 5000, [{ price: 5010, contracts: 1 }, { price: 5010, contracts: 1 }, { price: 5010, contracts: 1 }], 50),
+  calculateFuturesPnL('long', 5000, 5010, 50, 3));
+check('contracts guard missing', calculateFuturesContractsPnL('long', 5000, [], 50), 0);
 
 // Notional + percent-on-notional
 check('ES notional 5000 ×2', calculateFuturesNotional(5000, 50, 2), 500000);

@@ -232,7 +232,7 @@ export default function ProfilePage() {
           and which symbol catalog it shows. Multi-select. */}
       <div className="bg-bg-secondary border border-border-primary rounded-2xl p-4 mb-4">
         <h3 className="text-sm font-semibold text-text-primary mb-1">סוג מסחר</h3>
-        <p className="text-xs text-text-muted mb-3">בחר מה אתה סוחר — זה יקבע את ברירת המחדל ביצירת עסקה חדשה. אפשר לבחור כמה.</p>
+        <p className="text-xs text-text-muted mb-3">מה אתה סוחר — קובע את ברירת המחדל ליומן חדש. את הסוג של כל יומן אפשר לשנות בהגדרות היומן. אפשר לבחור כמה.</p>
         <div className="grid grid-cols-1 sm:grid-cols-3 gap-2">
           {ASSET_CLASSES.map((ac) => {
             const active = assetClasses.includes(ac.id);

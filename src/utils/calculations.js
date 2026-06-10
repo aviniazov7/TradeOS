@@ -34,6 +34,17 @@ export function calculateFuturesPartialPnL(direction, entryPrice, exits, pointVa
 }
 
 /**
+ * Futures P&L from per-exit contract counts (exact — no percent rounding).
+ * Used when each exit records how many contracts closed at its price, which
+ * is how futures traders think ("closed 1 of 3"). Each exit: { price, contracts }.
+ */
+export function calculateFuturesContractsPnL(direction, entryPrice, exits, pointValue) {
+  if (!exits?.length || !entryPrice || !pointValue) return 0;
+  return exits.reduce((sum, exit) =>
+    sum + calculateFuturesPnL(direction, entryPrice, exit.price, pointValue, exit.contracts || 0), 0);
+}
+
+/**
  * Futures notional value: price × pointValue × contracts. Used for
  * positionSize and as the honest denominator for percent returns (no
  * leverage inflation — real futures margin is exchange-set and unknown here).

@@ -7,6 +7,7 @@ import { X, Plus, AlertTriangle, ShieldAlert, Percent, TrendingUp, TrendingDown,
 import Modal from '../shared/Modal';
 import PairSearch from './PairSearch';
 import SelectDropdown from '../shared/SelectDropdown';
+import NumberStepper from '../shared/NumberStepper';
 import TimeframeSelector from '../shared/TimeframeSelector';
 import StrategySelector from '../shared/StrategySelector';
 import MultiSelector from '../shared/MultiSelector';
@@ -15,7 +16,7 @@ import { useUserStrategies } from '../../hooks/useUserStrategies';
 import { useUserTimeframes } from '../../hooks/useUserTimeframes';
 import { useUserTags } from '../../hooks/useUserTags';
 import { useUserMistakes } from '../../hooks/useUserMistakes';
-import { calculatePnLPercent, calculateRR, calculateNetPnL, calculatePartialPnL, calculateWeightedExitPrice, calculateFuturesPartialPnL, calculateFuturesNotional } from '../../utils/calculations';
+import { calculatePnLPercent, calculateRR, calculateNetPnL, calculatePartialPnL, calculateWeightedExitPrice, calculateFuturesContractsPnL, calculateFuturesNotional } from '../../utils/calculations';
 import { getSessionFromDate } from '../../utils/sessions';
 import { formatCurrency, formatPercent, formatRR } from '../../utils/formatters';
 
@@ -71,13 +72,10 @@ const MENTAL_RATINGS = [
   { key: 'confidenceRating', label: 'ביטחון בעסקה', emoji: ['😨', '🤨', '😐', '💪', '🔥'] },
 ];
 
-const ASSET_CLASS_LABELS = { crypto: 'קריפטו', futures_cme: 'חוזים עתידיים' };
-
-export default function TradeForm({ isOpen, onClose, trade, onSave, riskSettings, livePrices = {}, enabledAssetClasses = ['crypto'] }) {
-  // Only classes with a working form mode. Stocks (roadmap) is filtered out
-  // even if somehow enabled. The first enabled class is the new-trade default.
-  const tradableClasses = (enabledAssetClasses || []).filter((c) => c === 'crypto' || c === 'futures_cme');
-  const primaryAssetClass = tradableClasses[0] || 'crypto';
+export default function TradeForm({ isOpen, onClose, trade, onSave, riskSettings, livePrices = {}, journalAssetClass = 'crypto' }) {
+  // Asset class is owned by the JOURNAL — every trade inherits it, no per-trade
+  // toggle. Editing a trade keeps that trade's own stored class.
+  const newTradeAssetClass = journalAssetClass === 'futures_cme' ? 'futures_cme' : 'crypto';
   const { allStrategies, addStrategy, removeStrategy } = useUserStrategies('journal');
   const { allTimeframes, addTimeframe, removeTimeframe } = useUserTimeframes();
   const { allTags, addTag, removeTag } = useUserTags();
@@ -99,13 +97,19 @@ export default function TradeForm({ isOpen, onClose, trade, onSave, riskSettings
         derivedRisk = (qty * Math.abs(parseFloat(trade.entryPrice) - parseFloat(trade.stopLoss))).toFixed(2);
       }
 
-      // Combine exits (with %) + tps (price only)
-      const fromExits = (trade.exits || []).map(e => ({ price: String(e.price), percent: String(e.percent) }));
-      const fromTps = (trade.tps || []).map(p => ({ price: String(p), percent: '' }));
+      // Combine exits (with %/contracts) + tps (price only). Futures exits also
+      // carry a contract count so the editor shows contracts, not percent.
+      const isFuturesTrade = trade.assetClass === 'futures_cme';
+      const fromExits = (trade.exits || []).map(e => ({
+        price: String(e.price),
+        percent: String(e.percent),
+        contracts: e.contracts != null ? String(e.contracts) : '',
+      }));
+      const fromTps = (trade.tps || []).map(p => ({ price: String(p), percent: '', contracts: '' }));
       let loadedAdditionalExits = fromExits.length || fromTps.length
         ? [...fromExits, ...fromTps]
         : parseFloat(trade.exitPrice) > 0
-          ? [{ price: String(trade.exitPrice), percent: '100' }]
+          ? [{ price: String(trade.exitPrice), percent: '100', contracts: isFuturesTrade ? String(trade.contract?.contracts ?? '') : '' }]
           : [];
 
       // Auto-detect reached TPs from live price (use ref to avoid stale closure without re-running on every tick).
@@ -113,7 +117,9 @@ export default function TradeForm({ isOpen, onClose, trade, onSave, riskSettings
       // based on today's price.
       const currentPrice = livePricesRef.current[trade.pair] || livePricesRef.current[trade.symbol];
       const isClosed = trade.status === 'closed';
-      if (currentPrice && loadedAdditionalExits.length && !isClosed) {
+      // Crypto-only: futures exits are tracked in contracts (no live spot feed
+      // for CME here), so don't auto-fill a percent the futures path ignores.
+      if (currentPrice && loadedAdditionalExits.length && !isClosed && !isFuturesTrade) {
         const isLong = trade.direction === 'long';
         let remainingPct = 100 - loadedAdditionalExits.reduce((s, e) => s + (parseFloat(e.percent) || 0), 0);
         loadedAdditionalExits = loadedAdditionalExits.map((exit, i) => {
@@ -165,8 +171,8 @@ export default function TradeForm({ isOpen, onClose, trade, onSave, riskSettings
       // pick a sensible default symbol for it.
       setForm({
         ...defaultForm,
-        assetClass: primaryAssetClass,
-        pair: primaryAssetClass === 'futures_cme' ? 'ES' : 'BTCUSDT',
+        assetClass: newTradeAssetClass,
+        pair: newTradeAssetClass === 'futures_cme' ? 'ES' : 'BTCUSDT',
       });
     }
     setActiveTab('trade');
@@ -191,18 +197,8 @@ export default function TradeForm({ isOpen, onClose, trade, onSave, riskSettings
   const contractSpec = isFutures ? getContractSpec(form.pair) : null;
   const contractsNum = parseInt(form.contracts) || 0;
 
-  // Switch asset class on a NEW trade — resets the symbol to a valid default
-  // for the chosen class so we never carry a crypto pair into futures mode.
-  const switchAssetClass = (ac) => {
-    setForm((f) => ({
-      ...f,
-      assetClass: ac,
-      pair: ac === 'futures_cme' ? 'ES' : 'BTCUSDT',
-    }));
-  };
-
   const addAdditionalExit = () => {
-    setForm(f => ({ ...f, additionalExits: [...f.additionalExits, { price: '', percent: '' }] }));
+    setForm(f => ({ ...f, additionalExits: [...f.additionalExits, { price: '', percent: '', contracts: '' }] }));
   };
 
   const removeAdditionalExit = (index) => {
@@ -218,8 +214,15 @@ export default function TradeForm({ isOpen, onClose, trade, onSave, riskSettings
   };
 
   const additionalExitsPercent = useMemo(() => {
+    if (isFutures) {
+      // Aggregate from contracts so a full close lands on exactly 100% (summing
+      // per-exit rounded percents would drift, e.g. 3×33.33 = 99.99).
+      if (contractsNum <= 0) return 0;
+      const sumC = form.additionalExits.reduce((s, e) => s + (parseFloat(e.contracts) || 0), 0);
+      return (sumC / contractsNum) * 100;
+    }
     return form.additionalExits.reduce((s, e) => s + (parseFloat(e.percent) || 0), 0);
-  }, [form.additionalExits]);
+  }, [form.additionalExits, isFutures, contractsNum]);
 
   const currentStatus = useMemo(() => {
     if (form.orderType === 'limit' && additionalExitsPercent === 0) return 'limit';
@@ -260,22 +263,25 @@ export default function TradeForm({ isOpen, onClose, trade, onSave, riskSettings
     const sl = parseFloat(form.stopLoss);
     const fees = parseFloat(form.fees) || 0;
 
-    const allExits = form.additionalExits
-      .filter(e => parseFloat(e.price) > 0 && parseFloat(e.percent) > 0)
-      .map(e => ({ price: parseFloat(e.price), percent: parseFloat(e.percent) }));
-
-    // Futures: dollar P&L = points × pointValue × contracts; percent is on
-    // notional (no leverage inflation). Independent of calculatedQty.
+    // Futures: dollar P&L = points × pointValue × contracts, summed exactly
+    // from per-exit contract counts. Percent is on notional (no leverage).
     if (isFutures) {
-      if (!entry || !contractSpec || !contractsNum || !allExits.length) return null;
-      const pnl = calculateFuturesPartialPnL(form.direction, entry, allExits, contractSpec.pointValue, contractsNum);
+      const futExits = form.additionalExits
+        .filter(e => parseFloat(e.price) > 0 && parseFloat(e.contracts) > 0)
+        .map(e => ({ price: parseFloat(e.price), contracts: parseFloat(e.contracts) }));
+      if (!entry || !contractSpec || !contractsNum || !futExits.length) return null;
+      const pnl = calculateFuturesContractsPnL(form.direction, entry, futExits, contractSpec.pointValue);
       const notional = calculateFuturesNotional(entry, contractSpec.pointValue, contractsNum);
       const pnlPercent = notional ? (pnl / notional) * 100 : 0;
-      const weightedExit = calculateWeightedExitPrice(allExits);
+      const weightedExit = calculateWeightedExitPrice(futExits.map(e => ({ price: e.price, percent: e.contracts })));
       const rrRatio = calculateRR(entry, weightedExit, sl);
       const netPnl = calculateNetPnL(pnl, fees);
       return { pnl, pnlPercent, rrRatio, netPnl };
     }
+
+    const allExits = form.additionalExits
+      .filter(e => parseFloat(e.price) > 0 && parseFloat(e.percent) > 0)
+      .map(e => ({ price: parseFloat(e.price), percent: parseFloat(e.percent) }));
 
     if (!calculatedQty) return null;
     if (!allExits.length) return null;
@@ -363,16 +369,32 @@ export default function TradeForm({ isOpen, onClose, trade, onSave, riskSettings
       }
     }
 
-    // Build exits array from additional exits + main exit (validate before setSaving)
-    const validAdditional = form.additionalExits
-      .filter(e => parseFloat(e.price) > 0 && parseFloat(e.percent) > 0)
-      .map(e => ({ price: parseFloat(e.price), percent: parseFloat(e.percent) }));
-
-    const additionalPercent = validAdditional.reduce((s, e) => s + e.percent, 0);
-
-    if (additionalPercent > 100) {
-      toast.error('סך אחוזי היציאות חורג מ-100%');
-      return;
+    // Build exits array from additional exits (validate before setSaving).
+    // Futures exits carry an exact contract count AND a derived percent (so
+    // status/weighted-price code that reads `percent` keeps working); crypto
+    // exits carry just a percent.
+    let validAdditional;
+    if (isFutures) {
+      validAdditional = form.additionalExits
+        .filter(e => parseFloat(e.price) > 0 && parseFloat(e.contracts) > 0)
+        .map(e => {
+          const c = parseFloat(e.contracts);
+          return { price: parseFloat(e.price), contracts: c, percent: contractsNum > 0 ? (c / contractsNum) * 100 : 0 };
+        });
+      const sumContracts = validAdditional.reduce((s, e) => s + e.contracts, 0);
+      if (sumContracts > contractsNum) {
+        toast.error('סך החוזים ביציאות חורג ממספר החוזים בעסקה');
+        return;
+      }
+    } else {
+      validAdditional = form.additionalExits
+        .filter(e => parseFloat(e.price) > 0 && parseFloat(e.percent) > 0)
+        .map(e => ({ price: parseFloat(e.price), percent: parseFloat(e.percent) }));
+      const additionalPercent = validAdditional.reduce((s, e) => s + e.percent, 0);
+      if (additionalPercent > 100) {
+        toast.error('סך אחוזי היציאות חורג מ-100%');
+        return;
+      }
     }
 
     // Future-date guard — prevents the equity curve and drawdown stats from
@@ -406,13 +428,17 @@ export default function TradeForm({ isOpen, onClose, trade, onSave, riskSettings
       const leverage = isFutures ? 1 : Math.min(200, Math.max(1, parseInt(form.leverage) || 1));
 
       const allExits = validAdditional;
-      const totalExitPercent = allExits.reduce((s, e) => s + e.percent, 0);
       const exitPrice = calculateWeightedExitPrice(allExits);
-      const status = !allExits.length ? 'open' : totalExitPercent >= 100 ? 'closed' : 'partial';
+      // Closed when the whole position is out. For futures compare contracts
+      // (exact); for crypto compare the percent sum.
+      const fullyClosed = isFutures
+        ? allExits.reduce((s, e) => s + e.contracts, 0) >= contractsNum
+        : allExits.reduce((s, e) => s + e.percent, 0) >= 100;
+      const status = !allExits.length ? 'open' : fullyClosed ? 'closed' : 'partial';
 
-      // Split TPs: entries with % → actual closes (exits), entries without % → planned targets (tps)
+      // Planned targets (no exit recorded yet): price set but no %/contracts.
       const tpsOnly = form.additionalExits
-        .filter(e => parseFloat(e.price) > 0 && !parseFloat(e.percent))
+        .filter(e => parseFloat(e.price) > 0 && !(isFutures ? parseFloat(e.contracts) : parseFloat(e.percent)))
         .map(e => parseFloat(e.price));
 
       const data = {
@@ -501,23 +527,7 @@ export default function TradeForm({ isOpen, onClose, trade, onSave, riskSettings
         {/* Trade tab */}
         <div className={`space-y-2 ${activeTab !== 'trade' ? 'hidden' : ''}`}>
 
-            {/* Asset class — only shown when the user trades more than one
-                class (set in the profile). Switchable on a new trade only;
-                locked once saved (changing it would invalidate P&L). */}
-            {!trade && tradableClasses.length > 1 && (
-              <div className="flex gap-1 p-1 bg-bg-tertiary rounded-xl">
-                {tradableClasses.map((v) => (
-                  <button key={v} type="button" onClick={() => switchAssetClass(v)}
-                    className={`flex-1 py-2 rounded-lg text-xs font-semibold transition-all cursor-pointer ${
-                      form.assetClass === v
-                        ? 'bg-bg-primary text-text-primary shadow-sm'
-                        : 'text-text-muted hover:text-text-primary'
-                    }`}>
-                    {ASSET_CLASS_LABELS[v]}
-                  </button>
-                ))}
-              </div>
-            )}
+            {/* Asset class is inherited from the journal — no per-trade toggle. */}
 
             {/* Status header — only when editing */}
             {trade && (() => {
@@ -647,9 +657,13 @@ export default function TradeForm({ isOpen, onClose, trade, onSave, riskSettings
               </div>
 
               {form.additionalExits.map((exit, i) => {
-                const isExecuted = parseFloat(exit.percent) > 0;
-                const otherPct = form.additionalExits.reduce((s, e, idx) => idx !== i ? s + (parseFloat(e.percent) || 0) : s, 0);
-                const suggestedPct = Math.max(0, 100 - otherPct);
+                // Futures exits are recorded in contracts; crypto in percent.
+                const exitField = isFutures ? 'contracts' : 'percent';
+                const isExecuted = parseFloat(exit[exitField]) > 0;
+                const otherUsed = form.additionalExits.reduce((s, e, idx) => idx !== i ? s + (parseFloat(e[exitField]) || 0) : s, 0);
+                const suggested = isFutures
+                  ? Math.max(0, contractsNum - otherUsed)
+                  : Math.max(0, 100 - otherUsed);
                 return (
                   <div key={i} className={`relative flex items-center gap-2 px-3 py-2.5 border-b border-border-primary/20 last:border-b-0 transition-all duration-200 ${isExecuted ? 'bg-profit/5' : ''}`}>
                     {/* Executed accent bar */}
@@ -668,25 +682,25 @@ export default function TradeForm({ isOpen, onClose, trade, onSave, riskSettings
                       inputMode="decimal"
                     />
 
-                    {/* % field */}
-                    <div className={`flex items-center gap-0.5 w-16 shrink-0 rounded-lg px-2 py-1 transition-all border ${
+                    {/* contracts (futures) / % (crypto) field */}
+                    <div className={`flex items-center gap-0.5 ${isFutures ? 'w-20' : 'w-16'} shrink-0 rounded-lg px-2 py-1 transition-all border ${
                       isExecuted ? 'bg-profit/10 border-profit/25' : 'bg-bg-tertiary/60 border-border-primary/30'
                     }`}>
                       <input
-                        type="number" min="1" max="100"
-                        value={exit.percent}
-                        onChange={(e) => updateAdditionalExit(i, 'percent', e.target.value)}
+                        type="number" min="1" max={isFutures ? contractsNum || undefined : 100}
+                        value={exit[exitField] ?? ''}
+                        onChange={(e) => updateAdditionalExit(i, exitField, e.target.value)}
                         className={`w-full bg-transparent text-xs outline-none text-right font-semibold ${isExecuted ? 'text-profit' : 'text-text-muted'}`}
                         placeholder="—"
                         inputMode="numeric"
                       />
-                      <span className={`text-[10px] shrink-0 ${isExecuted ? 'text-profit/60' : 'text-text-muted/40'}`}>%</span>
+                      <span className={`text-[10px] shrink-0 ${isExecuted ? 'text-profit/60' : 'text-text-muted/40'}`}>{isFutures ? 'ח׳' : '%'}</span>
                     </div>
 
                     {/* Mark as executed button */}
                     <button
                       type="button"
-                      onClick={() => updateAdditionalExit(i, 'percent', isExecuted ? '' : String(suggestedPct))}
+                      onClick={() => updateAdditionalExit(i, exitField, isExecuted ? '' : String(suggested))}
                       className={`shrink-0 flex items-center gap-1 px-2 py-1 rounded-lg text-[10px] font-semibold transition-all cursor-pointer border ${
                         isExecuted
                           ? 'bg-profit/20 text-profit border-profit/30 hover:bg-loss/10 hover:text-loss hover:border-loss/30'
@@ -713,7 +727,7 @@ export default function TradeForm({ isOpen, onClose, trade, onSave, riskSettings
               <div className="grid grid-cols-3 gap-2">
                 <div>
                   <label className={labelClass}>מספר חוזים</label>
-                  <input type="number" min="1" step="1" value={form.contracts} onChange={(e) => update('contracts', e.target.value)} className={`${inputClass} [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none`} placeholder="1" inputMode="numeric" />
+                  <NumberStepper value={form.contracts} onChange={(v) => update('contracts', v)} min={1} placeholder="1" />
                 </div>
                 <div>
                   <label className={labelClass}>ערך נקודה</label>
