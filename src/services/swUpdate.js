@@ -10,6 +10,11 @@ let waitingVersion = null;
 let updateCb = null;
 let userTriggered = false;
 let refreshing = false;
+// The version we last surfaced a prompt for in THIS page session. Guards the
+// banner against re-appearing repeatedly for the same waiting worker — e.g.
+// when GET_VERSION can't be read back (version unknown) so the persisted
+// dismissal can't key on it.
+let lastNotifiedVersion = null;
 
 // Persist which CACHE_NAME the user already dismissed, so the prompt
 // doesn't re-surface for the same version on every focus/reload. A new
@@ -42,7 +47,12 @@ function askVersion(worker) {
 async function notifyIfNew(worker) {
   waitingWorker = worker;
   waitingVersion = await askVersion(worker);
-  if (waitingVersion && getDismissedVersion() === waitingVersion) return;
+  const v = waitingVersion || 'unknown';
+  // Already dismissed/updated this exact version (persisted across reloads)...
+  if (getDismissedVersion() === v) return;
+  // ...or already prompted for it in this session (prevents the loop).
+  if (lastNotifiedVersion === v) return;
+  lastNotifiedVersion = v;
   if (updateCb) updateCb();
 }
 

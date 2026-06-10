@@ -1,15 +1,18 @@
 import { useState, useEffect, useRef } from 'react';
 
 const WORKER_BASE = import.meta.env.VITE_WORKER_URL || 'https://trade-os.aviniazov7.workers.dev';
-// Yahoo data behind the worker is delayed ~10-15 min and KV-cached for 2 min,
-// so polling faster than this buys nothing.
-const POLL_INTERVAL = 120_000;
 
 /**
- * Delayed CME futures quotes via the worker's /fut/quotes proxy.
- * Returns { prices: { ES: { price, change24h }, ... }, loading }.
+ * Poll a worker quotes endpoint that returns { SYM: { price, change24h }, … }.
+ * Used for both the Yahoo-backed futures feed (/fut/quotes) and the Bybit-backed
+ * crypto feed (/cx/quotes) — both reachable from the worker where Binance /
+ * CoinGecko are geo-blocked (403).
+ *
+ * @param {string} path        worker path, e.g. '/cx/quotes'
+ * @param {string[]} symbols   symbols to request
+ * @param {object} opts        { enabled, intervalMs }
  */
-export function useFuturesPrices({ symbols = [], enabled = true } = {}) {
+export function useWorkerQuotes(path, symbols = [], { enabled = true, intervalMs = 60_000 } = {}) {
   const [prices, setPrices] = useState({});
   const [loading, setLoading] = useState(true);
   const abortRef = useRef(null);
@@ -28,10 +31,10 @@ export function useFuturesPrices({ symbols = [], enabled = true } = {}) {
         abortRef.current?.abort();
         const ctrl = new AbortController();
         abortRef.current = ctrl;
-        const res = await fetch(`${WORKER_BASE}/fut/quotes?symbols=${encodeURIComponent(symbolsKey)}`, { signal: ctrl.signal });
+        const res = await fetch(`${WORKER_BASE}${path}?symbols=${encodeURIComponent(symbolsKey)}`, { signal: ctrl.signal });
         if (!res.ok) return;
         const data = await res.json();
-        if (!cancelled && data && typeof data === 'object') setPrices(data);
+        if (!cancelled && data && typeof data === 'object' && !data.error) setPrices(data);
       } catch {
         // network/abort — keep last good prices
       } finally {
@@ -40,13 +43,13 @@ export function useFuturesPrices({ symbols = [], enabled = true } = {}) {
     };
 
     fetchQuotes();
-    const interval = setInterval(fetchQuotes, POLL_INTERVAL);
+    const interval = setInterval(fetchQuotes, intervalMs);
     return () => {
       cancelled = true;
       clearInterval(interval);
       abortRef.current?.abort();
     };
-  }, [symbolsKey, enabled]);
+  }, [path, symbolsKey, enabled, intervalMs]);
 
   return { prices, loading };
 }
