@@ -6,6 +6,7 @@ import 'react-datepicker/dist/react-datepicker.css';
 import { X, Plus, AlertTriangle, ShieldAlert, Percent, TrendingUp, TrendingDown, Check, Clock, CircleDot, CheckCircle2 } from 'lucide-react';
 import Modal from '../shared/Modal';
 import PairSearch from './PairSearch';
+import SelectDropdown from '../shared/SelectDropdown';
 import TimeframeSelector from '../shared/TimeframeSelector';
 import StrategySelector from '../shared/StrategySelector';
 import MultiSelector from '../shared/MultiSelector';
@@ -70,7 +71,13 @@ const MENTAL_RATINGS = [
   { key: 'confidenceRating', label: 'ביטחון בעסקה', emoji: ['😨', '🤨', '😐', '💪', '🔥'] },
 ];
 
-export default function TradeForm({ isOpen, onClose, trade, onSave, riskSettings, livePrices = {}, defaultAssetClass = 'crypto' }) {
+const ASSET_CLASS_LABELS = { crypto: 'קריפטו', futures_cme: 'חוזים עתידיים' };
+
+export default function TradeForm({ isOpen, onClose, trade, onSave, riskSettings, livePrices = {}, enabledAssetClasses = ['crypto'] }) {
+  // Only classes with a working form mode. Stocks (roadmap) is filtered out
+  // even if somehow enabled. The first enabled class is the new-trade default.
+  const tradableClasses = (enabledAssetClasses || []).filter((c) => c === 'crypto' || c === 'futures_cme');
+  const primaryAssetClass = tradableClasses[0] || 'crypto';
   const { allStrategies, addStrategy, removeStrategy } = useUserStrategies('journal');
   const { allTimeframes, addTimeframe, removeTimeframe } = useUserTimeframes();
   const { allTags, addTag, removeTag } = useUserTags();
@@ -158,8 +165,8 @@ export default function TradeForm({ isOpen, onClose, trade, onSave, riskSettings
       // pick a sensible default symbol for it.
       setForm({
         ...defaultForm,
-        assetClass: defaultAssetClass,
-        pair: defaultAssetClass === 'futures_cme' ? 'ES' : 'BTCUSDT',
+        assetClass: primaryAssetClass,
+        pair: primaryAssetClass === 'futures_cme' ? 'ES' : 'BTCUSDT',
       });
     }
     setActiveTab('trade');
@@ -494,18 +501,19 @@ export default function TradeForm({ isOpen, onClose, trade, onSave, riskSettings
         {/* Trade tab */}
         <div className={`space-y-2 ${activeTab !== 'trade' ? 'hidden' : ''}`}>
 
-            {/* Asset class — crypto vs CME futures. Switchable only on a new
-                trade; locked once saved (changing it would invalidate P&L). */}
-            {!trade && (
+            {/* Asset class — only shown when the user trades more than one
+                class (set in the profile). Switchable on a new trade only;
+                locked once saved (changing it would invalidate P&L). */}
+            {!trade && tradableClasses.length > 1 && (
               <div className="flex gap-1 p-1 bg-bg-tertiary rounded-xl">
-                {[{ v: 'crypto', l: 'קריפטו' }, { v: 'futures_cme', l: 'חוזים עתידיים' }].map(({ v, l }) => (
+                {tradableClasses.map((v) => (
                   <button key={v} type="button" onClick={() => switchAssetClass(v)}
                     className={`flex-1 py-2 rounded-lg text-xs font-semibold transition-all cursor-pointer ${
                       form.assetClass === v
                         ? 'bg-bg-primary text-text-primary shadow-sm'
                         : 'text-text-muted hover:text-text-primary'
                     }`}>
-                    {l}
+                    {ASSET_CLASS_LABELS[v]}
                   </button>
                 ))}
               </div>
@@ -540,18 +548,13 @@ export default function TradeForm({ isOpen, onClose, trade, onSave, riskSettings
 
             <div className="grid gap-2" style={{ gridTemplateColumns: '2fr 96px 2fr' }}>
               {isFutures ? (
-                <div>
-                  <label className={labelClass}>חוזה</label>
-                  <select
-                    value={form.pair}
-                    onChange={(e) => update('pair', e.target.value)}
-                    className={inputClass + ' cursor-pointer'}
-                  >
-                    {FUTURES_CONTRACTS.map((c) => (
-                      <option key={c.symbol} value={c.symbol}>{c.symbol} — {c.name}</option>
-                    ))}
-                  </select>
-                </div>
+                <SelectDropdown
+                  label="חוזה"
+                  value={form.pair}
+                  onChange={(sym) => update('pair', sym)}
+                  options={FUTURES_CONTRACTS.map((c) => ({ value: c.symbol, label: `${c.symbol} — ${c.name}` }))}
+                  placeholder="בחר חוזה..."
+                />
               ) : (
                 <PairSearch
                   value={form.pair}
@@ -710,7 +713,7 @@ export default function TradeForm({ isOpen, onClose, trade, onSave, riskSettings
               <div className="grid grid-cols-3 gap-2">
                 <div>
                   <label className={labelClass}>מספר חוזים</label>
-                  <input type="number" min="1" step="1" value={form.contracts} onChange={(e) => update('contracts', e.target.value)} className={inputClass} placeholder="1" inputMode="numeric" />
+                  <input type="number" min="1" step="1" value={form.contracts} onChange={(e) => update('contracts', e.target.value)} className={`${inputClass} [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none`} placeholder="1" inputMode="numeric" />
                 </div>
                 <div>
                   <label className={labelClass}>ערך נקודה</label>

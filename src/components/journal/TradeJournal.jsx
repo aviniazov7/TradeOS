@@ -51,7 +51,8 @@ const tooltipStyle = { background: '#141414', border: '1px solid #1a1a1a', borde
 const PIE_COLORS = ['#22c55e', '#ef4444', '#eab308'];
 
 export default function TradeJournal() {
-  const { user } = useAuth();
+  const { user, profile } = useAuth();
+  const enabledAssetClasses = profile?.settings?.assetClasses?.length ? profile.settings.assetClasses : ['crypto'];
   const { activeJournal, activeJournalId, journals } = useJournalContext();
   const { trades, loading, addTrade, addTradesBulk, updateTrade, deleteTrade } = useTrades(activeJournalId);
   const { prices } = useCryptoPrices();
@@ -982,6 +983,7 @@ export default function TradeJournal() {
 
       <TradeForm isOpen={formOpen} onClose={handleCloseForm} trade={editingTrade} onSave={handleSave}
         riskSettings={{ riskType: activeJournal?.riskType, riskValue: activeJournal?.riskValue, currentBalance: stats.currentBalance }}
+        enabledAssetClasses={enabledAssetClasses}
         livePrices={prices} />
 
       <ImportTrades isOpen={importOpen} onClose={() => setImportOpen(false)} onImport={addTrade} onImportBulk={addTradesBulk} />
