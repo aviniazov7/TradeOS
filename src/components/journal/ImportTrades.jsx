@@ -78,7 +78,7 @@ function normalizeDirection(val) {
   return 'long';
 }
 
-export default function ImportTrades({ isOpen, onClose, onImport }) {
+export default function ImportTrades({ isOpen, onClose, onImport, onImportBulk }) {
   const [file, setFile] = useState(null);
   const [parsed, setParsed] = useState(null);
   const [columnMapping, setColumnMapping] = useState({});
@@ -160,10 +160,18 @@ export default function ImportTrades({ isOpen, onClose, onImport }) {
     try {
       let imported = 0;
       setImportProgress({ current: 0, total: trades.length });
-      for (const trade of trades) {
-        await onImport(trade);
-        imported++;
-        setImportProgress({ current: imported, total: trades.length });
+      if (onImportBulk) {
+        // Batched writes — one Firestore round-trip per 499 trades, so large
+        // CSV files don't hang on hundreds of sequential per-row writes.
+        imported = await onImportBulk(trades, (done) =>
+          setImportProgress({ current: done, total: trades.length })
+        );
+      } else {
+        for (const trade of trades) {
+          await onImport(trade);
+          imported++;
+          setImportProgress({ current: imported, total: trades.length });
+        }
       }
       toast.success(`${imported} עסקאות יובאו בהצלחה`);
       handleReset();
