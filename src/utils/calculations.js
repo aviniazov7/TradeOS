@@ -9,6 +9,41 @@ export function calculatePnL(direction, entryPrice, exitPrice, quantity) {
 }
 
 /**
+ * Dollar P&L for an exchange-traded futures contract (CME etc.):
+ * points moved × dollar value per point × number of contracts.
+ * Example: ES long 5000→5010 with 2 contracts = 10 × $50 × 2 = $1,000.
+ */
+export function calculateFuturesPnL(direction, entryPrice, exitPrice, pointValue, contracts) {
+  if (!entryPrice || !exitPrice || !pointValue || !contracts) return 0;
+  const points = direction === 'long'
+    ? exitPrice - entryPrice
+    : entryPrice - exitPrice;
+  return points * pointValue * contracts;
+}
+
+/**
+ * Futures P&L across partial exits. Exits are percent-of-position based,
+ * mirroring calculatePartialPnL for crypto.
+ */
+export function calculateFuturesPartialPnL(direction, entryPrice, exits, pointValue, contracts) {
+  if (!exits?.length || !entryPrice || !pointValue || !contracts) return 0;
+  return exits.reduce((sum, exit) => {
+    const partContracts = contracts * (exit.percent / 100);
+    return sum + calculateFuturesPnL(direction, entryPrice, exit.price, pointValue, partContracts);
+  }, 0);
+}
+
+/**
+ * Futures notional value: price × pointValue × contracts. Used for
+ * positionSize and as the honest denominator for percent returns (no
+ * leverage inflation — real futures margin is exchange-set and unknown here).
+ */
+export function calculateFuturesNotional(price, pointValue, contracts) {
+  if (!price || !pointValue || !contracts) return 0;
+  return price * pointValue * contracts;
+}
+
+/**
  * Calculate P&L percentage (ROE — return on margin when leverage provided)
  */
 export function calculatePnLPercent(pnl, entryPrice, quantity, leverage = 1) {
