@@ -7,7 +7,10 @@
  */
 
 const TELEGRAM_API = 'https://api.telegram.org/bot';
-const BINANCE_SPOT = 'https://api.binance.com/api/v3';
+// Binance's public market-data mirror — api.binance.com returns 403 to
+// Cloudflare Worker egress IPs in many regions, but data-api.binance.vision
+// (same /api/v3 spot surface) isn't geo-blocked. Futures (fapi) has no mirror.
+const BINANCE_SPOT = 'https://data-api.binance.vision/api/v3';
 const BINANCE_FUTURES = 'https://fapi.binance.com/fapi/v1';
 const APP_URL = 'https://tradeos-91a58.web.app';
 const CALENDAR_API = 'https://nfs.faireconomy.media/ff_calendar_thisweek.json';
@@ -2993,7 +2996,11 @@ async function handleRequest(request, env) {
   // Binance proxy with KV cache (avoids browser CORS/geo issues)
   if (request.method === 'GET' && path.startsWith('/bnb/')) {
     const subPath = path.slice(5); // remove '/bnb/'
-    const bnbUrl = `https://api.binance.com/api/v3/${subPath}${url.search}`;
+    // api.binance.com returns 403 to Cloudflare Worker egress IPs in many
+    // regions. data-api.binance.vision is Binance's public market-data mirror
+    // (same /api/v3 surface — ticker, klines, depth) and isn't geo-blocked, so
+    // we try the main host first and fall back to the vision mirror.
+    const BNB_HOSTS = ['https://api.binance.com', 'https://data-api.binance.vision'];
     const rawKey = `bnb:${subPath}${url.search}`;
     // KV keys max 512 bytes — hash long keys (e.g. ticker with many symbols) so
     // even large requests stay cached and don't hammer Binance every poll, which
@@ -3004,12 +3011,19 @@ async function handleRequest(request, env) {
     try {
       const cached = await env.ALERTS_KV.get(cacheKey);
       if (cached) return new Response(cached, { headers: { ...cors, 'Content-Type': 'application/json', 'X-Cache': 'HIT' } });
-      const res = await fetch(bnbUrl, { headers: { 'Accept': 'application/json' } });
-      if (!res.ok) {
-        // Transient Binance hiccup (e.g. 408/429) — serve the last good copy if we have one
+
+      let res = null;
+      let lastStatus = 0;
+      for (const host of BNB_HOSTS) {
+        const r = await fetch(`${host}/api/v3/${subPath}${url.search}`, { headers: { 'Accept': 'application/json' } });
+        if (r.ok) { res = r; break; }
+        lastStatus = r.status;
+      }
+      if (!res) {
+        // All hosts failed (e.g. 403/408/429) — serve the last good copy if we have one
         const stale = await env.ALERTS_KV.get(staleKey);
         if (stale) return new Response(stale, { headers: { ...cors, 'Content-Type': 'application/json', 'X-Cache': 'STALE' } });
-        return new Response(JSON.stringify({ error: res.status }), { status: res.status, headers: { ...cors, 'Content-Type': 'application/json' } });
+        return new Response(JSON.stringify({ error: lastStatus }), { status: lastStatus || 502, headers: { ...cors, 'Content-Type': 'application/json' } });
       }
       const text = await res.text();
       env.ALERTS_KV.put(cacheKey, text, { expirationTtl: ttl }).catch(() => {});
@@ -4108,7 +4122,7 @@ ${pad('Lev', `${pnlSign}${pnlPctLev}%`)}` : ''}` : ''}</code>
         const sats = (cs.funded_txo_sum || 0) - (cs.spent_txo_sum || 0) + (ms.funded_txo_sum || 0) - (ms.spent_txo_sum || 0);
         const btc = sats / 1e8;
         let price = 0;
-        try { const pr = await fetch('https://api.binance.com/api/v3/ticker/price?symbol=BTCUSDT'); price = parseFloat((await pr.json()).price) || 0; } catch { /* price optional */ }
+        try { const pr = await fetch(`${BINANCE_SPOT}/ticker/price?symbol=BTCUSDT`); price = parseFloat((await pr.json()).price) || 0; } catch { /* price optional */ }
         const usd = btc * price;
         const tokens = btc > 0 ? [{ symbol: 'BTC', name: 'Bitcoin', usd, amount: btc, chain: 'bitcoin', logo: null }] : [];
         return new Response(JSON.stringify({ ok: true, totalUsd: usd, chains: usd > 0 ? [{ chain: 'bitcoin', usd }] : [], tokens }), { headers: { ...cors, 'Content-Type': 'application/json' } });
