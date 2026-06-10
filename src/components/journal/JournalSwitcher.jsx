@@ -13,7 +13,8 @@ import ConfirmDialog from '../shared/ConfirmDialog';
 
 export default function JournalSwitcher({ compact }) {
   const { journals, archivedJournals, activeJournal, activeJournalId, setActiveJournalId, addJournal, toggleStarJournal, unarchiveJournal, deleteJournal } = useJournalContext();
-  const { isPremium } = useAuth();
+  const { isPremium, profile } = useAuth();
+  const defaultAssetClass = profile?.settings?.assetClasses?.[0] || 'crypto';
   const navigate = useNavigate();
   const [open, setOpen] = useState(false);
   const [formOpen, setFormOpen] = useState(false);
@@ -155,6 +156,7 @@ export default function JournalSwitcher({ compact }) {
           isOpen={formOpen}
           onClose={() => setFormOpen(false)}
           onSave={handleSave}
+          defaultAssetClass={defaultAssetClass}
         />
 
         <Modal isOpen={archiveOpen} onClose={() => setArchiveOpen(false)} title="ארכיון יומנים" maxWidth="max-w-sm">
@@ -240,10 +242,11 @@ export default function JournalSwitcher({ compact }) {
       </div>
 
       <JournalFormModal
-        isOpen={formOpen}
-        onClose={() => setFormOpen(false)}
-        onSave={handleSave}
-      />
+          isOpen={formOpen}
+          onClose={() => setFormOpen(false)}
+          onSave={handleSave}
+          defaultAssetClass={defaultAssetClass}
+        />
     </>
   );
 }

@@ -395,3 +395,16 @@ input[type="range"]::-moz-range-thumb {
 .ticker-scroll:hover {
   animation-play-state: paused;
 }
+
+/* Hide native number-input spinner arrows app-wide. They render inconsistently
+   across browsers and clash with the dark UI; where stepping is useful we
+   provide our own NumberStepper (−/+) control instead. */
+input[type="number"]::-webkit-outer-spin-button,
+input[type="number"]::-webkit-inner-spin-button {
+  -webkit-appearance: none;
+  margin: 0;
+}
+input[type="number"] {
+  -moz-appearance: textfield;
+  appearance: textfield;
+}
