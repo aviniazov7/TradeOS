@@ -18,6 +18,9 @@ import {
   Clock,
   ArrowLeft,
   Check,
+  Coins,
+  LineChart,
+  Briefcase,
 } from 'lucide-react';
 import toast from 'react-hot-toast';
 import { getUserProfile, setUserProfile, deleteLeaderboardEntry } from '../../services/firestoreService';
@@ -32,6 +35,15 @@ import NotificationSettings from './NotificationSettings';
 import ContactDeveloper from './ContactDeveloper';
 
 const APP_URL = 'https://tradeos-91a58.web.app';
+
+// What the user trades. Drives the new-trade form's default + which symbol
+// catalog it shows. Multi-select: pick crypto, futures, or both. Stocks is
+// on the roadmap (epic) but not wired yet, so it's shown disabled.
+const ASSET_CLASSES = [
+  { id: 'crypto', label: 'קריפטו', desc: 'מטבעות וחוזי פרפ', Icon: Coins },
+  { id: 'futures_cme', label: 'חוזים עתידיים', desc: 'מדדים וסחורות — ES, NQ, GC', Icon: LineChart },
+  { id: 'stocks', label: 'מניות', desc: 'בקרוב', Icon: Briefcase, soon: true },
+];
 
 export default function ProfilePage() {
   const { user, profile, isAdmin, isPremium, logout, changePassword, resetPassword, deleteAccount, isEmailUser } = useAuth();
@@ -48,15 +60,37 @@ export default function ProfilePage() {
   const [isPublicProfile, setIsPublicProfile] = useState(false);
   const [leaderboardName, setLeaderboardName] = useState('');
   const [leaderboardLoading, setLeaderboardLoading] = useState(true);
+  // Which asset classes the user trades (default crypto for back-compat).
+  const [assetClasses, setAssetClasses] = useState(['crypto']);
 
   useEffect(() => {
     if (!user) return;
     getUserProfile(user.uid).then(({ data }) => {
       setIsPublicProfile(data?.isPublicProfile || false);
       setLeaderboardName(data?.leaderboardName || '');
+      const ac = data?.settings?.assetClasses;
+      if (Array.isArray(ac) && ac.length) setAssetClasses(ac);
       setLeaderboardLoading(false);
     });
   }, [user]);
+
+  const toggleAssetClass = async (id) => {
+    const has = assetClasses.includes(id);
+    const next = has ? assetClasses.filter((x) => x !== id) : [...assetClasses, id];
+    if (next.length === 0) {
+      toast.error('צריך לבחור לפחות סוג מסחר אחד');
+      return;
+    }
+    const prev = assetClasses;
+    setAssetClasses(next);
+    try {
+      // setDoc merge deep-merges the settings map, so other settings survive.
+      await setUserProfile(user.uid, { settings: { assetClasses: next } });
+    } catch {
+      setAssetClasses(prev);
+      toast.error('שגיאה בשמירה');
+    }
+  };
 
   const handleLeaderboardToggle = async () => {
     const newVal = !isPublicProfile;
@@ -192,6 +226,42 @@ export default function ProfilePage() {
         <p className="text-xs text-text-muted mt-2">
           הצטרף {user?.metadata?.creationTime ? formatDate(new Date(user.metadata.creationTime)) : ''}
         </p>
+      </div>
+
+      {/* Asset classes the user trades — drives the new-trade form default
+          and which symbol catalog it shows. Multi-select. */}
+      <div className="bg-bg-secondary border border-border-primary rounded-2xl p-4 mb-4">
+        <h3 className="text-sm font-semibold text-text-primary mb-1">סוג מסחר</h3>
+        <p className="text-xs text-text-muted mb-3">בחר מה אתה סוחר — זה יקבע את ברירת המחדל ביצירת עסקה חדשה. אפשר לבחור כמה.</p>
+        <div className="grid grid-cols-1 sm:grid-cols-3 gap-2">
+          {ASSET_CLASSES.map((ac) => {
+            const active = assetClasses.includes(ac.id);
+            return (
+              <button
+                key={ac.id}
+                type="button"
+                disabled={ac.soon}
+                onClick={() => !ac.soon && toggleAssetClass(ac.id)}
+                className={`relative text-right rounded-xl border p-3 transition-all ${
+                  ac.soon
+                    ? 'border-border-primary/50 opacity-50 cursor-not-allowed'
+                    : active
+                      ? 'border-accent-primary bg-accent-primary/10 cursor-pointer'
+                      : 'border-border-primary hover:border-border-hover cursor-pointer'
+                }`}
+              >
+                {active && !ac.soon && (
+                  <span className="absolute top-2 left-2 w-4 h-4 rounded-full bg-accent-primary flex items-center justify-center">
+                    <Check className="w-3 h-3 text-bg-primary" />
+                  </span>
+                )}
+                <ac.Icon className={`w-5 h-5 mb-1.5 ${active && !ac.soon ? 'text-accent-primary' : 'text-text-muted'}`} />
+                <div className="text-sm font-semibold text-text-primary">{ac.label}</div>
+                <div className="text-[11px] text-text-muted">{ac.desc}</div>
+              </button>
+            );
+          })}
+        </div>
       </div>
 
       {/* Plan / Premium status — shows different states (admin, lifetime,

@@ -70,6 +70,7 @@ export function AuthProvider({ children }) {
             defaultLeverage: 10,
             defaultRiskPercent: 1,
             baseCurrency: 'USDT',
+            assetClasses: ['crypto'],
             strategies: [
               'SOS (Sign of Strength)',
               'SOW (Sign of Weakness)',

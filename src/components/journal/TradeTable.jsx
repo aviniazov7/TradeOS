@@ -82,8 +82,12 @@ function ExpandedDetails({ trade, status, onEdit, onDelete, onShare }) {
           <p className="text-text-primary">{trade.riskAmount ? `$${Number(trade.riskAmount).toLocaleString()}` : '—'}</p>
         </div>
         <div>
-          <span className="text-text-muted">מינוף</span>
-          <p className="text-text-primary">{trade.leverage ? `x${trade.leverage}` : '—'}</p>
+          <span className="text-text-muted">{trade.assetClass === 'futures_cme' ? 'חוזים' : 'מינוף'}</span>
+          <p className="text-text-primary">
+            {trade.assetClass === 'futures_cme'
+              ? (trade.contract?.contracts ?? trade.quantity ?? '—')
+              : (trade.leverage ? `x${trade.leverage}` : '—')}
+          </p>
         </div>
         <div>
           <span className="text-text-muted">עמלות</span>
