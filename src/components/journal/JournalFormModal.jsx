@@ -1,4 +1,5 @@
 import { useState, useEffect } from 'react';
+import { Coins, LineChart } from 'lucide-react';
 import Modal from '../shared/Modal';
 import ExchangeSearch from '../shared/ExchangeSearch';
 import { EXCHANGES } from '../../utils/constants';
@@ -6,8 +7,8 @@ import { EXCHANGES } from '../../utils/constants';
 const defaultForm = { name: '', exchange: '', initialBalance: '', currency: 'USDT', description: '', riskType: 'percent', riskValue: '', assetClass: 'crypto' };
 
 const ASSET_CLASS_OPTIONS = [
-  { id: 'crypto', label: 'קריפטו' },
-  { id: 'futures_cme', label: 'חוזים עתידיים' },
+  { id: 'crypto', label: 'קריפטו', Icon: Coins },
+  { id: 'futures_cme', label: 'חוזים עתידיים', Icon: LineChart },
 ];
 
 export default function JournalFormModal({ isOpen, onClose, journal = null, onSave, defaultAssetClass = 'crypto' }) {
@@ -70,9 +71,10 @@ export default function JournalFormModal({ isOpen, onClose, journal = null, onSa
           <div className="flex rounded-lg overflow-hidden border border-border-primary">
             {ASSET_CLASS_OPTIONS.map((opt) => (
               <button key={opt.id} type="button" onClick={() => setForm((f) => ({ ...f, assetClass: opt.id }))}
-                className={`flex-1 py-2 text-xs font-medium transition-colors cursor-pointer ${
+                className={`flex-1 flex items-center justify-center gap-1.5 py-2 text-xs font-medium transition-colors cursor-pointer ${
                   form.assetClass === opt.id ? 'bg-accent-primary text-bg-primary' : 'bg-bg-tertiary text-text-muted hover:text-text-primary'
                 }`}>
+                <opt.Icon className="w-3.5 h-3.5" />
                 {opt.label}
               </button>
             ))}
