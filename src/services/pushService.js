@@ -82,6 +82,16 @@ export async function adminCancelExpiryReminders(uid) {
   } catch { /* best-effort */ }
 }
 
+// Admin-only: a user's Telegram bot link status + usage (from worker KV).
+// Returns { connected, username, usage: { total, lastUsed, lastCmd } | null,
+// alertsCount, watchlistCount }.
+export async function adminGetTelegramInfo(uid) {
+  const res = await fetch(`${WORKER_BASE}/admin/telegram/${uid}`, { headers: await authHeader() });
+  const data = await res.json().catch(() => ({}));
+  if (!res.ok) throw new Error(data.error || 'טעינת נתוני טלגרם נכשלה');
+  return data;
+}
+
 // Admin-only: list recent admin actions (grants/revokes/pushes/coupons).
 // Optional kind filter; up to 500 events.
 export async function adminListAuditEvents({ kind, limit = 200 } = {}) {
