@@ -109,7 +109,7 @@ export default function MarketSessionsCard() {
     <motion.div
       initial={{ opacity: 0, y: 10 }}
       animate={{ opacity: 1, y: 0 }}
-      className="bg-bg-secondary border border-border-primary rounded-xl p-3 mb-4"
+      className="glass-card p-3 mb-4"
     >
       {/* Header row */}
       <div className="flex flex-col items-center gap-1 mb-3">

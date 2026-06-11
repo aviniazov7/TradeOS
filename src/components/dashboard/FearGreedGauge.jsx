@@ -61,7 +61,7 @@ export default function FearGreedGauge({ expanded = false }) {
 
   if (error) {
     return (
-      <div className="bg-bg-secondary border border-border-primary rounded-xl p-3 flex flex-col items-center justify-center text-center min-h-[88px]">
+      <div className="glass-card p-3 flex flex-col items-center justify-center text-center min-h-[88px]">
         <Gauge className="w-4 h-4 text-text-muted mb-1" />
         <span className="text-[11px] text-text-muted">לא ניתן לטעון מד פחד</span>
       </div>
@@ -85,7 +85,7 @@ export default function FearGreedGauge({ expanded = false }) {
       <motion.div
         initial={{ opacity: 0, y: 10 }}
         animate={{ opacity: 1, y: 0 }}
-        className="bg-bg-secondary border border-border-primary rounded-xl p-3 flex flex-col items-center"
+        className="glass-card p-3 flex flex-col items-center"
       >
         <div className="flex items-center gap-1.5 mb-1.5">
           <Gauge className="w-3.5 h-3.5 text-text-muted" />
@@ -125,7 +125,7 @@ export default function FearGreedGauge({ expanded = false }) {
       initial={{ opacity: 0, y: 15 }}
       animate={{ opacity: 1, y: 0 }}
       transition={{ duration: 0.5 }}
-      className="bg-bg-secondary border border-border-primary rounded-xl p-5"
+      className="glass-card p-5"
     >
       <h2 className="text-sm font-semibold text-text-primary mb-4 flex items-center gap-2 justify-center">
         <Gauge className="w-4 h-4 text-text-muted" />

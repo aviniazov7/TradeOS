@@ -64,7 +64,7 @@ function computeBinanceCategories(allCoins) {
 }
 
 const cardVariants = { initial: { opacity: 0, y: 10 }, animate: { opacity: 1, y: 0 } };
-const cardClass = 'bg-bg-secondary border border-border-primary rounded-xl p-3';
+const cardClass = 'glass-card p-3';
 const FUTURES_SYMBOLS = [
   'BTCUSDT', 'ETHUSDT', 'SOLUSDT', 'XRPUSDT', 'BNBUSDT',
   'DOGEUSDT', 'ADAUSDT', 'AVAXUSDT', 'DOTUSDT', 'LINKUSDT',
