@@ -64,7 +64,25 @@ function computeBinanceCategories(allCoins) {
 }
 
 const cardVariants = { initial: { opacity: 0, y: 10 }, animate: { opacity: 1, y: 0 } };
-const cardClass = 'glass-card p-3';
+const cardClass = 'bento-card p-3';
+
+// Per-metric colour identity for the top stats row: a tinted gradient fill
+// over the dark card base, a matching glowing border, and a neon number.
+const statAccent = (r, g, b, color) => ({
+  color,
+  style: {
+    background: `linear-gradient(145deg, rgba(${r},${g},${b},0.16) 0%, rgba(${r},${g},${b},0.05) 45%, rgba(${r},${g},${b},0) 75%), rgba(16,16,24,0.85)`,
+    borderColor: `rgba(${r},${g},${b},0.30)`,
+    boxShadow: `0 0 22px rgba(${r},${g},${b},0.10)`,
+  },
+});
+const STAT_ACCENTS = {
+  cap:  statAccent(56, 189, 248, '#38bdf8'),  // total market cap — cyan
+  usdt: statAccent(38, 161, 123, '#2dd4bf'),  // USDT dominance — tether teal
+  btc:  statAccent(247, 147, 26, '#fbbf24'),  // BTC dominance — bitcoin orange
+  vol:  statAccent(168, 85, 247, '#c084fc'),  // 24h volume — violet
+  alt:  statAccent(99, 102, 241, '#818cf8'),  // altcoin season — indigo
+};
 const FUTURES_SYMBOLS = [
   'BTCUSDT', 'ETHUSDT', 'SOLUSDT', 'XRPUSDT', 'BNBUSDT',
   'DOGEUSDT', 'ADAUSDT', 'AVAXUSDT', 'DOTUSDT', 'LINKUSDT',
@@ -948,12 +966,12 @@ export default function MarketOverview() {
       {/* Top row: Global stats */}
       <motion.div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-3 mb-4" variants={staggerContainer} initial="initial" animate="animate">
         {/* Total Market Cap */}
-        <motion.div className={cardClass} variants={cardVariants}>
+        <motion.div className={cardClass} style={STAT_ACCENTS.cap.style} variants={cardVariants}>
           <div className="flex items-center gap-1.5 mb-1.5 justify-center">
-            <DollarSign className="w-3.5 h-3.5 text-accent-primary" />
+            <DollarSign className="w-3.5 h-3.5" style={{ color: STAT_ACCENTS.cap.color }} />
             <span className="text-[11px] text-text-muted">שווי שוק כולל</span>
           </div>
-          <p className="text-base font-bold text-text-primary text-center">
+          <p className="text-base font-bold text-center neon-num" style={{ color: STAT_ACCENTS.cap.color }}>
             {global ? formatNum(global.total_market_cap?.usd) : '—'}
           </p>
           {global?.market_cap_change_percentage_24h_usd != null && (
@@ -964,24 +982,24 @@ export default function MarketOverview() {
         </motion.div>
 
         {/* USDT Dominance */}
-        <motion.div className={cardClass} variants={cardVariants}>
+        <motion.div className={cardClass} style={STAT_ACCENTS.usdt.style} variants={cardVariants}>
           <div className="flex items-center gap-1.5 mb-1.5 justify-center">
             <DollarSign className="w-3.5 h-3.5 text-[#26a17b]" />
             <span className="text-[11px] text-text-muted">USDT.D</span>
           </div>
-          <p className="text-base font-bold text-text-primary text-center">
+          <p className="text-base font-bold text-center neon-num" style={{ color: STAT_ACCENTS.usdt.color }}>
             {global?.market_cap_percentage?.usdt ? `${global.market_cap_percentage.usdt.toFixed(2)}%` : '—'}
           </p>
           <p className="text-[11px] text-text-muted text-center mt-0.5">דומיננטיות USDT</p>
         </motion.div>
 
         {/* BTC Dominance */}
-        <motion.div className={cardClass} variants={cardVariants}>
+        <motion.div className={cardClass} style={STAT_ACCENTS.btc.style} variants={cardVariants}>
           <div className="flex items-center gap-1.5 mb-1.5 justify-center">
             <Bitcoin className="w-3.5 h-3.5 text-[#f7931a]" />
             <span className="text-[11px] text-text-muted">דומיננטיות BTC</span>
           </div>
-          <p className="text-base font-bold text-text-primary text-center">
+          <p className="text-base font-bold text-center neon-num" style={{ color: STAT_ACCENTS.btc.color }}>
             {global?.market_cap_percentage?.btc ? `${global.market_cap_percentage.btc.toFixed(1)}%` : '—'}
           </p>
           {global?.market_cap_percentage?.eth && (
@@ -992,12 +1010,12 @@ export default function MarketOverview() {
         </motion.div>
 
         {/* 24h Volume */}
-        <motion.div className={cardClass} variants={cardVariants}>
+        <motion.div className={cardClass} style={STAT_ACCENTS.vol.style} variants={cardVariants}>
           <div className="flex items-center gap-1.5 mb-1.5 justify-center">
-            <PieChart className="w-3.5 h-3.5 text-accent-primary" />
+            <PieChart className="w-3.5 h-3.5" style={{ color: STAT_ACCENTS.vol.color }} />
             <span className="text-[11px] text-text-muted">נפח מסחר 24h</span>
           </div>
-          <p className="text-base font-bold text-text-primary text-center">
+          <p className="text-base font-bold text-center neon-num" style={{ color: STAT_ACCENTS.vol.color }}>
             {global ? formatNum(global.total_volume?.usd) : '—'}
           </p>
           <p className="text-[11px] text-text-muted text-center mt-0.5">
@@ -1006,14 +1024,14 @@ export default function MarketOverview() {
         </motion.div>
 
         {/* Altcoin Season Index - 2 columns, last = leftmost in RTL = above עולים ויורדים */}
-        <motion.div className={`${cardClass} col-span-2`} variants={cardVariants}>
+        <motion.div className={`${cardClass} col-span-2`} style={STAT_ACCENTS.alt.style} variants={cardVariants}>
           <div className="flex items-center gap-1.5 mb-2 justify-center">
-            <ArrowUpRight className="w-3.5 h-3.5 text-accent-primary" />
+            <ArrowUpRight className="w-3.5 h-3.5" style={{ color: STAT_ACCENTS.alt.color }} />
             <span className="text-[11px] text-text-muted font-medium">Altcoin Season</span>
           </div>
           {altSeasonData ? (
             <>
-              <p className="text-2xl font-bold text-text-primary text-center mb-2">
+              <p className="text-2xl font-bold text-center mb-2 neon-num" style={{ color: STAT_ACCENTS.alt.color }}>
                 {altSeasonData.index}<span className="text-sm font-normal text-text-muted">/100</span>
               </p>
               <div className="flex items-center justify-between text-[10px] text-text-muted mb-1.5">
@@ -1091,7 +1109,7 @@ export default function MarketOverview() {
                   className="flex items-center justify-between py-1 border-b border-border-primary/30 last:border-0 cursor-pointer hover:bg-white/5 rounded px-1 transition-colors"
                   onClick={() => openChart(coin.symbol)}
                 >
-                  <span className="text-[11px] font-bold text-profit">
+                  <span className="inline-flex items-center text-[11px] font-bold px-1.5 py-0.5 rounded-md bg-profit/10 text-profit border border-profit/25 neon-num">
                     +{coin.price_change_percentage_24h?.toFixed(1)}%
                   </span>
                   <div className="flex items-center gap-2">
@@ -1109,7 +1127,7 @@ export default function MarketOverview() {
                   className="flex items-center justify-between py-1 border-b border-border-primary/30 last:border-0 cursor-pointer hover:bg-white/5 rounded px-1 transition-colors"
                   onClick={() => openChart(coin.symbol)}
                 >
-                  <span className="text-[11px] font-bold text-loss">
+                  <span className="inline-flex items-center text-[11px] font-bold px-1.5 py-0.5 rounded-md bg-loss/10 text-loss border border-loss/25 neon-num">
                     {coin.price_change_percentage_24h?.toFixed(1)}%
                   </span>
                   <div className="flex items-center gap-2">
@@ -1147,7 +1165,7 @@ export default function MarketOverview() {
                     <span className={`text-xs font-medium ${coin.price_change_percentage_24h >= 0 ? 'text-profit' : 'text-loss'}`}>
                       {coin.price_change_percentage_24h?.toFixed(2)}%
                     </span>
-                    <span className="text-sm text-text-primary font-medium">{formatPrice(coin.current_price)}</span>
+                    <span className="text-sm text-text-primary font-medium font-mono">{formatPrice(coin.current_price)}</span>
                   </div>
                   <div className="flex items-center gap-3">
                     <div className="flex items-center gap-1.5 text-right">

@@ -409,35 +409,55 @@ input[type="number"] {
   appearance: textfield;
 }
 
-/* ── Glass cards (market overview redesign) ─────────────────────────
-   Premium glassmorphism: translucent gradient fill, blur, a light
-   "top edge" highlight, and a soft accent glow on hover. Works on the
-   existing dark palette without touching any data markup. */
-.glass-card {
+/* ── Bento cards (market overview redesign) ─────────────────────────
+   Terminal/neon bento: a solid dark panel with a thin border, a faint
+   top "scan line" highlight, and a soft cyan glow on hover. Headline
+   numbers use .neon-num (mono + currentColor glow) so prices read like
+   a trading terminal. */
+.bento-card {
   position: relative;
-  background:
-    linear-gradient(165deg, rgba(255, 255, 255, 0.045) 0%, rgba(255, 255, 255, 0.015) 40%, rgba(43, 120, 255, 0.025) 100%);
-  border: 1px solid rgba(255, 255, 255, 0.07);
-  border-radius: 1rem;
-  backdrop-filter: blur(14px);
-  -webkit-backdrop-filter: blur(14px);
-  box-shadow:
-    inset 0 1px 0 rgba(255, 255, 255, 0.06),
-    0 4px 24px rgba(0, 0, 0, 0.25);
-  transition: transform 0.25s ease, box-shadow 0.25s ease, border-color 0.25s ease;
+  background: rgba(16, 16, 24, 0.85);
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  border-radius: 0.75rem;
+  backdrop-filter: blur(6px);
+  -webkit-backdrop-filter: blur(6px);
+  box-shadow: 0 4px 20px rgba(0, 0, 0, 0.30);
+  transition: border-color 0.2s ease, box-shadow 0.2s ease;
 }
-.glass-card:hover {
-  transform: translateY(-2px);
-  border-color: rgba(43, 120, 255, 0.35);
-  box-shadow:
-    inset 0 1px 0 rgba(255, 255, 255, 0.08),
-    0 8px 32px rgba(0, 0, 0, 0.35),
-    0 0 24px rgba(43, 120, 255, 0.10);
+/* Faint scan-line highlight along the top edge */
+.bento-card::before {
+  content: '';
+  position: absolute;
+  top: 0;
+  left: 8%;
+  right: 8%;
+  height: 1px;
+  background: linear-gradient(to right, transparent, rgba(255, 255, 255, 0.14), transparent);
+  pointer-events: none;
 }
-/* Light theme: keep the glass readable on bright backgrounds */
-:root.light .glass-card,
-[data-theme='light'] .glass-card {
-  background: linear-gradient(165deg, rgba(255, 255, 255, 0.75) 0%, rgba(255, 255, 255, 0.55) 100%);
+.bento-card:hover {
+  border-color: rgba(0, 191, 255, 0.28);
+  box-shadow:
+    0 6px 26px rgba(0, 0, 0, 0.38),
+    0 0 20px rgba(0, 191, 255, 0.08);
+}
+.neon-num {
+  font-family: ui-monospace, 'SF Mono', SFMono-Regular, Menlo, Consolas, monospace;
+  letter-spacing: -0.02em;
+  text-shadow: 0 0 10px currentColor;
+}
+/* Light theme: solid card, no glow */
+:root.light .bento-card,
+[data-theme='light'] .bento-card {
+  background: rgba(255, 255, 255, 0.82);
   border-color: rgba(0, 0, 0, 0.08);
-  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.8), 0 4px 18px rgba(0, 0, 0, 0.06);
+  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.06);
+}
+:root.light .bento-card::before,
+[data-theme='light'] .bento-card::before {
+  background: none;
+}
+:root.light .neon-num,
+[data-theme='light'] .neon-num {
+  text-shadow: none;
 }
