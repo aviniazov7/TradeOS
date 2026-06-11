@@ -2864,6 +2864,10 @@ async function bybitAsBinance(subPath, searchParams) {
         lowPrice: t.lowPrice24h,
         volume: t.volume24h,
         quoteVolume: t.turnover24h,
+        // Binance exposes a 24h trade count and the market-overview screen
+        // filters dead pairs with count >= 1000. Bybit has no equivalent, so
+        // report a passing constant and let the real $-volume filter decide.
+        count: '100000',
       });
       const single = searchParams.get('symbol');
       if (single) {
@@ -2876,7 +2880,9 @@ async function bybitAsBinance(subPath, searchParams) {
         try { wanted = JSON.parse(batch); } catch { return null; }
         return JSON.stringify(wanted.map((s) => bySym[s]).filter(Boolean).map(toBinance));
       }
-      return null;
+      // No symbol filter — the full ticker list (market overview builds its
+      // top-10 / gainers-losers / trending / categories from this one call).
+      return JSON.stringify((j?.result?.list || []).map(toBinance));
     }
 
     if (subPath.startsWith('klines')) {
