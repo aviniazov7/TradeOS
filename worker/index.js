@@ -2843,6 +2843,70 @@ function isAllowedOrigin(origin) {
   return ALLOWED_ORIGINS.includes(origin) || PREVIEW_ORIGIN_RE.test(origin);
 }
 
+// Serve a Binance /api/v3 request from Bybit, returning Binance-shaped JSON.
+// Covers the two endpoints the app actually uses — ticker/24hr (single symbol
+// or a symbols=[...] batch) and klines. Returns a JSON string, or null when
+// the subpath isn't covered / Bybit fails (caller then falls back to stale).
+async function bybitAsBinance(subPath, searchParams) {
+  try {
+    if (subPath.startsWith('ticker/24hr')) {
+      const r = await fetch('https://api.bybit.com/v5/market/tickers?category=spot', { headers: { 'Accept': 'application/json' } });
+      if (!r.ok) return null;
+      const j = await r.json();
+      const bySym = {};
+      for (const t of (j?.result?.list || [])) bySym[t.symbol] = t;
+      const toBinance = (t) => ({
+        symbol: t.symbol,
+        lastPrice: t.lastPrice,
+        // Binance reports percent units; Bybit's price24hPcnt is a fraction.
+        priceChangePercent: String((parseFloat(t.price24hPcnt) || 0) * 100),
+        highPrice: t.highPrice24h,
+        lowPrice: t.lowPrice24h,
+        volume: t.volume24h,
+        quoteVolume: t.turnover24h,
+      });
+      const single = searchParams.get('symbol');
+      if (single) {
+        const t = bySym[single];
+        return t ? JSON.stringify(toBinance(t)) : null;
+      }
+      const batch = searchParams.get('symbols');
+      if (batch) {
+        let wanted = [];
+        try { wanted = JSON.parse(batch); } catch { return null; }
+        return JSON.stringify(wanted.map((s) => bySym[s]).filter(Boolean).map(toBinance));
+      }
+      return null;
+    }
+
+    if (subPath.startsWith('klines')) {
+      const symbol = searchParams.get('symbol');
+      if (!symbol) return null;
+      const interval = searchParams.get('interval') || '1d';
+      const limit = Math.min(parseInt(searchParams.get('limit') || '100', 10) || 100, 1000);
+      const MAP = { '1m': '1', '3m': '3', '5m': '5', '15m': '15', '30m': '30', '1h': '60', '2h': '120', '4h': '240', '6h': '360', '12h': '720', '1d': 'D', '1w': 'W', '1M': 'M' };
+      const byInterval = MAP[interval];
+      if (!byInterval) return null;
+      const r = await fetch(`https://api.bybit.com/v5/market/kline?category=spot&symbol=${encodeURIComponent(symbol)}&interval=${byInterval}&limit=${limit}`, { headers: { 'Accept': 'application/json' } });
+      if (!r.ok) return null;
+      const j = await r.json();
+      const list = j?.result?.list || [];
+      if (!list.length) return null;
+      // Bybit returns newest-first [start, open, high, low, close, volume,
+      // turnover]; Binance is oldest-first 12-field arrays. The app reads
+      // indices 0 (openTime), 4 (close) and 5 (volume).
+      const rows = list.slice().reverse().map((k) => [
+        Number(k[0]), k[1], k[2], k[3], k[4], k[5], 0, k[6], 0, '0', '0', '0',
+      ]);
+      return JSON.stringify(rows);
+    }
+
+    return null; // subpath not covered (depth, trades, …)
+  } catch {
+    return null;
+  }
+}
+
 async function handleRequest(request, env) {
   const origin = request.headers.get('Origin') || '';
   const allowedOrigin = isAllowedOrigin(origin) ? origin : ALLOWED_ORIGINS[0];
@@ -2983,7 +3047,9 @@ async function handleRequest(request, env) {
     try {
       const cached = await env.ALERTS_KV.get(cacheKey);
       if (cached) return new Response(cached, { headers: { ...cors, 'Content-Type': 'application/json', 'X-Cache': 'HIT' } });
-      const res = await fetch(cgUrl, { headers: { 'Accept': 'application/json' } });
+      // Browser-like UA — CoinGecko's free tier 403s bare server-side fetches
+      // from Cloudflare egress IPs but generally serves browser-looking ones.
+      const res = await fetch(cgUrl, { headers: { 'Accept': 'application/json', 'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36' } });
       if (!res.ok) return new Response(JSON.stringify({ error: res.status }), { status: res.status, headers: { ...cors, 'Content-Type': 'application/json' } });
       const text = await res.text();
       env.ALERTS_KV.put(cacheKey, text, { expirationTtl: ttl }).catch(() => {});
@@ -3019,16 +3085,27 @@ async function handleRequest(request, env) {
         if (r.ok) { res = r; break; }
         lastStatus = r.status;
       }
-      if (!res) {
-        // All hosts failed (e.g. 403/408/429) — serve the last good copy if we have one
+
+      // Both Binance hosts blocked (403 from this CF colo) — translate the
+      // request to Bybit and answer in Binance's response shape, so every
+      // client consumer (coin details, klines charts, bulk tickers) keeps
+      // working without changes.
+      let text = null;
+      if (res) {
+        text = await res.text();
+      } else {
+        text = await bybitAsBinance(subPath, url.searchParams);
+      }
+      if (text === null) {
+        // Bybit translation didn't cover this subpath / upstream failed —
+        // serve the last good copy if we have one.
         const stale = await env.ALERTS_KV.get(staleKey);
         if (stale) return new Response(stale, { headers: { ...cors, 'Content-Type': 'application/json', 'X-Cache': 'STALE' } });
         return new Response(JSON.stringify({ error: lastStatus }), { status: lastStatus || 502, headers: { ...cors, 'Content-Type': 'application/json' } });
       }
-      const text = await res.text();
       env.ALERTS_KV.put(cacheKey, text, { expirationTtl: ttl }).catch(() => {});
       env.ALERTS_KV.put(staleKey, text, { expirationTtl: 3600 }).catch(() => {});
-      return new Response(text, { headers: { ...cors, 'Content-Type': 'application/json', 'X-Cache': 'MISS' } });
+      return new Response(text, { headers: { ...cors, 'Content-Type': 'application/json', 'X-Cache': res ? 'MISS' : 'BYBIT' } });
     } catch (err) {
       return new Response(JSON.stringify({ error: err.message }), { status: 502, headers: { ...cors, 'Content-Type': 'application/json' } });
     }
