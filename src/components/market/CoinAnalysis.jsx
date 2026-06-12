@@ -1435,8 +1435,8 @@ function buildHeatmap(klines, priceBuckets = 150) {
   // liquidate ±10% away from price, so the axis extends ~±11.5% beyond the
   // traded range (this is why Coinglass charts show price as a narrow band
   // in the middle with the big walls above and below).
-  const priceMin = Math.min(...candles.map(c => c.low)) * 0.885;
-  const priceMax = Math.max(...candles.map(c => c.high)) * 1.115;
+  const priceMin = Math.min(...candles.map(c => c.low)) * 0.89;
+  const priceMax = Math.max(...candles.map(c => c.high)) * 1.11;
   const priceRange = priceMax - priceMin;
   if (priceRange <= 0) return null;
 
@@ -1592,13 +1592,13 @@ function LiquidityHeatmap({ pair, klines }) {
       ctx.restore();
 
       // Candlestick overlay (TradingView colours)
-      const bodyW = Math.max(1, cellW * 0.55);
+      const bodyW = Math.max(1.5, cellW * 0.7);
       candles.forEach((c, i) => {
         const x = toX(i);
         const up = c.close >= c.open;
         const color = up ? '#26a69a' : '#ef5350';
         ctx.strokeStyle = color;
-        ctx.lineWidth = Math.max(0.6, bodyW * 0.18);
+        ctx.lineWidth = Math.max(0.8, bodyW * 0.2);
         ctx.beginPath();
         ctx.moveTo(x, toY(c.high));
         ctx.lineTo(x, toY(c.low));
@@ -1606,7 +1606,7 @@ function LiquidityHeatmap({ pair, klines }) {
         ctx.fillStyle = color;
         const bTop = toY(Math.max(c.open, c.close));
         const bBot = toY(Math.min(c.open, c.close));
-        ctx.fillRect(x - bodyW / 2, bTop, bodyW, Math.max(1, bBot - bTop));
+        ctx.fillRect(x - bodyW / 2, bTop, bodyW, Math.max(1.5, bBot - bTop));
       });
 
       // Last-price dashed line
@@ -1797,7 +1797,7 @@ function LiquidityHeatmap({ pair, klines }) {
         <canvas
           ref={canvasRef}
           className="w-full rounded-lg"
-          style={{ height: '320px', background: '#08071a', display: 'block', cursor: 'crosshair' }}
+          style={{ height: '460px', background: '#08071a', display: 'block', cursor: 'crosshair' }}
         />
 
         {/* Legend */}
