@@ -1,4 +1,5 @@
 import { useState, useEffect, useRef } from 'react';
+import { fetchSpotQuotes } from '../services/bybitDirect';
 
 const WORKER_BASE = import.meta.env.VITE_WORKER_URL || 'https://trade-os.aviniazov7.workers.dev';
 
@@ -20,26 +21,32 @@ export function useWorkerQuotes(path, symbols = [], { enabled = true, intervalMs
   const symbolsKey = symbols.join(',');
 
   useEffect(() => {
-    if (!enabled || !symbolsKey) {
-      setLoading(false);
-      return;
-    }
+    if (!enabled || !symbolsKey) return;
 
     let cancelled = false;
     const fetchQuotes = async () => {
+      let gotData = false;
+      abortRef.current?.abort();
+      const ctrl = new AbortController();
+      abortRef.current = ctrl;
       try {
-        abortRef.current?.abort();
-        const ctrl = new AbortController();
-        abortRef.current = ctrl;
         const res = await fetch(`${WORKER_BASE}${path}?symbols=${encodeURIComponent(symbolsKey)}`, { signal: ctrl.signal });
-        if (!res.ok) return;
-        const data = await res.json();
-        if (!cancelled && data && typeof data === 'object' && !data.error) setPrices(data);
+        if (res.ok) {
+          const data = await res.json();
+          if (!cancelled && data && typeof data === 'object' && !data.error && Object.keys(data).length) {
+            setPrices(data);
+            gotData = true;
+          }
+        }
       } catch {
-        // network/abort — keep last good prices
-      } finally {
-        if (!cancelled) setLoading(false);
+        // network/abort — fall through to the direct fallback
       }
+      // Worker route down → crypto quotes can come straight from Bybit (CORS-enabled)
+      if (!gotData && !cancelled && !ctrl.signal.aborted && path === '/cx/quotes') {
+        const direct = await fetchSpotQuotes(symbolsKey.split(','));
+        if (direct && !cancelled) setPrices(direct);
+      }
+      if (!cancelled) setLoading(false);
     };
 
     fetchQuotes();
@@ -51,5 +58,6 @@ export function useWorkerQuotes(path, symbols = [], { enabled = true, intervalMs
     };
   }, [path, symbolsKey, enabled, intervalMs]);
 
-  return { prices, loading };
+  // When the hook is idle (disabled / no symbols) there's nothing to load.
+  return { prices, loading: enabled && symbolsKey ? loading : false };
 }

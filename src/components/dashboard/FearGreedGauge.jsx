@@ -61,7 +61,7 @@ export default function FearGreedGauge({ expanded = false }) {
 
   if (error) {
     return (
-      <div className="glass-card p-3 flex flex-col items-center justify-center text-center min-h-[88px]">
+      <div className="bento-card p-3 flex flex-col items-center justify-center text-center min-h-[88px]">
         <Gauge className="w-4 h-4 text-text-muted mb-1" />
         <span className="text-[11px] text-text-muted">לא ניתן לטעון מד פחד</span>
       </div>
@@ -85,7 +85,7 @@ export default function FearGreedGauge({ expanded = false }) {
       <motion.div
         initial={{ opacity: 0, y: 10 }}
         animate={{ opacity: 1, y: 0 }}
-        className="glass-card p-3 flex flex-col items-center"
+        className="bento-card p-3 flex flex-col items-center"
       >
         <div className="flex items-center gap-1.5 mb-1.5">
           <Gauge className="w-3.5 h-3.5 text-text-muted" />
@@ -107,12 +107,12 @@ export default function FearGreedGauge({ expanded = false }) {
                 <path key={i} d={`M ${cx + r * Math.cos(s)} ${cy - r * Math.sin(s)} A ${r} ${r} 0 0 0 ${cx + r * Math.cos(e)} ${cy - r * Math.sin(e)}`} fill="none" stroke={seg.color} strokeWidth="14" strokeLinecap="butt" opacity="0.3" />
               );
             })}
-            <motion.line x1={cx} y1={cy} initial={{ x2: cx, y2: cy }} animate={{ x2: needleX, y2: needleY }} transition={{ duration: 1, ease: 'easeOut', delay: 0.3 }} stroke={needleColor} strokeWidth="2.5" strokeLinecap="round" />
-            <circle cx={cx} cy={cy} r="4" fill={needleColor} />
+            <motion.line x1={cx} y1={cy} initial={{ x2: cx, y2: cy }} animate={{ x2: needleX, y2: needleY }} transition={{ duration: 1, ease: 'easeOut', delay: 0.3 }} stroke={needleColor} strokeWidth="2.5" strokeLinecap="round" style={{ filter: `drop-shadow(0 0 4px ${needleColor})` }} />
+            <circle cx={cx} cy={cy} r="4" fill={needleColor} style={{ filter: `drop-shadow(0 0 5px ${needleColor})` }} />
           </svg>
         </div>
         <div className="text-center mt-0.5">
-          <span className="text-base font-bold text-text-primary">{value}</span>
+          <span className="text-base font-bold neon-num" style={{ color: needleColor }}>{value}</span>
           <span className="text-[11px] font-semibold mr-1.5" style={{ color: needleColor }}>{classification.label}</span>
         </div>
       </motion.div>
@@ -125,7 +125,7 @@ export default function FearGreedGauge({ expanded = false }) {
       initial={{ opacity: 0, y: 15 }}
       animate={{ opacity: 1, y: 0 }}
       transition={{ duration: 0.5 }}
-      className="glass-card p-5"
+      className="bento-card p-5"
     >
       <h2 className="text-sm font-semibold text-text-primary mb-4 flex items-center gap-2 justify-center">
         <Gauge className="w-4 h-4 text-text-muted" />
@@ -182,8 +182,8 @@ export default function FearGreedGauge({ expanded = false }) {
                   <path key={i} d={`M ${cx + r * Math.cos(s)} ${cy - r * Math.sin(s)} A ${r} ${r} 0 0 0 ${cx + r * Math.cos(e)} ${cy - r * Math.sin(e)}`} fill="none" stroke={seg.color} strokeWidth="16" strokeLinecap="round" opacity="0.4" />
                 );
               })}
-              <motion.line x1={cx} y1={cy} initial={{ x2: cx, y2: cy }} animate={{ x2: needleX, y2: needleY }} transition={{ duration: 1.2, ease: 'easeOut', delay: 0.3 }} stroke={needleColor} strokeWidth="3" strokeLinecap="round" />
-              <circle cx={cx} cy={cy} r="5" fill={needleColor} />
+              <motion.line x1={cx} y1={cy} initial={{ x2: cx, y2: cy }} animate={{ x2: needleX, y2: needleY }} transition={{ duration: 1.2, ease: 'easeOut', delay: 0.3 }} stroke={needleColor} strokeWidth="3" strokeLinecap="round" style={{ filter: `drop-shadow(0 0 4px ${needleColor})` }} />
+              <circle cx={cx} cy={cy} r="5" fill={needleColor} style={{ filter: `drop-shadow(0 0 6px ${needleColor})` }} />
               <circle cx={cx} cy={cy} r="2.5" fill="#fff" />
             </svg>
           </div>
@@ -192,7 +192,8 @@ export default function FearGreedGauge({ expanded = false }) {
               initial={{ opacity: 0, scale: 0.5 }}
               animate={{ opacity: 1, scale: 1 }}
               transition={{ delay: 0.8, duration: 0.4 }}
-              className="text-3xl font-bold text-text-primary"
+              className="text-3xl font-bold neon-num"
+              style={{ color: needleColor }}
             >
               {value}
             </motion.span>
