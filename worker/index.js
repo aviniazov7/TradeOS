@@ -156,6 +156,7 @@ function sessionFromDate(isoOrMs) {
 
 // ── AI usage quota (daily, resets at Israel midnight) ────────────────────────
 const AI_DAILY_LIMIT = 20;
+const AI_IMAGE_DAILY_LIMIT = 10;
 const FIREBASE_PROJECT_ID = 'tradeos-91a58';
 
 // ── Web Push (RFC 8291 aes128gcm + RFC 8292 VAPID) ───────────────────────────
@@ -891,6 +892,24 @@ async function incrementAiUsage(env, uid) {
   const v = await env.ALERTS_KV.get(key);
   const used = (v ? parseInt(v, 10) || 0 : 0) + 1;
   // 48h TTL so the entry survives across midnight and a small clock skew
+  await env.ALERTS_KV.put(key, String(used), { expirationTtl: 172800 });
+  return used;
+}
+
+// Chart-image analyses get their own (much smaller) daily budget on top of the
+// regular request counter — vision calls burn far more tokens than text.
+async function getAiImageUsage(env, uid) {
+  const date = getIsraelDateStr();
+  const key = `aiimg:${uid}:${date}`;
+  const v = await env.ALERTS_KV.get(key);
+  return { used: v ? parseInt(v, 10) || 0 : 0, limit: AI_IMAGE_DAILY_LIMIT, date };
+}
+
+async function incrementAiImageUsage(env, uid) {
+  const date = getIsraelDateStr();
+  const key = `aiimg:${uid}:${date}`;
+  const v = await env.ALERTS_KV.get(key);
+  const used = (v ? parseInt(v, 10) || 0 : 0) + 1;
   await env.ALERTS_KV.put(key, String(used), { expirationTtl: 172800 });
   return used;
 }
@@ -2206,6 +2225,24 @@ async function handleAIChat(request, env, cors) {
 
     const premium = await isUserPremium(env, token, uid);
 
+    // Chart-image analysis is premium-only, with its own small daily budget —
+    // vision requests burn far more provider tokens than text.
+    if (lastUserImage) {
+      if (!premium) {
+        return new Response(JSON.stringify({
+          error: 'ניתוח תמונות גרף זמין למנויי Premium בלבד. שדרג כדי לצרף גרפים לניתוח.',
+          premiumRequired: true,
+        }), { status: 403, headers: { ...cors, 'Content-Type': 'application/json' } });
+      }
+      const imgQuota = await getAiImageUsage(env, uid);
+      if (imgQuota.used >= imgQuota.limit) {
+        return new Response(JSON.stringify({
+          error: `הגעת למכסת ניתוחי התמונות היומית (${imgQuota.limit}). אפשר להמשיך לשוחח בטקסט, והמכסה תתאפס מחר.`,
+          quotaExceeded: true, used: imgQuota.used, limit: imgQuota.limit,
+        }), { status: 429, headers: { ...cors, 'Content-Type': 'application/json' } });
+      }
+    }
+
     // Multi-window rate limiting (+ global circuit breaker). Premium gets soft
     // caps (5/min, 50/hr, 200/day) so 'unlimited' can't be weaponized.
     const gate = await aiRateGate(env, uid, premium);
@@ -2297,6 +2334,7 @@ async function handleAIChat(request, env, cors) {
           groqFallback = await callGroq();
           if (groqFallback.ok) {
             await incrementAiUsage(env, uid);
+            if (hasImage) await incrementAiImageUsage(env, uid);
             return new Response(groqFallback.body, { headers: sseHeaders });
           }
           if (groqFallback.status !== 429) break; // non-retryable
@@ -2315,6 +2353,7 @@ async function handleAIChat(request, env, cors) {
         }), { status: rateLimited ? 429 : 502, headers: { ...cors, 'Content-Type': 'application/json' } });
       }
       await incrementAiUsage(env, uid);
+      if (hasImage) await incrementAiImageUsage(env, uid);
       return new Response(await geminiStreamToOpenAI(gemRes.body), { headers: sseHeaders });
     }
 
@@ -2342,6 +2381,7 @@ async function handleAIChat(request, env, cors) {
       groqResponse = await callGroq();
       if (groqResponse.ok) {
         await incrementAiUsage(env, uid);
+        if (hasImage) await incrementAiImageUsage(env, uid);
         return new Response(groqResponse.body, { headers: sseHeaders });
       }
       if (groqResponse.status !== 429) break; // non-retryable
@@ -3184,11 +3224,14 @@ async function handleRequest(request, env) {
       // Premium uses the same daily counter we accrue in /ai-chat, capped by
       // the soft AI_PREMIUM_LIMITS.day for cost safety.
       const usage = await getAiUsage(env, uid);
+      const imgUsage = await getAiImageUsage(env, uid);
       return new Response(JSON.stringify({
         used: usage.used,
         limit: AI_PREMIUM_LIMITS.day,
         unlimited: false,
         premium: true,
+        imageUsed: imgUsage.used,
+        imageLimit: imgUsage.limit,
         date: usage.date,
       }), { headers: { ...cors, 'Content-Type': 'application/json' } });
     }

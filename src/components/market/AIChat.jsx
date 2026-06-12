@@ -669,6 +669,16 @@ export default function AIChat({ heightClass = 'h-[calc(100dvh-13.5rem)] md:h-[c
                     style={{ width: `${pct}%` }}
                   />
                 </div>
+                {aiUsage.premium && aiUsage.imageLimit > 0 && (
+                  <div className="flex items-center justify-between text-[10px] mt-1">
+                    <span className="text-text-muted flex items-center gap-1">
+                      <ImageIcon className="w-2.5 h-2.5" /> ניתוחי תמונה
+                    </span>
+                    <span className={aiUsage.imageLimit - aiUsage.imageUsed <= 2 ? 'text-loss font-semibold' : 'text-text-secondary'}>
+                      נשארו {Math.max(0, aiUsage.imageLimit - aiUsage.imageUsed)} מתוך {aiUsage.imageLimit}
+                    </span>
+                  </div>
+                )}
               </div>
             );
           })()}
@@ -708,12 +718,21 @@ export default function AIChat({ heightClass = 'h-[calc(100dvh-13.5rem)] md:h-[c
               onChange={handleImagePick}
             />
             <button
-              onClick={() => fileInputRef.current?.click()}
+              onClick={() => {
+                if (!aiUsage.premium) {
+                  setError('ניתוח תמונות גרף זמין למנויי Premium בלבד 👑');
+                  return;
+                }
+                fileInputRef.current?.click();
+              }}
               disabled={streaming}
-              className="w-10 h-10 rounded-xl border border-border-primary bg-bg-tertiary text-text-muted hover:text-accent-primary hover:border-accent-primary/40 flex items-center justify-center transition-colors cursor-pointer disabled:opacity-30 disabled:cursor-not-allowed shrink-0"
-              title="צרף תמונת גרף לניתוח"
+              className="relative w-10 h-10 rounded-xl border border-border-primary bg-bg-tertiary text-text-muted hover:text-accent-primary hover:border-accent-primary/40 flex items-center justify-center transition-colors cursor-pointer disabled:opacity-30 disabled:cursor-not-allowed shrink-0"
+              title={aiUsage.premium ? 'צרף תמונת גרף לניתוח' : 'ניתוח תמונות גרף — Premium בלבד'}
             >
               <ImagePlus className="w-4 h-4" />
+              {!aiUsage.premium && (
+                <Crown className="absolute -top-1.5 -left-1.5 w-3.5 h-3.5 text-accent-primary bg-bg-primary rounded-full p-0.5" />
+              )}
             </button>
             <button
               onClick={() => handleSend()}
