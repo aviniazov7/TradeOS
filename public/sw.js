@@ -64,9 +64,14 @@ self.addEventListener('fetch', (event) => {
   if (url.startsWith('chrome-extension')) return;
   if (shouldBypass(url)) return; // Let the browser handle auth/Firebase traffic directly
 
-  // Never cache navigation requests (index.html) — always go to network
+  // Never cache navigation requests (index.html) — always go to network.
+  // cache: 'no-store' also bypasses the browser's HTTP disk cache: HTML cached
+  // before the hosting no-cache header shipped would otherwise keep serving a
+  // stale shell (and stale asset hashes) long after a deploy.
   if (event.request.mode === 'navigate') {
-    event.respondWith(fetch(event.request).catch(() => caches.match('/index.html')));
+    event.respondWith(
+      fetch(event.request, { cache: 'no-store' }).catch(() => caches.match('/index.html'))
+    );
     return;
   }
 
