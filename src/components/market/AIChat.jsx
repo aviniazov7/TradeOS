@@ -1,9 +1,9 @@
 import { useState, useEffect, useRef } from 'react';
 import { createPortal } from 'react-dom';
 import { motion, AnimatePresence } from 'framer-motion';
-import { Bot, Send, RotateCcw, User, Sparkles, BarChart3, History, Trash2, Crown, ImagePlus, X, Image as ImageIcon, Copy, Check } from 'lucide-react';
+import { Bot, Send, RotateCcw, User, Sparkles, BarChart3, History, Trash2, Crown, Image as ImageIcon, Copy, Check } from 'lucide-react';
 import { sendMessageStream } from '../../services/groqApi';
-import { formatAIText, fileToCompressedDataUrl } from '../../utils/aiChatHelpers';
+import { formatAIText } from '../../utils/aiChatHelpers';
 import { detectCoinFromText } from '../../utils/technicals';
 import { fetchCoinChart } from '../../services/coingeckoApi';
 import { useAiUsage } from '../../hooks/useAiUsage';
@@ -50,7 +50,7 @@ function saveConversations(list) {
 
 const WELCOME_MESSAGE = {
   role: 'model',
-  text: 'שלום! אני TradeAI — המנטור שלך לשיטת ויקוף. אפשר לשאול אותי על שלבי איסוף ופיזור, LPSY, LPS, Spring, ניתוח Volume ועוד. אפשר גם לצרף צילום מסך של גרף ואנתח אותו עבורך. במה אוכל לעזור?',
+  text: 'שלום! אני TradeAI — המנטור שלך לשיטת ויקוף. אפשר לשאול אותי על שלבי איסוף ופיזור, LPSY, LPS, Spring, ניתוח Volume ועוד. רוצה ניתוח של צילום גרף? עבור לטאב "ניתוח גרפים". במה אוכל לעזור?',
 };
 
 const QUICK_QUESTIONS = [
@@ -93,10 +93,8 @@ export default function AIChat({ heightClass = 'h-[calc(100dvh-13.5rem)] md:h-[c
   const [error, setError] = useState(null);
   const [cooldown, setCooldown] = useState(false);
   const [pendingChart, setPendingChart] = useState(null);
-  const [pendingImage, setPendingImage] = useState(null); // { dataUrl, name }
   const messagesEndRef = useRef(null);
   const inputRef = useRef(null);
-  const fileInputRef = useRef(null);
   const streamingTextRef = useRef('');
   const batchTimeoutRef = useRef(null);
   const aiUsage = useAiUsage();
@@ -173,31 +171,8 @@ export default function AIChat({ heightClass = 'h-[calc(100dvh-13.5rem)] md:h-[c
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
   }, [messages, streaming, streamingText]);
 
-  const handleImagePick = async (e) => {
-    const file = e.target.files?.[0];
-    e.target.value = ''; // allow re-selecting the same file
-    if (!file) return;
-    if (!file.type.startsWith('image/')) {
-      setError('יש לבחור קובץ תמונה');
-      return;
-    }
-    if (file.size > 10 * 1024 * 1024) {
-      setError('התמונה גדולה מדי (עד 10MB)');
-      return;
-    }
-    try {
-      const dataUrl = await fileToCompressedDataUrl(file);
-      setPendingImage({ dataUrl, name: file.name });
-      setError(null);
-      inputRef.current?.focus();
-    } catch (err) {
-      setError(err.message || 'טעינת התמונה נכשלה');
-    }
-  };
-
   const handleSend = async (text = input.trim()) => {
-    const image = pendingImage;
-    if ((!text && !image) || streaming || cooldown) return;
+    if (!text || streaming || cooldown) return;
 
     // Min 6s between sends so we stay under the shared upstream rate limits
     // (Gemini free 15 RPM ≈ one every 4s; we add buffer).
@@ -212,14 +187,8 @@ export default function AIChat({ heightClass = 'h-[calc(100dvh-13.5rem)] md:h-[c
 
     setInput('');
     setError(null);
-    setPendingImage(null);
 
-    const userMsg = {
-      role: 'user',
-      text: text || 'נתח לי את הגרף שבתמונה',
-      ...(image ? { image: image.dataUrl } : {}),
-      timestamp: Date.now(),
-    };
+    const userMsg = { role: 'user', text, timestamp: Date.now() };
     const newMessages = [...messages, userMsg];
     setMessages(newMessages);
     setStreaming(true);
@@ -281,9 +250,8 @@ export default function AIChat({ heightClass = 'h-[calc(100dvh-13.5rem)] md:h-[c
         // Failed before any token streamed back → roll the user message out so
         // a retry doesn't pile up duplicate 'hey' bubbles like in the report.
         setMessages((prev) => prev.filter((m) => m !== userMsg));
-        // And restore the typed text + attached image so the user can resend.
+        // And restore the typed text so the user can edit + resend.
         setInput(text);
-        if (image) setPendingImage(image);
       }
     } finally {
       setStreaming(false);
@@ -610,61 +578,20 @@ export default function AIChat({ heightClass = 'h-[calc(100dvh-13.5rem)] md:h-[c
               </div>
             );
           })()}
-          {/* Attached image preview — sent with the next message */}
-          {pendingImage && (
-            <div className="mb-2 flex items-center gap-2 bg-bg-tertiary border border-border-primary rounded-xl p-2">
-              <img src={pendingImage.dataUrl} alt="" className="w-12 h-12 object-cover rounded-lg border border-border-primary" />
-              <div className="flex-1 min-w-0">
-                <div className="text-xs text-text-primary truncate">{pendingImage.name}</div>
-                <div className="text-[10px] text-text-muted">התמונה תצורף להודעה הבאה</div>
-              </div>
-              <button
-                onClick={() => setPendingImage(null)}
-                className="p-1.5 rounded-lg text-text-muted hover:text-loss hover:bg-bg-secondary transition-colors cursor-pointer"
-                title="הסר תמונה"
-              >
-                <X className="w-4 h-4" />
-              </button>
-            </div>
-          )}
           <div className="flex items-end gap-2">
             <textarea
               ref={inputRef}
               value={input}
               onChange={(e) => setInput(e.target.value)}
               onKeyDown={handleKeyDown}
-              placeholder="שאל על ויקוף, או צרף תמונת גרף לניתוח..."
+              placeholder="שאל על ויקוף, LPSY, LPS..."
               rows={1}
               className="flex-1 bg-bg-tertiary border border-border-primary rounded-xl px-4 py-2.5 text-sm text-text-primary placeholder-text-muted outline-none resize-none focus:border-accent-primary/50 transition-colors"
               style={{ maxHeight: '100px' }}
             />
-            <input
-              ref={fileInputRef}
-              type="file"
-              accept="image/*"
-              className="hidden"
-              onChange={handleImagePick}
-            />
-            <button
-              onClick={() => {
-                if (!aiUsage.premium) {
-                  setError('ניתוח תמונות גרף זמין למנויי Premium בלבד 👑');
-                  return;
-                }
-                fileInputRef.current?.click();
-              }}
-              disabled={streaming}
-              className="relative w-10 h-10 rounded-xl border border-border-primary bg-bg-tertiary text-text-muted hover:text-accent-primary hover:border-accent-primary/40 flex items-center justify-center transition-colors cursor-pointer disabled:opacity-30 disabled:cursor-not-allowed shrink-0"
-              title={aiUsage.premium ? 'צרף תמונת גרף לניתוח' : 'ניתוח תמונות גרף — Premium בלבד'}
-            >
-              <ImagePlus className="w-4 h-4" />
-              {!aiUsage.premium && (
-                <Crown className="absolute -top-1.5 -left-1.5 w-3.5 h-3.5 text-accent-primary bg-bg-primary rounded-full p-0.5" />
-              )}
-            </button>
             <button
               onClick={() => handleSend()}
-              disabled={(!input.trim() && !pendingImage) || streaming || cooldown}
+              disabled={!input.trim() || streaming || cooldown}
               className="w-10 h-10 rounded-xl bg-accent-primary text-bg-primary flex items-center justify-center hover:bg-accent-hover transition-colors cursor-pointer disabled:opacity-30 disabled:cursor-not-allowed shrink-0 shadow-lg shadow-accent-primary/20"
             >
               <Send className="w-4 h-4" />
