@@ -1387,10 +1387,10 @@ export default function CoinAnalysis() {
 // leverages. Levels persist until price trades through them (liquidity swept),
 // producing the signature horizontal bands.
 function heatColor(v) {
-  if (v <= 0.02) return null;
+  if (v <= 0.004) return null;
   const stops = [
-    [0,    [10,  8,   34]],
-    [0.18, [40,  20,  95]],
+    [0,    [22,  12,  58]],
+    [0.18, [48,  24,  110]],
     [0.38, [110, 35,  150]],
     [0.58, [200, 60,  110]],
     [0.78, [250, 140, 40]],
@@ -1404,7 +1404,7 @@ function heatColor(v) {
   const r = Math.round(lo[1][0] + (hi[1][0] - lo[1][0]) * t);
   const g = Math.round(lo[1][1] + (hi[1][1] - lo[1][1]) * t);
   const b = Math.round(lo[1][2] + (hi[1][2] - lo[1][2]) * t);
-  const a = Math.min(1, v * 1.8);
+  const a = Math.min(1, 0.18 + v * 1.45);
   return `rgba(${r},${g},${b},${a})`;
 }
 
@@ -1445,19 +1445,35 @@ function buildHeatmap(klines, priceBuckets = 120) {
 
   const levels = new Float64Array(priceBuckets);
   const grid = [];
+  // Soft vertical kernel — liq levels are zones, not single-pixel lines
+  const KERNEL = [[-2, 0.12], [-1, 0.5], [0, 1], [1, 0.5], [2, 0.12]];
+  const addLevel = (price, weight) => {
+    const b0 = binOf(price);
+    for (const [off, k] of KERNEL) {
+      const b = b0 + off;
+      if (b >= 0 && b < priceBuckets) levels[b] += weight * k;
+    }
+  };
   for (const c of candles) {
-    // 1) Price traded through these bins — resting liquidity is consumed
+    // 1) Price traded through these bins — most resting liquidity is consumed
+    //    (a faint trace survives, like the real maps)
     const loB = binOf(c.low), hiB = binOf(c.high);
-    for (let b = loB; b <= hiB; b++) levels[b] = 0;
+    for (let b = loB; b <= hiB; b++) levels[b] *= 0.12;
     // 2) Old untouched levels fade slowly
-    for (let b = 0; b < priceBuckets; b++) levels[b] *= 0.985;
-    // 3) New positions opened this candle leave liq levels above and below.
-    //    Weighted in USD (coin volume × level price) so the scale is real.
+    for (let b = 0; b < priceBuckets; b++) levels[b] *= 0.988;
+    // 3) Ambient layer: a sliver of every candle's notional spread across all
+    //    levels — fills the field with the low-liquidity purple wash instead
+    //    of leaving pure black between bands.
+    const notional = c.volume * c.close;
+    const ambient = (notional * 0.06) / priceBuckets;
+    for (let b = 0; b < priceBuckets; b++) levels[b] += ambient;
+    // 4) New positions opened this candle leave liq zones above and below,
+    //    weighted in USD (coin volume × level price) so the scale is real.
     for (const [lev, w] of LIQ_LEVERAGES) {
       const longLiq  = c.close * (1 - 1 / lev);
       const shortLiq = c.close * (1 + 1 / lev);
-      if (longLiq  > priceMin) levels[binOf(longLiq)]  += c.volume * w * longLiq;
-      if (shortLiq < priceMax) levels[binOf(shortLiq)] += c.volume * w * shortLiq;
+      if (longLiq  > priceMin) addLevel(longLiq,  c.volume * w * longLiq);
+      if (shortLiq < priceMax) addLevel(shortLiq, c.volume * w * shortLiq);
     }
     grid.push(Float64Array.from(levels));
   }
@@ -1548,17 +1564,32 @@ function LiquidityHeatmap({ pair, klines }) {
       ctx.fillStyle = '#08071a';
       ctx.fillRect(0, 0, W, H);
 
-      // Heat cells — persisting levels render as horizontal liquidity bands
+      // Heat cells — persisting levels render as horizontal liquidity bands.
+      // Drawn on their own layer and composited through a slight blur so the
+      // field reads smooth instead of pixelated strips.
       const cellW = plotW / timeBuckets;
       const cellH = plotH / priceBuckets;
+      const heatLayer = document.createElement('canvas');
+      heatLayer.width = W * dpr;
+      heatLayer.height = H * dpr;
+      const hctx = heatLayer.getContext('2d');
+      hctx.scale(dpr, dpr);
       for (let t = 0; t < timeBuckets; t++) {
         for (let p = 0; p < priceBuckets; p++) {
           const c = heatColor(normalized[t][p]);
           if (!c) continue;
-          ctx.fillStyle = c;
-          ctx.fillRect(PL + t * cellW, PT + (priceBuckets - 1 - p) * cellH, cellW + 0.5, cellH + 0.5);
+          hctx.fillStyle = c;
+          hctx.fillRect(PL + t * cellW, PT + (priceBuckets - 1 - p) * cellH, cellW + 0.5, cellH + 0.5);
         }
       }
+      ctx.save();
+      ctx.beginPath();
+      ctx.rect(PL, PT, plotW, plotH);
+      ctx.clip();
+      ctx.filter = 'blur(1.1px)';
+      ctx.drawImage(heatLayer, 0, 0, W, H);
+      ctx.filter = 'none';
+      ctx.restore();
 
       // Candlestick overlay (TradingView colours)
       const bodyW = Math.max(1, cellW * 0.55);
