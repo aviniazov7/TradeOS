@@ -858,74 +858,54 @@ export default function MarketOverview() {
     return () => clearInterval(intervalRef.current);
   }, [fetchAll, fetchBinance, activeTab]);
 
-  // Liquidations: load recent via REST, then stream via WebSocket
+  // Liquidations: live stream via Bybit WebSocket. The old Binance pair is
+  // dead for our users — fstream.binance.com is geo-blocked from Israeli
+  // browsers, and the allForceOrders REST seed was removed by Binance, so
+  // the card sat on "ממתין לחיסולים…" forever.
   useEffect(() => {
     let ws;
+    let closed = false;
     const buffer = [];
     let flushTimer;
+    let pingTimer;
 
     // Normalize symbol: strip USDT suffix and 1000-prefix (e.g. 1000PEPEUSDT → PEPE)
     const normalizeSym = (s) => s.replace('USDT', '').replace(/^1000/, '');
 
-    // Load recent liquidations from REST API
-    const loadRecent = async () => {
-      try {
-        const res = await fetch('https://fapi.binance.com/fapi/v1/allForceOrders?limit=200');
-        if (!res.ok) return;
-        const orders = await res.json();
-        if (!Array.isArray(orders)) return;
-        const filtered = orders
-          .map(o => {
-            const sym = normalizeSym(o.symbol || '');
-            const price = parseFloat(o.averagePrice) || parseFloat(o.price) || 0;
-            const qty = parseFloat(o.origQty) || parseFloat(o.executedQty) || 0;
-            const usdValue = qty * price;
-            return { sym, usdValue, o, price, qty };
-          })
-          .filter(({ sym, usdValue }) => MAJOR_COINS.has(sym) && usdValue > 0)
-          .map(({ sym, usdValue, o, price, qty }) => ({
-            id: `${o.symbol}-${o.time}-${Math.random()}`,
-            symbol: sym,
-            side: o.side,
-            qty,
-            price,
-            usdValue,
-            time: o.time,
-          }))
-          .sort((a, b) => b.time - a.time)
-          .slice(0, 50);
-        if (filtered.length > 0) setLiquidations(filtered);
-      } catch {
-        // silent
-      }
-    };
-    loadRecent();
-
-    // WebSocket for real-time updates
     const connect = () => {
-      ws = new WebSocket('wss://fstream.binance.com/ws/!forceOrder@arr');
+      ws = new WebSocket('wss://stream.bybit.com/v5/public/linear');
+      ws.onopen = () => {
+        ws.send(JSON.stringify({ op: 'subscribe', args: FUTURES_SYMBOLS.map((s) => `allLiquidation.${s}`) }));
+      };
       ws.onmessage = (event) => {
         const data = JSON.parse(event.data);
-        const o = data.o;
-        const sym = normalizeSym(o.s || '');
-        if (!MAJOR_COINS.has(sym)) return;
-        const usdValue = parseFloat(o.q) * parseFloat(o.ap);
-        if (usdValue < 50) return;
-        buffer.push({
-          id: `${o.s}-${o.T}-${Math.random()}`,
-          symbol: sym,
-          side: o.S,
-          qty: parseFloat(o.q),
-          price: parseFloat(o.ap),
-          usdValue,
-          time: o.T,
-        });
+        if (!data.topic?.startsWith('allLiquidation.')) return;
+        for (const item of data.data || []) {
+          const sym = normalizeSym(item.s || '');
+          const usdValue = parseFloat(item.v) * parseFloat(item.p);
+          if (!Number.isFinite(usdValue) || usdValue < 50) continue;
+          buffer.push({
+            id: `${item.s}-${item.T}-${Math.random()}`,
+            symbol: sym,
+            // Bybit side: Buy = a short got liquidated (forced buy-back),
+            // Sell = a long got liquidated — same semantics as Binance.
+            side: item.S === 'Buy' ? 'BUY' : 'SELL',
+            qty: parseFloat(item.v),
+            price: parseFloat(item.p),
+            usdValue,
+            time: Number(item.T),
+          });
+        }
       };
-      ws.onclose = () => setTimeout(connect, 3000);
+      ws.onclose = () => { if (!closed) setTimeout(connect, 3000); };
       ws.onerror = () => ws.close();
     };
 
     connect();
+    // Bybit drops idle connections — keep-alive ping every 20s
+    pingTimer = setInterval(() => {
+      if (ws?.readyState === WebSocket.OPEN) ws.send(JSON.stringify({ op: 'ping' }));
+    }, 20000);
     flushTimer = setInterval(() => {
       if (buffer.length > 0) {
         const items = buffer.splice(0);
@@ -934,8 +914,10 @@ export default function MarketOverview() {
     }, 1000);
 
     return () => {
+      closed = true;
       ws?.close();
       clearInterval(flushTimer);
+      clearInterval(pingTimer);
     };
   }, []);
 

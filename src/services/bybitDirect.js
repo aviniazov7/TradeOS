@@ -90,3 +90,57 @@ export async function fetchAccountRatio(symbol) {
   if (!Number.isFinite(longAccount) || !Number.isFinite(shortAccount)) return null;
   return { longAccount, shortAccount, ratio: shortAccount > 0 ? longAccount / shortAccount : 0 };
 }
+
+// Last prices for journal pairs (e.g. 'BTCUSDT') — one perp call for all,
+// topping up from spot for pairs that only trade there.
+export async function fetchPerpPrices(pairs) {
+  if (!pairs?.length) return {};
+  const out = {};
+  const fill = (list) => {
+    if (!Array.isArray(list)) return;
+    const bySym = {};
+    for (const t of list) bySym[t.symbol] = t;
+    for (const p of pairs) {
+      if (out[p] != null) continue;
+      const price = parseFloat(bySym[p]?.lastPrice);
+      if (Number.isFinite(price)) out[p] = price;
+    }
+  };
+  const linear = await getJson(`${BYBIT}/v5/market/tickers?category=linear`);
+  fill(linear?.result?.list);
+  if (Object.keys(out).length < pairs.length) {
+    const spot = await getJson(`${BYBIT}/v5/market/tickers?category=spot`);
+    fill(spot?.result?.list);
+  }
+  return out;
+}
+
+// Liquidity snapshot for the coin-analysis screen — replaces six direct
+// Binance calls (book ticker, OI, funding, depth) with Bybit equivalents,
+// translated to the Binance field names the UI consumes.
+export async function fetchAnalysisLiquidity(pair) {
+  const [spotJ, linearJ, depthJ] = await Promise.all([
+    getJson(`${BYBIT}/v5/market/tickers?category=spot&symbol=${encodeURIComponent(pair)}`),
+    getJson(`${BYBIT}/v5/market/tickers?category=linear&symbol=${encodeURIComponent(pair)}`),
+    getJson(`${BYBIT}/v5/market/orderbook?category=spot&symbol=${encodeURIComponent(pair)}&limit=20`),
+  ]);
+  const spot = spotJ?.result?.list?.[0] || null;
+  const linear = linearJ?.result?.list?.[0] || null;
+  const ob = depthJ?.result;
+  return {
+    onBybitSpot: !!spot,
+    bookTicker: spot ? {
+      symbol: pair,
+      bidPrice: spot.bid1Price, bidQty: spot.bid1Size,
+      askPrice: spot.ask1Price, askQty: spot.ask1Size,
+    } : null,
+    openInterest: linear?.openInterest ? { symbol: pair, openInterest: linear.openInterest } : null,
+    funding: linear ? {
+      symbol: pair,
+      lastFundingRate: linear.fundingRate,
+      markPrice: linear.markPrice,
+      nextFundingTime: Number(linear.nextFundingTime),
+    } : null,
+    depth: (ob?.b?.length || ob?.a?.length) ? { bids: ob.b || [], asks: ob.a || [] } : null,
+  };
+}

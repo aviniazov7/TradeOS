@@ -22,6 +22,7 @@ import AnimatedValue from '../shared/AnimatedValue';
 import { formatCurrency, formatDate } from '../../utils/formatters';
 import { EXCHANGES, MENTALITY_EMOTIONS } from '../../utils/constants';
 import { pageVariants, pageTransition, staggerContainer } from '../../utils/animations';
+import { fetchPerpPrices } from '../../services/bybitDirect';
 
 const cardVariants = { initial: { opacity: 0, y: 10 }, animate: { opacity: 1, y: 0 } };
 
@@ -174,26 +175,21 @@ export default function Dashboard() {
 
   useEffect(() => {
     if (globalStats.openTrades.length === 0) return;
-    const controller = new AbortController();
+    let cancelled = false;
 
+    // Bybit, not Binance — fapi.binance.com is geo-blocked from Israeli
+    // browsers, which left every open position without a live price.
     const fetchLivePrices = async () => {
       const pairs = [...new Set(globalStats.openTrades.map((t) => t.pair || t.symbol).filter(Boolean))];
-      const newPrices = {};
-      await Promise.all(pairs.map(async (pair) => {
-        try {
-          const res = await fetch(`https://fapi.binance.com/fapi/v1/ticker/price?symbol=${pair}`, { signal: controller.signal });
-          if (res.ok) {
-            const data = await res.json();
-            newPrices[pair] = parseFloat(data.price);
-          }
-        } catch (e) { if (e.name !== 'AbortError') console.error(e); }
-      }));
-      if (!controller.signal.aborted) setLivePrices(newPrices);
+      try {
+        const newPrices = await fetchPerpPrices(pairs);
+        if (!cancelled && newPrices && Object.keys(newPrices).length) setLivePrices(newPrices);
+      } catch (e) { console.error(e); }
     };
 
     fetchLivePrices();
     const interval = setInterval(fetchLivePrices, 30000);
-    return () => { controller.abort(); clearInterval(interval); };
+    return () => { cancelled = true; clearInterval(interval); };
   }, [globalStats.openTrades]);
 
   // Per-journal stats
