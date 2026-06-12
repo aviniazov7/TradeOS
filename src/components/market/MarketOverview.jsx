@@ -11,6 +11,7 @@ import CoinAnalysis from './CoinAnalysis';
 import AIChat from './AIChat';
 import MarketSessionsCard from './MarketSessionsCard';
 import { getCachedImage, hasKnownIcon } from '../../services/coinImageCache';
+import { fetchSpotTickersAsBinance, fetchLinearTickers, fetchAccountRatio } from '../../services/bybitDirect';
 import CoinIcon from '../shared/CoinIcon';
 
 const WORKER_URL = import.meta.env.VITE_WORKER_URL || '';
@@ -66,15 +67,15 @@ function computeBinanceCategories(allCoins) {
 const cardVariants = { initial: { opacity: 0, y: 10 }, animate: { opacity: 1, y: 0 } };
 const cardClass = 'bento-card p-3';
 
-// Bold coloured stat card: radial glow from top-right corner, matching border + shadow.
+// Coloured stat card: a faint tint from the top-right corner + a soft matching
+// border. Kept deliberately subtle — the colour identity comes from the number.
 const statAccent = (r, g, b, color) => ({
   color,
-  glow: `rgba(${r},${g},${b},0.55)`,
   style: {
-    background: `radial-gradient(ellipse 90% 80% at 110% -10%, rgba(${r},${g},${b},0.26) 0%, rgba(${r},${g},${b},0.08) 45%, transparent 65%), rgba(11,11,18,0.96)`,
-    border: `1px solid rgba(${r},${g},${b},0.40)`,
+    background: `radial-gradient(ellipse 90% 80% at 110% -10%, rgba(${r},${g},${b},0.10) 0%, rgba(${r},${g},${b},0.03) 45%, transparent 65%), rgba(14,14,21,0.92)`,
+    border: `1px solid rgba(${r},${g},${b},0.20)`,
     borderRadius: '0.875rem',
-    boxShadow: `0 0 28px rgba(${r},${g},${b},0.14)`,
+    boxShadow: '0 4px 16px rgba(0, 0, 0, 0.25)',
   },
 });
 const STAT_ACCENTS = {
@@ -695,7 +696,51 @@ export default function MarketOverview() {
           }
         }
       }
-      setLongShortRatio(lsData);
+      if (lsData.length) setLongShortRatio(lsData);
+
+      // ── Fallback: Bybit linear data when fapi.binance.com is unreachable
+      // (geo-blocked from Israeli ISPs in the browser) ──
+      const binanceFuturesOk = premiumRes.status === 'fulfilled' && premiumRes.value.ok;
+      if (!binanceFuturesOk) {
+        const list = await fetchLinearTickers();
+        if (list) {
+          const rates = list
+            .filter((t) => {
+              if (!t.symbol?.endsWith('USDT')) return false;
+              if (!parseFloat(t.fundingRate)) return false;
+              return MAJOR_COINS.has(t.symbol.replace('USDT', ''));
+            })
+            .map((t) => ({
+              symbol: t.symbol.replace('USDT', ''),
+              rate: parseFloat(t.fundingRate),
+              markPrice: parseFloat(t.markPrice),
+              nextFundingTime: Number(t.nextFundingTime),
+            }))
+            .sort((a, b) => Math.abs(b.rate) - Math.abs(a.rate))
+            .slice(0, 10);
+          if (rates.length) setFundingRates(rates);
+
+          const oiData = FUTURES_SYMBOLS.map((s) => {
+            const t = list.find((x) => x.symbol === s);
+            if (!t) return null;
+            const oi = parseFloat(t.openInterest);
+            const oiUsd = parseFloat(t.openInterestValue) || oi * parseFloat(t.markPrice);
+            return Number.isFinite(oiUsd) && oiUsd > 0 ? { symbol: s.replace('USDT', ''), oi, oiUsd } : null;
+          }).filter(Boolean);
+          if (oiData.length) setOpenInterest(oiData);
+        }
+      }
+      if (!lsData.length) {
+        const ratios = await Promise.allSettled(FUTURES_SYMBOLS.map((s) => fetchAccountRatio(s)));
+        const out = [];
+        for (let i = 0; i < FUTURES_SYMBOLS.length; i++) {
+          const r = ratios[i];
+          if (r.status === 'fulfilled' && r.value) {
+            out.push({ symbol: FUTURES_SYMBOLS[i].replace('USDT', ''), ...r.value });
+          }
+        }
+        if (out.length) setLongShortRatio(out);
+      }
     } catch {
       // silent
     }
@@ -703,10 +748,19 @@ export default function MarketOverview() {
 
   const fetchAll = useCallback(async () => {
     try {
-      // ── PRIMARY: ALL Binance USDT tickers (short URL → cacheable, no invalid-symbol risk) ──
-      const bnbRes = await fetchWithTimeout(`${BNB_URL}/ticker/24hr`, 10000);
-      if (bnbRes.ok) {
-        const allTickers = await bnbRes.json();
+      // ── PRIMARY: ALL Binance USDT tickers (short URL → cacheable, no invalid-symbol risk).
+      // If the Worker route fails (its egress gets blocked by upstreams from time
+      // to time), fall back to Bybit directly from the browser — same shape. ──
+      let allTickers = null;
+      try {
+        const bnbRes = await fetchWithTimeout(`${BNB_URL}/ticker/24hr`, 10000);
+        if (bnbRes.ok) {
+          const json = await bnbRes.json();
+          if (Array.isArray(json) && json.length) allTickers = json;
+        }
+      } catch { /* fall through to direct Bybit */ }
+      if (!allTickers) allTickers = await fetchSpotTickersAsBinance();
+      if (allTickers) {
         // Keep only real USDT spot pairs (filter leveraged tokens, stablecoins, micro-caps)
         const usdtPairs = allTickers.filter((t) => {
           if (!t.symbol.endsWith('USDT')) return false;
@@ -754,16 +808,29 @@ export default function MarketOverview() {
         if (binanceCats.length > 0) setCategories(binanceCats.slice(0, 6));
       }
 
-      // ── SECONDARY: CoinPaprika global (free, no key, CORS-enabled) ──────────
+      // ── SECONDARY: CoinPaprika global (free, no key, CORS-enabled).
+      // /v1/global has no stablecoin dominance, so USDT.D is computed from
+      // Tether's own ticker (its market cap / total market cap). ──
       try {
-        const globalRes = await fetchWithTimeout('https://api.coinpaprika.com/v1/global', 6000);
-        if (globalRes.ok) {
-          const d = await globalRes.json();
+        const [globalRes, tetherRes] = await Promise.allSettled([
+          fetchWithTimeout('https://api.coinpaprika.com/v1/global', 6000),
+          fetchWithTimeout('https://api.coinpaprika.com/v1/tickers/usdt-tether', 6000),
+        ]);
+        if (globalRes.status === 'fulfilled' && globalRes.value.ok) {
+          const d = await globalRes.value.json();
+          let usdtDominance = null;
+          if (tetherRes.status === 'fulfilled' && tetherRes.value.ok) {
+            try {
+              const t = await tetherRes.value.json();
+              const tetherCap = t?.quotes?.USD?.market_cap;
+              if (tetherCap && d.market_cap_usd) usdtDominance = (tetherCap / d.market_cap_usd) * 100;
+            } catch { /* silent — shows "—" */ }
+          }
           setGlobal({
             total_market_cap: { usd: d.market_cap_usd },
             total_volume: { usd: d.volume_24h_usd },
             market_cap_change_percentage_24h_usd: d.market_cap_change_24h,
-            market_cap_percentage: { btc: d.bitcoin_dominance_percentage, usdt: null, eth: null },
+            market_cap_percentage: { btc: d.bitcoin_dominance_percentage, usdt: usdtDominance, eth: null },
             active_cryptocurrencies: d.cryptocurrencies_number,
           });
         }
@@ -970,13 +1037,11 @@ export default function MarketOverview() {
         {/* Market Cap */}
         <motion.div className="relative overflow-hidden flex flex-col justify-between gap-2 p-4 min-h-[100px]"
           style={STAT_ACCENTS.cap.style} variants={cardVariants}>
-          <div className="absolute -top-4 -right-4 w-16 h-16 rounded-full blur-2xl pointer-events-none opacity-70"
-            style={{ backgroundColor: STAT_ACCENTS.cap.glow }} />
           <div className="flex items-center gap-1.5 relative z-10">
             <DollarSign className="w-3 h-3 opacity-70" style={{ color: STAT_ACCENTS.cap.color }} />
             <span className="text-[10px] text-text-muted uppercase tracking-widest">שווי שוק</span>
           </div>
-          <p className="text-4xl font-black leading-none neon-num relative z-10" style={{ color: STAT_ACCENTS.cap.color }}>
+          <p className="text-3xl font-bold leading-none neon-num relative z-10" style={{ color: STAT_ACCENTS.cap.color }}>
             {global ? formatNum(global.total_market_cap?.usd) : '—'}
           </p>
           {global?.market_cap_change_percentage_24h_usd != null && (
@@ -989,13 +1054,11 @@ export default function MarketOverview() {
         {/* BTC Dominance */}
         <motion.div className="relative overflow-hidden flex flex-col justify-between gap-2 p-4 min-h-[100px]"
           style={STAT_ACCENTS.btc.style} variants={cardVariants}>
-          <div className="absolute -top-4 -right-4 w-16 h-16 rounded-full blur-2xl pointer-events-none opacity-70"
-            style={{ backgroundColor: STAT_ACCENTS.btc.glow }} />
           <div className="flex items-center gap-1.5 relative z-10">
             <Bitcoin className="w-3 h-3 opacity-70" style={{ color: STAT_ACCENTS.btc.color }} />
             <span className="text-[10px] text-text-muted uppercase tracking-widest">BTC.D</span>
           </div>
-          <p className="text-4xl font-black leading-none neon-num relative z-10" style={{ color: STAT_ACCENTS.btc.color }}>
+          <p className="text-3xl font-bold leading-none neon-num relative z-10" style={{ color: STAT_ACCENTS.btc.color }}>
             {global?.market_cap_percentage?.btc ? `${global.market_cap_percentage.btc.toFixed(1)}%` : '—'}
           </p>
           {global?.market_cap_percentage?.eth && (
@@ -1006,13 +1069,11 @@ export default function MarketOverview() {
         {/* 24h Volume */}
         <motion.div className="relative overflow-hidden flex flex-col justify-between gap-2 p-4 min-h-[100px]"
           style={STAT_ACCENTS.vol.style} variants={cardVariants}>
-          <div className="absolute -top-4 -right-4 w-16 h-16 rounded-full blur-2xl pointer-events-none opacity-70"
-            style={{ backgroundColor: STAT_ACCENTS.vol.glow }} />
           <div className="flex items-center gap-1.5 relative z-10">
             <PieChart className="w-3 h-3 opacity-70" style={{ color: STAT_ACCENTS.vol.color }} />
             <span className="text-[10px] text-text-muted uppercase tracking-widest">נפח 24h</span>
           </div>
-          <p className="text-4xl font-black leading-none neon-num relative z-10" style={{ color: STAT_ACCENTS.vol.color }}>
+          <p className="text-3xl font-bold leading-none neon-num relative z-10" style={{ color: STAT_ACCENTS.vol.color }}>
             {global ? formatNum(global.total_volume?.usd) : '—'}
           </p>
           <span className="text-[11px] text-text-muted relative z-10">
@@ -1023,13 +1084,11 @@ export default function MarketOverview() {
         {/* USDT Dominance */}
         <motion.div className="relative overflow-hidden flex flex-col justify-between gap-2 p-4 min-h-[100px]"
           style={STAT_ACCENTS.usdt.style} variants={cardVariants}>
-          <div className="absolute -top-4 -right-4 w-16 h-16 rounded-full blur-2xl pointer-events-none opacity-70"
-            style={{ backgroundColor: STAT_ACCENTS.usdt.glow }} />
           <div className="flex items-center gap-1.5 relative z-10">
             <DollarSign className="w-3 h-3 opacity-70" style={{ color: STAT_ACCENTS.usdt.color }} />
             <span className="text-[10px] text-text-muted uppercase tracking-widest">USDT.D</span>
           </div>
-          <p className="text-4xl font-black leading-none neon-num relative z-10" style={{ color: STAT_ACCENTS.usdt.color }}>
+          <p className="text-3xl font-bold leading-none neon-num relative z-10" style={{ color: STAT_ACCENTS.usdt.color }}>
             {global?.market_cap_percentage?.usdt ? `${global.market_cap_percentage.usdt.toFixed(1)}%` : '—'}
           </p>
           <span className="text-[11px] text-text-muted relative z-10">Stablecoin dominance</span>
@@ -1038,15 +1097,13 @@ export default function MarketOverview() {
         {/* Altcoin Season */}
         <motion.div className="relative overflow-hidden flex flex-col justify-between gap-2 p-4 min-h-[100px]"
           style={STAT_ACCENTS.alt.style} variants={cardVariants}>
-          <div className="absolute -top-4 -right-4 w-16 h-16 rounded-full blur-2xl pointer-events-none opacity-70"
-            style={{ backgroundColor: STAT_ACCENTS.alt.glow }} />
           <div className="flex items-center gap-1.5 relative z-10">
             <ArrowUpRight className="w-3 h-3 opacity-70" style={{ color: STAT_ACCENTS.alt.color }} />
             <span className="text-[10px] text-text-muted uppercase tracking-widest">Alt Season</span>
           </div>
           {altSeasonData ? (
             <>
-              <p className="text-4xl font-black leading-none neon-num relative z-10" style={{ color: STAT_ACCENTS.alt.color }}>
+              <p className="text-3xl font-bold leading-none neon-num relative z-10" style={{ color: STAT_ACCENTS.alt.color }}>
                 {altSeasonData.index}<span className="text-base font-normal text-text-muted">/100</span>
               </p>
               <div className="relative z-10">
@@ -1060,7 +1117,7 @@ export default function MarketOverview() {
               </div>
             </>
           ) : (
-            <p className="text-4xl font-black text-text-muted neon-num relative z-10">—</p>
+            <p className="text-3xl font-bold text-text-muted neon-num relative z-10">—</p>
           )}
         </motion.div>
       </motion.div>
@@ -1079,7 +1136,7 @@ export default function MarketOverview() {
           animate={{ opacity: 1, y: 0 }}
           transition={{ duration: 0.5, delay: 0.2 }}
           className={cardClass}
-          style={{ borderTopColor: 'rgba(0,191,255,0.5)', borderTopWidth: '2px' }}
+          style={{ borderTopColor: 'rgba(0,191,255,0.35)', borderTopWidth: '2px' }}
         >
           <h2 className="text-sm font-semibold text-text-primary mb-3 flex items-center gap-2 justify-center">
             <Layers className="w-4 h-4 text-accent-primary" />
@@ -1107,7 +1164,7 @@ export default function MarketOverview() {
           animate={{ opacity: 1, y: 0 }}
           transition={{ duration: 0.5, delay: 0.3 }}
           className={cardClass}
-          style={{ borderTopColor: 'rgba(34,197,94,0.5)', borderTopWidth: '2px' }}
+          style={{ borderTopColor: 'rgba(34,197,94,0.35)', borderTopWidth: '2px' }}
         >
           <h2 className="text-sm font-semibold text-text-primary mb-3 flex items-center gap-2 justify-center">
             <Rocket className="w-4 h-4 text-profit" />
@@ -1161,7 +1218,7 @@ export default function MarketOverview() {
       {/* Top 10 coins + Trending + Liquidations */}
       <div className="grid grid-cols-1 lg:grid-cols-4 gap-4 mb-4">
         {/* Top 10 Coins */}
-        <div className={`${cardClass} lg:col-span-2`} style={{ borderTopColor: 'rgba(99,102,241,0.5)', borderTopWidth: '2px' }}>
+        <div className={`${cardClass} lg:col-span-2`} style={{ borderTopColor: 'rgba(99,102,241,0.35)', borderTopWidth: '2px' }}>
           <h2 className="text-sm font-semibold text-text-primary mb-3 flex items-center gap-2 justify-center">
             <TrendingUp className="w-4 h-4 text-accent-primary" />
             Top 10 מטבעות
@@ -1198,7 +1255,7 @@ export default function MarketOverview() {
         </div>
 
         {/* Trending */}
-        <div className={cardClass} style={{ borderTopColor: 'rgba(249,115,22,0.5)', borderTopWidth: '2px' }}>
+        <div className={cardClass} style={{ borderTopColor: 'rgba(249,115,22,0.35)', borderTopWidth: '2px' }}>
           <h2 className="text-sm font-semibold text-text-primary mb-3 flex items-center gap-2 justify-center">
             <Flame className="w-4 h-4 text-orange-500" />
             טרנדינג

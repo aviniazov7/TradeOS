@@ -444,7 +444,8 @@ input[type="number"] {
 .neon-num {
   font-family: ui-monospace, 'SF Mono', SFMono-Regular, Menlo, Consolas, monospace;
   letter-spacing: -0.02em;
-  text-shadow: 0 0 10px currentColor;
+  /* A whisper of bloom — full currentColor glow read as "too neon" */
+  text-shadow: 0 0 8px color-mix(in srgb, currentColor 25%, transparent);
 }
 /* Light theme: solid card, no glow */
 :root.light .bento-card,
