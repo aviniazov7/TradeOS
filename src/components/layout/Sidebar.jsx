@@ -14,6 +14,7 @@ import {
   Shield,
   Wallet,
   Crown,
+  Bot,
 } from 'lucide-react';
 import PositionCalculator from '../calculator/PositionCalculator';
 import { useAuth } from '../../contexts/AuthContext';
@@ -27,6 +28,7 @@ const navItems = [
   { to: '/wallets', label: 'ארנקים', icon: Wallet },
   { to: '/plans', label: 'תוכניות מסחר', icon: ClipboardList },
   { to: '/market', label: 'סקירת שוק', icon: Activity },
+  { to: '/trade-ai', label: 'TradeAI', icon: Bot },
   { to: '/news', label: 'חדשות', icon: Newspaper },
   { to: '/premium', label: 'שדרוג Premium', icon: Crown, highlight: true },
 ];
