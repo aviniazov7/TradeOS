@@ -7,6 +7,7 @@ import {
 } from 'lucide-react';
 import { sendMessageStream } from '../../services/groqApi';
 import { useAiUsage } from '../../hooks/useAiUsage';
+import { useAuth } from '../../contexts/AuthContext';
 import { fileToCompressedDataUrl, formatAIText } from '../../utils/aiChatHelpers';
 
 const DEPTHS = [
@@ -143,10 +144,14 @@ export default function ChartAnalyzer({ heightClass = '' }) {
   const resultRef = useRef('');
   const batchRef = useRef(null);
   const aiUsage = useAiUsage();
+  const { isPremium, loading: authLoading } = useAuth();
   const navigate = useNavigate();
   // Free users can't analyze images, so don't let them upload one — route
-  // every upload gesture to the upgrade page instead.
-  const premiumLocked = !aiUsage.loading && !aiUsage.premium;
+  // every upload gesture to the upgrade page instead. Gate on the live profile
+  // (useAuth), NOT the worker-cached aiUsage.premium: a fresh grant updates the
+  // Firestore profile in real time, while the worker's plan flag can lag by its
+  // cache TTL — so trusting aiUsage here left just-upgraded users locked out.
+  const premiumLocked = !authLoading && !isPremium;
 
   const pickFile = async (file) => {
     if (!file) return;
@@ -182,7 +187,7 @@ export default function ChartAnalyzer({ heightClass = '' }) {
 
   const analyze = async () => {
     if (!image || analyzing) return;
-    if (!aiUsage.premium) {
+    if (!isPremium) {
       setError('צירוף וניתוח גרפים פתוח למנויי Premium בלבד 👑');
       return;
     }
@@ -247,7 +252,7 @@ export default function ChartAnalyzer({ heightClass = '' }) {
               <p className="text-[10px] text-text-muted">צלם גרף, קבל קריאת ויקוף</p>
             </div>
           </div>
-          {aiUsage.premium && aiUsage.imageLimit > 0 && (
+          {isPremium && aiUsage.imageLimit > 0 && (
             <span className={`text-[10px] px-2 py-1 rounded-full border ${
               imgRemaining <= 2
                 ? 'border-loss/40 text-loss'
