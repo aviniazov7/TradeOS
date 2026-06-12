@@ -60,6 +60,15 @@ export async function sendMessageStream(messages, onChunk, retries = 2) {
 
   const idToken = await user.getIdToken();
 
+  // Upload only the most recent image — the worker forwards a single image to
+  // the provider anyway, so older ones would just inflate the request body.
+  const lastImageIdx = (() => {
+    for (let i = messages.length - 1; i >= 0; i--) {
+      if (messages[i]?.image) return i;
+    }
+    return -1;
+  })();
+
   for (let attempt = 0; attempt <= retries; attempt++) {
     const response = await fetch(WORKER_URL, {
       method: 'POST',
@@ -68,9 +77,10 @@ export async function sendMessageStream(messages, onChunk, retries = 2) {
         Authorization: `Bearer ${idToken}`,
       },
       body: JSON.stringify({
-        messages: messages.map((msg) => ({
+        messages: messages.map((msg, i) => ({
           role: msg.role === 'user' ? 'user' : 'assistant',
           text: msg.text,
+          ...(i === lastImageIdx ? { image: msg.image } : {}),
         })),
       }),
     });

@@ -2041,6 +2041,14 @@ async function handleCron(env) {
 
 const GROQ_URL = 'https://api.groq.com/openai/v1/chat/completions';
 const GROQ_MODEL = 'llama-3.3-70b-versatile';
+// llama-3.3 is text-only; chart-image requests are routed to Llama 4 Scout,
+// Groq's production vision model (OpenAI-compatible image_url content parts).
+const GROQ_VISION_MODEL = 'meta-llama/llama-4-scout-17b-16e-instruct';
+
+// Accept only browser-produced raster formats. Groq caps base64 images at
+// 4MB, so reject anything bigger before burning a provider call.
+const IMAGE_DATA_RE = /^data:image\/(png|jpeg|webp);base64,[A-Za-z0-9+/=]+$/;
+const MAX_IMAGE_CHARS = 4_000_000;
 
 // Gemini 1.5 Flash — used for premium users. Cheap, huge context window, and
 // produces noticeably better Hebrew than Groq's Llama.
@@ -2059,7 +2067,19 @@ function toGeminiBody(apiMessages) {
     systemInstruction: system ? { parts: [{ text: system }] } : undefined,
     contents: turns.map((m) => ({
       role: m.role === 'assistant' ? 'model' : 'user',
-      parts: [{ text: m.content }],
+      // OpenAI-style array content (text + image_url data URIs) maps to Gemini
+      // parts: text stays text, data URIs become inlineData.
+      parts: Array.isArray(m.content)
+        ? m.content.map((part) => {
+            if (part.type === 'image_url') {
+              const url = part.image_url?.url || '';
+              const comma = url.indexOf(',');
+              const mimeType = url.slice(5, url.indexOf(';'));
+              return { inlineData: { mimeType, data: url.slice(comma + 1) } };
+            }
+            return { text: part.text || '' };
+          })
+        : [{ text: m.content }],
     })),
     generationConfig: { temperature: 0.7, maxOutputTokens: 2048 },
   };
@@ -2138,6 +2158,9 @@ PA (Price Approaching): מאפיין המחיר לפני DP שמאשר אותו.
 ראה את השוק כקווים: מחזור = 5 תנועות (3 אימפולסים + 2 תיקונים); השוק פרקטלי — ודא תיאום בין טיימפריימים; גל 4–5 + תיקון ABC = דפוסי הרמוניק.
 Volume: גבוה+עלייה=ביקוש חזק; גבוה+ירידה=היצע חזק; נמוך+עלייה/ירידה=מהלך חלש, ייתכן היפוך; spike ללא תזוזה=ספיגה (Absorption, החלפת ידיים).
 
+## ניתוח תמונת גרף
+כשמצורפת תמונה של גרף, נתח אותה לפי המבנה הבא: (1) זהה נכס וטיימפריים אם נראים בתמונה. (2) קבע מגמה ושלב שוק — איסוף/פיזור/Mark Up/Mark Down — ואת הפאזה (A–E). (3) סמן אירועים בולטים שניתן לזהות (SC, AR, ST, Spring, UT/UTAD, SOS/SOW, LPS/LPSY, BOS). (4) אם ה-Volume מופיע — נתח מאמץ מול תוצאה. (5) ציין רמות מפתח (תמיכה/התנגדות/Creek/Ice). (6) סכם תרחיש מרכזי ותרחיש נגדי, בלי המלצת קנייה/מכירה. אם התמונה אינה גרף מסחר — אמור זאת בקצרה ובקש תמונת גרף.
+
 ## הנחיות תשובה
 - ענה תמיד בעברית, בעומק, עם דוגמאות מעשיות מקריפטו ומניות.
 - הסבר את הלוגיקה: למה זה קורה, באיזו פאזה (A–E), ומה האיש המורכב עושה ולמה.
@@ -2154,17 +2177,22 @@ async function handleAIChat(request, env, cors) {
     }
     // Reject trivial last user messages so they don't burn a quota slot or
     // produce an unhelpful answer. Client also guards but server is authoritative.
-    const lastUserText = (() => {
+    const lastUser = (() => {
       for (let i = messages.length - 1; i >= 0; i--) {
-        if (messages[i]?.role === 'user') return String(messages[i].text || '').trim();
+        if (messages[i]?.role === 'user') return messages[i];
       }
-      return '';
+      return null;
     })();
+    const lastUserText = String(lastUser?.text || '').trim();
+    const lastUserImage = typeof lastUser?.image === 'string' ? lastUser.image : '';
     // Only reject empty messages. Short conversational replies ("כן", "לא")
     // are legitimate turns — and since usage now counts only on success,
     // there's no quota to protect with a length minimum.
-    if (!lastUserText) {
+    if (!lastUserText && !lastUserImage) {
       return new Response(JSON.stringify({ error: 'כתוב הודעה' }), { status: 400, headers: { ...cors, 'Content-Type': 'application/json' } });
+    }
+    if (lastUserImage && (!IMAGE_DATA_RE.test(lastUserImage) || lastUserImage.length > MAX_IMAGE_CHARS)) {
+      return new Response(JSON.stringify({ error: 'התמונה אינה תקינה או גדולה מדי (עד ~3MB, PNG/JPEG/WebP)' }), { status: 400, headers: { ...cors, 'Content-Type': 'application/json' } });
     }
 
     // Verify the Firebase ID token (signature-checked) and resolve the uid.
@@ -2203,12 +2231,32 @@ async function handleAIChat(request, env, cors) {
     const MAX_TURNS = 8;
     const MAX_TURN_CHARS = 2500;
     const recent = messages.slice(-MAX_TURNS);
+    // Forward only the most recent valid image — older ones bloat the payload
+    // past the providers' per-request caps without adding much context.
+    let lastImageIdx = -1;
+    for (let i = recent.length - 1; i >= 0; i--) {
+      const img = recent[i]?.image;
+      if (recent[i]?.role === 'user' && typeof img === 'string' && IMAGE_DATA_RE.test(img) && img.length <= MAX_IMAGE_CHARS) {
+        lastImageIdx = i;
+        break;
+      }
+    }
+    const hasImage = lastImageIdx !== -1;
     const apiMessages = [
       { role: 'system', content: WYCKOFF_SYSTEM_PROMPT },
-      ...recent.map((msg) => ({
-        role: msg.role === 'user' ? 'user' : 'assistant',
-        content: String(msg.text || '').slice(0, MAX_TURN_CHARS),
-      })),
+      ...recent.map((msg, i) => {
+        const text = String(msg.text || '').slice(0, MAX_TURN_CHARS);
+        if (i === lastImageIdx) {
+          return {
+            role: 'user',
+            content: [
+              { type: 'text', text: text || 'נתח את הגרף שבתמונה' },
+              { type: 'image_url', image_url: { url: msg.image } },
+            ],
+          };
+        }
+        return { role: msg.role === 'user' ? 'user' : 'assistant', content: text };
+      }),
     ];
 
     // Route by plan: premium → Gemini 1.5 Flash; free → Groq Llama.
@@ -2240,7 +2288,7 @@ async function handleAIChat(request, env, cors) {
         const callGroq = () => fetch(GROQ_URL, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${env.GROQ_API_KEY}` },
-          body: JSON.stringify({ model: GROQ_MODEL, messages: apiMessages, temperature: 0.7, max_tokens: 1500, stream: true }),
+          body: JSON.stringify({ model: hasImage ? GROQ_VISION_MODEL : GROQ_MODEL, messages: apiMessages, temperature: 0.7, max_tokens: 1500, stream: true }),
         });
         const delays = [0, 2000, 4000]; // immediate, +2s, +4s = ~6s total worst-case
         let groqFallback;
@@ -2280,7 +2328,7 @@ async function handleAIChat(request, env, cors) {
         Authorization: `Bearer ${env.GROQ_API_KEY}`,
       },
       body: JSON.stringify({
-        model: GROQ_MODEL,
+        model: hasImage ? GROQ_VISION_MODEL : GROQ_MODEL,
         messages: apiMessages,
         temperature: 0.7,
         max_tokens: 1500,

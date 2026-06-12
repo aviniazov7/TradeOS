@@ -1,7 +1,7 @@
 import { useState, useEffect, useRef } from 'react';
 import { createPortal } from 'react-dom';
 import { motion, AnimatePresence } from 'framer-motion';
-import { Bot, Send, RotateCcw, User, Sparkles, BarChart3, History, Trash2, Crown } from 'lucide-react';
+import { Bot, Send, RotateCcw, User, Sparkles, BarChart3, History, Trash2, Crown, ImagePlus, X, Image as ImageIcon } from 'lucide-react';
 import DOMPurify from 'dompurify';
 import { sendMessageStream } from '../../services/groqApi';
 import { detectCoinFromText } from '../../utils/technicals';
@@ -50,8 +50,33 @@ function saveConversations(list) {
 
 const WELCOME_MESSAGE = {
   role: 'model',
-  text: 'שלום! אני TradeAI — המנטור שלך לשיטת ויקוף. אפשר לשאול אותי על שלבי איסוף ופיזור, LPSY, LPS, Spring, ניתוח Volume ועוד. במה אוכל לעזור?',
+  text: 'שלום! אני TradeAI — המנטור שלך לשיטת ויקוף. אפשר לשאול אותי על שלבי איסוף ופיזור, LPSY, LPS, Spring, ניתוח Volume ועוד. אפשר גם לצרף צילום מסך של גרף ואנתח אותו עבורך. במה אוכל לעזור?',
 };
+
+// Charts are uploaded as compressed JPEG so even 4K screenshots stay well
+// under the worker's ~3MB base64 cap (Groq rejects images above 4MB base64).
+const MAX_IMAGE_DIM = 1280;
+
+async function fileToCompressedDataUrl(file) {
+  const dataUrl = await new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onload = () => resolve(reader.result);
+    reader.onerror = () => reject(new Error('קריאת הקובץ נכשלה'));
+    reader.readAsDataURL(file);
+  });
+  const img = await new Promise((resolve, reject) => {
+    const el = new Image();
+    el.onload = () => resolve(el);
+    el.onerror = () => reject(new Error('קובץ התמונה אינו תקין'));
+    el.src = dataUrl;
+  });
+  const scale = Math.min(1, MAX_IMAGE_DIM / Math.max(img.width, img.height));
+  const canvas = document.createElement('canvas');
+  canvas.width = Math.max(1, Math.round(img.width * scale));
+  canvas.height = Math.max(1, Math.round(img.height * scale));
+  canvas.getContext('2d').drawImage(img, 0, 0, canvas.width, canvas.height);
+  return canvas.toDataURL('image/jpeg', 0.85);
+}
 
 const QUICK_QUESTIONS = [
   'מה זה LPSY?',
@@ -130,8 +155,10 @@ export default function AIChat({ heightClass = 'h-[calc(100dvh-13.5rem)] md:h-[c
   const [error, setError] = useState(null);
   const [cooldown, setCooldown] = useState(false);
   const [pendingChart, setPendingChart] = useState(null);
+  const [pendingImage, setPendingImage] = useState(null); // { dataUrl, name }
   const messagesEndRef = useRef(null);
   const inputRef = useRef(null);
+  const fileInputRef = useRef(null);
   const streamingTextRef = useRef('');
   const batchTimeoutRef = useRef(null);
   const aiUsage = useAiUsage();
@@ -186,7 +213,9 @@ export default function AIChat({ heightClass = 'h-[calc(100dvh-13.5rem)] md:h-[c
   useEffect(() => {
     if (messages.length === 0) return;
     if (!messages.some((m) => m.role === 'user')) return;
-    const stripped = messages.map(({ chart, ...rest }) => rest);
+    // Strip heavy fields (chart data, base64 images) before persisting —
+    // a single screenshot would blow through the localStorage quota.
+    const stripped = messages.map(({ chart, image, ...rest }) => (image ? { ...rest, hadImage: true } : rest));
     const title = convTitle(stripped);
     const updatedAt = Date.now();
     setConversations((prev) => {
@@ -205,8 +234,31 @@ export default function AIChat({ heightClass = 'h-[calc(100dvh-13.5rem)] md:h-[c
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
   }, [messages, streaming, streamingText]);
 
+  const handleImagePick = async (e) => {
+    const file = e.target.files?.[0];
+    e.target.value = ''; // allow re-selecting the same file
+    if (!file) return;
+    if (!file.type.startsWith('image/')) {
+      setError('יש לבחור קובץ תמונה');
+      return;
+    }
+    if (file.size > 10 * 1024 * 1024) {
+      setError('התמונה גדולה מדי (עד 10MB)');
+      return;
+    }
+    try {
+      const dataUrl = await fileToCompressedDataUrl(file);
+      setPendingImage({ dataUrl, name: file.name });
+      setError(null);
+      inputRef.current?.focus();
+    } catch (err) {
+      setError(err.message || 'טעינת התמונה נכשלה');
+    }
+  };
+
   const handleSend = async (text = input.trim()) => {
-    if (!text || streaming || cooldown) return;
+    const image = pendingImage;
+    if ((!text && !image) || streaming || cooldown) return;
 
     // Min 6s between sends so we stay under the shared upstream rate limits
     // (Gemini free 15 RPM ≈ one every 4s; we add buffer).
@@ -221,8 +273,14 @@ export default function AIChat({ heightClass = 'h-[calc(100dvh-13.5rem)] md:h-[c
 
     setInput('');
     setError(null);
+    setPendingImage(null);
 
-    const userMsg = { role: 'user', text, timestamp: Date.now() };
+    const userMsg = {
+      role: 'user',
+      text: text || 'נתח לי את הגרף שבתמונה',
+      ...(image ? { image: image.dataUrl } : {}),
+      timestamp: Date.now(),
+    };
     const newMessages = [...messages, userMsg];
     setMessages(newMessages);
     setStreaming(true);
@@ -284,8 +342,9 @@ export default function AIChat({ heightClass = 'h-[calc(100dvh-13.5rem)] md:h-[c
         // Failed before any token streamed back → roll the user message out so
         // a retry doesn't pile up duplicate 'hey' bubbles like in the report.
         setMessages((prev) => prev.filter((m) => m !== userMsg));
-        // And restore the typed text so the user can edit + resend.
+        // And restore the typed text + attached image so the user can resend.
         setInput(text);
+        if (image) setPendingImage(image);
       }
     } finally {
       setStreaming(false);
@@ -453,7 +512,17 @@ export default function AIChat({ heightClass = 'h-[calc(100dvh-13.5rem)] md:h-[c
                     : 'bg-bg-secondary border border-border-primary text-text-secondary rounded-tl-sm'
                 }`}>
                   {msg.role === 'user'
-                    ? <p>{msg.text}</p>
+                    ? <>
+                        {msg.image && (
+                          <img src={msg.image} alt="גרף שצורף" className="mb-2 rounded-lg max-h-48 w-auto border border-border-primary" />
+                        )}
+                        {!msg.image && msg.hadImage && (
+                          <span className="flex items-center gap-1 text-[10px] text-text-muted mb-1">
+                            <ImageIcon className="w-3 h-3" /> צורפה תמונת גרף
+                          </span>
+                        )}
+                        <p>{msg.text}</p>
+                      </>
                     : <>
                         {msg.chart && <ChatChart prices={msg.chart.prices} coinSymbol={msg.chart.symbol} />}
                         <div className="space-y-0">{formatAIText(msg.text)}</div>
@@ -576,20 +645,52 @@ export default function AIChat({ heightClass = 'h-[calc(100dvh-13.5rem)] md:h-[c
               </div>
             );
           })()}
+          {/* Attached image preview — sent with the next message */}
+          {pendingImage && (
+            <div className="mb-2 flex items-center gap-2 bg-bg-tertiary border border-border-primary rounded-xl p-2">
+              <img src={pendingImage.dataUrl} alt="" className="w-12 h-12 object-cover rounded-lg border border-border-primary" />
+              <div className="flex-1 min-w-0">
+                <div className="text-xs text-text-primary truncate">{pendingImage.name}</div>
+                <div className="text-[10px] text-text-muted">התמונה תצורף להודעה הבאה</div>
+              </div>
+              <button
+                onClick={() => setPendingImage(null)}
+                className="p-1.5 rounded-lg text-text-muted hover:text-loss hover:bg-bg-secondary transition-colors cursor-pointer"
+                title="הסר תמונה"
+              >
+                <X className="w-4 h-4" />
+              </button>
+            </div>
+          )}
           <div className="flex items-end gap-2">
             <textarea
               ref={inputRef}
               value={input}
               onChange={(e) => setInput(e.target.value)}
               onKeyDown={handleKeyDown}
-              placeholder="שאל על ויקוף, LPSY, LPS..."
+              placeholder="שאל על ויקוף, או צרף תמונת גרף לניתוח..."
               rows={1}
               className="flex-1 bg-bg-tertiary border border-border-primary rounded-xl px-4 py-2.5 text-sm text-text-primary placeholder-text-muted outline-none resize-none focus:border-accent-primary/50 transition-colors"
               style={{ maxHeight: '100px' }}
             />
+            <input
+              ref={fileInputRef}
+              type="file"
+              accept="image/*"
+              className="hidden"
+              onChange={handleImagePick}
+            />
+            <button
+              onClick={() => fileInputRef.current?.click()}
+              disabled={streaming}
+              className="w-10 h-10 rounded-xl border border-border-primary bg-bg-tertiary text-text-muted hover:text-accent-primary hover:border-accent-primary/40 flex items-center justify-center transition-colors cursor-pointer disabled:opacity-30 disabled:cursor-not-allowed shrink-0"
+              title="צרף תמונת גרף לניתוח"
+            >
+              <ImagePlus className="w-4 h-4" />
+            </button>
             <button
               onClick={() => handleSend()}
-              disabled={!input.trim() || streaming || cooldown}
+              disabled={(!input.trim() && !pendingImage) || streaming || cooldown}
               className="w-10 h-10 rounded-xl bg-accent-primary text-bg-primary flex items-center justify-center hover:bg-accent-hover transition-colors cursor-pointer disabled:opacity-30 disabled:cursor-not-allowed shrink-0 shadow-lg shadow-accent-primary/20"
             >
               <Send className="w-4 h-4" />
