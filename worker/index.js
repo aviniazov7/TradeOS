@@ -2215,6 +2215,23 @@ async function handleAIChat(request, env, cors) {
       return new Response(JSON.stringify({ error: 'התמונה אינה תקינה או גדולה מדי (עד ~3MB, PNG/JPEG/WebP)' }), { status: 400, headers: { ...cors, 'Content-Type': 'application/json' } });
     }
 
+    // Resolve which image (if any) will actually be forwarded to the model —
+    // the most recent valid one in the trimmed history window. The premium and
+    // image-quota gates below MUST key off this, not off the last message:
+    // otherwise a crafted request with the image on an earlier turn slips a
+    // free user into the vision model.
+    const MAX_TURNS = 8;
+    const recent = messages.slice(-MAX_TURNS);
+    let lastImageIdx = -1;
+    for (let i = recent.length - 1; i >= 0; i--) {
+      const img = recent[i]?.image;
+      if (recent[i]?.role === 'user' && typeof img === 'string' && IMAGE_DATA_RE.test(img) && img.length <= MAX_IMAGE_CHARS) {
+        lastImageIdx = i;
+        break;
+      }
+    }
+    const hasImage = lastImageIdx !== -1;
+
     // Verify the Firebase ID token (signature-checked) and resolve the uid.
     const authHeader = request.headers.get('Authorization') || '';
     const token = authHeader.replace('Bearer ', '');
@@ -2226,9 +2243,15 @@ async function handleAIChat(request, env, cors) {
 
     const premium = await isUserPremium(env, token, uid);
 
+    // Multi-window rate limiting (+ global circuit breaker). Premium gets soft
+    // caps (5/min, 50/hr, 200/day) so 'unlimited' can't be weaponized. Runs
+    // before the premium-image 403 so hammering the gate is rate-limited too.
+    const gate = await aiRateGate(env, uid, premium);
+    if (gate) return new Response(JSON.stringify(gate.body), { status: gate.status, headers: { ...cors, 'Content-Type': 'application/json' } });
+
     // Chart-image analysis is premium-only, with its own small daily budget —
     // vision requests burn far more provider tokens than text.
-    if (lastUserImage) {
+    if (hasImage) {
       if (!premium) {
         return new Response(JSON.stringify({
           error: 'ניתוח תמונות גרף זמין למנויי Premium בלבד. שדרג כדי לצרף גרפים לניתוח.',
@@ -2243,11 +2266,6 @@ async function handleAIChat(request, env, cors) {
         }), { status: 429, headers: { ...cors, 'Content-Type': 'application/json' } });
       }
     }
-
-    // Multi-window rate limiting (+ global circuit breaker). Premium gets soft
-    // caps (5/min, 50/hr, 200/day) so 'unlimited' can't be weaponized.
-    const gate = await aiRateGate(env, uid, premium);
-    if (gate) return new Response(JSON.stringify(gate.body), { status: gate.status, headers: { ...cors, 'Content-Type': 'application/json' } });
 
     // Daily AI usage counter — kept for BOTH tiers so each user sees their
     // own progress bar. Premium just has a higher cap (handled in aiRateGate).
@@ -2266,20 +2284,9 @@ async function handleAIChat(request, env, cors) {
     // Build messages for Groq. Trim history to keep the payload under Groq's
     // tokens-per-minute cap (the old 11K-char system prompt + long Wyckoff
     // replies meant the SECOND question in a minute always blew the TPM limit).
-    const MAX_TURNS = 8;
+    // Only the image at lastImageIdx (gated above) is forwarded — older ones
+    // bloat the payload past the providers' per-request caps.
     const MAX_TURN_CHARS = 2500;
-    const recent = messages.slice(-MAX_TURNS);
-    // Forward only the most recent valid image — older ones bloat the payload
-    // past the providers' per-request caps without adding much context.
-    let lastImageIdx = -1;
-    for (let i = recent.length - 1; i >= 0; i--) {
-      const img = recent[i]?.image;
-      if (recent[i]?.role === 'user' && typeof img === 'string' && IMAGE_DATA_RE.test(img) && img.length <= MAX_IMAGE_CHARS) {
-        lastImageIdx = i;
-        break;
-      }
-    }
-    const hasImage = lastImageIdx !== -1;
     const apiMessages = [
       { role: 'system', content: WYCKOFF_SYSTEM_PROMPT },
       ...recent.map((msg, i) => {
