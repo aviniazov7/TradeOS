@@ -1421,7 +1421,7 @@ const HEATMAP_PERIODS = [
   { key: '1M',  label: '1 Month', interval: '4h',  limit: 180 },
 ];
 
-function buildHeatmap(klines, priceBuckets = 120) {
+function buildHeatmap(klines, priceBuckets = 150) {
   if (!klines || klines.length < 2) return null;
   const candles = klines.map(k => ({
     time:   k[0],
@@ -1431,12 +1431,12 @@ function buildHeatmap(klines, priceBuckets = 120) {
     close:  parseFloat(k[4]),
     volume: parseFloat(k[5]),
   }));
-  let priceMin = Math.min(...candles.map(c => c.low));
-  let priceMax = Math.max(...candles.map(c => c.high));
-  // Pad the domain so liq levels just outside the traded range stay visible
-  const pad = (priceMax - priceMin) * 0.06 || priceMin * 0.01;
-  priceMin -= pad;
-  priceMax += pad;
+  // The domain must reach the far liquidation tiers — 10x positions
+  // liquidate ±10% away from price, so the axis extends ~±11.5% beyond the
+  // traded range (this is why Coinglass charts show price as a narrow band
+  // in the middle with the big walls above and below).
+  const priceMin = Math.min(...candles.map(c => c.low)) * 0.885;
+  const priceMax = Math.max(...candles.map(c => c.high)) * 1.115;
   const priceRange = priceMax - priceMin;
   if (priceRange <= 0) return null;
 
@@ -1538,7 +1538,7 @@ function LiquidityHeatmap({ pair, klines }) {
     return () => { cancelled = true; };
   }, [period, pair, klines]);
 
-  const heatData = useMemo(() => buildHeatmap(data, 120), [data]);
+  const heatData = useMemo(() => buildHeatmap(data, 150), [data]);
 
   useEffect(() => {
     const canvas = canvasRef.current;
