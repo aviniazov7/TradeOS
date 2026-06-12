@@ -8,7 +8,6 @@ import {
 import { pageVariants, pageTransition, staggerContainer } from '../../utils/animations';
 import FearGreedGauge from '../dashboard/FearGreedGauge';
 import CoinAnalysis from './CoinAnalysis';
-import AIChat from './AIChat';
 import MarketSessionsCard from './MarketSessionsCard';
 import { getCachedImage, hasKnownIcon } from '../../services/coinImageCache';
 import { fetchSpotTickersAsBinance, fetchLinearTickers, fetchAccountRatio } from '../../services/bybitDirect';
@@ -608,25 +607,6 @@ export default function MarketOverview() {
   const [liquidations, setLiquidations] = useState([]);
   const intervalRef = useRef(null);
 
-  // Lock body scroll when AI chat is active on mobile (iOS needs position:fixed)
-  useEffect(() => {
-    if (activeTab !== 'ai-chat') return;
-    const scrollY = window.scrollY;
-    document.documentElement.style.overflow = 'hidden';
-    document.body.style.position = 'fixed';
-    document.body.style.top = `-${scrollY}px`;
-    document.body.style.width = '100%';
-    document.body.style.overflow = 'hidden';
-    return () => {
-      document.documentElement.style.overflow = '';
-      document.body.style.position = '';
-      document.body.style.top = '';
-      document.body.style.width = '';
-      document.body.style.overflow = '';
-      window.scrollTo(0, scrollY);
-    };
-  }, [activeTab]);
-
   // Helper: fetch with timeout (AbortSignal.timeout may not exist in older Safari)
   const fetchWithTimeout = useCallback((url, ms = 8000) => {
     const controller = new AbortController();
@@ -1000,11 +980,10 @@ export default function MarketOverview() {
   return (
     <motion.div variants={pageVariants} initial="initial" animate="animate" exit="exit" transition={pageTransition}>
       {/* Tabs */}
-      <div className={`grid grid-cols-3 sm:flex sm:flex-wrap sm:justify-center gap-2 ${activeTab === 'ai-chat' ? 'mb-2' : 'mb-6'}`}>
+      <div className="grid grid-cols-2 sm:flex sm:flex-wrap sm:justify-center gap-2 mb-6">
         {[
           { key: 'overview', label: 'סקירה',      shortLabel: 'סקירה',   icon: Activity },
           { key: 'analysis', label: 'ניתוח מטבע', shortLabel: 'ניתוח',   icon: Sparkles },
-          { key: 'ai-chat',  label: 'TradeAI',     shortLabel: 'TradeAI', icon: Bot },
         ].map((tab) => (
           <button
             key={tab.key}
@@ -1310,13 +1289,9 @@ export default function MarketOverview() {
       <CryptoHeatmap coins={allCoins} loading={loading} />
 
       </motion.div>
-      ) : activeTab === 'analysis' ? (
+      ) : (
       <motion.div key="analysis" initial={{ opacity: 0, x: 20 }} animate={{ opacity: 1, x: 0 }} exit={{ opacity: 0, x: -20 }} transition={{ duration: 0.25 }}>
         <CoinAnalysis />
-      </motion.div>
-      ) : (
-      <motion.div key="ai-chat" initial={{ opacity: 0, x: 20 }} animate={{ opacity: 1, x: 0 }} exit={{ opacity: 0, x: -20 }} transition={{ duration: 0.25 }} className="overflow-hidden">
-        <AIChat />
       </motion.div>
       )}
       </AnimatePresence>

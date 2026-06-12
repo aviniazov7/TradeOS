@@ -122,7 +122,7 @@ function TypingIndicator() {
   );
 }
 
-export default function AIChat() {
+export default function AIChat({ heightClass = 'h-[calc(100dvh-13.5rem)] md:h-[calc(100vh-220px)]' }) {
   const [messages, setMessages] = useState([]);
   const [input, setInput] = useState('');
   const [streaming, setStreaming] = useState(false);
@@ -336,7 +336,7 @@ export default function AIChat() {
 
   return (
     <div className="max-w-2xl mx-auto w-full">
-      <div className="flex flex-col bg-bg-secondary/30 border border-border-primary rounded-2xl overflow-hidden h-[calc(100dvh-13.5rem)] md:h-[calc(100vh-220px)] min-h-[400px]">
+      <div className={`flex flex-col bg-bg-secondary/30 border border-border-primary rounded-2xl overflow-hidden ${heightClass} min-h-[400px]`}>
         {/* Header */}
         <div className="flex items-center justify-between px-4 py-3 border-b border-border-primary bg-bg-secondary/50">
           <div className="flex items-center gap-2.5">
@@ -357,11 +357,11 @@ export default function AIChat() {
             <button
               ref={historyBtnRef}
               onClick={() => setHistoryOpen((v) => !v)}
-              className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs text-text-muted hover:text-text-primary hover:bg-bg-tertiary transition-colors cursor-pointer border border-border-primary"
+              className="flex items-center gap-1.5 px-2.5 sm:px-3 py-1.5 rounded-lg text-xs whitespace-nowrap shrink-0 text-text-muted hover:text-text-primary hover:bg-bg-tertiary transition-colors cursor-pointer border border-border-primary"
               title="היסטוריית שיחות"
             >
-              <History className="w-3 h-3" />
-              היסטוריה
+              <History className="w-3.5 h-3.5 sm:w-3 sm:h-3" />
+              <span className="hidden sm:inline">היסטוריה</span>
               {conversations.length > 0 && (
                 <span className="text-[9px] px-1.5 py-0.5 rounded-full bg-accent-primary/15 text-accent-primary">
                   {conversations.length}
@@ -370,10 +370,11 @@ export default function AIChat() {
             </button>
             <button
               onClick={clearChat}
-              className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs text-text-muted hover:text-text-primary hover:bg-bg-tertiary transition-colors cursor-pointer border border-border-primary"
+              className="flex items-center gap-1.5 px-2.5 sm:px-3 py-1.5 rounded-lg text-xs whitespace-nowrap shrink-0 text-text-muted hover:text-text-primary hover:bg-bg-tertiary transition-colors cursor-pointer border border-border-primary"
+              title="שיחה חדשה"
             >
-              <RotateCcw className="w-3 h-3" />
-              שיחה חדשה
+              <RotateCcw className="w-3.5 h-3.5 sm:w-3 sm:h-3" />
+              <span className="hidden sm:inline">שיחה חדשה</span>
             </button>
 
           </div>
