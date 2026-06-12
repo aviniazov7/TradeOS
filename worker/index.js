@@ -7,7 +7,10 @@
  */
 
 const TELEGRAM_API = 'https://api.telegram.org/bot';
-const BINANCE_SPOT = 'https://api.binance.com/api/v3';
+// Binance's public market-data mirror — api.binance.com returns 403 to
+// Cloudflare Worker egress IPs in many regions, but data-api.binance.vision
+// (same /api/v3 spot surface) isn't geo-blocked. Futures (fapi) has no mirror.
+const BINANCE_SPOT = 'https://data-api.binance.vision/api/v3';
 const BINANCE_FUTURES = 'https://fapi.binance.com/fapi/v1';
 const APP_URL = 'https://tradeos-91a58.web.app';
 const CALENDAR_API = 'https://nfs.faireconomy.media/ff_calendar_thisweek.json';
@@ -1824,6 +1827,19 @@ async function handleTextMessage(env, chatId, text) {
 
 // ==================== Webhook Handler ====================
 
+// Bot-usage record for the admin panel: { total, lastUsed, lastCmd }.
+// Read-modify-write per interaction is fine at bot volume; failures are
+// swallowed by callers so stats can never break command handling.
+async function bumpTgUsage(env, chatId, cmd) {
+  const key = `tgusage:${chatId}`;
+  const cur = (await env.ALERTS_KV.get(key, 'json')) || { total: 0 };
+  await env.ALERTS_KV.put(key, JSON.stringify({
+    total: (cur.total || 0) + 1,
+    lastUsed: Date.now(),
+    lastCmd: cmd,
+  }));
+}
+
 async function handleWebhook(request, env) {
   // Defense in depth: if the owner has configured TG_WEBHOOK_SECRET, require
   // Telegram's secret-token header to match. When the secret is NOT set, skip
@@ -1836,7 +1852,12 @@ async function handleWebhook(request, env) {
   }
   try {
     const update = await request.json();
-    if (update.callback_query) { await handleCallback(env, update.callback_query); return new Response('OK'); }
+    if (update.callback_query) {
+      const cbChatId = update.callback_query.message?.chat?.id;
+      if (cbChatId) bumpTgUsage(env, cbChatId, 'button').catch(() => {});
+      await handleCallback(env, update.callback_query);
+      return new Response('OK');
+    }
     const message = update.message;
     if (!message) return new Response('OK');
     const chatId = message.chat.id;
@@ -1849,6 +1870,11 @@ async function handleWebhook(request, env) {
       const uk = `tgusername:${chatId}`;
       if ((await env.ALERTS_KV.get(uk)) !== username) await env.ALERTS_KV.put(uk, username);
     }
+
+    // Lightweight bot-usage stats for the admin panel: total interactions,
+    // last-used timestamp and last command. One KV read+write per message —
+    // bot volume is low, so this is well within the free-tier write budget.
+    bumpTgUsage(env, chatId, text.startsWith('/') ? text.split(' ')[0] : 'text').catch(() => {});
 
     if (text.startsWith('/start')) await handleStart(env, chatId, text, username);
     else if (!(await requireAuth(env, chatId))) { /* silent */ }
@@ -2817,6 +2843,76 @@ function isAllowedOrigin(origin) {
   return ALLOWED_ORIGINS.includes(origin) || PREVIEW_ORIGIN_RE.test(origin);
 }
 
+// Serve a Binance /api/v3 request from Bybit, returning Binance-shaped JSON.
+// Covers the two endpoints the app actually uses — ticker/24hr (single symbol
+// or a symbols=[...] batch) and klines. Returns a JSON string, or null when
+// the subpath isn't covered / Bybit fails (caller then falls back to stale).
+async function bybitAsBinance(subPath, searchParams) {
+  try {
+    if (subPath.startsWith('ticker/24hr')) {
+      const r = await fetch('https://api.bybit.com/v5/market/tickers?category=spot', { headers: { 'Accept': 'application/json' } });
+      if (!r.ok) return null;
+      const j = await r.json();
+      const bySym = {};
+      for (const t of (j?.result?.list || [])) bySym[t.symbol] = t;
+      const toBinance = (t) => ({
+        symbol: t.symbol,
+        lastPrice: t.lastPrice,
+        // Binance reports percent units; Bybit's price24hPcnt is a fraction.
+        priceChangePercent: String((parseFloat(t.price24hPcnt) || 0) * 100),
+        highPrice: t.highPrice24h,
+        lowPrice: t.lowPrice24h,
+        volume: t.volume24h,
+        quoteVolume: t.turnover24h,
+        // Binance exposes a 24h trade count and the market-overview screen
+        // filters dead pairs with count >= 1000. Bybit has no equivalent, so
+        // report a passing constant and let the real $-volume filter decide.
+        count: '100000',
+      });
+      const single = searchParams.get('symbol');
+      if (single) {
+        const t = bySym[single];
+        return t ? JSON.stringify(toBinance(t)) : null;
+      }
+      const batch = searchParams.get('symbols');
+      if (batch) {
+        let wanted = [];
+        try { wanted = JSON.parse(batch); } catch { return null; }
+        return JSON.stringify(wanted.map((s) => bySym[s]).filter(Boolean).map(toBinance));
+      }
+      // No symbol filter — the full ticker list (market overview builds its
+      // top-10 / gainers-losers / trending / categories from this one call).
+      return JSON.stringify((j?.result?.list || []).map(toBinance));
+    }
+
+    if (subPath.startsWith('klines')) {
+      const symbol = searchParams.get('symbol');
+      if (!symbol) return null;
+      const interval = searchParams.get('interval') || '1d';
+      const limit = Math.min(parseInt(searchParams.get('limit') || '100', 10) || 100, 1000);
+      const MAP = { '1m': '1', '3m': '3', '5m': '5', '15m': '15', '30m': '30', '1h': '60', '2h': '120', '4h': '240', '6h': '360', '12h': '720', '1d': 'D', '1w': 'W', '1M': 'M' };
+      const byInterval = MAP[interval];
+      if (!byInterval) return null;
+      const r = await fetch(`https://api.bybit.com/v5/market/kline?category=spot&symbol=${encodeURIComponent(symbol)}&interval=${byInterval}&limit=${limit}`, { headers: { 'Accept': 'application/json' } });
+      if (!r.ok) return null;
+      const j = await r.json();
+      const list = j?.result?.list || [];
+      if (!list.length) return null;
+      // Bybit returns newest-first [start, open, high, low, close, volume,
+      // turnover]; Binance is oldest-first 12-field arrays. The app reads
+      // indices 0 (openTime), 4 (close) and 5 (volume).
+      const rows = list.slice().reverse().map((k) => [
+        Number(k[0]), k[1], k[2], k[3], k[4], k[5], 0, k[6], 0, '0', '0', '0',
+      ]);
+      return JSON.stringify(rows);
+    }
+
+    return null; // subpath not covered (depth, trades, …)
+  } catch {
+    return null;
+  }
+}
+
 async function handleRequest(request, env) {
   const origin = request.headers.get('Origin') || '';
   const allowedOrigin = isAllowedOrigin(origin) ? origin : ALLOWED_ORIGINS[0];
@@ -2957,7 +3053,9 @@ async function handleRequest(request, env) {
     try {
       const cached = await env.ALERTS_KV.get(cacheKey);
       if (cached) return new Response(cached, { headers: { ...cors, 'Content-Type': 'application/json', 'X-Cache': 'HIT' } });
-      const res = await fetch(cgUrl, { headers: { 'Accept': 'application/json' } });
+      // Browser-like UA — CoinGecko's free tier 403s bare server-side fetches
+      // from Cloudflare egress IPs but generally serves browser-looking ones.
+      const res = await fetch(cgUrl, { headers: { 'Accept': 'application/json', 'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36' } });
       if (!res.ok) return new Response(JSON.stringify({ error: res.status }), { status: res.status, headers: { ...cors, 'Content-Type': 'application/json' } });
       const text = await res.text();
       env.ALERTS_KV.put(cacheKey, text, { expirationTtl: ttl }).catch(() => {});
@@ -2970,7 +3068,11 @@ async function handleRequest(request, env) {
   // Binance proxy with KV cache (avoids browser CORS/geo issues)
   if (request.method === 'GET' && path.startsWith('/bnb/')) {
     const subPath = path.slice(5); // remove '/bnb/'
-    const bnbUrl = `https://api.binance.com/api/v3/${subPath}${url.search}`;
+    // api.binance.com returns 403 to Cloudflare Worker egress IPs in many
+    // regions. data-api.binance.vision is Binance's public market-data mirror
+    // (same /api/v3 surface — ticker, klines, depth) and isn't geo-blocked, so
+    // we try the main host first and fall back to the vision mirror.
+    const BNB_HOSTS = ['https://api.binance.com', 'https://data-api.binance.vision'];
     const rawKey = `bnb:${subPath}${url.search}`;
     // KV keys max 512 bytes — hash long keys (e.g. ticker with many symbols) so
     // even large requests stay cached and don't hammer Binance every poll, which
@@ -2981,15 +3083,132 @@ async function handleRequest(request, env) {
     try {
       const cached = await env.ALERTS_KV.get(cacheKey);
       if (cached) return new Response(cached, { headers: { ...cors, 'Content-Type': 'application/json', 'X-Cache': 'HIT' } });
-      const res = await fetch(bnbUrl, { headers: { 'Accept': 'application/json' } });
-      if (!res.ok) {
-        // Transient Binance hiccup (e.g. 408/429) — serve the last good copy if we have one
+
+      let res = null;
+      let lastStatus = 0;
+      for (const host of BNB_HOSTS) {
+        const r = await fetch(`${host}/api/v3/${subPath}${url.search}`, { headers: { 'Accept': 'application/json' } });
+        if (r.ok) { res = r; break; }
+        lastStatus = r.status;
+      }
+
+      // Both Binance hosts blocked (403 from this CF colo) — translate the
+      // request to Bybit and answer in Binance's response shape, so every
+      // client consumer (coin details, klines charts, bulk tickers) keeps
+      // working without changes.
+      let text = null;
+      if (res) {
+        text = await res.text();
+      } else {
+        text = await bybitAsBinance(subPath, url.searchParams);
+      }
+      if (text === null) {
+        // Bybit translation didn't cover this subpath / upstream failed —
+        // serve the last good copy if we have one.
         const stale = await env.ALERTS_KV.get(staleKey);
         if (stale) return new Response(stale, { headers: { ...cors, 'Content-Type': 'application/json', 'X-Cache': 'STALE' } });
-        return new Response(JSON.stringify({ error: res.status }), { status: res.status, headers: { ...cors, 'Content-Type': 'application/json' } });
+        return new Response(JSON.stringify({ error: lastStatus }), { status: lastStatus || 502, headers: { ...cors, 'Content-Type': 'application/json' } });
       }
-      const text = await res.text();
       env.ALERTS_KV.put(cacheKey, text, { expirationTtl: ttl }).catch(() => {});
+      env.ALERTS_KV.put(staleKey, text, { expirationTtl: 3600 }).catch(() => {});
+      return new Response(text, { headers: { ...cors, 'Content-Type': 'application/json', 'X-Cache': res ? 'MISS' : 'BYBIT' } });
+    } catch (err) {
+      return new Response(JSON.stringify({ error: err.message }), { status: 502, headers: { ...cors, 'Content-Type': 'application/json' } });
+    }
+  }
+
+  // CME futures quotes (delayed) via Yahoo Finance chart API, KV-cached.
+  // GET /fut/quotes?symbols=ES,NQ,GC — whitelisted symbols only, so this can't
+  // be driven as an open proxy. Returns { ES: { price, change24h }, ... }.
+  // Crypto spot quotes via Bybit, KV-cached. Binance (api.binance.com AND the
+  // data-api.binance.vision mirror) and CoinGecko all return 403 to Cloudflare
+  // Worker egress IPs, but api.bybit.com is reachable (the /exchange routes
+  // already use it). GET /cx/quotes?symbols=BTC,ETH → { BTC: { price, change24h } }.
+  if (request.method === 'GET' && path === '/cx/quotes') {
+    const wanted = (url.searchParams.get('symbols') || '')
+      .split(',').map((s) => s.trim().toUpperCase()).filter(Boolean).slice(0, 60);
+    if (!wanted.length) return new Response(JSON.stringify({ error: 'no symbols' }), { status: 400, headers: { ...cors, 'Content-Type': 'application/json' } });
+
+    const cacheKey = `cx:${wanted.join(',')}`;
+    const staleKey = `${cacheKey}:stale`;
+    try {
+      const cached = await env.ALERTS_KV.get(cacheKey);
+      if (cached) return new Response(cached, { headers: { ...cors, 'Content-Type': 'application/json', 'X-Cache': 'HIT' } });
+
+      // One call returns every spot ticker; we pick the ones we want.
+      const r = await fetch('https://api.bybit.com/v5/market/tickers?category=spot', { headers: { 'Accept': 'application/json' } });
+      if (!r.ok) {
+        const stale = await env.ALERTS_KV.get(staleKey);
+        if (stale) return new Response(stale, { headers: { ...cors, 'Content-Type': 'application/json', 'X-Cache': 'STALE' } });
+        return new Response(JSON.stringify({ error: r.status }), { status: r.status, headers: { ...cors, 'Content-Type': 'application/json' } });
+      }
+      const j = await r.json();
+      const list = j?.result?.list || [];
+      const bySym = {};
+      for (const t of list) bySym[t.symbol] = t; // e.g. BTCUSDT
+      const out = {};
+      for (const sym of wanted) {
+        const t = bySym[`${sym}USDT`];
+        if (!t) continue;
+        const price = parseFloat(t.lastPrice);
+        if (!Number.isFinite(price)) continue;
+        out[sym] = { price, change24h: (parseFloat(t.price24hPcnt) || 0) * 100 }; // price24hPcnt is a fraction
+      }
+      const text = JSON.stringify(out);
+      env.ALERTS_KV.put(cacheKey, text, { expirationTtl: 60 }).catch(() => {});
+      env.ALERTS_KV.put(staleKey, text, { expirationTtl: 3600 }).catch(() => {});
+      return new Response(text, { headers: { ...cors, 'Content-Type': 'application/json', 'X-Cache': 'MISS' } });
+    } catch (err) {
+      return new Response(JSON.stringify({ error: err.message }), { status: 502, headers: { ...cors, 'Content-Type': 'application/json' } });
+    }
+  }
+
+  if (request.method === 'GET' && path === '/fut/quotes') {
+    // Yahoo continuous-contract tickers for the contracts the app supports.
+    const YAHOO_FUT = {
+      ES: 'ES=F', MES: 'MES=F', NQ: 'NQ=F', MNQ: 'MNQ=F', YM: 'YM=F', MYM: 'MYM=F',
+      RTY: 'RTY=F', M2K: 'M2K=F', CL: 'CL=F', MCL: 'MCL=F', NG: 'NG=F',
+      GC: 'GC=F', MGC: 'MGC=F', SI: 'SI=F', ZB: 'ZB=F', ZN: 'ZN=F',
+    };
+    const wanted = (url.searchParams.get('symbols') || '')
+      .split(',').map((s) => s.trim().toUpperCase()).filter((s) => YAHOO_FUT[s]);
+    if (!wanted.length) return new Response(JSON.stringify({ error: 'no valid symbols' }), { status: 400, headers: { ...cors, 'Content-Type': 'application/json' } });
+
+    const cacheKey = `fut:${wanted.join(',')}`;
+    const staleKey = `${cacheKey}:stale`;
+    try {
+      const cached = await env.ALERTS_KV.get(cacheKey);
+      if (cached) return new Response(cached, { headers: { ...cors, 'Content-Type': 'application/json', 'X-Cache': 'HIT' } });
+
+      const out = {};
+      // Fan out per symbol (Yahoo's chart endpoint is per-ticker). Capped by the
+      // whitelist (≤16) and the 120s KV cache, so upstream load stays tiny.
+      await Promise.all(wanted.map(async (sym) => {
+        try {
+          const r = await fetch(
+            `https://query1.finance.yahoo.com/v8/finance/chart/${encodeURIComponent(YAHOO_FUT[sym])}?interval=1d&range=2d`,
+            { headers: { 'Accept': 'application/json', 'User-Agent': 'Mozilla/5.0' } }
+          );
+          if (!r.ok) return;
+          const j = await r.json();
+          const meta = j?.chart?.result?.[0]?.meta;
+          const price = meta?.regularMarketPrice;
+          const prev = meta?.chartPreviousClose ?? meta?.previousClose;
+          if (typeof price !== 'number') return;
+          out[sym] = {
+            price,
+            change24h: (typeof prev === 'number' && prev > 0) ? ((price - prev) / prev) * 100 : 0,
+          };
+        } catch { /* skip symbol on upstream failure */ }
+      }));
+
+      if (!Object.keys(out).length) {
+        const stale = await env.ALERTS_KV.get(staleKey);
+        if (stale) return new Response(stale, { headers: { ...cors, 'Content-Type': 'application/json', 'X-Cache': 'STALE' } });
+        return new Response(JSON.stringify({ error: 'upstream failed' }), { status: 502, headers: { ...cors, 'Content-Type': 'application/json' } });
+      }
+      const text = JSON.stringify(out);
+      env.ALERTS_KV.put(cacheKey, text, { expirationTtl: 120 }).catch(() => {});
       env.ALERTS_KV.put(staleKey, text, { expirationTtl: 3600 }).catch(() => {});
       return new Response(text, { headers: { ...cors, 'Content-Type': 'application/json', 'X-Cache': 'MISS' } });
     } catch (err) {
@@ -3188,6 +3407,37 @@ async function handleRequest(request, env) {
       events.push(v);
     }
     return new Response(JSON.stringify({ ok: true, events }), { headers: { ...cors, 'Content-Type': 'application/json' } });
+  }
+
+  // Admin-only: a user's Telegram bot link status + usage, for the admin
+  // panel's user detail view. Reads only KV (uid↔chat mapping, username,
+  // usage counters, alert/watchlist counts) — never the user's Firestore
+  // settings subcollection, which is owner-only by design.
+  if (request.method === 'GET' && path.startsWith('/admin/telegram/')) {
+    const token = (request.headers.get('Authorization') || '').replace('Bearer ', '');
+    const adminUid = await verifyAdminFromToken(token);
+    if (!adminUid) return new Response(JSON.stringify({ error: 'forbidden' }), { status: 403, headers: { ...cors, 'Content-Type': 'application/json' } });
+    const targetUid = path.slice('/admin/telegram/'.length);
+    if (!targetUid) return new Response(JSON.stringify({ error: 'missing uid' }), { status: 400, headers: { ...cors, 'Content-Type': 'application/json' } });
+
+    const chatId = await env.ALERTS_KV.get(`uid:${targetUid}`);
+    if (!chatId) {
+      return new Response(JSON.stringify({ ok: true, connected: false }), { headers: { ...cors, 'Content-Type': 'application/json' } });
+    }
+    const [username, usage, alertsList, watchlistRaw] = await Promise.all([
+      env.ALERTS_KV.get(`tgusername:${chatId}`),
+      env.ALERTS_KV.get(`tgusage:${chatId}`, 'json'),
+      env.ALERTS_KV.list({ prefix: `alerts:${chatId}:` }),
+      env.ALERTS_KV.get(`watchlist:${chatId}`, 'json'),
+    ]);
+    return new Response(JSON.stringify({
+      ok: true,
+      connected: true,
+      username: username || null,
+      usage: usage || null, // { total, lastUsed, lastCmd } — null until first interaction after rollout
+      alertsCount: alertsList.keys.length,
+      watchlistCount: Array.isArray(watchlistRaw) ? watchlistRaw.length : null,
+    }), { headers: { ...cors, 'Content-Type': 'application/json' } });
   }
 
   // Admin-only: list all coupon codes.
@@ -3998,7 +4248,7 @@ ${pad('Lev', `${pnlSign}${pnlPctLev}%`)}` : ''}` : ''}</code>
         const sats = (cs.funded_txo_sum || 0) - (cs.spent_txo_sum || 0) + (ms.funded_txo_sum || 0) - (ms.spent_txo_sum || 0);
         const btc = sats / 1e8;
         let price = 0;
-        try { const pr = await fetch('https://api.binance.com/api/v3/ticker/price?symbol=BTCUSDT'); price = parseFloat((await pr.json()).price) || 0; } catch { /* price optional */ }
+        try { const pr = await fetch(`${BINANCE_SPOT}/ticker/price?symbol=BTCUSDT`); price = parseFloat((await pr.json()).price) || 0; } catch { /* price optional */ }
         const usd = btc * price;
         const tokens = btc > 0 ? [{ symbol: 'BTC', name: 'Bitcoin', usd, amount: btc, chain: 'bitcoin', logo: null }] : [];
         return new Response(JSON.stringify({ ok: true, totalUsd: usd, chains: usd > 0 ? [{ chain: 'bitcoin', usd }] : [], tokens }), { headers: { ...cors, 'Content-Type': 'application/json' } });

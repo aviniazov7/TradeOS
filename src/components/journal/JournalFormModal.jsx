@@ -1,11 +1,17 @@
 import { useState, useEffect } from 'react';
+import { Coins, LineChart } from 'lucide-react';
 import Modal from '../shared/Modal';
 import ExchangeSearch from '../shared/ExchangeSearch';
 import { EXCHANGES } from '../../utils/constants';
 
-const defaultForm = { name: '', exchange: '', initialBalance: '', currency: 'USDT', description: '', riskType: 'percent', riskValue: '' };
+const defaultForm = { name: '', exchange: '', initialBalance: '', currency: 'USDT', description: '', riskType: 'percent', riskValue: '', assetClass: 'crypto' };
 
-export default function JournalFormModal({ isOpen, onClose, journal = null, onSave }) {
+const ASSET_CLASS_OPTIONS = [
+  { id: 'crypto', label: 'קריפטו', Icon: Coins },
+  { id: 'futures_cme', label: 'חוזים עתידיים', Icon: LineChart },
+];
+
+export default function JournalFormModal({ isOpen, onClose, journal = null, onSave, defaultAssetClass = 'crypto' }) {
   const [form, setForm] = useState(defaultForm);
   const [saving, setSaving] = useState(false);
 
@@ -19,11 +25,12 @@ export default function JournalFormModal({ isOpen, onClose, journal = null, onSa
         description: journal.description || '',
         riskType: journal.riskType || 'percent',
         riskValue: journal.riskValue || '',
+        assetClass: journal.assetClass || 'crypto',
       });
     } else {
-      setForm(defaultForm);
+      setForm({ ...defaultForm, assetClass: defaultAssetClass });
     }
-  }, [journal, isOpen]);
+  }, [journal, isOpen, defaultAssetClass]);
 
   const handleSubmit = async (e) => {
     e.preventDefault();
@@ -38,6 +45,7 @@ export default function JournalFormModal({ isOpen, onClose, journal = null, onSa
         description: form.description.trim(),
         riskType: form.riskType,
         riskValue: parseFloat(form.riskValue) || 0,
+        assetClass: form.assetClass,
       });
       onClose();
     } catch {
@@ -57,6 +65,21 @@ export default function JournalFormModal({ isOpen, onClose, journal = null, onSa
           <label className={labelClass}>שם היומן</label>
           <input type="text" value={form.name} onChange={(e) => setForm((f) => ({ ...f, name: e.target.value }))}
             className={inputClass} placeholder="שם היומן שלך" />
+        </div>
+        <div>
+          <label className={labelClass}>סוג נכס</label>
+          <div className="flex rounded-lg overflow-hidden border border-border-primary">
+            {ASSET_CLASS_OPTIONS.map((opt) => (
+              <button key={opt.id} type="button" onClick={() => setForm((f) => ({ ...f, assetClass: opt.id }))}
+                className={`flex-1 flex items-center justify-center gap-1.5 py-2 text-xs font-medium transition-colors cursor-pointer ${
+                  form.assetClass === opt.id ? 'bg-accent-primary text-bg-primary' : 'bg-bg-tertiary text-text-muted hover:text-text-primary'
+                }`}>
+                <opt.Icon className="w-3.5 h-3.5" />
+                {opt.label}
+              </button>
+            ))}
+          </div>
+          <p className="text-[11px] text-text-muted mt-1">כל העסקאות ביומן יהיו מסוג זה.</p>
         </div>
         <ExchangeSearch
           value={form.exchange}

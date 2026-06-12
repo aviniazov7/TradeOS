@@ -68,6 +68,27 @@ export async function fetchPrices(coinsOrIds, signal) {
       }
     }
   }
+
+  // Binance is geo-blocked (HTTP 451) at some Cloudflare colos, which makes the
+  // /bnb proxy return nothing and leaves the price ticker empty. When Binance
+  // yields zero results, fall back to the CoinGecko simple-price proxy (not
+  // geo-blocked, KV-cached). Same return shape: { coingeckoId: { usd, … } }.
+  if (Object.keys(result).length === 0 && !signal?.aborted) {
+    try {
+      const ids = coins.map(c => c.coingeckoId).filter(Boolean).join(',');
+      const cgUrl = `${BASE_URL}/simple/price?ids=${encodeURIComponent(ids)}&vs_currencies=usd&include_24hr_change=true`;
+      const r = await fetch(cgUrl, { signal });
+      if (r.ok) {
+        const cg = await r.json();
+        for (const [id, v] of Object.entries(cg)) {
+          if (v && typeof v.usd === 'number') {
+            result[id] = { usd: v.usd, usd_24h_change: v.usd_24h_change ?? 0 };
+          }
+        }
+      }
+    } catch { /* keep whatever we have (possibly empty) */ }
+  }
+
   return result;
 }
 

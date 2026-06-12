@@ -18,6 +18,9 @@ import {
   Clock,
   ArrowLeft,
   Check,
+  Coins,
+  LineChart,
+  Briefcase,
 } from 'lucide-react';
 import toast from 'react-hot-toast';
 import { getUserProfile, setUserProfile, deleteLeaderboardEntry } from '../../services/firestoreService';
@@ -32,6 +35,22 @@ import NotificationSettings from './NotificationSettings';
 import ContactDeveloper from './ContactDeveloper';
 
 const APP_URL = 'https://tradeos-91a58.web.app';
+
+// What the user trades. Drives the new-trade form's default + which symbol
+// catalog it shows. Multi-select: pick crypto, futures, or both. Stocks is
+// on the roadmap (epic) but not wired yet, so it's shown disabled.
+const ASSET_CLASSES = [
+  { id: 'crypto', label: 'קריפטו', desc: 'מטבעות וחוזי פרפ', Icon: Coins },
+  { id: 'futures_cme', label: 'חוזים עתידיים', desc: 'מדדים וסחורות — ES, NQ, GC', Icon: LineChart },
+  { id: 'stocks', label: 'מניות', desc: 'בקרוב', Icon: Briefcase, soon: true },
+];
+
+// Small section heading that groups the settings cards into clear topics.
+function SectionTitle({ children }) {
+  return <h2 className="text-[11px] font-semibold text-text-muted px-1 mb-2 mt-6">{children}</h2>;
+}
+
+const cardClass = 'bg-bg-secondary border border-border-primary rounded-2xl overflow-hidden';
 
 export default function ProfilePage() {
   const { user, profile, isAdmin, isPremium, logout, changePassword, resetPassword, deleteAccount, isEmailUser } = useAuth();
@@ -48,15 +67,37 @@ export default function ProfilePage() {
   const [isPublicProfile, setIsPublicProfile] = useState(false);
   const [leaderboardName, setLeaderboardName] = useState('');
   const [leaderboardLoading, setLeaderboardLoading] = useState(true);
+  // Which asset classes the user trades (default crypto for back-compat).
+  const [assetClasses, setAssetClasses] = useState(['crypto']);
 
   useEffect(() => {
     if (!user) return;
     getUserProfile(user.uid).then(({ data }) => {
       setIsPublicProfile(data?.isPublicProfile || false);
       setLeaderboardName(data?.leaderboardName || '');
+      const ac = data?.settings?.assetClasses;
+      if (Array.isArray(ac) && ac.length) setAssetClasses(ac);
       setLeaderboardLoading(false);
     });
   }, [user]);
+
+  const toggleAssetClass = async (id) => {
+    const has = assetClasses.includes(id);
+    const next = has ? assetClasses.filter((x) => x !== id) : [...assetClasses, id];
+    if (next.length === 0) {
+      toast.error('צריך לבחור לפחות סוג מסחר אחד');
+      return;
+    }
+    const prev = assetClasses;
+    setAssetClasses(next);
+    try {
+      // setDoc merge deep-merges the settings map, so other settings survive.
+      await setUserProfile(user.uid, { settings: { assetClasses: next } });
+    } catch {
+      setAssetClasses(prev);
+      toast.error('שגיאה בשמירה');
+    }
+  };
 
   const handleLeaderboardToggle = async () => {
     const newVal = !isPublicProfile;
@@ -194,6 +235,48 @@ export default function ProfilePage() {
         </p>
       </div>
 
+      {/* ── Section: Trading ─────────────────────────────────────── */}
+      <SectionTitle>מסחר</SectionTitle>
+
+      {/* Asset classes the user trades — drives the new-trade form default
+          and which symbol catalog it shows. Multi-select. */}
+      <div className="bg-bg-secondary border border-border-primary rounded-2xl p-4">
+        <h3 className="text-sm font-semibold text-text-primary mb-1">סוג מסחר</h3>
+        <p className="text-xs text-text-muted mb-3">מה אתה סוחר — קובע את ברירת המחדל ליומן חדש. את הסוג של כל יומן אפשר לשנות בהגדרות היומן. אפשר לבחור כמה.</p>
+        <div className="grid grid-cols-1 sm:grid-cols-3 gap-2">
+          {ASSET_CLASSES.map((ac) => {
+            const active = assetClasses.includes(ac.id);
+            return (
+              <button
+                key={ac.id}
+                type="button"
+                disabled={ac.soon}
+                onClick={() => !ac.soon && toggleAssetClass(ac.id)}
+                className={`relative text-right rounded-xl border p-3 transition-all ${
+                  ac.soon
+                    ? 'border-border-primary/50 opacity-50 cursor-not-allowed'
+                    : active
+                      ? 'border-accent-primary bg-accent-primary/10 cursor-pointer'
+                      : 'border-border-primary hover:border-border-hover cursor-pointer'
+                }`}
+              >
+                {active && !ac.soon && (
+                  <span className="absolute top-2 left-2 w-4 h-4 rounded-full bg-accent-primary flex items-center justify-center">
+                    <Check className="w-3 h-3 text-bg-primary" />
+                  </span>
+                )}
+                <ac.Icon className={`w-5 h-5 mb-1.5 ${active && !ac.soon ? 'text-accent-primary' : 'text-text-muted'}`} />
+                <div className="text-sm font-semibold text-text-primary">{ac.label}</div>
+                <div className="text-[11px] text-text-muted">{ac.desc}</div>
+              </button>
+            );
+          })}
+        </div>
+      </div>
+
+      {/* ── Section: Subscription ────────────────────────────────── */}
+      <SectionTitle>מנוי</SectionTitle>
+
       {/* Plan / Premium status — shows different states (admin, lifetime,
           expiring soon, normal premium, free). Brings the upgrade/renew CTA
           out of the sidebar and into the user's main settings hub. */}
@@ -204,8 +287,46 @@ export default function ProfilePage() {
         onUpgrade={() => navigate('/premium')}
       />
 
-      {/* Actions */}
-      <div className="bg-bg-secondary border border-border-primary rounded-2xl overflow-hidden mb-4">
+      {/* ── Section: Notifications ───────────────────────────────── */}
+      <SectionTitle>התראות</SectionTitle>
+      <div className={cardClass}>
+        {/* Push notifications */}
+        <NotificationSettings />
+        {/* Telegram Bot */}
+        <TelegramSettings />
+      </div>
+
+      {/* ── Section: General ─────────────────────────────────────── */}
+      <SectionTitle>כללי</SectionTitle>
+      <div className={cardClass}>
+        {/* Theme Toggle */}
+        <button onClick={toggleTheme}
+          className="w-full flex items-center gap-3 px-5 py-4 text-sm text-text-primary hover:bg-bg-tertiary transition-colors cursor-pointer border-b border-border-primary">
+          {isDark ? <Sun className="w-5 h-5 text-text-muted" /> : <Moon className="w-5 h-5 text-text-muted" />}
+          {isDark ? 'מצב בהיר' : 'מצב כהה'}
+        </button>
+
+        {/* Contact Developer */}
+        <ContactDeveloper />
+
+        {/* Share */}
+        <button onClick={handleShare}
+          className="w-full flex items-center gap-3 px-5 py-4 text-sm text-text-primary hover:bg-bg-tertiary transition-colors cursor-pointer border-b border-border-primary">
+          <Share2 className="w-5 h-5 text-text-muted" />
+          שיתוף האפליקציה
+        </button>
+
+        {/* Export */}
+        <button onClick={handleExport} disabled={exporting}
+          className="w-full flex items-center gap-3 px-5 py-4 text-sm text-text-primary hover:bg-bg-tertiary transition-colors cursor-pointer disabled:opacity-50">
+          <Download className="w-5 h-5 text-text-muted" />
+          {exporting ? 'מייצא...' : 'ייצוא נתונים'}
+        </button>
+      </div>
+
+      {/* ── Section: Account ─────────────────────────────────────── */}
+      <SectionTitle>חשבון</SectionTitle>
+      <div className={cardClass}>
         {/* Password management — one entry point, with a 'forgot' link inside
             the form. The old standalone 'Reset via email' button used to live
             below as a second row; folding it inside the form keeps the page
@@ -274,22 +395,6 @@ export default function ProfilePage() {
           </div>
         )}
 
-        {/* Theme Toggle */}
-        <button onClick={toggleTheme}
-          className="w-full flex items-center gap-3 px-5 py-4 text-sm text-text-primary hover:bg-bg-tertiary transition-colors cursor-pointer border-b border-border-primary">
-          {isDark ? <Sun className="w-5 h-5 text-text-muted" /> : <Moon className="w-5 h-5 text-text-muted" />}
-          {isDark ? 'מצב בהיר' : 'מצב כהה'}
-        </button>
-
-        {/* Push notifications */}
-        <NotificationSettings />
-
-        {/* Telegram Bot */}
-        <TelegramSettings />
-
-        {/* Contact Developer */}
-        <ContactDeveloper />
-
         {/* Leaderboard Opt-in - hidden temporarily */}
         {false && (
         <div>
@@ -339,20 +444,6 @@ export default function ProfilePage() {
           </AnimatePresence>
         </div>
         )}
-
-        {/* Share */}
-        <button onClick={handleShare}
-          className="w-full flex items-center gap-3 px-5 py-4 text-sm text-text-primary hover:bg-bg-tertiary transition-colors cursor-pointer border-b border-border-primary">
-          <Share2 className="w-5 h-5 text-text-muted" />
-          שיתוף האפליקציה
-        </button>
-
-        {/* Export */}
-        <button onClick={handleExport} disabled={exporting}
-          className="w-full flex items-center gap-3 px-5 py-4 text-sm text-text-primary hover:bg-bg-tertiary transition-colors cursor-pointer border-b border-border-primary disabled:opacity-50">
-          <Download className="w-5 h-5 text-text-muted" />
-          {exporting ? 'מייצא...' : 'ייצוא נתונים'}
-        </button>
 
         {/* Logout */}
         <button onClick={handleLogout}

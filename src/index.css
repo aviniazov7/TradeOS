@@ -395,3 +395,69 @@ input[type="range"]::-moz-range-thumb {
 .ticker-scroll:hover {
   animation-play-state: paused;
 }
+
+/* Hide native number-input spinner arrows app-wide. They render inconsistently
+   across browsers and clash with the dark UI; where stepping is useful we
+   provide our own NumberStepper (−/+) control instead. */
+input[type="number"]::-webkit-outer-spin-button,
+input[type="number"]::-webkit-inner-spin-button {
+  -webkit-appearance: none;
+  margin: 0;
+}
+input[type="number"] {
+  -moz-appearance: textfield;
+  appearance: textfield;
+}
+
+/* ── Bento cards (market overview redesign) ─────────────────────────
+   Terminal/neon bento: a solid dark panel with a thin border, a faint
+   top "scan line" highlight, and a soft cyan glow on hover. Headline
+   numbers use .neon-num (mono + currentColor glow) so prices read like
+   a trading terminal. */
+.bento-card {
+  position: relative;
+  background: rgba(16, 16, 24, 0.85);
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  border-radius: 0.75rem;
+  backdrop-filter: blur(6px);
+  -webkit-backdrop-filter: blur(6px);
+  box-shadow: 0 4px 20px rgba(0, 0, 0, 0.30);
+  transition: border-color 0.2s ease, box-shadow 0.2s ease;
+}
+/* Faint scan-line highlight along the top edge */
+.bento-card::before {
+  content: '';
+  position: absolute;
+  top: 0;
+  left: 8%;
+  right: 8%;
+  height: 1px;
+  background: linear-gradient(to right, transparent, rgba(255, 255, 255, 0.14), transparent);
+  pointer-events: none;
+}
+.bento-card:hover {
+  border-color: rgba(0, 191, 255, 0.28);
+  box-shadow:
+    0 6px 26px rgba(0, 0, 0, 0.38),
+    0 0 20px rgba(0, 191, 255, 0.08);
+}
+.neon-num {
+  font-family: ui-monospace, 'SF Mono', SFMono-Regular, Menlo, Consolas, monospace;
+  letter-spacing: -0.02em;
+  text-shadow: 0 0 10px currentColor;
+}
+/* Light theme: solid card, no glow */
+:root.light .bento-card,
+[data-theme='light'] .bento-card {
+  background: rgba(255, 255, 255, 0.82);
+  border-color: rgba(0, 0, 0, 0.08);
+  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.06);
+}
+:root.light .bento-card::before,
+[data-theme='light'] .bento-card::before {
+  background: none;
+}
+:root.light .neon-num,
+[data-theme='light'] .neon-num {
+  text-shadow: none;
+}

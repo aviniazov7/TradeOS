@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react';
-import { Pencil, Trash2, Archive } from 'lucide-react';
+import { Pencil, Trash2, Archive, Coins, LineChart } from 'lucide-react';
 import toast from 'react-hot-toast';
 import Modal from '../shared/Modal';
 import ConfirmDialog from '../shared/ConfirmDialog';
@@ -9,7 +9,7 @@ import { EXCHANGES } from '../../utils/constants';
 
 export default function JournalSettingsModal({ isOpen, onClose, onArchive }) {
   const { journals, activeJournal, activeJournalId, updateJournal, deleteJournal, archiveJournal } = useJournalContext();
-  const [form, setForm] = useState({ name: '', exchange: '', initialBalance: '', currency: 'USDT', description: '', riskType: 'percent', riskValue: '' });
+  const [form, setForm] = useState({ name: '', exchange: '', initialBalance: '', currency: 'USDT', description: '', riskType: 'percent', riskValue: '', assetClass: 'crypto' });
   const [saving, setSaving] = useState(false);
   const [deleteOpen, setDeleteOpen] = useState(false);
   const [archiveOpen, setArchiveOpen] = useState(false);
@@ -24,6 +24,7 @@ export default function JournalSettingsModal({ isOpen, onClose, onArchive }) {
         description: activeJournal.description || '',
         riskType: activeJournal.riskType || 'percent',
         riskValue: activeJournal.riskValue || '',
+        assetClass: activeJournal.assetClass || 'crypto',
       });
     }
   }, [activeJournal, isOpen]);
@@ -41,6 +42,7 @@ export default function JournalSettingsModal({ isOpen, onClose, onArchive }) {
         description: form.description.trim(),
         riskType: form.riskType,
         riskValue: parseFloat(form.riskValue) || 0,
+        assetClass: form.assetClass,
       });
       toast.success('היומן עודכן');
       onClose();
@@ -85,6 +87,21 @@ export default function JournalSettingsModal({ isOpen, onClose, onArchive }) {
             <label className={labelClass}>שם היומן</label>
             <input type="text" value={form.name} onChange={(e) => setForm((f) => ({ ...f, name: e.target.value }))}
               className={inputClass} placeholder="שם היומן שלך" />
+          </div>
+          <div>
+            <label className={labelClass}>סוג נכס</label>
+            <div className="flex rounded-lg overflow-hidden border border-border-primary">
+              {[{ id: 'crypto', label: 'קריפטו', Icon: Coins }, { id: 'futures_cme', label: 'חוזים עתידיים', Icon: LineChart }].map((opt) => (
+                <button key={opt.id} type="button" onClick={() => setForm((f) => ({ ...f, assetClass: opt.id }))}
+                  className={`flex-1 flex items-center justify-center gap-1.5 py-2 text-xs font-medium transition-colors cursor-pointer ${
+                    form.assetClass === opt.id ? 'bg-accent-primary text-bg-primary' : 'bg-bg-tertiary text-text-muted hover:text-text-primary'
+                  }`}>
+                  <opt.Icon className="w-3.5 h-3.5" />
+                  {opt.label}
+                </button>
+              ))}
+            </div>
+            <p className="text-[11px] text-text-muted mt-1">משפיע על עסקאות חדשות בלבד; עסקאות קיימות שומרות את הסוג שלהן.</p>
           </div>
           <ExchangeSearch
             value={form.exchange}

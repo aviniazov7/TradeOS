@@ -9,6 +9,41 @@ no diff to review (the branch was freshly created with no merge base against
 
 ---
 
+## Update — 2026-06-09 (branch `security-check`)
+
+A re-review verified every Critical/High/Medium item below is now **fixed** in
+the codebase:
+
+- **#1 (Critical)** — `workers/google-auth-proxy.js` `/email-token` now fully
+  verifies the Firebase ID token's RS256 signature + claims (`verifyFirebaseToken`)
+  before minting a custom token. Forged unsigned JWTs are rejected.
+- **#2 (High)** — the world-readable `authBridge` collection was removed; the
+  PWA gets its custom token directly from the worker.
+- **#3 (Medium)** — `/notify`, `/daily-stats`, `/alerts/*`, `/chatid/*` all
+  require a verified token and derive the uid/chat ownership from it.
+- **#4 (Low)** — `/exchange/*` endpoints are auth-gated.
+
+**New fix in this branch:** exchange API keys/secrets live in plaintext in
+`users/{uid}/settings/exchanges`. The Firestore rule for the `settings`
+subcollection previously allowed `isAdmin()` read, which would have exposed
+**every user's exchange credentials** to any admin account. The rule is now
+owner-only (`firestore.rules`). The admin panel was confirmed to read only the
+`settings` *map field* on the root user doc, not this subcollection, so the
+change is non-breaking.
+
+> ⚠️ Firestore rules deploy manually — run
+> `firebase deploy --only firestore:rules` for this fix to take effect.
+
+**Still open / accepted (low risk):** `/cg/` + `/bnb/` are anonymous
+host-restricted cache proxies (#5); the coupon `maxUses` counter has a small
+non-atomic KV race that may overshoot by a few; leaderboard stats are
+self-reported (client-written, range-validated only). **Infra TODO:** the
+production and staging Workers still share one KV namespace
+(`worker/wrangler.toml`) — give staging its own namespace so a staging-only bug
+can't read production data (incl. the `pushexch:` exchange keys).
+
+---
+
 ## Summary
 
 | # | Severity | Area | Issue |
