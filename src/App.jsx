@@ -26,6 +26,7 @@ const loadEveningJournal = () => import('./components/mentality/EveningJournal')
 const loadPsychologicalJourney = () => import('./components/mentality/PsychologicalJourney');
 const loadMentalStats = () => import('./components/mentality/MentalStats');
 const loadMarketOverview = () => import('./components/market/MarketOverview');
+const loadTradeAIPage = () => import('./components/market/TradeAIPage');
 const loadNewsPage = () => import('./components/news/NewsPage');
 const loadExchangeSettings = () => import('./components/exchange/ExchangeSettings');
 const loadWalletsPage = () => import('./components/wallets/WalletsPage');
@@ -46,6 +47,7 @@ const EveningJournal = lazy(loadEveningJournal);
 const PsychologicalJourney = lazy(loadPsychologicalJourney);
 const MentalStats = lazy(loadMentalStats);
 const MarketOverview = lazy(loadMarketOverview);
+const TradeAIPage = lazy(loadTradeAIPage);
 const NewsPage = lazy(loadNewsPage);
 const ExchangeSettings = lazy(loadExchangeSettings);
 const WalletsPage = lazy(loadWalletsPage);
@@ -71,6 +73,7 @@ if (typeof window !== 'undefined') {
     loadPlansPage();
     loadProfilePage();
     loadMarketOverview();
+    loadTradeAIPage();
     loadNewsPage();
     loadExchangeSettings();
     loadWalletsPage();
@@ -110,6 +113,7 @@ function MainApp() {
                 <Route path="mentality/stats" element={<MentalStats />} />
                 {/* <Route path="leaderboard" element={<LeaderboardPage />} /> */}
                 <Route path="market" element={<MarketOverview />} />
+                <Route path="trade-ai" element={<TradeAIPage />} />
                 <Route path="news" element={<NewsPage />} />
                 <Route path="exchange" element={<ExchangeSettings />} />
                 <Route path="wallets" element={<WalletsPage />} />
