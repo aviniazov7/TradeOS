@@ -71,6 +71,19 @@ export async function adminScheduleExpiryReminders(uid, planExpires) {
   } catch { /* best-effort */ }
 }
 
+// Admin-only: bust the worker's cached premium flag for a user so a fresh
+// grant/revoke takes effect immediately instead of after the cache TTL.
+// Best-effort: the cache self-heals on its own TTL if this call fails.
+export async function adminRefreshPlanCache(uid) {
+  try {
+    await fetch(`${WORKER_BASE}/admin/refresh-plan`, {
+      method: 'POST',
+      headers: await authHeader(),
+      body: JSON.stringify({ uid }),
+    });
+  } catch { /* best-effort */ }
+}
+
 // Admin-only: cancel any pending expiry reminders (used on revoke). Best-effort.
 export async function adminCancelExpiryReminders(uid) {
   try {

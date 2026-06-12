@@ -1033,7 +1033,10 @@ async function isUserPremium(env, token, uid) {
       premium = role === 'admin' || (plan === 'premium' && notExpired);
     }
   } catch { /* default free */ }
-  await env.ALERTS_KV.put(cacheKey, premium ? '1' : '0', { expirationTtl: 600 });
+  // Short TTL: a grant busts this key explicitly (/admin/refresh-plan), but the
+  // cache must also self-heal quickly when a timed plan LAPSES — otherwise an
+  // expired user keeps premium until the old 10-min cache aged out.
+  await env.ALERTS_KV.put(cacheKey, premium ? '1' : '0', { expirationTtl: 60 });
   return premium;
 }
 
@@ -3305,6 +3308,20 @@ async function handleRequest(request, env) {
     });
     appendAudit(env, { kind: 'notify', actor: adminUid, target: uid, title: String(title).slice(0, 120), body: String(body).slice(0, 400), sent: result.sent, total: result.total });
     return new Response(JSON.stringify({ ok: true, sent: result.sent, total: result.total }), { headers: { ...cors, 'Content-Type': 'application/json' } });
+  }
+
+  // Admin-only: invalidate the cached premium flag for a user. Called right
+  // after granting or revoking Premium so the worker reflects the new plan
+  // immediately instead of waiting up to the planflag cache TTL — otherwise a
+  // freshly-upgraded user stays gated out of premium-only AI features.
+  if (request.method === 'POST' && path === '/admin/refresh-plan') {
+    const token = (request.headers.get('Authorization') || '').replace('Bearer ', '');
+    const adminUid = await verifyAdminFromToken(token);
+    if (!adminUid) return new Response(JSON.stringify({ error: 'forbidden' }), { status: 403, headers: { ...cors, 'Content-Type': 'application/json' } });
+    const { uid } = await request.json().catch(() => ({}));
+    if (!uid) return new Response(JSON.stringify({ error: 'missing uid' }), { status: 400, headers: { ...cors, 'Content-Type': 'application/json' } });
+    await env.ALERTS_KV.delete(`planflag:${uid}`);
+    return new Response(JSON.stringify({ ok: true }), { headers: { ...cors, 'Content-Type': 'application/json' } });
   }
 
   // Admin-only: list recent audit log entries (newest first). Optional ?limit
