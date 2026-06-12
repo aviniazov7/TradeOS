@@ -208,13 +208,6 @@ export default function AIChat() {
   const handleSend = async (text = input.trim()) => {
     if (!text || streaming || cooldown) return;
 
-    // Block trivially short messages that just burn the daily quota without
-    // producing a useful answer.
-    if (text.length < 3) {
-      setError('שאל שאלה ברורה (לפחות 3 תווים)');
-      return;
-    }
-
     // Min 6s between sends so we stay under the shared upstream rate limits
     // (Gemini free 15 RPM ≈ one every 4s; we add buffer).
     const now = Date.now();

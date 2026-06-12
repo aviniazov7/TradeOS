@@ -2160,8 +2160,11 @@ async function handleAIChat(request, env, cors) {
       }
       return '';
     })();
-    if (lastUserText.length < 3) {
-      return new Response(JSON.stringify({ error: 'שאל שאלה ברורה (לפחות 3 תווים)' }), { status: 400, headers: { ...cors, 'Content-Type': 'application/json' } });
+    // Only reject empty messages. Short conversational replies ("כן", "לא")
+    // are legitimate turns — and since usage now counts only on success,
+    // there's no quota to protect with a length minimum.
+    if (!lastUserText) {
+      return new Response(JSON.stringify({ error: 'כתוב הודעה' }), { status: 400, headers: { ...cors, 'Content-Type': 'application/json' } });
     }
 
     // Verify the Firebase ID token (signature-checked) and resolve the uid.
