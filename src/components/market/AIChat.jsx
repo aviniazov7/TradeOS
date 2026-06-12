@@ -57,7 +57,7 @@ const WELCOME_MESSAGE = {
 // under the worker's ~3MB base64 cap (Groq rejects images above 4MB base64).
 const MAX_IMAGE_DIM = 1280;
 
-async function fileToCompressedDataUrl(file) {
+export async function fileToCompressedDataUrl(file) {
   const dataUrl = await new Promise((resolve, reject) => {
     const reader = new FileReader();
     reader.onload = () => resolve(reader.result);
@@ -108,7 +108,7 @@ function safeHtml(raw) {
   return DOMPurify.sanitize(raw, SANITIZE_CONFIG);
 }
 
-function formatAIText(text) {
+export function formatAIText(text) {
   const lines = text.split('\n');
   return lines.map((line, i) => {
     const formatted = buildLineHtml(line);
