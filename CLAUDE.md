@@ -16,8 +16,9 @@ Never push directly to `main`. Always work on a feature branch and open a PR.
 - `main` — production. **No direct pushes.** Only reached via merge from `dev`
   (releases) or `hotfix/*` (emergency fixes).
 - `dev` — staging. Code is auto-deployed to the `dev` Firebase preview
-  channel + the `tradeos-alerts-staging` Worker. **Merge here first**, validate
-  in staging, then promote to `main`.
+  channel + the Worker. **Merge here first**, validate in staging, then
+  promote to `main`. ⚠️ Note: the Worker deploy from `dev` actually updates
+  the production `trade-os` Worker (see Environments below).
 - `feature/<short-name>` — new functionality. PR → `dev`.
 - `fix/<short-name>` — bug fix. PR → `dev` (or `main` if production-critical).
 - `hotfix/<short-name>` — production emergency. PR straight to `main`.
@@ -76,9 +77,13 @@ changes.
 
 - **Hosting:** fully separated. Production = `tradeos-91a58.web.app`. Each
   branch/PR gets its own preview URL.
-- **Worker:** two deployments (`tradeos-alerts` production, `tradeos-alerts-staging`).
-  They run independent code but **share the same KV namespace**. Be careful
-  with destructive test operations in staging — they touch production data.
+- **Worker:** effectively ONE deployment — `trade-os` (production). The root
+  `wrangler.jsonc` has no `[env.staging]`, and the redirected config generated
+  by the Cloudflare vite plugin makes `wrangler deploy --env staging` deploy
+  to `trade-os` anyway (verified in CI logs). `trade-os-staging.workers.dev`
+  has no live deployment — never point clients at it. Merging to `dev` updates
+  the production Worker immediately, so treat Worker changes on `dev` as
+  production changes.
 - **Firestore:** **shared between production and staging.** No separation yet.
   This is fine for solo dev / low data volume, but be aware: test writes from
   staging modify real production data. Don't run destructive bulk operations.
