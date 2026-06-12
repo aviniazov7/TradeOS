@@ -55,12 +55,12 @@ jobs:
             echo "worker_url=https://trade-os.aviniazov7.workers.dev" >> $GITHUB_OUTPUT
           elif [ "${{ github.event_name }}" = "push" ] && [ "${{ github.ref }}" = "refs/heads/dev" ]; then
             echo "kind=staging" >> $GITHUB_OUTPUT
-            echo "worker_url=https://tradeos-alerts-staging.aviniazov7.workers.dev" >> $GITHUB_OUTPUT
+            echo "worker_url=https://trade-os-staging.aviniazov7.workers.dev" >> $GITHUB_OUTPUT
             echo "channel=dev" >> $GITHUB_OUTPUT
           else
             # Feature branch push OR pull request — preview channel only.
             echo "kind=preview" >> $GITHUB_OUTPUT
-            echo "worker_url=https://tradeos-alerts-staging.aviniazov7.workers.dev" >> $GITHUB_OUTPUT
+            echo "worker_url=https://trade-os-staging.aviniazov7.workers.dev" >> $GITHUB_OUTPUT
             if [ "${{ github.event_name }}" = "pull_request" ]; then
               CHANNEL="pr-${{ github.event.number }}"
             else

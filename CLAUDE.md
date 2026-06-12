@@ -16,7 +16,7 @@ Never push directly to `main`. Always work on a feature branch and open a PR.
 - `main` — production. **No direct pushes.** Only reached via merge from `dev`
   (releases) or `hotfix/*` (emergency fixes).
 - `dev` — staging. Code is auto-deployed to the `dev` Firebase preview
-  channel + the `tradeos-alerts-staging` Worker. **Merge here first**, validate
+  channel + the `trade-os-staging` Worker. **Merge here first**, validate
   in staging, then promote to `main`.
 - `feature/<short-name>` — new functionality. PR → `dev`.
 - `fix/<short-name>` — bug fix. PR → `dev` (or `main` if production-critical).
@@ -76,7 +76,7 @@ changes.
 
 - **Hosting:** fully separated. Production = `tradeos-91a58.web.app`. Each
   branch/PR gets its own preview URL.
-- **Worker:** two deployments (`tradeos-alerts` production, `tradeos-alerts-staging`).
+- **Worker:** two deployments (`trade-os` production, `trade-os-staging`).
   They run independent code but **share the same KV namespace**. Be careful
   with destructive test operations in staging — they touch production data.
 - **Firestore:** **shared between production and staging.** No separation yet.

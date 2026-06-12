@@ -2699,7 +2699,7 @@ const ALLOWED_ORIGINS = [
   'https://tradeos-91a58.web.app',
   'https://tradeos-91a58.firebaseapp.com',
   'https://trade-os.aviniazov7.workers.dev',
-  'https://tradeos-alerts-staging.aviniazov7.workers.dev',
+  'https://trade-os-staging.aviniazov7.workers.dev',
 ];
 // Firebase Hosting preview channels have URLs like
 // https://tradeos-91a58--CHANNEL-HASH.web.app and are created automatically
