@@ -1,4 +1,5 @@
 import { useState, useRef, useEffect } from 'react';
+import { useNavigate } from 'react-router-dom';
 import { motion, AnimatePresence } from 'framer-motion';
 import {
   BarChart3, Zap, Brain, TrendingUp, Target, ImagePlus, RefreshCw, X,
@@ -142,6 +143,10 @@ export default function ChartAnalyzer({ heightClass = '' }) {
   const resultRef = useRef('');
   const batchRef = useRef(null);
   const aiUsage = useAiUsage();
+  const navigate = useNavigate();
+  // Free users can't analyze images, so don't let them upload one — route
+  // every upload gesture to the upgrade page instead.
+  const premiumLocked = !aiUsage.loading && !aiUsage.premium;
 
   const pickFile = async (file) => {
     if (!file) return;
@@ -259,10 +264,10 @@ export default function ChartAnalyzer({ heightClass = '' }) {
           <input ref={fileInputRef} type="file" accept="image/*" className="hidden" onChange={onInputChange} />
           {!image ? (
             <div
-              onClick={() => fileInputRef.current?.click()}
-              onDragOver={(e) => { e.preventDefault(); setDragOver(true); }}
+              onClick={() => (premiumLocked ? navigate('/premium') : fileInputRef.current?.click())}
+              onDragOver={(e) => { e.preventDefault(); if (!premiumLocked) setDragOver(true); }}
               onDragLeave={() => setDragOver(false)}
-              onDrop={onDrop}
+              onDrop={premiumLocked ? (e) => { e.preventDefault(); navigate('/premium'); } : onDrop}
               className={`relative flex flex-col items-center justify-center gap-3 rounded-2xl border-2 border-dashed px-4 py-10 cursor-pointer transition-all ${
                 dragOver
                   ? 'border-accent-primary bg-accent-primary/10'
@@ -274,16 +279,24 @@ export default function ChartAnalyzer({ heightClass = '' }) {
                 transition={{ duration: 2.4, repeat: Infinity, ease: 'easeInOut' }}
                 className="w-14 h-14 rounded-2xl bg-accent-primary/15 flex items-center justify-center"
               >
-                <ImagePlus className="w-7 h-7 text-accent-primary" />
+                {premiumLocked
+                  ? <Crown className="w-7 h-7 text-accent-primary" />
+                  : <ImagePlus className="w-7 h-7 text-accent-primary" />
+                }
               </motion.div>
-              <div className="text-center">
-                <p className="text-sm font-semibold text-text-primary">גרור לכאן צילום גרף</p>
-                <p className="text-[11px] text-text-muted mt-1">או לחץ לבחירת קובץ · PNG / JPG / WebP</p>
-              </div>
-              {!aiUsage.loading && !aiUsage.premium && (
-                <span className="flex items-center gap-1.5 text-[11px] text-accent-primary bg-accent-primary/10 border border-accent-primary/25 rounded-full px-3 py-1">
-                  <Crown className="w-3 h-3" /> פיצ׳ר Premium
-                </span>
+              {premiumLocked ? (
+                <div className="text-center">
+                  <p className="text-sm font-semibold text-text-primary">ניתוח גרפים בתמונה — למנויי Premium</p>
+                  <p className="text-[11px] text-text-muted mt-1">שדרג כדי להעלות צילומי גרף ולקבל קריאת ויקוף מלאה</p>
+                  <span className="inline-flex items-center gap-1.5 mt-3 text-xs font-bold text-bg-primary bg-accent-primary rounded-xl px-4 py-2 shadow-lg shadow-accent-primary/20">
+                    <Crown className="w-3.5 h-3.5" /> שדרג ל-Premium
+                  </span>
+                </div>
+              ) : (
+                <div className="text-center">
+                  <p className="text-sm font-semibold text-text-primary">גרור לכאן צילום גרף</p>
+                  <p className="text-[11px] text-text-muted mt-1">או לחץ לבחירת קובץ · PNG / JPG / WebP</p>
+                </div>
               )}
             </div>
           ) : (
