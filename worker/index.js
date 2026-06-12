@@ -3602,7 +3602,16 @@ async function handleRequest(request, env) {
     const targetUid = path.split('/')[3];
     if (!targetUid) return new Response(JSON.stringify({ error: 'missing uid' }), { status: 400, headers: { ...cors, 'Content-Type': 'application/json' } });
     const usage = await getAiUsage(env, targetUid);
-    return new Response(JSON.stringify(usage), { headers: { ...cors, 'Content-Type': 'application/json' } });
+    // Report the TARGET user's real limit — premium/admin users have the
+    // premium daily cap. getAiUsage alone always reports the free limit,
+    // which made the panel show "x / 20" for users the chat shows 200.
+    // The admin's token can read other users' docs (allowed by rules).
+    const premium = await isUserPremium(env, token, targetUid);
+    return new Response(JSON.stringify({
+      ...usage,
+      limit: premium ? AI_PREMIUM_LIMITS.day : usage.limit,
+      premium,
+    }), { headers: { ...cors, 'Content-Type': 'application/json' } });
   }
 
   // Trade event notifications
