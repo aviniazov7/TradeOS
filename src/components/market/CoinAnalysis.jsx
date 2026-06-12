@@ -1072,7 +1072,7 @@ export default function CoinAnalysis() {
               )}
 
               {/* Liquidation Heatmap */}
-              {heatmapKlines && <LiquidityHeatmap klines={heatmapKlines} />}
+              {heatmapKlines && <LiquidityHeatmap pair={TV_SYMBOL_MAP[selectedCoin?.coingeckoId] || `${coinData.symbol?.toUpperCase()}USDT`} klines={heatmapKlines} />}
 
               {/* Liquidity & Market Microstructure */}
               {liquidityData && (
@@ -1383,18 +1383,18 @@ export default function CoinAnalysis() {
 
 // ---- Liquidation Heatmap (Canvas, Coinglass-style) ----
 // Estimated resting liquidation levels: every candle "opens positions" at its
-// close, weighted by volume, with liquidation prices at common leverages.
-// Levels persist across time until price trades through them (liquidity
-// swept), which produces the signature horizontal bands.
+// close, weighted by its notional volume, with liquidation prices at common
+// leverages. Levels persist until price trades through them (liquidity swept),
+// producing the signature horizontal bands.
 function heatColor(v) {
-  if (v <= 0) return 'rgba(15,5,40,0)';
+  if (v <= 0.02) return null;
   const stops = [
-    [0,    [24,  18,  60]],
-    [0.18, [46,  35,  130]],
-    [0.38, [120, 40,  190]],
-    [0.58, [220, 60,  90]],
-    [0.78, [255, 145, 25]],
-    [1.0,  [255, 245, 110]],
+    [0,    [10,  8,   34]],
+    [0.18, [40,  20,  95]],
+    [0.38, [110, 35,  150]],
+    [0.58, [200, 60,  110]],
+    [0.78, [250, 140, 40]],
+    [1.0,  [255, 250, 150]],
   ];
   let lo = stops[0], hi = stops[stops.length - 1];
   for (let i = 0; i < stops.length - 1; i++) {
@@ -1404,14 +1404,24 @@ function heatColor(v) {
   const r = Math.round(lo[1][0] + (hi[1][0] - lo[1][0]) * t);
   const g = Math.round(lo[1][1] + (hi[1][1] - lo[1][1]) * t);
   const b = Math.round(lo[1][2] + (hi[1][2] - lo[1][2]) * t);
-  const a = Math.min(1, 0.22 + v * 0.95);
+  const a = Math.min(1, v * 1.8);
   return `rgba(${r},${g},${b},${a})`;
 }
 
 // Common leverage tiers and how much of the volume we attribute to each.
 const LIQ_LEVERAGES = [[100, 1.0], [50, 0.85], [25, 0.6], [10, 0.4]];
 
-function buildHeatmap(klines, priceBuckets = 90) {
+const HEATMAP_PERIODS = [
+  { key: '12H', label: '12 Hour', interval: '5m',  limit: 144 },
+  { key: '24H', label: '24 Hour', interval: '15m', limit: 96  },
+  { key: '48H', label: '48 Hour', interval: '15m', limit: 192 },
+  { key: '3D',  label: '3 Day',   interval: '30m', limit: 144 },
+  { key: '1W',  label: '1 Week',  interval: '1h',  limit: 168 },
+  { key: '2W',  label: '2 Week',  interval: '2h',  limit: 168 },
+  { key: '1M',  label: '1 Month', interval: '4h',  limit: 180 },
+];
+
+function buildHeatmap(klines, priceBuckets = 120) {
   if (!klines || klines.length < 2) return null;
   const candles = klines.map(k => ({
     time:   k[0],
@@ -1424,7 +1434,7 @@ function buildHeatmap(klines, priceBuckets = 90) {
   let priceMin = Math.min(...candles.map(c => c.low));
   let priceMax = Math.max(...candles.map(c => c.high));
   // Pad the domain so liq levels just outside the traded range stay visible
-  const pad = (priceMax - priceMin) * 0.05 || priceMin * 0.01;
+  const pad = (priceMax - priceMin) * 0.06 || priceMin * 0.01;
   priceMin -= pad;
   priceMax += pad;
   const priceRange = priceMax - priceMin;
@@ -1440,13 +1450,14 @@ function buildHeatmap(klines, priceBuckets = 90) {
     const loB = binOf(c.low), hiB = binOf(c.high);
     for (let b = loB; b <= hiB; b++) levels[b] = 0;
     // 2) Old untouched levels fade slowly
-    for (let b = 0; b < priceBuckets; b++) levels[b] *= 0.995;
-    // 3) New positions opened this candle leave liq levels above and below
+    for (let b = 0; b < priceBuckets; b++) levels[b] *= 0.985;
+    // 3) New positions opened this candle leave liq levels above and below.
+    //    Weighted in USD (coin volume × level price) so the scale is real.
     for (const [lev, w] of LIQ_LEVERAGES) {
       const longLiq  = c.close * (1 - 1 / lev);
       const shortLiq = c.close * (1 + 1 / lev);
-      if (longLiq  > priceMin) levels[binOf(longLiq)]  += c.volume * w;
-      if (shortLiq < priceMax) levels[binOf(shortLiq)] += c.volume * w;
+      if (longLiq  > priceMin) levels[binOf(longLiq)]  += c.volume * w * longLiq;
+      if (shortLiq < priceMax) levels[binOf(shortLiq)] += c.volume * w * shortLiq;
     }
     grid.push(Float64Array.from(levels));
   }
@@ -1454,10 +1465,13 @@ function buildHeatmap(klines, priceBuckets = 90) {
   let maxVal = 0;
   for (const col of grid) for (const v of col) if (v > maxVal) maxVal = v;
   if (maxVal === 0) return null;
-  // Log scale — keeps mid-strength bands visible next to the hot spots
-  const logMax = Math.log1p(maxVal);
-  const normalized = grid.map(col => Array.from(col, v => Math.log1p(v) / logMax));
-  return { normalized, candles, priceMin, priceMax, timeBuckets: candles.length, priceBuckets };
+  // Scaled-log normalization. A plain log1p(v)/log1p(max) pushes even weak
+  // levels toward 1 when max is huge (everything glowed orange); compressing
+  // the RATIO keeps the background dark and the real walls bright.
+  const K = 40;
+  const logK = Math.log1p(K);
+  const normalized = grid.map(col => Array.from(col, v => Math.log1p((v / maxVal) * K) / logK));
+  return { normalized, raw: grid, maxVal, candles, priceMin, priceMax, timeBuckets: candles.length, priceBuckets };
 }
 
 function formatHeatPrice(price) {
@@ -1466,25 +1480,55 @@ function formatHeatPrice(price) {
   return `$${price.toFixed(4)}`;
 }
 
-function LiquidityHeatmap({ klines }) {
+function formatLiqUsd(v) {
+  if (v >= 1e9) return `$${(v / 1e9).toFixed(2)}B`;
+  if (v >= 1e6) return `$${(v / 1e6).toFixed(1)}M`;
+  if (v >= 1e3) return `$${(v / 1e3).toFixed(0)}K`;
+  return `$${v.toFixed(0)}`;
+}
+
+function LiquidityHeatmap({ pair, klines }) {
   const canvasRef = useRef(null);
   const baseRef = useRef(null); // offscreen cache of the heat layer
   const hoverRef = useRef(null);
-  const [period, setPeriod] = useState('7d');
+  const cacheRef = useRef({});
+  const [period, setPeriod] = useState('1W');
+  const [menuOpen, setMenuOpen] = useState(false);
+  const [data, setData] = useState(() => (klines ? klines.slice(-168) : null));
 
-  const filteredKlines = useMemo(() => {
-    if (!klines) return null;
-    const hours = period === '24h' ? 24 : period === '7d' ? 168 : 720;
-    return klines.slice(-hours);
-  }, [klines, period]);
+  // Each timeframe loads its own kline resolution (5m → 4h) via the worker
+  // proxy, cached per pair+period for instant switching.
+  useEffect(() => {
+    const cfg = HEATMAP_PERIODS.find(p => p.key === period);
+    if (!cfg) return;
+    let cancelled = false;
+    const key = `${pair}:${period}`;
+    if (cacheRef.current[key]) { setData(cacheRef.current[key]); return; }
+    if (period === '1W' && klines) {
+      // default view is served from the klines we already fetched (1h)
+      const sliced = klines.slice(-cfg.limit);
+      cacheRef.current[key] = sliced;
+      setData(sliced);
+      return;
+    }
+    fetchKlines(pair, cfg.interval, cfg.limit)
+      .then((k) => {
+        if (!cancelled && Array.isArray(k) && k.length > 10) {
+          cacheRef.current[key] = k;
+          setData(k);
+        }
+      })
+      .catch(() => { /* keep showing the previous timeframe */ });
+    return () => { cancelled = true; };
+  }, [period, pair, klines]);
 
-  const heatData = useMemo(() => buildHeatmap(filteredKlines, 90), [filteredKlines]);
+  const heatData = useMemo(() => buildHeatmap(data, 120), [data]);
 
   useEffect(() => {
     const canvas = canvasRef.current;
     if (!canvas || !heatData) return;
 
-    const PR = 58, PL = 8, PT = 8, PB = 18;
+    const PL = 40, PR = 58, PT = 8, PB = 18;
 
     const renderBase = (W, H, dpr) => {
       const off = document.createElement('canvas');
@@ -1495,49 +1539,46 @@ function LiquidityHeatmap({ klines }) {
 
       const plotW = W - PR - PL;
       const plotH = H - PT - PB;
-      const { normalized, candles, priceMin, priceMax, timeBuckets, priceBuckets } = heatData;
+      const { normalized, maxVal, candles, priceMin, priceMax, timeBuckets, priceBuckets } = heatData;
       const priceRange = priceMax - priceMin;
       const toX = (i) => PL + ((i + 0.5) / timeBuckets) * plotW;
       const toY = (price) => PT + (1 - (price - priceMin) / priceRange) * plotH;
 
       // Background
-      ctx.fillStyle = '#070612';
+      ctx.fillStyle = '#08071a';
       ctx.fillRect(0, 0, W, H);
-
-      // Faint horizontal gridlines
-      ctx.strokeStyle = 'rgba(255,255,255,0.05)';
-      ctx.lineWidth = 1;
-      for (let i = 1; i < 6; i++) {
-        const y = PT + (i / 6) * plotH;
-        ctx.beginPath(); ctx.moveTo(PL, y); ctx.lineTo(PL + plotW, y); ctx.stroke();
-      }
 
       // Heat cells — persisting levels render as horizontal liquidity bands
       const cellW = plotW / timeBuckets;
       const cellH = plotH / priceBuckets;
       for (let t = 0; t < timeBuckets; t++) {
         for (let p = 0; p < priceBuckets; p++) {
-          const v = normalized[t][p];
-          if (v < 0.04) continue;
-          ctx.fillStyle = heatColor(v);
+          const c = heatColor(normalized[t][p]);
+          if (!c) continue;
+          ctx.fillStyle = c;
           ctx.fillRect(PL + t * cellW, PT + (priceBuckets - 1 - p) * cellH, cellW + 0.5, cellH + 0.5);
         }
       }
 
-      // Price line on top (clean line reads better than candles here)
-      ctx.strokeStyle = 'rgba(255,255,255,0.92)';
-      ctx.lineWidth = 1.4;
-      ctx.shadowColor = 'rgba(0,0,0,0.9)';
-      ctx.shadowBlur = 3;
-      ctx.beginPath();
+      // Candlestick overlay (TradingView colours)
+      const bodyW = Math.max(1, cellW * 0.55);
       candles.forEach((c, i) => {
-        const x = toX(i), y = toY(c.close);
-        if (i === 0) ctx.moveTo(x, y); else ctx.lineTo(x, y);
+        const x = toX(i);
+        const up = c.close >= c.open;
+        const color = up ? '#26a69a' : '#ef5350';
+        ctx.strokeStyle = color;
+        ctx.lineWidth = Math.max(0.6, bodyW * 0.18);
+        ctx.beginPath();
+        ctx.moveTo(x, toY(c.high));
+        ctx.lineTo(x, toY(c.low));
+        ctx.stroke();
+        ctx.fillStyle = color;
+        const bTop = toY(Math.max(c.open, c.close));
+        const bBot = toY(Math.min(c.open, c.close));
+        ctx.fillRect(x - bodyW / 2, bTop, bodyW, Math.max(1, bBot - bTop));
       });
-      ctx.stroke();
-      ctx.shadowBlur = 0;
 
-      // Last-price dashed line + pill
+      // Last-price dashed line
       const lastPrice = candles[candles.length - 1].close;
       const ly = toY(lastPrice);
       ctx.setLineDash([3, 3]);
@@ -1556,26 +1597,46 @@ function LiquidityHeatmap({ klines }) {
         ctx.fillText(formatHeatPrice(price), W - PR + 5, y + 3);
       }
 
-      // Time axis (bottom) — 5 date labels
+      // Time axis (bottom)
       ctx.textAlign = 'center';
       ctx.fillStyle = 'rgba(150,150,175,0.7)';
+      const hourly = ['12H', '24H', '48H'].includes(period);
       for (let i = 0; i <= 4; i++) {
         const idx = Math.min(timeBuckets - 1, Math.round((i / 4) * (timeBuckets - 1)));
         const d = new Date(candles[idx].time);
-        const label = period === '24h'
-          ? `${String(d.getHours()).padStart(2, '0')}:00`
+        const label = hourly
+          ? `${String(d.getHours()).padStart(2, '0')}:${String(d.getMinutes()).padStart(2, '0')}`
           : `${d.getDate()}/${d.getMonth() + 1}`;
         ctx.fillText(label, toX(idx), H - 5);
       }
+
+      // Intensity scale (left): gradient bar + max value, like Coinglass
+      ctx.textAlign = 'left';
+      ctx.font = '8px monospace';
+      ctx.fillStyle = 'rgba(150,150,175,0.85)';
+      ctx.fillText(formatLiqUsd(maxVal), 4, PT + 8);
+      const lgY = PT + 14, lgH = plotH - 20;
+      const grad = ctx.createLinearGradient(0, lgY + lgH, 0, lgY);
+      grad.addColorStop(0,    'rgba(10,8,34,1)');
+      grad.addColorStop(0.25, 'rgba(40,20,95,1)');
+      grad.addColorStop(0.5,  'rgba(110,35,150,1)');
+      grad.addColorStop(0.7,  'rgba(200,60,110,1)');
+      grad.addColorStop(0.85, 'rgba(250,140,40,1)');
+      grad.addColorStop(1,    'rgba(255,250,150,1)');
+      ctx.fillStyle = grad;
+      ctx.fillRect(8, lgY, 8, lgH);
+      ctx.fillStyle = 'rgba(150,150,175,0.7)';
+      ctx.fillText('$0', 4, lgY + lgH + 9);
 
       // Current price pill (over axis)
       ctx.fillStyle = 'rgba(255,255,255,0.95)';
       ctx.fillRect(W - PR + 2, ly - 8, PR - 4, 15);
       ctx.fillStyle = '#0a0d16';
       ctx.font = 'bold 9px monospace';
+      ctx.textAlign = 'center';
       ctx.fillText(formatHeatPrice(lastPrice), W - PR / 2, ly + 3.5);
 
-      return { off, plotW, plotH, toY };
+      return { off };
     };
 
     const draw = () => {
@@ -1589,25 +1650,30 @@ function LiquidityHeatmap({ klines }) {
       ctx.scale(dpr, dpr);
 
       if (!baseRef.current || baseRef.current.W !== W || baseRef.current.H !== H || baseRef.current.data !== heatData) {
-        baseRef.current = { ...renderBase(W, H, dpr), W, H, data: heatData, dpr };
+        baseRef.current = { ...renderBase(W, H, dpr), W, H, data: heatData };
       }
       ctx.drawImage(baseRef.current.off, 0, 0, W, H);
 
-      // Hover crosshair + price/intensity readout
+      // Hover crosshair + readout (price level + estimated liquidity there)
       const hover = hoverRef.current;
       if (hover) {
-        const { priceMin, priceMax } = heatData;
+        const { raw, priceMin, priceMax, timeBuckets, priceBuckets } = heatData;
         const plotW = W - PR - PL, plotH = H - PT - PB;
         const x = Math.max(PL, Math.min(PL + plotW, hover.x));
         const y = Math.max(PT, Math.min(PT + plotH, hover.y));
-        ctx.strokeStyle = 'rgba(255,255,255,0.25)';
+        ctx.strokeStyle = 'rgba(255,255,255,0.3)';
         ctx.lineWidth = 0.8;
         ctx.setLineDash([2, 3]);
         ctx.beginPath(); ctx.moveTo(PL, y); ctx.lineTo(PL + plotW, y); ctx.stroke();
         ctx.beginPath(); ctx.moveTo(x, PT); ctx.lineTo(x, PT + plotH); ctx.stroke();
         ctx.setLineDash([]);
+
         const price = priceMin + (1 - (y - PT) / plotH) * (priceMax - priceMin);
-        const label = formatHeatPrice(price);
+        const tIdx = Math.max(0, Math.min(timeBuckets - 1, Math.floor(((x - PL) / plotW) * timeBuckets)));
+        const pIdx = Math.max(0, Math.min(priceBuckets - 1, Math.floor((1 - (y - PT) / plotH) * priceBuckets)));
+        const liqHere = raw[tIdx][pIdx];
+
+        // price pill on the axis
         ctx.font = 'bold 9px monospace';
         ctx.fillStyle = 'rgba(20,20,35,0.95)';
         ctx.strokeStyle = 'rgba(255,255,255,0.25)';
@@ -1615,7 +1681,21 @@ function LiquidityHeatmap({ klines }) {
         ctx.strokeRect(W - PR + 2, y - 8, PR - 4, 15);
         ctx.fillStyle = 'rgba(255,255,255,0.95)';
         ctx.textAlign = 'left';
-        ctx.fillText(label, W - PR + 6, y + 3.5);
+        ctx.fillText(formatHeatPrice(price), W - PR + 6, y + 3.5);
+
+        // floating tooltip with the liquidity estimate
+        if (liqHere > 0) {
+          const tip = `≈ ${formatLiqUsd(liqHere)} liq`;
+          const tw = ctx.measureText(tip).width + 12;
+          const tx = Math.min(x + 10, W - PR - tw - 4);
+          const ty = Math.max(PT + 4, y - 24);
+          ctx.fillStyle = 'rgba(15,15,28,0.95)';
+          ctx.strokeStyle = 'rgba(139,92,246,0.45)';
+          ctx.fillRect(tx, ty, tw, 16);
+          ctx.strokeRect(tx, ty, tw, 16);
+          ctx.fillStyle = 'rgba(235,235,245,0.95)';
+          ctx.fillText(tip, tx + 6, ty + 11.5);
+        }
       }
     };
 
@@ -1637,6 +1717,8 @@ function LiquidityHeatmap({ klines }) {
     };
   }, [heatData, period]);
 
+  const current = HEATMAP_PERIODS.find(p => p.key === period);
+
   return (
     <GlowCard delay={0.75} glowColor="rgba(139,92,246,0.22)">
       <div className="p-4">
@@ -1646,20 +1728,37 @@ function LiquidityHeatmap({ klines }) {
             <Flame className="w-3.5 h-3.5 text-violet-400" /> Liquidation Heatmap
             <PulseDot color="bg-violet-400" />
           </h3>
-          <div className="flex items-center gap-1">
-            {['24h', '7d', '30d'].map(p => (
-              <button
-                key={p}
-                onClick={() => setPeriod(p)}
-                className={`px-2.5 py-1 text-[10px] font-bold rounded-md transition-colors cursor-pointer ${
-                  period === p
-                    ? 'bg-violet-500/20 text-violet-300 border border-violet-500/40'
-                    : 'text-text-muted hover:text-text-primary hover:bg-bg-tertiary'
-                }`}
-              >
-                {p}
-              </button>
-            ))}
+
+          {/* Timeframe dropdown */}
+          <div className="relative">
+            <button
+              onClick={() => setMenuOpen(v => !v)}
+              className="flex items-center gap-1.5 px-3 py-1.5 text-[11px] font-semibold rounded-lg border border-border-primary bg-bg-tertiary/60 text-text-primary hover:border-violet-500/40 transition-colors cursor-pointer"
+              dir="ltr"
+            >
+              {current?.label}
+              <ChevronDown className={`w-3 h-3 transition-transform ${menuOpen ? 'rotate-180' : ''}`} />
+            </button>
+            {menuOpen && (
+              <>
+                <div className="fixed inset-0 z-10" onClick={() => setMenuOpen(false)} />
+                <div className="absolute left-0 top-full mt-1 z-20 w-28 rounded-lg border border-border-primary bg-bg-secondary shadow-xl overflow-hidden" dir="ltr">
+                  {HEATMAP_PERIODS.map(p => (
+                    <button
+                      key={p.key}
+                      onClick={() => { setPeriod(p.key); setMenuOpen(false); }}
+                      className={`w-full text-left px-3 py-1.5 text-[11px] transition-colors cursor-pointer ${
+                        period === p.key
+                          ? 'bg-violet-500/15 text-violet-300 font-semibold'
+                          : 'text-text-secondary hover:bg-bg-tertiary hover:text-text-primary'
+                      }`}
+                    >
+                      {p.label}
+                    </button>
+                  ))}
+                </div>
+              </>
+            )}
           </div>
         </div>
 
@@ -1667,7 +1766,7 @@ function LiquidityHeatmap({ klines }) {
         <canvas
           ref={canvasRef}
           className="w-full rounded-lg"
-          style={{ height: '300px', background: '#070612', display: 'block', cursor: 'crosshair' }}
+          style={{ height: '320px', background: '#08071a', display: 'block', cursor: 'crosshair' }}
         />
 
         {/* Legend */}
@@ -1675,12 +1774,13 @@ function LiquidityHeatmap({ klines }) {
           <div className="flex items-center gap-1.5">
             <div
               className="w-10 h-2 rounded-sm"
-              style={{ background: 'linear-gradient(to right, rgba(46,35,130,0.6), rgba(120,40,190,0.85), rgba(220,60,90,0.95), rgba(255,145,25,1), rgba(255,245,110,1))' }}
+              style={{ background: 'linear-gradient(to right, rgba(40,20,95,1), rgba(110,35,150,1), rgba(200,60,110,1), rgba(250,140,40,1), rgba(255,250,150,1))' }}
             />
             <span className="text-[9px] text-text-muted">Low → High Liquidity</span>
           </div>
           <div className="flex items-center gap-1.5">
-            <span className="w-4 h-0.5 bg-white/90 inline-block rounded-full" />
+            <span className="w-2 h-2 rounded-[2px] inline-block" style={{ backgroundColor: '#26a69a' }} />
+            <span className="w-2 h-2 rounded-[2px] inline-block" style={{ backgroundColor: '#ef5350' }} />
             <span className="text-[9px] text-text-muted">Price</span>
           </div>
           <span className="text-[9px] text-text-muted/60">Estimated liq. levels (10–100x)</span>
