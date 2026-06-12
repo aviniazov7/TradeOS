@@ -153,11 +153,21 @@ jobs:
           put_secret() {
             local name="$1"
             local value="${!name}"
-            if [ -n "$value" ]; then
-              printf '%s' "$value" | npx wrangler secret put "$name" $ENV_FLAG
-            else
+            if [ -z "$value" ]; then
               echo "$name not set — skipping."
+              return 0
             fi
+            # Cloudflare's API occasionally 504s — retry with backoff so a
+            # transient hiccup doesn't fail an otherwise-successful deploy.
+            for attempt in 1 2 3; do
+              if printf '%s' "$value" | npx wrangler secret put "$name" $ENV_FLAG; then
+                return 0
+              fi
+              echo "secret put $name failed (attempt $attempt), retrying in $((attempt * 5))s..."
+              sleep $((attempt * 5))
+            done
+            echo "::error::Failed to upload secret $name after 3 attempts"
+            return 1
           }
           put_secret VAPID_JWK
           put_secret MORALIS_API_KEY
