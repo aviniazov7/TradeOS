@@ -66,22 +66,23 @@ function computeBinanceCategories(allCoins) {
 const cardVariants = { initial: { opacity: 0, y: 10 }, animate: { opacity: 1, y: 0 } };
 const cardClass = 'bento-card p-3';
 
-// Per-metric colour identity for the top stats row: a tinted gradient fill
-// over the dark card base, a matching glowing border, and a neon number.
+// Bold coloured stat card: radial glow from top-right corner, matching border + shadow.
 const statAccent = (r, g, b, color) => ({
   color,
+  glow: `rgba(${r},${g},${b},0.55)`,
   style: {
-    background: `linear-gradient(145deg, rgba(${r},${g},${b},0.16) 0%, rgba(${r},${g},${b},0.05) 45%, rgba(${r},${g},${b},0) 75%), rgba(16,16,24,0.85)`,
-    borderColor: `rgba(${r},${g},${b},0.30)`,
-    boxShadow: `0 0 22px rgba(${r},${g},${b},0.10)`,
+    background: `radial-gradient(ellipse 90% 80% at 110% -10%, rgba(${r},${g},${b},0.26) 0%, rgba(${r},${g},${b},0.08) 45%, transparent 65%), rgba(11,11,18,0.96)`,
+    border: `1px solid rgba(${r},${g},${b},0.40)`,
+    borderRadius: '0.875rem',
+    boxShadow: `0 0 28px rgba(${r},${g},${b},0.14)`,
   },
 });
 const STAT_ACCENTS = {
-  cap:  statAccent(56, 189, 248, '#38bdf8'),  // total market cap — cyan
-  usdt: statAccent(38, 161, 123, '#2dd4bf'),  // USDT dominance — tether teal
-  btc:  statAccent(247, 147, 26, '#fbbf24'),  // BTC dominance — bitcoin orange
-  vol:  statAccent(168, 85, 247, '#c084fc'),  // 24h volume — violet
-  alt:  statAccent(99, 102, 241, '#818cf8'),  // altcoin season — indigo
+  cap:  statAccent(56, 189, 248, '#38bdf8'),   // market cap  — sky-blue
+  usdt: statAccent(38, 212, 175, '#2dd4bf'),   // USDT.D      — teal
+  btc:  statAccent(251, 146, 60, '#fb923c'),   // BTC.D       — bitcoin orange
+  vol:  statAccent(192, 132, 252, '#c084fc'),  // 24h volume  — violet
+  alt:  statAccent(129, 140, 248, '#818cf8'),  // alt season  — indigo
 };
 const FUTURES_SYMBOLS = [
   'BTCUSDT', 'ETHUSDT', 'SOLUSDT', 'XRPUSDT', 'BNBUSDT',
@@ -963,92 +964,103 @@ export default function MarketOverview() {
       {activeTab === 'overview' ? (
       <motion.div key="overview" initial={{ opacity: 0, x: -20 }} animate={{ opacity: 1, x: 0 }} exit={{ opacity: 0, x: 20 }} transition={{ duration: 0.25 }}>
 
-      {/* Top row: Global stats */}
-      <motion.div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-3 mb-4" variants={staggerContainer} initial="initial" animate="animate">
-        {/* Total Market Cap */}
-        <motion.div className={cardClass} style={STAT_ACCENTS.cap.style} variants={cardVariants}>
-          <div className="flex items-center gap-1.5 mb-1.5 justify-center">
-            <DollarSign className="w-3.5 h-3.5" style={{ color: STAT_ACCENTS.cap.color }} />
-            <span className="text-[11px] text-text-muted">שווי שוק כולל</span>
+      {/* Top row: Global stats — bold coloured bento cards */}
+      <motion.div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-3 mb-4" variants={staggerContainer} initial="initial" animate="animate">
+
+        {/* Market Cap */}
+        <motion.div className="relative overflow-hidden flex flex-col justify-between gap-2 p-4 min-h-[100px]"
+          style={STAT_ACCENTS.cap.style} variants={cardVariants}>
+          <div className="absolute -top-4 -right-4 w-16 h-16 rounded-full blur-2xl pointer-events-none opacity-70"
+            style={{ backgroundColor: STAT_ACCENTS.cap.glow }} />
+          <div className="flex items-center gap-1.5 relative z-10">
+            <DollarSign className="w-3 h-3 opacity-70" style={{ color: STAT_ACCENTS.cap.color }} />
+            <span className="text-[10px] text-text-muted uppercase tracking-widest">שווי שוק</span>
           </div>
-          <p className="text-base font-bold text-center neon-num" style={{ color: STAT_ACCENTS.cap.color }}>
+          <p className="text-4xl font-black leading-none neon-num relative z-10" style={{ color: STAT_ACCENTS.cap.color }}>
             {global ? formatNum(global.total_market_cap?.usd) : '—'}
           </p>
           {global?.market_cap_change_percentage_24h_usd != null && (
-            <p className={`text-[11px] text-center mt-0.5 ${global.market_cap_change_percentage_24h_usd >= 0 ? 'text-profit' : 'text-loss'}`}>
+            <span className={`text-xs font-bold relative z-10 ${global.market_cap_change_percentage_24h_usd >= 0 ? 'text-profit' : 'text-loss'}`}>
               {global.market_cap_change_percentage_24h_usd >= 0 ? '+' : ''}{global.market_cap_change_percentage_24h_usd.toFixed(2)}%
-            </p>
+            </span>
           )}
         </motion.div>
 
-        {/* USDT Dominance */}
-        <motion.div className={cardClass} style={STAT_ACCENTS.usdt.style} variants={cardVariants}>
-          <div className="flex items-center gap-1.5 mb-1.5 justify-center">
-            <DollarSign className="w-3.5 h-3.5 text-[#26a17b]" />
-            <span className="text-[11px] text-text-muted">USDT.D</span>
-          </div>
-          <p className="text-base font-bold text-center neon-num" style={{ color: STAT_ACCENTS.usdt.color }}>
-            {global?.market_cap_percentage?.usdt ? `${global.market_cap_percentage.usdt.toFixed(2)}%` : '—'}
-          </p>
-          <p className="text-[11px] text-text-muted text-center mt-0.5">דומיננטיות USDT</p>
-        </motion.div>
-
         {/* BTC Dominance */}
-        <motion.div className={cardClass} style={STAT_ACCENTS.btc.style} variants={cardVariants}>
-          <div className="flex items-center gap-1.5 mb-1.5 justify-center">
-            <Bitcoin className="w-3.5 h-3.5 text-[#f7931a]" />
-            <span className="text-[11px] text-text-muted">דומיננטיות BTC</span>
+        <motion.div className="relative overflow-hidden flex flex-col justify-between gap-2 p-4 min-h-[100px]"
+          style={STAT_ACCENTS.btc.style} variants={cardVariants}>
+          <div className="absolute -top-4 -right-4 w-16 h-16 rounded-full blur-2xl pointer-events-none opacity-70"
+            style={{ backgroundColor: STAT_ACCENTS.btc.glow }} />
+          <div className="flex items-center gap-1.5 relative z-10">
+            <Bitcoin className="w-3 h-3 opacity-70" style={{ color: STAT_ACCENTS.btc.color }} />
+            <span className="text-[10px] text-text-muted uppercase tracking-widest">BTC.D</span>
           </div>
-          <p className="text-base font-bold text-center neon-num" style={{ color: STAT_ACCENTS.btc.color }}>
+          <p className="text-4xl font-black leading-none neon-num relative z-10" style={{ color: STAT_ACCENTS.btc.color }}>
             {global?.market_cap_percentage?.btc ? `${global.market_cap_percentage.btc.toFixed(1)}%` : '—'}
           </p>
           {global?.market_cap_percentage?.eth && (
-            <p className="text-[11px] text-text-muted text-center mt-0.5">
-              ETH: {global.market_cap_percentage.eth.toFixed(1)}%
-            </p>
+            <span className="text-[11px] text-text-muted relative z-10">ETH: {global.market_cap_percentage.eth.toFixed(1)}%</span>
           )}
         </motion.div>
 
         {/* 24h Volume */}
-        <motion.div className={cardClass} style={STAT_ACCENTS.vol.style} variants={cardVariants}>
-          <div className="flex items-center gap-1.5 mb-1.5 justify-center">
-            <PieChart className="w-3.5 h-3.5" style={{ color: STAT_ACCENTS.vol.color }} />
-            <span className="text-[11px] text-text-muted">נפח מסחר 24h</span>
+        <motion.div className="relative overflow-hidden flex flex-col justify-between gap-2 p-4 min-h-[100px]"
+          style={STAT_ACCENTS.vol.style} variants={cardVariants}>
+          <div className="absolute -top-4 -right-4 w-16 h-16 rounded-full blur-2xl pointer-events-none opacity-70"
+            style={{ backgroundColor: STAT_ACCENTS.vol.glow }} />
+          <div className="flex items-center gap-1.5 relative z-10">
+            <PieChart className="w-3 h-3 opacity-70" style={{ color: STAT_ACCENTS.vol.color }} />
+            <span className="text-[10px] text-text-muted uppercase tracking-widest">נפח 24h</span>
           </div>
-          <p className="text-base font-bold text-center neon-num" style={{ color: STAT_ACCENTS.vol.color }}>
+          <p className="text-4xl font-black leading-none neon-num relative z-10" style={{ color: STAT_ACCENTS.vol.color }}>
             {global ? formatNum(global.total_volume?.usd) : '—'}
           </p>
-          <p className="text-[11px] text-text-muted text-center mt-0.5">
-            {global?.active_cryptocurrencies ? `${global.active_cryptocurrencies.toLocaleString()} מטבעות` : ''}
-          </p>
+          <span className="text-[11px] text-text-muted relative z-10">
+            {global?.active_cryptocurrencies ? `${global.active_cryptocurrencies.toLocaleString()} coins` : ''}
+          </span>
         </motion.div>
 
-        {/* Altcoin Season Index - 2 columns, last = leftmost in RTL = above עולים ויורדים */}
-        <motion.div className={`${cardClass} col-span-2`} style={STAT_ACCENTS.alt.style} variants={cardVariants}>
-          <div className="flex items-center gap-1.5 mb-2 justify-center">
-            <ArrowUpRight className="w-3.5 h-3.5" style={{ color: STAT_ACCENTS.alt.color }} />
-            <span className="text-[11px] text-text-muted font-medium">Altcoin Season</span>
+        {/* USDT Dominance */}
+        <motion.div className="relative overflow-hidden flex flex-col justify-between gap-2 p-4 min-h-[100px]"
+          style={STAT_ACCENTS.usdt.style} variants={cardVariants}>
+          <div className="absolute -top-4 -right-4 w-16 h-16 rounded-full blur-2xl pointer-events-none opacity-70"
+            style={{ backgroundColor: STAT_ACCENTS.usdt.glow }} />
+          <div className="flex items-center gap-1.5 relative z-10">
+            <DollarSign className="w-3 h-3 opacity-70" style={{ color: STAT_ACCENTS.usdt.color }} />
+            <span className="text-[10px] text-text-muted uppercase tracking-widest">USDT.D</span>
+          </div>
+          <p className="text-4xl font-black leading-none neon-num relative z-10" style={{ color: STAT_ACCENTS.usdt.color }}>
+            {global?.market_cap_percentage?.usdt ? `${global.market_cap_percentage.usdt.toFixed(1)}%` : '—'}
+          </p>
+          <span className="text-[11px] text-text-muted relative z-10">Stablecoin dominance</span>
+        </motion.div>
+
+        {/* Altcoin Season */}
+        <motion.div className="relative overflow-hidden flex flex-col justify-between gap-2 p-4 min-h-[100px]"
+          style={STAT_ACCENTS.alt.style} variants={cardVariants}>
+          <div className="absolute -top-4 -right-4 w-16 h-16 rounded-full blur-2xl pointer-events-none opacity-70"
+            style={{ backgroundColor: STAT_ACCENTS.alt.glow }} />
+          <div className="flex items-center gap-1.5 relative z-10">
+            <ArrowUpRight className="w-3 h-3 opacity-70" style={{ color: STAT_ACCENTS.alt.color }} />
+            <span className="text-[10px] text-text-muted uppercase tracking-widest">Alt Season</span>
           </div>
           {altSeasonData ? (
             <>
-              <p className="text-2xl font-bold text-center mb-2 neon-num" style={{ color: STAT_ACCENTS.alt.color }}>
-                {altSeasonData.index}<span className="text-sm font-normal text-text-muted">/100</span>
+              <p className="text-4xl font-black leading-none neon-num relative z-10" style={{ color: STAT_ACCENTS.alt.color }}>
+                {altSeasonData.index}<span className="text-base font-normal text-text-muted">/100</span>
               </p>
-              <div className="flex items-center justify-between text-[10px] text-text-muted mb-1.5">
-                <span>Bitcoin</span>
-                <span>Altcoin</span>
-              </div>
-              <div className="relative h-2 rounded-full bg-bg-tertiary overflow-hidden">
-                <div className="absolute inset-y-0 left-0 w-[40%] rounded-full" style={{ background: 'linear-gradient(to right, #f7931a, #c47818)' }} />
-                <div className="absolute inset-y-0 right-0 w-[40%] rounded-full" style={{ background: 'linear-gradient(to left, #3b82f6, #6366f1)' }} />
-                <div
-                  className="absolute top-1/2 -translate-y-1/2 w-3.5 h-3.5 rounded-full bg-bg-secondary border-2 shadow-md"
-                  style={{ left: `calc(${altSeasonData.index}% - 7px)`, borderColor: altSeasonData.color }}
-                />
+              <div className="relative z-10">
+                <div className="relative h-1.5 rounded-full bg-white/10 overflow-hidden">
+                  <div className="absolute inset-y-0 left-0 w-[40%] rounded-full" style={{ background: 'linear-gradient(to right, #f7931a, #c47818)' }} />
+                  <div className="absolute inset-y-0 right-0 w-[40%] rounded-full" style={{ background: 'linear-gradient(to left, #6366f1, #818cf8)' }} />
+                  <div className="absolute top-1/2 -translate-y-1/2 w-3 h-3 rounded-full border-2 bg-black"
+                    style={{ left: `calc(${altSeasonData.index}% - 6px)`, borderColor: altSeasonData.color }} />
+                </div>
+                <span className="text-[10px] font-semibold" style={{ color: altSeasonData.color }}>{altSeasonData.label}</span>
               </div>
             </>
           ) : (
-            <p className="text-2xl font-bold text-text-primary text-center">—</p>
+            <p className="text-4xl font-black text-text-muted neon-num relative z-10">—</p>
           )}
         </motion.div>
       </motion.div>
@@ -1067,6 +1079,7 @@ export default function MarketOverview() {
           animate={{ opacity: 1, y: 0 }}
           transition={{ duration: 0.5, delay: 0.2 }}
           className={cardClass}
+          style={{ borderTopColor: 'rgba(0,191,255,0.5)', borderTopWidth: '2px' }}
         >
           <h2 className="text-sm font-semibold text-text-primary mb-3 flex items-center gap-2 justify-center">
             <Layers className="w-4 h-4 text-accent-primary" />
@@ -1094,6 +1107,7 @@ export default function MarketOverview() {
           animate={{ opacity: 1, y: 0 }}
           transition={{ duration: 0.5, delay: 0.3 }}
           className={cardClass}
+          style={{ borderTopColor: 'rgba(34,197,94,0.5)', borderTopWidth: '2px' }}
         >
           <h2 className="text-sm font-semibold text-text-primary mb-3 flex items-center gap-2 justify-center">
             <Rocket className="w-4 h-4 text-profit" />
@@ -1147,7 +1161,7 @@ export default function MarketOverview() {
       {/* Top 10 coins + Trending + Liquidations */}
       <div className="grid grid-cols-1 lg:grid-cols-4 gap-4 mb-4">
         {/* Top 10 Coins */}
-        <div className={`${cardClass} lg:col-span-2`}>
+        <div className={`${cardClass} lg:col-span-2`} style={{ borderTopColor: 'rgba(99,102,241,0.5)', borderTopWidth: '2px' }}>
           <h2 className="text-sm font-semibold text-text-primary mb-3 flex items-center gap-2 justify-center">
             <TrendingUp className="w-4 h-4 text-accent-primary" />
             Top 10 מטבעות
@@ -1184,7 +1198,7 @@ export default function MarketOverview() {
         </div>
 
         {/* Trending */}
-        <div className={cardClass}>
+        <div className={cardClass} style={{ borderTopColor: 'rgba(249,115,22,0.5)', borderTopWidth: '2px' }}>
           <h2 className="text-sm font-semibold text-text-primary mb-3 flex items-center gap-2 justify-center">
             <Flame className="w-4 h-4 text-orange-500" />
             טרנדינג
