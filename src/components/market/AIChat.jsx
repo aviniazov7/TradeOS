@@ -1,7 +1,7 @@
 import { useState, useEffect, useRef } from 'react';
 import { createPortal } from 'react-dom';
 import { motion, AnimatePresence } from 'framer-motion';
-import { Bot, Send, RotateCcw, User, Sparkles, BarChart3, History, Trash2, Crown, ImagePlus, X, Image as ImageIcon } from 'lucide-react';
+import { Bot, Send, RotateCcw, User, Sparkles, BarChart3, History, Trash2, Crown, ImagePlus, X, Image as ImageIcon, Copy, Check } from 'lucide-react';
 import DOMPurify from 'dompurify';
 import { sendMessageStream } from '../../services/groqApi';
 import { detectCoinFromText } from '../../utils/technicals';
@@ -165,6 +165,7 @@ export default function AIChat({ heightClass = 'h-[calc(100dvh-13.5rem)] md:h-[c
   const lastSentRef = useRef(0);
   const chartPromiseRef = useRef(null);
 
+  const [copiedIdx, setCopiedIdx] = useState(null);
   const [conversations, setConversations] = useState(() => loadConversations());
   const [currentConvId, setCurrentConvId] = useState(null);
   const [historyOpen, setHistoryOpen] = useState(false);
@@ -357,6 +358,16 @@ export default function AIChat({ heightClass = 'h-[calc(100dvh-13.5rem)] md:h-[c
     }
   };
 
+  const copyMessage = async (i, text) => {
+    try {
+      await navigator.clipboard.writeText(text);
+      setCopiedIdx(i);
+      setTimeout(() => setCopiedIdx((v) => (v === i ? null : v)), 1500);
+    } catch {
+      setError('ההעתקה נכשלה');
+    }
+  };
+
   const handleKeyDown = (e) => {
     if (e.key === 'Enter' && !e.shiftKey) {
       e.preventDefault();
@@ -505,29 +516,45 @@ export default function AIChat({ heightClass = 'h-[calc(100dvh-13.5rem)] md:h-[c
                   }
                 </div>
 
-                {/* Bubble */}
-                <div className={`max-w-[85%] rounded-2xl px-4 py-2.5 text-sm leading-relaxed ${
-                  msg.role === 'user'
-                    ? 'bg-accent-primary/15 border border-accent-primary/25 text-text-primary rounded-tr-sm'
-                    : 'bg-bg-secondary border border-border-primary text-text-secondary rounded-tl-sm'
-                }`}>
-                  {msg.role === 'user'
-                    ? <>
-                        {msg.image && (
-                          <img src={msg.image} alt="גרף שצורף" className="mb-2 rounded-lg max-h-48 w-auto border border-border-primary" />
-                        )}
-                        {!msg.image && msg.hadImage && (
-                          <span className="flex items-center gap-1 text-[10px] text-text-muted mb-1">
-                            <ImageIcon className="w-3 h-3" /> צורפה תמונת גרף
-                          </span>
-                        )}
-                        <p>{msg.text}</p>
-                      </>
-                    : <>
-                        {msg.chart && <ChatChart prices={msg.chart.prices} coinSymbol={msg.chart.symbol} />}
-                        <div className="space-y-0">{formatAIText(msg.text)}</div>
-                      </>
-                  }
+                {/* Bubble + copy button */}
+                <div className="max-w-[85%] flex flex-col gap-0.5">
+                  <div className={`rounded-2xl px-4 py-2.5 text-sm leading-relaxed ${
+                    msg.role === 'user'
+                      ? 'bg-accent-primary/15 border border-accent-primary/25 text-text-primary rounded-tr-sm'
+                      : 'bg-bg-secondary border border-border-primary text-text-secondary rounded-tl-sm'
+                  }`}>
+                    {msg.role === 'user'
+                      ? <>
+                          {msg.image && (
+                            <img src={msg.image} alt="גרף שצורף" className="mb-2 rounded-lg max-h-48 w-auto border border-border-primary" />
+                          )}
+                          {!msg.image && msg.hadImage && (
+                            <span className="flex items-center gap-1 text-[10px] text-text-muted mb-1">
+                              <ImageIcon className="w-3 h-3" /> צורפה תמונת גרף
+                            </span>
+                          )}
+                          <p>{msg.text}</p>
+                        </>
+                      : <>
+                          {msg.chart && <ChatChart prices={msg.chart.prices} coinSymbol={msg.chart.symbol} />}
+                          <div className="space-y-0">{formatAIText(msg.text)}</div>
+                        </>
+                    }
+                  </div>
+                  {msg.text && (
+                    <button
+                      onClick={() => copyMessage(i, msg.text)}
+                      className={`flex items-center gap-1 text-[10px] text-text-muted hover:text-text-primary transition-colors cursor-pointer px-1 ${
+                        msg.role === 'user' ? 'self-start' : 'self-end'
+                      }`}
+                      title="העתק הודעה"
+                    >
+                      {copiedIdx === i
+                        ? <><Check className="w-3 h-3 text-profit" /> הועתק</>
+                        : <><Copy className="w-3 h-3" /> העתק</>
+                      }
+                    </button>
+                  )}
                 </div>
               </motion.div>
             ))}
