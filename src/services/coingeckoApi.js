@@ -184,6 +184,17 @@ async function fetchBinanceKlines(symbol, days) {
   };
 }
 
+// Raw klines through the worker /bnb proxy (which falls back to Bybit when
+// Binance blocks its egress) — Binance 12-column array shape.
+export async function fetchKlines(pair, interval = '1h', limit = 720) {
+  const url = `${BINANCE_BASE}/klines?symbol=${encodeURIComponent(pair)}&interval=${interval}&limit=${limit}`;
+  const response = await fetch(url);
+  if (!response.ok) throw new Error(`klines error: ${response.status}`);
+  const data = await response.json();
+  if (!Array.isArray(data)) throw new Error('klines: unexpected response');
+  return data;
+}
+
 export async function fetchCoinChart(coinId, days = 30, symbol = null) {
   const key = `chart:${coinId}:${days}`;
   const cached = getCached(key);

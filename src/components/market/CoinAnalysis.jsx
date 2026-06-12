@@ -3,7 +3,8 @@ import { motion, AnimatePresence } from 'framer-motion';
 import { Search, Sparkles, TrendingUp, TrendingDown, Minus, RotateCcw, Activity, BarChart3, Zap, Shield, ChevronDown, ChevronUp, Target, Gauge, BookOpen, Flame, FileText, Copy, Check, RefreshCw } from 'lucide-react';
 import { AreaChart, Area, XAxis, YAxis, Tooltip, ResponsiveContainer, ReferenceLine } from 'recharts';
 import DOMPurify from 'dompurify';
-import { searchCoins, fetchCoinDetails, fetchCoinChart } from '../../services/coingeckoApi';
+import { searchCoins, fetchCoinDetails, fetchCoinChart, fetchKlines } from '../../services/coingeckoApi';
+import { fetchAnalysisLiquidity } from '../../services/bybitDirect';
 import { fetchProjectDescription } from '../../services/groqApi';
 import { computeRSI, computeMA, computeVolatility } from '../../utils/technicals';
 
@@ -422,28 +423,28 @@ export default function CoinAnalysis() {
         })));
       }
 
-      // Fetch Binance liquidity data (non-blocking — runs in background)
+      // Liquidity data via Bybit + the worker proxy (non-blocking, background).
+      // The old direct Binance calls are geo-blocked from Israeli browsers, and
+      // the allForceOrders endpoint was removed by Binance entirely.
       const binanceSymbol = TV_SYMBOL_MAP[coin.coingeckoId] || `${coin.symbol?.toUpperCase()}USDT`;
       Promise.allSettled([
-        fetch(`https://api.binance.com/api/v3/ticker/bookTicker?symbol=${binanceSymbol}`).then(r => r.json()),
-        fetch(`https://fapi.binance.com/fapi/v1/openInterest?symbol=${binanceSymbol}`).then(r => r.json()),
-        fetch(`https://fapi.binance.com/fapi/v1/premiumIndex?symbol=${binanceSymbol}`).then(r => r.json()),
-        fetch(`https://api.binance.com/api/v3/depth?symbol=${binanceSymbol}&limit=20`).then(r => r.json()),
-        fetch(`https://fapi.binance.com/fapi/v1/allForceOrders?symbol=${binanceSymbol}&startTime=${Date.now() - 86400000}&limit=1000`).then(r => r.json()),
-        fetch(`https://api.binance.com/api/v3/klines?symbol=${binanceSymbol}&interval=1h&limit=720`).then(r => r.json()),
-      ]).then(([bookRes, oiRes, fundingRes, depthRes, forceRes, klinesRes]) => {
-        // Binance returns a `code` (e.g. -1121 Invalid symbol) when it doesn't
-        // list the coin — in that case point the chart at Bybit instead.
-        const onBinance = bookRes.status === 'fulfilled' && !bookRes.value?.code;
-        setChartExchange(onBinance ? 'BINANCE' : 'BYBIT');
+        fetchAnalysisLiquidity(binanceSymbol),
+        fetchKlines(binanceSymbol, '1h', 720),
+      ]).then(([liqRes, klinesRes]) => {
+        const liq = liqRes.status === 'fulfilled' ? liqRes.value : null;
+        // The data now comes from Bybit, so a coin found on Bybit spot gets a
+        // Bybit TradingView chart (guaranteed to exist there).
+        setChartExchange(liq?.onBybitSpot ? 'BYBIT' : 'BINANCE');
 
         setLiquidityData({
           symbol: binanceSymbol,
-          bookTicker: bookRes.status === 'fulfilled' && !bookRes.value?.code ? bookRes.value : null,
-          openInterest: oiRes.status === 'fulfilled' && !oiRes.value?.code ? oiRes.value : null,
-          funding: fundingRes.status === 'fulfilled' && !fundingRes.value?.code ? fundingRes.value : null,
-          depth: depthRes.status === 'fulfilled' && !depthRes.value?.code ? depthRes.value : null,
-          forceOrders: forceRes.status === 'fulfilled' && Array.isArray(forceRes.value) ? forceRes.value : null,
+          bookTicker: liq?.bookTicker || null,
+          openInterest: liq?.openInterest || null,
+          funding: liq?.funding || null,
+          depth: liq?.depth || null,
+          // Bybit has no public REST history for liquidations — the heatmap
+          // card shows its Coinglass fallback (Binance killed the old API too).
+          forceOrders: null,
         });
 
         // Store klines for the Liquidation Heatmap canvas
