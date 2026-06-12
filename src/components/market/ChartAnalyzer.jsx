@@ -293,13 +293,16 @@ export default function ChartAnalyzer({ heightClass = '' }) {
               className={`relative rounded-2xl border overflow-hidden ${analyzing ? 'border-accent-primary/60' : 'border-border-primary'}`}
             >
               <img src={image.dataUrl} alt="הגרף שהועלה" className="w-full max-h-72 object-contain bg-black/40" />
-              {/* Sweeping scan beam over the chart while analyzing */}
+              {/* Sweeping scan beam over the chart while analyzing. Animate
+                  `left` (container-relative) — translateX percentages are
+                  relative to the beam's own 3rem width, so it barely moved. */}
               {analyzing && (
                 <motion.div
-                  animate={{ x: ['-15%', '115%'] }}
-                  transition={{ duration: 1.8, repeat: Infinity, ease: 'easeInOut' }}
-                  className="pointer-events-none absolute inset-y-0 w-10"
-                  style={{ background: 'linear-gradient(90deg, transparent, rgba(0,191,255,0.25), transparent)' }}
+                  initial={{ left: '-12%' }}
+                  animate={{ left: ['-12%', '104%'] }}
+                  transition={{ duration: 2.2, repeat: Infinity, ease: 'easeInOut' }}
+                  className="pointer-events-none absolute inset-y-0 w-12"
+                  style={{ background: 'linear-gradient(90deg, transparent, rgba(0,191,255,0.35), transparent)' }}
                 />
               )}
               <div className="absolute top-2 left-2 flex gap-1.5">
