@@ -174,6 +174,9 @@ export const FREE_LIMITS = {
   wallets: 2,
   exchanges: 1,
   aiPerDay: 20,
+  // Premium-only: daily chart-image analyses (mirrors the worker's
+  // AI_IMAGE_DAILY_LIMIT). Free users get none.
+  aiImagesPremium: 10,
 };
 
 // Premium pricing (ILS). Yearly gives ~2 months free — tweak freely.
@@ -186,8 +189,10 @@ export const PREMIUM_PRICING = {
 export const PREMIUM_FEATURES = [
   { icon: 'Sparkles', title: 'תשובות AI מהירות', free: 'בסיסי', premium: 'מהיר ועדיף' },
   { icon: 'Bot', title: 'TradeAI ללא הגבלה', free: `${FREE_LIMITS.aiPerDay} ליום`, premium: 'ללא הגבלה' },
+  { icon: 'Image', title: 'ניתוח גרפים מתמונה', free: '—', premium: `${FREE_LIMITS.aiImagesPremium} ליום` },
+  { icon: 'Layers', title: 'מסחר בכמה שווקים', free: 'סוג אחד', premium: 'הכל' },
   { icon: 'BookOpen', title: 'יומני מסחר', free: `עד ${FREE_LIMITS.journals}`, premium: 'ללא הגבלה' },
-  { icon: 'Wallet', title: 'ארנקים על-שרשרת', free: `עד ${FREE_LIMITS.wallets}`, premium: 'ללא הגבלה' },
+  { icon: 'Wallet', title: "ארנקים על הבלוקצ'יין", free: `עד ${FREE_LIMITS.wallets}`, premium: 'ללא הגבלה' },
   { icon: 'Link2', title: 'חיבורי בורסה', free: `עד ${FREE_LIMITS.exchanges}`, premium: 'ללא הגבלה' },
   { icon: 'Bell', title: 'התראות עסקאות', free: 'בסיסי', premium: 'מתקדם' },
   { icon: 'BarChart3', title: 'ניתוחים מתקדמים', free: '—', premium: 'כלול' },

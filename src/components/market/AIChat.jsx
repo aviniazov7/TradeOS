@@ -1,9 +1,9 @@
 import { useState, useEffect, useRef } from 'react';
 import { createPortal } from 'react-dom';
 import { motion, AnimatePresence } from 'framer-motion';
-import { Bot, Send, RotateCcw, User, Sparkles, BarChart3, History, Trash2, Crown } from 'lucide-react';
-import DOMPurify from 'dompurify';
+import { Bot, Send, RotateCcw, User, Sparkles, BarChart3, History, Trash2, Crown, Image as ImageIcon, Copy, Check } from 'lucide-react';
 import { sendMessageStream } from '../../services/groqApi';
+import { formatAIText } from '../../utils/aiChatHelpers';
 import { detectCoinFromText } from '../../utils/technicals';
 import { fetchCoinChart } from '../../services/coingeckoApi';
 import { useAiUsage } from '../../hooks/useAiUsage';
@@ -50,7 +50,7 @@ function saveConversations(list) {
 
 const WELCOME_MESSAGE = {
   role: 'model',
-  text: 'שלום! אני TradeAI — המנטור שלך לשיטת ויקוף. אפשר לשאול אותי על שלבי איסוף ופיזור, LPSY, LPS, Spring, ניתוח Volume ועוד. במה אוכל לעזור?',
+  text: 'שלום! אני TradeAI — המנטור שלך לשיטת ויקוף. אפשר לשאול אותי על שלבי איסוף ופיזור, LPSY, LPS, Spring, ניתוח Volume ועוד. רוצה ניתוח של צילום גרף? עבור לטאב "ניתוח גרפים". במה אוכל לעזור?',
 };
 
 const QUICK_QUESTIONS = [
@@ -62,43 +62,6 @@ const QUICK_QUESTIONS = [
   'חוק מאמץ מול תוצאה',
 ];
 
-// Sanitize-last invariant: ALL HTML construction (markdown→tags) happens here,
-// then DOMPurify runs as the final step before dangerouslySetInnerHTML. Never
-// pass un-sanitized HTML to the DOM. Tags/attrs are tightly restricted so
-// event handlers (onclick, onerror, etc.) and embedded scripts are stripped.
-const SANITIZE_CONFIG = {
-  ALLOWED_TAGS: ['strong', 'code', 'em'],
-  ALLOWED_ATTR: ['class'],
-  FORBID_TAGS: ['script', 'style', 'iframe', 'object', 'embed', 'link'],
-  ALLOW_DATA_ATTR: false,
-};
-
-function buildLineHtml(line) {
-  let formatted = line.replace(/\*\*(.+?)\*\*/g, '<strong>$1</strong>');
-  formatted = formatted.replace(/`(.+?)`/g, '<code class="bg-bg-tertiary px-1 py-0.5 rounded text-accent-primary text-[11px]">$1</code>');
-  return formatted;
-}
-
-function safeHtml(raw) {
-  return DOMPurify.sanitize(raw, SANITIZE_CONFIG);
-}
-
-function formatAIText(text) {
-  const lines = text.split('\n');
-  return lines.map((line, i) => {
-    const formatted = buildLineHtml(line);
-
-    if (/^[-•*]\s/.test(formatted)) {
-      return <li key={i} className="mr-4 mb-0.5" dangerouslySetInnerHTML={{ __html: safeHtml(formatted.replace(/^[-•*]\s/, '')) }} />;
-    }
-    if (/^#{1,3}\s/.test(formatted)) {
-      const content = formatted.replace(/^#{1,3}\s/, '');
-      return <p key={i} className="font-bold text-text-primary mt-2 mb-1" dangerouslySetInnerHTML={{ __html: safeHtml(content) }} />;
-    }
-    if (!formatted.trim()) return <br key={i} />;
-    return <p key={i} className="mb-0.5" dangerouslySetInnerHTML={{ __html: safeHtml(formatted) }} />;
-  });
-}
 
 function TypingIndicator() {
   return (
@@ -138,6 +101,7 @@ export default function AIChat({ heightClass = 'h-[calc(100dvh-13.5rem)] md:h-[c
   const lastSentRef = useRef(0);
   const chartPromiseRef = useRef(null);
 
+  const [copiedIdx, setCopiedIdx] = useState(null);
   const [conversations, setConversations] = useState(() => loadConversations());
   const [currentConvId, setCurrentConvId] = useState(null);
   const [historyOpen, setHistoryOpen] = useState(false);
@@ -186,7 +150,9 @@ export default function AIChat({ heightClass = 'h-[calc(100dvh-13.5rem)] md:h-[c
   useEffect(() => {
     if (messages.length === 0) return;
     if (!messages.some((m) => m.role === 'user')) return;
-    const stripped = messages.map(({ chart, ...rest }) => rest);
+    // Strip heavy fields (chart data, base64 images) before persisting —
+    // a single screenshot would blow through the localStorage quota.
+    const stripped = messages.map(({ chart, image, ...rest }) => (image ? { ...rest, hadImage: true } : rest));
     const title = convTitle(stripped);
     const updatedAt = Date.now();
     setConversations((prev) => {
@@ -295,6 +261,16 @@ export default function AIChat({ heightClass = 'h-[calc(100dvh-13.5rem)] md:h-[c
       chartPromiseRef.current = null;
       inputRef.current?.focus();
       aiUsage.refresh();
+    }
+  };
+
+  const copyMessage = async (i, text) => {
+    try {
+      await navigator.clipboard.writeText(text);
+      setCopiedIdx(i);
+      setTimeout(() => setCopiedIdx((v) => (v === i ? null : v)), 1500);
+    } catch {
+      setError('ההעתקה נכשלה');
     }
   };
 
@@ -446,19 +422,45 @@ export default function AIChat({ heightClass = 'h-[calc(100dvh-13.5rem)] md:h-[c
                   }
                 </div>
 
-                {/* Bubble */}
-                <div className={`max-w-[85%] rounded-2xl px-4 py-2.5 text-sm leading-relaxed ${
-                  msg.role === 'user'
-                    ? 'bg-accent-primary/15 border border-accent-primary/25 text-text-primary rounded-tr-sm'
-                    : 'bg-bg-secondary border border-border-primary text-text-secondary rounded-tl-sm'
-                }`}>
-                  {msg.role === 'user'
-                    ? <p>{msg.text}</p>
-                    : <>
-                        {msg.chart && <ChatChart prices={msg.chart.prices} coinSymbol={msg.chart.symbol} />}
-                        <div className="space-y-0">{formatAIText(msg.text)}</div>
-                      </>
-                  }
+                {/* Bubble + copy button */}
+                <div className="max-w-[85%] flex flex-col gap-0.5">
+                  <div className={`rounded-2xl px-4 py-2.5 text-sm leading-relaxed ${
+                    msg.role === 'user'
+                      ? 'bg-accent-primary/15 border border-accent-primary/25 text-text-primary rounded-tr-sm'
+                      : 'bg-bg-secondary border border-border-primary text-text-secondary rounded-tl-sm'
+                  }`}>
+                    {msg.role === 'user'
+                      ? <>
+                          {msg.image && (
+                            <img src={msg.image} alt="גרף שצורף" className="mb-2 rounded-lg max-h-48 w-auto border border-border-primary" />
+                          )}
+                          {!msg.image && msg.hadImage && (
+                            <span className="flex items-center gap-1 text-[10px] text-text-muted mb-1">
+                              <ImageIcon className="w-3 h-3" /> צורפה תמונת גרף
+                            </span>
+                          )}
+                          <p>{msg.text}</p>
+                        </>
+                      : <>
+                          {msg.chart && <ChatChart prices={msg.chart.prices} coinSymbol={msg.chart.symbol} />}
+                          <div className="space-y-0">{formatAIText(msg.text)}</div>
+                        </>
+                    }
+                  </div>
+                  {msg.text && (
+                    <button
+                      onClick={() => copyMessage(i, msg.text)}
+                      className={`flex items-center gap-1 text-[10px] text-text-muted hover:text-text-primary transition-colors cursor-pointer px-1 ${
+                        msg.role === 'user' ? 'self-start' : 'self-end'
+                      }`}
+                      title="העתק הודעה"
+                    >
+                      {copiedIdx === i
+                        ? <><Check className="w-3 h-3 text-profit" /> הועתק</>
+                        : <><Copy className="w-3 h-3" /> העתק</>
+                      }
+                    </button>
+                  )}
                 </div>
               </motion.div>
             ))}

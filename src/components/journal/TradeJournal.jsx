@@ -531,6 +531,9 @@ export default function TradeJournal() {
 
           <div className="flex items-center gap-1.5 md:gap-2 flex-shrink-0">
             {tab === 'analytics' && <div className="hidden md:block"><TimePeriodFilter value={period} onChange={setPeriod} compact /></div>}
+            {/* Mobile: period filter sits up here next to the actions (dropdown
+                is compact) instead of taking its own row under the tabs. */}
+            {tab === 'analytics' && <div className="md:hidden"><TimePeriodFilter value={period} onChange={setPeriod} dropdown /></div>}
             <button onClick={() => setSettingsOpen(true)} className="p-1.5 md:p-2 rounded-lg text-text-muted hover:text-text-primary hover:bg-bg-tertiary transition-colors cursor-pointer border border-border-primary" title="הגדרות יומן">
               <Settings className="w-4 h-4" />
             </button>
@@ -548,12 +551,13 @@ export default function TradeJournal() {
           </div>
         </div>
 
-        {/* Row 2: Mobile tabs + period filter */}
-        <div className="md:hidden flex items-center justify-between">
-          <div className="flex items-center">
+        {/* Row 2: Mobile tabs (scroll horizontally so they never compress each
+            other). The period filter lives up in Row 1's action group. */}
+        <div className="md:hidden">
+          <div className="flex items-center overflow-x-auto no-scrollbar -mx-1 px-1">
             <button
               onClick={() => setTab('trades')}
-              className={`px-2.5 py-1.5 text-xs font-medium rounded-lg transition-colors cursor-pointer whitespace-nowrap ${
+              className={`px-2.5 py-1.5 text-xs font-medium rounded-lg transition-colors cursor-pointer whitespace-nowrap flex-shrink-0 ${
                 tab === 'trades' ? 'bg-accent-primary/15 text-accent-primary' : 'text-text-muted hover:text-text-primary hover:bg-bg-tertiary'
               }`}
             >
@@ -561,7 +565,7 @@ export default function TradeJournal() {
             </button>
             <button
               onClick={() => setTab('analytics')}
-              className={`px-2.5 py-1.5 text-xs font-medium rounded-lg transition-colors cursor-pointer whitespace-nowrap ${
+              className={`px-2.5 py-1.5 text-xs font-medium rounded-lg transition-colors cursor-pointer whitespace-nowrap flex-shrink-0 ${
                 tab === 'analytics' ? 'bg-accent-primary/15 text-accent-primary' : 'text-text-muted hover:text-text-primary hover:bg-bg-tertiary'
               }`}
             >
@@ -569,7 +573,7 @@ export default function TradeJournal() {
             </button>
             <button
               onClick={() => setTab('aiCoach')}
-              className={`px-2.5 py-1.5 text-xs font-medium rounded-lg transition-colors cursor-pointer whitespace-nowrap inline-flex items-center gap-1 ${
+              className={`px-2.5 py-1.5 text-xs font-medium rounded-lg transition-colors cursor-pointer whitespace-nowrap flex-shrink-0 inline-flex items-center gap-1 ${
                 tab === 'aiCoach' ? 'bg-accent-primary/15 text-accent-primary' : 'text-text-muted hover:text-text-primary hover:bg-bg-tertiary'
               }`}
             >
@@ -578,7 +582,7 @@ export default function TradeJournal() {
             </button>
             <button
               onClick={() => setTab('calendar')}
-              className={`px-2.5 py-1.5 text-xs font-medium rounded-lg transition-colors cursor-pointer whitespace-nowrap ${
+              className={`px-2.5 py-1.5 text-xs font-medium rounded-lg transition-colors cursor-pointer whitespace-nowrap flex-shrink-0 ${
                 tab === 'calendar' ? 'bg-accent-primary/15 text-accent-primary' : 'text-text-muted hover:text-text-primary hover:bg-bg-tertiary'
               }`}
             >
@@ -586,14 +590,13 @@ export default function TradeJournal() {
             </button>
             <button
               onClick={() => setTab('exchange')}
-              className={`px-2.5 py-1.5 text-xs font-medium rounded-lg transition-colors cursor-pointer whitespace-nowrap ${
+              className={`px-2.5 py-1.5 text-xs font-medium rounded-lg transition-colors cursor-pointer whitespace-nowrap flex-shrink-0 ${
                 tab === 'exchange' ? 'bg-accent-primary/15 text-accent-primary' : 'text-text-muted hover:text-text-primary hover:bg-bg-tertiary'
               }`}
             >
               בורסאות
             </button>
           </div>
-          {tab === 'analytics' && <TimePeriodFilter value={period} onChange={setPeriod} dropdown />}
         </div>
       </div>
 
@@ -662,13 +665,13 @@ export default function TradeJournal() {
             <div className="grid grid-cols-3 md:grid-cols-5 lg:grid-cols-10 gap-px">
               {[
                 { label: 'רצף נוכחי', value: streakText, color: streakColor },
-                { label: 'Profit Factor', value: stats.profitFactor === Infinity ? '∞' : stats.profitFactor.toFixed(2), color: stats.profitFactor >= 1.5 ? 'text-profit' : 'text-loss' },
-                { label: 'Sharpe', value: stats.sharpeRatio.toFixed(2) },
-                { label: 'Calmar', value: stats.calmarRatio.toFixed(2) },
-                { label: 'Sortino', value: stats.sortinoRatio === Infinity ? '∞' : stats.sortinoRatio.toFixed(2) },
-                { label: 'Recovery', value: stats.recoveryFactor.toFixed(2), color: stats.recoveryFactor >= 1 ? 'text-profit' : 'text-loss' },
-                { label: 'Max DD', value: `-${stats.maxDrawdown.toFixed(1)}%`, color: 'text-loss' },
-                { label: 'R/R', value: `1:${stats.avgRR.toFixed(2)}` },
+                { label: 'מקדם רווח', value: stats.profitFactor === Infinity ? '∞' : stats.profitFactor.toFixed(2), color: stats.profitFactor >= 1.5 ? 'text-profit' : 'text-loss' },
+                { label: 'תשואה/תנודתיות', value: stats.sharpeRatio.toFixed(2) },
+                { label: 'תשואה/נפילה', value: stats.calmarRatio.toFixed(2) },
+                { label: 'תשואה/הפסדים', value: stats.sortinoRatio === Infinity ? '∞' : stats.sortinoRatio.toFixed(2) },
+                { label: 'התאוששות', value: stats.recoveryFactor.toFixed(2), color: stats.recoveryFactor >= 1 ? 'text-profit' : 'text-loss' },
+                { label: 'ירידה מקס׳', value: `-${stats.maxDrawdown.toFixed(1)}%`, color: 'text-loss' },
+                { label: 'סיכון/סיכוי', value: `1:${stats.avgRR.toFixed(2)}` },
                 { label: 'ימי מסחר', value: stats.tradingDays },
                 { label: 'עסקאות/יום', value: stats.tradesPerDay.toFixed(1) },
                 { label: 'משך ממוצע', value: formatDuration(stats.avgDurationHours) },
@@ -680,8 +683,8 @@ export default function TradeJournal() {
                   { label: 'הפסד מקס׳', value: formatCurrency(analytics.largestLoss), color: 'text-loss' },
                   { label: 'רצף רווחים', value: analytics.maxWin, color: 'text-profit' },
                   { label: 'רצף הפסדים', value: analytics.maxLoss, color: 'text-loss' },
-                  { label: `Long (${analytics.longCount})`, value: `${analytics.longWinRate.toFixed(0)}%`, color: 'text-long' },
-                  { label: `Short (${analytics.shortCount})`, value: `${analytics.shortWinRate.toFixed(0)}%`, color: 'text-short' },
+                  { label: `לונג (${analytics.longCount})`, value: `${analytics.longWinRate.toFixed(0)}%`, color: 'text-long' },
+                  { label: `שורט (${analytics.shortCount})`, value: `${analytics.shortWinRate.toFixed(0)}%`, color: 'text-short' },
                 ] : []),
               ].map((item) => (
                 <div key={item.label} className="flex flex-col items-center py-3 px-2">

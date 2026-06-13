@@ -5,7 +5,7 @@ import toast from 'react-hot-toast';
 import { useAuth } from '../../contexts/AuthContext';
 import { getAllUsers, getUserSubcollectionCount, adminGrantPremium, adminRevokePremium, addPayment, getAllPayments } from '../../services/firestoreService';
 import { fetchUserAiUsage } from '../../hooks/useAiUsage';
-import { adminSendNotification, adminScheduleExpiryReminders, adminCancelExpiryReminders, adminListAuditEvents, adminSendTestDigest, adminGetTelegramInfo } from '../../services/pushService';
+import { adminSendNotification, adminScheduleExpiryReminders, adminCancelExpiryReminders, adminRefreshPlanCache, adminListAuditEvents, adminSendTestDigest, adminGetTelegramInfo } from '../../services/pushService';
 import { adminListCoupons, adminCreateCoupon, adminDeleteCoupon, couponShareUrl } from '../../services/couponService';
 import LoadingSpinner from '../shared/LoadingSpinner';
 import SelectDropdown from '../shared/SelectDropdown';
@@ -698,6 +698,9 @@ function UserDetailModal({ user, onClose, onUserChanged }) {
       // lifetime grants this just clears any prior schedule (planExpires=null).
       const planExpiresISO = expiresAt ? expiresAt.toISOString() : null;
       adminScheduleExpiryReminders(user.id, planExpiresISO);
+      // Bust the worker's cached plan flag so premium-only AI features unlock
+      // for this user immediately, not after the cache TTL.
+      adminRefreshPlanCache(user.id);
 
       setGrantOpen(false);
       setGrantAmount('');
@@ -720,6 +723,8 @@ function UserDetailModal({ user, onClose, onUserChanged }) {
       // Cancel the queued expiry reminders so a revoked user isn't pinged
       // about a subscription they no longer have.
       adminCancelExpiryReminders(user.id);
+      // Bust the worker's cached plan flag so the revoke takes effect at once.
+      adminRefreshPlanCache(user.id);
       toast.success('ה-Premium בוטל');
       onUserChanged?.();
     } catch {

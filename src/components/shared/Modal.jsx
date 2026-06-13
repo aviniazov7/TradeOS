@@ -44,7 +44,7 @@ export default function Modal({ isOpen, onClose, title, children, maxWidth = 'ma
             <motion.div
               className={`relative ${maxWidth} w-full rounded-2xl overflow-hidden shadow-2xl pointer-events-auto`}
               style={{
-                background: 'var(--color-bg-overlay)',
+                background: 'var(--color-bg-solid)',
                 border: '1px solid rgba(0,191,255,0.22)',
                 boxShadow: '0 32px 80px rgba(0,0,0,0.55), 0 0 0 1px rgba(255,255,255,0.04) inset',
                 maxHeight: 'calc(100vh - 4.5rem)',
@@ -70,7 +70,7 @@ export default function Modal({ isOpen, onClose, title, children, maxWidth = 'ma
                   className="flex items-center justify-between px-5 py-3 sticky top-0 z-10"
                   style={{
                     borderBottom: '1px solid rgba(255,255,255,0.06)',
-                    background: 'var(--color-bg-overlay)',
+                    background: 'var(--color-bg-solid)',
                     backdropFilter: 'blur(8px)',
                     WebkitBackdropFilter: 'blur(8px)',
                   }}

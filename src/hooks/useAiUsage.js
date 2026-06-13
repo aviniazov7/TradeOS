@@ -7,7 +7,7 @@ const WORKER_BASE = import.meta.env.VITE_WORKER_URL || 'https://trade-os.aviniaz
 // midnight on the worker side. Call refresh() after every AI request so the
 // progress bar updates immediately.
 export function useAiUsage() {
-  const [usage, setUsage] = useState({ used: 0, limit: 20, unlimited: false });
+  const [usage, setUsage] = useState({ used: 0, limit: 20, unlimited: false, premium: false, imageUsed: 0, imageLimit: 0 });
   const [loading, setLoading] = useState(true);
 
   const refresh = useCallback(async () => {
@@ -18,7 +18,14 @@ export function useAiUsage() {
       const r = await fetch(`${WORKER_BASE}/ai-usage`, { headers: { Authorization: `Bearer ${token}` } });
       if (!r.ok) return;
       const data = await r.json();
-      setUsage({ used: data.used ?? 0, limit: data.limit ?? 20, unlimited: !!data.unlimited });
+      setUsage({
+        used: data.used ?? 0,
+        limit: data.limit ?? 20,
+        unlimited: !!data.unlimited,
+        premium: !!data.premium,
+        imageUsed: data.imageUsed ?? 0,
+        imageLimit: data.imageLimit ?? 0,
+      });
     } catch { /* keep last value */ }
     finally { setLoading(false); }
   }, []);

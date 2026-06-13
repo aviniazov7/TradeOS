@@ -36,7 +36,8 @@ body {
   --color-bg-primary: #000000;
   --color-bg-secondary: rgba(255, 255, 255, 0.05);
   --color-bg-tertiary: rgba(255, 255, 255, 0.03);
-  --color-bg-overlay: rgba(8, 8, 12, 0.88);
+  --color-bg-overlay: rgba(255, 255, 255, 0.05);
+  --color-bg-solid: rgba(6, 8, 14, 0.97);
 
   /* Borders */
   --color-border-primary: rgba(255, 255, 255, 0.08);
@@ -73,7 +74,8 @@ body {
   --color-accent-primary: #0284c7;
   --color-accent-hover: #0369a1;
   --color-accent-muted: #0c4a6e;
-  --color-bg-overlay: rgba(255, 255, 255, 0.90);
+  --color-bg-overlay: rgba(255, 255, 255, 0.35);
+  --color-bg-solid: rgba(245, 247, 251, 0.98);
 }
 
 /* Glassmorphism — frosted glass cards */
@@ -90,11 +92,11 @@ body {
   backdrop-filter: blur(20px) saturate(140%);
 }
 
-/* Glassmorphism — dropdown/overlay glass */
+/* Glassmorphism — dropdown/overlay glass (matches bg-bg-secondary look) */
 [class*="bg-bg-overlay"] {
-  -webkit-backdrop-filter: blur(24px) saturate(150%);
-  backdrop-filter: blur(24px) saturate(150%);
-  box-shadow: 0 8px 32px rgba(0, 0, 0, 0.4);
+  -webkit-backdrop-filter: blur(32px) saturate(150%);
+  backdrop-filter: blur(32px) saturate(150%);
+  box-shadow: 0 8px 32px rgba(0, 0, 0, 0.35);
 }
 
 /* Glassmorphism — light mode overrides */
@@ -132,6 +134,16 @@ body {
 
 ::-webkit-scrollbar-thumb:hover {
   background: rgba(255, 255, 255, 0.25);
+}
+
+/* Opt-in: hide the scrollbar on horizontally-scrollable strips (e.g. mobile
+   tab rows) while keeping them scrollable by touch/trackpad. */
+.no-scrollbar {
+  scrollbar-width: none;
+  -ms-overflow-style: none;
+}
+.no-scrollbar::-webkit-scrollbar {
+  display: none;
 }
 
 /* react-datepicker dark theme */

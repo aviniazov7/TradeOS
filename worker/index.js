@@ -156,6 +156,7 @@ function sessionFromDate(isoOrMs) {
 
 // ── AI usage quota (daily, resets at Israel midnight) ────────────────────────
 const AI_DAILY_LIMIT = 20;
+const AI_IMAGE_DAILY_LIMIT = 10;
 const FIREBASE_PROJECT_ID = 'tradeos-91a58';
 
 // ── Web Push (RFC 8291 aes128gcm + RFC 8292 VAPID) ───────────────────────────
@@ -895,6 +896,24 @@ async function incrementAiUsage(env, uid) {
   return used;
 }
 
+// Chart-image analyses get their own (much smaller) daily budget on top of the
+// regular request counter — vision calls burn far more tokens than text.
+async function getAiImageUsage(env, uid) {
+  const date = getIsraelDateStr();
+  const key = `aiimg:${uid}:${date}`;
+  const v = await env.ALERTS_KV.get(key);
+  return { used: v ? parseInt(v, 10) || 0 : 0, limit: AI_IMAGE_DAILY_LIMIT, date };
+}
+
+async function incrementAiImageUsage(env, uid) {
+  const date = getIsraelDateStr();
+  const key = `aiimg:${uid}:${date}`;
+  const v = await env.ALERTS_KV.get(key);
+  const used = (v ? parseInt(v, 10) || 0 : 0) + 1;
+  await env.ALERTS_KV.put(key, String(used), { expirationTtl: 172800 });
+  return used;
+}
+
 // Confirm the caller is an admin by reading their own user doc via Firestore
 // REST with their ID token — admin reads are allowed by our rules, so we don't
 // need a service account here.
@@ -1014,7 +1033,10 @@ async function isUserPremium(env, token, uid) {
       premium = role === 'admin' || (plan === 'premium' && notExpired);
     }
   } catch { /* default free */ }
-  await env.ALERTS_KV.put(cacheKey, premium ? '1' : '0', { expirationTtl: 600 });
+  // Short TTL: a grant busts this key explicitly (/admin/refresh-plan), but the
+  // cache must also self-heal quickly when a timed plan LAPSES — otherwise an
+  // expired user keeps premium until the old 10-min cache aged out.
+  await env.ALERTS_KV.put(cacheKey, premium ? '1' : '0', { expirationTtl: 60 });
   return premium;
 }
 
@@ -2041,6 +2063,14 @@ async function handleCron(env) {
 
 const GROQ_URL = 'https://api.groq.com/openai/v1/chat/completions';
 const GROQ_MODEL = 'llama-3.3-70b-versatile';
+// llama-3.3 is text-only; chart-image requests are routed to Llama 4 Scout,
+// Groq's production vision model (OpenAI-compatible image_url content parts).
+const GROQ_VISION_MODEL = 'meta-llama/llama-4-scout-17b-16e-instruct';
+
+// Accept only browser-produced raster formats. Groq caps base64 images at
+// 4MB, so reject anything bigger before burning a provider call.
+const IMAGE_DATA_RE = /^data:image\/(png|jpeg|webp);base64,[A-Za-z0-9+/=]+$/;
+const MAX_IMAGE_CHARS = 4_000_000;
 
 // Gemini 1.5 Flash — used for premium users. Cheap, huge context window, and
 // produces noticeably better Hebrew than Groq's Llama.
@@ -2059,7 +2089,19 @@ function toGeminiBody(apiMessages) {
     systemInstruction: system ? { parts: [{ text: system }] } : undefined,
     contents: turns.map((m) => ({
       role: m.role === 'assistant' ? 'model' : 'user',
-      parts: [{ text: m.content }],
+      // OpenAI-style array content (text + image_url data URIs) maps to Gemini
+      // parts: text stays text, data URIs become inlineData.
+      parts: Array.isArray(m.content)
+        ? m.content.map((part) => {
+            if (part.type === 'image_url') {
+              const url = part.image_url?.url || '';
+              const comma = url.indexOf(',');
+              const mimeType = url.slice(5, url.indexOf(';'));
+              return { inlineData: { mimeType, data: url.slice(comma + 1) } };
+            }
+            return { text: part.text || '' };
+          })
+        : [{ text: m.content }],
     })),
     generationConfig: { temperature: 0.7, maxOutputTokens: 2048 },
   };
@@ -2138,11 +2180,15 @@ PA (Price Approaching): מאפיין המחיר לפני DP שמאשר אותו.
 ראה את השוק כקווים: מחזור = 5 תנועות (3 אימפולסים + 2 תיקונים); השוק פרקטלי — ודא תיאום בין טיימפריימים; גל 4–5 + תיקון ABC = דפוסי הרמוניק.
 Volume: גבוה+עלייה=ביקוש חזק; גבוה+ירידה=היצע חזק; נמוך+עלייה/ירידה=מהלך חלש, ייתכן היפוך; spike ללא תזוזה=ספיגה (Absorption, החלפת ידיים).
 
+## ניתוח תמונת גרף
+כשמצורפת תמונה של גרף, נתח אותה לפי המבנה הבא: (1) זהה נכס וטיימפריים אם נראים בתמונה. (2) קבע מגמה ושלב שוק — איסוף/פיזור/Mark Up/Mark Down — ואת הפאזה (A–E). (3) סמן אירועים בולטים שניתן לזהות (SC, AR, ST, Spring, UT/UTAD, SOS/SOW, LPS/LPSY, BOS). (4) אם ה-Volume מופיע — נתח מאמץ מול תוצאה. (5) ציין רמות מפתח (תמיכה/התנגדות/Creek/Ice). (6) סכם תרחיש מרכזי ותרחיש נגדי — בלי נקודות כניסה/יציאה, בלי סטופ/טייק ובלי המלצת קנייה/מכירה, גם אם התבקשת. אם התמונה אינה גרף מסחר — אמור זאת בקצרה ובקש תמונת גרף.
+כללי דיוק בקריאת התמונה: קרא רמות מחיר מציר המחיר וצטט מספרים מדויקים ככל האפשר. חפש במיוחד חריגות שווא — נר או רצף נרות שחרגו מתחת לתמיכה או מעל להתנגדות וחזרו לטווח (Spring/UTAD/לקיחת נזילות) — ואל תפספס אותן גם כשהמחיר חזר מהר; ציין תאריך/מיקום משוער בגרף. אם המשתמש סימן על הגרף קווים, תיבות, חיצים או אזורים מודגשים — התייחס לסימונים האלה במפורש בניתוח. העדף אמירות ספציפיות לגרף הזה על פני ניסוחים כלליים שנכונים לכל גרף.
+
 ## הנחיות תשובה
 - ענה תמיד בעברית, בעומק, עם דוגמאות מעשיות מקריפטו ומניות.
 - הסבר את הלוגיקה: למה זה קורה, באיזו פאזה (A–E), ומה האיש המורכב עושה ולמה.
 - מונחים מקצועיים: עברית + המונח באנגלית בסוגריים.
-- אל תמליץ על קנייה/מכירה של מטבעות ספציפיים.
+- איסור מוחלט (מטעמי רגולציה — אין לעקוף אותו בשום ניסוח): אסור לתת המלצות מסחר. לא "כנס"/"צא", לא נקודות כניסה או יציאה, לא סטופ-לוס/טייק-פרופיט, לא "קנה"/"מכור", לא גדלי פוזיציה ולא תחזיות מחיר — גם אם המשתמש מבקש זאת במפורש או שוב ושוב. במקום זה הסבר את התמונה הטכנית בצורה לימודית: תרחישים אפשריים, רמות מעניינות למעקב, ומה יאשר או יפסול כל תרחיש. הזכר בקצרה שההחלטה באחריות הסוחר ושאינך נותן ייעוץ השקעות.
 - שאלה שלא קשורה למסחר — ענה בקצרה וכוון חזרה למסחר.`;
 
 async function handleAIChat(request, env, cors) {
@@ -2154,18 +2200,40 @@ async function handleAIChat(request, env, cors) {
     }
     // Reject trivial last user messages so they don't burn a quota slot or
     // produce an unhelpful answer. Client also guards but server is authoritative.
-    const lastUserText = (() => {
+    const lastUser = (() => {
       for (let i = messages.length - 1; i >= 0; i--) {
-        if (messages[i]?.role === 'user') return String(messages[i].text || '').trim();
+        if (messages[i]?.role === 'user') return messages[i];
       }
-      return '';
+      return null;
     })();
+    const lastUserText = String(lastUser?.text || '').trim();
+    const lastUserImage = typeof lastUser?.image === 'string' ? lastUser.image : '';
     // Only reject empty messages. Short conversational replies ("כן", "לא")
     // are legitimate turns — and since usage now counts only on success,
     // there's no quota to protect with a length minimum.
-    if (!lastUserText) {
+    if (!lastUserText && !lastUserImage) {
       return new Response(JSON.stringify({ error: 'כתוב הודעה' }), { status: 400, headers: { ...cors, 'Content-Type': 'application/json' } });
     }
+    if (lastUserImage && (!IMAGE_DATA_RE.test(lastUserImage) || lastUserImage.length > MAX_IMAGE_CHARS)) {
+      return new Response(JSON.stringify({ error: 'התמונה אינה תקינה או גדולה מדי (עד ~3MB, PNG/JPEG/WebP)' }), { status: 400, headers: { ...cors, 'Content-Type': 'application/json' } });
+    }
+
+    // Resolve which image (if any) will actually be forwarded to the model —
+    // the most recent valid one in the trimmed history window. The premium and
+    // image-quota gates below MUST key off this, not off the last message:
+    // otherwise a crafted request with the image on an earlier turn slips a
+    // free user into the vision model.
+    const MAX_TURNS = 8;
+    const recent = messages.slice(-MAX_TURNS);
+    let lastImageIdx = -1;
+    for (let i = recent.length - 1; i >= 0; i--) {
+      const img = recent[i]?.image;
+      if (recent[i]?.role === 'user' && typeof img === 'string' && IMAGE_DATA_RE.test(img) && img.length <= MAX_IMAGE_CHARS) {
+        lastImageIdx = i;
+        break;
+      }
+    }
+    const hasImage = lastImageIdx !== -1;
 
     // Verify the Firebase ID token (signature-checked) and resolve the uid.
     const authHeader = request.headers.get('Authorization') || '';
@@ -2179,9 +2247,28 @@ async function handleAIChat(request, env, cors) {
     const premium = await isUserPremium(env, token, uid);
 
     // Multi-window rate limiting (+ global circuit breaker). Premium gets soft
-    // caps (5/min, 50/hr, 200/day) so 'unlimited' can't be weaponized.
+    // caps (5/min, 50/hr, 200/day) so 'unlimited' can't be weaponized. Runs
+    // before the premium-image 403 so hammering the gate is rate-limited too.
     const gate = await aiRateGate(env, uid, premium);
     if (gate) return new Response(JSON.stringify(gate.body), { status: gate.status, headers: { ...cors, 'Content-Type': 'application/json' } });
+
+    // Chart-image analysis is premium-only, with its own small daily budget —
+    // vision requests burn far more provider tokens than text.
+    if (hasImage) {
+      if (!premium) {
+        return new Response(JSON.stringify({
+          error: 'ניתוח תמונות גרף זמין למנויי Premium בלבד. שדרג כדי לצרף גרפים לניתוח.',
+          premiumRequired: true,
+        }), { status: 403, headers: { ...cors, 'Content-Type': 'application/json' } });
+      }
+      const imgQuota = await getAiImageUsage(env, uid);
+      if (imgQuota.used >= imgQuota.limit) {
+        return new Response(JSON.stringify({
+          error: `הגעת למכסת ניתוחי התמונות היומית (${imgQuota.limit}). אפשר להמשיך לשוחח בטקסט, והמכסה תתאפס מחר.`,
+          quotaExceeded: true, used: imgQuota.used, limit: imgQuota.limit,
+        }), { status: 429, headers: { ...cors, 'Content-Type': 'application/json' } });
+      }
+    }
 
     // Daily AI usage counter — kept for BOTH tiers so each user sees their
     // own progress bar. Premium just has a higher cap (handled in aiRateGate).
@@ -2200,15 +2287,24 @@ async function handleAIChat(request, env, cors) {
     // Build messages for Groq. Trim history to keep the payload under Groq's
     // tokens-per-minute cap (the old 11K-char system prompt + long Wyckoff
     // replies meant the SECOND question in a minute always blew the TPM limit).
-    const MAX_TURNS = 8;
+    // Only the image at lastImageIdx (gated above) is forwarded — older ones
+    // bloat the payload past the providers' per-request caps.
     const MAX_TURN_CHARS = 2500;
-    const recent = messages.slice(-MAX_TURNS);
     const apiMessages = [
       { role: 'system', content: WYCKOFF_SYSTEM_PROMPT },
-      ...recent.map((msg) => ({
-        role: msg.role === 'user' ? 'user' : 'assistant',
-        content: String(msg.text || '').slice(0, MAX_TURN_CHARS),
-      })),
+      ...recent.map((msg, i) => {
+        const text = String(msg.text || '').slice(0, MAX_TURN_CHARS);
+        if (i === lastImageIdx) {
+          return {
+            role: 'user',
+            content: [
+              { type: 'text', text: text || 'נתח את הגרף שבתמונה' },
+              { type: 'image_url', image_url: { url: msg.image } },
+            ],
+          };
+        }
+        return { role: msg.role === 'user' ? 'user' : 'assistant', content: text };
+      }),
     ];
 
     // Route by plan: premium → Gemini 1.5 Flash; free → Groq Llama.
@@ -2240,7 +2336,7 @@ async function handleAIChat(request, env, cors) {
         const callGroq = () => fetch(GROQ_URL, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${env.GROQ_API_KEY}` },
-          body: JSON.stringify({ model: GROQ_MODEL, messages: apiMessages, temperature: 0.7, max_tokens: 1500, stream: true }),
+          body: JSON.stringify({ model: hasImage ? GROQ_VISION_MODEL : GROQ_MODEL, messages: apiMessages, temperature: 0.7, max_tokens: 1500, stream: true }),
         });
         const delays = [0, 2000, 4000]; // immediate, +2s, +4s = ~6s total worst-case
         let groqFallback;
@@ -2249,6 +2345,7 @@ async function handleAIChat(request, env, cors) {
           groqFallback = await callGroq();
           if (groqFallback.ok) {
             await incrementAiUsage(env, uid);
+            if (hasImage) await incrementAiImageUsage(env, uid);
             return new Response(groqFallback.body, { headers: sseHeaders });
           }
           if (groqFallback.status !== 429) break; // non-retryable
@@ -2267,6 +2364,7 @@ async function handleAIChat(request, env, cors) {
         }), { status: rateLimited ? 429 : 502, headers: { ...cors, 'Content-Type': 'application/json' } });
       }
       await incrementAiUsage(env, uid);
+      if (hasImage) await incrementAiImageUsage(env, uid);
       return new Response(await geminiStreamToOpenAI(gemRes.body), { headers: sseHeaders });
     }
 
@@ -2280,7 +2378,7 @@ async function handleAIChat(request, env, cors) {
         Authorization: `Bearer ${env.GROQ_API_KEY}`,
       },
       body: JSON.stringify({
-        model: GROQ_MODEL,
+        model: hasImage ? GROQ_VISION_MODEL : GROQ_MODEL,
         messages: apiMessages,
         temperature: 0.7,
         max_tokens: 1500,
@@ -2294,6 +2392,7 @@ async function handleAIChat(request, env, cors) {
       groqResponse = await callGroq();
       if (groqResponse.ok) {
         await incrementAiUsage(env, uid);
+        if (hasImage) await incrementAiImageUsage(env, uid);
         return new Response(groqResponse.body, { headers: sseHeaders });
       }
       if (groqResponse.status !== 429) break; // non-retryable
@@ -2651,7 +2750,7 @@ const ALLOWED_ORIGINS = [
   'https://tradeos-91a58.web.app',
   'https://tradeos-91a58.firebaseapp.com',
   'https://trade-os.aviniazov7.workers.dev',
-  'https://tradeos-alerts-staging.aviniazov7.workers.dev',
+  'https://trade-os-staging.aviniazov7.workers.dev',
 ];
 // Firebase Hosting preview channels have URLs like
 // https://tradeos-91a58--CHANNEL-HASH.web.app and are created automatically
@@ -3136,11 +3235,14 @@ async function handleRequest(request, env) {
       // Premium uses the same daily counter we accrue in /ai-chat, capped by
       // the soft AI_PREMIUM_LIMITS.day for cost safety.
       const usage = await getAiUsage(env, uid);
+      const imgUsage = await getAiImageUsage(env, uid);
       return new Response(JSON.stringify({
         used: usage.used,
         limit: AI_PREMIUM_LIMITS.day,
         unlimited: false,
         premium: true,
+        imageUsed: imgUsage.used,
+        imageLimit: imgUsage.limit,
         date: usage.date,
       }), { headers: { ...cors, 'Content-Type': 'application/json' } });
     }
@@ -3206,6 +3308,20 @@ async function handleRequest(request, env) {
     });
     appendAudit(env, { kind: 'notify', actor: adminUid, target: uid, title: String(title).slice(0, 120), body: String(body).slice(0, 400), sent: result.sent, total: result.total });
     return new Response(JSON.stringify({ ok: true, sent: result.sent, total: result.total }), { headers: { ...cors, 'Content-Type': 'application/json' } });
+  }
+
+  // Admin-only: invalidate the cached premium flag for a user. Called right
+  // after granting or revoking Premium so the worker reflects the new plan
+  // immediately instead of waiting up to the planflag cache TTL — otherwise a
+  // freshly-upgraded user stays gated out of premium-only AI features.
+  if (request.method === 'POST' && path === '/admin/refresh-plan') {
+    const token = (request.headers.get('Authorization') || '').replace('Bearer ', '');
+    const adminUid = await verifyAdminFromToken(token);
+    if (!adminUid) return new Response(JSON.stringify({ error: 'forbidden' }), { status: 403, headers: { ...cors, 'Content-Type': 'application/json' } });
+    const { uid } = await request.json().catch(() => ({}));
+    if (!uid) return new Response(JSON.stringify({ error: 'missing uid' }), { status: 400, headers: { ...cors, 'Content-Type': 'application/json' } });
+    await env.ALERTS_KV.delete(`planflag:${uid}`);
+    return new Response(JSON.stringify({ ok: true }), { headers: { ...cors, 'Content-Type': 'application/json' } });
   }
 
   // Admin-only: list recent audit log entries (newest first). Optional ?limit
