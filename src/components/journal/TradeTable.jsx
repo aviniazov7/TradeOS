@@ -1,5 +1,5 @@
 import { useState, Fragment } from 'react';
-import { Pencil, Trash2, Share2, ExternalLink, ChevronDown, TrendingUp, TrendingDown } from 'lucide-react';
+import { Pencil, Trash2, Share2, ExternalLink, ChevronDown, TrendingUp, TrendingDown, Target, ShieldCheck, Gauge, ClipboardCheck } from 'lucide-react';
 import { formatDate, formatPrice, formatCurrency, formatPercent, formatRR } from '../../utils/formatters';
 import { MISTAKE_LABELS, getExchangeLogo } from '../../utils/constants';
 import CoinIcon from '../shared/CoinIcon';
@@ -25,6 +25,39 @@ const getMonthLabel = (trade) => {
 };
 
 const ratingLabels = { 1: 'נמוך', 2: 'בינוני-', 3: 'בינוני', 4: 'טוב', 5: 'מעולה' };
+
+// Color scale from low (red) to high (green) — matches the new-trade form.
+const RATING_COLORS = ['text-loss', 'text-orange-400', 'text-breakeven', 'text-lime-400', 'text-profit'];
+const MENTAL_FIELDS = [
+  { key: 'focusRating', label: 'ריכוז', Icon: Target },
+  { key: 'confidenceRating', label: 'ביטחון', Icon: ShieldCheck },
+  { key: 'stressRating', label: 'לחץ', Icon: Gauge },
+  { key: 'planAdherenceRating', label: 'עקביות', Icon: ClipboardCheck },
+];
+
+// Mental-state ratings shown in the expanded trade detail, styled to match
+// the new-trade form (professional icons + color-graded N/5 level).
+function MentalRatings({ trade, className }) {
+  if (!MENTAL_FIELDS.some((f) => trade[f.key])) return null;
+  return (
+    <div className={className}>
+      {MENTAL_FIELDS.map((f) => {
+        const val = trade[f.key];
+        if (!val) return null;
+        const color = RATING_COLORS[val - 1] || 'text-text-muted';
+        const Icon = f.Icon;
+        return (
+          <div key={f.key}>
+            <span className="text-text-muted flex items-center gap-1">
+              <Icon className={`w-3.5 h-3.5 ${color}`} /> {f.label}
+            </span>
+            <p className={`font-semibold ${color}`}>{val}/5 {ratingLabels[val]}</p>
+          </div>
+        );
+      })}
+    </div>
+  );
+}
 
 /* ──── Shared expanded details (used by both mobile & desktop) ──── */
 function ExpandedDetails({ trade, status, onEdit, onDelete, onShare }) {
@@ -108,34 +141,7 @@ function ExpandedDetails({ trade, status, onEdit, onDelete, onShare }) {
       )}
 
       {/* Mental state ratings */}
-      {(trade.focusRating || trade.confidenceRating || trade.stressRating || trade.planAdherenceRating) && (
-        <div className="grid grid-cols-4 gap-2 text-[11px]">
-          {trade.focusRating && (
-            <div>
-              <span className="text-text-muted">ריכוז</span>
-              <p className="text-text-secondary">{trade.focusRating}/5 {ratingLabels[trade.focusRating]}</p>
-            </div>
-          )}
-          {trade.confidenceRating && (
-            <div>
-              <span className="text-text-muted">ביטחון</span>
-              <p className="text-text-secondary">{trade.confidenceRating}/5 {ratingLabels[trade.confidenceRating]}</p>
-            </div>
-          )}
-          {trade.stressRating && (
-            <div>
-              <span className="text-text-muted">לחץ</span>
-              <p className="text-text-secondary">{trade.stressRating}/5 {ratingLabels[trade.stressRating]}</p>
-            </div>
-          )}
-          {trade.planAdherenceRating && (
-            <div>
-              <span className="text-text-muted">עקביות</span>
-              <p className="text-text-secondary">{trade.planAdherenceRating}/5 {ratingLabels[trade.planAdherenceRating]}</p>
-            </div>
-          )}
-        </div>
-      )}
+      <MentalRatings trade={trade} className="grid grid-cols-4 gap-2 text-[11px]" />
 
       {/* Mistakes, Entry reason, Tags, TradingView */}
       {(trade.mistakes?.length > 0 || trade.entryReason || trade.tags || trade.tradingViewUrl) && (
@@ -399,34 +405,7 @@ export default function TradeTable({ trades, onEdit, onDelete, onShare, isLimitP
                             )}
 
                             {/* Group 2: Mental state ratings */}
-                            {(trade.focusRating || trade.confidenceRating || trade.stressRating || trade.planAdherenceRating) && (
-                              <div className="flex gap-10 bg-bg-tertiary/50 rounded-lg px-6 py-2.5">
-                                {trade.focusRating && (
-                                  <div>
-                                    <span className="text-text-muted">ריכוז</span>
-                                    <p className="text-text-secondary">{trade.focusRating}/5 {ratingLabels[trade.focusRating]}</p>
-                                  </div>
-                                )}
-                                {trade.confidenceRating && (
-                                  <div>
-                                    <span className="text-text-muted">ביטחון</span>
-                                    <p className="text-text-secondary">{trade.confidenceRating}/5 {ratingLabels[trade.confidenceRating]}</p>
-                                  </div>
-                                )}
-                                {trade.stressRating && (
-                                  <div>
-                                    <span className="text-text-muted">לחץ</span>
-                                    <p className="text-text-secondary">{trade.stressRating}/5 {ratingLabels[trade.stressRating]}</p>
-                                  </div>
-                                )}
-                                {trade.planAdherenceRating && (
-                                  <div>
-                                    <span className="text-text-muted">עקביות</span>
-                                    <p className="text-text-secondary">{trade.planAdherenceRating}/5 {ratingLabels[trade.planAdherenceRating]}</p>
-                                  </div>
-                                )}
-                              </div>
-                            )}
+                            <MentalRatings trade={trade} className="flex gap-10 bg-bg-tertiary/50 rounded-lg px-6 py-2.5 text-[11px]" />
 
                             {/* Group 3: Mistakes, Reason, Tags, TradingView, Notes */}
                             {trade.mistakes?.length > 0 && (

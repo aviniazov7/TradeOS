@@ -148,8 +148,8 @@ export default function PremiumPage() {
                 onKeyDown={(e) => { if (e.key === 'Enter') handleRedeem(); }}
                 placeholder="הזן קוד"
                 disabled={redeeming}
-                className="flex-1 bg-bg-tertiary border border-border-primary rounded-lg px-3 py-2 text-sm text-text-primary outline-none focus:border-accent-primary font-mono uppercase"
-                dir="ltr"
+                className="flex-1 bg-bg-tertiary border border-border-primary rounded-lg px-3 py-2 text-sm text-text-primary outline-none focus:border-accent-primary font-mono uppercase text-right"
+                dir="rtl"
                 maxLength={32}
               />
               <button
