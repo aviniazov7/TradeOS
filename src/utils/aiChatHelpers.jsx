@@ -5,36 +5,68 @@ import DOMPurify from 'dompurify';
 // pass un-sanitized HTML to the DOM. Tags/attrs are tightly restricted so
 // event handlers (onclick, onerror, etc.) and embedded scripts are stripped.
 const SANITIZE_CONFIG = {
-  ALLOWED_TAGS: ['strong', 'code', 'em'],
+  ALLOWED_TAGS: ['strong', 'code', 'em', 'span'],
   ALLOWED_ATTR: ['class'],
   FORBID_TAGS: ['script', 'style', 'iframe', 'object', 'embed', 'link'],
   ALLOW_DATA_ATTR: false,
 };
 
+// Sentiment keywords — bullish painted green, bearish red — so a chart read
+// scans at a glance instead of reading as a wall of grey text. Hebrew has no
+// usable \b word boundary, so we match substrings (minor over-coloring on
+// prefixed forms like "להתנגדות" is acceptable and still reads correctly).
+const BULLISH = ['תמיכה', 'ביקוש', 'קנייה', 'לונג', 'פריצה', 'עלייה', 'שורי', 'Accumulation', 'Spring', 'SOS'];
+const BEARISH = ['התנגדות', 'היצע', 'מכירה', 'שורט', 'שבירה', 'ירידה', 'דובי', 'Distribution', 'UTAD', 'SOW'];
+
+// Price levels / ranges ($0.7400, 0.7500$, $0.74–$0.75). Highlighted as a
+// monospace accent chip so the actionable numbers stand out.
+const PRICE_RE = /(\$?\d[\d,]*(?:\.\d+)?\s*[-–]\s*\$?\d[\d,]*(?:\.\d+)?\$?|\$\s?\d[\d,]*(?:\.\d+)?\$?|\d[\d,]*(?:\.\d+)?\s?\$)/g;
+
+const escapeRe = (s) => s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+
 function buildLineHtml(line) {
-  let formatted = line.replace(/\*\*(.+?)\*\*/g, '<strong>$1</strong>');
-  formatted = formatted.replace(/`(.+?)`/g, '<code class="bg-bg-tertiary px-1 py-0.5 rounded text-accent-primary text-[11px]">$1</code>');
-  return formatted;
+  let s = line.replace(PRICE_RE, (m) => `<span class="font-mono text-accent-primary bg-accent-primary/10 px-1 rounded">${m}</span>`);
+  for (const w of BULLISH) s = s.replace(new RegExp(escapeRe(w), 'g'), (m) => `<span class="text-profit font-medium">${m}</span>`);
+  for (const w of BEARISH) s = s.replace(new RegExp(escapeRe(w), 'g'), (m) => `<span class="text-loss font-medium">${m}</span>`);
+  s = s.replace(/\*\*(.+?)\*\*/g, '<strong>$1</strong>');
+  s = s.replace(/`(.+?)`/g, '<code class="bg-bg-tertiary px-1 py-0.5 rounded text-accent-primary text-[11px]">$1</code>');
+  return s;
 }
 
 function safeHtml(raw) {
   return DOMPurify.sanitize(raw, SANITIZE_CONFIG);
 }
 
+// A numbered section header ("1. מבנה כללי:") or a markdown "### Title".
+const isHeader = (line) => /^\s*\*{0,2}\s*\d+\.\s+\S/.test(line) || /^#{1,3}\s/.test(line);
+
 export function formatAIText(text) {
   const lines = text.split('\n');
   return lines.map((line, i) => {
-    const formatted = buildLineHtml(line);
+    if (!line.trim()) return <br key={i} />;
 
-    if (/^[-•*]\s/.test(formatted)) {
-      return <li key={i} className="mr-4 mb-0.5" dangerouslySetInnerHTML={{ __html: safeHtml(formatted.replace(/^[-•*]\s/, '')) }} />;
+    if (isHeader(line)) {
+      const stripped = line.replace(/^#{1,3}\s/, '').replace(/^\s*\*{2}/, '').replace(/\*{2}\s*$/, '');
+      return (
+        <p
+          key={i}
+          className="font-bold text-accent-primary mt-3 mb-1.5 text-[13px] border-r-2 border-accent-primary/40 pr-2"
+          dangerouslySetInnerHTML={{ __html: safeHtml(buildLineHtml(stripped)) }}
+        />
+      );
     }
-    if (/^#{1,3}\s/.test(formatted)) {
-      const content = formatted.replace(/^#{1,3}\s/, '');
-      return <p key={i} className="font-bold text-text-primary mt-2 mb-1" dangerouslySetInnerHTML={{ __html: safeHtml(content) }} />;
+
+    const formatted = buildLineHtml(line);
+    if (/^[-•*]\s/.test(line)) {
+      return (
+        <li
+          key={i}
+          className="mr-5 mb-1 list-disc list-outside marker:text-accent-primary"
+          dangerouslySetInnerHTML={{ __html: safeHtml(formatted.replace(/^[-•*]\s/, '')) }}
+        />
+      );
     }
-    if (!formatted.trim()) return <br key={i} />;
-    return <p key={i} className="mb-0.5" dangerouslySetInnerHTML={{ __html: safeHtml(formatted) }} />;
+    return <p key={i} className="mb-1 leading-relaxed text-text-secondary" dangerouslySetInnerHTML={{ __html: safeHtml(formatted) }} />;
   });
 }
 
