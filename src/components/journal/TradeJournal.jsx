@@ -663,9 +663,9 @@ export default function TradeJournal() {
               {[
                 { label: 'רצף נוכחי', value: streakText, color: streakColor },
                 { label: 'מקדם רווח', value: stats.profitFactor === Infinity ? '∞' : stats.profitFactor.toFixed(2), color: stats.profitFactor >= 1.5 ? 'text-profit' : 'text-loss' },
-                { label: 'שארפ', value: stats.sharpeRatio.toFixed(2) },
-                { label: 'קלמאר', value: stats.calmarRatio.toFixed(2) },
-                { label: 'סורטינו', value: stats.sortinoRatio === Infinity ? '∞' : stats.sortinoRatio.toFixed(2) },
+                { label: 'תשואה/תנודתיות', value: stats.sharpeRatio.toFixed(2) },
+                { label: 'תשואה/נפילה', value: stats.calmarRatio.toFixed(2) },
+                { label: 'תשואה/הפסדים', value: stats.sortinoRatio === Infinity ? '∞' : stats.sortinoRatio.toFixed(2) },
                 { label: 'התאוששות', value: stats.recoveryFactor.toFixed(2), color: stats.recoveryFactor >= 1 ? 'text-profit' : 'text-loss' },
                 { label: 'ירידה מקס׳', value: `-${stats.maxDrawdown.toFixed(1)}%`, color: 'text-loss' },
                 { label: 'סיכון/סיכוי', value: `1:${stats.avgRR.toFixed(2)}` },
