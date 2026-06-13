@@ -3,7 +3,6 @@ import { Search } from 'lucide-react';
 import { COINS } from '../../utils/constants';
 import { searchCoins } from '../../services/coingeckoApi';
 import { cacheImage } from '../../services/coinImageCache';
-import CoinIcon from './CoinIcon';
 
 const inputClass = 'w-full bg-bg-tertiary border border-border-primary rounded-lg px-3 py-1.5 text-[11px] text-text-primary outline-none focus:border-accent-primary transition-colors';
 
@@ -103,11 +102,10 @@ export default function PairSearchMulti({ selectedPairs = [], onAdd }) {
               key={item.pair}
               type="button"
               onClick={() => handleSelect(item)}
-              className="w-full flex items-center gap-2 px-2.5 py-1.5 text-right hover:bg-bg-tertiary transition-colors cursor-pointer"
+              className="w-full flex items-center justify-between px-2.5 py-1.5 text-xs transition-colors cursor-pointer hover:bg-bg-tertiary"
             >
-              <CoinIcon pair={item.pair} className="w-4 h-4" />
-              <span className="text-xs font-medium text-text-primary">{item.pair}</span>
-              <span className="text-[10px] text-text-muted truncate">{item.name}</span>
+              <span className="text-text-muted text-[10px] truncate">{item.name}</span>
+              <span className="font-medium text-text-primary">{item.pair}</span>
             </button>
           ))}
           {loading && (
