@@ -549,11 +549,12 @@ export default function TradeJournal() {
         </div>
 
         {/* Row 2: Mobile tabs + period filter */}
-        <div className="md:hidden flex items-center justify-between">
-          <div className="flex items-center">
+        <div className="md:hidden">
+          {/* Tabs scroll horizontally so they never compress each other */}
+          <div className="flex items-center overflow-x-auto no-scrollbar -mx-1 px-1">
             <button
               onClick={() => setTab('trades')}
-              className={`px-2.5 py-1.5 text-xs font-medium rounded-lg transition-colors cursor-pointer whitespace-nowrap ${
+              className={`px-2.5 py-1.5 text-xs font-medium rounded-lg transition-colors cursor-pointer whitespace-nowrap flex-shrink-0 ${
                 tab === 'trades' ? 'bg-accent-primary/15 text-accent-primary' : 'text-text-muted hover:text-text-primary hover:bg-bg-tertiary'
               }`}
             >
@@ -561,7 +562,7 @@ export default function TradeJournal() {
             </button>
             <button
               onClick={() => setTab('analytics')}
-              className={`px-2.5 py-1.5 text-xs font-medium rounded-lg transition-colors cursor-pointer whitespace-nowrap ${
+              className={`px-2.5 py-1.5 text-xs font-medium rounded-lg transition-colors cursor-pointer whitespace-nowrap flex-shrink-0 ${
                 tab === 'analytics' ? 'bg-accent-primary/15 text-accent-primary' : 'text-text-muted hover:text-text-primary hover:bg-bg-tertiary'
               }`}
             >
@@ -569,7 +570,7 @@ export default function TradeJournal() {
             </button>
             <button
               onClick={() => setTab('aiCoach')}
-              className={`px-2.5 py-1.5 text-xs font-medium rounded-lg transition-colors cursor-pointer whitespace-nowrap inline-flex items-center gap-1 ${
+              className={`px-2.5 py-1.5 text-xs font-medium rounded-lg transition-colors cursor-pointer whitespace-nowrap flex-shrink-0 inline-flex items-center gap-1 ${
                 tab === 'aiCoach' ? 'bg-accent-primary/15 text-accent-primary' : 'text-text-muted hover:text-text-primary hover:bg-bg-tertiary'
               }`}
             >
@@ -578,7 +579,7 @@ export default function TradeJournal() {
             </button>
             <button
               onClick={() => setTab('calendar')}
-              className={`px-2.5 py-1.5 text-xs font-medium rounded-lg transition-colors cursor-pointer whitespace-nowrap ${
+              className={`px-2.5 py-1.5 text-xs font-medium rounded-lg transition-colors cursor-pointer whitespace-nowrap flex-shrink-0 ${
                 tab === 'calendar' ? 'bg-accent-primary/15 text-accent-primary' : 'text-text-muted hover:text-text-primary hover:bg-bg-tertiary'
               }`}
             >
@@ -586,14 +587,19 @@ export default function TradeJournal() {
             </button>
             <button
               onClick={() => setTab('exchange')}
-              className={`px-2.5 py-1.5 text-xs font-medium rounded-lg transition-colors cursor-pointer whitespace-nowrap ${
+              className={`px-2.5 py-1.5 text-xs font-medium rounded-lg transition-colors cursor-pointer whitespace-nowrap flex-shrink-0 ${
                 tab === 'exchange' ? 'bg-accent-primary/15 text-accent-primary' : 'text-text-muted hover:text-text-primary hover:bg-bg-tertiary'
               }`}
             >
               בורסאות
             </button>
           </div>
-          {tab === 'analytics' && <TimePeriodFilter value={period} onChange={setPeriod} dropdown />}
+          {/* Period filter on its own row so it isn't crushed against the tabs */}
+          {tab === 'analytics' && (
+            <div className="mt-2 flex justify-end">
+              <TimePeriodFilter value={period} onChange={setPeriod} dropdown />
+            </div>
+          )}
         </div>
       </div>
 
