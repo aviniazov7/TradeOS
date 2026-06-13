@@ -3734,10 +3734,14 @@ async function handleRequest(request, env) {
     // which made the panel show "x / 20" for users the chat shows 200.
     // The admin's token can read other users' docs (allowed by rules).
     const premium = await isUserPremium(env, token, targetUid);
+    // Chart-image analyses are premium-only and tracked separately, so the
+    // panel can show that quota too.
+    const imgUsage = premium ? await getAiImageUsage(env, targetUid) : null;
     return new Response(JSON.stringify({
       ...usage,
       limit: premium ? AI_PREMIUM_LIMITS.day : usage.limit,
       premium,
+      ...(imgUsage ? { imageUsed: imgUsage.used, imageLimit: imgUsage.limit } : {}),
     }), { headers: { ...cors, 'Content-Type': 'application/json' } });
   }
 
