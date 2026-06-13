@@ -3,7 +3,7 @@ import toast from 'react-hot-toast';
 import DatePicker, { registerLocale } from 'react-datepicker';
 import { he } from 'date-fns/locale';
 import 'react-datepicker/dist/react-datepicker.css';
-import { X, Plus, AlertTriangle, ShieldAlert, Percent, TrendingUp, TrendingDown, Check, Clock, CircleDot, CheckCircle2 } from 'lucide-react';
+import { X, Plus, AlertTriangle, ShieldAlert, Percent, TrendingUp, TrendingDown, Check, Clock, CircleDot, CheckCircle2, Target, ClipboardCheck, Gauge, ShieldCheck } from 'lucide-react';
 import Modal from '../shared/Modal';
 import PairSearch from './PairSearch';
 import SelectDropdown from '../shared/SelectDropdown';
@@ -65,11 +65,14 @@ function parseDate(val) {
   return isNaN(d.getTime()) ? null : d;
 }
 
+// Color scale from low (red) to high (green), used by the mental sliders.
+const RATING_COLORS = ['text-loss', 'text-orange-400', 'text-breakeven', 'text-lime-400', 'text-profit'];
+
 const MENTAL_RATINGS = [
-  { key: 'focusRating', label: 'ריכוז וחדות', emoji: ['😴', '😐', '🙂', '😊', '🎯'] },
-  { key: 'planAdherenceRating', label: 'הצמדות לתוכנית', emoji: ['❌', '😬', '🤔', '✅', '🏆'] },
-  { key: 'stressRating', label: 'לחץ / סטרס', emoji: ['😰', '😟', '😐', '😌', '🧘'] },
-  { key: 'confidenceRating', label: 'ביטחון בעסקה', emoji: ['😨', '🤨', '😐', '💪', '🔥'] },
+  { key: 'focusRating', label: 'ריכוז וחדות', Icon: Target },
+  { key: 'planAdherenceRating', label: 'הצמדות לתוכנית', Icon: ClipboardCheck },
+  { key: 'stressRating', label: 'לחץ / סטרס', Icon: Gauge },
+  { key: 'confidenceRating', label: 'ביטחון בעסקה', Icon: ShieldCheck },
 ];
 
 export default function TradeForm({ isOpen, onClose, trade, onSave, riskSettings, livePrices = {}, journalAssetClass = 'crypto' }) {
@@ -852,16 +855,24 @@ export default function TradeForm({ isOpen, onClose, trade, onSave, riskSettings
 
           {/* Mental ratings — compact 2-col */}
           <div className="bg-bg-tertiary rounded-xl p-3 grid grid-cols-2 gap-x-4 gap-y-2">
-            {MENTAL_RATINGS.map((rating) => (
-              <div key={rating.key}>
-                <div className="flex items-center justify-between mb-0.5">
-                  <span className="text-[11px] text-text-secondary">{rating.label}</span>
-                  <span className="text-sm">{rating.emoji[form[rating.key] - 1]}</span>
+            {MENTAL_RATINGS.map((rating) => {
+              const val = form[rating.key];
+              const color = RATING_COLORS[val - 1] || 'text-text-muted';
+              const Icon = rating.Icon;
+              return (
+                <div key={rating.key}>
+                  <div className="flex items-center justify-between mb-0.5">
+                    <span className="text-[11px] text-text-secondary">{rating.label}</span>
+                    <span className={`flex items-center gap-1 text-[11px] font-semibold ${color}`}>
+                      <Icon className="w-3.5 h-3.5" />
+                      {val}/5
+                    </span>
+                  </div>
+                  <input type="range" min="1" max="5" value={val}
+                    onChange={(e) => update(rating.key, parseInt(e.target.value))} className="w-full" />
                 </div>
-                <input type="range" min="1" max="5" value={form[rating.key]}
-                  onChange={(e) => update(rating.key, parseInt(e.target.value))} className="w-full" />
-              </div>
-            ))}
+              );
+            })}
           </div>
 
           {/* Dates */}
