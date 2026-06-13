@@ -2,7 +2,7 @@ import { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { motion } from 'framer-motion';
 import {
-  Crown, Check, Bot, BookOpen, Wallet, Link2, Bell, BarChart3, Sparkles, Ticket, Loader2,
+  Crown, Check, Bot, BookOpen, Wallet, Link2, Bell, BarChart3, Sparkles, Ticket, Loader2, Image, Layers,
 } from 'lucide-react';
 import toast from 'react-hot-toast';
 import { useAuth } from '../../contexts/AuthContext';
@@ -10,7 +10,7 @@ import { PREMIUM_FEATURES, PREMIUM_PRICING } from '../../utils/constants';
 import { pageVariants, pageTransition } from '../../utils/animations';
 import { redeemCoupon } from '../../services/couponService';
 
-const ICONS = { Bot, BookOpen, Wallet, Link2, Bell, BarChart3, Sparkles };
+const ICONS = { Bot, BookOpen, Wallet, Link2, Bell, BarChart3, Sparkles, Image, Layers };
 
 // Human-friendly "time remaining" string for a Premium plan with an expiry.
 // Returns null when the plan is lifetime (no expiry) or invalid.
