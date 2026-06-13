@@ -25,7 +25,7 @@ export default function TimePeriodFilter({ value, onChange, compact, dropdown })
           <ChevronDown className={`w-3 h-3 transition-transform duration-200 ${open ? 'rotate-180' : ''}`} />
         </button>
         {open && (
-          <div className="absolute top-full left-0 mt-1 bg-bg-secondary border border-border-primary rounded-lg shadow-xl z-50 min-w-[100px] overflow-hidden">
+          <div className="absolute top-full left-0 mt-1 bg-bg-overlay border border-border-primary rounded-lg shadow-xl z-50 min-w-[100px] overflow-hidden">
             {TIME_PERIODS.map((p) => (
               <button
                 key={p.key}
