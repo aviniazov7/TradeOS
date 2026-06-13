@@ -83,6 +83,13 @@ export default function ProfilePage() {
 
   const toggleAssetClass = async (id) => {
     const has = assetClasses.includes(id);
+    // Trading more than one market at once is a Premium feature. A free user
+    // who already picked a market and taps another is sent to the upgrade page.
+    if (!isPremium && !has) {
+      toast('מסחר ביותר מסוג אחד זמין ב-Premium');
+      navigate('/premium');
+      return;
+    }
     const next = has ? assetClasses.filter((x) => x !== id) : [...assetClasses, id];
     if (next.length === 0) {
       toast.error('צריך לבחור לפחות סוג מסחר אחד');
@@ -264,6 +271,9 @@ export default function ProfilePage() {
                   <span className="absolute top-2 left-2 w-4 h-4 rounded-full bg-accent-primary flex items-center justify-center">
                     <Check className="w-3 h-3 text-bg-primary" />
                   </span>
+                )}
+                {!isPremium && !active && !ac.soon && (
+                  <Crown className="absolute top-2 left-2 w-3.5 h-3.5 text-accent-primary/70" />
                 )}
                 <ac.Icon className={`w-5 h-5 mb-1.5 ${active && !ac.soon ? 'text-accent-primary' : 'text-text-muted'}`} />
                 <div className="text-sm font-semibold text-text-primary">{ac.label}</div>
