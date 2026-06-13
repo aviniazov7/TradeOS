@@ -662,13 +662,13 @@ export default function TradeJournal() {
             <div className="grid grid-cols-3 md:grid-cols-5 lg:grid-cols-10 gap-px">
               {[
                 { label: 'רצף נוכחי', value: streakText, color: streakColor },
-                { label: 'Profit Factor', value: stats.profitFactor === Infinity ? '∞' : stats.profitFactor.toFixed(2), color: stats.profitFactor >= 1.5 ? 'text-profit' : 'text-loss' },
-                { label: 'Sharpe', value: stats.sharpeRatio.toFixed(2) },
-                { label: 'Calmar', value: stats.calmarRatio.toFixed(2) },
-                { label: 'Sortino', value: stats.sortinoRatio === Infinity ? '∞' : stats.sortinoRatio.toFixed(2) },
-                { label: 'Recovery', value: stats.recoveryFactor.toFixed(2), color: stats.recoveryFactor >= 1 ? 'text-profit' : 'text-loss' },
-                { label: 'Max DD', value: `-${stats.maxDrawdown.toFixed(1)}%`, color: 'text-loss' },
-                { label: 'R/R', value: `1:${stats.avgRR.toFixed(2)}` },
+                { label: 'מקדם רווח', value: stats.profitFactor === Infinity ? '∞' : stats.profitFactor.toFixed(2), color: stats.profitFactor >= 1.5 ? 'text-profit' : 'text-loss' },
+                { label: 'שארפ', value: stats.sharpeRatio.toFixed(2) },
+                { label: 'קלמאר', value: stats.calmarRatio.toFixed(2) },
+                { label: 'סורטינו', value: stats.sortinoRatio === Infinity ? '∞' : stats.sortinoRatio.toFixed(2) },
+                { label: 'התאוששות', value: stats.recoveryFactor.toFixed(2), color: stats.recoveryFactor >= 1 ? 'text-profit' : 'text-loss' },
+                { label: 'ירידה מקס׳', value: `-${stats.maxDrawdown.toFixed(1)}%`, color: 'text-loss' },
+                { label: 'סיכון/סיכוי', value: `1:${stats.avgRR.toFixed(2)}` },
                 { label: 'ימי מסחר', value: stats.tradingDays },
                 { label: 'עסקאות/יום', value: stats.tradesPerDay.toFixed(1) },
                 { label: 'משך ממוצע', value: formatDuration(stats.avgDurationHours) },
@@ -680,8 +680,8 @@ export default function TradeJournal() {
                   { label: 'הפסד מקס׳', value: formatCurrency(analytics.largestLoss), color: 'text-loss' },
                   { label: 'רצף רווחים', value: analytics.maxWin, color: 'text-profit' },
                   { label: 'רצף הפסדים', value: analytics.maxLoss, color: 'text-loss' },
-                  { label: `Long (${analytics.longCount})`, value: `${analytics.longWinRate.toFixed(0)}%`, color: 'text-long' },
-                  { label: `Short (${analytics.shortCount})`, value: `${analytics.shortWinRate.toFixed(0)}%`, color: 'text-short' },
+                  { label: `לונג (${analytics.longCount})`, value: `${analytics.longWinRate.toFixed(0)}%`, color: 'text-long' },
+                  { label: `שורט (${analytics.shortCount})`, value: `${analytics.shortWinRate.toFixed(0)}%`, color: 'text-short' },
                 ] : []),
               ].map((item) => (
                 <div key={item.label} className="flex flex-col items-center py-3 px-2">
