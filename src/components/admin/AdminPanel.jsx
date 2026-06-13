@@ -1,6 +1,6 @@
 import { useState, useEffect, useMemo } from 'react';
 import { Navigate } from 'react-router-dom';
-import { Users, UserPlus, ShieldCheck, CheckCircle2, Search, RefreshCw, Download, ChevronUp, ChevronDown, Mail, Calendar, Coins, TrendingUp, Percent, Sparkles, BookOpen, FlaskConical, Activity, FileText, Brain, Crown, Send, X, Ticket, Plus, Minus, Trash2, Copy, ScrollText, Share2, Link2, BarChart3, AlertTriangle, Clock, DollarSign, Hourglass } from 'lucide-react';
+import { Users, UserPlus, ShieldCheck, CheckCircle2, Search, RefreshCw, Download, ChevronUp, ChevronDown, Mail, Calendar, Coins, TrendingUp, Percent, Sparkles, BookOpen, FlaskConical, Activity, FileText, Brain, Crown, Send, X, Ticket, Plus, Minus, Trash2, Copy, ScrollText, Share2, Link2, BarChart3, AlertTriangle, Clock, DollarSign, Hourglass, Image } from 'lucide-react';
 import toast from 'react-hot-toast';
 import { useAuth } from '../../contexts/AuthContext';
 import { getAllUsers, getUserSubcollectionCount, adminGrantPremium, adminRevokePremium, addPayment, getAllPayments } from '../../services/firestoreService';
@@ -950,15 +950,31 @@ function UserDetailModal({ user, onClose, onUserChanged }) {
               {aiUsage ? (() => {
                 const pct = Math.min(100, (aiUsage.used / aiUsage.limit) * 100);
                 const low = (aiUsage.limit - aiUsage.used) <= 3;
+                const hasImg = typeof aiUsage.imageLimit === 'number' && aiUsage.imageLimit > 0;
+                const imgPct = hasImg ? Math.min(100, (aiUsage.imageUsed / aiUsage.imageLimit) * 100) : 0;
+                const imgLow = hasImg && (aiUsage.imageLimit - aiUsage.imageUsed) <= 1;
                 return (
-                  <div className="bg-bg-tertiary/40 border border-border-primary rounded-lg px-3 py-2.5">
-                    <div className="flex items-center justify-between text-xs mb-1.5">
-                      <span className="text-text-secondary">בקשות שנוצלו</span>
-                      <span className={`font-semibold ${low ? 'text-loss' : 'text-text-primary'}`}>{aiUsage.used} / {aiUsage.limit}</span>
+                  <div className="bg-bg-tertiary/40 border border-border-primary rounded-lg px-3 py-2.5 space-y-2.5">
+                    <div>
+                      <div className="flex items-center justify-between text-xs mb-1.5">
+                        <span className="text-text-secondary">בקשות שנוצלו</span>
+                        <span className={`font-semibold ${low ? 'text-loss' : 'text-text-primary'}`}>{aiUsage.used} / {aiUsage.limit}</span>
+                      </div>
+                      <div className="h-1.5 bg-bg-tertiary rounded-full overflow-hidden">
+                        <div className={`h-full rounded-full ${low ? 'bg-loss' : 'bg-accent-primary'}`} style={{ width: `${pct}%` }} />
+                      </div>
                     </div>
-                    <div className="h-1.5 bg-bg-tertiary rounded-full overflow-hidden">
-                      <div className={`h-full rounded-full ${low ? 'bg-loss' : 'bg-accent-primary'}`} style={{ width: `${pct}%` }} />
-                    </div>
+                    {hasImg && (
+                      <div>
+                        <div className="flex items-center justify-between text-xs mb-1.5">
+                          <span className="text-text-secondary flex items-center gap-1"><Image className="w-3 h-3" /> ניתוחי תמונה</span>
+                          <span className={`font-semibold ${imgLow ? 'text-loss' : 'text-text-primary'}`}>{aiUsage.imageUsed} / {aiUsage.imageLimit}</span>
+                        </div>
+                        <div className="h-1.5 bg-bg-tertiary rounded-full overflow-hidden">
+                          <div className={`h-full rounded-full ${imgLow ? 'bg-loss' : 'bg-accent-primary'}`} style={{ width: `${imgPct}%` }} />
+                        </div>
+                      </div>
+                    )}
                   </div>
                 );
               })() : (
