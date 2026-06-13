@@ -568,10 +568,11 @@ export default function CoinAnalysis() {
                     <button
                       key={coin.coingeckoId}
                       onClick={() => selectCoin(coin)}
-                      className="w-full flex items-center justify-between px-3 py-2.5 text-sm hover:bg-bg-tertiary transition-colors cursor-pointer"
+                      className="w-full flex items-center gap-2.5 px-3 py-2.5 text-sm hover:bg-bg-tertiary transition-colors cursor-pointer text-right"
                     >
-                      <span className="text-text-muted text-xs">{coin.symbol}</span>
+                      {coin.thumb && <img src={coin.thumb} alt="" className="w-5 h-5 rounded-full" />}
                       <span className="text-text-primary font-medium">{coin.name}</span>
+                      <span className="text-text-muted text-xs">{coin.symbol}</span>
                     </button>
                   ))}
                 </motion.div>

@@ -3,6 +3,7 @@ import { Search, X, Plus } from 'lucide-react';
 import { COINS, PAIRS } from '../../utils/constants';
 import { searchCoins } from '../../services/coingeckoApi';
 import { cacheImage, clearCachedImage } from '../../services/coinImageCache';
+import CoinIcon from '../shared/CoinIcon';
 
 const inputClass = 'w-full bg-bg-tertiary border border-border-primary rounded-lg px-3 py-2.5 text-sm text-text-primary outline-none focus:border-accent-primary transition-colors';
 
@@ -117,10 +118,11 @@ export default function PairSearch({ value, onChange, label = 'זוג', classNam
                 <button
                   type="button"
                   onClick={() => { clearCachedImage(symbol); handleSelect({ pair: customPair, symbol, name: symbol }); }}
-                  className="w-full flex items-center justify-between px-3 py-2 text-sm transition-colors cursor-pointer border-b border-border-primary hover:bg-bg-tertiary"
+                  className="w-full flex items-center gap-2.5 px-3 py-2 text-right hover:bg-bg-tertiary transition-colors cursor-pointer border-b border-border-primary bg-accent-primary/5"
                 >
-                  <span className="text-text-muted text-xs flex items-center gap-1"><Plus className="w-3 h-3" />מותאם אישית</span>
-                  <span className="font-medium text-accent-primary">{customPair}</span>
+                  <Plus className="w-4 h-4 text-accent-primary" />
+                  <span className="text-sm font-medium text-accent-primary">{customPair}</span>
+                  <span className="text-xs text-text-muted">השתמש בזוג מותאם</span>
                 </button>
               );
             }
@@ -134,10 +136,11 @@ export default function PairSearch({ value, onChange, label = 'זוג', classNam
               key={item.pair}
               type="button"
               onClick={() => handleSelect(item)}
-              className="w-full flex items-center justify-between px-3 py-2 text-sm transition-colors cursor-pointer hover:bg-bg-tertiary"
+              className="w-full flex items-center gap-2.5 px-3 py-2 text-right hover:bg-bg-tertiary transition-colors cursor-pointer"
             >
-              <span className="text-text-muted text-xs truncate">{item.name}</span>
-              <span className="font-medium text-text-primary">{item.pair}</span>
+              <CoinIcon pair={item.pair} className="w-5 h-5" />
+              <span className="text-sm font-medium text-text-primary">{item.pair}</span>
+              <span className="text-xs text-text-muted truncate">{item.name}</span>
             </button>
           ))}
           {loading && results.length > 0 && (

@@ -115,10 +115,13 @@ export default function CoinSearch({ value, onChange, label = 'מטבע', classN
                 key={coin.coingeckoId || coin.symbol}
                 type="button"
                 onClick={() => handleSelect(coin)}
-                className="w-full flex items-center justify-between px-3 py-2 text-sm transition-colors cursor-pointer hover:bg-bg-tertiary"
+                className="w-full flex items-center gap-2.5 px-3 py-2 text-right hover:bg-bg-tertiary transition-colors cursor-pointer"
               >
-                <span className="text-text-muted text-xs truncate">{coin.name}</span>
-                <span className="font-medium text-text-primary">{coin.symbol}</span>
+                {coin.thumb && (
+                  <img src={coin.thumb} alt="" className="w-5 h-5 rounded-full flex-shrink-0" />
+                )}
+                <span className="text-sm font-medium text-text-primary">{coin.symbol}</span>
+                <span className="text-xs text-text-muted truncate">{coin.name}</span>
               </button>
           ))}
           {loading && results.length > 0 && (
