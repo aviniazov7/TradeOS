@@ -134,6 +134,16 @@ body {
   background: rgba(255, 255, 255, 0.25);
 }
 
+/* Opt-in: hide the scrollbar on horizontally-scrollable strips (e.g. mobile
+   tab rows) while keeping them scrollable by touch/trackpad. */
+.no-scrollbar {
+  scrollbar-width: none;
+  -ms-overflow-style: none;
+}
+.no-scrollbar::-webkit-scrollbar {
+  display: none;
+}
+
 /* react-datepicker dark theme */
 .react-datepicker {
   background-color: rgba(10, 12, 18, 0.95) !important;
