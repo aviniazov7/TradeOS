@@ -81,20 +81,7 @@ export default function ProfilePage() {
     });
   }, [user]);
 
-  const toggleAssetClass = async (id) => {
-    const has = assetClasses.includes(id);
-    // Trading more than one market at once is a Premium feature. A free user
-    // who already picked a market and taps another is sent to the upgrade page.
-    if (!isPremium && !has) {
-      toast('מסחר ביותר מסוג אחד זמין ב-Premium');
-      navigate('/premium');
-      return;
-    }
-    const next = has ? assetClasses.filter((x) => x !== id) : [...assetClasses, id];
-    if (next.length === 0) {
-      toast.error('צריך לבחור לפחות סוג מסחר אחד');
-      return;
-    }
+  const persistAssetClasses = async (next) => {
     const prev = assetClasses;
     setAssetClasses(next);
     try {
@@ -104,6 +91,24 @@ export default function ProfilePage() {
       setAssetClasses(prev);
       toast.error('שגיאה בשמירה');
     }
+  };
+
+  const toggleAssetClass = async (id) => {
+    const has = assetClasses.includes(id);
+    // Free tier = a single market. Tapping another card switches to it
+    // (replace), so the user can always change markets but never holds two
+    // at once. Trading several markets simultaneously is a Premium feature.
+    if (!isPremium) {
+      if (has) return; // already the active market — nothing to switch
+      persistAssetClasses([id]);
+      return;
+    }
+    const next = has ? assetClasses.filter((x) => x !== id) : [...assetClasses, id];
+    if (next.length === 0) {
+      toast.error('צריך לבחור לפחות סוג מסחר אחד');
+      return;
+    }
+    persistAssetClasses(next);
   };
 
   const handleLeaderboardToggle = async () => {
@@ -249,7 +254,10 @@ export default function ProfilePage() {
           and which symbol catalog it shows. Multi-select. */}
       <div className="bg-bg-secondary border border-border-primary rounded-2xl p-4">
         <h3 className="text-sm font-semibold text-text-primary mb-1">סוג מסחר</h3>
-        <p className="text-xs text-text-muted mb-3">מה אתה סוחר — קובע את ברירת המחדל ליומן חדש. את הסוג של כל יומן אפשר לשנות בהגדרות היומן. אפשר לבחור כמה.</p>
+        <p className="text-xs text-text-muted mb-3">
+          מה אתה סוחר — קובע את ברירת המחדל ליומן חדש. את הסוג של כל יומן אפשר לשנות בהגדרות היומן.
+          {isPremium ? ' אפשר לבחור כמה.' : ' אפשר לבחור סוג אחד.'}
+        </p>
         <div className="grid grid-cols-1 sm:grid-cols-3 gap-2">
           {ASSET_CLASSES.map((ac) => {
             const active = assetClasses.includes(ac.id);
@@ -272,9 +280,6 @@ export default function ProfilePage() {
                     <Check className="w-3 h-3 text-bg-primary" />
                   </span>
                 )}
-                {!isPremium && !active && !ac.soon && (
-                  <Crown className="absolute top-2 left-2 w-3.5 h-3.5 text-accent-primary/70" />
-                )}
                 <ac.Icon className={`w-5 h-5 mb-1.5 ${active && !ac.soon ? 'text-accent-primary' : 'text-text-muted'}`} />
                 <div className="text-sm font-semibold text-text-primary">{ac.label}</div>
                 <div className="text-[11px] text-text-muted">{ac.desc}</div>
@@ -282,6 +287,16 @@ export default function ProfilePage() {
             );
           })}
         </div>
+        {!isPremium && (
+          <button
+            type="button"
+            onClick={() => navigate('/premium')}
+            className="mt-3 flex items-center gap-1.5 text-[11px] text-accent-primary hover:underline cursor-pointer"
+          >
+            <Crown className="w-3.5 h-3.5" />
+            מסחר בכמה סוגים במקביל — שדרג ל-Premium
+          </button>
+        )}
       </div>
 
       {/* ── Section: Subscription ────────────────────────────────── */}
