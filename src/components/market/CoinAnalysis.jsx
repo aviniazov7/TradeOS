@@ -562,7 +562,7 @@ export default function CoinAnalysis() {
                   initial={{ opacity: 0, y: -5 }}
                   animate={{ opacity: 1, y: 0 }}
                   exit={{ opacity: 0, y: -5 }}
-                  className="absolute z-50 top-full mt-1 right-0 left-0 bg-bg-secondary border border-border-primary rounded-xl shadow-xl overflow-hidden"
+                  className="absolute z-50 top-full mt-1 right-0 left-0 bg-bg-overlay border border-border-primary rounded-xl shadow-xl overflow-hidden"
                 >
                   {suggestions.map((coin) => (
                     <button
@@ -1773,7 +1773,7 @@ function LiquidityHeatmap({ pair, klines }) {
             {menuOpen && (
               <>
                 <div className="fixed inset-0 z-10" onClick={() => setMenuOpen(false)} />
-                <div className="absolute left-0 top-full mt-1 z-20 w-28 rounded-lg border border-border-primary bg-bg-secondary shadow-xl overflow-hidden" dir="ltr">
+                <div className="absolute left-0 top-full mt-1 z-20 w-28 rounded-lg border border-border-primary bg-bg-overlay shadow-xl overflow-hidden" dir="ltr">
                   {HEATMAP_PERIODS.map(p => (
                     <button
                       key={p.key}

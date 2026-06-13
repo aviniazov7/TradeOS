@@ -87,7 +87,7 @@ export default function TimeframeSelector({ value, onChange, timeframes, onAdd, 
       </button>
 
       {open && (
-        <div className="absolute z-50 top-full mt-1 right-0 left-0 bg-bg-secondary border border-border-primary rounded-xl shadow-xl overflow-hidden">
+        <div className="absolute z-50 top-full mt-1 right-0 left-0 bg-bg-overlay border border-border-primary rounded-xl shadow-xl overflow-hidden">
           {managing ? (
             <>
               <div className="max-h-48 overflow-y-auto p-2 space-y-1">
