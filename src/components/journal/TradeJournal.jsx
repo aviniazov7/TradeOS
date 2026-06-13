@@ -531,6 +531,9 @@ export default function TradeJournal() {
 
           <div className="flex items-center gap-1.5 md:gap-2 flex-shrink-0">
             {tab === 'analytics' && <div className="hidden md:block"><TimePeriodFilter value={period} onChange={setPeriod} compact /></div>}
+            {/* Mobile: period filter sits up here next to the actions (dropdown
+                is compact) instead of taking its own row under the tabs. */}
+            {tab === 'analytics' && <div className="md:hidden"><TimePeriodFilter value={period} onChange={setPeriod} dropdown /></div>}
             <button onClick={() => setSettingsOpen(true)} className="p-1.5 md:p-2 rounded-lg text-text-muted hover:text-text-primary hover:bg-bg-tertiary transition-colors cursor-pointer border border-border-primary" title="הגדרות יומן">
               <Settings className="w-4 h-4" />
             </button>
@@ -548,9 +551,9 @@ export default function TradeJournal() {
           </div>
         </div>
 
-        {/* Row 2: Mobile tabs + period filter */}
+        {/* Row 2: Mobile tabs (scroll horizontally so they never compress each
+            other). The period filter lives up in Row 1's action group. */}
         <div className="md:hidden">
-          {/* Tabs scroll horizontally so they never compress each other */}
           <div className="flex items-center overflow-x-auto no-scrollbar -mx-1 px-1">
             <button
               onClick={() => setTab('trades')}
@@ -594,12 +597,6 @@ export default function TradeJournal() {
               בורסאות
             </button>
           </div>
-          {/* Period filter on its own row so it isn't crushed against the tabs */}
-          {tab === 'analytics' && (
-            <div className="mt-2 flex justify-end">
-              <TimePeriodFilter value={period} onChange={setPeriod} dropdown />
-            </div>
-          )}
         </div>
       </div>
 
