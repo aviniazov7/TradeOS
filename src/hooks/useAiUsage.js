@@ -44,3 +44,14 @@ export async function fetchUserAiUsage(uid) {
   if (!r.ok) return null;
   return r.json();
 }
+
+// Admin-only — aggregate today's AI usage across ALL users (text + image),
+// with a per-user breakdown. Returns { date, totalText, totalImage, perUser }.
+export async function fetchGlobalAiUsage() {
+  const user = getAuth().currentUser;
+  if (!user) return null;
+  const token = await user.getIdToken();
+  const r = await fetch(`${WORKER_BASE}/admin/ai-usage-global`, { headers: { Authorization: `Bearer ${token}` } });
+  if (!r.ok) return null;
+  return r.json();
+}

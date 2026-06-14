@@ -4,7 +4,7 @@ import { Users, UserPlus, ShieldCheck, CheckCircle2, Search, RefreshCw, Download
 import toast from 'react-hot-toast';
 import { useAuth } from '../../contexts/AuthContext';
 import { getAllUsers, getUserSubcollectionCount, adminGrantPremium, adminRevokePremium, addPayment, getAllPayments } from '../../services/firestoreService';
-import { fetchUserAiUsage } from '../../hooks/useAiUsage';
+import { fetchUserAiUsage, fetchGlobalAiUsage } from '../../hooks/useAiUsage';
 import { adminSendNotification, adminScheduleExpiryReminders, adminCancelExpiryReminders, adminRefreshPlanCache, adminListAuditEvents, adminSendTestDigest, adminGetTelegramInfo } from '../../services/pushService';
 import { adminListCoupons, adminCreateCoupon, adminDeleteCoupon, couponShareUrl } from '../../services/couponService';
 import LoadingSpinner from '../shared/LoadingSpinner';
@@ -71,9 +71,9 @@ function daysUntilExpiry(u) {
 
 const ILS = (n) => '₪' + Math.round(Number(n) || 0).toLocaleString('he-IL');
 
-function StatCard({ icon, label, value }) {
-  return (
-    <div className="bg-bg-secondary border border-border-primary rounded-xl p-4 flex items-center gap-4">
+function StatCard({ icon, label, value, onClick }) {
+  const inner = (
+    <>
       <div className="bg-accent-primary/10 text-accent-primary rounded-lg p-3">
         {icon}
       </div>
@@ -81,7 +81,18 @@ function StatCard({ icon, label, value }) {
         <div className="text-2xl font-bold text-text-primary">{value}</div>
         <div className="text-sm text-text-secondary">{label}</div>
       </div>
-    </div>
+    </>
+  );
+  const base = 'bg-bg-secondary border border-border-primary rounded-xl p-4 flex items-center gap-4';
+  if (!onClick) return <div className={base}>{inner}</div>;
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      className={`${base} text-right w-full hover:border-accent-primary/50 hover:bg-bg-tertiary/40 transition-colors cursor-pointer`}
+    >
+      {inner}
+    </button>
   );
 }
 
@@ -123,6 +134,10 @@ export default function AdminPanel() {
   const [couponsOpen, setCouponsOpen] = useState(false);
   const [auditOpen, setAuditOpen] = useState(false);
   const [analyticsOpen, setAnalyticsOpen] = useState(false);
+  // { title, users } — opened by clicking a stat card to list its users.
+  const [listModal, setListModal] = useState(null);
+  // Aggregate AI usage across all users today (text + image) from the worker.
+  const [globalAi, setGlobalAi] = useState(null);
 
   // After load() refreshes `users`, keep `selectedUser` pointing at the fresh
   // copy so the open detail modal reflects the new plan/role immediately
@@ -156,20 +171,27 @@ export default function AdminPanel() {
     if (isAdmin) Promise.resolve().then(load);
   }, [isAdmin]);
 
+  useEffect(() => {
+    if (!isAdmin) return;
+    let cancelled = false;
+    fetchGlobalAiUsage().then((g) => { if (!cancelled) setGlobalAi(g); });
+    return () => { cancelled = true; };
+  }, [isAdmin, loadedAt]);
+
   const stats = useMemo(() => {
     const weekAgo = loadedAt - 7 * 24 * 60 * 60 * 1000;
-    let newThisWeek = 0;
-    let onboarded = 0;
-    let admins = 0;
-    let premium = 0;
+    const newThisWeek = [];
+    const onboarded = [];
+    const admins = [];
+    const premium = [];
     for (const u of users) {
       const created = toDate(u.createdAt);
-      if (created && created.getTime() >= weekAgo) newThisWeek++;
-      if (u.onboardingCompleted) onboarded++;
-      if (u.role === 'admin') admins++;
-      if (isUserPremium(u) && u.role !== 'admin') premium++;
+      if (created && created.getTime() >= weekAgo) newThisWeek.push(u);
+      if (u.onboardingCompleted) onboarded.push(u);
+      if (u.role === 'admin') admins.push(u);
+      if (isUserPremium(u) && u.role !== 'admin') premium.push(u);
     }
-    return { total: users.length, newThisWeek, onboarded, admins, premium };
+    return { total: users, newThisWeek, onboarded, admins, premium };
   }, [users, loadedAt]);
 
   // Premium customers who haven't opened the app in 7+ days — the "churn risk"
@@ -350,11 +372,65 @@ export default function AdminPanel() {
       </div>
 
       <div className="grid grid-cols-2 lg:grid-cols-5 gap-3">
-        <StatCard icon={<Users className="w-6 h-6" />} label="סה״כ משתמשים" value={stats.total} />
-        <StatCard icon={<UserPlus className="w-6 h-6" />} label="חדשים השבוע" value={stats.newThisWeek} />
-        <StatCard icon={<CheckCircle2 className="w-6 h-6" />} label="סיימו אונבורדינג" value={stats.onboarded} />
-        <StatCard icon={<Crown className="w-6 h-6 text-amber-400" />} label="לקוחות Premium" value={stats.premium} />
-        <StatCard icon={<ShieldCheck className="w-6 h-6" />} label="אדמינים" value={stats.admins} />
+        <StatCard icon={<Users className="w-6 h-6" />} label="סה״כ משתמשים" value={stats.total.length} onClick={() => setListModal({ title: 'כל המשתמשים', users: stats.total })} />
+        <StatCard icon={<UserPlus className="w-6 h-6" />} label="חדשים השבוע" value={stats.newThisWeek.length} onClick={() => setListModal({ title: 'חדשים השבוע', users: stats.newThisWeek })} />
+        <StatCard icon={<CheckCircle2 className="w-6 h-6" />} label="סיימו אונבורדינג" value={stats.onboarded.length} onClick={() => setListModal({ title: 'סיימו אונבורדינג', users: stats.onboarded })} />
+        <StatCard icon={<Crown className="w-6 h-6 text-amber-400" />} label="לקוחות Premium" value={stats.premium.length} onClick={() => setListModal({ title: 'לקוחות Premium', users: stats.premium })} />
+        <StatCard icon={<ShieldCheck className="w-6 h-6" />} label="אדמינים" value={stats.admins.length} onClick={() => setListModal({ title: 'אדמינים', users: stats.admins })} />
+      </div>
+
+      {/* Global AI usage today — aggregated across all users (text + image). */}
+      <div className="bg-bg-secondary border border-border-primary rounded-xl p-4">
+        <div className="text-[11px] text-text-muted mb-3 flex items-center gap-1.5">
+          <Sparkles className="w-3.5 h-3.5" /> שימוש כללי ב-AI היום (כל המשתמשים)
+        </div>
+        {globalAi ? (
+          <div className="grid grid-cols-2 gap-3">
+            <div className="bg-bg-tertiary/40 border border-border-primary rounded-lg px-3 py-2.5 flex items-center gap-3">
+              <Sparkles className="w-5 h-5 text-accent-primary shrink-0" />
+              <div>
+                <div className="text-xl font-bold text-text-primary">{globalAi.totalText}</div>
+                <div className="text-[11px] text-text-secondary">בקשות טקסט</div>
+              </div>
+            </div>
+            <div className="bg-bg-tertiary/40 border border-border-primary rounded-lg px-3 py-2.5 flex items-center gap-3">
+              <Image className="w-5 h-5 text-accent-primary shrink-0" />
+              <div>
+                <div className="text-xl font-bold text-text-primary">{globalAi.totalImage}</div>
+                <div className="text-[11px] text-text-secondary">ניתוחי תמונה</div>
+              </div>
+            </div>
+          </div>
+        ) : (
+          <div className="text-xs text-text-muted">…</div>
+        )}
+        {globalAi && Object.keys(globalAi.perUser || {}).length > 0 && (
+          <div className="mt-3 space-y-1">
+            <div className="text-[11px] text-text-muted mb-1">המשתמשים הפעילים ביותר היום</div>
+            {Object.entries(globalAi.perUser)
+              .map(([uid, v]) => ({ uid, ...v, total: (v.text || 0) + (v.image || 0) }))
+              .sort((a, b) => b.total - a.total)
+              .slice(0, 5)
+              .map((row) => {
+                const u = users.find((x) => x.id === row.uid);
+                const name = u?.displayName || u?.email || row.uid.slice(0, 8);
+                return (
+                  <button
+                    key={row.uid}
+                    type="button"
+                    onClick={() => u && setSelectedUser(u)}
+                    className="w-full flex items-center justify-between text-xs px-2 py-1.5 rounded-lg hover:bg-bg-tertiary/50 transition-colors cursor-pointer"
+                  >
+                    <span className="text-text-secondary flex items-center gap-2">
+                      <span className="text-text-primary">{row.text}</span> טקסט
+                      <span className="text-text-primary">{row.image}</span> תמונה
+                    </span>
+                    <span className="text-text-primary font-medium truncate max-w-[55%] text-left">{name}</span>
+                  </button>
+                );
+              })}
+          </div>
+        )}
       </div>
 
       {/* Churn-risk: Premium customers who haven't opened the app in 7+ days. */}
@@ -602,7 +678,48 @@ export default function AdminPanel() {
       <CouponsModal isOpen={couponsOpen} onClose={() => setCouponsOpen(false)} />
       <AuditLogModal isOpen={auditOpen} onClose={() => setAuditOpen(false)} users={users} />
       <AnalyticsModal isOpen={analyticsOpen} onClose={() => setAnalyticsOpen(false)} a={analytics} onPickUser={(u) => { setAnalyticsOpen(false); setSelectedUser(u); }} />
+      <UserListModal
+        data={listModal}
+        onClose={() => setListModal(null)}
+        onPickUser={(u) => { setListModal(null); setSelectedUser(u); }}
+      />
     </div>
+  );
+}
+
+// ── Stat-card → user list modal ──────────────────────────────────────────────
+// Opened by clicking a stat card (Premium / admins / onboarded / ...). Lists
+// the users in that bucket; clicking a row opens that user's detail modal.
+function UserListModal({ data, onClose, onPickUser }) {
+  return (
+    <Modal isOpen={!!data} onClose={onClose} title={data ? `${data.title} (${data.users.length})` : ''}>
+      <div className="p-4 space-y-1.5 max-h-[60vh] overflow-y-auto">
+        {data?.users?.length ? data.users.map((u) => {
+          const name = u.displayName || u.email || u.id.slice(0, 8);
+          const joined = toDate(u.createdAt);
+          return (
+            <button
+              key={u.id}
+              type="button"
+              onClick={() => onPickUser(u)}
+              className="w-full flex items-center justify-between gap-3 px-3 py-2.5 rounded-lg bg-bg-tertiary/40 border border-border-primary hover:border-accent-primary/50 transition-colors cursor-pointer text-right"
+            >
+              <div className="min-w-0">
+                <div className="text-sm font-medium text-text-primary truncate">{name}</div>
+                <div className="text-[11px] text-text-muted truncate">{u.email}</div>
+              </div>
+              <div className="flex items-center gap-2 shrink-0">
+                {u.role === 'admin' && <span className="text-[10px] px-2 py-0.5 rounded-full bg-accent-primary/15 text-accent-primary">אדמין</span>}
+                {u.role !== 'admin' && isUserPremium(u) && <span className="text-[10px] px-2 py-0.5 rounded-full bg-amber-500/15 text-amber-400">Premium</span>}
+                {joined && <span className="text-[10px] text-text-muted">{joined.toLocaleDateString('he-IL')}</span>}
+              </div>
+            </button>
+          );
+        }) : (
+          <div className="text-sm text-text-muted text-center py-6">אין משתמשים בקטגוריה זו</div>
+        )}
+      </div>
+    </Modal>
   );
 }
 
