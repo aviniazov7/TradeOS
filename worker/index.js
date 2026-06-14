@@ -2062,6 +2062,10 @@ async function checkEconomicCalendar(env, settingsMap) {
 }
 
 async function handleCron(env) {
+  // Heartbeat: record the last cron tick so the admin health panel can confirm
+  // the scheduler is alive. Best-effort, never blocks the jobs below.
+  await env.ALERTS_KV.put('cron:last', String(Date.now())).catch(() => {});
+
   // Web-push exchange polling is independent of Telegram, so run it first and
   // don't let a missing BOT_TOKEN skip it.
   if (!env.BOT_TOKEN) {
@@ -3872,6 +3876,31 @@ async function handleRequest(request, env) {
       return { date: ds, text: v?.text || 0, image: v?.image || 0, tokIn: v?.tokIn || 0, tokOut: v?.tokOut || 0 };
     }));
     return new Response(JSON.stringify({ days, stats }), { headers: { ...cors, 'Content-Type': 'application/json' } });
+  }
+
+  // Admin-only: system health. Returns ONLY booleans / public info / timestamps
+  // — never tokens or secrets (getMe exposes just the bot's public username).
+  if (request.method === 'GET' && path === '/admin/health') {
+    const token = (request.headers.get('Authorization') || '').replace('Bearer ', '');
+    const adminUid = await verifyAdminFromToken(token);
+    if (!adminUid) return new Response(JSON.stringify({ error: 'forbidden' }), { status: 403, headers: { ...cors, 'Content-Type': 'application/json' } });
+    const cronRaw = await env.ALERTS_KV.get('cron:last');
+    const cronLast = cronRaw ? parseInt(cronRaw, 10) || null : null;
+    const bot = { configured: !!env.BOT_TOKEN, ok: false, username: null };
+    if (env.BOT_TOKEN) {
+      try {
+        const r = await fetch(`${TELEGRAM_API}${env.BOT_TOKEN}/getMe`);
+        const d = await r.json().catch(() => ({}));
+        if (d?.ok) { bot.ok = true; bot.username = d.result?.username || null; }
+      } catch { /* unreachable */ }
+    }
+    return new Response(JSON.stringify({
+      time: Date.now(),
+      cronLast,
+      bot,
+      pushConfigured: !!env.VAPID_JWK,
+      aiConfigured: !!env.GROQ_API_KEY,
+    }), { headers: { ...cors, 'Content-Type': 'application/json' } });
   }
 
   // Trade event notifications

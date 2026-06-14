@@ -4,7 +4,7 @@ import { Users, UserPlus, ShieldCheck, CheckCircle2, Search, RefreshCw, Download
 import toast from 'react-hot-toast';
 import { useAuth } from '../../contexts/AuthContext';
 import { getAllUsers, getUserSubcollectionCount, adminGrantPremium, adminRevokePremium, addPayment, getAllPayments } from '../../services/firestoreService';
-import { fetchUserAiUsage, fetchGlobalAiUsage, fetchAiStats } from '../../hooks/useAiUsage';
+import { fetchUserAiUsage, fetchGlobalAiUsage, fetchAiStats, fetchSystemHealth } from '../../hooks/useAiUsage';
 import { adminSendNotification, adminSendBulkNotification, adminScheduleExpiryReminders, adminCancelExpiryReminders, adminRefreshPlanCache, adminListAuditEvents, adminSendTestDigest, adminGetTelegramInfo } from '../../services/pushService';
 import { adminListCoupons, adminCreateCoupon, adminDeleteCoupon, couponShareUrl } from '../../services/couponService';
 import LoadingSpinner from '../shared/LoadingSpinner';
@@ -176,6 +176,8 @@ export default function AdminPanel() {
   // Daily AI stats (counts + real tokens) for the usage-over-time graph.
   const [aiStats, setAiStats] = useState(null);
   const [statsDays, setStatsDays] = useState(30);
+  // System health (cron heartbeat, bot, push/AI configured).
+  const [health, setHealth] = useState(null);
 
   // After load() refreshes `users`, keep `selectedUser` pointing at the fresh
   // copy so the open detail modal reflects the new plan/role immediately
@@ -223,6 +225,44 @@ export default function AdminPanel() {
     fetchAiStats(statsDays).then((s) => { if (!cancelled) setAiStats(s); });
     return () => { cancelled = true; };
   }, [isAdmin, statsDays, loadedAt]);
+
+  useEffect(() => {
+    if (!isAdmin) return;
+    let cancelled = false;
+    fetchSystemHealth().then((h) => { if (!cancelled) setHealth(h); });
+    return () => { cancelled = true; };
+  }, [isAdmin, loadedAt]);
+
+  // Active users (DAU/WAU/MAU) and a 30-day signups series — both derived from
+  // the already-loaded users list, no extra queries.
+  const growth = useMemo(() => {
+    const DAY = 86400000;
+    const now = loadedAt || Date.now();
+    let dau = 0, wau = 0, mau = 0;
+    for (const u of users) {
+      const ms = lastActiveMs(u);
+      if (!ms) continue;
+      const age = now - ms;
+      if (age <= DAY) dau++;
+      if (age <= 7 * DAY) wau++;
+      if (age <= 30 * DAY) mau++;
+    }
+    const buckets = {};
+    const series = [];
+    for (let i = 29; i >= 0; i--) {
+      const d = new Date(now - i * DAY);
+      const key = `${d.getFullYear()}-${d.getMonth() + 1}-${d.getDate()}`;
+      buckets[key] = 0;
+      series.push({ key, date: d });
+    }
+    for (const u of users) {
+      const c = toDate(u.createdAt);
+      if (!c) continue;
+      const key = `${c.getFullYear()}-${c.getMonth() + 1}-${c.getDate()}`;
+      if (key in buckets) buckets[key]++;
+    }
+    return { dau, wau, mau, signups: series.map((s) => ({ date: s.date, count: buckets[s.key] })) };
+  }, [users, loadedAt]);
 
   const stats = useMemo(() => {
     const weekAgo = loadedAt - 7 * 24 * 60 * 60 * 1000;
@@ -456,6 +496,74 @@ export default function AdminPanel() {
         <StatCard icon={<CheckCircle2 className="w-6 h-6" />} label="סיימו אונבורדינג" value={stats.onboarded.length} onClick={() => setListModal({ title: 'סיימו אונבורדינג', users: stats.onboarded })} />
         <StatCard icon={<Crown className="w-6 h-6 text-amber-400" />} label="לקוחות Premium" value={stats.premium.length} onClick={() => setListModal({ title: 'לקוחות Premium', users: stats.premium })} />
         <StatCard icon={<ShieldCheck className="w-6 h-6" />} label="אדמינים" value={stats.admins.length} onClick={() => setListModal({ title: 'אדמינים', users: stats.admins })} />
+      </div>
+
+      {/* Growth: active users (DAU/WAU/MAU) + 30-day signups trend. */}
+      <div className="grid grid-cols-1 lg:grid-cols-3 gap-3">
+        <div className="bg-bg-secondary border border-border-primary rounded-xl p-4">
+          <div className="text-[11px] text-text-muted mb-3 flex items-center gap-1.5"><Activity className="w-3.5 h-3.5" /> משתמשים פעילים</div>
+          <div className="grid grid-cols-3 gap-2 text-center">
+            <div className="bg-bg-tertiary/40 border border-border-primary rounded-lg py-2.5"><div className="text-xl font-bold text-text-primary">{growth.dau}</div><div className="text-[10px] text-text-muted">היום</div></div>
+            <div className="bg-bg-tertiary/40 border border-border-primary rounded-lg py-2.5"><div className="text-xl font-bold text-text-primary">{growth.wau}</div><div className="text-[10px] text-text-muted">השבוע</div></div>
+            <div className="bg-bg-tertiary/40 border border-border-primary rounded-lg py-2.5"><div className="text-xl font-bold text-text-primary">{growth.mau}</div><div className="text-[10px] text-text-muted">החודש</div></div>
+          </div>
+        </div>
+        <div className="bg-bg-secondary border border-border-primary rounded-xl p-4 lg:col-span-2">
+          <div className="text-[11px] text-text-muted mb-3 flex items-center gap-1.5"><UserPlus className="w-3.5 h-3.5" /> הרשמות (30 ימים)</div>
+          {(() => {
+            const max = Math.max(1, ...growth.signups.map((s) => s.count));
+            const total = growth.signups.reduce((a, s) => a + s.count, 0);
+            return (
+              <>
+                <div className="flex items-stretch gap-0.5 h-16">
+                  {growth.signups.map((s, i) => {
+                    const h = Math.round((s.count / max) * 100);
+                    const label = `${s.date.getDate()}/${s.date.getMonth() + 1}`;
+                    return (
+                      <div key={i} className="flex-1 h-full flex flex-col justify-end group" title={`${label}: ${s.count} הרשמות`}>
+                        <div className="w-full rounded-t bg-profit/60 group-hover:bg-profit transition-colors" style={{ height: `${s.count > 0 ? Math.max(8, h) : 2}%` }} />
+                      </div>
+                    );
+                  })}
+                </div>
+                <div className="flex justify-between mt-1 text-[9px] text-text-muted">
+                  <span>{growth.signups.length ? `${growth.signups[0].date.getDate()}/${growth.signups[0].date.getMonth() + 1}` : ''}</span>
+                  <span>היום · סה״כ {total}</span>
+                </div>
+              </>
+            );
+          })()}
+        </div>
+      </div>
+
+      {/* System health — admin-only, exposes only status (never secrets). */}
+      <div className="bg-bg-secondary border border-border-primary rounded-xl p-4">
+        <div className="text-[11px] text-text-muted mb-3 flex items-center gap-1.5"><ShieldCheck className="w-3.5 h-3.5" /> בריאות מערכת</div>
+        {!health ? (
+          <div className="text-xs text-text-muted">…</div>
+        ) : (
+          <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
+            {(() => {
+              const cronAgeH = health.cronLast ? (Date.now() - health.cronLast) / 3600000 : null;
+              const cronOk = cronAgeH != null && cronAgeH < 26;
+              const items = [
+                { label: 'Cron', ok: cronOk, note: health.cronLast ? relativeActive(health.cronLast) : 'לא רץ' },
+                { label: 'בוט טלגרם', ok: !!health.bot?.ok, note: health.bot?.ok ? `@${health.bot.username}` : (health.bot?.configured ? 'לא מגיב' : 'לא מוגדר') },
+                { label: 'התראות Push', ok: !!health.pushConfigured, note: health.pushConfigured ? 'מוגדר' : 'חסר VAPID' },
+                { label: 'AI', ok: !!health.aiConfigured, note: health.aiConfigured ? 'מחובר' : 'לא מוגדר' },
+              ];
+              return items.map((it) => (
+                <div key={it.label} className="bg-bg-tertiary/40 border border-border-primary rounded-lg px-3 py-2.5">
+                  <div className="flex items-center gap-1.5">
+                    <span className={`w-2 h-2 rounded-full shrink-0 ${it.ok ? 'bg-profit' : 'bg-loss'}`} />
+                    <span className="text-xs font-medium text-text-primary">{it.label}</span>
+                  </div>
+                  <div className="text-[10px] text-text-muted mt-1 truncate">{it.note}</div>
+                </div>
+              ));
+            })()}
+          </div>
+        )}
       </div>
 
       {/* Global AI usage today — aggregated across all users (text + image). */}
