@@ -71,6 +71,20 @@ function daysUntilExpiry(u) {
 
 const ILS = (n) => '₪' + Math.round(Number(n) || 0).toLocaleString('he-IL');
 
+// Mirrors the worker's AI caps (FREE_LIMITS.aiPerDay / AI_PREMIUM_LIMITS.day /
+// AI_IMAGE_DAILY_LIMIT) — used only for the admin overview estimates.
+const AI_TEXT_LIMIT = { free: 20, premium: 200 };
+const AI_IMAGE_LIMIT = 10; // premium only
+
+// Rough $ cost estimate. We track request COUNTS (not tokens), so we assume
+// average token sizes per request and apply Groq pay-as-you-go pricing
+// (Llama 3.3 70B for text, Llama 4 Scout for vision). Estimate only.
+const AI_COST_EST = {
+  textPerReq: (800 * 0.59 + 500 * 0.79) / 1e6,   // ≈ $0.00087
+  imagePerReq: (1600 * 0.11 + 500 * 0.34) / 1e6, // ≈ $0.00035
+};
+const estimateAiCost = (text, image) => text * AI_COST_EST.textPerReq + image * AI_COST_EST.imagePerReq;
+
 function StatCard({ icon, label, value, onClick }) {
   const inner = (
     <>
@@ -193,6 +207,25 @@ export default function AdminPanel() {
     }
     return { total: users, newThisWeek, onboarded, admins, premium };
   }, [users, loadedAt]);
+
+  // Users at/over 80% of their daily AI quota (text or image) today — combines
+  // the worker's per-user counts with each user's premium status to derive the
+  // right cap. Sorted by how close to the limit they are.
+  const quotaAlerts = useMemo(() => {
+    if (!globalAi?.perUser) return [];
+    const out = [];
+    for (const [uid, v] of Object.entries(globalAi.perUser)) {
+      const u = users.find((x) => x.id === uid);
+      const premium = u ? isUserPremium(u) : false;
+      const textLimit = premium ? AI_TEXT_LIMIT.premium : AI_TEXT_LIMIT.free;
+      const imgLimit = premium ? AI_IMAGE_LIMIT : 0;
+      const textPct = textLimit ? (v.text || 0) / textLimit : 0;
+      const imgPct = imgLimit ? (v.image || 0) / imgLimit : 0;
+      const pct = Math.max(textPct, imgPct);
+      if (pct >= 0.8) out.push({ uid, u, premium, text: v.text || 0, textLimit, image: v.image || 0, imgLimit, pct });
+    }
+    return out.sort((a, b) => b.pct - a.pct);
+  }, [globalAi, users]);
 
   // Premium customers who haven't opened the app in 7+ days — the "churn risk"
   // list. Sorted by how long they've been gone (longest first).
@@ -385,22 +418,30 @@ export default function AdminPanel() {
           <Sparkles className="w-3.5 h-3.5" /> שימוש כללי ב-AI היום (כל המשתמשים)
         </div>
         {globalAi ? (
-          <div className="grid grid-cols-2 gap-3">
-            <div className="bg-bg-tertiary/40 border border-border-primary rounded-lg px-3 py-2.5 flex items-center gap-3">
-              <Sparkles className="w-5 h-5 text-accent-primary shrink-0" />
-              <div>
-                <div className="text-xl font-bold text-text-primary">{globalAi.totalText}</div>
-                <div className="text-[11px] text-text-secondary">בקשות טקסט</div>
+          <>
+            <div className="grid grid-cols-2 gap-3">
+              <div className="bg-bg-tertiary/40 border border-border-primary rounded-lg px-3 py-2.5 flex items-center gap-3">
+                <Sparkles className="w-5 h-5 text-accent-primary shrink-0" />
+                <div>
+                  <div className="text-xl font-bold text-text-primary">{globalAi.totalText}</div>
+                  <div className="text-[11px] text-text-secondary">בקשות טקסט</div>
+                </div>
+              </div>
+              <div className="bg-bg-tertiary/40 border border-border-primary rounded-lg px-3 py-2.5 flex items-center gap-3">
+                <Image className="w-5 h-5 text-accent-primary shrink-0" />
+                <div>
+                  <div className="text-xl font-bold text-text-primary">{globalAi.totalImage}</div>
+                  <div className="text-[11px] text-text-secondary">ניתוחי תמונה</div>
+                </div>
               </div>
             </div>
-            <div className="bg-bg-tertiary/40 border border-border-primary rounded-lg px-3 py-2.5 flex items-center gap-3">
-              <Image className="w-5 h-5 text-accent-primary shrink-0" />
-              <div>
-                <div className="text-xl font-bold text-text-primary">{globalAi.totalImage}</div>
-                <div className="text-[11px] text-text-secondary">ניתוחי תמונה</div>
-              </div>
+            <div className="mt-2.5 flex items-center gap-1.5 text-[11px] text-text-muted">
+              <DollarSign className="w-3.5 h-3.5 text-accent-primary" />
+              עלות AI מוערכת היום:
+              <span className="text-text-secondary font-semibold">~${estimateAiCost(globalAi.totalText, globalAi.totalImage).toFixed(3)}</span>
+              <span>· חודשי משוער ~${(estimateAiCost(globalAi.totalText, globalAi.totalImage) * 30).toFixed(2)}</span>
             </div>
-          </div>
+          </>
         ) : (
           <div className="text-xs text-text-muted">…</div>
         )}
@@ -432,6 +473,39 @@ export default function AdminPanel() {
           </div>
         )}
       </div>
+
+      {/* Quota alerts — users at/over 80% of their daily AI quota today. */}
+      {quotaAlerts.length > 0 && (
+        <div className="bg-amber-500/5 border border-amber-500/30 rounded-xl p-4">
+          <div className="flex items-center gap-2 mb-3">
+            <div className="bg-amber-500/15 text-amber-400 rounded-lg p-1.5">
+              <AlertTriangle className="w-4 h-4" />
+            </div>
+            <span className="text-sm font-semibold text-text-primary">התראת חריגת מכסת AI</span>
+            <span className="text-[11px] text-text-muted">({quotaAlerts.length})</span>
+          </div>
+          <div className="space-y-1.5">
+            {quotaAlerts.map((a) => {
+              const name = a.u?.displayName || a.u?.email || a.uid.slice(0, 8);
+              const over = a.pct >= 1;
+              return (
+                <button
+                  key={a.uid}
+                  type="button"
+                  onClick={() => a.u && setSelectedUser(a.u)}
+                  className="w-full flex items-center justify-between gap-3 text-xs px-3 py-2 rounded-lg bg-bg-tertiary/40 border border-border-primary hover:border-amber-500/40 transition-colors cursor-pointer"
+                >
+                  <span className="flex items-center gap-2">
+                    <span className={`font-semibold ${over ? 'text-loss' : 'text-amber-400'}`}>{over ? 'חרג ממכסה' : `${Math.round(a.pct * 100)}%`}</span>
+                    <span className="text-text-secondary">טקסט {a.text}/{a.textLimit}{a.imgLimit > 0 ? ` · תמונה ${a.image}/${a.imgLimit}` : ''}</span>
+                  </span>
+                  <span className="text-text-primary font-medium truncate max-w-[45%] text-left">{name}</span>
+                </button>
+              );
+            })}
+          </div>
+        </div>
+      )}
 
       {/* Churn-risk: Premium customers who haven't opened the app in 7+ days. */}
       {churned.length > 0 && (
