@@ -15,7 +15,7 @@ import { useTrades } from '../../hooks/useTrades';
 import { useCryptoPrices } from '../../hooks/useCryptoPrices';
 import { useJournalContext } from '../../contexts/JournalContext';
 import { useAuth } from '../../contexts/AuthContext';
-import { calculatePnL } from '../../utils/calculations';
+import { calculatePnL, calculateFuturesPnL } from '../../utils/calculations';
 import { useDashboardStats } from '../../hooks/useDashboardStats';
 import { useLinkedExchangeBalance } from '../../hooks/useLinkedExchangeBalance';
 import { addToUserCollection, timestamp } from '../../services/firestoreService';
@@ -298,7 +298,12 @@ export default function TradeJournal() {
         // Warn on duplicate: same pair + direction + entry price within 10 min
         const entryMs = data.entryDate instanceof Date ? data.entryDate.getTime() : new Date(data.entryDate).getTime();
         const isDuplicate = trades.some((t) => {
-          if (t.pair !== data.pair || t.direction !== data.direction || t.entryPrice !== data.entryPrice) return false;
+          if (t.pair !== data.pair || t.direction !== data.direction) return false;
+          // Entry prices come from different sources (manual vs exchange) and
+          // rarely match to the last decimal — exact === almost never fires, so
+          // treat entries within 0.1% as the same price.
+          const a = parseFloat(t.entryPrice), b = parseFloat(data.entryPrice);
+          if (!(b > 0) || Math.abs(a - b) > Math.abs(b) * 0.001) return false;
           const tMs = t.entryDate?.toDate ? t.entryDate.toDate().getTime() : new Date(t.entryDate).getTime();
           return Math.abs(tMs - entryMs) < 10 * 60 * 1000;
         });
@@ -308,9 +313,15 @@ export default function TradeJournal() {
         await addTrade(data);
         toast.success('העסקה נוספה');
       }
-      // Confetti on winning closed trade
+      // Confetti on winning closed trade. Mirror how PnL is actually computed
+      // so the celebration is correct for exchange-imported and CME-futures
+      // trades too, not just plain crypto (price × qty).
       if (data.exitPrice > 0) {
-        const pnl = calculatePnL(data.direction, data.entryPrice, data.exitPrice, data.quantity);
+        const pnl = data.pnlFromExchange != null
+          ? data.pnlFromExchange
+          : data.contract?.pointValue
+            ? calculateFuturesPnL(data.direction, data.entryPrice, data.exitPrice, data.contract.pointValue, data.contract.contracts)
+            : calculatePnL(data.direction, data.entryPrice, data.exitPrice, data.quantity);
         if (pnl > 0) {
           confetti({ particleCount: 120, spread: 80, origin: { y: 0.7 }, colors: ['#22c55e', '#4ade80', '#86efac', '#fbbf24', '#38bdf8'] });
         }
@@ -422,7 +433,7 @@ export default function TradeJournal() {
       return [
         formatDate(d), xd ? formatDate(xd) : '', t.pair, t.direction, t.entryPrice, t.exitPrice,
         t.stopLoss, t.positionSize, t.leverage, t.fees, pnl.toFixed(2),
-        (isNaN(pnlPct) ? 0 : pnlPct).toFixed(2), (t.rrRatio ?? 0).toFixed(2), t.strategy || '',
+        (isNaN(pnlPct) ? 0 : pnlPct).toFixed(2), ((pnl < 0 ? -1 : 1) * (t.rrRatio ?? 0)).toFixed(2), t.strategy || '',
         t.timeframe || '', t.exitPrice > 0 ? 'סגורה' : 'פתוחה',
         t.entryReason || '', t.notes || '', tags, t.emotionBefore || '', t.emotionAfter || '', mistakes, t.confidenceRating ?? '',
       ];
