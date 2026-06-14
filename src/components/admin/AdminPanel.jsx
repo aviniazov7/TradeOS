@@ -559,7 +559,7 @@ export default function AdminPanel() {
           const realCost = (totTokIn * 0.59 + totTokOut * 0.79) / 1e6;
           return (
             <>
-              <div className="flex items-end gap-0.5 h-24">
+              <div className="flex items-stretch gap-0.5 h-24">
                 {series.map((s) => {
                   const total = s.text + s.image;
                   const h = Math.round((total / max) * 100);
@@ -568,13 +568,17 @@ export default function AdminPanel() {
                   return (
                     <div
                       key={s.date}
-                      className="flex-1 flex flex-col justify-end group"
+                      className="flex-1 h-full flex flex-col justify-end group"
                       title={`${label}: ${s.text} טקסט · ${s.image} תמונה`}
                     >
-                      <div className="w-full rounded-t bg-accent-primary/70 group-hover:bg-accent-primary transition-colors" style={{ height: `${Math.max(2, h)}%` }} />
+                      <div className="w-full rounded-t bg-accent-primary/70 group-hover:bg-accent-primary transition-colors" style={{ height: `${total > 0 ? Math.max(6, h) : 2}%` }} />
                     </div>
                   );
                 })}
+              </div>
+              <div className="flex justify-between mt-1 text-[9px] text-text-muted">
+                <span>{series.length ? `${new Date(series[0].date).getDate()}/${new Date(series[0].date).getMonth() + 1}` : ''}</span>
+                <span>היום</span>
               </div>
               <div className="mt-3 grid grid-cols-3 gap-2 text-center">
                 <div>
