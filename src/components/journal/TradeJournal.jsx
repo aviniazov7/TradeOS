@@ -43,7 +43,7 @@ import ExchangeSettings from '../exchange/ExchangeSettings';
 import TradeShareModal from './TradeShareModal';
 import JournalSkeleton from './JournalSkeleton';
 import { formatCurrency, formatPercent, formatDuration, formatDate } from '../../utils/formatters';
-import { TAG_LABELS } from '../../utils/constants';
+import { TAG_LABELS, DEFAULT_LEVERAGE } from '../../utils/constants';
 import { pageVariants, pageTransition, staggerContainer } from '../../utils/animations';
 
 const defaultFilters = { search: '', direction: '', result: '', strategy: '', tag: '', timeframe: '', month: '' };
@@ -911,7 +911,7 @@ export default function TradeJournal() {
               if (t._isOpen) {
                 const ep = t.entryPrice > 0 ? t.entryPrice : 0;
                 const qty = t.quantity > 0 ? t.quantity : 0;
-                const lev = Math.min(200, Math.max(1, t.leverage || 1));
+                const lev = Math.min(200, Math.max(1, t.leverage || DEFAULT_LEVERAGE));
                 return addToUserCollection(user.uid, 'trades', {
                   pair: t.pair, direction: t.direction,
                   entryPrice: ep, quantity: qty, leverage: lev,
@@ -958,7 +958,7 @@ export default function TradeJournal() {
               // 1, which previously surfaced as a phantom TP at price 1.
               const xp = t.exitPrice > 0 ? t.exitPrice : ep;
               const qty = t.quantity > 0 ? t.quantity : 1;
-              const lev = Math.min(200, Math.max(1, t.leverage || 1));
+              const lev = Math.min(200, Math.max(1, t.leverage || DEFAULT_LEVERAGE));
               const pnl = t.pnlFromExchange ?? 0;
               const netPnlImport = pnl - fees;
               const result = netPnlImport > 0 ? 'win' : netPnlImport < 0 ? 'loss' : 'breakeven';

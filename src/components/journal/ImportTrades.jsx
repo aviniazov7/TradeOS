@@ -2,6 +2,7 @@ import { useState, useRef } from 'react';
 import { Upload, FileText, AlertCircle, Check } from 'lucide-react';
 import toast from 'react-hot-toast';
 import Modal from '../shared/Modal';
+import { DEFAULT_LEVERAGE } from '../../utils/constants';
 
 const COLUMN_MAP = {
   pair: ['pair', 'symbol', 'coin', 'market', 'instrument', 'זוג'],
@@ -119,7 +120,7 @@ export default function ImportTrades({ isOpen, onClose, onImport, onImportBulk }
       const exitPrice = parseFloat(get('exitPrice')) || 0;
       const pair = get('pair') || 'BTCUSDT';
       const positionSize = parseFloat(get('positionSize')) || 0;
-      const rawLeverage = parseInt(get('leverage')) || 10;
+      const rawLeverage = parseInt(get('leverage')) || DEFAULT_LEVERAGE;
       const leverage = Math.min(200, Math.max(1, rawLeverage));
       // Calculate quantity from positionSize — required for PnL calculation
       const quantity = entryPrice > 0 && positionSize > 0
