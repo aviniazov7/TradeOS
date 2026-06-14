@@ -481,11 +481,12 @@ export default function AdminPanel() {
                 </div>
               </div>
             </div>
-            <div className="mt-2.5 flex items-center gap-1.5 text-[11px] text-text-muted">
+            <div className="mt-2.5 flex items-center gap-1.5 text-[11px] text-text-muted flex-wrap">
               <DollarSign className="w-3.5 h-3.5 text-accent-primary" />
-              עלות AI מוערכת היום:
+              עלות אילו בתוכנית בתשלום:
               <span className="text-text-secondary font-semibold">~${estimateAiCost(globalAi.totalText, globalAi.totalImage).toFixed(3)}</span>
-              <span>· חודשי משוער ~${(estimateAiCost(globalAi.totalText, globalAi.totalImage) * 30).toFixed(2)}</span>
+              <span>· חודשי ~${(estimateAiCost(globalAi.totalText, globalAi.totalImage) * 30).toFixed(2)}</span>
+              <span className="text-profit">· בפועל היום: $0 (גרסה חינמית)</span>
             </div>
           </>
         ) : (
@@ -542,7 +543,15 @@ export default function AdminPanel() {
         {!aiStats ? (
           <div className="text-xs text-text-muted">…</div>
         ) : (() => {
-          const series = aiStats.stats || [];
+          // Token metering (aistat) only accrues from when it shipped, so the
+          // most recent day can read 0 even though users already chatted today.
+          // Backfill today's bar from the live per-user counters (globalAi) so
+          // it reflects real usage immediately; tokens still fill in going forward.
+          const series = (aiStats.stats || []).map((s) =>
+            globalAi && s.date === globalAi.date
+              ? { ...s, text: Math.max(s.text, globalAi.totalText || 0), image: Math.max(s.image, globalAi.totalImage || 0) }
+              : s
+          );
           const max = Math.max(1, ...series.map((s) => s.text + s.image));
           const totTokIn = series.reduce((a, s) => a + s.tokIn, 0);
           const totTokOut = series.reduce((a, s) => a + s.tokOut, 0);
@@ -578,7 +587,7 @@ export default function AdminPanel() {
                 </div>
                 <div>
                   <div className="text-sm font-bold text-accent-primary">~${realCost.toFixed(2)}</div>
-                  <div className="text-[10px] text-text-muted">עלות מבוססת טוקנים</div>
+                  <div className="text-[10px] text-text-muted">עלות אילו בתשלום</div>
                 </div>
               </div>
             </>
