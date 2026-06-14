@@ -3754,6 +3754,33 @@ async function handleRequest(request, env) {
     }), { headers: { ...cors, 'Content-Type': 'application/json' } });
   }
 
+  // Admin-only: aggregate today's AI usage across ALL users (text + image),
+  // with a per-user breakdown so the panel can show totals and top users.
+  if (request.method === 'GET' && path === '/admin/ai-usage-global') {
+    const token = (request.headers.get('Authorization') || '').replace('Bearer ', '');
+    const adminUid = await verifyAdminFromToken(token);
+    if (!adminUid) return new Response(JSON.stringify({ error: 'forbidden' }), { status: 403, headers: { ...cors, 'Content-Type': 'application/json' } });
+    const date = getIsraelDateStr();
+    const perUser = {};
+    let totalText = 0, totalImage = 0;
+    const collect = async (prefix, field) => {
+      const list = await env.ALERTS_KV.list({ prefix });
+      const todays = list.keys.filter((k) => k.name.endsWith(`:${date}`));
+      const vals = await Promise.all(todays.map((k) => env.ALERTS_KV.get(k.name)));
+      todays.forEach((k, i) => {
+        const n = parseInt(vals[i], 10) || 0;
+        if (!n) return;
+        const uid = k.name.split(':')[1];
+        if (!perUser[uid]) perUser[uid] = { text: 0, image: 0 };
+        perUser[uid][field] += n;
+        if (field === 'text') totalText += n; else totalImage += n;
+      });
+    };
+    await collect('aiusage:', 'text');
+    await collect('aiimg:', 'image');
+    return new Response(JSON.stringify({ date, totalText, totalImage, perUser }), { headers: { ...cors, 'Content-Type': 'application/json' } });
+  }
+
   // Trade event notifications
   if (request.method === 'POST' && path === '/notify') {
     try {
