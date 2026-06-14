@@ -1,11 +1,11 @@
 import { useState, useEffect, useMemo } from 'react';
 import { Navigate } from 'react-router-dom';
-import { Users, UserPlus, ShieldCheck, CheckCircle2, Search, RefreshCw, Download, ChevronUp, ChevronDown, Mail, Calendar, Coins, TrendingUp, Percent, Sparkles, BookOpen, FlaskConical, Activity, FileText, Brain, Crown, Send, X, Ticket, Plus, Minus, Trash2, Copy, ScrollText, Share2, Link2, BarChart3, AlertTriangle, Clock, DollarSign, Hourglass, Image } from 'lucide-react';
+import { Users, UserPlus, ShieldCheck, CheckCircle2, Search, RefreshCw, Download, ChevronUp, ChevronDown, Mail, Calendar, Coins, TrendingUp, Percent, Sparkles, BookOpen, FlaskConical, Activity, FileText, Brain, Crown, Send, X, Ticket, Plus, Minus, Trash2, Copy, ScrollText, Share2, Link2, BarChart3, AlertTriangle, Clock, DollarSign, Hourglass, Image, Trophy, Loader2 } from 'lucide-react';
 import toast from 'react-hot-toast';
 import { useAuth } from '../../contexts/AuthContext';
 import { getAllUsers, getUserSubcollectionCount, adminGrantPremium, adminRevokePremium, addPayment, getAllPayments } from '../../services/firestoreService';
 import { fetchUserAiUsage, fetchGlobalAiUsage } from '../../hooks/useAiUsage';
-import { adminSendNotification, adminScheduleExpiryReminders, adminCancelExpiryReminders, adminRefreshPlanCache, adminListAuditEvents, adminSendTestDigest, adminGetTelegramInfo } from '../../services/pushService';
+import { adminSendNotification, adminSendBulkNotification, adminScheduleExpiryReminders, adminCancelExpiryReminders, adminRefreshPlanCache, adminListAuditEvents, adminSendTestDigest, adminGetTelegramInfo } from '../../services/pushService';
 import { adminListCoupons, adminCreateCoupon, adminDeleteCoupon, couponShareUrl } from '../../services/couponService';
 import LoadingSpinner from '../shared/LoadingSpinner';
 import SelectDropdown from '../shared/SelectDropdown';
@@ -150,6 +150,27 @@ export default function AdminPanel() {
   const [analyticsOpen, setAnalyticsOpen] = useState(false);
   // { title, users } — opened by clicking a stat card to list its users.
   const [listModal, setListModal] = useState(null);
+  const [leaderboardOpen, setLeaderboardOpen] = useState(false);
+  const [bulkOpen, setBulkOpen] = useState(false);
+  const [reengaging, setReengaging] = useState(null); // uid currently being re-engaged
+
+  // Quick re-engagement push for a churn-risk customer.
+  const quickReengage = async (u) => {
+    setReengaging(u.id);
+    try {
+      await adminSendNotification({
+        uid: u.id,
+        title: 'מתגעגעים אליך ב-TradeOS 👋',
+        body: 'עבר זמן מאז שנכנסת — בוא לעדכן את יומן המסחר ולראות מה חדש.',
+        url: '/',
+      });
+      toast.success('נשלחה התראת חזרה');
+    } catch {
+      toast.error('שליחת ההתראה נכשלה');
+    } finally {
+      setReengaging(null);
+    }
+  };
   // Aggregate AI usage across all users today (text + image) from the worker.
   const [globalAi, setGlobalAi] = useState(null);
 
@@ -380,6 +401,20 @@ export default function AdminPanel() {
             אנליטיקס
           </button>
           <button
+            onClick={() => setLeaderboardOpen(true)}
+            className="flex items-center justify-center gap-2 px-3 py-2 rounded-lg text-sm font-medium bg-bg-tertiary border border-border-primary text-text-secondary hover:text-text-primary cursor-pointer"
+          >
+            <Trophy className="w-4 h-4 shrink-0" />
+            מובילים
+          </button>
+          <button
+            onClick={() => setBulkOpen(true)}
+            className="flex items-center justify-center gap-2 px-3 py-2 rounded-lg text-sm font-medium bg-bg-tertiary border border-border-primary text-text-secondary hover:text-text-primary cursor-pointer"
+          >
+            <Send className="w-4 h-4 shrink-0" />
+            שליחה קבוצתית
+          </button>
+          <button
             onClick={() => setCouponsOpen(true)}
             className="flex items-center justify-center gap-2 px-3 py-2 rounded-lg text-sm font-medium bg-amber-500/15 border border-amber-500/30 text-amber-400 hover:bg-amber-500/20 cursor-pointer"
           >
@@ -520,24 +555,33 @@ export default function AdminPanel() {
           </div>
           <div className="grid sm:grid-cols-2 gap-2">
             {churned.slice(0, 6).map((u) => (
-              <button
+              <div
                 key={u.id}
-                onClick={() => setSelectedUser(u)}
-                className="flex items-center gap-3 bg-bg-secondary border border-border-primary rounded-lg px-3 py-2 text-right hover:border-loss/40 transition-colors cursor-pointer"
+                className="flex items-center gap-3 bg-bg-secondary border border-border-primary rounded-lg px-3 py-2 hover:border-loss/40 transition-colors"
               >
-                {u.photoURL ? (
-                  <img src={u.photoURL} alt="" className="w-8 h-8 rounded-full object-cover" referrerPolicy="no-referrer" />
-                ) : (
-                  <div className="w-8 h-8 rounded-full bg-bg-primary border border-border-primary flex items-center justify-center text-text-secondary text-sm font-semibold">
-                    {(u.displayName || u.email || '?').charAt(0).toUpperCase()}
+                <button onClick={() => setSelectedUser(u)} className="flex items-center gap-3 flex-1 min-w-0 text-right cursor-pointer">
+                  {u.photoURL ? (
+                    <img src={u.photoURL} alt="" className="w-8 h-8 rounded-full object-cover" referrerPolicy="no-referrer" />
+                  ) : (
+                    <div className="w-8 h-8 rounded-full bg-bg-primary border border-border-primary flex items-center justify-center text-text-secondary text-sm font-semibold">
+                      {(u.displayName || u.email || '?').charAt(0).toUpperCase()}
+                    </div>
+                  )}
+                  <div className="flex-1 min-w-0">
+                    <div className="text-sm font-medium text-text-primary truncate">{u.displayName || u.email}</div>
+                    <div className="text-[11px] text-loss">לא נכנס {daysSinceActive(u)} ימים</div>
                   </div>
-                )}
-                <div className="flex-1 min-w-0">
-                  <div className="text-sm font-medium text-text-primary truncate">{u.displayName || u.email}</div>
-                  <div className="text-[11px] text-loss">לא נכנס {daysSinceActive(u)} ימים</div>
-                </div>
-                <Send className="w-4 h-4 text-text-muted shrink-0" />
-              </button>
+                </button>
+                <button
+                  type="button"
+                  onClick={() => quickReengage(u)}
+                  disabled={reengaging === u.id}
+                  title="שלח התראת חזרה"
+                  className="shrink-0 p-1.5 rounded-lg text-accent-primary hover:bg-accent-primary/10 disabled:opacity-50 cursor-pointer"
+                >
+                  {reengaging === u.id ? <Loader2 className="w-4 h-4 animate-spin" /> : <Send className="w-4 h-4" />}
+                </button>
+              </div>
             ))}
           </div>
           {churned.length > 6 && (
@@ -757,6 +801,17 @@ export default function AdminPanel() {
         onClose={() => setListModal(null)}
         onPickUser={(u) => { setListModal(null); setSelectedUser(u); }}
       />
+      <LeaderboardModal
+        isOpen={leaderboardOpen}
+        onClose={() => setLeaderboardOpen(false)}
+        users={users}
+        onPickUser={(u) => { setLeaderboardOpen(false); setSelectedUser(u); }}
+      />
+      <BulkNotifyModal
+        isOpen={bulkOpen}
+        onClose={() => setBulkOpen(false)}
+        segments={{ all: stats.total, premium: stats.premium, newThisWeek: stats.newThisWeek, onboarded: stats.onboarded, churned }}
+      />
     </div>
   );
 }
@@ -792,6 +847,158 @@ function UserListModal({ data, onClose, onPickUser }) {
         }) : (
           <div className="text-sm text-text-muted text-center py-6">אין משתמשים בקטגוריה זו</div>
         )}
+      </div>
+    </Modal>
+  );
+}
+
+// ── Leaderboard modal — top users by trades + activity ───────────────────────
+function LeaderboardModal({ isOpen, onClose, users, onPickUser }) {
+  const [rows, setRows] = useState(null); // [{ u, trades }]
+  useEffect(() => {
+    if (!isOpen) { setRows(null); return; }
+    let cancelled = false;
+    (async () => {
+      const withCounts = await Promise.all(
+        users.map(async (u) => {
+          let trades = 0;
+          try { trades = await getUserSubcollectionCount(u.id, 'trades'); } catch { /* no access / none */ }
+          return { u, trades };
+        })
+      );
+      if (!cancelled) {
+        withCounts.sort((a, b) => b.trades - a.trades || lastActiveMs(b.u) - lastActiveMs(a.u));
+        setRows(withCounts);
+      }
+    })();
+    return () => { cancelled = true; };
+  }, [isOpen, users]);
+
+  return (
+    <Modal isOpen={isOpen} onClose={onClose} title="משתמשים מובילים" maxWidth="max-w-lg">
+      <div className="p-4 max-h-[65vh] overflow-y-auto">
+        {!rows ? (
+          <div className="flex items-center justify-center gap-2 py-8 text-text-muted text-sm">
+            <Loader2 className="w-4 h-4 animate-spin" /> טוען נתונים…
+          </div>
+        ) : (
+          <div className="space-y-1.5">
+            {rows.map((r, i) => {
+              const name = r.u.displayName || r.u.email || r.u.id.slice(0, 8);
+              const medal = i === 0 ? '🥇' : i === 1 ? '🥈' : i === 2 ? '🥉' : `${i + 1}`;
+              return (
+                <button
+                  key={r.u.id}
+                  type="button"
+                  onClick={() => onPickUser(r.u)}
+                  className="w-full flex items-center gap-3 px-3 py-2.5 rounded-lg bg-bg-tertiary/40 border border-border-primary hover:border-accent-primary/50 transition-colors cursor-pointer text-right"
+                >
+                  <span className="w-7 text-center text-sm font-bold text-text-secondary shrink-0">{medal}</span>
+                  <div className="flex-1 min-w-0">
+                    <div className="text-sm font-medium text-text-primary truncate">{name}</div>
+                    <div className="text-[11px] text-text-muted">פעילות אחרונה: {relativeActive(r.u.lastActive)}</div>
+                  </div>
+                  <div className="text-left shrink-0">
+                    <div className="text-sm font-bold text-accent-primary">{r.trades}</div>
+                    <div className="text-[10px] text-text-muted">עסקאות</div>
+                  </div>
+                </button>
+              );
+            })}
+          </div>
+        )}
+      </div>
+    </Modal>
+  );
+}
+
+// ── Bulk push modal — send one push to a whole segment of users ──────────────
+const SEGMENT_LABELS = {
+  all: 'כל המשתמשים',
+  premium: 'לקוחות Premium',
+  newThisWeek: 'חדשים השבוע',
+  onboarded: 'סיימו אונבורדינג',
+  churned: 'בסיכון נטישה',
+};
+function BulkNotifyModal({ isOpen, onClose, segments }) {
+  const [seg, setSeg] = useState('premium');
+  const [title, setTitle] = useState('');
+  const [body, setBody] = useState('');
+  const [url, setUrl] = useState('');
+  const [sending, setSending] = useState(false);
+
+  useEffect(() => { if (!isOpen) { setTitle(''); setBody(''); setUrl(''); setSeg('premium'); } }, [isOpen]);
+
+  const targets = segments?.[seg] || [];
+  const send = async () => {
+    if (!title.trim() || !body.trim() || !targets.length) return;
+    setSending(true);
+    try {
+      const uids = targets.map((u) => u.id);
+      const r = await adminSendBulkNotification({ uids, title: title.trim(), body: body.trim(), url: url.trim() || '/' });
+      toast.success(`נשלח ל-${r?.recipients ?? 0} משתמשים (${r?.sent ?? 0} מכשירים)`);
+      onClose();
+    } catch {
+      toast.error('השליחה נכשלה');
+    } finally {
+      setSending(false);
+    }
+  };
+
+  return (
+    <Modal isOpen={isOpen} onClose={onClose} title="שליחת התראה קבוצתית" maxWidth="max-w-lg">
+      <div className="p-4 space-y-3">
+        <div>
+          <label className="text-[11px] text-text-muted block mb-1.5">קהל יעד</label>
+          <div className="flex flex-wrap gap-1.5">
+            {Object.keys(SEGMENT_LABELS).map((k) => {
+              const count = segments?.[k]?.length || 0;
+              const active = seg === k;
+              return (
+                <button
+                  key={k}
+                  type="button"
+                  onClick={() => setSeg(k)}
+                  className={`px-2.5 py-1.5 rounded-lg text-xs font-medium border transition-colors cursor-pointer ${active ? 'bg-accent-primary/15 border-accent-primary/40 text-accent-primary' : 'bg-bg-tertiary border-border-primary text-text-secondary hover:text-text-primary'}`}
+                >
+                  {SEGMENT_LABELS[k]} ({count})
+                </button>
+              );
+            })}
+          </div>
+        </div>
+        <input
+          value={title}
+          onChange={(e) => setTitle(e.target.value)}
+          placeholder="כותרת ההתראה"
+          maxLength={120}
+          className="w-full bg-bg-tertiary border border-border-primary rounded-lg px-3 py-2 text-sm text-text-primary outline-none focus:border-accent-primary"
+        />
+        <textarea
+          value={body}
+          onChange={(e) => setBody(e.target.value)}
+          placeholder="תוכן ההתראה"
+          maxLength={400}
+          rows={3}
+          className="w-full bg-bg-tertiary border border-border-primary rounded-lg px-3 py-2 text-sm text-text-primary outline-none focus:border-accent-primary resize-none"
+        />
+        <input
+          value={url}
+          onChange={(e) => setUrl(e.target.value)}
+          placeholder="קישור (ברירת מחדל: דף הבית)"
+          dir="ltr"
+          className="w-full bg-bg-tertiary border border-border-primary rounded-lg px-3 py-2 text-sm text-text-primary outline-none focus:border-accent-primary text-right"
+        />
+        <button
+          type="button"
+          onClick={send}
+          disabled={sending || !title.trim() || !body.trim() || !targets.length}
+          className="w-full py-2.5 rounded-lg bg-accent-primary text-bg-primary text-sm font-bold hover:bg-accent-hover transition-colors cursor-pointer disabled:opacity-50 flex items-center justify-center gap-2"
+        >
+          {sending ? <Loader2 className="w-4 h-4 animate-spin" /> : <Send className="w-4 h-4" />}
+          שלח ל-{targets.length} משתמשים
+        </button>
+        <p className="text-[11px] text-text-muted text-center">נשלח רק למשתמשים שאישרו התראות Push.</p>
       </div>
     </Modal>
   );
