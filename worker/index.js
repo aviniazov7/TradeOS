@@ -2188,12 +2188,21 @@ Volume: גבוה+עלייה=ביקוש חזק; גבוה+ירידה=היצע חז
 1. מבנה כללי — זהה נכס וטיימפריים אם נראים, קבע מגמה ושלב שוק (איסוף/פיזור/Mark Up/Mark Down) ואת הפאזה (A–E).
 2. אזורי מפתח — רשום כרשימת תבליטים את הרמות שזוהו עם מחירים מדויקים מציר המחיר: תמיכה, התנגדות, Creek, Ice, ואזורי Spring/UTAD אם קיימים. אל תכלול לעולם נקודות כניסה, סטופ-לוס, טייק-פרופיט או יחס סיכון/סיכוי.
 3. אירועים בולטים — סמן את מה שניתן לזהות (SC, AR, ST, Spring, UT/UTAD, SOS/SOW, LPS/LPSY, BOS) עם מיקום/תאריך משוער בגרף.
-4. מאמץ מול תוצאה — אם ה-Volume מופיע, נתח אותו.
+4. מאמץ מול תוצאה — אם ה-Volume מופיע, נתח אותו. אם אין עמודות Volume בתמונה, ציין זאת במפורש ("אין Volume בתמונה — ניתוח המאמץ-מול-תוצאה מוגבל"), כי שיטת ויקוף נשענת עליו במידה רבה.
 5. תרחיש שורי — מה צריך לקרות כדי שיתממש (טריגר/אישור) ומה יפסול אותו.
 6. תרחיש דובי — מה צריך לקרות כדי שיתממש ומה יפסול אותו.
 
-אם התמונה אינה גרף מסחר — אמור זאת בקצרה ובקש תמונת גרף.
-כללי דיוק בקריאת התמונה: קרא רמות מחיר מציר המחיר וצטט מספרים מדויקים ככל האפשר. חפש במיוחד חריגות שווא — נר או רצף נרות שחרגו מתחת לתמיכה או מעל להתנגדות וחזרו לטווח (Spring/UTAD/לקיחת נזילות) — ואל תפספס אותן גם כשהמחיר חזר מהר; ציין תאריך/מיקום משוער בגרף. אם המשתמש סימן על הגרף קווים, תיבות, חיצים או אזורים מודגשים — התייחס לסימונים האלה במפורש בניתוח. העדף אמירות ספציפיות לגרף הזה על פני ניסוחים כלליים שנכונים לכל גרף.
+אם התמונה אינה גרף מסחר — אמור זאת בקצרה ובקש תמונת גרף. אם התמונה כן גרף אך מטושטשת, חתוכה, או ברזולוציה נמוכה מכדי לנתח באמינות — אל תנתח בכוח ברמת ודאות נמוכה; החזר הודעה קצרה וידידותית בלבד: "התמונה אינה ברורה מספיק לניתוח אמין — נסה צילום מסך חד וברור יותר של הגרף".
+כללי דיוק בקריאת הגרף (חובה — לפני שאתה כותב, קרא את התמונה לפי הסדר הזה):
+- צירים קודם: קרא את ציר המחיר (בצד) ואת ציר הזמן (למטה). קבע את טווח המחיר הנראה, את המחיר האחרון/הנוכחי, ואת הטיימפריים לכל נר אם מסומן. אם הנכס או הטיימפריים אינם מופיעים בתמונה — כתוב "לא מופיע בתמונה" ואל תנחש.
+- עגן כל רמה למה שנראה בפועל: ציין רמה רק אם אתה רואה שהמחיר נגע או כובד בה, וכמה פעמים היא נבדקה (יותר נגיעות = רמה חזקה יותר). הבחן בין צל הנר (wick) לגוף בקביעת תמיכה/התנגדות ובזיהוי Spring/UTAD.
+- מיקום יחסי: ציין היכן המחיר הנוכחי ביחס לטווח שזוהה (שליש עליון / אמצע / שליש תחתון).
+- חריגות שווא: חפש במכוון נר או רצף שחרגו מתחת לתמיכה או מעל התנגדות וחזרו לטווח (Spring/UTAD/לקיחת נזילות) — אל תפספס גם כשהחזרה מהירה; ציין מיקום/תאריך משוער.
+- הפרד תצפית מפרשנות: כתוב מה אתה רואה בפועל בגרף בנפרד ממה שאתה מסיק (פרשנות ויקוף).
+- אנטי-הזיה: אל תמציא Volume, אינדיקטורים, רמות או אירועים שאינם נראים בתמונה. אם חלק מהתמונה מטושטש, חתוך או לא ברור — אמור זאת והורד את רמת הוודאות בהתאם.
+- אל תכפה ויקוף: לא כל גרף הוא Accumulation/Distribution. אם זו מגמה פשוטה או דשדוש — אמור זאת ישירות.
+- סימוני משתמש: אם המשתמש סימן קווים, תיבות, חיצים או אזורים — התייחס אליהם במפורש.
+- העדף תמיד אמירות ספציפיות לגרף הזה על פני ניסוחים כלליים שנכונים לכל גרף.
 
 ## הנחיות תשובה
 - ענה תמיד בעברית, בעומק, עם דוגמאות מעשיות מקריפטו ומניות.
@@ -3321,6 +3330,25 @@ async function handleRequest(request, env) {
     return new Response(JSON.stringify({ ok: true, sent: result.sent, total: result.total }), { headers: { ...cors, 'Content-Type': 'application/json' } });
   }
 
+  // Admin-only: send the same push to a list of users (a segment from the panel).
+  if (request.method === 'POST' && path === '/admin/notify-bulk') {
+    const token = (request.headers.get('Authorization') || '').replace('Bearer ', '');
+    const adminUid = await verifyAdminFromToken(token);
+    if (!adminUid) return new Response(JSON.stringify({ error: 'forbidden' }), { status: 403, headers: { ...cors, 'Content-Type': 'application/json' } });
+    const { uids, title, body, url } = await request.json().catch(() => ({}));
+    if (!Array.isArray(uids) || uids.length === 0 || !title || !body) {
+      return new Response(JSON.stringify({ error: 'missing fields' }), { status: 400, headers: { ...cors, 'Content-Type': 'application/json' } });
+    }
+    const capped = uids.slice(0, 500); // safety cap
+    const tag = `admin-bulk-${Date.now()}`;
+    const payload = { title: String(title).slice(0, 120), body: String(body).slice(0, 400), url: typeof url === 'string' && url ? url : '/', tag };
+    const results = await Promise.all(capped.map((uid) => sendPushToUser(env, uid, payload).catch(() => ({ sent: 0, total: 0 }))));
+    let sent = 0, recipients = 0;
+    for (const r of results) { sent += r.sent || 0; if ((r.sent || 0) > 0) recipients++; }
+    appendAudit(env, { kind: 'notify-bulk', actor: adminUid, targeted: capped.length, recipients, sent, title: payload.title });
+    return new Response(JSON.stringify({ ok: true, sent, recipients, targeted: capped.length }), { headers: { ...cors, 'Content-Type': 'application/json' } });
+  }
+
   // Admin-only: invalidate the cached premium flag for a user. Called right
   // after granting or revoking Premium so the worker reflects the new plan
   // immediately instead of waiting up to the planflag cache TTL — otherwise a
@@ -3743,6 +3771,33 @@ async function handleRequest(request, env) {
       premium,
       ...(imgUsage ? { imageUsed: imgUsage.used, imageLimit: imgUsage.limit } : {}),
     }), { headers: { ...cors, 'Content-Type': 'application/json' } });
+  }
+
+  // Admin-only: aggregate today's AI usage across ALL users (text + image),
+  // with a per-user breakdown so the panel can show totals and top users.
+  if (request.method === 'GET' && path === '/admin/ai-usage-global') {
+    const token = (request.headers.get('Authorization') || '').replace('Bearer ', '');
+    const adminUid = await verifyAdminFromToken(token);
+    if (!adminUid) return new Response(JSON.stringify({ error: 'forbidden' }), { status: 403, headers: { ...cors, 'Content-Type': 'application/json' } });
+    const date = getIsraelDateStr();
+    const perUser = {};
+    let totalText = 0, totalImage = 0;
+    const collect = async (prefix, field) => {
+      const list = await env.ALERTS_KV.list({ prefix });
+      const todays = list.keys.filter((k) => k.name.endsWith(`:${date}`));
+      const vals = await Promise.all(todays.map((k) => env.ALERTS_KV.get(k.name)));
+      todays.forEach((k, i) => {
+        const n = parseInt(vals[i], 10) || 0;
+        if (!n) return;
+        const uid = k.name.split(':')[1];
+        if (!perUser[uid]) perUser[uid] = { text: 0, image: 0 };
+        perUser[uid][field] += n;
+        if (field === 'text') totalText += n; else totalImage += n;
+      });
+    };
+    await collect('aiusage:', 'text');
+    await collect('aiimg:', 'image');
+    return new Response(JSON.stringify({ date, totalText, totalImage, perUser }), { headers: { ...cors, 'Content-Type': 'application/json' } });
   }
 
   // Trade event notifications

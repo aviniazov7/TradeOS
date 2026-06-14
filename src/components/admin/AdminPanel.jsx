@@ -1,11 +1,11 @@
 import { useState, useEffect, useMemo } from 'react';
 import { Navigate } from 'react-router-dom';
-import { Users, UserPlus, ShieldCheck, CheckCircle2, Search, RefreshCw, Download, ChevronUp, ChevronDown, Mail, Calendar, Coins, TrendingUp, Percent, Sparkles, BookOpen, FlaskConical, Activity, FileText, Brain, Crown, Send, X, Ticket, Plus, Minus, Trash2, Copy, ScrollText, Share2, Link2, BarChart3, AlertTriangle, Clock, DollarSign, Hourglass, Image } from 'lucide-react';
+import { Users, UserPlus, ShieldCheck, CheckCircle2, Search, RefreshCw, Download, ChevronUp, ChevronDown, Mail, Calendar, Coins, TrendingUp, Percent, Sparkles, BookOpen, FlaskConical, Activity, FileText, Brain, Crown, Send, X, Ticket, Plus, Minus, Trash2, Copy, ScrollText, Share2, Link2, BarChart3, AlertTriangle, Clock, DollarSign, Hourglass, Image, Trophy, Loader2 } from 'lucide-react';
 import toast from 'react-hot-toast';
 import { useAuth } from '../../contexts/AuthContext';
 import { getAllUsers, getUserSubcollectionCount, adminGrantPremium, adminRevokePremium, addPayment, getAllPayments } from '../../services/firestoreService';
-import { fetchUserAiUsage } from '../../hooks/useAiUsage';
-import { adminSendNotification, adminScheduleExpiryReminders, adminCancelExpiryReminders, adminRefreshPlanCache, adminListAuditEvents, adminSendTestDigest, adminGetTelegramInfo } from '../../services/pushService';
+import { fetchUserAiUsage, fetchGlobalAiUsage } from '../../hooks/useAiUsage';
+import { adminSendNotification, adminSendBulkNotification, adminScheduleExpiryReminders, adminCancelExpiryReminders, adminRefreshPlanCache, adminListAuditEvents, adminSendTestDigest, adminGetTelegramInfo } from '../../services/pushService';
 import { adminListCoupons, adminCreateCoupon, adminDeleteCoupon, couponShareUrl } from '../../services/couponService';
 import LoadingSpinner from '../shared/LoadingSpinner';
 import SelectDropdown from '../shared/SelectDropdown';
@@ -71,9 +71,23 @@ function daysUntilExpiry(u) {
 
 const ILS = (n) => '₪' + Math.round(Number(n) || 0).toLocaleString('he-IL');
 
-function StatCard({ icon, label, value }) {
-  return (
-    <div className="bg-bg-secondary border border-border-primary rounded-xl p-4 flex items-center gap-4">
+// Mirrors the worker's AI caps (FREE_LIMITS.aiPerDay / AI_PREMIUM_LIMITS.day /
+// AI_IMAGE_DAILY_LIMIT) — used only for the admin overview estimates.
+const AI_TEXT_LIMIT = { free: 20, premium: 200 };
+const AI_IMAGE_LIMIT = 10; // premium only
+
+// Rough $ cost estimate. We track request COUNTS (not tokens), so we assume
+// average token sizes per request and apply Groq pay-as-you-go pricing
+// (Llama 3.3 70B for text, Llama 4 Scout for vision). Estimate only.
+const AI_COST_EST = {
+  textPerReq: (800 * 0.59 + 500 * 0.79) / 1e6,   // ≈ $0.00087
+  imagePerReq: (1600 * 0.11 + 500 * 0.34) / 1e6, // ≈ $0.00035
+};
+const estimateAiCost = (text, image) => text * AI_COST_EST.textPerReq + image * AI_COST_EST.imagePerReq;
+
+function StatCard({ icon, label, value, onClick }) {
+  const inner = (
+    <>
       <div className="bg-accent-primary/10 text-accent-primary rounded-lg p-3">
         {icon}
       </div>
@@ -81,7 +95,18 @@ function StatCard({ icon, label, value }) {
         <div className="text-2xl font-bold text-text-primary">{value}</div>
         <div className="text-sm text-text-secondary">{label}</div>
       </div>
-    </div>
+    </>
+  );
+  const base = 'bg-bg-secondary border border-border-primary rounded-xl p-4 flex items-center gap-4';
+  if (!onClick) return <div className={base}>{inner}</div>;
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      className={`${base} text-right w-full hover:border-accent-primary/50 hover:bg-bg-tertiary/40 transition-colors cursor-pointer`}
+    >
+      {inner}
+    </button>
   );
 }
 
@@ -123,6 +148,31 @@ export default function AdminPanel() {
   const [couponsOpen, setCouponsOpen] = useState(false);
   const [auditOpen, setAuditOpen] = useState(false);
   const [analyticsOpen, setAnalyticsOpen] = useState(false);
+  // { title, users } — opened by clicking a stat card to list its users.
+  const [listModal, setListModal] = useState(null);
+  const [leaderboardOpen, setLeaderboardOpen] = useState(false);
+  const [bulkOpen, setBulkOpen] = useState(false);
+  const [reengaging, setReengaging] = useState(null); // uid currently being re-engaged
+
+  // Quick re-engagement push for a churn-risk customer.
+  const quickReengage = async (u) => {
+    setReengaging(u.id);
+    try {
+      await adminSendNotification({
+        uid: u.id,
+        title: 'מתגעגעים אליך ב-TradeOS 👋',
+        body: 'עבר זמן מאז שנכנסת — בוא לעדכן את יומן המסחר ולראות מה חדש.',
+        url: '/',
+      });
+      toast.success('נשלחה התראת חזרה');
+    } catch {
+      toast.error('שליחת ההתראה נכשלה');
+    } finally {
+      setReengaging(null);
+    }
+  };
+  // Aggregate AI usage across all users today (text + image) from the worker.
+  const [globalAi, setGlobalAi] = useState(null);
 
   // After load() refreshes `users`, keep `selectedUser` pointing at the fresh
   // copy so the open detail modal reflects the new plan/role immediately
@@ -156,21 +206,47 @@ export default function AdminPanel() {
     if (isAdmin) Promise.resolve().then(load);
   }, [isAdmin]);
 
+  useEffect(() => {
+    if (!isAdmin) return;
+    let cancelled = false;
+    fetchGlobalAiUsage().then((g) => { if (!cancelled) setGlobalAi(g); });
+    return () => { cancelled = true; };
+  }, [isAdmin, loadedAt]);
+
   const stats = useMemo(() => {
     const weekAgo = loadedAt - 7 * 24 * 60 * 60 * 1000;
-    let newThisWeek = 0;
-    let onboarded = 0;
-    let admins = 0;
-    let premium = 0;
+    const newThisWeek = [];
+    const onboarded = [];
+    const admins = [];
+    const premium = [];
     for (const u of users) {
       const created = toDate(u.createdAt);
-      if (created && created.getTime() >= weekAgo) newThisWeek++;
-      if (u.onboardingCompleted) onboarded++;
-      if (u.role === 'admin') admins++;
-      if (isUserPremium(u) && u.role !== 'admin') premium++;
+      if (created && created.getTime() >= weekAgo) newThisWeek.push(u);
+      if (u.onboardingCompleted) onboarded.push(u);
+      if (u.role === 'admin') admins.push(u);
+      if (isUserPremium(u) && u.role !== 'admin') premium.push(u);
     }
-    return { total: users.length, newThisWeek, onboarded, admins, premium };
+    return { total: users, newThisWeek, onboarded, admins, premium };
   }, [users, loadedAt]);
+
+  // Users at/over 80% of their daily AI quota (text or image) today — combines
+  // the worker's per-user counts with each user's premium status to derive the
+  // right cap. Sorted by how close to the limit they are.
+  const quotaAlerts = useMemo(() => {
+    if (!globalAi?.perUser) return [];
+    const out = [];
+    for (const [uid, v] of Object.entries(globalAi.perUser)) {
+      const u = users.find((x) => x.id === uid);
+      const premium = u ? isUserPremium(u) : false;
+      const textLimit = premium ? AI_TEXT_LIMIT.premium : AI_TEXT_LIMIT.free;
+      const imgLimit = premium ? AI_IMAGE_LIMIT : 0;
+      const textPct = textLimit ? (v.text || 0) / textLimit : 0;
+      const imgPct = imgLimit ? (v.image || 0) / imgLimit : 0;
+      const pct = Math.max(textPct, imgPct);
+      if (pct >= 0.8) out.push({ uid, u, premium, text: v.text || 0, textLimit, image: v.image || 0, imgLimit, pct });
+    }
+    return out.sort((a, b) => b.pct - a.pct);
+  }, [globalAi, users]);
 
   // Premium customers who haven't opened the app in 7+ days — the "churn risk"
   // list. Sorted by how long they've been gone (longest first).
@@ -325,6 +401,20 @@ export default function AdminPanel() {
             אנליטיקס
           </button>
           <button
+            onClick={() => setLeaderboardOpen(true)}
+            className="flex items-center justify-center gap-2 px-3 py-2 rounded-lg text-sm font-medium bg-bg-tertiary border border-border-primary text-text-secondary hover:text-text-primary cursor-pointer"
+          >
+            <Trophy className="w-4 h-4 shrink-0" />
+            מובילים
+          </button>
+          <button
+            onClick={() => setBulkOpen(true)}
+            className="flex items-center justify-center gap-2 px-3 py-2 rounded-lg text-sm font-medium bg-bg-tertiary border border-border-primary text-text-secondary hover:text-text-primary cursor-pointer"
+          >
+            <Send className="w-4 h-4 shrink-0" />
+            שליחה קבוצתית
+          </button>
+          <button
             onClick={() => setCouponsOpen(true)}
             className="flex items-center justify-center gap-2 px-3 py-2 rounded-lg text-sm font-medium bg-amber-500/15 border border-amber-500/30 text-amber-400 hover:bg-amber-500/20 cursor-pointer"
           >
@@ -350,12 +440,107 @@ export default function AdminPanel() {
       </div>
 
       <div className="grid grid-cols-2 lg:grid-cols-5 gap-3">
-        <StatCard icon={<Users className="w-6 h-6" />} label="סה״כ משתמשים" value={stats.total} />
-        <StatCard icon={<UserPlus className="w-6 h-6" />} label="חדשים השבוע" value={stats.newThisWeek} />
-        <StatCard icon={<CheckCircle2 className="w-6 h-6" />} label="סיימו אונבורדינג" value={stats.onboarded} />
-        <StatCard icon={<Crown className="w-6 h-6 text-amber-400" />} label="לקוחות Premium" value={stats.premium} />
-        <StatCard icon={<ShieldCheck className="w-6 h-6" />} label="אדמינים" value={stats.admins} />
+        <StatCard icon={<Users className="w-6 h-6" />} label="סה״כ משתמשים" value={stats.total.length} onClick={() => setListModal({ title: 'כל המשתמשים', users: stats.total })} />
+        <StatCard icon={<UserPlus className="w-6 h-6" />} label="חדשים השבוע" value={stats.newThisWeek.length} onClick={() => setListModal({ title: 'חדשים השבוע', users: stats.newThisWeek })} />
+        <StatCard icon={<CheckCircle2 className="w-6 h-6" />} label="סיימו אונבורדינג" value={stats.onboarded.length} onClick={() => setListModal({ title: 'סיימו אונבורדינג', users: stats.onboarded })} />
+        <StatCard icon={<Crown className="w-6 h-6 text-amber-400" />} label="לקוחות Premium" value={stats.premium.length} onClick={() => setListModal({ title: 'לקוחות Premium', users: stats.premium })} />
+        <StatCard icon={<ShieldCheck className="w-6 h-6" />} label="אדמינים" value={stats.admins.length} onClick={() => setListModal({ title: 'אדמינים', users: stats.admins })} />
       </div>
+
+      {/* Global AI usage today — aggregated across all users (text + image). */}
+      <div className="bg-bg-secondary border border-border-primary rounded-xl p-4">
+        <div className="text-[11px] text-text-muted mb-3 flex items-center gap-1.5">
+          <Sparkles className="w-3.5 h-3.5" /> שימוש כללי ב-AI היום (כל המשתמשים)
+        </div>
+        {globalAi ? (
+          <>
+            <div className="grid grid-cols-2 gap-3">
+              <div className="bg-bg-tertiary/40 border border-border-primary rounded-lg px-3 py-2.5 flex items-center gap-3">
+                <Sparkles className="w-5 h-5 text-accent-primary shrink-0" />
+                <div>
+                  <div className="text-xl font-bold text-text-primary">{globalAi.totalText}</div>
+                  <div className="text-[11px] text-text-secondary">בקשות טקסט</div>
+                </div>
+              </div>
+              <div className="bg-bg-tertiary/40 border border-border-primary rounded-lg px-3 py-2.5 flex items-center gap-3">
+                <Image className="w-5 h-5 text-accent-primary shrink-0" />
+                <div>
+                  <div className="text-xl font-bold text-text-primary">{globalAi.totalImage}</div>
+                  <div className="text-[11px] text-text-secondary">ניתוחי תמונה</div>
+                </div>
+              </div>
+            </div>
+            <div className="mt-2.5 flex items-center gap-1.5 text-[11px] text-text-muted">
+              <DollarSign className="w-3.5 h-3.5 text-accent-primary" />
+              עלות AI מוערכת היום:
+              <span className="text-text-secondary font-semibold">~${estimateAiCost(globalAi.totalText, globalAi.totalImage).toFixed(3)}</span>
+              <span>· חודשי משוער ~${(estimateAiCost(globalAi.totalText, globalAi.totalImage) * 30).toFixed(2)}</span>
+            </div>
+          </>
+        ) : (
+          <div className="text-xs text-text-muted">…</div>
+        )}
+        {globalAi && Object.keys(globalAi.perUser || {}).length > 0 && (
+          <div className="mt-3 space-y-1">
+            <div className="text-[11px] text-text-muted mb-1">המשתמשים הפעילים ביותר היום</div>
+            {Object.entries(globalAi.perUser)
+              .map(([uid, v]) => ({ uid, ...v, total: (v.text || 0) + (v.image || 0) }))
+              .sort((a, b) => b.total - a.total)
+              .slice(0, 5)
+              .map((row) => {
+                const u = users.find((x) => x.id === row.uid);
+                const name = u?.displayName || u?.email || row.uid.slice(0, 8);
+                return (
+                  <button
+                    key={row.uid}
+                    type="button"
+                    onClick={() => u && setSelectedUser(u)}
+                    className="w-full flex items-center justify-between text-xs px-2 py-1.5 rounded-lg hover:bg-bg-tertiary/50 transition-colors cursor-pointer"
+                  >
+                    <span className="text-text-secondary flex items-center gap-2">
+                      <span className="text-text-primary">{row.text}</span> טקסט
+                      <span className="text-text-primary">{row.image}</span> תמונה
+                    </span>
+                    <span className="text-text-primary font-medium truncate max-w-[55%] text-left">{name}</span>
+                  </button>
+                );
+              })}
+          </div>
+        )}
+      </div>
+
+      {/* Quota alerts — users at/over 80% of their daily AI quota today. */}
+      {quotaAlerts.length > 0 && (
+        <div className="bg-amber-500/5 border border-amber-500/30 rounded-xl p-4">
+          <div className="flex items-center gap-2 mb-3">
+            <div className="bg-amber-500/15 text-amber-400 rounded-lg p-1.5">
+              <AlertTriangle className="w-4 h-4" />
+            </div>
+            <span className="text-sm font-semibold text-text-primary">התראת חריגת מכסת AI</span>
+            <span className="text-[11px] text-text-muted">({quotaAlerts.length})</span>
+          </div>
+          <div className="space-y-1.5">
+            {quotaAlerts.map((a) => {
+              const name = a.u?.displayName || a.u?.email || a.uid.slice(0, 8);
+              const over = a.pct >= 1;
+              return (
+                <button
+                  key={a.uid}
+                  type="button"
+                  onClick={() => a.u && setSelectedUser(a.u)}
+                  className="w-full flex items-center justify-between gap-3 text-xs px-3 py-2 rounded-lg bg-bg-tertiary/40 border border-border-primary hover:border-amber-500/40 transition-colors cursor-pointer"
+                >
+                  <span className="flex items-center gap-2">
+                    <span className={`font-semibold ${over ? 'text-loss' : 'text-amber-400'}`}>{over ? 'חרג ממכסה' : `${Math.round(a.pct * 100)}%`}</span>
+                    <span className="text-text-secondary">טקסט {a.text}/{a.textLimit}{a.imgLimit > 0 ? ` · תמונה ${a.image}/${a.imgLimit}` : ''}</span>
+                  </span>
+                  <span className="text-text-primary font-medium truncate max-w-[45%] text-left">{name}</span>
+                </button>
+              );
+            })}
+          </div>
+        </div>
+      )}
 
       {/* Churn-risk: Premium customers who haven't opened the app in 7+ days. */}
       {churned.length > 0 && (
@@ -370,24 +555,33 @@ export default function AdminPanel() {
           </div>
           <div className="grid sm:grid-cols-2 gap-2">
             {churned.slice(0, 6).map((u) => (
-              <button
+              <div
                 key={u.id}
-                onClick={() => setSelectedUser(u)}
-                className="flex items-center gap-3 bg-bg-secondary border border-border-primary rounded-lg px-3 py-2 text-right hover:border-loss/40 transition-colors cursor-pointer"
+                className="flex items-center gap-3 bg-bg-secondary border border-border-primary rounded-lg px-3 py-2 hover:border-loss/40 transition-colors"
               >
-                {u.photoURL ? (
-                  <img src={u.photoURL} alt="" className="w-8 h-8 rounded-full object-cover" referrerPolicy="no-referrer" />
-                ) : (
-                  <div className="w-8 h-8 rounded-full bg-bg-primary border border-border-primary flex items-center justify-center text-text-secondary text-sm font-semibold">
-                    {(u.displayName || u.email || '?').charAt(0).toUpperCase()}
+                <button onClick={() => setSelectedUser(u)} className="flex items-center gap-3 flex-1 min-w-0 text-right cursor-pointer">
+                  {u.photoURL ? (
+                    <img src={u.photoURL} alt="" className="w-8 h-8 rounded-full object-cover" referrerPolicy="no-referrer" />
+                  ) : (
+                    <div className="w-8 h-8 rounded-full bg-bg-primary border border-border-primary flex items-center justify-center text-text-secondary text-sm font-semibold">
+                      {(u.displayName || u.email || '?').charAt(0).toUpperCase()}
+                    </div>
+                  )}
+                  <div className="flex-1 min-w-0">
+                    <div className="text-sm font-medium text-text-primary truncate">{u.displayName || u.email}</div>
+                    <div className="text-[11px] text-loss">לא נכנס {daysSinceActive(u)} ימים</div>
                   </div>
-                )}
-                <div className="flex-1 min-w-0">
-                  <div className="text-sm font-medium text-text-primary truncate">{u.displayName || u.email}</div>
-                  <div className="text-[11px] text-loss">לא נכנס {daysSinceActive(u)} ימים</div>
-                </div>
-                <Send className="w-4 h-4 text-text-muted shrink-0" />
-              </button>
+                </button>
+                <button
+                  type="button"
+                  onClick={() => quickReengage(u)}
+                  disabled={reengaging === u.id}
+                  title="שלח התראת חזרה"
+                  className="shrink-0 p-1.5 rounded-lg text-accent-primary hover:bg-accent-primary/10 disabled:opacity-50 cursor-pointer"
+                >
+                  {reengaging === u.id ? <Loader2 className="w-4 h-4 animate-spin" /> : <Send className="w-4 h-4" />}
+                </button>
+              </div>
             ))}
           </div>
           {churned.length > 6 && (
@@ -602,7 +796,211 @@ export default function AdminPanel() {
       <CouponsModal isOpen={couponsOpen} onClose={() => setCouponsOpen(false)} />
       <AuditLogModal isOpen={auditOpen} onClose={() => setAuditOpen(false)} users={users} />
       <AnalyticsModal isOpen={analyticsOpen} onClose={() => setAnalyticsOpen(false)} a={analytics} onPickUser={(u) => { setAnalyticsOpen(false); setSelectedUser(u); }} />
+      <UserListModal
+        data={listModal}
+        onClose={() => setListModal(null)}
+        onPickUser={(u) => { setListModal(null); setSelectedUser(u); }}
+      />
+      <LeaderboardModal
+        isOpen={leaderboardOpen}
+        onClose={() => setLeaderboardOpen(false)}
+        users={users}
+        onPickUser={(u) => { setLeaderboardOpen(false); setSelectedUser(u); }}
+      />
+      <BulkNotifyModal
+        isOpen={bulkOpen}
+        onClose={() => setBulkOpen(false)}
+        segments={{ all: stats.total, premium: stats.premium, newThisWeek: stats.newThisWeek, onboarded: stats.onboarded, churned }}
+      />
     </div>
+  );
+}
+
+// ── Stat-card → user list modal ──────────────────────────────────────────────
+// Opened by clicking a stat card (Premium / admins / onboarded / ...). Lists
+// the users in that bucket; clicking a row opens that user's detail modal.
+function UserListModal({ data, onClose, onPickUser }) {
+  return (
+    <Modal isOpen={!!data} onClose={onClose} title={data ? `${data.title} (${data.users.length})` : ''}>
+      <div className="p-4 space-y-1.5 max-h-[60vh] overflow-y-auto">
+        {data?.users?.length ? data.users.map((u) => {
+          const name = u.displayName || u.email || u.id.slice(0, 8);
+          const joined = toDate(u.createdAt);
+          return (
+            <button
+              key={u.id}
+              type="button"
+              onClick={() => onPickUser(u)}
+              className="w-full flex items-center justify-between gap-3 px-3 py-2.5 rounded-lg bg-bg-tertiary/40 border border-border-primary hover:border-accent-primary/50 transition-colors cursor-pointer text-right"
+            >
+              <div className="min-w-0">
+                <div className="text-sm font-medium text-text-primary truncate">{name}</div>
+                <div className="text-[11px] text-text-muted truncate">{u.email}</div>
+              </div>
+              <div className="flex items-center gap-2 shrink-0">
+                {u.role === 'admin' && <span className="text-[10px] px-2 py-0.5 rounded-full bg-accent-primary/15 text-accent-primary">אדמין</span>}
+                {u.role !== 'admin' && isUserPremium(u) && <span className="text-[10px] px-2 py-0.5 rounded-full bg-amber-500/15 text-amber-400">Premium</span>}
+                {joined && <span className="text-[10px] text-text-muted">{joined.toLocaleDateString('he-IL')}</span>}
+              </div>
+            </button>
+          );
+        }) : (
+          <div className="text-sm text-text-muted text-center py-6">אין משתמשים בקטגוריה זו</div>
+        )}
+      </div>
+    </Modal>
+  );
+}
+
+// ── Leaderboard modal — top users by trades + activity ───────────────────────
+function LeaderboardModal({ isOpen, onClose, users, onPickUser }) {
+  const [rows, setRows] = useState(null); // [{ u, trades }]
+  useEffect(() => {
+    if (!isOpen) { setRows(null); return; }
+    let cancelled = false;
+    (async () => {
+      const withCounts = await Promise.all(
+        users.map(async (u) => {
+          let trades = 0;
+          try { trades = await getUserSubcollectionCount(u.id, 'trades'); } catch { /* no access / none */ }
+          return { u, trades };
+        })
+      );
+      if (!cancelled) {
+        withCounts.sort((a, b) => b.trades - a.trades || lastActiveMs(b.u) - lastActiveMs(a.u));
+        setRows(withCounts);
+      }
+    })();
+    return () => { cancelled = true; };
+  }, [isOpen, users]);
+
+  return (
+    <Modal isOpen={isOpen} onClose={onClose} title="משתמשים מובילים" maxWidth="max-w-lg">
+      <div className="p-4 max-h-[65vh] overflow-y-auto">
+        {!rows ? (
+          <div className="flex items-center justify-center gap-2 py-8 text-text-muted text-sm">
+            <Loader2 className="w-4 h-4 animate-spin" /> טוען נתונים…
+          </div>
+        ) : (
+          <div className="space-y-1.5">
+            {rows.map((r, i) => {
+              const name = r.u.displayName || r.u.email || r.u.id.slice(0, 8);
+              const medal = i === 0 ? '🥇' : i === 1 ? '🥈' : i === 2 ? '🥉' : `${i + 1}`;
+              return (
+                <button
+                  key={r.u.id}
+                  type="button"
+                  onClick={() => onPickUser(r.u)}
+                  className="w-full flex items-center gap-3 px-3 py-2.5 rounded-lg bg-bg-tertiary/40 border border-border-primary hover:border-accent-primary/50 transition-colors cursor-pointer text-right"
+                >
+                  <span className="w-7 text-center text-sm font-bold text-text-secondary shrink-0">{medal}</span>
+                  <div className="flex-1 min-w-0">
+                    <div className="text-sm font-medium text-text-primary truncate">{name}</div>
+                    <div className="text-[11px] text-text-muted">פעילות אחרונה: {relativeActive(r.u.lastActive)}</div>
+                  </div>
+                  <div className="text-left shrink-0">
+                    <div className="text-sm font-bold text-accent-primary">{r.trades}</div>
+                    <div className="text-[10px] text-text-muted">עסקאות</div>
+                  </div>
+                </button>
+              );
+            })}
+          </div>
+        )}
+      </div>
+    </Modal>
+  );
+}
+
+// ── Bulk push modal — send one push to a whole segment of users ──────────────
+const SEGMENT_LABELS = {
+  all: 'כל המשתמשים',
+  premium: 'לקוחות Premium',
+  newThisWeek: 'חדשים השבוע',
+  onboarded: 'סיימו אונבורדינג',
+  churned: 'בסיכון נטישה',
+};
+function BulkNotifyModal({ isOpen, onClose, segments }) {
+  const [seg, setSeg] = useState('premium');
+  const [title, setTitle] = useState('');
+  const [body, setBody] = useState('');
+  const [url, setUrl] = useState('');
+  const [sending, setSending] = useState(false);
+
+  useEffect(() => { if (!isOpen) { setTitle(''); setBody(''); setUrl(''); setSeg('premium'); } }, [isOpen]);
+
+  const targets = segments?.[seg] || [];
+  const send = async () => {
+    if (!title.trim() || !body.trim() || !targets.length) return;
+    setSending(true);
+    try {
+      const uids = targets.map((u) => u.id);
+      const r = await adminSendBulkNotification({ uids, title: title.trim(), body: body.trim(), url: url.trim() || '/' });
+      toast.success(`נשלח ל-${r?.recipients ?? 0} משתמשים (${r?.sent ?? 0} מכשירים)`);
+      onClose();
+    } catch {
+      toast.error('השליחה נכשלה');
+    } finally {
+      setSending(false);
+    }
+  };
+
+  return (
+    <Modal isOpen={isOpen} onClose={onClose} title="שליחת התראה קבוצתית" maxWidth="max-w-lg">
+      <div className="p-4 space-y-3">
+        <div>
+          <label className="text-[11px] text-text-muted block mb-1.5">קהל יעד</label>
+          <div className="flex flex-wrap gap-1.5">
+            {Object.keys(SEGMENT_LABELS).map((k) => {
+              const count = segments?.[k]?.length || 0;
+              const active = seg === k;
+              return (
+                <button
+                  key={k}
+                  type="button"
+                  onClick={() => setSeg(k)}
+                  className={`px-2.5 py-1.5 rounded-lg text-xs font-medium border transition-colors cursor-pointer ${active ? 'bg-accent-primary/15 border-accent-primary/40 text-accent-primary' : 'bg-bg-tertiary border-border-primary text-text-secondary hover:text-text-primary'}`}
+                >
+                  {SEGMENT_LABELS[k]} ({count})
+                </button>
+              );
+            })}
+          </div>
+        </div>
+        <input
+          value={title}
+          onChange={(e) => setTitle(e.target.value)}
+          placeholder="כותרת ההתראה"
+          maxLength={120}
+          className="w-full bg-bg-tertiary border border-border-primary rounded-lg px-3 py-2 text-sm text-text-primary outline-none focus:border-accent-primary"
+        />
+        <textarea
+          value={body}
+          onChange={(e) => setBody(e.target.value)}
+          placeholder="תוכן ההתראה"
+          maxLength={400}
+          rows={3}
+          className="w-full bg-bg-tertiary border border-border-primary rounded-lg px-3 py-2 text-sm text-text-primary outline-none focus:border-accent-primary resize-none"
+        />
+        <input
+          value={url}
+          onChange={(e) => setUrl(e.target.value)}
+          placeholder="קישור (ברירת מחדל: דף הבית)"
+          dir="ltr"
+          className="w-full bg-bg-tertiary border border-border-primary rounded-lg px-3 py-2 text-sm text-text-primary outline-none focus:border-accent-primary text-right"
+        />
+        <button
+          type="button"
+          onClick={send}
+          disabled={sending || !title.trim() || !body.trim() || !targets.length}
+          className="w-full py-2.5 rounded-lg bg-accent-primary text-bg-primary text-sm font-bold hover:bg-accent-hover transition-colors cursor-pointer disabled:opacity-50 flex items-center justify-center gap-2"
+        >
+          {sending ? <Loader2 className="w-4 h-4 animate-spin" /> : <Send className="w-4 h-4" />}
+          שלח ל-{targets.length} משתמשים
+        </button>
+        <p className="text-[11px] text-text-muted text-center">נשלח רק למשתמשים שאישרו התראות Push.</p>
+      </div>
+    </Modal>
   );
 }
 

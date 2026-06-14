@@ -141,6 +141,19 @@ export async function adminSendNotification({ uid, title, body, url }) {
   return data; // { ok, sent, total }
 }
 
+// Admin-only: send the same push to a list of users (a segment). Returns
+// { ok, sent, recipients, targeted }.
+export async function adminSendBulkNotification({ uids, title, body, url }) {
+  const res = await fetch(`${WORKER_BASE}/admin/notify-bulk`, {
+    method: 'POST',
+    headers: await authHeader(),
+    body: JSON.stringify({ uids, title, body, url }),
+  });
+  const data = await res.json().catch(() => ({}));
+  if (!res.ok) throw new Error(data.error || 'השליחה הקבוצתית נכשלה');
+  return data;
+}
+
 // Register read-only exchange keys with the worker so it can poll the exchange
 // in the background (closed-trade + daily-summary push notifications).
 export async function registerExchangeForPush(exchange, apiKey, apiSecret, passphrase) {
