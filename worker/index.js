@@ -3330,6 +3330,25 @@ async function handleRequest(request, env) {
     return new Response(JSON.stringify({ ok: true, sent: result.sent, total: result.total }), { headers: { ...cors, 'Content-Type': 'application/json' } });
   }
 
+  // Admin-only: send the same push to a list of users (a segment from the panel).
+  if (request.method === 'POST' && path === '/admin/notify-bulk') {
+    const token = (request.headers.get('Authorization') || '').replace('Bearer ', '');
+    const adminUid = await verifyAdminFromToken(token);
+    if (!adminUid) return new Response(JSON.stringify({ error: 'forbidden' }), { status: 403, headers: { ...cors, 'Content-Type': 'application/json' } });
+    const { uids, title, body, url } = await request.json().catch(() => ({}));
+    if (!Array.isArray(uids) || uids.length === 0 || !title || !body) {
+      return new Response(JSON.stringify({ error: 'missing fields' }), { status: 400, headers: { ...cors, 'Content-Type': 'application/json' } });
+    }
+    const capped = uids.slice(0, 500); // safety cap
+    const tag = `admin-bulk-${Date.now()}`;
+    const payload = { title: String(title).slice(0, 120), body: String(body).slice(0, 400), url: typeof url === 'string' && url ? url : '/', tag };
+    const results = await Promise.all(capped.map((uid) => sendPushToUser(env, uid, payload).catch(() => ({ sent: 0, total: 0 }))));
+    let sent = 0, recipients = 0;
+    for (const r of results) { sent += r.sent || 0; if ((r.sent || 0) > 0) recipients++; }
+    appendAudit(env, { kind: 'notify-bulk', actor: adminUid, targeted: capped.length, recipients, sent, title: payload.title });
+    return new Response(JSON.stringify({ ok: true, sent, recipients, targeted: capped.length }), { headers: { ...cors, 'Content-Type': 'application/json' } });
+  }
+
   // Admin-only: invalidate the cached premium flag for a user. Called right
   // after granting or revoking Premium so the worker reflects the new plan
   // immediately instead of waiting up to the planflag cache TTL — otherwise a
