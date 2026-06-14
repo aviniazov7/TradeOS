@@ -4,7 +4,7 @@ import { Users, UserPlus, ShieldCheck, CheckCircle2, Search, RefreshCw, Download
 import toast from 'react-hot-toast';
 import { useAuth } from '../../contexts/AuthContext';
 import { getAllUsers, getUserSubcollectionCount, adminGrantPremium, adminRevokePremium, addPayment, getAllPayments } from '../../services/firestoreService';
-import { fetchUserAiUsage, fetchGlobalAiUsage } from '../../hooks/useAiUsage';
+import { fetchUserAiUsage, fetchGlobalAiUsage, fetchAiStats } from '../../hooks/useAiUsage';
 import { adminSendNotification, adminSendBulkNotification, adminScheduleExpiryReminders, adminCancelExpiryReminders, adminRefreshPlanCache, adminListAuditEvents, adminSendTestDigest, adminGetTelegramInfo } from '../../services/pushService';
 import { adminListCoupons, adminCreateCoupon, adminDeleteCoupon, couponShareUrl } from '../../services/couponService';
 import LoadingSpinner from '../shared/LoadingSpinner';
@@ -173,6 +173,9 @@ export default function AdminPanel() {
   };
   // Aggregate AI usage across all users today (text + image) from the worker.
   const [globalAi, setGlobalAi] = useState(null);
+  // Daily AI stats (counts + real tokens) for the usage-over-time graph.
+  const [aiStats, setAiStats] = useState(null);
+  const [statsDays, setStatsDays] = useState(30);
 
   // After load() refreshes `users`, keep `selectedUser` pointing at the fresh
   // copy so the open detail modal reflects the new plan/role immediately
@@ -212,6 +215,14 @@ export default function AdminPanel() {
     fetchGlobalAiUsage().then((g) => { if (!cancelled) setGlobalAi(g); });
     return () => { cancelled = true; };
   }, [isAdmin, loadedAt]);
+
+  useEffect(() => {
+    if (!isAdmin) return;
+    let cancelled = false;
+    setAiStats(null);
+    fetchAiStats(statsDays).then((s) => { if (!cancelled) setAiStats(s); });
+    return () => { cancelled = true; };
+  }, [isAdmin, statsDays, loadedAt]);
 
   const stats = useMemo(() => {
     const weekAgo = loadedAt - 7 * 24 * 60 * 60 * 1000;
@@ -507,6 +518,72 @@ export default function AdminPanel() {
               })}
           </div>
         )}
+      </div>
+
+      {/* AI usage over time — daily counts (bars) + real token-based cost. */}
+      <div className="bg-bg-secondary border border-border-primary rounded-xl p-4">
+        <div className="flex items-center justify-between mb-3">
+          <div className="text-[11px] text-text-muted flex items-center gap-1.5">
+            <BarChart3 className="w-3.5 h-3.5" /> שימוש ב-AI לאורך זמן
+          </div>
+          <div className="flex gap-1">
+            {[7, 30].map((d) => (
+              <button
+                key={d}
+                type="button"
+                onClick={() => setStatsDays(d)}
+                className={`px-2 py-0.5 rounded-md text-[11px] font-medium cursor-pointer ${statsDays === d ? 'bg-accent-primary/15 text-accent-primary' : 'text-text-muted hover:text-text-primary'}`}
+              >
+                {d} ימים
+              </button>
+            ))}
+          </div>
+        </div>
+        {!aiStats ? (
+          <div className="text-xs text-text-muted">…</div>
+        ) : (() => {
+          const series = aiStats.stats || [];
+          const max = Math.max(1, ...series.map((s) => s.text + s.image));
+          const totTokIn = series.reduce((a, s) => a + s.tokIn, 0);
+          const totTokOut = series.reduce((a, s) => a + s.tokOut, 0);
+          const totReq = series.reduce((a, s) => a + s.text + s.image, 0);
+          const realCost = (totTokIn * 0.59 + totTokOut * 0.79) / 1e6;
+          return (
+            <>
+              <div className="flex items-end gap-0.5 h-24">
+                {series.map((s) => {
+                  const total = s.text + s.image;
+                  const h = Math.round((total / max) * 100);
+                  const d = new Date(s.date);
+                  const label = `${d.getDate()}/${d.getMonth() + 1}`;
+                  return (
+                    <div
+                      key={s.date}
+                      className="flex-1 flex flex-col justify-end group"
+                      title={`${label}: ${s.text} טקסט · ${s.image} תמונה`}
+                    >
+                      <div className="w-full rounded-t bg-accent-primary/70 group-hover:bg-accent-primary transition-colors" style={{ height: `${Math.max(2, h)}%` }} />
+                    </div>
+                  );
+                })}
+              </div>
+              <div className="mt-3 grid grid-cols-3 gap-2 text-center">
+                <div>
+                  <div className="text-sm font-bold text-text-primary">{totReq.toLocaleString()}</div>
+                  <div className="text-[10px] text-text-muted">בקשות ({statsDays} ימים)</div>
+                </div>
+                <div>
+                  <div className="text-sm font-bold text-text-primary">{((totTokIn + totTokOut) / 1000).toFixed(0)}K</div>
+                  <div className="text-[10px] text-text-muted">טוקנים בפועל</div>
+                </div>
+                <div>
+                  <div className="text-sm font-bold text-accent-primary">~${realCost.toFixed(2)}</div>
+                  <div className="text-[10px] text-text-muted">עלות מבוססת טוקנים</div>
+                </div>
+              </div>
+            </>
+          );
+        })()}
       </div>
 
       {/* Quota alerts — users at/over 80% of their daily AI quota today. */}

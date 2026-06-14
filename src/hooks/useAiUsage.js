@@ -55,3 +55,14 @@ export async function fetchGlobalAiUsage() {
   if (!r.ok) return null;
   return r.json();
 }
+
+// Admin-only — daily AI stats (counts + real tokens) for the last N days.
+// Returns { days, stats: [{ date, text, image, tokIn, tokOut }] }.
+export async function fetchAiStats(days = 30) {
+  const user = getAuth().currentUser;
+  if (!user) return null;
+  const token = await user.getIdToken();
+  const r = await fetch(`${WORKER_BASE}/admin/ai-stats?days=${days}`, { headers: { Authorization: `Bearer ${token}` } });
+  if (!r.ok) return null;
+  return r.json();
+}

@@ -914,6 +914,58 @@ async function incrementAiImageUsage(env, uid) {
   return used;
 }
 
+// Persistent daily AI stats (request counts + real token usage) for the admin
+// time graph. Kept ~95 days (vs the 48h per-user quota counters) so we can show
+// 7/30-day trends and an accurate, token-based cost.
+async function recordAiStat(env, date, { text = 0, image = 0, tokIn = 0, tokOut = 0 }) {
+  const key = `aistat:${date}`;
+  const cur = (await env.ALERTS_KV.get(key, 'json')) || { text: 0, image: 0, tokIn: 0, tokOut: 0 };
+  cur.text += text; cur.image += image; cur.tokIn += tokIn; cur.tokOut += tokOut;
+  await env.ALERTS_KV.put(key, JSON.stringify(cur), { expirationTtl: 60 * 60 * 24 * 95 });
+}
+
+// Pass an OpenAI-style SSE stream straight through to the client while reading
+// its final usage chunk (prompt/completion tokens) for accounting. Metering is
+// best-effort and never alters or blocks what the client receives.
+function meterStream(env, upstream, { hasImage }) {
+  if (!upstream) return upstream;
+  const date = getIsraelDateStr();
+  const decoder = new TextDecoder();
+  let buf = '';
+  let usage = null;
+  const ts = new TransformStream({
+    transform(chunk, controller) {
+      controller.enqueue(chunk); // pass through untouched
+      try {
+        buf += decoder.decode(chunk, { stream: true });
+        let nl;
+        while ((nl = buf.indexOf('\n')) >= 0) {
+          const line = buf.slice(0, nl).trim();
+          buf = buf.slice(nl + 1);
+          if (!line.startsWith('data:')) continue;
+          const payload = line.slice(5).trim();
+          if (!payload || payload === '[DONE]') continue;
+          try {
+            const obj = JSON.parse(payload);
+            if (obj.usage) usage = obj.usage;
+          } catch { /* partial / non-JSON line */ }
+        }
+      } catch { /* best-effort */ }
+    },
+    async flush() {
+      try {
+        await recordAiStat(env, date, {
+          text: 1,
+          image: hasImage ? 1 : 0,
+          tokIn: usage?.prompt_tokens || 0,
+          tokOut: usage?.completion_tokens || 0,
+        });
+      } catch { /* best-effort */ }
+    },
+  });
+  return upstream.pipeThrough(ts);
+}
+
 // Confirm the caller is an admin by reading their own user doc via Firestore
 // REST with their ID token — admin reads are allowed by our rules, so we don't
 // need a service account here.
@@ -2356,7 +2408,7 @@ async function handleAIChat(request, env, cors) {
         const callGroq = () => fetch(GROQ_URL, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${env.GROQ_API_KEY}` },
-          body: JSON.stringify({ model: hasImage ? GROQ_VISION_MODEL : GROQ_MODEL, messages: apiMessages, temperature: 0.7, max_tokens: 1500, stream: true }),
+          body: JSON.stringify({ model: hasImage ? GROQ_VISION_MODEL : GROQ_MODEL, messages: apiMessages, temperature: 0.7, max_tokens: 1500, stream: true, stream_options: { include_usage: true } }),
         });
         const delays = [0, 2000, 4000]; // immediate, +2s, +4s = ~6s total worst-case
         let groqFallback;
@@ -2366,7 +2418,7 @@ async function handleAIChat(request, env, cors) {
           if (groqFallback.ok) {
             await incrementAiUsage(env, uid);
             if (hasImage) await incrementAiImageUsage(env, uid);
-            return new Response(groqFallback.body, { headers: sseHeaders });
+            return new Response(meterStream(env, groqFallback.body, { hasImage }), { headers: sseHeaders });
           }
           if (groqFallback.status !== 429) break; // non-retryable
         }
@@ -2385,7 +2437,7 @@ async function handleAIChat(request, env, cors) {
       }
       await incrementAiUsage(env, uid);
       if (hasImage) await incrementAiImageUsage(env, uid);
-      return new Response(await geminiStreamToOpenAI(gemRes.body), { headers: sseHeaders });
+      return new Response(meterStream(env, await geminiStreamToOpenAI(gemRes.body), { hasImage }), { headers: sseHeaders });
     }
 
     // Free tier (or premium without a Gemini key configured) → Groq, with
@@ -2403,6 +2455,7 @@ async function handleAIChat(request, env, cors) {
         temperature: 0.7,
         max_tokens: 1500,
         stream: true,
+        stream_options: { include_usage: true },
       }),
     });
 
@@ -2413,7 +2466,7 @@ async function handleAIChat(request, env, cors) {
       if (groqResponse.ok) {
         await incrementAiUsage(env, uid);
         if (hasImage) await incrementAiImageUsage(env, uid);
-        return new Response(groqResponse.body, { headers: sseHeaders });
+        return new Response(meterStream(env, groqResponse.body, { hasImage }), { headers: sseHeaders });
       }
       if (groqResponse.status !== 429) break; // non-retryable
     }
@@ -3798,6 +3851,27 @@ async function handleRequest(request, env) {
     await collect('aiusage:', 'text');
     await collect('aiimg:', 'image');
     return new Response(JSON.stringify({ date, totalText, totalImage, perUser }), { headers: { ...cors, 'Content-Type': 'application/json' } });
+  }
+
+  // Admin-only: daily AI stats for the last N days (default 30) — request
+  // counts + real token usage, for the usage-over-time graph and accurate cost.
+  if (request.method === 'GET' && path === '/admin/ai-stats') {
+    const token = (request.headers.get('Authorization') || '').replace('Bearer ', '');
+    const adminUid = await verifyAdminFromToken(token);
+    if (!adminUid) return new Response(JSON.stringify({ error: 'forbidden' }), { status: 403, headers: { ...cors, 'Content-Type': 'application/json' } });
+    const qDays = parseInt(new URL(request.url).searchParams.get('days') || '30', 10);
+    const days = Math.min(90, Math.max(1, Number.isFinite(qDays) ? qDays : 30));
+    const base = getIsraelTime();
+    const dates = [];
+    for (let i = days - 1; i >= 0; i--) {
+      const d = new Date(base.getTime() - i * 86400000);
+      dates.push(`${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`);
+    }
+    const stats = await Promise.all(dates.map(async (ds) => {
+      const v = await env.ALERTS_KV.get(`aistat:${ds}`, 'json');
+      return { date: ds, text: v?.text || 0, image: v?.image || 0, tokIn: v?.tokIn || 0, tokOut: v?.tokOut || 0 };
+    }));
+    return new Response(JSON.stringify({ days, stats }), { headers: { ...cors, 'Content-Type': 'application/json' } });
   }
 
   // Trade event notifications
