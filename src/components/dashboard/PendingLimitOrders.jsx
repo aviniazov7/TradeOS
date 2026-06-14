@@ -36,7 +36,6 @@ function TrackBar({ trade, currentPrice, tpReached = [], onTpReached, onLimitTri
   const { entryPrice, stopLoss, direction, tps = [], leverage = 1, positionSize } = trade;
   const entry = parseFloat(entryPrice);
   const sl = parseFloat(stopLoss);
-  if (!entry || !sl) return null;
 
   const isLong = direction === 'long';
 
@@ -121,6 +120,10 @@ function TrackBar({ trade, currentPrice, tpReached = [], onTpReached, onLimitTri
     });
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [currentPrice, isMarketActive, trade.status]);
+
+  // Bail out only after every hook above has run, so hook order stays identical
+  // across renders even when a trade is missing its entry/SL (rules-of-hooks).
+  if (!entry || !sl) return null;
 
   const furthestTp = tpPrices.length > 0
     ? (isLong ? Math.max(...tpPrices) : Math.min(...tpPrices))

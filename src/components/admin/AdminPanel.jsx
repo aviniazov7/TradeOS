@@ -1227,6 +1227,9 @@ const COUNT_COLLECTIONS = [
 ];
 
 function UserDetailModal({ user, onClose, onUserChanged }) {
+  // The signed-in admin (author of the payment record). `user` is the target
+  // user being managed, so we read the admin's own identity from auth.
+  const { user: adminUser } = useAuth();
   const [counts, setCounts] = useState(null);
   const [countsError, setCountsError] = useState(null);
   const [aiUsage, setAiUsage] = useState(null);
