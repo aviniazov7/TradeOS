@@ -84,6 +84,12 @@ export default function TradeJournal() {
   const deleteBatchTimerRef = useRef(null);
   const mountedRef = useRef(true);
 
+  // Live ref to deleteTrade so the unmount/pagehide flush below always calls the
+  // current version (its effect runs with [] deps and would otherwise capture a
+  // stale closure).
+  const deleteTradeRef = useRef(deleteTrade);
+  deleteTradeRef.current = deleteTrade;
+
   // Helper: filter trades and jump to trades tab
   const filterAndJump = (partialFilter) => {
     setFilters(f => ({ ...f, ...partialFilter }));
@@ -92,14 +98,28 @@ export default function TradeJournal() {
   };
   const deleteBatchToastRef = useRef(null);
 
-  // Cleanup delete timers on unmount — also clears batch timer to avoid
-  // setState-after-unmount and orphaned deletes when navigating away mid-undo window
+  // When leaving the page, COMMIT any deletes still inside the 5s undo window
+  // instead of dropping them. Previously the timer was just cleared, so deleting
+  // trades and then navigating away / reloading before the timer fired left them
+  // un-deleted (they reappeared on reload). Firestore's local cache queues the
+  // delete so it survives a reload and syncs when the SDK reconnects.
   useEffect(() => {
     mountedRef.current = true;
+    const flushPendingDeletes = () => {
+      const batch = deleteBatchRef.current;
+      if (!batch || batch.size === 0) return;
+      batch.forEach((id) => { deleteTradeRef.current(id).catch(() => {}); });
+      deleteBatchRef.current = new Set();
+      if (deleteBatchTimerRef.current) { clearTimeout(deleteBatchTimerRef.current); deleteBatchTimerRef.current = null; }
+    };
+    // pagehide covers hard reload / tab close (where React cleanup may not run).
+    window.addEventListener('pagehide', flushPendingDeletes);
     return () => {
       mountedRef.current = false;
       Object.values(deleteTimersRef.current).forEach(clearTimeout);
-      if (deleteBatchTimerRef.current) clearTimeout(deleteBatchTimerRef.current);
+      window.removeEventListener('pagehide', flushPendingDeletes);
+      // Commit, don't cancel, any pending deletes (clears the batch timer too).
+      flushPendingDeletes();
     };
   }, []);
 
