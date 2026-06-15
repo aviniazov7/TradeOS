@@ -119,6 +119,10 @@ export function JournalProvider({ children }) {
   useEffect(() => {
     if (activeJournalId) {
       localStorage.setItem('tradeos_activeJournal', activeJournalId);
+    } else {
+      // Clear it when no journal is active (e.g. last journal deleted) so a
+      // reload doesn't restore a pointer to a journal that no longer exists.
+      localStorage.removeItem('tradeos_activeJournal');
     }
   }, [activeJournalId]);
 
