@@ -2,6 +2,7 @@ import { useState, useRef } from 'react';
 import { Upload, FileText, AlertCircle, Check } from 'lucide-react';
 import toast from 'react-hot-toast';
 import Modal from '../shared/Modal';
+import { DEFAULT_LEVERAGE } from '../../utils/constants';
 
 const COLUMN_MAP = {
   pair: ['pair', 'symbol', 'coin', 'market', 'instrument', 'זוג'],
@@ -61,10 +62,15 @@ function parseCSV(text) {
 
 function parseDate(val) {
   if (!val) return null;
-  // Handle dd/MM/yyyy format (exported by TradeOS)
-  const ddmmyyyy = val.match(/^(\d{1,2})[/.-](\d{1,2})[/.-](\d{4})$/);
-  if (ddmmyyyy) {
-    const [, day, month, year] = ddmmyyyy;
+  // Handle dd/MM/yyyy (TradeOS export) with a guard for US MM/dd/yyyy files:
+  // if the first field is >12 it must be the day (dd/MM); if the second field
+  // is >12 it must be the day (MM/dd). Otherwise it's ambiguous → assume dd/MM.
+  const parts = val.match(/^(\d{1,2})[/.-](\d{1,2})[/.-](\d{4})$/);
+  if (parts) {
+    const [, a, b, year] = parts;
+    const first = parseInt(a, 10);
+    const second = parseInt(b, 10);
+    const [day, month] = second > 12 && first <= 12 ? [second, first] : [first, second];
     return new Date(year, month - 1, day);
   }
   const d = new Date(val);
@@ -119,7 +125,7 @@ export default function ImportTrades({ isOpen, onClose, onImport, onImportBulk }
       const exitPrice = parseFloat(get('exitPrice')) || 0;
       const pair = get('pair') || 'BTCUSDT';
       const positionSize = parseFloat(get('positionSize')) || 0;
-      const rawLeverage = parseInt(get('leverage')) || 10;
+      const rawLeverage = parseInt(get('leverage')) || DEFAULT_LEVERAGE;
       const leverage = Math.min(200, Math.max(1, rawLeverage));
       // Calculate quantity from positionSize — required for PnL calculation
       const quantity = entryPrice > 0 && positionSize > 0

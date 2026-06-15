@@ -1,4 +1,4 @@
-import { createContext, useContext, useState, useEffect, useCallback } from 'react';
+import { createContext, useContext, useState, useEffect, useCallback, useRef } from 'react';
 import {
   subscribeToUserCollection,
   addToUserCollection,
@@ -46,15 +46,27 @@ export function BacktestProvider({ children }) {
   }, [user]);
 
   // Auto-migration for existing users
+  const migratingRef = useRef(false);
+  const cancelledRef = useRef(false);
+
+  useEffect(() => {
+    cancelledRef.current = false;
+    return () => { cancelledRef.current = true; };
+  }, []);
+
   useEffect(() => {
     if (!user || loading) return;
 
     async function migrate() {
+      if (migratingRef.current) return;
+      migratingRef.current = true;
       try {
         const { data: userData } = await getUserProfile(user.uid);
+        if (cancelledRef.current) return;
         if (userData?.settings?.backtestMigrated) return;
 
         const journalsSnap = await getRawCollectionSnapshot(user.uid, 'backtestJournals');
+        if (cancelledRef.current) return;
         if (!journalsSnap.empty) {
           await setUserProfile(user.uid, { settings: { backtestMigrated: true } });
           return;
@@ -68,9 +80,11 @@ export function BacktestProvider({ children }) {
           createdAt: timestamp(),
           updatedAt: timestamp(),
         });
+        if (cancelledRef.current) return;
 
         // Batch update all existing backtests
         const backtestsSnap = await getRawCollectionSnapshot(user.uid, 'backtests');
+        if (cancelledRef.current) return;
         if (backtestsSnap.docs.length > 0) {
           await batchUpdateFromSnapshot(backtestsSnap.docs, (btDoc) => {
             if (!btDoc.data().backtestJournalId) {
@@ -78,15 +92,20 @@ export function BacktestProvider({ children }) {
             }
             return null;
           });
+          if (cancelledRef.current) return;
         }
 
         // Mark migration complete
         await setUserProfile(user.uid, { settings: { backtestMigrated: true } });
+        if (cancelledRef.current) return;
 
         // Auto-select the created journal
         setActiveJournalId(journalRef.id);
       } catch (error) {
-        console.error('Backtest migration error:', error);
+        if (!cancelledRef.current) console.error('Backtest migration error:', error);
+      } finally {
+        // Reset so a later legitimate mount can retry if this run bailed early.
+        migratingRef.current = false;
       }
     }
 
@@ -97,6 +116,10 @@ export function BacktestProvider({ children }) {
   useEffect(() => {
     if (activeJournalId) {
       localStorage.setItem('tradeos_activeBacktestJournal', activeJournalId);
+    } else {
+      // Clear it when no journal is active (e.g. last journal deleted) so a
+      // reload doesn't restore a pointer to a journal that no longer exists.
+      localStorage.removeItem('tradeos_activeBacktestJournal');
     }
   }, [activeJournalId]);
 
@@ -108,6 +131,10 @@ export function BacktestProvider({ children }) {
   }, [journals, activeJournalId]);
 
   const activeJournal = journals.find((j) => j.id === activeJournalId) || journals[0] || null;
+  // Expose the id of the journal actually shown, so consumers like
+  // useBacktests(activeJournalId) never filter by a stale id for the render
+  // before the auto-select effect catches up (deleted/archived journal).
+  const effectiveJournalId = activeJournal?.id ?? null;
 
   const addJournal = useCallback(async (data) => {
     if (!user) throw new Error('No user');
@@ -143,7 +170,7 @@ export function BacktestProvider({ children }) {
       value={{
         journals,
         activeJournal,
-        activeJournalId,
+        activeJournalId: effectiveJournalId,
         setActiveJournalId,
         addJournal,
         updateJournal,
