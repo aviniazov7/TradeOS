@@ -2537,12 +2537,12 @@ async function handleAICoach(request, env, cors) {
     const gate = await aiRateGate(env, uid, premium);
     if (gate) return new Response(JSON.stringify(gate.body), { status: gate.status, headers: { ...cors, 'Content-Type': 'application/json' } });
 
-    // Free users get 3 coach runs/month tracked separately from the daily AI
+    // Free users get 5 coach runs/month tracked separately from the daily AI
     // quota — Premium is unmetered (covered by the soft caps in aiRateGate).
     if (!premium) {
       const monthKey = `coach:${uid}:${getIsraelDateStr().slice(0, 7)}`;
       const used = parseInt((await env.ALERTS_KV.get(monthKey)) || '0', 10) || 0;
-      const FREE_COACH_PER_MONTH = 3;
+      const FREE_COACH_PER_MONTH = 5;
       if (used >= FREE_COACH_PER_MONTH) {
         return new Response(JSON.stringify({
           error: `הגעת למכסה החודשית של ניתוחי AI (${FREE_COACH_PER_MONTH}). שדרג ל-Premium לניתוחים ללא הגבלה.`,
