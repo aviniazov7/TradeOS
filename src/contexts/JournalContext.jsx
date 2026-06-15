@@ -109,6 +109,9 @@ export function JournalProvider({ children }) {
         setActiveJournalId(journalRef.id);
       } catch (error) {
         if (!cancelledRef.current) console.error('Journal migration error:', error);
+      } finally {
+        // Reset so a later legitimate mount can retry if this run bailed early.
+        migratingRef.current = false;
       }
     }
 
