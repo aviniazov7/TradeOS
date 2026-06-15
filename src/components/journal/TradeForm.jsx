@@ -11,7 +11,7 @@ import NumberStepper from '../shared/NumberStepper';
 import TimeframeSelector from '../shared/TimeframeSelector';
 import StrategySelector from '../shared/StrategySelector';
 import MultiSelector from '../shared/MultiSelector';
-import { PAIRS, MISTAKE_LABELS, TAG_LABELS, SESSIONS, getSessionClasses, FUTURES_CONTRACTS, getContractSpec } from '../../utils/constants';
+import { PAIRS, MISTAKE_LABELS, TAG_LABELS, SESSIONS, getSessionClasses, FUTURES_CONTRACTS, getContractSpec, DEFAULT_LEVERAGE } from '../../utils/constants';
 import { useUserStrategies } from '../../hooks/useUserStrategies';
 import { useUserTimeframes } from '../../hooks/useUserTimeframes';
 import { useUserTags } from '../../hooks/useUserTags';
@@ -38,7 +38,7 @@ const defaultForm = {
   stopLoss: '',
   positionSize: '',
   riskAmount: '',
-  leverage: 10,
+  leverage: DEFAULT_LEVERAGE,
   fees: '',
   entryDate: null,
   exitDate: null,
@@ -157,7 +157,7 @@ export default function TradeForm({ isOpen, onClose, trade, onSave, riskSettings
         stopLoss: trade.stopLoss ?? '',
         positionSize: ps || '',
         riskAmount: derivedRisk,
-        leverage: trade.leverage ?? 10,
+        leverage: trade.leverage ?? DEFAULT_LEVERAGE,
         fees: trade.fees ?? '',
         tags: trade.tags ?? [],
         mistakes: trade.mistakes ?? [],

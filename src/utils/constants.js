@@ -1,6 +1,6 @@
 // App version — bumped on each release. Shown in the sidebar so it's
 // easy to confirm which version a device is actually running.
-export const APP_VERSION = '1.0.199';
+export const APP_VERSION = '1.0.205';
 
 export const COINS = [
   // Layer 1s
@@ -167,6 +167,12 @@ export const TRADE_RESULTS = ['win', 'loss', 'breakeven'];
 export const TRADE_STATUSES = ['open', 'closed'];
 
 // ---- Plans / Premium -------------------------------------------------------
+// Fallback leverage used wherever a trade's leverage is missing/unknown — manual
+// entry, CSV import, and exchange sync all share this so the same position never
+// yields a different ROE% depending on how it was entered. 1x = no inflation;
+// exchange APIs return the real leverage anyway, so this rarely applies.
+export const DEFAULT_LEVERAGE = 1;
+
 // Soft limits for the free tier. Premium removes them. Enforced client-side as
 // a freemium gate (server-authoritative billing comes with the checkout phase).
 export const FREE_LIMITS = {

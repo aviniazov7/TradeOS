@@ -28,6 +28,12 @@ export function useDCA() {
       (data) => {
         setDcaPlans(data);
         setLoading(false);
+      },
+      (error) => {
+        // Without this, a listener error (permissions/offline) would leave
+        // `loading` stuck true and spin the DCA screen forever.
+        console.error('DCA listener error:', error);
+        setLoading(false);
       }
     );
   }, [user]);

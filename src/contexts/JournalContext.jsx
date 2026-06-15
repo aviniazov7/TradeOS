@@ -109,6 +109,9 @@ export function JournalProvider({ children }) {
         setActiveJournalId(journalRef.id);
       } catch (error) {
         if (!cancelledRef.current) console.error('Journal migration error:', error);
+      } finally {
+        // Reset so a later legitimate mount can retry if this run bailed early.
+        migratingRef.current = false;
       }
     }
 
@@ -119,6 +122,10 @@ export function JournalProvider({ children }) {
   useEffect(() => {
     if (activeJournalId) {
       localStorage.setItem('tradeos_activeJournal', activeJournalId);
+    } else {
+      // Clear it when no journal is active (e.g. last journal deleted) so a
+      // reload doesn't restore a pointer to a journal that no longer exists.
+      localStorage.removeItem('tradeos_activeJournal');
     }
   }, [activeJournalId]);
 
@@ -142,6 +149,12 @@ export function JournalProvider({ children }) {
   }, [journals, activeJournalId]);
 
   const activeJournal = activeJournals.find((j) => j.id === activeJournalId) || activeJournals[0] || null;
+  // The id of the journal we're actually showing. When the selected journal is
+  // archived/deleted, `activeJournal` falls back to activeJournals[0] this
+  // render, but the raw `activeJournalId` state only catches up on the next
+  // tick (auto-select effect). Exposing the derived id keeps consumers like
+  // useTrades(activeJournalId) from filtering by a stale id for one render.
+  const effectiveJournalId = activeJournal?.id ?? null;
 
   const addJournal = useCallback(async (data) => {
     if (!user) throw new Error('No user');
@@ -227,7 +240,7 @@ export function JournalProvider({ children }) {
         journals: activeJournals,
         archivedJournals,
         activeJournal,
-        activeJournalId,
+        activeJournalId: effectiveJournalId,
         setActiveJournalId,
         addJournal,
         updateJournal,
