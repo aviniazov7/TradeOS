@@ -17,10 +17,10 @@ const POSITIVE_EMOTIONS = ['inspired', 'grateful', 'excited', 'calm', 'happy'];
 
 function getDayColor(morning, evening) {
   const hasM = !!morning?.emotion;
-  const hasE = !!evening?.emotion;
+  const hasE = !!evening?.emotionAfter; // evening journals store the mood as `emotionAfter`
   if (!hasM && !hasE) return 'bg-bg-tertiary/40 border-border-primary/30';
 
-  const emotions = [morning?.emotion, evening?.emotion].filter(Boolean);
+  const emotions = [morning?.emotion, evening?.emotionAfter].filter(Boolean);
   const positiveCount = emotions.filter((e) => POSITIVE_EMOTIONS.includes(e)).length;
   const ratio = positiveCount / emotions.length;
 
@@ -112,12 +112,12 @@ export default function MoodHeatmap() {
         <div className="grid grid-cols-7 gap-1 w-full mt-1">
           {days.map((day) => {
             const mEmoji = day.morning?.emotion ? EMOTION_MAP[day.morning.emotion]?.emoji : null;
-            const eEmoji = day.evening?.emotion ? EMOTION_MAP[day.evening.emotion]?.emoji : null;
+            const eEmoji = day.evening?.emotionAfter ? EMOTION_MAP[day.evening.emotionAfter]?.emoji : null;
             const colorClass = getDayColor(day.morning, day.evening);
             const hasAny = mEmoji || eEmoji;
             const tooltipParts = [];
             if (day.morning?.emotion) tooltipParts.push(`בוקר: ${EMOTION_MAP[day.morning.emotion]?.label}`);
-            if (day.evening?.emotion) tooltipParts.push(`ערב: ${EMOTION_MAP[day.evening.emotion]?.label}`);
+            if (day.evening?.emotionAfter) tooltipParts.push(`ערב: ${EMOTION_MAP[day.evening.emotionAfter]?.label}`);
             const tooltip = tooltipParts.length > 0 ? tooltipParts.join(' | ') : 'לא תועד';
 
             return (

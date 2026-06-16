@@ -25,8 +25,11 @@ export function computeVolatility(prices) {
   if (prices.length < 2) return null;
   const returns = [];
   for (let i = 1; i < prices.length; i++) {
-    returns.push((prices[i] - prices[i - 1]) / prices[i - 1]);
+    const prev = prices[i - 1];
+    if (!prev) continue; // skip zero/invalid price so we don't produce Infinity/NaN
+    returns.push((prices[i] - prev) / prev);
   }
+  if (!returns.length) return null;
   const mean = returns.reduce((a, b) => a + b, 0) / returns.length;
   const variance = returns.reduce((a, b) => a + (b - mean) ** 2, 0) / returns.length;
   return Math.sqrt(variance) * 100;
@@ -67,9 +70,10 @@ export function computeSupportResistance(prices) {
   const lows = pivots.filter((p) => p.type === 'low' && p.price < current).map((p) => p.price);
   const highs = pivots.filter((p) => p.type === 'high' && p.price > current).map((p) => p.price);
 
+  // Nearest level to the current price: highest low below, lowest high above.
   return {
-    support: lows.length ? lows[lows.length - 1] : null,
-    resistance: highs.length ? highs[highs.length - 1] : null,
+    support: lows.length ? Math.max(...lows) : null,
+    resistance: highs.length ? Math.min(...highs) : null,
   };
 }
 

@@ -364,7 +364,10 @@ function ExchangeCard({ exchange, data, savedData, syncing, saving, onUpdate, on
       .then((res) => { if (!cancelled) setBalance(res.balance); })
       .catch(() => { if (!cancelled) setBalance(false); }); // false = failed; row hidden
     return () => { cancelled = true; };
-  }, [isConnected, canSync, id, savedData?.apiKey, savedData?.apiSecret, extraField, savedData]);
+    // Depend on primitive credential values only — `savedData`/`extraField` are
+    // recreated by the parent on every render, which caused redundant refetches
+    // and balance flicker.
+  }, [isConnected, canSync, id, savedData?.apiKey, savedData?.apiSecret, extraField?.key, extraField ? savedData?.[extraField.key] : null]);
 
   const startEdit = () => {
     onUpdate('apiKey', savedData?.apiKey || '');

@@ -333,13 +333,15 @@ export default function CoinAnalysis() {
 
   useEffect(() => {
     if (!query || query.length < 2 || selectedCoin) { setSuggestions([]); return; }
+    let cancelled = false;
     clearTimeout(debounceRef.current);
     debounceRef.current = setTimeout(async () => {
       const results = await searchCoins(query);
+      if (cancelled) return; // a newer query started — don't overwrite its results
       setSuggestions(results);
       setShowSuggestions(true);
     }, 300);
-    return () => clearTimeout(debounceRef.current);
+    return () => { cancelled = true; clearTimeout(debounceRef.current); };
   }, [query, selectedCoin]);
 
   const loadProjectDescription = async (coin, { force = false } = {}) => {
