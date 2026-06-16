@@ -41,20 +41,22 @@ export default function MoodHeatmap() {
   const { morningEntries, eveningEntries } = useMentalityJournals();
 
   const days = useMemo(() => {
-    const today = new Date();
-    today.setHours(0, 0, 0, 0);
+    const now = new Date();
     const result = [];
     for (let i = 6; i >= 0; i--) {
-      const d = new Date(today);
-      d.setDate(today.getDate() - i);
+      // Key by UTC date to match how journal entries store `date`
+      // (new Date().toISOString().slice(0,10)). Building keys from local
+      // midnight shifted every key back a day for UTC+ zones (e.g. Israel),
+      // so today's entry never matched today's cell.
+      const d = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate() - i));
       const dateStr = toDateStr(d);
       const morning = morningEntries.find((e) => e.date === dateStr) || null;
       const evening = eveningEntries.find((e) => e.date === dateStr) || null;
       result.push({
         date: d,
         dateStr,
-        dayName: DAY_NAMES[d.getDay()],
-        dayNum: d.getDate(),
+        dayName: DAY_NAMES[d.getUTCDay()],
+        dayNum: d.getUTCDate(),
         isToday: i === 0,
         morning,
         evening,
@@ -66,11 +68,9 @@ export default function MoodHeatmap() {
   // Current streak
   const streak = useMemo(() => {
     let count = 0;
-    const today = new Date();
-    today.setHours(0, 0, 0, 0);
+    const now = new Date();
     for (let i = 0; i < 365; i++) {
-      const d = new Date(today);
-      d.setDate(today.getDate() - i);
+      const d = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate() - i));
       const dateStr = toDateStr(d);
       const hasM = morningEntries.some((e) => e.date === dateStr);
       const hasE = eveningEntries.some((e) => e.date === dateStr);
