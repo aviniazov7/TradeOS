@@ -6,7 +6,8 @@ import { TrendingUp, TrendingDown, Droplet, Flame, Gem, Landmark, CandlestickCha
 import CoinIcon from '../shared/CoinIcon';
 
 // Crypto symbols shown in the ticker (kept small to keep the API request light).
-const TICKER_SYMBOLS = ['BTC','ETH','SOL','AVAX','BNB','ADA','XRP','DOGE','TRX','SUI','NEAR','LINK','DOT','PEPE','WIF','ARB','UNI','ATOM'];
+// PAXG = PAX Gold (Bybit pair PAXGUSDT); displayed as gold/XAU.
+const TICKER_SYMBOLS = ['BTC','ETH','SOL','AVAX','BNB','ADA','XRP','DOGE','TRX','SUI','NEAR','LINK','DOT','PEPE','WIF','ARB','UNI','ATOM','PAXG'];
 // Headline futures contracts for the ticker.
 const TICKER_FUTURES = ['ES','NQ','YM','RTY','CL','GC','SI','NG'];
 
@@ -43,13 +44,17 @@ export default function PriceTicker() {
         label: `${c.symbol}/USDT`, data: cryptoPrices[c.symbol],
       }))
     : [];
+  // Gold (PAX Gold on Bybit) — shown alongside crypto as XAU with a gold icon.
+  const goldItems = showCrypto && cryptoPrices['PAXG']
+    ? [{ key: 'c-gold', kind: 'gold', symbol: 'XAU', label: 'XAU/USD', data: cryptoPrices['PAXG'] }]
+    : [];
   const futuresItems = showFutures
     ? FUTURES_CONTRACTS.filter((c) => TICKER_FUTURES.includes(c.symbol) && futuresPrices[c.symbol]).map((c) => ({
         key: `f-${c.symbol}`, kind: 'futures', symbol: c.symbol,
         label: c.symbol, data: futuresPrices[c.symbol],
       }))
     : [];
-  const items = [...cryptoItems, ...futuresItems];
+  const items = [...cryptoItems, ...goldItems, ...futuresItems];
 
   const anyLoading = (showCrypto && cryptoLoading) || (showFutures && futuresLoading);
 
@@ -86,7 +91,9 @@ export default function PriceTicker() {
       <div key={`${item.key}-${index}`} className="flex items-center gap-2 px-4 whitespace-nowrap">
         {item.kind === 'crypto'
           ? <CoinIcon pair={`${item.symbol}USDT`} className="w-3.5 h-3.5" />
-          : <fut.Icon className={`w-3.5 h-3.5 ${fut.className}`} />}
+          : item.kind === 'gold'
+            ? <Gem className="w-3.5 h-3.5 text-amber-400" />
+            : <fut.Icon className={`w-3.5 h-3.5 ${fut.className}`} />}
         <span className="text-xs font-bold text-text-primary">{item.label}</span>
         <span className="text-xs text-text-secondary">${formatPrice(data.price)}</span>
         <span className={`flex items-center gap-0.5 text-xs font-medium ${isPositive ? 'text-profit' : 'text-loss'}`}>
