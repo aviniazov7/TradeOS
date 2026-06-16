@@ -7,7 +7,7 @@ export default function AnimatedValue({ value, className }) {
 
   useEffect(() => {
     const node = ref.current;
-    if (!node || !value) return;
+    if (!node || value == null || value === '') return; // 0 / "0" are valid values, don't bail
 
     const str = String(value);
 

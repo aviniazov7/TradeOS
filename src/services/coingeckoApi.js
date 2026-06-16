@@ -30,8 +30,9 @@ export async function fetchPrices(coinsOrIds, signal) {
   const coins = coinsOrIds.filter(c => typeof c === 'object' && c.symbol);
   if (!coins.length) return {};
 
+  // Binance covers most coins; XAU (gold) has no Binance USDT pair and is
+  // always sourced from the CoinGecko fallback below.
   const binanceCoins = coins.filter(c => c.symbol !== 'XAU');
-  if (!binanceCoins.length) return {};
 
   // Split into chunks — Binance returns 503/408 for very long `symbols=[...]`
   // lists, so request ~25 at a time and merge (a short request returns 200).
@@ -69,24 +70,28 @@ export async function fetchPrices(coinsOrIds, signal) {
     }
   }
 
-  // Binance is geo-blocked (HTTP 451) at some Cloudflare colos, which makes the
-  // /bnb proxy return nothing and leaves the price ticker empty. When Binance
-  // yields zero results, fall back to the CoinGecko simple-price proxy (not
-  // geo-blocked, KV-cached). Same return shape: { coingeckoId: { usd, … } }.
-  if (Object.keys(result).length === 0 && !signal?.aborted) {
-    try {
-      const ids = coins.map(c => c.coingeckoId).filter(Boolean).join(',');
-      const cgUrl = `${BASE_URL}/simple/price?ids=${encodeURIComponent(ids)}&vs_currencies=usd&include_24hr_change=true`;
-      const r = await fetch(cgUrl, { signal });
-      if (r.ok) {
-        const cg = await r.json();
-        for (const [id, v] of Object.entries(cg)) {
-          if (v && typeof v.usd === 'number') {
-            result[id] = { usd: v.usd, usd_24h_change: v.usd_24h_change ?? 0 };
+  // CoinGecko fallback for any coin still missing a price — covers XAU (no
+  // Binance pair) and the case where Binance is geo-blocked (HTTP 451) at a
+  // Cloudflare colo and returns nothing. CoinGecko isn't geo-blocked and is
+  // KV-cached. Same return shape: { coingeckoId: { usd, … } }.
+  if (!signal?.aborted) {
+    const missingIds = [...new Set(
+      coins.map(c => c.coingeckoId).filter(id => id && !result[id])
+    )];
+    if (missingIds.length) {
+      try {
+        const cgUrl = `${BASE_URL}/simple/price?ids=${encodeURIComponent(missingIds.join(','))}&vs_currencies=usd&include_24hr_change=true`;
+        const r = await fetch(cgUrl, { signal });
+        if (r.ok) {
+          const cg = await r.json();
+          for (const [id, v] of Object.entries(cg)) {
+            if (v && typeof v.usd === 'number') {
+              result[id] = { usd: v.usd, usd_24h_change: v.usd_24h_change ?? 0 };
+            }
           }
         }
-      }
-    } catch { /* keep whatever we have (possibly empty) */ }
+      } catch { /* keep whatever we have (possibly empty) */ }
+    }
   }
 
   return result;

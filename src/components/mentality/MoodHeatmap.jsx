@@ -17,10 +17,10 @@ const POSITIVE_EMOTIONS = ['inspired', 'grateful', 'excited', 'calm', 'happy'];
 
 function getDayColor(morning, evening) {
   const hasM = !!morning?.emotion;
-  const hasE = !!evening?.emotion;
+  const hasE = !!evening?.emotionAfter; // evening journals store the mood as `emotionAfter`
   if (!hasM && !hasE) return 'bg-bg-tertiary/40 border-border-primary/30';
 
-  const emotions = [morning?.emotion, evening?.emotion].filter(Boolean);
+  const emotions = [morning?.emotion, evening?.emotionAfter].filter(Boolean);
   const positiveCount = emotions.filter((e) => POSITIVE_EMOTIONS.includes(e)).length;
   const ratio = positiveCount / emotions.length;
 
@@ -41,20 +41,22 @@ export default function MoodHeatmap() {
   const { morningEntries, eveningEntries } = useMentalityJournals();
 
   const days = useMemo(() => {
-    const today = new Date();
-    today.setHours(0, 0, 0, 0);
+    const now = new Date();
     const result = [];
     for (let i = 6; i >= 0; i--) {
-      const d = new Date(today);
-      d.setDate(today.getDate() - i);
+      // Key by UTC date to match how journal entries store `date`
+      // (new Date().toISOString().slice(0,10)). Building keys from local
+      // midnight shifted every key back a day for UTC+ zones (e.g. Israel),
+      // so today's entry never matched today's cell.
+      const d = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate() - i));
       const dateStr = toDateStr(d);
       const morning = morningEntries.find((e) => e.date === dateStr) || null;
       const evening = eveningEntries.find((e) => e.date === dateStr) || null;
       result.push({
         date: d,
         dateStr,
-        dayName: DAY_NAMES[d.getDay()],
-        dayNum: d.getDate(),
+        dayName: DAY_NAMES[d.getUTCDay()],
+        dayNum: d.getUTCDate(),
         isToday: i === 0,
         morning,
         evening,
@@ -66,11 +68,9 @@ export default function MoodHeatmap() {
   // Current streak
   const streak = useMemo(() => {
     let count = 0;
-    const today = new Date();
-    today.setHours(0, 0, 0, 0);
+    const now = new Date();
     for (let i = 0; i < 365; i++) {
-      const d = new Date(today);
-      d.setDate(today.getDate() - i);
+      const d = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate() - i));
       const dateStr = toDateStr(d);
       const hasM = morningEntries.some((e) => e.date === dateStr);
       const hasE = eveningEntries.some((e) => e.date === dateStr);
@@ -112,12 +112,12 @@ export default function MoodHeatmap() {
         <div className="grid grid-cols-7 gap-1 w-full mt-1">
           {days.map((day) => {
             const mEmoji = day.morning?.emotion ? EMOTION_MAP[day.morning.emotion]?.emoji : null;
-            const eEmoji = day.evening?.emotion ? EMOTION_MAP[day.evening.emotion]?.emoji : null;
+            const eEmoji = day.evening?.emotionAfter ? EMOTION_MAP[day.evening.emotionAfter]?.emoji : null;
             const colorClass = getDayColor(day.morning, day.evening);
             const hasAny = mEmoji || eEmoji;
             const tooltipParts = [];
             if (day.morning?.emotion) tooltipParts.push(`בוקר: ${EMOTION_MAP[day.morning.emotion]?.label}`);
-            if (day.evening?.emotion) tooltipParts.push(`ערב: ${EMOTION_MAP[day.evening.emotion]?.label}`);
+            if (day.evening?.emotionAfter) tooltipParts.push(`ערב: ${EMOTION_MAP[day.evening.emotionAfter]?.label}`);
             const tooltip = tooltipParts.length > 0 ? tooltipParts.join(' | ') : 'לא תועד';
 
             return (

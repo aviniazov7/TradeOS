@@ -16,7 +16,7 @@ const POSITIVE_EMOTIONS = ['inspired', 'grateful', 'excited', 'calm', 'happy'];
 const NEGATIVE_EMOTIONS = ['anxious', 'frustrated'];
 
 function getMoodCategory(morning, evening) {
-  const emotions = [evening?.emotion, morning?.emotion].filter(Boolean);
+  const emotions = [evening?.emotionAfter, morning?.emotion].filter(Boolean); // evening mood is stored as `emotionAfter`
   if (emotions.length === 0) return 'none';
   const pos = emotions.filter((e) => POSITIVE_EMOTIONS.includes(e)).length;
   const neg = emotions.filter((e) => NEGATIVE_EMOTIONS.includes(e)).length;

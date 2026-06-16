@@ -1567,7 +1567,13 @@ async function handleFearGreed(env, chatId) {
     ]);
     return;
   }
-  const value = parseInt(fg.value);
+  const value = parseInt(fg.value, 10);
+  if (!Number.isFinite(value)) {
+    await sendMessage(env.BOT_TOKEN, chatId, '⚠️ לא הצלחתי לטעון את המדד. נסה שוב.', [
+      [{ text: '🔙 תפריט ראשי', callback_data: 'menu_main' }],
+    ]);
+    return;
+  }
   let emoji;
   if (value <= 25) emoji = '😱';
   else if (value <= 45) emoji = '😟';
@@ -1802,7 +1808,11 @@ async function handleCallback(env, callbackQuery) {
   if (data === 'time_summary') return handleTimePicker(env, chatId, messageId, 'summary');
   if (data.startsWith('stt_')) {
     const [, type, time] = data.split('_');
-    return handleSetTime(env, chatId, messageId, type, time);
+    // Only journal/summary have a configurable time — reject anything else.
+    if (type === 'journal' || type === 'summary') {
+      return handleSetTime(env, chatId, messageId, type, time);
+    }
+    return;
   }
 
   // Watchlist
@@ -1992,7 +2002,10 @@ async function checkPriceAlerts(env, activeAlerts) {
       const msg = `🔔 <b>התראת מחיר!</b>\n\n<b>${alert.pair.replace('USDT', '')}</b>\n💰 מחיר נוכחי: ${fmtPrice(pd.price)}\n🎯 יעד: ${dir} ${fmtPrice(alert.targetPrice)}\n${chg}\n\n✅ ההתראה הושלמה`;
       await sendMessage(env.BOT_TOKEN, alert.chatId, msg, [[{ text: '➕ התראה חדשה', callback_data: 'alert_add' }, { text: '📋 ההתראות שלי', callback_data: 'alert_list' }]]);
       const { kvKey, ...ad } = alert;
-      await env.ALERTS_KV.put(kvKey, JSON.stringify({ ...ad, active: false }));
+      // Reconstruct the key from stable fields so the disable write can't target
+      // `undefined` if kvKey was ever absent.
+      const alertKey = kvKey || `alerts:${alert.chatId}:${alert.id}`;
+      await env.ALERTS_KV.put(alertKey, JSON.stringify({ ...ad, active: false }));
     }
   }
 }
@@ -4035,7 +4048,7 @@ ${pad('Lev', `${pnlSign}${pnlPctLev}%`)}` : ''}` : ''}</code>
         const data = await res.json().catch(() => ({}));
         // MEXC returns success:true OR code:0 depending on endpoint
         const isOk = data.success === true || data.code === 0;
-        if (!isOk) return new Response(JSON.stringify({ ok: false, error: data.message || data.msg || 'MEXC API error', raw: data }), { headers: { ...cors, 'Content-Type': 'application/json' }, status: 400 });
+        if (!isOk) return new Response(JSON.stringify({ ok: false, error: data.message || data.msg || 'MEXC API error' }), { headers: { ...cors, 'Content-Type': 'application/json' }, status: 400 });
 
         // data.data can be: array | { resultList: [] } | { list: [] }
         const rawList = Array.isArray(data.data)
@@ -4375,7 +4388,7 @@ ${pad('Lev', `${pnlSign}${pnlPctLev}%`)}` : ''}` : ''}</code>
       // ---- Solana ----
       if (isSol) {
         const sol = 'https://solana-gateway.moralis.io';
-        const pRes = await fetch(`${sol}/account/mainnet/${address}/portfolio`, { headers: mHeaders });
+        const pRes = await fetch(`${sol}/account/mainnet/${encodeURIComponent(a)}/portfolio`, { headers: mHeaders });
         const pData = await pRes.json().catch(() => ({}));
         if (!pRes.ok) return new Response(JSON.stringify({ ok: false, error: pData.message || `Moralis ${pRes.status}` }), { status: 400, headers: { ...cors, 'Content-Type': 'application/json' } });
 

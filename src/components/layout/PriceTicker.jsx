@@ -1,6 +1,8 @@
+import { useState, useEffect } from 'react';
 import { useWorkerQuotes } from '../../hooks/useWorkerQuotes';
 import { COINS, FUTURES_CONTRACTS } from '../../utils/constants';
 import { useAuth } from '../../contexts/AuthContext';
+import { fetchPrices } from '../../services/coingeckoApi';
 import { formatPrice, formatPercent } from '../../utils/formatters';
 import { TrendingUp, TrendingDown, Droplet, Flame, Gem, Landmark, CandlestickChart } from 'lucide-react';
 import CoinIcon from '../shared/CoinIcon';
@@ -35,6 +37,21 @@ export default function PriceTicker() {
   const { prices: cryptoPrices, loading: cryptoLoading } = useWorkerQuotes('/cx/quotes', TICKER_SYMBOLS, { enabled: showCrypto });
   const { prices: futuresPrices, loading: futuresLoading } = useWorkerQuotes('/fut/quotes', TICKER_FUTURES, { enabled: showFutures });
 
+  // Gold (XAU) isn't on the crypto quote feed (Bybit), so pull it from CoinGecko
+  // (pax-gold) via fetchPrices — geo-safe through the worker proxy. Refreshed
+  // every 60s while the crypto ticker is shown.
+  const [gold, setGold] = useState(null);
+  useEffect(() => {
+    if (!showCrypto) return;
+    let cancelled = false;
+    const load = () => fetchPrices([{ symbol: 'XAU', coingeckoId: 'pax-gold' }])
+      .then((r) => { if (!cancelled) setGold(r['pax-gold'] || null); })
+      .catch(() => {});
+    load();
+    const iv = setInterval(load, 60000);
+    return () => { cancelled = true; clearInterval(iv); };
+  }, [showCrypto]);
+
   // Each source renders independently as soon as its data is in. We only show
   // the skeleton while NOTHING is available yet and something is still loading.
   const cryptoItems = showCrypto
@@ -43,13 +60,17 @@ export default function PriceTicker() {
         label: `${c.symbol}/USDT`, data: cryptoPrices[c.symbol],
       }))
     : [];
+  // Gold (XAU) — sourced from CoinGecko (pax-gold), shown with a gold icon.
+  const goldItems = showCrypto && gold
+    ? [{ key: 'c-gold', kind: 'gold', symbol: 'XAU', label: 'XAU/USD', data: { price: gold.usd, change24h: gold.usd_24h_change ?? 0 } }]
+    : [];
   const futuresItems = showFutures
     ? FUTURES_CONTRACTS.filter((c) => TICKER_FUTURES.includes(c.symbol) && futuresPrices[c.symbol]).map((c) => ({
         key: `f-${c.symbol}`, kind: 'futures', symbol: c.symbol,
         label: c.symbol, data: futuresPrices[c.symbol],
       }))
     : [];
-  const items = [...cryptoItems, ...futuresItems];
+  const items = [...cryptoItems, ...goldItems, ...futuresItems];
 
   const anyLoading = (showCrypto && cryptoLoading) || (showFutures && futuresLoading);
 
@@ -86,7 +107,9 @@ export default function PriceTicker() {
       <div key={`${item.key}-${index}`} className="flex items-center gap-2 px-4 whitespace-nowrap">
         {item.kind === 'crypto'
           ? <CoinIcon pair={`${item.symbol}USDT`} className="w-3.5 h-3.5" />
-          : <fut.Icon className={`w-3.5 h-3.5 ${fut.className}`} />}
+          : item.kind === 'gold'
+            ? <Gem className="w-3.5 h-3.5 text-amber-400" />
+            : <fut.Icon className={`w-3.5 h-3.5 ${fut.className}`} />}
         <span className="text-xs font-bold text-text-primary">{item.label}</span>
         <span className="text-xs text-text-secondary">${formatPrice(data.price)}</span>
         <span className={`flex items-center gap-0.5 text-xs font-medium ${isPositive ? 'text-profit' : 'text-loss'}`}>

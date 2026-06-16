@@ -26,6 +26,7 @@ export default function PullToRefresh({ children }) {
   const startY = useRef(0);
   const pulling = useRef(false);
   const contentRef = useRef(null);
+  const reloadTimerRef = useRef(null);
 
   const isAtTop = () => {
     const scroller = getScrollParent(contentRef.current);
@@ -62,7 +63,7 @@ export default function PullToRefresh({ children }) {
       setRefreshing(true);
       setPullDistance(THRESHOLD * 0.5);
       // Short delay for visual feedback, then reload
-      setTimeout(() => window.location.reload(), 400);
+      reloadTimerRef.current = setTimeout(() => window.location.reload(), 400);
     } else {
       setPullDistance(0);
     }
@@ -83,6 +84,9 @@ export default function PullToRefresh({ children }) {
       document.removeEventListener('touchend', handleTouchEnd);
     };
   }, [handleTouchStart, handleTouchMove, handleTouchEnd]);
+
+  // Cancel a pending reload if we unmount within the 400ms window (route change).
+  useEffect(() => () => { if (reloadTimerRef.current) clearTimeout(reloadTimerRef.current); }, []);
 
   const progress = Math.min(pullDistance / THRESHOLD, 1);
 

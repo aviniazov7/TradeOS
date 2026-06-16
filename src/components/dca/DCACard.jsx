@@ -238,7 +238,9 @@ export default function DCACard({ plan, onAddEntry, onEdit, onDelete, currentPri
             exit={{ height: 0, opacity: 0 }} transition={{ duration: 0.2 }} className="overflow-hidden">
             <div className="space-y-2 mt-4">
               {[...entries].reverse().map((entry, i) => (
-                <div key={i} className="flex items-center justify-between bg-bg-tertiary rounded-lg px-3 py-2 text-xs">
+                // Key by the entry's original index so prepending a new entry doesn't
+                // reshuffle keys and mis-animate existing rows.
+                <div key={entries.length - 1 - i} className="flex items-center justify-between bg-bg-tertiary rounded-lg px-3 py-2 text-xs">
                   <span className="text-text-muted">{formatDate(entry.date)}</span>
                   <span className="text-text-secondary">${formatNumber(entry.amount)}</span>
                   <span className="text-text-secondary">{formatPrice(entry.coins)} {plan.coin}</span>

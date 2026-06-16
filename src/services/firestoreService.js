@@ -110,10 +110,12 @@ export async function getRawCollectionSnapshot(uid, collectionName) {
 // ─── User Settings Operations ───────────────────────────────────
 
 /** Subscribe to a user settings document (users/{uid}/settings/{settingId}) */
-export function subscribeToUserSetting(uid, settingId, onData) {
-  return onSnapshot(doc(db, 'users', uid, 'settings', settingId), (snap) => {
-    onData(snap.exists() ? snap.data() : null);
-  });
+export function subscribeToUserSetting(uid, settingId, onData, onError) {
+  return onSnapshot(
+    doc(db, 'users', uid, 'settings', settingId),
+    (snap) => onData(snap.exists() ? snap.data() : null),
+    onError || ((error) => console.error(`Firestore setting listener error (${settingId}):`, error)),
+  );
 }
 
 /** Get a user settings document */

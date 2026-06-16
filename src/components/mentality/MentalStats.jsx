@@ -147,7 +147,7 @@ function EmotionTable({ data }) {
           </tr>
         </thead>
         <tbody className="divide-y divide-border-primary">
-          {data
+          {[...data]
             .sort((a, b) => b.winRate - a.winRate)
             .map((row) => (
               <tr key={row.key}>

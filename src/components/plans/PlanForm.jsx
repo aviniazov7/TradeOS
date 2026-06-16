@@ -1,5 +1,6 @@
 import { useState, useEffect } from 'react';
 import { Plus, X, Sparkles, ChevronRight, ChevronLeft, ChevronDown, ChevronUp, Bitcoin, Layers, Dog, Landmark } from 'lucide-react';
+import toast from 'react-hot-toast';
 import Modal from '../shared/Modal';
 import PairSearchMulti from '../shared/PairSearchMulti';
 import TimeframeSelector from '../shared/TimeframeSelector';
@@ -208,7 +209,7 @@ export default function PlanForm({ isOpen, onClose, plan, onSave }) {
 
   const handleSubmit = async (e) => {
     e.preventDefault();
-    if (!form.name.trim()) return;
+    if (!form.name.trim()) { toast.error('יש להזין שם לתוכנית'); return; }
     setSaving(true);
     try {
       const data = {
