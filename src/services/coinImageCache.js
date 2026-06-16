@@ -292,6 +292,7 @@ async function fetchMarketsFromBase(base) {
       const coins = await result.value.json();
       if (!Array.isArray(coins)) continue;
       coins.forEach((c) => {
+        if (!c.symbol) return; // CoinGecko occasionally returns rows with no symbol — skip, don't crash the page
         const img = c.image?.replace('/large/', '/small/');
         if (img && !img.includes('missing_large')) {
           memoryCache[c.symbol.toUpperCase()] = img;
