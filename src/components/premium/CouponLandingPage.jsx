@@ -83,8 +83,8 @@ export default function CouponLandingPage() {
                 <div className="mx-auto w-12 h-12 rounded-full bg-profit/15 border border-profit/40 flex items-center justify-center mb-3">
                   <Check className="w-7 h-7 text-profit" />
                 </div>
-                <h1 className="text-xl font-bold text-text-primary">הקופון מומש! 🎉</h1>
-                <p className="text-sm text-text-secondary mt-1">קיבלת {info.days} ימי Premium. כל הפיצ'רים פתוחים.</p>
+                <h1 className="text-xl font-bold text-text-primary">{done ? 'הקופון מומש! 🎉' : 'כבר יש לך Premium 👑'}</h1>
+                <p className="text-sm text-text-secondary mt-1">{done ? `קיבלת ${info?.days} ימי Premium. כל הפיצ'רים פתוחים.` : 'אין צורך לממש את הקופון — כל הפיצ\'רים כבר פתוחים אצלך.'}</p>
                 <button
                   onClick={() => navigate('/')}
                   className="mt-5 w-full py-3 rounded-xl bg-amber-500 text-bg-primary text-sm font-bold hover:bg-amber-400 transition-colors cursor-pointer"

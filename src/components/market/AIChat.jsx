@@ -171,6 +171,7 @@ export default function AIChat({ heightClass = 'h-[calc(100dvh-13.5rem)] md:h-[c
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
   }, [messages, streaming, streamingText]);
 
+  const lastPromptRef = useRef('');
   const handleSend = async (text = input.trim()) => {
     if (!text || streaming || cooldown) return;
 
@@ -182,6 +183,7 @@ export default function AIChat({ heightClass = 'h-[calc(100dvh-13.5rem)] md:h-[c
       return;
     }
     lastSentRef.current = now;
+    lastPromptRef.current = text; // remember the prompt so "retry" resends it (the user msg is removed from `messages` on error)
     setCooldown(true);
     setTimeout(() => setCooldown(false), 6000);
 
@@ -513,7 +515,7 @@ export default function AIChat({ heightClass = 'h-[calc(100dvh-13.5rem)] md:h-[c
             <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} className="flex justify-center">
               <div className="bg-loss/10 border border-loss/20 rounded-xl px-4 py-2 text-xs text-loss text-center">
                 {error}
-                <button onClick={() => handleSend(messages[messages.length - 1]?.text)} className="block mx-auto mt-1 underline cursor-pointer text-text-muted hover:text-text-primary">
+                <button onClick={() => handleSend(lastPromptRef.current)} className="block mx-auto mt-1 underline cursor-pointer text-text-muted hover:text-text-primary">
                   נסה שוב
                 </button>
               </div>
