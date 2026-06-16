@@ -28,8 +28,10 @@ export default function NotificationSettings() {
   const save = useCallback(async (updates) => {
     if (!user) return;
     setSettings((s) => ({ ...s, ...updates }));
-    await setUserSetting(user.uid, 'notifications', { ...settings, ...updates }, true);
-  }, [user, settings]);
+    // Persist only the changed fields (merge:true) — writing the whole `settings`
+    // closure could clobber a field changed elsewhere between renders.
+    await setUserSetting(user.uid, 'notifications', updates, true);
+  }, [user]);
 
   // Enabling: ask permission (needs a user gesture) → subscribe → persist.
   const enablePush = async () => {
