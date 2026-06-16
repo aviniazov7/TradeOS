@@ -18,6 +18,7 @@ const defaultForm = {
 
 export default function SignalForm({ isOpen, onClose, signal, onSave }) {
   const [form, setForm] = useState(defaultForm);
+  const [saving, setSaving] = useState(false);
   const { allTimeframes, addTimeframe, removeTimeframe } = useUserTimeframes();
 
   useEffect(() => {
@@ -47,18 +48,27 @@ export default function SignalForm({ isOpen, onClose, signal, onSave }) {
     return { ...f, tps };
   });
 
-  const handleSave = () => {
-    if (!form.pair || !form.entryPrice || !form.stopLoss) return;
-    onSave({
-      pair: form.pair,
-      direction: form.direction,
-      timeframe: form.timeframe,
-      entryPrice: parseFloat(form.entryPrice),
-      stopLoss: parseFloat(form.stopLoss),
-      tps: form.tps.map(Number).filter((v) => !isNaN(v) && v > 0),
-      status: form.status,
-      notes: form.notes,
-    });
+  const handleSave = async () => {
+    if (saving) return;
+    const entryPrice = parseFloat(form.entryPrice);
+    const stopLoss = parseFloat(form.stopLoss);
+    // Guard against NaN being written to Firestore (SignalTrack then can't render it).
+    if (!form.pair || !Number.isFinite(entryPrice) || !Number.isFinite(stopLoss)) return;
+    setSaving(true);
+    try {
+      await onSave({
+        pair: form.pair,
+        direction: form.direction,
+        timeframe: form.timeframe,
+        entryPrice,
+        stopLoss,
+        tps: form.tps.map(Number).filter((v) => Number.isFinite(v) && v > 0),
+        status: form.status,
+        notes: form.notes,
+      });
+    } finally {
+      setSaving(false);
+    }
   };
 
   const inputClass = 'w-full bg-bg-tertiary border border-border-primary rounded-lg px-3 py-2 text-sm text-text-primary outline-none focus:border-accent-primary transition-colors';
@@ -217,10 +227,10 @@ export default function SignalForm({ isOpen, onClose, signal, onSave }) {
           <button
             type="button"
             onClick={handleSave}
-            disabled={!canSave}
+            disabled={!canSave || saving}
             className="flex-1 py-2 rounded-lg bg-accent-primary text-bg-primary text-sm font-semibold hover:bg-accent-hover transition-colors cursor-pointer disabled:opacity-40"
           >
-            {signal ? 'עדכן' : 'הוסף סיגנל'}
+            {saving ? 'שומר...' : signal ? 'עדכן' : 'הוסף סיגנל'}
           </button>
         </div>
       </div>

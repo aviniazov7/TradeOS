@@ -232,7 +232,7 @@ export default function WalletsPage() {
                       </div>
                       <div className="text-left">
                         <div className="text-sm text-text-primary" dir="ltr">{formatCurrency(t.usd)}</div>
-                        <div className="text-[10px] text-text-muted" dir="ltr">{t.amount.toLocaleString('en-US', { maximumFractionDigits: 4 })}</div>
+                        <div className="text-[10px] text-text-muted" dir="ltr">{(t.amount ?? 0).toLocaleString('en-US', { maximumFractionDigits: 4 })}</div>
                       </div>
                     </div>
                   ))}
