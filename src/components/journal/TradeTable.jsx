@@ -10,6 +10,23 @@ function ExchangeIcon({ source }) {
   return <img src={url} alt={source} className="w-3.5 h-3.5 rounded-sm opacity-80" />;
 }
 
+// Render the stop loss. If it was moved mid-trade, show the new stop with a
+// "New" badge and the original (struck through) alongside it.
+function StopValue({ trade }) {
+  const sl = parseFloat(trade.stopLoss);
+  if (!sl) return '—';
+  const orig = parseFloat(trade.originalStopLoss);
+  const moved = orig > 0 && Math.abs(orig - sl) > Math.abs(orig) * 1e-6;
+  if (!moved) return formatPrice(sl);
+  return (
+    <span className="inline-flex items-center gap-1 flex-wrap">
+      <span className="text-accent-primary font-medium">{formatPrice(sl)}</span>
+      <span className="text-[9px] font-bold px-1 py-0.5 rounded bg-accent-primary/15 text-accent-primary leading-none">New</span>
+      <span className="text-[10px] text-text-muted line-through">{formatPrice(orig)}</span>
+    </span>
+  );
+}
+
 const pnlColor = (val) => (val > 0 ? 'text-profit' : val < 0 ? 'text-loss' : 'text-breakeven');
 const getStatus = (trade) => trade.status === 'partial' ? 'partial' : (trade.exitPrice > 0 ? 'closed' : 'open');
 
@@ -80,7 +97,7 @@ function ExpandedDetails({ trade, status, onEdit, onDelete, onShare }) {
         </div>
         <div>
           <span className="text-text-muted">SL</span>
-          <p className="text-text-primary">{trade.stopLoss ? formatPrice(trade.stopLoss) : '—'}</p>
+          <p className="text-text-primary"><StopValue trade={trade} /></p>
         </div>
         <div>
           <span className="text-text-muted">%</span>
@@ -348,7 +365,7 @@ export default function TradeTable({ trades, onEdit, onDelete, onShare, isLimitP
                         <span>{formatPrice(trade.exitPrice)}{trade.exits?.length > 1 && <span className="text-[10px] text-text-muted mr-1">({trade.exits.length})</span>}</span>
                       )}
                     </td>
-                    <td className="py-2.5 px-2 text-text-primary whitespace-nowrap">{trade.stopLoss ? formatPrice(trade.stopLoss) : '—'}</td>
+                    <td className="py-2.5 px-2 text-text-primary whitespace-nowrap"><StopValue trade={trade} /></td>
                     <td className={`py-2.5 px-2 whitespace-nowrap ${status === 'open' ? 'text-text-muted' : pnlColor(trade.pnlPercent)}`}>
                       {status === 'open' ? '—' : formatPercent(trade.pnlPercent)}
                     </td>

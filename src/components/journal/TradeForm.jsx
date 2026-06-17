@@ -457,6 +457,11 @@ export default function TradeForm({ isOpen, onClose, trade, onSave, riskSettings
         tps: tpsOnly,
         exits: allExits.length ? allExits : null,
         stopLoss: sl || 0,
+        // The first-recorded stop. Set once on create and preserved on every
+        // edit, so the UI can show "New Stop" while keeping the original.
+        originalStopLoss: trade
+          ? (trade.originalStopLoss ?? trade.stopLoss ?? (sl || 0))
+          : (sl || 0),
         takeProfit: 0,
         quantity,
         positionSize: ps,
