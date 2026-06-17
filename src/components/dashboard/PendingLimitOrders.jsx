@@ -145,15 +145,27 @@ function TrackBar({ trade, currentPrice, tpReached = [], onTpReached, onLimitTri
   };
   const tpPcts = tpPrices.map(tp => Math.max(entryPct + 1, Math.min(100, toFixedScale(tp))));
 
-  // Risk (SL→entry distance) — used for loss-zone & preview badge positioning only
+  // Risk (SL→entry distance) — used for the preview badge positioning.
   const risk = isLong ? (entry - sl) : (sl - entry);
 
-  // Current price: loss zone (0→25%) uses SL ratio; profit zone uses fixed scale
+  // If the stop was moved mid-trade, keep the ORIGINAL (wider) stop as the loss
+  // anchor at 0% so it stays put; the new, tighter stop then floats between it
+  // and entry with its own "New Stop" marker.
+  const originalSl = parseFloat(trade.originalStopLoss);
+  const slMoved = originalSl > 0 && Math.abs(originalSl - sl) > Math.abs(originalSl) * 1e-6;
+  const lossAnchor = slMoved ? originalSl : sl;
+  const lossSpan = isLong ? (entry - lossAnchor) : (lossAnchor - entry);
+  const movedStopPct = (slMoved && lossSpan > 0) ? (() => {
+    const dist = isLong ? (entry - sl) : (sl - entry);
+    return Math.max(2, Math.min(entryPct - 1, entryPct * (1 - dist / lossSpan)));
+  })() : null;
+
+  // Current price: loss zone (0→25%) scales to the loss anchor; profit zone uses fixed scale
   const currentVisual = currentPrice != null ? (() => {
     const inLoss = isLong ? currentPrice < entry : currentPrice > entry;
-    if (inLoss && risk > 0) {
+    if (inLoss && lossSpan > 0) {
       const dist = isLong ? (entry - currentPrice) : (currentPrice - entry);
-      return Math.max(0, Math.min(entryPct - 1, entryPct * (1 - dist / risk)));
+      return Math.max(0, Math.min(entryPct - 1, entryPct * (1 - dist / lossSpan)));
     }
     return Math.max(0, Math.min(100, toFixedScale(currentPrice)));
   })() : null;
@@ -239,11 +251,6 @@ function TrackBar({ trade, currentPrice, tpReached = [], onTpReached, onLimitTri
   // suppressBE: freeze BE detection for 3s after save so track doesn't change
   const isBreakEven = !suppressBE && entry > 0 && sl > 0 && Math.abs(sl - entry) / entry < 0.002;
   const hasPreview = previewSL > 0 && Math.abs(previewSL - sl) > 0.000001;
-  // The stop was moved mid-trade if the current SL differs from the first one.
-  // On this fixed scale the current SL is the left anchor (0%), so the original
-  // (a wider stop) can't sit on the bar — show it as text under the SL label.
-  const originalSl = parseFloat(trade.originalStopLoss);
-  const slMoved = originalSl > 0 && Math.abs(originalSl - sl) > Math.abs(originalSl) * 1e-6;
   // Preview badge position on fixed-entry scale (loss zone = 0-25%)
   const rawPreviewPct = hasPreview && risk > 0 ? (() => {
     const newDist = isLong ? (entry - previewSL) : (previewSL - entry);
@@ -343,6 +350,12 @@ function TrackBar({ trade, currentPrice, tpReached = [], onTpReached, onLimitTri
           />
         )}
 
+        {/* Moved (new) stop marker — floats between the original SL and entry */}
+        {movedStopPct != null && !hasPreview && !isBreakEven && (
+          <div className="absolute top-1/2"
+            style={{ left: `${movedStopPct}%`, transform: 'translate(-50%, -50%)', width: 10, height: 10, borderRadius: '50%', border: '2px solid #f59e0b', background: 'rgba(245,158,11,0.3)', boxShadow: '0 0 8px 3px rgba(245,158,11,0.5)', zIndex: 16 }} />
+        )}
+
         {currentVisual != null && (
           <div
             className="absolute z-20"
@@ -395,6 +408,22 @@ function TrackBar({ trade, currentPrice, tpReached = [], onTpReached, onLimitTri
         </div>
       )}
 
+      {/* New Stop badge — the persisted moved stop (parallels the live preview badge) */}
+      {movedStopPct != null && !hasPreview && !isBreakEven && (
+        <div dir="ltr" style={{ display: 'flex', alignItems: 'flex-start', marginTop: 5, paddingLeft: `${Math.max(0, Math.min(82, movedStopPct))}%` }}>
+          <div style={{
+            transform: movedStopPct < 4 ? 'translateX(0)' : movedStopPct > 80 ? 'translateX(-100%)' : 'translateX(-50%)',
+            background: 'linear-gradient(135deg, #f59e0b 0%, #b45309 100%)',
+            color: '#fff', fontSize: 11, fontWeight: 800, padding: '4px 10px', borderRadius: 999,
+            letterSpacing: '0.04em', boxShadow: '0 0 14px 5px rgba(245,158,11,0.4), 0 2px 8px rgba(0,0,0,0.3)',
+            display: 'flex', alignItems: 'center', gap: 5, whiteSpace: 'nowrap', flexShrink: 0,
+          }}>
+            <span style={{ fontSize: 8 }}>▲</span>
+            <span>New Stop · {fmt(sl)}</span>
+          </div>
+        </div>
+      )}
+
       <div className="relative mt-2 h-8">
 
         {isBreakEven ? (
@@ -405,13 +434,10 @@ function TrackBar({ trade, currentPrice, tpReached = [], onTpReached, onLimitTri
           </div>
         ) : (
           <>
-            {/* SL label */}
+            {/* SL label — the original (anchor) stop stays put; a moved stop floats separately as "New Stop" */}
             <div className="absolute flex flex-col items-center text-loss" style={{ left: 0, transform: 'translateX(-50%)', top: 0 }}>
-              <span className="text-[9px] font-semibold leading-none whitespace-nowrap">{slMoved ? 'SL · New' : 'SL'}</span>
-              <span className="text-[9px] leading-none mt-0.5 opacity-70">{fmt(sl)}</span>
-              {slMoved && (
-                <span className="text-[8px] leading-none mt-0.5 text-text-muted line-through whitespace-nowrap">{fmt(originalSl)}</span>
-              )}
+              <span className="text-[9px] font-semibold leading-none">SL</span>
+              <span className="text-[9px] leading-none mt-0.5 opacity-70">{fmt(lossAnchor)}</span>
             </div>
             {/* Entry label */}
             <div className="absolute flex flex-col items-center text-profit"
