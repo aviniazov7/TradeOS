@@ -353,7 +353,7 @@ function TrackBar({ trade, currentPrice, tpReached = [], onTpReached, onLimitTri
         {/* Moved (new) stop marker — floats between the original SL and entry */}
         {movedStopPct != null && !hasPreview && !isBreakEven && (
           <div className="absolute top-1/2"
-            style={{ left: `${movedStopPct}%`, transform: 'translate(-50%, -50%)', width: 10, height: 10, borderRadius: '50%', border: '2px solid #f59e0b', background: 'rgba(245,158,11,0.3)', boxShadow: '0 0 8px 3px rgba(245,158,11,0.5)', zIndex: 16 }} />
+            style={{ left: `${movedStopPct}%`, transform: 'translate(-50%, -50%)', width: 10, height: 10, borderRadius: '50%', border: '2px solid #ef4444', background: 'rgba(239,68,68,0.3)', boxShadow: '0 0 8px 3px rgba(239,68,68,0.5)', zIndex: 16 }} />
         )}
 
         {currentVisual != null && (
@@ -413,9 +413,9 @@ function TrackBar({ trade, currentPrice, tpReached = [], onTpReached, onLimitTri
         <div dir="ltr" style={{ display: 'flex', alignItems: 'flex-start', marginTop: 5, paddingLeft: `${Math.max(0, Math.min(82, movedStopPct))}%` }}>
           <div style={{
             transform: movedStopPct < 4 ? 'translateX(0)' : movedStopPct > 80 ? 'translateX(-100%)' : 'translateX(-50%)',
-            background: 'linear-gradient(135deg, #f59e0b 0%, #b45309 100%)',
+            background: 'linear-gradient(135deg, #ef4444 0%, #b91c1c 100%)',
             color: '#fff', fontSize: 11, fontWeight: 800, padding: '4px 10px', borderRadius: 999,
-            letterSpacing: '0.04em', boxShadow: '0 0 14px 5px rgba(245,158,11,0.4), 0 2px 8px rgba(0,0,0,0.3)',
+            letterSpacing: '0.04em', boxShadow: '0 0 14px 5px rgba(239,68,68,0.4), 0 2px 8px rgba(0,0,0,0.3)',
             display: 'flex', alignItems: 'center', gap: 5, whiteSpace: 'nowrap', flexShrink: 0,
           }}>
             <span style={{ fontSize: 8 }}>▲</span>
