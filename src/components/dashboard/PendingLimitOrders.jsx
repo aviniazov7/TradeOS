@@ -900,12 +900,66 @@ export default function PendingLimitOrders({ trades, livePrices }) {
                     onLimitTriggered={() => handleLimitTriggered(trade, currentPrice)}
                     onSLHit={() => handleSLHit(trade, currentPrice)}
                     onUpdateSL={(newSL) => handleUpdateSL(trade, newSL)}
-                    previewSL={0}
-                    isEditMode={false}
+                    previewSL={isEditing ? (parseFloat(editSL) || 0) : 0}
+                    isEditMode={isEditing}
                     suppressBE={!!savedFlash[trade.id]}
                     rrBadge={isTradeActive ? rrBadge : null}
                     timeSince={isTradeActive ? getTimeSince(trade) : null}
                   />
+
+                  {/* Inline "New Stop" editor — move the stop right from the dashboard */}
+                  {isTradeActive && (isEditing ? (
+                    <div className="mt-3" dir="ltr">
+                      <div className="flex items-center gap-1.5">
+                        <button
+                          onClick={() => { setEditingId(null); setEditSL(''); setSaveError(null); }}
+                          className="p-1.5 rounded-lg bg-bg-tertiary border border-border-primary text-text-muted hover:text-text-primary transition-colors cursor-pointer"
+                          title="ביטול"
+                        >
+                          <X className="w-4 h-4" />
+                        </button>
+                        <button
+                          onClick={() => setEditSL((v) => String(Number((((parseFloat(v) || slNum) - step)).toFixed(8))))}
+                          className="p-1.5 rounded-lg bg-bg-tertiary border border-border-primary text-text-secondary hover:text-text-primary transition-colors cursor-pointer"
+                        >
+                          <Minus className="w-4 h-4" />
+                        </button>
+                        <input
+                          type="number" step="any" inputMode="decimal" autoFocus
+                          value={editSL}
+                          onChange={(e) => setEditSL(e.target.value)}
+                          onKeyDown={(e) => {
+                            if (e.key === 'Enter' && newSLNum > 0 && !wouldClose) handleSaveSL(trade, editSL);
+                            if (e.key === 'Escape') { setEditingId(null); setEditSL(''); }
+                          }}
+                          className="flex-1 min-w-0 text-center bg-bg-tertiary border border-loss/40 rounded-lg px-2 py-1.5 text-sm font-semibold text-text-primary outline-none focus:border-loss"
+                          placeholder="סטופ חדש"
+                        />
+                        <button
+                          onClick={() => setEditSL((v) => String(Number((((parseFloat(v) || slNum) + step)).toFixed(8))))}
+                          className="p-1.5 rounded-lg bg-bg-tertiary border border-border-primary text-text-secondary hover:text-text-primary transition-colors cursor-pointer"
+                        >
+                          <Plus className="w-4 h-4" />
+                        </button>
+                        <button
+                          onClick={() => handleSaveSL(trade, editSL)}
+                          disabled={isSaving || !(newSLNum > 0) || wouldClose}
+                          className="px-3 py-1.5 rounded-lg bg-loss text-white text-sm font-bold hover:opacity-90 transition-opacity disabled:opacity-40 cursor-pointer flex items-center gap-1 whitespace-nowrap"
+                        >
+                          <Check className="w-4 h-4" /> {isSaving ? '...' : 'שמור'}
+                        </button>
+                      </div>
+                      {wouldClose && <p className="mt-1.5 text-[11px] text-breakeven text-center" dir="rtl">⚠️ סטופ זה יסגור את העסקה מיד במחיר הנוכחי</p>}
+                      {saveError && <p className="mt-1.5 text-[11px] text-loss text-center" dir="rtl">{saveError}</p>}
+                    </div>
+                  ) : (
+                    <button
+                      onClick={() => { setEditingId(trade.id); setEditSL(String(slNum || '')); setSaveError(null); }}
+                      className="mt-3 w-full flex items-center justify-center gap-1.5 py-2 rounded-lg border border-loss/30 bg-loss/5 text-loss text-xs font-semibold hover:bg-loss/10 transition-colors cursor-pointer"
+                    >
+                      <Pencil className="w-3.5 h-3.5" /> סטופ חדש
+                    </button>
+                  ))}
 
                 </div>
               </motion.div>
