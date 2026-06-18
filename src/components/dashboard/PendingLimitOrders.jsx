@@ -32,7 +32,7 @@ function fmt(price) {
   return n.toPrecision(3);
 }
 
-function TrackBar({ trade, currentPrice, tpReached = [], onTpReached, onLimitTriggered, onSLHit, onUpdateSL, isActive, previewSL, rrBadge, timeSince, isEditMode, suppressBE = false }) {
+function TrackBar({ trade, currentPrice, tpReached = [], onTpReached, onLimitTriggered, onSLHit, onUpdateSL, isActive, previewSL, rrBadge, timeSince, isEditMode, onEditStop, suppressBE = false }) {
   const { entryPrice, stopLoss, direction, tps = [], leverage = 1, positionSize } = trade;
   const entry = parseFloat(entryPrice);
   const sl = parseFloat(stopLoss);
@@ -517,6 +517,15 @@ function TrackBar({ trade, currentPrice, tpReached = [], onTpReached, onLimitTri
               </div>
             </>
           )}
+          {onEditStop && (
+            <button
+              onClick={onEditStop}
+              title="עדכן סטופ"
+              className="flex items-center gap-1 text-[10px] font-semibold text-loss px-1.5 py-0.5 rounded-md bg-loss/10 border border-loss/30 hover:bg-loss/20 transition-colors cursor-pointer"
+            >
+              <Pencil className="w-2.5 h-2.5" /> סטופ
+            </button>
+          )}
           {parseFloat(leverage) > 1 && (
             <>
               <span className="text-text-muted/25 text-[10px]">·</span>
@@ -902,13 +911,14 @@ export default function PendingLimitOrders({ trades, livePrices }) {
                     onUpdateSL={(newSL) => handleUpdateSL(trade, newSL)}
                     previewSL={isEditing ? (parseFloat(editSL) || 0) : 0}
                     isEditMode={isEditing}
+                    onEditStop={isTradeActive && !isEditing ? () => { setEditingId(trade.id); setEditSL(String(slNum || '')); setSaveError(null); } : null}
                     suppressBE={!!savedFlash[trade.id]}
                     rrBadge={isTradeActive ? rrBadge : null}
                     timeSince={isTradeActive ? getTimeSince(trade) : null}
                   />
 
-                  {/* Inline "New Stop" editor — move the stop right from the dashboard */}
-                  {isTradeActive && (isEditing ? (
+                  {/* Inline "New Stop" editor — opens from the small button next to R:R */}
+                  {isTradeActive && isEditing && (
                     <div className="mt-3" dir="ltr">
                       <div className="flex items-center gap-1.5">
                         <button
@@ -952,14 +962,7 @@ export default function PendingLimitOrders({ trades, livePrices }) {
                       {wouldClose && <p className="mt-1.5 text-[11px] text-breakeven text-center" dir="rtl">⚠️ סטופ זה יסגור את העסקה מיד במחיר הנוכחי</p>}
                       {saveError && <p className="mt-1.5 text-[11px] text-loss text-center" dir="rtl">{saveError}</p>}
                     </div>
-                  ) : (
-                    <button
-                      onClick={() => { setEditingId(trade.id); setEditSL(String(slNum || '')); setSaveError(null); }}
-                      className="mt-3 w-full flex items-center justify-center gap-1.5 py-2 rounded-lg border border-loss/30 bg-loss/5 text-loss text-xs font-semibold hover:bg-loss/10 transition-colors cursor-pointer"
-                    >
-                      <Pencil className="w-3.5 h-3.5" /> סטופ חדש
-                    </button>
-                  ))}
+                  )}
 
                 </div>
               </motion.div>
