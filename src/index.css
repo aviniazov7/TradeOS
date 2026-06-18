@@ -36,7 +36,10 @@ body {
   --color-bg-primary: #000000;
   --color-bg-secondary: rgba(255, 255, 255, 0.05);
   --color-bg-tertiary: rgba(255, 255, 255, 0.03);
-  --color-bg-overlay: rgba(255, 255, 255, 0.05);
+  /* Dropdowns/overlays float over content, so this is near-opaque (not the 5%
+     glass used for cards) — otherwise the page behind shows through and the
+     menu is hard to read. */
+  --color-bg-overlay: rgba(20, 22, 32, 0.98);
   --color-bg-solid: rgba(6, 8, 14, 0.97);
 
   /* Borders */
@@ -74,7 +77,7 @@ body {
   --color-accent-primary: #0284c7;
   --color-accent-hover: #0369a1;
   --color-accent-muted: #0c4a6e;
-  --color-bg-overlay: rgba(255, 255, 255, 0.35);
+  --color-bg-overlay: rgba(248, 250, 253, 0.98);
   --color-bg-solid: rgba(245, 247, 251, 0.98);
 }
 

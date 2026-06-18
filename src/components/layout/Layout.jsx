@@ -6,9 +6,11 @@ import MobileNav from './MobileNav';
 import BackgroundIcons from '../shared/BackgroundIcons';
 import PullToRefresh from '../shared/PullToRefresh';
 import OnboardingWizard from '../onboarding/OnboardingWizard';
+import PushNudge from '../shared/PushNudge';
 import { useTheme } from '../../hooks/useTheme';
 // import { useLeaderboardSync } from '../../hooks/useLeaderboardSync';
 import { useDailySummarySync } from '../../hooks/useDailySummarySync';
+import { usePushAutoRegister } from '../../hooks/usePushAutoRegister';
 import { WifiOff } from 'lucide-react';
 
 export default function Layout() {
@@ -31,6 +33,9 @@ export default function Layout() {
   }, []);
   // useLeaderboardSync();
   useDailySummarySync();
+  // Keep granted devices registered for push on every app open (admins can then
+  // reach installed users), and nudge un-granted installed users to enable it.
+  usePushAutoRegister();
 
   return (
     <div className="fixed inset-0 overflow-hidden">
@@ -60,6 +65,7 @@ export default function Layout() {
 
       <MobileNav />
       <OnboardingWizard />
+      <PushNudge />
     </div>
   );
 }
