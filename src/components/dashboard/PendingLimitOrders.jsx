@@ -145,18 +145,20 @@ function TrackBar({ trade, currentPrice, tpReached = [], onTpReached, onLimitTri
   };
   const tpPcts = tpPrices.map(tp => Math.max(entryPct + 1, Math.min(100, toFixedScale(tp))));
 
-  // Risk (SL→entry distance) — used for the preview badge positioning.
-  const risk = isLong ? (entry - sl) : (sl - entry);
-
   // If the stop was moved mid-trade, keep the ORIGINAL (wider) stop as the loss
   // anchor at 0% so it stays put; the new, tighter stop then floats between it
   // and entry with its own "New Stop" marker.
   const originalSl = parseFloat(trade.originalStopLoss);
   const slMoved = originalSl > 0 && Math.abs(originalSl - sl) > Math.abs(originalSl) * 1e-6;
-  const lossAnchor = slMoved ? originalSl : sl;
-  const lossSpan = isLong ? (entry - lossAnchor) : (lossAnchor - entry);
+  // Anchor on the wider of the original/current stop (absolute distance from
+  // entry) so the original stays put while the new/preview stop floats at its
+  // own price position — robust for long and short alike.
+  const lossAnchor = slMoved
+    ? (Math.abs(entry - originalSl) >= Math.abs(entry - sl) ? originalSl : sl)
+    : sl;
+  const lossSpan = Math.abs(entry - lossAnchor);
   const movedStopPct = (slMoved && lossSpan > 0) ? (() => {
-    const dist = isLong ? (entry - sl) : (sl - entry);
+    const dist = Math.abs(entry - sl);
     return Math.max(2, Math.min(entryPct - 1, entryPct * (1 - dist / lossSpan)));
   })() : null;
 
@@ -251,10 +253,12 @@ function TrackBar({ trade, currentPrice, tpReached = [], onTpReached, onLimitTri
   // suppressBE: freeze BE detection for 3s after save so track doesn't change
   const isBreakEven = !suppressBE && entry > 0 && sl > 0 && Math.abs(sl - entry) / entry < 0.002;
   const hasPreview = previewSL > 0 && Math.abs(previewSL - sl) > 0.000001;
-  // Preview badge position on fixed-entry scale (loss zone = 0-25%)
-  const rawPreviewPct = hasPreview && risk > 0 ? (() => {
-    const newDist = isLong ? (entry - previewSL) : (previewSL - entry);
-    return entryPct * (1 - newDist / risk);
+  // Preview position on the same loss-anchor scale as the bar, using absolute
+  // distance so the new stop floats at its real price position (not the
+  // original's edge) for both long and short.
+  const rawPreviewPct = hasPreview && lossSpan > 0 ? (() => {
+    const newDist = Math.abs(entry - previewSL);
+    return entryPct * (1 - newDist / lossSpan);
   })() : 0;
   const badgeLeft = hasPreview ? Math.max(0, Math.min(82, rawPreviewPct)) : 0;
   const badgeOffLeft = hasPreview && rawPreviewPct < 0;
