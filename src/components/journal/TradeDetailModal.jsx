@@ -50,7 +50,10 @@ function RealPriceChart({ candles, entry, exit, stop, tps, direction, entryMs, e
     : exit;
   const xEnd = candles.length ? candles[candles.length - 1].t : null;
   const xStart = entryMs;
-  const lineLabel = (text, fill) => ({ value: text, position: 'insideLeft', fill, fontSize: 10, dy: -4 });
+  // Labels sit at the right edge (away from the left price axis) and are nudged
+  // away from the entry line so SL/entry/TP text never overlaps.
+  const lineLabel = (text, fill, dy = 0) => ({ value: text, position: 'insideRight', fill, fontSize: 10, dy });
+  const awayDy = (price) => (entry != null && price > entry ? -9 : 9);
 
   return (
     <div className="mt-2 h-[240px]">
@@ -92,18 +95,18 @@ function RealPriceChart({ candles, entry, exit, stop, tps, direction, entryMs, e
 
           <Area type="monotone" dataKey="price" stroke={color} strokeWidth={1.6} fill="url(#tradePriceGrad)" isAnimationActive={false} />
 
-          {/* Level lines */}
+          {/* Level lines — labels pinned to the right edge */}
           {entry != null && (
             <ReferenceLine y={entry} stroke="var(--color-text-secondary)" strokeWidth={1}
-              label={lineLabel(`כניסה ${formatPrice(entry)}`, 'var(--color-text-secondary)')} />
+              label={lineLabel(`כניסה ${formatPrice(entry)}`, 'var(--color-text-secondary)', 0)} />
           )}
           {stop != null && stop > 0 && (
             <ReferenceLine y={stop} stroke="var(--color-loss)" strokeDasharray="5 4"
-              label={lineLabel(`SL ${formatPrice(stop)}`, 'var(--color-loss)')} />
+              label={lineLabel(`SL ${formatPrice(stop)}`, 'var(--color-loss)', awayDy(stop))} />
           )}
           {target != null && (
             <ReferenceLine y={target} stroke="var(--color-profit)" strokeDasharray="5 4"
-              label={lineLabel(`TP ${formatPrice(target)}`, 'var(--color-profit)')} />
+              label={lineLabel(`TP ${formatPrice(target)}`, 'var(--color-profit)', awayDy(target))} />
           )}
 
           {/* Buy / Sell markers */}
@@ -142,8 +145,10 @@ export default function TradeDetailModal({
     const exitMs = toDate(trade.exitDate || trade.createdAt)?.getTime() || Date.now();
     const start = Math.min(entryMs, exitMs);
     const end = Math.max(entryMs, exitMs);
-    const dur = Math.max(end - start, 5 * 60 * 1000);
-    const pad = Math.max(dur * 0.6, 15 * 60 * 1000);
+    const dur = Math.max(end - start, 10 * 60 * 1000);
+    // Tight window — focus on the period the position was open, not the
+    // surrounding price action.
+    const pad = Math.max(dur * 0.12, 5 * 60 * 1000);
     const from = start - pad;
     const to = end + pad;
     const INTERVALS = [['1m', 60000], ['5m', 300000], ['15m', 900000], ['1h', 3600000], ['4h', 14400000], ['1d', 86400000]];
