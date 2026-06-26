@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react';
 import {
-  AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, ReferenceDot, ReferenceLine,
+  AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, ReferenceDot, ReferenceLine, ReferenceArea,
 } from 'recharts';
 import Modal from '../shared/Modal';
 import { fetchKlinesRange } from '../../services/coingeckoApi';
@@ -34,7 +34,7 @@ const num = (v) => {
 const toDate = (d) => (d?.toDate ? d.toDate() : d ? new Date(d) : null);
 
 // Real price chart for the trade window, with Buy/Sell markers + stop line.
-function RealPriceChart({ candles, entry, exit, stop, entryMs, exitMs, pnl }) {
+function RealPriceChart({ candles, entry, exit, stop, tps, direction, entryMs, exitMs, pnl }) {
   const color = pnl >= 0 ? 'var(--color-profit)' : 'var(--color-loss)';
   // Compact Y labels so long prices (e.g. 66,000.00) don't overlap the plot.
   const fmtY = (v) => {
@@ -43,13 +43,22 @@ function RealPriceChart({ candles, entry, exit, stop, entryMs, exitMs, pnl }) {
     if (a >= 1) return v.toFixed(2);
     return v.toPrecision(3);
   };
+  // The planned target for the position box: prefer a take-profit, else the
+  // realized exit. Stop uses the original (planned) stop loss.
+  const target = (tps && tps.length)
+    ? (direction === 'short' ? Math.min(...tps) : Math.max(...tps))
+    : exit;
+  const xEnd = candles.length ? candles[candles.length - 1].t : null;
+  const xStart = entryMs;
+  const lineLabel = (text, fill) => ({ value: text, position: 'insideLeft', fill, fontSize: 10, dy: -4 });
+
   return (
     <div className="mt-2 h-[240px]">
       <ResponsiveContainer width="100%" height="100%">
         <AreaChart data={candles} margin={{ top: 10, right: 16, bottom: 6, left: 6 }}>
           <defs>
             <linearGradient id="tradePriceGrad" x1="0" y1="0" x2="0" y2="1">
-              <stop offset="0%" stopColor={color} stopOpacity={0.25} />
+              <stop offset="0%" stopColor={color} stopOpacity={0.22} />
               <stop offset="100%" stopColor={color} stopOpacity={0.02} />
             </linearGradient>
           </defs>
@@ -70,11 +79,37 @@ function RealPriceChart({ candles, entry, exit, stop, entryMs, exitMs, pnl }) {
             labelFormatter={(ms) => new Date(ms).toLocaleString('he-IL')}
             formatter={(v) => [formatPrice(v), 'מחיר']}
           />
+
+          {/* TradingView-style position tool: profit (target) + risk (stop) zones from entry */}
+          {entry != null && target != null && xStart != null && xEnd != null && (
+            <ReferenceArea x1={xStart} x2={xEnd} y1={entry} y2={target}
+              fill="var(--color-profit)" fillOpacity={0.12} stroke="none" />
+          )}
+          {entry != null && stop != null && stop > 0 && xStart != null && xEnd != null && (
+            <ReferenceArea x1={xStart} x2={xEnd} y1={entry} y2={stop}
+              fill="var(--color-loss)" fillOpacity={0.12} stroke="none" />
+          )}
+
           <Area type="monotone" dataKey="price" stroke={color} strokeWidth={1.6} fill="url(#tradePriceGrad)" isAnimationActive={false} />
-          {stop != null && <ReferenceLine y={stop} stroke="var(--color-loss)" strokeDasharray="4 4" />}
+
+          {/* Level lines */}
+          {entry != null && (
+            <ReferenceLine y={entry} stroke="var(--color-text-secondary)" strokeWidth={1}
+              label={lineLabel(`כניסה ${formatPrice(entry)}`, 'var(--color-text-secondary)')} />
+          )}
+          {stop != null && stop > 0 && (
+            <ReferenceLine y={stop} stroke="var(--color-loss)" strokeDasharray="5 4"
+              label={lineLabel(`SL ${formatPrice(stop)}`, 'var(--color-loss)')} />
+          )}
+          {target != null && (
+            <ReferenceLine y={target} stroke="var(--color-profit)" strokeDasharray="5 4"
+              label={lineLabel(`TP ${formatPrice(target)}`, 'var(--color-profit)')} />
+          )}
+
+          {/* Buy / Sell markers */}
           {entry != null && entryMs != null && (
             <ReferenceDot x={entryMs} y={entry} r={5} fill="var(--color-profit)" stroke="#0b0e14" strokeWidth={2}
-              label={{ value: 'B', fill: '#fff', fontSize: 10, position: 'top' }} />
+              label={{ value: 'B', fill: '#fff', fontSize: 10, position: 'bottom' }} />
           )}
           {exit != null && exitMs != null && (
             <ReferenceDot x={exitMs} y={exit} r={5} fill="var(--color-loss)" stroke="#0b0e14" strokeWidth={2}
@@ -155,98 +190,12 @@ export default function TradeDetailModal({
     if (h > 0) durationHours = h;
   }
 
-  // ── Chart levels ──────────────────────────────────────────────────
+  // ── Chart levels (passed to the position-tool chart) ──────────────
   const entry = num(trade.entryPrice);
   const stop = num(trade.stopLoss);
+  const origStop = num(trade.originalStopLoss) ?? stop;
   const exit = status === 'open' ? null : num(trade.exitPrice);
   const tps = (trade.tps || []).map(num).filter((n) => n !== null && n > 0);
-
-  const allLevels = [entry, stop, exit, ...tps].filter(
-    (n) => n !== null && n > 0
-  );
-  const distinct = [...new Set(allLevels)];
-
-  // SVG geometry
-  const VB_W = 300;
-  const VB_H = 240;
-  const PAD = 16;
-
-  let lo = distinct.length ? Math.min(...distinct) : 0;
-  let hi = distinct.length ? Math.max(...distinct) : 0;
-  if (distinct.length < 2) {
-    const base = distinct.length ? distinct[0] : 1;
-    const pad = Math.abs(base) * 0.005 || 0.5;
-    lo = base - pad;
-    hi = base + pad;
-  }
-  const span = hi - lo || 1;
-  // higher price → smaller y (top of chart)
-  const yFor = (price) =>
-    PAD + (1 - (price - lo) / span) * (VB_H - 2 * PAD);
-
-  // best tp for the profit-zone extent when no exit
-  const bestTp =
-    tps.length > 0
-      ? trade.direction === 'short'
-        ? Math.min(...tps)
-        : Math.max(...tps)
-      : null;
-  const profitTarget = exit ?? bestTp;
-
-  const profitZone =
-    entry !== null && profitTarget !== null
-      ? { y1: yFor(entry), y2: yFor(profitTarget) }
-      : null;
-  const riskZone =
-    entry !== null && stop !== null && stop > 0
-      ? { y1: yFor(entry), y2: yFor(stop) }
-      : null;
-  const winning = pnl >= 0;
-  const profitZoneFill = winning ? 'rgba(34,197,94,0.12)' : 'rgba(239,68,68,0.12)';
-
-  const clampY = (y) => Math.max(PAD - 4, Math.min(VB_H - PAD + 4, y));
-
-  // Build labelled line descriptors
-  const lines = [];
-  if (entry !== null && entry > 0)
-    lines.push({
-      key: 'entry',
-      value: entry,
-      label: 'כניסה',
-      stroke: 'var(--color-text-secondary)',
-      fill: 'var(--color-text-secondary)',
-      dashed: false,
-    });
-  if (stop !== null && stop > 0)
-    lines.push({
-      key: 'stop',
-      value: stop,
-      label: 'סטופ',
-      stroke: 'var(--color-loss)',
-      fill: 'var(--color-loss)',
-      dashed: true,
-    });
-  if (exit !== null && exit > 0)
-    lines.push({
-      key: 'exit',
-      value: exit,
-      label: 'סגירה',
-      stroke: pnl >= 0 ? 'var(--color-profit)' : 'var(--color-loss)',
-      fill: pnl >= 0 ? 'var(--color-profit)' : 'var(--color-loss)',
-      dashed: false,
-    });
-  tps.forEach((tp, i) =>
-    lines.push({
-      key: `tp-${i}`,
-      value: tp,
-      label: tps.length > 1 ? `TP${i + 1}` : 'TP',
-      stroke: 'rgba(34,197,94,0.4)',
-      fill: 'rgba(34,197,94,0.7)',
-      dashed: true,
-    })
-  );
-
-  const hasChart = lines.length > 0;
 
   // ── Stat tiles ────────────────────────────────────────────────────
   const moneyOrDash = (v) => {
@@ -360,7 +309,7 @@ export default function TradeDetailModal({
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
         {/* LEFT — chart */}
         <div className="bg-bg-tertiary border border-border-primary rounded-xl p-4">
-          <span className="text-xs text-text-muted">{chart ? 'גרף מחיר' : 'מבנה העסקה'}</span>
+          <span className="text-xs text-text-muted">גרף מחיר</span>
           {chartLoading ? (
             <div className="mt-2 h-[240px] flex items-center justify-center text-text-muted text-xs gap-1.5">
               <Loader2 className="w-4 h-4 animate-spin" /> טוען גרף...
@@ -370,69 +319,16 @@ export default function TradeDetailModal({
               candles={chart.candles}
               entry={entry}
               exit={exit}
-              stop={stop}
+              stop={origStop}
+              tps={tps}
+              direction={trade.direction}
               entryMs={chart.entryMs}
               exitMs={chart.exitMs}
               pnl={pnl}
             />
-          ) : hasChart ? (
-            <svg
-              viewBox={`0 0 ${VB_W} ${VB_H}`}
-              width="100%"
-              height={VB_H}
-              className="mt-2"
-            >
-              {/* Profit zone */}
-              {profitZone && (
-                <rect
-                  x="0"
-                  y={Math.min(profitZone.y1, profitZone.y2)}
-                  width={VB_W}
-                  height={Math.abs(profitZone.y2 - profitZone.y1)}
-                  fill={profitZoneFill}
-                />
-              )}
-              {/* Risk zone */}
-              {riskZone && (
-                <rect
-                  x="0"
-                  y={Math.min(riskZone.y1, riskZone.y2)}
-                  width={VB_W}
-                  height={Math.abs(riskZone.y2 - riskZone.y1)}
-                  fill="rgba(239,68,68,0.12)"
-                />
-              )}
-              {/* Lines + labels */}
-              {lines.map((ln) => {
-                const y = yFor(ln.value);
-                const ly = clampY(y);
-                return (
-                  <g key={ln.key}>
-                    <line
-                      x1="0"
-                      y1={y}
-                      x2={VB_W}
-                      y2={y}
-                      stroke={ln.stroke}
-                      strokeWidth="1.5"
-                      strokeDasharray={ln.dashed ? '4 4' : undefined}
-                    />
-                    <text
-                      x="4"
-                      y={ly - 3}
-                      fontSize="10"
-                      fill={ln.fill}
-                      direction="ltr"
-                    >
-                      {ln.label} {formatPrice(ln.value)}
-                    </text>
-                  </g>
-                );
-              })}
-            </svg>
           ) : (
-            <div className="mt-2 h-40 flex items-center justify-center text-text-muted text-xs">
-              אין נתוני מחיר
+            <div className="mt-2 h-[240px] flex items-center justify-center text-text-muted text-xs text-center px-4">
+              גרף לא זמין למטבע הזה
             </div>
           )}
 

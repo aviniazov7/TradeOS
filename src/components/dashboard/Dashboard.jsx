@@ -419,24 +419,22 @@ export default function Dashboard() {
     <motion.div variants={pageVariants} initial="initial" animate="animate" exit="exit" transition={pageTransition}>
       <PendingLimitOrders trades={globalStats.openTrades} livePrices={livePrices} />
 
-      {/* Total portfolio value + privacy toggle */}
-      <div className="bg-bg-secondary border border-border-primary rounded-xl p-4 mb-3 flex items-center justify-between">
-        <div className="flex items-center gap-2">
+      {/* Total portfolio value + privacy toggle — compact, right-aligned */}
+      <div className="flex mb-3">
+        <div className="inline-flex items-center gap-2.5 bg-bg-secondary border border-border-primary rounded-xl px-3 py-2">
           <Wallet className="w-4 h-4 text-accent-primary" />
           <span className="text-xs text-text-muted">שווי תיקים כללי</span>
-        </div>
-        <div className="flex items-center gap-3">
+          <span className="text-base font-bold text-text-primary" dir="ltr">
+            {m(formatCurrency(globalStats.totalBalance).replace('+', ''))}
+          </span>
           {globalStats.pnlPercent !== 0 && (
             <span className={`text-xs font-medium ${pnlColor(globalStats.pnlPercent)}`}>
               {m(`${globalStats.pnlPercent > 0 ? '+' : ''}${globalStats.pnlPercent.toFixed(1)}%`)}
             </span>
           )}
-          <span className="text-2xl font-bold text-text-primary" dir="ltr">
-            {m(formatCurrency(globalStats.totalBalance).replace('+', ''))}
-          </span>
           <button
             onClick={toggleHide}
-            className="p-1.5 rounded text-text-muted hover:text-text-primary transition-colors cursor-pointer"
+            className="p-1 rounded text-text-muted hover:text-text-primary transition-colors cursor-pointer"
             title={hideBalances ? 'הצג סכומים' : 'הסתר סכומים'}
           >
             {hideBalances ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
