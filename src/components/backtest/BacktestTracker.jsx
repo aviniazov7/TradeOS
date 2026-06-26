@@ -492,7 +492,7 @@ export default function BacktestTracker() {
                   <div className="flex gap-1">
                     {['long', 'short'].map((d) => (
                       <button key={d} type="button" onClick={() => update('direction', d)}
-                        className={`flex-1 py-1.5 rounded-lg text-xs font-semibold transition-all cursor-pointer flex items-center justify-center gap-1 ${
+                        className={`flex-1 py-2.5 rounded-lg text-sm font-semibold transition-all cursor-pointer flex items-center justify-center gap-1 ${
                           form.direction === d
                             ? d === 'long' ? 'bg-long/15 text-long border border-long/30' : 'bg-short/15 text-short border border-short/30'
                             : 'bg-bg-tertiary text-text-muted border border-transparent'
@@ -555,7 +555,6 @@ export default function BacktestTracker() {
                 </div>
               </div>
               <div className="grid grid-cols-2 gap-2">
-                <div />
                 <StrategySelector
                   label="טריגר כניסה"
                   value={form.trigger}
@@ -568,6 +567,7 @@ export default function BacktestTracker() {
                   emptyText="אין טריגרים"
                   placeholder="בחר טריגר..."
                 />
+                <div />
               </div>
               <div>
                 <label className={labelClass}>סשן <span className="text-text-muted/60">(מתמלא אוטומטית)</span></label>
