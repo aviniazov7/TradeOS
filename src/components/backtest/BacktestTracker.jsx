@@ -554,7 +554,8 @@ export default function BacktestTracker() {
                   />
                 </div>
               </div>
-              <div>
+              <div className="grid grid-cols-2 gap-2">
+                <div />
                 <StrategySelector
                   label="טריגר כניסה"
                   value={form.trigger}
