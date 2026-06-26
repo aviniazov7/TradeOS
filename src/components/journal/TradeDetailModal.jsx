@@ -36,10 +36,17 @@ const toDate = (d) => (d?.toDate ? d.toDate() : d ? new Date(d) : null);
 // Real price chart for the trade window, with Buy/Sell markers + stop line.
 function RealPriceChart({ candles, entry, exit, stop, entryMs, exitMs, pnl }) {
   const color = pnl >= 0 ? 'var(--color-profit)' : 'var(--color-loss)';
+  // Compact Y labels so long prices (e.g. 66,000.00) don't overlap the plot.
+  const fmtY = (v) => {
+    const a = Math.abs(v);
+    if (a >= 1000) return `${(v / 1000).toFixed(a >= 100000 ? 0 : 1)}K`;
+    if (a >= 1) return v.toFixed(2);
+    return v.toPrecision(3);
+  };
   return (
     <div className="mt-2 h-[240px]">
       <ResponsiveContainer width="100%" height="100%">
-        <AreaChart data={candles} margin={{ top: 10, right: 8, bottom: 0, left: 0 }}>
+        <AreaChart data={candles} margin={{ top: 10, right: 16, bottom: 6, left: 6 }}>
           <defs>
             <linearGradient id="tradePriceGrad" x1="0" y1="0" x2="0" y2="1">
               <stop offset="0%" stopColor={color} stopOpacity={0.25} />
@@ -51,11 +58,12 @@ function RealPriceChart({ candles, entry, exit, stop, entryMs, exitMs, pnl }) {
             dataKey="t" type="number" scale="time" domain={['dataMin', 'dataMax']}
             tickFormatter={(ms) => new Date(ms).toLocaleDateString('he-IL', { day: '2-digit', month: '2-digit' })}
             tick={{ fill: 'var(--color-text-muted)', fontSize: 10 }} tickLine={false}
-            axisLine={{ stroke: 'var(--color-border-primary)' }} minTickGap={50}
+            axisLine={{ stroke: 'var(--color-border-primary)' }} minTickGap={60} tickMargin={8} height={22}
           />
           <YAxis
-            dataKey="price" domain={['auto', 'auto']} tickFormatter={(v) => formatPrice(v)}
-            tick={{ fill: 'var(--color-text-muted)', fontSize: 10 }} tickLine={false} axisLine={false} width={56}
+            dataKey="price" domain={['auto', 'auto']} tickFormatter={fmtY} tickCount={5}
+            tick={{ fill: 'var(--color-text-muted)', fontSize: 10 }} tickLine={false} axisLine={false}
+            width={48} tickMargin={6}
           />
           <Tooltip
             contentStyle={{ background: '#141414', border: '1px solid #1a1a1a', borderRadius: '8px', fontSize: '12px', color: '#f0f0f0' }}
@@ -190,9 +198,11 @@ export default function TradeDetailModal({
       ? { y1: yFor(entry), y2: yFor(profitTarget) }
       : null;
   const riskZone =
-    entry !== null && stop !== null
+    entry !== null && stop !== null && stop > 0
       ? { y1: yFor(entry), y2: yFor(stop) }
       : null;
+  const winning = pnl >= 0;
+  const profitZoneFill = winning ? 'rgba(34,197,94,0.12)' : 'rgba(239,68,68,0.12)';
 
   const clampY = (y) => Math.max(PAD - 4, Math.min(VB_H - PAD + 4, y));
 
@@ -239,8 +249,15 @@ export default function TradeDetailModal({
   const hasChart = lines.length > 0;
 
   // ── Stat tiles ────────────────────────────────────────────────────
-  const moneyOrDash = (v) =>
-    num(v) !== null ? `$${Number(v).toLocaleString()}` : '—';
+  const moneyOrDash = (v) => {
+    const n = num(v);
+    if (n === null) return '—';
+    const a = Math.abs(n);
+    if (a >= 1e9) return `$${(n / 1e9).toFixed(2)}B`;
+    if (a >= 1e6) return `$${(n / 1e6).toFixed(2)}M`;
+    if (a >= 1e3) return `$${(n / 1e3).toFixed(1)}K`;
+    return `$${n.toLocaleString()}`;
+  };
 
   const tiles = [
     { label: 'Net P&L', value: formatCurrency(pnl), cls: pnlColor(pnl) },
@@ -372,7 +389,7 @@ export default function TradeDetailModal({
                   y={Math.min(profitZone.y1, profitZone.y2)}
                   width={VB_W}
                   height={Math.abs(profitZone.y2 - profitZone.y1)}
-                  fill="rgba(34,197,94,0.12)"
+                  fill={profitZoneFill}
                 />
               )}
               {/* Risk zone */}
