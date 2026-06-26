@@ -4,7 +4,7 @@ import { motion, AnimatePresence } from 'framer-motion';
 import {
   Wallet, BookOpen, FlaskConical, ClipboardList, Target, AlertCircle, Trash2, Undo2,
   TrendingUp, DollarSign, Coins, Brain, Sunrise, Moon, CheckCircle2, Clock, ChevronDown, Eye, EyeOff,
-  Activity, Newspaper, ExternalLink, Flame, Award, TrendingDown, CalendarDays, LineChart,
+  Activity, Newspaper, ExternalLink, Flame, Award, TrendingDown, CalendarDays, LineChart, Gauge,
 } from 'lucide-react';
 import toast from 'react-hot-toast';
 import { useTrades } from '../../hooks/useTrades';
@@ -16,6 +16,9 @@ import { useMentalityJournals } from '../../hooks/useMentalityJournals';
 import { useLinkedJournalsBalance } from '../../hooks/useLinkedExchangeBalance';
 import DashboardSkeleton from './DashboardSkeleton';
 import PendingLimitOrders from './PendingLimitOrders';
+import CumulativePnLArea from './CumulativePnLArea';
+import PerformanceRadar from './PerformanceRadar';
+import MonthlyPnLCalendar from './MonthlyPnLCalendar';
 import ExchangeLogo from '../shared/ExchangeLogo';
 import CoinIcon from '../shared/CoinIcon';
 import AnimatedValue from '../shared/AnimatedValue';
@@ -293,6 +296,70 @@ export default function Dashboard() {
     };
   }, [allTrades, journals]);
 
+  // Daily P&L map (local date key) for the calendar, + performance score/radar.
+  const { dailyPnl, perf } = useMemo(() => {
+    const journalIds = new Set(journals.map((j) => j.id));
+    const closed = allTrades
+      .filter((t) => !t.journalId || journalIds.has(t.journalId))
+      .filter((t) => t.status === 'closed' || (parseFloat(t.exitPrice) > 0 && t.status !== 'partial'));
+    const pnlOf = (t) => (t.netPnl ?? t.pnl ?? 0);
+    const dateOf = (t) => {
+      const d = t.exitDate || t.entryDate || t.createdAt;
+      if (!d) return null;
+      if (typeof d?.toDate === 'function') return d.toDate();
+      const dt = new Date(d);
+      return Number.isNaN(dt.getTime()) ? null : dt;
+    };
+    const keyOf = (d) => `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+
+    // Daily aggregation
+    const daily = {};
+    for (const t of closed) {
+      const d = dateOf(t);
+      if (!d) continue;
+      const k = keyOf(d);
+      if (!daily[k]) daily[k] = { pnl: 0, trades: 0 };
+      daily[k].pnl += pnlOf(t);
+      daily[k].trades += 1;
+    }
+
+    // Performance metrics
+    const grossProfit = closed.filter((t) => pnlOf(t) > 0).reduce((s, t) => s + pnlOf(t), 0);
+    const grossLoss = Math.abs(closed.filter((t) => pnlOf(t) < 0).reduce((s, t) => s + pnlOf(t), 0));
+    const profitFactor = grossLoss > 0 ? grossProfit / grossLoss : (grossProfit > 0 ? 4 : 0);
+    const largestWin = closed.reduce((m, t) => Math.max(m, pnlOf(t)), 0);
+
+    // Max drawdown + recovery from the equity curve
+    let cum = 0, peak = 0, maxDD = 0;
+    for (const t of [...closed].sort((a, b) => (dateOf(a)?.getTime() || 0) - (dateOf(b)?.getTime() || 0))) {
+      cum += pnlOf(t);
+      peak = Math.max(peak, cum);
+      maxDD = Math.max(maxDD, peak - cum);
+    }
+    const netProfit = grossProfit - grossLoss;
+    const recovery = maxDD > 0 ? netProfit / maxDD : (netProfit > 0 ? 3 : 0);
+
+    const clamp = (v) => Math.max(0, Math.min(100, v));
+    const winRate = globalStats.winRate;                                  // already 0..100
+    const pfScore = clamp((profitFactor / 2) * 100);                      // PF 2 → 100
+    const rrScore = globalStats.avgRR != null ? clamp((globalStats.avgRR / 2) * 100) : 0; // R:R 2 → 100
+    const consistency = grossProfit > 0 ? clamp(100 - (largestWin / grossProfit) * 100) : 0;
+    const riskMgmt = peak > 0 ? clamp(100 - (maxDD / peak) * 100) : (closed.length ? 60 : 0);
+    const recoveryScore = clamp((recovery / 3) * 100);                    // RF 3 → 100
+
+    const metrics = [
+      { label: 'אחוז הצלחה', value: winRate },
+      { label: 'Profit Factor', value: pfScore },
+      { label: 'יחס R:R', value: rrScore },
+      { label: 'עקביות', value: consistency },
+      { label: 'ניהול סיכון', value: riskMgmt },
+      { label: 'התאוששות', value: recoveryScore },
+    ];
+    const score = metrics.reduce((s, mtr) => s + mtr.value, 0) / metrics.length;
+
+    return { dailyPnl: daily, perf: { metrics: closed.length ? metrics : [], score } };
+  }, [allTrades, journals, globalStats.winRate, globalStats.avgRR]);
+
   if (loading) return <DashboardSkeleton />;
 
   const cardClass = 'bg-bg-secondary border border-border-primary rounded-xl p-5';
@@ -397,23 +464,22 @@ export default function Dashboard() {
         </motion.div>
       </motion.div>
 
+      {/* TradeZella-style hero: cumulative P&L area + performance radar */}
+      {extraStats.count > 0 && (
+        <div className="grid grid-cols-1 lg:grid-cols-3 gap-3 mb-6">
+          <div className="lg:col-span-2"><CumulativePnLArea equity={extraStats.equity} /></div>
+          <div className="lg:col-span-1"><PerformanceRadar metrics={perf.metrics} score={perf.score} /></div>
+        </div>
+      )}
+
+      {/* Monthly P&L calendar */}
+      {extraStats.count > 0 && (
+        <div className="mb-6"><MonthlyPnLCalendar dailyPnl={dailyPnl} monthDate={new Date()} /></div>
+      )}
+
       {/* Insight widgets */}
       {extraStats.count > 0 && (
         <motion.div className="grid grid-cols-2 lg:grid-cols-4 gap-3 mb-6" variants={staggerContainer} initial="initial" animate="animate">
-          {/* Equity curve */}
-          <motion.div className={`${cardClass} col-span-2`} variants={cardVariants}>
-            <div className="flex items-center justify-between mb-2">
-              <div className="flex items-center gap-2">
-                <LineChart className="w-4 h-4 text-accent-primary" />
-                <span className="text-xs text-text-muted">עקומת הון (P&L מצטבר)</span>
-              </div>
-              <span className={`text-sm font-bold ${pnlColor(extraStats.equity[extraStats.equity.length - 1] || 0)}`}>
-                {m(formatCurrency(extraStats.equity[extraStats.equity.length - 1] || 0))}
-              </span>
-            </div>
-            <Sparkline data={extraStats.equity} positive={(extraStats.equity[extraStats.equity.length - 1] || 0) >= 0} />
-          </motion.div>
-
           {/* Current streak */}
           <motion.div className={cardClass} variants={cardVariants}>
             <div className="flex items-center gap-2 mb-2">
