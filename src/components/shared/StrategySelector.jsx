@@ -48,14 +48,33 @@ export default function StrategySelector({
   const inputRef = useRef(null);
 
   // Position the floating menu relative to the button, choosing the side
-  // (below vs above) that has more room in the viewport.
+  // (below vs above) with more room *within the nearest scroll container*
+  // (e.g. a modal body) so it stays inside the modal instead of spilling
+  // past its bottom edge.
   const computeCoords = useCallback(() => {
     if (!btnRef.current) return;
     const rect = btnRef.current.getBoundingClientRect();
     const vh = window.innerHeight;
     const gap = 4;
-    const spaceBelow = vh - rect.bottom;
-    const spaceAbove = rect.top;
+
+    // Walk up to the closest vertically-scrollable ancestor and clamp the
+    // available space to its bounds.
+    let topBound = 0;
+    let bottomBound = vh;
+    let p = btnRef.current.parentElement;
+    while (p) {
+      const oy = getComputedStyle(p).overflowY;
+      if (oy === 'auto' || oy === 'scroll') {
+        const cr = p.getBoundingClientRect();
+        topBound = Math.max(topBound, cr.top);
+        bottomBound = Math.min(bottomBound, cr.bottom);
+        break;
+      }
+      p = p.parentElement;
+    }
+
+    const spaceBelow = bottomBound - rect.bottom;
+    const spaceAbove = rect.top - topBound;
     const up = spaceBelow < MENU_HEIGHT && spaceAbove > spaceBelow;
     const avail = (up ? spaceAbove : spaceBelow) - gap - 8;
     setCoords({
