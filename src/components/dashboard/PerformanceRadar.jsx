@@ -18,79 +18,66 @@ const TOOLTIP_STYLE = {
   color: '#f0f0f0',
 };
 
-function getScoreColorClass(score) {
-  if (score >= 75) return 'text-profit';
-  if (score >= 50) return 'text-accent-primary';
-  return 'text-loss';
-}
+const PURPLE = '#8b5cf6';
 
 export default function PerformanceRadar({ metrics, score }) {
   const hasData = Array.isArray(metrics) && metrics.length > 0;
   const safeScore = Math.max(0, Math.min(100, Number(score) || 0));
-  const rounded = Math.round(safeScore);
 
   if (!hasData) {
     return (
-      <div className="bg-bg-secondary border border-border-primary rounded-xl p-5">
+      <div className="bg-bg-secondary border border-border-primary rounded-xl p-5 h-full flex flex-col">
         <div className="flex items-center gap-2 mb-4">
           <Gauge className="w-4 h-4 text-accent-primary" />
           <span className="text-xs text-text-muted">ציון ביצועים</span>
         </div>
-        <div className="flex items-center justify-center min-h-[180px]">
+        <div className="flex-1 flex items-center justify-center min-h-[180px]">
           <span className="text-sm text-text-muted">אין מספיק נתונים</span>
         </div>
       </div>
     );
   }
 
+  const data = metrics.map((mtr) => ({ ...mtr, full: 100 }));
+
   return (
     <motion.div
       initial={{ opacity: 0, y: 12 }}
       animate={{ opacity: 1, y: 0 }}
       transition={{ duration: 0.4 }}
-      className="bg-bg-secondary border border-border-primary rounded-xl p-5"
+      className="bg-bg-secondary border border-border-primary rounded-xl p-5 h-full flex flex-col"
     >
       {/* Header */}
-      <div className="flex items-center gap-2 mb-4">
+      <div className="flex items-center gap-2 mb-2">
         <Gauge className="w-4 h-4 text-accent-primary" />
         <span className="text-xs text-text-muted">ציון ביצועים</span>
       </div>
 
-      {/* Score block */}
-      <div className="mb-4">
-        <div className="flex items-baseline gap-1">
-          <span className={`text-4xl font-bold num-mono ${getScoreColorClass(safeScore)}`}>
-            {rounded}
-          </span>
-          <span className="text-sm text-text-muted">/100</span>
-        </div>
-        <div className="mt-2 w-full h-1.5 rounded bg-bg-tertiary overflow-hidden">
-          <div
-            className="h-full rounded"
-            style={{
-              width: `${safeScore}%`,
-              background:
-                'linear-gradient(to right, var(--color-loss), var(--color-breakeven), var(--color-profit))',
-            }}
-          />
-        </div>
-      </div>
-
       {/* Radar chart */}
-      <div className="w-full">
-        <ResponsiveContainer width="100%" height={240}>
-          <RadarChart data={metrics}>
-            <PolarGrid stroke="var(--color-border-primary)" />
+      <div className="w-full flex-1 min-h-[240px]">
+        <ResponsiveContainer width="100%" height="100%">
+          <RadarChart data={data} outerRadius="72%">
+            <PolarGrid stroke="rgba(255,255,255,0.10)" />
             <PolarAngleAxis
               dataKey="label"
               tick={{ fill: 'var(--color-text-muted)', fontSize: 10 }}
             />
             <PolarRadiusAxis domain={[0, 100]} tick={false} axisLine={false} />
+            {/* dark outer boundary */}
+            <Radar
+              dataKey="full"
+              stroke="rgba(0,0,0,0.55)"
+              strokeWidth={3}
+              fill="transparent"
+              isAnimationActive={false}
+              activeDot={false}
+            />
+            {/* actual score */}
             <Radar
               dataKey="value"
-              stroke="var(--color-accent-primary)"
-              fill="var(--color-accent-primary)"
-              fillOpacity={0.35}
+              stroke={PURPLE}
+              fill={PURPLE}
+              fillOpacity={0.45}
               strokeWidth={2}
             />
             <Tooltip
@@ -101,6 +88,29 @@ export default function PerformanceRadar({ metrics, score }) {
             />
           </RadarChart>
         </ResponsiveContainer>
+      </div>
+
+      {/* Score scale (TradeZella-style) */}
+      <div className="mt-2 pt-3 border-t border-border-primary flex items-center gap-4">
+        <div className="shrink-0">
+          <div className="text-[11px] text-text-muted mb-0.5">הציון שלך</div>
+          <div className="text-3xl font-bold text-text-primary leading-none" dir="ltr">
+            {safeScore.toFixed(1)}
+          </div>
+        </div>
+        <div className="flex-1">
+          <div className="relative h-2 rounded-full" style={{
+            background: 'linear-gradient(to right, #ef4444, #f59e0b, #eab308, #22c55e, #00bfff)',
+          }}>
+            <div
+              className="absolute top-1/2 w-3.5 h-3.5 rounded-full bg-white border-2 border-bg-secondary shadow"
+              style={{ left: `${safeScore}%`, transform: 'translate(-50%, -50%)' }}
+            />
+          </div>
+          <div className="flex justify-between mt-1 text-[10px] text-text-muted" dir="ltr">
+            <span>0</span><span>20</span><span>40</span><span>60</span><span>80</span><span>100</span>
+          </div>
+        </div>
       </div>
     </motion.div>
   );
