@@ -120,6 +120,14 @@ export const STRATEGIES = [
   'AMD',
 ];
 
+export const TRIGGERS = [
+  'Spring',
+  'LPSY',
+  'SOS',
+  'Upthrust',
+  'BU/LPS',
+];
+
 export const TIMEFRAMES = ['15m', '30m', '1H', '4H'];
 
 export const DIRECTIONS = ['long', 'short'];

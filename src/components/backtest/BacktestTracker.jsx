@@ -23,6 +23,7 @@ import { PAIRS, SESSIONS, getSessionClasses } from '../../utils/constants';
 import { formatDate, formatDateShort, formatTime } from '../../utils/formatters';
 import { useUserStrategies } from '../../hooks/useUserStrategies';
 import { useUserTimeframes } from '../../hooks/useUserTimeframes';
+import { useUserTriggers } from '../../hooks/useUserTriggers';
 import { pageVariants, pageTransition } from '../../utils/animations';
 
 
@@ -50,6 +51,7 @@ export default function BacktestTracker() {
   const { backtests, loading, addBacktest, updateBacktest, deleteBacktest } = useBacktests(activeJournalId);
   const { allStrategies, addStrategy, removeStrategy } = useUserStrategies('backtest');
   const { allTimeframes, addTimeframe, removeTimeframe } = useUserTimeframes();
+  const { allTriggers, addTrigger, removeTrigger } = useUserTriggers();
   const [formOpen, setFormOpen] = useState(false);
   const [editingId, setEditingId] = useState(null);
   const [form, setForm] = useState(defaultForm);
@@ -553,8 +555,18 @@ export default function BacktestTracker() {
                 </div>
               </div>
               <div>
-                <label className={labelClass}>טריגר כניסה</label>
-                <input type="text" value={form.trigger} onChange={(e) => update('trigger', e.target.value)} className={inputClass} placeholder="LPSY, Spring..." />
+                <StrategySelector
+                  label="טריגר כניסה"
+                  value={form.trigger}
+                  onChange={(t) => update('trigger', t)}
+                  strategies={allTriggers}
+                  onAdd={addTrigger}
+                  onRemove={removeTrigger}
+                  addLabel="טריגר מותאם"
+                  inputPlaceholder="שם טריגר..."
+                  emptyText="אין טריגרים"
+                  placeholder="בחר טריגר..."
+                />
               </div>
               <div>
                 <label className={labelClass}>סשן <span className="text-text-muted/60">(מתמלא אוטומטית)</span></label>
