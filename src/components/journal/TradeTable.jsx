@@ -1,7 +1,8 @@
 import { useState, Fragment } from 'react';
-import { Pencil, Trash2, Share2, ExternalLink, ChevronDown, TrendingUp, TrendingDown, Clock } from 'lucide-react';
+import { Pencil, Trash2, Share2, ExternalLink, Eye, TrendingUp, TrendingDown, Clock } from 'lucide-react';
 import { formatDate, formatPrice, formatCurrency, formatPercent, formatRR, formatDuration } from '../../utils/formatters';
 import { MISTAKE_LABELS, getExchangeLogo } from '../../utils/constants';
+import TradeDetailModal from './TradeDetailModal';
 import CoinIcon from '../shared/CoinIcon';
 
 function ExchangeIcon({ source }) {
@@ -234,7 +235,7 @@ function ExpandedDetails({ trade, status, onEdit, onDelete, onShare }) {
 }
 
 export default function TradeTable({ trades, onEdit, onDelete, onShare, isLimitPending }) {
-  const [expandedId, setExpandedId] = useState(null);
+  const [detailTrade, setDetailTrade] = useState(null);
   const pending = (t) => isLimitPending?.(t) ?? false;
 
   const statusBadge = (status, isPending) => {
@@ -251,7 +252,6 @@ export default function TradeTable({ trades, onEdit, onDelete, onShare, isLimitP
         {trades.map((trade, idx) => {
           const status = getStatus(trade);
           const isPending = pending(trade);
-          const isExpanded = expandedId === trade.id;
           const pnl = trade.netPnl ?? trade.pnl;
           const showMonthSep = idx > 0 && getMonthKey(trade) !== getMonthKey(trades[idx - 1]);
 
@@ -267,7 +267,7 @@ export default function TradeTable({ trades, onEdit, onDelete, onShare, isLimitP
             <div className={`bg-bg-secondary border border-border-primary rounded-xl p-3 ${isPending ? 'opacity-60' : ''}`}>
               <div
                 className="flex items-center justify-between cursor-pointer"
-                onClick={() => setExpandedId(isExpanded ? null : trade.id)}
+                onClick={() => setDetailTrade(trade)}
               >
                 <div className="flex items-center gap-2 min-w-0">
                   <CoinIcon pair={trade.pair} className="w-4 h-4" />
@@ -285,10 +285,9 @@ export default function TradeTable({ trades, onEdit, onDelete, onShare, isLimitP
                 <div className="flex items-center gap-2 flex-shrink-0">
                   {status !== 'open' && !isPending && <span className={`text-sm font-bold ${pnlColor(pnl)}`}>{formatCurrency(pnl)}</span>}
                   {(status === 'open' || isPending) && <span className="text-xs text-text-muted">—</span>}
-                  <ChevronDown className={`w-4 h-4 text-text-muted transition-transform ${isExpanded ? 'rotate-180' : ''}`} />
+                  <Eye className="w-4 h-4 text-text-muted" />
                 </div>
               </div>
-              {isExpanded && <ExpandedDetails trade={trade} status={status} onEdit={onEdit} onDelete={onDelete} onShare={onShare} />}
             </div>
             </Fragment>
           );
@@ -317,7 +316,6 @@ export default function TradeTable({ trades, onEdit, onDelete, onShare, isLimitP
           <tbody>
             {trades.map((trade, idx) => {
               const status = getStatus(trade);
-              const isExpanded = expandedId === trade.id;
               const pnl = trade.netPnl ?? trade.pnl;
               const isPending = pending(trade);
               const showMonthSep = idx > 0 && getMonthKey(trade) !== getMonthKey(trades[idx - 1]);
@@ -337,7 +335,7 @@ export default function TradeTable({ trades, onEdit, onDelete, onShare, isLimitP
                   )}
                   <tr
                     className={`border-b border-border-primary/50 cursor-pointer hover:bg-bg-tertiary/50 transition-colors ${isPending ? 'opacity-60' : ''}`}
-                    onClick={() => setExpandedId(isExpanded ? null : trade.id)}
+                    onClick={() => setDetailTrade(trade)}
                   >
                     <td className="py-2.5 px-2 text-text-primary font-semibold whitespace-nowrap">
                       <span className="inline-flex items-center gap-1.5">
@@ -386,109 +384,18 @@ export default function TradeTable({ trades, onEdit, onDelete, onShare, isLimitP
                         <button onClick={(e) => { e.stopPropagation(); onDelete(trade); }} className="p-1 rounded text-text-muted hover:text-loss hover:bg-bg-tertiary transition-colors cursor-pointer">
                           <Trash2 className="w-3.5 h-3.5" />
                         </button>
-                        <ChevronDown className={`w-3.5 h-3.5 text-text-muted transition-transform ${isExpanded ? 'rotate-180' : ''}`} />
+                        <button onClick={(e) => { e.stopPropagation(); setDetailTrade(trade); }} className="p-1 rounded text-text-muted hover:text-accent-primary hover:bg-bg-tertiary transition-colors cursor-pointer" title="פרטים"><Eye className="w-3.5 h-3.5" /></button>
                       </div>
                     </td>
                   </tr>
 
-                  {/* Expanded details */}
-                  {isExpanded && (
-                    <tr>
-                      <td colSpan={12} className="p-0">
-                        <div className="bg-bg-tertiary/30 border-b border-border-primary/50 px-6 py-4 text-[11px]">
-                          {/* All groups in one row with spacing */}
-                          <div className="flex items-center gap-8 flex-wrap">
-                            {/* Group 1: Position details */}
-                            <div className="flex gap-10 bg-bg-tertiary/50 rounded-lg px-6 py-2.5">
-                              <div>
-                                <span className="text-text-muted">פוזיציה</span>
-                                <p className="text-text-primary">{trade.positionSize ? `$${Number(trade.positionSize).toLocaleString()}` : '—'}</p>
-                              </div>
-                              <div>
-                                <span className="text-text-muted">סיכון</span>
-                                <p className="text-text-primary">{trade.riskAmount ? `$${Number(trade.riskAmount).toLocaleString()}` : '—'}</p>
-                              </div>
-                              <div>
-                                <span className="text-text-muted">מינוף</span>
-                                <p className="text-text-primary">{trade.leverage ? `x${trade.leverage}` : '—'}</p>
-                              </div>
-                              <div>
-                                <span className="text-text-muted">עמלות</span>
-                                <p className="text-text-primary">{trade.fees ? `$${Number(trade.fees).toLocaleString()}` : '—'}</p>
-                              </div>
-                              <div>
-                                <span className="text-text-muted">TF</span>
-                                <p className="text-text-secondary">{trade.timeframe || '—'}</p>
-                              </div>
-                              {tradeDurationHours(trade) && (
-                                <div>
-                                  <span className="text-text-muted flex items-center gap-1">
-                                    <Clock className="w-3.5 h-3.5 text-accent-primary" /> משך
-                                  </span>
-                                  <p className="text-text-secondary">{formatDuration(tradeDurationHours(trade))}</p>
-                                </div>
-                              )}
-                            </div>
-
-                            {/* Partial exits breakdown */}
-                            {trade.exits?.length > 1 && (
-                              <div className="flex gap-3 items-center bg-bg-tertiary/50 rounded-lg px-6 py-2.5">
-                                <span className="text-text-muted">יציאות:</span>
-                                {trade.exits.map((exit, i) => (
-                                  <span key={i} className="text-text-secondary">
-                                    {formatPrice(exit.price)} ({exit.percent}%)
-                                  </span>
-                                ))}
-                              </div>
-                            )}
-
-                            {/* Group 2: Mental state ratings */}
-                            <MentalRatings trade={trade} className="flex gap-10 bg-bg-tertiary/50 rounded-lg px-6 py-2.5 text-[11px]" />
-
-                            {/* Group 3: Mistakes, Reason, Tags, TradingView, Notes */}
-                            {trade.mistakes?.length > 0 && (
-                              <span>
-                                <span className="text-text-muted">טעויות: </span>
-                                <span className="text-loss">{trade.mistakes.map((m) => MISTAKE_LABELS[m] || m).join(', ')}</span>
-                              </span>
-                            )}
-                            {trade.entryReason && (
-                              <span>
-                                <span className="text-text-muted">סיבה: </span>
-                                <span className="text-text-secondary">{trade.entryReason}</span>
-                              </span>
-                            )}
-                            {trade.tags && (
-                              <div className="flex items-center gap-1 flex-wrap">
-                                {(typeof trade.tags === 'string' ? trade.tags.split(',') : trade.tags).filter(Boolean).map((tag) => (
-                                  <span key={tag.trim()} className="text-[10px] px-1.5 py-0.5 rounded bg-accent-primary/10 text-accent-primary border border-accent-primary/20">
-                                    {tag.trim()}
-                                  </span>
-                                ))}
-                              </div>
-                            )}
-                            {trade.tradingViewUrl && (
-                              <a href={trade.tradingViewUrl} target="_blank" rel="noopener noreferrer" className="flex items-center gap-1 text-accent-primary">
-                                <ExternalLink className="w-3.5 h-3.5" />TradingView
-                              </a>
-                            )}
-                            {trade.notes && (
-                              <span>
-                                <span className="text-text-muted">הערות: </span>
-                                <span className="text-text-secondary">{trade.notes}</span>
-                              </span>
-                            )}
-                          </div>
-                        </div>
-                      </td>
-                    </tr>
-                  )}
-                </Fragment>
+                  </Fragment>
               );
             })}
           </tbody>
         </table>
       </div>
+      <TradeDetailModal trade={detailTrade} isOpen={!!detailTrade} onClose={() => setDetailTrade(null)} onEdit={onEdit} onDelete={onDelete} onShare={onShare} />
     </>
   );
 }

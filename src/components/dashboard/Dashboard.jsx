@@ -19,8 +19,6 @@ import PendingLimitOrders from './PendingLimitOrders';
 import DashboardKpis from './DashboardKpis';
 import CumulativePnLArea from './CumulativePnLArea';
 import PerformanceRadar from './PerformanceRadar';
-import WinLossDonut from './WinLossDonut';
-import PnLBars from './PnLBars';
 import ExchangeLogo from '../shared/ExchangeLogo';
 import CoinIcon from '../shared/CoinIcon';
 import AnimatedValue from '../shared/AnimatedValue';
@@ -430,14 +428,6 @@ export default function Dashboard() {
         <div className="grid grid-cols-1 lg:grid-cols-3 gap-3 mb-6 items-stretch">
           <div className="lg:col-span-2 h-full"><CumulativePnLArea series={extraStats.equitySeries} /></div>
           <div className="lg:col-span-1 h-full"><PerformanceRadar metrics={perf.metrics} score={perf.score} /></div>
-        </div>
-      )}
-
-      {/* Visual breakdowns: win/loss donut + P&L by session */}
-      {extraStats.count > 0 && (
-        <div className="grid grid-cols-1 lg:grid-cols-3 gap-3 mb-6 items-stretch">
-          <div className="lg:col-span-1 h-full"><WinLossDonut wins={winLoss.wins} losses={winLoss.losses} /></div>
-          <div className="lg:col-span-2 h-full"><PnLBars data={sessionBars} title="רווח/הפסד לפי סשן" /></div>
         </div>
       )}
 
