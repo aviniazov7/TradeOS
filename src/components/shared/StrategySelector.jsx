@@ -4,7 +4,7 @@ import { X, Plus, Settings2 } from 'lucide-react';
 
 const inputClass = 'w-full bg-bg-tertiary border border-border-primary rounded-lg px-3 py-2.5 text-sm text-text-primary outline-none focus:border-accent-primary transition-colors text-right';
 
-const MENU_HEIGHT = 240; // approx natural menu height (list + footer)
+const MENU_HEIGHT = 150; // approx natural menu height (list + footer)
 
 /**
  * StrategySelector - custom dropdown for selecting strategies.
@@ -83,7 +83,7 @@ export default function StrategySelector({
       up,
       top: up ? undefined : rect.bottom + gap,
       bottom: up ? vh - rect.top + gap : undefined,
-      maxHeight: Math.max(160, Math.min(MENU_HEIGHT, avail)),
+      maxHeight: Math.max(110, Math.min(MENU_HEIGHT, avail)),
     });
   }, []);
 
@@ -137,7 +137,7 @@ export default function StrategySelector({
   const displayText = value || placeholder;
 
   // Leave room for the sticky footer (add/manage row) when capping the list.
-  const listMax = coords ? Math.max(96, coords.maxHeight - 44) : 192;
+  const listMax = coords ? Math.max(66, coords.maxHeight - 40) : 110;
 
   const menu = open && coords ? createPortal(
     <div
@@ -185,7 +185,7 @@ export default function StrategySelector({
                 key={s}
                 type="button"
                 onClick={() => handleSelect(s)}
-                className={`w-full flex items-center px-3 py-2 text-sm transition-colors cursor-pointer text-right ${
+                className={`w-full flex items-center px-3 py-1.5 text-sm transition-colors cursor-pointer text-right ${
                   value === s ? 'bg-accent-primary/10 text-accent-primary font-medium' : 'text-text-primary hover:bg-bg-tertiary'
                 }`}
               >
