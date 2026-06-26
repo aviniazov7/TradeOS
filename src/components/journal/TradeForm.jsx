@@ -14,6 +14,7 @@ import MultiSelector from '../shared/MultiSelector';
 import { PAIRS, MISTAKE_LABELS, TAG_LABELS, SESSIONS, getSessionClasses, FUTURES_CONTRACTS, getContractSpec, DEFAULT_LEVERAGE } from '../../utils/constants';
 import { useUserStrategies } from '../../hooks/useUserStrategies';
 import { useUserTimeframes } from '../../hooks/useUserTimeframes';
+import { useUserTriggers } from '../../hooks/useUserTriggers';
 import { useUserTags } from '../../hooks/useUserTags';
 import { useUserMistakes } from '../../hooks/useUserMistakes';
 import { calculatePnLPercent, calculateRR, calculateNetPnL, calculatePartialPnL, calculateWeightedExitPrice, calculateFuturesContractsPnL, calculateFuturesNotional } from '../../utils/calculations';
@@ -30,6 +31,7 @@ const defaultForm = {
   orderType: 'market',
   marketType: 'futures',
   strategy: '',
+  trigger: '',
   timeframe: '4H',
   customTimeframe: '',
   entryPrice: '',
@@ -81,6 +83,7 @@ export default function TradeForm({ isOpen, onClose, trade, onSave, riskSettings
   const newTradeAssetClass = journalAssetClass === 'futures_cme' ? 'futures_cme' : 'crypto';
   const { allStrategies, addStrategy, removeStrategy } = useUserStrategies('journal');
   const { allTimeframes, addTimeframe, removeTimeframe } = useUserTimeframes();
+  const { allTriggers, addTrigger, removeTrigger } = useUserTriggers();
   const { allTags, addTag, removeTag } = useUserTags();
   const { allMistakes, addMistake, removeMistake } = useUserMistakes();
   const [form, setForm] = useState(defaultForm);
@@ -423,6 +426,7 @@ export default function TradeForm({ isOpen, onClose, trade, onSave, riskSettings
       const finalPair = form.pair;
       const finalStrategy = form.strategy;
       const finalTimeframe = form.timeframe;
+      const finalTrigger = form.trigger;
       // Futures: quantity is the contract count (satisfies the >0 rule and is
       // the meaningful unit); leverage is fixed at 1 (margin is exchange-set).
       const quantity = isFutures ? contractsNum : ps / entryPrice;
@@ -451,6 +455,7 @@ export default function TradeForm({ isOpen, onClose, trade, onSave, riskSettings
         marketType: 'futures',
         strategy: finalStrategy,
         timeframe: finalTimeframe,
+        trigger: finalTrigger,
         status,
         entryPrice,
         exitPrice,
@@ -564,7 +569,7 @@ export default function TradeForm({ isOpen, onClose, trade, onSave, riskSettings
               );
             })()}
 
-            <div className="grid gap-2" style={{ gridTemplateColumns: '2fr 96px 2fr' }}>
+            <div className="grid grid-cols-2 gap-2">
               {isFutures ? (
                 <SelectDropdown
                   label="חוזה"
@@ -579,6 +584,17 @@ export default function TradeForm({ isOpen, onClose, trade, onSave, riskSettings
                   onChange={(pair) => update('pair', pair || 'BTCUSDT')}
                 />
               )}
+              <StrategySelector
+                label="אסטרטגיה"
+                value={form.strategy}
+                onChange={(s) => update('strategy', s)}
+                strategies={allStrategies}
+                onAdd={addStrategy}
+                onRemove={removeStrategy}
+              />
+            </div>
+
+            <div className="grid grid-cols-2 gap-2">
               <TimeframeSelector
                 label="טווח זמן"
                 value={form.timeframe}
@@ -588,12 +604,16 @@ export default function TradeForm({ isOpen, onClose, trade, onSave, riskSettings
                 onRemove={removeTimeframe}
               />
               <StrategySelector
-                label="אסטרטגיה"
-                value={form.strategy}
-                onChange={(s) => update('strategy', s)}
-                strategies={allStrategies}
-                onAdd={addStrategy}
-                onRemove={removeStrategy}
+                label="טריגר כניסה"
+                value={form.trigger}
+                onChange={(t) => update('trigger', t)}
+                strategies={allTriggers}
+                onAdd={addTrigger}
+                onRemove={removeTrigger}
+                addLabel="טריגר מותאם"
+                inputPlaceholder="שם טריגר..."
+                emptyText="אין טריגרים"
+                placeholder="בחר טריגר..."
               />
             </div>
 
