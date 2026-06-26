@@ -34,8 +34,21 @@ export default function StrategySelector({
   const [adding, setAdding] = useState(false);
   const [custom, setCustom] = useState('');
   const [managing, setManaging] = useState(false);
+  const [dropUp, setDropUp] = useState(false);
   const ref = useRef(null);
   const inputRef = useRef(null);
+
+  // Open upward when there isn't enough room below (e.g. field near the
+  // bottom of a scrollable modal) so the menu doesn't overflow and shove
+  // the container into scrolling.
+  const toggleOpen = () => {
+    if (!open && ref.current) {
+      const rect = ref.current.getBoundingClientRect();
+      const spaceBelow = window.innerHeight - rect.bottom;
+      setDropUp(spaceBelow < 280 && rect.top > spaceBelow);
+    }
+    setOpen((o) => !o);
+  };
 
   useEffect(() => {
     if (!open) { setManaging(false); setAdding(false); setCustom(''); }
@@ -78,7 +91,7 @@ export default function StrategySelector({
       )}
       <button
         type="button"
-        onClick={() => setOpen(!open)}
+        onClick={toggleOpen}
         className={`${inputClass} flex items-center justify-between cursor-pointer`}
       >
         <span className={`truncate ${value ? 'text-text-primary' : 'text-text-muted'}`}>{displayText}</span>
@@ -86,7 +99,7 @@ export default function StrategySelector({
       </button>
 
       {open && (
-        <div className="absolute z-50 top-full mt-1 right-0 left-0 bg-bg-overlay border border-border-primary rounded-xl shadow-xl overflow-hidden">
+        <div className={`absolute z-50 ${dropUp ? 'bottom-full mb-1' : 'top-full mt-1'} right-0 left-0 bg-bg-overlay border border-border-primary rounded-xl shadow-xl overflow-hidden`}>
           {managing ? (
             <>
               <div className="max-h-48 overflow-y-auto p-2 space-y-1">
