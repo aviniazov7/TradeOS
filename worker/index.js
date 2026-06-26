@@ -2902,7 +2902,14 @@ async function bybitAsBinance(subPath, searchParams) {
       const MAP = { '1m': '1', '3m': '3', '5m': '5', '15m': '15', '30m': '30', '1h': '60', '2h': '120', '4h': '240', '6h': '360', '12h': '720', '1d': 'D', '1w': 'W', '1M': 'M' };
       const byInterval = MAP[interval];
       if (!byInterval) return null;
-      const r = await fetch(`https://api.bybit.com/v5/market/kline?category=spot&symbol=${encodeURIComponent(symbol)}&interval=${byInterval}&limit=${limit}`, { headers: { 'Accept': 'application/json' } });
+      // Optional explicit time window — Binance uses startTime/endTime (ms);
+      // Bybit's kline endpoint takes start/end (ms). Forward when present.
+      const startTime = searchParams.get('startTime');
+      const endTime = searchParams.get('endTime');
+      let bybitUrl = `https://api.bybit.com/v5/market/kline?category=spot&symbol=${encodeURIComponent(symbol)}&interval=${byInterval}&limit=${limit}`;
+      if (startTime) bybitUrl += `&start=${encodeURIComponent(startTime)}`;
+      if (endTime) bybitUrl += `&end=${encodeURIComponent(endTime)}`;
+      const r = await fetch(bybitUrl, { headers: { 'Accept': 'application/json' } });
       if (!r.ok) return null;
       const j = await r.json();
       const list = j?.result?.list || [];

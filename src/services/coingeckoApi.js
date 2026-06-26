@@ -200,6 +200,18 @@ export async function fetchKlines(pair, interval = '1h', limit = 720) {
   return data;
 }
 
+// Klines for an explicit time window [startMs, endMs]. Binance natively
+// supports startTime/endTime; the worker forwards them, and the Bybit
+// fallback maps them to start/end. Returns Binance 12-col arrays (oldest-first).
+export async function fetchKlinesRange(pair, interval, startMs, endMs, limit = 500) {
+  const url = `${BINANCE_BASE}/klines?symbol=${encodeURIComponent(pair)}&interval=${interval}&startTime=${Math.floor(startMs)}&endTime=${Math.floor(endMs)}&limit=${limit}`;
+  const response = await fetch(url);
+  if (!response.ok) throw new Error(`klines error: ${response.status}`);
+  const data = await response.json();
+  if (!Array.isArray(data)) throw new Error('klines: unexpected response');
+  return data;
+}
+
 export async function fetchCoinChart(coinId, days = 30, symbol = null) {
   const key = `chart:${coinId}:${days}`;
   const cached = getCached(key);

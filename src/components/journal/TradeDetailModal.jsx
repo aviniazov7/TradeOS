@@ -1,4 +1,9 @@
+import { useState, useEffect } from 'react';
+import {
+  AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, ReferenceDot, ReferenceLine,
+} from 'recharts';
 import Modal from '../shared/Modal';
+import { fetchKlinesRange } from '../../services/coingeckoApi';
 import {
   formatCurrency,
   formatPrice,
@@ -16,6 +21,7 @@ import {
   Share2,
   ExternalLink,
   Clock,
+  Loader2,
 } from 'lucide-react';
 
 // Safe numeric coercion — returns null when not a finite number.
@@ -25,6 +31,53 @@ const num = (v) => {
   return Number.isFinite(n) ? n : null;
 };
 
+const toDate = (d) => (d?.toDate ? d.toDate() : d ? new Date(d) : null);
+
+// Real price chart for the trade window, with Buy/Sell markers + stop line.
+function RealPriceChart({ candles, entry, exit, stop, entryMs, exitMs, pnl }) {
+  const color = pnl >= 0 ? 'var(--color-profit)' : 'var(--color-loss)';
+  return (
+    <div className="mt-2 h-[240px]">
+      <ResponsiveContainer width="100%" height="100%">
+        <AreaChart data={candles} margin={{ top: 10, right: 8, bottom: 0, left: 0 }}>
+          <defs>
+            <linearGradient id="tradePriceGrad" x1="0" y1="0" x2="0" y2="1">
+              <stop offset="0%" stopColor={color} stopOpacity={0.25} />
+              <stop offset="100%" stopColor={color} stopOpacity={0.02} />
+            </linearGradient>
+          </defs>
+          <CartesianGrid vertical={false} stroke="var(--color-border-primary)" strokeDasharray="2 4" />
+          <XAxis
+            dataKey="t" type="number" scale="time" domain={['dataMin', 'dataMax']}
+            tickFormatter={(ms) => new Date(ms).toLocaleDateString('he-IL', { day: '2-digit', month: '2-digit' })}
+            tick={{ fill: 'var(--color-text-muted)', fontSize: 10 }} tickLine={false}
+            axisLine={{ stroke: 'var(--color-border-primary)' }} minTickGap={50}
+          />
+          <YAxis
+            dataKey="price" domain={['auto', 'auto']} tickFormatter={(v) => formatPrice(v)}
+            tick={{ fill: 'var(--color-text-muted)', fontSize: 10 }} tickLine={false} axisLine={false} width={56}
+          />
+          <Tooltip
+            contentStyle={{ background: '#141414', border: '1px solid #1a1a1a', borderRadius: '8px', fontSize: '12px', color: '#f0f0f0' }}
+            labelFormatter={(ms) => new Date(ms).toLocaleString('he-IL')}
+            formatter={(v) => [formatPrice(v), 'מחיר']}
+          />
+          <Area type="monotone" dataKey="price" stroke={color} strokeWidth={1.6} fill="url(#tradePriceGrad)" isAnimationActive={false} />
+          {stop != null && <ReferenceLine y={stop} stroke="var(--color-loss)" strokeDasharray="4 4" />}
+          {entry != null && entryMs != null && (
+            <ReferenceDot x={entryMs} y={entry} r={5} fill="var(--color-profit)" stroke="#0b0e14" strokeWidth={2}
+              label={{ value: 'B', fill: '#fff', fontSize: 10, position: 'top' }} />
+          )}
+          {exit != null && exitMs != null && (
+            <ReferenceDot x={exitMs} y={exit} r={5} fill="var(--color-loss)" stroke="#0b0e14" strokeWidth={2}
+              label={{ value: 'S', fill: '#fff', fontSize: 10, position: 'top' }} />
+          )}
+        </AreaChart>
+      </ResponsiveContainer>
+    </div>
+  );
+}
+
 export default function TradeDetailModal({
   trade,
   isOpen,
@@ -33,6 +86,43 @@ export default function TradeDetailModal({
   onDelete,
   onShare,
 }) {
+  const pairSym = trade?.pair || trade?.symbol || '';
+  const isCrypto = !!pairSym && /USDT?$/.test(pairSym) && trade?.assetClass !== 'futures_cme';
+
+  const [chart, setChart] = useState(null);        // { candles, entryMs, exitMs }
+  const [chartLoading, setChartLoading] = useState(false);
+
+  useEffect(() => {
+    if (!isOpen || !trade || !isCrypto) { setChart(null); setChartLoading(false); return; }
+    const entryMs = toDate(trade.entryDate)?.getTime();
+    if (!entryMs) { setChart(null); return; }
+    const exitMs = toDate(trade.exitDate || trade.createdAt)?.getTime() || Date.now();
+    const start = Math.min(entryMs, exitMs);
+    const end = Math.max(entryMs, exitMs);
+    const dur = Math.max(end - start, 5 * 60 * 1000);
+    const pad = Math.max(dur * 0.6, 15 * 60 * 1000);
+    const from = start - pad;
+    const to = end + pad;
+    const INTERVALS = [['1m', 60000], ['5m', 300000], ['15m', 900000], ['1h', 3600000], ['4h', 14400000], ['1d', 86400000]];
+    const target = (to - from) / 100;
+    let iv = INTERVALS[0];
+    for (const x of INTERVALS) if (x[1] <= target) iv = x;
+
+    let cancelled = false;
+    setChartLoading(true);
+    fetchKlinesRange(pairSym, iv[0], from, to, 500)
+      .then((rows) => {
+        if (cancelled) return;
+        const candles = (rows || [])
+          .map((k) => ({ t: Number(k[0]), price: parseFloat(k[4]) }))
+          .filter((c) => Number.isFinite(c.t) && Number.isFinite(c.price));
+        setChart(candles.length >= 3 ? { candles, entryMs, exitMs } : null);
+      })
+      .catch(() => { if (!cancelled) setChart(null); })
+      .finally(() => { if (!cancelled) setChartLoading(false); });
+    return () => { cancelled = true; };
+  }, [isOpen, trade, isCrypto, pairSym]);
+
   if (!trade) return null;
 
   const pair = trade.pair || trade.symbol || '';
@@ -45,8 +135,6 @@ export default function TradeDetailModal({
         : 'open';
   const pnlColor = (v) =>
     v > 0 ? 'text-profit' : v < 0 ? 'text-loss' : 'text-breakeven';
-  const toDate = (d) =>
-    d?.toDate ? d.toDate() : d ? new Date(d) : null;
 
   const isFutures = trade.assetClass === 'futures_cme';
 
@@ -255,8 +343,22 @@ export default function TradeDetailModal({
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
         {/* LEFT — chart */}
         <div className="bg-bg-tertiary border border-border-primary rounded-xl p-4">
-          <span className="text-xs text-text-muted">מבנה העסקה</span>
-          {hasChart ? (
+          <span className="text-xs text-text-muted">{chart ? 'גרף מחיר' : 'מבנה העסקה'}</span>
+          {chartLoading ? (
+            <div className="mt-2 h-[240px] flex items-center justify-center text-text-muted text-xs gap-1.5">
+              <Loader2 className="w-4 h-4 animate-spin" /> טוען גרף...
+            </div>
+          ) : chart?.candles?.length ? (
+            <RealPriceChart
+              candles={chart.candles}
+              entry={entry}
+              exit={exit}
+              stop={stop}
+              entryMs={chart.entryMs}
+              exitMs={chart.exitMs}
+              pnl={pnl}
+            />
+          ) : hasChart ? (
             <svg
               viewBox={`0 0 ${VB_W} ${VB_H}`}
               width="100%"
