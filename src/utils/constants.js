@@ -1,6 +1,6 @@
 // App version — bumped on each release. Shown in the sidebar so it's
 // easy to confirm which version a device is actually running.
-export const APP_VERSION = '1.0.207';
+export const APP_VERSION = '1.0.210';
 
 export const COINS = [
   // Layer 1s
@@ -118,6 +118,14 @@ export const STRATEGIES = [
   'Wyckoff',
   'Order Block',
   'AMD',
+];
+
+export const TRIGGERS = [
+  'Spring',
+  'LPSY',
+  'SOS',
+  'Upthrust',
+  'BU/LPS',
 ];
 
 export const TIMEFRAMES = ['15m', '30m', '1H', '4H'];
