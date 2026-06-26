@@ -603,7 +603,7 @@ export default function TradeForm({ isOpen, onClose, trade, onSave, riskSettings
                 <div className="flex gap-1">
                   {['long', 'short'].map((d) => (
                     <button key={d} type="button" onClick={() => update('direction', d)}
-                      className={`flex-1 py-2 rounded-lg text-xs font-semibold transition-all cursor-pointer flex items-center justify-center gap-1 ${
+                      className={`flex-1 py-2.5 rounded-lg text-sm font-semibold transition-all cursor-pointer flex items-center justify-center gap-1 ${
                         form.direction === d
                           ? d === 'long' ? 'bg-long/15 text-long border border-long/30' : 'bg-short/15 text-short border border-short/30'
                           : 'bg-bg-tertiary text-text-muted border border-transparent'
@@ -619,7 +619,7 @@ export default function TradeForm({ isOpen, onClose, trade, onSave, riskSettings
                 <div className="flex gap-1">
                   {[{ v: 'market', l: 'Market' }, { v: 'limit', l: 'Limit' }].map(({ v, l }) => (
                     <button key={v} type="button" onClick={() => update('orderType', v)}
-                      className={`flex-1 py-2 rounded-lg text-xs font-semibold transition-all cursor-pointer ${
+                      className={`flex-1 py-2.5 rounded-lg text-sm font-semibold transition-all cursor-pointer ${
                         form.orderType === v
                           ? 'bg-accent-primary/15 text-accent-primary border border-accent-primary/30'
                           : 'bg-bg-tertiary text-text-muted border border-transparent'

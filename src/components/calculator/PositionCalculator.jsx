@@ -131,7 +131,7 @@ export default function PositionCalculator({ isOpen, onClose }) {
           <div className="flex gap-1">
             {['long', 'short'].map((d) => (
               <button key={d} type="button" onClick={() => update('direction', d)}
-                className={`flex-1 py-2 rounded-lg text-xs font-semibold transition-all cursor-pointer flex items-center justify-center gap-1 ${
+                className={`flex-1 py-2.5 rounded-lg text-sm font-semibold transition-all cursor-pointer flex items-center justify-center gap-1 ${
                   form.direction === d
                     ? d === 'long' ? 'bg-long/15 text-long border border-long/30' : 'bg-short/15 text-short border border-short/30'
                     : 'bg-bg-tertiary text-text-muted border border-transparent'

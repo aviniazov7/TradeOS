@@ -23,6 +23,7 @@ import { PAIRS, SESSIONS, getSessionClasses } from '../../utils/constants';
 import { formatDate, formatDateShort, formatTime } from '../../utils/formatters';
 import { useUserStrategies } from '../../hooks/useUserStrategies';
 import { useUserTimeframes } from '../../hooks/useUserTimeframes';
+import { useUserTriggers } from '../../hooks/useUserTriggers';
 import { pageVariants, pageTransition } from '../../utils/animations';
 
 
@@ -50,6 +51,7 @@ export default function BacktestTracker() {
   const { backtests, loading, addBacktest, updateBacktest, deleteBacktest } = useBacktests(activeJournalId);
   const { allStrategies, addStrategy, removeStrategy } = useUserStrategies('backtest');
   const { allTimeframes, addTimeframe, removeTimeframe } = useUserTimeframes();
+  const { allTriggers, addTrigger, removeTrigger } = useUserTriggers();
   const [formOpen, setFormOpen] = useState(false);
   const [editingId, setEditingId] = useState(null);
   const [form, setForm] = useState(defaultForm);
@@ -490,7 +492,7 @@ export default function BacktestTracker() {
                   <div className="flex gap-1">
                     {['long', 'short'].map((d) => (
                       <button key={d} type="button" onClick={() => update('direction', d)}
-                        className={`flex-1 py-1.5 rounded-lg text-xs font-semibold transition-all cursor-pointer flex items-center justify-center gap-1 ${
+                        className={`flex-1 py-2.5 rounded-lg text-sm font-semibold transition-all cursor-pointer flex items-center justify-center gap-1 ${
                           form.direction === d
                             ? d === 'long' ? 'bg-long/15 text-long border border-long/30' : 'bg-short/15 text-short border border-short/30'
                             : 'bg-bg-tertiary text-text-muted border border-transparent'
@@ -552,9 +554,20 @@ export default function BacktestTracker() {
                   />
                 </div>
               </div>
-              <div>
-                <label className={labelClass}>טריגר כניסה</label>
-                <input type="text" value={form.trigger} onChange={(e) => update('trigger', e.target.value)} className={inputClass} placeholder="LPSY, Spring..." />
+              <div className="grid grid-cols-2 gap-2">
+                <StrategySelector
+                  label="טריגר כניסה"
+                  value={form.trigger}
+                  onChange={(t) => update('trigger', t)}
+                  strategies={allTriggers}
+                  onAdd={addTrigger}
+                  onRemove={removeTrigger}
+                  addLabel="טריגר מותאם"
+                  inputPlaceholder="שם טריגר..."
+                  emptyText="אין טריגרים"
+                  placeholder="בחר טריגר..."
+                />
+                <div />
               </div>
               <div>
                 <label className={labelClass}>סשן <span className="text-text-muted/60">(מתמלא אוטומטית)</span></label>
