@@ -105,7 +105,7 @@ export default function SignalForm({ isOpen, onClose, signal, onSave }) {
                 key={d}
                 type="button"
                 onClick={() => update('direction', d)}
-                className={`flex-1 py-2 rounded-lg text-sm font-semibold transition-colors cursor-pointer border ${
+                className={`flex-1 py-2.5 rounded-lg text-sm font-semibold transition-colors cursor-pointer border ${
                   form.direction === d
                     ? d === 'long'
                       ? 'bg-profit/20 border-profit text-profit'
