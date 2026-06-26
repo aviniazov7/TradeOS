@@ -26,7 +26,7 @@ const compactUsd = (v) => {
   return s;
 };
 
-export default function CumulativePnLArea({ series }) {
+export default function CumulativePnLArea({ series, hidden = false }) {
   if (!series || series.length === 0) {
     return (
       <motion.div
@@ -58,7 +58,7 @@ export default function CumulativePnLArea({ series }) {
     >
       <div className="flex items-center justify-between mb-3">
         <span className={`text-sm font-semibold ${positive ? 'text-profit' : 'text-loss'}`}>
-          {formatCurrency(last)}
+          {hidden ? '••••' : formatCurrency(last)}
         </span>
         <div className="flex items-center gap-2">
           <span className="text-xs text-text-muted">P&amp;L מצטבר יומי</span>
@@ -92,7 +92,7 @@ export default function CumulativePnLArea({ series }) {
               minTickGap={40}
             />
             <YAxis
-              tickFormatter={compactUsd}
+              tickFormatter={hidden ? () => '' : compactUsd}
               tick={{ fill: 'var(--color-text-muted)', fontSize: 11 }}
               tickLine={false}
               axisLine={false}
@@ -103,7 +103,7 @@ export default function CumulativePnLArea({ series }) {
               contentStyle={tooltipStyle}
               cursor={{ stroke: 'rgba(255,255,255,0.12)', strokeWidth: 1 }}
               labelFormatter={(v) => (hasDates ? new Date(v).toLocaleDateString('he-IL') : '')}
-              formatter={(value) => [formatCurrency(value), 'P&L מצטבר']}
+              formatter={(value) => [hidden ? '••••' : formatCurrency(value), 'P&L מצטבר']}
             />
             <Area
               type="monotone"

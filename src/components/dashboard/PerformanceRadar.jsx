@@ -94,7 +94,7 @@ export default function PerformanceRadar({ metrics, score }) {
       <div className="mt-2 pt-3 border-t border-border-primary flex items-center gap-4">
         <div className="shrink-0">
           <div className="text-[11px] text-text-muted mb-0.5">הציון שלך</div>
-          <div className="text-3xl font-bold text-text-primary leading-none" dir="ltr">
+          <div className="text-xl font-bold text-text-primary leading-none" dir="ltr">
             {safeScore.toFixed(1)}
           </div>
         </div>

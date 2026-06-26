@@ -419,14 +419,39 @@ export default function Dashboard() {
     <motion.div variants={pageVariants} initial="initial" animate="animate" exit="exit" transition={pageTransition}>
       <PendingLimitOrders trades={globalStats.openTrades} livePrices={livePrices} />
 
+      {/* Total portfolio value + privacy toggle */}
+      <div className="bg-bg-secondary border border-border-primary rounded-xl p-4 mb-3 flex items-center justify-between">
+        <div className="flex items-center gap-2">
+          <Wallet className="w-4 h-4 text-accent-primary" />
+          <span className="text-xs text-text-muted">שווי תיקים כללי</span>
+        </div>
+        <div className="flex items-center gap-3">
+          {globalStats.pnlPercent !== 0 && (
+            <span className={`text-xs font-medium ${pnlColor(globalStats.pnlPercent)}`}>
+              {m(`${globalStats.pnlPercent > 0 ? '+' : ''}${globalStats.pnlPercent.toFixed(1)}%`)}
+            </span>
+          )}
+          <span className="text-2xl font-bold text-text-primary" dir="ltr">
+            {m(formatCurrency(globalStats.totalBalance).replace('+', ''))}
+          </span>
+          <button
+            onClick={toggleHide}
+            className="p-1.5 rounded text-text-muted hover:text-text-primary transition-colors cursor-pointer"
+            title={hideBalances ? 'הצג סכומים' : 'הסתר סכומים'}
+          >
+            {hideBalances ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
+          </button>
+        </div>
+      </div>
+
       {/* KPI strip (TradeZella-style) */}
-      {extraStats.count > 0 && <DashboardKpis kpi={kpi} />}
+      {extraStats.count > 0 && <DashboardKpis kpi={kpi} hidden={hideBalances} />}
       <div className="mb-6" />
 
       {/* TradeZella-style hero: cumulative P&L area + performance radar */}
       {extraStats.count > 0 && (
         <div className="grid grid-cols-1 lg:grid-cols-3 gap-3 mb-6 items-stretch">
-          <div className="lg:col-span-2 h-full"><CumulativePnLArea series={extraStats.equitySeries} /></div>
+          <div className="lg:col-span-2 h-full"><CumulativePnLArea series={extraStats.equitySeries} hidden={hideBalances} /></div>
           <div className="lg:col-span-1 h-full"><PerformanceRadar metrics={perf.metrics} score={perf.score} /></div>
         </div>
       )}

@@ -119,7 +119,8 @@ function RingGauge({ pct = 0, size = 56, children }) {
 /* Main component                                                      */
 /* ------------------------------------------------------------------ */
 
-export default function DashboardKpis({ kpi }) {
+export default function DashboardKpis({ kpi, hidden = false }) {
+  const mask = (v) => (hidden ? '••••' : v);
   const {
     netPnl = 0,
     tradeCount = 0,
@@ -156,19 +157,17 @@ export default function DashboardKpis({ kpi }) {
     >
       {/* 1) Net P&L ---------------------------------------------------- */}
       <motion.div variants={card} className={cardClass}>
-        <div className="flex items-center justify-between gap-2">
-          <span className="text-xs text-text-muted">רווח/הפסד נקי</span>
-          <span className="text-[10px] bg-bg-tertiary text-text-muted px-1.5 rounded">
-            {tradeCount}
-          </span>
-        </div>
-        <div
-          dir="ltr"
-          className={`text-2xl font-bold text-right ${
-            netPositive ? 'text-profit' : 'text-loss'
-          }`}
-        >
-          {formatCurrency(netPnl)}
+        <span className="text-xs text-text-muted">רווח/הפסד נקי</span>
+        <div>
+          <div
+            dir="ltr"
+            className={`text-2xl font-bold text-right ${
+              netPositive ? 'text-profit' : 'text-loss'
+            }`}
+          >
+            {mask(formatCurrency(netPnl))}
+          </div>
+          <div className="text-[11px] text-text-muted mt-0.5">{tradeCount} עסקאות</div>
         </div>
       </motion.div>
 
@@ -213,10 +212,10 @@ export default function DashboardKpis({ kpi }) {
           </div>
           <div className="flex items-center justify-between mt-1.5" dir="ltr">
             <span className="text-[11px] font-semibold text-profit">
-              {formatCurrency(avgWin)}
+              {mask(formatCurrency(avgWin))}
             </span>
             <span className="text-[11px] font-semibold text-loss">
-              {formatCurrency(avgLoss)}
+              {mask(formatCurrency(avgLoss))}
             </span>
           </div>
         </div>
