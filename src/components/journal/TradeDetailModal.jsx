@@ -33,36 +33,35 @@ const num = (v) => {
 
 const toDate = (d) => (d?.toDate ? d.toDate() : d ? new Date(d) : null);
 
-// Real price chart for the trade window, with Buy/Sell markers + stop line.
+// Real price chart for the trade window — TradingView-style position tool.
 function RealPriceChart({ candles, entry, exit, stop, tps, direction, entryMs, exitMs, pnl }) {
-  const color = pnl >= 0 ? 'var(--color-profit)' : 'var(--color-loss)';
-  // Compact Y labels so long prices (e.g. 66,000.00) don't overlap the plot.
+  const win = pnl >= 0;
+  const lineColor = win ? 'var(--color-profit)' : 'var(--color-loss)';
+  const targetFill = win ? 'var(--color-profit)' : 'var(--color-loss)';
+  // Compact price labels so they fit on the right scale without clipping.
   const fmtY = (v) => {
     const a = Math.abs(v);
     if (a >= 1000) return `${(v / 1000).toFixed(a >= 100000 ? 0 : 1)}K`;
     if (a >= 1) return v.toFixed(2);
     return v.toPrecision(3);
   };
-  // The planned target for the position box: prefer a take-profit, else the
-  // realized exit. Stop uses the original (planned) stop loss.
+  // Target line: a recorded take-profit if any, else the realized exit.
   const target = (tps && tps.length)
     ? (direction === 'short' ? Math.min(...tps) : Math.max(...tps))
     : exit;
   const xEnd = candles.length ? candles[candles.length - 1].t : null;
-  const xStart = entryMs;
-  // Labels sit at the right edge (away from the left price axis) and are nudged
-  // away from the entry line so SL/entry/TP text never overlaps.
-  const lineLabel = (text, fill, dy = 0) => ({ value: text, position: 'insideRight', fill, fontSize: 10, dy });
-  const awayDy = (price) => (entry != null && price > entry ? -9 : 9);
+  // Right-edge price tag, nudged off the entry line so tags never overlap.
+  const tag = (text, fill, dy = 0) => ({ value: text, position: 'right', fill, fontSize: 10, fontWeight: 600, dy });
+  const awayDy = (price) => (entry != null && price > entry ? -8 : 8);
 
   return (
     <div className="mt-2 h-[240px]">
       <ResponsiveContainer width="100%" height="100%">
-        <AreaChart data={candles} margin={{ top: 10, right: 16, bottom: 6, left: 6 }}>
+        <AreaChart data={candles} margin={{ top: 12, right: 4, bottom: 6, left: 6 }}>
           <defs>
             <linearGradient id="tradePriceGrad" x1="0" y1="0" x2="0" y2="1">
-              <stop offset="0%" stopColor={color} stopOpacity={0.22} />
-              <stop offset="100%" stopColor={color} stopOpacity={0.02} />
+              <stop offset="0%" stopColor={lineColor} stopOpacity={0.1} />
+              <stop offset="100%" stopColor={lineColor} stopOpacity={0.01} />
             </linearGradient>
           </defs>
           <CartesianGrid vertical={false} stroke="var(--color-border-primary)" strokeDasharray="2 4" />
@@ -72,10 +71,11 @@ function RealPriceChart({ candles, entry, exit, stop, tps, direction, entryMs, e
             tick={{ fill: 'var(--color-text-muted)', fontSize: 10 }} tickLine={false}
             axisLine={{ stroke: 'var(--color-border-primary)' }} minTickGap={60} tickMargin={8} height={22}
           />
+          {/* Price scale on the right, like TradingView */}
           <YAxis
-            dataKey="price" domain={['auto', 'auto']} tickFormatter={fmtY} tickCount={5}
+            orientation="right" dataKey="price" domain={['auto', 'auto']} tickFormatter={fmtY} tickCount={5}
             tick={{ fill: 'var(--color-text-muted)', fontSize: 10 }} tickLine={false} axisLine={false}
-            width={48} tickMargin={6}
+            width={58} tickMargin={4}
           />
           <Tooltip
             contentStyle={{ background: '#141414', border: '1px solid #1a1a1a', borderRadius: '8px', fontSize: '12px', color: '#f0f0f0' }}
@@ -83,30 +83,28 @@ function RealPriceChart({ candles, entry, exit, stop, tps, direction, entryMs, e
             formatter={(v) => [formatPrice(v), 'מחיר']}
           />
 
-          {/* TradingView-style position tool: profit (target) + risk (stop) zones from entry */}
-          {entry != null && target != null && xStart != null && xEnd != null && (
-            <ReferenceArea x1={xStart} x2={xEnd} y1={entry} y2={target}
-              fill="var(--color-profit)" fillOpacity={0.12} stroke="none" />
+          {/* Position-tool zones from entry: result (green/red) + risk (red) */}
+          {entry != null && target != null && entryMs != null && xEnd != null && (
+            <ReferenceArea x1={entryMs} x2={xEnd} y1={entry} y2={target} fill={targetFill} fillOpacity={0.15} stroke="none" />
           )}
-          {entry != null && stop != null && stop > 0 && xStart != null && xEnd != null && (
-            <ReferenceArea x1={xStart} x2={xEnd} y1={entry} y2={stop}
-              fill="var(--color-loss)" fillOpacity={0.12} stroke="none" />
+          {entry != null && stop != null && stop > 0 && entryMs != null && xEnd != null && (
+            <ReferenceArea x1={entryMs} x2={xEnd} y1={entry} y2={stop} fill="var(--color-loss)" fillOpacity={0.15} stroke="none" />
           )}
 
-          <Area type="monotone" dataKey="price" stroke={color} strokeWidth={1.6} fill="url(#tradePriceGrad)" isAnimationActive={false} />
+          <Area type="monotone" dataKey="price" stroke={lineColor} strokeWidth={1.6} fill="url(#tradePriceGrad)" isAnimationActive={false} />
 
-          {/* Level lines — labels pinned to the right edge */}
+          {/* Level lines with right-scale price tags (B/E, SL, TP) */}
           {entry != null && (
             <ReferenceLine y={entry} stroke="var(--color-text-secondary)" strokeWidth={1}
-              label={lineLabel(`כניסה ${formatPrice(entry)}`, 'var(--color-text-secondary)', 0)} />
+              label={tag(`B/E ${fmtY(entry)}`, 'var(--color-text-secondary)', 0)} />
           )}
           {stop != null && stop > 0 && (
             <ReferenceLine y={stop} stroke="var(--color-loss)" strokeDasharray="5 4"
-              label={lineLabel(`SL ${formatPrice(stop)}`, 'var(--color-loss)', awayDy(stop))} />
+              label={tag(`SL ${fmtY(stop)}`, 'var(--color-loss)', awayDy(stop))} />
           )}
           {target != null && (
-            <ReferenceLine y={target} stroke="var(--color-profit)" strokeDasharray="5 4"
-              label={lineLabel(`TP ${formatPrice(target)}`, 'var(--color-profit)', awayDy(target))} />
+            <ReferenceLine y={target} stroke={targetFill} strokeDasharray="5 4"
+              label={tag(`${win ? 'TP' : 'יציאה'} ${fmtY(target)}`, targetFill, awayDy(target))} />
           )}
 
           {/* Buy / Sell markers */}
