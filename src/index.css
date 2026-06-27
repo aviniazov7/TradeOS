@@ -11,11 +11,10 @@ html {
 
 body {
   overscroll-behavior: none;
+  /* True black (iOS-style) — a single whisper-faint neutral glow for depth,
+     no blue tint. */
   background:
-    radial-gradient(ellipse 900px 900px at 5% 15%, rgba(43, 120, 255, 0.07) 0%, transparent 55%),
-    radial-gradient(ellipse 700px 700px at 95% 5%, rgba(43, 120, 255, 0.05) 0%, transparent 55%),
-    radial-gradient(ellipse 800px 800px at 40% 95%, rgba(43, 120, 255, 0.04) 0%, transparent 55%),
-    radial-gradient(ellipse 600px 600px at 80% 55%, rgba(26, 92, 232, 0.03) 0%, transparent 55%),
+    radial-gradient(ellipse 1100px 700px at 50% -8%, rgba(255, 255, 255, 0.022) 0%, transparent 60%),
     #000000;
   min-height: 100vh;
 }
@@ -39,8 +38,8 @@ body {
   /* Dropdowns/overlays float over content, so this is near-opaque (not the 5%
      glass used for cards) — otherwise the page behind shows through and the
      menu is hard to read. */
-  --color-bg-overlay: rgba(20, 22, 32, 0.98);
-  --color-bg-solid: rgba(6, 8, 14, 0.97);
+  --color-bg-overlay: rgba(24, 24, 27, 0.82);
+  --color-bg-solid: rgba(14, 14, 16, 0.82);
 
   /* Borders */
   --color-border-primary: rgba(255, 255, 255, 0.08);

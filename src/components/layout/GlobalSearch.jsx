@@ -183,9 +183,11 @@ export default function GlobalSearch() {
                   transition={{ type: 'spring', damping: 26, stiffness: 340, mass: 0.8 }}
                   className="pointer-events-auto w-full max-w-xl rounded-2xl overflow-hidden"
                   style={{
-                    background: 'var(--color-bg-solid)',
-                    border: '1px solid rgba(0,191,255,0.25)',
-                    boxShadow: '0 28px 70px rgba(0,0,0,0.6), 0 0 30px rgba(0,191,255,0.12)',
+                    background: 'rgba(18, 18, 20, 0.7)',
+                    backdropFilter: 'blur(28px) saturate(180%)',
+                    WebkitBackdropFilter: 'blur(28px) saturate(180%)',
+                    border: '1px solid rgba(255,255,255,0.09)',
+                    boxShadow: '0 28px 70px rgba(0,0,0,0.6)',
                   }}
                 >
                   {/* Input */}

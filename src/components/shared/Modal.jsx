@@ -40,39 +40,34 @@ export default function Modal({ isOpen, onClose, title, children, maxWidth = 'ma
 
           {/* Centering wrapper */}
           <div className="fixed inset-0 z-50 flex items-center justify-center px-3 pt-14 pb-4 md:px-6 pointer-events-none">
-            {/* Card — NO backdrop-filter (avoids Safari scale+blur flicker) */}
+            {/* Card — iOS-style black glass: translucent + heavy blur. The
+                entrance is opacity+slide only (no scale) so the backdrop-filter
+                doesn't flicker on Safari. */}
             <motion.div
-              className={`relative ${maxWidth} w-full rounded-2xl overflow-hidden shadow-2xl pointer-events-auto`}
+              className={`relative ${maxWidth} w-full rounded-2xl overflow-hidden pointer-events-auto`}
               style={{
-                background: 'var(--color-bg-solid)',
-                border: '1px solid rgba(0,191,255,0.22)',
-                boxShadow: '0 32px 80px rgba(0,0,0,0.55), 0 0 0 1px rgba(255,255,255,0.04) inset',
+                background: 'rgba(18, 18, 20, 0.7)',
+                backdropFilter: 'blur(28px) saturate(180%)',
+                WebkitBackdropFilter: 'blur(28px) saturate(180%)',
+                border: '1px solid rgba(255,255,255,0.09)',
+                boxShadow: '0 32px 80px rgba(0,0,0,0.6), 0 0 0 1px rgba(255,255,255,0.04) inset',
                 maxHeight: 'calc(100vh - 4.5rem)',
               }}
-              initial={{ scale: 0.93, opacity: 0, y: 16 }}
-              animate={{ scale: 1, opacity: 1, y: 0 }}
-              exit={{ scale: 0.93, opacity: 0, y: 16 }}
-              transition={{ type: 'spring', damping: 24, stiffness: 340, mass: 0.8 }}
+              initial={{ opacity: 0, y: 18 }}
+              animate={{ opacity: 1, y: 0 }}
+              exit={{ opacity: 0, y: 18 }}
+              transition={{ type: 'spring', damping: 26, stiffness: 320, mass: 0.85 }}
             >
-              {/* Top cyan glow */}
-              <div
-                className="absolute top-0 left-1/2 -translate-x-1/2 w-56 h-24 pointer-events-none"
-                style={{ background: 'radial-gradient(ellipse, rgba(0,191,255,0.30) 0%, transparent 70%)' }}
-              />
-
               {/* Scrollable inner */}
               <div className="relative overflow-y-auto" style={{ maxHeight: 'calc(100vh - 4.5rem)' }}>
-                {/* Header — solid background that matches the modal card so
-                    scrolled content can't bleed through and turn the title
-                    illegible. backdrop-filter as a secondary safety net on
-                    browsers that respect alpha + blur cleanly. */}
+                {/* Header — subtle translucent strip over the glass */}
                 <div
                   className="flex items-center justify-between px-5 py-3 sticky top-0 z-10"
                   style={{
-                    borderBottom: '1px solid rgba(255,255,255,0.06)',
-                    background: 'var(--color-bg-solid)',
-                    backdropFilter: 'blur(8px)',
-                    WebkitBackdropFilter: 'blur(8px)',
+                    borderBottom: '1px solid rgba(255,255,255,0.07)',
+                    background: 'rgba(20, 20, 22, 0.55)',
+                    backdropFilter: 'blur(12px)',
+                    WebkitBackdropFilter: 'blur(12px)',
                   }}
                 >
                   <h2 className="text-base font-bold text-text-primary">{title}</h2>
