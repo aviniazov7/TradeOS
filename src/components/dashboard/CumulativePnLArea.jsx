@@ -35,8 +35,9 @@ export default function CumulativePnLArea({ series, hidden = false }) {
         transition={{ duration: 0.4 }}
         className="bg-bg-secondary border border-border-primary rounded-xl p-5 h-full flex flex-col"
       >
-        <div className="flex-1 min-h-[240px] flex items-center justify-center">
-          <span className="text-text-muted text-sm">אין מספיק נתונים</span>
+        <div className="flex-1 min-h-[240px] flex flex-col items-center justify-center gap-1 text-center px-4">
+          <span className="text-text-secondary text-sm">עקומת ההון שלך תופיע כאן</span>
+          <span className="text-text-muted text-xs">אחרי שתתעד את העסקה הסגורה הראשונה</span>
         </div>
       </motion.div>
     );

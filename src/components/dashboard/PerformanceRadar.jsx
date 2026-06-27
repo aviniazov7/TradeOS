@@ -31,8 +31,9 @@ export default function PerformanceRadar({ metrics, score }) {
           <Gauge className="w-4 h-4 text-accent-primary" />
           <span className="text-xs text-text-muted">ציון ביצועים</span>
         </div>
-        <div className="flex-1 flex items-center justify-center min-h-[180px]">
-          <span className="text-sm text-text-muted">אין מספיק נתונים</span>
+        <div className="flex-1 flex flex-col items-center justify-center min-h-[180px] gap-1 text-center px-4">
+          <span className="text-sm text-text-secondary">ציון הביצועים שלך יופיע כאן</span>
+          <span className="text-xs text-text-muted">תעד עסקאות כדי לראות את הניתוח</span>
         </div>
       </div>
     );

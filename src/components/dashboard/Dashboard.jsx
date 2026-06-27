@@ -419,17 +419,15 @@ export default function Dashboard() {
         </div>
       </div>
 
-      {/* KPI strip (TradeZella-style) */}
-      {extraStats.count > 0 && <DashboardKpis kpi={kpi} hidden={hideBalances} />}
+      {/* KPI strip (TradeZella-style) — always shown so new users see it too */}
+      <DashboardKpis kpi={kpi} hidden={hideBalances} />
       <div className="mb-6" />
 
       {/* TradeZella-style hero: cumulative P&L area + performance radar */}
-      {extraStats.count > 0 && (
-        <div className="grid grid-cols-1 lg:grid-cols-3 gap-3 mb-6 items-stretch">
-          <div className="lg:col-span-2 h-full"><CumulativePnLArea series={extraStats.equitySeries} hidden={hideBalances} /></div>
-          <div className="lg:col-span-1 h-full"><PerformanceRadar metrics={perf.metrics} score={perf.score} /></div>
-        </div>
-      )}
+      <div className="grid grid-cols-1 lg:grid-cols-3 gap-3 mb-6 items-stretch">
+        <div className="lg:col-span-2 h-full"><CumulativePnLArea series={extraStats.equitySeries} hidden={hideBalances} /></div>
+        <div className="lg:col-span-1 h-full"><PerformanceRadar metrics={perf.metrics} score={perf.score} /></div>
+      </div>
 
       {/* Journals overview */}
       <div className={`${cardClass} mb-6`}>
