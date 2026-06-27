@@ -1,4 +1,4 @@
-import { useState, useMemo, useRef, useEffect } from 'react';
+import { useState, useMemo, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { motion, AnimatePresence } from 'framer-motion';
 import {
@@ -6,7 +6,6 @@ import {
   TrendingUp, DollarSign, Coins, Brain, Sunrise, Moon, CheckCircle2, Clock, ChevronDown, Eye, EyeOff,
   Activity, Newspaper, ExternalLink, Flame, Award, TrendingDown, CalendarDays, LineChart, Gauge,
 } from 'lucide-react';
-import toast from 'react-hot-toast';
 import { useTrades } from '../../hooks/useTrades';
 import { useJournalContext } from '../../contexts/JournalContext';
 import { useBacktests } from '../../hooks/useBacktests';
@@ -24,34 +23,8 @@ import CoinIcon from '../shared/CoinIcon';
 import AnimatedValue from '../shared/AnimatedValue';
 import { formatCurrency, formatDate } from '../../utils/formatters';
 import { EXCHANGES, MENTALITY_EMOTIONS } from '../../utils/constants';
-import { pageVariants, pageTransition, staggerContainer } from '../../utils/animations';
+import { pageVariants, pageTransition } from '../../utils/animations';
 import { fetchPerpPrices } from '../../services/bybitDirect';
-
-const cardVariants = { initial: { opacity: 0, y: 10 }, animate: { opacity: 1, y: 0 } };
-
-// Lightweight inline equity sparkline — no chart dependency, scales to width.
-function Sparkline({ data, positive }) {
-  if (!data || data.length < 2) {
-    return <div className="h-10 flex items-center text-[11px] text-text-muted">אין מספיק נתונים</div>;
-  }
-  const w = 100, h = 32;
-  const min = Math.min(...data, 0);
-  const max = Math.max(...data, 0);
-  const range = max - min || 1;
-  const pts = data.map((v, i) => {
-    const x = (i / (data.length - 1)) * w;
-    const y = h - ((v - min) / range) * h;
-    return `${x.toFixed(1)},${y.toFixed(1)}`;
-  }).join(' ');
-  const zeroY = h - ((0 - min) / range) * h;
-  const stroke = positive ? '#22c55e' : '#ef4444';
-  return (
-    <svg viewBox={`0 0 ${w} ${h}`} preserveAspectRatio="none" className="w-full h-10 text-text-muted">
-      <line x1="0" x2={w} y1={zeroY} y2={zeroY} stroke="currentColor" strokeOpacity="0.2" strokeWidth="0.5" strokeDasharray="2 2" />
-      <polyline points={pts} fill="none" stroke={stroke} strokeWidth="1.6" strokeLinejoin="round" strokeLinecap="round" />
-    </svg>
-  );
-}
 
 const getExchangeLabel = (value) => EXCHANGES.find((e) => e.value === value)?.label || value;
 
@@ -68,7 +41,7 @@ export default function Dashboard() {
     });
   };
   const m = (val) => hideBalances ? '••••' : val;
-  const { trades: allTrades, loading: tradesLoading, deleteTrade } = useTrades(); // all trades, no journal filter
+  const { trades: allTrades, loading: tradesLoading } = useTrades(); // all trades, no journal filter
   const { backtests: allBacktests, loading: backtestsLoading } = useBacktests();
   const backtests = useMemo(() => allBacktests.filter((b) => b.backtestJournalId), [allBacktests]);
   const { plans, loading: plansLoading } = useTradingPlans();
@@ -301,7 +274,7 @@ export default function Dashboard() {
   }, [allTrades, journals]);
 
   // Win/loss split, per-session P&L, + performance score/radar.
-  const { perf, winLoss, sessionBars, kpi } = useMemo(() => {
+  const { perf, kpi } = useMemo(() => {
     const journalIds = new Set(journals.map((j) => j.id));
     const closed = allTrades
       .filter((t) => !t.journalId || journalIds.has(t.journalId))
