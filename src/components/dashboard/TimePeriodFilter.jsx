@@ -19,7 +19,7 @@ export default function TimePeriodFilter({ value, onChange, compact, dropdown })
       <div ref={ref} className="relative">
         <button
           onClick={() => setOpen((v) => !v)}
-          className="flex items-center gap-1 px-2.5 py-1.5 bg-bg-tertiary rounded-lg text-[11px] font-medium text-accent-primary cursor-pointer transition-colors"
+          className="h-9 inline-flex items-center gap-1 px-3 bg-bg-tertiary rounded-lg text-[11px] font-medium text-accent-primary cursor-pointer transition-colors"
         >
           {currentLabel}
           <ChevronDown className={`w-3 h-3 transition-transform duration-200 ${open ? 'rotate-180' : ''}`} />
@@ -46,7 +46,7 @@ export default function TimePeriodFilter({ value, onChange, compact, dropdown })
   }
 
   return (
-    <div className={`flex gap-0.5 bg-bg-tertiary rounded-lg ${compact ? 'p-0.5' : 'p-1'}`}>
+    <div className={`h-9 inline-flex items-center gap-0.5 bg-bg-tertiary rounded-lg ${compact ? 'px-1' : 'px-1'}`}>
       {TIME_PERIODS.map((p) => (
         <button
           key={p.key}

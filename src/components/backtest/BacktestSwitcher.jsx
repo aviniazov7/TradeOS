@@ -36,7 +36,7 @@ export default function BacktestSwitcher({ compact }) {
         <div className="relative" ref={dropdownRef}>
           <button
             onClick={() => setOpen(!open)}
-            className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg text-sm font-medium bg-bg-tertiary border border-border-primary hover:border-border-hover transition-colors cursor-pointer"
+            className="h-9 inline-flex items-center gap-1.5 px-3 rounded-lg text-sm font-medium bg-bg-tertiary border border-border-primary hover:border-border-hover transition-colors cursor-pointer"
           >
             <FlaskConical className="w-3.5 h-3.5 text-accent-primary flex-shrink-0" />
             <span className="truncate max-w-[80px] md:max-w-[120px] text-text-primary">{activeJournal?.name || 'בקטסט'}</span>
@@ -101,7 +101,7 @@ export default function BacktestSwitcher({ compact }) {
         ))}
         <button
           onClick={() => setFormOpen(true)}
-          className="flex items-center gap-1 px-2.5 py-1.5 rounded-lg text-sm text-accent-primary bg-bg-tertiary border border-dashed border-accent-primary/30 hover:bg-accent-primary/5 transition-colors cursor-pointer flex-shrink-0"
+          className="h-9 inline-flex items-center gap-1 px-3 rounded-lg text-sm text-accent-primary bg-bg-tertiary border border-dashed border-accent-primary/30 hover:bg-accent-primary/5 transition-colors cursor-pointer flex-shrink-0"
         >
           <Plus className="w-3.5 h-3.5" />
         </button>

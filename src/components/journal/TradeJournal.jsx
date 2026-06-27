@@ -518,7 +518,7 @@ export default function TradeJournal() {
             <div className="hidden md:flex items-center">
               <button
                 onClick={() => setTab('trades')}
-                className={`px-3.5 py-1.5 text-sm font-medium rounded-lg transition-colors cursor-pointer whitespace-nowrap ${
+                className={`h-9 inline-flex items-center px-3.5 text-sm font-medium rounded-lg transition-colors cursor-pointer whitespace-nowrap ${
                   tab === 'trades' ? 'bg-accent-primary/15 text-accent-primary' : 'text-text-muted hover:text-text-primary hover:bg-bg-tertiary'
                 }`}
               >
@@ -526,7 +526,7 @@ export default function TradeJournal() {
               </button>
               <button
                 onClick={() => setTab('analytics')}
-                className={`px-3.5 py-1.5 text-sm font-medium rounded-lg transition-colors cursor-pointer whitespace-nowrap ${
+                className={`h-9 inline-flex items-center px-3.5 text-sm font-medium rounded-lg transition-colors cursor-pointer whitespace-nowrap ${
                   tab === 'analytics' ? 'bg-accent-primary/15 text-accent-primary' : 'text-text-muted hover:text-text-primary hover:bg-bg-tertiary'
                 }`}
               >
@@ -534,7 +534,7 @@ export default function TradeJournal() {
               </button>
               <button
                 onClick={() => setTab('aiCoach')}
-                className={`px-3.5 py-1.5 text-sm font-medium rounded-lg transition-colors cursor-pointer whitespace-nowrap inline-flex items-center gap-1.5 ${
+                className={`h-9 inline-flex items-center px-3.5 text-sm font-medium rounded-lg transition-colors cursor-pointer whitespace-nowrap inline-flex items-center gap-1.5 ${
                   tab === 'aiCoach' ? 'bg-accent-primary/15 text-accent-primary' : 'text-text-muted hover:text-text-primary hover:bg-bg-tertiary'
                 }`}
               >
@@ -543,7 +543,7 @@ export default function TradeJournal() {
               </button>
               <button
                 onClick={() => setTab('calendar')}
-                className={`px-3.5 py-1.5 text-sm font-medium rounded-lg transition-colors cursor-pointer whitespace-nowrap ${
+                className={`h-9 inline-flex items-center px-3.5 text-sm font-medium rounded-lg transition-colors cursor-pointer whitespace-nowrap ${
                   tab === 'calendar' ? 'bg-accent-primary/15 text-accent-primary' : 'text-text-muted hover:text-text-primary hover:bg-bg-tertiary'
                 }`}
               >
@@ -551,7 +551,7 @@ export default function TradeJournal() {
               </button>
               <button
                 onClick={() => setTab('exchange')}
-                className={`px-3.5 py-1.5 text-sm font-medium rounded-lg transition-colors cursor-pointer whitespace-nowrap ${
+                className={`h-9 inline-flex items-center px-3.5 text-sm font-medium rounded-lg transition-colors cursor-pointer whitespace-nowrap ${
                   tab === 'exchange' ? 'bg-accent-primary/15 text-accent-primary' : 'text-text-muted hover:text-text-primary hover:bg-bg-tertiary'
                 }`}
               >
@@ -565,18 +565,18 @@ export default function TradeJournal() {
             {/* Mobile: period filter sits up here next to the actions (dropdown
                 is compact) instead of taking its own row under the tabs. */}
             {tab === 'analytics' && <div className="md:hidden"><TimePeriodFilter value={period} onChange={setPeriod} dropdown /></div>}
-            <button onClick={() => setSettingsOpen(true)} className="p-1.5 md:p-2 rounded-lg text-text-muted hover:text-text-primary hover:bg-bg-tertiary transition-colors cursor-pointer border border-border-primary" title="הגדרות יומן">
+            <button onClick={() => setSettingsOpen(true)} className="h-9 w-9 inline-flex items-center justify-center rounded-lg text-text-muted hover:text-text-primary hover:bg-bg-tertiary transition-colors cursor-pointer border border-border-primary" title="הגדרות יומן">
               <Settings className="w-4 h-4" />
             </button>
-            <button onClick={() => setImportOpen(true)} className="p-1.5 md:p-2 rounded-lg text-text-muted hover:text-text-primary hover:bg-bg-tertiary transition-colors cursor-pointer border border-border-primary" title="ייבוא CSV">
+            <button onClick={() => setImportOpen(true)} className="h-9 w-9 inline-flex items-center justify-center rounded-lg text-text-muted hover:text-text-primary hover:bg-bg-tertiary transition-colors cursor-pointer border border-border-primary" title="ייבוא CSV">
               <Upload className="w-4 h-4" />
             </button>
             {trades.length > 0 && (
-              <button onClick={exportCSV} className="p-1.5 md:p-2 rounded-lg text-text-muted hover:text-text-primary hover:bg-bg-tertiary transition-colors cursor-pointer border border-border-primary" title="ייצוא CSV">
+              <button onClick={exportCSV} className="h-9 w-9 inline-flex items-center justify-center rounded-lg text-text-muted hover:text-text-primary hover:bg-bg-tertiary transition-colors cursor-pointer border border-border-primary" title="ייצוא CSV">
                 <Download className="w-4 h-4" />
               </button>
             )}
-            <button onClick={() => setFormOpen(true)} className="flex items-center gap-1.5 bg-accent-primary text-bg-primary font-semibold px-2.5 py-1.5 md:px-3.5 md:py-2 rounded-lg hover:bg-accent-hover transition-colors cursor-pointer text-xs md:text-sm">
+            <button onClick={() => setFormOpen(true)} className="h-9 inline-flex items-center gap-1.5 bg-accent-primary text-bg-primary font-semibold px-3.5 rounded-lg hover:bg-accent-hover transition-colors cursor-pointer text-sm">
               <Plus className="w-4 h-4" /> <span className="hidden sm:inline">עסקה חדשה</span>
             </button>
           </div>
