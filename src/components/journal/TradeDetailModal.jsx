@@ -33,6 +33,15 @@ const num = (v) => {
 
 const toDate = (d) => (d?.toDate ? d.toDate() : d ? new Date(d) : null);
 
+// Chart plot geometry (must match the AreaChart margins + axis sizes below) so
+// the custom level tags can be positioned in pixels with collision avoidance.
+const CH_H = 240;
+const CH_TOP = 12;
+const CH_BOTTOM = 6;
+const CH_XAXIS = 22;
+const PLOT_TOP = CH_TOP;
+const PLOT_H = CH_H - CH_BOTTOM - CH_XAXIS - CH_TOP; // usable price area height
+
 // Real price chart for the trade window — clean TradingView-style position tool.
 function RealPriceChart({ candles, entry, exit, stop, tps, direction, entryMs, exitMs, pnl }) {
   const win = pnl >= 0;
@@ -64,17 +73,27 @@ function RealPriceChart({ candles, entry, exit, stop, tps, direction, entryMs, e
     }
   }
   const padY = (hi - lo) * 0.1 || 1;
-  const domain = [lo - padY, hi + padY];
+  const domLo = lo - padY;
+  const domHi = hi + padY;
+  const domain = [domLo, domHi];
 
-  // Short role-only tags on the right scale (prices are in the tiles), nudged
-  // away from the entry line so they don't collide.
-  const tag = (text, fill, dy = 0) => ({ value: text, position: 'right', fill, fontSize: 10, fontWeight: 700, dy });
-  const awayDy = (price) => (entry != null && price > entry ? -8 : 8);
+  // Price → pixel within the plot area, then build collision-free level tags.
+  const yPx = (p) => PLOT_TOP + (1 - (p - domLo) / (domHi - domLo)) * PLOT_H;
+  const tags = [];
+  if (entry != null) tags.push({ key: 'e', text: `כניסה ${fmtY(entry)}`, color: 'var(--color-text-secondary)', y: yPx(entry) });
+  if (stop != null && stop > 0) tags.push({ key: 'sl', text: `SL ${fmtY(stop)}`, color: 'var(--color-loss)', y: yPx(stop) });
+  if (target != null) tags.push({ key: 'tp', text: `${win ? 'TP' : 'יציאה'} ${fmtY(target)}`, color: targetFill, y: yPx(target) });
+  tags.sort((a, b) => a.y - b.y);
+  const GAP = 15;
+  for (let i = 1; i < tags.length; i++) {
+    if (tags[i].y - tags[i - 1].y < GAP) tags[i].y = tags[i - 1].y + GAP;
+  }
+  for (const t of tags) t.y = Math.max(PLOT_TOP + 2, Math.min(PLOT_TOP + PLOT_H - 8, t.y));
 
   return (
-    <div className="mt-2 h-[240px]">
+    <div className="mt-2 relative" style={{ height: CH_H }}>
       <ResponsiveContainer width="100%" height="100%">
-        <AreaChart data={candles} margin={{ top: 12, right: 4, bottom: 6, left: 6 }}>
+        <AreaChart data={candles} margin={{ top: CH_TOP, right: 4, bottom: CH_BOTTOM, left: 6 }}>
           <defs>
             <linearGradient id="tradePriceGrad" x1="0" y1="0" x2="0" y2="1">
               <stop offset="0%" stopColor={lineColor} stopOpacity={0.1} />
@@ -86,12 +105,12 @@ function RealPriceChart({ candles, entry, exit, stop, tps, direction, entryMs, e
             dataKey="t" type="number" scale="time" domain={['dataMin', 'dataMax']}
             tickFormatter={(ms) => new Date(ms).toLocaleDateString('he-IL', { day: '2-digit', month: '2-digit' })}
             tick={{ fill: 'var(--color-text-muted)', fontSize: 10 }} tickLine={false}
-            axisLine={{ stroke: 'var(--color-border-primary)' }} minTickGap={60} tickMargin={8} height={22}
+            axisLine={{ stroke: 'var(--color-border-primary)' }} minTickGap={60} tickMargin={8} height={CH_XAXIS}
           />
           <YAxis
             orientation="right" dataKey="price" domain={domain} tickFormatter={fmtY} tickCount={5}
             tick={{ fill: 'var(--color-text-muted)', fontSize: 10 }} tickLine={false} axisLine={false}
-            width={56} tickMargin={4}
+            width={56} tickMargin={4} allowDataOverflow
           />
           <Tooltip
             contentStyle={{ background: '#141414', border: '1px solid #1a1a1a', borderRadius: '8px', fontSize: '12px', color: '#f0f0f0' }}
@@ -109,19 +128,10 @@ function RealPriceChart({ candles, entry, exit, stop, tps, direction, entryMs, e
 
           <Area type="monotone" dataKey="price" stroke={lineColor} strokeWidth={1.6} fill="url(#tradePriceGrad)" isAnimationActive={false} />
 
-          {/* Level lines with short right-scale tags */}
-          {entry != null && (
-            <ReferenceLine y={entry} stroke="var(--color-text-secondary)" strokeWidth={1}
-              label={tag('כניסה', 'var(--color-text-secondary)', 0)} />
-          )}
-          {stop != null && stop > 0 && (
-            <ReferenceLine y={stop} stroke="var(--color-loss)" strokeDasharray="5 4"
-              label={tag('SL', 'var(--color-loss)', awayDy(stop))} />
-          )}
-          {target != null && (
-            <ReferenceLine y={target} stroke={targetFill} strokeDasharray="5 4"
-              label={tag(win ? 'TP' : 'יציאה', targetFill, awayDy(target))} />
-          )}
+          {/* Level lines (labels drawn as a collision-free overlay below) */}
+          {entry != null && <ReferenceLine y={entry} stroke="var(--color-text-secondary)" strokeWidth={1} />}
+          {stop != null && stop > 0 && <ReferenceLine y={stop} stroke="var(--color-loss)" strokeDasharray="5 4" />}
+          {target != null && <ReferenceLine y={target} stroke={targetFill} strokeDasharray="5 4" />}
 
           {/* Entry (green) / Exit (red) dots */}
           {entry != null && entryMs != null && (
@@ -132,6 +142,17 @@ function RealPriceChart({ candles, entry, exit, stop, tps, direction, entryMs, e
           )}
         </AreaChart>
       </ResponsiveContainer>
+
+      {/* Collision-free level tags (left edge) */}
+      {tags.map((t) => (
+        <div
+          key={t.key}
+          className="absolute left-1 px-1.5 py-0.5 rounded text-[10px] font-bold pointer-events-none whitespace-nowrap"
+          style={{ top: t.y, transform: 'translateY(-50%)', color: t.color, background: 'rgba(8,11,18,0.72)' }}
+        >
+          {t.text}
+        </div>
+      ))}
     </div>
   );
 }
