@@ -357,7 +357,7 @@ export default function PlanForm({ isOpen, onClose, plan, onSave }) {
               <div className="flex items-center gap-2">
                 <input value={form.name} onChange={(e) => update('name', e.target.value)} className={`${inputClass} flex-1`} placeholder="לדוגמה: סקאלפינג BTC" required />
                 <label className="relative cursor-pointer shrink-0" title="צבע">
-                  <div className="w-9 h-9 rounded-lg border-2 border-border-primary hover:border-white/30 transition-colors" style={{ backgroundColor: form.color }} />
+                  <div className="w-9 h-9 rounded-lg border-2 border-border-primary hover:border-border-hover transition-colors" style={{ backgroundColor: form.color }} />
                   <input type="color" value={form.color} onChange={(e) => update('color', e.target.value)} className="absolute inset-0 opacity-0 cursor-pointer w-full h-full" />
                 </label>
               </div>
@@ -721,7 +721,7 @@ export default function PlanForm({ isOpen, onClose, plan, onSave }) {
                 key="mobile-next"
                 type="button"
                 onClick={() => setMobileStep((s) => s + 1)}
-                className="flex items-center gap-1 px-4 py-2.5 rounded-lg bg-accent-primary text-black text-sm font-semibold transition-colors cursor-pointer"
+                className="flex items-center gap-1 px-4 py-2.5 rounded-lg bg-accent-primary text-bg-primary text-sm font-semibold transition-colors cursor-pointer"
               >
                 הבא <ChevronLeft className="w-4 h-4" />
               </button>

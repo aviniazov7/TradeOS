@@ -2,11 +2,11 @@ import { ComposedChart, Area, XAxis, YAxis, Tooltip, ResponsiveContainer } from 
 import { formatCurrency } from '../../utils/formatters';
 
 const tooltipStyle = {
-  background: '#141414',
-  border: '1px solid #1a1a1a',
+  background: 'var(--color-bg-overlay)',
+  border: '1px solid var(--color-border-primary)',
   borderRadius: '8px',
   fontSize: '12px',
-  color: '#f0f0f0',
+  color: 'var(--color-text-primary)',
 };
 
 export default function EquityCurveChart({ data }) {
@@ -29,13 +29,13 @@ export default function EquityCurveChart({ data }) {
               <stop offset="95%" stopColor="#38bdf8" stopOpacity={0} />
             </linearGradient>
           </defs>
-          <XAxis dataKey="date" tick={{ fill: '#606070', fontSize: 9 }} axisLine={false} tickLine={false} />
-          <YAxis tick={{ fill: '#606070', fontSize: 10 }} axisLine={false} tickLine={false} orientation="right" />
+          <XAxis dataKey="date" tick={{ fill: 'var(--color-text-muted)', fontSize: 9 }} axisLine={false} tickLine={false} />
+          <YAxis tick={{ fill: 'var(--color-text-muted)', fontSize: 10 }} axisLine={false} tickLine={false} orientation="right" />
           <Tooltip
             contentStyle={tooltipStyle}
-            labelStyle={{ color: '#a0a0b8', fontSize: '11px' }}
-            itemStyle={{ color: '#f0f0f0' }}
-            cursor={{ stroke: 'rgba(255,255,255,0.12)', strokeWidth: 1 }}
+            labelStyle={{ color: 'var(--color-text-secondary)', fontSize: '11px' }}
+            itemStyle={{ color: 'var(--color-text-primary)' }}
+            cursor={{ stroke: 'var(--color-border-primary)', strokeWidth: 1 }}
             formatter={(val) => [formatCurrency(val), 'הון']}
           />
           <Area type="monotone" dataKey="equity" stroke="#38bdf8" strokeWidth={2} fill="url(#equityGradAdv)" animationDuration={800} />

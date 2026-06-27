@@ -65,7 +65,7 @@ export default function SignalTrack({ signal, currentPrice }) {
         {/* Current price dot */}
         {currentPct != null && (
           <div
-            className="absolute top-1/2 w-3.5 h-3.5 rounded-full bg-white shadow-[0_0_8px_2px_rgba(255,255,255,0.4)] border-2 border-bg-primary z-10 transition-[left] duration-700"
+            className="absolute top-1/2 w-3.5 h-3.5 rounded-full bg-accent-primary border-2 border-bg-primary z-10 transition-[left] duration-700"
             style={{ left: `${currentPct}%`, transform: 'translate(-50%,-50%)' }}
           />
         )}

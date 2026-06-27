@@ -48,11 +48,11 @@ export default function ChatChart({ prices, coinSymbol }) {
                 <stop offset="100%" stopColor={chartColor} stopOpacity={0} />
               </linearGradient>
             </defs>
-            <XAxis dataKey="date" tick={{ fontSize: 9, fill: '#666' }} tickLine={false} axisLine={false} interval="preserveStartEnd" />
-            <YAxis domain={['auto', 'auto']} tick={{ fontSize: 9, fill: '#666' }} tickLine={false} axisLine={false} tickFormatter={(v) => v >= 1 ? `$${v.toLocaleString()}` : `$${v.toFixed(4)}`} width={55} />
+            <XAxis dataKey="date" tick={{ fontSize: 9, fill: 'var(--color-text-muted)' }} tickLine={false} axisLine={false} interval="preserveStartEnd" />
+            <YAxis domain={['auto', 'auto']} tick={{ fontSize: 9, fill: 'var(--color-text-muted)' }} tickLine={false} axisLine={false} tickFormatter={(v) => v >= 1 ? `$${v.toLocaleString()}` : `$${v.toFixed(4)}`} width={55} />
             <Tooltip
-              contentStyle={{ backgroundColor: '#1a1a2e', border: '1px solid rgba(99,102,241,0.3)', borderRadius: 8, fontSize: 11, padding: '6px 10px' }}
-              labelStyle={{ color: '#999' }}
+              contentStyle={{ backgroundColor: 'var(--color-bg-overlay)', border: '1px solid rgba(99,102,241,0.3)', borderRadius: 8, fontSize: 11, padding: '6px 10px', color: 'var(--color-text-primary)' }}
+              labelStyle={{ color: 'var(--color-text-secondary)' }}
               formatter={(v) => [formatPrice(v), 'מחיר']}
             />
 

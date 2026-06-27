@@ -13,11 +13,11 @@ import {
 import { formatCurrency } from '../../utils/formatters';
 
 const tooltipStyle = {
-  background: '#141414',
-  border: '1px solid #1a1a1a',
+  background: 'var(--color-bg-overlay)',
+  border: '1px solid var(--color-border-primary)',
   borderRadius: '8px',
   fontSize: '12px',
-  color: '#f0f0f0',
+  color: 'var(--color-text-primary)',
 };
 
 const compactUsd = (v) => {
@@ -102,7 +102,7 @@ export default function CumulativePnLArea({ series, hidden = false }) {
             <ReferenceLine y={0} stroke="var(--color-border-primary)" strokeDasharray="3 3" />
             <Tooltip
               contentStyle={tooltipStyle}
-              cursor={{ stroke: 'rgba(255,255,255,0.12)', strokeWidth: 1 }}
+              cursor={{ stroke: 'var(--color-border-primary)', strokeWidth: 1 }}
               labelFormatter={(v) => (hasDates ? new Date(v).toLocaleDateString('he-IL') : '')}
               formatter={(value) => [hidden ? '••••' : formatCurrency(value), 'P&L מצטבר']}
             />

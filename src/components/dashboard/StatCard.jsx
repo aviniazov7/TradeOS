@@ -26,11 +26,11 @@ export default function StatCard({ label, value, subtitle, subtitleColor, icon: 
       whileHover={glassHover}
       className="rounded-xl p-3 md:p-4 transition-all relative overflow-hidden group"
       style={{
-        background: 'rgba(255,255,255,0.03)',
-        border: '1px solid rgba(255,255,255,0.08)',
+        background: 'var(--color-bg-secondary)',
+        border: '1px solid var(--color-border-primary)',
         backdropFilter: 'blur(14px)',
         WebkitBackdropFilter: 'blur(14px)',
-        boxShadow: '0 4px 24px rgba(0,0,0,0.25), inset 0 1px 0 rgba(255,255,255,0.05)',
+        boxShadow: '0 4px 24px rgba(0,0,0,0.18)',
       }}
     >
       {gradient && (

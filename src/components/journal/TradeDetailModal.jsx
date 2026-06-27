@@ -131,7 +131,7 @@ function RealPriceChart({ candles, entry, exit, stop, tps, direction, entryMs, e
             width={56} tickMargin={4} allowDataOverflow
           />
           <Tooltip
-            contentStyle={{ background: '#141414', border: '1px solid #1a1a1a', borderRadius: '8px', fontSize: '12px', color: '#f0f0f0' }}
+            contentStyle={{ background: 'var(--color-bg-overlay)', border: '1px solid var(--color-border-primary)', borderRadius: '8px', fontSize: '12px', color: 'var(--color-text-primary)' }}
             labelFormatter={(ms) => new Date(ms).toLocaleString('he-IL')}
             formatter={(v) => [formatPrice(v), 'מחיר']}
           />
@@ -155,10 +155,10 @@ function RealPriceChart({ candles, entry, exit, stop, tps, direction, entryMs, e
 
           {/* Entry (neutral) / Exit (green if win, red if loss) dots */}
           {entry != null && entryMs != null && (
-            <ReferenceDot x={entryMs} y={entry} r={4} fill={NEUTRAL} stroke="#0b0e14" strokeWidth={2} />
+            <ReferenceDot x={entryMs} y={entry} r={4} fill={NEUTRAL} stroke="var(--color-bg-secondary)" strokeWidth={2} />
           )}
           {exit != null && exitMs != null && (
-            <ReferenceDot x={exitMs} y={exit} r={4} fill={exitColor} stroke="#0b0e14" strokeWidth={2} />
+            <ReferenceDot x={exitMs} y={exit} r={4} fill={exitColor} stroke="var(--color-bg-secondary)" strokeWidth={2} />
           )}
         </AreaChart>
       </ResponsiveContainer>
@@ -168,7 +168,7 @@ function RealPriceChart({ candles, entry, exit, stop, tps, direction, entryMs, e
         <div
           key={t.key}
           className="absolute left-1 px-1.5 py-0.5 rounded text-[10px] font-bold pointer-events-none whitespace-nowrap"
-          style={{ top: t.y, transform: 'translateY(-50%)', color: t.color, background: 'rgba(8,11,18,0.72)' }}
+          style={{ top: t.y, transform: 'translateY(-50%)', color: t.color, background: 'var(--color-bg-overlay)' }}
         >
           {t.text}
         </div>

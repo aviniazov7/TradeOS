@@ -4,7 +4,7 @@ import { format } from 'date-fns';
 import { DollarSign, TrendingUp, TrendingDown, Wallet, BarChart3, PieChart as PieChartIcon, Layers } from 'lucide-react';
 import { formatNumber, formatCurrency, formatPercent, formatPrice } from '../../utils/formatters';
 
-const tooltipStyle = { background: '#141414', border: '1px solid #1a1a1a', borderRadius: '8px', fontSize: '12px', color: '#f0f0f0' };
+const tooltipStyle = { background: 'var(--color-bg-overlay)', border: '1px solid var(--color-border-primary)', borderRadius: '8px', fontSize: '12px', color: 'var(--color-text-primary)' };
 const PIE_COLORS = ['#22c55e', '#3b82f6', '#f59e0b', '#ef4444', '#8b5cf6', '#ec4899', '#14b8a6', '#f97316'];
 const cardClass = 'bg-bg-secondary border border-border-primary rounded-xl p-4';
 const pnlColor = (v) => (v >= 0 ? 'text-profit' : 'text-loss');
@@ -147,9 +147,9 @@ export default function DCAAnalytics({ plans, prices }) {
             </div>
             <ResponsiveContainer width="100%" height={200}>
               <BarChart data={analytics.monthlyData}>
-                <XAxis dataKey="month" tick={{ fill: '#999', fontSize: 10 }} axisLine={false} tickLine={false} />
-                <YAxis tick={{ fill: '#999', fontSize: 10 }} axisLine={false} tickLine={false} width={45} tickFormatter={(v) => `$${v}`} />
-                <Tooltip contentStyle={tooltipStyle} cursor={{ fill: 'rgba(255,255,255,0.04)' }} formatter={(v) => [`$${formatNumber(v)}`, 'סכום']} />
+                <XAxis dataKey="month" tick={{ fill: 'var(--color-text-muted)', fontSize: 10 }} axisLine={false} tickLine={false} />
+                <YAxis tick={{ fill: 'var(--color-text-muted)', fontSize: 10 }} axisLine={false} tickLine={false} width={45} tickFormatter={(v) => `$${v}`} />
+                <Tooltip contentStyle={tooltipStyle} cursor={{ fill: 'var(--color-bg-tertiary)' }} formatter={(v) => [`$${formatNumber(v)}`, 'סכום']} />
                 <Bar dataKey="amount" fill="#3b82f6" radius={[4, 4, 0, 0]} />
               </BarChart>
             </ResponsiveContainer>
@@ -179,7 +179,7 @@ export default function DCAAnalytics({ plans, prices }) {
                       <Cell key={i} fill={PIE_COLORS[i % PIE_COLORS.length]} />
                     ))}
                   </Pie>
-                  <Tooltip contentStyle={tooltipStyle} cursor={{ fill: 'rgba(255,255,255,0.04)' }} formatter={(v) => [`$${formatNumber(v)}`, 'מושקע']} />
+                  <Tooltip contentStyle={tooltipStyle} cursor={{ fill: 'var(--color-bg-tertiary)' }} formatter={(v) => [`$${formatNumber(v)}`, 'מושקע']} />
                 </PieChart>
               </ResponsiveContainer>
               <div className="flex-1 space-y-1.5">

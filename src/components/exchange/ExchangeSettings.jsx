@@ -152,7 +152,7 @@ function GuideModal({ exchange, onClose }) {
         initial={{ scale: 0.9, opacity: 0, y: 20 }} animate={{ scale: 1, opacity: 1, y: 0 }}
         exit={{ scale: 0.9, opacity: 0, y: 20 }} transition={{ type: 'spring', damping: 22, stiffness: 320 }}
         className="relative w-full max-w-sm rounded-2xl overflow-hidden shadow-2xl"
-        style={{ background: 'var(--bg-secondary)', border: `1px solid ${exchange.accent}30` }}
+        style={{ background: 'var(--color-bg-secondary)', border: `1px solid ${exchange.accent}30` }}
         onClick={e => e.stopPropagation()}>
         {/* Glow top */}
         <div className="absolute top-0 left-1/2 -translate-x-1/2 w-40 h-20 pointer-events-none"
@@ -187,13 +187,13 @@ function GuideModal({ exchange, onClose }) {
               }}>
               <span className="text-[10px] font-black w-5 h-5 rounded-full flex items-center justify-center shrink-0 mt-0.5"
                 style={{
-                  background: step.warn ? 'rgba(239,68,68,0.2)' : step.ok ? `${exchange.accent}30` : 'var(--bg-tertiary)',
-                  color: step.warn ? '#ef4444' : step.ok ? exchange.accent : 'var(--text-muted)',
+                  background: step.warn ? 'rgba(239,68,68,0.2)' : step.ok ? `${exchange.accent}30` : 'var(--color-bg-tertiary)',
+                  color: step.warn ? '#ef4444' : step.ok ? exchange.accent : 'var(--color-text-muted)',
                 }}>
                 {step.n}
               </span>
               <p className="text-[12px] leading-snug text-right flex-1"
-                style={{ color: step.warn ? '#ef4444' : step.ok ? 'var(--text-primary)' : 'var(--text-muted)' }}>
+                style={{ color: step.warn ? '#ef4444' : step.ok ? 'var(--color-text-primary)' : 'var(--color-text-muted)' }}>
                 {step.text}
               </p>
             </motion.div>
@@ -386,8 +386,8 @@ function ExchangeCard({ exchange, data, savedData, syncing, saving, onUpdate, on
         onHoverEnd={() => setHovered(false)}
         className="relative rounded-2xl overflow-hidden"
         style={{
-          background: 'var(--bg-secondary)',
-          border: `1px solid ${isConnected ? `${accent}45` : 'var(--border-primary)'}`,
+          background: 'var(--color-bg-secondary)',
+          border: `1px solid ${isConnected ? `${accent}45` : 'var(--color-border-primary)'}`,
           transition: 'border-color 0.3s, box-shadow 0.3s',
           boxShadow: hovered || isConnected ? `0 0 30px -8px ${glow}` : 'none',
         }}>

@@ -95,7 +95,7 @@ export default function BreathingExercise() {
             <motion.div
               className="absolute inset-0 rounded-full border-2"
               animate={{
-                borderColor: isRunning ? currentPhase.color : '#374151',
+                borderColor: isRunning ? currentPhase.color : 'var(--color-border-primary)',
                 opacity: isRunning ? [0.3, 0.6, 0.3] : 0.3,
               }}
               transition={{
@@ -108,7 +108,7 @@ export default function BreathingExercise() {
               className="w-36 h-36 rounded-full flex items-center justify-center shadow-2xl"
               animate={{
                 scale: isRunning ? circleScale : 1,
-                backgroundColor: isRunning ? `${currentPhase.color}33` : '#1f2937',
+                backgroundColor: isRunning ? `${currentPhase.color}33` : 'var(--color-bg-tertiary)',
                 boxShadow: isRunning ? `0 0 60px ${currentPhase.color}66` : '0 0 0 transparent',
               }}
               transition={{

@@ -122,7 +122,7 @@ function ProbabilityMeter({ value, animate: doAnimate }) {
       }} />
       <svg width="196" height="196" viewBox="0 0 196 196" style={{ transform: 'rotate(135deg)', position: 'absolute' }}>
         <circle cx="98" cy="98" r={R} fill="none"
-          stroke="rgba(255,255,255,0.07)" strokeWidth={stroke}
+          stroke="var(--color-border-primary)" strokeWidth={stroke}
           strokeDasharray={`${arcLen} ${C}`} strokeLinecap="round"
         />
         <motion.circle cx="98" cy="98" r={R} fill="none"
@@ -157,13 +157,13 @@ function FactorCard({ factorKey, value, onChange, contribution }) {
   const [open, setOpen] = useState(false);
   const selected = options[value];
   const s = contribution?.sentiment ?? 0;
-  const borderColor = s > 0 ? 'rgba(0,255,136,0.35)' : s < 0 ? 'rgba(239,68,68,0.35)' : 'rgba(255,255,255,0.08)';
-  const lrColor = s > 0 ? '#00ff88' : s < 0 ? '#ef4444' : '#94a3b8';
+  const borderColor = s > 0 ? 'rgba(0,255,136,0.35)' : s < 0 ? 'rgba(239,68,68,0.35)' : 'var(--color-border-primary)';
+  const lrColor = s > 0 ? '#00ff88' : s < 0 ? '#ef4444' : 'var(--color-text-muted)';
   const { Icon } = meta;
 
   return (
     <div className="relative rounded-xl p-3 transition-all" style={{
-      background: 'rgba(255,255,255,0.03)',
+      background: 'var(--color-bg-secondary)',
       border: `1px solid ${borderColor}`,
     }}>
       <div className="flex items-center justify-between mb-2">
@@ -181,7 +181,7 @@ function FactorCard({ factorKey, value, onChange, contribution }) {
       <button
         onClick={() => setOpen(o => !o)}
         className="w-full flex items-center justify-between px-3 py-1.5 rounded-lg text-xs transition-all"
-        style={{ background: 'rgba(255,255,255,0.05)', border: '1px solid rgba(255,255,255,0.08)' }}
+        style={{ background: 'var(--color-bg-secondary)', border: '1px solid var(--color-border-primary)' }}
       >
         <span style={{ color: lrColor }}>{selected?.label}</span>
         <ChevronDown className={`w-3.5 h-3.5 text-text-muted transition-transform ${open ? 'rotate-180' : ''}`} />
@@ -195,17 +195,17 @@ function FactorCard({ factorKey, value, onChange, contribution }) {
             exit={{ opacity: 0, y: -6 }}
             transition={{ duration: 0.15 }}
             className="absolute left-0 right-0 top-full mt-1 z-30 rounded-xl overflow-hidden"
-            style={{ background: '#111827', border: '1px solid rgba(255,255,255,0.12)', boxShadow: '0 20px 40px rgba(0,0,0,0.6)' }}
+            style={{ background: 'var(--color-bg-solid)', border: '1px solid var(--color-border-primary)', boxShadow: '0 20px 40px rgba(0,0,0,0.6)' }}
           >
             {Object.entries(options).map(([k, opt]) => {
               const sc = opt.sentiment;
-              const col = sc > 0 ? '#00ff88' : sc < 0 ? '#ef4444' : '#94a3b8';
+              const col = sc > 0 ? '#00ff88' : sc < 0 ? '#ef4444' : 'var(--color-text-muted)';
               return (
                 <button
                   key={k}
                   onClick={() => { onChange(factorKey, k); setOpen(false); }}
                   className="w-full flex items-center justify-between px-3 py-2 text-xs transition-colors hover:bg-white/5"
-                  style={{ color: k === value ? col : '#94a3b8' }}
+                  style={{ color: k === value ? col : 'var(--color-text-muted)' }}
                 >
                   <span>{opt.label}</span>
                   <span className="tabular-nums" style={{ color: col }}>×{opt.lr.toFixed(2)}</span>
@@ -217,7 +217,7 @@ function FactorCard({ factorKey, value, onChange, contribution }) {
       </AnimatePresence>
 
       {contribution && (
-        <div className="mt-2 h-1 rounded-full overflow-hidden" style={{ background: 'rgba(255,255,255,0.06)' }}>
+        <div className="mt-2 h-1 rounded-full overflow-hidden" style={{ background: 'var(--color-bg-secondary)' }}>
           <motion.div
             className="h-full rounded-full"
             style={{ background: lrColor, boxShadow: `0 0 6px ${lrColor}` }}
@@ -276,7 +276,7 @@ function SignalHistory({ signals, onDelete }) {
             initial={{ opacity: 0, x: 20 }}
             animate={{ opacity: 1, x: 0 }}
             className="flex items-center gap-3 px-3 py-2.5 rounded-xl"
-            style={{ background: 'rgba(255,255,255,0.03)', border: '1px solid rgba(255,255,255,0.07)' }}
+            style={{ background: 'var(--color-bg-secondary)', border: '1px solid var(--color-border-primary)' }}
           >
             <div className="w-10 h-10 rounded-full flex items-center justify-center text-xs font-black shrink-0"
               style={{ background: `${v.glow}18`, border: `1px solid ${v.glow}40`, color: v.color }}>
@@ -437,7 +437,7 @@ export default function QuantumScorer() {
             style={{
               background: showHistory ? 'rgba(0,191,255,0.15)' : 'rgba(255,255,255,0.04)',
               border: `1px solid ${showHistory ? 'rgba(0,191,255,0.4)' : 'rgba(255,255,255,0.08)'}`,
-              color: showHistory ? '#00bfff' : '#94a3b8',
+              color: showHistory ? '#00bfff' : 'var(--color-text-muted)',
             }}
           >
             <History className="w-3.5 h-3.5" />
@@ -455,7 +455,7 @@ export default function QuantumScorer() {
             exit={{ opacity: 0, height: 0 }}
             transition={{ duration: 0.25 }}
             className="relative mb-6 rounded-2xl overflow-hidden"
-            style={{ background: 'rgba(0,0,0,0.4)', border: '1px solid rgba(0,191,255,0.15)' }}
+            style={{ background: 'var(--color-bg-secondary)', border: '1px solid rgba(0,191,255,0.15)' }}
           >
             <div className="p-4">
               <h3 className="text-sm font-bold text-text-primary mb-3 flex items-center gap-2">
@@ -470,7 +470,7 @@ export default function QuantumScorer() {
 
       {/* ── Setup type — full-width row above everything ── */}
       <div className="relative mb-4 rounded-2xl p-4" style={{
-        background: 'rgba(0,0,0,0.4)',
+        background: 'var(--color-bg-secondary)',
         border: `1px solid ${setupDir === 'bull' ? 'rgba(0,255,136,0.2)' : 'rgba(239,68,68,0.2)'}`,
       }}>
         <div className="flex items-center justify-between mb-2">
@@ -494,7 +494,7 @@ export default function QuantumScorer() {
                 border: setup === k
                   ? `1px solid ${m.dir === 'bull' ? '#00ff88' : '#ef4444'}`
                   : '1px solid rgba(255,255,255,0.07)',
-                color: setup === k ? (m.dir === 'bull' ? '#00ff88' : '#ef4444') : '#64748b',
+                color: setup === k ? (m.dir === 'bull' ? '#00ff88' : '#ef4444') : 'var(--color-text-muted)',
               }}
             >
               {m.label}
@@ -527,7 +527,7 @@ export default function QuantumScorer() {
 
           {/* Symbol search + LR breakdown */}
           <div className="rounded-2xl p-4" style={{
-            background: 'rgba(0,0,0,0.4)',
+            background: 'var(--color-bg-secondary)',
             border: '1px solid rgba(0,191,255,0.2)',
           }}>
             {/* PairSearch — same coin search with icons as in the journal */}
@@ -541,7 +541,7 @@ export default function QuantumScorer() {
             {result && (
               <div className="mt-3 space-y-1 border-t border-white/5 pt-3">
                 {Object.entries(result.contributions).map(([k, c]) => {
-                  const col = c.sentiment > 0 ? '#00ff88' : c.sentiment < 0 ? '#ef4444' : '#64748b';
+                  const col = c.sentiment > 0 ? '#00ff88' : c.sentiment < 0 ? '#ef4444' : 'var(--color-text-muted)';
                   return (
                     <div key={k} className="flex items-center justify-between text-[10px]">
                       <span className="text-text-muted">{FACTOR_META[k]?.label}</span>
@@ -557,8 +557,8 @@ export default function QuantumScorer() {
 
           {/* Meter + Verdict + Buttons panel */}
           <div className="flex-1 rounded-2xl flex flex-col items-center justify-center p-6 gap-5" style={{
-            background: 'rgba(0,0,0,0.5)',
-            border: `1px solid ${verdict ? `${verdict.glow}30` : 'rgba(255,255,255,0.07)'}`,
+            background: 'var(--color-bg-secondary)',
+            border: `1px solid ${verdict ? `${verdict.glow}30` : 'var(--color-border-primary)'}`,
             boxShadow: verdict ? `0 0 40px ${verdict.glow}10` : 'none',
             transition: 'border-color 0.5s, box-shadow 0.5s',
           }}>
@@ -616,7 +616,7 @@ export default function QuantumScorer() {
                 <button
                   onClick={handleReset}
                   className="flex-1 py-2 rounded-xl text-xs font-semibold flex items-center justify-center gap-1.5 transition-all hover:bg-white/5"
-                  style={{ border: '1px solid rgba(255,255,255,0.08)', color: '#64748b' }}
+                  style={{ border: '1px solid var(--color-border-primary)', color: 'var(--color-text-muted)' }}
                 >
                   <RotateCcw className="w-3.5 h-3.5" />
                   איפוס
@@ -640,7 +640,7 @@ export default function QuantumScorer() {
 
           {/* Legend */}
           <div className="rounded-2xl p-3 grid grid-cols-2 gap-2" style={{
-            background: 'rgba(0,0,0,0.3)',
+            background: 'var(--color-bg-secondary)',
             border: '1px solid rgba(255,255,255,0.06)',
           }}>
             {[

@@ -11,11 +11,11 @@ import {
 } from 'recharts';
 
 const TOOLTIP_STYLE = {
-  background: '#141414',
-  border: '1px solid #1a1a1a',
+  background: 'var(--color-bg-overlay)',
+  border: '1px solid var(--color-border-primary)',
   borderRadius: '8px',
   fontSize: '12px',
-  color: '#f0f0f0',
+  color: 'var(--color-text-primary)',
 };
 
 const PURPLE = '#8b5cf6';
@@ -58,7 +58,7 @@ export default function PerformanceRadar({ metrics, score }) {
       <div className="w-full flex-1 min-h-[240px]">
         <ResponsiveContainer width="100%" height="100%">
           <RadarChart data={data} outerRadius="72%">
-            <PolarGrid stroke="rgba(255,255,255,0.10)" />
+            <PolarGrid stroke="var(--color-border-primary)" />
             <PolarAngleAxis
               dataKey="label"
               tick={{ fill: 'var(--color-text-muted)', fontSize: 10 }}

@@ -47,7 +47,7 @@ import { TAG_LABELS, DEFAULT_LEVERAGE } from '../../utils/constants';
 import { pageVariants, pageTransition, staggerContainer } from '../../utils/animations';
 
 const defaultFilters = { search: '', direction: '', result: '', strategy: '', tag: '', timeframe: '', month: '' };
-const tooltipStyle = { background: '#141414', border: '1px solid #1a1a1a', borderRadius: '8px', fontSize: '12px', color: '#f0f0f0' };
+const tooltipStyle = { background: 'var(--color-bg-overlay)', border: '1px solid var(--color-border-primary)', borderRadius: '8px', fontSize: '12px', color: 'var(--color-text-primary)' };
 const PIE_COLORS = ['#22c55e', '#ef4444', '#eab308'];
 
 export default function TradeJournal() {
@@ -393,7 +393,7 @@ export default function TradeJournal() {
             </button>
           </div>
         ),
-        { duration: 5000, style: { background: '#1a1a2e', color: '#f0f0f0', border: '1px solid #2a2a3e' } },
+        { duration: 5000, style: { background: 'var(--color-bg-overlay)', color: 'var(--color-text-primary)', border: '1px solid var(--color-border-primary)' } },
       );
       deleteBatchToastRef.current = id;
     };
@@ -737,7 +737,7 @@ export default function TradeJournal() {
                       <Pie data={analytics.pieData} dataKey="value" nameKey="name" cx="50%" cy="50%" innerRadius={40} outerRadius={65} paddingAngle={3}>
                         {analytics.pieData.map((d, i) => <Cell key={d.name} fill={PIE_COLORS[i]} />)}
                       </Pie>
-                      <Tooltip contentStyle={tooltipStyle} labelStyle={{ color: '#a0a0b8', fontSize: '11px' }} itemStyle={{ color: '#f0f0f0' }} cursor={{ fill: 'rgba(255,255,255,0.04)' }} />
+                      <Tooltip contentStyle={tooltipStyle} labelStyle={{ color: 'var(--color-text-secondary)', fontSize: '11px' }} itemStyle={{ color: 'var(--color-text-primary)' }} cursor={{ fill: 'var(--color-bg-tertiary)' }} />
                     </PieChart>
                   </ResponsiveContainer>
                   <div className="flex justify-center gap-3 text-[10px] mt-1">
@@ -757,9 +757,9 @@ export default function TradeJournal() {
                   <h3 className="text-sm font-semibold text-text-primary mb-3">רווח/הפסד יומי</h3>
                   <ResponsiveContainer width="100%" height={170}>
                     <BarChart data={analytics.dailyPnL}>
-                      <XAxis dataKey="date" tick={{ fill: '#606070', fontSize: 9 }} axisLine={false} tickLine={false} />
-                      <YAxis tick={{ fill: '#606070', fontSize: 10 }} axisLine={false} tickLine={false} orientation="right" />
-                      <Tooltip contentStyle={tooltipStyle} labelStyle={{ color: '#a0a0b8', fontSize: '11px' }} itemStyle={{ color: '#f0f0f0' }} cursor={{ fill: 'rgba(255,255,255,0.04)' }} formatter={(val) => [formatCurrency(val), 'רווח/הפסד']} />
+                      <XAxis dataKey="date" tick={{ fill: 'var(--color-text-muted)', fontSize: 9 }} axisLine={false} tickLine={false} />
+                      <YAxis tick={{ fill: 'var(--color-text-muted)', fontSize: 10 }} axisLine={false} tickLine={false} orientation="right" />
+                      <Tooltip contentStyle={tooltipStyle} labelStyle={{ color: 'var(--color-text-secondary)', fontSize: '11px' }} itemStyle={{ color: 'var(--color-text-primary)' }} cursor={{ fill: 'var(--color-bg-tertiary)' }} formatter={(val) => [formatCurrency(val), 'רווח/הפסד']} />
                       <Bar dataKey="pnl" radius={[4, 4, 0, 0]} animationDuration={800}>
                         {analytics.dailyPnL.map((entry) => (
                           <Cell key={entry.date} fill={entry.pnl >= 0 ? '#22c55e' : '#ef4444'} />

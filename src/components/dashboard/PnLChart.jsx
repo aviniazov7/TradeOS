@@ -3,11 +3,11 @@ import { AreaChart, Area, XAxis, YAxis, Tooltip, ResponsiveContainer } from 'rec
 import { format } from 'date-fns';
 
 const tooltipStyle = {
-  background: '#141414',
-  border: '1px solid #1a1a1a',
+  background: 'var(--color-bg-overlay)',
+  border: '1px solid var(--color-border-primary)',
   borderRadius: '8px',
   fontSize: '12px',
-  color: '#f0f0f0',
+  color: 'var(--color-text-primary)',
 };
 
 export default function PnLChart({ trades }) {
@@ -49,9 +49,9 @@ export default function PnLChart({ trades }) {
               <stop offset="95%" stopColor="#38bdf8" stopOpacity={0} />
             </linearGradient>
           </defs>
-          <XAxis dataKey="date" tick={{ fill: '#606070', fontSize: 11 }} axisLine={false} tickLine={false} reversed />
-          <YAxis tick={{ fill: '#606070', fontSize: 11 }} axisLine={false} tickLine={false} orientation="right" />
-          <Tooltip contentStyle={tooltipStyle} cursor={{ stroke: 'rgba(255,255,255,0.12)', strokeWidth: 1 }} />
+          <XAxis dataKey="date" tick={{ fill: 'var(--color-text-muted)', fontSize: 11 }} axisLine={false} tickLine={false} reversed />
+          <YAxis tick={{ fill: 'var(--color-text-muted)', fontSize: 11 }} axisLine={false} tickLine={false} orientation="right" />
+          <Tooltip contentStyle={tooltipStyle} cursor={{ stroke: 'var(--color-border-primary)', strokeWidth: 1 }} />
           <Area type="monotone" dataKey="equity" stroke="#38bdf8" strokeWidth={2} fill="url(#equityGrad)" animationDuration={800} />
         </AreaChart>
       </ResponsiveContainer>

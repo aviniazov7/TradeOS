@@ -1068,10 +1068,10 @@ export default function MarketOverview() {
                 {altSeasonData.index}<span className="text-base font-normal text-text-muted">/100</span>
               </p>
               <div>
-                <div className="relative h-1.5 rounded-full bg-white/10 overflow-hidden">
+                <div className="relative h-1.5 rounded-full bg-bg-tertiary overflow-hidden">
                   <div className="absolute inset-y-0 left-0 w-[40%] rounded-full" style={{ background: 'linear-gradient(to right, #f7931a, #c47818)' }} />
                   <div className="absolute inset-y-0 right-0 w-[40%] rounded-full" style={{ background: 'linear-gradient(to left, #6366f1, #818cf8)' }} />
-                  <div className="absolute top-1/2 -translate-y-1/2 w-3 h-3 rounded-full border-2 bg-black"
+                  <div className="absolute top-1/2 -translate-y-1/2 w-3 h-3 rounded-full border-2 bg-text-primary"
                     style={{ left: `calc(${altSeasonData.index}% - 6px)`, borderColor: altSeasonData.color }} />
                 </div>
                 <span className="text-[10px] font-semibold" style={{ color: altSeasonData.color }}>{altSeasonData.label}</span>

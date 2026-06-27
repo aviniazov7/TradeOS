@@ -93,7 +93,7 @@ export default function FearGreedGauge({ expanded = false }) {
         </div>
         <div className="w-28 h-[56px]">
           <svg viewBox="0 0 200 100" className="w-full h-full">
-            <path d={`M ${cx - r} ${cy} A ${r} ${r} 0 0 1 ${cx + r} ${cy}`} fill="none" stroke="#1a1a1a" strokeWidth="14" strokeLinecap="round" />
+            <path d={`M ${cx - r} ${cy} A ${r} ${r} 0 0 1 ${cx + r} ${cy}`} fill="none" stroke="var(--color-bg-tertiary)" strokeWidth="14" strokeLinecap="round" />
             {[
               { start: 0, end: 36, color: '#22c55e' },
               { start: 36, end: 72, color: '#84cc16' },
