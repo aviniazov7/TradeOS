@@ -60,10 +60,14 @@ function RealPriceChart({ candles, entry, exit, stop, tps, direction, entryMs, e
   const plannedTP = (tps && tps.length)
     ? (direction === 'short' ? Math.min(...tps) : Math.max(...tps))
     : null;
-  // Green reward zone: the planned TP, or — when none was recorded — the exit
-  // only if it was a winner. Losing trades w/o a TP show their loss in red.
-  const greenTo = plannedTP != null ? plannedTP : (win ? exit : null);
-  const lossTo = (plannedTP == null && !win) ? exit : null;
+  // The tool always shows BOTH sides: red risk (entry→stop) + green reward.
+  // Reward target = planned TP, else a 1:2 projection from the stop, else (no
+  // stop) the exit on a win. So even a stopped-out trade reads as a full tool.
+  const risk = (entry != null && stop != null && stop > 0) ? Math.abs(entry - stop) : null;
+  const dir = direction === 'short' ? -1 : 1;
+  const derivedTarget = risk != null ? entry + dir * risk * 2 : null;
+  const greenTo = plannedTP != null ? plannedTP : (derivedTarget != null ? derivedTarget : (win ? exit : null));
+  const tpIsProjection = plannedTP == null && derivedTarget != null;
   const xEnd = candles.length ? candles[candles.length - 1].t : null;
   const xBox = exitMs != null ? exitMs : xEnd; // zones cover only the open period
 
@@ -72,7 +76,7 @@ function RealPriceChart({ candles, entry, exit, stop, tps, direction, entryMs, e
   let lo = Math.min(...prices);
   let hi = Math.max(...prices);
   const span0 = hi - lo || Math.abs(hi) * 0.01 || 1;
-  for (const lv of [entry, exit, stop, plannedTP]) {
+  for (const lv of [entry, exit, stop, greenTo]) {
     if (lv != null && lv > 0 && Math.abs(lv - (lo + hi) / 2) <= span0 * 3) {
       lo = Math.min(lo, lv); hi = Math.max(hi, lv);
     }
@@ -87,7 +91,7 @@ function RealPriceChart({ candles, entry, exit, stop, tps, direction, entryMs, e
   const tags = [];
   if (entry != null) tags.push({ key: 'e', text: `כניסה ${fmtY(entry)}`, color: NEUTRAL, y: yPx(entry) });
   if (stop != null && stop > 0) tags.push({ key: 'sl', text: `SL ${fmtY(stop)}`, color: 'var(--color-loss)', y: yPx(stop) });
-  if (plannedTP != null) tags.push({ key: 'tp', text: `TP ${fmtY(plannedTP)}`, color: 'var(--color-profit)', y: yPx(plannedTP) });
+  if (greenTo != null) tags.push({ key: 'tp', text: tpIsProjection ? 'יעד 1:2' : `TP ${fmtY(greenTo)}`, color: 'var(--color-profit)', y: yPx(greenTo) });
   if (exit != null) tags.push({ key: 'x', text: `יציאה ${fmtY(exit)}`, color: exitColor, y: yPx(exit) });
   tags.sort((a, b) => a.y - b.y);
   const GAP = 15;
@@ -128,9 +132,6 @@ function RealPriceChart({ candles, entry, exit, stop, tps, direction, entryMs, e
           {entry != null && greenTo != null && entryMs != null && xBox != null && (
             <ReferenceArea x1={entryMs} x2={xBox} y1={entry} y2={greenTo} fill="var(--color-profit)" fillOpacity={0.16} stroke="none" />
           )}
-          {entry != null && lossTo != null && entryMs != null && xBox != null && (
-            <ReferenceArea x1={entryMs} x2={xBox} y1={entry} y2={lossTo} fill="var(--color-loss)" fillOpacity={0.16} stroke="none" />
-          )}
           {entry != null && stop != null && stop > 0 && entryMs != null && xBox != null && (
             <ReferenceArea x1={entryMs} x2={xBox} y1={entry} y2={stop} fill="var(--color-loss)" fillOpacity={0.16} stroke="none" />
           )}
@@ -141,7 +142,7 @@ function RealPriceChart({ candles, entry, exit, stop, tps, direction, entryMs, e
           {/* Level lines (labels drawn as a collision-free overlay below) */}
           {entry != null && <ReferenceLine y={entry} stroke={NEUTRAL} strokeWidth={1} />}
           {stop != null && stop > 0 && <ReferenceLine y={stop} stroke="var(--color-loss)" strokeDasharray="5 4" />}
-          {plannedTP != null && <ReferenceLine y={plannedTP} stroke="var(--color-profit)" strokeDasharray="5 4" />}
+          {greenTo != null && <ReferenceLine y={greenTo} stroke="var(--color-profit)" strokeDasharray="5 4" />}
           {exit != null && <ReferenceLine y={exit} stroke={exitColor} strokeDasharray="2 3" strokeOpacity={0.6} />}
 
           {/* Entry (neutral) / Exit (green if win, red if loss) dots */}
