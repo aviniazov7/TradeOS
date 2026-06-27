@@ -63,8 +63,23 @@ body {
   --color-short: #ef4444;
 }
 
+/* iOS-style glass surface tokens (modals / command palette). Theme-aware so
+   day mode renders a bright frosted glass instead of the dark one. */
+:root {
+  --glass-bg: rgba(18, 18, 20, 0.7);
+  --glass-border: rgba(255, 255, 255, 0.09);
+  --glass-header: rgba(20, 20, 22, 0.55);
+  --glass-shadow: 0 32px 80px rgba(0, 0, 0, 0.6), 0 0 0 1px rgba(255, 255, 255, 0.04) inset;
+  --glass-shadow-sm: 0 28px 70px rgba(0, 0, 0, 0.6);
+}
+
 /* Light Theme */
 .light {
+  --glass-bg: rgba(255, 255, 255, 0.72);
+  --glass-border: rgba(15, 23, 42, 0.08);
+  --glass-header: rgba(255, 255, 255, 0.55);
+  --glass-shadow: 0 32px 80px rgba(31, 41, 79, 0.18), 0 0 0 1px rgba(255, 255, 255, 0.5) inset;
+  --glass-shadow-sm: 0 28px 70px rgba(31, 41, 79, 0.16);
   --color-bg-primary: #e8ecf4;
   --color-bg-secondary: rgba(255, 255, 255, 0.35);
   --color-bg-tertiary: rgba(255, 255, 255, 0.2);

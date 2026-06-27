@@ -46,11 +46,11 @@ export default function Modal({ isOpen, onClose, title, children, maxWidth = 'ma
             <motion.div
               className={`relative ${maxWidth} w-full rounded-2xl overflow-hidden pointer-events-auto`}
               style={{
-                background: 'rgba(18, 18, 20, 0.7)',
+                background: 'var(--glass-bg)',
                 backdropFilter: 'blur(28px) saturate(180%)',
                 WebkitBackdropFilter: 'blur(28px) saturate(180%)',
-                border: '1px solid rgba(255,255,255,0.09)',
-                boxShadow: '0 32px 80px rgba(0,0,0,0.6), 0 0 0 1px rgba(255,255,255,0.04) inset',
+                border: '1px solid var(--glass-border)',
+                boxShadow: 'var(--glass-shadow)',
                 maxHeight: 'calc(100vh - 4.5rem)',
               }}
               initial={{ opacity: 0, y: 18 }}
@@ -64,8 +64,8 @@ export default function Modal({ isOpen, onClose, title, children, maxWidth = 'ma
                 <div
                   className="flex items-center justify-between px-5 py-3 sticky top-0 z-10"
                   style={{
-                    borderBottom: '1px solid rgba(255,255,255,0.07)',
-                    background: 'rgba(20, 20, 22, 0.55)',
+                    borderBottom: '1px solid var(--glass-border)',
+                    background: 'var(--glass-header)',
                     backdropFilter: 'blur(12px)',
                     WebkitBackdropFilter: 'blur(12px)',
                   }}
