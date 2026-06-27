@@ -145,8 +145,9 @@ export default function DashboardKpis({ kpi, hidden = false }) {
   const redPct = totalAvg > 0 ? (absLoss / totalAvg) * 100 : 50;
 
   // Profit factor ring fraction.
-  const pf = Number.isFinite(profitFactor) ? profitFactor : 0;
-  const pfFraction = pf + 1 > 0 ? pf / (pf + 1) : 0;
+  const pfFinite = Number.isFinite(profitFactor);
+  const pf = pfFinite ? profitFactor : 0;
+  const pfFraction = pfFinite ? (pf + 1 > 0 ? pf / (pf + 1) : 0) : 1;
 
   return (
     <motion.div
@@ -226,7 +227,7 @@ export default function DashboardKpis({ kpi, hidden = false }) {
         <span className="text-xs text-text-muted">פקטור רווח</span>
         <div className="flex items-center justify-between gap-2">
           <div dir="ltr" className="text-2xl font-bold text-text-primary">
-            {pf.toFixed(2)}
+            {pfFinite ? pf.toFixed(2) : '∞'}
           </div>
           <RingGauge pct={pfFraction} size={56} />
         </div>

@@ -302,7 +302,7 @@ export default function Dashboard() {
     // Performance metrics
     const grossProfit = closed.filter((t) => pnlOf(t) > 0).reduce((s, t) => s + pnlOf(t), 0);
     const grossLoss = Math.abs(closed.filter((t) => pnlOf(t) < 0).reduce((s, t) => s + pnlOf(t), 0));
-    const profitFactor = grossLoss > 0 ? grossProfit / grossLoss : (grossProfit > 0 ? 4 : 0);
+    const profitFactor = grossLoss > 0 ? grossProfit / grossLoss : (grossProfit > 0 ? Infinity : 0);
     const largestWin = closed.reduce((m, t) => Math.max(m, pnlOf(t)), 0);
 
     // Max drawdown + recovery from the equity curve
@@ -313,7 +313,7 @@ export default function Dashboard() {
       maxDD = Math.max(maxDD, peak - cum);
     }
     const netProfit = grossProfit - grossLoss;
-    const recovery = maxDD > 0 ? netProfit / maxDD : (netProfit > 0 ? 3 : 0);
+    const recovery = maxDD > 0 ? netProfit / maxDD : (netProfit > 0 ? Infinity : 0);
 
     const clamp = (v) => Math.max(0, Math.min(100, v));
     const winRate = globalStats.winRate;                                  // already 0..100
@@ -365,7 +365,8 @@ export default function Dashboard() {
 
     const kpi = {
       netPnl, tradeCount: closed.length,
-      winRate: globalStats.winRate, wins, breakeven: beCount, losses,
+      winRate: (wins + losses + beCount) > 0 ? (wins / (wins + losses + beCount)) * 100 : 0,
+      wins, breakeven: beCount, losses,
       avgWin, avgLoss, avgWinLossRatio: ratio,
       profitFactor,
       streakDays, streakTrades,

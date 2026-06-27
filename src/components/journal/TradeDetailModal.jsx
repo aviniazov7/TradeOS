@@ -33,6 +33,14 @@ const num = (v) => {
 
 const toDate = (d) => (d?.toDate ? d.toDate() : d ? new Date(d) : null);
 
+const RATING_LABELS = { 1: 'נמוך', 2: 'בינוני-', 3: 'בינוני', 4: 'טוב', 5: 'מעולה' };
+const MENTAL_FIELDS = [
+  { key: 'focusRating', label: 'ריכוז' },
+  { key: 'confidenceRating', label: 'ביטחון' },
+  { key: 'stressRating', label: 'לחץ' },
+  { key: 'planAdherenceRating', label: 'עקביות' },
+];
+
 // Chart plot geometry (must match the AreaChart margins + axis sizes below) so
 // the custom level tags can be positioned in pixels with collision avoidance.
 const CH_H = 240;
@@ -184,9 +192,10 @@ export default function TradeDetailModal({
   const [chartLoading, setChartLoading] = useState(false);
 
   useEffect(() => {
-    if (!isOpen || !trade || !isCrypto) { setChart(null); setChartLoading(false); return; }
-    const entryMs = toDate(trade.entryDate)?.getTime();
-    if (!entryMs) { setChart(null); return; }
+    // Only fetch when the modal is open for a crypto pair; the cleanup resets
+    // state on close / trade change (avoids a synchronous setState in the body).
+    const entryMs = isOpen && trade && isCrypto ? toDate(trade.entryDate)?.getTime() : null;
+    if (!entryMs) return undefined;
     const exitMs = toDate(trade.exitDate || trade.createdAt)?.getTime() || Date.now();
     const start = Math.min(entryMs, exitMs);
     const end = Math.max(entryMs, exitMs);
@@ -202,7 +211,7 @@ export default function TradeDetailModal({
     for (const x of INTERVALS) if (x[1] <= target) iv = x;
 
     let cancelled = false;
-    setChartLoading(true);
+    Promise.resolve().then(() => { if (!cancelled) setChartLoading(true); });
     fetchKlinesRange(pairSym, iv[0], from, to, 500)
       .then((rows) => {
         if (cancelled) return;
@@ -213,7 +222,7 @@ export default function TradeDetailModal({
       })
       .catch(() => { if (!cancelled) setChart(null); })
       .finally(() => { if (!cancelled) setChartLoading(false); });
-    return () => { cancelled = true; };
+    return () => { cancelled = true; setChart(null); setChartLoading(false); };
   }, [isOpen, trade, isCrypto, pairSym]);
 
   if (!trade) return null;
@@ -421,6 +430,21 @@ export default function TradeDetailModal({
             <Clock className="w-3.5 h-3.5 text-text-muted" />
             <span className="text-text-muted">משך העסקה:</span>
             <span>{formatDuration(durationHours)}</span>
+          </div>
+        )}
+
+        {MENTAL_FIELDS.some((f) => trade[f.key]) && (
+          <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
+            {MENTAL_FIELDS.map((f) => {
+              const val = trade[f.key];
+              if (!val) return null;
+              return (
+                <div key={f.key} className="bg-bg-tertiary border border-border-primary rounded-lg p-2">
+                  <div className="text-[11px] text-text-muted">{f.label}</div>
+                  <div className="text-text-secondary" dir="ltr">{val}/5 {RATING_LABELS[val]}</div>
+                </div>
+              );
+            })}
           </div>
         )}
 

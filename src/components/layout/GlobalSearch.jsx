@@ -84,15 +84,17 @@ export default function GlobalSearch() {
   const openPalette = () => { setOpen(true); setQuery(''); setActive(0); loadData(); };
   const close = () => setOpen(false);
 
+  // Track open in a ref so the global key handler reads the latest value
+  // without re-binding or running side effects inside a state updater.
+  const openRef = useRef(false);
+  useEffect(() => { openRef.current = open; }, [open]);
+
   // ⌘K / Ctrl+K to toggle, Esc to close
   useEffect(() => {
     const onKey = (e) => {
       if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === 'k') {
         e.preventDefault();
-        setOpen((o) => {
-          if (!o) { setQuery(''); setActive(0); loadData(); }
-          return !o;
-        });
+        if (openRef.current) close(); else openPalette();
       } else if (e.key === 'Escape') {
         setOpen(false);
       }
