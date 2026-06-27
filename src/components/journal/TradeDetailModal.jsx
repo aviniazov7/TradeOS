@@ -45,8 +45,8 @@ const PLOT_H = CH_H - CH_BOTTOM - CH_XAXIS - CH_TOP; // usable price area height
 // Real price chart for the trade window — clean TradingView-style position tool.
 function RealPriceChart({ candles, entry, exit, stop, tps, direction, entryMs, exitMs, pnl }) {
   const win = pnl >= 0;
-  const lineColor = win ? 'var(--color-profit)' : 'var(--color-loss)';
-  const targetFill = win ? 'var(--color-profit)' : 'var(--color-loss)';
+  const NEUTRAL = 'var(--color-text-secondary)';
+  const exitColor = win ? 'var(--color-profit)' : 'var(--color-loss)';
   const fmtY = (v) => {
     const a = Math.abs(v);
     if (a >= 1000) return `${(v / 1000).toFixed(a >= 100000 ? 0 : 1)}K`;
@@ -54,20 +54,25 @@ function RealPriceChart({ candles, entry, exit, stop, tps, direction, entryMs, e
     if (a >= 1) return v.toFixed(2);
     return v.toFixed(4);
   };
-  // Target line: a recorded take-profit if any, else the realized exit.
-  const target = (tps && tps.length)
+  // Planned take-profit (if recorded). The full position tool always shows the
+  // risk (SL, red) and the reward target (TP, green) so a stopped-out trade is
+  // still legible — the exit dot lands inside the red zone.
+  const plannedTP = (tps && tps.length)
     ? (direction === 'short' ? Math.min(...tps) : Math.max(...tps))
-    : exit;
+    : null;
+  // Green reward zone: the planned TP, or — when none was recorded — the exit
+  // only if it was a winner. Losing trades w/o a TP show their loss in red.
+  const greenTo = plannedTP != null ? plannedTP : (win ? exit : null);
+  const lossTo = (plannedTP == null && !win) ? exit : null;
   const xEnd = candles.length ? candles[candles.length - 1].t : null;
   const xBox = exitMs != null ? exitMs : xEnd; // zones cover only the open period
 
-  // Y domain = price range + nearby levels, so SL/TP zones are always visible
-  // (but a far-away stop doesn't squash the price action).
+  // Y domain = price range + nearby levels, so SL/TP are always visible.
   const prices = candles.map((c) => c.price);
   let lo = Math.min(...prices);
   let hi = Math.max(...prices);
   const span0 = hi - lo || Math.abs(hi) * 0.01 || 1;
-  for (const lv of [entry, exit, stop, target]) {
+  for (const lv of [entry, exit, stop, plannedTP]) {
     if (lv != null && lv > 0 && Math.abs(lv - (lo + hi) / 2) <= span0 * 3) {
       lo = Math.min(lo, lv); hi = Math.max(hi, lv);
     }
@@ -80,9 +85,10 @@ function RealPriceChart({ candles, entry, exit, stop, tps, direction, entryMs, e
   // Price → pixel within the plot area, then build collision-free level tags.
   const yPx = (p) => PLOT_TOP + (1 - (p - domLo) / (domHi - domLo)) * PLOT_H;
   const tags = [];
-  if (entry != null) tags.push({ key: 'e', text: `כניסה ${fmtY(entry)}`, color: 'var(--color-text-secondary)', y: yPx(entry) });
+  if (entry != null) tags.push({ key: 'e', text: `כניסה ${fmtY(entry)}`, color: NEUTRAL, y: yPx(entry) });
   if (stop != null && stop > 0) tags.push({ key: 'sl', text: `SL ${fmtY(stop)}`, color: 'var(--color-loss)', y: yPx(stop) });
-  if (target != null) tags.push({ key: 'tp', text: `${win ? 'TP' : 'יציאה'} ${fmtY(target)}`, color: targetFill, y: yPx(target) });
+  if (plannedTP != null) tags.push({ key: 'tp', text: `TP ${fmtY(plannedTP)}`, color: 'var(--color-profit)', y: yPx(plannedTP) });
+  if (exit != null) tags.push({ key: 'x', text: `יציאה ${fmtY(exit)}`, color: exitColor, y: yPx(exit) });
   tags.sort((a, b) => a.y - b.y);
   const GAP = 15;
   for (let i = 1; i < tags.length; i++) {
@@ -96,8 +102,8 @@ function RealPriceChart({ candles, entry, exit, stop, tps, direction, entryMs, e
         <AreaChart data={candles} margin={{ top: CH_TOP, right: 4, bottom: CH_BOTTOM, left: 6 }}>
           <defs>
             <linearGradient id="tradePriceGrad" x1="0" y1="0" x2="0" y2="1">
-              <stop offset="0%" stopColor={lineColor} stopOpacity={0.1} />
-              <stop offset="100%" stopColor={lineColor} stopOpacity={0.01} />
+              <stop offset="0%" stopColor={NEUTRAL} stopOpacity={0.08} />
+              <stop offset="100%" stopColor={NEUTRAL} stopOpacity={0.01} />
             </linearGradient>
           </defs>
           <CartesianGrid vertical={false} stroke="var(--color-border-primary)" strokeDasharray="2 4" />
@@ -118,27 +124,32 @@ function RealPriceChart({ candles, entry, exit, stop, tps, direction, entryMs, e
             formatter={(v) => [formatPrice(v), 'מחיר']}
           />
 
-          {/* Position-tool zones over the open period: result + risk */}
-          {entry != null && target != null && entryMs != null && xBox != null && (
-            <ReferenceArea x1={entryMs} x2={xBox} y1={entry} y2={target} fill={targetFill} fillOpacity={0.16} stroke="none" />
+          {/* Position tool: green reward zone + red risk zone (always shown) */}
+          {entry != null && greenTo != null && entryMs != null && xBox != null && (
+            <ReferenceArea x1={entryMs} x2={xBox} y1={entry} y2={greenTo} fill="var(--color-profit)" fillOpacity={0.16} stroke="none" />
+          )}
+          {entry != null && lossTo != null && entryMs != null && xBox != null && (
+            <ReferenceArea x1={entryMs} x2={xBox} y1={entry} y2={lossTo} fill="var(--color-loss)" fillOpacity={0.16} stroke="none" />
           )}
           {entry != null && stop != null && stop > 0 && entryMs != null && xBox != null && (
             <ReferenceArea x1={entryMs} x2={xBox} y1={entry} y2={stop} fill="var(--color-loss)" fillOpacity={0.16} stroke="none" />
           )}
 
-          <Area type="monotone" dataKey="price" stroke={lineColor} strokeWidth={1.6} fill="url(#tradePriceGrad)" isAnimationActive={false} />
+          {/* Neutral price line so the green/red zones carry the meaning */}
+          <Area type="monotone" dataKey="price" stroke={NEUTRAL} strokeWidth={1.6} fill="url(#tradePriceGrad)" isAnimationActive={false} />
 
           {/* Level lines (labels drawn as a collision-free overlay below) */}
-          {entry != null && <ReferenceLine y={entry} stroke="var(--color-text-secondary)" strokeWidth={1} />}
+          {entry != null && <ReferenceLine y={entry} stroke={NEUTRAL} strokeWidth={1} />}
           {stop != null && stop > 0 && <ReferenceLine y={stop} stroke="var(--color-loss)" strokeDasharray="5 4" />}
-          {target != null && <ReferenceLine y={target} stroke={targetFill} strokeDasharray="5 4" />}
+          {plannedTP != null && <ReferenceLine y={plannedTP} stroke="var(--color-profit)" strokeDasharray="5 4" />}
+          {exit != null && <ReferenceLine y={exit} stroke={exitColor} strokeDasharray="2 3" strokeOpacity={0.6} />}
 
-          {/* Entry (green) / Exit (red) dots */}
+          {/* Entry (neutral) / Exit (green if win, red if loss) dots */}
           {entry != null && entryMs != null && (
-            <ReferenceDot x={entryMs} y={entry} r={4} fill="var(--color-profit)" stroke="#0b0e14" strokeWidth={2} />
+            <ReferenceDot x={entryMs} y={entry} r={4} fill={NEUTRAL} stroke="#0b0e14" strokeWidth={2} />
           )}
           {exit != null && exitMs != null && (
-            <ReferenceDot x={exitMs} y={exit} r={4} fill="var(--color-loss)" stroke="#0b0e14" strokeWidth={2} />
+            <ReferenceDot x={exitMs} y={exit} r={4} fill={exitColor} stroke="#0b0e14" strokeWidth={2} />
           )}
         </AreaChart>
       </ResponsiveContainer>
