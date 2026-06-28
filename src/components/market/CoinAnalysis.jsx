@@ -535,17 +535,14 @@ export default function CoinAnalysis() {
   }, [rawPrices]);
 
   const chartColor = useMemo(() => {
-    if (!chartData.length) return '#6366f1';
+    if (!chartData.length) return AI_FROM;
     return chartData[chartData.length - 1].price >= chartData[0].price ? '#22c55e' : '#ef4444';
   }, [chartData]);
 
   const md = coinData?.market_data;
 
   return (
-    <div
-      className="space-y-4 analysis-page"
-      style={{ '--color-accent-primary': AI_FROM, '--color-accent-hover': '#a78bfa' }}
-    >
+    <div className="space-y-4 analysis-page">
       {/* Search Bar */}
       <div className="max-w-sm mx-auto" ref={searchRef}>
         <div className="relative flex items-center gap-2">
@@ -923,7 +920,7 @@ export default function CoinAnalysis() {
                               animate={{ left: `calc(${Math.min(100, Math.max(0, technicals.rsi))}% - 5px)` }}
                               transition={{ duration: 1.5, type: 'spring' }}
                               className="absolute top-1/2 -translate-y-1/2 w-3 h-3 rounded-full bg-white border-2 shadow-md"
-                              style={{ borderColor: technicals.rsi >= 70 ? '#ef4444' : technicals.rsi <= 30 ? '#22c55e' : '#6366f1' }}
+                              style={{ borderColor: technicals.rsi >= 70 ? '#ef4444' : technicals.rsi <= 30 ? '#22c55e' : AI_FROM }}
                             />
                           </div>
                           <AnimatedValue value={technicals.rsi.toFixed(1)} className="text-sm font-bold text-text-primary" />
