@@ -70,6 +70,8 @@ body {
 /* iOS-style glass surface tokens (modals / command palette). Theme-aware so
    day mode renders a bright frosted glass instead of the dark one. */
 :root {
+  /* Signature accent gradient (the "Analyze" button look) — violet → cyan. */
+  --accent-gradient: linear-gradient(135deg, #8b5cf6 0%, #06b6d4 100%);
   --glass-bg: rgba(18, 18, 20, 0.7);
   --glass-border: rgba(255, 255, 255, 0.09);
   --glass-header: rgba(20, 20, 22, 0.55);
@@ -128,6 +130,24 @@ body {
   -webkit-backdrop-filter: blur(32px) saturate(150%);
   backdrop-filter: blur(32px) saturate(150%);
   box-shadow: 0 8px 32px rgba(0, 0, 0, 0.35);
+}
+
+/* Make every SOLID accent fill render as the signature violet→cyan gradient —
+   the "Analyze" button look — across the whole app. The ~= selector matches
+   ONLY the full `bg-accent-primary` token, never the translucent tints
+   (bg-accent-primary/10|15|20) used for subtle chips/active highlights, which
+   must stay as faint solid washes. Background-image paints over Tailwind's
+   background-color, so solid accent buttons/badges/active tabs become gradient. */
+[class~="bg-accent-primary"] {
+  background-image: var(--accent-gradient);
+  /* White label — matches the reference "Analyze" button and stays identical in
+     day + night (the gradient itself is theme-independent). Overrides the old
+     theme-dependent text-bg-primary, which went near-white on light mode and
+     killed contrast. Harmless on non-text fills (dots, progress bars). */
+  color: #fff;
+}
+[class~="bg-accent-primary"]:hover {
+  filter: brightness(1.08);
 }
 
 /* Glassmorphism — light mode overrides */
