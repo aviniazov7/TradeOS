@@ -64,7 +64,7 @@ export default function PremiumPage() {
       <div className="max-w-2xl mx-auto space-y-5">
 
         {/* Hero */}
-        <div className="relative overflow-hidden rounded-2xl border border-accent-primary/30 bg-gradient-to-b from-accent-primary/10 to-bg-secondary p-6 text-center">
+        <div className="border-beam relative overflow-hidden rounded-2xl border border-accent-primary/30 bg-gradient-to-b from-accent-primary/10 to-bg-secondary p-6 text-center">
           {/* violet→cyan top hairline */}
           <div className="absolute top-0 inset-x-0 h-px pointer-events-none"
             style={{ background: 'linear-gradient(to right, transparent, #8b5cf6, #06b6d4, transparent)' }} />
