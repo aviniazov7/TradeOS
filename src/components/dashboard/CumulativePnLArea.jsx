@@ -57,14 +57,14 @@ export default function CumulativePnLArea({ series, hidden = false }) {
       transition={{ duration: 0.4 }}
       className="bg-bg-secondary border border-border-primary rounded-xl p-5 h-full flex flex-col"
     >
-      <div className="flex items-center justify-between mb-3">
-        <span className={`text-sm font-semibold ${positive ? 'text-profit' : 'text-loss'}`}>
+      <div className="flex items-center justify-between gap-2 mb-3">
+        <div className="flex items-center gap-2 min-w-0">
+          <LineChart className="w-4 h-4 text-accent-primary shrink-0" />
+          <span className="text-xs text-text-muted truncate">P&amp;L מצטבר יומי</span>
+        </div>
+        <span className={`text-sm font-semibold shrink-0 num-mono ${positive ? 'text-profit' : 'text-loss'}`}>
           {hidden ? '••••' : formatCurrency(last)}
         </span>
-        <div className="flex items-center gap-2">
-          <span className="text-xs text-text-muted">P&amp;L מצטבר יומי</span>
-          <LineChart className="w-4 h-4 text-accent-primary" />
-        </div>
       </div>
 
       <div className="flex-1 min-h-[250px]">
