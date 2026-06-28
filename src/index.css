@@ -50,10 +50,12 @@ body {
   --color-text-secondary: #a0a0b0;
   --color-text-muted: #606070;
 
-  /* Accent (Violet) — replaced the old cyan app-wide for a fresher, modern look */
-  --color-accent-primary: #8b5cf6;
-  --color-accent-hover: #a78bfa;
-  --color-accent-muted: #7c3aed;
+  /* Accent (Cyan/turquoise) — base accent for TEXT, icons, borders and tints.
+     Buttons/fills keep the violet→cyan --accent-gradient overlay on top, so the
+     "Analyze" gradient look stays while plain accent text reads cyan, not violet. */
+  --color-accent-primary: #06b6d4;
+  --color-accent-hover: #22d3ee;
+  --color-accent-muted: #0e7490;
 
   /* Status */
   --color-profit: #22c55e;
@@ -97,9 +99,9 @@ body {
   --color-text-primary: #0f0f0f;
   --color-text-secondary: #333340;
   --color-text-muted: #5c5c66;
-  --color-accent-primary: #7c3aed;
-  --color-accent-hover: #6d28d9;
-  --color-accent-muted: #5b21b6;
+  --color-accent-primary: #0e7490;
+  --color-accent-hover: #155e75;
+  --color-accent-muted: #164e63;
   --color-bg-overlay: rgba(248, 250, 253, 0.98);
   --color-bg-solid: rgba(245, 247, 251, 0.98);
   /* Darker profit/loss for foreground TEXT so the headline P/L numbers pass
@@ -552,18 +554,6 @@ input[type="number"] {
 .analysis-page [class*="bg-bg-tertiary"] {
   -webkit-backdrop-filter: none;
   backdrop-filter: none;
-}
-/* Coin-Analysis page accent: violet, replacing the flat blue. Theme-aware so the
-   accent stays readable in both modes — a bright violet on the dark UI, and a
-   deeper violet in light mode (the light #8b5cf6 failed contrast on light cards). */
-.analysis-page {
-  --color-accent-primary: #8b5cf6;
-  --color-accent-hover: #a78bfa;
-}
-.light .analysis-page,
-[data-theme='light'] .analysis-page {
-  --color-accent-primary: #7c3aed;
-  --color-accent-hover: #6d28d9;
 }
 .num-mono {
   font-family: ui-monospace, 'SF Mono', SFMono-Regular, Menlo, Consolas, monospace;
