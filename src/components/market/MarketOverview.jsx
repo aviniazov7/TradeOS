@@ -206,13 +206,13 @@ function HeatmapCell({ coin, index, sizeClass }) {
       animate={{ opacity: 1, scale: 1 }}
       transition={{ delay: 0.05 * index, duration: 0.3 }}
       whileHover={{ scale: 1.02, transition: { duration: 0.15 } }}
-      className={`${sizeClass} rounded-lg flex flex-col items-center justify-center border border-white/5 cursor-pointer transition-all hover:border-white/15 hover:brightness-125`}
+      className={`${sizeClass} rounded-lg flex flex-col items-center justify-center border border-border-primary cursor-pointer transition-all hover:border-border-hover hover:brightness-125`}
       style={{ backgroundColor: getHeatColor(change) }}
       onClick={() => openChart(coin.symbol)}
     >
       <div className="flex items-center gap-1">
         <CoinIcon pair={coin.symbol} className="w-3.5 h-3.5" />
-        <span className="text-xs font-bold text-white">{coin.symbol?.toUpperCase()}</span>
+        <span className="text-xs font-bold text-text-primary">{coin.symbol?.toUpperCase()}</span>
       </div>
       <span className={`text-[11px] font-semibold mt-0.5 ${change >= 0 ? 'text-green-300' : 'text-red-300'}`}>
         {change != null ? `${change >= 0 ? '+' : ''}${change.toFixed(1)}%` : '—'}
@@ -878,7 +878,8 @@ export default function MarketOverview() {
         ws.send(JSON.stringify({ op: 'subscribe', args: FUTURES_SYMBOLS.map((s) => `allLiquidation.${s}`) }));
       };
       ws.onmessage = (event) => {
-        const data = JSON.parse(event.data);
+        let data;
+        try { data = JSON.parse(event.data); } catch { return; } // ignore non-JSON frames
         if (!data.topic?.startsWith('allLiquidation.')) return;
         for (const item of data.data || []) {
           const sym = normalizeSym(item.s || '');
@@ -927,7 +928,9 @@ export default function MarketOverview() {
   );
   const sorted = [...qualityCoins].sort((a, b) => (b.price_change_percentage_24h || 0) - (a.price_change_percentage_24h || 0));
   const gainers = sorted.slice(0, 5);
-  const losers = sorted.slice(-5).reverse();
+  // Take the bottom 5 WITHOUT overlapping the top 5 (when fewer than 10 quality
+  // coins exist, slice(-5) would otherwise repeat gainers as losers).
+  const losers = sorted.slice(Math.max(5, sorted.length - 5)).reverse();
 
   // Altcoin Season Index: prefer real BlockchainCenter data (90d), fallback to local 30d calc
   const EXCLUDED_SYMBOLS = new Set([
@@ -1136,7 +1139,7 @@ export default function MarketOverview() {
                   key={coin.id}
                   initial={{ opacity: 0 }}
                   animate={{ opacity: 1 }}
-                  className="flex items-center justify-between py-1 border-b border-border-primary/30 last:border-0 cursor-pointer hover:bg-white/5 rounded px-1 transition-colors"
+                  className="flex items-center justify-between py-1 border-b border-border-primary/30 last:border-0 cursor-pointer hover:bg-bg-tertiary rounded px-1 transition-colors"
                   onClick={() => openChart(coin.symbol)}
                 >
                   <span className="inline-flex items-center text-[11px] font-bold px-1.5 py-0.5 rounded-md bg-profit/10 text-profit border border-profit/25 num-mono">
@@ -1154,7 +1157,7 @@ export default function MarketOverview() {
                   key={coin.id}
                   initial={{ opacity: 0 }}
                   animate={{ opacity: 1 }}
-                  className="flex items-center justify-between py-1 border-b border-border-primary/30 last:border-0 cursor-pointer hover:bg-white/5 rounded px-1 transition-colors"
+                  className="flex items-center justify-between py-1 border-b border-border-primary/30 last:border-0 cursor-pointer hover:bg-bg-tertiary rounded px-1 transition-colors"
                   onClick={() => openChart(coin.symbol)}
                 >
                   <span className="inline-flex items-center text-[11px] font-bold px-1.5 py-0.5 rounded-md bg-loss/10 text-loss border border-loss/25 num-mono">
@@ -1185,7 +1188,7 @@ export default function MarketOverview() {
           {topCoins.length > 0 ? (
             <div className="space-y-2">
               {topCoins.map((coin, i) => (
-                <div key={coin.id} className="flex items-center justify-between py-1.5 border-b border-border-primary/50 last:border-0 cursor-pointer hover:bg-white/5 rounded px-1 transition-colors" onClick={() => openChart(coin.symbol)}>
+                <div key={coin.id} className="flex items-center justify-between py-1.5 border-b border-border-primary/50 last:border-0 cursor-pointer hover:bg-bg-tertiary rounded px-1 transition-colors" onClick={() => openChart(coin.symbol)}>
                   <div className="flex items-center gap-2">
                     {coin.price_change_percentage_24h >= 0 ? (
                       <ArrowUpRight className="w-3.5 h-3.5 text-profit" />
@@ -1222,14 +1225,14 @@ export default function MarketOverview() {
           {trending.length > 0 ? (
             <div className="space-y-2">
               {trending.map((coin, i) => {
-                const chg = coin.price_change_percentage_24h;
+                const chg = coin.price_change_percentage_24h ?? 0;
                 return (
                   <motion.div
                     key={coin.id}
                     initial={{ opacity: 0 }}
                     animate={{ opacity: 1 }}
                     transition={{ delay: 0.05 * i, duration: 0.3 }}
-                    className="flex items-center justify-between py-1 border-b border-border-primary/30 last:border-0 cursor-pointer hover:bg-white/5 rounded px-1 transition-colors"
+                    className="flex items-center justify-between py-1 border-b border-border-primary/30 last:border-0 cursor-pointer hover:bg-bg-tertiary rounded px-1 transition-colors"
                     onClick={() => openChart(coin.symbol)}
                   >
                     <div className="flex items-center gap-1.5 w-16 shrink-0">

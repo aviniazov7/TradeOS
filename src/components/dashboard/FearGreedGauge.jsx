@@ -168,7 +168,7 @@ export default function FearGreedGauge({ expanded = false }) {
         <div className="flex flex-col items-center">
           <div className="w-40 h-[80px]">
             <svg viewBox="0 0 200 100" className="w-full h-full">
-              <path d={`M ${cx - r} ${cy} A ${r} ${r} 0 0 1 ${cx + r} ${cy}`} fill="none" stroke="#1a1a1a" strokeWidth="16" strokeLinecap="round" />
+              <path d={`M ${cx - r} ${cy} A ${r} ${r} 0 0 1 ${cx + r} ${cy}`} fill="none" stroke="var(--color-bg-tertiary)" strokeWidth="16" strokeLinecap="round" />
               {[
                 { start: 0, end: 36, color: '#22c55e' },
                 { start: 36, end: 72, color: '#84cc16' },

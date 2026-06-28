@@ -778,7 +778,7 @@ export default function CoinAnalysis() {
                             height: '100%',
                             locale: 'he_IL',
                             dateRange: '1D',
-                            colorTheme: 'dark',
+                            colorTheme: (typeof document !== 'undefined' && document.documentElement.classList.contains('light')) ? 'light' : 'dark',
                             isTransparent: true,
                             autosize: true,
                           }}
@@ -1020,7 +1020,7 @@ export default function CoinAnalysis() {
                           transition={{ duration: 2, delay: 0.3, ease: 'easeOut' }}
                           className="h-full bg-gradient-to-r from-accent-primary to-accent-primary/60 rounded-full"
                         />
-                        <span className="absolute inset-0 flex items-center justify-center text-[9px] font-bold text-white/80">
+                        <span className="absolute inset-0 flex items-center justify-center text-[9px] font-bold text-text-primary">
                           {((md.circulating_supply / md.max_supply) * 100).toFixed(1)}%
                         </span>
                       </div>
@@ -1563,7 +1563,7 @@ function LiquidityHeatmap({ pair, klines }) {
       const toY = (price) => PT + (1 - (price - priceMin) / priceRange) * plotH;
 
       // Background
-      ctx.fillStyle = '#08071a';
+      ctx.fillStyle = '#000000';
       ctx.fillRect(0, 0, W, H);
 
       // Heat cells — persisting levels render as horizontal liquidity bands.
@@ -1799,7 +1799,7 @@ function LiquidityHeatmap({ pair, klines }) {
         <canvas
           ref={canvasRef}
           className="w-full rounded-lg"
-          style={{ height: '460px', background: '#08071a', display: 'block', cursor: 'crosshair' }}
+          style={{ height: '460px', background: '#000000', display: 'block', cursor: 'crosshair' }}
         />
 
         {/* Legend */}
