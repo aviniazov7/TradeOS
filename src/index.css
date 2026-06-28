@@ -506,6 +506,16 @@ input[type="number"] {
   -webkit-backdrop-filter: none;
   backdrop-filter: none;
 }
+/* Same ghosting fix for the Coin-Analysis page, whose cards use bg-bg-secondary
+   directly (GlowCard) rather than .bento-card. These panels sit on the near-
+   black body so the blur is invisible anyway — disabling it removes the fringe
+   bleed into the gaps. Overlays (bg-bg-overlay, e.g. the search dropdown) keep
+   their blur since they float over live content. */
+.analysis-page [class*="bg-bg-secondary"],
+.analysis-page [class*="bg-bg-tertiary"] {
+  -webkit-backdrop-filter: none;
+  backdrop-filter: none;
+}
 .num-mono {
   font-family: ui-monospace, 'SF Mono', SFMono-Regular, Menlo, Consolas, monospace;
   letter-spacing: -0.02em;

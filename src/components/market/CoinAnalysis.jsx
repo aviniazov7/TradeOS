@@ -8,6 +8,14 @@ import { fetchAnalysisLiquidity } from '../../services/bybitDirect';
 import { fetchProjectDescription } from '../../services/groqApi';
 import { computeRSI, computeMA, computeVolatility } from '../../utils/technicals';
 
+// ── Modern "AI" accent: violet → cyan. Replaces the old flat blue across this
+// page. AI_GRADIENT is used for hero CTAs / hairlines / progress; AI_FROM/AI_TO
+// are the endpoints. The whole page also overrides --color-accent-primary to
+// AI_FROM (see the root wrapper) so every text/icon accent shifts to violet.
+const AI_FROM = '#8b5cf6';
+const AI_TO = '#06b6d4';
+const AI_GRADIENT = `linear-gradient(135deg, ${AI_FROM} 0%, ${AI_TO} 100%)`;
+
 function formatNum(n) {
   if (!n && n !== 0) return '—';
   if (n >= 1e12) return `$${(n / 1e12).toFixed(2)}T`;
@@ -52,8 +60,9 @@ function AnimatedValue({ value, className }) {
   );
 }
 
-// Card with animated border glow
-function GlowCard({ children, className = '', delay = 0, glowColor = 'rgba(99,102,241,0.15)' }) {
+// Card with a modern AI-gradient surface: a thin violet→cyan hairline along the
+// top edge, a soft corner glow on hover, and a faint accent glow in the corner.
+function GlowCard({ children, className = '', delay = 0 }) {
   return (
     <motion.div
       initial={{ opacity: 0, y: 15, scale: 0.97 }}
@@ -61,21 +70,18 @@ function GlowCard({ children, className = '', delay = 0, glowColor = 'rgba(99,10
       transition={{ delay, duration: 0.5, type: 'spring', stiffness: 120 }}
       className={`relative group h-full ${className}`}
     >
-      {/* Animated border glow */}
+      {/* Gradient ring that lights up on hover */}
       <motion.div
-        className="absolute -inset-[1px] rounded-2xl opacity-0 group-hover:opacity-100 transition-opacity duration-500"
-        style={{ background: `linear-gradient(135deg, ${glowColor}, transparent, ${glowColor})`, filter: 'blur(4px)' }}
+        className="absolute -inset-[1px] rounded-2xl opacity-0 group-hover:opacity-60 transition-opacity duration-500 pointer-events-none"
+        style={{ background: AI_GRADIENT, filter: 'blur(5px)' }}
       />
       <div className="relative bg-bg-secondary border border-border-primary rounded-2xl overflow-hidden h-full">
-        {/* Corner decorations */}
-        <div className="absolute top-0 right-0 w-8 h-8 opacity-[0.07]">
-          <div className="absolute top-0 right-0 w-full h-px bg-accent-primary" />
-          <div className="absolute top-0 right-0 w-px h-full bg-accent-primary" />
-        </div>
-        <div className="absolute bottom-0 left-0 w-8 h-8 opacity-[0.07]">
-          <div className="absolute bottom-0 left-0 w-full h-px bg-accent-primary" />
-          <div className="absolute bottom-0 left-0 w-px h-full bg-accent-primary" />
-        </div>
+        {/* Top accent hairline (violet → cyan) */}
+        <div className="absolute top-0 inset-x-0 h-px pointer-events-none"
+          style={{ background: `linear-gradient(to right, transparent, ${AI_FROM}, ${AI_TO}, transparent)`, opacity: 0.5 }} />
+        {/* Soft accent glow in the top-right corner */}
+        <div className="absolute -top-10 -right-10 w-28 h-28 rounded-full pointer-events-none"
+          style={{ background: `radial-gradient(circle, ${AI_FROM}22 0%, transparent 70%)` }} />
         {children}
       </div>
     </motion.div>
@@ -536,7 +542,10 @@ export default function CoinAnalysis() {
   const md = coinData?.market_data;
 
   return (
-    <div className="space-y-4">
+    <div
+      className="space-y-4 analysis-page"
+      style={{ '--color-accent-primary': AI_FROM, '--color-accent-hover': '#a78bfa' }}
+    >
       {/* Search Bar */}
       <div className="max-w-sm mx-auto" ref={searchRef}>
         <div className="relative flex items-center gap-2">
@@ -581,14 +590,25 @@ export default function CoinAnalysis() {
               )}
             </AnimatePresence>
           </div>
-          <button
+          <motion.button
             onClick={() => analyze()}
             disabled={!selectedCoin || analyzing}
-            className="flex items-center gap-2 bg-accent-primary text-bg-primary font-bold px-5 py-3 rounded-xl hover:bg-accent-hover transition-all cursor-pointer text-sm disabled:opacity-30 disabled:cursor-not-allowed shrink-0 shadow-lg shadow-accent-primary/20"
+            whileHover={{ scale: 1.03 }}
+            whileTap={{ scale: 0.97 }}
+            className="relative flex items-center gap-2 text-white font-bold px-5 py-3 rounded-xl transition-all cursor-pointer text-sm disabled:opacity-30 disabled:cursor-not-allowed shrink-0 overflow-hidden"
+            style={{ background: AI_GRADIENT, boxShadow: `0 6px 22px -4px ${AI_FROM}80` }}
           >
-            <Sparkles className="w-4 h-4" />
-            <span>Analyze</span>
-          </button>
+            {/* sheen sweep */}
+            <motion.span
+              aria-hidden
+              className="absolute inset-0 pointer-events-none"
+              style={{ background: 'linear-gradient(110deg, transparent 30%, rgba(255,255,255,0.35) 50%, transparent 70%)' }}
+              animate={{ x: ['-120%', '120%'] }}
+              transition={{ duration: 2.4, repeat: Infinity, ease: 'easeInOut', repeatDelay: 1.2 }}
+            />
+            <Sparkles className="w-4 h-4 relative" />
+            <span className="relative">Analyze</span>
+          </motion.button>
           {coinData && (
             <button onClick={reset} className="p-3 rounded-xl text-text-muted hover:text-text-primary hover:bg-bg-tertiary transition-colors cursor-pointer shrink-0 border border-border-primary" title="ניתוח חדש">
               <RotateCcw className="w-4 h-4" />
@@ -609,9 +629,12 @@ export default function CoinAnalysis() {
               onClick={() => selectCoin(c)}
               className={`px-3 py-1.5 rounded-lg text-xs font-semibold border transition-all cursor-pointer ${
                 selectedCoin?.coingeckoId === c.coingeckoId
-                  ? 'bg-accent-primary/15 text-accent-primary border-accent-primary/40 shadow-md shadow-accent-primary/10'
+                  ? 'text-white border-transparent shadow-md'
                   : 'bg-bg-secondary text-text-secondary border-border-primary hover:border-accent-primary/40 hover:text-accent-primary hover:shadow-md hover:shadow-accent-primary/10'
               }`}
+              style={selectedCoin?.coingeckoId === c.coingeckoId
+                ? { background: AI_GRADIENT, boxShadow: `0 4px 14px -4px ${AI_FROM}80` }
+                : undefined}
             >
               {c.symbol}
             </motion.button>

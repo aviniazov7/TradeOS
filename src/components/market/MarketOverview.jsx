@@ -1056,9 +1056,14 @@ export default function MarketOverview() {
             onClick={() => setActiveTab(tab.key)}
             className={`flex items-center justify-center gap-1.5 sm:gap-2 px-3 sm:px-5 py-2.5 rounded-xl text-xs sm:text-sm font-semibold transition-all cursor-pointer ${
               activeTab === tab.key
-                ? 'bg-accent-primary text-white shadow-lg shadow-accent-primary/25'
+                ? 'text-white shadow-lg'
                 : 'bg-bg-secondary border border-border-primary text-text-secondary hover:text-text-primary hover:bg-bg-tertiary'
             }`}
+            style={activeTab === tab.key
+              ? (tab.key === 'analysis'
+                  ? { background: 'linear-gradient(135deg, #8b5cf6 0%, #06b6d4 100%)', boxShadow: '0 6px 22px -6px #8b5cf680' }
+                  : { background: 'var(--color-accent-primary)', boxShadow: '0 6px 22px -6px var(--color-accent-primary)' })
+              : undefined}
           >
             <tab.icon className="w-4 h-4 sm:w-4.5 sm:h-4.5 shrink-0" />
             <span className="sm:hidden">{tab.shortLabel}</span>
