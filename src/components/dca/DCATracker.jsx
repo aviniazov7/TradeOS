@@ -84,8 +84,11 @@ export default function DCATracker() {
 
   return (
     <motion.div variants={pageVariants} initial="initial" animate="animate" exit="exit" transition={pageTransition}>
-      {/* Top Navigation Bar */}
-      <div className="bg-bg-secondary border border-border-primary rounded-xl mb-4 px-3 md:px-4 py-2.5 space-y-2">
+      {/* Top Navigation Bar. backdrop-filter force-disabled (same as journal +
+          backtest toolbars) — a translucent blur panel at the top of the page
+          has nothing behind it to frost and produced a faint glass-band/hover
+          flicker. The bg-bg-secondary fill keeps it identical in both themes. */}
+      <div className="bg-bg-secondary border border-border-primary rounded-xl mb-4 px-3 md:px-4 py-2.5 space-y-2" style={{ backdropFilter: 'none', WebkitBackdropFilter: 'none' }}>
         {/* Row 1: Title + Tabs + Actions */}
         <div className="flex items-center justify-between gap-2">
           <div className="flex items-center gap-1 md:gap-3 min-w-0">

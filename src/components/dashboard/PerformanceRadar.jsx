@@ -67,7 +67,7 @@ export default function PerformanceRadar({ metrics, score }) {
             {/* dark outer boundary */}
             <Radar
               dataKey="full"
-              stroke="rgba(0,0,0,0.55)"
+              stroke="var(--color-border-primary)"
               strokeWidth={3}
               fill="transparent"
               isAnimationActive={false}
@@ -83,8 +83,8 @@ export default function PerformanceRadar({ metrics, score }) {
             />
             <Tooltip
               contentStyle={TOOLTIP_STYLE}
-              itemStyle={{ color: '#f0f0f0' }}
-              labelStyle={{ color: '#f0f0f0' }}
+              itemStyle={{ color: 'var(--color-text-primary)' }}
+              labelStyle={{ color: 'var(--color-text-secondary)' }}
               formatter={(v) => Math.round(v)}
             />
           </RadarChart>

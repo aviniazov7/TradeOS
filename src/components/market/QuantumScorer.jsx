@@ -435,8 +435,8 @@ export default function QuantumScorer() {
             onClick={() => setShowHistory(h => !h)}
             className="flex items-center gap-1.5 px-3 py-2 rounded-xl text-xs font-semibold transition-all"
             style={{
-              background: showHistory ? 'rgba(0,191,255,0.15)' : 'rgba(255,255,255,0.04)',
-              border: `1px solid ${showHistory ? 'rgba(0,191,255,0.4)' : 'rgba(255,255,255,0.08)'}`,
+              background: showHistory ? 'rgba(0,191,255,0.15)' : 'var(--color-bg-secondary)',
+              border: `1px solid ${showHistory ? 'rgba(0,191,255,0.4)' : 'var(--color-border-primary)'}`,
               color: showHistory ? '#00bfff' : 'var(--color-text-muted)',
             }}
           >
@@ -490,10 +490,10 @@ export default function QuantumScorer() {
               style={{
                 background: setup === k
                   ? (m.dir === 'bull' ? 'rgba(0,255,136,0.18)' : 'rgba(239,68,68,0.18)')
-                  : 'rgba(255,255,255,0.04)',
+                  : 'var(--color-bg-secondary)',
                 border: setup === k
                   ? `1px solid ${m.dir === 'bull' ? '#00ff88' : '#ef4444'}`
-                  : '1px solid rgba(255,255,255,0.07)',
+                  : '1px solid var(--color-border-primary)',
                 color: setup === k ? (m.dir === 'bull' ? '#00ff88' : '#ef4444') : 'var(--color-text-muted)',
               }}
             >
@@ -641,7 +641,7 @@ export default function QuantumScorer() {
           {/* Legend */}
           <div className="rounded-2xl p-3 grid grid-cols-2 gap-2" style={{
             background: 'var(--color-bg-secondary)',
-            border: '1px solid rgba(255,255,255,0.06)',
+            border: '1px solid var(--color-border-primary)',
           }}>
             {[
               { label: 'STRONG EDGE', color: '#00ff88', range: '≥75%' },
