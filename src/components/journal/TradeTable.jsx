@@ -1,7 +1,8 @@
 import { useState, Fragment } from 'react';
-import { Pencil, Trash2, Share2, ExternalLink, ChevronDown, TrendingUp, TrendingDown, Clock } from 'lucide-react';
-import { formatDate, formatPrice, formatCurrency, formatPercent, formatRR, formatDuration } from '../../utils/formatters';
-import { MISTAKE_LABELS, getExchangeLogo } from '../../utils/constants';
+import { Pencil, Trash2, Share2, Eye, TrendingUp, TrendingDown } from 'lucide-react';
+import { formatDate, formatPrice, formatCurrency, formatPercent, formatRR } from '../../utils/formatters';
+import { getExchangeLogo } from '../../utils/constants';
+import TradeDetailModal from './TradeDetailModal';
 import CoinIcon from '../shared/CoinIcon';
 
 function ExchangeIcon({ source }) {
@@ -41,200 +42,8 @@ const getMonthLabel = (trade) => {
   return `${MONTH_NAMES_HE[d.getMonth()]} ${d.getFullYear()}`;
 };
 
-const toJsDate = (d) => (d?.toDate ? d.toDate() : d ? new Date(d) : null);
-// How long the trade was open, in hours (entry → exit). null when we can't tell.
-const tradeDurationHours = (trade) => {
-  const entry = toJsDate(trade.entryDate);
-  const exit = toJsDate(trade.exitDate);
-  if (!entry || !exit) return null;
-  const h = (exit.getTime() - entry.getTime()) / 3_600_000;
-  return h > 0 ? h : null;
-};
-
-const ratingLabels = { 1: 'נמוך', 2: 'בינוני-', 3: 'בינוני', 4: 'טוב', 5: 'מעולה' };
-
-const MENTAL_FIELDS = [
-  { key: 'focusRating', label: 'ריכוז' },
-  { key: 'confidenceRating', label: 'ביטחון' },
-  { key: 'stressRating', label: 'לחץ' },
-  { key: 'planAdherenceRating', label: 'עקביות' },
-];
-
-// Mental-state ratings shown in the expanded trade detail. Shared by the
-// mobile and desktop layouts so both stay in sync.
-function MentalRatings({ trade, className }) {
-  if (!MENTAL_FIELDS.some((f) => trade[f.key])) return null;
-  return (
-    <div className={className}>
-      {MENTAL_FIELDS.map((f) => {
-        const val = trade[f.key];
-        if (!val) return null;
-        return (
-          <div key={f.key}>
-            <span className="text-text-muted">{f.label}</span>
-            <p className="text-text-secondary">{val}/5 {ratingLabels[val]}</p>
-          </div>
-        );
-      })}
-    </div>
-  );
-}
-
-/* ──── Shared expanded details (used by both mobile & desktop) ──── */
-function ExpandedDetails({ trade, status, onEdit, onDelete, onShare }) {
-  const pnl = trade.netPnl ?? trade.pnl;
-  return (
-    <div className="mt-3 pt-3 border-t border-border-primary/50 space-y-3">
-      {/* Row 1: Prices (mobile only - desktop shows in table) */}
-      <div className="md:hidden grid grid-cols-5 gap-x-2 text-[11px]">
-        <div>
-          <span className="text-text-muted">כניסה</span>
-          <p className="text-text-primary">{formatPrice(trade.entryPrice)}</p>
-        </div>
-        <div>
-          <span className="text-text-muted">סגירה</span>
-          <p className="text-text-primary">{status === 'open' ? '—' : formatPrice(trade.exitPrice)}</p>
-        </div>
-        <div>
-          <span className="text-text-muted">SL</span>
-          <p className="text-text-primary"><StopValue trade={trade} /></p>
-        </div>
-        <div>
-          <span className="text-text-muted">%</span>
-          <p className={status === 'open' ? 'text-text-muted' : pnlColor(trade.pnlPercent)}>
-            {status === 'open' ? '—' : formatPercent(trade.pnlPercent)}
-          </p>
-        </div>
-        <div>
-          <span className="text-text-muted">R:R</span>
-          <p className={pnl < 0 ? 'text-loss' : 'text-text-secondary'}>{formatRR(trade.rrRatio, pnl)}</p>
-        </div>
-      </div>
-
-      {/* Partial exits breakdown */}
-      {trade.exits?.length > 1 && (
-        <div className="text-[11px]">
-          <span className="text-text-muted">פירוט יציאות:</span>
-          <div className="flex gap-2 flex-wrap mt-0.5">
-            {trade.exits.map((exit, i) => (
-              <span key={i} className="text-text-secondary bg-bg-tertiary px-1.5 py-0.5 rounded">
-                {formatPrice(exit.price)} ({exit.percent}%)
-              </span>
-            ))}
-          </div>
-        </div>
-      )}
-
-      {/* Position details */}
-      <div className="grid grid-cols-5 gap-x-2 text-[11px]">
-        <div>
-          <span className="text-text-muted">פוזיציה</span>
-          <p className="text-text-primary">{trade.positionSize ? `$${Number(trade.positionSize).toLocaleString()}` : '—'}</p>
-        </div>
-        <div>
-          <span className="text-text-muted">סיכון</span>
-          <p className="text-text-primary">{trade.riskAmount ? `$${Number(trade.riskAmount).toLocaleString()}` : '—'}</p>
-        </div>
-        <div>
-          <span className="text-text-muted">{trade.assetClass === 'futures_cme' ? 'חוזים' : 'מינוף'}</span>
-          <p className="text-text-primary">
-            {trade.assetClass === 'futures_cme'
-              ? (trade.contract?.contracts ?? trade.quantity ?? '—')
-              : (trade.leverage ? `x${trade.leverage}` : '—')}
-          </p>
-        </div>
-        <div>
-          <span className="text-text-muted">עמלות</span>
-          <p className="text-text-primary">{trade.fees ? `$${Number(trade.fees).toLocaleString()}` : '—'}</p>
-        </div>
-        <div>
-          <span className="text-text-muted">TF</span>
-          <p className="text-text-secondary">{trade.timeframe || '—'}</p>
-        </div>
-      </div>
-
-      {/* Trade duration (how long it was open) */}
-      {tradeDurationHours(trade) && (
-        <div className="flex items-center gap-1.5 text-[11px]">
-          <Clock className="w-3.5 h-3.5 text-accent-primary" />
-          <span className="text-text-muted">משך העסקה:</span>
-          <span className="text-text-secondary font-medium">{formatDuration(tradeDurationHours(trade))}</span>
-        </div>
-      )}
-
-      {/* Strategy on mobile */}
-      {trade.strategy && (
-        <div className="md:hidden text-[11px]">
-          <span className="text-text-muted">אסטרטגיה: </span>
-          <span className="text-text-secondary">{trade.strategy}</span>
-        </div>
-      )}
-
-      {/* Mental state ratings */}
-      <MentalRatings trade={trade} className="grid grid-cols-4 gap-2 text-[11px]" />
-
-      {/* Mistakes, Entry reason, Tags, TradingView */}
-      {(trade.mistakes?.length > 0 || trade.entryReason || trade.tags || trade.tradingViewUrl) && (
-        <div className="flex items-center gap-3 flex-wrap text-[11px]">
-          {trade.mistakes?.length > 0 && (
-            <span>
-              <span className="text-text-muted">טעויות: </span>
-              <span className="text-loss">{trade.mistakes.map((m) => MISTAKE_LABELS[m] || m).join(', ')}</span>
-            </span>
-          )}
-          {trade.entryReason && (
-            <span>
-              <span className="text-text-muted">סיבה: </span>
-              <span className="text-text-secondary">{trade.entryReason}</span>
-            </span>
-          )}
-          {trade.tags && (
-            <div className="flex items-center gap-1 flex-wrap">
-              {(typeof trade.tags === 'string' ? trade.tags.split(',') : trade.tags).filter(Boolean).map((tag) => (
-                <span key={tag.trim()} className="text-[10px] px-1.5 py-0.5 rounded bg-accent-primary/10 text-accent-primary border border-accent-primary/20">
-                  {tag.trim()}
-                </span>
-              ))}
-            </div>
-          )}
-          {trade.tradingViewUrl && (
-            <a href={trade.tradingViewUrl} target="_blank" rel="noopener noreferrer" className="flex items-center gap-0.5 text-accent-primary text-xs mr-auto">
-              <ExternalLink className="w-3.5 h-3.5" />TradingView
-            </a>
-          )}
-        </div>
-      )}
-
-      {/* Notes + Actions */}
-      <div className="flex items-center justify-between pt-2 border-t border-border-primary/50">
-        <div className="flex items-center gap-2 text-[11px]">
-          {trade.notes && (
-            <span>
-              <span className="text-text-muted">הערות: </span>
-              <span className="text-text-secondary">{trade.notes}</span>
-            </span>
-          )}
-        </div>
-        <div className="flex items-center gap-1">
-          {status !== 'open' && onShare && (
-            <button onClick={(e) => { e.stopPropagation(); onShare(trade); }} className="p-1.5 rounded-lg text-text-muted hover:text-accent-primary hover:bg-bg-tertiary transition-colors cursor-pointer">
-              <Share2 className="w-4 h-4" />
-            </button>
-          )}
-          <button onClick={(e) => { e.stopPropagation(); onEdit(trade); }} className="p-1.5 rounded-lg text-text-muted hover:text-accent-primary hover:bg-bg-tertiary transition-colors cursor-pointer">
-            <Pencil className="w-4 h-4" />
-          </button>
-          <button onClick={(e) => { e.stopPropagation(); onDelete(trade); }} className="p-1.5 rounded-lg text-text-muted hover:text-loss hover:bg-bg-tertiary transition-colors cursor-pointer">
-            <Trash2 className="w-4 h-4" />
-          </button>
-        </div>
-      </div>
-    </div>
-  );
-}
-
 export default function TradeTable({ trades, onEdit, onDelete, onShare, isLimitPending }) {
-  const [expandedId, setExpandedId] = useState(null);
+  const [detailTrade, setDetailTrade] = useState(null);
   const pending = (t) => isLimitPending?.(t) ?? false;
 
   const statusBadge = (status, isPending) => {
@@ -251,7 +60,6 @@ export default function TradeTable({ trades, onEdit, onDelete, onShare, isLimitP
         {trades.map((trade, idx) => {
           const status = getStatus(trade);
           const isPending = pending(trade);
-          const isExpanded = expandedId === trade.id;
           const pnl = trade.netPnl ?? trade.pnl;
           const showMonthSep = idx > 0 && getMonthKey(trade) !== getMonthKey(trades[idx - 1]);
 
@@ -267,7 +75,7 @@ export default function TradeTable({ trades, onEdit, onDelete, onShare, isLimitP
             <div className={`bg-bg-secondary border border-border-primary rounded-xl p-3 ${isPending ? 'opacity-60' : ''}`}>
               <div
                 className="flex items-center justify-between cursor-pointer"
-                onClick={() => setExpandedId(isExpanded ? null : trade.id)}
+                onClick={() => setDetailTrade(trade)}
               >
                 <div className="flex items-center gap-2 min-w-0">
                   <CoinIcon pair={trade.pair} className="w-4 h-4" />
@@ -285,10 +93,9 @@ export default function TradeTable({ trades, onEdit, onDelete, onShare, isLimitP
                 <div className="flex items-center gap-2 flex-shrink-0">
                   {status !== 'open' && !isPending && <span className={`text-sm font-bold ${pnlColor(pnl)}`}>{formatCurrency(pnl)}</span>}
                   {(status === 'open' || isPending) && <span className="text-xs text-text-muted">—</span>}
-                  <ChevronDown className={`w-4 h-4 text-text-muted transition-transform ${isExpanded ? 'rotate-180' : ''}`} />
+                  <Eye className="w-4 h-4 text-text-muted" />
                 </div>
               </div>
-              {isExpanded && <ExpandedDetails trade={trade} status={status} onEdit={onEdit} onDelete={onDelete} onShare={onShare} />}
             </div>
             </Fragment>
           );
@@ -317,7 +124,6 @@ export default function TradeTable({ trades, onEdit, onDelete, onShare, isLimitP
           <tbody>
             {trades.map((trade, idx) => {
               const status = getStatus(trade);
-              const isExpanded = expandedId === trade.id;
               const pnl = trade.netPnl ?? trade.pnl;
               const isPending = pending(trade);
               const showMonthSep = idx > 0 && getMonthKey(trade) !== getMonthKey(trades[idx - 1]);
@@ -337,7 +143,7 @@ export default function TradeTable({ trades, onEdit, onDelete, onShare, isLimitP
                   )}
                   <tr
                     className={`border-b border-border-primary/50 cursor-pointer hover:bg-bg-tertiary/50 transition-colors ${isPending ? 'opacity-60' : ''}`}
-                    onClick={() => setExpandedId(isExpanded ? null : trade.id)}
+                    onClick={() => setDetailTrade(trade)}
                   >
                     <td className="py-2.5 px-2 text-text-primary font-semibold whitespace-nowrap">
                       <span className="inline-flex items-center gap-1.5">
@@ -386,109 +192,18 @@ export default function TradeTable({ trades, onEdit, onDelete, onShare, isLimitP
                         <button onClick={(e) => { e.stopPropagation(); onDelete(trade); }} className="p-1 rounded text-text-muted hover:text-loss hover:bg-bg-tertiary transition-colors cursor-pointer">
                           <Trash2 className="w-3.5 h-3.5" />
                         </button>
-                        <ChevronDown className={`w-3.5 h-3.5 text-text-muted transition-transform ${isExpanded ? 'rotate-180' : ''}`} />
+                        <button onClick={(e) => { e.stopPropagation(); setDetailTrade(trade); }} className="p-1 rounded text-text-muted hover:text-accent-primary hover:bg-bg-tertiary transition-colors cursor-pointer" title="פרטים"><Eye className="w-3.5 h-3.5" /></button>
                       </div>
                     </td>
                   </tr>
 
-                  {/* Expanded details */}
-                  {isExpanded && (
-                    <tr>
-                      <td colSpan={12} className="p-0">
-                        <div className="bg-bg-tertiary/30 border-b border-border-primary/50 px-6 py-4 text-[11px]">
-                          {/* All groups in one row with spacing */}
-                          <div className="flex items-center gap-8 flex-wrap">
-                            {/* Group 1: Position details */}
-                            <div className="flex gap-10 bg-bg-tertiary/50 rounded-lg px-6 py-2.5">
-                              <div>
-                                <span className="text-text-muted">פוזיציה</span>
-                                <p className="text-text-primary">{trade.positionSize ? `$${Number(trade.positionSize).toLocaleString()}` : '—'}</p>
-                              </div>
-                              <div>
-                                <span className="text-text-muted">סיכון</span>
-                                <p className="text-text-primary">{trade.riskAmount ? `$${Number(trade.riskAmount).toLocaleString()}` : '—'}</p>
-                              </div>
-                              <div>
-                                <span className="text-text-muted">מינוף</span>
-                                <p className="text-text-primary">{trade.leverage ? `x${trade.leverage}` : '—'}</p>
-                              </div>
-                              <div>
-                                <span className="text-text-muted">עמלות</span>
-                                <p className="text-text-primary">{trade.fees ? `$${Number(trade.fees).toLocaleString()}` : '—'}</p>
-                              </div>
-                              <div>
-                                <span className="text-text-muted">TF</span>
-                                <p className="text-text-secondary">{trade.timeframe || '—'}</p>
-                              </div>
-                              {tradeDurationHours(trade) && (
-                                <div>
-                                  <span className="text-text-muted flex items-center gap-1">
-                                    <Clock className="w-3.5 h-3.5 text-accent-primary" /> משך
-                                  </span>
-                                  <p className="text-text-secondary">{formatDuration(tradeDurationHours(trade))}</p>
-                                </div>
-                              )}
-                            </div>
-
-                            {/* Partial exits breakdown */}
-                            {trade.exits?.length > 1 && (
-                              <div className="flex gap-3 items-center bg-bg-tertiary/50 rounded-lg px-6 py-2.5">
-                                <span className="text-text-muted">יציאות:</span>
-                                {trade.exits.map((exit, i) => (
-                                  <span key={i} className="text-text-secondary">
-                                    {formatPrice(exit.price)} ({exit.percent}%)
-                                  </span>
-                                ))}
-                              </div>
-                            )}
-
-                            {/* Group 2: Mental state ratings */}
-                            <MentalRatings trade={trade} className="flex gap-10 bg-bg-tertiary/50 rounded-lg px-6 py-2.5 text-[11px]" />
-
-                            {/* Group 3: Mistakes, Reason, Tags, TradingView, Notes */}
-                            {trade.mistakes?.length > 0 && (
-                              <span>
-                                <span className="text-text-muted">טעויות: </span>
-                                <span className="text-loss">{trade.mistakes.map((m) => MISTAKE_LABELS[m] || m).join(', ')}</span>
-                              </span>
-                            )}
-                            {trade.entryReason && (
-                              <span>
-                                <span className="text-text-muted">סיבה: </span>
-                                <span className="text-text-secondary">{trade.entryReason}</span>
-                              </span>
-                            )}
-                            {trade.tags && (
-                              <div className="flex items-center gap-1 flex-wrap">
-                                {(typeof trade.tags === 'string' ? trade.tags.split(',') : trade.tags).filter(Boolean).map((tag) => (
-                                  <span key={tag.trim()} className="text-[10px] px-1.5 py-0.5 rounded bg-accent-primary/10 text-accent-primary border border-accent-primary/20">
-                                    {tag.trim()}
-                                  </span>
-                                ))}
-                              </div>
-                            )}
-                            {trade.tradingViewUrl && (
-                              <a href={trade.tradingViewUrl} target="_blank" rel="noopener noreferrer" className="flex items-center gap-1 text-accent-primary">
-                                <ExternalLink className="w-3.5 h-3.5" />TradingView
-                              </a>
-                            )}
-                            {trade.notes && (
-                              <span>
-                                <span className="text-text-muted">הערות: </span>
-                                <span className="text-text-secondary">{trade.notes}</span>
-                              </span>
-                            )}
-                          </div>
-                        </div>
-                      </td>
-                    </tr>
-                  )}
-                </Fragment>
+                  </Fragment>
               );
             })}
           </tbody>
         </table>
       </div>
+      <TradeDetailModal trade={detailTrade} isOpen={!!detailTrade} onClose={() => setDetailTrade(null)} onEdit={onEdit} onDelete={onDelete} onShare={onShare} />
     </>
   );
 }

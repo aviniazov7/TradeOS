@@ -1,7 +1,11 @@
 import { useState, useEffect, useMemo } from 'react';
 import { Navigate } from 'react-router-dom';
-import { Users, UserPlus, ShieldCheck, CheckCircle2, Search, RefreshCw, Download, ChevronUp, ChevronDown, Mail, Calendar, Coins, TrendingUp, Percent, Sparkles, BookOpen, FlaskConical, Activity, FileText, Brain, Crown, Send, X, Ticket, Plus, Minus, Trash2, Copy, ScrollText, Share2, Link2, BarChart3, AlertTriangle, Clock, DollarSign, Hourglass, Image, Trophy, Loader2 } from 'lucide-react';
+import { Users, UserPlus, ShieldCheck, CheckCircle2, Search, RefreshCw, Download, ChevronUp, ChevronDown, ChevronLeft, Mail, Calendar, Coins, TrendingUp, Percent, Sparkles, BookOpen, FlaskConical, Activity, FileText, Brain, Crown, Send, X, Ticket, Plus, Minus, Trash2, Copy, ScrollText, Share2, Link2, BarChart3, AlertTriangle, Clock, DollarSign, Hourglass, Image, Trophy, Loader2 } from 'lucide-react';
+import { motion } from 'framer-motion';
 import toast from 'react-hot-toast';
+import Card from '../shared/Card';
+import AnimatedValue from '../shared/AnimatedValue';
+import { ResponsiveContainer, AreaChart, Area, Tooltip, XAxis } from 'recharts';
 import { useAuth } from '../../contexts/AuthContext';
 import { getAllUsers, getUserSubcollectionCount, adminGrantPremium, adminRevokePremium, addPayment, getAllPayments } from '../../services/firestoreService';
 import { fetchUserAiUsage, fetchGlobalAiUsage, fetchAiStats, fetchSystemHealth } from '../../hooks/useAiUsage';
@@ -85,28 +89,74 @@ const AI_COST_EST = {
 };
 const estimateAiCost = (text, image) => text * AI_COST_EST.textPerReq + image * AI_COST_EST.imagePerReq;
 
-function StatCard({ icon, label, value, onClick }) {
+// Per-tile accent palette — gives the KPI strip colour variety + a soft corner
+// glow (21st-style) instead of five identical grey boxes.
+const STAT_ACCENTS = {
+  cyan:   { text: 'text-accent-primary', chip: 'bg-accent-primary/12 text-accent-primary', glow: 'rgba(0,191,255,0.12)' },
+  green:  { text: 'text-profit',         chip: 'bg-profit/12 text-profit',                 glow: 'rgba(34,197,94,0.12)' },
+  amber:  { text: 'text-amber-400',      chip: 'bg-amber-400/12 text-amber-400',           glow: 'rgba(251,191,36,0.12)' },
+  violet: { text: 'text-violet-400',     chip: 'bg-violet-400/12 text-violet-400',         glow: 'rgba(139,92,246,0.12)' },
+};
+
+function StatCard({ icon, label, value, onClick, accent = 'cyan' }) {
+  const a = STAT_ACCENTS[accent] || STAT_ACCENTS.cyan;
   const inner = (
     <>
-      <div className="bg-accent-primary/10 text-accent-primary rounded-lg p-3">
-        {icon}
-      </div>
-      <div>
-        <div className="text-2xl font-bold text-text-primary">{value}</div>
-        <div className="text-sm text-text-secondary">{label}</div>
+      {/* soft corner glow */}
+      <div className="absolute -top-10 -right-10 w-28 h-28 rounded-full pointer-events-none"
+        style={{ background: `radial-gradient(circle, ${a.glow} 0%, transparent 70%)` }} />
+      <div className="relative flex items-center gap-3.5">
+        <div className={`shrink-0 rounded-xl p-2.5 ${a.chip}`}>{icon}</div>
+        <div className="min-w-0">
+          <div className={`text-2xl md:text-[26px] font-bold leading-none ${a.text}`} dir="ltr">
+            <AnimatedValue value={String(value)} />
+          </div>
+          <div className="text-[13px] text-text-secondary mt-1.5 truncate">{label}</div>
+        </div>
+        {onClick && (
+          <ChevronLeft className="w-4 h-4 text-text-muted mr-auto shrink-0 opacity-0 group-hover:opacity-100 -translate-x-1 group-hover:translate-x-0 transition-all" />
+        )}
       </div>
     </>
   );
-  const base = 'bg-bg-secondary border border-border-primary rounded-xl p-4 flex items-center gap-4';
-  if (!onClick) return <div className={base}>{inner}</div>;
+  const cls = 'relative overflow-hidden p-4';
+  if (!onClick) return <Card className={cls}>{inner}</Card>;
   return (
-    <button
-      type="button"
-      onClick={onClick}
-      className={`${base} text-right w-full hover:border-accent-primary/50 hover:bg-bg-tertiary/40 transition-colors cursor-pointer`}
-    >
+    <Card as="button" type="button" onClick={onClick} hover className={`${cls} group w-full text-right`}>
       {inner}
-    </button>
+    </Card>
+  );
+}
+
+// Modern section panel — accent icon chip + title + optional right-side action.
+function SectionCard({ icon, title, action, className = '', children }) {
+  return (
+    <Card className={`p-4 md:p-5 ${className}`}>
+      <div className="flex items-center justify-between mb-4 gap-3">
+        <div className="flex items-center gap-2.5 min-w-0">
+          <div className="w-8 h-8 rounded-lg bg-accent-primary/12 text-accent-primary flex items-center justify-center shrink-0">
+            {icon}
+          </div>
+          <h3 className="text-sm font-semibold text-text-primary truncate">{title}</h3>
+        </div>
+        {action}
+      </div>
+      {children}
+    </Card>
+  );
+}
+
+// Small accent stat tile (DAU/WAU/MAU, AI counters, …).
+function StatMini({ value, label, accent = 'cyan', icon }) {
+  const a = STAT_ACCENTS[accent] || STAT_ACCENTS.cyan;
+  return (
+    <div className="rounded-xl bg-bg-tertiary/40 border border-border-primary px-3 py-3 flex items-center gap-3">
+      {icon && <div className={`shrink-0 rounded-lg p-2 ${a.chip}`}>{icon}</div>}
+      <div className="min-w-0">
+        <div className={`text-xl font-bold leading-none ${a.text}`} dir="ltr"><AnimatedValue value={String(value)} /></div>
+        <div className="text-[10px] text-text-muted mt-1.5 truncate">{label}</div>
+      </div>
+    </div>
   );
 }
 
@@ -439,110 +489,102 @@ export default function AdminPanel() {
   if (!isAdmin) return <Navigate to="/" replace />;
 
   return (
-    <div dir="rtl" className="max-w-6xl mx-auto space-y-6">
+    <motion.div dir="rtl" className="max-w-6xl mx-auto space-y-6"
+      initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.3, ease: 'easeOut' }}>
       <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
-        <h1 className="text-xl md:text-2xl font-bold text-text-primary">פאנל ניהול</h1>
-        {/* On mobile: a 2×2 grid of equal-width buttons. On desktop: inline. */}
+        <div className="flex items-center gap-3">
+          <div className="w-10 h-10 rounded-xl bg-accent-primary/12 flex items-center justify-center shrink-0">
+            <BarChart3 className="w-5 h-5 text-accent-primary" />
+          </div>
+          <div>
+            <h1 className="text-xl md:text-2xl font-bold text-text-primary leading-tight">פאנל ניהול</h1>
+            <p className="text-xs text-text-muted">סקירה כללית · משתמשים · מנויים · AI</p>
+          </div>
+        </div>
+        {/* On mobile: a 2-col grid; on desktop: inline. Animated pill bar. */}
         <div className="grid grid-cols-2 sm:flex sm:items-center gap-2">
-          <button
-            onClick={() => setAnalyticsOpen(true)}
-            className="flex items-center justify-center gap-2 px-3 py-2 rounded-lg text-sm font-medium bg-accent-primary/10 border border-accent-primary/30 text-accent-primary hover:bg-accent-primary/20 cursor-pointer"
-          >
-            <BarChart3 className="w-4 h-4 shrink-0" />
-            אנליטיקס
-          </button>
-          <button
-            onClick={() => setLeaderboardOpen(true)}
-            className="flex items-center justify-center gap-2 px-3 py-2 rounded-lg text-sm font-medium bg-bg-tertiary border border-border-primary text-text-secondary hover:text-text-primary cursor-pointer"
-          >
-            <Trophy className="w-4 h-4 shrink-0" />
-            מובילים
-          </button>
-          <button
-            onClick={() => setBulkOpen(true)}
-            className="flex items-center justify-center gap-2 px-3 py-2 rounded-lg text-sm font-medium bg-bg-tertiary border border-border-primary text-text-secondary hover:text-text-primary cursor-pointer"
-          >
-            <Send className="w-4 h-4 shrink-0" />
-            שליחה קבוצתית
-          </button>
-          <button
-            onClick={() => setCouponsOpen(true)}
-            className="flex items-center justify-center gap-2 px-3 py-2 rounded-lg text-sm font-medium bg-amber-500/15 border border-amber-500/30 text-amber-400 hover:bg-amber-500/20 cursor-pointer"
-          >
-            <Ticket className="w-4 h-4 shrink-0" />
-            קופונים
-          </button>
-          <button
-            onClick={() => setAuditOpen(true)}
-            className="flex items-center justify-center gap-2 px-3 py-2 rounded-lg text-sm font-medium bg-bg-tertiary border border-border-primary text-text-secondary hover:text-text-primary cursor-pointer"
-          >
-            <ScrollText className="w-4 h-4 shrink-0" />
-            יומן פעולות
-          </button>
-          <button
-            onClick={load}
-            disabled={loading}
-            className="flex items-center justify-center gap-2 px-3 py-2 rounded-lg text-sm font-medium bg-bg-tertiary border border-border-primary text-text-secondary hover:text-text-primary disabled:opacity-50 cursor-pointer"
-          >
-            <RefreshCw className={`w-4 h-4 shrink-0 ${loading ? 'animate-spin' : ''}`} />
-            רענן
-          </button>
+          {[
+            { label: 'אנליטיקס', Icon: BarChart3, onClick: () => setAnalyticsOpen(true), tone: 'accent' },
+            { label: 'מובילים', Icon: Trophy, onClick: () => setLeaderboardOpen(true) },
+            { label: 'שליחה קבוצתית', Icon: Send, onClick: () => setBulkOpen(true) },
+            { label: 'קופונים', Icon: Ticket, onClick: () => setCouponsOpen(true), tone: 'amber' },
+            { label: 'יומן פעולות', Icon: ScrollText, onClick: () => setAuditOpen(true) },
+            { label: 'רענן', Icon: RefreshCw, onClick: load, disabled: loading, spin: loading },
+          ].map((b) => {
+            const tone = b.tone === 'accent'
+              ? 'bg-accent-primary/10 border-accent-primary/30 text-accent-primary hover:bg-accent-primary/20'
+              : b.tone === 'amber'
+                ? 'bg-amber-500/15 border-amber-500/30 text-amber-400 hover:bg-amber-500/20'
+                : 'bg-bg-tertiary border-border-primary text-text-secondary hover:text-text-primary';
+            return (
+              <motion.button
+                key={b.label}
+                onClick={b.onClick}
+                disabled={b.disabled}
+                whileHover={{ y: -1 }}
+                whileTap={{ scale: 0.96 }}
+                className={`h-9 flex items-center justify-center gap-2 px-3.5 rounded-lg text-sm font-medium border transition-colors disabled:opacity-50 cursor-pointer ${tone}`}
+              >
+                <b.Icon className={`w-4 h-4 shrink-0 ${b.spin ? 'animate-spin' : ''}`} />
+                {b.label}
+              </motion.button>
+            );
+          })}
         </div>
       </div>
 
       <div className="grid grid-cols-2 lg:grid-cols-5 gap-3">
-        <StatCard icon={<Users className="w-6 h-6" />} label="סה״כ משתמשים" value={stats.total.length} onClick={() => setListModal({ title: 'כל המשתמשים', users: stats.total })} />
-        <StatCard icon={<UserPlus className="w-6 h-6" />} label="חדשים השבוע" value={stats.newThisWeek.length} onClick={() => setListModal({ title: 'חדשים השבוע', users: stats.newThisWeek })} />
-        <StatCard icon={<CheckCircle2 className="w-6 h-6" />} label="סיימו אונבורדינג" value={stats.onboarded.length} onClick={() => setListModal({ title: 'סיימו אונבורדינג', users: stats.onboarded })} />
-        <StatCard icon={<Crown className="w-6 h-6 text-amber-400" />} label="לקוחות Premium" value={stats.premium.length} onClick={() => setListModal({ title: 'לקוחות Premium', users: stats.premium })} />
-        <StatCard icon={<ShieldCheck className="w-6 h-6" />} label="אדמינים" value={stats.admins.length} onClick={() => setListModal({ title: 'אדמינים', users: stats.admins })} />
+        <StatCard accent="cyan" icon={<Users className="w-6 h-6" />} label="סה״כ משתמשים" value={stats.total.length} onClick={() => setListModal({ title: 'כל המשתמשים', users: stats.total })} />
+        <StatCard accent="green" icon={<UserPlus className="w-6 h-6" />} label="חדשים השבוע" value={stats.newThisWeek.length} onClick={() => setListModal({ title: 'חדשים השבוע', users: stats.newThisWeek })} />
+        <StatCard accent="violet" icon={<CheckCircle2 className="w-6 h-6" />} label="סיימו אונבורדינג" value={stats.onboarded.length} onClick={() => setListModal({ title: 'סיימו אונבורדינג', users: stats.onboarded })} />
+        <StatCard accent="amber" icon={<Crown className="w-6 h-6" />} label="לקוחות Premium" value={stats.premium.length} onClick={() => setListModal({ title: 'לקוחות Premium', users: stats.premium })} />
+        <StatCard accent="cyan" icon={<ShieldCheck className="w-6 h-6" />} label="אדמינים" value={stats.admins.length} onClick={() => setListModal({ title: 'אדמינים', users: stats.admins })} />
       </div>
 
       {/* Growth: active users (DAU/WAU/MAU) + 30-day signups trend. */}
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-3">
-        <div className="bg-bg-secondary border border-border-primary rounded-xl p-4">
-          <div className="text-[11px] text-text-muted mb-3 flex items-center gap-1.5"><Activity className="w-3.5 h-3.5" /> משתמשים פעילים</div>
-          <div className="grid grid-cols-3 gap-2 text-center">
-            <div className="bg-bg-tertiary/40 border border-border-primary rounded-lg py-2.5"><div className="text-xl font-bold text-text-primary">{growth.dau}</div><div className="text-[10px] text-text-muted">היום</div></div>
-            <div className="bg-bg-tertiary/40 border border-border-primary rounded-lg py-2.5"><div className="text-xl font-bold text-text-primary">{growth.wau}</div><div className="text-[10px] text-text-muted">השבוע</div></div>
-            <div className="bg-bg-tertiary/40 border border-border-primary rounded-lg py-2.5"><div className="text-xl font-bold text-text-primary">{growth.mau}</div><div className="text-[10px] text-text-muted">החודש</div></div>
+        <SectionCard icon={<Activity className="w-4 h-4" />} title="משתמשים פעילים">
+          <div className="grid grid-cols-3 gap-2">
+            <StatMini accent="cyan" value={growth.dau} label="היום" />
+            <StatMini accent="violet" value={growth.wau} label="השבוע" />
+            <StatMini accent="green" value={growth.mau} label="החודש" />
           </div>
-        </div>
-        <div className="bg-bg-secondary border border-border-primary rounded-xl p-4 lg:col-span-2">
-          <div className="text-[11px] text-text-muted mb-3 flex items-center gap-1.5"><UserPlus className="w-3.5 h-3.5" /> הרשמות (30 ימים)</div>
-          {(() => {
-            const max = Math.max(1, ...growth.signups.map((s) => s.count));
-            const total = growth.signups.reduce((a, s) => a + s.count, 0);
-            return (
-              <>
-                <div className="flex items-stretch gap-0.5 h-16">
-                  {growth.signups.map((s, i) => {
-                    const h = Math.round((s.count / max) * 100);
-                    const label = `${s.date.getDate()}/${s.date.getMonth() + 1}`;
-                    return (
-                      <div key={i} className="flex-1 h-full flex flex-col justify-end group" title={`${label}: ${s.count} הרשמות`}>
-                        <div className="w-full rounded-t bg-profit/60 group-hover:bg-profit transition-colors" style={{ height: `${s.count > 0 ? Math.max(8, h) : 2}%` }} />
-                      </div>
-                    );
-                  })}
-                </div>
-                <div className="flex justify-between mt-1 text-[9px] text-text-muted">
-                  <span>{growth.signups.length ? `${growth.signups[0].date.getDate()}/${growth.signups[0].date.getMonth() + 1}` : ''}</span>
-                  <span>היום · סה״כ {total}</span>
-                </div>
-              </>
-            );
-          })()}
-        </div>
+        </SectionCard>
+        <SectionCard
+          className="lg:col-span-2"
+          icon={<UserPlus className="w-4 h-4" />}
+          title="הרשמות (30 ימים)"
+          action={<span className="text-[11px] text-text-muted">סה״כ {growth.signups.reduce((a, s) => a + s.count, 0)}</span>}
+        >
+          <div className="h-28 -mx-1">
+            <ResponsiveContainer width="100%" height="100%">
+              <AreaChart data={growth.signups.map((s) => ({ d: `${s.date.getDate()}/${s.date.getMonth() + 1}`, count: s.count }))} margin={{ top: 4, right: 6, bottom: 0, left: 6 }}>
+                <defs>
+                  <linearGradient id="signupsGrad" x1="0" y1="0" x2="0" y2="1">
+                    <stop offset="5%" stopColor="var(--color-profit)" stopOpacity={0.35} />
+                    <stop offset="95%" stopColor="var(--color-profit)" stopOpacity={0} />
+                  </linearGradient>
+                </defs>
+                <XAxis dataKey="d" hide />
+                <Tooltip
+                  contentStyle={{ background: 'var(--color-bg-overlay)', border: '1px solid var(--color-border-primary)', borderRadius: '8px', fontSize: '12px', color: 'var(--color-text-primary)' }}
+                  labelStyle={{ color: 'var(--color-text-secondary)' }}
+                  cursor={{ stroke: 'var(--color-border-primary)' }}
+                  formatter={(v) => [v, 'הרשמות']}
+                />
+                <Area type="monotone" dataKey="count" stroke="var(--color-profit)" strokeWidth={2} fill="url(#signupsGrad)" animationDuration={700} />
+              </AreaChart>
+            </ResponsiveContainer>
+          </div>
+        </SectionCard>
       </div>
 
       {/* System health — admin-only, exposes only status (never secrets). */}
-      <div className="bg-bg-secondary border border-border-primary rounded-xl p-4">
-        <div className="text-[11px] text-text-muted mb-3 flex items-center gap-1.5"><ShieldCheck className="w-3.5 h-3.5" /> בריאות מערכת</div>
+      <SectionCard icon={<ShieldCheck className="w-4 h-4" />} title="בריאות מערכת">
         {!health ? (
           <div className="text-xs text-text-muted">…</div>
         ) : (
-          <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
+          <div className="grid grid-cols-2 sm:grid-cols-4 gap-2.5">
             {(() => {
               const cronAgeH = health.cronLast ? (Date.now() - health.cronLast) / 3600000 : null;
               const cronOk = cronAgeH != null && cronAgeH < 26;
@@ -553,18 +595,23 @@ export default function AdminPanel() {
                 { label: 'AI', ok: !!health.aiConfigured, note: health.aiConfigured ? 'מחובר' : 'לא מוגדר' },
               ];
               return items.map((it) => (
-                <div key={it.label} className="bg-bg-tertiary/40 border border-border-primary rounded-lg px-3 py-2.5">
-                  <div className="flex items-center gap-1.5">
-                    <span className={`w-2 h-2 rounded-full shrink-0 ${it.ok ? 'bg-profit' : 'bg-loss'}`} />
-                    <span className="text-xs font-medium text-text-primary">{it.label}</span>
+                <div key={it.label} className="rounded-xl px-3 py-3 border transition-colors"
+                  style={{
+                    background: it.ok ? 'rgba(34,197,94,0.06)' : 'rgba(239,68,68,0.06)',
+                    borderColor: it.ok ? 'rgba(34,197,94,0.25)' : 'rgba(239,68,68,0.25)',
+                  }}>
+                  <div className="flex items-center gap-2">
+                    <span className={`w-2 h-2 rounded-full shrink-0 ${it.ok ? 'bg-profit' : 'bg-loss'}`}
+                      style={{ boxShadow: it.ok ? '0 0 8px rgba(34,197,94,0.7)' : '0 0 8px rgba(239,68,68,0.7)' }} />
+                    <span className="text-xs font-semibold text-text-primary">{it.label}</span>
                   </div>
-                  <div className="text-[10px] text-text-muted mt-1 truncate">{it.note}</div>
+                  <div className="text-[10px] text-text-muted mt-1.5 truncate">{it.note}</div>
                 </div>
               ));
             })()}
           </div>
         )}
-      </div>
+      </SectionCard>
 
       {/* Global AI usage today — aggregated across all users (text + image). */}
       <div className="bg-bg-secondary border border-border-primary rounded-xl p-4">
@@ -574,20 +621,8 @@ export default function AdminPanel() {
         {globalAi ? (
           <>
             <div className="grid grid-cols-2 gap-3">
-              <div className="bg-bg-tertiary/40 border border-border-primary rounded-lg px-3 py-2.5 flex items-center gap-3">
-                <Sparkles className="w-5 h-5 text-accent-primary shrink-0" />
-                <div>
-                  <div className="text-xl font-bold text-text-primary">{globalAi.totalText}</div>
-                  <div className="text-[11px] text-text-secondary">בקשות טקסט</div>
-                </div>
-              </div>
-              <div className="bg-bg-tertiary/40 border border-border-primary rounded-lg px-3 py-2.5 flex items-center gap-3">
-                <Image className="w-5 h-5 text-accent-primary shrink-0" />
-                <div>
-                  <div className="text-xl font-bold text-text-primary">{globalAi.totalImage}</div>
-                  <div className="text-[11px] text-text-secondary">ניתוחי תמונה</div>
-                </div>
-              </div>
+              <StatMini accent="cyan" icon={<Sparkles className="w-5 h-5" />} value={globalAi.totalText} label="בקשות טקסט" />
+              <StatMini accent="violet" icon={<Image className="w-5 h-5" />} value={globalAi.totalImage} label="ניתוחי תמונה" />
             </div>
             <div className="mt-2.5 flex items-center gap-1.5 text-[11px] text-text-muted flex-wrap">
               <DollarSign className="w-3.5 h-3.5 text-accent-primary" />
@@ -630,82 +665,75 @@ export default function AdminPanel() {
       </div>
 
       {/* AI usage over time — daily counts (bars) + real token-based cost. */}
-      <div className="bg-bg-secondary border border-border-primary rounded-xl p-4">
-        <div className="flex items-center justify-between mb-3">
-          <div className="text-[11px] text-text-muted flex items-center gap-1.5">
-            <BarChart3 className="w-3.5 h-3.5" /> שימוש ב-AI לאורך זמן
-          </div>
-          <div className="flex gap-1">
+      <SectionCard
+        icon={<BarChart3 className="w-4 h-4" />}
+        title="שימוש ב-AI לאורך זמן"
+        action={
+          <div className="inline-flex items-center gap-0.5 rounded-lg border border-border-primary p-0.5 shrink-0">
             {[7, 30].map((d) => (
               <button
                 key={d}
                 type="button"
                 onClick={() => setStatsDays(d)}
-                className={`px-2 py-0.5 rounded-md text-[11px] font-medium cursor-pointer ${statsDays === d ? 'bg-accent-primary/15 text-accent-primary' : 'text-text-muted hover:text-text-primary'}`}
+                className={`px-2.5 py-1 rounded-md text-[11px] font-medium transition-colors cursor-pointer ${statsDays === d ? 'bg-accent-primary text-black' : 'text-text-muted hover:text-text-primary'}`}
               >
                 {d} ימים
               </button>
             ))}
           </div>
-        </div>
+        }
+      >
         {!aiStats ? (
           <div className="text-xs text-text-muted">…</div>
         ) : (() => {
           // Token metering (aistat) only accrues from when it shipped, so the
           // most recent day can read 0 even though users already chatted today.
-          // Backfill today's bar from the live per-user counters (globalAi) so
-          // it reflects real usage immediately; tokens still fill in going forward.
+          // Backfill today from the live per-user counters (globalAi) so it
+          // reflects real usage immediately; tokens still fill in going forward.
           const series = (aiStats.stats || []).map((s) =>
             globalAi && s.date === globalAi.date
               ? { ...s, text: Math.max(s.text, globalAi.totalText || 0), image: Math.max(s.image, globalAi.totalImage || 0) }
               : s
           );
-          const max = Math.max(1, ...series.map((s) => s.text + s.image));
           const totTokIn = series.reduce((a, s) => a + s.tokIn, 0);
           const totTokOut = series.reduce((a, s) => a + s.tokOut, 0);
           const totReq = series.reduce((a, s) => a + s.text + s.image, 0);
           const realCost = (totTokIn * 0.59 + totTokOut * 0.79) / 1e6;
+          const chartData = series.map((s) => {
+            const d = new Date(s.date);
+            return { d: `${d.getDate()}/${d.getMonth() + 1}`, total: s.text + s.image };
+          });
           return (
             <>
-              <div className="flex items-stretch gap-0.5 h-24">
-                {series.map((s) => {
-                  const total = s.text + s.image;
-                  const h = Math.round((total / max) * 100);
-                  const d = new Date(s.date);
-                  const label = `${d.getDate()}/${d.getMonth() + 1}`;
-                  return (
-                    <div
-                      key={s.date}
-                      className="flex-1 h-full flex flex-col justify-end group"
-                      title={`${label}: ${s.text} טקסט · ${s.image} תמונה`}
-                    >
-                      <div className="w-full rounded-t bg-accent-primary/70 group-hover:bg-accent-primary transition-colors" style={{ height: `${total > 0 ? Math.max(6, h) : 2}%` }} />
-                    </div>
-                  );
-                })}
+              <div className="h-28 -mx-1">
+                <ResponsiveContainer width="100%" height="100%">
+                  <AreaChart data={chartData} margin={{ top: 4, right: 6, bottom: 0, left: 6 }}>
+                    <defs>
+                      <linearGradient id="aiUsageGrad" x1="0" y1="0" x2="0" y2="1">
+                        <stop offset="5%" stopColor="var(--color-accent-primary)" stopOpacity={0.35} />
+                        <stop offset="95%" stopColor="var(--color-accent-primary)" stopOpacity={0} />
+                      </linearGradient>
+                    </defs>
+                    <XAxis dataKey="d" hide />
+                    <Tooltip
+                      contentStyle={{ background: 'var(--color-bg-overlay)', border: '1px solid var(--color-border-primary)', borderRadius: '8px', fontSize: '12px', color: 'var(--color-text-primary)' }}
+                      labelStyle={{ color: 'var(--color-text-secondary)' }}
+                      cursor={{ stroke: 'var(--color-border-primary)' }}
+                      formatter={(v) => [v, 'בקשות']}
+                    />
+                    <Area type="monotone" dataKey="total" stroke="var(--color-accent-primary)" strokeWidth={2} fill="url(#aiUsageGrad)" animationDuration={700} />
+                  </AreaChart>
+                </ResponsiveContainer>
               </div>
-              <div className="flex justify-between mt-1 text-[9px] text-text-muted">
-                <span>{series.length ? `${new Date(series[0].date).getDate()}/${new Date(series[0].date).getMonth() + 1}` : ''}</span>
-                <span>היום</span>
-              </div>
-              <div className="mt-3 grid grid-cols-3 gap-2 text-center">
-                <div>
-                  <div className="text-sm font-bold text-text-primary">{totReq.toLocaleString()}</div>
-                  <div className="text-[10px] text-text-muted">בקשות ({statsDays} ימים)</div>
-                </div>
-                <div>
-                  <div className="text-sm font-bold text-text-primary">{((totTokIn + totTokOut) / 1000).toFixed(0)}K</div>
-                  <div className="text-[10px] text-text-muted">טוקנים בפועל</div>
-                </div>
-                <div>
-                  <div className="text-sm font-bold text-accent-primary">~${realCost.toFixed(2)}</div>
-                  <div className="text-[10px] text-text-muted">עלות אילו בתשלום</div>
-                </div>
+              <div className="mt-3 grid grid-cols-3 gap-2">
+                <StatMini accent="cyan" value={totReq.toLocaleString()} label={`בקשות (${statsDays} ימים)`} />
+                <StatMini accent="violet" value={`${((totTokIn + totTokOut) / 1000).toFixed(0)}K`} label="טוקנים בפועל" />
+                <StatMini accent="green" value={`~$${realCost.toFixed(2)}`} label="עלות אילו בתשלום" />
               </div>
             </>
           );
         })()}
-      </div>
+      </SectionCard>
 
       {/* Quota alerts — users at/over 80% of their daily AI quota today. */}
       {quotaAlerts.length > 0 && (
@@ -1010,7 +1038,7 @@ export default function AdminPanel() {
         onClose={() => setBulkOpen(false)}
         segments={{ all: stats.total, premium: stats.premium, newThisWeek: stats.newThisWeek, onboarded: stats.onboarded, churned }}
       />
-    </div>
+    </motion.div>
   );
 }
 

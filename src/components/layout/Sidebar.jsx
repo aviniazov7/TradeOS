@@ -84,17 +84,38 @@ export default function Sidebar({ mobileOpen, onClose }) {
                     end={item.to === '/'}
                     onClick={handleNavClick}
                     className={({ isActive }) =>
-                      `flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-medium transition-colors ${
+                      `group relative flex items-center gap-3 px-3 py-2.5 rounded-xl text-sm font-medium transition-all duration-200 ${
                         isActive
-                          ? 'bg-accent-primary/10 text-accent-primary'
+                          ? 'border border-cyan-400/20'
                           : item.highlight
-                            ? 'text-accent-primary hover:bg-accent-primary/10'
-                            : 'text-text-secondary hover:text-text-primary hover:bg-bg-tertiary'
+                            ? 'border border-transparent hover:bg-bg-tertiary/60'
+                            : 'border border-transparent text-text-secondary hover:text-text-primary hover:bg-bg-tertiary/60'
                       }`
                     }
+                    style={({ isActive }) =>
+                      isActive
+                        ? { background: 'linear-gradient(90deg, rgba(34,211,238,0.14) 0%, rgba(139,92,246,0.07) 100%)' }
+                        : undefined
+                    }
                   >
-                    <item.icon className="w-5 h-5" />
-                    {item.label}
+                    {({ isActive }) => {
+                      const grad = isActive || item.highlight;
+                      return (
+                        <>
+                          {isActive && (
+                            <span
+                              className="absolute right-0 top-1/2 -translate-y-1/2 h-7 w-1 rounded-full"
+                              style={{ background: 'linear-gradient(180deg,#22d3ee,#8b5cf6)', boxShadow: '0 0 10px 0 rgba(34,211,238,0.6)' }}
+                            />
+                          )}
+                          <item.icon
+                            className="w-5 h-5 shrink-0 transition-transform duration-200 group-hover:scale-110"
+                            style={grad ? { stroke: 'url(#ai-grad)' } : undefined}
+                          />
+                          <span className={grad ? 'text-gradient font-semibold' : ''}>{item.label}</span>
+                        </>
+                      );
+                    }}
                   </NavLink>
               ))}
             </nav>

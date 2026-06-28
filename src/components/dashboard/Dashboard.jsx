@@ -1,12 +1,11 @@
-import { useState, useMemo, useRef, useEffect } from 'react';
+import { useState, useMemo, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { motion, AnimatePresence } from 'framer-motion';
 import {
   Wallet, BookOpen, FlaskConical, ClipboardList, Target, AlertCircle, Trash2, Undo2,
   TrendingUp, DollarSign, Coins, Brain, Sunrise, Moon, CheckCircle2, Clock, ChevronDown, Eye, EyeOff,
-  Activity, Newspaper, ExternalLink, Flame, Award, TrendingDown, CalendarDays, LineChart,
+  Activity, Newspaper, ExternalLink, Flame, Award, TrendingDown, CalendarDays, LineChart, Gauge,
 } from 'lucide-react';
-import toast from 'react-hot-toast';
 import { useTrades } from '../../hooks/useTrades';
 import { useJournalContext } from '../../contexts/JournalContext';
 import { useBacktests } from '../../hooks/useBacktests';
@@ -16,39 +15,18 @@ import { useMentalityJournals } from '../../hooks/useMentalityJournals';
 import { useLinkedJournalsBalance } from '../../hooks/useLinkedExchangeBalance';
 import DashboardSkeleton from './DashboardSkeleton';
 import PendingLimitOrders from './PendingLimitOrders';
+import DashboardKpis from './DashboardKpis';
+import CumulativePnLArea from './CumulativePnLArea';
+import PerformanceRadar from './PerformanceRadar';
 import ExchangeLogo from '../shared/ExchangeLogo';
 import CoinIcon from '../shared/CoinIcon';
 import AnimatedValue from '../shared/AnimatedValue';
+import Card from '../shared/Card';
+import Reveal from '../shared/Reveal';
 import { formatCurrency, formatDate } from '../../utils/formatters';
 import { EXCHANGES, MENTALITY_EMOTIONS } from '../../utils/constants';
-import { pageVariants, pageTransition, staggerContainer } from '../../utils/animations';
+import { pageVariants, pageTransition } from '../../utils/animations';
 import { fetchPerpPrices } from '../../services/bybitDirect';
-
-const cardVariants = { initial: { opacity: 0, y: 10 }, animate: { opacity: 1, y: 0 } };
-
-// Lightweight inline equity sparkline — no chart dependency, scales to width.
-function Sparkline({ data, positive }) {
-  if (!data || data.length < 2) {
-    return <div className="h-10 flex items-center text-[11px] text-text-muted">אין מספיק נתונים</div>;
-  }
-  const w = 100, h = 32;
-  const min = Math.min(...data, 0);
-  const max = Math.max(...data, 0);
-  const range = max - min || 1;
-  const pts = data.map((v, i) => {
-    const x = (i / (data.length - 1)) * w;
-    const y = h - ((v - min) / range) * h;
-    return `${x.toFixed(1)},${y.toFixed(1)}`;
-  }).join(' ');
-  const zeroY = h - ((0 - min) / range) * h;
-  const stroke = positive ? '#22c55e' : '#ef4444';
-  return (
-    <svg viewBox={`0 0 ${w} ${h}`} preserveAspectRatio="none" className="w-full h-10 text-text-muted">
-      <line x1="0" x2={w} y1={zeroY} y2={zeroY} stroke="currentColor" strokeOpacity="0.2" strokeWidth="0.5" strokeDasharray="2 2" />
-      <polyline points={pts} fill="none" stroke={stroke} strokeWidth="1.6" strokeLinejoin="round" strokeLinecap="round" />
-    </svg>
-  );
-}
 
 const getExchangeLabel = (value) => EXCHANGES.find((e) => e.value === value)?.label || value;
 
@@ -65,7 +43,7 @@ export default function Dashboard() {
     });
   };
   const m = (val) => hideBalances ? '••••' : val;
-  const { trades: allTrades, loading: tradesLoading, deleteTrade } = useTrades(); // all trades, no journal filter
+  const { trades: allTrades, loading: tradesLoading } = useTrades(); // all trades, no journal filter
   const { backtests: allBacktests, loading: backtestsLoading } = useBacktests();
   const backtests = useMemo(() => allBacktests.filter((b) => b.backtestJournalId), [allBacktests]);
   const { plans, loading: plansLoading } = useTradingPlans();
@@ -136,8 +114,11 @@ export default function Dashboard() {
     const controller = new AbortController();
     const fetchMarket = async (attempt = 0) => {
       try {
-        const workerUrl = import.meta.env.VITE_WORKER_URL || '';
-        const cgBase = workerUrl ? `${workerUrl}/cg` : 'https://api.coingecko.com/api/v3';
+        // Proxy CoinGecko through the worker (direct browser calls are
+        // CORS/geo-blocked). Match the hardcoded fallback used app-wide so it
+        // works even when VITE_WORKER_URL isn't set at build time.
+        const workerUrl = import.meta.env.VITE_WORKER_URL || 'https://trade-os.aviniazov7.workers.dev';
+        const cgBase = `${workerUrl}/cg`;
         const res = await fetch(`${cgBase}/global`, { signal: controller.signal });
         if (!res.ok) throw new Error(`HTTP ${res.status}`);
         const json = await res.json();
@@ -253,7 +234,8 @@ export default function Dashboard() {
     const sorted = [...closed].sort((a, b) => tradeMs(a) - tradeMs(b));
 
     let cum = 0;
-    const equity = sorted.map((t) => (cum += pnlOf(t)));
+    const equitySeries = sorted.map((t) => { cum += pnlOf(t); return { t: tradeMs(t), value: cum }; });
+    const equity = equitySeries.map((p) => p.value);
 
     // current win/loss streak, walking back from the latest trade
     let streak = 0; let streakWin = null;
@@ -284,7 +266,7 @@ export default function Dashboard() {
     const bestSession = Object.entries(sessionPnl).sort((a, b) => b[1] - a[1])[0];
 
     return {
-      equity, count: closed.length,
+      equity, equitySeries, count: closed.length,
       streak, streakWin,
       monthPnl, monthCount: monthTrades.length,
       best, worst, bestPnl: best ? pnlOf(best) : 0, worstPnl: worst ? pnlOf(worst) : 0,
@@ -292,6 +274,113 @@ export default function Dashboard() {
       bestSession: bestSession?.[0], bestSessionPnl: bestSession?.[1] || 0,
     };
   }, [allTrades, journals]);
+
+  // Win/loss split, per-session P&L, + performance score/radar.
+  const { perf, kpi } = useMemo(() => {
+    const journalIds = new Set(journals.map((j) => j.id));
+    const closed = allTrades
+      .filter((t) => !t.journalId || journalIds.has(t.journalId))
+      .filter((t) => t.status === 'closed' || (parseFloat(t.exitPrice) > 0 && t.status !== 'partial'));
+    const pnlOf = (t) => (t.netPnl ?? t.pnl ?? 0);
+    const dateOf = (t) => {
+      const d = t.exitDate || t.entryDate || t.createdAt;
+      if (!d) return null;
+      if (typeof d?.toDate === 'function') return d.toDate();
+      const dt = new Date(d);
+      return Number.isNaN(dt.getTime()) ? null : dt;
+    };
+    // Win/loss counts + P&L by trading session
+    let wins = 0, losses = 0;
+    const sessionMap = {};
+    for (const t of closed) {
+      const p = pnlOf(t);
+      if (p > 0) wins++; else if (p < 0) losses++;
+      if (t.session) sessionMap[t.session] = (sessionMap[t.session] || 0) + p;
+    }
+    const sessions = Object.entries(sessionMap)
+      .map(([label, pnl]) => ({ label, pnl }))
+      .sort((a, b) => b.pnl - a.pnl);
+
+    // Performance metrics
+    const grossProfit = closed.filter((t) => pnlOf(t) > 0).reduce((s, t) => s + pnlOf(t), 0);
+    const grossLoss = Math.abs(closed.filter((t) => pnlOf(t) < 0).reduce((s, t) => s + pnlOf(t), 0));
+    const profitFactor = grossLoss > 0 ? grossProfit / grossLoss : (grossProfit > 0 ? Infinity : 0);
+    const largestWin = closed.reduce((m, t) => Math.max(m, pnlOf(t)), 0);
+
+    // Max drawdown + recovery from the equity curve
+    let cum = 0, peak = 0, maxDD = 0;
+    for (const t of [...closed].sort((a, b) => (dateOf(a)?.getTime() || 0) - (dateOf(b)?.getTime() || 0))) {
+      cum += pnlOf(t);
+      peak = Math.max(peak, cum);
+      maxDD = Math.max(maxDD, peak - cum);
+    }
+    const netProfit = grossProfit - grossLoss;
+    const recovery = maxDD > 0 ? netProfit / maxDD : (netProfit > 0 ? Infinity : 0);
+
+    const clamp = (v) => Math.max(0, Math.min(100, v));
+    const winRate = globalStats.winRate;                                  // already 0..100
+    const pfScore = clamp((profitFactor / 2) * 100);                      // PF 2 → 100
+    const rrScore = globalStats.avgRR != null ? clamp((globalStats.avgRR / 2) * 100) : 0; // R:R 2 → 100
+    const consistency = grossProfit > 0 ? clamp(100 - (largestWin / grossProfit) * 100) : 0;
+    const riskMgmt = peak > 0 ? clamp(100 - (maxDD / peak) * 100) : (closed.length ? 60 : 0);
+    const recoveryScore = clamp((recovery / 3) * 100);                    // RF 3 → 100
+
+    const metrics = [
+      { label: 'אחוז הצלחה', value: winRate },
+      { label: 'Profit Factor', value: pfScore },
+      { label: 'יחס R:R', value: rrScore },
+      { label: 'עקביות', value: consistency },
+      { label: 'ניהול סיכון', value: riskMgmt },
+      { label: 'התאוששות', value: recoveryScore },
+    ];
+    const score = metrics.reduce((s, mtr) => s + mtr.value, 0) / metrics.length;
+
+    // KPI strip numbers
+    const beCount = Math.max(0, closed.length - wins - losses);
+    const avgWin = wins ? grossProfit / wins : 0;
+    const avgLoss = losses ? -(grossLoss / losses) : 0;
+    const ratio = avgLoss !== 0 ? avgWin / Math.abs(avgLoss) : (avgWin > 0 ? avgWin : 0);
+    const netPnl = closed.reduce((s, t) => s + pnlOf(t), 0);
+
+    // Win/loss streaks — current run + longest winning run, for trades and days
+    const runStats = (bools) => {
+      let cur = 0, curWin = true, best = 0, run = 0;
+      for (let i = 0; i < bools.length; i++) { if (bools[i]) { run++; best = Math.max(best, run); } else run = 0; }
+      for (let i = bools.length - 1; i >= 0; i--) {
+        if (i === bools.length - 1) { curWin = bools[i]; cur = 1; }
+        else if (bools[i] === curWin) cur++; else break;
+      }
+      return { current: cur, best, win: curWin };
+    };
+    const byDate = [...closed].sort((a, b) => (dateOf(a)?.getTime() || 0) - (dateOf(b)?.getTime() || 0));
+    const tradeBools = byDate.map((t) => pnlOf(t) >= 0);
+    const dayMap = new Map();
+    for (const t of closed) {
+      const d = dateOf(t);
+      if (!d) continue;
+      const dk = new Date(d.getFullYear(), d.getMonth(), d.getDate()).getTime();
+      dayMap.set(dk, (dayMap.get(dk) || 0) + pnlOf(t));
+    }
+    const dayBools = [...dayMap.entries()].sort((a, b) => a[0] - b[0]).map((e) => e[1] >= 0);
+    const streakTrades = closed.length ? runStats(tradeBools) : { current: 0, best: 0, win: true };
+    const streakDays = dayMap.size ? runStats(dayBools) : { current: 0, best: 0, win: true };
+
+    const kpi = {
+      netPnl, tradeCount: closed.length,
+      winRate: (wins + losses + beCount) > 0 ? (wins / (wins + losses + beCount)) * 100 : 0,
+      wins, breakeven: beCount, losses,
+      avgWin, avgLoss, avgWinLossRatio: ratio,
+      profitFactor,
+      streakDays, streakTrades,
+    };
+
+    return {
+      perf: { metrics: closed.length ? metrics : [], score },
+      winLoss: { wins, losses },
+      sessionBars: sessions,
+      kpi,
+    };
+  }, [allTrades, journals, globalStats.winRate, globalStats.avgRR]);
 
   if (loading) return <DashboardSkeleton />;
 
@@ -309,183 +398,57 @@ export default function Dashboard() {
     <motion.div variants={pageVariants} initial="initial" animate="animate" exit="exit" transition={pageTransition}>
       <PendingLimitOrders trades={globalStats.openTrades} livePrices={livePrices} />
 
-      {/* Global summary cards */}
-      <motion.div className="grid grid-cols-2 md:grid-cols-4 gap-3 mb-6" variants={staggerContainer} initial="initial" animate="animate">
-        <motion.div className={`${cardClass} relative overflow-hidden`} variants={cardVariants}>
-          {/* Dynamic gradient overlay based on PnL */}
-          <div
-            className="absolute inset-0 pointer-events-none transition-opacity duration-700"
-            style={{
-              background: globalStats.totalPnL >= 0
-                ? 'radial-gradient(ellipse at top right, rgba(34, 197, 94, 0.08) 0%, rgba(34, 197, 94, 0.03) 40%, transparent 70%)'
-                : 'radial-gradient(ellipse at top right, rgba(239, 68, 68, 0.08) 0%, rgba(239, 68, 68, 0.03) 40%, transparent 70%)',
-              opacity: globalStats.totalPnL !== 0 ? 1 : 0,
-            }}
-          />
-          <div className="relative">
-            <div className="flex items-center justify-between mb-2">
-              <div className="flex items-center gap-2">
-                <Wallet className="w-4 h-4 text-accent-primary" />
-                <span className="text-xs text-text-muted">יתרה כוללת</span>
-              </div>
-              <button
-                onClick={toggleHide}
-                className="p-1 rounded text-text-muted hover:text-text-primary transition-colors cursor-pointer"
-                title={hideBalances ? 'הצג סכומים' : 'הסתר סכומים'}
-              >
-                {hideBalances ? <EyeOff className="w-3.5 h-3.5" /> : <Eye className="w-3.5 h-3.5" />}
-              </button>
-            </div>
-            <div className="flex items-baseline gap-2">
-              <span className="text-xl font-bold text-text-primary"><AnimatedValue value={m(formatCurrency(globalStats.totalBalance).replace('+', ''))} /></span>
+      {/* Total portfolio value — the hero figure of the dashboard. */}
+      <Card className="mb-4 px-4 py-3.5 flex items-center justify-between gap-4">
+        <div className="flex items-center gap-3 min-w-0">
+          <div className="w-10 h-10 rounded-xl bg-accent-primary/12 flex items-center justify-center shrink-0">
+            <Wallet className="w-5 h-5 text-accent-primary" />
+          </div>
+          <div className="text-right min-w-0">
+            <div className="text-xs text-text-muted mb-0.5">שווי תיקים כללי</div>
+            <div className="flex items-center gap-2 flex-wrap">
+              <span dir="ltr">
+                <AnimatedValue
+                  value={m(formatCurrency(globalStats.totalBalance).replace('+', ''))}
+                  className="text-3xl font-bold text-text-primary leading-none"
+                />
+              </span>
               {globalStats.pnlPercent !== 0 && (
-                <span className={`text-xs font-medium ${pnlColor(globalStats.pnlPercent)}`}>
+                <span
+                  dir="ltr"
+                  className={`text-xs font-semibold px-1.5 py-0.5 rounded ${
+                    globalStats.pnlPercent >= 0 ? 'bg-profit/15 text-profit' : 'bg-loss/15 text-loss'
+                  }`}
+                >
                   {m(`${globalStats.pnlPercent > 0 ? '+' : ''}${globalStats.pnlPercent.toFixed(1)}%`)}
                 </span>
               )}
             </div>
           </div>
-        </motion.div>
-        <motion.div className={cardClass} variants={cardVariants}>
-          <div className="flex items-center gap-2 mb-2">
-            <DollarSign className={`w-4 h-4 ${pnlColor(globalStats.totalPnL)}`} />
-            <span className="text-xs text-text-muted">רווח/הפסד כולל</span>
-          </div>
-          <span className={`text-xl font-bold ${pnlColor(globalStats.totalPnL)}`}><AnimatedValue value={m(formatCurrency(globalStats.totalPnL))} /></span>
-        </motion.div>
-        <motion.div className={cardClass} variants={cardVariants}>
-          <div className="flex items-center gap-2 mb-2">
-            <TrendingUp className="w-4 h-4 text-accent-primary" />
-            <span className="text-xs text-text-muted">עסקאות סה&quot;כ</span>
-          </div>
-          <span className="text-xl font-bold text-text-primary"><AnimatedValue value={m(String(globalStats.totalTrades))} /></span>
-        </motion.div>
-        <motion.div className={cardClass} variants={cardVariants}>
-          {globalStats.avgRR !== null ? (
-            <div className="flex items-center justify-between gap-2">
-              {/* Win rate — right side (RTL start) */}
-              <div>
-                <div className="flex items-center gap-1.5 mb-1.5">
-                  <Target className="w-3.5 h-3.5 text-accent-primary" />
-                  <span className="text-[11px] text-text-muted">אחוז הצלחה</span>
-                </div>
-                <span className="text-xl font-bold text-text-primary">
-                  <AnimatedValue value={m(`${globalStats.winRate.toFixed(1)}%`)} />
-                </span>
-              </div>
-              {/* Divider */}
-              <div className="w-px self-stretch bg-border-primary mx-1" />
-              {/* R:R — left side (RTL end) */}
-              <div className="text-left">
-                <div className="text-[11px] text-text-muted mb-1.5">ממוצע R:R</div>
-                <span className={`text-xl font-bold ${globalStats.avgRR >= 1 ? 'text-profit' : 'text-loss'}`}>
-                  {m(`${globalStats.avgRR.toFixed(2)}R`)}
-                </span>
-              </div>
-            </div>
-          ) : (
-            <>
-              <div className="flex items-center gap-2 mb-2">
-                <Target className="w-4 h-4 text-accent-primary" />
-                <span className="text-xs text-text-muted">אחוז הצלחה כולל</span>
-              </div>
-              <span className="text-xl font-bold text-text-primary">
-                <AnimatedValue value={m(`${globalStats.winRate.toFixed(1)}%`)} />
-              </span>
-            </>
-          )}
-        </motion.div>
-      </motion.div>
+        </div>
+        <button
+          onClick={toggleHide}
+          className="p-2 rounded-lg text-text-muted hover:text-text-primary hover:bg-bg-tertiary transition-colors cursor-pointer shrink-0"
+          title={hideBalances ? 'הצג סכומים' : 'הסתר סכומים'}
+        >
+          {hideBalances ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
+        </button>
+      </Card>
 
-      {/* Insight widgets */}
-      {extraStats.count > 0 && (
-        <motion.div className="grid grid-cols-2 lg:grid-cols-4 gap-3 mb-6" variants={staggerContainer} initial="initial" animate="animate">
-          {/* Equity curve */}
-          <motion.div className={`${cardClass} col-span-2`} variants={cardVariants}>
-            <div className="flex items-center justify-between mb-2">
-              <div className="flex items-center gap-2">
-                <LineChart className="w-4 h-4 text-accent-primary" />
-                <span className="text-xs text-text-muted">עקומת הון (P&L מצטבר)</span>
-              </div>
-              <span className={`text-sm font-bold ${pnlColor(extraStats.equity[extraStats.equity.length - 1] || 0)}`}>
-                {m(formatCurrency(extraStats.equity[extraStats.equity.length - 1] || 0))}
-              </span>
-            </div>
-            <Sparkline data={extraStats.equity} positive={(extraStats.equity[extraStats.equity.length - 1] || 0) >= 0} />
-          </motion.div>
+      {/* KPI strip (TradeZella-style) — always shown so new users see it too */}
+      <DashboardKpis kpi={kpi} hidden={hideBalances} />
+      <div className="mb-6" />
 
-          {/* Current streak */}
-          <motion.div className={cardClass} variants={cardVariants}>
-            <div className="flex items-center gap-2 mb-2">
-              <Flame className={`w-4 h-4 ${extraStats.streakWin ? 'text-profit' : 'text-loss'}`} />
-              <span className="text-xs text-text-muted">רצף נוכחי</span>
-            </div>
-            <span className={`text-xl font-bold ${extraStats.streakWin ? 'text-profit' : 'text-loss'}`}>
-              {extraStats.streak} {extraStats.streakWin ? 'רווחים' : 'הפסדים'}
-            </span>
-          </motion.div>
-
-          {/* This month */}
-          <motion.div className={cardClass} variants={cardVariants}>
-            <div className="flex items-center gap-2 mb-2">
-              <CalendarDays className="w-4 h-4 text-accent-primary" />
-              <span className="text-xs text-text-muted">החודש</span>
-            </div>
-            <span className={`text-xl font-bold ${pnlColor(extraStats.monthPnl)}`}>{m(formatCurrency(extraStats.monthPnl))}</span>
-            <span className="text-[11px] text-text-muted block mt-0.5">{extraStats.monthCount} עסקאות</span>
-          </motion.div>
-
-          {/* Best trade */}
-          <motion.div className={cardClass} variants={cardVariants}>
-            <div className="flex items-center gap-2 mb-2">
-              <Award className="w-4 h-4 text-profit" />
-              <span className="text-xs text-text-muted">העסקה הטובה</span>
-            </div>
-            <span className="text-xl font-bold text-profit">{m(formatCurrency(extraStats.bestPnl))}</span>
-            {extraStats.best?.pair && <span className="text-[11px] text-text-muted block mt-0.5">{extraStats.best.pair}</span>}
-          </motion.div>
-
-          {/* Worst trade */}
-          <motion.div className={cardClass} variants={cardVariants}>
-            <div className="flex items-center gap-2 mb-2">
-              <TrendingDown className="w-4 h-4 text-loss" />
-              <span className="text-xs text-text-muted">העסקה הגרועה</span>
-            </div>
-            <span className="text-xl font-bold text-loss">{m(formatCurrency(extraStats.worstPnl))}</span>
-            {extraStats.worst?.pair && <span className="text-[11px] text-text-muted block mt-0.5">{extraStats.worst.pair}</span>}
-          </motion.div>
-
-          {/* Top pair */}
-          <motion.div className={cardClass} variants={cardVariants}>
-            <div className="flex items-center gap-2 mb-2">
-              <Coins className="w-4 h-4 text-accent-primary" />
-              <span className="text-xs text-text-muted">מטבע מוביל</span>
-            </div>
-            {extraStats.topPair ? (
-              <>
-                <span className="text-xl font-bold text-text-primary">{extraStats.topPair}</span>
-                <span className="text-[11px] text-text-muted block mt-0.5">{extraStats.topPairCount} עסקאות</span>
-              </>
-            ) : <span className="text-sm text-text-muted">—</span>}
-          </motion.div>
-
-          {/* Best session */}
-          <motion.div className={cardClass} variants={cardVariants}>
-            <div className="flex items-center gap-2 mb-2">
-              <Clock className="w-4 h-4 text-accent-primary" />
-              <span className="text-xs text-text-muted">סשן מוביל</span>
-            </div>
-            {extraStats.bestSession ? (
-              <>
-                <span className="text-base font-bold text-text-primary">{extraStats.bestSession}</span>
-                <span className={`text-[11px] block mt-0.5 ${pnlColor(extraStats.bestSessionPnl)}`}>{m(formatCurrency(extraStats.bestSessionPnl))}</span>
-              </>
-            ) : <span className="text-sm text-text-muted">—</span>}
-          </motion.div>
-        </motion.div>
-      )}
+      {/* TradeZella-style hero: cumulative P&L area + performance radar */}
+      <Reveal>
+        <div className="grid grid-cols-1 lg:grid-cols-3 gap-3 mb-6 items-stretch">
+          <div className="lg:col-span-2 h-full"><CumulativePnLArea series={extraStats.equitySeries} hidden={hideBalances} /></div>
+          <div className="lg:col-span-1 h-full"><PerformanceRadar metrics={perf.metrics} score={perf.score} /></div>
+        </div>
+      </Reveal>
 
       {/* Journals overview */}
+      <Reveal>
       <div className={`${cardClass} mb-6`}>
         <div className="flex items-center justify-between mb-4">
           <h2 className="text-sm font-semibold text-text-primary flex items-center gap-2">
@@ -573,7 +536,10 @@ export default function Dashboard() {
         )}
       </div>
 
+      </Reveal>
+
       {/* Quick stats row */}
+      <Reveal>
       <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-6">
         {/* Backtests */}
         <button onClick={() => navigate('/backtest')} className={`${cardClass} text-right hover:border-accent-primary/30 transition-colors cursor-pointer`}>
@@ -681,7 +647,10 @@ export default function Dashboard() {
         </button>
       </div>
 
+      </Reveal>
+
       {/* Mentality Zone */}
+      <Reveal>
       <div className={`${cardClass} mb-6`}>
         <div className="flex items-center justify-between mb-4">
           <h2 className="text-sm font-semibold text-text-primary flex items-center gap-2">
@@ -759,7 +728,10 @@ export default function Dashboard() {
         </div>
       </div>
 
+      </Reveal>
+
       {/* Market Overview & News */}
+      <Reveal>
       <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-6">
         {/* Market Overview */}
         <div className={cardClass}>
@@ -886,6 +858,7 @@ export default function Dashboard() {
           )}
         </div>
       </div>
+      </Reveal>
     </motion.div>
   );
 }

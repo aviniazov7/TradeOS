@@ -6,8 +6,7 @@ import {
 } from 'lucide-react';
 import toast from 'react-hot-toast';
 import { getUserSetting, setUserSetting, addToUserCollection } from '../../services/firestoreService';
-import { registerExchangeForPush, unregisterExchangeForPush } from '../../services/pushService';
-import { syncExchangeTrades, syncOpenPositions, fetchExchangeBalance } from '../../services/exchangeService';
+import { syncExchangeTrades, syncOpenPositions, fetchExchangeBalance, storeExchangeCredentials, deleteExchangeCredentials, getConnectedExchanges } from '../../services/exchangeService';
 import { useAuth } from '../../contexts/AuthContext';
 import { useJournalContext } from '../../contexts/JournalContext';
 import { pageVariants, pageTransition } from '../../utils/animations';
@@ -106,11 +105,6 @@ const EXCHANGES = [
   },
 ];
 
-function maskKey(k) {
-  if (!k || k.length < 8) return '••••••••••••••••';
-  return k.slice(0, 5) + '••••••••••••' + k.slice(-4);
-}
-
 // ── Floating orb background ───────────────────────────────────────────────────
 function FloatingOrb({ color, style }) {
   return (
@@ -152,7 +146,7 @@ function GuideModal({ exchange, onClose }) {
         initial={{ scale: 0.9, opacity: 0, y: 20 }} animate={{ scale: 1, opacity: 1, y: 0 }}
         exit={{ scale: 0.9, opacity: 0, y: 20 }} transition={{ type: 'spring', damping: 22, stiffness: 320 }}
         className="relative w-full max-w-sm rounded-2xl overflow-hidden shadow-2xl"
-        style={{ background: 'var(--bg-secondary)', border: `1px solid ${exchange.accent}30` }}
+        style={{ background: 'var(--color-bg-secondary)', border: `1px solid ${exchange.accent}30` }}
         onClick={e => e.stopPropagation()}>
         {/* Glow top */}
         <div className="absolute top-0 left-1/2 -translate-x-1/2 w-40 h-20 pointer-events-none"
@@ -187,13 +181,13 @@ function GuideModal({ exchange, onClose }) {
               }}>
               <span className="text-[10px] font-black w-5 h-5 rounded-full flex items-center justify-center shrink-0 mt-0.5"
                 style={{
-                  background: step.warn ? 'rgba(239,68,68,0.2)' : step.ok ? `${exchange.accent}30` : 'var(--bg-tertiary)',
-                  color: step.warn ? '#ef4444' : step.ok ? exchange.accent : 'var(--text-muted)',
+                  background: step.warn ? 'rgba(239,68,68,0.2)' : step.ok ? `${exchange.accent}30` : 'var(--color-bg-tertiary)',
+                  color: step.warn ? '#ef4444' : step.ok ? exchange.accent : 'var(--color-text-muted)',
                 }}>
                 {step.n}
               </span>
               <p className="text-[12px] leading-snug text-right flex-1"
-                style={{ color: step.warn ? '#ef4444' : step.ok ? 'var(--text-primary)' : 'var(--text-muted)' }}>
+                style={{ color: step.warn ? '#ef4444' : step.ok ? 'var(--color-text-primary)' : 'var(--color-text-muted)' }}>
                 {step.text}
               </p>
             </motion.div>
@@ -349,30 +343,31 @@ function ExchangeCard({ exchange, data, savedData, syncing, saving, onUpdate, on
   const [syncDays, setSyncDays] = useState('0'); // '0' = last 50; else import window in days
   const { id, name, tagline, accent, glow, canSync, extraField } = exchange;
 
-  const isConnected = !!(savedData?.apiKey && savedData?.apiSecret);
-  const hasChanges = (data?.apiKey || '') !== (savedData?.apiKey || '') ||
-    (data?.apiSecret || '') !== (savedData?.apiSecret || '') ||
-    (extraField ? (data?.[extraField.key] || '') !== (savedData?.[extraField.key] || '') : false);
+  // "Connected" is now a non-secret marker — the secret itself lives encrypted
+  // server-side and is never held in the browser.
+  const isConnected = !!savedData?.connected;
+  // Saving requires both fields freshly entered (we can't prefill the secret).
+  const hasChanges = (data?.apiKey || '').length > 0 && (data?.apiSecret || '').length > 0
+    && (!extraField || (data?.[extraField.key] || '').length > 0 || !extraField.required);
 
   // Pull the futures wallet balance once the exchange is connected, so the
   // card shows "Bybit: $1,234" without asking the user to type a starting value.
+  // The Worker looks up the stored credentials by uid — no secret sent.
   useEffect(() => {
     if (!isConnected || !canSync) { setBalance(null); return; }
     let cancelled = false;
     setBalance(null);
-    fetchExchangeBalance(id, savedData.apiKey, savedData.apiSecret, extraField ? savedData[extraField.key] : undefined)
+    fetchExchangeBalance(id)
       .then((res) => { if (!cancelled) setBalance(res.balance); })
       .catch(() => { if (!cancelled) setBalance(false); }); // false = failed; row hidden
     return () => { cancelled = true; };
-    // Depend on primitive credential values only — `savedData`/`extraField` are
-    // recreated by the parent on every render, which caused redundant refetches
-    // and balance flicker.
-  }, [isConnected, canSync, id, savedData?.apiKey, savedData?.apiSecret, extraField?.key, extraField ? savedData?.[extraField.key] : null]);
+  }, [isConnected, canSync, id]);
 
   const startEdit = () => {
-    onUpdate('apiKey', savedData?.apiKey || '');
-    onUpdate('apiSecret', savedData?.apiSecret || '');
-    if (extraField) onUpdate(extraField.key, savedData?.[extraField.key] || '');
+    // The secret is not held client-side, so editing starts from empty inputs.
+    onUpdate('apiKey', '');
+    onUpdate('apiSecret', '');
+    if (extraField) onUpdate(extraField.key, '');
     setEditing(true);
   };
 
@@ -386,8 +381,8 @@ function ExchangeCard({ exchange, data, savedData, syncing, saving, onUpdate, on
         onHoverEnd={() => setHovered(false)}
         className="relative rounded-2xl overflow-hidden"
         style={{
-          background: 'var(--bg-secondary)',
-          border: `1px solid ${isConnected ? `${accent}45` : 'var(--border-primary)'}`,
+          background: 'var(--color-bg-secondary)',
+          border: `1px solid ${isConnected ? `${accent}45` : 'var(--color-border-primary)'}`,
           transition: 'border-color 0.3s, box-shadow 0.3s',
           boxShadow: hovered || isConnected ? `0 0 30px -8px ${glow}` : 'none',
         }}>
@@ -448,9 +443,9 @@ function ExchangeCard({ exchange, data, savedData, syncing, saving, onUpdate, on
             /* Connected view — masked */
             <div className="space-y-2">
               {[
-              { label: 'API Key', val: maskKey(savedData?.apiKey) },
+              { label: 'API Key', val: '••••••••••••••••••••' },
               { label: 'API Secret', val: '••••••••••••••••••••' },
-              ...(extraField ? [{ label: extraField.label, val: maskKey(savedData?.[extraField.key]) }] : []),
+              ...(extraField ? [{ label: extraField.label, val: '••••••••••••' }] : []),
             ].map(({ label, val }) => (
                 <div key={label} className="flex items-center gap-2 px-3 py-2.5 rounded-xl transition-colors" dir="ltr"
                   style={{ background: `${accent}08`, border: `1px solid ${accent}20` }}>
@@ -502,7 +497,7 @@ function ExchangeCard({ exchange, data, savedData, syncing, saving, onUpdate, on
                 </div>
               )}
               <div className="flex items-center justify-end gap-1.5 text-[10px] text-text-muted">
-                <Shield className="w-3 h-3 text-profit" />Read-Only · מוגן בהרשאות Firebase
+                <Shield className="w-3 h-3 text-profit" />מומלץ: מפתח לקריאה בלבד (ללא מסחר/משיכה)
               </div>
             </div>
           )}
@@ -552,7 +547,7 @@ function ExchangeCard({ exchange, data, savedData, syncing, saving, onUpdate, on
             ) : hasChanges ? (
               <>
                 <motion.button whileHover={{ scale: 1.03 }} whileTap={{ scale: 0.97 }}
-                  onClick={() => { setEditing(false); onUpdate('apiKey', savedData?.apiKey || ''); onUpdate('apiSecret', savedData?.apiSecret || ''); }}
+                  onClick={() => { setEditing(false); onUpdate('apiKey', ''); onUpdate('apiSecret', ''); if (extraField) onUpdate(extraField.key, ''); }}
                   className="px-3 py-2.5 rounded-xl border border-border-primary text-xs text-text-muted hover:bg-bg-tertiary transition-colors cursor-pointer">
                   ביטול
                 </motion.button>
@@ -592,28 +587,50 @@ export default function ExchangeSettings({ journalId: propJournalId, onImportTra
   const [syncing, setSyncing] = useState(null);
   const [syncModal, setSyncModal] = useState(null);
 
-  // Push notifications need the worker to hold read-only exchange keys. Only
-  // register when the user has actually granted notification permission.
-  const pushEligible = () => typeof Notification !== 'undefined' && Notification.permission === 'granted';
-  const registerForPush = (id, conf) => {
-    if (!pushEligible() || !conf?.apiKey || !conf?.apiSecret) return;
-    const extraKey = EXCHANGES.find(e => e.id === id)?.extraField?.key;
-    registerExchangeForPush(id, conf.apiKey, conf.apiSecret, extraKey ? conf[extraKey] : undefined);
-  };
-
+  // Load connected exchanges. Credentials live encrypted server-side, so the
+  // browser only learns WHICH exchanges are connected (a non-secret marker),
+  // never the keys themselves.
   useEffect(() => {
     if (!user) return;
-    getUserSetting(user.uid, 'exchanges').then(data => {
-      if (data) {
-        setExchanges(data);
-        setSavedExchanges(data);
-        // Re-sync stored keys for background push on every visit (idempotent).
-        if (pushEligible()) {
-          for (const [id, conf] of Object.entries(data)) registerForPush(id, conf);
+    (async () => {
+      try {
+        const [legacy, connected] = await Promise.all([
+          getUserSetting(user.uid, 'exchanges').catch(() => null),
+          getConnectedExchanges().catch(() => []),
+        ]);
+        const markers = {};
+        for (const eid of connected) markers[eid] = { connected: true };
+
+        // One-time migration of any legacy PLAINTEXT credentials still in
+        // Firestore: push them to the encrypted server-side store, then strip
+        // the secrets out of Firestore. Only strip if every migration succeeds
+        // (e.g. the server encryption key is configured) so we never delete a
+        // user's keys before they're safely re-stored.
+        let hadPlaintext = false, anyFailed = false;
+        if (legacy && typeof legacy === 'object') {
+          for (const [eid, conf] of Object.entries(legacy)) {
+            if (conf?.connected) markers[eid] = { connected: true };
+            if (conf?.apiKey && conf?.apiSecret) {
+              hadPlaintext = true;
+              // Always re-store (idempotent) so the encrypted KV blob is written
+              // even for users who were already "connected" via push — otherwise
+              // their KV creds would stay plaintext while Firestore got stripped.
+              try {
+                const extraKey = EXCHANGES.find(e => e.id === eid)?.extraField?.key;
+                await storeExchangeCredentials(eid, { apiKey: conf.apiKey, apiSecret: conf.apiSecret, passphrase: extraKey ? conf[extraKey] : undefined });
+                markers[eid] = { connected: true };
+              } catch { anyFailed = true; }
+            }
+          }
         }
+        setSavedExchanges(markers);
+        if (hadPlaintext && !anyFailed) {
+          try { await setUserSetting(user.uid, 'exchanges', markers, false); } catch { /* ignore */ }
+        }
+      } finally {
+        setLoading(false);
       }
-      setLoading(false);
-    });
+    })();
   }, [user]);
 
   const updateField = (id, field, value) =>
@@ -621,53 +638,58 @@ export default function ExchangeSettings({ journalId: propJournalId, onImportTra
 
   const handleSave = async (id) => {
     // Free tier caps how many exchanges can be connected at once.
-    const alreadyConnected = !!(savedExchanges[id]?.apiKey && savedExchanges[id]?.apiSecret);
-    const connectedNow = Object.values(savedExchanges).filter((e) => e?.apiKey && e?.apiSecret).length;
+    const alreadyConnected = !!savedExchanges[id]?.connected;
+    const connectedNow = Object.values(savedExchanges).filter((e) => e?.connected).length;
     if (!isPremium && !alreadyConnected && connectedNow >= FREE_LIMITS.exchanges) {
       toast.error(`במסלול החינמי אפשר לחבר בורסה אחת. שדרג ל-Premium לחיבורים ללא הגבלה.`);
       navigate('/premium');
       return;
     }
+    const conf = exchanges[id] || {};
+    const extraKey = EXCHANGES.find(e => e.id === id)?.extraField?.key;
     setSaving(id);
     try {
-      await setUserSetting(user.uid, 'exchanges', exchanges, true);
-      setSavedExchanges({ ...exchanges });
-      registerForPush(id, exchanges[id]);
+      // Send the secret to the encrypted server-side store exactly once.
+      await storeExchangeCredentials(id, { apiKey: conf.apiKey, apiSecret: conf.apiSecret, passphrase: extraKey ? conf[extraKey] : undefined });
+      // Persist only a non-secret marker; merge:false replaces the doc so no
+      // plaintext key can linger.
+      const newMarkers = { ...savedExchanges, [id]: { connected: true } };
+      await setUserSetting(user.uid, 'exchanges', newMarkers, false);
+      setSavedExchanges(newMarkers);
+      // Drop the typed secret from React state immediately.
+      setExchanges(p => ({ ...p, [id]: {} }));
       toast.success('המפתחות נשמרו ✓');
-    } catch { toast.error('שגיאה בשמירה'); } finally { setSaving(null); }
+    } catch (e) { toast.error(e.message || 'שגיאה בשמירה'); } finally { setSaving(null); }
   };
 
   const handleDisconnect = async (id) => {
-    const updated = { ...exchanges, [id]: { apiKey: '', apiSecret: '' } };
-    setExchanges(updated);
+    const newMarkers = { ...savedExchanges };
+    delete newMarkers[id];
     try {
-      await setUserSetting(user.uid, 'exchanges', updated, true);
-      setSavedExchanges({ ...updated });
-      unregisterExchangeForPush(id);
+      await deleteExchangeCredentials(id);
+      await setUserSetting(user.uid, 'exchanges', newMarkers, false);
+      setSavedExchanges(newMarkers);
+      setExchanges(p => ({ ...p, [id]: {} }));
       toast.success('הבורסה נותקה');
     } catch { toast.error('שגיאה בניתוק'); }
   };
 
   const handleSync = async (id, days = 0) => {
-    const saved = savedExchanges[id] || {};
-    const exchConf = EXCHANGES.find(e => e.id === id);
-    const extraKey = exchConf?.extraField?.key;
-    const passphrase = extraKey ? saved[extraKey] : undefined;
     // One-time diagnostic: set localStorage.tradeos_sync_debug='1' to log the
     // raw upstream rows to the console (helps map missing fields like SL/TP).
     const debug = typeof localStorage !== 'undefined' && localStorage.getItem('tradeos_sync_debug') === '1';
     setSyncing(id);
     try {
       const [tradesResult, openResult] = await Promise.allSettled([
-        syncExchangeTrades(id, saved.apiKey, saved.apiSecret, passphrase, { days, debug }),
-        syncOpenPositions(id, saved.apiKey, saved.apiSecret, passphrase),
+        syncExchangeTrades(id, { days, debug }),
+        syncOpenPositions(id),
       ]);
       const closedTrades = tradesResult.status === 'fulfilled' ? tradesResult.value : [];
       const openPos = openResult.status === 'fulfilled' ? openResult.value : [];
       const taggedOpen = openPos.map(p => ({ ...p, _isOpen: true, pnlFromExchange: null }));
       const merged = [...taggedOpen, ...closedTrades];
       if (!merged.length) { toast('לא נמצאו עסקאות', { icon: 'ℹ️' }); return; }
-      setSyncModal({ exchange: exchConf?.name || id, trades: merged });
+      setSyncModal({ exchange: EXCHANGES.find(e => e.id === id)?.name || id, trades: merged });
     } catch (err) { toast.error(`שגיאת סנכרון: ${err.message}`); } finally { setSyncing(null); }
   };
 
@@ -721,7 +743,7 @@ export default function ExchangeSettings({ journalId: propJournalId, onImportTra
 
   if (loading) return <LoadingSpinner />;
 
-  const connectedCount = EXCHANGES.filter(e => savedExchanges[e.id]?.apiKey && savedExchanges[e.id]?.apiSecret).length;
+  const connectedCount = EXCHANGES.filter(e => savedExchanges[e.id]?.connected).length;
 
   return (
     <>
@@ -766,7 +788,7 @@ export default function ExchangeSettings({ journalId: propJournalId, onImportTra
         <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} transition={{ delay: 0.4 }}
           className="mt-6 flex items-center justify-center gap-2 text-[11px] text-text-muted">
           <Shield className="w-3.5 h-3.5 text-profit" />
-          המפתחות מוצפנים ומשמשים לקריאה בלבד — TradeOS לא יכול לבצע פעולות מסחר
+          המפתחות נשמרים בחשבונך האישי בלבד (מוגנים בהרשאות גישה). מומלץ ליצור מפתח API לקריאה בלבד — ללא הרשאות מסחר או משיכה.
         </motion.div>
       </motion.div>
 

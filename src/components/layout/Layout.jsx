@@ -31,6 +31,27 @@ export default function Layout() {
     window.addEventListener('closeSidebar', handler);
     return () => window.removeEventListener('closeSidebar', handler);
   }, []);
+
+  // 21st.dev-style spotlight: a soft violet→cyan glow follows the cursor across
+  // any .bento-card. One rAF-throttled pointer listener updates CSS vars on the
+  // hovered card; the glow itself is a pure-CSS ::after (see index.css).
+  useEffect(() => {
+    let raf = 0;
+    const onMove = (e) => {
+      if (raf) return;
+      const { clientX, clientY, target } = e;
+      raf = requestAnimationFrame(() => {
+        raf = 0;
+        const card = target?.closest?.('.bento-card');
+        if (!card) return;
+        const r = card.getBoundingClientRect();
+        card.style.setProperty('--spot-x', `${clientX - r.left}px`);
+        card.style.setProperty('--spot-y', `${clientY - r.top}px`);
+      });
+    };
+    window.addEventListener('pointermove', onMove, { passive: true });
+    return () => { window.removeEventListener('pointermove', onMove); if (raf) cancelAnimationFrame(raf); };
+  }, []);
   // useLeaderboardSync();
   useDailySummarySync();
   // Keep granted devices registered for push on every app open (admins can then

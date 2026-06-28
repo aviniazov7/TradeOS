@@ -64,22 +64,28 @@ export default function PremiumPage() {
       <div className="max-w-2xl mx-auto space-y-5">
 
         {/* Hero */}
-        <div className="relative overflow-hidden rounded-2xl border border-accent-primary/30 bg-gradient-to-b from-accent-primary/10 to-bg-secondary p-6 text-center">
-          <div className="mx-auto w-14 h-14 rounded-2xl bg-accent-primary/15 flex items-center justify-center mb-3">
-            <Crown className="w-7 h-7 text-accent-primary" />
+        <div className="border-beam relative overflow-hidden rounded-2xl border border-accent-primary/30 bg-gradient-to-b from-accent-primary/10 to-bg-secondary p-6 text-center">
+          {/* violet→cyan top hairline */}
+          <div className="absolute top-0 inset-x-0 h-px pointer-events-none"
+            style={{ background: 'linear-gradient(to right, transparent, #8b5cf6, #06b6d4, transparent)' }} />
+          <div className="mx-auto w-14 h-14 rounded-2xl flex items-center justify-center mb-3" style={{ background: 'var(--accent-gradient)' }}>
+            <Crown className="w-7 h-7 text-white" />
           </div>
           {isPremium ? (
             <>
               <h1 className="text-xl font-bold text-text-primary">אתה במנוי Premium 👑</h1>
               <p className="text-sm text-text-secondary mt-1">כל הפיצ'רים פתוחים. תודה על התמיכה!</p>
               {timeLeft ? (
-                <div className="mt-3 inline-flex items-center gap-2 px-3 py-1.5 rounded-full bg-amber-500/10 border border-amber-500/30 text-xs">
-                  <span className="text-amber-400 font-semibold">נשארו {timeLeft}</span>
+                <div className="mt-3 inline-flex items-center gap-2 px-3 py-1.5 rounded-full bg-accent-primary/10 border border-accent-primary/30 text-xs">
+                  <span className="text-accent-primary font-semibold">נשארו {timeLeft}</span>
                   <span className="text-text-muted">· מסתיים ב-{expiresAt}</span>
                 </div>
               ) : (
-                <div className="mt-3 inline-flex items-center gap-1 px-3 py-1.5 rounded-full bg-amber-500/10 border border-amber-500/30 text-xs text-amber-400 font-semibold">
-                  גישה ללא הגבלת זמן
+                <div
+                  className="mt-3 inline-flex items-center gap-1.5 px-3.5 py-1.5 rounded-full text-xs font-bold text-white"
+                  style={{ background: 'var(--accent-gradient)', boxShadow: '0 4px 16px -4px rgba(139,92,246,0.55)' }}
+                >
+                  <Crown className="w-3.5 h-3.5" /> גישה ללא הגבלת זמן
                 </div>
               )}
             </>

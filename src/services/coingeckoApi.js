@@ -200,6 +200,40 @@ export async function fetchKlines(pair, interval = '1h', limit = 720) {
   return data;
 }
 
+// Klines for an explicit time window [startMs, endMs]. Binance natively
+// supports startTime/endTime; the worker forwards them, and the Bybit
+// fallback maps them to start/end. Returns Binance 12-col arrays (oldest-first).
+export async function fetchKlinesRange(pair, interval, startMs, endMs, limit = 500) {
+  const s = Math.floor(startMs);
+  const e = Math.floor(endMs);
+  const qs = `symbol=${encodeURIComponent(pair)}&interval=${interval}&startTime=${s}&endTime=${e}&limit=${limit}`;
+  // The data actually overlaps the requested window (detects a proxy that
+  // ignored the time window and returned only the most-recent candles).
+  const covers = (rows) =>
+    Array.isArray(rows) && rows.length >= 3 &&
+    Number(rows[0][0]) <= e && Number(rows[rows.length - 1][0]) >= s;
+
+  // 1) Worker proxy (preferred — avoids CORS / geo issues).
+  try {
+    const r = await fetch(`${BINANCE_BASE}/klines?${qs}`);
+    if (r.ok) {
+      const d = await r.json();
+      if (covers(d)) return d;
+    }
+  } catch { /* fall through */ }
+
+  // 2) Binance public data mirror (CORS-enabled, honours startTime/endTime).
+  try {
+    const r = await fetch(`https://data-api.binance.vision/api/v3/klines?${qs}`);
+    if (r.ok) {
+      const d = await r.json();
+      if (Array.isArray(d) && d.length) return d;
+    }
+  } catch { /* fall through */ }
+
+  throw new Error('klines range unavailable');
+}
+
 export async function fetchCoinChart(coinId, days = 30, symbol = null) {
   const key = `chart:${coinId}:${days}`;
   const cached = getCached(key);

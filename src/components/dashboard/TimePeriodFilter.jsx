@@ -2,7 +2,7 @@ import { useState, useRef, useEffect } from 'react';
 import { ChevronDown } from 'lucide-react';
 import { TIME_PERIODS } from '../../utils/constants';
 
-export default function TimePeriodFilter({ value, onChange, compact, dropdown }) {
+export default function TimePeriodFilter({ value, onChange, dropdown }) {
   const [open, setOpen] = useState(false);
   const ref = useRef(null);
   const currentLabel = TIME_PERIODS.find((p) => p.key === value)?.label || value;
@@ -19,7 +19,7 @@ export default function TimePeriodFilter({ value, onChange, compact, dropdown })
       <div ref={ref} className="relative">
         <button
           onClick={() => setOpen((v) => !v)}
-          className="flex items-center gap-1 px-2.5 py-1.5 bg-bg-tertiary rounded-lg text-[11px] font-medium text-accent-primary cursor-pointer transition-colors"
+          className="h-9 inline-flex items-center gap-1 px-3 rounded-lg border border-border-primary text-[11px] font-medium text-accent-primary cursor-pointer transition-colors hover:bg-bg-tertiary"
         >
           {currentLabel}
           <ChevronDown className={`w-3 h-3 transition-transform duration-200 ${open ? 'rotate-180' : ''}`} />
@@ -45,15 +45,17 @@ export default function TimePeriodFilter({ value, onChange, compact, dropdown })
     );
   }
 
+  // Segmented control. A bordered track (no translucent fill) so it matches the
+  // other toolbar icon-buttons and never picks up the global glass blur that
+  // made it look like a nested "mirror" panel. Equal-width pills so every
+  // period reads the same size.
   return (
-    <div className={`flex gap-0.5 bg-bg-tertiary rounded-lg ${compact ? 'p-0.5' : 'p-1'}`}>
+    <div className="h-9 inline-flex items-center gap-0.5 rounded-lg border border-border-primary px-1">
       {TIME_PERIODS.map((p) => (
         <button
           key={p.key}
           onClick={() => onChange(p.key)}
-          className={`rounded-md font-medium transition-colors cursor-pointer ${
-            compact ? 'px-2 py-1 text-[11px]' : 'px-3 py-1.5 text-xs'
-          } ${
+          className={`h-7 min-w-[2.5rem] inline-flex items-center justify-center rounded-md text-xs font-medium transition-colors cursor-pointer ${
             value === p.key
               ? 'bg-accent-primary text-black'
               : 'text-text-muted hover:text-text-primary'

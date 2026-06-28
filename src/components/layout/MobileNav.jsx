@@ -63,15 +63,18 @@ export default function MobileNav() {
     >
       <div
         ref={containerRef}
-        className="pointer-events-auto relative mx-auto flex items-center gap-1 px-2 py-2 rounded-full border border-white/10 bg-black/60 shadow-[0_10px_40px_rgba(0,0,0,0.45)]"
+        className="pointer-events-auto relative mx-auto flex items-center gap-1 px-2 py-2 rounded-full"
         style={{
+          background: 'var(--glass-bg)',
+          border: '1px solid var(--glass-border)',
+          boxShadow: 'var(--glass-shadow-sm)',
           WebkitBackdropFilter: 'blur(28px) saturate(160%)',
           backdropFilter: 'blur(28px) saturate(160%)',
         }}
       >
         <motion.div
           aria-hidden="true"
-          className="absolute top-1.5 bottom-1.5 rounded-full bg-white/10 pointer-events-none"
+          className="absolute top-1.5 bottom-1.5 rounded-full bg-accent-primary/15 pointer-events-none"
           initial={false}
           animate={
             pill.ready
@@ -103,12 +106,10 @@ export default function MobileNav() {
               }}
               className="relative z-10 flex-1 flex flex-col items-center justify-center gap-0.5 rounded-full px-2 py-1.5 text-[11px] font-medium"
             >
-              <motion.span
-                className="flex flex-col items-center gap-0.5"
-                animate={{
-                  color: isActive ? 'rgba(255,255,255,1)' : 'rgba(255,255,255,0.6)',
-                }}
-                transition={{ duration: 0.15 }}
+              <span
+                className={`flex flex-col items-center gap-0.5 transition-colors ${
+                  isActive ? '' : 'text-text-muted'
+                }`}
               >
                 <motion.span
                   animate={{ scale: isActive ? 1.1 : 1 }}
@@ -118,10 +119,11 @@ export default function MobileNav() {
                   <item.icon
                     className="w-[22px] h-[22px]"
                     strokeWidth={isActive ? 2.4 : 2}
+                    style={isActive ? { stroke: 'url(#ai-grad)' } : undefined}
                   />
                 </motion.span>
-                <span className="leading-none">{item.label}</span>
-              </motion.span>
+                <span className={`leading-none ${isActive ? 'text-gradient font-semibold' : ''}`}>{item.label}</span>
+              </span>
             </NavLink>
           );
         })}

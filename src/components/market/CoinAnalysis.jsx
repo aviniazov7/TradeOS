@@ -8,6 +8,14 @@ import { fetchAnalysisLiquidity } from '../../services/bybitDirect';
 import { fetchProjectDescription } from '../../services/groqApi';
 import { computeRSI, computeMA, computeVolatility } from '../../utils/technicals';
 
+// ── Modern "AI" accent: violet → cyan. Replaces the old flat blue across this
+// page. AI_GRADIENT is used for hero CTAs / hairlines / progress; AI_FROM/AI_TO
+// are the endpoints. The whole page also overrides --color-accent-primary to
+// AI_FROM (see the root wrapper) so every text/icon accent shifts to violet.
+const AI_FROM = '#8b5cf6';
+const AI_TO = '#06b6d4';
+const AI_GRADIENT = `linear-gradient(135deg, ${AI_FROM} 0%, ${AI_TO} 100%)`;
+
 function formatNum(n) {
   if (!n && n !== 0) return '—';
   if (n >= 1e12) return `$${(n / 1e12).toFixed(2)}T`;
@@ -52,8 +60,11 @@ function AnimatedValue({ value, className }) {
   );
 }
 
-// Card with animated border glow
-function GlowCard({ children, className = '', delay = 0, glowColor = 'rgba(99,102,241,0.15)' }) {
+// Card with a modern AI-gradient surface: a thin violet→cyan hairline along the
+// top edge and a faint corner glow. Hover feedback is a brighter border + a soft
+// violet OUTER shadow — never a fill behind the card (the surface is translucent,
+// so a gradient behind it would bleed through and wash out the text).
+function GlowCard({ children, className = '', delay = 0 }) {
   return (
     <motion.div
       initial={{ opacity: 0, y: 15, scale: 0.97 }}
@@ -61,21 +72,13 @@ function GlowCard({ children, className = '', delay = 0, glowColor = 'rgba(99,10
       transition={{ delay, duration: 0.5, type: 'spring', stiffness: 120 }}
       className={`relative group h-full ${className}`}
     >
-      {/* Animated border glow */}
-      <motion.div
-        className="absolute -inset-[1px] rounded-2xl opacity-0 group-hover:opacity-100 transition-opacity duration-500"
-        style={{ background: `linear-gradient(135deg, ${glowColor}, transparent, ${glowColor})`, filter: 'blur(4px)' }}
-      />
-      <div className="relative bg-bg-secondary border border-border-primary rounded-2xl overflow-hidden h-full">
-        {/* Corner decorations */}
-        <div className="absolute top-0 right-0 w-8 h-8 opacity-[0.07]">
-          <div className="absolute top-0 right-0 w-full h-px bg-accent-primary" />
-          <div className="absolute top-0 right-0 w-px h-full bg-accent-primary" />
-        </div>
-        <div className="absolute bottom-0 left-0 w-8 h-8 opacity-[0.07]">
-          <div className="absolute bottom-0 left-0 w-full h-px bg-accent-primary" />
-          <div className="absolute bottom-0 left-0 w-px h-full bg-accent-primary" />
-        </div>
+      <div className="relative bg-bg-secondary border border-border-primary rounded-2xl overflow-hidden h-full transition-[border-color,box-shadow] duration-300 group-hover:border-accent-primary/40 group-hover:shadow-[0_10px_34px_-12px_rgba(139,92,246,0.5)]">
+        {/* Top accent hairline (violet → cyan) */}
+        <div className="absolute top-0 inset-x-0 h-px pointer-events-none"
+          style={{ background: `linear-gradient(to right, transparent, ${AI_FROM}, ${AI_TO}, transparent)`, opacity: 0.45 }} />
+        {/* Faint static accent glow in the top-right corner (small, never over text) */}
+        <div className="absolute -top-10 -right-10 w-24 h-24 rounded-full pointer-events-none"
+          style={{ background: `radial-gradient(circle, ${AI_FROM}1f 0%, transparent 70%)` }} />
         {children}
       </div>
     </motion.div>
@@ -529,14 +532,14 @@ export default function CoinAnalysis() {
   }, [rawPrices]);
 
   const chartColor = useMemo(() => {
-    if (!chartData.length) return '#6366f1';
+    if (!chartData.length) return AI_FROM;
     return chartData[chartData.length - 1].price >= chartData[0].price ? '#22c55e' : '#ef4444';
   }, [chartData]);
 
   const md = coinData?.market_data;
 
   return (
-    <div className="space-y-4">
+    <div className="space-y-4 analysis-page">
       {/* Search Bar */}
       <div className="max-w-sm mx-auto" ref={searchRef}>
         <div className="relative flex items-center gap-2">
@@ -581,14 +584,25 @@ export default function CoinAnalysis() {
               )}
             </AnimatePresence>
           </div>
-          <button
+          <motion.button
             onClick={() => analyze()}
             disabled={!selectedCoin || analyzing}
-            className="flex items-center gap-2 bg-accent-primary text-bg-primary font-bold px-5 py-3 rounded-xl hover:bg-accent-hover transition-all cursor-pointer text-sm disabled:opacity-30 disabled:cursor-not-allowed shrink-0 shadow-lg shadow-accent-primary/20"
+            whileHover={{ scale: 1.03 }}
+            whileTap={{ scale: 0.97 }}
+            className="relative flex items-center gap-2 text-white font-bold px-5 py-3 rounded-xl transition-all cursor-pointer text-sm disabled:opacity-30 disabled:cursor-not-allowed shrink-0 overflow-hidden"
+            style={{ background: AI_GRADIENT, boxShadow: `0 6px 22px -4px ${AI_FROM}80` }}
           >
-            <Sparkles className="w-4 h-4" />
-            <span>Analyze</span>
-          </button>
+            {/* sheen sweep */}
+            <motion.span
+              aria-hidden
+              className="absolute inset-0 pointer-events-none"
+              style={{ background: 'linear-gradient(110deg, transparent 30%, rgba(255,255,255,0.35) 50%, transparent 70%)' }}
+              animate={{ x: ['-120%', '120%'] }}
+              transition={{ duration: 2.4, repeat: Infinity, ease: 'easeInOut', repeatDelay: 1.2 }}
+            />
+            <Sparkles className="w-4 h-4 relative" />
+            <span className="relative">Analyze</span>
+          </motion.button>
           {coinData && (
             <button onClick={reset} className="p-3 rounded-xl text-text-muted hover:text-text-primary hover:bg-bg-tertiary transition-colors cursor-pointer shrink-0 border border-border-primary" title="ניתוח חדש">
               <RotateCcw className="w-4 h-4" />
@@ -609,9 +623,12 @@ export default function CoinAnalysis() {
               onClick={() => selectCoin(c)}
               className={`px-3 py-1.5 rounded-lg text-xs font-semibold border transition-all cursor-pointer ${
                 selectedCoin?.coingeckoId === c.coingeckoId
-                  ? 'bg-accent-primary/15 text-accent-primary border-accent-primary/40 shadow-md shadow-accent-primary/10'
+                  ? 'text-white border-transparent shadow-md'
                   : 'bg-bg-secondary text-text-secondary border-border-primary hover:border-accent-primary/40 hover:text-accent-primary hover:shadow-md hover:shadow-accent-primary/10'
               }`}
+              style={selectedCoin?.coingeckoId === c.coingeckoId
+                ? { background: AI_GRADIENT, boxShadow: `0 4px 14px -4px ${AI_FROM}80` }
+                : undefined}
             >
               {c.symbol}
             </motion.button>
@@ -778,7 +795,7 @@ export default function CoinAnalysis() {
                             height: '100%',
                             locale: 'he_IL',
                             dateRange: '1D',
-                            colorTheme: 'dark',
+                            colorTheme: (typeof document !== 'undefined' && document.documentElement.classList.contains('light')) ? 'light' : 'dark',
                             isTransparent: true,
                             autosize: true,
                           }}
@@ -900,7 +917,7 @@ export default function CoinAnalysis() {
                               animate={{ left: `calc(${Math.min(100, Math.max(0, technicals.rsi))}% - 5px)` }}
                               transition={{ duration: 1.5, type: 'spring' }}
                               className="absolute top-1/2 -translate-y-1/2 w-3 h-3 rounded-full bg-white border-2 shadow-md"
-                              style={{ borderColor: technicals.rsi >= 70 ? '#ef4444' : technicals.rsi <= 30 ? '#22c55e' : '#6366f1' }}
+                              style={{ borderColor: technicals.rsi >= 70 ? '#ef4444' : technicals.rsi <= 30 ? '#22c55e' : AI_FROM }}
                             />
                           </div>
                           <AnimatedValue value={technicals.rsi.toFixed(1)} className="text-sm font-bold text-text-primary" />
@@ -1020,7 +1037,7 @@ export default function CoinAnalysis() {
                           transition={{ duration: 2, delay: 0.3, ease: 'easeOut' }}
                           className="h-full bg-gradient-to-r from-accent-primary to-accent-primary/60 rounded-full"
                         />
-                        <span className="absolute inset-0 flex items-center justify-center text-[9px] font-bold text-white/80">
+                        <span className="absolute inset-0 flex items-center justify-center text-[9px] font-bold text-text-primary">
                           {((md.circulating_supply / md.max_supply) * 100).toFixed(1)}%
                         </span>
                       </div>
@@ -1056,11 +1073,11 @@ export default function CoinAnalysis() {
                               <stop offset="100%" stopColor={chartColor} stopOpacity={0} />
                             </linearGradient>
                           </defs>
-                          <XAxis dataKey="date" tick={{ fontSize: 10, fill: '#666' }} tickLine={false} axisLine={false} interval="preserveStartEnd" />
-                          <YAxis domain={['auto', 'auto']} tick={{ fontSize: 10, fill: '#666' }} tickLine={false} axisLine={false} tickFormatter={(v) => v >= 1 ? `$${v.toLocaleString()}` : `$${v.toFixed(4)}`} width={65} />
+                          <XAxis dataKey="date" tick={{ fontSize: 10, fill: 'var(--color-text-muted)' }} tickLine={false} axisLine={false} interval="preserveStartEnd" />
+                          <YAxis domain={['auto', 'auto']} tick={{ fontSize: 10, fill: 'var(--color-text-muted)' }} tickLine={false} axisLine={false} tickFormatter={(v) => v >= 1 ? `$${v.toLocaleString()}` : `$${v.toFixed(4)}`} width={65} />
                           <Tooltip
-                            contentStyle={{ backgroundColor: '#1a1a2e', border: '1px solid rgba(99,102,241,0.3)', borderRadius: 12, fontSize: 12 }}
-                            labelStyle={{ color: '#999' }}
+                            contentStyle={{ backgroundColor: 'var(--color-bg-overlay)', border: '1px solid rgba(99,102,241,0.3)', borderRadius: 12, fontSize: 12, color: 'var(--color-text-primary)' }}
+                            labelStyle={{ color: 'var(--color-text-secondary)' }}
                             formatter={(v) => [formatPrice(v), 'מחיר']}
                           />
                           {technicals?.ma7 && <ReferenceLine y={technicals.ma7} stroke="#f59e0b" strokeDasharray="4 4" strokeWidth={1} />}
@@ -1563,7 +1580,7 @@ function LiquidityHeatmap({ pair, klines }) {
       const toY = (price) => PT + (1 - (price - priceMin) / priceRange) * plotH;
 
       // Background
-      ctx.fillStyle = '#08071a';
+      ctx.fillStyle = '#000000';
       ctx.fillRect(0, 0, W, H);
 
       // Heat cells — persisting levels render as horizontal liquidity bands.
@@ -1799,7 +1816,7 @@ function LiquidityHeatmap({ pair, klines }) {
         <canvas
           ref={canvasRef}
           className="w-full rounded-lg"
-          style={{ height: '460px', background: '#08071a', display: 'block', cursor: 'crosshair' }}
+          style={{ height: '460px', background: '#000000', display: 'block', cursor: 'crosshair' }}
         />
 
         {/* Legend */}

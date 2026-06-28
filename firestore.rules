@@ -14,7 +14,14 @@ service cloud.firestore {
     function noPrivilegeEscalation() {
       return request.resource.data.get('role', 'user') == resource.data.get('role', 'user')
         && request.resource.data.get('plan', 'free') == resource.data.get('plan', 'free')
-        && request.resource.data.get('planExpires', '') == resource.data.get('planExpires', '');
+        && request.resource.data.get('planExpires', '') == resource.data.get('planExpires', '')
+        // Server-authoritative monetization fields — set only by the Admin SDK
+        // (adminGrantPremium / payment flow), never by the user. Pinning them
+        // stops a user fabricating revenue ($100k "payments") that would poison
+        // the admin MRR/churn analytics.
+        && request.resource.data.get('planAmount', 0) == resource.data.get('planAmount', 0)
+        && request.resource.data.get('planDays', 0) == resource.data.get('planDays', 0)
+        && request.resource.data.get('planGrantedAt', '') == resource.data.get('planGrantedAt', '');
     }
 
     match /users/{userId} {
@@ -145,12 +152,20 @@ service cloud.firestore {
           : (data.leverage is number && data.leverage >= 1 && data.leverage <= 200));
     }
 
-    // Leaderboard entry validation — prevent score manipulation
+    // Leaderboard entry validation. Must match the exact shape the client
+    // writes (useLeaderboardSync.js): displayName, photoURL, joinedAt,
+    // updatedAt, live{}, backtest{}, score. The previous version validated
+    // top-level winRate/totalTrades/profitFactor — fields the client never
+    // writes — so EVERY legitimate write was permission-denied. Now we also
+    // bound `score` (the sort key) to 0–100 so a user can't setDoc score:999999
+    // and pin themselves to the top.
     function isValidLeaderboardEntry(data) {
-      return data.displayName is string && data.displayName.size() <= 50
-        && data.winRate is number && data.winRate >= 0 && data.winRate <= 100
-        && data.totalTrades is number && data.totalTrades >= 0
-        && data.profitFactor is number && data.profitFactor >= 0;
+      return data.keys().hasOnly(['displayName', 'photoURL', 'joinedAt', 'updatedAt', 'live', 'backtest', 'score'])
+        && data.displayName is string && data.displayName.size() <= 50
+        && (!('photoURL' in data) || data.photoURL == null || (data.photoURL is string && data.photoURL.size() <= 1000))
+        && data.score is number && data.score >= 0 && data.score <= 100
+        && data.live is map
+        && data.backtest is map;
     }
   }
 }

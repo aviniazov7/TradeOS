@@ -656,7 +656,7 @@ export default function PendingLimitOrders({ trades, livePrices }) {
     try {
       await updateUserDocument(user.uid, 'trades', trade.id, { stopLoss: n });
       toast.success(`SL עודכן ל-${fmt(n)} ✓`, {
-        style: { background: '#141414', color: '#f0f0f0', border: '1px solid rgba(34,197,94,0.35)', borderRadius: '8px', fontSize: '13px' },
+        style: { background: 'var(--color-bg-overlay)', color: 'var(--color-text-primary)', border: '1px solid rgba(34,197,94,0.35)', borderRadius: '8px', fontSize: '13px' },
         duration: 2500,
       });
       // Flash badge for 2 seconds after save — independent of Firestore/hasPreview
@@ -732,11 +732,11 @@ export default function PendingLimitOrders({ trades, livePrices }) {
       animate={{ opacity: 1, y: 0 }}
       className="rounded-xl p-4 mb-4 relative overflow-hidden"
       style={{
-        background: 'rgba(43,120,255,0.04)',
+        background: 'linear-gradient(rgba(43,120,255,0.06), rgba(43,120,255,0.06)), var(--color-bg-secondary)',
         border: '1px solid rgba(43,120,255,0.2)',
         backdropFilter: 'blur(14px)',
         WebkitBackdropFilter: 'blur(14px)',
-        boxShadow: '0 8px 32px rgba(0,0,0,0.2), inset 0 1px 0 rgba(255,255,255,0.04)',
+        boxShadow: '0 8px 32px rgba(0,0,0,0.18)',
       }}
     >
       {/* subtle top glow */}

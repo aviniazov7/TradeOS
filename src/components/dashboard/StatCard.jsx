@@ -3,11 +3,7 @@ import { motion } from 'framer-motion';
 import { Copy, Check } from 'lucide-react';
 import { staggerItem } from '../../utils/animations';
 import AnimatedValue from '../shared/AnimatedValue';
-
-const glassHover = {
-  scale: 1.02,
-  boxShadow: '0 8px 40px rgba(0, 0, 0, 0.3), inset 0 1px 0 rgba(255, 255, 255, 0.06)',
-};
+import Card from '../shared/Card';
 
 export default function StatCard({ label, value, subtitle, subtitleColor, icon: Icon, color = 'text-text-primary', gradient }) {
   const [copied, setCopied] = useState(false);
@@ -21,17 +17,11 @@ export default function StatCard({ label, value, subtitle, subtitleColor, icon: 
   };
 
   return (
-    <motion.div
+    <Card
+      as={motion.div}
       variants={staggerItem}
-      whileHover={glassHover}
-      className="rounded-xl p-3 md:p-4 transition-all relative overflow-hidden group"
-      style={{
-        background: 'rgba(255,255,255,0.03)',
-        border: '1px solid rgba(255,255,255,0.08)',
-        backdropFilter: 'blur(14px)',
-        WebkitBackdropFilter: 'blur(14px)',
-        boxShadow: '0 4px 24px rgba(0,0,0,0.25), inset 0 1px 0 rgba(255,255,255,0.05)',
-      }}
+      hover
+      className="p-3 md:p-4 relative overflow-hidden group"
     >
       {gradient && (
         <div
@@ -74,6 +64,6 @@ export default function StatCard({ label, value, subtitle, subtitleColor, icon: 
           <p className={`text-[10px] md:text-xs mt-0.5 md:mt-1 ${subtitleColor || 'text-text-muted'}`}>{subtitle}</p>
         )}
       </div>
-    </motion.div>
+    </Card>
   );
 }

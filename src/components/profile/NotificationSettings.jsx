@@ -3,8 +3,8 @@ import { motion, AnimatePresence } from 'framer-motion';
 import { Bell, BellRing, BellOff, Send } from 'lucide-react';
 import toast from 'react-hot-toast';
 import { useAuth } from '../../contexts/AuthContext';
-import { subscribeToUserSetting, setUserSetting, getUserSetting } from '../../services/firestoreService';
-import { pushSupported, subscribeToPush, unsubscribeFromPush, sendTestPush, registerExchangeForPush, unregisterExchangeForPush } from '../../services/pushService';
+import { subscribeToUserSetting, setUserSetting } from '../../services/firestoreService';
+import { pushSupported, subscribeToPush, unsubscribeFromPush, sendTestPush } from '../../services/pushService';
 
 // Push notifications are ON by default; the user can turn them off here.
 const DEFAULTS = { pushEnabled: true, tradeOpenAlerts: true };
@@ -45,14 +45,9 @@ export default function NotificationSettings() {
       }
       await subscribeToPush();
       await save({ pushEnabled: true });
-      // Register any connected exchange so the background poller can notify on
-      // closed trades even when the app is shut.
-      const exchanges = await getUserSetting(user.uid, 'exchanges').catch(() => null);
-      if (exchanges) {
-        for (const [id, conf] of Object.entries(exchanges)) {
-          if (conf?.apiKey && conf?.apiSecret) registerExchangeForPush(id, conf.apiKey, conf.apiSecret, conf.passphrase);
-        }
-      }
+      // Exchange credentials already live in the encrypted server-side store, so
+      // the background poller can notify on closed trades without the client
+      // re-sending any keys here.
       toast.success('ההתראות הופעלו');
     } catch (e) {
       toast.error(e.message || 'הפעלת ההתראות נכשלה');
@@ -65,7 +60,10 @@ export default function NotificationSettings() {
     setBusy(true);
     try {
       await unsubscribeFromPush();
-      await unregisterExchangeForPush(); // drop stored exchange keys
+      // NOTE: do NOT drop the stored exchange credentials here — they are now the
+      // single source of truth for sync/balance/positions, so deleting them would
+      // silently disconnect every exchange. Credentials are removed only on an
+      // explicit exchange Disconnect.
       await save({ pushEnabled: false });
       toast('ההתראות כובו', { icon: <BellOff className="w-5 h-5 text-text-muted" /> });
     } catch (e) {
