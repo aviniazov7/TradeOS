@@ -20,9 +20,11 @@ export function useLinkedExchangeBalance(exchangeId) {
     const tick = async () => {
       try {
         const exchanges = await getUserSetting(user.uid, 'exchanges');
-        const creds = exchanges?.[exchangeId];
-        if (!creds?.apiKey || !creds?.apiSecret) { setBalance(null); return; }
-        const res = await fetchExchangeBalance(exchangeId, creds.apiKey, creds.apiSecret, creds.passphrase);
+        const conf = exchanges?.[exchangeId];
+        // `connected` is the new non-secret marker; the apiKey check keeps
+        // legacy (pre-migration) entries working until they migrate.
+        if (!conf?.connected && !(conf?.apiKey && conf?.apiSecret)) { setBalance(null); return; }
+        const res = await fetchExchangeBalance(exchangeId);
         if (!cancelled) setBalance(res.balance);
       } catch {
         if (!cancelled) setBalance(null);
@@ -68,10 +70,10 @@ export function useLinkedJournalsBalance(journals) {
         const allCreds = (await getUserSetting(user.uid, 'exchanges')) || {};
         const balances = {};
         await Promise.all(exchangeIds.map(async (exId) => {
-          const creds = allCreds[exId];
-          if (!creds?.apiKey || !creds?.apiSecret) return;
+          const conf = allCreds[exId];
+          if (!conf?.connected && !(conf?.apiKey && conf?.apiSecret)) return;
           try {
-            const res = await fetchExchangeBalance(exId, creds.apiKey, creds.apiSecret, creds.passphrase);
+            const res = await fetchExchangeBalance(exId);
             balances[exId] = res.balance;
           } catch { /* skip this exchange */ }
         }));
