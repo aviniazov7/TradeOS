@@ -12,6 +12,7 @@ import MarketSessionsCard from './MarketSessionsCard';
 import { getCachedImage, hasKnownIcon } from '../../services/coinImageCache';
 import { fetchSpotTickersAsBinance, fetchLinearTickers, fetchAccountRatio } from '../../services/bybitDirect';
 import CoinIcon from '../shared/CoinIcon';
+import Reveal from '../shared/Reveal';
 
 const WORKER_URL = import.meta.env.VITE_WORKER_URL || '';
 const CG_PROXY = WORKER_URL + '/cg';
@@ -1138,9 +1139,12 @@ export default function MarketOverview() {
       </motion.div>
 
       {/* Market Sessions — full width */}
+      <Reveal>
       <MarketSessionsCard />
+      </Reveal>
 
       {/* Middle row: Fear & Greed + Hot Categories + Gainers/Losers */}
+      <Reveal>
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-4 mb-4">
         {/* Fear & Greed with history */}
         <FearGreedGauge expanded />
@@ -1233,7 +1237,10 @@ export default function MarketOverview() {
 
       </div>
 
+      </Reveal>
+
       {/* Top 10 coins + Trending + Liquidations */}
+      <Reveal>
       <div className="grid grid-cols-1 lg:grid-cols-4 gap-4 mb-4">
         {/* Top 10 Coins */}
         <div className={`${cardClass} lg:col-span-2`}>
@@ -1319,15 +1326,22 @@ export default function MarketOverview() {
         <LiquidationsCard liquidations={liquidations} connected={liqConnected} />
       </div>
 
+      </Reveal>
+
       {/* Futures Data */}
+      <Reveal>
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-4 mb-4">
         <FundingRatesCard rates={fundingRates} loading={loading} />
         <OpenInterestCard data={openInterest} loading={loading} />
         <LongShortCard data={longShortRatio} loading={loading} />
       </div>
 
+      </Reveal>
+
       {/* Heatmap */}
+      <Reveal>
       <CryptoHeatmap coins={allCoins} loading={loading} />
+      </Reveal>
 
       </motion.div>
       ) : (

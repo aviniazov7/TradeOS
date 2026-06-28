@@ -22,6 +22,7 @@ import ExchangeLogo from '../shared/ExchangeLogo';
 import CoinIcon from '../shared/CoinIcon';
 import AnimatedValue from '../shared/AnimatedValue';
 import Card from '../shared/Card';
+import Reveal from '../shared/Reveal';
 import { formatCurrency, formatDate } from '../../utils/formatters';
 import { EXCHANGES, MENTALITY_EMOTIONS } from '../../utils/constants';
 import { pageVariants, pageTransition } from '../../utils/animations';
@@ -439,12 +440,15 @@ export default function Dashboard() {
       <div className="mb-6" />
 
       {/* TradeZella-style hero: cumulative P&L area + performance radar */}
-      <div className="grid grid-cols-1 lg:grid-cols-3 gap-3 mb-6 items-stretch">
-        <div className="lg:col-span-2 h-full"><CumulativePnLArea series={extraStats.equitySeries} hidden={hideBalances} /></div>
-        <div className="lg:col-span-1 h-full"><PerformanceRadar metrics={perf.metrics} score={perf.score} /></div>
-      </div>
+      <Reveal>
+        <div className="grid grid-cols-1 lg:grid-cols-3 gap-3 mb-6 items-stretch">
+          <div className="lg:col-span-2 h-full"><CumulativePnLArea series={extraStats.equitySeries} hidden={hideBalances} /></div>
+          <div className="lg:col-span-1 h-full"><PerformanceRadar metrics={perf.metrics} score={perf.score} /></div>
+        </div>
+      </Reveal>
 
       {/* Journals overview */}
+      <Reveal>
       <div className={`${cardClass} mb-6`}>
         <div className="flex items-center justify-between mb-4">
           <h2 className="text-sm font-semibold text-text-primary flex items-center gap-2">
@@ -532,7 +536,10 @@ export default function Dashboard() {
         )}
       </div>
 
+      </Reveal>
+
       {/* Quick stats row */}
+      <Reveal>
       <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-6">
         {/* Backtests */}
         <button onClick={() => navigate('/backtest')} className={`${cardClass} text-right hover:border-accent-primary/30 transition-colors cursor-pointer`}>
@@ -640,7 +647,10 @@ export default function Dashboard() {
         </button>
       </div>
 
+      </Reveal>
+
       {/* Mentality Zone */}
+      <Reveal>
       <div className={`${cardClass} mb-6`}>
         <div className="flex items-center justify-between mb-4">
           <h2 className="text-sm font-semibold text-text-primary flex items-center gap-2">
@@ -718,7 +728,10 @@ export default function Dashboard() {
         </div>
       </div>
 
+      </Reveal>
+
       {/* Market Overview & News */}
+      <Reveal>
       <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-6">
         {/* Market Overview */}
         <div className={cardClass}>
@@ -845,6 +858,7 @@ export default function Dashboard() {
           )}
         </div>
       </div>
+      </Reveal>
     </motion.div>
   );
 }
