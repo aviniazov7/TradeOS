@@ -458,13 +458,15 @@ input[type="number"] {
    small icon chips. Headline numbers use .num-mono (tabular monospace). */
 .bento-card {
   position: relative;
-  background: rgba(16, 16, 24, 0.85);
-  border: 1px solid rgba(255, 255, 255, 0.08);
-  border-radius: 0.75rem;
-  backdrop-filter: blur(6px);
-  -webkit-backdrop-filter: blur(6px);
-  box-shadow: 0 4px 20px rgba(0, 0, 0, 0.30);
-  transition: border-color 0.2s ease, box-shadow 0.2s ease;
+  /* Neutral theme surface (was a blue-tinted rgba(16,16,24)) so it reads black
+     like the rest of the app and adapts to light mode automatically. */
+  background: var(--color-bg-secondary);
+  border: 1px solid var(--color-border-primary);
+  border-radius: 0.875rem;
+  backdrop-filter: blur(14px) saturate(140%);
+  -webkit-backdrop-filter: blur(14px) saturate(140%);
+  box-shadow: 0 4px 20px rgba(0, 0, 0, 0.25);
+  transition: border-color 0.2s ease, box-shadow 0.2s ease, transform 0.2s ease;
 }
 /* Faint scan-line highlight along the top edge */
 .bento-card::before {
@@ -478,8 +480,9 @@ input[type="number"] {
   pointer-events: none;
 }
 .bento-card:hover {
-  border-color: rgba(255, 255, 255, 0.16);
-  box-shadow: 0 6px 26px rgba(0, 0, 0, 0.38);
+  border-color: var(--color-border-hover);
+  box-shadow: 0 8px 28px rgba(0, 0, 0, 0.35);
+  transform: translateY(-1px);
 }
 .num-mono {
   font-family: ui-monospace, 'SF Mono', SFMono-Regular, Menlo, Consolas, monospace;
