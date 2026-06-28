@@ -21,6 +21,7 @@ import PerformanceRadar from './PerformanceRadar';
 import ExchangeLogo from '../shared/ExchangeLogo';
 import CoinIcon from '../shared/CoinIcon';
 import AnimatedValue from '../shared/AnimatedValue';
+import Card from '../shared/Card';
 import { formatCurrency, formatDate } from '../../utils/formatters';
 import { EXCHANGES, MENTALITY_EMOTIONS } from '../../utils/constants';
 import { pageVariants, pageTransition } from '../../utils/animations';
@@ -396,28 +397,42 @@ export default function Dashboard() {
     <motion.div variants={pageVariants} initial="initial" animate="animate" exit="exit" transition={pageTransition}>
       <PendingLimitOrders trades={globalStats.openTrades} livePrices={livePrices} />
 
-      {/* Total portfolio value + privacy toggle — compact, right-aligned */}
-      <div className="flex mb-3">
-        <div className="inline-flex items-center gap-2.5 bg-bg-secondary border border-border-primary rounded-xl px-3 py-2">
-          <Wallet className="w-4 h-4 text-accent-primary" />
-          <span className="text-xs text-text-muted">שווי תיקים כללי</span>
-          <span className="text-base font-bold text-text-primary" dir="ltr">
-            {m(formatCurrency(globalStats.totalBalance).replace('+', ''))}
-          </span>
-          {globalStats.pnlPercent !== 0 && (
-            <span className={`text-xs font-medium ${pnlColor(globalStats.pnlPercent)}`}>
-              {m(`${globalStats.pnlPercent > 0 ? '+' : ''}${globalStats.pnlPercent.toFixed(1)}%`)}
-            </span>
-          )}
-          <button
-            onClick={toggleHide}
-            className="p-1 rounded text-text-muted hover:text-text-primary transition-colors cursor-pointer"
-            title={hideBalances ? 'הצג סכומים' : 'הסתר סכומים'}
-          >
-            {hideBalances ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
-          </button>
+      {/* Total portfolio value — the hero figure of the dashboard. */}
+      <Card className="mb-4 px-4 py-3.5 flex items-center justify-between gap-4">
+        <div className="flex items-center gap-3 min-w-0">
+          <div className="w-10 h-10 rounded-xl bg-accent-primary/12 flex items-center justify-center shrink-0">
+            <Wallet className="w-5 h-5 text-accent-primary" />
+          </div>
+          <div className="text-right min-w-0">
+            <div className="text-xs text-text-muted mb-0.5">שווי תיקים כללי</div>
+            <div className="flex items-center gap-2 flex-wrap">
+              <span dir="ltr">
+                <AnimatedValue
+                  value={m(formatCurrency(globalStats.totalBalance).replace('+', ''))}
+                  className="text-3xl font-bold text-text-primary leading-none"
+                />
+              </span>
+              {globalStats.pnlPercent !== 0 && (
+                <span
+                  dir="ltr"
+                  className={`text-xs font-semibold px-1.5 py-0.5 rounded ${
+                    globalStats.pnlPercent >= 0 ? 'bg-profit/15 text-profit' : 'bg-loss/15 text-loss'
+                  }`}
+                >
+                  {m(`${globalStats.pnlPercent > 0 ? '+' : ''}${globalStats.pnlPercent.toFixed(1)}%`)}
+                </span>
+              )}
+            </div>
+          </div>
         </div>
-      </div>
+        <button
+          onClick={toggleHide}
+          className="p-2 rounded-lg text-text-muted hover:text-text-primary hover:bg-bg-tertiary transition-colors cursor-pointer shrink-0"
+          title={hideBalances ? 'הצג סכומים' : 'הסתר סכומים'}
+        >
+          {hideBalances ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
+        </button>
+      </Card>
 
       {/* KPI strip (TradeZella-style) — always shown so new users see it too */}
       <DashboardKpis kpi={kpi} hidden={hideBalances} />

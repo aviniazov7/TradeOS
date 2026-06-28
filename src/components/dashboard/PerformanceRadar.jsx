@@ -18,7 +18,7 @@ const TOOLTIP_STYLE = {
   color: 'var(--color-text-primary)',
 };
 
-const PURPLE = '#8b5cf6';
+const PURPLE = 'var(--color-chart-purple)';
 
 export default function PerformanceRadar({ metrics, score }) {
   const hasData = Array.isArray(metrics) && metrics.length > 0;
@@ -101,7 +101,7 @@ export default function PerformanceRadar({ metrics, score }) {
         </div>
         <div className="flex-1">
           <div className="relative h-2 rounded-full" style={{
-            background: 'linear-gradient(to right, #ef4444, #f59e0b, #eab308, #22c55e, #00bfff)',
+            background: 'linear-gradient(to right, #ef4444, #f59e0b, #eab308, #22c55e, var(--color-accent-primary))',
           }}>
             <div
               className="absolute top-1/2 w-3.5 h-3.5 rounded-full bg-white border-2 border-bg-secondary shadow"

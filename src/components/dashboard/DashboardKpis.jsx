@@ -1,5 +1,7 @@
 import { motion } from 'framer-motion';
 import { formatCurrency } from '../../utils/formatters';
+import Card from '../shared/Card';
+import AnimatedValue from '../shared/AnimatedValue';
 
 /* ------------------------------------------------------------------ */
 /* Animation variants                                                  */
@@ -21,14 +23,14 @@ const card = {
   },
 };
 
-const cardClass =
-  'bg-bg-secondary border border-border-primary rounded-xl p-4 h-full flex flex-col justify-between';
+// Layout only — the surface (bg/border/radius) comes from the shared Card.
+const cardClass = 'p-4 h-full flex flex-col justify-between';
 
 /* ------------------------------------------------------------------ */
 /* Small gauges                                                        */
 /* ------------------------------------------------------------------ */
 
-/** Semicircle (180°) gauge: green arc = pct%, red arc = rest. */
+/** Semicircle (180°) gauge: green arc = pct%, neutral track = rest. */
 function SemicircleGauge({ pct = 0, size = 92 }) {
   const clamped = Math.max(0, Math.min(100, Number.isFinite(pct) ? pct : 0));
   const stroke = 9;
@@ -51,11 +53,11 @@ function SemicircleGauge({ pct = 0, size = 92 }) {
       className="overflow-visible"
       dir="ltr"
     >
-      {/* red (background / remainder) */}
+      {/* neutral track (remainder) */}
       <path
         d={arc}
         fill="none"
-        stroke="var(--color-loss)"
+        stroke="var(--color-border-primary)"
         strokeWidth={stroke}
         strokeLinecap="round"
       />
@@ -72,7 +74,7 @@ function SemicircleGauge({ pct = 0, size = 92 }) {
   );
 }
 
-/** Ring (donut) gauge: green portion = pct (0..1), red = rest. */
+/** Ring (donut) gauge: green portion = pct (0..1), neutral track = rest. */
 function RingGauge({ pct = 0, size = 56, children }) {
   const clamped = Math.max(0, Math.min(1, Number.isFinite(pct) ? pct : 0));
   const stroke = 7;
@@ -84,13 +86,13 @@ function RingGauge({ pct = 0, size = 56, children }) {
     <div className="relative" style={{ width: size, height: size }}>
       <svg width={size} height={size} viewBox={`0 0 ${size} ${size}`} dir="ltr">
         <g transform={`rotate(-90 ${size / 2} ${size / 2})`}>
-          {/* red remainder */}
+          {/* neutral track */}
           <circle
             cx={size / 2}
             cy={size / 2}
             r={r}
             fill="none"
-            stroke="var(--color-loss)"
+            stroke="var(--color-border-primary)"
             strokeWidth={stroke}
           />
           {/* green portion */}
@@ -157,27 +159,22 @@ export default function DashboardKpis({ kpi, hidden = false }) {
       className="grid grid-cols-2 lg:grid-cols-5 gap-3"
     >
       {/* 1) Net P&L ---------------------------------------------------- */}
-      <motion.div variants={card} className={cardClass}>
+      <Card as={motion.div} variants={card} className={cardClass}>
         <span className="text-xs text-text-muted">רווח/הפסד נקי</span>
         <div>
-          <div
-            dir="ltr"
-            className={`text-2xl font-bold text-right ${
-              netPositive ? 'text-profit' : 'text-loss'
-            }`}
-          >
-            {mask(formatCurrency(netPnl))}
+          <div dir="ltr" className={`text-2xl font-bold text-right ${netPositive ? 'text-profit' : 'text-loss'}`}>
+            <AnimatedValue value={mask(formatCurrency(netPnl))} />
           </div>
           <div className="text-[11px] text-text-muted mt-0.5">{tradeCount} עסקאות</div>
         </div>
-      </motion.div>
+      </Card>
 
       {/* 2) Win rate -------------------------------------------------- */}
-      <motion.div variants={card} className={cardClass}>
+      <Card as={motion.div} variants={card} className={cardClass}>
         <span className="text-xs text-text-muted">אחוז הצלחה</span>
         <div className="flex items-end justify-between gap-2">
           <div dir="ltr" className="text-2xl font-bold text-text-primary">
-            {(Number.isFinite(winRate) ? winRate : 0).toFixed(2)}%
+            <AnimatedValue value={`${(Number.isFinite(winRate) ? winRate : 0).toFixed(2)}%`} />
           </div>
           <SemicircleGauge pct={winRate} />
         </div>
@@ -192,13 +189,13 @@ export default function DashboardKpis({ kpi, hidden = false }) {
             {losses}
           </span>
         </div>
-      </motion.div>
+      </Card>
 
       {/* 3) Avg win/loss --------------------------------------------- */}
-      <motion.div variants={card} className={cardClass}>
+      <Card as={motion.div} variants={card} className={cardClass}>
         <span className="text-xs text-text-muted">ממוצע רווח/הפסד</span>
         <div dir="ltr" className="text-2xl font-bold text-text-primary text-right">
-          {(Number.isFinite(avgWinLossRatio) ? avgWinLossRatio : 0).toFixed(2)}
+          <AnimatedValue value={(Number.isFinite(avgWinLossRatio) ? avgWinLossRatio : 0).toFixed(2)} />
         </div>
         <div className="mt-2">
           <div className="h-2 rounded-full overflow-hidden flex bg-bg-tertiary" dir="ltr">
@@ -220,27 +217,27 @@ export default function DashboardKpis({ kpi, hidden = false }) {
             </span>
           </div>
         </div>
-      </motion.div>
+      </Card>
 
       {/* 4) Profit factor -------------------------------------------- */}
-      <motion.div variants={card} className={cardClass}>
+      <Card as={motion.div} variants={card} className={cardClass}>
         <span className="text-xs text-text-muted">פקטור רווח</span>
         <div className="flex items-center justify-between gap-2">
           <div dir="ltr" className="text-2xl font-bold text-text-primary">
-            {pfFinite ? pf.toFixed(2) : '∞'}
+            <AnimatedValue value={pfFinite ? pf.toFixed(2) : '∞'} />
           </div>
           <RingGauge pct={pfFraction} size={56} />
         </div>
-      </motion.div>
+      </Card>
 
       {/* 5) Current streak ------------------------------------------- */}
-      <motion.div variants={card} className={cardClass}>
+      <Card as={motion.div} variants={card} className={cardClass}>
         <span className="text-xs text-text-muted">רצף נוכחי</span>
         <div className="flex items-center justify-around gap-2">
           <StreakBadge label="ימים" data={streakDays} />
           <StreakBadge label="עסקאות" data={streakTrades} />
         </div>
-      </motion.div>
+      </Card>
     </motion.div>
   );
 }

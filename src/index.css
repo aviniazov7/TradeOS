@@ -61,6 +61,10 @@ body {
   --color-breakeven: #f59e0b;
   --color-long: #22c55e;
   --color-short: #ef4444;
+
+  /* Chart palette — one canonical accent blue (= accent), one profit green,
+     one categorical purple. Charts must consume these, not ad-hoc hexes. */
+  --color-chart-purple: #8b5cf6;
 }
 
 /* iOS-style glass surface tokens (modals / command palette). Theme-aware so
@@ -83,8 +87,11 @@ body {
   --color-bg-primary: #e8ecf4;
   --color-bg-secondary: rgba(255, 255, 255, 0.35);
   --color-bg-tertiary: rgba(255, 255, 255, 0.2);
-  --color-border-primary: rgba(255, 255, 255, 0.5);
-  --color-border-hover: rgba(255, 255, 255, 0.7);
+  /* Slate-tinted borders so card edges, table separators, dropdown outlines and
+     chart gridlines are actually visible on the light background (white-on-light
+     was near-invisible). */
+  --color-border-primary: rgba(15, 23, 42, 0.10);
+  --color-border-hover: rgba(15, 23, 42, 0.22);
   --color-text-primary: #0f0f0f;
   --color-text-secondary: #333340;
   --color-text-muted: #5c5c66;
@@ -93,6 +100,13 @@ body {
   --color-accent-muted: #0c4a6e;
   --color-bg-overlay: rgba(248, 250, 253, 0.98);
   --color-bg-solid: rgba(245, 247, 251, 0.98);
+  /* Darker profit/loss for foreground TEXT so the headline P/L numbers pass
+     WCAG AA on the light glass cards. Still vivid enough for fills/badges. */
+  --color-profit: #15803d;
+  --color-loss: #dc2626;
+  --color-long: #15803d;
+  --color-short: #dc2626;
+  --color-chart-purple: #7c3aed;
 }
 
 /* Glassmorphism — frosted glass cards */

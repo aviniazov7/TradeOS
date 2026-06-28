@@ -45,14 +45,14 @@ export default function PnLChart({ trades }) {
         <AreaChart data={data}>
           <defs>
             <linearGradient id="equityGrad" x1="0" y1="0" x2="0" y2="1">
-              <stop offset="5%" stopColor="#38bdf8" stopOpacity={0.3} />
-              <stop offset="95%" stopColor="#38bdf8" stopOpacity={0} />
+              <stop offset="5%" stopColor="var(--color-accent-primary)" stopOpacity={0.3} />
+              <stop offset="95%" stopColor="var(--color-accent-primary)" stopOpacity={0} />
             </linearGradient>
           </defs>
           <XAxis dataKey="date" tick={{ fill: 'var(--color-text-muted)', fontSize: 11 }} axisLine={false} tickLine={false} reversed />
           <YAxis tick={{ fill: 'var(--color-text-muted)', fontSize: 11 }} axisLine={false} tickLine={false} orientation="right" />
           <Tooltip contentStyle={tooltipStyle} cursor={{ stroke: 'var(--color-border-primary)', strokeWidth: 1 }} />
-          <Area type="monotone" dataKey="equity" stroke="#38bdf8" strokeWidth={2} fill="url(#equityGrad)" animationDuration={800} />
+          <Area type="monotone" dataKey="equity" stroke="var(--color-accent-primary)" strokeWidth={2} fill="url(#equityGrad)" animationDuration={800} />
         </AreaChart>
       </ResponsiveContainer>
     </div>

@@ -25,8 +25,8 @@ export default function EquityCurveChart({ data }) {
         <ComposedChart data={data}>
           <defs>
             <linearGradient id="equityGradAdv" x1="0" y1="0" x2="0" y2="1">
-              <stop offset="5%" stopColor="#38bdf8" stopOpacity={0.3} />
-              <stop offset="95%" stopColor="#38bdf8" stopOpacity={0} />
+              <stop offset="5%" stopColor="var(--color-accent-primary)" stopOpacity={0.3} />
+              <stop offset="95%" stopColor="var(--color-accent-primary)" stopOpacity={0} />
             </linearGradient>
           </defs>
           <XAxis dataKey="date" tick={{ fill: 'var(--color-text-muted)', fontSize: 9 }} axisLine={false} tickLine={false} />
@@ -38,7 +38,7 @@ export default function EquityCurveChart({ data }) {
             cursor={{ stroke: 'var(--color-border-primary)', strokeWidth: 1 }}
             formatter={(val) => [formatCurrency(val), 'הון']}
           />
-          <Area type="monotone" dataKey="equity" stroke="#38bdf8" strokeWidth={2} fill="url(#equityGradAdv)" animationDuration={800} />
+          <Area type="monotone" dataKey="equity" stroke="var(--color-accent-primary)" strokeWidth={2} fill="url(#equityGradAdv)" animationDuration={800} />
         </ComposedChart>
       </ResponsiveContainer>
     </div>
