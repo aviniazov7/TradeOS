@@ -265,6 +265,32 @@ function FundingCountdown({ nextTime }) {
   return <span className="text-[9px] text-text-muted">{remaining}</span>;
 }
 
+// Shared modern card header: left-aligned accent icon chip + title + optional
+// right-side node (total / countdown). 21st-style, replaces the old centered h2.
+function MarketCardHeader({ Icon, title, accent = '#00bfff', right }) {
+  return (
+    <div className="flex items-center justify-between gap-2 mb-4">
+      <div className="flex items-center gap-2 min-w-0">
+        <span className="w-7 h-7 rounded-lg flex items-center justify-center shrink-0" style={{ backgroundColor: `${accent}1f` }}>
+          <Icon className="w-4 h-4" style={{ color: accent }} />
+        </span>
+        <h2 className="text-sm font-semibold text-text-primary truncate">{title}</h2>
+      </div>
+      {right}
+    </div>
+  );
+}
+
+// A small coin label (icon + ticker) reused by the derivative cards.
+function CoinTag({ symbol, className = '' }) {
+  return (
+    <span className={`flex items-center gap-1.5 ${className}`}>
+      <CoinIcon pair={symbol} className="w-4 h-4 shrink-0" />
+      <span className="text-[11px] font-bold text-text-primary">{symbol}</span>
+    </span>
+  );
+}
+
 function FundingRatesCard({ rates, loading }) {
   const maxAbs = rates.length ? Math.max(...rates.map(r => Math.abs(r.rate))) : 1;
   return (
@@ -274,58 +300,48 @@ function FundingRatesCard({ rates, loading }) {
       transition={{ duration: 0.5, delay: 0.1 }}
       className={cardClass}
     >
-      <h2 className="text-sm font-semibold text-text-primary mb-3 flex items-center gap-2 justify-center">
-        <Percent className="w-4 h-4 text-accent-primary" />
-        שיעורי מימון (Funding)
-      </h2>
+      <MarketCardHeader
+        Icon={Percent} title="שיעורי מימון" accent="#fbbf24"
+        right={rates[0] ? <span className="text-[10px] text-text-muted num-mono shrink-0"><FundingCountdown nextTime={rates[0].nextFundingTime} /></span> : null}
+      />
       {rates.length > 0 ? (
-        <div className="space-y-1.5">
+        <div className="space-y-0.5">
           {rates.map((r, i) => {
             const pct = (r.rate * 100).toFixed(4);
             const isNeg = r.rate < 0;
-            const barW = (Math.abs(r.rate) / maxAbs) * 44;
+            const barW = (Math.abs(r.rate) / maxAbs) * 50;
+            const col = isNeg ? 'var(--color-profit)' : 'var(--color-loss)';
             return (
               <motion.div
                 key={r.symbol}
-                initial={{ opacity: 0, x: 20 }}
+                initial={{ opacity: 0, x: 16 }}
                 animate={{ opacity: 1, x: 0 }}
-                transition={{ delay: 0.04 * i, duration: 0.3 }}
-                className="flex items-center gap-1.5"
+                transition={{ delay: 0.03 * i, duration: 0.3 }}
+                className="flex items-center gap-2 py-1 px-1 rounded-lg hover:bg-bg-tertiary/60 transition-colors"
                 dir="ltr"
               >
-                <span
-                  className="text-[10px] font-semibold w-14 text-right shrink-0"
-                  style={{ color: isNeg ? '#22c55e' : '#ef4444' }}
-                >
+                <span className="text-[11px] font-semibold w-16 text-right shrink-0 num-mono" style={{ color: col }}>
                   {isNeg ? '' : '+'}{pct}%
                 </span>
-                <div className="flex-1 relative h-3 bg-bg-tertiary rounded-full overflow-hidden">
-                  <div className="absolute left-1/2 top-0 bottom-0 w-px bg-text-muted/30 z-10" />
+                <div className="flex-1 relative h-2 bg-bg-tertiary rounded-full overflow-hidden">
+                  <div className="absolute left-1/2 top-0 bottom-0 w-px bg-border-primary z-10" />
                   <motion.div
                     initial={{ width: 0 }}
                     animate={{ width: `${barW}%` }}
-                    transition={{ delay: 0.04 * i + 0.2, duration: 0.6, ease: 'easeOut' }}
+                    transition={{ delay: 0.03 * i + 0.2, duration: 0.6, ease: 'easeOut' }}
                     className="absolute top-0 h-full"
                     style={isNeg
-                      ? { right: '50%', borderRadius: '9999px 0 0 9999px', backgroundColor: 'rgba(34, 197, 94, 0.5)' }
-                      : { left: '50%', borderRadius: '0 9999px 9999px 0', backgroundColor: 'rgba(239, 68, 68, 0.5)' }
-                    }
+                      ? { right: '50%', borderRadius: '9999px 0 0 9999px', background: col }
+                      : { left: '50%', borderRadius: '0 9999px 9999px 0', background: col }}
                   />
                 </div>
-                <span className="text-[11px] font-bold text-text-primary w-10 shrink-0">{r.symbol}</span>
+                <CoinTag symbol={r.symbol} className="w-16 shrink-0" />
               </motion.div>
             );
           })}
-          <div className="flex items-center justify-center gap-4 mt-2 pt-2 border-t border-border-primary/30">
-            <div className="flex items-center gap-1">
-              <div className="w-2 h-2 rounded-full" style={{ backgroundColor: 'rgba(34, 197, 94, 0.6)' }} />
-              <span className="text-[9px] text-text-muted">Shorts משלמים</span>
-            </div>
-            <div className="flex items-center gap-1">
-              <div className="w-2 h-2 rounded-full" style={{ backgroundColor: 'rgba(239, 68, 68, 0.6)' }} />
-              <span className="text-[9px] text-text-muted">Longs משלמים</span>
-            </div>
-            {rates[0] && <FundingCountdown nextTime={rates[0].nextFundingTime} />}
+          <div className="flex items-center justify-center gap-4 mt-3 pt-3 border-t border-border-primary/40">
+            <span className="flex items-center gap-1 text-[9px] text-text-muted"><span className="w-2 h-2 rounded-full bg-profit" /> Shorts משלמים</span>
+            <span className="flex items-center gap-1 text-[9px] text-text-muted"><span className="w-2 h-2 rounded-full bg-loss" /> Longs משלמים</span>
           </div>
         </div>
       ) : (
@@ -345,13 +361,10 @@ function OpenInterestCard({ data, loading }) {
       transition={{ duration: 0.5, delay: 0.2 }}
       className={cardClass}
     >
-      <h2 className="text-sm font-semibold text-text-primary mb-1 flex items-center gap-2 justify-center">
-        <Activity className="w-4 h-4 text-accent-primary" />
-        פוזיציות פתוחות (OI)
-      </h2>
-      {data.length > 0 && (
-        <p className="text-center text-[11px] text-text-muted mb-3">סה״כ {formatNum(totalOi)}</p>
-      )}
+      <MarketCardHeader
+        Icon={Activity} title="פוזיציות פתוחות (OI)" accent="#8b5cf6"
+        right={data.length > 0 ? <span className="text-[11px] font-semibold text-text-secondary num-mono shrink-0">{formatNum(totalOi)}</span> : null}
+      />
       {data.length > 0 ? (
         <div className="space-y-0.5">
           {data.map((d, i) => {
@@ -359,24 +372,24 @@ function OpenInterestCard({ data, loading }) {
             return (
               <motion.div
                 key={d.symbol}
-                initial={{ opacity: 0, x: 20 }}
+                initial={{ opacity: 0, x: 16 }}
                 animate={{ opacity: 1, x: 0 }}
-                transition={{ delay: 0.04 * i, duration: 0.3 }}
-                className="flex items-center gap-1.5 py-0.5"
+                transition={{ delay: 0.03 * i, duration: 0.3 }}
+                className="flex items-center gap-2 py-1 px-1 rounded-lg hover:bg-bg-tertiary/60 transition-colors"
                 dir="ltr"
               >
-                <span className="text-[9px] text-text-muted/40 w-3 text-center shrink-0">{i + 1}</span>
-                <span className="text-[11px] font-bold text-text-primary w-10 shrink-0">{d.symbol}</span>
-                <div className="flex-1 h-2.5 bg-bg-tertiary rounded-full overflow-hidden">
+                <span className="text-[10px] font-semibold text-text-muted/50 w-4 text-center shrink-0 num-mono">{i + 1}</span>
+                <CoinTag symbol={d.symbol} className="w-16 shrink-0" />
+                <div className="flex-1 h-2 bg-bg-tertiary rounded-full overflow-hidden">
                   <motion.div
                     initial={{ width: 0 }}
                     animate={{ width: `${barW}%` }}
-                    transition={{ delay: 0.04 * i + 0.2, duration: 0.8, ease: 'easeOut' }}
+                    transition={{ delay: 0.03 * i + 0.2, duration: 0.8, ease: 'easeOut' }}
                     className="h-full rounded-full"
-                    style={{ background: 'linear-gradient(to right, #6366f1, #3b82f6, #06b6d4)' }}
+                    style={{ background: 'linear-gradient(to right, #6366f1, #06b6d4)' }}
                   />
                 </div>
-                <span className="text-[10px] font-semibold text-text-muted w-12 text-left shrink-0">
+                <span className="text-[10px] font-semibold text-text-secondary w-12 text-left shrink-0 num-mono">
                   {formatNum(d.oiUsd)}
                 </span>
               </motion.div>
@@ -398,57 +411,48 @@ function LongShortCard({ data, loading }) {
       transition={{ duration: 0.5, delay: 0.3 }}
       className={cardClass}
     >
-      <h2 className="text-sm font-semibold text-text-primary mb-3 flex items-center gap-2 justify-center">
-        <BarChart3 className="w-4 h-4 text-accent-primary" />
-        יחס לונג / שורט
-      </h2>
+      <MarketCardHeader Icon={BarChart3} title="יחס לונג / שורט" accent="#00bfff" />
       {data.length > 0 ? (
-        <div className="space-y-1.5">
+        <div className="space-y-1">
           {data.map((d, i) => {
             const longPct = (d.longAccount * 100).toFixed(1);
             const shortPct = (d.shortAccount * 100).toFixed(1);
             return (
               <motion.div
                 key={d.symbol}
-                initial={{ opacity: 0, x: 20 }}
+                initial={{ opacity: 0, x: 16 }}
                 animate={{ opacity: 1, x: 0 }}
-                transition={{ delay: 0.04 * i, duration: 0.3 }}
+                transition={{ delay: 0.03 * i, duration: 0.3 }}
+                className="flex items-center gap-2 py-1 px-1 rounded-lg hover:bg-bg-tertiary/60 transition-colors"
+                dir="ltr"
               >
-                <div className="flex items-center gap-1.5" dir="ltr">
-                  <span className="text-[11px] font-bold text-text-primary w-10 text-center shrink-0">{d.symbol}</span>
-                  <div className="flex flex-1 h-5 rounded-md overflow-hidden bg-bg-tertiary">
-                    <motion.div
-                      initial={{ width: 0 }}
-                      animate={{ width: `${longPct}%` }}
-                      transition={{ delay: 0.04 * i + 0.2, duration: 0.8, ease: 'easeOut' }}
-                      className="h-full flex items-center justify-center"
-                      style={{ backgroundColor: 'rgba(34, 197, 94, 0.25)', minWidth: 36 }}
-                    >
-                      <span className="text-[9px] font-bold text-green-400">{longPct}%</span>
-                    </motion.div>
-                    <motion.div
-                      initial={{ width: 0 }}
-                      animate={{ width: `${shortPct}%` }}
-                      transition={{ delay: 0.04 * i + 0.2, duration: 0.8, ease: 'easeOut' }}
-                      className="h-full flex items-center justify-center"
-                      style={{ backgroundColor: 'rgba(239, 68, 68, 0.25)', minWidth: 36 }}
-                    >
-                      <span className="text-[9px] font-bold text-red-400">{shortPct}%</span>
-                    </motion.div>
-                  </div>
+                <CoinTag symbol={d.symbol} className="w-16 shrink-0" />
+                <div className="flex flex-1 h-5 rounded-lg overflow-hidden bg-bg-tertiary">
+                  <motion.div
+                    initial={{ width: 0 }}
+                    animate={{ width: `${longPct}%` }}
+                    transition={{ delay: 0.03 * i + 0.2, duration: 0.8, ease: 'easeOut' }}
+                    className="h-full flex items-center justify-center"
+                    style={{ backgroundColor: 'rgba(34, 197, 94, 0.22)', minWidth: 38 }}
+                  >
+                    <span className="text-[9px] font-bold num-mono text-profit">{longPct}%</span>
+                  </motion.div>
+                  <motion.div
+                    initial={{ width: 0 }}
+                    animate={{ width: `${shortPct}%` }}
+                    transition={{ delay: 0.03 * i + 0.2, duration: 0.8, ease: 'easeOut' }}
+                    className="h-full flex items-center justify-center"
+                    style={{ backgroundColor: 'rgba(239, 68, 68, 0.22)', minWidth: 38 }}
+                  >
+                    <span className="text-[9px] font-bold num-mono text-loss">{shortPct}%</span>
+                  </motion.div>
                 </div>
               </motion.div>
             );
           })}
-          <div className="flex items-center justify-center gap-4 mt-2 pt-2 border-t border-border-primary/30">
-            <div className="flex items-center gap-1">
-              <div className="w-2 h-2 rounded-full" style={{ backgroundColor: 'rgba(34, 197, 94, 0.6)' }} />
-              <span className="text-[9px] text-text-muted">Long (קונים)</span>
-            </div>
-            <div className="flex items-center gap-1">
-              <div className="w-2 h-2 rounded-full" style={{ backgroundColor: 'rgba(239, 68, 68, 0.6)' }} />
-              <span className="text-[9px] text-text-muted">Short (מוכרים)</span>
-            </div>
+          <div className="flex items-center justify-center gap-4 mt-3 pt-3 border-t border-border-primary/40">
+            <span className="flex items-center gap-1 text-[9px] text-text-muted"><span className="w-2 h-2 rounded-full bg-profit" /> Long (קונים)</span>
+            <span className="flex items-center gap-1 text-[9px] text-text-muted"><span className="w-2 h-2 rounded-full bg-loss" /> Short (מוכרים)</span>
           </div>
         </div>
       ) : (
