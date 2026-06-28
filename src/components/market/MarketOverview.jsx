@@ -990,87 +990,68 @@ export default function MarketOverview() {
       {activeTab === 'overview' ? (
       <motion.div key="overview" initial={{ opacity: 0, x: -20 }} animate={{ opacity: 1, x: 0 }} exit={{ opacity: 0, x: 20 }} transition={{ duration: 0.25 }}>
 
-      {/* Top row: Global stats — neutral cards, colour identity in the icon chips */}
-      <motion.div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-3 mb-4" variants={staggerContainer} initial="initial" animate="animate">
+      {/* Top row: global stats — borderless, free, divider-separated (no boxes).
+          Uniform typography: 11px label, 2xl number, xs sub on every cell. */}
+      <motion.div
+        className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-y-6 gap-x-2 mb-7 lg:divide-x lg:divide-x-reverse lg:divide-border-primary"
+        variants={staggerContainer} initial="initial" animate="animate"
+      >
+        {[
+          {
+            key: 'cap', Icon: DollarSign, label: 'שווי שוק',
+            value: global ? formatNum(global.total_market_cap?.usd) : '—',
+            delta: global?.market_cap_change_percentage_24h_usd ?? null,
+          },
+          {
+            key: 'btc', Icon: Bitcoin, label: 'BTC.D',
+            value: global?.market_cap_percentage?.btc ? `${global.market_cap_percentage.btc.toFixed(1)}%` : '—',
+            sub: global?.market_cap_percentage?.eth ? `ETH ${global.market_cap_percentage.eth.toFixed(1)}%` : null,
+          },
+          {
+            key: 'vol', Icon: PieChart, label: 'נפח 24h',
+            value: global ? formatNum(global.total_volume?.usd) : '—',
+            sub: global?.active_cryptocurrencies ? `${global.active_cryptocurrencies.toLocaleString()} coins` : null,
+          },
+          {
+            key: 'usdt', Icon: DollarSign, label: 'USDT.D',
+            value: global?.market_cap_percentage?.usdt ? `${global.market_cap_percentage.usdt.toFixed(1)}%` : '—',
+            sub: 'Stablecoin dominance',
+          },
+        ].map((s) => (
+          <motion.div key={s.key} variants={cardVariants} className="px-1 lg:px-5">
+            <div className="flex items-center gap-2 mb-2.5">
+              <span className="w-6 h-6 rounded-md flex items-center justify-center shrink-0" style={{ backgroundColor: STAT_ACCENTS[s.key].chipBg }}>
+                <s.Icon className="w-3.5 h-3.5" style={{ color: STAT_ACCENTS[s.key].color }} />
+              </span>
+              <span className="text-[11px] text-text-muted uppercase tracking-wider">{s.label}</span>
+            </div>
+            <p className="text-2xl font-bold leading-none num-mono text-text-primary">{s.value}</p>
+            <div className="h-4 mt-2">
+              {s.delta != null ? (
+                <span className={`text-xs font-semibold ${s.delta >= 0 ? 'text-profit' : 'text-loss'}`}>
+                  {s.delta >= 0 ? '+' : ''}{s.delta.toFixed(2)}%
+                </span>
+              ) : s.sub ? (
+                <span className="text-xs text-text-muted">{s.sub}</span>
+              ) : null}
+            </div>
+          </motion.div>
+        ))}
 
-        {/* Market Cap */}
-        <motion.div className="bento-card flex flex-col justify-between gap-2 p-4 min-h-[100px]" variants={cardVariants}>
-          <div className="flex items-center gap-2">
-            <span className="w-6 h-6 rounded-md flex items-center justify-center shrink-0" style={{ backgroundColor: STAT_ACCENTS.cap.chipBg }}>
-              <DollarSign className="w-3.5 h-3.5" style={{ color: STAT_ACCENTS.cap.color }} />
-            </span>
-            <span className="text-[10px] text-text-muted uppercase tracking-widest">שווי שוק</span>
-          </div>
-          <p className="text-3xl font-bold leading-none num-mono text-text-primary">
-            {global ? formatNum(global.total_market_cap?.usd) : '—'}
-          </p>
-          {global?.market_cap_change_percentage_24h_usd != null && (
-            <span className={`text-xs font-bold ${global.market_cap_change_percentage_24h_usd >= 0 ? 'text-profit' : 'text-loss'}`}>
-              {global.market_cap_change_percentage_24h_usd >= 0 ? '+' : ''}{global.market_cap_change_percentage_24h_usd.toFixed(2)}%
-            </span>
-          )}
-        </motion.div>
-
-        {/* BTC Dominance */}
-        <motion.div className="bento-card flex flex-col justify-between gap-2 p-4 min-h-[100px]" variants={cardVariants}>
-          <div className="flex items-center gap-2">
-            <span className="w-6 h-6 rounded-md flex items-center justify-center shrink-0" style={{ backgroundColor: STAT_ACCENTS.btc.chipBg }}>
-              <Bitcoin className="w-3.5 h-3.5" style={{ color: STAT_ACCENTS.btc.color }} />
-            </span>
-            <span className="text-[10px] text-text-muted uppercase tracking-widest">BTC.D</span>
-          </div>
-          <p className="text-3xl font-bold leading-none num-mono text-text-primary">
-            {global?.market_cap_percentage?.btc ? `${global.market_cap_percentage.btc.toFixed(1)}%` : '—'}
-          </p>
-          {global?.market_cap_percentage?.eth && (
-            <span className="text-[11px] text-text-muted">ETH: {global.market_cap_percentage.eth.toFixed(1)}%</span>
-          )}
-        </motion.div>
-
-        {/* 24h Volume */}
-        <motion.div className="bento-card flex flex-col justify-between gap-2 p-4 min-h-[100px]" variants={cardVariants}>
-          <div className="flex items-center gap-2">
-            <span className="w-6 h-6 rounded-md flex items-center justify-center shrink-0" style={{ backgroundColor: STAT_ACCENTS.vol.chipBg }}>
-              <PieChart className="w-3.5 h-3.5" style={{ color: STAT_ACCENTS.vol.color }} />
-            </span>
-            <span className="text-[10px] text-text-muted uppercase tracking-widest">נפח 24h</span>
-          </div>
-          <p className="text-3xl font-bold leading-none num-mono text-text-primary">
-            {global ? formatNum(global.total_volume?.usd) : '—'}
-          </p>
-          <span className="text-[11px] text-text-muted">
-            {global?.active_cryptocurrencies ? `${global.active_cryptocurrencies.toLocaleString()} coins` : ''}
-          </span>
-        </motion.div>
-
-        {/* USDT Dominance */}
-        <motion.div className="bento-card flex flex-col justify-between gap-2 p-4 min-h-[100px]" variants={cardVariants}>
-          <div className="flex items-center gap-2">
-            <span className="w-6 h-6 rounded-md flex items-center justify-center shrink-0" style={{ backgroundColor: STAT_ACCENTS.usdt.chipBg }}>
-              <DollarSign className="w-3.5 h-3.5" style={{ color: STAT_ACCENTS.usdt.color }} />
-            </span>
-            <span className="text-[10px] text-text-muted uppercase tracking-widest">USDT.D</span>
-          </div>
-          <p className="text-3xl font-bold leading-none num-mono text-text-primary">
-            {global?.market_cap_percentage?.usdt ? `${global.market_cap_percentage.usdt.toFixed(1)}%` : '—'}
-          </p>
-          <span className="text-[11px] text-text-muted">Stablecoin dominance</span>
-        </motion.div>
-
-        {/* Altcoin Season */}
-        <motion.div className="bento-card flex flex-col justify-between gap-2 p-4 min-h-[100px]" variants={cardVariants}>
-          <div className="flex items-center gap-2">
+        {/* Altcoin Season — same rhythm, with the index slider as its "sub" line */}
+        <motion.div variants={cardVariants} className="px-1 lg:px-5">
+          <div className="flex items-center gap-2 mb-2.5">
             <span className="w-6 h-6 rounded-md flex items-center justify-center shrink-0" style={{ backgroundColor: STAT_ACCENTS.alt.chipBg }}>
               <ArrowUpRight className="w-3.5 h-3.5" style={{ color: STAT_ACCENTS.alt.color }} />
             </span>
-            <span className="text-[10px] text-text-muted uppercase tracking-widest">Alt Season</span>
+            <span className="text-[11px] text-text-muted uppercase tracking-wider">Alt Season</span>
           </div>
           {altSeasonData ? (
             <>
-              <p className="text-3xl font-bold leading-none num-mono text-text-primary">
-                {altSeasonData.index}<span className="text-base font-normal text-text-muted">/100</span>
+              <p className="text-2xl font-bold leading-none num-mono text-text-primary">
+                {altSeasonData.index}<span className="text-sm font-normal text-text-muted">/100</span>
               </p>
-              <div>
+              <div className="mt-2">
                 <div className="relative h-1.5 rounded-full bg-bg-tertiary overflow-hidden">
                   <div className="absolute inset-y-0 left-0 w-[40%] rounded-full" style={{ background: 'linear-gradient(to right, #f7931a, #c47818)' }} />
                   <div className="absolute inset-y-0 right-0 w-[40%] rounded-full" style={{ background: 'linear-gradient(to left, #6366f1, #818cf8)' }} />
@@ -1081,7 +1062,7 @@ export default function MarketOverview() {
               </div>
             </>
           ) : (
-            <p className="text-3xl font-bold text-text-muted num-mono">—</p>
+            <p className="text-2xl font-bold text-text-muted num-mono">—</p>
           )}
         </motion.div>
       </motion.div>
@@ -1133,42 +1114,51 @@ export default function MarketOverview() {
             עולים ויורדים
           </h2>
           {gainers.length > 0 ? (
-            <div className="space-y-1.5">
-              {gainers.slice(0, 4).map((coin) => (
-                <motion.div
-                  key={coin.id}
-                  initial={{ opacity: 0 }}
-                  animate={{ opacity: 1 }}
-                  className="flex items-center justify-between py-1 border-b border-border-primary/30 last:border-0 cursor-pointer hover:bg-bg-tertiary rounded px-1 transition-colors"
-                  onClick={() => openChart(coin.symbol)}
-                >
-                  <span className="inline-flex items-center text-[11px] font-bold px-1.5 py-0.5 rounded-md bg-profit/10 text-profit border border-profit/25 num-mono">
-                    +{coin.price_change_percentage_24h?.toFixed(1)}%
-                  </span>
-                  <div className="flex items-center gap-2">
-                    <span className="text-xs font-medium text-text-primary">{coin.symbol?.toUpperCase()}</span>
-                    <CoinIcon pair={coin.symbol} className="w-4 h-4" />
-                  </div>
-                </motion.div>
-              ))}
-              <div className="border-t border-border-primary/50 my-1" />
-              {losers.slice(0, 4).map((coin) => (
-                <motion.div
-                  key={coin.id}
-                  initial={{ opacity: 0 }}
-                  animate={{ opacity: 1 }}
-                  className="flex items-center justify-between py-1 border-b border-border-primary/30 last:border-0 cursor-pointer hover:bg-bg-tertiary rounded px-1 transition-colors"
-                  onClick={() => openChart(coin.symbol)}
-                >
-                  <span className="inline-flex items-center text-[11px] font-bold px-1.5 py-0.5 rounded-md bg-loss/10 text-loss border border-loss/25 num-mono">
-                    {coin.price_change_percentage_24h?.toFixed(1)}%
-                  </span>
-                  <div className="flex items-center gap-2">
-                    <span className="text-xs font-medium text-text-primary">{coin.symbol?.toUpperCase()}</span>
-                    <CoinIcon pair={coin.symbol} className="w-4 h-4" />
-                  </div>
-                </motion.div>
-              ))}
+            <div className="grid grid-cols-2 divide-x divide-x-reverse divide-border-primary">
+              {/* עולים — right column (RTL) */}
+              <div className="pl-3">
+                <div className="flex items-center gap-1.5 mb-2 text-[11px] font-semibold text-profit uppercase tracking-wider">
+                  <TrendingUp className="w-3.5 h-3.5" /> עולים
+                </div>
+                <div className="space-y-0.5">
+                  {gainers.slice(0, 5).map((coin) => (
+                    <button
+                      key={coin.id}
+                      type="button"
+                      onClick={() => openChart(coin.symbol)}
+                      className="w-full flex items-center justify-between py-1.5 px-1.5 rounded-lg hover:bg-bg-tertiary transition-colors cursor-pointer"
+                    >
+                      <div className="flex items-center gap-2 min-w-0">
+                        <CoinIcon pair={coin.symbol} className="w-4 h-4 shrink-0" />
+                        <span className="text-xs font-medium text-text-primary truncate">{coin.symbol?.toUpperCase()}</span>
+                      </div>
+                      <span className="text-xs font-bold text-profit num-mono shrink-0">+{(coin.price_change_percentage_24h ?? 0).toFixed(1)}%</span>
+                    </button>
+                  ))}
+                </div>
+              </div>
+              {/* יורדים — left column (RTL) */}
+              <div className="pr-3">
+                <div className="flex items-center gap-1.5 mb-2 text-[11px] font-semibold text-loss uppercase tracking-wider">
+                  <TrendingDown className="w-3.5 h-3.5" /> יורדים
+                </div>
+                <div className="space-y-0.5">
+                  {losers.slice(0, 5).map((coin) => (
+                    <button
+                      key={coin.id}
+                      type="button"
+                      onClick={() => openChart(coin.symbol)}
+                      className="w-full flex items-center justify-between py-1.5 px-1.5 rounded-lg hover:bg-bg-tertiary transition-colors cursor-pointer"
+                    >
+                      <div className="flex items-center gap-2 min-w-0">
+                        <CoinIcon pair={coin.symbol} className="w-4 h-4 shrink-0" />
+                        <span className="text-xs font-medium text-text-primary truncate">{coin.symbol?.toUpperCase()}</span>
+                      </div>
+                      <span className="text-xs font-bold text-loss num-mono shrink-0">{(coin.price_change_percentage_24h ?? 0).toFixed(1)}%</span>
+                    </button>
+                  ))}
+                </div>
+              </div>
             </div>
           ) : (
             <p className="text-xs text-text-muted text-center py-8">{loading ? 'טוען...' : 'לא זמין'}</p>
