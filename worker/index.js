@@ -2644,7 +2644,9 @@ async function handleAIProjectDescription(request, env, cors) {
           quotaExceeded: true, used: quota.used, limit: quota.limit,
         }), { status: 429, headers: { ...cors, 'Content-Type': 'application/json' } });
       }
-      await incrementAiUsage(env, uid);
+      // NOTE: quota is incremented only AFTER a successful provider response
+      // (below), mirroring /ai-chat — a failed Groq call must not burn the
+      // user's daily quota.
     }
 
     const userPrompt = `כתוב מאמרון על הפרויקט שמאחורי המטבע ${coinName}${symbol ? ` (${String(symbol).toUpperCase()})` : ''}.`;
@@ -2675,6 +2677,9 @@ async function handleAIProjectDescription(request, env, cors) {
 
     const data = await groqResponse.json();
     const text = data.choices?.[0]?.message?.content || '';
+
+    // Charge the daily quota only now that the provider succeeded.
+    if (!premium) await incrementAiUsage(env, uid);
 
     return new Response(JSON.stringify({ text }), {
       headers: { ...cors, 'Content-Type': 'application/json' },
@@ -3050,6 +3055,16 @@ async function handleRequest(request, env) {
   }
 
   if (path === '/setup-webhook') {
+    // Admin-only + POST-only. Re-registering the webhook uses
+    // drop_pending_updates=true, so an unauthenticated caller could repeatedly
+    // reset it (dropping queued alerts/connect codes) and read Telegram's raw
+    // response. Require an admin Firebase ID token.
+    if (request.method !== 'POST') {
+      return new Response(JSON.stringify({ error: 'method not allowed' }), { status: 405, headers: { ...cors, 'Content-Type': 'application/json' } });
+    }
+    const token = (request.headers.get('Authorization') || '').replace('Bearer ', '');
+    const adminUid = await verifyAdminFromToken(token);
+    if (!adminUid) return new Response(JSON.stringify({ error: 'forbidden' }), { status: 403, headers: { ...cors, 'Content-Type': 'application/json' } });
     const workerUrl = `${url.protocol}//${url.host}/webhook`;
     let setWebhookUrl = `https://api.telegram.org/bot${env.BOT_TOKEN}/setWebhook?url=${encodeURIComponent(workerUrl)}&drop_pending_updates=true`;
     // If the owner set TG_WEBHOOK_SECRET, register it so Telegram sends the
@@ -3057,7 +3072,8 @@ async function handleRequest(request, env) {
     if (env.TG_WEBHOOK_SECRET) setWebhookUrl += `&secret_token=${encodeURIComponent(env.TG_WEBHOOK_SECRET)}`;
     const res = await fetch(setWebhookUrl);
     const json = await res.json();
-    return new Response(JSON.stringify(json), { headers: { 'Content-Type': 'application/json' } });
+    // Don't echo Telegram's raw payload — just the success flag.
+    return new Response(JSON.stringify({ ok: json.ok === true }), { headers: { ...cors, 'Content-Type': 'application/json' } });
   }
 
   // CoinGecko proxy with KV cache (avoids browser rate-limits)
@@ -3300,7 +3316,11 @@ async function handleRequest(request, env) {
     if (!uid) return new Response(JSON.stringify({ error: 'unauthorized' }), { status: 401, headers: { ...cors, 'Content-Type': 'application/json' } });
     const { exchange, apiKey, apiSecret, passphrase } = await request.json().catch(() => ({}));
     if (!exchange || !apiKey || !apiSecret) return new Response(JSON.stringify({ error: 'missing fields' }), { status: 400, headers: { ...cors, 'Content-Type': 'application/json' } });
-    await env.ALERTS_KV.put(`pushexch:${uid}:${exchange}`, JSON.stringify({ exchange, apiKey, apiSecret, passphrase: passphrase || '' }));
+    // TTL so abandoned/stale credential blobs self-purge (the client refreshes
+    // this on each connected session). NOTE: these are still stored plaintext —
+    // encrypting the blob at rest (AES-GCM with a Worker secret) is the pending
+    // architectural fix tracked separately.
+    await env.ALERTS_KV.put(`pushexch:${uid}:${exchange}`, JSON.stringify({ exchange, apiKey, apiSecret, passphrase: passphrase || '' }), { expirationTtl: 60 * 60 * 24 * 120 });
     return new Response(JSON.stringify({ ok: true }), { headers: { ...cors, 'Content-Type': 'application/json' } });
   }
 
@@ -4037,6 +4057,8 @@ ${pad('Lev', `${pnlSign}${pnlPctLev}%`)}` : ''}` : ''}</code>
       const token = (request.headers.get('Authorization') || '').replace('Bearer ', '');
       const uid = await verifyFirebaseToken(token);
       if (!uid) return new Response(JSON.stringify({ error: 'unauthorized' }), { status: 401, headers: { ...cors, 'Content-Type': 'application/json' } });
+      const _rl = await bumpWindow(env, `rl:exch:${uid}`, 60);
+      if (_rl.count > 30) return new Response(JSON.stringify({ error: 'יותר מדי בקשות לבורסה. נסה שוב בעוד רגע.' }), { status: 429, headers: { ...cors, 'Content-Type': 'application/json' } });
       const { exchange, apiKey, apiSecret, passphrase } = await request.json().catch(() => ({}));
       if (!apiKey || !apiSecret) return new Response(JSON.stringify({ ok: false, error: 'Missing credentials' }), { headers: { ...cors, 'Content-Type': 'application/json' }, status: 400 });
 
@@ -4270,6 +4292,8 @@ ${pad('Lev', `${pnlSign}${pnlPctLev}%`)}` : ''}` : ''}</code>
       const token = (request.headers.get('Authorization') || '').replace('Bearer ', '');
       const uid = await verifyFirebaseToken(token);
       if (!uid) return new Response(JSON.stringify({ error: 'unauthorized' }), { status: 401, headers: { ...cors, 'Content-Type': 'application/json' } });
+      const _rl = await bumpWindow(env, `rl:exch:${uid}`, 60);
+      if (_rl.count > 30) return new Response(JSON.stringify({ error: 'יותר מדי בקשות לבורסה. נסה שוב בעוד רגע.' }), { status: 429, headers: { ...cors, 'Content-Type': 'application/json' } });
       const { exchange, apiKey, apiSecret, passphrase } = await request.json().catch(() => ({}));
       if (!exchange || !apiKey || !apiSecret) {
         return new Response(JSON.stringify({ ok: false, error: 'Missing credentials' }), { status: 400, headers: { ...cors, 'Content-Type': 'application/json' } });
@@ -4362,6 +4386,10 @@ ${pad('Lev', `${pnlSign}${pnlPctLev}%`)}` : ''}` : ''}</code>
     const token = (request.headers.get('Authorization') || '').replace('Bearer ', '');
     const uid = await verifyFirebaseToken(token);
     if (!uid) return new Response(JSON.stringify({ ok: false, error: 'unauthorized' }), { status: 401, headers: { ...cors, 'Content-Type': 'application/json' } });
+    // Per-user rate limit — /wallet fans out several Moralis calls, so a tight
+    // loop could burn the shared MORALIS quota for everyone.
+    const _wrl = await bumpWindow(env, `rl:wallet:${uid}`, 60);
+    if (_wrl.count > 15) return new Response(JSON.stringify({ ok: false, error: 'יותר מדי בקשות, נסה שוב בעוד רגע.' }), { status: 429, headers: { ...cors, 'Content-Type': 'application/json' } });
     if (!env.MORALIS_API_KEY) return new Response(JSON.stringify({ ok: false, error: 'מעקב ארנקים לא מוגדר בשרת' }), { status: 400, headers: { ...cors, 'Content-Type': 'application/json' } });
     try {
       const { address } = await request.json().catch(() => ({}));
@@ -4485,6 +4513,8 @@ ${pad('Lev', `${pnlSign}${pnlPctLev}%`)}` : ''}` : ''}</code>
       const token = (request.headers.get('Authorization') || '').replace('Bearer ', '');
       const uid = await verifyFirebaseToken(token);
       if (!uid) return new Response(JSON.stringify({ error: 'unauthorized' }), { status: 401, headers: { ...cors, 'Content-Type': 'application/json' } });
+      const _rl = await bumpWindow(env, `rl:exch:${uid}`, 60);
+      if (_rl.count > 30) return new Response(JSON.stringify({ error: 'יותר מדי בקשות לבורסה. נסה שוב בעוד רגע.' }), { status: 429, headers: { ...cors, 'Content-Type': 'application/json' } });
       const { exchange, apiKey, apiSecret, passphrase, limit = 50, days = 0, debug = false } = await request.json();
       if (!exchange || !apiKey || !apiSecret) {
         return new Response(JSON.stringify({ error: 'Missing fields' }), { status: 400, headers: { ...cors, 'Content-Type': 'application/json' } });

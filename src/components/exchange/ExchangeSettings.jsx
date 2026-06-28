@@ -502,7 +502,7 @@ function ExchangeCard({ exchange, data, savedData, syncing, saving, onUpdate, on
                 </div>
               )}
               <div className="flex items-center justify-end gap-1.5 text-[10px] text-text-muted">
-                <Shield className="w-3 h-3 text-profit" />Read-Only · מוגן בהרשאות Firebase
+                <Shield className="w-3 h-3 text-profit" />מומלץ: מפתח לקריאה בלבד (ללא מסחר/משיכה)
               </div>
             </div>
           )}
@@ -766,7 +766,7 @@ export default function ExchangeSettings({ journalId: propJournalId, onImportTra
         <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} transition={{ delay: 0.4 }}
           className="mt-6 flex items-center justify-center gap-2 text-[11px] text-text-muted">
           <Shield className="w-3.5 h-3.5 text-profit" />
-          המפתחות מוצפנים ומשמשים לקריאה בלבד — TradeOS לא יכול לבצע פעולות מסחר
+          המפתחות נשמרים בחשבונך האישי בלבד (מוגנים בהרשאות גישה). מומלץ ליצור מפתח API לקריאה בלבד — ללא הרשאות מסחר או משיכה.
         </motion.div>
       </motion.div>
 
