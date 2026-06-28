@@ -1010,8 +1010,8 @@ export default function MarketOverview() {
   // pool is small).
   const qualityCoins = allCoins.filter(c => (c.total_volume || 0) >= 10_000_000);
   const sorted = [...qualityCoins].sort((a, b) => (b.price_change_percentage_24h || 0) - (a.price_change_percentage_24h || 0));
-  const gainers = sorted.filter(c => (c.price_change_percentage_24h || 0) > 0).slice(0, 5);
-  const losers = sorted.filter(c => (c.price_change_percentage_24h || 0) < 0).slice(-5).reverse();
+  const gainers = sorted.filter(c => (c.price_change_percentage_24h || 0) > 0).slice(0, 8);
+  const losers = sorted.filter(c => (c.price_change_percentage_24h || 0) < 0).slice(-8).reverse();
 
   // Altcoin Season Index: prefer real BlockchainCenter data (90d), fallback to local 30d calc
   const EXCLUDED_SYMBOLS = new Set([
