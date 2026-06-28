@@ -110,6 +110,14 @@ const FUTURES_SYMBOLS = [
   'BTCUSDT', 'ETHUSDT', 'SOLUSDT', 'XRPUSDT', 'BNBUSDT',
   'DOGEUSDT', 'ADAUSDT', 'AVAXUSDT', 'DOTUSDT', 'LINKUSDT',
 ];
+// Wider symbol set for the live liquidation feed — 10 majors alone liquidate
+// rarely, so the feed looked frozen. More symbols = a steady stream of events.
+const LIQ_SYMBOLS = [
+  'BTCUSDT', 'ETHUSDT', 'SOLUSDT', 'XRPUSDT', 'BNBUSDT', 'DOGEUSDT', 'ADAUSDT',
+  'AVAXUSDT', 'DOTUSDT', 'LINKUSDT', '1000PEPEUSDT', '1000SHIBUSDT', 'WIFUSDT',
+  'SUIUSDT', 'NEARUSDT', 'APTUSDT', 'ARBUSDT', 'OPUSDT', 'INJUSDT', 'TIAUSDT',
+  'SEIUSDT', 'FILUSDT', 'LTCUSDT', 'TRXUSDT', 'WLDUSDT', 'FETUSDT',
+];
 const MAJOR_COINS = new Set([
   'BTC', 'ETH', 'SOL', 'XRP', 'BNB', 'DOGE', 'ADA', 'AVAX', 'DOT', 'LINK',
   'MATIC', 'UNI', 'LTC', 'ATOM', 'APT', 'ARB', 'OP', 'SUI', 'NEAR', 'FIL',
@@ -480,86 +488,71 @@ function LiquidationsCard({ liquidations }) {
 
   return (
     <div className={cardClass}>
-      <h2 className="text-sm font-semibold text-text-primary mb-3 flex items-center gap-2 justify-center">
-        <Zap className="w-4 h-4 text-yellow-500" />
-        חיסולים LIVE
-      </h2>
+      <MarketCardHeader
+        Icon={Zap} title="חיסולים LIVE" accent="#eab308"
+        right={<span className="flex items-center gap-1 text-[9px] font-semibold text-text-muted shrink-0"><span className="w-1.5 h-1.5 rounded-full bg-loss animate-pulse" /> LIVE</span>}
+      />
 
-      {/* Summary bar */}
-      <div className="mb-2">
-        <div className="flex items-center justify-between mb-1">
-          <span className="text-[10px] font-medium text-red-400">
-            Short {shorts.length}
-          </span>
-          <span className="text-[10px] font-medium text-green-400">
-            {longs.length} Long
-          </span>
+      {/* Summary split bar */}
+      <div className="mb-3">
+        <div className="flex items-center justify-between mb-1 text-[10px] font-semibold" dir="ltr">
+          <span className="text-profit">Long {longs.length} · {formatNum(totalLongUsd)}</span>
+          <span className="text-loss">{formatNum(totalShortUsd)} · {shorts.length} Short</span>
         </div>
         <div className="h-2 bg-bg-tertiary rounded-full overflow-hidden flex" dir="ltr">
-          <motion.div
-            initial={{ width: 0 }}
-            animate={{ width: `${longPct}%` }}
-            transition={{ duration: 0.8, ease: 'easeOut' }}
-            className="h-full rounded-l-full"
-            style={{ backgroundColor: 'rgba(34, 197, 94, 0.6)' }}
-          />
-          <motion.div
-            initial={{ width: 0 }}
-            animate={{ width: `${100 - longPct}%` }}
-            transition={{ duration: 0.8, ease: 'easeOut' }}
-            className="h-full rounded-r-full"
-            style={{ backgroundColor: 'rgba(239, 68, 68, 0.6)' }}
-          />
-        </div>
-        <div className="flex items-center justify-between mt-1">
-          <span className="text-[9px] text-text-muted">{formatNum(totalShortUsd)}</span>
-          <span className="text-[9px] text-text-muted">{formatNum(totalLongUsd)}</span>
+          <motion.div animate={{ width: `${longPct}%` }} transition={{ duration: 0.6, ease: 'easeOut' }} className="h-full" style={{ background: 'var(--color-profit)' }} />
+          <motion.div animate={{ width: `${100 - longPct}%` }} transition={{ duration: 0.6, ease: 'easeOut' }} className="h-full" style={{ background: 'var(--color-loss)' }} />
         </div>
       </div>
 
-      {/* Feed */}
+      {/* Live drop-feed — new liquidations fall in from the top, size bar behind */}
       {liquidations.length > 0 ? (
-        <div className="space-y-1 max-h-[400px] overflow-y-auto scrollbar-thin">
-          {liquidations.map((liq) => {
-            const isLong = liq.side === 'SELL';
-            const big = liq.usdValue >= 50000;
-            return (
-              <motion.div
-                key={liq.id}
-                initial={{ opacity: 0, x: 15 }}
-                animate={{ opacity: 1, x: 0 }}
-                transition={{ duration: 0.25 }}
-                className={`flex items-center justify-between py-1.5 px-2 rounded-md ${big ? 'border' : ''}`}
-                style={{
-                  backgroundColor: isLong ? 'rgba(239, 68, 68, 0.07)' : 'rgba(34, 197, 94, 0.07)',
-                  borderColor: big ? (isLong ? 'rgba(239, 68, 68, 0.3)' : 'rgba(34, 197, 94, 0.3)') : undefined,
-                }}
-              >
-                <span className="text-[9px] text-text-muted shrink-0">{timeAgo(liq.time)}</span>
-                <div className="flex items-center gap-2">
-                  <span className="text-[11px] font-bold" style={{ color: isLong ? '#ef4444' : '#22c55e' }}>
-                    {formatNum(liq.usdValue)}
-                  </span>
-                  <span className="text-[10px] text-text-muted">
-                    {isLong ? 'L' : 'S'}
-                  </span>
-                  <span className="text-[11px] font-bold text-text-primary">{liq.symbol}</span>
-                  <Zap className="w-3 h-3 shrink-0" style={{ color: isLong ? '#ef4444' : '#22c55e' }} />
-                </div>
-              </motion.div>
-            );
-          })}
+        <div className="space-y-1 max-h-[360px] overflow-y-auto scrollbar-thin pe-0.5" dir="ltr">
+          <AnimatePresence initial={false}>
+            {liquidations.map((liq) => {
+              const isLong = liq.side === 'SELL';
+              const big = liq.usdValue >= 50000;
+              const col = isLong ? 'var(--color-loss)' : 'var(--color-profit)';
+              const barW = Math.min(100, (liq.usdValue / 100000) * 100);
+              return (
+                <motion.div
+                  key={liq.id}
+                  layout
+                  initial={{ opacity: 0, y: -14, scale: 0.96 }}
+                  animate={{ opacity: 1, y: 0, scale: 1 }}
+                  exit={{ opacity: 0, height: 0, marginTop: 0 }}
+                  transition={{ duration: 0.3, ease: 'easeOut' }}
+                  className="relative flex items-center justify-between py-2 px-2.5 rounded-lg overflow-hidden border"
+                  style={{
+                    background: isLong ? 'rgba(239,68,68,0.07)' : 'rgba(34,197,94,0.07)',
+                    borderColor: big ? (isLong ? 'rgba(239,68,68,0.4)' : 'rgba(34,197,94,0.4)') : 'transparent',
+                  }}
+                >
+                  {/* intensity bar (bigger liq = wider) */}
+                  <div className="absolute inset-y-0 left-0 pointer-events-none" style={{ width: `${barW}%`, background: `linear-gradient(to right, ${isLong ? 'rgba(239,68,68,0.18)' : 'rgba(34,197,94,0.18)'}, transparent)` }} />
+                  <div className="relative flex items-center gap-2 min-w-0">
+                    <Zap className="w-3.5 h-3.5 shrink-0" style={{ color: col }} />
+                    <CoinIcon pair={liq.symbol} className="w-4 h-4 shrink-0" />
+                    <span className="text-[11px] font-bold text-text-primary">{liq.symbol}</span>
+                    <span className="text-[8px] font-bold px-1 py-0.5 rounded shrink-0" style={{ color: col, backgroundColor: isLong ? 'rgba(239,68,68,0.15)' : 'rgba(34,197,94,0.15)' }}>
+                      {isLong ? 'LONG' : 'SHORT'}
+                    </span>
+                  </div>
+                  <div className="relative flex items-center gap-2 shrink-0">
+                    <span className="text-[11px] font-bold num-mono" style={{ color: col }}>{formatNum(liq.usdValue)}</span>
+                    <span className="text-[9px] text-text-muted">{timeAgo(liq.time)}</span>
+                  </div>
+                </motion.div>
+              );
+            })}
+          </AnimatePresence>
         </div>
       ) : (
-        <div className="text-center py-8">
-          <Zap className="w-5 h-5 text-yellow-500/40 mx-auto mb-2" />
-          <motion.div
-            animate={{ opacity: [0.3, 1, 0.3] }}
-            transition={{ duration: 2, repeat: Infinity }}
-            className="text-[11px] text-text-muted"
-          >
-            ממתין לחיסולים...
+        <div className="text-center py-10">
+          <motion.div animate={{ y: [0, 6, 0], opacity: [0.4, 1, 0.4] }} transition={{ duration: 1.8, repeat: Infinity, ease: 'easeInOut' }}>
+            <Zap className="w-6 h-6 text-yellow-500/60 mx-auto mb-2" />
           </motion.div>
+          <span className="text-[11px] text-text-muted">ממתין לחיסולים…</span>
         </div>
       )}
     </div>
@@ -906,7 +899,7 @@ export default function MarketOverview() {
     const connect = () => {
       ws = new WebSocket('wss://stream.bybit.com/v5/public/linear');
       ws.onopen = () => {
-        ws.send(JSON.stringify({ op: 'subscribe', args: FUTURES_SYMBOLS.map((s) => `allLiquidation.${s}`) }));
+        ws.send(JSON.stringify({ op: 'subscribe', args: LIQ_SYMBOLS.map((s) => `allLiquidation.${s}`) }));
       };
       ws.onmessage = (event) => {
         let data;
@@ -1127,19 +1120,15 @@ export default function MarketOverview() {
           transition={{ duration: 0.5, delay: 0.3 }}
           className={cardClass}
         >
-          <h2 className="text-sm font-semibold text-text-primary mb-3 flex items-center gap-2 justify-center">
-            <Rocket className="w-4 h-4 text-profit" />
-            עולים ויורדים
-          </h2>
-          {gainers.length > 0 ? (
-            <div className="grid grid-cols-2 divide-x divide-x-reverse divide-border-primary">
-              {/* עולים — right column (RTL) */}
-              <div className="pl-3">
-                <div className="flex items-center gap-1.5 mb-2 text-[11px] font-semibold text-profit uppercase tracking-wider">
-                  <TrendingUp className="w-3.5 h-3.5" /> עולים
+          {gainers.length > 0 || losers.length > 0 ? (
+            <div className="grid grid-cols-2">
+              {/* עולים — right column (RTL), centered header, no card title */}
+              <div className="pe-3">
+                <div className="flex items-center justify-center gap-1.5 mb-3 text-xs font-bold text-profit">
+                  <TrendingUp className="w-4 h-4" /> עולים
                 </div>
                 <div className="space-y-0.5">
-                  {gainers.slice(0, 5).map((coin) => (
+                  {gainers.slice(0, 8).map((coin) => (
                     <button
                       key={coin.id}
                       type="button"
@@ -1155,13 +1144,13 @@ export default function MarketOverview() {
                   ))}
                 </div>
               </div>
-              {/* יורדים — left column (RTL) */}
-              <div className="pr-3">
-                <div className="flex items-center gap-1.5 mb-2 text-[11px] font-semibold text-loss uppercase tracking-wider">
-                  <TrendingDown className="w-3.5 h-3.5" /> יורדים
+              {/* יורדים — left column (RTL); single centre divider via border-s */}
+              <div className="ps-3 border-s border-border-primary">
+                <div className="flex items-center justify-center gap-1.5 mb-3 text-xs font-bold text-loss">
+                  <TrendingDown className="w-4 h-4" /> יורדים
                 </div>
                 <div className="space-y-0.5">
-                  {losers.slice(0, 5).map((coin) => (
+                  {losers.slice(0, 8).map((coin) => (
                     <button
                       key={coin.id}
                       type="button"
