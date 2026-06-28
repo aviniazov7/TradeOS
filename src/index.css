@@ -507,3 +507,11 @@ input[type="number"] {
 [data-theme='light'] .bento-card::before {
   background: none;
 }
+/* Light theme hover: keep the SAME shadow size as rest (no growth → no spill
+   onto neighbours) and convey hover via the brighter border + a faint dark
+   inset, since the dark-theme white inset is invisible on a white card. */
+:root.light .bento-card:hover,
+[data-theme='light'] .bento-card:hover {
+  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.06),
+    inset 0 0 0 1px rgba(15, 23, 42, 0.06);
+}

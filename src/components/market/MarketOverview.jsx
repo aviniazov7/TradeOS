@@ -981,7 +981,7 @@ export default function MarketOverview() {
         }
       };
       ws.onclose = () => { setLiqConnected(false); if (!closed) setTimeout(connect, 3000); };
-      ws.onerror = () => ws.close();
+      ws.onerror = () => { setLiqConnected(false); ws.close(); };
     };
 
     connect();
