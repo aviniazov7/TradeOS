@@ -61,7 +61,9 @@ function AnimatedValue({ value, className }) {
 }
 
 // Card with a modern AI-gradient surface: a thin violet→cyan hairline along the
-// top edge, a soft corner glow on hover, and a faint accent glow in the corner.
+// top edge and a faint corner glow. Hover feedback is a brighter border + a soft
+// violet OUTER shadow — never a fill behind the card (the surface is translucent,
+// so a gradient behind it would bleed through and wash out the text).
 function GlowCard({ children, className = '', delay = 0 }) {
   return (
     <motion.div
@@ -70,18 +72,13 @@ function GlowCard({ children, className = '', delay = 0 }) {
       transition={{ delay, duration: 0.5, type: 'spring', stiffness: 120 }}
       className={`relative group h-full ${className}`}
     >
-      {/* Gradient ring that lights up on hover */}
-      <motion.div
-        className="absolute -inset-[1px] rounded-2xl opacity-0 group-hover:opacity-60 transition-opacity duration-500 pointer-events-none"
-        style={{ background: AI_GRADIENT, filter: 'blur(5px)' }}
-      />
-      <div className="relative bg-bg-secondary border border-border-primary rounded-2xl overflow-hidden h-full">
+      <div className="relative bg-bg-secondary border border-border-primary rounded-2xl overflow-hidden h-full transition-[border-color,box-shadow] duration-300 group-hover:border-accent-primary/40 group-hover:shadow-[0_10px_34px_-12px_rgba(139,92,246,0.5)]">
         {/* Top accent hairline (violet → cyan) */}
         <div className="absolute top-0 inset-x-0 h-px pointer-events-none"
-          style={{ background: `linear-gradient(to right, transparent, ${AI_FROM}, ${AI_TO}, transparent)`, opacity: 0.5 }} />
-        {/* Soft accent glow in the top-right corner */}
-        <div className="absolute -top-10 -right-10 w-28 h-28 rounded-full pointer-events-none"
-          style={{ background: `radial-gradient(circle, ${AI_FROM}22 0%, transparent 70%)` }} />
+          style={{ background: `linear-gradient(to right, transparent, ${AI_FROM}, ${AI_TO}, transparent)`, opacity: 0.45 }} />
+        {/* Faint static accent glow in the top-right corner (small, never over text) */}
+        <div className="absolute -top-10 -right-10 w-24 h-24 rounded-full pointer-events-none"
+          style={{ background: `radial-gradient(circle, ${AI_FROM}1f 0%, transparent 70%)` }} />
         {children}
       </div>
     </motion.div>

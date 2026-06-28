@@ -50,10 +50,10 @@ body {
   --color-text-secondary: #a0a0b0;
   --color-text-muted: #606070;
 
-  /* Accent (Cyan) */
-  --color-accent-primary: #00bfff;
-  --color-accent-hover: #00a8e0;
-  --color-accent-muted: #0088bb;
+  /* Accent (Violet) — replaced the old cyan app-wide for a fresher, modern look */
+  --color-accent-primary: #8b5cf6;
+  --color-accent-hover: #a78bfa;
+  --color-accent-muted: #7c3aed;
 
   /* Status */
   --color-profit: #22c55e;
@@ -95,9 +95,9 @@ body {
   --color-text-primary: #0f0f0f;
   --color-text-secondary: #333340;
   --color-text-muted: #5c5c66;
-  --color-accent-primary: #0284c7;
-  --color-accent-hover: #0369a1;
-  --color-accent-muted: #0c4a6e;
+  --color-accent-primary: #7c3aed;
+  --color-accent-hover: #6d28d9;
+  --color-accent-muted: #5b21b6;
   --color-bg-overlay: rgba(248, 250, 253, 0.98);
   --color-bg-solid: rgba(245, 247, 251, 0.98);
   /* Darker profit/loss for foreground TEXT so the headline P/L numbers pass
