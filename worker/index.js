@@ -723,7 +723,7 @@ async function checkExchangeClosedTrades(env) {
   for (const k of list.keys) {
     const [, uid, exchange] = k.name.split(':');
     if (exchange !== 'bybit') continue; // only Bybit polling for now
-    const creds = await decodeCreds(env, await env.ALERTS_KV.get(k.name));
+    const creds = await loadExchangeCreds(env, uid, exchange); // decrypts + self-heals legacy plaintext
     if (!creds?.apiKey || !creds?.apiSecret) continue;
 
     // ---- Position-opened notifications ----
@@ -1168,6 +1168,10 @@ const CREDS_TTL = 60 * 60 * 24 * 120; // 120d — refreshed while the user is ac
 async function getCredsKey(env) {
   if (!env.CREDS_ENCRYPTION_KEY) return null;
   const raw = Uint8Array.from(atob(env.CREDS_ENCRYPTION_KEY), (c) => c.charCodeAt(0));
+  if (![16, 24, 32].includes(raw.length)) {
+    console.error('CREDS_ENCRYPTION_KEY must be base64 of 16/24/32 bytes; got', raw.length);
+    return null;
+  }
   return crypto.subtle.importKey('raw', raw, { name: 'AES-GCM' }, false, ['encrypt', 'decrypt']);
 }
 
@@ -1196,7 +1200,12 @@ async function decodeCreds(env, raw) {
       const ct = buf.slice(12);
       const pt = await crypto.subtle.decrypt({ name: 'AES-GCM', iv }, key, ct);
       return JSON.parse(new TextDecoder().decode(pt));
-    } catch { return null; }
+    } catch {
+      // Decrypt failed (wrong/rotated key or corrupt blob). Log length only —
+      // never the contents — so the issue is observable without leaking secrets.
+      console.error('creds decrypt failed; blob length', raw.length);
+      return null;
+    }
   }
   try { return JSON.parse(raw); } catch { return null; } // legacy plaintext
 }
@@ -1206,24 +1215,30 @@ async function storeExchangeCreds(env, uid, exchange, creds) {
   await env.ALERTS_KV.put(`pushexch:${uid}:${exchange}`, blob, { expirationTtl: CREDS_TTL });
 }
 
+const validExchangeId = (x) => /^[a-z0-9_-]{1,20}$/.test(x || '');
+
 async function loadExchangeCreds(env, uid, exchange) {
-  const raw = await env.ALERTS_KV.get(`pushexch:${uid}:${exchange}`);
+  if (!validExchangeId(exchange)) return null;
+  const kvKey = `pushexch:${uid}:${exchange}`;
+  const raw = await env.ALERTS_KV.get(kvKey);
+  if (!raw) return null;
   const creds = await decodeCreds(env, raw);
-  return creds && creds.apiKey && creds.apiSecret ? creds : null;
+  if (!creds || !creds.apiKey || !creds.apiSecret) return null;
+  // Self-heal: transparently re-encrypt any legacy plaintext blob on read so
+  // push-registered users' KV creds don't stay in plaintext.
+  if (!raw.startsWith('v1:') && env.CREDS_ENCRYPTION_KEY) {
+    try { await storeExchangeCreds(env, uid, exchange, creds); } catch { /* ignore */ }
+  }
+  return creds;
 }
 
-// Resolve creds for the on-demand endpoints: prefer the encrypted store; if a
-// legacy client still sends them in the body, use AND transparently migrate
-// them into the encrypted store so the secret stops travelling on later calls.
-async function resolveExchangeCreds(env, uid, exchange, body) {
-  const stored = await loadExchangeCreds(env, uid, exchange);
-  if (stored) return stored;
-  if (body && body.apiKey && body.apiSecret) {
-    const creds = { exchange, apiKey: body.apiKey, apiSecret: body.apiSecret, passphrase: body.passphrase || '' };
-    try { await storeExchangeCreds(env, uid, exchange, creds); } catch { /* key not set yet — still usable this call */ }
-    return creds;
-  }
-  return null;
+// Resolve creds for the on-demand endpoints — ONLY from the encrypted store,
+// keyed by the verified uid. We never accept credentials from the request body:
+// doing so would turn the Worker into a signing/credential-validation oracle for
+// arbitrary attacker-supplied keys (#11). Legacy creds are migrated into the
+// store exclusively via the gated /exchange/credentials/store endpoint.
+async function resolveExchangeCreds(env, uid, exchange) {
+  return loadExchangeCreds(env, uid, exchange);
 }
 
 async function fetchFundingRates(pairs) {
@@ -3391,6 +3406,7 @@ async function handleRequest(request, env) {
     if (!env.CREDS_ENCRYPTION_KEY) return new Response(JSON.stringify({ error: 'הצפנת מפתחות לא מוגדרת בשרת (CREDS_ENCRYPTION_KEY)' }), { status: 503, headers: { ...cors, 'Content-Type': 'application/json' } });
     const { exchange, apiKey, apiSecret, passphrase } = await request.json().catch(() => ({}));
     if (!exchange || !apiKey || !apiSecret) return new Response(JSON.stringify({ error: 'missing fields' }), { status: 400, headers: { ...cors, 'Content-Type': 'application/json' } });
+    if (!validExchangeId(exchange)) return new Response(JSON.stringify({ error: 'invalid exchange' }), { status: 400, headers: { ...cors, 'Content-Type': 'application/json' } });
     try {
       await storeExchangeCreds(env, uid, exchange, { apiKey, apiSecret, passphrase });
     } catch {
@@ -4147,7 +4163,7 @@ ${pad('Lev', `${pnlSign}${pnlPctLev}%`)}` : ''}` : ''}</code>
       const _body = await request.json().catch(() => ({}));
       const { exchange } = _body;
       if (!exchange) return new Response(JSON.stringify({ ok: false, error: 'Missing exchange' }), { headers: { ...cors, 'Content-Type': 'application/json' }, status: 400 });
-      const _creds = await resolveExchangeCreds(env, uid, exchange, _body);
+      const _creds = await resolveExchangeCreds(env, uid, exchange);
       if (!_creds) return new Response(JSON.stringify({ ok: false, error: 'reconnect_required' }), { headers: { ...cors, 'Content-Type': 'application/json' }, status: 409 });
       const { apiKey, apiSecret, passphrase } = _creds;
 
@@ -4388,7 +4404,7 @@ ${pad('Lev', `${pnlSign}${pnlPctLev}%`)}` : ''}` : ''}</code>
       if (!exchange) {
         return new Response(JSON.stringify({ ok: false, error: 'Missing exchange' }), { status: 400, headers: { ...cors, 'Content-Type': 'application/json' } });
       }
-      const _creds = await resolveExchangeCreds(env, uid, exchange, _body);
+      const _creds = await resolveExchangeCreds(env, uid, exchange);
       if (!_creds) return new Response(JSON.stringify({ ok: false, error: 'reconnect_required' }), { status: 409, headers: { ...cors, 'Content-Type': 'application/json' } });
       const { apiKey, apiSecret, passphrase } = _creds;
       const enc = new TextEncoder();
@@ -4616,7 +4632,7 @@ ${pad('Lev', `${pnlSign}${pnlPctLev}%`)}` : ''}` : ''}</code>
       // Credentials come from the encrypted server-side store (keyed by uid),
       // never from the request body. A legacy client still sending them is
       // transparently migrated by resolveExchangeCreds.
-      const _creds = await resolveExchangeCreds(env, uid, exchange, _body);
+      const _creds = await resolveExchangeCreds(env, uid, exchange);
       if (!_creds) return new Response(JSON.stringify({ error: 'reconnect_required', message: 'התחבר מחדש לבורסה' }), { status: 409, headers: { ...cors, 'Content-Type': 'application/json' } });
       const { apiKey, apiSecret, passphrase } = _creds;
       // When debug is set we echo back the raw upstream rows (first few) so we

@@ -612,13 +612,14 @@ export default function ExchangeSettings({ journalId: propJournalId, onImportTra
             if (conf?.connected) markers[eid] = { connected: true };
             if (conf?.apiKey && conf?.apiSecret) {
               hadPlaintext = true;
-              if (!markers[eid]) {
-                try {
-                  const extraKey = EXCHANGES.find(e => e.id === eid)?.extraField?.key;
-                  await storeExchangeCredentials(eid, { apiKey: conf.apiKey, apiSecret: conf.apiSecret, passphrase: extraKey ? conf[extraKey] : undefined });
-                  markers[eid] = { connected: true };
-                } catch { anyFailed = true; }
-              }
+              // Always re-store (idempotent) so the encrypted KV blob is written
+              // even for users who were already "connected" via push — otherwise
+              // their KV creds would stay plaintext while Firestore got stripped.
+              try {
+                const extraKey = EXCHANGES.find(e => e.id === eid)?.extraField?.key;
+                await storeExchangeCredentials(eid, { apiKey: conf.apiKey, apiSecret: conf.apiSecret, passphrase: extraKey ? conf[extraKey] : undefined });
+                markers[eid] = { connected: true };
+              } catch { anyFailed = true; }
             }
           }
         }
@@ -688,7 +689,7 @@ export default function ExchangeSettings({ journalId: propJournalId, onImportTra
       const taggedOpen = openPos.map(p => ({ ...p, _isOpen: true, pnlFromExchange: null }));
       const merged = [...taggedOpen, ...closedTrades];
       if (!merged.length) { toast('לא נמצאו עסקאות', { icon: 'ℹ️' }); return; }
-      setSyncModal({ exchange: exchConf?.name || id, trades: merged });
+      setSyncModal({ exchange: EXCHANGES.find(e => e.id === id)?.name || id, trades: merged });
     } catch (err) { toast.error(`שגיאת סנכרון: ${err.message}`); } finally { setSyncing(null); }
   };
 

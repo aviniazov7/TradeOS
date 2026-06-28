@@ -4,7 +4,7 @@ import { Bell, BellRing, BellOff, Send } from 'lucide-react';
 import toast from 'react-hot-toast';
 import { useAuth } from '../../contexts/AuthContext';
 import { subscribeToUserSetting, setUserSetting } from '../../services/firestoreService';
-import { pushSupported, subscribeToPush, unsubscribeFromPush, sendTestPush, unregisterExchangeForPush } from '../../services/pushService';
+import { pushSupported, subscribeToPush, unsubscribeFromPush, sendTestPush } from '../../services/pushService';
 
 // Push notifications are ON by default; the user can turn them off here.
 const DEFAULTS = { pushEnabled: true, tradeOpenAlerts: true };
@@ -60,7 +60,10 @@ export default function NotificationSettings() {
     setBusy(true);
     try {
       await unsubscribeFromPush();
-      await unregisterExchangeForPush(); // drop stored exchange keys
+      // NOTE: do NOT drop the stored exchange credentials here — they are now the
+      // single source of truth for sync/balance/positions, so deleting them would
+      // silently disconnect every exchange. Credentials are removed only on an
+      // explicit exchange Disconnect.
       await save({ pushEnabled: false });
       toast('ההתראות כובו', { icon: <BellOff className="w-5 h-5 text-text-muted" /> });
     } catch (e) {
