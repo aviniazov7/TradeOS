@@ -37,15 +37,15 @@ export default function LoadingSpinner({ fullScreen = false, size = 'md' }) {
               />
               <defs>
                 <linearGradient id="splashGradient" x1="0" y1="0" x2="0" y2="1">
-                  <stop offset="0%" stopColor="#38bdf8" stopOpacity="0.3" />
-                  <stop offset="100%" stopColor="#38bdf8" stopOpacity="0" />
+                  <stop offset="0%" stopColor="#8b5cf6" stopOpacity="0.3" />
+                  <stop offset="100%" stopColor="#8b5cf6" stopOpacity="0" />
                 </linearGradient>
               </defs>
 
               {/* Chart line path */}
               <path
                 d="M 10 70 L 25 58 L 40 63 L 55 42 L 70 48 L 85 28 L 100 32 L 115 12 L 130 8"
-                stroke="#38bdf8"
+                stroke="#8b5cf6"
                 strokeWidth="2.5"
                 strokeLinecap="round"
                 strokeLinejoin="round"
@@ -62,7 +62,7 @@ export default function LoadingSpinner({ fullScreen = false, size = 'md' }) {
                 cx="130"
                 cy="8"
                 r="4"
-                fill="#38bdf8"
+                fill="#8b5cf6"
                 style={{
                   opacity: 0,
                   animation: 'chartDot 2s ease-in-out infinite',
@@ -73,7 +73,7 @@ export default function LoadingSpinner({ fullScreen = false, size = 'md' }) {
                 cy="8"
                 r="8"
                 fill="none"
-                stroke="#38bdf8"
+                stroke="#8b5cf6"
                 strokeWidth="1.5"
                 style={{
                   opacity: 0,

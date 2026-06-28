@@ -127,7 +127,7 @@ function ProbabilityMeter({ value, animate: doAnimate }) {
         />
         <motion.circle cx="98" cy="98" r={R} fill="none"
           stroke={verdict.color} strokeWidth={stroke} strokeLinecap="round"
-          style={{ filter: `drop-shadow(0 0 4px rgba(0,191,255,0.25))` }}
+          style={{ filter: `drop-shadow(0 0 4px rgba(139,92,246,0.25))` }}
           initial={{ strokeDasharray: `0 ${C}` }}
           animate={{ strokeDasharray: `${filled} ${C}` }}
           transition={{ duration: 1.3, ease: [0.34, 1.56, 0.64, 1] }}
@@ -136,7 +136,7 @@ function ProbabilityMeter({ value, animate: doAnimate }) {
       <div className="absolute flex flex-col items-center justify-center select-none">
         <motion.div
           className="text-5xl font-black tabular-nums"
-          style={{ color: verdict.color, textShadow: `0 0 12px rgba(0,191,255,0.25)` }}
+          style={{ color: verdict.color, textShadow: `0 0 12px rgba(139,92,246,0.25)` }}
           initial={{ opacity: 0, scale: 0.7 }}
           animate={{ opacity: 1, scale: 1 }}
           transition={{ delay: 0.4, duration: 0.5 }}
@@ -220,7 +220,7 @@ function FactorCard({ factorKey, value, onChange, contribution }) {
         <div className="mt-2 h-1 rounded-full overflow-hidden" style={{ background: 'var(--color-bg-secondary)' }}>
           <motion.div
             className="h-full rounded-full"
-            style={{ background: lrColor, boxShadow: `0 0 3px rgba(0,191,255,0.25)` }}
+            style={{ background: lrColor, boxShadow: `0 0 3px rgba(139,92,246,0.25)` }}
             initial={{ width: 0 }}
             animate={{ width: `${Math.min(100, (contribution.lr / 1.6) * 100)}%` }}
             transition={{ duration: 0.8, ease: 'easeOut' }}
@@ -251,7 +251,7 @@ function VerdictBadge({ verdict }) {
         color: verdict.color,
         background: `color-mix(in srgb, ${verdict.color} 10%, transparent)`,
         border: `1.5px solid color-mix(in srgb, ${verdict.color} 32%, transparent)`,
-        boxShadow: `0 0 10px rgba(0,191,255,0.2), inset 0 0 12px color-mix(in srgb, ${verdict.color} 4%, transparent)`,
+        boxShadow: `0 0 10px rgba(139,92,246,0.2), inset 0 0 12px color-mix(in srgb, ${verdict.color} 4%, transparent)`,
       }}
     >
       <Icon className="w-4 h-4" />
@@ -388,8 +388,8 @@ export default function QuantumScorer() {
         <div style={{
           position: 'absolute', inset: 0,
           backgroundImage: `
-            linear-gradient(rgba(0,191,255,0.04) 1px, transparent 1px),
-            linear-gradient(90deg, rgba(0,191,255,0.04) 1px, transparent 1px)
+            linear-gradient(rgba(139,92,246,0.04) 1px, transparent 1px),
+            linear-gradient(90deg, rgba(139,92,246,0.04) 1px, transparent 1px)
           `,
           backgroundSize: '40px 40px',
           maskImage: 'radial-gradient(ellipse 80% 60% at 50% 30%, black 40%, transparent 100%)',
@@ -416,8 +416,8 @@ export default function QuantumScorer() {
           50% { transform: translateY(-18px) scale(1.3); opacity: 0.7; }
         }
         @keyframes pulse-glow {
-          0%, 100% { box-shadow: 0 0 6px rgba(0,191,255,0.18); }
-          50% { box-shadow: 0 0 14px rgba(0,191,255,0.3); }
+          0%, 100% { box-shadow: 0 0 6px rgba(139,92,246,0.18); }
+          50% { box-shadow: 0 0 14px rgba(139,92,246,0.3); }
         }
       `}</style>
 
@@ -559,7 +559,7 @@ export default function QuantumScorer() {
           <div className="flex-1 rounded-2xl flex flex-col items-center justify-center p-6 gap-5" style={{
             background: 'var(--color-bg-secondary)',
             border: `1px solid ${verdict ? `color-mix(in srgb, ${verdict.glow} 25%, transparent)` : 'var(--color-border-primary)'}`,
-            boxShadow: verdict ? `0 0 20px rgba(0,191,255,0.12)` : 'none',
+            boxShadow: verdict ? `0 0 20px rgba(139,92,246,0.12)` : 'none',
             transition: 'border-color 0.5s, box-shadow 0.5s',
           }}>
             <AnimatePresence mode="wait">
@@ -650,7 +650,7 @@ export default function QuantumScorer() {
               { label: 'NO EDGE',     color: '#ef4444', range: '<55%' },
             ].map(v => (
               <div key={v.label} className="flex items-center gap-1.5">
-                <div className="w-2 h-2 rounded-full shrink-0" style={{ background: v.color, boxShadow: `0 0 3px rgba(0,191,255,0.25)` }} />
+                <div className="w-2 h-2 rounded-full shrink-0" style={{ background: v.color, boxShadow: `0 0 3px rgba(139,92,246,0.25)` }} />
                 <div>
                   <div className="text-[10px] font-bold" style={{ color: v.color }}>{v.label}</div>
                   <div className="text-[9px] text-text-muted">{v.range}</div>

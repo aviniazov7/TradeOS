@@ -150,7 +150,7 @@ export default function DCAAnalytics({ plans, prices }) {
                 <XAxis dataKey="month" tick={{ fill: 'var(--color-text-muted)', fontSize: 10 }} axisLine={false} tickLine={false} />
                 <YAxis tick={{ fill: 'var(--color-text-muted)', fontSize: 10 }} axisLine={false} tickLine={false} width={45} tickFormatter={(v) => `$${v}`} />
                 <Tooltip contentStyle={tooltipStyle} cursor={{ fill: 'var(--color-bg-tertiary)' }} formatter={(v) => [`$${formatNumber(v)}`, 'סכום']} />
-                <Bar dataKey="amount" fill="#3b82f6" radius={[4, 4, 0, 0]} />
+                <Bar dataKey="amount" fill="#8b5cf6" radius={[4, 4, 0, 0]} />
               </BarChart>
             </ResponsiveContainer>
           </div>

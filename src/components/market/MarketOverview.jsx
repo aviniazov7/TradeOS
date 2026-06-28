@@ -73,7 +73,7 @@ const statAccent = (r, g, b, color) => ({
   chipBg: `rgba(${r},${g},${b},0.12)`,
 });
 const STAT_ACCENTS = {
-  cap:  statAccent(56, 189, 248, '#38bdf8'),   // market cap  — sky-blue
+  cap:  statAccent(139, 92, 246, '#8b5cf6'),  // market cap  — violet (app accent)
   usdt: statAccent(38, 212, 175, '#2dd4bf'),   // USDT.D      — teal
   btc:  statAccent(251, 146, 60, '#fb923c'),   // BTC.D       — bitcoin orange
   vol:  statAccent(192, 132, 252, '#c084fc'),  // 24h volume  — violet
@@ -275,7 +275,7 @@ function FundingCountdown({ nextTime }) {
 
 // Shared modern card header: left-aligned accent icon chip + title + optional
 // right-side node (total / countdown). 21st-style, replaces the old centered h2.
-function MarketCardHeader({ Icon, title, accent = '#00bfff', right }) {
+function MarketCardHeader({ Icon, title, accent = '#8b5cf6', right }) {
   return (
     <div className="flex items-center justify-between gap-2 mb-4">
       <div className="flex items-center gap-2 min-w-0">
@@ -419,7 +419,7 @@ function LongShortCard({ data, loading }) {
       transition={{ duration: 0.5, delay: 0.3 }}
       className={cardClass}
     >
-      <MarketCardHeader Icon={BarChart3} title="יחס לונג / שורט" accent="#00bfff" />
+      <MarketCardHeader Icon={BarChart3} title="יחס לונג / שורט" accent="#8b5cf6" />
       {data.length > 0 ? (
         <div className="space-y-1">
           {data.map((d, i) => {
