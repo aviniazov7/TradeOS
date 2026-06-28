@@ -181,8 +181,12 @@ export default function BacktestTracker() {
 
   return (
     <motion.div variants={pageVariants} initial="initial" animate="animate" exit="exit" transition={pageTransition}>
-      {/* Top Navigation Bar */}
-      <div className="bg-bg-secondary border border-border-primary rounded-xl mb-4 px-3 md:px-4 py-2.5 space-y-2 relative z-10">
+      {/* Top Navigation Bar. backdrop-filter is force-disabled here (same as the
+          journal toolbar): a raised translucent blur layer at the top of the
+          page rendered as a faint "glass band" that flashed on hover-triggered
+          re-rasterization. Keeping the bg-bg-secondary fill keeps it identical
+          in both themes. */}
+      <div className="bg-bg-secondary border border-border-primary rounded-xl mb-4 px-3 md:px-4 py-2.5 space-y-2 relative z-10" style={{ backdropFilter: 'none', WebkitBackdropFilter: 'none' }}>
         {/* Row 1: Switcher + Tabs + Actions */}
         <div className="flex items-center justify-between gap-2">
           <div className="flex items-center gap-1 md:gap-3 min-w-0">
