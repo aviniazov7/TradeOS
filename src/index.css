@@ -157,7 +157,10 @@ body {
    fill would blank an inherited-colour icon). Icons get the gradient instead via
    stroke="url(#ai-grad)". */
 .text-gradient {
-  background: var(--accent-gradient);
+  /* Cyan-dominant (more turquoise than violet) per request — violet only as a
+     hint at the very end, so short labels read mostly cyan. Buttons keep the
+     balanced --accent-gradient; this is the TEXT-only variant. */
+  background: linear-gradient(120deg, #06b6d4 0%, #22d3ee 45%, #8b5cf6 115%);
   -webkit-background-clip: text;
   background-clip: text;
   -webkit-text-fill-color: transparent;
