@@ -482,20 +482,50 @@ function timeAgo(ts) {
   return `לפני ${Math.floor(diff / 3600)}h`;
 }
 
-function LiquidationsCard({ liquidations }) {
+function LiquidationsCard({ liquidations, connected = false }) {
   const longs = liquidations.filter(l => l.side === 'SELL');
   const shorts = liquidations.filter(l => l.side === 'BUY');
   const totalLongUsd = longs.reduce((s, l) => s + l.usdValue, 0);
   const totalShortUsd = shorts.reduce((s, l) => s + l.usdValue, 0);
   const total = totalLongUsd + totalShortUsd;
   const longPct = total > 0 ? (totalLongUsd / total) * 100 : 50;
+  const newestId = liquidations[0]?.id;
 
   return (
     <div className={cardClass}>
       <MarketCardHeader
-        Icon={Zap} title="חיסולים LIVE" accent="#eab308"
-        right={<span className="flex items-center gap-1 text-[9px] font-semibold text-text-muted shrink-0"><span className="w-1.5 h-1.5 rounded-full bg-loss animate-pulse" /> LIVE</span>}
+        Icon={Zap} title="חיסולים" accent="#eab308"
+        right={
+          <span
+            className="flex items-center gap-1.5 text-[9px] font-bold tracking-wide shrink-0 px-1.5 py-0.5 rounded-full"
+            style={{
+              color: connected ? 'var(--color-loss)' : 'var(--color-text-muted)',
+              backgroundColor: connected ? 'rgba(239,68,68,0.12)' : 'var(--color-bg-tertiary)',
+            }}
+          >
+            <span
+              className={`w-1.5 h-1.5 rounded-full ${connected ? 'bg-loss animate-pulse' : 'bg-text-muted'}`}
+            />
+            {connected ? 'LIVE' : 'מתחבר…'}
+          </span>
+        }
       />
+
+      {/* Hero total liquidated */}
+      <div className="mb-3 flex items-end justify-between" dir="ltr">
+        <div>
+          <p className="text-[9px] uppercase tracking-wider text-text-muted mb-0.5">Total Liquidated</p>
+          <motion.p
+            key={Math.round(total)}
+            initial={{ opacity: 0.4 }} animate={{ opacity: 1 }}
+            className="text-xl font-bold num-mono leading-none"
+            style={{ color: 'var(--color-text-primary)' }}
+          >
+            {total > 0 ? `$${formatNum(total)}` : '—'}
+          </motion.p>
+        </div>
+        <span className="text-[10px] text-text-muted num-mono">{liquidations.length} events</span>
+      </div>
 
       {/* Summary split bar */}
       <div className="mb-3">
@@ -516,15 +546,24 @@ function LiquidationsCard({ liquidations }) {
             {liquidations.map((liq) => {
               const isLong = liq.side === 'SELL';
               const big = liq.usdValue >= 50000;
+              const whale = liq.usdValue >= 250000;
+              const isNewest = liq.id === newestId;
               const col = isLong ? 'var(--color-loss)' : 'var(--color-profit)';
               const barW = Math.min(100, (liq.usdValue / 100000) * 100);
               return (
                 <motion.div
                   key={liq.id}
                   initial={{ opacity: 0, y: -14, scale: 0.96 }}
-                  animate={{ opacity: 1, y: 0, scale: 1 }}
+                  animate={{
+                    opacity: 1, y: 0, scale: 1,
+                    boxShadow: isNewest
+                      ? [`0 0 0px 0px ${isLong ? 'rgba(239,68,68,0.0)' : 'rgba(34,197,94,0.0)'}`,
+                         `0 0 14px 1px ${isLong ? 'rgba(239,68,68,0.45)' : 'rgba(34,197,94,0.45)'}`,
+                         '0 0 0px 0px rgba(0,0,0,0)']
+                      : (whale ? `0 0 12px 0px ${isLong ? 'rgba(239,68,68,0.35)' : 'rgba(34,197,94,0.35)'}` : '0 0 0px 0px rgba(0,0,0,0)'),
+                  }}
                   exit={{ opacity: 0, height: 0, marginTop: 0 }}
-                  transition={{ duration: 0.3, ease: 'easeOut' }}
+                  transition={{ duration: 0.4, ease: 'easeOut', boxShadow: { duration: 0.9 } }}
                   className="relative flex items-center justify-between py-2 px-2.5 rounded-lg overflow-hidden border"
                   style={{
                     background: isLong ? 'rgba(239,68,68,0.07)' : 'rgba(34,197,94,0.07)',
@@ -540,6 +579,9 @@ function LiquidationsCard({ liquidations }) {
                     <span className="text-[8px] font-bold px-1 py-0.5 rounded shrink-0" style={{ color: col, backgroundColor: isLong ? 'rgba(239,68,68,0.15)' : 'rgba(34,197,94,0.15)' }}>
                       {isLong ? 'LONG' : 'SHORT'}
                     </span>
+                    {whale && (
+                      <span className="text-[8px] shrink-0" title="ליקווידציה גדולה">🐋</span>
+                    )}
                   </div>
                   <div className="relative flex items-center gap-2 shrink-0">
                     <span className="text-[11px] font-bold num-mono" style={{ color: col }}>{formatNum(liq.usdValue)}</span>
@@ -551,11 +593,22 @@ function LiquidationsCard({ liquidations }) {
           </AnimatePresence>
         </div>
       ) : (
-        <div className="text-center py-10">
-          <motion.div animate={{ y: [0, 6, 0], opacity: [0.4, 1, 0.4] }} transition={{ duration: 1.8, repeat: Infinity, ease: 'easeInOut' }}>
-            <Zap className="w-6 h-6 text-yellow-500/60 mx-auto mb-2" />
-          </motion.div>
-          <span className="text-[11px] text-text-muted">ממתין לחיסולים…</span>
+        <div className="flex flex-col items-center justify-center py-10">
+          {/* Radar sweep — reads as "actively listening" rather than frozen */}
+          <div className="relative w-16 h-16 mb-3">
+            <span className="absolute inset-0 rounded-full border border-yellow-500/20" />
+            <span className="absolute inset-[22%] rounded-full border border-yellow-500/15" />
+            <motion.span
+              className="absolute inset-0 rounded-full"
+              style={{ background: 'conic-gradient(from 0deg, rgba(234,179,8,0.0) 0deg, rgba(234,179,8,0.28) 50deg, rgba(234,179,8,0.0) 60deg)' }}
+              animate={{ rotate: 360 }}
+              transition={{ duration: 2.4, repeat: Infinity, ease: 'linear' }}
+            />
+            <Zap className="absolute inset-0 m-auto w-5 h-5 text-yellow-500/70" />
+          </div>
+          <span className="text-[11px] text-text-muted">
+            {connected ? 'מחובר · ממתין לחיסולים…' : 'מתחבר לזרם החיסולים…'}
+          </span>
         </div>
       )}
     </div>
@@ -632,6 +685,7 @@ export default function MarketOverview() {
   const [openInterest, setOpenInterest] = useState([]);
   const [longShortRatio, setLongShortRatio] = useState([]);
   const [liquidations, setLiquidations] = useState([]);
+  const [liqConnected, setLiqConnected] = useState(false);
   const intervalRef = useRef(null);
 
   // Helper: fetch with timeout (AbortSignal.timeout may not exist in older Safari)
@@ -902,6 +956,7 @@ export default function MarketOverview() {
     const connect = () => {
       ws = new WebSocket('wss://stream.bybit.com/v5/public/linear');
       ws.onopen = () => {
+        setLiqConnected(true);
         ws.send(JSON.stringify({ op: 'subscribe', args: LIQ_SYMBOLS.map((s) => `allLiquidation.${s}`) }));
       };
       ws.onmessage = (event) => {
@@ -925,7 +980,7 @@ export default function MarketOverview() {
           });
         }
       };
-      ws.onclose = () => { if (!closed) setTimeout(connect, 3000); };
+      ws.onclose = () => { setLiqConnected(false); if (!closed) setTimeout(connect, 3000); };
       ws.onerror = () => ws.close();
     };
 
@@ -1260,7 +1315,7 @@ export default function MarketOverview() {
         </div>
 
         {/* Liquidations */}
-        <LiquidationsCard liquidations={liquidations} />
+        <LiquidationsCard liquidations={liquidations} connected={liqConnected} />
       </div>
 
       {/* Futures Data */}

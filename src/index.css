@@ -463,10 +463,12 @@ input[type="number"] {
   background: var(--color-bg-secondary);
   border: 1px solid var(--color-border-primary);
   border-radius: 0.875rem;
-  backdrop-filter: blur(14px) saturate(140%);
-  -webkit-backdrop-filter: blur(14px) saturate(140%);
+  /* No backdrop-filter: over the near-black body the blur is invisible, but as a
+     raised blur layer it re-rasterized on hover and painted a 1px "seam" onto the
+     neighbouring card. Dropping it removes that artifact (same fix as the top
+     toolbars) with no visual change. */
   box-shadow: 0 4px 20px rgba(0, 0, 0, 0.25);
-  transition: border-color 0.2s ease, box-shadow 0.2s ease, transform 0.2s ease;
+  transition: border-color 0.2s ease, box-shadow 0.2s ease;
 }
 /* Faint scan-line highlight along the top edge */
 .bento-card::before {
@@ -481,8 +483,13 @@ input[type="number"] {
 }
 .bento-card:hover {
   border-color: var(--color-border-hover);
-  box-shadow: 0 8px 28px rgba(0, 0, 0, 0.35);
-  transform: translateY(-1px);
+  /* Keep the OUTER shadow identical to the resting state — growing it on hover
+     made a larger blurred shadow fade in over the neighbouring card's edge,
+     which read as a faint vertical "פס" (band) on the column next door. Hover
+     feedback now comes only from the brighter border + a self-contained inset
+     highlight, so nothing is painted outside the card's own box. */
+  box-shadow: 0 4px 20px rgba(0, 0, 0, 0.25),
+    inset 0 0 0 1px rgba(255, 255, 255, 0.04);
 }
 .num-mono {
   font-family: ui-monospace, 'SF Mono', SFMono-Regular, Menlo, Consolas, monospace;
