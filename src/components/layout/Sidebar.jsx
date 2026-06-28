@@ -84,17 +84,33 @@ export default function Sidebar({ mobileOpen, onClose }) {
                     end={item.to === '/'}
                     onClick={handleNavClick}
                     className={({ isActive }) =>
-                      `flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-medium transition-colors ${
+                      `group relative flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-medium transition-colors ${
                         isActive
-                          ? 'bg-accent-primary/10 text-accent-primary'
+                          ? 'bg-accent-primary/10'
                           : item.highlight
-                            ? 'text-accent-primary hover:bg-accent-primary/10'
+                            ? 'hover:bg-accent-primary/10'
                             : 'text-text-secondary hover:text-text-primary hover:bg-bg-tertiary'
                       }`
                     }
                   >
-                    <item.icon className="w-5 h-5" />
-                    {item.label}
+                    {({ isActive }) => {
+                      const grad = isActive || item.highlight;
+                      return (
+                        <>
+                          {isActive && (
+                            <span
+                              className="absolute right-0 top-1/2 -translate-y-1/2 h-6 w-1 rounded-full"
+                              style={{ background: 'var(--accent-gradient)' }}
+                            />
+                          )}
+                          <item.icon
+                            className="w-5 h-5 shrink-0"
+                            style={grad ? { stroke: 'url(#ai-grad)' } : undefined}
+                          />
+                          <span className={grad ? 'text-gradient font-semibold' : ''}>{item.label}</span>
+                        </>
+                      );
+                    }}
                   </NavLink>
               ))}
             </nav>

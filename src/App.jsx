@@ -135,6 +135,16 @@ function MainApp() {
 export default function App() {
   return (
     <ErrorBoundary>
+      {/* Global gradient def — lets lucide icons render in the violet→cyan accent
+          gradient via stroke="url(#ai-grad)" (SVG can't use CSS background-clip). */}
+      <svg width="0" height="0" aria-hidden="true" style={{ position: 'absolute' }}>
+        <defs>
+          <linearGradient id="ai-grad" x1="0%" y1="0%" x2="100%" y2="100%">
+            <stop offset="0%" stopColor="#8b5cf6" />
+            <stop offset="100%" stopColor="#06b6d4" />
+          </linearGradient>
+        </defs>
+      </svg>
       <BrowserRouter>
         <Routes>
           {/* Standalone popup page — outside AuthProvider so getRedirectResult isn't consumed by AuthContext */}

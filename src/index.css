@@ -152,6 +152,18 @@ body {
   filter: brightness(1.08);
 }
 
+/* Gradient TEXT — the violet→cyan accent as a clipped text fill. Use on pure
+   text labels (NOT on elements that also contain icons, since the transparent
+   fill would blank an inherited-colour icon). Icons get the gradient instead via
+   stroke="url(#ai-grad)". */
+.text-gradient {
+  background: var(--accent-gradient);
+  -webkit-background-clip: text;
+  background-clip: text;
+  -webkit-text-fill-color: transparent;
+  color: transparent;
+}
+
 /* Glassmorphism — light mode overrides */
 .light [class*="bg-bg-secondary"] {
   box-shadow:

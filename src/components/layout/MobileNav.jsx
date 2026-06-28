@@ -108,7 +108,7 @@ export default function MobileNav() {
             >
               <span
                 className={`flex flex-col items-center gap-0.5 transition-colors ${
-                  isActive ? 'text-accent-primary' : 'text-text-muted'
+                  isActive ? '' : 'text-text-muted'
                 }`}
               >
                 <motion.span
@@ -119,9 +119,10 @@ export default function MobileNav() {
                   <item.icon
                     className="w-[22px] h-[22px]"
                     strokeWidth={isActive ? 2.4 : 2}
+                    style={isActive ? { stroke: 'url(#ai-grad)' } : undefined}
                   />
                 </motion.span>
-                <span className="leading-none">{item.label}</span>
+                <span className={`leading-none ${isActive ? 'text-gradient font-semibold' : ''}`}>{item.label}</span>
               </span>
             </NavLink>
           );
