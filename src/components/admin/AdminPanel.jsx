@@ -1,7 +1,10 @@
 import { useState, useEffect, useMemo } from 'react';
 import { Navigate } from 'react-router-dom';
-import { Users, UserPlus, ShieldCheck, CheckCircle2, Search, RefreshCw, Download, ChevronUp, ChevronDown, Mail, Calendar, Coins, TrendingUp, Percent, Sparkles, BookOpen, FlaskConical, Activity, FileText, Brain, Crown, Send, X, Ticket, Plus, Minus, Trash2, Copy, ScrollText, Share2, Link2, BarChart3, AlertTriangle, Clock, DollarSign, Hourglass, Image, Trophy, Loader2 } from 'lucide-react';
+import { Users, UserPlus, ShieldCheck, CheckCircle2, Search, RefreshCw, Download, ChevronUp, ChevronDown, ChevronLeft, Mail, Calendar, Coins, TrendingUp, Percent, Sparkles, BookOpen, FlaskConical, Activity, FileText, Brain, Crown, Send, X, Ticket, Plus, Minus, Trash2, Copy, ScrollText, Share2, Link2, BarChart3, AlertTriangle, Clock, DollarSign, Hourglass, Image, Trophy, Loader2 } from 'lucide-react';
+import { motion } from 'framer-motion';
 import toast from 'react-hot-toast';
+import Card from '../shared/Card';
+import AnimatedValue from '../shared/AnimatedValue';
 import { useAuth } from '../../contexts/AuthContext';
 import { getAllUsers, getUserSubcollectionCount, adminGrantPremium, adminRevokePremium, addPayment, getAllPayments } from '../../services/firestoreService';
 import { fetchUserAiUsage, fetchGlobalAiUsage, fetchAiStats, fetchSystemHealth } from '../../hooks/useAiUsage';
@@ -85,28 +88,42 @@ const AI_COST_EST = {
 };
 const estimateAiCost = (text, image) => text * AI_COST_EST.textPerReq + image * AI_COST_EST.imagePerReq;
 
-function StatCard({ icon, label, value, onClick }) {
+// Per-tile accent palette — gives the KPI strip colour variety + a soft corner
+// glow (21st-style) instead of five identical grey boxes.
+const STAT_ACCENTS = {
+  cyan:   { text: 'text-accent-primary', chip: 'bg-accent-primary/12 text-accent-primary', glow: 'rgba(0,191,255,0.12)' },
+  green:  { text: 'text-profit',         chip: 'bg-profit/12 text-profit',                 glow: 'rgba(34,197,94,0.12)' },
+  amber:  { text: 'text-amber-400',      chip: 'bg-amber-400/12 text-amber-400',           glow: 'rgba(251,191,36,0.12)' },
+  violet: { text: 'text-violet-400',     chip: 'bg-violet-400/12 text-violet-400',         glow: 'rgba(139,92,246,0.12)' },
+};
+
+function StatCard({ icon, label, value, onClick, accent = 'cyan' }) {
+  const a = STAT_ACCENTS[accent] || STAT_ACCENTS.cyan;
   const inner = (
     <>
-      <div className="bg-accent-primary/10 text-accent-primary rounded-lg p-3">
-        {icon}
-      </div>
-      <div>
-        <div className="text-2xl font-bold text-text-primary">{value}</div>
-        <div className="text-sm text-text-secondary">{label}</div>
+      {/* soft corner glow */}
+      <div className="absolute -top-10 -right-10 w-28 h-28 rounded-full pointer-events-none"
+        style={{ background: `radial-gradient(circle, ${a.glow} 0%, transparent 70%)` }} />
+      <div className="relative flex items-center gap-3.5">
+        <div className={`shrink-0 rounded-xl p-2.5 ${a.chip}`}>{icon}</div>
+        <div className="min-w-0">
+          <div className={`text-2xl md:text-[26px] font-bold leading-none ${a.text}`} dir="ltr">
+            <AnimatedValue value={String(value)} />
+          </div>
+          <div className="text-[13px] text-text-secondary mt-1.5 truncate">{label}</div>
+        </div>
+        {onClick && (
+          <ChevronLeft className="w-4 h-4 text-text-muted mr-auto shrink-0 opacity-0 group-hover:opacity-100 -translate-x-1 group-hover:translate-x-0 transition-all" />
+        )}
       </div>
     </>
   );
-  const base = 'bg-bg-secondary border border-border-primary rounded-xl p-4 flex items-center gap-4';
-  if (!onClick) return <div className={base}>{inner}</div>;
+  const cls = 'relative overflow-hidden p-4';
+  if (!onClick) return <Card className={cls}>{inner}</Card>;
   return (
-    <button
-      type="button"
-      onClick={onClick}
-      className={`${base} text-right w-full hover:border-accent-primary/50 hover:bg-bg-tertiary/40 transition-colors cursor-pointer`}
-    >
+    <Card as="button" type="button" onClick={onClick} hover className={`${cls} group w-full text-right`}>
       {inner}
-    </button>
+    </Card>
   );
 }
 
@@ -439,9 +456,18 @@ export default function AdminPanel() {
   if (!isAdmin) return <Navigate to="/" replace />;
 
   return (
-    <div dir="rtl" className="max-w-6xl mx-auto space-y-6">
+    <motion.div dir="rtl" className="max-w-6xl mx-auto space-y-6"
+      initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.3, ease: 'easeOut' }}>
       <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
-        <h1 className="text-xl md:text-2xl font-bold text-text-primary">פאנל ניהול</h1>
+        <div className="flex items-center gap-3">
+          <div className="w-10 h-10 rounded-xl bg-accent-primary/12 flex items-center justify-center shrink-0">
+            <BarChart3 className="w-5 h-5 text-accent-primary" />
+          </div>
+          <div>
+            <h1 className="text-xl md:text-2xl font-bold text-text-primary leading-tight">פאנל ניהול</h1>
+            <p className="text-xs text-text-muted">סקירה כללית · משתמשים · מנויים · AI</p>
+          </div>
+        </div>
         {/* On mobile: a 2×2 grid of equal-width buttons. On desktop: inline. */}
         <div className="grid grid-cols-2 sm:flex sm:items-center gap-2">
           <button
@@ -491,11 +517,11 @@ export default function AdminPanel() {
       </div>
 
       <div className="grid grid-cols-2 lg:grid-cols-5 gap-3">
-        <StatCard icon={<Users className="w-6 h-6" />} label="סה״כ משתמשים" value={stats.total.length} onClick={() => setListModal({ title: 'כל המשתמשים', users: stats.total })} />
-        <StatCard icon={<UserPlus className="w-6 h-6" />} label="חדשים השבוע" value={stats.newThisWeek.length} onClick={() => setListModal({ title: 'חדשים השבוע', users: stats.newThisWeek })} />
-        <StatCard icon={<CheckCircle2 className="w-6 h-6" />} label="סיימו אונבורדינג" value={stats.onboarded.length} onClick={() => setListModal({ title: 'סיימו אונבורדינג', users: stats.onboarded })} />
-        <StatCard icon={<Crown className="w-6 h-6 text-amber-400" />} label="לקוחות Premium" value={stats.premium.length} onClick={() => setListModal({ title: 'לקוחות Premium', users: stats.premium })} />
-        <StatCard icon={<ShieldCheck className="w-6 h-6" />} label="אדמינים" value={stats.admins.length} onClick={() => setListModal({ title: 'אדמינים', users: stats.admins })} />
+        <StatCard accent="cyan" icon={<Users className="w-6 h-6" />} label="סה״כ משתמשים" value={stats.total.length} onClick={() => setListModal({ title: 'כל המשתמשים', users: stats.total })} />
+        <StatCard accent="green" icon={<UserPlus className="w-6 h-6" />} label="חדשים השבוע" value={stats.newThisWeek.length} onClick={() => setListModal({ title: 'חדשים השבוע', users: stats.newThisWeek })} />
+        <StatCard accent="violet" icon={<CheckCircle2 className="w-6 h-6" />} label="סיימו אונבורדינג" value={stats.onboarded.length} onClick={() => setListModal({ title: 'סיימו אונבורדינג', users: stats.onboarded })} />
+        <StatCard accent="amber" icon={<Crown className="w-6 h-6" />} label="לקוחות Premium" value={stats.premium.length} onClick={() => setListModal({ title: 'לקוחות Premium', users: stats.premium })} />
+        <StatCard accent="cyan" icon={<ShieldCheck className="w-6 h-6" />} label="אדמינים" value={stats.admins.length} onClick={() => setListModal({ title: 'אדמינים', users: stats.admins })} />
       </div>
 
       {/* Growth: active users (DAU/WAU/MAU) + 30-day signups trend. */}
@@ -1010,7 +1036,7 @@ export default function AdminPanel() {
         onClose={() => setBulkOpen(false)}
         segments={{ all: stats.total, premium: stats.premium, newThisWeek: stats.newThisWeek, onboarded: stats.onboarded, churned }}
       />
-    </div>
+    </motion.div>
   );
 }
 
