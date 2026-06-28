@@ -491,6 +491,21 @@ input[type="number"] {
   box-shadow: 0 4px 20px rgba(0, 0, 0, 0.25),
     inset 0 0 0 1px rgba(255, 255, 255, 0.04);
 }
+/* Kill backdrop-filter on every inner surface of a bento card.
+   The global [class*="bg-bg-tertiary/secondary/overlay"] rules apply a 20–32px
+   blur to ANY element with those classes — including the tiny progress-bar
+   tracks and the per-row hover backgrounds (hover:bg-bg-tertiary/60) inside the
+   market cards. The card itself sits on a near-black solid surface, so the blur
+   is visually invisible, but its blur kernel samples ~20–32px BEYOND the
+   element's box and Chromium paints that fringe into the gaps between columns —
+   the faint ghost marks / "פסים" that appeared on the neighbouring card when a
+   row was hovered. Disabling it here removes the artifact with no visual cost. */
+.bento-card [class*="bg-bg-secondary"],
+.bento-card [class*="bg-bg-tertiary"],
+.bento-card [class*="bg-bg-overlay"] {
+  -webkit-backdrop-filter: none;
+  backdrop-filter: none;
+}
 .num-mono {
   font-family: ui-monospace, 'SF Mono', SFMono-Regular, Menlo, Consolas, monospace;
   letter-spacing: -0.02em;
