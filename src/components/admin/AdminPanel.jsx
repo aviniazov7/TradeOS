@@ -5,6 +5,7 @@ import { motion } from 'framer-motion';
 import toast from 'react-hot-toast';
 import Card from '../shared/Card';
 import AnimatedValue from '../shared/AnimatedValue';
+import { ResponsiveContainer, AreaChart, Area, Tooltip, XAxis } from 'recharts';
 import { useAuth } from '../../contexts/AuthContext';
 import { getAllUsers, getUserSubcollectionCount, adminGrantPremium, adminRevokePremium, addPayment, getAllPayments } from '../../services/firestoreService';
 import { fetchUserAiUsage, fetchGlobalAiUsage, fetchAiStats, fetchSystemHealth } from '../../hooks/useAiUsage';
@@ -124,6 +125,38 @@ function StatCard({ icon, label, value, onClick, accent = 'cyan' }) {
     <Card as="button" type="button" onClick={onClick} hover className={`${cls} group w-full text-right`}>
       {inner}
     </Card>
+  );
+}
+
+// Modern section panel — accent icon chip + title + optional right-side action.
+function SectionCard({ icon, title, action, className = '', children }) {
+  return (
+    <Card className={`p-4 md:p-5 ${className}`}>
+      <div className="flex items-center justify-between mb-4 gap-3">
+        <div className="flex items-center gap-2.5 min-w-0">
+          <div className="w-8 h-8 rounded-lg bg-accent-primary/12 text-accent-primary flex items-center justify-center shrink-0">
+            {icon}
+          </div>
+          <h3 className="text-sm font-semibold text-text-primary truncate">{title}</h3>
+        </div>
+        {action}
+      </div>
+      {children}
+    </Card>
+  );
+}
+
+// Small accent stat tile (DAU/WAU/MAU, AI counters, …).
+function StatMini({ value, label, accent = 'cyan', icon }) {
+  const a = STAT_ACCENTS[accent] || STAT_ACCENTS.cyan;
+  return (
+    <div className="rounded-xl bg-bg-tertiary/40 border border-border-primary px-3 py-3 flex items-center gap-3">
+      {icon && <div className={`shrink-0 rounded-lg p-2 ${a.chip}`}>{icon}</div>}
+      <div className="min-w-0">
+        <div className={`text-xl font-bold leading-none ${a.text}`} dir="ltr"><AnimatedValue value={String(value)} /></div>
+        <div className="text-[10px] text-text-muted mt-1.5 truncate">{label}</div>
+      </div>
+    </div>
   );
 }
 
@@ -526,49 +559,48 @@ export default function AdminPanel() {
 
       {/* Growth: active users (DAU/WAU/MAU) + 30-day signups trend. */}
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-3">
-        <div className="bg-bg-secondary border border-border-primary rounded-xl p-4">
-          <div className="text-[11px] text-text-muted mb-3 flex items-center gap-1.5"><Activity className="w-3.5 h-3.5" /> משתמשים פעילים</div>
-          <div className="grid grid-cols-3 gap-2 text-center">
-            <div className="bg-bg-tertiary/40 border border-border-primary rounded-lg py-2.5"><div className="text-xl font-bold text-text-primary">{growth.dau}</div><div className="text-[10px] text-text-muted">היום</div></div>
-            <div className="bg-bg-tertiary/40 border border-border-primary rounded-lg py-2.5"><div className="text-xl font-bold text-text-primary">{growth.wau}</div><div className="text-[10px] text-text-muted">השבוע</div></div>
-            <div className="bg-bg-tertiary/40 border border-border-primary rounded-lg py-2.5"><div className="text-xl font-bold text-text-primary">{growth.mau}</div><div className="text-[10px] text-text-muted">החודש</div></div>
+        <SectionCard icon={<Activity className="w-4 h-4" />} title="משתמשים פעילים">
+          <div className="grid grid-cols-3 gap-2">
+            <StatMini accent="cyan" value={growth.dau} label="היום" />
+            <StatMini accent="violet" value={growth.wau} label="השבוע" />
+            <StatMini accent="green" value={growth.mau} label="החודש" />
           </div>
-        </div>
-        <div className="bg-bg-secondary border border-border-primary rounded-xl p-4 lg:col-span-2">
-          <div className="text-[11px] text-text-muted mb-3 flex items-center gap-1.5"><UserPlus className="w-3.5 h-3.5" /> הרשמות (30 ימים)</div>
-          {(() => {
-            const max = Math.max(1, ...growth.signups.map((s) => s.count));
-            const total = growth.signups.reduce((a, s) => a + s.count, 0);
-            return (
-              <>
-                <div className="flex items-stretch gap-0.5 h-16">
-                  {growth.signups.map((s, i) => {
-                    const h = Math.round((s.count / max) * 100);
-                    const label = `${s.date.getDate()}/${s.date.getMonth() + 1}`;
-                    return (
-                      <div key={i} className="flex-1 h-full flex flex-col justify-end group" title={`${label}: ${s.count} הרשמות`}>
-                        <div className="w-full rounded-t bg-profit/60 group-hover:bg-profit transition-colors" style={{ height: `${s.count > 0 ? Math.max(8, h) : 2}%` }} />
-                      </div>
-                    );
-                  })}
-                </div>
-                <div className="flex justify-between mt-1 text-[9px] text-text-muted">
-                  <span>{growth.signups.length ? `${growth.signups[0].date.getDate()}/${growth.signups[0].date.getMonth() + 1}` : ''}</span>
-                  <span>היום · סה״כ {total}</span>
-                </div>
-              </>
-            );
-          })()}
-        </div>
+        </SectionCard>
+        <SectionCard
+          className="lg:col-span-2"
+          icon={<UserPlus className="w-4 h-4" />}
+          title="הרשמות (30 ימים)"
+          action={<span className="text-[11px] text-text-muted">סה״כ {growth.signups.reduce((a, s) => a + s.count, 0)}</span>}
+        >
+          <div className="h-28 -mx-1">
+            <ResponsiveContainer width="100%" height="100%">
+              <AreaChart data={growth.signups.map((s) => ({ d: `${s.date.getDate()}/${s.date.getMonth() + 1}`, count: s.count }))} margin={{ top: 4, right: 6, bottom: 0, left: 6 }}>
+                <defs>
+                  <linearGradient id="signupsGrad" x1="0" y1="0" x2="0" y2="1">
+                    <stop offset="5%" stopColor="var(--color-profit)" stopOpacity={0.35} />
+                    <stop offset="95%" stopColor="var(--color-profit)" stopOpacity={0} />
+                  </linearGradient>
+                </defs>
+                <XAxis dataKey="d" hide />
+                <Tooltip
+                  contentStyle={{ background: 'var(--color-bg-overlay)', border: '1px solid var(--color-border-primary)', borderRadius: '8px', fontSize: '12px', color: 'var(--color-text-primary)' }}
+                  labelStyle={{ color: 'var(--color-text-secondary)' }}
+                  cursor={{ stroke: 'var(--color-border-primary)' }}
+                  formatter={(v) => [v, 'הרשמות']}
+                />
+                <Area type="monotone" dataKey="count" stroke="var(--color-profit)" strokeWidth={2} fill="url(#signupsGrad)" animationDuration={700} />
+              </AreaChart>
+            </ResponsiveContainer>
+          </div>
+        </SectionCard>
       </div>
 
       {/* System health — admin-only, exposes only status (never secrets). */}
-      <div className="bg-bg-secondary border border-border-primary rounded-xl p-4">
-        <div className="text-[11px] text-text-muted mb-3 flex items-center gap-1.5"><ShieldCheck className="w-3.5 h-3.5" /> בריאות מערכת</div>
+      <SectionCard icon={<ShieldCheck className="w-4 h-4" />} title="בריאות מערכת">
         {!health ? (
           <div className="text-xs text-text-muted">…</div>
         ) : (
-          <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
+          <div className="grid grid-cols-2 sm:grid-cols-4 gap-2.5">
             {(() => {
               const cronAgeH = health.cronLast ? (Date.now() - health.cronLast) / 3600000 : null;
               const cronOk = cronAgeH != null && cronAgeH < 26;
@@ -579,18 +611,23 @@ export default function AdminPanel() {
                 { label: 'AI', ok: !!health.aiConfigured, note: health.aiConfigured ? 'מחובר' : 'לא מוגדר' },
               ];
               return items.map((it) => (
-                <div key={it.label} className="bg-bg-tertiary/40 border border-border-primary rounded-lg px-3 py-2.5">
-                  <div className="flex items-center gap-1.5">
-                    <span className={`w-2 h-2 rounded-full shrink-0 ${it.ok ? 'bg-profit' : 'bg-loss'}`} />
-                    <span className="text-xs font-medium text-text-primary">{it.label}</span>
+                <div key={it.label} className="rounded-xl px-3 py-3 border transition-colors"
+                  style={{
+                    background: it.ok ? 'rgba(34,197,94,0.06)' : 'rgba(239,68,68,0.06)',
+                    borderColor: it.ok ? 'rgba(34,197,94,0.25)' : 'rgba(239,68,68,0.25)',
+                  }}>
+                  <div className="flex items-center gap-2">
+                    <span className={`w-2 h-2 rounded-full shrink-0 ${it.ok ? 'bg-profit' : 'bg-loss'}`}
+                      style={{ boxShadow: it.ok ? '0 0 8px rgba(34,197,94,0.7)' : '0 0 8px rgba(239,68,68,0.7)' }} />
+                    <span className="text-xs font-semibold text-text-primary">{it.label}</span>
                   </div>
-                  <div className="text-[10px] text-text-muted mt-1 truncate">{it.note}</div>
+                  <div className="text-[10px] text-text-muted mt-1.5 truncate">{it.note}</div>
                 </div>
               ));
             })()}
           </div>
         )}
-      </div>
+      </SectionCard>
 
       {/* Global AI usage today — aggregated across all users (text + image). */}
       <div className="bg-bg-secondary border border-border-primary rounded-xl p-4">
@@ -600,20 +637,8 @@ export default function AdminPanel() {
         {globalAi ? (
           <>
             <div className="grid grid-cols-2 gap-3">
-              <div className="bg-bg-tertiary/40 border border-border-primary rounded-lg px-3 py-2.5 flex items-center gap-3">
-                <Sparkles className="w-5 h-5 text-accent-primary shrink-0" />
-                <div>
-                  <div className="text-xl font-bold text-text-primary">{globalAi.totalText}</div>
-                  <div className="text-[11px] text-text-secondary">בקשות טקסט</div>
-                </div>
-              </div>
-              <div className="bg-bg-tertiary/40 border border-border-primary rounded-lg px-3 py-2.5 flex items-center gap-3">
-                <Image className="w-5 h-5 text-accent-primary shrink-0" />
-                <div>
-                  <div className="text-xl font-bold text-text-primary">{globalAi.totalImage}</div>
-                  <div className="text-[11px] text-text-secondary">ניתוחי תמונה</div>
-                </div>
-              </div>
+              <StatMini accent="cyan" icon={<Sparkles className="w-5 h-5" />} value={globalAi.totalText} label="בקשות טקסט" />
+              <StatMini accent="violet" icon={<Image className="w-5 h-5" />} value={globalAi.totalImage} label="ניתוחי תמונה" />
             </div>
             <div className="mt-2.5 flex items-center gap-1.5 text-[11px] text-text-muted flex-wrap">
               <DollarSign className="w-3.5 h-3.5 text-accent-primary" />
