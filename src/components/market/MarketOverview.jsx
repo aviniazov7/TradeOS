@@ -292,9 +292,9 @@ function MarketCardHeader({ Icon, title, accent = '#00bfff', right }) {
 // A small coin label (icon + ticker) reused by the derivative cards.
 function CoinTag({ symbol, className = '' }) {
   return (
-    <span className={`flex items-center gap-1.5 ${className}`}>
+    <span className={`flex items-center gap-1.5 min-w-0 ${className}`}>
       <CoinIcon pair={symbol} className="w-4 h-4 shrink-0" />
-      <span className="text-[11px] font-bold text-text-primary">{symbol}</span>
+      <span className="text-[11px] font-bold text-text-primary truncate">{symbol}</span>
     </span>
   );
 }
@@ -328,7 +328,7 @@ function FundingRatesCard({ rates, loading }) {
                 className="flex items-center gap-2 py-1 px-1 rounded-lg hover:bg-bg-tertiary/60 transition-colors"
                 dir="ltr"
               >
-                <span className="text-[11px] font-semibold w-16 text-right shrink-0 num-mono" style={{ color: col }}>
+                <span className="text-[11px] font-semibold w-20 text-right shrink-0 num-mono" style={{ color: col }}>
                   {isNeg ? '' : '+'}{pct}%
                 </span>
                 <div className="flex-1 relative h-2 bg-bg-tertiary rounded-full overflow-hidden">
@@ -435,24 +435,28 @@ function LongShortCard({ data, loading }) {
                 dir="ltr"
               >
                 <CoinTag symbol={d.symbol} className="w-16 shrink-0" />
-                <div className="flex flex-1 h-5 rounded-lg overflow-hidden bg-bg-tertiary">
+                {/* Track is bg-bg-primary (distinct from the row's hover tint) so
+                    the hover highlight frames the bar instead of bleeding into it.
+                    Exact %s (sum to 100, no minWidth → no overflow); the label
+                    shows only when its side is wide enough to fit. */}
+                <div className="flex flex-1 h-5 rounded-lg overflow-hidden bg-bg-primary border border-border-primary">
                   <motion.div
                     initial={{ width: 0 }}
                     animate={{ width: `${longPct}%` }}
                     transition={{ delay: 0.03 * i + 0.2, duration: 0.8, ease: 'easeOut' }}
-                    className="h-full flex items-center justify-center"
-                    style={{ backgroundColor: 'rgba(34, 197, 94, 0.22)', minWidth: 38 }}
+                    className="h-full flex items-center justify-center overflow-hidden"
+                    style={{ backgroundColor: 'rgba(34, 197, 94, 0.3)' }}
                   >
-                    <span className="text-[9px] font-bold num-mono text-profit">{longPct}%</span>
+                    {Number(longPct) >= 14 && <span className="text-[9px] font-bold num-mono text-profit">{longPct}%</span>}
                   </motion.div>
                   <motion.div
                     initial={{ width: 0 }}
                     animate={{ width: `${shortPct}%` }}
                     transition={{ delay: 0.03 * i + 0.2, duration: 0.8, ease: 'easeOut' }}
-                    className="h-full flex items-center justify-center"
-                    style={{ backgroundColor: 'rgba(239, 68, 68, 0.22)', minWidth: 38 }}
+                    className="h-full flex items-center justify-center overflow-hidden"
+                    style={{ backgroundColor: 'rgba(239, 68, 68, 0.3)' }}
                   >
-                    <span className="text-[9px] font-bold num-mono text-loss">{shortPct}%</span>
+                    {Number(shortPct) >= 14 && <span className="text-[9px] font-bold num-mono text-loss">{shortPct}%</span>}
                   </motion.div>
                 </div>
               </motion.div>
@@ -517,7 +521,6 @@ function LiquidationsCard({ liquidations }) {
               return (
                 <motion.div
                   key={liq.id}
-                  layout
                   initial={{ opacity: 0, y: -14, scale: 0.96 }}
                   animate={{ opacity: 1, y: 0, scale: 1 }}
                   exit={{ opacity: 0, height: 0, marginTop: 0 }}
