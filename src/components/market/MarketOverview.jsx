@@ -79,6 +79,33 @@ const STAT_ACCENTS = {
   vol:  statAccent(192, 132, 252, '#c084fc'),  // 24h volume  — violet
   alt:  statAccent(129, 140, 248, '#818cf8'),  // alt season  — indigo
 };
+
+// 21st-style global-stat card: glass surface + a soft accent corner glow + a
+// faint accent hairline along the top. Designed (not a plain box, not bare text).
+function MarketStatCard({ accentKey, Icon, label, children }) {
+  const a = STAT_ACCENTS[accentKey] || STAT_ACCENTS.cap;
+  return (
+    <motion.div
+      variants={cardVariants}
+      whileHover={{ y: -2 }}
+      className="relative overflow-hidden rounded-2xl p-4 min-h-[104px] bg-bg-secondary border border-border-primary"
+    >
+      <div className="absolute -top-12 -left-12 w-32 h-32 rounded-full pointer-events-none"
+        style={{ background: `radial-gradient(circle, ${a.chipBg} 0%, transparent 70%)` }} />
+      <div className="absolute top-0 inset-x-6 h-px pointer-events-none"
+        style={{ background: `linear-gradient(to right, transparent, ${a.color}66, transparent)` }} />
+      <div className="relative">
+        <div className="flex items-center gap-2 mb-2.5">
+          <span className="w-6 h-6 rounded-md flex items-center justify-center shrink-0" style={{ backgroundColor: a.chipBg }}>
+            <Icon className="w-3.5 h-3.5" style={{ color: a.color }} />
+          </span>
+          <span className="text-[11px] text-text-muted uppercase tracking-wider">{label}</span>
+        </div>
+        {children}
+      </div>
+    </motion.div>
+  );
+}
 const FUTURES_SYMBOLS = [
   'BTCUSDT', 'ETHUSDT', 'SOLUSDT', 'XRPUSDT', 'BNBUSDT',
   'DOGEUSDT', 'ADAUSDT', 'AVAXUSDT', 'DOTUSDT', 'LINKUSDT',
@@ -922,15 +949,14 @@ export default function MarketOverview() {
     };
   }, []);
 
-  // Compute gainers and losers — $30M+ volume AND must have a real icon
-  const qualityCoins = allCoins.filter(c =>
-    (c.total_volume || 0) >= 30_000_000 && hasKnownIcon(c.symbol)
-  );
+  // Gainers / losers. allCoins is already icon-filtered at the source, so a
+  // lower 10M volume floor keeps a healthy pool. Split by SIGN so losers are
+  // genuinely down-coins (never overlap gainers, never empty just because the
+  // pool is small).
+  const qualityCoins = allCoins.filter(c => (c.total_volume || 0) >= 10_000_000);
   const sorted = [...qualityCoins].sort((a, b) => (b.price_change_percentage_24h || 0) - (a.price_change_percentage_24h || 0));
-  const gainers = sorted.slice(0, 5);
-  // Take the bottom 5 WITHOUT overlapping the top 5 (when fewer than 10 quality
-  // coins exist, slice(-5) would otherwise repeat gainers as losers).
-  const losers = sorted.slice(Math.max(5, sorted.length - 5)).reverse();
+  const gainers = sorted.filter(c => (c.price_change_percentage_24h || 0) > 0).slice(0, 5);
+  const losers = sorted.filter(c => (c.price_change_percentage_24h || 0) < 0).slice(-5).reverse();
 
   // Altcoin Season Index: prefer real BlockchainCenter data (90d), fallback to local 30d calc
   const EXCLUDED_SYMBOLS = new Set([
@@ -993,7 +1019,7 @@ export default function MarketOverview() {
       {/* Top row: global stats — borderless, free, divider-separated (no boxes).
           Uniform typography: 11px label, 2xl number, xs sub on every cell. */}
       <motion.div
-        className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-y-6 gap-x-2 mb-7 lg:divide-x lg:divide-x-reverse lg:divide-border-primary"
+        className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-3 mb-5"
         variants={staggerContainer} initial="initial" animate="animate"
       >
         {[
@@ -1018,13 +1044,7 @@ export default function MarketOverview() {
             sub: 'Stablecoin dominance',
           },
         ].map((s) => (
-          <motion.div key={s.key} variants={cardVariants} className="px-1 lg:px-5">
-            <div className="flex items-center gap-2 mb-2.5">
-              <span className="w-6 h-6 rounded-md flex items-center justify-center shrink-0" style={{ backgroundColor: STAT_ACCENTS[s.key].chipBg }}>
-                <s.Icon className="w-3.5 h-3.5" style={{ color: STAT_ACCENTS[s.key].color }} />
-              </span>
-              <span className="text-[11px] text-text-muted uppercase tracking-wider">{s.label}</span>
-            </div>
+          <MarketStatCard key={s.key} accentKey={s.key} Icon={s.Icon} label={s.label}>
             <p className="text-2xl font-bold leading-none num-mono text-text-primary">{s.value}</p>
             <div className="h-4 mt-2">
               {s.delta != null ? (
@@ -1035,17 +1055,11 @@ export default function MarketOverview() {
                 <span className="text-xs text-text-muted">{s.sub}</span>
               ) : null}
             </div>
-          </motion.div>
+          </MarketStatCard>
         ))}
 
-        {/* Altcoin Season — same rhythm, with the index slider as its "sub" line */}
-        <motion.div variants={cardVariants} className="px-1 lg:px-5">
-          <div className="flex items-center gap-2 mb-2.5">
-            <span className="w-6 h-6 rounded-md flex items-center justify-center shrink-0" style={{ backgroundColor: STAT_ACCENTS.alt.chipBg }}>
-              <ArrowUpRight className="w-3.5 h-3.5" style={{ color: STAT_ACCENTS.alt.color }} />
-            </span>
-            <span className="text-[11px] text-text-muted uppercase tracking-wider">Alt Season</span>
-          </div>
+        {/* Altcoin Season — same card, with the index slider as its "sub" line */}
+        <MarketStatCard accentKey="alt" Icon={ArrowUpRight} label="Alt Season">
           {altSeasonData ? (
             <>
               <p className="text-2xl font-bold leading-none num-mono text-text-primary">
@@ -1064,7 +1078,7 @@ export default function MarketOverview() {
           ) : (
             <p className="text-2xl font-bold text-text-muted num-mono">—</p>
           )}
-        </motion.div>
+        </MarketStatCard>
       </motion.div>
 
       {/* Market Sessions — full width */}
