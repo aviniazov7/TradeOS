@@ -2,11 +2,11 @@ import { useMemo } from 'react';
 import { BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer, Cell, LabelList } from 'recharts';
 
 const tooltipStyle = {
-  background: '#141414',
-  border: '1px solid #1a1a1a',
+  background: 'var(--color-bg-overlay)',
+  border: '1px solid var(--color-border-primary)',
   borderRadius: '8px',
   fontSize: '12px',
-  color: '#f0f0f0',
+  color: 'var(--color-text-primary)',
 };
 
 export default function WinRateChart({ trades }) {
@@ -44,13 +44,13 @@ export default function WinRateChart({ trades }) {
       <p className="text-[10px] text-text-muted mb-3">ממוין לפי מספר עסקאות</p>
       <ResponsiveContainer width="100%" height={170}>
         <BarChart data={data} margin={{ top: 18, right: 0, left: 0, bottom: 0 }}>
-          <XAxis dataKey="strategy" tick={{ fill: '#606070', fontSize: 9 }} axisLine={false} tickLine={false} />
-          <YAxis domain={[0, 100]} tick={{ fill: '#606070', fontSize: 10 }} axisLine={false} tickLine={false} orientation="right" unit="%" />
+          <XAxis dataKey="strategy" tick={{ fill: 'var(--color-text-muted)', fontSize: 9 }} axisLine={false} tickLine={false} />
+          <YAxis domain={[0, 100]} tick={{ fill: 'var(--color-text-muted)', fontSize: 10 }} axisLine={false} tickLine={false} orientation="right" unit="%" />
           <Tooltip
             contentStyle={tooltipStyle}
-            labelStyle={{ color: '#a0a0b8', fontSize: '11px' }}
-            itemStyle={{ color: '#f0f0f0' }}
-            cursor={{ fill: 'rgba(255,255,255,0.04)' }}
+            labelStyle={{ color: 'var(--color-text-secondary)', fontSize: '11px' }}
+            itemStyle={{ color: 'var(--color-text-primary)' }}
+            cursor={{ fill: 'var(--color-bg-tertiary)' }}
             formatter={(val, name, props) => [
               `${val}% (${props.payload.wins}W / ${props.payload.losses}L)`,
               'הצלחה',
@@ -68,7 +68,7 @@ export default function WinRateChart({ trades }) {
               content={({ x, y, width, value, index }) => {
                 const item = data[index];
                 return (
-                  <text x={x + width / 2} y={y - 4} textAnchor="middle" fill="#9090a0" fontSize={9}>
+                  <text x={x + width / 2} y={y - 4} textAnchor="middle" fill="var(--color-text-muted)" fontSize={9}>
                     {item?.count} · {value}%
                   </text>
                 );

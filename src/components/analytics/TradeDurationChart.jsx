@@ -28,11 +28,11 @@ function toMs(t) {
 }
 
 const tooltipStyle = {
-  background: '#141414',
-  border: '1px solid #1a1a1a',
+  background: 'var(--color-bg-overlay)',
+  border: '1px solid var(--color-border-primary)',
   borderRadius: '10px',
   fontSize: '11px',
-  color: '#f0f0f0',
+  color: 'var(--color-text-primary)',
   padding: '8px 12px',
 };
 
@@ -137,12 +137,12 @@ export default function TradeDurationChart({ trades }) {
         <BarChart data={data.chartData} barCategoryGap="28%" barGap={3}>
           <XAxis
             dataKey="label"
-            tick={{ fill: '#606070', fontSize: 10 }}
+            tick={{ fill: 'var(--color-text-muted)', fontSize: 10 }}
             axisLine={false}
             tickLine={false}
           />
           <YAxis hide />
-          <Tooltip content={<CustomTooltip />} cursor={{ fill: 'rgba(255,255,255,0.04)' }} />
+          <Tooltip content={<CustomTooltip />} cursor={{ fill: 'var(--color-bg-tertiary)' }} />
           <Bar dataKey="wins" radius={[4, 4, 0, 0]} animationDuration={700} fill="#22c55e" fillOpacity={0.8} />
           <Bar dataKey="losses" radius={[4, 4, 0, 0]} animationDuration={700} fill="#ef4444" fillOpacity={0.8} />
         </BarChart>

@@ -47,7 +47,7 @@ import { TAG_LABELS, DEFAULT_LEVERAGE } from '../../utils/constants';
 import { pageVariants, pageTransition, staggerContainer } from '../../utils/animations';
 
 const defaultFilters = { search: '', direction: '', result: '', strategy: '', tag: '', timeframe: '', month: '' };
-const tooltipStyle = { background: '#141414', border: '1px solid #1a1a1a', borderRadius: '8px', fontSize: '12px', color: '#f0f0f0' };
+const tooltipStyle = { background: 'var(--color-bg-overlay)', border: '1px solid var(--color-border-primary)', borderRadius: '8px', fontSize: '12px', color: 'var(--color-text-primary)' };
 const PIE_COLORS = ['#22c55e', '#ef4444', '#eab308'];
 
 export default function TradeJournal() {
@@ -393,7 +393,7 @@ export default function TradeJournal() {
             </button>
           </div>
         ),
-        { duration: 5000, style: { background: '#1a1a2e', color: '#f0f0f0', border: '1px solid #2a2a3e' } },
+        { duration: 5000, style: { background: 'var(--color-bg-overlay)', color: 'var(--color-text-primary)', border: '1px solid var(--color-border-primary)' } },
       );
       deleteBatchToastRef.current = id;
     };
@@ -507,8 +507,13 @@ export default function TradeJournal() {
 
   return (
     <motion.div variants={pageVariants} initial="initial" animate="animate" exit="exit" transition={pageTransition}>
-      {/* Top Navigation Bar */}
-      <div className="bg-bg-secondary border border-border-primary rounded-xl mb-4 px-3 md:px-4 py-2.5 space-y-2 relative z-10">
+      {/* Top Navigation Bar. backdrop-filter is force-disabled here: this panel
+          sits at the very top of the scroll content with nothing behind it to
+          frost, and as a raised (z-10) translucent blur layer it rendered as a
+          faint "glass band" that flashed whenever a hover re-rasterized the
+          layer (e.g. hovering the period-filter pills). The bg-bg-secondary
+          fill is kept, so it looks identical in both themes. */}
+      <div className="bg-bg-secondary border border-border-primary rounded-xl mb-4 px-3 md:px-4 py-2.5 space-y-2 relative z-10" style={{ backdropFilter: 'none', WebkitBackdropFilter: 'none' }}>
         {/* Row 1: Journal switcher + Actions */}
         <div className="flex items-center justify-between gap-2">
           <div className="flex items-center gap-1 md:gap-3 min-w-0">
@@ -518,7 +523,7 @@ export default function TradeJournal() {
             <div className="hidden md:flex items-center">
               <button
                 onClick={() => setTab('trades')}
-                className={`px-3.5 py-1.5 text-sm font-medium rounded-lg transition-colors cursor-pointer whitespace-nowrap ${
+                className={`h-9 inline-flex items-center px-3.5 text-sm font-medium rounded-lg transition-colors cursor-pointer whitespace-nowrap ${
                   tab === 'trades' ? 'bg-accent-primary/15 text-accent-primary' : 'text-text-muted hover:text-text-primary hover:bg-bg-tertiary'
                 }`}
               >
@@ -526,7 +531,7 @@ export default function TradeJournal() {
               </button>
               <button
                 onClick={() => setTab('analytics')}
-                className={`px-3.5 py-1.5 text-sm font-medium rounded-lg transition-colors cursor-pointer whitespace-nowrap ${
+                className={`h-9 inline-flex items-center px-3.5 text-sm font-medium rounded-lg transition-colors cursor-pointer whitespace-nowrap ${
                   tab === 'analytics' ? 'bg-accent-primary/15 text-accent-primary' : 'text-text-muted hover:text-text-primary hover:bg-bg-tertiary'
                 }`}
               >
@@ -534,7 +539,7 @@ export default function TradeJournal() {
               </button>
               <button
                 onClick={() => setTab('aiCoach')}
-                className={`px-3.5 py-1.5 text-sm font-medium rounded-lg transition-colors cursor-pointer whitespace-nowrap inline-flex items-center gap-1.5 ${
+                className={`h-9 inline-flex items-center px-3.5 text-sm font-medium rounded-lg transition-colors cursor-pointer whitespace-nowrap inline-flex items-center gap-1.5 ${
                   tab === 'aiCoach' ? 'bg-accent-primary/15 text-accent-primary' : 'text-text-muted hover:text-text-primary hover:bg-bg-tertiary'
                 }`}
               >
@@ -543,7 +548,7 @@ export default function TradeJournal() {
               </button>
               <button
                 onClick={() => setTab('calendar')}
-                className={`px-3.5 py-1.5 text-sm font-medium rounded-lg transition-colors cursor-pointer whitespace-nowrap ${
+                className={`h-9 inline-flex items-center px-3.5 text-sm font-medium rounded-lg transition-colors cursor-pointer whitespace-nowrap ${
                   tab === 'calendar' ? 'bg-accent-primary/15 text-accent-primary' : 'text-text-muted hover:text-text-primary hover:bg-bg-tertiary'
                 }`}
               >
@@ -551,7 +556,7 @@ export default function TradeJournal() {
               </button>
               <button
                 onClick={() => setTab('exchange')}
-                className={`px-3.5 py-1.5 text-sm font-medium rounded-lg transition-colors cursor-pointer whitespace-nowrap ${
+                className={`h-9 inline-flex items-center px-3.5 text-sm font-medium rounded-lg transition-colors cursor-pointer whitespace-nowrap ${
                   tab === 'exchange' ? 'bg-accent-primary/15 text-accent-primary' : 'text-text-muted hover:text-text-primary hover:bg-bg-tertiary'
                 }`}
               >
@@ -565,18 +570,18 @@ export default function TradeJournal() {
             {/* Mobile: period filter sits up here next to the actions (dropdown
                 is compact) instead of taking its own row under the tabs. */}
             {tab === 'analytics' && <div className="md:hidden"><TimePeriodFilter value={period} onChange={setPeriod} dropdown /></div>}
-            <button onClick={() => setSettingsOpen(true)} className="p-1.5 md:p-2 rounded-lg text-text-muted hover:text-text-primary hover:bg-bg-tertiary transition-colors cursor-pointer border border-border-primary" title="הגדרות יומן">
+            <button onClick={() => setSettingsOpen(true)} className="h-9 w-9 inline-flex items-center justify-center rounded-lg text-text-muted hover:text-text-primary hover:bg-bg-tertiary transition-colors cursor-pointer border border-border-primary" title="הגדרות יומן">
               <Settings className="w-4 h-4" />
             </button>
-            <button onClick={() => setImportOpen(true)} className="p-1.5 md:p-2 rounded-lg text-text-muted hover:text-text-primary hover:bg-bg-tertiary transition-colors cursor-pointer border border-border-primary" title="ייבוא CSV">
+            <button onClick={() => setImportOpen(true)} className="h-9 w-9 inline-flex items-center justify-center rounded-lg text-text-muted hover:text-text-primary hover:bg-bg-tertiary transition-colors cursor-pointer border border-border-primary" title="ייבוא CSV">
               <Upload className="w-4 h-4" />
             </button>
             {trades.length > 0 && (
-              <button onClick={exportCSV} className="p-1.5 md:p-2 rounded-lg text-text-muted hover:text-text-primary hover:bg-bg-tertiary transition-colors cursor-pointer border border-border-primary" title="ייצוא CSV">
+              <button onClick={exportCSV} className="h-9 w-9 inline-flex items-center justify-center rounded-lg text-text-muted hover:text-text-primary hover:bg-bg-tertiary transition-colors cursor-pointer border border-border-primary" title="ייצוא CSV">
                 <Download className="w-4 h-4" />
               </button>
             )}
-            <button onClick={() => setFormOpen(true)} className="flex items-center gap-1.5 bg-accent-primary text-bg-primary font-semibold px-2.5 py-1.5 md:px-3.5 md:py-2 rounded-lg hover:bg-accent-hover transition-colors cursor-pointer text-xs md:text-sm">
+            <button onClick={() => setFormOpen(true)} className="h-9 inline-flex items-center gap-1.5 bg-accent-primary text-bg-primary font-semibold px-3.5 rounded-lg hover:bg-accent-hover transition-colors cursor-pointer text-sm">
               <Plus className="w-4 h-4" /> <span className="hidden sm:inline">עסקה חדשה</span>
             </button>
           </div>
@@ -737,7 +742,7 @@ export default function TradeJournal() {
                       <Pie data={analytics.pieData} dataKey="value" nameKey="name" cx="50%" cy="50%" innerRadius={40} outerRadius={65} paddingAngle={3}>
                         {analytics.pieData.map((d, i) => <Cell key={d.name} fill={PIE_COLORS[i]} />)}
                       </Pie>
-                      <Tooltip contentStyle={tooltipStyle} labelStyle={{ color: '#a0a0b8', fontSize: '11px' }} itemStyle={{ color: '#f0f0f0' }} cursor={{ fill: 'rgba(255,255,255,0.04)' }} />
+                      <Tooltip contentStyle={tooltipStyle} labelStyle={{ color: 'var(--color-text-secondary)', fontSize: '11px' }} itemStyle={{ color: 'var(--color-text-primary)' }} cursor={{ fill: 'var(--color-bg-tertiary)' }} />
                     </PieChart>
                   </ResponsiveContainer>
                   <div className="flex justify-center gap-3 text-[10px] mt-1">
@@ -757,9 +762,9 @@ export default function TradeJournal() {
                   <h3 className="text-sm font-semibold text-text-primary mb-3">רווח/הפסד יומי</h3>
                   <ResponsiveContainer width="100%" height={170}>
                     <BarChart data={analytics.dailyPnL}>
-                      <XAxis dataKey="date" tick={{ fill: '#606070', fontSize: 9 }} axisLine={false} tickLine={false} />
-                      <YAxis tick={{ fill: '#606070', fontSize: 10 }} axisLine={false} tickLine={false} orientation="right" />
-                      <Tooltip contentStyle={tooltipStyle} labelStyle={{ color: '#a0a0b8', fontSize: '11px' }} itemStyle={{ color: '#f0f0f0' }} cursor={{ fill: 'rgba(255,255,255,0.04)' }} formatter={(val) => [formatCurrency(val), 'רווח/הפסד']} />
+                      <XAxis dataKey="date" tick={{ fill: 'var(--color-text-muted)', fontSize: 9 }} axisLine={false} tickLine={false} />
+                      <YAxis tick={{ fill: 'var(--color-text-muted)', fontSize: 10 }} axisLine={false} tickLine={false} orientation="right" />
+                      <Tooltip contentStyle={tooltipStyle} labelStyle={{ color: 'var(--color-text-secondary)', fontSize: '11px' }} itemStyle={{ color: 'var(--color-text-primary)' }} cursor={{ fill: 'var(--color-bg-tertiary)' }} formatter={(val) => [formatCurrency(val), 'רווח/הפסד']} />
                       <Bar dataKey="pnl" radius={[4, 4, 0, 0]} animationDuration={800}>
                         {analytics.dailyPnL.map((entry) => (
                           <Cell key={entry.date} fill={entry.pnl >= 0 ? '#22c55e' : '#ef4444'} />

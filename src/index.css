@@ -11,21 +11,20 @@ html {
 
 body {
   overscroll-behavior: none;
+  /* True black (iOS-style) — a single whisper-faint neutral glow for depth,
+     no blue tint. */
   background:
-    radial-gradient(ellipse 900px 900px at 5% 15%, rgba(43, 120, 255, 0.07) 0%, transparent 55%),
-    radial-gradient(ellipse 700px 700px at 95% 5%, rgba(43, 120, 255, 0.05) 0%, transparent 55%),
-    radial-gradient(ellipse 800px 800px at 40% 95%, rgba(43, 120, 255, 0.04) 0%, transparent 55%),
-    radial-gradient(ellipse 600px 600px at 80% 55%, rgba(26, 92, 232, 0.03) 0%, transparent 55%),
+    radial-gradient(ellipse 1100px 700px at 50% -8%, rgba(255, 255, 255, 0.022) 0%, transparent 60%),
     #000000;
   min-height: 100vh;
 }
 
 .light body {
   background:
-    radial-gradient(ellipse 900px 900px at 5% 15%, rgba(56, 189, 248, 0.18) 0%, transparent 55%),
+    radial-gradient(ellipse 900px 900px at 5% 15%, rgba(139, 92, 246, 0.16) 0%, transparent 55%),
     radial-gradient(ellipse 700px 700px at 95% 5%, rgba(99, 102, 241, 0.12) 0%, transparent 55%),
-    radial-gradient(ellipse 800px 800px at 40% 95%, rgba(56, 189, 248, 0.10) 0%, transparent 55%),
-    radial-gradient(ellipse 600px 600px at 80% 55%, rgba(168, 85, 247, 0.07) 0%, transparent 55%),
+    radial-gradient(ellipse 800px 800px at 40% 95%, rgba(139, 92, 246, 0.10) 0%, transparent 55%),
+    radial-gradient(ellipse 600px 600px at 80% 55%, rgba(168, 85, 247, 0.08) 0%, transparent 55%),
     #e8ecf4;
 }
 
@@ -39,8 +38,8 @@ body {
   /* Dropdowns/overlays float over content, so this is near-opaque (not the 5%
      glass used for cards) — otherwise the page behind shows through and the
      menu is hard to read. */
-  --color-bg-overlay: rgba(20, 22, 32, 0.98);
-  --color-bg-solid: rgba(6, 8, 14, 0.97);
+  --color-bg-overlay: rgba(24, 24, 27, 0.82);
+  --color-bg-solid: rgba(14, 14, 16, 0.82);
 
   /* Borders */
   --color-border-primary: rgba(255, 255, 255, 0.08);
@@ -51,10 +50,12 @@ body {
   --color-text-secondary: #a0a0b0;
   --color-text-muted: #606070;
 
-  /* Accent (Cyan) */
-  --color-accent-primary: #00bfff;
-  --color-accent-hover: #00a8e0;
-  --color-accent-muted: #0088bb;
+  /* Accent (Cyan/turquoise) — base accent for TEXT, icons, borders and tints.
+     Buttons/fills keep the violet→cyan --accent-gradient overlay on top, so the
+     "Analyze" gradient look stays while plain accent text reads cyan, not violet. */
+  --color-accent-primary: #06b6d4;
+  --color-accent-hover: #22d3ee;
+  --color-accent-muted: #0e7490;
 
   /* Status */
   --color-profit: #22c55e;
@@ -62,23 +63,54 @@ body {
   --color-breakeven: #f59e0b;
   --color-long: #22c55e;
   --color-short: #ef4444;
+
+  /* Chart palette — one canonical accent blue (= accent), one profit green,
+     one categorical purple. Charts must consume these, not ad-hoc hexes. */
+  --color-chart-purple: #8b5cf6;
+}
+
+/* iOS-style glass surface tokens (modals / command palette). Theme-aware so
+   day mode renders a bright frosted glass instead of the dark one. */
+:root {
+  /* Signature accent gradient (the "Analyze" button look) — violet → cyan. */
+  --accent-gradient: linear-gradient(135deg, #8b5cf6 0%, #06b6d4 100%);
+  --glass-bg: rgba(18, 18, 20, 0.7);
+  --glass-border: rgba(255, 255, 255, 0.09);
+  --glass-header: rgba(20, 20, 22, 0.55);
+  --glass-shadow: 0 32px 80px rgba(0, 0, 0, 0.6), 0 0 0 1px rgba(255, 255, 255, 0.04) inset;
+  --glass-shadow-sm: 0 28px 70px rgba(0, 0, 0, 0.6);
 }
 
 /* Light Theme */
 .light {
+  --glass-bg: rgba(255, 255, 255, 0.72);
+  --glass-border: rgba(15, 23, 42, 0.08);
+  --glass-header: rgba(255, 255, 255, 0.55);
+  --glass-shadow: 0 32px 80px rgba(31, 41, 79, 0.18), 0 0 0 1px rgba(255, 255, 255, 0.5) inset;
+  --glass-shadow-sm: 0 28px 70px rgba(31, 41, 79, 0.16);
   --color-bg-primary: #e8ecf4;
   --color-bg-secondary: rgba(255, 255, 255, 0.35);
   --color-bg-tertiary: rgba(255, 255, 255, 0.2);
-  --color-border-primary: rgba(255, 255, 255, 0.5);
-  --color-border-hover: rgba(255, 255, 255, 0.7);
+  /* Slate-tinted borders so card edges, table separators, dropdown outlines and
+     chart gridlines are actually visible on the light background (white-on-light
+     was near-invisible). */
+  --color-border-primary: rgba(15, 23, 42, 0.10);
+  --color-border-hover: rgba(15, 23, 42, 0.22);
   --color-text-primary: #0f0f0f;
   --color-text-secondary: #333340;
   --color-text-muted: #5c5c66;
-  --color-accent-primary: #0284c7;
-  --color-accent-hover: #0369a1;
-  --color-accent-muted: #0c4a6e;
+  --color-accent-primary: #0e7490;
+  --color-accent-hover: #155e75;
+  --color-accent-muted: #164e63;
   --color-bg-overlay: rgba(248, 250, 253, 0.98);
   --color-bg-solid: rgba(245, 247, 251, 0.98);
+  /* Darker profit/loss for foreground TEXT so the headline P/L numbers pass
+     WCAG AA on the light glass cards. Still vivid enough for fills/badges. */
+  --color-profit: #15803d;
+  --color-loss: #dc2626;
+  --color-long: #15803d;
+  --color-short: #dc2626;
+  --color-chart-purple: #7c3aed;
 }
 
 /* Glassmorphism — frosted glass cards */
@@ -100,6 +132,41 @@ body {
   -webkit-backdrop-filter: blur(32px) saturate(150%);
   backdrop-filter: blur(32px) saturate(150%);
   box-shadow: 0 8px 32px rgba(0, 0, 0, 0.35);
+}
+
+/* Make every SOLID accent fill render as the signature violet→cyan gradient —
+   the "Analyze" button look — across the whole app. The ~= selector matches
+   ONLY the full `bg-accent-primary` token, never the translucent tints
+   (bg-accent-primary/10|15|20) used for subtle chips/active highlights, which
+   must stay as faint solid washes. Background-image paints over Tailwind's
+   background-color, so solid accent buttons/badges/active tabs become gradient. */
+[class~="bg-accent-primary"] {
+  background-image: var(--accent-gradient);
+  /* White label — matches the reference "Analyze" button and stays identical in
+     day + night (the gradient itself is theme-independent, not a light surface).
+     This unifies the old mix of text-black / text-bg-primary / text-white that
+     buttons used, so every accent button reads the same in both themes. The
+     text-shadow lifts legibility over the lighter cyan end of the gradient. */
+  color: #fff;
+  text-shadow: 0 1px 2px rgba(0, 0, 0, 0.28);
+}
+[class~="bg-accent-primary"]:hover {
+  filter: brightness(1.08);
+}
+
+/* Gradient TEXT — the violet→cyan accent as a clipped text fill. Use on pure
+   text labels (NOT on elements that also contain icons, since the transparent
+   fill would blank an inherited-colour icon). Icons get the gradient instead via
+   stroke="url(#ai-grad)". */
+.text-gradient {
+  /* Cyan-dominant (more turquoise than violet) per request — violet only as a
+     hint at the very end, so short labels read mostly cyan. Buttons keep the
+     balanced --accent-gradient; this is the TEXT-only variant. */
+  background: linear-gradient(120deg, #06b6d4 0%, #22d3ee 45%, #8b5cf6 115%);
+  -webkit-background-clip: text;
+  background-clip: text;
+  -webkit-text-fill-color: transparent;
+  color: transparent;
 }
 
 /* Glassmorphism — light mode overrides */
@@ -378,14 +445,14 @@ input[type="range"]::-webkit-slider-thumb {
   width: 16px;
   height: 16px;
   border-radius: 50%;
-  background: #38bdf8;
+  background: var(--color-accent-primary);
   cursor: pointer;
 }
 input[type="range"]::-moz-range-thumb {
   width: 16px;
   height: 16px;
   border-radius: 50%;
-  background: #38bdf8;
+  background: var(--color-accent-primary);
   cursor: pointer;
   border: none;
 }
@@ -430,14 +497,57 @@ input[type="number"] {
    small icon chips. Headline numbers use .num-mono (tabular monospace). */
 .bento-card {
   position: relative;
-  background: rgba(16, 16, 24, 0.85);
-  border: 1px solid rgba(255, 255, 255, 0.08);
-  border-radius: 0.75rem;
-  backdrop-filter: blur(6px);
-  -webkit-backdrop-filter: blur(6px);
-  box-shadow: 0 4px 20px rgba(0, 0, 0, 0.30);
+  /* Neutral theme surface (was a blue-tinted rgba(16,16,24)) so it reads black
+     like the rest of the app and adapts to light mode automatically. */
+  background: var(--color-bg-secondary);
+  border: 1px solid var(--color-border-primary);
+  border-radius: 0.875rem;
+  /* No backdrop-filter: over the near-black body the blur is invisible, but as a
+     raised blur layer it re-rasterized on hover and painted a 1px "seam" onto the
+     neighbouring card. Dropping it removes that artifact (same fix as the top
+     toolbars) with no visual change. */
+  box-shadow: 0 4px 20px rgba(0, 0, 0, 0.25);
   transition: border-color 0.2s ease, box-shadow 0.2s ease;
 }
+/* 21st.dev spotlight — a soft violet→cyan glow that tracks the cursor (the
+   --spot-x/--spot-y vars are set by a pointer listener in Layout). Subtle enough
+   to sit over content without hurting readability. */
+.bento-card::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  border-radius: inherit;
+  pointer-events: none;
+  background: radial-gradient(420px circle at var(--spot-x, 50%) var(--spot-y, -40%),
+    rgba(34, 211, 238, 0.10), rgba(139, 92, 246, 0.06) 30%, transparent 55%);
+  opacity: 0;
+  transition: opacity 0.35s ease;
+  z-index: 1;
+}
+.bento-card:hover::after { opacity: 1; }
+
+/* 21st.dev border beam — a light travels around the border of a highlighted
+   card. Apply class "border-beam" to a rounded, position:relative element. */
+@property --beam-angle {
+  syntax: '<angle>';
+  inherits: false;
+  initial-value: 0deg;
+}
+.border-beam::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  border-radius: inherit;
+  padding: 1.5px;
+  background: conic-gradient(from var(--beam-angle), transparent 0 62%, #8b5cf6 78%, #22d3ee 92%, transparent 100%);
+  -webkit-mask: linear-gradient(#000 0 0) content-box, linear-gradient(#000 0 0);
+  -webkit-mask-composite: xor;
+  mask: linear-gradient(#000 0 0) content-box, linear-gradient(#000 0 0);
+  mask-composite: exclude;
+  pointer-events: none;
+  animation: beamSpin 5s linear infinite;
+}
+@keyframes beamSpin { to { --beam-angle: 360deg; } }
 /* Faint scan-line highlight along the top edge */
 .bento-card::before {
   content: '';
@@ -450,8 +560,39 @@ input[type="number"] {
   pointer-events: none;
 }
 .bento-card:hover {
-  border-color: rgba(255, 255, 255, 0.16);
-  box-shadow: 0 6px 26px rgba(0, 0, 0, 0.38);
+  border-color: var(--color-border-hover);
+  /* Keep the OUTER shadow identical to the resting state — growing it on hover
+     made a larger blurred shadow fade in over the neighbouring card's edge,
+     which read as a faint vertical "פס" (band) on the column next door. Hover
+     feedback now comes only from the brighter border + a self-contained inset
+     highlight, so nothing is painted outside the card's own box. */
+  box-shadow: 0 4px 20px rgba(0, 0, 0, 0.25),
+    inset 0 0 0 1px rgba(255, 255, 255, 0.04);
+}
+/* Kill backdrop-filter on every inner surface of a bento card.
+   The global [class*="bg-bg-tertiary/secondary/overlay"] rules apply a 20–32px
+   blur to ANY element with those classes — including the tiny progress-bar
+   tracks and the per-row hover backgrounds (hover:bg-bg-tertiary/60) inside the
+   market cards. The card itself sits on a near-black solid surface, so the blur
+   is visually invisible, but its blur kernel samples ~20–32px BEYOND the
+   element's box and Chromium paints that fringe into the gaps between columns —
+   the faint ghost marks / "פסים" that appeared on the neighbouring card when a
+   row was hovered. Disabling it here removes the artifact with no visual cost. */
+.bento-card [class*="bg-bg-secondary"],
+.bento-card [class*="bg-bg-tertiary"],
+.bento-card [class*="bg-bg-overlay"] {
+  -webkit-backdrop-filter: none;
+  backdrop-filter: none;
+}
+/* Same ghosting fix for the Coin-Analysis page, whose cards use bg-bg-secondary
+   directly (GlowCard) rather than .bento-card. These panels sit on the near-
+   black body so the blur is invisible anyway — disabling it removes the fringe
+   bleed into the gaps. Overlays (bg-bg-overlay, e.g. the search dropdown) keep
+   their blur since they float over live content. */
+.analysis-page [class*="bg-bg-secondary"],
+.analysis-page [class*="bg-bg-tertiary"] {
+  -webkit-backdrop-filter: none;
+  backdrop-filter: none;
 }
 .num-mono {
   font-family: ui-monospace, 'SF Mono', SFMono-Regular, Menlo, Consolas, monospace;
@@ -468,4 +609,12 @@ input[type="number"] {
 :root.light .bento-card::before,
 [data-theme='light'] .bento-card::before {
   background: none;
+}
+/* Light theme hover: keep the SAME shadow size as rest (no growth → no spill
+   onto neighbours) and convey hover via the brighter border + a faint dark
+   inset, since the dark-theme white inset is invisible on a white card. */
+:root.light .bento-card:hover,
+[data-theme='light'] .bento-card:hover {
+  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.06),
+    inset 0 0 0 1px rgba(15, 23, 42, 0.06);
 }

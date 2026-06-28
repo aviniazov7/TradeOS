@@ -87,7 +87,7 @@ export default function JournalSwitcher({ compact }) {
         <div className="relative" ref={dropdownRef}>
           <button
             onClick={() => setOpen(!open)}
-            className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg text-sm font-medium bg-bg-tertiary border border-border-primary hover:border-border-hover transition-colors cursor-pointer"
+            className="h-9 inline-flex items-center gap-1.5 px-3 rounded-lg text-sm font-medium bg-bg-tertiary border border-border-primary hover:border-border-hover transition-colors cursor-pointer"
           >
             {activeJournal?.exchange ? (
               <ExchangeLogo exchange={activeJournal.exchange} size="w-3.5 h-3.5" />

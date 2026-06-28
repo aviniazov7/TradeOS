@@ -12,7 +12,7 @@ import { formatCurrency, formatPercent } from '../../utils/formatters';
 import { calculateMaxDrawdown } from '../../utils/calculations';
 import { pageVariants, pageTransition } from '../../utils/animations';
 
-const tooltipStyle = { background: '#141414', border: '1px solid #1a1a1a', borderRadius: '8px', fontSize: '12px', color: '#f0f0f0' };
+const tooltipStyle = { background: 'var(--color-bg-overlay)', border: '1px solid var(--color-border-primary)', borderRadius: '8px', fontSize: '12px', color: 'var(--color-text-primary)' };
 const COLORS = ['#22c55e', '#ef4444', '#eab308'];
 
 export default function AdvancedStats() {
@@ -174,9 +174,9 @@ export default function AdvancedStats() {
           <h3 className="text-sm font-semibold text-text-primary mb-4">רווח/הפסד יומי</h3>
           <ResponsiveContainer width="100%" height={200}>
             <BarChart data={analytics.dailyPnL}>
-              <XAxis dataKey="date" tick={{ fill: '#606070', fontSize: 10 }} axisLine={false} tickLine={false} reversed />
-              <YAxis tick={{ fill: '#606070', fontSize: 11 }} axisLine={false} tickLine={false} orientation="right" />
-              <Tooltip contentStyle={tooltipStyle} labelStyle={{ color: '#a0a0b8', fontSize: '11px' }} itemStyle={{ color: '#f0f0f0' }} cursor={{ fill: 'rgba(255,255,255,0.04)' }} formatter={(val) => [formatCurrency(val), 'רווח/הפסד']} />
+              <XAxis dataKey="date" tick={{ fill: 'var(--color-text-muted)', fontSize: 10 }} axisLine={false} tickLine={false} reversed />
+              <YAxis tick={{ fill: 'var(--color-text-muted)', fontSize: 11 }} axisLine={false} tickLine={false} orientation="right" />
+              <Tooltip contentStyle={tooltipStyle} labelStyle={{ color: 'var(--color-text-secondary)', fontSize: '11px' }} itemStyle={{ color: 'var(--color-text-primary)' }} cursor={{ fill: 'var(--color-bg-tertiary)' }} formatter={(val) => [formatCurrency(val), 'רווח/הפסד']} />
               <Bar dataKey="pnl" radius={[4, 4, 0, 0]} animationDuration={800}>
                 {analytics.dailyPnL.map((entry, i) => (
                   <Cell key={i} fill={entry.pnl >= 0 ? '#22c55e' : '#ef4444'} />
@@ -194,7 +194,7 @@ export default function AdvancedStats() {
               <Pie data={analytics.pieData} dataKey="value" nameKey="name" cx="50%" cy="50%" innerRadius={50} outerRadius={80} paddingAngle={3}>
                 {analytics.pieData.map((_, i) => <Cell key={i} fill={COLORS[i]} />)}
               </Pie>
-              <Tooltip contentStyle={tooltipStyle} labelStyle={{ color: '#a0a0b8', fontSize: '11px' }} itemStyle={{ color: '#f0f0f0' }} cursor={{ fill: 'rgba(255,255,255,0.06)' }} />
+              <Tooltip contentStyle={tooltipStyle} labelStyle={{ color: 'var(--color-text-secondary)', fontSize: '11px' }} itemStyle={{ color: 'var(--color-text-primary)' }} cursor={{ fill: 'var(--color-bg-tertiary)' }} />
             </PieChart>
           </ResponsiveContainer>
           <div className="flex justify-center gap-4 text-xs mt-2">

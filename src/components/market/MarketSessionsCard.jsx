@@ -167,7 +167,7 @@ export default function MarketSessionsCard() {
               </div>
 
               {open && (
-                <div className="mb-1.5 h-1 rounded-full bg-white/10 overflow-hidden">
+                <div className="mb-1.5 h-1 rounded-full bg-bg-tertiary overflow-hidden">
                   <motion.div
                     className="h-full rounded-full"
                     style={{ backgroundColor: s.color }}

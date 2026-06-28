@@ -723,7 +723,7 @@ async function checkExchangeClosedTrades(env) {
   for (const k of list.keys) {
     const [, uid, exchange] = k.name.split(':');
     if (exchange !== 'bybit') continue; // only Bybit polling for now
-    const creds = await env.ALERTS_KV.get(k.name, 'json');
+    const creds = await loadExchangeCreds(env, uid, exchange); // decrypts + self-heals legacy plaintext
     if (!creds?.apiKey || !creds?.apiSecret) continue;
 
     // ---- Position-opened notifications ----
@@ -1153,6 +1153,92 @@ async function aiRateGate(env, uid, premium) {
   // All windows passed — increment the global counter.
   await bumpWindow(env, gKey, AI_WINDOWS_SEC.day);
   return null;
+}
+
+// ==================== Exchange credential encryption ====================
+// Exchange API keys/secrets are stored ONLY server-side (KV key
+// `pushexch:{uid}:{exchange}`), encrypted at rest with AES-GCM. The encryption
+// key is a Worker secret (CREDS_ENCRYPTION_KEY, base64 of 32 random bytes) that
+// never reaches the client. Set it with:
+//   wrangler secret put CREDS_ENCRYPTION_KEY
+// (value = `openssl rand -base64 32`). Until it's set, the credential endpoints
+// return 503 and legacy plaintext blobs are still read (back-compat).
+const CREDS_TTL = 60 * 60 * 24 * 120; // 120d — refreshed while the user is active
+
+async function getCredsKey(env) {
+  if (!env.CREDS_ENCRYPTION_KEY) return null;
+  const raw = Uint8Array.from(atob(env.CREDS_ENCRYPTION_KEY), (c) => c.charCodeAt(0));
+  if (![16, 24, 32].includes(raw.length)) {
+    console.error('CREDS_ENCRYPTION_KEY must be base64 of 16/24/32 bytes; got', raw.length);
+    return null;
+  }
+  return crypto.subtle.importKey('raw', raw, { name: 'AES-GCM' }, false, ['encrypt', 'decrypt']);
+}
+
+async function encryptCreds(env, obj) {
+  const key = await getCredsKey(env);
+  if (!key) throw new Error('CREDS_ENCRYPTION_KEY not configured');
+  const iv = crypto.getRandomValues(new Uint8Array(12));
+  const data = new TextEncoder().encode(JSON.stringify(obj));
+  const ct = new Uint8Array(await crypto.subtle.encrypt({ name: 'AES-GCM', iv }, key, data));
+  const buf = new Uint8Array(iv.length + ct.length);
+  buf.set(iv, 0);
+  buf.set(ct, iv.length);
+  // "v1:" tag distinguishes encrypted blobs from legacy plaintext JSON.
+  return 'v1:' + btoa(String.fromCharCode(...buf));
+}
+
+// Read a stored credential blob: decrypt v1 blobs, or parse legacy plaintext.
+async function decodeCreds(env, raw) {
+  if (!raw) return null;
+  if (raw.startsWith('v1:')) {
+    const key = await getCredsKey(env);
+    if (!key) return null;
+    try {
+      const buf = Uint8Array.from(atob(raw.slice(3)), (c) => c.charCodeAt(0));
+      const iv = buf.slice(0, 12);
+      const ct = buf.slice(12);
+      const pt = await crypto.subtle.decrypt({ name: 'AES-GCM', iv }, key, ct);
+      return JSON.parse(new TextDecoder().decode(pt));
+    } catch {
+      // Decrypt failed (wrong/rotated key or corrupt blob). Log length only —
+      // never the contents — so the issue is observable without leaking secrets.
+      console.error('creds decrypt failed; blob length', raw.length);
+      return null;
+    }
+  }
+  try { return JSON.parse(raw); } catch { return null; } // legacy plaintext
+}
+
+async function storeExchangeCreds(env, uid, exchange, creds) {
+  const blob = await encryptCreds(env, { exchange, apiKey: creds.apiKey, apiSecret: creds.apiSecret, passphrase: creds.passphrase || '' });
+  await env.ALERTS_KV.put(`pushexch:${uid}:${exchange}`, blob, { expirationTtl: CREDS_TTL });
+}
+
+const validExchangeId = (x) => /^[a-z0-9_-]{1,20}$/.test(x || '');
+
+async function loadExchangeCreds(env, uid, exchange) {
+  if (!validExchangeId(exchange)) return null;
+  const kvKey = `pushexch:${uid}:${exchange}`;
+  const raw = await env.ALERTS_KV.get(kvKey);
+  if (!raw) return null;
+  const creds = await decodeCreds(env, raw);
+  if (!creds || !creds.apiKey || !creds.apiSecret) return null;
+  // Self-heal: transparently re-encrypt any legacy plaintext blob on read so
+  // push-registered users' KV creds don't stay in plaintext.
+  if (!raw.startsWith('v1:') && env.CREDS_ENCRYPTION_KEY) {
+    try { await storeExchangeCreds(env, uid, exchange, creds); } catch { /* ignore */ }
+  }
+  return creds;
+}
+
+// Resolve creds for the on-demand endpoints — ONLY from the encrypted store,
+// keyed by the verified uid. We never accept credentials from the request body:
+// doing so would turn the Worker into a signing/credential-validation oracle for
+// arbitrary attacker-supplied keys (#11). Legacy creds are migrated into the
+// store exclusively via the gated /exchange/credentials/store endpoint.
+async function resolveExchangeCreds(env, uid, exchange) {
+  return loadExchangeCreds(env, uid, exchange);
 }
 
 async function fetchFundingRates(pairs) {
@@ -2644,7 +2730,9 @@ async function handleAIProjectDescription(request, env, cors) {
           quotaExceeded: true, used: quota.used, limit: quota.limit,
         }), { status: 429, headers: { ...cors, 'Content-Type': 'application/json' } });
       }
-      await incrementAiUsage(env, uid);
+      // NOTE: quota is incremented only AFTER a successful provider response
+      // (below), mirroring /ai-chat — a failed Groq call must not burn the
+      // user's daily quota.
     }
 
     const userPrompt = `כתוב מאמרון על הפרויקט שמאחורי המטבע ${coinName}${symbol ? ` (${String(symbol).toUpperCase()})` : ''}.`;
@@ -2675,6 +2763,9 @@ async function handleAIProjectDescription(request, env, cors) {
 
     const data = await groqResponse.json();
     const text = data.choices?.[0]?.message?.content || '';
+
+    // Charge the daily quota only now that the provider succeeded.
+    if (!premium) await incrementAiUsage(env, uid);
 
     return new Response(JSON.stringify({ text }), {
       headers: { ...cors, 'Content-Type': 'application/json' },
@@ -2902,7 +2993,14 @@ async function bybitAsBinance(subPath, searchParams) {
       const MAP = { '1m': '1', '3m': '3', '5m': '5', '15m': '15', '30m': '30', '1h': '60', '2h': '120', '4h': '240', '6h': '360', '12h': '720', '1d': 'D', '1w': 'W', '1M': 'M' };
       const byInterval = MAP[interval];
       if (!byInterval) return null;
-      const r = await fetch(`https://api.bybit.com/v5/market/kline?category=spot&symbol=${encodeURIComponent(symbol)}&interval=${byInterval}&limit=${limit}`, { headers: { 'Accept': 'application/json' } });
+      // Optional explicit time window — Binance uses startTime/endTime (ms);
+      // Bybit's kline endpoint takes start/end (ms). Forward when present.
+      const startTime = searchParams.get('startTime');
+      const endTime = searchParams.get('endTime');
+      let bybitUrl = `https://api.bybit.com/v5/market/kline?category=spot&symbol=${encodeURIComponent(symbol)}&interval=${byInterval}&limit=${limit}`;
+      if (startTime) bybitUrl += `&start=${encodeURIComponent(startTime)}`;
+      if (endTime) bybitUrl += `&end=${encodeURIComponent(endTime)}`;
+      const r = await fetch(bybitUrl, { headers: { 'Accept': 'application/json' } });
       if (!r.ok) return null;
       const j = await r.json();
       const list = j?.result?.list || [];
@@ -3043,6 +3141,16 @@ async function handleRequest(request, env) {
   }
 
   if (path === '/setup-webhook') {
+    // Admin-only + POST-only. Re-registering the webhook uses
+    // drop_pending_updates=true, so an unauthenticated caller could repeatedly
+    // reset it (dropping queued alerts/connect codes) and read Telegram's raw
+    // response. Require an admin Firebase ID token.
+    if (request.method !== 'POST') {
+      return new Response(JSON.stringify({ error: 'method not allowed' }), { status: 405, headers: { ...cors, 'Content-Type': 'application/json' } });
+    }
+    const token = (request.headers.get('Authorization') || '').replace('Bearer ', '');
+    const adminUid = await verifyAdminFromToken(token);
+    if (!adminUid) return new Response(JSON.stringify({ error: 'forbidden' }), { status: 403, headers: { ...cors, 'Content-Type': 'application/json' } });
     const workerUrl = `${url.protocol}//${url.host}/webhook`;
     let setWebhookUrl = `https://api.telegram.org/bot${env.BOT_TOKEN}/setWebhook?url=${encodeURIComponent(workerUrl)}&drop_pending_updates=true`;
     // If the owner set TG_WEBHOOK_SECRET, register it so Telegram sends the
@@ -3050,7 +3158,8 @@ async function handleRequest(request, env) {
     if (env.TG_WEBHOOK_SECRET) setWebhookUrl += `&secret_token=${encodeURIComponent(env.TG_WEBHOOK_SECRET)}`;
     const res = await fetch(setWebhookUrl);
     const json = await res.json();
-    return new Response(JSON.stringify(json), { headers: { 'Content-Type': 'application/json' } });
+    // Don't echo Telegram's raw payload — just the success flag.
+    return new Response(JSON.stringify({ ok: json.ok === true }), { headers: { ...cors, 'Content-Type': 'application/json' } });
   }
 
   // CoinGecko proxy with KV cache (avoids browser rate-limits)
@@ -3285,20 +3394,39 @@ async function handleRequest(request, env) {
     return new Response(JSON.stringify({ ok: true, ...result, hasVapid: !!env.VAPID_JWK }), { headers: { ...cors, 'Content-Type': 'application/json' } });
   }
 
-  // Web Push — store read-only exchange keys so the cron can poll the exchange
-  // in the background and notify on closed trades / daily summary.
-  if (request.method === 'POST' && path === '/push/exchange-register') {
+  // Store exchange API credentials, encrypted at rest (AES-GCM). This is the
+  // single source of truth used by both the cron poller and the on-demand
+  // sync/balance/positions endpoints — the secret is sent here ONCE and never
+  // returned to the client again. (/push/exchange-register kept as an alias for
+  // older clients.)
+  if (request.method === 'POST' && (path === '/exchange/credentials/store' || path === '/push/exchange-register')) {
     const token = (request.headers.get('Authorization') || '').replace('Bearer ', '');
     const uid = await verifyFirebaseToken(token);
     if (!uid) return new Response(JSON.stringify({ error: 'unauthorized' }), { status: 401, headers: { ...cors, 'Content-Type': 'application/json' } });
+    if (!env.CREDS_ENCRYPTION_KEY) return new Response(JSON.stringify({ error: 'הצפנת מפתחות לא מוגדרת בשרת (CREDS_ENCRYPTION_KEY)' }), { status: 503, headers: { ...cors, 'Content-Type': 'application/json' } });
     const { exchange, apiKey, apiSecret, passphrase } = await request.json().catch(() => ({}));
     if (!exchange || !apiKey || !apiSecret) return new Response(JSON.stringify({ error: 'missing fields' }), { status: 400, headers: { ...cors, 'Content-Type': 'application/json' } });
-    await env.ALERTS_KV.put(`pushexch:${uid}:${exchange}`, JSON.stringify({ exchange, apiKey, apiSecret, passphrase: passphrase || '' }));
+    if (!validExchangeId(exchange)) return new Response(JSON.stringify({ error: 'invalid exchange' }), { status: 400, headers: { ...cors, 'Content-Type': 'application/json' } });
+    try {
+      await storeExchangeCreds(env, uid, exchange, { apiKey, apiSecret, passphrase });
+    } catch {
+      return new Response(JSON.stringify({ error: 'failed to store credentials' }), { status: 500, headers: { ...cors, 'Content-Type': 'application/json' } });
+    }
     return new Response(JSON.stringify({ ok: true }), { headers: { ...cors, 'Content-Type': 'application/json' } });
   }
 
-  // Web Push — drop stored exchange keys (on disconnect / disable).
-  if (request.method === 'POST' && path === '/push/exchange-unregister') {
+  // Which exchanges the caller has connected (names only — never the secrets).
+  if (request.method === 'GET' && path === '/exchange/credentials/status') {
+    const token = (request.headers.get('Authorization') || '').replace('Bearer ', '');
+    const uid = await verifyFirebaseToken(token);
+    if (!uid) return new Response(JSON.stringify({ error: 'unauthorized' }), { status: 401, headers: { ...cors, 'Content-Type': 'application/json' } });
+    const l = await env.ALERTS_KV.list({ prefix: `pushexch:${uid}:` });
+    const exchanges = l.keys.map((kk) => kk.name.split(':')[2]).filter(Boolean);
+    return new Response(JSON.stringify({ exchanges }), { headers: { ...cors, 'Content-Type': 'application/json' } });
+  }
+
+  // Drop stored exchange keys (on disconnect / disable).
+  if (request.method === 'POST' && (path === '/exchange/credentials/delete' || path === '/push/exchange-unregister')) {
     const token = (request.headers.get('Authorization') || '').replace('Bearer ', '');
     const uid = await verifyFirebaseToken(token);
     if (!uid) return new Response(JSON.stringify({ error: 'unauthorized' }), { status: 401, headers: { ...cors, 'Content-Type': 'application/json' } });
@@ -4030,8 +4158,14 @@ ${pad('Lev', `${pnlSign}${pnlPctLev}%`)}` : ''}` : ''}</code>
       const token = (request.headers.get('Authorization') || '').replace('Bearer ', '');
       const uid = await verifyFirebaseToken(token);
       if (!uid) return new Response(JSON.stringify({ error: 'unauthorized' }), { status: 401, headers: { ...cors, 'Content-Type': 'application/json' } });
-      const { exchange, apiKey, apiSecret, passphrase } = await request.json().catch(() => ({}));
-      if (!apiKey || !apiSecret) return new Response(JSON.stringify({ ok: false, error: 'Missing credentials' }), { headers: { ...cors, 'Content-Type': 'application/json' }, status: 400 });
+      const _rl = await bumpWindow(env, `rl:exch:${uid}`, 60);
+      if (_rl.count > 30) return new Response(JSON.stringify({ error: 'יותר מדי בקשות לבורסה. נסה שוב בעוד רגע.' }), { status: 429, headers: { ...cors, 'Content-Type': 'application/json' } });
+      const _body = await request.json().catch(() => ({}));
+      const { exchange } = _body;
+      if (!exchange) return new Response(JSON.stringify({ ok: false, error: 'Missing exchange' }), { headers: { ...cors, 'Content-Type': 'application/json' }, status: 400 });
+      const _creds = await resolveExchangeCreds(env, uid, exchange);
+      if (!_creds) return new Response(JSON.stringify({ ok: false, error: 'reconnect_required' }), { headers: { ...cors, 'Content-Type': 'application/json' }, status: 409 });
+      const { apiKey, apiSecret, passphrase } = _creds;
 
       if (exchange === 'mexc') {
         const enc = new TextEncoder();
@@ -4263,10 +4397,16 @@ ${pad('Lev', `${pnlSign}${pnlPctLev}%`)}` : ''}` : ''}</code>
       const token = (request.headers.get('Authorization') || '').replace('Bearer ', '');
       const uid = await verifyFirebaseToken(token);
       if (!uid) return new Response(JSON.stringify({ error: 'unauthorized' }), { status: 401, headers: { ...cors, 'Content-Type': 'application/json' } });
-      const { exchange, apiKey, apiSecret, passphrase } = await request.json().catch(() => ({}));
-      if (!exchange || !apiKey || !apiSecret) {
-        return new Response(JSON.stringify({ ok: false, error: 'Missing credentials' }), { status: 400, headers: { ...cors, 'Content-Type': 'application/json' } });
+      const _rl = await bumpWindow(env, `rl:exch:${uid}`, 60);
+      if (_rl.count > 30) return new Response(JSON.stringify({ error: 'יותר מדי בקשות לבורסה. נסה שוב בעוד רגע.' }), { status: 429, headers: { ...cors, 'Content-Type': 'application/json' } });
+      const _body = await request.json().catch(() => ({}));
+      const { exchange } = _body;
+      if (!exchange) {
+        return new Response(JSON.stringify({ ok: false, error: 'Missing exchange' }), { status: 400, headers: { ...cors, 'Content-Type': 'application/json' } });
       }
+      const _creds = await resolveExchangeCreds(env, uid, exchange);
+      if (!_creds) return new Response(JSON.stringify({ ok: false, error: 'reconnect_required' }), { status: 409, headers: { ...cors, 'Content-Type': 'application/json' } });
+      const { apiKey, apiSecret, passphrase } = _creds;
       const enc = new TextEncoder();
       const hmacHex = async (secret, msg) => {
         const key = await crypto.subtle.importKey('raw', enc.encode(secret), { name: 'HMAC', hash: 'SHA-256' }, false, ['sign']);
@@ -4355,6 +4495,10 @@ ${pad('Lev', `${pnlSign}${pnlPctLev}%`)}` : ''}` : ''}</code>
     const token = (request.headers.get('Authorization') || '').replace('Bearer ', '');
     const uid = await verifyFirebaseToken(token);
     if (!uid) return new Response(JSON.stringify({ ok: false, error: 'unauthorized' }), { status: 401, headers: { ...cors, 'Content-Type': 'application/json' } });
+    // Per-user rate limit — /wallet fans out several Moralis calls, so a tight
+    // loop could burn the shared MORALIS quota for everyone.
+    const _wrl = await bumpWindow(env, `rl:wallet:${uid}`, 60);
+    if (_wrl.count > 15) return new Response(JSON.stringify({ ok: false, error: 'יותר מדי בקשות, נסה שוב בעוד רגע.' }), { status: 429, headers: { ...cors, 'Content-Type': 'application/json' } });
     if (!env.MORALIS_API_KEY) return new Response(JSON.stringify({ ok: false, error: 'מעקב ארנקים לא מוגדר בשרת' }), { status: 400, headers: { ...cors, 'Content-Type': 'application/json' } });
     try {
       const { address } = await request.json().catch(() => ({}));
@@ -4478,10 +4622,19 @@ ${pad('Lev', `${pnlSign}${pnlPctLev}%`)}` : ''}` : ''}</code>
       const token = (request.headers.get('Authorization') || '').replace('Bearer ', '');
       const uid = await verifyFirebaseToken(token);
       if (!uid) return new Response(JSON.stringify({ error: 'unauthorized' }), { status: 401, headers: { ...cors, 'Content-Type': 'application/json' } });
-      const { exchange, apiKey, apiSecret, passphrase, limit = 50, days = 0, debug = false } = await request.json();
-      if (!exchange || !apiKey || !apiSecret) {
-        return new Response(JSON.stringify({ error: 'Missing fields' }), { status: 400, headers: { ...cors, 'Content-Type': 'application/json' } });
+      const _rl = await bumpWindow(env, `rl:exch:${uid}`, 60);
+      if (_rl.count > 30) return new Response(JSON.stringify({ error: 'יותר מדי בקשות לבורסה. נסה שוב בעוד רגע.' }), { status: 429, headers: { ...cors, 'Content-Type': 'application/json' } });
+      const _body = await request.json().catch(() => ({}));
+      const { exchange, limit = 50, days = 0, debug = false } = _body;
+      if (!exchange) {
+        return new Response(JSON.stringify({ error: 'Missing exchange' }), { status: 400, headers: { ...cors, 'Content-Type': 'application/json' } });
       }
+      // Credentials come from the encrypted server-side store (keyed by uid),
+      // never from the request body. A legacy client still sending them is
+      // transparently migrated by resolveExchangeCreds.
+      const _creds = await resolveExchangeCreds(env, uid, exchange);
+      if (!_creds) return new Response(JSON.stringify({ error: 'reconnect_required', message: 'התחבר מחדש לבורסה' }), { status: 409, headers: { ...cors, 'Content-Type': 'application/json' } });
+      const { apiKey, apiSecret, passphrase } = _creds;
       // When debug is set we echo back the raw upstream rows (first few) so we
       // can see exactly which fields an exchange returns (e.g. hunting for SL/TP).
       let debugRaw = null;

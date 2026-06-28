@@ -73,8 +73,8 @@ export default function TradeHeatmap({ trades }) {
           style={{
             left: tooltip.x + 14,
             top: tooltip.y - 38,
-            background: '#141414',
-            border: '1px solid #2a2a2a',
+            background: 'var(--color-bg-overlay)',
+            border: '1px solid var(--color-border-primary)',
             color: tooltip.val > 0 ? '#22c55e' : tooltip.val < 0 ? '#ef4444' : '#606070',
             boxShadow: '0 4px 16px rgba(0,0,0,0.5)',
           }}

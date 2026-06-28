@@ -97,8 +97,8 @@ function computePosterior(setupType, factors) {
 }
 
 function getVerdict(p) {
-  if (p >= 0.75) return { label: 'STRONG EDGE', color: '#00ff88', glow: '#00ff88', tier: 4 };
-  if (p >= 0.65) return { label: 'GOOD',         color: '#00bfff', glow: '#00bfff', tier: 3 };
+  if (p >= 0.75) return { label: 'STRONG EDGE', color: 'var(--color-profit)', glow: 'var(--color-profit)', tier: 4 };
+  if (p >= 0.65) return { label: 'GOOD',         color: 'var(--color-accent-primary)', glow: 'var(--color-accent-primary)', tier: 3 };
   if (p >= 0.55) return { label: 'WEAK',          color: '#fbbf24', glow: '#fbbf24', tier: 2 };
   return                 { label: 'NO EDGE',      color: '#ef4444', glow: '#ef4444', tier: 1 };
 }
@@ -118,16 +118,16 @@ function ProbabilityMeter({ value, animate: doAnimate }) {
   return (
     <div className="relative flex items-center justify-center" style={{ width: 196, height: 196 }}>
       <div className="absolute inset-0 rounded-full" style={{
-        background: `radial-gradient(circle, ${verdict.glow}18 0%, transparent 70%)`,
+        background: `radial-gradient(circle, color-mix(in srgb, ${verdict.glow} 10%, transparent) 0%, transparent 70%)`,
       }} />
       <svg width="196" height="196" viewBox="0 0 196 196" style={{ transform: 'rotate(135deg)', position: 'absolute' }}>
         <circle cx="98" cy="98" r={R} fill="none"
-          stroke="rgba(255,255,255,0.07)" strokeWidth={stroke}
+          stroke="var(--color-border-primary)" strokeWidth={stroke}
           strokeDasharray={`${arcLen} ${C}`} strokeLinecap="round"
         />
         <motion.circle cx="98" cy="98" r={R} fill="none"
           stroke={verdict.color} strokeWidth={stroke} strokeLinecap="round"
-          style={{ filter: `drop-shadow(0 0 7px ${verdict.color})` }}
+          style={{ filter: `drop-shadow(0 0 4px rgba(139,92,246,0.25))` }}
           initial={{ strokeDasharray: `0 ${C}` }}
           animate={{ strokeDasharray: `${filled} ${C}` }}
           transition={{ duration: 1.3, ease: [0.34, 1.56, 0.64, 1] }}
@@ -136,7 +136,7 @@ function ProbabilityMeter({ value, animate: doAnimate }) {
       <div className="absolute flex flex-col items-center justify-center select-none">
         <motion.div
           className="text-5xl font-black tabular-nums"
-          style={{ color: verdict.color, textShadow: `0 0 24px ${verdict.glow}` }}
+          style={{ color: verdict.color, textShadow: `0 0 12px rgba(139,92,246,0.25)` }}
           initial={{ opacity: 0, scale: 0.7 }}
           animate={{ opacity: 1, scale: 1 }}
           transition={{ delay: 0.4, duration: 0.5 }}
@@ -157,18 +157,18 @@ function FactorCard({ factorKey, value, onChange, contribution }) {
   const [open, setOpen] = useState(false);
   const selected = options[value];
   const s = contribution?.sentiment ?? 0;
-  const borderColor = s > 0 ? 'rgba(0,255,136,0.35)' : s < 0 ? 'rgba(239,68,68,0.35)' : 'rgba(255,255,255,0.08)';
-  const lrColor = s > 0 ? '#00ff88' : s < 0 ? '#ef4444' : '#94a3b8';
+  const borderColor = s > 0 ? 'var(--color-profit)' : s < 0 ? 'rgba(239,68,68,0.35)' : 'var(--color-border-primary)';
+  const lrColor = s > 0 ? 'var(--color-profit)' : s < 0 ? '#ef4444' : 'var(--color-text-muted)';
   const { Icon } = meta;
 
   return (
     <div className="relative rounded-xl p-3 transition-all" style={{
-      background: 'rgba(255,255,255,0.03)',
+      background: 'var(--color-bg-secondary)',
       border: `1px solid ${borderColor}`,
     }}>
       <div className="flex items-center justify-between mb-2">
         <div className="flex items-center gap-1.5">
-          <Icon className="w-3.5 h-3.5" style={{ color: '#00bfff' }} />
+          <Icon className="w-3.5 h-3.5" style={{ color: 'var(--color-accent-primary)' }} />
           <span className="text-xs font-semibold text-text-primary">{meta.label}</span>
         </div>
         {contribution && (
@@ -181,7 +181,7 @@ function FactorCard({ factorKey, value, onChange, contribution }) {
       <button
         onClick={() => setOpen(o => !o)}
         className="w-full flex items-center justify-between px-3 py-1.5 rounded-lg text-xs transition-all"
-        style={{ background: 'rgba(255,255,255,0.05)', border: '1px solid rgba(255,255,255,0.08)' }}
+        style={{ background: 'var(--color-bg-secondary)', border: '1px solid var(--color-border-primary)' }}
       >
         <span style={{ color: lrColor }}>{selected?.label}</span>
         <ChevronDown className={`w-3.5 h-3.5 text-text-muted transition-transform ${open ? 'rotate-180' : ''}`} />
@@ -195,17 +195,17 @@ function FactorCard({ factorKey, value, onChange, contribution }) {
             exit={{ opacity: 0, y: -6 }}
             transition={{ duration: 0.15 }}
             className="absolute left-0 right-0 top-full mt-1 z-30 rounded-xl overflow-hidden"
-            style={{ background: '#111827', border: '1px solid rgba(255,255,255,0.12)', boxShadow: '0 20px 40px rgba(0,0,0,0.6)' }}
+            style={{ background: 'var(--color-bg-solid)', border: '1px solid var(--color-border-primary)', boxShadow: '0 20px 40px rgba(0,0,0,0.6)' }}
           >
             {Object.entries(options).map(([k, opt]) => {
               const sc = opt.sentiment;
-              const col = sc > 0 ? '#00ff88' : sc < 0 ? '#ef4444' : '#94a3b8';
+              const col = sc > 0 ? 'var(--color-profit)' : sc < 0 ? '#ef4444' : 'var(--color-text-muted)';
               return (
                 <button
                   key={k}
                   onClick={() => { onChange(factorKey, k); setOpen(false); }}
                   className="w-full flex items-center justify-between px-3 py-2 text-xs transition-colors hover:bg-white/5"
-                  style={{ color: k === value ? col : '#94a3b8' }}
+                  style={{ color: k === value ? col : 'var(--color-text-muted)' }}
                 >
                   <span>{opt.label}</span>
                   <span className="tabular-nums" style={{ color: col }}>×{opt.lr.toFixed(2)}</span>
@@ -217,10 +217,10 @@ function FactorCard({ factorKey, value, onChange, contribution }) {
       </AnimatePresence>
 
       {contribution && (
-        <div className="mt-2 h-1 rounded-full overflow-hidden" style={{ background: 'rgba(255,255,255,0.06)' }}>
+        <div className="mt-2 h-1 rounded-full overflow-hidden" style={{ background: 'var(--color-bg-secondary)' }}>
           <motion.div
             className="h-full rounded-full"
-            style={{ background: lrColor, boxShadow: `0 0 6px ${lrColor}` }}
+            style={{ background: lrColor, boxShadow: `0 0 3px rgba(139,92,246,0.25)` }}
             initial={{ width: 0 }}
             animate={{ width: `${Math.min(100, (contribution.lr / 1.6) * 100)}%` }}
             transition={{ duration: 0.8, ease: 'easeOut' }}
@@ -249,9 +249,9 @@ function VerdictBadge({ verdict }) {
       className="flex items-center gap-2 px-5 py-2.5 rounded-full text-sm font-black tracking-widest uppercase"
       style={{
         color: verdict.color,
-        background: `${verdict.glow}18`,
-        border: `1.5px solid ${verdict.glow}50`,
-        boxShadow: `0 0 20px ${verdict.glow}30, inset 0 0 20px ${verdict.glow}08`,
+        background: `color-mix(in srgb, ${verdict.color} 10%, transparent)`,
+        border: `1.5px solid color-mix(in srgb, ${verdict.color} 32%, transparent)`,
+        boxShadow: `0 0 10px rgba(139,92,246,0.2), inset 0 0 12px color-mix(in srgb, ${verdict.color} 4%, transparent)`,
       }}
     >
       <Icon className="w-4 h-4" />
@@ -276,10 +276,10 @@ function SignalHistory({ signals, onDelete }) {
             initial={{ opacity: 0, x: 20 }}
             animate={{ opacity: 1, x: 0 }}
             className="flex items-center gap-3 px-3 py-2.5 rounded-xl"
-            style={{ background: 'rgba(255,255,255,0.03)', border: '1px solid rgba(255,255,255,0.07)' }}
+            style={{ background: 'var(--color-bg-secondary)', border: '1px solid var(--color-border-primary)' }}
           >
             <div className="w-10 h-10 rounded-full flex items-center justify-center text-xs font-black shrink-0"
-              style={{ background: `${v.glow}18`, border: `1px solid ${v.glow}40`, color: v.color }}>
+              style={{ background: `color-mix(in srgb, ${v.color} 10%, transparent)`, border: `1px solid color-mix(in srgb, ${v.color} 25%, transparent)`, color: v.color }}>
               {s.probability}%
             </div>
             <CoinIcon pair={s.symbol} className="w-7 h-7 shrink-0" />
@@ -388,8 +388,8 @@ export default function QuantumScorer() {
         <div style={{
           position: 'absolute', inset: 0,
           backgroundImage: `
-            linear-gradient(rgba(0,191,255,0.04) 1px, transparent 1px),
-            linear-gradient(90deg, rgba(0,191,255,0.04) 1px, transparent 1px)
+            linear-gradient(rgba(139,92,246,0.04) 1px, transparent 1px),
+            linear-gradient(90deg, rgba(139,92,246,0.04) 1px, transparent 1px)
           `,
           backgroundSize: '40px 40px',
           maskImage: 'radial-gradient(ellipse 80% 60% at 50% 30%, black 40%, transparent 100%)',
@@ -400,7 +400,7 @@ export default function QuantumScorer() {
             width: i % 3 === 0 ? 3 : 2,
             height: i % 3 === 0 ? 3 : 2,
             borderRadius: '50%',
-            background: i % 4 === 0 ? '#00bfff' : i % 4 === 1 ? '#00ff88' : '#a855f7',
+            background: i % 4 === 0 ? 'var(--color-accent-primary)' : i % 4 === 1 ? 'var(--color-profit)' : 'var(--color-chart-purple)',
             left: `${8 + i * 8}%`,
             top: `${10 + (i * 17) % 70}%`,
             opacity: 0.25 + (i % 3) * 0.15,
@@ -416,8 +416,8 @@ export default function QuantumScorer() {
           50% { transform: translateY(-18px) scale(1.3); opacity: 0.7; }
         }
         @keyframes pulse-glow {
-          0%, 100% { box-shadow: 0 0 12px #00bfff40; }
-          50% { box-shadow: 0 0 28px #00bfff80; }
+          0%, 100% { box-shadow: 0 0 6px rgba(139,92,246,0.18); }
+          50% { box-shadow: 0 0 14px rgba(139,92,246,0.3); }
         }
       `}</style>
 
@@ -425,7 +425,7 @@ export default function QuantumScorer() {
       <div className="relative flex items-center justify-between mb-6">
         <div>
           <h2 className="text-xl font-black text-text-primary flex items-center gap-2">
-            <Zap className="w-5 h-5" style={{ color: '#00bfff' }} />
+            <Zap className="w-5 h-5" style={{ color: 'var(--color-accent-primary)' }} />
             Quantum Signal Scorer
           </h2>
           <p className="text-xs text-text-muted mt-0.5">מנוע Bayesian — Wyckoff & Price Action</p>
@@ -435,9 +435,9 @@ export default function QuantumScorer() {
             onClick={() => setShowHistory(h => !h)}
             className="flex items-center gap-1.5 px-3 py-2 rounded-xl text-xs font-semibold transition-all"
             style={{
-              background: showHistory ? 'rgba(0,191,255,0.15)' : 'rgba(255,255,255,0.04)',
-              border: `1px solid ${showHistory ? 'rgba(0,191,255,0.4)' : 'rgba(255,255,255,0.08)'}`,
-              color: showHistory ? '#00bfff' : '#94a3b8',
+              background: showHistory ? 'color-mix(in srgb, var(--color-accent-primary) 14%, transparent)' : 'var(--color-bg-secondary)',
+              border: `1px solid ${showHistory ? 'color-mix(in srgb, var(--color-accent-primary) 35%, transparent)' : 'var(--color-border-primary)'}`,
+              color: showHistory ? 'var(--color-accent-primary)' : 'var(--color-text-muted)',
             }}
           >
             <History className="w-3.5 h-3.5" />
@@ -455,11 +455,11 @@ export default function QuantumScorer() {
             exit={{ opacity: 0, height: 0 }}
             transition={{ duration: 0.25 }}
             className="relative mb-6 rounded-2xl overflow-hidden"
-            style={{ background: 'rgba(0,0,0,0.4)', border: '1px solid rgba(0,191,255,0.15)' }}
+            style={{ background: 'var(--color-bg-secondary)', border: '1px solid color-mix(in srgb, var(--color-accent-primary) 15%, transparent)' }}
           >
             <div className="p-4">
               <h3 className="text-sm font-bold text-text-primary mb-3 flex items-center gap-2">
-                <History className="w-4 h-4" style={{ color: '#00bfff' }} />
+                <History className="w-4 h-4" style={{ color: 'var(--color-accent-primary)' }} />
                 אותות שמורים
               </h3>
               <SignalHistory signals={signals} onDelete={handleDelete} />
@@ -470,8 +470,8 @@ export default function QuantumScorer() {
 
       {/* ── Setup type — full-width row above everything ── */}
       <div className="relative mb-4 rounded-2xl p-4" style={{
-        background: 'rgba(0,0,0,0.4)',
-        border: `1px solid ${setupDir === 'bull' ? 'rgba(0,255,136,0.2)' : 'rgba(239,68,68,0.2)'}`,
+        background: 'var(--color-bg-secondary)',
+        border: `1px solid ${setupDir === 'bull' ? 'color-mix(in srgb, var(--color-profit) 20%, transparent)' : 'rgba(239,68,68,0.2)'}`,
       }}>
         <div className="flex items-center justify-between mb-2">
           {setup && (
@@ -489,12 +489,12 @@ export default function QuantumScorer() {
               className="flex-1 min-w-[80px] px-2 py-1.5 rounded-lg text-[11px] font-bold transition-all text-center"
               style={{
                 background: setup === k
-                  ? (m.dir === 'bull' ? 'rgba(0,255,136,0.18)' : 'rgba(239,68,68,0.18)')
-                  : 'rgba(255,255,255,0.04)',
+                  ? (m.dir === 'bull' ? 'color-mix(in srgb, var(--color-profit) 18%, transparent)' : 'rgba(239,68,68,0.18)')
+                  : 'var(--color-bg-secondary)',
                 border: setup === k
-                  ? `1px solid ${m.dir === 'bull' ? '#00ff88' : '#ef4444'}`
-                  : '1px solid rgba(255,255,255,0.07)',
-                color: setup === k ? (m.dir === 'bull' ? '#00ff88' : '#ef4444') : '#64748b',
+                  ? `1px solid ${m.dir === 'bull' ? 'var(--color-profit)' : '#ef4444'}`
+                  : '1px solid var(--color-border-primary)',
+                color: setup === k ? (m.dir === 'bull' ? 'var(--color-profit)' : '#ef4444') : 'var(--color-text-muted)',
               }}
             >
               {m.label}
@@ -527,8 +527,8 @@ export default function QuantumScorer() {
 
           {/* Symbol search + LR breakdown */}
           <div className="rounded-2xl p-4" style={{
-            background: 'rgba(0,0,0,0.4)',
-            border: '1px solid rgba(0,191,255,0.2)',
+            background: 'var(--color-bg-secondary)',
+            border: '1px solid color-mix(in srgb, var(--color-accent-primary) 20%, transparent)',
           }}>
             {/* PairSearch — same coin search with icons as in the journal */}
             <PairSearch
@@ -541,7 +541,7 @@ export default function QuantumScorer() {
             {result && (
               <div className="mt-3 space-y-1 border-t border-white/5 pt-3">
                 {Object.entries(result.contributions).map(([k, c]) => {
-                  const col = c.sentiment > 0 ? '#00ff88' : c.sentiment < 0 ? '#ef4444' : '#64748b';
+                  const col = c.sentiment > 0 ? 'var(--color-profit)' : c.sentiment < 0 ? '#ef4444' : 'var(--color-text-muted)';
                   return (
                     <div key={k} className="flex items-center justify-between text-[10px]">
                       <span className="text-text-muted">{FACTOR_META[k]?.label}</span>
@@ -557,9 +557,9 @@ export default function QuantumScorer() {
 
           {/* Meter + Verdict + Buttons panel */}
           <div className="flex-1 rounded-2xl flex flex-col items-center justify-center p-6 gap-5" style={{
-            background: 'rgba(0,0,0,0.5)',
-            border: `1px solid ${verdict ? `${verdict.glow}30` : 'rgba(255,255,255,0.07)'}`,
-            boxShadow: verdict ? `0 0 40px ${verdict.glow}10` : 'none',
+            background: 'var(--color-bg-secondary)',
+            border: `1px solid ${verdict ? `color-mix(in srgb, ${verdict.glow} 25%, transparent)` : 'var(--color-border-primary)'}`,
+            boxShadow: verdict ? `0 0 20px rgba(139,92,246,0.12)` : 'none',
             transition: 'border-color 0.5s, box-shadow 0.5s',
           }}>
             <AnimatePresence mode="wait">
@@ -570,16 +570,16 @@ export default function QuantumScorer() {
               ) : (
                 <motion.div key="idle" className="flex items-center justify-center rounded-full" style={{
                   width: 196, height: 196,
-                  background: 'radial-gradient(circle, rgba(0,191,255,0.05) 0%, transparent 70%)',
-                  border: '1px solid rgba(0,191,255,0.12)',
+                  background: 'radial-gradient(circle, color-mix(in srgb, var(--color-accent-primary) 5%, transparent) 0%, transparent 70%)',
+                  border: '1px solid color-mix(in srgb, var(--color-accent-primary) 12%, transparent)',
                 }}>
                   <div className="flex flex-col items-center gap-2">
                     {symbol ? (
                       <CoinIcon pair={symbol} className="w-12 h-12" />
                     ) : (
-                      <Zap className="w-10 h-10" style={{ color: 'rgba(0,191,255,0.3)' }} />
+                      <Zap className="w-10 h-10" style={{ color: 'color-mix(in srgb, var(--color-accent-primary) 30%, transparent)' }} />
                     )}
-                    <span className="text-xs font-bold" style={{ color: '#00bfff' }}>
+                    <span className="text-xs font-bold" style={{ color: 'var(--color-accent-primary)' }}>
                       {symbol ? symbol.replace(/USDT$/i, '') : ''}
                     </span>
                     <span className="text-[10px] text-text-muted">לחץ לחשב</span>
@@ -600,9 +600,9 @@ export default function QuantumScorer() {
                 whileTap={{ scale: 0.97 }}
                 className="w-full py-3 rounded-xl font-black text-sm transition-all"
                 style={{
-                  background: 'linear-gradient(135deg, #00bfff20, #00bfff40)',
-                  border: '1px solid #00bfff60',
-                  color: '#00bfff',
+                  background: 'linear-gradient(135deg, color-mix(in srgb, var(--color-accent-primary) 12%, transparent), color-mix(in srgb, var(--color-accent-primary) 25%, transparent))',
+                  border: '1px solid color-mix(in srgb, var(--color-accent-primary) 38%, transparent)',
+                  color: 'var(--color-accent-primary)',
                   animation: !scored ? 'pulse-glow 2s infinite' : 'none',
                 }}
               >
@@ -616,7 +616,7 @@ export default function QuantumScorer() {
                 <button
                   onClick={handleReset}
                   className="flex-1 py-2 rounded-xl text-xs font-semibold flex items-center justify-center gap-1.5 transition-all hover:bg-white/5"
-                  style={{ border: '1px solid rgba(255,255,255,0.08)', color: '#64748b' }}
+                  style={{ border: '1px solid var(--color-border-primary)', color: 'var(--color-text-muted)' }}
                 >
                   <RotateCcw className="w-3.5 h-3.5" />
                   איפוס
@@ -626,9 +626,9 @@ export default function QuantumScorer() {
                   disabled={!scored || saving || !user}
                   className="flex-1 py-2 rounded-xl text-xs font-semibold flex items-center justify-center gap-1.5 transition-all disabled:opacity-40"
                   style={{
-                    background: savedOk ? 'rgba(0,255,136,0.15)' : 'rgba(0,191,255,0.1)',
-                    border: `1px solid ${savedOk ? 'rgba(0,255,136,0.4)' : 'rgba(0,191,255,0.3)'}`,
-                    color: savedOk ? '#00ff88' : '#00bfff',
+                    background: savedOk ? 'color-mix(in srgb, var(--color-profit) 14%, transparent)' : 'color-mix(in srgb, var(--color-accent-primary) 10%, transparent)',
+                    border: `1px solid ${savedOk ? 'color-mix(in srgb, var(--color-profit) 38%, transparent)' : 'color-mix(in srgb, var(--color-accent-primary) 28%, transparent)'}`,
+                    color: savedOk ? 'var(--color-profit)' : 'var(--color-accent-primary)',
                   }}
                 >
                   <Save className="w-3.5 h-3.5" />
@@ -640,17 +640,17 @@ export default function QuantumScorer() {
 
           {/* Legend */}
           <div className="rounded-2xl p-3 grid grid-cols-2 gap-2" style={{
-            background: 'rgba(0,0,0,0.3)',
-            border: '1px solid rgba(255,255,255,0.06)',
+            background: 'var(--color-bg-secondary)',
+            border: '1px solid var(--color-border-primary)',
           }}>
             {[
-              { label: 'STRONG EDGE', color: '#00ff88', range: '≥75%' },
-              { label: 'GOOD',        color: '#00bfff', range: '65–74%' },
+              { label: 'STRONG EDGE', color: 'var(--color-profit)', range: '≥75%' },
+              { label: 'GOOD',        color: 'var(--color-accent-primary)', range: '65–74%' },
               { label: 'WEAK',        color: '#fbbf24', range: '55–64%' },
               { label: 'NO EDGE',     color: '#ef4444', range: '<55%' },
             ].map(v => (
               <div key={v.label} className="flex items-center gap-1.5">
-                <div className="w-2 h-2 rounded-full shrink-0" style={{ background: v.color, boxShadow: `0 0 6px ${v.color}` }} />
+                <div className="w-2 h-2 rounded-full shrink-0" style={{ background: v.color, boxShadow: `0 0 3px rgba(139,92,246,0.25)` }} />
                 <div>
                   <div className="text-[10px] font-bold" style={{ color: v.color }}>{v.label}</div>
                   <div className="text-[9px] text-text-muted">{v.range}</div>

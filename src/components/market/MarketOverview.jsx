@@ -12,6 +12,7 @@ import MarketSessionsCard from './MarketSessionsCard';
 import { getCachedImage, hasKnownIcon } from '../../services/coinImageCache';
 import { fetchSpotTickersAsBinance, fetchLinearTickers, fetchAccountRatio } from '../../services/bybitDirect';
 import CoinIcon from '../shared/CoinIcon';
+import Reveal from '../shared/Reveal';
 
 const WORKER_URL = import.meta.env.VITE_WORKER_URL || '';
 const CG_PROXY = WORKER_URL + '/cg';
@@ -73,15 +74,50 @@ const statAccent = (r, g, b, color) => ({
   chipBg: `rgba(${r},${g},${b},0.12)`,
 });
 const STAT_ACCENTS = {
-  cap:  statAccent(56, 189, 248, '#38bdf8'),   // market cap  — sky-blue
+  cap:  statAccent(139, 92, 246, '#8b5cf6'),  // market cap  — violet (app accent)
   usdt: statAccent(38, 212, 175, '#2dd4bf'),   // USDT.D      — teal
   btc:  statAccent(251, 146, 60, '#fb923c'),   // BTC.D       — bitcoin orange
   vol:  statAccent(192, 132, 252, '#c084fc'),  // 24h volume  — violet
   alt:  statAccent(129, 140, 248, '#818cf8'),  // alt season  — indigo
 };
+
+// 21st-style global-stat card: glass surface + a soft accent corner glow + a
+// faint accent hairline along the top. Designed (not a plain box, not bare text).
+function MarketStatCard({ accentKey, Icon, label, children }) {
+  const a = STAT_ACCENTS[accentKey] || STAT_ACCENTS.cap;
+  return (
+    <motion.div
+      variants={cardVariants}
+      whileHover={{ y: -2 }}
+      className="relative overflow-hidden rounded-2xl p-4 min-h-[104px] bg-bg-secondary border border-border-primary"
+    >
+      <div className="absolute -top-12 -left-12 w-32 h-32 rounded-full pointer-events-none"
+        style={{ background: `radial-gradient(circle, ${a.chipBg} 0%, transparent 70%)` }} />
+      <div className="absolute top-0 inset-x-6 h-px pointer-events-none"
+        style={{ background: `linear-gradient(to right, transparent, ${a.color}66, transparent)` }} />
+      <div className="relative">
+        <div className="flex items-center gap-2 mb-2.5">
+          <span className="w-6 h-6 rounded-md flex items-center justify-center shrink-0" style={{ backgroundColor: a.chipBg }}>
+            <Icon className="w-3.5 h-3.5" style={{ color: a.color }} />
+          </span>
+          <span className="text-[11px] text-text-muted uppercase tracking-wider">{label}</span>
+        </div>
+        {children}
+      </div>
+    </motion.div>
+  );
+}
 const FUTURES_SYMBOLS = [
   'BTCUSDT', 'ETHUSDT', 'SOLUSDT', 'XRPUSDT', 'BNBUSDT',
   'DOGEUSDT', 'ADAUSDT', 'AVAXUSDT', 'DOTUSDT', 'LINKUSDT',
+];
+// Wider symbol set for the live liquidation feed — 10 majors alone liquidate
+// rarely, so the feed looked frozen. More symbols = a steady stream of events.
+const LIQ_SYMBOLS = [
+  'BTCUSDT', 'ETHUSDT', 'SOLUSDT', 'XRPUSDT', 'BNBUSDT', 'DOGEUSDT', 'ADAUSDT',
+  'AVAXUSDT', 'DOTUSDT', 'LINKUSDT', '1000PEPEUSDT', '1000SHIBUSDT', 'WIFUSDT',
+  'SUIUSDT', 'NEARUSDT', 'APTUSDT', 'ARBUSDT', 'OPUSDT', 'INJUSDT', 'TIAUSDT',
+  'SEIUSDT', 'FILUSDT', 'LTCUSDT', 'TRXUSDT', 'WLDUSDT', 'FETUSDT',
 ];
 const MAJOR_COINS = new Set([
   'BTC', 'ETH', 'SOL', 'XRP', 'BNB', 'DOGE', 'ADA', 'AVAX', 'DOT', 'LINK',
@@ -206,13 +242,13 @@ function HeatmapCell({ coin, index, sizeClass }) {
       animate={{ opacity: 1, scale: 1 }}
       transition={{ delay: 0.05 * index, duration: 0.3 }}
       whileHover={{ scale: 1.02, transition: { duration: 0.15 } }}
-      className={`${sizeClass} rounded-lg flex flex-col items-center justify-center border border-white/5 cursor-pointer transition-all hover:border-white/15 hover:brightness-125`}
+      className={`${sizeClass} rounded-lg flex flex-col items-center justify-center border border-border-primary cursor-pointer transition-all hover:border-border-hover hover:brightness-125`}
       style={{ backgroundColor: getHeatColor(change) }}
       onClick={() => openChart(coin.symbol)}
     >
       <div className="flex items-center gap-1">
         <CoinIcon pair={coin.symbol} className="w-3.5 h-3.5" />
-        <span className="text-xs font-bold text-white">{coin.symbol?.toUpperCase()}</span>
+        <span className="text-xs font-bold text-text-primary">{coin.symbol?.toUpperCase()}</span>
       </div>
       <span className={`text-[11px] font-semibold mt-0.5 ${change >= 0 ? 'text-green-300' : 'text-red-300'}`}>
         {change != null ? `${change >= 0 ? '+' : ''}${change.toFixed(1)}%` : '—'}
@@ -238,6 +274,32 @@ function FundingCountdown({ nextTime }) {
   return <span className="text-[9px] text-text-muted">{remaining}</span>;
 }
 
+// Shared modern card header: left-aligned accent icon chip + title + optional
+// right-side node (total / countdown). 21st-style, replaces the old centered h2.
+function MarketCardHeader({ Icon, title, accent = '#8b5cf6', right }) {
+  return (
+    <div className="flex items-center justify-between gap-2 mb-4">
+      <div className="flex items-center gap-2 min-w-0">
+        <span className="w-7 h-7 rounded-lg flex items-center justify-center shrink-0" style={{ backgroundColor: `${accent}1f` }}>
+          <Icon className="w-4 h-4" style={{ color: accent }} />
+        </span>
+        <h2 className="text-sm font-semibold text-text-primary truncate">{title}</h2>
+      </div>
+      {right}
+    </div>
+  );
+}
+
+// A small coin label (icon + ticker) reused by the derivative cards.
+function CoinTag({ symbol, className = '' }) {
+  return (
+    <span className={`flex items-center gap-1.5 min-w-0 ${className}`}>
+      <CoinIcon pair={symbol} className="w-4 h-4 shrink-0" />
+      <span className="text-[11px] font-bold text-text-primary truncate">{symbol}</span>
+    </span>
+  );
+}
+
 function FundingRatesCard({ rates, loading }) {
   const maxAbs = rates.length ? Math.max(...rates.map(r => Math.abs(r.rate))) : 1;
   return (
@@ -247,58 +309,48 @@ function FundingRatesCard({ rates, loading }) {
       transition={{ duration: 0.5, delay: 0.1 }}
       className={cardClass}
     >
-      <h2 className="text-sm font-semibold text-text-primary mb-3 flex items-center gap-2 justify-center">
-        <Percent className="w-4 h-4 text-accent-primary" />
-        שיעורי מימון (Funding)
-      </h2>
+      <MarketCardHeader
+        Icon={Percent} title="שיעורי מימון" accent="#fbbf24"
+        right={rates[0] ? <span className="text-[10px] text-text-muted num-mono shrink-0"><FundingCountdown nextTime={rates[0].nextFundingTime} /></span> : null}
+      />
       {rates.length > 0 ? (
-        <div className="space-y-1.5">
+        <div className="space-y-0.5">
           {rates.map((r, i) => {
             const pct = (r.rate * 100).toFixed(4);
             const isNeg = r.rate < 0;
-            const barW = (Math.abs(r.rate) / maxAbs) * 44;
+            const barW = (Math.abs(r.rate) / maxAbs) * 50;
+            const col = isNeg ? 'var(--color-profit)' : 'var(--color-loss)';
             return (
               <motion.div
                 key={r.symbol}
-                initial={{ opacity: 0, x: 20 }}
+                initial={{ opacity: 0, x: 16 }}
                 animate={{ opacity: 1, x: 0 }}
-                transition={{ delay: 0.04 * i, duration: 0.3 }}
-                className="flex items-center gap-1.5"
+                transition={{ delay: 0.03 * i, duration: 0.3 }}
+                className="flex items-center gap-2 py-1 px-1 rounded-lg hover:bg-bg-tertiary/60 transition-colors"
                 dir="ltr"
               >
-                <span
-                  className="text-[10px] font-semibold w-14 text-right shrink-0"
-                  style={{ color: isNeg ? '#22c55e' : '#ef4444' }}
-                >
+                <span className="text-[11px] font-semibold w-20 text-right shrink-0 num-mono" style={{ color: col }}>
                   {isNeg ? '' : '+'}{pct}%
                 </span>
-                <div className="flex-1 relative h-3 bg-bg-tertiary rounded-full overflow-hidden">
-                  <div className="absolute left-1/2 top-0 bottom-0 w-px bg-text-muted/30 z-10" />
+                <div className="flex-1 relative h-2 bg-bg-tertiary rounded-full overflow-hidden">
+                  <div className="absolute left-1/2 top-0 bottom-0 w-px bg-border-primary z-10" />
                   <motion.div
                     initial={{ width: 0 }}
                     animate={{ width: `${barW}%` }}
-                    transition={{ delay: 0.04 * i + 0.2, duration: 0.6, ease: 'easeOut' }}
+                    transition={{ delay: 0.03 * i + 0.2, duration: 0.6, ease: 'easeOut' }}
                     className="absolute top-0 h-full"
                     style={isNeg
-                      ? { right: '50%', borderRadius: '9999px 0 0 9999px', backgroundColor: 'rgba(34, 197, 94, 0.5)' }
-                      : { left: '50%', borderRadius: '0 9999px 9999px 0', backgroundColor: 'rgba(239, 68, 68, 0.5)' }
-                    }
+                      ? { right: '50%', borderRadius: '9999px 0 0 9999px', background: col }
+                      : { left: '50%', borderRadius: '0 9999px 9999px 0', background: col }}
                   />
                 </div>
-                <span className="text-[11px] font-bold text-text-primary w-10 shrink-0">{r.symbol}</span>
+                <CoinTag symbol={r.symbol} className="w-16 shrink-0" />
               </motion.div>
             );
           })}
-          <div className="flex items-center justify-center gap-4 mt-2 pt-2 border-t border-border-primary/30">
-            <div className="flex items-center gap-1">
-              <div className="w-2 h-2 rounded-full" style={{ backgroundColor: 'rgba(34, 197, 94, 0.6)' }} />
-              <span className="text-[9px] text-text-muted">Shorts משלמים</span>
-            </div>
-            <div className="flex items-center gap-1">
-              <div className="w-2 h-2 rounded-full" style={{ backgroundColor: 'rgba(239, 68, 68, 0.6)' }} />
-              <span className="text-[9px] text-text-muted">Longs משלמים</span>
-            </div>
-            {rates[0] && <FundingCountdown nextTime={rates[0].nextFundingTime} />}
+          <div className="flex items-center justify-center gap-4 mt-3 pt-3 border-t border-border-primary/40">
+            <span className="flex items-center gap-1 text-[9px] text-text-muted"><span className="w-2 h-2 rounded-full bg-profit" /> Shorts משלמים</span>
+            <span className="flex items-center gap-1 text-[9px] text-text-muted"><span className="w-2 h-2 rounded-full bg-loss" /> Longs משלמים</span>
           </div>
         </div>
       ) : (
@@ -318,13 +370,10 @@ function OpenInterestCard({ data, loading }) {
       transition={{ duration: 0.5, delay: 0.2 }}
       className={cardClass}
     >
-      <h2 className="text-sm font-semibold text-text-primary mb-1 flex items-center gap-2 justify-center">
-        <Activity className="w-4 h-4 text-accent-primary" />
-        פוזיציות פתוחות (OI)
-      </h2>
-      {data.length > 0 && (
-        <p className="text-center text-[11px] text-text-muted mb-3">סה״כ {formatNum(totalOi)}</p>
-      )}
+      <MarketCardHeader
+        Icon={Activity} title="פוזיציות פתוחות (OI)" accent="#8b5cf6"
+        right={data.length > 0 ? <span className="text-[11px] font-semibold text-text-secondary num-mono shrink-0">{formatNum(totalOi)}</span> : null}
+      />
       {data.length > 0 ? (
         <div className="space-y-0.5">
           {data.map((d, i) => {
@@ -332,24 +381,24 @@ function OpenInterestCard({ data, loading }) {
             return (
               <motion.div
                 key={d.symbol}
-                initial={{ opacity: 0, x: 20 }}
+                initial={{ opacity: 0, x: 16 }}
                 animate={{ opacity: 1, x: 0 }}
-                transition={{ delay: 0.04 * i, duration: 0.3 }}
-                className="flex items-center gap-1.5 py-0.5"
+                transition={{ delay: 0.03 * i, duration: 0.3 }}
+                className="flex items-center gap-2 py-1 px-1 rounded-lg hover:bg-bg-tertiary/60 transition-colors"
                 dir="ltr"
               >
-                <span className="text-[9px] text-text-muted/40 w-3 text-center shrink-0">{i + 1}</span>
-                <span className="text-[11px] font-bold text-text-primary w-10 shrink-0">{d.symbol}</span>
-                <div className="flex-1 h-2.5 bg-bg-tertiary rounded-full overflow-hidden">
+                <span className="text-[10px] font-semibold text-text-muted/50 w-4 text-center shrink-0 num-mono">{i + 1}</span>
+                <CoinTag symbol={d.symbol} className="w-16 shrink-0" />
+                <div className="flex-1 h-2 bg-bg-tertiary rounded-full overflow-hidden">
                   <motion.div
                     initial={{ width: 0 }}
                     animate={{ width: `${barW}%` }}
-                    transition={{ delay: 0.04 * i + 0.2, duration: 0.8, ease: 'easeOut' }}
+                    transition={{ delay: 0.03 * i + 0.2, duration: 0.8, ease: 'easeOut' }}
                     className="h-full rounded-full"
-                    style={{ background: 'linear-gradient(to right, #6366f1, #3b82f6, #06b6d4)' }}
+                    style={{ background: 'linear-gradient(to right, #6366f1, #06b6d4)' }}
                   />
                 </div>
-                <span className="text-[10px] font-semibold text-text-muted w-12 text-left shrink-0">
+                <span className="text-[10px] font-semibold text-text-secondary w-12 text-left shrink-0 num-mono">
                   {formatNum(d.oiUsd)}
                 </span>
               </motion.div>
@@ -371,57 +420,52 @@ function LongShortCard({ data, loading }) {
       transition={{ duration: 0.5, delay: 0.3 }}
       className={cardClass}
     >
-      <h2 className="text-sm font-semibold text-text-primary mb-3 flex items-center gap-2 justify-center">
-        <BarChart3 className="w-4 h-4 text-accent-primary" />
-        יחס לונג / שורט
-      </h2>
+      <MarketCardHeader Icon={BarChart3} title="יחס לונג / שורט" accent="#8b5cf6" />
       {data.length > 0 ? (
-        <div className="space-y-1.5">
+        <div className="space-y-1">
           {data.map((d, i) => {
             const longPct = (d.longAccount * 100).toFixed(1);
             const shortPct = (d.shortAccount * 100).toFixed(1);
             return (
               <motion.div
                 key={d.symbol}
-                initial={{ opacity: 0, x: 20 }}
+                initial={{ opacity: 0, x: 16 }}
                 animate={{ opacity: 1, x: 0 }}
-                transition={{ delay: 0.04 * i, duration: 0.3 }}
+                transition={{ delay: 0.03 * i, duration: 0.3 }}
+                className="flex items-center gap-2 py-1 px-1 rounded-lg hover:bg-bg-tertiary/60 transition-colors"
+                dir="ltr"
               >
-                <div className="flex items-center gap-1.5" dir="ltr">
-                  <span className="text-[11px] font-bold text-text-primary w-10 text-center shrink-0">{d.symbol}</span>
-                  <div className="flex flex-1 h-5 rounded-md overflow-hidden bg-bg-tertiary">
-                    <motion.div
-                      initial={{ width: 0 }}
-                      animate={{ width: `${longPct}%` }}
-                      transition={{ delay: 0.04 * i + 0.2, duration: 0.8, ease: 'easeOut' }}
-                      className="h-full flex items-center justify-center"
-                      style={{ backgroundColor: 'rgba(34, 197, 94, 0.25)', minWidth: 36 }}
-                    >
-                      <span className="text-[9px] font-bold text-green-400">{longPct}%</span>
-                    </motion.div>
-                    <motion.div
-                      initial={{ width: 0 }}
-                      animate={{ width: `${shortPct}%` }}
-                      transition={{ delay: 0.04 * i + 0.2, duration: 0.8, ease: 'easeOut' }}
-                      className="h-full flex items-center justify-center"
-                      style={{ backgroundColor: 'rgba(239, 68, 68, 0.25)', minWidth: 36 }}
-                    >
-                      <span className="text-[9px] font-bold text-red-400">{shortPct}%</span>
-                    </motion.div>
-                  </div>
+                <CoinTag symbol={d.symbol} className="w-16 shrink-0" />
+                {/* Track is bg-bg-primary (distinct from the row's hover tint) so
+                    the hover highlight frames the bar instead of bleeding into it.
+                    Exact %s (sum to 100, no minWidth → no overflow); the label
+                    shows only when its side is wide enough to fit. */}
+                <div className="flex flex-1 h-5 rounded-lg overflow-hidden bg-bg-primary border border-border-primary">
+                  <motion.div
+                    initial={{ width: 0 }}
+                    animate={{ width: `${longPct}%` }}
+                    transition={{ delay: 0.03 * i + 0.2, duration: 0.8, ease: 'easeOut' }}
+                    className="h-full flex items-center justify-center overflow-hidden"
+                    style={{ backgroundColor: 'rgba(34, 197, 94, 0.3)' }}
+                  >
+                    {Number(longPct) >= 14 && <span className="text-[9px] font-bold num-mono text-profit">{longPct}%</span>}
+                  </motion.div>
+                  <motion.div
+                    initial={{ width: 0 }}
+                    animate={{ width: `${shortPct}%` }}
+                    transition={{ delay: 0.03 * i + 0.2, duration: 0.8, ease: 'easeOut' }}
+                    className="h-full flex items-center justify-center overflow-hidden"
+                    style={{ backgroundColor: 'rgba(239, 68, 68, 0.3)' }}
+                  >
+                    {Number(shortPct) >= 14 && <span className="text-[9px] font-bold num-mono text-loss">{shortPct}%</span>}
+                  </motion.div>
                 </div>
               </motion.div>
             );
           })}
-          <div className="flex items-center justify-center gap-4 mt-2 pt-2 border-t border-border-primary/30">
-            <div className="flex items-center gap-1">
-              <div className="w-2 h-2 rounded-full" style={{ backgroundColor: 'rgba(34, 197, 94, 0.6)' }} />
-              <span className="text-[9px] text-text-muted">Long (קונים)</span>
-            </div>
-            <div className="flex items-center gap-1">
-              <div className="w-2 h-2 rounded-full" style={{ backgroundColor: 'rgba(239, 68, 68, 0.6)' }} />
-              <span className="text-[9px] text-text-muted">Short (מוכרים)</span>
-            </div>
+          <div className="flex items-center justify-center gap-4 mt-3 pt-3 border-t border-border-primary/40">
+            <span className="flex items-center gap-1 text-[9px] text-text-muted"><span className="w-2 h-2 rounded-full bg-profit" /> Long (קונים)</span>
+            <span className="flex items-center gap-1 text-[9px] text-text-muted"><span className="w-2 h-2 rounded-full bg-loss" /> Short (מוכרים)</span>
           </div>
         </div>
       ) : (
@@ -439,96 +483,133 @@ function timeAgo(ts) {
   return `לפני ${Math.floor(diff / 3600)}h`;
 }
 
-function LiquidationsCard({ liquidations }) {
+function LiquidationsCard({ liquidations, connected = false }) {
   const longs = liquidations.filter(l => l.side === 'SELL');
   const shorts = liquidations.filter(l => l.side === 'BUY');
   const totalLongUsd = longs.reduce((s, l) => s + l.usdValue, 0);
   const totalShortUsd = shorts.reduce((s, l) => s + l.usdValue, 0);
   const total = totalLongUsd + totalShortUsd;
   const longPct = total > 0 ? (totalLongUsd / total) * 100 : 50;
+  const newestId = liquidations[0]?.id;
 
   return (
     <div className={cardClass}>
-      <h2 className="text-sm font-semibold text-text-primary mb-3 flex items-center gap-2 justify-center">
-        <Zap className="w-4 h-4 text-yellow-500" />
-        חיסולים LIVE
-      </h2>
+      <MarketCardHeader
+        Icon={Zap} title="חיסולים" accent="#eab308"
+        right={
+          <span
+            className="flex items-center gap-1.5 text-[9px] font-bold tracking-wide shrink-0 px-1.5 py-0.5 rounded-full"
+            style={{
+              color: connected ? 'var(--color-loss)' : 'var(--color-text-muted)',
+              backgroundColor: connected ? 'rgba(239,68,68,0.12)' : 'var(--color-bg-tertiary)',
+            }}
+          >
+            <span
+              className={`w-1.5 h-1.5 rounded-full ${connected ? 'bg-loss animate-pulse' : 'bg-text-muted'}`}
+            />
+            {connected ? 'LIVE' : 'מתחבר…'}
+          </span>
+        }
+      />
 
-      {/* Summary bar */}
-      <div className="mb-2">
-        <div className="flex items-center justify-between mb-1">
-          <span className="text-[10px] font-medium text-red-400">
-            Short {shorts.length}
-          </span>
-          <span className="text-[10px] font-medium text-green-400">
-            {longs.length} Long
-          </span>
+      {/* Hero total liquidated */}
+      <div className="mb-3 flex items-end justify-between" dir="ltr">
+        <div>
+          <p className="text-[9px] uppercase tracking-wider text-text-muted mb-0.5">Total Liquidated</p>
+          <motion.p
+            key={Math.round(total)}
+            initial={{ opacity: 0.4 }} animate={{ opacity: 1 }}
+            className="text-xl font-bold num-mono leading-none"
+            style={{ color: 'var(--color-text-primary)' }}
+          >
+            {total > 0 ? `$${formatNum(total)}` : '—'}
+          </motion.p>
+        </div>
+        <span className="text-[10px] text-text-muted num-mono">{liquidations.length} events</span>
+      </div>
+
+      {/* Summary split bar */}
+      <div className="mb-3">
+        <div className="flex items-center justify-between mb-1 text-[10px] font-semibold" dir="ltr">
+          <span className="text-profit">Long {longs.length} · {formatNum(totalLongUsd)}</span>
+          <span className="text-loss">{formatNum(totalShortUsd)} · {shorts.length} Short</span>
         </div>
         <div className="h-2 bg-bg-tertiary rounded-full overflow-hidden flex" dir="ltr">
-          <motion.div
-            initial={{ width: 0 }}
-            animate={{ width: `${longPct}%` }}
-            transition={{ duration: 0.8, ease: 'easeOut' }}
-            className="h-full rounded-l-full"
-            style={{ backgroundColor: 'rgba(34, 197, 94, 0.6)' }}
-          />
-          <motion.div
-            initial={{ width: 0 }}
-            animate={{ width: `${100 - longPct}%` }}
-            transition={{ duration: 0.8, ease: 'easeOut' }}
-            className="h-full rounded-r-full"
-            style={{ backgroundColor: 'rgba(239, 68, 68, 0.6)' }}
-          />
-        </div>
-        <div className="flex items-center justify-between mt-1">
-          <span className="text-[9px] text-text-muted">{formatNum(totalShortUsd)}</span>
-          <span className="text-[9px] text-text-muted">{formatNum(totalLongUsd)}</span>
+          <motion.div animate={{ width: `${longPct}%` }} transition={{ duration: 0.6, ease: 'easeOut' }} className="h-full" style={{ background: 'var(--color-profit)' }} />
+          <motion.div animate={{ width: `${100 - longPct}%` }} transition={{ duration: 0.6, ease: 'easeOut' }} className="h-full" style={{ background: 'var(--color-loss)' }} />
         </div>
       </div>
 
-      {/* Feed */}
+      {/* Live drop-feed — new liquidations fall in from the top, size bar behind */}
       {liquidations.length > 0 ? (
-        <div className="space-y-1 max-h-[400px] overflow-y-auto scrollbar-thin">
-          {liquidations.map((liq) => {
-            const isLong = liq.side === 'SELL';
-            const big = liq.usdValue >= 50000;
-            return (
-              <motion.div
-                key={liq.id}
-                initial={{ opacity: 0, x: 15 }}
-                animate={{ opacity: 1, x: 0 }}
-                transition={{ duration: 0.25 }}
-                className={`flex items-center justify-between py-1.5 px-2 rounded-md ${big ? 'border' : ''}`}
-                style={{
-                  backgroundColor: isLong ? 'rgba(239, 68, 68, 0.07)' : 'rgba(34, 197, 94, 0.07)',
-                  borderColor: big ? (isLong ? 'rgba(239, 68, 68, 0.3)' : 'rgba(34, 197, 94, 0.3)') : undefined,
-                }}
-              >
-                <span className="text-[9px] text-text-muted shrink-0">{timeAgo(liq.time)}</span>
-                <div className="flex items-center gap-2">
-                  <span className="text-[11px] font-bold" style={{ color: isLong ? '#ef4444' : '#22c55e' }}>
-                    {formatNum(liq.usdValue)}
-                  </span>
-                  <span className="text-[10px] text-text-muted">
-                    {isLong ? 'L' : 'S'}
-                  </span>
-                  <span className="text-[11px] font-bold text-text-primary">{liq.symbol}</span>
-                  <Zap className="w-3 h-3 shrink-0" style={{ color: isLong ? '#ef4444' : '#22c55e' }} />
-                </div>
-              </motion.div>
-            );
-          })}
+        <div className="space-y-1 max-h-[360px] overflow-y-auto scrollbar-thin pe-0.5" dir="ltr">
+          <AnimatePresence initial={false}>
+            {liquidations.map((liq) => {
+              const isLong = liq.side === 'SELL';
+              const big = liq.usdValue >= 50000;
+              const whale = liq.usdValue >= 250000;
+              const isNewest = liq.id === newestId;
+              const col = isLong ? 'var(--color-loss)' : 'var(--color-profit)';
+              const barW = Math.min(100, (liq.usdValue / 100000) * 100);
+              return (
+                <motion.div
+                  key={liq.id}
+                  initial={{ opacity: 0, y: -14, scale: 0.96 }}
+                  animate={{
+                    opacity: 1, y: 0, scale: 1,
+                    boxShadow: isNewest
+                      ? [`0 0 0px 0px ${isLong ? 'rgba(239,68,68,0.0)' : 'rgba(34,197,94,0.0)'}`,
+                         `0 0 14px 1px ${isLong ? 'rgba(239,68,68,0.45)' : 'rgba(34,197,94,0.45)'}`,
+                         '0 0 0px 0px rgba(0,0,0,0)']
+                      : (whale ? `0 0 12px 0px ${isLong ? 'rgba(239,68,68,0.35)' : 'rgba(34,197,94,0.35)'}` : '0 0 0px 0px rgba(0,0,0,0)'),
+                  }}
+                  exit={{ opacity: 0, height: 0, marginTop: 0 }}
+                  transition={{ duration: 0.4, ease: 'easeOut', boxShadow: { duration: 0.9 } }}
+                  className="relative flex items-center justify-between py-2 px-2.5 rounded-lg overflow-hidden border"
+                  style={{
+                    background: isLong ? 'rgba(239,68,68,0.07)' : 'rgba(34,197,94,0.07)',
+                    borderColor: big ? (isLong ? 'rgba(239,68,68,0.4)' : 'rgba(34,197,94,0.4)') : 'transparent',
+                  }}
+                >
+                  {/* intensity bar (bigger liq = wider) */}
+                  <div className="absolute inset-y-0 left-0 pointer-events-none" style={{ width: `${barW}%`, background: `linear-gradient(to right, ${isLong ? 'rgba(239,68,68,0.18)' : 'rgba(34,197,94,0.18)'}, transparent)` }} />
+                  <div className="relative flex items-center gap-2 min-w-0">
+                    <Zap className="w-3.5 h-3.5 shrink-0" style={{ color: col }} />
+                    <CoinIcon pair={liq.symbol} className="w-4 h-4 shrink-0" />
+                    <span className="text-[11px] font-bold text-text-primary">{liq.symbol}</span>
+                    <span className="text-[8px] font-bold px-1 py-0.5 rounded shrink-0" style={{ color: col, backgroundColor: isLong ? 'rgba(239,68,68,0.15)' : 'rgba(34,197,94,0.15)' }}>
+                      {isLong ? 'LONG' : 'SHORT'}
+                    </span>
+                    {whale && (
+                      <span className="text-[8px] shrink-0" title="ליקווידציה גדולה">🐋</span>
+                    )}
+                  </div>
+                  <div className="relative flex items-center gap-2 shrink-0">
+                    <span className="text-[11px] font-bold num-mono" style={{ color: col }}>{formatNum(liq.usdValue)}</span>
+                    <span className="text-[9px] text-text-muted">{timeAgo(liq.time)}</span>
+                  </div>
+                </motion.div>
+              );
+            })}
+          </AnimatePresence>
         </div>
       ) : (
-        <div className="text-center py-8">
-          <Zap className="w-5 h-5 text-yellow-500/40 mx-auto mb-2" />
-          <motion.div
-            animate={{ opacity: [0.3, 1, 0.3] }}
-            transition={{ duration: 2, repeat: Infinity }}
-            className="text-[11px] text-text-muted"
-          >
-            ממתין לחיסולים...
-          </motion.div>
+        <div className="flex flex-col items-center justify-center py-10">
+          {/* Radar sweep — reads as "actively listening" rather than frozen */}
+          <div className="relative w-16 h-16 mb-3">
+            <span className="absolute inset-0 rounded-full border border-yellow-500/20" />
+            <span className="absolute inset-[22%] rounded-full border border-yellow-500/15" />
+            <motion.span
+              className="absolute inset-0 rounded-full"
+              style={{ background: 'conic-gradient(from 0deg, rgba(234,179,8,0.0) 0deg, rgba(234,179,8,0.28) 50deg, rgba(234,179,8,0.0) 60deg)' }}
+              animate={{ rotate: 360 }}
+              transition={{ duration: 2.4, repeat: Infinity, ease: 'linear' }}
+            />
+            <Zap className="absolute inset-0 m-auto w-5 h-5 text-yellow-500/70" />
+          </div>
+          <span className="text-[11px] text-text-muted">
+            {connected ? 'מחובר · ממתין לחיסולים…' : 'מתחבר לזרם החיסולים…'}
+          </span>
         </div>
       )}
     </div>
@@ -605,6 +686,7 @@ export default function MarketOverview() {
   const [openInterest, setOpenInterest] = useState([]);
   const [longShortRatio, setLongShortRatio] = useState([]);
   const [liquidations, setLiquidations] = useState([]);
+  const [liqConnected, setLiqConnected] = useState(false);
   const intervalRef = useRef(null);
 
   // Helper: fetch with timeout (AbortSignal.timeout may not exist in older Safari)
@@ -875,10 +957,12 @@ export default function MarketOverview() {
     const connect = () => {
       ws = new WebSocket('wss://stream.bybit.com/v5/public/linear');
       ws.onopen = () => {
-        ws.send(JSON.stringify({ op: 'subscribe', args: FUTURES_SYMBOLS.map((s) => `allLiquidation.${s}`) }));
+        setLiqConnected(true);
+        ws.send(JSON.stringify({ op: 'subscribe', args: LIQ_SYMBOLS.map((s) => `allLiquidation.${s}`) }));
       };
       ws.onmessage = (event) => {
-        const data = JSON.parse(event.data);
+        let data;
+        try { data = JSON.parse(event.data); } catch { return; } // ignore non-JSON frames
         if (!data.topic?.startsWith('allLiquidation.')) return;
         for (const item of data.data || []) {
           const sym = normalizeSym(item.s || '');
@@ -897,8 +981,8 @@ export default function MarketOverview() {
           });
         }
       };
-      ws.onclose = () => { if (!closed) setTimeout(connect, 3000); };
-      ws.onerror = () => ws.close();
+      ws.onclose = () => { setLiqConnected(false); if (!closed) setTimeout(connect, 3000); };
+      ws.onerror = () => { setLiqConnected(false); ws.close(); };
     };
 
     connect();
@@ -921,13 +1005,14 @@ export default function MarketOverview() {
     };
   }, []);
 
-  // Compute gainers and losers — $30M+ volume AND must have a real icon
-  const qualityCoins = allCoins.filter(c =>
-    (c.total_volume || 0) >= 30_000_000 && hasKnownIcon(c.symbol)
-  );
+  // Gainers / losers. allCoins is already icon-filtered at the source, so a
+  // lower 10M volume floor keeps a healthy pool. Split by SIGN so losers are
+  // genuinely down-coins (never overlap gainers, never empty just because the
+  // pool is small).
+  const qualityCoins = allCoins.filter(c => (c.total_volume || 0) >= 10_000_000);
   const sorted = [...qualityCoins].sort((a, b) => (b.price_change_percentage_24h || 0) - (a.price_change_percentage_24h || 0));
-  const gainers = sorted.slice(0, 5);
-  const losers = sorted.slice(-5).reverse();
+  const gainers = sorted.filter(c => (c.price_change_percentage_24h || 0) > 0).slice(0, 8);
+  const losers = sorted.filter(c => (c.price_change_percentage_24h || 0) < 0).slice(-8).reverse();
 
   // Altcoin Season Index: prefer real BlockchainCenter data (90d), fallback to local 30d calc
   const EXCLUDED_SYMBOLS = new Set([
@@ -972,9 +1057,10 @@ export default function MarketOverview() {
             onClick={() => setActiveTab(tab.key)}
             className={`flex items-center justify-center gap-1.5 sm:gap-2 px-3 sm:px-5 py-2.5 rounded-xl text-xs sm:text-sm font-semibold transition-all cursor-pointer ${
               activeTab === tab.key
-                ? 'bg-accent-primary text-white shadow-lg shadow-accent-primary/25'
+                ? 'bg-accent-primary text-white shadow-lg'
                 : 'bg-bg-secondary border border-border-primary text-text-secondary hover:text-text-primary hover:bg-bg-tertiary'
             }`}
+            style={activeTab === tab.key ? { boxShadow: '0 6px 22px -6px #8b5cf680' } : undefined}
           >
             <tab.icon className="w-4 h-4 sm:w-4.5 sm:h-4.5 shrink-0" />
             <span className="sm:hidden">{tab.shortLabel}</span>
@@ -987,106 +1073,78 @@ export default function MarketOverview() {
       {activeTab === 'overview' ? (
       <motion.div key="overview" initial={{ opacity: 0, x: -20 }} animate={{ opacity: 1, x: 0 }} exit={{ opacity: 0, x: 20 }} transition={{ duration: 0.25 }}>
 
-      {/* Top row: Global stats — neutral cards, colour identity in the icon chips */}
-      <motion.div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-3 mb-4" variants={staggerContainer} initial="initial" animate="animate">
+      {/* Top row: global stats — borderless, free, divider-separated (no boxes).
+          Uniform typography: 11px label, 2xl number, xs sub on every cell. */}
+      <motion.div
+        className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-3 mb-5"
+        variants={staggerContainer} initial="initial" animate="animate"
+      >
+        {[
+          {
+            key: 'cap', Icon: DollarSign, label: 'שווי שוק',
+            value: global ? formatNum(global.total_market_cap?.usd) : '—',
+            delta: global?.market_cap_change_percentage_24h_usd ?? null,
+          },
+          {
+            key: 'btc', Icon: Bitcoin, label: 'BTC.D',
+            value: global?.market_cap_percentage?.btc ? `${global.market_cap_percentage.btc.toFixed(1)}%` : '—',
+            sub: global?.market_cap_percentage?.eth ? `ETH ${global.market_cap_percentage.eth.toFixed(1)}%` : null,
+          },
+          {
+            key: 'vol', Icon: PieChart, label: 'נפח 24h',
+            value: global ? formatNum(global.total_volume?.usd) : '—',
+            sub: global?.active_cryptocurrencies ? `${global.active_cryptocurrencies.toLocaleString()} coins` : null,
+          },
+          {
+            key: 'usdt', Icon: DollarSign, label: 'USDT.D',
+            value: global?.market_cap_percentage?.usdt ? `${global.market_cap_percentage.usdt.toFixed(1)}%` : '—',
+            sub: 'Stablecoin dominance',
+          },
+        ].map((s) => (
+          <MarketStatCard key={s.key} accentKey={s.key} Icon={s.Icon} label={s.label}>
+            <p className="text-2xl font-bold leading-none num-mono text-text-primary">{s.value}</p>
+            <div className="h-4 mt-2">
+              {s.delta != null ? (
+                <span className={`text-xs font-semibold ${s.delta >= 0 ? 'text-profit' : 'text-loss'}`}>
+                  {s.delta >= 0 ? '+' : ''}{s.delta.toFixed(2)}%
+                </span>
+              ) : s.sub ? (
+                <span className="text-xs text-text-muted">{s.sub}</span>
+              ) : null}
+            </div>
+          </MarketStatCard>
+        ))}
 
-        {/* Market Cap */}
-        <motion.div className="bento-card flex flex-col justify-between gap-2 p-4 min-h-[100px]" variants={cardVariants}>
-          <div className="flex items-center gap-2">
-            <span className="w-6 h-6 rounded-md flex items-center justify-center shrink-0" style={{ backgroundColor: STAT_ACCENTS.cap.chipBg }}>
-              <DollarSign className="w-3.5 h-3.5" style={{ color: STAT_ACCENTS.cap.color }} />
-            </span>
-            <span className="text-[10px] text-text-muted uppercase tracking-widest">שווי שוק</span>
-          </div>
-          <p className="text-3xl font-bold leading-none num-mono text-text-primary">
-            {global ? formatNum(global.total_market_cap?.usd) : '—'}
-          </p>
-          {global?.market_cap_change_percentage_24h_usd != null && (
-            <span className={`text-xs font-bold ${global.market_cap_change_percentage_24h_usd >= 0 ? 'text-profit' : 'text-loss'}`}>
-              {global.market_cap_change_percentage_24h_usd >= 0 ? '+' : ''}{global.market_cap_change_percentage_24h_usd.toFixed(2)}%
-            </span>
-          )}
-        </motion.div>
-
-        {/* BTC Dominance */}
-        <motion.div className="bento-card flex flex-col justify-between gap-2 p-4 min-h-[100px]" variants={cardVariants}>
-          <div className="flex items-center gap-2">
-            <span className="w-6 h-6 rounded-md flex items-center justify-center shrink-0" style={{ backgroundColor: STAT_ACCENTS.btc.chipBg }}>
-              <Bitcoin className="w-3.5 h-3.5" style={{ color: STAT_ACCENTS.btc.color }} />
-            </span>
-            <span className="text-[10px] text-text-muted uppercase tracking-widest">BTC.D</span>
-          </div>
-          <p className="text-3xl font-bold leading-none num-mono text-text-primary">
-            {global?.market_cap_percentage?.btc ? `${global.market_cap_percentage.btc.toFixed(1)}%` : '—'}
-          </p>
-          {global?.market_cap_percentage?.eth && (
-            <span className="text-[11px] text-text-muted">ETH: {global.market_cap_percentage.eth.toFixed(1)}%</span>
-          )}
-        </motion.div>
-
-        {/* 24h Volume */}
-        <motion.div className="bento-card flex flex-col justify-between gap-2 p-4 min-h-[100px]" variants={cardVariants}>
-          <div className="flex items-center gap-2">
-            <span className="w-6 h-6 rounded-md flex items-center justify-center shrink-0" style={{ backgroundColor: STAT_ACCENTS.vol.chipBg }}>
-              <PieChart className="w-3.5 h-3.5" style={{ color: STAT_ACCENTS.vol.color }} />
-            </span>
-            <span className="text-[10px] text-text-muted uppercase tracking-widest">נפח 24h</span>
-          </div>
-          <p className="text-3xl font-bold leading-none num-mono text-text-primary">
-            {global ? formatNum(global.total_volume?.usd) : '—'}
-          </p>
-          <span className="text-[11px] text-text-muted">
-            {global?.active_cryptocurrencies ? `${global.active_cryptocurrencies.toLocaleString()} coins` : ''}
-          </span>
-        </motion.div>
-
-        {/* USDT Dominance */}
-        <motion.div className="bento-card flex flex-col justify-between gap-2 p-4 min-h-[100px]" variants={cardVariants}>
-          <div className="flex items-center gap-2">
-            <span className="w-6 h-6 rounded-md flex items-center justify-center shrink-0" style={{ backgroundColor: STAT_ACCENTS.usdt.chipBg }}>
-              <DollarSign className="w-3.5 h-3.5" style={{ color: STAT_ACCENTS.usdt.color }} />
-            </span>
-            <span className="text-[10px] text-text-muted uppercase tracking-widest">USDT.D</span>
-          </div>
-          <p className="text-3xl font-bold leading-none num-mono text-text-primary">
-            {global?.market_cap_percentage?.usdt ? `${global.market_cap_percentage.usdt.toFixed(1)}%` : '—'}
-          </p>
-          <span className="text-[11px] text-text-muted">Stablecoin dominance</span>
-        </motion.div>
-
-        {/* Altcoin Season */}
-        <motion.div className="bento-card flex flex-col justify-between gap-2 p-4 min-h-[100px]" variants={cardVariants}>
-          <div className="flex items-center gap-2">
-            <span className="w-6 h-6 rounded-md flex items-center justify-center shrink-0" style={{ backgroundColor: STAT_ACCENTS.alt.chipBg }}>
-              <ArrowUpRight className="w-3.5 h-3.5" style={{ color: STAT_ACCENTS.alt.color }} />
-            </span>
-            <span className="text-[10px] text-text-muted uppercase tracking-widest">Alt Season</span>
-          </div>
+        {/* Altcoin Season — same card, with the index slider as its "sub" line */}
+        <MarketStatCard accentKey="alt" Icon={ArrowUpRight} label="Alt Season">
           {altSeasonData ? (
             <>
-              <p className="text-3xl font-bold leading-none num-mono text-text-primary">
-                {altSeasonData.index}<span className="text-base font-normal text-text-muted">/100</span>
+              <p className="text-2xl font-bold leading-none num-mono text-text-primary">
+                {altSeasonData.index}<span className="text-sm font-normal text-text-muted">/100</span>
               </p>
-              <div>
-                <div className="relative h-1.5 rounded-full bg-white/10 overflow-hidden">
+              <div className="mt-2">
+                <div className="relative h-1.5 rounded-full bg-bg-tertiary overflow-hidden">
                   <div className="absolute inset-y-0 left-0 w-[40%] rounded-full" style={{ background: 'linear-gradient(to right, #f7931a, #c47818)' }} />
                   <div className="absolute inset-y-0 right-0 w-[40%] rounded-full" style={{ background: 'linear-gradient(to left, #6366f1, #818cf8)' }} />
-                  <div className="absolute top-1/2 -translate-y-1/2 w-3 h-3 rounded-full border-2 bg-black"
+                  <div className="absolute top-1/2 -translate-y-1/2 w-3 h-3 rounded-full border-2 bg-text-primary"
                     style={{ left: `calc(${altSeasonData.index}% - 6px)`, borderColor: altSeasonData.color }} />
                 </div>
                 <span className="text-[10px] font-semibold" style={{ color: altSeasonData.color }}>{altSeasonData.label}</span>
               </div>
             </>
           ) : (
-            <p className="text-3xl font-bold text-text-muted num-mono">—</p>
+            <p className="text-2xl font-bold text-text-muted num-mono">—</p>
           )}
-        </motion.div>
+        </MarketStatCard>
       </motion.div>
 
       {/* Market Sessions — full width */}
+      <Reveal>
       <MarketSessionsCard />
+      </Reveal>
 
       {/* Middle row: Fear & Greed + Hot Categories + Gainers/Losers */}
+      <Reveal>
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-4 mb-4">
         {/* Fear & Greed with history */}
         <FearGreedGauge expanded />
@@ -1125,47 +1183,52 @@ export default function MarketOverview() {
           transition={{ duration: 0.5, delay: 0.3 }}
           className={cardClass}
         >
-          <h2 className="text-sm font-semibold text-text-primary mb-3 flex items-center gap-2 justify-center">
-            <Rocket className="w-4 h-4 text-profit" />
-            עולים ויורדים
-          </h2>
-          {gainers.length > 0 ? (
-            <div className="space-y-1.5">
-              {gainers.slice(0, 4).map((coin) => (
-                <motion.div
-                  key={coin.id}
-                  initial={{ opacity: 0 }}
-                  animate={{ opacity: 1 }}
-                  className="flex items-center justify-between py-1 border-b border-border-primary/30 last:border-0 cursor-pointer hover:bg-white/5 rounded px-1 transition-colors"
-                  onClick={() => openChart(coin.symbol)}
-                >
-                  <span className="inline-flex items-center text-[11px] font-bold px-1.5 py-0.5 rounded-md bg-profit/10 text-profit border border-profit/25 num-mono">
-                    +{coin.price_change_percentage_24h?.toFixed(1)}%
-                  </span>
-                  <div className="flex items-center gap-2">
-                    <span className="text-xs font-medium text-text-primary">{coin.symbol?.toUpperCase()}</span>
-                    <CoinIcon pair={coin.symbol} className="w-4 h-4" />
-                  </div>
-                </motion.div>
-              ))}
-              <div className="border-t border-border-primary/50 my-1" />
-              {losers.slice(0, 4).map((coin) => (
-                <motion.div
-                  key={coin.id}
-                  initial={{ opacity: 0 }}
-                  animate={{ opacity: 1 }}
-                  className="flex items-center justify-between py-1 border-b border-border-primary/30 last:border-0 cursor-pointer hover:bg-white/5 rounded px-1 transition-colors"
-                  onClick={() => openChart(coin.symbol)}
-                >
-                  <span className="inline-flex items-center text-[11px] font-bold px-1.5 py-0.5 rounded-md bg-loss/10 text-loss border border-loss/25 num-mono">
-                    {coin.price_change_percentage_24h?.toFixed(1)}%
-                  </span>
-                  <div className="flex items-center gap-2">
-                    <span className="text-xs font-medium text-text-primary">{coin.symbol?.toUpperCase()}</span>
-                    <CoinIcon pair={coin.symbol} className="w-4 h-4" />
-                  </div>
-                </motion.div>
-              ))}
+          {gainers.length > 0 || losers.length > 0 ? (
+            <div className="grid grid-cols-2">
+              {/* עולים — right column (RTL), centered header, no card title */}
+              <div className="pe-3">
+                <div className="flex items-center justify-center gap-1.5 mb-3 text-xs font-bold text-profit">
+                  <TrendingUp className="w-4 h-4" /> עולים
+                </div>
+                <div className="space-y-0.5">
+                  {gainers.slice(0, 8).map((coin) => (
+                    <button
+                      key={coin.id}
+                      type="button"
+                      onClick={() => openChart(coin.symbol)}
+                      className="w-full flex items-center justify-between py-1.5 px-1.5 rounded-lg hover:bg-bg-tertiary transition-colors cursor-pointer"
+                    >
+                      <div className="flex items-center gap-2 min-w-0">
+                        <CoinIcon pair={coin.symbol} className="w-4 h-4 shrink-0" />
+                        <span className="text-xs font-medium text-text-primary truncate">{coin.symbol?.toUpperCase()}</span>
+                      </div>
+                      <span className="text-xs font-bold text-profit num-mono shrink-0">+{(coin.price_change_percentage_24h ?? 0).toFixed(1)}%</span>
+                    </button>
+                  ))}
+                </div>
+              </div>
+              {/* יורדים — left column (RTL); single centre divider via border-s */}
+              <div className="ps-3 border-s border-border-primary">
+                <div className="flex items-center justify-center gap-1.5 mb-3 text-xs font-bold text-loss">
+                  <TrendingDown className="w-4 h-4" /> יורדים
+                </div>
+                <div className="space-y-0.5">
+                  {losers.slice(0, 8).map((coin) => (
+                    <button
+                      key={coin.id}
+                      type="button"
+                      onClick={() => openChart(coin.symbol)}
+                      className="w-full flex items-center justify-between py-1.5 px-1.5 rounded-lg hover:bg-bg-tertiary transition-colors cursor-pointer"
+                    >
+                      <div className="flex items-center gap-2 min-w-0">
+                        <CoinIcon pair={coin.symbol} className="w-4 h-4 shrink-0" />
+                        <span className="text-xs font-medium text-text-primary truncate">{coin.symbol?.toUpperCase()}</span>
+                      </div>
+                      <span className="text-xs font-bold text-loss num-mono shrink-0">{(coin.price_change_percentage_24h ?? 0).toFixed(1)}%</span>
+                    </button>
+                  ))}
+                </div>
+              </div>
             </div>
           ) : (
             <p className="text-xs text-text-muted text-center py-8">{loading ? 'טוען...' : 'לא זמין'}</p>
@@ -1174,7 +1237,10 @@ export default function MarketOverview() {
 
       </div>
 
+      </Reveal>
+
       {/* Top 10 coins + Trending + Liquidations */}
+      <Reveal>
       <div className="grid grid-cols-1 lg:grid-cols-4 gap-4 mb-4">
         {/* Top 10 Coins */}
         <div className={`${cardClass} lg:col-span-2`}>
@@ -1185,7 +1251,7 @@ export default function MarketOverview() {
           {topCoins.length > 0 ? (
             <div className="space-y-2">
               {topCoins.map((coin, i) => (
-                <div key={coin.id} className="flex items-center justify-between py-1.5 border-b border-border-primary/50 last:border-0 cursor-pointer hover:bg-white/5 rounded px-1 transition-colors" onClick={() => openChart(coin.symbol)}>
+                <div key={coin.id} className="flex items-center justify-between py-1.5 border-b border-border-primary/50 last:border-0 cursor-pointer hover:bg-bg-tertiary rounded px-1 transition-colors" onClick={() => openChart(coin.symbol)}>
                   <div className="flex items-center gap-2">
                     {coin.price_change_percentage_24h >= 0 ? (
                       <ArrowUpRight className="w-3.5 h-3.5 text-profit" />
@@ -1222,14 +1288,14 @@ export default function MarketOverview() {
           {trending.length > 0 ? (
             <div className="space-y-2">
               {trending.map((coin, i) => {
-                const chg = coin.price_change_percentage_24h;
+                const chg = coin.price_change_percentage_24h ?? 0;
                 return (
                   <motion.div
                     key={coin.id}
                     initial={{ opacity: 0 }}
                     animate={{ opacity: 1 }}
                     transition={{ delay: 0.05 * i, duration: 0.3 }}
-                    className="flex items-center justify-between py-1 border-b border-border-primary/30 last:border-0 cursor-pointer hover:bg-white/5 rounded px-1 transition-colors"
+                    className="flex items-center justify-between py-1 border-b border-border-primary/30 last:border-0 cursor-pointer hover:bg-bg-tertiary rounded px-1 transition-colors"
                     onClick={() => openChart(coin.symbol)}
                   >
                     <div className="flex items-center gap-1.5 w-16 shrink-0">
@@ -1257,18 +1323,25 @@ export default function MarketOverview() {
         </div>
 
         {/* Liquidations */}
-        <LiquidationsCard liquidations={liquidations} />
+        <LiquidationsCard liquidations={liquidations} connected={liqConnected} />
       </div>
 
+      </Reveal>
+
       {/* Futures Data */}
+      <Reveal>
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-4 mb-4">
         <FundingRatesCard rates={fundingRates} loading={loading} />
         <OpenInterestCard data={openInterest} loading={loading} />
         <LongShortCard data={longShortRatio} loading={loading} />
       </div>
 
+      </Reveal>
+
       {/* Heatmap */}
+      <Reveal>
       <CryptoHeatmap coins={allCoins} loading={loading} />
+      </Reveal>
 
       </motion.div>
       ) : (
