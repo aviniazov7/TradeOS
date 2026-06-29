@@ -33,6 +33,7 @@ import { useTheme } from '../../hooks/useTheme';
 import TelegramSettings from './TelegramSettings';
 import NotificationSettings from './NotificationSettings';
 import ContactDeveloper from './ContactDeveloper';
+import { planExpiresMs } from '../../utils/premium';
 
 const APP_URL = 'https://tradeos-91a58.web.app';
 
@@ -518,12 +519,13 @@ const PREMIUM_BULLETS = [
 
 function PlanCard({ profile, isAdmin, isPremium, onUpgrade }) {
   const planExpires = profile?.planExpires || null;
-  const daysLeft = planExpires
-    ? Math.ceil((new Date(planExpires).getTime() - Date.now()) / 86400000)
+  const expMs = planExpiresMs(planExpires);
+  const daysLeft = expMs != null
+    ? Math.ceil((expMs - Date.now()) / 86400000)
     : null;
   const isExpiringSoon = isPremium && !isAdmin && daysLeft != null && daysLeft >= 0 && daysLeft <= EXPIRY_WARN_DAYS;
-  const expiryStr = planExpires
-    ? new Date(planExpires).toLocaleDateString('he-IL', { day: '2-digit', month: '2-digit', year: 'numeric' })
+  const expiryStr = expMs != null
+    ? new Date(expMs).toLocaleDateString('he-IL', { day: '2-digit', month: '2-digit', year: 'numeric' })
     : null;
 
   // 1. Admin → short, neutral, cyan

@@ -9,14 +9,16 @@ import { useAuth } from '../../contexts/AuthContext';
 import { PREMIUM_FEATURES, PREMIUM_PRICING } from '../../utils/constants';
 import { pageVariants, pageTransition } from '../../utils/animations';
 import { redeemCoupon } from '../../services/couponService';
+import { planExpiresMs } from '../../utils/premium';
 
 const ICONS = { Bot, BookOpen, Wallet, Link2, Bell, BarChart3, Sparkles, Image, Layers };
 
 // Human-friendly "time remaining" string for a Premium plan with an expiry.
 // Returns null when the plan is lifetime (no expiry) or invalid.
 function timeLeftLabel(planExpires) {
-  if (!planExpires) return null;
-  const ms = new Date(planExpires).getTime() - Date.now();
+  const exp = planExpiresMs(planExpires);
+  if (!exp) return null;
+  const ms = exp - Date.now();
   if (!Number.isFinite(ms) || ms <= 0) return null;
   const minutes = Math.floor(ms / 60_000);
   const hours = Math.floor(minutes / 60);
@@ -34,8 +36,9 @@ function timeLeftLabel(planExpires) {
 export default function PremiumPage() {
   const { isPremium, profile } = useAuth();
   const navigate = useNavigate();
-  const expiresAt = profile?.planExpires
-    ? new Date(profile.planExpires).toLocaleDateString('he-IL', { day: '2-digit', month: '2-digit', year: 'numeric' })
+  const expiresAtMs = planExpiresMs(profile?.planExpires);
+  const expiresAt = expiresAtMs
+    ? new Date(expiresAtMs).toLocaleDateString('he-IL', { day: '2-digit', month: '2-digit', year: 'numeric' })
     : null;
   const timeLeft = timeLeftLabel(profile?.planExpires);
   const [couponCode, setCouponCode] = useState('');
