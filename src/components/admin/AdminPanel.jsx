@@ -210,8 +210,8 @@ export default function AdminPanel() {
     try {
       await adminSendNotification({
         uid: u.id,
-        title: 'מתגעגעים אליך ב-TradeOS 👋',
-        body: 'עבר זמן מאז שנכנסת — בוא לעדכן את יומן המסחר ולראות מה חדש.',
+        title: 'ה-Premium שלך מחכה לך 👑',
+        body: 'המנוי שלך פעיל וממתין — חזור לעדכן את יומן המסחר ולנצל את הניתוחים החכמים של TradeOS.',
         url: '/',
       });
       toast.success('נשלחה התראת חזרה');
