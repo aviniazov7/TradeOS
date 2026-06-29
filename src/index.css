@@ -509,23 +509,6 @@ input[type="number"] {
   box-shadow: 0 4px 20px rgba(0, 0, 0, 0.25);
   transition: border-color 0.2s ease, box-shadow 0.2s ease;
 }
-/* 21st.dev spotlight — a soft violet→cyan glow that tracks the cursor (the
-   --spot-x/--spot-y vars are set by a pointer listener in Layout). Subtle enough
-   to sit over content without hurting readability. */
-.bento-card::after {
-  content: '';
-  position: absolute;
-  inset: 0;
-  border-radius: inherit;
-  pointer-events: none;
-  background: radial-gradient(420px circle at var(--spot-x, 50%) var(--spot-y, -40%),
-    rgba(34, 211, 238, 0.10), rgba(139, 92, 246, 0.06) 30%, transparent 55%);
-  opacity: 0;
-  transition: opacity 0.35s ease;
-  z-index: 1;
-}
-.bento-card:hover::after { opacity: 1; }
-
 /* 21st.dev border beam — a light travels around the border of a highlighted
    card. Apply class "border-beam" to a rounded, position:relative element. */
 @property --beam-angle {
