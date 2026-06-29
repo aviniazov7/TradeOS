@@ -106,6 +106,23 @@ export default function GlobalSearch() {
 
   useEffect(() => { if (open && inputRef.current) inputRef.current.focus(); }, [open]);
 
+  // Lock the background while the palette is open so moving/scrolling doesn't
+  // shift the page behind it or trigger pull-to-refresh. We freeze BOTH the
+  // body (PullToRefresh skips when body overflow is hidden) and the real scroll
+  // container (#app-scroll) — overflow:hidden keeps the current scroll position.
+  useEffect(() => {
+    if (!open) return;
+    const scroller = document.getElementById('app-scroll');
+    const prevBody = document.body.style.overflow;
+    const prevScroller = scroller ? scroller.style.overflow : '';
+    document.body.style.overflow = 'hidden';
+    if (scroller) scroller.style.overflow = 'hidden';
+    return () => {
+      document.body.style.overflow = prevBody;
+      if (scroller) scroller.style.overflow = prevScroller;
+    };
+  }, [open]);
+
   const q = query.trim().toLowerCase();
 
   const pageItems = useMemo(() => {
