@@ -1,6 +1,6 @@
 import { useState, useMemo } from 'react';
 import { motion } from 'framer-motion';
-import { Plus, FlaskConical, Trash2, Pencil, ExternalLink, TrendingUp, TrendingDown, Settings, Download, ChevronDown, ChevronRight, ChevronLeft, Eye } from 'lucide-react';
+import { Plus, FlaskConical, Trash2, Pencil, ExternalLink, TrendingUp, TrendingDown, Settings, Download, ChevronDown, ChevronRight, ChevronLeft, Eye, CandlestickChart } from 'lucide-react';
 import DatePicker from 'react-datepicker';
 import 'react-datepicker/dist/react-datepicker.css';
 import toast from 'react-hot-toast';
@@ -18,6 +18,7 @@ import CoinIcon from '../shared/CoinIcon';
 import Modal from '../shared/Modal';
 import PairSearch from '../journal/PairSearch';
 import TimeframeSelector from '../shared/TimeframeSelector';
+import TradingViewPanel from './TradingViewPanel';
 import StrategySelector from '../shared/StrategySelector';
 import { PAIRS, SESSIONS, getSessionClasses } from '../../utils/constants';
 import { formatDate, formatDateShort, formatTime } from '../../utils/formatters';
@@ -63,6 +64,8 @@ export default function BacktestTracker() {
   const [viewOpen, setViewOpen] = useState(false);
   const [expandedCard, setExpandedCard] = useState(null);
   const [mobileStep, setMobileStep] = useState(0);
+  const [chartOpen, setChartOpen] = useState(false);
+  const [chartInterval, setChartInterval] = useState('60');
 
   const update = (field, value) => setForm((f) => {
     const next = { ...f, [field]: value };
@@ -214,6 +217,17 @@ export default function BacktestTracker() {
           </div>
 
           <div className="flex items-center gap-1.5 md:gap-2 flex-shrink-0">
+            <button
+              onClick={() => setChartOpen((v) => !v)}
+              className={`h-9 w-9 inline-flex items-center justify-center rounded-lg transition-colors cursor-pointer border ${
+                chartOpen
+                  ? 'bg-accent-primary/15 text-accent-primary border-accent-primary/40'
+                  : 'text-text-muted hover:text-text-primary hover:bg-bg-tertiary border-border-primary'
+              }`}
+              title={chartOpen ? 'סגור גרף' : 'פתח גרף TradingView'}
+            >
+              <CandlestickChart className="w-4 h-4" />
+            </button>
             <button onClick={() => setViewOpen(true)} className="h-9 w-9 inline-flex items-center justify-center rounded-lg text-text-muted hover:text-text-primary hover:bg-bg-tertiary transition-colors cursor-pointer border border-border-primary" title="צפייה ביומן">
               <Eye className="w-4 h-4" />
             </button>
@@ -675,6 +689,14 @@ export default function BacktestTracker() {
       <ConfirmDialog isOpen={!!deleteTarget} onClose={() => setDeleteTarget(null)} onConfirm={handleDelete} title="מחיקת עסקה" message="למחוק את העסקה? לא ניתן לבטל פעולה זו." />
 
       <StrategyView isOpen={viewOpen} onClose={() => setViewOpen(false)} journal={activeJournal} />
+
+      <TradingViewPanel
+        open={chartOpen}
+        symbol={form.pair}
+        interval={chartInterval}
+        onIntervalChange={setChartInterval}
+        onClose={() => setChartOpen(false)}
+      />
     </motion.div>
   );
 }
