@@ -1,4 +1,5 @@
 import { createContext, useContext, useState, useEffect } from 'react';
+import { planExpiresMs } from '../utils/premium';
 import {
   onAuthChange,
   handleRedirectResult,
@@ -168,9 +169,12 @@ export function AuthProvider({ children }) {
   const isEmailUser = user?.providerData?.some((p) => p.providerId === 'password') || false;
   const isAdmin = profile?.role === 'admin';
   // Premium gate. Admins are always premium. A plan with an expiry only counts
-  // while it hasn't lapsed.
+  // while it hasn't lapsed. planExpires may be a Firestore Timestamp / ISO
+  // string / Date — planExpiresMs() normalizes it (a raw new Date(Timestamp)
+  // gave NaN and silently kept premium OFF after a coupon redeem).
+  const expMs = planExpiresMs(profile?.planExpires);
   const planActive = profile?.plan === 'premium'
-    && (!profile?.planExpires || new Date(profile.planExpires).getTime() > Date.now());
+    && (expMs == null || expMs > Date.now());
   const isPremium = isAdmin || planActive;
   const plan = isPremium ? 'premium' : 'free';
 
