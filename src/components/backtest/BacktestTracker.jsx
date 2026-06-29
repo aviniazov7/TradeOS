@@ -1,5 +1,5 @@
 import { useState, useMemo } from 'react';
-import { motion } from 'framer-motion';
+import { motion, AnimatePresence } from 'framer-motion';
 import { Plus, FlaskConical, Trash2, Pencil, ExternalLink, TrendingUp, TrendingDown, Settings, Download, ChevronDown, ChevronRight, ChevronLeft, Eye, CandlestickChart } from 'lucide-react';
 import DatePicker from 'react-datepicker';
 import 'react-datepicker/dist/react-datepicker.css';
@@ -65,7 +65,6 @@ export default function BacktestTracker() {
   const [expandedCard, setExpandedCard] = useState(null);
   const [mobileStep, setMobileStep] = useState(0);
   const [chartOpen, setChartOpen] = useState(false);
-  const [chartInterval, setChartInterval] = useState('60');
 
   const update = (field, value) => setForm((f) => {
     const next = { ...f, [field]: value };
@@ -265,6 +264,13 @@ export default function BacktestTracker() {
           </button>
         </div>
       </div>
+
+      {/* TradingView chart — full-width, slides up from the bottom, toolbar stays above */}
+      <AnimatePresence>
+        {chartOpen && (
+          <TradingViewPanel symbol={form.pair} onClose={() => setChartOpen(false)} />
+        )}
+      </AnimatePresence>
 
       {/* Tab: Records */}
       {tab === 'records' && (
@@ -689,14 +695,6 @@ export default function BacktestTracker() {
       <ConfirmDialog isOpen={!!deleteTarget} onClose={() => setDeleteTarget(null)} onConfirm={handleDelete} title="מחיקת עסקה" message="למחוק את העסקה? לא ניתן לבטל פעולה זו." />
 
       <StrategyView isOpen={viewOpen} onClose={() => setViewOpen(false)} journal={activeJournal} />
-
-      <TradingViewPanel
-        open={chartOpen}
-        symbol={form.pair}
-        interval={chartInterval}
-        onIntervalChange={setChartInterval}
-        onClose={() => setChartOpen(false)}
-      />
     </motion.div>
   );
 }

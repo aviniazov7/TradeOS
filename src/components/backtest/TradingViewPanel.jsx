@@ -1,6 +1,6 @@
 import { useEffect, useRef } from 'react';
-import { motion, AnimatePresence } from 'framer-motion';
-import { X, ExternalLink, LineChart } from 'lucide-react';
+import { motion } from 'framer-motion';
+import { X, ExternalLink } from 'lucide-react';
 
 // Map the app's pair (e.g. "BTCUSDT", "XAUUSDT") to a TradingView symbol.
 // Crypto USDT/USD pairs resolve well under BINANCE; anything already namespaced
@@ -13,17 +13,11 @@ function toTvSymbol(pair) {
   return p;
 }
 
-const TV_INTERVALS = [
-  { v: '15', label: '15ד' },
-  { v: '60', label: '1ש' },
-  { v: '240', label: '4ש' },
-  { v: 'D', label: '1י' },
-  { v: 'W', label: '1ש׳' },
-];
-
-// Embedded TradingView Advanced Chart (free widget) with full drawing tools.
-// Re-injects the widget whenever the symbol, interval or theme changes.
-function TvChart({ symbol, interval }) {
+// Embedded TradingView Advanced Chart (free widget) with the full native
+// toolbar (symbol search, intervals, drawing tools). Re-injects on symbol /
+// theme change. We intentionally do NOT add our own interval buttons — the
+// widget's own controls handle timeframe.
+function TvChart({ symbol }) {
   const containerRef = useRef(null);
 
   useEffect(() => {
@@ -44,15 +38,15 @@ function TvChart({ symbol, interval }) {
     script.type = 'text/javascript';
     script.innerHTML = JSON.stringify({
       symbol: toTvSymbol(symbol),
-      interval,
+      interval: '60',              // initial only — user changes it in the widget
       theme,
       style: '1',
       locale: 'he',
       timezone: 'Asia/Jerusalem',
       autosize: true,
-      allow_symbol_change: true,   // user can change the symbol inside the chart
-      hide_side_toolbar: false,    // keep the drawing toolbar visible
-      hide_top_toolbar: false,
+      allow_symbol_change: true,
+      hide_side_toolbar: false,    // drawing toolbar
+      hide_top_toolbar: false,     // symbol + interval controls (TradingView's own)
       withdateranges: true,
       calendar: false,
       support_host: 'https://www.tradingview.com',
@@ -60,82 +54,54 @@ function TvChart({ symbol, interval }) {
     el.appendChild(script);
 
     return () => { el.innerHTML = ''; };
-  }, [symbol, interval]);
+  }, [symbol]);
 
   return <div ref={containerRef} className="tradingview-widget-container w-full h-full" />;
 }
 
-export default function TradingViewPanel({ open, symbol, interval, onIntervalChange, onClose }) {
-  // Esc closes the panel.
+// Full-width chart panel that slides up from the bottom and fills the page below
+// the backtest toolbar (so the journal name + "add trade" bar stay visible above
+// it). Symbol stays synced to the trade form's pair — no copy-paste.
+export default function TradingViewPanel({ symbol, onClose }) {
   useEffect(() => {
-    if (!open) return;
     const onKey = (e) => { if (e.key === 'Escape') onClose(); };
     window.addEventListener('keydown', onKey);
     return () => window.removeEventListener('keydown', onKey);
-  }, [open, onClose]);
+  }, [onClose]);
 
   const tvUrl = `https://www.tradingview.com/chart/?symbol=${encodeURIComponent(toTvSymbol(symbol))}`;
 
   return (
-    <AnimatePresence>
-      {open && (
-        <>
-          {/* Backdrop — only on small screens (on desktop the panel is docked,
-              so the form/records stay interactive beside it). */}
-          <motion.div
-            initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}
-            transition={{ duration: 0.2 }}
-            onClick={onClose}
-            className="fixed inset-0 z-[60] bg-black/50 lg:hidden"
-          />
-          <motion.aside
-            initial={{ x: '-100%' }} animate={{ x: 0 }} exit={{ x: '-100%' }}
-            transition={{ type: 'tween', duration: 0.28, ease: [0.22, 1, 0.36, 1] }}
-            className="fixed left-0 top-14 md:top-16 bottom-0 z-[60] w-full sm:w-[460px] lg:w-[44vw] max-w-[680px] flex flex-col border-e border-border-primary shadow-2xl"
-            style={{ background: 'var(--color-bg-solid)', backdropFilter: 'blur(12px)', WebkitBackdropFilter: 'blur(12px)' }}
-          >
-            {/* Header */}
-            <div className="flex items-center gap-2 px-3 py-2.5 border-b border-border-primary shrink-0">
-              <LineChart className="w-4 h-4 text-accent-primary shrink-0" />
-              <span className="text-sm font-bold text-text-primary num-mono">{toTvSymbol(symbol)}</span>
-              <div className="flex items-center gap-1 mr-2">
-                {TV_INTERVALS.map((it) => (
-                  <button
-                    key={it.v}
-                    onClick={() => onIntervalChange(it.v)}
-                    className={`text-[11px] font-semibold px-2 py-1 rounded-md transition-colors cursor-pointer ${
-                      interval === it.v
-                        ? 'bg-accent-primary/15 text-accent-primary'
-                        : 'text-text-muted hover:text-text-primary hover:bg-bg-tertiary'
-                    }`}
-                  >
-                    {it.label}
-                  </button>
-                ))}
-              </div>
-              <a
-                href={tvUrl} target="_blank" rel="noopener noreferrer"
-                className="mr-auto p-1.5 rounded-md text-text-muted hover:text-text-primary hover:bg-bg-tertiary transition-colors"
-                title="פתח ב-TradingView"
-              >
-                <ExternalLink className="w-4 h-4" />
-              </a>
-              <button
-                onClick={onClose}
-                className="p-1.5 rounded-md text-text-muted hover:text-text-primary hover:bg-bg-tertiary transition-colors cursor-pointer"
-                title="סגור גרף (Esc)"
-              >
-                <X className="w-4 h-4" />
-              </button>
-            </div>
+    <motion.div
+      initial={{ opacity: 0, y: 60 }}
+      animate={{ opacity: 1, y: 0 }}
+      exit={{ opacity: 0, y: 60 }}
+      transition={{ duration: 0.32, ease: [0.22, 1, 0.36, 1] }}
+      className="relative w-full rounded-xl border border-border-primary overflow-hidden mb-4 flex flex-col"
+      style={{ height: 'calc(100vh - 14rem)', minHeight: 460, background: 'var(--color-bg-secondary)' }}
+    >
+      {/* Slim control bar — just close + open-in-TradingView (no custom intervals) */}
+      <div className="flex items-center justify-end gap-1 px-2 py-1.5 border-b border-border-primary shrink-0">
+        <span className="mr-auto text-[11px] text-text-muted num-mono ps-1">{toTvSymbol(symbol)}</span>
+        <a
+          href={tvUrl} target="_blank" rel="noopener noreferrer"
+          className="p-1.5 rounded-md text-text-muted hover:text-text-primary hover:bg-bg-tertiary transition-colors"
+          title="פתח ב-TradingView"
+        >
+          <ExternalLink className="w-4 h-4" />
+        </a>
+        <button
+          onClick={onClose}
+          className="p-1.5 rounded-md text-text-muted hover:text-text-primary hover:bg-bg-tertiary transition-colors cursor-pointer"
+          title="סגור גרף (Esc)"
+        >
+          <X className="w-4 h-4" />
+        </button>
+      </div>
 
-            {/* Chart */}
-            <div className="flex-1 min-h-0">
-              <TvChart symbol={symbol} interval={interval} />
-            </div>
-          </motion.aside>
-        </>
-      )}
-    </AnimatePresence>
+      <div className="flex-1 min-h-0">
+        <TvChart symbol={symbol} />
+      </div>
+    </motion.div>
   );
 }
