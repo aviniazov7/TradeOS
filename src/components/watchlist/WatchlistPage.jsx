@@ -159,7 +159,7 @@ export default function WatchlistPage() {
               const cur = live?.usd;
               const ch24 = live?.usd_24h_change;
               const sinceAdd = (cur != null && it.addedPrice) ? ((cur - it.addedPrice) / it.addedPrice) * 100 : null;
-              const toTarget = (cur != null && it.targetPrice) ? ((it.targetPrice - cur) / cur) * 100 : null;
+              const toTarget = (cur != null && cur !== 0 && it.targetPrice) ? ((it.targetPrice - cur) / cur) * 100 : null;
               const chartUrl = it.tvLink || genericTvUrl(it.symbol);
               const preview = previewImage(it.tvLink);
               return (

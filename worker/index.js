@@ -3128,7 +3128,9 @@ async function handleRequest(request, env) {
     const ownChat = await env.ALERTS_KV.get(`uid:${uid}`);
     if (!ownChat || String(chatId) !== ownChat) return new Response(JSON.stringify({ error: 'forbidden' }), { status: 403, headers: { ...cors, 'Content-Type': 'application/json' } });
     const alertId = id || Date.now().toString();
-    await env.ALERTS_KV.put(`alerts:${chatId}:${alertId}`, JSON.stringify({ chatId, pair, targetPrice, direction, active: true, id: alertId, createdAt: new Date().toISOString() }));
+    const restAlert = { chatId: String(chatId), pair, targetPrice, direction, active: true, id: alertId, createdAt: new Date().toISOString() };
+    await env.ALERTS_KV.put(`alerts:${chatId}:${alertId}`, JSON.stringify(restAlert));
+    await syncAlertAggregate(env, restAlert); // mirror into alerts:ACTIVE so the cron sees it immediately
     return new Response(JSON.stringify({ ok: true, id: alertId }), { headers: { ...cors, 'Content-Type': 'application/json' } });
   }
 
@@ -3142,7 +3144,9 @@ async function handleRequest(request, env) {
     if (parts.length === 3) {
       const ownChat = await env.ALERTS_KV.get(`uid:${uid}`);
       if (!ownChat || parts[1] !== ownChat) return new Response(JSON.stringify({ error: 'forbidden' }), { status: 403, headers: { ...cors, 'Content-Type': 'application/json' } });
-      await env.ALERTS_KV.delete(`alerts:${parts[1]}:${parts[2]}`); return new Response(JSON.stringify({ ok: true }), { headers: { ...cors, 'Content-Type': 'application/json' } });
+      await env.ALERTS_KV.delete(`alerts:${parts[1]}:${parts[2]}`);
+      await removeAlertAggregate(env, parts[2]); // drop from alerts:ACTIVE too
+      return new Response(JSON.stringify({ ok: true }), { headers: { ...cors, 'Content-Type': 'application/json' } });
     }
   }
 
