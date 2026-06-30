@@ -747,7 +747,13 @@ async function checkExchangeClosedTrades(env) {
           });
         }
       }
-      await env.ALERTS_KV.put(openKey, JSON.stringify(curIds), { expirationTtl: 60 * 60 * 24 * 7 });
+      // Only write when the open-position set actually changed — the previous
+      // unconditional write ran every 10-min tick for every exchange user and
+      // alone blew the KV daily write quota.
+      const curJson = JSON.stringify(curIds);
+      if (prevRaw !== curJson) {
+        await env.ALERTS_KV.put(openKey, curJson, { expirationTtl: 60 * 60 * 24 * 7 });
+      }
     }
 
     const trades = await fetchBybitClosedPnl(creds.apiKey, creds.apiSecret, 50);
@@ -1344,6 +1350,7 @@ async function getUserSettings(env, chatId) {
 }
 async function saveUserSettings(env, chatId, settings) {
   await env.ALERTS_KV.put(`settings:${chatId}`, JSON.stringify(settings));
+  await setSettingsAggregate(env, chatId, settings); // mirror into settings:ALL
 }
 async function getWatchlist(env, chatId) {
   const data = await env.ALERTS_KV.get(`watchlist:${chatId}`, 'json');
@@ -1960,6 +1967,7 @@ async function handleCallback(env, callbackQuery) {
   if (data.startsWith('del:')) {
     const alertId = data.split(':')[1];
     await env.ALERTS_KV.delete(`alerts:${chatId}:${alertId}`);
+    await removeAlertAggregate(env, alertId); // drop from alerts:ACTIVE
     await sendMessage(env.BOT_TOKEN, chatId, '✅ ההתראה נמחקה!', [
       [{ text: '📋 ההתראות שלי', callback_data: 'alert_list' }, { text: '🔙 תפריט ראשי', callback_data: 'menu_main' }],
     ]);
@@ -1982,10 +1990,12 @@ async function handleTextMessage(env, chatId, text) {
       return;
     }
     const alertId = Date.now().toString();
-    await env.ALERTS_KV.put(`alerts:${chatId}:${alertId}`, JSON.stringify({
+    const newAlert = {
       id: alertId, chatId: String(chatId), pair: state.pair, targetPrice: price,
       direction: state.direction, active: true, createdAt: new Date().toISOString(),
-    }));
+    };
+    await env.ALERTS_KV.put(`alerts:${chatId}:${alertId}`, JSON.stringify(newAlert));
+    await syncAlertAggregate(env, newAlert); // mirror into alerts:ACTIVE
     await env.ALERTS_KV.delete(`state:${chatId}`);
     const dir = state.direction === 'above' ? '📈 מעל' : '📉 מתחת';
     await sendMessage(env.BOT_TOKEN, chatId,
@@ -2067,6 +2077,55 @@ async function handleWebhook(request, env) {
 
 // ==================== Cron Functions ====================
 
+// ---- Aggregate KV snapshots ------------------------------------------------
+// To avoid an N+1 read per cron tick (one get per `settings:*` / `alerts:*`
+// key — the main source of KV-quota burn), the cron reads two rolled-up blobs:
+//   settings:ALL  = { [chatId]: settings }
+//   alerts:ACTIVE = { [alertId]: { kvKey, ...alert } }   (active alerts only)
+// Writers keep the per-key docs (so the bot's own readers are untouched) AND
+// mirror into the blob (dual-write). If a blob is missing we rebuild it once
+// from the per-key list (backfill), so this is safe to ship with no migration.
+async function getSettingsAll(env) {
+  const blob = await env.ALERTS_KV.get('settings:ALL', 'json');
+  if (blob) return blob;
+  const list = await env.ALERTS_KV.list({ prefix: 'settings:' });
+  const out = {};
+  await Promise.all(list.keys.filter((k) => k.name !== 'settings:ALL').map(async (k) => {
+    const d = await env.ALERTS_KV.get(k.name, 'json');
+    if (d) out[k.name.slice('settings:'.length)] = d;
+  }));
+  await env.ALERTS_KV.put('settings:ALL', JSON.stringify(out));
+  return out;
+}
+async function getAlertsActive(env) {
+  const blob = await env.ALERTS_KV.get('alerts:ACTIVE', 'json');
+  if (blob) return blob;
+  const list = await env.ALERTS_KV.list({ prefix: 'alerts:' });
+  const out = {};
+  await Promise.all(list.keys.filter((k) => k.name !== 'alerts:ACTIVE').map(async (k) => {
+    const d = await env.ALERTS_KV.get(k.name, 'json');
+    if (d && d.active) out[d.id] = { kvKey: k.name, ...d };
+  }));
+  await env.ALERTS_KV.put('alerts:ACTIVE', JSON.stringify(out));
+  return out;
+}
+async function setSettingsAggregate(env, chatId, settings) {
+  const blob = (await env.ALERTS_KV.get('settings:ALL', 'json')) || {};
+  blob[String(chatId)] = settings;
+  await env.ALERTS_KV.put('settings:ALL', JSON.stringify(blob));
+}
+// Upsert (active) or remove (inactive/deleted) a single alert in the aggregate.
+async function syncAlertAggregate(env, alert) {
+  const blob = (await env.ALERTS_KV.get('alerts:ACTIVE', 'json')) || {};
+  if (alert && alert.active) blob[alert.id] = { kvKey: `alerts:${alert.chatId}:${alert.id}`, ...alert };
+  else if (alert) delete blob[alert.id];
+  await env.ALERTS_KV.put('alerts:ACTIVE', JSON.stringify(blob));
+}
+async function removeAlertAggregate(env, alertId) {
+  const blob = (await env.ALERTS_KV.get('alerts:ACTIVE', 'json')) || {};
+  if (alertId in blob) { delete blob[alertId]; await env.ALERTS_KV.put('alerts:ACTIVE', JSON.stringify(blob)); }
+}
+
 async function checkPriceAlerts(env, activeAlerts) {
   if (!activeAlerts.length) return;
   const pairs = [...new Set(activeAlerts.map((a) => a.pair))];
@@ -2092,6 +2151,8 @@ async function checkPriceAlerts(env, activeAlerts) {
       // `undefined` if kvKey was ever absent.
       const alertKey = kvKey || `alerts:${alert.chatId}:${alert.id}`;
       await env.ALERTS_KV.put(alertKey, JSON.stringify({ ...ad, active: false }));
+      await removeAlertAggregate(env, alert.id); // it's done — drop from alerts:ACTIVE
+
     }
   }
 }
@@ -2177,29 +2238,18 @@ async function handleCron(env) {
     return;
   }
 
-  // Pre-fetch all KV lists once (2 list ops instead of 4)
-  const [alertsList, settingsList] = await Promise.all([
-    env.ALERTS_KV.list({ prefix: 'alerts:' }),
-    env.ALERTS_KV.list({ prefix: 'settings:' }),
+  // Read two rolled-up blobs instead of one get per settings/alert key. This is
+  // the main KV-quota fix (was A + S gets per tick → now 2). Writers dual-write
+  // these; a missing blob is rebuilt once from the per-key list (backfill).
+  const [settingsAll, alertsActive] = await Promise.all([
+    getSettingsAll(env),
+    getAlertsActive(env),
   ]);
 
-  // Pre-fetch all data in parallel to minimize individual reads
-  const [alertsData, settingsData] = await Promise.all([
-    Promise.all(alertsList.keys.map(async (key) => {
-      const data = await env.ALERTS_KV.get(key.name, 'json');
-      return data ? { kvKey: key.name, ...data } : null;
-    })),
-    Promise.all(settingsList.keys.map(async (key) => {
-      const data = await env.ALERTS_KV.get(key.name, 'json');
-      const chatId = key.name.replace('settings:', '');
-      return { chatId, settings: { ...DEFAULT_SETTINGS, ...data } };
-    })),
-  ]);
-
-  const activeAlerts = alertsData.filter((a) => a && a.active);
+  const activeAlerts = Object.values(alertsActive);
   const settingsMap = {};
-  for (const { chatId, settings } of settingsData) {
-    settingsMap[chatId] = settings;
+  for (const [chatId, settings] of Object.entries(settingsAll)) {
+    settingsMap[chatId] = { ...DEFAULT_SETTINGS, ...settings };
   }
 
   await Promise.allSettled([
@@ -3078,7 +3128,9 @@ async function handleRequest(request, env) {
     const ownChat = await env.ALERTS_KV.get(`uid:${uid}`);
     if (!ownChat || String(chatId) !== ownChat) return new Response(JSON.stringify({ error: 'forbidden' }), { status: 403, headers: { ...cors, 'Content-Type': 'application/json' } });
     const alertId = id || Date.now().toString();
-    await env.ALERTS_KV.put(`alerts:${chatId}:${alertId}`, JSON.stringify({ chatId, pair, targetPrice, direction, active: true, id: alertId, createdAt: new Date().toISOString() }));
+    const restAlert = { chatId: String(chatId), pair, targetPrice, direction, active: true, id: alertId, createdAt: new Date().toISOString() };
+    await env.ALERTS_KV.put(`alerts:${chatId}:${alertId}`, JSON.stringify(restAlert));
+    await syncAlertAggregate(env, restAlert); // mirror into alerts:ACTIVE so the cron sees it immediately
     return new Response(JSON.stringify({ ok: true, id: alertId }), { headers: { ...cors, 'Content-Type': 'application/json' } });
   }
 
@@ -3092,7 +3144,9 @@ async function handleRequest(request, env) {
     if (parts.length === 3) {
       const ownChat = await env.ALERTS_KV.get(`uid:${uid}`);
       if (!ownChat || parts[1] !== ownChat) return new Response(JSON.stringify({ error: 'forbidden' }), { status: 403, headers: { ...cors, 'Content-Type': 'application/json' } });
-      await env.ALERTS_KV.delete(`alerts:${parts[1]}:${parts[2]}`); return new Response(JSON.stringify({ ok: true }), { headers: { ...cors, 'Content-Type': 'application/json' } });
+      await env.ALERTS_KV.delete(`alerts:${parts[1]}:${parts[2]}`);
+      await removeAlertAggregate(env, parts[2]); // drop from alerts:ACTIVE too
+      return new Response(JSON.stringify({ ok: true }), { headers: { ...cors, 'Content-Type': 'application/json' } });
     }
   }
 

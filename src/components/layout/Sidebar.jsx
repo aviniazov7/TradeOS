@@ -15,6 +15,7 @@ import {
   Wallet,
   Crown,
   Bot,
+  Star,
 } from 'lucide-react';
 import PositionCalculator from '../calculator/PositionCalculator';
 import { useAuth } from '../../contexts/AuthContext';
@@ -22,6 +23,7 @@ import { useAuth } from '../../contexts/AuthContext';
 const navItems = [
   { to: '/', label: 'דשבורד', icon: LayoutDashboard },
   { to: '/journal', label: 'יומן מסחר', icon: BookOpen },
+  { to: '/watchlist', label: 'מעקב מטבעות', icon: Star },
   { to: '/mentality', label: 'האזור המנטלי', icon: Brain },
   { to: '/backtest', label: 'בקטסט', icon: FlaskConical },
   { to: '/dca', label: 'מעקב DCA', icon: Coins },
