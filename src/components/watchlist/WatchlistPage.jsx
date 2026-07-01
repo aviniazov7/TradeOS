@@ -17,13 +17,23 @@ function genericTvUrl(symbol) {
   const s = String(symbol || '').toUpperCase();
   return `https://www.tradingview.com/chart/?symbol=${encodeURIComponent(`BINANCE:${s}USDT`)}`;
 }
+// Only allow http(s) URLs — the link is user-provided and rendered as an <a
+// href>, so a javascript:/data:/vbscript: scheme would be a stored-XSS vector.
+function safeUrl(url) {
+  if (!url || typeof url !== 'string') return null;
+  try {
+    const u = new URL(url.trim());
+    return (u.protocol === 'http:' || u.protocol === 'https:') ? u.href : null;
+  } catch { return null; }
+}
 // Derive a preview IMAGE from the user's link. A TradingView *snapshot* link
 // (camera icon → tradingview.com/x/{ID}/) maps to a public PNG on s3; a direct
 // image URL is used as-is. A plain interactive /chart/ link has no image.
 function previewImage(link) {
-  if (!link) return null;
-  if (/\.(png|jpe?g|webp|gif)(\?|$)/i.test(link)) return link;
-  const m = link.match(/tradingview\.com\/x\/([A-Za-z0-9]+)/);
+  const safe = safeUrl(link);
+  if (!safe) return null;
+  if (/\.(png|jpe?g|webp|gif)(\?|$)/i.test(safe)) return safe;
+  const m = safe.match(/tradingview\.com\/x\/([A-Za-z0-9]+)/);
   if (m) { const id = m[1]; return `https://s3.tradingview.com/snapshots/${id[0].toLowerCase()}/${id}.png`; }
   return null;
 }
@@ -167,7 +177,7 @@ export default function WatchlistPage({ embedded = false }) {
               const ch24 = live?.usd_24h_change;
               const sinceAdd = (cur != null && it.addedPrice) ? ((cur - it.addedPrice) / it.addedPrice) * 100 : null;
               const toTarget = (cur != null && cur !== 0 && it.targetPrice) ? ((it.targetPrice - cur) / cur) * 100 : null;
-              const chartUrl = it.tvLink || genericTvUrl(it.symbol);
+              const chartUrl = safeUrl(it.tvLink) || genericTvUrl(it.symbol);
               const preview = previewImage(it.tvLink);
               return (
                 <motion.div key={it.id} layout
