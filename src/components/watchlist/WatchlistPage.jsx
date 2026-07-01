@@ -17,18 +17,28 @@ function genericTvUrl(symbol) {
   const s = String(symbol || '').toUpperCase();
   return `https://www.tradingview.com/chart/?symbol=${encodeURIComponent(`BINANCE:${s}USDT`)}`;
 }
+// Only allow http(s) URLs — the link is user-provided and rendered as an <a
+// href>, so a javascript:/data:/vbscript: scheme would be a stored-XSS vector.
+function safeUrl(url) {
+  if (!url || typeof url !== 'string') return null;
+  try {
+    const u = new URL(url.trim());
+    return (u.protocol === 'http:' || u.protocol === 'https:') ? u.href : null;
+  } catch { return null; }
+}
 // Derive a preview IMAGE from the user's link. A TradingView *snapshot* link
 // (camera icon → tradingview.com/x/{ID}/) maps to a public PNG on s3; a direct
 // image URL is used as-is. A plain interactive /chart/ link has no image.
 function previewImage(link) {
-  if (!link) return null;
-  if (/\.(png|jpe?g|webp|gif)(\?|$)/i.test(link)) return link;
-  const m = link.match(/tradingview\.com\/x\/([A-Za-z0-9]+)/);
+  const safe = safeUrl(link);
+  if (!safe) return null;
+  if (/\.(png|jpe?g|webp|gif)(\?|$)/i.test(safe)) return safe;
+  const m = safe.match(/tradingview\.com\/x\/([A-Za-z0-9]+)/);
   if (m) { const id = m[1]; return `https://s3.tradingview.com/snapshots/${id[0].toLowerCase()}/${id}.png`; }
   return null;
 }
 
-export default function WatchlistPage() {
+export default function WatchlistPage({ embedded = false }) {
   const { items, loading, addItem, updateItem, removeItem } = useWatchlist();
   const [query, setQuery] = useState('');
   const [results, setResults] = useState([]);
@@ -106,14 +116,21 @@ export default function WatchlistPage() {
     setEditing(null);
   };
 
+  const Wrapper = embedded ? 'div' : motion.div;
+  const wrapperProps = embedded
+    ? {}
+    : { variants: pageVariants, initial: 'initial', animate: 'animate', exit: 'exit', transition: pageTransition };
+
   return (
-    <motion.div variants={pageVariants} initial="initial" animate="animate" exit="exit" transition={pageTransition}
-      className="max-w-5xl mx-auto px-1 py-2">
-      <div className="flex items-center gap-2 mb-4">
-        <Star className="w-5 h-5 text-accent-primary" />
-        <h1 className="text-lg font-bold text-text-primary">מעקב מטבעות</h1>
-        <span className="text-xs text-text-muted">({items.length})</span>
-      </div>
+    <Wrapper {...wrapperProps} className="max-w-5xl mx-auto px-1 py-2">
+      {/* Title — hidden when embedded as a market tab (the tab label already says it) */}
+      {!embedded && (
+        <div className="flex items-center gap-2 mb-4">
+          <Star className="w-5 h-5 text-accent-primary" />
+          <h1 className="text-lg font-bold text-text-primary">מעקב מטבעות</h1>
+          <span className="text-xs text-text-muted">({items.length})</span>
+        </div>
+      )}
 
       {/* Add coin */}
       <div className="relative max-w-md mb-6" ref={searchRef}>
@@ -160,16 +177,17 @@ export default function WatchlistPage() {
               const ch24 = live?.usd_24h_change;
               const sinceAdd = (cur != null && it.addedPrice) ? ((cur - it.addedPrice) / it.addedPrice) * 100 : null;
               const toTarget = (cur != null && cur !== 0 && it.targetPrice) ? ((it.targetPrice - cur) / cur) * 100 : null;
-              const chartUrl = it.tvLink || genericTvUrl(it.symbol);
+              const chartUrl = safeUrl(it.tvLink) || genericTvUrl(it.symbol);
               const preview = previewImage(it.tvLink);
+              const thumbUrl = safeUrl(it.thumb);
               return (
                 <motion.div key={it.id} layout
                   initial={{ opacity: 0, y: 12 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, scale: 0.96 }}
                   className="bento-card p-4 group">
                   {/* head */}
                   <div className="flex items-center gap-2.5 mb-3">
-                    {it.thumb
-                      ? <img src={it.thumb} alt="" className="w-8 h-8 rounded-full shrink-0" />
+                    {thumbUrl
+                      ? <img src={thumbUrl} alt="" className="w-8 h-8 rounded-full shrink-0" />
                       : <span className="w-8 h-8 rounded-full bg-bg-tertiary flex items-center justify-center text-[11px] font-bold text-text-secondary shrink-0">{it.symbol?.slice(0, 3)}</span>}
                     <div className="min-w-0">
                       <p className="text-sm font-bold text-text-primary truncate">{it.symbol}</p>
@@ -275,6 +293,6 @@ export default function WatchlistPage() {
           </button>
         </div>
       </Modal>
-    </motion.div>
+    </Wrapper>
   );
 }
