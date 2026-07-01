@@ -179,14 +179,15 @@ export default function WatchlistPage({ embedded = false }) {
               const toTarget = (cur != null && cur !== 0 && it.targetPrice) ? ((it.targetPrice - cur) / cur) * 100 : null;
               const chartUrl = safeUrl(it.tvLink) || genericTvUrl(it.symbol);
               const preview = previewImage(it.tvLink);
+              const thumbUrl = safeUrl(it.thumb);
               return (
                 <motion.div key={it.id} layout
                   initial={{ opacity: 0, y: 12 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, scale: 0.96 }}
                   className="bento-card p-4 group">
                   {/* head */}
                   <div className="flex items-center gap-2.5 mb-3">
-                    {it.thumb
-                      ? <img src={it.thumb} alt="" className="w-8 h-8 rounded-full shrink-0" />
+                    {thumbUrl
+                      ? <img src={thumbUrl} alt="" className="w-8 h-8 rounded-full shrink-0" />
                       : <span className="w-8 h-8 rounded-full bg-bg-tertiary flex items-center justify-center text-[11px] font-bold text-text-secondary shrink-0">{it.symbol?.slice(0, 3)}</span>}
                     <div className="min-w-0">
                       <p className="text-sm font-bold text-text-primary truncate">{it.symbol}</p>

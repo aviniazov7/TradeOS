@@ -107,7 +107,14 @@ service cloud.firestore {
       }
       match /watchlist/{itemId} {
         allow read: if request.auth != null && (request.auth.uid == userId || isAdmin());
-        allow write: if request.auth != null && request.auth.uid == userId;
+        // Owner-only write, plus a server-side size/shape backstop. The client
+        // sanitizes tvLink at render (safeUrl) but not on the write path, so
+        // without this a user could setDoc arbitrary/oversized fields directly
+        // via the SDK — bounding them here caps storage abuse and gives
+        // defence-in-depth on the exact fields the UI renders.
+        allow create, update: if request.auth != null && request.auth.uid == userId
+          && isValidWatchlistItem(request.resource.data);
+        allow delete: if request.auth != null && request.auth.uid == userId;
       }
     }
 
@@ -170,6 +177,24 @@ service cloud.firestore {
         && data.score is number && data.score >= 0 && data.score <= 100
         && data.live is map
         && data.backtest is map;
+    }
+
+    // Watchlist item validation. Must match the exact shape the client writes:
+    // create (handleAdd) sets coingeckoId/symbol/name/thumb/addedPrice/note/
+    // targetPrice/tvLink/createdAt; update (saveEdit) merges note/targetPrice/
+    // tvLink/updatedAt onto the existing doc. Every user string that later
+    // reaches the DOM (thumb/note/tvLink) is length-capped so a raw-SDK write
+    // can't persist an oversized/abusive payload; numbers are type-pinned.
+    function isValidWatchlistItem(data) {
+      return data.keys().hasOnly(['coingeckoId', 'symbol', 'name', 'thumb', 'addedPrice', 'note', 'targetPrice', 'tvLink', 'createdAt', 'updatedAt'])
+        && data.coingeckoId is string && data.coingeckoId.size() > 0 && data.coingeckoId.size() <= 100
+        && data.symbol is string && data.symbol.size() > 0 && data.symbol.size() <= 60
+        && data.name is string && data.name.size() <= 200
+        && (!('thumb' in data) || data.thumb == null || (data.thumb is string && data.thumb.size() <= 1000))
+        && (!('note' in data) || data.note == null || (data.note is string && data.note.size() <= 600))
+        && (!('tvLink' in data) || data.tvLink == null || (data.tvLink is string && data.tvLink.size() <= 1000))
+        && (!('targetPrice' in data) || data.targetPrice == null || data.targetPrice is number)
+        && (!('addedPrice' in data) || data.addedPrice == null || data.addedPrice is number);
     }
   }
 }
