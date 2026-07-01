@@ -28,7 +28,7 @@ function previewImage(link) {
   return null;
 }
 
-export default function WatchlistPage() {
+export default function WatchlistPage({ embedded = false }) {
   const { items, loading, addItem, updateItem, removeItem } = useWatchlist();
   const [query, setQuery] = useState('');
   const [results, setResults] = useState([]);
@@ -106,14 +106,21 @@ export default function WatchlistPage() {
     setEditing(null);
   };
 
+  const Wrapper = embedded ? 'div' : motion.div;
+  const wrapperProps = embedded
+    ? {}
+    : { variants: pageVariants, initial: 'initial', animate: 'animate', exit: 'exit', transition: pageTransition };
+
   return (
-    <motion.div variants={pageVariants} initial="initial" animate="animate" exit="exit" transition={pageTransition}
-      className="max-w-5xl mx-auto px-1 py-2">
-      <div className="flex items-center gap-2 mb-4">
-        <Star className="w-5 h-5 text-accent-primary" />
-        <h1 className="text-lg font-bold text-text-primary">מעקב מטבעות</h1>
-        <span className="text-xs text-text-muted">({items.length})</span>
-      </div>
+    <Wrapper {...wrapperProps} className="max-w-5xl mx-auto px-1 py-2">
+      {/* Title — hidden when embedded as a market tab (the tab label already says it) */}
+      {!embedded && (
+        <div className="flex items-center gap-2 mb-4">
+          <Star className="w-5 h-5 text-accent-primary" />
+          <h1 className="text-lg font-bold text-text-primary">מעקב מטבעות</h1>
+          <span className="text-xs text-text-muted">({items.length})</span>
+        </div>
+      )}
 
       {/* Add coin */}
       <div className="relative max-w-md mb-6" ref={searchRef}>
@@ -275,6 +282,6 @@ export default function WatchlistPage() {
           </button>
         </div>
       </Modal>
-    </motion.div>
+    </Wrapper>
   );
 }

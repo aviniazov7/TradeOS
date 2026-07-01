@@ -3,11 +3,12 @@ import { motion, AnimatePresence } from 'framer-motion';
 import {
   Activity, TrendingUp, TrendingDown, Bitcoin, DollarSign,
   PieChart, Flame, ArrowUpRight, ArrowDownRight, Layers, Rocket, Grid3X3,
-  Percent, BarChart3, Zap, Sparkles, Bot,
+  Percent, BarChart3, Zap, Sparkles, Bot, Star,
 } from 'lucide-react';
 import { pageVariants, pageTransition, staggerContainer } from '../../utils/animations';
 import FearGreedGauge from '../dashboard/FearGreedGauge';
 import CoinAnalysis from './CoinAnalysis';
+import WatchlistPage from '../watchlist/WatchlistPage';
 import MarketSessionsCard from './MarketSessionsCard';
 import { getCachedImage, hasKnownIcon } from '../../services/coinImageCache';
 import { fetchSpotTickersAsBinance, fetchLinearTickers, fetchAccountRatio } from '../../services/bybitDirect';
@@ -1047,10 +1048,11 @@ export default function MarketOverview() {
   return (
     <motion.div variants={pageVariants} initial="initial" animate="animate" exit="exit" transition={pageTransition}>
       {/* Tabs */}
-      <div className="grid grid-cols-2 sm:flex sm:flex-wrap sm:justify-center gap-2 mb-6">
+      <div className="grid grid-cols-3 sm:flex sm:flex-wrap sm:justify-center gap-2 mb-6">
         {[
           { key: 'overview', label: 'סקירה',      shortLabel: 'סקירה',   icon: Activity },
           { key: 'analysis', label: 'ניתוח מטבע', shortLabel: 'ניתוח',   icon: Sparkles },
+          { key: 'watchlist', label: 'מעקב',      shortLabel: 'מעקב',    icon: Star },
         ].map((tab) => (
           <button
             key={tab.key}
@@ -1344,9 +1346,13 @@ export default function MarketOverview() {
       </Reveal>
 
       </motion.div>
-      ) : (
+      ) : activeTab === 'analysis' ? (
       <motion.div key="analysis" initial={{ opacity: 0, x: 20 }} animate={{ opacity: 1, x: 0 }} exit={{ opacity: 0, x: -20 }} transition={{ duration: 0.25 }}>
         <CoinAnalysis />
+      </motion.div>
+      ) : (
+      <motion.div key="watchlist" initial={{ opacity: 0, x: 20 }} animate={{ opacity: 1, x: 0 }} exit={{ opacity: 0, x: -20 }} transition={{ duration: 0.25 }}>
+        <WatchlistPage embedded />
       </motion.div>
       )}
       </AnimatePresence>
