@@ -557,11 +557,14 @@ function emailShell({ headline, intro, ctaText, ctaUrl, body, footer }) {
         <a href="${esc(ctaUrl)}" target="_blank" style="display:inline-block;padding:14px 32px;font-family:Arial,sans-serif;font-size:15px;font-weight:bold;color:#0a0e16;text-decoration:none;border-radius:10px">${esc(ctaText)}</a>
       </td></tr>
     </table>` : '';
-  return `<!DOCTYPE html><html lang="he" dir="rtl"><head><meta charset="utf-8" /><meta name="viewport" content="width=device-width, initial-scale=1" /></head>
-<body style="margin:0;padding:0;background:#0a0e16;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Arial,sans-serif">
-  <table role="presentation" width="100%" cellspacing="0" cellpadding="0" border="0" style="background:#0a0e16">
+  return `<!DOCTYPE html><html lang="he" dir="rtl"><head><meta charset="utf-8" /><meta name="viewport" content="width=device-width, initial-scale=1" />
+<meta name="color-scheme" content="dark" />
+<meta name="supported-color-schemes" content="dark" />
+<style>:root{color-scheme:dark;supported-color-schemes:dark}</style></head>
+<body bgcolor="#0a0e16" style="margin:0;padding:0;background:#0a0e16;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Arial,sans-serif">
+  <table role="presentation" width="100%" cellspacing="0" cellpadding="0" border="0" bgcolor="#0a0e16" style="background:#0a0e16">
     <tr><td align="center" style="padding:32px 16px">
-      <table role="presentation" width="100%" cellspacing="0" cellpadding="0" border="0" style="max-width:560px;background:#0f1521;border:1px solid rgba(0,191,255,0.18);border-radius:16px;overflow:hidden">
+      <table role="presentation" width="100%" cellspacing="0" cellpadding="0" border="0" bgcolor="#0f1521" style="max-width:560px;background:#0f1521;border:1px solid rgba(0,191,255,0.18);border-radius:16px;overflow:hidden">
         <!-- Header / brand -->
         <tr><td style="padding:24px 28px;border-bottom:1px solid rgba(255,255,255,0.06);text-align:right">
           <div style="display:inline-block;vertical-align:middle">
@@ -585,6 +588,52 @@ function emailShell({ headline, intro, ctaText, ctaUrl, body, footer }) {
     </td></tr>
   </table>
 </body></html>`;
+}
+
+// Branded confirmation email for a Premium grant — payment, gift, or coupon
+// redemption. Shared by /admin/payment-email and the coupon-redeem flow so
+// every path sends the same polished email.
+function buildPremiumEmail({ kind = 'payment', name, amount, methodLabel, days, expiresStr, code }) {
+  const esc = (s) => String(s || '').replace(/[&<>"']/g, (c) => (
+    { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]
+  ));
+  const row = (label, value) => `
+    <tr>
+      <td style="padding:8px 0;font-size:13px;color:#7d8492;text-align:right">${esc(label)}</td>
+      <td style="padding:8px 0;font-size:14px;color:#e5e7eb;font-weight:bold;text-align:left" dir="ltr">${esc(value)}</td>
+    </tr>`;
+  const rows = [];
+  if (kind === 'payment' && amount > 0) rows.push(row('סכום ששולם', `₪${amount}`));
+  if (kind === 'payment' && methodLabel) rows.push(row('אמצעי תשלום', methodLabel));
+  if (kind === 'coupon' && code) rows.push(row('קוד קופון', code));
+  rows.push(row('תקופת המנוי', days ? `${days} ימים` : 'ללא הגבלה'));
+  if (expiresStr) rows.push(row('בתוקף עד', expiresStr));
+
+  const featureLi = (t) => `<li style="margin:0 0 6px;font-size:14px;color:#cbd0d8">${esc(t)}</li>`;
+  const body = `
+    <div style="background:rgba(0,191,255,0.06);border:1px solid rgba(0,191,255,0.22);border-radius:12px;padding:6px 18px;margin:4px 0 18px">
+      <table role="presentation" width="100%" cellspacing="0" cellpadding="0" border="0">${rows.join('')}</table>
+    </div>
+    <p style="margin:0 0 8px;font-size:14px;color:#e5e7eb;font-weight:bold">מה נפתח לך עכשיו:</p>
+    <ul style="margin:0 0 4px;padding-right:18px;text-align:right">
+      ${featureLi('TradeAI ללא הגבלה — שאלות, ניתוחי גרפים ותובנות')}
+      ${featureLi('ניתוח AI מלא של יומן המסחר')}
+      ${featureLi('יומני מסחר, ארנקים והתראות ללא הגבלה')}
+      ${featureLi('חיבורי בורסה וניתוחים מתקדמים')}
+    </ul>
+    ${kind === 'payment' ? '<p style="margin:14px 0 0;font-size:12px;color:#7d8492">אישור זה נשלח לנוחותך ואינו מהווה חשבונית מס/קבלה.</p>' : ''}`;
+
+  const first = (name || '').trim().split(/\s+/)[0];
+  const hey = first ? `היי ${first}, ` : '';
+  const meta = {
+    payment: { subject: '👑 התשלום התקבל — ברוך הבא ל-TradeOS Premium', headline: 'התשלום התקבל — אתה Premium! 👑', intro: `${hey}תודה על התשלום! המנוי הופעל בחשבונך והכל כבר פתוח.` },
+    gift: { subject: '🎁 קיבלת מתנה — TradeOS Premium', headline: 'קיבלת Premium במתנה! 🎁', intro: `${hey}הופעל לך מנוי Premium בחשבון — ליהנות!` },
+    coupon: { subject: '🎉 הקופון מומש — TradeOS Premium הופעל', headline: 'הקופון מומש בהצלחה! 🎉', intro: `${hey}מימשת קוד קופון ומנוי ה-Premium שלך פעיל.` },
+  }[kind] || {};
+  return {
+    subject: meta.subject,
+    html: emailShell({ headline: meta.headline, intro: meta.intro, body, ctaText: 'פתח את TradeOS', ctaUrl: 'https://tradeos-91a58.web.app' }),
+  };
 }
 
 // Build the weekly admin digest content (stats + push body + email html).
@@ -2666,6 +2715,21 @@ const COACH_SYSTEM_PROMPT = `אתה מנטור מסחר אישי שמנתח את
 - המלצות = פעולה ספציפית למסחר ("הפסק לסחור [מטבע] עד שתבקטסט [תנאי]"), לא טיפים גנריים ("התנהל בזהירות").
 - אל תחזור על נתון שכבר הצגת בסעיף קודם.`;
 
+// Maps the quick-prompt the user clicked (stats.focus) to an explicit directive.
+// Without this the model gets the same generic 4-section report every time —
+// the focus key sits unused inside the stats JSON. Each directive re-centers the
+// WHOLE report on the specific question, while keeping the fixed section format
+// the UI parser expects.
+const COACH_FOCUS_INSTRUCTIONS = {
+  overview: 'הסוחר ביקש סקירה כללית של התקופה: הביצועים המרכזיים, המגמה הכללית, ומה הכי בולט לטובה ולרעה.',
+  losses: 'הסוחר שאל: "איפה אני מפסיד הכי הרבה?". מקד את כל הדו"ח באיתור מקורות ההפסד — אילו מטבעות, סשנים, כיוונים או אסטרטגיות אחראים לרוב ההפסד, ומה בדיוק לעצור או לתקן.',
+  topPair: 'הסוחר שאל: "מה המטבע הכי רווחי שלי?". מקד את כל הדו"ח במטבע/ות הרווחי/ים ביותר לפי ה-P&L — מה עובד שם, ואיך למנף את זה. ציין את שם המטבע המדויק והמספרים שלו.',
+  mistakes: 'הסוחר שאל: "מה 3 הטעויות הכי גדולות שלי?". תחת "חולשות" פרט בדיוק 3 טעויות התנהלות מרכזיות לפי הנתונים, ותחת "המלצות לפעולה" תן תיקון קונקרטי לכל אחת.',
+  sessionEdge: 'הסוחר שאל: "איזה סשן הכי רווחי?". מקד את כל הדו"ח בהשוואת סשני המסחר (bySession) — מתי כדאי לסחור ומתי להימנע, עם המספרים.',
+  compareMonth: 'הסוחר שאל: "איך החודש מול הקודם?". מקד את כל הדו"ח בהשוואה בין התקופות — מה השתפר, מה הידרדר, ולמה, עם המספרים משני הצדדים.',
+  strategyEdge: 'הסוחר שאל: "איזו אסטרטגיה מצליחה?". מקד את כל הדו"ח בהשוואת האסטרטגיות (byStrategy) — איזו מניבה הכי טוב ואיזו לזנוח, עם המספרים.',
+};
+
 async function handleAICoach(request, env, cors) {
   try {
     const body = await request.json().catch(() => ({}));
@@ -2704,7 +2768,15 @@ async function handleAICoach(request, env, cors) {
       await env.ALERTS_KV.put(monthKey, String(used + 1), { expirationTtl: 60 * 60 * 24 * 60 });
     }
 
+    // Turn the clicked quick-prompt (stats.focus) into an explicit, prominent
+    // directive so each button yields a genuinely different, focused report.
+    const focusKey = typeof stats.focus === 'string' ? stats.focus : '';
+    const focusLine = COACH_FOCUS_INSTRUCTIONS[focusKey]
+      ? `## מיקוד הדו"ח (חובה):\n${COACH_FOCUS_INSTRUCTIONS[focusKey]}\nכל סעיף בדו"ח חייב לענות על השאלה הזו — אל תיתן דו"ח כללי.\n\n`
+      : '';
+
     const userPrompt =
+      focusLine +
       (premium && depth === 'deep' ? 'יבוקש דו"ח Premium מורחב.\n' : 'יבוקש דו"ח קצר.\n') +
       `נתוני העסקאות (JSON):\n\`\`\`json\n${statsStr}\n\`\`\``;
 
@@ -3952,6 +4024,38 @@ async function handleRequest(request, env) {
     return new Response(JSON.stringify({ ok: true, sentTo: adminTo, stats: { newUsers: digest.newUsers, upgrades: digest.upgrades, expiringSoon: digest.expiringSoon, churn: digest.churn } }), { headers: { ...cors, 'Content-Type': 'application/json' } });
   }
 
+  // Admin-only: send a branded Premium confirmation email (payment / gift) to
+  // a user. The admin panel calls this right after a manual grant so buyers
+  // who paid by Bit/crypto/bank transfer get a polished confirmation.
+  if (request.method === 'POST' && path === '/admin/payment-email') {
+    const token = (request.headers.get('Authorization') || '').replace('Bearer ', '');
+    const adminUid = await verifyAdminFromToken(token);
+    if (!adminUid) return new Response(JSON.stringify({ error: 'forbidden' }), { status: 403, headers: { ...cors, 'Content-Type': 'application/json' } });
+    if (!env.RESEND_API_KEY) return new Response(JSON.stringify({ error: 'RESEND_API_KEY חסר ב-Worker — לא ניתן לשלוח מיילים' }), { status: 503, headers: { ...cors, 'Content-Type': 'application/json' } });
+    const { email, name, kind, amount, method, days, expires } = await request.json().catch(() => ({}));
+    if (!email || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(String(email))) {
+      return new Response(JSON.stringify({ error: 'missing/invalid email' }), { status: 400, headers: { ...cors, 'Content-Type': 'application/json' } });
+    }
+    const METHOD_LABELS = { bit: 'ביט (Bit)', crypto: 'קריפטו', transfer: 'העברה בנקאית', cash: 'מזומן', other: 'אחר' };
+    const amt = Number(amount) || 0;
+    const { subject, html } = buildPremiumEmail({
+      kind: kind === 'gift' || amt <= 0 ? 'gift' : 'payment',
+      name: String(name || '').slice(0, 80),
+      amount: amt,
+      methodLabel: METHOD_LABELS[method] || null,
+      days: Number.isFinite(Number(days)) ? Number(days) : null,
+      expiresStr: expires ? String(expires).slice(0, 40) : null,
+    });
+    const r = await sendEmail(env, { to: String(email), subject, html });
+    if (!r.ok) {
+      // Pass Resend's real message through — e.g. the test-mode "can only send
+      // to your own address" error — so the admin sees exactly why.
+      return new Response(JSON.stringify({ error: `Resend ${r.status}: ${r.message || r.error || 'unknown error'}`, sentTo: email }), { status: 502, headers: { ...cors, 'Content-Type': 'application/json' } });
+    }
+    appendAudit(env, { kind: 'payment_email', actor: adminUid, target: email, amount: amt, days: Number(days) || null });
+    return new Response(JSON.stringify({ ok: true, sentTo: email }), { headers: { ...cors, 'Content-Type': 'application/json' } });
+  }
+
   if (request.method === 'POST' && path === '/admin/notify') {
     const token = (request.headers.get('Authorization') || '').replace('Bearer ', '');
     const adminUid = await verifyAdminFromToken(token);
@@ -4330,6 +4434,26 @@ async function handleRequest(request, env) {
       url: '/premium',
       tag: `coupon-${code}-${uid}`,
     }).catch(() => {});
+
+    // Best-effort: branded confirmation email to the redeemer (delivery to
+    // arbitrary inboxes requires a verified sender domain on Resend).
+    (async () => {
+      const me = await fetch(`https://firestore.googleapis.com/v1/projects/${FIREBASE_PROJECT_ID}/databases/(default)/documents/users/${uid}`, {
+        headers: { Authorization: `Bearer ${token}` },
+      });
+      if (!me.ok) return;
+      const f = (await me.json()).fields || {};
+      const email = f.email?.stringValue;
+      if (!email) return;
+      const { subject, html } = buildPremiumEmail({
+        kind: 'coupon',
+        name: f.displayName?.stringValue || '',
+        days: coupon.days,
+        expiresStr: new Date(newExpiry).toLocaleDateString('he-IL'),
+        code,
+      });
+      await sendEmail(env, { to: email, subject, html });
+    })().catch(() => {});
 
     // Notify the admin who created the coupon that someone just redeemed it.
     if (coupon.createdBy) {

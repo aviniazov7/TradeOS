@@ -1,12 +1,13 @@
 import { useState, useEffect, useCallback } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { motion } from 'framer-motion';
-import { Wallet, Plus, RefreshCw, Trash2, Copy, X, ExternalLink } from 'lucide-react';
+import { motion, AnimatePresence } from 'framer-motion';
+import { Wallet, Plus, RefreshCw, Trash2, Copy, X, ExternalLink, ShieldCheck, HelpCircle } from 'lucide-react';
 import toast from 'react-hot-toast';
 import { useAuth } from '../../contexts/AuthContext';
 import { getUserSetting, setUserSetting } from '../../services/firestoreService';
 import { fetchWalletData } from '../../services/walletService';
 import { formatCurrency } from '../../utils/formatters';
+import BlockchainAnimation from '../shared/BlockchainAnimation';
 import { FREE_LIMITS } from '../../utils/constants';
 import { pageVariants, pageTransition } from '../../utils/animations';
 
@@ -57,6 +58,7 @@ export default function WalletsPage() {
   const [address, setAddress] = useState('');
   const [label, setLabel] = useState('');
   const [loaded, setLoaded] = useState(false);
+  const [showInfo, setShowInfo] = useState(false);
 
   const load = useCallback(async (addr) => {
     setLoadingAddr((s) => ({ ...s, [addr]: true }));
@@ -120,19 +122,50 @@ export default function WalletsPage() {
       className="min-h-[calc(100vh-4rem)] px-4 py-6">
       <div className="max-w-3xl mx-auto space-y-4">
 
-        {/* Header / total */}
-        <div className="bg-bg-secondary border border-border-primary rounded-2xl p-5 flex items-center justify-between">
-          <div>
-            <div className="flex items-center gap-2 text-text-primary">
-              <Wallet className="w-5 h-5 text-accent-primary" />
+        {/* Header — compact on mobile; the explanation lives behind a "?" */}
+        <div className="relative overflow-hidden bg-bg-secondary border border-border-primary rounded-2xl p-5">
+          <div className="flex items-center justify-between gap-3">
+            <div className="flex items-center gap-2 text-text-primary min-w-0">
+              <Wallet className="w-5 h-5 text-accent-primary shrink-0" />
               <h1 className="text-lg font-bold">ארנקים</h1>
+              <motion.button
+                onClick={() => setShowInfo((v) => !v)}
+                whileTap={{ scale: 0.9 }}
+                aria-label="מה זה?"
+                className={`p-1.5 rounded-lg transition-colors cursor-pointer shrink-0 ${showInfo ? 'text-accent-primary bg-accent-primary/10' : 'text-text-muted hover:bg-bg-tertiary'}`}
+              >
+                <HelpCircle className="w-4 h-4" />
+              </motion.button>
             </div>
-            <p className="text-xs text-text-muted mt-1">מעקב שווי על-שרשרת · קריאה בלבד</p>
+            <div className="text-left shrink-0">
+              <div className="text-[11px] text-text-muted">שווי כולל</div>
+              <div className="text-2xl font-bold text-text-primary" dir="ltr">{formatCurrency(grandTotal)}</div>
+            </div>
           </div>
-          <div className="text-left">
-            <div className="text-[11px] text-text-muted">שווי כולל</div>
-            <div className="text-2xl font-bold text-text-primary" dir="ltr">{formatCurrency(grandTotal)}</div>
-          </div>
+
+          {/* Explanation — revealed on tapping "?" */}
+          <AnimatePresence initial={false}>
+            {showInfo && (
+              <motion.div
+                initial={{ height: 0, opacity: 0 }}
+                animate={{ height: 'auto', opacity: 1 }}
+                exit={{ height: 0, opacity: 0 }}
+                transition={{ duration: 0.25 }}
+                className="overflow-hidden"
+              >
+                <p className="text-sm text-text-secondary mt-3 leading-relaxed">
+                  עקוב אחר שווי הארנקים שלך בכל הרשתות — <span className="font-semibold text-text-primary">EVM, Solana ו-Bitcoin</span> במקום אחד. מזין כתובת ציבורית ורואה יתרות, אחזקות ושווי מעודכן.
+                </p>
+                <div className="flex items-center gap-1.5 mt-2 text-[11px] text-text-muted">
+                  <ShieldCheck className="w-3.5 h-3.5 text-profit shrink-0" />
+                  קריאה בלבד · בלי מפתחות פרטיים · הכתובת נשמרת רק אצלך
+                </div>
+              </motion.div>
+            )}
+          </AnimatePresence>
+
+          {/* On-chain blockchain animation */}
+          <BlockchainAnimation className="mt-3 h-14 w-full opacity-90" />
         </div>
 
         {/* Add wallet */}
@@ -144,10 +177,10 @@ export default function WalletsPage() {
                 <X className="w-4 h-4" />
               </button>
             </div>
-            <input value={address} onChange={(e) => setAddress(e.target.value)} placeholder="כתובת ארנק — EVM / Solana / Bitcoin" dir="ltr"
-              className="w-full bg-bg-tertiary border border-border-primary rounded-lg px-3 py-2.5 text-sm text-text-primary outline-none focus:border-accent-primary transition-colors font-mono" />
-            <input value={label} onChange={(e) => setLabel(e.target.value)} placeholder="כינוי (לא חובה) — לדוגמה: ארנק קר"
-              className="w-full bg-bg-tertiary border border-border-primary rounded-lg px-3 py-2.5 text-sm text-text-primary outline-none focus:border-accent-primary transition-colors" />
+            <input value={address} onChange={(e) => setAddress(e.target.value)} placeholder="כתובת ארנק — EVM / Solana / Bitcoin" dir="rtl"
+              className="w-full bg-bg-tertiary border border-border-primary rounded-lg px-3 py-2.5 text-sm text-text-primary outline-none focus:border-accent-primary transition-colors font-mono text-right" />
+            <input value={label} onChange={(e) => setLabel(e.target.value)} placeholder="כינוי (לא חובה) — לדוגמה: ארנק קר" dir="rtl"
+              className="w-full bg-bg-tertiary border border-border-primary rounded-lg px-3 py-2.5 text-sm text-text-primary outline-none focus:border-accent-primary transition-colors text-right" />
             <button onClick={addWallet}
               className="w-full py-2.5 rounded-lg bg-accent-primary text-bg-primary text-sm font-bold hover:bg-accent-hover transition-colors cursor-pointer">
               הוסף ארנק

@@ -6,6 +6,7 @@ import {
   Wallet, TrendingUp, Target, Zap, Flame, Snowflake, Signal,
   Scale, BarChart3, Activity, Calendar,
   Clock, DollarSign, Percent, Link2, Undo2, BrainCircuit, Star,
+  Sparkles, ChevronLeft,
 } from 'lucide-react';
 import { BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer, PieChart, Pie, Cell } from 'recharts';
 import { format } from 'date-fns';
@@ -35,6 +36,7 @@ import DayOfWeekChart from '../analytics/DayOfWeekChart';
 import TradeDurationChart from '../analytics/TradeDurationChart';
 import MonthlyCalendar from './MonthlyCalendar';
 import AICoachPanel from './AICoachPanel';
+import Modal from '../shared/Modal';
 import ImportTrades from './ImportTrades';
 import JournalSettingsModal from './JournalSettingsModal';
 import ArchiveAnimation from './ArchiveAnimation';
@@ -72,6 +74,7 @@ export default function TradeJournal() {
   });
   const [period, setPeriod] = useState('all');
   const [tab, setTab] = useState('trades');
+  const [aiModalOpen, setAiModalOpen] = useState(false);
   const [importOpen, setImportOpen] = useState(false);
   const [settingsOpen, setSettingsOpen] = useState(false);
   const [shareTarget, setShareTarget] = useState(null);
@@ -539,15 +542,6 @@ export default function TradeJournal() {
                 ניתוחים
               </button>
               <button
-                onClick={() => setTab('aiCoach')}
-                className={`h-9 inline-flex items-center px-3.5 text-sm font-medium rounded-lg transition-colors cursor-pointer whitespace-nowrap inline-flex items-center gap-1.5 ${
-                  tab === 'aiCoach' ? 'bg-accent-primary/15 text-accent-primary' : 'text-text-muted hover:text-text-primary hover:bg-bg-tertiary'
-                }`}
-              >
-                <BrainCircuit className="w-3.5 h-3.5" />
-                ניתוח AI
-              </button>
-              <button
                 onClick={() => setTab('calendar')}
                 className={`h-9 inline-flex items-center px-3.5 text-sm font-medium rounded-lg transition-colors cursor-pointer whitespace-nowrap ${
                   tab === 'calendar' ? 'bg-accent-primary/15 text-accent-primary' : 'text-text-muted hover:text-text-primary hover:bg-bg-tertiary'
@@ -615,15 +609,6 @@ export default function TradeJournal() {
               }`}
             >
               ניתוחים
-            </button>
-            <button
-              onClick={() => setTab('aiCoach')}
-              className={`px-2.5 py-1.5 text-xs font-medium rounded-lg transition-colors cursor-pointer whitespace-nowrap flex-shrink-0 inline-flex items-center gap-1 ${
-                tab === 'aiCoach' ? 'bg-accent-primary/15 text-accent-primary' : 'text-text-muted hover:text-text-primary hover:bg-bg-tertiary'
-              }`}
-            >
-              <BrainCircuit className="w-3 h-3" />
-              ניתוח AI
             </button>
             <button
               onClick={() => setTab('calendar')}
@@ -698,6 +683,57 @@ export default function TradeJournal() {
 
       {tab === 'analytics' && (
         <>
+          {/* AI analysis launcher — 21st.dev-style gradient card with a shimmer
+              sweep. Opens the beautiful animated AI modal. */}
+          <motion.button
+            type="button"
+            onClick={() => setAiModalOpen(true)}
+            initial={{ opacity: 0, y: 8 }}
+            animate={{ opacity: 1, y: 0 }}
+            whileHover={{ scale: 1.01 }}
+            whileTap={{ scale: 0.99 }}
+            className="group relative w-full overflow-hidden rounded-2xl mb-3 md:mb-4 cursor-pointer text-right"
+            style={{ border: '1px solid var(--glass-border)' }}
+          >
+            {/* animated gradient wash */}
+            <div
+              className="absolute inset-0 opacity-90"
+              style={{ background: 'linear-gradient(135deg, rgba(139,92,246,0.16) 0%, rgba(99,102,241,0.10) 45%, rgba(6,182,212,0.16) 100%)' }}
+            />
+            {/* shimmer sweep */}
+            <motion.div
+              aria-hidden
+              className="absolute inset-y-0 -left-1/2 w-1/2 skew-x-12"
+              style={{ background: 'linear-gradient(90deg, transparent, rgba(255,255,255,0.14), transparent)' }}
+              animate={{ x: ['0%', '400%'] }}
+              transition={{ duration: 2.4, repeat: Infinity, repeatDelay: 2.4, ease: 'easeInOut' }}
+            />
+            <div className="relative flex items-center gap-3 px-4 py-3.5 md:px-5 md:py-4">
+              {/* icon medallion with soft glow */}
+              <span className="relative flex-shrink-0 grid place-items-center w-11 h-11 rounded-xl"
+                style={{ background: 'rgba(139,92,246,0.14)', border: '1px solid rgba(139,92,246,0.30)' }}>
+                <motion.span
+                  aria-hidden
+                  className="absolute inset-0 rounded-xl"
+                  style={{ boxShadow: '0 0 22px 2px rgba(139,92,246,0.35)' }}
+                  animate={{ opacity: [0.35, 0.8, 0.35] }}
+                  transition={{ duration: 2.6, repeat: Infinity, ease: 'easeInOut' }}
+                />
+                <BrainCircuit className="relative w-5 h-5" style={{ stroke: 'url(#ai-grad)' }} />
+              </span>
+              <div className="min-w-0 flex-1">
+                <div className="flex items-center gap-1.5">
+                  <span className="text-sm md:text-base font-bold text-gradient">ניתוח AI של המסחר שלך</span>
+                  <Sparkles className="w-3.5 h-3.5 flex-shrink-0" style={{ stroke: 'url(#ai-grad)' }} />
+                </div>
+                <p className="text-xs text-text-muted mt-0.5 truncate">
+                  תובנות חכמות, דפוסים חוזרים והמלצות — לחצו לפתיחה
+                </p>
+              </div>
+              <ChevronLeft className="w-5 h-5 flex-shrink-0 text-accent-primary transition-transform group-hover:-translate-x-1" />
+            </div>
+          </motion.button>
+
           {/* Row 1: Main Stats */}
           <motion.div className="grid grid-cols-2 md:grid-cols-4 gap-2.5 md:gap-3 mb-3 md:mb-4" variants={staggerContainer} initial="initial" animate="animate">
             <StatCard label={balanceIsLive ? `יתרה נוכחית · ${activeJournal.exchange}` : 'יתרה נוכחית'}
@@ -938,9 +974,19 @@ export default function TradeJournal() {
         <MonthlyCalendar trades={trades} journalName={activeJournal?.name} />
       )}
 
-      {tab === 'aiCoach' && (
+      <Modal
+        isOpen={aiModalOpen}
+        onClose={() => setAiModalOpen(false)}
+        maxWidth="max-w-2xl"
+        title={(
+          <span className="inline-flex items-center gap-2">
+            <BrainCircuit className="w-4 h-4" style={{ stroke: 'url(#ai-grad)' }} />
+            <span className="text-gradient font-bold">ניתוח AI</span>
+          </span>
+        )}
+      >
         <AICoachPanel trades={trades} />
-      )}
+      </Modal>
 
       {tab === 'exchange' && (
         <div className="mt-2">
