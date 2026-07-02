@@ -405,9 +405,6 @@ export default function AICoachPanel({ trades }) {
   };
 
   const sections = report ? parseSections(report) : [];
-  const activePromptLabel = activePrompt
-    ? [...FREE_PROMPTS, ...PREMIUM_PROMPTS].find((p) => p.id === activePrompt)?.label
-    : null;
 
   return (
     <div className="space-y-4 mt-2 max-w-3xl mx-auto">
@@ -498,24 +495,6 @@ export default function AICoachPanel({ trades }) {
       {/* Structured chat-style report */}
       {sections.length > 0 && !loading && (
         <motion.div initial={{ opacity: 0, y: 6 }} animate={{ opacity: 1, y: 0 }} className="space-y-3">
-          {/* Bot intro bubble */}
-          <div className="flex items-start gap-3">
-            <div className="shrink-0 w-9 h-9 rounded-full bg-accent-primary/15 border border-accent-primary/30 flex items-center justify-center">
-              <Bot className="w-4.5 h-4.5 text-accent-primary" />
-            </div>
-            <div className="flex-1 bg-bg-secondary border border-border-primary rounded-2xl rounded-tr-sm px-4 py-3">
-              <div className="text-xs font-semibold text-text-primary mb-0.5 flex items-center gap-1">
-                TradeAI
-                <span className="text-[10px] text-text-muted">· ניתוח שהושלם</span>
-              </div>
-              <p className="text-sm text-text-secondary leading-relaxed">
-                {activePromptLabel
-                  ? <>שאלת: <b className="text-text-primary">«{activePromptLabel}»</b> — הנה התשובה:</>
-                  : 'סיימתי לעבור על העסקאות שלך. הנה מה שמצאתי:'}
-              </p>
-            </div>
-          </div>
-
           {/* Focused stats — only the charts that answer the question asked */}
           <StatsDashboard stats={stats} focus={activePrompt} />
 
