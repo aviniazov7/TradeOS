@@ -2114,7 +2114,7 @@ function CouponsModal({ isOpen, onClose }) {
                 onChange={(e) => setCode(e.target.value.toUpperCase())}
                 placeholder="קוד (לדוגמה TRADEOS7)"
                 className="flex-1 bg-bg-secondary border border-border-primary rounded-lg px-3 py-2 text-sm text-text-primary outline-none focus:border-amber-500 font-mono uppercase"
-                dir="ltr"
+                dir={code ? 'ltr' : 'rtl'}
                 maxLength={32}
               />
               <button onClick={randomCode} className="px-3 rounded-lg border border-border-primary text-xs text-text-secondary hover:text-text-primary cursor-pointer">
@@ -2136,7 +2136,8 @@ function CouponsModal({ isOpen, onClose }) {
                 onChange={(e) => setLabel(e.target.value)}
                 placeholder='לדוגמה: "קמפיין אינסטגרם נובמבר"'
                 maxLength={80}
-                className="w-full bg-bg-secondary border border-border-primary rounded-lg px-3 py-2 text-sm text-text-primary outline-none focus:border-amber-500"
+                dir="rtl"
+                className="w-full bg-bg-secondary border border-border-primary rounded-lg px-3 py-2 text-sm text-text-primary text-right outline-none focus:border-amber-500"
               />
             </div>
           </div>
@@ -2176,6 +2177,16 @@ function CouponsModal({ isOpen, onClose }) {
                       )}
                       {!c.maxUses && (
                         <span className="text-[11px] text-text-muted">· נוצל {c.used} פעמים</span>
+                      )}
+                      {/* Redemption state — so it's obvious at a glance which codes were used */}
+                      {c.maxUses && c.used >= c.maxUses ? (
+                        <span className="inline-flex items-center gap-0.5 text-[10px] px-1.5 py-0.5 rounded-full bg-amber-500/15 border border-amber-500/40 text-amber-400 font-semibold">
+                          <CheckCircle2 className="w-3 h-3" /> נוצל במלואו
+                        </span>
+                      ) : c.used > 0 && (
+                        <span className="inline-flex items-center gap-0.5 text-[10px] px-1.5 py-0.5 rounded-full bg-profit/10 border border-profit/40 text-profit font-semibold">
+                          <CheckCircle2 className="w-3 h-3" /> מומש
+                        </span>
                       )}
                     </div>
                     {c.label && <div className="text-[10px] text-text-muted truncate">{c.label}</div>}

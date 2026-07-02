@@ -1,6 +1,6 @@
 import { useState, useEffect, useCallback, useMemo } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
-import { Newspaper, ExternalLink, Clock, Filter, CalendarDays, Volume2, Globe, BrainCircuit, RefreshCw } from 'lucide-react';
+import { Newspaper, ExternalLink, Clock, Filter, CalendarDays, Volume2, Globe, BrainCircuit, RefreshCw, Bitcoin, CandlestickChart } from 'lucide-react';
 import { fetchNewsDigest, translateNews } from '../../services/newsService';
 import { hebrewEventTitle } from '../../utils/econCalendarTerms';
 
@@ -1166,18 +1166,19 @@ export default function NewsPage() {
         <div className="flex items-center justify-center mb-6">
           <div className="inline-flex bg-bg-secondary border border-border-primary rounded-full p-1">
             {[
-              { key: 'crypto', label: '₿ קריפטו' },
-              { key: 'stocks', label: '📈 מניות' },
+              { key: 'crypto', label: 'קריפטו', Icon: Bitcoin },
+              { key: 'stocks', label: 'מניות', Icon: CandlestickChart },
             ].map((m) => (
               <button
                 key={m.key}
                 onClick={() => setMarket(m.key)}
-                className={`px-4 py-1.5 rounded-full text-xs font-bold transition-all cursor-pointer ${
+                className={`inline-flex items-center gap-1.5 px-4 py-1.5 rounded-full text-xs font-bold transition-all cursor-pointer ${
                   market === m.key
                     ? 'bg-accent-primary text-white shadow-sm'
                     : 'text-text-secondary hover:text-text-primary'
                 }`}
               >
+                <m.Icon className="w-3.5 h-3.5" />
                 {m.label}
               </button>
             ))}
