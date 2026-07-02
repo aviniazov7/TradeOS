@@ -5,7 +5,7 @@ import { Crown, Check, ShieldCheck, ChevronRight, Lock } from 'lucide-react';
 import toast from 'react-hot-toast';
 import { useAuth } from '../../contexts/AuthContext';
 import { PREMIUM_PRICING, PREMIUM_FEATURES } from '../../utils/constants';
-import { startCheckout } from '../../services/paymentService';
+import { startCheckout, requestPurchaseInquiry } from '../../services/paymentService';
 import { pageVariants, pageTransition } from '../../utils/animations';
 
 export default function CheckoutPage() {
@@ -25,7 +25,15 @@ export default function CheckoutPage() {
     try {
       const res = await startCheckout(cycle);
       if (!res.enabled) {
-        toast('הסליקה תיפתח בקרוב 🙏', { icon: '⏳' });
+        // Card checkout isn't wired yet — capture the buyer's intent so a
+        // ready-to-pay user isn't lost. Best-effort; the friendly message
+        // shows regardless.
+        try {
+          await requestPurchaseInquiry(`בקשת רכישת Premium — מסלול ${plan.label} (₪${plan.price}).`);
+          toast.success('רשמנו את הבקשה — ניצור איתך קשר לתיאום התשלום 🙏', { duration: 5000 });
+        } catch {
+          toast('הסליקה תיפתח בקרוב 🙏', { icon: '⏳' });
+        }
         return;
       }
       window.location.href = res.url; // redirect to Grow's hosted payment page

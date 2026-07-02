@@ -27,6 +27,25 @@ async function authHeader() {
 // ============================================================================
 export const PAYMENTS_ENABLED = false;
 
+// Until card checkout is live, a purchase attempt still shouldn't be lost:
+// record the buyer's intent by messaging the developer (same /contact channel
+// as support), so you can reach out and arrange manual payment + a coupon.
+export async function requestPurchaseInquiry(note) {
+  const user = getAuth().currentUser;
+  if (!user) throw new Error('יש להתחבר');
+  const token = await user.getIdToken();
+  const res = await fetch(`${WORKER_BASE}/contact`, {
+    method: 'POST',
+    headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
+    body: JSON.stringify({ message: note, displayName: user.displayName || null }),
+  });
+  if (!res.ok) {
+    const e = await res.json().catch(() => ({}));
+    throw new Error(e.error || 'שליחת הבקשה נכשלה');
+  }
+  return true;
+}
+
 export async function startCheckout(cycle = 'monthly') {
   if (!PAYMENTS_ENABLED) {
     return { enabled: false };

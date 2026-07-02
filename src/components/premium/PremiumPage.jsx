@@ -124,22 +124,23 @@ export default function PremiumPage() {
           })}
         </div>
 
-        {/* CTA */}
-        {!isPremium && (
-          <div className="border-beam relative overflow-hidden bg-bg-secondary border border-accent-primary/30 rounded-2xl p-5 text-center space-y-3">
-            <div className="flex items-center justify-center gap-1.5">
-              <span className="text-3xl font-bold text-text-primary" dir="ltr">₪{PREMIUM_PRICING.monthly.price}</span>
-              <span className="text-sm text-text-muted">/ חודש</span>
-            </div>
-            <button
-              onClick={() => navigate('/premium/checkout')}
-              className="w-full py-3 rounded-xl bg-accent-primary text-bg-primary text-sm font-bold hover:bg-accent-hover transition-colors cursor-pointer flex items-center justify-center gap-2"
-            >
-              <Crown className="w-4 h-4" /> שדרג עכשיו
-            </button>
-            <p className="text-[11px] text-text-muted">אפשר גם מסלול שנתי עם חודשיים חינם.</p>
+        {/* CTA — shown to everyone. A premium user gets a "renew by payment"
+            button so an intent-to-pay is never missed; the checkout captures
+            the lead until card checkout is live. (Also: the border-beam was
+            hidden from premium users before, since this block was gated.) */}
+        <div className="border-beam relative overflow-hidden bg-bg-secondary border border-accent-primary/30 rounded-2xl p-5 text-center space-y-3">
+          <div className="flex items-center justify-center gap-1.5">
+            <span className="text-3xl font-bold text-text-primary" dir="ltr">₪{PREMIUM_PRICING.monthly.price}</span>
+            <span className="text-sm text-text-muted">/ חודש</span>
           </div>
-        )}
+          <button
+            onClick={() => navigate('/premium/checkout')}
+            className="w-full py-3 rounded-xl bg-accent-primary text-bg-primary text-sm font-bold hover:bg-accent-hover transition-colors cursor-pointer flex items-center justify-center gap-2"
+          >
+            <Crown className="w-4 h-4" /> {isPremium ? 'חדש בתשלום' : 'שדרג עכשיו'}
+          </button>
+          <p className="text-[11px] text-text-muted">אפשר גם מסלול שנתי עם חודשיים חינם.</p>
+        </div>
 
         {/* Coupon redeem — shown to EVERYONE. For a premium user this is the
             renewal path: the worker extends from the current expiry
