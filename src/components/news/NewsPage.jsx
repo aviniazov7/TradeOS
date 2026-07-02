@@ -119,6 +119,14 @@ const IMPACT_STYLES = {
   Low: { bg: 'bg-blue-500/20', text: 'text-blue-400', border: 'border-blue-500/30', label: '\u05E0\u05DE\u05D5\u05DA', dots: 1 },
 };
 
+// Impact filter options (dropdown). Colored dot mirrors the row impact bars.
+const IMPACT_OPTIONS = [
+  { key: 'all', label: '\u05D4\u05DB\u05DC', dot: '' },
+  { key: 'High', label: '\u05D2\u05D1\u05D5\u05D4', dot: 'bg-red-400' },
+  { key: 'Medium', label: '\u05D1\u05D9\u05E0\u05D5\u05E0\u05D9', dot: 'bg-yellow-400' },
+  { key: 'Low', label: '\u05E0\u05DE\u05D5\u05DA', dot: 'bg-blue-400' },
+];
+
 const DAY_NAMES = ['\u05D9\u05D5\u05DD \u05E8\u05D0\u05E9\u05D5\u05DF', '\u05D9\u05D5\u05DD \u05E9\u05E0\u05D9', '\u05D9\u05D5\u05DD \u05E9\u05DC\u05D9\u05E9\u05D9', '\u05D9\u05D5\u05DD \u05E8\u05D1\u05D9\u05E2\u05D9', '\u05D9\u05D5\u05DD \u05D7\u05DE\u05D9\u05E9\u05D9', '\u05D9\u05D5\u05DD \u05E9\u05D9\u05E9\u05D9', '\u05E9\u05D1\u05EA'];
 const MONTH_NAMES = ['\u05D9\u05E0\u05D5\u05D0\u05E8', '\u05E4\u05D1\u05E8\u05D5\u05D0\u05E8', '\u05DE\u05E8\u05E5', '\u05D0\u05E4\u05E8\u05D9\u05DC', '\u05DE\u05D0\u05D9', '\u05D9\u05D5\u05E0\u05D9', '\u05D9\u05D5\u05DC\u05D9', '\u05D0\u05D5\u05D2\u05D5\u05E1\u05D8', '\u05E1\u05E4\u05D8\u05DE\u05D1\u05E8', '\u05D0\u05D5\u05E7\u05D8\u05D5\u05D1\u05E8', '\u05E0\u05D5\u05D1\u05DE\u05D1\u05E8', '\u05D3\u05E6\u05DE\u05D1\u05E8'];
 
@@ -225,6 +233,7 @@ function EconomicCalendar() {
   const [impactFilter, setImpactFilter] = useState('all');
   const [selectedCountries, setSelectedCountries] = useState(new Set(['USD']));
   const [showCountryPicker, setShowCountryPicker] = useState(false);
+  const [showImpactPicker, setShowImpactPicker] = useState(false);
   const [timePeriod, setTimePeriod] = useState('thisWeek');
   // English event title -> Hebrew (same worker translate endpoint as the news
   // feed, KV-cached by title; event names are a small recurring set so this is
@@ -486,26 +495,46 @@ function EconomicCalendar() {
           </AnimatePresence>
         </div>
 
-        {/* Impact Filter */}
-        <div className="flex items-center gap-1.5">
-          {[
-            { key: 'all', label: '\u05D4\u05DB\u05DC' },
-            { key: 'High', label: '\u05D2\u05D1\u05D5\u05D4' },
-            { key: 'Medium', label: '\u05D1\u05D9\u05E0\u05D5\u05E0\u05D9' },
-            { key: 'Low', label: '\u05E0\u05DE\u05D5\u05DA' },
-          ].map((f) => (
-            <button
-              key={f.key}
-              onClick={() => setImpactFilter(f.key)}
-              className={`px-2.5 py-1.5 rounded-lg text-xs font-medium whitespace-nowrap transition-colors ${
-                impactFilter === f.key
-                  ? 'bg-accent-primary text-white'
-                  : 'bg-bg-secondary border border-border-primary text-text-secondary hover:text-text-primary'
-              }`}
-            >
-              {f.label}
-            </button>
-          ))}
+        {/* Impact Filter \u2014 dropdown */}
+        <div className="relative">
+          <button
+            onClick={() => setShowImpactPicker(!showImpactPicker)}
+            className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-sm bg-bg-secondary border border-border-primary text-text-secondary hover:text-text-primary transition-colors"
+          >
+            <Filter className="w-4 h-4" />
+            {IMPACT_OPTIONS.find((o) => o.key === impactFilter)?.label || IMPACT_OPTIONS[0].label}
+          </button>
+
+          <AnimatePresence>
+            {showImpactPicker && (
+              <>
+                <motion.div
+                  initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}
+                  className="fixed inset-0 z-40" onClick={() => setShowImpactPicker(false)}
+                />
+                <motion.div
+                  initial={{ opacity: 0, y: -5, scale: 0.95 }}
+                  animate={{ opacity: 1, y: 0, scale: 1 }}
+                  exit={{ opacity: 0, y: -5, scale: 0.95 }}
+                  transition={{ duration: 0.15 }}
+                  className="absolute top-full mt-1 right-0 z-50 bg-bg-overlay border border-border-primary rounded-xl shadow-2xl p-1.5 min-w-[150px]"
+                >
+                  {IMPACT_OPTIONS.map((o) => (
+                    <button
+                      key={o.key}
+                      onClick={() => { setImpactFilter(o.key); setShowImpactPicker(false); }}
+                      className={`flex items-center gap-2 w-full px-2.5 py-2 rounded-lg text-sm transition-colors ${
+                        impactFilter === o.key ? 'bg-accent-primary/15 text-accent-primary' : 'text-text-secondary hover:bg-bg-tertiary'
+                      }`}
+                    >
+                      {o.dot && <span className={`w-2 h-2 rounded-full ${o.dot}`} />}
+                      <span className="flex-1 text-right">{o.label}</span>
+                    </button>
+                  ))}
+                </motion.div>
+              </>
+            )}
+          </AnimatePresence>
         </div>
       </div>
 
@@ -601,19 +630,24 @@ function EconomicCalendar() {
                           initial={{ opacity: 0, x: 10 }}
                           animate={{ opacity: 1, x: 0 }}
                           transition={{ duration: 0.2, delay: i * 0.03 }}
-                          className={`bg-bg-secondary border rounded-xl p-3 md:p-4 ${impact.border} hover:bg-bg-tertiary/30 transition-colors`}
+                          className={`bg-bg-secondary border rounded-lg px-3 py-2.5 border-r-2 ${impact.border} hover:bg-bg-tertiary/30 transition-colors`}
                         >
-                          <div className="flex items-start gap-3">
-                            {/* Right rail: time \u00B7 currency \u00B7 flag \u00B7 impact */}
-                            <div className="flex flex-col items-center gap-0.5 min-w-[56px] shrink-0 text-center">
+                          <div className="flex items-center gap-3">
+                            {/* Right rail: time on top; currency + flag + impact on one row */}
+                            <div className="flex flex-col items-center gap-1 shrink-0 w-[74px]">
                               <span className="text-sm font-bold text-text-primary num-mono leading-none">{formatTime(event.date)}</span>
-                              <span className="text-[11px] font-semibold text-text-muted mt-0.5">{event.country}</span>
-                              <span className="text-base leading-none">{flag}</span>
-                              <div className="mt-1"><ImpactBars impact={event.impact} /></div>
+                              <div className="flex items-center gap-1">
+                                <span className="text-[10px] font-semibold text-text-muted">{event.country}</span>
+                                <span className="text-sm leading-none">{flag}</span>
+                                <ImpactBars impact={event.impact} />
+                              </div>
                             </div>
 
+                            {/* Divider */}
+                            <div className="self-stretch w-px bg-border-primary/50 shrink-0" />
+
                             {/* Main: title + values */}
-                            <div className="flex-1 min-w-0 border-r border-border-primary/60 pr-3">
+                            <div className="flex-1 min-w-0">
                               <div className="flex items-start gap-1.5">
                                 {speech && <Volume2 className="w-3.5 h-3.5 text-text-muted flex-shrink-0 mt-0.5" />}
                                 <h4 className="text-sm font-semibold text-text-primary leading-snug" title={he ? event.title : undefined}>
@@ -622,20 +656,20 @@ function EconomicCalendar() {
                               </div>
 
                               {(hasA || hasF || hasP) && (
-                                <div className="flex items-center gap-x-3 gap-y-0.5 mt-1.5 text-[11px] flex-wrap">
+                                <div className="flex items-center gap-x-3 gap-y-0.5 mt-1 text-[11px] flex-wrap">
                                   {hasA && (
                                     <span className="text-text-muted">
-                                      \u05D1\u05E4\u05D5\u05E2\u05DC <span className={`font-bold ${actualTone(event.title, event.actual, event.forecast)}`}>{event.actual}</span>
+                                      {'\u05D1\u05E4\u05D5\u05E2\u05DC'} <span className={`font-bold ${actualTone(event.title, event.actual, event.forecast)}`}>{event.actual}</span>
                                     </span>
                                   )}
                                   {hasF && (
                                     <span className="text-text-muted">
-                                      \u05E6\u05E4\u05D9 <span className="text-text-secondary font-medium">{event.forecast}</span>
+                                      {'\u05E6\u05E4\u05D9'} <span className="text-text-secondary font-medium">{event.forecast}</span>
                                     </span>
                                   )}
                                   {hasP && (
                                     <span className="text-text-muted">
-                                      \u05E7\u05D5\u05D3\u05DD <span className="text-text-secondary font-medium">{event.previous}</span>
+                                      {'\u05E7\u05D5\u05D3\u05DD'} <span className="text-text-secondary font-medium">{event.previous}</span>
                                     </span>
                                   )}
                                 </div>
