@@ -44,18 +44,9 @@ export default function CheckoutPage() {
     }
   };
 
-  if (isPremium) {
-    return (
-      <motion.div variants={pageVariants} initial="initial" animate="animate" exit="exit" transition={pageTransition}
-        className="min-h-[calc(100vh-4rem)] px-4 py-6">
-        <div className="max-w-md mx-auto text-center bg-bg-secondary border border-border-primary rounded-2xl p-8">
-          <Crown className="w-10 h-10 text-accent-primary mx-auto mb-3" />
-          <h1 className="text-lg font-bold text-text-primary">אתה כבר במנוי Premium 👑</h1>
-          <button onClick={() => navigate('/')} className="mt-4 text-sm text-accent-primary cursor-pointer">חזרה לדשבורד</button>
-        </div>
-      </motion.div>
-    );
-  }
+  // NOTE: premium users are NOT bounced here — they can renew/extend. The
+  // worker extends from max(currentExpiry, now)+days, and until card checkout
+  // is live the pay button captures the intent as a lead (see pay()).
 
   return (
     <motion.div variants={pageVariants} initial="initial" animate="animate" exit="exit" transition={pageTransition}
@@ -71,7 +62,7 @@ export default function CheckoutPage() {
             <Crown className="w-6 h-6 text-accent-primary" />
           </div>
           <h1 className="text-xl font-bold text-text-primary">TradeOS Premium</h1>
-          <p className="text-sm text-text-secondary mt-1">השלמת ההזמנה</p>
+          <p className="text-sm text-text-secondary mt-1">{isPremium ? 'הארכת המנוי — יתווסף לתוקף הקיים' : 'השלמת ההזמנה'}</p>
         </div>
 
         {/* Billing cycle */}

@@ -11,6 +11,7 @@ export function planExpiresMs(v) {
   if (!v) return null;
   if (typeof v.toDate === 'function') return v.toDate().getTime();
   if (typeof v.seconds === 'number') return v.seconds * 1000;
+  if (typeof v._seconds === 'number') return v._seconds * 1000; // serialized Timestamp
   const t = new Date(v).getTime();
   return Number.isFinite(t) ? t : null;
 }
