@@ -141,13 +141,16 @@ export default function PremiumPage() {
           </div>
         )}
 
-        {/* Coupon redeem — free users only. Premium users could 'extend' here
-            but we'd surface this differently; for V1 keep it on the upgrade
-            flow only. */}
-        {!isPremium && (
+        {/* Coupon redeem — shown to EVERYONE. For a premium user this is the
+            renewal path: the worker extends from the current expiry
+            (max(currentExpiry, now) + days), so redeeming while still active
+            adds days rather than overwriting. Card checkout isn't live yet, so
+            without this an expiring user who taps "חדש עכשיו" (→ /premium) hits
+            a dead end. */}
+        {(
           <div className="bg-bg-secondary border border-border-primary rounded-2xl p-4 space-y-2">
             <div className="flex items-center gap-2 text-sm font-semibold text-text-primary">
-              <Ticket className="w-4 h-4 text-accent-primary" /> יש לך קוד קופון?
+              <Ticket className="w-4 h-4 text-accent-primary" /> {isPremium ? 'יש לך קוד להארכת המנוי?' : 'יש לך קוד קופון?'}
             </div>
             <div className="flex gap-2">
               <input
