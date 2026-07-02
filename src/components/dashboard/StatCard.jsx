@@ -2,7 +2,7 @@ import { useState } from 'react';
 import { motion } from 'framer-motion';
 import { Copy, Check } from 'lucide-react';
 import { staggerItem } from '../../utils/animations';
-import AnimatedValue from '../shared/AnimatedValue';
+import RollingNumber from '../shared/RollingNumber';
 import Card from '../shared/Card';
 
 export default function StatCard({ label, value, subtitle, subtitleColor, icon: Icon, color = 'text-text-primary', gradient }) {
@@ -58,7 +58,7 @@ export default function StatCard({ label, value, subtitle, subtitleColor, icon: 
           animate={{ opacity: 1, y: 0 }}
           transition={{ duration: 0.5, delay: 0.2 }}
         >
-          <AnimatedValue value={value} />
+          <RollingNumber value={value} />
         </motion.p>
         {subtitle && (
           <p className={`text-[10px] md:text-xs mt-0.5 md:mt-1 ${subtitleColor || 'text-text-muted'}`}>{subtitle}</p>
