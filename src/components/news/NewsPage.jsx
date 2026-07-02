@@ -1031,22 +1031,33 @@ export default function NewsPage() {
 
   return (
     <div className="max-w-5xl mx-auto px-4 py-6 pb-24 lg:pb-6">
-      {/* Header with Tabs */}
+      {/* Header with Tabs — a shared layoutId pill slides between the active
+          tab instead of a hard color swap (21st.dev animated-tabs look). */}
       <div className="flex items-center justify-center gap-2 mb-6">
-        {tabs.map((tab) => (
-          <button
-            key={tab.key}
-            onClick={() => setActiveTab(tab.key)}
-            className={`flex items-center gap-2 px-5 py-2.5 rounded-xl text-sm font-semibold transition-all ${
-              activeTab === tab.key
-                ? 'bg-accent-primary text-white shadow-lg shadow-accent-primary/25'
-                : 'bg-bg-secondary border border-border-primary text-text-secondary hover:text-text-primary hover:bg-bg-tertiary'
-            }`}
-          >
-            <tab.icon className="w-4.5 h-4.5" />
-            {tab.label}
-          </button>
-        ))}
+        {tabs.map((tab) => {
+          const active = activeTab === tab.key;
+          return (
+            <button
+              key={tab.key}
+              onClick={() => setActiveTab(tab.key)}
+              className={`relative flex items-center gap-2 px-5 py-2.5 rounded-xl text-sm font-semibold transition-colors ${
+                active ? 'text-white' : 'bg-bg-secondary border border-border-primary text-text-secondary hover:text-text-primary hover:bg-bg-tertiary'
+              }`}
+            >
+              {active && (
+                <motion.span
+                  layoutId="news-tab-pill"
+                  className="absolute inset-0 rounded-xl bg-accent-primary shadow-lg shadow-accent-primary/25"
+                  transition={{ type: 'spring', stiffness: 380, damping: 32 }}
+                />
+              )}
+              <span className="relative flex items-center gap-2">
+                <tab.icon className="w-4.5 h-4.5" />
+                {tab.label}
+              </span>
+            </button>
+          );
+        })}
       </div>
 
       {/* Market toggle — crypto ⇄ stocks (news tab only) */}

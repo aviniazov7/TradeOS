@@ -22,14 +22,23 @@ function isUserPremium(u) {
   if (u.role === 'admin') return true;
   if (u.plan !== 'premium') return false;
   if (!u.planExpires) return true; // lifetime
-  return new Date(u.planExpires).getTime() > Date.now();
+  // Must go through toDate — planExpires is a Firestore Timestamp, and
+  // new Date(Timestamp) is Invalid Date → NaN → a real premium user would be
+  // shown as "חינמי". If it's set but truly unparseable, keep the badge
+  // (plan is explicitly 'premium') rather than falsely stripping it.
+  const d = toDate(u.planExpires);
+  return d ? d.getTime() > Date.now() : true;
 }
 
 function toDate(v) {
   if (!v) return null;
-  if (typeof v.toDate === 'function') return v.toDate();
-  if (typeof v === 'number') return new Date(v);
-  const d = new Date(v);
+  if (typeof v.toDate === 'function') return v.toDate();        // Firestore SDK Timestamp
+  if (typeof v === 'number') return new Date(v);                 // epoch ms
+  if (typeof v === 'object') {                                   // serialized Timestamp
+    const s = v.seconds ?? v._seconds;
+    if (typeof s === 'number') return new Date(s * 1000);
+  }
+  const d = new Date(v);                                         // ISO string / Date
   return isNaN(d) ? null : d;
 }
 
@@ -69,8 +78,9 @@ function activeWithin(u, days) {
 
 // Days until Premium expires (negative if already expired, Infinity if lifetime).
 function daysUntilExpiry(u) {
-  if (!u?.planExpires) return Infinity;
-  return Math.ceil((new Date(u.planExpires).getTime() - Date.now()) / DAY_MS);
+  const d = toDate(u?.planExpires);
+  if (!d) return Infinity; // lifetime / unknown
+  return Math.ceil((d.getTime() - Date.now()) / DAY_MS);
 }
 
 const ILS = (n) => '₪' + Math.round(Number(n) || 0).toLocaleString('he-IL');
