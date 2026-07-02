@@ -17,12 +17,14 @@ function RollDigit({ d }) {
       className="inline-block overflow-hidden tabular-nums"
       style={{ height: '1em', lineHeight: '1em', verticalAlign: 'bottom' }}
     >
-      {/* Strip is 10em tall; y as % of the strip moves it by d digit-heights. */}
+      {/* Strip is 10em tall; y as % of the strip moves it by d digit-heights.
+          Starts at 0 so the number visibly rolls up on mount (count-up), then
+          animates digit-to-digit on every subsequent value change. */}
       <motion.span
         className="flex flex-col"
-        initial={false}
+        initial={{ y: '0%' }}
         animate={{ y: `-${d * 10}%` }}
-        transition={{ type: 'spring', stiffness: 190, damping: 25, mass: 0.6 }}
+        transition={{ type: 'spring', stiffness: 190, damping: 26, mass: 0.7 }}
       >
         {DIGITS.map((n) => (
           <span key={n} className="block text-center" style={{ height: '1em', lineHeight: '1em' }}>
