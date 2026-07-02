@@ -67,13 +67,14 @@ function safeHttpUrl(url) {
 // component remount (market/tab toggle, reload) does NOT re-hit the worker's
 // translate endpoint — that was a KV read/write amplifier. Shared across
 // markets (keyed by unique article link); capped and TTL'd.
-const HE_CACHE_KEY = 'tradeos_news_he_v1';
+const HE_CACHE_KEY = 'tradeos_news_he_v1';      // feed: link -> {title, desc}
+const CAL_HE_CACHE_KEY = 'tradeos_cal_he_v1';   // calendar: English title -> {title}
 const HE_CACHE_TTL = 3 * 24 * 60 * 60 * 1000; // match the worker's KV TTL
 const HE_CACHE_MAX = 500;
 
-function loadHeCache() {
+function loadHeCache(key = HE_CACHE_KEY) {
   try {
-    const raw = JSON.parse(localStorage.getItem(HE_CACHE_KEY) || 'null');
+    const raw = JSON.parse(localStorage.getItem(key) || 'null');
     if (raw && typeof raw.savedAt === 'number' && Date.now() - raw.savedAt < HE_CACHE_TTL && raw.map) {
       return raw.map;
     }
@@ -81,13 +82,13 @@ function loadHeCache() {
   return {};
 }
 
-function saveHeCache(map) {
+function saveHeCache(map, key = HE_CACHE_KEY) {
   try {
     const entries = Object.entries(map);
     const trimmed = entries.length > HE_CACHE_MAX
       ? Object.fromEntries(entries.slice(-HE_CACHE_MAX)) // insertion order → keep newest
       : map;
-    localStorage.setItem(HE_CACHE_KEY, JSON.stringify({ savedAt: Date.now(), map: trimmed }));
+    localStorage.setItem(key, JSON.stringify({ savedAt: Date.now(), map: trimmed }));
   } catch { /* quota/full/private mode — non-fatal */ }
 }
 
@@ -98,15 +99,15 @@ const CALENDAR_CACHE_KEY = 'tradeos_econ_calendar_v3';
 const CALENDAR_CACHE_TTL = 60 * 60 * 1000; // 1 hour
 
 const COUNTRIES = [
-  { code: 'USD', flag: '\u{1F1FA}\u{1F1F8}', label: '\u05D0\u05E8\u05D4"\u05D1' },
-  { code: 'EUR', flag: '\u{1F1EA}\u{1F1FA}', label: '\u05D0\u05D9\u05E8\u05D5\u05E4\u05D4' },
-  { code: 'GBP', flag: '\u{1F1EC}\u{1F1E7}', label: '\u05D1\u05E8\u05D9\u05D8\u05E0\u05D9\u05D4' },
-  { code: 'JPY', flag: '\u{1F1EF}\u{1F1F5}', label: '\u05D9\u05E4\u05DF' },
-  { code: 'AUD', flag: '\u{1F1E6}\u{1F1FA}', label: '\u05D0\u05D5\u05E1\u05D8\u05E8\u05DC\u05D9\u05D4' },
-  { code: 'CAD', flag: '\u{1F1E8}\u{1F1E6}', label: '\u05E7\u05E0\u05D3\u05D4' },
-  { code: 'CHF', flag: '\u{1F1E8}\u{1F1ED}', label: '\u05E9\u05D5\u05D5\u05D9\u05E5' },
-  { code: 'NZD', flag: '\u{1F1F3}\u{1F1FF}', label: '\u05E0\u05D9\u05D5 \u05D6\u05D9\u05DC\u05E0\u05D3' },
-  { code: 'CNY', flag: '\u{1F1E8}\u{1F1F3}', label: '\u05E1\u05D9\u05DF' },
+  { code: 'USD', flag: '\u{1F1FA}\u{1F1F8}', label: 'ארה"ב' },
+  { code: 'EUR', flag: '\u{1F1EA}\u{1F1FA}', label: 'אירופה' },
+  { code: 'GBP', flag: '\u{1F1EC}\u{1F1E7}', label: 'בריטניה' },
+  { code: 'JPY', flag: '\u{1F1EF}\u{1F1F5}', label: 'יפן' },
+  { code: 'AUD', flag: '\u{1F1E6}\u{1F1FA}', label: 'אוסטרליה' },
+  { code: 'CAD', flag: '\u{1F1E8}\u{1F1E6}', label: 'קנדה' },
+  { code: 'CHF', flag: '\u{1F1E8}\u{1F1ED}', label: 'שוויץ' },
+  { code: 'NZD', flag: '\u{1F1F3}\u{1F1FF}', label: 'ניו זילנד' },
+  { code: 'CNY', flag: '\u{1F1E8}\u{1F1F3}', label: 'סין' },
 ];
 
 const COUNTRY_MAP = Object.fromEntries(COUNTRIES.map((c) => [c.code, c]));
@@ -184,6 +185,10 @@ function EconomicCalendar() {
   const [selectedCountries, setSelectedCountries] = useState(new Set(['USD']));
   const [showCountryPicker, setShowCountryPicker] = useState(false);
   const [timePeriod, setTimePeriod] = useState('thisWeek');
+  // English event title -> Hebrew (same worker translate endpoint as the news
+  // feed, KV-cached by title; event names are a small recurring set so this is
+  // near-free after the first pass). Persisted so a remount doesn't re-call.
+  const [heMap, setHeMap] = useState(() => loadHeCache(CAL_HE_CACHE_KEY));
 
   const fetchCalendar = useCallback(async () => {
     // Check cache
@@ -253,6 +258,32 @@ function EconomicCalendar() {
   useEffect(() => {
     fetchCalendar();
   }, [fetchCalendar]);
+
+  // Translate the unique English event titles to Hebrew, in small batches.
+  useEffect(() => {
+    if (!events.length) return undefined;
+    let cancelled = false;
+    (async () => {
+      const titles = [...new Set(events.map((e) => e.title).filter(Boolean))].filter((t) => !heMap[t]);
+      for (let i = 0; i < titles.length && !cancelled; i += 12) {
+        const chunk = titles.slice(i, i + 12);
+        const res = await translateNews(chunk.map((t) => ({ title: t, desc: '' })));
+        if (cancelled) return;
+        if (res) {
+          setHeMap((m) => {
+            const next = { ...m };
+            chunk.forEach((t, j) => { if (res[j]?.title) next[t] = res[j].title; });
+            return next;
+          });
+        }
+        if (i + 12 < titles.length) await new Promise((r) => setTimeout(r, 1500));
+      }
+    })();
+    return () => { cancelled = true; };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [events]);
+
+  useEffect(() => { saveHeCache(heMap, CAL_HE_CACHE_KEY); }, [heMap]);
 
   const toggleCountry = (code) => {
     setSelectedCountries((prev) => {
@@ -537,7 +568,7 @@ function EconomicCalendar() {
                             <div className="flex-1 min-w-0">
                               <div className="flex items-center gap-2 mb-1">
                                 {speech && <Volume2 className="w-3.5 h-3.5 text-text-muted flex-shrink-0" />}
-                                <h4 className="text-sm font-semibold text-text-primary truncate">{event.title}</h4>
+                                <h4 className="text-sm font-semibold text-text-primary truncate" title={heMap[event.title] ? event.title : undefined}>{heMap[event.title] || event.title}</h4>
                               </div>
 
                               {(event.actual || event.forecast || event.previous) && (

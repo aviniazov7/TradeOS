@@ -10,10 +10,10 @@ import {
 } from 'lucide-react';
 
 const mobileItems = [
-  { to: '/', label: 'בית', icon: LayoutDashboard },
-  { to: '/journal', label: 'יומן', icon: BookOpen },
-  { to: '/mentality', label: 'מנטלי', icon: Brain },
-  { to: '/backtest', label: 'בקטסט', icon: FlaskConical },
+  { to: '/', label: 'Home', icon: LayoutDashboard },
+  { to: '/journal', label: 'Journal', icon: BookOpen },
+  { to: '/mentality', label: 'Mental', icon: Brain },
+  { to: '/backtest', label: 'Backtest', icon: FlaskConical },
   { to: '/dca', label: 'DCA', icon: Coins },
 ];
 
