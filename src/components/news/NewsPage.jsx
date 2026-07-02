@@ -166,6 +166,46 @@ function sameDay(d1, d2) {
   return d1.getFullYear() === d2.getFullYear() && d1.getMonth() === d2.getMonth() && d1.getDate() === d2.getDate();
 }
 
+// Parse a calendar value like "7.594M", "98K", "-3.775M", "4.2%" to a number.
+function parseCalNum(v) {
+  if (v == null) return null;
+  const m = String(v).replace(/,/g, '').trim().match(/^(-?\d*\.?\d+)\s*([kmbt]?)/i);
+  if (!m) return null;
+  let n = parseFloat(m[1]);
+  const s = m[2].toLowerCase();
+  if (s === 'k') n *= 1e3; else if (s === 'm') n *= 1e6; else if (s === 'b') n *= 1e9; else if (s === 't') n *= 1e12;
+  return Number.isFinite(n) ? n : null;
+}
+
+// A higher-than-forecast actual is "good" (green) for most indicators; a small
+// set inverts that (unemployment, jobless claims, inventories — lower/bigger
+// draw is bullish). Best-effort, matches the common cases.
+const CAL_LOWER_IS_BETTER = /unemploy|jobless|claimant|initial claims|inventories|crude oil|natural gas|oil stocks/i;
+function actualTone(title, actual, forecast) {
+  const a = parseCalNum(actual);
+  const f = parseCalNum(forecast);
+  if (a == null || f == null || a === f) return 'text-text-primary';
+  const beat = CAL_LOWER_IS_BETTER.test(title) ? a < f : a > f;
+  return beat ? 'text-profit' : 'text-loss';
+}
+
+// Forex-Factory-style impact strength: three rising bars, colour + fill by
+// level. Holidays have no impact — show a "חופשה" label instead.
+function ImpactBars({ impact }) {
+  if (impact === 'Holiday') {
+    return <span className="text-[10px] font-medium text-text-muted whitespace-nowrap">חופשה</span>;
+  }
+  const level = impact === 'High' ? 3 : impact === 'Medium' ? 2 : 1;
+  const color = impact === 'High' ? 'bg-red-400' : impact === 'Medium' ? 'bg-yellow-400' : 'bg-blue-400';
+  return (
+    <span className="inline-flex items-end gap-0.5" dir="ltr" title={impact}>
+      {[1, 2, 3].map((i) => (
+        <span key={i} className={`w-1 rounded-sm ${i <= level ? color : 'bg-bg-tertiary'}`} style={{ height: `${3 + i * 3}px` }} />
+      ))}
+    </span>
+  );
+}
+
 
 // ─── Economic Calendar Component ───
 function EconomicCalendar() {
@@ -550,6 +590,10 @@ function EconomicCalendar() {
                       const country = COUNTRY_MAP[event.country];
                       const flag = country?.flag || '';
                       const speech = isSpeech(event.title);
+                      const he = hebrewEventTitle(event.title) || heMap[event.title];
+                      const hasA = event.actual != null && event.actual !== '';
+                      const hasF = event.forecast != null && event.forecast !== '';
+                      const hasP = event.previous != null && event.previous !== '';
 
                       return (
                         <motion.div
@@ -560,58 +604,42 @@ function EconomicCalendar() {
                           className={`bg-bg-secondary border rounded-xl p-3 md:p-4 ${impact.border} hover:bg-bg-tertiary/30 transition-colors`}
                         >
                           <div className="flex items-start gap-3">
-                            {/* Time + Flag */}
-                            <div className="flex flex-col items-center gap-1 min-w-[50px]">
-                              <span className="text-sm font-bold text-text-primary">{formatTime(event.date)}</span>
-                              <span className="text-lg">{flag}</span>
-                              <span className="text-[10px] font-medium text-text-muted">{event.country}</span>
+                            {/* Right rail: time \u00B7 currency \u00B7 flag \u00B7 impact */}
+                            <div className="flex flex-col items-center gap-0.5 min-w-[56px] shrink-0 text-center">
+                              <span className="text-sm font-bold text-text-primary num-mono leading-none">{formatTime(event.date)}</span>
+                              <span className="text-[11px] font-semibold text-text-muted mt-0.5">{event.country}</span>
+                              <span className="text-base leading-none">{flag}</span>
+                              <div className="mt-1"><ImpactBars impact={event.impact} /></div>
                             </div>
 
-                            {/* Content */}
-                            <div className="flex-1 min-w-0">
-                              <div className="flex items-center gap-2 mb-1">
-                                {speech && <Volume2 className="w-3.5 h-3.5 text-text-muted flex-shrink-0" />}
-                                {(() => {
-                                  const he = hebrewEventTitle(event.title) || heMap[event.title];
-                                  return (
-                                    <h4 className="text-sm font-semibold text-text-primary truncate" title={he ? event.title : undefined}>{he || event.title}</h4>
-                                  );
-                                })()}
+                            {/* Main: title + values */}
+                            <div className="flex-1 min-w-0 border-r border-border-primary/60 pr-3">
+                              <div className="flex items-start gap-1.5">
+                                {speech && <Volume2 className="w-3.5 h-3.5 text-text-muted flex-shrink-0 mt-0.5" />}
+                                <h4 className="text-sm font-semibold text-text-primary leading-snug" title={he ? event.title : undefined}>
+                                  {he || event.title}
+                                </h4>
                               </div>
 
-                              {(event.actual || event.forecast || event.previous) && (
-                                <div className="flex items-center gap-4 mt-1.5 text-xs">
-                                  {event.actual && (
+                              {(hasA || hasF || hasP) && (
+                                <div className="flex items-center gap-x-3 gap-y-0.5 mt-1.5 text-[11px] flex-wrap">
+                                  {hasA && (
                                     <span className="text-text-muted">
-                                      {'\u05D1\u05E4\u05D5\u05E2\u05DC'} <span className="text-profit font-bold">{event.actual}</span>
+                                      \u05D1\u05E4\u05D5\u05E2\u05DC <span className={`font-bold ${actualTone(event.title, event.actual, event.forecast)}`}>{event.actual}</span>
                                     </span>
                                   )}
-                                  {event.forecast && (
+                                  {hasF && (
                                     <span className="text-text-muted">
-                                      {'\u05E6\u05E4\u05D9'} <span className="text-text-primary font-medium">{event.forecast}</span>
+                                      \u05E6\u05E4\u05D9 <span className="text-text-secondary font-medium">{event.forecast}</span>
                                     </span>
                                   )}
-                                  {event.previous && (
+                                  {hasP && (
                                     <span className="text-text-muted">
-                                      {'\u05E7\u05D5\u05D3\u05DD'} <span className="text-text-primary font-medium">{event.previous}</span>
+                                      \u05E7\u05D5\u05D3\u05DD <span className="text-text-secondary font-medium">{event.previous}</span>
                                     </span>
                                   )}
                                 </div>
                               )}
-                            </div>
-
-                            {/* Impact Dots */}
-                            <div className="flex gap-0.5 flex-shrink-0 pt-1">
-                              {[1, 2, 3].map((dot) => (
-                                <div
-                                  key={dot}
-                                  className={`w-2.5 h-2.5 rounded-full ${
-                                    dot <= impact.dots
-                                      ? event.impact === 'High' ? 'bg-red-400' : event.impact === 'Medium' ? 'bg-yellow-400' : 'bg-blue-400'
-                                      : 'bg-bg-tertiary'
-                                  }`}
-                                />
-                              ))}
                             </div>
                           </div>
                         </motion.div>
