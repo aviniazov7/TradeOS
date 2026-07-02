@@ -1,6 +1,7 @@
 import { useState, useEffect, useCallback, useMemo } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
-import { Newspaper, ExternalLink, Clock, Filter, CalendarDays, Volume2, Globe } from 'lucide-react';
+import { Newspaper, ExternalLink, Clock, Filter, CalendarDays, Volume2, Globe, BrainCircuit, RefreshCw } from 'lucide-react';
+import { fetchNewsDigest } from '../../services/newsService';
 
 // ─── News Sources ───
 const SOURCES = [
@@ -525,6 +526,100 @@ function EconomicCalendar() {
   );
 }
 
+// ─── AI Brief — "מה חשוב עכשיו" ───
+// Renders the cron-prepared AI digest (one build for all users, served from
+// the worker's KV). Fails silent: no digest → the regular feed still works.
+const BRIEF_IMPACT = {
+  high: { label: 'השפעה גבוהה', cls: 'bg-red-500/15 text-red-400 border-red-500/30' },
+  medium: { label: 'בינוני', cls: 'bg-yellow-500/15 text-yellow-400 border-yellow-500/30' },
+};
+
+function AiBrief() {
+  const [digest, setDigest] = useState(null);
+  const [loading, setLoading] = useState(true);
+
+  useEffect(() => {
+    let cancelled = false;
+    fetchNewsDigest('crypto')
+      .then((d) => { if (!cancelled) setDigest(d); })
+      .catch(() => {})
+      .finally(() => { if (!cancelled) setLoading(false); });
+    return () => { cancelled = true; };
+  }, []);
+
+  if (loading) {
+    return (
+      <div className="bg-bg-secondary border border-border-primary rounded-xl p-4 mb-6 animate-pulse">
+        <div className="h-4 bg-bg-tertiary rounded w-40 mb-3" />
+        <div className="space-y-2">
+          <div className="h-3 bg-bg-tertiary rounded w-full" />
+          <div className="h-3 bg-bg-tertiary rounded w-3/4" />
+        </div>
+      </div>
+    );
+  }
+  if (!digest?.stories?.length) return null;
+
+  return (
+    <div className="mb-6">
+      <div className="flex items-center gap-2 mb-3">
+        <BrainCircuit className="w-5 h-5" style={{ stroke: 'url(#ai-grad)' }} />
+        <h2 className="text-base font-bold text-gradient">מה חשוב עכשיו</h2>
+        {digest.updatedAt > 0 && (
+          <span className="flex items-center gap-1 text-[11px] text-text-muted mr-auto">
+            <RefreshCw className="w-3 h-3" /> עודכן {timeAgo(digest.updatedAt)}
+          </span>
+        )}
+      </div>
+      <div className="space-y-2.5">
+        {digest.stories.map((story, i) => {
+          const impact = BRIEF_IMPACT[story.impact] || BRIEF_IMPACT.medium;
+          const mainLink = story.sources?.[0]?.link;
+          return (
+            <motion.div
+              key={`${story.headline}-${i}`}
+              initial={{ opacity: 0, y: 10 }}
+              animate={{ opacity: 1, y: 0 }}
+              transition={{ duration: 0.25, delay: i * 0.05 }}
+              className={`bg-bg-secondary border rounded-xl p-3.5 ${
+                story.impact === 'high' ? 'border-red-500/25' : 'border-border-primary'
+              }`}
+            >
+              <div className="flex items-center gap-2 mb-1.5">
+                <span className={`px-2 py-0.5 rounded-full text-[10px] font-bold border ${impact.cls}`}>
+                  {impact.label}
+                </span>
+                <span className="px-2 py-0.5 rounded-full text-[10px] font-medium bg-bg-tertiary text-text-secondary">
+                  {story.category}
+                </span>
+              </div>
+              {mainLink ? (
+                <a href={mainLink} target="_blank" rel="noopener noreferrer"
+                  className="block text-sm font-semibold text-text-primary hover:text-accent-primary transition-colors">
+                  {story.headline}
+                </a>
+              ) : (
+                <p className="text-sm font-semibold text-text-primary">{story.headline}</p>
+              )}
+              <p className="text-xs text-text-muted mt-1">{story.why}</p>
+              {story.sources?.length > 0 && (
+                <div className="flex items-center gap-2 mt-2 flex-wrap">
+                  {story.sources.map((src) => (
+                    <a key={src.link} href={src.link} target="_blank" rel="noopener noreferrer"
+                      className="flex items-center gap-1 text-[10px] text-text-muted hover:text-accent-primary transition-colors">
+                      <ExternalLink className="w-2.5 h-2.5" /> {src.label}
+                    </a>
+                  ))}
+                </div>
+              )}
+            </motion.div>
+          );
+        })}
+      </div>
+    </div>
+  );
+}
+
 // ─── News Feed Component ───
 function NewsFeed() {
   const [articles, setArticles] = useState([]);
@@ -584,6 +679,9 @@ function NewsFeed() {
 
   return (
     <>
+      {/* AI brief — what actually matters right now */}
+      <AiBrief />
+
       {/* Source Filters */}
       <div className="flex items-center gap-2 mb-6 overflow-x-auto pb-2">
         <Filter className="w-4 h-4 text-text-muted flex-shrink-0" />
