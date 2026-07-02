@@ -2666,6 +2666,21 @@ const COACH_SYSTEM_PROMPT = `אתה מנטור מסחר אישי שמנתח את
 - המלצות = פעולה ספציפית למסחר ("הפסק לסחור [מטבע] עד שתבקטסט [תנאי]"), לא טיפים גנריים ("התנהל בזהירות").
 - אל תחזור על נתון שכבר הצגת בסעיף קודם.`;
 
+// Maps the quick-prompt the user clicked (stats.focus) to an explicit directive.
+// Without this the model gets the same generic 4-section report every time —
+// the focus key sits unused inside the stats JSON. Each directive re-centers the
+// WHOLE report on the specific question, while keeping the fixed section format
+// the UI parser expects.
+const COACH_FOCUS_INSTRUCTIONS = {
+  overview: 'הסוחר ביקש סקירה כללית של התקופה: הביצועים המרכזיים, המגמה הכללית, ומה הכי בולט לטובה ולרעה.',
+  losses: 'הסוחר שאל: "איפה אני מפסיד הכי הרבה?". מקד את כל הדו"ח באיתור מקורות ההפסד — אילו מטבעות, סשנים, כיוונים או אסטרטגיות אחראים לרוב ההפסד, ומה בדיוק לעצור או לתקן.',
+  topPair: 'הסוחר שאל: "מה המטבע הכי רווחי שלי?". מקד את כל הדו"ח במטבע/ות הרווחי/ים ביותר לפי ה-P&L — מה עובד שם, ואיך למנף את זה. ציין את שם המטבע המדויק והמספרים שלו.',
+  mistakes: 'הסוחר שאל: "מה 3 הטעויות הכי גדולות שלי?". תחת "חולשות" פרט בדיוק 3 טעויות התנהלות מרכזיות לפי הנתונים, ותחת "המלצות לפעולה" תן תיקון קונקרטי לכל אחת.',
+  sessionEdge: 'הסוחר שאל: "איזה סשן הכי רווחי?". מקד את כל הדו"ח בהשוואת סשני המסחר (bySession) — מתי כדאי לסחור ומתי להימנע, עם המספרים.',
+  compareMonth: 'הסוחר שאל: "איך החודש מול הקודם?". מקד את כל הדו"ח בהשוואה בין התקופות — מה השתפר, מה הידרדר, ולמה, עם המספרים משני הצדדים.',
+  strategyEdge: 'הסוחר שאל: "איזו אסטרטגיה מצליחה?". מקד את כל הדו"ח בהשוואת האסטרטגיות (byStrategy) — איזו מניבה הכי טוב ואיזו לזנוח, עם המספרים.',
+};
+
 async function handleAICoach(request, env, cors) {
   try {
     const body = await request.json().catch(() => ({}));
@@ -2704,7 +2719,15 @@ async function handleAICoach(request, env, cors) {
       await env.ALERTS_KV.put(monthKey, String(used + 1), { expirationTtl: 60 * 60 * 24 * 60 });
     }
 
+    // Turn the clicked quick-prompt (stats.focus) into an explicit, prominent
+    // directive so each button yields a genuinely different, focused report.
+    const focusKey = typeof stats.focus === 'string' ? stats.focus : '';
+    const focusLine = COACH_FOCUS_INSTRUCTIONS[focusKey]
+      ? `## מיקוד הדו"ח (חובה):\n${COACH_FOCUS_INSTRUCTIONS[focusKey]}\nכל סעיף בדו"ח חייב לענות על השאלה הזו — אל תיתן דו"ח כללי.\n\n`
+      : '';
+
     const userPrompt =
+      focusLine +
       (premium && depth === 'deep' ? 'יבוקש דו"ח Premium מורחב.\n' : 'יבוקש דו"ח קצר.\n') +
       `נתוני העסקאות (JSON):\n\`\`\`json\n${statsStr}\n\`\`\``;
 
