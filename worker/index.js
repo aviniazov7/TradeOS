@@ -2843,9 +2843,13 @@ const NEWS_FEEDS = {
     { key: 'beincrypto', label: 'BeInCrypto', rss: 'https://beincrypto.com/feed/' },
     { key: 'cryptoslate', label: 'CryptoSlate', rss: 'https://cryptoslate.com/feed/' },
   ],
-  // Populated when the stocks market mode ships; the endpoint already accepts
-  // ?market=stocks so the client toggle won't need a worker change.
-  stocks: [],
+  stocks: [
+    { key: 'yahoofinance', label: 'Yahoo Finance', rss: 'https://finance.yahoo.com/news/rssindex' },
+    { key: 'marketwatch', label: 'MarketWatch', rss: 'https://feeds.marketwatch.com/marketwatch/topstories/' },
+    { key: 'cnbc', label: 'CNBC', rss: 'https://www.cnbc.com/id/100003114/device/rss/rss.html' },
+    { key: 'investing', label: 'Investing.com', rss: 'https://www.investing.com/rss/news_25.rss' },
+    { key: 'nasdaq', label: 'Nasdaq', rss: 'https://www.nasdaq.com/feed/rssoutbound?category=Markets' },
+  ],
 };
 
 const NEWS_DIGEST_REFRESH_MIN = 30;
@@ -2897,30 +2901,42 @@ function parseRssItems(xml, source) {
   return items;
 }
 
-const NEWS_EDITOR_PROMPT = `אתה עורך חדשות בכיר בדסק שוקי הון. תקבל רשימת כותרות (JSON) שנאספו ממספר אתרי חדשות ב-24 השעות האחרונות.
+const NEWS_EDITOR_BASE = `אתה עורך חדשות בכיר בדסק שוקי הון. תקבל רשימת כותרות (JSON) שנאספו ממספר אתרי חדשות ב-24 השעות האחרונות.
 
 המשימה: לזהות את 5-7 הסיפורים שבאמת חשובים לסוחר, ולדרג אותם.
 
 כללים:
 - קבץ כותרות שמסקרות את אותו סיפור (אותו אירוע = סיפור אחד). סיקור על ידי כמה מקורות הוא אות לחשיבות.
-- דלג על ספאם, פרסומות, ניתוחי מחיר גנריים ("XRP יעלה?"), וכתבות דעה שוליות.
-- impact: "high" רק לאירוע שבאמת מזיז שוק (רגולציה, ETF, פריצה גדולה, החלטת ריבית, קריסה/אימוץ מוסדי). אחרת "medium".
-- category: אחת מ: "רגולציה", "מאקרו", "שוק", "טכנולוגיה", "אבטחה", "אימוץ".
+- דלג על ספאם, פרסומות, ניתוחי מחיר גנריים, וכתבות דעה שוליות.
 - headline: כותרת חדה בעברית (עד 12 מילים). why: שורה אחת בעברית — למה זה חשוב לסוחר עכשיו.
 - ids: מזהי הכותרות המקוריות ששייכות לסיפור (לפחות אחת).
 
 החזר JSON בלבד, במבנה:
 {"stories":[{"ids":[3,17],"headline":"...","why":"...","impact":"high","category":"רגולציה"}]}`;
 
+const NEWS_EDITOR_PROMPTS = {
+  crypto: `${NEWS_EDITOR_BASE}
+
+ספציפית לשוק הקריפטו:
+- impact: "high" רק לאירוע שבאמת מזיז שוק (רגולציה, ETF, פריצה גדולה, החלטת ריבית, קריסה/אימוץ מוסדי). אחרת "medium".
+- category: אחת מ: "רגולציה", "מאקרו", "שוק", "טכנולוגיה", "אבטחה", "אימוץ".`,
+  stocks: `${NEWS_EDITOR_BASE}
+
+ספציפית לשוק המניות:
+- impact: "high" רק לאירוע שבאמת מזיז שוק (החלטת ריבית/פד, דוח של ענקית טק, מיזוג גדול, נתון מאקרו מפתיע, קריסה). אחרת "medium".
+- category: אחת מ: "מאקרו", "דוחות", "שוק", "טכנולוגיה", "רגולציה", "סחורות".`,
+};
+
 async function buildNewsDigest(env, market) {
   const feeds = NEWS_FEEDS[market] || [];
   if (!feeds.length || !env.GROQ_API_KEY) return null;
 
-  // Cheap lock so a cron tick and an on-demand request can't both burn a
-  // provider call. KV get→put isn't atomic; the worst case is one duplicate
-  // build, which is harmless.
-  if (await env.ALERTS_KV.get('news:digest:lock')) return null;
-  await env.ALERTS_KV.put('news:digest:lock', '1', { expirationTtl: 120 });
+  // Cheap per-market lock so a cron tick and an on-demand request can't both
+  // burn a provider call. KV get→put isn't atomic; the worst case is one
+  // duplicate build, which is harmless.
+  const lockKey = `news:digest:lock:${market}`;
+  if (await env.ALERTS_KV.get(lockKey)) return null;
+  await env.ALERTS_KV.put(lockKey, '1', { expirationTtl: 120 });
 
   try {
     const results = await Promise.allSettled(feeds.map(async (source) => {
@@ -2956,7 +2972,7 @@ async function buildNewsDigest(env, market) {
       body: JSON.stringify({
         model: GROQ_MODEL,
         messages: [
-          { role: 'system', content: NEWS_EDITOR_PROMPT },
+          { role: 'system', content: NEWS_EDITOR_PROMPTS[market] || NEWS_EDITOR_PROMPTS.crypto },
           { role: 'user', content: JSON.stringify(modelInput) },
         ],
         temperature: 0.3,
@@ -3002,19 +3018,22 @@ async function buildNewsDigest(env, market) {
     console.error('news digest build failed:', err);
     return null;
   } finally {
-    await env.ALERTS_KV.delete('news:digest:lock').catch(() => {});
+    await env.ALERTS_KV.delete(lockKey).catch(() => {});
   }
 }
 
-// Cron hook: rebuild when the digest is older than NEWS_DIGEST_REFRESH_MIN.
-// Reads only the tiny :ts key per tick, not the full blob.
+// Cron hook: rebuild each market's digest when it's older than
+// NEWS_DIGEST_REFRESH_MIN. Reads only the tiny :ts keys per tick.
 async function refreshNewsDigest(env) {
-  try {
-    const ts = parseInt((await env.ALERTS_KV.get('news:digest:crypto:ts')) || '0', 10);
-    if (ts && Date.now() - ts < NEWS_DIGEST_REFRESH_MIN * 60_000) return;
-    await buildNewsDigest(env, 'crypto');
-  } catch (e) {
-    console.error('news digest refresh failed:', e);
+  for (const market of Object.keys(NEWS_FEEDS)) {
+    if (!NEWS_FEEDS[market].length) continue;
+    try {
+      const ts = parseInt((await env.ALERTS_KV.get(`news:digest:${market}:ts`)) || '0', 10);
+      if (ts && Date.now() - ts < NEWS_DIGEST_REFRESH_MIN * 60_000) continue;
+      await buildNewsDigest(env, market);
+    } catch (e) {
+      console.error(`news digest refresh failed (${market}):`, e);
+    }
   }
 }
 
