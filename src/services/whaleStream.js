@@ -75,21 +75,27 @@ export function openWhaleStream({ symbols, onLiquidation, onTrade, onStatus }) {
   };
 }
 
-// Fear & Greed index (alternative.me — free, CORS-open, no key).
-// Returns { value, label, yesterday } or null.
-export async function fetchFearGreed() {
-  try {
-    const res = await fetch('https://api.alternative.me/fng/?limit=2');
-    if (!res.ok) return null;
-    const j = await res.json();
-    const [today, prev] = j?.data || [];
-    if (!today) return null;
-    return {
-      value: parseInt(today.value, 10),
-      label: today.value_classification,
-      yesterday: prev ? parseInt(prev.value, 10) : null,
-    };
-  } catch {
-    return null;
-  }
+// Recent whale-sized trades via REST — instant backfill so the tape is never
+// empty while waiting for the live stream. One call per symbol (Bybit returns
+// up to the last 1000 prints), filtered to >= minUsd notional.
+export async function fetchRecentBigTrades(symbols, minUsd) {
+  const all = await Promise.all(symbols.map(async (s) => {
+    try {
+      const res = await fetch(`https://api.bybit.com/v5/market/recent-trade?category=linear&symbol=${s}&limit=1000`);
+      if (!res.ok) return [];
+      const j = await res.json();
+      return (j?.result?.list || [])
+        .map((t) => ({
+          sym: s.replace(/USDT$/, ''),
+          buy: t.side === 'Buy',
+          usd: parseFloat(t.price) * parseFloat(t.size),
+          price: t.price,
+          t: Number(t.time),
+        }))
+        .filter((t) => Number.isFinite(t.usd) && t.usd >= minUsd);
+    } catch {
+      return [];
+    }
+  }));
+  return all.flat().sort((a, b) => b.t - a.t);
 }
