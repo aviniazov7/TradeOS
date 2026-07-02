@@ -179,9 +179,112 @@ function WinLossBar({ wins, losses }) {
   );
 }
 
-function StatsDashboard({ stats }) {
+// Compact list of individual trades (best/worst) — pair, direction, strategy, P&L.
+function TradeRows({ title, rows, Icon }) {
+  if (!rows || !rows.length) return null;
+  return (
+    <div className="bg-bg-secondary border border-border-primary rounded-xl p-4">
+      <div className="flex items-center gap-2 mb-2">
+        {Icon && <Icon className="w-4 h-4 text-accent-primary" />}
+        <h4 className="text-sm font-semibold text-text-primary">{title}</h4>
+      </div>
+      <div>
+        {rows.map((t, i) => (
+          <div key={i} className="flex items-center justify-between gap-2 text-xs py-1.5 border-b border-border-primary/50 last:border-0">
+            <span className="text-text-secondary min-w-0 truncate">
+              {t.pair}
+              {t.direction && <span className="text-text-muted"> · {t.direction === 'long' ? 'לונג' : t.direction === 'short' ? 'שורט' : t.direction}</span>}
+              {t.strategy && <span className="text-text-muted"> · {t.strategy}</span>}
+            </span>
+            <span className={`${t.pnl >= 0 ? 'text-profit' : 'text-loss'} font-semibold shrink-0`} dir="ltr">{fmt$(t.pnl)}</span>
+          </div>
+        ))}
+      </div>
+    </div>
+  );
+}
+
+// This-month vs previous-month comparison table (Premium stats only).
+function CompareMonths({ cmp }) {
+  const prev = cmp?.prevMonth;
+  const cur = cmp?.thisMonth;
+  if (!prev && !cur) return null;
+  const rows = [
+    { label: 'P&L', prev: prev ? fmt$Compact(prev.pnl) : '—', cur: cur ? fmt$Compact(cur.pnl) : '—', up: (cur?.pnl ?? 0) >= (prev?.pnl ?? 0) },
+    { label: 'אחוז הצלחה', prev: prev ? `${prev.winRate}%` : '—', cur: cur ? `${cur.winRate}%` : '—', up: (cur?.winRate ?? 0) >= (prev?.winRate ?? 0) },
+    { label: 'Profit Factor', prev: prev?.profitFactor ?? '—', cur: cur?.profitFactor ?? '—', up: (cur?.profitFactor ?? 0) >= (prev?.profitFactor ?? 0) },
+    { label: 'עסקאות', prev: prev?.total ?? '—', cur: cur?.total ?? '—', up: null },
+  ];
+  return (
+    <div className="bg-bg-secondary border border-border-primary rounded-xl p-4">
+      <div className="grid grid-cols-3 gap-2 text-xs font-semibold text-text-muted pb-2 border-b border-border-primary/50">
+        <span>מדד</span>
+        <span className="text-center">חודש קודם</span>
+        <span className="text-center">החודש</span>
+      </div>
+      {rows.map((r) => (
+        <div key={r.label} className="grid grid-cols-3 gap-2 text-xs py-2 border-b border-border-primary/40 last:border-0 items-center">
+          <span className="text-text-secondary">{r.label}</span>
+          <span className="text-center text-text-muted" dir="ltr">{r.prev}</span>
+          <span className={`text-center font-semibold ${r.up == null ? 'text-text-primary' : r.up ? 'text-profit' : 'text-loss'}`} dir="ltr">{r.cur}</span>
+        </div>
+      ))}
+    </div>
+  );
+}
+
+// The dashboard adapts to the question asked (focus) — showing ONLY the charts
+// that answer it. Without this every button rendered the identical full
+// dashboard, which made all reports look like the same output.
+function StatsDashboard({ stats, focus }) {
   if (!stats || stats.empty) return null;
   const s = stats.summary || {};
+
+  const byPnlAsc = (a, b) => a.pnl - b.pnl;
+  const byPnlDesc = (a, b) => b.pnl - a.pnl;
+  const losingPairs = (stats.byPair || []).filter((r) => r.pnl < 0).sort(byPnlAsc);
+  const winningPairs = (stats.byPair || []).filter((r) => r.pnl > 0).sort(byPnlDesc);
+  const losingSessions = (stats.bySession || []).filter((r) => r.pnl < 0).sort(byPnlAsc);
+
+  // Focused views — each returns only what answers the clicked question.
+  if (focus === 'losses' && (losingPairs.length || losingSessions.length || stats.worstTrades?.length)) {
+    return (
+      <div className="space-y-3">
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-2">
+          <PnlBars title="איפה אתה מפסיד — לפי מטבע" rows={losingPairs.slice(0, 5)} Icon={TrendingDown} />
+          {losingSessions.length > 0 && <PnlBars title="סשנים מפסידים" rows={losingSessions} Icon={Target} />}
+        </div>
+        <TradeRows title="העסקאות הגרועות ביותר" rows={stats.worstTrades} Icon={TrendingDown} />
+      </div>
+    );
+  }
+  if (focus === 'topPair' && (winningPairs.length || stats.bestTrades?.length)) {
+    return (
+      <div className="space-y-3">
+        <PnlBars title="המטבעות הרווחיים שלך" rows={winningPairs.slice(0, 5)} Icon={TrendingUp} />
+        <TradeRows title="העסקאות הטובות ביותר" rows={stats.bestTrades} Icon={TrendingUp} />
+      </div>
+    );
+  }
+  if (focus === 'sessionEdge' && stats.bySession?.length) {
+    return <PnlBars title="ביצועים לפי סשן מסחר" rows={[...stats.bySession].sort(byPnlDesc)} Icon={Target} />;
+  }
+  if (focus === 'strategyEdge' && stats.byStrategy?.length) {
+    return <PnlBars title="ביצועים לפי אסטרטגיה" rows={[...stats.byStrategy].sort(byPnlDesc)} Icon={Lightbulb} />;
+  }
+  if (focus === 'compareMonth' && stats.compareToPrevMonth) {
+    return <CompareMonths cmp={stats.compareToPrevMonth} />;
+  }
+  if (focus === 'mistakes' && (stats.worstTrades?.length || losingPairs.length)) {
+    return (
+      <div className="space-y-3">
+        <TradeRows title="העסקאות הגרועות ביותר" rows={stats.worstTrades} Icon={TrendingDown} />
+        {losingPairs.length > 0 && <PnlBars title="המטבעות שמושכים אותך למטה" rows={losingPairs.slice(0, 5)} Icon={TrendingDown} />}
+      </div>
+    );
+  }
+
+  // Default (overview / "נתח עסקאות") — the full dashboard.
   return (
     <div className="space-y-3">
       <div className="grid grid-cols-2 md:grid-cols-4 gap-2">
@@ -302,6 +405,9 @@ export default function AICoachPanel({ trades }) {
   };
 
   const sections = report ? parseSections(report) : [];
+  const activePromptLabel = activePrompt
+    ? [...FREE_PROMPTS, ...PREMIUM_PROMPTS].find((p) => p.id === activePrompt)?.label
+    : null;
 
   return (
     <div className="space-y-4 mt-2 max-w-3xl mx-auto">
@@ -403,13 +509,15 @@ export default function AICoachPanel({ trades }) {
                 <span className="text-[10px] text-text-muted">· ניתוח שהושלם</span>
               </div>
               <p className="text-sm text-text-secondary leading-relaxed">
-                סיימתי לעבור על העסקאות שלך. הנה מה שמצאתי:
+                {activePromptLabel
+                  ? <>שאלת: <b className="text-text-primary">«{activePromptLabel}»</b> — הנה התשובה:</>
+                  : 'סיימתי לעבור על העסקאות שלך. הנה מה שמצאתי:'}
               </p>
             </div>
           </div>
 
-          {/* Stats dashboard — deterministic numbers + mini charts */}
-          <StatsDashboard stats={stats} />
+          {/* Focused stats — only the charts that answer the question asked */}
+          <StatsDashboard stats={stats} focus={activePrompt} />
 
           {/* Section cards */}
           {sections.map((s, idx) => {
