@@ -1,7 +1,7 @@
 import { motion } from 'framer-motion';
 import { formatCurrency } from '../../utils/formatters';
 import Card from '../shared/Card';
-import AnimatedValue from '../shared/AnimatedValue';
+import RollingNumber from '../shared/RollingNumber';
 
 /* ------------------------------------------------------------------ */
 /* Animation variants                                                  */
@@ -159,22 +159,22 @@ export default function DashboardKpis({ kpi, hidden = false }) {
       className="grid grid-cols-2 lg:grid-cols-5 gap-3"
     >
       {/* 1) Net P&L ---------------------------------------------------- */}
-      <Card as={motion.div} variants={card} className={cardClass}>
+      <Card as={motion.div} variants={card} whileHover={{ y: -3 }} className={cardClass}>
         <span className="text-xs text-text-muted">רווח/הפסד נקי</span>
         <div>
           <div dir="ltr" className={`text-2xl font-bold text-right ${netPositive ? 'text-profit' : 'text-loss'}`}>
-            <AnimatedValue value={mask(formatCurrency(netPnl))} />
+            <RollingNumber value={mask(formatCurrency(netPnl))} />
           </div>
           <div className="text-[11px] text-text-muted mt-0.5">{tradeCount} עסקאות</div>
         </div>
       </Card>
 
       {/* 2) Win rate -------------------------------------------------- */}
-      <Card as={motion.div} variants={card} className={cardClass}>
+      <Card as={motion.div} variants={card} whileHover={{ y: -3 }} className={cardClass}>
         <span className="text-xs text-text-muted">אחוז הצלחה</span>
         <div className="flex items-end justify-between gap-2">
           <div dir="ltr" className="text-2xl font-bold text-text-primary">
-            <AnimatedValue value={`${(Number.isFinite(winRate) ? winRate : 0).toFixed(2)}%`} />
+            <RollingNumber value={`${(Number.isFinite(winRate) ? winRate : 0).toFixed(2)}%`} />
           </div>
           <SemicircleGauge pct={winRate} />
         </div>
@@ -192,10 +192,10 @@ export default function DashboardKpis({ kpi, hidden = false }) {
       </Card>
 
       {/* 3) Avg win/loss --------------------------------------------- */}
-      <Card as={motion.div} variants={card} className={cardClass}>
+      <Card as={motion.div} variants={card} whileHover={{ y: -3 }} className={cardClass}>
         <span className="text-xs text-text-muted">ממוצע רווח/הפסד</span>
         <div dir="ltr" className="text-2xl font-bold text-text-primary text-right">
-          <AnimatedValue value={(Number.isFinite(avgWinLossRatio) ? avgWinLossRatio : 0).toFixed(2)} />
+          <RollingNumber value={(Number.isFinite(avgWinLossRatio) ? avgWinLossRatio : 0).toFixed(2)} />
         </div>
         <div className="mt-2">
           <div className="h-2 rounded-full overflow-hidden flex bg-bg-tertiary" dir="ltr">
@@ -220,18 +220,18 @@ export default function DashboardKpis({ kpi, hidden = false }) {
       </Card>
 
       {/* 4) Profit factor -------------------------------------------- */}
-      <Card as={motion.div} variants={card} className={cardClass}>
+      <Card as={motion.div} variants={card} whileHover={{ y: -3 }} className={cardClass}>
         <span className="text-xs text-text-muted">פקטור רווח</span>
         <div className="flex items-center justify-between gap-2">
           <div dir="ltr" className="text-2xl font-bold text-text-primary">
-            <AnimatedValue value={pfFinite ? pf.toFixed(2) : '∞'} />
+            <RollingNumber value={pfFinite ? pf.toFixed(2) : '∞'} />
           </div>
           <RingGauge pct={pfFraction} size={56} />
         </div>
       </Card>
 
       {/* 5) Current streak ------------------------------------------- */}
-      <Card as={motion.div} variants={card} className={cardClass}>
+      <Card as={motion.div} variants={card} whileHover={{ y: -3 }} className={cardClass}>
         <span className="text-xs text-text-muted">רצף נוכחי</span>
         <div className="flex items-center justify-around gap-2">
           <StreakBadge label="ימים" data={streakDays} />

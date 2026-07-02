@@ -126,7 +126,7 @@ export default function PremiumPage() {
 
         {/* CTA */}
         {!isPremium && (
-          <div className="bg-bg-secondary border border-border-primary rounded-2xl p-5 text-center space-y-3">
+          <div className="border-beam relative overflow-hidden bg-bg-secondary border border-accent-primary/30 rounded-2xl p-5 text-center space-y-3">
             <div className="flex items-center justify-center gap-1.5">
               <span className="text-3xl font-bold text-text-primary" dir="ltr">₪{PREMIUM_PRICING.monthly.price}</span>
               <span className="text-sm text-text-muted">/ חודש</span>
