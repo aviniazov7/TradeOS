@@ -3022,6 +3022,105 @@ async function buildNewsDigest(env, market) {
   }
 }
 
+// ---- Feed translation (batch, KV-cached) ------------------------------------
+// Titles/descriptions are English; users read Hebrew. Translations are cached
+// in KV keyed by a content hash, so across ALL users each article costs one
+// provider call ever.
+
+function newsHash(s) {
+  let h = 5381;
+  for (let i = 0; i < s.length; i++) h = ((h << 5) + h + s.charCodeAt(i)) | 0;
+  return (h >>> 0).toString(36);
+}
+
+const NEWS_TRANSLATE_PROMPT = `אתה מתרגם חדשות פיננסיות מאנגלית לעברית.
+תקבל JSON: רשימת פריטים עם id, title, desc.
+תרגם לעברית טבעית וזורמת (לא מילולית). שמות חברות, מטבעות, מדדים וטיקרים נשארים באנגלית.
+אל תוסיף מידע שלא קיים במקור. אם desc ריק — החזר desc ריק.
+החזר JSON בלבד: {"items":[{"id":0,"title":"...","desc":"..."}]}`;
+
+// Translation is high-volume/low-difficulty — run it on Groq's small instant
+// model, which has a much higher tokens-per-minute allowance than the 70B
+// (the 70B budget is reserved for chat/coach/digest). Falls back to the main
+// model if the instant model is ever retired (4xx).
+const NEWS_TRANSLATE_MODEL = 'llama-3.1-8b-instant';
+
+async function groqTranslateCall(env, missing, model) {
+  return fetch(GROQ_URL, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${env.GROQ_API_KEY}` },
+    body: JSON.stringify({
+      model,
+      messages: [
+        { role: 'system', content: NEWS_TRANSLATE_PROMPT },
+        { role: 'user', content: JSON.stringify(missing) },
+      ],
+      temperature: 0.2,
+      max_tokens: 2500,
+      response_format: { type: 'json_object' },
+    }),
+  });
+}
+
+async function handleNewsTranslate(request, env, cors) {
+  const jsonHeaders = { ...cors, 'Content-Type': 'application/json' };
+  try {
+    const token = (request.headers.get('Authorization') || '').replace('Bearer ', '');
+    const uid = await verifyFirebaseToken(token);
+    if (!uid) return new Response(JSON.stringify({ error: 'unauthorized' }), { status: 401, headers: jsonHeaders });
+
+    // Light per-user gate: normal use is ≤3 batches per feed load.
+    const minute = await bumpWindow(env, `newstr:min:${uid}`, 60);
+    if (minute.count > 10) {
+      return new Response(JSON.stringify({ error: 'rate limited' }), { status: 429, headers: jsonHeaders });
+    }
+
+    const body = await request.json().catch(() => ({}));
+    // Keep batches small: input+output must fit the per-minute token budget
+    // even when several batches arrive back-to-back on a feed load.
+    const items = (Array.isArray(body.items) ? body.items : []).slice(0, 12).map((it) => ({
+      title: String(it?.title || '').slice(0, 300),
+      desc: String(it?.desc || '').slice(0, 200),
+    })).filter((it) => it.title);
+    if (!items.length) return new Response(JSON.stringify({ error: 'no items' }), { status: 400, headers: jsonHeaders });
+
+    const keys = items.map((it) => `news:tr:${newsHash(`${it.title}|${it.desc}`)}`);
+    const out = await Promise.all(keys.map((k) => env.ALERTS_KV.get(k, 'json')));
+
+    const missing = [];
+    items.forEach((it, i) => { if (!out[i]) missing.push({ id: i, title: it.title, desc: it.desc }); });
+
+    if (missing.length && env.GROQ_API_KEY) {
+      let groqRes = await groqTranslateCall(env, missing, NEWS_TRANSLATE_MODEL);
+      if (!groqRes.ok && groqRes.status >= 400 && groqRes.status < 500 && groqRes.status !== 429) {
+        // Model gone/renamed — one retry on the main model.
+        groqRes = await groqTranslateCall(env, missing, GROQ_MODEL);
+      }
+      if (groqRes.ok) {
+        const data = await groqRes.json();
+        let parsed;
+        try { parsed = JSON.parse(data.choices?.[0]?.message?.content || ''); } catch { parsed = null; }
+        for (const tr of (Array.isArray(parsed?.items) ? parsed.items : [])) {
+          const i = Number(tr?.id);
+          if (!Number.isInteger(i) || i < 0 || i >= items.length || out[i] || !tr?.title) continue;
+          const entry = { title: String(tr.title).slice(0, 300), desc: String(tr.desc || '').slice(0, 400) };
+          out[i] = entry;
+          await env.ALERTS_KV.put(keys[i], JSON.stringify(entry), { expirationTtl: 60 * 60 * 24 * 3 }).catch(() => {});
+        }
+      } else {
+        console.error('news translate groq error:', groqRes.status);
+      }
+    }
+
+    // Aligned array; null where no translation is available (client falls back
+    // to the original English).
+    return new Response(JSON.stringify({ items: out }), { headers: jsonHeaders });
+  } catch (err) {
+    console.error('news translate error:', err);
+    return new Response(JSON.stringify({ error: 'internal' }), { status: 500, headers: jsonHeaders });
+  }
+}
+
 // Cron hook: rebuild each market's digest when it's older than
 // NEWS_DIGEST_REFRESH_MIN. Reads only the tiny :ts keys per tick.
 async function refreshNewsDigest(env) {
@@ -3430,6 +3529,10 @@ async function handleRequest(request, env) {
         'Cache-Control': digest ? 'public, max-age=300' : 'no-store',
       },
     });
+  }
+
+  if (request.method === 'POST' && path === '/news/translate') {
+    return handleNewsTranslate(request, env, cors);
   }
 
   if (path === '/setup-webhook') {
