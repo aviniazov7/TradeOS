@@ -3,16 +3,55 @@ import { motion, AnimatePresence } from 'framer-motion';
 import { Newspaper, ExternalLink, Clock, Filter, CalendarDays, Volume2, Globe, BrainCircuit, RefreshCw } from 'lucide-react';
 import { fetchNewsDigest } from '../../services/newsService';
 
-// ─── News Sources ───
-const SOURCES = [
-  { key: 'cointelegraph', label: 'CoinTelegraph', rss: 'https://cointelegraph.com/rss' },
-  { key: 'coindesk', label: 'CoinDesk', rss: 'https://www.coindesk.com/arc/outboundfeeds/rss/' },
-  { key: 'decrypt', label: 'Decrypt', rss: 'https://decrypt.co/feed' },
-  { key: 'bitcoinmagazine', label: 'Bitcoin Magazine', rss: 'https://bitcoinmagazine.com/.rss/full/' },
-  { key: 'theblock', label: 'The Block', rss: 'https://www.theblock.co/rss.xml' },
-  { key: 'beincrypto', label: 'BeInCrypto', rss: 'https://beincrypto.com/feed/' },
-  { key: 'cryptoslate', label: 'CryptoSlate', rss: 'https://cryptoslate.com/feed/' },
-  { key: 'utoday', label: 'U.Today', rss: 'https://u.today/rss' },
+// ─── News Sources (per market) ───
+const FEED_SOURCES = {
+  crypto: [
+    { key: 'cointelegraph', label: 'CoinTelegraph', rss: 'https://cointelegraph.com/rss' },
+    { key: 'coindesk', label: 'CoinDesk', rss: 'https://www.coindesk.com/arc/outboundfeeds/rss/' },
+    { key: 'decrypt', label: 'Decrypt', rss: 'https://decrypt.co/feed' },
+    { key: 'bitcoinmagazine', label: 'Bitcoin Magazine', rss: 'https://bitcoinmagazine.com/.rss/full/' },
+    { key: 'theblock', label: 'The Block', rss: 'https://www.theblock.co/rss.xml' },
+    { key: 'beincrypto', label: 'BeInCrypto', rss: 'https://beincrypto.com/feed/' },
+    { key: 'cryptoslate', label: 'CryptoSlate', rss: 'https://cryptoslate.com/feed/' },
+    { key: 'utoday', label: 'U.Today', rss: 'https://u.today/rss' },
+  ],
+  stocks: [
+    { key: 'yahoofinance', label: 'Yahoo Finance', rss: 'https://finance.yahoo.com/news/rssindex' },
+    { key: 'marketwatch', label: 'MarketWatch', rss: 'https://feeds.marketwatch.com/marketwatch/topstories/' },
+    { key: 'cnbc', label: 'CNBC', rss: 'https://www.cnbc.com/id/100003114/device/rss/rss.html' },
+    { key: 'investing', label: 'Investing.com', rss: 'https://www.investing.com/rss/news_25.rss' },
+    { key: 'nasdaq', label: 'Nasdaq', rss: 'https://www.nasdaq.com/feed/rssoutbound?category=Markets' },
+  ],
+};
+
+// Topic chips — deterministic keyword classification on title+description.
+// The feeds are English; the chips are Hebrew.
+const TOPICS = {
+  crypto: [
+    { key: 'all', label: 'הכל', re: null },
+    { key: 'btc', label: 'ביטקוין', re: /bitcoin|\bbtc\b/i },
+    { key: 'eth', label: 'אתריום', re: /ethereum|\beth\b|\bether\b/i },
+    { key: 'alts', label: 'אלטים', re: /solana|\bsol\b|\bxrp\b|ripple|dogecoin|\bdoge\b|cardano|\bada\b|\bbnb\b|altcoin|avalanche|polygon|chainlink|\blink\b|memecoin/i },
+    { key: 'macro', label: 'מאקרו', re: /\bfed\b|inflation|interest rate|rate cut|treasur|\bcpi\b|powell|tariff|recession|jobs report|macro/i },
+    { key: 'regulation', label: 'רגולציה', re: /\bsec\b|regulat|lawsuit|court|congress|senate|\bban\b|legislat|\betf\b|license/i },
+    { key: 'security', label: 'אבטחה', re: /hack|exploit|breach|scam|stolen|phishing|drainer|rug pull/i },
+  ],
+  stocks: [
+    { key: 'all', label: 'הכל', re: null },
+    { key: 'indices', label: 'מדדים', re: /s&p|nasdaq|dow\b|futures|wall street|stock market|index|indices/i },
+    { key: 'tech', label: 'טק', re: /apple|nvidia|microsoft|google|alphabet|amazon|\bmeta\b|tesla|\bai\b|chip|semiconductor|intel|\bamd\b|palantir/i },
+    { key: 'earnings', label: 'דוחות', re: /earnings|revenue|profit|guidance|quarter|beats|misses|forecast/i },
+    { key: 'macro', label: 'מאקרו', re: /\bfed\b|inflation|interest rate|rate cut|treasur|\bcpi\b|powell|tariff|recession|jobs report|gdp/i },
+    { key: 'commodities', label: 'סחורות', re: /\boil\b|\bgold\b|crude|natural gas|silver|commodit|copper/i },
+  ],
+};
+
+// Time-range chips, right-to-left order matches the reference design.
+const TIME_FILTERS = [
+  { key: 'today', label: 'היום' },
+  { key: 'yesterday', label: 'אתמול' },
+  { key: '48h', label: '48 שעות' },
+  { key: 'week', label: 'השבוע' },
 ];
 
 const RSS2JSON_BASE = 'https://api.rss2json.com/v1/api.json?rss_url=';
@@ -534,27 +573,31 @@ const BRIEF_IMPACT = {
   medium: { label: 'בינוני', cls: 'bg-yellow-500/15 text-yellow-400 border-yellow-500/30' },
 };
 
-function AiBrief() {
+function AiBrief({ market }) {
   const [digest, setDigest] = useState(null);
   const [loading, setLoading] = useState(true);
 
+  // No reset-on-market-change needed: the page remounts this component when
+  // the market toggle flips (keyed motion.div), so initial state covers it.
   useEffect(() => {
     let cancelled = false;
-    fetchNewsDigest('crypto')
+    fetchNewsDigest(market)
       .then((d) => { if (!cancelled) setDigest(d); })
       .catch(() => {})
       .finally(() => { if (!cancelled) setLoading(false); });
     return () => { cancelled = true; };
-  }, []);
+  }, [market]);
 
   if (loading) {
     return (
-      <div className="bg-bg-secondary border border-border-primary rounded-xl p-4 mb-6 animate-pulse">
-        <div className="h-4 bg-bg-tertiary rounded w-40 mb-3" />
-        <div className="space-y-2">
-          <div className="h-3 bg-bg-tertiary rounded w-full" />
-          <div className="h-3 bg-bg-tertiary rounded w-3/4" />
-        </div>
+      <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5 mb-6">
+        {[...Array(4)].map((_, i) => (
+          <div key={i} className="bg-bg-secondary border border-border-primary rounded-xl p-3.5 animate-pulse">
+            <div className="h-3 bg-bg-tertiary rounded w-24 mb-2.5" />
+            <div className="h-4 bg-bg-tertiary rounded w-full mb-2" />
+            <div className="h-3 bg-bg-tertiary rounded w-2/3" />
+          </div>
+        ))}
       </div>
     );
   }
@@ -571,21 +614,26 @@ function AiBrief() {
           </span>
         )}
       </div>
-      <div className="space-y-2.5">
+      {/* Compact 2-col grid — the first (most important) story spans the full
+          row so the ranking is visible at a glance. */}
+      <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5">
         {digest.stories.map((story, i) => {
           const impact = BRIEF_IMPACT[story.impact] || BRIEF_IMPACT.medium;
           const mainLink = story.sources?.[0]?.link;
+          const Tag = mainLink ? motion.a : motion.div;
           return (
-            <motion.div
+            <Tag
               key={`${story.headline}-${i}`}
+              {...(mainLink ? { href: mainLink, target: '_blank', rel: 'noopener noreferrer' } : {})}
               initial={{ opacity: 0, y: 10 }}
               animate={{ opacity: 1, y: 0 }}
-              transition={{ duration: 0.25, delay: i * 0.05 }}
-              className={`bg-bg-secondary border rounded-xl p-3.5 ${
-                story.impact === 'high' ? 'border-red-500/25' : 'border-border-primary'
-              }`}
+              transition={{ duration: 0.25, delay: i * 0.04 }}
+              className={`group block bg-bg-secondary border rounded-xl p-3.5 transition-colors hover:bg-bg-tertiary/50 ${
+                story.impact === 'high' ? 'border-red-500/30 hover:border-red-500/50' : 'border-border-primary hover:border-accent-primary/40'
+              } ${i === 0 ? 'sm:col-span-2' : ''}`}
             >
-              <div className="flex items-center gap-2 mb-1.5">
+              <div className="flex items-center gap-1.5 mb-2">
+                <span className="text-[10px] font-bold text-text-muted num-mono">{i + 1}</span>
                 <span className={`px-2 py-0.5 rounded-full text-[10px] font-bold border ${impact.cls}`}>
                   {impact.label}
                 </span>
@@ -593,26 +641,18 @@ function AiBrief() {
                   {story.category}
                 </span>
               </div>
-              {mainLink ? (
-                <a href={mainLink} target="_blank" rel="noopener noreferrer"
-                  className="block text-sm font-semibold text-text-primary hover:text-accent-primary transition-colors">
-                  {story.headline}
-                </a>
-              ) : (
-                <p className="text-sm font-semibold text-text-primary">{story.headline}</p>
-              )}
-              <p className="text-xs text-text-muted mt-1">{story.why}</p>
-              {story.sources?.length > 0 && (
-                <div className="flex items-center gap-2 mt-2 flex-wrap">
-                  {story.sources.map((src) => (
-                    <a key={src.link} href={src.link} target="_blank" rel="noopener noreferrer"
-                      className="flex items-center gap-1 text-[10px] text-text-muted hover:text-accent-primary transition-colors">
-                      <ExternalLink className="w-2.5 h-2.5" /> {src.label}
-                    </a>
-                  ))}
-                </div>
-              )}
-            </motion.div>
+              <p className="text-sm font-semibold text-text-primary group-hover:text-accent-primary transition-colors leading-snug">
+                {story.headline}
+              </p>
+              <p className="text-xs text-text-muted mt-1 line-clamp-2">{story.why}</p>
+              <div className="flex items-center gap-2.5 mt-2 flex-wrap">
+                {(story.sources || []).map((src) => (
+                  <span key={src.link} className="flex items-center gap-1 text-[10px] text-text-muted">
+                    <ExternalLink className="w-2.5 h-2.5" /> {src.label}
+                  </span>
+                ))}
+              </div>
+            </Tag>
           );
         })}
       </div>
@@ -620,11 +660,36 @@ function AiBrief() {
   );
 }
 
+// ─── Feed filtering helpers ───
+function inTimeRange(dateStr, filterKey) {
+  const t = new Date(dateStr).getTime();
+  if (!Number.isFinite(t)) return filterKey === 'week';
+  const now = new Date();
+  if (filterKey === 'today') return sameDay(new Date(t), now);
+  if (filterKey === 'yesterday') {
+    const y = new Date(now); y.setDate(y.getDate() - 1);
+    return sameDay(new Date(t), y);
+  }
+  if (filterKey === '48h') return Date.now() - t <= 48 * 3600_000;
+  return Date.now() - t <= 7 * 24 * 3600_000; // week
+}
+
+function dayLabel(dateStr) {
+  const d = new Date(dateStr);
+  if (Number.isNaN(d.getTime())) return 'לא ידוע';
+  const now = new Date();
+  if (sameDay(d, now)) return 'היום';
+  const y = new Date(now); y.setDate(y.getDate() - 1);
+  if (sameDay(d, y)) return 'אתמול';
+  return `${d.getDate()} ב${MONTH_NAMES[d.getMonth()]}`;
+}
+
 // ─── News Feed Component ───
-function NewsFeed() {
+function NewsFeed({ market }) {
   const [articles, setArticles] = useState([]);
   const [loading, setLoading] = useState(true);
-  const [activeFilter, setActiveFilter] = useState('all');
+  const [topic, setTopic] = useState('all');
+  const [timeRange, setTimeRange] = useState('week');
   const [error, setError] = useState(null);
 
   const fetchNews = useCallback(async () => {
@@ -633,7 +698,7 @@ function NewsFeed() {
 
     try {
       const results = await Promise.allSettled(
-        SOURCES.map(async (source) => {
+        FEED_SOURCES[market].map(async (source) => {
           const res = await fetch(`${RSS2JSON_BASE}${encodeURIComponent(source.rss)}`);
           if (!res.ok) throw new Error(`${source.key} failed`);
           const data = await res.json();
@@ -665,7 +730,7 @@ function NewsFeed() {
     } finally {
       setLoading(false);
     }
-  }, []);
+  }, [market]);
 
   useEffect(() => {
     fetchNews();
@@ -673,39 +738,58 @@ function NewsFeed() {
     return () => clearInterval(interval);
   }, [fetchNews]);
 
-  const filtered = activeFilter === 'all'
-    ? articles
-    : articles.filter((a) => a.sourceKey === activeFilter);
+  const topics = TOPICS[market];
+  const activeTopic = topics.find((t) => t.key === topic) || topics[0];
+  const filtered = articles.filter((a) =>
+    inTimeRange(a.pubDate, timeRange)
+    && (!activeTopic.re || activeTopic.re.test(`${a.title} ${a.description}`))
+  );
+
+  // Group by calendar day, newest first (articles arrive pre-sorted).
+  const groups = [];
+  for (const article of filtered) {
+    const label = dayLabel(article.pubDate);
+    const last = groups[groups.length - 1];
+    if (last && last.label === label) last.items.push(article);
+    else groups.push({ label, items: [article] });
+  }
 
   return (
     <>
       {/* AI brief — what actually matters right now */}
-      <AiBrief />
+      <AiBrief market={market} />
 
-      {/* Source Filters */}
-      <div className="flex items-center gap-2 mb-6 overflow-x-auto pb-2">
-        <Filter className="w-4 h-4 text-text-muted flex-shrink-0" />
-        <button
-          onClick={() => setActiveFilter('all')}
-          className={`px-3 py-1.5 rounded-lg text-sm font-medium whitespace-nowrap transition-colors ${
-            activeFilter === 'all'
-              ? 'bg-accent-primary text-white'
-              : 'bg-bg-secondary border border-border-primary text-text-secondary hover:text-text-primary'
-          }`}
-        >
-          {'\u05D4\u05DB\u05DC'}
-        </button>
-        {SOURCES.map((source) => (
+      {/* Time-range chips */}
+      <div className="flex items-center justify-center gap-2 mb-3 overflow-x-auto pb-1">
+        {TIME_FILTERS.map((tf) => (
           <button
-            key={source.key}
-            onClick={() => setActiveFilter(source.key)}
-            className={`px-3 py-1.5 rounded-lg text-sm font-medium whitespace-nowrap transition-colors ${
-              activeFilter === source.key
+            key={tf.key}
+            onClick={() => setTimeRange(tf.key)}
+            className={`px-3.5 py-1.5 rounded-full text-xs font-semibold whitespace-nowrap transition-colors cursor-pointer ${
+              timeRange === tf.key
                 ? 'bg-accent-primary text-white'
                 : 'bg-bg-secondary border border-border-primary text-text-secondary hover:text-text-primary'
             }`}
           >
-            {source.label}
+            {tf.label}
+          </button>
+        ))}
+      </div>
+
+      {/* Topic chips */}
+      <div className="flex items-center justify-center gap-2 mb-6 overflow-x-auto pb-1">
+        <Filter className="w-3.5 h-3.5 text-text-muted flex-shrink-0" />
+        {topics.map((t) => (
+          <button
+            key={t.key}
+            onClick={() => setTopic(t.key)}
+            className={`px-3 py-1.5 rounded-lg text-xs font-medium whitespace-nowrap transition-colors cursor-pointer ${
+              topic === t.key
+                ? 'bg-accent-primary/15 text-accent-primary border border-accent-primary/40'
+                : 'bg-bg-secondary border border-border-primary text-text-secondary hover:text-text-primary'
+            }`}
+          >
+            {t.label}
           </button>
         ))}
       </div>
@@ -745,50 +829,62 @@ function NewsFeed() {
       {!loading && !error && (
         <AnimatePresence mode="popLayout">
           <div className="space-y-4">
-            {filtered.map((article, i) => (
-              <motion.a
-                key={article.link}
-                href={article.link}
-                target="_blank"
-                rel="noopener noreferrer"
-                initial={{ opacity: 0, y: 15 }}
-                animate={{ opacity: 1, y: 0 }}
-                exit={{ opacity: 0, y: -10 }}
-                transition={{ duration: 0.3, delay: i < 10 ? i * 0.05 : 0 }}
-                className="block bg-bg-secondary border border-border-primary rounded-xl p-4 hover:border-accent-primary/50 hover:bg-bg-tertiary/50 transition-all group"
-              >
-                <div className="flex gap-4">
-                  {article.thumbnail && (
-                    <div className="w-24 h-24 md:w-32 md:h-24 flex-shrink-0 rounded-lg overflow-hidden bg-bg-tertiary">
-                      <img
-                        src={article.thumbnail}
-                        alt=""
-                        className="w-full h-full object-cover"
-                        onError={(e) => { e.target.style.display = 'none'; }}
-                        loading="lazy"
-                      />
-                    </div>
-                  )}
-                  <div className="flex-1 min-w-0">
-                    <h3 className="text-sm md:text-base font-semibold text-text-primary mb-1.5 line-clamp-2 group-hover:text-accent-primary transition-colors">
-                      {article.title}
-                    </h3>
-                    <p className="text-xs md:text-sm text-text-muted line-clamp-2 mb-2 hidden sm:block">
-                      {article.description}
-                    </p>
-                    <div className="flex items-center gap-3 text-[11px] text-text-muted">
-                      <span className="px-2 py-0.5 bg-bg-tertiary rounded-full font-medium">
-                        {article.sourceLabel}
-                      </span>
-                      <span className="flex items-center gap-1">
-                        <Clock className="w-3 h-3" />
-                        {timeAgo(article.pubDate)}
-                      </span>
-                      <ExternalLink className="w-3 h-3 opacity-0 group-hover:opacity-100 transition-opacity" />
-                    </div>
-                  </div>
+            {groups.map((group) => (
+              <div key={group.label}>
+                {/* Day header */}
+                <div className="flex items-center gap-3 mb-3 mt-2">
+                  <h3 className="text-sm font-bold text-text-primary">{group.label}</h3>
+                  <span className="text-[11px] text-text-muted">{group.items.length} כתבות</span>
+                  <div className="flex-1 h-px bg-border-primary" />
                 </div>
-              </motion.a>
+                <div className="space-y-4">
+                  {group.items.map((article, i) => (
+                    <motion.a
+                      key={article.link}
+                      href={article.link}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      initial={{ opacity: 0, y: 15 }}
+                      animate={{ opacity: 1, y: 0 }}
+                      exit={{ opacity: 0, y: -10 }}
+                      transition={{ duration: 0.3, delay: i < 10 ? i * 0.05 : 0 }}
+                      className="block bg-bg-secondary border border-border-primary rounded-xl p-4 hover:border-accent-primary/50 hover:bg-bg-tertiary/50 transition-all group"
+                    >
+                      <div className="flex gap-4">
+                        {article.thumbnail && (
+                          <div className="w-24 h-24 md:w-32 md:h-24 flex-shrink-0 rounded-lg overflow-hidden bg-bg-tertiary">
+                            <img
+                              src={article.thumbnail}
+                              alt=""
+                              className="w-full h-full object-cover"
+                              onError={(e) => { e.target.style.display = 'none'; }}
+                              loading="lazy"
+                            />
+                          </div>
+                        )}
+                        <div className="flex-1 min-w-0">
+                          <h3 className="text-sm md:text-base font-semibold text-text-primary mb-1.5 line-clamp-2 group-hover:text-accent-primary transition-colors">
+                            {article.title}
+                          </h3>
+                          <p className="text-xs md:text-sm text-text-muted line-clamp-2 mb-2 hidden sm:block">
+                            {article.description}
+                          </p>
+                          <div className="flex items-center gap-3 text-[11px] text-text-muted">
+                            <span className="px-2 py-0.5 bg-bg-tertiary rounded-full font-medium">
+                              {article.sourceLabel}
+                            </span>
+                            <span className="flex items-center gap-1">
+                              <Clock className="w-3 h-3" />
+                              {timeAgo(article.pubDate)}
+                            </span>
+                            <ExternalLink className="w-3 h-3 opacity-0 group-hover:opacity-100 transition-opacity" />
+                          </div>
+                        </div>
+                      </div>
+                    </motion.a>
+                  ))}
+                </div>
+              </div>
             ))}
           </div>
         </AnimatePresence>
@@ -797,7 +893,7 @@ function NewsFeed() {
       {!loading && !error && filtered.length === 0 && (
         <div className="bg-bg-secondary border border-border-primary rounded-xl p-8 text-center">
           <Newspaper className="w-10 h-10 text-text-muted mx-auto mb-3" />
-          <p className="text-text-muted">{'\u05D0\u05D9\u05DF \u05D7\u05D3\u05E9\u05D5\u05EA \u05DC\u05D4\u05E6\u05D2\u05D4 \u05E2\u05D1\u05D5\u05E8 \u05DE\u05E7\u05D5\u05E8 \u05D6\u05D4'}</p>
+          <p className="text-text-muted">\u05D0\u05D9\u05DF \u05D7\u05D3\u05E9\u05D5\u05EA \u05E9\u05EA\u05D5\u05D0\u05DE\u05D5\u05EA \u05D0\u05EA \u05D4\u05E1\u05D9\u05E0\u05D5\u05DF \u2014 \u05E0\u05E1\u05D4 \u05D8\u05D5\u05D5\u05D7 \u05D6\u05DE\u05DF \u05D0\u05D5 \u05E0\u05D5\u05E9\u05D0 \u05D0\u05D7\u05E8</p>
         </div>
       )}
     </>
@@ -807,6 +903,7 @@ function NewsFeed() {
 // ─── Main Page ───
 export default function NewsPage() {
   const [activeTab, setActiveTab] = useState('news');
+  const [market, setMarket] = useState('crypto');
 
   const tabs = [
     { key: 'news', label: '\u05D7\u05D3\u05E9\u05D5\u05EA', icon: Newspaper },
@@ -833,16 +930,40 @@ export default function NewsPage() {
         ))}
       </div>
 
+      {/* Market toggle — crypto ⇄ stocks (news tab only) */}
+      {activeTab === 'news' && (
+        <div className="flex items-center justify-center mb-6">
+          <div className="inline-flex bg-bg-secondary border border-border-primary rounded-full p-1">
+            {[
+              { key: 'crypto', label: '₿ קריפטו' },
+              { key: 'stocks', label: '📈 מניות' },
+            ].map((m) => (
+              <button
+                key={m.key}
+                onClick={() => setMarket(m.key)}
+                className={`px-4 py-1.5 rounded-full text-xs font-bold transition-all cursor-pointer ${
+                  market === m.key
+                    ? 'bg-accent-primary text-white shadow-sm'
+                    : 'text-text-secondary hover:text-text-primary'
+                }`}
+              >
+                {m.label}
+              </button>
+            ))}
+          </div>
+        </div>
+      )}
+
       {/* Tab Content */}
       <AnimatePresence mode="wait">
         <motion.div
-          key={activeTab}
+          key={`${activeTab}-${market}`}
           initial={{ opacity: 0, x: activeTab === 'news' ? -20 : 20 }}
           animate={{ opacity: 1, x: 0 }}
           exit={{ opacity: 0, x: activeTab === 'news' ? 20 : -20 }}
           transition={{ duration: 0.25 }}
         >
-          {activeTab === 'news' ? <NewsFeed /> : <EconomicCalendar />}
+          {activeTab === 'news' ? <NewsFeed market={market} /> : <EconomicCalendar />}
         </motion.div>
       </AnimatePresence>
     </div>
