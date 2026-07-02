@@ -34,6 +34,7 @@ const loadWatchlistPage = () => import('./components/watchlist/WatchlistPage');
 const loadPremiumPage = () => import('./components/premium/PremiumPage');
 const loadCheckoutPage = () => import('./components/premium/CheckoutPage');
 const loadCouponLanding = () => import('./components/premium/CouponLandingPage');
+const loadRefundPolicy = () => import('./components/legal/RefundPolicyPage');
 const loadAdminPanel = () => import('./components/admin/AdminPanel');
 
 const Dashboard = lazy(loadDashboard);
@@ -56,6 +57,7 @@ const WatchlistPage = lazy(loadWatchlistPage);
 const PremiumPage = lazy(loadPremiumPage);
 const CheckoutPage = lazy(loadCheckoutPage);
 const CouponLandingPage = lazy(loadCouponLanding);
+const RefundPolicyPage = lazy(loadRefundPolicy);
 const AdminPanel = lazy(loadAdminPanel);
 
 // Preload all routes during idle time so tab switches feel instant
@@ -123,6 +125,7 @@ function MainApp() {
                 <Route path="watchlist" element={<WatchlistPage />} />
                 <Route path="premium" element={<PremiumPage />} />
                 <Route path="premium/checkout" element={<CheckoutPage />} />
+                <Route path="refund-policy" element={<RefundPolicyPage />} />
                 <Route path="admin" element={<AdminPanel />} />
                 <Route path="profile" element={<ProfilePage />} />
               </Route>

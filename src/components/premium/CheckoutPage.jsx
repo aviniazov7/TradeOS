@@ -13,6 +13,7 @@ export default function CheckoutPage() {
   const navigate = useNavigate();
   const [cycle, setCycle] = useState('yearly'); // anchor the best-value plan
   const [busy, setBusy] = useState(false);
+  const [agreed, setAgreed] = useState(false); // must accept the refund policy before paying
 
   const plan = PREMIUM_PRICING[cycle];
   const monthlyEq = cycle === 'yearly' ? (plan.price / 12).toFixed(0) : plan.price;
@@ -120,14 +121,38 @@ export default function CheckoutPage() {
           </div>
         </div>
 
+        {/* Policy agreement — required before payment */}
+        <label className="flex items-start gap-2 text-xs text-text-secondary cursor-pointer select-none">
+          <input
+            type="checkbox"
+            checked={agreed}
+            onChange={(e) => setAgreed(e.target.checked)}
+            className="mt-0.5 w-4 h-4 accent-accent-primary cursor-pointer"
+          />
+          <span>
+            קראתי ואני מסכים ל
+            <button
+              type="button"
+              onClick={(e) => { e.preventDefault(); navigate('/refund-policy'); }}
+              className="text-accent-primary underline underline-offset-2 cursor-pointer mx-0.5"
+            >
+              מדיניות הביטולים וההחזרים
+            </button>
+            של TradeOS Premium.
+          </span>
+        </label>
+
         {/* Pay */}
-        <button onClick={pay} disabled={busy}
-          className="w-full py-3.5 rounded-xl bg-accent-primary text-bg-primary text-sm font-bold hover:bg-accent-hover transition-colors cursor-pointer disabled:opacity-60 flex items-center justify-center gap-2">
+        <button onClick={pay} disabled={busy || !agreed}
+          className="w-full py-3.5 rounded-xl bg-accent-primary text-bg-primary text-sm font-bold hover:bg-accent-hover transition-colors cursor-pointer disabled:opacity-60 disabled:cursor-not-allowed flex items-center justify-center gap-2">
           <Lock className="w-4 h-4" /> {busy ? 'רגע...' : `המשך לתשלום מאובטח · ₪${plan.price}`}
         </button>
 
         <div className="flex items-center justify-center gap-1.5 text-[11px] text-text-muted">
-          <ShieldCheck className="w-3.5 h-3.5 text-profit" /> תשלום מאובטח · ביטול בכל עת
+          <ShieldCheck className="w-3.5 h-3.5 text-profit" /> תשלום מאובטח · ביטול בכל עת ·
+          <button onClick={() => navigate('/refund-policy')} className="text-accent-primary hover:underline cursor-pointer">
+            מדיניות ביטולים
+          </button>
         </div>
       </div>
     </motion.div>
