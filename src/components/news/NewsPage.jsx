@@ -56,6 +56,41 @@ const TIME_FILTERS = [
 
 const RSS2JSON_BASE = 'https://api.rss2json.com/v1/api.json?rss_url=';
 
+// Feed items come from a third-party proxy (rss2json) and end up as <a href>
+// / <img src>. Only allow http(s) so a compromised feed can't smuggle a
+// javascript:/data: URL (React renders those hrefs — it only warns).
+function safeHttpUrl(url) {
+  return typeof url === 'string' && /^https?:\/\//i.test(url.trim()) ? url.trim() : null;
+}
+
+// Persist Hebrew translations (link -> {title,desc}) in localStorage so a
+// component remount (market/tab toggle, reload) does NOT re-hit the worker's
+// translate endpoint — that was a KV read/write amplifier. Shared across
+// markets (keyed by unique article link); capped and TTL'd.
+const HE_CACHE_KEY = 'tradeos_news_he_v1';
+const HE_CACHE_TTL = 3 * 24 * 60 * 60 * 1000; // match the worker's KV TTL
+const HE_CACHE_MAX = 500;
+
+function loadHeCache() {
+  try {
+    const raw = JSON.parse(localStorage.getItem(HE_CACHE_KEY) || 'null');
+    if (raw && typeof raw.savedAt === 'number' && Date.now() - raw.savedAt < HE_CACHE_TTL && raw.map) {
+      return raw.map;
+    }
+  } catch { /* corrupt/absent — start fresh */ }
+  return {};
+}
+
+function saveHeCache(map) {
+  try {
+    const entries = Object.entries(map);
+    const trimmed = entries.length > HE_CACHE_MAX
+      ? Object.fromEntries(entries.slice(-HE_CACHE_MAX)) // insertion order → keep newest
+      : map;
+    localStorage.setItem(HE_CACHE_KEY, JSON.stringify({ savedAt: Date.now(), map: trimmed }));
+  } catch { /* quota/full/private mode — non-fatal */ }
+}
+
 // ─── Economic Calendar (Forex Factory via allorigins proxy) ───
 const WORKER_URL = import.meta.env.VITE_WORKER_URL || 'https://trade-os.aviniazov7.workers.dev';
 const CALENDAR_URL = 'https://nfs.faireconomy.media/ff_calendar_thisweek.json';
@@ -729,7 +764,7 @@ function NewsFeed({ market }) {
   const [topic, setTopic] = useState('all');
   const [timeRange, setTimeRange] = useState('week');
   const [error, setError] = useState(null);
-  const [heMap, setHeMap] = useState({}); // link -> { title, desc } (Hebrew)
+  const [heMap, setHeMap] = useState(loadHeCache); // link -> { title, desc } (Hebrew)
 
   const fetchNews = useCallback(async () => {
     setLoading(true);
@@ -746,8 +781,8 @@ function NewsFeed({ market }) {
             title: item.title,
             // Strip WordPress-feed boilerplate ("The post X appeared first on Y")
             description: cleanHtml(item.description || item.content).replace(/The post .*$/i, '').trim(),
-            thumbnail: item.thumbnail || item.enclosure?.link || null,
-            link: item.link,
+            thumbnail: safeHttpUrl(item.thumbnail || item.enclosure?.link),
+            link: safeHttpUrl(item.link) || '#',
             pubDate: item.pubDate,
             author: item.author || source.label,
             sourceKey: source.key,
@@ -756,10 +791,22 @@ function NewsFeed({ market }) {
         })
       );
 
+      // Sort newest-first; items with an unparseable date sort to the end
+      // (as -Infinity) so they stay contiguous and don't split day-groups.
+      const ts = (d) => { const t = new Date(d).getTime(); return Number.isFinite(t) ? t : -Infinity; };
+      // De-dupe syndicated articles that share a URL (keep first); '#'
+      // (scheme-rejected) links are never treated as duplicates of each other.
+      const seenLinks = new Set();
       const allArticles = results
         .filter((r) => r.status === 'fulfilled')
         .flatMap((r) => r.value)
-        .sort((a, b) => new Date(b.pubDate) - new Date(a.pubDate));
+        .filter((a) => {
+          if (a.link === '#') return true;
+          if (seenLinks.has(a.link)) return false;
+          seenLinks.add(a.link);
+          return true;
+        })
+        .sort((a, b) => ts(b.pubDate) - ts(a.pubDate));
 
       if (allArticles.length === 0) {
         setError('\u05DC\u05D0 \u05D4\u05E6\u05DC\u05D7\u05E0\u05D5 \u05DC\u05D8\u05E2\u05D5\u05DF \u05D7\u05D3\u05E9\u05D5\u05EA. \u05E0\u05E1\u05D4 \u05E9\u05D5\u05D1 \u05DE\u05D0\u05D5\u05D7\u05E8 \u05D9\u05D5\u05EA\u05E8.');
@@ -810,6 +857,10 @@ function NewsFeed({ market }) {
     return () => { cancelled = true; };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [articles]);
+
+  // Persist translations so a remount hydrates from localStorage instead of
+  // re-calling the worker (KV read/write saver).
+  useEffect(() => { saveHeCache(heMap); }, [heMap]);
 
   const topics = TOPICS[market];
   const activeTopic = topics.find((t) => t.key === topic) || topics[0];
@@ -902,8 +953,8 @@ function NewsFeed({ market }) {
       {!loading && !error && (
         <AnimatePresence mode="popLayout">
           <div className="space-y-4">
-            {groups.map((group) => (
-              <div key={group.label}>
+            {groups.map((group, gi) => (
+              <div key={`${group.label}-${gi}`}>
                 {/* Day header */}
                 <div className="flex items-center gap-3 mb-3 mt-2">
                   <h3 className="text-sm font-bold text-text-primary">{group.label}</h3>
@@ -913,7 +964,7 @@ function NewsFeed({ market }) {
                 <div className="space-y-4">
                   {group.items.map((article, i) => (
                     <motion.a
-                      key={article.link}
+                      key={`${article.link}-${i}`}
                       href={article.link}
                       target="_blank"
                       rel="noopener noreferrer"
