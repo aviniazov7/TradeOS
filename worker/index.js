@@ -2234,6 +2234,7 @@ async function handleCron(env) {
       checkPlanExpiryReminders(env),
       checkChurnedPremium(env),
       checkWeeklyDigest(env),
+      refreshNewsDigest(env),
     ]);
     return;
   }
@@ -2261,6 +2262,7 @@ async function handleCron(env) {
     checkPlanExpiryReminders(env),
     checkChurnedPremium(env),
     checkWeeklyDigest(env),
+    refreshNewsDigest(env),
   ]);
 }
 
@@ -2826,6 +2828,190 @@ async function handleAIProjectDescription(request, env, cors) {
   }
 }
 
+// ==================== AI News Digest ====================
+// One digest for ALL users: cron pulls the RSS feeds server-side, a single
+// Groq call clusters duplicate stories and ranks what actually matters, and
+// the result sits in KV (news:digest:{market}). Clients read the prepared
+// blob — zero AI cost per user, no client-side CORS/rss2json dependency.
+
+const NEWS_FEEDS = {
+  crypto: [
+    { key: 'cointelegraph', label: 'CoinTelegraph', rss: 'https://cointelegraph.com/rss' },
+    { key: 'coindesk', label: 'CoinDesk', rss: 'https://www.coindesk.com/arc/outboundfeeds/rss/' },
+    { key: 'decrypt', label: 'Decrypt', rss: 'https://decrypt.co/feed' },
+    { key: 'theblock', label: 'The Block', rss: 'https://www.theblock.co/rss.xml' },
+    { key: 'beincrypto', label: 'BeInCrypto', rss: 'https://beincrypto.com/feed/' },
+    { key: 'cryptoslate', label: 'CryptoSlate', rss: 'https://cryptoslate.com/feed/' },
+  ],
+  // Populated when the stocks market mode ships; the endpoint already accepts
+  // ?market=stocks so the client toggle won't need a worker change.
+  stocks: [],
+};
+
+const NEWS_DIGEST_REFRESH_MIN = 30;
+const NEWS_MAX_HEADLINES = 60;   // cap what we send to the model
+const NEWS_MAX_AGE_HOURS = 24;   // ignore older items
+
+// Minimal RSS <item> extraction. Workers have no DOMParser; the feeds above
+// are standard RSS 2.0 so tag-level regex extraction is sufficient and avoids
+// shipping an XML parser.
+function rssTag(block, tag) {
+  const m = block.match(new RegExp(`<${tag}[^>]*>([\\s\\S]*?)</${tag}>`, 'i'));
+  if (!m) return '';
+  return m[1]
+    .replace(/<!\[CDATA\[([\s\S]*?)\]\]>/g, '$1')
+    .replace(/<[^>]+>/g, '')
+    .replace(/&amp;/g, '&').replace(/&lt;/g, '<').replace(/&gt;/g, '>')
+    .replace(/&quot;/g, '"').replace(/&#0?39;/g, "'").replace(/&nbsp;/g, ' ')
+    .trim();
+}
+
+function parseRssItems(xml, source) {
+  const items = [];
+  const rssBlocks = xml.match(/<item[\s\S]*?<\/item>/gi) || [];
+  for (const block of rssBlocks.slice(0, 20)) {
+    const title = rssTag(block, 'title');
+    const link = rssTag(block, 'link');
+    const pubDate = rssTag(block, 'pubDate') || rssTag(block, 'dc:date');
+    if (title && link) {
+      items.push({ title, link, pubDate, sourceKey: source.key, sourceLabel: source.label });
+    }
+  }
+  if (items.length) return items;
+  // Atom fallback (<entry> + <link href="..."/>) so a feed that switches
+  // format degrades gracefully instead of vanishing from the digest.
+  const atomBlocks = xml.match(/<entry[\s\S]*?<\/entry>/gi) || [];
+  for (const block of atomBlocks.slice(0, 20)) {
+    const title = rssTag(block, 'title');
+    const linkM = block.match(/<link[^>]*href="([^"]+)"/i);
+    const pubDate = rssTag(block, 'published') || rssTag(block, 'updated');
+    if (title && linkM) {
+      items.push({ title, link: linkM[1], pubDate, sourceKey: source.key, sourceLabel: source.label });
+    }
+  }
+  return items;
+}
+
+const NEWS_EDITOR_PROMPT = `אתה עורך חדשות בכיר בדסק שוקי הון. תקבל רשימת כותרות (JSON) שנאספו ממספר אתרי חדשות ב-24 השעות האחרונות.
+
+המשימה: לזהות את 5-7 הסיפורים שבאמת חשובים לסוחר, ולדרג אותם.
+
+כללים:
+- קבץ כותרות שמסקרות את אותו סיפור (אותו אירוע = סיפור אחד). סיקור על ידי כמה מקורות הוא אות לחשיבות.
+- דלג על ספאם, פרסומות, ניתוחי מחיר גנריים ("XRP יעלה?"), וכתבות דעה שוליות.
+- impact: "high" רק לאירוע שבאמת מזיז שוק (רגולציה, ETF, פריצה גדולה, החלטת ריבית, קריסה/אימוץ מוסדי). אחרת "medium".
+- category: אחת מ: "רגולציה", "מאקרו", "שוק", "טכנולוגיה", "אבטחה", "אימוץ".
+- headline: כותרת חדה בעברית (עד 12 מילים). why: שורה אחת בעברית — למה זה חשוב לסוחר עכשיו.
+- ids: מזהי הכותרות המקוריות ששייכות לסיפור (לפחות אחת).
+
+החזר JSON בלבד, במבנה:
+{"stories":[{"ids":[3,17],"headline":"...","why":"...","impact":"high","category":"רגולציה"}]}`;
+
+async function buildNewsDigest(env, market) {
+  const feeds = NEWS_FEEDS[market] || [];
+  if (!feeds.length || !env.GROQ_API_KEY) return null;
+
+  // Cheap lock so a cron tick and an on-demand request can't both burn a
+  // provider call. KV get→put isn't atomic; the worst case is one duplicate
+  // build, which is harmless.
+  if (await env.ALERTS_KV.get('news:digest:lock')) return null;
+  await env.ALERTS_KV.put('news:digest:lock', '1', { expirationTtl: 120 });
+
+  try {
+    const results = await Promise.allSettled(feeds.map(async (source) => {
+      const r = await fetch(source.rss, {
+        headers: { 'User-Agent': 'Mozilla/5.0 TradeOS' },
+        signal: AbortSignal.timeout(8000),
+      });
+      if (!r.ok) throw new Error(`${source.key} ${r.status}`);
+      return parseRssItems(await r.text(), source);
+    }));
+
+    const cutoff = Date.now() - NEWS_MAX_AGE_HOURS * 3600_000;
+    const headlines = results
+      .filter((r) => r.status === 'fulfilled')
+      .flatMap((r) => r.value)
+      .filter((it) => {
+        const t = Date.parse(it.pubDate);
+        return !Number.isFinite(t) || t >= cutoff; // keep items with unparseable dates
+      })
+      .sort((a, b) => (Date.parse(b.pubDate) || 0) - (Date.parse(a.pubDate) || 0))
+      .slice(0, NEWS_MAX_HEADLINES);
+    if (headlines.length < 5) return null; // most feeds down — keep the old digest
+
+    const modelInput = headlines.map((h, i) => ({
+      id: i,
+      title: h.title.slice(0, 200),
+      source: h.sourceLabel,
+    }));
+
+    const groqRes = await fetch(GROQ_URL, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${env.GROQ_API_KEY}` },
+      body: JSON.stringify({
+        model: GROQ_MODEL,
+        messages: [
+          { role: 'system', content: NEWS_EDITOR_PROMPT },
+          { role: 'user', content: JSON.stringify(modelInput) },
+        ],
+        temperature: 0.3,
+        max_tokens: 1200,
+        response_format: { type: 'json_object' },
+      }),
+    });
+    if (!groqRes.ok) {
+      console.error('news digest groq error:', groqRes.status, await groqRes.text().catch(() => ''));
+      return null;
+    }
+    const data = await groqRes.json();
+    let parsed;
+    try { parsed = JSON.parse(data.choices?.[0]?.message?.content || ''); } catch { return null; }
+    const rawStories = Array.isArray(parsed?.stories) ? parsed.stories : [];
+
+    // Map the model's headline ids back to real links ourselves — the model
+    // never sees URLs, so it can't hallucinate them.
+    const stories = rawStories.slice(0, 8).map((s) => {
+      const ids = (Array.isArray(s.ids) ? s.ids : [])
+        .filter((i) => Number.isInteger(i) && i >= 0 && i < headlines.length);
+      if (!ids.length) return null;
+      return {
+        headline: String(s.headline || '').slice(0, 160),
+        why: String(s.why || '').slice(0, 240),
+        impact: s.impact === 'high' ? 'high' : 'medium',
+        category: String(s.category || 'שוק').slice(0, 20),
+        sources: ids.slice(0, 4).map((i) => ({
+          label: headlines[i].sourceLabel,
+          link: headlines[i].link,
+          title: headlines[i].title.slice(0, 200),
+        })),
+      };
+    }).filter((s) => s && s.headline);
+    if (!stories.length) return null;
+
+    const digest = { market, updatedAt: Date.now(), stories };
+    await env.ALERTS_KV.put(`news:digest:${market}`, JSON.stringify(digest), { expirationTtl: 60 * 60 * 24 * 2 });
+    await env.ALERTS_KV.put(`news:digest:${market}:ts`, String(digest.updatedAt), { expirationTtl: 60 * 60 * 24 * 2 });
+    return digest;
+  } catch (err) {
+    console.error('news digest build failed:', err);
+    return null;
+  } finally {
+    await env.ALERTS_KV.delete('news:digest:lock').catch(() => {});
+  }
+}
+
+// Cron hook: rebuild when the digest is older than NEWS_DIGEST_REFRESH_MIN.
+// Reads only the tiny :ts key per tick, not the full blob.
+async function refreshNewsDigest(env) {
+  try {
+    const ts = parseInt((await env.ALERTS_KV.get('news:digest:crypto:ts')) || '0', 10);
+    if (ts && Date.now() - ts < NEWS_DIGEST_REFRESH_MIN * 60_000) return;
+    await buildNewsDigest(env, 'crypto');
+  } catch (e) {
+    console.error('news digest refresh failed:', e);
+  }
+}
+
 // ==================== Contact Developer ====================
 
 function escapeHtml(str) {
@@ -3192,6 +3378,18 @@ async function handleRequest(request, env) {
     } catch {
       return new Response(JSON.stringify({ error: 'fetch failed' }), { status: 502, headers: { ...cors, 'Content-Type': 'application/json' } });
     }
+  }
+
+  // AI news digest — public read of the cron-prepared KV blob (news is public
+  // data; the expensive part is the build, which is lock-guarded). A cold
+  // cache (first request ever / after KV expiry) builds on demand.
+  if (request.method === 'GET' && path === '/news/digest') {
+    const market = url.searchParams.get('market') === 'stocks' ? 'stocks' : 'crypto';
+    let digest = await env.ALERTS_KV.get(`news:digest:${market}`, 'json');
+    if (!digest) digest = await buildNewsDigest(env, market);
+    return new Response(JSON.stringify(digest || { market, updatedAt: 0, stories: [] }), {
+      headers: { ...cors, 'Content-Type': 'application/json', 'Cache-Control': 'public, max-age=300' },
+    });
   }
 
   if (path === '/setup-webhook') {

@@ -1,0 +1,10 @@
+const WORKER_BASE = import.meta.env.VITE_WORKER_URL || 'https://trade-os.aviniazov7.workers.dev';
+
+// AI news digest — a single cron-prepared brief for all users (see the
+// worker's "AI News Digest" section). Returns { market, updatedAt, stories }
+// where each story is { headline, why, impact, category, sources[] }.
+export async function fetchNewsDigest(market = 'crypto') {
+  const res = await fetch(`${WORKER_BASE}/news/digest?market=${encodeURIComponent(market)}`);
+  if (!res.ok) throw new Error('טעינת התקציר נכשלה');
+  return res.json();
+}
