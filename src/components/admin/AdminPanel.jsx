@@ -9,7 +9,7 @@ import { ResponsiveContainer, AreaChart, Area, Tooltip, XAxis } from 'recharts';
 import { useAuth } from '../../contexts/AuthContext';
 import { getAllUsers, getUserSubcollectionCount, adminGrantPremium, adminRevokePremium, addPayment, getAllPayments } from '../../services/firestoreService';
 import { fetchUserAiUsage, fetchGlobalAiUsage, fetchAiStats, fetchSystemHealth } from '../../hooks/useAiUsage';
-import { adminSendNotification, adminSendBulkNotification, adminScheduleExpiryReminders, adminCancelExpiryReminders, adminRefreshPlanCache, adminListAuditEvents, adminSendTestDigest, adminGetTelegramInfo } from '../../services/pushService';
+import { adminSendNotification, adminSendBulkNotification, adminScheduleExpiryReminders, adminCancelExpiryReminders, adminRefreshPlanCache, adminListAuditEvents, adminSendTestDigest, adminGetTelegramInfo, adminSendPaymentEmail } from '../../services/pushService';
 import { adminListCoupons, adminCreateCoupon, adminDeleteCoupon, couponShareUrl } from '../../services/couponService';
 import LoadingSpinner from '../shared/LoadingSpinner';
 import SelectDropdown from '../shared/SelectDropdown';
@@ -1274,6 +1274,8 @@ function UserDetailModal({ user, onClose, onUserChanged }) {
   const [grantOpen, setGrantOpen] = useState(false);
   const [granting, setGranting] = useState(false);
   const [grantAmount, setGrantAmount] = useState('');
+  const [payMethod, setPayMethod] = useState('bit');
+  const [sendReceipt, setSendReceipt] = useState(true);
   const [notifyOpen, setNotifyOpen] = useState(false);
   const [notifyTitle, setNotifyTitle] = useState('');
   const [notifyBody, setNotifyBody] = useState('');
@@ -1338,6 +1340,23 @@ function UserDetailModal({ user, onClose, onUserChanged }) {
       // Bust the worker's cached plan flag so premium-only AI features unlock
       // for this user immediately, not after the cache TTL.
       adminRefreshPlanCache(user.id);
+
+      // Branded confirmation email — 'payment' when an amount was recorded,
+      // 'gift' otherwise. Failure gets its own toast (Resend without a
+      // verified domain only delivers to the account owner's address).
+      if (sendReceipt && user.email) {
+        adminSendPaymentEmail({
+          email: user.email,
+          name: user.displayName || '',
+          kind: paid > 0 ? 'payment' : 'gift',
+          amount: paid,
+          method: payMethod,
+          days: Number.isFinite(days) ? days : null,
+          expires: expiryStr,
+        })
+          .then(() => toast.success('מייל האישור נשלח 📧'))
+          .catch((err) => toast.error(`המייל לא נשלח: ${err.message}`));
+      }
 
       setGrantOpen(false);
       setGrantAmount('');
@@ -1504,6 +1523,42 @@ function UserDetailModal({ user, onClose, onUserChanged }) {
                 />
               </div>
             </div>
+            {/* Payment method — feeds the confirmation email */}
+            <div>
+              <label className="text-[11px] text-text-muted block mb-1">אמצעי תשלום</label>
+              <div className="flex flex-wrap gap-1.5">
+                {[
+                  { id: 'bit', label: 'ביט' },
+                  { id: 'crypto', label: 'קריפטו' },
+                  { id: 'transfer', label: 'העברה בנקאית' },
+                  { id: 'cash', label: 'מזומן' },
+                  { id: 'other', label: 'אחר' },
+                ].map((m) => (
+                  <button
+                    key={m.id}
+                    onClick={() => setPayMethod(m.id)}
+                    className={`text-xs px-2.5 py-1 rounded-full border transition-colors cursor-pointer ${
+                      payMethod === m.id
+                        ? 'bg-amber-500/15 border-amber-500 text-amber-400 font-semibold'
+                        : 'bg-bg-secondary border-border-primary text-text-secondary hover:text-text-primary'
+                    }`}
+                  >
+                    {m.label}
+                  </button>
+                ))}
+              </div>
+            </div>
+            {/* Confirmation email toggle */}
+            <label className="flex items-center gap-2 text-xs text-text-secondary cursor-pointer select-none">
+              <input
+                type="checkbox"
+                checked={sendReceipt}
+                onChange={(e) => setSendReceipt(e.target.checked)}
+                disabled={!user.email}
+                className="w-3.5 h-3.5 accent-amber-500 cursor-pointer"
+              />
+              שלח מייל אישור מעוצב {user.email ? `(${user.email})` : '(אין אימייל בפרופיל)'}
+            </label>
             <div className="grid grid-cols-3 sm:grid-cols-4 gap-1.5">
               {[
                 { d: 1, label: 'יום' },

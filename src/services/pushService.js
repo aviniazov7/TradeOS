@@ -129,6 +129,19 @@ export async function adminSendTestDigest() {
   return data; // { ok, sentTo, stats }
 }
 
+// Admin-only: send a branded payment/gift confirmation email to a user after
+// a manual Premium grant (Bit / crypto / bank transfer).
+export async function adminSendPaymentEmail({ email, name, kind, amount, method, days, expires }) {
+  const res = await fetch(`${WORKER_BASE}/admin/payment-email`, {
+    method: 'POST',
+    headers: await authHeader(),
+    body: JSON.stringify({ email, name, kind, amount, method, days, expires }),
+  });
+  const data = await res.json().catch(() => ({}));
+  if (!res.ok) throw new Error(data.error || 'שליחת המייל נכשלה');
+  return data; // { ok, sentTo }
+}
+
 // Admin-only: send a custom push notification to a target user via the worker.
 export async function adminSendNotification({ uid, title, body, url }) {
   const res = await fetch(`${WORKER_BASE}/admin/notify`, {

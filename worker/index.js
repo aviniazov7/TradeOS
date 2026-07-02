@@ -587,6 +587,52 @@ function emailShell({ headline, intro, ctaText, ctaUrl, body, footer }) {
 </body></html>`;
 }
 
+// Branded confirmation email for a Premium grant — payment, gift, or coupon
+// redemption. Shared by /admin/payment-email and the coupon-redeem flow so
+// every path sends the same polished email.
+function buildPremiumEmail({ kind = 'payment', name, amount, methodLabel, days, expiresStr, code }) {
+  const esc = (s) => String(s || '').replace(/[&<>"']/g, (c) => (
+    { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]
+  ));
+  const row = (label, value) => `
+    <tr>
+      <td style="padding:8px 0;font-size:13px;color:#7d8492;text-align:right">${esc(label)}</td>
+      <td style="padding:8px 0;font-size:14px;color:#e5e7eb;font-weight:bold;text-align:left" dir="ltr">${esc(value)}</td>
+    </tr>`;
+  const rows = [];
+  if (kind === 'payment' && amount > 0) rows.push(row('סכום ששולם', `₪${amount}`));
+  if (kind === 'payment' && methodLabel) rows.push(row('אמצעי תשלום', methodLabel));
+  if (kind === 'coupon' && code) rows.push(row('קוד קופון', code));
+  rows.push(row('תקופת המנוי', days ? `${days} ימים` : 'ללא הגבלה'));
+  if (expiresStr) rows.push(row('בתוקף עד', expiresStr));
+
+  const featureLi = (t) => `<li style="margin:0 0 6px;font-size:14px;color:#cbd0d8">${esc(t)}</li>`;
+  const body = `
+    <div style="background:rgba(0,191,255,0.06);border:1px solid rgba(0,191,255,0.22);border-radius:12px;padding:6px 18px;margin:4px 0 18px">
+      <table role="presentation" width="100%" cellspacing="0" cellpadding="0" border="0">${rows.join('')}</table>
+    </div>
+    <p style="margin:0 0 8px;font-size:14px;color:#e5e7eb;font-weight:bold">מה נפתח לך עכשיו:</p>
+    <ul style="margin:0 0 4px;padding-right:18px;text-align:right">
+      ${featureLi('TradeAI ללא הגבלה — שאלות, ניתוחי גרפים ותובנות')}
+      ${featureLi('ניתוח AI מלא של יומן המסחר')}
+      ${featureLi('יומני מסחר, ארנקים והתראות ללא הגבלה')}
+      ${featureLi('חיבורי בורסה וניתוחים מתקדמים')}
+    </ul>
+    ${kind === 'payment' ? '<p style="margin:14px 0 0;font-size:12px;color:#7d8492">אישור זה נשלח לנוחותך ואינו מהווה חשבונית מס/קבלה.</p>' : ''}`;
+
+  const first = (name || '').trim().split(/\s+/)[0];
+  const hey = first ? `היי ${first}, ` : '';
+  const meta = {
+    payment: { subject: '👑 התשלום התקבל — ברוך הבא ל-TradeOS Premium', headline: 'התשלום התקבל — אתה Premium! 👑', intro: `${hey}תודה על התשלום! המנוי הופעל בחשבונך והכל כבר פתוח.` },
+    gift: { subject: '🎁 קיבלת מתנה — TradeOS Premium', headline: 'קיבלת Premium במתנה! 🎁', intro: `${hey}הופעל לך מנוי Premium בחשבון — ליהנות!` },
+    coupon: { subject: '🎉 הקופון מומש — TradeOS Premium הופעל', headline: 'הקופון מומש בהצלחה! 🎉', intro: `${hey}מימשת קוד קופון ומנוי ה-Premium שלך פעיל.` },
+  }[kind] || {};
+  return {
+    subject: meta.subject,
+    html: emailShell({ headline: meta.headline, intro: meta.intro, body, ctaText: 'פתח את TradeOS', ctaUrl: 'https://tradeos-91a58.web.app' }),
+  };
+}
+
 // Build the weekly admin digest content (stats + push body + email html).
 // Shared between the Sunday cron and the on-demand /admin/test-digest endpoint
 // so they're guaranteed to look identical.
@@ -3975,6 +4021,38 @@ async function handleRequest(request, env) {
     return new Response(JSON.stringify({ ok: true, sentTo: adminTo, stats: { newUsers: digest.newUsers, upgrades: digest.upgrades, expiringSoon: digest.expiringSoon, churn: digest.churn } }), { headers: { ...cors, 'Content-Type': 'application/json' } });
   }
 
+  // Admin-only: send a branded Premium confirmation email (payment / gift) to
+  // a user. The admin panel calls this right after a manual grant so buyers
+  // who paid by Bit/crypto/bank transfer get a polished confirmation.
+  if (request.method === 'POST' && path === '/admin/payment-email') {
+    const token = (request.headers.get('Authorization') || '').replace('Bearer ', '');
+    const adminUid = await verifyAdminFromToken(token);
+    if (!adminUid) return new Response(JSON.stringify({ error: 'forbidden' }), { status: 403, headers: { ...cors, 'Content-Type': 'application/json' } });
+    if (!env.RESEND_API_KEY) return new Response(JSON.stringify({ error: 'RESEND_API_KEY חסר ב-Worker — לא ניתן לשלוח מיילים' }), { status: 503, headers: { ...cors, 'Content-Type': 'application/json' } });
+    const { email, name, kind, amount, method, days, expires } = await request.json().catch(() => ({}));
+    if (!email || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(String(email))) {
+      return new Response(JSON.stringify({ error: 'missing/invalid email' }), { status: 400, headers: { ...cors, 'Content-Type': 'application/json' } });
+    }
+    const METHOD_LABELS = { bit: 'ביט (Bit)', crypto: 'קריפטו', transfer: 'העברה בנקאית', cash: 'מזומן', other: 'אחר' };
+    const amt = Number(amount) || 0;
+    const { subject, html } = buildPremiumEmail({
+      kind: kind === 'gift' || amt <= 0 ? 'gift' : 'payment',
+      name: String(name || '').slice(0, 80),
+      amount: amt,
+      methodLabel: METHOD_LABELS[method] || null,
+      days: Number.isFinite(Number(days)) ? Number(days) : null,
+      expiresStr: expires ? String(expires).slice(0, 40) : null,
+    });
+    const r = await sendEmail(env, { to: String(email), subject, html });
+    if (!r.ok) {
+      // Pass Resend's real message through — e.g. the test-mode "can only send
+      // to your own address" error — so the admin sees exactly why.
+      return new Response(JSON.stringify({ error: `Resend ${r.status}: ${r.message || r.error || 'unknown error'}`, sentTo: email }), { status: 502, headers: { ...cors, 'Content-Type': 'application/json' } });
+    }
+    appendAudit(env, { kind: 'payment_email', actor: adminUid, target: email, amount: amt, days: Number(days) || null });
+    return new Response(JSON.stringify({ ok: true, sentTo: email }), { headers: { ...cors, 'Content-Type': 'application/json' } });
+  }
+
   if (request.method === 'POST' && path === '/admin/notify') {
     const token = (request.headers.get('Authorization') || '').replace('Bearer ', '');
     const adminUid = await verifyAdminFromToken(token);
@@ -4353,6 +4431,26 @@ async function handleRequest(request, env) {
       url: '/premium',
       tag: `coupon-${code}-${uid}`,
     }).catch(() => {});
+
+    // Best-effort: branded confirmation email to the redeemer (delivery to
+    // arbitrary inboxes requires a verified sender domain on Resend).
+    (async () => {
+      const me = await fetch(`https://firestore.googleapis.com/v1/projects/${FIREBASE_PROJECT_ID}/databases/(default)/documents/users/${uid}`, {
+        headers: { Authorization: `Bearer ${token}` },
+      });
+      if (!me.ok) return;
+      const f = (await me.json()).fields || {};
+      const email = f.email?.stringValue;
+      if (!email) return;
+      const { subject, html } = buildPremiumEmail({
+        kind: 'coupon',
+        name: f.displayName?.stringValue || '',
+        days: coupon.days,
+        expiresStr: new Date(newExpiry).toLocaleDateString('he-IL'),
+        code,
+      });
+      await sendEmail(env, { to: email, subject, html });
+    })().catch(() => {});
 
     // Notify the admin who created the coupon that someone just redeemed it.
     if (coupon.createdBy) {
