@@ -557,11 +557,14 @@ function emailShell({ headline, intro, ctaText, ctaUrl, body, footer }) {
         <a href="${esc(ctaUrl)}" target="_blank" style="display:inline-block;padding:14px 32px;font-family:Arial,sans-serif;font-size:15px;font-weight:bold;color:#0a0e16;text-decoration:none;border-radius:10px">${esc(ctaText)}</a>
       </td></tr>
     </table>` : '';
-  return `<!DOCTYPE html><html lang="he" dir="rtl"><head><meta charset="utf-8" /><meta name="viewport" content="width=device-width, initial-scale=1" /></head>
-<body style="margin:0;padding:0;background:#0a0e16;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Arial,sans-serif">
-  <table role="presentation" width="100%" cellspacing="0" cellpadding="0" border="0" style="background:#0a0e16">
+  return `<!DOCTYPE html><html lang="he" dir="rtl"><head><meta charset="utf-8" /><meta name="viewport" content="width=device-width, initial-scale=1" />
+<meta name="color-scheme" content="dark" />
+<meta name="supported-color-schemes" content="dark" />
+<style>:root{color-scheme:dark;supported-color-schemes:dark}</style></head>
+<body bgcolor="#0a0e16" style="margin:0;padding:0;background:#0a0e16;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Arial,sans-serif">
+  <table role="presentation" width="100%" cellspacing="0" cellpadding="0" border="0" bgcolor="#0a0e16" style="background:#0a0e16">
     <tr><td align="center" style="padding:32px 16px">
-      <table role="presentation" width="100%" cellspacing="0" cellpadding="0" border="0" style="max-width:560px;background:#0f1521;border:1px solid rgba(0,191,255,0.18);border-radius:16px;overflow:hidden">
+      <table role="presentation" width="100%" cellspacing="0" cellpadding="0" border="0" bgcolor="#0f1521" style="max-width:560px;background:#0f1521;border:1px solid rgba(0,191,255,0.18);border-radius:16px;overflow:hidden">
         <!-- Header / brand -->
         <tr><td style="padding:24px 28px;border-bottom:1px solid rgba(255,255,255,0.06);text-align:right">
           <div style="display:inline-block;vertical-align:middle">
