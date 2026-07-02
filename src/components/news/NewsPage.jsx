@@ -1,7 +1,7 @@
 import { useState, useEffect, useCallback, useMemo } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { Newspaper, ExternalLink, Clock, Filter, CalendarDays, Volume2, Globe, BrainCircuit, RefreshCw } from 'lucide-react';
-import { fetchNewsDigest } from '../../services/newsService';
+import { fetchNewsDigest, translateNews } from '../../services/newsService';
 
 // ─── News Sources (per market) ───
 const FEED_SOURCES = {
@@ -576,6 +576,8 @@ const BRIEF_IMPACT = {
 function AiBrief({ market }) {
   const [digest, setDigest] = useState(null);
   const [loading, setLoading] = useState(true);
+  const [idx, setIdx] = useState(0);
+  const [paused, setPaused] = useState(false);
 
   // No reset-on-market-change needed: the page remounts this component when
   // the market toggle flips (keyed motion.div), so initial state covers it.
@@ -588,24 +590,33 @@ function AiBrief({ market }) {
     return () => { cancelled = true; };
   }, [market]);
 
+  // Slow ticker-style rotation through the ranked stories; pauses on hover so
+  // the user can read/click, and when there's only one story.
+  const count = digest?.stories?.length || 0;
+  useEffect(() => {
+    if (count < 2 || paused) return undefined;
+    const t = setInterval(() => setIdx((i) => (i + 1) % count), 7000);
+    return () => clearInterval(t);
+  }, [count, paused]);
+
   if (loading) {
     return (
-      <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5 mb-6">
-        {[...Array(4)].map((_, i) => (
-          <div key={i} className="bg-bg-secondary border border-border-primary rounded-xl p-3.5 animate-pulse">
-            <div className="h-3 bg-bg-tertiary rounded w-24 mb-2.5" />
-            <div className="h-4 bg-bg-tertiary rounded w-full mb-2" />
-            <div className="h-3 bg-bg-tertiary rounded w-2/3" />
-          </div>
-        ))}
+      <div className="bg-bg-secondary border border-border-primary rounded-xl p-4 mb-6 animate-pulse">
+        <div className="h-3 bg-bg-tertiary rounded w-24 mb-2.5" />
+        <div className="h-4 bg-bg-tertiary rounded w-3/4 mb-2" />
+        <div className="h-3 bg-bg-tertiary rounded w-1/2" />
       </div>
     );
   }
-  if (!digest?.stories?.length) return null;
+  if (!count) return null;
+
+  const story = digest.stories[idx % count];
+  const impact = BRIEF_IMPACT[story.impact] || BRIEF_IMPACT.medium;
+  const mainLink = story.sources?.[0]?.link;
 
   return (
     <div className="mb-6">
-      <div className="flex items-center gap-2 mb-3">
+      <div className="flex items-center gap-2 mb-2.5">
         <BrainCircuit className="w-5 h-5" style={{ stroke: 'url(#ai-grad)' }} />
         <h2 className="text-base font-bold text-gradient">מה חשוב עכשיו</h2>
         {digest.updatedAt > 0 && (
@@ -614,49 +625,76 @@ function AiBrief({ market }) {
           </span>
         )}
       </div>
-      {/* Compact 2-col grid — the first (most important) story spans the full
-          row so the ranking is visible at a glance. */}
-      <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5">
-        {digest.stories.map((story, i) => {
-          const impact = BRIEF_IMPACT[story.impact] || BRIEF_IMPACT.medium;
-          const mainLink = story.sources?.[0]?.link;
-          const Tag = mainLink ? motion.a : motion.div;
-          return (
-            <Tag
-              key={`${story.headline}-${i}`}
-              {...(mainLink ? { href: mainLink, target: '_blank', rel: 'noopener noreferrer' } : {})}
-              initial={{ opacity: 0, y: 10 }}
-              animate={{ opacity: 1, y: 0 }}
-              transition={{ duration: 0.25, delay: i * 0.04 }}
-              className={`group block bg-bg-secondary border rounded-xl p-3.5 transition-colors hover:bg-bg-tertiary/50 ${
-                story.impact === 'high' ? 'border-red-500/30 hover:border-red-500/50' : 'border-border-primary hover:border-accent-primary/40'
-              } ${i === 0 ? 'sm:col-span-2' : ''}`}
-            >
-              <div className="flex items-center gap-1.5 mb-2">
-                <span className="text-[10px] font-bold text-text-muted num-mono">{i + 1}</span>
-                <span className={`px-2 py-0.5 rounded-full text-[10px] font-bold border ${impact.cls}`}>
-                  {impact.label}
-                </span>
-                <span className="px-2 py-0.5 rounded-full text-[10px] font-medium bg-bg-tertiary text-text-secondary">
-                  {story.category}
-                </span>
-              </div>
-              <p className="text-sm font-semibold text-text-primary group-hover:text-accent-primary transition-colors leading-snug">
-                {story.headline}
-              </p>
-              <p className="text-xs text-text-muted mt-1 line-clamp-2">{story.why}</p>
-              <div className="flex items-center gap-2.5 mt-2 flex-wrap">
-                {(story.sources || []).map((src) => (
-                  <span key={src.link} className="flex items-center gap-1 text-[10px] text-text-muted">
-                    <ExternalLink className="w-2.5 h-2.5" /> {src.label}
-                  </span>
-                ))}
-              </div>
-            </Tag>
-          );
-        })}
+
+      {/* Single rolling card */}
+      <div
+        className={`relative overflow-hidden bg-bg-secondary border rounded-xl ${
+          story.impact === 'high' ? 'border-red-500/30' : 'border-border-primary'
+        }`}
+        onMouseEnter={() => setPaused(true)}
+        onMouseLeave={() => setPaused(false)}
+      >
+        <AnimatePresence mode="wait">
+          <motion.div
+            key={idx % count}
+            initial={{ y: 26, opacity: 0 }}
+            animate={{ y: 0, opacity: 1 }}
+            exit={{ y: -26, opacity: 0 }}
+            transition={{ duration: 0.45, ease: 'easeInOut' }}
+            className="p-4 min-h-[104px]"
+          >
+            {mainLink ? (
+              <a href={mainLink} target="_blank" rel="noopener noreferrer" className="group block">
+                <BriefStoryBody story={story} impact={impact} rank={(idx % count) + 1} count={count} />
+              </a>
+            ) : (
+              <BriefStoryBody story={story} impact={impact} rank={(idx % count) + 1} count={count} />
+            )}
+          </motion.div>
+        </AnimatePresence>
+
+        {/* Dots — jump to a specific story */}
+        <div className="flex items-center justify-center gap-1.5 pb-2.5">
+          {digest.stories.map((s, i) => (
+            <button
+              key={`${s.headline}-${i}`}
+              onClick={() => setIdx(i)}
+              aria-label={`סיפור ${i + 1}`}
+              className={`h-1.5 rounded-full transition-all cursor-pointer ${
+                i === idx % count ? 'w-4 bg-accent-primary' : 'w-1.5 bg-border-primary hover:bg-text-muted'
+              }`}
+            />
+          ))}
+        </div>
       </div>
     </div>
+  );
+}
+
+function BriefStoryBody({ story, impact, rank, count }) {
+  return (
+    <>
+      <div className="flex items-center gap-1.5 mb-2">
+        <span className="text-[10px] font-bold text-text-muted num-mono">{rank}/{count}</span>
+        <span className={`px-2 py-0.5 rounded-full text-[10px] font-bold border ${impact.cls}`}>
+          {impact.label}
+        </span>
+        <span className="px-2 py-0.5 rounded-full text-[10px] font-medium bg-bg-tertiary text-text-secondary">
+          {story.category}
+        </span>
+      </div>
+      <p className="text-sm sm:text-base font-semibold text-text-primary group-hover:text-accent-primary transition-colors leading-snug">
+        {story.headline}
+      </p>
+      <p className="text-xs text-text-muted mt-1 line-clamp-2">{story.why}</p>
+      <div className="flex items-center gap-2.5 mt-2 flex-wrap">
+        {(story.sources || []).map((src) => (
+          <span key={src.link} className="flex items-center gap-1 text-[10px] text-text-muted">
+            <ExternalLink className="w-2.5 h-2.5" /> {src.label}
+          </span>
+        ))}
+      </div>
+    </>
   );
 }
 
@@ -691,6 +729,7 @@ function NewsFeed({ market }) {
   const [topic, setTopic] = useState('all');
   const [timeRange, setTimeRange] = useState('week');
   const [error, setError] = useState(null);
+  const [heMap, setHeMap] = useState({}); // link -> { title, desc } (Hebrew)
 
   const fetchNews = useCallback(async () => {
     setLoading(true);
@@ -737,6 +776,32 @@ function NewsFeed({ market }) {
     const interval = setInterval(fetchNews, 5 * 60 * 1000);
     return () => clearInterval(interval);
   }, [fetchNews]);
+
+  // Translate the freshest articles to Hebrew in small batches. The worker
+  // caches per-article in KV, so repeat loads (and other users) are free.
+  useEffect(() => {
+    if (!articles.length) return undefined;
+    let cancelled = false;
+    (async () => {
+      const top = articles.slice(0, 60);
+      for (let i = 0; i < top.length && !cancelled; i += 20) {
+        const chunk = top.slice(i, i + 20).filter((a) => !heMap[a.link]);
+        if (!chunk.length) continue;
+        const res = await translateNews(chunk.map((a) => ({
+          title: a.title,
+          desc: (a.description || '').slice(0, 260),
+        })));
+        if (cancelled || !res) return;
+        setHeMap((m) => {
+          const next = { ...m };
+          chunk.forEach((a, j) => { if (res[j]?.title) next[a.link] = res[j]; });
+          return next;
+        });
+      }
+    })();
+    return () => { cancelled = true; };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [articles]);
 
   const topics = TOPICS[market];
   const activeTopic = topics.find((t) => t.key === topic) || topics[0];
@@ -863,11 +928,11 @@ function NewsFeed({ market }) {
                           </div>
                         )}
                         <div className="flex-1 min-w-0">
-                          <h3 className="text-sm md:text-base font-semibold text-text-primary mb-1.5 line-clamp-2 group-hover:text-accent-primary transition-colors">
-                            {article.title}
+                          <h3 className="text-sm md:text-base font-semibold text-text-primary mb-1.5 line-clamp-2 group-hover:text-accent-primary transition-colors" title={heMap[article.link] ? article.title : undefined}>
+                            {heMap[article.link]?.title || article.title}
                           </h3>
                           <p className="text-xs md:text-sm text-text-muted line-clamp-2 mb-2 hidden sm:block">
-                            {article.description}
+                            {heMap[article.link]?.desc || article.description}
                           </p>
                           <div className="flex items-center gap-3 text-[11px] text-text-muted">
                             <span className="px-2 py-0.5 bg-bg-tertiary rounded-full font-medium">
@@ -890,12 +955,7 @@ function NewsFeed({ market }) {
         </AnimatePresence>
       )}
 
-      {!loading && !error && filtered.length === 0 && (
-        <div className="bg-bg-secondary border border-border-primary rounded-xl p-8 text-center">
-          <Newspaper className="w-10 h-10 text-text-muted mx-auto mb-3" />
-          <p className="text-text-muted">\u05D0\u05D9\u05DF \u05D7\u05D3\u05E9\u05D5\u05EA \u05E9\u05EA\u05D5\u05D0\u05DE\u05D5\u05EA \u05D0\u05EA \u05D4\u05E1\u05D9\u05E0\u05D5\u05DF \u2014 \u05E0\u05E1\u05D4 \u05D8\u05D5\u05D5\u05D7 \u05D6\u05DE\u05DF \u05D0\u05D5 \u05E0\u05D5\u05E9\u05D0 \u05D0\u05D7\u05E8</p>
-        </div>
-      )}
+      {/* Filter miss \u2192 render nothing (explicit product decision). */}
     </>
   );
 }
