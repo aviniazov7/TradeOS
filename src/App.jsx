@@ -35,6 +35,7 @@ const loadPremiumPage = () => import('./components/premium/PremiumPage');
 const loadCheckoutPage = () => import('./components/premium/CheckoutPage');
 const loadCouponLanding = () => import('./components/premium/CouponLandingPage');
 const loadRefundPolicy = () => import('./components/legal/RefundPolicyPage');
+const loadWhalesPage = () => import('./components/whales/WhalesPage');
 const loadAdminPanel = () => import('./components/admin/AdminPanel');
 
 const Dashboard = lazy(loadDashboard);
@@ -58,6 +59,7 @@ const PremiumPage = lazy(loadPremiumPage);
 const CheckoutPage = lazy(loadCheckoutPage);
 const CouponLandingPage = lazy(loadCouponLanding);
 const RefundPolicyPage = lazy(loadRefundPolicy);
+const WhalesPage = lazy(loadWhalesPage);
 const AdminPanel = lazy(loadAdminPanel);
 
 // Preload all routes during idle time so tab switches feel instant
@@ -118,6 +120,7 @@ function MainApp() {
                 <Route path="mentality/stats" element={<MentalStats />} />
                 {/* <Route path="leaderboard" element={<LeaderboardPage />} /> */}
                 <Route path="market" element={<MarketOverview />} />
+                <Route path="whales" element={<WhalesPage />} />
                 <Route path="trade-ai" element={<TradeAIPage />} />
                 <Route path="news" element={<NewsPage />} />
                 <Route path="exchange" element={<ExchangeSettings />} />
