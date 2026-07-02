@@ -6,6 +6,7 @@ import { useWatchlist } from '../../hooks/useWatchlist';
 import { pageVariants, pageTransition } from '../../utils/animations';
 import EmptyState from '../shared/EmptyState';
 import Modal from '../shared/Modal';
+import RollingNumber from '../shared/RollingNumber';
 import toast from 'react-hot-toast';
 
 function fmtPrice(p) {
@@ -206,7 +207,7 @@ export default function WatchlistPage({ embedded = false }) {
                   {/* price + change metrics with CLEAR labels */}
                   <div className="flex items-end justify-between mb-3">
                     <div>
-                      <p className="text-lg font-bold num-mono text-text-primary leading-none">{fmtPrice(cur)}</p>
+                      <p className="text-lg font-bold num-mono text-text-primary leading-none"><RollingNumber value={fmtPrice(cur)} /></p>
                       {ch24 != null && (
                         <span className={`inline-flex items-center gap-0.5 text-[11px] font-semibold mt-1 ${ch24 >= 0 ? 'text-profit' : 'text-loss'}`}>
                           {ch24 >= 0 ? <TrendingUp className="w-3 h-3" /> : <TrendingDown className="w-3 h-3" />}

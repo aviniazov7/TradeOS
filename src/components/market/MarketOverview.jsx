@@ -13,6 +13,7 @@ import { getCachedImage, hasKnownIcon } from '../../services/coinImageCache';
 import { fetchSpotTickersAsBinance, fetchLinearTickers, fetchAccountRatio } from '../../services/bybitDirect';
 import CoinIcon from '../shared/CoinIcon';
 import Reveal from '../shared/Reveal';
+import RollingNumber from '../shared/RollingNumber';
 
 const WORKER_URL = import.meta.env.VITE_WORKER_URL || '';
 const CG_PROXY = WORKER_URL + '/cg';
@@ -1102,7 +1103,7 @@ export default function MarketOverview() {
           },
         ].map((s) => (
           <MarketStatCard key={s.key} accentKey={s.key} Icon={s.Icon} label={s.label}>
-            <p className="text-2xl font-bold leading-none num-mono text-text-primary">{s.value}</p>
+            <p className="text-2xl font-bold leading-none num-mono text-text-primary"><RollingNumber value={s.value} /></p>
             <div className="h-4 mt-2">
               {s.delta != null ? (
                 <span className={`text-xs font-semibold ${s.delta >= 0 ? 'text-profit' : 'text-loss'}`}>
@@ -1120,7 +1121,7 @@ export default function MarketOverview() {
           {altSeasonData ? (
             <>
               <p className="text-2xl font-bold leading-none num-mono text-text-primary">
-                {altSeasonData.index}<span className="text-sm font-normal text-text-muted">/100</span>
+                <RollingNumber value={String(altSeasonData.index)} /><span className="text-sm font-normal text-text-muted">/100</span>
               </p>
               <div className="mt-2">
                 <div className="relative h-1.5 rounded-full bg-bg-tertiary overflow-hidden">
@@ -1261,7 +1262,7 @@ export default function MarketOverview() {
                     <span className={`text-xs font-medium ${coin.price_change_percentage_24h >= 0 ? 'text-profit' : 'text-loss'}`}>
                       {coin.price_change_percentage_24h?.toFixed(2)}%
                     </span>
-                    <span className="text-sm text-text-primary font-medium font-mono">{formatPrice(coin.current_price)}</span>
+                    <span className="text-sm text-text-primary font-medium font-mono"><RollingNumber value={formatPrice(coin.current_price)} /></span>
                   </div>
                   <div className="flex items-center gap-3">
                     <div className="flex items-center gap-1.5 text-right">
