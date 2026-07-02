@@ -744,7 +744,8 @@ function NewsFeed({ market }) {
           if (data.status !== 'ok') throw new Error(`${source.key} status error`);
           return (data.items || []).map((item) => ({
             title: item.title,
-            description: cleanHtml(item.description || item.content),
+            // Strip WordPress-feed boilerplate ("The post X appeared first on Y")
+            description: cleanHtml(item.description || item.content).replace(/The post .*$/i, '').trim(),
             thumbnail: item.thumbnail || item.enclosure?.link || null,
             link: item.link,
             pubDate: item.pubDate,
@@ -779,24 +780,31 @@ function NewsFeed({ market }) {
 
   // Translate the freshest articles to Hebrew in small batches. The worker
   // caches per-article in KV, so repeat loads (and other users) are free.
+  // A failed batch (usually a provider per-minute token limit) skips ahead
+  // instead of aborting — whatever was cached still lands, and the 5-minute
+  // feed refresh naturally retries the rest.
   useEffect(() => {
     if (!articles.length) return undefined;
     let cancelled = false;
     (async () => {
-      const top = articles.slice(0, 60);
-      for (let i = 0; i < top.length && !cancelled; i += 20) {
-        const chunk = top.slice(i, i + 20).filter((a) => !heMap[a.link]);
+      const top = articles.slice(0, 48);
+      for (let i = 0; i < top.length && !cancelled; i += 12) {
+        const chunk = top.slice(i, i + 12).filter((a) => !heMap[a.link]);
         if (!chunk.length) continue;
         const res = await translateNews(chunk.map((a) => ({
           title: a.title,
-          desc: (a.description || '').slice(0, 260),
+          desc: (a.description || '').slice(0, 200),
         })));
-        if (cancelled || !res) return;
-        setHeMap((m) => {
-          const next = { ...m };
-          chunk.forEach((a, j) => { if (res[j]?.title) next[a.link] = res[j]; });
-          return next;
-        });
+        if (cancelled) return;
+        if (res) {
+          setHeMap((m) => {
+            const next = { ...m };
+            chunk.forEach((a, j) => { if (res[j]?.title) next[a.link] = res[j]; });
+            return next;
+          });
+        }
+        // Spread batches out so we stay under the provider's per-minute budget.
+        if (i + 12 < top.length) await new Promise((r) => setTimeout(r, 1500));
       }
     })();
     return () => { cancelled = true; };

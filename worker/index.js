@@ -3039,6 +3039,29 @@ const NEWS_TRANSLATE_PROMPT = `אתה מתרגם חדשות פיננסיות מ�
 אל תוסיף מידע שלא קיים במקור. אם desc ריק — החזר desc ריק.
 החזר JSON בלבד: {"items":[{"id":0,"title":"...","desc":"..."}]}`;
 
+// Translation is high-volume/low-difficulty — run it on Groq's small instant
+// model, which has a much higher tokens-per-minute allowance than the 70B
+// (the 70B budget is reserved for chat/coach/digest). Falls back to the main
+// model if the instant model is ever retired (4xx).
+const NEWS_TRANSLATE_MODEL = 'llama-3.1-8b-instant';
+
+async function groqTranslateCall(env, missing, model) {
+  return fetch(GROQ_URL, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${env.GROQ_API_KEY}` },
+    body: JSON.stringify({
+      model,
+      messages: [
+        { role: 'system', content: NEWS_TRANSLATE_PROMPT },
+        { role: 'user', content: JSON.stringify(missing) },
+      ],
+      temperature: 0.2,
+      max_tokens: 2500,
+      response_format: { type: 'json_object' },
+    }),
+  });
+}
+
 async function handleNewsTranslate(request, env, cors) {
   const jsonHeaders = { ...cors, 'Content-Type': 'application/json' };
   try {
@@ -3053,9 +3076,11 @@ async function handleNewsTranslate(request, env, cors) {
     }
 
     const body = await request.json().catch(() => ({}));
-    const items = (Array.isArray(body.items) ? body.items : []).slice(0, 20).map((it) => ({
+    // Keep batches small: input+output must fit the per-minute token budget
+    // even when several batches arrive back-to-back on a feed load.
+    const items = (Array.isArray(body.items) ? body.items : []).slice(0, 12).map((it) => ({
       title: String(it?.title || '').slice(0, 300),
-      desc: String(it?.desc || '').slice(0, 300),
+      desc: String(it?.desc || '').slice(0, 200),
     })).filter((it) => it.title);
     if (!items.length) return new Response(JSON.stringify({ error: 'no items' }), { status: 400, headers: jsonHeaders });
 
@@ -3066,20 +3091,11 @@ async function handleNewsTranslate(request, env, cors) {
     items.forEach((it, i) => { if (!out[i]) missing.push({ id: i, title: it.title, desc: it.desc }); });
 
     if (missing.length && env.GROQ_API_KEY) {
-      const groqRes = await fetch(GROQ_URL, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${env.GROQ_API_KEY}` },
-        body: JSON.stringify({
-          model: GROQ_MODEL,
-          messages: [
-            { role: 'system', content: NEWS_TRANSLATE_PROMPT },
-            { role: 'user', content: JSON.stringify(missing) },
-          ],
-          temperature: 0.2,
-          max_tokens: 3500,
-          response_format: { type: 'json_object' },
-        }),
-      });
+      let groqRes = await groqTranslateCall(env, missing, NEWS_TRANSLATE_MODEL);
+      if (!groqRes.ok && groqRes.status >= 400 && groqRes.status < 500 && groqRes.status !== 429) {
+        // Model gone/renamed — one retry on the main model.
+        groqRes = await groqTranslateCall(env, missing, GROQ_MODEL);
+      }
       if (groqRes.ok) {
         const data = await groqRes.json();
         let parsed;
