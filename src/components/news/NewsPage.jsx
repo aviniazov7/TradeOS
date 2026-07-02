@@ -2,6 +2,7 @@ import { useState, useEffect, useCallback, useMemo } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { Newspaper, ExternalLink, Clock, Filter, CalendarDays, Volume2, Globe, BrainCircuit, RefreshCw } from 'lucide-react';
 import { fetchNewsDigest, translateNews } from '../../services/newsService';
+import { hebrewEventTitle } from '../../utils/econCalendarTerms';
 
 // ─── News Sources (per market) ───
 const FEED_SOURCES = {
@@ -264,7 +265,9 @@ function EconomicCalendar() {
     if (!events.length) return undefined;
     let cancelled = false;
     (async () => {
-      const titles = [...new Set(events.map((e) => e.title).filter(Boolean))].filter((t) => !heMap[t]);
+      // Only AI-translate what the professional dictionary doesn't already cover.
+      const titles = [...new Set(events.map((e) => e.title).filter(Boolean))]
+        .filter((t) => !heMap[t] && !hebrewEventTitle(t));
       for (let i = 0; i < titles.length && !cancelled; i += 12) {
         const chunk = titles.slice(i, i + 12);
         const res = await translateNews(chunk.map((t) => ({ title: t, desc: '' })));
@@ -568,7 +571,12 @@ function EconomicCalendar() {
                             <div className="flex-1 min-w-0">
                               <div className="flex items-center gap-2 mb-1">
                                 {speech && <Volume2 className="w-3.5 h-3.5 text-text-muted flex-shrink-0" />}
-                                <h4 className="text-sm font-semibold text-text-primary truncate" title={heMap[event.title] ? event.title : undefined}>{heMap[event.title] || event.title}</h4>
+                                {(() => {
+                                  const he = hebrewEventTitle(event.title) || heMap[event.title];
+                                  return (
+                                    <h4 className="text-sm font-semibold text-text-primary truncate" title={he ? event.title : undefined}>{he || event.title}</h4>
+                                  );
+                                })()}
                               </div>
 
                               {(event.actual || event.forecast || event.previous) && (
