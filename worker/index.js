@@ -3027,10 +3027,14 @@ async function buildNewsDigest(env, market) {
 // in KV keyed by a content hash, so across ALL users each article costs one
 // provider call ever.
 
-function newsHash(s) {
-  let h = 5381;
-  for (let i = 0; i < s.length; i++) h = ((h << 5) + h + s.charCodeAt(i)) | 0;
-  return (h >>> 0).toString(36);
+// SHA-256 (truncated) of the content. A cryptographic hash is required here:
+// the KEY is derived from user-submitted title/desc and the VALUE is a shared,
+// cross-user cache entry, so a collision-prone hash (e.g. djb2) would let a
+// user craft input that collides with a real headline's key and poison what
+// every other user sees under that headline.
+async function newsHash(s) {
+  const buf = await crypto.subtle.digest('SHA-256', new TextEncoder().encode(s));
+  return [...new Uint8Array(buf)].map((b) => b.toString(16).padStart(2, '0')).join('').slice(0, 40);
 }
 
 const NEWS_TRANSLATE_PROMPT = `אתה מתרגם חדשות פיננסיות מאנגלית לעברית.
@@ -3077,32 +3081,58 @@ async function handleNewsTranslate(request, env, cors) {
 
     const body = await request.json().catch(() => ({}));
     // Keep batches small: input+output must fit the per-minute token budget
-    // even when several batches arrive back-to-back on a feed load.
+    // even when several batches arrive back-to-back on a feed load. Do NOT
+    // drop empty-title items here — the client maps the response back by array
+    // position, so dropping a slot would shift every later translation onto
+    // the wrong article. Empty slots are simply skipped and left null.
     const items = (Array.isArray(body.items) ? body.items : []).slice(0, 12).map((it) => ({
       title: String(it?.title || '').slice(0, 300),
       desc: String(it?.desc || '').slice(0, 200),
-    })).filter((it) => it.title);
-    if (!items.length) return new Response(JSON.stringify({ error: 'no items' }), { status: 400, headers: jsonHeaders });
+    }));
+    if (!items.some((it) => it.title)) return new Response(JSON.stringify({ error: 'no items' }), { status: 400, headers: jsonHeaders });
 
-    const keys = items.map((it) => `news:tr:${newsHash(`${it.title}|${it.desc}`)}`);
-    const out = await Promise.all(keys.map((k) => env.ALERTS_KV.get(k, 'json')));
+    // Key on the TITLE only: titles are stable across feed refreshes, whereas
+    // descriptions can drift (view counts, edits) and would cause a permanent
+    // cache miss → a recurring provider call for the same article. null key for
+    // empty-title slots keeps `out` index-aligned with what the client sent.
+    const keys = await Promise.all(items.map(async (it) => (it.title ? `news:tr:${await newsHash(it.title)}` : null)));
+    const out = await Promise.all(keys.map((k) => (k ? env.ALERTS_KV.get(k, 'json') : null)));
 
     const missing = [];
-    items.forEach((it, i) => { if (!out[i]) missing.push({ id: i, title: it.title, desc: it.desc }); });
+    items.forEach((it, i) => { if (it.title && !out[i]) missing.push({ id: i, title: it.title, desc: it.desc }); });
 
     if (missing.length && env.GROQ_API_KEY) {
+      // Respect + contribute to the same global daily AI ceiling as chat/coach,
+      // plus a per-user daily cap — the translate route must not be an
+      // unmetered path to drain the shared Groq/KV budget.
+      const gKey = `aiglobal:${getIsraelDateStr()}`;
+      const [g, uDay] = await Promise.all([
+        env.ALERTS_KV.get(gKey, 'json'),
+        env.ALERTS_KV.get(`newstr:day:${uid}`, 'json'),
+      ]);
+      const overCeiling = (g && g.count >= AI_GLOBAL_DAILY_CEILING) || (uDay && uDay.count >= 60);
+      if (overCeiling) {
+        // Serve whatever is already cached; skip new provider work.
+        return new Response(JSON.stringify({ items: out }), { headers: jsonHeaders });
+      }
+
       let groqRes = await groqTranslateCall(env, missing, NEWS_TRANSLATE_MODEL);
       if (!groqRes.ok && groqRes.status >= 400 && groqRes.status < 500 && groqRes.status !== 429) {
         // Model gone/renamed — one retry on the main model.
         groqRes = await groqTranslateCall(env, missing, GROQ_MODEL);
       }
       if (groqRes.ok) {
+        // Count this provider call against both ceilings.
+        await Promise.all([
+          bumpWindow(env, gKey, AI_WINDOWS_SEC.day),
+          bumpWindow(env, `newstr:day:${uid}`, AI_WINDOWS_SEC.day),
+        ]);
         const data = await groqRes.json();
         let parsed;
         try { parsed = JSON.parse(data.choices?.[0]?.message?.content || ''); } catch { parsed = null; }
         for (const tr of (Array.isArray(parsed?.items) ? parsed.items : [])) {
           const i = Number(tr?.id);
-          if (!Number.isInteger(i) || i < 0 || i >= items.length || out[i] || !tr?.title) continue;
+          if (!Number.isInteger(i) || i < 0 || i >= items.length || out[i] || !tr?.title || !keys[i]) continue;
           const entry = { title: String(tr.title).slice(0, 300), desc: String(tr.desc || '').slice(0, 400) };
           out[i] = entry;
           await env.ALERTS_KV.put(keys[i], JSON.stringify(entry), { expirationTtl: 60 * 60 * 24 * 3 }).catch(() => {});
@@ -3509,6 +3539,16 @@ async function handleRequest(request, env) {
   // cache (first request ever / after KV expiry) builds on demand.
   if (request.method === 'GET' && path === '/news/digest') {
     const market = url.searchParams.get('market') === 'stocks' ? 'stocks' : 'crypto';
+
+    // Edge cache — the digest is public non-credentialed data, so serve repeat
+    // hits from Cloudflare's cache with ZERO KV reads (a scripted loop would
+    // otherwise cost 1 KV read each). ACAO '*' avoids caching a per-origin
+    // header. Keyed by market via a normalized cache-key URL.
+    const cache = caches.default;
+    const cacheKey = new Request(`https://cache.tradeos.internal/news/digest?market=${market}`);
+    const hit = await cache.match(cacheKey);
+    if (hit) return hit;
+
     let digest = await env.ALERTS_KV.get(`news:digest:${market}`, 'json');
     if (!digest) {
       // Negative-cache the cold-start build: the endpoint is public, so
@@ -3517,18 +3557,25 @@ async function handleRequest(request, env) {
       const recentlyFailed = await env.ALERTS_KV.get(`news:digest:${market}:fail`);
       if (!recentlyFailed) {
         digest = await buildNewsDigest(env, market);
-        if (!digest) await env.ALERTS_KV.put(`news:digest:${market}:fail`, '1', { expirationTtl: 300 });
+        // Only negative-cache a GENUINE failure — a null from lock contention
+        // (another build in flight) must not pin an empty digest.
+        if (!digest) {
+          const locked = await env.ALERTS_KV.get(`news:digest:lock:${market}`);
+          if (!locked) await env.ALERTS_KV.put(`news:digest:${market}:fail`, '1', { expirationTtl: 300 });
+        }
       }
     }
-    // A real digest may be browser-cached; the empty fallback must not be,
-    // or a user who raced the first cron build would pin "no stories" for
-    // 5 minutes after the digest actually landed in KV.
-    return new Response(JSON.stringify(digest || { market, updatedAt: 0, stories: [] }), {
+
+    const resp = new Response(JSON.stringify(digest || { market, updatedAt: 0, stories: [] }), {
       headers: {
-        ...cors, 'Content-Type': 'application/json',
-        'Cache-Control': digest ? 'public, max-age=300' : 'no-store',
+        ...cors, 'Access-Control-Allow-Origin': '*', 'Content-Type': 'application/json',
+        // A real digest is edge+browser cacheable; the empty fallback must not
+        // be, or a client racing the first build would pin "no stories".
+        'Cache-Control': digest ? 'public, max-age=120' : 'no-store',
       },
     });
+    if (digest) await cache.put(cacheKey, resp.clone());
+    return resp;
   }
 
   if (request.method === 'POST' && path === '/news/translate') {
