@@ -1,103 +1,122 @@
-// eslint-disable-next-line no-unused-vars -- motion is used as <motion.*> (JSX-uses-vars false positive)
-import { motion } from 'framer-motion';
+import { useRef, useEffect } from 'react';
 
-// Premium "live blockchain" strip: gradient-outlined blocks linked by a rail of
-// FLOWING energy (animated dashes), a glowing comet packet that travels the
-// chain, and a confirmation pulse that ripples block-to-block in sync — over a
-// soft ambient glow. Pure SVG + transform/opacity/dash animations (GPU-cheap),
-// self-contained. 21st.dev aesthetic: violet→cyan, neon glow, smooth.
-const N = 5;
-const X0 = 44;
-const GAP = 98;
-const CY = 50;
-const CYCLE = 3.2; // seconds for one comet pass
-const lastX = X0 + (N - 1) * GAP;
+// "Live ledger" blockchain: freshly-minted blocks glow in on the right and the
+// chain scrolls slowly leftward, block numbers counting up — a chain growing in
+// real time. Canvas + rAF (one loop), sized to its container, DPR-aware,
+// respects reduced-motion. 21st.dev aesthetic: violet→cyan, soft glow.
+const SPEED = 16;       // px/sec — deliberately slow
+const RIGHT_PAD = 30;
+const V = '#8b5cf6', I = '#6366f1', C = '#06b6d4', CY = '#22d3ee';
+
+function rr(ctx, x, y, w, h, r) {
+  ctx.beginPath();
+  ctx.moveTo(x + r, y);
+  ctx.arcTo(x + w, y, x + w, y + h, r);
+  ctx.arcTo(x + w, y + h, x, y + h, r);
+  ctx.arcTo(x, y + h, x, y, r);
+  ctx.arcTo(x, y, x + w, y, r);
+  ctx.closePath();
+}
 
 export default function BlockchainAnimation({ className = '' }) {
+  const canvasRef = useRef(null);
+
+  useEffect(() => {
+    const canvas = canvasRef.current;
+    if (!canvas) return undefined;
+    const ctx = canvas.getContext('2d');
+    let raf = 0;
+    let rect = { width: 0, height: 0 };
+    const reduced = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+
+    const fit = () => {
+      const r = canvas.getBoundingClientRect();
+      const d = Math.min(window.devicePixelRatio || 1, 2);
+      canvas.width = Math.max(1, r.width * d);
+      canvas.height = Math.max(1, r.height * d);
+      ctx.setTransform(d, 0, 0, d, 0, 0);
+      rect = r;
+    };
+    fit();
+    window.addEventListener('resize', fit);
+
+    const railGrad = (x0, x1, cy) => {
+      const g = ctx.createLinearGradient(x0, cy, x1, cy);
+      g.addColorStop(0, V); g.addColorStop(0.5, I); g.addColorStop(1, C);
+      return g;
+    };
+
+    const draw = (ms) => {
+      const w = rect.width, h = rect.height, cy = h / 2;
+      const t = ms / 1000;
+      const bw = Math.max(24, Math.min(40, h * 0.58));
+      const s = bw / 2;
+      const gap = bw * 0.72;
+      const step = bw + gap;
+
+      ctx.clearRect(0, 0, w, h);
+
+      // ambient glow
+      const amb = ctx.createRadialGradient(w / 2, cy, 0, w / 2, cy, w * 0.55);
+      amb.addColorStop(0, 'rgba(99,102,241,0.13)');
+      amb.addColorStop(1, 'rgba(99,102,241,0)');
+      ctx.fillStyle = amb; ctx.fillRect(0, 0, w, h);
+
+      // rail
+      ctx.strokeStyle = railGrad(0, w, cy); ctx.globalAlpha = 0.16; ctx.lineWidth = 2;
+      ctx.beginPath(); ctx.moveTo(0, cy); ctx.lineTo(w, cy); ctx.stroke(); ctx.globalAlpha = 1;
+
+      const traveled = t * SPEED;
+      const scrolled = traveled % step;
+      const stepsPassed = Math.floor(traveled / step);
+      const count = Math.ceil(w / step) + 2;
+
+      for (let k = -1; k < count; k++) {
+        const x = w - RIGHT_PAD - scrolled - k * step;
+        if (x < -bw || x > w + bw) continue;
+        const idx = 8_420_000 + stepsPassed - k; // block height, counting up
+        // "mint" glow — strongest as a block enters on the right
+        const mint = Math.max(0, Math.min(1, (x - (w * 0.55)) / (w * 0.4)));
+
+        // connector to the block on its left
+        ctx.strokeStyle = railGrad(x - step, x, cy); ctx.globalAlpha = 0.3; ctx.lineWidth = 2;
+        ctx.beginPath(); ctx.moveTo(x - s, cy); ctx.lineTo(x - gap - s, cy); ctx.stroke(); ctx.globalAlpha = 1;
+
+        ctx.save();
+        if (mint > 0.02) { ctx.shadowColor = CY; ctx.shadowBlur = 20 * mint; }
+        const fill = ctx.createLinearGradient(x, cy - s, x, cy + s);
+        fill.addColorStop(0, 'rgba(139,92,246,0.20)');
+        fill.addColorStop(1, 'rgba(6,182,212,0.06)');
+        ctx.fillStyle = fill;
+        ctx.strokeStyle = railGrad(x - s, x + s, cy); ctx.lineWidth = 1.8;
+        rr(ctx, x - s, cy - s, bw, bw, bw * 0.26); ctx.fill(); ctx.stroke();
+        ctx.restore();
+
+        // block number (counts up) + tiny ledger glyph
+        ctx.fillStyle = `rgba(236,236,244,${0.5 + 0.5 * mint})`;
+        ctx.font = `700 ${Math.max(8, bw * 0.24)}px ui-monospace, Menlo, monospace`;
+        ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+        ctx.fillText('#' + (idx % 100000), x, cy - bw * 0.1);
+        ctx.strokeStyle = railGrad(x - s, x + s, cy); ctx.globalAlpha = 0.5;
+        ctx.lineWidth = 1.4; ctx.lineCap = 'round';
+        for (let r = 0; r < 2; r++) {
+          const yy = cy + bw * 0.16 + r * bw * 0.15;
+          ctx.beginPath(); ctx.moveTo(x - bw * 0.24, yy); ctx.lineTo(x + (r ? bw * 0.1 : bw * 0.2), yy); ctx.stroke();
+        }
+        ctx.globalAlpha = 1;
+      }
+
+      if (!reduced) raf = requestAnimationFrame(draw);
+    };
+
+    if (reduced) draw(0); else raf = requestAnimationFrame(draw);
+
+    return () => { cancelAnimationFrame(raf); window.removeEventListener('resize', fit); };
+  }, []);
+
   return (
     <div className={className} aria-hidden="true">
-      <svg viewBox="0 0 480 100" className="w-full h-full" fill="none" preserveAspectRatio="xMidYMid meet">
-        <defs>
-          <linearGradient id="bc-grad" x1="0" y1="0" x2="1" y2="0">
-            <stop offset="0" stopColor="#8b5cf6" />
-            <stop offset="0.5" stopColor="#6366f1" />
-            <stop offset="1" stopColor="#06b6d4" />
-          </linearGradient>
-          <linearGradient id="bc-fill" x1="0" y1="0" x2="0" y2="1">
-            <stop offset="0" stopColor="rgba(139,92,246,0.14)" />
-            <stop offset="1" stopColor="rgba(6,182,212,0.05)" />
-          </linearGradient>
-          <radialGradient id="bc-amb" cx="0.5" cy="0.5" r="0.5">
-            <stop offset="0" stopColor="rgba(99,102,241,0.20)" />
-            <stop offset="1" stopColor="rgba(99,102,241,0)" />
-          </radialGradient>
-          <filter id="bc-glow" x="-60%" y="-60%" width="220%" height="220%">
-            <feGaussianBlur stdDeviation="3.2" result="b" />
-            <feMerge><feMergeNode in="b" /><feMergeNode in="SourceGraphic" /></feMerge>
-          </filter>
-        </defs>
-
-        {/* ambient glow, gently breathing */}
-        <motion.ellipse
-          cx="240" cy={CY} rx="230" ry="42" fill="url(#bc-amb)"
-          animate={{ opacity: [0.5, 0.85, 0.5] }}
-          transition={{ duration: 4, repeat: Infinity, ease: 'easeInOut' }}
-        />
-
-        {/* base rail */}
-        <line x1={X0} y1={CY} x2={lastX} y2={CY} stroke="url(#bc-grad)" strokeWidth="2" strokeOpacity="0.18" />
-        {/* flowing energy rail */}
-        <motion.line
-          x1={X0} y1={CY} x2={lastX} y2={CY}
-          stroke="url(#bc-grad)" strokeWidth="2.5" strokeLinecap="round" strokeDasharray="2 14"
-          animate={{ strokeDashoffset: [0, -160] }}
-          transition={{ duration: 2.2, repeat: Infinity, ease: 'linear' }}
-        />
-
-        {/* blocks */}
-        {Array.from({ length: N }, (_, i) => {
-          const x = X0 + i * GAP;
-          const delay = (i / N) * CYCLE; // confirmation wave rides with the comet
-          return (
-            <g key={i}>
-              {/* confirmation glow that ripples in sequence */}
-              <motion.rect
-                x={x - 19} y={CY - 19} width={38} height={38} rx={10}
-                fill="none" stroke="#22d3ee" strokeWidth="2" filter="url(#bc-glow)"
-                initial={{ opacity: 0, scale: 0.8 }}
-                animate={{ opacity: [0, 0.9, 0], scale: [0.85, 1.15, 1.25] }}
-                transition={{ duration: 1.1, repeat: Infinity, repeatDelay: CYCLE - 1.1, delay, ease: 'easeOut' }}
-                style={{ transformOrigin: `${x}px ${CY}px` }}
-              />
-              {/* the block */}
-              <motion.rect
-                x={x - 17} y={CY - 17} width={34} height={34} rx={9}
-                fill="url(#bc-fill)" stroke="url(#bc-grad)" strokeWidth="1.75"
-                animate={{ strokeOpacity: [0.55, 1, 0.55] }}
-                transition={{ duration: 2.4, repeat: Infinity, delay: i * 0.24, ease: 'easeInOut' }}
-              />
-              {/* ledger "hash" lines */}
-              <g stroke="url(#bc-grad)" strokeWidth="1.5" strokeOpacity="0.45" strokeLinecap="round">
-                <line x1={x - 8} y1={CY - 5} x2={x + 8} y2={CY - 5} />
-                <line x1={x - 8} y1={CY} x2={x + 4} y2={CY} />
-                <line x1={x - 8} y1={CY + 5} x2={x + 7} y2={CY + 5} />
-              </g>
-            </g>
-          );
-        })}
-
-        {/* trailing comet: a soft tail + a bright head */}
-        <motion.circle
-          r={9} cy={CY} fill="#22d3ee" opacity={0.25} filter="url(#bc-glow)"
-          animate={{ cx: [X0 - 20, lastX + 20] }}
-          transition={{ duration: CYCLE, repeat: Infinity, ease: 'linear' }}
-        />
-        <motion.circle
-          r={4.5} cy={CY} fill="#e0faff" filter="url(#bc-glow)"
-          animate={{ cx: [X0 - 10, lastX + 10], opacity: [0, 1, 1, 1, 0] }}
-          transition={{ duration: CYCLE, repeat: Infinity, ease: 'linear' }}
-        />
-      </svg>
+      <canvas ref={canvasRef} className="w-full h-full block" />
     </div>
   );
 }
