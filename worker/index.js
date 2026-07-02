@@ -2866,6 +2866,10 @@ function rssTag(block, tag) {
     .trim();
 }
 
+// Feed links end up as <a href> for every user, so a compromised feed must
+// not be able to smuggle a javascript:/data: URL through the digest.
+const NEWS_LINK_RE = /^https?:\/\//i;
+
 function parseRssItems(xml, source) {
   const items = [];
   const rssBlocks = xml.match(/<item[\s\S]*?<\/item>/gi) || [];
@@ -2873,7 +2877,7 @@ function parseRssItems(xml, source) {
     const title = rssTag(block, 'title');
     const link = rssTag(block, 'link');
     const pubDate = rssTag(block, 'pubDate') || rssTag(block, 'dc:date');
-    if (title && link) {
+    if (title && NEWS_LINK_RE.test(link)) {
       items.push({ title, link, pubDate, sourceKey: source.key, sourceLabel: source.label });
     }
   }
@@ -2884,9 +2888,10 @@ function parseRssItems(xml, source) {
   for (const block of atomBlocks.slice(0, 20)) {
     const title = rssTag(block, 'title');
     const linkM = block.match(/<link[^>]*href="([^"]+)"/i);
+    const link = linkM ? linkM[1].replace(/&amp;/g, '&') : ''; // XML-escaped attr
     const pubDate = rssTag(block, 'published') || rssTag(block, 'updated');
-    if (title && linkM) {
-      items.push({ title, link: linkM[1], pubDate, sourceKey: source.key, sourceLabel: source.label });
+    if (title && NEWS_LINK_RE.test(link)) {
+      items.push({ title, link, pubDate, sourceKey: source.key, sourceLabel: source.label });
     }
   }
   return items;
@@ -2972,6 +2977,7 @@ async function buildNewsDigest(env, market) {
     // never sees URLs, so it can't hallucinate them.
     const stories = rawStories.slice(0, 8).map((s) => {
       const ids = (Array.isArray(s.ids) ? s.ids : [])
+        .map(Number) // LLMs in JSON mode drift to "3" — coerce before validating
         .filter((i) => Number.isInteger(i) && i >= 0 && i < headlines.length);
       if (!ids.length) return null;
       return {
@@ -3386,9 +3392,24 @@ async function handleRequest(request, env) {
   if (request.method === 'GET' && path === '/news/digest') {
     const market = url.searchParams.get('market') === 'stocks' ? 'stocks' : 'crypto';
     let digest = await env.ALERTS_KV.get(`news:digest:${market}`, 'json');
-    if (!digest) digest = await buildNewsDigest(env, market);
+    if (!digest) {
+      // Negative-cache the cold-start build: the endpoint is public, so
+      // without this a persistent build failure (Groq down, feeds down)
+      // would turn every request into 6 feed fetches + a provider call.
+      const recentlyFailed = await env.ALERTS_KV.get(`news:digest:${market}:fail`);
+      if (!recentlyFailed) {
+        digest = await buildNewsDigest(env, market);
+        if (!digest) await env.ALERTS_KV.put(`news:digest:${market}:fail`, '1', { expirationTtl: 300 });
+      }
+    }
+    // A real digest may be browser-cached; the empty fallback must not be,
+    // or a user who raced the first cron build would pin "no stories" for
+    // 5 minutes after the digest actually landed in KV.
     return new Response(JSON.stringify(digest || { market, updatedAt: 0, stories: [] }), {
-      headers: { ...cors, 'Content-Type': 'application/json', 'Cache-Control': 'public, max-age=300' },
+      headers: {
+        ...cors, 'Content-Type': 'application/json',
+        'Cache-Control': digest ? 'public, max-age=300' : 'no-store',
+      },
     });
   }
 
