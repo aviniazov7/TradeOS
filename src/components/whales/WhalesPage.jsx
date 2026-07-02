@@ -6,6 +6,7 @@ import {
 } from 'lucide-react';
 import { openWhaleStream, fetchFearGreed } from '../../services/whaleStream';
 import { fetchLinearTickers, fetchAccountRatio } from '../../services/bybitDirect';
+import { getCachedImage, prefetchCoinImages } from '../../services/coinImageCache';
 import { pageVariants, pageTransition } from '../../utils/animations';
 
 // Perps we stream live. Liquidations are rare events; trades are heavy on
@@ -49,6 +50,24 @@ const FNG_HE = {
 };
 
 // ---- Small building blocks --------------------------------------------------
+
+// Coin logo (CoinGecko CDN via the shared cache) with a gradient-letter
+// fallback so unknown symbols still look intentional.
+function CoinIcon({ sym, className = 'w-5 h-5' }) {
+  const [err, setErr] = useState(false);
+  const url = getCachedImage(sym);
+  if (!url || err) {
+    return (
+      <span
+        className={`${className} rounded-full grid place-items-center text-[8px] font-black text-white shrink-0`}
+        style={{ background: 'linear-gradient(135deg,#8b5cf6,#06b6d4)' }}
+      >
+        {sym.slice(0, 1)}
+      </span>
+    );
+  }
+  return <img src={url} alt={sym} loading="lazy" onError={() => setErr(true)} className={`${className} rounded-full shrink-0 object-cover`} />;
+}
 
 function SectionCard({ Icon, title, badge, children, className = '' }) {
   return (
@@ -117,14 +136,20 @@ function FearGreedCard({ fng }) {
   );
 }
 
-function LiqTotalCard({ label, value, Icon, color, sub }) {
+function LiqTotalCard({ label, value, Icon, color, sub, wash }) {
   return (
-    <div className="bg-bg-secondary border border-border-primary rounded-2xl p-4">
-      <div className="flex items-center gap-1.5 text-[11px] text-text-muted mb-1">
-        <Icon className={`w-3.5 h-3.5 ${color}`} /> {label}
+    <div className="relative overflow-hidden rounded-2xl border border-border-primary">
+      <div className="absolute inset-0 opacity-80" style={{ background: wash }} />
+      <div className="relative p-4 flex items-start gap-3">
+        <span className={`shrink-0 grid place-items-center w-10 h-10 rounded-xl bg-bg-primary/60 border border-border-primary ${color}`}>
+          <Icon className="w-5 h-5" />
+        </span>
+        <div className="min-w-0">
+          <div className="text-[11px] text-text-muted mb-0.5">{label}</div>
+          <div className={`text-2xl font-black ${color}`} dir="ltr">{value}</div>
+          {sub && <div className="text-[10px] text-text-muted mt-0.5 truncate">{sub}</div>}
+        </div>
       </div>
-      <div className={`text-2xl font-black ${color}`} dir="ltr">{value}</div>
-      {sub && <div className="text-[10px] text-text-muted mt-0.5">{sub}</div>}
     </div>
   );
 }
@@ -220,6 +245,9 @@ export default function WhalesPage() {
   useEffect(() => {
     let cancelled = false;
     fetchFearGreed().then((f) => { if (!cancelled) setFng(f); });
+    // Warm the coin-logo cache so newer listings (HYPE, XAUT…) get real logos
+    // and not just the gradient-letter fallback.
+    prefetchCoinImages().catch(() => {});
     return () => { cancelled = true; };
   }, []);
 
@@ -229,18 +257,39 @@ export default function WhalesPage() {
     <motion.div variants={pageVariants} initial="initial" animate="animate" exit="exit" transition={pageTransition}
       className="px-4 py-6 max-w-6xl mx-auto space-y-4">
 
-      {/* Header */}
-      <div className="flex items-center gap-2 flex-wrap">
-        <Waves className="w-6 h-6" style={{ stroke: 'url(#ai-grad)' }} />
-        <h1 className="text-xl font-bold text-gradient">מעקב לוויתנים</h1>
-        <button
-          onClick={() => setShowInfo((s) => !s)}
-          className="p-1 rounded-full text-text-muted hover:text-accent-primary transition-colors cursor-pointer"
-          title="מה רואים כאן?"
-        >
-          <HelpCircle className="w-4.5 h-4.5" />
-        </button>
-        <LiveDot status={paused ? 'connecting' : status} />
+      {/* Header — hero strip in the app's violet→cyan language */}
+      <div className="relative overflow-hidden rounded-2xl" style={{ border: '1px solid var(--glass-border)' }}>
+        <div
+          className="absolute inset-0 opacity-90"
+          style={{ background: 'linear-gradient(135deg, rgba(139,92,246,0.16) 0%, rgba(99,102,241,0.09) 45%, rgba(6,182,212,0.16) 100%)' }}
+        />
+        <div className="relative flex items-center gap-3 px-4 py-3.5 md:px-5 md:py-4 flex-wrap">
+          <span className="relative shrink-0 grid place-items-center w-11 h-11 rounded-xl"
+            style={{ background: 'rgba(6,182,212,0.12)', border: '1px solid rgba(6,182,212,0.30)' }}>
+            <motion.span
+              aria-hidden
+              className="absolute inset-0 rounded-xl"
+              style={{ boxShadow: '0 0 22px 2px rgba(6,182,212,0.30)' }}
+              animate={{ opacity: [0.35, 0.8, 0.35] }}
+              transition={{ duration: 2.6, repeat: Infinity, ease: 'easeInOut' }}
+            />
+            <Waves className="relative w-5.5 h-5.5" style={{ stroke: 'url(#ai-grad)' }} />
+          </span>
+          <div className="min-w-0 flex-1">
+            <h1 className="text-lg md:text-xl font-bold text-gradient leading-tight">מעקב לוויתנים</h1>
+            <p className="text-[11px] md:text-xs text-text-muted mt-0.5">
+              חיסולים, עסקאות ענק ומינוף — בזמן אמת, ישירות מהשוק
+            </p>
+          </div>
+          <button
+            onClick={() => setShowInfo((s) => !s)}
+            className="p-1.5 rounded-full text-text-muted hover:text-accent-primary transition-colors cursor-pointer"
+            title="מה רואים כאן?"
+          >
+            <HelpCircle className="w-4.5 h-4.5" />
+          </button>
+          <LiveDot status={paused ? 'connecting' : status} />
+        </div>
       </div>
 
       {/* Explanations — collapsed behind the "?" like the wallets page */}
@@ -283,6 +332,7 @@ export default function WhalesPage() {
           Icon={TrendingDown}
           color="text-loss"
           sub="מכירות כפויות — לחץ כלפי מטה"
+          wash="linear-gradient(135deg, rgba(239,68,68,0.10) 0%, rgba(239,68,68,0.02) 60%, transparent 100%)"
         />
         <LiqTotalCard
           label="שורטים שחוסלו (מאז שנכנסת)"
@@ -290,6 +340,7 @@ export default function WhalesPage() {
           Icon={TrendingUp}
           color="text-profit"
           sub={totals.biggest > 0 ? `החיסול הגדול ביותר: ${fmtUsd(totals.biggest)} · ${totals.biggestSym}` : 'קניות כפויות — דלק לעליות'}
+          wash="linear-gradient(135deg, rgba(34,197,94,0.10) 0%, rgba(34,197,94,0.02) 60%, transparent 100%)"
         />
       </div>
 
@@ -314,7 +365,8 @@ export default function WhalesPage() {
                 }`}
               >
                 {l.usd >= 1_000_000 && <span className="text-sm">🐋</span>}
-                <span className="font-mono text-xs font-bold text-text-primary w-12">{l.sym}</span>
+                <CoinIcon sym={l.sym} className="w-4.5 h-4.5" />
+                <span className="font-mono text-xs font-bold text-text-primary w-11">{l.sym}</span>
                 <span className={`text-[10px] font-bold px-1.5 py-0.5 rounded-full ${
                   l.longLiq ? 'bg-loss/15 text-loss' : 'bg-profit/15 text-profit'
                 }`}>
@@ -370,7 +422,8 @@ export default function WhalesPage() {
                 }`}
               >
                 {tr.usd >= 1_000_000 && <span className="text-sm">🐋</span>}
-                <span className="font-mono text-xs font-bold text-text-primary w-12">{tr.sym}</span>
+                <CoinIcon sym={tr.sym} className="w-4.5 h-4.5" />
+                <span className="font-mono text-xs font-bold text-text-primary w-11">{tr.sym}</span>
                 {tr.buy
                   ? <TrendingUp className="w-3.5 h-3.5 text-profit" />
                   : <TrendingDown className="w-3.5 h-3.5 text-loss" />}
@@ -416,18 +469,24 @@ export default function WhalesPage() {
                   const frTone = fr >= 0.1 ? 'text-loss' : fr >= 0.03 ? 'text-amber-400' : fr < 0 ? 'text-accent-primary' : 'text-text-secondary';
                   const r = ratios[t.symbol];
                   const longPct = r ? Math.round(r.longAccount * 100) : null;
+                  const frChip = fr >= 0.1 ? 'bg-loss/10 border-loss/30' : fr >= 0.03 ? 'bg-amber-500/10 border-amber-500/30' : fr < 0 ? 'bg-accent-primary/10 border-accent-primary/30' : 'bg-bg-primary/50 border-border-primary/60';
                   return (
-                    <tr key={t.symbol} className="border-b border-border-primary/40 last:border-0">
-                      <td className="py-2.5 font-mono font-bold text-text-primary">
-                        {coinOf(t.symbol)}
-                        {fr >= 0.1 && <Flame className="inline w-3 h-3 text-loss mr-1" title="Funding חם — לונגים דחוסים" />}
+                    <tr key={t.symbol} className="border-b border-border-primary/40 last:border-0 hover:bg-bg-tertiary/40 transition-colors">
+                      <td className="py-2.5">
+                        <span className="inline-flex items-center gap-2">
+                          <CoinIcon sym={coinOf(t.symbol)} className="w-5.5 h-5.5" />
+                          <span className="font-mono font-bold text-text-primary">{coinOf(t.symbol)}</span>
+                          {fr >= 0.1 && <Flame className="w-3 h-3 text-loss" title="Funding חם — לונגים דחוסים" />}
+                        </span>
                       </td>
                       <td className="py-2.5 text-left font-mono text-text-primary" dir="ltr">${fmtPrice(t.lastPrice)}</td>
                       <td className={`py-2.5 text-left font-semibold ${chg >= 0 ? 'text-profit' : 'text-loss'}`} dir="ltr">
                         {chg >= 0 ? '+' : ''}{chg.toFixed(2)}%
                       </td>
-                      <td className={`py-2.5 text-left font-mono font-semibold ${frTone}`} dir="ltr">
-                        {fr.toFixed(4)}%
+                      <td className="py-2.5 text-left" dir="ltr">
+                        <span className={`inline-block font-mono font-semibold text-[11px] px-1.5 py-0.5 rounded-md border ${frChip} ${frTone}`}>
+                          {fr.toFixed(4)}%
+                        </span>
                       </td>
                       <td className="py-2.5 text-left font-mono text-text-secondary" dir="ltr">
                         {fmtUsd(parseFloat(t.openInterestValue))}
