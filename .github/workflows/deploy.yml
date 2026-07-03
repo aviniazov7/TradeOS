@@ -178,6 +178,59 @@ jobs:
           put_secret MAIL_FROM_NAME
           put_secret MAIL_TO_ADMIN_OVERRIDE
 
+      # ─── Alerts/cron Worker ──────────────────────────────────────────────
+      # tradeos-alerts is the CRON runner: the same worker/index.js deployed
+      # under a second name with the */10 schedule (trade-os itself has no cron
+      # trigger). It was only ever deployed manually, so cron-side fixes never
+      # shipped — this step keeps it in lockstep with every Worker deploy.
+      # The vite plugin's deploy-config redirect hijacks any wrangler call in
+      # this repo to trade-os, so the redirect file is removed first (the steps
+      # that need it have already run) and wrangler.toml applies. There is only
+      # ONE production cron (staging cron is disabled), so this deploys the
+      # production alerts worker from dev too — same reality as trade-os.
+      # Manually-set secrets (BOT_TOKEN, GROQ_API_KEY, CREDS_ENCRYPTION_KEY…)
+      # persist across deploys; the CI-managed set is re-pushed here.
+      - name: Deploy Worker (alerts cron) + secrets
+        if: (steps.target.outputs.kind == 'production' || steps.target.outputs.kind == 'staging') && env.CLOUDFLARE_API_TOKEN != ''
+        working-directory: worker
+        env:
+          VAPID_JWK: ${{ secrets.VAPID_JWK }}
+          MORALIS_API_KEY: ${{ secrets.MORALIS_API_KEY }}
+          GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
+          FIREBASE_SERVICE_ACCOUNT: ${{ secrets.FIREBASE_SERVICE_ACCOUNT }}
+          RESEND_API_KEY: ${{ secrets.RESEND_API_KEY }}
+          MAIL_FROM_ADDRESS: ${{ secrets.MAIL_FROM_ADDRESS }}
+          MAIL_FROM_NAME: ${{ secrets.MAIL_FROM_NAME }}
+          MAIL_TO_ADMIN_OVERRIDE: ${{ secrets.MAIL_TO_ADMIN_OVERRIDE }}
+        run: |
+          rm -f ../.wrangler/deploy/config.json
+          npx wrangler deploy
+          put_secret() {
+            local name="$1"
+            local value="${!name}"
+            if [ -z "$value" ]; then
+              echo "$name not set — skipping."
+              return 0
+            fi
+            for attempt in 1 2 3; do
+              if printf '%s' "$value" | npx wrangler secret put "$name"; then
+                return 0
+              fi
+              echo "secret put $name failed (attempt $attempt), retrying in $((attempt * 5))s..."
+              sleep $((attempt * 5))
+            done
+            echo "::error::Failed to upload secret $name after 3 attempts"
+            return 1
+          }
+          put_secret VAPID_JWK
+          put_secret MORALIS_API_KEY
+          put_secret GEMINI_API_KEY
+          put_secret FIREBASE_SERVICE_ACCOUNT
+          put_secret RESEND_API_KEY
+          put_secret MAIL_FROM_ADDRESS
+          put_secret MAIL_FROM_NAME
+          put_secret MAIL_TO_ADMIN_OVERRIDE
+
       # ─── PR Comment with preview URL ─────────────────────────────────────
       # On every PR push, drop a comment with the preview link so the author
       # can click and test without hunting through the Actions logs.
