@@ -3741,6 +3741,21 @@ async function handleRequest(request, env) {
     if (env.TG_WEBHOOK_SECRET) setWebhookUrl += `&secret_token=${encodeURIComponent(env.TG_WEBHOOK_SECRET)}`;
     const res = await fetch(setWebhookUrl);
     const json = await res.json();
+    // Also (re)set the slash-command menu — trimmed to the commands that still
+    // work in the bot. setMyCommands REPLACES the whole list, so this removes
+    // the retired /prices,/funding,/oi,/ls,/price,/alerts,/fear,/status. Best
+    // effort: a failure here doesn't fail the webhook registration.
+    await fetch(`https://api.telegram.org/bot${env.BOT_TOKEN}/setMyCommands`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        commands: [
+          { command: 'start', description: 'תפריט ראשי' },
+          { command: 'settings', description: 'הגדרות תזכורות' },
+          { command: 'help', description: 'עזרה' },
+        ],
+      }),
+    }).catch(() => {});
     // Don't echo Telegram's raw payload — just the success flag.
     return new Response(JSON.stringify({ ok: json.ok === true }), { headers: { ...cors, 'Content-Type': 'application/json' } });
   }
