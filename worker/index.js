@@ -1522,7 +1522,6 @@ async function handleStart(env, chatId, text, username = null) {
       '📊 <b>סיכום יומי</b> — סטטיסטיקות סוף יום\n' +
       '📅 <b>לוח אירועים</b> — אירועים כלכליים\n' +
       '🔔 <b>התראות עסקאות</b> — נפתחה/נסגרה פוזיציה\n\n' +
-      '💡 מחירים, התראות מחיר ונתוני שוק — באפליקציה עצמה.\n\n' +
       'בחר מהתפריט:';
     await sendMessage(env.BOT_TOKEN, chatId, welcome, mainMenuKeyboard());
   } else if (await isRegistered(env, chatId)) {
@@ -1829,7 +1828,6 @@ async function handleHelp(env, chatId) {
     '/start — תפריט ראשי\n' +
     '/settings — הגדרות תזכורות\n' +
     '/help — עזרה\n\n' +
-    '💡 <b>מחירים, התראות מחיר ונתוני שוק</b> — באפליקציה עצמה.\n\n' +
     '<b>⚙️ הגדרות:</b>\n' +
     '📝 תזכורת יומן — תזכורת יומית למלא את היומן\n' +
     '📊 סיכום יומי — סטטיסטיקות סוף יום\n' +
