@@ -34,6 +34,10 @@ async function listAllKeys() {
 }
 
 async function copyKey(k) {
+  // Ultra-long key names (the /bnb proxy caches whole querystrings as keys)
+  // blow past the KV API's URL limit (HTTP 414). They're short-TTL price
+  // caches that regenerate on first use — skip, don't fail the migration.
+  if (k.name.length > 450) return 'skipped-long-cache-key';
   const name = encodeURIComponent(k.name);
   const getRes = await fetch(
     `${API}/accounts/${OLD_ACCOUNT}/storage/kv/namespaces/${OLD_KV}/values/${name}`,
