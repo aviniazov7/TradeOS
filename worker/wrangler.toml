@@ -9,11 +9,11 @@ crons = ["*/10 * * * *"]
 # KV namespace for storing alerts
 [[kv_namespaces]]
 binding = "ALERTS_KV"
-id = "75931d3210024df0b6dd2938ee4656c1"
+id = "5c66041d98aa4229a52afeb2f5b1f652"
 
 # ─── Staging environment ────────────────────────────────────────────────
 # Deployed by the `dev` branch via GitHub Actions to
-# https://tradeos-alerts-staging.aviniazov7.workers.dev.
+# https://tradeos-alerts-staging.tradeos.workers.dev.
 #
 # - Shares the production KV namespace. Solo dev, low risk; full database
 #   separation is future work. Be careful with destructive test operations.
@@ -26,7 +26,7 @@ name = "tradeos-alerts-staging"
 
 [[env.staging.kv_namespaces]]
 binding = "ALERTS_KV"
-id = "75931d3210024df0b6dd2938ee4656c1"
+id = "5c66041d98aa4229a52afeb2f5b1f652"
 
 [env.staging.triggers]
 crons = []

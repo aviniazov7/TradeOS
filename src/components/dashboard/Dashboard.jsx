@@ -117,7 +117,7 @@ export default function Dashboard() {
         // Proxy CoinGecko through the worker (direct browser calls are
         // CORS/geo-blocked). Match the hardcoded fallback used app-wide so it
         // works even when VITE_WORKER_URL isn't set at build time.
-        const workerUrl = import.meta.env.VITE_WORKER_URL || 'https://trade-os.aviniazov7.workers.dev';
+        const workerUrl = import.meta.env.VITE_WORKER_URL || 'https://trade-os.tradeos.workers.dev';
         const cgBase = `${workerUrl}/cg`;
         const res = await fetch(`${cgBase}/global`, { signal: controller.signal });
         if (!res.ok) throw new Error(`HTTP ${res.status}`);

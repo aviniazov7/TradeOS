@@ -759,21 +759,31 @@ async function fetchBybitOpen(apiKey, apiSecret) {
 // notification, plus a once-a-day summary. Runs from the 10-minute cron.
 async function checkExchangeClosedTrades(env) {
   if (!env.VAPID_JWK) return; // can't sign pushes without the private key
-  const list = await env.ALERTS_KV.list({ prefix: 'pushexch:' });
-  if (!list.keys.length) return;
 
   const hhmm = getIsraelHHMM();
+  // Read the rolled-up index instead of a KV list per tick; rebuild it from a
+  // real list once a day (04:00 window) to heal any index drift.
+  const keyNames = (hhmm >= '04:00' && hhmm < '04:10')
+    ? await rebuildPushexchIndex(env)
+    : await getPushexchKeys(env);
+  if (!keyNames.length) return;
+
   const israelDate = getIsraelDateStr();
   // Daily summary fires once, in the 22:00 cron tick (cron runs every 10 min).
   const summaryWindow = hhmm >= '22:00' && hhmm < '22:10';
   const it = getIsraelTime();
   const dayStartMs = Date.now() - ((it.getHours() * 3600 + it.getMinutes() * 60 + it.getSeconds()) * 1000);
 
-  for (const k of list.keys) {
-    const [, uid, exchange] = k.name.split(':');
+  for (const name of keyNames) {
+    const [, uid, exchange] = name.split(':');
     if (exchange !== 'bybit') continue; // only Bybit polling for now
     const creds = await loadExchangeCreds(env, uid, exchange); // decrypts + self-heals legacy plaintext
-    if (!creds?.apiKey || !creds?.apiSecret) continue;
+    if (!creds?.apiKey || !creds?.apiSecret) {
+      // Key expired (CREDS_TTL) or was deleted — prune it from the index so
+      // the cron stops re-checking a dead entry.
+      await pushexchIndexRemove(env, (n) => n === name).catch(() => {});
+      continue;
+    }
 
     // ---- Position-opened notifications ----
     // Compare the live open positions to the snapshot from the previous tick;
@@ -1125,9 +1135,25 @@ async function firebaseAdminPatchUser(env, uid, fields, mask) {
 async function isUserPremium(env, token, uid) {
   if (!uid) return false;
   const cacheKey = `planflag:${uid}`;
-  const cached = await env.ALERTS_KV.get(cacheKey);
-  if (cached !== null) return cached === '1';
+  // Cache format: {p:0|1, exp:ms|null}. The plan-expiry timestamp is honored
+  // at READ time, so the TTL can be long (one cache write per user per 10 min
+  // instead of per minute — writes are the scarce KV resource) while a lapsed
+  // plan still drops premium instantly. Legacy '1'/'0' entries (60s TTL)
+  // parse as numbers and are honored until they age out.
+  const cached = await env.ALERTS_KV.get(cacheKey, 'json');
+  if (cached !== null) {
+    if (typeof cached === 'object' && cached) {
+      if (cached.p && cached.exp && cached.exp <= Date.now()) {
+        // plan lapsed mid-TTL — fall through and refetch
+      } else {
+        return !!cached.p;
+      }
+    } else {
+      return cached === 1;
+    }
+  }
   let premium = false;
+  let expMs = null;
   try {
     const url = `https://firestore.googleapis.com/v1/projects/${FIREBASE_PROJECT_ID}/databases/(default)/documents/users/${uid}`;
     const r = await fetch(url, { headers: { Authorization: `Bearer ${token}` } });
@@ -1136,14 +1162,14 @@ async function isUserPremium(env, token, uid) {
       const plan = f.plan?.stringValue;
       const role = f.role?.stringValue;
       const expRaw = f.planExpires?.timestampValue || f.planExpires?.stringValue;
-      const notExpired = !expRaw || new Date(expRaw).getTime() > Date.now();
+      expMs = expRaw ? (new Date(expRaw).getTime() || null) : null;
+      const notExpired = !expMs || expMs > Date.now();
       premium = role === 'admin' || (plan === 'premium' && notExpired);
+      if (role === 'admin') expMs = null; // admins never lapse
     }
   } catch { /* default free */ }
-  // Short TTL: a grant busts this key explicitly (/admin/refresh-plan), but the
-  // cache must also self-heal quickly when a timed plan LAPSES — otherwise an
-  // expired user keeps premium until the old 10-min cache aged out.
-  await env.ALERTS_KV.put(cacheKey, premium ? '1' : '0', { expirationTtl: 60 });
+  // Grants still bust this key explicitly (/admin/refresh-plan).
+  await env.ALERTS_KV.put(cacheKey, JSON.stringify({ p: premium ? 1 : 0, exp: premium ? expMs : null }), { expirationTtl: 600 });
   return premium;
 }
 
@@ -1182,27 +1208,34 @@ async function aiRateGate(env, uid, premium) {
     return { status: 503, body: { error: 'המערכת בעומס שיא היום. נסה מאוחר יותר.' } };
   }
 
+  // All per-user windows live in ONE KV document (airl:{uid}) — a single
+  // get+put per request instead of one pair per window. The old 3-key premium
+  // path alone cost 6 KV ops per AI message and was a top contributor to the
+  // free tier's 1,000-writes/day ceiling.
+  const now = Date.now();
+  const rlKey = `airl:${uid}`;
+  const doc = (await env.ALERTS_KV.get(rlKey, 'json')) || {};
+  const roll = (w, sec) => (w && now - w.s < sec * 1000 ? { s: w.s, c: w.c + 1 } : { s: now, c: 1 });
+  const m = roll(doc.m, AI_WINDOWS_SEC.minute);
+  const h = roll(doc.h, AI_WINDOWS_SEC.hour);
+  const d = roll(doc.d, AI_WINDOWS_SEC.day);
+  await env.ALERTS_KV.put(rlKey, JSON.stringify({ m, h, d }), { expirationTtl: AI_WINDOWS_SEC.day + 60 });
+
   if (premium) {
     // Premium: 5/min, 50/hr, 200/day (soft caps for "unlimited").
-    const minute = await bumpWindow(env, `airl:min:${uid}`, AI_WINDOWS_SEC.minute);
-    if (minute.count > AI_PREMIUM_LIMITS.minute) {
+    if (m.c > AI_PREMIUM_LIMITS.minute) {
       return { status: 429, body: { error: 'יותר מדי בקשות בדקה. המתן רגע ונסה שוב.' } };
     }
-    const hour = await bumpWindow(env, `airl:hr:${uid}`, AI_WINDOWS_SEC.hour);
-    if (hour.count > AI_PREMIUM_LIMITS.hour) {
+    if (h.c > AI_PREMIUM_LIMITS.hour) {
       return { status: 429, body: { error: 'הגעת לתקרה השעתית של Premium (50). נסה בעוד שעה.' } };
     }
-    const day = await bumpWindow(env, `airl:day:${uid}`, AI_WINDOWS_SEC.day);
-    if (day.count > AI_PREMIUM_LIMITS.day) {
+    if (d.c > AI_PREMIUM_LIMITS.day) {
       return { status: 429, body: { error: 'הגעת לתקרה היומית של Premium (200). נסה מחר.', quotaExceeded: true } };
     }
-  } else {
-    // Free: keep the original per-minute burst cap; daily quota is enforced
-    // separately by getAiUsage / incrementAiUsage in the route handler.
-    const minute = await bumpWindow(env, `airl:min:${uid}`, AI_WINDOWS_SEC.minute);
-    if (minute.count > AI_FREE_BURST_PER_MIN) {
-      return { status: 429, body: { error: 'המערכת עמוסה. המתן כמה שניות ונסה שוב.' } };
-    }
+  } else if (m.c > AI_FREE_BURST_PER_MIN) {
+    // Free: per-minute burst cap; the daily quota is enforced separately by
+    // getAiUsage / incrementAiUsage in the route handler.
+    return { status: 429, body: { error: 'המערכת עמוסה. המתן כמה שניות ונסה שוב.' } };
   }
 
   // All windows passed — increment the global counter.
@@ -1268,6 +1301,44 @@ async function decodeCreds(env, raw) {
 async function storeExchangeCreds(env, uid, exchange, creds) {
   const blob = await encryptCreds(env, { exchange, apiKey: creds.apiKey, apiSecret: creds.apiSecret, passphrase: creds.passphrase || '' });
   await env.ALERTS_KV.put(`pushexch:${uid}:${exchange}`, blob, { expirationTtl: CREDS_TTL });
+  await pushexchIndexAdd(env, `pushexch:${uid}:${exchange}`);
+}
+
+// ---- pushexch index ---------------------------------------------------------
+// The 10-min cron used to list({prefix:'pushexch:'}) every tick — 144 list
+// operations/day against a 1,000/day free-tier cap. Instead, connected
+// exchange keys are tracked in one rolled-up index the cron READS (reads are
+// ~free at 100k/day). Writers keep it fresh; a missing index self-rebuilds
+// from a real list once, and the cron rebuilds it daily to heal any drift.
+const PUSHEXCH_INDEX_KEY = 'pushexch:INDEX';
+
+async function rebuildPushexchIndex(env) {
+  const list = await env.ALERTS_KV.list({ prefix: 'pushexch:' });
+  const keys = list.keys.map((k) => k.name).filter((n) => n !== PUSHEXCH_INDEX_KEY);
+  await env.ALERTS_KV.put(PUSHEXCH_INDEX_KEY, JSON.stringify(keys));
+  return keys;
+}
+
+async function getPushexchKeys(env) {
+  const idx = await env.ALERTS_KV.get(PUSHEXCH_INDEX_KEY, 'json');
+  if (Array.isArray(idx)) return idx;
+  return rebuildPushexchIndex(env);
+}
+
+async function pushexchIndexAdd(env, keyName) {
+  const keys = await getPushexchKeys(env);
+  if (!keys.includes(keyName)) {
+    keys.push(keyName);
+    await env.ALERTS_KV.put(PUSHEXCH_INDEX_KEY, JSON.stringify(keys));
+  }
+}
+
+async function pushexchIndexRemove(env, predicate) {
+  const keys = await getPushexchKeys(env);
+  const next = keys.filter((n) => !predicate(n));
+  if (next.length !== keys.length) {
+    await env.ALERTS_KV.put(PUSHEXCH_INDEX_KEY, JSON.stringify(next));
+  }
 }
 
 const validExchangeId = (x) => /^[a-z0-9_-]{1,20}$/.test(x || '');
@@ -2272,8 +2343,15 @@ async function checkEconomicCalendar(env, settingsMap) {
 
 async function handleCron(env) {
   // Heartbeat: record the last cron tick so the admin health panel can confirm
-  // the scheduler is alive. Best-effort, never blocks the jobs below.
-  await env.ALERTS_KV.put('cron:last', String(Date.now())).catch(() => {});
+  // the scheduler is alive. Writes are the scarce KV resource (1,000/day on
+  // the free tier), so refresh at most hourly — a read per tick is ~free, and
+  // the health panel only flags the cron after 26h of silence.
+  try {
+    const last = parseInt((await env.ALERTS_KV.get('cron:last')) || '0', 10);
+    if (!last || Date.now() - last > 55 * 60_000) {
+      await env.ALERTS_KV.put('cron:last', String(Date.now()));
+    }
+  } catch { /* best-effort, never blocks the jobs below */ }
 
   // Web-push exchange polling is independent of Telegram, so run it first and
   // don't let a missing BOT_TOKEN skip it.
@@ -3351,7 +3429,7 @@ async function handleContact(request, env, cors) {
     if (env.BOT_TOKEN) {
       result = await sendMessage(env.BOT_TOKEN, devChatId, text);
     } else {
-      const proxy = await fetch('https://tradeos-alerts.aviniazov7.workers.dev/contact', {
+      const proxy = await fetch('https://tradeos-alerts.tradeos.workers.dev/contact', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json', 'Authorization': authHeader },
         body: JSON.stringify(body),
@@ -3392,6 +3470,10 @@ async function handleContact(request, env, cors) {
 const ALLOWED_ORIGINS = [
   'https://tradeos-91a58.web.app',
   'https://tradeos-91a58.firebaseapp.com',
+  'https://trade-os.tradeos.workers.dev',
+  'https://trade-os-staging.tradeos.workers.dev',
+  // Kept during the Cloudflare-account migration window; drop once the old
+  // account's Workers are decommissioned.
   'https://trade-os.aviniazov7.workers.dev',
   'https://trade-os-staging.aviniazov7.workers.dev',
 ];
@@ -3934,8 +4016,8 @@ async function handleRequest(request, env) {
     const token = (request.headers.get('Authorization') || '').replace('Bearer ', '');
     const uid = await verifyFirebaseToken(token);
     if (!uid) return new Response(JSON.stringify({ error: 'unauthorized' }), { status: 401, headers: { ...cors, 'Content-Type': 'application/json' } });
-    const l = await env.ALERTS_KV.list({ prefix: `pushexch:${uid}:` });
-    const exchanges = l.keys.map((kk) => kk.name.split(':')[2]).filter(Boolean);
+    const mine = (await getPushexchKeys(env)).filter((n) => n.startsWith(`pushexch:${uid}:`));
+    const exchanges = mine.map((n) => n.split(':')[2]).filter(Boolean);
     return new Response(JSON.stringify({ exchanges }), { headers: { ...cors, 'Content-Type': 'application/json' } });
   }
 
@@ -3947,9 +4029,11 @@ async function handleRequest(request, env) {
     const { exchange } = await request.json().catch(() => ({}));
     if (exchange) {
       await env.ALERTS_KV.delete(`pushexch:${uid}:${exchange}`);
+      await pushexchIndexRemove(env, (n) => n === `pushexch:${uid}:${exchange}`);
     } else {
       const l = await env.ALERTS_KV.list({ prefix: `pushexch:${uid}:` });
       for (const kk of l.keys) await env.ALERTS_KV.delete(kk.name);
+      await pushexchIndexRemove(env, (n) => n.startsWith(`pushexch:${uid}:`));
     }
     return new Response(JSON.stringify({ ok: true }), { headers: { ...cors, 'Content-Type': 'application/json' } });
   }

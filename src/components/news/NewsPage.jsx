@@ -94,7 +94,7 @@ function saveHeCache(map, key = HE_CACHE_KEY) {
 }
 
 // ─── Economic Calendar (Forex Factory via allorigins proxy) ───
-const WORKER_URL = import.meta.env.VITE_WORKER_URL || 'https://trade-os.aviniazov7.workers.dev';
+const WORKER_URL = import.meta.env.VITE_WORKER_URL || 'https://trade-os.tradeos.workers.dev';
 const CALENDAR_URL = 'https://nfs.faireconomy.media/ff_calendar_thisweek.json';
 const CALENDAR_CACHE_KEY = 'tradeos_econ_calendar_v3';
 const CALENDAR_CACHE_TTL = 60 * 60 * 1000; // 1 hour

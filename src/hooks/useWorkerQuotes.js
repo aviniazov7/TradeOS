@@ -1,7 +1,7 @@
 import { useState, useEffect, useRef } from 'react';
 import { fetchSpotQuotes } from '../services/bybitDirect';
 
-const WORKER_BASE = import.meta.env.VITE_WORKER_URL || 'https://trade-os.aviniazov7.workers.dev';
+const WORKER_BASE = import.meta.env.VITE_WORKER_URL || 'https://trade-os.tradeos.workers.dev';
 
 /**
  * Poll a worker quotes endpoint that returns { SYM: { price, change24h }, … }.

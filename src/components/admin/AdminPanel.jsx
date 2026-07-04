@@ -9,7 +9,7 @@ import { ResponsiveContainer, AreaChart, Area, Tooltip, XAxis } from 'recharts';
 import { useAuth } from '../../contexts/AuthContext';
 import { getAllUsers, getUserSubcollectionCount, adminGrantPremium, adminRevokePremium, addPayment, getAllPayments } from '../../services/firestoreService';
 import { fetchUserAiUsage, fetchGlobalAiUsage, fetchAiStats, fetchSystemHealth } from '../../hooks/useAiUsage';
-import { adminSendNotification, adminSendBulkNotification, adminScheduleExpiryReminders, adminCancelExpiryReminders, adminRefreshPlanCache, adminListAuditEvents, adminSendTestDigest, adminGetTelegramInfo, adminSendPaymentEmail } from '../../services/pushService';
+import { adminSendNotification, adminSendBulkNotification, adminScheduleExpiryReminders, adminCancelExpiryReminders, adminRefreshPlanCache, adminListAuditEvents, adminSendTestDigest, adminGetTelegramInfo, adminSendPaymentEmail, adminSetupTelegramWebhook } from '../../services/pushService';
 import { adminListCoupons, adminCreateCoupon, adminDeleteCoupon, couponShareUrl } from '../../services/couponService';
 import LoadingSpinner from '../shared/LoadingSpinner';
 import SelectDropdown from '../shared/SelectDropdown';
@@ -238,6 +238,18 @@ export default function AdminPanel() {
   const [statsDays, setStatsDays] = useState(30);
   // System health (cron heartbeat, bot, push/AI configured).
   const [health, setHealth] = useState(null);
+  const [webhookBusy, setWebhookBusy] = useState(false);
+  const reregisterWebhook = async () => {
+    setWebhookBusy(true);
+    try {
+      await adminSetupTelegramWebhook();
+      toast.success('ה-webhook של טלגרם נרשם מחדש');
+    } catch (e) {
+      toast.error(e.message || 'הרישום נכשל');
+    } finally {
+      setWebhookBusy(false);
+    }
+  };
 
   // After load() refreshes `users`, keep `selectedUser` pointing at the fresh
   // copy so the open detail modal reflects the new plan/role immediately
@@ -590,7 +602,20 @@ export default function AdminPanel() {
       </div>
 
       {/* System health — admin-only, exposes only status (never secrets). */}
-      <SectionCard icon={<ShieldCheck className="w-4 h-4" />} title="בריאות מערכת">
+      <SectionCard
+        icon={<ShieldCheck className="w-4 h-4" />}
+        title="בריאות מערכת"
+        action={(
+          <button
+            onClick={reregisterWebhook}
+            disabled={webhookBusy}
+            className="flex items-center gap-1.5 text-[11px] px-2.5 py-1.5 rounded-lg border border-border-primary text-text-secondary hover:text-accent-primary hover:border-accent-primary/40 transition-colors cursor-pointer disabled:opacity-50 shrink-0"
+            title="רשום מחדש את ה-webhook של הבוט מול הכתובת הנוכחית של ה-Worker"
+          >
+            <RefreshCw className={`w-3 h-3 ${webhookBusy ? 'animate-spin' : ''}`} /> רענן Webhook טלגרם
+          </button>
+        )}
+      >
         {!health ? (
           <div className="text-xs text-text-muted">…</div>
         ) : (

@@ -35,6 +35,10 @@ jobs:
     runs-on: ubuntu-latest
     env:
       CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+      # Pins the account explicitly so wrangler skips its /memberships
+      # auto-detection lookup — that lookup needs a User Details:Read scope
+      # our narrowly-scoped CI token doesn't have (and shouldn't need).
+      CLOUDFLARE_ACCOUNT_ID: ba3af41d3a78e629471174633c957cc9
     steps:
       - uses: actions/checkout@v4
 
@@ -52,7 +56,7 @@ jobs:
         run: |
           if [ "${{ github.event_name }}" = "push" ] && [ "${{ github.ref }}" = "refs/heads/main" ]; then
             echo "kind=production" >> $GITHUB_OUTPUT
-            echo "worker_url=https://trade-os.aviniazov7.workers.dev" >> $GITHUB_OUTPUT
+            echo "worker_url=https://trade-os.tradeos.workers.dev" >> $GITHUB_OUTPUT
           elif [ "${{ github.event_name }}" = "push" ] && [ "${{ github.ref }}" = "refs/heads/dev" ]; then
             echo "kind=staging" >> $GITHUB_OUTPUT
             # NOTE: there is no real staging Worker. The root wrangler.jsonc
@@ -61,12 +65,12 @@ jobs:
             # deploy to the production worker "trade-os" anyway (verified in
             # CI logs). trade-os-staging.workers.dev has no live deployment,
             # so builds must point at the worker that actually serves traffic.
-            echo "worker_url=https://trade-os.aviniazov7.workers.dev" >> $GITHUB_OUTPUT
+            echo "worker_url=https://trade-os.tradeos.workers.dev" >> $GITHUB_OUTPUT
             echo "channel=dev" >> $GITHUB_OUTPUT
           else
             # Feature branch push OR pull request — preview channel only.
             echo "kind=preview" >> $GITHUB_OUTPUT
-            echo "worker_url=https://trade-os.aviniazov7.workers.dev" >> $GITHUB_OUTPUT
+            echo "worker_url=https://trade-os.tradeos.workers.dev" >> $GITHUB_OUTPUT
             if [ "${{ github.event_name }}" = "pull_request" ]; then
               CHANNEL="pr-${{ github.event.number }}"
             else
@@ -161,6 +165,64 @@ jobs:
             # transient hiccup doesn't fail an otherwise-successful deploy.
             for attempt in 1 2 3; do
               if printf '%s' "$value" | npx wrangler secret put "$name" $ENV_FLAG; then
+                return 0
+              fi
+              echo "secret put $name failed (attempt $attempt), retrying in $((attempt * 5))s..."
+              sleep $((attempt * 5))
+            done
+            echo "::error::Failed to upload secret $name after 3 attempts"
+            return 1
+          }
+          put_secret VAPID_JWK
+          put_secret MORALIS_API_KEY
+          put_secret GEMINI_API_KEY
+          put_secret FIREBASE_SERVICE_ACCOUNT
+          put_secret RESEND_API_KEY
+          put_secret MAIL_FROM_ADDRESS
+          put_secret MAIL_FROM_NAME
+          put_secret MAIL_TO_ADMIN_OVERRIDE
+
+      # ─── Alerts/cron Worker ──────────────────────────────────────────────
+      # tradeos-alerts is the CRON runner: the same worker/index.js deployed
+      # under a second name with the */10 schedule (trade-os itself has no cron
+      # trigger). It was only ever deployed manually, so cron-side fixes never
+      # shipped — this step keeps it in lockstep with every Worker deploy.
+      # The vite plugin's deploy-config redirect hijacks any wrangler call in
+      # this repo to trade-os, so the redirect file is removed first (the steps
+      # that need it have already run) and wrangler.toml applies. There is only
+      # ONE production cron (staging cron is disabled), so this deploys the
+      # production alerts worker from dev too — same reality as trade-os.
+      # Manually-set secrets (BOT_TOKEN, GROQ_API_KEY, CREDS_ENCRYPTION_KEY…)
+      # persist across deploys; the CI-managed set is re-pushed here.
+      - name: Deploy Worker (alerts cron) + secrets
+        if: (steps.target.outputs.kind == 'production' || steps.target.outputs.kind == 'staging') && env.CLOUDFLARE_API_TOKEN != ''
+        working-directory: worker
+        env:
+          VAPID_JWK: ${{ secrets.VAPID_JWK }}
+          MORALIS_API_KEY: ${{ secrets.MORALIS_API_KEY }}
+          GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
+          FIREBASE_SERVICE_ACCOUNT: ${{ secrets.FIREBASE_SERVICE_ACCOUNT }}
+          RESEND_API_KEY: ${{ secrets.RESEND_API_KEY }}
+          MAIL_FROM_ADDRESS: ${{ secrets.MAIL_FROM_ADDRESS }}
+          MAIL_FROM_NAME: ${{ secrets.MAIL_FROM_NAME }}
+          MAIL_TO_ADMIN_OVERRIDE: ${{ secrets.MAIL_TO_ADMIN_OVERRIDE }}
+        run: |
+          # Both the redirect file AND wrangler's config discovery resolve to
+          # the ROOT wrangler.jsonc even from this directory (verified in CI
+          # logs — a bare `npx wrangler deploy` here re-deployed trade-os).
+          # --config pins the alerts toml explicitly; the rm guards against
+          # the redirect ever applying on top of it.
+          rm -f ../.wrangler/deploy/config.json
+          npx wrangler deploy --config wrangler.toml
+          put_secret() {
+            local name="$1"
+            local value="${!name}"
+            if [ -z "$value" ]; then
+              echo "$name not set — skipping."
+              return 0
+            fi
+            for attempt in 1 2 3; do
+              if printf '%s' "$value" | npx wrangler secret put "$name" --config wrangler.toml; then
                 return 0
               fi
               echo "secret put $name failed (attempt $attempt), retrying in $((attempt * 5))s..."

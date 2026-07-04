@@ -1,6 +1,6 @@
 import { getAuth } from 'firebase/auth';
 
-const WORKER_BASE = import.meta.env.VITE_WORKER_URL || 'https://trade-os.aviniazov7.workers.dev';
+const WORKER_BASE = import.meta.env.VITE_WORKER_URL || 'https://trade-os.tradeos.workers.dev';
 // Public VAPID key (safe to expose) — must match the worker's VAPID_PUBLIC_KEY.
 const VAPID_PUBLIC_KEY = 'BLFZCOugKM1d2jqTwgmGTF9VjFwQEMNo92l2gfNVk7eBYz1Gnrr0jFBS5jR1bRJ5MchpVkVNiqS8wtzUqouBHRk';
 
@@ -127,6 +127,20 @@ export async function adminSendTestDigest() {
   const data = await res.json().catch(() => ({}));
   if (!res.ok) throw new Error(data.error || 'שליחת מייל הבדיקה נכשלה');
   return data; // { ok, sentTo, stats }
+}
+
+// Admin-only: re-register the Telegram webhook against whichever worker
+// currently serves the app (WORKER_BASE). Needed after moving the worker to
+// a new host/domain — Telegram keeps pushing updates to the old URL until
+// this is called.
+export async function adminSetupTelegramWebhook() {
+  const res = await fetch(`${WORKER_BASE}/setup-webhook`, {
+    method: 'POST',
+    headers: await authHeader(),
+  });
+  const data = await res.json().catch(() => ({}));
+  if (!res.ok || !data.ok) throw new Error(data.error || 'רישום ה-webhook נכשל');
+  return data;
 }
 
 // Admin-only: send a branded payment/gift confirmation email to a user after
