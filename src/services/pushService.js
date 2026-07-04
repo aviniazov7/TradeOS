@@ -129,6 +129,20 @@ export async function adminSendTestDigest() {
   return data; // { ok, sentTo, stats }
 }
 
+// Admin-only: re-register the Telegram webhook against whichever worker
+// currently serves the app (WORKER_BASE). Needed after moving the worker to
+// a new host/domain — Telegram keeps pushing updates to the old URL until
+// this is called.
+export async function adminSetupTelegramWebhook() {
+  const res = await fetch(`${WORKER_BASE}/setup-webhook`, {
+    method: 'POST',
+    headers: await authHeader(),
+  });
+  const data = await res.json().catch(() => ({}));
+  if (!res.ok || !data.ok) throw new Error(data.error || 'רישום ה-webhook נכשל');
+  return data;
+}
+
 // Admin-only: send a branded payment/gift confirmation email to a user after
 // a manual Premium grant (Bit / crypto / bank transfer).
 export async function adminSendPaymentEmail({ email, name, kind, amount, method, days, expires }) {
