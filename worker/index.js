@@ -1483,13 +1483,12 @@ async function saveWatchlist(env, chatId, list) {
 // ==================== Main Menu ====================
 
 function mainMenuKeyboard() {
+  // Live prices / market data (funding, OI, long-short) moved out of the bot —
+  // they pulled from Binance, which geo-blocks Cloudflare Workers, and the same
+  // data is already on the web app. Kept: alerts, sentiment, status, settings.
   return [
     [
-      { text: '💰 מחירים', callback_data: 'menu_prices' },
       { text: '🔔 התראות מחיר', callback_data: 'menu_alerts' },
-    ],
-    [
-      { text: '📈 נתוני שוק', callback_data: 'menu_market' },
       { text: '😱 פחד/חמדנות', callback_data: 'menu_fear' },
     ],
     [
@@ -1524,13 +1523,12 @@ async function handleStart(env, chatId, text, username = null) {
     await env.ALERTS_KV.delete(`tgconnect:${param}`);
     const welcome =
       '🤖 <b>ברוך הבא ל-TradeOS Bot!</b>\n\n' +
-      '💰 <b>מחירים</b> — ווצ\'ליסט אישי עם מחירים חיים\n' +
-      '📈 <b>נתוני שוק</b> — Funding, OI, Long/Short (עם גרפים)\n' +
       '🔔 <b>התראות מחיר</b> — התראה כשמטבע מגיע ליעד\n' +
       '😱 <b>פחד/חמדנות</b> — סנטימנט השוק\n' +
       '📝 <b>תזכורת יומן</b> — תזכורת יומית\n' +
       '📊 <b>סיכום יומי</b> — סטטיסטיקות סוף יום\n' +
       '📅 <b>לוח אירועים</b> — אירועים כלכליים\n\n' +
+      '💡 מחירים ונתוני שוק חיים — באפליקציה עצמה.\n\n' +
       'בחר מהתפריט:';
     await sendMessage(env.BOT_TOKEN, chatId, welcome, mainMenuKeyboard());
   } else if (await isRegistered(env, chatId)) {
@@ -1835,22 +1833,12 @@ async function handleHelp(env, chatId) {
     '❓ <b>עזרה — TradeOS Bot</b>\n\n' +
     '<b>פקודות:</b>\n' +
     '/start — תפריט ראשי\n' +
-    '/prices — מחירים (ווצ\'ליסט)\n' +
-    '/funding — Funding Rate\n' +
-    '/oi — Open Interest\n' +
-    '/ls — Long/Short Ratio\n' +
     '/alerts — ניהול התראות מחיר\n' +
-    '/price BTC — מחיר מטבע ספציפי\n' +
     '/fear — מדד פחד/חמדנות\n' +
     '/status — סטטוס התראות\n' +
     '/settings — הגדרות תזכורות\n' +
     '/help — עזרה\n\n' +
-    '<b>💰 ווצ\'ליסט:</b>\n' +
-    'ערוך את רשימת המטבעות שלך דרך כפתור "⭐ ערוך ווצ\'ליסט" במסך המחירים.\n\n' +
-    '<b>📈 נתוני שוק:</b>\n' +
-    '💸 Funding Rate — שיעורי מימון (עם גרף)\n' +
-    '📊 Open Interest — פוזיציות פתוחות (עם גרף)\n' +
-    '📊 Long/Short Ratio — יחס לונג/שורט (עם גרף)\n\n' +
+    '💡 <b>מחירים ונתוני שוק</b> (Funding, OI, Long/Short) — באפליקציה עצמה.\n\n' +
     '<b>⚙️ הגדרות:</b>\n' +
     '📝 תזכורת יומן — תזכורת יומית למלא את היומן\n' +
     '📊 סיכום יומי — סטטיסטיקות סוף יום\n' +
@@ -1997,17 +1985,21 @@ async function handleCallback(env, callbackQuery) {
 
   // Main menu
   if (data === 'menu_main') { await editMessage(env.BOT_TOKEN, chatId, messageId, '🤖 <b>TradeOS Bot</b>\n\nבחר מהתפריט:', mainMenuKeyboard()); return; }
-  if (data === 'menu_prices') return handlePrices(env, chatId);
   if (data === 'menu_alerts') return handleAlerts(env, chatId);
-  if (data === 'menu_market') return handleMarketMenu(env, chatId);
   if (data === 'menu_fear') return handleFearGreed(env, chatId);
   if (data === 'menu_status') return handleStatus(env, chatId);
   if (data === 'menu_help') return handleHelp(env, chatId);
 
-  // Market data
-  if (data === 'mkt_funding') return handleFunding(env, chatId);
-  if (data === 'mkt_oi') return handleOpenInterest(env, chatId);
-  if (data === 'mkt_ls') return handleLongShortRatio(env, chatId);
+  // Retired: live prices + market data (Binance geo-blocks the Worker; the
+  // data is in the web app). Old inline buttons still in users' chat history
+  // land here → a friendly redirect instead of an error.
+  if (data === 'menu_prices' || data === 'menu_market'
+      || data === 'mkt_funding' || data === 'mkt_oi' || data === 'mkt_ls') {
+    await sendMessage(env.BOT_TOKEN, chatId,
+      '💡 מחירים ונתוני שוק (Funding, OI, Long/Short) עברו לאפליקציה — שם הם חיים ומעודכנים.',
+      [[{ text: '🔙 תפריט ראשי', callback_data: 'menu_main' }]]);
+    return;
+  }
 
   // Settings
   if (data === 'menu_settings') return handleSettings(env, chatId, messageId);
@@ -2178,19 +2170,14 @@ async function handleWebhook(request, env) {
 
     if (text.startsWith('/start')) await handleStart(env, chatId, text, username);
     else if (!(await requireAuth(env, chatId))) { /* silent */ }
-    else if (text === '/prices') await handlePrices(env, chatId);
+    // Live-price/market commands retired — Binance geo-blocks the Worker and
+    // the data lives in the web app now (see mainMenuKeyboard note).
     else if (text === '/alerts') await handleAlerts(env, chatId);
-    else if (text === '/funding') await handleFunding(env, chatId);
-    else if (text === '/oi') await handleOpenInterest(env, chatId);
-    else if (text === '/ls') await handleLongShortRatio(env, chatId);
     else if (text === '/fear') await handleFearGreed(env, chatId);
     else if (text === '/status') await handleStatus(env, chatId);
     else if (text === '/settings') await handleSettings(env, chatId);
     else if (text === '/help') await handleHelp(env, chatId);
-    else if (text.startsWith('/price ')) {
-      const sym = text.split(' ')[1]?.toUpperCase();
-      if (sym) await handleQuickPrice(env, chatId, sym);
-    } else await handleTextMessage(env, chatId, text);
+    else await handleTextMessage(env, chatId, text);
   } catch (err) { console.error('Webhook error:', err); }
   return new Response('OK');
 }
