@@ -1,6 +1,6 @@
 import { getAuth } from 'firebase/auth';
 
-const WORKER_BASE = import.meta.env.VITE_WORKER_URL || 'https://trade-os.aviniazov7.workers.dev';
+const WORKER_BASE = import.meta.env.VITE_WORKER_URL || 'https://trade-os.tradeos.workers.dev';
 
 // AI news digest — a single cron-prepared brief for all users (see the
 // worker's "AI News Digest" section). Returns { market, updatedAt, stories }

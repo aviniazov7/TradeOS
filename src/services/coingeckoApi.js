@@ -2,7 +2,7 @@ const CG_BASE = 'https://api.coingecko.com/api/v3';
 // Default to the deployed worker (same as exchangeService/NewsPage) so CI builds
 // without VITE_WORKER_URL still proxy through the worker instead of hitting
 // Binance/CoinGecko directly from the browser (which caused 503/408 on prices).
-const WORKER_URL = import.meta.env.VITE_WORKER_URL || 'https://trade-os.aviniazov7.workers.dev';
+const WORKER_URL = import.meta.env.VITE_WORKER_URL || 'https://trade-os.tradeos.workers.dev';
 // Use worker proxy for CoinGecko (details/charts) and Binance (prices/klines)
 const BASE_URL = WORKER_URL ? `${WORKER_URL}/cg` : CG_BASE;
 // Binance through worker proxy to avoid CORS / geo-restriction issues in browser

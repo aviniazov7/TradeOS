@@ -3429,7 +3429,7 @@ async function handleContact(request, env, cors) {
     if (env.BOT_TOKEN) {
       result = await sendMessage(env.BOT_TOKEN, devChatId, text);
     } else {
-      const proxy = await fetch('https://tradeos-alerts.aviniazov7.workers.dev/contact', {
+      const proxy = await fetch('https://tradeos-alerts.tradeos.workers.dev/contact', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json', 'Authorization': authHeader },
         body: JSON.stringify(body),
@@ -3470,6 +3470,10 @@ async function handleContact(request, env, cors) {
 const ALLOWED_ORIGINS = [
   'https://tradeos-91a58.web.app',
   'https://tradeos-91a58.firebaseapp.com',
+  'https://trade-os.tradeos.workers.dev',
+  'https://trade-os-staging.tradeos.workers.dev',
+  // Kept during the Cloudflare-account migration window; drop once the old
+  // account's Workers are decommissioned.
   'https://trade-os.aviniazov7.workers.dev',
   'https://trade-os-staging.aviniazov7.workers.dev',
 ];

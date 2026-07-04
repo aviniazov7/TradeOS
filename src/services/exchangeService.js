@@ -1,7 +1,7 @@
 import { auth } from './firebase';
 
 const WORKER_URL =
-  import.meta.env.VITE_WORKER_URL || 'https://trade-os.aviniazov7.workers.dev';
+  import.meta.env.VITE_WORKER_URL || 'https://trade-os.tradeos.workers.dev';
 
 async function authedFetch(path, body, method = 'POST') {
   const token = await auth.currentUser?.getIdToken();

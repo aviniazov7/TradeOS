@@ -5,7 +5,7 @@ import toast from 'react-hot-toast';
 import { useAuth } from '../../contexts/AuthContext';
 import { getUserSetting } from '../../services/firestoreService';
 
-const WORKER_URL = import.meta.env.VITE_WORKER_URL || 'https://trade-os.aviniazov7.workers.dev';
+const WORKER_URL = import.meta.env.VITE_WORKER_URL || 'https://trade-os.tradeos.workers.dev';
 const MAX_LEN = 2000;
 const MIN_LEN = 3;
 

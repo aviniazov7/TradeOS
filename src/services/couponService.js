@@ -1,6 +1,6 @@
 import { getAuth } from 'firebase/auth';
 
-const WORKER_BASE = import.meta.env.VITE_WORKER_URL || 'https://trade-os.aviniazov7.workers.dev';
+const WORKER_BASE = import.meta.env.VITE_WORKER_URL || 'https://trade-os.tradeos.workers.dev';
 
 // Public share link for a coupon. Routes through the worker so messaging apps
 // (WhatsApp/Telegram) get a coupon-specific rich preview; the worker instantly

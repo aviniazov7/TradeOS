@@ -52,7 +52,7 @@ jobs:
         run: |
           if [ "${{ github.event_name }}" = "push" ] && [ "${{ github.ref }}" = "refs/heads/main" ]; then
             echo "kind=production" >> $GITHUB_OUTPUT
-            echo "worker_url=https://trade-os.aviniazov7.workers.dev" >> $GITHUB_OUTPUT
+            echo "worker_url=https://trade-os.tradeos.workers.dev" >> $GITHUB_OUTPUT
           elif [ "${{ github.event_name }}" = "push" ] && [ "${{ github.ref }}" = "refs/heads/dev" ]; then
             echo "kind=staging" >> $GITHUB_OUTPUT
             # NOTE: there is no real staging Worker. The root wrangler.jsonc
@@ -61,12 +61,12 @@ jobs:
             # deploy to the production worker "trade-os" anyway (verified in
             # CI logs). trade-os-staging.workers.dev has no live deployment,
             # so builds must point at the worker that actually serves traffic.
-            echo "worker_url=https://trade-os.aviniazov7.workers.dev" >> $GITHUB_OUTPUT
+            echo "worker_url=https://trade-os.tradeos.workers.dev" >> $GITHUB_OUTPUT
             echo "channel=dev" >> $GITHUB_OUTPUT
           else
             # Feature branch push OR pull request — preview channel only.
             echo "kind=preview" >> $GITHUB_OUTPUT
-            echo "worker_url=https://trade-os.aviniazov7.workers.dev" >> $GITHUB_OUTPUT
+            echo "worker_url=https://trade-os.tradeos.workers.dev" >> $GITHUB_OUTPUT
             if [ "${{ github.event_name }}" = "pull_request" ]; then
               CHANNEL="pr-${{ github.event.number }}"
             else

@@ -1,7 +1,7 @@
 import { useEffect, useState, useCallback } from 'react';
 import { getAuth } from 'firebase/auth';
 
-const WORKER_BASE = import.meta.env.VITE_WORKER_URL || 'https://trade-os.aviniazov7.workers.dev';
+const WORKER_BASE = import.meta.env.VITE_WORKER_URL || 'https://trade-os.tradeos.workers.dev';
 
 // Tracks the signed-in user's daily AI quota (used / limit). Resets at Israel
 // midnight on the worker side. Call refresh() after every AI request so the
