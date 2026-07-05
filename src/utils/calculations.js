@@ -115,9 +115,16 @@ export function getTradeResult(pnl) {
  * Calculate win rate from an array of trades
  */
 export function calculateWinRate(trades) {
-  if (!trades.length) return 0;
+  // Win rate is over DECIDED trades only (wins vs losses). Dividing by the full
+  // array wrongly counts breakevens and any malformed/undecided rows (e.g. a
+  // 'closed' status with no exit price) in the denominator, which can crater a
+  // real ~55% win rate down to single digits. This also keeps the headline
+  // consistent with the "41W 33L" sub-label, which counts only wins + losses.
   const wins = trades.filter((t) => t.result === 'win').length;
-  return (wins / trades.length) * 100;
+  const losses = trades.filter((t) => t.result === 'loss').length;
+  const decided = wins + losses;
+  if (!decided) return 0;
+  return (wins / decided) * 100;
 }
 
 /**
