@@ -17,7 +17,7 @@ import { useCryptoPrices } from '../../hooks/useCryptoPrices';
 import { useJournalContext } from '../../contexts/JournalContext';
 import { useAuth } from '../../contexts/AuthContext';
 import { calculatePnL, calculateFuturesPnL } from '../../utils/calculations';
-import { useDashboardStats } from '../../hooks/useDashboardStats';
+import { useDashboardStats, safePnl } from '../../hooks/useDashboardStats';
 import { useLinkedExchangeBalance } from '../../hooks/useLinkedExchangeBalance';
 import { addToUserCollection, timestamp } from '../../services/firestoreService';
 import { Timestamp } from 'firebase/firestore';
@@ -150,17 +150,25 @@ export default function TradeJournal() {
   // so stats.currentBalance = effectiveInitial + totalPnL = liveBalance.
   const liveExchangeBalance = useLinkedExchangeBalance(activeJournal?.exchange);
   const balanceIsLive = liveExchangeBalance != null;
+  // Must use the SAME closed-trade predicate as useDashboardStats (which counts
+  // 'partial' rows too), otherwise effectiveInitial is calibrated against a
+  // different PnL total than stats.totalPnL and the derived currentBalance
+  // drifts away from the real wallet by exactly the partial rows' PnL.
   const totalClosedPnL = useMemo(
     () => trades
-      .filter((t) => t.status === 'closed' || (parseFloat(t.exitPrice) > 0 && t.status !== 'partial'))
-      .reduce((s, t) => s + (t.netPnl ?? t.pnl ?? 0), 0),
+      .filter((t) => t.status === 'closed' || t.status === 'partial' || parseFloat(t.exitPrice) > 0)
+      .reduce((s, t) => s + safePnl(t), 0),
     [trades]
   );
   const effectiveInitial = balanceIsLive
     ? Math.max(0, liveExchangeBalance - totalClosedPnL)
     : (activeJournal?.initialBalance || 0);
   const stats = useDashboardStats(trades, effectiveInitial, period);
-  const displayedCurrentBalance = stats.currentBalance;
+  // The headline balance always shows the true wallet when a live exchange is
+  // linked — stats.currentBalance is period-scoped (initial + period PnL) and
+  // only equals the wallet when period === 'all', so reading it directly would
+  // make the headline swing whenever the user changes the period filter.
+  const displayedCurrentBalance = balanceIsLive ? liveExchangeBalance : stats.currentBalance;
 
   useEffect(() => {
     if (searchParams.get('new') === '1') setFormOpen(true);
