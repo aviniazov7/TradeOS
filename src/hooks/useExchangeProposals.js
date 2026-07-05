@@ -1,14 +1,16 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
+import { useAuth } from '../contexts/AuthContext';
 import { syncExchangeTrades, syncOpenPositions } from '../services/exchangeService';
 
 // Exchanges the Worker can pull trades from via API (the rest are CSV-only).
 const SYNCABLE = new Set(['bybit', 'mexc', 'okx', 'bitget']);
 
-// In-memory cache keyed by exchange id so switching tabs / journals back and
-// forth doesn't re-hit the exchange API (and the Worker's KV) every time. A
-// manual refresh() bypasses it. Cleared implicitly when the tab is closed.
+// In-memory cache keyed by "uid|exchangeId" so switching tabs / journals back
+// and forth doesn't re-hit the exchange API (and the Worker's KV) every time.
+// The uid scope prevents a soft account switch from serving the previous
+// user's rows. A manual refresh() bypasses the TTL.
 const CACHE_TTL_MS = 3 * 60_000; // 3 minutes
-const cache = new Map(); // exchangeId -> { rows, ts }
+const cache = new Map(); // "uid|exchangeId" -> { rows, ts }
 
 async function fetchProposals(exchangeId) {
   const [tradesResult, openResult] = await Promise.allSettled([
@@ -31,21 +33,23 @@ async function fetchProposals(exchangeId) {
 // can proactively PROPOSE them for import (instead of the user having to open
 // the exchange tab and click sync). Returns the raw synced rows; the caller
 // dedups against the journal's existing externalIds so already-logged trades
-// aren't re-proposed.
+// aren't re-proposed. `enabled` should reflect that the exchange is actually
+// connected (not merely syncable) so we don't fetch / error for a stale link.
 export function useExchangeProposals(exchangeId, { enabled = true } = {}) {
+  const { user } = useAuth();
+  const uid = user?.uid || null;
   const [rows, setRows] = useState([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState(null);
   const [lastSyncedAt, setLastSyncedAt] = useState(null);
   const reqIdRef = useRef(0);
 
-  const active = enabled && !!exchangeId && SYNCABLE.has(exchangeId);
+  const active = enabled && !!uid && !!exchangeId && SYNCABLE.has(exchangeId);
+  const cacheKey = active ? `${uid}|${exchangeId}` : null;
 
   const load = useCallback(async (force = false) => {
-    if (!active) { setRows([]); return; }
-    const cached = cache.get(exchangeId);
-    // Fresh cache-hit is provided synchronously via the effect below; this
-    // guard just avoids a redundant network fetch when nothing forced it.
+    if (!cacheKey) { setRows([]); return; }
+    const cached = cache.get(cacheKey);
     if (!force && cached && Date.now() - cached.ts < CACHE_TTL_MS) {
       setRows(cached.rows);
       setLastSyncedAt(cached.ts);
@@ -56,8 +60,11 @@ export function useExchangeProposals(exchangeId, { enabled = true } = {}) {
     setError(null);
     try {
       const fresh = await fetchProposals(exchangeId);
-      cache.set(exchangeId, { rows: fresh, ts: Date.now() });
-      if (reqId !== reqIdRef.current) return; // a newer request superseded us
+      // A newer request superseded us — do NOT touch React state OR the cache,
+      // otherwise a slow, older snapshot could overwrite the cache with stale
+      // rows carrying a fresh timestamp and get served again on remount.
+      if (reqId !== reqIdRef.current) return;
+      cache.set(cacheKey, { rows: fresh, ts: Date.now() });
       setRows(fresh);
       setLastSyncedAt(Date.now());
     } catch (e) {
@@ -66,20 +73,20 @@ export function useExchangeProposals(exchangeId, { enabled = true } = {}) {
     } finally {
       if (reqId === reqIdRef.current) setLoading(false);
     }
-  }, [active, exchangeId]);
+  }, [cacheKey, exchangeId]);
 
   useEffect(() => {
-    if (!active) { setRows([]); setError(null); setLastSyncedAt(null); return; }
+    if (!cacheKey) { setRows([]); setError(null); setLastSyncedAt(null); return; }
     // Serve a fresh cache entry immediately (no spinner) on remount; otherwise
     // kick off a background fetch.
-    const cached = cache.get(exchangeId);
+    const cached = cache.get(cacheKey);
     if (cached && Date.now() - cached.ts < CACHE_TTL_MS) {
       setRows(cached.rows);
       setLastSyncedAt(cached.ts);
     } else {
       load(false);
     }
-  }, [active, exchangeId, load]);
+  }, [cacheKey, load]);
 
   const refresh = useCallback(() => load(true), [load]);
 

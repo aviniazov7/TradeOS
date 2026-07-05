@@ -750,6 +750,7 @@ export default function TradeJournal() {
               exchange={activeJournal.exchange}
               trades={trades}
               onImportTrade={importExchangeTrade}
+              enabled={balanceIsLive}
             />
           )}
           {trades.length > 0 && <TradeFilters filters={filters} onChange={setFilters} trades={trades} />}
@@ -1115,7 +1116,7 @@ export default function TradeJournal() {
       )}
 
       <TradeForm isOpen={formOpen} onClose={handleCloseForm} trade={editingTrade} onSave={handleSave}
-        riskSettings={{ riskType: activeJournal?.riskType, riskValue: activeJournal?.riskValue, currentBalance: stats.currentBalance }}
+        riskSettings={{ riskType: activeJournal?.riskType, riskValue: activeJournal?.riskValue, currentBalance: displayedCurrentBalance }}
         journalAssetClass={activeJournal?.assetClass || 'crypto'}
         livePrices={prices} />
 

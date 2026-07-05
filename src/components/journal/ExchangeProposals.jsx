@@ -40,13 +40,14 @@ function ExLogo({ id, name, accent, size = 40 }) {
 // so the user no longer has to open the exchange tab and click sync manually.
 // `trades` is the journal's current trades (used to dedup already-logged rows);
 // `onImportTrade` is the single-trade import handler shared with ExchangeSettings.
-export default function ExchangeProposals({ exchange, trades, onImportTrade }) {
+export default function ExchangeProposals({ exchange, trades, onImportTrade, enabled = true }) {
   const meta = useMemo(() => EXCHANGES.find((e) => e.id === exchange), [exchange]);
-  const { rows, loading, error, refresh, active, lastSyncedAt } = useExchangeProposals(exchange);
+  const { rows, loading, error, refresh, active, lastSyncedAt } = useExchangeProposals(exchange, { enabled });
 
   const [dismissedKeys, setDismissedKeys] = useState(() => new Set());
   const [collapsed, setCollapsed] = useState(false);
   const [modalOpen, setModalOpen] = useState(false);
+  const [modalTrades, setModalTrades] = useState([]);
   const [importing, setImporting] = useState(false);
 
   // Keys already present in the journal — the row is only a proposal if it's
@@ -81,20 +82,29 @@ export default function ExchangeProposals({ exchange, trades, onImportTrade }) {
       const results = await Promise.allSettled(selected.map((t) => onImportTrade(t)));
       const ok = results.filter((r) => r.status === 'fulfilled').length;
       const failed = results.length - ok;
-      // Hide everything we attempted so the banner updates instantly, without
-      // waiting for the Firestore realtime round-trip.
+      // Optimistically hide ONLY the rows that imported successfully so the
+      // banner updates instantly without waiting for the Firestore realtime
+      // round-trip. Failed rows stay in the list so a refresh re-surfaces them
+      // for retry instead of vanishing silently.
       setDismissedKeys((prev) => {
         const n = new Set(prev);
-        for (const t of selected) { const k = keyOf(t); if (k) n.add(k); }
+        results.forEach((r, i) => {
+          if (r.status === 'fulfilled') { const k = keyOf(selected[i]); if (k) n.add(k); }
+        });
         return n;
       });
       setModalOpen(false);
       if (ok > 0) toast.success(`🎉 נוספו ${ok} עסקאות ליומן`);
-      if (failed > 0) toast.error(`נכשלו ${failed} עסקאות`);
+      if (failed > 0) toast.error(`נכשלו ${failed} עסקאות — נסה שוב`);
     } finally {
       setImporting(false);
     }
   };
+
+  // Snapshot the proposals when the modal opens so SyncModal's index-based
+  // selection can't misalign if the live list reindexes (a background refresh
+  // or a Firestore trades update) while the user is choosing.
+  const openReview = () => { setModalTrades(proposals); setModalOpen(true); };
 
   // ── Collapsed / nothing-to-propose states ─────────────────────────────────
   const nothingNew = !loading && !error && proposals.length === 0;
@@ -176,7 +186,7 @@ export default function ExchangeProposals({ exchange, trades, onImportTrade }) {
               {/* LEFT (RTL last): actions */}
               <div className="flex items-center gap-1.5 shrink-0">
                 <motion.button whileHover={{ scale: 1.05 }} whileTap={{ scale: 0.96 }}
-                  onClick={() => setModalOpen(true)}
+                  onClick={openReview}
                   className="flex items-center gap-1.5 px-3.5 py-2 rounded-xl text-sm font-bold cursor-pointer transition-colors"
                   style={{ background: accent, color: '#000' }}>
                   <Zap className="w-4 h-4" />
@@ -201,7 +211,7 @@ export default function ExchangeProposals({ exchange, trades, onImportTrade }) {
         {modalOpen && (
           <SyncModal
             exchange={name}
-            trades={proposals}
+            trades={modalTrades}
             existingExternalIds={existingExternalIds}
             onClose={() => !importing && setModalOpen(false)}
             onImport={handleImport}
