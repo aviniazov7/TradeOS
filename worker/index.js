@@ -163,7 +163,7 @@ const FIREBASE_PROJECT_ID = 'tradeos-91a58';
 // Public key is safe to expose (the client uses it as applicationServerKey).
 // The matching private key is provided to the worker as env.VAPID_JWK.
 const VAPID_PUBLIC_KEY = 'BLFZCOugKM1d2jqTwgmGTF9VjFwQEMNo92l2gfNVk7eBYz1Gnrr0jFBS5jR1bRJ5MchpVkVNiqS8wtzUqouBHRk';
-const VAPID_SUBJECT = 'mailto:aviniazov7@icloud.com';
+const VAPID_SUBJECT = 'mailto:tradeos.app@gmail.com';
 
 function b64urlToBytes(s) {
   s = s.replace(/-/g, '+').replace(/_/g, '/');
@@ -1483,20 +1483,14 @@ async function saveWatchlist(env, chatId, list) {
 // ==================== Main Menu ====================
 
 function mainMenuKeyboard() {
+  // Minimal bot by product decision: reminders (via settings) + help only.
+  // Prices/market/alerts/sentiment/status all live in the web app now; the bot
+  // still delivers push notifications (trades, daily summary) via the cron.
   return [
     [
-      { text: '💰 מחירים', callback_data: 'menu_prices' },
-      { text: '🔔 התראות מחיר', callback_data: 'menu_alerts' },
-    ],
-    [
-      { text: '📈 נתוני שוק', callback_data: 'menu_market' },
-      { text: '😱 פחד/חמדנות', callback_data: 'menu_fear' },
-    ],
-    [
-      { text: '📊 סטטוס התראות', callback_data: 'menu_status' },
       { text: '⚙️ הגדרות', callback_data: 'menu_settings' },
+      { text: '❓ עזרה', callback_data: 'menu_help' },
     ],
-    [{ text: '❓ עזרה', callback_data: 'menu_help' }],
   ];
 }
 
@@ -1524,13 +1518,10 @@ async function handleStart(env, chatId, text, username = null) {
     await env.ALERTS_KV.delete(`tgconnect:${param}`);
     const welcome =
       '🤖 <b>ברוך הבא ל-TradeOS Bot!</b>\n\n' +
-      '💰 <b>מחירים</b> — ווצ\'ליסט אישי עם מחירים חיים\n' +
-      '📈 <b>נתוני שוק</b> — Funding, OI, Long/Short (עם גרפים)\n' +
-      '🔔 <b>התראות מחיר</b> — התראה כשמטבע מגיע ליעד\n' +
-      '😱 <b>פחד/חמדנות</b> — סנטימנט השוק\n' +
-      '📝 <b>תזכורת יומן</b> — תזכורת יומית\n' +
+      '📝 <b>תזכורת יומן</b> — תזכורת יומית למלא את היומן\n' +
       '📊 <b>סיכום יומי</b> — סטטיסטיקות סוף יום\n' +
-      '📅 <b>לוח אירועים</b> — אירועים כלכליים\n\n' +
+      '📅 <b>לוח אירועים</b> — אירועים כלכליים\n' +
+      '🔔 <b>התראות עסקאות</b> — נפתחה/נסגרה פוזיציה\n\n' +
       'בחר מהתפריט:';
     await sendMessage(env.BOT_TOKEN, chatId, welcome, mainMenuKeyboard());
   } else if (await isRegistered(env, chatId)) {
@@ -1835,22 +1826,8 @@ async function handleHelp(env, chatId) {
     '❓ <b>עזרה — TradeOS Bot</b>\n\n' +
     '<b>פקודות:</b>\n' +
     '/start — תפריט ראשי\n' +
-    '/prices — מחירים (ווצ\'ליסט)\n' +
-    '/funding — Funding Rate\n' +
-    '/oi — Open Interest\n' +
-    '/ls — Long/Short Ratio\n' +
-    '/alerts — ניהול התראות מחיר\n' +
-    '/price BTC — מחיר מטבע ספציפי\n' +
-    '/fear — מדד פחד/חמדנות\n' +
-    '/status — סטטוס התראות\n' +
     '/settings — הגדרות תזכורות\n' +
     '/help — עזרה\n\n' +
-    '<b>💰 ווצ\'ליסט:</b>\n' +
-    'ערוך את רשימת המטבעות שלך דרך כפתור "⭐ ערוך ווצ\'ליסט" במסך המחירים.\n\n' +
-    '<b>📈 נתוני שוק:</b>\n' +
-    '💸 Funding Rate — שיעורי מימון (עם גרף)\n' +
-    '📊 Open Interest — פוזיציות פתוחות (עם גרף)\n' +
-    '📊 Long/Short Ratio — יחס לונג/שורט (עם גרף)\n\n' +
     '<b>⚙️ הגדרות:</b>\n' +
     '📝 תזכורת יומן — תזכורת יומית למלא את היומן\n' +
     '📊 סיכום יומי — סטטיסטיקות סוף יום\n' +
@@ -1997,17 +1974,19 @@ async function handleCallback(env, callbackQuery) {
 
   // Main menu
   if (data === 'menu_main') { await editMessage(env.BOT_TOKEN, chatId, messageId, '🤖 <b>TradeOS Bot</b>\n\nבחר מהתפריט:', mainMenuKeyboard()); return; }
-  if (data === 'menu_prices') return handlePrices(env, chatId);
-  if (data === 'menu_alerts') return handleAlerts(env, chatId);
-  if (data === 'menu_market') return handleMarketMenu(env, chatId);
-  if (data === 'menu_fear') return handleFearGreed(env, chatId);
-  if (data === 'menu_status') return handleStatus(env, chatId);
   if (data === 'menu_help') return handleHelp(env, chatId);
 
-  // Market data
-  if (data === 'mkt_funding') return handleFunding(env, chatId);
-  if (data === 'mkt_oi') return handleOpenInterest(env, chatId);
-  if (data === 'mkt_ls') return handleLongShortRatio(env, chatId);
+  // Retired features (prices, market data, price-alerts, sentiment, status) —
+  // all moved to the web app. Old inline buttons still in users' chat history
+  // land here → a friendly redirect instead of an error.
+  if (data === 'menu_prices' || data === 'menu_market' || data === 'menu_alerts'
+      || data === 'menu_fear' || data === 'menu_status'
+      || data === 'mkt_funding' || data === 'mkt_oi' || data === 'mkt_ls') {
+    await sendMessage(env.BOT_TOKEN, chatId,
+      '💡 המחירים, ההתראות ונתוני השוק עברו לאפליקציה — שם הכל חי ומעודכן.',
+      [[{ text: '🔙 תפריט ראשי', callback_data: 'menu_main' }]]);
+    return;
+  }
 
   // Settings
   if (data === 'menu_settings') return handleSettings(env, chatId, messageId);
@@ -2154,7 +2133,10 @@ async function handleWebhook(request, env) {
     const update = await request.json();
     if (update.callback_query) {
       const cbChatId = update.callback_query.message?.chat?.id;
-      if (cbChatId) bumpTgUsage(env, cbChatId, 'button').catch(() => {});
+      // Only record usage for already-registered chats — a forged webhook
+      // update (when TG_WEBHOOK_SECRET is unset) must not be able to write KV
+      // for an arbitrary chatId. handleCallback re-checks isRegistered too.
+      if (cbChatId && await isRegistered(env, cbChatId)) bumpTgUsage(env, cbChatId, 'button').catch(() => {});
       await handleCallback(env, update.callback_query);
       return new Response('OK');
     }
@@ -2163,34 +2145,28 @@ async function handleWebhook(request, env) {
     const chatId = message.chat.id;
     const text = (message.text || '').trim();
     const username = message.from?.username || null;
-    // Backfill the @username for already-connected users (any message), so the
-    // dev's "open chat" link works without them re-running /start. One write
-    // per user (skipped once stored).
+
+    // /start is self-gating (the connect param is an unguessable server-issued
+    // code, validated inside handleStart before any KV write).
+    if (text.startsWith('/start')) { await handleStart(env, chatId, text, username); return new Response('OK'); }
+
+    // Everything else requires an already-registered user. Forged/unauthenticated
+    // updates for unknown chatIds are dropped here with ZERO KV writes — this is
+    // the fail-safe for when TG_WEBHOOK_SECRET isn't configured.
+    if (!(await requireAuth(env, chatId))) return new Response('OK');
+
+    // Registered user — safe to record incidental state now (moved AFTER auth).
+    // Backfill @username (one write, skipped once stored) for the dev's chat link.
     if (username) {
       const uk = `tgusername:${chatId}`;
       if ((await env.ALERTS_KV.get(uk)) !== username) await env.ALERTS_KV.put(uk, username);
     }
-
-    // Lightweight bot-usage stats for the admin panel: total interactions,
-    // last-used timestamp and last command. One KV read+write per message —
-    // bot volume is low, so this is well within the free-tier write budget.
     bumpTgUsage(env, chatId, text.startsWith('/') ? text.split(' ')[0] : 'text').catch(() => {});
 
-    if (text.startsWith('/start')) await handleStart(env, chatId, text, username);
-    else if (!(await requireAuth(env, chatId))) { /* silent */ }
-    else if (text === '/prices') await handlePrices(env, chatId);
-    else if (text === '/alerts') await handleAlerts(env, chatId);
-    else if (text === '/funding') await handleFunding(env, chatId);
-    else if (text === '/oi') await handleOpenInterest(env, chatId);
-    else if (text === '/ls') await handleLongShortRatio(env, chatId);
-    else if (text === '/fear') await handleFearGreed(env, chatId);
-    else if (text === '/status') await handleStatus(env, chatId);
-    else if (text === '/settings') await handleSettings(env, chatId);
+    // Minimal bot: only reminders (settings) + help.
+    if (text === '/settings') await handleSettings(env, chatId);
     else if (text === '/help') await handleHelp(env, chatId);
-    else if (text.startsWith('/price ')) {
-      const sym = text.split(' ')[1]?.toUpperCase();
-      if (sym) await handleQuickPrice(env, chatId, sym);
-    } else await handleTextMessage(env, chatId, text);
+    else await handleTextMessage(env, chatId, text);
   } catch (err) { console.error('Webhook error:', err); }
   return new Response('OK');
 }
@@ -3472,10 +3448,6 @@ const ALLOWED_ORIGINS = [
   'https://tradeos-91a58.firebaseapp.com',
   'https://trade-os.tradeos.workers.dev',
   'https://trade-os-staging.tradeos.workers.dev',
-  // Kept during the Cloudflare-account migration window; drop once the old
-  // account's Workers are decommissioned.
-  'https://trade-os.aviniazov7.workers.dev',
-  'https://trade-os-staging.aviniazov7.workers.dev',
 ];
 // Firebase Hosting preview channels have URLs like
 // https://tradeos-91a58--CHANNEL-HASH.web.app and are created automatically
@@ -3754,6 +3726,21 @@ async function handleRequest(request, env) {
     if (env.TG_WEBHOOK_SECRET) setWebhookUrl += `&secret_token=${encodeURIComponent(env.TG_WEBHOOK_SECRET)}`;
     const res = await fetch(setWebhookUrl);
     const json = await res.json();
+    // Also (re)set the slash-command menu — trimmed to the commands that still
+    // work in the bot. setMyCommands REPLACES the whole list, so this removes
+    // the retired /prices,/funding,/oi,/ls,/price,/alerts,/fear,/status. Best
+    // effort: a failure here doesn't fail the webhook registration.
+    await fetch(`https://api.telegram.org/bot${env.BOT_TOKEN}/setMyCommands`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        commands: [
+          { command: 'start', description: 'תפריט ראשי' },
+          { command: 'settings', description: 'הגדרות תזכורות' },
+          { command: 'help', description: 'עזרה' },
+        ],
+      }),
+    }).catch(() => {});
     // Don't echo Telegram's raw payload — just the success flag.
     return new Response(JSON.stringify({ ok: json.ok === true }), { headers: { ...cors, 'Content-Type': 'application/json' } });
   }

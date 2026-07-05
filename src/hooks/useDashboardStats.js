@@ -47,6 +47,15 @@ function toDate(d) {
   return d.toDate ? d.toDate() : new Date(d);
 }
 
+// Net PnL for a trade, guaranteed finite. `netPnl`/`pnl` can be undefined,
+// null, NaN (e.g. a bad parse from an exchange import), or a numeric string;
+// any of those silently poison every sum/chart that touches them. Coerce and
+// default to 0 so a single dirty row can't blank the whole dashboard.
+export function safePnl(t) {
+  const v = Number(t?.netPnl ?? t?.pnl ?? 0);
+  return Number.isFinite(v) ? v : 0;
+}
+
 export function useDashboardStats(trades, initialBalance = 0, period = 'all') {
   // Step 1: Filter & sort trades
   const { closed, sorted, openCount } = useMemo(() => {
@@ -70,7 +79,7 @@ export function useDashboardStats(trades, initialBalance = 0, period = 'all') {
     const wins = closed.filter((t) => t.result === 'win');
     const losses = closed.filter((t) => t.result === 'loss');
 
-    const totalPnL = closed.reduce((s, t) => s + (t.netPnl ?? t.pnl ?? 0), 0);
+    const totalPnL = closed.reduce((s, t) => s + (safePnl(t)), 0);
     const currentBalance = initialBalance + totalPnL;
     const balanceChangePercent = initialBalance > 0 ? (totalPnL / initialBalance) * 100 : 0;
     const winRate = calculateWinRate(closed);
@@ -93,7 +102,7 @@ export function useDashboardStats(trades, initialBalance = 0, period = 'all') {
     today.setHours(0, 0, 0, 0);
     const dailyPnL = closed
       .filter((t) => toDate(t.exitDate) >= today)
-      .reduce((s, t) => s + (t.netPnl ?? t.pnl ?? 0), 0);
+      .reduce((s, t) => s + (safePnl(t)), 0);
 
     // Strategy Performance
     const strategyMap = {};
@@ -103,7 +112,7 @@ export function useDashboardStats(trades, initialBalance = 0, period = 'all') {
       strategyMap[strat].count++;
       if (t.result === 'win') strategyMap[strat].wins++;
       else if (t.result === 'loss') strategyMap[strat].losses++;
-      strategyMap[strat].pnl += t.netPnl ?? t.pnl ?? 0;
+      strategyMap[strat].pnl += safePnl(t);
     });
     const strategyPerformance = Object.entries(strategyMap)
       .map(([name, d]) => ({ name, ...d, winRate: d.count > 0 ? (d.wins / d.count) * 100 : 0 }))
@@ -119,7 +128,7 @@ export function useDashboardStats(trades, initialBalance = 0, period = 'all') {
       monthlyMap[key].count++;
       if (t.result === 'win') monthlyMap[key].wins++;
       else if (t.result === 'loss') monthlyMap[key].losses++;
-      monthlyMap[key].pnl += t.netPnl ?? t.pnl ?? 0;
+      monthlyMap[key].pnl += safePnl(t);
     });
     let cumulativePnl = 0;
     // Keys are formatted YYYY-MM (zero-padded), so a plain string compare gives
@@ -139,7 +148,7 @@ export function useDashboardStats(trades, initialBalance = 0, period = 'all') {
       sessionMap[sess].count++;
       if (t.result === 'win') sessionMap[sess].wins++;
       else if (t.result === 'loss') sessionMap[sess].losses++;
-      sessionMap[sess].pnl += t.netPnl ?? t.pnl ?? 0;
+      sessionMap[sess].pnl += safePnl(t);
     });
     const sessionPerformance = Object.values(sessionMap)
       .map((s) => ({ ...s, winRate: s.count > 0 ? (s.wins / s.count) * 100 : 0, pnl: parseFloat(s.pnl.toFixed(2)) }))
@@ -153,7 +162,7 @@ export function useDashboardStats(trades, initialBalance = 0, period = 'all') {
       const day = toDate(t.exitDate).getDay();
       dayMap[day].count++;
       if (t.result === 'win') dayMap[day].wins++;
-      dayMap[day].pnl += t.netPnl ?? t.pnl ?? 0;
+      dayMap[day].pnl += safePnl(t);
     });
     const dayOfWeekPerformance = Object.values(dayMap)
       .filter((d) => d.count > 0)
@@ -214,13 +223,13 @@ export function useDashboardStats(trades, initialBalance = 0, period = 'all') {
 
   // Step 3: Equity curve + advanced metrics (depends on sorted + balance)
   const advancedStats = useMemo(() => {
-    const returns = closed.map((t) => t.netPnl ?? t.pnl ?? 0);
+    const returns = closed.map((t) => safePnl(t));
     const sharpeRatio = calculateSharpeRatio(returns);
     const sortinoRatio = clampRatio(calculateSortinoRatio(returns));
 
     let equity = initialBalance || 0;
     const equityCurve = sorted.map((t) => {
-      equity += t.netPnl ?? t.pnl ?? 0;
+      equity += safePnl(t);
       return equity;
     });
     // Pass initialBalance as the true starting peak so drawdown from
@@ -245,14 +254,14 @@ export function useDashboardStats(trades, initialBalance = 0, period = 'all') {
     const prePeriodPnl = periodStart
       ? trades
           .filter((t) => (t.exitPrice > 0) && toDate(t.exitDate || t.entryDate) < periodStart)
-          .reduce((s, t) => s + (t.netPnl ?? t.pnl ?? 0), 0)
+          .reduce((s, t) => s + (safePnl(t)), 0)
       : 0;
 
     let eqPeak = (initialBalance || 0) + prePeriodPnl;
     let eqVal = (initialBalance || 0) + prePeriodPnl;
     const equityChartData = sorted.map((t) => {
       const d = toDate(t.exitDate);
-      eqVal += t.netPnl ?? t.pnl ?? 0;
+      eqVal += safePnl(t);
       if (eqVal > eqPeak) eqPeak = eqVal;
       const dd = eqPeak > 0 ? ((eqPeak - eqVal) / eqPeak) * 100 : 0;
       const label = `${String(d.getDate()).padStart(2, '0')}/${String(d.getMonth() + 1).padStart(2, '0')}`;
@@ -271,7 +280,7 @@ export function useDashboardStats(trades, initialBalance = 0, period = 'all') {
       const dateKey = toDate(t.exitDate).toISOString().slice(0, 10);
       const pair = t.pair;
       if (!pairPnlByDate[dateKey]) pairPnlByDate[dateKey] = {};
-      pairPnlByDate[dateKey][pair] = (pairPnlByDate[dateKey][pair] || 0) + (t.netPnl ?? t.pnl ?? 0);
+      pairPnlByDate[dateKey][pair] = (pairPnlByDate[dateKey][pair] || 0) + (safePnl(t));
     });
 
     const allPairs = [...new Set(closed.map((t) => t.pair))].filter((p) => {

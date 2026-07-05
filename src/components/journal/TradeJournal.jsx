@@ -1,4 +1,4 @@
-import { useState, useMemo, useEffect, useRef } from 'react';
+import { useState, useMemo, useEffect, useRef, useCallback } from 'react';
 import { useSearchParams } from 'react-router-dom';
 import { motion } from 'framer-motion';
 import {
@@ -17,7 +17,7 @@ import { useCryptoPrices } from '../../hooks/useCryptoPrices';
 import { useJournalContext } from '../../contexts/JournalContext';
 import { useAuth } from '../../contexts/AuthContext';
 import { calculatePnL, calculateFuturesPnL } from '../../utils/calculations';
-import { useDashboardStats } from '../../hooks/useDashboardStats';
+import { useDashboardStats, safePnl } from '../../hooks/useDashboardStats';
 import { useLinkedExchangeBalance } from '../../hooks/useLinkedExchangeBalance';
 import { addToUserCollection, timestamp } from '../../services/firestoreService';
 import { Timestamp } from 'firebase/firestore';
@@ -42,6 +42,7 @@ import JournalSettingsModal from './JournalSettingsModal';
 import ArchiveAnimation from './ArchiveAnimation';
 import EmptyState from '../shared/EmptyState';
 import ExchangeSettings from '../exchange/ExchangeSettings';
+import ExchangeProposals from './ExchangeProposals';
 import WatchlistPage from '../watchlist/WatchlistPage';
 import TradeShareModal from './TradeShareModal';
 import JournalSkeleton from './JournalSkeleton';
@@ -150,17 +151,121 @@ export default function TradeJournal() {
   // so stats.currentBalance = effectiveInitial + totalPnL = liveBalance.
   const liveExchangeBalance = useLinkedExchangeBalance(activeJournal?.exchange);
   const balanceIsLive = liveExchangeBalance != null;
+  // Must use the SAME closed-trade predicate as useDashboardStats (which counts
+  // 'partial' rows too), otherwise effectiveInitial is calibrated against a
+  // different PnL total than stats.totalPnL and the derived currentBalance
+  // drifts away from the real wallet by exactly the partial rows' PnL.
   const totalClosedPnL = useMemo(
     () => trades
-      .filter((t) => t.status === 'closed' || (parseFloat(t.exitPrice) > 0 && t.status !== 'partial'))
-      .reduce((s, t) => s + (t.netPnl ?? t.pnl ?? 0), 0),
+      .filter((t) => t.status === 'closed' || t.status === 'partial' || parseFloat(t.exitPrice) > 0)
+      .reduce((s, t) => s + safePnl(t), 0),
     [trades]
   );
   const effectiveInitial = balanceIsLive
     ? Math.max(0, liveExchangeBalance - totalClosedPnL)
     : (activeJournal?.initialBalance || 0);
   const stats = useDashboardStats(trades, effectiveInitial, period);
-  const displayedCurrentBalance = stats.currentBalance;
+  // The headline balance always shows the true wallet when a live exchange is
+  // linked — stats.currentBalance is period-scoped (initial + period PnL) and
+  // only equals the wallet when period === 'all', so reading it directly would
+  // make the headline swing whenever the user changes the period filter.
+  const displayedCurrentBalance = balanceIsLive ? liveExchangeBalance : stats.currentBalance;
+
+  // externalIds already in this journal — reused by both the exchange tab and
+  // the trades-tab proposal banner to flag which synced rows are updates.
+  const existingExternalIds = useMemo(
+    () => new Set(trades.filter((t) => t.externalId).map((t) => t.externalId)),
+    [trades]
+  );
+
+  // Import a single exchange-synced trade into the active journal. Shared by
+  // the exchange tab (ExchangeSettings) and the trades-tab proposal banner
+  // (ExchangeProposals) so both add trades identically, upserting on externalId.
+  const importExchangeTrade = useCallback(async (t) => {
+    if (!user) throw new Error('No user');
+    const safeTs = (raw) => {
+      if (!raw) return null;
+      const d = new Date(raw);
+      return isNaN(d.getTime()) ? null : d;
+    };
+    const entryD = safeTs(t.entryDate) || new Date();
+    const exitD = safeTs(t.exitDate) || entryD;
+    const fees = typeof t.fees === 'number' ? Math.abs(t.fees) : 0;
+
+    // Open positions from the exchange: keep status=open and save every field
+    // the worker provided (stopLoss, tps, leverage, qty, …) instead of
+    // squashing them into a closed-trade shape.
+    if (t._isOpen) {
+      const ep = t.entryPrice > 0 ? t.entryPrice : 0;
+      const qty = t.quantity > 0 ? t.quantity : 0;
+      const lev = Math.min(200, Math.max(1, t.leverage || DEFAULT_LEVERAGE));
+      return addToUserCollection(user.uid, 'trades', {
+        pair: t.pair, direction: t.direction,
+        entryPrice: ep, quantity: qty, leverage: lev,
+        stopLoss: parseFloat(t.stopLoss) || 0,
+        tps: Array.isArray(t.tps) ? t.tps : [],
+        fees,
+        status: 'open',
+        orderType: t.orderType || 'market',
+        entryDate: entryD,
+        source: t.source, externalId: t.externalId,
+        positionSize: t.positionSize || ep * qty,
+        margin: ep * qty / lev,
+        ...(t.session ? { session: t.session } : {}),
+        ...(t.liquidationPrice ? { liquidationPrice: t.liquidationPrice } : {}),
+        journalId: activeJournalId || null,
+        createdAt: timestamp(),
+        updatedAt: timestamp(),
+      });
+    }
+
+    // Upsert: update existing trade if externalId already in journal
+    const existing = t.externalId
+      ? trades.find((tr) => tr.externalId === t.externalId)
+      : null;
+    if (existing) {
+      return updateTrade(existing.id, {
+        entryDate: entryD,
+        exitDate: exitD,
+        fees,
+        entryPrice: t.entryPrice > 0 ? t.entryPrice : existing.entryPrice,
+        exitPrice: t.exitPrice > 0 ? t.exitPrice : existing.exitPrice,
+        pnlFromExchange: t.pnlFromExchange ?? existing.pnlFromExchange,
+        pnl: t.pnlFromExchange ?? existing.pnl,
+        netPnl: t.pnlFromExchange ?? existing.netPnl,
+        updatedAt: timestamp(),
+      });
+    }
+
+    // Create new trade — compute netPnl correctly by subtracting fees, and
+    // derive result from netPnl (not gross pnl) so a small win eaten by large
+    // fees is correctly classified as a loss.
+    const ep = t.entryPrice > 0 ? t.entryPrice : 1;
+    // exitPrice fallback: use entry price (yields 0 PnL) instead of 1, which
+    // previously surfaced as a phantom TP at price 1.
+    const xp = t.exitPrice > 0 ? t.exitPrice : ep;
+    const qty = t.quantity > 0 ? t.quantity : 1;
+    const lev = Math.min(200, Math.max(1, t.leverage || DEFAULT_LEVERAGE));
+    const pnl = t.pnlFromExchange ?? 0;
+    const netPnlImport = pnl - fees;
+    const result = netPnlImport > 0 ? 'win' : netPnlImport < 0 ? 'loss' : 'breakeven';
+    return addToUserCollection(user.uid, 'trades', {
+      pair: t.pair, direction: t.direction,
+      entryPrice: ep, exitPrice: xp, quantity: qty, leverage: lev,
+      stopLoss: parseFloat(t.stopLoss) || 0,
+      tps: Array.isArray(t.tps) ? t.tps : [],
+      ...(t.session ? { session: t.session } : {}),
+      fees, status: 'closed',
+      entryDate: entryD, exitDate: exitD,
+      source: t.source, externalId: t.externalId,
+      pnlFromExchange: pnl, pnl, netPnl: netPnlImport,
+      pnlPercent: (pnl / (ep * qty)) * 100 * lev,
+      rrRatio: 0, result,
+      positionSize: ep * qty, margin: (ep * qty) / lev,
+      journalId: activeJournalId,
+      createdAt: Timestamp.fromDate(entryD), updatedAt: timestamp(),
+    });
+  }, [user, trades, updateTrade, activeJournalId]);
 
   useEffect(() => {
     if (searchParams.get('new') === '1') setFormOpen(true);
@@ -640,6 +745,14 @@ export default function TradeJournal() {
 
       {tab === 'trades' && (
         <>
+          {activeJournal?.exchange && (
+            <ExchangeProposals
+              exchange={activeJournal.exchange}
+              trades={trades}
+              onImportTrade={importExchangeTrade}
+              enabled={balanceIsLive}
+            />
+          )}
           {trades.length > 0 && <TradeFilters filters={filters} onChange={setFilters} trades={trades} />}
 
           {filteredTrades.length === 0 && !loading ? (
@@ -992,92 +1105,8 @@ export default function TradeJournal() {
         <div className="mt-2">
           <ExchangeSettings
             journalId={activeJournalId}
-            existingExternalIds={new Set(trades.filter(t => t.externalId).map(t => t.externalId))}
-            onImportTrade={async (t) => {
-              if (!user) throw new Error('No user');
-              const safeTs = (raw) => {
-                if (!raw) return null;
-                const d = new Date(raw);
-                return isNaN(d.getTime()) ? null : d;
-              };
-              const entryD = safeTs(t.entryDate) || new Date();
-              const exitD = safeTs(t.exitDate) || entryD;
-              const fees = typeof t.fees === 'number' ? Math.abs(t.fees) : 0;
-
-              // Open positions from the exchange: keep status=open and save
-              // every field the worker provided (stopLoss, tps, leverage,
-              // qty, …) instead of squashing them into a closed-trade shape.
-              if (t._isOpen) {
-                const ep = t.entryPrice > 0 ? t.entryPrice : 0;
-                const qty = t.quantity > 0 ? t.quantity : 0;
-                const lev = Math.min(200, Math.max(1, t.leverage || DEFAULT_LEVERAGE));
-                return addToUserCollection(user.uid, 'trades', {
-                  pair: t.pair, direction: t.direction,
-                  entryPrice: ep, quantity: qty, leverage: lev,
-                  stopLoss: parseFloat(t.stopLoss) || 0,
-                  tps: Array.isArray(t.tps) ? t.tps : [],
-                  fees,
-                  status: 'open',
-                  orderType: t.orderType || 'market',
-                  entryDate: entryD,
-                  source: t.source, externalId: t.externalId,
-                  positionSize: t.positionSize || ep * qty,
-                  margin: ep * qty / lev,
-                  ...(t.session ? { session: t.session } : {}),
-                  ...(t.liquidationPrice ? { liquidationPrice: t.liquidationPrice } : {}),
-                  journalId: activeJournalId || null,
-                  createdAt: timestamp(),
-                  updatedAt: timestamp(),
-                });
-              }
-
-              // Upsert: update existing trade if externalId already in journal
-              const existing = t.externalId
-                ? trades.find(tr => tr.externalId === t.externalId)
-                : null;
-              if (existing) {
-                return updateTrade(existing.id, {
-                  entryDate: entryD,
-                  exitDate: exitD,
-                  fees,
-                  entryPrice: t.entryPrice > 0 ? t.entryPrice : existing.entryPrice,
-                  exitPrice: t.exitPrice > 0 ? t.exitPrice : existing.exitPrice,
-                  pnlFromExchange: t.pnlFromExchange ?? existing.pnlFromExchange,
-                  pnl: t.pnlFromExchange ?? existing.pnl,
-                  netPnl: t.pnlFromExchange ?? existing.netPnl,
-                  updatedAt: timestamp(),
-                });
-              }
-
-              // Create new trade — compute netPnl correctly by subtracting fees,
-              // and derive result from netPnl (not gross pnl) so a small win
-              // eaten by large fees is correctly classified as a loss
-              const ep = t.entryPrice > 0 ? t.entryPrice : 1;
-              // exitPrice fallback: use entry price (yields 0 PnL) instead of
-              // 1, which previously surfaced as a phantom TP at price 1.
-              const xp = t.exitPrice > 0 ? t.exitPrice : ep;
-              const qty = t.quantity > 0 ? t.quantity : 1;
-              const lev = Math.min(200, Math.max(1, t.leverage || DEFAULT_LEVERAGE));
-              const pnl = t.pnlFromExchange ?? 0;
-              const netPnlImport = pnl - fees;
-              const result = netPnlImport > 0 ? 'win' : netPnlImport < 0 ? 'loss' : 'breakeven';
-              return addToUserCollection(user.uid, 'trades', {
-                pair: t.pair, direction: t.direction,
-                entryPrice: ep, exitPrice: xp, quantity: qty, leverage: lev,
-                stopLoss: parseFloat(t.stopLoss) || 0,
-                tps: Array.isArray(t.tps) ? t.tps : [],
-                ...(t.session ? { session: t.session } : {}),
-                fees, status: 'closed',
-                entryDate: entryD, exitDate: exitD,
-                source: t.source, externalId: t.externalId,
-                pnlFromExchange: pnl, pnl, netPnl: netPnlImport,
-                pnlPercent: (pnl / (ep * qty)) * 100 * lev,
-                rrRatio: 0, result,
-                positionSize: ep * qty, margin: (ep * qty) / lev,
-                journalId: activeJournalId,
-                createdAt: Timestamp.fromDate(entryD), updatedAt: timestamp(),
-              });
-            }}
+            existingExternalIds={existingExternalIds}
+            onImportTrade={importExchangeTrade}
           />
         </div>
       )}
@@ -1087,7 +1116,7 @@ export default function TradeJournal() {
       )}
 
       <TradeForm isOpen={formOpen} onClose={handleCloseForm} trade={editingTrade} onSave={handleSave}
-        riskSettings={{ riskType: activeJournal?.riskType, riskValue: activeJournal?.riskValue, currentBalance: stats.currentBalance }}
+        riskSettings={{ riskType: activeJournal?.riskType, riskValue: activeJournal?.riskValue, currentBalance: displayedCurrentBalance }}
         journalAssetClass={activeJournal?.assetClass || 'crypto'}
         livePrices={prices} />
 
