@@ -26,7 +26,9 @@ import { useNavigate } from 'react-router-dom';
 import { Timestamp } from 'firebase/firestore';
 
 // ── Exchange config ───────────────────────────────────────────────────────────
-const EXCHANGES = [
+// Exported so the trades-tab proposal banner (ExchangeProposals) can reuse the
+// per-exchange display name / accent / canSync flag without duplicating them.
+export const EXCHANGES = [
   {
     id: 'bybit',   name: 'Bybit',   tagline: 'Derivatives Exchange',
     accent: '#F7A600', glow: 'rgba(247,166,0,0.35)',
@@ -218,7 +220,7 @@ function fmtPrice(p) {
   return `$${p.toFixed(4)}`;
 }
 
-function SyncModal({ exchange, trades, onClose, onImport, existingExternalIds = new Set() }) {
+export function SyncModal({ exchange, trades, onClose, onImport, existingExternalIds = new Set() }) {
   const [selected, setSelected] = useState(() => new Set(trades.map((_, i) => i)));
   const [importing, setImporting] = useState(false);
   const toggle = i => setSelected(p => { const n = new Set(p); n.has(i) ? n.delete(i) : n.add(i); return n; });
