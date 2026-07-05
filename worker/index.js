@@ -163,7 +163,7 @@ const FIREBASE_PROJECT_ID = 'tradeos-91a58';
 // Public key is safe to expose (the client uses it as applicationServerKey).
 // The matching private key is provided to the worker as env.VAPID_JWK.
 const VAPID_PUBLIC_KEY = 'BLFZCOugKM1d2jqTwgmGTF9VjFwQEMNo92l2gfNVk7eBYz1Gnrr0jFBS5jR1bRJ5MchpVkVNiqS8wtzUqouBHRk';
-const VAPID_SUBJECT = 'mailto:aviniazov7@icloud.com';
+const VAPID_SUBJECT = 'mailto:tradeos.app@gmail.com';
 
 function b64urlToBytes(s) {
   s = s.replace(/-/g, '+').replace(/_/g, '/');
@@ -2133,7 +2133,10 @@ async function handleWebhook(request, env) {
     const update = await request.json();
     if (update.callback_query) {
       const cbChatId = update.callback_query.message?.chat?.id;
-      if (cbChatId) bumpTgUsage(env, cbChatId, 'button').catch(() => {});
+      // Only record usage for already-registered chats — a forged webhook
+      // update (when TG_WEBHOOK_SECRET is unset) must not be able to write KV
+      // for an arbitrary chatId. handleCallback re-checks isRegistered too.
+      if (cbChatId && await isRegistered(env, cbChatId)) bumpTgUsage(env, cbChatId, 'button').catch(() => {});
       await handleCallback(env, update.callback_query);
       return new Response('OK');
     }
@@ -2142,24 +2145,26 @@ async function handleWebhook(request, env) {
     const chatId = message.chat.id;
     const text = (message.text || '').trim();
     const username = message.from?.username || null;
-    // Backfill the @username for already-connected users (any message), so the
-    // dev's "open chat" link works without them re-running /start. One write
-    // per user (skipped once stored).
+
+    // /start is self-gating (the connect param is an unguessable server-issued
+    // code, validated inside handleStart before any KV write).
+    if (text.startsWith('/start')) { await handleStart(env, chatId, text, username); return new Response('OK'); }
+
+    // Everything else requires an already-registered user. Forged/unauthenticated
+    // updates for unknown chatIds are dropped here with ZERO KV writes — this is
+    // the fail-safe for when TG_WEBHOOK_SECRET isn't configured.
+    if (!(await requireAuth(env, chatId))) return new Response('OK');
+
+    // Registered user — safe to record incidental state now (moved AFTER auth).
+    // Backfill @username (one write, skipped once stored) for the dev's chat link.
     if (username) {
       const uk = `tgusername:${chatId}`;
       if ((await env.ALERTS_KV.get(uk)) !== username) await env.ALERTS_KV.put(uk, username);
     }
-
-    // Lightweight bot-usage stats for the admin panel: total interactions,
-    // last-used timestamp and last command. One KV read+write per message —
-    // bot volume is low, so this is well within the free-tier write budget.
     bumpTgUsage(env, chatId, text.startsWith('/') ? text.split(' ')[0] : 'text').catch(() => {});
 
-    if (text.startsWith('/start')) await handleStart(env, chatId, text, username);
-    else if (!(await requireAuth(env, chatId))) { /* silent */ }
-    // Minimal bot: only reminders (settings) + help. Prices/market/alerts/
-    // sentiment/status moved to the web app.
-    else if (text === '/settings') await handleSettings(env, chatId);
+    // Minimal bot: only reminders (settings) + help.
+    if (text === '/settings') await handleSettings(env, chatId);
     else if (text === '/help') await handleHelp(env, chatId);
     else await handleTextMessage(env, chatId, text);
   } catch (err) { console.error('Webhook error:', err); }
@@ -3443,10 +3448,6 @@ const ALLOWED_ORIGINS = [
   'https://tradeos-91a58.firebaseapp.com',
   'https://trade-os.tradeos.workers.dev',
   'https://trade-os-staging.tradeos.workers.dev',
-  // Kept during the Cloudflare-account migration window; drop once the old
-  // account's Workers are decommissioned.
-  'https://trade-os.aviniazov7.workers.dev',
-  'https://trade-os-staging.aviniazov7.workers.dev',
 ];
 // Firebase Hosting preview channels have URLs like
 // https://tradeos-91a58--CHANNEL-HASH.web.app and are created automatically
