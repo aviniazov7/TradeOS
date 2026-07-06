@@ -24,10 +24,14 @@ function shouldBypass(url) {
 }
 
 // Install — cache static assets (NOT index.html).
-// No skipWaiting() here: a new version stays "waiting" until the user
-// explicitly opts in via the in-app update prompt (SKIP_WAITING message),
-// so updates never reload the app mid-use.
+// skipWaiting() so a freshly deployed worker activates immediately instead of
+// getting stuck "waiting" behind an old worker until the user taps a prompt.
+// Combined with clients.claim() in activate, this guarantees users pick up new
+// releases on their next load — the "waiting for opt-in" design left people
+// pinned to stale code when the prompt never showed. The in-app update banner
+// (SKIP_WAITING message) still works for a same-session refresh.
 self.addEventListener('install', (event) => {
+  self.skipWaiting();
   event.waitUntil(
     caches.open(CACHE_NAME).then((cache) => cache.addAll(STATIC_ASSETS))
   );
