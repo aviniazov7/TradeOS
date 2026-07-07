@@ -148,6 +148,7 @@ jobs:
           VAPID_JWK: ${{ secrets.VAPID_JWK }}
           MORALIS_API_KEY: ${{ secrets.MORALIS_API_KEY }}
           GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
+          GROQ_API_KEY: ${{ secrets.GROQ_API_KEY }}
           FIREBASE_SERVICE_ACCOUNT: ${{ secrets.FIREBASE_SERVICE_ACCOUNT }}
           RESEND_API_KEY: ${{ secrets.RESEND_API_KEY }}
           MAIL_FROM_ADDRESS: ${{ secrets.MAIL_FROM_ADDRESS }}
@@ -176,6 +177,7 @@ jobs:
           put_secret VAPID_JWK
           put_secret MORALIS_API_KEY
           put_secret GEMINI_API_KEY
+          put_secret GROQ_API_KEY
           put_secret FIREBASE_SERVICE_ACCOUNT
           put_secret RESEND_API_KEY
           put_secret MAIL_FROM_ADDRESS
@@ -201,6 +203,7 @@ jobs:
           VAPID_JWK: ${{ secrets.VAPID_JWK }}
           MORALIS_API_KEY: ${{ secrets.MORALIS_API_KEY }}
           GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
+          GROQ_API_KEY: ${{ secrets.GROQ_API_KEY }}
           FIREBASE_SERVICE_ACCOUNT: ${{ secrets.FIREBASE_SERVICE_ACCOUNT }}
           RESEND_API_KEY: ${{ secrets.RESEND_API_KEY }}
           MAIL_FROM_ADDRESS: ${{ secrets.MAIL_FROM_ADDRESS }}
@@ -234,6 +237,7 @@ jobs:
           put_secret VAPID_JWK
           put_secret MORALIS_API_KEY
           put_secret GEMINI_API_KEY
+          put_secret GROQ_API_KEY
           put_secret FIREBASE_SERVICE_ACCOUNT
           put_secret RESEND_API_KEY
           put_secret MAIL_FROM_ADDRESS

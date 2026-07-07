@@ -67,13 +67,17 @@ export function useDashboardStats(trades, initialBalance = 0, period = 'all') {
         })
       : trades;
 
-    // A trade counts as CLOSED for realized-PnL / win-rate stats only if it is
-    // not still open. Open positions can carry an exitPrice (a live mark price),
-    // so `exitPrice > 0` alone wrongly swept them in — their unrealized,
-    // market-moving PnL then polluted net profit (making it swing day to day)
-    // and inflated the win-rate denominator. Exclude anything still open.
+    // Closed-trade predicate — MUST match Dashboard.jsx (the view that shows
+    // correct figures). A trade counts only if it is genuinely closed:
+    //   • status 'closed', OR
+    //   • has a real exit price AND is neither 'partial' nor 'open'.
+    // 'partial' rows are excluded on purpose: partial-TP auto-closes can write a
+    // netPnl computed from the contract-inflated quantity (MEXC vol is in
+    // contracts, not coins), which otherwise blows net profit up to tens of
+    // thousands and craters the win rate. 'open' rows carry a live mark price
+    // (exitPrice > 0) whose unrealized PnL would swing the numbers day to day.
     const cl = filtered.filter((t) =>
-      t.status !== 'open' && (t.status === 'closed' || t.status === 'partial' || t.exitPrice > 0)
+      t.status === 'closed' || (parseFloat(t.exitPrice) > 0 && t.status !== 'partial' && t.status !== 'open')
     );
     // openCount is derived from closed so the two counts always sum to filtered.length
     const oc = filtered.length - cl.length;
