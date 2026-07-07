@@ -154,6 +154,32 @@ function sessionFromDate(isoOrMs) {
   return 'Asia';
 }
 
+// MEXC futures report volume in CONTRACTS, not coins — each symbol has a
+// contractSize (e.g. BTC_USDT = 0.0001 BTC per contract). Reading holdVol/
+// closeVol raw inflates quantity/positionSize (and any PnL computed from them)
+// by 100x–10,000x. Fetch the public contract-detail table (symbol → size) and
+// cache it in-memory for 6h. Keyed by the underscore-stripped symbol so it
+// matches the `pair` we emit ("BTCUSDT").
+let _mexcCsCache = null;
+let _mexcCsAt = 0;
+async function mexcContractSizes() {
+  const now = Date.now();
+  if (_mexcCsCache && now - _mexcCsAt < 6 * 60 * 60 * 1000) return _mexcCsCache;
+  try {
+    const r = await fetch('https://contract.mexc.com/api/v1/contract/detail');
+    const d = await r.json().catch(() => ({}));
+    const list = Array.isArray(d.data) ? d.data : [];
+    const map = {};
+    for (const c of list) {
+      const s = (c.symbol || '').replace(/_/g, '');
+      const cs = parseFloat(c.contractSize ?? c.contract_size);
+      if (s && cs > 0) map[s] = cs;
+    }
+    if (Object.keys(map).length) { _mexcCsCache = map; _mexcCsAt = now; }
+    return map;
+  } catch { return _mexcCsCache || {}; }
+}
+
 // ── AI usage quota (daily, resets at Israel midnight) ────────────────────────
 const AI_DAILY_LIMIT = 20;
 const AI_IMAGE_DAILY_LIMIT = 10;
@@ -4826,12 +4852,14 @@ ${pad('Lev', `${pnlSign}${pnlPctLev}%`)}` : ''}` : ''}</code>
           ? data.data
           : (data.data?.resultList || data.data?.list || []);
 
+        const csMap = await mexcContractSizes();
         const positions = rawList.map(p => {
           const posType = p.positionType ?? p.position_type ?? p.type;
           const sym = (p.symbol || '').replace(/_/g, '');
           // MEXC uses openAvgPrice or holdAvgPrice for average entry
           const entryPrice = parseFloat(p.openAvgPrice || p.open_avg_price || p.holdAvgPrice || p.hold_avg_price) || 0;
-          const qty = parseFloat(p.holdVol || p.hold_vol || p.positionAmt || p.vol) || 0;
+          // MEXC vol is in CONTRACTS — convert to coin units via contractSize.
+          const qty = (parseFloat(p.holdVol || p.hold_vol || p.positionAmt || p.vol) || 0) * (csMap[sym] || 1);
           const entryDate = new Date(Number(p.createTime || p.openTime || p.create_time || Date.now())).toISOString();
           const tpMx = parseFloat(p.takeProfitPrice || p.take_profit_price || 0) || 0;
           const liqMx = parseFloat(p.liquidatePrice || p.liquidate_price || p.liqPrice || 0) || 0;
@@ -5437,6 +5465,7 @@ ${pad('Lev', `${pnlSign}${pnlPctLev}%`)}` : ''}` : ''}</code>
         }
 
         // ── Step 4: Build trade objects ───────────────────────────────────
+        const csMap = await mexcContractSizes();
         trades = positions.map(p => {
           const openMs = toMs(p.createTime || p.openTime || p.create_time || p.openTimestamp);
           const entryDate = openMs > 0 ? new Date(openMs).toISOString() : new Date().toISOString();
@@ -5461,7 +5490,8 @@ ${pad('Lev', `${pnlSign}${pnlPctLev}%`)}` : ''}` : ''}</code>
             direction: posType === 1 ? 'long' : 'short',
             entryPrice: parseFloat(p.openAvgPrice || p.open_avg_price) || 0,
             exitPrice: parseFloat(p.closeAvgPrice || p.close_avg_price) || 0,
-            quantity: parseFloat(p.closeVol || p.close_vol || p.holdVol || p.hold_vol) || 0,
+            // MEXC vol is in CONTRACTS — convert to coin units via contractSize.
+            quantity: (parseFloat(p.closeVol || p.close_vol || p.holdVol || p.hold_vol) || 0) * (csMap[sym.replace(/_/g, '')] || 1),
             leverage: parseFloat(p.leverage) || 1,
             pnlFromExchange: parseFloat(p.realised || p.realisedPnl || p.realise || p.realised_pnl) || 0,
             fees,

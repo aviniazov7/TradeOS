@@ -3,6 +3,14 @@ import { useState, useRef, useCallback, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { ChevronDown, Pencil, Check, X, ChevronRight, Plus, Minus } from 'lucide-react';
 
+// Trades that came from a connected exchange are closed by the exchange SYNC
+// with the real settled PnL. Auto-closing them here from a live mark price
+// would write a fabricated netPnl — and since exchange sizes were historically
+// contract-denominated, a wildly inflated one. Detect them so we only notify.
+const EXCHANGE_SOURCES = new Set(['mexc', 'bybit', 'okx', 'bitget', 'binance']);
+const isExchangeTrade = (t) =>
+  EXCHANGE_SOURCES.has(String(t?.source || '').toLowerCase()) || !!t?.externalId;
+
 /* TradingView icon — real favicon fetched via Google's favicon service */
 function TvIcon({ className = 'w-4 h-4' }) {
   return (
@@ -622,6 +630,12 @@ export default function PendingLimitOrders({ trades, livePrices }) {
       const qty = posSize / entry;
       return trade.direction === 'long' ? (currentPrice - entry) * qty : (entry - currentPrice) * qty;
     })();
+    // Exchange trades: don't touch the doc — the sync closes them with the real
+    // fill + settled PnL. Just notify so the user still gets the TP alert.
+    if (isExchangeTrade(trade)) {
+      sendNotification('tp', trade, currentPrice, pnl, { tpIndex: tpIdx, isLastTp });
+      return;
+    }
     const updates = { tpReached: arrayUnion(tpIdx) };
     if (isLastTp) {
       updates.status = 'closed';
@@ -679,6 +693,11 @@ export default function PendingLimitOrders({ trades, livePrices }) {
     if (currentPrice && entry && posSize) {
       const qty = posSize / entry;
       pnl = trade.direction === 'long' ? (currentPrice - entry) * qty : (entry - currentPrice) * qty;
+    }
+    // Exchange trades: let the sync record the real close/PnL — just notify.
+    if (isExchangeTrade(trade)) {
+      sendNotification('sl', trade, currentPrice, pnl);
+      return;
     }
     updateUserDocument(user.uid, 'trades', trade.id, {
       status: 'closed',
