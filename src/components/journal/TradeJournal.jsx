@@ -157,7 +157,7 @@ export default function TradeJournal() {
   // drifts away from the real wallet by exactly the partial rows' PnL.
   const totalClosedPnL = useMemo(
     () => trades
-      .filter((t) => t.status !== 'open' && (t.status === 'closed' || t.status === 'partial' || parseFloat(t.exitPrice) > 0))
+      .filter((t) => t.status === 'closed' || (parseFloat(t.exitPrice) > 0 && t.status !== 'partial' && t.status !== 'open'))
       .reduce((s, t) => s + safePnl(t), 0),
     [trades]
   );
@@ -315,7 +315,7 @@ export default function TradeJournal() {
   }, [trades, filters, pendingDeletes]);
 
   const analytics = useMemo(() => {
-    const closed = periodTrades.filter((t) => t.status !== 'open' && t.exitPrice > 0);
+    const closed = periodTrades.filter((t) => t.status === 'closed' || (parseFloat(t.exitPrice) > 0 && t.status !== 'partial' && t.status !== 'open'));
     if (!closed.length) return null;
 
     const wins = closed.filter((t) => t.result === 'win');
