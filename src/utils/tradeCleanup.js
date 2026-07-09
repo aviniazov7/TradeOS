@@ -130,6 +130,106 @@ function findDuplicateGroups(trades) {
   return groups.sort((a, b) => b.remove.length - a.remove.length);
 }
 
+// ─── Diagnostics ─────────────────────────────────────────────────
+//
+// Ground-truth dump for debugging display/data mismatches (e.g. analytics
+// showing a net profit that disagrees with the exchange). Surfaces the raw
+// field values so we stop guessing what's stored.
+
+const isFiniteNum = (v) => typeof v === 'number' && Number.isFinite(v);
+const NUMERIC_FIELDS = ['netPnl', 'pnl', 'pnlFromExchange', 'fees', 'quantity', 'entryPrice', 'exitPrice', 'positionSize', 'leverage'];
+
+const toIso = (v) => {
+  if (!v) return null;
+  try {
+    const d = typeof v.toDate === 'function' ? v.toDate() : new Date(v.seconds ? v.seconds * 1000 : v);
+    return isNaN(d.getTime()) ? String(v) : d.toISOString().slice(0, 10);
+  } catch {
+    return String(v);
+  }
+};
+
+// Compact row snapshot — everything needed to understand one trade at a glance.
+const snapshot = (t) => ({
+  id: t.id,
+  pair: t.pair || t.symbol || null,
+  direction: t.direction ?? null,
+  status: t.status ?? null,
+  result: t.result ?? null,
+  source: t.source ?? null,
+  externalId: t.externalId ?? null,
+  pnl: t.pnl ?? null,
+  netPnl: t.netPnl ?? null,
+  pnlFromExchange: t.pnlFromExchange ?? null,
+  fees: t.fees ?? null,
+  quantity: t.quantity ?? null,
+  entryPrice: t.entryPrice ?? null,
+  exitPrice: t.exitPrice ?? null,
+  positionSize: t.positionSize ?? null,
+  leverage: t.leverage ?? null,
+  exitDate: toIso(t.exitDate),
+  entryDate: toIso(t.entryDate),
+});
+
+export function buildDiagnostics(trades) {
+  // Same closed predicate as useDashboardStats/TradeJournal analytics.
+  const closed = trades.filter(
+    (t) => t.status === 'closed' || (parseFloat(t.exitPrice) > 0 && t.status !== 'partial' && t.status !== 'open')
+  );
+
+  // Rows carrying a non-finite / non-number value in a numeric field —
+  // strings and NaN poison sums differently in different code paths.
+  const typeIssues = [];
+  for (const t of trades) {
+    const bad = NUMERIC_FIELDS.filter((f) => t[f] !== undefined && t[f] !== null && !isFiniteNum(t[f]));
+    if (bad.length) typeIssues.push({ ...snapshot(t), badFields: bad.map((f) => `${f}=${JSON.stringify(t[f])} (${typeof t[f] === 'number' ? 'NaN' : typeof t[f]})`) });
+  }
+
+  // Per-source aggregate over CLOSED rows.
+  const bySource = {};
+  for (const t of closed) {
+    const key = t.source || '(ללא מקור)';
+    if (!bySource[key]) bySource[key] = { count: 0, sumNetPnl: 0, noExchangePnl: 0, withExternalId: 0 };
+    const b = bySource[key];
+    b.count++;
+    const v = Number(t.netPnl ?? t.pnl ?? 0);
+    if (Number.isFinite(v)) b.sumNetPnl += v;
+    if (num(t.pnlFromExchange) === null) b.noExchangePnl++;
+    if (t.externalId) b.withExternalId++;
+  }
+  for (const b of Object.values(bySource)) b.sumNetPnl = Math.round(b.sumNetPnl * 100) / 100;
+
+  // The most extreme rows by |netPnl| — where inflated values hide.
+  const topAbsNetPnl = [...closed]
+    .sort((a, b) => Math.abs(Number(b.netPnl ?? b.pnl ?? 0) || 0) - Math.abs(Number(a.netPnl ?? a.pnl ?? 0) || 0))
+    .slice(0, 12)
+    .map(snapshot);
+
+  const directionAnomalies = closed.filter((t) => t.direction !== 'long' && t.direction !== 'short').map(snapshot);
+
+  const resultCounts = { win: 0, loss: 0, breakeven: 0, other: 0 };
+  for (const t of closed) resultCounts[t.result] !== undefined ? resultCounts[t.result]++ : resultCounts.other++;
+
+  const sumSafe = closed.reduce((s, t) => {
+    const v = Number(t.netPnl ?? t.pnl ?? 0);
+    return s + (Number.isFinite(v) ? v : 0);
+  }, 0);
+
+  return {
+    totals: {
+      all: trades.length,
+      closed: closed.length,
+      open: trades.length - closed.length,
+      sumNetPnlClosed: Math.round(sumSafe * 100) / 100,
+      resultCounts,
+    },
+    bySource,
+    topAbsNetPnl,
+    directionAnomalies,
+    typeIssues,
+  };
+}
+
 // ─── Entry point ─────────────────────────────────────────────────
 
 export function scanTrades(trades) {
@@ -144,6 +244,7 @@ export function scanTrades(trades) {
     pnlFixes,
     suspects,
     dupeGroups,
+    diag: buildDiagnostics(trades),
     stats: {
       total: trades.length,
       pnlFixes: pnlFixes.length,

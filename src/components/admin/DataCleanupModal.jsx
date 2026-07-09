@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { ScanSearch, Download, AlertTriangle, Trash2, Flag, CheckCircle2, Wrench, Copy, Loader2 } from 'lucide-react';
+import { ScanSearch, Download, AlertTriangle, Trash2, Flag, CheckCircle2, Wrench, Copy, Loader2, Stethoscope, ClipboardCopy } from 'lucide-react';
 import toast from 'react-hot-toast';
 import Modal from '../shared/Modal';
 import { useAuth } from '../../contexts/AuthContext';
@@ -360,6 +360,91 @@ export default function DataCleanupModal({ isOpen, onClose }) {
                           <span className="ms-auto text-text-muted" dir="ltr">{money(t.netPnl)}</span>
                         </label>
                       ))}
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
+
+            {/* Diagnostics — ground-truth dump of what's actually stored, for
+                debugging analytics/display mismatches. Read-only. */}
+            {scan.diag && (
+              <div className="border border-violet-400/25 rounded-xl p-4 space-y-3">
+                <SectionHeader
+                  icon={<Stethoscope className="w-4 h-4" />}
+                  title="אבחון — מה באמת שמור"
+                  count={`${scan.diag.totals.closed} סגורות`}
+                  tone="text-violet-400"
+                  extra={
+                    <button
+                      onClick={() => {
+                        navigator.clipboard?.writeText(JSON.stringify(scan.diag, null, 2));
+                        toast.success('דוח האבחון הועתק — הדבק אותו בצ׳אט');
+                      }}
+                      className="h-8 flex items-center gap-1.5 px-3 rounded-lg border bg-violet-400/10 border-violet-400/30 text-violet-400 hover:bg-violet-400/20 text-xs transition-colors cursor-pointer"
+                    >
+                      <ClipboardCopy className="w-3.5 h-3.5" />
+                      העתק דוח JSON
+                    </button>
+                  }
+                />
+                <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 text-xs">
+                  <div className="bg-bg-secondary/60 border border-border-primary rounded-lg px-3 py-2">
+                    <div className="text-text-muted text-[10px]">סכום netPnl (סגורות)</div>
+                    <div className="font-bold" dir="ltr">{money(scan.diag.totals.sumNetPnlClosed)}</div>
+                  </div>
+                  <div className="bg-bg-secondary/60 border border-border-primary rounded-lg px-3 py-2">
+                    <div className="text-text-muted text-[10px]">W / L / BE / אחר</div>
+                    <div className="font-bold" dir="ltr">
+                      {scan.diag.totals.resultCounts.win} / {scan.diag.totals.resultCounts.loss} / {scan.diag.totals.resultCounts.breakeven} / {scan.diag.totals.resultCounts.other}
+                    </div>
+                  </div>
+                  <div className="bg-bg-secondary/60 border border-border-primary rounded-lg px-3 py-2">
+                    <div className="text-text-muted text-[10px]">בעיות טיפוס בשדות</div>
+                    <div className={`font-bold ${scan.diag.typeIssues.length ? 'text-red-400' : ''}`} dir="ltr">{scan.diag.typeIssues.length}</div>
+                  </div>
+                  <div className="bg-bg-secondary/60 border border-border-primary rounded-lg px-3 py-2">
+                    <div className="text-text-muted text-[10px]">direction לא תקין</div>
+                    <div className={`font-bold ${scan.diag.directionAnomalies.length ? 'text-red-400' : ''}`} dir="ltr">{scan.diag.directionAnomalies.length}</div>
+                  </div>
+                </div>
+                {/* Per-source table */}
+                <div className="overflow-x-auto">
+                  <table className="w-full text-[11px]" dir="rtl">
+                    <thead>
+                      <tr className="text-text-muted border-b border-border-primary">
+                        <th className="text-right pb-1 font-medium">מקור</th>
+                        <th className="text-right pb-1 font-medium">סגורות</th>
+                        <th className="text-right pb-1 font-medium">Σ netPnl</th>
+                        <th className="text-right pb-1 font-medium">בלי pnlFromExchange</th>
+                        <th className="text-right pb-1 font-medium">עם externalId</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {Object.entries(scan.diag.bySource).map(([src, b]) => (
+                        <tr key={src} className="border-b border-border-primary/40">
+                          <td className="py-1 text-text-primary font-mono">{src}</td>
+                          <td className="py-1" dir="ltr">{b.count}</td>
+                          <td className={`py-1 font-semibold ${b.sumNetPnl >= 0 ? 'text-profit' : 'text-loss'}`} dir="ltr">{money(b.sumNetPnl)}</td>
+                          <td className={`py-1 ${b.noExchangePnl ? 'text-amber-400' : 'text-text-muted'}`} dir="ltr">{b.noExchangePnl}</td>
+                          <td className="py-1 text-text-muted" dir="ltr">{b.withExternalId}</td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+                {/* Extreme rows */}
+                <div className="text-[11px] text-text-muted">12 השורות הקיצוניות לפי |netPnl|:</div>
+                <div className="max-h-48 overflow-y-auto space-y-1 pr-0.5">
+                  {scan.diag.topAbsNetPnl.map((t) => (
+                    <div key={t.id} className="flex items-center gap-2 text-[11px] bg-bg-secondary/60 border border-border-primary rounded-lg px-2.5 py-1.5" dir="ltr">
+                      <span className="font-mono font-semibold text-text-primary">{t.pair}</span>
+                      <span className="text-text-muted">{t.exitDate || t.entryDate}</span>
+                      <span className="text-text-muted">{t.source || 'no-src'}{t.externalId ? '·eid' : ''}</span>
+                      <span className="text-text-muted">{t.status}/{t.result}</span>
+                      <span className="text-text-muted">q={t.quantity ?? '—'}</span>
+                      <span className="text-text-muted">fx={t.pnlFromExchange ?? '—'}</span>
+                      <span className={`ms-auto font-semibold ${Number(t.netPnl) >= 0 ? 'text-profit' : 'text-loss'}`}>{money(Number(t.netPnl ?? t.pnl))}</span>
                     </div>
                   ))}
                 </div>
