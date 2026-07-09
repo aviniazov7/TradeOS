@@ -39,7 +39,13 @@ function RollDigit({ d }) {
 export default function RollingNumber({ value, className = '' }) {
   const str = value == null || value === '' ? '' : String(value);
   return (
+    // dir="ltr" is load-bearing: each character is its own flex item, and
+    // flexbox lays items out by the element's direction — inside the app's
+    // dir="rtl" pages the row runs right-to-left, so "-$2,012.28" was
+    // displayed character-reversed as "82.210,2$-" (bidi can't fix it
+    // because the digits are separate elements, not one text run).
     <span
+      dir="ltr"
       className={`inline-flex items-baseline tabular-nums ${className}`}
       style={{ fontVariantNumeric: 'tabular-nums' }}
     >
