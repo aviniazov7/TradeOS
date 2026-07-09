@@ -296,6 +296,26 @@ export async function batchDeleteByFilter(snapDocs, filterFn) {
   }
 }
 
+/** Apply admin data-cleanup actions on a user's trades: field updates and
+ *  deletions, mixed into chunked write batches (499 ops per batch). Each
+ *  update also stamps updatedAt. Returns the number of ops committed. */
+export async function applyTradeCleanup(uid, { updates = [], deletes = [] }) {
+  const ops = [
+    ...updates.map((u) => ({ type: 'update', id: u.id, data: u.data })),
+    ...deletes.map((id) => ({ type: 'delete', id })),
+  ];
+  for (let i = 0; i < ops.length; i += 499) {
+    const batch = writeBatch(db);
+    for (const op of ops.slice(i, i + 499)) {
+      const ref = doc(db, 'users', uid, 'trades', op.id);
+      if (op.type === 'update') batch.update(ref, { ...op.data, updatedAt: serverTimestamp() });
+      else batch.delete(ref);
+    }
+    await withRetry(() => batch.commit());
+  }
+  return ops.length;
+}
+
 /** Delete all documents in a user's subcollection */
 export async function deleteUserSubcollection(uid, collectionName) {
   const snap = await getDocs(collection(db, 'users', uid, collectionName));

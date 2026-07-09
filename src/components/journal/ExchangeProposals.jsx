@@ -149,57 +149,50 @@ export default function ExchangeProposals({ exchange, trades, onImportTrade, ena
             </motion.div>
           ) : null
         ) : (
-          <motion.div key="proposals" initial={{ opacity: 0, y: -10, scale: 0.98 }}
-            animate={{ opacity: 1, y: 0, scale: 1 }} exit={{ opacity: 0, y: -10 }}
-            transition={{ type: 'spring', damping: 24, stiffness: 300 }}
-            className="mb-4 relative rounded-2xl overflow-hidden"
+          <motion.div key="proposals" initial={{ opacity: 0, y: -8 }}
+            animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: -8 }}
+            transition={{ type: 'spring', damping: 26, stiffness: 320 }}
+            className="mb-3 relative rounded-xl overflow-hidden"
             style={{
               background: 'var(--color-bg-secondary)',
               border: `1px solid ${accent}45`,
-              boxShadow: `0 0 30px -10px ${meta.glow || accent + '55'}`,
+              boxShadow: `0 0 24px -12px ${meta.glow || accent + '55'}`,
             }}>
             {/* Ambient accent glow */}
             <div className="absolute inset-0 pointer-events-none"
-              style={{ background: `radial-gradient(ellipse at 100% 0%, ${accent}14 0%, transparent 60%)` }} />
+              style={{ background: `radial-gradient(ellipse at 100% 0%, ${accent}12 0%, transparent 55%)` }} />
 
-            <div className="relative flex items-center gap-3 p-4">
-              {/* RIGHT (RTL first): logo + copy */}
-              <ExLogo id={exchange} name={name} accent={accent} size={44} />
-              <div className="flex-1 min-w-0 text-right">
-                <div className="flex items-center justify-end gap-2">
-                  <motion.span
-                    animate={{ scale: [1, 1.12, 1] }} transition={{ repeat: Infinity, duration: 2.2 }}
-                    className="text-[11px] font-black px-2 py-0.5 rounded-full"
-                    style={{ background: `${accent}22`, color: accent, border: `1px solid ${accent}45` }}>
-                    {proposals.length}
-                  </motion.span>
-                  <p className="text-sm font-bold text-text-primary flex items-center gap-1.5">
-                    <Sparkles className="w-4 h-4" style={{ color: accent }} />
-                    עסקאות חדשות מ-{name}
-                  </p>
-                </div>
-                <p className="text-[11px] text-text-muted mt-0.5">
-                  מוכנות להוספה ליומן — בלי ללכת לדף הסנכרון
-                </p>
-              </div>
+            {/* Slim single-line banner: logo + title hug the right edge (RTL
+                start), actions pushed to the far left with ms-auto. */}
+            <div className="relative flex items-center gap-2.5 ps-3 pe-2 py-2 text-right">
+              <ExLogo id={exchange} name={name} accent={accent} size={28} />
+              <p className="text-[13px] font-bold text-text-primary flex items-center gap-1.5 min-w-0">
+                <Sparkles className="w-4 h-4 shrink-0" style={{ color: accent }} />
+                <span className="truncate">עסקאות חדשות מ-{name}</span>
+                <motion.span
+                  animate={{ scale: [1, 1.1, 1] }} transition={{ repeat: Infinity, duration: 2.2 }}
+                  className="text-[10px] font-black px-1.5 py-px rounded-full shrink-0"
+                  style={{ background: `${accent}22`, color: accent, border: `1px solid ${accent}45` }}>
+                  {proposals.length}
+                </motion.span>
+              </p>
 
-              {/* LEFT (RTL last): actions */}
-              <div className="flex items-center gap-1.5 shrink-0">
-                <motion.button whileHover={{ scale: 1.05 }} whileTap={{ scale: 0.96 }}
+              <div className="ms-auto flex items-center gap-1 shrink-0">
+                <motion.button whileHover={{ scale: 1.04 }} whileTap={{ scale: 0.96 }}
                   onClick={openReview}
-                  className="flex items-center gap-1.5 px-3.5 py-2 rounded-xl text-sm font-bold cursor-pointer transition-colors"
+                  className="flex items-center gap-1 px-3 py-1.5 rounded-lg text-xs font-bold cursor-pointer transition-colors"
                   style={{ background: accent, color: '#000' }}>
-                  <Zap className="w-4 h-4" />
+                  <Zap className="w-3.5 h-3.5" />
                   סקירה והוספה
-                  <ChevronLeft className="w-4 h-4 -mr-1" />
+                  <ChevronLeft className="w-3.5 h-3.5 -ms-0.5" />
                 </motion.button>
                 <button onClick={refresh} disabled={loading} title="רענן"
-                  className="p-2 rounded-lg text-text-muted hover:text-text-primary hover:bg-bg-tertiary cursor-pointer transition-colors disabled:opacity-50">
-                  <RefreshCw className={`w-4 h-4 ${loading ? 'animate-spin' : ''}`} />
+                  className="p-1.5 rounded-lg text-text-muted hover:text-text-primary hover:bg-bg-tertiary cursor-pointer transition-colors disabled:opacity-50">
+                  <RefreshCw className={`w-3.5 h-3.5 ${loading ? 'animate-spin' : ''}`} />
                 </button>
                 <button onClick={() => setCollapsed(true)} title="הסתר"
-                  className="p-2 rounded-lg text-text-muted hover:text-text-primary hover:bg-bg-tertiary cursor-pointer transition-colors">
-                  <X className="w-4 h-4" />
+                  className="p-1.5 rounded-lg text-text-muted hover:text-text-primary hover:bg-bg-tertiary cursor-pointer transition-colors">
+                  <X className="w-3.5 h-3.5" />
                 </button>
               </div>
             </div>
