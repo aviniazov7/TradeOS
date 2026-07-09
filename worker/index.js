@@ -2443,6 +2443,39 @@ const MAX_IMAGE_CHARS = 4_000_000;
 const GEMINI_MODEL = 'gemini-2.0-flash';
 const GEMINI_STREAM_URL = (key) =>
   `https://generativelanguage.googleapis.com/v1beta/models/${GEMINI_MODEL}:streamGenerateContent?alt=sse&key=${encodeURIComponent(key)}`;
+const GEMINI_URL = (key) =>
+  `https://generativelanguage.googleapis.com/v1beta/models/${GEMINI_MODEL}:generateContent?key=${encodeURIComponent(key)}`;
+
+// Non-streaming Gemini call — the second-PROVIDER fallback for when every
+// Groq attempt (70B retries + instant-model fallback) is rate-limited, so a
+// dead Groq day doesn't take the feature down. Returns the text or null;
+// never throws. Gated only on the key existing: this path is reached solely
+// when Groq is already failing, so it's desirable regardless of the
+// GEMINI_ENABLED chat-routing flag.
+async function geminiGenerateFallback(env, systemPrompt, userPrompt, maxTokens) {
+  if (!env.GEMINI_API_KEY) return null;
+  try {
+    const res = await fetch(GEMINI_URL(env.GEMINI_API_KEY), {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        systemInstruction: { parts: [{ text: systemPrompt }] },
+        contents: [{ role: 'user', parts: [{ text: userPrompt }] }],
+        generationConfig: { temperature: 0.5, maxOutputTokens: maxTokens },
+      }),
+    });
+    if (!res.ok) {
+      console.error('Gemini fallback error:', res.status, await res.text().catch(() => ''));
+      return null;
+    }
+    const data = await res.json();
+    const text = data.candidates?.[0]?.content?.parts?.map((p) => p.text || '').join('').trim();
+    return text || null;
+  } catch (err) {
+    console.error('Gemini fallback failed:', err);
+    return null;
+  }
+}
 
 // Convert OpenAI-style chat messages to Gemini's REST payload shape. The system
 // prompt becomes systemInstruction; everything else maps role→Gemini role.
@@ -2904,6 +2937,14 @@ async function handleAICoach(request, env, cors) {
     if (!groqRes.ok) {
       const errText = await groqRes.text().catch(() => '');
       console.error('Coach groq error:', groqRes.status, errText);
+      // Second provider: both Groq models exhausted/down → one Gemini attempt
+      // before surfacing an error (e.g. the 70B's 100K-tokens/day budget dying
+      // mid-evening must not kill the feature).
+      const gemText = await geminiGenerateFallback(env, COACH_SYSTEM_PROMPT, userPrompt, premium && depth === 'deep' ? 1400 : 700);
+      if (gemText) {
+        if (chargeCoachQuota) await chargeCoachQuota();
+        return new Response(JSON.stringify({ ok: true, text: gemText, premium }), { headers: { ...cors, 'Content-Type': 'application/json' } });
+      }
       return new Response(JSON.stringify({ error: groqRes.status === 429 ? 'ה-AI עמוס כרגע, נסה שוב בעוד רגע' : `שגיאת AI: ${groqRes.status}` }), { status: 502, headers: { ...cors, 'Content-Type': 'application/json' } });
     }
     const data = await groqRes.json();
