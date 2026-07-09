@@ -2403,6 +2403,34 @@ const GROQ_MODEL = 'llama-3.3-70b-versatile';
 // Groq's production vision model (OpenAI-compatible image_url content parts).
 const GROQ_VISION_MODEL = 'meta-llama/llama-4-scout-17b-16e-instruct';
 
+// Non-streaming Groq call with 429 resilience. The shared free-tier key has
+// tight per-minute token budgets on the 70B (and one key serves chat + coach +
+// coin descriptions + digest), so a burst — e.g. clicking several coach
+// quick-prompts in a row — trips 429 instantly. Retry with the same spaced
+// backoff /ai-chat uses, then fall back ONCE to the instant model, which has
+// a SEPARATE (much higher) per-model rate bucket — a slightly simpler answer
+// beats an error. Only 429 is retried; any other status returns immediately.
+const GROQ_FALLBACK_MODEL = 'llama-3.1-8b-instant';
+async function groqFetchWithRetry(env, payload) {
+  const call = (model) => fetch(GROQ_URL, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${env.GROQ_API_KEY}` },
+    body: JSON.stringify({ ...payload, model }),
+  });
+  let res;
+  for (const wait of [0, 2500, 5000]) {
+    if (wait) await new Promise((r) => setTimeout(r, wait));
+    res = await call(payload.model);
+    if (res.ok || res.status !== 429) return res;
+  }
+  if (payload.model !== GROQ_FALLBACK_MODEL) {
+    console.error(`groq 429 after retries on ${payload.model} — falling back to ${GROQ_FALLBACK_MODEL}`);
+    const fb = await call(GROQ_FALLBACK_MODEL);
+    if (fb.ok || fb.status !== 429) return fb;
+  }
+  return res;
+}
+
 // Accept only browser-produced raster formats. Groq caps base64 images at
 // 4MB, so reject anything bigger before burning a provider call.
 const IMAGE_DATA_RE = /^data:image\/(png|jpeg|webp);base64,[A-Za-z0-9+/=]+$/;
@@ -2834,6 +2862,10 @@ async function handleAICoach(request, env, cors) {
 
     // Free users get 5 coach runs/month tracked separately from the daily AI
     // quota — Premium is unmetered (covered by the soft caps in aiRateGate).
+    // NOTE: the slot is charged only AFTER a successful provider response
+    // (below), mirroring /ai-coin-description — a Groq 429 must not burn one
+    // of the user's 5 monthly analyses.
+    let chargeCoachQuota = null;
     if (!premium) {
       const monthKey = `coach:${uid}:${getIsraelDateStr().slice(0, 7)}`;
       const used = parseInt((await env.ALERTS_KV.get(monthKey)) || '0', 10) || 0;
@@ -2845,7 +2877,7 @@ async function handleAICoach(request, env, cors) {
         }), { status: 429, headers: { ...cors, 'Content-Type': 'application/json' } });
       }
       // 60-day TTL so the entry survives the month it covers.
-      await env.ALERTS_KV.put(monthKey, String(used + 1), { expirationTtl: 60 * 60 * 24 * 60 });
+      chargeCoachQuota = () => env.ALERTS_KV.put(monthKey, String(used + 1), { expirationTtl: 60 * 60 * 24 * 60 });
     }
 
     // Turn the clicked quick-prompt (stats.focus) into an explicit, prominent
@@ -2860,18 +2892,14 @@ async function handleAICoach(request, env, cors) {
       (premium && depth === 'deep' ? 'יבוקש דו"ח Premium מורחב.\n' : 'יבוקש דו"ח קצר.\n') +
       `נתוני העסקאות (JSON):\n\`\`\`json\n${statsStr}\n\`\`\``;
 
-    const groqRes = await fetch(GROQ_URL, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${env.GROQ_API_KEY}` },
-      body: JSON.stringify({
-        model: GROQ_MODEL,
-        messages: [
-          { role: 'system', content: COACH_SYSTEM_PROMPT },
-          { role: 'user', content: userPrompt },
-        ],
-        temperature: 0.5,
-        max_tokens: premium && depth === 'deep' ? 1400 : 700,
-      }),
+    const groqRes = await groqFetchWithRetry(env, {
+      model: GROQ_MODEL,
+      messages: [
+        { role: 'system', content: COACH_SYSTEM_PROMPT },
+        { role: 'user', content: userPrompt },
+      ],
+      temperature: 0.5,
+      max_tokens: premium && depth === 'deep' ? 1400 : 700,
     });
     if (!groqRes.ok) {
       const errText = await groqRes.text().catch(() => '');
@@ -2880,6 +2908,7 @@ async function handleAICoach(request, env, cors) {
     }
     const data = await groqRes.json();
     const text = data.choices?.[0]?.message?.content?.trim() || '';
+    if (chargeCoachQuota) await chargeCoachQuota();
     return new Response(JSON.stringify({ ok: true, text, premium }), { headers: { ...cors, 'Content-Type': 'application/json' } });
   } catch (err) {
     console.error('AI coach error:', err);
@@ -2941,22 +2970,15 @@ async function handleAIProjectDescription(request, env, cors) {
 
     const userPrompt = `כתוב מאמרון על הפרויקט שמאחורי המטבע ${coinName}${symbol ? ` (${String(symbol).toUpperCase()})` : ''}.`;
 
-    const groqResponse = await fetch(GROQ_URL, {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        Authorization: `Bearer ${env.GROQ_API_KEY}`,
-      },
-      body: JSON.stringify({
-        model: GROQ_MODEL,
-        messages: [
-          { role: 'system', content: PROJECT_DESC_SYSTEM_PROMPT },
-          { role: 'user', content: userPrompt },
-        ],
-        temperature: 0.5,
-        max_tokens: 900,
-        stream: false,
-      }),
+    const groqResponse = await groqFetchWithRetry(env, {
+      model: GROQ_MODEL,
+      messages: [
+        { role: 'system', content: PROJECT_DESC_SYSTEM_PROMPT },
+        { role: 'user', content: userPrompt },
+      ],
+      temperature: 0.5,
+      max_tokens: 900,
+      stream: false,
     });
 
     if (!groqResponse.ok) {
