@@ -2,7 +2,7 @@ import { useState, useEffect, useRef } from 'react';
 import { motion, AnimatePresence, useMotionValue, useTransform } from 'framer-motion';
 import {
   Shield, Eye, EyeOff, Check, ExternalLink,
-  RefreshCw, Download, X, Zap, HelpCircle, Pencil, Link2, CalendarRange,
+  RefreshCw, Download, X, Zap, HelpCircle, Pencil, Link2,
 } from 'lucide-react';
 import toast from 'react-hot-toast';
 import { getUserSetting, setUserSetting, addToUserCollection } from '../../services/firestoreService';
@@ -507,23 +507,18 @@ function ExchangeCard({ exchange, data, savedData, syncing, saving, onUpdate, on
           {/* Action buttons */}
           <div className="flex gap-2">
             {isConnected && !editing && !hasChanges ? (
-              <div className="w-full flex flex-col gap-2">
-                {canSync && (
-                  <div className="flex items-center gap-2">
-                    <span className="flex items-center gap-1 text-[11px] text-text-muted whitespace-nowrap">
-                      <CalendarRange className="w-3.5 h-3.5" />תקופת ייבוא
-                    </span>
-                    <div className="flex-1">
-                      <SelectDropdown compact value={syncDays} onChange={setSyncDays} options={SYNC_PERIODS} />
-                    </div>
-                  </div>
-                )}
-                <div className="flex gap-2">
-                  <motion.button onClick={onDisconnect} whileHover={{ scale: 1.03 }} whileTap={{ scale: 0.97 }}
-                    className="px-3 py-2.5 rounded-xl border border-border-primary text-xs text-text-muted hover:border-loss hover:text-loss transition-colors cursor-pointer">
-                    נתק
-                  </motion.button>
-                  {canSync ? (
+              // Single action row: disconnect · import-period dropdown · sync.
+              // The period selector sits inline (h-full matches the buttons)
+              // instead of occupying its own labeled row.
+              <div className="w-full flex items-stretch gap-2">
+                <motion.button onClick={onDisconnect} whileHover={{ scale: 1.03 }} whileTap={{ scale: 0.97 }}
+                  className="px-3 py-2.5 rounded-xl border border-border-primary text-xs text-text-muted hover:border-loss hover:text-loss transition-colors cursor-pointer">
+                  נתק
+                </motion.button>
+                {canSync ? (
+                  <>
+                    <SelectDropdown compact value={syncDays} onChange={setSyncDays} options={SYNC_PERIODS}
+                      className="w-28 shrink-0" triggerClassName="h-full rounded-xl" />
                     <button onClick={() => onSync(Number(syncDays))} disabled={syncing}
                       className="flex-1 py-2.5 rounded-xl text-sm font-bold cursor-pointer disabled:opacity-50 flex items-center justify-center gap-2 transition-colors"
                       style={{ background: `${accent}18`, color: accent, border: `1px solid ${accent}40` }}>
@@ -534,12 +529,12 @@ function ExchangeCard({ exchange, data, savedData, syncing, saving, onUpdate, on
                         </>
                       )}
                     </button>
-                  ) : (
-                    <div className="flex-1 py-2.5 rounded-xl text-xs text-center text-text-muted border border-dashed border-border-primary flex items-center justify-center gap-1.5">
-                      <Link2 className="w-3.5 h-3.5" />ייבוא CSV בלבד
-                    </div>
-                  )}
-                </div>
+                  </>
+                ) : (
+                  <div className="flex-1 py-2.5 rounded-xl text-xs text-center text-text-muted border border-dashed border-border-primary flex items-center justify-center gap-1.5">
+                    <Link2 className="w-3.5 h-3.5" />ייבוא CSV בלבד
+                  </div>
+                )}
               </div>
             ) : editing && !hasChanges ? (
               <motion.button onClick={() => setEditing(false)} whileHover={{ scale: 1.02 }} whileTap={{ scale: 0.97 }}

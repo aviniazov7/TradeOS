@@ -17,8 +17,11 @@ import { createPortal } from 'react-dom';
  *   label        - optional label text
  *   allowClear   - boolean, show clear option (default false)
  *   compact      - boolean, smaller size for inline/filter use (default false)
+ *   className        - optional extra classes for the root wrapper
+ *   triggerClassName - optional extra classes for the trigger button (e.g. h-full
+ *                      to match sibling buttons when inlined in an action row)
  */
-export default function SelectDropdown({ value, onChange, options = [], placeholder = 'בחר...', label, allowClear = false, compact = false }) {
+export default function SelectDropdown({ value, onChange, options = [], placeholder = 'בחר...', label, allowClear = false, compact = false, className = '', triggerClassName = '' }) {
   const [open, setOpen] = useState(false);
   const [pos, setPos] = useState(null);
   const btnRef = useRef(null);
@@ -70,13 +73,13 @@ export default function SelectDropdown({ value, onChange, options = [], placehol
   const itemClass = compact ? 'text-xs' : 'text-sm';
 
   return (
-    <div className="relative">
+    <div className={`relative ${className}`}>
       {label && <label className="block text-xs text-text-muted mb-1">{label}</label>}
       <button
         ref={btnRef}
         type="button"
         onClick={() => setOpen(!open)}
-        className={btnClass}
+        className={`${btnClass} ${triggerClassName}`}
       >
         <span className={`truncate ${hasValue ? 'text-text-primary' : 'text-text-muted'}`}>{displayText}</span>
         <svg className={`w-3 h-3 text-text-muted flex-shrink-0 transition-transform mr-1 ${open ? 'rotate-180' : ''}`} fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" /></svg>
