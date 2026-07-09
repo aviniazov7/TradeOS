@@ -17,6 +17,11 @@
     { "binding": "ALERTS_KV", "id": "5c66041d98aa4229a52afeb2f5b1f652" }
   ],
   "vars": {
-    "DEV_UID": "3eVK7Ej3F1Y2L2ziHJpmzFP7Q0u1"
+    "DEV_UID": "3eVK7Ej3F1Y2L2ziHJpmzFP7Q0u1",
+    // Premium AI chat runs Gemini-first (GEMINI_API_KEY secret is already set)
+    // with automatic Groq fallback — offloads traffic from Groq's tight
+    // 100K-tokens/day free-tier budget, which the coach/digest also share.
+    // Defined here (not in the dashboard) so wrangler deploys don't wipe it.
+    "GEMINI_ENABLED": "true"
   }
 }
