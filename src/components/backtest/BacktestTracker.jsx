@@ -1,6 +1,6 @@
 import { useState, useMemo } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
-import { Plus, FlaskConical, Trash2, Pencil, ExternalLink, TrendingUp, TrendingDown, Settings, Download, ChevronDown, ChevronRight, ChevronLeft, Eye, CandlestickChart, ArrowUp, ArrowDown, ArrowUpDown, X } from 'lucide-react';
+import { Plus, FlaskConical, Trash2, Pencil, ExternalLink, TrendingUp, TrendingDown, Settings, Download, ChevronDown, ChevronRight, ChevronLeft, Eye, CandlestickChart, ArrowUp, ArrowDown, ArrowUpDown, X, BrainCircuit } from 'lucide-react';
 import DatePicker from 'react-datepicker';
 import 'react-datepicker/dist/react-datepicker.css';
 import toast from 'react-hot-toast';
@@ -10,6 +10,7 @@ import { useBacktestContext } from '../../contexts/BacktestContext';
 import BacktestSwitcher from './BacktestSwitcher';
 import BacktestFilters from './BacktestFilters';
 import BacktestAnalytics from './BacktestAnalytics';
+import BacktestAICoachPanel from './BacktestAICoachPanel';
 import BacktestSettingsModal from './BacktestSettingsModal';
 import StrategyView from './StrategyView';
 import EmptyState from '../shared/EmptyState';
@@ -84,6 +85,7 @@ export default function BacktestTracker() {
   const [sort, setSort] = useState({ key: 'date', dir: 'desc' });
   const [tab, setTab] = useState('records');
   const [settingsOpen, setSettingsOpen] = useState(false);
+  const [aiOpen, setAiOpen] = useState(false);
   const [viewOpen, setViewOpen] = useState(false);
   const [expandedCard, setExpandedCard] = useState(null);
   const [mobileStep, setMobileStep] = useState(0);
@@ -261,6 +263,15 @@ export default function BacktestTracker() {
           </div>
 
           <div className="flex items-center gap-1.5 md:gap-2 flex-shrink-0">
+            {/* AI analysis — accent-tinted so it stands out from the neutral
+                icon buttons. Opens the backtest coach modal. */}
+            <button
+              onClick={() => setAiOpen(true)}
+              className="h-9 inline-flex items-center gap-1.5 rounded-lg px-3 text-sm font-semibold cursor-pointer transition-colors bg-accent-primary/12 text-accent-primary border border-accent-primary/40 hover:bg-accent-primary/20"
+              title="ניתוח AI לבקטסט"
+            >
+              <BrainCircuit className="w-4 h-4" /> <span className="hidden sm:inline">ניתוח AI</span>
+            </button>
             <button
               onClick={() => setChartOpen((v) => !v)}
               className={`h-9 w-9 inline-flex items-center justify-center rounded-lg transition-colors cursor-pointer border ${
@@ -320,22 +331,29 @@ export default function BacktestTracker() {
       {/* Tab: Records */}
       {tab === 'records' && (
         <>
-          {/* Live summary strip — the key backtest numbers, previously only on
-              the analytics tab. Reflects the active filters. */}
+          {/* Slim summary bar — a single contained row (NOT the big tiles the
+              analytics tab shows, to avoid duplicating it). Reflects the active
+              filters, so filtering to one strategy shows that subset's numbers. */}
           {filtered.length > 0 && (
-            <div className="grid grid-cols-2 md:grid-cols-4 gap-2 md:gap-3 mb-3">
-              {[
-                { label: 'אחוז הצלחה', value: `${recordStats.winRate.toFixed(1)}%`, sub: `${recordStats.wins}W / ${recordStats.losses}L`, tone: 'text-text-primary' },
-                { label: 'ממוצע R', value: `${recordStats.avgR >= 0 ? '+' : ''}${recordStats.avgR.toFixed(2)}R`, tone: recordStats.avgR >= 0 ? 'text-profit' : 'text-loss' },
-                { label: 'סה״כ R', value: `${recordStats.totalR >= 0 ? '+' : ''}${recordStats.totalR.toFixed(2)}R`, tone: recordStats.totalR >= 0 ? 'text-profit' : 'text-loss' },
-                { label: 'Profit Factor', value: recordStats.profitFactorR === Infinity ? '∞' : recordStats.profitFactorR.toFixed(2), tone: 'text-text-primary' },
-              ].map((s) => (
-                <div key={s.label} className="bg-bg-secondary border border-border-primary rounded-xl px-3 py-2.5">
-                  <span className="text-[11px] md:text-xs text-text-muted block mb-0.5">{s.label}</span>
-                  <span className={`text-base md:text-lg font-bold ${s.tone}`} dir="ltr">{s.value}</span>
-                  {s.sub && <span className="text-[10px] text-text-muted block" dir="ltr">{s.sub}</span>}
-                </div>
-              ))}
+            <div className="flex items-center flex-wrap gap-x-5 gap-y-1.5 mb-3 px-3.5 py-2.5 bg-bg-secondary border border-border-primary rounded-xl">
+              <span className="text-xs text-text-muted">{recordStats.total} עסקאות</span>
+              <span className="inline-flex items-baseline gap-1.5">
+                <span className="text-xs text-text-muted">הצלחה</span>
+                <span className="text-sm font-bold text-text-primary" dir="ltr">{recordStats.winRate.toFixed(1)}%</span>
+                <span className="text-[10px] text-text-muted" dir="ltr">({recordStats.wins}W/{recordStats.losses}L)</span>
+              </span>
+              <span className="inline-flex items-baseline gap-1.5">
+                <span className="text-xs text-text-muted">ממוצע R</span>
+                <span className={`text-sm font-bold ${recordStats.avgR >= 0 ? 'text-profit' : 'text-loss'}`} dir="ltr">{recordStats.avgR >= 0 ? '+' : ''}{recordStats.avgR.toFixed(2)}R</span>
+              </span>
+              <span className="inline-flex items-baseline gap-1.5">
+                <span className="text-xs text-text-muted">סה״כ R</span>
+                <span className={`text-sm font-bold ${recordStats.totalR >= 0 ? 'text-profit' : 'text-loss'}`} dir="ltr">{recordStats.totalR >= 0 ? '+' : ''}{recordStats.totalR.toFixed(2)}R</span>
+              </span>
+              <span className="inline-flex items-baseline gap-1.5">
+                <span className="text-xs text-text-muted">PF</span>
+                <span className="text-sm font-bold text-text-primary" dir="ltr">{recordStats.profitFactorR === Infinity ? '∞' : recordStats.profitFactorR.toFixed(2)}</span>
+              </span>
             </div>
           )}
 
@@ -770,6 +788,20 @@ export default function BacktestTracker() {
       </Modal>
 
       <BacktestSettingsModal isOpen={settingsOpen} onClose={() => setSettingsOpen(false)} />
+
+      <Modal
+        isOpen={aiOpen}
+        onClose={() => setAiOpen(false)}
+        maxWidth="max-w-2xl"
+        title={(
+          <span className="inline-flex items-center gap-2">
+            <BrainCircuit className="w-4 h-4 text-accent-primary" />
+            <span className="font-bold">ניתוח AI לבקטסט</span>
+          </span>
+        )}
+      >
+        <BacktestAICoachPanel backtests={backtests} />
+      </Modal>
 
       <ConfirmDialog isOpen={!!deleteTarget} onClose={() => setDeleteTarget(null)} onConfirm={handleDelete} title="מחיקת עסקה" message="למחוק את העסקה? לא ניתן לבטל פעולה זו." />
 

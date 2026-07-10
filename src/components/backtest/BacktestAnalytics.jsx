@@ -18,21 +18,25 @@ export default function BacktestAnalytics({ backtests }) {
 
   return (
     <div>
-      {/* Period filter */}
-      <div className="flex items-center gap-1 mb-5">
-        {TIME_PERIODS.map((p) => (
-          <button
-            key={p.key}
-            onClick={() => setPeriod(p.key)}
-            className={`px-3 py-1.5 rounded-lg text-xs font-medium transition-colors cursor-pointer ${
-              period === p.key
-                ? 'bg-accent-primary/10 text-accent-primary border border-accent-primary/30'
-                : 'bg-bg-tertiary text-text-muted border border-border-primary hover:border-border-hover'
-            }`}
-          >
-            {p.label}
-          </button>
-        ))}
+      {/* Period filter — contained in a bordered row (not floating), matching
+          the main journal's toolbar treatment. */}
+      <div className="flex items-center justify-between gap-2 mb-4 px-3 py-2 bg-bg-secondary border border-border-primary rounded-xl">
+        <span className="text-xs font-medium text-text-muted">תקופה</span>
+        <div className="flex items-center gap-1">
+          {TIME_PERIODS.map((p) => (
+            <button
+              key={p.key}
+              onClick={() => setPeriod(p.key)}
+              className={`px-3 py-1.5 rounded-lg text-xs font-medium transition-colors cursor-pointer ${
+                period === p.key
+                  ? 'bg-accent-primary/15 text-accent-primary'
+                  : 'text-text-muted hover:text-text-primary hover:bg-bg-tertiary'
+              }`}
+            >
+              {p.label}
+            </button>
+          ))}
+        </div>
       </div>
 
       {/* Row 1: 4 main stats */}
@@ -131,9 +135,11 @@ export default function BacktestAnalytics({ backtests }) {
         </div>
       )}
 
-      {/* Performance tables */}
+      {/* Performance tables — two-column grid so strategy/pair and
+          session/monthly sit side by side instead of stacking full-width. */}
+      <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
       {stats.byStrategy.length > 0 && (
-        <div className={`${cardClass} mb-4`}>
+        <div className={cardClass}>
           <h3 className="text-sm font-semibold text-text-primary mb-3">ביצועים לפי אסטרטגיה</h3>
           <div className="overflow-x-auto">
             <table className="w-full text-sm">
@@ -161,7 +167,7 @@ export default function BacktestAnalytics({ backtests }) {
       )}
 
       {stats.byPair.length > 0 && (
-        <div className={`${cardClass} mb-4`}>
+        <div className={cardClass}>
           <h3 className="text-sm font-semibold text-text-primary mb-3">ביצועים לפי זוג</h3>
           <div className="overflow-x-auto">
             <table className="w-full text-sm">
@@ -189,7 +195,7 @@ export default function BacktestAnalytics({ backtests }) {
       )}
 
       {stats.bySession.length > 0 && (
-        <div className={`${cardClass} mb-4`}>
+        <div className={cardClass}>
           <h3 className="text-sm font-semibold text-text-primary mb-3">ביצועים לפי סשן</h3>
           <div className="overflow-x-auto">
             <table className="w-full text-sm">
@@ -243,6 +249,7 @@ export default function BacktestAnalytics({ backtests }) {
           </div>
         </div>
       )}
+      </div>
     </div>
   );
 }
