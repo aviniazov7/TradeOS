@@ -47,8 +47,8 @@ export default function Modal({ isOpen, onClose, title, children, maxWidth = 'ma
               className={`relative ${maxWidth} w-full rounded-2xl overflow-hidden pointer-events-auto`}
               style={{
                 background: 'var(--glass-bg)',
-                backdropFilter: 'blur(28px) saturate(180%)',
-                WebkitBackdropFilter: 'blur(28px) saturate(180%)',
+                backdropFilter: 'blur(28px)',
+                WebkitBackdropFilter: 'blur(28px)',
                 border: '1px solid var(--glass-border)',
                 boxShadow: 'var(--glass-shadow)',
                 maxHeight: 'calc(100vh - 4.5rem)',

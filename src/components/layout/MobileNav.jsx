@@ -68,8 +68,8 @@ export default function MobileNav() {
           background: 'var(--glass-bg)',
           border: '1px solid var(--glass-border)',
           boxShadow: 'var(--glass-shadow-sm)',
-          WebkitBackdropFilter: 'blur(28px) saturate(160%)',
-          backdropFilter: 'blur(28px) saturate(160%)',
+          WebkitBackdropFilter: 'blur(28px)',
+          backdropFilter: 'blur(28px)',
         }}
       >
         <motion.div

@@ -11,8 +11,8 @@ export default function Toast() {
           color: 'var(--color-text-primary)',
           border: '1px solid var(--color-border-primary)',
           borderRadius: '12px',
-          backdropFilter: 'blur(20px) saturate(150%)',
-          WebkitBackdropFilter: 'blur(20px) saturate(150%)',
+          backdropFilter: 'blur(20px)',
+          WebkitBackdropFilter: 'blur(20px)',
         },
         success: {
           iconTheme: {
