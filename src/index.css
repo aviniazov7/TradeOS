@@ -117,23 +117,21 @@ body {
   --color-chart-purple: #7c3aed;
 }
 
-/* Frosted glass surfaces (Apple-style) — backdrop blur WITHOUT saturate.
-   saturate() was amplifying the cyan accent bleeding through the translucent
-   surfaces and tinting them blue; plain blur over the pure-black base stays
-   neutral, so the frost stays but the blue is gone. */
+/* Cards (always-present, sit over the pure-black body): NO backdrop-filter.
+   Over black a blur has nothing to show anyway, but the filter layer
+   re-rasterises whenever something nearby repaints (e.g. hovering a chart),
+   which flashed a "glass slide" across the card. The black-glass look is kept
+   entirely by the dark fill + bright hairline edge (border + inset highlight).
+   Real frost stays only where there's content behind it — modals, dropdowns,
+   the header — via their own backdrop-filter. */
 [class*="bg-bg-secondary"] {
-  -webkit-backdrop-filter: blur(32px);
-  backdrop-filter: blur(32px);
   box-shadow:
     0 8px 32px rgba(0, 0, 0, 0.25),
     inset 0 1px 0 rgba(255, 255, 255, 0.09);
 }
 
-[class*="bg-bg-tertiary"] {
-  -webkit-backdrop-filter: blur(20px);
-  backdrop-filter: blur(20px);
-}
-
+/* Dropdowns/overlays float over page content → keep the frost (transient, so
+   no hover-repaint flicker like the always-present cards). */
 [class*="bg-bg-overlay"] {
   -webkit-backdrop-filter: blur(32px);
   backdrop-filter: blur(32px);

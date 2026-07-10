@@ -1,6 +1,6 @@
 import { useState, useEffect, useMemo } from 'react';
 import { Navigate } from 'react-router-dom';
-import { Users, UserPlus, ShieldCheck, CheckCircle2, Search, RefreshCw, Download, ChevronUp, ChevronDown, ChevronLeft, Mail, Calendar, Coins, TrendingUp, Percent, Sparkles, BookOpen, FlaskConical, Activity, FileText, Brain, Crown, Send, X, Ticket, Plus, Minus, Trash2, Copy, ScrollText, Share2, Link2, BarChart3, AlertTriangle, Clock, DollarSign, Hourglass, Image, Trophy, Loader2, Wrench } from 'lucide-react';
+import { Users, UserPlus, ShieldCheck, CheckCircle2, Search, RefreshCw, Download, ChevronUp, ChevronDown, ChevronLeft, Mail, Calendar, Coins, TrendingUp, Percent, Sparkles, BookOpen, FlaskConical, Activity, FileText, Brain, Crown, Send, X, Ticket, Plus, Minus, Trash2, Copy, ScrollText, Share2, Link2, BarChart3, AlertTriangle, Clock, DollarSign, Hourglass, Image, Trophy, Loader2 } from 'lucide-react';
 import { motion } from 'framer-motion';
 import toast from 'react-hot-toast';
 import Card from '../shared/Card';
@@ -14,7 +14,6 @@ import { adminListCoupons, adminCreateCoupon, adminDeleteCoupon, couponShareUrl 
 import LoadingSpinner from '../shared/LoadingSpinner';
 import SelectDropdown from '../shared/SelectDropdown';
 import Modal from '../shared/Modal';
-import DataCleanupModal from './DataCleanupModal';
 
 // Compute effective premium status from a user doc (admins are always premium;
 // otherwise plan='premium' and planExpires (if set) must be in the future).
@@ -208,7 +207,6 @@ export default function AdminPanel() {
   const [selectedUser, setSelectedUser] = useState(null);
   const [couponsOpen, setCouponsOpen] = useState(false);
   const [auditOpen, setAuditOpen] = useState(false);
-  const [cleanupOpen, setCleanupOpen] = useState(false);
   const [analyticsOpen, setAnalyticsOpen] = useState(false);
   // { title, users } — opened by clicking a stat card to list its users.
   const [listModal, setListModal] = useState(null);
@@ -533,7 +531,6 @@ export default function AdminPanel() {
             { label: 'שליחה קבוצתית', Icon: Send, onClick: () => setBulkOpen(true) },
             { label: 'קופונים', Icon: Ticket, onClick: () => setCouponsOpen(true), tone: 'amber' },
             { label: 'יומן פעולות', Icon: ScrollText, onClick: () => setAuditOpen(true) },
-            { label: 'ניקוי נתונים', Icon: Wrench, onClick: () => setCleanupOpen(true) },
             { label: 'רענן', Icon: RefreshCw, onClick: load, disabled: loading, spin: loading },
           ].map((b) => {
             const tone = b.tone === 'accent'
@@ -558,12 +555,11 @@ export default function AdminPanel() {
         </div>
       </div>
 
-      <div className="grid grid-cols-2 lg:grid-cols-5 gap-3">
+      <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
         <StatCard accent="cyan" icon={<Users className="w-6 h-6" />} label="סה״כ משתמשים" value={stats.total.length} onClick={() => setListModal({ title: 'כל המשתמשים', users: stats.total })} />
         <StatCard accent="green" icon={<UserPlus className="w-6 h-6" />} label="חדשים השבוע" value={stats.newThisWeek.length} onClick={() => setListModal({ title: 'חדשים השבוע', users: stats.newThisWeek })} />
         <StatCard accent="violet" icon={<CheckCircle2 className="w-6 h-6" />} label="סיימו אונבורדינג" value={stats.onboarded.length} onClick={() => setListModal({ title: 'סיימו אונבורדינג', users: stats.onboarded })} />
         <StatCard accent="amber" icon={<Crown className="w-6 h-6" />} label="לקוחות Premium" value={stats.premium.length} onClick={() => setListModal({ title: 'לקוחות Premium', users: stats.premium })} />
-        <StatCard accent="cyan" icon={<ShieldCheck className="w-6 h-6" />} label="אדמינים" value={stats.admins.length} onClick={() => setListModal({ title: 'אדמינים', users: stats.admins })} />
       </div>
 
       {/* Growth: active users (DAU/WAU/MAU) + 30-day signups trend. */}
@@ -1059,7 +1055,6 @@ export default function AdminPanel() {
       <UserDetailModal user={selectedUser} onClose={() => setSelectedUser(null)} onUserChanged={load} />
       <CouponsModal isOpen={couponsOpen} onClose={() => setCouponsOpen(false)} />
       <AuditLogModal isOpen={auditOpen} onClose={() => setAuditOpen(false)} users={users} />
-      <DataCleanupModal isOpen={cleanupOpen} onClose={() => setCleanupOpen(false)} />
       <AnalyticsModal isOpen={analyticsOpen} onClose={() => setAnalyticsOpen(false)} a={analytics} onPickUser={(u) => { setAnalyticsOpen(false); setSelectedUser(u); }} />
       <UserListModal
         data={listModal}

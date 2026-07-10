@@ -4,17 +4,20 @@ import { motion } from 'framer-motion';
 import {
   LayoutDashboard,
   BookOpen,
-  FlaskConical,
-  Coins,
-  Brain,
+  Activity,
+  Newspaper,
+  Bot,
 } from 'lucide-react';
 
+// The bottom bar holds the DAILY quick-access screens (Hebrew labels, matching
+// the sidebar). Backtest / Mental / DCA stay one tap away in the menu — they're
+// occasional, not everyday.
 const mobileItems = [
-  { to: '/', label: 'Home', icon: LayoutDashboard },
-  { to: '/journal', label: 'Journal', icon: BookOpen },
-  { to: '/mentality', label: 'Mental', icon: Brain },
-  { to: '/backtest', label: 'Backtest', icon: FlaskConical },
-  { to: '/dca', label: 'DCA', icon: Coins },
+  { to: '/', label: 'בית', icon: LayoutDashboard },
+  { to: '/journal', label: 'יומן', icon: BookOpen },
+  { to: '/market', label: 'שוק', icon: Activity },
+  { to: '/news', label: 'חדשות', icon: Newspaper },
+  { to: '/trade-ai', label: 'TradeAI', icon: Bot },
 ];
 
 export default function MobileNav() {
