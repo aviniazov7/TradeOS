@@ -285,6 +285,10 @@ export default function TradeJournal() {
 
   useEffect(() => {
     if (searchParams.get('new') === '1') setFormOpen(true);
+    // Deep-link from the dashboard "set opening balance" checklist step —
+    // open journal settings (where the balance field lives) instead of just
+    // landing on the journal, mirroring the ?new=1 → trade-form pattern.
+    if (searchParams.get('settings') === '1') setSettingsOpen(true);
   }, [searchParams]);
 
   // Period-filtered trades — same logic as useDashboardStats so analytics match the selected period

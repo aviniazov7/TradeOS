@@ -68,7 +68,7 @@ export default function GettingStartedCard({ trades, journals, morningCount }) {
       done: exchangeConnected || journals.some((j) => (j.initialBalance || 0) > 0),
       label: 'הגדר יתרת פתיחה',
       desc: 'בהגדרות היומן — כך האחוזים והדראודאון מדויקים',
-      go: () => navigate('/journal'),
+      go: () => navigate('/journal?settings=1'),
     },
     {
       key: 'mind',
