@@ -2,7 +2,8 @@ import { useState } from 'react';
 import { Flame, Snowflake, TrendingUp, TrendingDown } from 'lucide-react';
 import { BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer, PieChart, Pie, Cell } from 'recharts';
 import { useBacktestStats } from '../../hooks/useBacktestStats';
-import { TIME_PERIODS, SESSION_COLORS } from '../../utils/constants';
+import { SESSION_COLORS } from '../../utils/constants';
+import TimePeriodFilter from '../dashboard/TimePeriodFilter';
 
 const tooltipStyle = { background: 'var(--color-bg-overlay)', border: '1px solid var(--color-border-primary)', borderRadius: '8px', fontSize: '12px', color: 'var(--color-text-primary)' };
 const COLORS = ['#22c55e', '#ef4444', '#eab308'];
@@ -18,25 +19,11 @@ export default function BacktestAnalytics({ backtests }) {
 
   return (
     <div>
-      {/* Period filter — contained in a bordered row (not floating), matching
-          the main journal's toolbar treatment. */}
+      {/* Period filter — the journal's dropdown component (opens an organized
+          menu), contained in a bordered row. */}
       <div className="flex items-center justify-between gap-2 mb-4 px-3 py-2 bg-bg-secondary border border-border-primary rounded-xl">
         <span className="text-xs font-medium text-text-muted">תקופה</span>
-        <div className="flex items-center gap-1">
-          {TIME_PERIODS.map((p) => (
-            <button
-              key={p.key}
-              onClick={() => setPeriod(p.key)}
-              className={`px-3 py-1.5 rounded-lg text-xs font-medium transition-colors cursor-pointer ${
-                period === p.key
-                  ? 'bg-accent-primary/15 text-accent-primary'
-                  : 'text-text-muted hover:text-text-primary hover:bg-bg-tertiary'
-              }`}
-            >
-              {p.label}
-            </button>
-          ))}
-        </div>
+        <TimePeriodFilter value={period} onChange={setPeriod} dropdown />
       </div>
 
       {/* Row 1: 4 main stats */}
