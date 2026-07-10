@@ -4,7 +4,7 @@ import { motion, AnimatePresence } from 'framer-motion';
 import {
   Wallet, BookOpen, FlaskConical, ClipboardList, Target, AlertCircle, Trash2, Undo2,
   TrendingUp, DollarSign, Coins, Brain, Sunrise, Moon, CheckCircle2, Clock, ChevronDown, Eye, EyeOff,
-  Activity, Newspaper, ExternalLink, Flame, Award, TrendingDown, CalendarDays, LineChart, Gauge,
+  Activity, Newspaper, Flame, Award, TrendingDown, CalendarDays, LineChart, Gauge,
 } from 'lucide-react';
 import { useTrades } from '../../hooks/useTrades';
 import { useJournalContext } from '../../contexts/JournalContext';
@@ -16,6 +16,7 @@ import { useLinkedJournalsBalance } from '../../hooks/useLinkedExchangeBalance';
 import DashboardSkeleton from './DashboardSkeleton';
 import PendingLimitOrders from './PendingLimitOrders';
 import DashboardKpis from './DashboardKpis';
+import NewsTicker from './NewsTicker';
 import CumulativePnLArea from './CumulativePnLArea';
 import PerformanceRadar from './PerformanceRadar';
 import ExchangeLogo from '../shared/ExchangeLogo';
@@ -23,7 +24,7 @@ import CoinIcon from '../shared/CoinIcon';
 import AnimatedValue from '../shared/AnimatedValue';
 import Card from '../shared/Card';
 import Reveal from '../shared/Reveal';
-import { formatCurrency, formatDate } from '../../utils/formatters';
+import { formatCurrency } from '../../utils/formatters';
 import { EXCHANGES, MENTALITY_EMOTIONS } from '../../utils/constants';
 import { pageVariants, pageTransition } from '../../utils/animations';
 import { fetchPerpPrices } from '../../services/bybitDirect';
@@ -140,7 +141,7 @@ export default function Dashboard() {
         const res = await fetch('https://api.rss2json.com/v1/api.json?rss_url=' + encodeURIComponent('https://cointelegraph.com/rss'), { signal: controller.signal });
         if (!res.ok) throw new Error(`HTTP ${res.status}`);
         const json = await res.json();
-        if (!controller.signal.aborted) setLatestNews((json.items || []).slice(0, 4));
+        if (!controller.signal.aborted) setLatestNews((json.items || []).slice(0, 6));
       } catch (e) {
         if (e.name === 'AbortError') return;
         if (attempt < 2) setTimeout(() => fetchNews(attempt + 1), 3000 * (attempt + 1));
@@ -809,53 +810,7 @@ export default function Dashboard() {
               לכל החדשות
             </button>
           </div>
-          {latestNews.length > 0 ? (
-            <div className="grid grid-cols-2 gap-2.5">
-              {latestNews.map((item, i) => {
-                const thumb = item.thumbnail || item.enclosure?.link || null;
-                return (
-                  <a
-                    key={i}
-                    href={item.link}
-                    target="_blank"
-                    rel="noopener noreferrer"
-                    className="group bg-bg-tertiary border border-border-primary rounded-lg overflow-hidden hover:border-accent-primary/40 transition-all flex flex-col"
-                  >
-                    {thumb ? (
-                      <div className="relative w-full h-20 bg-bg-primary overflow-hidden">
-                        <img
-                          src={thumb}
-                          alt=""
-                          className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-300"
-                          referrerPolicy="no-referrer"
-                          onError={(e) => { e.target.parentElement.style.display = 'none'; }}
-                        />
-                        <div className="absolute top-1 left-1 p-1 rounded bg-black/50 backdrop-blur-sm">
-                          <ExternalLink className="w-2.5 h-2.5 text-white" />
-                        </div>
-                      </div>
-                    ) : (
-                      <div className="w-full h-20 bg-gradient-to-br from-bg-primary to-bg-tertiary flex items-center justify-center">
-                        <Newspaper className="w-6 h-6 text-text-muted/40" />
-                      </div>
-                    )}
-                    <div className="p-2 flex-1 flex flex-col justify-between">
-                      <p className="text-[11px] text-text-secondary group-hover:text-text-primary line-clamp-2 leading-snug transition-colors">
-                        {item.title}
-                      </p>
-                      {item.pubDate && (
-                        <p className="text-[9px] text-text-muted mt-1">
-                          {formatDate(new Date(item.pubDate))}
-                        </p>
-                      )}
-                    </div>
-                  </a>
-                );
-              })}
-            </div>
-          ) : (
-            <p className="text-xs text-text-muted">טוען חדשות...</p>
-          )}
+          <NewsTicker items={latestNews} />
         </div>
       </div>
       </Reveal>

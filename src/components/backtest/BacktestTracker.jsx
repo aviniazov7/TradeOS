@@ -390,8 +390,10 @@ export default function BacktestTracker() {
                 })}
               </div>
 
-              {/* Desktop: Table */}
-              <div className={`${cardClass} overflow-x-auto hidden md:block`}>
+              {/* Desktop: Table — transparent wrapper (no bg-bg-secondary
+                  card) so it sits on the app's black background, matching the
+                  main journal's TradeTable instead of reading as a grey panel. */}
+              <div className="overflow-x-auto hidden md:block">
                 <table className="w-full text-sm">
                   <thead>
                     <tr className="text-xs text-text-muted border-b border-border-primary">
