@@ -88,6 +88,10 @@ export default function TradeJournal() {
       toast.success('היומן נוצר');
     } catch (err) {
       toast.error(err.code === 'permission-denied' ? 'אין הרשאה ליצור יומן' : 'שגיאה ביצירת היומן — נסה שוב');
+      // Rethrow so JournalFormModal's own catch keeps it OPEN — otherwise its
+      // `await onSave(); onClose()` closes the modal and wipes the typed form
+      // on a failed write.
+      throw err;
     }
   };
   const [shareTarget, setShareTarget] = useState(null);
@@ -612,7 +616,7 @@ export default function TradeJournal() {
         <EmptyState
           icon={BookOpen}
           title="אין יומן פעיל"
-          description="צור יומן חדש כדי להתחיל לתעד עסקאות — או שחזר יומן קיים מהארכיון דרך ההגדרות."
+          description="צור יומן חדש כדי להתחיל לתעד עסקאות."
           actionLabel="צור יומן חדש"
           onAction={() => setCreateJournalOpen(true)}
         />
@@ -817,17 +821,30 @@ export default function TradeJournal() {
         </>
       )}
 
-      {/* Empty gate: `analytics` is null when there are no closed trades —
-          without it a new user meets a wall of $0s, 0.0% and ∞ with no hint
-          why. The CTA jumps straight into logging the first trade. */}
+      {/* Empty gate: `analytics` is null when the PERIOD-FILTERED set has no
+          closed trades. Two very different situations share that condition:
+          a brand-new account (show onboarding copy + first-trade CTA) and a
+          veteran whose selected period is simply empty (say so truthfully and
+          offer to widen the period — telling them to "close their first
+          trade" would be false). */}
       {tab === 'analytics' && analytics === null && (
-        <EmptyState
-          icon={BarChart3}
-          title="אין עדיין נתונים לניתוח"
-          description="הניתוחים נבנים מהעסקאות הסגורות שלך — ברגע שתסגור את העסקה הראשונה, הגרפים והמדדים יתעוררו כאן."
-          actionLabel="הוסף עסקה ראשונה"
-          onAction={() => { setTab('trades'); setFormOpen(true); }}
-        />
+        trades.some((t) => t.status === 'closed' || (parseFloat(t.exitPrice) > 0 && t.status !== 'partial' && t.status !== 'open')) ? (
+          <EmptyState
+            icon={BarChart3}
+            title="אין עסקאות סגורות בתקופה שנבחרה"
+            description="טווח הזמן שבחרת לא כולל עסקאות סגורות — נסה תקופה רחבה יותר."
+            actionLabel="הצג את כל התקופות"
+            onAction={() => setPeriod('all')}
+          />
+        ) : (
+          <EmptyState
+            icon={BarChart3}
+            title="אין עדיין נתונים לניתוח"
+            description="הניתוחים נבנים מהעסקאות הסגורות שלך — ברגע שתסגור את העסקה הראשונה, הגרפים והמדדים יתעוררו כאן."
+            actionLabel="הוסף עסקה ראשונה"
+            onAction={() => { setTab('trades'); setFormOpen(true); }}
+          />
+        )
       )}
 
       {tab === 'analytics' && analytics !== null && (

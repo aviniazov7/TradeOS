@@ -4,7 +4,7 @@ import { motion, AnimatePresence } from 'framer-motion';
 import { ChevronLeft, ChevronRight, PlusCircle, Link2 } from 'lucide-react';
 import { getUserProfile, setUserProfile } from '../../services/firestoreService';
 import { useAuth } from '../../contexts/AuthContext';
-import { modalBackdrop, modalContent, onboardingStep } from '../../utils/animations';
+import { onboardingStep } from '../../utils/animations';
 import { ONBOARDING_STEPS } from './onboardingSteps';
 
 export default function OnboardingWizard() {
@@ -132,8 +132,10 @@ export default function OnboardingWizard() {
               </AnimatePresence>
             </div>
 
-            {/* Footer */}
-            <div className="px-6 py-4 border-t border-border-primary/50 flex items-center justify-between bg-bg-tertiary/30">
+            {/* Footer — flex-wrap: on the last slide the two labeled CTAs
+                take a full second row on phones (five items never fit one
+                358px-wide row; the dots collapsed and labels wrapped). */}
+            <div className="px-6 py-4 border-t border-border-primary/50 flex items-center justify-between flex-wrap gap-y-2 bg-bg-tertiary/30">
               {/* Skip / finish-without-action */}
               <button
                 onClick={complete}
@@ -154,12 +156,14 @@ export default function OnboardingWizard() {
                 ))}
               </div>
 
-              {/* Nav buttons */}
-              <div className="flex gap-2">
+              {/* Nav buttons — on the last slide the CTA pair claims the full
+                  width on mobile (wraps below skip+dots) and shrinks back
+                  inline on ≥sm screens. */}
+              <div className={`flex gap-2 ${isLast ? 'w-full sm:w-auto' : ''}`}>
                 {step > 0 && (
                   <button
                     onClick={back}
-                    className="p-2 rounded-lg bg-bg-tertiary text-text-primary hover:bg-border-hover transition-colors cursor-pointer"
+                    className="p-2 rounded-lg bg-bg-tertiary text-text-primary hover:bg-border-hover transition-colors cursor-pointer shrink-0"
                   >
                     <ChevronRight className="w-4 h-4" />
                   </button>
@@ -169,14 +173,14 @@ export default function OnboardingWizard() {
                     {/* Real first actions instead of a dead "let's go" */}
                     <button
                       onClick={() => completeAnd('/exchange')}
-                      className="flex items-center gap-1 px-3 py-2 text-xs font-semibold rounded-lg border border-accent-primary/40 text-accent-primary hover:bg-accent-primary/10 transition-colors cursor-pointer"
+                      className="flex-1 sm:flex-initial flex items-center justify-center gap-1 px-3 py-2 text-xs font-semibold whitespace-nowrap rounded-lg border border-accent-primary/40 text-accent-primary hover:bg-accent-primary/10 transition-colors cursor-pointer"
                     >
                       <Link2 className="w-3.5 h-3.5" />
                       חבר בורסה
                     </button>
                     <button
                       onClick={() => completeAnd('/journal?new=1')}
-                      className="flex items-center gap-1 px-3 py-2 text-xs font-semibold rounded-lg bg-accent-primary text-bg-primary hover:bg-accent-hover transition-colors cursor-pointer"
+                      className="flex-1 sm:flex-initial flex items-center justify-center gap-1 px-3 py-2 text-xs font-semibold whitespace-nowrap rounded-lg bg-accent-primary text-bg-primary hover:bg-accent-hover transition-colors cursor-pointer"
                     >
                       <PlusCircle className="w-3.5 h-3.5" />
                       הוסף עסקה ראשונה

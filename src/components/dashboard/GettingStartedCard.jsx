@@ -3,6 +3,7 @@ import { useNavigate } from 'react-router-dom';
 import { motion } from 'framer-motion';
 import { Rocket, CheckCircle2, ChevronLeft, X, BookOpen, Link2, Wallet, Sunrise } from 'lucide-react';
 import Card from '../shared/Card';
+import { useAuth } from '../../contexts/AuthContext';
 import { getConnectedExchanges } from '../../services/exchangeService';
 
 // First-steps checklist for brand-new accounts. Every item is DERIVED from
@@ -11,15 +12,21 @@ import { getConnectedExchanges } from '../../services/exchangeService';
 // the card self-heals: it disappears once everything is done (or the user
 // has clearly outgrown it) and can be dismissed locally.
 
-const DISMISS_KEY = 'tradeos_gettingStartedDismissed';
-// Past this many trades the user obviously knows the way around — never show
-// (also avoids a veteran seeing the card flash while the exchange check runs).
+// Past this many trades the user obviously knows the way around — never show.
 const VETERAN_TRADES = 5;
 
 export default function GettingStartedCard({ trades, journals, morningCount }) {
   const navigate = useNavigate();
-  const [dismissed, setDismissed] = useState(() => localStorage.getItem(DISMISS_KEY) === 'true');
-  const [exchangeConnected, setExchangeConnected] = useState(false);
+  const { user } = useAuth();
+  // Per-uid dismissal (matches the tradeos_theme_${uid} convention) — a shared
+  // key would let one account's dismissal hide the card for a genuinely new
+  // user signing up on the same browser.
+  const dismissKey = `tradeos_gettingStartedDismissed_${user?.uid || 'anon'}`;
+  const [dismissed, setDismissed] = useState(() => localStorage.getItem(dismissKey) === 'true');
+  // null = status unknown (check in flight). The card does NOT render until
+  // this resolves — rendering optimistically made it flash at 2/4 and unmount
+  // half a second later for users whose exchange completes the checklist.
+  const [exchangeConnected, setExchangeConnected] = useState(null);
 
   const veteran = trades.length >= VETERAN_TRADES;
 
@@ -28,11 +35,13 @@ export default function GettingStartedCard({ trades, journals, morningCount }) {
     let cancelled = false;
     getConnectedExchanges()
       .then((list) => { if (!cancelled) setExchangeConnected(list.length > 0); })
-      .catch(() => { /* offline/error → keep step visible, worst case it's a no-op click */ });
+      // Error/offline → resolve as not-connected so the card still appears;
+      // worst case the exchange step points somewhere the user already was.
+      .catch(() => { if (!cancelled) setExchangeConnected(false); });
     return () => { cancelled = true; };
   }, [dismissed, veteran]);
 
-  if (dismissed || veteran) return null;
+  if (dismissed || veteran || exchangeConnected === null) return null;
 
   const steps = [
     {
@@ -58,7 +67,7 @@ export default function GettingStartedCard({ trades, journals, morningCount }) {
       // balance becomes unnecessary — count either as done.
       done: exchangeConnected || journals.some((j) => (j.initialBalance || 0) > 0),
       label: 'הגדר יתרת פתיחה',
-      desc: 'בהגדרות היומן — בשבילה האחוזים והדראודאון מדויקים',
+      desc: 'בהגדרות היומן — כך האחוזים והדראודאון מדויקים',
       go: () => navigate('/journal'),
     },
     {
@@ -75,7 +84,7 @@ export default function GettingStartedCard({ trades, journals, morningCount }) {
   if (doneCount === steps.length) return null;
 
   const dismiss = () => {
-    localStorage.setItem(DISMISS_KEY, 'true');
+    localStorage.setItem(dismissKey, 'true');
     setDismissed(true);
   };
 
