@@ -11,6 +11,7 @@ import BacktestSwitcher from './BacktestSwitcher';
 import BacktestFilters from './BacktestFilters';
 import BacktestAnalytics from './BacktestAnalytics';
 import BacktestAICoachPanel from './BacktestAICoachPanel';
+import TimePeriodFilter from '../dashboard/TimePeriodFilter';
 import BacktestSettingsModal from './BacktestSettingsModal';
 import StrategyView from './StrategyView';
 import EmptyState from '../shared/EmptyState';
@@ -83,6 +84,7 @@ export default function BacktestTracker() {
   const [deleteTarget, setDeleteTarget] = useState(null);
   const [filters, setFilters] = useState(defaultFilters);
   const [sort, setSort] = useState({ key: 'date', dir: 'desc' });
+  const [period, setPeriod] = useState('all');
   const [tab, setTab] = useState('records');
   const [settingsOpen, setSettingsOpen] = useState(false);
   const [aiOpen, setAiOpen] = useState(false);
@@ -263,6 +265,11 @@ export default function BacktestTracker() {
           </div>
 
           <div className="flex items-center gap-1.5 md:gap-2 flex-shrink-0">
+            {/* Period filter lives in the toolbar (like the journal) — compact
+                segmented control on desktop, dropdown on mobile — shown only on
+                the analytics tab. */}
+            {tab === 'analytics' && <div className="hidden md:block"><TimePeriodFilter value={period} onChange={setPeriod} compact /></div>}
+            {tab === 'analytics' && <div className="md:hidden"><TimePeriodFilter value={period} onChange={setPeriod} dropdown /></div>}
             {/* AI analysis — accent-tinted so it stands out from the neutral
                 icon buttons. Opens the backtest coach modal. */}
             <button
@@ -586,7 +593,7 @@ export default function BacktestTracker() {
         backtests.length === 0 ? (
           <EmptyState icon={FlaskConical} title="אין נתונים לניתוח" description="הוסף עסקאות בקטסט כדי לראות ניתוחים מתקדמים" />
         ) : (
-          <BacktestAnalytics backtests={backtests} />
+          <BacktestAnalytics backtests={backtests} period={period} />
         )
       )}
 

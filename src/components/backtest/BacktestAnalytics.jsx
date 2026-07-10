@@ -1,15 +1,12 @@
-import { useState } from 'react';
 import { Flame, Snowflake, TrendingUp, TrendingDown } from 'lucide-react';
 import { BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer, PieChart, Pie, Cell } from 'recharts';
 import { useBacktestStats } from '../../hooks/useBacktestStats';
 import { SESSION_COLORS } from '../../utils/constants';
-import TimePeriodFilter from '../dashboard/TimePeriodFilter';
 
 const tooltipStyle = { background: 'var(--color-bg-overlay)', border: '1px solid var(--color-border-primary)', borderRadius: '8px', fontSize: '12px', color: 'var(--color-text-primary)' };
 const COLORS = ['#22c55e', '#ef4444', '#eab308'];
 
-export default function BacktestAnalytics({ backtests }) {
-  const [period, setPeriod] = useState('all');
+export default function BacktestAnalytics({ backtests, period = 'all' }) {
   const stats = useBacktestStats(backtests, period);
 
   const cardClass = 'bg-bg-secondary border border-border-primary rounded-xl p-4';
@@ -19,12 +16,8 @@ export default function BacktestAnalytics({ backtests }) {
 
   return (
     <div>
-      {/* Period filter — the journal's dropdown component (opens an organized
-          menu), contained in a bordered row. */}
-      <div className="flex items-center justify-between gap-2 mb-4 px-3 py-2 bg-bg-secondary border border-border-primary rounded-xl">
-        <span className="text-xs font-medium text-text-muted">תקופה</span>
-        <TimePeriodFilter value={period} onChange={setPeriod} dropdown />
-      </div>
+      {/* Period filter now lives in the page toolbar (BacktestTracker), like
+          the journal — not here. */}
 
       {/* Row 1: 4 main stats */}
       <div className="grid grid-cols-2 md:grid-cols-4 gap-2.5 md:gap-3 mb-4">
