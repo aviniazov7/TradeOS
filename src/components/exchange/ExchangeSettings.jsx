@@ -409,11 +409,18 @@ function ExchangeCard({ exchange, data, savedData, syncing, saving, onUpdate, on
             <ExLogo id={id} size={44} accent={accent} />
           </motion.div>
           <div className="flex-1 min-w-0 text-right">
+            {/* One compact row: balance · badge · name (no separate balance
+                line stacked below). */}
             <div className="flex items-center justify-end gap-2">
+              {isConnected && !editing && typeof balance === 'number' && (
+                <span className="text-[11px] font-bold shrink-0" dir="ltr" style={{ color: accent }}>
+                  ${balance.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                </span>
+              )}
               <AnimatePresence>
                 {isConnected && !editing && (
                   <motion.span initial={{ opacity: 0, scale: 0.8 }} animate={{ opacity: 1, scale: 1 }} exit={{ opacity: 0, scale: 0.8 }}
-                    className="flex items-center gap-1 text-[10px] font-bold px-2 py-0.5 rounded-full"
+                    className="flex items-center gap-1 text-[10px] font-bold px-2 py-0.5 rounded-full shrink-0"
                     style={{ background: `${accent}20`, color: accent, border: `1px solid ${accent}40` }}>
                     <motion.span animate={{ scale: [1, 1.3, 1] }} transition={{ repeat: Infinity, duration: 2 }}
                       className="w-1.5 h-1.5 rounded-full inline-block" style={{ background: accent }} />
@@ -421,14 +428,9 @@ function ExchangeCard({ exchange, data, savedData, syncing, saving, onUpdate, on
                   </motion.span>
                 )}
               </AnimatePresence>
-              <span className="text-base font-bold text-text-primary">{name}</span>
+              <span className="text-base font-bold text-text-primary truncate">{name}</span>
             </div>
             <p className="text-[11px] text-text-muted text-left" dir="ltr">{tagline}</p>
-            {isConnected && !editing && typeof balance === 'number' && (
-              <p className="text-[11px] font-bold text-left mt-0.5" dir="ltr" style={{ color: accent }}>
-                ${balance.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
-              </p>
-            )}
           </div>
           <motion.button onClick={() => setGuideOpen(true)} whileHover={{ scale: 1.15, rotate: 15 }}
             whileTap={{ scale: 0.9 }} transition={{ type: 'spring', stiffness: 400 }}

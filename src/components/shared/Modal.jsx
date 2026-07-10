@@ -27,10 +27,12 @@ export default function Modal({ isOpen, onClose, title, children, maxWidth = 'ma
     <AnimatePresence>
       {isOpen && (
         <>
-          {/* Backdrop — blur sits here only, NOT on the card */}
+          {/* Backdrop — lighter dim + heavier blur so the page frosts THROUGH
+              the glass card behind it (that's what reads as glass, vs a flat
+              black wall). */}
           <motion.div
-            className="fixed inset-0 z-50 bg-black/80"
-            style={{ backdropFilter: 'blur(8px)', WebkitBackdropFilter: 'blur(8px)' }}
+            className="fixed inset-0 z-50 bg-black/55"
+            style={{ backdropFilter: 'blur(16px)', WebkitBackdropFilter: 'blur(16px)' }}
             initial={{ opacity: 0 }}
             animate={{ opacity: 1 }}
             exit={{ opacity: 0 }}
@@ -46,7 +48,9 @@ export default function Modal({ isOpen, onClose, title, children, maxWidth = 'ma
             <motion.div
               className={`relative ${maxWidth} w-full rounded-2xl overflow-hidden pointer-events-auto`}
               style={{
-                background: 'var(--glass-bg)',
+                // Subtle top specular sheen over the dark glass — the 21st.dev
+                // "black glass" highlight — layered on top of the translucent fill.
+                background: 'linear-gradient(180deg, rgba(255,255,255,0.06), rgba(255,255,255,0) 160px), var(--glass-bg)',
                 backdropFilter: 'blur(28px)',
                 WebkitBackdropFilter: 'blur(28px)',
                 border: '1px solid var(--glass-border)',

@@ -37,9 +37,9 @@ body {
      hairline edge — that's what makes the frost visible. Grey (not blue): the
      blue was saturate() amplifying the cyan accent, which is now gone. */
   --color-bg-primary: #000000;
-  --color-bg-secondary: rgba(255, 255, 255, 0.08);
-  --color-bg-tertiary: rgba(255, 255, 255, 0.05);
-  --color-bg-overlay: rgba(46, 46, 46, 0.72);
+  --color-bg-secondary: rgba(255, 255, 255, 0.05);
+  --color-bg-tertiary: rgba(255, 255, 255, 0.03);
+  --color-bg-overlay: rgba(12, 12, 14, 0.8);
   --color-bg-solid: rgba(14, 14, 16, 0.82);
 
   /* Borders */
@@ -75,10 +75,13 @@ body {
 :root {
   /* Signature accent gradient (the "Analyze" button look) — violet → cyan. */
   --accent-gradient: linear-gradient(135deg, #8b5cf6 0%, #06b6d4 100%);
-  --glass-bg: rgba(46, 46, 46, 0.6);
-  --glass-border: rgba(255, 255, 255, 0.14);
-  --glass-header: rgba(52, 52, 52, 0.5);
-  --glass-shadow: 0 32px 80px rgba(0, 0, 0, 0.6), 0 0 0 1px rgba(255, 255, 255, 0.09) inset;
+  /* Black glass (21st.dev vibe): the SURFACE stays dark/near-black — the
+     "glass" reads from the bright hairline edge + top specular highlight +
+     the backdrop frost, NOT from a lighter grey fill. */
+  --glass-bg: rgba(10, 10, 12, 0.66);
+  --glass-border: rgba(255, 255, 255, 0.12);
+  --glass-header: rgba(16, 16, 18, 0.6);
+  --glass-shadow: 0 32px 80px rgba(0, 0, 0, 0.65), 0 0 0 1px rgba(255, 255, 255, 0.1) inset;
   --glass-shadow-sm: 0 28px 70px rgba(0, 0, 0, 0.6);
 }
 
