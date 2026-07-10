@@ -5,6 +5,11 @@ export default function EmptyState({
   title = 'אין נתונים עדיין',
   description = '',
   action,
+  // Convenience pair for the common case — renders the app-standard primary
+  // button so call sites don't each rebuild the same markup. `action` (a full
+  // custom node) wins when both are given.
+  actionLabel,
+  onAction,
 }) {
   return (
     <div className="flex flex-col items-center justify-center py-16 text-center">
@@ -14,6 +19,14 @@ export default function EmptyState({
         <p className="text-sm text-text-muted mb-4 max-w-sm">{description}</p>
       )}
       {action}
+      {!action && actionLabel && onAction && (
+        <button
+          onClick={onAction}
+          className="px-4 py-2 rounded-lg bg-accent-primary text-bg-primary text-sm font-semibold hover:bg-accent-hover transition-colors cursor-pointer"
+        >
+          {actionLabel}
+        </button>
+      )}
     </div>
   );
 }

@@ -15,6 +15,7 @@ import { useMentalityJournals } from '../../hooks/useMentalityJournals';
 import { useLinkedJournalsBalance } from '../../hooks/useLinkedExchangeBalance';
 import DashboardSkeleton from './DashboardSkeleton';
 import PendingLimitOrders from './PendingLimitOrders';
+import GettingStartedCard from './GettingStartedCard';
 import DashboardKpis from './DashboardKpis';
 import CumulativePnLArea from './CumulativePnLArea';
 import PerformanceRadar from './PerformanceRadar';
@@ -397,6 +398,10 @@ export default function Dashboard() {
   return (
     <motion.div variants={pageVariants} initial="initial" animate="animate" exit="exit" transition={pageTransition}>
       <PendingLimitOrders trades={globalStats.openTrades} livePrices={livePrices} />
+
+      {/* First-steps checklist — renders only for fresh accounts (hides
+          itself for veterans / when everything is done / when dismissed). */}
+      <GettingStartedCard trades={allTrades} journals={journals} morningCount={morningEntries.length} />
 
       {/* Total portfolio value — the hero figure of the dashboard. */}
       <Card className="mb-4 px-4 py-3.5 flex items-center justify-between gap-4">
