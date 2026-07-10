@@ -1,14 +1,17 @@
 import { useState, useMemo } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
-import { Plus, FlaskConical, Trash2, Pencil, ExternalLink, TrendingUp, TrendingDown, Settings, Download, ChevronDown, ChevronRight, ChevronLeft, Eye, CandlestickChart } from 'lucide-react';
+import { Plus, FlaskConical, Trash2, Pencil, ExternalLink, TrendingUp, TrendingDown, Settings, Download, ChevronDown, ChevronRight, ChevronLeft, Eye, CandlestickChart, ArrowUp, ArrowDown, ArrowUpDown, X, BrainCircuit } from 'lucide-react';
 import DatePicker from 'react-datepicker';
 import 'react-datepicker/dist/react-datepicker.css';
 import toast from 'react-hot-toast';
 import { useBacktests } from '../../hooks/useBacktests';
+import { useBacktestStats } from '../../hooks/useBacktestStats';
 import { useBacktestContext } from '../../contexts/BacktestContext';
 import BacktestSwitcher from './BacktestSwitcher';
 import BacktestFilters from './BacktestFilters';
 import BacktestAnalytics from './BacktestAnalytics';
+import BacktestAICoachPanel from './BacktestAICoachPanel';
+import TimePeriodFilter from '../dashboard/TimePeriodFilter';
 import BacktestSettingsModal from './BacktestSettingsModal';
 import StrategyView from './StrategyView';
 import EmptyState from '../shared/EmptyState';
@@ -47,6 +50,27 @@ const defaultForm = {
 
 const defaultFilters = { search: '', direction: '', result: '', strategy: '', session: '' };
 
+// Sortable table header — click to sort by `col`, toggling asc/desc. Neutral
+// arrows when inactive so the affordance is discoverable.
+function SortableTh({ label, col, tip, sort, onSort }) {
+  const active = sort.key === col;
+  return (
+    <th className="text-right pb-2.5 font-medium">
+      <button
+        type="button"
+        onClick={() => onSort(col)}
+        title={tip}
+        className="inline-flex items-center gap-1 hover:text-text-primary transition-colors cursor-pointer"
+      >
+        {label}
+        {active
+          ? (sort.dir === 'asc' ? <ArrowUp className="w-3 h-3" /> : <ArrowDown className="w-3 h-3" />)
+          : <ArrowUpDown className="w-3 h-3 opacity-30" />}
+      </button>
+    </th>
+  );
+}
+
 export default function BacktestTracker() {
   const { activeJournal, activeJournalId, loading: journalLoading } = useBacktestContext();
   const { backtests, loading, addBacktest, updateBacktest, deleteBacktest } = useBacktests(activeJournalId);
@@ -59,8 +83,11 @@ export default function BacktestTracker() {
   const [saving, setSaving] = useState(false);
   const [deleteTarget, setDeleteTarget] = useState(null);
   const [filters, setFilters] = useState(defaultFilters);
+  const [sort, setSort] = useState({ key: 'date', dir: 'desc' });
+  const [period, setPeriod] = useState('all');
   const [tab, setTab] = useState('records');
   const [settingsOpen, setSettingsOpen] = useState(false);
+  const [aiOpen, setAiOpen] = useState(false);
   const [viewOpen, setViewOpen] = useState(false);
   const [expandedCard, setExpandedCard] = useState(null);
   const [mobileStep, setMobileStep] = useState(0);
@@ -157,10 +184,32 @@ export default function BacktestTracker() {
     });
   }, [backtests, filters]);
 
+  const filtersActive = !!(filters.search || filters.direction || filters.result || filters.strategy || filters.session);
+
+  // Live summary over the CURRENTLY VISIBLE (filtered) rows — so filtering to
+  // one strategy/session instantly shows that subset's win rate & R.
+  const recordStats = useBacktestStats(filtered);
+
+  // Sort the visible rows. Numeric columns sort by value; 'date' by timestamp.
+  const sortedFiltered = useMemo(() => {
+    const val = (b) => {
+      if (sort.key === 'date') {
+        const t = new Date(b.date || b.createdAt || 0).getTime();
+        return Number.isFinite(t) ? t : 0;
+      }
+      return Number(b[sort.key]) || 0;
+    };
+    const arr = [...filtered].sort((a, b) => val(a) - val(b));
+    return sort.dir === 'desc' ? arr.reverse() : arr;
+  }, [filtered, sort]);
+
+  const toggleSort = (key) =>
+    setSort((s) => (s.key === key ? { key, dir: s.dir === 'asc' ? 'desc' : 'asc' } : { key, dir: 'desc' }));
+
   const exportCSV = () => {
     if (!filtered.length) return;
     const headers = ['תאריך', 'זוג', 'כיוון', 'טריגר', 'אסטרטגיה', 'TF', 'סשן', 'Max R', 'Stop %', 'R Result', 'תוצאה', 'הערות'];
-    const rows = filtered.map((bt) => [
+    const rows = sortedFiltered.map((bt) => [
       bt.date || '', bt.pair, bt.direction, bt.trigger || '', bt.strategy || '',
       bt.timeframe || '', bt.session || '', bt.maxR || '', bt.stopDistancePct || '',
       bt.rResult || '', bt.result, bt.notes || '',
@@ -216,6 +265,20 @@ export default function BacktestTracker() {
           </div>
 
           <div className="flex items-center gap-1.5 md:gap-2 flex-shrink-0">
+            {/* Period filter lives in the toolbar (like the journal) — compact
+                segmented control on desktop, dropdown on mobile — shown only on
+                the analytics tab. */}
+            {tab === 'analytics' && <div className="hidden md:block"><TimePeriodFilter value={period} onChange={setPeriod} compact /></div>}
+            {tab === 'analytics' && <div className="md:hidden"><TimePeriodFilter value={period} onChange={setPeriod} dropdown /></div>}
+            {/* AI analysis — accent-tinted so it stands out from the neutral
+                icon buttons. Opens the backtest coach modal. */}
+            <button
+              onClick={() => setAiOpen(true)}
+              className="h-9 inline-flex items-center gap-1.5 rounded-lg px-3 text-sm font-semibold cursor-pointer transition-colors bg-accent-primary/12 text-accent-primary border border-accent-primary/40 hover:bg-accent-primary/20"
+              title="ניתוח AI לבקטסט"
+            >
+              <BrainCircuit className="w-4 h-4" /> <span className="hidden sm:inline">ניתוח AI</span>
+            </button>
             <button
               onClick={() => setChartOpen((v) => !v)}
               className={`h-9 w-9 inline-flex items-center justify-center rounded-lg transition-colors cursor-pointer border ${
@@ -275,7 +338,46 @@ export default function BacktestTracker() {
       {/* Tab: Records */}
       {tab === 'records' && (
         <>
+          {/* Slim summary bar — a single contained row (NOT the big tiles the
+              analytics tab shows, to avoid duplicating it). Reflects the active
+              filters, so filtering to one strategy shows that subset's numbers. */}
+          {filtered.length > 0 && (
+            <div className="flex items-center flex-wrap gap-x-5 gap-y-1.5 mb-3 px-3.5 py-2.5 bg-bg-secondary border border-border-primary rounded-xl">
+              <span className="text-xs text-text-muted">{recordStats.total} עסקאות</span>
+              <span className="inline-flex items-baseline gap-1.5">
+                <span className="text-xs text-text-muted">הצלחה</span>
+                <span className="text-sm font-bold text-text-primary" dir="ltr">{recordStats.winRate.toFixed(1)}%</span>
+                <span className="text-[10px] text-text-muted" dir="ltr">({recordStats.wins}W/{recordStats.losses}L)</span>
+              </span>
+              <span className="inline-flex items-baseline gap-1.5">
+                <span className="text-xs text-text-muted">ממוצע R</span>
+                <span className={`text-sm font-bold ${recordStats.avgR >= 0 ? 'text-profit' : 'text-loss'}`} dir="ltr">{recordStats.avgR >= 0 ? '+' : ''}{recordStats.avgR.toFixed(2)}R</span>
+              </span>
+              <span className="inline-flex items-baseline gap-1.5">
+                <span className="text-xs text-text-muted">סה״כ R</span>
+                <span className={`text-sm font-bold ${recordStats.totalR >= 0 ? 'text-profit' : 'text-loss'}`} dir="ltr">{recordStats.totalR >= 0 ? '+' : ''}{recordStats.totalR.toFixed(2)}R</span>
+              </span>
+              <span className="inline-flex items-baseline gap-1.5">
+                <span className="text-xs text-text-muted">PF</span>
+                <span className="text-sm font-bold text-text-primary" dir="ltr">{recordStats.profitFactorR === Infinity ? '∞' : recordStats.profitFactorR.toFixed(2)}</span>
+              </span>
+            </div>
+          )}
+
           {backtests.length > 0 && <BacktestFilters filters={filters} onChange={setFilters} />}
+
+          {/* Result count + clear, shown only while filtering */}
+          {backtests.length > 0 && filtersActive && (
+            <div className="flex items-center justify-between mb-3 text-xs">
+              <span className="text-text-muted">מציג {filtered.length} מתוך {backtests.length}</span>
+              <button
+                onClick={() => setFilters(defaultFilters)}
+                className="inline-flex items-center gap-1 text-accent-primary hover:underline cursor-pointer"
+              >
+                <X className="w-3 h-3" /> נקה סינון
+              </button>
+            </div>
+          )}
 
           {filtered.length === 0 ? (
             <EmptyState
@@ -294,7 +396,7 @@ export default function BacktestTracker() {
             <>
               {/* Mobile: Cards */}
               <div className="md:hidden space-y-2.5">
-                {filtered.map((bt) => {
+                {sortedFiltered.map((bt) => {
                   const isExpanded = expandedCard === bt.id;
                   return (
                     <div key={bt.id} className={`${cardClass}`}>
@@ -390,28 +492,30 @@ export default function BacktestTracker() {
                 })}
               </div>
 
-              {/* Desktop: Table */}
-              <div className={`${cardClass} overflow-x-auto hidden md:block`}>
+              {/* Desktop: Table — transparent wrapper (no bg-bg-secondary
+                  card) so it sits on the app's black background, matching the
+                  main journal's TradeTable instead of reading as a grey panel. */}
+              <div className="overflow-x-auto hidden md:block">
                 <table className="w-full text-sm">
                   <thead>
                     <tr className="text-xs text-text-muted border-b border-border-primary">
-                      <th className="text-right pb-2.5 font-medium">תאריך</th>
+                      <SortableTh label="תאריך" col="date" sort={sort} onSort={toggleSort} />
                       <th className="text-right pb-2.5 font-medium">זוג</th>
                       <th className="text-right pb-2.5 font-medium">כיוון</th>
                       <th className="text-right pb-2.5 font-medium">טריגר</th>
                       <th className="text-right pb-2.5 font-medium">אסטרטגיה</th>
                       <th className="text-right pb-2.5 font-medium">TF</th>
                       <th className="text-right pb-2.5 font-medium">סשן</th>
-                      <th className="text-right pb-2.5 font-medium">Max R</th>
-                      <th className="text-right pb-2.5 font-medium">Stop %</th>
-                      <th className="text-right pb-2.5 font-medium">R Result</th>
+                      <SortableTh label="Max R" col="maxR" tip="ה-R המקסימלי שהעסקה הגיעה אליו לפני הסגירה" sort={sort} onSort={toggleSort} />
+                      <SortableTh label="Stop %" col="stopDistancePct" sort={sort} onSort={toggleSort} />
+                      <SortableTh label="R Result" col="rResult" tip="תוצאת ה-R הסופית של העסקה" sort={sort} onSort={toggleSort} />
                       <th className="text-right pb-2.5 font-medium">Result</th>
                       <th className="text-right pb-2.5 font-medium">צ'ארט</th>
                       <th className="text-right pb-2.5 font-medium">פעולות</th>
                     </tr>
                   </thead>
                   <tbody>
-                    {filtered.map((bt) => {
+                    {sortedFiltered.map((bt) => {
                       return (
                       <tr key={bt.id} className="border-b border-border-primary/50 hover:bg-bg-tertiary/50 transition-colors">
                         <td className="py-2.5 text-text-secondary text-xs whitespace-nowrap">
@@ -490,7 +594,7 @@ export default function BacktestTracker() {
           <EmptyState icon={FlaskConical} title="אין נתונים לניתוח" description="הוסף עסקאות בקטסט כדי לראות ניתוחים מתקדמים"
             actionLabel="עבור לרשומות" onAction={() => setTab('records')} />
         ) : (
-          <BacktestAnalytics backtests={backtests} />
+          <BacktestAnalytics backtests={backtests} period={period} />
         )
       )}
 
@@ -692,6 +796,20 @@ export default function BacktestTracker() {
       </Modal>
 
       <BacktestSettingsModal isOpen={settingsOpen} onClose={() => setSettingsOpen(false)} />
+
+      <Modal
+        isOpen={aiOpen}
+        onClose={() => setAiOpen(false)}
+        maxWidth="max-w-2xl"
+        title={(
+          <span className="inline-flex items-center gap-2">
+            <BrainCircuit className="w-4 h-4 text-accent-primary" />
+            <span className="font-bold">ניתוח AI לבקטסט</span>
+          </span>
+        )}
+      >
+        <BacktestAICoachPanel backtests={backtests} />
+      </Modal>
 
       <ConfirmDialog isOpen={!!deleteTarget} onClose={() => setDeleteTarget(null)} onConfirm={handleDelete} title="מחיקת עסקה" message="למחוק את העסקה? לא ניתן לבטל פעולה זו." />
 

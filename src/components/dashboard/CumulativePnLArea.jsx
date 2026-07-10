@@ -69,7 +69,7 @@ export default function CumulativePnLArea({ series, hidden = false }) {
 
       <div className="flex-1 min-h-[250px]">
         <ResponsiveContainer width="100%" height="100%">
-          <AreaChart data={data} margin={{ top: 6, right: 6, bottom: 0, left: 0 }}>
+          <AreaChart data={data} margin={{ top: 6, right: 6, bottom: 4, left: 0 }}>
             <defs>
               <linearGradient id={gradId} x1="0" y1="0" x2="0" y2="1">
                 <stop offset="0%" stopColor={color} stopOpacity={0.45} />
@@ -91,6 +91,10 @@ export default function CumulativePnLArea({ series, hidden = false }) {
               tickLine={false}
               axisLine={{ stroke: 'var(--color-border-primary)' }}
               minTickGap={40}
+              tickMargin={8}
+              // Inset the first/last ticks so the leftmost date label doesn't
+              // slide under the Y-axis numbers in the bottom-left corner.
+              padding={{ left: 12, right: 6 }}
             />
             <YAxis
               tickFormatter={hidden ? () => '' : compactUsd}
@@ -98,6 +102,7 @@ export default function CumulativePnLArea({ series, hidden = false }) {
               tickLine={false}
               axisLine={false}
               width={46}
+              tickMargin={4}
             />
             <ReferenceLine y={0} stroke="var(--color-border-primary)" strokeDasharray="3 3" />
             <Tooltip
