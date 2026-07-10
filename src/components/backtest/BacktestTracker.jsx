@@ -1,10 +1,11 @@
 import { useState, useMemo } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
-import { Plus, FlaskConical, Trash2, Pencil, ExternalLink, TrendingUp, TrendingDown, Settings, Download, ChevronDown, ChevronRight, ChevronLeft, Eye, CandlestickChart } from 'lucide-react';
+import { Plus, FlaskConical, Trash2, Pencil, ExternalLink, TrendingUp, TrendingDown, Settings, Download, ChevronDown, ChevronRight, ChevronLeft, Eye, CandlestickChart, ArrowUp, ArrowDown, ArrowUpDown, X } from 'lucide-react';
 import DatePicker from 'react-datepicker';
 import 'react-datepicker/dist/react-datepicker.css';
 import toast from 'react-hot-toast';
 import { useBacktests } from '../../hooks/useBacktests';
+import { useBacktestStats } from '../../hooks/useBacktestStats';
 import { useBacktestContext } from '../../contexts/BacktestContext';
 import BacktestSwitcher from './BacktestSwitcher';
 import BacktestFilters from './BacktestFilters';
@@ -47,6 +48,27 @@ const defaultForm = {
 
 const defaultFilters = { search: '', direction: '', result: '', strategy: '', session: '' };
 
+// Sortable table header — click to sort by `col`, toggling asc/desc. Neutral
+// arrows when inactive so the affordance is discoverable.
+function SortableTh({ label, col, tip, sort, onSort }) {
+  const active = sort.key === col;
+  return (
+    <th className="text-right pb-2.5 font-medium">
+      <button
+        type="button"
+        onClick={() => onSort(col)}
+        title={tip}
+        className="inline-flex items-center gap-1 hover:text-text-primary transition-colors cursor-pointer"
+      >
+        {label}
+        {active
+          ? (sort.dir === 'asc' ? <ArrowUp className="w-3 h-3" /> : <ArrowDown className="w-3 h-3" />)
+          : <ArrowUpDown className="w-3 h-3 opacity-30" />}
+      </button>
+    </th>
+  );
+}
+
 export default function BacktestTracker() {
   const { activeJournal, activeJournalId, loading: journalLoading } = useBacktestContext();
   const { backtests, loading, addBacktest, updateBacktest, deleteBacktest } = useBacktests(activeJournalId);
@@ -59,6 +81,7 @@ export default function BacktestTracker() {
   const [saving, setSaving] = useState(false);
   const [deleteTarget, setDeleteTarget] = useState(null);
   const [filters, setFilters] = useState(defaultFilters);
+  const [sort, setSort] = useState({ key: 'date', dir: 'desc' });
   const [tab, setTab] = useState('records');
   const [settingsOpen, setSettingsOpen] = useState(false);
   const [viewOpen, setViewOpen] = useState(false);
@@ -157,10 +180,32 @@ export default function BacktestTracker() {
     });
   }, [backtests, filters]);
 
+  const filtersActive = !!(filters.search || filters.direction || filters.result || filters.strategy || filters.session);
+
+  // Live summary over the CURRENTLY VISIBLE (filtered) rows — so filtering to
+  // one strategy/session instantly shows that subset's win rate & R.
+  const recordStats = useBacktestStats(filtered);
+
+  // Sort the visible rows. Numeric columns sort by value; 'date' by timestamp.
+  const sortedFiltered = useMemo(() => {
+    const val = (b) => {
+      if (sort.key === 'date') {
+        const t = new Date(b.date || b.createdAt || 0).getTime();
+        return Number.isFinite(t) ? t : 0;
+      }
+      return Number(b[sort.key]) || 0;
+    };
+    const arr = [...filtered].sort((a, b) => val(a) - val(b));
+    return sort.dir === 'desc' ? arr.reverse() : arr;
+  }, [filtered, sort]);
+
+  const toggleSort = (key) =>
+    setSort((s) => (s.key === key ? { key, dir: s.dir === 'asc' ? 'desc' : 'asc' } : { key, dir: 'desc' }));
+
   const exportCSV = () => {
     if (!filtered.length) return;
     const headers = ['תאריך', 'זוג', 'כיוון', 'טריגר', 'אסטרטגיה', 'TF', 'סשן', 'Max R', 'Stop %', 'R Result', 'תוצאה', 'הערות'];
-    const rows = filtered.map((bt) => [
+    const rows = sortedFiltered.map((bt) => [
       bt.date || '', bt.pair, bt.direction, bt.trigger || '', bt.strategy || '',
       bt.timeframe || '', bt.session || '', bt.maxR || '', bt.stopDistancePct || '',
       bt.rResult || '', bt.result, bt.notes || '',
@@ -275,7 +320,39 @@ export default function BacktestTracker() {
       {/* Tab: Records */}
       {tab === 'records' && (
         <>
+          {/* Live summary strip — the key backtest numbers, previously only on
+              the analytics tab. Reflects the active filters. */}
+          {filtered.length > 0 && (
+            <div className="grid grid-cols-2 md:grid-cols-4 gap-2 md:gap-3 mb-3">
+              {[
+                { label: 'אחוז הצלחה', value: `${recordStats.winRate.toFixed(1)}%`, sub: `${recordStats.wins}W / ${recordStats.losses}L`, tone: 'text-text-primary' },
+                { label: 'ממוצע R', value: `${recordStats.avgR >= 0 ? '+' : ''}${recordStats.avgR.toFixed(2)}R`, tone: recordStats.avgR >= 0 ? 'text-profit' : 'text-loss' },
+                { label: 'סה״כ R', value: `${recordStats.totalR >= 0 ? '+' : ''}${recordStats.totalR.toFixed(2)}R`, tone: recordStats.totalR >= 0 ? 'text-profit' : 'text-loss' },
+                { label: 'Profit Factor', value: recordStats.profitFactorR === Infinity ? '∞' : recordStats.profitFactorR.toFixed(2), tone: 'text-text-primary' },
+              ].map((s) => (
+                <div key={s.label} className="bg-bg-secondary border border-border-primary rounded-xl px-3 py-2.5">
+                  <span className="text-[11px] md:text-xs text-text-muted block mb-0.5">{s.label}</span>
+                  <span className={`text-base md:text-lg font-bold ${s.tone}`} dir="ltr">{s.value}</span>
+                  {s.sub && <span className="text-[10px] text-text-muted block" dir="ltr">{s.sub}</span>}
+                </div>
+              ))}
+            </div>
+          )}
+
           {backtests.length > 0 && <BacktestFilters filters={filters} onChange={setFilters} />}
+
+          {/* Result count + clear, shown only while filtering */}
+          {backtests.length > 0 && filtersActive && (
+            <div className="flex items-center justify-between mb-3 text-xs">
+              <span className="text-text-muted">מציג {filtered.length} מתוך {backtests.length}</span>
+              <button
+                onClick={() => setFilters(defaultFilters)}
+                className="inline-flex items-center gap-1 text-accent-primary hover:underline cursor-pointer"
+              >
+                <X className="w-3 h-3" /> נקה סינון
+              </button>
+            </div>
+          )}
 
           {filtered.length === 0 ? (
             <EmptyState
@@ -294,7 +371,7 @@ export default function BacktestTracker() {
             <>
               {/* Mobile: Cards */}
               <div className="md:hidden space-y-2.5">
-                {filtered.map((bt) => {
+                {sortedFiltered.map((bt) => {
                   const isExpanded = expandedCard === bt.id;
                   return (
                     <div key={bt.id} className={`${cardClass}`}>
@@ -397,23 +474,23 @@ export default function BacktestTracker() {
                 <table className="w-full text-sm">
                   <thead>
                     <tr className="text-xs text-text-muted border-b border-border-primary">
-                      <th className="text-right pb-2.5 font-medium">תאריך</th>
+                      <SortableTh label="תאריך" col="date" sort={sort} onSort={toggleSort} />
                       <th className="text-right pb-2.5 font-medium">זוג</th>
                       <th className="text-right pb-2.5 font-medium">כיוון</th>
                       <th className="text-right pb-2.5 font-medium">טריגר</th>
                       <th className="text-right pb-2.5 font-medium">אסטרטגיה</th>
                       <th className="text-right pb-2.5 font-medium">TF</th>
                       <th className="text-right pb-2.5 font-medium">סשן</th>
-                      <th className="text-right pb-2.5 font-medium">Max R</th>
-                      <th className="text-right pb-2.5 font-medium">Stop %</th>
-                      <th className="text-right pb-2.5 font-medium">R Result</th>
+                      <SortableTh label="Max R" col="maxR" tip="ה-R המקסימלי שהעסקה הגיעה אליו לפני הסגירה" sort={sort} onSort={toggleSort} />
+                      <SortableTh label="Stop %" col="stopDistancePct" sort={sort} onSort={toggleSort} />
+                      <SortableTh label="R Result" col="rResult" tip="תוצאת ה-R הסופית של העסקה" sort={sort} onSort={toggleSort} />
                       <th className="text-right pb-2.5 font-medium">Result</th>
                       <th className="text-right pb-2.5 font-medium">צ'ארט</th>
                       <th className="text-right pb-2.5 font-medium">פעולות</th>
                     </tr>
                   </thead>
                   <tbody>
-                    {filtered.map((bt) => {
+                    {sortedFiltered.map((bt) => {
                       return (
                       <tr key={bt.id} className="border-b border-border-primary/50 hover:bg-bg-tertiary/50 transition-colors">
                         <td className="py-2.5 text-text-secondary text-xs whitespace-nowrap">
