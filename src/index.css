@@ -32,13 +32,14 @@ body {
   --font-sans: 'Heebo', 'Inter', sans-serif;
 
   /* Background — pure-black base with translucent "glass" surfaces on top
-     (Apple-style frost). The blue tint is gone not because we killed the glass
-     but because we dropped saturate() from the backdrop-filter — saturate was
-     amplifying the cyan accent bleeding through. Blur alone stays neutral. */
+     (Apple-style frost). Over true black a blur has nothing to show, so the
+     glass has to read from a slightly-lighter NEUTRAL-GREY fill + a bright
+     hairline edge — that's what makes the frost visible. Grey (not blue): the
+     blue was saturate() amplifying the cyan accent, which is now gone. */
   --color-bg-primary: #000000;
-  --color-bg-secondary: rgba(255, 255, 255, 0.05);
-  --color-bg-tertiary: rgba(255, 255, 255, 0.03);
-  --color-bg-overlay: rgba(24, 24, 27, 0.82);
+  --color-bg-secondary: rgba(255, 255, 255, 0.08);
+  --color-bg-tertiary: rgba(255, 255, 255, 0.05);
+  --color-bg-overlay: rgba(46, 46, 46, 0.72);
   --color-bg-solid: rgba(14, 14, 16, 0.82);
 
   /* Borders */
@@ -74,10 +75,10 @@ body {
 :root {
   /* Signature accent gradient (the "Analyze" button look) — violet → cyan. */
   --accent-gradient: linear-gradient(135deg, #8b5cf6 0%, #06b6d4 100%);
-  --glass-bg: rgba(18, 18, 20, 0.7);
-  --glass-border: rgba(255, 255, 255, 0.09);
-  --glass-header: rgba(20, 20, 22, 0.55);
-  --glass-shadow: 0 32px 80px rgba(0, 0, 0, 0.6), 0 0 0 1px rgba(255, 255, 255, 0.04) inset;
+  --glass-bg: rgba(46, 46, 46, 0.6);
+  --glass-border: rgba(255, 255, 255, 0.14);
+  --glass-header: rgba(52, 52, 52, 0.5);
+  --glass-shadow: 0 32px 80px rgba(0, 0, 0, 0.6), 0 0 0 1px rgba(255, 255, 255, 0.09) inset;
   --glass-shadow-sm: 0 28px 70px rgba(0, 0, 0, 0.6);
 }
 
@@ -122,7 +123,7 @@ body {
   backdrop-filter: blur(32px);
   box-shadow:
     0 8px 32px rgba(0, 0, 0, 0.25),
-    inset 0 1px 0 rgba(255, 255, 255, 0.04);
+    inset 0 1px 0 rgba(255, 255, 255, 0.09);
 }
 
 [class*="bg-bg-tertiary"] {
