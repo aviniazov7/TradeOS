@@ -202,7 +202,9 @@ export const PREMIUM_PRICING = {
 // Marketing copy for the upgrade page (free vs premium comparison).
 export const PREMIUM_FEATURES = [
   { icon: 'Sparkles', title: 'תשובות AI מהירות', free: 'בסיסי', premium: 'מהיר ועדיף' },
-  { icon: 'Bot', title: 'TradeAI ללא הגבלה', free: `${FREE_LIMITS.aiPerDay} ליום`, premium: 'ללא הגבלה' },
+  // Premium AI chat is soft-capped at 200/day (mirrors the worker's
+  // AI_PREMIUM_LIMITS.day) — NOT truly unlimited, so say the real number.
+  { icon: 'Bot', title: 'TradeAI', free: `${FREE_LIMITS.aiPerDay} ליום`, premium: '200 ליום' },
   { icon: 'Image', title: 'ניתוח גרפים מתמונה', free: '—', premium: `${FREE_LIMITS.aiImagesPremium} ליום` },
   { icon: 'Layers', title: 'מסחר בכמה שווקים', free: 'סוג אחד', premium: 'הכל' },
   { icon: 'BookOpen', title: 'יומני מסחר', free: `עד ${FREE_LIMITS.journals}`, premium: 'ללא הגבלה' },

@@ -558,12 +558,11 @@ export default function AdminPanel() {
         </div>
       </div>
 
-      <div className="grid grid-cols-2 lg:grid-cols-5 gap-3">
+      <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
         <StatCard accent="cyan" icon={<Users className="w-6 h-6" />} label="סה״כ משתמשים" value={stats.total.length} onClick={() => setListModal({ title: 'כל המשתמשים', users: stats.total })} />
         <StatCard accent="green" icon={<UserPlus className="w-6 h-6" />} label="חדשים השבוע" value={stats.newThisWeek.length} onClick={() => setListModal({ title: 'חדשים השבוע', users: stats.newThisWeek })} />
         <StatCard accent="violet" icon={<CheckCircle2 className="w-6 h-6" />} label="סיימו אונבורדינג" value={stats.onboarded.length} onClick={() => setListModal({ title: 'סיימו אונבורדינג', users: stats.onboarded })} />
         <StatCard accent="amber" icon={<Crown className="w-6 h-6" />} label="לקוחות Premium" value={stats.premium.length} onClick={() => setListModal({ title: 'לקוחות Premium', users: stats.premium })} />
-        <StatCard accent="cyan" icon={<ShieldCheck className="w-6 h-6" />} label="אדמינים" value={stats.admins.length} onClick={() => setListModal({ title: 'אדמינים', users: stats.admins })} />
       </div>
 
       {/* Growth: active users (DAU/WAU/MAU) + 30-day signups trend. */}

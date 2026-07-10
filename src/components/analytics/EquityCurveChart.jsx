@@ -9,6 +9,13 @@ const tooltipStyle = {
   color: 'var(--color-text-primary)',
 };
 
+// Compact axis labels ($1.2K) so the Y ticks stay narrow and don't crowd the
+// plot / collide with the X axis.
+const compactUsd = (v) => {
+  const a = Math.abs(v);
+  return a >= 1000 ? `$${(v / 1000).toFixed(1)}K` : `$${Math.round(v)}`;
+};
+
 export default function EquityCurveChart({ data }) {
   if (!data || data.length < 2) {
     return (
@@ -22,15 +29,17 @@ export default function EquityCurveChart({ data }) {
     <div className="bg-bg-secondary border border-border-primary rounded-xl p-5">
       <h3 className="text-sm font-semibold text-text-primary mb-3">עקומת הון</h3>
       <ResponsiveContainer width="100%" height={170}>
-        <ComposedChart data={data}>
+        <ComposedChart data={data} margin={{ top: 6, right: 4, bottom: 0, left: 8 }}>
           <defs>
             <linearGradient id="equityGradAdv" x1="0" y1="0" x2="0" y2="1">
               <stop offset="5%" stopColor="var(--color-accent-primary)" stopOpacity={0.3} />
               <stop offset="95%" stopColor="var(--color-accent-primary)" stopOpacity={0} />
             </linearGradient>
           </defs>
-          <XAxis dataKey="date" tick={{ fill: 'var(--color-text-muted)', fontSize: 9 }} axisLine={false} tickLine={false} />
-          <YAxis tick={{ fill: 'var(--color-text-muted)', fontSize: 10 }} axisLine={false} tickLine={false} orientation="right" />
+          {/* minTickGap keeps the date labels from crowding; the YAxis width
+              reserves the right strip so the axes don't collide in the corner. */}
+          <XAxis dataKey="date" tick={{ fill: 'var(--color-text-muted)', fontSize: 9 }} axisLine={false} tickLine={false} minTickGap={28} />
+          <YAxis tick={{ fill: 'var(--color-text-muted)', fontSize: 10 }} axisLine={false} tickLine={false} orientation="right" width={48} tickFormatter={compactUsd} />
           <Tooltip
             contentStyle={tooltipStyle}
             labelStyle={{ color: 'var(--color-text-secondary)', fontSize: '11px' }}

@@ -11,11 +11,12 @@ async function authHeader() {
 
 // Ask the worker to produce a structured AI report on a stats summary.
 // depth: 'short' (free) | 'deep' (premium).
-export async function generateCoachReport(stats, depth = 'short') {
+// mode: 'journal' (default) | 'backtest' (swaps the worker's system prompt).
+export async function generateCoachReport(stats, depth = 'short', mode = 'journal') {
   const res = await fetch(`${WORKER_BASE}/ai-coach`, {
     method: 'POST',
     headers: await authHeader(),
-    body: JSON.stringify({ stats, depth }),
+    body: JSON.stringify({ stats, depth, mode }),
   });
   const data = await res.json().catch(() => ({}));
   if (!res.ok || !data.ok) {

@@ -2407,10 +2407,14 @@ const GROQ_VISION_MODEL = 'meta-llama/llama-4-scout-17b-16e-instruct';
 // tight per-minute token budgets on the 70B (and one key serves chat + coach +
 // coin descriptions + digest), so a burst — e.g. clicking several coach
 // quick-prompts in a row — trips 429 instantly. Retry with the same spaced
-// backoff /ai-chat uses, then fall back ONCE to the instant model, which has
-// a SEPARATE (much higher) per-model rate bucket — a slightly simpler answer
-// beats an error. Only 429 is retried; any other status returns immediately.
-const GROQ_FALLBACK_MODEL = 'llama-3.1-8b-instant';
+// backoff /ai-chat uses, then fall back ONCE to a model with a SEPARATE
+// per-model rate bucket — a slightly simpler answer beats an error. Only 429
+// is retried; any other status returns immediately.
+// NOT llama-3.1-8b-instant: the news translator (NEWS_TRANSLATE_MODEL) burns
+// that bucket all day via the */10 cron, so it 429s exactly when the 70B does
+// (verified in prod logs 2026-07-10). Scout is already exercised by vision
+// chat, has generous limits, and its id is proven valid on this key.
+const GROQ_FALLBACK_MODEL = GROQ_VISION_MODEL;
 async function groqFetchWithRetry(env, payload) {
   const call = (model) => fetch(GROQ_URL, {
     method: 'POST',
@@ -2427,6 +2431,9 @@ async function groqFetchWithRetry(env, payload) {
     console.error(`groq 429 after retries on ${payload.model} — falling back to ${GROQ_FALLBACK_MODEL}`);
     const fb = await call(GROQ_FALLBACK_MODEL);
     if (fb.ok || fb.status !== 429) return fb;
+    // Log the fallback's own 429 body — without this the coach error only
+    // shows the primary model's body and the fallback failure is invisible.
+    console.error(`groq fallback ${GROQ_FALLBACK_MODEL} also 429:`, await fb.text().catch(() => ''));
   }
   return res;
 }
@@ -2440,7 +2447,10 @@ const MAX_IMAGE_CHARS = 4_000_000;
 // produces noticeably better Hebrew than Groq's Llama.
 // gemini-2.0-flash is the current stable production alias. 1.5-flash is being
 // retired and was returning 404 on the v1beta endpoint for new requests.
-const GEMINI_MODEL = 'gemini-2.0-flash';
+// 2.5-flash, NOT 2.0-flash: Google removed 2.0-flash from the free tier —
+// requests fail with RESOURCE_EXHAUSTED "limit: 0" on both the per-minute and
+// per-day free-tier quotas (verified in prod logs 2026-07-10).
+const GEMINI_MODEL = 'gemini-2.5-flash';
 const GEMINI_STREAM_URL = (key) =>
   `https://generativelanguage.googleapis.com/v1beta/models/${GEMINI_MODEL}:streamGenerateContent?alt=sse&key=${encodeURIComponent(key)}`;
 const GEMINI_URL = (key) =>
@@ -2461,7 +2471,10 @@ async function geminiGenerateFallback(env, systemPrompt, userPrompt, maxTokens) 
       body: JSON.stringify({
         systemInstruction: { parts: [{ text: systemPrompt }] },
         contents: [{ role: 'user', parts: [{ text: userPrompt }] }],
-        generationConfig: { temperature: 0.5, maxOutputTokens: maxTokens },
+        // thinkingBudget: 0 — 2.5-flash is a thinking model; without this it
+        // spends the whole maxOutputTokens budget on internal thoughts and
+        // returns an empty candidate.
+        generationConfig: { temperature: 0.5, maxOutputTokens: maxTokens, thinkingConfig: { thinkingBudget: 0 } },
       }),
     });
     if (!res.ok) {
@@ -2500,7 +2513,9 @@ function toGeminiBody(apiMessages) {
           })
         : [{ text: m.content }],
     })),
-    generationConfig: { temperature: 0.7, maxOutputTokens: 2048 },
+    // thinkingBudget: 0 — 2.5-flash defaults to spending output tokens on
+    // internal thinking; chat wants fast first-token and full budget for text.
+    generationConfig: { temperature: 0.7, maxOutputTokens: 2048, thinkingConfig: { thinkingBudget: 0 } },
   };
 }
 
@@ -2871,13 +2886,56 @@ const COACH_FOCUS_INSTRUCTIONS = {
   strategyEdge: 'הסוחר שאל: "איזו אסטרטגיה מצליחה?". מקד את כל הדו"ח בהשוואת האסטרטגיות (byStrategy) — איזו מניבה הכי טוב ואיזו לזנוח, עם המספרים.',
 };
 
+// Backtest mode — same 4-section output format (so the client parser is shared)
+// but analysing STRATEGY VALIDATION on historical data, measured in R
+// (risk units), not dollars.
+const BACKTEST_COACH_SYSTEM_PROMPT = `אתה אנליסט אסטרטגיות מסחר שמנתח יומן בקטסט (בדיקת אסטרטגיה על נתוני עבר) וכותב דו"ח חד בעברית. הנתונים נמדדים ב-R (יחידות סיכון), לא בדולרים — R חיובי = רווח בכפולות הסיכון.
+
+## פלט נדרש (חובה):
+- בעברית בלבד, טבעית וזורמת (לא תרגום מילולי).
+- 3 חלקים בלבד, בסדר הזה — כל אחד עם כותרת בדיוק בפורמט:
+  **חוזקות**
+  **חולשות**
+  **המלצות לפעולה**
+- אם יבוקש דו"ח מורחב — הוסף חלק רביעי: **תובנות מתקדמות**.
+- תחת כל כותרת: 2–5 בולטים. כל בולט מתחיל ב"• " (תו בולט עברי). בלי מספור.
+- בדיוק כך: **כותרת** בשורה משלה, ואז שורות בולטים, אחת לשורה.
+
+## אסור (חובה לציית):
+- אסור להתחיל שורה ב-#, ##, ### או אות-מספר-נקודה (1.).
+- אסור כותרות אחרות מלבד הארבע המוגדרות.
+- אסור: תחזיות מחיר, "בוליש/בריש", אזכור שאתה AI, סלוגנים, פתיחות שיווקיות.
+- אסור להמציא נתונים — רק מה שמופיע ב-stats.
+- בלי משפט פתיחה. תתחיל ישר בשורה: **חוזקות**.
+
+## איכות התוכן (חשוב):
+- זו בדיקת אסטרטגיה, לא מסחר חי. הערך את ה-EDGE: האם האסטרטגיה רווחית (תוחלת R חיובית, Profit Factor מעל 1)?
+- התייחס לגודל המדגם: מתחת ל-~20 עסקאות הסק בזהירות וציין במפורש שהמדגם קטן.
+- אתר את הצירופים הרווחיים ביותר (אסטרטגיה × סשן × זוג × טיימפריים) לפי ממוצע R ו-Win Rate, ואת המפסידים.
+- כל בולט קצר, ומסתמך על מספר אחד לפחות מה-stats.
+- המלצות = פעולה ספציפית ("התמקד ב-[אסטרטגיה] בסשן [X] — ממוצע [R]R; זנח [Y] עם תוחלת שלילית"), לא טיפים גנריים.`;
+
+const BACKTEST_FOCUS_INSTRUCTIONS = {
+  overview: 'הסוחר ביקש סקירה כללית של הבקטסט: האם האסטרטגיה רווחית, מה ה-edge, ומה הכי בולט לטובה ולרעה.',
+  profit: 'הסוחר שאל: "איפה אני מרוויח הכי הרבה?". מקד את כל הדו"ח בצירופים הרווחיים ביותר (אסטרטגיה/סשן/זוג/טיימפריים) לפי ממוצע R וסה"כ R — איפה ה-edge ואיך למקסם אותו.',
+  strategy: 'הסוחר שאל: "איזו אסטרטגיה הכי טובה?". השווה את האסטרטגיות (byStrategy) — איזו מניבה תוחלת R חיובית ואיזו לזנוח, עם המספרים.',
+  planReview: 'הסוחר שאל: "האם תוכנית הבקטסט שלי רווחית?". תן פסק דין ברור על ה-edge (תוחלת R, Profit Factor, Win Rate), התייחס לגודל המדגם, ומה נדרש כדי להפוך את התוכנית לברת-מסחר חי.',
+  improve: 'הסוחר שאל: "מה לשפר?". מקד את הדו"ח בחולשות הניתנות לתיקון — צירופים מפסידים לזנוח, טיימפריימים/סשנים חלשים, ומה לבדוק יותר לפני מעבר למסחר חי.',
+};
+
 async function handleAICoach(request, env, cors) {
   try {
     const body = await request.json().catch(() => ({}));
-    const { stats, depth = 'short' } = body || {};
+    const { stats, depth = 'short', mode = 'journal' } = body || {};
     if (!stats || typeof stats !== 'object') {
       return new Response(JSON.stringify({ error: 'Missing stats' }), { status: 400, headers: { ...cors, 'Content-Type': 'application/json' } });
     }
+    // Backtest mode swaps the system prompt + focus set; everything else (auth,
+    // rate gate, quota, provider failover) is shared.
+    const isBacktest = mode === 'backtest';
+    const systemPrompt = isBacktest ? BACKTEST_COACH_SYSTEM_PROMPT : COACH_SYSTEM_PROMPT;
+    const focusSet = isBacktest ? BACKTEST_FOCUS_INSTRUCTIONS : COACH_FOCUS_INSTRUCTIONS;
+    const dataLabel = isBacktest ? 'נתוני הבקטסט' : 'נתוני העסקאות';
     // Hard cap stats payload to keep the prompt cheap.
     const statsStr = JSON.stringify(stats).slice(0, 6000);
 
@@ -2916,19 +2974,19 @@ async function handleAICoach(request, env, cors) {
     // Turn the clicked quick-prompt (stats.focus) into an explicit, prominent
     // directive so each button yields a genuinely different, focused report.
     const focusKey = typeof stats.focus === 'string' ? stats.focus : '';
-    const focusLine = COACH_FOCUS_INSTRUCTIONS[focusKey]
-      ? `## מיקוד הדו"ח (חובה):\n${COACH_FOCUS_INSTRUCTIONS[focusKey]}\nכל סעיף בדו"ח חייב לענות על השאלה הזו — אל תיתן דו"ח כללי.\n\n`
+    const focusLine = focusSet[focusKey]
+      ? `## מיקוד הדו"ח (חובה):\n${focusSet[focusKey]}\nכל סעיף בדו"ח חייב לענות על השאלה הזו — אל תיתן דו"ח כללי.\n\n`
       : '';
 
     const userPrompt =
       focusLine +
       (premium && depth === 'deep' ? 'יבוקש דו"ח Premium מורחב.\n' : 'יבוקש דו"ח קצר.\n') +
-      `נתוני העסקאות (JSON):\n\`\`\`json\n${statsStr}\n\`\`\``;
+      `${dataLabel} (JSON):\n\`\`\`json\n${statsStr}\n\`\`\``;
 
     const groqRes = await groqFetchWithRetry(env, {
       model: GROQ_MODEL,
       messages: [
-        { role: 'system', content: COACH_SYSTEM_PROMPT },
+        { role: 'system', content: systemPrompt },
         { role: 'user', content: userPrompt },
       ],
       temperature: 0.5,
@@ -2940,7 +2998,7 @@ async function handleAICoach(request, env, cors) {
       // Second provider: both Groq models exhausted/down → one Gemini attempt
       // before surfacing an error (e.g. the 70B's 100K-tokens/day budget dying
       // mid-evening must not kill the feature).
-      const gemText = await geminiGenerateFallback(env, COACH_SYSTEM_PROMPT, userPrompt, premium && depth === 'deep' ? 1400 : 700);
+      const gemText = await geminiGenerateFallback(env, systemPrompt, userPrompt, premium && depth === 'deep' ? 1400 : 700);
       if (gemText) {
         if (chargeCoachQuota) await chargeCoachQuota();
         return new Response(JSON.stringify({ ok: true, text: gemText, premium }), { headers: { ...cors, 'Content-Type': 'application/json' } });

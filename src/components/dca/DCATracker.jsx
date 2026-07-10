@@ -186,7 +186,8 @@ export default function DCATracker() {
       {/* Tab: Analytics */}
       {tab === 'summary' && (
         dcaPlans.length === 0 ? (
-          <EmptyState icon={Coins} title="אין נתונים לניתוח" description="צור תוכניות DCA כדי לראות ניתוחים מפורטים" />
+          <EmptyState icon={Coins} title="אין נתונים לניתוח" description="צור תוכניות DCA כדי לראות ניתוחים מפורטים"
+            actionLabel="צור תוכנית DCA" onAction={() => { setTab('plans'); setEditingPlan(null); setFormOpen(true); }} />
         ) : (
           <DCAAnalytics plans={dcaPlans} prices={prices} />
         )
