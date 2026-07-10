@@ -2407,10 +2407,14 @@ const GROQ_VISION_MODEL = 'meta-llama/llama-4-scout-17b-16e-instruct';
 // tight per-minute token budgets on the 70B (and one key serves chat + coach +
 // coin descriptions + digest), so a burst — e.g. clicking several coach
 // quick-prompts in a row — trips 429 instantly. Retry with the same spaced
-// backoff /ai-chat uses, then fall back ONCE to the instant model, which has
-// a SEPARATE (much higher) per-model rate bucket — a slightly simpler answer
-// beats an error. Only 429 is retried; any other status returns immediately.
-const GROQ_FALLBACK_MODEL = 'llama-3.1-8b-instant';
+// backoff /ai-chat uses, then fall back ONCE to a model with a SEPARATE
+// per-model rate bucket — a slightly simpler answer beats an error. Only 429
+// is retried; any other status returns immediately.
+// NOT llama-3.1-8b-instant: the news translator (NEWS_TRANSLATE_MODEL) burns
+// that bucket all day via the */10 cron, so it 429s exactly when the 70B does
+// (verified in prod logs 2026-07-10). Scout is already exercised by vision
+// chat, has generous limits, and its id is proven valid on this key.
+const GROQ_FALLBACK_MODEL = GROQ_VISION_MODEL;
 async function groqFetchWithRetry(env, payload) {
   const call = (model) => fetch(GROQ_URL, {
     method: 'POST',
@@ -2427,6 +2431,9 @@ async function groqFetchWithRetry(env, payload) {
     console.error(`groq 429 after retries on ${payload.model} — falling back to ${GROQ_FALLBACK_MODEL}`);
     const fb = await call(GROQ_FALLBACK_MODEL);
     if (fb.ok || fb.status !== 429) return fb;
+    // Log the fallback's own 429 body — without this the coach error only
+    // shows the primary model's body and the fallback failure is invisible.
+    console.error(`groq fallback ${GROQ_FALLBACK_MODEL} also 429:`, await fb.text().catch(() => ''));
   }
   return res;
 }
@@ -2440,7 +2447,10 @@ const MAX_IMAGE_CHARS = 4_000_000;
 // produces noticeably better Hebrew than Groq's Llama.
 // gemini-2.0-flash is the current stable production alias. 1.5-flash is being
 // retired and was returning 404 on the v1beta endpoint for new requests.
-const GEMINI_MODEL = 'gemini-2.0-flash';
+// 2.5-flash, NOT 2.0-flash: Google removed 2.0-flash from the free tier —
+// requests fail with RESOURCE_EXHAUSTED "limit: 0" on both the per-minute and
+// per-day free-tier quotas (verified in prod logs 2026-07-10).
+const GEMINI_MODEL = 'gemini-2.5-flash';
 const GEMINI_STREAM_URL = (key) =>
   `https://generativelanguage.googleapis.com/v1beta/models/${GEMINI_MODEL}:streamGenerateContent?alt=sse&key=${encodeURIComponent(key)}`;
 const GEMINI_URL = (key) =>
@@ -2461,7 +2471,10 @@ async function geminiGenerateFallback(env, systemPrompt, userPrompt, maxTokens) 
       body: JSON.stringify({
         systemInstruction: { parts: [{ text: systemPrompt }] },
         contents: [{ role: 'user', parts: [{ text: userPrompt }] }],
-        generationConfig: { temperature: 0.5, maxOutputTokens: maxTokens },
+        // thinkingBudget: 0 — 2.5-flash is a thinking model; without this it
+        // spends the whole maxOutputTokens budget on internal thoughts and
+        // returns an empty candidate.
+        generationConfig: { temperature: 0.5, maxOutputTokens: maxTokens, thinkingConfig: { thinkingBudget: 0 } },
       }),
     });
     if (!res.ok) {
@@ -2500,7 +2513,9 @@ function toGeminiBody(apiMessages) {
           })
         : [{ text: m.content }],
     })),
-    generationConfig: { temperature: 0.7, maxOutputTokens: 2048 },
+    // thinkingBudget: 0 — 2.5-flash defaults to spending output tokens on
+    // internal thinking; chat wants fast first-token and full budget for text.
+    generationConfig: { temperature: 0.7, maxOutputTokens: 2048, thinkingConfig: { thinkingBudget: 0 } },
   };
 }
 
