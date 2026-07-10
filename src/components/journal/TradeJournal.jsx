@@ -46,6 +46,7 @@ import ExchangeProposals from './ExchangeProposals';
 import WatchlistPage from '../watchlist/WatchlistPage';
 import TradeShareModal from './TradeShareModal';
 import JournalSkeleton from './JournalSkeleton';
+import JournalFormModal from './JournalFormModal';
 import { formatCurrency, formatPercent, formatDuration, formatDate } from '../../utils/formatters';
 import { TAG_LABELS, DEFAULT_LEVERAGE } from '../../utils/constants';
 import { pageVariants, pageTransition, staggerContainer } from '../../utils/animations';
@@ -56,7 +57,7 @@ const PIE_COLORS = ['#22c55e', '#ef4444', '#eab308'];
 
 export default function TradeJournal() {
   const { user } = useAuth();
-  const { activeJournal, activeJournalId, journals } = useJournalContext();
+  const { activeJournal, activeJournalId, journals, addJournal } = useJournalContext();
   const { trades, loading, addTrade, addTradesBulk, updateTrade, deleteTrade } = useTrades(activeJournalId);
   const { prices } = useCryptoPrices();
   const [searchParams] = useSearchParams();
@@ -78,6 +79,17 @@ export default function TradeJournal() {
   const [aiModalOpen, setAiModalOpen] = useState(false);
   const [importOpen, setImportOpen] = useState(false);
   const [settingsOpen, setSettingsOpen] = useState(false);
+  // Zero-journals recovery — the switcher (and its create button) is hidden
+  // when no journal exists, so the empty state must offer creation itself.
+  const [createJournalOpen, setCreateJournalOpen] = useState(false);
+  const handleCreateJournal = async (data) => {
+    try {
+      await addJournal(data);
+      toast.success('היומן נוצר');
+    } catch (err) {
+      toast.error(err.code === 'permission-denied' ? 'אין הרשאה ליצור יומן' : 'שגיאה ביצירת היומן — נסה שוב');
+    }
+  };
   const [shareTarget, setShareTarget] = useState(null);
   // Render only a window of rows so the table stays fast with hundreds of trades.
   // Analytics/calendar still use the full `trades` array — this caps the DOM only.
@@ -591,12 +603,23 @@ export default function TradeJournal() {
   if (loading) return <JournalSkeleton />;
 
   if (!activeJournal && journals.length === 0) {
+    // Recovery path, not just copy: the journal switcher is hidden in exactly
+    // this state, so without an inline create button a user who archived or
+    // deleted every journal has NO way back in (new users can also land here
+    // if the default-journal migration hasn't run yet).
     return (
       <motion.div variants={pageVariants} initial="initial" animate="animate" exit="exit" transition={pageTransition}>
         <EmptyState
           icon={BookOpen}
-          title="אין יומנים פעילים"
-          description="כל היומנים שלך בארכיון. שחזר יומן או צור חדש."
+          title="אין יומן פעיל"
+          description="צור יומן חדש כדי להתחיל לתעד עסקאות — או שחזר יומן קיים מהארכיון דרך ההגדרות."
+          actionLabel="צור יומן חדש"
+          onAction={() => setCreateJournalOpen(true)}
+        />
+        <JournalFormModal
+          isOpen={createJournalOpen}
+          onClose={() => setCreateJournalOpen(false)}
+          onSave={handleCreateJournal}
         />
         <ArchiveAnimation
           isOpen={archiveAnimating}
@@ -794,7 +817,20 @@ export default function TradeJournal() {
         </>
       )}
 
-      {tab === 'analytics' && (
+      {/* Empty gate: `analytics` is null when there are no closed trades —
+          without it a new user meets a wall of $0s, 0.0% and ∞ with no hint
+          why. The CTA jumps straight into logging the first trade. */}
+      {tab === 'analytics' && analytics === null && (
+        <EmptyState
+          icon={BarChart3}
+          title="אין עדיין נתונים לניתוח"
+          description="הניתוחים נבנים מהעסקאות הסגורות שלך — ברגע שתסגור את העסקה הראשונה, הגרפים והמדדים יתעוררו כאן."
+          actionLabel="הוסף עסקה ראשונה"
+          onAction={() => { setTab('trades'); setFormOpen(true); }}
+        />
+      )}
+
+      {tab === 'analytics' && analytics !== null && (
         <>
           {/* AI analysis launcher — 21st.dev-style gradient card with a shimmer
               sweep. Opens the beautiful animated AI modal. */}

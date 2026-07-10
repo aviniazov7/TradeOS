@@ -41,10 +41,16 @@ export default function MentalStats() {
         <div className="bg-bg-secondary border border-border-primary rounded-xl p-8 text-center">
           <BarChart3 className="w-12 h-12 text-text-muted mx-auto mb-3" />
           <h2 className="text-lg font-semibold text-text-primary mb-2">אין מספיק נתונים</h2>
-          <p className="text-sm text-text-secondary max-w-md mx-auto">
+          <p className="text-sm text-text-secondary max-w-md mx-auto mb-4">
             כדי לראות סטטיסטיקות מנטליות, צריך למלא יומן בוקר ולבצע עסקאות באותו יום.
             ככל שתצבור יותר ימים עם נתונים, התובנות יהיו מדויקות יותר.
           </p>
+          <button
+            onClick={() => navigate('/mentality')}
+            className="px-4 py-2 rounded-lg bg-accent-primary text-bg-primary text-sm font-semibold hover:bg-accent-hover transition-colors cursor-pointer"
+          >
+            מלא יומן בוקר
+          </button>
         </div>
       ) : (
         <div className="space-y-4">

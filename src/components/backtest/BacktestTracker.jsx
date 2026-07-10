@@ -487,7 +487,8 @@ export default function BacktestTracker() {
       {/* Tab: Analytics */}
       {tab === 'analytics' && (
         backtests.length === 0 ? (
-          <EmptyState icon={FlaskConical} title="אין נתונים לניתוח" description="הוסף עסקאות בקטסט כדי לראות ניתוחים מתקדמים" />
+          <EmptyState icon={FlaskConical} title="אין נתונים לניתוח" description="הוסף עסקאות בקטסט כדי לראות ניתוחים מתקדמים"
+            actionLabel="עבור לרשומות" onAction={() => setTab('records')} />
         ) : (
           <BacktestAnalytics backtests={backtests} />
         )

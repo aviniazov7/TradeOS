@@ -1,6 +1,7 @@
 import { useState, useEffect } from 'react';
+import { useNavigate } from 'react-router-dom';
 import { motion, AnimatePresence } from 'framer-motion';
-import { ChevronLeft, ChevronRight } from 'lucide-react';
+import { ChevronLeft, ChevronRight, PlusCircle, Link2 } from 'lucide-react';
 import { getUserProfile, setUserProfile } from '../../services/firestoreService';
 import { useAuth } from '../../contexts/AuthContext';
 import { modalBackdrop, modalContent, onboardingStep } from '../../utils/animations';
@@ -8,6 +9,7 @@ import { ONBOARDING_STEPS } from './onboardingSteps';
 
 export default function OnboardingWizard() {
   const { user } = useAuth();
+  const navigate = useNavigate();
   const [show, setShow] = useState(false);
   const [step, setStep] = useState(0);
   const [direction, setDirection] = useState(1);
@@ -26,6 +28,14 @@ export default function OnboardingWizard() {
   const complete = async () => {
     setShow(false);
     await setUserProfile(user.uid, { onboardingCompleted: true });
+  };
+
+  // Finish the wizard AND land the user on a concrete first action — the
+  // last slide used to end with a dead "בואו נתחיל!" that left new users
+  // staring at an empty dashboard.
+  const completeAnd = (path) => {
+    complete();
+    navigate(path);
   };
 
   const next = () => {
@@ -124,12 +134,12 @@ export default function OnboardingWizard() {
 
             {/* Footer */}
             <div className="px-6 py-4 border-t border-border-primary/50 flex items-center justify-between bg-bg-tertiary/30">
-              {/* Skip */}
+              {/* Skip / finish-without-action */}
               <button
                 onClick={complete}
                 className="text-xs text-text-muted hover:text-text-primary transition-colors cursor-pointer"
               >
-                דלג
+                {isLast ? 'סיים' : 'דלג'}
               </button>
 
               {/* Step dots */}
@@ -154,13 +164,33 @@ export default function OnboardingWizard() {
                     <ChevronRight className="w-4 h-4" />
                   </button>
                 )}
-                <button
-                  onClick={isLast ? complete : next}
-                  className="flex items-center gap-1 px-4 py-2 text-xs font-semibold rounded-lg bg-accent-primary text-bg-primary hover:bg-accent-hover transition-colors cursor-pointer"
-                >
-                  {isLast ? 'בואו נתחיל!' : 'הבא'}
-                  {!isLast && <ChevronLeft className="w-3.5 h-3.5" />}
-                </button>
+                {isLast ? (
+                  <>
+                    {/* Real first actions instead of a dead "let's go" */}
+                    <button
+                      onClick={() => completeAnd('/exchange')}
+                      className="flex items-center gap-1 px-3 py-2 text-xs font-semibold rounded-lg border border-accent-primary/40 text-accent-primary hover:bg-accent-primary/10 transition-colors cursor-pointer"
+                    >
+                      <Link2 className="w-3.5 h-3.5" />
+                      חבר בורסה
+                    </button>
+                    <button
+                      onClick={() => completeAnd('/journal?new=1')}
+                      className="flex items-center gap-1 px-3 py-2 text-xs font-semibold rounded-lg bg-accent-primary text-bg-primary hover:bg-accent-hover transition-colors cursor-pointer"
+                    >
+                      <PlusCircle className="w-3.5 h-3.5" />
+                      הוסף עסקה ראשונה
+                    </button>
+                  </>
+                ) : (
+                  <button
+                    onClick={next}
+                    className="flex items-center gap-1 px-4 py-2 text-xs font-semibold rounded-lg bg-accent-primary text-bg-primary hover:bg-accent-hover transition-colors cursor-pointer"
+                  >
+                    הבא
+                    <ChevronLeft className="w-3.5 h-3.5" />
+                  </button>
+                )}
               </div>
             </div>
           </motion.div>
