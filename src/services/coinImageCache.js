@@ -1,10 +1,13 @@
 const CACHE_KEY = 'tradeos_coin_images';
-const CACHE_VERSION = 6; // bump to invalidate stale localStorage with wrong URLs
+const CACHE_VERSION = 7; // bump to invalidate stale localStorage with wrong URLs
 const CACHE_DURATION = 7 * 24 * 60 * 60 * 1000; // 7 days (image URLs are stable)
 
-// Non-crypto assets — hosted locally in /public/icons/
+// Non-crypto assets. XAU uses TradingView's official commodity logo (the gold
+// icon users know from the charts) — the previous hand-drawn local SVG read
+// as fake. Same CDN family the app already hotlinks for TV snapshot images;
+// if it ever fails, CoinIcon falls back to the gold-tinted "XA" letter badge.
 const MANUAL_ICONS = {
-  XAU: '/icons/xau.svg',
+  XAU: 'https://s3-symbol-logo.tradingview.com/metal/gold.svg',
 };
 
 // Hardcoded CoinGecko CDN URLs for the most common trading coins.
