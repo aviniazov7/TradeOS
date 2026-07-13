@@ -514,7 +514,7 @@ const PREMIUM_BULLETS = [
   'יומנים ללא הגבלה',
   'AI Coach לניתוח עסקאות',
   'סנכרון בורסות אוטומטי',
-  'מעקב ארנקים על-שרשרת',
+  'מעקב ארנקים על הבלוקצ\'יין',
 ];
 
 function PlanCard({ profile, isAdmin, isPremium, onUpgrade }) {
