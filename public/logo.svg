@@ -1,0 +1,30 @@
+<svg width="1024" height="1024" viewBox="0 0 1024 1024" xmlns="http://www.w3.org/2000/svg">
+  <defs>
+    <linearGradient id="tile" x1="0%" y1="0%" x2="0%" y2="100%">
+      <stop offset="0%" stop-color="#17191f"/>
+      <stop offset="100%" stop-color="#0a0b0e"/>
+    </linearGradient>
+    <linearGradient id="markGrad" x1="0%" y1="100%" x2="100%" y2="0%">
+      <stop offset="0%" stop-color="#8b5cf6"/>
+      <stop offset="55%" stop-color="#06b6d4"/>
+      <stop offset="100%" stop-color="#22d3ee"/>
+    </linearGradient>
+    <linearGradient id="sheen" x1="0%" y1="0%" x2="0%" y2="100%">
+      <stop offset="0%" stop-color="#ffffff" stop-opacity="0.045"/>
+      <stop offset="100%" stop-color="#ffffff" stop-opacity="0"/>
+    </linearGradient>
+  </defs>
+
+  <!-- Full-bleed dark tile -->
+  <rect width="1024" height="1024" fill="url(#tile)"/>
+  <!-- Top sheen — smooth fade, no seam -->
+  <rect width="1024" height="620" fill="url(#sheen)"/>
+
+  <!-- One confident rising stroke -->
+  <path d="M 252 738 L 470 520 L 588 608 L 772 358"
+        fill="none" stroke="url(#markGrad)" stroke-width="72" stroke-linecap="round" stroke-linejoin="round"/>
+
+  <!-- The "now" point -->
+  <circle cx="772" cy="358" r="38" fill="#22d3ee"/>
+  <circle cx="772" cy="358" r="64" fill="none" stroke="#22d3ee" stroke-opacity="0.35" stroke-width="14"/>
+</svg>
