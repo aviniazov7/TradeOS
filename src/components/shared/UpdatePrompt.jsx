@@ -23,7 +23,17 @@ export default function UpdatePrompt() {
       className="fixed left-0 right-0 z-[200] flex justify-center px-3"
       style={{ bottom: 'calc(env(safe-area-inset-bottom, 0px) + 80px)' }}
     >
-      <div className="flex items-center gap-3 bg-bg-secondary border border-accent-primary/40 rounded-xl shadow-lg px-4 py-3 max-w-md w-full">
+      {/* Solid overlay background — bg-bg-secondary is a 5%-white surface
+          token meant for cards over the page, and made this floating banner
+          read as fully transparent over busy content. */}
+      <div
+        className="flex items-center gap-3 border border-accent-primary/40 rounded-xl shadow-2xl px-4 py-3 max-w-md w-full"
+        style={{
+          background: 'var(--color-bg-overlay)',
+          backdropFilter: 'blur(14px)',
+          WebkitBackdropFilter: 'blur(14px)',
+        }}
+      >
         <RefreshCw className={`w-5 h-5 text-accent-primary shrink-0 ${updating ? 'animate-spin' : ''}`} />
         <div className="flex-1 text-sm">
           <div className="font-semibold text-text-primary">גרסה חדשה זמינה</div>
