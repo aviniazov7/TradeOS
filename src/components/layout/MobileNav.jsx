@@ -66,18 +66,20 @@ export default function MobileNav() {
     >
       <div
         ref={containerRef}
-        className="pointer-events-auto relative mx-auto flex items-center gap-1 px-2 py-2 rounded-full"
+        className="pointer-events-auto relative mx-auto flex items-center gap-0.5 px-2 py-1.5 rounded-full"
         style={{
           background: 'var(--glass-bg)',
           border: '1px solid var(--glass-border)',
-          boxShadow: 'var(--glass-shadow-sm)',
-          WebkitBackdropFilter: 'blur(28px)',
-          backdropFilter: 'blur(28px)',
+          boxShadow: '0 12px 40px rgba(0, 0, 0, 0.45)',
+          WebkitBackdropFilter: 'blur(32px) saturate(1.4)',
+          backdropFilter: 'blur(32px) saturate(1.4)',
         }}
       >
+        {/* Active highlight — a quiet NEUTRAL pill (X-style), not an accent
+            tint. text-primary/10 flips with the theme automatically. */}
         <motion.div
           aria-hidden="true"
-          className="absolute top-1.5 bottom-1.5 rounded-full bg-accent-primary/15 pointer-events-none"
+          className="absolute top-1.5 bottom-1.5 rounded-full bg-text-primary/10 pointer-events-none"
           initial={false}
           animate={
             pill.ready
@@ -107,25 +109,20 @@ export default function MobileNav() {
                   document.getElementById('app-scroll')?.scrollTo({ top: 0, behavior: 'smooth' });
                 }
               }}
-              className="relative z-10 flex-1 flex flex-col items-center justify-center gap-0.5 rounded-full px-2 py-1.5 text-[11px] font-medium"
+              className="relative z-10 flex-1 flex flex-col items-center justify-center gap-1 rounded-full px-2 py-2 text-[11px] font-medium"
             >
+              {/* Monochrome, X-style: active = primary text color, no accent
+                  gradients — the neutral pill carries the state. */}
               <span
-                className={`flex flex-col items-center gap-0.5 transition-colors ${
-                  isActive ? '' : 'text-text-muted'
+                className={`flex flex-col items-center gap-1 transition-colors duration-200 ${
+                  isActive ? 'text-text-primary' : 'text-text-muted'
                 }`}
               >
-                <motion.span
-                  animate={{ scale: isActive ? 1.1 : 1 }}
-                  transition={{ type: 'spring', stiffness: 400, damping: 28 }}
-                  className="inline-flex"
-                >
-                  <item.icon
-                    className="w-[22px] h-[22px]"
-                    strokeWidth={isActive ? 2.4 : 2}
-                    style={isActive ? { stroke: 'url(#ai-grad)' } : undefined}
-                  />
-                </motion.span>
-                <span className={`leading-none ${isActive ? 'text-gradient font-semibold' : ''}`}>{item.label}</span>
+                <item.icon
+                  className="w-[22px] h-[22px]"
+                  strokeWidth={isActive ? 2.2 : 1.8}
+                />
+                <span className={`leading-none ${isActive ? 'font-semibold' : ''}`}>{item.label}</span>
               </span>
             </NavLink>
           );
