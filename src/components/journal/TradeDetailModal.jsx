@@ -47,25 +47,33 @@ const tvImageUrl = (url) => {
   return null;
 };
 
-// Slim inline stat strip — the same look as the mental-ratings row: a thin
-// wrapping line of "label value" pairs. Values render LTR so prices don't
-// flip in RTL.
+// Compact key-value board — thin card, title line, then an aligned grid of
+// label→value pairs: two columns on phones, four from sm up. Labels sit at
+// the row start (right in RTL) and values align at the column end, so
+// everything scans as clean columns instead of a dense run-on line. Values
+// render LTR so prices don't flip in RTL.
 function Strip({ title, items }) {
   const visible = items.filter(
     (it) => it.value !== null && it.value !== undefined && it.value !== '' && it.value !== '—'
   );
   if (!visible.length) return null;
   return (
-    <div className="flex flex-wrap items-center gap-x-4 gap-y-1 bg-bg-tertiary/60 border border-border-primary/60 rounded-xl px-3 py-2 text-xs">
-      <span className="text-[11px] text-text-muted font-semibold">{title}</span>
-      {visible.map((it) => (
-        <span key={it.label} className="text-text-secondary whitespace-nowrap">
-          {it.label}{' '}
-          <span className={`font-semibold ${it.cls || 'text-text-primary'}`} dir="ltr">
-            {it.value}
-          </span>
-        </span>
-      ))}
+    <div className="bg-bg-tertiary/60 border border-border-primary/60 rounded-xl px-4 py-2.5">
+      <div className="text-[11px] font-semibold text-text-muted mb-1.5">{title}</div>
+      <div className="grid grid-cols-2 sm:grid-cols-4 gap-x-8 gap-y-1.5">
+        {visible.map((it) => (
+          <div key={it.label} className="flex items-center justify-between gap-2 min-w-0">
+            <span className="text-[11px] text-text-muted shrink-0">{it.label}</span>
+            <span
+              className={`text-[13px] font-semibold text-left truncate ${it.cls || 'text-text-primary'}`}
+              dir="ltr"
+              title={typeof it.value === 'string' ? it.value : undefined}
+            >
+              {it.value}
+            </span>
+          </div>
+        ))}
+      </div>
     </div>
   );
 }
