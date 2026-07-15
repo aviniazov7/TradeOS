@@ -715,12 +715,17 @@ export default function TradeForm({ isOpen, onClose, trade, onSave, riskSettings
                       isExecuted ? 'bg-profit/10 border-profit/25' : 'bg-bg-tertiary/60 border-border-primary/30'
                     }`}>
                       <input
-                        type="number" min="1" max={isFutures ? contractsNum || undefined : 100}
+                        // Percent must allow decimals (exchange-synced trades
+                        // arrive with e.g. 12.5%) — the number input's default
+                        // step=1 makes the browser reject them and silently
+                        // block form submit. Futures stay whole contracts.
+                        type="number" step={isFutures ? '1' : 'any'}
+                        min={isFutures ? '1' : '0.01'} max={isFutures ? contractsNum || undefined : 100}
                         value={exit[exitField] ?? ''}
                         onChange={(e) => updateAdditionalExit(i, exitField, e.target.value)}
                         className={`w-full bg-transparent text-xs outline-none text-right font-semibold ${isExecuted ? 'text-profit' : 'text-text-muted'}`}
                         placeholder="—"
-                        inputMode="numeric"
+                        inputMode={isFutures ? 'numeric' : 'decimal'}
                       />
                       <span className={`text-[10px] shrink-0 ${isExecuted ? 'text-profit/60' : 'text-text-muted/40'}`}>{isFutures ? 'ח׳' : '%'}</span>
                     </div>
