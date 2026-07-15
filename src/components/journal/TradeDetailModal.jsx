@@ -47,25 +47,28 @@ const tvImageUrl = (url) => {
   return null;
 };
 
-// Horizontal stat strip — tiny label above value, all items flowing in one
-// wrapping row so the section stays a single short line instead of a tall
-// card. Values render LTR so prices/percentages don't flip in RTL.
+// Horizontal stat strip — tiny label above value. On phones the items sit in
+// an even 3-column grid (a wrapping flex row breaks into ragged, cramped
+// lines); from sm up they flow in a single horizontal row. Values render LTR
+// so prices/percentages don't flip in RTL.
 function Strip({ title, items }) {
   const visible = items.filter(
     (it) => it.value !== null && it.value !== undefined && it.value !== '' && it.value !== '—'
   );
   if (!visible.length) return null;
   return (
-    <div className="flex flex-wrap items-center gap-x-5 gap-y-1.5 bg-bg-tertiary border border-border-primary rounded-2xl px-4 py-2.5">
-      <span className="text-[11px] font-semibold text-text-muted w-14 shrink-0">{title}</span>
-      {visible.map((it) => (
-        <div key={it.label}>
-          <div className="text-[10px] text-text-muted whitespace-nowrap">{it.label}</div>
-          <div className={`text-sm font-semibold whitespace-nowrap ${it.cls || 'text-text-primary'}`} dir="ltr">
-            {it.value}
+    <div className="bg-bg-tertiary border border-border-primary rounded-2xl px-4 py-3">
+      <div className="text-[11px] font-semibold text-text-muted mb-2">{title}</div>
+      <div className="grid grid-cols-3 gap-x-4 gap-y-3 sm:flex sm:flex-wrap sm:items-center sm:gap-x-7 sm:gap-y-2">
+        {visible.map((it) => (
+          <div key={it.label}>
+            <div className="text-[10px] text-text-muted whitespace-nowrap mb-0.5">{it.label}</div>
+            <div className={`text-sm font-semibold whitespace-nowrap ${it.cls || 'text-text-primary'}`} dir="ltr">
+              {it.value}
+            </div>
           </div>
-        </div>
-      ))}
+        ))}
+      </div>
     </div>
   );
 }
