@@ -5712,6 +5712,57 @@ ${pad('Lev', `${pnlSign}${pnlPctLev}%`)}` : ''}` : ''}</code>
             session: sessionFromDate(entryDate),
           };
         });
+
+        // Bybit's closed-pnl returns ONE ROW PER CLOSING ORDER, so a position
+        // that closed across several TPs arrives as several rows and used to
+        // import as several separate journal trades. Rows of the same position
+        // share pair+direction+avgEntryPrice — merge those (when their close
+        // times are within a week of each other) into a single trade whose
+        // exits[] carries the TP1/TP2/… breakdown, like a manually-entered
+        // multi-TP trade.
+        const posGroups = new Map();
+        for (const t of trades) {
+          const key = `${t.pair}|${t.direction}|${t.entryPrice}`;
+          if (!posGroups.has(key)) posGroups.set(key, []);
+          posGroups.get(key).push(t);
+        }
+        const MERGE_WINDOW_MS = 7 * DAY_MS;
+        const mergedTrades = [];
+        for (const rows of posGroups.values()) {
+          rows.sort((a, b) => new Date(a.exitDate) - new Date(b.exitDate));
+          let cluster = [];
+          const flush = () => {
+            if (!cluster.length) return;
+            if (cluster.length === 1) { mergedTrades.push(cluster[0]); cluster = []; return; }
+            const totalQty = cluster.reduce((s, r) => s + r.quantity, 0);
+            const exits = cluster.map((r) => ({
+              price: r.exitPrice,
+              percent: totalQty > 0 ? Math.round((r.quantity / totalQty) * 10000) / 100 : 0,
+            }));
+            const exitPrice = totalQty > 0
+              ? cluster.reduce((s, r) => s + r.exitPrice * r.quantity, 0) / totalQty
+              : cluster[cluster.length - 1].exitPrice;
+            mergedTrades.push({
+              ...cluster[0],
+              quantity: totalQty,
+              exitPrice,
+              exits,
+              pnlFromExchange: cluster.reduce((s, r) => s + r.pnlFromExchange, 0),
+              fees: cluster.reduce((s, r) => s + r.fees, 0),
+              entryDate: cluster.reduce((m, r) => (new Date(r.entryDate) < new Date(m) ? r.entryDate : m), cluster[0].entryDate),
+              exitDate: cluster[cluster.length - 1].exitDate,
+              stopLoss: cluster.find((r) => r.stopLoss > 0)?.stopLoss || 0,
+            });
+            cluster = [];
+          };
+          for (const r of rows) {
+            if (cluster.length && new Date(r.exitDate) - new Date(cluster[cluster.length - 1].exitDate) > MERGE_WINDOW_MS) flush();
+            cluster.push(r);
+          }
+          flush();
+        }
+        mergedTrades.sort((a, b) => new Date(b.exitDate) - new Date(a.exitDate));
+        trades = mergedTrades;
       }
 
       else if (exchange === 'okx') {
