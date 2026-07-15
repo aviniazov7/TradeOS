@@ -717,7 +717,7 @@ export default function ExchangeSettings({ journalId: propJournalId, onImportTra
         return addToUserCollection(user.uid, 'trades', {
           ...rest,
           status: 'closed',
-          orderType: 'market',
+          orderType: t.orderType || 'market',
           entryDate: Timestamp.fromDate(new Date(entryDate)),
           ...(exitDate ? { exitDate: Timestamp.fromDate(new Date(exitDate)) } : {}),
           pnl,
