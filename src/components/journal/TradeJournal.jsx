@@ -270,6 +270,10 @@ export default function TradeJournal() {
       entryPrice: ep, exitPrice: xp, quantity: qty, leverage: lev,
       stopLoss: parseFloat(t.stopLoss) || 0,
       tps: Array.isArray(t.tps) ? t.tps : [],
+      // Multi-TP breakdown from the exchange sync (Bybit positions closed in
+      // several take-profits) — dropping it collapses the trade back to a
+      // single 100% exit in the edit form.
+      ...(Array.isArray(t.exits) && t.exits.length ? { exits: t.exits } : {}),
       ...(t.session ? { session: t.session } : {}),
       fees, status: 'closed',
       entryDate: entryD, exitDate: exitD,

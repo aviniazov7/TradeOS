@@ -1,9 +1,5 @@
 import { useState, useEffect } from 'react';
-import {
-  AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, ReferenceDot, ReferenceLine, ReferenceArea,
-} from 'recharts';
 import Modal from '../shared/Modal';
-import { fetchKlinesRange } from '../../services/coingeckoApi';
 import {
   formatCurrency,
   formatPrice,
@@ -20,8 +16,7 @@ import {
   Trash2,
   Share2,
   ExternalLink,
-  Clock,
-  Loader2,
+  ImageOff,
 } from 'lucide-react';
 
 // Safe numeric coercion — returns null when not a finite number.
@@ -41,138 +36,36 @@ const MENTAL_FIELDS = [
   { key: 'planAdherenceRating', label: 'עקביות' },
 ];
 
-// Chart plot geometry (must match the AreaChart margins + axis sizes below) so
-// the custom level tags can be positioned in pixels with collision avoidance.
-const CH_H = 240;
-const CH_TOP = 12;
-const CH_BOTTOM = 6;
-const CH_XAXIS = 22;
-const PLOT_TOP = CH_TOP;
-const PLOT_H = CH_H - CH_BOTTOM - CH_XAXIS - CH_TOP; // usable price area height
+// Resolve a TradingView link to its snapshot image so the modal can preview
+// it inline. Direct image URLs pass through; a tradingview.com/x/<id> share
+// page maps to its s3 snapshot (first letter of the id = the shard folder).
+const tvImageUrl = (url) => {
+  if (!url) return null;
+  if (/\.(png|jpe?g|gif|webp)(\?.*)?$/i.test(url)) return url;
+  const m = url.match(/tradingview\.com\/x\/([A-Za-z0-9]+)/i);
+  if (m) return `https://s3.tradingview.com/snapshots/${m[1][0].toLowerCase()}/${m[1]}.png`;
+  return null;
+};
 
-// Real price chart for the trade window — clean TradingView-style position tool.
-function RealPriceChart({ candles, entry, exit, stop, tps, direction, entryMs, exitMs, pnl }) {
-  const win = pnl >= 0;
-  const NEUTRAL = 'var(--color-text-secondary)';
-  const exitColor = win ? 'var(--color-profit)' : 'var(--color-loss)';
-  const fmtY = (v) => {
-    const a = Math.abs(v);
-    if (a >= 1000) return `${(v / 1000).toFixed(a >= 100000 ? 0 : 1)}K`;
-    if (a >= 100) return v.toFixed(1);
-    if (a >= 1) return v.toFixed(2);
-    return v.toFixed(4);
-  };
-  // Planned take-profit (if recorded). The full position tool always shows the
-  // risk (SL, red) and the reward target (TP, green) so a stopped-out trade is
-  // still legible — the exit dot lands inside the red zone.
-  const plannedTP = (tps && tps.length)
-    ? (direction === 'short' ? Math.min(...tps) : Math.max(...tps))
-    : null;
-  // The tool always shows BOTH sides: red risk (entry→stop) + green reward.
-  // Reward target = planned TP, else a 1:2 projection from the stop, else (no
-  // stop) the exit on a win. So even a stopped-out trade reads as a full tool.
-  const risk = (entry != null && stop != null && stop > 0) ? Math.abs(entry - stop) : null;
-  const dir = direction === 'short' ? -1 : 1;
-  const derivedTarget = risk != null ? entry + dir * risk * 2 : null;
-  const greenTo = plannedTP != null ? plannedTP : (derivedTarget != null ? derivedTarget : (win ? exit : null));
-  const tpIsProjection = plannedTP == null && derivedTarget != null;
-  const xEnd = candles.length ? candles[candles.length - 1].t : null;
-  const xBox = exitMs != null ? exitMs : xEnd; // zones cover only the open period
-
-  // Y domain = price range + nearby levels, so SL/TP are always visible.
-  const prices = candles.map((c) => c.price);
-  let lo = Math.min(...prices);
-  let hi = Math.max(...prices);
-  const span0 = hi - lo || Math.abs(hi) * 0.01 || 1;
-  for (const lv of [entry, exit, stop, greenTo]) {
-    if (lv != null && lv > 0 && Math.abs(lv - (lo + hi) / 2) <= span0 * 3) {
-      lo = Math.min(lo, lv); hi = Math.max(hi, lv);
-    }
-  }
-  const padY = (hi - lo) * 0.1 || 1;
-  const domLo = lo - padY;
-  const domHi = hi + padY;
-  const domain = [domLo, domHi];
-
-  // Price → pixel within the plot area, then build collision-free level tags.
-  const yPx = (p) => PLOT_TOP + (1 - (p - domLo) / (domHi - domLo)) * PLOT_H;
-  const tags = [];
-  if (entry != null) tags.push({ key: 'e', text: `כניסה ${fmtY(entry)}`, color: NEUTRAL, y: yPx(entry) });
-  if (stop != null && stop > 0) tags.push({ key: 'sl', text: `SL ${fmtY(stop)}`, color: 'var(--color-loss)', y: yPx(stop) });
-  if (greenTo != null) tags.push({ key: 'tp', text: tpIsProjection ? 'יעד 1:2' : `TP ${fmtY(greenTo)}`, color: 'var(--color-profit)', y: yPx(greenTo) });
-  if (exit != null) tags.push({ key: 'x', text: `יציאה ${fmtY(exit)}`, color: exitColor, y: yPx(exit) });
-  tags.sort((a, b) => a.y - b.y);
-  const GAP = 15;
-  for (let i = 1; i < tags.length; i++) {
-    if (tags[i].y - tags[i - 1].y < GAP) tags[i].y = tags[i - 1].y + GAP;
-  }
-  for (const t of tags) t.y = Math.max(PLOT_TOP + 2, Math.min(PLOT_TOP + PLOT_H - 8, t.y));
-
+// A single label/value line inside a details card. Values render LTR so
+// prices/percentages don't flip in the RTL layout.
+function Row({ label, value, cls }) {
+  if (value === null || value === undefined || value === '' || value === '—') return null;
   return (
-    <div className="mt-2 relative" style={{ height: CH_H }}>
-      <ResponsiveContainer width="100%" height="100%">
-        <AreaChart data={candles} margin={{ top: CH_TOP, right: 4, bottom: CH_BOTTOM, left: 6 }}>
-          <defs>
-            <linearGradient id="tradePriceGrad" x1="0" y1="0" x2="0" y2="1">
-              <stop offset="0%" stopColor={NEUTRAL} stopOpacity={0.08} />
-              <stop offset="100%" stopColor={NEUTRAL} stopOpacity={0.01} />
-            </linearGradient>
-          </defs>
-          <CartesianGrid vertical={false} stroke="var(--color-border-primary)" strokeDasharray="2 4" />
-          <XAxis
-            dataKey="t" type="number" scale="time" domain={['dataMin', 'dataMax']}
-            tickFormatter={(ms) => new Date(ms).toLocaleDateString('he-IL', { day: '2-digit', month: '2-digit' })}
-            tick={{ fill: 'var(--color-text-muted)', fontSize: 10 }} tickLine={false}
-            axisLine={{ stroke: 'var(--color-border-primary)' }} minTickGap={60} tickMargin={8} height={CH_XAXIS}
-          />
-          <YAxis
-            orientation="right" dataKey="price" domain={domain} tickFormatter={fmtY} tickCount={5}
-            tick={{ fill: 'var(--color-text-muted)', fontSize: 10 }} tickLine={false} axisLine={false}
-            width={56} tickMargin={4} allowDataOverflow
-          />
-          <Tooltip
-            contentStyle={{ background: 'var(--color-bg-overlay)', border: '1px solid var(--color-border-primary)', borderRadius: '8px', fontSize: '12px', color: 'var(--color-text-primary)' }}
-            labelFormatter={(ms) => new Date(ms).toLocaleString('he-IL')}
-            formatter={(v) => [formatPrice(v), 'מחיר']}
-          />
+    <div className="flex items-center justify-between gap-3 py-2">
+      <span className="text-xs text-text-muted shrink-0">{label}</span>
+      <span className={`text-sm font-medium ${cls || 'text-text-primary'}`} dir="ltr">{value}</span>
+    </div>
+  );
+}
 
-          {/* Position tool: green reward zone + red risk zone (always shown) */}
-          {entry != null && greenTo != null && entryMs != null && xBox != null && (
-            <ReferenceArea x1={entryMs} x2={xBox} y1={entry} y2={greenTo} fill="var(--color-profit)" fillOpacity={0.16} stroke="none" />
-          )}
-          {entry != null && stop != null && stop > 0 && entryMs != null && xBox != null && (
-            <ReferenceArea x1={entryMs} x2={xBox} y1={entry} y2={stop} fill="var(--color-loss)" fillOpacity={0.16} stroke="none" />
-          )}
-
-          {/* Neutral price line so the green/red zones carry the meaning */}
-          <Area type="monotone" dataKey="price" stroke={NEUTRAL} strokeWidth={1.6} fill="url(#tradePriceGrad)" isAnimationActive={false} />
-
-          {/* Level lines (labels drawn as a collision-free overlay below) */}
-          {entry != null && <ReferenceLine y={entry} stroke={NEUTRAL} strokeWidth={1} />}
-          {stop != null && stop > 0 && <ReferenceLine y={stop} stroke="var(--color-loss)" strokeDasharray="5 4" />}
-          {greenTo != null && <ReferenceLine y={greenTo} stroke="var(--color-profit)" strokeDasharray="5 4" />}
-          {exit != null && <ReferenceLine y={exit} stroke={exitColor} strokeDasharray="2 3" strokeOpacity={0.6} />}
-
-          {/* Entry (neutral) / Exit (green if win, red if loss) dots */}
-          {entry != null && entryMs != null && (
-            <ReferenceDot x={entryMs} y={entry} r={4} fill={NEUTRAL} stroke="var(--color-bg-secondary)" strokeWidth={2} />
-          )}
-          {exit != null && exitMs != null && (
-            <ReferenceDot x={exitMs} y={exit} r={4} fill={exitColor} stroke="var(--color-bg-secondary)" strokeWidth={2} />
-          )}
-        </AreaChart>
-      </ResponsiveContainer>
-
-      {/* Collision-free level tags (left edge) */}
-      {tags.map((t) => (
-        <div
-          key={t.key}
-          className="absolute left-1 px-1.5 py-0.5 rounded text-[10px] font-bold pointer-events-none whitespace-nowrap"
-          style={{ top: t.y, transform: 'translateY(-50%)', color: t.color, background: 'var(--color-bg-overlay)' }}
-        >
-          {t.text}
-        </div>
-      ))}
+function Card({ title, children }) {
+  return (
+    <div className="bg-bg-tertiary border border-border-primary rounded-2xl overflow-hidden">
+      <div className="px-4 py-2.5 border-b border-border-primary">
+        <span className="text-xs font-semibold text-text-secondary">{title}</span>
+      </div>
+      <div className="px-4 py-1.5 divide-y divide-border-primary/50">{children}</div>
     </div>
   );
 }
@@ -185,45 +78,8 @@ export default function TradeDetailModal({
   onDelete,
   onShare,
 }) {
-  const pairSym = trade?.pair || trade?.symbol || '';
-  const isCrypto = !!pairSym && /USDT?$/.test(pairSym) && trade?.assetClass !== 'futures_cme';
-
-  const [chart, setChart] = useState(null);        // { candles, entryMs, exitMs }
-  const [chartLoading, setChartLoading] = useState(false);
-
-  useEffect(() => {
-    // Only fetch when the modal is open for a crypto pair; the cleanup resets
-    // state on close / trade change (avoids a synchronous setState in the body).
-    const entryMs = isOpen && trade && isCrypto ? toDate(trade.entryDate)?.getTime() : null;
-    if (!entryMs) return undefined;
-    const exitMs = toDate(trade.exitDate || trade.createdAt)?.getTime() || Date.now();
-    const start = Math.min(entryMs, exitMs);
-    const end = Math.max(entryMs, exitMs);
-    const dur = Math.max(end - start, 10 * 60 * 1000);
-    // Tight window — focus on the period the position was open, not the
-    // surrounding price action.
-    const pad = Math.max(dur * 0.12, 5 * 60 * 1000);
-    const from = start - pad;
-    const to = end + pad;
-    const INTERVALS = [['1m', 60000], ['5m', 300000], ['15m', 900000], ['1h', 3600000], ['4h', 14400000], ['1d', 86400000]];
-    const target = (to - from) / 100;
-    let iv = INTERVALS[0];
-    for (const x of INTERVALS) if (x[1] <= target) iv = x;
-
-    let cancelled = false;
-    Promise.resolve().then(() => { if (!cancelled) setChartLoading(true); });
-    fetchKlinesRange(pairSym, iv[0], from, to, 500)
-      .then((rows) => {
-        if (cancelled) return;
-        const candles = (rows || [])
-          .map((k) => ({ t: Number(k[0]), price: parseFloat(k[4]) }))
-          .filter((c) => Number.isFinite(c.t) && Number.isFinite(c.price));
-        setChart(candles.length >= 3 ? { candles, entryMs, exitMs } : null);
-      })
-      .catch(() => { if (!cancelled) setChart(null); })
-      .finally(() => { if (!cancelled) setChartLoading(false); });
-    return () => { cancelled = true; setChart(null); setChartLoading(false); };
-  }, [isOpen, trade, isCrypto, pairSym]);
+  const [imgFailed, setImgFailed] = useState(false);
+  useEffect(() => { setImgFailed(false); }, [trade?.id, isOpen]);
 
   if (!trade) return null;
 
@@ -249,17 +105,9 @@ export default function TradeDetailModal({
     if (h > 0) durationHours = h;
   }
 
-  // ── Chart levels (passed to the position-tool chart) ──────────────
-  const entry = num(trade.entryPrice);
-  const stop = num(trade.stopLoss);
-  const origStop = num(trade.originalStopLoss) ?? stop;
-  const exit = status === 'open' ? null : num(trade.exitPrice);
-  const tps = (trade.tps || []).map(num).filter((n) => n !== null && n > 0);
-
-  // ── Stat tiles ────────────────────────────────────────────────────
   const moneyOrDash = (v) => {
     const n = num(v);
-    if (n === null) return '—';
+    if (n === null) return null;
     const a = Math.abs(n);
     if (a >= 1e9) return `$${(n / 1e9).toFixed(2)}B`;
     if (a >= 1e6) return `$${(n / 1e6).toFixed(2)}M`;
@@ -267,36 +115,9 @@ export default function TradeDetailModal({
     return `$${n.toLocaleString()}`;
   };
 
-  const tiles = [
-    { label: 'Net P&L', value: formatCurrency(pnl), cls: pnlColor(pnl) },
-    {
-      label: 'תשואה',
-      value: status === 'open' ? '—' : formatPercent(trade.pnlPercent),
-      cls: status === 'open' ? '' : pnlColor(trade.pnlPercent),
-    },
-    { label: 'R-Multiple', value: formatRR(trade.rrRatio, pnl) },
-    { label: 'כניסה', value: formatPrice(trade.entryPrice) },
-    {
-      label: 'סגירה',
-      value: status === 'open' ? '—' : formatPrice(trade.exitPrice),
-    },
-    { label: 'סטופ', value: formatPrice(trade.stopLoss) },
-    { label: 'גודל פוזיציה', value: moneyOrDash(trade.positionSize) },
-    { label: 'סיכון', value: moneyOrDash(trade.riskAmount) },
-    {
-      label: isFutures ? 'חוזים' : 'מינוף',
-      value: isFutures
-        ? (trade.contract?.contracts ?? trade.quantity ?? '—')
-        : trade.leverage
-          ? `x${trade.leverage}`
-          : '—',
-    },
-    { label: 'עמלות', value: moneyOrDash(trade.fees) },
-    { label: 'טווח זמן', value: trade.timeframe || '—' },
-    { label: 'אסטרטגיה', value: trade.strategy || '—' },
-    { label: 'טריגר', value: trade.trigger || '—' },
-    { label: 'סשן', value: trade.session || '—' },
-  ];
+  // ── TradingView snapshot preview ──────────────────────────────────
+  const tvUrl = trade.tradingViewUrl || '';
+  const tvImg = tvImageUrl(tvUrl);
 
   // ── Details ───────────────────────────────────────────────────────
   const partialExits =
@@ -334,12 +155,30 @@ export default function TradeDetailModal({
         ? { cls: 'bg-breakeven/15 text-breakeven', text: 'חלקית' }
         : { cls: 'bg-bg-tertiary text-text-muted', text: 'נסגרה' };
 
+  const kpis = [
+    {
+      label: 'Net P&L',
+      value: formatCurrency(pnl),
+      cls: `text-2xl sm:text-3xl font-bold ${pnlColor(pnl)}`,
+    },
+    {
+      label: 'תשואה',
+      value: status === 'open' ? '—' : formatPercent(trade.pnlPercent),
+      cls: `text-xl sm:text-2xl font-bold ${status === 'open' ? 'text-text-primary' : pnlColor(trade.pnlPercent)}`,
+    },
+    {
+      label: 'R-Multiple',
+      value: formatRR(trade.rrRatio, pnl),
+      cls: 'text-xl sm:text-2xl font-bold text-text-primary',
+    },
+  ];
+
   return (
     <Modal
       isOpen={isOpen}
       onClose={onClose}
       title={`${pair} · פרטי עסקה`}
-      maxWidth="max-w-4xl"
+      maxWidth="max-w-3xl"
     >
       {/* 1) Header strip */}
       <div className="flex flex-wrap items-center gap-2 mb-4">
@@ -362,77 +201,105 @@ export default function TradeDetailModal({
         <span className="text-text-muted text-xs" dir="ltr">
           {formatDateTime(toDate(trade.entryDate))}
         </span>
+        {durationHours !== null && (
+          <span className="text-text-muted text-xs">· {formatDuration(durationHours)}</span>
+        )}
       </div>
 
-      {/* 2) Two-column area */}
-      <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
-        {/* LEFT — chart */}
-        <div className="bg-bg-tertiary border border-border-primary rounded-xl p-4">
-          <span className="text-xs text-text-muted">גרף מחיר</span>
-          {chartLoading ? (
-            <div className="mt-2 h-[240px] flex items-center justify-center text-text-muted text-xs gap-1.5">
-              <Loader2 className="w-4 h-4 animate-spin" /> טוען גרף...
-            </div>
-          ) : chart?.candles?.length ? (
-            <RealPriceChart
-              candles={chart.candles}
-              entry={entry}
-              exit={exit}
-              stop={origStop}
-              tps={tps}
-              direction={trade.direction}
-              entryMs={chart.entryMs}
-              exitMs={chart.exitMs}
-              pnl={pnl}
-            />
-          ) : (
-            <div className="mt-2 h-[240px] flex items-center justify-center text-text-muted text-xs text-center px-4">
-              גרף לא זמין למטבע הזה
-            </div>
-          )}
+      {/* 2) KPI hero — the three numbers that matter, one glance */}
+      <div
+        className={`rounded-2xl border bg-bg-tertiary mb-4 grid grid-cols-3 divide-x divide-x-reverse divide-border-primary ${
+          pnl > 0 ? 'border-profit/25' : pnl < 0 ? 'border-loss/25' : 'border-border-primary'
+        }`}
+      >
+        {kpis.map((k) => (
+          <div key={k.label} className="px-3 py-4 text-center">
+            <div className="text-[11px] text-text-muted mb-1">{k.label}</div>
+            <div className={k.cls} dir="ltr">{k.value}</div>
+          </div>
+        ))}
+      </div>
 
-          {trade.tradingViewUrl && (
+      {/* 3) TradingView snapshot — shown only when the trade carries a link */}
+      {tvUrl && (
+        <div className="rounded-2xl border border-border-primary bg-bg-tertiary overflow-hidden mb-4">
+          <div className="flex items-center justify-between px-4 py-2.5 border-b border-border-primary">
+            <span className="text-xs font-semibold text-text-secondary">צילום גרף</span>
             <a
-              href={trade.tradingViewUrl}
+              href={tvUrl}
               target="_blank"
               rel="noopener noreferrer"
-              className="mt-3 inline-flex items-center gap-1 text-accent-primary text-xs hover:underline"
+              className="inline-flex items-center gap-1 text-accent-primary text-xs hover:underline"
             >
               <ExternalLink className="w-3.5 h-3.5" />
               פתח ב-TradingView
             </a>
+          </div>
+          {tvImg && !imgFailed ? (
+            <a href={tvUrl} target="_blank" rel="noopener noreferrer" className="block">
+              <img
+                src={tvImg}
+                alt={`צילום גרף — ${pair}`}
+                loading="lazy"
+                onError={() => setImgFailed(true)}
+                className="w-full max-h-[400px] object-contain bg-black/30"
+              />
+            </a>
+          ) : (
+            <a
+              href={tvUrl}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="h-28 flex flex-col items-center justify-center gap-1.5 text-text-muted text-xs hover:text-text-secondary transition-colors"
+            >
+              <ImageOff className="w-5 h-5" />
+              אין תצוגה מקדימה — לחץ לפתיחת הקישור
+            </a>
           )}
         </div>
+      )}
 
-        {/* RIGHT — stat tiles */}
-        <div className="grid grid-cols-2 gap-2">
-          {tiles.map((t) => (
-            <div
-              key={t.label}
-              className="bg-bg-tertiary border border-border-primary rounded-lg p-2.5"
-            >
-              <div className="text-[11px] text-text-muted">{t.label}</div>
-              <div
-                className={`text-sm font-semibold ${t.cls || 'text-text-primary'}`}
-                dir="ltr"
-              >
-                {t.value}
-              </div>
-            </div>
-          ))}
-        </div>
+      {/* 4) Levels + trade info, clean definition rows instead of tile grid */}
+      <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+        <Card title="רמות מחיר">
+          <Row label="כניסה" value={formatPrice(trade.entryPrice)} />
+          <Row label="סטופ" value={num(trade.stopLoss) > 0 ? formatPrice(trade.stopLoss) : null} cls="text-loss" />
+          {partialExits ? (
+            partialExits.map((e, i) => (
+              <Row
+                key={i}
+                label={`TP${i + 1} · ${e.percent}%`}
+                value={formatPrice(e.price)}
+                cls="text-profit"
+              />
+            ))
+          ) : null}
+          <Row
+            label={partialExits ? 'סגירה (משוקלל)' : 'סגירה'}
+            value={status === 'open' ? null : formatPrice(trade.exitPrice)}
+            cls={pnlColor(pnl)}
+          />
+        </Card>
+
+        <Card title="פרטי עסקה">
+          <Row label="גודל פוזיציה" value={moneyOrDash(trade.positionSize)} />
+          <Row label="סיכון" value={moneyOrDash(trade.riskAmount)} />
+          <Row
+            label={isFutures ? 'חוזים' : 'מינוף'}
+            value={isFutures
+              ? (trade.contract?.contracts ?? trade.quantity ?? null)
+              : trade.leverage ? `x${trade.leverage}` : null}
+          />
+          <Row label="עמלות" value={moneyOrDash(trade.fees)} />
+          <Row label="אסטרטגיה" value={trade.strategy || null} />
+          <Row label="טריגר" value={trade.trigger || null} />
+          <Row label="טווח זמן" value={trade.timeframe || null} />
+          <Row label="סשן" value={trade.session || null} />
+        </Card>
       </div>
 
-      {/* 3) Full-width details */}
+      {/* 5) Full-width details */}
       <div className="mt-4 space-y-3 text-xs">
-        {durationHours !== null && (
-          <div className="flex items-center gap-1.5 text-text-secondary">
-            <Clock className="w-3.5 h-3.5 text-text-muted" />
-            <span className="text-text-muted">משך העסקה:</span>
-            <span>{formatDuration(durationHours)}</span>
-          </div>
-        )}
-
         {MENTAL_FIELDS.some((f) => trade[f.key]) && (
           <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
             {MENTAL_FIELDS.map((f) => {
@@ -445,21 +312,6 @@ export default function TradeDetailModal({
                 </div>
               );
             })}
-          </div>
-        )}
-
-        {partialExits && (
-          <div className="flex flex-wrap items-center gap-1.5">
-            <span className="text-text-muted">פירוט יציאות:</span>
-            {partialExits.map((e, i) => (
-              <span
-                key={i}
-                className="rounded-md bg-bg-tertiary border border-border-primary px-2 py-0.5 text-text-secondary"
-                dir="ltr"
-              >
-                {formatPrice(e.price)} ({e.percent}%)
-              </span>
-            ))}
           </div>
         )}
 
@@ -502,7 +354,7 @@ export default function TradeDetailModal({
         )}
       </div>
 
-      {/* 4) Footer actions */}
+      {/* 6) Footer actions */}
       <div className="mt-4 pt-3 border-t border-border-primary flex gap-2 justify-end">
         {status !== 'open' && onShare && (
           <button
