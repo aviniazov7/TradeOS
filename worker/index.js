@@ -5668,15 +5668,17 @@ ${pad('Lev', `${pnlSign}${pnlPctLev}%`)}` : ''}` : ''}</code>
         // each closed position had configured — closed-pnl itself doesn't
         // expose them, so we match the opening order by symbol+side+time.
         const ohTs = Date.now().toString();
-        const ohQs = 'category=linear&limit=50';
+        const ohQs = 'category=linear&limit=100';
         const ohSig = await hmac(apiSecret, ohTs + apiKey + recvWindow + ohQs);
         const ohRes = await fetch(`https://api.bybit.com/v5/order/history?${ohQs}`, {
           headers: { 'X-BAPI-API-KEY': apiKey, 'X-BAPI-TIMESTAMP': ohTs, 'X-BAPI-SIGN': ohSig, 'X-BAPI-RECV-WINDOW': recvWindow },
         });
         const ohData = await ohRes.json().catch(() => ({}));
-        const openingOrders = (ohData.retCode === 0 ? (ohData.result?.list || []) : []).filter((o) =>
+        const rawOrders = ohData.retCode === 0 ? (ohData.result?.list || []) : [];
+        const openingOrders = rawOrders.filter((o) =>
           o.orderStatus === 'Filled' && o.reduceOnly !== true && parseFloat(o.qty) > 0
         );
+        if (debug) debugRaw = { closedPnl: list.slice(0, 5), orderHistory: rawOrders.slice(0, 15) };
 
         trades = list.map(p => {
           const exitDate = p.updatedTime ? new Date(parseInt(p.updatedTime)).toISOString() : new Date().toISOString();
@@ -5690,23 +5692,49 @@ ${pad('Lev', `${pnlSign}${pnlPctLev}%`)}` : ''}` : ''}</code>
           // opposite (verified against a real account: a long imported as
           // short before this flip).
           const posSide = p.side === 'Sell' ? 'Buy' : 'Sell';
-          // Match the opening order (same side as the POSITION) around the
-          // position's createdTime to recover its configured SL/TP, order
-          // type, and the exact entry time.
-          const positionStart = parseInt(p.createdTime) || 0;
-          const match = openingOrders.find((o) =>
-            o.symbol === p.symbol &&
-            o.side === posSide &&
-            Math.abs(parseInt(o.createdTime || 0) - positionStart) < 5 * 60 * 1000 // ±5 min
-          );
-          const stopLoss = match ? (parseFloat(match.stopLoss) || 0) : 0;
-          const tp = match ? (parseFloat(match.takeProfit) || 0) : 0;
-          const entryMs = match && parseInt(match.createdTime) ? parseInt(match.createdTime) : positionStart;
-          const entryDate = entryMs ? new Date(entryMs).toISOString() : exitDate;
           const entryPrice = parseFloat(p.avgEntryPrice || p.entryPrice) || 0;
           const quantity = parseFloat(p.qty) || 0;
           const direction = posSide === 'Buy' ? 'long' : 'short';
           const exitPrice = parseFloat(p.avgExitPrice || p.exitPrice) || 0;
+          // Match the opening order to recover its configured SL/TP, order
+          // type, and the exact entry time. A LIMIT entry is PLACED long
+          // before it FILLS, so comparing only createdTime missed it — prefer
+          // a fill-price match (order avgPrice ≈ position avg entry), then
+          // fall back to the nearest order in time (fill or placement) within
+          // 30 minutes.
+          const positionStart = parseInt(p.createdTime) || 0;
+          const timeDist = (o) => Math.min(
+            Math.abs((parseInt(o.updatedTime) || Infinity) - positionStart),
+            Math.abs((parseInt(o.createdTime) || Infinity) - positionStart)
+          );
+          const cands = openingOrders
+            .filter((o) => o.symbol === p.symbol && o.side === posSide)
+            .sort((a, b) => timeDist(a) - timeDist(b));
+          const priceMatch = cands.find((o) => {
+            const ap = parseFloat(o.avgPrice) || 0;
+            return ap > 0 && entryPrice > 0 && Math.abs(ap - entryPrice) <= entryPrice * 0.002;
+          });
+          const match = priceMatch || (cands[0] && timeDist(cands[0]) < 30 * 60 * 1000 ? cands[0] : null);
+          let stopLoss = match ? (parseFloat(match.stopLoss) || 0) : 0;
+          if (!stopLoss) {
+            // SL set from Bybit's position panel (not attached to the entry
+            // order) lives on its own conditional StopLoss order — take its
+            // trigger price when it was created during the position's window.
+            const exitMsP = parseInt(p.updatedTime) || positionStart;
+            const slOrd = rawOrders.find((o) =>
+              o.symbol === p.symbol &&
+              /stoploss/i.test(o.stopOrderType || '') &&
+              parseFloat(o.triggerPrice) > 0 &&
+              (parseInt(o.createdTime) || 0) >= positionStart - 10 * 60 * 1000 &&
+              (parseInt(o.createdTime) || 0) <= exitMsP + 10 * 60 * 1000
+            );
+            if (slOrd) stopLoss = parseFloat(slOrd.triggerPrice) || 0;
+          }
+          const tp = match ? (parseFloat(match.takeProfit) || 0) : 0;
+          const entryMs = match
+            ? (parseInt(match.updatedTime) || parseInt(match.createdTime) || positionStart)
+            : positionStart;
+          const entryDate = entryMs ? new Date(entryMs).toISOString() : exitDate;
           // Auto-derived risk ($) and realized R — only when a real SL exists.
           const slDist = stopLoss > 0 ? Math.abs(entryPrice - stopLoss) : 0;
           const riskAmount = slDist > 0 ? Number((slDist * quantity).toPrecision(6)) : 0;
