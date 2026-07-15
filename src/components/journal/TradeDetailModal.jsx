@@ -134,7 +134,9 @@ export default function TradeDetailModal({
     : typeof trade.tags === 'string' && trade.tags.trim()
       ? trade.tags.split(',').map((t) => t.trim()).filter(Boolean)
       : null;
-  const hasTags = tags && tags.length;
+  // Boolean() — a bare `tags && tags.length` evaluates to the NUMBER 0 for an
+  // empty array, and React renders that 0 as literal text at the bottom.
+  const hasTags = Boolean(tags && tags.length);
 
   // ── Handlers ──────────────────────────────────────────────────────
   const handleShare = () => {
@@ -337,15 +339,22 @@ export default function TradeDetailModal({
       {/* 5) Full-width details */}
       <div className="mt-3 space-y-3 text-xs">
         {MENTAL_FIELDS.some((f) => trade[f.key]) && (
-          <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
+          <div className="flex flex-wrap items-center gap-x-4 gap-y-1 bg-bg-tertiary/60 border border-border-primary/60 rounded-xl px-3 py-2">
+            <span className="text-[11px] text-text-muted font-semibold">מנטלי</span>
             {MENTAL_FIELDS.map((f) => {
               const val = trade[f.key];
               if (!val) return null;
               return (
-                <div key={f.key} className="bg-bg-tertiary border border-border-primary rounded-lg p-2">
-                  <div className="text-[11px] text-text-muted">{f.label}</div>
-                  <div className="text-text-secondary" dir="ltr">{val}/5 {RATING_LABELS[val]}</div>
-                </div>
+                <span key={f.key} className="text-text-secondary whitespace-nowrap">
+                  {f.label}{' '}
+                  <span
+                    className={`font-semibold ${val >= 4 ? 'text-profit' : val <= 2 ? 'text-loss' : 'text-text-primary'}`}
+                    dir="ltr"
+                    title={RATING_LABELS[val]}
+                  >
+                    {val}/5
+                  </span>
+                </span>
               );
             })}
           </div>
