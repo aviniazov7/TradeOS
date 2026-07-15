@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState } from 'react';
 import Modal from '../shared/Modal';
 import {
   formatCurrency,
@@ -78,8 +78,9 @@ export default function TradeDetailModal({
   onDelete,
   onShare,
 }) {
-  const [imgFailed, setImgFailed] = useState(false);
-  useEffect(() => { setImgFailed(false); }, [trade?.id, isOpen]);
+  // Track WHICH trade's image failed (not a boolean) so switching to another
+  // trade naturally resets the fallback without an effect.
+  const [imgFailedKey, setImgFailedKey] = useState(null);
 
   if (!trade) return null;
 
@@ -118,6 +119,8 @@ export default function TradeDetailModal({
   // ── TradingView snapshot preview ──────────────────────────────────
   const tvUrl = trade.tradingViewUrl || '';
   const tvImg = tvImageUrl(tvUrl);
+  const imgKey = trade.id || tvUrl;
+  const imgFailed = imgFailedKey === imgKey;
 
   // ── Details ───────────────────────────────────────────────────────
   const partialExits =
@@ -180,8 +183,8 @@ export default function TradeDetailModal({
       title={`${pair} · פרטי עסקה`}
       maxWidth="max-w-3xl"
     >
-      {/* 1) Header strip */}
-      <div className="flex flex-wrap items-center gap-2 mb-4">
+      {/* 1) Header strip — badges on the right, actions on the left (RTL) */}
+      <div className="flex flex-wrap items-center gap-2 mb-3">
         {trade.direction === 'short' ? (
           <span className="inline-flex items-center gap-1 rounded-full bg-short/15 text-short px-2.5 py-1 text-xs font-semibold">
             <TrendingDown className="w-3.5 h-3.5" />
@@ -204,17 +207,50 @@ export default function TradeDetailModal({
         {durationHours !== null && (
           <span className="text-text-muted text-xs">· {formatDuration(durationHours)}</span>
         )}
+
+        <div className="ms-auto flex items-center gap-1">
+          {status !== 'open' && onShare && (
+            <button
+              type="button"
+              onClick={handleShare}
+              title="שיתוף"
+              className="p-2 rounded-lg text-text-muted hover:text-text-primary hover:bg-bg-tertiary transition-colors cursor-pointer"
+            >
+              <Share2 className="w-4 h-4" />
+            </button>
+          )}
+          {onEdit && (
+            <button
+              type="button"
+              onClick={handleEdit}
+              title="עריכה"
+              className="p-2 rounded-lg text-text-muted hover:text-text-primary hover:bg-bg-tertiary transition-colors cursor-pointer"
+            >
+              <Pencil className="w-4 h-4" />
+            </button>
+          )}
+          {onDelete && (
+            <button
+              type="button"
+              onClick={handleDelete}
+              title="מחיקה"
+              className="p-2 rounded-lg text-text-muted hover:text-loss hover:bg-loss/10 transition-colors cursor-pointer"
+            >
+              <Trash2 className="w-4 h-4" />
+            </button>
+          )}
+        </div>
       </div>
 
       {/* 2) KPI hero — the three numbers that matter, one glance */}
       <div
-        className={`rounded-2xl border bg-bg-tertiary mb-4 grid grid-cols-3 divide-x divide-x-reverse divide-border-primary ${
+        className={`rounded-2xl border bg-bg-tertiary mb-3 grid grid-cols-3 divide-x divide-x-reverse divide-border-primary ${
           pnl > 0 ? 'border-profit/25' : pnl < 0 ? 'border-loss/25' : 'border-border-primary'
         }`}
       >
         {kpis.map((k) => (
-          <div key={k.label} className="px-3 py-4 text-center">
-            <div className="text-[11px] text-text-muted mb-1">{k.label}</div>
+          <div key={k.label} className="px-3 py-3 text-center">
+            <div className="text-[11px] text-text-muted mb-0.5">{k.label}</div>
             <div className={k.cls} dir="ltr">{k.value}</div>
           </div>
         ))}
@@ -222,7 +258,7 @@ export default function TradeDetailModal({
 
       {/* 3) TradingView snapshot — shown only when the trade carries a link */}
       {tvUrl && (
-        <div className="rounded-2xl border border-border-primary bg-bg-tertiary overflow-hidden mb-4">
+        <div className="rounded-2xl border border-border-primary bg-bg-tertiary overflow-hidden mb-3">
           <div className="flex items-center justify-between px-4 py-2.5 border-b border-border-primary">
             <span className="text-xs font-semibold text-text-secondary">צילום גרף</span>
             <a
@@ -241,8 +277,8 @@ export default function TradeDetailModal({
                 src={tvImg}
                 alt={`צילום גרף — ${pair}`}
                 loading="lazy"
-                onError={() => setImgFailed(true)}
-                className="w-full max-h-[400px] object-contain bg-black/30"
+                onError={() => setImgFailedKey(imgKey)}
+                className="w-full max-h-[280px] object-contain bg-black/30"
               />
             </a>
           ) : (
@@ -260,7 +296,7 @@ export default function TradeDetailModal({
       )}
 
       {/* 4) Levels + trade info, clean definition rows instead of tile grid */}
-      <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+      <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
         <Card title="רמות מחיר">
           <Row label="כניסה" value={formatPrice(trade.entryPrice)} />
           <Row label="סטופ" value={num(trade.stopLoss) > 0 ? formatPrice(trade.stopLoss) : null} cls="text-loss" />
@@ -299,7 +335,7 @@ export default function TradeDetailModal({
       </div>
 
       {/* 5) Full-width details */}
-      <div className="mt-4 space-y-3 text-xs">
+      <div className="mt-3 space-y-3 text-xs">
         {MENTAL_FIELDS.some((f) => trade[f.key]) && (
           <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
             {MENTAL_FIELDS.map((f) => {
@@ -354,39 +390,6 @@ export default function TradeDetailModal({
         )}
       </div>
 
-      {/* 6) Footer actions */}
-      <div className="mt-4 pt-3 border-t border-border-primary flex gap-2 justify-end">
-        {status !== 'open' && onShare && (
-          <button
-            type="button"
-            onClick={handleShare}
-            className="inline-flex items-center gap-1.5 bg-bg-tertiary hover:bg-border-hover text-text-primary rounded-lg px-3 py-2 text-sm"
-          >
-            <Share2 className="w-4 h-4" />
-            שיתוף
-          </button>
-        )}
-        {onEdit && (
-          <button
-            type="button"
-            onClick={handleEdit}
-            className="inline-flex items-center gap-1.5 bg-bg-tertiary hover:bg-border-hover text-text-primary rounded-lg px-3 py-2 text-sm"
-          >
-            <Pencil className="w-4 h-4" />
-            עריכה
-          </button>
-        )}
-        {onDelete && (
-          <button
-            type="button"
-            onClick={handleDelete}
-            className="inline-flex items-center gap-1.5 text-loss hover:bg-loss/10 rounded-lg px-3 py-2 text-sm"
-          >
-            <Trash2 className="w-4 h-4" />
-            מחיקה
-          </button>
-        )}
-      </div>
     </Modal>
   );
 }
