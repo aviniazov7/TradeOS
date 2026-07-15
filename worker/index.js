@@ -340,7 +340,8 @@ async function fetchBybitClosedPnl(apiKey, apiSecret, limit = 50) {
     return {
       externalId: p.orderId || String(p.updatedTime || p.createdTime || Math.random()),
       pair: p.symbol,
-      direction: p.side === 'Buy' ? 'long' : 'short',
+      // closed-pnl `side` is the CLOSING order side — position side is the opposite
+      direction: p.side === 'Sell' ? 'long' : 'short',
       pnl,
       roiPct,
       exitMs,
@@ -5681,22 +5682,24 @@ ${pad('Lev', `${pnlSign}${pnlPctLev}%`)}` : ''}` : ''}</code>
           const entryDate = p.createdTime ? new Date(parseInt(p.createdTime)).toISOString() : new Date().toISOString();
           const exitDate = p.updatedTime ? new Date(parseInt(p.updatedTime)).toISOString() : entryDate;
           const fees = Math.abs(parseFloat(p.execFee || p.tradingFee || p.cumExecFee || 0) || 0);
-          // Match the opening order: Bybit's closed-pnl `side` is the
-          // position side (Buy=long, Sell=short — same convention used in the
-          // direction mapping below), and the order that opened the position
-          // has that same side. We look for a Filled order with the same
-          // symbol+side around the position's createdTime.
+          // Bybit's closed-pnl `side` is the side of the CLOSING order — a
+          // long position is closed by a Sell, so the POSITION side is the
+          // opposite (verified against a real account: a long imported as
+          // short before this flip).
+          const posSide = p.side === 'Sell' ? 'Buy' : 'Sell';
+          // Match the opening order (same side as the POSITION) around the
+          // position's createdTime to recover its configured SL/TP.
           const positionStart = parseInt(p.createdTime) || 0;
           const match = openingOrders.find((o) =>
             o.symbol === p.symbol &&
-            o.side === p.side &&
+            o.side === posSide &&
             Math.abs(parseInt(o.createdTime || 0) - positionStart) < 5 * 60 * 1000 // ±5 min
           );
           const stopLoss = match ? (parseFloat(match.stopLoss) || 0) : 0;
           const tp = match ? (parseFloat(match.takeProfit) || 0) : 0;
           return {
             pair: p.symbol,
-            direction: p.side === 'Buy' ? 'long' : 'short',
+            direction: posSide === 'Buy' ? 'long' : 'short',
             entryPrice: parseFloat(p.avgEntryPrice || p.entryPrice) || 0,
             exitPrice: parseFloat(p.avgExitPrice || p.exitPrice) || 0,
             quantity: parseFloat(p.qty) || 0,
@@ -5739,9 +5742,12 @@ ${pad('Lev', `${pnlSign}${pnlPctLev}%`)}` : ''}` : ''}</code>
               price: r.exitPrice,
               percent: totalQty > 0 ? Math.round((r.quantity / totalQty) * 10000) / 100 : 0,
             }));
-            const exitPrice = totalQty > 0
+            const rawWeighted = totalQty > 0
               ? cluster.reduce((s, r) => s + r.exitPrice * r.quantity, 0) / totalQty
               : cluster[cluster.length - 1].exitPrice;
+            // Trim float noise (0.16276246773993532 → 0.16276247) so the UI
+            // shows a sane weighted price.
+            const exitPrice = rawWeighted > 0 ? Number(rawWeighted.toPrecision(8)) : rawWeighted;
             mergedTrades.push({
               ...cluster[0],
               quantity: totalQty,
