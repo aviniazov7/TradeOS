@@ -47,14 +47,16 @@ const tvImageUrl = (url) => {
   return null;
 };
 
-// A single label/value line inside a details card. Values render LTR so
-// prices/percentages don't flip in the RTL layout.
+// A single label/value line inside a details card. The label column has a
+// fixed width so every value starts on the same vertical line right next to
+// it (justify-between pushed values to the far edge, which read as scattered).
+// Values render LTR so prices/percentages don't flip in the RTL layout.
 function Row({ label, value, cls }) {
   if (value === null || value === undefined || value === '' || value === '—') return null;
   return (
-    <div className="flex items-center justify-between gap-3 py-2">
-      <span className="text-xs text-text-muted shrink-0">{label}</span>
-      <span className={`text-sm font-medium ${cls || 'text-text-primary'}`} dir="ltr">{value}</span>
+    <div className="flex items-center gap-3 py-2">
+      <span className="text-xs text-text-muted w-28 shrink-0">{label}</span>
+      <span className={`text-sm font-medium text-left ${cls || 'text-text-primary'}`} dir="ltr">{value}</span>
     </div>
   );
 }
@@ -113,7 +115,7 @@ export default function TradeDetailModal({
     if (a >= 1e9) return `$${(n / 1e9).toFixed(2)}B`;
     if (a >= 1e6) return `$${(n / 1e6).toFixed(2)}M`;
     if (a >= 1e3) return `$${(n / 1e3).toFixed(1)}K`;
-    return `$${n.toLocaleString()}`;
+    return `$${n.toLocaleString(undefined, { maximumFractionDigits: 2 })}`;
   };
 
   // ── TradingView snapshot preview ──────────────────────────────────
