@@ -47,27 +47,25 @@ const tvImageUrl = (url) => {
   return null;
 };
 
-// A single label/value line inside a details card. The label column has a
-// fixed width so every value starts on the same vertical line right next to
-// it (justify-between pushed values to the far edge, which read as scattered).
-// Values render LTR so prices/percentages don't flip in the RTL layout.
-function Row({ label, value, cls }) {
-  if (value === null || value === undefined || value === '' || value === '—') return null;
-  return (
-    <div className="flex items-center gap-3 py-2">
-      <span className="text-xs text-text-muted w-28 shrink-0">{label}</span>
-      <span className={`text-sm font-medium text-left ${cls || 'text-text-primary'}`} dir="ltr">{value}</span>
-    </div>
+// Horizontal stat strip — tiny label above value, all items flowing in one
+// wrapping row so the section stays a single short line instead of a tall
+// card. Values render LTR so prices/percentages don't flip in RTL.
+function Strip({ title, items }) {
+  const visible = items.filter(
+    (it) => it.value !== null && it.value !== undefined && it.value !== '' && it.value !== '—'
   );
-}
-
-function Card({ title, children }) {
+  if (!visible.length) return null;
   return (
-    <div className="bg-bg-tertiary border border-border-primary rounded-2xl overflow-hidden">
-      <div className="px-4 py-2.5 border-b border-border-primary">
-        <span className="text-xs font-semibold text-text-secondary">{title}</span>
-      </div>
-      <div className="px-4 py-1.5 divide-y divide-border-primary/50">{children}</div>
+    <div className="flex flex-wrap items-center gap-x-5 gap-y-1.5 bg-bg-tertiary border border-border-primary rounded-2xl px-4 py-2.5">
+      <span className="text-[11px] font-semibold text-text-muted w-14 shrink-0">{title}</span>
+      {visible.map((it) => (
+        <div key={it.label}>
+          <div className="text-[10px] text-text-muted whitespace-nowrap">{it.label}</div>
+          <div className={`text-sm font-semibold whitespace-nowrap ${it.cls || 'text-text-primary'}`} dir="ltr">
+            {it.value}
+          </div>
+        </div>
+      ))}
     </div>
   );
 }
@@ -260,82 +258,45 @@ export default function TradeDetailModal({
         ))}
       </div>
 
-      {/* 3) TradingView snapshot — shown only when the trade carries a link */}
-      {tvUrl && (
-        <div className="rounded-2xl border border-border-primary bg-bg-tertiary overflow-hidden mb-3">
-          <div className="flex items-center justify-between px-4 py-2.5 border-b border-border-primary">
-            <span className="text-xs font-semibold text-text-secondary">צילום גרף</span>
-            <a
-              href={tvUrl}
-              target="_blank"
-              rel="noopener noreferrer"
-              className="inline-flex items-center gap-1 text-accent-primary text-xs hover:underline"
-            >
-              <ExternalLink className="w-3.5 h-3.5" />
-              פתח ב-TradingView
-            </a>
-          </div>
-          {tvImg && !imgFailed ? (
-            <a href={tvUrl} target="_blank" rel="noopener noreferrer" className="block">
-              <img
-                src={tvImg}
-                alt={`צילום גרף — ${pair}`}
-                loading="lazy"
-                onError={() => setImgFailedKey(imgKey)}
-                className="w-full max-h-[280px] object-contain bg-black/30"
-              />
-            </a>
-          ) : (
-            <a
-              href={tvUrl}
-              target="_blank"
-              rel="noopener noreferrer"
-              className="h-28 flex flex-col items-center justify-center gap-1.5 text-text-muted text-xs hover:text-text-secondary transition-colors"
-            >
-              <ImageOff className="w-5 h-5" />
-              אין תצוגה מקדימה — לחץ לפתיחת הקישור
-            </a>
-          )}
-        </div>
-      )}
-
-      {/* 4) Levels + trade info, clean definition rows instead of tile grid */}
-      <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-        <Card title="רמות מחיר">
-          <Row label="כניסה" value={formatPrice(trade.entryPrice)} />
-          <Row label="סטופ" value={num(trade.stopLoss) > 0 ? formatPrice(trade.stopLoss) : null} cls="text-loss" />
-          {partialExits ? (
-            partialExits.map((e, i) => (
-              <Row
-                key={i}
-                label={`TP${i + 1} · ${e.percent}%`}
-                value={formatPrice(e.price)}
-                cls="text-profit"
-              />
-            ))
-          ) : null}
-          <Row
-            label={partialExits ? 'סגירה (משוקלל)' : 'סגירה'}
-            value={status === 'open' ? null : formatPrice(trade.exitPrice)}
-            cls={pnlColor(pnl)}
-          />
-        </Card>
-
-        <Card title="פרטי עסקה">
-          <Row label="גודל פוזיציה" value={moneyOrDash(trade.positionSize)} />
-          <Row label="סיכון" value={moneyOrDash(trade.riskAmount)} />
-          <Row
-            label={isFutures ? 'חוזים' : 'מינוף'}
-            value={isFutures
-              ? (trade.contract?.contracts ?? trade.quantity ?? null)
-              : trade.leverage ? `x${trade.leverage}` : null}
-          />
-          <Row label="עמלות" value={moneyOrDash(trade.fees)} />
-          <Row label="אסטרטגיה" value={trade.strategy || null} />
-          <Row label="טריגר" value={trade.trigger || null} />
-          <Row label="טווח זמן" value={trade.timeframe || null} />
-          <Row label="סשן" value={trade.session || null} />
-        </Card>
+      {/* 3) Levels + trade info — two compact horizontal strips */}
+      <div className="space-y-3">
+        <Strip
+          title="רמות מחיר"
+          items={[
+            { label: 'כניסה', value: formatPrice(trade.entryPrice) },
+            { label: 'סטופ', value: num(trade.stopLoss) > 0 ? formatPrice(trade.stopLoss) : null, cls: 'text-loss' },
+            ...(partialExits
+              ? partialExits.map((e, i) => ({
+                  label: `TP${i + 1} · ${e.percent}%`,
+                  value: formatPrice(e.price),
+                  cls: 'text-profit',
+                }))
+              : []),
+            {
+              label: partialExits ? 'סגירה (משוקלל)' : 'סגירה',
+              value: status === 'open' ? null : formatPrice(trade.exitPrice),
+              cls: pnlColor(pnl),
+            },
+          ]}
+        />
+        <Strip
+          title="פרטי עסקה"
+          items={[
+            { label: 'גודל פוזיציה', value: moneyOrDash(trade.positionSize) },
+            { label: 'סיכון', value: moneyOrDash(trade.riskAmount) },
+            {
+              label: isFutures ? 'חוזים' : 'מינוף',
+              value: isFutures
+                ? (trade.contract?.contracts ?? trade.quantity ?? null)
+                : trade.leverage ? `x${trade.leverage}` : null,
+            },
+            { label: 'עמלות', value: moneyOrDash(trade.fees) },
+            { label: 'אסטרטגיה', value: trade.strategy || null },
+            { label: 'טריגר', value: trade.trigger || null },
+            { label: 'טווח זמן', value: trade.timeframe || null },
+            { label: 'סשן', value: trade.session || null },
+          ]}
+        />
       </div>
 
       {/* 5) Full-width details */}
@@ -401,6 +362,44 @@ export default function TradeDetailModal({
         )}
       </div>
 
+      {/* 5) TradingView snapshot — at the very bottom, when the trade has a link */}
+      {tvUrl && (
+        <div className="rounded-2xl border border-border-primary bg-bg-tertiary overflow-hidden mt-3">
+          <div className="flex items-center justify-between px-4 py-2.5 border-b border-border-primary">
+            <span className="text-xs font-semibold text-text-secondary">צילום גרף</span>
+            <a
+              href={tvUrl}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="inline-flex items-center gap-1 text-accent-primary text-xs hover:underline"
+            >
+              <ExternalLink className="w-3.5 h-3.5" />
+              פתח ב-TradingView
+            </a>
+          </div>
+          {tvImg && !imgFailed ? (
+            <a href={tvUrl} target="_blank" rel="noopener noreferrer" className="block">
+              <img
+                src={tvImg}
+                alt={`צילום גרף — ${pair}`}
+                loading="lazy"
+                onError={() => setImgFailedKey(imgKey)}
+                className="w-full max-h-[280px] object-contain bg-black/30"
+              />
+            </a>
+          ) : (
+            <a
+              href={tvUrl}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="h-28 flex flex-col items-center justify-center gap-1.5 text-text-muted text-xs hover:text-text-secondary transition-colors"
+            >
+              <ImageOff className="w-5 h-5" />
+              אין תצוגה מקדימה — לחץ לפתיחת הקישור
+            </a>
+          )}
+        </div>
+      )}
     </Modal>
   );
 }
