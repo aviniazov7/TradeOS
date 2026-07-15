@@ -5679,16 +5679,20 @@ ${pad('Lev', `${pnlSign}${pnlPctLev}%`)}` : ''}` : ''}</code>
         );
 
         trades = list.map(p => {
-          const entryDate = p.createdTime ? new Date(parseInt(p.createdTime)).toISOString() : new Date().toISOString();
-          const exitDate = p.updatedTime ? new Date(parseInt(p.updatedTime)).toISOString() : entryDate;
-          const fees = Math.abs(parseFloat(p.execFee || p.tradingFee || p.cumExecFee || 0) || 0);
+          const exitDate = p.updatedTime ? new Date(parseInt(p.updatedTime)).toISOString() : new Date().toISOString();
+          // Real trading fees: closed-pnl carries openFee + closeFee per
+          // record (the old execFee/cumExecFee fields don't exist on this
+          // endpoint, which is why fees always imported as 0).
+          const fees = Math.abs(parseFloat(p.openFee) || 0) + Math.abs(parseFloat(p.closeFee) || 0)
+            || Math.abs(parseFloat(p.execFee || p.tradingFee || p.cumExecFee || 0) || 0);
           // Bybit's closed-pnl `side` is the side of the CLOSING order — a
           // long position is closed by a Sell, so the POSITION side is the
           // opposite (verified against a real account: a long imported as
           // short before this flip).
           const posSide = p.side === 'Sell' ? 'Buy' : 'Sell';
           // Match the opening order (same side as the POSITION) around the
-          // position's createdTime to recover its configured SL/TP.
+          // position's createdTime to recover its configured SL/TP, order
+          // type, and the exact entry time.
           const positionStart = parseInt(p.createdTime) || 0;
           const match = openingOrders.find((o) =>
             o.symbol === p.symbol &&
@@ -5697,18 +5701,33 @@ ${pad('Lev', `${pnlSign}${pnlPctLev}%`)}` : ''}` : ''}</code>
           );
           const stopLoss = match ? (parseFloat(match.stopLoss) || 0) : 0;
           const tp = match ? (parseFloat(match.takeProfit) || 0) : 0;
+          const entryMs = match && parseInt(match.createdTime) ? parseInt(match.createdTime) : positionStart;
+          const entryDate = entryMs ? new Date(entryMs).toISOString() : exitDate;
+          const entryPrice = parseFloat(p.avgEntryPrice || p.entryPrice) || 0;
+          const quantity = parseFloat(p.qty) || 0;
+          const direction = posSide === 'Buy' ? 'long' : 'short';
+          const exitPrice = parseFloat(p.avgExitPrice || p.exitPrice) || 0;
+          // Auto-derived risk ($) and realized R — only when a real SL exists.
+          const slDist = stopLoss > 0 ? Math.abs(entryPrice - stopLoss) : 0;
+          const riskAmount = slDist > 0 ? Number((slDist * quantity).toPrecision(6)) : 0;
+          const rrRatio = slDist > 0 && exitPrice > 0
+            ? Number((((direction === 'long' ? exitPrice - entryPrice : entryPrice - exitPrice)) / slDist).toFixed(2))
+            : 0;
           return {
             pair: p.symbol,
-            direction: posSide === 'Buy' ? 'long' : 'short',
-            entryPrice: parseFloat(p.avgEntryPrice || p.entryPrice) || 0,
-            exitPrice: parseFloat(p.avgExitPrice || p.exitPrice) || 0,
-            quantity: parseFloat(p.qty) || 0,
+            direction,
+            orderType: match?.orderType === 'Limit' ? 'limit' : 'market',
+            entryPrice,
+            exitPrice,
+            quantity,
             leverage: parseFloat(p.leverage) || 1,
             pnlFromExchange: parseFloat(p.closedPnl) || 0,
             fees,
             entryDate,
             exitDate,
             stopLoss,
+            riskAmount,
+            rrRatio,
             tps: tp > 0 ? [tp] : [],
             source: 'bybit',
             externalId: p.orderId || String(p.createdTime || Math.random()),
@@ -5748,16 +5767,27 @@ ${pad('Lev', `${pnlSign}${pnlPctLev}%`)}` : ''}` : ''}</code>
             // Trim float noise (0.16276246773993532 → 0.16276247) so the UI
             // shows a sane weighted price.
             const exitPrice = rawWeighted > 0 ? Number(rawWeighted.toPrecision(8)) : rawWeighted;
+            const mergedSl = cluster.find((r) => r.stopLoss > 0)?.stopLoss || 0;
+            const first = cluster[0];
+            // Recompute risk/R for the FULL position (per-record values cover
+            // only that record's qty slice).
+            const mSlDist = mergedSl > 0 ? Math.abs(first.entryPrice - mergedSl) : 0;
+            const mRisk = mSlDist > 0 ? Number((mSlDist * totalQty).toPrecision(6)) : 0;
+            const mRR = mSlDist > 0 && exitPrice > 0
+              ? Number((((first.direction === 'long' ? exitPrice - first.entryPrice : first.entryPrice - exitPrice)) / mSlDist).toFixed(2))
+              : 0;
             mergedTrades.push({
-              ...cluster[0],
+              ...first,
               quantity: totalQty,
               exitPrice,
               exits,
               pnlFromExchange: cluster.reduce((s, r) => s + r.pnlFromExchange, 0),
               fees: cluster.reduce((s, r) => s + r.fees, 0),
-              entryDate: cluster.reduce((m, r) => (new Date(r.entryDate) < new Date(m) ? r.entryDate : m), cluster[0].entryDate),
+              entryDate: cluster.reduce((m, r) => (new Date(r.entryDate) < new Date(m) ? r.entryDate : m), first.entryDate),
               exitDate: cluster[cluster.length - 1].exitDate,
-              stopLoss: cluster.find((r) => r.stopLoss > 0)?.stopLoss || 0,
+              stopLoss: mergedSl,
+              riskAmount: mRisk,
+              rrRatio: mRR,
             });
             cluster = [];
           };

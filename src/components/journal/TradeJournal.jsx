@@ -267,6 +267,7 @@ export default function TradeJournal() {
     const result = netPnlImport > 0 ? 'win' : netPnlImport < 0 ? 'loss' : 'breakeven';
     return addToUserCollection(user.uid, 'trades', {
       pair: t.pair, direction: t.direction,
+      orderType: t.orderType || 'market',
       entryPrice: ep, exitPrice: xp, quantity: qty, leverage: lev,
       stopLoss: parseFloat(t.stopLoss) || 0,
       tps: Array.isArray(t.tps) ? t.tps : [],
@@ -280,7 +281,11 @@ export default function TradeJournal() {
       source: t.source, externalId: t.externalId,
       pnlFromExchange: pnl, pnl, netPnl: netPnlImport,
       pnlPercent: (pnl / (ep * qty)) * 100 * lev,
-      rrRatio: 0, result,
+      // Risk ($) and realized R computed by the worker from the REAL exchange
+      // SL and quantity — so nothing needs manual entry after import.
+      riskAmount: parseFloat(t.riskAmount) || 0,
+      rrRatio: parseFloat(t.rrRatio) || 0,
+      result,
       positionSize: ep * qty, margin: (ep * qty) / lev,
       journalId: activeJournalId,
       createdAt: Timestamp.fromDate(entryD), updatedAt: timestamp(),
