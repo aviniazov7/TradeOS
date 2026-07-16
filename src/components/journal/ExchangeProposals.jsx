@@ -5,6 +5,7 @@ import toast from 'react-hot-toast';
 import { EXCHANGES, SyncModal } from '../exchange/ExchangeSettings';
 import { getExchangeLogo } from '../../utils/constants';
 import { useExchangeProposals } from '../../hooks/useExchangeProposals';
+import { tradeExternalIds } from '../../utils/tradeIds';
 
 // A stable dedup key: closed trades key off the exchange's externalId; open
 // positions (whose externalId can change between syncs) key off pair+direction
@@ -50,25 +51,37 @@ export default function ExchangeProposals({ exchange, trades, onImportTrade, ena
   const [modalTrades, setModalTrades] = useState([]);
   const [importing, setImporting] = useState(false);
 
-  // Keys already present in the journal — the row is only a proposal if it's
-  // neither already logged nor locally dismissed/imported this session.
+  // Keys already present in the journal — open-position keys plus EVERY
+  // close-order id (externalId + the merged row's externalIds array).
   const existingKeys = useMemo(() => {
     const s = new Set();
-    for (const t of trades || []) { const k = keyOf(t); if (k) s.add(k); }
+    for (const t of trades || []) {
+      if (t.status === 'open') s.add(keyOf(t));
+      for (const id of tradeExternalIds(t)) s.add(id);
+    }
     return s;
   }, [trades]);
 
   const proposals = useMemo(() => {
     return (rows || []).filter((t) => {
       const k = keyOf(t);
-      return k && !existingKeys.has(k) && !dismissedKeys.has(k);
+      if (!k || dismissedKeys.has(k)) return false;
+      if (t._isOpen || t.status === 'open') return !existingKeys.has(k);
+      // Closed rows: only when EVERY close-order id is already journaled is
+      // there nothing new. A partial overlap means the position gained closes
+      // since the last import (e.g. TP1 imported Monday, stop-out Wednesday) —
+      // it must be re-proposed as an update, not filtered as "already logged",
+      // which silently dropped the loss and froze the trade as a win.
+      const ids = tradeExternalIds(t);
+      return ids.length > 0 && !ids.every((id) => existingKeys.has(id));
     });
   }, [rows, existingKeys, dismissedKeys]);
 
-  const existingExternalIds = useMemo(
-    () => new Set((trades || []).filter((t) => t.externalId).map((t) => t.externalId)),
-    [trades]
-  );
+  const existingExternalIds = useMemo(() => {
+    const s = new Set();
+    for (const t of trades || []) for (const id of tradeExternalIds(t)) s.add(id);
+    return s;
+  }, [trades]);
 
   if (!active || !meta) return null;
 

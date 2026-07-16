@@ -5,10 +5,12 @@ import {
   RefreshCw, Download, X, Zap, HelpCircle, Pencil, Link2,
 } from 'lucide-react';
 import toast from 'react-hot-toast';
-import { getUserSetting, setUserSetting, addToUserCollection } from '../../services/firestoreService';
+import { getUserSetting, setUserSetting } from '../../services/firestoreService';
 import { syncExchangeTrades, syncOpenPositions, fetchExchangeBalance, storeExchangeCredentials, deleteExchangeCredentials, getConnectedExchanges } from '../../services/exchangeService';
 import { useAuth } from '../../contexts/AuthContext';
 import { useJournalContext } from '../../contexts/JournalContext';
+import { useExchangeImport } from '../../hooks/useExchangeImport';
+import { tradeExternalIds } from '../../utils/tradeIds';
 import { pageVariants, pageTransition } from '../../utils/animations';
 import LoadingSpinner from '../shared/LoadingSpinner';
 import SelectDropdown from '../shared/SelectDropdown';
@@ -23,7 +25,6 @@ const SYNC_PERIODS = [
 ];
 import { getExchangeLogo, FREE_LIMITS } from '../../utils/constants';
 import { useNavigate } from 'react-router-dom';
-import { Timestamp } from 'firebase/firestore';
 
 // ── Exchange config ───────────────────────────────────────────────────────────
 // Exported so the trades-tab proposal banner (ExchangeProposals) can reuse the
@@ -230,7 +231,11 @@ export function SyncModal({ exchange, trades, onClose, onImport, existingExterna
   const wins = trades.filter((t, i) => selected.has(i) && t.pnlFromExchange != null && t.pnlFromExchange >= 0).length;
   const losses = trades.filter((t, i) => selected.has(i) && t.pnlFromExchange != null && t.pnlFromExchange < 0).length;
   const allSelected = selected.size === trades.length;
-  const updatesCount = trades.filter((t, i) => selected.has(i) && existingExternalIds.has(t.externalId)).length;
+  // A row is an UPDATE when ANY of its close-order ids is already journaled —
+  // a Multi-TP row carries every close's id in externalIds, and only its
+  // first-close externalId matches the previously imported document.
+  const isUpdate = (t) => tradeExternalIds(t).some((id) => existingExternalIds.has(id));
+  const updatesCount = trades.filter((t, i) => selected.has(i) && isUpdate(t)).length;
   const newCount = selected.size - updatesCount;
   return (
     <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}
@@ -276,7 +281,7 @@ export function SyncModal({ exchange, trades, onClose, onImport, existingExterna
           {trades.map((trade, i) => {
             const sel = selected.has(i);
             const win = trade.pnlFromExchange >= 0;
-            const isExisting = existingExternalIds.has(trade.externalId);
+            const isExisting = isUpdate(trade);
             return (
               <button key={i} onClick={() => toggle(i)}
                 className={`w-full flex items-center gap-3 px-4 py-3 hover:bg-bg-tertiary transition-colors cursor-pointer text-right ${!sel ? 'opacity-35' : ''}`}>
@@ -574,11 +579,15 @@ function ExchangeCard({ exchange, data, savedData, syncing, saving, onUpdate, on
 }
 
 // ── Main ──────────────────────────────────────────────────────────────────────
-export default function ExchangeSettings({ journalId: propJournalId, onImportTrade, existingExternalIds = new Set() } = {}) {
+export default function ExchangeSettings({ journalId: propJournalId } = {}) {
   const { user, isPremium } = useAuth();
   const navigate = useNavigate();
   const { activeJournalId: contextJournalId } = useJournalContext();
   const activeJournalId = propJournalId ?? contextJournalId;
+  // Shared import logic (upsert on close-order-id overlap) — the standalone
+  // /exchange route used to blind-add every synced row as a NEW trade, so a
+  // TP1 already imported from the journal's proposal banner got counted twice.
+  const { importTrade, existingExternalIds } = useExchangeImport(activeJournalId);
   const [exchanges, setExchanges] = useState({});
   const [savedExchanges, setSavedExchanges] = useState({});
   const [loading, setLoading] = useState(true);
@@ -697,37 +706,7 @@ export default function ExchangeSettings({ journalId: propJournalId, onImportTra
       toast.error('בחר יומן לפני הייבוא');
       return;
     }
-    const results = await Promise.allSettled(
-      trades.map(t => {
-        if (onImportTrade) return onImportTrade(t);
-        if (t._isOpen) {
-          const { _isOpen, pnlFromExchange, ...pos } = t;
-          return addToUserCollection(user.uid, 'trades', {
-            ...pos,
-            entryDate: Timestamp.fromDate(new Date(pos.entryDate)),
-            importedAt: Timestamp.now(),
-            journalId: activeJournalId || null,
-          });
-        }
-        const pnl = t.pnlFromExchange || 0;
-        // Preserve every field the worker provided (stopLoss, tps, fees,
-        // exitDate, pnlFromExchange, …) instead of hand-picking a few — that
-        // dropped SL/TP whenever the upstream endpoint did include them.
-        const { _isOpen: _o, entryDate, exitDate, ...rest } = t;
-        return addToUserCollection(user.uid, 'trades', {
-          ...rest,
-          status: 'closed',
-          orderType: t.orderType || 'market',
-          entryDate: Timestamp.fromDate(new Date(entryDate)),
-          ...(exitDate ? { exitDate: Timestamp.fromDate(new Date(exitDate)) } : {}),
-          pnl,
-          pnlPercent: t.entryPrice > 0 && t.quantity > 0 ? (pnl / (t.entryPrice * t.quantity)) * 100 : 0,
-          result: pnl > 0 ? 'win' : pnl < 0 ? 'loss' : 'breakeven',
-          importedAt: Timestamp.now(),
-          journalId: activeJournalId || null,
-        });
-      })
-    );
+    const results = await Promise.allSettled(trades.map(t => importTrade(t)));
     const imported = results.filter(r => r.status === 'fulfilled').length;
     const failed = results.filter(r => r.status === 'rejected');
     setSyncModal(null);
