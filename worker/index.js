@@ -5703,12 +5703,19 @@ ${pad('Lev', `${pnlSign}${pnlPctLev}%`)}` : ''}` : ''}</code>
           // fall back to the nearest order in time (fill or placement) within
           // 30 minutes.
           const positionStart = parseInt(p.createdTime) || 0;
+          const exitMs = parseInt(p.updatedTime) || positionStart;
           const timeDist = (o) => Math.min(
             Math.abs((parseInt(o.updatedTime) || Infinity) - positionStart),
             Math.abs((parseInt(o.createdTime) || Infinity) - positionStart)
           );
+          // Only orders that FILLED before the position closed can be its
+          // opener — without this bound, an order from days later within 0.2%
+          // of the entry price could attach to an old position whose real
+          // opener already fell off the 100-order history, producing an
+          // entryDate AFTER exitDate (negative duration, edit form blocked).
           const cands = openingOrders
-            .filter((o) => o.symbol === p.symbol && o.side === posSide)
+            .filter((o) => o.symbol === p.symbol && o.side === posSide &&
+              (parseInt(o.updatedTime) || parseInt(o.createdTime) || 0) <= exitMs + 60 * 1000)
             .sort((a, b) => timeDist(a) - timeDist(b));
           const priceMatch = cands.find((o) => {
             const ap = parseFloat(o.avgPrice) || 0;
@@ -5720,26 +5727,38 @@ ${pad('Lev', `${pnlSign}${pnlPctLev}%`)}` : ''}` : ''}</code>
             // SL set from Bybit's position panel (not attached to the entry
             // order) lives on its own conditional StopLoss order — take its
             // trigger price when it was created during the position's window.
-            const exitMsP = parseInt(p.updatedTime) || positionStart;
-            const slOrd = rawOrders.find((o) =>
+            // Only orders on the CLOSING side (p.side) belong to this
+            // position, and the EARLIEST one is the original stop — rawOrders
+            // is newest-first, so grabbing the first match took a stop that
+            // was later MOVED (e.g. to break-even), reporting riskAmount ≈ 0
+            // and an absurd R (a 2% winner showed ~20R).
+            const slOrds = rawOrders.filter((o) =>
               o.symbol === p.symbol &&
+              o.side === p.side &&
               /stoploss/i.test(o.stopOrderType || '') &&
               parseFloat(o.triggerPrice) > 0 &&
               (parseInt(o.createdTime) || 0) >= positionStart - 10 * 60 * 1000 &&
-              (parseInt(o.createdTime) || 0) <= exitMsP + 10 * 60 * 1000
+              (parseInt(o.createdTime) || 0) <= exitMs + 10 * 60 * 1000
             );
+            const slOrd = slOrds.length
+              ? slOrds.reduce((a, b) => ((parseInt(b.createdTime) || 0) < (parseInt(a.createdTime) || 0) ? b : a))
+              : null;
             if (slOrd) stopLoss = parseFloat(slOrd.triggerPrice) || 0;
           }
           const tp = match ? (parseFloat(match.takeProfit) || 0) : 0;
-          const entryMs = match
+          // Clamp to the close time — entry can never come after exit.
+          const entryMs = Math.min(exitMs, match
             ? (parseInt(match.updatedTime) || parseInt(match.createdTime) || positionStart)
-            : positionStart;
+            : positionStart);
           const entryDate = entryMs ? new Date(entryMs).toISOString() : exitDate;
           // Auto-derived risk ($) and realized R — only when a real SL exists.
           const slDist = stopLoss > 0 ? Math.abs(entryPrice - stopLoss) : 0;
           const riskAmount = slDist > 0 ? Number((slDist * quantity).toPrecision(6)) : 0;
+          // UNSIGNED |reward|/risk — the whole app stores R unsigned and adds
+          // the sign from pnl at display/export time (formatRR, calculateRR),
+          // so a signed value here rendered "--0.60R" and flipped the CSV sign.
           const rrRatio = slDist > 0 && exitPrice > 0
-            ? Number((((direction === 'long' ? exitPrice - entryPrice : entryPrice - exitPrice)) / slDist).toFixed(2))
+            ? Number((Math.abs(exitPrice - entryPrice) / slDist).toFixed(2))
             : 0;
           return {
             pair: p.symbol,
@@ -5760,6 +5779,9 @@ ${pad('Lev', `${pnlSign}${pnlPctLev}%`)}` : ''}` : ''}</code>
             source: 'bybit',
             externalId: p.orderId || String(p.createdTime || Math.random()),
             session: sessionFromDate(entryDate),
+            // Temporary (stripped after merging): the matched opening order,
+            // used as a stable position identity for the multi-TP grouping.
+            _openOrderId: match?.orderId || '',
           };
         });
 
@@ -5772,7 +5794,13 @@ ${pad('Lev', `${pnlSign}${pnlPctLev}%`)}` : ''}` : ''}</code>
         // multi-TP trade.
         const posGroups = new Map();
         for (const t of trades) {
-          const key = `${t.pair}|${t.direction}|${t.entryPrice}`;
+          // Group by the matched OPENING order when we have one — grouping by
+          // entry price alone merged two DIFFERENT positions that happened to
+          // fill at the same limit price within the window into one trade
+          // with a combined qty and a fabricated TP1/TP2 breakdown.
+          const key = t._openOrderId
+            ? `${t.pair}|${t.direction}|#${t._openOrderId}`
+            : `${t.pair}|${t.direction}|${t.entryPrice}`;
           if (!posGroups.has(key)) posGroups.set(key, []);
           posGroups.get(key).push(t);
         }
@@ -5783,12 +5811,18 @@ ${pad('Lev', `${pnlSign}${pnlPctLev}%`)}` : ''}` : ''}</code>
           let cluster = [];
           const flush = () => {
             if (!cluster.length) return;
-            if (cluster.length === 1) { mergedTrades.push(cluster[0]); cluster = []; return; }
+            if (cluster.length === 1) { mergedTrades.push({ ...cluster[0], externalIds: [cluster[0].externalId] }); cluster = []; return; }
             const totalQty = cluster.reduce((s, r) => s + r.quantity, 0);
             const exits = cluster.map((r) => ({
               price: r.exitPrice,
               percent: totalQty > 0 ? Math.round((r.quantity / totalQty) * 10000) / 100 : 0,
             }));
+            // Pin the last slice so the percents sum to EXACTLY 100 — rounded
+            // thirds (33.33×3 = 99.99) demoted the trade from 'closed' to
+            // 'partial' on its next edit-save (vanishing from analytics), and
+            // 100.01 blocked saving altogether.
+            const sumButLast = exits.slice(0, -1).reduce((s, e) => s + e.percent, 0);
+            exits[exits.length - 1].percent = Number(Math.max(0, 100 - sumButLast).toFixed(2));
             const rawWeighted = totalQty > 0
               ? cluster.reduce((s, r) => s + r.exitPrice * r.quantity, 0) / totalQty
               : cluster[cluster.length - 1].exitPrice;
@@ -5801,8 +5835,9 @@ ${pad('Lev', `${pnlSign}${pnlPctLev}%`)}` : ''}` : ''}</code>
             // only that record's qty slice).
             const mSlDist = mergedSl > 0 ? Math.abs(first.entryPrice - mergedSl) : 0;
             const mRisk = mSlDist > 0 ? Number((mSlDist * totalQty).toPrecision(6)) : 0;
+            // Unsigned, like the per-row rrRatio above.
             const mRR = mSlDist > 0 && exitPrice > 0
-              ? Number((((first.direction === 'long' ? exitPrice - first.entryPrice : first.entryPrice - exitPrice)) / mSlDist).toFixed(2))
+              ? Number((Math.abs(exitPrice - first.entryPrice) / mSlDist).toFixed(2))
               : 0;
             mergedTrades.push({
               ...first,
@@ -5816,6 +5851,12 @@ ${pad('Lev', `${pnlSign}${pnlPctLev}%`)}` : ''}` : ''}</code>
               stopLoss: mergedSl,
               riskAmount: mRisk,
               rrRatio: mRR,
+              // EVERY closing order's id — the client upserts on any-id
+              // overlap, so a position that keeps closing across syncs updates
+              // the same journal trade instead of being filtered out as
+              // "already imported" (which silently dropped every close after
+              // the first and froze the trade as a win).
+              externalIds: cluster.map((r) => r.externalId),
             });
             cluster = [];
           };
@@ -5825,6 +5866,7 @@ ${pad('Lev', `${pnlSign}${pnlPctLev}%`)}` : ''}` : ''}</code>
           }
           flush();
         }
+        for (const t of mergedTrades) delete t._openOrderId;
         mergedTrades.sort((a, b) => new Date(b.exitDate) - new Date(a.exitDate));
         trades = mergedTrades;
       }

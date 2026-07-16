@@ -397,7 +397,10 @@ export default function TradeForm({ isOpen, onClose, trade, onSave, riskSettings
         .filter(e => parseFloat(e.price) > 0 && parseFloat(e.percent) > 0)
         .map(e => ({ price: parseFloat(e.price), percent: parseFloat(e.percent) }));
       const additionalPercent = validAdditional.reduce((s, e) => s + e.percent, 0);
-      if (additionalPercent > 100) {
+      // Small tolerance: exchange-synced Multi-TP slices are rounded to two
+      // decimals, so a legitimate full close can sum to 100.01 — blocking on
+      // a strict >100 made those trades impossible to save after editing.
+      if (additionalPercent > 100.05) {
         toast.error('סך אחוזי היציאות חורג מ-100%');
         return;
       }
@@ -437,10 +440,12 @@ export default function TradeForm({ isOpen, onClose, trade, onSave, riskSettings
       const allExits = validAdditional;
       const exitPrice = calculateWeightedExitPrice(allExits);
       // Closed when the whole position is out. For futures compare contracts
-      // (exact); for crypto compare the percent sum.
+      // (exact); for crypto compare the percent sum — with a small rounding
+      // tolerance (33.33×3 = 99.99 is a FULL close, and treating it as
+      // 'partial' silently dropped the trade from the analytics).
       const fullyClosed = isFutures
         ? allExits.reduce((s, e) => s + e.contracts, 0) >= contractsNum
-        : allExits.reduce((s, e) => s + e.percent, 0) >= 100;
+        : allExits.reduce((s, e) => s + e.percent, 0) >= 99.95;
       const status = !allExits.length ? 'open' : fullyClosed ? 'closed' : 'partial';
 
       // Planned targets (no exit recorded yet): price set but no %/contracts.
