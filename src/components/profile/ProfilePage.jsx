@@ -181,6 +181,10 @@ export default function ProfilePage() {
       console.error('Delete account failed:', err);
       const msg = err.code === 'auth/wrong-password' || err.code === 'auth/invalid-credential'
         ? 'סיסמה שגויה'
+        : err.code === 'auth/requires-recent-login'
+        ? 'נדרש אימות מחדש — התנתק, התחבר שוב ונסה מיד'
+        : err.code === 'auth/popup-closed-by-user' || err.code === 'auth/cancelled-popup-request'
+        ? 'האימות בוטל — כדי למחוק את החשבון יש לאשר את חלון ההתחברות'
         : 'שגיאה במחיקת החשבון';
       toast.error(msg);
     }
