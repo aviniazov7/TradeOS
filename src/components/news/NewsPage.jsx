@@ -3,6 +3,7 @@ import { motion, AnimatePresence } from 'framer-motion';
 import { Newspaper, ExternalLink, Clock, Filter, CalendarDays, Volume2, Globe, BrainCircuit, RefreshCw, Bitcoin, CandlestickChart } from 'lucide-react';
 import { fetchNewsDigest, translateNews } from '../../services/newsService';
 import { hebrewEventTitle } from '../../utils/econCalendarTerms';
+import { safeHttpUrl } from '../../utils/urls';
 
 // ─── News Sources (per market) ───
 const FEED_SOURCES = {
@@ -56,13 +57,6 @@ const TIME_FILTERS = [
 ];
 
 const RSS2JSON_BASE = 'https://api.rss2json.com/v1/api.json?rss_url=';
-
-// Feed items come from a third-party proxy (rss2json) and end up as <a href>
-// / <img src>. Only allow http(s) so a compromised feed can't smuggle a
-// javascript:/data: URL (React renders those hrefs — it only warns).
-function safeHttpUrl(url) {
-  return typeof url === 'string' && /^https?:\/\//i.test(url.trim()) ? url.trim() : null;
-}
 
 // Persist Hebrew translations (link -> {title,desc}) in localStorage so a
 // component remount (market/tab toggle, reload) does NOT re-hit the worker's

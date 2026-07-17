@@ -9,6 +9,7 @@ import {
   formatDateTime,
 } from '../../utils/formatters';
 import { MISTAKE_LABELS } from '../../utils/constants';
+import { safeHttpUrl } from '../../utils/urls';
 import {
   TrendingUp,
   TrendingDown,
@@ -125,7 +126,8 @@ export default function TradeDetailModal({
   };
 
   // ── TradingView snapshot preview ──────────────────────────────────
-  const tvUrl = trade.tradingViewUrl || '';
+  // User-typed URL — sanitize once here; every href/img below derives from it.
+  const tvUrl = safeHttpUrl(trade.tradingViewUrl) || '';
   const tvImg = tvImageUrl(tvUrl);
   const imgKey = trade.id || tvUrl;
   const imgFailed = imgFailedKey === imgKey;
