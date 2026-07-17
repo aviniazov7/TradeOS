@@ -89,7 +89,9 @@ jobs:
           node scripts/bump-version.mjs
           git config user.name 'Avraham Niazov'
           git config user.email 'aviniazov7@icloud.com'
-          git add src/utils/constants.js public/sw.js
+          # index.html is rewritten too (og-image ?v= cache-buster) — leaving
+          # it out of the commit made the repo drift behind production forever.
+          git add src/utils/constants.js public/sw.js index.html
           git commit -m 'chore: bump version [skip ci]'
           git push origin HEAD:main
 
