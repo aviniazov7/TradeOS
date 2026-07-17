@@ -1,6 +1,6 @@
 import { useState, useEffect, useMemo } from 'react';
 import { Navigate } from 'react-router-dom';
-import { Users, UserPlus, ShieldCheck, CheckCircle2, Search, RefreshCw, Download, ChevronUp, ChevronDown, ChevronLeft, Mail, Calendar, Coins, TrendingUp, Percent, Sparkles, BookOpen, FlaskConical, Activity, FileText, Brain, Crown, Send, X, Ticket, Plus, Minus, Trash2, Copy, ScrollText, Share2, Link2, BarChart3, AlertTriangle, Clock, DollarSign, Hourglass, Image, Trophy, Loader2, Bell, StickyNote, Flame } from 'lucide-react';
+import { Users, UserPlus, ShieldCheck, CheckCircle2, Search, RefreshCw, Download, ChevronUp, ChevronDown, ChevronLeft, Mail, Calendar, Coins, TrendingUp, Percent, Sparkles, BookOpen, FlaskConical, Activity, FileText, Brain, Crown, Send, X, Ticket, Plus, Minus, Trash2, Copy, ScrollText, Share2, Link2, BarChart3, AlertTriangle, Clock, DollarSign, Hourglass, Image, Trophy, Loader2, Bell, StickyNote, Flame, Ban } from 'lucide-react';
 import { motion } from 'framer-motion';
 import toast from 'react-hot-toast';
 import Card from '../shared/Card';
@@ -1978,6 +1978,38 @@ function UserDetailModal({ user, onClose, onUserChanged }) {
     }
   };
 
+  // Quick premium extend (+7 / +30). Uses the SAME adminGrantPremium path as
+  // the duration picker, but always with amount 0 (no payment recorded) — the
+  // picker's own "no amount" branch behaves identically. Refreshes exactly like
+  // the picker: reschedule expiry reminders → bust the worker plan cache →
+  // onUserChanged, plus a toast.
+  const quickExtend = async (days) => {
+    if (!user) return;
+    setGranting(true);
+    try {
+      // TRUE extend: add `days` on top of the remaining premium window, not
+      // now+days — otherwise "+30" on a user with 300 days left would SHORTEN
+      // them to 30. adminGrantPremium sets an absolute now+total, so pass the
+      // remaining days + the increment. (planExpires may be a Timestamp / ISO.)
+      const rawExp = user.planExpires?.toDate ? user.planExpires.toDate() : (user.planExpires ? new Date(user.planExpires) : null);
+      const remainingMs = rawExp && !isNaN(rawExp) ? rawExp.getTime() - Date.now() : 0;
+      const remainingDays = Math.max(0, remainingMs / (24 * 60 * 60 * 1000));
+      const totalDays = Math.round(remainingDays + days);
+      await adminGrantPremium(user.id, totalDays, { amount: 0 });
+      const planExpiresISO = new Date(Date.now() + totalDays * 24 * 60 * 60 * 1000).toISOString();
+      adminScheduleExpiryReminders(user.id, planExpiresISO);
+      adminRefreshPlanCache(user.id);
+      toast.success(`הוארך ב-${days} ימים${remainingDays >= 1 ? ` (סה"כ ${totalDays})` : ''}`);
+      onUserChanged?.();
+    } catch (e) {
+      toast.error(e.code === 'permission-denied'
+        ? 'אין הרשאה — ייתכן שכללי Firestore לא פורסו מחדש'
+        : 'הארכת ה-Premium נכשלה');
+    } finally {
+      setGranting(false);
+    }
+  };
+
   const revoke = async () => {
     if (!user) return;
     if (!window.confirm('לבטל את ה-Premium של המשתמש?')) return;
@@ -2106,6 +2138,29 @@ function UserDetailModal({ user, onClose, onUserChanged }) {
             <Send className="w-4 h-4" /> שלח הודעת Push
           </button>
         </div>
+
+        {/* Quick premium extend — +7 / +30 alongside the grant/revoke actions.
+            Runs the same adminGrantPremium path as the picker with no payment,
+            so it grants (free user) or extends (premium) in one tap. */}
+        {user.role !== 'admin' && (
+          <div className="flex items-center gap-2">
+            <span className="text-[11px] text-text-muted whitespace-nowrap">הארכה מהירה</span>
+            <button
+              onClick={() => quickExtend(7)}
+              disabled={granting}
+              className="flex-1 flex items-center justify-center gap-1 px-3 py-1.5 rounded-lg bg-amber-500/10 border border-amber-500/30 text-amber-400 text-xs font-semibold hover:bg-amber-500/20 transition-colors cursor-pointer disabled:opacity-50"
+            >
+              <Plus className="w-3.5 h-3.5" /> 7 ימים
+            </button>
+            <button
+              onClick={() => quickExtend(30)}
+              disabled={granting}
+              className="flex-1 flex items-center justify-center gap-1 px-3 py-1.5 rounded-lg bg-amber-500/10 border border-amber-500/30 text-amber-400 text-xs font-semibold hover:bg-amber-500/20 transition-colors cursor-pointer disabled:opacity-50"
+            >
+              <Plus className="w-3.5 h-3.5" /> 30 ימים
+            </button>
+          </div>
+        )}
 
         {/* Danger zone — permanent deletion runs through the worker's service
             account (admins are read-only on other users' data client-side, and
@@ -2795,14 +2850,17 @@ function CouponsModal({ isOpen, onClose }) {
     }
   };
 
-  const del = async (codeToDelete) => {
-    if (!window.confirm(`למחוק את הקוד ${codeToDelete}?`)) return;
+  // Quick-disable. The worker has no coupon "disable" flag, so the only way to
+  // stop a code from being redeemed is to delete it (adminDeleteCoupon) — hence
+  // the "לא ניתן לשחזר" warning. Irreversible.
+  const disable = async (codeToDisable) => {
+    if (!window.confirm('להשבית את הקוד? לא ניתן לשחזר')) return;
     try {
-      await adminDeleteCoupon(codeToDelete);
-      toast.success('הקוד נמחק');
+      await adminDeleteCoupon(codeToDisable);
+      toast.success('הקוד הושבת');
       load();
     } catch (e) {
-      toast.error(e.message || 'המחיקה נכשלה');
+      toast.error(e.message || 'ההשבתה נכשלה');
     }
   };
 
@@ -2897,52 +2955,86 @@ function CouponsModal({ isOpen, onClose }) {
             </div>
           ) : (
             <div className="space-y-1.5 max-h-80 overflow-y-auto">
-              {coupons.map((c) => (
-                <div key={c.code} className="bg-bg-secondary border border-border-primary rounded-lg px-3 py-2 flex items-center gap-3">
-                  <div className="flex-1 min-w-0">
-                    <div className="flex items-center gap-2">
-                      <button onClick={() => copy(c.code)} className="font-mono text-sm font-bold text-amber-400 hover:text-amber-300 cursor-pointer flex items-center gap-1" dir="ltr">
-                        {c.code} <Copy className="w-3 h-3" />
-                      </button>
-                      <span className="text-[11px] text-text-muted">· {c.days} ימים</span>
-                      {c.maxUses && (
-                        <span className="text-[11px] text-text-muted">· {c.used}/{c.maxUses}</span>
+              {coupons.map((c) => {
+                // Usage vs quota. maxUses is a positive number or null (uncapped).
+                const cap = Number.isFinite(c.maxUses) && c.maxUses > 0 ? c.maxUses : null;
+                const used = Number(c.used) || 0;
+                const fullyUsed = cap != null && used >= cap;
+                const expired = c.expiresAt ? new Date(c.expiresAt).getTime() < Date.now() : false;
+                // A spent or expired code can never be redeemed again → dim it.
+                const dimmed = fullyUsed || expired;
+                const pct = cap ? Math.min(100, Math.round((used / cap) * 100)) : 0;
+                return (
+                  <div
+                    key={c.code}
+                    className={`bg-bg-secondary border border-border-primary rounded-lg px-3 py-2 flex items-center gap-3 transition-opacity ${dimmed ? 'opacity-50' : ''}`}
+                  >
+                    <div className="flex-1 min-w-0">
+                      <div className="flex items-center gap-2 flex-wrap">
+                        <button onClick={() => copy(c.code)} className="font-mono text-sm font-bold text-amber-400 hover:text-amber-300 cursor-pointer flex items-center gap-1" dir="ltr">
+                          {c.code} <Copy className="w-3 h-3" />
+                        </button>
+                        <span className="text-[11px] text-text-muted">· {c.days} ימים</span>
+                        {/* Utilisation vs quota (or vs ∞ when uncapped) */}
+                        <span className="text-[11px] font-mono text-text-secondary" dir="ltr">{used} / {cap ?? '∞'}</span>
+                        {/* Redemption / expiry badges — obvious at a glance */}
+                        {fullyUsed && (
+                          <span className="inline-flex items-center gap-0.5 text-[10px] px-1.5 py-0.5 rounded-full bg-amber-500/15 border border-amber-500/40 text-amber-400 font-semibold">
+                            <CheckCircle2 className="w-3 h-3" /> נוצל במלואו
+                          </span>
+                        )}
+                        {expired && (
+                          <span className="inline-flex items-center gap-0.5 text-[10px] px-1.5 py-0.5 rounded-full bg-loss/10 border border-loss/40 text-loss font-semibold">
+                            <AlertTriangle className="w-3 h-3" /> פג
+                          </span>
+                        )}
+                        {!fullyUsed && !expired && used > 0 && (
+                          <span className="inline-flex items-center gap-0.5 text-[10px] px-1.5 py-0.5 rounded-full bg-profit/10 border border-profit/40 text-profit font-semibold">
+                            <CheckCircle2 className="w-3 h-3" /> מומש
+                          </span>
+                        )}
+                      </div>
+                      {/* Slim utilisation bar — only meaningful when capped */}
+                      {cap != null && (
+                        <div className="mt-1.5 h-1 rounded-full bg-bg-tertiary overflow-hidden" dir="ltr">
+                          <div
+                            className={`h-full rounded-full transition-all ${fullyUsed ? 'bg-amber-500' : 'bg-profit'}`}
+                            style={{ width: `${pct}%` }}
+                          />
+                        </div>
                       )}
-                      {!c.maxUses && (
-                        <span className="text-[11px] text-text-muted">· נוצל {c.used} פעמים</span>
-                      )}
-                      {/* Redemption state — so it's obvious at a glance which codes were used */}
-                      {c.maxUses && c.used >= c.maxUses ? (
-                        <span className="inline-flex items-center gap-0.5 text-[10px] px-1.5 py-0.5 rounded-full bg-amber-500/15 border border-amber-500/40 text-amber-400 font-semibold">
-                          <CheckCircle2 className="w-3 h-3" /> נוצל במלואו
-                        </span>
-                      ) : c.used > 0 && (
-                        <span className="inline-flex items-center gap-0.5 text-[10px] px-1.5 py-0.5 rounded-full bg-profit/10 border border-profit/40 text-profit font-semibold">
-                          <CheckCircle2 className="w-3 h-3" /> מומש
-                        </span>
+                      {/* Expiry date + internal label */}
+                      {(c.expiresAt || c.label) && (
+                        <div className="mt-1 flex items-center gap-2 flex-wrap">
+                          {c.expiresAt && (
+                            <span className={`inline-flex items-center gap-1 text-[10px] ${expired ? 'text-loss' : 'text-text-muted'}`}>
+                              <Calendar className="w-3 h-3" /> תפוגה {formatDate(c.expiresAt)}
+                            </span>
+                          )}
+                          {c.label && <span className="text-[10px] text-text-muted truncate">{c.label}</span>}
+                        </div>
                       )}
                     </div>
-                    {c.label && <div className="text-[10px] text-text-muted truncate">{c.label}</div>}
+                    <button
+                      onClick={() => shareNative(c.code)}
+                      className="p-1.5 rounded-lg text-text-muted hover:text-amber-400 cursor-pointer"
+                      title="שתף קישור"
+                    >
+                      <Share2 className="w-3.5 h-3.5" />
+                    </button>
+                    <button
+                      onClick={() => copyShare(c.code)}
+                      className="p-1.5 rounded-lg text-text-muted hover:text-accent-primary cursor-pointer"
+                      title="העתק קישור שיתוף"
+                    >
+                      <Link2 className="w-3.5 h-3.5" />
+                    </button>
+                    <button onClick={() => disable(c.code)} className="p-1.5 rounded-lg text-text-muted hover:text-loss cursor-pointer" title="השבת קוד (מחיקה)">
+                      <Ban className="w-3.5 h-3.5" />
+                    </button>
                   </div>
-                  <button
-                    onClick={() => shareNative(c.code)}
-                    className="p-1.5 rounded-lg text-text-muted hover:text-amber-400 cursor-pointer"
-                    title="שתף קישור"
-                  >
-                    <Share2 className="w-3.5 h-3.5" />
-                  </button>
-                  <button
-                    onClick={() => copyShare(c.code)}
-                    className="p-1.5 rounded-lg text-text-muted hover:text-accent-primary cursor-pointer"
-                    title="העתק קישור שיתוף"
-                  >
-                    <Link2 className="w-3.5 h-3.5" />
-                  </button>
-                  <button onClick={() => del(c.code)} className="p-1.5 rounded-lg text-text-muted hover:text-loss cursor-pointer" title="מחק">
-                    <Trash2 className="w-3.5 h-3.5" />
-                  </button>
-                </div>
-              ))}
+                );
+              })}
             </div>
           )}
         </div>
