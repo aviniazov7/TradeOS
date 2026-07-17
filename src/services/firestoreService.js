@@ -146,10 +146,10 @@ export async function getUserProfile(uid) {
  * updates (e.g. granting Premium) reflect in the user's UI within seconds —
  * no logout / refresh required.
  */
-export function subscribeToUserProfile(uid, onData) {
+export function subscribeToUserProfile(uid, onData, onError) {
   return onSnapshot(doc(db, 'users', uid), (snap) => {
     if (snap.exists()) onData(snap.data());
-  });
+  }, onError || (() => {}));
 }
 
 /** Create or update the user's main document */

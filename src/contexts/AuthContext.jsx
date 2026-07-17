@@ -50,8 +50,15 @@ export function AuthProvider({ children }) {
     // Live profile subscription so admin-side updates (e.g. plan changes) show
     // up in the user's UI within seconds. Re-bound on every auth change.
     let profileUnsub = null;
+    // Every auth change invalidates the previous generation, so async work
+    // that was in flight for the PREVIOUS user can never touch state after a
+    // logout/user switch. Without this, user A's stale getUserProfile used to
+    // bind a LEAKED listener after the switch and overwrite user B's profile
+    // (wrong isAdmin/isPremium until the next snapshot).
+    let generation = 0;
 
     const unsubscribe = onAuthChange((firebaseUser) => {
+      const gen = ++generation;
       // Drop any prior profile listener before opening a new one.
       if (profileUnsub) { profileUnsub(); profileUnsub = null; }
       if (firebaseUser) {
@@ -60,6 +67,18 @@ export function AuthProvider({ children }) {
         // round-trip — that's what made every refresh feel slow.
         setUser(firebaseUser);
         setLoading(false);
+
+        // Bind the live subscription IMMEDIATELY — binding it inside the
+        // getUserProfile .then() ran AFTER the next auth-change's cleanup,
+        // which is exactly how the listener leaked. The generation guard
+        // keeps a late snapshot from writing a stale user's profile, and the
+        // error callback swallows the expected permission-denied after
+        // sign-out.
+        profileUnsub = subscribeToUserProfile(
+          firebaseUser.uid,
+          (data) => { if (gen === generation) setProfile(data); },
+          () => { /* permission-denied after sign-out — expected, not an error */ }
+        );
 
         // Load the profile doc in the background (also creates it on first
         // sign-in). Used for the `role` field that gates the admin panel.
@@ -90,6 +109,9 @@ export function AuthProvider({ children }) {
         };
         getUserProfile(firebaseUser.uid)
           .then(({ exists, data }) => {
+            // Superseded by a logout/user switch while the fetch was in
+            // flight — touching state here is exactly the race we're fixing.
+            if (gen !== generation) return;
             if (exists) {
               setProfile(data);
               // Stamp activity at most once an hour so the admin panel can show
@@ -109,11 +131,6 @@ export function AuthProvider({ children }) {
                 setUserSetting(firebaseUser.uid, 'notifications', { pushEnabled: true, tradeOpenAlerts: true }, true),
               ]).catch(() => {});
             }
-            // Open a live subscription AFTER the initial load so future writes
-            // (e.g. admin granting Premium) refresh the UI without a reload.
-            profileUnsub = subscribeToUserProfile(firebaseUser.uid, (data) => {
-              setProfile(data);
-            });
           })
           .catch(() => {});
       } else {
@@ -124,6 +141,7 @@ export function AuthProvider({ children }) {
     });
 
     return () => {
+      generation++; // invalidate any in-flight callbacks on unmount
       if (profileUnsub) profileUnsub();
       unsubscribe();
     };
