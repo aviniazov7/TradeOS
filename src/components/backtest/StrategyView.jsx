@@ -6,6 +6,7 @@ import { toPng } from 'html-to-image';
 import toast from 'react-hot-toast';
 import CoinIcon from '../shared/CoinIcon';
 import { getSessionClasses } from '../../utils/constants';
+import { safeHttpUrl } from '../../utils/urls';
 import { useTheme } from '../../hooks/useTheme';
 import { modalBackdrop, modalContent } from '../../utils/animations';
 
@@ -323,9 +324,9 @@ export default function StrategyView({ isOpen, onClose, journal }) {
                           {journal.tradeExamples.map((ex, i) => (
                             <div key={i} className="space-y-2">
                               {toImageUrl(ex.chartUrl) && (
-                                ex.chartUrl?.startsWith('http') ? (
+                                safeHttpUrl(ex.chartUrl) ? (
                                   <a
-                                    href={ex.chartUrl}
+                                    href={safeHttpUrl(ex.chartUrl)}
                                     target="_blank"
                                     rel="noopener noreferrer"
                                     className="block group relative"

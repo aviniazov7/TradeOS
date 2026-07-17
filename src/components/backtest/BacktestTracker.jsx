@@ -25,6 +25,7 @@ import TradingViewPanel from './TradingViewPanel';
 import StrategySelector from '../shared/StrategySelector';
 import { PAIRS, SESSIONS, getSessionClasses } from '../../utils/constants';
 import { formatDate, formatDateShort, formatTime } from '../../utils/formatters';
+import { safeHttpUrl } from '../../utils/urls';
 import { useUserStrategies } from '../../hooks/useUserStrategies';
 import { useUserTimeframes } from '../../hooks/useUserTimeframes';
 import { useUserTriggers } from '../../hooks/useUserTriggers';
@@ -463,13 +464,13 @@ export default function BacktestTracker() {
                                   {bt.session}
                                 </span>
                               )}
-                              {bt.entryChartUrl && (
-                                <a href={bt.entryChartUrl} target="_blank" rel="noopener noreferrer" className="flex items-center gap-0.5 text-accent-primary text-[10px]">
+                              {safeHttpUrl(bt.entryChartUrl) && (
+                                <a href={safeHttpUrl(bt.entryChartUrl)} target="_blank" rel="noopener noreferrer" className="flex items-center gap-0.5 text-accent-primary text-[10px]">
                                   <ExternalLink className="w-3 h-3" />כניסה
                                 </a>
                               )}
-                              {bt.managementChartUrl && (
-                                <a href={bt.managementChartUrl} target="_blank" rel="noopener noreferrer" className="flex items-center gap-0.5 text-purple-400 text-[10px]">
+                              {safeHttpUrl(bt.managementChartUrl) && (
+                                <a href={safeHttpUrl(bt.managementChartUrl)} target="_blank" rel="noopener noreferrer" className="flex items-center gap-0.5 text-purple-400 text-[10px]">
                                   <ExternalLink className="w-3 h-3" />ניהול
                                 </a>
                               )}
@@ -555,19 +556,19 @@ export default function BacktestTracker() {
                         </td>
                         <td className="py-2.5">
                           <div className="flex items-center gap-2">
-                            {bt.entryChartUrl && (
-                              <a href={bt.entryChartUrl} target="_blank" rel="noopener noreferrer"
+                            {safeHttpUrl(bt.entryChartUrl) && (
+                              <a href={safeHttpUrl(bt.entryChartUrl)} target="_blank" rel="noopener noreferrer"
                                 className="text-accent-primary hover:underline text-xs flex items-center gap-0.5">
                                 <ExternalLink className="w-3 h-3" />כניסה
                               </a>
                             )}
-                            {bt.managementChartUrl && (
-                              <a href={bt.managementChartUrl} target="_blank" rel="noopener noreferrer"
+                            {safeHttpUrl(bt.managementChartUrl) && (
+                              <a href={safeHttpUrl(bt.managementChartUrl)} target="_blank" rel="noopener noreferrer"
                                 className="text-purple-400 hover:underline text-xs flex items-center gap-0.5">
                                 <ExternalLink className="w-3 h-3" />ניהול
                               </a>
                             )}
-                            {!bt.entryChartUrl && !bt.managementChartUrl && '–'}
+                            {!safeHttpUrl(bt.entryChartUrl) && !safeHttpUrl(bt.managementChartUrl) && '–'}
                           </div>
                         </td>
                         <td className="py-2.5">
