@@ -4,7 +4,8 @@ import {
   format, addMonths, subMonths, isToday,
 } from 'date-fns';
 import { ChevronRight, ChevronLeft, DollarSign, Share2 } from 'lucide-react';
-import { formatCurrency } from '../../utils/formatters';
+import { formatCurrency, safeDate } from '../../utils/formatters';
+import { isClosedTrade } from '../../utils/calculations';
 import Modal from '../shared/Modal';
 import MonthlyShareModal from './MonthlyShareModal';
 
@@ -29,11 +30,17 @@ export default function MonthlyCalendar({ trades, journalName }) {
   const [shareOpen, setShareOpen] = useState(false);
 
   const { dailyData, monthStats } = useMemo(() => {
-    const closed = trades.filter((t) => t.exitPrice > 0);
+    // isClosedTrade (not exitPrice>0): broker CSV imports are closed with a
+    // profit but no exit price and used to vanish from the calendar entirely.
+    const closed = trades.filter(isClosedTrade);
     const map = {};
 
     closed.forEach((t) => {
-      const d = t.exitDate?.toDate ? t.exitDate.toDate() : new Date(t.exitDate);
+      // safeDate: a single corrupt exitDate used to throw inside format() and
+      // crash the whole calendar tab (and null landed in a 1970 bucket).
+      // Closed without exitDate (CSV with only a profit column) → entryDate.
+      const d = safeDate(t.exitDate) || safeDate(t.entryDate);
+      if (!d) return;
       const key = format(d, 'yyyy-MM-dd');
       if (!map[key]) map[key] = { pnl: 0, trades: [], wins: 0, losses: 0 };
       map[key].pnl += t.netPnl ?? t.pnl ?? 0;

@@ -2,7 +2,8 @@ import { forwardRef, useMemo } from 'react';
 import {
   startOfMonth, endOfMonth, eachDayOfInterval, getDay, format,
 } from 'date-fns';
-import { formatCurrency } from '../../utils/formatters';
+import { formatCurrency, safeDate } from '../../utils/formatters';
+import { isClosedTrade } from '../../utils/calculations';
 
 const HEBREW_MONTHS = {
   0: 'ינואר', 1: 'פברואר', 2: 'מרץ', 3: 'אפריל',
@@ -16,11 +17,14 @@ const MonthlyShareCard = forwardRef(function MonthlyShareCard({ trades, currentM
   const { showPnl = true, showPercent = false, showTrades = true } = options;
 
   const { dailyData, monthStats, calendarDays } = useMemo(() => {
-    const closed = trades.filter((t) => t.exitPrice > 0);
+    // Mirrors MonthlyCalendar exactly — isClosedTrade + safeDate — so the
+    // share card never disagrees with (or crashes like) the calendar it snapshots.
+    const closed = trades.filter(isClosedTrade);
     const map = {};
 
     closed.forEach((t) => {
-      const d = t.exitDate?.toDate ? t.exitDate.toDate() : new Date(t.exitDate);
+      const d = safeDate(t.exitDate) || safeDate(t.entryDate);
+      if (!d) return;
       const key = format(d, 'yyyy-MM-dd');
       if (!map[key]) map[key] = { pnl: 0, trades: [], wins: 0, losses: 0 };
       map[key].pnl += t.netPnl ?? t.pnl ?? 0;
