@@ -18,9 +18,6 @@
   ],
   "vars": {
     "DEV_UID": "3eVK7Ej3F1Y2L2ziHJpmzFP7Q0u1",
-    // Every admin email (support/contact form, weekly digest, payment
-    // notices) goes to the app inbox instead of personal admin emails (#221).
-    "MAIL_TO_ADMIN_OVERRIDE": "tradeos.app@gmail.com",
     // Premium AI chat runs Gemini-first (GEMINI_API_KEY secret is already set)
     // with automatic Groq fallback — offloads traffic from Groq's tight
     // 100K-tokens/day free-tier budget, which the coach/digest also share.
