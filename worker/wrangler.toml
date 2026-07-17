@@ -11,12 +11,6 @@ crons = ["*/10 * * * *"]
 binding = "ALERTS_KV"
 id = "5c66041d98aa4229a52afeb2f5b1f652"
 
-# The weekly digest cron runs on THIS worker — the override must be defined
-# here too, or reports keep going to personal admin emails (#221).
-[vars]
-DEV_UID = "3eVK7Ej3F1Y2L2ziHJpmzFP7Q0u1"
-MAIL_TO_ADMIN_OVERRIDE = "tradeos.app@gmail.com"
-
 # ─── Staging environment ────────────────────────────────────────────────
 # Deployed by the `dev` branch via GitHub Actions to
 # https://tradeos-alerts-staging.tradeos.workers.dev.
