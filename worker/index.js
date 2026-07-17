@@ -3852,6 +3852,123 @@ async function handleRequest(request, env) {
     }), { headers: { ...cors, 'Content-Type': 'application/json' } });
   }
 
+  // Admin-only: Firebase (Firestore) consumption vs the Spark free-tier
+  // limits. Returns COUNTS AND NUMBERS ONLY — never documents, fields or
+  // tokens. Today's read/write/delete totals come from the Cloud Monitoring
+  // API (may be disabled on the project → degrade to monitoring:null + a
+  // short reason so the panel can show a setup hint); document counts come
+  // from Firestore COUNT aggregation queries (always available, ~1 read per
+  // 1000 counted docs). Cached 5 min in KV — NOT the shared edge cache: the
+  // edge cache ignores the Authorization header, so it would happily serve
+  // this admin data to token-less callers. The KV entry is written after auth
+  // passed and read only after auth passed, so the cache itself stays gated.
+  if (request.method === 'GET' && path === '/admin/firebase-usage') {
+    const token = (request.headers.get('Authorization') || '').replace('Bearer ', '');
+    const adminUid = await verifyAdminFromToken(token);
+    if (!adminUid) return new Response(JSON.stringify({ error: 'forbidden' }), { status: 403, headers: { ...cors, 'Content-Type': 'application/json' } });
+
+    const cached = await env.ALERTS_KV.get('fbusage:cache');
+    if (cached) return new Response(cached, { headers: { ...cors, 'Content-Type': 'application/json' } });
+
+    // Spark free-tier daily limits (static, for the panel's meters).
+    const limits = { reads: 50000, writes: 20000, deletes: 20000, storageBytes: 1073741824 };
+    let monitoring = null;
+    let monitoringError = null;
+    const counts = { users: null, trades: null, payments: null, leaderboard: null };
+
+    try {
+      const gtoken = await getFirebaseAdminToken(env);
+
+      // 1) Today's operation counts (UTC day — matches how Firebase resets
+      //    the Spark quotas) via Cloud Monitoring timeSeries.list.
+      const dayStart = new Date();
+      dayStart.setUTCHours(0, 0, 0, 0);
+      const readMetric = async (type) => {
+        const qs = new URLSearchParams({
+          filter: `metric.type = "${type}"`,
+          'interval.startTime': dayStart.toISOString(),
+          'interval.endTime': new Date().toISOString(),
+          'aggregation.alignmentPeriod': '86400s',
+          'aggregation.perSeriesAligner': 'ALIGN_SUM',
+          'aggregation.crossSeriesReducer': 'REDUCE_SUM',
+        });
+        const r = await fetch(`https://monitoring.googleapis.com/v3/projects/${FIREBASE_PROJECT_ID}/timeSeries?${qs}`, {
+          headers: { Authorization: `Bearer ${gtoken}` },
+        });
+        if (!r.ok) {
+          // 403 = Monitoring API not enabled / service account lacks the
+          // monitoring.viewer role; 400 = bad request. Keep the reason short
+          // (status word only — never the full body).
+          const errBody = await r.json().catch(() => null);
+          throw new Error(`Monitoring API ${r.status}${errBody?.error?.status ? ` (${errBody.error.status})` : ''}`);
+        }
+        const data = await r.json();
+        let sum = 0;
+        for (const series of data.timeSeries || []) {
+          for (const p of series.points || []) {
+            sum += Number(p.value?.int64Value ?? p.value?.doubleValue ?? 0) || 0;
+          }
+        }
+        return Math.round(sum);
+      };
+      try {
+        const [reads, writes, deletes] = await Promise.all([
+          readMetric('firestore.googleapis.com/document/read_count'),
+          readMetric('firestore.googleapis.com/document/write_count'),
+          readMetric('firestore.googleapis.com/document/delete_count'),
+        ]);
+        monitoring = { reads, writes, deletes };
+      } catch (e) {
+        monitoringError = String(e.message || 'monitoring unavailable').slice(0, 140);
+      }
+
+      // 2) Document counts via COUNT aggregation. Top-level collections use a
+      //    plain from; `trades` lives under users/{uid}/trades so it needs a
+      //    collection-group query (allDescendants). Each is best-effort.
+      const aggBase = `https://firestore.googleapis.com/v1/projects/${FIREBASE_PROJECT_ID}/databases/(default)`;
+      const countDocs = async (collectionId, allDescendants = false) => {
+        try {
+          const r = await fetch(`${aggBase}/documents:runAggregationQuery`, {
+            method: 'POST',
+            headers: { Authorization: `Bearer ${gtoken}`, 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              structuredAggregationQuery: {
+                structuredQuery: { from: [{ collectionId, ...(allDescendants ? { allDescendants: true } : {}) }] },
+                aggregations: [{ count: {}, alias: 'c' }],
+              },
+            }),
+          });
+          if (!r.ok) return null;
+          // Streaming RPC → the body is an ARRAY of result objects.
+          const rows = await r.json();
+          const v = (Array.isArray(rows) ? rows : [rows]).find((row) => row?.result)?.result?.aggregateFields?.c?.integerValue;
+          return v != null ? parseInt(v, 10) : null;
+        } catch { return null; }
+      };
+      [counts.users, counts.trades, counts.payments, counts.leaderboard] = await Promise.all([
+        countDocs('users'),
+        countDocs('trades', true),
+        countDocs('payments'),
+        countDocs('leaderboard'),
+      ]);
+    } catch (e) {
+      // Service account missing / OAuth exchange failed — still return the
+      // limits so the card renders with a hint instead of breaking the panel.
+      if (!monitoringError) monitoringError = String(e.message || 'admin token unavailable').slice(0, 140);
+    }
+
+    const body = JSON.stringify({
+      ok: true,
+      at: Date.now(),
+      monitoring,
+      ...(monitoringError ? { monitoringError } : {}),
+      counts,
+      limits,
+    });
+    await env.ALERTS_KV.put('fbusage:cache', body, { expirationTtl: 300 });
+    return new Response(body, { headers: { ...cors, 'Content-Type': 'application/json' } });
+  }
+
   // Admin-only: does a user have Web Push devices registered? Returns ONLY the
   // COUNT of push:{uid}:{hash} subscription keys — never the subscriptions
   // themselves (endpoints/keys stay in KV).
