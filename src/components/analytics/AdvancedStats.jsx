@@ -9,7 +9,7 @@ import { useStats } from '../../hooks/useStats';
 import LoadingSpinner from '../shared/LoadingSpinner';
 import EmptyState from '../shared/EmptyState';
 import { formatCurrency, formatPercent } from '../../utils/formatters';
-import { calculateMaxDrawdown } from '../../utils/calculations';
+import { calculateMaxDrawdown, isClosedTrade } from '../../utils/calculations';
 import { pageVariants, pageTransition } from '../../utils/animations';
 
 const tooltipStyle = { background: 'var(--color-bg-overlay)', border: '1px solid var(--color-border-primary)', borderRadius: '8px', fontSize: '12px', color: 'var(--color-text-primary)' };
@@ -21,7 +21,7 @@ export default function AdvancedStats() {
   const stats = useStats(trades);
 
   const analytics = useMemo(() => {
-    const closed = trades.filter((t) => t.exitPrice > 0);
+    const closed = trades.filter(isClosedTrade);
     if (!closed.length) return null;
 
     const wins = closed.filter((t) => t.result === 'win');

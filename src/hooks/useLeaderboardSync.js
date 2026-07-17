@@ -7,7 +7,7 @@ import {
   deleteLeaderboardEntry,
   timestamp,
 } from '../services/firestoreService';
-import { calculateProfitFactor, calculateMaxDrawdown } from '../utils/calculations';
+import { calculateProfitFactor, calculateMaxDrawdown, isClosedTrade } from '../utils/calculations';
 
 /**
  * Computes a 0-100 score based on live trading + backtest performance.
@@ -65,7 +65,7 @@ export function useLeaderboardSync() {
         ]);
 
         // ── Live Trading Stats ──
-        const closed = trades.filter((t) => t.exitPrice > 0);
+        const closed = trades.filter(isClosedTrade);
         if (closed.length < 10) return; // minimum threshold
 
         const wins = closed.filter((t) => t.result === 'win');
