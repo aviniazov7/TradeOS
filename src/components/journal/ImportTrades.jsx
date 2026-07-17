@@ -226,19 +226,25 @@ export default function ImportTrades({ isOpen, onClose, onImport, onImportBulk }
       toast.error(`${skippedDates} שורות דולגו — תאריך כניסה לא תקין`);
     }
 
+    // Local counter for the error toast — reading importProgress state in the
+    // catch sees the stale closure from before the import started (always 0,
+    // so every failure reported "עסקה 1").
+    let progressCount = 0;
     try {
       let imported = 0;
       setImportProgress({ current: 0, total: trades.length });
       if (onImportBulk) {
         // Batched writes — one Firestore round-trip per 499 trades, so large
         // CSV files don't hang on hundreds of sequential per-row writes.
-        imported = await onImportBulk(trades, (done) =>
-          setImportProgress({ current: done, total: trades.length })
-        );
+        imported = await onImportBulk(trades, (done) => {
+          progressCount = done;
+          setImportProgress({ current: done, total: trades.length });
+        });
       } else {
         for (const trade of trades) {
           await onImport(trade);
           imported++;
+          progressCount = imported;
           setImportProgress({ current: imported, total: trades.length });
         }
       }
@@ -251,7 +257,7 @@ export default function ImportTrades({ isOpen, onClose, onImport, onImportBulk }
         ? 'אין הרשאה לייבא עסקאות'
         : err.message?.includes('network')
         ? 'בעיית חיבור — בדוק את האינטרנט'
-        : `שגיאה בייבוא עסקה ${importProgress.current + 1}: ${err.message || 'נסה שוב'}`;
+        : `שגיאה בייבוא עסקה ${progressCount + 1}: ${err.message || 'נסה שוב'}`;
       toast.error(msg);
     } finally {
       setImporting(false);

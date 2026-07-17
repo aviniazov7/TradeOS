@@ -9,8 +9,15 @@ const WORKER_URL = import.meta.env.VITE_WORKER_URL || '';
 export function useDailySummarySync() {
   const { user } = useAuth();
   const hasSynced = useRef(false);
+  const lastUid = useRef(null);
 
   useEffect(() => {
+    // Reset the once-per-session flag when the account changes (logout+login
+    // of a second user in the same tab) — same pattern as useLeaderboardSync.
+    if (user?.uid !== lastUid.current) {
+      hasSynced.current = false;
+      lastUid.current = user?.uid || null;
+    }
     if (!user || !WORKER_URL || hasSynced.current) return;
     hasSynced.current = true;
 

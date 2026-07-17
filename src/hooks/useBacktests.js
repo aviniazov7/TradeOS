@@ -27,6 +27,10 @@ export function useBacktests(backtestJournalId) {
       (data) => {
         setAllBacktests(data);
         setLoading(false);
+      },
+      (error) => {
+        console.error('Firestore backtests listener error:', error);
+        setLoading(false); // permission/network error must not leave an eternal skeleton
       }
     );
   }, [user]);

@@ -56,7 +56,9 @@ export default function BacktestSettingsModal({ isOpen, onClose }) {
         timeframes: activeJournal.timeframes || [],
         sessions: activeJournal.sessions || [],
         checklist: activeJournal.checklist || [],
-        tradeExamples: activeJournal.tradeExamples || [],
+        // _key gives each example a stable React identity for the session, so
+        // deleting a row never lets the next row inherit its DOM (stripped on save)
+        tradeExamples: (activeJournal.tradeExamples || []).map((ex, i) => ({ ...ex, _key: `ex-${i}` })),
         marketConditions: activeJournal.marketConditions || '',
         tradeManagement: activeJournal.tradeManagement || '',
       });
@@ -97,7 +99,7 @@ export default function BacktestSettingsModal({ isOpen, onClose }) {
     update('checklist', form.checklist.filter((_, i) => i !== index));
 
   const addTradeExample = () => {
-    update('tradeExamples', [...form.tradeExamples, { title: '', chartUrl: '', description: '' }]);
+    update('tradeExamples', [...form.tradeExamples, { title: '', chartUrl: '', description: '', _key: `new-${Date.now()}` }]);
   };
 
   const removeTradeExample = (index) =>
@@ -133,6 +135,7 @@ export default function BacktestSettingsModal({ isOpen, onClose }) {
         ...form,
         name: form.name.trim(),
         description: form.description.trim(),
+        tradeExamples: form.tradeExamples.map((ex) => { const clean = { ...ex }; delete clean._key; return clean; }),
       });
       toast.success('היומן עודכן');
       onClose();
@@ -309,7 +312,7 @@ export default function BacktestSettingsModal({ isOpen, onClose }) {
               <h3 className={sectionClass}>דוגמאות כניסה</h3>
               <div className="space-y-3">
                 {form.tradeExamples.map((ex, i) => (
-                  <div key={i} className="bg-bg-tertiary border border-border-primary rounded-lg p-3 space-y-2">
+                  <div key={ex._key} className="bg-bg-tertiary border border-border-primary rounded-lg p-3 space-y-2">
                     <div className="flex items-center gap-2">
                       <input value={ex.title} onChange={(e) => updateTradeExample(i, 'title', e.target.value)} className={`${inputClass} flex-1`} placeholder="כותרת" />
                       <button type="button" onClick={() => removeTradeExample(i)} className="p-1 rounded-lg text-text-muted hover:text-loss transition-colors cursor-pointer">
@@ -318,7 +321,9 @@ export default function BacktestSettingsModal({ isOpen, onClose }) {
                     </div>
                     <input value={ex.chartUrl} onChange={(e) => updateTradeExample(i, 'chartUrl', e.target.value)} className={inputClass} placeholder="קישור לתמונה או TradingView snapshot" />
                     {toImageUrl(ex.chartUrl) && (
-                      <img src={toImageUrl(ex.chartUrl)} alt={ex.title} className="w-full rounded-lg" referrerPolicy="no-referrer" onError={(e) => { e.target.style.display = 'none'; }} />
+                      // keyed by URL: fixing a broken link mounts a fresh <img>, so the
+                      // imperative hide below can't outlive the URL it applied to
+                      <img key={toImageUrl(ex.chartUrl)} src={toImageUrl(ex.chartUrl)} alt={ex.title} className="w-full rounded-lg" referrerPolicy="no-referrer" onError={(e) => { e.target.style.display = 'none'; }} />
                     )}
                     <textarea value={ex.description} onChange={(e) => updateTradeExample(i, 'description', e.target.value)} className={`${inputClass} h-12 resize-none`} placeholder="תיאור" />
                   </div>
@@ -414,7 +419,7 @@ export default function BacktestSettingsModal({ isOpen, onClose }) {
               <h3 className={sectionClass}>דוגמאות כניסה</h3>
               <div className="space-y-3">
                 {form.tradeExamples.map((ex, i) => (
-                  <div key={i} className="bg-bg-tertiary border border-border-primary rounded-lg p-3 space-y-2">
+                  <div key={ex._key} className="bg-bg-tertiary border border-border-primary rounded-lg p-3 space-y-2">
                     <div className="flex items-center gap-2">
                       <input value={ex.title} onChange={(e) => updateTradeExample(i, 'title', e.target.value)} className={`${inputClass} flex-1`} placeholder="כותרת" />
                       <button type="button" onClick={() => removeTradeExample(i)} className="p-1 rounded-lg text-text-muted hover:text-loss transition-colors cursor-pointer">
@@ -423,7 +428,7 @@ export default function BacktestSettingsModal({ isOpen, onClose }) {
                     </div>
                     <input value={ex.chartUrl} onChange={(e) => updateTradeExample(i, 'chartUrl', e.target.value)} className={inputClass} placeholder="קישור לתמונה או TradingView snapshot" />
                     {toImageUrl(ex.chartUrl) && (
-                      <img src={toImageUrl(ex.chartUrl)} alt={ex.title} className="w-full rounded-lg" referrerPolicy="no-referrer" onError={(e) => { e.target.style.display = 'none'; }} />
+                      <img key={toImageUrl(ex.chartUrl)} src={toImageUrl(ex.chartUrl)} alt={ex.title} className="w-full rounded-lg" referrerPolicy="no-referrer" onError={(e) => { e.target.style.display = 'none'; }} />
                     )}
                     <textarea value={ex.description} onChange={(e) => updateTradeExample(i, 'description', e.target.value)} className={`${inputClass} h-16 resize-none`} placeholder="תיאור" />
                   </div>

@@ -70,11 +70,13 @@ export default function StrategyView({ isOpen, onClose, journal }) {
   const handleShare = async () => {
     if (!cardRef.current || exporting) return;
     setExporting(true);
+    const el = cardRef.current;
+    // Temporarily expand card to full height for complete capture; captured
+    // before try so the finally below can always restore (a toPng failure
+    // used to leave the modal stuck at maxHeight:none until reopened).
+    const prevMaxH = el.style.maxHeight;
+    const prevOverflow = el.style.overflow;
     try {
-      const el = cardRef.current;
-      // Temporarily expand card to full height for complete capture
-      const prevMaxH = el.style.maxHeight;
-      const prevOverflow = el.style.overflow;
       el.style.maxHeight = 'none';
       el.style.overflow = 'visible';
 
@@ -89,10 +91,6 @@ export default function StrategyView({ isOpen, onClose, journal }) {
           return true;
         },
       });
-
-      // Restore scroll constraints
-      el.style.maxHeight = prevMaxH;
-      el.style.overflow = prevOverflow;
 
       const img = new Image();
       img.src = dataUrl;
@@ -121,6 +119,8 @@ export default function StrategyView({ isOpen, onClose, journal }) {
     } catch (err) {
       if (err.name !== 'AbortError') toast.error('שגיאה בייצוא');
     } finally {
+      el.style.maxHeight = prevMaxH;
+      el.style.overflow = prevOverflow;
       setExporting(false);
     }
   };
