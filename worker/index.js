@@ -2201,25 +2201,12 @@ async function handleWebhook(request, env) {
 // ==================== Cron Functions ====================
 
 // ---- Aggregate KV snapshots ------------------------------------------------
-// To avoid an N+1 read per cron tick (one get per `settings:*` / `alerts:*`
-// key — the main source of KV-quota burn), the cron reads two rolled-up blobs:
-//   settings:ALL  = { [chatId]: settings }
+// To avoid an N+1 read per cron tick (one get per alert/settings key — the
+// main source of KV-quota burn), the cron reads rolled-up blobs:
+//   usettings:ALL = { [uid]: schedule }   (written by /notify-settings)
 //   alerts:ACTIVE = { [alertId]: { kvKey, ...alert } }   (active alerts only)
-// Writers keep the per-key docs (so the bot's own readers are untouched) AND
-// mirror into the blob (dual-write). If a blob is missing we rebuild it once
-// from the per-key list (backfill), so this is safe to ship with no migration.
-async function getSettingsAll(env) {
-  const blob = await env.ALERTS_KV.get('settings:ALL', 'json');
-  if (blob) return blob;
-  const list = await env.ALERTS_KV.list({ prefix: 'settings:' });
-  const out = {};
-  await Promise.all(list.keys.filter((k) => k.name !== 'settings:ALL').map(async (k) => {
-    const d = await env.ALERTS_KV.get(k.name, 'json');
-    if (d) out[k.name.slice('settings:'.length)] = d;
-  }));
-  await env.ALERTS_KV.put('settings:ALL', JSON.stringify(out));
-  return out;
-}
+// Writers keep the per-key docs AND mirror into the blob (dual-write). A
+// missing alerts blob is rebuilt once from the per-key list (backfill).
 async function getAlertsActive(env) {
   const blob = await env.ALERTS_KV.get('alerts:ACTIVE', 'json');
   if (blob) return blob;
@@ -2240,7 +2227,7 @@ async function setSettingsAggregate(env, chatId, settings) {
 // Upsert (active) or remove (inactive/deleted) a single alert in the aggregate.
 async function syncAlertAggregate(env, alert) {
   const blob = (await env.ALERTS_KV.get('alerts:ACTIVE', 'json')) || {};
-  if (alert && alert.active) blob[alert.id] = { kvKey: `alerts:${alert.chatId}:${alert.id}`, ...alert };
+  if (alert && alert.active) blob[alert.id] = { kvKey: `alerts:u:${alert.uid}:${alert.id}`, ...alert };
   else if (alert) delete blob[alert.id];
   await env.ALERTS_KV.put('alerts:ACTIVE', JSON.stringify(blob));
 }
@@ -2255,6 +2242,9 @@ async function checkPriceAlerts(env, activeAlerts) {
   const prices = await fetchPrices(pairs);
   if (!Object.keys(prices).length) return;
   for (const alert of activeAlerts) {
+    // Legacy bot-era alerts (chatId, no uid) are dead — the bot is retired
+    // (#219); they get swept in the KV cleanup.
+    if (!alert.uid) continue;
     const pd = prices[alert.pair];
     if (!pd) continue;
     const hit = alert.direction === 'above' ? pd.price >= alert.targetPrice : pd.price <= alert.targetPrice;
@@ -2265,14 +2255,16 @@ async function checkPriceAlerts(env, activeAlerts) {
       const sentKey = `sent:alert:${alert.id}`;
       if (await env.ALERTS_KV.get(sentKey)) continue;
       await env.ALERTS_KV.put(sentKey, '1', { expirationTtl: 86400 });
-      const dir = alert.direction === 'above' ? '📈 מעל' : '📉 מתחת';
-      const chg = `${pd.change24h >= 0 ? '📈' : '📉'} שינוי 24h: ${fmtPct(pd.change24h)}`;
-      const msg = `🔔 <b>התראת מחיר!</b>\n\n<b>${alert.pair.replace('USDT', '')}</b>\n💰 מחיר נוכחי: ${fmtPrice(pd.price)}\n🎯 יעד: ${dir} ${fmtPrice(alert.targetPrice)}\n${chg}\n\n✅ ההתראה הושלמה`;
-      await sendMessage(env.BOT_TOKEN, alert.chatId, msg, [[{ text: '➕ התראה חדשה', callback_data: 'alert_add' }, { text: '📋 ההתראות שלי', callback_data: 'alert_list' }]]);
+      const dir = alert.direction === 'above' ? 'מעל' : 'מתחת';
+      await sendPushToUser(env, alert.uid, {
+        title: `🔔 ${alert.pair.replace('USDT', '')} הגיע ליעד!`,
+        body: `מחיר נוכחי: ${fmtPrice(pd.price)} · יעד: ${dir} ${fmtPrice(alert.targetPrice)} · ‏24h: ${fmtPct(pd.change24h)}`,
+        url: '/market',
+      });
       const { kvKey, ...ad } = alert;
       // Reconstruct the key from stable fields so the disable write can't target
       // `undefined` if kvKey was ever absent.
-      const alertKey = kvKey || `alerts:${alert.chatId}:${alert.id}`;
+      const alertKey = kvKey || `alerts:u:${alert.uid}:${alert.id}`;
       await env.ALERTS_KV.put(alertKey, JSON.stringify({ ...ad, active: false }));
       await removeAlertAggregate(env, alert.id); // it's done — drop from alerts:ACTIVE
 
@@ -2283,13 +2275,15 @@ async function checkPriceAlerts(env, activeAlerts) {
 async function checkJournalReminders(env, settingsMap) {
   const currentTime = getIsraelHHMM();
   const today = getIsraelDateStr();
-  for (const [chatId, s] of Object.entries(settingsMap)) {
+  for (const [uid, s] of Object.entries(settingsMap)) {
     if (!s?.journal?.enabled || s.journal.time !== currentTime) continue;
-    const sentKey = `sent:journal:${chatId}:${today}`;
+    const sentKey = `sent:journal:${uid}:${today}`;
     if (await env.ALERTS_KV.get(sentKey)) continue;
-    await sendMessage(env.BOT_TOKEN, chatId,
-      '📝 <b>תזכורת יומן</b>\n\nלא שכחת למלא את היומן היום?\nתיעוד העסקאות שלך הוא המפתח לשיפור! 💪',
-      [[{ text: '📖 פתח את היומן', url: APP_URL }]]);
+    await sendPushToUser(env, uid, {
+      title: '📝 תזכורת יומן',
+      body: 'לא שכחת למלא את היומן היום? תיעוד העסקאות שלך הוא המפתח לשיפור 💪',
+      url: '/journal',
+    });
     await env.ALERTS_KV.put(sentKey, '1', { expirationTtl: 86400 });
   }
 }
@@ -2297,23 +2291,25 @@ async function checkJournalReminders(env, settingsMap) {
 async function checkDailySummaries(env, settingsMap) {
   const currentTime = getIsraelHHMM();
   const today = getIsraelDateStr();
-  for (const [chatId, s] of Object.entries(settingsMap)) {
+  for (const [uid, s] of Object.entries(settingsMap)) {
     if (!s?.summary?.enabled || s.summary.time !== currentTime) continue;
-    const sentKey = `sent:summary:${chatId}:${today}`;
+    const sentKey = `sent:summary:${uid}:${today}`;
     if (await env.ALERTS_KV.get(sentKey)) continue;
-    const stats = await env.ALERTS_KV.get(`dailystats:${chatId}:${today}`, 'json');
-    let msg;
+    const stats = await env.ALERTS_KV.get(`dailystats:u:${uid}:${today}`, 'json');
+    let body;
     if (stats && stats.tradeCount > 0) {
       const pnlStr = stats.pnl >= 0 ? `+$${stats.pnl.toFixed(2)}` : `-$${Math.abs(stats.pnl).toFixed(2)}`;
-      const pnlE = stats.pnl >= 0 ? '🟢' : '🔴';
       const wr = Math.round((stats.wins / stats.tradeCount) * 100);
-      msg = `📊 <b>סיכום יומי — ${formatIsraelDate()}</b>\n\n📈 עסקאות: ${stats.tradeCount}\n${pnlE} P&L: ${pnlStr}\n🎯 Win Rate: ${wr}% (${stats.wins}/${stats.tradeCount})\n`;
-      if (stats.bestTrade && stats.bestTrade.pnl > 0) msg += `🏆 הכי טובה: +$${stats.bestTrade.pnl.toFixed(2)} (${stats.bestTrade.pair})\n`;
-      if (stats.worstTrade && stats.worstTrade.pnl < 0) msg += `📉 הכי גרועה: -$${Math.abs(stats.worstTrade.pnl).toFixed(2)} (${stats.worstTrade.pair})\n`;
+      body = `${stats.tradeCount} עסקאות · P&L: ‏${pnlStr} · Win Rate: ‏${wr}%`;
+      if (stats.bestTrade && stats.bestTrade.pnl > 0) body += ` · 🏆 ${stats.bestTrade.pair} ‏+$${stats.bestTrade.pnl.toFixed(2)}`;
     } else {
-      msg = `📊 <b>סיכום יומי — ${formatIsraelDate()}</b>\n\nאין עסקאות סגורות היום.\nמחר יום חדש! 💪`;
+      body = 'אין עסקאות סגורות היום. מחר יום חדש! 💪';
     }
-    await sendMessage(env.BOT_TOKEN, chatId, msg, [[{ text: '📖 פתח את היומן', url: APP_URL }]]);
+    await sendPushToUser(env, uid, {
+      title: `📊 סיכום יומי — ${formatIsraelDate()}`,
+      body,
+      url: '/journal',
+    });
     await env.ALERTS_KV.put(sentKey, '1', { expirationTtl: 86400 });
   }
 }
@@ -2321,24 +2317,27 @@ async function checkDailySummaries(env, settingsMap) {
 async function checkEconomicCalendar(env, settingsMap) {
   const now = getIsraelTime();
   if (now.getMinutes() % 5 !== 0) return;
-  const events = await fetchEconomicCalendar(env);
-  if (!events.length) return;
   const users = Object.entries(settingsMap)
     .filter(([, s]) => s?.calendar?.enabled)
-    .map(([chatId]) => chatId);
+    .map(([uid]) => uid);
   if (!users.length) return;
+  const events = await fetchEconomicCalendar(env);
+  if (!events.length) return;
   for (const event of events) {
     const diffMin = (new Date(event.date).getTime() - Date.now()) / 60000;
     if (diffMin < 55 || diffMin > 65) continue;
     const eventTime = new Date(event.date).toLocaleTimeString('he-IL', { timeZone: 'Asia/Jerusalem', hour: '2-digit', minute: '2-digit' });
     const forecastStr = event.forecast || event.previous
-      ? `📊 ${event.forecast ? `תחזית: ${event.forecast}` : ''}${event.forecast && event.previous ? ' | ' : ''}${event.previous ? `קודם: ${event.previous}` : ''}\n` : '';
-    const msg = `📅 <b>אירוע כלכלי בעוד שעה!</b>\n\n🔴 <b>${event.title}</b> (USD)\n🕐 ${eventTime} (שעון ישראל)\n${forecastStr}\n⚠️ צפי לתנודתיות גבוהה`;
+      ? ` · ${event.forecast ? `תחזית: ${event.forecast}` : ''}${event.forecast && event.previous ? ' | ' : ''}${event.previous ? `קודם: ${event.previous}` : ''}` : '';
     const eventKey = `${event.title}_${event.date}`.replace(/[^a-zA-Z0-9]/g, '_');
-    for (const chatId of users) {
-      const sentKey = `sent:cal:${chatId}:${eventKey}`;
+    for (const uid of users) {
+      const sentKey = `sent:cal:${uid}:${eventKey}`;
       if (await env.ALERTS_KV.get(sentKey)) continue;
-      await sendMessage(env.BOT_TOKEN, chatId, msg);
+      await sendPushToUser(env, uid, {
+        title: '📅 אירוע כלכלי בעוד שעה',
+        body: `${event.title} (USD) · ${eventTime} שעון ישראל${forecastStr} · צפי לתנודתיות ⚠️`,
+        url: '/market',
+      });
       await env.ALERTS_KV.put(sentKey, '1', { expirationTtl: 86400 });
     }
   }
@@ -2356,31 +2355,18 @@ async function handleCron(env) {
     }
   } catch { /* best-effort, never blocks the jobs below */ }
 
-  // Web-push exchange polling is independent of Telegram, so run it first and
-  // don't let a missing BOT_TOKEN skip it.
-  if (!env.BOT_TOKEN) {
-    await Promise.allSettled([
-      checkExchangeClosedTrades(env),
-      checkPlanExpiryReminders(env),
-      checkChurnedPremium(env),
-      checkWeeklyDigest(env),
-      refreshNewsDigest(env),
-    ]);
-    return;
-  }
-
-  // Read two rolled-up blobs instead of one get per settings/alert key. This is
-  // the main KV-quota fix (was A + S gets per tick → now 2). Writers dual-write
-  // these; a missing blob is rebuilt once from the per-key list (backfill).
-  const [settingsAll, alertsActive] = await Promise.all([
-    getSettingsAll(env),
+  // Everything is Web Push now (#219 — the Telegram bot is retired). Two
+  // rolled-up blobs (usettings:ALL + alerts:ACTIVE) instead of one get per
+  // user/alert key, so the tick stays at 2 KV reads for the schedule data.
+  const [usettingsAll, alertsActive] = await Promise.all([
+    env.ALERTS_KV.get('usettings:ALL', 'json').then((v) => v || {}),
     getAlertsActive(env),
   ]);
 
   const activeAlerts = Object.values(alertsActive);
   const settingsMap = {};
-  for (const [chatId, settings] of Object.entries(settingsAll)) {
-    settingsMap[chatId] = { ...DEFAULT_SETTINGS, ...settings };
+  for (const [uid, settings] of Object.entries(usettingsAll)) {
+    settingsMap[uid] = { ...DEFAULT_SETTINGS, ...settings };
   }
 
   await Promise.allSettled([
@@ -3724,59 +3710,78 @@ async function handleRequest(request, env) {
       if (!uid) return new Response(JSON.stringify({ error: 'unauthorized' }), { status: 401, headers: { ...cors, 'Content-Type': 'application/json' } });
       const { stats } = await request.json();
       if (!stats) return new Response(JSON.stringify({ error: 'Missing fields' }), { status: 400, headers: { ...cors, 'Content-Type': 'application/json' } });
-      const chatId = await env.ALERTS_KV.get(`uid:${uid}`);
-      if (!chatId) return new Response(JSON.stringify({ error: 'Not connected' }), { status: 404, headers: { ...cors, 'Content-Type': 'application/json' } });
-      await env.ALERTS_KV.put(`dailystats:${chatId}:${getIsraelDateStr()}`, JSON.stringify(stats), { expirationTtl: 172800 });
+      // uid-keyed for the Web Push daily summary — no Telegram link required
+      // anymore (the chatId-keyed copy died with the bot, #219).
+      await env.ALERTS_KV.put(`dailystats:u:${uid}:${getIsraelDateStr()}`, JSON.stringify(stats), { expirationTtl: 172800 });
       return new Response(JSON.stringify({ ok: true }), { headers: { ...cors, 'Content-Type': 'application/json' } });
     } catch { return new Response(JSON.stringify({ error: 'Invalid' }), { status: 400, headers: { ...cors, 'Content-Type': 'application/json' } }); }
   }
 
+  // Price alerts — keyed by the caller's uid and delivered via Web Push (the
+  // Telegram chatId-keyed variants are gone; the bot is being retired, #219).
   if (request.method === 'POST' && path === '/alerts') {
-    // Auth: require a valid token, then ensure the body's chatId is the caller's
-    // own chat (uid:{uid} mapping) so users can't create alerts on other chats.
     const token = (request.headers.get('Authorization') || '').replace('Bearer ', '');
     const uid = await verifyFirebaseToken(token);
     if (!uid) return new Response(JSON.stringify({ error: 'unauthorized' }), { status: 401, headers: { ...cors, 'Content-Type': 'application/json' } });
-    const { chatId, pair, targetPrice, direction, id } = await request.json();
-    if (!chatId || !pair || !targetPrice || !direction) return new Response(JSON.stringify({ error: 'Missing fields' }), { status: 400, headers: { ...cors, 'Content-Type': 'application/json' } });
-    const ownChat = await env.ALERTS_KV.get(`uid:${uid}`);
-    if (!ownChat || String(chatId) !== ownChat) return new Response(JSON.stringify({ error: 'forbidden' }), { status: 403, headers: { ...cors, 'Content-Type': 'application/json' } });
+    const { pair, targetPrice, direction, id } = await request.json().catch(() => ({}));
+    if (!pair || !targetPrice || !direction) return new Response(JSON.stringify({ error: 'Missing fields' }), { status: 400, headers: { ...cors, 'Content-Type': 'application/json' } });
+    // Cap per-user alerts so a loop can't grow alerts:ACTIVE without bound.
+    const existing = await env.ALERTS_KV.list({ prefix: `alerts:u:${uid}:` });
+    if (existing.keys.length >= 30) return new Response(JSON.stringify({ error: 'עד 30 התראות פעילות' }), { status: 400, headers: { ...cors, 'Content-Type': 'application/json' } });
     const alertId = id || Date.now().toString();
-    const restAlert = { chatId: String(chatId), pair, targetPrice, direction, active: true, id: alertId, createdAt: new Date().toISOString() };
-    await env.ALERTS_KV.put(`alerts:${chatId}:${alertId}`, JSON.stringify(restAlert));
+    const restAlert = { uid, pair: String(pair).toUpperCase().slice(0, 20), targetPrice: parseFloat(targetPrice), direction: direction === 'below' ? 'below' : 'above', active: true, id: alertId, createdAt: new Date().toISOString() };
+    await env.ALERTS_KV.put(`alerts:u:${uid}:${alertId}`, JSON.stringify(restAlert));
     await syncAlertAggregate(env, restAlert); // mirror into alerts:ACTIVE so the cron sees it immediately
     return new Response(JSON.stringify({ ok: true, id: alertId }), { headers: { ...cors, 'Content-Type': 'application/json' } });
   }
 
   if (request.method === 'DELETE' && path.startsWith('/alerts/')) {
-    // Auth: require a valid token and ensure the {chatId} path segment is the
-    // caller's own chat before deleting one of its alerts.
     const token = (request.headers.get('Authorization') || '').replace('Bearer ', '');
     const uid = await verifyFirebaseToken(token);
     if (!uid) return new Response(JSON.stringify({ error: 'unauthorized' }), { status: 401, headers: { ...cors, 'Content-Type': 'application/json' } });
-    const parts = path.split('/').filter(Boolean);
-    if (parts.length === 3) {
-      const ownChat = await env.ALERTS_KV.get(`uid:${uid}`);
-      if (!ownChat || parts[1] !== ownChat) return new Response(JSON.stringify({ error: 'forbidden' }), { status: 403, headers: { ...cors, 'Content-Type': 'application/json' } });
-      await env.ALERTS_KV.delete(`alerts:${parts[1]}:${parts[2]}`);
-      await removeAlertAggregate(env, parts[2]); // drop from alerts:ACTIVE too
+    const alertId = path.split('/').filter(Boolean)[1];
+    if (alertId) {
+      await env.ALERTS_KV.delete(`alerts:u:${uid}:${alertId}`);
+      await removeAlertAggregate(env, alertId); // drop from alerts:ACTIVE too
       return new Response(JSON.stringify({ ok: true }), { headers: { ...cors, 'Content-Type': 'application/json' } });
     }
   }
 
-  if (request.method === 'GET' && path.startsWith('/alerts/')) {
-    // Auth: require a valid token and ensure the {chatId} path segment is the
-    // caller's own chat before listing its alerts.
+  if (request.method === 'GET' && path === '/alerts') {
     const token = (request.headers.get('Authorization') || '').replace('Bearer ', '');
     const uid = await verifyFirebaseToken(token);
     if (!uid) return new Response(JSON.stringify({ error: 'unauthorized' }), { status: 401, headers: { ...cors, 'Content-Type': 'application/json' } });
-    const chatId = path.split('/')[2];
-    const ownChat = await env.ALERTS_KV.get(`uid:${uid}`);
-    if (!ownChat || chatId !== ownChat) return new Response(JSON.stringify({ error: 'forbidden' }), { status: 403, headers: { ...cors, 'Content-Type': 'application/json' } });
-    const list = await env.ALERTS_KV.list({ prefix: `alerts:${chatId}:` });
+    const list = await env.ALERTS_KV.list({ prefix: `alerts:u:${uid}:` });
     const alerts = [];
     for (const key of list.keys) { const d = await env.ALERTS_KV.get(key.name, 'json'); if (d) alerts.push(d); }
     return new Response(JSON.stringify({ alerts }), { headers: { ...cors, 'Content-Type': 'application/json' } });
+  }
+
+  // Per-user notification schedule (journal reminder / daily summary /
+  // economic calendar) — replaces the bot's /settings menu. Stored per-uid
+  // plus a rolled-up blob so the cron reads ONE key per tick, mirroring the
+  // alerts:ACTIVE pattern.
+  if ((request.method === 'POST' || request.method === 'GET') && path === '/notify-settings') {
+    const token = (request.headers.get('Authorization') || '').replace('Bearer ', '');
+    const uid = await verifyFirebaseToken(token);
+    if (!uid) return new Response(JSON.stringify({ error: 'unauthorized' }), { status: 401, headers: { ...cors, 'Content-Type': 'application/json' } });
+    if (request.method === 'GET') {
+      const s = await env.ALERTS_KV.get(`usettings:${uid}`, 'json');
+      return new Response(JSON.stringify({ ok: true, settings: s || DEFAULT_SETTINGS }), { headers: { ...cors, 'Content-Type': 'application/json' } });
+    }
+    const body = await request.json().catch(() => ({}));
+    const hhmm = (v, dflt) => (typeof v === 'string' && /^([01]\d|2[0-3]):[0-5]\d$/.test(v) ? v : dflt);
+    const s = {
+      journal: { enabled: body?.journal?.enabled === true, time: hhmm(body?.journal?.time, '21:00') },
+      summary: { enabled: body?.summary?.enabled === true, time: hhmm(body?.summary?.time, '22:00') },
+      calendar: { enabled: body?.calendar?.enabled === true },
+    };
+    await env.ALERTS_KV.put(`usettings:${uid}`, JSON.stringify(s));
+    const all = (await env.ALERTS_KV.get('usettings:ALL', 'json')) || {};
+    const anyOn = s.journal.enabled || s.summary.enabled || s.calendar.enabled;
+    if (anyOn) all[uid] = s; else delete all[uid];
+    await env.ALERTS_KV.put('usettings:ALL', JSON.stringify(all));
+    return new Response(JSON.stringify({ ok: true, settings: s }), { headers: { ...cors, 'Content-Type': 'application/json' } });
   }
 
   if (request.method === 'GET' && path.startsWith('/chatid/')) {
