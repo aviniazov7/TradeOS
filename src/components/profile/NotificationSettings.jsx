@@ -1,12 +1,12 @@
 import { useState, useEffect, useCallback } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
-import { Bell, BellRing, BellOff, Send, NotebookPen, BarChart3, CalendarClock, Plus, Trash2, TrendingUp, TrendingDown } from 'lucide-react';
+import { Bell, BellRing, BellOff, Send, NotebookPen, BarChart3, CalendarClock } from 'lucide-react';
 import toast from 'react-hot-toast';
 import { useAuth } from '../../contexts/AuthContext';
 import { subscribeToUserSetting, setUserSetting } from '../../services/firestoreService';
 import {
   pushSupported, subscribeToPush, unsubscribeFromPush, sendTestPush,
-  getNotifySchedule, saveNotifySchedule, listPriceAlerts, addPriceAlert, deletePriceAlert,
+  getNotifySchedule, saveNotifySchedule,
 } from '../../services/pushService';
 
 // Push notifications are ON by default; the user can turn them off here.
@@ -95,96 +95,6 @@ function ScheduleSection({ user }) {
         </div>
         );
       })}
-    </div>
-  );
-}
-
-// Price alerts — created here in the app, checked by the worker cron every 10
-// minutes and delivered as Web Push (used to require connecting the bot).
-function PriceAlertsSection() {
-  const [alerts, setAlerts] = useState([]);
-  const [pair, setPair] = useState('');
-  const [price, setPrice] = useState('');
-  const [direction, setDirection] = useState('above');
-  const [busy, setBusy] = useState(false);
-
-  useEffect(() => {
-    listPriceAlerts().then((a) => setAlerts(a.filter((x) => x.active !== false))).catch(() => {});
-  }, []);
-
-  const add = async () => {
-    const p = pair.trim().toUpperCase();
-    const target = parseFloat(price);
-    if (!p || !(target > 0)) { toast.error('מלא מטבע ומחיר יעד'); return; }
-    setBusy(true);
-    try {
-      const normalized = p.endsWith('USDT') ? p : `${p}USDT`;
-      const id = await addPriceAlert({ pair: normalized, targetPrice: target, direction });
-      setAlerts((a) => [...a, { id, pair: normalized, targetPrice: target, direction, active: true }]);
-      setPair(''); setPrice('');
-      toast.success('ההתראה נוצרה — תקבל Push כשהמחיר יגיע ליעד');
-    } catch (e) {
-      toast.error(e.message || 'יצירת ההתראה נכשלה');
-    } finally {
-      setBusy(false);
-    }
-  };
-
-  const remove = async (id) => {
-    const prev = alerts;
-    setAlerts((a) => a.filter((x) => x.id !== id));
-    try { await deletePriceAlert(id); } catch { setAlerts(prev); toast.error('המחיקה נכשלה'); }
-  };
-
-  return (
-    <div className="space-y-2.5">
-      <p className="text-[11px] text-text-muted font-semibold">התראות מחיר</p>
-      {alerts.map((a) => (
-        <div key={a.id} className="flex items-center justify-between gap-2 bg-bg-secondary border border-border-primary rounded-lg px-3 py-2">
-          <div className="flex items-center gap-2 text-sm">
-            {a.direction === 'above'
-              ? <TrendingUp className="w-4 h-4 text-profit" />
-              : <TrendingDown className="w-4 h-4 text-loss" />}
-            <span className="font-semibold text-text-primary">{a.pair.replace('USDT', '')}</span>
-            <span className="text-xs text-text-muted" dir="ltr">{a.direction === 'above' ? '≥' : '≤'} ${a.targetPrice}</span>
-          </div>
-          <button onClick={() => remove(a.id)} className="p-1 text-text-muted hover:text-loss cursor-pointer" title="מחק">
-            <Trash2 className="w-3.5 h-3.5" />
-          </button>
-        </div>
-      ))}
-      <div className="flex items-center gap-1.5">
-        <input
-          value={pair}
-          onChange={(e) => setPair(e.target.value)}
-          placeholder="BTC"
-          className="w-20 bg-bg-secondary border border-border-primary rounded-lg px-2 py-1.5 text-xs text-text-primary outline-none focus:border-accent-primary uppercase"
-        />
-        <select
-          value={direction}
-          onChange={(e) => setDirection(e.target.value)}
-          className="bg-bg-secondary border border-border-primary rounded-lg px-1.5 py-1.5 text-xs text-text-primary outline-none cursor-pointer"
-        >
-          <option value="above">מעל</option>
-          <option value="below">מתחת</option>
-        </select>
-        <input
-          value={price}
-          onChange={(e) => setPrice(e.target.value)}
-          placeholder="מחיר יעד"
-          type="number"
-          min="0"
-          className="flex-1 min-w-0 bg-bg-secondary border border-border-primary rounded-lg px-2 py-1.5 text-xs text-text-primary outline-none focus:border-accent-primary"
-          dir="ltr"
-        />
-        <button
-          onClick={add}
-          disabled={busy}
-          className="flex items-center gap-1 px-2.5 py-1.5 rounded-lg bg-accent-primary/10 border border-accent-primary/30 text-accent-primary text-xs font-semibold hover:bg-accent-primary/20 transition-colors cursor-pointer disabled:opacity-50"
-        >
-          <Plus className="w-3.5 h-3.5" /> הוסף
-        </button>
-      </div>
     </div>
   );
 }
@@ -340,9 +250,6 @@ export default function NotificationSettings() {
                   </button>
                   <div className="pt-2 border-t border-border-primary/60">
                     <ScheduleSection user={user} />
-                  </div>
-                  <div className="pt-2 border-t border-border-primary/60">
-                    <PriceAlertsSection />
                   </div>
                 </>
               )}

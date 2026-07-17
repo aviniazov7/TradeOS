@@ -115,33 +115,6 @@ export async function saveNotifySchedule(settings) {
   return data.settings;
 }
 
-export async function listPriceAlerts() {
-  const res = await fetch(`${WORKER_BASE}/alerts`, { headers: await authHeader() });
-  const data = await res.json().catch(() => ({}));
-  if (!res.ok) throw new Error(data.error || 'טעינת ההתראות נכשלה');
-  return data.alerts || [];
-}
-
-export async function addPriceAlert({ pair, targetPrice, direction }) {
-  const res = await fetch(`${WORKER_BASE}/alerts`, {
-    method: 'POST',
-    headers: await authHeader(),
-    body: JSON.stringify({ pair, targetPrice, direction }),
-  });
-  const data = await res.json().catch(() => ({}));
-  if (!res.ok || !data.ok) throw new Error(data.error || 'יצירת ההתראה נכשלה');
-  return data.id;
-}
-
-export async function deletePriceAlert(id) {
-  const res = await fetch(`${WORKER_BASE}/alerts/${encodeURIComponent(id)}`, {
-    method: 'DELETE',
-    headers: await authHeader(),
-  });
-  const data = await res.json().catch(() => ({}));
-  if (!res.ok) throw new Error(data.error || 'מחיקת ההתראה נכשלה');
-}
-
 // Admin-only: permanently delete a user via the worker's service account —
 // all Firestore data, leaderboard entry, per-user KV keys AND the Auth
 // account (none of which an admin can delete client-side; the rules make
