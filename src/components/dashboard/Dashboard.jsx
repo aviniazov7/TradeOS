@@ -13,6 +13,7 @@ import { useTradingPlans } from '../../hooks/useTradingPlans';
 import { useDCA } from '../../hooks/useDCA';
 import { useMentalityJournals } from '../../hooks/useMentalityJournals';
 import { useLinkedJournalsBalance } from '../../hooks/useLinkedExchangeBalance';
+import { isClosedTrade } from '../../utils/calculations';
 import DashboardSkeleton from './DashboardSkeleton';
 import PendingLimitOrders from './PendingLimitOrders';
 import GettingStartedCard from './GettingStartedCard';
@@ -62,8 +63,8 @@ export default function Dashboard() {
     const journalIds = new Set(journals.map((j) => j.id));
     // Include trades with no journalId (legacy/imported before journal assignment) + trades belonging to current journals
     const relevantTrades = allTrades.filter((t) => !t.journalId || journalIds.has(t.journalId));
-    const closed = relevantTrades.filter((t) => t.status === 'closed' || (parseFloat(t.exitPrice) > 0 && t.status !== 'partial'));
-    const openTrades = relevantTrades.filter((t) => t.status !== 'closed' && (t.status === 'partial' || !(parseFloat(t.exitPrice) > 0)));
+    const closed = relevantTrades.filter(isClosedTrade);
+    const openTrades = relevantTrades.filter((t) => !isClosedTrade(t));
     const totalPnL = closed.reduce((s, t) => s + (t.netPnl ?? t.pnl ?? 0), 0);
     const wins = closed.filter((t) => t.result === 'win').length;
     const winRate = closed.length > 0 ? (wins / closed.length) * 100 : 0;
@@ -179,7 +180,7 @@ export default function Dashboard() {
   const journalStats = useMemo(() => {
     return journals.map((j) => {
       const jTrades = allTrades.filter((t) => t.journalId === j.id);
-      const closed = jTrades.filter((t) => t.status === 'closed' || parseFloat(t.exitPrice) > 0);
+      const closed = jTrades.filter(isClosedTrade);
       const pnl = closed.reduce((s, t) => s + (t.netPnl ?? t.pnl ?? 0), 0);
       const wins = closed.filter((t) => t.result === 'win').length;
       const winRate = closed.length > 0 ? (wins / closed.length) * 100 : 0;
@@ -223,7 +224,7 @@ export default function Dashboard() {
     const journalIds = new Set(journals.map((j) => j.id));
     const closed = allTrades
       .filter((t) => !t.journalId || journalIds.has(t.journalId))
-      .filter((t) => t.status === 'closed' || (parseFloat(t.exitPrice) > 0 && t.status !== 'partial'));
+      .filter(isClosedTrade);
     const pnlOf = (t) => (t.netPnl ?? t.pnl ?? 0);
     const tradeMs = (t) => {
       const d = t.exitDate || t.entryDate || t.createdAt;
@@ -282,7 +283,7 @@ export default function Dashboard() {
     const journalIds = new Set(journals.map((j) => j.id));
     const closed = allTrades
       .filter((t) => !t.journalId || journalIds.has(t.journalId))
-      .filter((t) => t.status === 'closed' || (parseFloat(t.exitPrice) > 0 && t.status !== 'partial'));
+      .filter(isClosedTrade);
     const pnlOf = (t) => (t.netPnl ?? t.pnl ?? 0);
     const dateOf = (t) => {
       const d = t.exitDate || t.entryDate || t.createdAt;

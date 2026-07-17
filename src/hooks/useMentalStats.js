@@ -1,16 +1,17 @@
 import { useMemo } from 'react';
 import { MENTALITY_EMOTIONS, PRE_MARKET_CHECKLIST } from '../utils/constants';
+import { isClosedTrade, localDayKey } from '../utils/calculations';
 
 export function useMentalStats(trades, morningEntries, eveningEntries) {
   return useMemo(() => {
     // 1. Only closed trades
-    const closed = trades.filter((t) => t.exitPrice > 0);
+    const closed = trades.filter(isClosedTrade);
 
-    // 2. Map trades by exit date (YYYY-MM-DD)
+    // 2. Map trades by exit date (YYYY-MM-DD, local midnight — must match the
+    //    journals' entry keys)
     const tradesByDate = {};
     closed.forEach((t) => {
-      const d = t.exitDate?.toDate ? t.exitDate.toDate() : new Date(t.exitDate);
-      const key = d.toISOString().slice(0, 10);
+      const key = localDayKey(t.exitDate);
       if (!tradesByDate[key]) tradesByDate[key] = [];
       tradesByDate[key].push(t);
     });
@@ -44,7 +45,7 @@ export function useMentalStats(trades, morningEntries, eveningEntries) {
     const calcGroupStats = (groupTrades) => {
       const total = groupTrades.length;
       const wins = groupTrades.filter((t) => t.result === 'win').length;
-      const totalPnl = groupTrades.reduce((s, t) => s + (t.netPnl || t.pnl || 0), 0);
+      const totalPnl = groupTrades.reduce((s, t) => s + (t.netPnl ?? t.pnl ?? 0), 0);
       return {
         trades: total,
         winRate: total > 0 ? Math.round((wins / total) * 100) : 0,
@@ -103,7 +104,7 @@ export function useMentalStats(trades, morningEntries, eveningEntries) {
     let profitDaysReadiness = [];
     let lossDaysReadiness = [];
     crossDays.forEach((day) => {
-      const dayPnl = day.trades.reduce((s, t) => s + (t.netPnl || t.pnl || 0), 0);
+      const dayPnl = day.trades.reduce((s, t) => s + (t.netPnl ?? t.pnl ?? 0), 0);
       if (dayPnl > 0) profitDaysReadiness.push(day.morning.readinessLevel);
       else if (dayPnl < 0) lossDaysReadiness.push(day.morning.readinessLevel);
     });

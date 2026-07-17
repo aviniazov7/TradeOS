@@ -1,6 +1,7 @@
 import { useMemo } from 'react';
 import { Clock } from 'lucide-react';
 import { BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer, Cell, LabelList } from 'recharts';
+import { isClosedTrade } from '../../utils/calculations';
 
 const BUCKETS = [
   { label: '<1h',   minMs: 0,           maxMs: 3_600_000 },
@@ -54,7 +55,7 @@ const CustomTooltip = ({ active, payload, label }) => {
 
 export default function TradeDurationChart({ trades }) {
   const data = useMemo(() => {
-    const closed = trades.filter(t => t.exitPrice > 0 && t.entryDate && t.exitDate);
+    const closed = trades.filter(t => isClosedTrade(t) && t.entryDate && t.exitDate);
     let totalMs = 0, winMs = 0, lossMs = 0, count = 0, winCount = 0, lossCount = 0;
     const buckets = BUCKETS.map(b => ({ ...b, wins: 0, losses: 0 }));
 

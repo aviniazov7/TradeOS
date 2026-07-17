@@ -8,6 +8,7 @@ import ReadinessSlider from './ReadinessSlider';
 import JournalHistory from './JournalHistory';
 import { useMentalityJournals } from '../../hooks/useMentalityJournals';
 import { PRE_MARKET_CHECKLIST, MOTIVATIONAL_QUOTES } from '../../utils/constants';
+import { localDayKey } from '../../utils/calculations';
 
 const tabs = ['הכנה למסחר', 'תכנון מסחר', 'יעדים ומוטיבציה'];
 
@@ -38,7 +39,7 @@ export default function MorningJournal() {
   const [form, setForm] = useState(emptyForm);
   const justSaved = useRef(false);
 
-  const todayStr = new Date().toISOString().slice(0, 10);
+  const todayStr = localDayKey();
 
   const [quote] = useState(
     () => MOTIVATIONAL_QUOTES[Math.floor(Math.random() * MOTIVATIONAL_QUOTES.length)]

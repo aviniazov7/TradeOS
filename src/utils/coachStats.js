@@ -2,6 +2,8 @@
 // re-deriving everything from raw fields. Free = current month; Premium = full
 // history (and adds previous-month comparison + extended breakdowns).
 
+import { isClosedTrade } from './calculations';
+
 const tradeMs = (t) => {
   const d = t.exitDate || t.entryDate || t.createdAt;
   if (!d) return 0;
@@ -11,7 +13,7 @@ const tradeMs = (t) => {
   return Number.isNaN(ms) ? 0 : ms;
 };
 const pnlOf = (t) => Number(t.netPnl ?? t.pnl ?? 0) || 0;
-const isClosed = (t) => t.status === 'closed' || (parseFloat(t.exitPrice) > 0 && t.status !== 'partial');
+const isClosed = isClosedTrade; // the ONE shared predicate — keep in lockstep with every screen
 
 function summarize(trades) {
   const total = trades.length;

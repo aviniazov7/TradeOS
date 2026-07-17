@@ -1,5 +1,6 @@
 import { useMemo } from 'react';
 import { BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer, Cell, LabelList } from 'recharts';
+import { isClosedTrade } from '../../utils/calculations';
 
 const tooltipStyle = {
   background: 'var(--color-bg-overlay)',
@@ -11,7 +12,7 @@ const tooltipStyle = {
 
 export default function WinRateChart({ trades }) {
   const data = useMemo(() => {
-    const closed = trades.filter((t) => (t.status === 'closed' || t.exitPrice > 0) && t.strategy);
+    const closed = trades.filter((t) => isClosedTrade(t) && t.strategy);
     const groups = {};
     closed.forEach((t) => {
       if (!groups[t.strategy]) groups[t.strategy] = { wins: 0, total: 0 };

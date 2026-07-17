@@ -2,6 +2,7 @@ import { useEffect, useRef } from 'react';
 import { useAuth } from '../contexts/AuthContext';
 import { getTodayClosedTrades, getUserSetting } from '../services/firestoreService';
 import { auth } from '../services/firebase';
+import { isClosedTrade } from '../utils/calculations';
 
 const WORKER_URL = import.meta.env.VITE_WORKER_URL || '';
 
@@ -21,8 +22,7 @@ export function useDailySummarySync() {
         if (!notif?.schedule?.summary?.enabled) return;
 
         const trades = await getTodayClosedTrades(user.uid);
-        // Filter to only closed trades (have exitPrice)
-        const closed = trades.filter((t) => t.exitPrice && t.exitPrice > 0);
+        const closed = trades.filter(isClosedTrade);
 
         const wins = closed.filter((t) => t.result === 'win').length;
         const losses = closed.filter((t) => t.result === 'loss').length;

@@ -15,7 +15,7 @@ import confetti from 'canvas-confetti';
 import { useTrades } from '../../hooks/useTrades';
 import { useCryptoPrices } from '../../hooks/useCryptoPrices';
 import { useJournalContext } from '../../contexts/JournalContext';
-import { calculatePnL, calculateFuturesPnL } from '../../utils/calculations';
+import { calculatePnL, calculateFuturesPnL, isClosedTrade } from '../../utils/calculations';
 import { useDashboardStats, safePnl } from '../../hooks/useDashboardStats';
 import { useLinkedExchangeBalance } from '../../hooks/useLinkedExchangeBalance';
 import { useExchangeImport } from '../../hooks/useExchangeImport';
@@ -169,9 +169,7 @@ export default function TradeJournal() {
   // different PnL total than stats.totalPnL and the derived currentBalance
   // drifts away from the real wallet by exactly the partial rows' PnL.
   const totalClosedPnL = useMemo(
-    () => trades
-      .filter((t) => t.status === 'closed' || (parseFloat(t.exitPrice) > 0 && t.status !== 'partial' && t.status !== 'open'))
-      .reduce((s, t) => s + safePnl(t), 0),
+    () => trades.filter(isClosedTrade).reduce((s, t) => s + safePnl(t), 0),
     [trades]
   );
   const effectiveInitial = balanceIsLive
@@ -242,7 +240,7 @@ export default function TradeJournal() {
   }, [trades, filters, pendingDeletes]);
 
   const analytics = useMemo(() => {
-    const closed = periodTrades.filter((t) => t.status === 'closed' || (parseFloat(t.exitPrice) > 0 && t.status !== 'partial' && t.status !== 'open'));
+    const closed = periodTrades.filter(isClosedTrade);
     if (!closed.length) return null;
 
     const wins = closed.filter((t) => t.result === 'win');
@@ -739,7 +737,7 @@ export default function TradeJournal() {
           offer to widen the period — telling them to "close their first
           trade" would be false). */}
       {tab === 'analytics' && analytics === null && (
-        trades.some((t) => t.status === 'closed' || (parseFloat(t.exitPrice) > 0 && t.status !== 'partial' && t.status !== 'open')) ? (
+        trades.some(isClosedTrade) ? (
           <EmptyState
             icon={BarChart3}
             title="אין עסקאות סגורות בתקופה שנבחרה"
