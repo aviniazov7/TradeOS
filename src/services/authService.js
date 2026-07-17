@@ -13,6 +13,7 @@ import {
   deleteUser,
   EmailAuthProvider,
   reauthenticateWithCredential,
+  reauthenticateWithPopup,
   signOut,
   sendPasswordResetEmail,
 } from 'firebase/auth';
@@ -145,6 +146,12 @@ export async function reauthenticate(currentPassword) {
   if (isEmailUser && currentPassword) {
     const credential = EmailAuthProvider.credential(user.email, currentPassword);
     await reauthenticateWithCredential(user, credential);
+  } else if (!isEmailUser) {
+    // Google accounts: Firebase's deleteUser() demands a RECENT sign-in
+    // (~5 minutes) and throws auth/requires-recent-login otherwise. Skipping
+    // reauth here meant a Google user signed in longer than that could NEVER
+    // delete their account — the wipe ran, then the auth deletion failed.
+    await reauthenticateWithPopup(user, googleProvider);
   }
 }
 
