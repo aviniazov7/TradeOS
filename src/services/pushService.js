@@ -95,18 +95,7 @@ export async function adminCancelExpiryReminders(uid) {
   } catch { /* best-effort */ }
 }
 
-// Admin-only: a user's Telegram bot link status + usage (from worker KV).
-// Returns { connected, username, usage: { total, lastUsed, lastCmd } | null,
-// alertsCount, watchlistCount }.
-export async function adminGetTelegramInfo(uid) {
-  const res = await fetch(`${WORKER_BASE}/admin/telegram/${uid}`, { headers: await authHeader() });
-  const data = await res.json().catch(() => ({}));
-  if (!res.ok) throw new Error(data.error || 'טעינת נתוני טלגרם נכשלה');
-  return data;
-}
-
-// ── Notification schedule + price alerts (Web Push, uid-keyed) ──────────────
-// Replaces the Telegram bot's /settings menu and chatId-keyed alerts (#219).
+// ── Notification schedule + price alerts (Web Push, uid-keyed, #219) ────────
 
 export async function getNotifySchedule() {
   const res = await fetch(`${WORKER_BASE}/notify-settings`, { headers: await authHeader() });
@@ -203,20 +192,6 @@ export async function adminSendTestDigest() {
   const data = await res.json().catch(() => ({}));
   if (!res.ok) throw new Error(data.error || 'שליחת מייל הבדיקה נכשלה');
   return data; // { ok, sentTo, stats }
-}
-
-// Admin-only: re-register the Telegram webhook against whichever worker
-// currently serves the app (WORKER_BASE). Needed after moving the worker to
-// a new host/domain — Telegram keeps pushing updates to the old URL until
-// this is called.
-export async function adminSetupTelegramWebhook() {
-  const res = await fetch(`${WORKER_BASE}/setup-webhook`, {
-    method: 'POST',
-    headers: await authHeader(),
-  });
-  const data = await res.json().catch(() => ({}));
-  if (!res.ok || !data.ok) throw new Error(data.error || 'רישום ה-webhook נכשל');
-  return data;
 }
 
 // Admin-only: send a branded payment/gift confirmation email to a user after

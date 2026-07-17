@@ -194,7 +194,7 @@ jobs:
       # that need it have already run) and wrangler.toml applies. There is only
       # ONE production cron (staging cron is disabled), so this deploys the
       # production alerts worker from dev too — same reality as trade-os.
-      # Manually-set secrets (BOT_TOKEN, GROQ_API_KEY, CREDS_ENCRYPTION_KEY…)
+      # Manually-set secrets (GROQ_API_KEY, CREDS_ENCRYPTION_KEY…)
       # persist across deploys; the CI-managed set is re-pushed here.
       - name: Deploy Worker (alerts cron) + secrets
         if: (steps.target.outputs.kind == 'production' || steps.target.outputs.kind == 'staging') && env.CLOUDFLARE_API_TOKEN != ''

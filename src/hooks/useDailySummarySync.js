@@ -16,8 +16,7 @@ export function useDailySummarySync() {
     (async () => {
       try {
         // Only sync when the user scheduled a daily summary push — the
-        // schedule mirror lives in the notifications setting (the Telegram
-        // gate is gone; the bot is retired, #219).
+        // schedule mirror lives in the notifications setting (#219).
         const notif = await getUserSetting(user.uid, 'notifications');
         if (!notif?.schedule?.summary?.enabled) return;
 

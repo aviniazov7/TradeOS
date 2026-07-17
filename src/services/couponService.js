@@ -3,7 +3,7 @@ import { getAuth } from 'firebase/auth';
 const WORKER_BASE = import.meta.env.VITE_WORKER_URL || 'https://trade-os.tradeos.workers.dev';
 
 // Public share link for a coupon. Routes through the worker so messaging apps
-// (WhatsApp/Telegram) get a coupon-specific rich preview; the worker instantly
+// (WhatsApp etc.) get a coupon-specific rich preview; the worker instantly
 // redirects a real visitor to the app's /redeem/:code page.
 export function couponShareUrl(code) {
   return `${WORKER_BASE}/r/${encodeURIComponent(String(code || '').toUpperCase())}`;

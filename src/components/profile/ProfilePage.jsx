@@ -30,7 +30,6 @@ import { APP_VERSION } from '../../utils/constants';
 import ConfirmDialog from '../shared/ConfirmDialog';
 import { pageVariants, pageTransition } from '../../utils/animations';
 import { useTheme } from '../../hooks/useTheme';
-import TelegramSettings from './TelegramSettings';
 import NotificationSettings from './NotificationSettings';
 import ContactDeveloper from './ContactDeveloper';
 import { planExpiresMs } from '../../utils/premium';
@@ -322,8 +321,6 @@ export default function ProfilePage() {
       <div className={cardClass}>
         {/* Push notifications */}
         <NotificationSettings />
-        {/* Telegram Bot */}
-        <TelegramSettings />
       </div>
 
       {/* ── Section: General ─────────────────────────────────────── */}

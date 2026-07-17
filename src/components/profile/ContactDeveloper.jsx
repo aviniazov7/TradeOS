@@ -1,9 +1,8 @@
-import { useState, useEffect } from 'react';
+import { useState } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
-import { LifeBuoy, Send, Loader2, Info } from 'lucide-react';
+import { LifeBuoy, Send, Loader2 } from 'lucide-react';
 import toast from 'react-hot-toast';
 import { useAuth } from '../../contexts/AuthContext';
-import { getUserSetting } from '../../services/firestoreService';
 
 const WORKER_URL = import.meta.env.VITE_WORKER_URL || 'https://trade-os.tradeos.workers.dev';
 const MAX_LEN = 2000;
@@ -14,14 +13,6 @@ export default function ContactDeveloper() {
   const [open, setOpen] = useState(false);
   const [message, setMessage] = useState('');
   const [sending, setSending] = useState(false);
-  const [telegramConnected, setTelegramConnected] = useState(true);
-
-  useEffect(() => {
-    if (!user || !open) return;
-    getUserSetting(user.uid, 'telegram')
-      .then((data) => setTelegramConnected(!!data?.connected))
-      .catch(() => setTelegramConnected(true));
-  }, [user, open]);
 
   const trimmedLen = message.trim().length;
   const canSend = !sending && trimmedLen >= MIN_LEN && trimmedLen <= MAX_LEN;
@@ -101,15 +92,6 @@ export default function ContactDeveloper() {
               <p className="text-xs text-text-muted">
                 דווח על באג, שלח בקשת תכונה או כל משוב אחר. הצוות יקבל את פנייתך ויחזור אליך בהקדם.
               </p>
-
-              {!telegramConnected && (
-                <div className="flex items-start gap-2 px-3 py-2 rounded-lg bg-[#0088cc]/10 border border-[#0088cc]/30">
-                  <Info className="w-4 h-4 text-[#0088cc] flex-shrink-0 mt-0.5" />
-                  <p className="text-[11px] text-[#0088cc] leading-relaxed">
-                    לקבלת מענה מהיר ומעקב, מומלץ לחבר את חשבון הטלגרם בסעיף <b>בוט Telegram</b> למעלה.
-                  </p>
-                </div>
-              )}
 
               <textarea
                 value={message}
