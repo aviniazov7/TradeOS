@@ -214,6 +214,17 @@ export async function adminGetPushStatus(uid) {
   return data; // { ok, devices }
 }
 
+// Admin-only: Firebase (Firestore) consumption vs the Spark free-tier limits —
+// today's read/write/delete totals (Cloud Monitoring; null + monitoringError
+// when the API isn't enabled) plus document counts. Numbers only, cached 5
+// minutes on the worker.
+export async function adminGetFirebaseUsage() {
+  const res = await fetch(`${WORKER_BASE}/admin/firebase-usage`, { headers: await authHeader() });
+  const data = await res.json().catch(() => ({}));
+  if (!res.ok) throw new Error(data.error || 'טעינת צריכת Firebase נכשלה');
+  return data; // { at, monitoring, monitoringError?, counts, limits }
+}
+
 // Admin-only: which exchanges a user has connected (ids only — never keys).
 export async function adminGetExchangesStatus(uid) {
   const res = await fetch(`${WORKER_BASE}/admin/exchanges-status/${uid}`, { headers: await authHeader() });

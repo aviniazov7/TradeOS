@@ -1,6 +1,6 @@
 import { useState, useEffect, useMemo } from 'react';
 import { Navigate } from 'react-router-dom';
-import { Users, UserPlus, ShieldCheck, CheckCircle2, Search, RefreshCw, Download, ChevronUp, ChevronDown, ChevronLeft, Mail, Calendar, Coins, TrendingUp, Percent, Sparkles, BookOpen, FlaskConical, Activity, FileText, Brain, Crown, Send, X, Ticket, Plus, Minus, Trash2, Copy, ScrollText, Share2, Link2, BarChart3, AlertTriangle, Clock, DollarSign, Hourglass, Image, Trophy, Loader2, Bell, StickyNote } from 'lucide-react';
+import { Users, UserPlus, ShieldCheck, CheckCircle2, Search, RefreshCw, Download, ChevronUp, ChevronDown, ChevronLeft, Mail, Calendar, Coins, TrendingUp, Percent, Sparkles, BookOpen, FlaskConical, Activity, FileText, Brain, Crown, Send, X, Ticket, Plus, Minus, Trash2, Copy, ScrollText, Share2, Link2, BarChart3, AlertTriangle, Clock, DollarSign, Hourglass, Image, Trophy, Loader2, Bell, StickyNote, Flame } from 'lucide-react';
 import { motion } from 'framer-motion';
 import toast from 'react-hot-toast';
 import Card from '../shared/Card';
@@ -9,7 +9,7 @@ import { ResponsiveContainer, AreaChart, Area, Tooltip, XAxis, YAxis, BarChart, 
 import { useAuth } from '../../contexts/AuthContext';
 import { getAllUsers, getUserSubcollectionCount, adminGrantPremium, adminRevokePremium, addPayment, getAllPayments, getAdminMeta, setAdminMeta } from '../../services/firestoreService';
 import { fetchUserAiUsage, fetchGlobalAiUsage, fetchAiStats, fetchSystemHealth } from '../../hooks/useAiUsage';
-import { adminSendNotification, adminSendBulkNotification, adminScheduleExpiryReminders, adminCancelExpiryReminders, adminRefreshPlanCache, adminListAuditEvents, adminSendTestDigest, adminSendPaymentEmail, adminDeleteUser, adminGetPushStatus, adminGetExchangesStatus } from '../../services/pushService';
+import { adminSendNotification, adminSendBulkNotification, adminScheduleExpiryReminders, adminCancelExpiryReminders, adminRefreshPlanCache, adminListAuditEvents, adminSendTestDigest, adminSendPaymentEmail, adminDeleteUser, adminGetPushStatus, adminGetExchangesStatus, adminGetFirebaseUsage } from '../../services/pushService';
 import { adminListCoupons, adminCreateCoupon, adminDeleteCoupon, couponShareUrl } from '../../services/couponService';
 import LoadingSpinner from '../shared/LoadingSpinner';
 import SelectDropdown from '../shared/SelectDropdown';
@@ -254,6 +254,10 @@ export default function AdminPanel() {
   const [statsDays, setStatsDays] = useState(30);
   // System health (cron heartbeat, push/AI configured).
   const [health, setHealth] = useState(null);
+  // Firebase (Firestore) consumption vs the Spark free-tier limits —
+  // { monitoring, monitoringError?, counts, limits } or { error: true }.
+  const [fbUsage, setFbUsage] = useState(null);
+  const [fbLoading, setFbLoading] = useState(false);
 
   // After load() refreshes `users`, keep `selectedUser` pointing at the fresh
   // copy so the open detail modal reflects the new plan/role immediately
@@ -308,6 +312,28 @@ export default function AdminPanel() {
     fetchSystemHealth().then((h) => { if (!cancelled) setHealth(h); });
     return () => { cancelled = true; };
   }, [isAdmin, loadedAt]);
+
+  // Firebase consumption — best-effort: a failure shows an error line in the
+  // card, it must never break the panel. Refreshed with the global "רענן"
+  // (loadedAt) and by the card's own refresh button.
+  useEffect(() => {
+    if (!isAdmin) return;
+    let cancelled = false;
+    setFbLoading(true);
+    adminGetFirebaseUsage()
+      .then((d) => { if (!cancelled) setFbUsage(d); })
+      .catch(() => { if (!cancelled) setFbUsage((prev) => prev || { error: true }); })
+      .finally(() => { if (!cancelled) setFbLoading(false); });
+    return () => { cancelled = true; };
+  }, [isAdmin, loadedAt]);
+
+  const refreshFbUsage = () => {
+    setFbLoading(true);
+    adminGetFirebaseUsage()
+      .then((d) => setFbUsage(d))
+      .catch(() => setFbUsage((prev) => prev || { error: true }))
+      .finally(() => setFbLoading(false));
+  };
 
   // Active users (DAU/WAU/MAU) and a 30-day signups series — both derived from
   // the already-loaded users list, no extra queries.
@@ -674,6 +700,85 @@ export default function AdminPanel() {
               ));
             })()}
           </div>
+        )}
+      </SectionCard>
+
+      {/* Firebase (Firestore) consumption vs the Spark free-tier daily limits.
+          Numbers only — the worker never returns documents or tokens. */}
+      <SectionCard
+        icon={<Flame className="w-4 h-4" />}
+        title="צריכת Firebase"
+        action={
+          <button onClick={refreshFbUsage} disabled={fbLoading} className="px-3 py-1.5 rounded-lg border border-border-primary text-xs text-text-secondary hover:text-text-primary cursor-pointer shrink-0">
+            <RefreshCw className={`w-3.5 h-3.5 inline ${fbLoading ? 'animate-spin' : ''}`} /> רענן
+          </button>
+        }
+      >
+        {!fbUsage ? (
+          <div className="text-xs text-text-muted">…</div>
+        ) : fbUsage.error ? (
+          <div className="text-xs text-loss">טעינת צריכת Firebase נכשלה — נסה לרענן.</div>
+        ) : (
+          <>
+            <div className="space-y-3">
+              {[
+                { label: 'קריאות היום', used: fbUsage.monitoring?.reads, limit: fbUsage.limits?.reads ?? 50000 },
+                { label: 'כתיבות היום', used: fbUsage.monitoring?.writes, limit: fbUsage.limits?.writes ?? 20000 },
+                { label: 'מחיקות היום', used: fbUsage.monitoring?.deletes, limit: fbUsage.limits?.deletes ?? 20000 },
+              ].map((m) => {
+                const has = m.used != null;
+                const pct = has ? Math.min(100, (m.used / m.limit) * 100) : 0;
+                const color = pct > 85 ? 'var(--color-loss)' : pct >= 60 ? '#f59e0b' : 'var(--color-accent-primary)';
+                return (
+                  <div key={m.label}>
+                    <div className="flex items-center justify-between gap-2 text-[11px] mb-1">
+                      <span className="text-text-muted">{m.label}</span>
+                      {has ? (
+                        <span className="text-text-secondary" dir="ltr">
+                          <span className="font-semibold text-text-primary">{m.used.toLocaleString()}</span>
+                          {' / '}{m.limit.toLocaleString()}
+                          <span style={{ color }}>{' · '}{pct > 0 && pct < 10 ? pct.toFixed(1) : Math.round(pct)}%</span>
+                        </span>
+                      ) : (
+                        <span className="text-text-muted">—</span>
+                      )}
+                    </div>
+                    <div className="h-1.5 rounded-full bg-bg-tertiary overflow-hidden">
+                      <div
+                        className="h-full rounded-full transition-all duration-500"
+                        style={{ width: `${has && m.used > 0 ? Math.max(pct, 1.5) : 0}%`, background: color }}
+                      />
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+            {!fbUsage.monitoring && (
+              <div className="mt-2.5 text-[11px] text-text-muted">
+                להצגת קריאות/כתיבות יש להפעיל את Cloud Monitoring API לפרויקט
+                {fbUsage.monitoringError && <span className="opacity-70" dir="ltr"> · {fbUsage.monitoringError}</span>}
+              </div>
+            )}
+            {(() => {
+              const docs = [
+                { label: 'משתמשים', accent: 'cyan', v: fbUsage.counts?.users },
+                { label: 'טריידים', accent: 'violet', v: fbUsage.counts?.trades },
+                { label: 'תשלומים', accent: 'green', v: fbUsage.counts?.payments },
+                { label: 'לידרבורד', accent: 'amber', v: fbUsage.counts?.leaderboard },
+              ].filter((d) => d.v != null);
+              if (docs.length === 0) return null;
+              return (
+                <div className="mt-3">
+                  <div className="text-[11px] text-text-muted mb-1.5">מסמכים ב-Firestore</div>
+                  <div className={`grid grid-cols-2 ${docs.length > 2 ? 'sm:grid-cols-4' : ''} gap-2`}>
+                    {docs.map((d) => (
+                      <StatMini key={d.label} accent={d.accent} value={d.v.toLocaleString()} label={d.label} />
+                    ))}
+                  </div>
+                </div>
+              );
+            })()}
+          </>
         )}
       </SectionCard>
 
