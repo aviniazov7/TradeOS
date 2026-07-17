@@ -3893,45 +3893,68 @@ async function handleRequest(request, env) {
     return new Response(JSON.stringify({ ok: json.ok === true }), { headers: { ...cors, 'Content-Type': 'application/json' } });
   }
 
-  // CoinGecko proxy with KV cache (avoids browser rate-limits)
+  // CoinGecko proxy (avoids browser rate-limits). Cached in Cloudflare's edge
+  // cache (free, unlimited) — NOT in KV: the cache key is caller-controlled
+  // (subpath + querystring), so an unauthenticated loop with a varying
+  // parameter used to cost one KV write per request and exhaust the shared
+  // daily write quota (alerts, coupons, AI quotas, push registrations) in
+  // seconds. Subpaths are whitelisted to exactly what the app calls, so this
+  // can't be driven as an open proxy either.
   if (request.method === 'GET' && path.startsWith('/cg/')) {
     const subPath = path.slice(4); // remove '/cg/'
+    // coins/markets, coins/{id}, coins/{id}/market_chart, search,
+    // simple/price, global — the full set the client uses (coingeckoApi,
+    // coinImageCache, MarketOverview, Dashboard).
+    const CG_ALLOWED = /^(coins\/[a-z0-9_-]{1,64}(\/market_chart)?|search|simple\/price|global)$/;
+    if (!CG_ALLOWED.test(subPath)) {
+      return new Response(JSON.stringify({ error: 'forbidden' }), { status: 403, headers: { ...cors, 'Content-Type': 'application/json' } });
+    }
     const cgUrl = `https://api.coingecko.com/api/v3/${subPath}${url.search}`;
-    const cacheKey = `cg:${subPath}${url.search}`;
     const ttl = subPath.startsWith('coins/markets') ? 3600 : 300; // 1h for markets, 5m for details/chart
+    const cache = caches.default;
+    const cacheKey = new Request(`https://cache.tradeos.internal/cg/${subPath}${url.search}`);
     try {
-      const cached = await env.ALERTS_KV.get(cacheKey);
-      if (cached) return new Response(cached, { headers: { ...cors, 'Content-Type': 'application/json', 'X-Cache': 'HIT' } });
+      const hit = await cache.match(cacheKey);
+      if (hit) return hit;
       // Browser-like UA — CoinGecko's free tier 403s bare server-side fetches
       // from Cloudflare egress IPs but generally serves browser-looking ones.
       const res = await fetch(cgUrl, { headers: { 'Accept': 'application/json', 'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36' } });
       if (!res.ok) return new Response(JSON.stringify({ error: res.status }), { status: res.status, headers: { ...cors, 'Content-Type': 'application/json' } });
       const text = await res.text();
-      env.ALERTS_KV.put(cacheKey, text, { expirationTtl: ttl }).catch(() => {});
-      return new Response(text, { headers: { ...cors, 'Content-Type': 'application/json', 'X-Cache': 'MISS' } });
+      // ACAO '*' — public non-credentialed data, so the edge-cached copy
+      // isn't pinned to a single requesting origin (news/digest pattern).
+      const headers = { ...cors, 'Access-Control-Allow-Origin': '*', 'Content-Type': 'application/json', 'Cache-Control': `public, max-age=${ttl}` };
+      await cache.put(cacheKey, new Response(text, { headers: { ...headers, 'X-Cache': 'HIT' } }));
+      return new Response(text, { headers: { ...headers, 'X-Cache': 'MISS' } });
     } catch (err) {
       return new Response(JSON.stringify({ error: err.message }), { status: 502, headers: { ...cors, 'Content-Type': 'application/json' } });
     }
   }
 
-  // Binance proxy with KV cache (avoids browser CORS/geo issues)
+  // Binance proxy (avoids browser CORS/geo issues). Edge-cached, not KV —
+  // same quota-exhaustion reasoning as /cg/ above.
   if (request.method === 'GET' && path.startsWith('/bnb/')) {
     const subPath = path.slice(5); // remove '/bnb/'
+    // klines + ticker/24hr — the only endpoints the client calls
+    // (coingeckoApi.fetchKlines, MarketOverview bulk tickers).
+    const BNB_ALLOWED = /^(klines|ticker\/24hr)$/;
+    if (!BNB_ALLOWED.test(subPath)) {
+      return new Response(JSON.stringify({ error: 'forbidden' }), { status: 403, headers: { ...cors, 'Content-Type': 'application/json' } });
+    }
     // api.binance.com returns 403 to Cloudflare Worker egress IPs in many
     // regions. data-api.binance.vision is Binance's public market-data mirror
     // (same /api/v3 surface — ticker, klines, depth) and isn't geo-blocked, so
     // we try the main host first and fall back to the vision mirror.
     const BNB_HOSTS = ['https://api.binance.com', 'https://data-api.binance.vision'];
-    const rawKey = `bnb:${subPath}${url.search}`;
-    // KV keys max 512 bytes — hash long keys (e.g. ticker with many symbols) so
-    // even large requests stay cached and don't hammer Binance every poll, which
-    // was causing repeated 408 timeouts on the journal screen.
-    const cacheKey = rawKey.length <= 500 ? rawKey : `bnb:h:${hashStr(rawKey)}`;
-    const staleKey = `${cacheKey}:stale`;
-    const ttl = 60; // KV minimum TTL is 60s; prices refresh via client polling anyway
+    const cache = caches.default;
+    // Cache API keys are URLs — no 512-byte KV key limit, so long symbol
+    // lists no longer need hashing.
+    const cacheKey = new Request(`https://cache.tradeos.internal/bnb/${subPath}${url.search}`);
+    const staleKey = new Request(`https://cache.tradeos.internal/bnb-stale/${subPath}${url.search}`);
+    const ttl = 60; // prices refresh via client polling anyway
     try {
-      const cached = await env.ALERTS_KV.get(cacheKey);
-      if (cached) return new Response(cached, { headers: { ...cors, 'Content-Type': 'application/json', 'X-Cache': 'HIT' } });
+      const hit = await cache.match(cacheKey);
+      if (hit) return hit;
 
       let res = null;
       let lastStatus = 0;
@@ -3953,14 +3976,20 @@ async function handleRequest(request, env) {
       }
       if (text === null) {
         // Bybit translation didn't cover this subpath / upstream failed —
-        // serve the last good copy if we have one.
-        const stale = await env.ALERTS_KV.get(staleKey);
-        if (stale) return new Response(stale, { headers: { ...cors, 'Content-Type': 'application/json', 'X-Cache': 'STALE' } });
+        // serve the last good copy if we have one, but don't let the browser
+        // pin the stale snapshot for its remaining hour.
+        const stale = await cache.match(staleKey);
+        if (stale) {
+          const r = new Response(stale.body, stale);
+          r.headers.set('Cache-Control', 'no-store');
+          return r;
+        }
         return new Response(JSON.stringify({ error: lastStatus }), { status: lastStatus || 502, headers: { ...cors, 'Content-Type': 'application/json' } });
       }
-      env.ALERTS_KV.put(cacheKey, text, { expirationTtl: ttl }).catch(() => {});
-      env.ALERTS_KV.put(staleKey, text, { expirationTtl: 3600 }).catch(() => {});
-      return new Response(text, { headers: { ...cors, 'Content-Type': 'application/json', 'X-Cache': res ? 'MISS' : 'BYBIT' } });
+      const headers = { ...cors, 'Access-Control-Allow-Origin': '*', 'Content-Type': 'application/json' };
+      await cache.put(cacheKey, new Response(text, { headers: { ...headers, 'Cache-Control': `public, max-age=${ttl}`, 'X-Cache': 'HIT' } }));
+      await cache.put(staleKey, new Response(text, { headers: { ...headers, 'Cache-Control': 'public, max-age=3600', 'X-Cache': 'STALE' } }));
+      return new Response(text, { headers: { ...headers, 'Cache-Control': `public, max-age=${ttl}`, 'X-Cache': res ? 'MISS' : 'BYBIT' } });
     } catch (err) {
       return new Response(JSON.stringify({ error: err.message }), { status: 502, headers: { ...cors, 'Content-Type': 'application/json' } });
     }
