@@ -3,6 +3,7 @@ import { motion, AnimatePresence } from 'framer-motion';
 import { Bell, BellRing, BellOff, Send, NotebookPen, BarChart3, CalendarClock } from 'lucide-react';
 import toast from 'react-hot-toast';
 import { useAuth } from '../../contexts/AuthContext';
+import SelectDropdown from '../shared/SelectDropdown';
 import { subscribeToUserSetting, setUserSetting } from '../../services/firestoreService';
 import {
   pushSupported, subscribeToPush, unsubscribeFromPush, sendTestPush,
@@ -25,6 +26,28 @@ function MiniToggle({ on }) {
   return (
     <div className={`w-10 h-5 rounded-full transition-colors ${on ? 'bg-accent-primary' : 'bg-border-primary'} relative shrink-0`}>
       <div className={`absolute top-0.5 w-4 h-4 rounded-full bg-white transition-transform ${on ? 'right-0.5' : 'left-0.5'}`} />
+    </div>
+  );
+}
+
+// Half-hour steps — the worker cron ticks every 10 minutes, so round times
+// always land inside a tick window and the list stays short and scannable.
+const TIME_OPTIONS = Array.from({ length: 48 }, (_, i) => {
+  const t = `${String(Math.floor(i / 2)).padStart(2, '0')}:${i % 2 ? '30' : '00'}`;
+  return { value: t, label: t };
+});
+
+// Styled time picker (SelectDropdown, like every other picker in the app) —
+// the native <input type="time"> looked dated and inconsistent per browser.
+// A legacy free-typed value (e.g. 00:21) is kept as an extra option so it
+// still displays until the user picks a new one.
+function TimeSelect({ value, onChange }) {
+  const options = TIME_OPTIONS.some((o) => o.value === value)
+    ? TIME_OPTIONS
+    : [{ value, label: value }, ...TIME_OPTIONS];
+  return (
+    <div className="w-24">
+      <SelectDropdown compact value={value} onChange={(v) => v && onChange(v)} options={options} />
     </div>
   );
 }
@@ -74,24 +97,34 @@ function ScheduleSection({ user }) {
         const { key, label, hasTime } = row;
         const Icon = row.Icon;
         return (
-        <div key={key} className="flex items-center justify-between gap-2">
+        <div key={key} className="flex items-center justify-between gap-2 min-h-9">
+          {/* Right side (RTL start): icon + label toggle the row */}
           <button
             onClick={() => update({ ...schedule, [key]: { ...schedule[key], enabled: !schedule[key].enabled } })}
             disabled={saving}
-            className="flex items-center gap-2.5 flex-1 text-sm text-text-primary cursor-pointer disabled:opacity-50"
+            className="flex items-center gap-2.5 text-sm text-text-primary cursor-pointer disabled:opacity-50"
           >
             <Icon className={`w-4 h-4 ${schedule[key].enabled ? 'text-accent-primary' : 'text-text-muted'}`} />
-            <span className="flex-1 text-right">{label}</span>
-            <MiniToggle on={schedule[key].enabled} />
+            <span className="text-right">{label}</span>
           </button>
-          {hasTime && schedule[key].enabled && (
-            <input
-              type="time"
-              value={schedule[key].time}
-              onChange={(e) => e.target.value && update({ ...schedule, [key]: { ...schedule[key], time: e.target.value } })}
-              className="bg-bg-secondary border border-border-primary rounded-lg px-2 py-1 text-xs text-text-primary outline-none focus:border-accent-primary"
-            />
-          )}
+          {/* Left side: time picker, then the toggle FLUSH at the far left
+              (last in DOM = leftmost in RTL), per Avi's layout request. */}
+          <div className="flex items-center gap-2">
+            {hasTime && schedule[key].enabled && (
+              <TimeSelect
+                value={schedule[key].time}
+                onChange={(v) => update({ ...schedule, [key]: { ...schedule[key], time: v } })}
+              />
+            )}
+            <button
+              onClick={() => update({ ...schedule, [key]: { ...schedule[key], enabled: !schedule[key].enabled } })}
+              disabled={saving}
+              className="cursor-pointer disabled:opacity-50"
+              aria-label={label}
+            >
+              <MiniToggle on={schedule[key].enabled} />
+            </button>
+          </div>
         </div>
         );
       })}
