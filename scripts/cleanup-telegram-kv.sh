@@ -5,7 +5,7 @@
 # Dry-run by default; pass --delete to actually remove the keys.
 set -euo pipefail
 
-PREFIXES=(user: uid: settings: watchlist: tgconnect: tgusage: tgusername: dailystats:)
+PREFIXES=(user: uid: settings: watchlist: tgconnect: tgusage: tgusername: dailystats: alerts:)
 DELETE=${1:-}
 
 for prefix in "${PREFIXES[@]}"; do

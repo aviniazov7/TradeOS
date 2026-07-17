@@ -53,26 +53,6 @@ function fmtPnl(v) {
 }
 // ==================== Data Fetching ====================
 
-async function fetchPrices(pairs) {
-  if (!pairs.length) return {};
-  try {
-    const res = await fetch(`${BINANCE_SPOT}/ticker/24hr?symbols=${encodeURIComponent(JSON.stringify(pairs))}`);
-    if (!res.ok) return {};
-    const data = await res.json();
-    const prices = {};
-    for (const item of data) {
-      if (item.symbol && item.lastPrice) {
-        prices[item.symbol] = {
-          price: parseFloat(item.lastPrice),
-          change24h: parseFloat(item.priceChangePercent) || 0,
-          volume: parseFloat(item.quoteVolume) || 0,
-        };
-      }
-    }
-    return prices;
-  } catch { return {}; }
-}
-
 // Short, stable hash (FNV-1a) for building KV keys that fit the 512-byte limit.
 function hashStr(s) {
   let h = 2166136261;
@@ -1351,71 +1331,8 @@ async function fetchEconomicCalendar(env) {
 // ==================== Cron Functions ====================
 
 // ---- Aggregate KV snapshots ------------------------------------------------
-// To avoid an N+1 read per cron tick (one get per alert/settings key — the
-// main source of KV-quota burn), the cron reads rolled-up blobs:
+// To avoid an N+1 read per cron tick, the cron reads one rolled-up blob:
 //   usettings:ALL = { [uid]: schedule }   (written by /notify-settings)
-//   alerts:ACTIVE = { [alertId]: { kvKey, ...alert } }   (active alerts only)
-// Writers keep the per-key docs AND mirror into the blob (dual-write). A
-// missing alerts blob is rebuilt once from the per-key list (backfill).
-async function getAlertsActive(env) {
-  const blob = await env.ALERTS_KV.get('alerts:ACTIVE', 'json');
-  if (blob) return blob;
-  const list = await env.ALERTS_KV.list({ prefix: 'alerts:' });
-  const out = {};
-  await Promise.all(list.keys.filter((k) => k.name !== 'alerts:ACTIVE').map(async (k) => {
-    const d = await env.ALERTS_KV.get(k.name, 'json');
-    if (d && d.active) out[d.id] = { kvKey: k.name, ...d };
-  }));
-  await env.ALERTS_KV.put('alerts:ACTIVE', JSON.stringify(out));
-  return out;
-}
-// Upsert (active) or remove (inactive/deleted) a single alert in the aggregate.
-async function syncAlertAggregate(env, alert) {
-  const blob = (await env.ALERTS_KV.get('alerts:ACTIVE', 'json')) || {};
-  if (alert && alert.active) blob[alert.id] = { kvKey: `alerts:u:${alert.uid}:${alert.id}`, ...alert };
-  else if (alert) delete blob[alert.id];
-  await env.ALERTS_KV.put('alerts:ACTIVE', JSON.stringify(blob));
-}
-async function removeAlertAggregate(env, alertId) {
-  const blob = (await env.ALERTS_KV.get('alerts:ACTIVE', 'json')) || {};
-  if (alertId in blob) { delete blob[alertId]; await env.ALERTS_KV.put('alerts:ACTIVE', JSON.stringify(blob)); }
-}
-
-async function checkPriceAlerts(env, activeAlerts) {
-  if (!activeAlerts.length) return;
-  const pairs = [...new Set(activeAlerts.map((a) => a.pair))];
-  const prices = await fetchPrices(pairs);
-  if (!Object.keys(prices).length) return;
-  for (const alert of activeAlerts) {
-    // Legacy bot-era alerts (no uid) are dead — they get swept in the KV
-    // cleanup (#219).
-    if (!alert.uid) continue;
-    const pd = prices[alert.pair];
-    if (!pd) continue;
-    const hit = alert.direction === 'above' ? pd.price >= alert.targetPrice : pd.price <= alert.targetPrice;
-    if (hit) {
-      // Dedup guard: KV is eventually consistent, so the `active:false` write
-      // below may not be visible on the next cron tick. Claim a sent key first
-      // so the alert can't fire twice (mirrors the other cron checks).
-      const sentKey = `sent:alert:${alert.id}`;
-      if (await env.ALERTS_KV.get(sentKey)) continue;
-      await env.ALERTS_KV.put(sentKey, '1', { expirationTtl: 86400 });
-      const dir = alert.direction === 'above' ? 'מעל' : 'מתחת';
-      await sendPushToUser(env, alert.uid, {
-        title: `🔔 ${alert.pair.replace('USDT', '')} הגיע ליעד!`,
-        body: `מחיר נוכחי: ${fmtPrice(pd.price)} · יעד: ${dir} ${fmtPrice(alert.targetPrice)} · ‏24h: ${fmtPct(pd.change24h)}`,
-        url: '/market',
-      });
-      const { kvKey, ...ad } = alert;
-      // Reconstruct the key from stable fields so the disable write can't target
-      // `undefined` if kvKey was ever absent.
-      const alertKey = kvKey || `alerts:u:${alert.uid}:${alert.id}`;
-      await env.ALERTS_KV.put(alertKey, JSON.stringify({ ...ad, active: false }));
-      await removeAlertAggregate(env, alert.id); // it's done — drop from alerts:ACTIVE
-
-    }
-  }
-}
 
 async function checkJournalReminders(env, settingsMap) {
   const currentTime = getIsraelHHMM();
@@ -1500,22 +1417,16 @@ async function handleCron(env) {
     }
   } catch { /* best-effort, never blocks the jobs below */ }
 
-  // Everything is Web Push, keyed by uid (#219). Two
-  // rolled-up blobs (usettings:ALL + alerts:ACTIVE) instead of one get per
-  // user/alert key, so the tick stays at 2 KV reads for the schedule data.
-  const [usettingsAll, alertsActive] = await Promise.all([
-    env.ALERTS_KV.get('usettings:ALL', 'json').then((v) => v || {}),
-    getAlertsActive(env),
-  ]);
+  // Everything is Web Push, keyed by uid (#219). One rolled-up blob
+  // (usettings:ALL) — a single KV read per tick for the schedule data.
+  const usettingsAll = (await env.ALERTS_KV.get('usettings:ALL', 'json')) || {};
 
-  const activeAlerts = Object.values(alertsActive);
   const settingsMap = {};
   for (const [uid, settings] of Object.entries(usettingsAll)) {
     settingsMap[uid] = { ...DEFAULT_SETTINGS, ...settings };
   }
 
   await Promise.allSettled([
-    checkPriceAlerts(env, activeAlerts),
     checkJournalReminders(env, settingsMap),
     checkDailySummaries(env, settingsMap),
     checkEconomicCalendar(env, settingsMap),
@@ -2816,48 +2727,9 @@ async function handleRequest(request, env) {
     } catch { return new Response(JSON.stringify({ error: 'Invalid' }), { status: 400, headers: { ...cors, 'Content-Type': 'application/json' } }); }
   }
 
-  // Price alerts — keyed by the caller's uid and delivered via Web Push (#219).
-  if (request.method === 'POST' && path === '/alerts') {
-    const token = (request.headers.get('Authorization') || '').replace('Bearer ', '');
-    const uid = await verifyFirebaseToken(token);
-    if (!uid) return new Response(JSON.stringify({ error: 'unauthorized' }), { status: 401, headers: { ...cors, 'Content-Type': 'application/json' } });
-    const { pair, targetPrice, direction, id } = await request.json().catch(() => ({}));
-    if (!pair || !targetPrice || !direction) return new Response(JSON.stringify({ error: 'Missing fields' }), { status: 400, headers: { ...cors, 'Content-Type': 'application/json' } });
-    // Cap per-user alerts so a loop can't grow alerts:ACTIVE without bound.
-    const existing = await env.ALERTS_KV.list({ prefix: `alerts:u:${uid}:` });
-    if (existing.keys.length >= 30) return new Response(JSON.stringify({ error: 'עד 30 התראות פעילות' }), { status: 400, headers: { ...cors, 'Content-Type': 'application/json' } });
-    const alertId = id || Date.now().toString();
-    const restAlert = { uid, pair: String(pair).toUpperCase().slice(0, 20), targetPrice: parseFloat(targetPrice), direction: direction === 'below' ? 'below' : 'above', active: true, id: alertId, createdAt: new Date().toISOString() };
-    await env.ALERTS_KV.put(`alerts:u:${uid}:${alertId}`, JSON.stringify(restAlert));
-    await syncAlertAggregate(env, restAlert); // mirror into alerts:ACTIVE so the cron sees it immediately
-    return new Response(JSON.stringify({ ok: true, id: alertId }), { headers: { ...cors, 'Content-Type': 'application/json' } });
-  }
-
-  if (request.method === 'DELETE' && path.startsWith('/alerts/')) {
-    const token = (request.headers.get('Authorization') || '').replace('Bearer ', '');
-    const uid = await verifyFirebaseToken(token);
-    if (!uid) return new Response(JSON.stringify({ error: 'unauthorized' }), { status: 401, headers: { ...cors, 'Content-Type': 'application/json' } });
-    const alertId = path.split('/').filter(Boolean)[1];
-    if (alertId) {
-      await env.ALERTS_KV.delete(`alerts:u:${uid}:${alertId}`);
-      await removeAlertAggregate(env, alertId); // drop from alerts:ACTIVE too
-      return new Response(JSON.stringify({ ok: true }), { headers: { ...cors, 'Content-Type': 'application/json' } });
-    }
-  }
-
-  if (request.method === 'GET' && path === '/alerts') {
-    const token = (request.headers.get('Authorization') || '').replace('Bearer ', '');
-    const uid = await verifyFirebaseToken(token);
-    if (!uid) return new Response(JSON.stringify({ error: 'unauthorized' }), { status: 401, headers: { ...cors, 'Content-Type': 'application/json' } });
-    const list = await env.ALERTS_KV.list({ prefix: `alerts:u:${uid}:` });
-    const alerts = [];
-    for (const key of list.keys) { const d = await env.ALERTS_KV.get(key.name, 'json'); if (d) alerts.push(d); }
-    return new Response(JSON.stringify({ alerts }), { headers: { ...cors, 'Content-Type': 'application/json' } });
-  }
-
   // Per-user notification schedule (journal reminder / daily summary /
   // economic calendar). Stored per-uid plus a rolled-up blob so the cron
-  // reads ONE key per tick, mirroring the alerts:ACTIVE pattern.
+  // reads ONE key per tick.
   if ((request.method === 'POST' || request.method === 'GET') && path === '/notify-settings') {
     const token = (request.headers.get('Authorization') || '').replace('Bearer ', '');
     const uid = await verifyFirebaseToken(token);
@@ -5091,7 +4963,7 @@ async function handleRequest(request, env) {
     }
   }
 
-  return new Response('TradeOS Bot Worker', { headers: cors });
+  return new Response('TradeOS Worker', { headers: cors });
 }
 
 export default {
