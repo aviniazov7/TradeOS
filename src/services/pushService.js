@@ -105,6 +105,54 @@ export async function adminGetTelegramInfo(uid) {
   return data;
 }
 
+// ── Notification schedule + price alerts (Web Push, uid-keyed) ──────────────
+// Replaces the Telegram bot's /settings menu and chatId-keyed alerts (#219).
+
+export async function getNotifySchedule() {
+  const res = await fetch(`${WORKER_BASE}/notify-settings`, { headers: await authHeader() });
+  const data = await res.json().catch(() => ({}));
+  if (!res.ok) throw new Error(data.error || 'טעינת הגדרות ההתראות נכשלה');
+  return data.settings;
+}
+
+export async function saveNotifySchedule(settings) {
+  const res = await fetch(`${WORKER_BASE}/notify-settings`, {
+    method: 'POST',
+    headers: await authHeader(),
+    body: JSON.stringify(settings),
+  });
+  const data = await res.json().catch(() => ({}));
+  if (!res.ok) throw new Error(data.error || 'שמירת הגדרות ההתראות נכשלה');
+  return data.settings;
+}
+
+export async function listPriceAlerts() {
+  const res = await fetch(`${WORKER_BASE}/alerts`, { headers: await authHeader() });
+  const data = await res.json().catch(() => ({}));
+  if (!res.ok) throw new Error(data.error || 'טעינת ההתראות נכשלה');
+  return data.alerts || [];
+}
+
+export async function addPriceAlert({ pair, targetPrice, direction }) {
+  const res = await fetch(`${WORKER_BASE}/alerts`, {
+    method: 'POST',
+    headers: await authHeader(),
+    body: JSON.stringify({ pair, targetPrice, direction }),
+  });
+  const data = await res.json().catch(() => ({}));
+  if (!res.ok || !data.ok) throw new Error(data.error || 'יצירת ההתראה נכשלה');
+  return data.id;
+}
+
+export async function deletePriceAlert(id) {
+  const res = await fetch(`${WORKER_BASE}/alerts/${encodeURIComponent(id)}`, {
+    method: 'DELETE',
+    headers: await authHeader(),
+  });
+  const data = await res.json().catch(() => ({}));
+  if (!res.ok) throw new Error(data.error || 'מחיקת ההתראה נכשלה');
+}
+
 // Admin-only: permanently delete a user via the worker's service account —
 // all Firestore data, leaderboard entry, per-user KV keys AND the Auth
 // account (none of which an admin can delete client-side; the rules make

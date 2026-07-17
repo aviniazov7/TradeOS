@@ -1,13 +1,194 @@
 import { useState, useEffect, useCallback } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
-import { Bell, BellRing, BellOff, Send } from 'lucide-react';
+import { Bell, BellRing, BellOff, Send, NotebookPen, BarChart3, CalendarClock, Plus, Trash2, TrendingUp, TrendingDown } from 'lucide-react';
 import toast from 'react-hot-toast';
 import { useAuth } from '../../contexts/AuthContext';
 import { subscribeToUserSetting, setUserSetting } from '../../services/firestoreService';
-import { pushSupported, subscribeToPush, unsubscribeFromPush, sendTestPush } from '../../services/pushService';
+import {
+  pushSupported, subscribeToPush, unsubscribeFromPush, sendTestPush,
+  getNotifySchedule, saveNotifySchedule, listPriceAlerts, addPriceAlert, deletePriceAlert,
+} from '../../services/pushService';
 
 // Push notifications are ON by default; the user can turn them off here.
 const DEFAULTS = { pushEnabled: true, tradeOpenAlerts: true };
+
+// Journal reminder / daily summary / economic calendar defaults — mirrors the
+// worker's DEFAULT_SETTINGS (these used to live in the Telegram bot's
+// /settings menu; the bot is retired, #219).
+const SCHEDULE_DEFAULTS = {
+  journal: { enabled: false, time: '21:00' },
+  summary: { enabled: false, time: '22:00' },
+  calendar: { enabled: false },
+};
+
+// Small right-aligned toggle, matching the main push toggle's look.
+function MiniToggle({ on }) {
+  return (
+    <div className={`w-10 h-5 rounded-full transition-colors ${on ? 'bg-accent-primary' : 'bg-border-primary'} relative shrink-0`}>
+      <div className={`absolute top-0.5 w-4 h-4 rounded-full bg-white transition-transform ${on ? 'right-0.5' : 'left-0.5'}`} />
+    </div>
+  );
+}
+
+// Scheduled pushes (journal reminder / daily summary / economic calendar).
+// The worker's cron is driven by /notify-settings; Firestore keeps a mirror
+// under notifications.schedule so other devices/hooks can read the state.
+function ScheduleSection({ user }) {
+  const [schedule, setSchedule] = useState(null);
+  const [saving, setSaving] = useState(false);
+
+  useEffect(() => {
+    let cancelled = false;
+    getNotifySchedule()
+      .then((s) => { if (!cancelled) setSchedule({ ...SCHEDULE_DEFAULTS, ...s }); })
+      .catch(() => { if (!cancelled) setSchedule(SCHEDULE_DEFAULTS); });
+    return () => { cancelled = true; };
+  }, []);
+
+  const update = async (next) => {
+    setSaving(true);
+    const prev = schedule;
+    setSchedule(next);
+    try {
+      await saveNotifySchedule(next);
+      setUserSetting(user.uid, 'notifications', { schedule: next }, true).catch(() => {});
+    } catch (e) {
+      setSchedule(prev);
+      toast.error(e.message || 'השמירה נכשלה');
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  if (!schedule) return null;
+
+  const rows = [
+    { key: 'journal', label: 'תזכורת מילוי יומן', Icon: NotebookPen, hasTime: true },
+    { key: 'summary', label: 'סיכום יומי', Icon: BarChart3, hasTime: true },
+    { key: 'calendar', label: 'אירועים כלכליים (שעה לפני)', Icon: CalendarClock, hasTime: false },
+  ];
+
+  return (
+    <div className="space-y-2.5">
+      <p className="text-[11px] text-text-muted font-semibold">התראות מתוזמנות</p>
+      {rows.map((row) => {
+        const { key, label, hasTime } = row;
+        const Icon = row.Icon;
+        return (
+        <div key={key} className="flex items-center justify-between gap-2">
+          <button
+            onClick={() => update({ ...schedule, [key]: { ...schedule[key], enabled: !schedule[key].enabled } })}
+            disabled={saving}
+            className="flex items-center gap-2.5 flex-1 text-sm text-text-primary cursor-pointer disabled:opacity-50"
+          >
+            <Icon className={`w-4 h-4 ${schedule[key].enabled ? 'text-accent-primary' : 'text-text-muted'}`} />
+            <span className="flex-1 text-right">{label}</span>
+            <MiniToggle on={schedule[key].enabled} />
+          </button>
+          {hasTime && schedule[key].enabled && (
+            <input
+              type="time"
+              value={schedule[key].time}
+              onChange={(e) => e.target.value && update({ ...schedule, [key]: { ...schedule[key], time: e.target.value } })}
+              className="bg-bg-secondary border border-border-primary rounded-lg px-2 py-1 text-xs text-text-primary outline-none focus:border-accent-primary"
+            />
+          )}
+        </div>
+        );
+      })}
+    </div>
+  );
+}
+
+// Price alerts — created here in the app, checked by the worker cron every 10
+// minutes and delivered as Web Push (used to require connecting the bot).
+function PriceAlertsSection() {
+  const [alerts, setAlerts] = useState([]);
+  const [pair, setPair] = useState('');
+  const [price, setPrice] = useState('');
+  const [direction, setDirection] = useState('above');
+  const [busy, setBusy] = useState(false);
+
+  useEffect(() => {
+    listPriceAlerts().then((a) => setAlerts(a.filter((x) => x.active !== false))).catch(() => {});
+  }, []);
+
+  const add = async () => {
+    const p = pair.trim().toUpperCase();
+    const target = parseFloat(price);
+    if (!p || !(target > 0)) { toast.error('מלא מטבע ומחיר יעד'); return; }
+    setBusy(true);
+    try {
+      const normalized = p.endsWith('USDT') ? p : `${p}USDT`;
+      const id = await addPriceAlert({ pair: normalized, targetPrice: target, direction });
+      setAlerts((a) => [...a, { id, pair: normalized, targetPrice: target, direction, active: true }]);
+      setPair(''); setPrice('');
+      toast.success('ההתראה נוצרה — תקבל Push כשהמחיר יגיע ליעד');
+    } catch (e) {
+      toast.error(e.message || 'יצירת ההתראה נכשלה');
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const remove = async (id) => {
+    const prev = alerts;
+    setAlerts((a) => a.filter((x) => x.id !== id));
+    try { await deletePriceAlert(id); } catch { setAlerts(prev); toast.error('המחיקה נכשלה'); }
+  };
+
+  return (
+    <div className="space-y-2.5">
+      <p className="text-[11px] text-text-muted font-semibold">התראות מחיר</p>
+      {alerts.map((a) => (
+        <div key={a.id} className="flex items-center justify-between gap-2 bg-bg-secondary border border-border-primary rounded-lg px-3 py-2">
+          <div className="flex items-center gap-2 text-sm">
+            {a.direction === 'above'
+              ? <TrendingUp className="w-4 h-4 text-profit" />
+              : <TrendingDown className="w-4 h-4 text-loss" />}
+            <span className="font-semibold text-text-primary">{a.pair.replace('USDT', '')}</span>
+            <span className="text-xs text-text-muted" dir="ltr">{a.direction === 'above' ? '≥' : '≤'} ${a.targetPrice}</span>
+          </div>
+          <button onClick={() => remove(a.id)} className="p-1 text-text-muted hover:text-loss cursor-pointer" title="מחק">
+            <Trash2 className="w-3.5 h-3.5" />
+          </button>
+        </div>
+      ))}
+      <div className="flex items-center gap-1.5">
+        <input
+          value={pair}
+          onChange={(e) => setPair(e.target.value)}
+          placeholder="BTC"
+          className="w-20 bg-bg-secondary border border-border-primary rounded-lg px-2 py-1.5 text-xs text-text-primary outline-none focus:border-accent-primary uppercase"
+        />
+        <select
+          value={direction}
+          onChange={(e) => setDirection(e.target.value)}
+          className="bg-bg-secondary border border-border-primary rounded-lg px-1.5 py-1.5 text-xs text-text-primary outline-none cursor-pointer"
+        >
+          <option value="above">מעל</option>
+          <option value="below">מתחת</option>
+        </select>
+        <input
+          value={price}
+          onChange={(e) => setPrice(e.target.value)}
+          placeholder="מחיר יעד"
+          type="number"
+          min="0"
+          className="flex-1 min-w-0 bg-bg-secondary border border-border-primary rounded-lg px-2 py-1.5 text-xs text-text-primary outline-none focus:border-accent-primary"
+          dir="ltr"
+        />
+        <button
+          onClick={add}
+          disabled={busy}
+          className="flex items-center gap-1 px-2.5 py-1.5 rounded-lg bg-accent-primary/10 border border-accent-primary/30 text-accent-primary text-xs font-semibold hover:bg-accent-primary/20 transition-colors cursor-pointer disabled:opacity-50"
+        >
+          <Plus className="w-3.5 h-3.5" /> הוסף
+        </button>
+      </div>
+    </div>
+  );
+}
 
 export default function NotificationSettings() {
   const { user } = useAuth();
@@ -158,6 +339,12 @@ export default function NotificationSettings() {
                     <Send className="w-4 h-4" />
                     שלח התראת בדיקה
                   </button>
+                  <div className="pt-2 border-t border-border-primary/60">
+                    <ScheduleSection user={user} />
+                  </div>
+                  <div className="pt-2 border-t border-border-primary/60">
+                    <PriceAlertsSection />
+                  </div>
                 </>
               )}
             </div>
