@@ -316,6 +316,16 @@ export async function applyTradeCleanup(uid, { updates = [], deletes = [] }) {
   return ops.length;
 }
 
+// Every subcollection the app writes under users/{uid}. Account deletion
+// wipes EXACTLY this list — when adding a new subcollection (here and in
+// firestore.rules), add it to this list too or it will stay orphaned under a
+// dead uid after the user deletes their account.
+export const USER_SUBCOLLECTIONS = [
+  'trades', 'journals', 'backtests', 'backtestJournals', 'dca',
+  'tradingPlans', 'notes', 'strategies', 'morningJournals', 'eveningJournals',
+  'processes', 'signals', 'watchlist', 'settings',
+];
+
 /** Delete all documents in a user's subcollection */
 export async function deleteUserSubcollection(uid, collectionName) {
   const snap = await getDocs(collection(db, 'users', uid, collectionName));

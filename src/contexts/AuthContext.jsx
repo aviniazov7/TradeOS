@@ -20,6 +20,8 @@ import {
   subscribeToUserProfile,
   deleteUserProfile,
   deleteUserSubcollection,
+  deleteLeaderboardEntry,
+  USER_SUBCOLLECTIONS,
   touchLastActive,
   timestamp,
 } from '../services/firestoreService';
@@ -152,10 +154,23 @@ export function AuthProvider({ children }) {
     // Re-authenticate if needed
     await reauthenticate(currentPassword);
 
-    // Delete user subcollections
-    const subcollections = ['trades', 'journals', 'backtests', 'dca', 'tradingPlans', 'notes', 'strategies', 'morningJournals', 'eveningJournals', 'settings'];
-    for (const sub of subcollections) {
-      await deleteUserSubcollection(currentUser.uid, sub);
+    // Wipe ALL user data: the shared USER_SUBCOLLECTIONS list covers every
+    // subcollection the app writes (a hard-coded copy here kept orphaning
+    // backtestJournals/processes/signals/watchlist), plus the PUBLIC
+    // leaderboard entry — displayName + photo readable by any signed-in user,
+    // which must not survive an account deletion.
+    const results = await Promise.allSettled([
+      ...USER_SUBCOLLECTIONS.map((sub) => deleteUserSubcollection(currentUser.uid, sub)),
+      deleteLeaderboardEntry(currentUser.uid),
+    ]);
+    // Abort BEFORE deleting the auth account if any wipe failed — once the
+    // auth user is gone nobody can re-authenticate to finish the cleanup, so
+    // failing loudly here lets the user simply retry.
+    const firstFailure = results.find((r) => r.status === 'rejected');
+    if (firstFailure) {
+      throw firstFailure.reason instanceof Error
+        ? firstFailure.reason
+        : new Error('מחיקת הנתונים נכשלה — נסה שוב');
     }
 
     // Delete user doc
