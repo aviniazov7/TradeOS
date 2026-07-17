@@ -951,6 +951,7 @@ export default function MarketOverview() {
     const buffer = [];
     let flushTimer;
     let pingTimer;
+    let reconnectTimer;
 
     // Normalize symbol: strip USDT suffix and 1000-prefix (e.g. 1000PEPEUSDT → PEPE)
     const normalizeSym = (s) => s.replace('USDT', '').replace(/^1000/, '');
@@ -982,7 +983,7 @@ export default function MarketOverview() {
           });
         }
       };
-      ws.onclose = () => { setLiqConnected(false); if (!closed) setTimeout(connect, 3000); };
+      ws.onclose = () => { setLiqConnected(false); if (!closed) reconnectTimer = setTimeout(connect, 3000); };
       ws.onerror = () => { setLiqConnected(false); ws.close(); };
     };
 
@@ -1000,6 +1001,7 @@ export default function MarketOverview() {
 
     return () => {
       closed = true;
+      clearTimeout(reconnectTimer); // a pending reconnect would open a socket nobody closes
       ws?.close();
       clearInterval(flushTimer);
       clearInterval(pingTimer);
