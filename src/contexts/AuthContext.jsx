@@ -25,6 +25,7 @@ import {
   touchLastActive,
   timestamp,
 } from '../services/firestoreService';
+import { logAccountDeletion } from '../services/pushService';
 
 // Read a Firestore Timestamp / ISO / millis into epoch millis (0 if absent).
 function toMillis(v) {
@@ -175,6 +176,10 @@ export function AuthProvider({ children }) {
 
     // Delete user doc
     await deleteUserProfile(currentUser.uid);
+
+    // Audit trail (admin panel shows who deleted their account and when) —
+    // must run while the ID token is still valid. Never throws.
+    await logAccountDeletion({ email: currentUser.email, displayName: currentUser.displayName });
 
     // Delete auth account
     localStorage.removeItem('tradeos_activeJournal');

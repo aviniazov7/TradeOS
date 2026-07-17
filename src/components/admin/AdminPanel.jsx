@@ -9,7 +9,7 @@ import { ResponsiveContainer, AreaChart, Area, Tooltip, XAxis } from 'recharts';
 import { useAuth } from '../../contexts/AuthContext';
 import { getAllUsers, getUserSubcollectionCount, adminGrantPremium, adminRevokePremium, addPayment, getAllPayments } from '../../services/firestoreService';
 import { fetchUserAiUsage, fetchGlobalAiUsage, fetchAiStats, fetchSystemHealth } from '../../hooks/useAiUsage';
-import { adminSendNotification, adminSendBulkNotification, adminScheduleExpiryReminders, adminCancelExpiryReminders, adminRefreshPlanCache, adminListAuditEvents, adminSendTestDigest, adminGetTelegramInfo, adminSendPaymentEmail, adminSetupTelegramWebhook } from '../../services/pushService';
+import { adminSendNotification, adminSendBulkNotification, adminScheduleExpiryReminders, adminCancelExpiryReminders, adminRefreshPlanCache, adminListAuditEvents, adminSendTestDigest, adminGetTelegramInfo, adminSendPaymentEmail, adminSetupTelegramWebhook, adminDeleteUser } from '../../services/pushService';
 import { adminListCoupons, adminCreateCoupon, adminDeleteCoupon, couponShareUrl } from '../../services/couponService';
 import LoadingSpinner from '../shared/LoadingSpinner';
 import SelectDropdown from '../shared/SelectDropdown';
@@ -1304,6 +1304,28 @@ function UserDetailModal({ user, onClose, onUserChanged }) {
   const [notifyTitle, setNotifyTitle] = useState('');
   const [notifyBody, setNotifyBody] = useState('');
   const [notifying, setNotifying] = useState(false);
+  const [confirmDelete, setConfirmDelete] = useState(false);
+  const [deleting, setDeleting] = useState(false);
+
+  // A leftover confirm from the previous user must not arm the delete button
+  // for the next profile opened.
+  useEffect(() => { setConfirmDelete(false); }, [user]);
+
+  const doDelete = async () => {
+    if (!user) return;
+    setDeleting(true);
+    try {
+      await adminDeleteUser(user.id);
+      toast.success(`המשתמש ${user.email || user.id} נמחק לצמיתות`);
+      onClose();
+      onUserChanged?.();
+    } catch (e) {
+      toast.error(e.message || 'מחיקת המשתמש נכשלה');
+    } finally {
+      setDeleting(false);
+      setConfirmDelete(false);
+    }
+  };
 
   useEffect(() => {
     if (!user) { setAiUsage(null); return; }
@@ -1522,6 +1544,44 @@ function UserDetailModal({ user, onClose, onUserChanged }) {
             <Send className="w-4 h-4" /> שלח הודעת Push
           </button>
         </div>
+
+        {/* Danger zone — permanent deletion runs through the worker's service
+            account (admins are read-only on other users' data client-side, and
+            only the service account can delete somebody else's Auth user). */}
+        {user.role !== 'admin' && (
+          confirmDelete ? (
+            <div className="bg-loss/5 border border-loss/30 rounded-xl p-3 space-y-2">
+              <p className="text-xs text-loss leading-relaxed">
+                פעולה בלתי הפיכה: כל הנתונים, רשומת הלידרבורד וחשבון ההתחברות של{' '}
+                <span className="font-bold">{user.email || user.displayName || user.id}</span> יימחקו לצמיתות.
+              </p>
+              <div className="flex gap-2">
+                <button
+                  onClick={doDelete}
+                  disabled={deleting}
+                  className="flex-1 flex items-center justify-center gap-1.5 px-3 py-2 rounded-lg bg-loss text-white text-sm font-bold hover:bg-loss/80 transition-colors cursor-pointer disabled:opacity-50"
+                >
+                  {deleting ? <RefreshCw className="w-4 h-4 animate-spin" /> : <Trash2 className="w-4 h-4" />}
+                  {deleting ? 'מוחק…' : 'אשר מחיקה סופית'}
+                </button>
+                <button
+                  onClick={() => setConfirmDelete(false)}
+                  disabled={deleting}
+                  className="px-4 py-2 rounded-lg border border-border-primary text-sm text-text-secondary hover:text-text-primary transition-colors cursor-pointer disabled:opacity-50"
+                >
+                  ביטול
+                </button>
+              </div>
+            </div>
+          ) : (
+            <button
+              onClick={() => setConfirmDelete(true)}
+              className="w-full flex items-center justify-center gap-1.5 px-3 py-2 rounded-lg border border-loss/30 text-sm text-loss/80 hover:text-loss hover:bg-loss/5 transition-colors cursor-pointer"
+            >
+              <Trash2 className="w-4 h-4" /> מחק משתמש לצמיתות
+            </button>
+          )
+        )}
 
         {/* Grant Premium duration picker */}
         {grantOpen && (
@@ -1955,6 +2015,7 @@ const KIND_META = {
   coupon_create: { label: 'יצירת קופון', color: 'text-amber-400', Icon: Plus },
   coupon_delete: { label: 'מחיקת קופון', color: 'text-loss', Icon: Trash2 },
   coupon_redeem: { label: 'מימוש קופון', color: 'text-profit', Icon: Ticket },
+  account_deleted: { label: 'מחיקת חשבון', color: 'text-loss', Icon: Trash2 },
 };
 const KIND_FILTER_OPTIONS = [
   { value: '', label: 'כל הסוגים' },
@@ -2035,8 +2096,17 @@ function AuditLogModal({ isOpen, onClose, users }) {
                       <span className="text-[10px] text-text-muted">{fmtTs(ev.ts_iso)}</span>
                     </div>
                     <div className="text-xs text-text-secondary mt-0.5 break-words">
-                      {ev.actor && <span>בוצע ע"י <span className="text-text-primary">{userLabel(ev.actor)}</span></span>}
-                      {ev.target && <span> · יעד <span className="text-text-primary">{userLabel(ev.target)}</span></span>}
+                      {/* Deleted accounts vanish from the users list, so the
+                          snapshot email/name in the event is the identity. */}
+                      {ev.kind === 'account_deleted' && (
+                        <span>
+                          <span className="text-text-primary">{ev.displayName || ev.email || userLabel(ev.target)}</span>
+                          {ev.email && ev.displayName && <span className="font-mono"> ({ev.email})</span>}
+                          <span> · {ev.source === 'self' ? 'מחק את חשבונו בעצמו' : <>נמחק ע"י <span className="text-text-primary">{userLabel(ev.actor)}</span></>}</span>
+                        </span>
+                      )}
+                      {ev.kind !== 'account_deleted' && ev.actor && <span>בוצע ע"י <span className="text-text-primary">{userLabel(ev.actor)}</span></span>}
+                      {ev.kind !== 'account_deleted' && ev.target && <span> · יעד <span className="text-text-primary">{userLabel(ev.target)}</span></span>}
                       {ev.code && <span> · קוד <span className="font-mono text-amber-400">{ev.code}</span></span>}
                       {ev.days != null && <span> · {ev.days} ימים</span>}
                       {ev.planExpires && <span> · עד {new Date(ev.planExpires).toLocaleDateString('he-IL')}</span>}
