@@ -1,15 +1,15 @@
 import { useState, useEffect, useMemo } from 'react';
 import { Navigate } from 'react-router-dom';
-import { Users, UserPlus, ShieldCheck, CheckCircle2, Search, RefreshCw, Download, ChevronUp, ChevronDown, ChevronLeft, Mail, Calendar, Coins, TrendingUp, Percent, Sparkles, BookOpen, FlaskConical, Activity, FileText, Brain, Crown, Send, X, Ticket, Plus, Minus, Trash2, Copy, ScrollText, Share2, Link2, BarChart3, AlertTriangle, Clock, DollarSign, Hourglass, Image, Trophy, Loader2 } from 'lucide-react';
+import { Users, UserPlus, ShieldCheck, CheckCircle2, Search, RefreshCw, Download, ChevronUp, ChevronDown, ChevronLeft, Mail, Calendar, Coins, TrendingUp, Percent, Sparkles, BookOpen, FlaskConical, Activity, FileText, Brain, Crown, Send, X, Ticket, Plus, Minus, Trash2, Copy, ScrollText, Share2, Link2, BarChart3, AlertTriangle, Clock, DollarSign, Hourglass, Image, Trophy, Loader2, Bell, StickyNote } from 'lucide-react';
 import { motion } from 'framer-motion';
 import toast from 'react-hot-toast';
 import Card from '../shared/Card';
 import AnimatedValue from '../shared/AnimatedValue';
-import { ResponsiveContainer, AreaChart, Area, Tooltip, XAxis } from 'recharts';
+import { ResponsiveContainer, AreaChart, Area, Tooltip, XAxis, YAxis, BarChart, Bar } from 'recharts';
 import { useAuth } from '../../contexts/AuthContext';
-import { getAllUsers, getUserSubcollectionCount, adminGrantPremium, adminRevokePremium, addPayment, getAllPayments } from '../../services/firestoreService';
+import { getAllUsers, getUserSubcollectionCount, adminGrantPremium, adminRevokePremium, addPayment, getAllPayments, getAdminMeta, setAdminMeta } from '../../services/firestoreService';
 import { fetchUserAiUsage, fetchGlobalAiUsage, fetchAiStats, fetchSystemHealth } from '../../hooks/useAiUsage';
-import { adminSendNotification, adminSendBulkNotification, adminScheduleExpiryReminders, adminCancelExpiryReminders, adminRefreshPlanCache, adminListAuditEvents, adminSendTestDigest, adminSendPaymentEmail, adminDeleteUser } from '../../services/pushService';
+import { adminSendNotification, adminSendBulkNotification, adminScheduleExpiryReminders, adminCancelExpiryReminders, adminRefreshPlanCache, adminListAuditEvents, adminSendTestDigest, adminSendPaymentEmail, adminDeleteUser, adminGetPushStatus, adminGetExchangesStatus } from '../../services/pushService';
 import { adminListCoupons, adminCreateCoupon, adminDeleteCoupon, couponShareUrl } from '../../services/couponService';
 import LoadingSpinner from '../shared/LoadingSpinner';
 import SelectDropdown from '../shared/SelectDropdown';
@@ -84,6 +84,21 @@ function daysUntilExpiry(u) {
 }
 
 const ILS = (n) => '₪' + Math.round(Number(n) || 0).toLocaleString('he-IL');
+
+// Revenue-chart buckets, derived from each payment's `days` field (addPayment
+// stores days: null for lifetime grants). Stack order = object order.
+const REVENUE_BUCKETS = {
+  monthly:  { label: 'חודשי',    color: 'var(--color-accent-primary)' },
+  yearly:   { label: 'שנתי',     color: '#fbbf24' },  // amber-400
+  lifetime: { label: 'לייפטיים', color: '#a78bfa' },  // violet-400
+  other:    { label: 'אחר',      color: '#64748b' },  // slate-500
+};
+
+// Display names for connected-exchange ids (the worker returns ids only —
+// mirrors the list in ExchangeSettings.jsx).
+const EXCHANGE_NAMES = {
+  bybit: 'Bybit', mexc: 'MEXC', okx: 'OKX', bitget: 'Bitget', binance: 'Binance', mt5: 'MetaTrader 5',
+};
 
 // Mirrors the worker's AI caps (FREE_LIMITS.aiPerDay / AI_PREMIUM_LIMITS.day /
 // AI_IMAGE_DAILY_LIMIT) — used only for the admin overview estimates.
@@ -202,6 +217,7 @@ export default function AdminPanel() {
   const [search, setSearch] = useState('');
   const [roleFilter, setRoleFilter] = useState('all');
   const [onboardFilter, setOnboardFilter] = useState('all');
+  const [activityFilter, setActivityFilter] = useState('all');
   const [sortKey, setSortKey] = useState('createdAt');
   const [sortDir, setSortDir] = useState('desc');
   const [selectedUser, setSelectedUser] = useState(null);
@@ -443,6 +459,39 @@ export default function AdminPanel() {
     };
   }, [users, payments]);
 
+  // Revenue over time: monthly totals from the payments log (last 12 months),
+  // split by plan-duration bucket derived from each payment's `days` field.
+  const revenueSeries = useMemo(() => {
+    const now = new Date();
+    const months = [];
+    const index = {};
+    for (let i = 11; i >= 0; i--) {
+      const d = new Date(now.getFullYear(), now.getMonth() - i, 1);
+      index[`${d.getFullYear()}-${d.getMonth()}`] = months.length;
+      months.push({
+        label: d.toLocaleDateString('he-IL', { month: 'short' }),
+        full: d.toLocaleDateString('he-IL', { month: 'long', year: 'numeric' }),
+        monthly: 0, yearly: 0, lifetime: 0, other: 0, total: 0,
+      });
+    }
+    for (const p of payments) {
+      const d = toDate(p.createdAt);
+      if (!d) continue;
+      const at = index[`${d.getFullYear()}-${d.getMonth()}`];
+      if (at === undefined) continue; // older than 12 months
+      const amt = Number(p.amount) || 0;
+      if (!amt) continue;
+      const days = Number(p.days);
+      const bucket = p.days == null ? 'lifetime'
+        : days <= 31 ? 'monthly'
+        : days >= 365 ? 'yearly'
+        : 'other';
+      months[at][bucket] += amt;
+      months[at].total += amt;
+    }
+    return months;
+  }, [payments]);
+
   const filtered = useMemo(() => {
     const q = search.trim().toLowerCase();
     const list = users.filter((u) => {
@@ -454,6 +503,10 @@ export default function AdminPanel() {
       if (roleFilter === 'free' && isUserPremium(u)) return false;
       if (onboardFilter === 'yes' && !u.onboardingCompleted) return false;
       if (onboardFilter === 'no' && u.onboardingCompleted) return false;
+      if (activityFilter === 'active7' && !activeWithin(u, 7)) return false;
+      if (activityFilter === 'active30' && !activeWithin(u, 30)) return false;
+      if (activityFilter === 'inactive30' && !(lastActiveMs(u) > 0 && daysSinceActive(u) >= 30)) return false;
+      if (activityFilter === 'never' && lastActiveMs(u) > 0) return false;
       return true;
     });
     const dir = sortDir === 'asc' ? 1 : -1;
@@ -464,7 +517,7 @@ export default function AdminPanel() {
       if (va > vb) return 1 * dir;
       return 0;
     });
-  }, [users, search, roleFilter, onboardFilter, sortKey, sortDir]);
+  }, [users, search, roleFilter, onboardFilter, activityFilter, sortKey, sortDir]);
 
   const toggleSort = (key) => {
     if (sortKey === key) {
@@ -746,6 +799,53 @@ export default function AdminPanel() {
         })()}
       </SectionCard>
 
+      {/* Revenue over time — monthly stacked bars from the payments log,
+          split by plan duration, headed by the live MRR + total revenue. */}
+      <SectionCard
+        icon={<DollarSign className="w-4 h-4" />}
+        title="MRR והכנסות לאורך זמן"
+        action={<span className="text-[11px] text-text-muted">12 חודשים אחרונים</span>}
+      >
+        <div className="grid grid-cols-2 gap-2 mb-3">
+          <StatMini accent="green" value={ILS(analytics.mrr)} label="MRR (חודשי)" />
+          <StatMini accent="amber" value={ILS(analytics.totalRevenue)} label="הכנסה כוללת" />
+        </div>
+        {payments.length === 0 ? (
+          <div className="text-sm text-text-muted text-center py-6 border border-dashed border-border-primary rounded-xl">
+            אין עדיין תשלומים
+          </div>
+        ) : (
+          <>
+            <div className="h-36 -mx-1">
+              <ResponsiveContainer width="100%" height="100%">
+                <BarChart data={revenueSeries} margin={{ top: 4, right: 6, bottom: 0, left: 6 }}>
+                  <XAxis dataKey="label" tick={{ fill: 'var(--color-text-muted)', fontSize: 9 }} axisLine={false} tickLine={false} />
+                  <YAxis hide />
+                  <Tooltip
+                    contentStyle={{ background: 'var(--color-bg-overlay)', border: '1px solid var(--color-border-primary)', borderRadius: '8px', fontSize: '12px', color: 'var(--color-text-primary)' }}
+                    labelStyle={{ color: 'var(--color-text-secondary)' }}
+                    cursor={{ fill: 'var(--color-bg-tertiary)' }}
+                    formatter={(v, name) => [ILS(v), REVENUE_BUCKETS[name]?.label || name]}
+                    labelFormatter={(label, payload) => payload?.[0]?.payload?.full || label}
+                  />
+                  {Object.entries(REVENUE_BUCKETS).map(([key, b]) => (
+                    <Bar key={key} dataKey={key} stackId="rev" fill={b.color} animationDuration={700} />
+                  ))}
+                </BarChart>
+              </ResponsiveContainer>
+            </div>
+            <div className="mt-2 flex items-center gap-3 flex-wrap text-[10px] text-text-muted">
+              {Object.entries(REVENUE_BUCKETS).map(([key, b]) => (
+                <span key={key} className="inline-flex items-center gap-1">
+                  <span className="w-2 h-2 rounded-full shrink-0" style={{ background: b.color }} />
+                  {b.label}
+                </span>
+              ))}
+            </div>
+          </>
+        )}
+      </SectionCard>
+
       {/* Quota alerts — users at/over 80% of their daily AI quota today. */}
       {quotaAlerts.length > 0 && (
         <div className="bg-amber-500/5 border border-amber-500/30 rounded-xl p-4">
@@ -896,7 +996,21 @@ export default function AdminPanel() {
               allowClear
             />
           </div>
-          <div className="md:w-52">
+          <div className="md:w-40">
+            <SelectDropdown
+              value={activityFilter === 'all' ? '' : activityFilter}
+              onChange={(v) => setActivityFilter(v || 'all')}
+              options={[
+                { value: 'active7', label: 'פעיל 7 ימים' },
+                { value: 'active30', label: 'פעיל 30 יום' },
+                { value: 'inactive30', label: 'לא פעיל 30+ יום' },
+                { value: 'never', label: 'לא היה פעיל מעולם' },
+              ]}
+              placeholder="כל רמות הפעילות"
+              allowClear
+            />
+          </div>
+          <div className="col-span-2 md:col-span-1 md:w-48">
             <SelectDropdown
               value={onboardFilter === 'all' ? '' : onboardFilter}
               onChange={(v) => setOnboardFilter(v || 'all')}
@@ -1283,10 +1397,66 @@ function UserDetailModal({ user, onClose, onUserChanged }) {
   const [notifying, setNotifying] = useState(false);
   const [confirmDelete, setConfirmDelete] = useState(false);
   const [deleting, setDeleting] = useState(false);
+  // Connection status: Web Push devices + linked exchanges (ids only).
+  const [connections, setConnections] = useState(null);
+  // Private admin note (adminNotes/{uid} — admins only, invisible to the user).
+  const [noteText, setNoteText] = useState('');
+  const [noteLoading, setNoteLoading] = useState(true);
+  const [noteSaving, setNoteSaving] = useState(false);
+
+  // Keyed by uid (not the object) so a background users-refresh of the SAME
+  // user doesn't refetch and clobber an admin note being typed.
+  const uid = user?.id;
 
   // A leftover confirm from the previous user must not arm the delete button
   // for the next profile opened.
   useEffect(() => { setConfirmDelete(false); }, [user]);
+
+  // Push devices + connected exchanges via the worker — both endpoints are
+  // admin-gated and return counts/ids only, never subscriptions or API keys.
+  useEffect(() => {
+    if (!uid) { setConnections(null); return; }
+    let cancelled = false;
+    setConnections(null);
+    Promise.all([
+      adminGetPushStatus(uid).catch(() => null),
+      adminGetExchangesStatus(uid).catch(() => null),
+    ]).then(([push, exch]) => {
+      if (cancelled) return;
+      setConnections({
+        devices: push ? push.devices : null,
+        exchanges: exch ? exch.exchanges : null,
+      });
+    });
+    return () => { cancelled = true; };
+  }, [uid]);
+
+  useEffect(() => {
+    if (!uid) { setNoteText(''); return; }
+    let cancelled = false;
+    setNoteLoading(true);
+    setNoteText('');
+    getAdminMeta(uid)
+      .then(({ text }) => { if (!cancelled) setNoteText(text); })
+      .catch(() => { /* rules not deployed / offline — leave empty */ })
+      .finally(() => { if (!cancelled) setNoteLoading(false); });
+    return () => { cancelled = true; };
+  }, [uid]);
+
+  const saveNote = async () => {
+    if (!uid) return;
+    setNoteSaving(true);
+    try {
+      await setAdminMeta(uid, { text: noteText.trim() }, adminUser?.uid);
+      toast.success('ההערה נשמרה');
+    } catch (e) {
+      toast.error(e?.code === 'permission-denied'
+        ? 'אין הרשאה — ודא שכללי ה-Firestore נפרסו'
+        : 'שמירת ההערה נכשלה');
+    } finally {
+      setNoteSaving(false);
+    }
+  };
 
   const doDelete = async () => {
     if (!user) return;
@@ -1676,7 +1846,8 @@ function UserDetailModal({ user, onClose, onUserChanged }) {
               <div className="bg-bg-tertiary/40 border border-border-primary rounded-xl px-4 py-1 divide-y divide-border-primary/40">
                 <DetailRow icon={<Mail className="w-4 h-4" />} label="אימייל" value={user.email} />
                 <DetailRow icon={<Calendar className="w-4 h-4" />} label="הצטרף" value={formatDate(user.createdAt)} />
-                <DetailRow icon={<Clock className="w-4 h-4" />} label="פעילות אחרונה" value={relativeActive(user.lastActive)} />
+                <DetailRow icon={<Clock className="w-4 h-4" />} label="פעילות אחרונה"
+                  value={lastActiveMs(user) ? `${relativeActive(user.lastActive)} · ${formatDate(user.lastActive)}` : 'מעולם לא'} />
                 <DetailRow icon={<Coins className="w-4 h-4" />} label="מטבע בסיס" value={settings.baseCurrency} />
                 <DetailRow icon={<TrendingUp className="w-4 h-4" />} label="מינוף ברירת מחדל" value={settings.defaultLeverage ? `${settings.defaultLeverage}x` : null} />
                 <DetailRow icon={<Percent className="w-4 h-4" />} label="סיכון ברירת מחדל" value={settings.defaultRiskPercent != null ? `${settings.defaultRiskPercent}%` : null} />
@@ -1752,6 +1923,68 @@ function UserDetailModal({ user, onClose, onUserChanged }) {
               {countsError && (
                 <div className="mt-2 text-[11px] text-loss">{countsError}</div>
               )}
+            </div>
+
+            {/* Connections — push devices + linked exchanges (status only;
+                subscriptions and API keys never leave the worker's KV). */}
+            <div>
+              <div className="text-[11px] text-text-muted mb-2 flex items-center gap-1.5">
+                <Link2 className="w-3.5 h-3.5" /> חיבורים
+              </div>
+              {connections === null ? (
+                <div className="text-xs text-text-muted">…</div>
+              ) : (
+                <div className="flex items-center gap-1.5 flex-wrap">
+                  {connections.devices == null ? (
+                    <span className="inline-flex items-center gap-1 text-[11px] px-2 py-0.5 rounded-full bg-bg-tertiary text-text-muted border border-border-primary">
+                      <Bell className="w-3 h-3" /> Push: —
+                    </span>
+                  ) : connections.devices > 0 ? (
+                    <span className="inline-flex items-center gap-1 text-[11px] px-2 py-0.5 rounded-full bg-accent-primary/10 text-accent-primary border border-accent-primary/30 font-semibold">
+                      <Bell className="w-3 h-3" /> Push: {connections.devices === 1 ? 'מכשיר אחד' : `${connections.devices} מכשירים`}
+                    </span>
+                  ) : (
+                    <span className="inline-flex items-center gap-1 text-[11px] px-2 py-0.5 rounded-full bg-bg-tertiary text-text-muted border border-border-primary">
+                      <Bell className="w-3 h-3" /> Push: לא רשום
+                    </span>
+                  )}
+                  {(connections.exchanges || []).map((ex) => (
+                    <span key={ex} className="inline-flex items-center gap-1 text-[11px] px-2 py-0.5 rounded-full bg-profit/10 text-profit border border-profit/30 font-semibold" dir="ltr">
+                      <Link2 className="w-3 h-3" /> {EXCHANGE_NAMES[ex] || ex}
+                    </span>
+                  ))}
+                  {connections.exchanges && connections.exchanges.length === 0 && (
+                    <span className="text-[11px] px-2 py-0.5 rounded-full bg-bg-tertiary text-text-muted border border-border-primary">
+                      אין בורסות מחוברות
+                    </span>
+                  )}
+                </div>
+              )}
+            </div>
+
+            {/* Private admin note — stored at adminNotes/{uid}, never visible
+                to the user (admin-only read/write per firestore.rules). */}
+            <div>
+              <div className="text-[11px] text-text-muted mb-2 flex items-center gap-1.5">
+                <StickyNote className="w-3.5 h-3.5" /> הערת אדמין (פרטית)
+              </div>
+              <textarea
+                value={noteText}
+                onChange={(e) => setNoteText(e.target.value)}
+                placeholder={noteLoading ? 'טוען…' : 'הערה פנימית על הלקוח — גלויה לאדמינים בלבד'}
+                disabled={noteLoading}
+                maxLength={2000}
+                rows={3}
+                className="w-full bg-bg-tertiary/40 border border-border-primary rounded-lg px-3 py-2 text-sm text-text-primary outline-none focus:border-accent-primary resize-none disabled:opacity-50"
+              />
+              <button
+                onClick={saveNote}
+                disabled={noteLoading || noteSaving}
+                className="mt-1.5 w-full flex items-center justify-center gap-1.5 px-3 py-2 rounded-lg border border-border-primary text-sm text-text-secondary hover:text-text-primary hover:border-accent-primary/40 transition-colors cursor-pointer disabled:opacity-50"
+              >
+                {noteSaving && <Loader2 className="w-4 h-4 animate-spin" />}
+                {noteSaving ? 'שומר…' : 'שמור הערה'}
+              </button>
             </div>
           </div>
         </div>
