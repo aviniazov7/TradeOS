@@ -3838,6 +3838,33 @@ async function handleRequest(request, env) {
     }), { headers: { ...cors, 'Content-Type': 'application/json' } });
   }
 
+  // Admin-only: does a user have Web Push devices registered? Returns ONLY the
+  // COUNT of push:{uid}:{hash} subscription keys — never the subscriptions
+  // themselves (endpoints/keys stay in KV).
+  if (request.method === 'GET' && path.startsWith('/admin/push-status/')) {
+    const token = (request.headers.get('Authorization') || '').replace('Bearer ', '');
+    const adminUid = await verifyAdminFromToken(token);
+    if (!adminUid) return new Response(JSON.stringify({ error: 'forbidden' }), { status: 403, headers: { ...cors, 'Content-Type': 'application/json' } });
+    const targetUid = path.split('/')[3];
+    if (!targetUid) return new Response(JSON.stringify({ error: 'missing uid' }), { status: 400, headers: { ...cors, 'Content-Type': 'application/json' } });
+    const list = await env.ALERTS_KV.list({ prefix: `push:${targetUid}:` });
+    return new Response(JSON.stringify({ ok: true, devices: list.keys.length }), { headers: { ...cors, 'Content-Type': 'application/json' } });
+  }
+
+  // Admin-only: which exchanges a user has connected. Returns ONLY the
+  // exchange ids (pushexch:{uid}:{exchange} key names) — the encrypted
+  // credentials never leave KV.
+  if (request.method === 'GET' && path.startsWith('/admin/exchanges-status/')) {
+    const token = (request.headers.get('Authorization') || '').replace('Bearer ', '');
+    const adminUid = await verifyAdminFromToken(token);
+    if (!adminUid) return new Response(JSON.stringify({ error: 'forbidden' }), { status: 403, headers: { ...cors, 'Content-Type': 'application/json' } });
+    const targetUid = path.split('/')[3];
+    if (!targetUid) return new Response(JSON.stringify({ error: 'missing uid' }), { status: 400, headers: { ...cors, 'Content-Type': 'application/json' } });
+    const list = await env.ALERTS_KV.list({ prefix: `pushexch:${targetUid}:` });
+    const exchanges = list.keys.map((k) => k.name.split(':')[2]).filter(Boolean);
+    return new Response(JSON.stringify({ ok: true, exchanges }), { headers: { ...cors, 'Content-Type': 'application/json' } });
+  }
+
   // Trade event notifications — delivered as Web Push to the caller's own
   // registered devices (uid-keyed, #219).
   if (request.method === 'POST' && path === '/notify') {

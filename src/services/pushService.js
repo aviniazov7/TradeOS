@@ -205,6 +205,23 @@ export async function adminSendBulkNotification({ uids, title, body, url }) {
   return data;
 }
 
+// Admin-only: how many Web Push devices a user has registered (count only —
+// the worker never returns the subscriptions themselves).
+export async function adminGetPushStatus(uid) {
+  const res = await fetch(`${WORKER_BASE}/admin/push-status/${uid}`, { headers: await authHeader() });
+  const data = await res.json().catch(() => ({}));
+  if (!res.ok || !data.ok) throw new Error(data.error || 'טעינת סטטוס ההתראות נכשלה');
+  return data; // { ok, devices }
+}
+
+// Admin-only: which exchanges a user has connected (ids only — never keys).
+export async function adminGetExchangesStatus(uid) {
+  const res = await fetch(`${WORKER_BASE}/admin/exchanges-status/${uid}`, { headers: await authHeader() });
+  const data = await res.json().catch(() => ({}));
+  if (!res.ok || !data.ok) throw new Error(data.error || 'טעינת סטטוס הבורסות נכשלה');
+  return data; // { ok, exchanges } — exchange ids only
+}
+
 // Register read-only exchange keys with the worker so it can poll the exchange
 // in the background (closed-trade + daily-summary push notifications).
 export async function registerExchangeForPush(exchange, apiKey, apiSecret, passphrase) {
