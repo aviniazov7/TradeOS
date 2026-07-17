@@ -1334,11 +1334,25 @@ async function fetchEconomicCalendar(env) {
 // To avoid an N+1 read per cron tick, the cron reads one rolled-up blob:
 //   usettings:ALL = { [uid]: schedule }   (written by /notify-settings)
 
+// The cron ticks every 10 minutes, so an EXACT HH:MM comparison silently
+// skipped any scheduled time that isn't a multiple of 10 (a user who typed
+// 21:15 never got the reminder). A schedule is "due" when it falls inside
+// the current 10-minute tick window.
+function scheduleDue(hhmm, currentTime) {
+  const toMin = (t) => {
+    const [h, m] = String(t || '').split(':').map(Number);
+    return Number.isFinite(h) && Number.isFinite(m) ? h * 60 + m : NaN;
+  };
+  const sched = toMin(hhmm);
+  const now = toMin(currentTime);
+  return Number.isFinite(sched) && sched >= now && sched < now + 10;
+}
+
 async function checkJournalReminders(env, settingsMap) {
   const currentTime = getIsraelHHMM();
   const today = getIsraelDateStr();
   for (const [uid, s] of Object.entries(settingsMap)) {
-    if (!s?.journal?.enabled || s.journal.time !== currentTime) continue;
+    if (!s?.journal?.enabled || !scheduleDue(s.journal.time, currentTime)) continue;
     const sentKey = `sent:journal:${uid}:${today}`;
     if (await env.ALERTS_KV.get(sentKey)) continue;
     await sendPushToUser(env, uid, {
@@ -1354,7 +1368,7 @@ async function checkDailySummaries(env, settingsMap) {
   const currentTime = getIsraelHHMM();
   const today = getIsraelDateStr();
   for (const [uid, s] of Object.entries(settingsMap)) {
-    if (!s?.summary?.enabled || s.summary.time !== currentTime) continue;
+    if (!s?.summary?.enabled || !scheduleDue(s.summary.time, currentTime)) continue;
     const sentKey = `sent:summary:${uid}:${today}`;
     if (await env.ALERTS_KV.get(sentKey)) continue;
     const stats = await env.ALERTS_KV.get(`dailystats:u:${uid}:${today}`, 'json');
