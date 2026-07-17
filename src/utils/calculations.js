@@ -112,6 +112,20 @@ export function getTradeResult(pnl) {
 }
 
 /**
+ * The ONE closed-trade predicate, shared by the dashboard stats, the trade
+ * table and the monthly calendar — so a trade never counts as closed on one
+ * screen and open on another. Broker CSV imports (MT5/forex) carry
+ * status:'closed' + pnlFromExchange with NO exit price, so exitPrice alone
+ * must not decide; explicit 'open'/'partial' status always wins.
+ */
+export function isClosedTrade(t) {
+  if (!t) return false;
+  if (t.status === 'closed') return true;
+  if (t.status === 'partial' || t.status === 'open') return false;
+  return parseFloat(t.exitPrice) > 0 || typeof t.pnlFromExchange === 'number';
+}
+
+/**
  * Calculate win rate from an array of trades
  */
 export function calculateWinRate(trades) {
