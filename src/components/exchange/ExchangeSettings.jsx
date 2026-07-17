@@ -280,7 +280,12 @@ export function SyncModal({ exchange, trades, onClose, onImport, existingExterna
         <div className="overflow-y-auto flex-1 divide-y divide-border-primary/30">
           {trades.map((trade, i) => {
             const sel = selected.has(i);
-            const win = trade.pnlFromExchange >= 0;
+            // null/undefined PnL (open positions) must not satisfy >= 0 and
+            // render green — show neutral until the exchange reports a number.
+            let pnlClass = 'text-text-muted';
+            if (typeof trade.pnlFromExchange === 'number') {
+              pnlClass = trade.pnlFromExchange >= 0 ? 'text-profit' : 'text-loss';
+            }
             const isExisting = isUpdate(trade);
             return (
               <button key={i} onClick={() => toggle(i)}
@@ -290,7 +295,7 @@ export function SyncModal({ exchange, trades, onClose, onImport, existingExterna
                 </div>
                 <div className="flex-1 min-w-0">
                   <div className="flex items-center justify-between">
-                    <span className={`text-sm font-bold font-mono ${win ? 'text-profit' : 'text-loss'}`} dir="ltr">{fmtPnl(trade.pnlFromExchange)}</span>
+                    <span className={`text-sm font-bold font-mono ${pnlClass}`} dir="ltr">{fmtPnl(trade.pnlFromExchange)}</span>
                     <div className="flex items-center gap-1.5">
                       {isExisting && (
                         <span className="text-[9px] font-bold px-1.5 py-0.5 rounded-full bg-accent-primary/15 text-accent-primary border border-accent-primary/30">עדכון</span>

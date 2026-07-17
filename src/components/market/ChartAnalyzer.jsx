@@ -143,6 +143,13 @@ export default function ChartAnalyzer({ heightClass = '' }) {
   const fileInputRef = useRef(null);
   const resultRef = useRef('');
   const batchRef = useRef(null);
+  const copyTimerRef = useRef(null);
+  // Streaming/copy can outlive the page — kill pending timers on unmount so
+  // no setState fires after the component is gone.
+  useEffect(() => () => {
+    clearTimeout(batchRef.current);
+    clearTimeout(copyTimerRef.current);
+  }, []);
   const aiUsage = useAiUsage();
   const { isPremium, loading: authLoading } = useAuth();
   const navigate = useNavigate();
@@ -226,7 +233,8 @@ export default function ChartAnalyzer({ heightClass = '' }) {
     try {
       await navigator.clipboard.writeText(resultText);
       setCopied(true);
-      setTimeout(() => setCopied(false), 1500);
+      clearTimeout(copyTimerRef.current);
+      copyTimerRef.current = setTimeout(() => setCopied(false), 1500);
     } catch { /* ignore */ }
   };
 
