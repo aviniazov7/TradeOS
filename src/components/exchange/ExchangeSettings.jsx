@@ -67,7 +67,7 @@ export const EXCHANGES = [
       { text: 'אל תסמן Trade / Withdraw', n: '!', warn: true },
       { text: 'Confirm → 2FA → העתק Key + Secret + Passphrase', n: '4' },
     ],
-    extraField: { key: 'passphrase', label: 'Passphrase', placeholder: 'OKX Passphrase' },
+    extraField: { key: 'passphrase', label: 'Passphrase', placeholder: 'OKX Passphrase', required: true },
   },
   {
     id: 'bitget',  name: 'Bitget',  tagline: 'Copy Trading & Futures',
@@ -80,7 +80,7 @@ export const EXCHANGES = [
       { text: 'אל תסמן Trade / Withdrawal', n: '!', warn: true },
       { text: 'Confirm → 2FA → העתק Key + Secret + Passphrase', n: '4' },
     ],
-    extraField: { key: 'passphrase', label: 'Passphrase', placeholder: 'Bitget Passphrase' },
+    extraField: { key: 'passphrase', label: 'Passphrase', placeholder: 'Bitget Passphrase', required: true },
   },
   {
     id: 'binance', name: 'Binance', tagline: "World's Largest Exchange",
@@ -353,9 +353,15 @@ function ExchangeCard({ exchange, data, savedData, syncing, saving, onUpdate, on
   // "Connected" is now a non-secret marker — the secret itself lives encrypted
   // server-side and is never held in the browser.
   const isConnected = !!savedData?.connected;
-  // Saving requires both fields freshly entered (we can't prefill the secret).
+  // Saving requires both fields freshly entered (we can't prefill the secret),
+  // plus the extra field (OKX/Bitget passphrase) when the exchange requires it.
   const hasChanges = (data?.apiKey || '').length > 0 && (data?.apiSecret || '').length > 0
-    && (!extraField || (data?.[extraField.key] || '').length > 0 || !extraField.required);
+    && (!extraField?.required || (data?.[extraField.key] || '').trim().length > 0);
+  // Key + secret typed but the required passphrase is still empty — surface a
+  // dedicated hint instead of silently hiding the save button.
+  const missingExtra = !!extraField?.required
+    && (data?.apiKey || '').length > 0 && (data?.apiSecret || '').length > 0
+    && (data?.[extraField.key] || '').trim().length === 0;
 
   // Pull the futures wallet balance once the exchange is connected, so the
   // card shows "Bybit: $1,234" without asking the user to type a starting value.
@@ -544,10 +550,17 @@ function ExchangeCard({ exchange, data, savedData, syncing, saving, onUpdate, on
                 )}
               </div>
             ) : editing && !hasChanges ? (
-              <motion.button onClick={() => setEditing(false)} whileHover={{ scale: 1.02 }} whileTap={{ scale: 0.97 }}
-                className="flex-1 py-2.5 rounded-xl border border-border-primary text-sm text-text-muted hover:bg-bg-tertiary transition-colors cursor-pointer">
-                ביטול
-              </motion.button>
+              <>
+                {missingExtra && (
+                  <div className="flex-1 py-2.5 rounded-xl text-xs text-center text-text-muted border border-dashed border-border-primary flex items-center justify-center gap-1.5">
+                    <Link2 className="w-3.5 h-3.5" />הזן {extraField.label} לחיבור {name}
+                  </div>
+                )}
+                <motion.button onClick={() => setEditing(false)} whileHover={{ scale: 1.02 }} whileTap={{ scale: 0.97 }}
+                  className={`${missingExtra ? 'px-4' : 'flex-1'} py-2.5 rounded-xl border border-border-primary text-sm text-text-muted hover:bg-bg-tertiary transition-colors cursor-pointer`}>
+                  ביטול
+                </motion.button>
+              </>
             ) : hasChanges ? (
               <>
                 <motion.button whileHover={{ scale: 1.03 }} whileTap={{ scale: 0.97 }}
@@ -564,7 +577,8 @@ function ExchangeCard({ exchange, data, savedData, syncing, saving, onUpdate, on
               </>
             ) : (
               <div className="flex-1 py-2.5 rounded-xl text-xs text-center text-text-muted border border-dashed border-border-primary flex items-center justify-center gap-1.5">
-                <Link2 className="w-3.5 h-3.5" />הזן API Key ו-Secret לחיבור
+                <Link2 className="w-3.5 h-3.5" />
+                {missingExtra ? `הזן ${extraField.label} לחיבור ${name}` : 'הזן API Key ו-Secret לחיבור'}
               </div>
             )}
           </div>
@@ -654,7 +668,14 @@ export default function ExchangeSettings({ journalId: propJournalId } = {}) {
       return;
     }
     const conf = exchanges[id] || {};
-    const extraKey = EXCHANGES.find(e => e.id === id)?.extraField?.key;
+    const exDef = EXCHANGES.find(e => e.id === id);
+    const extraKey = exDef?.extraField?.key;
+    // Second gate behind the button's hasChanges check: never store OKX/Bitget
+    // credentials without the passphrase — every later sync would fail auth.
+    if (exDef?.extraField?.required && !(conf[extraKey] || '').trim()) {
+      toast.error(`חסר ${exDef.extraField.label} — חובה לחיבור ${exDef.name}`);
+      return;
+    }
     setSaving(id);
     try {
       // Send the secret to the encrypted server-side store exactly once.
