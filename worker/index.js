@@ -1603,6 +1603,10 @@ async function geminiStreamToOpenAI(geminiBody) {
   const decoder = new TextDecoder();
   const encoder = new TextEncoder();
   let leftover = '';
+  // Gemini reports token counts in usageMetadata on its stream chunks —
+  // dropping it meant every premium (Gemini) chat metered as tokIn:0/tokOut:0
+  // and the admin cost dashboard was blind to the most expensive traffic (#214).
+  let usageMeta = null;
   return new ReadableStream({
     async start(controller) {
       const send = (text) => {
@@ -1623,12 +1627,25 @@ async function geminiStreamToOpenAI(geminiBody) {
             if (!payload || payload === '[DONE]') continue;
             try {
               const obj = JSON.parse(payload);
+              if (obj.usageMetadata) usageMeta = obj.usageMetadata;
               const text = obj.candidates?.[0]?.content?.parts?.map((p) => p.text || '').join('') || '';
               if (text) send(text);
             } catch { /* skip malformed */ }
           }
         }
       } finally {
+        // Emit the usage in OpenAI shape (like Groq's include_usage chunk —
+        // empty choices, so clients that only read delta.content skip it)
+        // right before DONE, where meterStream picks it up.
+        if (usageMeta) {
+          controller.enqueue(encoder.encode(`data: ${JSON.stringify({
+            choices: [],
+            usage: {
+              prompt_tokens: usageMeta.promptTokenCount || 0,
+              completion_tokens: usageMeta.candidatesTokenCount || 0,
+            },
+          })}\n\n`));
+        }
         controller.enqueue(encoder.encode('data: [DONE]\n\n'));
         controller.close();
       }
