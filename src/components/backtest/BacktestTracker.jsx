@@ -41,12 +41,15 @@ function getSessionFromDate(date) {
   return 'Asia';
 }
 
-const defaultForm = {
+// A function, not a module-level object: the default date must be "now" at the
+// moment the form opens, not frozen at app load (a tab left open for two days
+// was silently stamping backtests with a stale date + wrong auto-session).
+const makeDefaultForm = () => ({
   pair: 'BTCUSDT', direction: 'long', strategy: '', trigger: '',
   timeframe: '4H', session: '', date: new Date().toISOString(),
   maxR: '', stopDistancePct: '', rResult: '', result: 'win',
   entryChartUrl: '', managementChartUrl: '', notes: '',
-};
+});
 
 const defaultFilters = { search: '', direction: '', result: '', strategy: '', session: '' };
 
@@ -79,7 +82,7 @@ export default function BacktestTracker() {
   const { allTriggers, addTrigger, removeTrigger } = useUserTriggers();
   const [formOpen, setFormOpen] = useState(false);
   const [editingId, setEditingId] = useState(null);
-  const [form, setForm] = useState(defaultForm);
+  const [form, setForm] = useState(makeDefaultForm);
   const [saving, setSaving] = useState(false);
   const [deleteTarget, setDeleteTarget] = useState(null);
   const [filters, setFilters] = useState(defaultFilters);
@@ -126,7 +129,7 @@ export default function BacktestTracker() {
 
   const openNew = () => {
     setEditingId(null);
-    setForm(defaultForm);
+    setForm(makeDefaultForm());
     setFormOpen(true);
     setMobileStep(0);
   };
@@ -160,7 +163,7 @@ export default function BacktestTracker() {
         await addBacktest(data);
         toast.success('העסקה נוספה');
       }
-      setForm({ ...defaultForm, pair: form.pair, strategy: form.strategy, timeframe: form.timeframe, session: form.session });
+      setForm({ ...makeDefaultForm(), pair: form.pair, strategy: form.strategy, timeframe: form.timeframe, session: form.session });
       setEditingId(null);
       setFormOpen(false);
     } catch { toast.error('שגיאה בשמירה'); }
@@ -649,6 +652,7 @@ export default function BacktestTracker() {
                   <DatePicker
                     selected={form.date ? new Date(form.date) : new Date()}
                     onChange={(date) => {
+                      if (!date) return; // clearing the text field emits null
                       const prev = form.date ? new Date(form.date) : new Date();
                       date.setHours(prev.getHours(), prev.getMinutes());
                       update('date', date.toISOString());
@@ -666,6 +670,7 @@ export default function BacktestTracker() {
                   <DatePicker
                     selected={form.date ? new Date(form.date) : new Date()}
                     onChange={(date) => {
+                      if (!date) return; // clearing the text field emits null
                       const prev = form.date ? new Date(form.date) : new Date();
                       prev.setHours(date.getHours(), date.getMinutes());
                       update('date', prev.toISOString());
