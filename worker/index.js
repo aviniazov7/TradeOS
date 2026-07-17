@@ -776,7 +776,7 @@ async function checkExchangeClosedTrades(env) {
       const fresh = trades
         .filter((t) => t.exitMs > cursor)
         .sort((a, b) => a.exitMs - b.exitMs)
-        .slice(0, 5); // anti-flood per tick
+        .slice(0, 5); // anti-flood per tick — the overflow ships on later ticks
       for (const t of fresh) {
         const dedupKey = `pushsent:${uid}:${t.externalId}`;
         if (await env.ALERTS_KV.get(dedupKey)) continue;
@@ -793,7 +793,13 @@ async function checkExchangeClosedTrades(env) {
           tag: `closed-${t.externalId}`,
         });
       }
-      if (maxExit > cursor) await env.ALERTS_KV.put(cursorKey, String(maxExit), { expirationTtl: 60 * 60 * 24 * 60 });
+      // Advance the cursor only to the newest close we actually PROCESSED —
+      // advancing straight to maxExit permanently skipped every close between
+      // the 5 oldest and the newest (7 closes in one window → 2 vanished).
+      // The overflow stays above the cursor and ships on the next ticks;
+      // pushsent dedup guards against any replay.
+      const newCursor = fresh.length ? fresh[fresh.length - 1].exitMs : maxExit;
+      if (newCursor > cursor) await env.ALERTS_KV.put(cursorKey, String(newCursor), { expirationTtl: 60 * 60 * 24 * 60 });
     }
 
     // ---- Daily summary (once per Israel day, ~22:00) ----
@@ -914,6 +920,20 @@ async function getAiImageUsage(env, uid) {
   const key = `aiimg:${uid}:${date}`;
   const v = await env.ALERTS_KV.get(key);
   return { used: v ? parseInt(v, 10) || 0 : 0, limit: AI_IMAGE_DAILY_LIMIT, date };
+}
+
+// Refund a prepaid quota charge (#202): quotas are now charged BEFORE the
+// provider call (check-then-serve raced under parallel bursts and let a free
+// user blow past the daily cap), so a provider failure refunds the charge to
+// preserve the "failed calls don't burn quota" behavior.
+async function decrementKvCounter(env, key) {
+  const v = parseInt(await env.ALERTS_KV.get(key), 10) || 0;
+  if (v > 0) await env.ALERTS_KV.put(key, String(v - 1), { expirationTtl: 172800 });
+}
+async function refundAiCharge(env, uid, hasImage) {
+  const date = getIsraelDateStr();
+  await decrementKvCounter(env, `aiusage:${uid}:${date}`);
+  if (hasImage) await decrementKvCounter(env, `aiimg:${uid}:${date}`);
 }
 
 async function incrementAiImageUsage(env, uid) {
@@ -1750,28 +1770,28 @@ async function handleAIChat(request, env, cors) {
           premiumRequired: true,
         }), { status: 403, headers: { ...cors, 'Content-Type': 'application/json' } });
       }
-      const imgQuota = await getAiImageUsage(env, uid);
-      if (imgQuota.used >= imgQuota.limit) {
+      // CHARGE-then-check (#202): the old read→check→serve→increment raced —
+      // N parallel requests all read the same pre-increment count and all
+      // passed. Charging first closes the gate; provider failures refund.
+      const imgUsed = await incrementAiImageUsage(env, uid);
+      if (imgUsed > AI_IMAGE_DAILY_LIMIT) {
         return new Response(JSON.stringify({
-          error: `הגעת למכסת ניתוחי התמונות היומית (${imgQuota.limit}). אפשר להמשיך לשוחח בטקסט, והמכסה תתאפס מחר.`,
-          quotaExceeded: true, used: imgQuota.used, limit: imgQuota.limit,
+          error: `הגעת למכסת ניתוחי התמונות היומית (${AI_IMAGE_DAILY_LIMIT}). אפשר להמשיך לשוחח בטקסט, והמכסה תתאפס מחר.`,
+          quotaExceeded: true, used: AI_IMAGE_DAILY_LIMIT, limit: AI_IMAGE_DAILY_LIMIT,
         }), { status: 429, headers: { ...cors, 'Content-Type': 'application/json' } });
       }
     }
 
     // Daily AI usage counter — kept for BOTH tiers so each user sees their
     // own progress bar. Premium just has a higher cap (handled in aiRateGate).
-    if (!premium) {
-      const quota = await getAiUsage(env, uid);
-      if (quota.used >= quota.limit) {
-        return new Response(JSON.stringify({
-          error: `הגעת למכסה היומית (${quota.limit} בקשות). שדרג ל-Premium ל-${AI_PREMIUM_LIMITS.day} בקשות ביום.`,
-          quotaExceeded: true, used: quota.used, limit: quota.limit,
-        }), { status: 429, headers: { ...cors, 'Content-Type': 'application/json' } });
-      }
+    // Charged upfront (#202); refunded via refundAiCharge on provider failure.
+    const dailyUsed = await incrementAiUsage(env, uid);
+    if (!premium && dailyUsed > AI_DAILY_LIMIT) {
+      return new Response(JSON.stringify({
+        error: `הגעת למכסה היומית (${AI_DAILY_LIMIT} בקשות). שדרג ל-Premium ל-${AI_PREMIUM_LIMITS.day} בקשות ביום.`,
+        quotaExceeded: true, used: AI_DAILY_LIMIT, limit: AI_DAILY_LIMIT,
+      }), { status: 429, headers: { ...cors, 'Content-Type': 'application/json' } });
     }
-    // NOTE: usage is incremented only after a provider accepts the request —
-    // a failed/overloaded call must not burn the user's daily quota.
 
     // Build messages for Groq. Trim history to keep the payload under Groq's
     // tokens-per-minute cap (the old 11K-char system prompt + long Wyckoff
@@ -1833,8 +1853,6 @@ async function handleAIChat(request, env, cors) {
           if (wait) await new Promise((r) => setTimeout(r, wait));
           groqFallback = await callGroq();
           if (groqFallback.ok) {
-            await incrementAiUsage(env, uid);
-            if (hasImage) await incrementAiImageUsage(env, uid);
             return new Response(meterStream(env, groqFallback.body, { hasImage }), { headers: sseHeaders });
           }
           if (groqFallback.status !== 429) break; // non-retryable
@@ -1845,6 +1863,8 @@ async function handleAIChat(request, env, cors) {
         const friendly = rateLimited
           ? 'שני ספקי ה-AI עמוסים. המתן 10–20 שניות ונסה שוב.'
           : `שגיאת AI: ${gemRes.status}/${groqFallback.status}`;
+        // Refund the prepaid quota charge — a failed call must not burn it.
+        await refundAiCharge(env, uid, hasImage);
         // 429 (not 502) for rate limits, so the client's own backoff retries too.
         return new Response(JSON.stringify({
           error: friendly,
@@ -1852,8 +1872,6 @@ async function handleAIChat(request, env, cors) {
           groq: groqFallback.status,
         }), { status: rateLimited ? 429 : 502, headers: { ...cors, 'Content-Type': 'application/json' } });
       }
-      await incrementAiUsage(env, uid);
-      if (hasImage) await incrementAiImageUsage(env, uid);
       return new Response(meterStream(env, await geminiStreamToOpenAI(gemRes.body), { hasImage }), { headers: sseHeaders });
     }
 
@@ -1881,8 +1899,6 @@ async function handleAIChat(request, env, cors) {
       if (wait) await new Promise((r) => setTimeout(r, wait));
       groqResponse = await callGroq();
       if (groqResponse.ok) {
-        await incrementAiUsage(env, uid);
-        if (hasImage) await incrementAiImageUsage(env, uid);
         return new Response(meterStream(env, groqResponse.body, { hasImage }), { headers: sseHeaders });
       }
       if (groqResponse.status !== 429) break; // non-retryable
@@ -1890,6 +1906,8 @@ async function handleAIChat(request, env, cors) {
 
     const errText = await groqResponse.text().catch(() => '');
     console.error('Groq API error:', groqResponse.status, errText);
+    // Refund the prepaid quota charge — a failed call must not burn it.
+    await refundAiCharge(env, uid, hasImage);
     // 429 (not 502) for rate limits, so the client's own backoff retries too.
     const rateLimited = groqResponse.status === 429;
     return new Response(
@@ -2110,18 +2128,17 @@ async function handleAIProjectDescription(request, env, cors) {
     const gate = await aiRateGate(env, uid, premium);
     if (gate) return new Response(JSON.stringify(gate.body), { status: gate.status, headers: { ...cors, 'Content-Type': 'application/json' } });
 
-    // Free-tier daily quota.
+    // Free-tier daily quota — charged UPFRONT (#202, mirrors /ai-chat): the
+    // old read→check→serve→increment raced under parallel requests. A failed
+    // provider call refunds the charge below.
     if (!premium) {
-      const quota = await getAiUsage(env, uid);
-      if (quota.used >= quota.limit) {
+      const dailyUsed = await incrementAiUsage(env, uid);
+      if (dailyUsed > AI_DAILY_LIMIT) {
         return new Response(JSON.stringify({
-          error: `הגעת למכסה היומית (${quota.limit} בקשות). שדרג ל-Premium לשימוש ללא הגבלה.`,
-          quotaExceeded: true, used: quota.used, limit: quota.limit,
+          error: `הגעת למכסה היומית (${AI_DAILY_LIMIT} בקשות). שדרג ל-Premium לשימוש ללא הגבלה.`,
+          quotaExceeded: true, used: AI_DAILY_LIMIT, limit: AI_DAILY_LIMIT,
         }), { status: 429, headers: { ...cors, 'Content-Type': 'application/json' } });
       }
-      // NOTE: quota is incremented only AFTER a successful provider response
-      // (below), mirroring /ai-chat — a failed Groq call must not burn the
-      // user's daily quota.
     }
 
     const userPrompt = `כתוב מאמרון על הפרויקט שמאחורי המטבע ${coinName}${symbol ? ` (${String(symbol).toUpperCase()})` : ''}.`;
@@ -2140,14 +2157,13 @@ async function handleAIProjectDescription(request, env, cors) {
     if (!groqResponse.ok) {
       const errText = await groqResponse.text();
       console.error('Groq API error:', groqResponse.status, errText);
+      // Refund the prepaid charge — a failed call must not burn the quota.
+      if (!premium) await refundAiCharge(env, uid, false);
       return new Response(JSON.stringify({ error: groqResponse.status === 429 ? 'ספק ה-AI עמוס כרגע, נסה שוב בעוד רגע' : `שגיאת AI: ${groqResponse.status}` }), { status: 502, headers: { ...cors, 'Content-Type': 'application/json' } });
     }
 
     const data = await groqResponse.json();
     const text = data.choices?.[0]?.message?.content || '';
-
-    // Charge the daily quota only now that the provider succeeded.
-    if (!premium) await incrementAiUsage(env, uid);
 
     return new Response(JSON.stringify({ text }), {
       headers: { ...cors, 'Content-Type': 'application/json' },
@@ -3654,6 +3670,19 @@ async function handleRequest(request, env) {
     // grant race; if the plan write below fails, the user can try again — the
     // marker is per-uid so they won't double-redeem either way.
     await env.ALERTS_KV.put(redeemKey, '1');
+
+    // Enforce maxUses by COUNTING the per-uid markers after claiming (#202) —
+    // the used-counter's get→+1→put raced under concurrency, letting a capped
+    // coupon over-redeem. Counting claim markers shrinks the race to KV's
+    // list-propagation window instead of the whole redeem flow.
+    if (coupon.maxUses != null) {
+      const marks = await env.ALERTS_KV.list({ prefix: `coupon-redeemed:${code}:` });
+      if (marks.keys.length > coupon.maxUses) {
+        await env.ALERTS_KV.delete(redeemKey); // over cap — release the claim
+        return new Response(JSON.stringify({ error: 'הקוד נוצל במלואו' }), { status: 410, headers: { ...cors, 'Content-Type': 'application/json' } });
+      }
+    }
+
     const fresh = await env.ALERTS_KV.get(`coupon:${code}`, 'json');
     if (fresh) {
       fresh.used = (fresh.used || 0) + 1;
@@ -3674,6 +3703,11 @@ async function handleRequest(request, env) {
       await env.ALERTS_KV.delete(redeemKey);
       return new Response(JSON.stringify({ error: 'מימוש הקופון נכשל. נסה שוב.', detail: wrote.error }), { status: 502, headers: { ...cors, 'Content-Type': 'application/json' } });
     }
+
+    // Bust the 10-minute plan cache so Premium kicks in IMMEDIATELY (#203) —
+    // the admin grant path already does this via /admin/refresh-plan; without
+    // it a redeeming user stayed "free" for up to 10 minutes after paying.
+    await env.ALERTS_KV.delete(`planflag:${uid}`);
 
     appendAudit(env, { kind: 'coupon_redeem', actor: uid, code, days: coupon.days, planExpires: newExpiry });
 
