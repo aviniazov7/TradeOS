@@ -489,7 +489,7 @@ export default function TradeJournal() {
       return [
         formatDate(d), xd ? formatDate(xd) : '', t.pair, t.direction, t.entryPrice, t.exitPrice,
         t.stopLoss, t.positionSize, t.leverage, t.fees, pnl.toFixed(2),
-        (isNaN(pnlPct) ? 0 : pnlPct).toFixed(2), ((pnl < 0 ? -1 : 1) * (t.rrRatio ?? 0)).toFixed(2), t.strategy || '',
+        (isNaN(pnlPct) ? 0 : pnlPct).toFixed(2), ((pnl < 0 ? -1 : 1) * Math.abs(t.rrRatio ?? 0)).toFixed(2), t.strategy || '',
         t.timeframe || '', t.exitPrice > 0 ? 'סגורה' : 'פתוחה',
         t.entryReason || '', t.notes || '', tags, t.emotionBefore || '', t.emotionAfter || '', mistakes, t.confidenceRating ?? '',
       ];

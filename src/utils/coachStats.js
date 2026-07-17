@@ -79,7 +79,9 @@ export function buildCoachStats(allTrades, { premium = false } = {}) {
     pair: t.pair || t.symbol || '?',
     direction: t.direction || null,
     pnl: Math.round(pnlOf(t) * 100) / 100,
-    rr: t.rr ?? null,
+    // rrRatio, not t.rr (which never existed — the coach always got null and
+    // couldn't reason about R). Math.abs normalizes legacy signed imports.
+    rr: t.rrRatio == null ? null : Math.abs(t.rrRatio),
     strategy: t.strategy || null,
     session: t.session || null,
   });

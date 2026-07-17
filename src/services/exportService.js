@@ -41,7 +41,13 @@ const SHEETS = {
       { header: 'עמלות', get: (t) => fmtNum(t.fees) },
       { header: 'P&L נטו ($)', get: (t) => fmtNum(t.netPnl ?? t.pnl) },
       { header: 'אחוז P&L', get: (t) => fmtNum(t.pnlPercent) },
-      { header: 'R:R', get: (t) => fmtNum(t.rr) },
+      // The field is rrRatio (t.rr never existed — the column exported empty
+      // forever). Stored unsigned; the sign comes from the pnl, matching the
+      // in-app display (formatRR) and the journal's CSV export.
+      { header: 'R:R', get: (t) => {
+        const rr = Math.abs(parseFloat(t.rrRatio) || 0);
+        return rr ? fmtNum((parseFloat(t.netPnl ?? t.pnl) || 0) < 0 ? -rr : rr) : '';
+      } },
       { header: 'אסטרטגיה', get: (t) => t.strategy },
       { header: 'סשן', get: (t) => t.session },
       { header: 'טווח זמן', get: (t) => t.timeframe },
@@ -59,7 +65,9 @@ const SHEETS = {
       { header: 'שם היומן', get: (j) => j.name },
       { header: 'בורסה', get: (j) => j.exchange },
       { header: 'יתרה התחלתית', get: (j) => fmtNum(j.initialBalance) },
-      { header: 'מטבע בסיס', get: (j) => j.baseCurrency },
+      // The journal document stores `currency` (see JournalContext.addJournal);
+      // `baseCurrency` never existed, so this column exported empty.
+      { header: 'מטבע בסיס', get: (j) => j.currency },
       { header: 'מועדף', get: (j) => fmtBool(j.starred) },
       { header: 'בארכיון', get: (j) => fmtBool(j.archived) },
       { header: 'נוצר', get: (j) => fmtDate(j.createdAt) },
