@@ -1,6 +1,6 @@
 <div align="center">
 
-<img src="https://readme-typing-svg.demolab.com/?lines=TradeOS+%E2%80%94+Trading+Operating+System;Journal+%E2%80%A2+Analytics+%E2%80%A2+Backtest+%E2%80%A2+Telegram+Bot&font=Fira+Code&size=22&duration=2800&pause=900&color=F7A600&center=true&vCenter=true&width=720&height=50" alt="TradeOS" />
+<img src="https://readme-typing-svg.demolab.com/?lines=TradeOS+%E2%80%94+Trading+Operating+System;Journal+%E2%80%A2+Analytics+%E2%80%A2+Backtest+%E2%80%A2+Web+Push+Alerts&font=Fira+Code&size=22&duration=2800&pause=900&color=F7A600&center=true&vCenter=true&width=720&height=50" alt="TradeOS" />
 
 <br/>
 
@@ -16,12 +16,11 @@
 
 <div dir="rtl">
 
-פלטפורמה מקיפה לניהול מסחר בקריפטו (פיוצ'רס) — יומן מסחר, אנליטיקס מתקדם, אזור מנטליות, חיבור בורסות, בוט טלגרם אינטראקטיבי, ועוד. הכל בעברית ובממשק RTL מודרני.
+פלטפורמה מקיפה לניהול מסחר בקריפטו (פיוצ'רס) — יומן מסחר, אנליטיקס מתקדם, אזור מנטליות, חיבור בורסות, התראות Web Push מתוך האפליקציה, ועוד. הכל בעברית ובממשק RTL מודרני.
 
 </div>
 
 **Live:** [tradeos-91a58.web.app](https://tradeos-91a58.web.app)
-**Bot:** [@TradeOSAlerts_bot](https://t.me/TradeOSAlerts_bot)
 
 ---
 
@@ -95,43 +94,26 @@
 
 ---
 
-## Telegram Bot
+## Notifications (Web Push)
 
-Interactive Telegram bot with real-time market data and automated notifications.
-
-### Market Data (with visual charts)
-| Command | Description |
-|---|---|
-| `/prices` | Watchlist prices (green/red, sorted by change) |
-| `/funding` | Funding Rate — horizontal bar chart |
-| `/oi` | Open Interest — horizontal bar chart |
-| `/ls` | Long/Short Ratio — stacked bar chart |
-| `/fear` | Fear & Greed Index with visual gauge |
-| `/price BTC` | Quick price check for any coin |
-
-### Personal Watchlist
-- 20 supported coins (BTC, ETH, SOL, XRP, BNB, ADA, DOGE, AVAX, DOT, LINK, MATIC, SUI, NEAR, APT, ARB, OP, ATOM, FTM, PEPE, TRUMP)
-- Add/remove coins via interactive menu
-- Prices, funding, OI, and L/S ratio all use your personal watchlist
+All notifications are delivered in-app via Web Push (VAPID), keyed by the user's uid — no external bot or third-party chat app required. Everything is configured from the app's notification settings.
 
 ### Automated Notifications
 | Feature | Description |
 |---|---|
-| Price Alerts | Set target prices, monitored 24/7 every minute |
+| Price Alerts | Set target prices in the Market screen, monitored 24/7 by the cron |
+| Trade Events | Position opened / TP hit / SL hit (manual trades and exchange sync) |
 | Journal Reminder | Daily reminder at configurable time (default 21:00) |
 | Daily Summary | End-of-day P&L, trade count, Win Rate (auto-pushed from app) |
 | Economic Calendar | Alert 1 hour before High Impact USD events (CPI, FOMC, NFP) |
 
-All notifications are toggleable via the bot settings menu (`/settings`).
-
-### Bot Architecture
+### Worker Architecture
 - **Runtime:** Cloudflare Workers (serverless, edge)
-- **Storage:** Workers KV (user data, settings, alerts, stats)
-- **Charts:** QuickChart.io (server-side chart rendering)
+- **Delivery:** Web Push (VAPID, encrypted payloads) to every registered device
+- **Storage:** Workers KV (push subscriptions, alerts, schedules, stats — all uid-keyed)
 - **Market Data:** Binance Spot + Futures API
 - **Calendar:** ForexFactory API
-- **Cron:** Every minute (price alerts, reminders, summaries, calendar events)
-- **Auth:** Deep link registration — bot is silent for unregistered users
+- **Cron:** Every 10 minutes (price alerts, reminders, summaries, calendar events)
 - **Exchange Sync:** HMAC-SHA256 signing proxy — API secrets never leave the server
 
 ---
@@ -156,11 +138,10 @@ All notifications are toggleable via the bot settings menu (`/settings`).
 ### Cloudflare Worker
 | Technology | Usage |
 |---|---|
-| Cloudflare Workers | Serverless runtime (Telegram bot + Exchange sync proxy) |
-| Workers KV | Key-value storage for user data, alerts, watchlists |
-| QuickChart.io | Chart image generation |
+| Cloudflare Workers | Serverless runtime (Web Push notifications + Exchange sync proxy) |
+| Workers KV | Key-value storage for push subscriptions, alerts, schedules |
+| Web Push (VAPID) | Encrypted push delivery to registered devices |
 | Binance API | Spot + Futures market data |
-| Telegram Bot API | Webhooks + inline keyboards |
 | MEXC / Bybit / OKX / Bitget API | Exchange trade sync (read-only, HMAC signed) |
 
 ---
@@ -181,23 +162,22 @@ flowchart TD
     hosting["🌐 Firebase Hosting<br/>SPA · SW · cache headers"] -.serves.-> app
 
     %% Worker
-    worker["☁️ Cloudflare Worker<br/>(edge runtime)"] --> sync & bot & cron
+    worker["☁️ Cloudflare Worker<br/>(edge runtime)"] --> sync & push & cron
 
     %% Exchange pipeline
     sync["🔄 Exchange Sync Proxy<br/>HMAC-SHA256 signing"] --> exchanges
     exchanges["💱 Bybit · MEXC · OKX · Bitget<br/>(read-only API keys)"]
 
-    %% Telegram bot pipeline
-    bot["🤖 Telegram Bot<br/>commands · inline keyboards"] --> kv & tg & market
-    kv[("📦 Workers KV<br/>users · alerts · watchlists · stats")]
-    tg["📱 Telegram Bot API<br/>sendMessage · sendPhoto"]
-    market["📊 Binance Spot+Futures<br/>QuickChart · ForexFactory<br/>Fear & Greed Index"]
+    %% Web Push pipeline
+    push["🔔 Web Push<br/>VAPID · encrypted payloads"] --> kv & market
+    kv[("📦 Workers KV<br/>subscriptions · alerts · schedules · stats")]
+    market["📊 Binance Spot+Futures<br/>ForexFactory"]
 
     %% Scheduled
     cron{{"⏰ Cron · * * * * *"}} --> alerts & summary & calendar
-    alerts["💥 Price alerts"] --> bot
-    summary["📈 Daily P&L summary"] --> bot
-    calendar["🗓️ Economic calendar<br/>(High-Impact USD)"] --> bot
+    alerts["💥 Price alerts"] --> push
+    summary["📈 Daily P&L summary"] --> push
+    calendar["🗓️ Economic calendar<br/>(High-Impact USD)"] --> push
 
     classDef firebase fill:#FFA000,stroke:#E65100,color:#000,stroke-width:2px
     classDef cloudflare fill:#F38020,stroke:#A04200,color:#000,stroke-width:2px
@@ -206,9 +186,9 @@ flowchart TD
     classDef cron fill:#8B5CF6,stroke:#5B21B6,color:#FFF,stroke-width:2px
 
     class auth,store,hosting firebase
-    class worker,sync,bot,kv cloudflare
+    class worker,sync,push,kv cloudflare
     class app,svc react
-    class exchanges,tg,market external
+    class exchanges,market external
     class cron,alerts,summary,calendar cron
 ```
 
@@ -246,15 +226,15 @@ TradeOS/
 │   │   ├── notes/           # Trading notes
 │   │   ├── onboarding/      # First-time user wizard
 │   │   ├── plans/           # Trading plans & analysis cards
-│   │   ├── profile/         # User profile, Telegram connection
+│   │   ├── profile/         # User profile, notification settings
 │   │   ├── shared/          # Reusable UI components
 │   │   └── strategies/      # Custom strategy management
 │   ├── contexts/            # React contexts (Auth, Journal, Backtest)
 │   ├── hooks/               # Custom hooks (trades, stats, DCA, alerts, etc.)
-│   ├── services/            # Firebase, Firestore, Telegram, exchange APIs
+│   ├── services/            # Firebase, Firestore, push, exchange APIs
 │   └── utils/               # Calculations, formatters, constants
 ├── worker/
-│   └── index.js             # Cloudflare Worker (Telegram bot + exchange sync proxy)
+│   └── index.js             # Cloudflare Worker (Web Push + exchange sync proxy)
 ├── public/                  # Static assets & icons
 └── package.json
 ```
@@ -302,14 +282,11 @@ VITE_WORKER_URL=https://your-worker.workers.dev
 # Login to Cloudflare
 npx wrangler login
 
-# Set bot token as secret
-npx wrangler secret put BOT_TOKEN
+# Set the Web Push VAPID key as a secret
+npx wrangler secret put VAPID_JWK
 
 # Deploy
 npx wrangler deploy
-
-# Set Telegram webhook
-curl "https://api.telegram.org/bot<TOKEN>/setWebhook?url=https://your-worker.workers.dev/webhook"
 ```
 
 ---

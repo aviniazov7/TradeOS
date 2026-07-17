@@ -9,7 +9,7 @@ import { ResponsiveContainer, AreaChart, Area, Tooltip, XAxis } from 'recharts';
 import { useAuth } from '../../contexts/AuthContext';
 import { getAllUsers, getUserSubcollectionCount, adminGrantPremium, adminRevokePremium, addPayment, getAllPayments } from '../../services/firestoreService';
 import { fetchUserAiUsage, fetchGlobalAiUsage, fetchAiStats, fetchSystemHealth } from '../../hooks/useAiUsage';
-import { adminSendNotification, adminSendBulkNotification, adminScheduleExpiryReminders, adminCancelExpiryReminders, adminRefreshPlanCache, adminListAuditEvents, adminSendTestDigest, adminGetTelegramInfo, adminSendPaymentEmail, adminSetupTelegramWebhook, adminDeleteUser } from '../../services/pushService';
+import { adminSendNotification, adminSendBulkNotification, adminScheduleExpiryReminders, adminCancelExpiryReminders, adminRefreshPlanCache, adminListAuditEvents, adminSendTestDigest, adminSendPaymentEmail, adminDeleteUser } from '../../services/pushService';
 import { adminListCoupons, adminCreateCoupon, adminDeleteCoupon, couponShareUrl } from '../../services/couponService';
 import LoadingSpinner from '../shared/LoadingSpinner';
 import SelectDropdown from '../shared/SelectDropdown';
@@ -236,20 +236,8 @@ export default function AdminPanel() {
   // Daily AI stats (counts + real tokens) for the usage-over-time graph.
   const [aiStats, setAiStats] = useState(null);
   const [statsDays, setStatsDays] = useState(30);
-  // System health (cron heartbeat, bot, push/AI configured).
+  // System health (cron heartbeat, push/AI configured).
   const [health, setHealth] = useState(null);
-  const [webhookBusy, setWebhookBusy] = useState(false);
-  const reregisterWebhook = async () => {
-    setWebhookBusy(true);
-    try {
-      await adminSetupTelegramWebhook();
-      toast.success('ה-webhook של טלגרם נרשם מחדש');
-    } catch (e) {
-      toast.error(e.message || 'הרישום נכשל');
-    } finally {
-      setWebhookBusy(false);
-    }
-  };
 
   // After load() refreshes `users`, keep `selectedUser` pointing at the fresh
   // copy so the open detail modal reflects the new plan/role immediately
@@ -604,16 +592,6 @@ export default function AdminPanel() {
       <SectionCard
         icon={<ShieldCheck className="w-4 h-4" />}
         title="בריאות מערכת"
-        action={(
-          <button
-            onClick={reregisterWebhook}
-            disabled={webhookBusy}
-            className="flex items-center gap-1.5 text-[11px] px-2.5 py-1.5 rounded-lg border border-border-primary text-text-secondary hover:text-accent-primary hover:border-accent-primary/40 transition-colors cursor-pointer disabled:opacity-50 shrink-0"
-            title="רשום מחדש את ה-webhook של הבוט מול הכתובת הנוכחית של ה-Worker"
-          >
-            <RefreshCw className={`w-3 h-3 ${webhookBusy ? 'animate-spin' : ''}`} /> רענן Webhook טלגרם
-          </button>
-        )}
       >
         {!health ? (
           <div className="text-xs text-text-muted">…</div>
@@ -624,7 +602,6 @@ export default function AdminPanel() {
               const cronOk = cronAgeH != null && cronAgeH < 26;
               const items = [
                 { label: 'Cron', ok: cronOk, note: health.cronLast ? relativeActive(health.cronLast) : 'לא רץ' },
-                { label: 'בוט טלגרם', ok: !!health.bot?.ok, note: health.bot?.ok ? `@${health.bot.username}` : (health.bot?.configured ? 'לא מגיב' : 'לא מוגדר') },
                 { label: 'התראות Push', ok: !!health.pushConfigured, note: health.pushConfigured ? 'מוגדר' : 'חסר VAPID' },
                 { label: 'AI', ok: !!health.aiConfigured, note: health.aiConfigured ? 'מחובר' : 'לא מוגדר' },
               ];
@@ -1334,18 +1311,6 @@ function UserDetailModal({ user, onClose, onUserChanged }) {
     return () => { cancelled = true; };
   }, [user]);
 
-  // Telegram bot link + usage — served by the worker from KV (the Firestore
-  // settings subcollection is owner-only by design, so it can't be read here).
-  const [tgInfo, setTgInfo] = useState(null);
-  useEffect(() => {
-    if (!user) { setTgInfo(null); return; }
-    let cancelled = false;
-    adminGetTelegramInfo(user.id)
-      .then((info) => { if (!cancelled) setTgInfo(info); })
-      .catch(() => { if (!cancelled) setTgInfo({ error: true }); });
-    return () => { cancelled = true; };
-  }, [user]);
-
   const grant = async (days) => {
     if (!user) return;
     setGranting(true);
@@ -1758,47 +1723,6 @@ function UserDetailModal({ user, onClose, onUserChanged }) {
               )}
             </div>
 
-            {/* Telegram bot — link status + usage (from worker KV) */}
-            <div>
-              <div className="text-[11px] text-text-muted mb-2 flex items-center gap-1.5">
-                <Send className="w-3.5 h-3.5" /> בוט טלגרם
-              </div>
-              {tgInfo === null ? (
-                <div className="text-xs text-text-muted">…</div>
-              ) : tgInfo.error ? (
-                <div className="text-xs text-loss">שגיאה בטעינת נתוני טלגרם</div>
-              ) : !tgInfo.connected ? (
-                <div className="bg-bg-tertiary/40 border border-border-primary rounded-lg px-3 py-2.5 text-xs text-text-muted flex items-center gap-2">
-                  <span className="w-2 h-2 rounded-full bg-text-muted/50 shrink-0" />
-                  לא חיבר את הבוט
-                </div>
-              ) : (
-                <div className="bg-bg-tertiary/40 border border-border-primary rounded-lg px-3 py-2.5 space-y-1.5 text-xs">
-                  <div className="flex items-center justify-between">
-                    <span className="text-text-secondary flex items-center gap-1.5">
-                      <span className="w-2 h-2 rounded-full bg-profit shrink-0" /> מחובר
-                    </span>
-                    {tgInfo.username && <span className="text-text-primary font-medium">@{tgInfo.username}</span>}
-                  </div>
-                  <div className="flex items-center justify-between">
-                    <span className="text-text-secondary">סה״כ שימושים</span>
-                    <span className="text-text-primary font-semibold">{tgInfo.usage?.total ?? 0}</span>
-                  </div>
-                  <div className="flex items-center justify-between">
-                    <span className="text-text-secondary">שימוש אחרון</span>
-                    <span className="text-text-primary">{tgInfo.usage?.lastUsed ? relativeActive(tgInfo.usage.lastUsed) : '—'}</span>
-                  </div>
-                  <div className="flex items-center justify-between">
-                    <span className="text-text-secondary">פקודה אחרונה</span>
-                    <span className="text-text-primary font-mono">{tgInfo.usage?.lastCmd || '—'}</span>
-                  </div>
-                  <div className="flex items-center justify-between">
-                    <span className="text-text-secondary">התראות מחיר / מטבעות במעקב</span>
-                    <span className="text-text-primary">{tgInfo.alertsCount ?? 0} / {tgInfo.watchlistCount ?? '—'}</span>
-                  </div>
-                </div>
-              )}
-            </div>
           </div>
 
           {/* Right column: activity counts */}

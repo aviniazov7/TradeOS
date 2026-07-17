@@ -13,8 +13,7 @@ import {
 const DEFAULTS = { pushEnabled: true, tradeOpenAlerts: true };
 
 // Journal reminder / daily summary / economic calendar defaults — mirrors the
-// worker's DEFAULT_SETTINGS (these used to live in the Telegram bot's
-// /settings menu; the bot is retired, #219).
+// worker's DEFAULT_SETTINGS (#219).
 const SCHEDULE_DEFAULTS = {
   journal: { enabled: false, time: '21:00' },
   summary: { enabled: false, time: '22:00' },
