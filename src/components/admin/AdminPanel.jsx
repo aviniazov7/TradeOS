@@ -366,6 +366,50 @@ export default function AdminPanel() {
     return { dau, wau, mau, signups: series.map((s) => ({ date: s.date, count: buckets[s.key] })) };
   }, [users, loadedAt]);
 
+  // Activity & retention (epic #223): calendar-day DAU (Israel time) + rolling
+  // WAU/MAU, an 8-week signup-cohort split by "active in the last 7 days", and
+  // a recency breakdown of the whole base. Cohorts use the SAME rolling week
+  // buckets as the "הצטרפות חדשה — 8 שבועות אחרונים" chart in the analytics
+  // modal so the two align visually. All derived from lastActive/createdAt —
+  // no extra queries; toDate/lastActiveMs already guard garbage values.
+  const retention = useMemo(() => {
+    const now = loadedAt || Date.now();
+    const dayKey = (d) => d.toLocaleDateString('en-CA', { timeZone: 'Asia/Jerusalem' });
+    const todayKey = dayKey(new Date(now));
+    let today = 0, week = 0, month = 0, dormant = 0, never = 0;
+    for (const u of users) {
+      const ms = lastActiveMs(u);
+      if (!ms) { never++; continue; }
+      if (dayKey(new Date(ms)) === todayKey) today++;
+      if (activeWithin(u, 7)) week++;
+      if (activeWithin(u, 30)) month++;
+      if (daysSinceActive(u) >= 30) dormant++; // mirrors the 'inactive30' filter
+    }
+    const fmt = (t) => { const d = new Date(t); return `${d.getDate()}/${d.getMonth() + 1}`; };
+    const cohorts = [];
+    for (let i = 7; i >= 0; i--) {
+      const end = now - i * 7 * DAY_MS;
+      const start = end - 7 * DAY_MS;
+      let joined = 0, retained = 0;
+      for (const u of users) {
+        const t = toDate(u.createdAt)?.getTime() || 0;
+        if (t > start && t <= end) {
+          joined++;
+          if (activeWithin(u, 7)) retained++;
+        }
+      }
+      cohorts.push({
+        label: i === 0 ? 'השבוע' : `-${i}`,
+        full: `${fmt(start + DAY_MS)}–${fmt(end)}`,
+        joined,
+        retained,
+        inactive: joined - retained,
+        pct: joined ? Math.round((retained / joined) * 100) : 0,
+      });
+    }
+    return { today, week, month, dormant, never, cohorts };
+  }, [users, loadedAt]);
+
   const stats = useMemo(() => {
     const weekAgo = loadedAt - 7 * 24 * 60 * 60 * 1000;
     const newThisWeek = [];
@@ -666,6 +710,60 @@ export default function AdminPanel() {
           </div>
         </SectionCard>
       </div>
+
+      {/* Activity & retention — DAU/WAU/MAU by lastActive, weekly signup
+          cohorts split by recent activity, and a recency breakdown (#223). */}
+      <SectionCard
+        icon={<BarChart3 className="w-4 h-4" />}
+        title="פעילות ורטנשן"
+        action={<span className="text-[11px] text-text-muted">לפי lastActive</span>}
+      >
+        <div className="grid grid-cols-3 gap-2 mb-3">
+          <StatMini accent="cyan" value={retention.today} label="היום" />
+          <StatMini accent="violet" value={retention.week} label="7 ימים" />
+          <StatMini accent="green" value={retention.month} label="30 יום" />
+        </div>
+        {users.length === 0 ? (
+          <div className="text-sm text-text-muted text-center py-6 border border-dashed border-border-primary rounded-xl">
+            אין עדיין משתמשים להצגת רטנשן
+          </div>
+        ) : (
+          <>
+            <div className="text-[11px] text-text-muted mb-2">הצטרפות לפי שבוע — 8 שבועות אחרונים, לפי פעילות בשבוע האחרון</div>
+            <div className="h-36 -mx-1">
+              <ResponsiveContainer width="100%" height="100%">
+                <BarChart data={retention.cohorts} margin={{ top: 4, right: 6, bottom: 0, left: 6 }}>
+                  <XAxis dataKey="label" tick={{ fill: 'var(--color-text-muted)', fontSize: 9 }} axisLine={false} tickLine={false} />
+                  <YAxis hide />
+                  <Tooltip
+                    contentStyle={{ background: 'var(--color-bg-overlay)', border: '1px solid var(--color-border-primary)', borderRadius: '8px', fontSize: '12px', color: 'var(--color-text-primary)' }}
+                    labelStyle={{ color: 'var(--color-text-secondary)' }}
+                    cursor={{ fill: 'var(--color-bg-tertiary)' }}
+                    formatter={(v, name) => [v, name === 'retained' ? 'פעילים בשבוע האחרון' : 'לא פעילים']}
+                    labelFormatter={(label, payload) => {
+                      const p = payload?.[0]?.payload;
+                      return p ? `${p.full} · הצטרפו ${p.joined} · רטנשן ${p.pct}%` : label;
+                    }}
+                  />
+                  <Bar dataKey="retained" stackId="coh" fill="var(--color-accent-primary)" animationDuration={700} />
+                  <Bar dataKey="inactive" stackId="coh" fill="#64748b" animationDuration={700} />
+                </BarChart>
+              </ResponsiveContainer>
+            </div>
+            <div className="mt-2 flex items-center gap-3 flex-wrap text-[10px] text-text-muted">
+              <span className="inline-flex items-center gap-1">
+                <span className="w-2 h-2 rounded-full shrink-0" style={{ background: 'var(--color-accent-primary)' }} /> פעילים בשבוע האחרון
+              </span>
+              <span className="inline-flex items-center gap-1">
+                <span className="w-2 h-2 rounded-full shrink-0" style={{ background: '#64748b' }} /> לא פעילים
+              </span>
+            </div>
+          </>
+        )}
+        <div className="mt-3 text-[11px] text-text-muted">
+          פעיל היום: {retention.today} · השבוע: {retention.week} · החודש: {retention.month} · רדומים 30+ יום: {retention.dormant} · לא נכנסו מעולם: {retention.never}
+        </div>
+      </SectionCard>
 
       {/* System health — admin-only, exposes only status (never secrets). */}
       <SectionCard
