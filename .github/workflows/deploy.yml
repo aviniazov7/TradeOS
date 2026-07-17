@@ -144,7 +144,14 @@ jobs:
         if: (steps.target.outputs.kind == 'production' || steps.target.outputs.kind == 'staging') && env.CLOUDFLARE_API_TOKEN != ''
         working-directory: worker
         env:
-          ENV_FLAG: ${{ steps.target.outputs.kind == 'staging' && '--env staging' || '' }}
+          # ALWAYS target the production `trade-os` Worker (no --env flag):
+          # the vite redirect makes every deploy from this repo — including
+          # `--env staging` — update trade-os itself, but secrets pushed with
+          # `--env staging` went to "trade-os-staging", a Worker with no live
+          # deployment. Result: every dev push updated trade-os's CODE while
+          # its SECRETS stayed stale (discovered when a rotated Resend key
+          # never took effect).
+          ENV_FLAG: ''
           VAPID_JWK: ${{ secrets.VAPID_JWK }}
           MORALIS_API_KEY: ${{ secrets.MORALIS_API_KEY }}
           GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
