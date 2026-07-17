@@ -4355,6 +4355,102 @@ async function handleRequest(request, env) {
     return new Response(JSON.stringify({ ok: true }), { headers: { ...cors, 'Content-Type': 'application/json' } });
   }
 
+  // Admin-only: permanently delete a user — every Firestore subcollection,
+  // the user doc, the public leaderboard entry, per-user KV keys and the
+  // AUTH ACCOUNT itself. Must live here and not in the client: the rules
+  // make other users' data read-only for admins, and deleting somebody
+  // else's Auth account requires the service account (Identity Toolkit).
+  if (request.method === 'POST' && path === '/admin/delete-user') {
+    const token = (request.headers.get('Authorization') || '').replace('Bearer ', '');
+    const adminUid = await verifyAdminFromToken(token);
+    if (!adminUid) return new Response(JSON.stringify({ error: 'forbidden' }), { status: 403, headers: { ...cors, 'Content-Type': 'application/json' } });
+    const { uid } = await request.json().catch(() => ({}));
+    if (!uid || typeof uid !== 'string' || !/^[A-Za-z0-9]{10,64}$/.test(uid)) {
+      return new Response(JSON.stringify({ error: 'missing uid' }), { status: 400, headers: { ...cors, 'Content-Type': 'application/json' } });
+    }
+    if (uid === adminUid) {
+      return new Response(JSON.stringify({ error: 'self-delete via the profile page' }), { status: 400, headers: { ...cors, 'Content-Type': 'application/json' } });
+    }
+
+    const gtoken = await getFirebaseAdminToken(env);
+    const base = `https://firestore.googleapis.com/v1/projects/${FIREBASE_PROJECT_ID}/databases/(default)`;
+    const gh = { Authorization: `Bearer ${gtoken}`, 'Content-Type': 'application/json' };
+
+    // Identity snapshot for the audit entry + refuse to delete another admin.
+    const docRes = await fetch(`${base}/documents/users/${uid}`, { headers: gh });
+    const fields = docRes.ok ? (await docRes.json())?.fields || {} : {};
+    if (fields.role?.stringValue === 'admin') {
+      return new Response(JSON.stringify({ error: 'cannot delete an admin' }), { status: 400, headers: { ...cors, 'Content-Type': 'application/json' } });
+    }
+    const email = fields.email?.stringValue || null;
+    const displayName = fields.displayName?.stringValue || null;
+
+    // Every subcollection the app writes — keep in sync with the client's
+    // USER_SUBCOLLECTIONS (src/services/firestoreService.js).
+    const SUBS = [
+      'trades', 'journals', 'backtests', 'backtestJournals', 'dca',
+      'tradingPlans', 'notes', 'strategies', 'morningJournals',
+      'eveningJournals', 'processes', 'signals', 'watchlist', 'settings',
+    ];
+    let deletedDocs = 0;
+    for (const sub of SUBS) {
+      let pageToken = '';
+      do {
+        // __name__-only mask: we only need document paths for the deletes.
+        const listUrl = `${base}/documents/users/${uid}/${sub}?pageSize=300&mask.fieldPaths=__name__${pageToken ? `&pageToken=${encodeURIComponent(pageToken)}` : ''}`;
+        const lr = await fetch(listUrl, { headers: gh });
+        if (!lr.ok) break;
+        const ld = await lr.json();
+        const names = (ld.documents || []).map((d) => d.name);
+        pageToken = ld.nextPageToken || '';
+        if (names.length) {
+          await fetch(`${base}/documents:batchWrite`, {
+            method: 'POST', headers: gh,
+            body: JSON.stringify({ writes: names.map((n) => ({ delete: n })) }),
+          });
+          deletedDocs += names.length;
+        }
+      } while (pageToken);
+    }
+
+    await fetch(`${base}/documents/leaderboard/${uid}`, { method: 'DELETE', headers: gh }).catch(() => {});
+    await fetch(`${base}/documents/users/${uid}`, { method: 'DELETE', headers: gh }).catch(() => {});
+
+    // The Auth account — the piece no client can touch. cloud-platform scope
+    // on the admin token covers Identity Toolkit.
+    const authRes = await fetch('https://identitytoolkit.googleapis.com/v1/accounts:delete', {
+      method: 'POST', headers: gh,
+      body: JSON.stringify({ localId: uid }),
+    });
+
+    // Per-user KV leftovers: plan cache + push subscriptions.
+    await env.ALERTS_KV.delete(`planflag:${uid}`).catch(() => {});
+    const pushKeys = await env.ALERTS_KV.list({ prefix: `push:${uid}:` });
+    for (const k of pushKeys.keys) await env.ALERTS_KV.delete(k.name).catch(() => {});
+
+    await appendAudit(env, {
+      kind: 'account_deleted', source: 'admin', actor: adminUid, target: uid,
+      email, displayName, docs: deletedDocs, authDeleted: authRes.ok,
+    });
+    return new Response(JSON.stringify({ ok: true, docs: deletedDocs, authDeleted: authRes.ok }), { headers: { ...cors, 'Content-Type': 'application/json' } });
+  }
+
+  // Self-service deletion audit — called by the client right before it
+  // deletes its own Auth user (the data wipe already happened), so the admin
+  // panel can show who deleted their account and when.
+  if (request.method === 'POST' && path === '/account/deleted') {
+    const token = (request.headers.get('Authorization') || '').replace('Bearer ', '');
+    const uid = await verifyFirebaseToken(token);
+    if (!uid) return new Response(JSON.stringify({ error: 'forbidden' }), { status: 403, headers: { ...cors, 'Content-Type': 'application/json' } });
+    const { email, displayName } = await request.json().catch(() => ({}));
+    await appendAudit(env, {
+      kind: 'account_deleted', source: 'self', actor: uid, target: uid,
+      email: typeof email === 'string' ? email.slice(0, 120) : null,
+      displayName: typeof displayName === 'string' ? displayName.slice(0, 80) : null,
+    });
+    return new Response(JSON.stringify({ ok: true }), { headers: { ...cors, 'Content-Type': 'application/json' } });
+  }
+
   // Admin-only: list recent audit log entries (newest first). Optional ?limit
   // (default 200, max 500) and ?kind=… filter applied client-side after the
   // KV list (we keep one prefix to avoid scanning multiple shards).

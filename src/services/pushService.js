@@ -105,6 +105,34 @@ export async function adminGetTelegramInfo(uid) {
   return data;
 }
 
+// Admin-only: permanently delete a user via the worker's service account —
+// all Firestore data, leaderboard entry, per-user KV keys AND the Auth
+// account (none of which an admin can delete client-side; the rules make
+// other users' data read-only for admins).
+export async function adminDeleteUser(uid) {
+  const res = await fetch(`${WORKER_BASE}/admin/delete-user`, {
+    method: 'POST',
+    headers: await authHeader(),
+    body: JSON.stringify({ uid }),
+  });
+  const data = await res.json().catch(() => ({}));
+  if (!res.ok || !data.ok) throw new Error(data.error || 'מחיקת המשתמש נכשלה');
+  return data;
+}
+
+// Best-effort audit trail for SELF-service account deletion — must be called
+// while the user's ID token is still valid (i.e. before deleteAuthUser).
+// Never throws: logging must not block the deletion itself.
+export async function logAccountDeletion(info = {}) {
+  try {
+    await fetch(`${WORKER_BASE}/account/deleted`, {
+      method: 'POST',
+      headers: await authHeader(),
+      body: JSON.stringify(info),
+    });
+  } catch { /* best-effort */ }
+}
+
 // Admin-only: list recent admin actions (grants/revokes/pushes/coupons).
 // Optional kind filter; up to 500 events.
 export async function adminListAuditEvents({ kind, limit = 200 } = {}) {
