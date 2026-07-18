@@ -2,7 +2,7 @@ import { useState, useMemo, useEffect, useRef } from 'react';
 import { useSearchParams } from 'react-router-dom';
 import { motion } from 'framer-motion';
 import {
-  Plus, BookOpen, Download, Upload, Settings,
+  Plus, BookOpen, Settings,
   Wallet, TrendingUp, Target, Zap, Flame, Snowflake, Signal,
   Scale, BarChart3, Activity, Calendar,
   Clock, DollarSign, Percent, Link2, Undo2, BrainCircuit, Star,
@@ -617,15 +617,7 @@ export default function TradeJournal() {
             <button onClick={() => setSettingsOpen(true)} className="h-9 w-9 inline-flex items-center justify-center rounded-lg text-text-muted hover:text-text-primary hover:bg-bg-tertiary transition-colors cursor-pointer border border-border-primary" title="הגדרות יומן">
               <Settings className="w-4 h-4" />
             </button>
-            <button onClick={() => setImportOpen(true)} className="h-9 w-9 inline-flex items-center justify-center rounded-lg text-text-muted hover:text-text-primary hover:bg-bg-tertiary transition-colors cursor-pointer border border-border-primary" title="ייבוא CSV">
-              <Upload className="w-4 h-4" />
-            </button>
-            {trades.length > 0 && (
-              <button onClick={exportCSV} className="h-9 w-9 inline-flex items-center justify-center rounded-lg text-text-muted hover:text-text-primary hover:bg-bg-tertiary transition-colors cursor-pointer border border-border-primary" title="ייצוא CSV">
-                <Download className="w-4 h-4" />
-              </button>
-            )}
-            <button onClick={() => setFormOpen(true)} className="h-9 inline-flex items-center gap-1.5 bg-accent-primary text-bg-primary font-semibold px-3.5 rounded-lg hover:bg-accent-hover transition-colors cursor-pointer text-sm">
+            <button onClick={() => setFormOpen(true)} className="h-9 inline-flex items-center gap-1.5 px-3 rounded-lg text-text-muted hover:text-text-primary hover:bg-bg-tertiary transition-colors cursor-pointer text-sm">
               <Plus className="w-4 h-4" /> <span className="hidden sm:inline">עסקה חדשה</span>
             </button>
           </div>
@@ -1080,7 +1072,14 @@ export default function TradeJournal() {
 
       <ImportTrades isOpen={importOpen} onClose={() => setImportOpen(false)} onImport={addTrade} onImportBulk={addTradesBulk} />
 
-      <JournalSettingsModal isOpen={settingsOpen} onClose={() => setSettingsOpen(false)} onArchive={(name) => { setArchiveTargetName(name); setArchiveAnimating(true); }} />
+      <JournalSettingsModal
+        isOpen={settingsOpen}
+        onClose={() => setSettingsOpen(false)}
+        onArchive={(name) => { setArchiveTargetName(name); setArchiveAnimating(true); }}
+        onImport={() => setImportOpen(true)}
+        onExport={exportCSV}
+        canExport={trades.length > 0}
+      />
 
       <TradeShareModal
         isOpen={!!shareTarget}
