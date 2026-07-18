@@ -1,5 +1,6 @@
 import { createContext, useContext, useState, useEffect } from 'react';
 import { planExpiresMs } from '../utils/premium';
+import { APP_VERSION } from '../utils/constants';
 import {
   onAuthChange,
   handleRedirectResult,
@@ -88,6 +89,7 @@ export function AuthProvider({ children }) {
           photoURL: firebaseUser.photoURL,
           createdAt: timestamp(),
           lastActive: timestamp(),
+          appVersion: APP_VERSION,
           onboardingCompleted: false,
           settings: {
             defaultLeverage: 10,
