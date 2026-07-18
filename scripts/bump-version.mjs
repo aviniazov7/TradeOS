@@ -1,20 +1,12 @@
-// Auto-bump APP_VERSION (patch), CACHE_NAME (tradeos-vN), and the og-image
-// ?v= cache-buster in index.html together.
-// Run by CI on every push to main so users always get the update banner.
+// Bump ONLY CACHE_NAME (public/sw.js) on every push to main, so a new deploy
+// always registers a fresh service worker and users pick up the update on
+// their next open. APP_VERSION is intentionally NOT auto-bumped — it's a
+// stable marketing version the owner sets by hand (currently 2.0.0), so it
+// doesn't creep to 2.0.1, 2.0.2… on every small deploy. The og-image ?v=
+// cache-buster in index.html tracks APP_VERSION and is likewise left alone.
 import { readFileSync, writeFileSync } from 'node:fs';
 
-const constantsPath = 'src/utils/constants.js';
 const swPath = 'public/sw.js';
-const indexPath = 'index.html';
-
-let constants = readFileSync(constantsPath, 'utf8');
-const verMatch = constants.match(/APP_VERSION\s*=\s*'(\d+)\.(\d+)\.(\d+)'/);
-if (!verMatch) throw new Error('APP_VERSION not found in ' + constantsPath);
-const [, major, minor, patch] = verMatch;
-const newVersion = `${major}.${minor}.${Number(patch) + 1}`;
-constants = constants.replace(verMatch[0], `APP_VERSION = '${newVersion}'`);
-writeFileSync(constantsPath, constants);
-
 let sw = readFileSync(swPath, 'utf8');
 const cacheMatch = sw.match(/CACHE_NAME\s*=\s*'tradeos-v(\d+)'/);
 if (!cacheMatch) throw new Error('CACHE_NAME not found in ' + swPath);
@@ -22,12 +14,4 @@ const newCache = `tradeos-v${Number(cacheMatch[1]) + 1}`;
 sw = sw.replace(cacheMatch[0], `CACHE_NAME = '${newCache}'`);
 writeFileSync(swPath, sw);
 
-// og-image ?v= cache-buster — without this Telegram/WhatsApp keep serving
-// their cached preview image forever, since they cache by exact URL.
-let indexHtml = readFileSync(indexPath, 'utf8');
-const ogMatches = indexHtml.match(/og-image\.png\?v=\d+\.\d+\.\d+/g);
-if (!ogMatches) throw new Error('og-image ?v= tag not found in ' + indexPath);
-indexHtml = indexHtml.replaceAll(/og-image\.png\?v=\d+\.\d+\.\d+/g, `og-image.png?v=${newVersion}`);
-writeFileSync(indexPath, indexHtml);
-
-console.log(`APP_VERSION -> ${newVersion}, CACHE_NAME -> ${newCache}, og-image ?v= -> ${newVersion}`);
+console.log(`CACHE_NAME -> ${newCache} (APP_VERSION left pinned)`);
