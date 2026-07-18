@@ -1,4 +1,4 @@
-const CACHE_NAME = 'tradeos-v264';
+const CACHE_NAME = 'tradeos-v265';
 const STATIC_ASSETS = [
   '/icon-192.png',
   '/icon-512.png',
