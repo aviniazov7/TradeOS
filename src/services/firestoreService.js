@@ -17,6 +17,7 @@ import {
   getCountFromServer,
 } from 'firebase/firestore';
 import { db } from './firebase';
+import { APP_VERSION } from '../utils/constants';
 
 // ─── Retry Helper ────────────────────────────────────────────────
 
@@ -191,7 +192,10 @@ export async function adminRevokePremium(uid) {
  * `lastActive` is not a privileged field, so the owner-update rule allows it.
  */
 export async function touchLastActive(uid) {
-  return setDoc(doc(db, 'users', uid), { lastActive: serverTimestamp() }, { merge: true });
+  // Stamp the running app version alongside activity so the admin panel can see
+  // which build each user is on (and spot users stuck on stale versions). Same
+  // hourly throttle as lastActive — one extra string, no added writes.
+  return setDoc(doc(db, 'users', uid), { lastActive: serverTimestamp(), appVersion: APP_VERSION }, { merge: true });
 }
 
 /** Delete the user's main document */
