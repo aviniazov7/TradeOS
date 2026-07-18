@@ -80,6 +80,7 @@ const STAT_ACCENTS = {
   btc:  statAccent(251, 146, 60, '#fb923c'),   // BTC.D       — bitcoin orange
   vol:  statAccent(192, 132, 252, '#c084fc'),  // 24h volume  — violet
   alt:  statAccent(129, 140, 248, '#818cf8'),  // alt season  — indigo
+  volch: statAccent(14, 165, 233, '#0ea5e9'),  // 24h vol change — sky
 };
 
 // 21st-style global-stat card: glass surface + a soft accent corner glow + a
@@ -890,6 +891,7 @@ export default function MarketOverview() {
             market_cap_change_percentage_24h_usd: d.market_cap_change_24h,
             market_cap_percentage: { btc: d.bitcoin_dominance_percentage, usdt: usdtDominance, eth: null },
             active_cryptocurrencies: d.cryptocurrencies_number,
+            volume_24h_change_pct: d.volume_24h_change_24h,
           });
         }
       } catch { /* silent — shows "—" */ }
@@ -1079,7 +1081,7 @@ export default function MarketOverview() {
       {/* Top row: global stats — borderless, free, divider-separated (no boxes).
           Uniform typography: 11px label, 2xl number, xs sub on every cell. */}
       <motion.div
-        className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-3 mb-5"
+        className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-3 mb-5"
         variants={staggerContainer} initial="initial" animate="animate"
       >
         {[
@@ -1117,6 +1119,22 @@ export default function MarketOverview() {
             </div>
           </MarketStatCard>
         ))}
+
+        {/* 24h trading-volume change — same card shape as above, value coloured by direction */}
+        <MarketStatCard accentKey="volch" Icon={Activity} label="שינוי נפח">
+          {global?.volume_24h_change_pct != null ? (
+            <>
+              <p className={`text-2xl font-bold leading-none num-mono ${global.volume_24h_change_pct >= 0 ? 'text-profit' : 'text-loss'}`}>
+                <RollingNumber value={`${global.volume_24h_change_pct >= 0 ? '+' : ''}${global.volume_24h_change_pct.toFixed(1)}%`} />
+              </p>
+              <div className="h-4 mt-2">
+                <span className="text-xs text-text-muted">מול אתמול</span>
+              </div>
+            </>
+          ) : (
+            <p className="text-2xl font-bold text-text-muted num-mono">—</p>
+          )}
+        </MarketStatCard>
 
         {/* Altcoin Season — same card, with the index slider as its "sub" line */}
         <MarketStatCard accentKey="alt" Icon={ArrowUpRight} label="Alt Season">
@@ -1199,6 +1217,7 @@ export default function MarketOverview() {
                       key={coin.id}
                       type="button"
                       onClick={() => openChart(coin.symbol)}
+                      dir="ltr"
                       className="w-full flex items-center justify-between py-1.5 px-1.5 rounded-lg hover:bg-bg-tertiary transition-colors cursor-pointer"
                     >
                       <div className="flex items-center gap-2 min-w-0">
@@ -1221,6 +1240,7 @@ export default function MarketOverview() {
                       key={coin.id}
                       type="button"
                       onClick={() => openChart(coin.symbol)}
+                      dir="ltr"
                       className="w-full flex items-center justify-between py-1.5 px-1.5 rounded-lg hover:bg-bg-tertiary transition-colors cursor-pointer"
                     >
                       <div className="flex items-center gap-2 min-w-0">
@@ -1253,29 +1273,28 @@ export default function MarketOverview() {
           </h2>
           {topCoins.length > 0 ? (
             <div className="space-y-2">
-              {topCoins.map((coin, i) => (
-                <div key={coin.id} className="flex items-center justify-between py-1.5 border-b border-border-primary/50 last:border-0 cursor-pointer hover:bg-bg-tertiary rounded px-1 transition-colors" onClick={() => openChart(coin.symbol)}>
-                  <div className="flex items-center gap-2">
-                    {coin.price_change_percentage_24h >= 0 ? (
-                      <ArrowUpRight className="w-3.5 h-3.5 text-profit" />
-                    ) : (
-                      <ArrowDownRight className="w-3.5 h-3.5 text-loss" />
-                    )}
-                    <span className={`text-xs font-medium ${coin.price_change_percentage_24h >= 0 ? 'text-profit' : 'text-loss'}`}>
+              {topCoins.map((coin, i) => {
+                const up = (coin.price_change_percentage_24h ?? 0) >= 0;
+                return (
+                <div key={coin.id} dir="ltr" className="flex items-center justify-between gap-2 py-1.5 border-b border-border-primary/50 last:border-0 cursor-pointer hover:bg-bg-tertiary rounded px-1 transition-colors" onClick={() => openChart(coin.symbol)}>
+                  {/* Far-left: rank + icon + name grouped together */}
+                  <div className="flex items-center gap-2 min-w-0">
+                    <span className="text-[10px] text-text-muted w-4 text-center shrink-0">{i + 1}</span>
+                    <CoinIcon pair={coin.symbol} className="w-5 h-5 shrink-0" />
+                    <span className="text-sm font-medium text-text-primary shrink-0">{coin.symbol?.toUpperCase()}</span>
+                    <span className="text-[10px] text-text-muted truncate">{coin.name}</span>
+                  </div>
+                  {/* Far-right: price + 24h change */}
+                  <div className="flex items-center gap-3 shrink-0">
+                    <span className="text-sm text-text-primary font-medium font-mono"><RollingNumber value={formatPrice(coin.current_price)} /></span>
+                    <span className={`flex items-center gap-0.5 text-xs font-medium ${up ? 'text-profit' : 'text-loss'}`}>
+                      {up ? <ArrowUpRight className="w-3.5 h-3.5" /> : <ArrowDownRight className="w-3.5 h-3.5" />}
                       {coin.price_change_percentage_24h?.toFixed(2)}%
                     </span>
-                    <span className="text-sm text-text-primary font-medium font-mono"><RollingNumber value={formatPrice(coin.current_price)} /></span>
-                  </div>
-                  <div className="flex items-center gap-3">
-                    <div className="flex items-center gap-1.5 text-right">
-                      <span className="text-sm font-medium text-text-primary">{coin.symbol?.toUpperCase()}</span>
-                      <span className="text-[10px] text-text-muted">{coin.name}</span>
-                    </div>
-                    <CoinIcon pair={coin.symbol} className="w-5 h-5" />
-                    <span className="text-[10px] text-text-muted w-4 text-center shrink-0">{i + 1}</span>
                   </div>
                 </div>
-              ))}
+                );
+              })}
             </div>
           ) : (
             <p className="text-xs text-text-muted text-center py-4">{loading ? 'טוען...' : 'לא זמין'}</p>
@@ -1292,30 +1311,28 @@ export default function MarketOverview() {
             <div className="space-y-2">
               {trending.map((coin, i) => {
                 const chg = coin.price_change_percentage_24h ?? 0;
+                const up = chg >= 0;
                 return (
                   <motion.div
                     key={coin.id}
                     initial={{ opacity: 0 }}
                     animate={{ opacity: 1 }}
                     transition={{ delay: 0.05 * i, duration: 0.3 }}
-                    className="flex items-center justify-between py-1 border-b border-border-primary/30 last:border-0 cursor-pointer hover:bg-bg-tertiary rounded px-1 transition-colors"
+                    dir="ltr"
+                    className="flex items-center justify-between gap-2 py-1 border-b border-border-primary/30 last:border-0 cursor-pointer hover:bg-bg-tertiary rounded px-1 transition-colors"
                     onClick={() => openChart(coin.symbol)}
                   >
-                    <div className="flex items-center gap-1.5 w-16 shrink-0">
-                      {chg >= 0 ? (
-                        <ArrowUpRight className="w-3 h-3 text-profit" />
-                      ) : (
-                        <ArrowDownRight className="w-3 h-3 text-loss" />
-                      )}
-                      <span className={`text-[11px] font-medium ${chg >= 0 ? 'text-profit' : 'text-loss'}`}>
-                        {chg >= 0 ? '+' : ''}{chg.toFixed(1)}%
-                      </span>
+                    {/* Far-left: rank + icon + symbol grouped together */}
+                    <div className="flex items-center gap-2 min-w-0">
+                      <span className="text-[10px] text-text-muted w-5 text-center shrink-0">#{i + 1}</span>
+                      <CoinIcon pair={coin.symbol} className="w-4 h-4 shrink-0" />
+                      <span className="text-sm font-medium text-text-primary truncate">{coin.symbol?.toUpperCase()}</span>
                     </div>
-                    <div className="flex items-center gap-2">
-                      <span className="text-sm font-medium text-text-primary">{coin.symbol?.toUpperCase()}</span>
-                      <CoinIcon pair={coin.symbol} className="w-4 h-4" />
-                      <span className="text-[10px] text-text-muted">#{i + 1}</span>
-                    </div>
+                    {/* Far-right: 24h change */}
+                    <span className={`flex items-center gap-0.5 text-[11px] font-medium shrink-0 ${up ? 'text-profit' : 'text-loss'}`}>
+                      {up ? <ArrowUpRight className="w-3 h-3" /> : <ArrowDownRight className="w-3 h-3" />}
+                      {up ? '+' : ''}{chg.toFixed(1)}%
+                    </span>
                   </motion.div>
                 );
               })}
