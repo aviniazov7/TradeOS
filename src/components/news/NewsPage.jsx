@@ -4,6 +4,7 @@ import { Newspaper, ExternalLink, Clock, Filter, CalendarDays, Volume2, Globe, B
 import { fetchNewsDigest, translateNews } from '../../services/newsService';
 import { hebrewEventTitle } from '../../utils/econCalendarTerms';
 import { safeHttpUrl } from '../../utils/urls';
+import SelectDropdown from '../shared/SelectDropdown';
 
 // ─── News Sources (per market) ───
 const FEED_SOURCES = {
@@ -1004,23 +1005,24 @@ function NewsFeed({ market }) {
           current feed, "הכל" first, each with a live count. The whole row is
           hidden when there's nothing to choose between (feed still loading, or
           only "הכל" would show). */}
+      {/* Category filter — a professional dropdown (like the rest of the app)
+          instead of a scrolling chip row. Only categories present in the
+          current feed are listed, each with its live count. */}
       {visibleTopics.length > 1 && (
-        <div className="flex items-center justify-center gap-2 mb-6 overflow-x-auto pb-1">
+        <div className="flex items-center justify-center gap-2 mb-6">
           <Filter className="w-3.5 h-3.5 text-text-muted flex-shrink-0" />
-          {visibleTopics.map((t) => (
-            <button
-              key={t.key}
-              onClick={() => setTopic(t.key)}
-              className={`px-3 py-1.5 rounded-lg text-xs font-medium whitespace-nowrap transition-colors cursor-pointer ${
-                activeTopic.key === t.key
-                  ? 'bg-accent-primary/15 text-accent-primary border border-accent-primary/40'
-                  : 'bg-bg-secondary border border-border-primary text-text-secondary hover:text-text-primary'
-              }`}
-            >
-              {t.label}
-              <span className="mr-1 text-[10px] font-normal opacity-60 num-mono">{t.count}</span>
-            </button>
-          ))}
+          <div className="w-48">
+            <SelectDropdown
+              compact
+              value={topic}
+              onChange={(v) => setTopic(v || 'all')}
+              options={visibleTopics.map((t) => ({
+                value: t.key,
+                label: t.re ? `${t.label} · ${t.count}` : t.label,
+              }))}
+              placeholder="כל הקטגוריות"
+            />
+          </div>
         </div>
       )}
 

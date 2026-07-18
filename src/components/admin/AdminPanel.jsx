@@ -922,48 +922,9 @@ export default function AdminPanel() {
         {!fbUsage ? (
           <div className="text-xs text-text-muted">…</div>
         ) : fbUsage.error ? (
-          <div className="text-xs text-loss">טעינת צריכת Firebase נכשלה — נסה לרענן.</div>
+          <div className="text-xs text-loss">טעינת הנתונים נכשלה — נסה לרענן.</div>
         ) : (
           <>
-            <div className="space-y-3">
-              {[
-                { label: 'קריאות היום', used: fbUsage.monitoring?.reads, limit: fbUsage.limits?.reads ?? 50000 },
-                { label: 'כתיבות היום', used: fbUsage.monitoring?.writes, limit: fbUsage.limits?.writes ?? 20000 },
-                { label: 'מחיקות היום', used: fbUsage.monitoring?.deletes, limit: fbUsage.limits?.deletes ?? 20000 },
-              ].map((m) => {
-                const has = m.used != null;
-                const pct = has ? Math.min(100, (m.used / m.limit) * 100) : 0;
-                const color = pct > 85 ? 'var(--color-loss)' : pct >= 60 ? '#f59e0b' : 'var(--color-accent-primary)';
-                return (
-                  <div key={m.label}>
-                    <div className="flex items-center justify-between gap-2 text-[11px] mb-1">
-                      <span className="text-text-muted">{m.label}</span>
-                      {has ? (
-                        <span className="text-text-secondary" dir="ltr">
-                          <span className="font-semibold text-text-primary">{m.used.toLocaleString()}</span>
-                          {' / '}{m.limit.toLocaleString()}
-                          <span style={{ color }}>{' · '}{pct > 0 && pct < 10 ? pct.toFixed(1) : Math.round(pct)}%</span>
-                        </span>
-                      ) : (
-                        <span className="text-text-muted">—</span>
-                      )}
-                    </div>
-                    <div className="h-1.5 rounded-full bg-bg-tertiary overflow-hidden">
-                      <div
-                        className="h-full rounded-full transition-all duration-500"
-                        style={{ width: `${has && m.used > 0 ? Math.max(pct, 1.5) : 0}%`, background: color }}
-                      />
-                    </div>
-                  </div>
-                );
-              })}
-            </div>
-            {!fbUsage.monitoring && (
-              <div className="mt-2.5 text-[11px] text-text-muted">
-                להצגת קריאות/כתיבות יש להפעיל את Cloud Monitoring API לפרויקט
-                {fbUsage.monitoringError && <span className="opacity-70" dir="ltr"> · {fbUsage.monitoringError}</span>}
-              </div>
-            )}
             {(() => {
               const docs = [
                 { label: 'משתמשים', accent: 'cyan', v: fbUsage.counts?.users },
@@ -971,18 +932,28 @@ export default function AdminPanel() {
                 { label: 'תשלומים', accent: 'green', v: fbUsage.counts?.payments },
                 { label: 'לידרבורד', accent: 'amber', v: fbUsage.counts?.leaderboard },
               ].filter((d) => d.v != null);
-              if (docs.length === 0) return null;
-              return (
-                <div className="mt-3">
+              return docs.length ? (
+                <div>
                   <div className="text-[11px] text-text-muted mb-1.5">מסמכים ב-Firestore</div>
-                  <div className={`grid grid-cols-2 ${docs.length > 2 ? 'sm:grid-cols-4' : ''} gap-2`}>
+                  <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
                     {docs.map((d) => (
                       <StatMini key={d.label} accent={d.accent} value={d.v.toLocaleString()} label={d.label} />
                     ))}
                   </div>
                 </div>
+              ) : (
+                <div className="text-xs text-text-muted">אין נתונים להצגה.</div>
               );
             })()}
+            {/* The exact daily quota (reads/writes/storage vs the free-tier
+                limit) lives in the Firebase console — the authoritative source. */}
+            <a
+              href="https://console.firebase.google.com/project/tradeos-91a58/usage"
+              target="_blank" rel="noopener noreferrer"
+              className="mt-3 flex items-center justify-center gap-1.5 px-3 py-2 rounded-lg border border-border-primary text-xs text-text-secondary hover:text-text-primary hover:border-accent-primary/40 transition-colors"
+            >
+              <Flame className="w-3.5 h-3.5" /> צפה בצריכה ובמכסות המלאות במסוף Firebase
+            </a>
           </>
         )}
       </SectionCard>
