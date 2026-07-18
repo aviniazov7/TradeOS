@@ -742,7 +742,7 @@ export default function AdminPanel() {
           title="הרשמות (30 ימים)"
           action={<span className="text-[11px] text-text-muted">סה״כ {growth.signups.reduce((a, s) => a + s.count, 0)}</span>}
         >
-          <div className="h-28 -mx-1">
+          <div className="h-20 -mx-1">
             <ResponsiveContainer width="100%" height="100%">
               <AreaChart data={growth.signups.map((s) => ({ d: `${s.date.getDate()}/${s.date.getMonth() + 1}`, count: s.count }))} margin={{ top: 4, right: 6, bottom: 0, left: 6 }}>
                 <defs>
@@ -1114,7 +1114,7 @@ export default function AdminPanel() {
           </div>
         ) : (
           <>
-            <div className="h-36 -mx-1">
+            <div className="h-24 -mx-1">
               <ResponsiveContainer width="100%" height="100%">
                 <BarChart data={revenueSeries} margin={{ top: 4, right: 6, bottom: 0, left: 6 }}>
                   <XAxis dataKey="label" tick={{ fill: 'var(--color-text-muted)', fontSize: 9 }} axisLine={false} tickLine={false} />
