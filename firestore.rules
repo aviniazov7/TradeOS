@@ -21,7 +21,16 @@ service cloud.firestore {
         // the admin MRR/churn analytics.
         && request.resource.data.get('planAmount', 0) == resource.data.get('planAmount', 0)
         && request.resource.data.get('planDays', 0) == resource.data.get('planDays', 0)
-        && request.resource.data.get('planGrantedAt', '') == resource.data.get('planGrantedAt', '');
+        && request.resource.data.get('planGrantedAt', '') == resource.data.get('planGrantedAt', '')
+        // Registration date — set once at signup, immutable afterwards.
+        // Letting a user rewrite their own createdAt would inflate the
+        // "new signups this week" metric in the admin weekly digest (worker
+        // buildAdminDigest counts users by createdAt). Safe for every client
+        // write path: all profile updates are merge writes that omit
+        // createdAt (touchLastActive, settings, onboardingCompleted,
+        // isPublicProfile, leaderboardName), and in rules the merged value of
+        // an omitted field equals the stored one, so this equality holds.
+        && request.resource.data.get('createdAt', null) == resource.data.get('createdAt', null);
     }
 
     match /users/{userId} {
@@ -47,32 +56,45 @@ service cloud.firestore {
         allow read: if request.auth != null && (request.auth.uid == userId || isAdmin());
         allow create: if request.auth != null && request.auth.uid == userId
           && isValidTrade(request.resource.data);
-        allow update: if request.auth != null && request.auth.uid == userId;
+        allow update: if request.auth != null && request.auth.uid == userId
+          && isValidTradeUpdate(request.resource.data, resource.data);
         allow delete: if request.auth != null && request.auth.uid == userId;
       }
       match /backtests/{backtestId} {
         allow read: if request.auth != null && (request.auth.uid == userId || isAdmin());
-        allow write: if request.auth != null && request.auth.uid == userId;
+        allow create, update: if request.auth != null && request.auth.uid == userId
+          && isBoundedDoc(request.resource.data);
+        allow delete: if request.auth != null && request.auth.uid == userId;
       }
       match /backtestJournals/{journalId} {
         allow read: if request.auth != null && (request.auth.uid == userId || isAdmin());
-        allow write: if request.auth != null && request.auth.uid == userId;
+        allow create, update: if request.auth != null && request.auth.uid == userId
+          && isBoundedDoc(request.resource.data);
+        allow delete: if request.auth != null && request.auth.uid == userId;
       }
       match /dca/{dcaId} {
         allow read: if request.auth != null && (request.auth.uid == userId || isAdmin());
-        allow write: if request.auth != null && request.auth.uid == userId;
+        allow create, update: if request.auth != null && request.auth.uid == userId
+          && isBoundedDoc(request.resource.data);
+        allow delete: if request.auth != null && request.auth.uid == userId;
       }
       match /strategies/{strategyId} {
         allow read: if request.auth != null && (request.auth.uid == userId || isAdmin());
-        allow write: if request.auth != null && request.auth.uid == userId;
+        allow create, update: if request.auth != null && request.auth.uid == userId
+          && isBoundedDoc(request.resource.data);
+        allow delete: if request.auth != null && request.auth.uid == userId;
       }
       match /notes/{noteId} {
         allow read: if request.auth != null && (request.auth.uid == userId || isAdmin());
-        allow write: if request.auth != null && request.auth.uid == userId;
+        allow create, update: if request.auth != null && request.auth.uid == userId
+          && isBoundedDoc(request.resource.data);
+        allow delete: if request.auth != null && request.auth.uid == userId;
       }
       match /tradingPlans/{planId} {
         allow read: if request.auth != null && (request.auth.uid == userId || isAdmin());
-        allow write: if request.auth != null && request.auth.uid == userId;
+        allow create, update: if request.auth != null && request.auth.uid == userId
+          && isBoundedDoc(request.resource.data);
+        allow delete: if request.auth != null && request.auth.uid == userId;
       }
       match /settings/{settingId} {
         // Owner-only — admins must NOT be able to read this subcollection.
@@ -87,23 +109,33 @@ service cloud.firestore {
       }
       match /journals/{journalId} {
         allow read: if request.auth != null && (request.auth.uid == userId || isAdmin());
-        allow write: if request.auth != null && request.auth.uid == userId;
+        allow create, update: if request.auth != null && request.auth.uid == userId
+          && isBoundedDoc(request.resource.data);
+        allow delete: if request.auth != null && request.auth.uid == userId;
       }
       match /morningJournals/{journalId} {
         allow read: if request.auth != null && (request.auth.uid == userId || isAdmin());
-        allow write: if request.auth != null && request.auth.uid == userId;
+        allow create, update: if request.auth != null && request.auth.uid == userId
+          && isBoundedDoc(request.resource.data);
+        allow delete: if request.auth != null && request.auth.uid == userId;
       }
       match /eveningJournals/{journalId} {
         allow read: if request.auth != null && (request.auth.uid == userId || isAdmin());
-        allow write: if request.auth != null && request.auth.uid == userId;
+        allow create, update: if request.auth != null && request.auth.uid == userId
+          && isBoundedDoc(request.resource.data);
+        allow delete: if request.auth != null && request.auth.uid == userId;
       }
       match /processes/{processId} {
         allow read: if request.auth != null && (request.auth.uid == userId || isAdmin());
-        allow write: if request.auth != null && request.auth.uid == userId;
+        allow create, update: if request.auth != null && request.auth.uid == userId
+          && isBoundedDoc(request.resource.data);
+        allow delete: if request.auth != null && request.auth.uid == userId;
       }
       match /signals/{signalId} {
         allow read: if request.auth != null && (request.auth.uid == userId || isAdmin());
-        allow write: if request.auth != null && request.auth.uid == userId;
+        allow create, update: if request.auth != null && request.auth.uid == userId
+          && isBoundedDoc(request.resource.data);
+        allow delete: if request.auth != null && request.auth.uid == userId;
       }
       match /watchlist/{itemId} {
         allow read: if request.auth != null && (request.auth.uid == userId || isAdmin());
@@ -163,6 +195,55 @@ service cloud.firestore {
           : (data.leverage is number && data.leverage >= 1 && data.leverage <= 200));
     }
 
+    // Trade UPDATE validation. updateDoc() merges, so `data` here is the FULL
+    // post-merge document — but re-running isValidTrade() on it outright would
+    // brick legacy documents: trades written before create-validation existed
+    // (and before the futures dual-shape) can carry string prices / missing
+    // fees, and ANY update to them — even {journalId: x} from the journal
+    // migration — would be denied because the merged doc still holds the old
+    // field. Instead we validate only the fields this update actually CHANGES:
+    // untouched legacy values are grandfathered, while nobody can move a
+    // validated field to an invalid value (entryPrice: -1, direction: 'x').
+    // Fields the app adds only after create (exits/result/netPnl/updatedAt/
+    // tpReached/limitTriggered/…) are not constrained by create either, so
+    // they pass untouched.
+    function isValidTradeUpdate(data, prev) {
+      let changed = data.diff(prev).affectedKeys();
+      return (!changed.hasAny(['entryPrice']) || (data.entryPrice is number && data.entryPrice > 0))
+        && (!changed.hasAny(['quantity']) || (data.quantity is number && data.quantity > 0))
+        // stopLoss accepts a bounded string too: the deployed client's
+        // auto-SL path (PendingLimitOrders.handleUpdateSL) writes
+        // String(newSL), and old app versions stay in the wild — a
+        // number-only rule would silently break their SL updates.
+        && (!changed.hasAny(['stopLoss'])
+          || (data.stopLoss is number && data.stopLoss >= 0)
+          || (data.stopLoss is string && data.stopLoss.size() <= 30))
+        && (!changed.hasAny(['fees']) || (data.fees is number && data.fees >= 0))
+        && (!changed.hasAny(['direction']) || data.direction in ['long', 'short'])
+        && (!changed.hasAny(['status']) || data.status in ['open', 'closed', 'partial'])
+        && (!changed.hasAny(['pair']) || (data.pair is string && data.pair.size() > 0 && data.pair.size() <= 30))
+        // Same crypto/futures branch as create, applied only when the update
+        // touches the fields that pick or feed the branch.
+        && (!changed.hasAny(['assetClass', 'leverage', 'contract'])
+          || (data.get('assetClass', 'crypto') == 'futures_cme'
+            ? (data.contract is map
+              && data.contract.contracts is number && data.contract.contracts > 0
+              && data.contract.pointValue is number && data.contract.pointValue > 0
+              && data.contract.tickSize is number && data.contract.tickSize > 0)
+            : (data.leverage is number && data.leverage >= 1 && data.leverage <= 200)));
+    }
+
+    // Minimal shape backstop for the free-form subcollections (journals,
+    // backtests, dca, strategies, notes, tradingPlans, morningJournals,
+    // eveningJournals, processes, signals, backtestJournals). Their documents
+    // are written by many forms with varied shapes — the widest legitimate
+    // shape today is ~20 fields (PlanForm) — so this deliberately caps only
+    // the FIELD COUNT, not per-field content: the goal is blocking raw-SDK
+    // megablob documents, not enforcing a strict schema.
+    function isBoundedDoc(data) {
+      return data.size() < 60;
+    }
+
     // Leaderboard entry validation. Must match the exact shape the client
     // writes (useLeaderboardSync.js): displayName, photoURL, joinedAt,
     // updatedAt, live{}, backtest{}, score. The previous version validated
@@ -170,13 +251,21 @@ service cloud.firestore {
     // writes — so EVERY legitimate write was permission-denied. Now we also
     // bound `score` (the sort key) to 0–100 so a user can't setDoc score:999999
     // and pin themselves to the top.
+    // photoURL must be https (or null/empty) — it's rendered as an <img src>
+    // to EVERY signed-in user, and the client only ever sends the Firebase
+    // Auth provider photo (always https) or null, so a javascript:/data:
+    // value can only come from a raw-SDK write. live/backtest are key-capped
+    // (client writes 6 and 3 keys) so this world-readable doc can't become
+    // free unbounded storage.
     function isValidLeaderboardEntry(data) {
       return data.keys().hasOnly(['displayName', 'photoURL', 'joinedAt', 'updatedAt', 'live', 'backtest', 'score'])
         && data.displayName is string && data.displayName.size() <= 50
-        && (!('photoURL' in data) || data.photoURL == null || (data.photoURL is string && data.photoURL.size() <= 1000))
+        && (!('photoURL' in data) || data.photoURL == null
+          || (data.photoURL is string && data.photoURL.size() <= 1000
+            && (data.photoURL == '' || data.photoURL.matches('https://.*'))))
         && data.score is number && data.score >= 0 && data.score <= 100
-        && data.live is map
-        && data.backtest is map;
+        && data.live is map && data.live.size() < 40
+        && data.backtest is map && data.backtest.size() < 40;
     }
 
     // Watchlist item validation. Must match the exact shape the client writes:
