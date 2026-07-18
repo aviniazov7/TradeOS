@@ -305,7 +305,7 @@ export default function BacktestTracker() {
                 <Download className="w-4 h-4" />
               </button>
             )}
-            <button onClick={openNew} className="h-9 inline-flex items-center gap-1.5 bg-accent-primary text-bg-primary font-semibold px-3.5 rounded-lg hover:bg-accent-hover transition-colors cursor-pointer text-sm">
+            <button onClick={openNew} className="h-9 inline-flex items-center gap-1.5 text-accent-primary border border-accent-primary/40 font-semibold px-3.5 rounded-lg hover:bg-accent-primary/10 transition-colors cursor-pointer text-sm">
               <Plus className="w-4 h-4" /> <span className="hidden sm:inline">הוסף עסקה</span>
             </button>
           </div>
