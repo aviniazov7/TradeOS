@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react';
-import { Pencil, Trash2, Archive, Coins, LineChart } from 'lucide-react';
+import { Pencil, Trash2, Archive, Coins, LineChart, Upload, Download } from 'lucide-react';
 import toast from 'react-hot-toast';
 import Modal from '../shared/Modal';
 import ConfirmDialog from '../shared/ConfirmDialog';
@@ -7,7 +7,7 @@ import ExchangeSearch from '../shared/ExchangeSearch';
 import { useJournalContext } from '../../contexts/JournalContext';
 import { EXCHANGES } from '../../utils/constants';
 
-export default function JournalSettingsModal({ isOpen, onClose, onArchive }) {
+export default function JournalSettingsModal({ isOpen, onClose, onArchive, onImport, onExport, canExport }) {
   const { journals, activeJournal, activeJournalId, updateJournal, deleteJournal, archiveJournal } = useJournalContext();
   const [form, setForm] = useState({ name: '', exchange: '', initialBalance: '', currency: 'USDT', description: '', riskType: 'percent', riskValue: '', assetClass: 'crypto' });
   const [saving, setSaving] = useState(false);
@@ -75,6 +75,12 @@ export default function JournalSettingsModal({ isOpen, onClose, onArchive }) {
       toast.error(err.code === 'permission-denied' ? 'אין הרשאה' : 'שגיאה בהעברה לארכיון — נסה שוב');
     }
   };
+
+  // Import/export state + the CSV builder live in TradeJournal; the modal just
+  // triggers them via callbacks. Close settings first so the import modal /
+  // download prompt isn't stacked behind it.
+  const handleImport = () => { onClose(); onImport?.(); };
+  const handleExport = () => { onClose(); onExport?.(); };
 
   const inputClass = 'w-full bg-bg-tertiary border border-border-primary rounded-lg px-3 py-2.5 text-sm text-text-primary outline-none focus:border-accent-primary transition-colors text-right';
   const labelClass = 'block text-xs text-text-muted mb-1';
@@ -151,6 +157,27 @@ export default function JournalSettingsModal({ isOpen, onClose, onArchive }) {
             </button>
           </div>
         </form>
+
+        <div className="mt-4 pt-4 border-t border-border-primary space-y-2">
+          <p className="text-xs text-text-muted">ייבוא / ייצוא עסקאות</p>
+          <button
+            type="button"
+            onClick={handleImport}
+            className="w-full flex items-center justify-center gap-2 py-2.5 rounded-lg bg-bg-tertiary text-text-primary hover:bg-border-hover transition-colors cursor-pointer text-sm"
+          >
+            <Upload className="w-4 h-4" />
+            ייבוא עסקאות מ-CSV
+          </button>
+          <button
+            type="button"
+            onClick={handleExport}
+            disabled={!canExport}
+            className="w-full flex items-center justify-center gap-2 py-2.5 rounded-lg bg-bg-tertiary text-text-primary hover:bg-border-hover transition-colors cursor-pointer text-sm disabled:opacity-50 disabled:cursor-not-allowed"
+          >
+            <Download className="w-4 h-4" />
+            ייצוא עסקאות ל-CSV
+          </button>
+        </div>
 
         <div className="mt-4 pt-4 border-t border-border-primary space-y-2">
           <button
