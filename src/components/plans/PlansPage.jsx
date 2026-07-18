@@ -168,12 +168,12 @@ export default function PlansPage() {
               </div>
               <div className="flex items-center gap-1.5">
                 {tab === 'plans' && (
-                  <button onClick={() => setFormOpen(true)} className="flex items-center gap-1.5 bg-accent-primary text-bg-primary font-semibold px-2.5 py-1.5 md:px-3.5 md:py-2 rounded-lg hover:bg-accent-hover transition-colors cursor-pointer text-xs md:text-sm">
+                  <button onClick={() => setFormOpen(true)} className="flex items-center gap-1.5 text-accent-primary border border-accent-primary/40 font-semibold px-2.5 py-1.5 md:px-3.5 md:py-2 rounded-lg hover:bg-accent-primary/10 transition-colors cursor-pointer text-xs md:text-sm">
                     <Plus className="w-4 h-4" /> <span className="hidden sm:inline">תוכנית חדשה</span>
                   </button>
                 )}
                 {tab === 'processes' && (
-                  <button onClick={() => { setProcessForm(defaultProcessForm); setEditingProcessId(null); setProcessFormOpen(true); }} className="flex items-center gap-1.5 bg-accent-primary text-bg-primary font-semibold px-2.5 py-1.5 md:px-3.5 md:py-2 rounded-lg hover:bg-accent-hover transition-colors cursor-pointer text-xs md:text-sm">
+                  <button onClick={() => { setProcessForm(defaultProcessForm); setEditingProcessId(null); setProcessFormOpen(true); }} className="flex items-center gap-1.5 text-accent-primary border border-accent-primary/40 font-semibold px-2.5 py-1.5 md:px-3.5 md:py-2 rounded-lg hover:bg-accent-primary/10 transition-colors cursor-pointer text-xs md:text-sm">
                     <Plus className="w-4 h-4" /> <span className="hidden sm:inline">הוסף ניתוח</span>
                   </button>
                 )}
