@@ -99,13 +99,16 @@
 All notifications are delivered in-app via Web Push (VAPID), keyed by the user's uid — no external bot or third-party chat app required. Everything is configured from the app's notification settings.
 
 ### Automated Notifications
+Configured per-user from the notification settings (a scheduled-push section + a "send test" button). The cron delivers them via Web Push:
+
 | Feature | Description |
 |---|---|
-| Price Alerts | Set target prices in the Market screen, monitored 24/7 by the cron |
 | Trade Events | Position opened / TP hit / SL hit (manual trades and exchange sync) |
-| Journal Reminder | Daily reminder at configurable time (default 21:00) |
-| Daily Summary | End-of-day P&L, trade count, Win Rate (auto-pushed from app) |
+| Journal Reminder | Daily reminder at a configurable time (default 21:00) |
+| Daily Summary | End-of-day P&L, trade count, Win Rate (auto-pushed from the app) |
 | Economic Calendar | Alert 1 hour before High Impact USD events (CPI, FOMC, NFP) |
+
+The cron matches a scheduled time to a **10-minute tick window**, so any chosen time fires (not only multiples of 10).
 
 ### Worker Architecture
 - **Runtime:** Cloudflare Workers (serverless, edge)
@@ -320,35 +323,35 @@ npm run deploy                # build + worker + hosting + Firestore rules
 `firebase deploy --only hosting,firestore:rules`. Firestore security rules are
 published automatically, so rule changes never get left behind.
 
-### Version bump — required on every release
+### Version bump — automatic on every release
 
-Two values must be bumped together so users reliably receive the update:
+Two values are bumped together so users reliably receive the update:
 
 | File | Constant | Why |
 |---|---|---|
-| `src/utils/constants.js` | `APP_VERSION` | Shown in the sidebar; how you confirm a device's version |
+| `src/utils/constants.js` | `APP_VERSION` | Shown in the sidebar; reported per-user to the admin panel |
 | `public/sw.js` | `CACHE_NAME` (`tradeos-vN`) | Forces the service worker to register a new version |
 
-Bump `APP_VERSION` (e.g. `1.0.0` → `1.0.1`) and increment `CACHE_NAME`
-(`tradeos-v12` → `tradeos-v13`) in the same commit as your change.
+**You don't bump these manually.** The deploy workflow auto-bumps `APP_VERSION`
+(patch) and `CACHE_NAME` on every push to `main` (`scripts/bump-version.mjs`,
+which also syncs the og-image `?v=` cache-buster in `index.html`). The version
+line was reset to **2.0.0** for the release; bump manually only if the
+auto-bump script breaks.
 
-### In-app update prompt (how users get updates)
+### Silent update (how users get updates)
 
-Users are **never** force-reloaded. The flow:
+There is **no update banner or button** — updates are silent, applied on the
+user's next open:
 
 1. You deploy a new version (new `CACHE_NAME`).
-2. The browser downloads the new service worker in the background.
-3. The new version **waits** — it does not take over. `sw.js` deliberately
-   does not call `skipWaiting()` on install.
-4. The app detects the waiting version and shows the banner
-   *"גרסה חדשה זמינה — עדכן עכשיו"* (`src/components/shared/UpdatePrompt.jsx`).
-5. The user clicks update → the app posts `SKIP_WAITING` to the SW → the SW
-   activates → the page reloads **once** (guarded against reload loops in
-   `src/services/swUpdate.js`).
-6. First-time installs never show the banner (it's not an "update").
-
-The very first deploy after introducing this flow still updates the old way
-(close/reopen). Every deploy after that shows the banner automatically.
+2. The browser fetches the new `sw.js`; it `skipWaiting()`s on install and
+   `clients.claim()`s on activate, so it takes control and caches the new
+   shell immediately.
+3. The page is **never reloaded mid-session** — the fresh assets are served
+   the next time the app is opened/reloaded (`src/services/swUpdate.js` only
+   registers + checks for updates on focus; it never force-reloads).
+4. Result: users on old versions update automatically, with zero interaction,
+   on their next open. The old opt-in banner (`UpdatePrompt.jsx`) was removed.
 
 ### Rollback (bad deploy safety net)
 
@@ -360,26 +363,43 @@ themselves; version control is centralized with the project owner.
 ### Admin panel
 
 Route `/admin` (sidebar link "ניהול") is gated on the user's Firestore
-profile having `role: "admin"`. It is read-only. To grant the first admin
-(chicken-and-egg, since rules require `role` to read other users), set the
-`role` field to `admin` on your own document under `users/{uid}` in the
+profile having `role: "admin"`. To grant the first admin (chicken-and-egg,
+since rules require `role` to read other users), set the `role` field to
+`admin` on your own document under `users/{uid}` in the
 [Firestore console](https://console.firebase.google.com/project/tradeos-91a58/firestore)
 once.
 
+It is a full operations console, not read-only:
+- **Customer analytics** — revenue/MRR over time, DAU/WAU/MAU + cohort
+  retention, onboarding funnel, AI usage & estimated cost, Firestore document
+  counts (with a link to the Firebase console for exact quotas).
+- **User drill-down** — per-user detail: counts, push-device status, connected
+  exchanges (ids only), reported app version, private admin note.
+- **Controls** — grant/revoke Premium, permanent user deletion (server-side,
+  including the Auth account), single/bulk push, coupon management, an audit
+  log (including who deleted their account and when).
+
+These actions run through admin-gated Worker endpoints backed by a Firebase
+service account; the Firestore rules keep admins read-only on other users'
+data client-side.
+
 ### AI agent checklist (do this for every code change)
 
-1. Branch/work on `main` unless told otherwise; commit with the project
-   owner's git identity (`Avraham Niazov <aviniazov7@icloud.com>`), no
-   third-party trailers in commit messages.
+See `CLAUDE.md` for the authoritative rules. In short:
+
+1. **Never push to `main`.** Branch off `dev` (`feature/*` / `fix/*`), open a
+   PR to `dev`. Commit with the owner's git identity
+   (`Avraham Niazov <aviniazov7@icloud.com>`), no third-party trailers.
 2. Make the change. Keep Firebase access inside `src/services/`.
-3. Bump `APP_VERSION` in `src/utils/constants.js` **and** `CACHE_NAME`
-   in `public/sw.js`.
-4. `npm run build` must pass. Pre-existing lint errors (duplicate keys,
-   `worker/index.js`, `motion`/JSX false-positives) are not deploy blockers;
-   do not add new ones in changed files.
-5. Commit + `git push origin main`.
-6. Tell the owner to run `git pull origin main && npm run deploy`.
-   (The remote sandbox cannot deploy — no Firebase/Cloudflare credentials.)
+3. **Do not bump versions manually** — CI auto-bumps on the `main` release.
+4. `npm run build` must pass. Don't add new lint errors in files you change
+   (the repo has ~160 pre-existing ones that aren't deploy blockers).
+5. Push the branch → merge the PR to `dev`. **GitHub Actions deploys
+   automatically** (Hosting preview channel + the Worker) — no manual
+   `npm run deploy`. Promotion to `main` (production) is the owner's call.
+6. Firestore rules are the one thing CI can't deploy — run
+   `firebase deploy --only firestore:rules` manually when `firestore.rules`
+   changes.
 
 ---
 
