@@ -115,13 +115,6 @@ const AI_COST_EST = {
 };
 const estimateAiCost = (text, image) => text * AI_COST_EST.textPerReq + image * AI_COST_EST.imagePerReq;
 
-// Groq pay-as-you-go token price (USD per 1M tokens, Llama 3.3 70B) — mirrors
-// the inline rate the "שימוש ב-AI לאורך זמן" card uses. Real tokens are metered
-// (aistat.tokIn/tokOut), so this is an accurate "cost IF it were paid" figure;
-// actual spend is ~$0 because the app runs on Groq/Gemini free tiers.
-const AI_TOKEN_PRICE = { in: 0.59, out: 0.79 };
-const tokenCost = (tokIn, tokOut) => (tokIn * AI_TOKEN_PRICE.in + tokOut * AI_TOKEN_PRICE.out) / 1e6;
-
 // Client mirror of the worker's global daily AI circuit-breaker
 // (AI_GLOBAL_DAILY_CEILING in worker/index.js). NOT exposed by any endpoint, so
 // this can drift if the worker's value changes — keep the two in sync manually.
@@ -1044,6 +1037,12 @@ export default function AdminPanel() {
           const totTokOut = series.reduce((a, s) => a + s.tokOut, 0);
           const totReq = series.reduce((a, s) => a + s.text + s.image, 0);
           const realCost = (totTokIn * 0.59 + totTokOut * 0.79) / 1e6;
+          // Today's global request count vs the worker's circuit-breaker
+          // ceiling (moved here from the old separate cost-detail card).
+          const todayCount = globalAi ? (globalAi.totalText || 0) + (globalAi.totalImage || 0) : null;
+          const ceilPct = todayCount != null ? Math.min(100, (todayCount / AI_GLOBAL_DAILY_CEILING) * 100) : null;
+          const ceilColor = ceilPct == null ? 'var(--color-accent-primary)'
+            : ceilPct > 85 ? 'var(--color-loss)' : ceilPct >= 60 ? '#f59e0b' : 'var(--color-accent-primary)';
           const chartData = series.map((s) => {
             const d = new Date(s.date);
             return { d: `${d.getDate()}/${d.getMonth() + 1}`, total: s.text + s.image };
@@ -1075,124 +1074,24 @@ export default function AdminPanel() {
                 <StatMini accent="violet" value={`${((totTokIn + totTokOut) / 1000).toFixed(0)}K`} label="טוקנים בפועל" />
                 <StatMini accent="green" value={`~$${realCost.toFixed(2)}`} label="עלות אילו בתשלום" />
               </div>
-            </>
-          );
-        })()}
-      </SectionCard>
-
-      {/* AI cost breakdown (#223) — daily estimated $ trend, text/image and
-          token in/out splits, and today's load vs the worker's global daily
-          ceiling. Consumes the SAME aiStats/globalAi already fetched (no new
-          request); shares the statsDays window with the card above. */}
-      <SectionCard
-        icon={<Brain className="w-4 h-4" />}
-        title="צריכת AI — פירוט"
-        action={<span className="text-[11px] text-text-muted">{statsDays} ימים · משוער</span>}
-      >
-        {!aiStats ? (
-          <div className="text-xs text-text-muted">…</div>
-        ) : (() => {
-          // Backfill today from the live per-user counters — token metering only
-          // accrues going forward, so the most recent day can read 0 tokens even
-          // after users chatted (same trick as the over-time card).
-          const series = (aiStats.stats || []).map((s) =>
-            globalAi && s.date === globalAi.date
-              ? { ...s, text: Math.max(s.text, globalAi.totalText || 0), image: Math.max(s.image, globalAi.totalImage || 0) }
-              : s
-          );
-          const totText = series.reduce((a, s) => a + s.text, 0);
-          const totImage = series.reduce((a, s) => a + s.image, 0);
-          const totReq = totText + totImage;
-          const totTokIn = series.reduce((a, s) => a + s.tokIn, 0);
-          const totTokOut = series.reduce((a, s) => a + s.tokOut, 0);
-          const totCost = tokenCost(totTokIn, totTokOut);
-          const textPct = totReq ? Math.round((totText / totReq) * 100) : 0;
-          const imagePct = totReq ? 100 - textPct : 0;
-          const costData = series.map((s) => {
-            const d = new Date(s.date);
-            return { d: `${d.getDate()}/${d.getMonth() + 1}`, cost: +tokenCost(s.tokIn, s.tokOut).toFixed(4) };
-          });
-          // Today's global request count vs the worker circuit-breaker. We only
-          // have per-user text+image counts client-side, so this is an ESTIMATE
-          // of the worker's internal aiglobal counter (close, not identical).
-          const todayCount = globalAi ? (globalAi.totalText || 0) + (globalAi.totalImage || 0) : null;
-          const ceilPct = todayCount != null ? Math.min(100, (todayCount / AI_GLOBAL_DAILY_CEILING) * 100) : null;
-          const ceilColor = ceilPct == null ? 'var(--color-accent-primary)'
-            : ceilPct > 85 ? 'var(--color-loss)' : ceilPct >= 60 ? '#f59e0b' : 'var(--color-accent-primary)';
-          return (
-            <>
-              {/* Estimated daily cost trend (paid Groq rate on real tokens). */}
-              <div className="text-[11px] text-text-muted mb-1.5">עלות יומית משוערת ($ · מחיר Groq בתשלום על טוקנים בפועל)</div>
-              <div className="h-24 -mx-1">
-                <ResponsiveContainer width="100%" height="100%">
-                  <AreaChart data={costData} margin={{ top: 4, right: 6, bottom: 0, left: 6 }}>
-                    <defs>
-                      <linearGradient id="aiCostGrad" x1="0" y1="0" x2="0" y2="1">
-                        <stop offset="5%" stopColor="var(--color-profit)" stopOpacity={0.35} />
-                        <stop offset="95%" stopColor="var(--color-profit)" stopOpacity={0} />
-                      </linearGradient>
-                    </defs>
-                    <XAxis dataKey="d" hide />
-                    <Tooltip
-                      contentStyle={{ background: 'var(--color-bg-overlay)', border: '1px solid var(--color-border-primary)', borderRadius: '8px', fontSize: '12px', color: 'var(--color-text-primary)' }}
-                      labelStyle={{ color: 'var(--color-text-secondary)' }}
-                      cursor={{ stroke: 'var(--color-border-primary)' }}
-                      formatter={(v) => [`~$${Number(v).toFixed(4)}`, 'עלות משוערת']}
-                    />
-                    <Area type="monotone" dataKey="cost" stroke="var(--color-profit)" strokeWidth={2} fill="url(#aiCostGrad)" animationDuration={700} />
-                  </AreaChart>
-                </ResponsiveContainer>
-              </div>
-
-              {/* Text vs image request split. */}
-              <div className="mt-3">
-                <div className="flex items-center justify-between gap-2 text-[11px] mb-1">
-                  <span className="text-text-muted">בקשות טקסט מול תמונה</span>
-                  <span className="text-text-secondary" dir="ltr">
-                    <span className="text-accent-primary font-semibold">{totText.toLocaleString()}</span>{` · ${textPct}%`}
-                    <span className="text-text-muted">{'  |  '}</span>
-                    <span className="text-violet-400 font-semibold">{totImage.toLocaleString()}</span>{` · ${imagePct}%`}
-                  </span>
-                </div>
-                <div className="h-2.5 rounded-full bg-bg-tertiary overflow-hidden flex" dir="ltr">
-                  <div className="h-full transition-all duration-500" style={{ width: `${totReq ? textPct : 0}%`, background: 'var(--color-accent-primary)' }} />
-                  <div className="h-full transition-all duration-500" style={{ width: `${totReq ? imagePct : 0}%`, background: '#8b5cf6' }} />
-                </div>
-              </div>
-
-              {/* Token in/out + estimated window cost. */}
-              <div className="mt-3 grid grid-cols-3 gap-2">
-                <StatMini accent="cyan" value={`${(totTokIn / 1000).toFixed(0)}K`} label="טוקני קלט" />
-                <StatMini accent="violet" value={`${(totTokOut / 1000).toFixed(0)}K`} label="טוקני פלט" />
-                <StatMini accent="green" value={`~$${totCost.toFixed(2)}`} label={`עלות משוערת (${statsDays} ימים)`} />
-              </div>
-
-              {/* Global daily ceiling proximity (worker circuit breaker). */}
+              {/* System-load ceiling: today's global requests vs the worker
+                  circuit-breaker (the one genuinely-unique widget kept from the
+                  removed cost-detail card). */}
               {ceilPct != null && (
                 <div className="mt-3">
                   <div className="flex items-center justify-between gap-2 text-[11px] mb-1">
-                    <span className="text-text-muted flex items-center gap-1">
-                      <AlertTriangle className="w-3.5 h-3.5" /> עומס גלובלי היום מול מגבלת המערכת
-                    </span>
+                    <span className="text-text-muted flex items-center gap-1"><AlertTriangle className="w-3.5 h-3.5" /> עומס גלובלי היום מול מגבלת המערכת</span>
                     <span className="text-text-secondary" dir="ltr">
-                      <span className="font-semibold text-text-primary">{todayCount.toLocaleString()}</span>
-                      {' / '}{AI_GLOBAL_DAILY_CEILING.toLocaleString()}
-                      <span style={{ color: ceilColor }}>{' · '}{ceilPct > 0 && ceilPct < 10 ? ceilPct.toFixed(1) : Math.round(ceilPct)}%</span>
+                      <span className="font-semibold text-text-primary">{todayCount.toLocaleString()}</span>{' / '}{AI_GLOBAL_DAILY_CEILING.toLocaleString()}
+                      <span style={{ color: ceilColor }}>{' \u00b7 '}{ceilPct > 0 && ceilPct < 10 ? ceilPct.toFixed(1) : Math.round(ceilPct)}%</span>
                     </span>
                   </div>
                   <div className="h-1.5 rounded-full bg-bg-tertiary overflow-hidden">
                     <div className="h-full rounded-full transition-all duration-500" style={{ width: `${todayCount > 0 ? Math.max(ceilPct, 1.5) : 0}%`, background: ceilColor }} />
                   </div>
-                  {ceilPct >= 85 && (
-                    <div className="mt-1 text-[10px] text-loss">חריגה מתקרבת — קרוב למגבלת ה-503 הגלובלית של המערכת</div>
-                  )}
+                  {ceilPct >= 85 && <div className="mt-1 text-[10px] text-loss">חריגה מתקרבת — קרוב למגבלת ה-503 הגלובלית</div>}
                 </div>
               )}
-
-              <div className="mt-3 text-[10px] text-text-muted leading-relaxed">
-                עלויות משוערות בלבד — המערכת רצה על מכסות חינם (Groq/Gemini), כך שהעלות בפועל היום ≈ $0.
-                מחיר טוקנים ${AI_TOKEN_PRICE.in}/${AI_TOKEN_PRICE.out} ל-1M (קלט/פלט). מגבלת המערכת מוגדרת ב-Worker ואינה נחשפת ב-API — הערך כאן הוא מראה שעשוי להתעדכן.
-              </div>
             </>
           );
         })()}
