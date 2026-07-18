@@ -3944,14 +3944,23 @@ async function handleRequest(request, env) {
           'aggregation.crossSeriesReducer': 'REDUCE_SUM',
         });
         const r = await fetch(`https://monitoring.googleapis.com/v3/projects/${FIREBASE_PROJECT_ID}/timeSeries?${qs}`, {
-          headers: { Authorization: `Bearer ${gtoken}` },
+          headers: {
+            Authorization: `Bearer ${gtoken}`,
+            // Set the billing/quota project so Google attributes the call to
+            // THIS project. Without it a service-account call to an API the SA
+            // can't "consume" (missing serviceusage.services.use) 403s with
+            // PERMISSION_DENIED even when Monitoring Viewer IS granted — the
+            // exact symptom here. This is the documented fix.
+            'x-goog-user-project': FIREBASE_PROJECT_ID,
+          },
         });
         if (!r.ok) {
-          // 403 = Monitoring API not enabled / service account lacks the
-          // monitoring.viewer role; 400 = bad request. Keep the reason short
-          // (status word only — never the full body).
+          // Surface the REAL reason (Google's own message, e.g. which
+          // permission is missing) so the panel can show something actionable
+          // instead of a bare status. Truncated; never leaks tokens.
           const errBody = await r.json().catch(() => null);
-          throw new Error(`Monitoring API ${r.status}${errBody?.error?.status ? ` (${errBody.error.status})` : ''}`);
+          const detail = errBody?.error?.message || errBody?.error?.status || '';
+          throw new Error(`Monitoring API ${r.status}: ${detail}`.slice(0, 180));
         }
         const data = await r.json();
         let sum = 0;
@@ -4016,7 +4025,10 @@ async function handleRequest(request, env) {
       counts,
       limits,
     });
-    await env.ALERTS_KV.put('fbusage:cache', body, { expirationTtl: 300 });
+    // Cache a GOOD result for 5 min; when monitoring failed, cache only 30s so
+    // a freshly-granted permission (or a config fix) shows up on the next
+    // refresh instead of being pinned to the error for 5 minutes.
+    await env.ALERTS_KV.put('fbusage:cache', body, { expirationTtl: monitoring ? 300 : 30 });
     return new Response(body, { headers: { ...cors, 'Content-Type': 'application/json' } });
   }
 

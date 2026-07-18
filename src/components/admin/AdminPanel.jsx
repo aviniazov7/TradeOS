@@ -1979,38 +1979,6 @@ function UserDetailModal({ user, onClose, onUserChanged }) {
     }
   };
 
-  // Quick premium extend (+7 / +30). Uses the SAME adminGrantPremium path as
-  // the duration picker, but always with amount 0 (no payment recorded) — the
-  // picker's own "no amount" branch behaves identically. Refreshes exactly like
-  // the picker: reschedule expiry reminders → bust the worker plan cache →
-  // onUserChanged, plus a toast.
-  const quickExtend = async (days) => {
-    if (!user) return;
-    setGranting(true);
-    try {
-      // TRUE extend: add `days` on top of the remaining premium window, not
-      // now+days — otherwise "+30" on a user with 300 days left would SHORTEN
-      // them to 30. adminGrantPremium sets an absolute now+total, so pass the
-      // remaining days + the increment. (planExpires may be a Timestamp / ISO.)
-      const rawExp = user.planExpires?.toDate ? user.planExpires.toDate() : (user.planExpires ? new Date(user.planExpires) : null);
-      const remainingMs = rawExp && !isNaN(rawExp) ? rawExp.getTime() - Date.now() : 0;
-      const remainingDays = Math.max(0, remainingMs / (24 * 60 * 60 * 1000));
-      const totalDays = Math.round(remainingDays + days);
-      await adminGrantPremium(user.id, totalDays, { amount: 0 });
-      const planExpiresISO = new Date(Date.now() + totalDays * 24 * 60 * 60 * 1000).toISOString();
-      adminScheduleExpiryReminders(user.id, planExpiresISO);
-      adminRefreshPlanCache(user.id);
-      toast.success(`הוארך ב-${days} ימים${remainingDays >= 1 ? ` (סה"כ ${totalDays})` : ''}`);
-      onUserChanged?.();
-    } catch (e) {
-      toast.error(e.code === 'permission-denied'
-        ? 'אין הרשאה — ייתכן שכללי Firestore לא פורסו מחדש'
-        : 'הארכת ה-Premium נכשלה');
-    } finally {
-      setGranting(false);
-    }
-  };
-
   const revoke = async () => {
     if (!user) return;
     if (!window.confirm('לבטל את ה-Premium של המשתמש?')) return;
@@ -2139,67 +2107,6 @@ function UserDetailModal({ user, onClose, onUserChanged }) {
             <Send className="w-4 h-4" /> שלח הודעת Push
           </button>
         </div>
-
-        {/* Quick premium extend — +7 / +30 alongside the grant/revoke actions.
-            Runs the same adminGrantPremium path as the picker with no payment,
-            so it grants (free user) or extends (premium) in one tap. */}
-        {user.role !== 'admin' && (
-          <div className="flex items-center gap-2">
-            <span className="text-[11px] text-text-muted whitespace-nowrap">הארכה מהירה</span>
-            <button
-              onClick={() => quickExtend(7)}
-              disabled={granting}
-              className="flex-1 flex items-center justify-center gap-1 px-3 py-1.5 rounded-lg bg-amber-500/10 border border-amber-500/30 text-amber-400 text-xs font-semibold hover:bg-amber-500/20 transition-colors cursor-pointer disabled:opacity-50"
-            >
-              <Plus className="w-3.5 h-3.5" /> 7 ימים
-            </button>
-            <button
-              onClick={() => quickExtend(30)}
-              disabled={granting}
-              className="flex-1 flex items-center justify-center gap-1 px-3 py-1.5 rounded-lg bg-amber-500/10 border border-amber-500/30 text-amber-400 text-xs font-semibold hover:bg-amber-500/20 transition-colors cursor-pointer disabled:opacity-50"
-            >
-              <Plus className="w-3.5 h-3.5" /> 30 ימים
-            </button>
-          </div>
-        )}
-
-        {/* Danger zone — permanent deletion runs through the worker's service
-            account (admins are read-only on other users' data client-side, and
-            only the service account can delete somebody else's Auth user). */}
-        {user.role !== 'admin' && (
-          confirmDelete ? (
-            <div className="bg-loss/5 border border-loss/30 rounded-xl p-3 space-y-2">
-              <p className="text-xs text-loss leading-relaxed">
-                פעולה בלתי הפיכה: כל הנתונים, רשומת הלידרבורד וחשבון ההתחברות של{' '}
-                <span className="font-bold">{user.email || user.displayName || user.id}</span> יימחקו לצמיתות.
-              </p>
-              <div className="flex gap-2">
-                <button
-                  onClick={doDelete}
-                  disabled={deleting}
-                  className="flex-1 flex items-center justify-center gap-1.5 px-3 py-2 rounded-lg bg-loss text-white text-sm font-bold hover:bg-loss/80 transition-colors cursor-pointer disabled:opacity-50"
-                >
-                  {deleting ? <RefreshCw className="w-4 h-4 animate-spin" /> : <Trash2 className="w-4 h-4" />}
-                  {deleting ? 'מוחק…' : 'אשר מחיקה סופית'}
-                </button>
-                <button
-                  onClick={() => setConfirmDelete(false)}
-                  disabled={deleting}
-                  className="px-4 py-2 rounded-lg border border-border-primary text-sm text-text-secondary hover:text-text-primary transition-colors cursor-pointer disabled:opacity-50"
-                >
-                  ביטול
-                </button>
-              </div>
-            </div>
-          ) : (
-            <button
-              onClick={() => setConfirmDelete(true)}
-              className="w-full flex items-center justify-center gap-1.5 px-3 py-2 rounded-lg border border-loss/30 text-sm text-loss/80 hover:text-loss hover:bg-loss/5 transition-colors cursor-pointer"
-            >
-              <Trash2 className="w-4 h-4" /> מחק משתמש לצמיתות
-            </button>
-          )
-        )}
 
         {/* Grant Premium duration picker */}
         {grantOpen && (
@@ -2485,6 +2392,45 @@ function UserDetailModal({ user, onClose, onUserChanged }) {
             and synthetic events (registration, last active) into one
             chronological feed, newest first. */}
         <CustomerTimeline user={user} />
+
+        {/* Danger zone — permanent deletion runs through the worker's service
+            account (admins are read-only on other users' data client-side, and
+            only the service account can delete somebody else's Auth user). */}
+        {user.role !== 'admin' && (
+          confirmDelete ? (
+            <div className="bg-loss/5 border border-loss/30 rounded-xl p-3 space-y-2">
+              <p className="text-xs text-loss leading-relaxed">
+                פעולה בלתי הפיכה: כל הנתונים, רשומת הלידרבורד וחשבון ההתחברות של{' '}
+                <span className="font-bold">{user.email || user.displayName || user.id}</span> יימחקו לצמיתות.
+              </p>
+              <div className="flex gap-2">
+                <button
+                  onClick={doDelete}
+                  disabled={deleting}
+                  className="flex-1 flex items-center justify-center gap-1.5 px-3 py-2 rounded-lg bg-loss text-white text-sm font-bold hover:bg-loss/80 transition-colors cursor-pointer disabled:opacity-50"
+                >
+                  {deleting ? <RefreshCw className="w-4 h-4 animate-spin" /> : <Trash2 className="w-4 h-4" />}
+                  {deleting ? 'מוחק…' : 'אשר מחיקה סופית'}
+                </button>
+                <button
+                  onClick={() => setConfirmDelete(false)}
+                  disabled={deleting}
+                  className="px-4 py-2 rounded-lg border border-border-primary text-sm text-text-secondary hover:text-text-primary transition-colors cursor-pointer disabled:opacity-50"
+                >
+                  ביטול
+                </button>
+              </div>
+            </div>
+          ) : (
+            <button
+              onClick={() => setConfirmDelete(true)}
+              className="w-full flex items-center justify-center gap-1.5 px-3 py-2 rounded-lg border border-loss/30 text-sm text-loss/80 hover:text-loss hover:bg-loss/5 transition-colors cursor-pointer"
+            >
+              <Trash2 className="w-4 h-4" /> מחק משתמש לצמיתות
+            </button>
+          )
+        )}
+
 
       </div>
     </Modal>
