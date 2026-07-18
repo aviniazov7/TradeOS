@@ -168,7 +168,13 @@ export default function WhalesPage() {
 
   const liqBuf = useRef([]);
   const tradeBuf = useRef([]);
-  const idRef = useRef(0);
+  // Restored liqs carry ids from a previous session; starting the counter at 0
+  // would hand live events ids that already exist in the list (duplicate React
+  // keys → wrong DOM reuse). Lazy-init from the restored maximum instead.
+  const idRef = useRef(null);
+  if (idRef.current === null) {
+    idRef.current = liqs.reduce((m, l) => (typeof l.id === 'number' && l.id > m ? l.id : m), 0);
+  }
 
   // Minute tick — anchors the 24h liquidation window without calling
   // Date.now() during render (react-hooks/purity).
@@ -198,7 +204,7 @@ export default function WhalesPage() {
         return merged.slice(0, TRADE_STORE_CAP);
       });
       setBackfilled(true);
-    });
+    }).catch(() => { if (!cancelled) setBackfilled(true); }); // REST down → show the live feed, not an eternal skeleton
     return () => { cancelled = true; };
   }, []);
 

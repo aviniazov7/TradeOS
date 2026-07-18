@@ -95,14 +95,52 @@ export async function adminCancelExpiryReminders(uid) {
   } catch { /* best-effort */ }
 }
 
-// Admin-only: a user's Telegram bot link status + usage (from worker KV).
-// Returns { connected, username, usage: { total, lastUsed, lastCmd } | null,
-// alertsCount, watchlistCount }.
-export async function adminGetTelegramInfo(uid) {
-  const res = await fetch(`${WORKER_BASE}/admin/telegram/${uid}`, { headers: await authHeader() });
+// ── Notification schedule + price alerts (Web Push, uid-keyed, #219) ────────
+
+export async function getNotifySchedule() {
+  const res = await fetch(`${WORKER_BASE}/notify-settings`, { headers: await authHeader() });
   const data = await res.json().catch(() => ({}));
-  if (!res.ok) throw new Error(data.error || 'טעינת נתוני טלגרם נכשלה');
+  if (!res.ok) throw new Error(data.error || 'טעינת הגדרות ההתראות נכשלה');
+  return data.settings;
+}
+
+export async function saveNotifySchedule(settings) {
+  const res = await fetch(`${WORKER_BASE}/notify-settings`, {
+    method: 'POST',
+    headers: await authHeader(),
+    body: JSON.stringify(settings),
+  });
+  const data = await res.json().catch(() => ({}));
+  if (!res.ok) throw new Error(data.error || 'שמירת הגדרות ההתראות נכשלה');
+  return data.settings;
+}
+
+// Admin-only: permanently delete a user via the worker's service account —
+// all Firestore data, leaderboard entry, per-user KV keys AND the Auth
+// account (none of which an admin can delete client-side; the rules make
+// other users' data read-only for admins).
+export async function adminDeleteUser(uid) {
+  const res = await fetch(`${WORKER_BASE}/admin/delete-user`, {
+    method: 'POST',
+    headers: await authHeader(),
+    body: JSON.stringify({ uid }),
+  });
+  const data = await res.json().catch(() => ({}));
+  if (!res.ok || !data.ok) throw new Error(data.error || 'מחיקת המשתמש נכשלה');
   return data;
+}
+
+// Best-effort audit trail for SELF-service account deletion — must be called
+// while the user's ID token is still valid (i.e. before deleteAuthUser).
+// Never throws: logging must not block the deletion itself.
+export async function logAccountDeletion(info = {}) {
+  try {
+    await fetch(`${WORKER_BASE}/account/deleted`, {
+      method: 'POST',
+      headers: await authHeader(),
+      body: JSON.stringify(info),
+    });
+  } catch { /* best-effort */ }
 }
 
 // Admin-only: list recent admin actions (grants/revokes/pushes/coupons).
@@ -127,20 +165,6 @@ export async function adminSendTestDigest() {
   const data = await res.json().catch(() => ({}));
   if (!res.ok) throw new Error(data.error || 'שליחת מייל הבדיקה נכשלה');
   return data; // { ok, sentTo, stats }
-}
-
-// Admin-only: re-register the Telegram webhook against whichever worker
-// currently serves the app (WORKER_BASE). Needed after moving the worker to
-// a new host/domain — Telegram keeps pushing updates to the old URL until
-// this is called.
-export async function adminSetupTelegramWebhook() {
-  const res = await fetch(`${WORKER_BASE}/setup-webhook`, {
-    method: 'POST',
-    headers: await authHeader(),
-  });
-  const data = await res.json().catch(() => ({}));
-  if (!res.ok || !data.ok) throw new Error(data.error || 'רישום ה-webhook נכשל');
-  return data;
 }
 
 // Admin-only: send a branded payment/gift confirmation email to a user after
@@ -179,6 +203,34 @@ export async function adminSendBulkNotification({ uids, title, body, url }) {
   const data = await res.json().catch(() => ({}));
   if (!res.ok) throw new Error(data.error || 'השליחה הקבוצתית נכשלה');
   return data;
+}
+
+// Admin-only: how many Web Push devices a user has registered (count only —
+// the worker never returns the subscriptions themselves).
+export async function adminGetPushStatus(uid) {
+  const res = await fetch(`${WORKER_BASE}/admin/push-status/${uid}`, { headers: await authHeader() });
+  const data = await res.json().catch(() => ({}));
+  if (!res.ok || !data.ok) throw new Error(data.error || 'טעינת סטטוס ההתראות נכשלה');
+  return data; // { ok, devices }
+}
+
+// Admin-only: Firebase (Firestore) consumption vs the Spark free-tier limits —
+// today's read/write/delete totals (Cloud Monitoring; null + monitoringError
+// when the API isn't enabled) plus document counts. Numbers only, cached 5
+// minutes on the worker.
+export async function adminGetFirebaseUsage() {
+  const res = await fetch(`${WORKER_BASE}/admin/firebase-usage`, { headers: await authHeader() });
+  const data = await res.json().catch(() => ({}));
+  if (!res.ok) throw new Error(data.error || 'טעינת צריכת Firebase נכשלה');
+  return data; // { at, monitoring, monitoringError?, counts, limits }
+}
+
+// Admin-only: which exchanges a user has connected (ids only — never keys).
+export async function adminGetExchangesStatus(uid) {
+  const res = await fetch(`${WORKER_BASE}/admin/exchanges-status/${uid}`, { headers: await authHeader() });
+  const data = await res.json().catch(() => ({}));
+  if (!res.ok || !data.ok) throw new Error(data.error || 'טעינת סטטוס הבורסות נכשלה');
+  return data; // { ok, exchanges } — exchange ids only
 }
 
 // Register read-only exchange keys with the worker so it can poll the exchange

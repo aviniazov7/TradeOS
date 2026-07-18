@@ -112,6 +112,34 @@ export function getTradeResult(pnl) {
 }
 
 /**
+ * The ONE closed-trade predicate, shared by the dashboard stats, the trade
+ * table and the monthly calendar — so a trade never counts as closed on one
+ * screen and open on another. Broker CSV imports (MT5/forex) carry
+ * status:'closed' + pnlFromExchange with NO exit price, so exitPrice alone
+ * must not decide; explicit 'open'/'partial' status always wins.
+ */
+export function isClosedTrade(t) {
+  if (!t) return false;
+  if (t.status === 'closed') return true;
+  if (t.status === 'partial' || t.status === 'open') return false;
+  return parseFloat(t.exitPrice) > 0 || typeof t.pnlFromExchange === 'number';
+}
+
+/**
+ * The ONE day-bucketing key (YYYY-MM-DD, LOCAL midnight). toISOString()
+ * buckets by UTC, so a trade or journal written 00:30–03:00 Israel time
+ * landed on yesterday's key while "today" logic elsewhere uses local
+ * midnight — every screen that groups by day must go through this helper.
+ */
+export function localDayKey(date = new Date()) {
+  let d = date;
+  if (typeof d?.toDate === 'function') d = d.toDate(); // Firestore Timestamp
+  else if (!(d instanceof Date)) d = new Date(d);
+  if (Number.isNaN(d.getTime())) return '';
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+}
+
+/**
  * Calculate win rate from an array of trades
  */
 export function calculateWinRate(trades) {
@@ -148,14 +176,18 @@ export function calculateExpectancy(trades) {
   if (!trades.length) return 0;
   const wins = trades.filter((t) => t.result === 'win');
   const losses = trades.filter((t) => t.result === 'loss');
+  // Three weights (win/loss/breakeven), not two: weighting the loss side by
+  // (1 − winRate) silently counts breakevens as losses — 4 wins of +100,
+  // 2 losses of −100 and 4 BE would compute −20/trade instead of +20.
   const winRate = wins.length / trades.length;
+  const lossRate = losses.length / trades.length;
   const avgWin = wins.length
     ? wins.reduce((s, t) => s + (t.netPnl ?? t.pnl), 0) / wins.length
     : 0;
   const avgLoss = losses.length
     ? Math.abs(losses.reduce((s, t) => s + (t.netPnl ?? t.pnl), 0) / losses.length)
     : 0;
-  return winRate * avgWin - (1 - winRate) * avgLoss;
+  return winRate * avgWin - lossRate * avgLoss;
 }
 
 /**

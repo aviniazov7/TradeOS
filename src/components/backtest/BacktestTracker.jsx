@@ -25,6 +25,7 @@ import TradingViewPanel from './TradingViewPanel';
 import StrategySelector from '../shared/StrategySelector';
 import { PAIRS, SESSIONS, getSessionClasses } from '../../utils/constants';
 import { formatDate, formatDateShort, formatTime } from '../../utils/formatters';
+import { safeHttpUrl } from '../../utils/urls';
 import { useUserStrategies } from '../../hooks/useUserStrategies';
 import { useUserTimeframes } from '../../hooks/useUserTimeframes';
 import { useUserTriggers } from '../../hooks/useUserTriggers';
@@ -41,12 +42,15 @@ function getSessionFromDate(date) {
   return 'Asia';
 }
 
-const defaultForm = {
+// A function, not a module-level object: the default date must be "now" at the
+// moment the form opens, not frozen at app load (a tab left open for two days
+// was silently stamping backtests with a stale date + wrong auto-session).
+const makeDefaultForm = () => ({
   pair: 'BTCUSDT', direction: 'long', strategy: '', trigger: '',
   timeframe: '4H', session: '', date: new Date().toISOString(),
   maxR: '', stopDistancePct: '', rResult: '', result: 'win',
   entryChartUrl: '', managementChartUrl: '', notes: '',
-};
+});
 
 const defaultFilters = { search: '', direction: '', result: '', strategy: '', session: '' };
 
@@ -79,7 +83,7 @@ export default function BacktestTracker() {
   const { allTriggers, addTrigger, removeTrigger } = useUserTriggers();
   const [formOpen, setFormOpen] = useState(false);
   const [editingId, setEditingId] = useState(null);
-  const [form, setForm] = useState(defaultForm);
+  const [form, setForm] = useState(makeDefaultForm);
   const [saving, setSaving] = useState(false);
   const [deleteTarget, setDeleteTarget] = useState(null);
   const [filters, setFilters] = useState(defaultFilters);
@@ -126,7 +130,7 @@ export default function BacktestTracker() {
 
   const openNew = () => {
     setEditingId(null);
-    setForm(defaultForm);
+    setForm(makeDefaultForm());
     setFormOpen(true);
     setMobileStep(0);
   };
@@ -160,7 +164,7 @@ export default function BacktestTracker() {
         await addBacktest(data);
         toast.success('העסקה נוספה');
       }
-      setForm({ ...defaultForm, pair: form.pair, strategy: form.strategy, timeframe: form.timeframe, session: form.session });
+      setForm({ ...makeDefaultForm(), pair: form.pair, strategy: form.strategy, timeframe: form.timeframe, session: form.session });
       setEditingId(null);
       setFormOpen(false);
     } catch { toast.error('שגיאה בשמירה'); }
@@ -301,7 +305,7 @@ export default function BacktestTracker() {
                 <Download className="w-4 h-4" />
               </button>
             )}
-            <button onClick={openNew} className="h-9 inline-flex items-center gap-1.5 bg-accent-primary text-bg-primary font-semibold px-3.5 rounded-lg hover:bg-accent-hover transition-colors cursor-pointer text-sm">
+            <button onClick={openNew} className="h-9 inline-flex items-center gap-1.5 text-accent-primary border border-accent-primary/40 font-semibold px-3.5 rounded-lg hover:bg-accent-primary/10 transition-colors cursor-pointer text-sm">
               <Plus className="w-4 h-4" /> <span className="hidden sm:inline">הוסף עסקה</span>
             </button>
           </div>
@@ -460,13 +464,13 @@ export default function BacktestTracker() {
                                   {bt.session}
                                 </span>
                               )}
-                              {bt.entryChartUrl && (
-                                <a href={bt.entryChartUrl} target="_blank" rel="noopener noreferrer" className="flex items-center gap-0.5 text-accent-primary text-[10px]">
+                              {safeHttpUrl(bt.entryChartUrl) && (
+                                <a href={safeHttpUrl(bt.entryChartUrl)} target="_blank" rel="noopener noreferrer" className="flex items-center gap-0.5 text-accent-primary text-[10px]">
                                   <ExternalLink className="w-3 h-3" />כניסה
                                 </a>
                               )}
-                              {bt.managementChartUrl && (
-                                <a href={bt.managementChartUrl} target="_blank" rel="noopener noreferrer" className="flex items-center gap-0.5 text-purple-400 text-[10px]">
+                              {safeHttpUrl(bt.managementChartUrl) && (
+                                <a href={safeHttpUrl(bt.managementChartUrl)} target="_blank" rel="noopener noreferrer" className="flex items-center gap-0.5 text-purple-400 text-[10px]">
                                   <ExternalLink className="w-3 h-3" />ניהול
                                 </a>
                               )}
@@ -552,19 +556,19 @@ export default function BacktestTracker() {
                         </td>
                         <td className="py-2.5">
                           <div className="flex items-center gap-2">
-                            {bt.entryChartUrl && (
-                              <a href={bt.entryChartUrl} target="_blank" rel="noopener noreferrer"
+                            {safeHttpUrl(bt.entryChartUrl) && (
+                              <a href={safeHttpUrl(bt.entryChartUrl)} target="_blank" rel="noopener noreferrer"
                                 className="text-accent-primary hover:underline text-xs flex items-center gap-0.5">
                                 <ExternalLink className="w-3 h-3" />כניסה
                               </a>
                             )}
-                            {bt.managementChartUrl && (
-                              <a href={bt.managementChartUrl} target="_blank" rel="noopener noreferrer"
+                            {safeHttpUrl(bt.managementChartUrl) && (
+                              <a href={safeHttpUrl(bt.managementChartUrl)} target="_blank" rel="noopener noreferrer"
                                 className="text-purple-400 hover:underline text-xs flex items-center gap-0.5">
                                 <ExternalLink className="w-3 h-3" />ניהול
                               </a>
                             )}
-                            {!bt.entryChartUrl && !bt.managementChartUrl && '–'}
+                            {!safeHttpUrl(bt.entryChartUrl) && !safeHttpUrl(bt.managementChartUrl) && '–'}
                           </div>
                         </td>
                         <td className="py-2.5">
@@ -649,6 +653,7 @@ export default function BacktestTracker() {
                   <DatePicker
                     selected={form.date ? new Date(form.date) : new Date()}
                     onChange={(date) => {
+                      if (!date) return; // clearing the text field emits null
                       const prev = form.date ? new Date(form.date) : new Date();
                       date.setHours(prev.getHours(), prev.getMinutes());
                       update('date', date.toISOString());
@@ -666,6 +671,7 @@ export default function BacktestTracker() {
                   <DatePicker
                     selected={form.date ? new Date(form.date) : new Date()}
                     onChange={(date) => {
+                      if (!date) return; // clearing the text field emits null
                       const prev = form.date ? new Date(form.date) : new Date();
                       prev.setHours(date.getHours(), date.getMinutes());
                       update('date', prev.toISOString());

@@ -13,6 +13,8 @@ import {
   calculateRecoveryFactor,
   pearsonCorrelation,
   clampRatio,
+  isClosedTrade,
+  localDayKey,
 } from '../utils/calculations';
 import { getSessionFromDate, SESSION_UNKNOWN } from '../utils/sessions';
 
@@ -67,18 +69,13 @@ export function useDashboardStats(trades, initialBalance = 0, period = 'all') {
         })
       : trades;
 
-    // Closed-trade predicate — MUST match Dashboard.jsx (the view that shows
-    // correct figures). A trade counts only if it is genuinely closed:
-    //   • status 'closed', OR
-    //   • has a real exit price AND is neither 'partial' nor 'open'.
-    // 'partial' rows are excluded on purpose: partial-TP auto-closes can write a
-    // netPnl computed from the contract-inflated quantity (MEXC vol is in
-    // contracts, not coins), which otherwise blows net profit up to tens of
-    // thousands and craters the win rate. 'open' rows carry a live mark price
-    // (exitPrice > 0) whose unrealized PnL would swing the numbers day to day.
-    const cl = filtered.filter((t) =>
-      t.status === 'closed' || (parseFloat(t.exitPrice) > 0 && t.status !== 'partial' && t.status !== 'open')
-    );
+    // The shared isClosedTrade predicate keeps this in lockstep with every
+    // other screen. 'partial' rows are excluded on purpose: partial-TP
+    // auto-closes can write a netPnl computed from the contract-inflated
+    // quantity (MEXC vol is in contracts, not coins), which otherwise blows
+    // net profit up and craters the win rate; 'open' rows carry a live mark
+    // price whose unrealized PnL would swing the numbers day to day.
+    const cl = filtered.filter(isClosedTrade);
     // openCount is derived from closed so the two counts always sum to filtered.length
     const oc = filtered.length - cl.length;
     const sr = [...cl].sort((a, b) => toDate(a.exitDate) - toDate(b.exitDate));
@@ -101,7 +98,7 @@ export function useDashboardStats(trades, initialBalance = 0, period = 'all') {
     const pfRating = profitFactor === Infinity ? 'מעולה' : profitFactor >= 2.5 ? 'גבוה' : profitFactor >= 1.5 ? 'בינוני' : 'נמוך';
 
     const tradingDays = new Set(
-      closed.map((t) => toDate(t.exitDate).toISOString().slice(0, 10))
+      closed.map((t) => localDayKey(toDate(t.exitDate)))
     ).size;
     const tradesPerDay = tradingDays > 0 ? closed.length / tradingDays : 0;
     const avgDurationMs = calculateAvgDuration(closed);
@@ -264,7 +261,7 @@ export function useDashboardStats(trades, initialBalance = 0, period = 'all') {
     const periodStart = getPeriodStart(period);
     const prePeriodPnl = periodStart
       ? trades
-          .filter((t) => (t.exitPrice > 0) && toDate(t.exitDate || t.entryDate) < periodStart)
+          .filter((t) => isClosedTrade(t) && toDate(t.exitDate || t.entryDate) < periodStart)
           .reduce((s, t) => s + (safePnl(t)), 0)
       : 0;
 
@@ -288,7 +285,7 @@ export function useDashboardStats(trades, initialBalance = 0, period = 'all') {
 
     const pairPnlByDate = {};
     closed.forEach((t) => {
-      const dateKey = toDate(t.exitDate).toISOString().slice(0, 10);
+      const dateKey = localDayKey(toDate(t.exitDate));
       const pair = t.pair;
       if (!pairPnlByDate[dateKey]) pairPnlByDate[dateKey] = {};
       pairPnlByDate[dateKey][pair] = (pairPnlByDate[dateKey][pair] || 0) + (safePnl(t));

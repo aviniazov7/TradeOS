@@ -3,6 +3,7 @@ import { motion } from 'framer-motion';
 import { Activity, Flame } from 'lucide-react';
 import { useMentalityJournals } from '../../hooks/useMentalityJournals';
 import { MENTALITY_EMOTIONS } from '../../utils/constants';
+import { localDayKey } from '../../utils/calculations';
 
 const DAY_NAMES = ['א', 'ב', 'ג', 'ד', 'ה', 'ו', 'ש'];
 
@@ -33,9 +34,6 @@ function getDayColor(morning, evening) {
   return 'bg-loss/15 border-loss/30';
 }
 
-function toDateStr(date) {
-  return date.toISOString().slice(0, 10);
-}
 
 export default function MoodHeatmap() {
   const { morningEntries, eveningEntries } = useMentalityJournals();
@@ -44,19 +42,18 @@ export default function MoodHeatmap() {
     const now = new Date();
     const result = [];
     for (let i = 6; i >= 0; i--) {
-      // Key by UTC date to match how journal entries store `date`
-      // (new Date().toISOString().slice(0,10)). Building keys from local
-      // midnight shifted every key back a day for UTC+ zones (e.g. Israel),
-      // so today's entry never matched today's cell.
-      const d = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate() - i));
-      const dateStr = toDateStr(d);
+      // Key by LOCAL midnight via the shared localDayKey — journal entries now
+      // store `date` the same way, so cells and entries always agree (the old
+      // UTC keying broke the 00:00–03:00 Israel window in the other direction).
+      const d = new Date(now.getFullYear(), now.getMonth(), now.getDate() - i);
+      const dateStr = localDayKey(d);
       const morning = morningEntries.find((e) => e.date === dateStr) || null;
       const evening = eveningEntries.find((e) => e.date === dateStr) || null;
       result.push({
         date: d,
         dateStr,
-        dayName: DAY_NAMES[d.getUTCDay()],
-        dayNum: d.getUTCDate(),
+        dayName: DAY_NAMES[d.getDay()],
+        dayNum: d.getDate(),
         isToday: i === 0,
         morning,
         evening,
@@ -70,8 +67,8 @@ export default function MoodHeatmap() {
     let count = 0;
     const now = new Date();
     for (let i = 0; i < 365; i++) {
-      const d = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate() - i));
-      const dateStr = toDateStr(d);
+      const d = new Date(now.getFullYear(), now.getMonth(), now.getDate() - i);
+      const dateStr = localDayKey(d);
       const hasM = morningEntries.some((e) => e.date === dateStr);
       const hasE = eveningEntries.some((e) => e.date === dateStr);
       if (hasM || hasE) count++;

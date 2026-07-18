@@ -5,10 +5,12 @@ import {
   RefreshCw, Download, X, Zap, HelpCircle, Pencil, Link2,
 } from 'lucide-react';
 import toast from 'react-hot-toast';
-import { getUserSetting, setUserSetting, addToUserCollection } from '../../services/firestoreService';
+import { getUserSetting, setUserSetting } from '../../services/firestoreService';
 import { syncExchangeTrades, syncOpenPositions, fetchExchangeBalance, storeExchangeCredentials, deleteExchangeCredentials, getConnectedExchanges } from '../../services/exchangeService';
 import { useAuth } from '../../contexts/AuthContext';
 import { useJournalContext } from '../../contexts/JournalContext';
+import { useExchangeImport } from '../../hooks/useExchangeImport';
+import { tradeExternalIds } from '../../utils/tradeIds';
 import { pageVariants, pageTransition } from '../../utils/animations';
 import LoadingSpinner from '../shared/LoadingSpinner';
 import SelectDropdown from '../shared/SelectDropdown';
@@ -23,7 +25,6 @@ const SYNC_PERIODS = [
 ];
 import { getExchangeLogo, FREE_LIMITS } from '../../utils/constants';
 import { useNavigate } from 'react-router-dom';
-import { Timestamp } from 'firebase/firestore';
 
 // ── Exchange config ───────────────────────────────────────────────────────────
 // Exported so the trades-tab proposal banner (ExchangeProposals) can reuse the
@@ -66,7 +67,7 @@ export const EXCHANGES = [
       { text: 'אל תסמן Trade / Withdraw', n: '!', warn: true },
       { text: 'Confirm → 2FA → העתק Key + Secret + Passphrase', n: '4' },
     ],
-    extraField: { key: 'passphrase', label: 'Passphrase', placeholder: 'OKX Passphrase' },
+    extraField: { key: 'passphrase', label: 'Passphrase', placeholder: 'OKX Passphrase', required: true },
   },
   {
     id: 'bitget',  name: 'Bitget',  tagline: 'Copy Trading & Futures',
@@ -79,7 +80,7 @@ export const EXCHANGES = [
       { text: 'אל תסמן Trade / Withdrawal', n: '!', warn: true },
       { text: 'Confirm → 2FA → העתק Key + Secret + Passphrase', n: '4' },
     ],
-    extraField: { key: 'passphrase', label: 'Passphrase', placeholder: 'Bitget Passphrase' },
+    extraField: { key: 'passphrase', label: 'Passphrase', placeholder: 'Bitget Passphrase', required: true },
   },
   {
     id: 'binance', name: 'Binance', tagline: "World's Largest Exchange",
@@ -230,7 +231,11 @@ export function SyncModal({ exchange, trades, onClose, onImport, existingExterna
   const wins = trades.filter((t, i) => selected.has(i) && t.pnlFromExchange != null && t.pnlFromExchange >= 0).length;
   const losses = trades.filter((t, i) => selected.has(i) && t.pnlFromExchange != null && t.pnlFromExchange < 0).length;
   const allSelected = selected.size === trades.length;
-  const updatesCount = trades.filter((t, i) => selected.has(i) && existingExternalIds.has(t.externalId)).length;
+  // A row is an UPDATE when ANY of its close-order ids is already journaled —
+  // a Multi-TP row carries every close's id in externalIds, and only its
+  // first-close externalId matches the previously imported document.
+  const isUpdate = (t) => tradeExternalIds(t).some((id) => existingExternalIds.has(id));
+  const updatesCount = trades.filter((t, i) => selected.has(i) && isUpdate(t)).length;
   const newCount = selected.size - updatesCount;
   return (
     <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}
@@ -275,8 +280,13 @@ export function SyncModal({ exchange, trades, onClose, onImport, existingExterna
         <div className="overflow-y-auto flex-1 divide-y divide-border-primary/30">
           {trades.map((trade, i) => {
             const sel = selected.has(i);
-            const win = trade.pnlFromExchange >= 0;
-            const isExisting = existingExternalIds.has(trade.externalId);
+            // null/undefined PnL (open positions) must not satisfy >= 0 and
+            // render green — show neutral until the exchange reports a number.
+            let pnlClass = 'text-text-muted';
+            if (typeof trade.pnlFromExchange === 'number') {
+              pnlClass = trade.pnlFromExchange >= 0 ? 'text-profit' : 'text-loss';
+            }
+            const isExisting = isUpdate(trade);
             return (
               <button key={i} onClick={() => toggle(i)}
                 className={`w-full flex items-center gap-3 px-4 py-3 hover:bg-bg-tertiary transition-colors cursor-pointer text-right ${!sel ? 'opacity-35' : ''}`}>
@@ -285,7 +295,7 @@ export function SyncModal({ exchange, trades, onClose, onImport, existingExterna
                 </div>
                 <div className="flex-1 min-w-0">
                   <div className="flex items-center justify-between">
-                    <span className={`text-sm font-bold font-mono ${win ? 'text-profit' : 'text-loss'}`} dir="ltr">{fmtPnl(trade.pnlFromExchange)}</span>
+                    <span className={`text-sm font-bold font-mono ${pnlClass}`} dir="ltr">{fmtPnl(trade.pnlFromExchange)}</span>
                     <div className="flex items-center gap-1.5">
                       {isExisting && (
                         <span className="text-[9px] font-bold px-1.5 py-0.5 rounded-full bg-accent-primary/15 text-accent-primary border border-accent-primary/30">עדכון</span>
@@ -348,9 +358,15 @@ function ExchangeCard({ exchange, data, savedData, syncing, saving, onUpdate, on
   // "Connected" is now a non-secret marker — the secret itself lives encrypted
   // server-side and is never held in the browser.
   const isConnected = !!savedData?.connected;
-  // Saving requires both fields freshly entered (we can't prefill the secret).
+  // Saving requires both fields freshly entered (we can't prefill the secret),
+  // plus the extra field (OKX/Bitget passphrase) when the exchange requires it.
   const hasChanges = (data?.apiKey || '').length > 0 && (data?.apiSecret || '').length > 0
-    && (!extraField || (data?.[extraField.key] || '').length > 0 || !extraField.required);
+    && (!extraField?.required || (data?.[extraField.key] || '').trim().length > 0);
+  // Key + secret typed but the required passphrase is still empty — surface a
+  // dedicated hint instead of silently hiding the save button.
+  const missingExtra = !!extraField?.required
+    && (data?.apiKey || '').length > 0 && (data?.apiSecret || '').length > 0
+    && (data?.[extraField.key] || '').trim().length === 0;
 
   // Pull the futures wallet balance once the exchange is connected, so the
   // card shows "Bybit: $1,234" without asking the user to type a starting value.
@@ -539,10 +555,17 @@ function ExchangeCard({ exchange, data, savedData, syncing, saving, onUpdate, on
                 )}
               </div>
             ) : editing && !hasChanges ? (
-              <motion.button onClick={() => setEditing(false)} whileHover={{ scale: 1.02 }} whileTap={{ scale: 0.97 }}
-                className="flex-1 py-2.5 rounded-xl border border-border-primary text-sm text-text-muted hover:bg-bg-tertiary transition-colors cursor-pointer">
-                ביטול
-              </motion.button>
+              <>
+                {missingExtra && (
+                  <div className="flex-1 py-2.5 rounded-xl text-xs text-center text-text-muted border border-dashed border-border-primary flex items-center justify-center gap-1.5">
+                    <Link2 className="w-3.5 h-3.5" />הזן {extraField.label} לחיבור {name}
+                  </div>
+                )}
+                <motion.button onClick={() => setEditing(false)} whileHover={{ scale: 1.02 }} whileTap={{ scale: 0.97 }}
+                  className={`${missingExtra ? 'px-4' : 'flex-1'} py-2.5 rounded-xl border border-border-primary text-sm text-text-muted hover:bg-bg-tertiary transition-colors cursor-pointer`}>
+                  ביטול
+                </motion.button>
+              </>
             ) : hasChanges ? (
               <>
                 <motion.button whileHover={{ scale: 1.03 }} whileTap={{ scale: 0.97 }}
@@ -559,7 +582,8 @@ function ExchangeCard({ exchange, data, savedData, syncing, saving, onUpdate, on
               </>
             ) : (
               <div className="flex-1 py-2.5 rounded-xl text-xs text-center text-text-muted border border-dashed border-border-primary flex items-center justify-center gap-1.5">
-                <Link2 className="w-3.5 h-3.5" />הזן API Key ו-Secret לחיבור
+                <Link2 className="w-3.5 h-3.5" />
+                {missingExtra ? `הזן ${extraField.label} לחיבור ${name}` : 'הזן API Key ו-Secret לחיבור'}
               </div>
             )}
           </div>
@@ -574,11 +598,15 @@ function ExchangeCard({ exchange, data, savedData, syncing, saving, onUpdate, on
 }
 
 // ── Main ──────────────────────────────────────────────────────────────────────
-export default function ExchangeSettings({ journalId: propJournalId, onImportTrade, existingExternalIds = new Set() } = {}) {
+export default function ExchangeSettings({ journalId: propJournalId } = {}) {
   const { user, isPremium } = useAuth();
   const navigate = useNavigate();
   const { activeJournalId: contextJournalId } = useJournalContext();
   const activeJournalId = propJournalId ?? contextJournalId;
+  // Shared import logic (upsert on close-order-id overlap) — the standalone
+  // /exchange route used to blind-add every synced row as a NEW trade, so a
+  // TP1 already imported from the journal's proposal banner got counted twice.
+  const { importTrade, existingExternalIds } = useExchangeImport(activeJournalId);
   const [exchanges, setExchanges] = useState({});
   const [savedExchanges, setSavedExchanges] = useState({});
   const [loading, setLoading] = useState(true);
@@ -645,7 +673,14 @@ export default function ExchangeSettings({ journalId: propJournalId, onImportTra
       return;
     }
     const conf = exchanges[id] || {};
-    const extraKey = EXCHANGES.find(e => e.id === id)?.extraField?.key;
+    const exDef = EXCHANGES.find(e => e.id === id);
+    const extraKey = exDef?.extraField?.key;
+    // Second gate behind the button's hasChanges check: never store OKX/Bitget
+    // credentials without the passphrase — every later sync would fail auth.
+    if (exDef?.extraField?.required && !(conf[extraKey] || '').trim()) {
+      toast.error(`חסר ${exDef.extraField.label} — חובה לחיבור ${exDef.name}`);
+      return;
+    }
     setSaving(id);
     try {
       // Send the secret to the encrypted server-side store exactly once.
@@ -697,37 +732,7 @@ export default function ExchangeSettings({ journalId: propJournalId, onImportTra
       toast.error('בחר יומן לפני הייבוא');
       return;
     }
-    const results = await Promise.allSettled(
-      trades.map(t => {
-        if (onImportTrade) return onImportTrade(t);
-        if (t._isOpen) {
-          const { _isOpen, pnlFromExchange, ...pos } = t;
-          return addToUserCollection(user.uid, 'trades', {
-            ...pos,
-            entryDate: Timestamp.fromDate(new Date(pos.entryDate)),
-            importedAt: Timestamp.now(),
-            journalId: activeJournalId || null,
-          });
-        }
-        const pnl = t.pnlFromExchange || 0;
-        // Preserve every field the worker provided (stopLoss, tps, fees,
-        // exitDate, pnlFromExchange, …) instead of hand-picking a few — that
-        // dropped SL/TP whenever the upstream endpoint did include them.
-        const { _isOpen: _o, entryDate, exitDate, ...rest } = t;
-        return addToUserCollection(user.uid, 'trades', {
-          ...rest,
-          status: 'closed',
-          orderType: t.orderType || 'market',
-          entryDate: Timestamp.fromDate(new Date(entryDate)),
-          ...(exitDate ? { exitDate: Timestamp.fromDate(new Date(exitDate)) } : {}),
-          pnl,
-          pnlPercent: t.entryPrice > 0 && t.quantity > 0 ? (pnl / (t.entryPrice * t.quantity)) * 100 : 0,
-          result: pnl > 0 ? 'win' : pnl < 0 ? 'loss' : 'breakeven',
-          importedAt: Timestamp.now(),
-          journalId: activeJournalId || null,
-        });
-      })
-    );
+    const results = await Promise.allSettled(trades.map(t => importTrade(t)));
     const imported = results.filter(r => r.status === 'fulfilled').length;
     const failed = results.filter(r => r.status === 'rejected');
     setSyncModal(null);

@@ -1,5 +1,6 @@
 import { createContext, useContext, useState, useEffect } from 'react';
 import { planExpiresMs } from '../utils/premium';
+import { APP_VERSION } from '../utils/constants';
 import {
   onAuthChange,
   handleRedirectResult,
@@ -20,9 +21,12 @@ import {
   subscribeToUserProfile,
   deleteUserProfile,
   deleteUserSubcollection,
+  deleteLeaderboardEntry,
+  USER_SUBCOLLECTIONS,
   touchLastActive,
   timestamp,
 } from '../services/firestoreService';
+import { logAccountDeletion } from '../services/pushService';
 
 // Read a Firestore Timestamp / ISO / millis into epoch millis (0 if absent).
 function toMillis(v) {
@@ -47,8 +51,15 @@ export function AuthProvider({ children }) {
     // Live profile subscription so admin-side updates (e.g. plan changes) show
     // up in the user's UI within seconds. Re-bound on every auth change.
     let profileUnsub = null;
+    // Every auth change invalidates the previous generation, so async work
+    // that was in flight for the PREVIOUS user can never touch state after a
+    // logout/user switch. Without this, user A's stale getUserProfile used to
+    // bind a LEAKED listener after the switch and overwrite user B's profile
+    // (wrong isAdmin/isPremium until the next snapshot).
+    let generation = 0;
 
     const unsubscribe = onAuthChange((firebaseUser) => {
+      const gen = ++generation;
       // Drop any prior profile listener before opening a new one.
       if (profileUnsub) { profileUnsub(); profileUnsub = null; }
       if (firebaseUser) {
@@ -58,6 +69,18 @@ export function AuthProvider({ children }) {
         setUser(firebaseUser);
         setLoading(false);
 
+        // Bind the live subscription IMMEDIATELY — binding it inside the
+        // getUserProfile .then() ran AFTER the next auth-change's cleanup,
+        // which is exactly how the listener leaked. The generation guard
+        // keeps a late snapshot from writing a stale user's profile, and the
+        // error callback swallows the expected permission-denied after
+        // sign-out.
+        profileUnsub = subscribeToUserProfile(
+          firebaseUser.uid,
+          (data) => { if (gen === generation) setProfile(data); },
+          () => { /* permission-denied after sign-out — expected, not an error */ }
+        );
+
         // Load the profile doc in the background (also creates it on first
         // sign-in). Used for the `role` field that gates the admin panel.
         const defaultProfile = {
@@ -66,6 +89,7 @@ export function AuthProvider({ children }) {
           photoURL: firebaseUser.photoURL,
           createdAt: timestamp(),
           lastActive: timestamp(),
+          appVersion: APP_VERSION,
           onboardingCompleted: false,
           settings: {
             defaultLeverage: 10,
@@ -87,6 +111,9 @@ export function AuthProvider({ children }) {
         };
         getUserProfile(firebaseUser.uid)
           .then(({ exists, data }) => {
+            // Superseded by a logout/user switch while the fetch was in
+            // flight — touching state here is exactly the race we're fixing.
+            if (gen !== generation) return;
             if (exists) {
               setProfile(data);
               // Stamp activity at most once an hour so the admin panel can show
@@ -106,11 +133,6 @@ export function AuthProvider({ children }) {
                 setUserSetting(firebaseUser.uid, 'notifications', { pushEnabled: true, tradeOpenAlerts: true }, true),
               ]).catch(() => {});
             }
-            // Open a live subscription AFTER the initial load so future writes
-            // (e.g. admin granting Premium) refresh the UI without a reload.
-            profileUnsub = subscribeToUserProfile(firebaseUser.uid, (data) => {
-              setProfile(data);
-            });
           })
           .catch(() => {});
       } else {
@@ -121,6 +143,7 @@ export function AuthProvider({ children }) {
     });
 
     return () => {
+      generation++; // invalidate any in-flight callbacks on unmount
       if (profileUnsub) profileUnsub();
       unsubscribe();
     };
@@ -152,14 +175,31 @@ export function AuthProvider({ children }) {
     // Re-authenticate if needed
     await reauthenticate(currentPassword);
 
-    // Delete user subcollections
-    const subcollections = ['trades', 'journals', 'backtests', 'dca', 'tradingPlans', 'notes', 'strategies', 'morningJournals', 'eveningJournals', 'settings'];
-    for (const sub of subcollections) {
-      await deleteUserSubcollection(currentUser.uid, sub);
+    // Wipe ALL user data: the shared USER_SUBCOLLECTIONS list covers every
+    // subcollection the app writes (a hard-coded copy here kept orphaning
+    // backtestJournals/processes/signals/watchlist), plus the PUBLIC
+    // leaderboard entry — displayName + photo readable by any signed-in user,
+    // which must not survive an account deletion.
+    const results = await Promise.allSettled([
+      ...USER_SUBCOLLECTIONS.map((sub) => deleteUserSubcollection(currentUser.uid, sub)),
+      deleteLeaderboardEntry(currentUser.uid),
+    ]);
+    // Abort BEFORE deleting the auth account if any wipe failed — once the
+    // auth user is gone nobody can re-authenticate to finish the cleanup, so
+    // failing loudly here lets the user simply retry.
+    const firstFailure = results.find((r) => r.status === 'rejected');
+    if (firstFailure) {
+      throw firstFailure.reason instanceof Error
+        ? firstFailure.reason
+        : new Error('מחיקת הנתונים נכשלה — נסה שוב');
     }
 
     // Delete user doc
     await deleteUserProfile(currentUser.uid);
+
+    // Audit trail (admin panel shows who deleted their account and when) —
+    // must run while the ID token is still valid. Never throws.
+    await logAccountDeletion({ email: currentUser.email, displayName: currentUser.displayName });
 
     // Delete auth account
     localStorage.removeItem('tradeos_activeJournal');

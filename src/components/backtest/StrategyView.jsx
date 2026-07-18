@@ -6,6 +6,7 @@ import { toPng } from 'html-to-image';
 import toast from 'react-hot-toast';
 import CoinIcon from '../shared/CoinIcon';
 import { getSessionClasses } from '../../utils/constants';
+import { safeHttpUrl } from '../../utils/urls';
 import { useTheme } from '../../hooks/useTheme';
 import { modalBackdrop, modalContent } from '../../utils/animations';
 
@@ -69,11 +70,13 @@ export default function StrategyView({ isOpen, onClose, journal }) {
   const handleShare = async () => {
     if (!cardRef.current || exporting) return;
     setExporting(true);
+    const el = cardRef.current;
+    // Temporarily expand card to full height for complete capture; captured
+    // before try so the finally below can always restore (a toPng failure
+    // used to leave the modal stuck at maxHeight:none until reopened).
+    const prevMaxH = el.style.maxHeight;
+    const prevOverflow = el.style.overflow;
     try {
-      const el = cardRef.current;
-      // Temporarily expand card to full height for complete capture
-      const prevMaxH = el.style.maxHeight;
-      const prevOverflow = el.style.overflow;
       el.style.maxHeight = 'none';
       el.style.overflow = 'visible';
 
@@ -88,10 +91,6 @@ export default function StrategyView({ isOpen, onClose, journal }) {
           return true;
         },
       });
-
-      // Restore scroll constraints
-      el.style.maxHeight = prevMaxH;
-      el.style.overflow = prevOverflow;
 
       const img = new Image();
       img.src = dataUrl;
@@ -120,6 +119,8 @@ export default function StrategyView({ isOpen, onClose, journal }) {
     } catch (err) {
       if (err.name !== 'AbortError') toast.error('שגיאה בייצוא');
     } finally {
+      el.style.maxHeight = prevMaxH;
+      el.style.overflow = prevOverflow;
       setExporting(false);
     }
   };
@@ -323,9 +324,9 @@ export default function StrategyView({ isOpen, onClose, journal }) {
                           {journal.tradeExamples.map((ex, i) => (
                             <div key={i} className="space-y-2">
                               {toImageUrl(ex.chartUrl) && (
-                                ex.chartUrl?.startsWith('http') ? (
+                                safeHttpUrl(ex.chartUrl) ? (
                                   <a
-                                    href={ex.chartUrl}
+                                    href={safeHttpUrl(ex.chartUrl)}
                                     target="_blank"
                                     rel="noopener noreferrer"
                                     className="block group relative"

@@ -27,6 +27,10 @@ export function useStrategies() {
       (data) => {
         setStrategies(data);
         setLoading(false);
+      },
+      (error) => {
+        console.error('Firestore strategies listener error:', error);
+        setLoading(false); // permission/network error must not leave an eternal skeleton
       }
     );
   }, [user]);

@@ -3,6 +3,10 @@ const STATIC_ASSETS = [
   '/icon-192.png',
   '/icon-512.png',
 ];
+// The app shell, cached separately so offline navigations have something to
+// serve. Navigations remain network-first — this copy is only a fallback and
+// is refreshed on install and after every successful online navigation.
+const SHELL_URL = '/index.html';
 
 // Domains the service worker MUST NOT touch (auth + realtime APIs)
 const BYPASS_HOST_PATTERNS = [
@@ -33,7 +37,16 @@ function shouldBypass(url) {
 self.addEventListener('install', (event) => {
   self.skipWaiting();
   event.waitUntil(
-    caches.open(CACHE_NAME).then((cache) => cache.addAll(STATIC_ASSETS))
+    caches.open(CACHE_NAME).then(async (cache) => {
+      await cache.addAll(STATIC_ASSETS);
+      // Fetch the shell fresh (no-store) so the new CACHE_NAME always pairs
+      // with the HTML it shipped with. Non-fatal: if this fails the shell is
+      // (re)cached by the next successful navigation below.
+      try {
+        const res = await fetch(SHELL_URL, { cache: 'no-store' });
+        if (res.ok) await cache.put(SHELL_URL, res);
+      } catch { /* offline during install */ }
+    })
   );
 });
 
@@ -68,13 +81,22 @@ self.addEventListener('fetch', (event) => {
   if (url.startsWith('chrome-extension')) return;
   if (shouldBypass(url)) return; // Let the browser handle auth/Firebase traffic directly
 
-  // Never cache navigation requests (index.html) — always go to network.
-  // cache: 'no-store' also bypasses the browser's HTTP disk cache: HTML cached
-  // before the hosting no-cache header shipped would otherwise keep serving a
-  // stale shell (and stale asset hashes) long after a deploy.
+  // Navigations are network-first: cache: 'no-store' bypasses the browser's
+  // HTTP disk cache, so a deploy is picked up immediately (stale HTML would
+  // also pin stale asset hashes). Every successful response refreshes the
+  // cached shell copy in the background; offline falls back to that copy —
+  // the app then boots and shows its own OfflineScreen banner.
   if (event.request.mode === 'navigate') {
     event.respondWith(
-      fetch(event.request, { cache: 'no-store' }).catch(() => caches.match('/index.html'))
+      fetch(event.request, { cache: 'no-store' })
+        .then((response) => {
+          if (response && response.ok) {
+            const clone = response.clone();
+            caches.open(CACHE_NAME).then((cache) => cache.put(SHELL_URL, clone));
+          }
+          return response;
+        })
+        .catch(() => caches.match(SHELL_URL))
     );
     return;
   }

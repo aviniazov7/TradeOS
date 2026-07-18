@@ -97,6 +97,8 @@ export default function AIChat({ heightClass = 'h-[calc(100dvh-13.5rem)] md:h-[c
   const inputRef = useRef(null);
   const streamingTextRef = useRef('');
   const batchTimeoutRef = useRef(null);
+  const cooldownTimerRef = useRef(null);
+  const copiedTimerRef = useRef(null);
   const aiUsage = useAiUsage();
   const lastSentRef = useRef(0);
   const chartPromiseRef = useRef(null);
@@ -185,7 +187,8 @@ export default function AIChat({ heightClass = 'h-[calc(100dvh-13.5rem)] md:h-[c
     lastSentRef.current = now;
     lastPromptRef.current = text; // remember the prompt so "retry" resends it (the user msg is removed from `messages` on error)
     setCooldown(true);
-    setTimeout(() => setCooldown(false), 6000);
+    clearTimeout(cooldownTimerRef.current);
+    cooldownTimerRef.current = setTimeout(() => setCooldown(false), 6000);
 
     setInput('');
     setError(null);
@@ -266,15 +269,28 @@ export default function AIChat({ heightClass = 'h-[calc(100dvh-13.5rem)] md:h-[c
     }
   };
 
-  const copyMessage = async (i, text) => {
+  const copyMessage = async (key, text) => {
     try {
       await navigator.clipboard.writeText(text);
-      setCopiedIdx(i);
-      setTimeout(() => setCopiedIdx((v) => (v === i ? null : v)), 1500);
+      setCopiedIdx(key);
+      clearTimeout(copiedTimerRef.current);
+      copiedTimerRef.current = setTimeout(() => setCopiedIdx((v) => (v === key ? null : v)), 1500);
     } catch {
       setError('ההעתקה נכשלה');
     }
   };
+
+  // Message deletion/rollback shifts array indexes, so both the React key and
+  // the copied-indicator must be keyed by message identity, not position.
+  const msgKey = (msg) => (msg.timestamp ? `${msg.timestamp}-${msg.role}` : 'welcome');
+
+  // Streaming can outlive the page (user navigates away mid-response) — kill
+  // every pending timer so no setState fires after unmount.
+  useEffect(() => () => {
+    clearTimeout(batchTimeoutRef.current);
+    clearTimeout(cooldownTimerRef.current);
+    clearTimeout(copiedTimerRef.current);
+  }, []);
 
   const handleKeyDown = (e) => {
     if (e.key === 'Enter' && !e.shiftKey) {
@@ -404,9 +420,9 @@ export default function AIChat({ heightClass = 'h-[calc(100dvh-13.5rem)] md:h-[c
         {/* Messages */}
         <div className="flex-1 overflow-y-auto px-4 py-4 space-y-4">
           <AnimatePresence initial={false}>
-            {messages.map((msg, i) => (
+            {messages.map((msg) => (
               <motion.div
-                key={i}
+                key={msgKey(msg)}
                 initial={{ opacity: 0, y: 10 }}
                 animate={{ opacity: 1, y: 0 }}
                 transition={{ duration: 0.3 }}
@@ -451,13 +467,13 @@ export default function AIChat({ heightClass = 'h-[calc(100dvh-13.5rem)] md:h-[c
                   </div>
                   {msg.text && (
                     <button
-                      onClick={() => copyMessage(i, msg.text)}
+                      onClick={() => copyMessage(msgKey(msg), msg.text)}
                       className={`flex items-center gap-1 text-[10px] text-text-muted hover:text-text-primary transition-colors cursor-pointer px-1 ${
                         msg.role === 'user' ? 'self-start' : 'self-end'
                       }`}
                       title="העתק הודעה"
                     >
-                      {copiedIdx === i
+                      {copiedIdx === msgKey(msg)
                         ? <><Check className="w-3 h-3 text-profit" /> הועתק</>
                         : <><Copy className="w-3 h-3" /> העתק</>
                       }

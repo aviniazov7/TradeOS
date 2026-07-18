@@ -9,6 +9,7 @@ import {
   formatDateTime,
 } from '../../utils/formatters';
 import { MISTAKE_LABELS } from '../../utils/constants';
+import { safeHttpUrl } from '../../utils/urls';
 import {
   TrendingUp,
   TrendingDown,
@@ -114,7 +115,9 @@ export default function TradeDetailModal({
     if (h > 0) durationHours = h;
   }
 
-  const moneyOrDash = (v) => {
+  // Compact money formatter; returns null for non-numbers so the Strip board
+  // simply drops the row (it used to be called moneyOrDash — it never dashed).
+  const formatMoney = (v) => {
     const n = num(v);
     if (n === null) return null;
     const a = Math.abs(n);
@@ -125,9 +128,12 @@ export default function TradeDetailModal({
   };
 
   // ── TradingView snapshot preview ──────────────────────────────────
-  const tvUrl = trade.tradingViewUrl || '';
+  // User-typed URL — sanitize once here; every href/img below derives from it.
+  const tvUrl = safeHttpUrl(trade.tradingViewUrl) || '';
   const tvImg = tvImageUrl(tvUrl);
-  const imgKey = trade.id || tvUrl;
+  // Latch failures by URL (not trade.id): editing the trade with a fixed link
+  // retries immediately instead of showing "אין תצוגה מקדימה" until page leave.
+  const imgKey = tvUrl;
   const imgFailed = imgFailedKey === imgKey;
 
   // ── Details ───────────────────────────────────────────────────────
@@ -290,15 +296,15 @@ export default function TradeDetailModal({
         <Strip
           title="פרטי עסקה"
           items={[
-            { label: 'גודל פוזיציה', value: moneyOrDash(trade.positionSize) },
-            { label: 'סיכון', value: moneyOrDash(trade.riskAmount) },
+            { label: 'גודל פוזיציה', value: formatMoney(trade.positionSize) },
+            { label: 'סיכון', value: formatMoney(trade.riskAmount) },
             {
               label: isFutures ? 'חוזים' : 'מינוף',
               value: isFutures
                 ? (trade.contract?.contracts ?? trade.quantity ?? null)
                 : trade.leverage ? `x${trade.leverage}` : null,
             },
-            { label: 'עמלות', value: moneyOrDash(trade.fees) },
+            { label: 'עמלות', value: formatMoney(trade.fees) },
             { label: 'אסטרטגיה', value: trade.strategy || null },
             { label: 'טריגר', value: trade.trigger || null },
             { label: 'טווח זמן', value: trade.timeframe || null },
@@ -370,7 +376,7 @@ export default function TradeDetailModal({
         )}
       </div>
 
-      {/* 5) TradingView snapshot — at the very bottom, when the trade has a link */}
+      {/* 6) TradingView snapshot — at the very bottom, when the trade has a link */}
       {tvUrl && (
         <div className="rounded-2xl border border-border-primary bg-bg-tertiary overflow-hidden mt-3">
           <div className="flex items-center justify-between px-4 py-2.5 border-b border-border-primary">

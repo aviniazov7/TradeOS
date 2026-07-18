@@ -53,7 +53,10 @@ export function formatPrice(value) {
 /**
  * Format date: 17/03/2026
  */
-function safeDate(date) {
+// Exported: Firestore Timestamp / Date / string / garbage → Date or null.
+// Callers that feed date-fns MUST use this — format() on an Invalid Date
+// throws RangeError and takes the whole screen down with it.
+export function safeDate(date) {
   if (!date) return null;
   try {
     const d = date.toDate ? date.toDate() : new Date(date);

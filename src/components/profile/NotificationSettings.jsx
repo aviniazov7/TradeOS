@@ -1,13 +1,136 @@
 import { useState, useEffect, useCallback } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
-import { Bell, BellRing, BellOff, Send } from 'lucide-react';
+import { Bell, BellRing, BellOff, Send, NotebookPen, BarChart3, CalendarClock } from 'lucide-react';
 import toast from 'react-hot-toast';
 import { useAuth } from '../../contexts/AuthContext';
+import SelectDropdown from '../shared/SelectDropdown';
 import { subscribeToUserSetting, setUserSetting } from '../../services/firestoreService';
-import { pushSupported, subscribeToPush, unsubscribeFromPush, sendTestPush } from '../../services/pushService';
+import {
+  pushSupported, subscribeToPush, unsubscribeFromPush, sendTestPush,
+  getNotifySchedule, saveNotifySchedule,
+} from '../../services/pushService';
 
 // Push notifications are ON by default; the user can turn them off here.
 const DEFAULTS = { pushEnabled: true, tradeOpenAlerts: true };
+
+// Journal reminder / daily summary / economic calendar defaults — mirrors the
+// worker's DEFAULT_SETTINGS (#219).
+const SCHEDULE_DEFAULTS = {
+  journal: { enabled: false, time: '21:00' },
+  summary: { enabled: false, time: '22:00' },
+  calendar: { enabled: false },
+};
+
+// Small right-aligned toggle, matching the main push toggle's look.
+function MiniToggle({ on }) {
+  return (
+    <div className={`w-10 h-5 rounded-full transition-colors ${on ? 'bg-accent-primary' : 'bg-border-primary'} relative shrink-0`}>
+      <div className={`absolute top-0.5 w-4 h-4 rounded-full bg-white transition-transform ${on ? 'right-0.5' : 'left-0.5'}`} />
+    </div>
+  );
+}
+
+// Half-hour steps — the worker cron ticks every 10 minutes, so round times
+// always land inside a tick window and the list stays short and scannable.
+const TIME_OPTIONS = Array.from({ length: 48 }, (_, i) => {
+  const t = `${String(Math.floor(i / 2)).padStart(2, '0')}:${i % 2 ? '30' : '00'}`;
+  return { value: t, label: t };
+});
+
+// Styled time picker (SelectDropdown, like every other picker in the app) —
+// the native <input type="time"> looked dated and inconsistent per browser.
+// A legacy free-typed value (e.g. 00:21) is kept as an extra option so it
+// still displays until the user picks a new one.
+function TimeSelect({ value, onChange }) {
+  const options = TIME_OPTIONS.some((o) => o.value === value)
+    ? TIME_OPTIONS
+    : [{ value, label: value }, ...TIME_OPTIONS];
+  return (
+    <div className="w-24">
+      <SelectDropdown compact value={value} onChange={(v) => v && onChange(v)} options={options} />
+    </div>
+  );
+}
+
+// Scheduled pushes (journal reminder / daily summary / economic calendar).
+// The worker's cron is driven by /notify-settings; Firestore keeps a mirror
+// under notifications.schedule so other devices/hooks can read the state.
+function ScheduleSection({ user }) {
+  const [schedule, setSchedule] = useState(null);
+  const [saving, setSaving] = useState(false);
+
+  useEffect(() => {
+    let cancelled = false;
+    getNotifySchedule()
+      .then((s) => { if (!cancelled) setSchedule({ ...SCHEDULE_DEFAULTS, ...s }); })
+      .catch(() => { if (!cancelled) setSchedule(SCHEDULE_DEFAULTS); });
+    return () => { cancelled = true; };
+  }, []);
+
+  const update = async (next) => {
+    setSaving(true);
+    const prev = schedule;
+    setSchedule(next);
+    try {
+      await saveNotifySchedule(next);
+      setUserSetting(user.uid, 'notifications', { schedule: next }, true).catch(() => {});
+    } catch (e) {
+      setSchedule(prev);
+      toast.error(e.message || 'השמירה נכשלה');
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  if (!schedule) return null;
+
+  const rows = [
+    { key: 'journal', label: 'תזכורת מילוי יומן', Icon: NotebookPen, hasTime: true },
+    { key: 'summary', label: 'סיכום יומי', Icon: BarChart3, hasTime: true },
+    { key: 'calendar', label: 'אירועים כלכליים (שעה לפני)', Icon: CalendarClock, hasTime: false },
+  ];
+
+  return (
+    <div className="space-y-2.5">
+      <p className="text-[11px] text-text-muted font-semibold">התראות מתוזמנות</p>
+      {rows.map((row) => {
+        const { key, label, hasTime } = row;
+        const Icon = row.Icon;
+        return (
+        <div key={key} className="flex items-center justify-between gap-2 min-h-9">
+          {/* Right side (RTL start): icon + label toggle the row */}
+          <button
+            onClick={() => update({ ...schedule, [key]: { ...schedule[key], enabled: !schedule[key].enabled } })}
+            disabled={saving}
+            className="flex items-center gap-2.5 text-sm text-text-primary cursor-pointer disabled:opacity-50"
+          >
+            <Icon className={`w-4 h-4 ${schedule[key].enabled ? 'text-accent-primary' : 'text-text-muted'}`} />
+            <span className="text-right">{label}</span>
+          </button>
+          {/* Left side: time picker, then the toggle FLUSH at the far left
+              (last in DOM = leftmost in RTL), per Avi's layout request. */}
+          <div className="flex items-center gap-2">
+            {hasTime && schedule[key].enabled && (
+              <TimeSelect
+                value={schedule[key].time}
+                onChange={(v) => update({ ...schedule, [key]: { ...schedule[key], time: v } })}
+              />
+            )}
+            <button
+              onClick={() => update({ ...schedule, [key]: { ...schedule[key], enabled: !schedule[key].enabled } })}
+              disabled={saving}
+              className="cursor-pointer disabled:opacity-50"
+              aria-label={label}
+            >
+              <MiniToggle on={schedule[key].enabled} />
+            </button>
+          </div>
+        </div>
+        );
+      })}
+    </div>
+  );
+}
 
 export default function NotificationSettings() {
   const { user } = useAuth();
@@ -158,6 +281,9 @@ export default function NotificationSettings() {
                     <Send className="w-4 h-4" />
                     שלח התראת בדיקה
                   </button>
+                  <div className="pt-2 border-t border-border-primary/60">
+                    <ScheduleSection user={user} />
+                  </div>
                 </>
               )}
             </div>

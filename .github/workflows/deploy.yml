@@ -89,7 +89,9 @@ jobs:
           node scripts/bump-version.mjs
           git config user.name 'Avraham Niazov'
           git config user.email 'aviniazov7@icloud.com'
-          git add src/utils/constants.js public/sw.js
+          # index.html is rewritten too (og-image ?v= cache-buster) — leaving
+          # it out of the commit made the repo drift behind production forever.
+          git add src/utils/constants.js public/sw.js index.html
           git commit -m 'chore: bump version [skip ci]'
           git push origin HEAD:main
 
@@ -144,7 +146,14 @@ jobs:
         if: (steps.target.outputs.kind == 'production' || steps.target.outputs.kind == 'staging') && env.CLOUDFLARE_API_TOKEN != ''
         working-directory: worker
         env:
-          ENV_FLAG: ${{ steps.target.outputs.kind == 'staging' && '--env staging' || '' }}
+          # ALWAYS target the production `trade-os` Worker (no --env flag):
+          # the vite redirect makes every deploy from this repo — including
+          # `--env staging` — update trade-os itself, but secrets pushed with
+          # `--env staging` went to "trade-os-staging", a Worker with no live
+          # deployment. Result: every dev push updated trade-os's CODE while
+          # its SECRETS stayed stale (discovered when a rotated Resend key
+          # never took effect).
+          ENV_FLAG: ''
           VAPID_JWK: ${{ secrets.VAPID_JWK }}
           MORALIS_API_KEY: ${{ secrets.MORALIS_API_KEY }}
           GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
@@ -194,7 +203,7 @@ jobs:
       # that need it have already run) and wrangler.toml applies. There is only
       # ONE production cron (staging cron is disabled), so this deploys the
       # production alerts worker from dev too — same reality as trade-os.
-      # Manually-set secrets (BOT_TOKEN, GROQ_API_KEY, CREDS_ENCRYPTION_KEY…)
+      # Manually-set secrets (GROQ_API_KEY, CREDS_ENCRYPTION_KEY…)
       # persist across deploys; the CI-managed set is re-pushed here.
       - name: Deploy Worker (alerts cron) + secrets
         if: (steps.target.outputs.kind == 'production' || steps.target.outputs.kind == 'staging') && env.CLOUDFLARE_API_TOKEN != ''

@@ -1,6 +1,7 @@
 import { useMemo } from 'react';
 import { AreaChart, Area, XAxis, YAxis, Tooltip, ResponsiveContainer } from 'recharts';
 import { format } from 'date-fns';
+import { isClosedTrade } from '../../utils/calculations';
 
 const tooltipStyle = {
   background: 'var(--color-bg-overlay)',
@@ -13,7 +14,7 @@ const tooltipStyle = {
 export default function PnLChart({ trades }) {
   const data = useMemo(() => {
     const closed = trades
-      .filter((t) => t.status === 'closed' && t.exitDate)
+      .filter((t) => isClosedTrade(t) && t.exitDate)
       .sort((a, b) => {
         const da = a.exitDate?.toDate ? a.exitDate.toDate() : new Date(a.exitDate);
         const db = b.exitDate?.toDate ? b.exitDate.toDate() : new Date(b.exitDate);

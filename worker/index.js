@@ -1,30 +1,17 @@
 /**
- * TradeOS Telegram Bot Worker
- * - Webhook handler for interactive Telegram bot
- * - Cron: price alerts, journal reminders, daily summaries, economic calendar
- * - Market data: prices, funding rates, open interest, long/short ratio
- * - Personal watchlist per user
+ * TradeOS Worker
+ * - Web Push notifications (uid-keyed): price alerts, journal reminders,
+ *   daily summaries, economic calendar, trade events
+ * - Cron: the checks above + exchange sync, plan expiry, weekly digest
+ * - Market data proxies + AI endpoints for the app
  */
 
-const TELEGRAM_API = 'https://api.telegram.org/bot';
 // Binance's public market-data mirror — api.binance.com returns 403 to
 // Cloudflare Worker egress IPs in many regions, but data-api.binance.vision
 // (same /api/v3 spot surface) isn't geo-blocked. Futures (fapi) has no mirror.
 const BINANCE_SPOT = 'https://data-api.binance.vision/api/v3';
 const BINANCE_FUTURES = 'https://fapi.binance.com/fapi/v1';
-const APP_URL = 'https://tradeos-91a58.web.app';
 const CALENDAR_API = 'https://nfs.faireconomy.media/ff_calendar_thisweek.json';
-
-// All available pairs (ordered by market cap)
-const ALL_PAIRS = {
-  BTCUSDT: '₿', ETHUSDT: 'Ξ', BNBUSDT: '🔶', SOLUSDT: '◎',
-  XRPUSDT: '✕', ADAUSDT: '💎', DOGEUSDT: '🐕', AVAXUSDT: '🔺',
-  DOTUSDT: '⬡', LINKUSDT: '🔗', MATICUSDT: '🟣', SUIUSDT: '💧',
-  NEARUSDT: '🌐', APTUSDT: '🟡', ARBUSDT: '🔵', OPUSDT: '🔴',
-  ATOMUSDT: '⚛️', FTMUSDT: '👻', PEPEUSDT: '🐸', TRUMPUSDT: '🇺🇸',
-};
-
-const DEFAULT_WATCHLIST = ['BTCUSDT', 'ETHUSDT', 'SOLUSDT', 'XRPUSDT', 'BNBUSDT'];
 
 const DEFAULT_SETTINGS = {
   journal: { enabled: false, time: '21:00' },
@@ -64,75 +51,7 @@ function fmtPnl(v) {
   const sign = v >= 0 ? '+' : '-';
   return `${sign}$${Math.abs(v).toFixed(2)}`;
 }
-function fmtBigNum(n) {
-  if (n >= 1e9) return `$${(n / 1e9).toFixed(2)}B`;
-  if (n >= 1e6) return `$${(n / 1e6).toFixed(1)}M`;
-  if (n >= 1e3) return `$${(n / 1e3).toFixed(0)}K`;
-  return `$${n.toFixed(0)}`;
-}
-
-// ==================== Telegram Helpers ====================
-
-async function tg(botToken, method, body) {
-  const res = await fetch(`${TELEGRAM_API}${botToken}/${method}`, {
-    method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body),
-  });
-  return res.json();
-}
-async function sendMessage(botToken, chatId, text, keyboard = null) {
-  const body = { chat_id: chatId, text, parse_mode: 'HTML' };
-  if (keyboard) body.reply_markup = { inline_keyboard: keyboard };
-  return tg(botToken, 'sendMessage', body);
-}
-async function editMessage(botToken, chatId, messageId, text, keyboard = null) {
-  const body = { chat_id: chatId, message_id: messageId, text, parse_mode: 'HTML' };
-  if (keyboard) body.reply_markup = { inline_keyboard: keyboard };
-  return tg(botToken, 'editMessageText', body);
-}
-async function answerCallback(botToken, callbackQueryId, text = '') {
-  return tg(botToken, 'answerCallbackQuery', { callback_query_id: callbackQueryId, text });
-}
-async function sendPhoto(botToken, chatId, photoUrl, caption = '', keyboard = null) {
-  const body = { chat_id: chatId, photo: photoUrl, parse_mode: 'HTML' };
-  if (caption) body.caption = caption;
-  if (keyboard) body.reply_markup = { inline_keyboard: keyboard };
-  return tg(botToken, 'sendPhoto', body);
-}
-
-async function createChart(config, width = 600, height = 400) {
-  try {
-    const res = await fetch('https://quickchart.io/chart/create', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ backgroundColor: 'white', width, height, chart: config }),
-    });
-    if (!res.ok) return null;
-    const data = await res.json();
-    return data.success ? data.url : null;
-  } catch { return null; }
-}
-
 // ==================== Data Fetching ====================
-
-async function fetchPrices(pairs) {
-  if (!pairs.length) return {};
-  try {
-    const res = await fetch(`${BINANCE_SPOT}/ticker/24hr?symbols=${encodeURIComponent(JSON.stringify(pairs))}`);
-    if (!res.ok) return {};
-    const data = await res.json();
-    const prices = {};
-    for (const item of data) {
-      if (item.symbol && item.lastPrice) {
-        prices[item.symbol] = {
-          price: parseFloat(item.lastPrice),
-          change24h: parseFloat(item.priceChangePercent) || 0,
-          volume: parseFloat(item.quoteVolume) || 0,
-        };
-      }
-    }
-    return prices;
-  } catch { return {}; }
-}
 
 // Short, stable hash (FNV-1a) for building KV keys that fit the 512-byte limit.
 function hashStr(s) {
@@ -857,7 +776,7 @@ async function checkExchangeClosedTrades(env) {
       const fresh = trades
         .filter((t) => t.exitMs > cursor)
         .sort((a, b) => a.exitMs - b.exitMs)
-        .slice(0, 5); // anti-flood per tick
+        .slice(0, 5); // anti-flood per tick — the overflow ships on later ticks
       for (const t of fresh) {
         const dedupKey = `pushsent:${uid}:${t.externalId}`;
         if (await env.ALERTS_KV.get(dedupKey)) continue;
@@ -874,7 +793,13 @@ async function checkExchangeClosedTrades(env) {
           tag: `closed-${t.externalId}`,
         });
       }
-      if (maxExit > cursor) await env.ALERTS_KV.put(cursorKey, String(maxExit), { expirationTtl: 60 * 60 * 24 * 60 });
+      // Advance the cursor only to the newest close we actually PROCESSED —
+      // advancing straight to maxExit permanently skipped every close between
+      // the 5 oldest and the newest (7 closes in one window → 2 vanished).
+      // The overflow stays above the cursor and ships on the next ticks;
+      // pushsent dedup guards against any replay.
+      const newCursor = fresh.length ? fresh[fresh.length - 1].exitMs : maxExit;
+      if (newCursor > cursor) await env.ALERTS_KV.put(cursorKey, String(newCursor), { expirationTtl: 60 * 60 * 24 * 60 });
     }
 
     // ---- Daily summary (once per Israel day, ~22:00) ----
@@ -995,6 +920,20 @@ async function getAiImageUsage(env, uid) {
   const key = `aiimg:${uid}:${date}`;
   const v = await env.ALERTS_KV.get(key);
   return { used: v ? parseInt(v, 10) || 0 : 0, limit: AI_IMAGE_DAILY_LIMIT, date };
+}
+
+// Refund a prepaid quota charge (#202): quotas are now charged BEFORE the
+// provider call (check-then-serve raced under parallel bursts and let a free
+// user blow past the daily cap), so a provider failure refunds the charge to
+// preserve the "failed calls don't burn quota" behavior.
+async function decrementKvCounter(env, key) {
+  const v = parseInt(await env.ALERTS_KV.get(key), 10) || 0;
+  if (v > 0) await env.ALERTS_KV.put(key, String(v - 1), { expirationTtl: 172800 });
+}
+async function refundAiCharge(env, uid, hasImage) {
+  const date = getIsraelDateStr();
+  await decrementKvCounter(env, `aiusage:${uid}:${date}`);
+  if (hasImage) await decrementKvCounter(env, `aiimg:${uid}:${date}`);
 }
 
 async function incrementAiImageUsage(env, uid) {
@@ -1394,80 +1333,6 @@ async function resolveExchangeCreds(env, uid, exchange) {
   return loadExchangeCreds(env, uid, exchange);
 }
 
-async function fetchFundingRates(pairs) {
-  try {
-    const res = await fetch(`${BINANCE_FUTURES}/premiumIndex`);
-    if (!res.ok) return {};
-    const data = await res.json();
-    const rates = {};
-    for (const item of data) {
-      if (pairs.includes(item.symbol)) {
-        rates[item.symbol] = {
-          fundingRate: parseFloat(item.lastFundingRate) * 100,
-          markPrice: parseFloat(item.markPrice),
-          nextFundingTime: item.nextFundingTime,
-        };
-      }
-    }
-    return rates;
-  } catch { return {}; }
-}
-
-async function fetchOpenInterest(pairs) {
-  const results = {};
-  // Fetch in parallel, max 5 at a time
-  const batches = [];
-  for (let i = 0; i < pairs.length; i += 5) {
-    batches.push(pairs.slice(i, i + 5));
-  }
-  for (const batch of batches) {
-    const promises = batch.map(async (pair) => {
-      try {
-        const res = await fetch(`${BINANCE_FUTURES}/openInterest?symbol=${pair}`);
-        if (!res.ok) return;
-        const data = await res.json();
-        results[pair] = {
-          openInterest: parseFloat(data.openInterest),
-        };
-      } catch { /* skip */ }
-    });
-    await Promise.all(promises);
-  }
-  return results;
-}
-
-async function fetchLongShortRatio(pairs) {
-  const results = {};
-  const batches = [];
-  for (let i = 0; i < pairs.length; i += 5) batches.push(pairs.slice(i, i + 5));
-  for (const batch of batches) {
-    await Promise.all(batch.map(async (pair) => {
-      try {
-        const res = await fetch(`https://fapi.binance.com/futures/data/globalLongShortAccountRatio?symbol=${pair}&period=5m&limit=1`);
-        if (!res.ok) return;
-        const data = await res.json();
-        if (data.length) {
-          results[pair] = {
-            ratio: parseFloat(data[0].longShortRatio),
-            longPct: parseFloat(data[0].longAccount) * 100,
-            shortPct: parseFloat(data[0].shortAccount) * 100,
-          };
-        }
-      } catch {}
-    }));
-  }
-  return results;
-}
-
-async function fetchFearGreed() {
-  try {
-    const res = await fetch('https://api.alternative.me/fng/?limit=1');
-    if (!res.ok) return null;
-    const data = await res.json();
-    return data.data?.[0] || null;
-  } catch { return null; }
-}
-
 async function fetchEconomicCalendar(env) {
   const cached = await env.ALERTS_KV.get('calendarCache', 'json');
   if (cached) return cached;
@@ -1483,813 +1348,38 @@ async function fetchEconomicCalendar(env) {
   } catch { return []; }
 }
 
-// ==================== Auth & User Data ====================
-
-async function isRegistered(env, chatId) {
-  return !!(await env.ALERTS_KV.get(`user:${chatId}`));
-}
-async function requireAuth(env, chatId) {
-  return isRegistered(env, chatId);
-}
-async function getUserSettings(env, chatId) {
-  const data = await env.ALERTS_KV.get(`settings:${chatId}`, 'json');
-  return { ...DEFAULT_SETTINGS, ...data };
-}
-async function saveUserSettings(env, chatId, settings) {
-  await env.ALERTS_KV.put(`settings:${chatId}`, JSON.stringify(settings));
-  await setSettingsAggregate(env, chatId, settings); // mirror into settings:ALL
-}
-async function getWatchlist(env, chatId) {
-  const data = await env.ALERTS_KV.get(`watchlist:${chatId}`, 'json');
-  return data || [...DEFAULT_WATCHLIST];
-}
-async function saveWatchlist(env, chatId, list) {
-  await env.ALERTS_KV.put(`watchlist:${chatId}`, JSON.stringify(list));
-}
-
-// ==================== Main Menu ====================
-
-function mainMenuKeyboard() {
-  // Minimal bot by product decision: reminders (via settings) + help only.
-  // Prices/market/alerts/sentiment/status all live in the web app now; the bot
-  // still delivers push notifications (trades, daily summary) via the cron.
-  return [
-    [
-      { text: '⚙️ הגדרות', callback_data: 'menu_settings' },
-      { text: '❓ עזרה', callback_data: 'menu_help' },
-    ],
-  ];
-}
-
-// ==================== Command Handlers ====================
-
-async function handleStart(env, chatId, text, username = null) {
-  // The /start param is a short-lived, server-issued connect code (NOT a raw
-  // uid). We resolve it to a uid via KV; an enumerable uid can no longer be
-  // used to hijack another user's notification link.
-  const param = text.split(' ')[1] || null;
-  if (param) {
-    const uid = await env.ALERTS_KV.get(`tgconnect:${param}`);
-    if (!uid) {
-      // Expired / invalid / forged code — do NOT write any mapping.
-      await sendMessage(env.BOT_TOKEN, chatId, 'קוד החיבור פג תוקף או אינו תקין. חזור לאפליקציה ולחץ שוב על חיבור לטלגרם.');
-      return;
-    }
-    await env.ALERTS_KV.put(`user:${chatId}`, JSON.stringify({ uid, chatId, username, connectedAt: new Date().toISOString() }));
-    await env.ALERTS_KV.put(`uid:${uid}`, String(chatId));
-    // Store the @username (if any) so the "open chat" link in dev notifications
-    // can use https://t.me/<username>, which actually opens a chat (unlike
-    // tg://user?id=, which Telegram can't resolve from an id alone).
-    if (username) await env.ALERTS_KV.put(`tgusername:${chatId}`, username);
-    // Single-use: burn the code so it can't be replayed.
-    await env.ALERTS_KV.delete(`tgconnect:${param}`);
-    const welcome =
-      '🤖 <b>ברוך הבא ל-TradeOS Bot!</b>\n\n' +
-      '📝 <b>תזכורת יומן</b> — תזכורת יומית למלא את היומן\n' +
-      '📊 <b>סיכום יומי</b> — סטטיסטיקות סוף יום\n' +
-      '📅 <b>לוח אירועים</b> — אירועים כלכליים\n' +
-      '🔔 <b>התראות עסקאות</b> — נפתחה/נסגרה פוזיציה\n\n' +
-      'בחר מהתפריט:';
-    await sendMessage(env.BOT_TOKEN, chatId, welcome, mainMenuKeyboard());
-  } else if (await isRegistered(env, chatId)) {
-    await sendMessage(env.BOT_TOKEN, chatId, '🤖 <b>TradeOS Bot</b>\n\nבחר מהתפריט:', mainMenuKeyboard());
-  }
-}
-
-async function handlePrices(env, chatId) {
-  const watchlist = await getWatchlist(env, chatId);
-  const prices = await fetchPrices(watchlist);
-
-  if (!Object.keys(prices).length) {
-    await sendMessage(env.BOT_TOKEN, chatId, '⚠️ לא הצלחתי לטעון מחירים. נסה שוב.', [
-      [{ text: '🔙 תפריט ראשי', callback_data: 'menu_main' }],
-    ]);
-    return;
-  }
-
-  // Sort by watchlist order, then split green/red
-  const green = [];
-  const red = [];
-  for (const pair of watchlist) {
-    const d = prices[pair];
-    if (!d) continue;
-    (d.change24h >= 0 ? green : red).push({ pair, ...d });
-  }
-  // Sort each group by change magnitude
-  green.sort((a, b) => b.change24h - a.change24h);
-  red.sort((a, b) => a.change24h - b.change24h);
-
-  let text = '💰 <b>מחירים — הווצ\'ליסט שלך</b>\n\n';
-
-  if (green.length) {
-    text += '🟢 <b>עולים:</b>\n';
-    for (const c of green) {
-      const sym = c.pair.replace('USDT', '');
-      text += `<b>${sym}</b> — ${fmtPrice(c.price)} (${fmtPct(c.change24h)})\n`;
-    }
-    text += '\n';
-  }
-
-  if (red.length) {
-    text += '🔴 <b>יורדים:</b>\n';
-    for (const c of red) {
-      const sym = c.pair.replace('USDT', '');
-      text += `<b>${sym}</b> — ${fmtPrice(c.price)} (${fmtPct(c.change24h)})\n`;
-    }
-  }
-
-  await sendMessage(env.BOT_TOKEN, chatId, text, [
-    [
-      { text: '🔄 רענן', callback_data: 'menu_prices' },
-      { text: '⭐ ערוך ווצ\'ליסט', callback_data: 'wl_menu' },
-    ],
-    [{ text: '🔙 תפריט ראשי', callback_data: 'menu_main' }],
-  ]);
-}
-
-async function handleMarketMenu(env, chatId) {
-  const text = '📈 <b>נתוני שוק</b>\n\nבחר נתון:';
-  await sendMessage(env.BOT_TOKEN, chatId, text, [
-    [
-      { text: '💸 Funding Rate', callback_data: 'mkt_funding' },
-      { text: '📊 Open Interest', callback_data: 'mkt_oi' },
-    ],
-    [{ text: '📊 Long/Short Ratio', callback_data: 'mkt_ls' }],
-    [{ text: '🔙 תפריט ראשי', callback_data: 'menu_main' }],
-  ]);
-}
-
-async function handleFunding(env, chatId) {
-  const watchlist = await getWatchlist(env, chatId);
-  const rates = await fetchFundingRates(watchlist);
-
-  if (!Object.keys(rates).length) {
-    await sendMessage(env.BOT_TOKEN, chatId, '⚠️ לא הצלחתי לטעון נתוני Funding. נסה שוב.', [
-      [{ text: '🔙 חזרה', callback_data: 'menu_market' }],
-    ]);
-    return;
-  }
-
-  const sorted = watchlist
-    .filter((p) => rates[p])
-    .sort((a, b) => Math.abs(rates[b].fundingRate) - Math.abs(rates[a].fundingRate));
-
-  const nextTime = rates[sorted[0]]?.nextFundingTime;
-  const timeLeft = nextTime ? Math.max(0, nextTime - Date.now()) : 0;
-  const hoursLeft = Math.floor(timeLeft / 3600000);
-  const minsLeft = Math.floor((timeLeft % 3600000) / 60000);
-
-  // Build chart
-  const labels = sorted.map((p) => p.replace('USDT', ''));
-  const values = sorted.map((p) => +(rates[p].fundingRate.toFixed(4)));
-  const chartUrl = await createChart({
-    type: 'horizontalBar',
-    data: {
-      labels,
-      datasets: [{
-        data: values,
-        backgroundColor: values.map((v) => v >= 0 ? 'rgba(34,197,94,0.8)' : 'rgba(239,68,68,0.8)'),
-      }],
-    },
-    options: {
-      legend: { display: false },
-      title: { display: true, text: 'Funding Rate (%)', fontSize: 16 },
-      plugins: { datalabels: { display: true, color: '#333', anchor: 'end', align: 'end', font: { weight: 'bold' } } },
-    },
-  }, 600, Math.max(300, sorted.length * 40));
-
-  let caption = '💸 <b>Funding Rate</b>\n\n';
-  for (const pair of sorted) {
-    const r = rates[pair];
-    const sym = pair.replace('USDT', '');
-    const re = r.fundingRate >= 0 ? '🟢' : '🔴';
-    caption += `<b>${sym}</b>: ${re} ${fmtPct(r.fundingRate)}\n`;
-  }
-  if (timeLeft > 0) caption += `\n⏰ Funding הבא: ${hoursLeft}h ${minsLeft}m`;
-  // Tell the user which watchlist coins have no funding data (e.g. not listed
-  // on Binance Futures) instead of silently dropping them.
-  const missing = watchlist.filter((p) => !rates[p]).map((p) => p.replace('USDT', ''));
-  if (missing.length) caption += `\n\nℹ️ אין נתוני Funding ל: ${missing.join(', ')}`;
-
-  const keyboard = [
-    [{ text: '🔄 רענן', callback_data: 'mkt_funding' }, { text: '🔙 חזרה', callback_data: 'menu_market' }],
-    [{ text: '🔙 תפריט ראשי', callback_data: 'menu_main' }],
-  ];
-
-  if (chartUrl) await sendPhoto(env.BOT_TOKEN, chatId, chartUrl, caption, keyboard);
-  else await sendMessage(env.BOT_TOKEN, chatId, caption, keyboard);
-}
-
-async function handleOpenInterest(env, chatId) {
-  const watchlist = await getWatchlist(env, chatId);
-  const [oi, prices] = await Promise.all([fetchOpenInterest(watchlist), fetchPrices(watchlist)]);
-
-  if (!Object.keys(oi).length) {
-    await sendMessage(env.BOT_TOKEN, chatId, '⚠️ לא הצלחתי לטעון נתוני OI. נסה שוב.', [
-      [{ text: '🔙 חזרה', callback_data: 'menu_market' }],
-    ]);
-    return;
-  }
-
-  const sorted = watchlist
-    .filter((p) => oi[p] && prices[p])
-    .map((p) => ({ pair: p, oiUsd: oi[p].openInterest * prices[p].price }))
-    .sort((a, b) => b.oiUsd - a.oiUsd);
-
-  // Build chart
-  const labels = sorted.map((i) => i.pair.replace('USDT', ''));
-  const values = sorted.map((i) => +(i.oiUsd / 1e9).toFixed(2));
-  const chartUrl = await createChart({
-    type: 'horizontalBar',
-    data: {
-      labels,
-      datasets: [{
-        data: values,
-        backgroundColor: 'rgba(59,130,246,0.8)',
-      }],
-    },
-    options: {
-      legend: { display: false },
-      title: { display: true, text: 'Open Interest ($B)', fontSize: 16 },
-      plugins: { datalabels: { display: true, color: '#333', anchor: 'end', align: 'end', font: { weight: 'bold' } } },
-    },
-  }, 600, Math.max(300, sorted.length * 40));
-
-  let caption = '📊 <b>Open Interest</b>\n\n';
-  for (const item of sorted) {
-    const sym = item.pair.replace('USDT', '');
-    caption += `<b>${sym}</b>: ${fmtBigNum(item.oiUsd)}\n`;
-  }
-
-  const keyboard = [
-    [{ text: '🔄 רענן', callback_data: 'mkt_oi' }, { text: '🔙 חזרה', callback_data: 'menu_market' }],
-    [{ text: '🔙 תפריט ראשי', callback_data: 'menu_main' }],
-  ];
-
-  if (chartUrl) await sendPhoto(env.BOT_TOKEN, chatId, chartUrl, caption, keyboard);
-  else await sendMessage(env.BOT_TOKEN, chatId, caption, keyboard);
-}
-
-async function handleLongShortRatio(env, chatId) {
-  const watchlist = await getWatchlist(env, chatId);
-  const data = await fetchLongShortRatio(watchlist);
-
-  if (!Object.keys(data).length) {
-    await sendMessage(env.BOT_TOKEN, chatId, '⚠️ לא הצלחתי לטעון נתוני Long/Short. נסה שוב.', [
-      [{ text: '🔙 חזרה', callback_data: 'menu_market' }],
-    ]);
-    return;
-  }
-
-  const sorted = watchlist.filter((p) => data[p]).sort((a, b) => data[b].ratio - data[a].ratio);
-  const labels = sorted.map((p) => p.replace('USDT', ''));
-  const longData = sorted.map((p) => +data[p].longPct.toFixed(1));
-  const shortData = sorted.map((p) => +data[p].shortPct.toFixed(1));
-
-  const chartUrl = await createChart({
-    type: 'horizontalBar',
-    data: {
-      labels,
-      datasets: [
-        { label: 'Long %', data: longData, backgroundColor: 'rgba(34,197,94,0.8)' },
-        { label: 'Short %', data: shortData, backgroundColor: 'rgba(239,68,68,0.8)' },
-      ],
-    },
-    options: {
-      title: { display: true, text: 'Long/Short Ratio', fontSize: 16 },
-      plugins: { datalabels: { display: true, color: '#fff', font: { weight: 'bold', size: 11 } } },
-      scales: {
-        xAxes: [{ stacked: true, ticks: { max: 100 } }],
-        yAxes: [{ stacked: true }],
-      },
-    },
-  }, 600, Math.max(300, sorted.length * 40));
-
-  let caption = '📊 <b>Long/Short Ratio</b>\n\n';
-  for (const pair of sorted) {
-    const d = data[pair];
-    const sym = pair.replace('USDT', '');
-    const bias = d.longPct > d.shortPct ? '🟢' : '🔴';
-    caption += `<b>${sym}</b>: ${bias} L:${d.longPct.toFixed(1)}% S:${d.shortPct.toFixed(1)}%\n`;
-  }
-
-  const keyboard = [
-    [{ text: '🔄 רענן', callback_data: 'mkt_ls' }, { text: '🔙 חזרה', callback_data: 'menu_market' }],
-    [{ text: '🔙 תפריט ראשי', callback_data: 'menu_main' }],
-  ];
-
-  if (chartUrl) await sendPhoto(env.BOT_TOKEN, chatId, chartUrl, caption, keyboard);
-  else await sendMessage(env.BOT_TOKEN, chatId, caption, keyboard);
-}
-
-async function handleAlerts(env, chatId) {
-  await sendMessage(env.BOT_TOKEN, chatId, '🔔 <b>התראות מחיר</b>\n\nבחר פעולה:', [
-    [{ text: '➕ הוספת התראה', callback_data: 'alert_add' }],
-    [{ text: '📋 ההתראות שלי', callback_data: 'alert_list' }],
-    [{ text: '🔙 תפריט ראשי', callback_data: 'menu_main' }],
-  ]);
-}
-
-async function handleFearGreed(env, chatId) {
-  const fg = await fetchFearGreed();
-  if (!fg) {
-    await sendMessage(env.BOT_TOKEN, chatId, '⚠️ לא הצלחתי לטעון את המדד. נסה שוב.', [
-      [{ text: '🔙 תפריט ראשי', callback_data: 'menu_main' }],
-    ]);
-    return;
-  }
-  const value = parseInt(fg.value, 10);
-  if (!Number.isFinite(value)) {
-    await sendMessage(env.BOT_TOKEN, chatId, '⚠️ לא הצלחתי לטעון את המדד. נסה שוב.', [
-      [{ text: '🔙 תפריט ראשי', callback_data: 'menu_main' }],
-    ]);
-    return;
-  }
-  let emoji;
-  if (value <= 25) emoji = '😱';
-  else if (value <= 45) emoji = '😟';
-  else if (value <= 55) emoji = '😐';
-  else if (value <= 75) emoji = '😊';
-  else emoji = '🤑';
-  const filled = Math.round(value / 10);
-  const bar = '🟩'.repeat(Math.min(filled, 10)) + '⬜'.repeat(Math.max(10 - filled, 0));
-  const text =
-    `😱 <b>מדד פחד וחמדנות</b>\n\n` +
-    `${emoji} <b>${fg.value_classification}</b>\n\n${bar}\n\n` +
-    `<b>ערך: ${fg.value}/100</b>\n\n` +
-    `עדכון אחרון: ${new Date(fg.timestamp * 1000).toLocaleDateString('he-IL')}`;
-  await sendMessage(env.BOT_TOKEN, chatId, text, [
-    [{ text: '🔄 רענן', callback_data: 'menu_fear' }, { text: '🔙 תפריט ראשי', callback_data: 'menu_main' }],
-  ]);
-}
-
-async function handleStatus(env, chatId) {
-  const list = await env.ALERTS_KV.list({ prefix: `alerts:${chatId}:` });
-  const alerts = [];
-  for (const key of list.keys) {
-    const data = await env.ALERTS_KV.get(key.name, 'json');
-    if (data && data.active) alerts.push(data);
-  }
-  if (!alerts.length) {
-    await sendMessage(env.BOT_TOKEN, chatId,
-      '📊 <b>סטטוס</b>\n\nאין לך התראות פעילות כרגע.\nלחץ על "הוספת התראה" כדי ליצור אחת!',
-      [[{ text: '➕ הוספת התראה', callback_data: 'alert_add' }], [{ text: '🔙 תפריט ראשי', callback_data: 'menu_main' }]]);
-    return;
-  }
-  let text = `📊 <b>סטטוס — ${alerts.length} התראות פעילות</b>\n\n`;
-  alerts.forEach((a, i) => {
-    const dir = a.direction === 'above' ? '📈 מעל' : '📉 מתחת';
-    text += `${i + 1}. <b>${a.pair.replace('USDT', '')}</b> ${dir} ${fmtPrice(a.targetPrice)}\n`;
-  });
-  text += '\n⏰ נבדק כל דקה 24/7';
-  const keyboard = alerts.map((a) => [{ text: `🗑 מחק ${a.pair} ${fmtPrice(a.targetPrice)}`, callback_data: `del:${a.id}` }]);
-  keyboard.push([{ text: '➕ הוספת התראה', callback_data: 'alert_add' }]);
-  keyboard.push([{ text: '🔙 תפריט ראשי', callback_data: 'menu_main' }]);
-  await sendMessage(env.BOT_TOKEN, chatId, text, keyboard);
-}
-
-async function handleHelp(env, chatId) {
-  const text =
-    '❓ <b>עזרה — TradeOS Bot</b>\n\n' +
-    '<b>פקודות:</b>\n' +
-    '/start — תפריט ראשי\n' +
-    '/settings — הגדרות תזכורות\n' +
-    '/help — עזרה\n\n' +
-    '<b>⚙️ הגדרות:</b>\n' +
-    '📝 תזכורת יומן — תזכורת יומית למלא את היומן\n' +
-    '📊 סיכום יומי — סטטיסטיקות סוף יום\n' +
-    '📅 לוח אירועים — אירועים כלכליים חשובים\n\n' +
-    `<b>קישור לאפליקציה:</b>\n${APP_URL}`;
-  await sendMessage(env.BOT_TOKEN, chatId, text, [[{ text: '🔙 תפריט ראשי', callback_data: 'menu_main' }]]);
-}
-
-async function handleQuickPrice(env, chatId, symbol) {
-  const pair = symbol.endsWith('USDT') ? symbol : `${symbol}USDT`;
-  if (!ALL_PAIRS[pair]) {
-    const supported = Object.keys(ALL_PAIRS).map((p) => p.replace('USDT', '')).join(', ');
-    await sendMessage(env.BOT_TOKEN, chatId, `❌ מטבע לא מוכר: ${symbol}\n\nמטבעות נתמכים: ${supported}`);
-    return;
-  }
-  const prices = await fetchPrices([pair]);
-  if (prices[pair]) {
-    const chg = prices[pair].change24h >= 0 ? '📈' : '📉';
-    await sendMessage(env.BOT_TOKEN, chatId,
-      `<b>${pair.replace('USDT', '')}</b>\n\n💰 ${fmtPrice(prices[pair].price)}\n${chg} ${fmtPct(prices[pair].change24h)} (24h)`);
-  } else {
-    await sendMessage(env.BOT_TOKEN, chatId, '⚠️ לא הצלחתי לטעון את המחיר. נסה שוב.');
-  }
-}
-
-// ==================== Watchlist Handlers ====================
-
-async function handleWatchlistMenu(env, chatId) {
-  const watchlist = await getWatchlist(env, chatId);
-  const current = watchlist.map((p) => p.replace('USDT', '')).join(', ');
-  const text = `⭐ <b>ווצ'ליסט</b>\n\nהמטבעות שלך: ${current}\n\nבחר פעולה:`;
-  await sendMessage(env.BOT_TOKEN, chatId, text, [
-    [{ text: '➕ הוסף מטבע', callback_data: 'wl_add' }],
-    [{ text: '➖ הסר מטבע', callback_data: 'wl_rm' }],
-    [{ text: '🔄 אפס לברירת מחדל', callback_data: 'wl_reset' }],
-    [{ text: '🔙 חזרה למחירים', callback_data: 'menu_prices' }],
-  ]);
-}
-
-async function handleWatchlistAdd(env, chatId) {
-  const watchlist = await getWatchlist(env, chatId);
-  const available = Object.keys(ALL_PAIRS).filter((p) => !watchlist.includes(p));
-  if (!available.length) {
-    await sendMessage(env.BOT_TOKEN, chatId, '⭐ כל המטבעות כבר בווצ\'ליסט שלך!', [
-      [{ text: '🔙 חזרה', callback_data: 'wl_menu' }],
-    ]);
-    return;
-  }
-  const buttons = available.map((p) => ({ text: p.replace('USDT', ''), callback_data: `wl_a:${p}` }));
-  const keyboard = [];
-  for (let i = 0; i < buttons.length; i += 3) {
-    keyboard.push(buttons.slice(i, i + 3));
-  }
-  keyboard.push([{ text: '🔙 חזרה', callback_data: 'wl_menu' }]);
-  await sendMessage(env.BOT_TOKEN, chatId, '➕ <b>בחר מטבע להוספה:</b>', keyboard);
-}
-
-async function handleWatchlistRemove(env, chatId) {
-  const watchlist = await getWatchlist(env, chatId);
-  if (watchlist.length <= 1) {
-    await sendMessage(env.BOT_TOKEN, chatId, '⚠️ חייב להישאר לפחות מטבע אחד בווצ\'ליסט.', [
-      [{ text: '🔙 חזרה', callback_data: 'wl_menu' }],
-    ]);
-    return;
-  }
-  const buttons = watchlist.map((p) => ({ text: p.replace('USDT', ''), callback_data: `wl_r:${p}` }));
-  const keyboard = [];
-  for (let i = 0; i < buttons.length; i += 3) {
-    keyboard.push(buttons.slice(i, i + 3));
-  }
-  keyboard.push([{ text: '🔙 חזרה', callback_data: 'wl_menu' }]);
-  await sendMessage(env.BOT_TOKEN, chatId, '➖ <b>בחר מטבע להסרה:</b>', keyboard);
-}
-
-// ==================== Settings Handlers ====================
-
-async function handleSettings(env, chatId, messageId = null) {
-  const settings = await getUserSettings(env, chatId);
-  const jS = settings.journal.enabled ? `✅ ${settings.journal.time}` : '❌ כבוי';
-  const sS = settings.summary.enabled ? `✅ ${settings.summary.time}` : '❌ כבוי';
-  const cS = settings.calendar.enabled ? '✅ פעיל' : '❌ כבוי';
-  const text = `⚙️ <b>הגדרות</b>\n\n📝 תזכורת יומן: ${jS}\n📊 סיכום יומי: ${sS}\n📅 לוח אירועים: ${cS}`;
-  const keyboard = [
-    [{ text: '📝 תזכורת יומן', callback_data: 'set_journal' }, { text: '📊 סיכום יומי', callback_data: 'set_summary' }],
-    [{ text: '📅 לוח אירועים', callback_data: 'set_calendar' }],
-    [{ text: '🔙 תפריט ראשי', callback_data: 'menu_main' }],
-  ];
-  if (messageId) await editMessage(env.BOT_TOKEN, chatId, messageId, text, keyboard);
-  else await sendMessage(env.BOT_TOKEN, chatId, text, keyboard);
-}
-
-async function handleSettingDetail(env, chatId, messageId, type) {
-  const settings = await getUserSettings(env, chatId);
-  const labels = { journal: 'תזכורת מילוי יומן', summary: 'סיכום יומי', calendar: 'לוח אירועים כלכליים' };
-  const descs = {
-    journal: 'תזכורת יומית למלא את יומן המסחר.',
-    summary: 'סיכום יומי עם P&L, עסקאות ו-Win Rate.',
-    calendar: 'התראה שעה לפני אירועים כלכליים חשובים\n(CPI, FOMC, NFP ועוד)',
-  };
-  const s = type === 'calendar' ? settings.calendar : settings[type];
-  const statusText = s.enabled ? '✅ פעיל' : '❌ כבוי';
-  let text = `${type === 'journal' ? '📝' : type === 'summary' ? '📊' : '📅'} <b>${labels[type]}</b>\n\nסטטוס: ${statusText}\n`;
-  if (type !== 'calendar' && s.time) text += `שעה: ${s.time}\n`;
-  text += `\n${descs[type]}`;
-  const keyboard = [[{ text: s.enabled ? '❌ כבה' : '✅ הפעל', callback_data: `toggle_${type}` }]];
-  if (type !== 'calendar') keyboard.push([{ text: '🕐 שנה שעה', callback_data: `time_${type}` }]);
-  keyboard.push([{ text: '🔙 חזרה להגדרות', callback_data: 'menu_settings' }]);
-  await editMessage(env.BOT_TOKEN, chatId, messageId, text, keyboard);
-}
-
-async function handleToggle(env, chatId, messageId, type) {
-  const settings = await getUserSettings(env, chatId);
-  if (type === 'calendar') settings.calendar.enabled = !settings.calendar.enabled;
-  else settings[type].enabled = !settings[type].enabled;
-  await saveUserSettings(env, chatId, settings);
-  await handleSettingDetail(env, chatId, messageId, type);
-}
-
-async function handleTimePicker(env, chatId, messageId, type) {
-  const label = type === 'journal' ? 'תזכורת יומן' : 'סיכום יומי';
-  const hours = [];
-  for (let h = 8; h <= 23; h++) hours.push({ text: `${String(h).padStart(2, '0')}:00`, callback_data: `stt_${type}_${String(h).padStart(2, '0')}:00` });
-  const keyboard = [];
-  for (let i = 0; i < hours.length; i += 4) keyboard.push(hours.slice(i, i + 4));
-  keyboard.push([{ text: '🔙 חזרה', callback_data: `set_${type}` }]);
-  await editMessage(env.BOT_TOKEN, chatId, messageId, `🕐 <b>בחר שעה ל${label}:</b>`, keyboard);
-}
-
-async function handleSetTime(env, chatId, messageId, type, time) {
-  const settings = await getUserSettings(env, chatId);
-  settings[type].time = time;
-  await saveUserSettings(env, chatId, settings);
-  await handleSettingDetail(env, chatId, messageId, type);
-}
-
-// ==================== Callback Handler ====================
-
-async function handleCallback(env, callbackQuery) {
-  const chatId = callbackQuery.message.chat.id;
-  const messageId = callbackQuery.message.message_id;
-  const data = callbackQuery.data;
-  await answerCallback(env.BOT_TOKEN, callbackQuery.id);
-  if (!(await isRegistered(env, chatId))) return;
-
-  // Main menu
-  if (data === 'menu_main') { await editMessage(env.BOT_TOKEN, chatId, messageId, '🤖 <b>TradeOS Bot</b>\n\nבחר מהתפריט:', mainMenuKeyboard()); return; }
-  if (data === 'menu_help') return handleHelp(env, chatId);
-
-  // Retired features (prices, market data, price-alerts, sentiment, status) —
-  // all moved to the web app. Old inline buttons still in users' chat history
-  // land here → a friendly redirect instead of an error.
-  if (data === 'menu_prices' || data === 'menu_market' || data === 'menu_alerts'
-      || data === 'menu_fear' || data === 'menu_status'
-      || data === 'mkt_funding' || data === 'mkt_oi' || data === 'mkt_ls') {
-    await sendMessage(env.BOT_TOKEN, chatId,
-      '💡 המחירים, ההתראות ונתוני השוק עברו לאפליקציה — שם הכל חי ומעודכן.',
-      [[{ text: '🔙 תפריט ראשי', callback_data: 'menu_main' }]]);
-    return;
-  }
-
-  // Settings
-  if (data === 'menu_settings') return handleSettings(env, chatId, messageId);
-  if (data === 'set_journal') return handleSettingDetail(env, chatId, messageId, 'journal');
-  if (data === 'set_summary') return handleSettingDetail(env, chatId, messageId, 'summary');
-  if (data === 'set_calendar') return handleSettingDetail(env, chatId, messageId, 'calendar');
-  if (data === 'toggle_journal') return handleToggle(env, chatId, messageId, 'journal');
-  if (data === 'toggle_summary') return handleToggle(env, chatId, messageId, 'summary');
-  if (data === 'toggle_calendar') return handleToggle(env, chatId, messageId, 'calendar');
-  if (data === 'time_journal') return handleTimePicker(env, chatId, messageId, 'journal');
-  if (data === 'time_summary') return handleTimePicker(env, chatId, messageId, 'summary');
-  if (data.startsWith('stt_')) {
-    const [, type, time] = data.split('_');
-    // Only journal/summary have a configurable time — reject anything else.
-    if (type === 'journal' || type === 'summary') {
-      return handleSetTime(env, chatId, messageId, type, time);
-    }
-    return;
-  }
-
-  // Watchlist
-  if (data === 'wl_menu') return handleWatchlistMenu(env, chatId);
-  if (data === 'wl_add') return handleWatchlistAdd(env, chatId);
-  if (data === 'wl_rm') return handleWatchlistRemove(env, chatId);
-  if (data === 'wl_reset') {
-    await saveWatchlist(env, chatId, [...DEFAULT_WATCHLIST]);
-    await sendMessage(env.BOT_TOKEN, chatId, '✅ הווצ\'ליסט אופס לברירת מחדל!', [[{ text: '💰 מחירים', callback_data: 'menu_prices' }]]);
-    return;
-  }
-  if (data.startsWith('wl_a:')) {
-    const pair = data.split(':')[1];
-    const wl = await getWatchlist(env, chatId);
-    if (!wl.includes(pair)) { wl.push(pair); await saveWatchlist(env, chatId, wl); }
-    await sendMessage(env.BOT_TOKEN, chatId, `✅ <b>${pair.replace('USDT', '')}</b> נוסף לווצ'ליסט!`, [
-      [{ text: '➕ עוד מטבע', callback_data: 'wl_add' }, { text: '💰 מחירים', callback_data: 'menu_prices' }],
-    ]);
-    return;
-  }
-  if (data.startsWith('wl_r:')) {
-    const pair = data.split(':')[1];
-    const wl = await getWatchlist(env, chatId);
-    const filtered = wl.filter((p) => p !== pair);
-    if (filtered.length > 0) { await saveWatchlist(env, chatId, filtered); }
-    await sendMessage(env.BOT_TOKEN, chatId, `✅ <b>${pair.replace('USDT', '')}</b> הוסר מהווצ'ליסט.`, [
-      [{ text: '➖ עוד הסרה', callback_data: 'wl_rm' }, { text: '💰 מחירים', callback_data: 'menu_prices' }],
-    ]);
-    return;
-  }
-
-  // Alerts: select pair (show ALL_PAIRS)
-  if (data === 'alert_add') {
-    const buttons = Object.keys(ALL_PAIRS).map((pair) => ({ text: pair.replace('USDT', ''), callback_data: `pair:${pair}` }));
-    const keyboard = [];
-    for (let i = 0; i < buttons.length; i += 4) keyboard.push(buttons.slice(i, i + 4));
-    keyboard.push([{ text: '🔙 חזרה', callback_data: 'menu_alerts' }]);
-    await sendMessage(env.BOT_TOKEN, chatId, '📊 <b>בחר מטבע:</b>', keyboard);
-    return;
-  }
-  if (data.startsWith('pair:')) {
-    const pair = data.split(':')[1];
-    await sendMessage(env.BOT_TOKEN, chatId, `<b>${pair.replace('USDT', '')}</b>\n\nבחר כיוון:`, [
-      [{ text: '📈 מעל מחיר', callback_data: `dir:${pair}:above` }, { text: '📉 מתחת למחיר', callback_data: `dir:${pair}:below` }],
-      [{ text: '🔙 חזרה', callback_data: 'alert_add' }],
-    ]);
-    return;
-  }
-  if (data.startsWith('dir:')) {
-    const [, pair, direction] = data.split(':');
-    await env.ALERTS_KV.put(`state:${chatId}`, JSON.stringify({ step: 'awaiting_price', pair, direction }), { expirationTtl: 300 });
-    const dirText = direction === 'above' ? 'מעל' : 'מתחת';
-    await sendMessage(env.BOT_TOKEN, chatId,
-      `<b>${pair.replace('USDT', '')}</b> — התראה כשהמחיר ${dirText}\n\n💲 <b>שלח את מחיר היעד:</b>\n(למשל: 100000)`,
-      [[{ text: '❌ ביטול', callback_data: 'menu_alerts' }]]);
-    return;
-  }
-  if (data === 'alert_list') return handleStatus(env, chatId);
-  if (data.startsWith('del:')) {
-    const alertId = data.split(':')[1];
-    await env.ALERTS_KV.delete(`alerts:${chatId}:${alertId}`);
-    await removeAlertAggregate(env, alertId); // drop from alerts:ACTIVE
-    await sendMessage(env.BOT_TOKEN, chatId, '✅ ההתראה נמחקה!', [
-      [{ text: '📋 ההתראות שלי', callback_data: 'alert_list' }, { text: '🔙 תפריט ראשי', callback_data: 'menu_main' }],
-    ]);
-  }
-}
-
-// ==================== Text Message Handler ====================
-
-async function handleTextMessage(env, chatId, text) {
-  const stateStr = await env.ALERTS_KV.get(`state:${chatId}`);
-  if (!stateStr) {
-    await sendMessage(env.BOT_TOKEN, chatId, '🤖 <b>TradeOS Bot</b>\n\nבחר מהתפריט או שלח /help:', mainMenuKeyboard());
-    return;
-  }
-  const state = JSON.parse(stateStr);
-  if (state.step === 'awaiting_price') {
-    const price = parseFloat(text.replace(/,/g, ''));
-    if (isNaN(price) || price <= 0) {
-      await sendMessage(env.BOT_TOKEN, chatId, '❌ מחיר לא תקין. שלח מספר חיובי (למשל: 100000)');
-      return;
-    }
-    const alertId = Date.now().toString();
-    const newAlert = {
-      id: alertId, chatId: String(chatId), pair: state.pair, targetPrice: price,
-      direction: state.direction, active: true, createdAt: new Date().toISOString(),
-    };
-    await env.ALERTS_KV.put(`alerts:${chatId}:${alertId}`, JSON.stringify(newAlert));
-    await syncAlertAggregate(env, newAlert); // mirror into alerts:ACTIVE
-    await env.ALERTS_KV.delete(`state:${chatId}`);
-    const dir = state.direction === 'above' ? '📈 מעל' : '📉 מתחת';
-    await sendMessage(env.BOT_TOKEN, chatId,
-      `✅ <b>ההתראה נוצרה!</b>\n\n<b>${state.pair.replace('USDT', '')}</b>\n${dir} ${fmtPrice(price)}\n\n⏰ נבדק כל דקה 24/7`,
-      [[{ text: '➕ עוד התראה', callback_data: 'alert_add' }, { text: '📋 ההתראות שלי', callback_data: 'alert_list' }],
-       [{ text: '🔙 תפריט ראשי', callback_data: 'menu_main' }]]);
-  }
-}
-
-// ==================== Webhook Handler ====================
-
-// Bot-usage record for the admin panel: { total, lastUsed, lastCmd }.
-// Read-modify-write per interaction is fine at bot volume; failures are
-// swallowed by callers so stats can never break command handling.
-async function bumpTgUsage(env, chatId, cmd) {
-  const key = `tgusage:${chatId}`;
-  const cur = (await env.ALERTS_KV.get(key, 'json')) || { total: 0 };
-  await env.ALERTS_KV.put(key, JSON.stringify({
-    total: (cur.total || 0) + 1,
-    lastUsed: Date.now(),
-    lastCmd: cmd,
-  }));
-}
-
-async function handleWebhook(request, env) {
-  // Defense in depth: if the owner has configured TG_WEBHOOK_SECRET, require
-  // Telegram's secret-token header to match. When the secret is NOT set, skip
-  // the check so the bot keeps working until the owner configures it (backward
-  // compatible rollout — set the secret, then re-run /setup-webhook).
-  if (env.TG_WEBHOOK_SECRET) {
-    if (request.headers.get('X-Telegram-Bot-Api-Secret-Token') !== env.TG_WEBHOOK_SECRET) {
-      return new Response('Unauthorized', { status: 401 });
-    }
-  }
-  try {
-    const update = await request.json();
-    if (update.callback_query) {
-      const cbChatId = update.callback_query.message?.chat?.id;
-      // Only record usage for already-registered chats — a forged webhook
-      // update (when TG_WEBHOOK_SECRET is unset) must not be able to write KV
-      // for an arbitrary chatId. handleCallback re-checks isRegistered too.
-      if (cbChatId && await isRegistered(env, cbChatId)) bumpTgUsage(env, cbChatId, 'button').catch(() => {});
-      await handleCallback(env, update.callback_query);
-      return new Response('OK');
-    }
-    const message = update.message;
-    if (!message) return new Response('OK');
-    const chatId = message.chat.id;
-    const text = (message.text || '').trim();
-    const username = message.from?.username || null;
-
-    // /start is self-gating (the connect param is an unguessable server-issued
-    // code, validated inside handleStart before any KV write).
-    if (text.startsWith('/start')) { await handleStart(env, chatId, text, username); return new Response('OK'); }
-
-    // Everything else requires an already-registered user. Forged/unauthenticated
-    // updates for unknown chatIds are dropped here with ZERO KV writes — this is
-    // the fail-safe for when TG_WEBHOOK_SECRET isn't configured.
-    if (!(await requireAuth(env, chatId))) return new Response('OK');
-
-    // Registered user — safe to record incidental state now (moved AFTER auth).
-    // Backfill @username (one write, skipped once stored) for the dev's chat link.
-    if (username) {
-      const uk = `tgusername:${chatId}`;
-      if ((await env.ALERTS_KV.get(uk)) !== username) await env.ALERTS_KV.put(uk, username);
-    }
-    bumpTgUsage(env, chatId, text.startsWith('/') ? text.split(' ')[0] : 'text').catch(() => {});
-
-    // Minimal bot: only reminders (settings) + help.
-    if (text === '/settings') await handleSettings(env, chatId);
-    else if (text === '/help') await handleHelp(env, chatId);
-    else await handleTextMessage(env, chatId, text);
-  } catch (err) { console.error('Webhook error:', err); }
-  return new Response('OK');
-}
-
 // ==================== Cron Functions ====================
 
 // ---- Aggregate KV snapshots ------------------------------------------------
-// To avoid an N+1 read per cron tick (one get per `settings:*` / `alerts:*`
-// key — the main source of KV-quota burn), the cron reads two rolled-up blobs:
-//   settings:ALL  = { [chatId]: settings }
-//   alerts:ACTIVE = { [alertId]: { kvKey, ...alert } }   (active alerts only)
-// Writers keep the per-key docs (so the bot's own readers are untouched) AND
-// mirror into the blob (dual-write). If a blob is missing we rebuild it once
-// from the per-key list (backfill), so this is safe to ship with no migration.
-async function getSettingsAll(env) {
-  const blob = await env.ALERTS_KV.get('settings:ALL', 'json');
-  if (blob) return blob;
-  const list = await env.ALERTS_KV.list({ prefix: 'settings:' });
-  const out = {};
-  await Promise.all(list.keys.filter((k) => k.name !== 'settings:ALL').map(async (k) => {
-    const d = await env.ALERTS_KV.get(k.name, 'json');
-    if (d) out[k.name.slice('settings:'.length)] = d;
-  }));
-  await env.ALERTS_KV.put('settings:ALL', JSON.stringify(out));
-  return out;
-}
-async function getAlertsActive(env) {
-  const blob = await env.ALERTS_KV.get('alerts:ACTIVE', 'json');
-  if (blob) return blob;
-  const list = await env.ALERTS_KV.list({ prefix: 'alerts:' });
-  const out = {};
-  await Promise.all(list.keys.filter((k) => k.name !== 'alerts:ACTIVE').map(async (k) => {
-    const d = await env.ALERTS_KV.get(k.name, 'json');
-    if (d && d.active) out[d.id] = { kvKey: k.name, ...d };
-  }));
-  await env.ALERTS_KV.put('alerts:ACTIVE', JSON.stringify(out));
-  return out;
-}
-async function setSettingsAggregate(env, chatId, settings) {
-  const blob = (await env.ALERTS_KV.get('settings:ALL', 'json')) || {};
-  blob[String(chatId)] = settings;
-  await env.ALERTS_KV.put('settings:ALL', JSON.stringify(blob));
-}
-// Upsert (active) or remove (inactive/deleted) a single alert in the aggregate.
-async function syncAlertAggregate(env, alert) {
-  const blob = (await env.ALERTS_KV.get('alerts:ACTIVE', 'json')) || {};
-  if (alert && alert.active) blob[alert.id] = { kvKey: `alerts:${alert.chatId}:${alert.id}`, ...alert };
-  else if (alert) delete blob[alert.id];
-  await env.ALERTS_KV.put('alerts:ACTIVE', JSON.stringify(blob));
-}
-async function removeAlertAggregate(env, alertId) {
-  const blob = (await env.ALERTS_KV.get('alerts:ACTIVE', 'json')) || {};
-  if (alertId in blob) { delete blob[alertId]; await env.ALERTS_KV.put('alerts:ACTIVE', JSON.stringify(blob)); }
-}
+// To avoid an N+1 read per cron tick, the cron reads one rolled-up blob:
+//   usettings:ALL = { [uid]: schedule }   (written by /notify-settings)
 
-async function checkPriceAlerts(env, activeAlerts) {
-  if (!activeAlerts.length) return;
-  const pairs = [...new Set(activeAlerts.map((a) => a.pair))];
-  const prices = await fetchPrices(pairs);
-  if (!Object.keys(prices).length) return;
-  for (const alert of activeAlerts) {
-    const pd = prices[alert.pair];
-    if (!pd) continue;
-    const hit = alert.direction === 'above' ? pd.price >= alert.targetPrice : pd.price <= alert.targetPrice;
-    if (hit) {
-      // Dedup guard: KV is eventually consistent, so the `active:false` write
-      // below may not be visible on the next cron tick. Claim a sent key first
-      // so the alert can't fire twice (mirrors the other cron checks).
-      const sentKey = `sent:alert:${alert.id}`;
-      if (await env.ALERTS_KV.get(sentKey)) continue;
-      await env.ALERTS_KV.put(sentKey, '1', { expirationTtl: 86400 });
-      const dir = alert.direction === 'above' ? '📈 מעל' : '📉 מתחת';
-      const chg = `${pd.change24h >= 0 ? '📈' : '📉'} שינוי 24h: ${fmtPct(pd.change24h)}`;
-      const msg = `🔔 <b>התראת מחיר!</b>\n\n<b>${alert.pair.replace('USDT', '')}</b>\n💰 מחיר נוכחי: ${fmtPrice(pd.price)}\n🎯 יעד: ${dir} ${fmtPrice(alert.targetPrice)}\n${chg}\n\n✅ ההתראה הושלמה`;
-      await sendMessage(env.BOT_TOKEN, alert.chatId, msg, [[{ text: '➕ התראה חדשה', callback_data: 'alert_add' }, { text: '📋 ההתראות שלי', callback_data: 'alert_list' }]]);
-      const { kvKey, ...ad } = alert;
-      // Reconstruct the key from stable fields so the disable write can't target
-      // `undefined` if kvKey was ever absent.
-      const alertKey = kvKey || `alerts:${alert.chatId}:${alert.id}`;
-      await env.ALERTS_KV.put(alertKey, JSON.stringify({ ...ad, active: false }));
-      await removeAlertAggregate(env, alert.id); // it's done — drop from alerts:ACTIVE
-
-    }
-  }
+// The cron ticks every 10 minutes, so an EXACT HH:MM comparison silently
+// skipped any scheduled time that isn't a multiple of 10 (a user who typed
+// 21:15 never got the reminder). A schedule is "due" when it falls inside
+// the current 10-minute tick window.
+function scheduleDue(hhmm, currentTime) {
+  const toMin = (t) => {
+    const [h, m] = String(t || '').split(':').map(Number);
+    return Number.isFinite(h) && Number.isFinite(m) ? h * 60 + m : NaN;
+  };
+  const sched = toMin(hhmm);
+  const now = toMin(currentTime);
+  return Number.isFinite(sched) && sched >= now && sched < now + 10;
 }
 
 async function checkJournalReminders(env, settingsMap) {
   const currentTime = getIsraelHHMM();
   const today = getIsraelDateStr();
-  for (const [chatId, s] of Object.entries(settingsMap)) {
-    if (!s?.journal?.enabled || s.journal.time !== currentTime) continue;
-    const sentKey = `sent:journal:${chatId}:${today}`;
+  for (const [uid, s] of Object.entries(settingsMap)) {
+    if (!s?.journal?.enabled || !scheduleDue(s.journal.time, currentTime)) continue;
+    const sentKey = `sent:journal:${uid}:${today}`;
     if (await env.ALERTS_KV.get(sentKey)) continue;
-    await sendMessage(env.BOT_TOKEN, chatId,
-      '📝 <b>תזכורת יומן</b>\n\nלא שכחת למלא את היומן היום?\nתיעוד העסקאות שלך הוא המפתח לשיפור! 💪',
-      [[{ text: '📖 פתח את היומן', url: APP_URL }]]);
+    await sendPushToUser(env, uid, {
+      title: '📝 תזכורת יומן',
+      body: 'לא שכחת למלא את היומן היום? תיעוד העסקאות שלך הוא המפתח לשיפור 💪',
+      url: '/journal',
+    });
     await env.ALERTS_KV.put(sentKey, '1', { expirationTtl: 86400 });
   }
 }
@@ -2297,23 +1387,25 @@ async function checkJournalReminders(env, settingsMap) {
 async function checkDailySummaries(env, settingsMap) {
   const currentTime = getIsraelHHMM();
   const today = getIsraelDateStr();
-  for (const [chatId, s] of Object.entries(settingsMap)) {
-    if (!s?.summary?.enabled || s.summary.time !== currentTime) continue;
-    const sentKey = `sent:summary:${chatId}:${today}`;
+  for (const [uid, s] of Object.entries(settingsMap)) {
+    if (!s?.summary?.enabled || !scheduleDue(s.summary.time, currentTime)) continue;
+    const sentKey = `sent:summary:${uid}:${today}`;
     if (await env.ALERTS_KV.get(sentKey)) continue;
-    const stats = await env.ALERTS_KV.get(`dailystats:${chatId}:${today}`, 'json');
-    let msg;
+    const stats = await env.ALERTS_KV.get(`dailystats:u:${uid}:${today}`, 'json');
+    let body;
     if (stats && stats.tradeCount > 0) {
       const pnlStr = stats.pnl >= 0 ? `+$${stats.pnl.toFixed(2)}` : `-$${Math.abs(stats.pnl).toFixed(2)}`;
-      const pnlE = stats.pnl >= 0 ? '🟢' : '🔴';
       const wr = Math.round((stats.wins / stats.tradeCount) * 100);
-      msg = `📊 <b>סיכום יומי — ${formatIsraelDate()}</b>\n\n📈 עסקאות: ${stats.tradeCount}\n${pnlE} P&L: ${pnlStr}\n🎯 Win Rate: ${wr}% (${stats.wins}/${stats.tradeCount})\n`;
-      if (stats.bestTrade && stats.bestTrade.pnl > 0) msg += `🏆 הכי טובה: +$${stats.bestTrade.pnl.toFixed(2)} (${stats.bestTrade.pair})\n`;
-      if (stats.worstTrade && stats.worstTrade.pnl < 0) msg += `📉 הכי גרועה: -$${Math.abs(stats.worstTrade.pnl).toFixed(2)} (${stats.worstTrade.pair})\n`;
+      body = `${stats.tradeCount} עסקאות · P&L: ‏${pnlStr} · Win Rate: ‏${wr}%`;
+      if (stats.bestTrade && stats.bestTrade.pnl > 0) body += ` · 🏆 ${stats.bestTrade.pair} ‏+$${stats.bestTrade.pnl.toFixed(2)}`;
     } else {
-      msg = `📊 <b>סיכום יומי — ${formatIsraelDate()}</b>\n\nאין עסקאות סגורות היום.\nמחר יום חדש! 💪`;
+      body = 'אין עסקאות סגורות היום. מחר יום חדש! 💪';
     }
-    await sendMessage(env.BOT_TOKEN, chatId, msg, [[{ text: '📖 פתח את היומן', url: APP_URL }]]);
+    await sendPushToUser(env, uid, {
+      title: `📊 סיכום יומי — ${formatIsraelDate()}`,
+      body,
+      url: '/journal',
+    });
     await env.ALERTS_KV.put(sentKey, '1', { expirationTtl: 86400 });
   }
 }
@@ -2321,24 +1413,27 @@ async function checkDailySummaries(env, settingsMap) {
 async function checkEconomicCalendar(env, settingsMap) {
   const now = getIsraelTime();
   if (now.getMinutes() % 5 !== 0) return;
-  const events = await fetchEconomicCalendar(env);
-  if (!events.length) return;
   const users = Object.entries(settingsMap)
     .filter(([, s]) => s?.calendar?.enabled)
-    .map(([chatId]) => chatId);
+    .map(([uid]) => uid);
   if (!users.length) return;
+  const events = await fetchEconomicCalendar(env);
+  if (!events.length) return;
   for (const event of events) {
     const diffMin = (new Date(event.date).getTime() - Date.now()) / 60000;
     if (diffMin < 55 || diffMin > 65) continue;
     const eventTime = new Date(event.date).toLocaleTimeString('he-IL', { timeZone: 'Asia/Jerusalem', hour: '2-digit', minute: '2-digit' });
     const forecastStr = event.forecast || event.previous
-      ? `📊 ${event.forecast ? `תחזית: ${event.forecast}` : ''}${event.forecast && event.previous ? ' | ' : ''}${event.previous ? `קודם: ${event.previous}` : ''}\n` : '';
-    const msg = `📅 <b>אירוע כלכלי בעוד שעה!</b>\n\n🔴 <b>${event.title}</b> (USD)\n🕐 ${eventTime} (שעון ישראל)\n${forecastStr}\n⚠️ צפי לתנודתיות גבוהה`;
+      ? ` · ${event.forecast ? `תחזית: ${event.forecast}` : ''}${event.forecast && event.previous ? ' | ' : ''}${event.previous ? `קודם: ${event.previous}` : ''}` : '';
     const eventKey = `${event.title}_${event.date}`.replace(/[^a-zA-Z0-9]/g, '_');
-    for (const chatId of users) {
-      const sentKey = `sent:cal:${chatId}:${eventKey}`;
+    for (const uid of users) {
+      const sentKey = `sent:cal:${uid}:${eventKey}`;
       if (await env.ALERTS_KV.get(sentKey)) continue;
-      await sendMessage(env.BOT_TOKEN, chatId, msg);
+      await sendPushToUser(env, uid, {
+        title: '📅 אירוע כלכלי בעוד שעה',
+        body: `${event.title} (USD) · ${eventTime} שעון ישראל${forecastStr} · צפי לתנודתיות ⚠️`,
+        url: '/market',
+      });
       await env.ALERTS_KV.put(sentKey, '1', { expirationTtl: 86400 });
     }
   }
@@ -2356,35 +1451,16 @@ async function handleCron(env) {
     }
   } catch { /* best-effort, never blocks the jobs below */ }
 
-  // Web-push exchange polling is independent of Telegram, so run it first and
-  // don't let a missing BOT_TOKEN skip it.
-  if (!env.BOT_TOKEN) {
-    await Promise.allSettled([
-      checkExchangeClosedTrades(env),
-      checkPlanExpiryReminders(env),
-      checkChurnedPremium(env),
-      checkWeeklyDigest(env),
-      refreshNewsDigest(env),
-    ]);
-    return;
-  }
+  // Everything is Web Push, keyed by uid (#219). One rolled-up blob
+  // (usettings:ALL) — a single KV read per tick for the schedule data.
+  const usettingsAll = (await env.ALERTS_KV.get('usettings:ALL', 'json')) || {};
 
-  // Read two rolled-up blobs instead of one get per settings/alert key. This is
-  // the main KV-quota fix (was A + S gets per tick → now 2). Writers dual-write
-  // these; a missing blob is rebuilt once from the per-key list (backfill).
-  const [settingsAll, alertsActive] = await Promise.all([
-    getSettingsAll(env),
-    getAlertsActive(env),
-  ]);
-
-  const activeAlerts = Object.values(alertsActive);
   const settingsMap = {};
-  for (const [chatId, settings] of Object.entries(settingsAll)) {
-    settingsMap[chatId] = { ...DEFAULT_SETTINGS, ...settings };
+  for (const [uid, settings] of Object.entries(usettingsAll)) {
+    settingsMap[uid] = { ...DEFAULT_SETTINGS, ...settings };
   }
 
   await Promise.allSettled([
-    checkPriceAlerts(env, activeAlerts),
     checkJournalReminders(env, settingsMap),
     checkDailySummaries(env, settingsMap),
     checkEconomicCalendar(env, settingsMap),
@@ -2527,6 +1603,10 @@ async function geminiStreamToOpenAI(geminiBody) {
   const decoder = new TextDecoder();
   const encoder = new TextEncoder();
   let leftover = '';
+  // Gemini reports token counts in usageMetadata on its stream chunks —
+  // dropping it meant every premium (Gemini) chat metered as tokIn:0/tokOut:0
+  // and the admin cost dashboard was blind to the most expensive traffic (#214).
+  let usageMeta = null;
   return new ReadableStream({
     async start(controller) {
       const send = (text) => {
@@ -2547,12 +1627,25 @@ async function geminiStreamToOpenAI(geminiBody) {
             if (!payload || payload === '[DONE]') continue;
             try {
               const obj = JSON.parse(payload);
+              if (obj.usageMetadata) usageMeta = obj.usageMetadata;
               const text = obj.candidates?.[0]?.content?.parts?.map((p) => p.text || '').join('') || '';
               if (text) send(text);
             } catch { /* skip malformed */ }
           }
         }
       } finally {
+        // Emit the usage in OpenAI shape (like Groq's include_usage chunk —
+        // empty choices, so clients that only read delta.content skip it)
+        // right before DONE, where meterStream picks it up.
+        if (usageMeta) {
+          controller.enqueue(encoder.encode(`data: ${JSON.stringify({
+            choices: [],
+            usage: {
+              prompt_tokens: usageMeta.promptTokenCount || 0,
+              completion_tokens: usageMeta.candidatesTokenCount || 0,
+            },
+          })}\n\n`));
+        }
         controller.enqueue(encoder.encode('data: [DONE]\n\n'));
         controller.close();
       }
@@ -2694,28 +1787,28 @@ async function handleAIChat(request, env, cors) {
           premiumRequired: true,
         }), { status: 403, headers: { ...cors, 'Content-Type': 'application/json' } });
       }
-      const imgQuota = await getAiImageUsage(env, uid);
-      if (imgQuota.used >= imgQuota.limit) {
+      // CHARGE-then-check (#202): the old read→check→serve→increment raced —
+      // N parallel requests all read the same pre-increment count and all
+      // passed. Charging first closes the gate; provider failures refund.
+      const imgUsed = await incrementAiImageUsage(env, uid);
+      if (imgUsed > AI_IMAGE_DAILY_LIMIT) {
         return new Response(JSON.stringify({
-          error: `הגעת למכסת ניתוחי התמונות היומית (${imgQuota.limit}). אפשר להמשיך לשוחח בטקסט, והמכסה תתאפס מחר.`,
-          quotaExceeded: true, used: imgQuota.used, limit: imgQuota.limit,
+          error: `הגעת למכסת ניתוחי התמונות היומית (${AI_IMAGE_DAILY_LIMIT}). אפשר להמשיך לשוחח בטקסט, והמכסה תתאפס מחר.`,
+          quotaExceeded: true, used: AI_IMAGE_DAILY_LIMIT, limit: AI_IMAGE_DAILY_LIMIT,
         }), { status: 429, headers: { ...cors, 'Content-Type': 'application/json' } });
       }
     }
 
     // Daily AI usage counter — kept for BOTH tiers so each user sees their
     // own progress bar. Premium just has a higher cap (handled in aiRateGate).
-    if (!premium) {
-      const quota = await getAiUsage(env, uid);
-      if (quota.used >= quota.limit) {
-        return new Response(JSON.stringify({
-          error: `הגעת למכסה היומית (${quota.limit} בקשות). שדרג ל-Premium ל-${AI_PREMIUM_LIMITS.day} בקשות ביום.`,
-          quotaExceeded: true, used: quota.used, limit: quota.limit,
-        }), { status: 429, headers: { ...cors, 'Content-Type': 'application/json' } });
-      }
+    // Charged upfront (#202); refunded via refundAiCharge on provider failure.
+    const dailyUsed = await incrementAiUsage(env, uid);
+    if (!premium && dailyUsed > AI_DAILY_LIMIT) {
+      return new Response(JSON.stringify({
+        error: `הגעת למכסה היומית (${AI_DAILY_LIMIT} בקשות). שדרג ל-Premium ל-${AI_PREMIUM_LIMITS.day} בקשות ביום.`,
+        quotaExceeded: true, used: AI_DAILY_LIMIT, limit: AI_DAILY_LIMIT,
+      }), { status: 429, headers: { ...cors, 'Content-Type': 'application/json' } });
     }
-    // NOTE: usage is incremented only after a provider accepts the request —
-    // a failed/overloaded call must not burn the user's daily quota.
 
     // Build messages for Groq. Trim history to keep the payload under Groq's
     // tokens-per-minute cap (the old 11K-char system prompt + long Wyckoff
@@ -2777,8 +1870,6 @@ async function handleAIChat(request, env, cors) {
           if (wait) await new Promise((r) => setTimeout(r, wait));
           groqFallback = await callGroq();
           if (groqFallback.ok) {
-            await incrementAiUsage(env, uid);
-            if (hasImage) await incrementAiImageUsage(env, uid);
             return new Response(meterStream(env, groqFallback.body, { hasImage }), { headers: sseHeaders });
           }
           if (groqFallback.status !== 429) break; // non-retryable
@@ -2789,6 +1880,8 @@ async function handleAIChat(request, env, cors) {
         const friendly = rateLimited
           ? 'שני ספקי ה-AI עמוסים. המתן 10–20 שניות ונסה שוב.'
           : `שגיאת AI: ${gemRes.status}/${groqFallback.status}`;
+        // Refund the prepaid quota charge — a failed call must not burn it.
+        await refundAiCharge(env, uid, hasImage);
         // 429 (not 502) for rate limits, so the client's own backoff retries too.
         return new Response(JSON.stringify({
           error: friendly,
@@ -2796,8 +1889,6 @@ async function handleAIChat(request, env, cors) {
           groq: groqFallback.status,
         }), { status: rateLimited ? 429 : 502, headers: { ...cors, 'Content-Type': 'application/json' } });
       }
-      await incrementAiUsage(env, uid);
-      if (hasImage) await incrementAiImageUsage(env, uid);
       return new Response(meterStream(env, await geminiStreamToOpenAI(gemRes.body), { hasImage }), { headers: sseHeaders });
     }
 
@@ -2825,8 +1916,6 @@ async function handleAIChat(request, env, cors) {
       if (wait) await new Promise((r) => setTimeout(r, wait));
       groqResponse = await callGroq();
       if (groqResponse.ok) {
-        await incrementAiUsage(env, uid);
-        if (hasImage) await incrementAiImageUsage(env, uid);
         return new Response(meterStream(env, groqResponse.body, { hasImage }), { headers: sseHeaders });
       }
       if (groqResponse.status !== 429) break; // non-retryable
@@ -2834,6 +1923,8 @@ async function handleAIChat(request, env, cors) {
 
     const errText = await groqResponse.text().catch(() => '');
     console.error('Groq API error:', groqResponse.status, errText);
+    // Refund the prepaid quota charge — a failed call must not burn it.
+    await refundAiCharge(env, uid, hasImage);
     // 429 (not 502) for rate limits, so the client's own backoff retries too.
     const rateLimited = groqResponse.status === 429;
     return new Response(
@@ -3054,18 +2145,17 @@ async function handleAIProjectDescription(request, env, cors) {
     const gate = await aiRateGate(env, uid, premium);
     if (gate) return new Response(JSON.stringify(gate.body), { status: gate.status, headers: { ...cors, 'Content-Type': 'application/json' } });
 
-    // Free-tier daily quota.
+    // Free-tier daily quota — charged UPFRONT (#202, mirrors /ai-chat): the
+    // old read→check→serve→increment raced under parallel requests. A failed
+    // provider call refunds the charge below.
     if (!premium) {
-      const quota = await getAiUsage(env, uid);
-      if (quota.used >= quota.limit) {
+      const dailyUsed = await incrementAiUsage(env, uid);
+      if (dailyUsed > AI_DAILY_LIMIT) {
         return new Response(JSON.stringify({
-          error: `הגעת למכסה היומית (${quota.limit} בקשות). שדרג ל-Premium לשימוש ללא הגבלה.`,
-          quotaExceeded: true, used: quota.used, limit: quota.limit,
+          error: `הגעת למכסה היומית (${AI_DAILY_LIMIT} בקשות). שדרג ל-Premium לשימוש ללא הגבלה.`,
+          quotaExceeded: true, used: AI_DAILY_LIMIT, limit: AI_DAILY_LIMIT,
         }), { status: 429, headers: { ...cors, 'Content-Type': 'application/json' } });
       }
-      // NOTE: quota is incremented only AFTER a successful provider response
-      // (below), mirroring /ai-chat — a failed Groq call must not burn the
-      // user's daily quota.
     }
 
     const userPrompt = `כתוב מאמרון על הפרויקט שמאחורי המטבע ${coinName}${symbol ? ` (${String(symbol).toUpperCase()})` : ''}.`;
@@ -3084,14 +2174,13 @@ async function handleAIProjectDescription(request, env, cors) {
     if (!groqResponse.ok) {
       const errText = await groqResponse.text();
       console.error('Groq API error:', groqResponse.status, errText);
+      // Refund the prepaid charge — a failed call must not burn the quota.
+      if (!premium) await refundAiCharge(env, uid, false);
       return new Response(JSON.stringify({ error: groqResponse.status === 429 ? 'ספק ה-AI עמוס כרגע, נסה שוב בעוד רגע' : `שגיאת AI: ${groqResponse.status}` }), { status: 502, headers: { ...cors, 'Content-Type': 'application/json' } });
     }
 
     const data = await groqResponse.json();
     const text = data.choices?.[0]?.message?.content || '';
-
-    // Charge the daily quota only now that the provider succeeded.
-    if (!premium) await incrementAiUsage(env, uid);
 
     return new Response(JSON.stringify({ text }), {
       headers: { ...cors, 'Content-Type': 'application/json' },
@@ -3499,87 +2588,59 @@ async function handleContact(request, env, cors) {
       await env.ALERTS_KV.put(rlKey, JSON.stringify({ start: now, count: 1 }), { expirationTtl: 3700 });
     }
 
-    // Resolve dev chat ID — from secret or by looking up DEV_UID in KV
-    let devChatId = env.DEV_CHAT_ID || null;
-    if (!devChatId && env.DEV_UID) {
-      devChatId = await env.ALERTS_KV.get(`uid:${env.DEV_UID}`).catch(() => null);
-    }
-    if (!devChatId) {
-      console.error('Contact: no dev chat ID — DEV_CHAT_ID secret missing and no uid:DEV_UID in KV');
-      return new Response(
-        JSON.stringify({ error: 'הנמען לא מוגדר במערכת. פנה למפתח להגדיר DEV_CHAT_ID או לחבר את הטלגרם של המפתח.' }),
-        { status: 503, headers: jsonHeaders },
-      );
-    }
-
-    // Look up user's Telegram chatId + @username (if connected)
-    let userChatId = null;
-    let userUsername = null;
-    try {
-      const stored = await env.ALERTS_KV.get(`uid:${uid}`);
-      if (stored) userChatId = stored;
-      if (userChatId) userUsername = await env.ALERTS_KV.get(`tgusername:${userChatId}`);
-    } catch { /* ignore */ }
-
     // Optional display info from client (not trusted for security, just UI)
     const clientName = typeof body.displayName === 'string' ? body.displayName : null;
+    const name = clientName || tokenName || 'משתמש ללא שם';
 
-    // Build HTML message
-    const name = escapeHtml(clientName || tokenName || 'משתמש ללא שם');
-    const mail = escapeHtml(tokenEmail || '—');
-    const safeUid = escapeHtml(uid);
-    // Prefer a t.me/<username> link (always opens a chat). Fall back to the
-    // tg://user?id= deep link + raw id when the user has no @username.
-    let telegramLine;
-    if (userUsername) {
-      telegramLine = `<a href="https://t.me/${escapeHtml(userUsername)}">פתח שיחה 💬</a> (@${escapeHtml(userUsername)})`;
-    } else if (userChatId) {
-      telegramLine = `<a href="tg://user?id=${escapeHtml(userChatId)}">פתח שיחה 💬</a> (ID: <code>${escapeHtml(userChatId)}</code>) — ללא שם משתמש, ייתכן שלא ייפתח`;
-    } else {
-      telegramLine = 'לא מחובר';
+    // Deliver to the developer — Web Push (uid-keyed, best-effort) + an email
+    // copy with the full message (#219: the app has no external bot anymore).
+    let pushSent = 0;
+    if (env.DEV_UID) {
+      try {
+        const r = await sendPushToUser(env, env.DEV_UID, {
+          title: `📨 הודעה חדשה מ-${name}`,
+          body: message.length > 180 ? `${message.slice(0, 177)}…` : message,
+          url: '/admin',
+        });
+        pushSent = r.sent || 0;
+      } catch { /* best-effort — email below is the reliable channel */ }
     }
-    const safeBody = escapeHtml(message);
 
-    const text =
-      `📨 <b>הודעה חדשה מ-TradeOS</b>\n\n` +
-      `👤 <b>שם:</b> ${name}\n` +
-      `📧 <b>מייל:</b> ${mail}\n` +
-      `🆔 <b>UID:</b> <code>${safeUid}</code>\n` +
-      `💬 <b>טלגרם:</b> ${telegramLine}\n\n` +
-      `📝 <b>הודעה:</b>\n${safeBody}`;
-
-    // Send via Telegram — if BOT_TOKEN missing, proxy to alerts worker
-    let result;
-    if (env.BOT_TOKEN) {
-      result = await sendMessage(env.BOT_TOKEN, devChatId, text);
-    } else {
-      const proxy = await fetch('https://tradeos-alerts.tradeos.workers.dev/contact', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json', 'Authorization': authHeader },
-        body: JSON.stringify(body),
-      }).catch((err) => {
-        console.error('Contact proxy fetch failed:', err);
-        return null;
+    // Recipients: pinned override if set, otherwise every admin with an email
+    // (same resolution as the weekly digest).
+    let recipients = env.MAIL_TO_ADMIN_OVERRIDE ? [env.MAIL_TO_ADMIN_OVERRIDE] : [];
+    if (!recipients.length && env.FIREBASE_SERVICE_ACCOUNT) {
+      try {
+        recipients = (await listAllUsersAdmin(env))
+          .filter((u) => u.role === 'admin' && u.email)
+          .map((u) => u.email);
+      } catch { /* fall through — the push may still have landed */ }
+    }
+    let emailOk = false;
+    if (recipients.length) {
+      const html = emailShell({
+        headline: '📨 הודעה חדשה מ-TradeOS',
+        intro: `${escapeHtml(name)} (${escapeHtml(tokenEmail || 'ללא מייל')}) שלח/ה הודעה מהאפליקציה.`,
+        body:
+          `<p style="margin:0 0 12px;font-size:12px;color:#7d8492">UID: <code>${escapeHtml(uid)}</code></p>` +
+          `<p style="margin:0;font-size:14px;color:#e6e9ef;white-space:pre-wrap;text-align:right">${escapeHtml(message)}</p>`,
+        ctaText: 'פתח את פאנל הניהול',
+        ctaUrl: 'https://tradeos-91a58.web.app/admin',
       });
-      if (!proxy) {
-        return new Response(
-          JSON.stringify({ error: 'שירות הטלגרם זמנית לא זמין. הגדר BOT_TOKEN על ה-Worker או ודא שה-proxy worker פעיל.' }),
-          { status: 502, headers: jsonHeaders },
-        );
+      for (const to of recipients) {
+        const r = await sendEmail(env, {
+          to,
+          subject: `📨 פנייה חדשה — ${name}`,
+          html,
+          replyTo: tokenEmail || undefined,
+        });
+        if (r.ok) emailOk = true;
       }
-      if (!proxy.ok) {
-        const errText = await proxy.text().catch(() => '');
-        console.error('Contact proxy non-OK response:', proxy.status, errText);
-        return new Response(
-          JSON.stringify({ error: `שירות הטלגרם החזיר שגיאה (${proxy.status})` }),
-          { status: 502, headers: jsonHeaders },
-        );
-      }
-      result = await proxy.json().catch(() => ({ ok: false }));
     }
-    if (!result?.ok) {
-      console.error('Contact send failed:', result);
-      return new Response(JSON.stringify({ error: 'שגיאה בשליחת ההודעה' }), { status: 500, headers: jsonHeaders });
+
+    if (!pushSent && !emailOk) {
+      console.error('Contact: no delivery channel succeeded (set DEV_UID with a push subscription, or MAIL_TO_ADMIN_OVERRIDE / RESEND_API_KEY)');
+      return new Response(JSON.stringify({ error: 'שגיאה בשליחת ההודעה' }), { status: 502, headers: jsonHeaders });
     }
 
     return new Response(JSON.stringify({ ok: true }), { headers: jsonHeaders });
@@ -3698,23 +2759,6 @@ async function handleRequest(request, env) {
   const url = new URL(request.url);
   const path = url.pathname;
 
-  if (request.method === 'POST' && path === '/webhook') return handleWebhook(request, env);
-
-  if (request.method === 'POST' && path === '/telegram/connect-code') {
-    // Auth: require a valid token, then issue a short-lived, unguessable connect
-    // code that maps to the caller's uid. The bot's /start uses this code (not a
-    // raw uid) to link a Telegram chat, so nobody can redirect another user's
-    // notifications by guessing their (enumerable) uid.
-    const token = (request.headers.get('Authorization') || '').replace('Bearer ', '');
-    const uid = await verifyFirebaseToken(token);
-    if (!uid) return new Response(JSON.stringify({ error: 'unauthorized' }), { status: 401, headers: { ...cors, 'Content-Type': 'application/json' } });
-    // URL-safe code from crypto.getRandomValues, mapped to base36 [A-Za-z0-9].
-    const bytes = crypto.getRandomValues(new Uint8Array(12));
-    const code = Array.from(bytes, (b) => (b % 36).toString(36)).join('');
-    await env.ALERTS_KV.put(`tgconnect:${code}`, uid, { expirationTtl: 900 });
-    return new Response(JSON.stringify({ ok: true, code }), { headers: { ...cors, 'Content-Type': 'application/json' } });
-  }
-
   if (request.method === 'POST' && path === '/daily-stats') {
     try {
       // Auth: require a valid Firebase token; ignore any uid in the body and use
@@ -3724,72 +2768,36 @@ async function handleRequest(request, env) {
       if (!uid) return new Response(JSON.stringify({ error: 'unauthorized' }), { status: 401, headers: { ...cors, 'Content-Type': 'application/json' } });
       const { stats } = await request.json();
       if (!stats) return new Response(JSON.stringify({ error: 'Missing fields' }), { status: 400, headers: { ...cors, 'Content-Type': 'application/json' } });
-      const chatId = await env.ALERTS_KV.get(`uid:${uid}`);
-      if (!chatId) return new Response(JSON.stringify({ error: 'Not connected' }), { status: 404, headers: { ...cors, 'Content-Type': 'application/json' } });
-      await env.ALERTS_KV.put(`dailystats:${chatId}:${getIsraelDateStr()}`, JSON.stringify(stats), { expirationTtl: 172800 });
+      // uid-keyed for the Web Push daily summary (#219).
+      await env.ALERTS_KV.put(`dailystats:u:${uid}:${getIsraelDateStr()}`, JSON.stringify(stats), { expirationTtl: 172800 });
       return new Response(JSON.stringify({ ok: true }), { headers: { ...cors, 'Content-Type': 'application/json' } });
     } catch { return new Response(JSON.stringify({ error: 'Invalid' }), { status: 400, headers: { ...cors, 'Content-Type': 'application/json' } }); }
   }
 
-  if (request.method === 'POST' && path === '/alerts') {
-    // Auth: require a valid token, then ensure the body's chatId is the caller's
-    // own chat (uid:{uid} mapping) so users can't create alerts on other chats.
+  // Per-user notification schedule (journal reminder / daily summary /
+  // economic calendar). Stored per-uid plus a rolled-up blob so the cron
+  // reads ONE key per tick.
+  if ((request.method === 'POST' || request.method === 'GET') && path === '/notify-settings') {
     const token = (request.headers.get('Authorization') || '').replace('Bearer ', '');
     const uid = await verifyFirebaseToken(token);
     if (!uid) return new Response(JSON.stringify({ error: 'unauthorized' }), { status: 401, headers: { ...cors, 'Content-Type': 'application/json' } });
-    const { chatId, pair, targetPrice, direction, id } = await request.json();
-    if (!chatId || !pair || !targetPrice || !direction) return new Response(JSON.stringify({ error: 'Missing fields' }), { status: 400, headers: { ...cors, 'Content-Type': 'application/json' } });
-    const ownChat = await env.ALERTS_KV.get(`uid:${uid}`);
-    if (!ownChat || String(chatId) !== ownChat) return new Response(JSON.stringify({ error: 'forbidden' }), { status: 403, headers: { ...cors, 'Content-Type': 'application/json' } });
-    const alertId = id || Date.now().toString();
-    const restAlert = { chatId: String(chatId), pair, targetPrice, direction, active: true, id: alertId, createdAt: new Date().toISOString() };
-    await env.ALERTS_KV.put(`alerts:${chatId}:${alertId}`, JSON.stringify(restAlert));
-    await syncAlertAggregate(env, restAlert); // mirror into alerts:ACTIVE so the cron sees it immediately
-    return new Response(JSON.stringify({ ok: true, id: alertId }), { headers: { ...cors, 'Content-Type': 'application/json' } });
-  }
-
-  if (request.method === 'DELETE' && path.startsWith('/alerts/')) {
-    // Auth: require a valid token and ensure the {chatId} path segment is the
-    // caller's own chat before deleting one of its alerts.
-    const token = (request.headers.get('Authorization') || '').replace('Bearer ', '');
-    const uid = await verifyFirebaseToken(token);
-    if (!uid) return new Response(JSON.stringify({ error: 'unauthorized' }), { status: 401, headers: { ...cors, 'Content-Type': 'application/json' } });
-    const parts = path.split('/').filter(Boolean);
-    if (parts.length === 3) {
-      const ownChat = await env.ALERTS_KV.get(`uid:${uid}`);
-      if (!ownChat || parts[1] !== ownChat) return new Response(JSON.stringify({ error: 'forbidden' }), { status: 403, headers: { ...cors, 'Content-Type': 'application/json' } });
-      await env.ALERTS_KV.delete(`alerts:${parts[1]}:${parts[2]}`);
-      await removeAlertAggregate(env, parts[2]); // drop from alerts:ACTIVE too
-      return new Response(JSON.stringify({ ok: true }), { headers: { ...cors, 'Content-Type': 'application/json' } });
+    if (request.method === 'GET') {
+      const s = await env.ALERTS_KV.get(`usettings:${uid}`, 'json');
+      return new Response(JSON.stringify({ ok: true, settings: s || DEFAULT_SETTINGS }), { headers: { ...cors, 'Content-Type': 'application/json' } });
     }
-  }
-
-  if (request.method === 'GET' && path.startsWith('/alerts/')) {
-    // Auth: require a valid token and ensure the {chatId} path segment is the
-    // caller's own chat before listing its alerts.
-    const token = (request.headers.get('Authorization') || '').replace('Bearer ', '');
-    const uid = await verifyFirebaseToken(token);
-    if (!uid) return new Response(JSON.stringify({ error: 'unauthorized' }), { status: 401, headers: { ...cors, 'Content-Type': 'application/json' } });
-    const chatId = path.split('/')[2];
-    const ownChat = await env.ALERTS_KV.get(`uid:${uid}`);
-    if (!ownChat || chatId !== ownChat) return new Response(JSON.stringify({ error: 'forbidden' }), { status: 403, headers: { ...cors, 'Content-Type': 'application/json' } });
-    const list = await env.ALERTS_KV.list({ prefix: `alerts:${chatId}:` });
-    const alerts = [];
-    for (const key of list.keys) { const d = await env.ALERTS_KV.get(key.name, 'json'); if (d) alerts.push(d); }
-    return new Response(JSON.stringify({ alerts }), { headers: { ...cors, 'Content-Type': 'application/json' } });
-  }
-
-  if (request.method === 'GET' && path.startsWith('/chatid/')) {
-    // Auth: require a valid token and ensure the {uid} path segment matches the
-    // token's uid so callers can only resolve their own chatId.
-    const token = (request.headers.get('Authorization') || '').replace('Bearer ', '');
-    const authUid = await verifyFirebaseToken(token);
-    if (!authUid) return new Response(JSON.stringify({ error: 'unauthorized' }), { status: 401, headers: { ...cors, 'Content-Type': 'application/json' } });
-    const uid = path.split('/')[2];
-    if (uid !== authUid) return new Response(JSON.stringify({ error: 'forbidden' }), { status: 403, headers: { ...cors, 'Content-Type': 'application/json' } });
-    const chatId = await env.ALERTS_KV.get(`uid:${uid}`);
-    if (chatId) return new Response(JSON.stringify({ chatId }), { headers: { ...cors, 'Content-Type': 'application/json' } });
-    return new Response(JSON.stringify({ error: 'Not found' }), { status: 404, headers: { ...cors, 'Content-Type': 'application/json' } });
+    const body = await request.json().catch(() => ({}));
+    const hhmm = (v, dflt) => (typeof v === 'string' && /^([01]\d|2[0-3]):[0-5]\d$/.test(v) ? v : dflt);
+    const s = {
+      journal: { enabled: body?.journal?.enabled === true, time: hhmm(body?.journal?.time, '21:00') },
+      summary: { enabled: body?.summary?.enabled === true, time: hhmm(body?.summary?.time, '22:00') },
+      calendar: { enabled: body?.calendar?.enabled === true },
+    };
+    await env.ALERTS_KV.put(`usettings:${uid}`, JSON.stringify(s));
+    const all = (await env.ALERTS_KV.get('usettings:ALL', 'json')) || {};
+    const anyOn = s.journal.enabled || s.summary.enabled || s.calendar.enabled;
+    if (anyOn) all[uid] = s; else delete all[uid];
+    await env.ALERTS_KV.put('usettings:ALL', JSON.stringify(all));
+    return new Response(JSON.stringify({ ok: true, settings: s }), { headers: { ...cors, 'Content-Type': 'application/json' } });
   }
 
   // Economic calendar proxy — fetch Forex Factory server-side (no CORS, no
@@ -3856,82 +2864,68 @@ async function handleRequest(request, env) {
     return handleNewsTranslate(request, env, cors);
   }
 
-  if (path === '/setup-webhook') {
-    // Admin-only + POST-only. Re-registering the webhook uses
-    // drop_pending_updates=true, so an unauthenticated caller could repeatedly
-    // reset it (dropping queued alerts/connect codes) and read Telegram's raw
-    // response. Require an admin Firebase ID token.
-    if (request.method !== 'POST') {
-      return new Response(JSON.stringify({ error: 'method not allowed' }), { status: 405, headers: { ...cors, 'Content-Type': 'application/json' } });
-    }
-    const token = (request.headers.get('Authorization') || '').replace('Bearer ', '');
-    const adminUid = await verifyAdminFromToken(token);
-    if (!adminUid) return new Response(JSON.stringify({ error: 'forbidden' }), { status: 403, headers: { ...cors, 'Content-Type': 'application/json' } });
-    const workerUrl = `${url.protocol}//${url.host}/webhook`;
-    let setWebhookUrl = `https://api.telegram.org/bot${env.BOT_TOKEN}/setWebhook?url=${encodeURIComponent(workerUrl)}&drop_pending_updates=true`;
-    // If the owner set TG_WEBHOOK_SECRET, register it so Telegram sends the
-    // X-Telegram-Bot-Api-Secret-Token header (verified in handleWebhook).
-    if (env.TG_WEBHOOK_SECRET) setWebhookUrl += `&secret_token=${encodeURIComponent(env.TG_WEBHOOK_SECRET)}`;
-    const res = await fetch(setWebhookUrl);
-    const json = await res.json();
-    // Also (re)set the slash-command menu — trimmed to the commands that still
-    // work in the bot. setMyCommands REPLACES the whole list, so this removes
-    // the retired /prices,/funding,/oi,/ls,/price,/alerts,/fear,/status. Best
-    // effort: a failure here doesn't fail the webhook registration.
-    await fetch(`https://api.telegram.org/bot${env.BOT_TOKEN}/setMyCommands`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        commands: [
-          { command: 'start', description: 'תפריט ראשי' },
-          { command: 'settings', description: 'הגדרות תזכורות' },
-          { command: 'help', description: 'עזרה' },
-        ],
-      }),
-    }).catch(() => {});
-    // Don't echo Telegram's raw payload — just the success flag.
-    return new Response(JSON.stringify({ ok: json.ok === true }), { headers: { ...cors, 'Content-Type': 'application/json' } });
-  }
-
-  // CoinGecko proxy with KV cache (avoids browser rate-limits)
+  // CoinGecko proxy (avoids browser rate-limits). Cached in Cloudflare's edge
+  // cache (free, unlimited) — NOT in KV: the cache key is caller-controlled
+  // (subpath + querystring), so an unauthenticated loop with a varying
+  // parameter used to cost one KV write per request and exhaust the shared
+  // daily write quota (alerts, coupons, AI quotas, push registrations) in
+  // seconds. Subpaths are whitelisted to exactly what the app calls, so this
+  // can't be driven as an open proxy either.
   if (request.method === 'GET' && path.startsWith('/cg/')) {
     const subPath = path.slice(4); // remove '/cg/'
+    // coins/markets, coins/{id}, coins/{id}/market_chart, search,
+    // simple/price, global — the full set the client uses (coingeckoApi,
+    // coinImageCache, MarketOverview, Dashboard).
+    const CG_ALLOWED = /^(coins\/[a-z0-9_-]{1,64}(\/market_chart)?|search|simple\/price|global)$/;
+    if (!CG_ALLOWED.test(subPath)) {
+      return new Response(JSON.stringify({ error: 'forbidden' }), { status: 403, headers: { ...cors, 'Content-Type': 'application/json' } });
+    }
     const cgUrl = `https://api.coingecko.com/api/v3/${subPath}${url.search}`;
-    const cacheKey = `cg:${subPath}${url.search}`;
     const ttl = subPath.startsWith('coins/markets') ? 3600 : 300; // 1h for markets, 5m for details/chart
+    const cache = caches.default;
+    const cacheKey = new Request(`https://cache.tradeos.internal/cg/${subPath}${url.search}`);
     try {
-      const cached = await env.ALERTS_KV.get(cacheKey);
-      if (cached) return new Response(cached, { headers: { ...cors, 'Content-Type': 'application/json', 'X-Cache': 'HIT' } });
+      const hit = await cache.match(cacheKey);
+      if (hit) return hit;
       // Browser-like UA — CoinGecko's free tier 403s bare server-side fetches
       // from Cloudflare egress IPs but generally serves browser-looking ones.
       const res = await fetch(cgUrl, { headers: { 'Accept': 'application/json', 'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36' } });
       if (!res.ok) return new Response(JSON.stringify({ error: res.status }), { status: res.status, headers: { ...cors, 'Content-Type': 'application/json' } });
       const text = await res.text();
-      env.ALERTS_KV.put(cacheKey, text, { expirationTtl: ttl }).catch(() => {});
-      return new Response(text, { headers: { ...cors, 'Content-Type': 'application/json', 'X-Cache': 'MISS' } });
+      // ACAO '*' — public non-credentialed data, so the edge-cached copy
+      // isn't pinned to a single requesting origin (news/digest pattern).
+      const headers = { ...cors, 'Access-Control-Allow-Origin': '*', 'Content-Type': 'application/json', 'Cache-Control': `public, max-age=${ttl}` };
+      await cache.put(cacheKey, new Response(text, { headers: { ...headers, 'X-Cache': 'HIT' } }));
+      return new Response(text, { headers: { ...headers, 'X-Cache': 'MISS' } });
     } catch (err) {
       return new Response(JSON.stringify({ error: err.message }), { status: 502, headers: { ...cors, 'Content-Type': 'application/json' } });
     }
   }
 
-  // Binance proxy with KV cache (avoids browser CORS/geo issues)
+  // Binance proxy (avoids browser CORS/geo issues). Edge-cached, not KV —
+  // same quota-exhaustion reasoning as /cg/ above.
   if (request.method === 'GET' && path.startsWith('/bnb/')) {
     const subPath = path.slice(5); // remove '/bnb/'
+    // klines + ticker/24hr — the only endpoints the client calls
+    // (coingeckoApi.fetchKlines, MarketOverview bulk tickers).
+    const BNB_ALLOWED = /^(klines|ticker\/24hr)$/;
+    if (!BNB_ALLOWED.test(subPath)) {
+      return new Response(JSON.stringify({ error: 'forbidden' }), { status: 403, headers: { ...cors, 'Content-Type': 'application/json' } });
+    }
     // api.binance.com returns 403 to Cloudflare Worker egress IPs in many
     // regions. data-api.binance.vision is Binance's public market-data mirror
     // (same /api/v3 surface — ticker, klines, depth) and isn't geo-blocked, so
     // we try the main host first and fall back to the vision mirror.
     const BNB_HOSTS = ['https://api.binance.com', 'https://data-api.binance.vision'];
-    const rawKey = `bnb:${subPath}${url.search}`;
-    // KV keys max 512 bytes — hash long keys (e.g. ticker with many symbols) so
-    // even large requests stay cached and don't hammer Binance every poll, which
-    // was causing repeated 408 timeouts on the journal screen.
-    const cacheKey = rawKey.length <= 500 ? rawKey : `bnb:h:${hashStr(rawKey)}`;
-    const staleKey = `${cacheKey}:stale`;
-    const ttl = 60; // KV minimum TTL is 60s; prices refresh via client polling anyway
+    const cache = caches.default;
+    // Cache API keys are URLs — no 512-byte KV key limit, so long symbol
+    // lists no longer need hashing.
+    const cacheKey = new Request(`https://cache.tradeos.internal/bnb/${subPath}${url.search}`);
+    const staleKey = new Request(`https://cache.tradeos.internal/bnb-stale/${subPath}${url.search}`);
+    const ttl = 60; // prices refresh via client polling anyway
     try {
-      const cached = await env.ALERTS_KV.get(cacheKey);
-      if (cached) return new Response(cached, { headers: { ...cors, 'Content-Type': 'application/json', 'X-Cache': 'HIT' } });
+      const hit = await cache.match(cacheKey);
+      if (hit) return hit;
 
       let res = null;
       let lastStatus = 0;
@@ -3953,14 +2947,20 @@ async function handleRequest(request, env) {
       }
       if (text === null) {
         // Bybit translation didn't cover this subpath / upstream failed —
-        // serve the last good copy if we have one.
-        const stale = await env.ALERTS_KV.get(staleKey);
-        if (stale) return new Response(stale, { headers: { ...cors, 'Content-Type': 'application/json', 'X-Cache': 'STALE' } });
+        // serve the last good copy if we have one, but don't let the browser
+        // pin the stale snapshot for its remaining hour.
+        const stale = await cache.match(staleKey);
+        if (stale) {
+          const r = new Response(stale.body, stale);
+          r.headers.set('Cache-Control', 'no-store');
+          return r;
+        }
         return new Response(JSON.stringify({ error: lastStatus }), { status: lastStatus || 502, headers: { ...cors, 'Content-Type': 'application/json' } });
       }
-      env.ALERTS_KV.put(cacheKey, text, { expirationTtl: ttl }).catch(() => {});
-      env.ALERTS_KV.put(staleKey, text, { expirationTtl: 3600 }).catch(() => {});
-      return new Response(text, { headers: { ...cors, 'Content-Type': 'application/json', 'X-Cache': res ? 'MISS' : 'BYBIT' } });
+      const headers = { ...cors, 'Access-Control-Allow-Origin': '*', 'Content-Type': 'application/json' };
+      await cache.put(cacheKey, new Response(text, { headers: { ...headers, 'Cache-Control': `public, max-age=${ttl}`, 'X-Cache': 'HIT' } }));
+      await cache.put(staleKey, new Response(text, { headers: { ...headers, 'Cache-Control': 'public, max-age=3600', 'X-Cache': 'STALE' } }));
+      return new Response(text, { headers: { ...headers, 'Cache-Control': `public, max-age=${ttl}`, 'X-Cache': res ? 'MISS' : 'BYBIT' } });
     } catch (err) {
       return new Response(JSON.stringify({ error: err.message }), { status: 502, headers: { ...cors, 'Content-Type': 'application/json' } });
     }
@@ -4081,7 +3081,7 @@ async function handleRequest(request, env) {
     return handleAICoach(request, env, cors);
   }
 
-  // Contact Developer — private message to dev's Telegram
+  // Contact Developer — delivered to the admins via Web Push + email
   if (request.method === 'POST' && path === '/contact') {
     return handleContact(request, env, cors);
   }
@@ -4326,6 +3326,102 @@ async function handleRequest(request, env) {
     return new Response(JSON.stringify({ ok: true }), { headers: { ...cors, 'Content-Type': 'application/json' } });
   }
 
+  // Admin-only: permanently delete a user — every Firestore subcollection,
+  // the user doc, the public leaderboard entry, per-user KV keys and the
+  // AUTH ACCOUNT itself. Must live here and not in the client: the rules
+  // make other users' data read-only for admins, and deleting somebody
+  // else's Auth account requires the service account (Identity Toolkit).
+  if (request.method === 'POST' && path === '/admin/delete-user') {
+    const token = (request.headers.get('Authorization') || '').replace('Bearer ', '');
+    const adminUid = await verifyAdminFromToken(token);
+    if (!adminUid) return new Response(JSON.stringify({ error: 'forbidden' }), { status: 403, headers: { ...cors, 'Content-Type': 'application/json' } });
+    const { uid } = await request.json().catch(() => ({}));
+    if (!uid || typeof uid !== 'string' || !/^[A-Za-z0-9]{10,64}$/.test(uid)) {
+      return new Response(JSON.stringify({ error: 'missing uid' }), { status: 400, headers: { ...cors, 'Content-Type': 'application/json' } });
+    }
+    if (uid === adminUid) {
+      return new Response(JSON.stringify({ error: 'self-delete via the profile page' }), { status: 400, headers: { ...cors, 'Content-Type': 'application/json' } });
+    }
+
+    const gtoken = await getFirebaseAdminToken(env);
+    const base = `https://firestore.googleapis.com/v1/projects/${FIREBASE_PROJECT_ID}/databases/(default)`;
+    const gh = { Authorization: `Bearer ${gtoken}`, 'Content-Type': 'application/json' };
+
+    // Identity snapshot for the audit entry + refuse to delete another admin.
+    const docRes = await fetch(`${base}/documents/users/${uid}`, { headers: gh });
+    const fields = docRes.ok ? (await docRes.json())?.fields || {} : {};
+    if (fields.role?.stringValue === 'admin') {
+      return new Response(JSON.stringify({ error: 'cannot delete an admin' }), { status: 400, headers: { ...cors, 'Content-Type': 'application/json' } });
+    }
+    const email = fields.email?.stringValue || null;
+    const displayName = fields.displayName?.stringValue || null;
+
+    // Every subcollection the app writes — keep in sync with the client's
+    // USER_SUBCOLLECTIONS (src/services/firestoreService.js).
+    const SUBS = [
+      'trades', 'journals', 'backtests', 'backtestJournals', 'dca',
+      'tradingPlans', 'notes', 'strategies', 'morningJournals',
+      'eveningJournals', 'processes', 'signals', 'watchlist', 'settings',
+    ];
+    let deletedDocs = 0;
+    for (const sub of SUBS) {
+      let pageToken = '';
+      do {
+        // __name__-only mask: we only need document paths for the deletes.
+        const listUrl = `${base}/documents/users/${uid}/${sub}?pageSize=300&mask.fieldPaths=__name__${pageToken ? `&pageToken=${encodeURIComponent(pageToken)}` : ''}`;
+        const lr = await fetch(listUrl, { headers: gh });
+        if (!lr.ok) break;
+        const ld = await lr.json();
+        const names = (ld.documents || []).map((d) => d.name);
+        pageToken = ld.nextPageToken || '';
+        if (names.length) {
+          await fetch(`${base}/documents:batchWrite`, {
+            method: 'POST', headers: gh,
+            body: JSON.stringify({ writes: names.map((n) => ({ delete: n })) }),
+          });
+          deletedDocs += names.length;
+        }
+      } while (pageToken);
+    }
+
+    await fetch(`${base}/documents/leaderboard/${uid}`, { method: 'DELETE', headers: gh }).catch(() => {});
+    await fetch(`${base}/documents/users/${uid}`, { method: 'DELETE', headers: gh }).catch(() => {});
+
+    // The Auth account — the piece no client can touch. cloud-platform scope
+    // on the admin token covers Identity Toolkit.
+    const authRes = await fetch('https://identitytoolkit.googleapis.com/v1/accounts:delete', {
+      method: 'POST', headers: gh,
+      body: JSON.stringify({ localId: uid }),
+    });
+
+    // Per-user KV leftovers: plan cache + push subscriptions.
+    await env.ALERTS_KV.delete(`planflag:${uid}`).catch(() => {});
+    const pushKeys = await env.ALERTS_KV.list({ prefix: `push:${uid}:` });
+    for (const k of pushKeys.keys) await env.ALERTS_KV.delete(k.name).catch(() => {});
+
+    await appendAudit(env, {
+      kind: 'account_deleted', source: 'admin', actor: adminUid, target: uid,
+      email, displayName, docs: deletedDocs, authDeleted: authRes.ok,
+    });
+    return new Response(JSON.stringify({ ok: true, docs: deletedDocs, authDeleted: authRes.ok }), { headers: { ...cors, 'Content-Type': 'application/json' } });
+  }
+
+  // Self-service deletion audit — called by the client right before it
+  // deletes its own Auth user (the data wipe already happened), so the admin
+  // panel can show who deleted their account and when.
+  if (request.method === 'POST' && path === '/account/deleted') {
+    const token = (request.headers.get('Authorization') || '').replace('Bearer ', '');
+    const uid = await verifyFirebaseToken(token);
+    if (!uid) return new Response(JSON.stringify({ error: 'forbidden' }), { status: 403, headers: { ...cors, 'Content-Type': 'application/json' } });
+    const { email, displayName } = await request.json().catch(() => ({}));
+    await appendAudit(env, {
+      kind: 'account_deleted', source: 'self', actor: uid, target: uid,
+      email: typeof email === 'string' ? email.slice(0, 120) : null,
+      displayName: typeof displayName === 'string' ? displayName.slice(0, 80) : null,
+    });
+    return new Response(JSON.stringify({ ok: true }), { headers: { ...cors, 'Content-Type': 'application/json' } });
+  }
+
   // Admin-only: list recent audit log entries (newest first). Optional ?limit
   // (default 200, max 500) and ?kind=… filter applied client-side after the
   // KV list (we keep one prefix to avoid scanning multiple shards).
@@ -4345,37 +3441,6 @@ async function handleRequest(request, env) {
       events.push(v);
     }
     return new Response(JSON.stringify({ ok: true, events }), { headers: { ...cors, 'Content-Type': 'application/json' } });
-  }
-
-  // Admin-only: a user's Telegram bot link status + usage, for the admin
-  // panel's user detail view. Reads only KV (uid↔chat mapping, username,
-  // usage counters, alert/watchlist counts) — never the user's Firestore
-  // settings subcollection, which is owner-only by design.
-  if (request.method === 'GET' && path.startsWith('/admin/telegram/')) {
-    const token = (request.headers.get('Authorization') || '').replace('Bearer ', '');
-    const adminUid = await verifyAdminFromToken(token);
-    if (!adminUid) return new Response(JSON.stringify({ error: 'forbidden' }), { status: 403, headers: { ...cors, 'Content-Type': 'application/json' } });
-    const targetUid = path.slice('/admin/telegram/'.length);
-    if (!targetUid) return new Response(JSON.stringify({ error: 'missing uid' }), { status: 400, headers: { ...cors, 'Content-Type': 'application/json' } });
-
-    const chatId = await env.ALERTS_KV.get(`uid:${targetUid}`);
-    if (!chatId) {
-      return new Response(JSON.stringify({ ok: true, connected: false }), { headers: { ...cors, 'Content-Type': 'application/json' } });
-    }
-    const [username, usage, alertsList, watchlistRaw] = await Promise.all([
-      env.ALERTS_KV.get(`tgusername:${chatId}`),
-      env.ALERTS_KV.get(`tgusage:${chatId}`, 'json'),
-      env.ALERTS_KV.list({ prefix: `alerts:${chatId}:` }),
-      env.ALERTS_KV.get(`watchlist:${chatId}`, 'json'),
-    ]);
-    return new Response(JSON.stringify({
-      ok: true,
-      connected: true,
-      username: username || null,
-      usage: usage || null, // { total, lastUsed, lastCmd } — null until first interaction after rollout
-      alertsCount: alertsList.keys.length,
-      watchlistCount: Array.isArray(watchlistRaw) ? watchlistRaw.length : null,
-    }), { headers: { ...cors, 'Content-Type': 'application/json' } });
   }
 
   // Admin-only: list all coupon codes.
@@ -4458,10 +3523,10 @@ async function handleRequest(request, env) {
     }), { headers: { ...cors, 'Content-Type': 'application/json' } });
   }
 
-  // Coupon share preview. WhatsApp/Telegram crawlers don't run the SPA, so a
+  // Coupon share preview. Messaging-app crawlers don't run the SPA, so a
   // link straight to the app shows the generic site card. This route handles
   // both audiences:
-  //   - Crawlers (WhatsApp/Telegram/Twitter/etc) get HTML with coupon-specific
+  //   - Crawlers (WhatsApp/Twitter/etc) get HTML with coupon-specific
   //     Open Graph tags so the share looks nice ("X ימי Premium במתנה").
   //   - Real humans get a 302 redirect straight to the app's /redeem/:code page
   //     so they never see the worker's "redirect" page (in-app browsers like
@@ -4478,7 +3543,7 @@ async function handleRequest(request, env) {
     // preview crawler sends 'WhatsApp/<version>' WITHOUT a Mozilla prefix,
     // hence the no-Mozilla guard.
     const looksLikeBrowser = /Mozilla/i.test(ua);
-    const isCrawler = !looksLikeBrowser && /WhatsApp\/|TelegramBot|facebookexternalhit|Twitterbot|LinkedInBot|Slackbot|Discordbot|SkypeUriPreview|Googlebot|bingbot|Pinterest|redditbot|vkShare|Applebot|bot|crawler|spider/i.test(ua);
+    const isCrawler = !looksLikeBrowser && /WhatsApp\/|facebookexternalhit|Twitterbot|LinkedInBot|Slackbot|Discordbot|SkypeUriPreview|Googlebot|bingbot|Pinterest|redditbot|vkShare|Applebot|bot|crawler|spider/i.test(ua);
 
     // Humans → plain 200 HTML page that shows a visible coupon teaser + button
     // immediately, then auto-redirects via JS/meta-refresh. We deliberately
@@ -4622,6 +3687,19 @@ async function handleRequest(request, env) {
     // grant race; if the plan write below fails, the user can try again — the
     // marker is per-uid so they won't double-redeem either way.
     await env.ALERTS_KV.put(redeemKey, '1');
+
+    // Enforce maxUses by COUNTING the per-uid markers after claiming (#202) —
+    // the used-counter's get→+1→put raced under concurrency, letting a capped
+    // coupon over-redeem. Counting claim markers shrinks the race to KV's
+    // list-propagation window instead of the whole redeem flow.
+    if (coupon.maxUses != null) {
+      const marks = await env.ALERTS_KV.list({ prefix: `coupon-redeemed:${code}:` });
+      if (marks.keys.length > coupon.maxUses) {
+        await env.ALERTS_KV.delete(redeemKey); // over cap — release the claim
+        return new Response(JSON.stringify({ error: 'הקוד נוצל במלואו' }), { status: 410, headers: { ...cors, 'Content-Type': 'application/json' } });
+      }
+    }
+
     const fresh = await env.ALERTS_KV.get(`coupon:${code}`, 'json');
     if (fresh) {
       fresh.used = (fresh.used || 0) + 1;
@@ -4642,6 +3720,11 @@ async function handleRequest(request, env) {
       await env.ALERTS_KV.delete(redeemKey);
       return new Response(JSON.stringify({ error: 'מימוש הקופון נכשל. נסה שוב.', detail: wrote.error }), { status: 502, headers: { ...cors, 'Content-Type': 'application/json' } });
     }
+
+    // Bust the 10-minute plan cache so Premium kicks in IMMEDIATELY (#203) —
+    // the admin grant path already does this via /admin/refresh-plan; without
+    // it a redeeming user stayed "free" for up to 10 minutes after paying.
+    await env.ALERTS_KV.delete(`planflag:${uid}`);
 
     appendAudit(env, { kind: 'coupon_redeem', actor: uid, code, days: coupon.days, planExpires: newExpiry });
 
@@ -4805,134 +3888,157 @@ async function handleRequest(request, env) {
   }
 
   // Admin-only: system health. Returns ONLY booleans / public info / timestamps
-  // — never tokens or secrets (getMe exposes just the bot's public username).
+  // — never tokens or secrets.
   if (request.method === 'GET' && path === '/admin/health') {
     const token = (request.headers.get('Authorization') || '').replace('Bearer ', '');
     const adminUid = await verifyAdminFromToken(token);
     if (!adminUid) return new Response(JSON.stringify({ error: 'forbidden' }), { status: 403, headers: { ...cors, 'Content-Type': 'application/json' } });
     const cronRaw = await env.ALERTS_KV.get('cron:last');
     const cronLast = cronRaw ? parseInt(cronRaw, 10) || null : null;
-    const bot = { configured: !!env.BOT_TOKEN, ok: false, username: null };
-    if (env.BOT_TOKEN) {
-      try {
-        const r = await fetch(`${TELEGRAM_API}${env.BOT_TOKEN}/getMe`);
-        const d = await r.json().catch(() => ({}));
-        if (d?.ok) { bot.ok = true; bot.username = d.result?.username || null; }
-      } catch { /* unreachable */ }
-    }
     return new Response(JSON.stringify({
       time: Date.now(),
       cronLast,
-      bot,
       pushConfigured: !!env.VAPID_JWK,
       aiConfigured: !!env.GROQ_API_KEY,
     }), { headers: { ...cors, 'Content-Type': 'application/json' } });
   }
 
-  // Trade event notifications
+  // Admin-only: Firestore document counts (users/trades/payments/leaderboard)
+  // via COUNT aggregation queries — COUNTS ONLY, never documents/fields/tokens.
+  // The daily read/write/delete quota meters were dropped: they relied on the
+  // Cloud Monitoring API, whose service-account permission model kept 403ing
+  // and isn't reliably populated on the Spark plan. The panel links to the
+  // Firebase console for the authoritative quota view instead. Cached 5 min in
+  // KV (NOT the shared edge cache, which ignores the auth header) — written and
+  // read only after auth passes, so the cache stays gated.
+  if (request.method === 'GET' && path === '/admin/firebase-usage') {
+    const token = (request.headers.get('Authorization') || '').replace('Bearer ', '');
+    const adminUid = await verifyAdminFromToken(token);
+    if (!adminUid) return new Response(JSON.stringify({ error: 'forbidden' }), { status: 403, headers: { ...cors, 'Content-Type': 'application/json' } });
+
+    const cached = await env.ALERTS_KV.get('fbusage:cache');
+    if (cached) return new Response(cached, { headers: { ...cors, 'Content-Type': 'application/json' } });
+
+    const counts = { users: null, trades: null, payments: null, leaderboard: null };
+
+    try {
+      const gtoken = await getFirebaseAdminToken(env);
+
+      // 2) Document counts via COUNT aggregation. Top-level collections use a
+      //    plain from; `trades` lives under users/{uid}/trades so it needs a
+      //    collection-group query (allDescendants). Each is best-effort.
+      const aggBase = `https://firestore.googleapis.com/v1/projects/${FIREBASE_PROJECT_ID}/databases/(default)`;
+      const countDocs = async (collectionId, allDescendants = false) => {
+        try {
+          const r = await fetch(`${aggBase}/documents:runAggregationQuery`, {
+            method: 'POST',
+            headers: { Authorization: `Bearer ${gtoken}`, 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              structuredAggregationQuery: {
+                structuredQuery: { from: [{ collectionId, ...(allDescendants ? { allDescendants: true } : {}) }] },
+                aggregations: [{ count: {}, alias: 'c' }],
+              },
+            }),
+          });
+          if (!r.ok) return null;
+          // Streaming RPC → the body is an ARRAY of result objects.
+          const rows = await r.json();
+          const v = (Array.isArray(rows) ? rows : [rows]).find((row) => row?.result)?.result?.aggregateFields?.c?.integerValue;
+          return v != null ? parseInt(v, 10) : null;
+        } catch { return null; }
+      };
+      [counts.users, counts.trades, counts.payments, counts.leaderboard] = await Promise.all([
+        countDocs('users'),
+        countDocs('trades', true),
+        countDocs('payments'),
+        countDocs('leaderboard'),
+      ]);
+    } catch { /* admin token / aggregation failed — return null counts, never break the panel */ }
+
+    const body = JSON.stringify({ ok: true, at: Date.now(), counts });
+    await env.ALERTS_KV.put('fbusage:cache', body, { expirationTtl: 300 });
+    return new Response(body, { headers: { ...cors, 'Content-Type': 'application/json' } });
+  }
+
+  // Admin-only: does a user have Web Push devices registered? Returns ONLY the
+  // COUNT of push:{uid}:{hash} subscription keys — never the subscriptions
+  // themselves (endpoints/keys stay in KV).
+  if (request.method === 'GET' && path.startsWith('/admin/push-status/')) {
+    const token = (request.headers.get('Authorization') || '').replace('Bearer ', '');
+    const adminUid = await verifyAdminFromToken(token);
+    if (!adminUid) return new Response(JSON.stringify({ error: 'forbidden' }), { status: 403, headers: { ...cors, 'Content-Type': 'application/json' } });
+    const targetUid = path.split('/')[3];
+    if (!targetUid) return new Response(JSON.stringify({ error: 'missing uid' }), { status: 400, headers: { ...cors, 'Content-Type': 'application/json' } });
+    const list = await env.ALERTS_KV.list({ prefix: `push:${targetUid}:` });
+    return new Response(JSON.stringify({ ok: true, devices: list.keys.length }), { headers: { ...cors, 'Content-Type': 'application/json' } });
+  }
+
+  // Admin-only: which exchanges a user has connected. Returns ONLY the
+  // exchange ids (pushexch:{uid}:{exchange} key names) — the encrypted
+  // credentials never leave KV.
+  if (request.method === 'GET' && path.startsWith('/admin/exchanges-status/')) {
+    const token = (request.headers.get('Authorization') || '').replace('Bearer ', '');
+    const adminUid = await verifyAdminFromToken(token);
+    if (!adminUid) return new Response(JSON.stringify({ error: 'forbidden' }), { status: 403, headers: { ...cors, 'Content-Type': 'application/json' } });
+    const targetUid = path.split('/')[3];
+    if (!targetUid) return new Response(JSON.stringify({ error: 'missing uid' }), { status: 400, headers: { ...cors, 'Content-Type': 'application/json' } });
+    const list = await env.ALERTS_KV.list({ prefix: `pushexch:${targetUid}:` });
+    const exchanges = list.keys.map((k) => k.name.split(':')[2]).filter(Boolean);
+    return new Response(JSON.stringify({ ok: true, exchanges }), { headers: { ...cors, 'Content-Type': 'application/json' } });
+  }
+
+  // Trade event notifications — delivered as Web Push to the caller's own
+  // registered devices (uid-keyed, #219).
   if (request.method === 'POST' && path === '/notify') {
     try {
       // Auth: require a valid token; ignore any uid in the body and use the
-      // token's uid so a caller can only notify their own connected chat.
+      // token's uid so a caller can only notify themselves.
       const token = (request.headers.get('Authorization') || '').replace('Bearer ', '');
       const uid = await verifyFirebaseToken(token);
       if (!uid) return new Response(JSON.stringify({ error: 'unauthorized' }), { status: 401, headers: { ...cors, 'Content-Type': 'application/json' } });
-      const { type, pair, direction, price, pnl, entryPrice, stopLoss, leverage, positionSize, tps, tpIndex, isLastTp } = await request.json();
+      const { type, pair, direction, price, pnl, entryPrice, stopLoss, leverage, positionSize, tpIndex, isLastTp } = await request.json();
       if (!type) return new Response(JSON.stringify({ error: 'Missing fields' }), { status: 400, headers: { ...cors, 'Content-Type': 'application/json' } });
-      const chatId = await env.ALERTS_KV.get(`uid:${uid}`);
-      if (!chatId) return new Response(JSON.stringify({ error: 'Not connected' }), { status: 404, headers: { ...cors, 'Content-Type': 'application/json' } });
 
-      const now = new Date();
-      const timeStr = now.toLocaleString('he-IL', { timeZone: 'Asia/Jerusalem', day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' });
-
-      const dirEmoji = direction === 'long' ? '↗' : '↘';
       const dirLabel = direction === 'long' ? 'Long' : 'Short';
       const lev = parseFloat(leverage) || 1;
       const entry = parseFloat(entryPrice) || 0;
       const sl = parseFloat(stopLoss) || 0;
       const posSize = parseFloat(positionSize) || 0;
-
-      const pad = (label, val, width = 9) => `${label.padEnd(width)}${val}`;
+      const levStr = lev > 1 ? ` · ${lev}x` : '';
 
       const pnlPct = (pnl != null && posSize > 0) ? ((pnl / posSize) * 100).toFixed(2) : null;
-      const pnlPctLev = (pnlPct != null && lev > 1) ? (parseFloat(pnlPct) * lev).toFixed(2) : null;
-      const pnlSign = pnl >= 0 ? '+' : '';
-
-      const slPct = (entry > 0 && sl > 0)
-        ? ((direction === 'long' ? (sl - entry) / entry : (entry - sl) / entry) * 100).toFixed(2)
+      const pnlStr = pnl != null
+        ? `${fmtPnl(pnl)}${pnlPct ? ` (${pnl >= 0 ? '+' : '-'}${Math.abs(parseFloat(pnlPct))}%)` : ''}`
         : null;
 
-      const tpLines = (tps || []).map((tp, i) => {
-        const t = parseFloat(tp);
-        if (!t || !entry) return null;
-        const pct = ((direction === 'long' ? (t - entry) / entry : (entry - t) / entry) * 100).toFixed(2);
-        return pad(`  TP${i + 1}`, `${fmtPrice(t)}  (+${pct}%)`);
-      }).filter(Boolean);
-
-      let rr = null;
-      if (entry > 0 && sl > 0 && tps?.length > 0) {
-        const firstTp = parseFloat(tps[0]);
-        if (firstTp > 0) {
-          const risk = Math.abs(entry - sl);
-          const reward = Math.abs(firstTp - entry);
-          if (risk > 0) rr = (reward / risk).toFixed(1);
-        }
-      }
-
-      let text = '';
-
+      let title;
+      let bodyText;
       if (type === 'entry') {
-        text =
-`🟢 <b>POSITION OPENED</b>
-
-<b>${pair}</b>  ${dirLabel} ${dirEmoji}${lev > 1 ? `  <code>${lev}x</code>` : ''}
-
-<code>${pad('Entry', fmtPrice(entry))}
-${sl > 0 ? pad('Stop', `${fmtPrice(sl)}${slPct ? `  (${slPct}%)` : ''}`) : ''}${tpLines.length ? '\n' + tpLines.join('\n') : ''}</code>${rr ? `\n\n📐 R:R  <b>${rr}R</b>` : ''}${posSize > 0 ? `\n💼 Size  <b>$${posSize.toLocaleString()}</b>` : ''}
-
-<i>🕐 ${timeStr}</i>`;
-      }
-
-      else if (type === 'tp') {
+        title = `🟢 פוזיציה נפתחה — ${pair} ${dirLabel}`;
+        const parts = [`כניסה ${fmtPrice(entry)}`];
+        if (sl > 0) parts.push(`סטופ ${fmtPrice(sl)}`);
+        if (posSize > 0) parts.push(`גודל $${posSize.toLocaleString()}`);
+        bodyText = parts.join(' · ') + levStr;
+      } else if (type === 'tp') {
         const tpNum = tpIndex != null ? tpIndex + 1 : '?';
-        const status = isLastTp ? '🏁 Position Closed' : `📌 Partial Close — TP${tpNum}`;
-        text =
-`✅ <b>TAKE PROFIT HIT</b>  TP${tpNum}${isLastTp ? ' 🏁' : ''}
-
-<b>${pair}</b>  ${dirLabel} ${dirEmoji}${lev > 1 ? `  <code>${lev}x</code>` : ''}
-
-<code>${pad('Price', fmtPrice(price))}
-${entry > 0 ? pad('Entry', fmtPrice(entry)) : ''}${pnl != null ? `
-${pad('P&L', `${pnlSign}$${Math.abs(pnl).toFixed(2)}${pnlPct ? `  (${pnlSign}${pnlPct}%)` : ''}`)}${pnlPctLev ? `
-${pad('Lev P&L', `${pnlSign}${pnlPctLev}%`)}` : ''}` : ''}</code>
-
-${status}
-
-<i>🕐 ${timeStr}</i>`;
+        title = `✅ TP${tpNum} הושג — ${pair}${isLastTp ? ' 🏁' : ''}`;
+        const parts = [`מחיר ${fmtPrice(price)}`];
+        if (pnlStr) parts.push(`P&L ‏${pnlStr}`);
+        parts.push(isLastTp ? 'הפוזיציה נסגרה' : 'סגירה חלקית');
+        bodyText = parts.join(' · ');
+      } else if (type === 'sl') {
+        title = `🔴 סטופ לוס — ${pair} ${dirLabel}`;
+        const parts = [`מחיר ${fmtPrice(price)}`];
+        if (pnlStr) parts.push(`הפסד ‏${pnlStr}`);
+        parts.push('הפוזיציה נסגרה');
+        bodyText = parts.join(' · ');
+      } else {
+        title = `📊 ${pair} · ${dirLabel}`;
+        bodyText = fmtPrice(price);
       }
 
-      else if (type === 'sl') {
-        text =
-`🔴 <b>STOP LOSS HIT</b>
-
-<b>${pair}</b>  ${dirLabel} ${dirEmoji}${lev > 1 ? `  <code>${lev}x</code>` : ''}
-
-<code>${pad('Stopped', fmtPrice(price))}
-${entry > 0 ? pad('Entry', fmtPrice(entry)) : ''}${pnl != null ? `
-${pad('Loss', `${pnlSign}$${Math.abs(pnl).toFixed(2)}${pnlPct ? `  (${pnlSign}${pnlPct}%)` : ''}`)}${pnlPctLev ? `
-${pad('Lev', `${pnlSign}${pnlPctLev}%`)}` : ''}` : ''}</code>
-
-🔐 Position Closed
-
-<i>🕐 ${timeStr}</i>`;
-      }
-
-      else {
-        text = `📊 <b>${pair}</b> · ${dirLabel} ${dirEmoji}\n${fmtPrice(price)}\n<i>${timeStr}</i>`;
-      }
-
-      await sendMessage(env.BOT_TOKEN, chatId, text);
-      return new Response(JSON.stringify({ ok: true }), { headers: { ...cors, 'Content-Type': 'application/json' } });
+      const result = await sendPushToUser(env, uid, { title, body: bodyText, url: '/' });
+      return new Response(JSON.stringify({ ok: true, sent: result.sent }), { headers: { ...cors, 'Content-Type': 'application/json' } });
     } catch (e) { return new Response(JSON.stringify({ error: String(e) }), { status: 400, headers: { ...cors, 'Content-Type': 'application/json' } }); }
   }
 
@@ -5703,12 +4809,19 @@ ${pad('Lev', `${pnlSign}${pnlPctLev}%`)}` : ''}` : ''}</code>
           // fall back to the nearest order in time (fill or placement) within
           // 30 minutes.
           const positionStart = parseInt(p.createdTime) || 0;
+          const exitMs = parseInt(p.updatedTime) || positionStart;
           const timeDist = (o) => Math.min(
             Math.abs((parseInt(o.updatedTime) || Infinity) - positionStart),
             Math.abs((parseInt(o.createdTime) || Infinity) - positionStart)
           );
+          // Only orders that FILLED before the position closed can be its
+          // opener — without this bound, an order from days later within 0.2%
+          // of the entry price could attach to an old position whose real
+          // opener already fell off the 100-order history, producing an
+          // entryDate AFTER exitDate (negative duration, edit form blocked).
           const cands = openingOrders
-            .filter((o) => o.symbol === p.symbol && o.side === posSide)
+            .filter((o) => o.symbol === p.symbol && o.side === posSide &&
+              (parseInt(o.updatedTime) || parseInt(o.createdTime) || 0) <= exitMs + 60 * 1000)
             .sort((a, b) => timeDist(a) - timeDist(b));
           const priceMatch = cands.find((o) => {
             const ap = parseFloat(o.avgPrice) || 0;
@@ -5720,26 +4833,38 @@ ${pad('Lev', `${pnlSign}${pnlPctLev}%`)}` : ''}` : ''}</code>
             // SL set from Bybit's position panel (not attached to the entry
             // order) lives on its own conditional StopLoss order — take its
             // trigger price when it was created during the position's window.
-            const exitMsP = parseInt(p.updatedTime) || positionStart;
-            const slOrd = rawOrders.find((o) =>
+            // Only orders on the CLOSING side (p.side) belong to this
+            // position, and the EARLIEST one is the original stop — rawOrders
+            // is newest-first, so grabbing the first match took a stop that
+            // was later MOVED (e.g. to break-even), reporting riskAmount ≈ 0
+            // and an absurd R (a 2% winner showed ~20R).
+            const slOrds = rawOrders.filter((o) =>
               o.symbol === p.symbol &&
+              o.side === p.side &&
               /stoploss/i.test(o.stopOrderType || '') &&
               parseFloat(o.triggerPrice) > 0 &&
               (parseInt(o.createdTime) || 0) >= positionStart - 10 * 60 * 1000 &&
-              (parseInt(o.createdTime) || 0) <= exitMsP + 10 * 60 * 1000
+              (parseInt(o.createdTime) || 0) <= exitMs + 10 * 60 * 1000
             );
+            const slOrd = slOrds.length
+              ? slOrds.reduce((a, b) => ((parseInt(b.createdTime) || 0) < (parseInt(a.createdTime) || 0) ? b : a))
+              : null;
             if (slOrd) stopLoss = parseFloat(slOrd.triggerPrice) || 0;
           }
           const tp = match ? (parseFloat(match.takeProfit) || 0) : 0;
-          const entryMs = match
+          // Clamp to the close time — entry can never come after exit.
+          const entryMs = Math.min(exitMs, match
             ? (parseInt(match.updatedTime) || parseInt(match.createdTime) || positionStart)
-            : positionStart;
+            : positionStart);
           const entryDate = entryMs ? new Date(entryMs).toISOString() : exitDate;
           // Auto-derived risk ($) and realized R — only when a real SL exists.
           const slDist = stopLoss > 0 ? Math.abs(entryPrice - stopLoss) : 0;
           const riskAmount = slDist > 0 ? Number((slDist * quantity).toPrecision(6)) : 0;
+          // UNSIGNED |reward|/risk — the whole app stores R unsigned and adds
+          // the sign from pnl at display/export time (formatRR, calculateRR),
+          // so a signed value here rendered "--0.60R" and flipped the CSV sign.
           const rrRatio = slDist > 0 && exitPrice > 0
-            ? Number((((direction === 'long' ? exitPrice - entryPrice : entryPrice - exitPrice)) / slDist).toFixed(2))
+            ? Number((Math.abs(exitPrice - entryPrice) / slDist).toFixed(2))
             : 0;
           return {
             pair: p.symbol,
@@ -5760,6 +4885,9 @@ ${pad('Lev', `${pnlSign}${pnlPctLev}%`)}` : ''}` : ''}</code>
             source: 'bybit',
             externalId: p.orderId || String(p.createdTime || Math.random()),
             session: sessionFromDate(entryDate),
+            // Temporary (stripped after merging): the matched opening order,
+            // used as a stable position identity for the multi-TP grouping.
+            _openOrderId: match?.orderId || '',
           };
         });
 
@@ -5772,7 +4900,13 @@ ${pad('Lev', `${pnlSign}${pnlPctLev}%`)}` : ''}` : ''}</code>
         // multi-TP trade.
         const posGroups = new Map();
         for (const t of trades) {
-          const key = `${t.pair}|${t.direction}|${t.entryPrice}`;
+          // Group by the matched OPENING order when we have one — grouping by
+          // entry price alone merged two DIFFERENT positions that happened to
+          // fill at the same limit price within the window into one trade
+          // with a combined qty and a fabricated TP1/TP2 breakdown.
+          const key = t._openOrderId
+            ? `${t.pair}|${t.direction}|#${t._openOrderId}`
+            : `${t.pair}|${t.direction}|${t.entryPrice}`;
           if (!posGroups.has(key)) posGroups.set(key, []);
           posGroups.get(key).push(t);
         }
@@ -5783,12 +4917,18 @@ ${pad('Lev', `${pnlSign}${pnlPctLev}%`)}` : ''}` : ''}</code>
           let cluster = [];
           const flush = () => {
             if (!cluster.length) return;
-            if (cluster.length === 1) { mergedTrades.push(cluster[0]); cluster = []; return; }
+            if (cluster.length === 1) { mergedTrades.push({ ...cluster[0], externalIds: [cluster[0].externalId] }); cluster = []; return; }
             const totalQty = cluster.reduce((s, r) => s + r.quantity, 0);
             const exits = cluster.map((r) => ({
               price: r.exitPrice,
               percent: totalQty > 0 ? Math.round((r.quantity / totalQty) * 10000) / 100 : 0,
             }));
+            // Pin the last slice so the percents sum to EXACTLY 100 — rounded
+            // thirds (33.33×3 = 99.99) demoted the trade from 'closed' to
+            // 'partial' on its next edit-save (vanishing from analytics), and
+            // 100.01 blocked saving altogether.
+            const sumButLast = exits.slice(0, -1).reduce((s, e) => s + e.percent, 0);
+            exits[exits.length - 1].percent = Number(Math.max(0, 100 - sumButLast).toFixed(2));
             const rawWeighted = totalQty > 0
               ? cluster.reduce((s, r) => s + r.exitPrice * r.quantity, 0) / totalQty
               : cluster[cluster.length - 1].exitPrice;
@@ -5801,8 +4941,9 @@ ${pad('Lev', `${pnlSign}${pnlPctLev}%`)}` : ''}` : ''}</code>
             // only that record's qty slice).
             const mSlDist = mergedSl > 0 ? Math.abs(first.entryPrice - mergedSl) : 0;
             const mRisk = mSlDist > 0 ? Number((mSlDist * totalQty).toPrecision(6)) : 0;
+            // Unsigned, like the per-row rrRatio above.
             const mRR = mSlDist > 0 && exitPrice > 0
-              ? Number((((first.direction === 'long' ? exitPrice - first.entryPrice : first.entryPrice - exitPrice)) / mSlDist).toFixed(2))
+              ? Number((Math.abs(exitPrice - first.entryPrice) / mSlDist).toFixed(2))
               : 0;
             mergedTrades.push({
               ...first,
@@ -5816,6 +4957,12 @@ ${pad('Lev', `${pnlSign}${pnlPctLev}%`)}` : ''}` : ''}</code>
               stopLoss: mergedSl,
               riskAmount: mRisk,
               rrRatio: mRR,
+              // EVERY closing order's id — the client upserts on any-id
+              // overlap, so a position that keeps closing across syncs updates
+              // the same journal trade instead of being filtered out as
+              // "already imported" (which silently dropped every close after
+              // the first and froze the trade as a win).
+              externalIds: cluster.map((r) => r.externalId),
             });
             cluster = [];
           };
@@ -5825,6 +4972,7 @@ ${pad('Lev', `${pnlSign}${pnlPctLev}%`)}` : ''}` : ''}</code>
           }
           flush();
         }
+        for (const t of mergedTrades) delete t._openOrderId;
         mergedTrades.sort((a, b) => new Date(b.exitDate) - new Date(a.exitDate));
         trades = mergedTrades;
       }
@@ -5964,7 +5112,7 @@ ${pad('Lev', `${pnlSign}${pnlPctLev}%`)}` : ''}` : ''}</code>
     }
   }
 
-  return new Response('TradeOS Bot Worker', { headers: cors });
+  return new Response('TradeOS Worker', { headers: cors });
 }
 
 export default {

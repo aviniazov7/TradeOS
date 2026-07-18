@@ -2,26 +2,34 @@ import { useEffect, useRef } from 'react';
 import { useAuth } from '../contexts/AuthContext';
 import { getTodayClosedTrades, getUserSetting } from '../services/firestoreService';
 import { auth } from '../services/firebase';
+import { isClosedTrade } from '../utils/calculations';
 
 const WORKER_URL = import.meta.env.VITE_WORKER_URL || '';
 
 export function useDailySummarySync() {
   const { user } = useAuth();
   const hasSynced = useRef(false);
+  const lastUid = useRef(null);
 
   useEffect(() => {
+    // Reset the once-per-session flag when the account changes (logout+login
+    // of a second user in the same tab) — same pattern as useLeaderboardSync.
+    if (user?.uid !== lastUid.current) {
+      hasSynced.current = false;
+      lastUid.current = user?.uid || null;
+    }
     if (!user || !WORKER_URL || hasSynced.current) return;
     hasSynced.current = true;
 
     (async () => {
       try {
-        // Only sync if Telegram is connected
-        const telegram = await getUserSetting(user.uid, 'telegram');
-        if (!telegram?.connected) return;
+        // Only sync when the user scheduled a daily summary push — the
+        // schedule mirror lives in the notifications setting (#219).
+        const notif = await getUserSetting(user.uid, 'notifications');
+        if (!notif?.schedule?.summary?.enabled) return;
 
         const trades = await getTodayClosedTrades(user.uid);
-        // Filter to only closed trades (have exitPrice)
-        const closed = trades.filter((t) => t.exitPrice && t.exitPrice > 0);
+        const closed = trades.filter(isClosedTrade);
 
         const wins = closed.filter((t) => t.result === 'win').length;
         const losses = closed.filter((t) => t.result === 'loss').length;

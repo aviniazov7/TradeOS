@@ -1,6 +1,7 @@
 import { useState, Fragment } from 'react';
 import { Pencil, Trash2, Share2, Eye, TrendingUp, TrendingDown } from 'lucide-react';
 import { formatDate, formatPrice, formatCurrency, formatPercent, formatRR } from '../../utils/formatters';
+import { isClosedTrade } from '../../utils/calculations';
 import { getExchangeLogo } from '../../utils/constants';
 import TradeDetailModal from './TradeDetailModal';
 import CoinIcon from '../shared/CoinIcon';
@@ -29,7 +30,10 @@ function StopValue({ trade }) {
 }
 
 const pnlColor = (val) => (val > 0 ? 'text-profit' : val < 0 ? 'text-loss' : 'text-breakeven');
-const getStatus = (trade) => trade.status === 'partial' ? 'partial' : (trade.exitPrice > 0 ? 'closed' : 'open');
+// Honor the saved status — broker CSV imports (MT5) are status:'closed' with
+// pnlFromExchange but NO exit price, and deriving from exitPrice alone showed
+// them as eternally "open" with a — in the P&L column.
+const getStatus = (trade) => trade.status === 'partial' ? 'partial' : (isClosedTrade(trade) ? 'closed' : 'open');
 
 const MONTH_NAMES_HE = ['ינואר','פברואר','מרץ','אפריל','מאי','יוני','יולי','אוגוסט','ספטמבר','אוקטובר','נובמבר','דצמבר'];
 const getMonthKey = (trade) => {

@@ -17,6 +17,7 @@ import {
   getCountFromServer,
 } from 'firebase/firestore';
 import { db } from './firebase';
+import { APP_VERSION } from '../utils/constants';
 
 // ─── Retry Helper ────────────────────────────────────────────────
 
@@ -146,10 +147,10 @@ export async function getUserProfile(uid) {
  * updates (e.g. granting Premium) reflect in the user's UI within seconds —
  * no logout / refresh required.
  */
-export function subscribeToUserProfile(uid, onData) {
+export function subscribeToUserProfile(uid, onData, onError) {
   return onSnapshot(doc(db, 'users', uid), (snap) => {
     if (snap.exists()) onData(snap.data());
-  });
+  }, onError || (() => {}));
 }
 
 /** Create or update the user's main document */
@@ -191,7 +192,10 @@ export async function adminRevokePremium(uid) {
  * `lastActive` is not a privileged field, so the owner-update rule allows it.
  */
 export async function touchLastActive(uid) {
-  return setDoc(doc(db, 'users', uid), { lastActive: serverTimestamp() }, { merge: true });
+  // Stamp the running app version alongside activity so the admin panel can see
+  // which build each user is on (and spot users stuck on stale versions). Same
+  // hourly throttle as lastActive — one extra string, no added writes.
+  return setDoc(doc(db, 'users', uid), { lastActive: serverTimestamp(), appVersion: APP_VERSION }, { merge: true });
 }
 
 /** Delete the user's main document */
@@ -315,6 +319,16 @@ export async function applyTradeCleanup(uid, { updates = [], deletes = [] }) {
   }
   return ops.length;
 }
+
+// Every subcollection the app writes under users/{uid}. Account deletion
+// wipes EXACTLY this list — when adding a new subcollection (here and in
+// firestore.rules), add it to this list too or it will stay orphaned under a
+// dead uid after the user deletes their account.
+export const USER_SUBCOLLECTIONS = [
+  'trades', 'journals', 'backtests', 'backtestJournals', 'dca',
+  'tradingPlans', 'notes', 'strategies', 'morningJournals', 'eveningJournals',
+  'processes', 'signals', 'watchlist', 'settings',
+];
 
 /** Delete all documents in a user's subcollection */
 export async function deleteUserSubcollection(uid, collectionName) {

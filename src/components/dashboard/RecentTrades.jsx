@@ -4,11 +4,12 @@ import { ArrowLeft } from 'lucide-react';
 import { formatCurrency, formatRelativeTime } from '../../utils/formatters';
 import { fadeIn } from '../../utils/animations';
 import CoinIcon from '../shared/CoinIcon';
+import { isClosedTrade } from '../../utils/calculations';
 
 const pnlColor = (val) => (val > 0 ? 'text-profit' : val < 0 ? 'text-loss' : 'text-breakeven');
 
 export default function RecentTrades({ trades }) {
-  const recent = trades.filter((t) => t.status === 'closed').slice(0, 5);
+  const recent = trades.filter(isClosedTrade).slice(0, 5);
 
   if (recent.length === 0) {
     return (

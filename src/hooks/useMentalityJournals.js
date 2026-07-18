@@ -1,4 +1,5 @@
 import { useState, useEffect, useMemo, useCallback } from 'react';
+import { localDayKey } from '../utils/calculations';
 import {
   subscribeToUserCollection,
   addToUserCollection,
@@ -68,12 +69,12 @@ export function useMentalityJournals() {
     };
   }, [user]);
 
-  const [todayStr, setTodayStr] = useState(() => new Date().toISOString().slice(0, 10));
+  const [todayStr, setTodayStr] = useState(() => localDayKey());
 
   // Update todayStr when date changes (midnight crossing)
   useEffect(() => {
     const checkDate = () => {
-      const now = new Date().toISOString().slice(0, 10);
+      const now = localDayKey();
       if (now !== todayStr) setTodayStr(now);
     };
     const interval = setInterval(checkDate, 60000);

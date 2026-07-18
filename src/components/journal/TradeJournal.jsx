@@ -1,8 +1,8 @@
-import { useState, useMemo, useEffect, useRef, useCallback } from 'react';
+import { useState, useMemo, useEffect, useRef } from 'react';
 import { useSearchParams } from 'react-router-dom';
 import { motion } from 'framer-motion';
 import {
-  Plus, BookOpen, Download, Upload, Settings,
+  Plus, BookOpen, Settings,
   Wallet, TrendingUp, Target, Zap, Flame, Snowflake, Signal,
   Scale, BarChart3, Activity, Calendar,
   Clock, DollarSign, Percent, Link2, Undo2, BrainCircuit, Star,
@@ -15,12 +15,10 @@ import confetti from 'canvas-confetti';
 import { useTrades } from '../../hooks/useTrades';
 import { useCryptoPrices } from '../../hooks/useCryptoPrices';
 import { useJournalContext } from '../../contexts/JournalContext';
-import { useAuth } from '../../contexts/AuthContext';
-import { calculatePnL, calculateFuturesPnL } from '../../utils/calculations';
+import { calculatePnL, calculateFuturesPnL, isClosedTrade } from '../../utils/calculations';
 import { useDashboardStats, safePnl } from '../../hooks/useDashboardStats';
 import { useLinkedExchangeBalance } from '../../hooks/useLinkedExchangeBalance';
-import { addToUserCollection, timestamp } from '../../services/firestoreService';
-import { Timestamp } from 'firebase/firestore';
+import { useExchangeImport } from '../../hooks/useExchangeImport';
 import JournalSwitcher from './JournalSwitcher';
 import TradeForm from './TradeForm';
 import TradeTable from './TradeTable';
@@ -48,7 +46,7 @@ import TradeShareModal from './TradeShareModal';
 import JournalSkeleton from './JournalSkeleton';
 import JournalFormModal from './JournalFormModal';
 import { formatCurrency, formatPercent, formatDuration, formatDate } from '../../utils/formatters';
-import { TAG_LABELS, DEFAULT_LEVERAGE } from '../../utils/constants';
+import { TAG_LABELS } from '../../utils/constants';
 import { pageVariants, pageTransition, staggerContainer } from '../../utils/animations';
 
 const defaultFilters = { search: '', direction: '', result: '', strategy: '', tag: '', timeframe: '', month: '' };
@@ -56,7 +54,6 @@ const tooltipStyle = { background: 'var(--color-bg-overlay)', border: '1px solid
 const PIE_COLORS = ['#22c55e', '#ef4444', '#eab308'];
 
 export default function TradeJournal() {
-  const { user } = useAuth();
   const { activeJournal, activeJournalId, journals, addJournal } = useJournalContext();
   const { trades, loading, addTrade, addTradesBulk, updateTrade, deleteTrade } = useTrades(activeJournalId);
   const { prices } = useCryptoPrices();
@@ -172,9 +169,7 @@ export default function TradeJournal() {
   // different PnL total than stats.totalPnL and the derived currentBalance
   // drifts away from the real wallet by exactly the partial rows' PnL.
   const totalClosedPnL = useMemo(
-    () => trades
-      .filter((t) => t.status === 'closed' || (parseFloat(t.exitPrice) > 0 && t.status !== 'partial' && t.status !== 'open'))
-      .reduce((s, t) => s + safePnl(t), 0),
+    () => trades.filter(isClosedTrade).reduce((s, t) => s + safePnl(t), 0),
     [trades]
   );
   const effectiveInitial = balanceIsLive
@@ -187,110 +182,11 @@ export default function TradeJournal() {
   // make the headline swing whenever the user changes the period filter.
   const displayedCurrentBalance = balanceIsLive ? liveExchangeBalance : stats.currentBalance;
 
-  // externalIds already in this journal — reused by both the exchange tab and
-  // the trades-tab proposal banner to flag which synced rows are updates.
-  const existingExternalIds = useMemo(
-    () => new Set(trades.filter((t) => t.externalId).map((t) => t.externalId)),
-    [trades]
-  );
-
   // Import a single exchange-synced trade into the active journal. Shared by
   // the exchange tab (ExchangeSettings) and the trades-tab proposal banner
-  // (ExchangeProposals) so both add trades identically, upserting on externalId.
-  const importExchangeTrade = useCallback(async (t) => {
-    if (!user) throw new Error('No user');
-    const safeTs = (raw) => {
-      if (!raw) return null;
-      const d = new Date(raw);
-      return isNaN(d.getTime()) ? null : d;
-    };
-    const entryD = safeTs(t.entryDate) || new Date();
-    const exitD = safeTs(t.exitDate) || entryD;
-    const fees = typeof t.fees === 'number' ? Math.abs(t.fees) : 0;
-
-    // Open positions from the exchange: keep status=open and save every field
-    // the worker provided (stopLoss, tps, leverage, qty, …) instead of
-    // squashing them into a closed-trade shape.
-    if (t._isOpen) {
-      const ep = t.entryPrice > 0 ? t.entryPrice : 0;
-      const qty = t.quantity > 0 ? t.quantity : 0;
-      const lev = Math.min(200, Math.max(1, t.leverage || DEFAULT_LEVERAGE));
-      return addToUserCollection(user.uid, 'trades', {
-        pair: t.pair, direction: t.direction,
-        entryPrice: ep, quantity: qty, leverage: lev,
-        stopLoss: parseFloat(t.stopLoss) || 0,
-        tps: Array.isArray(t.tps) ? t.tps : [],
-        fees,
-        status: 'open',
-        orderType: t.orderType || 'market',
-        entryDate: entryD,
-        source: t.source, externalId: t.externalId,
-        positionSize: t.positionSize || ep * qty,
-        margin: ep * qty / lev,
-        ...(t.session ? { session: t.session } : {}),
-        ...(t.liquidationPrice ? { liquidationPrice: t.liquidationPrice } : {}),
-        journalId: activeJournalId || null,
-        createdAt: timestamp(),
-        updatedAt: timestamp(),
-      });
-    }
-
-    // Upsert: update existing trade if externalId already in journal
-    const existing = t.externalId
-      ? trades.find((tr) => tr.externalId === t.externalId)
-      : null;
-    if (existing) {
-      return updateTrade(existing.id, {
-        entryDate: entryD,
-        exitDate: exitD,
-        fees,
-        entryPrice: t.entryPrice > 0 ? t.entryPrice : existing.entryPrice,
-        exitPrice: t.exitPrice > 0 ? t.exitPrice : existing.exitPrice,
-        pnlFromExchange: t.pnlFromExchange ?? existing.pnlFromExchange,
-        pnl: t.pnlFromExchange ?? existing.pnl,
-        netPnl: t.pnlFromExchange ?? existing.netPnl,
-        updatedAt: timestamp(),
-      });
-    }
-
-    // Create new trade — compute netPnl correctly by subtracting fees, and
-    // derive result from netPnl (not gross pnl) so a small win eaten by large
-    // fees is correctly classified as a loss.
-    const ep = t.entryPrice > 0 ? t.entryPrice : 1;
-    // exitPrice fallback: use entry price (yields 0 PnL) instead of 1, which
-    // previously surfaced as a phantom TP at price 1.
-    const xp = t.exitPrice > 0 ? t.exitPrice : ep;
-    const qty = t.quantity > 0 ? t.quantity : 1;
-    const lev = Math.min(200, Math.max(1, t.leverage || DEFAULT_LEVERAGE));
-    const pnl = t.pnlFromExchange ?? 0;
-    const netPnlImport = pnl - fees;
-    const result = netPnlImport > 0 ? 'win' : netPnlImport < 0 ? 'loss' : 'breakeven';
-    return addToUserCollection(user.uid, 'trades', {
-      pair: t.pair, direction: t.direction,
-      orderType: t.orderType || 'market',
-      entryPrice: ep, exitPrice: xp, quantity: qty, leverage: lev,
-      stopLoss: parseFloat(t.stopLoss) || 0,
-      tps: Array.isArray(t.tps) ? t.tps : [],
-      // Multi-TP breakdown from the exchange sync (Bybit positions closed in
-      // several take-profits) — dropping it collapses the trade back to a
-      // single 100% exit in the edit form.
-      ...(Array.isArray(t.exits) && t.exits.length ? { exits: t.exits } : {}),
-      ...(t.session ? { session: t.session } : {}),
-      fees, status: 'closed',
-      entryDate: entryD, exitDate: exitD,
-      source: t.source, externalId: t.externalId,
-      pnlFromExchange: pnl, pnl, netPnl: netPnlImport,
-      pnlPercent: (pnl / (ep * qty)) * 100 * lev,
-      // Risk ($) and realized R computed by the worker from the REAL exchange
-      // SL and quantity — so nothing needs manual entry after import.
-      riskAmount: parseFloat(t.riskAmount) || 0,
-      rrRatio: parseFloat(t.rrRatio) || 0,
-      result,
-      positionSize: ep * qty, margin: (ep * qty) / lev,
-      journalId: activeJournalId,
-      createdAt: Timestamp.fromDate(entryD), updatedAt: timestamp(),
-    });
-  }, [user, trades, updateTrade, activeJournalId]);
+  // (ExchangeProposals) so both add trades identically, upserting when any of
+  // the row's close-order ids is already in the journal.
+  const { importTrade: importExchangeTrade } = useExchangeImport(activeJournalId);
 
   useEffect(() => {
     if (searchParams.get('new') === '1') setFormOpen(true);
@@ -344,7 +240,7 @@ export default function TradeJournal() {
   }, [trades, filters, pendingDeletes]);
 
   const analytics = useMemo(() => {
-    const closed = periodTrades.filter((t) => t.status === 'closed' || (parseFloat(t.exitPrice) > 0 && t.status !== 'partial' && t.status !== 'open'));
+    const closed = periodTrades.filter(isClosedTrade);
     if (!closed.length) return null;
 
     const wins = closed.filter((t) => t.result === 'win');
@@ -591,7 +487,7 @@ export default function TradeJournal() {
       return [
         formatDate(d), xd ? formatDate(xd) : '', t.pair, t.direction, t.entryPrice, t.exitPrice,
         t.stopLoss, t.positionSize, t.leverage, t.fees, pnl.toFixed(2),
-        (isNaN(pnlPct) ? 0 : pnlPct).toFixed(2), ((pnl < 0 ? -1 : 1) * (t.rrRatio ?? 0)).toFixed(2), t.strategy || '',
+        (isNaN(pnlPct) ? 0 : pnlPct).toFixed(2), ((pnl < 0 ? -1 : 1) * Math.abs(t.rrRatio ?? 0)).toFixed(2), t.strategy || '',
         t.timeframe || '', t.exitPrice > 0 ? 'סגורה' : 'פתוחה',
         t.entryReason || '', t.notes || '', tags, t.emotionBefore || '', t.emotionAfter || '', mistakes, t.confidenceRating ?? '',
       ];
@@ -721,15 +617,10 @@ export default function TradeJournal() {
             <button onClick={() => setSettingsOpen(true)} className="h-9 w-9 inline-flex items-center justify-center rounded-lg text-text-muted hover:text-text-primary hover:bg-bg-tertiary transition-colors cursor-pointer border border-border-primary" title="הגדרות יומן">
               <Settings className="w-4 h-4" />
             </button>
-            <button onClick={() => setImportOpen(true)} className="h-9 w-9 inline-flex items-center justify-center rounded-lg text-text-muted hover:text-text-primary hover:bg-bg-tertiary transition-colors cursor-pointer border border-border-primary" title="ייבוא CSV">
-              <Upload className="w-4 h-4" />
-            </button>
-            {trades.length > 0 && (
-              <button onClick={exportCSV} className="h-9 w-9 inline-flex items-center justify-center rounded-lg text-text-muted hover:text-text-primary hover:bg-bg-tertiary transition-colors cursor-pointer border border-border-primary" title="ייצוא CSV">
-                <Download className="w-4 h-4" />
-              </button>
-            )}
-            <button onClick={() => setFormOpen(true)} className="h-9 inline-flex items-center gap-1.5 bg-accent-primary text-bg-primary font-semibold px-3.5 rounded-lg hover:bg-accent-hover transition-colors cursor-pointer text-sm">
+            {/* Accent-colored so it stands out (like the old filled button),
+                but no solid fill — just accent text + a subtle accent border,
+                with a light accent tint only on hover. */}
+            <button onClick={() => setFormOpen(true)} className="h-9 inline-flex items-center gap-1.5 px-3 rounded-lg text-accent-primary border border-accent-primary/40 hover:bg-accent-primary/10 transition-colors cursor-pointer text-sm font-semibold">
               <Plus className="w-4 h-4" /> <span className="hidden sm:inline">עסקה חדשה</span>
             </button>
           </div>
@@ -841,7 +732,7 @@ export default function TradeJournal() {
           offer to widen the period — telling them to "close their first
           trade" would be false). */}
       {tab === 'analytics' && analytics === null && (
-        trades.some((t) => t.status === 'closed' || (parseFloat(t.exitPrice) > 0 && t.status !== 'partial' && t.status !== 'open')) ? (
+        trades.some(isClosedTrade) ? (
           <EmptyState
             icon={BarChart3}
             title="אין עסקאות סגורות בתקופה שנבחרה"
@@ -1169,11 +1060,7 @@ export default function TradeJournal() {
 
       {tab === 'exchange' && (
         <div className="mt-2">
-          <ExchangeSettings
-            journalId={activeJournalId}
-            existingExternalIds={existingExternalIds}
-            onImportTrade={importExchangeTrade}
-          />
+          <ExchangeSettings journalId={activeJournalId} />
         </div>
       )}
 
@@ -1188,7 +1075,14 @@ export default function TradeJournal() {
 
       <ImportTrades isOpen={importOpen} onClose={() => setImportOpen(false)} onImport={addTrade} onImportBulk={addTradesBulk} />
 
-      <JournalSettingsModal isOpen={settingsOpen} onClose={() => setSettingsOpen(false)} onArchive={(name) => { setArchiveTargetName(name); setArchiveAnimating(true); }} />
+      <JournalSettingsModal
+        isOpen={settingsOpen}
+        onClose={() => setSettingsOpen(false)}
+        onArchive={(name) => { setArchiveTargetName(name); setArchiveAnimating(true); }}
+        onImport={() => setImportOpen(true)}
+        onExport={exportCSV}
+        canExport={trades.length > 0}
+      />
 
       <TradeShareModal
         isOpen={!!shareTarget}

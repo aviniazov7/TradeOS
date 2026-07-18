@@ -3,6 +3,8 @@ import { motion, AnimatePresence } from 'framer-motion';
 import { Newspaper, ExternalLink, Clock, Filter, CalendarDays, Volume2, Globe, BrainCircuit, RefreshCw, Bitcoin, CandlestickChart } from 'lucide-react';
 import { fetchNewsDigest, translateNews } from '../../services/newsService';
 import { hebrewEventTitle } from '../../utils/econCalendarTerms';
+import { safeHttpUrl } from '../../utils/urls';
+import SelectDropdown from '../shared/SelectDropdown';
 
 // ─── News Sources (per market) ───
 const FEED_SOURCES = {
@@ -47,22 +49,17 @@ const TOPICS = {
   ],
 };
 
-// Time-range chips, right-to-left order matches the reference design.
-const TIME_FILTERS = [
-  { key: 'today', label: 'היום' },
-  { key: 'yesterday', label: 'אתמול' },
-  { key: '48h', label: '48 שעות' },
-  { key: 'week', label: 'השבוע' },
-];
+// The news feed shows a fixed, rolling 24h window of the freshest items — the
+// user-selectable time-range chips (היום / אתמול / 48 שעות / השבוע) were removed
+// in favour of "always show the latest". "Today" is always a subset of the last
+// 24h (today's earliest item, at 00:00, is <24h old), so this single window
+// already covers "last 24h + today's items".
+const RECENT_WINDOW_MS = 24 * 60 * 60 * 1000;
+// Quiet-time fallback: if nothing landed in the last 24h, show the newest N
+// articles instead so the feed is never awkwardly empty.
+const FEED_FALLBACK_COUNT = 20;
 
 const RSS2JSON_BASE = 'https://api.rss2json.com/v1/api.json?rss_url=';
-
-// Feed items come from a third-party proxy (rss2json) and end up as <a href>
-// / <img src>. Only allow http(s) so a compromised feed can't smuggle a
-// javascript:/data: URL (React renders those hrefs — it only warns).
-function safeHttpUrl(url) {
-  return typeof url === 'string' && /^https?:\/\//i.test(url.trim()) ? url.trim() : null;
-}
 
 // Persist Hebrew translations (link -> {title,desc}) in localStorage so a
 // component remount (market/tab toggle, reload) does NOT re-hit the worker's
@@ -835,17 +832,12 @@ function BriefStoryBody({ story, impact, rank, count }) {
 }
 
 // ─── Feed filtering helpers ───
-function inTimeRange(dateStr, filterKey) {
+// A fixed 24h rolling window replaces the old user-selectable range. Items with
+// an unparseable date are excluded here (they can still surface via the
+// newest-N fallback, where they already sort last).
+function isRecent(dateStr) {
   const t = new Date(dateStr).getTime();
-  if (!Number.isFinite(t)) return filterKey === 'week';
-  const now = new Date();
-  if (filterKey === 'today') return sameDay(new Date(t), now);
-  if (filterKey === 'yesterday') {
-    const y = new Date(now); y.setDate(y.getDate() - 1);
-    return sameDay(new Date(t), y);
-  }
-  if (filterKey === '48h') return Date.now() - t <= 48 * 3600_000;
-  return Date.now() - t <= 7 * 24 * 3600_000; // week
+  return Number.isFinite(t) && Date.now() - t <= RECENT_WINDOW_MS;
 }
 
 function dayLabel(dateStr) {
@@ -863,7 +855,6 @@ function NewsFeed({ market }) {
   const [articles, setArticles] = useState([]);
   const [loading, setLoading] = useState(true);
   const [topic, setTopic] = useState('all');
-  const [timeRange, setTimeRange] = useState('week');
   const [error, setError] = useState(null);
   const [heMap, setHeMap] = useState(loadHeCache); // link -> { title, desc } (Hebrew)
 
@@ -964,11 +955,37 @@ function NewsFeed({ market }) {
   useEffect(() => { saveHeCache(heMap); }, [heMap]);
 
   const topics = TOPICS[market];
-  const activeTopic = topics.find((t) => t.key === topic) || topics[0];
-  const filtered = articles.filter((a) =>
-    inTimeRange(a.pubDate, timeRange)
-    && (!activeTopic.re || activeTopic.re.test(`${a.title} ${a.description}`))
-  );
+
+  // Base feed = the fixed 24h window of freshest news, newest-first (articles
+  // arrive pre-sorted). Quiet-time fallback: if the 24h window is empty, show
+  // the newest N so the feed is never awkwardly blank. "Today" is a subset of
+  // the 24h window, so no separate "today" pass is needed.
+  const baseFeed = useMemo(() => {
+    const recent = articles.filter((a) => isRecent(a.pubDate));
+    return recent.length > 0 ? recent : articles.slice(0, FEED_FALLBACK_COUNT);
+  }, [articles]);
+
+  // Category chips are derived from the feed itself: only categories with ≥1
+  // matching article in the current feed are shown (each with a live count),
+  // "הכל" always first. Hiding empty categories keeps the chip row professional.
+  const visibleTopics = useMemo(() => (
+    topics
+      .map((t) => ({
+        ...t,
+        count: t.re
+          ? baseFeed.filter((a) => t.re.test(`${a.title} ${a.description}`)).length
+          : baseFeed.length,
+      }))
+      .filter((t) => !t.re || t.count > 0)
+  ), [topics, baseFeed]);
+
+  // Resolve the active chip against the *visible* set, so a category that just
+  // dropped out of the feed gracefully falls back to "הכל" (always present,
+  // always first) instead of leaving the feed empty with no active chip.
+  const activeTopic = visibleTopics.find((t) => t.key === topic) || visibleTopics[0];
+  const filtered = activeTopic.re
+    ? baseFeed.filter((a) => activeTopic.re.test(`${a.title} ${a.description}`))
+    : baseFeed;
 
   // Group by calendar day, newest first (articles arrive pre-sorted).
   const groups = [];
@@ -984,40 +1001,30 @@ function NewsFeed({ market }) {
       {/* AI brief — what actually matters right now */}
       <AiBrief market={market} />
 
-      {/* Time-range chips */}
-      <div className="flex items-center justify-center gap-2 mb-3 overflow-x-auto pb-1">
-        {TIME_FILTERS.map((tf) => (
-          <button
-            key={tf.key}
-            onClick={() => setTimeRange(tf.key)}
-            className={`px-3.5 py-1.5 rounded-full text-xs font-semibold whitespace-nowrap transition-colors cursor-pointer ${
-              timeRange === tf.key
-                ? 'bg-accent-primary text-white'
-                : 'bg-bg-secondary border border-border-primary text-text-secondary hover:text-text-primary'
-            }`}
-          >
-            {tf.label}
-          </button>
-        ))}
-      </div>
-
-      {/* Topic chips */}
-      <div className="flex items-center justify-center gap-2 mb-6 overflow-x-auto pb-1">
-        <Filter className="w-3.5 h-3.5 text-text-muted flex-shrink-0" />
-        {topics.map((t) => (
-          <button
-            key={t.key}
-            onClick={() => setTopic(t.key)}
-            className={`px-3 py-1.5 rounded-lg text-xs font-medium whitespace-nowrap transition-colors cursor-pointer ${
-              topic === t.key
-                ? 'bg-accent-primary/15 text-accent-primary border border-accent-primary/40'
-                : 'bg-bg-secondary border border-border-primary text-text-secondary hover:text-text-primary'
-            }`}
-          >
-            {t.label}
-          </button>
-        ))}
-      </div>
+      {/* Category chips — dynamic: only categories actually present in the
+          current feed, "הכל" first, each with a live count. The whole row is
+          hidden when there's nothing to choose between (feed still loading, or
+          only "הכל" would show). */}
+      {/* Category filter — a professional dropdown (like the rest of the app)
+          instead of a scrolling chip row. Only categories present in the
+          current feed are listed, each with its live count. */}
+      {visibleTopics.length > 1 && (
+        <div className="flex items-center justify-center gap-2 mb-6">
+          <Filter className="w-3.5 h-3.5 text-text-muted flex-shrink-0" />
+          <div className="w-48">
+            <SelectDropdown
+              compact
+              value={topic}
+              onChange={(v) => setTopic(v || 'all')}
+              options={visibleTopics.map((t) => ({
+                value: t.key,
+                label: t.re ? `${t.label} · ${t.count}` : t.label,
+              }))}
+              placeholder="כל הקטגוריות"
+            />
+          </div>
+        </div>
+      )}
 
       {/* Loading State */}
       {loading && (
@@ -1115,7 +1122,9 @@ function NewsFeed({ market }) {
         </AnimatePresence>
       )}
 
-      {/* Filter miss \u2192 render nothing (explicit product decision). */}
+      {/* An empty feed now only means genuinely no data (covered by the
+          loading/error states above): dynamic chips never leave a category
+          empty, and the newest-N fallback keeps quiet times from going blank. */}
     </>
   );
 }

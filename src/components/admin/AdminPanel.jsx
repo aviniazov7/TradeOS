@@ -1,15 +1,16 @@
 import { useState, useEffect, useMemo } from 'react';
 import { Navigate } from 'react-router-dom';
-import { Users, UserPlus, ShieldCheck, CheckCircle2, Search, RefreshCw, Download, ChevronUp, ChevronDown, ChevronLeft, Mail, Calendar, Coins, TrendingUp, Percent, Sparkles, BookOpen, FlaskConical, Activity, FileText, Brain, Crown, Send, X, Ticket, Plus, Minus, Trash2, Copy, ScrollText, Share2, Link2, BarChart3, AlertTriangle, Clock, DollarSign, Hourglass, Image, Trophy, Loader2 } from 'lucide-react';
+import { Users, UserPlus, ShieldCheck, CheckCircle2, Search, RefreshCw, Download, ChevronUp, ChevronDown, ChevronLeft, Mail, Calendar, Coins, TrendingUp, Percent, Sparkles, BookOpen, FlaskConical, Activity, FileText, Brain, Crown, Send, X, Ticket, Plus, Minus, Trash2, Copy, ScrollText, Share2, Link2, BarChart3, AlertTriangle, Clock, DollarSign, Hourglass, Image, Trophy, Loader2, Bell, StickyNote, Flame, Ban, Smartphone } from 'lucide-react';
 import { motion } from 'framer-motion';
 import toast from 'react-hot-toast';
 import Card from '../shared/Card';
 import AnimatedValue from '../shared/AnimatedValue';
-import { ResponsiveContainer, AreaChart, Area, Tooltip, XAxis } from 'recharts';
+import { ResponsiveContainer, AreaChart, Area, Tooltip, XAxis, YAxis, BarChart, Bar } from 'recharts';
 import { useAuth } from '../../contexts/AuthContext';
-import { getAllUsers, getUserSubcollectionCount, adminGrantPremium, adminRevokePremium, addPayment, getAllPayments } from '../../services/firestoreService';
+import { getAllUsers, getUserSubcollectionCount, adminGrantPremium, adminRevokePremium, addPayment, getAllPayments, getAdminMeta, setAdminMeta } from '../../services/firestoreService';
+import { APP_VERSION } from '../../utils/constants';
 import { fetchUserAiUsage, fetchGlobalAiUsage, fetchAiStats, fetchSystemHealth } from '../../hooks/useAiUsage';
-import { adminSendNotification, adminSendBulkNotification, adminScheduleExpiryReminders, adminCancelExpiryReminders, adminRefreshPlanCache, adminListAuditEvents, adminSendTestDigest, adminGetTelegramInfo, adminSendPaymentEmail, adminSetupTelegramWebhook } from '../../services/pushService';
+import { adminSendNotification, adminSendBulkNotification, adminScheduleExpiryReminders, adminCancelExpiryReminders, adminRefreshPlanCache, adminListAuditEvents, adminSendTestDigest, adminSendPaymentEmail, adminDeleteUser, adminGetPushStatus, adminGetExchangesStatus, adminGetFirebaseUsage } from '../../services/pushService';
 import { adminListCoupons, adminCreateCoupon, adminDeleteCoupon, couponShareUrl } from '../../services/couponService';
 import LoadingSpinner from '../shared/LoadingSpinner';
 import SelectDropdown from '../shared/SelectDropdown';
@@ -85,6 +86,21 @@ function daysUntilExpiry(u) {
 
 const ILS = (n) => '₪' + Math.round(Number(n) || 0).toLocaleString('he-IL');
 
+// Revenue-chart buckets, derived from each payment's `days` field (addPayment
+// stores days: null for lifetime grants). Stack order = object order.
+const REVENUE_BUCKETS = {
+  monthly:  { label: 'חודשי',    color: 'var(--color-accent-primary)' },
+  yearly:   { label: 'שנתי',     color: '#fbbf24' },  // amber-400
+  lifetime: { label: 'לייפטיים', color: '#a78bfa' },  // violet-400
+  other:    { label: 'אחר',      color: '#64748b' },  // slate-500
+};
+
+// Display names for connected-exchange ids (the worker returns ids only —
+// mirrors the list in ExchangeSettings.jsx).
+const EXCHANGE_NAMES = {
+  bybit: 'Bybit', mexc: 'MEXC', okx: 'OKX', bitget: 'Bitget', binance: 'Binance', mt5: 'MetaTrader 5',
+};
+
 // Mirrors the worker's AI caps (FREE_LIMITS.aiPerDay / AI_PREMIUM_LIMITS.day /
 // AI_IMAGE_DAILY_LIMIT) — used only for the admin overview estimates.
 const AI_TEXT_LIMIT = { free: 20, premium: 200 };
@@ -98,6 +114,15 @@ const AI_COST_EST = {
   imagePerReq: (1600 * 0.11 + 500 * 0.34) / 1e6, // ≈ $0.00035
 };
 const estimateAiCost = (text, image) => text * AI_COST_EST.textPerReq + image * AI_COST_EST.imagePerReq;
+
+// Client mirror of the worker's global daily AI circuit-breaker
+// (AI_GLOBAL_DAILY_CEILING in worker/index.js). NOT exposed by any endpoint, so
+// this can drift if the worker's value changes — keep the two in sync manually.
+const AI_GLOBAL_DAILY_CEILING = 50000;
+
+// Funnel bar colours (cyan → violet → amber → green) — matches the StatMini
+// accent palette; the shrinking width, not the hue, conveys the drop-off.
+const FUNNEL_ACCENTS = ['var(--color-accent-primary)', '#8b5cf6', '#f59e0b', 'var(--color-profit)'];
 
 // Per-tile accent palette — gives the KPI strip colour variety + a soft corner
 // glow (21st-style) instead of five identical grey boxes.
@@ -202,6 +227,7 @@ export default function AdminPanel() {
   const [search, setSearch] = useState('');
   const [roleFilter, setRoleFilter] = useState('all');
   const [onboardFilter, setOnboardFilter] = useState('all');
+  const [activityFilter, setActivityFilter] = useState('all');
   const [sortKey, setSortKey] = useState('createdAt');
   const [sortDir, setSortDir] = useState('desc');
   const [selectedUser, setSelectedUser] = useState(null);
@@ -236,20 +262,12 @@ export default function AdminPanel() {
   // Daily AI stats (counts + real tokens) for the usage-over-time graph.
   const [aiStats, setAiStats] = useState(null);
   const [statsDays, setStatsDays] = useState(30);
-  // System health (cron heartbeat, bot, push/AI configured).
+  // System health (cron heartbeat, push/AI configured).
   const [health, setHealth] = useState(null);
-  const [webhookBusy, setWebhookBusy] = useState(false);
-  const reregisterWebhook = async () => {
-    setWebhookBusy(true);
-    try {
-      await adminSetupTelegramWebhook();
-      toast.success('ה-webhook של טלגרם נרשם מחדש');
-    } catch (e) {
-      toast.error(e.message || 'הרישום נכשל');
-    } finally {
-      setWebhookBusy(false);
-    }
-  };
+  // Firebase (Firestore) consumption vs the Spark free-tier limits —
+  // { monitoring, monitoringError?, counts, limits } or { error: true }.
+  const [fbUsage, setFbUsage] = useState(null);
+  const [fbLoading, setFbLoading] = useState(false);
 
   // After load() refreshes `users`, keep `selectedUser` pointing at the fresh
   // copy so the open detail modal reflects the new plan/role immediately
@@ -305,6 +323,28 @@ export default function AdminPanel() {
     return () => { cancelled = true; };
   }, [isAdmin, loadedAt]);
 
+  // Firebase consumption — best-effort: a failure shows an error line in the
+  // card, it must never break the panel. Refreshed with the global "רענן"
+  // (loadedAt) and by the card's own refresh button.
+  useEffect(() => {
+    if (!isAdmin) return;
+    let cancelled = false;
+    setFbLoading(true);
+    adminGetFirebaseUsage()
+      .then((d) => { if (!cancelled) setFbUsage(d); })
+      .catch(() => { if (!cancelled) setFbUsage((prev) => prev || { error: true }); })
+      .finally(() => { if (!cancelled) setFbLoading(false); });
+    return () => { cancelled = true; };
+  }, [isAdmin, loadedAt]);
+
+  const refreshFbUsage = () => {
+    setFbLoading(true);
+    adminGetFirebaseUsage()
+      .then((d) => setFbUsage(d))
+      .catch(() => setFbUsage((prev) => prev || { error: true }))
+      .finally(() => setFbLoading(false));
+  };
+
   // Active users (DAU/WAU/MAU) and a 30-day signups series — both derived from
   // the already-loaded users list, no extra queries.
   const growth = useMemo(() => {
@@ -334,6 +374,50 @@ export default function AdminPanel() {
       if (key in buckets) buckets[key]++;
     }
     return { dau, wau, mau, signups: series.map((s) => ({ date: s.date, count: buckets[s.key] })) };
+  }, [users, loadedAt]);
+
+  // Activity & retention (epic #223): calendar-day DAU (Israel time) + rolling
+  // WAU/MAU, an 8-week signup-cohort split by "active in the last 7 days", and
+  // a recency breakdown of the whole base. Cohorts use the SAME rolling week
+  // buckets as the "הצטרפות חדשה — 8 שבועות אחרונים" chart in the analytics
+  // modal so the two align visually. All derived from lastActive/createdAt —
+  // no extra queries; toDate/lastActiveMs already guard garbage values.
+  const retention = useMemo(() => {
+    const now = loadedAt || Date.now();
+    const dayKey = (d) => d.toLocaleDateString('en-CA', { timeZone: 'Asia/Jerusalem' });
+    const todayKey = dayKey(new Date(now));
+    let today = 0, week = 0, month = 0, dormant = 0, never = 0;
+    for (const u of users) {
+      const ms = lastActiveMs(u);
+      if (!ms) { never++; continue; }
+      if (dayKey(new Date(ms)) === todayKey) today++;
+      if (activeWithin(u, 7)) week++;
+      if (activeWithin(u, 30)) month++;
+      if (daysSinceActive(u) >= 30) dormant++; // mirrors the 'inactive30' filter
+    }
+    const fmt = (t) => { const d = new Date(t); return `${d.getDate()}/${d.getMonth() + 1}`; };
+    const cohorts = [];
+    for (let i = 7; i >= 0; i--) {
+      const end = now - i * 7 * DAY_MS;
+      const start = end - 7 * DAY_MS;
+      let joined = 0, retained = 0;
+      for (const u of users) {
+        const t = toDate(u.createdAt)?.getTime() || 0;
+        if (t > start && t <= end) {
+          joined++;
+          if (activeWithin(u, 7)) retained++;
+        }
+      }
+      cohorts.push({
+        label: i === 0 ? 'השבוע' : `-${i}`,
+        full: `${fmt(start + DAY_MS)}–${fmt(end)}`,
+        joined,
+        retained,
+        inactive: joined - retained,
+        pct: joined ? Math.round((retained / joined) * 100) : 0,
+      });
+    }
+    return { today, week, month, dormant, never, cohorts };
   }, [users, loadedAt]);
 
   const stats = useMemo(() => {
@@ -455,6 +539,83 @@ export default function AdminPanel() {
     };
   }, [users, payments]);
 
+  // Onboarding / activation funnel (epic #223). Every stage derives ONLY from
+  // the already-loaded `users` array — no per-user subcollection queries. Stages
+  // are CUMULATIVE (each ANDs the previous stage's predicate) so the counts
+  // strictly decline and the drop-off between bars is meaningful. Admins are
+  // excluded (staff, not funnel subjects).
+  //
+  // Why there's no "added first trade" stage: that needs a per-user trades count
+  // (getUserSubcollectionCount), which the panel loads lazily per row / detail
+  // modal only. Counting it for every user would be N Firestore count-queries
+  // against shared production data, so the funnel stops at activation/retention
+  // and each stage documents the exact field it derives from.
+  const funnel = useMemo(() => {
+    const customers = users.filter((u) => u.role !== 'admin');
+    const total = customers.length;
+    // Stage 1: everyone with a user document.
+    const registered = customers;
+    // Stage 2: finished (or skipped past) the onboarding wizard — both set
+    // onboardingCompleted:true in OnboardingWizard.complete().
+    const onboarded = registered.filter((u) => u.onboardingCompleted === true);
+    // Stage 3: "returned" — lastActive (stamped on app-open, throttled hourly)
+    // lands more than a day after createdAt, i.e. the user came back on a later
+    // day rather than only during the signup session. Proxy for activation.
+    const returned = onboarded.filter((u) => {
+      const c = toDate(u.createdAt)?.getTime() || 0;
+      const l = lastActiveMs(u);
+      return c > 0 && l > 0 && l - c > DAY_MS;
+    });
+    // Stage 4: still active in the last 7 days (retained).
+    const active7 = returned.filter((u) => activeWithin(u, 7));
+    const raw = [
+      { key: 'registered', label: 'נרשמו', count: registered.length, note: 'מסמך משתמש קיים · role ≠ admin' },
+      { key: 'onboarded', label: 'השלימו אונבורדינג', count: onboarded.length, note: 'onboardingCompleted = true' },
+      { key: 'returned', label: 'חזרו אחרי יום ההרשמה', count: returned.length, note: 'lastActive מאוחר ביום+ מ-createdAt' },
+      { key: 'active7', label: 'פעילים בשבוע האחרון', count: active7.length, note: 'lastActive בתוך 7 ימים' },
+    ];
+    const stages = raw.map((s, i) => ({
+      ...s,
+      pct: total ? Math.round((s.count / total) * 100) : 0,
+      // Share of the PREVIOUS stage lost at this step.
+      dropPct: i === 0 || raw[i - 1].count === 0 ? 0 : Math.round((1 - s.count / raw[i - 1].count) * 100),
+    }));
+    return { total, stages };
+  }, [users]);
+
+  // Revenue over time: monthly totals from the payments log (last 12 months),
+  // split by plan-duration bucket derived from each payment's `days` field.
+  const revenueSeries = useMemo(() => {
+    const now = new Date();
+    const months = [];
+    const index = {};
+    for (let i = 11; i >= 0; i--) {
+      const d = new Date(now.getFullYear(), now.getMonth() - i, 1);
+      index[`${d.getFullYear()}-${d.getMonth()}`] = months.length;
+      months.push({
+        label: d.toLocaleDateString('he-IL', { month: 'short' }),
+        full: d.toLocaleDateString('he-IL', { month: 'long', year: 'numeric' }),
+        monthly: 0, yearly: 0, lifetime: 0, other: 0, total: 0,
+      });
+    }
+    for (const p of payments) {
+      const d = toDate(p.createdAt);
+      if (!d) continue;
+      const at = index[`${d.getFullYear()}-${d.getMonth()}`];
+      if (at === undefined) continue; // older than 12 months
+      const amt = Number(p.amount) || 0;
+      if (!amt) continue;
+      const days = Number(p.days);
+      const bucket = p.days == null ? 'lifetime'
+        : days <= 31 ? 'monthly'
+        : days >= 365 ? 'yearly'
+        : 'other';
+      months[at][bucket] += amt;
+      months[at].total += amt;
+    }
+    return months;
+  }, [payments]);
+
   const filtered = useMemo(() => {
     const q = search.trim().toLowerCase();
     const list = users.filter((u) => {
@@ -466,6 +627,10 @@ export default function AdminPanel() {
       if (roleFilter === 'free' && isUserPremium(u)) return false;
       if (onboardFilter === 'yes' && !u.onboardingCompleted) return false;
       if (onboardFilter === 'no' && u.onboardingCompleted) return false;
+      if (activityFilter === 'active7' && !activeWithin(u, 7)) return false;
+      if (activityFilter === 'active30' && !activeWithin(u, 30)) return false;
+      if (activityFilter === 'inactive30' && !(lastActiveMs(u) > 0 && daysSinceActive(u) >= 30)) return false;
+      if (activityFilter === 'never' && lastActiveMs(u) > 0) return false;
       return true;
     });
     const dir = sortDir === 'asc' ? 1 : -1;
@@ -476,7 +641,7 @@ export default function AdminPanel() {
       if (va > vb) return 1 * dir;
       return 0;
     });
-  }, [users, search, roleFilter, onboardFilter, sortKey, sortDir]);
+  }, [users, search, roleFilter, onboardFilter, activityFilter, sortKey, sortDir]);
 
   const toggleSort = (key) => {
     if (sortKey === key) {
@@ -577,7 +742,7 @@ export default function AdminPanel() {
           title="הרשמות (30 ימים)"
           action={<span className="text-[11px] text-text-muted">סה״כ {growth.signups.reduce((a, s) => a + s.count, 0)}</span>}
         >
-          <div className="h-28 -mx-1">
+          <div className="h-20 -mx-1">
             <ResponsiveContainer width="100%" height="100%">
               <AreaChart data={growth.signups.map((s) => ({ d: `${s.date.getDate()}/${s.date.getMonth() + 1}`, count: s.count }))} margin={{ top: 4, right: 6, bottom: 0, left: 6 }}>
                 <defs>
@@ -600,20 +765,110 @@ export default function AdminPanel() {
         </SectionCard>
       </div>
 
+      {/* Activity & retention — DAU/WAU/MAU by lastActive, weekly signup
+          cohorts split by recent activity, and a recency breakdown (#223). */}
+      <SectionCard
+        icon={<BarChart3 className="w-4 h-4" />}
+        title="פעילות ורטנשן"
+        action={<span className="text-[11px] text-text-muted">לפי lastActive</span>}
+      >
+        <div className="grid grid-cols-3 gap-2 mb-3">
+          <StatMini accent="cyan" value={retention.today} label="היום" />
+          <StatMini accent="violet" value={retention.week} label="7 ימים" />
+          <StatMini accent="green" value={retention.month} label="30 יום" />
+        </div>
+        {users.length === 0 ? (
+          <div className="text-sm text-text-muted text-center py-6 border border-dashed border-border-primary rounded-xl">
+            אין עדיין משתמשים להצגת רטנשן
+          </div>
+        ) : (
+          <>
+            <div className="text-[11px] text-text-muted mb-2">הצטרפות לפי שבוע — 8 שבועות אחרונים, לפי פעילות בשבוע האחרון</div>
+            <div className="h-36 -mx-1">
+              <ResponsiveContainer width="100%" height="100%">
+                <BarChart data={retention.cohorts} margin={{ top: 4, right: 6, bottom: 0, left: 6 }}>
+                  <XAxis dataKey="label" tick={{ fill: 'var(--color-text-muted)', fontSize: 9 }} axisLine={false} tickLine={false} />
+                  <YAxis hide />
+                  <Tooltip
+                    contentStyle={{ background: 'var(--color-bg-overlay)', border: '1px solid var(--color-border-primary)', borderRadius: '8px', fontSize: '12px', color: 'var(--color-text-primary)' }}
+                    labelStyle={{ color: 'var(--color-text-secondary)' }}
+                    cursor={{ fill: 'var(--color-bg-tertiary)' }}
+                    formatter={(v, name) => [v, name === 'retained' ? 'פעילים בשבוע האחרון' : 'לא פעילים']}
+                    labelFormatter={(label, payload) => {
+                      const p = payload?.[0]?.payload;
+                      return p ? `${p.full} · הצטרפו ${p.joined} · רטנשן ${p.pct}%` : label;
+                    }}
+                  />
+                  <Bar dataKey="retained" stackId="coh" fill="var(--color-accent-primary)" animationDuration={700} />
+                  <Bar dataKey="inactive" stackId="coh" fill="#64748b" animationDuration={700} />
+                </BarChart>
+              </ResponsiveContainer>
+            </div>
+            <div className="mt-2 flex items-center gap-3 flex-wrap text-[10px] text-text-muted">
+              <span className="inline-flex items-center gap-1">
+                <span className="w-2 h-2 rounded-full shrink-0" style={{ background: 'var(--color-accent-primary)' }} /> פעילים בשבוע האחרון
+              </span>
+              <span className="inline-flex items-center gap-1">
+                <span className="w-2 h-2 rounded-full shrink-0" style={{ background: '#64748b' }} /> לא פעילים
+              </span>
+            </div>
+          </>
+        )}
+        <div className="mt-3 text-[11px] text-text-muted">
+          פעיל היום: {retention.today} · השבוע: {retention.week} · החודש: {retention.month} · רדומים 30+ יום: {retention.dormant} · לא נכנסו מעולם: {retention.never}
+        </div>
+      </SectionCard>
+
+      {/* Onboarding / activation funnel (#223) — cumulative stages derived
+          from the users list only. See the `funnel` useMemo for each stage's
+          source field. Honest proxy: no per-user trade counts are loaded. */}
+      <SectionCard
+        icon={<Users className="w-4 h-4" />}
+        title="משפך אונבורדינג"
+        action={<span className="text-[11px] text-text-muted">מתוך {funnel.total} משתמשים</span>}
+      >
+        {funnel.total === 0 ? (
+          <div className="text-sm text-text-muted text-center py-6 border border-dashed border-border-primary rounded-xl">
+            אין עדיין משתמשים להצגת המשפך
+          </div>
+        ) : (
+          <div className="space-y-2.5">
+            {funnel.stages.map((s, i) => {
+              // Keep a sliver visible for non-zero stages that round to a tiny %.
+              const width = s.count > 0 ? Math.max(s.pct, 4) : 0;
+              const color = FUNNEL_ACCENTS[i] || FUNNEL_ACCENTS[FUNNEL_ACCENTS.length - 1];
+              return (
+                <div key={s.key}>
+                  <div className="flex items-center justify-between gap-2 text-[11px] mb-1">
+                    <span className="text-text-secondary truncate">{s.label}</span>
+                    <span className="text-text-muted shrink-0" dir="ltr">
+                      <span className="font-semibold text-text-primary">{s.count.toLocaleString()}</span>
+                      {' · '}{s.pct}%
+                      {i > 0 && s.dropPct > 0 && <span className="text-loss">{' · '}−{s.dropPct}%</span>}
+                    </span>
+                  </div>
+                  <div className="h-2.5 rounded-full bg-bg-tertiary overflow-hidden">
+                    <div
+                      className="h-full rounded-full transition-all duration-500"
+                      style={{ width: `${width}%`, background: color }}
+                    />
+                  </div>
+                  <div className="text-[10px] text-text-muted mt-1 truncate">{s.note}</div>
+                </div>
+              );
+            })}
+          </div>
+        )}
+        <div className="mt-3 text-[10px] text-text-muted leading-relaxed">
+          כל שלב מותנה בקודמו (מצטבר), האחוזים מתוך סך הנרשמים. שלב "עסקה ראשונה" דורש
+          ספירת עסקאות פר-משתמש שאינה נטענת ברמת הפאנל, ולכן אינו מוצג.
+        </div>
+      </SectionCard>
+
       {/* System health — admin-only, exposes only status (never secrets). */}
       <SectionCard
         icon={<ShieldCheck className="w-4 h-4" />}
         title="בריאות מערכת"
-        action={(
-          <button
-            onClick={reregisterWebhook}
-            disabled={webhookBusy}
-            className="flex items-center gap-1.5 text-[11px] px-2.5 py-1.5 rounded-lg border border-border-primary text-text-secondary hover:text-accent-primary hover:border-accent-primary/40 transition-colors cursor-pointer disabled:opacity-50 shrink-0"
-            title="רשום מחדש את ה-webhook של הבוט מול הכתובת הנוכחית של ה-Worker"
-          >
-            <RefreshCw className={`w-3 h-3 ${webhookBusy ? 'animate-spin' : ''}`} /> רענן Webhook טלגרם
-          </button>
-        )}
       >
         {!health ? (
           <div className="text-xs text-text-muted">…</div>
@@ -624,7 +879,6 @@ export default function AdminPanel() {
               const cronOk = cronAgeH != null && cronAgeH < 26;
               const items = [
                 { label: 'Cron', ok: cronOk, note: health.cronLast ? relativeActive(health.cronLast) : 'לא רץ' },
-                { label: 'בוט טלגרם', ok: !!health.bot?.ok, note: health.bot?.ok ? `@${health.bot.username}` : (health.bot?.configured ? 'לא מגיב' : 'לא מוגדר') },
                 { label: 'התראות Push', ok: !!health.pushConfigured, note: health.pushConfigured ? 'מוגדר' : 'חסר VAPID' },
                 { label: 'AI', ok: !!health.aiConfigured, note: health.aiConfigured ? 'מחובר' : 'לא מוגדר' },
               ];
@@ -644,6 +898,56 @@ export default function AdminPanel() {
               ));
             })()}
           </div>
+        )}
+      </SectionCard>
+
+      {/* Firebase (Firestore) consumption vs the Spark free-tier daily limits.
+          Numbers only — the worker never returns documents or tokens. */}
+      <SectionCard
+        icon={<Flame className="w-4 h-4" />}
+        title="צריכת Firebase"
+        action={
+          <button onClick={refreshFbUsage} disabled={fbLoading} className="px-3 py-1.5 rounded-lg border border-border-primary text-xs text-text-secondary hover:text-text-primary cursor-pointer shrink-0">
+            <RefreshCw className={`w-3.5 h-3.5 inline ${fbLoading ? 'animate-spin' : ''}`} /> רענן
+          </button>
+        }
+      >
+        {!fbUsage ? (
+          <div className="text-xs text-text-muted">…</div>
+        ) : fbUsage.error ? (
+          <div className="text-xs text-loss">טעינת הנתונים נכשלה — נסה לרענן.</div>
+        ) : (
+          <>
+            {(() => {
+              const docs = [
+                { label: 'משתמשים', accent: 'cyan', v: fbUsage.counts?.users },
+                { label: 'טריידים', accent: 'violet', v: fbUsage.counts?.trades },
+                { label: 'תשלומים', accent: 'green', v: fbUsage.counts?.payments },
+                { label: 'לידרבורד', accent: 'amber', v: fbUsage.counts?.leaderboard },
+              ].filter((d) => d.v != null);
+              return docs.length ? (
+                <div>
+                  <div className="text-[11px] text-text-muted mb-1.5">מסמכים ב-Firestore</div>
+                  <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
+                    {docs.map((d) => (
+                      <StatMini key={d.label} accent={d.accent} value={d.v.toLocaleString()} label={d.label} />
+                    ))}
+                  </div>
+                </div>
+              ) : (
+                <div className="text-xs text-text-muted">אין נתונים להצגה.</div>
+              );
+            })()}
+            {/* The exact daily quota (reads/writes/storage vs the free-tier
+                limit) lives in the Firebase console — the authoritative source. */}
+            <a
+              href="https://console.firebase.google.com/project/tradeos-91a58/usage"
+              target="_blank" rel="noopener noreferrer"
+              className="mt-3 flex items-center justify-center gap-1.5 px-3 py-2 rounded-lg border border-border-primary text-xs text-text-secondary hover:text-text-primary hover:border-accent-primary/40 transition-colors"
+            >
+              <Flame className="w-3.5 h-3.5" /> צפה בצריכה ובמכסות המלאות במסוף Firebase
+            </a>
+          </>
         )}
       </SectionCard>
 
@@ -733,6 +1037,12 @@ export default function AdminPanel() {
           const totTokOut = series.reduce((a, s) => a + s.tokOut, 0);
           const totReq = series.reduce((a, s) => a + s.text + s.image, 0);
           const realCost = (totTokIn * 0.59 + totTokOut * 0.79) / 1e6;
+          // Today's global request count vs the worker's circuit-breaker
+          // ceiling (moved here from the old separate cost-detail card).
+          const todayCount = globalAi ? (globalAi.totalText || 0) + (globalAi.totalImage || 0) : null;
+          const ceilPct = todayCount != null ? Math.min(100, (todayCount / AI_GLOBAL_DAILY_CEILING) * 100) : null;
+          const ceilColor = ceilPct == null ? 'var(--color-accent-primary)'
+            : ceilPct > 85 ? 'var(--color-loss)' : ceilPct >= 60 ? '#f59e0b' : 'var(--color-accent-primary)';
           const chartData = series.map((s) => {
             const d = new Date(s.date);
             return { d: `${d.getDate()}/${d.getMonth() + 1}`, total: s.text + s.image };
@@ -764,9 +1074,74 @@ export default function AdminPanel() {
                 <StatMini accent="violet" value={`${((totTokIn + totTokOut) / 1000).toFixed(0)}K`} label="טוקנים בפועל" />
                 <StatMini accent="green" value={`~$${realCost.toFixed(2)}`} label="עלות אילו בתשלום" />
               </div>
+              {/* System-load ceiling: today's global requests vs the worker
+                  circuit-breaker (the one genuinely-unique widget kept from the
+                  removed cost-detail card). */}
+              {ceilPct != null && (
+                <div className="mt-3">
+                  <div className="flex items-center justify-between gap-2 text-[11px] mb-1">
+                    <span className="text-text-muted flex items-center gap-1"><AlertTriangle className="w-3.5 h-3.5" /> עומס גלובלי היום מול מגבלת המערכת</span>
+                    <span className="text-text-secondary" dir="ltr">
+                      <span className="font-semibold text-text-primary">{todayCount.toLocaleString()}</span>{' / '}{AI_GLOBAL_DAILY_CEILING.toLocaleString()}
+                      <span style={{ color: ceilColor }}>{' \u00b7 '}{ceilPct > 0 && ceilPct < 10 ? ceilPct.toFixed(1) : Math.round(ceilPct)}%</span>
+                    </span>
+                  </div>
+                  <div className="h-1.5 rounded-full bg-bg-tertiary overflow-hidden">
+                    <div className="h-full rounded-full transition-all duration-500" style={{ width: `${todayCount > 0 ? Math.max(ceilPct, 1.5) : 0}%`, background: ceilColor }} />
+                  </div>
+                  {ceilPct >= 85 && <div className="mt-1 text-[10px] text-loss">חריגה מתקרבת — קרוב למגבלת ה-503 הגלובלית</div>}
+                </div>
+              )}
             </>
           );
         })()}
+      </SectionCard>
+
+      {/* Revenue over time — monthly stacked bars from the payments log,
+          split by plan duration, headed by the live MRR + total revenue. */}
+      <SectionCard
+        icon={<DollarSign className="w-4 h-4" />}
+        title="MRR והכנסות לאורך זמן"
+        action={<span className="text-[11px] text-text-muted">12 חודשים אחרונים</span>}
+      >
+        <div className="grid grid-cols-2 gap-2 mb-3">
+          <StatMini accent="green" value={ILS(analytics.mrr)} label="MRR (חודשי)" />
+          <StatMini accent="amber" value={ILS(analytics.totalRevenue)} label="הכנסה כוללת" />
+        </div>
+        {payments.length === 0 ? (
+          <div className="text-sm text-text-muted text-center py-6 border border-dashed border-border-primary rounded-xl">
+            אין עדיין תשלומים
+          </div>
+        ) : (
+          <>
+            <div className="h-24 -mx-1">
+              <ResponsiveContainer width="100%" height="100%">
+                <BarChart data={revenueSeries} margin={{ top: 4, right: 6, bottom: 0, left: 6 }}>
+                  <XAxis dataKey="label" tick={{ fill: 'var(--color-text-muted)', fontSize: 9 }} axisLine={false} tickLine={false} />
+                  <YAxis hide />
+                  <Tooltip
+                    contentStyle={{ background: 'var(--color-bg-overlay)', border: '1px solid var(--color-border-primary)', borderRadius: '8px', fontSize: '12px', color: 'var(--color-text-primary)' }}
+                    labelStyle={{ color: 'var(--color-text-secondary)' }}
+                    cursor={{ fill: 'var(--color-bg-tertiary)' }}
+                    formatter={(v, name) => [ILS(v), REVENUE_BUCKETS[name]?.label || name]}
+                    labelFormatter={(label, payload) => payload?.[0]?.payload?.full || label}
+                  />
+                  {Object.entries(REVENUE_BUCKETS).map(([key, b]) => (
+                    <Bar key={key} dataKey={key} stackId="rev" fill={b.color} animationDuration={700} />
+                  ))}
+                </BarChart>
+              </ResponsiveContainer>
+            </div>
+            <div className="mt-2 flex items-center gap-3 flex-wrap text-[10px] text-text-muted">
+              {Object.entries(REVENUE_BUCKETS).map(([key, b]) => (
+                <span key={key} className="inline-flex items-center gap-1">
+                  <span className="w-2 h-2 rounded-full shrink-0" style={{ background: b.color }} />
+                  {b.label}
+                </span>
+              ))}
+            </div>
+          </>
+        )}
       </SectionCard>
 
       {/* Quota alerts — users at/over 80% of their daily AI quota today. */}
@@ -919,7 +1294,21 @@ export default function AdminPanel() {
               allowClear
             />
           </div>
-          <div className="md:w-52">
+          <div className="md:w-40">
+            <SelectDropdown
+              value={activityFilter === 'all' ? '' : activityFilter}
+              onChange={(v) => setActivityFilter(v || 'all')}
+              options={[
+                { value: 'active7', label: 'פעיל 7 ימים' },
+                { value: 'active30', label: 'פעיל 30 יום' },
+                { value: 'inactive30', label: 'לא פעיל 30+ יום' },
+                { value: 'never', label: 'לא היה פעיל מעולם' },
+              ]}
+              placeholder="כל רמות הפעילות"
+              allowClear
+            />
+          </div>
+          <div className="col-span-2 md:col-span-1 md:w-48">
             <SelectDropdown
               value={onboardFilter === 'all' ? '' : onboardFilter}
               onChange={(v) => setOnboardFilter(v || 'all')}
@@ -1304,23 +1693,89 @@ function UserDetailModal({ user, onClose, onUserChanged }) {
   const [notifyTitle, setNotifyTitle] = useState('');
   const [notifyBody, setNotifyBody] = useState('');
   const [notifying, setNotifying] = useState(false);
+  const [confirmDelete, setConfirmDelete] = useState(false);
+  const [deleting, setDeleting] = useState(false);
+  // Connection status: Web Push devices + linked exchanges (ids only).
+  const [connections, setConnections] = useState(null);
+  // Private admin note (adminNotes/{uid} — admins only, invisible to the user).
+  const [noteText, setNoteText] = useState('');
+  const [noteLoading, setNoteLoading] = useState(true);
+  const [noteSaving, setNoteSaving] = useState(false);
+
+  // Keyed by uid (not the object) so a background users-refresh of the SAME
+  // user doesn't refetch and clobber an admin note being typed.
+  const uid = user?.id;
+
+  // A leftover confirm from the previous user must not arm the delete button
+  // for the next profile opened.
+  useEffect(() => { setConfirmDelete(false); }, [user]);
+
+  // Push devices + connected exchanges via the worker — both endpoints are
+  // admin-gated and return counts/ids only, never subscriptions or API keys.
+  useEffect(() => {
+    if (!uid) { setConnections(null); return; }
+    let cancelled = false;
+    setConnections(null);
+    Promise.all([
+      adminGetPushStatus(uid).catch(() => null),
+      adminGetExchangesStatus(uid).catch(() => null),
+    ]).then(([push, exch]) => {
+      if (cancelled) return;
+      setConnections({
+        devices: push ? push.devices : null,
+        exchanges: exch ? exch.exchanges : null,
+      });
+    });
+    return () => { cancelled = true; };
+  }, [uid]);
+
+  useEffect(() => {
+    if (!uid) { setNoteText(''); return; }
+    let cancelled = false;
+    setNoteLoading(true);
+    setNoteText('');
+    getAdminMeta(uid)
+      .then(({ text }) => { if (!cancelled) setNoteText(text); })
+      .catch(() => { /* rules not deployed / offline — leave empty */ })
+      .finally(() => { if (!cancelled) setNoteLoading(false); });
+    return () => { cancelled = true; };
+  }, [uid]);
+
+  const saveNote = async () => {
+    if (!uid) return;
+    setNoteSaving(true);
+    try {
+      await setAdminMeta(uid, { text: noteText.trim() }, adminUser?.uid);
+      toast.success('ההערה נשמרה');
+    } catch (e) {
+      toast.error(e?.code === 'permission-denied'
+        ? 'אין הרשאה — ודא שכללי ה-Firestore נפרסו'
+        : 'שמירת ההערה נכשלה');
+    } finally {
+      setNoteSaving(false);
+    }
+  };
+
+  const doDelete = async () => {
+    if (!user) return;
+    setDeleting(true);
+    try {
+      await adminDeleteUser(user.id);
+      toast.success(`המשתמש ${user.email || user.id} נמחק לצמיתות`);
+      onClose();
+      onUserChanged?.();
+    } catch (e) {
+      toast.error(e.message || 'מחיקת המשתמש נכשלה');
+    } finally {
+      setDeleting(false);
+      setConfirmDelete(false);
+    }
+  };
 
   useEffect(() => {
     if (!user) { setAiUsage(null); return; }
     let cancelled = false;
     fetchUserAiUsage(user.id).then((u) => { if (!cancelled) setAiUsage(u); });
-    return () => { cancelled = true; };
-  }, [user]);
-
-  // Telegram bot link + usage — served by the worker from KV (the Firestore
-  // settings subcollection is owner-only by design, so it can't be read here).
-  const [tgInfo, setTgInfo] = useState(null);
-  useEffect(() => {
-    if (!user) { setTgInfo(null); return; }
-    let cancelled = false;
-    adminGetTelegramInfo(user.id)
-      .then((info) => { if (!cancelled) setTgInfo(info); })
-      .catch(() => { if (!cancelled) setTgInfo({ error: true }); });
     return () => { cancelled = true; };
   }, [user]);
 
@@ -1651,7 +2106,16 @@ function UserDetailModal({ user, onClose, onUserChanged }) {
               <div className="bg-bg-tertiary/40 border border-border-primary rounded-xl px-4 py-1 divide-y divide-border-primary/40">
                 <DetailRow icon={<Mail className="w-4 h-4" />} label="אימייל" value={user.email} />
                 <DetailRow icon={<Calendar className="w-4 h-4" />} label="הצטרף" value={formatDate(user.createdAt)} />
-                <DetailRow icon={<Clock className="w-4 h-4" />} label="פעילות אחרונה" value={relativeActive(user.lastActive)} />
+                <DetailRow icon={<Clock className="w-4 h-4" />} label="פעילות אחרונה"
+                  value={lastActiveMs(user) ? `${relativeActive(user.lastActive)} · ${formatDate(user.lastActive)}` : 'מעולם לא'} />
+                {/* App version the user's client last reported (via touchLastActive).
+                    Amber when it lags the current release — spots users stuck on old builds. */}
+                <DetailRow icon={<Smartphone className="w-4 h-4" />} label="גרסת אפליקציה"
+                  value={user.appVersion
+                    ? <span className={user.appVersion !== APP_VERSION ? 'text-amber-400' : ''}>
+                        {user.appVersion}{user.appVersion !== APP_VERSION ? ` · ישנה (נוכחית ${APP_VERSION})` : ' · עדכנית'}
+                      </span>
+                    : 'לא ידוע'} />
                 <DetailRow icon={<Coins className="w-4 h-4" />} label="מטבע בסיס" value={settings.baseCurrency} />
                 <DetailRow icon={<TrendingUp className="w-4 h-4" />} label="מינוף ברירת מחדל" value={settings.defaultLeverage ? `${settings.defaultLeverage}x` : null} />
                 <DetailRow icon={<Percent className="w-4 h-4" />} label="סיכון ברירת מחדל" value={settings.defaultRiskPercent != null ? `${settings.defaultRiskPercent}%` : null} />
@@ -1698,47 +2162,6 @@ function UserDetailModal({ user, onClose, onUserChanged }) {
               )}
             </div>
 
-            {/* Telegram bot — link status + usage (from worker KV) */}
-            <div>
-              <div className="text-[11px] text-text-muted mb-2 flex items-center gap-1.5">
-                <Send className="w-3.5 h-3.5" /> בוט טלגרם
-              </div>
-              {tgInfo === null ? (
-                <div className="text-xs text-text-muted">…</div>
-              ) : tgInfo.error ? (
-                <div className="text-xs text-loss">שגיאה בטעינת נתוני טלגרם</div>
-              ) : !tgInfo.connected ? (
-                <div className="bg-bg-tertiary/40 border border-border-primary rounded-lg px-3 py-2.5 text-xs text-text-muted flex items-center gap-2">
-                  <span className="w-2 h-2 rounded-full bg-text-muted/50 shrink-0" />
-                  לא חיבר את הבוט
-                </div>
-              ) : (
-                <div className="bg-bg-tertiary/40 border border-border-primary rounded-lg px-3 py-2.5 space-y-1.5 text-xs">
-                  <div className="flex items-center justify-between">
-                    <span className="text-text-secondary flex items-center gap-1.5">
-                      <span className="w-2 h-2 rounded-full bg-profit shrink-0" /> מחובר
-                    </span>
-                    {tgInfo.username && <span className="text-text-primary font-medium">@{tgInfo.username}</span>}
-                  </div>
-                  <div className="flex items-center justify-between">
-                    <span className="text-text-secondary">סה״כ שימושים</span>
-                    <span className="text-text-primary font-semibold">{tgInfo.usage?.total ?? 0}</span>
-                  </div>
-                  <div className="flex items-center justify-between">
-                    <span className="text-text-secondary">שימוש אחרון</span>
-                    <span className="text-text-primary">{tgInfo.usage?.lastUsed ? relativeActive(tgInfo.usage.lastUsed) : '—'}</span>
-                  </div>
-                  <div className="flex items-center justify-between">
-                    <span className="text-text-secondary">פקודה אחרונה</span>
-                    <span className="text-text-primary font-mono">{tgInfo.usage?.lastCmd || '—'}</span>
-                  </div>
-                  <div className="flex items-center justify-between">
-                    <span className="text-text-secondary">התראות מחיר / מטבעות במעקב</span>
-                    <span className="text-text-primary">{tgInfo.alertsCount ?? 0} / {tgInfo.watchlistCount ?? '—'}</span>
-                  </div>
-                </div>
-              )}
-            </div>
           </div>
 
           {/* Right column: activity counts */}
@@ -1769,6 +2192,68 @@ function UserDetailModal({ user, onClose, onUserChanged }) {
                 <div className="mt-2 text-[11px] text-loss">{countsError}</div>
               )}
             </div>
+
+            {/* Connections — push devices + linked exchanges (status only;
+                subscriptions and API keys never leave the worker's KV). */}
+            <div>
+              <div className="text-[11px] text-text-muted mb-2 flex items-center gap-1.5">
+                <Link2 className="w-3.5 h-3.5" /> חיבורים
+              </div>
+              {connections === null ? (
+                <div className="text-xs text-text-muted">…</div>
+              ) : (
+                <div className="flex items-center gap-1.5 flex-wrap">
+                  {connections.devices == null ? (
+                    <span className="inline-flex items-center gap-1 text-[11px] px-2 py-0.5 rounded-full bg-bg-tertiary text-text-muted border border-border-primary">
+                      <Bell className="w-3 h-3" /> Push: —
+                    </span>
+                  ) : connections.devices > 0 ? (
+                    <span className="inline-flex items-center gap-1 text-[11px] px-2 py-0.5 rounded-full bg-accent-primary/10 text-accent-primary border border-accent-primary/30 font-semibold">
+                      <Bell className="w-3 h-3" /> Push: {connections.devices === 1 ? 'מכשיר אחד' : `${connections.devices} מכשירים`}
+                    </span>
+                  ) : (
+                    <span className="inline-flex items-center gap-1 text-[11px] px-2 py-0.5 rounded-full bg-bg-tertiary text-text-muted border border-border-primary">
+                      <Bell className="w-3 h-3" /> Push: לא רשום
+                    </span>
+                  )}
+                  {(connections.exchanges || []).map((ex) => (
+                    <span key={ex} className="inline-flex items-center gap-1 text-[11px] px-2 py-0.5 rounded-full bg-profit/10 text-profit border border-profit/30 font-semibold" dir="ltr">
+                      <Link2 className="w-3 h-3" /> {EXCHANGE_NAMES[ex] || ex}
+                    </span>
+                  ))}
+                  {connections.exchanges && connections.exchanges.length === 0 && (
+                    <span className="text-[11px] px-2 py-0.5 rounded-full bg-bg-tertiary text-text-muted border border-border-primary">
+                      אין בורסות מחוברות
+                    </span>
+                  )}
+                </div>
+              )}
+            </div>
+
+            {/* Private admin note — stored at adminNotes/{uid}, never visible
+                to the user (admin-only read/write per firestore.rules). */}
+            <div>
+              <div className="text-[11px] text-text-muted mb-2 flex items-center gap-1.5">
+                <StickyNote className="w-3.5 h-3.5" /> הערת אדמין (פרטית)
+              </div>
+              <textarea
+                value={noteText}
+                onChange={(e) => setNoteText(e.target.value)}
+                placeholder={noteLoading ? 'טוען…' : 'הערה פנימית על הלקוח — גלויה לאדמינים בלבד'}
+                disabled={noteLoading}
+                maxLength={2000}
+                rows={3}
+                className="w-full bg-bg-tertiary/40 border border-border-primary rounded-lg px-3 py-2 text-sm text-text-primary outline-none focus:border-accent-primary resize-none disabled:opacity-50"
+              />
+              <button
+                onClick={saveNote}
+                disabled={noteLoading || noteSaving}
+                className="mt-1.5 w-full flex items-center justify-center gap-1.5 px-3 py-2 rounded-lg border border-border-primary text-sm text-text-secondary hover:text-text-primary hover:border-accent-primary/40 transition-colors cursor-pointer disabled:opacity-50"
+              >
+                {noteSaving && <Loader2 className="w-4 h-4 animate-spin" />}
+                {noteSaving ? 'שומר…' : 'שמור הערה'}
+              </button>
+            </div>
           </div>
         </div>
 
@@ -1777,6 +2262,45 @@ function UserDetailModal({ user, onClose, onUserChanged }) {
             and synthetic events (registration, last active) into one
             chronological feed, newest first. */}
         <CustomerTimeline user={user} />
+
+        {/* Danger zone — permanent deletion runs through the worker's service
+            account (admins are read-only on other users' data client-side, and
+            only the service account can delete somebody else's Auth user). */}
+        {user.role !== 'admin' && (
+          confirmDelete ? (
+            <div className="bg-loss/5 border border-loss/30 rounded-xl p-3 space-y-2">
+              <p className="text-xs text-loss leading-relaxed">
+                פעולה בלתי הפיכה: כל הנתונים, רשומת הלידרבורד וחשבון ההתחברות של{' '}
+                <span className="font-bold">{user.email || user.displayName || user.id}</span> יימחקו לצמיתות.
+              </p>
+              <div className="flex gap-2">
+                <button
+                  onClick={doDelete}
+                  disabled={deleting}
+                  className="flex-1 flex items-center justify-center gap-1.5 px-3 py-2 rounded-lg bg-loss text-white text-sm font-bold hover:bg-loss/80 transition-colors cursor-pointer disabled:opacity-50"
+                >
+                  {deleting ? <RefreshCw className="w-4 h-4 animate-spin" /> : <Trash2 className="w-4 h-4" />}
+                  {deleting ? 'מוחק…' : 'אשר מחיקה סופית'}
+                </button>
+                <button
+                  onClick={() => setConfirmDelete(false)}
+                  disabled={deleting}
+                  className="px-4 py-2 rounded-lg border border-border-primary text-sm text-text-secondary hover:text-text-primary transition-colors cursor-pointer disabled:opacity-50"
+                >
+                  ביטול
+                </button>
+              </div>
+            </div>
+          ) : (
+            <button
+              onClick={() => setConfirmDelete(true)}
+              className="w-full flex items-center justify-center gap-1.5 px-3 py-2 rounded-lg border border-loss/30 text-sm text-loss/80 hover:text-loss hover:bg-loss/5 transition-colors cursor-pointer"
+            >
+              <Trash2 className="w-4 h-4" /> מחק משתמש לצמיתות
+            </button>
+          )
+        )}
+
 
       </div>
     </Modal>
@@ -1955,6 +2479,7 @@ const KIND_META = {
   coupon_create: { label: 'יצירת קופון', color: 'text-amber-400', Icon: Plus },
   coupon_delete: { label: 'מחיקת קופון', color: 'text-loss', Icon: Trash2 },
   coupon_redeem: { label: 'מימוש קופון', color: 'text-profit', Icon: Ticket },
+  account_deleted: { label: 'מחיקת חשבון', color: 'text-loss', Icon: Trash2 },
 };
 const KIND_FILTER_OPTIONS = [
   { value: '', label: 'כל הסוגים' },
@@ -2035,8 +2560,17 @@ function AuditLogModal({ isOpen, onClose, users }) {
                       <span className="text-[10px] text-text-muted">{fmtTs(ev.ts_iso)}</span>
                     </div>
                     <div className="text-xs text-text-secondary mt-0.5 break-words">
-                      {ev.actor && <span>בוצע ע"י <span className="text-text-primary">{userLabel(ev.actor)}</span></span>}
-                      {ev.target && <span> · יעד <span className="text-text-primary">{userLabel(ev.target)}</span></span>}
+                      {/* Deleted accounts vanish from the users list, so the
+                          snapshot email/name in the event is the identity. */}
+                      {ev.kind === 'account_deleted' && (
+                        <span>
+                          <span className="text-text-primary">{ev.displayName || ev.email || userLabel(ev.target)}</span>
+                          {ev.email && ev.displayName && <span className="font-mono"> ({ev.email})</span>}
+                          <span> · {ev.source === 'self' ? 'מחק את חשבונו בעצמו' : <>נמחק ע"י <span className="text-text-primary">{userLabel(ev.actor)}</span></>}</span>
+                        </span>
+                      )}
+                      {ev.kind !== 'account_deleted' && ev.actor && <span>בוצע ע"י <span className="text-text-primary">{userLabel(ev.actor)}</span></span>}
+                      {ev.kind !== 'account_deleted' && ev.target && <span> · יעד <span className="text-text-primary">{userLabel(ev.target)}</span></span>}
                       {ev.code && <span> · קוד <span className="font-mono text-amber-400">{ev.code}</span></span>}
                       {ev.days != null && <span> · {ev.days} ימים</span>}
                       {ev.planExpires && <span> · עד {new Date(ev.planExpires).toLocaleDateString('he-IL')}</span>}
@@ -2141,14 +2675,17 @@ function CouponsModal({ isOpen, onClose }) {
     }
   };
 
-  const del = async (codeToDelete) => {
-    if (!window.confirm(`למחוק את הקוד ${codeToDelete}?`)) return;
+  // Quick-disable. The worker has no coupon "disable" flag, so the only way to
+  // stop a code from being redeemed is to delete it (adminDeleteCoupon) — hence
+  // the "לא ניתן לשחזר" warning. Irreversible.
+  const disable = async (codeToDisable) => {
+    if (!window.confirm('להשבית את הקוד? לא ניתן לשחזר')) return;
     try {
-      await adminDeleteCoupon(codeToDelete);
-      toast.success('הקוד נמחק');
+      await adminDeleteCoupon(codeToDisable);
+      toast.success('הקוד הושבת');
       load();
     } catch (e) {
-      toast.error(e.message || 'המחיקה נכשלה');
+      toast.error(e.message || 'ההשבתה נכשלה');
     }
   };
 
@@ -2243,52 +2780,86 @@ function CouponsModal({ isOpen, onClose }) {
             </div>
           ) : (
             <div className="space-y-1.5 max-h-80 overflow-y-auto">
-              {coupons.map((c) => (
-                <div key={c.code} className="bg-bg-secondary border border-border-primary rounded-lg px-3 py-2 flex items-center gap-3">
-                  <div className="flex-1 min-w-0">
-                    <div className="flex items-center gap-2">
-                      <button onClick={() => copy(c.code)} className="font-mono text-sm font-bold text-amber-400 hover:text-amber-300 cursor-pointer flex items-center gap-1" dir="ltr">
-                        {c.code} <Copy className="w-3 h-3" />
-                      </button>
-                      <span className="text-[11px] text-text-muted">· {c.days} ימים</span>
-                      {c.maxUses && (
-                        <span className="text-[11px] text-text-muted">· {c.used}/{c.maxUses}</span>
+              {coupons.map((c) => {
+                // Usage vs quota. maxUses is a positive number or null (uncapped).
+                const cap = Number.isFinite(c.maxUses) && c.maxUses > 0 ? c.maxUses : null;
+                const used = Number(c.used) || 0;
+                const fullyUsed = cap != null && used >= cap;
+                const expired = c.expiresAt ? new Date(c.expiresAt).getTime() < Date.now() : false;
+                // A spent or expired code can never be redeemed again → dim it.
+                const dimmed = fullyUsed || expired;
+                const pct = cap ? Math.min(100, Math.round((used / cap) * 100)) : 0;
+                return (
+                  <div
+                    key={c.code}
+                    className={`bg-bg-secondary border border-border-primary rounded-lg px-3 py-2 flex items-center gap-3 transition-opacity ${dimmed ? 'opacity-50' : ''}`}
+                  >
+                    <div className="flex-1 min-w-0">
+                      <div className="flex items-center gap-2 flex-wrap">
+                        <button onClick={() => copy(c.code)} className="font-mono text-sm font-bold text-amber-400 hover:text-amber-300 cursor-pointer flex items-center gap-1" dir="ltr">
+                          {c.code} <Copy className="w-3 h-3" />
+                        </button>
+                        <span className="text-[11px] text-text-muted">· {c.days} ימים</span>
+                        {/* Utilisation vs quota (or vs ∞ when uncapped) */}
+                        <span className="text-[11px] font-mono text-text-secondary" dir="ltr">{used} / {cap ?? '∞'}</span>
+                        {/* Redemption / expiry badges — obvious at a glance */}
+                        {fullyUsed && (
+                          <span className="inline-flex items-center gap-0.5 text-[10px] px-1.5 py-0.5 rounded-full bg-amber-500/15 border border-amber-500/40 text-amber-400 font-semibold">
+                            <CheckCircle2 className="w-3 h-3" /> נוצל במלואו
+                          </span>
+                        )}
+                        {expired && (
+                          <span className="inline-flex items-center gap-0.5 text-[10px] px-1.5 py-0.5 rounded-full bg-loss/10 border border-loss/40 text-loss font-semibold">
+                            <AlertTriangle className="w-3 h-3" /> פג
+                          </span>
+                        )}
+                        {!fullyUsed && !expired && used > 0 && (
+                          <span className="inline-flex items-center gap-0.5 text-[10px] px-1.5 py-0.5 rounded-full bg-profit/10 border border-profit/40 text-profit font-semibold">
+                            <CheckCircle2 className="w-3 h-3" /> מומש
+                          </span>
+                        )}
+                      </div>
+                      {/* Slim utilisation bar — only meaningful when capped */}
+                      {cap != null && (
+                        <div className="mt-1.5 h-1 rounded-full bg-bg-tertiary overflow-hidden" dir="ltr">
+                          <div
+                            className={`h-full rounded-full transition-all ${fullyUsed ? 'bg-amber-500' : 'bg-profit'}`}
+                            style={{ width: `${pct}%` }}
+                          />
+                        </div>
                       )}
-                      {!c.maxUses && (
-                        <span className="text-[11px] text-text-muted">· נוצל {c.used} פעמים</span>
-                      )}
-                      {/* Redemption state — so it's obvious at a glance which codes were used */}
-                      {c.maxUses && c.used >= c.maxUses ? (
-                        <span className="inline-flex items-center gap-0.5 text-[10px] px-1.5 py-0.5 rounded-full bg-amber-500/15 border border-amber-500/40 text-amber-400 font-semibold">
-                          <CheckCircle2 className="w-3 h-3" /> נוצל במלואו
-                        </span>
-                      ) : c.used > 0 && (
-                        <span className="inline-flex items-center gap-0.5 text-[10px] px-1.5 py-0.5 rounded-full bg-profit/10 border border-profit/40 text-profit font-semibold">
-                          <CheckCircle2 className="w-3 h-3" /> מומש
-                        </span>
+                      {/* Expiry date + internal label */}
+                      {(c.expiresAt || c.label) && (
+                        <div className="mt-1 flex items-center gap-2 flex-wrap">
+                          {c.expiresAt && (
+                            <span className={`inline-flex items-center gap-1 text-[10px] ${expired ? 'text-loss' : 'text-text-muted'}`}>
+                              <Calendar className="w-3 h-3" /> תפוגה {formatDate(c.expiresAt)}
+                            </span>
+                          )}
+                          {c.label && <span className="text-[10px] text-text-muted truncate">{c.label}</span>}
+                        </div>
                       )}
                     </div>
-                    {c.label && <div className="text-[10px] text-text-muted truncate">{c.label}</div>}
+                    <button
+                      onClick={() => shareNative(c.code)}
+                      className="p-1.5 rounded-lg text-text-muted hover:text-amber-400 cursor-pointer"
+                      title="שתף קישור"
+                    >
+                      <Share2 className="w-3.5 h-3.5" />
+                    </button>
+                    <button
+                      onClick={() => copyShare(c.code)}
+                      className="p-1.5 rounded-lg text-text-muted hover:text-accent-primary cursor-pointer"
+                      title="העתק קישור שיתוף"
+                    >
+                      <Link2 className="w-3.5 h-3.5" />
+                    </button>
+                    <button onClick={() => disable(c.code)} className="p-1.5 rounded-lg text-text-muted hover:text-loss cursor-pointer" title="השבת קוד (מחיקה)">
+                      <Ban className="w-3.5 h-3.5" />
+                    </button>
                   </div>
-                  <button
-                    onClick={() => shareNative(c.code)}
-                    className="p-1.5 rounded-lg text-text-muted hover:text-amber-400 cursor-pointer"
-                    title="שתף קישור"
-                  >
-                    <Share2 className="w-3.5 h-3.5" />
-                  </button>
-                  <button
-                    onClick={() => copyShare(c.code)}
-                    className="p-1.5 rounded-lg text-text-muted hover:text-accent-primary cursor-pointer"
-                    title="העתק קישור שיתוף"
-                  >
-                    <Link2 className="w-3.5 h-3.5" />
-                  </button>
-                  <button onClick={() => del(c.code)} className="p-1.5 rounded-lg text-text-muted hover:text-loss cursor-pointer" title="מחק">
-                    <Trash2 className="w-3.5 h-3.5" />
-                  </button>
-                </div>
-              ))}
+                );
+              })}
             </div>
           )}
         </div>

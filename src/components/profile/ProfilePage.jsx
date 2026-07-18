@@ -30,7 +30,6 @@ import { APP_VERSION } from '../../utils/constants';
 import ConfirmDialog from '../shared/ConfirmDialog';
 import { pageVariants, pageTransition } from '../../utils/animations';
 import { useTheme } from '../../hooks/useTheme';
-import TelegramSettings from './TelegramSettings';
 import NotificationSettings from './NotificationSettings';
 import ContactDeveloper from './ContactDeveloper';
 import { planExpiresMs } from '../../utils/premium';
@@ -181,6 +180,10 @@ export default function ProfilePage() {
       console.error('Delete account failed:', err);
       const msg = err.code === 'auth/wrong-password' || err.code === 'auth/invalid-credential'
         ? 'סיסמה שגויה'
+        : err.code === 'auth/requires-recent-login'
+        ? 'נדרש אימות מחדש — התנתק, התחבר שוב ונסה מיד'
+        : err.code === 'auth/popup-closed-by-user' || err.code === 'auth/cancelled-popup-request'
+        ? 'האימות בוטל — כדי למחוק את החשבון יש לאשר את חלון ההתחברות'
         : 'שגיאה במחיקת החשבון';
       toast.error(msg);
     }
@@ -259,7 +262,7 @@ export default function ProfilePage() {
           מה אתה סוחר — קובע את ברירת המחדל ליומן חדש. את הסוג של כל יומן אפשר לשנות בהגדרות היומן.
           {isPremium ? ' אפשר לבחור כמה.' : ' אפשר לבחור סוג אחד.'}
         </p>
-        <div className="grid grid-cols-1 sm:grid-cols-3 gap-2">
+        <div className="grid grid-cols-3 gap-2">
           {ASSET_CLASSES.map((ac) => {
             const active = assetClasses.includes(ac.id);
             return (
@@ -268,7 +271,7 @@ export default function ProfilePage() {
                 type="button"
                 disabled={ac.soon}
                 onClick={() => !ac.soon && toggleAssetClass(ac.id)}
-                className={`relative text-right rounded-xl border p-3 transition-all ${
+                className={`relative text-right rounded-xl border p-2.5 sm:p-3 transition-all ${
                   ac.soon
                     ? 'border-border-primary/50 opacity-50 cursor-not-allowed'
                     : active
@@ -281,9 +284,9 @@ export default function ProfilePage() {
                     <Check className="w-3 h-3 text-bg-primary" />
                   </span>
                 )}
-                <ac.Icon className={`w-5 h-5 mb-1.5 ${active && !ac.soon ? 'text-accent-primary' : 'text-text-muted'}`} />
-                <div className="text-sm font-semibold text-text-primary">{ac.label}</div>
-                <div className="text-[11px] text-text-muted">{ac.desc}</div>
+                <ac.Icon className={`w-4 h-4 sm:w-5 sm:h-5 mb-1 sm:mb-1.5 ${active && !ac.soon ? 'text-accent-primary' : 'text-text-muted'}`} />
+                <div className="text-xs sm:text-sm font-semibold text-text-primary leading-tight">{ac.label}</div>
+                <div className="text-[10px] sm:text-[11px] text-text-muted leading-tight mt-0.5">{ac.desc}</div>
               </button>
             );
           })}
@@ -318,8 +321,6 @@ export default function ProfilePage() {
       <div className={cardClass}>
         {/* Push notifications */}
         <NotificationSettings />
-        {/* Telegram Bot */}
-        <TelegramSettings />
       </div>
 
       {/* ── Section: General ─────────────────────────────────────── */}
