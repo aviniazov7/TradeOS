@@ -62,6 +62,7 @@ function ToggleRow({ Icon, label, active, onClick }) {
 
 export default function AccessibilityWidget() {
   const [open, setOpen] = useState(false);
+  const [scrolling, setScrolling] = useState(false);
   const [prefs, setPrefs] = useState(load);
   const navigate = useNavigate();
 
@@ -70,6 +71,20 @@ export default function AccessibilityWidget() {
     apply(prefs);
     try { localStorage.setItem(STORE_KEY, JSON.stringify(prefs)); } catch { /* private mode */ }
   }, [prefs]);
+
+  // Fade the button out while the user scrolls/reads and bring it back when
+  // they stop — so it's discreet without ever hiding (capture:true catches
+  // scroll from the inner #app-scroll container too, not just the window).
+  useEffect(() => {
+    let t;
+    const onScroll = () => {
+      setScrolling(true);
+      clearTimeout(t);
+      t = setTimeout(() => setScrolling(false), 900);
+    };
+    window.addEventListener('scroll', onScroll, true);
+    return () => { window.removeEventListener('scroll', onScroll, true); clearTimeout(t); };
+  }, []);
 
   const toggle = useCallback((key) => setPrefs((p) => ({ ...p, [key]: !p[key] })), []);
   const stepFont = useCallback((dir) => setPrefs((p) => {
@@ -89,7 +104,7 @@ export default function AccessibilityWidget() {
         onClick={() => setOpen(true)}
         aria-label="פתיחת תפריט נגישות"
         title="נגישות"
-        className="fixed left-3 bottom-24 lg:left-5 lg:bottom-5 z-50 w-11 h-11 rounded-full flex items-center justify-center bg-accent-primary text-bg-primary shadow-lg shadow-black/40 opacity-80 hover:opacity-100 transition-opacity cursor-pointer"
+        className={`fixed left-3 bottom-24 lg:left-5 lg:bottom-5 z-50 w-11 h-11 rounded-full flex items-center justify-center bg-accent-primary text-bg-primary shadow-lg shadow-black/40 hover:opacity-100 transition-opacity duration-300 cursor-pointer ${scrolling ? 'opacity-20' : 'opacity-80'}`}
       >
         <Accessibility className="w-5.5 h-5.5" />
         {anyActive && <span className="absolute -top-0.5 -right-0.5 w-2.5 h-2.5 rounded-full bg-profit border-2 border-bg-primary" />}
