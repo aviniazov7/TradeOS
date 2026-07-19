@@ -4791,8 +4791,12 @@ async function handleRequest(request, env) {
           // Real trading fees: closed-pnl carries openFee + closeFee per
           // record (the old execFee/cumExecFee fields don't exist on this
           // endpoint, which is why fees always imported as 0).
-          const fees = Math.abs(parseFloat(p.openFee) || 0) + Math.abs(parseFloat(p.closeFee) || 0)
+          // toPrecision(10) trims the float-sum noise (openFee+closeFee could
+          // land on e.g. 5.07900000003, which then showed as a 12-digit number
+          // in the edit form).
+          const feesRaw = Math.abs(parseFloat(p.openFee) || 0) + Math.abs(parseFloat(p.closeFee) || 0)
             || Math.abs(parseFloat(p.execFee || p.tradingFee || p.cumExecFee || 0) || 0);
+          const fees = feesRaw ? +feesRaw.toPrecision(10) : 0;
           // Bybit's closed-pnl `side` is the side of the CLOSING order — a
           // long position is closed by a Sell, so the POSITION side is the
           // opposite (verified against a real account: a long imported as
@@ -4951,7 +4955,7 @@ async function handleRequest(request, env) {
               exitPrice,
               exits,
               pnlFromExchange: cluster.reduce((s, r) => s + r.pnlFromExchange, 0),
-              fees: cluster.reduce((s, r) => s + r.fees, 0),
+              fees: +(cluster.reduce((s, r) => s + r.fees, 0)).toPrecision(10),
               entryDate: cluster.reduce((m, r) => (new Date(r.entryDate) < new Date(m) ? r.entryDate : m), first.entryDate),
               exitDate: cluster[cluster.length - 1].exitDate,
               stopLoss: mergedSl,
