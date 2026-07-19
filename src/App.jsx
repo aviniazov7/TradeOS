@@ -10,6 +10,7 @@ import AuthEmailLink from './components/auth/AuthEmailLink';
 import Layout from './components/layout/Layout';
 import LoadingSpinner from './components/shared/LoadingSpinner';
 import Toast from './components/shared/Toast';
+import AccessibilityWidget from './components/shared/AccessibilityWidget';
 import ErrorBoundary from './components/shared/ErrorBoundary';
 
 // Lazy-loaded pages — factory refs kept so we can preload them at idle
@@ -139,6 +140,8 @@ function MainApp() {
             </Routes>
           </Suspense>
           <Toast />
+          {/* Site-wide accessibility menu — present on every route. */}
+          <AccessibilityWidget />
         </BacktestProvider>
       </JournalProvider>
     </AuthProvider>
