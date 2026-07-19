@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import { useAuth } from '../../contexts/AuthContext';
-import { Navigate, useSearchParams } from 'react-router-dom';
+import { Navigate, useSearchParams, Link } from 'react-router-dom';
 import { TrendingUp, Mail, Eye, EyeOff } from 'lucide-react';
 import toast from 'react-hot-toast';
 import BackgroundIcons from '../shared/BackgroundIcons';
@@ -210,6 +210,11 @@ export default function LoginPage() {
         {/* Footer */}
         <p className="text-text-muted text-xs text-center mt-6">
           TradeOS &copy; {new Date().getFullYear()} &middot; הנתונים שלך מאוחסנים בצורה מאובטחת ב-Firebase
+        </p>
+        <p className="text-center mt-2">
+          <Link to="/accessibility" className="text-text-muted hover:text-accent-primary text-xs transition-colors">
+            הצהרת נגישות
+          </Link>
         </p>
       </div>
     </div>
