@@ -161,7 +161,9 @@ export default function TradeForm({ isOpen, onClose, trade, onSave, riskSettings
         positionSize: ps || '',
         riskAmount: derivedRisk,
         leverage: trade.leverage ?? DEFAULT_LEVERAGE,
-        fees: trade.fees ?? '',
+        // Trim float noise (e.g. an exchange-summed 5.07900000003) so the
+        // input shows a clean 5.079 instead of a 12-digit number.
+        fees: Number.isFinite(+trade.fees) && trade.fees !== '' ? +(+trade.fees).toPrecision(10) : '',
         tags: trade.tags ?? [],
         mistakes: trade.mistakes ?? [],
         tradingViewUrl: trade.tradingViewUrl ?? '',
