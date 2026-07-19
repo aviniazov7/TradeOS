@@ -487,7 +487,16 @@ export default function ProfilePage() {
         </button>
       </div>
 
-      <div className="text-center text-xs text-text-muted mt-4" dir="ltr">
+      <div className="text-center mt-4">
+        <button
+          onClick={() => navigate('/accessibility')}
+          className="text-xs text-text-muted hover:text-accent-primary transition-colors cursor-pointer"
+        >
+          הצהרת נגישות
+        </button>
+      </div>
+
+      <div className="text-center text-xs text-text-muted mt-2" dir="ltr">
         TradeOS v{APP_VERSION}
       </div>
 
