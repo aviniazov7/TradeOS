@@ -34,6 +34,7 @@ const loadPremiumPage = () => import('./components/premium/PremiumPage');
 const loadCheckoutPage = () => import('./components/premium/CheckoutPage');
 const loadCouponLanding = () => import('./components/premium/CouponLandingPage');
 const loadRefundPolicy = () => import('./components/legal/RefundPolicyPage');
+const loadAccessibility = () => import('./components/legal/AccessibilityStatement');
 const loadWhalesPage = () => import('./components/whales/WhalesPage');
 const loadAdminPanel = () => import('./components/admin/AdminPanel');
 
@@ -58,6 +59,7 @@ const PremiumPage = lazy(loadPremiumPage);
 const CheckoutPage = lazy(loadCheckoutPage);
 const CouponLandingPage = lazy(loadCouponLanding);
 const RefundPolicyPage = lazy(loadRefundPolicy);
+const AccessibilityStatement = lazy(loadAccessibility);
 const WhalesPage = lazy(loadWhalesPage);
 const AdminPanel = lazy(loadAdminPanel);
 
@@ -100,6 +102,9 @@ function MainApp() {
                   shared link works for logged-out friends; redeeming itself
                   sends them through /login and back. */}
               <Route path="/redeem/:code" element={<CouponLandingPage />} />
+              {/* Accessibility statement — public (reachable without login, as
+                  required for an Israeli-standard accessibility statement). */}
+              <Route path="/accessibility" element={<AccessibilityStatement />} />
               <Route
                 element={
                   <ProtectedRoute>
