@@ -24,7 +24,11 @@ i18n
     supportedLngs: SUPPORTED_LANGS,
     interpolation: { escapeValue: false }, // React already escapes
     detection: {
-      order: ['localStorage', 'navigator'],
+      // ⚠️ Only localStorage for now — NOT 'navigator'. Most of the app is
+      // still hardcoded Hebrew/RTL, so auto-picking English from the browser
+      // would flip <html dir> to LTR and break the layout for those users.
+      // Re-add 'navigator' once the whole app is translated (stage 6 done).
+      order: ['localStorage'],
       lookupLocalStorage: 'tradeos_lang',
       caches: ['localStorage'],
     },
