@@ -38,6 +38,10 @@ const loadRefundPolicy = () => import('./components/legal/RefundPolicyPage');
 const loadAccessibility = () => import('./components/legal/AccessibilityStatement');
 const loadWhalesPage = () => import('./components/whales/WhalesPage');
 const loadAdminPanel = () => import('./components/admin/AdminPanel');
+// Redesign preview — new "Daily Briefing" home screen (blue + bilingual).
+// Lives at /briefing so we can review the direction without touching the
+// current home. Not linked from the nav yet.
+const loadDailyBriefing = () => import('./components/redesign/DailyBriefing');
 
 const Dashboard = lazy(loadDashboard);
 const TradeJournal = lazy(loadTradeJournal);
@@ -63,6 +67,7 @@ const RefundPolicyPage = lazy(loadRefundPolicy);
 const AccessibilityStatement = lazy(loadAccessibility);
 const WhalesPage = lazy(loadWhalesPage);
 const AdminPanel = lazy(loadAdminPanel);
+const DailyBriefing = lazy(loadDailyBriefing);
 
 // Preload all routes during idle time so tab switches feel instant
 if (typeof window !== 'undefined') {
@@ -135,6 +140,7 @@ function MainApp() {
                 <Route path="premium/checkout" element={<CheckoutPage />} />
                 <Route path="refund-policy" element={<RefundPolicyPage />} />
                 <Route path="admin" element={<AdminPanel />} />
+                <Route path="briefing" element={<DailyBriefing />} />
                 <Route path="profile" element={<ProfilePage />} />
               </Route>
             </Routes>

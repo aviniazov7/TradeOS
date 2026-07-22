@@ -1,0 +1,47 @@
+{
+  "common": {
+    "appName": "TradeOS"
+  },
+  "nav": {
+    "home": "Home",
+    "journal": "Journal",
+    "coach": "AI Coach",
+    "me": "Me",
+    "more": "More"
+  },
+  "language": {
+    "label": "Language",
+    "he": "עברית",
+    "en": "English"
+  },
+  "briefing": {
+    "greeting": "Good morning, {{name}}",
+    "coachTitle": "Your coach spotted a pattern",
+    "coachSub": "Analysis of your last {{count}} trades",
+    "coachMsg": "In your last 3 trades you entered too early — before the confirmation candle. The pattern mostly repeats in the Asian session. It cost you {{cost}} this week. Wait for the candle to close — your win rate on confirmed entries is {{winrate}}.",
+    "tagEarly": "Early entry",
+    "tagAsian": "Asian session",
+    "tagRepeat": "Repeats 3×",
+    "analyzeDeep": "Analyze deeper",
+    "ignoreToday": "Ignore today",
+    "performance": "Your performance",
+    "syncedFrom": "Synced from {{exchange}}",
+    "thisWeek": "This week",
+    "trades": "{{count}} trades",
+    "winRate": "Win Rate",
+    "avgRR": "Avg R:R",
+    "today": "Today",
+    "disciplineTitle": "Discipline",
+    "disciplineLabel": "discipline",
+    "focused": "Focused",
+    "statusLine": "Status: {{state}} — you're not on tilt",
+    "disciplineDesc": "You respected your stop in 9 of the last 10 trades. You didn't size up after a loss.",
+    "streak": "{{days}} days in a row on plan",
+    "todoTitle": "What to do today",
+    "todoMorning": "Fill your morning journal",
+    "todoMorningSub": "Set your intention for today's session (30 seconds)",
+    "todoReview": "Review yesterday's losing trade",
+    "todoReviewSub": "{{symbol}} · {{pnl}} · the coach found a reason",
+    "previewBanner": "Preview — the new home screen (in progress)"
+  }
+}
