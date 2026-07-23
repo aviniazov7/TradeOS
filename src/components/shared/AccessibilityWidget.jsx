@@ -104,9 +104,9 @@ export default function AccessibilityWidget() {
         onClick={() => setOpen(true)}
         aria-label="פתיחת תפריט נגישות"
         title="נגישות"
-        className={`fixed left-3 bottom-24 lg:left-5 lg:bottom-5 z-50 w-11 h-11 rounded-full flex items-center justify-center bg-accent-primary text-bg-primary shadow-lg shadow-black/40 hover:opacity-100 transition-opacity duration-300 cursor-pointer ${scrolling ? 'opacity-20' : 'opacity-80'}`}
+        className={`fixed left-3 bottom-24 lg:left-4 lg:bottom-4 z-50 w-8 h-8 rounded-full flex items-center justify-center bg-accent-primary text-bg-primary shadow-lg shadow-black/40 hover:opacity-100 focus-visible:opacity-100 transition-opacity duration-300 cursor-pointer ${scrolling ? 'opacity-10' : 'opacity-35'}`}
       >
-        <Accessibility className="w-5.5 h-5.5" />
+        <Accessibility className="w-4 h-4" />
         {anyActive && <span className="absolute -top-0.5 -right-0.5 w-2.5 h-2.5 rounded-full bg-profit border-2 border-bg-primary" />}
       </button>
 
