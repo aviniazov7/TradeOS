@@ -17,6 +17,7 @@ import { isClosedTrade } from '../../utils/calculations';
 import DashboardSkeleton from './DashboardSkeleton';
 import PendingLimitOrders from './PendingLimitOrders';
 import TradeAgentCard from './TradeAgentCard';
+import PerformanceSnapshot from './PerformanceSnapshot';
 import GettingStartedCard from './GettingStartedCard';
 import DashboardKpis from './DashboardKpis';
 import NewsTicker from './NewsTicker';
@@ -404,6 +405,9 @@ export default function Dashboard() {
 
       {/* AI agent — a compact, real-data summary of the user's trades. */}
       <TradeAgentCard trades={allTrades} />
+
+      {/* Performance snapshot — weekly P&L + sparkline + today/R:R/win-rate. */}
+      <PerformanceSnapshot trades={allTrades} stats={globalStats} synced={Object.keys(linkedBalances || {}).length > 0} />
 
       {/* First-steps checklist — renders only for fresh accounts (hides
           itself for veterans / when everything is done / when dismissed). */}
