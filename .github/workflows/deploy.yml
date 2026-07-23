@@ -163,6 +163,9 @@ jobs:
           MAIL_FROM_ADDRESS: ${{ secrets.MAIL_FROM_ADDRESS }}
           MAIL_FROM_NAME: ${{ secrets.MAIL_FROM_NAME }}
           MAIL_TO_ADMIN_OVERRIDE: ${{ secrets.MAIL_TO_ADMIN_OVERRIDE }}
+          # Cloudflare Analytics (read-only) — powers the admin "תשתית" quota card.
+          CF_API_TOKEN: ${{ secrets.CF_API_TOKEN }}
+          CF_ACCOUNT_ID: ${{ secrets.CF_ACCOUNT_ID }}
         run: |
           put_secret() {
             local name="$1"
@@ -192,6 +195,8 @@ jobs:
           put_secret MAIL_FROM_ADDRESS
           put_secret MAIL_FROM_NAME
           put_secret MAIL_TO_ADMIN_OVERRIDE
+          put_secret CF_API_TOKEN
+          put_secret CF_ACCOUNT_ID
 
       # ─── Alerts/cron Worker ──────────────────────────────────────────────
       # tradeos-alerts is the CRON runner: the same worker/index.js deployed
@@ -218,6 +223,9 @@ jobs:
           MAIL_FROM_ADDRESS: ${{ secrets.MAIL_FROM_ADDRESS }}
           MAIL_FROM_NAME: ${{ secrets.MAIL_FROM_NAME }}
           MAIL_TO_ADMIN_OVERRIDE: ${{ secrets.MAIL_TO_ADMIN_OVERRIDE }}
+          # Cloudflare Analytics (read-only) — powers the admin "תשתית" quota card.
+          CF_API_TOKEN: ${{ secrets.CF_API_TOKEN }}
+          CF_ACCOUNT_ID: ${{ secrets.CF_ACCOUNT_ID }}
         run: |
           # Both the redirect file AND wrangler's config discovery resolve to
           # the ROOT wrangler.jsonc even from this directory (verified in CI
@@ -252,6 +260,8 @@ jobs:
           put_secret MAIL_FROM_ADDRESS
           put_secret MAIL_FROM_NAME
           put_secret MAIL_TO_ADMIN_OVERRIDE
+          put_secret CF_API_TOKEN
+          put_secret CF_ACCOUNT_ID
 
       # ─── PR Comment with preview URL ─────────────────────────────────────
       # On every PR push, drop a comment with the preview link so the author

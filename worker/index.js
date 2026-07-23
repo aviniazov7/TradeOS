@@ -1030,6 +1030,71 @@ function pemToPkcs8(pem) {
   return b64urlToBytesLocal(body.replace(/\+/g, '-').replace(/\//g, '_'));
 }
 
+// Cloudflare quota usage (KV operations + Workers invocations) for TODAY, via
+// the GraphQL Analytics API. Read-only; needs CF_API_TOKEN (Account Analytics
+// Read) + CF_ACCOUNT_ID. Cached 5 min in the Cache API — deliberately NOT in KV,
+// so measuring the quota doesn't itself consume it. Fully best-effort: any
+// failure returns an `error` string and zeros, never throws.
+const CF_QUOTA_LIMITS = { kvRead: 100000, kvWrite: 1000, kvDelete: 1000, kvList: 1000, workers: 100000 };
+async function fetchCloudflareQuotas(env) {
+  if (!env.CF_API_TOKEN || !env.CF_ACCOUNT_ID) return { configured: false };
+
+  const cacheKey = new Request('https://internal.tradeos/cf-quotas');
+  const cache = caches.default;
+  const cached = await cache.match(cacheKey);
+  if (cached) { try { return await cached.json(); } catch { /* fall through */ } }
+
+  const dayStr = new Date().toISOString().slice(0, 10);      // YYYY-MM-DD (UTC)
+  const sinceIso = `${dayStr}T00:00:00Z`;
+  const query = `query Q($tag: String!, $date: Date!, $since: Time!) {
+    viewer { accounts(filter: { accountTag: $tag }) {
+      kvOperationsAdaptiveGroups(limit: 100, filter: { date_geq: $date }) {
+        sum { requests } dimensions { actionType }
+      }
+      workersInvocationsAdaptive(limit: 100, filter: { datetime_geq: $since }) {
+        sum { requests }
+      }
+    } }
+  }`;
+
+  const out = {
+    configured: true, error: null, updatedAt: Date.now(),
+    kv: { read: 0, write: 0, delete: 0, list: 0 },
+    workers: { requests: 0 },
+    limits: CF_QUOTA_LIMITS,
+  };
+  try {
+    const r = await fetch('https://api.cloudflare.com/client/v4/graphql', {
+      method: 'POST',
+      headers: { Authorization: `Bearer ${env.CF_API_TOKEN}`, 'Content-Type': 'application/json' },
+      body: JSON.stringify({ query, variables: { tag: env.CF_ACCOUNT_ID, date: dayStr, since: sinceIso } }),
+    });
+    const j = await r.json().catch(() => ({}));
+    if (j.errors && j.errors.length) out.error = j.errors[0]?.message || 'graphql error';
+    const acct = j?.data?.viewer?.accounts?.[0];
+    if (acct) {
+      for (const g of acct.kvOperationsAdaptiveGroups || []) {
+        const t = g?.dimensions?.actionType;
+        const req = g?.sum?.requests || 0;
+        if (t && out.kv[t] != null) out.kv[t] += req;
+      }
+      out.workers.requests = (acct.workersInvocationsAdaptive || [])
+        .reduce((s, g) => s + (g?.sum?.requests || 0), 0);
+    } else if (!out.error) {
+      out.error = 'no account data';
+    }
+  } catch (e) {
+    out.error = String(e?.message || e);
+  }
+
+  try {
+    await cache.put(cacheKey, new Response(JSON.stringify(out), {
+      headers: { 'Content-Type': 'application/json', 'Cache-Control': 'max-age=300' },
+    }));
+  } catch { /* cache put is best-effort */ }
+  return out;
+}
+
 async function getFirebaseAdminToken(env) {
   if (GAPI_TOKEN_CACHE.token && Date.now() < GAPI_TOKEN_CACHE.expiresAt - 60_000) {
     return GAPI_TOKEN_CACHE.token;
@@ -3895,11 +3960,13 @@ async function handleRequest(request, env) {
     if (!adminUid) return new Response(JSON.stringify({ error: 'forbidden' }), { status: 403, headers: { ...cors, 'Content-Type': 'application/json' } });
     const cronRaw = await env.ALERTS_KV.get('cron:last');
     const cronLast = cronRaw ? parseInt(cronRaw, 10) || null : null;
+    const quotas = await fetchCloudflareQuotas(env);
     return new Response(JSON.stringify({
       time: Date.now(),
       cronLast,
       pushConfigured: !!env.VAPID_JWK,
       aiConfigured: !!env.GROQ_API_KEY,
+      quotas,
     }), { headers: { ...cors, 'Content-Type': 'application/json' } });
   }
 
