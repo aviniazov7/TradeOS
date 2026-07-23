@@ -273,17 +273,7 @@ function TrackBar({ trade, currentPrice, tpReached = [], onTpReached, onLimitTri
 
   return (
     <div dir="ltr" className="mt-3">
-      <div className="relative h-1 rounded-full bg-bg-tertiary">
-        {/* Loss zone (SL → Entry) — hidden in BE mode */}
-        {!isBreakEven && (
-          <div className="absolute top-0 bottom-0 bg-loss/40 rounded-full"
-            style={{ left: '0%', width: `${entryPct}%`, transition: 'width 0.45s cubic-bezier(0.25,0.46,0.45,0.94)' }} />
-        )}
-        {tpPrices.length > 0 && (
-          <div className="absolute top-0 bottom-0 bg-profit/40 rounded-full"
-            style={{ left: isBreakEven ? '0%' : `${entryPct}%`, width: `${Math.max(0, 100 - (isBreakEven ? 0 : entryPct))}%`, transition: 'left 0.45s cubic-bezier(0.25,0.46,0.45,0.94), width 0.45s cubic-bezier(0.25,0.46,0.45,0.94)' }} />
-        )}
-
+      <div className="relative h-1.5 rounded-full" style={{ background: 'linear-gradient(90deg, rgba(239,68,68,0.60) 0%, rgba(120,120,135,0.28) 50%, rgba(34,197,94,0.60) 100%)' }}>
         {/* SL dot — hidden in BE mode (entry dot replaces it) */}
         {!isBreakEven && (
           <div className="absolute top-1/2 w-2 h-2 rounded-full bg-loss border border-bg-secondary"
@@ -379,10 +369,10 @@ function TrackBar({ trade, currentPrice, tpReached = [], onTpReached, onLimitTri
               transition: 'left 0.8s cubic-bezier(0.25, 0.46, 0.45, 0.94)',
             }}
           >
-            <div className="absolute w-5 h-5 rounded-full bg-white/20 animate-ping"
-              style={{ top: '-10px', left: '-10px' }} />
-            <div className="absolute w-3 h-3 rounded-full bg-white shadow-[0_0_10px_4px_rgba(255,255,255,0.55)]"
-              style={{ top: '-6px', left: '-6px' }} />
+            <div className="absolute w-5 h-5 rounded-full animate-ping"
+              style={{ top: '-10px', left: '-10px', background: 'rgba(59,130,246,0.25)' }} />
+            <div className="absolute w-3.5 h-3.5 rounded-full bg-white"
+              style={{ top: '-7px', left: '-7px', border: '3px solid #3b82f6', boxShadow: '0 0 10px 3px rgba(59,130,246,0.6)' }} />
           </div>
         )}
         </div>{/* end track */}
@@ -813,22 +803,12 @@ export default function PendingLimitOrders({ trades, livePrices }) {
                   : currentPrice >= parseFloat(trade.entryPrice)));
             const isTradeActive = !isLimit || isTriggered;
 
-            // Per-card live P&L for background color
             const entry = parseFloat(trade.entryPrice);
-            const posSize = parseFloat(trade.positionSize);
-            let cardPnl = null;
-            if (isTradeActive && currentPrice && entry > 0 && posSize > 0) {
-              const qty = posSize / entry;
-              cardPnl = trade.direction === 'long' ? (currentPrice - entry) * qty : (entry - currentPrice) * qty;
-            }
 
-            // Card border + bg based on P&L
-            const cardStyle = cardPnl !== null && cardPnl > 0
-              ? 'border-profit/30 bg-profit/5 hover:border-profit/50'
-              : cardPnl !== null && cardPnl < 0
-              ? 'border-loss/25 bg-loss/5 hover:border-loss/40'
-              : isTradeActive
-              ? 'border-accent-primary/20 bg-bg-secondary/80 hover:border-accent-primary/40'
+            // Card frame — consistent blue (demo look), independent of P&L so a
+            // losing position no longer paints the whole card red.
+            const cardStyle = isTradeActive
+              ? 'border-accent-primary/25 bg-bg-secondary/70 hover:border-accent-primary/45'
               : 'border-border-primary/25 bg-bg-secondary/40 hover:border-border-primary/50';
 
             // R:R badge
