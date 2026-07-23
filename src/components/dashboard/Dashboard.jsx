@@ -16,6 +16,7 @@ import { useLinkedJournalsBalance } from '../../hooks/useLinkedExchangeBalance';
 import { isClosedTrade } from '../../utils/calculations';
 import DashboardSkeleton from './DashboardSkeleton';
 import PendingLimitOrders from './PendingLimitOrders';
+import TradeAgentCard from './TradeAgentCard';
 import GettingStartedCard from './GettingStartedCard';
 import DashboardKpis from './DashboardKpis';
 import NewsTicker from './NewsTicker';
@@ -400,6 +401,9 @@ export default function Dashboard() {
   return (
     <motion.div variants={pageVariants} initial="initial" animate="animate" exit="exit" transition={pageTransition}>
       <PendingLimitOrders trades={globalStats.openTrades} livePrices={livePrices} />
+
+      {/* AI agent — a compact, real-data summary of the user's trades. */}
+      <TradeAgentCard trades={allTrades} />
 
       {/* First-steps checklist — renders only for fresh accounts (hides
           itself for veterans / when everything is done / when dismissed). */}
