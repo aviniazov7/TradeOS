@@ -901,6 +901,29 @@ export default function AdminPanel() {
         )}
       </SectionCard>
 
+      {/* Cloudflare quota usage (KV + Workers) today vs the free-tier daily
+          limits — replaces the "[Alert] approaching your KV limit" emails. */}
+      {health?.quotas?.configured && (
+        <SectionCard icon={<BarChart3 className="w-4 h-4" />} title="תשתית — מכסות Cloudflare">
+          {health.quotas.error ? (
+            <div className="text-xs text-loss">לא ניתן לטעון מכסות: {health.quotas.error}</div>
+          ) : (
+            <>
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5">
+                {[
+                  { label: 'KV · קריאות', used: health.quotas.kv.read, limit: health.quotas.limits.kvRead },
+                  { label: 'KV · כתיבות', used: health.quotas.kv.write, limit: health.quotas.limits.kvWrite },
+                  { label: 'KV · מחיקות', used: health.quotas.kv.delete, limit: health.quotas.limits.kvDelete },
+                  { label: 'KV · רשימות', used: health.quotas.kv.list, limit: health.quotas.limits.kvList },
+                  { label: 'Workers · בקשות', used: health.quotas.workers.requests, limit: health.quotas.limits.workers },
+                ].map((q) => <QuotaBar key={q.label} {...q} />)}
+              </div>
+              <div className="text-[10px] text-text-muted mt-2">ניצול היום (UTC) · מתעדכן כל 5 דק׳ · צהוב מ-70%, אדום מ-90%</div>
+            </>
+          )}
+        </SectionCard>
+      )}
+
       {/* Firebase (Firestore) consumption vs the Spark free-tier daily limits.
           Numbers only — the worker never returns documents or tokens. */}
       <SectionCard
@@ -1569,6 +1592,26 @@ const SEGMENT_LABELS = {
   onboarded: 'סיימו אונבורדינג',
   churned: 'בסיכון נטישה',
 };
+// One quota row — used/limit with a colour-coded progress bar (green<70%,
+// amber 70–90%, red >90%). Used by the Cloudflare "תשתית" card.
+function QuotaBar({ label, used, limit }) {
+  const u = Number(used) || 0;
+  const l = Number(limit) || 0;
+  const pct = l > 0 ? Math.min(100, (u / l) * 100) : 0;
+  const color = pct >= 90 ? '#ef4444' : pct >= 70 ? '#f59e0b' : '#22c55e';
+  return (
+    <div className="rounded-xl px-3 py-2.5 border border-border-primary bg-bg-tertiary">
+      <div className="flex items-center justify-between mb-1.5 gap-2">
+        <span className="text-xs font-semibold text-text-primary">{label}</span>
+        <span className="text-[10px] font-mono text-text-muted tabular-nums">{u.toLocaleString()} / {l.toLocaleString()}</span>
+      </div>
+      <div className="h-2 rounded-full bg-bg-secondary overflow-hidden">
+        <div className="h-full rounded-full transition-all duration-500" style={{ width: `${pct}%`, background: color }} />
+      </div>
+    </div>
+  );
+}
+
 function BulkNotifyModal({ isOpen, onClose, segments }) {
   const [seg, setSeg] = useState('premium');
   const [title, setTitle] = useState('');
