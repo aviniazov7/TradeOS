@@ -107,7 +107,7 @@ export default function Sidebar({ mobileOpen, onClose }) {
                           {isActive && (
                             <span
                               className="absolute right-0 top-1/2 -translate-y-1/2 h-7 w-1 rounded-full"
-                              style={{ background: 'linear-gradient(180deg,#22d3ee,#8b5cf6)', boxShadow: '0 0 10px 0 rgba(34,211,238,0.6)' }}
+                              style={{ background: 'linear-gradient(180deg,#60a5fa,#2563eb)', boxShadow: '0 0 10px 0 rgba(34,211,238,0.6)' }}
                             />
                           )}
                           <item.icon

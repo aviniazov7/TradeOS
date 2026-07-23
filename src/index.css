@@ -54,9 +54,9 @@ body {
   /* Accent (Cyan/turquoise) — base accent for TEXT, icons, borders and tints.
      Buttons/fills keep the violet→cyan --accent-gradient overlay on top, so the
      "Analyze" gradient look stays while plain accent text reads cyan, not violet. */
-  --color-accent-primary: #06b6d4;
-  --color-accent-hover: #22d3ee;
-  --color-accent-muted: #0e7490;
+  --color-accent-primary: #3b82f6;
+  --color-accent-hover: #60a5fa;
+  --color-accent-muted: #2563eb;
 
   /* Status */
   --color-profit: #22c55e;
@@ -73,8 +73,8 @@ body {
 /* iOS-style glass surface tokens (modals / command palette). Theme-aware so
    day mode renders a bright frosted glass instead of the dark one. */
 :root {
-  /* Signature accent gradient (the "Analyze" button look) — violet → cyan. */
-  --accent-gradient: linear-gradient(135deg, #8b5cf6 0%, #06b6d4 100%);
+  /* Signature accent gradient (the "Analyze" button look) — electric blue. */
+  --accent-gradient: linear-gradient(135deg, #2563eb 0%, #38bdf8 100%);
   /* Black glass (21st.dev vibe): the SURFACE stays dark/near-black — the
      "glass" reads from the bright hairline edge + top specular highlight +
      the backdrop frost, NOT from a lighter grey fill. */
@@ -103,9 +103,9 @@ body {
   --color-text-primary: #0f0f0f;
   --color-text-secondary: #333340;
   --color-text-muted: #5c5c66;
-  --color-accent-primary: #0e7490;
-  --color-accent-hover: #155e75;
-  --color-accent-muted: #164e63;
+  --color-accent-primary: #1d4ed8;
+  --color-accent-hover: #1e40af;
+  --color-accent-muted: #1e3a8a;
   --color-bg-overlay: rgba(248, 250, 253, 0.98);
   --color-bg-solid: rgba(245, 247, 251, 0.98);
   /* Darker profit/loss for foreground TEXT so the headline P/L numbers pass
@@ -166,7 +166,7 @@ body {
   /* Cyan-dominant (more turquoise than violet) per request — violet only as a
      hint at the very end, so short labels read mostly cyan. Buttons keep the
      balanced --accent-gradient; this is the TEXT-only variant. */
-  background: linear-gradient(120deg, #06b6d4 0%, #22d3ee 45%, #8b5cf6 115%);
+  background: linear-gradient(120deg, #2563eb 0%, #38bdf8 45%, #60a5fa 115%);
   -webkit-background-clip: text;
   background-clip: text;
   -webkit-text-fill-color: transparent;
@@ -526,7 +526,7 @@ input[type="number"] {
   inset: 0;
   border-radius: inherit;
   padding: 1.5px;
-  background: conic-gradient(from var(--beam-angle), transparent 0 62%, #8b5cf6 78%, #22d3ee 92%, transparent 100%);
+  background: conic-gradient(from var(--beam-angle), transparent 0 62%, #2563eb 78%, #38bdf8 92%, transparent 100%);
   -webkit-mask: linear-gradient(#000 0 0) content-box, linear-gradient(#000 0 0);
   -webkit-mask-composite: xor;
   mask: linear-gradient(#000 0 0) content-box, linear-gradient(#000 0 0);
