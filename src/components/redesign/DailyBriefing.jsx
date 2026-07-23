@@ -68,6 +68,34 @@ const CSS = `
   background: rgba(59,130,246,.15); color: #3b82f6; }
 .db-tx { font-size: 12.5px; font-weight: 600; }
 .db-tx small { display: block; font-weight: 400; color: #8a8f9c; font-size: 10.5px; margin-top: 2px; }
+.db-open { padding: 14px; border: 1px solid rgba(59,130,246,0.28);
+  background: radial-gradient(140% 120% at 0% 0%, rgba(59,130,246,0.10) 0%, transparent 55%), #0f0f14; }
+.db-open-head { display: flex; align-items: center; justify-content: space-between; }
+.db-sym { font-size: 15px; font-weight: 800; display: flex; align-items: center; gap: 7px; }
+.db-badge { font-size: 9.5px; font-weight: 700; padding: 2px 7px; border-radius: 999px; }
+.db-badge.long { color: #26d07c; background: rgba(38,208,124,.12); }
+.db-lev { font-size: 10px; color: #8a8f9c; font-weight: 600; }
+.db-pnl { text-align: left; }
+.db-pnl .n { font-size: 17px; font-weight: 800; font-variant-numeric: tabular-nums; }
+.db-pnl .n.up { color: #26d07c; }
+.db-pnl .p { font-size: 10.5px; color: #26d07c; }
+.db-prices { display: flex; gap: 14px; margin-top: 10px; font-size: 11px; color: #8a8f9c; }
+.db-prices b { color: #f2f2f4; font-weight: 700; }
+.db-track { position: relative; height: 8px; border-radius: 999px; margin: 14px 0 7px;
+  background: linear-gradient(90deg, #ff5c5c 0%, #3a3a44 50%, #26d07c 100%); }
+.db-entry-tick { position: absolute; top: -3px; width: 2px; height: 14px; background: rgba(255,255,255,.6); transform: translateX(-50%); }
+.db-marker { position: absolute; top: -4px; width: 15px; height: 15px; border-radius: 50%;
+  background: #fff; border: 3px solid #3b82f6; transform: translateX(-50%); box-shadow: 0 0 10px rgba(59,130,246,.7); }
+.db-scale { display: flex; justify-content: space-between; font-size: 10px; color: #8a8f9c; }
+.db-scale .g { color: #26d07c; }
+.db-scale .r { color: #ff5c5c; }
+.db-recent { display: flex; align-items: center; justify-content: space-between; padding: 10px 12px;
+  background: #0f0f14; border: 1px solid rgba(255,255,255,0.06); border-radius: 11px; }
+.db-recent + .db-recent { margin-top: 6px; }
+.db-recent .s { font-size: 12.5px; font-weight: 700; }
+.db-recent .v { font-size: 13px; font-weight: 800; font-variant-numeric: tabular-nums; }
+.db-recent .v.up { color: #26d07c; }
+.db-recent .v.down { color: #ff5c5c; }
 `;
 
 export default function DailyBriefing() {
@@ -123,6 +151,32 @@ export default function DailyBriefing() {
         </div>
       </div>
 
+      {/* open position + route (entry → target/stop) */}
+      <div className="db-label"><span>{t('briefing.openTitle')}</span></div>
+      <div className="db-card db-open">
+        <div className="db-open-head">
+          <div className="db-sym">
+            BTCUSDT
+            <span className="db-badge long">{t('briefing.sideLong')}</span>
+            <span className="db-lev">×10</span>
+          </div>
+          <div className="db-pnl"><div className="n up">+$210</div><div className="p">+2.4%</div></div>
+        </div>
+        <div className="db-prices">
+          <span>{t('briefing.entry')} <b>$62,400</b></span>
+          <span>{t('briefing.current')} <b>$63,100</b></span>
+          <span style={{ marginInlineStart: 'auto', color: '#26d07c', fontWeight: 700 }}>{t('briefing.toTarget', { pct: '33%' })}</span>
+        </div>
+        <div className="db-track">
+          <div className="db-entry-tick" style={{ left: '22%' }} />
+          <div className="db-marker" style={{ left: '48%' }} />
+        </div>
+        <div className="db-scale">
+          <span className="r">{t('briefing.stop')} $61,800</span>
+          <span className="g">{t('briefing.target')} $64,500</span>
+        </div>
+      </div>
+
       {/* performance */}
       <div className="db-label">
         <span>{t('briefing.performance')}</span>
@@ -146,6 +200,19 @@ export default function DailyBriefing() {
           <div className="db-stat"><div className="v">2.1R</div><div className="k">{t('briefing.avgRR')}</div></div>
           <div className="db-stat"><div className="v up">+$68</div><div className="k">{t('briefing.today')}</div></div>
         </div>
+        <div className="db-grid3" style={{ marginTop: 8 }}>
+          <div className="db-stat"><div className="v up">+$96</div><div className="k">{t('briefing.avgWin')}</div></div>
+          <div className="db-stat"><div className="v" style={{ color: '#ff5c5c' }}>-$41</div><div className="k">{t('briefing.avgLoss')}</div></div>
+          <div className="db-stat"><div className="v up">+$320</div><div className="k">{t('briefing.bestTrade')}</div></div>
+        </div>
+      </div>
+
+      {/* recent closed trades */}
+      <div className="db-label"><span>{t('briefing.recentTitle')}</span></div>
+      <div>
+        <div className="db-recent"><span className="s">ETHUSDT</span><span className="v up">+$120</span></div>
+        <div className="db-recent"><span className="s">SOLUSDT</span><span className="v down">-$92</span></div>
+        <div className="db-recent"><span className="s">BTCUSDT</span><span className="v up">+$210</span></div>
       </div>
 
       {/* discipline */}
