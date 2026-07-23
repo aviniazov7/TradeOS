@@ -40,7 +40,7 @@ function fmt(price) {
   return n.toPrecision(3);
 }
 
-function TrackBar({ trade, currentPrice, tpReached = [], onTpReached, onLimitTriggered, onSLHit, onUpdateSL, isActive, previewSL, rrBadge, timeSince, isEditMode, onEditStop, suppressBE = false, demoStyle = false }) {
+function TrackBar({ trade, currentPrice, tpReached = [], onTpReached, onLimitTriggered, onSLHit, onUpdateSL, isActive, previewSL, rrBadge, timeSince, isEditMode, onEditStop, suppressBE = false }) {
   const { entryPrice, stopLoss, direction, tps = [], leverage = 1, positionSize } = trade;
   const entry = parseFloat(entryPrice);
   const sl = parseFloat(stopLoss);
@@ -270,52 +270,6 @@ function TrackBar({ trade, currentPrice, tpReached = [], onTpReached, onLimitTri
   })() : 0;
   const badgeLeft = hasPreview ? Math.max(0, Math.min(82, rawPreviewPct)) : 0;
   const badgeOffLeft = hasPreview && rawPreviewPct < 0;
-
-  // ── Demo-style bar (matches the approved home mockup) ──────────────────
-  // Same live positions/detection as the classic bar — only the presentation
-  // changes: prices row above, smooth red→green track with a blue-ring marker,
-  // target/stop labels at the ends.
-  if (demoStyle) {
-    const targetPrice = furthestTp ?? rightAnchor;
-    let pctToTarget = null;
-    if (targetPrice != null && currentPrice > 0 && entry > 0 && Math.abs(targetPrice - entry) > 0) {
-      const prog = isLong
-        ? (currentPrice - entry) / (targetPrice - entry)
-        : (entry - currentPrice) / (entry - targetPrice);
-      pctToTarget = Math.max(0, Math.min(100, prog * 100));
-    }
-    return (
-      <div className="mt-2">
-        {/* prices row */}
-        <div dir="rtl" className="flex items-center gap-3 flex-wrap mb-2.5" style={{ fontSize: 12, color: 'var(--color-text-muted)' }}>
-          <span>כניסה <b style={{ color: 'var(--color-text-primary)' }}>{fmt(entry)}</b></span>
-          {currentPrice > 0 && <span>נוכחי <b style={{ color: 'var(--color-text-primary)' }}>{fmt(currentPrice)}</b></span>}
-          {pctToTarget != null && (
-            <span style={{ marginInlineStart: 'auto', color: 'var(--color-profit)', fontWeight: 700 }}>
-              {pctToTarget.toFixed(0)}% מהדרך ליעד
-            </span>
-          )}
-        </div>
-        {/* gradient track */}
-        <div dir="ltr" className="relative h-1.5 rounded-full" style={{ background: 'linear-gradient(90deg, rgba(239,68,68,0.60) 0%, rgba(120,120,135,0.28) 50%, rgba(34,197,94,0.60) 100%)' }}>
-          {/* entry tick */}
-          <div className="absolute" style={{ left: `${entryPct}%`, top: '-3px', width: 2, height: 12, background: 'rgba(255,255,255,0.6)', transform: 'translateX(-50%)' }} />
-          {/* current price — white dot with blue ring */}
-          {currentVisual != null && (
-            <div className="absolute z-20" style={{ left: `${currentVisual}%`, top: '50%', width: 0, height: 0, transition: 'left 0.8s cubic-bezier(0.25,0.46,0.45,0.94)' }}>
-              <div className="absolute w-5 h-5 rounded-full animate-ping" style={{ top: '-10px', left: '-10px', background: 'rgba(59,130,246,0.25)' }} />
-              <div className="absolute w-3.5 h-3.5 rounded-full bg-white" style={{ top: '-7px', left: '-7px', border: '3px solid #3b82f6', boxShadow: '0 0 10px 3px rgba(59,130,246,0.6)' }} />
-            </div>
-          )}
-        </div>
-        {/* target / stop labels at the ends */}
-        <div dir="ltr" className="flex items-center justify-between mt-1.5" style={{ fontSize: 11 }}>
-          <span style={{ color: 'var(--color-loss)' }}>סטופ {fmt(sl)}</span>
-          <span style={{ color: 'var(--color-profit)' }}>יעד {fmt(targetPrice)}</span>
-        </div>
-      </div>
-    );
-  }
 
   return (
     <div dir="ltr" className="mt-3">
@@ -857,22 +811,6 @@ export default function PendingLimitOrders({ trades, livePrices }) {
               ? 'border-accent-primary/25 hover:border-accent-primary/45'
               : 'border-border-primary/25 hover:border-border-primary/50';
 
-            // Per-card live P&L for the demo-style header
-            const lev = parseFloat(trade.leverage) || 1;
-            const posSize = parseFloat(trade.positionSize);
-            let cardPnlPct = null, cardPnlDollar = null;
-            if (isTradeActive && currentPrice > 0 && entry > 0) {
-              cardPnlPct = trade.direction === 'long'
-                ? ((currentPrice - entry) / entry) * lev * 100
-                : ((entry - currentPrice) / entry) * lev * 100;
-              if (posSize > 0) {
-                const executedPct = (trade.exits || []).reduce((s, e) => s + (parseFloat(e.percent) || 0), 0);
-                const remaining = Math.max(0, 1 - executedPct / 100);
-                const qty = (posSize * remaining) / entry;
-                cardPnlDollar = trade.direction === 'long' ? (currentPrice - entry) * qty : (entry - currentPrice) * qty;
-              }
-            }
-
             // R:R badge
             const sl = parseFloat(trade.stopLoss);
             const allTps = [
@@ -904,56 +842,32 @@ export default function PendingLimitOrders({ trades, livePrices }) {
                 exit={{ opacity: 0, height: 0, overflow: 'hidden' }}
                 transition={{ duration: 0.2 }}
               >
-                <div className={`w-full border rounded-2xl px-4 py-3.5 transition-colors text-right ${cardStyle}`}
-                  style={{ background: 'radial-gradient(140% 120% at 0% 0%, rgba(59,130,246,0.10) 0%, transparent 55%), var(--color-bg-secondary)' }}>
-                  {/* Demo-style header — big P&L (left) · coin/side/leverage + actions (right) */}
-                  <div className="flex items-start justify-between gap-2" dir="ltr">
-                    <div className="min-w-0">
-                      {cardPnlDollar != null ? (
-                        <>
-                          <div className={`text-2xl font-extrabold font-mono leading-none ${cardPnlDollar >= 0 ? 'text-profit' : 'text-loss'}`}>
-                            {cardPnlDollar >= 0 ? '+' : '−'}${Math.abs(cardPnlDollar).toFixed(0)}
-                          </div>
-                          {cardPnlPct != null && (
-                            <div className={`text-xs font-semibold font-mono mt-1 ${cardPnlPct >= 0 ? 'text-profit/80' : 'text-loss/80'}`}>
-                              {cardPnlPct >= 0 ? '+' : ''}{cardPnlPct.toFixed(2)}%
-                            </div>
-                          )}
-                        </>
-                      ) : (
-                        <div className="text-sm font-semibold text-text-muted">{isTradeActive ? '—' : 'ממתין לכניסה'}</div>
-                      )}
-                    </div>
-                    <div className="flex items-center gap-1.5 shrink-0">
-                      {isTradeActive && (
-                        <button
-                          onClick={() => { setEditingId(trade.id); setEditSL(String(slNum || '')); setSaveError(null); }}
-                          title="ערוך סטופ"
-                          className="p-1 rounded-md border bg-bg-tertiary border-border-primary/40 text-text-muted hover:text-text-primary transition-colors"
-                        >
-                          <Pencil className="w-3.5 h-3.5" />
-                        </button>
-                      )}
+                <div className={`w-full border rounded-2xl px-3.5 py-3 transition-colors text-right ${cardStyle}`}
+                  style={{ background: 'radial-gradient(150% 130% at 100% 0%, rgba(59,130,246,0.13) 0%, transparent 55%), rgba(13,13,18,0.75)' }}>
+                  {/* Card header — coin + direction always left, actions right */}
+                  <div className="flex items-center gap-2" dir="ltr">
+                    <CoinIcon pair={pair} className={`w-4 h-4 shrink-0 ${!isTradeActive ? 'opacity-50' : ''}`} />
+                    <span className={`text-sm font-bold ${isTradeActive ? 'text-text-primary' : 'text-text-muted'}`}>{pair}</span>
+                    <span className={`text-[10px] font-bold px-1.5 py-0.5 rounded ${trade.direction === 'long' ? 'bg-profit/15 text-profit' : 'bg-loss/15 text-loss'} ${!isTradeActive ? 'opacity-50' : ''}`}>
+                      {trade.direction === 'long' ? 'Long' : 'Short'}
+                    </span>
+
+                    <div className="flex items-center gap-1.5 ml-auto">
                       <a
                         href={`https://www.tradingview.com/chart/?symbol=BINANCE:${pair}.P`}
-                        target="_blank" rel="noopener noreferrer" title="פתח בTradingView"
-                        className="p-1 rounded-md border bg-bg-tertiary border-border-primary/40 text-text-muted hover:border-accent-primary/50 transition-colors"
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        title="פתח בTradingView"
+                        className="p-0.5 rounded border bg-bg-tertiary border-border-primary/40 text-text-muted hover:border-[#2962FF]/50 transition-colors"
                       >
                         <TvIcon className="w-4 h-4" />
                       </a>
                       <button
                         onClick={() => { setActiveJournalId(trade.journalId); navigate('/journal'); }}
                         className="text-text-muted hover:text-text-primary transition-colors p-0.5"
-                        title="פתח ביומן"
                       >
-                        <ChevronRight className="w-4 h-4" />
+                        <ChevronRight className="w-3.5 h-3.5" />
                       </button>
-                      <span className="text-[11px] text-text-muted font-semibold ml-0.5">×{lev}</span>
-                      <span className={`text-[10px] font-bold px-1.5 py-0.5 rounded ${trade.direction === 'long' ? 'bg-profit/15 text-profit' : 'bg-loss/15 text-loss'} ${!isTradeActive ? 'opacity-50' : ''}`}>
-                        {trade.direction === 'long' ? 'לונג' : 'שורט'}
-                      </span>
-                      <span className={`text-sm font-extrabold ${isTradeActive ? 'text-text-primary' : 'text-text-muted'}`}>{pair}</span>
-                      <CoinIcon pair={pair} className={`w-5 h-5 shrink-0 ${!isTradeActive ? 'opacity-50' : ''}`} />
                     </div>
                   </div>
 
@@ -1005,7 +919,6 @@ export default function PendingLimitOrders({ trades, livePrices }) {
                     suppressBE={!!savedFlash[trade.id]}
                     rrBadge={isTradeActive ? rrBadge : null}
                     timeSince={isTradeActive ? getTimeSince(trade) : null}
-                    demoStyle={isTradeActive}
                   />
 
                   {/* Inline "New Stop" editor — opens from the small button next to R:R */}
