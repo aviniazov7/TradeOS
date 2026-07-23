@@ -38,12 +38,12 @@ export default function LoadingSpinner({ fullScreen = false, size = 'md' }) {
               <defs>
                 {/* Violet → cyan, matching the app accent gradient */}
                 <linearGradient id="splashLine" x1="0" y1="0" x2="1" y2="0">
-                  <stop offset="0%" stopColor="#8b5cf6" />
-                  <stop offset="100%" stopColor="#06b6d4" />
+                  <stop offset="0%" stopColor="#2563eb" />
+                  <stop offset="100%" stopColor="#38bdf8" />
                 </linearGradient>
                 <linearGradient id="splashArea" x1="0" y1="0" x2="1" y2="1">
-                  <stop offset="0%" stopColor="#8b5cf6" stopOpacity="0.28" />
-                  <stop offset="100%" stopColor="#06b6d4" stopOpacity="0" />
+                  <stop offset="0%" stopColor="#2563eb" stopOpacity="0.28" />
+                  <stop offset="100%" stopColor="#38bdf8" stopOpacity="0" />
                 </linearGradient>
               </defs>
 
@@ -67,7 +67,7 @@ export default function LoadingSpinner({ fullScreen = false, size = 'md' }) {
                 cx="130"
                 cy="8"
                 r="4"
-                fill="#22d3ee"
+                fill="#60a5fa"
                 style={{
                   opacity: 0,
                   animation: 'chartDot 2s ease-in-out infinite',
@@ -78,7 +78,7 @@ export default function LoadingSpinner({ fullScreen = false, size = 'md' }) {
                 cy="8"
                 r="8"
                 fill="none"
-                stroke="#22d3ee"
+                stroke="#60a5fa"
                 strokeWidth="1.5"
                 style={{
                   opacity: 0,
