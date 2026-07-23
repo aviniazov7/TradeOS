@@ -369,10 +369,10 @@ function TrackBar({ trade, currentPrice, tpReached = [], onTpReached, onLimitTri
               transition: 'left 0.8s cubic-bezier(0.25, 0.46, 0.45, 0.94)',
             }}
           >
-            <div className="absolute w-5 h-5 rounded-full animate-ping"
-              style={{ top: '-10px', left: '-10px', background: 'rgba(59,130,246,0.25)' }} />
-            <div className="absolute w-3.5 h-3.5 rounded-full bg-white"
-              style={{ top: '-7px', left: '-7px', border: '3px solid #3b82f6', boxShadow: '0 0 10px 3px rgba(59,130,246,0.6)' }} />
+            <div className="absolute w-5 h-5 rounded-full bg-white/20 animate-ping"
+              style={{ top: '-10px', left: '-10px' }} />
+            <div className="absolute w-3 h-3 rounded-full bg-white shadow-[0_0_10px_4px_rgba(255,255,255,0.55)]"
+              style={{ top: '-6px', left: '-6px' }} />
           </div>
         )}
         </div>{/* end track */}
