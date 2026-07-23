@@ -3039,21 +3039,27 @@ async function handleRequest(request, env) {
   // Worker egress IPs, but api.bybit.com is reachable (the /exchange routes
   // already use it). GET /cx/quotes?symbols=BTC,ETH → { BTC: { price, change24h } }.
   if (request.method === 'GET' && path === '/cx/quotes') {
+    // Validate symbol shape so an unauthenticated loop can't mint unbounded
+    // cache keys (was: any caller string → its own cache entry).
     const wanted = (url.searchParams.get('symbols') || '')
-      .split(',').map((s) => s.trim().toUpperCase()).filter(Boolean).slice(0, 60);
+      .split(',').map((s) => s.trim().toUpperCase()).filter((s) => /^[A-Z0-9]{1,15}$/.test(s)).slice(0, 60);
     if (!wanted.length) return new Response(JSON.stringify({ error: 'no symbols' }), { status: 400, headers: { ...cors, 'Content-Type': 'application/json' } });
 
-    const cacheKey = `cx:${wanted.join(',')}`;
-    const staleKey = `${cacheKey}:stale`;
+    // Edge cache (free/unlimited), NOT KV — /cx polled at ~its TTL was writing
+    // ~2,880 KV puts/day per open tab, a primary cause of the KV quota breach.
+    const cache = caches.default;
+    const ckey = wanted.join(',');
+    const freshKey = new Request(`https://cache.tradeos.internal/cx/${ckey}`);
+    const staleKeyReq = new Request(`https://cache.tradeos.internal/cx-stale/${ckey}`);
     try {
-      const cached = await env.ALERTS_KV.get(cacheKey);
-      if (cached) return new Response(cached, { headers: { ...cors, 'Content-Type': 'application/json', 'X-Cache': 'HIT' } });
+      const hit = await cache.match(freshKey);
+      if (hit) return hit;
 
       // One call returns every spot ticker; we pick the ones we want.
       const r = await fetch('https://api.bybit.com/v5/market/tickers?category=spot', { headers: { 'Accept': 'application/json' } });
       if (!r.ok) {
-        const stale = await env.ALERTS_KV.get(staleKey);
-        if (stale) return new Response(stale, { headers: { ...cors, 'Content-Type': 'application/json', 'X-Cache': 'STALE' } });
+        const stale = await cache.match(staleKeyReq);
+        if (stale) return stale;
         return new Response(JSON.stringify({ error: r.status }), { status: r.status, headers: { ...cors, 'Content-Type': 'application/json' } });
       }
       const j = await r.json();
@@ -3069,9 +3075,10 @@ async function handleRequest(request, env) {
         out[sym] = { price, change24h: (parseFloat(t.price24hPcnt) || 0) * 100 }; // price24hPcnt is a fraction
       }
       const text = JSON.stringify(out);
-      env.ALERTS_KV.put(cacheKey, text, { expirationTtl: 60 }).catch(() => {});
-      env.ALERTS_KV.put(staleKey, text, { expirationTtl: 3600 }).catch(() => {});
-      return new Response(text, { headers: { ...cors, 'Content-Type': 'application/json', 'X-Cache': 'MISS' } });
+      const h = { ...cors, 'Content-Type': 'application/json' };
+      await cache.put(freshKey, new Response(text, { headers: { ...h, 'Cache-Control': 'public, max-age=60' } }));
+      await cache.put(staleKeyReq, new Response(text, { headers: { ...h, 'Cache-Control': 'public, max-age=3600' } }));
+      return new Response(text, { headers: { ...h, 'X-Cache': 'MISS' } });
     } catch (err) {
       return new Response(JSON.stringify({ error: err.message }), { status: 502, headers: { ...cors, 'Content-Type': 'application/json' } });
     }
@@ -3088,11 +3095,14 @@ async function handleRequest(request, env) {
       .split(',').map((s) => s.trim().toUpperCase()).filter((s) => YAHOO_FUT[s]);
     if (!wanted.length) return new Response(JSON.stringify({ error: 'no valid symbols' }), { status: 400, headers: { ...cors, 'Content-Type': 'application/json' } });
 
-    const cacheKey = `fut:${wanted.join(',')}`;
-    const staleKey = `${cacheKey}:stale`;
+    // Edge cache, NOT KV — same quota fix as /cx.
+    const cache = caches.default;
+    const ckey = wanted.join(',');
+    const freshKey = new Request(`https://cache.tradeos.internal/fut/${ckey}`);
+    const staleKeyReq = new Request(`https://cache.tradeos.internal/fut-stale/${ckey}`);
     try {
-      const cached = await env.ALERTS_KV.get(cacheKey);
-      if (cached) return new Response(cached, { headers: { ...cors, 'Content-Type': 'application/json', 'X-Cache': 'HIT' } });
+      const hit = await cache.match(freshKey);
+      if (hit) return hit;
 
       const out = {};
       // Fan out per symbol (Yahoo's chart endpoint is per-ticker). Capped by the
@@ -3117,14 +3127,15 @@ async function handleRequest(request, env) {
       }));
 
       if (!Object.keys(out).length) {
-        const stale = await env.ALERTS_KV.get(staleKey);
-        if (stale) return new Response(stale, { headers: { ...cors, 'Content-Type': 'application/json', 'X-Cache': 'STALE' } });
+        const stale = await cache.match(staleKeyReq);
+        if (stale) return stale;
         return new Response(JSON.stringify({ error: 'upstream failed' }), { status: 502, headers: { ...cors, 'Content-Type': 'application/json' } });
       }
       const text = JSON.stringify(out);
-      env.ALERTS_KV.put(cacheKey, text, { expirationTtl: 120 }).catch(() => {});
-      env.ALERTS_KV.put(staleKey, text, { expirationTtl: 3600 }).catch(() => {});
-      return new Response(text, { headers: { ...cors, 'Content-Type': 'application/json', 'X-Cache': 'MISS' } });
+      const h = { ...cors, 'Content-Type': 'application/json' };
+      await cache.put(freshKey, new Response(text, { headers: { ...h, 'Cache-Control': 'public, max-age=120' } }));
+      await cache.put(staleKeyReq, new Response(text, { headers: { ...h, 'Cache-Control': 'public, max-age=3600' } }));
+      return new Response(text, { headers: { ...h, 'X-Cache': 'MISS' } });
     } catch (err) {
       return new Response(JSON.stringify({ error: err.message }), { status: 502, headers: { ...cors, 'Content-Type': 'application/json' } });
     }
