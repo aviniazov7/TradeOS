@@ -18,6 +18,13 @@ import RollingNumber from '../shared/RollingNumber';
 const WORKER_URL = import.meta.env.VITE_WORKER_URL || '';
 const CG_PROXY = WORKER_URL + '/cg';
 const CG_DIRECT = 'https://api.coingecko.com/api/v3';
+
+// Stablecoins + wrapped/staked derivatives excluded from the Altcoin-Season
+// calc. Module scope so it isn't re-allocated on every render.
+const EXCLUDED_SYMBOLS = new Set([
+  'usdt', 'usdc', 'dai', 'busd', 'tusd', 'fdusd', 'usdp', 'usdd', 'gusd', 'frax', 'lusd', 'crvusd', 'pyusd', 'usde',
+  'wbtc', 'weth', 'steth', 'wsteth', 'reth', 'cbeth', 'hbtc', 'renbtc',
+]);
 const CG = CG_PROXY || CG_DIRECT;
 const BNB_URL = WORKER_URL ? `${WORKER_URL}/bnb` : 'https://api.binance.com/api/v3';
 
@@ -1014,16 +1021,18 @@ export default function MarketOverview() {
   // lower 10M volume floor keeps a healthy pool. Split by SIGN so losers are
   // genuinely down-coins (never overlap gainers, never empty just because the
   // pool is small).
-  const qualityCoins = allCoins.filter(c => (c.total_volume || 0) >= 10_000_000);
-  const sorted = [...qualityCoins].sort((a, b) => (b.price_change_percentage_24h || 0) - (a.price_change_percentage_24h || 0));
-  const gainers = sorted.filter(c => (c.price_change_percentage_24h || 0) > 0).slice(0, 8);
-  const losers = sorted.filter(c => (c.price_change_percentage_24h || 0) < 0).slice(-8).reverse();
+  // Memoized so this full-pool sort doesn't re-run on every ~1s liquidation
+  // flush — only when the coin list itself changes.
+  const { gainers, losers } = useMemo(() => {
+    const qualityCoins = allCoins.filter(c => (c.total_volume || 0) >= 10_000_000);
+    const sorted = [...qualityCoins].sort((a, b) => (b.price_change_percentage_24h || 0) - (a.price_change_percentage_24h || 0));
+    return {
+      gainers: sorted.filter(c => (c.price_change_percentage_24h || 0) > 0).slice(0, 8),
+      losers: sorted.filter(c => (c.price_change_percentage_24h || 0) < 0).slice(-8).reverse(),
+    };
+  }, [allCoins]);
 
   // Altcoin Season Index: prefer real BlockchainCenter data (90d), fallback to local 30d calc
-  const EXCLUDED_SYMBOLS = new Set([
-    'usdt', 'usdc', 'dai', 'busd', 'tusd', 'fdusd', 'usdp', 'usdd', 'gusd', 'frax', 'lusd', 'crvusd', 'pyusd', 'usde',
-    'wbtc', 'weth', 'steth', 'wsteth', 'reth', 'cbeth', 'hbtc', 'renbtc',
-  ]);
   const altSeasonData = useMemo(() => {
     // Use real BlockchainCenter 90d data if available
     let index;

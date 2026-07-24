@@ -308,7 +308,7 @@ export default function TradeForm({ isOpen, onClose, trade, onSave, riskSettings
 
     return { pnl, pnlPercent, rrRatio, netPnl };
   }, [form.direction, form.entryPrice, form.additionalExits, form.stopLoss, calculatedQty, form.fees,
-      form.pnlFromExchange, form.pnlPercent, isFutures, contractSpec, contractsNum]);
+      form.leverage, form.pnlFromExchange, form.pnlPercent, isFutures, contractSpec, contractsNum]);
 
   // Risk warning
   const riskInfo = useMemo(() => {
