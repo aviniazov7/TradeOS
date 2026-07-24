@@ -41,13 +41,17 @@ Preview channels live 7 days then auto-delete.
 
 ## Release workflow (version bump)
 
-`APP_VERSION` and `CACHE_NAME` are **auto-bumped by the workflow** when pushing
-to `main`. You don't need to bump manually anymore. The bump exists to force
-the service worker to register a new version and trigger the in-app
-"גרסה חדשה זמינה" prompt (`UpdatePrompt.jsx` + `swUpdate.js`).
+**Full decision guide: [`docs/VERSIONING.md`](docs/VERSIONING.md)** — read it
+before releasing. Summary:
 
-Only bump manually if you have a strong reason — e.g. the auto-bump script
-broke and you need to ship a release.
+- `CACHE_NAME` (`public/sw.js`) is **auto-bumped** on every push to `main` (via
+  `scripts/bump-version.mjs`) — this forces the service worker to update and
+  triggers the "גרסה חדשה זמינה" prompt. Never touch it manually.
+- `APP_VERSION` (`src/utils/constants.js`) is the **marketing version, set by
+  hand**, currently pinned at `2.0.0`. A normal release does NOT require bumping
+  it. Bump it (semver MAJOR/MINOR/PATCH — see the guide) only for a
+  user-visible milestone, and only as the owner's call. When in doubt, don't
+  bump — just release.
 
 ## Build & lint
 
