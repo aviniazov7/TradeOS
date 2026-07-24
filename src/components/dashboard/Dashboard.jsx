@@ -403,11 +403,11 @@ export default function Dashboard() {
     <motion.div variants={pageVariants} initial="initial" animate="animate" exit="exit" transition={pageTransition}>
       <PendingLimitOrders trades={globalStats.openTrades} livePrices={livePrices} />
 
-      {/* AI agent + performance snapshot — side by side on desktop, stacked on mobile. */}
-      <div className="grid grid-cols-1 lg:grid-cols-2 gap-4 items-start">
-        <TradeAgentCard trades={allTrades} />
-        <PerformanceSnapshot trades={allTrades} stats={globalStats} synced={Object.keys(linkedBalances || {}).length > 0} />
-      </div>
+      {/* AI agent — a compact, real-data summary of the user's trades. */}
+      <TradeAgentCard trades={allTrades} />
+
+      {/* Performance snapshot — weekly P&L + sparkline + today/R:R/win-rate. */}
+      <PerformanceSnapshot trades={allTrades} stats={globalStats} synced={Object.keys(linkedBalances || {}).length > 0} />
 
       {/* First-steps checklist — renders only for fresh accounts (hides
           itself for veterans / when everything is done / when dismissed). */}
