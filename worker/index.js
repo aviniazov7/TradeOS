@@ -1030,6 +1030,71 @@ function pemToPkcs8(pem) {
   return b64urlToBytesLocal(body.replace(/\+/g, '-').replace(/\//g, '_'));
 }
 
+// Cloudflare quota usage (KV operations + Workers invocations) for TODAY, via
+// the GraphQL Analytics API. Read-only; needs CF_API_TOKEN (Account Analytics
+// Read) + CF_ACCOUNT_ID. Cached 5 min in the Cache API — deliberately NOT in KV,
+// so measuring the quota doesn't itself consume it. Fully best-effort: any
+// failure returns an `error` string and zeros, never throws.
+const CF_QUOTA_LIMITS = { kvRead: 100000, kvWrite: 1000, kvDelete: 1000, kvList: 1000, workers: 100000 };
+async function fetchCloudflareQuotas(env) {
+  if (!env.CF_API_TOKEN || !env.CF_ACCOUNT_ID) return { configured: false };
+
+  const cacheKey = new Request('https://internal.tradeos/cf-quotas');
+  const cache = caches.default;
+  const cached = await cache.match(cacheKey);
+  if (cached) { try { return await cached.json(); } catch { /* fall through */ } }
+
+  const dayStr = new Date().toISOString().slice(0, 10);      // YYYY-MM-DD (UTC)
+  const sinceIso = `${dayStr}T00:00:00Z`;
+  const query = `query Q($tag: String!, $date: Date!, $since: Time!) {
+    viewer { accounts(filter: { accountTag: $tag }) {
+      kvOperationsAdaptiveGroups(limit: 100, filter: { date_geq: $date }) {
+        sum { requests } dimensions { actionType }
+      }
+      workersInvocationsAdaptive(limit: 100, filter: { datetime_geq: $since }) {
+        sum { requests }
+      }
+    } }
+  }`;
+
+  const out = {
+    configured: true, error: null, updatedAt: Date.now(),
+    kv: { read: 0, write: 0, delete: 0, list: 0 },
+    workers: { requests: 0 },
+    limits: CF_QUOTA_LIMITS,
+  };
+  try {
+    const r = await fetch('https://api.cloudflare.com/client/v4/graphql', {
+      method: 'POST',
+      headers: { Authorization: `Bearer ${env.CF_API_TOKEN}`, 'Content-Type': 'application/json' },
+      body: JSON.stringify({ query, variables: { tag: env.CF_ACCOUNT_ID, date: dayStr, since: sinceIso } }),
+    });
+    const j = await r.json().catch(() => ({}));
+    if (j.errors && j.errors.length) out.error = j.errors[0]?.message || 'graphql error';
+    const acct = j?.data?.viewer?.accounts?.[0];
+    if (acct) {
+      for (const g of acct.kvOperationsAdaptiveGroups || []) {
+        const t = g?.dimensions?.actionType;
+        const req = g?.sum?.requests || 0;
+        if (t && out.kv[t] != null) out.kv[t] += req;
+      }
+      out.workers.requests = (acct.workersInvocationsAdaptive || [])
+        .reduce((s, g) => s + (g?.sum?.requests || 0), 0);
+    } else if (!out.error) {
+      out.error = 'no account data';
+    }
+  } catch (e) {
+    out.error = String(e?.message || e);
+  }
+
+  try {
+    await cache.put(cacheKey, new Response(JSON.stringify(out), {
+      headers: { 'Content-Type': 'application/json', 'Cache-Control': 'max-age=300' },
+    }));
+  } catch { /* cache put is best-effort */ }
+  return out;
+}
+
 async function getFirebaseAdminToken(env) {
   if (GAPI_TOKEN_CACHE.token && Date.now() < GAPI_TOKEN_CACHE.expiresAt - 60_000) {
     return GAPI_TOKEN_CACHE.token;
@@ -2974,21 +3039,27 @@ async function handleRequest(request, env) {
   // Worker egress IPs, but api.bybit.com is reachable (the /exchange routes
   // already use it). GET /cx/quotes?symbols=BTC,ETH → { BTC: { price, change24h } }.
   if (request.method === 'GET' && path === '/cx/quotes') {
+    // Validate symbol shape so an unauthenticated loop can't mint unbounded
+    // cache keys (was: any caller string → its own cache entry).
     const wanted = (url.searchParams.get('symbols') || '')
-      .split(',').map((s) => s.trim().toUpperCase()).filter(Boolean).slice(0, 60);
+      .split(',').map((s) => s.trim().toUpperCase()).filter((s) => /^[A-Z0-9]{1,15}$/.test(s)).slice(0, 60);
     if (!wanted.length) return new Response(JSON.stringify({ error: 'no symbols' }), { status: 400, headers: { ...cors, 'Content-Type': 'application/json' } });
 
-    const cacheKey = `cx:${wanted.join(',')}`;
-    const staleKey = `${cacheKey}:stale`;
+    // Edge cache (free/unlimited), NOT KV — /cx polled at ~its TTL was writing
+    // ~2,880 KV puts/day per open tab, a primary cause of the KV quota breach.
+    const cache = caches.default;
+    const ckey = wanted.join(',');
+    const freshKey = new Request(`https://cache.tradeos.internal/cx/${ckey}`);
+    const staleKeyReq = new Request(`https://cache.tradeos.internal/cx-stale/${ckey}`);
     try {
-      const cached = await env.ALERTS_KV.get(cacheKey);
-      if (cached) return new Response(cached, { headers: { ...cors, 'Content-Type': 'application/json', 'X-Cache': 'HIT' } });
+      const hit = await cache.match(freshKey);
+      if (hit) return hit;
 
       // One call returns every spot ticker; we pick the ones we want.
       const r = await fetch('https://api.bybit.com/v5/market/tickers?category=spot', { headers: { 'Accept': 'application/json' } });
       if (!r.ok) {
-        const stale = await env.ALERTS_KV.get(staleKey);
-        if (stale) return new Response(stale, { headers: { ...cors, 'Content-Type': 'application/json', 'X-Cache': 'STALE' } });
+        const stale = await cache.match(staleKeyReq);
+        if (stale) return stale;
         return new Response(JSON.stringify({ error: r.status }), { status: r.status, headers: { ...cors, 'Content-Type': 'application/json' } });
       }
       const j = await r.json();
@@ -3004,9 +3075,10 @@ async function handleRequest(request, env) {
         out[sym] = { price, change24h: (parseFloat(t.price24hPcnt) || 0) * 100 }; // price24hPcnt is a fraction
       }
       const text = JSON.stringify(out);
-      env.ALERTS_KV.put(cacheKey, text, { expirationTtl: 60 }).catch(() => {});
-      env.ALERTS_KV.put(staleKey, text, { expirationTtl: 3600 }).catch(() => {});
-      return new Response(text, { headers: { ...cors, 'Content-Type': 'application/json', 'X-Cache': 'MISS' } });
+      const h = { ...cors, 'Content-Type': 'application/json' };
+      await cache.put(freshKey, new Response(text, { headers: { ...h, 'Cache-Control': 'public, max-age=60' } }));
+      await cache.put(staleKeyReq, new Response(text, { headers: { ...h, 'Cache-Control': 'public, max-age=3600' } }));
+      return new Response(text, { headers: { ...h, 'X-Cache': 'MISS' } });
     } catch (err) {
       return new Response(JSON.stringify({ error: err.message }), { status: 502, headers: { ...cors, 'Content-Type': 'application/json' } });
     }
@@ -3023,11 +3095,14 @@ async function handleRequest(request, env) {
       .split(',').map((s) => s.trim().toUpperCase()).filter((s) => YAHOO_FUT[s]);
     if (!wanted.length) return new Response(JSON.stringify({ error: 'no valid symbols' }), { status: 400, headers: { ...cors, 'Content-Type': 'application/json' } });
 
-    const cacheKey = `fut:${wanted.join(',')}`;
-    const staleKey = `${cacheKey}:stale`;
+    // Edge cache, NOT KV — same quota fix as /cx.
+    const cache = caches.default;
+    const ckey = wanted.join(',');
+    const freshKey = new Request(`https://cache.tradeos.internal/fut/${ckey}`);
+    const staleKeyReq = new Request(`https://cache.tradeos.internal/fut-stale/${ckey}`);
     try {
-      const cached = await env.ALERTS_KV.get(cacheKey);
-      if (cached) return new Response(cached, { headers: { ...cors, 'Content-Type': 'application/json', 'X-Cache': 'HIT' } });
+      const hit = await cache.match(freshKey);
+      if (hit) return hit;
 
       const out = {};
       // Fan out per symbol (Yahoo's chart endpoint is per-ticker). Capped by the
@@ -3052,14 +3127,15 @@ async function handleRequest(request, env) {
       }));
 
       if (!Object.keys(out).length) {
-        const stale = await env.ALERTS_KV.get(staleKey);
-        if (stale) return new Response(stale, { headers: { ...cors, 'Content-Type': 'application/json', 'X-Cache': 'STALE' } });
+        const stale = await cache.match(staleKeyReq);
+        if (stale) return stale;
         return new Response(JSON.stringify({ error: 'upstream failed' }), { status: 502, headers: { ...cors, 'Content-Type': 'application/json' } });
       }
       const text = JSON.stringify(out);
-      env.ALERTS_KV.put(cacheKey, text, { expirationTtl: 120 }).catch(() => {});
-      env.ALERTS_KV.put(staleKey, text, { expirationTtl: 3600 }).catch(() => {});
-      return new Response(text, { headers: { ...cors, 'Content-Type': 'application/json', 'X-Cache': 'MISS' } });
+      const h = { ...cors, 'Content-Type': 'application/json' };
+      await cache.put(freshKey, new Response(text, { headers: { ...h, 'Cache-Control': 'public, max-age=120' } }));
+      await cache.put(staleKeyReq, new Response(text, { headers: { ...h, 'Cache-Control': 'public, max-age=3600' } }));
+      return new Response(text, { headers: { ...h, 'X-Cache': 'MISS' } });
     } catch (err) {
       return new Response(JSON.stringify({ error: err.message }), { status: 502, headers: { ...cors, 'Content-Type': 'application/json' } });
     }
@@ -3895,11 +3971,13 @@ async function handleRequest(request, env) {
     if (!adminUid) return new Response(JSON.stringify({ error: 'forbidden' }), { status: 403, headers: { ...cors, 'Content-Type': 'application/json' } });
     const cronRaw = await env.ALERTS_KV.get('cron:last');
     const cronLast = cronRaw ? parseInt(cronRaw, 10) || null : null;
+    const quotas = await fetchCloudflareQuotas(env);
     return new Response(JSON.stringify({
       time: Date.now(),
       cronLast,
       pushConfigured: !!env.VAPID_JWK,
       aiConfigured: !!env.GROQ_API_KEY,
+      quotas,
     }), { headers: { ...cors, 'Content-Type': 'application/json' } });
   }
 

@@ -181,15 +181,16 @@ function SectionCard({ icon, title, action, className = '', children }) {
   );
 }
 
-// Small accent stat tile (DAU/WAU/MAU, AI counters, …).
-function StatMini({ value, label, accent = 'cyan', icon }) {
+// Small accent stat tile (DAU/WAU/MAU, AI counters, …). `compact` shrinks
+// padding + value size for denser cards.
+function StatMini({ value, label, accent = 'cyan', icon, compact = false }) {
   const a = STAT_ACCENTS[accent] || STAT_ACCENTS.cyan;
   return (
-    <div className="rounded-xl bg-bg-tertiary/40 border border-border-primary px-3 py-3 flex items-center gap-3">
-      {icon && <div className={`shrink-0 rounded-lg p-2 ${a.chip}`}>{icon}</div>}
+    <div className={`rounded-xl bg-bg-tertiary/40 border border-border-primary flex items-center ${compact ? 'px-2.5 py-2 gap-2' : 'px-3 py-3 gap-3'}`}>
+      {icon && <div className={`shrink-0 rounded-lg ${compact ? 'p-1.5' : 'p-2'} ${a.chip}`}>{icon}</div>}
       <div className="min-w-0">
-        <div className={`text-xl font-bold leading-none ${a.text}`} dir="ltr"><AnimatedValue value={String(value)} /></div>
-        <div className="text-[10px] text-text-muted mt-1.5 truncate">{label}</div>
+        <div className={`font-bold leading-none ${compact ? 'text-base' : 'text-xl'} ${a.text}`} dir="ltr"><AnimatedValue value={String(value)} /></div>
+        <div className={`text-[10px] text-text-muted truncate ${compact ? 'mt-0.5' : 'mt-1.5'}`}>{label}</div>
       </div>
     </div>
   );
@@ -772,19 +773,18 @@ export default function AdminPanel() {
         title="פעילות ורטנשן"
         action={<span className="text-[11px] text-text-muted">לפי lastActive</span>}
       >
-        <div className="grid grid-cols-3 gap-2 mb-3">
-          <StatMini accent="cyan" value={retention.today} label="היום" />
-          <StatMini accent="violet" value={retention.week} label="7 ימים" />
-          <StatMini accent="green" value={retention.month} label="30 יום" />
+        <div className="grid grid-cols-3 gap-2 mb-2">
+          <StatMini compact accent="cyan" value={retention.today} label="היום" />
+          <StatMini compact accent="violet" value={retention.week} label="7 ימים" />
+          <StatMini compact accent="green" value={retention.month} label="30 יום" />
         </div>
         {users.length === 0 ? (
-          <div className="text-sm text-text-muted text-center py-6 border border-dashed border-border-primary rounded-xl">
+          <div className="text-sm text-text-muted text-center py-5 border border-dashed border-border-primary rounded-xl">
             אין עדיין משתמשים להצגת רטנשן
           </div>
         ) : (
           <>
-            <div className="text-[11px] text-text-muted mb-2">הצטרפות לפי שבוע — 8 שבועות אחרונים, לפי פעילות בשבוע האחרון</div>
-            <div className="h-36 -mx-1">
+            <div className="h-24 -mx-1">
               <ResponsiveContainer width="100%" height="100%">
                 <BarChart data={retention.cohorts} margin={{ top: 4, right: 6, bottom: 0, left: 6 }}>
                   <XAxis dataKey="label" tick={{ fill: 'var(--color-text-muted)', fontSize: 9 }} axisLine={false} tickLine={false} />
@@ -832,14 +832,14 @@ export default function AdminPanel() {
             אין עדיין משתמשים להצגת המשפך
           </div>
         ) : (
-          <div className="space-y-2.5">
+          <div className="space-y-1.5">
             {funnel.stages.map((s, i) => {
               // Keep a sliver visible for non-zero stages that round to a tiny %.
               const width = s.count > 0 ? Math.max(s.pct, 4) : 0;
               const color = FUNNEL_ACCENTS[i] || FUNNEL_ACCENTS[FUNNEL_ACCENTS.length - 1];
               return (
-                <div key={s.key}>
-                  <div className="flex items-center justify-between gap-2 text-[11px] mb-1">
+                <div key={s.key} title={s.note}>
+                  <div className="flex items-center justify-between gap-2 text-[11px] mb-0.5">
                     <span className="text-text-secondary truncate">{s.label}</span>
                     <span className="text-text-muted shrink-0" dir="ltr">
                       <span className="font-semibold text-text-primary">{s.count.toLocaleString()}</span>
@@ -847,21 +847,19 @@ export default function AdminPanel() {
                       {i > 0 && s.dropPct > 0 && <span className="text-loss">{' · '}−{s.dropPct}%</span>}
                     </span>
                   </div>
-                  <div className="h-2.5 rounded-full bg-bg-tertiary overflow-hidden">
+                  <div className="h-2 rounded-full bg-bg-tertiary overflow-hidden">
                     <div
                       className="h-full rounded-full transition-all duration-500"
                       style={{ width: `${width}%`, background: color }}
                     />
                   </div>
-                  <div className="text-[10px] text-text-muted mt-1 truncate">{s.note}</div>
                 </div>
               );
             })}
           </div>
         )}
-        <div className="mt-3 text-[10px] text-text-muted leading-relaxed">
-          כל שלב מותנה בקודמו (מצטבר), האחוזים מתוך סך הנרשמים. שלב "עסקה ראשונה" דורש
-          ספירת עסקאות פר-משתמש שאינה נטענת ברמת הפאנל, ולכן אינו מוצג.
+        <div className="mt-2 text-[10px] text-text-muted">
+          מצטבר — כל שלב מותנה בקודמו, האחוזים מסך הנרשמים.
         </div>
       </SectionCard>
 
@@ -901,6 +899,29 @@ export default function AdminPanel() {
         )}
       </SectionCard>
 
+      {/* Cloudflare quota usage (KV + Workers) today vs the free-tier daily
+          limits — replaces the "[Alert] approaching your KV limit" emails. */}
+      {health?.quotas?.configured && (
+        <SectionCard icon={<BarChart3 className="w-4 h-4" />} title="תשתית — מכסות Cloudflare">
+          {health.quotas.error ? (
+            <div className="text-xs text-loss">לא ניתן לטעון מכסות: {health.quotas.error}</div>
+          ) : (
+            <>
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5">
+                {[
+                  { label: 'KV · קריאות', used: health.quotas.kv.read, limit: health.quotas.limits.kvRead },
+                  { label: 'KV · כתיבות', used: health.quotas.kv.write, limit: health.quotas.limits.kvWrite },
+                  { label: 'KV · מחיקות', used: health.quotas.kv.delete, limit: health.quotas.limits.kvDelete },
+                  { label: 'KV · רשימות', used: health.quotas.kv.list, limit: health.quotas.limits.kvList },
+                  { label: 'Workers · בקשות', used: health.quotas.workers.requests, limit: health.quotas.limits.workers },
+                ].map((q) => <QuotaBar key={q.label} {...q} />)}
+              </div>
+              <div className="text-[10px] text-text-muted mt-2">ניצול היום (UTC) · מתעדכן כל 5 דק׳ · צהוב מ-70%, אדום מ-90%</div>
+            </>
+          )}
+        </SectionCard>
+      )}
+
       {/* Firebase (Firestore) consumption vs the Spark free-tier daily limits.
           Numbers only — the worker never returns documents or tokens. */}
       <SectionCard
@@ -930,7 +951,7 @@ export default function AdminPanel() {
                   <div className="text-[11px] text-text-muted mb-1.5">מסמכים ב-Firestore</div>
                   <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
                     {docs.map((d) => (
-                      <StatMini key={d.label} accent={d.accent} value={d.v.toLocaleString()} label={d.label} />
+                      <StatMini compact key={d.label} accent={d.accent} value={d.v.toLocaleString()} label={d.label} />
                     ))}
                   </div>
                 </div>
@@ -943,7 +964,7 @@ export default function AdminPanel() {
             <a
               href="https://console.firebase.google.com/project/tradeos-91a58/usage"
               target="_blank" rel="noopener noreferrer"
-              className="mt-3 flex items-center justify-center gap-1.5 px-3 py-2 rounded-lg border border-border-primary text-xs text-text-secondary hover:text-text-primary hover:border-accent-primary/40 transition-colors"
+              className="mt-2.5 flex items-center justify-center gap-1.5 px-3 py-1.5 rounded-lg border border-border-primary text-xs text-text-secondary hover:text-text-primary hover:border-accent-primary/40 transition-colors"
             >
               <Flame className="w-3.5 h-3.5" /> צפה בצריכה ובמכסות המלאות במסוף Firebase
             </a>
@@ -1569,6 +1590,26 @@ const SEGMENT_LABELS = {
   onboarded: 'סיימו אונבורדינג',
   churned: 'בסיכון נטישה',
 };
+// One quota row — used/limit with a colour-coded progress bar (green<70%,
+// amber 70–90%, red >90%). Used by the Cloudflare "תשתית" card.
+function QuotaBar({ label, used, limit }) {
+  const u = Number(used) || 0;
+  const l = Number(limit) || 0;
+  const pct = l > 0 ? Math.min(100, (u / l) * 100) : 0;
+  const color = pct >= 90 ? '#ef4444' : pct >= 70 ? '#f59e0b' : '#22c55e';
+  return (
+    <div className="rounded-xl px-3 py-2.5 border border-border-primary bg-bg-tertiary">
+      <div className="flex items-center justify-between mb-1.5 gap-2">
+        <span className="text-xs font-semibold text-text-primary">{label}</span>
+        <span className="text-[10px] font-mono text-text-muted tabular-nums">{u.toLocaleString()} / {l.toLocaleString()}</span>
+      </div>
+      <div className="h-2 rounded-full bg-bg-secondary overflow-hidden">
+        <div className="h-full rounded-full transition-all duration-500" style={{ width: `${pct}%`, background: color }} />
+      </div>
+    </div>
+  );
+}
+
 function BulkNotifyModal({ isOpen, onClose, segments }) {
   const [seg, setSeg] = useState('premium');
   const [title, setTitle] = useState('');

@@ -308,7 +308,7 @@ export default function TradeForm({ isOpen, onClose, trade, onSave, riskSettings
 
     return { pnl, pnlPercent, rrRatio, netPnl };
   }, [form.direction, form.entryPrice, form.additionalExits, form.stopLoss, calculatedQty, form.fees,
-      form.pnlFromExchange, form.pnlPercent, isFutures, contractSpec, contractsNum]);
+      form.leverage, form.pnlFromExchange, form.pnlPercent, isFutures, contractSpec, contractsNum]);
 
   // Risk warning
   const riskInfo = useMemo(() => {
@@ -555,7 +555,7 @@ export default function TradeForm({ isOpen, onClose, trade, onSave, riskSettings
                 limit:   { icon: Clock,         color: 'text-text-muted',    bg: 'bg-bg-tertiary',       border: 'border-border-primary/50', dot: 'bg-text-muted',    label: 'ממתין לכניסה' },
                 open:    { icon: CircleDot,     color: 'text-accent-primary', bg: 'bg-accent-primary/8', border: 'border-accent-primary/20', dot: 'bg-accent-primary animate-pulse', label: 'עסקה פתוחה' },
                 partial: { icon: CircleDot,     color: 'text-amber-400',     bg: 'bg-amber-400/8',       border: 'border-amber-400/20',      dot: 'bg-amber-400 animate-pulse',      label: `${additionalExitsPercent.toFixed(0)}% נסגר` },
-                closed:  { icon: CheckCircle2,  color: calc?.pnl > 0 ? 'text-profit' : 'text-loss', bg: calc?.pnl > 0 ? 'bg-profit/8' : 'bg-loss/8', border: calc?.pnl > 0 ? 'border-profit/20' : 'border-loss/20', dot: calc?.pnl > 0 ? 'bg-profit' : 'bg-loss', label: 'נסגרה' },
+                closed:  { icon: CheckCircle2,  color: calc?.netPnl > 0 ? 'text-profit' : 'text-loss', bg: calc?.netPnl > 0 ? 'bg-profit/8' : 'bg-loss/8', border: calc?.netPnl > 0 ? 'border-profit/20' : 'border-loss/20', dot: calc?.netPnl > 0 ? 'bg-profit' : 'bg-loss', label: 'נסגרה' },
               };
               const cfg = statusCfg[currentStatus];
               const Icon = cfg.icon;
@@ -567,9 +567,9 @@ export default function TradeForm({ isOpen, onClose, trade, onSave, riskSettings
                   </div>
                   {calc && (
                     <div className="flex items-center gap-2.5">
-                      <span className={`text-sm font-bold ${pnlColor(calc.pnl)}`}>{formatCurrency(calc.pnl)}</span>
+                      <span className={`text-sm font-bold ${pnlColor(calc.netPnl)}`}>{formatCurrency(calc.netPnl)}</span>
                       <span className={`text-xs font-semibold ${pnlColor(calc.pnlPercent)}`}>{formatPercent(calc.pnlPercent)}</span>
-                      <span className={`text-[10px] font-medium px-1.5 py-0.5 rounded bg-bg-tertiary ${pnlColor(calc.pnl)}`}>{formatRR(calc.rrRatio, calc.pnl)}</span>
+                      <span className={`text-[10px] font-medium px-1.5 py-0.5 rounded bg-bg-tertiary ${pnlColor(calc.netPnl)}`}>{formatRR(calc.rrRatio, calc.netPnl)}</span>
                     </div>
                   )}
                 </div>

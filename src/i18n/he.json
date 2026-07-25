@@ -1,0 +1,59 @@
+{
+  "common": {
+    "appName": "TradeOS"
+  },
+  "nav": {
+    "home": "בית",
+    "journal": "יומן",
+    "coach": "מאמן AI",
+    "me": "פרופיל",
+    "more": "עוד"
+  },
+  "language": {
+    "label": "שפה",
+    "he": "עברית",
+    "en": "English"
+  },
+  "briefing": {
+    "greeting": "בוקר טוב, {{name}}",
+    "coachTitle": "המאמן שלך זיהה דפוס",
+    "coachSub": "ניתוח {{count}} הטריידים האחרונים שלך",
+    "coachMsg": "ב-3 הטריידים האחרונים נכנסת מוקדם מדי — לפני נר האישור. הדפוס חוזר בעיקר בסשן האסייתי. זה עלה לך {{cost}} השבוע. המתן לסגירת הנר — ה-win-rate שלך על כניסות מאושרות הוא {{winrate}}.",
+    "tagEarly": "כניסה מוקדמת",
+    "tagAsian": "סשן אסייתי",
+    "tagRepeat": "חוזר 3×",
+    "analyzeDeep": "נתח לעומק",
+    "ignoreToday": "התעלם היום",
+    "performance": "הביצועים שלך",
+    "syncedFrom": "מסונכרן מ-{{exchange}}",
+    "thisWeek": "השבוע",
+    "trades": "{{count}} טריידים",
+    "winRate": "Win Rate",
+    "avgRR": "R:R ממוצע",
+    "today": "היום",
+    "openTitle": "עסקה פתוחה עכשיו",
+    "sideLong": "לונג",
+    "sideShort": "שורט",
+    "entry": "כניסה",
+    "current": "נוכחי",
+    "target": "יעד",
+    "stop": "סטופ",
+    "toTarget": "{{pct}} מהדרך ליעד",
+    "recentTitle": "עסקאות אחרונות",
+    "avgWin": "רווח ממוצע",
+    "avgLoss": "הפסד ממוצע",
+    "bestTrade": "הטרייד הכי טוב",
+    "disciplineTitle": "מצב משמעת",
+    "disciplineLabel": "משמעת",
+    "focused": "ממוקד",
+    "statusLine": "מצב: {{state}} — אתה לא על טילט",
+    "disciplineDesc": "עמדת בסטופ ב-9 מתוך 10 הטריידים האחרונים. לא הגדלת פוזיציה אחרי הפסד.",
+    "streak": "{{days}} ימים ברצף לפי התוכנית",
+    "todoTitle": "מה לעשות היום",
+    "todoMorning": "מלא יומן בוקר",
+    "todoMorningSub": "הגדר כוונה למסחר של היום (30 שניות)",
+    "todoReview": "סקור את הטרייד המפסיד של אתמול",
+    "todoReviewSub": "{{symbol}} · {{pnl}} · המאמן מצא סיבה",
+    "previewBanner": "תצוגה מקדימה — מסך הבית החדש (בבנייה)"
+  }
+}

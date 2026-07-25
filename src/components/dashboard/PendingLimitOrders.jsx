@@ -273,17 +273,7 @@ function TrackBar({ trade, currentPrice, tpReached = [], onTpReached, onLimitTri
 
   return (
     <div dir="ltr" className="mt-3">
-      <div className="relative h-1 rounded-full bg-bg-tertiary">
-        {/* Loss zone (SL → Entry) — hidden in BE mode */}
-        {!isBreakEven && (
-          <div className="absolute top-0 bottom-0 bg-loss/40 rounded-full"
-            style={{ left: '0%', width: `${entryPct}%`, transition: 'width 0.45s cubic-bezier(0.25,0.46,0.45,0.94)' }} />
-        )}
-        {tpPrices.length > 0 && (
-          <div className="absolute top-0 bottom-0 bg-profit/40 rounded-full"
-            style={{ left: isBreakEven ? '0%' : `${entryPct}%`, width: `${Math.max(0, 100 - (isBreakEven ? 0 : entryPct))}%`, transition: 'left 0.45s cubic-bezier(0.25,0.46,0.45,0.94), width 0.45s cubic-bezier(0.25,0.46,0.45,0.94)' }} />
-        )}
-
+      <div className="relative h-1.5 rounded-full" style={{ background: 'linear-gradient(90deg, rgba(239,68,68,0.60) 0%, rgba(120,120,135,0.28) 50%, rgba(34,197,94,0.60) 100%)' }}>
         {/* SL dot — hidden in BE mode (entry dot replaces it) */}
         {!isBreakEven && (
           <div className="absolute top-1/2 w-2 h-2 rounded-full bg-loss border border-bg-secondary"
@@ -813,23 +803,13 @@ export default function PendingLimitOrders({ trades, livePrices }) {
                   : currentPrice >= parseFloat(trade.entryPrice)));
             const isTradeActive = !isLimit || isTriggered;
 
-            // Per-card live P&L for background color
             const entry = parseFloat(trade.entryPrice);
-            const posSize = parseFloat(trade.positionSize);
-            let cardPnl = null;
-            if (isTradeActive && currentPrice && entry > 0 && posSize > 0) {
-              const qty = posSize / entry;
-              cardPnl = trade.direction === 'long' ? (currentPrice - entry) * qty : (entry - currentPrice) * qty;
-            }
 
-            // Card border + bg based on P&L
-            const cardStyle = cardPnl !== null && cardPnl > 0
-              ? 'border-profit/30 bg-profit/5 hover:border-profit/50'
-              : cardPnl !== null && cardPnl < 0
-              ? 'border-loss/25 bg-loss/5 hover:border-loss/40'
-              : isTradeActive
-              ? 'border-accent-primary/20 bg-bg-secondary/80 hover:border-accent-primary/40'
-              : 'border-border-primary/25 bg-bg-secondary/40 hover:border-border-primary/50';
+            // Card frame — consistent blue (demo look), independent of P&L so a
+            // losing position no longer paints the whole card red.
+            const cardStyle = isTradeActive
+              ? 'border-accent-primary/25 hover:border-accent-primary/45'
+              : 'border-border-primary/25 hover:border-border-primary/50';
 
             // R:R badge
             const sl = parseFloat(trade.stopLoss);
@@ -862,7 +842,8 @@ export default function PendingLimitOrders({ trades, livePrices }) {
                 exit={{ opacity: 0, height: 0, overflow: 'hidden' }}
                 transition={{ duration: 0.2 }}
               >
-                <div className={`w-full border rounded-xl px-3 py-2.5 transition-colors text-right ${cardStyle}`}>
+                <div className={`w-full border rounded-2xl px-3.5 py-3 transition-colors text-right ${cardStyle}`}
+                  style={{ background: 'radial-gradient(150% 130% at 100% 0%, rgba(59,130,246,0.13) 0%, transparent 55%), rgba(13,13,18,0.75)' }}>
                   {/* Card header — coin + direction always left, actions right */}
                   <div className="flex items-center gap-2" dir="ltr">
                     <CoinIcon pair={pair} className={`w-4 h-4 shrink-0 ${!isTradeActive ? 'opacity-50' : ''}`} />

@@ -235,20 +235,30 @@ export function useDashboardStats(trades, initialBalance = 0, period = 'all') {
     const sharpeRatio = calculateSharpeRatio(returns);
     const sortinoRatio = clampRatio(calculateSortinoRatio(returns));
 
-    let equity = initialBalance || 0;
+    // Balance at the START of the selected period = initialBalance + everything
+    // earned before it. This is the correct peak baseline so drawdown/Calmar/
+    // recovery on a FILTERED view (week/month/year) match the equity chart below.
+    // (Was: initialBalance only → filtered periods under-reported drawdown, and
+    // could show 0% when the period never dipped below initialBalance.)
+    const periodStart = getPeriodStart(period);
+    const prePeriodPnl = periodStart
+      ? trades
+          .filter((t) => isClosedTrade(t) && toDate(t.exitDate || t.entryDate) < periodStart)
+          .reduce((s, t) => s + (safePnl(t)), 0)
+      : 0;
+    const startBalance = (initialBalance || 0) + prePeriodPnl;
+
+    let equity = startBalance;
     const equityCurve = sorted.map((t) => {
       equity += safePnl(t);
       return equity;
     });
-    // Pass initialBalance as the true starting peak so drawdown from
-    // the very first losing trade is captured correctly (fixes initialBalance=0 bug)
-    const maxDrawdown = equityCurve.length ? calculateMaxDrawdown(equityCurve, initialBalance || 0) : 0;
+    // startBalance is the true starting peak so drawdown from the first losing
+    // trade of the period is captured correctly (also fixes initialBalance=0).
+    const maxDrawdown = equityCurve.length ? calculateMaxDrawdown(equityCurve, startBalance) : 0;
     const calmarRatio = clampRatio(calculateCalmarRatio(coreStats.balanceChangePercent, maxDrawdown));
 
-    // Start peak at initialBalance (before first trade) — fixes the case where
-    // initialBalance=0 and first trade is a loss: equityCurve[0] would be negative,
-    // making peakEquity negative and causing maxDrawdownAbsolute to under-report
-    let peakEquity = initialBalance || 0;
+    let peakEquity = startBalance;
     let maxDrawdownAbsolute = 0;
     for (const val of equityCurve) {
       if (val > peakEquity) peakEquity = val;
@@ -257,16 +267,9 @@ export function useDashboardStats(trades, initialBalance = 0, period = 'all') {
     }
     const recoveryFactor = calculateRecoveryFactor(coreStats.totalPnL, maxDrawdownAbsolute);
 
-    // Start equity from actual balance at period start (not always from initialBalance)
-    const periodStart = getPeriodStart(period);
-    const prePeriodPnl = periodStart
-      ? trades
-          .filter((t) => isClosedTrade(t) && toDate(t.exitDate || t.entryDate) < periodStart)
-          .reduce((s, t) => s + (safePnl(t)), 0)
-      : 0;
-
-    let eqPeak = (initialBalance || 0) + prePeriodPnl;
-    let eqVal = (initialBalance || 0) + prePeriodPnl;
+    // Chart shares the same period-start baseline as the drawdown KPI above.
+    let eqPeak = startBalance;
+    let eqVal = startBalance;
     const equityChartData = sorted.map((t) => {
       const d = toDate(t.exitDate);
       eqVal += safePnl(t);

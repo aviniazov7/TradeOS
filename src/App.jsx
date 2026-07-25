@@ -10,6 +10,7 @@ import AuthEmailLink from './components/auth/AuthEmailLink';
 import Layout from './components/layout/Layout';
 import LoadingSpinner from './components/shared/LoadingSpinner';
 import Toast from './components/shared/Toast';
+import AccessibilityWidget from './components/shared/AccessibilityWidget';
 import ErrorBoundary from './components/shared/ErrorBoundary';
 
 // Lazy-loaded pages — factory refs kept so we can preload them at idle
@@ -37,6 +38,10 @@ const loadRefundPolicy = () => import('./components/legal/RefundPolicyPage');
 const loadAccessibility = () => import('./components/legal/AccessibilityStatement');
 const loadWhalesPage = () => import('./components/whales/WhalesPage');
 const loadAdminPanel = () => import('./components/admin/AdminPanel');
+// Redesign preview — new "Daily Briefing" home screen (blue + bilingual).
+// Lives at /briefing so we can review the direction without touching the
+// current home. Not linked from the nav yet.
+const loadDailyBriefing = () => import('./components/redesign/DailyBriefing');
 
 const Dashboard = lazy(loadDashboard);
 const TradeJournal = lazy(loadTradeJournal);
@@ -62,6 +67,7 @@ const RefundPolicyPage = lazy(loadRefundPolicy);
 const AccessibilityStatement = lazy(loadAccessibility);
 const WhalesPage = lazy(loadWhalesPage);
 const AdminPanel = lazy(loadAdminPanel);
+const DailyBriefing = lazy(loadDailyBriefing);
 
 // Preload all routes during idle time so tab switches feel instant
 if (typeof window !== 'undefined') {
@@ -134,11 +140,14 @@ function MainApp() {
                 <Route path="premium/checkout" element={<CheckoutPage />} />
                 <Route path="refund-policy" element={<RefundPolicyPage />} />
                 <Route path="admin" element={<AdminPanel />} />
+                <Route path="briefing" element={<DailyBriefing />} />
                 <Route path="profile" element={<ProfilePage />} />
               </Route>
             </Routes>
           </Suspense>
           <Toast />
+          {/* Site-wide accessibility menu — present on every route. */}
+          <AccessibilityWidget />
         </BacktestProvider>
       </JournalProvider>
     </AuthProvider>
@@ -152,12 +161,12 @@ export default function App() {
           gradient via stroke="url(#ai-grad)" (SVG can't use CSS background-clip). */}
       <svg width="0" height="0" aria-hidden="true" style={{ position: 'absolute' }}>
         <defs>
-          {/* Cyan-dominant (more turquoise than violet) to match the gradient
-              text — violet only as a hint at the end. */}
+          {/* Electric-blue brand gradient — deep blue → sky, matching the
+              redesign accent (--accent-gradient). */}
           <linearGradient id="ai-grad" x1="0%" y1="0%" x2="100%" y2="100%">
-            <stop offset="0%" stopColor="#06b6d4" />
-            <stop offset="55%" stopColor="#22d3ee" />
-            <stop offset="100%" stopColor="#8b5cf6" />
+            <stop offset="0%" stopColor="#2563eb" />
+            <stop offset="55%" stopColor="#38bdf8" />
+            <stop offset="100%" stopColor="#60a5fa" />
           </linearGradient>
         </defs>
       </svg>
