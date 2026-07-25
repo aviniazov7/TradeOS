@@ -22,6 +22,8 @@
 
 **Live:** [tradeos-91a58.web.app](https://tradeos-91a58.web.app)
 
+> 👉 ממשיכים מפה / עובדים ממחשב אחר? קראו קודם את **[docs/NEXT.md](docs/NEXT.md)** — מה נשאר לעשות.
+
 ---
 
 ## Features
