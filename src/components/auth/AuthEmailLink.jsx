@@ -1,6 +1,5 @@
 import { useEffect, useState } from 'react';
-import { auth } from '../../services/firebase';
-import { isSignInWithEmailLink, signInWithEmailLink } from 'firebase/auth';
+import { isEmailSignInLink, completeEmailLinkSignIn } from '../../services/authService';
 import { authErrorHe } from '../../utils/authErrors';
 
 export default function AuthEmailLink() {
@@ -13,7 +12,7 @@ export default function AuthEmailLink() {
       const urlParams = new URLSearchParams(window.location.search);
       const email = urlParams.get('email') || localStorage.getItem('tradeos-email-link');
 
-      if (!isSignInWithEmailLink(auth, href)) {
+      if (!isEmailSignInLink(href)) {
         setError('קישור לא תקין');
         return;
       }
@@ -24,7 +23,7 @@ export default function AuthEmailLink() {
 
       try {
         // Complete sign-in in this Safari tab (not blocked here)
-        await signInWithEmailLink(auth, email, href);
+        await completeEmailLinkSignIn(email, href);
         setStatus('done');
       } catch (err) {
         setError(authErrorHe(err, 'שגיאה באימות הקישור'));

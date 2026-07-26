@@ -51,6 +51,33 @@ export function formatPrice(value) {
 }
 
 /**
+ * Compact USD for big aggregates: $1.50T / $2.3B / $4.5M / $12,345.
+ * Used for market cap, 24h volume, open interest and liquidation totals.
+ * 0 / null / NaN render as an em-dash. (Consolidated from local copies in
+ * MarketOverview, CoinAnalysis and Dashboard — issue #216.)
+ */
+export function formatCompactUsd(n) {
+  if (!n) return '—';
+  if (n >= 1e12) return `$${(n / 1e12).toFixed(2)}T`;
+  if (n >= 1e9) return `$${(n / 1e9).toFixed(1)}B`;
+  if (n >= 1e6) return `$${(n / 1e6).toFixed(1)}M`;
+  return `$${n.toLocaleString()}`;
+}
+
+/**
+ * Coin price with a $ prefix and magnitude-aware decimals:
+ * ≥ $1 → up to 2 decimals with grouping, < $1 → 6 decimals.
+ * (Consolidated from the identical local copies in MarketOverview,
+ * CoinAnalysis and ChatChart — issue #216. SignalCard keeps its own no-$
+ * variant on purpose.)
+ */
+export function formatCoinPrice(p) {
+  if (!p && p !== 0) return '—';
+  if (p >= 1) return `$${p.toLocaleString(undefined, { maximumFractionDigits: 2 })}`;
+  return `$${p.toFixed(6)}`;
+}
+
+/**
  * Format date: 17/03/2026
  */
 // Exported: Firestore Timestamp / Date / string / garbage → Date or null.

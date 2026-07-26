@@ -1,5 +1,5 @@
 import { useEffect, useState, useCallback } from 'react';
-import { getAuth } from 'firebase/auth';
+import { getCurrentUser } from '../services/authService';
 
 const WORKER_BASE = import.meta.env.VITE_WORKER_URL || 'https://trade-os.tradeos.workers.dev';
 
@@ -11,7 +11,7 @@ export function useAiUsage() {
   const [loading, setLoading] = useState(true);
 
   const refresh = useCallback(async () => {
-    const user = getAuth().currentUser;
+    const user = getCurrentUser();
     if (!user) { setLoading(false); return; }
     try {
       const token = await user.getIdToken();
@@ -37,7 +37,7 @@ export function useAiUsage() {
 
 // Admin-only — fetch another user's AI usage.
 export async function fetchUserAiUsage(uid) {
-  const user = getAuth().currentUser;
+  const user = getCurrentUser();
   if (!user) return null;
   const token = await user.getIdToken();
   const r = await fetch(`${WORKER_BASE}/admin/ai-usage/${uid}`, { headers: { Authorization: `Bearer ${token}` } });
@@ -48,7 +48,7 @@ export async function fetchUserAiUsage(uid) {
 // Admin-only — aggregate today's AI usage across ALL users (text + image),
 // with a per-user breakdown. Returns { date, totalText, totalImage, perUser }.
 export async function fetchGlobalAiUsage() {
-  const user = getAuth().currentUser;
+  const user = getCurrentUser();
   if (!user) return null;
   const token = await user.getIdToken();
   const r = await fetch(`${WORKER_BASE}/admin/ai-usage-global`, { headers: { Authorization: `Bearer ${token}` } });
@@ -59,7 +59,7 @@ export async function fetchGlobalAiUsage() {
 // Admin-only — daily AI stats (counts + real tokens) for the last N days.
 // Returns { days, stats: [{ date, text, image, tokIn, tokOut }] }.
 export async function fetchAiStats(days = 30) {
-  const user = getAuth().currentUser;
+  const user = getCurrentUser();
   if (!user) return null;
   const token = await user.getIdToken();
   const r = await fetch(`${WORKER_BASE}/admin/ai-stats?days=${days}`, { headers: { Authorization: `Bearer ${token}` } });
@@ -70,7 +70,7 @@ export async function fetchAiStats(days = 30) {
 // Admin-only — system health (cron heartbeat, bot, push/AI configured).
 // Returns only booleans / public info / timestamps — never secrets.
 export async function fetchSystemHealth() {
-  const user = getAuth().currentUser;
+  const user = getCurrentUser();
   if (!user) return null;
   const token = await user.getIdToken();
   const r = await fetch(`${WORKER_BASE}/admin/health`, { headers: { Authorization: `Bearer ${token}` } });
