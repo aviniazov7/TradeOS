@@ -22,12 +22,11 @@ function TvIcon({ className = 'w-4 h-4' }) {
     />
   );
 }
-import { arrayUnion } from 'firebase/firestore';
 import toast from 'react-hot-toast';
 import CoinIcon from '../shared/CoinIcon';
 import { useJournalContext } from '../../contexts/JournalContext';
 import { useAuth } from '../../contexts/AuthContext';
-import { updateUserDocument } from '../../services/firestoreService';
+import { updateUserDocument, arrayUnion } from '../../services/firestoreService';
 import { auth } from '../../services/firebase';
 
 function fmt(price) {

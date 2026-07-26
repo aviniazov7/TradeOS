@@ -17,37 +17,7 @@ import {
   localDayKey,
 } from '../utils/calculations';
 import { getSessionFromDate, SESSION_UNKNOWN } from '../utils/sessions';
-
-function getPeriodStart(period) {
-  const now = new Date();
-  switch (period) {
-    case 'week': {
-      const d = new Date(now);
-      d.setDate(d.getDate() - 7);
-      d.setHours(0, 0, 0, 0);
-      return d;
-    }
-    case 'month': {
-      const d = new Date(now);
-      d.setMonth(d.getMonth() - 1);
-      d.setHours(0, 0, 0, 0);
-      return d;
-    }
-    case 'year': {
-      const d = new Date(now);
-      d.setFullYear(d.getFullYear() - 1);
-      d.setHours(0, 0, 0, 0);
-      return d;
-    }
-    default:
-      return null;
-  }
-}
-
-function toDate(d) {
-  if (!d) return new Date(0);
-  return d.toDate ? d.toDate() : new Date(d);
-}
+import { getPeriodStart, toDate } from '../utils/period';
 
 // Net PnL for a trade, guaranteed finite. `netPnl`/`pnl` can be undefined,
 // null, NaN (e.g. a bad parse from an exchange import), or a numeric string;

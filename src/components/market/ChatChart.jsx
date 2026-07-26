@@ -1,12 +1,7 @@
 import { useMemo } from 'react';
 import { AreaChart, Area, XAxis, YAxis, Tooltip, ResponsiveContainer, ReferenceLine } from 'recharts';
 import { computeMA, computeFibonacci, computeSupportResistance } from '../../utils/technicals';
-
-function formatPrice(p) {
-  if (!p && p !== 0) return '—';
-  if (p >= 1) return `$${p.toLocaleString(undefined, { maximumFractionDigits: 2 })}`;
-  return `$${p.toFixed(6)}`;
-}
+import { formatCoinPrice as formatPrice } from '../../utils/formatters';
 
 export default function ChatChart({ prices, coinSymbol }) {
   const { chartData, ma7, ma14, fib, support, resistance, chartColor } = useMemo(() => {

@@ -6,8 +6,8 @@ import {
   updateUserDocument,
   deleteUserDocument,
   timestamp,
+  dateToTimestamp,
 } from '../services/firestoreService';
-import { Timestamp } from 'firebase/firestore';
 import { useAuth } from '../contexts/AuthContext';
 import {
   calculatePnL,
@@ -150,7 +150,7 @@ export function useTrades(journalId = null) {
       result,
       positionSize: notional,
       margin: isFutures ? notional : notional / (tradeData.leverage || 1),
-      createdAt: Timestamp.fromDate(safeEntryDate),
+      createdAt: dateToTimestamp(safeEntryDate),
       updatedAt: timestamp(),
     };
   };

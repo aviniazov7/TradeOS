@@ -1,8 +1,9 @@
-import { useState, useEffect } from 'react';
-import { motion, AnimatePresence } from 'framer-motion';
-import { BrainCircuit, Crown, RefreshCw, AlertCircle, Lock, Sparkles, TrendingUp, TrendingDown, Target, Lightbulb, Bot } from 'lucide-react';
+import { useState } from 'react';
+import { motion } from 'framer-motion';
+import { BrainCircuit, Crown, RefreshCw, AlertCircle, Lock, Sparkles, TrendingUp, TrendingDown, Target, Lightbulb } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
-import DOMPurify from 'dompurify';
+import ThinkingIndicator from '../shared/ThinkingIndicator';
+import { renderBulletHtml } from '../../utils/renderBulletHtml';
 import { useAuth } from '../../contexts/AuthContext';
 import { useBacktestStats } from '../../hooks/useBacktestStats';
 import { generateCoachReport } from '../../services/aiCoachService';
@@ -48,10 +49,6 @@ function parseSections(text) {
   return known;
 }
 
-function renderBulletHtml(text) {
-  return DOMPurify.sanitize(text.replace(/\*\*(.+?)\*\*/g, '<b>$1</b>'), { ALLOWED_TAGS: ['b', 'i'], ALLOWED_ATTR: [] });
-}
-
 const round = (v) => Math.round((Number(v) || 0) * 100) / 100;
 
 // Aggregate the raw rows by a field (timeframe/direction) — useBacktestStats
@@ -89,29 +86,8 @@ function buildPayload(stats, rows, focus) {
   };
 }
 
-function ThinkingIndicator() {
-  const steps = ['אוסף את עסקאות הבקטסט', 'בוחן את ה-edge לפי אסטרטגיה', 'משווה סשנים וטיימפריימים', 'מגבש המלצות'];
-  const [i, setI] = useState(0);
-  useEffect(() => {
-    const id = setInterval(() => setI((x) => (x + 1) % steps.length), 1600);
-    return () => clearInterval(id);
-  }, [steps.length]);
-  return (
-    <div className="flex items-start gap-3 bg-bg-secondary border border-border-primary rounded-2xl p-4">
-      <div className="shrink-0 w-9 h-9 rounded-full bg-accent-primary/15 border border-accent-primary/30 flex items-center justify-center">
-        <Bot className="w-5 h-5 text-accent-primary" />
-      </div>
-      <div className="flex-1 min-w-0">
-        <span className="text-xs font-semibold text-text-primary">TradeAI</span>
-        <AnimatePresence mode="wait">
-          <motion.div key={i} initial={{ opacity: 0, y: 4 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: -4 }} transition={{ duration: 0.25 }} className="text-xs text-text-secondary mt-1">
-            {steps[i]}…
-          </motion.div>
-        </AnimatePresence>
-      </div>
-    </div>
-  );
-}
+// Coach "thinking" step labels for the backtest AI analyst (see ThinkingIndicator).
+const COACH_STEPS = ['אוסף את עסקאות הבקטסט', 'בוחן את ה-edge לפי אסטרטגיה', 'משווה סשנים וטיימפריימים', 'מגבש המלצות'];
 
 export default function BacktestAICoachPanel({ backtests }) {
   const { isPremium } = useAuth();
@@ -207,7 +183,7 @@ export default function BacktestAICoachPanel({ backtests }) {
         ))}
       </div>
 
-      {loading && <ThinkingIndicator />}
+      {loading && <ThinkingIndicator steps={COACH_STEPS} />}
 
       {error && !loading && (
         <div className="flex items-start gap-2 p-3 rounded-xl border border-loss/30 bg-loss/10 text-sm text-loss">

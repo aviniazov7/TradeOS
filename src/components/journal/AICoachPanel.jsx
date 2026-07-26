@@ -1,11 +1,12 @@
-import { useState, useEffect } from 'react';
-import { motion, AnimatePresence } from 'framer-motion';
+import { useState } from 'react';
+import { motion } from 'framer-motion';
 import {
   BrainCircuit, Crown, RefreshCw, AlertCircle, Lock, Sparkles,
-  TrendingUp, TrendingDown, Target, Lightbulb, Bot,
+  TrendingUp, TrendingDown, Target, Lightbulb,
 } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
-import DOMPurify from 'dompurify';
+import ThinkingIndicator from '../shared/ThinkingIndicator';
+import { renderBulletHtml } from '../../utils/renderBulletHtml';
 import { useAuth } from '../../contexts/AuthContext';
 import { generateCoachReport } from '../../services/aiCoachService';
 import { buildCoachStats } from '../../utils/coachStats';
@@ -88,10 +89,13 @@ function parseSections(text) {
   return known;
 }
 
-function renderBulletHtml(text) {
-  const html = text.replace(/\*\*(.+?)\*\*/g, '<b>$1</b>');
-  return DOMPurify.sanitize(html, { ALLOWED_TAGS: ['b', 'i'], ALLOWED_ATTR: [] });
-}
+// Coach "thinking" step labels for the journal AI coach (see ThinkingIndicator).
+const COACH_STEPS = [
+  'אוסף את העסקאות שלך',
+  'מחפש דפוסי הפסד חוזרים',
+  'משווה תקופות וביצועים',
+  'מגבש המלצות פעולה',
+];
 
 // ---- Stats dashboard --------------------------------------------------------
 // Renders deterministic stats + mini charts BEFORE the AI commentary so the
@@ -329,48 +333,6 @@ function StatsDashboard({ stats, focus }) {
 
 // Animated "AI is thinking" indicator — cycles short labels so it feels like
 // the model is actually working, not just spinning a wheel.
-function ThinkingIndicator() {
-  const steps = [
-    'אוסף את העסקאות שלך',
-    'מחפש דפוסי הפסד חוזרים',
-    'משווה תקופות וביצועים',
-    'מגבש המלצות פעולה',
-  ];
-  const [i, setI] = useState(0);
-  useEffect(() => {
-    const id = setInterval(() => setI((x) => (x + 1) % steps.length), 1600);
-    return () => clearInterval(id);
-  }, [steps.length]);
-  return (
-    <div className="flex items-start gap-3 bg-bg-secondary border border-border-primary rounded-2xl p-4">
-      <div className="shrink-0 w-9 h-9 rounded-full bg-accent-primary/15 border border-accent-primary/30 flex items-center justify-center">
-        <Bot className="w-4.5 h-4.5 text-accent-primary" />
-      </div>
-      <div className="flex-1 min-w-0">
-        <div className="flex items-center gap-2">
-          <span className="text-xs font-semibold text-text-primary">TradeAI</span>
-          <span className="inline-flex gap-1">
-            <span className="w-1.5 h-1.5 rounded-full bg-accent-primary animate-pulse" style={{ animationDelay: '0ms' }} />
-            <span className="w-1.5 h-1.5 rounded-full bg-accent-primary animate-pulse" style={{ animationDelay: '180ms' }} />
-            <span className="w-1.5 h-1.5 rounded-full bg-accent-primary animate-pulse" style={{ animationDelay: '360ms' }} />
-          </span>
-        </div>
-        <AnimatePresence mode="wait">
-          <motion.div
-            key={i}
-            initial={{ opacity: 0, y: 4 }}
-            animate={{ opacity: 1, y: 0 }}
-            exit={{ opacity: 0, y: -4 }}
-            transition={{ duration: 0.25 }}
-            className="text-xs text-text-secondary mt-1"
-          >
-            {steps[i]}…
-          </motion.div>
-        </AnimatePresence>
-      </div>
-    </div>
-  );
-}
 
 export default function AICoachPanel({ trades }) {
   const { isPremium } = useAuth();
@@ -475,7 +437,7 @@ export default function AICoachPanel({ trades }) {
       </div>
 
       {/* Thinking indicator while the model is working */}
-      {loading && <ThinkingIndicator />}
+      {loading && <ThinkingIndicator steps={COACH_STEPS} />}
 
       {/* Error */}
       {error && !loading && (

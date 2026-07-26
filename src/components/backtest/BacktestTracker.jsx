@@ -1,6 +1,6 @@
 import { useState, useMemo } from 'react';
-import { motion, AnimatePresence } from 'framer-motion';
-import { Plus, FlaskConical, Trash2, Pencil, ExternalLink, TrendingUp, TrendingDown, Settings, Download, ChevronDown, ChevronRight, ChevronLeft, Eye, CandlestickChart, ArrowUp, ArrowDown, ArrowUpDown, X, BrainCircuit } from 'lucide-react';
+import { motion } from 'framer-motion';
+import { Plus, FlaskConical, Trash2, Pencil, ExternalLink, TrendingUp, TrendingDown, Settings, Download, ChevronDown, ChevronRight, ChevronLeft, Eye, ArrowUp, ArrowDown, ArrowUpDown, X } from 'lucide-react';
 import DatePicker from 'react-datepicker';
 import 'react-datepicker/dist/react-datepicker.css';
 import toast from 'react-hot-toast';
@@ -21,7 +21,6 @@ import CoinIcon from '../shared/CoinIcon';
 import Modal from '../shared/Modal';
 import PairSearch from '../journal/PairSearch';
 import TimeframeSelector from '../shared/TimeframeSelector';
-import TradingViewPanel from './TradingViewPanel';
 import StrategySelector from '../shared/StrategySelector';
 import { PAIRS, SESSIONS, getSessionClasses } from '../../utils/constants';
 import { formatDate, formatDateShort, formatTime } from '../../utils/formatters';
@@ -91,11 +90,9 @@ export default function BacktestTracker() {
   const [period, setPeriod] = useState('all');
   const [tab, setTab] = useState('records');
   const [settingsOpen, setSettingsOpen] = useState(false);
-  const [aiOpen, setAiOpen] = useState(false);
   const [viewOpen, setViewOpen] = useState(false);
   const [expandedCard, setExpandedCard] = useState(null);
   const [mobileStep, setMobileStep] = useState(0);
-  const [chartOpen, setChartOpen] = useState(false);
 
   const update = (field, value) => setForm((f) => {
     const next = { ...f, [field]: value };
@@ -274,26 +271,6 @@ export default function BacktestTracker() {
                 the analytics tab. */}
             {tab === 'analytics' && <div className="hidden md:block"><TimePeriodFilter value={period} onChange={setPeriod} compact /></div>}
             {tab === 'analytics' && <div className="md:hidden"><TimePeriodFilter value={period} onChange={setPeriod} dropdown /></div>}
-            {/* AI analysis — accent-tinted so it stands out from the neutral
-                icon buttons. Opens the backtest coach modal. */}
-            <button
-              onClick={() => setAiOpen(true)}
-              className="h-9 inline-flex items-center gap-1.5 rounded-lg px-3 text-sm font-semibold cursor-pointer transition-colors bg-accent-primary/12 text-accent-primary border border-accent-primary/40 hover:bg-accent-primary/20"
-              title="ניתוח AI לבקטסט"
-            >
-              <BrainCircuit className="w-4 h-4" /> <span className="hidden sm:inline">ניתוח AI</span>
-            </button>
-            <button
-              onClick={() => setChartOpen((v) => !v)}
-              className={`h-9 w-9 inline-flex items-center justify-center rounded-lg transition-colors cursor-pointer border ${
-                chartOpen
-                  ? 'bg-accent-primary/15 text-accent-primary border-accent-primary/40'
-                  : 'text-text-muted hover:text-text-primary hover:bg-bg-tertiary border-border-primary'
-              }`}
-              title={chartOpen ? 'סגור גרף' : 'פתח גרף TradingView'}
-            >
-              <CandlestickChart className="w-4 h-4" />
-            </button>
             <button onClick={() => setViewOpen(true)} className="h-9 w-9 inline-flex items-center justify-center rounded-lg text-text-muted hover:text-text-primary hover:bg-bg-tertiary transition-colors cursor-pointer border border-border-primary" title="צפייה ביומן">
               <Eye className="w-4 h-4" />
             </button>
@@ -331,13 +308,6 @@ export default function BacktestTracker() {
           </button>
         </div>
       </div>
-
-      {/* TradingView chart — full-width, slides up from the bottom, toolbar stays above */}
-      <AnimatePresence>
-        {chartOpen && (
-          <TradingViewPanel symbol={form.pair} onClose={() => setChartOpen(false)} />
-        )}
-      </AnimatePresence>
 
       {/* Tab: Records */}
       {tab === 'records' && (
@@ -592,13 +562,16 @@ export default function BacktestTracker() {
         </>
       )}
 
-      {/* Tab: Analytics */}
+      {/* Tab: Analytics — AI coach leads, then the detailed charts + tables. */}
       {tab === 'analytics' && (
         backtests.length === 0 ? (
           <EmptyState icon={FlaskConical} title="אין נתונים לניתוח" description="הוסף עסקאות בקטסט כדי לראות ניתוחים מתקדמים"
             actionLabel="עבור לרשומות" onAction={() => setTab('records')} />
         ) : (
-          <BacktestAnalytics backtests={backtests} period={period} />
+          <div className="space-y-4">
+            <BacktestAICoachPanel backtests={backtests} />
+            <BacktestAnalytics backtests={backtests} period={period} />
+          </div>
         )
       )}
 
@@ -802,20 +775,6 @@ export default function BacktestTracker() {
       </Modal>
 
       <BacktestSettingsModal isOpen={settingsOpen} onClose={() => setSettingsOpen(false)} />
-
-      <Modal
-        isOpen={aiOpen}
-        onClose={() => setAiOpen(false)}
-        maxWidth="max-w-2xl"
-        title={(
-          <span className="inline-flex items-center gap-2">
-            <BrainCircuit className="w-4 h-4 text-accent-primary" />
-            <span className="font-bold">ניתוח AI לבקטסט</span>
-          </span>
-        )}
-      >
-        <BacktestAICoachPanel backtests={backtests} />
-      </Modal>
 
       <ConfirmDialog isOpen={!!deleteTarget} onClose={() => setDeleteTarget(null)} onConfirm={handleDelete} title="מחיקת עסקה" message="למחוק את העסקה? לא ניתן לבטל פעולה זו." />
 

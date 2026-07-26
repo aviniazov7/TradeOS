@@ -98,16 +98,18 @@ export default function AccessibilityWidget() {
 
   return (
     <>
-      {/* Floating trigger — small + unobtrusive, present on every page. Sits
-          above the mobile bottom-nav (z-40) and lifts clear of it on mobile. */}
+      {/* Floating trigger — present on every page (SI 5568), but NEUTRAL so it
+          blends into the UI instead of a solid accent dot that draws the eye.
+          It only lights up to the accent colour on hover/focus, and fades out
+          while scrolling. Sits above the mobile bottom-nav (z-40). */}
       <button
         onClick={() => setOpen(true)}
         aria-label="פתיחת תפריט נגישות"
         title="נגישות"
-        className={`fixed left-3 bottom-24 lg:left-4 lg:bottom-4 z-50 w-8 h-8 rounded-full flex items-center justify-center bg-accent-primary text-bg-primary shadow-lg shadow-black/40 hover:opacity-100 focus-visible:opacity-100 transition-opacity duration-300 cursor-pointer ${scrolling ? 'opacity-10' : 'opacity-35'}`}
+        className={`fixed left-3 bottom-24 lg:left-4 lg:bottom-4 z-50 w-8 h-8 rounded-full flex items-center justify-center border border-border-primary bg-bg-secondary/60 backdrop-blur-sm text-text-muted shadow-sm hover:text-accent-primary hover:border-accent-primary/40 hover:bg-bg-secondary focus-visible:text-accent-primary focus-visible:border-accent-primary/40 hover:!opacity-100 focus-visible:!opacity-100 transition-all duration-300 cursor-pointer ${scrolling ? 'opacity-0' : 'opacity-40'}`}
       >
         <Accessibility className="w-4 h-4" />
-        {anyActive && <span className="absolute -top-0.5 -right-0.5 w-2.5 h-2.5 rounded-full bg-profit border-2 border-bg-primary" />}
+        {anyActive && <span className="absolute -top-0.5 -right-0.5 w-2 h-2 rounded-full bg-profit border border-bg-primary" />}
       </button>
 
       <AnimatePresence>
