@@ -38,7 +38,8 @@ APP_VERSION נשאר **2.0.0** (לפי [docs/VERSIONING.md](VERSIONING.md) — �
 ### 3. 📦 נדחים (לא דחוף, post-release)
 - מיגרציה מלאה ל-Supabase (Auth + data) — נדחתה, הרידיזיין הגדול בהמתנה.
   ראה [docs/redesign/00-master-plan.md](redesign/00-master-plan.md).
-- #216 dedup refactor — item 7 בוצע, השאר נדחה.
+- ~~#216 dedup refactor~~ — ✅ **הושלם ונסגר** (PR #298): formatters/hooks/
+  AICoachPanel אוחדו, אכיפת שכבת שירותים (אפס firebase/* מחוץ ל-services).
 - ממצאי אודיט נוספים: בידוד מצב liquidation ב-MarketOverview, הפחתת כתיבות
   KV של ה-AI, blob של `usettings:ALL` בקנה מידה.
 
