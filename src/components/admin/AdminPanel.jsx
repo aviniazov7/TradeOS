@@ -976,6 +976,40 @@ export default function AdminPanel() {
         )}
       </SectionCard>
 
+      {/* Active AI models + daily caps — live routing straight from the worker
+          /admin/health (Gemini premium vs Groq fallback), no hard-coded names. */}
+      {health?.ai && (
+        <SectionCard
+          dense
+          icon={<Sparkles className="w-4 h-4" />}
+          title="מודלים ומכסות AI"
+          action={
+            <span className={`text-[10px] font-semibold px-2 py-0.5 rounded-full shrink-0 ${health.ai.geminiActive ? 'bg-accent-primary/15 text-accent-primary' : 'bg-amber-500/15 text-amber-400'}`}>
+              {health.ai.geminiActive ? 'Gemini פעיל' : 'Groq בלבד'}
+            </span>
+          }
+        >
+          <div className="space-y-1.5">
+            {[
+              { role: 'Premium', cls: 'text-amber-400 bg-amber-500/12', model: health.ai.models.premiumText, provider: health.ai.geminiActive ? 'Gemini' : 'Groq', limit: `${health.ai.limits.premiumDaily}/יום` },
+              { role: 'חינם', cls: 'text-profit bg-profit/12', model: health.ai.models.freeText, provider: 'Groq', limit: `${health.ai.limits.freeDaily}/יום` },
+              { role: 'תמונות', cls: 'text-violet-400 bg-violet-500/12', model: health.ai.models.vision, provider: 'Groq', limit: `${health.ai.limits.imageDaily}/יום` },
+            ].map((m) => (
+              <div key={m.role} className="flex items-center gap-2 px-2.5 py-2 rounded-lg bg-bg-tertiary/40 border border-border-primary">
+                <span className={`text-[10px] font-semibold px-1.5 py-0.5 rounded-md shrink-0 ${m.cls}`}>{m.role}</span>
+                <span className="font-mono text-[11px] text-text-primary truncate" title={m.model}>{m.model}</span>
+                <span className="text-[10px] text-text-muted shrink-0 hidden sm:inline">{m.provider}</span>
+                <span className="mr-auto text-[11px] font-bold text-text-secondary shrink-0" dir="ltr">{m.limit}</span>
+              </div>
+            ))}
+          </div>
+          <div className="mt-2 text-[10px] text-text-muted leading-relaxed">
+            תקרה גלובלית {health.ai.limits.globalCeiling.toLocaleString()}/יום · Premium {health.ai.limits.premiumMinute}/דקה · {health.ai.limits.premiumHour}/שעה
+            {health.ai.geminiActive && <> · כש-Gemini עמוס יש נפילה אוטומטית ל-Groq <span className="font-mono">{health.ai.models.groqFallback}</span></>}
+          </div>
+        </SectionCard>
+      )}
+
       {/* Global AI usage today — aggregated across all users (text + image). */}
       <div className="bg-bg-secondary border border-border-primary rounded-xl p-3.5">
         <div className="text-[11px] text-text-muted mb-2.5 flex items-center gap-1.5">
