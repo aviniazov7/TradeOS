@@ -4956,7 +4956,13 @@ async function handleRequest(request, env) {
             exitPrice,
             quantity,
             leverage: parseFloat(p.leverage) || 1,
-            pnlFromExchange: parseFloat(p.closedPnl) || 0,
+            // Bybit's `closedPnl` is ALREADY NET of fees (openFee + closeFee).
+            // The whole app treats pnlFromExchange as GROSS and derives
+            // netPnl = pnl - fees, so passing the net value here subtracted the
+            // fees a SECOND time — a real $10.02 net win imported as ~$6.45.
+            // Add the fees back to get the true gross, and the downstream
+            // `- fees` lands on exactly the net that Bybit displays.
+            pnlFromExchange: (parseFloat(p.closedPnl) || 0) + fees,
             fees,
             entryDate,
             exitDate,

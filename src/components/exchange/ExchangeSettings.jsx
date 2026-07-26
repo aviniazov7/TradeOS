@@ -227,9 +227,13 @@ export function SyncModal({ exchange, trades, onClose, onImport, existingExterna
   const toggle = i => setSelected(p => { const n = new Set(p); n.has(i) ? n.delete(i) : n.add(i); return n; });
   const toggleAll = () => setSelected(selected.size === trades.length ? new Set() : new Set(trades.map((_, i) => i)));
   const handleImport = async () => { setImporting(true); try { await onImport(trades.filter((_, i) => selected.has(i))); } finally { setImporting(false); } };
-  const totalPnl = trades.filter((t, i) => selected.has(i) && t.pnlFromExchange != null).reduce((s, t) => s + (t.pnlFromExchange || 0), 0);
-  const wins = trades.filter((t, i) => selected.has(i) && t.pnlFromExchange != null && t.pnlFromExchange >= 0).length;
-  const losses = trades.filter((t, i) => selected.has(i) && t.pnlFromExchange != null && t.pnlFromExchange < 0).length;
+  // pnlFromExchange is GROSS (before fees); the imported journal row stores
+  // net = gross - fees. Show the SAME net here so the preview matches both the
+  // exchange's own P&L card and the row that will land in the journal.
+  const netPnlOf = (t) => (typeof t.pnlFromExchange === 'number' ? t.pnlFromExchange - (t.fees || 0) : null);
+  const totalPnl = trades.filter((t, i) => selected.has(i) && t.pnlFromExchange != null).reduce((s, t) => s + (netPnlOf(t) || 0), 0);
+  const wins = trades.filter((t, i) => selected.has(i) && t.pnlFromExchange != null && netPnlOf(t) >= 0).length;
+  const losses = trades.filter((t, i) => selected.has(i) && t.pnlFromExchange != null && netPnlOf(t) < 0).length;
   const allSelected = selected.size === trades.length;
   // A row is an UPDATE when ANY of its close-order ids is already journaled —
   // a Multi-TP row carries every close's id in externalIds, and only its
@@ -283,8 +287,9 @@ export function SyncModal({ exchange, trades, onClose, onImport, existingExterna
             // null/undefined PnL (open positions) must not satisfy >= 0 and
             // render green — show neutral until the exchange reports a number.
             let pnlClass = 'text-text-muted';
-            if (typeof trade.pnlFromExchange === 'number') {
-              pnlClass = trade.pnlFromExchange >= 0 ? 'text-profit' : 'text-loss';
+            const netVal = netPnlOf(trade);
+            if (netVal !== null) {
+              pnlClass = netVal >= 0 ? 'text-profit' : 'text-loss';
             }
             const isExisting = isUpdate(trade);
             return (
@@ -295,7 +300,7 @@ export function SyncModal({ exchange, trades, onClose, onImport, existingExterna
                 </div>
                 <div className="flex-1 min-w-0">
                   <div className="flex items-center justify-between">
-                    <span className={`text-sm font-bold font-mono ${pnlClass}`} dir="ltr">{fmtPnl(trade.pnlFromExchange)}</span>
+                    <span className={`text-sm font-bold font-mono ${pnlClass}`} dir="ltr">{fmtPnl(netVal)}</span>
                     <div className="flex items-center gap-1.5">
                       {isExisting && (
                         <span className="text-[9px] font-bold px-1.5 py-0.5 rounded-full bg-accent-primary/15 text-accent-primary border border-accent-primary/30">עדכון</span>
