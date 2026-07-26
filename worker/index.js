@@ -3972,11 +3972,33 @@ async function handleRequest(request, env) {
     const cronRaw = await env.ALERTS_KV.get('cron:last');
     const cronLast = cronRaw ? parseInt(cronRaw, 10) || null : null;
     const quotas = await fetchCloudflareQuotas(env);
+    // Which AI models are actually wired up right now + their daily caps, so
+    // the admin panel shows the live routing (Gemini premium vs Groq fallback)
+    // without hard-coding model names on the client.
+    const geminiActive = env.GEMINI_ENABLED === 'true' && !!env.GEMINI_API_KEY;
     return new Response(JSON.stringify({
       time: Date.now(),
       cronLast,
       pushConfigured: !!env.VAPID_JWK,
       aiConfigured: !!env.GROQ_API_KEY,
+      ai: {
+        geminiActive,
+        models: {
+          premiumText: geminiActive ? GEMINI_MODEL : GROQ_MODEL,
+          freeText: GROQ_MODEL,
+          groqFallback: GROQ_MODEL,
+          vision: GROQ_VISION_MODEL,
+          newsTranslate: NEWS_TRANSLATE_MODEL,
+        },
+        limits: {
+          freeDaily: AI_DAILY_LIMIT,
+          premiumDaily: AI_PREMIUM_LIMITS.day,
+          premiumMinute: AI_PREMIUM_LIMITS.minute,
+          premiumHour: AI_PREMIUM_LIMITS.hour,
+          imageDaily: AI_IMAGE_DAILY_LIMIT,
+          globalCeiling: AI_GLOBAL_DAILY_CEILING,
+        },
+      },
       quotas,
     }), { headers: { ...cors, 'Content-Type': 'application/json' } });
   }
