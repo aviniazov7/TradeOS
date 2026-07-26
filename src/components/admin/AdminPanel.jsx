@@ -164,15 +164,17 @@ function StatCard({ icon, label, value, onClick, accent = 'cyan' }) {
 }
 
 // Modern section panel — accent icon chip + title + optional right-side action.
-function SectionCard({ icon, title, action, className = '', children }) {
+// `dense` tightens padding, header spacing and the icon chip for compact
+// dashboard cards (charts/KPIs) that don't need the full panel breathing room.
+function SectionCard({ icon, title, action, className = '', dense = false, children }) {
   return (
-    <Card className={`p-4 md:p-5 ${className}`}>
-      <div className="flex items-center justify-between mb-4 gap-3">
-        <div className="flex items-center gap-2.5 min-w-0">
-          <div className="w-8 h-8 rounded-lg bg-accent-primary/12 text-accent-primary flex items-center justify-center shrink-0">
+    <Card className={`${dense ? 'p-3.5' : 'p-4 md:p-5'} ${className}`}>
+      <div className={`flex items-center justify-between gap-3 ${dense ? 'mb-2.5' : 'mb-4'}`}>
+        <div className="flex items-center gap-2 min-w-0">
+          <div className={`${dense ? 'w-7 h-7' : 'w-8 h-8'} rounded-lg bg-accent-primary/12 text-accent-primary flex items-center justify-center shrink-0`}>
             {icon}
           </div>
-          <h3 className="text-sm font-semibold text-text-primary truncate">{title}</h3>
+          <h3 className={`font-semibold text-text-primary truncate ${dense ? 'text-[13px]' : 'text-sm'}`}>{title}</h3>
         </div>
         {action}
       </div>
@@ -738,12 +740,13 @@ export default function AdminPanel() {
           </div>
         </SectionCard>
         <SectionCard
+          dense
           className="lg:col-span-2"
           icon={<UserPlus className="w-4 h-4" />}
           title="הרשמות (30 ימים)"
           action={<span className="text-[11px] text-text-muted">סה״כ {growth.signups.reduce((a, s) => a + s.count, 0)}</span>}
         >
-          <div className="h-20 -mx-1">
+          <div className="h-14 -mx-1">
             <ResponsiveContainer width="100%" height="100%">
               <AreaChart data={growth.signups.map((s) => ({ d: `${s.date.getDate()}/${s.date.getMonth() + 1}`, count: s.count }))} margin={{ top: 4, right: 6, bottom: 0, left: 6 }}>
                 <defs>
@@ -865,13 +868,14 @@ export default function AdminPanel() {
 
       {/* System health — admin-only, exposes only status (never secrets). */}
       <SectionCard
+        dense
         icon={<ShieldCheck className="w-4 h-4" />}
         title="בריאות מערכת"
       >
         {!health ? (
           <div className="text-xs text-text-muted">…</div>
         ) : (
-          <div className="grid grid-cols-2 sm:grid-cols-4 gap-2.5">
+          <div className="grid grid-cols-3 gap-2">
             {(() => {
               const cronAgeH = health.cronLast ? (Date.now() - health.cronLast) / 3600000 : null;
               const cronOk = cronAgeH != null && cronAgeH < 26;
@@ -881,17 +885,17 @@ export default function AdminPanel() {
                 { label: 'AI', ok: !!health.aiConfigured, note: health.aiConfigured ? 'מחובר' : 'לא מוגדר' },
               ];
               return items.map((it) => (
-                <div key={it.label} className="rounded-xl px-3 py-3 border transition-colors"
+                <div key={it.label} className="rounded-lg px-2.5 py-2 border transition-colors"
                   style={{
                     background: it.ok ? 'rgba(34,197,94,0.06)' : 'rgba(239,68,68,0.06)',
-                    borderColor: it.ok ? 'rgba(34,197,94,0.25)' : 'rgba(239,68,68,0.25)',
+                    borderColor: it.ok ? 'rgba(34,197,94,0.22)' : 'rgba(239,68,68,0.22)',
                   }}>
-                  <div className="flex items-center gap-2">
-                    <span className={`w-2 h-2 rounded-full shrink-0 ${it.ok ? 'bg-profit' : 'bg-loss'}`}
-                      style={{ boxShadow: it.ok ? '0 0 8px rgba(34,197,94,0.7)' : '0 0 8px rgba(239,68,68,0.7)' }} />
-                    <span className="text-xs font-semibold text-text-primary">{it.label}</span>
+                  <div className="flex items-center gap-1.5">
+                    <span className={`w-1.5 h-1.5 rounded-full shrink-0 ${it.ok ? 'bg-profit' : 'bg-loss'}`}
+                      style={{ boxShadow: it.ok ? '0 0 6px rgba(34,197,94,0.7)' : '0 0 6px rgba(239,68,68,0.7)' }} />
+                    <span className="text-[11px] font-semibold text-text-primary truncate">{it.label}</span>
                   </div>
-                  <div className="text-[10px] text-text-muted mt-1.5 truncate">{it.note}</div>
+                  <div className="text-[10px] text-text-muted mt-1 truncate">{it.note}</div>
                 </div>
               ));
             })()}
@@ -973,15 +977,15 @@ export default function AdminPanel() {
       </SectionCard>
 
       {/* Global AI usage today — aggregated across all users (text + image). */}
-      <div className="bg-bg-secondary border border-border-primary rounded-xl p-4">
-        <div className="text-[11px] text-text-muted mb-3 flex items-center gap-1.5">
+      <div className="bg-bg-secondary border border-border-primary rounded-xl p-3.5">
+        <div className="text-[11px] text-text-muted mb-2.5 flex items-center gap-1.5">
           <Sparkles className="w-3.5 h-3.5" /> שימוש כללי ב-AI היום (כל המשתמשים)
         </div>
         {globalAi ? (
           <>
-            <div className="grid grid-cols-2 gap-3">
-              <StatMini accent="cyan" icon={<Sparkles className="w-5 h-5" />} value={globalAi.totalText} label="בקשות טקסט" />
-              <StatMini accent="violet" icon={<Image className="w-5 h-5" />} value={globalAi.totalImage} label="ניתוחי תמונה" />
+            <div className="grid grid-cols-2 gap-2">
+              <StatMini compact accent="cyan" icon={<Sparkles className="w-4 h-4" />} value={globalAi.totalText} label="בקשות טקסט" />
+              <StatMini compact accent="violet" icon={<Image className="w-4 h-4" />} value={globalAi.totalImage} label="ניתוחי תמונה" />
             </div>
             <div className="mt-2.5 flex items-center gap-1.5 text-[11px] text-text-muted flex-wrap">
               <DollarSign className="w-3.5 h-3.5 text-accent-primary" />
@@ -1025,6 +1029,7 @@ export default function AdminPanel() {
 
       {/* AI usage over time — daily counts (bars) + real token-based cost. */}
       <SectionCard
+        dense
         icon={<BarChart3 className="w-4 h-4" />}
         title="שימוש ב-AI לאורך זמן"
         action={
@@ -1070,7 +1075,7 @@ export default function AdminPanel() {
           });
           return (
             <>
-              <div className="h-28 -mx-1">
+              <div className="h-20 -mx-1">
                 <ResponsiveContainer width="100%" height="100%">
                   <AreaChart data={chartData} margin={{ top: 4, right: 6, bottom: 0, left: 6 }}>
                     <defs>
@@ -1090,10 +1095,10 @@ export default function AdminPanel() {
                   </AreaChart>
                 </ResponsiveContainer>
               </div>
-              <div className="mt-3 grid grid-cols-3 gap-2">
-                <StatMini accent="cyan" value={totReq.toLocaleString()} label={`בקשות (${statsDays} ימים)`} />
-                <StatMini accent="violet" value={`${((totTokIn + totTokOut) / 1000).toFixed(0)}K`} label="טוקנים בפועל" />
-                <StatMini accent="green" value={`~$${realCost.toFixed(2)}`} label="עלות אילו בתשלום" />
+              <div className="mt-2.5 grid grid-cols-3 gap-2">
+                <StatMini compact accent="cyan" value={totReq.toLocaleString()} label={`בקשות (${statsDays} ימים)`} />
+                <StatMini compact accent="violet" value={`${((totTokIn + totTokOut) / 1000).toFixed(0)}K`} label="טוקנים בפועל" />
+                <StatMini compact accent="green" value={`~$${realCost.toFixed(2)}`} label="עלות אילו בתשלום" />
               </div>
               {/* System-load ceiling: today's global requests vs the worker
                   circuit-breaker (the one genuinely-unique widget kept from the
@@ -1121,13 +1126,14 @@ export default function AdminPanel() {
       {/* Revenue over time — monthly stacked bars from the payments log,
           split by plan duration, headed by the live MRR + total revenue. */}
       <SectionCard
+        dense
         icon={<DollarSign className="w-4 h-4" />}
         title="MRR והכנסות לאורך זמן"
         action={<span className="text-[11px] text-text-muted">12 חודשים אחרונים</span>}
       >
-        <div className="grid grid-cols-2 gap-2 mb-3">
-          <StatMini accent="green" value={ILS(analytics.mrr)} label="MRR (חודשי)" />
-          <StatMini accent="amber" value={ILS(analytics.totalRevenue)} label="הכנסה כוללת" />
+        <div className="grid grid-cols-2 gap-2 mb-2.5">
+          <StatMini compact accent="green" value={ILS(analytics.mrr)} label="MRR (חודשי)" />
+          <StatMini compact accent="amber" value={ILS(analytics.totalRevenue)} label="הכנסה כוללת" />
         </div>
         {payments.length === 0 ? (
           <div className="text-sm text-text-muted text-center py-6 border border-dashed border-border-primary rounded-xl">
@@ -1135,7 +1141,7 @@ export default function AdminPanel() {
           </div>
         ) : (
           <>
-            <div className="h-24 -mx-1">
+            <div className="h-16 -mx-1">
               <ResponsiveContainer width="100%" height="100%">
                 <BarChart data={revenueSeries} margin={{ top: 4, right: 6, bottom: 0, left: 6 }}>
                   <XAxis dataKey="label" tick={{ fill: 'var(--color-text-muted)', fontSize: 9 }} axisLine={false} tickLine={false} />
