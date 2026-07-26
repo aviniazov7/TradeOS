@@ -384,3 +384,13 @@ export async function getTodayClosedTrades(uid) {
 export function timestamp() {
   return serverTimestamp();
 }
+
+/** Firestore Timestamp from a JS Date — keeps `firebase/firestore` out of
+ * hooks/components (service-layer convention, issue #216). */
+export function dateToTimestamp(date) {
+  return Timestamp.fromDate(date);
+}
+
+// Re-exported so callers append to array fields without importing
+// `firebase/firestore` directly (service-layer convention, issue #216).
+export { arrayUnion } from 'firebase/firestore';

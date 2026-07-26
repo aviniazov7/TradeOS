@@ -1,6 +1,5 @@
 import { useEffect, useRef, useState } from 'react';
-import { auth } from '../../services/firebase';
-import { GoogleAuthProvider, signInWithCredential } from 'firebase/auth';
+import { loginWithGoogleIdToken } from '../../services/authService';
 import { authErrorHe } from '../../utils/authErrors';
 
 const GOOGLE_CLIENT_ID = import.meta.env.VITE_GOOGLE_CLIENT_ID;
@@ -36,8 +35,7 @@ export default function AuthGooglePopup() {
             if (!response?.credential) { setError('לא התקבל credential'); return; }
             setLoading(true);
             try {
-              const credential = GoogleAuthProvider.credential(response.credential);
-              const result = await signInWithCredential(auth, credential);
+              const result = await loginWithGoogleIdToken(response.credential);
               if (result?.user) {
                 localStorage.setItem('tradeos-auth-signal', Date.now().toString());
                 window.close();

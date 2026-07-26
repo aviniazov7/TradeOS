@@ -1,5 +1,6 @@
 import { useState, useEffect, useCallback, useRef, useMemo } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
+import { formatCompactUsd as formatNum, formatCoinPrice as formatPrice } from '../../utils/formatters';
 import {
   Activity, TrendingUp, TrendingDown, Bitcoin, DollarSign,
   PieChart, Flame, ArrowUpRight, ArrowDownRight, Layers, Rocket, Grid3X3,
@@ -133,20 +134,6 @@ const MAJOR_COINS = new Set([
   'MATIC', 'UNI', 'LTC', 'ATOM', 'APT', 'ARB', 'OP', 'SUI', 'NEAR', 'FIL',
   'PEPE', 'WIF', 'SHIB', 'TRX', 'ETC', 'INJ', 'SEI', 'TIA', 'FET', 'RENDER',
 ]);
-
-function formatNum(n) {
-  if (!n) return '—';
-  if (n >= 1e12) return `$${(n / 1e12).toFixed(2)}T`;
-  if (n >= 1e9) return `$${(n / 1e9).toFixed(1)}B`;
-  if (n >= 1e6) return `$${(n / 1e6).toFixed(1)}M`;
-  return `$${n.toLocaleString()}`;
-}
-
-function formatPrice(p) {
-  if (!p && p !== 0) return '—';
-  if (p >= 1) return `$${p.toLocaleString(undefined, { maximumFractionDigits: 2 })}`;
-  return `$${p.toFixed(6)}`;
-}
 
 const CAT_ICON_MAP = {
   'DeFi':    Activity,

@@ -4,6 +4,7 @@ import { Search, Sparkles, TrendingUp, TrendingDown, Minus, RotateCcw, Activity,
 import { AreaChart, Area, XAxis, YAxis, Tooltip, ResponsiveContainer, ReferenceLine } from 'recharts';
 import DOMPurify from 'dompurify';
 import { searchCoins, fetchCoinDetails, fetchCoinChart, fetchKlines } from '../../services/coingeckoApi';
+import { formatCompactUsd as formatNum, formatCoinPrice as formatPrice } from '../../utils/formatters';
 import { fetchAnalysisLiquidity } from '../../services/bybitDirect';
 import { fetchProjectDescription } from '../../services/groqApi';
 import { computeRSI, computeMA, computeVolatility } from '../../utils/technicals';
@@ -15,21 +16,6 @@ import { computeRSI, computeMA, computeVolatility } from '../../utils/technicals
 const AI_FROM = '#8b5cf6';
 const AI_TO = '#06b6d4';
 const AI_GRADIENT = `linear-gradient(135deg, ${AI_FROM} 0%, ${AI_TO} 100%)`;
-
-function formatNum(n) {
-  if (!n && n !== 0) return '—';
-  if (n >= 1e12) return `$${(n / 1e12).toFixed(2)}T`;
-  if (n >= 1e9) return `$${(n / 1e9).toFixed(1)}B`;
-  if (n >= 1e6) return `$${(n / 1e6).toFixed(1)}M`;
-  if (n >= 1e3) return `$${n.toLocaleString(undefined, { maximumFractionDigits: 0 })}`;
-  return `$${n.toLocaleString()}`;
-}
-
-function formatPrice(p) {
-  if (!p && p !== 0) return '—';
-  if (p >= 1) return `$${p.toLocaleString(undefined, { maximumFractionDigits: 2 })}`;
-  return `$${p.toFixed(6)}`;
-}
 
 function formatSupply(n) {
   if (!n) return '—';

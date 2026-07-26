@@ -1,8 +1,7 @@
 import { useCallback, useMemo } from 'react';
-import { Timestamp } from 'firebase/firestore';
 import { useAuth } from '../contexts/AuthContext';
 import { useTrades } from './useTrades';
-import { addToUserCollection, timestamp } from '../services/firestoreService';
+import { addToUserCollection, timestamp, dateToTimestamp } from '../services/firestoreService';
 import { DEFAULT_LEVERAGE } from '../utils/constants';
 import { tradeExternalIds } from '../utils/tradeIds';
 
@@ -135,7 +134,7 @@ export function useExchangeImport(journalId) {
       result,
       positionSize: ep * qty, margin: (ep * qty) / lev,
       journalId: journalId || null,
-      createdAt: Timestamp.fromDate(entryD), updatedAt: timestamp(),
+      createdAt: dateToTimestamp(entryD), updatedAt: timestamp(),
     });
   }, [user, trades, updateTrade, journalId]);
 

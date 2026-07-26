@@ -28,7 +28,7 @@ import CoinIcon from '../shared/CoinIcon';
 import AnimatedValue from '../shared/AnimatedValue';
 import Card from '../shared/Card';
 import Reveal from '../shared/Reveal';
-import { formatCurrency } from '../../utils/formatters';
+import { formatCurrency, formatCompactUsd as formatNum } from '../../utils/formatters';
 import { EXCHANGES, MENTALITY_EMOTIONS } from '../../utils/constants';
 import { pageVariants, pageTransition } from '../../utils/animations';
 import { fetchPerpPrices } from '../../services/bybitDirect';
@@ -391,13 +391,6 @@ export default function Dashboard() {
 
   const cardClass = 'bg-bg-secondary border border-border-primary rounded-xl p-5';
   const pnlColor = (v) => v >= 0 ? 'text-profit' : 'text-loss';
-  const formatNum = (n) => {
-    if (!n) return '—';
-    if (n >= 1e12) return `$${(n / 1e12).toFixed(2)}T`;
-    if (n >= 1e9) return `$${(n / 1e9).toFixed(1)}B`;
-    if (n >= 1e6) return `$${(n / 1e6).toFixed(1)}M`;
-    return `$${n.toLocaleString()}`;
-  };
 
   return (
     <motion.div variants={pageVariants} initial="initial" animate="animate" exit="exit" transition={pageTransition}>
