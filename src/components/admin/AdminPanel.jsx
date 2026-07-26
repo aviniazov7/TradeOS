@@ -9,7 +9,7 @@ import { ResponsiveContainer, AreaChart, Area, Tooltip, XAxis, YAxis, BarChart, 
 import { useAuth } from '../../contexts/AuthContext';
 import { getAllUsers, getUserSubcollectionCount, adminGrantPremium, adminRevokePremium, addPayment, getAllPayments, getAdminMeta, setAdminMeta } from '../../services/firestoreService';
 import { APP_VERSION } from '../../utils/constants';
-import { fetchUserAiUsage, fetchGlobalAiUsage, fetchAiStats, fetchSystemHealth } from '../../hooks/useAiUsage';
+import { fetchUserAiUsage, fetchGlobalAiUsage, fetchAiStats, fetchSystemHealth, testAiProviders } from '../../hooks/useAiUsage';
 import { adminSendNotification, adminSendBulkNotification, adminScheduleExpiryReminders, adminCancelExpiryReminders, adminRefreshPlanCache, adminListAuditEvents, adminSendTestDigest, adminSendPaymentEmail, adminDeleteUser, adminGetPushStatus, adminGetExchangesStatus, adminGetFirebaseUsage } from '../../services/pushService';
 import { adminListCoupons, adminCreateCoupon, adminDeleteCoupon, couponShareUrl } from '../../services/couponService';
 import LoadingSpinner from '../shared/LoadingSpinner';
@@ -267,6 +267,14 @@ export default function AdminPanel() {
   const [statsDays, setStatsDays] = useState(30);
   // System health (cron heartbeat, push/AI configured).
   const [health, setHealth] = useState(null);
+  // AI provider connectivity self-test result + in-flight flag.
+  const [aiTest, setAiTest] = useState(null);
+  const [aiTesting, setAiTesting] = useState(false);
+  const runAiTest = async () => {
+    setAiTesting(true);
+    try { setAiTest(await testAiProviders()); }
+    finally { setAiTesting(false); }
+  };
   // Firebase (Firestore) consumption vs the Spark free-tier limits —
   // { monitoring, monitoringError?, counts, limits } or { error: true }.
   const [fbUsage, setFbUsage] = useState(null);
@@ -984,9 +992,14 @@ export default function AdminPanel() {
           icon={<Sparkles className="w-4 h-4" />}
           title="מודלים ומכסות AI"
           action={
-            <span className={`text-[10px] font-semibold px-2 py-0.5 rounded-full shrink-0 ${health.ai.geminiActive ? 'bg-accent-primary/15 text-accent-primary' : 'bg-amber-500/15 text-amber-400'}`}>
-              {health.ai.geminiActive ? 'Gemini פעיל' : 'Groq בלבד'}
-            </span>
+            <div className="flex items-center gap-2 shrink-0">
+              <span className={`text-[10px] font-semibold px-2 py-0.5 rounded-full ${health.ai.geminiActive ? 'bg-accent-primary/15 text-accent-primary' : 'bg-amber-500/15 text-amber-400'}`}>
+                {health.ai.geminiActive ? 'Gemini פעיל' : 'Groq בלבד'}
+              </span>
+              <button onClick={runAiTest} disabled={aiTesting} className="inline-flex items-center gap-1 px-2 py-1 rounded-lg border border-border-primary text-[11px] text-text-secondary hover:text-text-primary hover:border-accent-primary/40 disabled:opacity-50 cursor-pointer transition-colors">
+                <RefreshCw className={`w-3 h-3 ${aiTesting ? 'animate-spin' : ''}`} /> בדוק חיבור
+              </button>
+            </div>
           }
         >
           <div className="space-y-1.5">
@@ -1007,6 +1020,25 @@ export default function AdminPanel() {
             תקרה גלובלית {health.ai.limits.globalCeiling.toLocaleString()}/יום · Premium {health.ai.limits.premiumMinute}/דקה · {health.ai.limits.premiumHour}/שעה
             {health.ai.geminiActive && <> · כש-Gemini עמוס יש נפילה אוטומטית ל-Groq <span className="font-mono">{health.ai.models.groqFallback}</span></>}
           </div>
+
+          {/* Live provider self-test — exact HTTP status + error snippet from
+              Google/Groq, so "המערכת עמוסה" can be pinned to a real cause. */}
+          {aiTest && (
+            <div className="mt-3 pt-3 border-t border-border-primary space-y-1.5">
+              {aiTest.error ? (
+                <div className="text-[11px] text-loss">{aiTest.error}</div>
+              ) : (
+                [{ name: 'Gemini', r: aiTest.gemini }, { name: 'Groq', r: aiTest.groq }].map(({ name, r }) => (
+                  <div key={name} className="flex items-center gap-2 text-[11px]">
+                    <span className={`w-1.5 h-1.5 rounded-full shrink-0 ${r?.ok ? 'bg-profit' : 'bg-loss'}`} />
+                    <span className="font-semibold text-text-primary shrink-0 w-14">{name}</span>
+                    <span className={`shrink-0 ${r?.ok ? 'text-profit' : 'text-loss'}`} dir="ltr">{r?.ok ? 'OK' : `שגיאה ${r?.status ?? '—'}`}</span>
+                    {!r?.ok && r?.error && <span className="text-text-muted truncate" title={r.error} dir="ltr">{r.error}</span>}
+                  </div>
+                ))
+              )}
+            </div>
+          )}
         </SectionCard>
       )}
 
