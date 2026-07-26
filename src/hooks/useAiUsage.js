@@ -77,3 +77,15 @@ export async function fetchSystemHealth() {
   if (!r.ok) return null;
   return r.json();
 }
+
+// Admin-only — live connectivity test of the AI providers. Returns each
+// provider's real HTTP status + error snippet so a "המערכת עמוסה" can be
+// pinned to the actual cause. Never returns keys.
+export async function testAiProviders() {
+  const user = getCurrentUser();
+  if (!user) return { error: 'לא מחובר' };
+  const token = await user.getIdToken();
+  const r = await fetch(`${WORKER_BASE}/admin/ai-test`, { headers: { Authorization: `Bearer ${token}` } });
+  if (!r.ok) return { error: `שגיאה ${r.status}` };
+  return r.json();
+}

@@ -4003,6 +4003,54 @@ async function handleRequest(request, env) {
     }), { headers: { ...cors, 'Content-Type': 'application/json' } });
   }
 
+  // Admin-only: live connectivity self-test for the AI providers. Fires ONE
+  // minimal non-streaming request at Gemini and at Groq and reports each
+  // provider's real HTTP status + the first slice of any error body — so a
+  // "המערכת עמוסה" can be pinned to the actual cause (bad key vs 429 vs model
+  // not found) without digging through Worker logs.
+  if (request.method === 'GET' && path === '/admin/ai-test') {
+    const token = (request.headers.get('Authorization') || '').replace('Bearer ', '');
+    const adminUid = await verifyAdminFromToken(token);
+    if (!adminUid) return new Response(JSON.stringify({ error: 'forbidden' }), { status: 403, headers: { ...cors, 'Content-Type': 'application/json' } });
+
+    const ping = [{ role: 'user', content: 'ping' }];
+    const out = { geminiEnabled: env.GEMINI_ENABLED === 'true' };
+
+    // Gemini (non-stream)
+    if (!env.GEMINI_API_KEY) {
+      out.gemini = { ok: false, status: null, model: GEMINI_MODEL, error: 'GEMINI_API_KEY לא מוגדר ב-Worker' };
+    } else {
+      try {
+        const r = await fetch(GEMINI_URL(env.GEMINI_API_KEY), {
+          method: 'POST', headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(toGeminiBody(ping)),
+        });
+        const body = await r.text().catch(() => '');
+        out.gemini = { ok: r.ok, status: r.status, model: GEMINI_MODEL, error: r.ok ? null : body.slice(0, 400) };
+      } catch (e) {
+        out.gemini = { ok: false, status: 0, model: GEMINI_MODEL, error: String(e).slice(0, 400) };
+      }
+    }
+
+    // Groq (non-stream)
+    if (!env.GROQ_API_KEY) {
+      out.groq = { ok: false, status: null, model: GROQ_MODEL, error: 'GROQ_API_KEY לא מוגדר ב-Worker' };
+    } else {
+      try {
+        const r = await fetch(GROQ_URL, {
+          method: 'POST', headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${env.GROQ_API_KEY}` },
+          body: JSON.stringify({ model: GROQ_MODEL, messages: ping, max_tokens: 5, stream: false }),
+        });
+        const body = await r.text().catch(() => '');
+        out.groq = { ok: r.ok, status: r.status, model: GROQ_MODEL, error: r.ok ? null : body.slice(0, 400) };
+      } catch (e) {
+        out.groq = { ok: false, status: 0, model: GROQ_MODEL, error: String(e).slice(0, 400) };
+      }
+    }
+
+    return new Response(JSON.stringify(out), { headers: { ...cors, 'Content-Type': 'application/json' } });
+  }
+
   // Admin-only: Firestore document counts (users/trades/payments/leaderboard)
   // via COUNT aggregation queries — COUNTS ONLY, never documents/fields/tokens.
   // The daily read/write/delete quota meters were dropped: they relied on the
