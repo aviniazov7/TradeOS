@@ -13,10 +13,19 @@
   כגיבוי לקריאה עד שמוודאים 100% ב-Supabase; שום מחיקה ב-Firebase עד אישור סופי.
 
 ## מצב נוכחי (מה כבר בנוי)
-- ✅ פרויקט Supabase `tradeos` (mrgxbvsyiujqbvmtccbu), ACTIVE_HEALTHY, eu-central-1.
-- ✅ 12 טבלאות + RLS מוחלות (ריקות). סכמה: `docs/redesign/supabase-schema.sql`.
-- ✅ קליינט Supabase: `src/services/supabase.js`.
-- ❌ אין נתונים, אין Auth, אין קוד-אפליקציה שקורא/כותב ל-Supabase.
+**חשבון ייעודי חדש נוצר (27.7):** `tradeos.app@gmail.com` → ארגון "tradeos.app's Org"
+(נפרד מ-Backtest Crypto האישי, כדי לא להתנגש במגבלת 2 פרויקטים חינמיים).
+- ✅ **פרויקט פרוד: `tradeos-prod`, ref `jzlbactamdjyzqjlfunr`**, eu-central-1 (Frankfurt),
+  ACTIVE_HEALTHY. URL: `https://jzlbactamdjyzqjlfunr.supabase.co`.
+- ✅ **שלב 1 בוצע** — 12 טבלאות + אינדקסים + RLS + 13 policies הוחלו (SQL מ-`supabase-schema.sql`).
+  גם "automatic RLS trigger" פעיל (ביטוח לטבלאות עתידיות).
+- ⚠️ הפרויקט הישן `tradeos` (mrgxbvsyiujqbvmtccbu, בארגון Backtest Crypto) — **נזנח**, ריק. אפשר למחוק.
+- ✅ קליינט Supabase: `src/services/supabase.js` — **צריך לעדכן ל-URL+anon של הפרויקט החדש**.
+- ❌ אין נתונים, אין Auth מוגדר, אין קוד-אפליקציה שקורא/כותב ל-Supabase.
+
+**⚠️ הערת עבודה:** מחבר ה-Supabase (MCP) של Claude מחובר לחשבון האישי — **לא רואה** את
+`tradeos-prod`. עבודת Supabase נעשית דרך Claude-בכרום (אוטומציית דפדפן) שמחובר לחשבון
+החדש, או שאבי יחבר מחדש את המחבר ל-`tradeos.app@gmail.com`.
 
 ## מיפוי מודל הנתונים (Firestore → Supabase) — יש פערים
 | Firestore | Supabase | סטטוס |
