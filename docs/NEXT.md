@@ -23,11 +23,12 @@ APP_VERSION נשאר **2.0.0** (לפי [docs/VERSIONING.md](VERSIONING.md) — �
 
 ## מה נשאר לעשות (התחל מכאן)
 
-### 1. 🤖 לבדוק שה-AI (TradeAI) עונה
-זה לא באג בקוד — המפתחות החינמיים של Gemini+Groq מוצו והחזירו 429
-("המערכת עמוסה"). הודבק מפתח Gemini חדש והופעל redeploy.
-**מה לעשות:** לפתוח את הצ'אט של TradeAI ולוודא שהוא עונה בפועל.
-אם עדיין 429 → להפעיל **billing** על פרויקט ה-Gemini.
+### 1. ✅ AI (TradeAI) — נפתר (27.7.2026)
+אובחן דרך כלי `/admin/ai-test` שנבנה: (א) `gemini-2.5-flash` החזיר 404
+"no longer available to new users" → הוחלף ל-`gemini-2.0-flash`. (ב) גם 2.0
+מחזיר 429 "quota exceeded — check billing" (מכסת חינם אפסית). הבעלים בחר
+להישאר **בחינם** → `GEMINI_ENABLED=false`, הכל רץ על **Groq** (עובד, חינמי).
+**להחזרת Gemini בעתיד:** להפעיל billing על פרויקט Google ואז `GEMINI_ENABLED=true`.
 
 ### 2. ✅ עמלות Bybit — תוקן (26.7.2026)
 היה באג: `closedPnl` של Bybit כבר **נטו** (אחרי עמלות), אבל האפליקציה
@@ -38,8 +39,14 @@ APP_VERSION נשאר **2.0.0** (לפי [docs/VERSIONING.md](VERSIONING.md) — �
 במשיכה מחדש (re-sync). PR שממתין למיזוג ל-dev.
 **להמשך:** למשוך מחדש עסקאות Bybit ישנות כדי לתקן את התצוגה שלהן.
 
-### 3. 📦 נדחים (לא דחוף, post-release)
-- מיגרציה מלאה ל-Supabase (Auth + data) — נדחתה, הרידיזיין הגדול בהמתנה.
+### 3. 🚧 מיגרציה מלאה ל-Supabase — התחילה (27.7.2026)
+אבי אישר מעבר מלא. תוכנית-אב מדורגת: **[docs/redesign/supabase-migration-plan.md](supabase-migration-plan.md)**.
+מצב: Supabase `tradeos` פעיל, 12 טבלאות+RLS ריקות. Auth = החלק הקשה (20 משתמשים
+חיים). מתחילים משלב 1 (התאמת סכמה, בטוח) → שלב 2 (שכבת שירות) → ואז Auth+נתונים
+בזהירות ובתיאום. **לא לגעת ב-Firebase החי עד אימות מלא ב-Supabase.**
+
+### 4. 📦 נדחים (לא דחוף, post-release)
+- ~~מיגרציה מלאה ל-Supabase~~ → ראה סעיף 3 (בתהליך).
   ראה [docs/redesign/00-master-plan.md](redesign/00-master-plan.md).
 - ~~#216 dedup refactor~~ — ✅ **הושלם ונסגר** (PR #298): formatters/hooks/
   AICoachPanel אוחדו, אכיפת שכבת שירותים (אפס firebase/* מחוץ ל-services).
