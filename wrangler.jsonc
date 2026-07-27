@@ -18,10 +18,12 @@
   ],
   "vars": {
     "DEV_UID": "3eVK7Ej3F1Y2L2ziHJpmzFP7Q0u1",
-    // Premium AI chat runs Gemini-first (GEMINI_API_KEY secret is already set)
-    // with automatic Groq fallback — offloads traffic from Groq's tight
-    // 100K-tokens/day free-tier budget, which the coach/digest also share.
+    // Gemini routing for Premium chat. Kept OFF because the free Gemini tier
+    // returns 429 "quota exceeded — check billing" (verified via /admin/ai-test
+    // 2026-07-27) — activating it just wastes a doomed call before falling back
+    // to Groq. Everyone (free + premium) runs on Groq, which is free and works.
+    // Flip to "true" ONLY once billing is enabled on the Gemini project.
     // Defined here (not in the dashboard) so wrangler deploys don't wipe it.
-    "GEMINI_ENABLED": "true"
+    "GEMINI_ENABLED": "false"
   }
 }
