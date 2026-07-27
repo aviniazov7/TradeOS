@@ -1592,7 +1592,12 @@ const MAX_IMAGE_CHARS = 4_000_000;
 // 2.5-flash, NOT 2.0-flash: Google removed 2.0-flash from the free tier —
 // requests fail with RESOURCE_EXHAUSTED "limit: 0" on both the per-minute and
 // per-day free-tier quotas (verified in prod logs 2026-07-10).
-const GEMINI_MODEL = 'gemini-2.5-flash';
+// gemini-2.5-flash returned 404 "no longer available to new users" on the
+// fresh API key/project (verified via /admin/ai-test 2026-07-27) — Google
+// grandfathered it to existing projects only. gemini-2.0-flash is GA and
+// available to new projects. If this ever 404s too, check /admin/ai-test for
+// the exact error and swap to a currently-available model.
+const GEMINI_MODEL = 'gemini-2.0-flash';
 const GEMINI_STREAM_URL = (key) =>
   `https://generativelanguage.googleapis.com/v1beta/models/${GEMINI_MODEL}:streamGenerateContent?alt=sse&key=${encodeURIComponent(key)}`;
 const GEMINI_URL = (key) =>
