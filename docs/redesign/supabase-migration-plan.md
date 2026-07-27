@@ -20,8 +20,20 @@
 - ✅ **שלב 1 בוצע** — 12 טבלאות + אינדקסים + RLS + 13 policies הוחלו (SQL מ-`supabase-schema.sql`).
   גם "automatic RLS trigger" פעיל (ביטוח לטבלאות עתידיות).
 - ⚠️ הפרויקט הישן `tradeos` (mrgxbvsyiujqbvmtccbu, בארגון Backtest Crypto) — **נזנח**, ריק. אפשר למחוק.
-- ✅ קליינט Supabase: `src/services/supabase.js` — **צריך לעדכן ל-URL+anon של הפרויקט החדש**.
+- ✅ קליינט Supabase: `src/services/supabase.js` — **עודכן** ל-`tradeos-prod`
+  (URL `https://jzlbactamdjyzqjlfunr.supabase.co` + publishable key ציבורי).
+  מפתחות מהדור החדש (`sb_publishable_...`). ה-secret key נשאר בדשבורד → GitHub Secrets בעתיד.
+- ✅ 2 triggers נוספו: `trades_set_updated_at` (updated_at ב-UPDATE) +
+  `on_auth_user_created` (יצירת profiles אוטומטית בהרשמה).
 - ❌ אין נתונים, אין Auth מוגדר, אין קוד-אפליקציה שקורא/כותב ל-Supabase.
+
+## ▶️ נקודת המשך (רזום) — הבא בתור
+**שלב 2 — שכבת שירות מקבילה:** לכתוב `src/services/supabaseService.js` עם אותו API
+בדיוק כמו `firestoreService.js` (subscribeToUserCollection / addToUserCollection /
+updateUserDocument / …) מעל קליינט Supabase, מאחורי feature flag כבוי. אפס נגיעה
+בחי. אחריו: החלטות מיפוי (journals/plans/notes/processes → journal_entries?
+payments/admin_notes → טבלאות חדשות?) לפני Auth+נתונים.
+**החלטה פתוחה:** האם אבי מחבר מחדש את מחבר ה-Supabase לחשבון החדש (מומלץ לפני Auth).
 
 **⚠️ הערת עבודה:** מחבר ה-Supabase (MCP) של Claude מחובר לחשבון האישי — **לא רואה** את
 `tradeos-prod`. עבודת Supabase נעשית דרך Claude-בכרום (אוטומציית דפדפן) שמחובר לחשבון
