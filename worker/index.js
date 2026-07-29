@@ -1484,19 +1484,38 @@ async function checkEconomicCalendar(env, settingsMap) {
   if (!users.length) return;
   const events = await fetchEconomicCalendar(env);
   if (!events.length) return;
+  // Group upcoming events (55–65 min out) by their exact time. Simultaneous
+  // high-impact releases — e.g. "FOMC Statement" + "Federal Funds Rate" at
+  // 21:00 — used to fire ONE push EACH, which lands as spammy duplicates. Now
+  // they collapse into a single "בעוד שעה" alert per time slot (titles joined),
+  // and the sent-marker is per time-slot so a user gets at most one per slot.
+  const slots = new Map(); // minute bucket -> { date, events: [] }
   for (const event of events) {
     const diffMin = (new Date(event.date).getTime() - Date.now()) / 60000;
     if (diffMin < 55 || diffMin > 65) continue;
-    const eventTime = new Date(event.date).toLocaleTimeString('he-IL', { timeZone: 'Asia/Jerusalem', hour: '2-digit', minute: '2-digit' });
-    const forecastStr = event.forecast || event.previous
-      ? ` · ${event.forecast ? `תחזית: ${event.forecast}` : ''}${event.forecast && event.previous ? ' | ' : ''}${event.previous ? `קודם: ${event.previous}` : ''}` : '';
-    const eventKey = `${event.title}_${event.date}`.replace(/[^a-zA-Z0-9]/g, '_');
+    const bucket = Math.floor(new Date(event.date).getTime() / 60000);
+    if (!slots.has(bucket)) slots.set(bucket, { date: event.date, events: [] });
+    slots.get(bucket).events.push(event);
+  }
+  if (!slots.size) return;
+  for (const [bucket, slot] of slots) {
+    const eventTime = new Date(slot.date).toLocaleTimeString('he-IL', { timeZone: 'Asia/Jerusalem', hour: '2-digit', minute: '2-digit' });
+    const titles = [...new Set(slot.events.map((e) => e.title))];
+    let body;
+    if (titles.length === 1) {
+      const event = slot.events[0];
+      const forecastStr = event.forecast || event.previous
+        ? ` · ${event.forecast ? `תחזית: ${event.forecast}` : ''}${event.forecast && event.previous ? ' | ' : ''}${event.previous ? `קודם: ${event.previous}` : ''}` : '';
+      body = `${titles[0]} (USD) · ${eventTime} שעון ישראל${forecastStr} · צפי לתנודתיות ⚠️`;
+    } else {
+      body = `${titles.join(' + ')} (USD) · ${eventTime} שעון ישראל · צפי לתנודתיות ⚠️`;
+    }
     for (const uid of users) {
-      const sentKey = `sent:cal:${uid}:${eventKey}`;
+      const sentKey = `sent:cal:${uid}:${bucket}`;
       if (await env.ALERTS_KV.get(sentKey)) continue;
       await sendPushToUser(env, uid, {
         title: '📅 אירוע כלכלי בעוד שעה',
-        body: `${event.title} (USD) · ${eventTime} שעון ישראל${forecastStr} · צפי לתנודתיות ⚠️`,
+        body,
         url: '/market',
       });
       await env.ALERTS_KV.put(sentKey, '1', { expirationTtl: 86400 });
