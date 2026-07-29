@@ -28,12 +28,17 @@
 - ❌ אין נתונים, אין Auth מוגדר, אין קוד-אפליקציה שקורא/כותב ל-Supabase.
 
 ## ▶️ נקודת המשך (רזום) — הבא בתור
-**שלב 2 — שכבת שירות מקבילה:** לכתוב `src/services/supabaseService.js` עם אותו API
-בדיוק כמו `firestoreService.js` (subscribeToUserCollection / addToUserCollection /
-updateUserDocument / …) מעל קליינט Supabase, מאחורי feature flag כבוי. אפס נגיעה
-בחי. אחריו: החלטות מיפוי (journals/plans/notes/processes → journal_entries?
-payments/admin_notes → טבלאות חדשות?) לפני Auth+נתונים.
-**החלטה פתוחה:** האם אבי מחבר מחדש את מחבר ה-Supabase לחשבון החדש (מומלץ לפני Auth).
+**שלב 2 — שלד נכתב (29.7):** `src/services/supabaseService.js` נוצר — CRUD גנרי
++ realtime (subscribe/add/update/delete/get) + profiles, מעל קליינט Supabase,
+מאחורי `USE_SUPABASE` (VITE_USE_SUPABASE, כבוי). **⚠️ לא נבדק מול ה-DB החי** —
+לאמת כל query כשמחברים את המחבר לחשבון החדש. ממופה 1:1 רק: trades, backtests,
+strategies, signals, dca→dca_plans, watchlist→watchlist_items.
+**פתוח לפני המשך:**
+1. **החלטות מיפוי** — journals/backtestJournals/tradingPlans/notes/processes/
+   morning+eveningJournals → journal_entries (kind=…)? settings → profiles(json)?
+   payments/adminNotes/coupons → טבלאות (הצ'אט השני הוסיף payments/coupons/admin_notes).
+2. **מחבר Supabase** — אבי מחבר מחדש לחשבון `tradeos.app@gmail.com` (מומלץ לפני Auth).
+3. אחר כך: אימות ה-queries → הרחבת המיפוי → שלב 3 (Auth) → שלב 4 (ETL).
 
 **⚠️ הערת עבודה:** מחבר ה-Supabase (MCP) של Claude מחובר לחשבון האישי — **לא רואה** את
 `tradeos-prod`. עבודת Supabase נעשית דרך Claude-בכרום (אוטומציית דפדפן) שמחובר לחשבון
