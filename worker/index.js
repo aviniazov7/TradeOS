@@ -1484,19 +1484,38 @@ async function checkEconomicCalendar(env, settingsMap) {
   if (!users.length) return;
   const events = await fetchEconomicCalendar(env);
   if (!events.length) return;
+  // Group upcoming events (55–65 min out) by their exact time. Simultaneous
+  // high-impact releases — e.g. "FOMC Statement" + "Federal Funds Rate" at
+  // 21:00 — used to fire ONE push EACH, which lands as spammy duplicates. Now
+  // they collapse into a single "בעוד שעה" alert per time slot (titles joined),
+  // and the sent-marker is per time-slot so a user gets at most one per slot.
+  const slots = new Map(); // minute bucket -> { date, events: [] }
   for (const event of events) {
     const diffMin = (new Date(event.date).getTime() - Date.now()) / 60000;
     if (diffMin < 55 || diffMin > 65) continue;
-    const eventTime = new Date(event.date).toLocaleTimeString('he-IL', { timeZone: 'Asia/Jerusalem', hour: '2-digit', minute: '2-digit' });
-    const forecastStr = event.forecast || event.previous
-      ? ` · ${event.forecast ? `תחזית: ${event.forecast}` : ''}${event.forecast && event.previous ? ' | ' : ''}${event.previous ? `קודם: ${event.previous}` : ''}` : '';
-    const eventKey = `${event.title}_${event.date}`.replace(/[^a-zA-Z0-9]/g, '_');
+    const bucket = Math.floor(new Date(event.date).getTime() / 60000);
+    if (!slots.has(bucket)) slots.set(bucket, { date: event.date, events: [] });
+    slots.get(bucket).events.push(event);
+  }
+  if (!slots.size) return;
+  for (const [bucket, slot] of slots) {
+    const eventTime = new Date(slot.date).toLocaleTimeString('he-IL', { timeZone: 'Asia/Jerusalem', hour: '2-digit', minute: '2-digit' });
+    const titles = [...new Set(slot.events.map((e) => e.title))];
+    let body;
+    if (titles.length === 1) {
+      const event = slot.events[0];
+      const forecastStr = event.forecast || event.previous
+        ? ` · ${event.forecast ? `תחזית: ${event.forecast}` : ''}${event.forecast && event.previous ? ' | ' : ''}${event.previous ? `קודם: ${event.previous}` : ''}` : '';
+      body = `${titles[0]} (USD) · ${eventTime} שעון ישראל${forecastStr} · צפי לתנודתיות ⚠️`;
+    } else {
+      body = `${titles.join(' + ')} (USD) · ${eventTime} שעון ישראל · צפי לתנודתיות ⚠️`;
+    }
     for (const uid of users) {
-      const sentKey = `sent:cal:${uid}:${eventKey}`;
+      const sentKey = `sent:cal:${uid}:${bucket}`;
       if (await env.ALERTS_KV.get(sentKey)) continue;
       await sendPushToUser(env, uid, {
         title: '📅 אירוע כלכלי בעוד שעה',
-        body: `${event.title} (USD) · ${eventTime} שעון ישראל${forecastStr} · צפי לתנודתיות ⚠️`,
+        body,
         url: '/market',
       });
       await env.ALERTS_KV.put(sentKey, '1', { expirationTtl: 86400 });
@@ -1592,7 +1611,12 @@ const MAX_IMAGE_CHARS = 4_000_000;
 // 2.5-flash, NOT 2.0-flash: Google removed 2.0-flash from the free tier —
 // requests fail with RESOURCE_EXHAUSTED "limit: 0" on both the per-minute and
 // per-day free-tier quotas (verified in prod logs 2026-07-10).
-const GEMINI_MODEL = 'gemini-2.5-flash';
+// gemini-2.5-flash returned 404 "no longer available to new users" on the
+// fresh API key/project (verified via /admin/ai-test 2026-07-27) — Google
+// grandfathered it to existing projects only. gemini-2.0-flash is GA and
+// available to new projects. If this ever 404s too, check /admin/ai-test for
+// the exact error and swap to a currently-available model.
+const GEMINI_MODEL = 'gemini-2.0-flash';
 const GEMINI_STREAM_URL = (key) =>
   `https://generativelanguage.googleapis.com/v1beta/models/${GEMINI_MODEL}:streamGenerateContent?alt=sse&key=${encodeURIComponent(key)}`;
 const GEMINI_URL = (key) =>
@@ -4001,6 +4025,54 @@ async function handleRequest(request, env) {
       },
       quotas,
     }), { headers: { ...cors, 'Content-Type': 'application/json' } });
+  }
+
+  // Admin-only: live connectivity self-test for the AI providers. Fires ONE
+  // minimal non-streaming request at Gemini and at Groq and reports each
+  // provider's real HTTP status + the first slice of any error body — so a
+  // "המערכת עמוסה" can be pinned to the actual cause (bad key vs 429 vs model
+  // not found) without digging through Worker logs.
+  if (request.method === 'GET' && path === '/admin/ai-test') {
+    const token = (request.headers.get('Authorization') || '').replace('Bearer ', '');
+    const adminUid = await verifyAdminFromToken(token);
+    if (!adminUid) return new Response(JSON.stringify({ error: 'forbidden' }), { status: 403, headers: { ...cors, 'Content-Type': 'application/json' } });
+
+    const ping = [{ role: 'user', content: 'ping' }];
+    const out = { geminiEnabled: env.GEMINI_ENABLED === 'true' };
+
+    // Gemini (non-stream)
+    if (!env.GEMINI_API_KEY) {
+      out.gemini = { ok: false, status: null, model: GEMINI_MODEL, error: 'GEMINI_API_KEY לא מוגדר ב-Worker' };
+    } else {
+      try {
+        const r = await fetch(GEMINI_URL(env.GEMINI_API_KEY), {
+          method: 'POST', headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(toGeminiBody(ping)),
+        });
+        const body = await r.text().catch(() => '');
+        out.gemini = { ok: r.ok, status: r.status, model: GEMINI_MODEL, error: r.ok ? null : body.slice(0, 400) };
+      } catch (e) {
+        out.gemini = { ok: false, status: 0, model: GEMINI_MODEL, error: String(e).slice(0, 400) };
+      }
+    }
+
+    // Groq (non-stream)
+    if (!env.GROQ_API_KEY) {
+      out.groq = { ok: false, status: null, model: GROQ_MODEL, error: 'GROQ_API_KEY לא מוגדר ב-Worker' };
+    } else {
+      try {
+        const r = await fetch(GROQ_URL, {
+          method: 'POST', headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${env.GROQ_API_KEY}` },
+          body: JSON.stringify({ model: GROQ_MODEL, messages: ping, max_tokens: 5, stream: false }),
+        });
+        const body = await r.text().catch(() => '');
+        out.groq = { ok: r.ok, status: r.status, model: GROQ_MODEL, error: r.ok ? null : body.slice(0, 400) };
+      } catch (e) {
+        out.groq = { ok: false, status: 0, model: GROQ_MODEL, error: String(e).slice(0, 400) };
+      }
+    }
+
+    return new Response(JSON.stringify(out), { headers: { ...cors, 'Content-Type': 'application/json' } });
   }
 
   // Admin-only: Firestore document counts (users/trades/payments/leaderboard)

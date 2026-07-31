@@ -9,7 +9,7 @@ import { ResponsiveContainer, AreaChart, Area, Tooltip, XAxis, YAxis, BarChart, 
 import { useAuth } from '../../contexts/AuthContext';
 import { getAllUsers, getUserSubcollectionCount, adminGrantPremium, adminRevokePremium, addPayment, getAllPayments, getAdminMeta, setAdminMeta } from '../../services/firestoreService';
 import { APP_VERSION } from '../../utils/constants';
-import { fetchUserAiUsage, fetchGlobalAiUsage, fetchAiStats, fetchSystemHealth } from '../../hooks/useAiUsage';
+import { fetchUserAiUsage, fetchGlobalAiUsage, fetchAiStats, fetchSystemHealth, testAiProviders } from '../../hooks/useAiUsage';
 import { adminSendNotification, adminSendBulkNotification, adminScheduleExpiryReminders, adminCancelExpiryReminders, adminRefreshPlanCache, adminListAuditEvents, adminSendTestDigest, adminSendPaymentEmail, adminDeleteUser, adminGetPushStatus, adminGetExchangesStatus, adminGetFirebaseUsage } from '../../services/pushService';
 import { adminListCoupons, adminCreateCoupon, adminDeleteCoupon, couponShareUrl } from '../../services/couponService';
 import LoadingSpinner from '../shared/LoadingSpinner';
@@ -267,6 +267,14 @@ export default function AdminPanel() {
   const [statsDays, setStatsDays] = useState(30);
   // System health (cron heartbeat, push/AI configured).
   const [health, setHealth] = useState(null);
+  // AI provider connectivity self-test result + in-flight flag.
+  const [aiTest, setAiTest] = useState(null);
+  const [aiTesting, setAiTesting] = useState(false);
+  const runAiTest = async () => {
+    setAiTesting(true);
+    try { setAiTest(await testAiProviders()); }
+    finally { setAiTesting(false); }
+  };
   // Firebase (Firestore) consumption vs the Spark free-tier limits —
   // { monitoring, monitoringError?, counts, limits } or { error: true }.
   const [fbUsage, setFbUsage] = useState(null);
@@ -984,9 +992,14 @@ export default function AdminPanel() {
           icon={<Sparkles className="w-4 h-4" />}
           title="מודלים ומכסות AI"
           action={
-            <span className={`text-[10px] font-semibold px-2 py-0.5 rounded-full shrink-0 ${health.ai.geminiActive ? 'bg-accent-primary/15 text-accent-primary' : 'bg-amber-500/15 text-amber-400'}`}>
-              {health.ai.geminiActive ? 'Gemini פעיל' : 'Groq בלבד'}
-            </span>
+            <div className="flex items-center gap-2 shrink-0">
+              <span className={`text-[10px] font-semibold px-2 py-0.5 rounded-full ${health.ai.geminiActive ? 'bg-accent-primary/15 text-accent-primary' : 'bg-amber-500/15 text-amber-400'}`}>
+                {health.ai.geminiActive ? 'Gemini פעיל' : 'Groq בלבד'}
+              </span>
+              <button onClick={runAiTest} disabled={aiTesting} className="inline-flex items-center gap-1 px-2 py-1 rounded-lg border border-border-primary text-[11px] text-text-secondary hover:text-text-primary hover:border-accent-primary/40 disabled:opacity-50 cursor-pointer transition-colors">
+                <RefreshCw className={`w-3 h-3 ${aiTesting ? 'animate-spin' : ''}`} /> בדוק חיבור
+              </button>
+            </div>
           }
         >
           <div className="space-y-1.5">
@@ -1007,6 +1020,25 @@ export default function AdminPanel() {
             תקרה גלובלית {health.ai.limits.globalCeiling.toLocaleString()}/יום · Premium {health.ai.limits.premiumMinute}/דקה · {health.ai.limits.premiumHour}/שעה
             {health.ai.geminiActive && <> · כש-Gemini עמוס יש נפילה אוטומטית ל-Groq <span className="font-mono">{health.ai.models.groqFallback}</span></>}
           </div>
+
+          {/* Live provider self-test — exact HTTP status + error snippet from
+              Google/Groq, so "המערכת עמוסה" can be pinned to a real cause. */}
+          {aiTest && (
+            <div className="mt-3 pt-3 border-t border-border-primary space-y-1.5">
+              {aiTest.error ? (
+                <div className="text-[11px] text-loss">{aiTest.error}</div>
+              ) : (
+                [{ name: 'Gemini', r: aiTest.gemini }, { name: 'Groq', r: aiTest.groq }].map(({ name, r }) => (
+                  <div key={name} className="flex items-center gap-2 text-[11px]">
+                    <span className={`w-1.5 h-1.5 rounded-full shrink-0 ${r?.ok ? 'bg-profit' : 'bg-loss'}`} />
+                    <span className="font-semibold text-text-primary shrink-0 w-14">{name}</span>
+                    <span className={`shrink-0 ${r?.ok ? 'text-profit' : 'text-loss'}`} dir="ltr">{r?.ok ? 'OK' : `שגיאה ${r?.status ?? '—'}`}</span>
+                    {!r?.ok && r?.error && <span className="text-text-muted truncate" title={r.error} dir="ltr">{r.error}</span>}
+                  </div>
+                ))
+              )}
+            </div>
+          )}
         </SectionCard>
       )}
 
@@ -1503,7 +1535,7 @@ export default function AdminPanel() {
       )}
 
       <UserDetailModal user={selectedUser} onClose={() => setSelectedUser(null)} onUserChanged={load} />
-      <CouponsModal isOpen={couponsOpen} onClose={() => setCouponsOpen(false)} />
+      <CouponsModal isOpen={couponsOpen} onClose={() => setCouponsOpen(false)} users={users} />
       <AuditLogModal isOpen={auditOpen} onClose={() => setAuditOpen(false)} users={users} />
       <AnalyticsModal isOpen={analyticsOpen} onClose={() => setAnalyticsOpen(false)} a={analytics} onPickUser={(u) => { setAnalyticsOpen(false); setSelectedUser(u); }} />
       <UserListModal
@@ -2713,7 +2745,7 @@ function NumberStepper({ value, onChange, min = 1, max = 99999, step = 1, placeh
 }
 
 // ── Coupons modal ────────────────────────────────────────────────────────────
-function CouponsModal({ isOpen, onClose }) {
+function CouponsModal({ isOpen, onClose, users = [] }) {
   const [coupons, setCoupons] = useState([]);
   const [loading, setLoading] = useState(false);
   const [code, setCode] = useState('');
@@ -2721,6 +2753,7 @@ function CouponsModal({ isOpen, onClose }) {
   const [maxUses, setMaxUses] = useState('');
   const [label, setLabel] = useState('');
   const [creating, setCreating] = useState(false);
+  const [usageCode, setUsageCode] = useState(null); // code whose redeemers are shown
 
   const load = async () => {
     setLoading(true);
@@ -2799,35 +2832,44 @@ function CouponsModal({ isOpen, onClose }) {
   };
 
   return (
+    <>
     <Modal isOpen={isOpen} onClose={onClose} title="קופוני Premium" maxWidth="max-w-2xl">
       <div className="space-y-5">
         {/* Create */}
         <div className="bg-amber-500/5 border border-amber-500/30 rounded-xl p-4 space-y-3">
           <div className="text-sm font-semibold text-text-primary">צור קוד חדש</div>
-          <div className="grid grid-cols-2 gap-2">
-            <div className="col-span-2 flex gap-2">
+          <div className="space-y-3">
+            {/* Code + random */}
+            <div className="flex gap-2">
               <input
                 value={code}
                 onChange={(e) => setCode(e.target.value.toUpperCase())}
                 placeholder="קוד (לדוגמה TRADEOS7)"
-                className="flex-1 bg-bg-secondary border border-border-primary rounded-lg px-3 py-2 text-sm text-text-primary outline-none focus:border-amber-500 font-mono uppercase"
+                className="flex-1 min-w-0 bg-bg-secondary border border-border-primary rounded-lg px-3 py-2 text-sm text-text-primary outline-none focus:border-amber-500 font-mono uppercase"
                 dir={code ? 'ltr' : 'rtl'}
                 maxLength={32}
               />
-              <button onClick={randomCode} className="px-3 rounded-lg border border-border-primary text-xs text-text-secondary hover:text-text-primary cursor-pointer">
+              <button onClick={randomCode} className="shrink-0 px-3 rounded-lg border border-border-primary text-xs text-text-secondary hover:text-text-primary hover:border-amber-500/50 transition-colors cursor-pointer">
                 אקראי
               </button>
             </div>
-            <div>
-              <label className="text-[11px] text-text-muted block mb-1">ימי Premium</label>
-              <NumberStepper value={String(days)} onChange={setDays} min={1} max={3650} />
+            {/* Two steppers — labels forced to one line + fixed height so the
+                fields below them align (the long "unlimited" hint used to wrap
+                and skew the row). */}
+            <div className="grid grid-cols-2 gap-3 items-end">
+              <div>
+                <label className="text-[11px] text-text-muted flex items-center h-4 mb-1 whitespace-nowrap">ימי Premium</label>
+                <NumberStepper value={String(days)} onChange={setDays} min={1} max={3650} />
+              </div>
+              <div>
+                <label className="text-[11px] text-text-muted flex items-center h-4 mb-1 whitespace-nowrap">מקסימום שימושים</label>
+                <NumberStepper value={maxUses} onChange={setMaxUses} min={1} placeholder="∞" />
+              </div>
             </div>
+            <p className="text-[10px] text-text-muted -mt-1">💡 השאירו "מקסימום שימושים" ריק (∞) לקוד ללא הגבלה.</p>
+            {/* Internal label */}
             <div>
-              <label className="text-[11px] text-text-muted block mb-1">מקסימום שימושים (ריק = ללא הגבלה)</label>
-              <NumberStepper value={maxUses} onChange={setMaxUses} min={1} placeholder="∞" />
-            </div>
-            <div className="col-span-2">
-              <label className="text-[11px] text-text-muted">תיוג פנימי (לא חובה)</label>
+              <label className="text-[11px] text-text-muted block mb-1">תיוג פנימי (לא חובה)</label>
               <input
                 value={label}
                 onChange={(e) => setLabel(e.target.value)}
@@ -2877,8 +2919,11 @@ function CouponsModal({ isOpen, onClose }) {
                   >
                     <div className="flex-1 min-w-0">
                       <div className="flex items-center gap-2 flex-wrap">
-                        <button onClick={() => copy(c.code)} className="font-mono text-sm font-bold text-amber-400 hover:text-amber-300 cursor-pointer flex items-center gap-1" dir="ltr">
-                          {c.code} <Copy className="w-3 h-3" />
+                        <button onClick={() => setUsageCode(c.code)} className="font-mono text-sm font-bold text-amber-400 hover:text-amber-300 cursor-pointer underline decoration-dotted decoration-amber-400/40 underline-offset-2" dir="ltr" title="לחץ לראות מי מימש את הקוד">
+                          {c.code}
+                        </button>
+                        <button onClick={() => copy(c.code)} className="p-0.5 -ml-0.5 text-text-muted hover:text-amber-400 cursor-pointer" title="העתק קוד">
+                          <Copy className="w-3 h-3" />
                         </button>
                         <span className="text-[11px] text-text-muted">· {c.days} ימים</span>
                         {/* Utilisation vs quota (or vs ∞ when uncapped) */}
@@ -2945,6 +2990,81 @@ function CouponsModal({ isOpen, onClose }) {
           )}
         </div>
       </div>
+    </Modal>
+    {usageCode && (
+      <CouponUsageModal code={usageCode} users={users} onClose={() => setUsageCode(null)} />
+    )}
+    </>
+  );
+}
+
+// ── Coupon usage (who redeemed a code) ──────────────────────────────────────
+// Compact modal: pulls the audit log's `coupon_redeem` events, filters to this
+// code, resolves each actor uid to a user, newest first.
+function CouponUsageModal({ code, users = [], onClose }) {
+  const [rows, setRows] = useState(null);
+  const byId = useMemo(() => {
+    const m = new Map();
+    for (const u of users) m.set(u.id, u);
+    return m;
+  }, [users]);
+
+  useEffect(() => {
+    let cancelled = false;
+    adminListAuditEvents({ kind: 'coupon_redeem', limit: 500 })
+      .then((ev) => {
+        if (cancelled) return;
+        const norm = String(code || '').toUpperCase();
+        const mine = (ev || [])
+          .filter((e) => String(e.code || '').toUpperCase() === norm)
+          .sort((a, b) => (b.ts || 0) - (a.ts || 0));
+        setRows(mine);
+      })
+      .catch(() => { if (!cancelled) setRows([]); });
+    return () => { cancelled = true; };
+  }, [code]);
+
+  return (
+    <Modal isOpen onClose={onClose} maxWidth="max-w-md" title={(
+      <span className="inline-flex items-center gap-2">
+        <Ticket className="w-4 h-4 text-amber-400" />
+        <span className="font-bold">מי מימש את <span className="font-mono text-amber-400" dir="ltr">{code}</span></span>
+      </span>
+    )}>
+      {rows === null ? (
+        <div className="text-sm text-text-muted text-center py-6">טוען…</div>
+      ) : rows.length === 0 ? (
+        <div className="text-sm text-text-muted text-center py-8 border border-dashed border-border-primary rounded-xl">
+          עדיין אף אחד לא מימש את הקוד הזה.
+        </div>
+      ) : (
+        <div className="space-y-1.5 max-h-[60vh] overflow-y-auto">
+          <div className="text-[11px] text-text-muted mb-1">{rows.length} מימושים · החדש למעלה</div>
+          {rows.map((e, i) => {
+            const u = byId.get(e.actor);
+            const name = u?.displayName || u?.email || (e.actor ? `${e.actor.slice(0, 8)}…` : 'משתמש');
+            return (
+              <div key={`${e.actor}-${e.ts}-${i}`} className="flex items-center gap-2.5 px-2.5 py-2 rounded-lg bg-bg-secondary border border-border-primary">
+                {u?.photoURL ? (
+                  <img src={u.photoURL} alt="" className="w-7 h-7 rounded-full object-cover shrink-0" referrerPolicy="no-referrer" />
+                ) : (
+                  <div className="w-7 h-7 rounded-full bg-bg-primary border border-border-primary flex items-center justify-center text-text-secondary text-xs font-semibold shrink-0">
+                    {(name || '?').charAt(0).toUpperCase()}
+                  </div>
+                )}
+                <div className="min-w-0 flex-1">
+                  <div className="text-sm text-text-primary truncate">{name}</div>
+                  {u?.email && u?.displayName && <div className="text-[10px] text-text-muted truncate" dir="ltr">{u.email}</div>}
+                </div>
+                <div className="text-[10px] text-text-muted text-left shrink-0" title={e.ts ? fmtFullDate(e.ts) : ''}>
+                  {e.ts ? fmtRelativeTime(e.ts) : ''}
+                  {e.days ? <div className="text-amber-400/80">+{e.days} ימים</div> : null}
+                </div>
+              </div>
+            );
+          })}
+        </div>
+      )}
     </Modal>
   );
 }

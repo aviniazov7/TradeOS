@@ -1,19 +1,21 @@
 import { createClient } from '@supabase/supabase-js';
 
-// Supabase client for the TradeOS redesign (project ref: mrgxbvsyiujqbvmtccbu).
+// Supabase client for the TradeOS migration.
+// Project: tradeos-prod (ref: jzlbactamdjyzqjlfunr), dedicated account
+// tradeos.app@gmail.com, eu-central-1 (Frankfurt).
 //
-// Like the Firebase config, the URL + anon (publishable) key are intentionally
-// public: the real security boundary is Row Level Security on every table, not
-// this key. We hardcode them as fallbacks so the app never breaks when a deploy
-// environment forgets the env vars, and still allow override via VITE_SUPABASE_*.
+// Like the Firebase config, the URL + publishable key are intentionally public:
+// the real security boundary is Row Level Security on every table, not this key.
+// (This is a new-generation `sb_publishable_...` key, which recent supabase-js
+// accepts in place of the legacy JWT anon key.) Hardcoded as fallbacks so the
+// app never breaks if a deploy forgets the env vars; override via VITE_SUPABASE_*.
 //
 // ⚠️ Not wired into the live app yet. This just makes the client available so
 // the migration (Firestore → Supabase) can be built incrementally. Nothing in
 // production reads from here until the service layer is switched over.
 const DEFAULTS = {
-  url: 'https://mrgxbvsyiujqbvmtccbu.supabase.co',
-  anonKey:
-    'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Im1yZ3hidnN5aXVqcWJ2bXRjY2J1Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODQ3MDgxMTcsImV4cCI6MjEwMDI4NDExN30.fZqJGmOCqwmuF1HyVE92O83h2iiH66RODyY3rgEF39E',
+  url: 'https://jzlbactamdjyzqjlfunr.supabase.co',
+  anonKey: 'sb_publishable_JOhIQHxfrgd-Cr9iW8atOw_RbFudT9f',
 };
 
 const pickEnv = (key, fallback) => {
