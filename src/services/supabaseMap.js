@@ -3,51 +3,10 @@
 // Postgres column shape (Firestore → Supabase migration). Pure functions, no
 // client import — so it can be unit-tested in isolation.
 //
-// Trades carry many camelCase fields; the core/queryable ones map to real
-// columns, and everything else rides in a `meta` jsonb so NOTHING is lost.
+// Core/queryable fields map to real columns; everything else rides in a `meta`
+// jsonb so NOTHING is lost. `makeMapper` builds a bidirectional mapper from a
+// simple app→column map (+ optional jsonb keys).
 // ─────────────────────────────────────────────────────────────────────────────
-
-// app key → db column (scalar/date columns)
-const TRADE_COLS = {
-  pair: 'symbol',
-  direction: 'side',
-  orderType: 'order_type',
-  entryPrice: 'entry_price',
-  exitPrice: 'exit_price',
-  quantity: 'quantity',
-  leverage: 'leverage',
-  stopLoss: 'stop_loss',
-  fees: 'fees',
-  pnl: 'pnl',
-  netPnl: 'net_pnl',
-  pnlPercent: 'pnl_percent',
-  pnlFromExchange: 'pnl_from_exchange',
-  riskAmount: 'risk_amount',
-  rrRatio: 'rr_ratio',
-  result: 'result',
-  positionSize: 'position_size',
-  margin: 'margin',
-  status: 'status',
-  session: 'session',
-  strategy: 'strategy',
-  setup: 'setup',
-  notes: 'notes',
-  source: 'source',
-  externalId: 'external_id',
-  journalId: 'journal_id',
-  entryDate: 'opened_at',
-  exitDate: 'closed_at',
-  createdAt: 'created_at',
-  updatedAt: 'updated_at',
-};
-// app key → db column (jsonb columns for arrays/objects)
-const TRADE_JSON = { tps: 'tps', exits: 'exits', externalIds: 'external_ids' };
-
-const TRADE_COL_TO_APP = Object.fromEntries(Object.entries(TRADE_COLS).map(([a, c]) => [c, a]));
-const TRADE_JSON_TO_APP = Object.fromEntries(Object.entries(TRADE_JSON).map(([a, c]) => [c, a]));
-
-// Row-managed keys we never fold into meta.
-const SKIP = new Set(['id', 'user_id', 'meta']);
 
 // Normalize a value for a db column: Date / Firestore Timestamp → ISO string.
 function toDbValue(v) {
@@ -56,35 +15,74 @@ function toDbValue(v) {
   return v;
 }
 
-function tradeToRow(app) {
-  const row = {};
-  const meta = {};
-  for (const [key, val] of Object.entries(app || {})) {
-    if (SKIP.has(key)) continue;
-    if (TRADE_COLS[key]) row[TRADE_COLS[key]] = toDbValue(val);
-    else if (TRADE_JSON[key]) row[TRADE_JSON[key]] = val ?? null;
-    else meta[key] = val; // long-tail journaling fields (mistakes, ratings, urls…)
-  }
-  if (Object.keys(meta).length) row.meta = meta;
-  return row;
+// appKey → dbColumn maps. jsonKeys are for array/object fields (jsonb columns).
+function makeMapper(colMap, jsonKeys = {}) {
+  const colToApp = Object.fromEntries(Object.entries(colMap).map(([a, c]) => [c, a]));
+  const jsonToApp = Object.fromEntries(Object.entries(jsonKeys).map(([a, c]) => [c, a]));
+  const SKIP = new Set(['id', 'user_id', 'meta']);
+  return {
+    // app object → db row (unmapped fields → meta jsonb)
+    toRow(app) {
+      const row = {};
+      const meta = {};
+      for (const [key, val] of Object.entries(app || {})) {
+        if (SKIP.has(key)) continue;
+        if (colMap[key]) row[colMap[key]] = toDbValue(val);
+        else if (jsonKeys[key]) row[jsonKeys[key]] = val ?? null;
+        else meta[key] = val;
+      }
+      if (Object.keys(meta).length) row.meta = meta;
+      return row;
+    },
+    // db row → app object (meta spreads back to the top level)
+    fromRow(row) {
+      if (!row) return row;
+      const app = { id: row.id };
+      for (const [col, val] of Object.entries(row)) {
+        if (col === 'id' || col === 'user_id' || col === 'meta') continue;
+        if (colToApp[col]) app[colToApp[col]] = val;
+        else if (jsonToApp[col]) app[jsonToApp[col]] = val;
+        else app[col] = val; // unmapped columns (connection_id, strategy_id) kept as-is
+      }
+      return { ...app, ...(row.meta || {}) };
+    },
+  };
 }
 
-function tradeFromRow(row) {
-  if (!row) return row;
-  const app = { id: row.id };
-  for (const [col, val] of Object.entries(row)) {
-    if (col === 'id' || col === 'user_id' || col === 'meta') continue;
-    if (TRADE_COL_TO_APP[col]) app[TRADE_COL_TO_APP[col]] = val;
-    else if (TRADE_JSON_TO_APP[col]) app[TRADE_JSON_TO_APP[col]] = val;
-    else app[col] = val; // unmapped columns (connection_id, strategy_id) kept as-is
-  }
-  return { ...app, ...(row.meta || {}) }; // spread the long-tail back to the top level
-}
+// ── trades ──────────────────────────────────────────────────────────────────
+const TRADE_COLS = {
+  pair: 'symbol', direction: 'side', orderType: 'order_type',
+  entryPrice: 'entry_price', exitPrice: 'exit_price', quantity: 'quantity',
+  leverage: 'leverage', stopLoss: 'stop_loss', fees: 'fees',
+  pnl: 'pnl', netPnl: 'net_pnl', pnlPercent: 'pnl_percent',
+  pnlFromExchange: 'pnl_from_exchange', riskAmount: 'risk_amount',
+  rrRatio: 'rr_ratio', result: 'result', positionSize: 'position_size',
+  margin: 'margin', status: 'status', session: 'session',
+  strategy: 'strategy', setup: 'setup', notes: 'notes', source: 'source',
+  externalId: 'external_id', journalId: 'journal_id',
+  entryDate: 'opened_at', exitDate: 'closed_at',
+  createdAt: 'created_at', updatedAt: 'updated_at',
+};
+const TRADE_JSON = { tps: 'tps', exits: 'exits', externalIds: 'external_ids' };
 
-// Per-collection mappers. Collections without an entry pass through unchanged
-// (their fields already match the column names).
+// ── signals ─────────────────────────────────────────────────────────────────
+const SIGNAL_COLS = {
+  pair: 'symbol', direction: 'side', status: 'status', notes: 'notes',
+  entryZone: 'entry_zone', targetPrice: 'target_price', stopPrice: 'stop_price',
+  createdAt: 'created_at', updatedAt: 'updated_at',
+};
+
+// ── strategies ──────────────────────────────────────────────────────────────
+const STRATEGY_COLS = {
+  name: 'name', description: 'description',
+  createdAt: 'created_at', updatedAt: 'updated_at',
+};
+const STRATEGY_JSON = { rules: 'rules' };
+
 const MAPPERS = {
-  trades: { toRow: tradeToRow, fromRow: tradeFromRow },
+  trades: makeMapper(TRADE_COLS, TRADE_JSON),
+  signals: makeMapper(SIGNAL_COLS),
+  strategies: makeMapper(STRATEGY_COLS, STRATEGY_JSON),
 };
 
 export function mapToRow(collectionName, data) {

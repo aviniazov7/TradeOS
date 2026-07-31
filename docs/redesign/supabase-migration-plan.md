@@ -39,9 +39,12 @@ long-tail (mistakes/mental/tags/chart urls) כך ששום מידע לא אובד
 הורחבה ל-16 עמודות חדשות + meta. supabaseService משתמש במיפוי.
 **נבדק:** ✅ vitest (4 טסטים round-trip, `npm test`) + ✅ smoke test מול ה-DB האמיתי
 (טרייד מלא נכנס/נקרא כולל tps ו-meta, נוקה). triggers/FK/cascade אומתו גם.
+**מיפוי הוכלל ל-generic (31.7):** `makeMapper(colMap, jsonKeys)`. ממופים כה"כ:
+**trades, signals, strategies** (+meta לכולם; signals/strategies קיבלו meta+updated_at
++trigger). **8 טסטי vitest עוברים** + smoke tests מול DB (trades+signals) + advisors נקי.
 **פתוח לפני המשך:**
-1. **מיפוי לשאר הקולקציות** — journals/plans/notes/processes → journal_entries?
-   settings → profiles(json)? (trades הושלם; השאר pass-through כרגע).
+1. **מיפוי dca/backtests** (צורה מורכבת יותר — trade-like) + משפחת ה-journal
+   (journals/plans/notes/processes → journal_entries?). כרגע pass-through.
 2. אחר כך: החלפת שכבת הנתונים/פרופיל ב-AuthContext+hooks → מיגרציית משתמשים → ETL.
 
 **✅ מחבר ה-Supabase (MCP) חובר לחשבון החדש (31.7)** — Claude ניגש ישירות ל-`tradeos-prod`.

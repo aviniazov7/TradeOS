@@ -67,6 +67,62 @@ describe('supabaseMap — trades', () => {
   });
 });
 
+describe('supabaseMap — signals', () => {
+  const appSignal = {
+    id: 'sig-1', pair: 'ETHUSDT', direction: 'short', status: 'waiting',
+    notes: 'waiting for retest', entryZone: '3100-3150', targetPrice: 2900, stopPrice: 3250,
+    createdAt: new Date('2026-07-25T10:00:00.000Z'),
+    timeframe: '4H', confidence: 'high', // long-tail → meta
+  };
+
+  it('maps fields to columns and long-tail to meta', () => {
+    const row = mapToRow('signals', appSignal);
+    expect(row.symbol).toBe('ETHUSDT');
+    expect(row.side).toBe('short');
+    expect(row.entry_zone).toBe('3100-3150');
+    expect(row.target_price).toBe(2900);
+    expect(row.created_at).toBe('2026-07-25T10:00:00.000Z');
+    expect(row.meta).toMatchObject({ timeframe: '4H', confidence: 'high' });
+    expect(row.meta.pair).toBeUndefined();
+  });
+
+  it('round-trips faithfully', () => {
+    const dbRow = { id: 'pg-sig', user_id: 'u', ...mapToRow('signals', appSignal) };
+    const back = mapFromRow('signals', dbRow);
+    expect(back.pair).toBe('ETHUSDT');
+    expect(back.direction).toBe('short');
+    expect(back.targetPrice).toBe(2900);
+    expect(back.timeframe).toBe('4H');
+    expect(back.id).toBe('pg-sig');
+    expect(back.meta).toBeUndefined();
+  });
+});
+
+describe('supabaseMap — strategies', () => {
+  const appStrategy = {
+    id: 'str-1', name: 'Wyckoff', description: 'accumulation/distribution',
+    rules: { entry: 'spring', exit: 'LPSY' }, isActive: true,
+    createdAt: new Date('2026-07-01T00:00:00.000Z'),
+  };
+
+  it('maps name/description/rules and routes isActive to meta', () => {
+    const row = mapToRow('strategies', appStrategy);
+    expect(row.name).toBe('Wyckoff');
+    expect(row.description).toBe('accumulation/distribution');
+    expect(row.rules).toEqual({ entry: 'spring', exit: 'LPSY' });
+    expect(row.meta).toMatchObject({ isActive: true });
+  });
+
+  it('round-trips faithfully', () => {
+    const dbRow = { id: 'pg-str', user_id: 'u', ...mapToRow('strategies', appStrategy) };
+    const back = mapFromRow('strategies', dbRow);
+    expect(back.name).toBe('Wyckoff');
+    expect(back.rules).toEqual({ entry: 'spring', exit: 'LPSY' });
+    expect(back.isActive).toBe(true);
+    expect(back.id).toBe('pg-str');
+  });
+});
+
 describe('supabaseMap — pass-through', () => {
   it('unmapped collections pass through unchanged', () => {
     const item = { symbol: 'ETH', name: 'x' };
