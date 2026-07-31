@@ -40,9 +40,12 @@ strategies, signals, dca→dca_plans, watchlist→watchlist_items.
 2. **מחבר Supabase** — אבי מחבר מחדש לחשבון `tradeos.app@gmail.com` (מומלץ לפני Auth).
 3. אחר כך: אימות ה-queries → הרחבת המיפוי → שלב 3 (Auth) → שלב 4 (ETL).
 
-**⚠️ הערת עבודה:** מחבר ה-Supabase (MCP) של Claude מחובר לחשבון האישי — **לא רואה** את
-`tradeos-prod`. עבודת Supabase נעשית דרך Claude-בכרום (אוטומציית דפדפן) שמחובר לחשבון
-החדש, או שאבי יחבר מחדש את המחבר ל-`tradeos.app@gmail.com`.
+**✅ מחבר ה-Supabase (MCP) חובר לחשבון החדש (31.7)** — Claude ניגש ישירות ל-`tradeos-prod`.
+- **16 טבלאות** סה"כ: 12 המקוריות + `payments` (policy: own select) + `coupons` +
+  `coupon_redemptions` + `admin_notes` (3 האחרונות ללא policy בכוונה — service-role/Worker בלבד).
+- **הקשחת אבטחה הוחלה:** `set_updated_at` עם search_path קבוע; `handle_new_user` +
+  `rls_auto_enable` — בוטלה חשיפתם ל-RPC. **advisors נקי** (נשארו רק 3 INFO על
+  הטבלאות ה-service-role-only, שזה תקין ומכוון).
 
 ## מיפוי מודל הנתונים (Firestore → Supabase) — יש פערים
 | Firestore | Supabase | סטטוס |
