@@ -33,12 +33,16 @@
 מאחורי `USE_SUPABASE` (VITE_USE_SUPABASE, כבוי). **⚠️ לא נבדק מול ה-DB החי** —
 לאמת כל query כשמחברים את המחבר לחשבון החדש. ממופה 1:1 רק: trades, backtests,
 strategies, signals, dca→dca_plans, watchlist→watchlist_items.
+**מיפוי שדות — נבנה ונבדק (31.7):** `src/services/supabaseMap.js` — ממפה את
+צורת האפליקציה (camelCase) לעמודות Postgres, עם `meta jsonb` שתופס כל שדה
+long-tail (mistakes/mental/tags/chart urls) כך ששום מידע לא אובד. טבלת `trades`
+הורחבה ל-16 עמודות חדשות + meta. supabaseService משתמש במיפוי.
+**נבדק:** ✅ vitest (4 טסטים round-trip, `npm test`) + ✅ smoke test מול ה-DB האמיתי
+(טרייד מלא נכנס/נקרא כולל tps ו-meta, נוקה). triggers/FK/cascade אומתו גם.
 **פתוח לפני המשך:**
-1. **החלטות מיפוי** — journals/backtestJournals/tradingPlans/notes/processes/
-   morning+eveningJournals → journal_entries (kind=…)? settings → profiles(json)?
-   payments/adminNotes/coupons → טבלאות (הצ'אט השני הוסיף payments/coupons/admin_notes).
-2. **מחבר Supabase** — אבי מחבר מחדש לחשבון `tradeos.app@gmail.com` (מומלץ לפני Auth).
-3. אחר כך: אימות ה-queries → הרחבת המיפוי → שלב 3 (Auth) → שלב 4 (ETL).
+1. **מיפוי לשאר הקולקציות** — journals/plans/notes/processes → journal_entries?
+   settings → profiles(json)? (trades הושלם; השאר pass-through כרגע).
+2. אחר כך: החלפת שכבת הנתונים/פרופיל ב-AuthContext+hooks → מיגרציית משתמשים → ETL.
 
 **✅ מחבר ה-Supabase (MCP) חובר לחשבון החדש (31.7)** — Claude ניגש ישירות ל-`tradeos-prod`.
 - **16 טבלאות** סה"כ: 12 המקוריות + `payments` (policy: own select) + `coupons` +
