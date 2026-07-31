@@ -82,10 +82,14 @@ admin_notes) + RLS, ולהחליט על settings (JSON ב-profiles). אפס נג
 flag כבוי. האפליקציה ממשיכה על Firebase.
 
 ### שלב 3 — מיגרציית Auth (הקשה)
-- להגדיר ספק Google + email ב-Supabase Auth.
-- לייצא משתמשי Firebase (email/password: hashes scrypt → import ל-Supabase שתומך
+- ✅ **קוד נבנה (31.7):** `src/services/supabaseAuth.js` — שכבת auth מקבילה
+  (login/register/google-oauth/logout/reset/onAuthChange/getCurrentUser),
+  ממפה את user של Supabase לצורת Firebase (uid + getIdToken). מאחורי flag.
+- ⏳ **דשבורד (אבי):** להגדיר ספק **Google** ב-Supabase Auth (צריך OAuth client
+  מ-Google Cloud). Email מופעל כברירת מחדל.
+- ⏳ לייצא משתמשי Firebase (email/password: hashes scrypt → import ל-Supabase שתומך
   ב-firebase-scrypt; Google: re-link בכניסה הבאה).
-- טבלת מיפוי `uid_firebase → uid_supabase` (קריטי לקישור הנתונים).
+- ⏳ טבלת מיפוי `uid_firebase → uid_supabase` (קריטי לקישור הנתונים).
 
 ### שלב 4 — ETL נתונים (חלון תחזוקה קצר)
 סקריפט חד-פעמי: קורא את כל Firestore, ממפה uid, כותב ל-Supabase. מוודא ספירות
