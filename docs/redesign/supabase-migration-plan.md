@@ -85,8 +85,11 @@ flag כבוי. האפליקציה ממשיכה על Firebase.
 - ✅ **קוד נבנה (31.7):** `src/services/supabaseAuth.js` — שכבת auth מקבילה
   (login/register/google-oauth/logout/reset/onAuthChange/getCurrentUser),
   ממפה את user של Supabase לצורת Firebase (uid + getIdToken). מאחורי flag.
-- ⏳ **דשבורד (אבי):** להגדיר ספק **Google** ב-Supabase Auth (צריך OAuth client
-  מ-Google Cloud). Email מופעל כברירת מחדל.
+- ✅ **Google provider מופעל (31.7):** OAuth client נוצר ב-Google Cloud (בפרויקט
+  הקיים tradeos-91a58, redirect `…/auth/v1/callback`), הופעל ב-Supabase tradeos-prod.
+  Client ID (ציבורי): `80529278454-oap5gac47rqkjp9lfs51nc7ohi9k1am6.apps.googleusercontent.com`.
+  Email מופעל כברירת מחדל.
+- ⏳ **URL Configuration** ב-Supabase (Site URL + Redirect URLs לאפליקציה) — בתהליך.
 - ⏳ לייצא משתמשי Firebase (email/password: hashes scrypt → import ל-Supabase שתומך
   ב-firebase-scrypt; Google: re-link בכניסה הבאה).
 - ⏳ טבלת מיפוי `uid_firebase → uid_supabase` (קריטי לקישור הנתונים).
