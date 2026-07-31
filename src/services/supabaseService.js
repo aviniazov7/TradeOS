@@ -1,4 +1,5 @@
 import { supabase } from './supabase';
+import { mapToRow, mapFromRow } from './supabaseMap';
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Parallel data layer over Supabase, mirroring the shape of firestoreService so
@@ -46,7 +47,7 @@ export function subscribeToUserCollection(uid, collectionName, callback, onError
     const { data, error } = await supabase.from(table).select('*').eq('user_id', uid);
     if (!active) return;
     if (error) { onError?.(error); return; }
-    callback(data || []);
+    callback((data || []).map((r) => mapFromRow(collectionName, r)));
   };
 
   emit(); // initial load
@@ -70,24 +71,24 @@ export async function addToUserCollection(uid, collectionName, data) {
   const table = tableFor(collectionName);
   const { data: row, error } = await supabase
     .from(table)
-    .insert({ ...data, user_id: uid })
+    .insert({ ...mapToRow(collectionName, data), user_id: uid })
     .select()
     .single();
   if (error) throw error;
-  return row;
+  return mapFromRow(collectionName, row);
 }
 
 export async function addToUserCollectionBulk(uid, collectionName, items) {
   const table = tableFor(collectionName);
-  const rows = (items || []).map((d) => ({ ...d, user_id: uid }));
+  const rows = (items || []).map((d) => ({ ...mapToRow(collectionName, d), user_id: uid }));
   const { data, error } = await supabase.from(table).insert(rows).select();
   if (error) throw error;
-  return data || [];
+  return (data || []).map((r) => mapFromRow(collectionName, r));
 }
 
 export async function updateUserDocument(uid, collectionName, id, data) {
   const table = tableFor(collectionName);
-  const { error } = await supabase.from(table).update(data).eq('id', id).eq('user_id', uid);
+  const { error } = await supabase.from(table).update(mapToRow(collectionName, data)).eq('id', id).eq('user_id', uid);
   if (error) throw error;
 }
 
@@ -101,7 +102,7 @@ export async function getUserCollectionDocs(uid, collectionName) {
   const table = tableFor(collectionName);
   const { data, error } = await supabase.from(table).select('*').eq('user_id', uid);
   if (error) throw error;
-  return data || [];
+  return (data || []).map((r) => mapFromRow(collectionName, r));
 }
 
 // Profile (mirror of the user doc). profiles.id === auth user id.
