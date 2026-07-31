@@ -88,6 +88,33 @@ export function loginWithGoogle() {
   });
 }
 
+/** Exchange a Google ID token (from GIS) for a Supabase session — the
+ *  equivalent of Firebase's loginWithGoogleIdToken (used by the popup flow). */
+export async function loginWithGoogleIdToken(idToken) {
+  const { data, error } = await supabase.auth.signInWithIdToken({ provider: 'google', token: idToken });
+  if (error) throw error;
+  return shapeUser(data.user, data.session);
+}
+
+/** Firebase-parity no-op: Supabase auto-detects the OAuth session from the URL
+ *  (detectSessionInUrl in the client config), so there's nothing to handle. */
+export function handleRedirectResult() {
+  return Promise.resolve(null);
+}
+
+/** Firebase-parity no-op: Supabase doesn't use password reauth the same way,
+ *  and account deletion runs server-side — so the shared deleteAccount flow
+ *  just resolves here. */
+export function reauthenticate() {
+  return Promise.resolve();
+}
+
+/** Deleting the auth user needs the service-role key → must run in the Worker /
+ *  Edge Function (Phase 6). The client cannot self-delete in Supabase. */
+export function deleteAuthUser() {
+  return Promise.reject(new Error('מחיקת חשבון ב-Supabase תטופל בצד השרת (טרם מומש)'));
+}
+
 /** Sign out. */
 export async function logout() {
   const { error } = await supabase.auth.signOut();
@@ -100,8 +127,10 @@ export async function resetPassword(email) {
   if (error) throw error;
 }
 
-/** Change the signed-in user's password. */
-export async function changePassword(newPassword) {
+/** Change the signed-in user's password. Same (currentPassword, newPassword)
+ *  signature as the Firebase version for facade parity — Supabase updates the
+ *  password within the active session and doesn't need the current one. */
+export async function changePassword(_currentPassword, newPassword) {
   const { error } = await supabase.auth.updateUser({ password: newPassword });
   if (error) throw error;
 }

@@ -101,8 +101,14 @@ flag כבוי. האפליקציה ממשיכה על Firebase.
 (20 users / 121 trades / …) תואמות. Firebase נשאר לקריאה כגיבוי.
 
 ### שלב 5 — Cutover קוד (feature flag)
-להדליק את ה-flag → hooks/components קוראים/כותבים ל-Supabase. Firebase לקריאה
-בלבד. לבדוק היטב בפרוד עם משתמש אמיתי.
+- ✅ **facade + חיבור AuthContext (31.7):** `src/services/authProvider.js` בוחר
+  Firebase/Supabase לפי `USE_SUPABASE`; AuthContext מייבא ממנו (flag כבוי → זהה
+  ל-Firebase, אפס שינוי). `supabaseAuth` הושלם ל-API מלא (idToken/redirect/reauth/
+  delete stubs).
+- ⏳ **נשאר לפני שאפשר להדליק flag:** להחליף גם את שכבת ה**נתונים/פרופיל** ב-AuthContext
+  ובכל ה-hooks (subscribeToUserProfile/getUserProfile/… → Supabase), אחרת flag דלוק
+  ישבור טעינת פרופיל. + מיגרציית משתמשים + ETL נתונים.
+- אז: להדליק flag → קריאה/כתיבה ל-Supabase, Firebase לקריאה בלבד, בדיקה בפרוד.
 
 ### שלב 6 — Worker + ניקוי
 להעביר את אימות ה-Auth ב-Worker ל-Supabase JWT, ואת ה-KV לטבלאות רלוונטיות.
