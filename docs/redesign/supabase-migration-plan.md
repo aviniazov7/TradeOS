@@ -89,7 +89,9 @@ flag כבוי. האפליקציה ממשיכה על Firebase.
   הקיים tradeos-91a58, redirect `…/auth/v1/callback`), הופעל ב-Supabase tradeos-prod.
   Client ID (ציבורי): `80529278454-oap5gac47rqkjp9lfs51nc7ohi9k1am6.apps.googleusercontent.com`.
   Email מופעל כברירת מחדל.
-- ⏳ **URL Configuration** ב-Supabase (Site URL + Redirect URLs לאפליקציה) — בתהליך.
+- ✅ **URL Configuration הושלם (31.7):** Site URL = `https://tradeos-91a58.web.app`;
+  Redirect URLs = הפרוד + `tradeos-91a58--*.web.app/**` (preview) + `localhost:5173/**`.
+  **→ הגדרת ה-Auth בצד Supabase הושלמה במלואה** (Email + Google + URLs).
 - ⏳ לייצא משתמשי Firebase (email/password: hashes scrypt → import ל-Supabase שתומך
   ב-firebase-scrypt; Google: re-link בכניסה הבאה).
 - ⏳ טבלת מיפוי `uid_firebase → uid_supabase` (קריטי לקישור הנתונים).
