@@ -1,6 +1,9 @@
 import { createContext, useContext, useState, useEffect } from 'react';
 import { planExpiresMs } from '../utils/premium';
 import { APP_VERSION } from '../utils/constants';
+// Auth via the facade — Firebase by default, Supabase when USE_SUPABASE is on
+// (migration Phase 3). With the flag off this resolves to the exact same
+// Firebase functions as before, so behaviour here is unchanged.
 import {
   onAuthChange,
   handleRedirectResult,
@@ -13,7 +16,7 @@ import {
   changePassword as authChangePassword,
   reauthenticate,
   deleteAuthUser,
-} from '../services/authService';
+} from '../services/authProvider';
 import {
   getUserProfile,
   setUserProfile,
