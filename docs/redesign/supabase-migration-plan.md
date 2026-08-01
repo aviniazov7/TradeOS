@@ -53,11 +53,16 @@ onboarding_completed/settings/meta); טבלת `user_settings` חדשה (mirror �
 users/{uid}/settings/{docId}). supabaseService: getUserProfile/subscribeToUserProfile/
 setUserProfile/touchLastActive/subscribeToUserSetting/setUserSetting + timestamp/
 dateToTimestamp — כולם בחתימת firestoreService. 19 טסטי vitest + smoke test מול DB.
-**נשאר (ה"מעבר החי"):**
-1. **dataProvider facade** — לחבר את ה-hooks+AuthContext (Firebase/Supabase לפי flag).
-   (חתימת subscribeToUserCollection צריכה 3rd arg `options` להתאמה — לטפל בעת החיבור.)
-2. **מיגרציית 20 המשתמשים** (Firebase Auth → Supabase) + **ETL נתונים** — אירוע מתואם.
-3. הדלקת flag → cutover.
+**✅ dataProvider facade + חיבור הושלמו (2.8):** `dataProvider.js` (Firebase/Supabase
+לפי flag); 10 data hooks + AuthContext (פרופיל/הגדרות) מחוברים; חתימות הותאמו.
+flag כבוי → זהה ל-Firestore. build + 19 טסטים עוברים.
+**✅ סקריפט מעבר + runbook מוכנים:** `scripts/migrate-to-supabase.mjs` (ETL דרך
+ה-mapper הבדוק + יצירת משתמשים, עם --dry-run) + `supabase-cutover-runbook.md`.
+**נשאר — רק ה"מעבר החי" (מבוקר עם אבי, ~15 דק'):**
+1. dry-run → הרצת הסקריפט (צריך Firebase SA + Supabase service-role key).
+2. אימות ספירות → הדלקת `VITE_USE_SUPABASE=true` (dev → main).
+3. rollback = להחזיר flag ל-false (Firebase נשאר גיבוי שבוע).
+ידועים לטיפול בעת cutover: arrayUnion (PendingLimitOrders), מחיקת חשבון server-side.
 
 **✅ מחבר ה-Supabase (MCP) חובר לחשבון החדש (31.7)** — Claude ניגש ישירות ל-`tradeos-prod`.
 - **16 טבלאות** סה"כ: 12 המקוריות + `payments` (policy: own select) + `coupons` +
