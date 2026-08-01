@@ -28,12 +28,40 @@ export const COLLECTION_TABLE = {
   signals: 'signals',
   dca: 'dca_plans',
   watchlist: 'watchlist_items',
+  // journal family — several collections share one table, split by a filter:
+  notes: 'journal_entries',
+  tradingPlans: 'journal_entries',
+  processes: 'journal_entries',
+  morningJournals: 'journal_entries',
+  eveningJournals: 'journal_entries',
+  journals: 'journals',
+  backtestJournals: 'journals',
+};
+
+// Discriminator filter for collections that share a table. MUST stay in sync
+// with the `fixed` values in supabaseMap (written on insert, filtered on read).
+const COLLECTION_FILTER = {
+  notes: { kind: 'note' },
+  tradingPlans: { kind: 'plan' },
+  processes: { kind: 'process' },
+  morningJournals: { kind: 'morning' },
+  eveningJournals: { kind: 'evening' },
+  journals: { is_backtest: false },
+  backtestJournals: { is_backtest: true },
 };
 
 function tableFor(collectionName) {
   const table = COLLECTION_TABLE[collectionName];
   if (!table) throw new Error(`supabaseService: no table mapped for "${collectionName}"`);
   return table;
+}
+
+// Scope a select to the user + the collection's discriminator filter.
+function scopedSelect(collectionName, uid) {
+  let q = supabase.from(tableFor(collectionName)).select('*').eq('user_id', uid);
+  const f = COLLECTION_FILTER[collectionName];
+  if (f) for (const [k, v] of Object.entries(f)) q = q.eq(k, v);
+  return q;
 }
 
 // Realtime subscription to a user's rows in a table — mirrors Firestore's
@@ -44,7 +72,7 @@ export function subscribeToUserCollection(uid, collectionName, callback, onError
   let active = true;
 
   const emit = async () => {
-    const { data, error } = await supabase.from(table).select('*').eq('user_id', uid);
+    const { data, error } = await scopedSelect(collectionName, uid);
     if (!active) return;
     if (error) { onError?.(error); return; }
     callback((data || []).map((r) => mapFromRow(collectionName, r)));
@@ -99,8 +127,7 @@ export async function deleteUserDocument(uid, collectionName, id) {
 }
 
 export async function getUserCollectionDocs(uid, collectionName) {
-  const table = tableFor(collectionName);
-  const { data, error } = await supabase.from(table).select('*').eq('user_id', uid);
+  const { data, error } = await scopedSelect(collectionName, uid);
   if (error) throw error;
   return (data || []).map((r) => mapFromRow(collectionName, r));
 }
