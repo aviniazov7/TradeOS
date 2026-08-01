@@ -1,5 +1,6 @@
 import { supabase } from './supabase';
 import { mapToRow, mapFromRow } from './supabaseMap';
+import { APP_VERSION } from '../utils/constants';
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Parallel data layer over Supabase, mirroring the shape of firestoreService so
@@ -73,10 +74,12 @@ function scopedSelect(collectionName, uid) {
 export function subscribeToUserCollection(uid, collectionName, _options, onData, onError) {
   const table = tableFor(collectionName);
   let active = true;
+  let seq = 0;
 
   const emit = async () => {
+    const mine = ++seq;
     const { data, error } = await scopedSelect(collectionName, uid);
-    if (!active) return;
+    if (!active || mine !== seq) return; // superseded by a newer refetch (latest-wins)
     if (error) { onError?.(error); return; }
     onData((data || []).map((r) => mapFromRow(collectionName, r)));
   };
@@ -84,7 +87,9 @@ export function subscribeToUserCollection(uid, collectionName, _options, onData,
   emit(); // initial load
 
   const channel = supabase
-    .channel(`${table}:${uid}`)
+    // per-COLLECTION topic — collections that share a table (journal_entries,
+    // journals) must not collide on the same channel name.
+    .channel(`sb:${collectionName}:${uid}`)
     .on(
       'postgres_changes',
       { event: '*', schema: 'public', table, filter: `user_id=eq.${uid}` },
@@ -109,17 +114,33 @@ export async function addToUserCollection(uid, collectionName, data) {
   return mapFromRow(collectionName, row);
 }
 
-export async function addToUserCollectionBulk(uid, collectionName, items) {
+// Matches firestoreService: (uid, collection, items, onProgress) → committed count,
+// inserted in chunks (Supabase caps large single inserts).
+export async function addToUserCollectionBulk(uid, collectionName, items, onProgress) {
   const table = tableFor(collectionName);
   const rows = (items || []).map((d) => ({ ...mapToRow(collectionName, d), user_id: uid }));
-  const { data, error } = await supabase.from(table).insert(rows).select();
-  if (error) throw error;
-  return (data || []).map((r) => mapFromRow(collectionName, r));
+  let committed = 0;
+  for (let i = 0; i < rows.length; i += 500) {
+    const chunk = rows.slice(i, i + 500);
+    const { error } = await supabase.from(table).insert(chunk);
+    if (error) throw error;
+    committed += chunk.length;
+    onProgress?.(committed, rows.length);
+  }
+  return committed;
 }
 
 export async function updateUserDocument(uid, collectionName, id, data) {
   const table = tableFor(collectionName);
-  const { error } = await supabase.from(table).update(mapToRow(collectionName, data)).eq('id', id).eq('user_id', uid);
+  const patch = mapToRow(collectionName, data);
+  // Firestore updateDoc/setDoc(merge) keeps untouched fields; a Postgres UPDATE
+  // of the `meta` jsonb would REPLACE it. Merge with the existing meta so a
+  // partial update (e.g. DCA addEntry) doesn't wipe the other meta keys.
+  if (patch.meta) {
+    const { data: existing } = await supabase.from(table).select('meta').eq('id', id).eq('user_id', uid).maybeSingle();
+    patch.meta = { ...(existing?.meta || {}), ...patch.meta };
+  }
+  const { error } = await supabase.from(table).update(patch).eq('id', id).eq('user_id', uid);
   if (error) throw error;
 }
 
@@ -155,41 +176,57 @@ export async function getUserProfile(uid) {
 
 export function subscribeToUserProfile(uid, callback, onError) {
   let active = true;
+  let seq = 0;
   const emit = async () => {
+    const mine = ++seq;
     const { data, error } = await supabase.from('profiles').select('*').eq('id', uid).maybeSingle();
-    if (!active) return;
+    if (!active || mine !== seq) return;
     if (error) { onError?.(error); return; }
-    callback(data ? mapFromRow('profiles', data) : null);
+    // Match Firestore: only emit when the row exists — a spurious null used to
+    // race the initial getUserProfile() and blank isAdmin/isPremium.
+    if (data) callback(mapFromRow('profiles', data));
   };
   emit();
   const channel = supabase
-    .channel(`profiles:${uid}`)
+    .channel(`sb:profiles:${uid}`)
     .on('postgres_changes', { event: '*', schema: 'public', table: 'profiles', filter: `id=eq.${uid}` }, emit)
     .subscribe();
   return () => { active = false; supabase.removeChannel(channel); };
 }
 
 export async function setUserProfile(uid, data) {
-  const row = { ...mapToRow('profiles', data), id: uid };
-  const { error } = await supabase.from('profiles').upsert(row, { onConflict: 'id' });
+  const patch = mapToRow('profiles', data);
+  // Firestore setDoc(merge:true) deep-merges nested maps; a Postgres upsert
+  // REPLACES the settings/meta jsonb. Merge them so a partial write (e.g.
+  // { settings: { journalMigrated: true } }) doesn't wipe defaultLeverage etc.
+  if (patch.settings || patch.meta) {
+    const { data: existing } = await supabase.from('profiles').select('settings, meta').eq('id', uid).maybeSingle();
+    if (patch.settings) patch.settings = { ...(existing?.settings || {}), ...patch.settings };
+    if (patch.meta) patch.meta = { ...(existing?.meta || {}), ...patch.meta };
+  }
+  const { error } = await supabase.from('profiles').upsert({ ...patch, id: uid }, { onConflict: 'id' });
   if (error) throw error;
 }
 
 export async function touchLastActive(uid) {
-  const { error } = await supabase.from('profiles').update({ last_active: new Date().toISOString() }).eq('id', uid);
+  const { error } = await supabase.from('profiles')
+    .update({ last_active: new Date().toISOString(), app_version: APP_VERSION })
+    .eq('id', uid);
   if (error) throw error;
 }
 
 // ── User settings (Firestore users/{uid}/settings/{docId} → user_settings) ────
 export function subscribeToUserSetting(uid, docId, callback) {
   let active = true;
+  let seq = 0;
   const emit = async () => {
+    const mine = ++seq;
     const { data } = await supabase.from('user_settings').select('data').eq('user_id', uid).eq('doc_id', docId).maybeSingle();
-    if (active) callback(data?.data ?? null);
+    if (active && mine === seq) callback(data?.data ?? null);
   };
   emit();
   const channel = supabase
-    .channel(`user_settings:${uid}:${docId}`)
+    .channel(`sb:user_settings:${uid}:${docId}`)
     .on('postgres_changes', { event: '*', schema: 'public', table: 'user_settings', filter: `user_id=eq.${uid}` }, emit)
     .subscribe();
   return () => { active = false; supabase.removeChannel(channel); };

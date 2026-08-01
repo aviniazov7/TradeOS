@@ -30,7 +30,9 @@ function shapeUser(user, session) {
     email: user.email || meta.email || '',
     displayName: meta.display_name || meta.full_name || meta.name || null,
     photoURL: meta.avatar_url || meta.picture || null,
-    providerData: (user.identities || []).map((i) => ({ providerId: i.provider })),
+    // Normalize Supabase's 'email' provider to Firebase's 'password' so the
+    // app's isEmailUser check (providerId === 'password') keeps working.
+    providerData: (user.identities || []).map((i) => ({ providerId: i.provider === 'email' ? 'password' : i.provider })),
     getIdToken: async () => {
       const { data } = await supabase.auth.getSession();
       return data?.session?.access_token || session?.access_token || '';

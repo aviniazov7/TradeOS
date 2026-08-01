@@ -58,6 +58,13 @@ dateToTimestamp — כולם בחתימת firestoreService. 19 טסטי vitest +
 flag כבוי → זהה ל-Firestore. build + 19 טסטים עוברים.
 **✅ סקריפט מעבר + runbook מוכנים:** `scripts/migrate-to-supabase.mjs` (ETL דרך
 ה-mapper הבדוק + יצירת משתמשים, עם --dry-run) + `supabase-cutover-runbook.md`.
+**✅ סקירת באגים אדוורסרית + תיקונים (2.8):** סוכן בדיקה מצא 12 בעיות; תוקנו כל
+הקריטיות/גבוהות/בינוניות (עדיין flag כבוי): שמירת/מיפוי-מחדש של קישורי journal
+בסקריפט (trades/backtests לא "ייעלמו"); merge של settings/meta jsonb ב-setUserProfile/
+updateUserDocument (במקום replace); addToUserCollectionBulk (onProgress+chunk+count);
+channel ייחודי לכל קולקציה; race-guard בכל subscribe; isEmailUser (email→password);
+subscribeToUserProfile לא פולט null; touchLastActive עם app_version; שליחת reset אמיתית
+בסקריפט. **נמוך/מתועד ל-cutover:** arrayUnion (PendingLimitOrders), מחיקת חשבון server-side.
 **נשאר — רק ה"מעבר החי" (מבוקר עם אבי, ~15 דק'):**
 1. dry-run → הרצת הסקריפט (צריך Firebase SA + Supabase service-role key).
 2. אימות ספירות → הדלקת `VITE_USE_SUPABASE=true` (dev → main).

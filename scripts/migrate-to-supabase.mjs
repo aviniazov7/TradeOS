@@ -23,7 +23,6 @@
  *     user base → this is the simplest safe path.
  */
 
-import { readFileSync } from 'node:fs';
 import admin from 'firebase-admin';
 import { createClient } from '@supabase/supabase-js';
 import { mapToRow } from '../src/services/supabaseMap.js';
@@ -81,9 +80,11 @@ async function migrateUser(fbUser) {
       const { data: list } = await sb.auth.admin.listUsers({ page: 1, perPage: 1000 });
       sbUid = list.users.find((u) => u.email === email)?.id;
     }
-    // Email/password users: trigger a reset so they set a new password.
+    // Email/password users: actually SEND a reset email so they set a new
+    // password (Firebase scrypt hashes aren't portable). resetPasswordForEmail
+    // delivers the mail; generateLink only builds a link without sending.
     const isPassword = (fbUser.providerData || []).some((p) => p.providerId === 'password');
-    if (isPassword) await sb.auth.admin.generateLink({ type: 'recovery', email }).catch(() => {});
+    if (isPassword) await sb.auth.resetPasswordForEmail(email).catch(() => {});
   }
   counts.users++;
   if (!sbUid) { log(`  ⚠️  could not resolve Supabase uid for ${email}`); return; }
@@ -96,12 +97,40 @@ async function migrateUser(fbUser) {
     counts.profiles++;
   }
 
-  // 3) Sub-collections → mapped rows.
+  // 3a) Containers FIRST (journals / backtestJournals) → build oldId → newUuid.
+  // Postgres assigns fresh UUIDs, so children must be re-pointed at the new ids
+  // or trades/backtests would vanish from their journals after cutover.
+  const journalMap = {};
+  for (const coll of ['journals', 'backtestJournals']) {
+    const snap = await fs.collection(`users/${fbUid}/${coll}`).get();
+    for (const d of snap.docs) {
+      const row = { ...mapToRow(coll, d.data()), user_id: sbUid };
+      if (DRY_RUN) { journalMap[d.id] = `dry-${d.id}`; }
+      else {
+        const { data, error } = await sb.from('journals').insert(row).select('id').single();
+        if (error) throw new Error(`${coll}: ${error.message}`);
+        journalMap[d.id] = data.id;
+      }
+      counts.rows[coll] = (counts.rows[coll] || 0) + 1;
+    }
+  }
+
+  // 3b) Everything else → mapped rows, re-pointing journal references.
   for (const coll of SUBCOLLECTIONS) {
+    if (coll === 'journals' || coll === 'backtestJournals') continue;
     const snap = await fs.collection(`users/${fbUid}/${coll}`).get();
     if (snap.empty) continue;
     const table = COLLECTION_TABLE[coll];
-    const rows = snap.docs.map((d) => ({ ...mapToRow(coll, d.data()), user_id: sbUid }));
+    const rows = snap.docs.map((d) => {
+      const row = { ...mapToRow(coll, d.data()), user_id: sbUid };
+      if (coll === 'trades' && row.journal_id != null) {
+        row.journal_id = journalMap[row.journal_id] ?? null; // old → new journal uuid
+      }
+      if (coll === 'backtests' && row.meta?.backtestJournalId != null) {
+        row.meta = { ...row.meta, backtestJournalId: journalMap[row.meta.backtestJournalId] ?? null };
+      }
+      return row;
+    });
     if (!DRY_RUN && rows.length) {
       const { error } = await sb.from(table).insert(rows);
       if (error) throw new Error(`${coll} → ${table}: ${error.message}`);
