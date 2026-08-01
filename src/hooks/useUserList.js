@@ -1,5 +1,5 @@
 import { useState, useEffect, useMemo, useCallback } from 'react';
-import { subscribeToUserSetting, setUserSetting } from '../services/firestoreService';
+import { subscribeToUserSetting, setUserSetting } from '../services/dataProvider';
 import { useAuth } from '../contexts/AuthContext';
 
 // Factory for the "default presets + user custom additions, with hideable

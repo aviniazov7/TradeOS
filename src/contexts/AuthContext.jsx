@@ -17,17 +17,24 @@ import {
   reauthenticate,
   deleteAuthUser,
 } from '../services/authProvider';
+// Profile + settings via the data facade — Firestore by default, Supabase when
+// USE_SUPABASE is on. With the flag off these are the exact same Firestore
+// functions, so behaviour is unchanged.
 import {
   getUserProfile,
   setUserProfile,
   setUserSetting,
   subscribeToUserProfile,
+  touchLastActive,
+  timestamp,
+} from '../services/dataProvider';
+// Account-deletion wipe stays on Firestore for now (cross-cutting; the Supabase
+// path deletes via auth.users cascade server-side — Phase 6).
+import {
   deleteUserProfile,
   deleteUserSubcollection,
   deleteLeaderboardEntry,
   USER_SUBCOLLECTIONS,
-  touchLastActive,
-  timestamp,
 } from '../services/firestoreService';
 import { logAccountDeletion } from '../services/pushService';
 
