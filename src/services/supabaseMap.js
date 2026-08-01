@@ -109,7 +109,18 @@ const CONTAINER_COLS = {
   createdAt: 'created_at', updatedAt: 'updated_at',
 };
 
+// ── profiles (the user doc; id = auth user id, so `id` isn't in the data) ────
+const PROFILE_COLS = {
+  email: 'email', displayName: 'display_name', photoURL: 'photo_url',
+  locale: 'locale', plan: 'plan', planExpires: 'premium_until', role: 'role',
+  appVersion: 'app_version', lastActive: 'last_active',
+  onboardingCompleted: 'onboarding_completed',
+  createdAt: 'created_at', updatedAt: 'updated_at',
+};
+const PROFILE_JSON = { settings: 'settings' };
+
 const MAPPERS = {
+  profiles: makeMapper(PROFILE_COLS, PROFILE_JSON),
   trades: makeMapper(TRADE_COLS, TRADE_JSON),
   signals: makeMapper(SIGNAL_COLS),
   strategies: makeMapper(STRATEGY_COLS, STRATEGY_JSON),

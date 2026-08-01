@@ -235,6 +235,37 @@ describe('supabaseMap — journal family (containers)', () => {
   });
 });
 
+describe('supabaseMap — profiles', () => {
+  const appProfile = {
+    displayName: 'Avi', email: 'a@x.com', photoURL: 'https://p/1', role: 'admin',
+    plan: 'premium', planExpires: new Date('2027-01-01T00:00:00.000Z'),
+    onboardingCompleted: true, appVersion: '2.0.0',
+    lastActive: new Date('2026-08-01T10:00:00.000Z'),
+    settings: { defaultLeverage: 10, baseCurrency: 'USDT' },
+    someExtra: 'x', // long-tail → meta
+  };
+
+  it('maps profile fields (planExpires → premium_until, settings → jsonb)', () => {
+    const row = mapToRow('profiles', appProfile);
+    expect(row.display_name).toBe('Avi');
+    expect(row.photo_url).toBe('https://p/1');
+    expect(row.premium_until).toBe('2027-01-01T00:00:00.000Z');
+    expect(row.onboarding_completed).toBe(true);
+    expect(row.settings).toEqual({ defaultLeverage: 10, baseCurrency: 'USDT' });
+    expect(row.meta).toMatchObject({ someExtra: 'x' });
+  });
+
+  it('round-trips (id comes from the row, planExpires restored)', () => {
+    const dbRow = { id: 'user-uid', ...mapToRow('profiles', appProfile) };
+    const back = mapFromRow('profiles', dbRow);
+    expect(back.id).toBe('user-uid');
+    expect(back.displayName).toBe('Avi');
+    expect(back.planExpires).toBe('2027-01-01T00:00:00.000Z');
+    expect(back.settings).toEqual({ defaultLeverage: 10, baseCurrency: 'USDT' });
+    expect(back.someExtra).toBe('x');
+  });
+});
+
 describe('supabaseMap — pass-through', () => {
   it('unmapped collections pass through unchanged', () => {
     const item = { symbol: 'ETH', name: 'x' };

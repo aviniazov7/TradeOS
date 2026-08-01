@@ -132,14 +132,65 @@ export async function getUserCollectionDocs(uid, collectionName) {
   return (data || []).map((r) => mapFromRow(collectionName, r));
 }
 
-// Profile (mirror of the user doc). profiles.id === auth user id.
-export async function getProfile(uid) {
+// ── Profile (mirror of the Firestore user doc). profiles.id === auth user id ──
+// Same API shape as firestoreService so AuthContext can switch via the facade.
+
+export async function getUserProfile(uid) {
   const { data, error } = await supabase.from('profiles').select('*').eq('id', uid).maybeSingle();
   if (error) throw error;
-  return data;
+  return { exists: !!data, data: data ? mapFromRow('profiles', data) : null };
 }
 
-export async function updateProfile(uid, data) {
-  const { error } = await supabase.from('profiles').update(data).eq('id', uid);
+export function subscribeToUserProfile(uid, callback, onError) {
+  let active = true;
+  const emit = async () => {
+    const { data, error } = await supabase.from('profiles').select('*').eq('id', uid).maybeSingle();
+    if (!active) return;
+    if (error) { onError?.(error); return; }
+    callback(data ? mapFromRow('profiles', data) : null);
+  };
+  emit();
+  const channel = supabase
+    .channel(`profiles:${uid}`)
+    .on('postgres_changes', { event: '*', schema: 'public', table: 'profiles', filter: `id=eq.${uid}` }, emit)
+    .subscribe();
+  return () => { active = false; supabase.removeChannel(channel); };
+}
+
+export async function setUserProfile(uid, data) {
+  const row = { ...mapToRow('profiles', data), id: uid };
+  const { error } = await supabase.from('profiles').upsert(row, { onConflict: 'id' });
   if (error) throw error;
 }
+
+export async function touchLastActive(uid) {
+  const { error } = await supabase.from('profiles').update({ last_active: new Date().toISOString() }).eq('id', uid);
+  if (error) throw error;
+}
+
+// ── User settings (Firestore users/{uid}/settings/{docId} → user_settings) ────
+export function subscribeToUserSetting(uid, docId, callback) {
+  let active = true;
+  const emit = async () => {
+    const { data } = await supabase.from('user_settings').select('data').eq('user_id', uid).eq('doc_id', docId).maybeSingle();
+    if (active) callback(data?.data ?? null);
+  };
+  emit();
+  const channel = supabase
+    .channel(`user_settings:${uid}:${docId}`)
+    .on('postgres_changes', { event: '*', schema: 'public', table: 'user_settings', filter: `user_id=eq.${uid}` }, emit)
+    .subscribe();
+  return () => { active = false; supabase.removeChannel(channel); };
+}
+
+export async function setUserSetting(uid, docId, data) {
+  const { error } = await supabase.from('user_settings').upsert({ user_id: uid, doc_id: docId, data }, { onConflict: 'user_id,doc_id' });
+  if (error) throw error;
+}
+
+// ── Firestore-parity helpers ─────────────────────────────────────────────────
+// timestamp(): Firestore returns a serverTimestamp() sentinel; on Supabase a
+// plain Date works (the mapper turns it into an ISO string, and columns also
+// default to now()). dateToTimestamp(): pass the Date through (mapper handles it).
+export function timestamp() { return new Date(); }
+export function dateToTimestamp(date) { return date; }
