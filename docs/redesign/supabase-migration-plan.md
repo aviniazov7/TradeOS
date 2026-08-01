@@ -48,8 +48,14 @@ long-tail (mistakes/mental/tags/chart urls) כך ששום מידע לא אובד
 - **supabaseService:** COLLECTION_FILTER + scopedSelect מסננים לפי kind/is_backtest.
 - **17 טסטי vitest עוברים** + smoke tests מול DB לכל קבוצה (כולל אימות שההפרדה
   notes↔plans ו-journals↔backtestJournals עובדת) + advisors נקי.
+**✅ שכבת פרופיל+הגדרות הושלמה (1.8):** profiles הורחבה (photo_url/last_active/
+onboarding_completed/settings/meta); טבלת `user_settings` חדשה (mirror של
+users/{uid}/settings/{docId}). supabaseService: getUserProfile/subscribeToUserProfile/
+setUserProfile/touchLastActive/subscribeToUserSetting/setUserSetting + timestamp/
+dateToTimestamp — כולם בחתימת firestoreService. 19 טסטי vitest + smoke test מול DB.
 **נשאר (ה"מעבר החי"):**
-1. החלפת שכבת הנתונים/פרופיל ב-AuthContext + hooks (dataProvider facade).
+1. **dataProvider facade** — לחבר את ה-hooks+AuthContext (Firebase/Supabase לפי flag).
+   (חתימת subscribeToUserCollection צריכה 3rd arg `options` להתאמה — לטפל בעת החיבור.)
 2. **מיגרציית 20 המשתמשים** (Firebase Auth → Supabase) + **ETL נתונים** — אירוע מתואם.
 3. הדלקת flag → cutover.
 
