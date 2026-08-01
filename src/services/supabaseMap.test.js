@@ -123,6 +123,61 @@ describe('supabaseMap — strategies', () => {
   });
 });
 
+describe('supabaseMap — backtests', () => {
+  const appBacktest = {
+    id: 'bt-1', pair: 'GOLDUSDT', direction: 'short', strategy: 'Wyckoff', trigger: 'LPSY',
+    timeframe: '4H', session: 'newyork', rResult: 2.5, result: 'win', notes: 'clean',
+    entryChartUrl: 'https://tv/1', managementChartUrl: 'https://tv/2',
+    date: new Date('2026-07-20T12:00:00.000Z'),
+    maxR: 3, stopDistancePct: 1.2, // → meta
+  };
+
+  it('maps trade-like fields to columns (trigger → trigger_name)', () => {
+    const row = mapToRow('backtests', appBacktest);
+    expect(row.symbol).toBe('GOLDUSDT');
+    expect(row.side).toBe('short');
+    expect(row.trigger_name).toBe('LPSY');
+    expect(row.r_result).toBe(2.5);
+    expect(row.result).toBe('win');
+    expect(row.date).toBe('2026-07-20T12:00:00.000Z');
+    expect(row.meta).toMatchObject({ maxR: 3, stopDistancePct: 1.2 });
+  });
+
+  it('round-trips faithfully', () => {
+    const dbRow = { id: 'pg-bt', user_id: 'u', ...mapToRow('backtests', appBacktest) };
+    const back = mapFromRow('backtests', dbRow);
+    expect(back.pair).toBe('GOLDUSDT');
+    expect(back.trigger).toBe('LPSY');
+    expect(back.rResult).toBe(2.5);
+    expect(back.maxR).toBe(3);
+    expect(back.id).toBe('pg-bt');
+  });
+});
+
+describe('supabaseMap — dca', () => {
+  const appDca = {
+    id: 'dca-1', coin: 'BTC', frequency: 'weekly', amountPerEntry: 100, targetPrice: 80000,
+    status: 'active', entries: [{ amount: 100, coins: 0.002 }], totalInvested: 100,
+    createdAt: new Date('2026-07-01T00:00:00.000Z'),
+  };
+
+  it('maps coin → symbol and the rest into meta', () => {
+    const row = mapToRow('dca', appDca);
+    expect(row.symbol).toBe('BTC');
+    expect(row.meta).toMatchObject({ frequency: 'weekly', amountPerEntry: 100, targetPrice: 80000 });
+    expect(row.meta.entries).toEqual([{ amount: 100, coins: 0.002 }]);
+  });
+
+  it('round-trips faithfully', () => {
+    const dbRow = { id: 'pg-dca', user_id: 'u', ...mapToRow('dca', appDca) };
+    const back = mapFromRow('dca', dbRow);
+    expect(back.coin).toBe('BTC');
+    expect(back.frequency).toBe('weekly');
+    expect(back.entries).toEqual([{ amount: 100, coins: 0.002 }]);
+    expect(back.id).toBe('pg-dca');
+  });
+});
+
 describe('supabaseMap — pass-through', () => {
   it('unmapped collections pass through unchanged', () => {
     const item = { symbol: 'ETH', name: 'x' };

@@ -79,10 +79,24 @@ const STRATEGY_COLS = {
 };
 const STRATEGY_JSON = { rules: 'rules' };
 
+// ── backtests (backtest TRADES — trade-like) ─────────────────────────────────
+const BACKTEST_COLS = {
+  pair: 'symbol', direction: 'side', strategy: 'strategy', trigger: 'trigger_name',
+  timeframe: 'timeframe', session: 'session', rResult: 'r_result', result: 'result',
+  notes: 'notes', entryChartUrl: 'entry_chart_url', managementChartUrl: 'management_chart_url',
+  date: 'date', createdAt: 'created_at', updatedAt: 'updated_at',
+}; // maxR / stopDistancePct → meta
+
+// ── dca (dca_plans) ──────────────────────────────────────────────────────────
+const DCA_COLS = { coin: 'symbol', createdAt: 'created_at', updatedAt: 'updated_at' };
+// frequency / amountPerEntry / targetPrice / entries / totals / coingeckoId → meta
+
 const MAPPERS = {
   trades: makeMapper(TRADE_COLS, TRADE_JSON),
   signals: makeMapper(SIGNAL_COLS),
   strategies: makeMapper(STRATEGY_COLS, STRATEGY_JSON),
+  backtests: makeMapper(BACKTEST_COLS),
+  dca: makeMapper(DCA_COLS),
 };
 
 export function mapToRow(collectionName, data) {
