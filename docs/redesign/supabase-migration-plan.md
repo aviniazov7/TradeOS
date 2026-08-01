@@ -39,16 +39,19 @@ long-tail (mistakes/mental/tags/chart urls) כך ששום מידע לא אובד
 הורחבה ל-16 עמודות חדשות + meta. supabaseService משתמש במיפוי.
 **נבדק:** ✅ vitest (4 טסטים round-trip, `npm test`) + ✅ smoke test מול ה-DB האמיתי
 (טרייד מלא נכנס/נקרא כולל tps ו-meta, נוקה). triggers/FK/cascade אומתו גם.
-**מיפוי הוכלל ל-generic (`makeMapper`) — ממופים (1.8):**
-**trades, signals, strategies, backtests, dca** (+meta לכולם). `backtests` עוצבה
-מחדש ל-trade-like (הייתה name/params/result-jsonb; עכשיו symbol/side/strategy/
-trigger_name/r_result/result-text/date/meta). dca: coin→symbol, השאר→meta.
-**12 טסטי vitest עוברים** + smoke tests מול DB (trades/signals/backtests) + advisors נקי.
-watchlist = pass-through (symbol תואם).
-**פתוח לפני המשך:**
-1. **משפחת ה-journal** (journals/plans/notes/processes/morning+eveningJournals →
-   journal_entries עם kind=…?) — החלטת מיפוי אחרונה.
-2. אחר כך: החלפת שכבת הנתונים/פרופיל ב-AuthContext+hooks → מיגרציית משתמשים → ETL.
+**✅ שכבת המיפוי הושלמה במלואה (1.8)** — `makeMapper(colMap, jsonKeys, fixed)`:
+- trades/signals/strategies/backtests/dca — עמודות אמיתיות + meta.
+- **משפחת ה-journal:** notes/tradingPlans/processes/morning+eveningJournals →
+  `journal_entries` עם `kind` מבחין (מוזרק בכתיבה, מסונן בקריאה); journals/
+  backtestJournals → טבלת `journals` חדשה עם `is_backtest`. שדות varied → meta.
+- watchlist = pass-through.
+- **supabaseService:** COLLECTION_FILTER + scopedSelect מסננים לפי kind/is_backtest.
+- **17 טסטי vitest עוברים** + smoke tests מול DB לכל קבוצה (כולל אימות שההפרדה
+  notes↔plans ו-journals↔backtestJournals עובדת) + advisors נקי.
+**נשאר (ה"מעבר החי"):**
+1. החלפת שכבת הנתונים/פרופיל ב-AuthContext + hooks (dataProvider facade).
+2. **מיגרציית 20 המשתמשים** (Firebase Auth → Supabase) + **ETL נתונים** — אירוע מתואם.
+3. הדלקת flag → cutover.
 
 **✅ מחבר ה-Supabase (MCP) חובר לחשבון החדש (31.7)** — Claude ניגש ישירות ל-`tradeos-prod`.
 - **16 טבלאות** סה"כ: 12 המקוריות + `payments` (policy: own select) + `coupons` +

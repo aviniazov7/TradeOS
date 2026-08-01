@@ -178,6 +178,63 @@ describe('supabaseMap — dca', () => {
   });
 });
 
+describe('supabaseMap — journal family (entries)', () => {
+  const appNote = {
+    id: 'n1', title: 'my note', text: 'buy the dip', pinned: true,
+    createdAt: new Date('2026-07-10T08:00:00.000Z'),
+  };
+
+  it('injects kind, maps dates, routes the rest to meta', () => {
+    const row = mapToRow('notes', appNote);
+    expect(row.kind).toBe('note');
+    expect(row.created_at).toBe('2026-07-10T08:00:00.000Z');
+    expect(row.meta).toMatchObject({ title: 'my note', text: 'buy the dip', pinned: true });
+  });
+
+  it('different collections get different kinds', () => {
+    expect(mapToRow('tradingPlans', {}).kind).toBe('plan');
+    expect(mapToRow('processes', {}).kind).toBe('process');
+    expect(mapToRow('morningJournals', {}).kind).toBe('morning');
+    expect(mapToRow('eveningJournals', {}).kind).toBe('evening');
+  });
+
+  it('round-trips and drops the kind discriminator', () => {
+    // simulate a journal_entries row with unused shared columns (null)
+    const dbRow = { id: 'pg-n', user_id: 'u', content: null, emotion: null, trade_id: null, ...mapToRow('notes', appNote) };
+    const back = mapFromRow('notes', dbRow);
+    expect(back.title).toBe('my note');
+    expect(back.text).toBe('buy the dip');
+    expect(back.pinned).toBe(true);
+    expect(back.id).toBe('pg-n');
+    expect(back.kind).toBeUndefined();      // discriminator not leaked
+    expect(back.content).toBeUndefined();   // unused null column not leaked
+  });
+});
+
+describe('supabaseMap — journal family (containers)', () => {
+  const appJournal = {
+    id: 'j1', name: 'Bybit Main', exchange: 'bybit', initialBalance: 1000,
+    createdAt: new Date('2026-06-01T00:00:00.000Z'),
+  };
+
+  it('maps container fields + injects is_backtest', () => {
+    const jr = mapToRow('journals', appJournal);
+    expect(jr.name).toBe('Bybit Main');
+    expect(jr.initial_balance).toBe(1000);
+    expect(jr.is_backtest).toBe(false);
+    expect(mapToRow('backtestJournals', appJournal).is_backtest).toBe(true);
+  });
+
+  it('round-trips and drops is_backtest', () => {
+    const dbRow = { id: 'pg-j', user_id: 'u', ...mapToRow('journals', appJournal) };
+    const back = mapFromRow('journals', dbRow);
+    expect(back.name).toBe('Bybit Main');
+    expect(back.initialBalance).toBe(1000);
+    expect(back.is_backtest).toBeUndefined();
+    expect(back.id).toBe('pg-j');
+  });
+});
+
 describe('supabaseMap — pass-through', () => {
   it('unmapped collections pass through unchanged', () => {
     const item = { symbol: 'ETH', name: 'x' };
