@@ -6,7 +6,7 @@ import {
   deleteUserDocument,
   getUserDocument,
   timestamp,
-} from '../services/firestoreService';
+} from '../services/dataProvider';
 import { useAuth } from '../contexts/AuthContext';
 
 export function useDCA() {

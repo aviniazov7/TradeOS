@@ -7,7 +7,7 @@ import {
   deleteUserDocument,
   timestamp,
   dateToTimestamp,
-} from '../services/firestoreService';
+} from '../services/dataProvider';
 import { useAuth } from '../contexts/AuthContext';
 import {
   calculatePnL,

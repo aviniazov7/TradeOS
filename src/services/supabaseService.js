@@ -65,9 +65,12 @@ function scopedSelect(collectionName, uid) {
 }
 
 // Realtime subscription to a user's rows in a table — mirrors Firestore's
-// subscribeToUserCollection (onSnapshot). Loads once, then re-fetches on any
-// insert/update/delete for this user. Returns an unsubscribe function.
-export function subscribeToUserCollection(uid, collectionName, callback, onError) {
+// subscribeToUserCollection (onSnapshot). Signature matches firestoreService:
+// (uid, collectionName, options, onData, onError). `options` (orderField /
+// whereFilters) is accepted for parity but ignored — the app re-sorts client
+// side and the row sets are small. Loads once, then re-fetches on any change.
+// Returns an unsubscribe function.
+export function subscribeToUserCollection(uid, collectionName, _options, onData, onError) {
   const table = tableFor(collectionName);
   let active = true;
 
@@ -75,7 +78,7 @@ export function subscribeToUserCollection(uid, collectionName, callback, onError
     const { data, error } = await scopedSelect(collectionName, uid);
     if (!active) return;
     if (error) { onError?.(error); return; }
-    callback((data || []).map((r) => mapFromRow(collectionName, r)));
+    onData((data || []).map((r) => mapFromRow(collectionName, r)));
   };
 
   emit(); // initial load
@@ -130,6 +133,15 @@ export async function getUserCollectionDocs(uid, collectionName) {
   const { data, error } = await scopedSelect(collectionName, uid);
   if (error) throw error;
   return (data || []).map((r) => mapFromRow(collectionName, r));
+}
+
+export async function getUserDocument(uid, collectionName, docId) {
+  let q = supabase.from(tableFor(collectionName)).select('*').eq('id', docId).eq('user_id', uid);
+  const f = COLLECTION_FILTER[collectionName];
+  if (f) for (const [k, v] of Object.entries(f)) q = q.eq(k, v);
+  const { data, error } = await q.maybeSingle();
+  if (error) throw error;
+  return data ? mapFromRow(collectionName, data) : null;
 }
 
 // ── Profile (mirror of the Firestore user doc). profiles.id === auth user id ──
