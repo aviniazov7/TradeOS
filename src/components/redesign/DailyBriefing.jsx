@@ -5,7 +5,7 @@ import LanguageSwitcher from './LanguageSwitcher';
 // Not wired to live data yet: the numbers below are demo values that match the
 // approved mockup. This exists at /briefing so we can see the direction (blue
 // accent + bilingual) inside the real app without touching the current home.
-// When we build for real (stage 6.7+), these get fed from Supabase + the coach.
+// When we build for real (stage 6.7+), these get fed from live data + the coach.
 
 const CSS = `
 .db-wrap { direction: inherit; color: #f2f2f4; max-width: 440px; margin: 0 auto;

@@ -1,6 +1,7 @@
 import { createContext, useContext, useState, useEffect } from 'react';
 import { planExpiresMs } from '../utils/premium';
 import { APP_VERSION } from '../utils/constants';
+// Firebase Auth operations (login/logout/register/reset…).
 import {
   onAuthChange,
   handleRedirectResult,
@@ -14,17 +15,19 @@ import {
   reauthenticate,
   deleteAuthUser,
 } from '../services/authService';
+// Profile + settings, plus the account-deletion wipe (all subcollections +
+// leaderboard + user doc).
 import {
   getUserProfile,
   setUserProfile,
   setUserSetting,
   subscribeToUserProfile,
+  touchLastActive,
+  timestamp,
   deleteUserProfile,
   deleteUserSubcollection,
   deleteLeaderboardEntry,
   USER_SUBCOLLECTIONS,
-  touchLastActive,
-  timestamp,
 } from '../services/firestoreService';
 import { logAccountDeletion } from '../services/pushService';
 

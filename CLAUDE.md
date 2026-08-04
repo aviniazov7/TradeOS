@@ -38,6 +38,8 @@ Preview channels live 7 days then auto-delete.
 
 - Author: `Avraham Niazov <aviniazov7@icloud.com>`
 - **No third-party trailers** (no Co-authored-by, no "Generated with…") in commits.
+- **Commit messages and PR titles are always in English.** (Chat/summaries stay
+  in Hebrew; git history is English-only. Never rewrite existing commits.)
 
 ## Release workflow (version bump)
 

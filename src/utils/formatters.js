@@ -1,4 +1,5 @@
 import { format, formatDistanceToNow } from 'date-fns';
+import { he } from 'date-fns/locale';
 
 /**
  * Format currency value: $1,234.56
@@ -130,7 +131,7 @@ export function formatTime(date) {
 export function formatRelativeTime(date) {
   const d = safeDate(date);
   if (!d) return '—';
-  return formatDistanceToNow(d, { addSuffix: true });
+  return formatDistanceToNow(d, { addSuffix: true, locale: he });
 }
 
 /**

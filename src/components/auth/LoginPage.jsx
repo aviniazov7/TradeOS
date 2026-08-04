@@ -157,7 +157,7 @@ export default function LoginPage() {
                   type={showPassword ? 'text' : 'password'}
                   value={password}
                   onChange={(e) => setPassword(e.target.value)}
-                  placeholder={mode === 'register' ? 'לפחות 6 תווים' : '••••••'}
+                  placeholder={mode === 'register' ? '8+ תווים, אות גדולה וספרה' : '••••••'}
                   required
                   dir="ltr"
                   className="w-full bg-bg-tertiary border border-border-primary rounded-lg px-3 py-2.5 text-sm text-text-primary placeholder-text-muted outline-none focus:border-accent-primary transition-colors pl-9"
