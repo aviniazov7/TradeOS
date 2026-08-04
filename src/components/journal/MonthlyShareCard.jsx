@@ -79,6 +79,7 @@ const MonthlyShareCard = forwardRef(function MonthlyShareCard({ trades, currentM
       dir="rtl"
       style={{
         width: 480,
+        flexShrink: 0,
         padding: 24,
         background: '#09090f',
         borderRadius: 16,
@@ -170,7 +171,7 @@ const MonthlyShareCard = forwardRef(function MonthlyShareCard({ trades, currentM
         display: 'flex',
         alignItems: 'center',
         justifyContent: 'center',
-        gap: 20,
+        gap: 12,
         marginBottom: 16,
         padding: '10px 14px',
         background: 'rgba(255,255,255,0.03)',
@@ -181,9 +182,9 @@ const MonthlyShareCard = forwardRef(function MonthlyShareCard({ trades, currentM
         {/* Total PnL */}
         {showPnl && (
           <>
-            <div style={{ textAlign: 'center' }}>
+            <div style={{ textAlign: 'center', whiteSpace: 'nowrap', flexShrink: 0 }}>
               <div style={{ fontSize: 10, color: '#707080', marginBottom: 2 }}>רווח חודשי</div>
-              <div style={{ fontSize: 20, fontWeight: 800, color: pnlColor(monthStats.totalPnl) }}>
+              <div style={{ fontSize: 18, fontWeight: 800, color: pnlColor(monthStats.totalPnl) }}>
                 {formatCurrency(monthStats.totalPnl)}
               </div>
             </div>
@@ -194,7 +195,7 @@ const MonthlyShareCard = forwardRef(function MonthlyShareCard({ trades, currentM
         {/* Percent */}
         {showPercent && (
           <>
-            <div style={{ textAlign: 'center' }}>
+            <div style={{ textAlign: 'center', whiteSpace: 'nowrap', flexShrink: 0 }}>
               <div style={{ fontSize: 10, color: '#707080', marginBottom: 2 }}>אחוז שינוי</div>
               <div style={{ fontSize: showPnl ? 14 : 20, fontWeight: 700, color: pnlColor(monthStats.totalPnl) }}>
                 {monthStats.totalPnl >= 0 ? '+' : ''}{((monthStats.totalPnl / (Math.abs(monthStats.totalPnl) + 1000)) * 100).toFixed(1)}%
@@ -217,7 +218,7 @@ const MonthlyShareCard = forwardRef(function MonthlyShareCard({ trades, currentM
         {showTrades && (
           <>
             <div style={{ width: 1, height: 30, background: 'rgba(255,255,255,0.08)' }} />
-            <div style={{ textAlign: 'center' }}>
+            <div style={{ textAlign: 'center', whiteSpace: 'nowrap', flexShrink: 0 }}>
               <div style={{ fontSize: 10, color: '#707080', marginBottom: 2 }}>עסקאות</div>
               <div style={{ fontSize: 16, fontWeight: 700, color: '#a0a0b0' }}>{monthStats.totalTrades}</div>
             </div>

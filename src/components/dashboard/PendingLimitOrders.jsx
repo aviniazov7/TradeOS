@@ -487,7 +487,7 @@ function TrackBar({ trade, currentPrice, tpReached = [], onTpReached, onLimitTri
       </div>
 
       {(pnlPct !== null || currentPrice || timeSince || rrBadge) && (
-        <div className="flex items-center gap-2 mt-2 pt-2 border-t border-white/5 flex-wrap" dir="ltr">
+        <div className="flex items-center gap-2 mt-2 pt-2 border-t border-white/5 flex-nowrap overflow-x-auto whitespace-nowrap" dir="ltr">
           {pnlPct !== null && (
             <span className={`text-xs font-bold font-mono ${isProfit ? 'text-profit' : isLoss ? 'text-loss' : 'text-text-muted'}`}>
               {pnlPct > 0 ? '+' : ''}{pnlPct.toFixed(2)}%
@@ -524,7 +524,7 @@ function TrackBar({ trade, currentPrice, tpReached = [], onTpReached, onLimitTri
               title="עדכן סטופ"
               className="flex items-center gap-1 text-[10px] font-semibold text-loss px-1.5 py-0.5 rounded-md bg-loss/10 border border-loss/30 hover:bg-loss/20 transition-colors cursor-pointer"
             >
-              <Pencil className="w-2.5 h-2.5" /> סטופ
+              <Pencil className="w-2.5 h-2.5" /> SL
             </button>
           )}
           {parseFloat(leverage) > 1 && (
