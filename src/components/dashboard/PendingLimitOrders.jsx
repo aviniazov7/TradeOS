@@ -26,7 +26,7 @@ import toast from 'react-hot-toast';
 import CoinIcon from '../shared/CoinIcon';
 import { useJournalContext } from '../../contexts/JournalContext';
 import { useAuth } from '../../contexts/AuthContext';
-import { updateUserDocument, arrayUnion } from '../../services/firestoreService';
+import { updateUserDocument, arrayUnion, timestamp } from '../../services/firestoreService';
 import { auth } from '../../services/firebase';
 
 function fmt(price) {
@@ -629,6 +629,7 @@ export default function PendingLimitOrders({ trades, livePrices }) {
     if (isLastTp) {
       updates.status = 'closed';
       updates.exitPrice = parseFloat(currentPrice);
+      updates.exitDate = timestamp(); // stamp the close moment so stats don't bucket it to 1970
       updates.result = pnl >= 0 ? 'win' : 'loss';
       if (pnl !== null) updates.netPnl = pnl;
     }
@@ -691,6 +692,7 @@ export default function PendingLimitOrders({ trades, livePrices }) {
     updateUserDocument(user.uid, 'trades', trade.id, {
       status: 'closed',
       exitPrice: parseFloat(currentPrice),
+      exitDate: timestamp(), // stamp the close moment so stats don't bucket it to 1970
       result: 'loss',
       ...(pnl !== null ? { netPnl: pnl } : {}),
     }).catch(() => {});

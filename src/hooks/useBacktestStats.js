@@ -1,5 +1,6 @@
 import { useMemo } from 'react';
 import { getPeriodStart, toDate } from '../utils/period';
+import { localDayKey } from '../utils/calculations';
 
 export function useBacktestStats(backtests, period = 'all') {
   return useMemo(() => {
@@ -129,7 +130,7 @@ export function useBacktestStats(backtests, period = 'all') {
     const dayMap = {};
     sorted.forEach((b) => {
       const d = toDate(b.date || b.createdAt);
-      const key = d.toISOString().slice(0, 10);
+      const key = localDayKey(d); // local-midnight bucketing, consistent with the monthly view
       if (!dayMap[key]) dayMap[key] = { date: key, r: 0, count: 0 };
       dayMap[key].r += b.rResult || 0;
       dayMap[key].count++;
