@@ -1,4 +1,4 @@
-import { useRef, useState } from 'react';
+import { useRef, useState, useLayoutEffect } from 'react';
 import { Download, Share2, Check } from 'lucide-react';
 import toast from 'react-hot-toast';
 import Modal from '../shared/Modal';
@@ -18,8 +18,23 @@ const defaultOptions = {
 
 export default function MonthlyShareModal({ isOpen, onClose, trades, currentMonth, journalName }) {
   const cardRef = useRef(null);
+  const previewRef = useRef(null);
   const [generating, setGenerating] = useState(false);
   const [options, setOptions] = useState(defaultOptions);
+  // The card is a fixed 480px export artifact. On phones we scale it DOWN to fit
+  // the modal width (via CSS zoom, which reflows) so the preview never needs a
+  // horizontal scroll. The downloaded image is still captured at full 480px.
+  const [scale, setScale] = useState(1);
+  useLayoutEffect(() => {
+    if (!isOpen) return undefined;
+    const measure = () => {
+      const w = previewRef.current?.clientWidth;
+      if (w) setScale(Math.min(1, w / 480));
+    };
+    measure();
+    window.addEventListener('resize', measure);
+    return () => window.removeEventListener('resize', measure);
+  }, [isOpen]);
 
   const toggle = (key) => setOptions((prev) => ({ ...prev, [key]: !prev[key] }));
 
@@ -73,14 +88,16 @@ export default function MonthlyShareModal({ isOpen, onClose, trades, currentMont
     <Modal isOpen={isOpen} onClose={onClose} title="שיתוף יומן חודשי" maxWidth="max-w-lg">
       <div className="flex flex-col items-center gap-4">
         {/* Card preview */}
-        <div className="overflow-x-auto w-full flex justify-center">
-          <MonthlyShareCard
-            ref={cardRef}
-            trades={trades}
-            currentMonth={currentMonth}
-            journalName={journalName}
-            options={options}
-          />
+        <div ref={previewRef} className="w-full flex justify-center overflow-hidden">
+          <div style={{ zoom: scale }}>
+            <MonthlyShareCard
+              ref={cardRef}
+              trades={trades}
+              currentMonth={currentMonth}
+              journalName={journalName}
+              options={options}
+            />
+          </div>
         </div>
 
         {/* Toggle options */}
