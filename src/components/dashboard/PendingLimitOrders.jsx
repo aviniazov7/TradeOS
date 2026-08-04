@@ -40,7 +40,7 @@ function fmt(price) {
 }
 
 function TrackBar({ trade, currentPrice, tpReached = [], onTpReached, onLimitTriggered, onSLHit, onUpdateSL, isActive, previewSL, rrBadge, timeSince, isEditMode, onEditStop, suppressBE = false }) {
-  const { entryPrice, stopLoss, direction, tps = [], leverage = 1, positionSize } = trade;
+  const { entryPrice, stopLoss, direction, tps = [], leverage = 1 } = trade;
   const entry = parseFloat(entryPrice);
   const sl = parseFloat(stopLoss);
 
@@ -179,24 +179,9 @@ function TrackBar({ trade, currentPrice, tpReached = [], onTpReached, onLimitTri
     return Math.max(0, Math.min(100, toFixedScale(currentPrice)));
   })() : null;
 
-  let pnlPct = null;
-  let pnlDollar = null;
-  if (isMarketActive && currentPrice > 0 && entry > 0) {
-    const lev = parseFloat(leverage) || 1;
-    pnlPct = isLong
-      ? ((currentPrice - entry) / entry) * lev * 100
-      : ((entry - currentPrice) / entry) * lev * 100;
-    const parsedSize = parseFloat(positionSize);
-    if (parsedSize > 0) {
-      const executedPct = executedExits.reduce((s, e) => s + e.percent, 0);
-      const remainingFraction = Math.max(0, 1 - executedPct / 100);
-      const qty = (parsedSize * remainingFraction) / entry;
-      pnlDollar = isLong ? (currentPrice - entry) * qty : (entry - currentPrice) * qty;
-    }
-  }
-
-  const isProfit = pnlPct != null && pnlPct > 0;
-  const isLoss = pnlPct != null && pnlPct < 0;
+  // Live P&L (percent + dollar) is shown in the CARD HEADER now, not here — see
+  // livePositionPnl at the card level. Keeping it out of this info row lets the
+  // row (time · R:R · SL · leverage · current price) fit one line on mobile.
 
   // Pending limit order — dimmed grey track
   if (!isActive) {
@@ -486,21 +471,10 @@ function TrackBar({ trade, currentPrice, tpReached = [], onTpReached, onLimitTri
         })}
       </div>
 
-      {(pnlPct !== null || currentPrice || timeSince || rrBadge) && (
-        <div className="flex items-center gap-2 mt-2 pt-2 border-t border-white/5 flex-nowrap overflow-x-auto whitespace-nowrap" dir="ltr">
-          {pnlPct !== null && (
-            <span className={`text-xs font-bold font-mono ${isProfit ? 'text-profit' : isLoss ? 'text-loss' : 'text-text-muted'}`}>
-              {pnlPct > 0 ? '+' : ''}{pnlPct.toFixed(2)}%
-            </span>
-          )}
-          {pnlDollar !== null && (
-            <span className={`text-[10px] font-semibold font-mono ${pnlDollar > 0 ? 'text-profit/80' : 'text-loss/80'}`}>
-              {pnlDollar > 0 ? '+' : ''}${Math.abs(pnlDollar).toFixed(2)}
-            </span>
-          )}
+      {(currentPrice || timeSince || rrBadge) && (
+        <div className="flex items-center gap-2 mt-2 pt-2 border-t border-white/5 flex-nowrap whitespace-nowrap" dir="ltr">
           {timeSince && (
             <>
-              <span className="text-text-muted/25 text-[10px]">·</span>
               <div className="flex items-center gap-1 text-[10px] text-text-muted/60">
                 <svg className="w-3 h-3 shrink-0" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
                   <circle cx="12" cy="12" r="10"/><path d="M12 6v6l4 2"/>
@@ -806,6 +780,24 @@ export default function PendingLimitOrders({ trades, livePrices }) {
 
             const entry = parseFloat(trade.entryPrice);
 
+            // Live P&L for the header (mirrors TrackBar's old formula): ROE%
+            // is leverage-scaled; the dollar figure is on the size still open
+            // after partial exits. Shown next to the coin name so the info row
+            // below stays on one line (no side-scroll) on mobile.
+            let hdrPnlPct = null, hdrPnlDollar = null;
+            if (isTradeActive && currentPrice > 0 && entry > 0) {
+              const lev = parseFloat(trade.leverage) || 1;
+              hdrPnlPct = trade.direction === 'long'
+                ? ((currentPrice - entry) / entry) * lev * 100
+                : ((entry - currentPrice) / entry) * lev * 100;
+              const size = parseFloat(trade.positionSize);
+              if (size > 0) {
+                const executedPct = (trade.exits || []).reduce((s, e) => s + (e.percent || 0), 0);
+                const qty = (size * Math.max(0, 1 - executedPct / 100)) / entry;
+                hdrPnlDollar = trade.direction === 'long' ? (currentPrice - entry) * qty : (entry - currentPrice) * qty;
+              }
+            }
+
             // Card frame — consistent blue (demo look), independent of P&L so a
             // losing position no longer paints the whole card red.
             const cardStyle = isTradeActive
@@ -852,6 +844,16 @@ export default function PendingLimitOrders({ trades, livePrices }) {
                     <span className={`text-[10px] font-bold px-1.5 py-0.5 rounded ${trade.direction === 'long' ? 'bg-profit/15 text-profit' : 'bg-loss/15 text-loss'} ${!isTradeActive ? 'opacity-50' : ''}`}>
                       {trade.direction === 'long' ? 'Long' : 'Short'}
                     </span>
+                    {hdrPnlPct != null && (
+                      <span className={`text-xs font-bold font-mono ${hdrPnlPct > 0 ? 'text-profit' : hdrPnlPct < 0 ? 'text-loss' : 'text-text-muted'}`}>
+                        {hdrPnlPct > 0 ? '+' : ''}{hdrPnlPct.toFixed(2)}%
+                      </span>
+                    )}
+                    {hdrPnlDollar != null && (
+                      <span className={`text-[10px] font-semibold font-mono ${hdrPnlDollar > 0 ? 'text-profit/80' : 'text-loss/80'}`}>
+                        {hdrPnlDollar > 0 ? '+' : ''}${Math.abs(hdrPnlDollar).toFixed(2)}
+                      </span>
+                    )}
 
                     <div className="flex items-center gap-1.5 ml-auto">
                       <a
