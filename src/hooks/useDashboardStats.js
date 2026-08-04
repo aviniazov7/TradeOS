@@ -28,13 +28,22 @@ export function safePnl(t) {
   return Number.isFinite(v) ? v : 0;
 }
 
+// A closed trade's effective date. Broker-CSV imports (a profit column but no
+// exit-date column) and live SL/TP auto-closes can lack `exitDate`; without the
+// entryDate fallback, toDate() maps them to 1970-01-01 — which scrambles the
+// equity curve order, monthly buckets, day-of-week split and "today" P&L. This
+// mirrors the period filter, which already falls back the same way.
+export function tradeDate(t) {
+  return toDate(t?.exitDate || t?.entryDate);
+}
+
 export function useDashboardStats(trades, initialBalance = 0, period = 'all') {
   // Step 1: Filter & sort trades
   const { closed, sorted, openCount } = useMemo(() => {
     const periodStart = getPeriodStart(period);
     const filtered = periodStart
       ? trades.filter((t) => {
-          const d = toDate(t.exitDate || t.entryDate);
+          const d = tradeDate(t);
           return d >= periodStart;
         })
       : trades;
@@ -48,7 +57,7 @@ export function useDashboardStats(trades, initialBalance = 0, period = 'all') {
     const cl = filtered.filter(isClosedTrade);
     // openCount is derived from closed so the two counts always sum to filtered.length
     const oc = filtered.length - cl.length;
-    const sr = [...cl].sort((a, b) => toDate(a.exitDate) - toDate(b.exitDate));
+    const sr = [...cl].sort((a, b) => tradeDate(a) - tradeDate(b));
     return { closed: cl, sorted: sr, openCount: oc };
   }, [trades, period]);
 
@@ -68,7 +77,7 @@ export function useDashboardStats(trades, initialBalance = 0, period = 'all') {
     const pfRating = profitFactor === Infinity ? 'מעולה' : profitFactor >= 2.5 ? 'גבוה' : profitFactor >= 1.5 ? 'בינוני' : 'נמוך';
 
     const tradingDays = new Set(
-      closed.map((t) => localDayKey(toDate(t.exitDate)))
+      closed.map((t) => localDayKey(tradeDate(t)))
     ).size;
     const tradesPerDay = tradingDays > 0 ? closed.length / tradingDays : 0;
     const avgDurationMs = calculateAvgDuration(closed);
@@ -79,7 +88,7 @@ export function useDashboardStats(trades, initialBalance = 0, period = 'all') {
     const today = new Date();
     today.setHours(0, 0, 0, 0);
     const dailyPnL = closed
-      .filter((t) => toDate(t.exitDate) >= today)
+      .filter((t) => tradeDate(t) >= today)
       .reduce((s, t) => s + (safePnl(t)), 0);
 
     // Strategy Performance
@@ -100,7 +109,7 @@ export function useDashboardStats(trades, initialBalance = 0, period = 'all') {
     // Monthly Performance
     const monthlyMap = {};
     sorted.forEach((t) => {
-      const d = toDate(t.exitDate);
+      const d = tradeDate(t);
       const key = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`;
       if (!monthlyMap[key]) monthlyMap[key] = { wins: 0, losses: 0, pnl: 0, count: 0 };
       monthlyMap[key].count++;
@@ -137,7 +146,7 @@ export function useDashboardStats(trades, initialBalance = 0, period = 'all') {
     const dayMap = {};
     dayNames.forEach((name, i) => { dayMap[i] = { name, count: 0, wins: 0, pnl: 0 }; });
     closed.forEach((t) => {
-      const day = toDate(t.exitDate).getDay();
+      const day = tradeDate(t).getDay();
       dayMap[day].count++;
       if (t.result === 'win') dayMap[day].wins++;
       dayMap[day].pnl += safePnl(t);
@@ -163,7 +172,7 @@ export function useDashboardStats(trades, initialBalance = 0, period = 'all') {
           }
           currentType = r;
           currentLen = 1;
-          streakStart = t.exitDate;
+          streakStart = t.exitDate || t.entryDate;
         }
       });
       if (currentType && currentLen > 0) {
@@ -213,7 +222,7 @@ export function useDashboardStats(trades, initialBalance = 0, period = 'all') {
     const periodStart = getPeriodStart(period);
     const prePeriodPnl = periodStart
       ? trades
-          .filter((t) => isClosedTrade(t) && toDate(t.exitDate || t.entryDate) < periodStart)
+          .filter((t) => isClosedTrade(t) && tradeDate(t) < periodStart)
           .reduce((s, t) => s + (safePnl(t)), 0)
       : 0;
     const startBalance = (initialBalance || 0) + prePeriodPnl;
@@ -241,7 +250,7 @@ export function useDashboardStats(trades, initialBalance = 0, period = 'all') {
     let eqPeak = startBalance;
     let eqVal = startBalance;
     const equityChartData = sorted.map((t) => {
-      const d = toDate(t.exitDate);
+      const d = tradeDate(t);
       eqVal += safePnl(t);
       if (eqVal > eqPeak) eqPeak = eqVal;
       const dd = eqPeak > 0 ? ((eqPeak - eqVal) / eqPeak) * 100 : 0;
@@ -258,7 +267,7 @@ export function useDashboardStats(trades, initialBalance = 0, period = 'all') {
 
     const pairPnlByDate = {};
     closed.forEach((t) => {
-      const dateKey = localDayKey(toDate(t.exitDate));
+      const dateKey = localDayKey(tradeDate(t));
       const pair = t.pair;
       if (!pairPnlByDate[dateKey]) pairPnlByDate[dateKey] = {};
       pairPnlByDate[dateKey][pair] = (pairPnlByDate[dateKey][pair] || 0) + (safePnl(t));
