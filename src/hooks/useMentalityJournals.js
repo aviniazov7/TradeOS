@@ -6,7 +6,7 @@ import {
   updateUserDocument,
   deleteUserDocument,
   timestamp,
-} from '../services/dataProvider';
+} from '../services/firestoreService';
 import { useAuth } from '../contexts/AuthContext';
 
 export function useMentalityJournals() {
