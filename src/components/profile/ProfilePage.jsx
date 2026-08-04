@@ -17,6 +17,7 @@ import {
   ShieldCheck,
   Clock,
   ArrowLeft,
+  ChevronRight,
   Check,
   Coins,
   LineChart,
@@ -230,9 +231,17 @@ export default function ProfilePage() {
 
   return (
     <motion.div variants={pageVariants} initial="initial" animate="animate" exit="exit" transition={pageTransition}
-      className="min-h-[calc(100vh-4rem)] px-4 py-6 cursor-pointer"
-      onClick={() => navigate(-1)}>
-      <div className="max-w-lg mx-auto cursor-default" onClick={(e) => e.stopPropagation()}>
+      className="min-h-[calc(100vh-4rem)] px-4 py-6">
+      <div className="max-w-lg mx-auto">
+
+      {/* Back — a real button, not a background click (which fired on any tap) */}
+      <button
+        onClick={() => navigate(-1)}
+        className="p-2 -mr-2 mb-2 rounded-lg text-text-muted hover:text-text-primary hover:bg-bg-tertiary transition-colors cursor-pointer"
+        aria-label="חזרה"
+      >
+        <ChevronRight className="w-5 h-5" />
+      </button>
 
       {/* Profile Card */}
       <div className="bg-bg-secondary border border-border-primary rounded-2xl p-6 mb-4 text-center">
