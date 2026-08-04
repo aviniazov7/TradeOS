@@ -6,7 +6,6 @@ import { BacktestProvider } from './contexts/BacktestContext';
 import ProtectedRoute from './components/auth/ProtectedRoute';
 import LoginPage from './components/auth/LoginPage';
 import AuthGooglePopup from './components/auth/AuthGooglePopup';
-import AuthEmailLink from './components/auth/AuthEmailLink';
 import Layout from './components/layout/Layout';
 import LoadingSpinner from './components/shared/LoadingSpinner';
 import Toast from './components/shared/Toast';
@@ -174,7 +173,6 @@ export default function App() {
         <Routes>
           {/* Standalone popup page — outside AuthProvider so getRedirectResult isn't consumed by AuthContext */}
           <Route path="/auth-google" element={<AuthGooglePopup />} />
-          <Route path="/auth-email-link" element={<AuthEmailLink />} />
           {/* Main app with all providers */}
           <Route path="*" element={<MainApp />} />
         </Routes>

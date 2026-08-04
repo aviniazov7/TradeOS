@@ -16,8 +16,6 @@ import {
   reauthenticateWithPopup,
   signOut,
   sendPasswordResetEmail,
-  isSignInWithEmailLink,
-  signInWithEmailLink,
 } from 'firebase/auth';
 import { auth, googleProvider } from './firebase';
 
@@ -119,16 +117,6 @@ export async function registerWithEmail(email, password, displayName) {
 /** Sign in with email and password */
 export function loginWithEmail(email, password) {
   return signInWithEmailAndPassword(auth, email, password);
-}
-
-/** True if the URL is a Firebase passwordless email sign-in link */
-export function isEmailSignInLink(url) {
-  return isSignInWithEmailLink(auth, url);
-}
-
-/** Complete a passwordless email-link sign-in */
-export function completeEmailLinkSignIn(email, url) {
-  return signInWithEmailLink(auth, email, url);
 }
 
 /** Sign out */

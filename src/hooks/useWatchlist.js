@@ -5,7 +5,7 @@ import {
   updateUserDocument,
   deleteUserDocument,
   timestamp,
-} from '../services/dataProvider';
+} from '../services/firestoreService';
 import { useAuth } from '../contexts/AuthContext';
 
 // Per-user coin watchlist — coins a trader is tracking for a potential setup.

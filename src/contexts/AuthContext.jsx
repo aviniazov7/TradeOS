@@ -1,9 +1,7 @@
 import { createContext, useContext, useState, useEffect } from 'react';
 import { planExpiresMs } from '../utils/premium';
 import { APP_VERSION } from '../utils/constants';
-// Auth via the facade — Firebase by default, Supabase when USE_SUPABASE is on
-// (migration Phase 3). With the flag off this resolves to the exact same
-// Firebase functions as before, so behaviour here is unchanged.
+// Firebase Auth operations (login/logout/register/reset…).
 import {
   onAuthChange,
   handleRedirectResult,
@@ -16,10 +14,9 @@ import {
   changePassword as authChangePassword,
   reauthenticate,
   deleteAuthUser,
-} from '../services/authProvider';
-// Profile + settings via the data facade — Firestore by default, Supabase when
-// USE_SUPABASE is on. With the flag off these are the exact same Firestore
-// functions, so behaviour is unchanged.
+} from '../services/authService';
+// Profile + settings, plus the account-deletion wipe (all subcollections +
+// leaderboard + user doc).
 import {
   getUserProfile,
   setUserProfile,
@@ -27,10 +24,6 @@ import {
   subscribeToUserProfile,
   touchLastActive,
   timestamp,
-} from '../services/dataProvider';
-// Account-deletion wipe stays on Firestore for now (cross-cutting; the Supabase
-// path deletes via auth.users cascade server-side — Phase 6).
-import {
   deleteUserProfile,
   deleteUserSubcollection,
   deleteLeaderboardEntry,
