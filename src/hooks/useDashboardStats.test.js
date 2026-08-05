@@ -1,5 +1,6 @@
 import { describe, it, expect } from 'vitest';
-import { safePnl, tradeDate } from './useDashboardStats';
+import { tradeDate } from './useDashboardStats';
+import { safePnl } from '../utils/calculations';
 
 // safePnl and tradeDate are the two pure guards that keep dirty/incomplete trade
 // rows from poisoning the dashboard. tradeDate specifically prevents the
