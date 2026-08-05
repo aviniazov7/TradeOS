@@ -144,6 +144,10 @@ export default function ChartAnalyzer({ heightClass = '' }) {
   const resultRef = useRef('');
   const batchRef = useRef(null);
   const copyTimerRef = useRef(null);
+  // Synchronous in-flight guard — the `analyzing` state only flips on re-render,
+  // so a fast double-click could fire two analyses and double-charge the image
+  // quota before the button visually disables.
+  const inFlightRef = useRef(false);
   // Streaming/copy can outlive the page — kill pending timers on unmount so
   // no setState fires after the component is gone.
   useEffect(() => () => {
@@ -193,11 +197,12 @@ export default function ChartAnalyzer({ heightClass = '' }) {
   };
 
   const analyze = async () => {
-    if (!image || analyzing) return;
+    if (!image || analyzing || inFlightRef.current) return;
     if (!isPremium) {
       setError('צירוף וניתוח גרפים פתוח למנויי Premium בלבד 👑');
       return;
     }
+    inFlightRef.current = true;
     setAnalyzing(true);
     setResultText('');
     setError(null);
@@ -224,6 +229,7 @@ export default function ChartAnalyzer({ heightClass = '' }) {
       setError(err.message || 'שגיאה בניתוח הגרף');
       if (resultRef.current) setResultText(resultRef.current);
     } finally {
+      inFlightRef.current = false;
       setAnalyzing(false);
       aiUsage.refresh();
     }

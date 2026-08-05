@@ -844,8 +844,23 @@ function b64urlToBytesLocal(s) {
 async function getGoogleKeys() {
   const fresh = GOOGLE_KEYS_CACHE.keys && (Date.now() - GOOGLE_KEYS_CACHE.fetchedAt) < 30 * 60 * 1000;
   if (fresh) return GOOGLE_KEYS_CACHE.keys;
-  const res = await fetch(GOOGLE_JWK_URL);
-  if (!res.ok) throw new Error('fetch keys failed');
+  // Google's signing keys rotate far slower than this 30-min cache. If the
+  // refetch fails (network blip / non-ok) but we still hold a previously-fetched
+  // key set, keep serving it rather than throwing — otherwise a momentary JWKS
+  // outage right after expiry 401s EVERY token-gated endpoint (all of AI
+  // included) even though the cached keys are still valid. fetchedAt is left
+  // stale on fallback so the next call retries the refresh promptly.
+  let res;
+  try {
+    res = await fetch(GOOGLE_JWK_URL);
+  } catch (e) {
+    if (GOOGLE_KEYS_CACHE.keys) return GOOGLE_KEYS_CACHE.keys;
+    throw e;
+  }
+  if (!res.ok) {
+    if (GOOGLE_KEYS_CACHE.keys) return GOOGLE_KEYS_CACHE.keys;
+    throw new Error('fetch keys failed');
+  }
   const { keys } = await res.json();
   const map = {};
   for (const jwk of (keys || [])) {
@@ -1185,10 +1200,12 @@ async function isUserPremium(env, token, uid) {
   }
   let premium = false;
   let expMs = null;
+  let read = false;
   try {
     const url = `https://firestore.googleapis.com/v1/projects/${FIREBASE_PROJECT_ID}/databases/(default)/documents/users/${uid}`;
     const r = await fetch(url, { headers: { Authorization: `Bearer ${token}` } });
     if (r.ok) {
+      read = true;
       const f = (await r.json()).fields || {};
       const plan = f.plan?.stringValue;
       const role = f.role?.stringValue;
@@ -1199,8 +1216,14 @@ async function isUserPremium(env, token, uid) {
       if (role === 'admin') expMs = null; // admins never lapse
     }
   } catch { /* default free */ }
-  // Grants still bust this key explicitly (/admin/refresh-plan).
-  await env.ALERTS_KV.put(cacheKey, JSON.stringify({ p: premium ? 1 : 0, exp: premium ? expMs : null }), { expirationTtl: 600 });
+  // Only memoize a DEFINITIVE read. A transient Firestore error (non-ok / throw)
+  // used to be cached as `free` for 10 min, locking a real premium user out of
+  // image analysis and down to the free quota until the TTL expired. On a failed
+  // read, skip the cache so the next request re-reads. Grants still bust this key
+  // explicitly (/admin/refresh-plan).
+  if (read) {
+    await env.ALERTS_KV.put(cacheKey, JSON.stringify({ p: premium ? 1 : 0, exp: premium ? expMs : null }), { expirationTtl: 600 });
+  }
   return premium;
 }
 
@@ -1560,9 +1583,16 @@ async function handleCron(env) {
 
 const GROQ_URL = 'https://api.groq.com/openai/v1/chat/completions';
 const GROQ_MODEL = 'llama-3.3-70b-versatile';
-// llama-3.3 is text-only; chart-image requests are routed to Llama 4 Scout,
-// Groq's production vision model (OpenAI-compatible image_url content parts).
-const GROQ_VISION_MODEL = 'meta-llama/llama-4-scout-17b-16e-instruct';
+// llama-3.3 is text-only; chart-image requests go to a vision model.
+// Groq DECOMMISSIONED the old Llama 4 Scout vision model (2026-07-17) → it began
+// returning 404 "model decommissioned", which broke chart analysis AND the coach
+// text-fallback (both pointed at it). Primary is now Llama 4 Maverick — still
+// active/production, same family as Scout so it's a drop-in (same image_url
+// parts, no reasoning-token preamble). Fallback is Qwen 3.6 27B (Groq's
+// documented Scout replacement, a *preview* model). The /ai-chat handler flips
+// to the fallback automatically on a 404, so a future decommission self-heals.
+const GROQ_VISION_MODEL = 'meta-llama/llama-4-maverick-17b-128e-instruct';
+const GROQ_VISION_FALLBACK_MODEL = 'qwen/qwen3.6-27b';
 
 // Non-streaming Groq call with 429 resilience. The shared free-tier key has
 // tight per-minute token budgets on the 70B (and one key serves chat + coach +
@@ -1573,8 +1603,9 @@ const GROQ_VISION_MODEL = 'meta-llama/llama-4-scout-17b-16e-instruct';
 // is retried; any other status returns immediately.
 // NOT llama-3.1-8b-instant: the news translator (NEWS_TRANSLATE_MODEL) burns
 // that bucket all day via the */10 cron, so it 429s exactly when the 70B does
-// (verified in prod logs 2026-07-10). Scout is already exercised by vision
-// chat, has generous limits, and its id is proven valid on this key.
+// (verified in prod logs 2026-07-10). The vision model is already exercised by
+// chart chat, sits on a separate per-model rate bucket, and its id is kept
+// current (it's the one users hit for image analysis, so it can't go stale).
 const GROQ_FALLBACK_MODEL = GROQ_VISION_MODEL;
 async function groqFetchWithRetry(env, payload) {
   const call = (model) => fetch(GROQ_URL, {
@@ -1586,10 +1617,16 @@ async function groqFetchWithRetry(env, payload) {
   for (const wait of [0, 2500, 5000]) {
     if (wait) await new Promise((r) => setTimeout(r, wait));
     res = await call(payload.model);
-    if (res.ok || res.status !== 429) return res;
+    // Retry TRANSIENT failures (429 rate-limit, 5xx provider overload) on the
+    // same model; return immediately on success or a non-transient 4xx.
+    if (res.ok || (res.status !== 429 && res.status < 500)) break;
   }
-  if (payload.model !== GROQ_FALLBACK_MODEL) {
-    console.error(`groq 429 after retries on ${payload.model} — falling back to ${GROQ_FALLBACK_MODEL}`);
+  // Still failing on a recoverable status → try ONCE on the fallback model (a
+  // separate rate bucket + a live id). 404 is included so a DECOMMISSIONED model
+  // — what took down Scout — self-heals instead of hard-failing the coach.
+  if (!res.ok && payload.model !== GROQ_FALLBACK_MODEL
+      && (res.status === 429 || res.status === 404 || res.status >= 500)) {
+    console.error(`groq ${res.status} on ${payload.model} — falling back to ${GROQ_FALLBACK_MODEL}`);
     const fb = await call(GROQ_FALLBACK_MODEL);
     if (fb.ok || fb.status !== 429) return fb;
     // Log the fallback's own 429 body — without this the coach error only
@@ -1807,6 +1844,11 @@ Volume: גבוה+עלייה=ביקוש חזק; גבוה+ירידה=היצע חז
 - שאלה שלא קשורה למסחר — ענה בקצרה וכוון חזרה למסחר.`;
 
 async function handleAIChat(request, env, cors) {
+  // Set once the request passes every gate and charges quota, so the catch can
+  // refund when the provider fetch THROWS (network/DNS/TLS reject) — the non-ok
+  // Response branches refund inline, but a thrown fetch skipped to the catch and
+  // stranded the user's charge.
+  let charged = null;
   try {
     // Parse request
     const { messages } = await request.json();
@@ -1899,6 +1941,11 @@ async function handleAIChat(request, env, cors) {
       }), { status: 429, headers: { ...cors, 'Content-Type': 'application/json' } });
     }
 
+    // Past every gate with both counters charged — from here a provider failure
+    // must refund the prepaid quota: inline on a non-ok Response (below), or via
+    // the handler catch if the provider fetch THROWS (network reject).
+    charged = { uid, hasImage };
+
     // Build messages for Groq. Trim history to keep the payload under Groq's
     // tokens-per-minute cap (the old 11K-char system prompt + long Wyckoff
     // replies meant the SECOND question in a minute always blew the TPM limit).
@@ -1961,7 +2008,7 @@ async function handleAIChat(request, env, cors) {
           if (groqFallback.ok) {
             return new Response(meterStream(env, groqFallback.body, { hasImage }), { headers: sseHeaders });
           }
-          if (groqFallback.status !== 429) break; // non-retryable
+          if (groqFallback.status !== 429 && groqFallback.status < 500) break; // 4xx (≠429) non-retryable; 429/5xx keep retrying
         }
         const fbErrText = await groqFallback.text().catch(() => '');
         console.error('Groq fallback also failed:', groqFallback.status, fbErrText);
@@ -1984,14 +2031,14 @@ async function handleAIChat(request, env, cors) {
     // Free tier (or premium without a Gemini key configured) → Groq, with
     // retries: the shared key has tight per-minute token limits, so back off
     // and retry inside the worker (worst case ~7.5s) before surfacing an error.
-    const callGroq = () => fetch(GROQ_URL, {
+    const callGroq = (model) => fetch(GROQ_URL, {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
         Authorization: `Bearer ${env.GROQ_API_KEY}`,
       },
       body: JSON.stringify({
-        model: hasImage ? GROQ_VISION_MODEL : GROQ_MODEL,
+        model,
         messages: apiMessages,
         temperature: 0.7,
         max_tokens: 1500,
@@ -2000,14 +2047,30 @@ async function handleAIChat(request, env, cors) {
       }),
     });
 
+    // 429 = transient rate limit → back off and retry the SAME model. 404 = the
+    // model id was decommissioned (exactly what killed Llama 4 Scout) → retrying
+    // it is futile, so switch to the fallback model ONCE, immediately. This makes
+    // provider model-churn self-healing instead of surfacing a hard 404 to users.
+    let groqModel = hasImage ? GROQ_VISION_MODEL : GROQ_MODEL;
+    const groqFallbackModel = hasImage ? GROQ_VISION_FALLBACK_MODEL : GROQ_FALLBACK_MODEL;
+    let switchedModel = false;
     let groqResponse;
     for (const wait of [0, 2500, 5000]) {
       if (wait) await new Promise((r) => setTimeout(r, wait));
-      groqResponse = await callGroq();
+      groqResponse = await callGroq(groqModel);
       if (groqResponse.ok) {
         return new Response(meterStream(env, groqResponse.body, { hasImage }), { headers: sseHeaders });
       }
-      if (groqResponse.status !== 429) break; // non-retryable
+      if (groqResponse.status === 404 && !switchedModel && groqFallbackModel !== groqModel) {
+        console.error(`Groq model ${groqModel} returned 404 (decommissioned) — switching to ${groqFallbackModel}`);
+        switchedModel = true;
+        groqModel = groqFallbackModel;
+        groqResponse = await callGroq(groqModel);
+        if (groqResponse.ok) {
+          return new Response(meterStream(env, groqResponse.body, { hasImage }), { headers: sseHeaders });
+        }
+      }
+      if (groqResponse.status !== 429 && groqResponse.status < 500) break; // 4xx (≠429) non-retryable; 429/5xx keep retrying
     }
 
     const errText = await groqResponse.text().catch(() => '');
@@ -2022,6 +2085,9 @@ async function handleAIChat(request, env, cors) {
     );
   } catch (err) {
     console.error('AI Chat error:', err);
+    // A thrown provider fetch lands here AFTER charging — refund so a transient
+    // network blip doesn't silently burn the user's quota slot(s).
+    if (charged) await refundAiCharge(env, charged.uid, charged.hasImage);
     return new Response(JSON.stringify({ error: 'שגיאה פנימית' }), { status: 500, headers: { ...cors, 'Content-Type': 'application/json' } });
   }
 }
@@ -4069,6 +4135,26 @@ async function handleRequest(request, env) {
         out.groq = { ok: r.ok, status: r.status, model: GROQ_MODEL, error: r.ok ? null : body.slice(0, 400) };
       } catch (e) {
         out.groq = { ok: false, status: 0, model: GROQ_MODEL, error: String(e).slice(0, 400) };
+      }
+    }
+
+    // Groq VISION models (the chart-analysis path). A text "ping" is enough to
+    // verify the model id is still alive — this is exactly the check that was
+    // MISSING when Llama 4 Scout was decommissioned: /admin/ai-test only pinged
+    // the text model, so a 404 on the vision model went undetected until users
+    // hit it. Both primary and fallback are reported so a future churn is caught.
+    if (env.GROQ_API_KEY) {
+      for (const [label, model] of [['groqVision', GROQ_VISION_MODEL], ['groqVisionFallback', GROQ_VISION_FALLBACK_MODEL]]) {
+        try {
+          const r = await fetch(GROQ_URL, {
+            method: 'POST', headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${env.GROQ_API_KEY}` },
+            body: JSON.stringify({ model, messages: ping, max_tokens: 5, stream: false }),
+          });
+          const body = await r.text().catch(() => '');
+          out[label] = { ok: r.ok, status: r.status, model, error: r.ok ? null : body.slice(0, 400) };
+        } catch (e) {
+          out[label] = { ok: false, status: 0, model, error: String(e).slice(0, 400) };
+        }
       }
     }
 
