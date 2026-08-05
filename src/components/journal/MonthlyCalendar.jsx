@@ -131,7 +131,8 @@ export default function MonthlyCalendar({ trades, journalName }) {
         {/* Month Navigation */}
         <div className="flex items-center justify-between mb-2">
           <button
-            onClick={() => setCurrentMonth((m) => addMonths(m, 1))}
+            onClick={() => setCurrentMonth((m) => subMonths(m, 1))}
+            aria-label="חודש קודם"
             className="p-2 rounded-lg text-text-muted hover:text-text-primary hover:bg-bg-tertiary transition-colors cursor-pointer"
           >
             <ChevronRight className="w-5 h-5" />
@@ -149,7 +150,8 @@ export default function MonthlyCalendar({ trades, journalName }) {
             </button>
           </div>
           <button
-            onClick={() => setCurrentMonth((m) => subMonths(m, 1))}
+            onClick={() => setCurrentMonth((m) => addMonths(m, 1))}
+            aria-label="חודש הבא"
             className="p-2 rounded-lg text-text-muted hover:text-text-primary hover:bg-bg-tertiary transition-colors cursor-pointer"
           >
             <ChevronLeft className="w-5 h-5" />
