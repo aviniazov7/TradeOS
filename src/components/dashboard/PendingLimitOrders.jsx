@@ -27,6 +27,7 @@ import CoinIcon from '../shared/CoinIcon';
 import { useJournalContext } from '../../contexts/JournalContext';
 import { useAuth } from '../../contexts/AuthContext';
 import { updateUserDocument, arrayUnion, timestamp } from '../../services/firestoreService';
+import { computeTradeFields } from '../../utils/calculations';
 import { auth } from '../../services/firebase';
 
 function fmt(price) {
@@ -521,6 +522,30 @@ function TrackBar({ trade, currentPrice, tpReached = [], onTpReached, onLimitTri
   );
 }
 
+// Build the Firestore update for a trade closing at `closePrice` via a live
+// SL/TP hit. Completes the exits (existing partial TPs + the remaining size at
+// the close price) and runs the canonical computeTradeFields, so the stored
+// netPnl/result account for partial exits AND fees — and a stop that still
+// lands in net profit (after earlier TPs) is no longer mislabeled a 'loss'.
+function closeTradeAt(trade, closePrice) {
+  const price = parseFloat(closePrice);
+  const entry = parseFloat(trade.entryPrice) || 0;
+  const existing = (trade.exits || [])
+    .map((e) => ({ price: parseFloat(e.price), percent: parseFloat(e.percent) }))
+    .filter((e) => e.price > 0 && e.percent > 0);
+  const executedPct = existing.reduce((s, e) => s + e.percent, 0);
+  const remainingPct = Math.max(0, 100 - executedPct);
+  // Only synthesize a final exit when partial TPs were already taken; a clean
+  // full close just uses exitPrice (computeTradeFields handles both paths).
+  const exits = existing.length && remainingPct > 0 ? [...existing, { price, percent: remainingPct }] : existing;
+  const quantity = parseFloat(trade.quantity) || (entry > 0 ? (parseFloat(trade.positionSize) || 0) / entry : 0);
+  const { pnl, pnlPercent, rrRatio, netPnl, result } =
+    computeTradeFields({ ...trade, status: 'closed', exitPrice: price, exits, quantity });
+  const update = { status: 'closed', exitPrice: price, exitDate: timestamp(), pnl, pnlPercent, rrRatio, netPnl, result };
+  if (existing.length) update.exits = exits;
+  return update;
+}
+
 function getTimeSince(trade) {
   const raw = trade.entryDate || trade.createdAt;
   if (!raw) return null;
@@ -600,13 +625,7 @@ export default function PendingLimitOrders({ trades, livePrices }) {
       return;
     }
     const updates = { tpReached: arrayUnion(tpIdx) };
-    if (isLastTp) {
-      updates.status = 'closed';
-      updates.exitPrice = parseFloat(currentPrice);
-      updates.exitDate = timestamp(); // stamp the close moment so stats don't bucket it to 1970
-      updates.result = pnl >= 0 ? 'win' : 'loss';
-      if (pnl !== null) updates.netPnl = pnl;
-    }
+    if (isLastTp) Object.assign(updates, closeTradeAt(trade, currentPrice));
     updateUserDocument(user.uid, 'trades', trade.id, updates).catch(() => {});
     sendNotification('tp', trade, currentPrice, pnl, { tpIndex: tpIdx, isLastTp });
   }, [user?.uid, sendNotification]);
@@ -663,13 +682,7 @@ export default function PendingLimitOrders({ trades, livePrices }) {
       sendNotification('sl', trade, currentPrice, pnl);
       return;
     }
-    updateUserDocument(user.uid, 'trades', trade.id, {
-      status: 'closed',
-      exitPrice: parseFloat(currentPrice),
-      exitDate: timestamp(), // stamp the close moment so stats don't bucket it to 1970
-      result: 'loss',
-      ...(pnl !== null ? { netPnl: pnl } : {}),
-    }).catch(() => {});
+    updateUserDocument(user.uid, 'trades', trade.id, closeTradeAt(trade, currentPrice)).catch(() => {});
     sendNotification('sl', trade, currentPrice, pnl);
   }, [user?.uid, sendNotification]);
 

@@ -15,18 +15,12 @@ import {
   clampRatio,
   isClosedTrade,
   localDayKey,
+  safePnl,
 } from '../utils/calculations';
 import { getSessionFromDate, SESSION_UNKNOWN } from '../utils/sessions';
 import { getPeriodStart, toDate } from '../utils/period';
 
-// Net PnL for a trade, guaranteed finite. `netPnl`/`pnl` can be undefined,
-// null, NaN (e.g. a bad parse from an exchange import), or a numeric string;
-// any of those silently poison every sum/chart that touches them. Coerce and
-// default to 0 so a single dirty row can't blank the whole dashboard.
-export function safePnl(t) {
-  const v = Number(t?.netPnl ?? t?.pnl ?? 0);
-  return Number.isFinite(v) ? v : 0;
-}
+// safePnl moved to utils/calculations (shared with the ratio helpers) — imported above.
 
 // A closed trade's effective date. Broker-CSV imports (a profit column but no
 // exit-date column) and live SL/TP auto-closes can lack `exitDate`; without the
@@ -39,7 +33,7 @@ export function tradeDate(t) {
 
 export function useDashboardStats(trades, initialBalance = 0, period = 'all') {
   // Step 1: Filter & sort trades
-  const { closed, sorted, openCount } = useMemo(() => {
+  const { closed, sorted, openCount, prePeriodPnl } = useMemo(() => {
     const periodStart = getPeriodStart(period);
     const filtered = periodStart
       ? trades.filter((t) => {
@@ -58,7 +52,13 @@ export function useDashboardStats(trades, initialBalance = 0, period = 'all') {
     // openCount is derived from closed so the two counts always sum to filtered.length
     const oc = filtered.length - cl.length;
     const sr = [...cl].sort((a, b) => tradeDate(a) - tradeDate(b));
-    return { closed: cl, sorted: sr, openCount: oc };
+    // P&L realized BEFORE the selected period — so a filtered view's balance and
+    // drawdown baseline start from the real equity, not from initialBalance
+    // (which would drop the whole pre-period P&L). Shared by core + advanced.
+    const prePeriodPnl = periodStart
+      ? trades.filter((t) => isClosedTrade(t) && tradeDate(t) < periodStart).reduce((s, t) => s + safePnl(t), 0)
+      : 0;
+    return { closed: cl, sorted: sr, openCount: oc, prePeriodPnl };
   }, [trades, period]);
 
   // Step 2: Core stats + performance breakdowns
@@ -67,8 +67,12 @@ export function useDashboardStats(trades, initialBalance = 0, period = 'all') {
     const losses = closed.filter((t) => t.result === 'loss');
 
     const totalPnL = closed.reduce((s, t) => s + (safePnl(t)), 0);
-    const currentBalance = initialBalance + totalPnL;
-    const balanceChangePercent = initialBalance > 0 ? (totalPnL / initialBalance) * 100 : 0;
+    // Balance starts from the period's OPENING equity (initial + pre-period P&L)
+    // so a filtered view shows the real balance and a period-relative "% change".
+    // period='all' → prePeriodPnl is 0, so the all-time view is unchanged.
+    const startBalance = (initialBalance || 0) + prePeriodPnl;
+    const currentBalance = startBalance + totalPnL;
+    const balanceChangePercent = startBalance > 0 ? (totalPnL / startBalance) * 100 : 0;
     const winRate = calculateWinRate(closed);
     const expectancy = calculateExpectancy(closed);
     const avgRR = calculateAvgRR(closed);
@@ -206,7 +210,7 @@ export function useDashboardStats(trades, initialBalance = 0, period = 'all') {
       dayOfWeekPerformance,
       streakHistory,
     };
-  }, [closed, sorted, openCount, initialBalance]);
+  }, [closed, sorted, openCount, initialBalance, prePeriodPnl]);
 
   // Step 3: Equity curve + advanced metrics (depends on sorted + balance)
   const advancedStats = useMemo(() => {
@@ -215,16 +219,8 @@ export function useDashboardStats(trades, initialBalance = 0, period = 'all') {
     const sortinoRatio = clampRatio(calculateSortinoRatio(returns));
 
     // Balance at the START of the selected period = initialBalance + everything
-    // earned before it. This is the correct peak baseline so drawdown/Calmar/
-    // recovery on a FILTERED view (week/month/year) match the equity chart below.
-    // (Was: initialBalance only → filtered periods under-reported drawdown, and
-    // could show 0% when the period never dipped below initialBalance.)
-    const periodStart = getPeriodStart(period);
-    const prePeriodPnl = periodStart
-      ? trades
-          .filter((t) => isClosedTrade(t) && tradeDate(t) < periodStart)
-          .reduce((s, t) => s + (safePnl(t)), 0)
-      : 0;
+    // earned before it (shared prePeriodPnl from step 1). Correct peak baseline
+    // so drawdown/Calmar/recovery on a FILTERED view match the equity chart.
     const startBalance = (initialBalance || 0) + prePeriodPnl;
 
     let equity = startBalance;
@@ -259,7 +255,7 @@ export function useDashboardStats(trades, initialBalance = 0, period = 'all') {
     });
 
     return { sharpeRatio, sortinoRatio, maxDrawdown, calmarRatio, recoveryFactor, equityChartData };
-  }, [closed, sorted, initialBalance, trades, period, coreStats.balanceChangePercent, coreStats.totalPnL]);
+  }, [closed, sorted, initialBalance, prePeriodPnl, coreStats.balanceChangePercent, coreStats.totalPnL]);
 
   // Step 4: Correlation matrix (heavy — isolated, with symmetric optimization)
   const correlationMatrix = useMemo(() => {

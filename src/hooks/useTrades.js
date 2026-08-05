@@ -9,19 +9,7 @@ import {
   dateToTimestamp,
 } from '../services/firestoreService';
 import { useAuth } from '../contexts/AuthContext';
-import {
-  calculatePnL,
-  calculatePnLPercent,
-  calculateRR,
-  calculateNetPnL,
-  getTradeResult,
-  calculatePartialPnL,
-  calculateWeightedExitPrice,
-  calculateFuturesPnL,
-  calculateFuturesPartialPnL,
-  calculateFuturesContractsPnL,
-  calculateFuturesNotional,
-} from '../utils/calculations';
+import { computeTradeFields, calculateFuturesNotional } from '../utils/calculations';
 
 export function useTrades(journalId = null) {
   const { user } = useAuth();
@@ -58,62 +46,6 @@ export function useTrades(journalId = null) {
     if (!journalId) return allTrades;
     return allTrades.filter((t) => t.journalId === journalId);
   }, [allTrades, journalId]);
-
-  const computeTradeFields = (tradeData) => {
-    let pnl, rrRatio, pnlPercent;
-
-    // CME futures: dollar P&L is points × pointValue × contracts, never
-    // price × quantity (see docs/specs/futures-contracts.md). Crypto trades
-    // (assetClass missing or 'crypto') keep the original path untouched.
-    const isFutures = tradeData.assetClass === 'futures_cme' && tradeData.contract;
-
-    // Exchange-imported closed trades: use pnlFromExchange to preserve the exact
-    // settlement value from the exchange (avoids recalculation drift from qty rounding).
-    // NOTE: pnlFromExchange === 0 is valid (breakeven) — do NOT exclude it with !== 0
-    const hasExchangePnl = typeof tradeData.pnlFromExchange === 'number';
-    const isClosed = (tradeData.exitPrice > 0) || tradeData.status === 'closed';
-
-    if (hasExchangePnl && isClosed) {
-      pnl = tradeData.pnlFromExchange;
-      const exitForRR = tradeData.exits?.length
-        ? calculateWeightedExitPrice(tradeData.exits)
-        : (tradeData.exitPrice || 0);
-      rrRatio = calculateRR(tradeData.entryPrice, exitForRR, tradeData.stopLoss);
-    } else if (isFutures) {
-      const { pointValue, contracts } = tradeData.contract;
-      if (tradeData.exits?.length) {
-        // Prefer exact per-exit contract counts; fall back to percent exits.
-        pnl = tradeData.exits.some((e) => e.contracts != null)
-          ? calculateFuturesContractsPnL(tradeData.direction, tradeData.entryPrice, tradeData.exits, pointValue)
-          : calculateFuturesPartialPnL(tradeData.direction, tradeData.entryPrice, tradeData.exits, pointValue, contracts);
-        rrRatio = calculateRR(tradeData.entryPrice, calculateWeightedExitPrice(tradeData.exits), tradeData.stopLoss);
-      } else {
-        pnl = calculateFuturesPnL(tradeData.direction, tradeData.entryPrice, tradeData.exitPrice, pointValue, contracts);
-        rrRatio = calculateRR(tradeData.entryPrice, tradeData.exitPrice, tradeData.stopLoss);
-      }
-    } else if (tradeData.exits?.length) {
-      pnl = calculatePartialPnL(tradeData.direction, tradeData.entryPrice, tradeData.exits, tradeData.quantity);
-      const weightedExit = calculateWeightedExitPrice(tradeData.exits);
-      rrRatio = calculateRR(tradeData.entryPrice, weightedExit, tradeData.stopLoss);
-    } else {
-      pnl = calculatePnL(tradeData.direction, tradeData.entryPrice, tradeData.exitPrice, tradeData.quantity);
-      rrRatio = calculateRR(tradeData.entryPrice, tradeData.exitPrice, tradeData.stopLoss);
-    }
-
-    if (isFutures) {
-      // Percent return on notional — honest (no leverage multiplier); real
-      // futures margin is exchange-set and unknown in v1, so ROE would lie.
-      const notional = calculateFuturesNotional(tradeData.entryPrice, tradeData.contract.pointValue, tradeData.contract.contracts);
-      pnlPercent = notional ? (pnl / notional) * 100 : 0;
-    } else {
-      pnlPercent = calculatePnLPercent(pnl, tradeData.entryPrice, tradeData.quantity, tradeData.leverage);
-    }
-    const netPnl = calculateNetPnL(pnl, tradeData.fees);
-    // Use netPnl for result classification — a trade with small gross profit
-    // but large fees should be a 'loss', not a 'win'
-    const result = getTradeResult(netPnl);
-    return { pnl, pnlPercent, rrRatio, netPnl, result };
-  };
 
   // Full document for a new trade: computed P&L fields + safe dates + journal
   // binding. Shared by the single-add and bulk-import paths so both write
