@@ -1,4 +1,4 @@
-import { createContext, useContext, useState, useEffect, useCallback, useRef } from 'react';
+import { createContext, useContext, useState, useEffect, useCallback, useMemo, useRef } from 'react';
 import {
   subscribeToUserCollection,
   addToUserCollection,
@@ -129,16 +129,17 @@ export function JournalProvider({ children }) {
     }
   }, [activeJournalId]);
 
-  // Sort: starred first, then by creation order
-  const sortedJournals = [...journals].sort((a, b) => {
+  // Sort: starred first, then by creation order. Memoized so consumers don't get
+  // a fresh array identity (and a needless re-render) on every provider render.
+  const sortedJournals = useMemo(() => [...journals].sort((a, b) => {
     if (a.starred && !b.starred) return -1;
     if (!a.starred && b.starred) return 1;
     return 0;
-  });
+  }), [journals]);
 
   // Split into active and archived
-  const activeJournals = sortedJournals.filter((j) => !j.archived);
-  const archivedJournals = sortedJournals.filter((j) => j.archived);
+  const activeJournals = useMemo(() => sortedJournals.filter((j) => !j.archived), [sortedJournals]);
+  const archivedJournals = useMemo(() => sortedJournals.filter((j) => j.archived), [sortedJournals]);
 
   // Auto-select first active journal if none selected
   useEffect(() => {
@@ -148,7 +149,10 @@ export function JournalProvider({ children }) {
     }
   }, [journals, activeJournalId]);
 
-  const activeJournal = activeJournals.find((j) => j.id === activeJournalId) || activeJournals[0] || null;
+  const activeJournal = useMemo(
+    () => activeJournals.find((j) => j.id === activeJournalId) || activeJournals[0] || null,
+    [activeJournals, activeJournalId],
+  );
   // The id of the journal we're actually showing. When the selected journal is
   // archived/deleted, `activeJournal` falls back to activeJournals[0] this
   // render, but the raw `activeJournalId` state only catches up on the next
@@ -234,23 +238,24 @@ export function JournalProvider({ children }) {
     });
   }, [user]);
 
+  const value = useMemo(() => ({
+    journals: activeJournals,
+    archivedJournals,
+    activeJournal,
+    activeJournalId: effectiveJournalId,
+    setActiveJournalId,
+    addJournal,
+    updateJournal,
+    deleteJournal,
+    archiveJournal,
+    unarchiveJournal,
+    toggleStarJournal,
+    loading,
+  }), [activeJournals, archivedJournals, activeJournal, effectiveJournalId,
+    addJournal, updateJournal, deleteJournal, archiveJournal, unarchiveJournal, toggleStarJournal, loading]);
+
   return (
-    <JournalContext.Provider
-      value={{
-        journals: activeJournals,
-        archivedJournals,
-        activeJournal,
-        activeJournalId: effectiveJournalId,
-        setActiveJournalId,
-        addJournal,
-        updateJournal,
-        deleteJournal,
-        archiveJournal,
-        unarchiveJournal,
-        toggleStarJournal,
-        loading,
-      }}
-    >
+    <JournalContext.Provider value={value}>
       {children}
     </JournalContext.Provider>
   );
