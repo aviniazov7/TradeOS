@@ -40,7 +40,17 @@ service cloud.firestore {
       // On create, role/plan may only be the safe defaults.
       allow create: if request.auth != null && request.auth.uid == userId
         && request.resource.data.get('role', 'user') == 'user'
-        && request.resource.data.get('plan', 'free') == 'free';
+        && request.resource.data.get('plan', 'free') == 'free'
+        // Monetization fields are server-authoritative (Admin SDK grant /
+        // payment flow). A first-write client never sends them — AuthContext's
+        // defaultProfile omits plan/role/planAmount/planDays/planGrantedAt/
+        // planExpires — so pinning them to defaults on CREATE (the UPDATE path
+        // is already covered by noPrivilegeEscalation) stops a raw-SDK signup
+        // from fabricating revenue/expiry that would poison admin MRR/churn.
+        && request.resource.data.get('planAmount', 0) == 0
+        && request.resource.data.get('planDays', 0) == 0
+        && request.resource.data.get('planGrantedAt', '') == ''
+        && request.resource.data.get('planExpires', '') == '';
       // On update, either:
       // - the owner is editing their own non-privileged fields, or
       // - an admin is editing any field on any user (including plan/role).
