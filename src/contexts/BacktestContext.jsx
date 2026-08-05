@@ -1,4 +1,4 @@
-import { createContext, useContext, useState, useEffect, useCallback, useRef } from 'react';
+import { createContext, useContext, useState, useEffect, useCallback, useMemo, useRef } from 'react';
 import {
   subscribeToUserCollection,
   addToUserCollection,
@@ -130,7 +130,10 @@ export function BacktestProvider({ children }) {
     }
   }, [journals, activeJournalId]);
 
-  const activeJournal = journals.find((j) => j.id === activeJournalId) || journals[0] || null;
+  const activeJournal = useMemo(
+    () => journals.find((j) => j.id === activeJournalId) || journals[0] || null,
+    [journals, activeJournalId],
+  );
   // Expose the id of the journal actually shown, so consumers like
   // useBacktests(activeJournalId) never filter by a stale id for the render
   // before the auto-select effect catches up (deleted/archived journal).
@@ -165,19 +168,19 @@ export function BacktestProvider({ children }) {
     }
   }, [user, activeJournalId, journals]);
 
+  const value = useMemo(() => ({
+    journals,
+    activeJournal,
+    activeJournalId: effectiveJournalId,
+    setActiveJournalId,
+    addJournal,
+    updateJournal,
+    deleteJournal,
+    loading,
+  }), [journals, activeJournal, effectiveJournalId, addJournal, updateJournal, deleteJournal, loading]);
+
   return (
-    <BacktestContext.Provider
-      value={{
-        journals,
-        activeJournal,
-        activeJournalId: effectiveJournalId,
-        setActiveJournalId,
-        addJournal,
-        updateJournal,
-        deleteJournal,
-        loading,
-      }}
-    >
+    <BacktestContext.Provider value={value}>
       {children}
     </BacktestContext.Provider>
   );

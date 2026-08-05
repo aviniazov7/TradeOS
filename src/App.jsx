@@ -68,31 +68,21 @@ const WhalesPage = lazy(loadWhalesPage);
 const AdminPanel = lazy(loadAdminPanel);
 const DailyBriefing = lazy(loadDailyBriefing);
 
-// Preload all routes during idle time so tab switches feel instant
+// Preload only the two most-likely-next routes during idle — and skip entirely
+// on Save-Data / slow connections. This is an installable PWA, so eagerly
+// pulling all ~19 route chunks (incl. the 400KB charts + 130KB datepicker)
+// burned mobile data for pages a user might never open. Everything else still
+// lazy-loads on demand when its route is actually visited.
 if (typeof window !== 'undefined') {
-  const idle =
-    window.requestIdleCallback || ((cb) => setTimeout(cb, 1500));
-  idle(() => {
-    loadDashboard();
-    loadTradeJournal();
-    loadBacktestTracker();
-    loadDCATracker();
-    loadMentalityZone();
-    loadMentalStats();
-    loadMorningJournal();
-    loadEveningJournal();
-    loadPsychologicalJourney();
-    loadPlansPage();
-    loadProfilePage();
-    loadMarketOverview();
-    loadTradeAIPage();
-    loadNewsPage();
-    loadExchangeSettings();
-    loadWalletsPage();
-    loadWatchlistPage();
-    loadPremiumPage();
-    loadCheckoutPage();
-  });
+  const conn = navigator.connection;
+  const saveData = conn && (conn.saveData || /(^|-)2g$/.test(conn.effectiveType || ''));
+  if (!saveData) {
+    const idle = window.requestIdleCallback || ((cb) => setTimeout(cb, 1500));
+    idle(() => {
+      loadDashboard();
+      loadTradeJournal();
+    });
+  }
 }
 
 function MainApp() {
