@@ -1,4 +1,5 @@
 import { lazy, Suspense } from 'react';
+import { MotionConfig } from 'framer-motion';
 import { BrowserRouter, Routes, Route } from 'react-router-dom';
 import { AuthProvider } from './contexts/AuthContext';
 import { JournalProvider } from './contexts/JournalContext';
@@ -87,6 +88,10 @@ if (typeof window !== 'undefined') {
 
 function MainApp() {
   return (
+    // reducedMotion="user" makes every framer-motion animation respect the OS
+    // "reduce motion" setting (the CSS block in index.css can't reach JS-driven
+    // motion). Transforms/opacity are dropped; layout is preserved.
+    <MotionConfig reducedMotion="user">
     <AuthProvider>
       <JournalProvider>
         <BacktestProvider>
@@ -140,6 +145,7 @@ function MainApp() {
         </BacktestProvider>
       </JournalProvider>
     </AuthProvider>
+    </MotionConfig>
   );
 }
 

@@ -638,3 +638,18 @@ html.a11y-big-cursor,
 html.a11y-big-cursor * {
   cursor: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='48' height='48' viewBox='0 0 24 24'%3E%3Cpath d='M4 2 L4 20 L9 15 L12.5 22 L15 21 L11.5 14 L18 14 Z' fill='white' stroke='black' stroke-width='1.2'/%3E%3C/svg%3E") 4 2, auto !important;
 }
+
+/* Honor the OS "reduce motion" preference globally — not just the manual a11y
+   toggle above. Neutralizes CSS transitions/animations (the price ticker
+   marquee, spinners, the global `* { transition }`). framer-motion is handled
+   separately via <MotionConfig reducedMotion="user"> in App.jsx. */
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.001ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.001ms !important;
+    scroll-behavior: auto !important;
+  }
+}
