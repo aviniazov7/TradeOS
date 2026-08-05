@@ -53,12 +53,17 @@ export async function fetchProjectDescription(coinName, symbol, retries = 2) {
 }
 
 
+// Abort a streamed request if no chunk arrives for this long, so the UI never
+// hangs on "מעבד..." forever when a provider connection wedges open mid-stream.
+// Generous enough to cover a slow vision model's first token (reset per chunk).
+const STREAM_IDLE_TIMEOUT_MS = 45000;
+
 export async function sendMessageStream(messages, onChunk, retries = 2) {
   const auth = getAuth();
   const user = auth.currentUser;
   if (!user) throw new Error('יש להתחבר כדי להשתמש בצ׳אט');
 
-  const idToken = await user.getIdToken();
+  let idToken = await user.getIdToken();
 
   // Upload only the most recent image — the worker forwards a single image to
   // the provider anyway, so older ones would just inflate the request body.
@@ -69,67 +74,113 @@ export async function sendMessageStream(messages, onChunk, retries = 2) {
     return -1;
   })();
 
+  const payload = JSON.stringify({
+    messages: messages.map((msg, i) => ({
+      role: msg.role === 'user' ? 'user' : 'assistant',
+      text: msg.text,
+      ...(i === lastImageIdx ? { image: msg.image } : {}),
+    })),
+  });
+
   for (let attempt = 0; attempt <= retries; attempt++) {
-    const response = await fetch(WORKER_URL, {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        Authorization: `Bearer ${idToken}`,
-      },
-      body: JSON.stringify({
-        messages: messages.map((msg, i) => ({
-          role: msg.role === 'user' ? 'user' : 'assistant',
-          text: msg.text,
-          ...(i === lastImageIdx ? { image: msg.image } : {}),
-        })),
-      }),
-    });
+    const controller = new AbortController();
+    let idleTimer;
+    const armIdle = () => {
+      clearTimeout(idleTimer);
+      idleTimer = setTimeout(() => controller.abort(), STREAM_IDLE_TIMEOUT_MS);
+    };
+    armIdle();
 
-    if (response.ok) {
-      const reader = response.body.getReader();
-      const decoder = new TextDecoder();
-      let buffer = '';
+    try {
+      let response;
+      try {
+        response = await fetch(WORKER_URL, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${idToken}` },
+          body: payload,
+          signal: controller.signal,
+        });
+      } catch (e) {
+        if (e.name === 'AbortError') throw new Error('השרת לא הגיב בזמן. נסה שוב.');
+        throw new Error('בעיית תקשורת עם השרת. בדוק את החיבור ונסה שוב.');
+      }
 
-      while (true) {
-        const { done, value } = await reader.read();
-        if (done) break;
+      if (response.ok) {
+        // A 200 with no body can happen behind some proxies — treat as an error
+        // rather than throwing a raw English TypeError from getReader().
+        if (!response.body) throw new Error('לא התקבלה תשובה מהשרת');
+        const reader = response.body.getReader();
+        const decoder = new TextDecoder();
+        let buffer = '';
+        let received = 0;
 
-        buffer += decoder.decode(value, { stream: true });
-        const lines = buffer.split('\n');
-        buffer = lines.pop();
-
-        for (const line of lines) {
+        // Parse one SSE line. Throws if the worker signalled an error mid-stream
+        // (after it already sent 200), so a provider failure surfaces instead of
+        // ending as a silent blank result.
+        const processLine = (line) => {
           const trimmed = line.trim();
-          if (trimmed.startsWith('data: ')) {
-            const data = trimmed.slice(6);
-            if (data === '[DONE]') return;
-            try {
-              const parsed = JSON.parse(data);
-              const content = parsed.choices?.[0]?.delta?.content;
-              if (content) onChunk(content);
-            } catch { /* ignore parse errors */ }
+          if (!trimmed.startsWith('data:')) return;
+          const data = trimmed.slice(trimmed.indexOf(':') + 1).trim();
+          if (!data || data === '[DONE]') return;
+          let parsed;
+          try { parsed = JSON.parse(data); } catch { return; /* partial/non-JSON */ }
+          if (parsed.error) {
+            throw new Error(typeof parsed.error === 'string' ? parsed.error : 'שגיאת AI');
           }
-        }
-      }
-      return;
-    }
+          const content = parsed.choices?.[0]?.delta?.content;
+          if (content) { received += content.length; onChunk(content); }
+        };
 
-    // Read body once so we can distinguish quota-exceeded (don't retry) from
-    // a transient rate-limit (retry with backoff).
-    const err = response.ok ? null : await response.json().catch(() => ({}));
-    if (response.status === 429) {
-      if (err?.quotaExceeded) {
-        throw new Error(err.error || 'הגעת למכסה היומית. תוכל להמשיך מחר.');
+        while (true) {
+          const { done, value } = await reader.read();
+          if (done) break;
+          armIdle(); // a chunk arrived — reset the idle deadline
+          buffer += decoder.decode(value, { stream: true });
+          const lines = buffer.split('\n');
+          buffer = lines.pop();
+          for (const line of lines) processLine(line);
+        }
+        // Flush trailing bytes + the final un-terminated line so a clean close
+        // without a [DONE] marker doesn't silently drop the last delta.
+        buffer += decoder.decode();
+        if (buffer.trim()) processLine(buffer);
+
+        // 200 but nothing streamed = empty/error-only provider response (the
+        // worker already burned the quota charge on its side).
+        if (received === 0) throw new Error('לא התקבלה תשובה מה-AI. נסה שוב.');
+        return;
       }
-      if (attempt < retries) {
-        await new Promise((r) => setTimeout(r, (attempt + 1) * 3000));
-        continue;
+
+      const err = await response.json().catch(() => ({}));
+      if (response.status === 429) {
+        if (err?.quotaExceeded) {
+          throw new Error(err.error || 'הגעת למכסה היומית. תוכל להמשיך מחר.');
+        }
+        if (attempt < retries) {
+          await new Promise((r) => setTimeout(r, (attempt + 1) * 3000));
+          continue;
+        }
+        throw new Error('המערכת עמוסה. המתן כמה שניות ונסה שוב.');
       }
-      throw new Error('המערכת עמוסה. המתן כמה שניות ונסה שוב.');
+      if (response.status === 401) {
+        // One silent recovery: a rejected token (revocation / clock skew / key
+        // rotation) is retried once with a forced refresh before we tell the
+        // user to log in again.
+        if (attempt < retries) { idToken = await user.getIdToken(true); continue; }
+        throw new Error('יש להתחבר מחדש');
+      }
+      // 4xx/5xx — including a provider 404 the worker wrapped as 502. The raw
+      // code ("שגיאת AI: 404") is meaningless to a user, so show a friendly
+      // message and keep the detail in the console. A worker-authored human
+      // message (e.g. the Premium gate) is preserved.
+      if (err?.error && !/^שגיאת AI:/.test(err.error)) throw new Error(err.error);
+      console.error('AI worker error:', response.status, err?.error || '(no body)');
+      throw new Error('שירות ה-AI אינו זמין כרגע. נסה שוב בעוד רגע 🙏');
+    } catch (e) {
+      if (e.name === 'AbortError') throw new Error('התשובה נקטעה (timeout). נסה שוב.');
+      throw e;
+    } finally {
+      clearTimeout(idleTimer);
     }
-    if (response.status === 401) {
-      throw new Error('יש להתחבר מחדש');
-    }
-    throw new Error(err.error || `שגיאת AI: ${response.status}`);
   }
 }
