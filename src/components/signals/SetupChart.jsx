@@ -6,6 +6,27 @@ const fmtP = (p) => (p >= 1000 ? Math.round(p).toLocaleString('en-US') : p >= 1 
 // Fixed chart geometry (viewBox units); the SVG scales to its container width.
 const W = 320, H = 132, PAD_L = 6, PAD_R = 56, PAD_Y = 10;
 
+// Detect the trading-range boundaries (Wyckoff "gvulot gizra") from the bars —
+// the outer of the recent swing highs = resistance, swing lows = support. Drawn
+// as neutral horizontal lines, the way the range is marked by hand.
+function rangeLevels(bars) {
+  const w = 2, highs = [], lows = [];
+  for (let i = w; i < bars.length - w; i++) {
+    let isH = true, isL = true;
+    for (let j = i - w; j <= i + w; j++) {
+      if (j === i) continue;
+      if (bars[j].h >= bars[i].h) isH = false;
+      if (bars[j].l <= bars[i].l) isL = false;
+    }
+    if (isH) highs.push(bars[i].h);
+    if (isL) lows.push(bars[i].l);
+  }
+  if (!highs.length || !lows.length) return null;
+  const resistance = Math.max(...highs.slice(-8));
+  const support = Math.min(...lows.slice(-8));
+  return resistance > support ? { resistance, support } : null;
+}
+
 // A dashed horizontal level (entry / stop / target) with a price tag on the right.
 function AnnoLine({ yy, color, textColor, price }) {
   return (
@@ -38,7 +59,8 @@ export default function SetupChart({ pair, entryPrice, stopLoss, interval = '30m
   if (bars === null) return <div className="h-[120px] rounded-lg bg-bg-tertiary/40 animate-pulse" />;
   if (!bars.length) return null;
 
-  const extra = [entryPrice, stopLoss, tp].filter((v) => v != null);
+  const rng = rangeLevels(bars);
+  const extra = [entryPrice, stopLoss, tp, rng?.resistance, rng?.support].filter((v) => v != null);
   const hi = Math.max(...bars.map((b) => b.h), ...extra);
   const lo = Math.min(...bars.map((b) => b.l), ...extra);
   const range = hi - lo || 1;
@@ -62,6 +84,13 @@ export default function SetupChart({ pair, entryPrice, stopLoss, interval = '30m
         )}
         {eY != null && tY != null && (
           <rect x={PAD_L} y={Math.min(eY, tY)} width={zoneW} height={Math.abs(tY - eY)} fill="rgba(34,197,94,0.10)" />
+        )}
+        {/* Trading-range boundaries — support / resistance (the Wyckoff range) */}
+        {rng && (
+          <>
+            <line x1={PAD_L} y1={y(rng.resistance)} x2={W - PAD_R} y2={y(rng.resistance)} stroke="#8896ac" strokeWidth="0.8" opacity="0.65" />
+            <line x1={PAD_L} y1={y(rng.support)} x2={W - PAD_R} y2={y(rng.support)} stroke="#8896ac" strokeWidth="0.8" opacity="0.65" />
+          </>
         )}
         {/* OHLC bars: high-low stick, open tick left, close tick right */}
         {bars.map((b, i) => {
