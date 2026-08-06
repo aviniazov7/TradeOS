@@ -40,17 +40,17 @@ export default function SetupChartModal({ isOpen, onClose, signal }) {
           <div className="space-y-3">
             <div>
               <p dir="ltr" className="text-[12px] font-semibold text-text-muted mb-1 px-0.5">1D · Context</p>
-              <SetupChart {...common} interval="1d" vh={190} />
+              <SetupChart {...common} interval="1d" vh={190} showPosition={false} />
             </div>
             <div>
               <p dir="ltr" className="text-[12px] font-semibold text-text-muted mb-1 px-0.5">4H · Context</p>
-              <SetupChart {...common} interval="4h" vh={190} />
+              <SetupChart {...common} interval="4h" vh={190} showPosition={false} />
             </div>
           </div>
           {/* Right column — the entry timeframe, big */}
           <div>
             <p dir="ltr" className="text-[12px] font-semibold text-accent-primary mb-1 px-0.5">30M · Entry</p>
-            <SetupChart {...common} interval="30m" vh={400} />
+            <SetupChart {...common} interval="30m" vh={400} showPosition />
           </div>
         </div>
 
