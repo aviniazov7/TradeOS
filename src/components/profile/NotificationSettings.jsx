@@ -1,6 +1,6 @@
 import { useState, useEffect, useCallback } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
-import { Bell, BellRing, BellOff, Send, NotebookPen, BarChart3, CalendarClock } from 'lucide-react';
+import { Bell, BellRing, BellOff, Send, NotebookPen, BarChart3, CalendarClock, ChevronDown, Zap, Radar } from 'lucide-react';
 import toast from 'react-hot-toast';
 import { useAuth } from '../../contexts/AuthContext';
 import SelectDropdown from '../shared/SelectDropdown';
@@ -11,7 +11,9 @@ import {
 } from '../../services/pushService';
 
 // Push notifications are ON by default; the user can turn them off here.
-const DEFAULTS = { pushEnabled: true, tradeOpenAlerts: true };
+// wyckoffAlerts gates the setup-scanner pushes (enforced by the worker once the
+// scanner engine lands; the toggle is saved now so the preference is ready).
+const DEFAULTS = { pushEnabled: true, tradeOpenAlerts: true, wyckoffAlerts: true };
 
 // Journal reminder / daily summary / economic calendar defaults — mirrors the
 // worker's DEFAULT_SETTINGS (#219).
@@ -139,6 +141,7 @@ export default function NotificationSettings() {
     typeof Notification !== 'undefined' ? Notification.permission : 'denied'
   );
   const [busy, setBusy] = useState(false);
+  const [allOpen, setAllOpen] = useState(true);
   const supported = pushSupported();
 
   useEffect(() => {
@@ -269,10 +272,6 @@ export default function NotificationSettings() {
                 </p>
               ) : (
                 <>
-                  <div className="flex items-center gap-2 text-xs text-profit">
-                    <BellRing className="w-4 h-4" />
-                    <span>מופעל — תקבל התראה כשנפתחת עסקה חדשה, גם כשהאפליקציה סגורה</span>
-                  </div>
                   <button
                     onClick={test}
                     disabled={busy}
@@ -281,8 +280,56 @@ export default function NotificationSettings() {
                     <Send className="w-4 h-4" />
                     שלח התראת בדיקה
                   </button>
+
+                  {/* Collapsible list of EVERY alert type — turn any of them on/off. */}
                   <div className="pt-2 border-t border-border-primary/60">
-                    <ScheduleSection user={user} />
+                    <button
+                      onClick={() => setAllOpen((o) => !o)}
+                      className="w-full flex items-center justify-between py-1 cursor-pointer"
+                      aria-expanded={allOpen}
+                    >
+                      <span className="flex items-center gap-2 text-xs font-semibold text-text-secondary">
+                        <BellRing className="w-4 h-4 text-accent-primary" /> כל ההתראות
+                      </span>
+                      <ChevronDown className={`w-4 h-4 text-text-muted transition-transform ${allOpen ? 'rotate-180' : ''}`} />
+                    </button>
+                    <AnimatePresence initial={false}>
+                      {allOpen && (
+                        <motion.div
+                          initial={{ height: 0, opacity: 0 }}
+                          animate={{ height: 'auto', opacity: 1 }}
+                          exit={{ height: 0, opacity: 0 }}
+                          transition={{ duration: 0.2 }}
+                          className="overflow-hidden"
+                        >
+                          <div className="space-y-2.5 pt-2">
+                            {/* Trade alerts (Firestore setting). */}
+                            <div className="flex items-center justify-between gap-2 min-h-9">
+                              <button onClick={() => save({ tradeOpenAlerts: settings.tradeOpenAlerts === false })}
+                                className="flex items-center gap-2.5 text-sm text-text-primary cursor-pointer text-right">
+                                <Zap className={`w-4 h-4 shrink-0 ${settings.tradeOpenAlerts !== false ? 'text-accent-primary' : 'text-text-muted'}`} />
+                                <span>התראות עסקאות<span className="block text-[10px] text-text-muted font-normal">פתיחה / TP / SL מהבורסה המחוברת</span></span>
+                              </button>
+                              <button onClick={() => save({ tradeOpenAlerts: settings.tradeOpenAlerts === false })} className="cursor-pointer shrink-0" aria-label="התראות עסקאות">
+                                <MiniToggle on={settings.tradeOpenAlerts !== false} />
+                              </button>
+                            </div>
+                            {/* Setup scanner (Firestore setting; the worker enforces it once the engine lands). */}
+                            <div className="flex items-center justify-between gap-2 min-h-9">
+                              <button onClick={() => save({ wyckoffAlerts: settings.wyckoffAlerts === false })}
+                                className="flex items-center gap-2.5 text-sm text-text-primary cursor-pointer text-right">
+                                <Radar className={`w-4 h-4 shrink-0 ${settings.wyckoffAlerts !== false ? 'text-accent-primary' : 'text-text-muted'}`} />
+                                <span>סורק סטאפים (ויקוף)<span className="block text-[10px] text-text-muted font-normal">LPS / LPSY על המטבעות שתייגת</span></span>
+                              </button>
+                              <button onClick={() => save({ wyckoffAlerts: settings.wyckoffAlerts === false })} className="cursor-pointer shrink-0" aria-label="סורק סטאפים">
+                                <MiniToggle on={settings.wyckoffAlerts !== false} />
+                              </button>
+                            </div>
+                            <ScheduleSection user={user} />
+                          </div>
+                        </motion.div>
+                      )}
+                    </AnimatePresence>
                   </div>
                 </>
               )}
