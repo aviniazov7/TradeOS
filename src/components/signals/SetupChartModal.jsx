@@ -28,17 +28,17 @@ export default function SetupChartModal({ isOpen, onClose, signal }) {
           {/* Left column — higher-timeframe context */}
           <div className="space-y-3">
             <div>
-              <p className="text-[12px] font-semibold text-text-muted mb-1 px-0.5">יומי · 1D — הקשר</p>
+              <p dir="ltr" className="text-[12px] font-semibold text-text-muted mb-1 px-0.5">1D · Context</p>
               <SetupChart {...common} interval="1d" vh={190} />
             </div>
             <div>
-              <p className="text-[12px] font-semibold text-text-muted mb-1 px-0.5">4 שעות · 4H — הקשר</p>
+              <p dir="ltr" className="text-[12px] font-semibold text-text-muted mb-1 px-0.5">4H · Context</p>
               <SetupChart {...common} interval="4h" vh={190} />
             </div>
           </div>
           {/* Right column — the entry timeframe, big */}
           <div>
-            <p className="text-[12px] font-semibold text-accent-primary mb-1 px-0.5">30 דקות · 30M — הכניסה</p>
+            <p dir="ltr" className="text-[12px] font-semibold text-accent-primary mb-1 px-0.5">30M · Entry</p>
             <SetupChart {...common} interval="30m" vh={400} />
           </div>
         </div>
