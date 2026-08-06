@@ -41,7 +41,6 @@ import ArchiveAnimation from './ArchiveAnimation';
 import EmptyState from '../shared/EmptyState';
 import ExchangeSettings from '../exchange/ExchangeSettings';
 import ExchangeProposals from './ExchangeProposals';
-import WatchlistPage from '../watchlist/WatchlistPage';
 import TradeShareModal from './TradeShareModal';
 import JournalSkeleton from './JournalSkeleton';
 import JournalFormModal from './JournalFormModal';
@@ -598,14 +597,6 @@ export default function TradeJournal() {
               >
                 חיבור בורסאות
               </button>
-              <button
-                onClick={() => setTab('watchlist')}
-                className={`h-9 inline-flex items-center gap-1.5 px-3.5 text-sm font-medium rounded-lg transition-colors cursor-pointer whitespace-nowrap ${
-                  tab === 'watchlist' ? 'bg-accent-primary/15 text-accent-primary' : 'text-text-muted hover:text-text-primary hover:bg-bg-tertiary'
-                }`}
-              >
-                <Star className="w-3.5 h-3.5" /> מעקב
-              </button>
             </div>
           </div>
 
@@ -661,14 +652,6 @@ export default function TradeJournal() {
               }`}
             >
               בורסאות
-            </button>
-            <button
-              onClick={() => setTab('watchlist')}
-              className={`px-2.5 py-1.5 text-xs font-medium rounded-lg transition-colors cursor-pointer whitespace-nowrap flex-shrink-0 inline-flex items-center gap-1 ${
-                tab === 'watchlist' ? 'bg-accent-primary/15 text-accent-primary' : 'text-text-muted hover:text-text-primary hover:bg-bg-tertiary'
-              }`}
-            >
-              <Star className="w-3 h-3" /> מעקב
             </button>
           </div>
         </div>
@@ -1062,10 +1045,6 @@ export default function TradeJournal() {
         <div className="mt-2">
           <ExchangeSettings journalId={activeJournalId} />
         </div>
-      )}
-
-      {tab === 'watchlist' && (
-        <div className="mt-2"><WatchlistPage embedded /></div>
       )}
 
       <TradeForm isOpen={formOpen} onClose={handleCloseForm} trade={editingTrade} onSave={handleSave}
