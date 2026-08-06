@@ -6,6 +6,17 @@ const fmtP = (p) => (p >= 1000 ? Math.round(p).toLocaleString('en-US') : p >= 1 
 // Fixed horizontal geometry (viewBox units); height varies (see `big`).
 const W = 320, PAD_L = 6, PAD_R = 56, PAD_Y = 10;
 
+// The recent trading-range boundaries — the high/low of the last ~24 bars (the
+// ACTIVE range, so an older spike doesn't blow the levels out). Drawn as the
+// horizontal support/resistance lines the trader marks by hand.
+function rangeLevels(bars) {
+  const recent = bars.slice(-24);
+  if (recent.length < 6) return null;
+  const resistance = Math.max(...recent.map((b) => b.h));
+  const support = Math.min(...recent.map((b) => b.l));
+  return resistance > support ? { resistance, support } : null;
+}
+
 // A dashed horizontal level (entry / stop / target) with a price tag on the right.
 function AnnoLine({ yy, color, textColor, price }) {
   return (
@@ -17,10 +28,10 @@ function AnnoLine({ yy, color, textColor, price }) {
   );
 }
 
-// Annotated OHLC BAR chart (bars, not candlesticks) with a TradingView-style
-// position tool: the entry / stop / target levels, a RED risk box (entry↔stop)
-// and a GREEN reward box (entry↔target). Teal = up bar, red = down bar.
-// `big` renders a taller chart (used for the entry timeframe in the modal).
+// Annotated OHLC BAR chart in the trader's own style: WHITE bars (not colored
+// candlesticks), the horizontal support/resistance range lines, and a position
+// tool — entry / stop / target levels with a red risk box + green reward box.
+// `big` renders a taller chart (the entry timeframe in the modal).
 export default function SetupChart({ pair, entryPrice, stopLoss, interval = '30m', label, tps = [], big = false }) {
   const [bars, setBars] = useState(null);
   const tp = Array.isArray(tps) && tps.length ? Number(tps[0]) : null;
@@ -40,7 +51,8 @@ export default function SetupChart({ pair, entryPrice, stopLoss, interval = '30m
   if (bars === null) return <div className="rounded-lg bg-bg-tertiary/40 animate-pulse" style={{ height: big ? 240 : 118 }} />;
   if (!bars.length) return null;
 
-  const extra = [entryPrice, stopLoss, tp].filter((v) => v != null);
+  const rng = rangeLevels(bars);
+  const extra = [entryPrice, stopLoss, tp, rng?.resistance, rng?.support].filter((v) => v != null);
   const hi = Math.max(...bars.map((b) => b.h), ...extra);
   const lo = Math.min(...bars.map((b) => b.l), ...extra);
   const range = hi - lo || 1;
@@ -56,22 +68,27 @@ export default function SetupChart({ pair, entryPrice, stopLoss, interval = '30m
   const zoneW = W - PAD_R - PAD_L;
 
   return (
-    <div className="rounded-lg bg-bg-primary/50 border border-border-primary/60 overflow-hidden">
+    <div className="rounded-lg bg-black overflow-hidden">
       <svg viewBox={`0 0 ${W} ${H}`} className="w-full block">
         {/* Position tool: risk box (entry↔stop) + reward box (entry↔target) */}
         {eY != null && sY != null && (
-          <rect x={PAD_L} y={Math.min(eY, sY)} width={zoneW} height={Math.abs(sY - eY)} fill="rgba(244,63,94,0.10)" />
+          <rect x={PAD_L} y={Math.min(eY, sY)} width={zoneW} height={Math.abs(sY - eY)} fill="rgba(244,63,94,0.12)" />
         )}
         {eY != null && tY != null && (
-          <rect x={PAD_L} y={Math.min(eY, tY)} width={zoneW} height={Math.abs(tY - eY)} fill="rgba(34,197,94,0.10)" />
+          <rect x={PAD_L} y={Math.min(eY, tY)} width={zoneW} height={Math.abs(tY - eY)} fill="rgba(34,197,94,0.12)" />
         )}
-        {/* OHLC bars: high-low stick, open tick left, close tick right */}
+        {/* Range support/resistance — the horizontal lines the trader marks */}
+        {rng && (
+          <>
+            <line x1={PAD_L} y1={y(rng.resistance)} x2={W - PAD_R} y2={y(rng.resistance)} stroke="#e2e8f0" strokeWidth="0.9" opacity="0.85" />
+            <line x1={PAD_L} y1={y(rng.support)} x2={W - PAD_R} y2={y(rng.support)} stroke="#e2e8f0" strokeWidth="0.9" opacity="0.85" />
+          </>
+        )}
+        {/* WHITE OHLC bars: high-low stick, open tick left, close tick right */}
         {bars.map((b, i) => {
-          const up = b.c >= b.o;
-          const col = up ? '#26a69a' : '#ef5350';
           const x0 = cx(i);
           return (
-            <g key={i} stroke={col} strokeWidth="1.15" strokeLinecap="round">
+            <g key={i} stroke="#e6edf6" strokeWidth="1" strokeLinecap="round">
               <line x1={x0} y1={y(b.h)} x2={x0} y2={y(b.l)} />
               <line x1={x0 - tick} y1={y(b.o)} x2={x0} y2={y(b.o)} />
               <line x1={x0} y1={y(b.c)} x2={x0 + tick} y2={y(b.c)} />

@@ -22,7 +22,9 @@ export default function SetupChartModal({ isOpen, onClose, signal }) {
         </p>
         {notes && <p className="text-[11px] text-text-muted leading-relaxed text-center">{notes}</p>}
 
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+        {/* dir=ltr so the layout matches the trader's TradingView grid: HTF
+            context (1D + 4h) on the LEFT, the entry timeframe (30m) big on the RIGHT. */}
+        <div dir="ltr" className="grid grid-cols-1 md:grid-cols-2 gap-3">
           {/* Left column — higher-timeframe context */}
           <div className="space-y-3">
             <div>
