@@ -1576,7 +1576,233 @@ async function handleCron(env) {
     checkChurnedPremium(env),
     checkWeeklyDigest(env),
     refreshNewsDigest(env),
+    scanWyckoffSetups(env),
   ]);
+}
+
+// ==================== Wyckoff setup scanner ===================================
+// Scans each premium user's bias-tagged watchlist coins on the 30m timeframe and
+// pushes when their LPS (long) / LPSY (short) entry trigger fires. The USER
+// supplies the bias by tagging the coin long/short (their HTF read); the engine
+// finds the low-timeframe trigger. Rule-based + deterministic.
+//
+// GATED OFF by default: it does nothing unless env.SCANNER_ENABLED === 'true', so
+// the code can ship inert (no scanning, no cost, no pushes) until enabled.
+const FS_BASE = `https://firestore.googleapis.com/v1/projects/${FIREBASE_PROJECT_ID}/databases/(default)`;
+const SCAN_MIN_CONFIDENCE = 60;   // don't alert below this score
+const SCAN_MAX_PER_TICK = 60;     // bound provider calls per cron tick
+
+const scanAvg = (a) => (a.length ? a.reduce((s, x) => s + x, 0) / a.length : 0);
+const scanRound = (x) => {
+  const a = Math.abs(x);
+  if (a >= 100) return Math.round(x * 100) / 100;
+  if (a >= 1) return Math.round(x * 1000) / 1000;
+  return Math.round(x * 1e6) / 1e6;
+};
+
+// Fetch OHLCV candles server-side via the same Bybit→Binance klines proxy the
+// app uses. Returns oldest-first [{t,o,h,l,c,v}] or null (unsupported pair / error).
+async function scanFetchCandles(symbol, interval, limit) {
+  const raw = await bybitAsBinance('klines', new URLSearchParams({ symbol, interval, limit: String(limit) }));
+  if (!raw) return null;
+  let arr;
+  try { arr = JSON.parse(raw); } catch { return null; }
+  if (!Array.isArray(arr) || arr.length < 40) return null;
+  return arr.map((k) => ({ t: Number(k[0]), o: +k[1], h: +k[2], l: +k[3], c: +k[4], v: +k[5] }));
+}
+
+// Simple RSI over the last `period` deltas — used only as a confirmation bonus.
+function scanRSI(closes, period = 14) {
+  if (closes.length < period + 1) return null;
+  let gain = 0, loss = 0;
+  for (let i = closes.length - period; i < closes.length; i++) {
+    const d = closes[i] - closes[i - 1];
+    if (d >= 0) gain += d; else loss -= d;
+  }
+  if (loss === 0) return 100;
+  const rs = gain / loss;
+  return 100 - 100 / (1 + rs);
+}
+
+// Swing pivots: a high/low that is the extreme within ±width bars.
+function scanPivots(candles, width) {
+  const highs = [], lows = [];
+  for (let i = width; i < candles.length - width; i++) {
+    let isH = true, isL = true;
+    for (let j = i - width; j <= i + width; j++) {
+      if (j === i) continue;
+      if (candles[j].h >= candles[i].h) isH = false;
+      if (candles[j].l <= candles[i].l) isL = false;
+    }
+    if (isH) highs.push({ i, p: candles[i].h });
+    if (isL) lows.push({ i, p: candles[i].l });
+  }
+  return { highs, lows };
+}
+
+// Detect the entry trigger for a user-supplied bias on the 30m timeframe.
+// SHORT → LPSY: a lower-high, then a fresh close BELOW the base low it rallied
+//   from; stop above the high. LONG → LPS: a higher-low, then a fresh close ABOVE
+//   the reaction high; stop below the low. Volume-into-reaction and RSI add to a
+//   confidence score. Returns a setup object or null.
+function detectWyckoffTrigger(ltf, bias) {
+  const n = ltf.length;
+  if (n < 40) return null;
+  const { highs, lows } = scanPivots(ltf, 2);
+  const closes = ltf.map((c) => c.c);
+  const lastClose = closes[n - 1];
+  const avgVol = scanAvg(ltf.slice(-20).map((c) => c.v));
+  const rsi = scanRSI(closes, 14);
+
+  if (bias === 'short') {
+    if (highs.length < 2) return null;
+    const H = highs[highs.length - 1];
+    const prevH = highs[highs.length - 2];
+    if (!(H.p <= prevH.p * 1.002)) return null;        // must be a lower(≈) high — the rally failed
+    if (n - 1 - H.i > 14) return null;                 // LPSY must be recent
+    let neckline = Infinity;                            // base low the failed rally sat on
+    for (let i = prevH.i; i <= H.i; i++) neckline = Math.min(neckline, ltf[i].l);
+    if (!(lastClose < neckline)) return null;           // trigger: closed below the base
+    if (closes[n - 4] < neckline) return null;          // must be a FRESH break (not already broken)
+    const volInto = scanAvg(ltf.slice(Math.max(0, H.i - 3), H.i + 1).map((c) => c.v));
+    let conf = 55;
+    if (volInto < avgVol) conf += 15;                   // weak rally into the high = supply present
+    if (rsi != null && rsi < 48) conf += 15;            // bearish momentum (RSI bonus)
+    return {
+      direction: 'short', level: scanRound(lastClose), stop: scanRound(H.p),
+      confidence: Math.min(conf, 95),
+      note: `LPSY 30m — שיא נמוך יותר ב-${scanRound(H.p)}, נר נסגר מתחת ל-${scanRound(neckline)}`,
+    };
+  }
+
+  if (bias === 'long') {
+    if (lows.length < 2) return null;
+    const L = lows[lows.length - 1];
+    const prevL = lows[lows.length - 2];
+    if (!(L.p >= prevL.p * 0.998)) return null;        // higher(≈) low — demand holding
+    if (n - 1 - L.i > 14) return null;
+    let neckline = -Infinity;                           // reaction high to break
+    for (let i = prevL.i; i <= L.i; i++) neckline = Math.max(neckline, ltf[i].h);
+    if (!(lastClose > neckline)) return null;
+    if (closes[n - 4] > neckline) return null;          // fresh break
+    const volInto = scanAvg(ltf.slice(Math.max(0, L.i - 3), L.i + 1).map((c) => c.v));
+    let conf = 55;
+    if (volInto < avgVol) conf += 15;                   // weak dip = demand present
+    if (rsi != null && rsi > 52) conf += 15;            // bullish momentum
+    return {
+      direction: 'long', level: scanRound(lastClose), stop: scanRound(L.p),
+      confidence: Math.min(conf, 95),
+      note: `LPS 30m — שפל גבוה יותר ב-${scanRound(L.p)}, נר נסגר מעל ${scanRound(neckline)}`,
+    };
+  }
+  return null;
+}
+
+// Read a user's watchlist and keep only bias-tagged coins (the scan universe).
+async function scanReadWatchlist(env, token, uid) {
+  const res = await fetch(`${FS_BASE}/documents/users/${uid}/watchlist?pageSize=100`, {
+    headers: { Authorization: `Bearer ${token}` },
+  });
+  if (!res.ok) return [];
+  const data = await res.json();
+  const out = [];
+  for (const doc of data.documents || []) {
+    const f = doc.fields || {};
+    const bias = f.bias?.stringValue;
+    const symbol = f.symbol?.stringValue;
+    if ((bias === 'long' || bias === 'short') && symbol) out.push({ symbol, bias });
+  }
+  return out;
+}
+
+// wyckoffAlerts toggle (settings/notifications). Defaults ON when unset/unreadable.
+async function scanWyckoffAlertsOn(env, token, uid) {
+  try {
+    const res = await fetch(`${FS_BASE}/documents/users/${uid}/settings/notifications`, {
+      headers: { Authorization: `Bearer ${token}` },
+    });
+    if (!res.ok) return true;
+    const data = await res.json();
+    return data.fields?.wyckoffAlerts?.booleanValue !== false;
+  } catch { return true; }
+}
+
+// Write a detected setup into the user's `signals` feed (admin write bypasses
+// rules). Shape matches the SignalsPage cards + a `source:'scanner'` marker.
+async function scanWriteSignal(env, token, uid, item, setup) {
+  const nowIso = new Date(Date.now()).toISOString();
+  const fields = {
+    pair: { stringValue: `${item.symbol.toUpperCase()}USDT` },
+    direction: { stringValue: setup.direction },
+    timeframe: { stringValue: '30m' },
+    entryPrice: { doubleValue: setup.level },
+    stopLoss: { doubleValue: setup.stop },
+    status: { stringValue: 'active' },
+    source: { stringValue: 'scanner' },
+    confidence: { integerValue: String(setup.confidence) },
+    notes: { stringValue: setup.note },
+    createdAt: { timestampValue: nowIso },
+    updatedAt: { timestampValue: nowIso },
+  };
+  await fetch(`${FS_BASE}/documents/users/${uid}/signals`, {
+    method: 'POST',
+    headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
+    body: JSON.stringify({ fields }),
+  });
+}
+
+async function scanWyckoffSetups(env) {
+  if (env.SCANNER_ENABLED !== 'true') return;          // FLAG OFF → inert, no work at all
+  if (!env.FIREBASE_SERVICE_ACCOUNT) return;
+  let users;
+  try { users = await listAllUsersAdmin(env); } catch { return; }
+  let token;
+  try { token = await getFirebaseAdminToken(env); } catch { return; }
+  const now = Date.now();
+  const isPremium = (u) => u.role === 'admin'
+    || (u.plan === 'premium' && (!u.planExpires || new Date(u.planExpires).getTime() > now));
+
+  const candleCache = new Map();                       // symbol → 30m candles (dedup fetches this tick)
+  let scans = 0;
+
+  for (const u of users) {
+    if (!isPremium(u)) continue;                        // scanner is Premium-only
+    if (scans >= SCAN_MAX_PER_TICK) break;
+    let watch;
+    try { watch = await scanReadWatchlist(env, token, u.uid); } catch { continue; }
+    if (!watch.length) continue;
+    let alertsOn = null;                                // read the toggle lazily, only if a setup fires
+
+    for (const item of watch) {
+      if (scans >= SCAN_MAX_PER_TICK) break;
+      const sym = `${String(item.symbol).toUpperCase()}USDT`;
+      let ltf = candleCache.get(sym);
+      if (ltf === undefined) { ltf = await scanFetchCandles(sym, '30m', 200); candleCache.set(sym, ltf); scans++; }
+      if (!ltf) continue;
+
+      const setup = detectWyckoffTrigger(ltf, item.bias);
+      if (!setup || setup.confidence < SCAN_MIN_CONFIDENCE) continue;
+
+      // Dedup: one alert per (user, coin, setup). The signature = direction+stop
+      // (stable for a given setup); a genuinely new setup has a new stop.
+      const dedupKey = `wyk:${u.uid}:${sym}`;
+      const sig = `${setup.direction}:${setup.stop}`;
+      if ((await env.ALERTS_KV.get(dedupKey)) === sig) continue;
+      await env.ALERTS_KV.put(dedupKey, sig, { expirationTtl: 12 * 3600 });
+
+      await scanWriteSignal(env, token, u.uid, item, setup).catch(() => {});
+      if (alertsOn === null) alertsOn = await scanWyckoffAlertsOn(env, token, u.uid);
+      if (alertsOn) {
+        const dir = setup.direction === 'short' ? 'שורט' : 'לונג';
+        await sendPushToUser(env, u.uid, {
+          title: `🎯 סטאפ ${dir}: ${String(item.symbol).toUpperCase()}`,
+          body: `${setup.note} · ביטחון ${setup.confidence} · סטופ ${setup.stop}`,
+          url: '/scanner',
+          tag: `wyk-${sym}`,
+        }).catch(() => {});
+      }
+    }
+  }
 }
 
 // ==================== AI Chat — Groq Proxy ====================
