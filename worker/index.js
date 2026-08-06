@@ -1583,16 +1583,19 @@ async function handleCron(env) {
 
 const GROQ_URL = 'https://api.groq.com/openai/v1/chat/completions';
 const GROQ_MODEL = 'llama-3.3-70b-versatile';
-// llama-3.3 is text-only; chart-image requests go to a vision model.
-// Groq DECOMMISSIONED the old Llama 4 Scout vision model (2026-07-17) → it began
-// returning 404 "model decommissioned", which broke chart analysis AND the coach
-// text-fallback (both pointed at it). Primary is now Llama 4 Maverick — still
-// active/production, same family as Scout so it's a drop-in (same image_url
-// parts, no reasoning-token preamble). Fallback is Qwen 3.6 27B (Groq's
-// documented Scout replacement, a *preview* model). The /ai-chat handler flips
-// to the fallback automatically on a 404, so a future decommission self-heals.
-const GROQ_VISION_MODEL = 'meta-llama/llama-4-maverick-17b-128e-instruct';
+// Chart-image requests go to a vision model. Groq DECOMMISSIONED BOTH Llama 4
+// vision models — Scout (2026-07-17) and Maverick (2026-03-09) — each began
+// returning 404. Qwen 3.6 27B is Groq's current (and only) documented vision
+// model, so it serves as BOTH primary and fallback (no other Groq vision id
+// exists; a Gemini-vision fallback is the future resilience). Qwen is a REASONING
+// model that emits a <think>…</think> monologue by default, so its calls pass
+// reasoning_effort:'none' (see reasoningOpt) to return ONLY the clean final
+// answer — otherwise the chart read shows the model's English thinking.
+const GROQ_VISION_MODEL = 'qwen/qwen3.6-27b';
 const GROQ_VISION_FALLBACK_MODEL = 'qwen/qwen3.6-27b';
+// Suppress Qwen's reasoning output. Added ONLY for the Qwen vision model — the
+// Llama text models get {} back (the param is never sent to them).
+const reasoningOpt = (model) => (model === GROQ_VISION_MODEL ? { reasoning_effort: 'none' } : {});
 
 // Non-streaming Groq call with 429 resilience. The shared free-tier key has
 // tight per-minute token budgets on the 70B (and one key serves chat + coach +
@@ -1611,7 +1614,7 @@ async function groqFetchWithRetry(env, payload) {
   const call = (model) => fetch(GROQ_URL, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${env.GROQ_API_KEY}` },
-    body: JSON.stringify({ ...payload, model }),
+    body: JSON.stringify({ ...payload, model, ...reasoningOpt(model) }),
   });
   let res;
   for (const wait of [0, 2500, 5000]) {
@@ -1837,6 +1840,7 @@ Volume: גבוה+עלייה=ביקוש חזק; גבוה+ירידה=היצע חז
 - העדף תמיד אמירות ספציפיות לגרף הזה על פני ניסוחים כלליים שנכונים לכל גרף.
 
 ## הנחיות תשובה
+- אל תפלוט תהליך חשיבה, הקדמות, או תגיות <think></think> — התחל ישר בתשובה הסופית בעברית, בפורמט הנדרש. בלי טקסט באנגלית מלבד מונחים מקצועיים בסוגריים. בלי כוכביות מיותרות; לכותרות השתמש בפורמט **כותרת** ולתבליטים בתו • בלבד.
 - ענה תמיד בעברית, בעומק, עם דוגמאות מעשיות מקריפטו ומניות.
 - הסבר את הלוגיקה: למה זה קורה, באיזו פאזה (A–E), ומה האיש המורכב עושה ולמה.
 - מונחים מקצועיים: עברית + המונח באנגלית בסוגריים.
@@ -1998,7 +2002,7 @@ async function handleAIChat(request, env, cors) {
         const callGroq = () => fetch(GROQ_URL, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${env.GROQ_API_KEY}` },
-          body: JSON.stringify({ model: hasImage ? GROQ_VISION_MODEL : GROQ_MODEL, messages: apiMessages, temperature: 0.7, max_tokens: 1500, stream: true, stream_options: { include_usage: true } }),
+          body: JSON.stringify({ model: hasImage ? GROQ_VISION_MODEL : GROQ_MODEL, ...reasoningOpt(hasImage ? GROQ_VISION_MODEL : GROQ_MODEL), messages: apiMessages, temperature: 0.7, max_tokens: 1500, stream: true, stream_options: { include_usage: true } }),
         });
         const delays = [0, 2000, 4000]; // immediate, +2s, +4s = ~6s total worst-case
         let groqFallback;
@@ -2039,6 +2043,7 @@ async function handleAIChat(request, env, cors) {
       },
       body: JSON.stringify({
         model,
+        ...reasoningOpt(model),
         messages: apiMessages,
         temperature: 0.7,
         max_tokens: 1500,
