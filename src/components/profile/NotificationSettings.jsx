@@ -141,7 +141,7 @@ export default function NotificationSettings() {
     typeof Notification !== 'undefined' ? Notification.permission : 'denied'
   );
   const [busy, setBusy] = useState(false);
-  const [allOpen, setAllOpen] = useState(true);
+  const [allOpen, setAllOpen] = useState(false);
   const supported = pushSupported();
 
   useEffect(() => {
