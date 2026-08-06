@@ -37,9 +37,6 @@ function safeHtml(raw) {
   return DOMPurify.sanitize(raw, SANITIZE_CONFIG);
 }
 
-// A numbered section header ("1. מבנה כללי:") or a markdown "### Title".
-const isHeader = (line) => /^\s*\*{0,2}\s*\d+\.\s+\S/.test(line) || /^#{1,3}\s/.test(line);
-
 export function formatAIText(text) {
   // Safety net for reasoning models (Qwen vision): strip any <think>…</think>
   // monologue — and a stray unclosed <think> while streaming — so the chart read
@@ -53,8 +50,34 @@ export function formatAIText(text) {
   return lines.map((line, i) => {
     if (!line.trim()) return <br key={i} />;
 
-    if (isHeader(line)) {
-      const stripped = line.replace(/^#{1,3}\s/, '').replace(/^\s*\*{2}/, '').replace(/\*{2}\s*$/, '');
+    // Markdown "### Title" — a short standalone header → full accent.
+    if (/^#{1,3}\s/.test(line)) {
+      const stripped = line.replace(/^#{1,3}\s/, '');
+      return (
+        <p
+          key={i}
+          className="font-bold text-accent-primary mt-3 mb-1.5 text-[13px] border-r-2 border-accent-primary/40 pr-2"
+          dangerouslySetInnerHTML={{ __html: safeHtml(buildLineHtml(stripped)) }}
+        />
+      );
+    }
+
+    // Numbered section. The model usually writes the whole section on ONE line
+    // ("1. מבנה כללי — <content>"), so accent ONLY the title and render the body
+    // in normal text — otherwise the entire paragraph turned accent-blue.
+    const numMatch = line.match(/^(\s*\*{0,2}\s*\d+\.\s+.+?)\s+[—–]\s+([\s\S]+)$/);
+    if (numMatch) {
+      const title = numMatch[1].replace(/^\s*\*{2}/, '').replace(/\*{2}\s*$/, '');
+      return (
+        <p key={i} className="mt-3 mb-1 text-[13px] leading-relaxed border-r-2 border-accent-primary/40 pr-2">
+          <span className="font-bold text-accent-primary">{title} — </span>
+          <span className="text-text-secondary" dangerouslySetInnerHTML={{ __html: safeHtml(buildLineHtml(numMatch[2])) }} />
+        </p>
+      );
+    }
+    // A bare numbered title with no inline body → short header, full accent.
+    if (/^\s*\*{0,2}\s*\d+\.\s+\S/.test(line)) {
+      const stripped = line.replace(/^\s*\*{2}/, '').replace(/\*{2}\s*$/, '');
       return (
         <p
           key={i}
