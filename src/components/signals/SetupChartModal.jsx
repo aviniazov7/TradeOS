@@ -1,3 +1,4 @@
+import { Radar } from 'lucide-react';
 import Modal from '../shared/Modal';
 import SetupChart from './SetupChart';
 
@@ -8,14 +9,24 @@ const fmt = (p) => (p == null ? '—' : p >= 1000 ? Math.round(p).toLocaleString
 // timeframe (30m) big on the right.
 export default function SetupChartModal({ isOpen, onClose, signal }) {
   if (!signal) return null;
-  const { pair, direction, entryPrice, stopLoss, tps = [], notes } = signal;
+  const { pair, direction, entryPrice, stopLoss, tps = [], notes, source, confidence } = signal;
   const isLong = direction === 'long';
   const label = isLong ? 'LPS' : 'LPSY';
   const common = { pair, entryPrice, stopLoss, tps, label };
+  const isScanner = source === 'scanner';
+  const conf = confidence != null ? Number(confidence) : null;
+  const scannerLabel = conf != null ? `אותר אוטומטית · ביטחון ${conf}` : 'אותר אוטומטית';
 
   return (
     <Modal isOpen={isOpen} onClose={onClose} title={`${pair} · ${isLong ? 'לונג' : 'שורט'}`} maxWidth="max-w-5xl">
       <div className="space-y-3">
+        {isScanner && (
+          <div className="flex justify-center">
+            <span className="flex items-center gap-1 text-[11px] font-bold px-2.5 py-1 rounded-full bg-accent-primary/15 text-accent-primary">
+              <Radar className="w-3 h-3" /> {scannerLabel}
+            </span>
+          </div>
+        )}
         <p className="text-[12px] text-text-secondary bg-bg-tertiary/50 rounded-lg px-3 py-2 text-center">
           🎯 אזור כניסה סביב <span className="font-bold num-mono text-accent-primary">{fmt(entryPrice)}</span>
           {stopLoss != null && <> · סטופ <span className="font-bold num-mono text-loss">{fmt(stopLoss)}</span></>}

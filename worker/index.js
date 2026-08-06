@@ -1586,8 +1586,8 @@ async function handleCron(env) {
 // supplies the bias by tagging the coin long/short (their HTF read); the engine
 // finds the low-timeframe trigger. Rule-based + deterministic.
 //
-// GATED OFF by default: it does nothing unless env.SCANNER_ENABLED === 'true', so
-// the code can ship inert (no scanning, no cost, no pushes) until enabled.
+// Gated by env.SCANNER_ENABLED — fails closed (only the exact string 'true'
+// activates it). Currently ENABLED on the prod cron worker (worker/wrangler.toml).
 const FS_BASE = `https://firestore.googleapis.com/v1/projects/${FIREBASE_PROJECT_ID}/databases/(default)`;
 const SCAN_MIN_CONFIDENCE = 60;   // don't alert below this score
 // Global hard cap on klines fetches per cron tick — kept well under the free
@@ -1703,7 +1703,7 @@ function detectWyckoffTrigger(ltf, bias) {
 
 // Read a user's watchlist and keep only bias-tagged coins (the scan universe).
 async function scanReadWatchlist(env, token, uid) {
-  const res = await fetch(`${FS_BASE}/documents/users/${uid}/watchlist?pageSize=100`, {
+  const res = await fetch(`${FS_BASE}/documents/users/${encodeURIComponent(uid)}/watchlist?pageSize=100`, {
     headers: { Authorization: `Bearer ${token}` },
   });
   if (!res.ok) return [];
@@ -1715,13 +1715,16 @@ async function scanReadWatchlist(env, token, uid) {
     const symbol = f.symbol?.stringValue;
     if ((bias === 'long' || bias === 'short') && symbol) out.push({ symbol, bias });
   }
-  return out;
+  // Enforce the 15-tag scan cap SERVER-SIDE. The client cap (WatchlistPage) is
+  // bypassable via the raw SDK, so without this one account could tag 100 coins
+  // and monopolize the per-tick scan budget, starving other premium users.
+  return out.slice(0, 15);
 }
 
 // wyckoffAlerts toggle (settings/notifications). Defaults ON when unset/unreadable.
 async function scanWyckoffAlertsOn(env, token, uid) {
   try {
-    const res = await fetch(`${FS_BASE}/documents/users/${uid}/settings/notifications`, {
+    const res = await fetch(`${FS_BASE}/documents/users/${encodeURIComponent(uid)}/settings/notifications`, {
       headers: { Authorization: `Bearer ${token}` },
     });
     if (!res.ok) return true;
@@ -1747,7 +1750,7 @@ async function scanWriteSignal(env, token, uid, item, setup) {
     createdAt: { timestampValue: nowIso },
     updatedAt: { timestampValue: nowIso },
   };
-  await fetch(`${FS_BASE}/documents/users/${uid}/signals`, {
+  await fetch(`${FS_BASE}/documents/users/${encodeURIComponent(uid)}/signals`, {
     method: 'POST',
     headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
     body: JSON.stringify({ fields }),
@@ -1789,7 +1792,9 @@ async function scanWyckoffSetups(env) {
       // Dedup: one alert per (user, coin, setup). The signature = direction+stop
       // (stable for a given setup); a genuinely new setup has a new stop.
       const dedupKey = `wyk:${u.uid}:${sym}`;
-      const sig = `${setup.direction}:${setup.stop}`;
+      // Dedup per (user, coin, direction) for the TTL window — coarse on purpose
+      // so a wiggling stop can't defeat dedup and re-write KV/Firestore each tick.
+      const sig = setup.direction;
       if ((await env.ALERTS_KV.get(dedupKey)) === sig) continue;
       await env.ALERTS_KV.put(dedupKey, sig, { expirationTtl: 12 * 3600 });
 

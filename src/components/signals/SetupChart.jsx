@@ -45,7 +45,10 @@ export default function SetupChart({ pair, entryPrice, stopLoss, interval = '30m
     fetchKlines(pair, interval, 90)
       .then((rows) => {
         if (!alive) return;
-        setBars(rows.map((k) => ({ o: +k[1], h: +k[2], l: +k[3], c: +k[4], v: +k[5] })));
+        setBars(rows
+          .map((k) => ({ o: +k[1], h: +k[2], l: +k[3], c: +k[4], v: +k[5] }))
+          // Drop any malformed candle so one NaN can't blow up the whole scale.
+          .filter((b) => Number.isFinite(b.o) && Number.isFinite(b.h) && Number.isFinite(b.l) && Number.isFinite(b.c)));
       })
       .catch(() => { if (alive) setBars([]); });
     return () => { alive = false; };
@@ -80,6 +83,17 @@ export default function SetupChart({ pair, entryPrice, stopLoss, interval = '30m
   return (
     <div className="rounded-lg bg-black overflow-hidden">
       <svg viewBox={`0 0 ${W} ${H}`} className="w-full block">
+        {/* Faint price grid + right-axis ticks (TradingView feel) */}
+        {[0.12, 0.5, 0.88].map((f) => {
+          const gp = lo + f * span;
+          const gy = y(gp);
+          return (
+            <g key={`grid-${f}`}>
+              <line x1={PAD_L} y1={gy} x2={W - PAD_R} y2={gy} stroke="#1b2434" strokeWidth="0.4" />
+              <text x={W - PAD_R + 3} y={gy + 2.4} fill="#57657e" fontSize="6.5">{fmtP(gp)}</text>
+            </g>
+          );
+        })}
         {/* Position tool — risk / reward boxes at the setup (from setupStartX) */}
         {eY != null && sY != null && (
           <rect x={setupStartX} y={Math.min(eY, sY)} width={W - PAD_R - setupStartX} height={Math.abs(sY - eY)} fill="rgba(244,63,94,0.13)" />

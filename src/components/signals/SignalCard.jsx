@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { Pencil, Trash2, CheckCircle2, Clock, Zap, Maximize2 } from 'lucide-react';
+import { Pencil, Trash2, CheckCircle2, Clock, Zap, Maximize2, Radar } from 'lucide-react';
 import CoinIcon from '../shared/CoinIcon';
 import SignalTrack from './SignalTrack';
 import SetupChart from './SetupChart';
@@ -13,8 +13,13 @@ const STATUS = {
 
 export default function SignalCard({ signal, currentPrice, onEdit, onDelete, onStatusChange }) {
   const [chartOpen, setChartOpen] = useState(false);
-  const { pair, direction, timeframe, entryPrice, stopLoss, tps = [], status, notes } = signal;
+  const { pair, direction, timeframe, entryPrice, stopLoss, tps = [], status, notes, source, confidence } = signal;
   const isLong = direction === 'long';
+  const isScanner = source === 'scanner';
+  const conf = confidence != null ? Number(confidence) : null;
+  const scannerTitle = conf != null
+    ? `אותר אוטומטית על ידי הסורק · ציון ביטחון ${conf}`
+    : 'אותר אוטומטית על ידי הסורק';
   const statusInfo = STATUS[status] || STATUS.waiting;
   const StatusIcon = statusInfo.icon;
   const isWaiting = status === 'waiting';
@@ -38,6 +43,14 @@ export default function SignalCard({ signal, currentPrice, onEdit, onDelete, onS
             </div>
           </div>
           <div className="flex items-center gap-1 shrink-0">
+            {isScanner && (
+              <span
+                className="flex items-center gap-0.5 text-[10px] font-bold px-1.5 py-0.5 rounded-full bg-accent-primary/15 text-accent-primary"
+                title={scannerTitle}
+              >
+                <Radar className="w-2.5 h-2.5" />{conf != null ? conf : 'אותר'}
+              </span>
+            )}
             <span className={`flex items-center gap-1 text-[11px] font-medium px-2 py-0.5 rounded-full border ${statusInfo.className}`}>
               <StatusIcon className="w-3 h-3" />
               {statusInfo.label}
