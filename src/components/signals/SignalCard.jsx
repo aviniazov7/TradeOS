@@ -1,6 +1,7 @@
 import { Pencil, Trash2, ArrowRightLeft, CheckCircle2, Clock, Zap } from 'lucide-react';
 import CoinIcon from '../shared/CoinIcon';
 import SignalTrack from './SignalTrack';
+import SetupChart from './SetupChart';
 
 const STATUS = {
   waiting: { label: 'ממתין', icon: Clock, className: 'text-text-muted bg-bg-tertiary border-border-primary' },
@@ -40,6 +41,18 @@ export default function SignalCard({ signal, currentPrice, onEdit, onDelete, onT
             </span>
           </div>
         </div>
+
+        {/* Setup chart — annotated OHLC bars with the entry/stop levels marked */}
+        {pair && entryPrice != null && (
+          <SetupChart pair={pair} entryPrice={entryPrice} stopLoss={stopLoss} direction={direction} interval={timeframe || '30m'} label={isLong ? 'LPS' : 'LPSY'} />
+        )}
+
+        {/* Entry zone */}
+        {entryPrice != null && (
+          <p className="text-[11px] text-center text-text-secondary">
+            🎯 אזור כניסה סביב <span className="font-bold num-mono text-accent-primary">{formatPrice(entryPrice)}</span>
+          </p>
+        )}
 
         {/* Price info */}
         <div className="grid grid-cols-3 gap-2 text-center">
