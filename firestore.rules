@@ -285,7 +285,10 @@ service cloud.firestore {
     // reaches the DOM (thumb/note/tvLink) is length-capped so a raw-SDK write
     // can't persist an oversized/abusive payload; numbers are type-pinned.
     function isValidWatchlistItem(data) {
-      return data.keys().hasOnly(['coingeckoId', 'symbol', 'name', 'thumb', 'addedPrice', 'note', 'targetPrice', 'tvLink', 'createdAt', 'updatedAt'])
+      return data.keys().hasOnly(['coingeckoId', 'symbol', 'name', 'thumb', 'addedPrice', 'note', 'targetPrice', 'tvLink', 'createdAt', 'updatedAt', 'bias'])
+        // bias: long/short tag that opts the coin into the Wyckoff scanner (null
+        // = watched but not scanned). Only the two known values or null.
+        && (!('bias' in data) || data.bias == null || data.bias in ['long', 'short'])
         && data.coingeckoId is string && data.coingeckoId.size() > 0 && data.coingeckoId.size() <= 100
         && data.symbol is string && data.symbol.size() > 0 && data.symbol.size() <= 60
         && data.name is string && data.name.size() <= 200
