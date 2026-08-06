@@ -160,10 +160,10 @@ export function calculateWinRate(trades) {
  */
 export function calculateProfitFactor(trades) {
   const grossProfit = trades
-    .filter((t) => (t.netPnl ?? t.pnl) > 0)
-    .reduce((sum, t) => sum + (t.netPnl ?? t.pnl), 0);
+    .filter((t) => safePnl(t) > 0)
+    .reduce((sum, t) => sum + safePnl(t), 0);
   const grossLoss = Math.abs(
-    trades.filter((t) => (t.netPnl ?? t.pnl) < 0).reduce((sum, t) => sum + (t.netPnl ?? t.pnl), 0)
+    trades.filter((t) => safePnl(t) < 0).reduce((sum, t) => sum + safePnl(t), 0)
   );
   if (grossLoss === 0) return grossProfit > 0 ? Infinity : 0;
   return grossProfit / grossLoss;
@@ -182,10 +182,10 @@ export function calculateExpectancy(trades) {
   const winRate = wins.length / trades.length;
   const lossRate = losses.length / trades.length;
   const avgWin = wins.length
-    ? wins.reduce((s, t) => s + (t.netPnl ?? t.pnl), 0) / wins.length
+    ? wins.reduce((s, t) => s + safePnl(t), 0) / wins.length
     : 0;
   const avgLoss = losses.length
-    ? Math.abs(losses.reduce((s, t) => s + (t.netPnl ?? t.pnl), 0) / losses.length)
+    ? Math.abs(losses.reduce((s, t) => s + safePnl(t), 0) / losses.length)
     : 0;
   return winRate * avgWin - lossRate * avgLoss;
 }
@@ -347,4 +347,63 @@ export function calculateDCAAvgPrice(entries) {
   const totalCoins = entries.reduce((s, e) => s + e.coins, 0);
   if (totalCoins === 0) return 0;
   return totalInvested / totalCoins;
+}
+
+/**
+ * Net P&L for a trade, guaranteed finite. netPnl/pnl can be undefined, null,
+ * NaN (a bad exchange-import parse) or a numeric string; coerce and default to
+ * 0 so a single dirty row can't poison a sum, chart or ratio.
+ */
+export function safePnl(t) {
+  const v = Number(t?.netPnl ?? t?.pnl ?? 0);
+  return Number.isFinite(v) ? v : 0;
+}
+
+/**
+ * The ONE canonical P&L computation for a trade — shared by the journal
+ * (add / import / edit) and the dashboard's live SL/TP auto-close, so a trade
+ * closed either way stores identical, reconciled fields. Handles exchange
+ * imports (pnlFromExchange), CME futures, crypto partial exits, and fees. The
+ * result is classified off NET P&L, so fees can flip a thin gross win to a loss.
+ */
+export function computeTradeFields(tradeData) {
+  let pnl, rrRatio, pnlPercent;
+  const isFutures = tradeData.assetClass === 'futures_cme' && tradeData.contract;
+  const hasExchangePnl = typeof tradeData.pnlFromExchange === 'number';
+  const isClosed = (tradeData.exitPrice > 0) || tradeData.status === 'closed';
+
+  if (hasExchangePnl && isClosed) {
+    pnl = tradeData.pnlFromExchange;
+    const exitForRR = tradeData.exits?.length
+      ? calculateWeightedExitPrice(tradeData.exits)
+      : (tradeData.exitPrice || 0);
+    rrRatio = calculateRR(tradeData.entryPrice, exitForRR, tradeData.stopLoss);
+  } else if (isFutures) {
+    const { pointValue, contracts } = tradeData.contract;
+    if (tradeData.exits?.length) {
+      pnl = tradeData.exits.some((e) => e.contracts != null)
+        ? calculateFuturesContractsPnL(tradeData.direction, tradeData.entryPrice, tradeData.exits, pointValue)
+        : calculateFuturesPartialPnL(tradeData.direction, tradeData.entryPrice, tradeData.exits, pointValue, contracts);
+      rrRatio = calculateRR(tradeData.entryPrice, calculateWeightedExitPrice(tradeData.exits), tradeData.stopLoss);
+    } else {
+      pnl = calculateFuturesPnL(tradeData.direction, tradeData.entryPrice, tradeData.exitPrice, pointValue, contracts);
+      rrRatio = calculateRR(tradeData.entryPrice, tradeData.exitPrice, tradeData.stopLoss);
+    }
+  } else if (tradeData.exits?.length) {
+    pnl = calculatePartialPnL(tradeData.direction, tradeData.entryPrice, tradeData.exits, tradeData.quantity);
+    rrRatio = calculateRR(tradeData.entryPrice, calculateWeightedExitPrice(tradeData.exits), tradeData.stopLoss);
+  } else {
+    pnl = calculatePnL(tradeData.direction, tradeData.entryPrice, tradeData.exitPrice, tradeData.quantity);
+    rrRatio = calculateRR(tradeData.entryPrice, tradeData.exitPrice, tradeData.stopLoss);
+  }
+
+  if (isFutures) {
+    const notional = calculateFuturesNotional(tradeData.entryPrice, tradeData.contract.pointValue, tradeData.contract.contracts);
+    pnlPercent = notional ? (pnl / notional) * 100 : 0;
+  } else {
+    pnlPercent = calculatePnLPercent(pnl, tradeData.entryPrice, tradeData.quantity, tradeData.leverage);
+  }
+  const netPnl = calculateNetPnL(pnl, tradeData.fees);
+  const result = getTradeResult(netPnl);
+  return { pnl, pnlPercent, rrRatio, netPnl, result };
 }

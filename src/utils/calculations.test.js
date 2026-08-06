@@ -16,6 +16,7 @@ import {
   calculateWinRate,
   calculateProfitFactor,
   calculateMaxDrawdown,
+  computeTradeFields,
 } from './calculations';
 import { planExpiresMs } from './premium';
 
@@ -197,5 +198,39 @@ describe('planExpiresMs — premium expiry normalization', () => {
     expect(planExpiresMs('2026-01-01T00:00:00.000Z')).toBe(Date.UTC(2026, 0, 1));
     expect(planExpiresMs('junk')).toBe(null);
     expect(planExpiresMs(null)).toBe(null);
+  });
+});
+
+describe('computeTradeFields — the canonical trade P&L (journal + auto-close)', () => {
+  it('simple long close: gross pnl, net after fees, result classified off NET', () => {
+    const r = computeTradeFields({ direction: 'long', entryPrice: 100, exitPrice: 110, quantity: 2, fees: 5, status: 'closed' });
+    expect(r.pnl).toBe(20);      // (110-100) * 2
+    expect(r.netPnl).toBe(15);   // 20 - 5 fees
+    expect(r.result).toBe('win');
+  });
+  it('fees flip a thin gross win into a net loss', () => {
+    const r = computeTradeFields({ direction: 'long', entryPrice: 100, exitPrice: 101, quantity: 1, fees: 3, status: 'closed' });
+    expect(r.pnl).toBe(1);
+    expect(r.netPnl).toBe(-2);
+    expect(r.result).toBe('loss');
+  });
+  it('partial exits: P&L summed across exits, not the full size at one price', () => {
+    const r = computeTradeFields({
+      direction: 'long', entryPrice: 100, quantity: 2, fees: 0, status: 'closed',
+      exits: [{ price: 110, percent: 50 }, { price: 90, percent: 50 }],
+    });
+    expect(r.pnl).toBe(0);       // 1u @ +10  +  1u @ -10
+    expect(r.result).toBe('breakeven');
+  });
+  it('short: profit when price falls', () => {
+    const r = computeTradeFields({ direction: 'short', entryPrice: 100, exitPrice: 90, quantity: 1, status: 'closed' });
+    expect(r.pnl).toBe(10);
+    expect(r.result).toBe('win');
+  });
+  it('exchange-imported trade keeps the settled pnlFromExchange (even negative)', () => {
+    const r = computeTradeFields({ direction: 'long', entryPrice: 100, exitPrice: 105, quantity: 1, pnlFromExchange: -3.2, fees: 0, status: 'closed' });
+    expect(r.pnl).toBe(-3.2);
+    expect(r.netPnl).toBe(-3.2);
+    expect(r.result).toBe('loss');
   });
 });

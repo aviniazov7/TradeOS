@@ -1,4 +1,4 @@
-import { createContext, useContext, useState, useEffect } from 'react';
+import { createContext, useContext, useState, useEffect, useMemo, useCallback } from 'react';
 import { planExpiresMs } from '../utils/premium';
 import { APP_VERSION } from '../utils/constants';
 // Firebase Auth operations (login/logout/register/reset…).
@@ -152,26 +152,26 @@ export function AuthProvider({ children }) {
     };
   }, []);
 
-  const loginWithGoogle = () => authLoginWithGoogle();
+  const loginWithGoogle = useCallback(() => authLoginWithGoogle(), []);
 
-  const loginWithGoogleIdToken = (idToken) => authLoginWithGoogleIdToken(idToken);
+  const loginWithGoogleIdToken = useCallback((idToken) => authLoginWithGoogleIdToken(idToken), []);
 
-  const registerWithEmail = (email, password, displayName) =>
-    authRegisterWithEmail(email, password, displayName);
+  const registerWithEmail = useCallback((email, password, displayName) =>
+    authRegisterWithEmail(email, password, displayName), []);
 
-  const loginWithEmail = (email, password) => authLoginWithEmail(email, password);
+  const loginWithEmail = useCallback((email, password) => authLoginWithEmail(email, password), []);
 
-  const logout = () => {
+  const logout = useCallback(() => {
     localStorage.removeItem('tradeos_activeJournal');
     return authLogout();
-  };
+  }, []);
 
-  const resetPassword = (email) => authResetPassword(email);
+  const resetPassword = useCallback((email) => authResetPassword(email), []);
 
-  const changePassword = (currentPassword, newPassword) =>
-    authChangePassword(currentPassword, newPassword);
+  const changePassword = useCallback((currentPassword, newPassword) =>
+    authChangePassword(currentPassword, newPassword), []);
 
-  const deleteAccount = async (currentPassword) => {
+  const deleteAccount = useCallback(async (currentPassword) => {
     const currentUser = user;
     if (!currentUser) throw new Error('No user');
 
@@ -207,7 +207,7 @@ export function AuthProvider({ children }) {
     // Delete auth account
     localStorage.removeItem('tradeos_activeJournal');
     await deleteAuthUser();
-  };
+  }, [user]);
 
   const isEmailUser = user?.providerData?.some((p) => p.providerId === 'password') || false;
   const isAdmin = profile?.role === 'admin';
@@ -221,7 +221,13 @@ export function AuthProvider({ children }) {
   const isPremium = isAdmin || planActive;
   const plan = isPremium ? 'premium' : 'free';
 
-  const value = { user, profile, isAdmin, isPremium, plan, loading, loginWithGoogle, loginWithGoogleIdToken, registerWithEmail, loginWithEmail, logout, changePassword, resetPassword, deleteAccount, isEmailUser };
+  const value = useMemo(() => ({
+    user, profile, isAdmin, isPremium, plan, loading,
+    loginWithGoogle, loginWithGoogleIdToken, registerWithEmail, loginWithEmail,
+    logout, changePassword, resetPassword, deleteAccount, isEmailUser,
+  }), [user, profile, isAdmin, isPremium, plan, loading, isEmailUser,
+    loginWithGoogle, loginWithGoogleIdToken, registerWithEmail, loginWithEmail,
+    logout, changePassword, resetPassword, deleteAccount]);
 
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;
 }

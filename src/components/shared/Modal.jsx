@@ -1,4 +1,4 @@
-import { useEffect } from 'react';
+import { useEffect, useRef } from 'react';
 import { createPortal } from 'react-dom';
 import { X } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
@@ -6,6 +6,13 @@ import { motion, AnimatePresence } from 'framer-motion';
 let modalCount = 0;
 
 export default function Modal({ isOpen, onClose, title, children, maxWidth = 'max-w-xl' }) {
+  const cardRef = useRef(null);
+  const prevFocusRef = useRef(null);
+  // onClose via ref so the Escape/focus effect can depend on [isOpen] only (a
+  // parent that recreates onClose each render must not re-run it and steal focus).
+  const onCloseRef = useRef(onClose);
+  onCloseRef.current = onClose;
+
   useEffect(() => {
     if (isOpen) {
       modalCount++;
@@ -20,6 +27,21 @@ export default function Modal({ isOpen, onClose, title, children, maxWidth = 'ma
           document.body.style.overflow = '';
         }
       }
+    };
+  }, [isOpen]);
+
+  // Dialog a11y: move focus into the dialog on open, close on Escape, and
+  // restore focus to the trigger on close.
+  useEffect(() => {
+    if (!isOpen) return undefined;
+    prevFocusRef.current = document.activeElement;
+    const t = setTimeout(() => cardRef.current?.focus(), 0);
+    const onKey = (e) => { if (e.key === 'Escape') onCloseRef.current?.(); };
+    document.addEventListener('keydown', onKey);
+    return () => {
+      clearTimeout(t);
+      document.removeEventListener('keydown', onKey);
+      if (prevFocusRef.current instanceof HTMLElement) prevFocusRef.current.focus();
     };
   }, [isOpen]);
 
@@ -46,7 +68,12 @@ export default function Modal({ isOpen, onClose, title, children, maxWidth = 'ma
                 entrance is opacity+slide only (no scale) so the backdrop-filter
                 doesn't flicker on Safari. */}
             <motion.div
-              className={`relative ${maxWidth} w-full rounded-2xl overflow-hidden pointer-events-auto`}
+              ref={cardRef}
+              role="dialog"
+              aria-modal="true"
+              aria-label={title || 'חלון'}
+              tabIndex={-1}
+              className={`relative ${maxWidth} w-full rounded-2xl overflow-hidden pointer-events-auto outline-none`}
               style={{
                 // Subtle top specular sheen over the dark glass — the 21st.dev
                 // "black glass" highlight — layered on top of the translucent fill.
@@ -77,6 +104,7 @@ export default function Modal({ isOpen, onClose, title, children, maxWidth = 'ma
                   <h2 className="text-base font-bold text-text-primary">{title}</h2>
                   <button
                     onClick={onClose}
+                    aria-label="סגור"
                     className="p-1.5 rounded-lg hover:bg-white/10 transition-colors cursor-pointer text-text-muted hover:text-text-primary"
                   >
                     <X className="w-4 h-4" />
