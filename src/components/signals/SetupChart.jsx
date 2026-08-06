@@ -3,12 +3,12 @@ import { fetchKlines } from '../../services/coingeckoApi';
 
 const fmtP = (p) => (p >= 1000 ? Math.round(p).toLocaleString('en-US') : p >= 1 ? p.toFixed(2) : p.toFixed(5));
 
-// Fixed horizontal geometry (viewBox units); height varies (see `big`).
+// Fixed horizontal geometry (viewBox units); height is set per instance (vh).
 const W = 320, PAD_L = 6, PAD_R = 56, PAD_Y = 10;
 
-// The recent trading-range boundaries — the high/low of the last ~24 bars (the
-// ACTIVE range, so an older spike doesn't blow the levels out). Drawn as the
-// horizontal support/resistance lines the trader marks by hand.
+// The trading-range boundaries — high/low of the last ~24 bars (the ACTIVE
+// range, so an older spike doesn't blow the levels out). Drawn as the horizontal
+// support/resistance lines the trader marks by hand.
 function rangeLevels(bars) {
   const recent = bars.slice(-24);
   if (recent.length < 6) return null;
@@ -28,18 +28,20 @@ function AnnoLine({ yy, color, textColor, price }) {
   );
 }
 
-// Annotated OHLC BAR chart in the trader's own style: WHITE bars (not colored
-// candlesticks), the horizontal support/resistance range lines, and a position
-// tool — entry / stop / target levels with a red risk box + green reward box.
-// `big` renders a taller chart (the entry timeframe in the modal).
-export default function SetupChart({ pair, entryPrice, stopLoss, interval = '30m', label, tps = [], big = false }) {
+// Annotated OHLC BAR chart in the trader's own style: WHITE bars, horizontal
+// support/resistance range lines (drawn full-width so the range-forming events —
+// SC/AR/BC — are visible to the left), and a position tool (entry / stop / target
+// with a red risk box + green reward box). `vh` = viewBox height for this instance.
+export default function SetupChart({ pair, entryPrice, stopLoss, interval = '30m', label, tps = [], vh = 132 }) {
   const [bars, setBars] = useState(null);
   const tp = Array.isArray(tps) && tps.length ? Number(tps[0]) : null;
-  const H = big ? 288 : 132;
+  const H = vh;
 
   useEffect(() => {
     let alive = true;
-    fetchKlines(pair, interval, 56)
+    // ~90 bars so the range formation (climaxes / reactions) is visible, not just
+    // the current boundary.
+    fetchKlines(pair, interval, 90)
       .then((rows) => {
         if (!alive) return;
         setBars(rows.map((k) => ({ o: +k[1], h: +k[2], l: +k[3], c: +k[4] })));
@@ -48,7 +50,7 @@ export default function SetupChart({ pair, entryPrice, stopLoss, interval = '30m
     return () => { alive = false; };
   }, [pair, interval]);
 
-  if (bars === null) return <div className="rounded-lg bg-bg-tertiary/40 animate-pulse" style={{ height: big ? 240 : 118 }} />;
+  if (bars === null) return <div className="rounded-lg bg-bg-tertiary/40 animate-pulse" style={{ height: Math.round(vh * 0.86) }} />;
   if (!bars.length) return null;
 
   const rng = rangeLevels(bars);
@@ -60,7 +62,7 @@ export default function SetupChart({ pair, entryPrice, stopLoss, interval = '30m
   const plotW = W - PAD_L - PAD_R;
   const bw = plotW / bars.length;
   const cx = (i) => PAD_L + i * bw + bw / 2;
-  const tick = Math.max(1.2, Math.min(bw * 0.34, 4));
+  const tick = Math.max(0.9, Math.min(bw * 0.34, 4));
 
   const eY = entryPrice != null ? y(entryPrice) : null;
   const sY = stopLoss != null ? y(stopLoss) : null;
@@ -77,18 +79,18 @@ export default function SetupChart({ pair, entryPrice, stopLoss, interval = '30m
         {eY != null && tY != null && (
           <rect x={PAD_L} y={Math.min(eY, tY)} width={zoneW} height={Math.abs(tY - eY)} fill="rgba(34,197,94,0.12)" />
         )}
-        {/* Range support/resistance — the horizontal lines the trader marks */}
+        {/* Range support/resistance — full-width horizontal lines */}
         {rng && (
           <>
-            <line x1={PAD_L} y1={y(rng.resistance)} x2={W - PAD_R} y2={y(rng.resistance)} stroke="#e2e8f0" strokeWidth="0.9" opacity="0.85" />
-            <line x1={PAD_L} y1={y(rng.support)} x2={W - PAD_R} y2={y(rng.support)} stroke="#e2e8f0" strokeWidth="0.9" opacity="0.85" />
+            <line x1={PAD_L} y1={y(rng.resistance)} x2={W - PAD_R} y2={y(rng.resistance)} stroke="#e2e8f0" strokeWidth="0.8" opacity="0.85" />
+            <line x1={PAD_L} y1={y(rng.support)} x2={W - PAD_R} y2={y(rng.support)} stroke="#e2e8f0" strokeWidth="0.8" opacity="0.85" />
           </>
         )}
         {/* WHITE OHLC bars: high-low stick, open tick left, close tick right */}
         {bars.map((b, i) => {
           const x0 = cx(i);
           return (
-            <g key={i} stroke="#e6edf6" strokeWidth="1" strokeLinecap="round">
+            <g key={i} stroke="#e6edf6" strokeWidth="0.9" strokeLinecap="round">
               <line x1={x0} y1={y(b.h)} x2={x0} y2={y(b.l)} />
               <line x1={x0 - tick} y1={y(b.o)} x2={x0} y2={y(b.o)} />
               <line x1={x0} y1={y(b.c)} x2={x0 + tick} y2={y(b.c)} />

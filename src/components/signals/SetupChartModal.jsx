@@ -14,7 +14,7 @@ export default function SetupChartModal({ isOpen, onClose, signal }) {
   const common = { pair, entryPrice, stopLoss, tps, label };
 
   return (
-    <Modal isOpen={isOpen} onClose={onClose} title={`${pair} · ${isLong ? 'לונג' : 'שורט'}`} maxWidth="max-w-2xl">
+    <Modal isOpen={isOpen} onClose={onClose} title={`${pair} · ${isLong ? 'לונג' : 'שורט'}`} maxWidth="max-w-5xl">
       <div className="space-y-3">
         <p className="text-[12px] text-text-secondary bg-bg-tertiary/50 rounded-lg px-3 py-2 text-center">
           🎯 אזור כניסה סביב <span className="font-bold num-mono text-accent-primary">{fmt(entryPrice)}</span>
@@ -28,18 +28,18 @@ export default function SetupChartModal({ isOpen, onClose, signal }) {
           {/* Left column — higher-timeframe context */}
           <div className="space-y-3">
             <div>
-              <p className="text-[11px] font-semibold text-text-muted mb-1 px-0.5">יומי · 1D — הקשר</p>
-              <SetupChart {...common} interval="1d" />
+              <p className="text-[12px] font-semibold text-text-muted mb-1 px-0.5">יומי · 1D — הקשר</p>
+              <SetupChart {...common} interval="1d" vh={190} />
             </div>
             <div>
-              <p className="text-[11px] font-semibold text-text-muted mb-1 px-0.5">4 שעות · 4H — הקשר</p>
-              <SetupChart {...common} interval="4h" />
+              <p className="text-[12px] font-semibold text-text-muted mb-1 px-0.5">4 שעות · 4H — הקשר</p>
+              <SetupChart {...common} interval="4h" vh={190} />
             </div>
           </div>
           {/* Right column — the entry timeframe, big */}
           <div>
-            <p className="text-[11px] font-semibold text-accent-primary mb-1 px-0.5">30 דקות · 30M — הכניסה</p>
-            <SetupChart {...common} interval="30m" big />
+            <p className="text-[12px] font-semibold text-accent-primary mb-1 px-0.5">30 דקות · 30M — הכניסה</p>
+            <SetupChart {...common} interval="30m" vh={400} />
           </div>
         </div>
 
