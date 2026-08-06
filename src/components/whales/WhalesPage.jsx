@@ -156,7 +156,7 @@ function FeedRow({ big, whale, icon, sym, badge, badgeClass, usd, usdClass, pric
 
 // ---- Main page ---------------------------------------------------------------
 
-export default function WhalesPage() {
+export default function WhalesPage({ embedded = false }) {
   const [showInfo, setShowInfo] = useState(false);
   const [status, setStatus] = useState('connecting');
   const [paused, setPaused] = useState(false);
@@ -279,8 +279,12 @@ export default function WhalesPage() {
   );
 
   return (
-    <motion.div variants={pageVariants} initial="initial" animate="animate" exit="exit" transition={pageTransition}
-      className="px-4 py-6 max-w-6xl mx-auto space-y-4">
+    // `embedded` (rendered inside Market Overview) drops the page chrome — the
+    // outer padding/max-width and the page-transition animation — and just lays
+    // out the sections; the hero header stays and reads as the section title.
+    <motion.div
+      {...(embedded ? {} : { variants: pageVariants, initial: 'initial', animate: 'animate', exit: 'exit', transition: pageTransition })}
+      className={embedded ? 'space-y-4' : 'px-4 py-6 max-w-6xl mx-auto space-y-4'}>
 
       {/* Header — hero strip in the app's violet→cyan language */}
       <div className="relative overflow-hidden rounded-2xl" style={{ border: '1px solid var(--glass-border)' }}>
