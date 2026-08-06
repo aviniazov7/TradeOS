@@ -58,7 +58,13 @@ export default function SetupChart({ pair, entryPrice, stopLoss, interval = '30m
   if (!bars.length) return null;
 
   const rng = rangeLevels(bars);
-  const extra = [entryPrice, stopLoss, tp, rng?.resistance, rng?.support].filter((v) => v != null);
+  // Position geometry: infer direction from entry vs stop, then a reward target —
+  // the explicit TP if the setup has one, else a standard 2R projection so the
+  // position tool shows a full risk/reward like the TradingView position tool.
+  const isShort = entryPrice != null && stopLoss != null && Number(stopLoss) > Number(entryPrice);
+  const risk = entryPrice != null && stopLoss != null ? Math.abs(entryPrice - stopLoss) : null;
+  const target = tp != null ? tp : (risk ? (isShort ? entryPrice - 2 * risk : entryPrice + 2 * risk) : null);
+  const extra = [entryPrice, stopLoss, target, rng?.resistance, rng?.support].filter((v) => v != null);
   const hi = Math.max(...bars.map((b) => b.h), ...extra);
   const lo = Math.min(...bars.map((b) => b.l), ...extra);
   const span = hi - lo || 1;
@@ -78,7 +84,7 @@ export default function SetupChart({ pair, entryPrice, stopLoss, interval = '30m
 
   const eY = entryPrice != null ? y(entryPrice) : null;
   const sY = stopLoss != null ? y(stopLoss) : null;
-  const tY = tp != null ? y(tp) : null;
+  const tY = target != null ? y(target) : null;
 
   return (
     <div className="rounded-lg bg-black overflow-hidden">
@@ -94,12 +100,18 @@ export default function SetupChart({ pair, entryPrice, stopLoss, interval = '30m
             </g>
           );
         })}
-        {/* Position tool — risk / reward boxes at the setup (from setupStartX) */}
+        {/* Position tool — TradingView-style RISK (red) + REWARD (green) zones,
+            with the entry as the solid pivot line between them, not bare levels. */}
         {eY != null && sY != null && (
-          <rect x={setupStartX} y={Math.min(eY, sY)} width={W - PAD_R - setupStartX} height={Math.abs(sY - eY)} fill="rgba(244,63,94,0.13)" />
+          <rect x={setupStartX} y={Math.min(eY, sY)} width={W - PAD_R - setupStartX} height={Math.abs(sY - eY)}
+            fill="rgba(244,63,94,0.16)" stroke="rgba(244,63,94,0.55)" strokeWidth="0.5" />
         )}
         {eY != null && tY != null && (
-          <rect x={setupStartX} y={Math.min(eY, tY)} width={W - PAD_R - setupStartX} height={Math.abs(tY - eY)} fill="rgba(34,197,94,0.13)" />
+          <rect x={setupStartX} y={Math.min(eY, tY)} width={W - PAD_R - setupStartX} height={Math.abs(tY - eY)}
+            fill="rgba(34,197,94,0.16)" stroke="rgba(34,197,94,0.55)" strokeWidth="0.5" />
+        )}
+        {eY != null && (
+          <line x1={setupStartX} y1={eY} x2={W - PAD_R} y2={eY} stroke="#38bdf8" strokeWidth="1.2" />
         )}
         {/* Range support / resistance — drawn from where each level formed */}
         {rng && (
@@ -123,13 +135,19 @@ export default function SetupChart({ pair, entryPrice, stopLoss, interval = '30m
         <line x1={PAD_L} y1={volTop - 3} x2={W - PAD_R} y2={volTop - 3} stroke="#232f45" strokeWidth="0.5" />
         {bars.map((b, i) => (
           <rect key={`v${i}`} x={cx(i) - bw * 0.3} y={vy(b.v)} width={Math.max(0.6, bw * 0.6)} height={Math.max(0, volBottom - vy(b.v))}
-            fill={b.c >= b.o ? 'rgba(38,166,154,0.55)' : 'rgba(239,83,80,0.55)'} />
+            fill={b.c >= b.o ? 'rgba(230,237,246,0.5)' : 'rgba(230,237,246,0.26)'} />
         ))}
         {/* setup label + position levels */}
         {label && sY != null && <text x={setupStartX + 2} y={sY - 5} fill="#f43f5e" fontSize="9" fontWeight="800">{label}</text>}
-        {tY != null && <AnnoLine x1={setupStartX} yy={tY} color="#22c55e" textColor="#04140b" price={tp} />}
-        {eY != null && <AnnoLine x1={setupStartX} yy={eY} color="#38bdf8" textColor="#04141f" price={entryPrice} />}
+        {tY != null && <AnnoLine x1={setupStartX} yy={tY} color="#22c55e" textColor="#04140b" price={target} />}
         {sY != null && <AnnoLine x1={setupStartX} yy={sY} color="#f43f5e" textColor="#1a0209" price={stopLoss} />}
+        {/* Entry price tag (the solid pivot line is drawn with the position tool) */}
+        {eY != null && (
+          <g>
+            <rect x={W - PAD_R + 2} y={eY - 7} width={PAD_R - 5} height={14} rx={3} fill="#38bdf8" />
+            <text x={W - (PAD_R - 2) / 2} y={eY + 3.4} fill="#04141f" fontSize="8.5" fontWeight="700" textAnchor="middle">{fmtP(entryPrice)}</text>
+          </g>
+        )}
       </svg>
     </div>
   );
