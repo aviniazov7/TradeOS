@@ -1643,59 +1643,86 @@ function scanPivots(candles, width) {
   return { highs, lows };
 }
 
-// Detect the entry trigger for a user-supplied bias on the 30m timeframe.
-// SHORT → LPSY: a lower-high, then a fresh close BELOW the base low it rallied
-//   from; stop above the high. LONG → LPS: a higher-low, then a fresh close ABOVE
-//   the reaction high; stop below the low. Volume-into-reaction and RSI add to a
-//   confidence score. Returns a setup object or null.
+// HTF context (1D / 4h): confirm an LPS/LPSY is in place — the last point of
+// supply (short) / support (long). SHORT → a lower(≈) swing high with price back
+// under it (supply in control). LONG → a higher(≈) low with price holding above
+// it. This is Avi's "LPS/LPSY on 1D and 4h" confirmation. Fails closed on no data.
+function detectHTFStructure(candles, bias) {
+  if (!candles || candles.length < 40) return false;
+  const { highs, lows } = scanPivots(candles, 2);
+  const lastClose = candles[candles.length - 1].c;
+  if (bias === 'short') {
+    if (highs.length < 2) return false;
+    const H = highs[highs.length - 1];
+    const prevH = highs[highs.length - 2];
+    return H.p <= prevH.p * 1.005 && lastClose < H.p;   // lower-high + price back under supply
+  }
+  if (bias === 'long') {
+    if (lows.length < 2) return false;
+    const L = lows[lows.length - 1];
+    const prevL = lows[lows.length - 2];
+    return L.p >= prevL.p * 0.995 && lastClose > L.p;   // higher-low + price holding above support
+  }
+  return false;
+}
+
+// Detect the 30m ENTRY trigger — Avi's quality rule: the entry is the SECOND
+// step, never the first. SHORT: a range breaks, price re-distributes LOWER (a
+// lower high over a LOWER base), then a fresh close below that second base = the
+// entry; stop above the second high. LONG = mirror (higher steps). A single step
+// (one range, one break) is rejected — that was the old false-positive.
 function detectWyckoffTrigger(ltf, bias) {
   const n = ltf.length;
-  if (n < 40) return null;
+  if (n < 50) return null;
   const { highs, lows } = scanPivots(ltf, 2);
   const closes = ltf.map((c) => c.c);
   const lastClose = closes[n - 1];
   const avgVol = scanAvg(ltf.slice(-20).map((c) => c.v));
   const rsi = scanRSI(closes, 14);
+  const lowBetween = (a, b) => { let m = Infinity; for (let i = a; i <= b; i++) m = Math.min(m, ltf[i].l); return m; };
+  const highBetween = (a, b) => { let m = -Infinity; for (let i = a; i <= b; i++) m = Math.max(m, ltf[i].h); return m; };
 
   if (bias === 'short') {
-    if (highs.length < 2) return null;
-    const H = highs[highs.length - 1];
-    const prevH = highs[highs.length - 2];
-    if (!(H.p <= prevH.p * 1.002)) return null;        // must be a lower(≈) high — the rally failed
-    if (n - 1 - H.i > 14) return null;                 // LPSY must be recent
-    let neckline = Infinity;                            // base low the failed rally sat on
-    for (let i = prevH.i; i <= H.i; i++) neckline = Math.min(neckline, ltf[i].l);
-    if (!(lastClose < neckline)) return null;           // trigger: closed below the base
-    if (closes[n - 4] < neckline) return null;          // must be a FRESH break (not already broken)
-    const volInto = scanAvg(ltf.slice(Math.max(0, H.i - 3), H.i + 1).map((c) => c.v));
+    if (highs.length < 3) return null;
+    const H2 = highs[highs.length - 1];                 // second (lower) step high
+    const H1 = highs[highs.length - 2];                 // first step high
+    const H0 = highs[highs.length - 3];                 // the step before it (anchors the first base)
+    if (n - 1 - H2.i > 14) return null;                 // the second step must be recent
+    if (!(H2.p < H1.p * 0.998)) return null;            // step 2 is a LOWER high than step 1
+    const base2 = lowBetween(H1.i, H2.i);               // second step's base
+    const base1 = lowBetween(H0.i, H1.i);               // first step's base (between the two prior highs)
+    if (!(base2 < base1 * 0.999)) return null;          // the second base is LOWER — a real step down, not one range
+    if (!(lastClose < base2)) return null;              // ENTRY: fresh close below the second base
+    if (closes[n - 4] < base2) return null;             // must be fresh (not already broken)
     let conf = 55;
-    if (volInto < avgVol) conf += 15;                   // weak rally into the high = supply present
-    if (rsi != null && rsi < 48) conf += 15;            // bearish momentum (RSI bonus)
+    const volInto = scanAvg(ltf.slice(Math.max(0, H2.i - 3), H2.i + 1).map((c) => c.v));
+    if (volInto < avgVol) conf += 10;                   // weak rally into the second high = supply
+    if (rsi != null && rsi < 48) conf += 10;            // bearish momentum
     return {
-      direction: 'short', level: scanRound(lastClose), stop: scanRound(H.p),
-      confidence: Math.min(conf, 95),
-      note: `LPSY 30m — שיא נמוך יותר ב-${scanRound(H.p)}, נר נסגר מתחת ל-${scanRound(neckline)}`,
+      direction: 'short', level: scanRound(lastClose), stop: scanRound(H2.p), confidence: conf,
+      note: `מדרגה שנייה 30m — שיא נמוך יותר ${scanRound(H2.p)}, שבירת בסיס שני ${scanRound(base2)}`,
     };
   }
 
   if (bias === 'long') {
-    if (lows.length < 2) return null;
-    const L = lows[lows.length - 1];
-    const prevL = lows[lows.length - 2];
-    if (!(L.p >= prevL.p * 0.998)) return null;        // higher(≈) low — demand holding
-    if (n - 1 - L.i > 14) return null;
-    let neckline = -Infinity;                           // reaction high to break
-    for (let i = prevL.i; i <= L.i; i++) neckline = Math.max(neckline, ltf[i].h);
-    if (!(lastClose > neckline)) return null;
-    if (closes[n - 4] > neckline) return null;          // fresh break
-    const volInto = scanAvg(ltf.slice(Math.max(0, L.i - 3), L.i + 1).map((c) => c.v));
+    if (lows.length < 3) return null;
+    const L2 = lows[lows.length - 1];                   // second (higher) step low
+    const L1 = lows[lows.length - 2];                   // first step low
+    const L0 = lows[lows.length - 3];                   // the step before it (anchors the first base)
+    if (n - 1 - L2.i > 14) return null;
+    if (!(L2.p > L1.p * 1.002)) return null;            // step 2 is a HIGHER low than step 1
+    const base2 = highBetween(L1.i, L2.i);              // second step's base
+    const base1 = highBetween(L0.i, L1.i);              // first step's base (between the two prior lows)
+    if (!(base2 > base1 * 1.001)) return null;          // higher base — a real step up, not one range
+    if (!(lastClose > base2)) return null;              // ENTRY: fresh close above the second base
+    if (closes[n - 4] > base2) return null;             // fresh
     let conf = 55;
-    if (volInto < avgVol) conf += 15;                   // weak dip = demand present
-    if (rsi != null && rsi > 52) conf += 15;            // bullish momentum
+    const volInto = scanAvg(ltf.slice(Math.max(0, L2.i - 3), L2.i + 1).map((c) => c.v));
+    if (volInto < avgVol) conf += 10;
+    if (rsi != null && rsi > 52) conf += 10;
     return {
-      direction: 'long', level: scanRound(lastClose), stop: scanRound(L.p),
-      confidence: Math.min(conf, 95),
-      note: `LPS 30m — שפל גבוה יותר ב-${scanRound(L.p)}, נר נסגר מעל ${scanRound(neckline)}`,
+      direction: 'long', level: scanRound(lastClose), stop: scanRound(L2.p), confidence: conf,
+      note: `מדרגה שנייה 30m — שפל גבוה יותר ${scanRound(L2.p)}, שבירת בסיס שני ${scanRound(base2)}`,
     };
   }
   return null;
@@ -1787,7 +1814,18 @@ async function scanWyckoffSetups(env) {
       if (!ltf) continue;
 
       const setup = detectWyckoffTrigger(ltf, item.bias);
-      if (!setup || setup.confidence < SCAN_MIN_CONFIDENCE) continue;
+      if (!setup) continue;
+
+      // Quality gate — Avi's rule: the 1D AND 4h must BOTH show the LPS/LPSY
+      // structure. Fetched LAZILY (only now that the 30m second step fired) so
+      // most coins cost a single 30m fetch and the subrequest budget stays safe.
+      let d1 = candleCache.get(`${sym}:1d`);
+      if (d1 === undefined) { d1 = await scanFetchCandles(sym, '1d', 120); candleCache.set(`${sym}:1d`, d1); scans++; }
+      let h4 = candleCache.get(`${sym}:4h`);
+      if (h4 === undefined) { h4 = await scanFetchCandles(sym, '4h', 200); candleCache.set(`${sym}:4h`, h4); scans++; }
+      if (!detectHTFStructure(d1, item.bias) || !detectHTFStructure(h4, item.bias)) continue;
+      setup.confidence = Math.min(setup.confidence + 20, 95);   // both higher timeframes confirm
+      if (setup.confidence < SCAN_MIN_CONFIDENCE) continue;
 
       // Dedup: one alert per (user, coin, setup). The signature = direction+stop
       // (stable for a given setup); a genuinely new setup has a new stop.
