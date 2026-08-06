@@ -2,19 +2,17 @@ import { useState, useRef, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { motion, AnimatePresence } from 'framer-motion';
 import {
-  BarChart3, Zap, Brain, TrendingUp, Target, ImagePlus, RefreshCw, X,
-  Copy, Check, Crown, Info, Sparkles, Eye, Activity, Layers, Lightbulb, Shapes,
+  Sparkles, Brain, TrendingUp, Target, ImagePlus, RefreshCw, X,
+  Copy, Check, Crown, Info, Eye, Activity, Layers, Lightbulb, Shapes, BarChart3,
 } from 'lucide-react';
 import { sendMessageStream } from '../../services/groqApi';
 import { useAiUsage } from '../../hooks/useAiUsage';
 import { useAuth } from '../../contexts/AuthContext';
 import { fileToCompressedDataUrl, formatAIText } from '../../utils/aiChatHelpers';
 
-const DEPTHS = [
-  { id: 'quick', label: 'תמצית', icon: Zap, desc: 'נקודות עיקריות בלבד' },
-  { id: 'deep', label: 'ויקוף מלא', icon: Brain, desc: 'מבנה, פאזות, נפח ותרחישים' },
-];
-
+// Focus lenses — steer WHERE the read looks, not how long it is. A single,
+// concise analysis (no "deep" mode) keeps every request well under the vision
+// model's per-minute token cap, so full-Wyckoff no longer rate-limits (429).
 const LENSES = [
   { id: 'patterns', label: 'תבניות מחיר', icon: Shapes },
   { id: 'trend', label: 'מבנה ומגמה', icon: TrendingUp },
@@ -31,18 +29,15 @@ const THINK_STEPS = [
   { label: 'מגבש תרחישים', icon: Lightbulb },
 ];
 
-// The server-side Wyckoff prompt already forbids entry/exit advice — these
-// prompts only steer the focus and depth of the analysis.
-function buildPrompt(depth, lens) {
+// The server-side Wyckoff prompt owns the structure and forbids entry/exit
+// advice; this only points the focus and asks for a tight, professional read.
+function buildPrompt(lens) {
   const lensText = {
     patterns: 'שים דגש על תבניות מחיר: דגלים, ראש וכתפיים, משולשים, תחתית/פסגה כפולה, טריזים, ואירועי ויקוף כמו Spring ו-UTAD.',
     trend: 'שים דגש על מבנה השוק והמגמה: רצף שיאים ושפלים (HH/HL/LH/LL), שבירות מבנה (BOS/MSB), והפאזה הנוכחית במחזור ויקוף (A–E).',
     levels: 'שים דגש על אזורי מפתח: תמיכות והתנגדויות מרכזיות, Creek/Ice, אזורי היצע וביקוש, ורמות שהחליפו תפקיד לאחר פריצה.',
   }[lens];
-  const depthText = depth === 'deep'
-    ? 'בצע ניתוח ויקוף מלא, מחולק לחלקים עם כותרת לכל חלק: מבנה ומגמה; פאזת ויקוף; תבניות בולטות; נפח — מאמץ מול תוצאה (אם נראה בגרף); ולסיום תרחיש מרכזי ותרחיש נגדי.'
-    : 'תן תמצית קצרה: עד 6 נקודות חדות, ושורת סיכום אחת בסוף.';
-  return `נתח את הגרף שבתמונה. ${depthText} ${lensText}`;
+  return `נתח את הגרף שבתמונה לפי המבנה הקבוע (הטיה טכנית + 6 הסעיפים הממוספרים). שמור כל סעיף תמציתי, חד ומקצועי — עד 3–4 שורות לכל סעיף, בלי חזרות ובלי מילוי. ${lensText}`;
 }
 
 function ThinkingTimeline() {
@@ -61,7 +56,7 @@ function ThinkingTimeline() {
       exit={{ opacity: 0 }}
       className="rounded-2xl border border-border-primary bg-bg-secondary/60 p-4"
     >
-      <div className="flex items-center gap-2 mb-4">
+      <div className="flex items-center gap-2.5 mb-4">
         <motion.div
           animate={{ scale: [1, 1.12, 1] }}
           transition={{ duration: 1.6, repeat: Infinity }}
@@ -70,7 +65,7 @@ function ThinkingTimeline() {
           <Brain className="w-4.5 h-4.5 text-accent-primary" />
         </motion.div>
         <div>
-          <p className="text-sm font-bold text-text-primary">TradeAI חושב...</p>
+          <p className="text-sm font-bold text-text-primary">TradeAI מנתח...</p>
           <p className="text-[10px] text-text-muted">מעבד את הגרף שלב אחר שלב</p>
         </div>
       </div>
@@ -106,15 +101,6 @@ function ThinkingTimeline() {
               }`}>
                 {s.label}
               </span>
-              {active && (
-                <motion.span
-                  animate={{ opacity: [0.3, 1, 0.3] }}
-                  transition={{ duration: 1.2, repeat: Infinity }}
-                  className="text-accent-primary text-xs"
-                >
-                  ●
-                </motion.span>
-              )}
             </motion.div>
           );
         })}
@@ -122,7 +108,8 @@ function ThinkingTimeline() {
 
       <div className="mt-4 h-1 bg-bg-tertiary rounded-full overflow-hidden">
         <motion.div
-          className="h-full bg-accent-primary rounded-full"
+          className="h-full rounded-full"
+          style={{ background: 'linear-gradient(90deg, #2563eb, #38bdf8)' }}
           animate={{ width: `${((step + 1) / THINK_STEPS.length) * 92}%` }}
           transition={{ duration: 0.6 }}
         />
@@ -132,7 +119,6 @@ function ThinkingTimeline() {
 }
 
 export default function ChartAnalyzer({ heightClass = '' }) {
-  const [depth, setDepth] = useState('quick');
   const [lens, setLens] = useState('patterns');
   const [image, setImage] = useState(null); // { dataUrl, name }
   const [analyzing, setAnalyzing] = useState(false);
@@ -144,12 +130,11 @@ export default function ChartAnalyzer({ heightClass = '' }) {
   const resultRef = useRef('');
   const batchRef = useRef(null);
   const copyTimerRef = useRef(null);
-  // Synchronous in-flight guard — the `analyzing` state only flips on re-render,
-  // so a fast double-click could fire two analyses and double-charge the image
-  // quota before the button visually disables.
+  // Synchronous in-flight guard — `analyzing` state only flips on re-render, so
+  // a fast double-click could double-fire and double-charge the image quota.
   const inFlightRef = useRef(false);
-  // Streaming/copy can outlive the page — kill pending timers on unmount so
-  // no setState fires after the component is gone.
+  // Streaming/copy can outlive the page — kill pending timers on unmount so no
+  // setState fires after the component is gone.
   useEffect(() => () => {
     clearTimeout(batchRef.current);
     clearTimeout(copyTimerRef.current);
@@ -157,11 +142,8 @@ export default function ChartAnalyzer({ heightClass = '' }) {
   const aiUsage = useAiUsage();
   const { isPremium, loading: authLoading } = useAuth();
   const navigate = useNavigate();
-  // Free users can't analyze images, so don't let them upload one — route
-  // every upload gesture to the upgrade page instead. Gate on the live profile
-  // (useAuth), NOT the worker-cached aiUsage.premium: a fresh grant updates the
-  // Firestore profile in real time, while the worker's plan flag can lag by its
-  // cache TTL — so trusting aiUsage here left just-upgraded users locked out.
+  // Free users can't analyze images — gate on the live profile (useAuth), NOT the
+  // worker-cached aiUsage.premium, so a fresh upgrade unlocks in real time.
   const premiumLocked = !authLoading && !isPremium;
 
   const pickFile = async (file) => {
@@ -190,9 +172,12 @@ export default function ChartAnalyzer({ heightClass = '' }) {
     pickFile(f);
   };
 
+  const openPicker = () => (premiumLocked ? navigate('/premium') : fileInputRef.current?.click());
+
   const onDrop = (e) => {
     e.preventDefault();
     setDragOver(false);
+    if (premiumLocked) { navigate('/premium'); return; }
     pickFile(e.dataTransfer.files?.[0]);
   };
 
@@ -209,7 +194,7 @@ export default function ChartAnalyzer({ heightClass = '' }) {
     resultRef.current = '';
     try {
       await sendMessageStream(
-        [{ role: 'user', text: buildPrompt(depth, lens), image: image.dataUrl }],
+        [{ role: 'user', text: buildPrompt(lens), image: image.dataUrl }],
         (chunk) => {
           resultRef.current += chunk;
           if (!batchRef.current) {
@@ -244,59 +229,76 @@ export default function ChartAnalyzer({ heightClass = '' }) {
     } catch { /* ignore */ }
   };
 
+  // Full reset — drop the image too (the ✕ on the preview).
   const reset = () => {
     setImage(null);
     setResultText('');
     setError(null);
   };
 
+  // "ניתוח חדש" — clear only the result so the SAME chart can be re-analyzed with
+  // a different focus, without forcing a re-upload.
+  const newAnalysis = () => {
+    setResultText('');
+    setError(null);
+    resultRef.current = '';
+  };
+
   const imgRemaining = Math.max(0, aiUsage.imageLimit - aiUsage.imageUsed);
+  const lensLabel = LENSES.find((l) => l.id === lens)?.label;
 
   return (
     <div className="max-w-2xl mx-auto w-full">
-      <div className={`flex flex-col bg-bg-secondary/30 border border-border-primary rounded-2xl overflow-hidden ${heightClass} min-h-[400px]`}>
+      <div className={`relative flex flex-col rounded-3xl overflow-hidden border border-border-primary bg-bg-secondary/40 ${heightClass} min-h-[420px]`}>
+        {/* Ambient accent glow at the top — subtle premium depth */}
+        <div className="pointer-events-none absolute inset-x-0 top-0 h-28 bg-gradient-to-b from-accent-primary/8 to-transparent" />
+
         {/* Header */}
-        <div className="flex items-center justify-between px-4 py-3 border-b border-border-primary bg-bg-secondary/50">
-          <div className="flex items-center gap-2.5">
-            <div className="w-8 h-8 rounded-xl bg-accent-primary/15 flex items-center justify-center">
-              <BarChart3 className="w-5 h-5 text-accent-primary" />
+        <div className="relative flex items-center justify-between px-5 py-4 border-b border-border-primary/70">
+          <div className="flex items-center gap-3">
+            <div className="w-10 h-10 rounded-2xl bg-gradient-to-br from-accent-primary/30 to-accent-primary/5 ring-1 ring-accent-primary/25 flex items-center justify-center">
+              <Sparkles className="w-5 h-5 text-accent-primary" />
             </div>
             <div>
-              <h3 className="text-sm font-bold text-text-primary">TradeAI Vision</h3>
-              <p className="text-[10px] text-text-muted">צלם גרף, קבל קריאת ויקוף</p>
+              <h3 className="text-[15px] font-bold text-text-primary tracking-tight">TradeAI Vision</h3>
+              <p className="text-[11px] text-text-muted">קריאת גרף חכמה בשיטת ויקוף</p>
             </div>
           </div>
           {isPremium && aiUsage.imageLimit > 0 && (
-            <span className={`text-[10px] px-2 py-1 rounded-full border ${
+            <span className={`text-[10px] font-medium px-2.5 py-1 rounded-full border ${
               imgRemaining <= 2
-                ? 'border-loss/40 text-loss'
-                : 'border-accent-primary/30 text-accent-primary'
+                ? 'border-loss/40 text-loss bg-loss/5'
+                : 'border-accent-primary/30 text-accent-primary bg-accent-primary/5'
             }`}>
-              {imgRemaining} ניתוחים נותרו היום
+              {imgRemaining} נותרו היום
             </span>
           )}
         </div>
 
-        {/* Scrollable body */}
-        <div className="flex-1 overflow-y-auto px-4 py-4 space-y-4">
-          {/* Upload zone / image preview — the hero of the screen */}
+        {/* Body */}
+        <div className="relative flex-1 overflow-y-auto px-5 py-5 space-y-5">
           <input ref={fileInputRef} type="file" accept="image/*" className="hidden" onChange={onInputChange} />
+
+          {/* Upload zone / preview */}
           {!image ? (
             <div
-              onClick={() => (premiumLocked ? navigate('/premium') : fileInputRef.current?.click())}
+              role="button"
+              tabIndex={0}
+              onClick={openPicker}
+              onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); openPicker(); } }}
               onDragOver={(e) => { e.preventDefault(); if (!premiumLocked) setDragOver(true); }}
               onDragLeave={() => setDragOver(false)}
-              onDrop={premiumLocked ? (e) => { e.preventDefault(); navigate('/premium'); } : onDrop}
-              className={`relative flex flex-col items-center justify-center gap-3 rounded-2xl border-2 border-dashed px-4 py-10 cursor-pointer transition-all ${
+              onDrop={onDrop}
+              className={`group relative flex flex-col items-center justify-center gap-4 rounded-2xl border-2 border-dashed px-6 py-12 cursor-pointer transition-all outline-none focus-visible:ring-2 focus-visible:ring-accent-primary/50 ${
                 dragOver
                   ? 'border-accent-primary bg-accent-primary/10'
-                  : 'border-border-primary bg-bg-secondary/50 hover:border-accent-primary/50 hover:bg-bg-secondary'
+                  : 'border-border-primary/80 bg-bg-secondary/40 hover:border-accent-primary/50 hover:bg-bg-secondary/70'
               }`}
             >
               <motion.div
-                animate={{ y: [0, -4, 0] }}
-                transition={{ duration: 2.4, repeat: Infinity, ease: 'easeInOut' }}
-                className="w-14 h-14 rounded-2xl bg-accent-primary/15 flex items-center justify-center"
+                animate={{ y: [0, -5, 0] }}
+                transition={{ duration: 2.6, repeat: Infinity, ease: 'easeInOut' }}
+                className="w-16 h-16 rounded-2xl bg-gradient-to-br from-accent-primary/25 to-accent-primary/5 ring-1 ring-accent-primary/20 flex items-center justify-center group-hover:scale-105 transition-transform"
               >
                 {premiumLocked
                   ? <Crown className="w-7 h-7 text-accent-primary" />
@@ -307,7 +309,7 @@ export default function ChartAnalyzer({ heightClass = '' }) {
                 <div className="text-center">
                   <p className="text-sm font-semibold text-text-primary">ניתוח גרפים בתמונה — למנויי Premium</p>
                   <p className="text-[11px] text-text-muted mt-1">שדרג כדי להעלות צילומי גרף ולקבל קריאת ויקוף מלאה</p>
-                  <span className="inline-flex items-center gap-1.5 mt-3 text-xs font-bold text-bg-primary bg-accent-primary rounded-xl px-4 py-2 shadow-lg shadow-accent-primary/20">
+                  <span className="inline-flex items-center gap-1.5 mt-3 text-xs font-bold text-white rounded-xl px-4 py-2 shadow-lg shadow-accent-primary/25" style={{ background: 'linear-gradient(135deg, #2563eb, #38bdf8)' }}>
                     <Crown className="w-3.5 h-3.5" /> שדרג ל-Premium
                   </span>
                 </div>
@@ -325,22 +327,21 @@ export default function ChartAnalyzer({ heightClass = '' }) {
               className={`relative rounded-2xl border overflow-hidden ${analyzing ? 'border-accent-primary/60' : 'border-border-primary'}`}
             >
               <img src={image.dataUrl} alt="הגרף שהועלה" className="w-full max-h-72 object-contain bg-black/40" />
-              {/* Sweeping scan beam over the chart while analyzing. Animate
-                  `left` (container-relative) — translateX percentages are
-                  relative to the beam's own 3rem width, so it barely moved. */}
+              {/* Sweeping scan beam while analyzing */}
               {analyzing && (
                 <motion.div
                   initial={{ left: '-12%' }}
                   animate={{ left: ['-12%', '104%'] }}
                   transition={{ duration: 2.2, repeat: Infinity, ease: 'easeInOut' }}
                   className="pointer-events-none absolute inset-y-0 w-12"
-                  style={{ background: 'linear-gradient(90deg, transparent, rgba(0,191,255,0.35), transparent)' }}
+                  style={{ background: 'linear-gradient(90deg, transparent, rgba(56,189,248,0.35), transparent)' }}
                 />
               )}
               <div className="absolute top-2 left-2 flex gap-1.5">
                 <button
                   onClick={() => fileInputRef.current?.click()}
                   disabled={analyzing}
+                  aria-label="בחר תמונה אחרת"
                   className="p-1.5 rounded-lg bg-black/60 backdrop-blur text-text-secondary hover:text-text-primary transition-colors cursor-pointer disabled:opacity-40"
                   title="בחר תמונה אחרת"
                 >
@@ -349,6 +350,7 @@ export default function ChartAnalyzer({ heightClass = '' }) {
                 <button
                   onClick={reset}
                   disabled={analyzing}
+                  aria-label="הסר תמונה"
                   className="p-1.5 rounded-lg bg-black/60 backdrop-blur text-text-secondary hover:text-loss transition-colors cursor-pointer disabled:opacity-40"
                   title="הסר תמונה"
                 >
@@ -358,56 +360,42 @@ export default function ChartAnalyzer({ heightClass = '' }) {
             </motion.div>
           )}
 
-          {/* Depth selector — card style with description */}
-          <div className="grid grid-cols-2 gap-2">
-            {DEPTHS.map((d) => (
-              <button
-                key={d.id}
-                onClick={() => setDepth(d.id)}
-                disabled={analyzing}
-                className={`flex flex-col items-start gap-0.5 px-3 py-2.5 rounded-xl text-right transition-all cursor-pointer disabled:opacity-50 border ${
-                  depth === d.id
-                    ? 'bg-accent-primary/10 border-accent-primary/50'
-                    : 'bg-bg-secondary border-border-primary hover:border-border-primary/80'
-                }`}
-              >
-                <span className={`flex items-center gap-1.5 text-xs font-bold ${depth === d.id ? 'text-accent-primary' : 'text-text-primary'}`}>
-                  <d.icon className="w-3.5 h-3.5" />
-                  {d.label}
-                </span>
-                <span className="text-[10px] text-text-muted">{d.desc}</span>
-              </button>
-            ))}
-          </div>
+          {/* Focus + analyze — shown once an image is chosen, hidden while the
+              model works (the timeline takes over) and while a result is up. */}
+          {image && !resultText && !analyzing && (
+            <>
+              <div className="space-y-2">
+                <p className="text-[11px] font-medium text-text-muted px-0.5">מיקוד הניתוח</p>
+                <div className="grid grid-cols-3 gap-2">
+                  {LENSES.map((l) => (
+                    <button
+                      key={l.id}
+                      onClick={() => setLens(l.id)}
+                      disabled={analyzing}
+                      className={`flex flex-col items-center gap-1.5 px-2 py-2.5 rounded-xl border text-center transition-all cursor-pointer disabled:opacity-50 ${
+                        lens === l.id
+                          ? 'bg-accent-primary/10 border-accent-primary/50 text-accent-primary'
+                          : 'bg-bg-secondary border-border-primary text-text-secondary hover:border-border-primary/80 hover:text-text-primary'
+                      }`}
+                    >
+                      <l.icon className="w-4 h-4" />
+                      <span className="text-[11px] font-medium">{l.label}</span>
+                    </button>
+                  ))}
+                </div>
+              </div>
 
-          {/* Lens chips */}
-          <div className="flex flex-wrap gap-1.5">
-            {LENSES.map((l) => (
               <button
-                key={l.id}
-                onClick={() => setLens(l.id)}
+                onClick={analyze}
                 disabled={analyzing}
-                className={`flex items-center gap-1.5 px-3 py-1.5 rounded-full text-xs transition-all cursor-pointer disabled:opacity-50 border ${
-                  lens === l.id
-                    ? 'bg-accent-primary/15 border-accent-primary/40 text-accent-primary font-semibold'
-                    : 'bg-bg-secondary border-border-primary text-text-secondary hover:text-text-primary'
-                }`}
+                className="group relative w-full flex items-center justify-center gap-2 py-3.5 rounded-2xl text-sm font-bold text-white overflow-hidden transition-all cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed shadow-lg shadow-accent-primary/25"
+                style={{ background: 'linear-gradient(135deg, #2563eb, #38bdf8)' }}
               >
-                <l.icon className="w-3 h-3" />
-                {l.label}
+                <Sparkles className="w-4 h-4" />
+                {analyzing ? 'מנתח את הגרף...' : 'הפעל ניתוח'}
               </button>
-            ))}
-          </div>
-
-          {/* Analyze button */}
-          <button
-            onClick={analyze}
-            disabled={!image || analyzing}
-            className="w-full flex items-center justify-center gap-2 py-3 rounded-xl bg-accent-primary text-bg-primary text-sm font-bold hover:bg-accent-hover transition-colors cursor-pointer disabled:opacity-30 disabled:cursor-not-allowed shadow-lg shadow-accent-primary/20"
-          >
-            <Sparkles className="w-4 h-4" />
-            {analyzing ? 'מעבד...' : 'הפעל ניתוח'}
-          </button>
+            </>
+          )}
 
           {/* Thinking timeline */}
           <AnimatePresence>
@@ -419,20 +407,21 @@ export default function ChartAnalyzer({ heightClass = '' }) {
             <motion.div
               initial={{ opacity: 0, y: 10 }}
               animate={{ opacity: 1, y: 0 }}
-              className="rounded-2xl border border-border-primary bg-bg-secondary overflow-hidden"
+              className="rounded-2xl border border-border-primary bg-bg-secondary/60 overflow-hidden"
             >
-              <div className="flex items-center justify-between px-4 py-2.5 border-b border-border-primary bg-bg-tertiary/40">
-                <span className="flex items-center gap-2 text-xs font-bold text-text-primary">
-                  <Sparkles className="w-3.5 h-3.5 text-accent-primary" />
+              <div className="h-0.5" style={{ background: 'linear-gradient(90deg, #2563eb, #38bdf8, transparent)' }} />
+              <div className="flex items-center justify-between px-4 py-3 border-b border-border-primary/60">
+                <span className="flex items-center gap-2 text-[13px] font-bold text-text-primary">
+                  <Sparkles className="w-4 h-4 text-accent-primary" />
                   קריאת הגרף
-                  <span className="text-[9px] font-normal px-1.5 py-0.5 rounded-full bg-accent-primary/15 text-accent-primary">
-                    {DEPTHS.find((d) => d.id === depth)?.label} · {LENSES.find((l) => l.id === lens)?.label}
+                  <span className="text-[10px] font-medium px-2 py-0.5 rounded-full bg-accent-primary/10 text-accent-primary">
+                    {lensLabel}
                   </span>
                 </span>
                 {!analyzing && (
                   <button
                     onClick={copyResult}
-                    className="flex items-center gap-1 text-[10px] text-text-muted hover:text-text-primary transition-colors cursor-pointer"
+                    className="flex items-center gap-1 text-[11px] text-text-muted hover:text-text-primary transition-colors cursor-pointer"
                     title="העתק ניתוח"
                   >
                     {copied
@@ -442,14 +431,14 @@ export default function ChartAnalyzer({ heightClass = '' }) {
                   </button>
                 )}
               </div>
-              <div className="px-4 py-3 text-sm leading-relaxed text-text-secondary space-y-0">
+              <div className="px-4 py-4 text-[13px] leading-relaxed text-text-secondary">
                 {formatAIText(resultText)}
               </div>
               {!analyzing && (
-                <div className="px-4 pb-3">
+                <div className="px-4 pb-4">
                   <button
-                    onClick={reset}
-                    className="w-full py-2 rounded-xl border border-border-primary text-xs text-text-secondary hover:text-text-primary hover:bg-bg-tertiary transition-colors cursor-pointer"
+                    onClick={newAnalysis}
+                    className="w-full py-2.5 rounded-xl border border-border-primary text-xs font-medium text-text-secondary hover:text-text-primary hover:bg-bg-tertiary transition-colors cursor-pointer"
                   >
                     ניתוח חדש
                   </button>

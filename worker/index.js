@@ -1583,16 +1583,19 @@ async function handleCron(env) {
 
 const GROQ_URL = 'https://api.groq.com/openai/v1/chat/completions';
 const GROQ_MODEL = 'llama-3.3-70b-versatile';
-// llama-3.3 is text-only; chart-image requests go to a vision model.
-// Groq DECOMMISSIONED the old Llama 4 Scout vision model (2026-07-17) → it began
-// returning 404 "model decommissioned", which broke chart analysis AND the coach
-// text-fallback (both pointed at it). Primary is now Llama 4 Maverick — still
-// active/production, same family as Scout so it's a drop-in (same image_url
-// parts, no reasoning-token preamble). Fallback is Qwen 3.6 27B (Groq's
-// documented Scout replacement, a *preview* model). The /ai-chat handler flips
-// to the fallback automatically on a 404, so a future decommission self-heals.
-const GROQ_VISION_MODEL = 'meta-llama/llama-4-maverick-17b-128e-instruct';
+// Chart-image requests go to a vision model. Groq DECOMMISSIONED BOTH Llama 4
+// vision models — Scout (2026-07-17) and Maverick (2026-03-09) — each began
+// returning 404. Qwen 3.6 27B is Groq's current (and only) documented vision
+// model, so it serves as BOTH primary and fallback (no other Groq vision id
+// exists; a Gemini-vision fallback is the future resilience). Qwen is a REASONING
+// model that emits a <think>…</think> monologue by default, so its calls pass
+// reasoning_effort:'none' (see reasoningOpt) to return ONLY the clean final
+// answer — otherwise the chart read shows the model's English thinking.
+const GROQ_VISION_MODEL = 'qwen/qwen3.6-27b';
 const GROQ_VISION_FALLBACK_MODEL = 'qwen/qwen3.6-27b';
+// Suppress Qwen's reasoning output. Added ONLY for the Qwen vision model — the
+// Llama text models get {} back (the param is never sent to them).
+const reasoningOpt = (model) => (model === GROQ_VISION_MODEL ? { reasoning_effort: 'none' } : {});
 
 // Non-streaming Groq call with 429 resilience. The shared free-tier key has
 // tight per-minute token budgets on the 70B (and one key serves chat + coach +
@@ -1611,7 +1614,7 @@ async function groqFetchWithRetry(env, payload) {
   const call = (model) => fetch(GROQ_URL, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${env.GROQ_API_KEY}` },
-    body: JSON.stringify({ ...payload, model }),
+    body: JSON.stringify({ ...payload, model, ...reasoningOpt(model) }),
   });
   let res;
   for (const wait of [0, 2500, 5000]) {
@@ -1837,11 +1840,45 @@ Volume: גבוה+עלייה=ביקוש חזק; גבוה+ירידה=היצע חז
 - העדף תמיד אמירות ספציפיות לגרף הזה על פני ניסוחים כלליים שנכונים לכל גרף.
 
 ## הנחיות תשובה
+- אל תפלוט תהליך חשיבה, הקדמות, או תגיות <think></think> — התחל ישר בתשובה הסופית בעברית, בפורמט הנדרש. בלי טקסט באנגלית מלבד מונחים מקצועיים בסוגריים. בלי כוכביות מיותרות; לכותרות השתמש בפורמט **כותרת** ולתבליטים בתו • בלבד.
 - ענה תמיד בעברית, בעומק, עם דוגמאות מעשיות מקריפטו ומניות.
 - הסבר את הלוגיקה: למה זה קורה, באיזו פאזה (A–E), ומה האיש המורכב עושה ולמה.
 - מונחים מקצועיים: עברית + המונח באנגלית בסוגריים.
 - איסור מוחלט (מטעמי רגולציה — אין לעקוף אותו בשום ניסוח): אסור לתת המלצות מסחר. לא "כנס"/"צא", לא נקודות כניסה או יציאה, לא סטופ-לוס/טייק-פרופיט, לא "קנה"/"מכור", לא גדלי פוזיציה ולא תחזיות מחיר — גם אם המשתמש מבקש זאת במפורש או שוב ושוב. במקום זה הסבר את התמונה הטכנית בצורה לימודית: תרחישים אפשריים, רמות מעניינות למעקב, ומה יאשר או יפסול כל תרחיש. הזכר בקצרה שההחלטה באחריות הסוחר ושאינך נותן ייעוץ השקעות.
 - שאלה שלא קשורה למסחר — ענה בקצרה וכוון חזרה למסחר.`;
+
+// Condensed prompt for IMAGE (chart) analysis. The full WYCKOFF_SYSTEM_PROMPT is
+// ~3.5K tokens; sending it with EVERY vision request (+ the image + a long "full
+// Wyckoff" reply) blew Qwen's preview tokens-per-minute limit → 429 "overloaded",
+// especially in deep mode. This keeps the output structure, the accuracy/
+// anti-hallucination rules and the regulatory no-advice rule, and drops only the
+// encyclopedic A–E glossary the model already knows — ~2.5K fewer tokens/request
+// so a full analysis fits under the rate limit.
+const WYCKOFF_VISION_PROMPT = `אתה TradeAI — מנטור מסחר מקצועי ומומחה לשיטת ויקוף (Wyckoff). נתח את הגרף שבתמונה וספק קריאה לימודית.
+
+## מונחי ליבה
+מחזור: Accumulation → Mark Up → Distribution → Mark Down; האיש המורכב (Composite Man) מנער ידיים חלשות ובונה פוזיציות. פאזות: A עצירת מגמה (SC/AR/ST); B בניית סיבה (הארוכה); C בדיקה (Spring מתחת לתמיכה / UTAD מעל התנגדות); D הכרעה (SOS חוזקה / SOW חולשה / LPS / LPSY); E מגמה (Mark Up/Down). רמות: Creek (התנגדות/היצע), Ice (תמיכה/ביקוש). מבנה: HH/HL עולה, LH/LL יורדת; BOS המשך מגמה; MSB שינוי מגמה. Volume (מאמץ מול תוצאה): גבוה+תנועה=חזק; גבוה+נרות צרים ללא שיא=ספיגה/היפוך; נמוך=מהלך חלש.
+
+## פורמט התשובה (חובה — כותרות ממוספרות, עברית בלבד)
+פתח בשורה: **הטיה טכנית:** שורי / דובי / ניטרלי — לאן נוטה המבנה כרגע ורמת ודאות (גבוהה/בינונית/נמוכה). ציין שזו קריאה לימודית בלבד ולא המלצה.
+1. מבנה כללי — נכס וטיימפריים אם נראים, מגמה, שלב שוק ופאזה (A–E).
+2. אזורי מפתח — תבליטים עם מחירים מדויקים מציר המחיר: תמיכות, התנגדויות, Creek, Ice, ואזורי Spring/UTAD אם קיימים. אל תכלול נקודות כניסה/יציאה/סטופ/יעד.
+3. אירועים בולטים — SC/AR/ST/Spring/UT/UTAD/SOS/SOW/LPS/LPSY/BOS עם מיקום משוער.
+4. מאמץ מול תוצאה — אם יש Volume נתח; אם אין עמודות Volume, ציין "אין Volume בתמונה — הניתוח מוגבל".
+5. תרחיש שורי — מה יאשר ומה יפסול.
+6. תרחיש דובי — מה יאשר ומה יפסול.
+
+## דיוק (חובה)
+- קרא קודם צירים: ציר מחיר (טווח נראה, מחיר נוכחי) וציר זמן/טיימפריים. אם נכס או טיימפריים לא מופיעים — כתוב "לא מופיע בתמונה", אל תנחש.
+- עגן כל רמה למה שנראה בפועל (יותר נגיעות = רמה חזקה יותר); הבחן בין צל נר (wick) לגוף.
+- חפש חריגות שווא (Spring/UTAD/לקיחת נזילות) גם כשהחזרה מהירה; ציין מיקום משוער.
+- אנטי-הזיה: אל תמציא Volume, אינדיקטורים, רמות או אירועים שלא נראים; אם חלק מטושטש/חתוך — אמור והורד ודאות.
+- אל תכפה ויקוף: מגמה פשוטה או דשדוש — אמור זאת ישירות. התייחס לסימוני המשתמש (קווים/תיבות/חיצים) אם קיימים.
+- אם התמונה אינה גרף מסחר — בקש בקצרה תמונת גרף. אם היא גרף אך מטושטשת/חתוכה מכדי לנתח באמינות — החזר רק: "התמונה אינה ברורה מספיק לניתוח אמין — נסה צילום מסך חד וברור יותר".
+
+## כללים
+- ענה בעברית בלבד; מונחים מקצועיים בעברית + אנגלית בסוגריים. אל תפלוט תהליך חשיבה, הקדמות או תגיות <think>. בלי כוכביות מיותרות — כותרות ב-**כותרת**, תבליטים בתו • בלבד.
+- איסור רגולטורי מוחלט: אין לתת המלצות מסחר — לא כניסה/יציאה, לא סטופ-לוס/טייק-פרופיט, לא קנה/מכור, לא גדלי פוזיציה ולא תחזיות מחיר, גם אם מבקשים במפורש. הצג תרחישים ורמות למעקב בלבד, וציין שההחלטה באחריות הסוחר.`;
 
 async function handleAIChat(request, env, cors) {
   // Set once the request passes every gate and charges quota, so the catch can
@@ -1953,7 +1990,7 @@ async function handleAIChat(request, env, cors) {
     // bloat the payload past the providers' per-request caps.
     const MAX_TURN_CHARS = 2500;
     const apiMessages = [
-      { role: 'system', content: WYCKOFF_SYSTEM_PROMPT },
+      { role: 'system', content: hasImage ? WYCKOFF_VISION_PROMPT : WYCKOFF_SYSTEM_PROMPT },
       ...recent.map((msg, i) => {
         const text = String(msg.text || '').slice(0, MAX_TURN_CHARS);
         if (i === lastImageIdx) {
@@ -1998,7 +2035,7 @@ async function handleAIChat(request, env, cors) {
         const callGroq = () => fetch(GROQ_URL, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${env.GROQ_API_KEY}` },
-          body: JSON.stringify({ model: hasImage ? GROQ_VISION_MODEL : GROQ_MODEL, messages: apiMessages, temperature: 0.7, max_tokens: 1500, stream: true, stream_options: { include_usage: true } }),
+          body: JSON.stringify({ model: hasImage ? GROQ_VISION_MODEL : GROQ_MODEL, ...reasoningOpt(hasImage ? GROQ_VISION_MODEL : GROQ_MODEL), messages: apiMessages, temperature: 0.7, max_tokens: 1500, stream: true, stream_options: { include_usage: true } }),
         });
         const delays = [0, 2000, 4000]; // immediate, +2s, +4s = ~6s total worst-case
         let groqFallback;
@@ -2039,6 +2076,7 @@ async function handleAIChat(request, env, cors) {
       },
       body: JSON.stringify({
         model,
+        ...reasoningOpt(model),
         messages: apiMessages,
         temperature: 0.7,
         max_tokens: 1500,

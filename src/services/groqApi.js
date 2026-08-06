@@ -42,7 +42,7 @@ export async function fetchProjectDescription(coinName, symbol, retries = 2) {
         await new Promise((r) => setTimeout(r, (attempt + 1) * 3000));
         continue;
       }
-      throw new Error('המערכת עמוסה. המתן כמה שניות ונסה שוב.');
+      throw new Error('שירות ה-AI עמוס כרגע (מגבלת קצב). המתן כ-30 שניות ונסה שוב.');
     }
     if (response.status === 401) {
       const reason = err.reason ? ` (${err.reason})` : '';
@@ -160,7 +160,7 @@ export async function sendMessageStream(messages, onChunk, retries = 2) {
           await new Promise((r) => setTimeout(r, (attempt + 1) * 3000));
           continue;
         }
-        throw new Error('המערכת עמוסה. המתן כמה שניות ונסה שוב.');
+        throw new Error('שירות ה-AI עמוס כרגע (מגבלת קצב). המתן כ-30 שניות ונסה שוב.');
       }
       if (response.status === 401) {
         // One silent recovery: a rejected token (revocation / clock skew / key

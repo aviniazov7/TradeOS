@@ -41,7 +41,15 @@ function safeHtml(raw) {
 const isHeader = (line) => /^\s*\*{0,2}\s*\d+\.\s+\S/.test(line) || /^#{1,3}\s/.test(line);
 
 export function formatAIText(text) {
-  const lines = text.split('\n');
+  // Safety net for reasoning models (Qwen vision): strip any <think>…</think>
+  // monologue — and a stray unclosed <think> while streaming — so the chart read
+  // never shows the model's internal thinking, even if a provider somehow ignores
+  // the worker's reasoning_effort:'none'.
+  const clean = String(text)
+    .replace(/<think>[\s\S]*?<\/think>/gi, '')
+    .replace(/<think>[\s\S]*$/i, '')
+    .replace(/^\s+/, '');
+  const lines = clean.split('\n');
   return lines.map((line, i) => {
     if (!line.trim()) return <br key={i} />;
 
