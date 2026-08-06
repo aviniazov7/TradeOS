@@ -1,10 +1,11 @@
 import { lazy, Suspense } from 'react';
 import { MotionConfig } from 'framer-motion';
-import { BrowserRouter, Routes, Route } from 'react-router-dom';
+import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom';
 import { AuthProvider } from './contexts/AuthContext';
 import { JournalProvider } from './contexts/JournalContext';
 import { BacktestProvider } from './contexts/BacktestContext';
 import ProtectedRoute from './components/auth/ProtectedRoute';
+import PremiumRoute from './components/auth/PremiumRoute';
 import LoginPage from './components/auth/LoginPage';
 import AuthGooglePopup from './components/auth/AuthGooglePopup';
 import Layout from './components/layout/Layout';
@@ -36,7 +37,7 @@ const loadCheckoutPage = () => import('./components/premium/CheckoutPage');
 const loadCouponLanding = () => import('./components/premium/CouponLandingPage');
 const loadRefundPolicy = () => import('./components/legal/RefundPolicyPage');
 const loadAccessibility = () => import('./components/legal/AccessibilityStatement');
-const loadWhalesPage = () => import('./components/whales/WhalesPage');
+const loadScannerPage = () => import('./components/signals/SignalsPage');
 const loadAdminPanel = () => import('./components/admin/AdminPanel');
 // Redesign preview — new "Daily Briefing" home screen (blue + bilingual).
 // Lives at /briefing so we can review the direction without touching the
@@ -65,7 +66,7 @@ const CheckoutPage = lazy(loadCheckoutPage);
 const CouponLandingPage = lazy(loadCouponLanding);
 const RefundPolicyPage = lazy(loadRefundPolicy);
 const AccessibilityStatement = lazy(loadAccessibility);
-const WhalesPage = lazy(loadWhalesPage);
+const ScannerPage = lazy(loadScannerPage);
 const AdminPanel = lazy(loadAdminPanel);
 const DailyBriefing = lazy(loadDailyBriefing);
 
@@ -124,7 +125,11 @@ function MainApp() {
                 <Route path="mentality/stats" element={<MentalStats />} />
                 {/* <Route path="leaderboard" element={<LeaderboardPage />} /> */}
                 <Route path="market" element={<MarketOverview />} />
-                <Route path="whales" element={<WhalesPage />} />
+                {/* Whales moved into Market Overview; keep the path as a redirect
+                    so old links/bookmarks still land somewhere sensible. */}
+                <Route path="whales" element={<Navigate to="/market" replace />} />
+                {/* Wyckoff setup scanner — Premium only. */}
+                <Route path="scanner" element={<PremiumRoute><ScannerPage /></PremiumRoute>} />
                 <Route path="trade-ai" element={<TradeAIPage />} />
                 <Route path="news" element={<NewsPage />} />
                 <Route path="exchange" element={<ExchangeSettings />} />

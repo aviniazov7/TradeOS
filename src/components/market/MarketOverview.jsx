@@ -10,6 +10,7 @@ import { pageVariants, pageTransition, staggerContainer } from '../../utils/anim
 import FearGreedGauge from '../dashboard/FearGreedGauge';
 import CoinAnalysis from './CoinAnalysis';
 import MarketSessionsCard from './MarketSessionsCard';
+import WhalesPage from '../whales/WhalesPage';
 import { getCachedImage, hasKnownIcon } from '../../services/coinImageCache';
 import { fetchSpotTickersAsBinance, fetchLinearTickers, fetchAccountRatio } from '../../services/bybitDirect';
 import CoinIcon from '../shared/CoinIcon';
@@ -1357,6 +1358,11 @@ export default function MarketOverview() {
       {/* Heatmap */}
       <Reveal>
       <CryptoHeatmap coins={allCoins} loading={loading} />
+      </Reveal>
+
+      {/* Whales — moved here from its own page: live big-trade & liquidation feed. */}
+      <Reveal>
+      <WhalesPage embedded />
       </Reveal>
 
       </motion.div>

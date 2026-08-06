@@ -15,7 +15,7 @@ import {
   Wallet,
   Crown,
   Bot,
-  Waves,
+  Radar,
 } from 'lucide-react';
 import PositionCalculator from '../calculator/PositionCalculator';
 import { useAuth } from '../../contexts/AuthContext';
@@ -29,18 +29,21 @@ const navItems = [
   { to: '/wallets', label: 'ארנקים', icon: Wallet },
   { to: '/plans', label: 'תוכניות מסחר', icon: ClipboardList },
   { to: '/market', label: 'סקירת שוק', icon: Activity },
-  { to: '/whales', label: 'לוויתנים', icon: Waves },
+  { to: '/scanner', label: 'סורק סטאפים', icon: Radar, premium: true },
   { to: '/trade-ai', label: 'TradeAI', icon: Bot },
   { to: '/news', label: 'חדשות', icon: Newspaper },
   { to: '/premium', label: 'שדרוג Premium', icon: Crown, highlight: true },
 ];
 
 export default function Sidebar({ mobileOpen, onClose }) {
-  const { isAdmin } = useAuth();
+  const { isAdmin, isPremium } = useAuth();
   const [calcOpen, setCalcOpen] = useState(false);
+  // The scanner is Premium-only — hide it from the menu for free users (the
+  // route itself is also gated by PremiumRoute).
+  const base = navItems.filter((i) => !i.premium || isPremium);
   const items = isAdmin
-    ? [...navItems, { to: '/admin', label: 'ניהול', icon: Shield }]
-    : navItems;
+    ? [...base, { to: '/admin', label: 'ניהול', icon: Shield }]
+    : base;
   const handleNavClick = () => {
     onClose();
   };
