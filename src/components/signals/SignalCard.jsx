@@ -1,7 +1,9 @@
-import { Pencil, Trash2, ArrowRightLeft, CheckCircle2, Clock, Zap } from 'lucide-react';
+import { useState } from 'react';
+import { Pencil, Trash2, CheckCircle2, Clock, Zap, Maximize2 } from 'lucide-react';
 import CoinIcon from '../shared/CoinIcon';
 import SignalTrack from './SignalTrack';
 import SetupChart from './SetupChart';
+import SetupChartModal from './SetupChartModal';
 
 const STATUS = {
   waiting: { label: 'ממתין', icon: Clock, className: 'text-text-muted bg-bg-tertiary border-border-primary' },
@@ -9,7 +11,8 @@ const STATUS = {
   closed:  { label: 'הושלם', icon: CheckCircle2, className: 'text-profit bg-profit/10 border-profit/30' },
 };
 
-export default function SignalCard({ signal, currentPrice, onEdit, onDelete, onTransfer, onStatusChange }) {
+export default function SignalCard({ signal, currentPrice, onEdit, onDelete, onStatusChange }) {
+  const [chartOpen, setChartOpen] = useState(false);
   const { pair, direction, timeframe, entryPrice, stopLoss, tps = [], status, notes } = signal;
   const isLong = direction === 'long';
   const statusInfo = STATUS[status] || STATUS.waiting;
@@ -42,9 +45,14 @@ export default function SignalCard({ signal, currentPrice, onEdit, onDelete, onT
           </div>
         </div>
 
-        {/* Setup chart — annotated OHLC bars with the entry/stop levels marked */}
+        {/* Setup chart — click to open the full 3-timeframe view */}
         {pair && entryPrice != null && (
-          <SetupChart pair={pair} entryPrice={entryPrice} stopLoss={stopLoss} direction={direction} interval={timeframe || '30m'} label={isLong ? 'LPS' : 'LPSY'} />
+          <button onClick={() => setChartOpen(true)} className="relative block w-full group/chart cursor-pointer" title="פתח תצוגת 3 מימדי זמן">
+            <SetupChart pair={pair} entryPrice={entryPrice} stopLoss={stopLoss} direction={direction} interval={timeframe || '30m'} label={isLong ? 'LPS' : 'LPSY'} tps={tps} />
+            <span className="absolute top-1.5 left-1.5 flex items-center gap-1 text-[9px] text-text-secondary bg-bg-primary/70 backdrop-blur px-1.5 py-0.5 rounded-md opacity-0 group-hover/chart:opacity-100 transition-opacity">
+              <Maximize2 className="w-2.5 h-2.5" /> 3 מימדי זמן
+            </span>
+          </button>
         )}
 
         {/* Entry zone */}
@@ -91,14 +99,6 @@ export default function SignalCard({ signal, currentPrice, onEdit, onDelete, onT
               <Zap className="w-3.5 h-3.5" /> הפעל
             </button>
           )}
-          {status === 'active' && (
-            <button
-              onClick={onTransfer}
-              className="flex-1 flex items-center justify-center gap-1 py-1.5 rounded-lg bg-profit/10 text-profit text-xs font-semibold hover:bg-profit/20 transition-colors cursor-pointer"
-            >
-              <ArrowRightLeft className="w-3.5 h-3.5" /> העבר ליומן
-            </button>
-          )}
           <button
             onClick={() => onEdit(signal)}
             className="p-1.5 rounded-lg text-text-muted hover:text-accent-primary hover:bg-bg-tertiary transition-colors cursor-pointer"
@@ -112,6 +112,8 @@ export default function SignalCard({ signal, currentPrice, onEdit, onDelete, onT
             <Trash2 className="w-3.5 h-3.5" />
           </button>
         </div>
+
+        <SetupChartModal isOpen={chartOpen} onClose={() => setChartOpen(false)} signal={signal} />
       </div>
     </div>
   );

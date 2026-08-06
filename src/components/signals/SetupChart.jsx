@@ -3,10 +3,10 @@ import { fetchKlines } from '../../services/coingeckoApi';
 
 const fmtP = (p) => (p >= 1000 ? Math.round(p).toLocaleString('en-US') : p >= 1 ? p.toFixed(2) : p.toFixed(5));
 
-// Fixed chart geometry (viewBox units); the SVG scales to the card width.
-const W = 320, H = 132, PAD_L = 6, PAD_R = 54, PAD_Y = 10;
+// Fixed chart geometry (viewBox units); the SVG scales to its container width.
+const W = 320, H = 132, PAD_L = 6, PAD_R = 56, PAD_Y = 10;
 
-// A dashed horizontal level (entry / stop) with a price tag on the right.
+// A dashed horizontal level (entry / stop / target) with a price tag on the right.
 function AnnoLine({ yy, color, textColor, price }) {
   return (
     <g>
@@ -17,12 +17,12 @@ function AnnoLine({ yy, color, textColor, price }) {
   );
 }
 
-// Annotated OHLC BAR chart (bars, not candlesticks) for a detected setup. Draws
-// the recent price action and overlays the entry + stop levels and the risk zone
-// between them — the way a trader marks a chart by hand. Colors: teal = up bar,
-// red = down bar; blue dashed = entry, red dashed = stop.
-export default function SetupChart({ pair, entryPrice, stopLoss, direction, interval = '30m', label }) {
+// Annotated OHLC BAR chart (bars, not candlesticks) with a TradingView-style
+// position tool: the entry / stop / target levels, a RED risk box (entry↔stop)
+// and a GREEN reward box (entry↔target). Teal = up bar, red = down bar.
+export default function SetupChart({ pair, entryPrice, stopLoss, interval = '30m', label, tps = [] }) {
   const [bars, setBars] = useState(null);
+  const tp = Array.isArray(tps) && tps.length ? Number(tps[0]) : null;
 
   useEffect(() => {
     let alive = true;
@@ -35,10 +35,10 @@ export default function SetupChart({ pair, entryPrice, stopLoss, direction, inte
     return () => { alive = false; };
   }, [pair, interval]);
 
-  if (bars === null) return <div className="h-[132px] rounded-lg bg-bg-tertiary/40 animate-pulse" />;
+  if (bars === null) return <div className="h-[120px] rounded-lg bg-bg-tertiary/40 animate-pulse" />;
   if (!bars.length) return null;
 
-  const extra = [entryPrice, stopLoss].filter((v) => v != null);
+  const extra = [entryPrice, stopLoss, tp].filter((v) => v != null);
   const hi = Math.max(...bars.map((b) => b.h), ...extra);
   const lo = Math.min(...bars.map((b) => b.l), ...extra);
   const range = hi - lo || 1;
@@ -50,16 +50,18 @@ export default function SetupChart({ pair, entryPrice, stopLoss, direction, inte
 
   const eY = entryPrice != null ? y(entryPrice) : null;
   const sY = stopLoss != null ? y(stopLoss) : null;
+  const tY = tp != null ? y(tp) : null;
+  const zoneW = W - PAD_R - PAD_L;
 
   return (
     <div className="rounded-lg bg-bg-primary/50 border border-border-primary/60 overflow-hidden">
       <svg viewBox={`0 0 ${W} ${H}`} className="w-full block">
-        {/* risk zone between entry and stop */}
+        {/* Position tool: risk box (entry↔stop) + reward box (entry↔target) */}
         {eY != null && sY != null && (
-          <rect
-            x={PAD_L} y={Math.min(eY, sY)} width={W - PAD_R - PAD_L} height={Math.abs(sY - eY)}
-            fill={direction === 'short' ? 'rgba(244,63,94,0.09)' : 'rgba(34,197,94,0.09)'}
-          />
+          <rect x={PAD_L} y={Math.min(eY, sY)} width={zoneW} height={Math.abs(sY - eY)} fill="rgba(244,63,94,0.10)" />
+        )}
+        {eY != null && tY != null && (
+          <rect x={PAD_L} y={Math.min(eY, tY)} width={zoneW} height={Math.abs(tY - eY)} fill="rgba(34,197,94,0.10)" />
         )}
         {/* OHLC bars: high-low stick, open tick left, close tick right */}
         {bars.map((b, i) => {
@@ -78,6 +80,7 @@ export default function SetupChart({ pair, entryPrice, stopLoss, direction, inte
         {label && sY != null && (
           <text x={PAD_L + 3} y={sY - 5} fill="#f43f5e" fontSize="9" fontWeight="800">{label}</text>
         )}
+        {tY != null && <AnnoLine yy={tY} color="#22c55e" textColor="#04140b" price={tp} />}
         {eY != null && <AnnoLine yy={eY} color="#38bdf8" textColor="#04141f" price={entryPrice} />}
         {sY != null && <AnnoLine yy={sY} color="#f43f5e" textColor="#1a0209" price={stopLoss} />}
       </svg>
