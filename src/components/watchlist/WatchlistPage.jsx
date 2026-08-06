@@ -33,6 +33,9 @@ const BIAS = {
   short: { label: 'שורט', flag: 'text-loss fill-loss/25', chip: 'text-loss bg-loss/10 border-loss/25' },
 };
 const nextBias = (b) => (b == null ? 'long' : b === 'long' ? 'short' : null);
+// Cap the number of scanned (tagged) coins so the scanner always stays within
+// the free Cloudflare/Firestore budget — applies to Premium too, on purpose.
+const MAX_SCAN_TAGS = 15;
 
 export default function WatchlistPage({ embedded = false }) {
   const { items, loading, addItem, updateItem, removeItem } = useWatchlist();
@@ -98,7 +101,16 @@ export default function WatchlistPage({ embedded = false }) {
 
   // Quick flag toggle on the row — cycles none → long → short → none.
   const cycleBias = async (it) => {
+    const wasTagged = it.bias === 'long' || it.bias === 'short';
     const bias = nextBias(it.bias ?? null);
+    const willTag = bias === 'long' || bias === 'short';
+    if (willTag && !wasTagged) {
+      const tagged = items.filter((i) => i.bias === 'long' || i.bias === 'short').length;
+      if (tagged >= MAX_SCAN_TAGS) {
+        toast.error(`מקסימום ${MAX_SCAN_TAGS} מטבעות מתויגים לסריקה. הסר תיוג ממטבע אחר קודם.`);
+        return;
+      }
+    }
     try {
       await updateItem(it.id, { bias });
       if (bias) toast.success(`${it.symbol}: ${BIAS[bias].label} — ייסרק לסטאפ`);
@@ -111,6 +123,15 @@ export default function WatchlistPage({ embedded = false }) {
   };
   const saveEdit = async () => {
     if (!editing) return;
+    const wasTagged = editing.bias === 'long' || editing.bias === 'short';
+    const willTag = form.bias === 'long' || form.bias === 'short';
+    if (willTag && !wasTagged) {
+      const tagged = items.filter((i) => i.bias === 'long' || i.bias === 'short').length;
+      if (tagged >= MAX_SCAN_TAGS) {
+        toast.error(`מקסימום ${MAX_SCAN_TAGS} מטבעות מתויגים לסריקה.`);
+        return;
+      }
+    }
     const target = form.targetPrice === '' ? null : Number(form.targetPrice);
     await updateItem(editing.id, {
       note: form.note.trim(),
@@ -145,7 +166,7 @@ export default function WatchlistPage({ embedded = false }) {
         <Radar className="w-4 h-4 text-accent-primary shrink-0" />
         <p className="text-[11px] text-text-secondary leading-snug">
           תייג מטבע ב<span className="text-profit font-semibold">לונג</span> או <span className="text-loss font-semibold">שורט</span> (הדגל בצד) — והוא ייסרק אוטומטית לסטאפ ויקוף.
-          {taggedCount > 0 && <span className="text-text-muted"> · {taggedCount} מתויגים</span>}
+          {taggedCount > 0 && <span className="text-text-muted"> · {taggedCount}/{MAX_SCAN_TAGS} מתויגים</span>}
         </p>
       </div>
 

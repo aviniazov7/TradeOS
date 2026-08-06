@@ -1590,7 +1590,10 @@ async function handleCron(env) {
 // the code can ship inert (no scanning, no cost, no pushes) until enabled.
 const FS_BASE = `https://firestore.googleapis.com/v1/projects/${FIREBASE_PROJECT_ID}/databases/(default)`;
 const SCAN_MIN_CONFIDENCE = 60;   // don't alert below this score
-const SCAN_MAX_PER_TICK = 60;     // bound provider calls per cron tick
+// Global hard cap on klines fetches per cron tick — kept well under the free
+// Workers plan's ~50-subrequest budget (shared with the other cron jobs). The
+// real control is the 15-tag-per-user cap in the watchlist UI.
+const SCAN_MAX_PER_TICK = 30;
 
 const scanAvg = (a) => (a.length ? a.reduce((s, x) => s + x, 0) / a.length : 0);
 const scanRound = (x) => {
