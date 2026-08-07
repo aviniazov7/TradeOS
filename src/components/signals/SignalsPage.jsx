@@ -7,6 +7,7 @@ import { useWatchlist } from '../../hooks/useWatchlist';
 import { useCryptoPrices } from '../../hooks/useCryptoPrices';
 import WatchlistPage from '../watchlist/WatchlistPage';
 import ScannerHero from './ScannerHero';
+import Button from '../shared/Button';
 import SignalCard from './SignalCard';
 import SignalForm from './SignalForm';
 import ConfirmDialog from '../shared/ConfirmDialog';
@@ -108,24 +109,26 @@ export default function SignalsPage() {
             </span>
             <h2 className="text-sm font-bold text-text-primary">סטאפים שאותרו</h2>
           </div>
-          <button
+          <Button
+            variant="ghost"
+            size="sm"
+            icon={Plus}
             onClick={() => { setEditingSignal(null); setFormOpen(true); }}
-            className="flex items-center gap-1.5 text-text-muted hover:text-text-primary text-xs font-medium px-2.5 py-1.5 rounded-lg border border-border-primary hover:bg-bg-tertiary transition-colors cursor-pointer shrink-0"
+            className="shrink-0"
             title="הוסף סטאפ ידנית למעקב"
           >
-            <Plus className="w-3.5 h-3.5" />
             <span className="hidden sm:inline">הוסף ידנית</span>
-          </button>
+          </Button>
         </div>
 
-        {/* Tabs */}
-        <div className="flex items-center gap-0.5 mb-4 overflow-x-auto">
+        {/* Tabs — segmented control */}
+        <div className="inline-flex max-w-full overflow-x-auto bg-bg-secondary border border-border-primary rounded-xl p-1 gap-0.5 mb-4">
           {TABS.map((t) => (
             <button
               key={t.key}
               onClick={() => setTab(t.key)}
-              className={`px-3.5 py-1.5 text-sm font-medium rounded-lg transition-colors cursor-pointer whitespace-nowrap ${
-                tab === t.key ? 'bg-accent-primary/15 text-accent-primary' : 'text-text-muted hover:text-text-primary hover:bg-bg-tertiary'
+              className={`px-4 py-1.5 text-sm font-semibold rounded-lg transition-all cursor-pointer whitespace-nowrap ${
+                tab === t.key ? 'bg-accent-primary/15 text-accent-primary shadow-[0_0_18px_-6px_rgba(56,189,248,0.7)]' : 'text-text-muted hover:text-text-primary'
               }`}
             >
               {t.label} {counts[t.key] > 0 && `(${counts[t.key]})`}
