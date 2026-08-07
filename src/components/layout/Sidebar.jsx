@@ -29,7 +29,7 @@ const navItems = [
   { to: '/wallets', label: 'ארנקים', icon: Wallet },
   { to: '/plans', label: 'תוכניות מסחר', icon: ClipboardList },
   { to: '/market', label: 'סקירת שוק', icon: Activity },
-  { to: '/scanner', label: 'סורק סטאפים', icon: Radar, premium: true },
+  { to: '/scanner', label: 'סורק סטאפים', icon: Radar, admin: true },
   { to: '/trade-ai', label: 'TradeAI', icon: Bot },
   { to: '/news', label: 'חדשות', icon: Newspaper },
   { to: '/premium', label: 'שדרוג Premium', icon: Crown, highlight: true },
@@ -38,9 +38,9 @@ const navItems = [
 export default function Sidebar({ mobileOpen, onClose }) {
   const { isAdmin, isPremium } = useAuth();
   const [calcOpen, setCalcOpen] = useState(false);
-  // The scanner is Premium-only — hide it from the menu for free users (the
-  // route itself is also gated by PremiumRoute).
-  const base = navItems.filter((i) => !i.premium || isPremium);
+  // Most items are Premium-gated; the scanner is admin-only for now (owner-only
+  // while it's being calibrated). Route guards enforce this too.
+  const base = navItems.filter((i) => (!i.premium || isPremium) && (!i.admin || isAdmin));
   const items = isAdmin
     ? [...base, { to: '/admin', label: 'ניהול', icon: Shield }]
     : base;
