@@ -20,6 +20,7 @@ import TradeAgentCard from './TradeAgentCard';
 import PerformanceSnapshot from './PerformanceSnapshot';
 import GettingStartedCard from './GettingStartedCard';
 import DashboardKpis from './DashboardKpis';
+import GoalRing from './GoalRing';
 import NewsTicker from './NewsTicker';
 import CumulativePnLArea from './CumulativePnLArea';
 import PerformanceRadar from './PerformanceRadar';
@@ -445,6 +446,7 @@ export default function Dashboard() {
 
       {/* KPI strip (TradeZella-style) — always shown so new users see it too */}
       <DashboardKpis kpi={kpi} hidden={hideBalances} />
+      <div className="mt-3"><GoalRing trades={allTrades} /></div>
       <div className="mb-6" />
 
       {/* TradeZella-style hero: cumulative P&L area + performance radar */}
