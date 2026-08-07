@@ -22,7 +22,7 @@ import GettingStartedCard from './GettingStartedCard';
 import DashboardKpis from './DashboardKpis';
 import GoalRing from './GoalRing';
 import NewsTicker from './NewsTicker';
-import CumulativePnLArea from './CumulativePnLArea';
+import EquityGrowthCard from './EquityGrowthCard';
 import PerformanceRadar from './PerformanceRadar';
 import ExchangeLogo from '../shared/ExchangeLogo';
 import CoinIcon from '../shared/CoinIcon';
@@ -451,7 +451,7 @@ export default function Dashboard() {
       {/* TradeZella-style hero: cumulative P&L area + performance radar */}
       <Reveal>
         <div className="grid grid-cols-1 lg:grid-cols-3 gap-3 mb-6 items-stretch">
-          <div className="lg:col-span-2 h-full"><CumulativePnLArea series={extraStats.equitySeries} hidden={hideBalances} /></div>
+          <div className="lg:col-span-2 h-full"><EquityGrowthCard series={extraStats.equitySeries} trades={allTrades} hidden={hideBalances} /></div>
           <div className="lg:col-span-1 h-full"><PerformanceRadar metrics={perf.metrics} score={perf.score} /></div>
         </div>
       </Reveal>
