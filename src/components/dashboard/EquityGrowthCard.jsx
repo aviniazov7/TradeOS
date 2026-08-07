@@ -81,12 +81,12 @@ export default function EquityGrowthCard({ series = [], trades = [], hidden = fa
               <line key={f} x1="0" y1={PADY + (H - 2 * PADY) * f} x2={W} y2={PADY + (H - 2 * PADY) * f}
                 stroke="var(--color-border-primary)" strokeWidth="0.5" opacity="0.4" vectorEffect="non-scaling-stroke" />
             ))}
-            <motion.path d={eq.area} fill="url(#eqfill)" initial={{ opacity: 0 }} animate={{ opacity: 1 }} transition={{ duration: 0.7, delay: 0.9 }} />
-            <motion.path
-              d={eq.line} fill="none" stroke="var(--color-accent-primary)" strokeWidth="2"
-              strokeLinecap="round" strokeLinejoin="round" vectorEffect="non-scaling-stroke"
-              initial={{ pathLength: 0 }} animate={{ pathLength: 1 }} transition={{ duration: 1.2, ease: 'easeOut' }}
-            />
+            {/* static solid line (no pathLength dash → no missing segments), fades in */}
+            <motion.g initial={{ opacity: 0 }} animate={{ opacity: 1 }} transition={{ duration: 0.7, ease: 'easeOut' }}>
+              <path d={eq.area} fill="url(#eqfill)" />
+              <path d={eq.line} fill="none" stroke="var(--color-accent-primary)" strokeWidth="2"
+                strokeLinecap="round" strokeLinejoin="round" vectorEffect="non-scaling-stroke" />
+            </motion.g>
             {hp && <line x1={hp.x} y1="0" x2={hp.x} y2={H} stroke="var(--color-accent-primary)" strokeWidth="1" strokeDasharray="3 3" opacity="0.5" vectorEffect="non-scaling-stroke" />}
           </svg>
 
