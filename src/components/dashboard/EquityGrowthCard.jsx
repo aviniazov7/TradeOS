@@ -6,7 +6,7 @@ import { formatCurrency } from '../../utils/formatters';
 
 const W = 320;
 const H = 100;
-const PADY = 8;
+const PADY = 12;
 const CH = 150; // chart pixel height — kept low so the line reads clean, not stretched
 const pnlOf = (t) => (t.netPnl ?? t.pnl ?? 0);
 const fmtDate = (ms) => { if (!ms) return ''; const d = new Date(ms); return `${d.getDate()}/${d.getMonth() + 1}`; };
