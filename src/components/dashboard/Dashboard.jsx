@@ -83,12 +83,18 @@ export default function Dashboard() {
       if (linkedBalances[j.id] != null) {
         totalInitial += Math.max(0, linkedBalances[j.id] - jPnL);
         totalBalance += linkedBalances[j.id];
-      } else {
-        totalInitial += (j.initialBalance || 0);
-        totalBalance += (j.initialBalance || 0) + jPnL;
+      } else if (j.initialBalance > 0) {
+        // Only count an unlinked journal in the portfolio VALUE when it has a real
+        // starting balance. Otherwise (initial 0 + a negative PnL) it invents a
+        // phantom negative account value that wrongly drags the total down.
+        totalInitial += j.initialBalance;
+        totalBalance += j.initialBalance + jPnL;
       }
+      // else: unlinked journal with no starting balance → not part of the total value.
     }
-    const pnlPercent = totalInitial > 0 ? (totalPnL / totalInitial) * 100 : 0;
+    // Balance-based %: value vs its own initial, so it stays consistent with the
+    // counted journals and isn't skewed by PnL from journals excluded above.
+    const pnlPercent = totalInitial > 0 ? ((totalBalance - totalInitial) / totalInitial) * 100 : 0;
 
     // Average R:R — only for closed trades that have a valid stop loss
     const tradesWithRR = closed.filter((t) => {
