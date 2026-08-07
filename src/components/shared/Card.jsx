@@ -12,12 +12,14 @@
  * The frosted-glass shadow comes from the global `[class*="bg-bg-secondary"]`
  * rule in index.css, so it's theme-aware automatically.
  */
-export default function Card({ as = 'div', hover = false, className = '', children, ...rest }) {
+export default function Card({ as = 'div', hover = false, glow = false, className = '', children, ...rest }) {
   const Tag = as;
   const base = 'bg-bg-secondary border border-border-primary rounded-xl';
   const hoverCls = hover ? 'transition-colors hover:border-accent-primary/30 cursor-pointer' : '';
+  // `glow` adds the hover-only border beam (21st.dev-style light around the edge).
+  const glowCls = glow ? 'relative border-beam-hover' : '';
   return (
-    <Tag className={`${base} ${hoverCls} ${className}`} {...rest}>
+    <Tag className={`${base} ${hoverCls} ${glowCls} ${className}`} {...rest}>
       {children}
     </Tag>
   );

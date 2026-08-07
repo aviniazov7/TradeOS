@@ -11,6 +11,12 @@ crons = ["*/10 * * * *"]
 binding = "ALERTS_KV"
 id = "5c66041d98aa4229a52afeb2f5b1f652"
 
+# ─── Vars ─────────────────────────────────────────────────────────────────
+# Wyckoff scanner master switch. 'true' activates scanWyckoffSetups() inside the
+# cron; remove it (or set anything else) to instantly turn the scanner off again.
+[vars]
+SCANNER_ENABLED = "true"
+
 # ─── Staging environment ────────────────────────────────────────────────
 # Deployed by the `dev` branch via GitHub Actions to
 # https://tradeos-alerts-staging.tradeos.workers.dev.

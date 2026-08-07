@@ -20,8 +20,9 @@ import TradeAgentCard from './TradeAgentCard';
 import PerformanceSnapshot from './PerformanceSnapshot';
 import GettingStartedCard from './GettingStartedCard';
 import DashboardKpis from './DashboardKpis';
+import GoalRing from './GoalRing';
 import NewsTicker from './NewsTicker';
-import CumulativePnLArea from './CumulativePnLArea';
+import EquityGrowthCard from './EquityGrowthCard';
 import PerformanceRadar from './PerformanceRadar';
 import ExchangeLogo from '../shared/ExchangeLogo';
 import CoinIcon from '../shared/CoinIcon';
@@ -82,12 +83,18 @@ export default function Dashboard() {
       if (linkedBalances[j.id] != null) {
         totalInitial += Math.max(0, linkedBalances[j.id] - jPnL);
         totalBalance += linkedBalances[j.id];
-      } else {
-        totalInitial += (j.initialBalance || 0);
-        totalBalance += (j.initialBalance || 0) + jPnL;
+      } else if (j.initialBalance > 0) {
+        // Only count an unlinked journal in the portfolio VALUE when it has a real
+        // starting balance. Otherwise (initial 0 + a negative PnL) it invents a
+        // phantom negative account value that wrongly drags the total down.
+        totalInitial += j.initialBalance;
+        totalBalance += j.initialBalance + jPnL;
       }
+      // else: unlinked journal with no starting balance → not part of the total value.
     }
-    const pnlPercent = totalInitial > 0 ? (totalPnL / totalInitial) * 100 : 0;
+    // Balance-based %: value vs its own initial, so it stays consistent with the
+    // counted journals and isn't skewed by PnL from journals excluded above.
+    const pnlPercent = totalInitial > 0 ? ((totalBalance - totalInitial) / totalInitial) * 100 : 0;
 
     // Average R:R — only for closed trades that have a valid stop loss
     const tradesWithRR = closed.filter((t) => {
@@ -444,14 +451,14 @@ export default function Dashboard() {
       </Card>
 
       {/* KPI strip (TradeZella-style) — always shown so new users see it too */}
-      <DashboardKpis kpi={kpi} hidden={hideBalances} />
+      <DashboardKpis kpi={kpi} hidden={hideBalances} extra={<GoalRing trades={allTrades} />} />
       <div className="mb-6" />
 
       {/* TradeZella-style hero: cumulative P&L area + performance radar */}
       <Reveal>
         <div className="grid grid-cols-1 lg:grid-cols-3 gap-3 mb-6 items-stretch">
-          <div className="lg:col-span-2 h-full"><CumulativePnLArea series={extraStats.equitySeries} hidden={hideBalances} /></div>
-          <div className="lg:col-span-1 h-full"><PerformanceRadar metrics={perf.metrics} score={perf.score} /></div>
+          <div className="lg:col-span-2 lg:h-[280px]"><EquityGrowthCard series={extraStats.equitySeries} trades={allTrades} hidden={hideBalances} /></div>
+          <div className="lg:col-span-1 lg:h-[280px]"><PerformanceRadar metrics={perf.metrics} score={perf.score} /></div>
         </div>
       </Reveal>
 

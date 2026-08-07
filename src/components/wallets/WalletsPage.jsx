@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback, useMemo } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { motion, AnimatePresence } from 'framer-motion';
 import { Wallet, Plus, RefreshCw, Trash2, Copy, X, ExternalLink, ShieldCheck, HelpCircle } from 'lucide-react';
@@ -117,6 +117,23 @@ export default function WalletsPage() {
 
   const grandTotal = wallets.reduce((sum, w) => sum + (data[w.address]?.totalUsd || 0), 0);
 
+  // Portfolio allocation BY COIN — aggregate every wallet's tokens by symbol.
+  const allocation = useMemo(() => {
+    const bySym = {};
+    for (const w of wallets) {
+      for (const t of data[w.address]?.tokens || []) {
+        if (t?.symbol && t.usd > 0) bySym[t.symbol] = (bySym[t.symbol] || 0) + t.usd;
+      }
+    }
+    const sorted = Object.entries(bySym).sort((a, b) => b[1] - a[1]);
+    const total = sorted.reduce((s, [, v]) => s + v, 0);
+    const rows = sorted.slice(0, 5).map(([sym, val]) => ({ sym, pct: total > 0 ? (val / total) * 100 : 0 }));
+    const otherVal = sorted.slice(5).reduce((s, [, v]) => s + v, 0);
+    if (otherVal > 0) rows.push({ sym: 'אחר', pct: total > 0 ? (otherVal / total) * 100 : 0 });
+    return { rows, total };
+  }, [wallets, data]);
+  const ALLOC_COLORS = ['#f7931a', '#627eea', '#14f195', '#26a17b', '#e84142', '#8b95a8'];
+
   return (
     <motion.div variants={pageVariants} initial="initial" animate="animate" exit="exit" transition={pageTransition}
       className="min-h-[calc(100vh-4rem)] px-4 py-6">
@@ -167,6 +184,27 @@ export default function WalletsPage() {
           {/* On-chain blockchain animation */}
           <BlockchainAnimation className="mt-3 h-14 w-full opacity-90" />
         </div>
+
+        {/* Portfolio allocation — by coin, aggregated across all wallets */}
+        {allocation.total > 0 && (
+          <div className="bg-bg-secondary border border-border-primary rounded-2xl p-5">
+            <div className="text-sm font-bold text-text-primary mb-3">הקצאת התיק</div>
+            <div className="h-3 rounded-full overflow-hidden flex bg-bg-tertiary mb-3" dir="ltr">
+              {allocation.rows.map((r, i) => (
+                <div key={r.sym} className="h-full transition-all duration-700" style={{ width: `${r.pct}%`, background: ALLOC_COLORS[i % ALLOC_COLORS.length] }} />
+              ))}
+            </div>
+            <div className="flex flex-wrap gap-x-4 gap-y-1.5">
+              {allocation.rows.map((r, i) => (
+                <span key={r.sym} className="flex items-center gap-1.5 text-xs">
+                  <span className="w-2.5 h-2.5 rounded-sm shrink-0" style={{ background: ALLOC_COLORS[i % ALLOC_COLORS.length] }} />
+                  <span className="font-bold text-text-primary">{r.sym}</span>
+                  <span className="text-text-muted num-mono" dir="ltr">{r.pct.toFixed(0)}%</span>
+                </span>
+              ))}
+            </div>
+          </div>
+        )}
 
         {/* Add wallet */}
         {adding ? (

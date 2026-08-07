@@ -1,10 +1,13 @@
 import { useState } from 'react';
-import { useNavigate } from 'react-router-dom';
 import { motion } from 'framer-motion';
-import { Plus, Zap } from 'lucide-react';
+import { Plus, Radar, Flag } from 'lucide-react';
 import toast from 'react-hot-toast';
 import { useSignals } from '../../hooks/useSignals';
+import { useWatchlist } from '../../hooks/useWatchlist';
 import { useCryptoPrices } from '../../hooks/useCryptoPrices';
+import WatchlistPage from '../watchlist/WatchlistPage';
+import ScannerHero from './ScannerHero';
+import Button from '../shared/Button';
 import SignalCard from './SignalCard';
 import SignalForm from './SignalForm';
 import ConfirmDialog from '../shared/ConfirmDialog';
@@ -22,10 +25,14 @@ function getCoinFromPair(pair = '') {
   return pair.replace(/USDT$|BUSD$|USDC$|USD$/, '').toUpperCase();
 }
 
+// One page, one flow: the top half is the scan universe (tag coins long/short),
+// the bottom half is the setups the engine detected for them. The old separate
+// "watchlist" page is folded in here (embedded) so there's a single place to work.
 export default function SignalsPage() {
   const { signals, loading, addSignal, updateSignal, deleteSignal } = useSignals();
+  const { items: watchItems } = useWatchlist();
   const { prices } = useCryptoPrices();
-  const navigate = useNavigate();
+  const taggedCount = watchItems.filter((i) => i.bias === 'long' || i.bias === 'short').length;
 
   const [tab, setTab] = useState('all');
   const [formOpen, setFormOpen] = useState(false);
@@ -44,10 +51,10 @@ export default function SignalsPage() {
     try {
       if (editingSignal) {
         await updateSignal(editingSignal.id, data);
-        toast.success('הסיגנל עודכן');
+        toast.success('הסטאפ עודכן');
       } else {
         await addSignal(data);
-        toast.success('הסיגנל נוסף');
+        toast.success('הסטאפ נוסף');
       }
       setFormOpen(false);
       setEditingSignal(null);
@@ -60,7 +67,7 @@ export default function SignalsPage() {
     if (!deleteTarget) return;
     try {
       await deleteSignal(deleteTarget);
-      toast.success('הסיגנל נמחק');
+      toast.success('הסטאפ נמחק');
       setDeleteTarget(null);
     } catch {
       toast.error('שגיאה במחיקה');
@@ -70,120 +77,103 @@ export default function SignalsPage() {
   const handleStatusChange = async (id, status) => {
     try {
       await updateSignal(id, { status });
-      toast.success(status === 'active' ? 'הסיגנל הופעל' : 'הסיגנל עודכן');
+      toast.success(status === 'active' ? 'הסטאפ הופעל' : 'הסטאפ עודכן');
     } catch {
       toast.error('שגיאה בעדכון');
     }
   };
 
-  const handleTransfer = (signal) => {
-    const params = new URLSearchParams({
-      action: 'signal',
-      pair: signal.pair || '',
-      direction: signal.direction || 'long',
-      entryPrice: signal.entryPrice ?? '',
-      stopLoss: signal.stopLoss ?? '',
-      timeframe: signal.timeframe || '',
-    });
-    navigate(`/journal?${params.toString()}`);
-    handleStatusChange(signal.id, 'closed');
-  };
-
   return (
-    <motion.div variants={pageVariants} initial="initial" animate="animate" exit="exit" transition={pageTransition}>
-      {/* Header bar */}
-      <div className="bg-bg-secondary border border-border-primary rounded-xl mb-4 px-3 md:px-4 py-2.5">
-        <div className="flex items-center justify-between gap-2">
-          <div className="flex items-center gap-1 md:gap-3">
-            <h1 className="text-sm md:text-base font-bold text-text-primary whitespace-nowrap">סיגנלים</h1>
-            <div className="hidden md:block w-px h-6 bg-border-primary flex-shrink-0" />
-            <div className="hidden md:flex items-center">
-              {TABS.map((t) => (
-                <button
-                  key={t.key}
-                  onClick={() => setTab(t.key)}
-                  className={`px-3.5 py-1.5 text-sm font-medium rounded-lg transition-colors cursor-pointer whitespace-nowrap ${
-                    tab === t.key ? 'bg-accent-primary/15 text-accent-primary' : 'text-text-muted hover:text-text-primary hover:bg-bg-tertiary'
-                  }`}
-                >
-                  {t.label} {counts[t.key] > 0 && `(${counts[t.key]})`}
-                </button>
-              ))}
-            </div>
+    <motion.div variants={pageVariants} initial="initial" animate="animate" exit="exit" transition={pageTransition} className="max-w-5xl mx-auto">
+      {/* Premium scanner hero — true-black card, live radar sweep, uniform chips */}
+      <ScannerHero taggedCount={taggedCount} activeCount={counts.active} />
+
+      {/* ── Section 1: the scan universe (tag coins long/short) ── */}
+      <section className="mb-7">
+        <div className="flex items-center gap-1.5 mb-2.5">
+          <span className="w-6 h-6 rounded-lg bg-accent-primary/12 flex items-center justify-center shrink-0">
+            <Flag className="w-3.5 h-3.5 text-accent-primary" />
+          </span>
+          <h2 className="text-sm font-bold text-text-primary">המטבעות שאני סורק</h2>
+          <span className="text-[11px] text-text-muted">— תייג לונג/שורט, השאר עלינו</span>
+        </div>
+        <WatchlistPage embedded />
+      </section>
+
+      {/* ── Section 2: detected setups ── */}
+      <section>
+        <div className="flex items-center justify-between gap-2 mb-3">
+          <div className="flex items-center gap-1.5">
+            <span className="w-6 h-6 rounded-lg bg-accent-primary/12 flex items-center justify-center shrink-0">
+              <Radar className="w-3.5 h-3.5 text-accent-primary" />
+            </span>
+            <h2 className="text-sm font-bold text-text-primary">סטאפים שאותרו</h2>
           </div>
-          <button
+          <Button
+            variant="ghost"
+            size="sm"
+            icon={Plus}
             onClick={() => { setEditingSignal(null); setFormOpen(true); }}
-            className="flex items-center gap-1.5 bg-accent-primary text-bg-primary font-semibold px-2.5 py-1.5 md:px-3.5 md:py-2 rounded-lg hover:bg-accent-hover transition-colors cursor-pointer text-xs md:text-sm"
+            className="shrink-0"
+            title="הוסף סטאפ ידנית למעקב"
           >
-            <Plus className="w-4 h-4" />
-            <span className="hidden sm:inline">סיגנל חדש</span>
-          </button>
+            <span className="hidden sm:inline">הוסף ידנית</span>
+          </Button>
         </div>
 
-        {/* Mobile tabs */}
-        <div className="md:hidden flex items-center gap-0.5 mt-2 overflow-x-auto">
+        {/* Tabs — segmented control */}
+        <div className="inline-flex max-w-full overflow-x-auto bg-bg-secondary border border-border-primary rounded-xl p-1 gap-0.5 mb-4">
           {TABS.map((t) => (
             <button
               key={t.key}
               onClick={() => setTab(t.key)}
-              className={`px-2.5 py-1.5 text-xs font-medium rounded-lg transition-colors cursor-pointer whitespace-nowrap ${
-                tab === t.key ? 'bg-accent-primary/15 text-accent-primary' : 'text-text-muted hover:text-text-primary hover:bg-bg-tertiary'
+              className={`px-4 py-1.5 text-sm font-semibold rounded-lg transition-all cursor-pointer whitespace-nowrap ${
+                tab === t.key ? 'bg-accent-primary/15 text-accent-primary shadow-[0_0_18px_-6px_rgba(56,189,248,0.7)]' : 'text-text-muted hover:text-text-primary'
               }`}
             >
               {t.label} {counts[t.key] > 0 && `(${counts[t.key]})`}
             </button>
           ))}
         </div>
-      </div>
 
-      {/* Content */}
-      {loading ? (
-        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
-          {[1, 2, 3].map((i) => (
-            <div key={i} className="bg-bg-secondary rounded-2xl h-64 animate-pulse" />
-          ))}
-        </div>
-      ) : filtered.length === 0 ? (
-        <EmptyState
-          icon={Zap}
-          title={tab === 'all' ? 'אין סיגנלים עדיין' : `אין סיגנלים ב${TABS.find((t) => t.key === tab)?.label}`}
-          description="הוסף סיגנל עם מחיר כניסה, סטופ ויעדי רווח — המסלול יזוז בזמן אמת"
-          action={
-            tab === 'all' && (
-              <button
-                onClick={() => { setEditingSignal(null); setFormOpen(true); }}
-                className="mt-2 px-4 py-2 bg-accent-primary text-bg-primary font-semibold rounded-lg hover:bg-accent-hover transition-colors cursor-pointer"
-              >
-                הוסף סיגנל ראשון
-              </button>
-            )
-          }
-        />
-      ) : (
-        <motion.div
-          className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4"
-          variants={staggerContainer}
-          initial="initial"
-          animate="animate"
-        >
-          {filtered.map((signal) => {
-            const coin = getCoinFromPair(signal.pair);
-            const currentPrice = prices[coin]?.price ?? null;
-            return (
-              <motion.div key={signal.id}>
-                <SignalCard
-                  signal={signal}
-                  currentPrice={currentPrice}
-                  onEdit={(s) => { setEditingSignal(s); setFormOpen(true); }}
-                  onDelete={setDeleteTarget}
-                  onTransfer={() => handleTransfer(signal)}
-                  onStatusChange={handleStatusChange}
-                />
-              </motion.div>
-            );
-          })}
-        </motion.div>
-      )}
+        {/* Content */}
+        {loading ? (
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
+            {[1, 2, 3].map((i) => (
+              <div key={i} className="bg-bg-secondary rounded-2xl h-64 animate-pulse" />
+            ))}
+          </div>
+        ) : filtered.length === 0 ? (
+          <EmptyState
+            icon={Radar}
+            title={tab === 'all' ? 'אין סטאפים עדיין' : `אין סטאפים ב${TABS.find((t) => t.key === tab)?.label}`}
+            description="תייג מטבעות למעלה בלונג/שורט — והסורק יזהה עבורך סטאפי כניסה (LPS/LPSY) אוטומטית, וישלח התראה ברגע שהמדרגה השנייה נשברת."
+          />
+        ) : (
+          <motion.div
+            className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4"
+            variants={staggerContainer}
+            initial="initial"
+            animate="animate"
+          >
+            {filtered.map((signal) => {
+              const coin = getCoinFromPair(signal.pair);
+              const currentPrice = prices[coin]?.price ?? null;
+              return (
+                <motion.div key={signal.id}>
+                  <SignalCard
+                    signal={signal}
+                    currentPrice={currentPrice}
+                    onEdit={(s) => { setEditingSignal(s); setFormOpen(true); }}
+                    onDelete={setDeleteTarget}
+                    onStatusChange={handleStatusChange}
+                  />
+                </motion.div>
+              );
+            })}
+          </motion.div>
+        )}
+      </section>
 
       <SignalForm
         isOpen={formOpen}
@@ -196,8 +186,8 @@ export default function SignalsPage() {
         isOpen={!!deleteTarget}
         onClose={() => setDeleteTarget(null)}
         onConfirm={handleDelete}
-        title="מחיקת סיגנל"
-        message="למחוק את הסיגנל? לא ניתן לבטל פעולה זו."
+        title="מחיקת סטאפ"
+        message="למחוק את הסטאפ? לא ניתן לבטל פעולה זו."
       />
     </motion.div>
   );
