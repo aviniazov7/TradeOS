@@ -220,7 +220,7 @@ export default function WatchlistPage({ embedded = false }) {
                 <motion.div key={it.id} layout
                   initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, height: 0 }}
                   dir="ltr"
-                  className="group flex items-center gap-2.5 px-3 py-2.5 border-b border-border-primary/50 last:border-b-0 hover:bg-bg-tertiary/40 transition-colors"
+                  className="group flex items-center gap-2.5 px-3 py-2.5 border-b border-border-primary/50 last:border-b-0 hover:bg-bg-tertiary/40 hover:shadow-[inset_2px_0_0_0_var(--color-accent-primary)] transition-all"
                 >
                   {/* Bias flag — click to cycle long/short/none */}
                   <button

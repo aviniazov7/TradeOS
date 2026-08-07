@@ -82,6 +82,19 @@ export default function SignalCard({ signal, currentPrice, onEdit, onDelete, onS
           <PriceCell label={`TP${tps.length > 1 ? `×${tps.length}` : '1'}`} value={tps[0] ?? null} color="text-profit" />
         </div>
 
+        {/* Scanner confidence bar */}
+        {isScanner && conf != null && (
+          <div>
+            <div className="flex items-center justify-between text-[10px] text-text-muted mb-1">
+              <span>ביטחון הסורק</span>
+              <span className="num-mono font-bold text-accent-primary">{conf}</span>
+            </div>
+            <div className="h-1.5 rounded-full bg-bg-tertiary overflow-hidden">
+              <div className="h-full rounded-full transition-all duration-700" style={{ width: `${conf}%`, background: 'linear-gradient(90deg,#2563eb,#38bdf8)' }} />
+            </div>
+          </div>
+        )}
+
         {/* Track */}
         <SignalTrack signal={signal} currentPrice={currentPrice} />
 

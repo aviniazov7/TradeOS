@@ -159,7 +159,7 @@ export default function DashboardKpis({ kpi, hidden = false }) {
       className="grid grid-cols-2 lg:grid-cols-5 gap-3"
     >
       {/* 1) Net P&L ---------------------------------------------------- */}
-      <Card as={motion.div} variants={card} whileHover={{ y: -3 }} className={cardClass}>
+      <Card as={motion.div} variants={card} whileHover={{ y: -3 }} glow className={cardClass}>
         <span className="text-xs text-text-muted">רווח/הפסד נקי</span>
         <div>
           <div dir="ltr" className={`text-2xl font-bold text-right ${netPositive ? 'text-profit' : 'text-loss'}`}>
@@ -170,7 +170,7 @@ export default function DashboardKpis({ kpi, hidden = false }) {
       </Card>
 
       {/* 2) Win rate -------------------------------------------------- */}
-      <Card as={motion.div} variants={card} whileHover={{ y: -3 }} className={cardClass}>
+      <Card as={motion.div} variants={card} whileHover={{ y: -3 }} glow className={cardClass}>
         <span className="text-xs text-text-muted">אחוז הצלחה</span>
         <div className="flex items-end justify-between gap-2">
           <div dir="ltr" className="text-2xl font-bold text-text-primary">
@@ -192,7 +192,7 @@ export default function DashboardKpis({ kpi, hidden = false }) {
       </Card>
 
       {/* 3) Avg win/loss --------------------------------------------- */}
-      <Card as={motion.div} variants={card} whileHover={{ y: -3 }} className={cardClass}>
+      <Card as={motion.div} variants={card} whileHover={{ y: -3 }} glow className={cardClass}>
         <span className="text-xs text-text-muted">ממוצע רווח/הפסד</span>
         <div dir="ltr" className="text-2xl font-bold text-text-primary text-right">
           <RollingNumber value={(Number.isFinite(avgWinLossRatio) ? avgWinLossRatio : 0).toFixed(2)} />
@@ -220,7 +220,7 @@ export default function DashboardKpis({ kpi, hidden = false }) {
       </Card>
 
       {/* 4) Profit factor -------------------------------------------- */}
-      <Card as={motion.div} variants={card} whileHover={{ y: -3 }} className={cardClass}>
+      <Card as={motion.div} variants={card} whileHover={{ y: -3 }} glow className={cardClass}>
         <span className="text-xs text-text-muted">פקטור רווח</span>
         <div className="flex items-center justify-between gap-2">
           <div dir="ltr" className="text-2xl font-bold text-text-primary">
@@ -231,7 +231,7 @@ export default function DashboardKpis({ kpi, hidden = false }) {
       </Card>
 
       {/* 5) Current streak ------------------------------------------- */}
-      <Card as={motion.div} variants={card} whileHover={{ y: -3 }} className={cardClass}>
+      <Card as={motion.div} variants={card} whileHover={{ y: -3 }} glow className={cardClass}>
         <span className="text-xs text-text-muted">רצף נוכחי</span>
         <div className="flex items-center justify-around gap-2">
           <StreakBadge label="ימים" data={streakDays} />

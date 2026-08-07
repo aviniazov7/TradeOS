@@ -535,6 +535,24 @@ input[type="number"] {
   animation: beamSpin 5s linear infinite;
 }
 @keyframes beamSpin { to { --beam-angle: 360deg; } }
+/* Hover-only border beam — calm at rest, the light travels on hover. For KPI /
+   stat cards. Apply to a position:relative, rounded element (Card glow prop). */
+.border-beam-hover::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  border-radius: inherit;
+  padding: 1.5px;
+  background: conic-gradient(from var(--beam-angle), transparent 0 62%, #2563eb 78%, #38bdf8 92%, transparent 100%);
+  -webkit-mask: linear-gradient(#000 0 0) content-box, linear-gradient(#000 0 0);
+  -webkit-mask-composite: xor;
+  mask: linear-gradient(#000 0 0) content-box, linear-gradient(#000 0 0);
+  mask-composite: exclude;
+  pointer-events: none;
+  opacity: 0;
+  transition: opacity 0.3s;
+}
+.border-beam-hover:hover::after { opacity: 1; animation: beamSpin 4s linear infinite; }
 /* Faint scan-line highlight along the top edge */
 .bento-card::before {
   content: '';
