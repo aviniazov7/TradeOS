@@ -1,12 +1,24 @@
 import { useState, useEffect, useMemo } from 'react';
-import { Target, Pencil } from 'lucide-react';
+import { Pencil, Check } from 'lucide-react';
 import { useAuth } from '../../contexts/AuthContext';
 import { getUserSetting, setUserSetting } from '../../services/firestoreService';
 import { formatCurrency } from '../../utils/formatters';
-import Card from '../shared/Card';
 
-// Monthly-goal widget: a progress ring comparing THIS calendar month's realized
-// P&L to a goal the user sets. The goal is stored per-user (settings/monthlyGoal).
+// Small progress ring (conic) sized to match the dashboard's other KPI gauges.
+function MiniRing({ pct, size = 52 }) {
+  return (
+    <div
+      className="relative shrink-0 rounded-full"
+      style={{ width: size, height: size, background: `conic-gradient(from -90deg, var(--color-accent-primary) 0 ${pct}%, rgba(255,255,255,0.08) ${pct}% 100%)` }}
+    >
+      <div className="absolute inset-[6px] rounded-full bg-bg-secondary" />
+    </div>
+  );
+}
+
+// Monthly-goal KPI card — lives INSIDE the KPI row (6th card). The user sets a
+// goal; the ring tracks this calendar month's realized P&L toward it. Stored
+// per-user (settings/monthlyGoal). Kept compact to match the sibling KPI cards.
 export default function GoalRing({ trades = [] }) {
   const { user } = useAuth();
   const [goal, setGoal] = useState(null);
@@ -46,51 +58,42 @@ export default function GoalRing({ trades = [] }) {
   };
 
   return (
-    <Card className="p-4 flex items-center gap-4">
-      <div
-        className="relative w-[92px] h-[92px] shrink-0 rounded-full transition-all duration-700"
-        style={{ background: `conic-gradient(from -90deg, var(--color-accent-primary) 0 ${pct}%, rgba(255,255,255,0.08) ${pct}% 100%)` }}
-      >
-        <div className="absolute inset-[9px] rounded-full bg-bg-secondary flex items-center justify-center">
-          <span className="text-lg font-extrabold num-mono text-text-primary">{Math.round(pct)}%</span>
-        </div>
-      </div>
-
-      <div className="min-w-0 flex-1">
-        <div className="flex items-center gap-1.5 text-xs text-text-muted mb-1">
-          <Target className="w-3.5 h-3.5 text-accent-primary" />
-          <span>יעד חודשי</span>
-          {goal > 0 && !editing && (
-            <button onClick={() => { setVal(String(goal)); setEditing(true); }} className="mr-auto p-1 rounded text-text-muted hover:text-accent-primary transition-colors cursor-pointer" title="ערוך יעד">
-              <Pencil className="w-3 h-3" />
-            </button>
-          )}
-        </div>
-
-        {editing ? (
-          <div className="flex items-center gap-1.5">
-            <input
-              type="number" inputMode="decimal" value={val} onChange={(e) => setVal(e.target.value)}
-              placeholder="סכום יעד ($)" dir="ltr" autoFocus
-              className="w-28 bg-bg-tertiary border border-border-primary rounded-lg px-2 py-1.5 text-sm text-text-primary outline-none focus:border-accent-primary/50"
-            />
-            <button onClick={save} className="text-xs font-bold text-accent-primary bg-accent-primary/10 hover:bg-accent-primary/20 px-3 py-1.5 rounded-lg transition-colors cursor-pointer">שמור</button>
-          </div>
-        ) : goal > 0 ? (
-          <>
-            <div dir="ltr" className="text-lg font-extrabold text-text-primary leading-tight">
-              {formatCurrency(monthPnl)} <span className="text-text-muted font-semibold text-sm">/ {formatCurrency(goal)}</span>
-            </div>
-            <div className="text-[11px] text-text-muted mt-0.5">
-              {monthPnl >= goal ? '🎉 היעד הושג!' : `עוד ${formatCurrency(goal - monthPnl)} ליעד`}
-            </div>
-          </>
-        ) : (
-          <button onClick={() => { setVal(''); setEditing(true); }} className="text-sm text-accent-primary font-semibold cursor-pointer hover:underline">
-            הגדר יעד חודשי →
+    <div className="bg-bg-secondary border border-border-primary rounded-xl p-4 h-full flex flex-col justify-between">
+      <div className="flex items-center justify-between">
+        <span className="text-xs text-text-muted">יעד חודשי</span>
+        {goal > 0 && !editing && (
+          <button onClick={() => { setVal(String(goal)); setEditing(true); }} className="p-0.5 rounded text-text-muted hover:text-accent-primary transition-colors cursor-pointer" title="ערוך יעד">
+            <Pencil className="w-3 h-3" />
           </button>
         )}
       </div>
-    </Card>
+
+      {editing ? (
+        <div className="flex items-center gap-1.5 mt-2">
+          <input
+            type="number" inputMode="decimal" value={val} onChange={(e) => setVal(e.target.value)}
+            placeholder="יעד $" dir="ltr" autoFocus
+            className="w-full min-w-0 bg-bg-tertiary border border-border-primary rounded-lg px-2 py-1.5 text-sm text-text-primary outline-none focus:border-accent-primary/50"
+          />
+          <button onClick={save} className="shrink-0 p-1.5 rounded-lg text-accent-primary bg-accent-primary/10 hover:bg-accent-primary/20 transition-colors cursor-pointer" title="שמור">
+            <Check className="w-4 h-4" />
+          </button>
+        </div>
+      ) : goal > 0 ? (
+        <div className="flex items-center justify-between gap-2">
+          <div className="min-w-0">
+            <div dir="ltr" className="text-2xl font-bold text-text-primary num-mono">{Math.round(pct)}%</div>
+            <div className="text-[10px] text-text-muted mt-0.5 truncate">
+              {monthPnl >= goal ? '🎉 הושג!' : `עוד ${formatCurrency(goal - monthPnl)}`}
+            </div>
+          </div>
+          <MiniRing pct={pct} />
+        </div>
+      ) : (
+        <button onClick={() => { setVal(''); setEditing(true); }} className="text-sm text-accent-primary font-semibold text-right cursor-pointer hover:underline mt-2">
+          הגדר יעד →
+        </button>
+      )}
+    </div>
   );
 }

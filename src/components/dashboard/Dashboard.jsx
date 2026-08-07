@@ -445,8 +445,7 @@ export default function Dashboard() {
       </Card>
 
       {/* KPI strip (TradeZella-style) — always shown so new users see it too */}
-      <DashboardKpis kpi={kpi} hidden={hideBalances} />
-      <div className="mt-3"><GoalRing trades={allTrades} /></div>
+      <DashboardKpis kpi={kpi} hidden={hideBalances} extra={<GoalRing trades={allTrades} />} />
       <div className="mb-6" />
 
       {/* TradeZella-style hero: cumulative P&L area + performance radar */}

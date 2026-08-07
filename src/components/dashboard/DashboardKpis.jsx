@@ -121,7 +121,7 @@ function RingGauge({ pct = 0, size = 56, children }) {
 /* Main component                                                      */
 /* ------------------------------------------------------------------ */
 
-export default function DashboardKpis({ kpi, hidden = false }) {
+export default function DashboardKpis({ kpi, hidden = false, extra = null }) {
   const mask = (v) => (hidden ? '••••' : v);
   const {
     netPnl = 0,
@@ -156,7 +156,7 @@ export default function DashboardKpis({ kpi, hidden = false }) {
       variants={container}
       initial="hidden"
       animate="show"
-      className="grid grid-cols-2 lg:grid-cols-5 gap-3"
+      className={`grid grid-cols-2 ${extra ? 'lg:grid-cols-6' : 'lg:grid-cols-5'} gap-3`}
     >
       {/* 1) Net P&L ---------------------------------------------------- */}
       <Card as={motion.div} variants={card} whileHover={{ y: -3 }} glow className={cardClass}>
@@ -238,6 +238,9 @@ export default function DashboardKpis({ kpi, hidden = false }) {
           <StreakBadge label="עסקאות" data={streakTrades} />
         </div>
       </Card>
+
+      {/* 6) Monthly goal — passed in so it sits inside the same KPI row. */}
+      {extra}
     </motion.div>
   );
 }
