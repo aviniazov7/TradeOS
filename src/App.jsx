@@ -31,7 +31,6 @@ const loadTradeAIPage = () => import('./components/market/TradeAIPage');
 const loadNewsPage = () => import('./components/news/NewsPage');
 const loadExchangeSettings = () => import('./components/exchange/ExchangeSettings');
 const loadWalletsPage = () => import('./components/wallets/WalletsPage');
-const loadWatchlistPage = () => import('./components/watchlist/WatchlistPage');
 const loadPremiumPage = () => import('./components/premium/PremiumPage');
 const loadCheckoutPage = () => import('./components/premium/CheckoutPage');
 const loadCouponLanding = () => import('./components/premium/CouponLandingPage');
@@ -60,7 +59,6 @@ const TradeAIPage = lazy(loadTradeAIPage);
 const NewsPage = lazy(loadNewsPage);
 const ExchangeSettings = lazy(loadExchangeSettings);
 const WalletsPage = lazy(loadWalletsPage);
-const WatchlistPage = lazy(loadWatchlistPage);
 const PremiumPage = lazy(loadPremiumPage);
 const CheckoutPage = lazy(loadCheckoutPage);
 const CouponLandingPage = lazy(loadCouponLanding);
@@ -134,7 +132,9 @@ function MainApp() {
                 <Route path="news" element={<NewsPage />} />
                 <Route path="exchange" element={<ExchangeSettings />} />
                 <Route path="wallets" element={<WalletsPage />} />
-                <Route path="watchlist" element={<WatchlistPage />} />
+                {/* Watchlist is now folded into the scanner page (tag coins there);
+                    keep the path as a redirect so old links still land right. */}
+                <Route path="watchlist" element={<Navigate to="/scanner" replace />} />
                 <Route path="premium" element={<PremiumPage />} />
                 <Route path="premium/checkout" element={<CheckoutPage />} />
                 <Route path="refund-policy" element={<RefundPolicyPage />} />

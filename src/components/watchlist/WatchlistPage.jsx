@@ -151,7 +151,7 @@ export default function WatchlistPage({ embedded = false }) {
   const taggedCount = items.filter((i) => i.bias === 'long' || i.bias === 'short').length;
 
   return (
-    <Wrapper {...wrapperProps} className="max-w-3xl mx-auto px-1 py-2">
+    <Wrapper {...wrapperProps} className={embedded ? '' : 'max-w-3xl mx-auto px-1 py-2'}>
       {/* Title — hidden when embedded as a market tab (the tab label already says it) */}
       {!embedded && (
         <div className="flex items-center gap-2 mb-3">
