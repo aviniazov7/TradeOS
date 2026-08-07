@@ -6,6 +6,7 @@ import { useSignals } from '../../hooks/useSignals';
 import { useWatchlist } from '../../hooks/useWatchlist';
 import { useCryptoPrices } from '../../hooks/useCryptoPrices';
 import WatchlistPage from '../watchlist/WatchlistPage';
+import ScannerHero from './ScannerHero';
 import SignalCard from './SignalCard';
 import SignalForm from './SignalForm';
 import ConfirmDialog from '../shared/ConfirmDialog';
@@ -21,16 +22,6 @@ const TABS = [
 
 function getCoinFromPair(pair = '') {
   return pair.replace(/USDT$|BUSD$|USDC$|USD$/, '').toUpperCase();
-}
-
-// Compact stat pill for the hero (the little counters, SaaS-directory style).
-function Stat({ value, label }) {
-  return (
-    <div className="text-center px-3 py-1.5 rounded-xl bg-bg-tertiary/50 border border-border-primary/60 min-w-[54px]">
-      <div className="text-base font-bold num-mono text-text-primary leading-none">{value}</div>
-      <div className="text-[10px] text-text-muted mt-1">{label}</div>
-    </div>
-  );
 }
 
 // One page, one flow: the top half is the scan universe (tag coins long/short),
@@ -93,38 +84,8 @@ export default function SignalsPage() {
 
   return (
     <motion.div variants={pageVariants} initial="initial" animate="animate" exit="exit" transition={pageTransition} className="max-w-5xl mx-auto">
-      {/* Premium hero — a radar-grid backdrop (thematic to a scanner), the title,
-          live stat counters, and an active-status pill. SaaS-directory feel. */}
-      <div className="relative overflow-hidden rounded-2xl border border-border-primary bg-gradient-to-br from-bg-secondary/80 to-bg-secondary/20 mb-6">
-        <div className="pointer-events-none absolute inset-0 overflow-hidden" aria-hidden="true">
-          <div className="absolute rounded-full border border-accent-primary/15" style={{ width: 104, height: 104, top: -26, right: 60 }} />
-          <div className="absolute rounded-full border border-accent-primary/10" style={{ width: 184, height: 184, top: -66, right: 18 }} />
-          <div className="absolute rounded-full border border-accent-primary/[0.06]" style={{ width: 280, height: 280, top: -120, right: -44 }} />
-          <div className="absolute inset-0" style={{ background: 'radial-gradient(circle at 88% 0%, rgba(56,189,248,0.10), transparent 55%)' }} />
-        </div>
-        <div className="relative flex flex-col sm:flex-row sm:items-center justify-between gap-4 p-4 sm:p-5">
-          <div className="flex items-center gap-3 min-w-0">
-            <div className="w-12 h-12 rounded-2xl bg-gradient-to-br from-accent-primary/30 to-accent-primary/5 ring-1 ring-accent-primary/25 flex items-center justify-center shrink-0">
-              <Radar className="w-6 h-6 text-accent-primary" />
-            </div>
-            <div className="min-w-0">
-              <h1 className="text-xl font-bold text-text-primary tracking-tight">סורק סטאפים</h1>
-              <p className="text-[12px] text-text-secondary leading-snug">זיהוי אוטומטי של סטאפי ויקוף — LPS / LPSY על שלושה טיימפריימים</p>
-            </div>
-          </div>
-          <div className="flex items-center gap-2 shrink-0">
-            <Stat value={taggedCount} label="נסרקים" />
-            <Stat value={counts.active} label="פעילים" />
-            <div className="flex items-center gap-1.5 px-2.5 py-2 rounded-xl bg-profit/10 border border-profit/20">
-              <span className="relative flex h-2 w-2">
-                <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-profit opacity-60" />
-                <span className="relative inline-flex rounded-full h-2 w-2 bg-profit" />
-              </span>
-              <span className="text-[11px] font-semibold text-profit whitespace-nowrap">פעיל</span>
-            </div>
-          </div>
-        </div>
-      </div>
+      {/* Premium scanner hero — true-black card, live radar sweep, uniform chips */}
+      <ScannerHero taggedCount={taggedCount} activeCount={counts.active} />
 
       {/* ── Section 1: the scan universe (tag coins long/short) ── */}
       <section className="mb-7">
