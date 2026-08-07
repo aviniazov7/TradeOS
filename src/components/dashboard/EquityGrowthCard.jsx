@@ -58,7 +58,7 @@ export default function EquityGrowthCard({ series = [], trades = [], hidden = fa
   const leftPct = hp ? Math.max(9, Math.min(91, (hp.i / (eq.pts.length - 1)) * 100)) : 0;
 
   return (
-    <div className="bg-bg-secondary border border-border-primary rounded-xl p-4 flex flex-col">
+    <div className="bg-bg-secondary border border-border-primary rounded-xl p-4 flex flex-col h-full">
       <div className="flex items-end justify-between mb-2">
         <div className="min-w-0">
           <div className="text-xs text-text-muted">צמיחת ההון</div>
@@ -68,7 +68,7 @@ export default function EquityGrowthCard({ series = [], trades = [], hidden = fa
       </div>
 
       {eq ? (
-        <div ref={wrapRef} dir="ltr" className="relative" style={{ height: CH }} onMouseMove={onMove} onMouseLeave={() => setHi(null)}>
+        <div ref={wrapRef} dir="ltr" className="relative flex-1 min-h-[130px]" onMouseMove={onMove} onMouseLeave={() => setHi(null)}>
           <svg viewBox={`0 0 ${W} ${H}`} className="w-full h-full" preserveAspectRatio="none">
             <defs>
               <linearGradient id="eqfill" x1="0" y1="0" x2="0" y2="1">
@@ -76,6 +76,11 @@ export default function EquityGrowthCard({ series = [], trades = [], hidden = fa
                 <stop offset="100%" style={{ stopColor: 'var(--color-accent-primary)', stopOpacity: 0 }} />
               </linearGradient>
             </defs>
+            {/* faint horizontal gridlines for context */}
+            {[0.25, 0.5, 0.75].map((f) => (
+              <line key={f} x1="0" y1={PADY + (H - 2 * PADY) * f} x2={W} y2={PADY + (H - 2 * PADY) * f}
+                stroke="var(--color-border-primary)" strokeWidth="0.5" opacity="0.4" vectorEffect="non-scaling-stroke" />
+            ))}
             <motion.path d={eq.area} fill="url(#eqfill)" initial={{ opacity: 0 }} animate={{ opacity: 1 }} transition={{ duration: 0.7, delay: 0.9 }} />
             <motion.path
               d={eq.line} fill="none" stroke="var(--color-accent-primary)" strokeWidth="2"
@@ -88,7 +93,7 @@ export default function EquityGrowthCard({ series = [], trades = [], hidden = fa
           {hp && (
             <>
               <div className="absolute w-2.5 h-2.5 rounded-full bg-accent-primary ring-2 ring-white/70 pointer-events-none"
-                style={{ left: `${(hp.i / (eq.pts.length - 1)) * 100}%`, top: `${(hp.y / H) * CH}px`, transform: 'translate(-50%,-50%)' }} />
+                style={{ left: `${(hp.i / (eq.pts.length - 1)) * 100}%`, top: `${(hp.y / H) * 100}%`, transform: 'translate(-50%,-50%)' }} />
               <div className="absolute top-0 pointer-events-none px-2 py-1 rounded-lg bg-bg-overlay border border-border-primary text-[11px] whitespace-nowrap shadow-lg"
                 style={{ left: `${leftPct}%`, transform: 'translateX(-50%)' }}>
                 <span dir="ltr" className={`font-bold num-mono ${hp.value >= 0 ? 'text-profit' : 'text-loss'}`}>{mask(formatCurrency(hp.value))}</span>

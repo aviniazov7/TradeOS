@@ -55,7 +55,7 @@ export default function PerformanceRadar({ metrics, score }) {
       </div>
 
       {/* Radar chart */}
-      <div className="w-full flex-1 min-h-[240px]">
+      <div className="w-full flex-1 min-h-[150px]">
         <ResponsiveContainer width="100%" height="100%">
           <RadarChart data={data} outerRadius="72%">
             <PolarGrid stroke="var(--color-border-primary)" />
