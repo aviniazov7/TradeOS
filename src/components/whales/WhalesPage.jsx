@@ -284,7 +284,7 @@ export default function WhalesPage({ embedded = false }) {
     // out the sections; the hero header stays and reads as the section title.
     <motion.div
       {...(embedded ? {} : { variants: pageVariants, initial: 'initial', animate: 'animate', exit: 'exit', transition: pageTransition })}
-      className={embedded ? 'space-y-4' : 'px-4 py-6 max-w-6xl mx-auto space-y-4'}>
+      className={embedded ? 'space-y-5' : 'px-4 py-6 max-w-6xl mx-auto space-y-5'}>
 
       {/* Header — hero strip in the app's violet→cyan language */}
       <div className="relative overflow-hidden rounded-2xl" style={{ border: '1px solid var(--glass-border)' }}>
@@ -292,8 +292,8 @@ export default function WhalesPage({ embedded = false }) {
           className="absolute inset-0 opacity-90"
           style={{ background: 'linear-gradient(135deg, rgba(139,92,246,0.16) 0%, rgba(99,102,241,0.09) 45%, rgba(6,182,212,0.16) 100%)' }}
         />
-        <div className="relative px-4 py-4 md:px-5">
-          <div className="flex items-center gap-2.5">
+        <div className="relative px-5 py-5">
+          <div className="flex items-center gap-3">
             <span className="relative shrink-0 grid place-items-center w-11 h-11 rounded-xl"
               style={{ background: 'rgba(6,182,212,0.12)', border: '1px solid rgba(6,182,212,0.30)' }}>
               <motion.span
