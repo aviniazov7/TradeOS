@@ -1362,7 +1362,9 @@ export default function MarketOverview() {
 
       {/* Whales — moved here from its own page: live big-trade & liquidation feed. */}
       <Reveal>
-      <WhalesPage embedded />
+      <div className="mt-5 md:mt-6">
+        <WhalesPage embedded />
+      </div>
       </Reveal>
 
       </motion.div>
