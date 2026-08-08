@@ -292,32 +292,33 @@ export default function WhalesPage({ embedded = false }) {
           className="absolute inset-0 opacity-90"
           style={{ background: 'linear-gradient(135deg, rgba(139,92,246,0.16) 0%, rgba(99,102,241,0.09) 45%, rgba(6,182,212,0.16) 100%)' }}
         />
-        <div className="relative flex items-center gap-3 px-4 py-3.5 md:px-5 md:py-4 flex-wrap">
-          <span className="relative shrink-0 grid place-items-center w-11 h-11 rounded-xl"
-            style={{ background: 'rgba(6,182,212,0.12)', border: '1px solid rgba(6,182,212,0.30)' }}>
-            <motion.span
-              aria-hidden
-              className="absolute inset-0 rounded-xl"
-              style={{ boxShadow: '0 0 22px 2px rgba(6,182,212,0.30)' }}
-              animate={{ opacity: [0.35, 0.8, 0.35] }}
-              transition={{ duration: 2.6, repeat: Infinity, ease: 'easeInOut' }}
-            />
-            <Waves className="relative w-5.5 h-5.5" style={{ stroke: 'url(#ai-grad)' }} />
-          </span>
-          <div className="min-w-0 flex-1">
-            <h1 className="text-lg md:text-xl font-bold text-gradient leading-tight">מעקב לוויתנים</h1>
-            <p className="text-[11px] md:text-xs text-text-muted mt-0.5">
-              עסקאות ענק, זרימת כסף גדול וחיסולים — בזמן אמת, ישירות מהשוק
-            </p>
+        <div className="relative px-4 py-4 md:px-5">
+          <div className="flex items-center gap-2.5">
+            <span className="relative shrink-0 grid place-items-center w-11 h-11 rounded-xl"
+              style={{ background: 'rgba(6,182,212,0.12)', border: '1px solid rgba(6,182,212,0.30)' }}>
+              <motion.span
+                aria-hidden
+                className="absolute inset-0 rounded-xl"
+                style={{ boxShadow: '0 0 22px 2px rgba(6,182,212,0.30)' }}
+                animate={{ opacity: [0.35, 0.8, 0.35] }}
+                transition={{ duration: 2.6, repeat: Infinity, ease: 'easeInOut' }}
+              />
+              <Waves className="relative w-5.5 h-5.5" style={{ stroke: 'url(#ai-grad)' }} />
+            </span>
+            <h1 className="flex-1 min-w-0 text-lg md:text-xl font-bold text-gradient leading-tight">מעקב לוויתנים</h1>
+            <button
+              onClick={() => setShowInfo((s) => !s)}
+              className="shrink-0 p-1.5 rounded-full text-text-muted hover:text-accent-primary transition-colors cursor-pointer"
+              title="מה רואים כאן?"
+            >
+              <HelpCircle className="w-4.5 h-4.5" />
+            </button>
+            <LiveDot status={paused ? 'connecting' : status} />
           </div>
-          <button
-            onClick={() => setShowInfo((s) => !s)}
-            className="p-1.5 rounded-full text-text-muted hover:text-accent-primary transition-colors cursor-pointer"
-            title="מה רואים כאן?"
-          >
-            <HelpCircle className="w-4.5 h-4.5" />
-          </button>
-          <LiveDot status={paused ? 'connecting' : status} />
+          {/* Subtitle on its own full-width line so it isn't cramped on mobile */}
+          <p className="text-[11.5px] md:text-xs text-text-muted mt-2 leading-snug">
+            עסקאות ענק, זרימת כסף גדול וחיסולים — בזמן אמת, ישירות מהשוק
+          </p>
         </div>
       </div>
 
