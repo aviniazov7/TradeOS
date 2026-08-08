@@ -1,6 +1,6 @@
 import { useState, useMemo } from 'react';
 import { motion } from 'framer-motion';
-import { Plus, FlaskConical, Trash2, Pencil, ExternalLink, TrendingUp, TrendingDown, Settings, Download, ChevronDown, ChevronRight, ChevronLeft, Eye, ArrowUp, ArrowDown, ArrowUpDown, X } from 'lucide-react';
+import { Plus, FlaskConical, Trash2, Pencil, ExternalLink, TrendingUp, TrendingDown, Settings, Download, ChevronRight, ChevronLeft, Eye, ArrowUp, ArrowDown, ArrowUpDown, X } from 'lucide-react';
 import DatePicker from 'react-datepicker';
 import 'react-datepicker/dist/react-datepicker.css';
 import toast from 'react-hot-toast';
@@ -19,6 +19,7 @@ import BacktestSkeleton from './BacktestSkeleton';
 import ConfirmDialog from '../shared/ConfirmDialog';
 import CoinIcon from '../shared/CoinIcon';
 import Modal from '../shared/Modal';
+import BacktestTradeModal from './BacktestTradeModal';
 import PairSearch from '../journal/PairSearch';
 import TimeframeSelector from '../shared/TimeframeSelector';
 import StrategySelector from '../shared/StrategySelector';
@@ -91,7 +92,7 @@ export default function BacktestTracker() {
   const [tab, setTab] = useState('records');
   const [settingsOpen, setSettingsOpen] = useState(false);
   const [viewOpen, setViewOpen] = useState(false);
-  const [expandedCard, setExpandedCard] = useState(null);
+  const [detailTrade, setDetailTrade] = useState(null);
   const [mobileStep, setMobileStep] = useState(0);
 
   const update = (field, value) => setForm((f) => {
@@ -370,100 +371,28 @@ export default function BacktestTracker() {
             <>
               {/* Mobile: Cards */}
               <div className="md:hidden space-y-2.5">
-                {sortedFiltered.map((bt) => {
-                  const isExpanded = expandedCard === bt.id;
-                  return (
-                    <div key={bt.id} className={`${cardClass}`}>
-                      {/* Main row - always visible */}
-                      <div className="flex items-center justify-between cursor-pointer" onClick={() => setExpandedCard(isExpanded ? null : bt.id)}>
-                        <div className="flex items-center gap-2 min-w-0">
-                          <CoinIcon pair={bt.pair} className="w-4 h-4" />
-                          <span className="text-text-primary font-semibold text-sm">{bt.pair}</span>
-                          <span className={`inline-flex items-center gap-0.5 text-xs font-medium px-1.5 py-0.5 rounded ${bt.direction === 'long' ? 'bg-long/10 text-long' : 'bg-short/10 text-short'}`}>
-                            {bt.direction === 'long' ? <TrendingUp className="w-3 h-3" /> : <TrendingDown className="w-3 h-3" />}
-                            {bt.direction === 'long' ? 'Long' : 'Short'}
-                          </span>
-                          <span className={`text-xs font-semibold px-2 py-0.5 rounded ${bt.result === 'win' ? 'bg-profit/15 text-profit' : bt.result === 'breakeven' ? 'bg-yellow-500/15 text-yellow-400' : 'bg-loss/15 text-loss'}`}>
-                            {bt.result === 'win' ? 'W' : bt.result === 'breakeven' ? 'BE' : 'L'}
-                          </span>
-                          {bt.strategy && <span className="text-[11px] text-text-secondary truncate">{bt.strategy}</span>}
-                          <span className="text-[11px] text-text-muted">
-                            {formatDateShort(bt.date)}
-                          </span>
-                        </div>
-                        <div className="flex items-center gap-1.5 flex-shrink-0">
-                          <span className={`text-sm font-bold ${(bt.rResult || 0) >= 0 ? 'text-profit' : 'text-loss'}`}>
-                            {bt.rResult != null ? `${bt.rResult >= 0 ? '+' : ''}${bt.rResult.toFixed(2)}R` : '–'}
-                          </span>
-                          <ChevronDown className={`w-4 h-4 text-text-muted transition-transform ${isExpanded ? 'rotate-180' : ''}`} />
-                        </div>
+                {sortedFiltered.map((bt) => (
+                  <div key={bt.id} className={`${cardClass} cursor-pointer`} onClick={() => setDetailTrade(bt)}>
+                    <div className="flex items-center justify-between">
+                      <div className="flex items-center gap-2 min-w-0">
+                        <CoinIcon pair={bt.pair} className="w-4 h-4" />
+                        <span className="text-text-primary font-semibold text-sm">{bt.pair}</span>
+                        <span className={`inline-flex items-center gap-0.5 text-xs font-medium px-1.5 py-0.5 rounded ${bt.direction === 'long' ? 'bg-long/10 text-long' : 'bg-short/10 text-short'}`}>
+                          {bt.direction === 'long' ? <TrendingUp className="w-3 h-3" /> : <TrendingDown className="w-3 h-3" />}
+                          {bt.direction === 'long' ? 'Long' : 'Short'}
+                        </span>
+                        <span className={`text-xs font-semibold px-2 py-0.5 rounded ${bt.result === 'win' ? 'bg-profit/15 text-profit' : bt.result === 'breakeven' ? 'bg-yellow-500/15 text-yellow-400' : 'bg-loss/15 text-loss'}`}>
+                          {bt.result === 'win' ? 'W' : bt.result === 'breakeven' ? 'BE' : 'L'}
+                        </span>
+                        {bt.strategy && <span className="text-[11px] text-text-secondary truncate">{bt.strategy}</span>}
+                        <span className="text-[11px] text-text-muted">{formatDateShort(bt.date)}</span>
                       </div>
-
-                      {/* Expanded details */}
-                      {isExpanded && (
-                        <div className="mt-3 pt-2.5 border-t border-border-primary/50 space-y-2.5">
-                          {/* Details grid */}
-                          <div className="grid grid-cols-5 gap-x-2 text-[11px]">
-                            <div>
-                              <span className="text-text-muted">שעה</span>
-                              <p className="text-text-secondary">{bt.date ? new Date(bt.date).toLocaleTimeString('he-IL', { hour: '2-digit', minute: '2-digit' }) : '–'}</p>
-                            </div>
-                            <div>
-                              <span className="text-text-muted">TF</span>
-                              <p className="text-text-secondary">{bt.timeframe || '–'}</p>
-                            </div>
-                            <div>
-                              <span className="text-text-muted">Max R</span>
-                              <p className="text-text-primary">{bt.maxR ? bt.maxR.toFixed(1) : '–'}</p>
-                            </div>
-                            <div>
-                              <span className="text-text-muted">Stop %</span>
-                              <p className="text-text-primary">{bt.stopDistancePct ? `${bt.stopDistancePct.toFixed(2)}%` : '–'}</p>
-                            </div>
-                            <div>
-                              <span className="text-text-muted">טריגר</span>
-                              <p className="text-text-secondary truncate">{bt.trigger || '–'}</p>
-                            </div>
-                          </div>
-
-                          {/* Session + Chart links */}
-                          <div className="flex items-center justify-between text-xs">
-                            <div className="flex items-center gap-2">
-                              {bt.session && (
-                                <span className={`px-1.5 py-0.5 rounded text-[10px] font-medium border ${getSessionClasses(bt.session)}`}>
-                                  {bt.session}
-                                </span>
-                              )}
-                              {safeHttpUrl(bt.entryChartUrl) && (
-                                <a href={safeHttpUrl(bt.entryChartUrl)} target="_blank" rel="noopener noreferrer" className="flex items-center gap-0.5 text-accent-primary text-[10px]">
-                                  <ExternalLink className="w-3 h-3" />כניסה
-                                </a>
-                              )}
-                              {safeHttpUrl(bt.managementChartUrl) && (
-                                <a href={safeHttpUrl(bt.managementChartUrl)} target="_blank" rel="noopener noreferrer" className="flex items-center gap-0.5 text-purple-400 text-[10px]">
-                                  <ExternalLink className="w-3 h-3" />ניהול
-                                </a>
-                              )}
-                            </div>
-                          </div>
-
-                          {/* Notes + Actions */}
-                          <div className="flex items-center justify-between pt-1 border-t border-border-primary/50">
-                            <p className="text-[11px] text-text-muted flex-1 min-w-0 truncate">{bt.notes || '–'}</p>
-                            <div className="flex items-center gap-1 flex-shrink-0">
-                              <button onClick={(e) => { e.stopPropagation(); openEdit(bt); }} className="p-1.5 rounded text-text-muted hover:text-accent-primary transition-colors cursor-pointer">
-                                <Pencil className="w-3.5 h-3.5" />
-                              </button>
-                              <button onClick={(e) => { e.stopPropagation(); setDeleteTarget(bt); }} className="p-1.5 rounded text-text-muted hover:text-loss transition-colors cursor-pointer">
-                                <Trash2 className="w-3.5 h-3.5" />
-                              </button>
-                            </div>
-                          </div>
-                        </div>
-                      )}
+                      <span className={`text-sm font-bold flex-shrink-0 ${(bt.rResult || 0) >= 0 ? 'text-profit' : 'text-loss'}`}>
+                        {bt.rResult != null ? `${bt.rResult >= 0 ? '+' : ''}${bt.rResult.toFixed(2)}R` : '–'}
+                      </span>
                     </div>
-                  );
-                })}
+                  </div>
+                ))}
               </div>
 
               {/* Desktop: Table — transparent wrapper (no bg-bg-secondary
@@ -491,7 +420,7 @@ export default function BacktestTracker() {
                   <tbody>
                     {sortedFiltered.map((bt) => {
                       return (
-                      <tr key={bt.id} className="border-b border-border-primary/50 hover:bg-bg-tertiary/50 transition-colors">
+                      <tr key={bt.id} onClick={() => setDetailTrade(bt)} className="border-b border-border-primary/50 hover:bg-bg-tertiary/50 transition-colors cursor-pointer">
                         <td className="py-2.5 text-text-secondary text-xs whitespace-nowrap">
                           {bt.date ? formatDate(bt.date) : '–'}{bt.date && <span className="text-text-muted mr-1"> {formatTime(bt.date)}</span>}
                         </td>
@@ -527,13 +456,13 @@ export default function BacktestTracker() {
                         <td className="py-2.5">
                           <div className="flex items-center gap-2">
                             {safeHttpUrl(bt.entryChartUrl) && (
-                              <a href={safeHttpUrl(bt.entryChartUrl)} target="_blank" rel="noopener noreferrer"
+                              <a href={safeHttpUrl(bt.entryChartUrl)} target="_blank" rel="noopener noreferrer" onClick={(e) => e.stopPropagation()}
                                 className="text-accent-primary hover:underline text-xs flex items-center gap-0.5">
                                 <ExternalLink className="w-3 h-3" />כניסה
                               </a>
                             )}
                             {safeHttpUrl(bt.managementChartUrl) && (
-                              <a href={safeHttpUrl(bt.managementChartUrl)} target="_blank" rel="noopener noreferrer"
+                              <a href={safeHttpUrl(bt.managementChartUrl)} target="_blank" rel="noopener noreferrer" onClick={(e) => e.stopPropagation()}
                                 className="text-purple-400 hover:underline text-xs flex items-center gap-0.5">
                                 <ExternalLink className="w-3 h-3" />ניהול
                               </a>
@@ -543,10 +472,10 @@ export default function BacktestTracker() {
                         </td>
                         <td className="py-2.5">
                           <div className="flex items-center gap-1">
-                            <button onClick={() => openEdit(bt)} className="p-1 rounded text-text-muted hover:text-accent-primary transition-colors cursor-pointer">
+                            <button onClick={(e) => { e.stopPropagation(); openEdit(bt); }} className="p-1 rounded text-text-muted hover:text-accent-primary transition-colors cursor-pointer">
                               <Pencil className="w-3.5 h-3.5" />
                             </button>
-                            <button onClick={() => setDeleteTarget(bt)} className="p-1 rounded text-text-muted hover:text-loss transition-colors cursor-pointer">
+                            <button onClick={(e) => { e.stopPropagation(); setDeleteTarget(bt); }} className="p-1 rounded text-text-muted hover:text-loss transition-colors cursor-pointer">
                               <Trash2 className="w-3.5 h-3.5" />
                             </button>
                           </div>
@@ -779,6 +708,8 @@ export default function BacktestTracker() {
       <ConfirmDialog isOpen={!!deleteTarget} onClose={() => setDeleteTarget(null)} onConfirm={handleDelete} title="מחיקת עסקה" message="למחוק את העסקה? לא ניתן לבטל פעולה זו." />
 
       <StrategyView isOpen={viewOpen} onClose={() => setViewOpen(false)} journal={activeJournal} />
+
+      <BacktestTradeModal trade={detailTrade} isOpen={!!detailTrade} onClose={() => setDetailTrade(null)} onEdit={openEdit} onDelete={setDeleteTarget} />
     </motion.div>
   );
 }
