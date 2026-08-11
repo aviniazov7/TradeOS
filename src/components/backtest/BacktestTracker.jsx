@@ -1,6 +1,6 @@
 import { useState, useMemo } from 'react';
 import { motion } from 'framer-motion';
-import { Plus, FlaskConical, Trash2, Pencil, ExternalLink, TrendingUp, TrendingDown, Settings, Download, ChevronRight, ChevronLeft, Eye, ArrowUp, ArrowDown, ArrowUpDown, X } from 'lucide-react';
+import { Plus, FlaskConical, Trash2, Pencil, ExternalLink, TrendingUp, TrendingDown, Settings, Download, ChevronRight, ChevronLeft, Eye, ArrowUp, ArrowDown, ArrowUpDown, X, BrainCircuit, Crown, Sparkles } from 'lucide-react';
 import DatePicker from 'react-datepicker';
 import 'react-datepicker/dist/react-datepicker.css';
 import toast from 'react-hot-toast';
@@ -92,6 +92,7 @@ export default function BacktestTracker() {
   const [tab, setTab] = useState('records');
   const [settingsOpen, setSettingsOpen] = useState(false);
   const [viewOpen, setViewOpen] = useState(false);
+  const [aiModalOpen, setAiModalOpen] = useState(false);
   const [detailTrade, setDetailTrade] = useState(null);
   const [mobileStep, setMobileStep] = useState(0);
 
@@ -498,11 +499,45 @@ export default function BacktestTracker() {
             actionLabel="עבור לרשומות" onAction={() => setTab('records')} />
         ) : (
           <div className="space-y-4">
-            <BacktestAICoachPanel backtests={backtests} />
+            {/* AI launcher — the analysis opens in a modal (like the journal),
+                not inline, so the charts aren't pushed down the page. */}
+            <button
+              onClick={() => setAiModalOpen(true)}
+              className="w-full group relative overflow-hidden rounded-2xl border border-accent-primary/25 bg-gradient-to-l from-accent-primary/10 via-bg-secondary to-bg-secondary p-4 flex items-center gap-3 text-right hover:border-accent-primary/40 transition-colors cursor-pointer"
+            >
+              <div className="shrink-0 w-11 h-11 rounded-2xl bg-accent-primary/15 border border-accent-primary/40 flex items-center justify-center">
+                <BrainCircuit className="w-6 h-6 text-accent-primary" />
+              </div>
+              <div className="min-w-0 flex-1">
+                <div className="flex items-center gap-2">
+                  <h3 className="text-sm font-bold text-text-primary">ניתוח AI לבקטסט</h3>
+                  <span className="inline-flex items-center gap-1 text-[10px] px-1.5 py-0.5 rounded-full bg-accent-primary text-bg-primary font-bold"><Crown className="w-2.5 h-2.5" /> Premium</span>
+                </div>
+                <p className="text-xs text-text-secondary leading-relaxed mt-0.5 truncate">האם התוכנית רווחית, היכן ה-edge, ומה כדאי לשפר — בחלון נפרד</p>
+              </div>
+              <span className="shrink-0 inline-flex items-center gap-1.5 px-3.5 py-2 rounded-xl bg-accent-primary text-bg-primary text-sm font-semibold group-hover:bg-accent-hover transition-colors">
+                <Sparkles className="w-4 h-4" /> נתח
+              </span>
+            </button>
             <BacktestAnalytics backtests={backtests} period={period} />
           </div>
         )
       )}
+
+      {/* AI analysis modal — same pattern as the journal's coach */}
+      <Modal
+        isOpen={aiModalOpen}
+        onClose={() => setAiModalOpen(false)}
+        maxWidth="max-w-2xl"
+        title={(
+          <span className="inline-flex items-center gap-2">
+            <BrainCircuit className="w-4 h-4 text-accent-primary" />
+            <span className="font-bold text-text-primary">ניתוח AI לבקטסט</span>
+          </span>
+        )}
+      >
+        <BacktestAICoachPanel backtests={backtests} />
+      </Modal>
 
       {/* Add/Edit Entry Modal */}
       <Modal isOpen={formOpen} onClose={() => { setFormOpen(false); setEditingId(null); }} title={editingId ? 'עריכת עסקה' : 'עסקת בקטסט חדשה'} maxWidth="max-w-5xl">
