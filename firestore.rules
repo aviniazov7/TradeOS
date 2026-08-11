@@ -147,6 +147,14 @@ service cloud.firestore {
           && isBoundedDoc(request.resource.data);
         allow delete: if request.auth != null && request.auth.uid == userId;
       }
+      // Labeled Wyckoff setups — the owner's ground-truth dataset the scanner is
+      // measured/calibrated against. Owner-only write, admin-readable, size-bounded.
+      match /wyckoffSetups/{setupId} {
+        allow read: if request.auth != null && (request.auth.uid == userId || isAdmin());
+        allow create, update: if request.auth != null && request.auth.uid == userId
+          && isBoundedDoc(request.resource.data);
+        allow delete: if request.auth != null && request.auth.uid == userId;
+      }
       match /watchlist/{itemId} {
         allow read: if request.auth != null && (request.auth.uid == userId || isAdmin());
         // Owner-only write, plus a server-side size/shape backstop. The client
