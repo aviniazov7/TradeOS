@@ -7,6 +7,7 @@ import { useWatchlist } from '../../hooks/useWatchlist';
 import { useCryptoPrices } from '../../hooks/useCryptoPrices';
 import WatchlistPage from '../watchlist/WatchlistPage';
 import ScannerHero from './ScannerHero';
+import SetupsDatabase from './SetupsDatabase';
 import Button from '../shared/Button';
 import SignalCard from './SignalCard';
 import SignalForm from './SignalForm';
@@ -174,6 +175,9 @@ export default function SignalsPage() {
           </motion.div>
         )}
       </section>
+
+      {/* ── Section 3: labeled-setups database (ground truth for the scanner) ── */}
+      <SetupsDatabase />
 
       <SignalForm
         isOpen={formOpen}
