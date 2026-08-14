@@ -16,6 +16,7 @@ import {
   Crown,
   Bot,
   Radar,
+  Crosshair,
 } from 'lucide-react';
 import PositionCalculator from '../calculator/PositionCalculator';
 import { useAuth } from '../../contexts/AuthContext';
@@ -29,6 +30,9 @@ const navItems = [
   { to: '/wallets', label: 'ארנקים', icon: Wallet },
   { to: '/plans', label: 'תוכניות מסחר', icon: ClipboardList },
   { to: '/market', label: 'סקירת שוק', icon: Activity },
+  // Visible to everyone in the menu (no admin/premium filter flag), but the page
+  // itself is Premium — non-premium land on a locked teaser. The crown signals it.
+  { to: '/polymarket', label: 'מכ״ם כסף חכם', icon: Crosshair, premiumBadge: true },
   { to: '/scanner', label: 'סורק סטאפים', icon: Radar, admin: true },
   { to: '/trade-ai', label: 'TradeAI', icon: Bot },
   { to: '/news', label: 'חדשות', icon: Newspaper },
@@ -118,6 +122,7 @@ export default function Sidebar({ mobileOpen, onClose }) {
                             style={grad ? { stroke: 'url(#ai-grad)' } : undefined}
                           />
                           <span className={grad ? 'text-gradient font-semibold' : ''}>{item.label}</span>
+                          {item.premiumBadge && <Crown className="w-3.5 h-3.5 text-amber-400 ms-auto shrink-0" />}
                         </>
                       );
                     }}
