@@ -1589,7 +1589,13 @@ async function handleCron(env) {
 // Gated by env.SCANNER_ENABLED — fails closed (only the exact string 'true'
 // activates it). Currently ENABLED on the prod cron worker (worker/wrangler.toml).
 const FS_BASE = `https://firestore.googleapis.com/v1/projects/${FIREBASE_PROJECT_ID}/databases/(default)`;
-const SCAN_MIN_CONFIDENCE = 60;   // don't alert below this score
+// Default alert threshold — users/{uid}/settings/scanner.minConfidence overrides
+// it (per user, no redeploy). Post-HTF scores can only be 75/85/95 (base 55 +
+// vol 10 + RSI 10 + mandatory HTF 20), so 60 = alert on everything.
+const SCAN_MIN_CONFIDENCE = 60;
+// Hard ceiling on the stop-buffer override — a fat-fingered settings write must
+// not be able to push the stop into another galaxy.
+const SCAN_MAX_STOP_BUFFER_PCT = 5;
 // Global hard cap on klines fetches per cron tick — kept well under the free
 // Workers plan's ~50-subrequest budget (shared with the other cron jobs). The
 // real control is the 15-tag-per-user cap in the watchlist UI.
@@ -1748,6 +1754,27 @@ async function scanReadWatchlist(env, token, uid) {
   return out.slice(0, 15);
 }
 
+// Per-user engine calibration (users/{uid}/settings/scanner) — the owner tunes
+// the alert threshold and stop buffer from the scanner page and the next cron
+// tick picks them up, no redeploy. Missing/unreadable doc → code defaults.
+// Values are clamped so a raw-SDK write can't disable the engine or explode
+// the stop distance.
+async function scanReadSettings(env, token, uid) {
+  const cfg = { minConfidence: SCAN_MIN_CONFIDENCE, stopBufferPct: 0 };
+  try {
+    const res = await fetch(`${FS_BASE}/documents/users/${encodeURIComponent(uid)}/settings/scanner`, {
+      headers: { Authorization: `Bearer ${token}` },
+    });
+    if (!res.ok) return cfg;
+    const f = (await res.json()).fields || {};
+    const num = (v) => (v?.doubleValue != null ? Number(v.doubleValue) : v?.integerValue != null ? Number(v.integerValue) : NaN);
+    const mc = num(f.minConfidence), sb = num(f.stopBufferPct);
+    if (Number.isFinite(mc)) cfg.minConfidence = Math.min(100, Math.max(0, mc));
+    if (Number.isFinite(sb)) cfg.stopBufferPct = Math.min(SCAN_MAX_STOP_BUFFER_PCT, Math.max(0, sb));
+  } catch { /* keep defaults */ }
+  return cfg;
+}
+
 // wyckoffAlerts toggle (settings/notifications). Defaults ON when unset/unreadable.
 async function scanWyckoffAlertsOn(env, token, uid) {
   try {
@@ -1804,6 +1831,7 @@ async function scanWyckoffSetups(env) {
     try { watch = await scanReadWatchlist(env, token, u.uid); } catch { continue; }
     if (!watch.length) continue;
     let alertsOn = null;                                // read the toggle lazily, only if a setup fires
+    let cfg = null;                                     // per-user calibration, same lazy pattern
 
     for (const item of watch) {
       if (scans >= SCAN_MAX_PER_TICK) break;
@@ -1824,7 +1852,18 @@ async function scanWyckoffSetups(env) {
       if (h4 === undefined) { h4 = await scanFetchCandles(sym, '4h', 200); candleCache.set(`${sym}:4h`, h4); scans++; }
       if (!detectHTFStructure(d1, item.bias) || !detectHTFStructure(h4, item.bias)) continue;
       setup.confidence = Math.min(setup.confidence + 20, 95);   // both higher timeframes confirm
-      if (setup.confidence < SCAN_MIN_CONFIDENCE) continue;
+
+      // Calibration gate + stop buffer — the user-tuned values (settings/scanner),
+      // fetched only now that a setup actually fired (one extra subrequest per
+      // user per firing tick, nothing on quiet ticks).
+      if (cfg === null) cfg = await scanReadSettings(env, token, u.uid);
+      if (setup.confidence < cfg.minConfidence) continue;
+      if (cfg.stopBufferPct > 0) {
+        // Push the stop BEYOND the pivot (short: above the high, long: below
+        // the low) — Avi places his stop past the wick, never on it.
+        const f = cfg.stopBufferPct / 100;
+        setup.stop = scanRound(setup.direction === 'short' ? setup.stop * (1 + f) : setup.stop * (1 - f));
+      }
 
       // Dedup: one alert per (user, coin, setup). The signature = direction+stop
       // (stable for a given setup); a genuinely new setup has a new stop.

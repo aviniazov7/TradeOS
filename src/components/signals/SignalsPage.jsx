@@ -8,6 +8,7 @@ import { useWatchlist } from '../../hooks/useWatchlist';
 import { useCryptoPrices } from '../../hooks/useCryptoPrices';
 import WatchlistPage from '../watchlist/WatchlistPage';
 import ScannerHero from './ScannerHero';
+import ScannerCalibration from './ScannerCalibration';
 import SetupsDatabase from './SetupsDatabase';
 import Button from '../shared/Button';
 import SignalCard from './SignalCard';
@@ -215,7 +216,10 @@ export default function SignalsPage() {
         <div className="h-px flex-1 bg-border-primary" />
       </div>
 
-      {/* ── Section 3: ground-truth training DB (the scanner learns from this) ── */}
+      {/* ── Section 3: engine calibration (threshold + stop buffer the worker reads) ── */}
+      <ScannerCalibration setups={setups} />
+
+      {/* ── Section 4: ground-truth training DB (the scanner learns from this) ── */}
       <SetupsDatabase
         setups={setups}
         loading={setupsLoading}
