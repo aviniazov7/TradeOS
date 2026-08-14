@@ -137,6 +137,7 @@ export default function SignalsPage() {
               <Radar className="w-3.5 h-3.5 text-accent-primary" />
             </span>
             <h2 className="text-sm font-bold text-text-primary">סטאפים שאותרו</h2>
+            <span className="text-[11px] text-text-muted hidden sm:inline">— נקודות כניסה שהסורק מצא</span>
           </div>
           <Button
             variant="ghost"
@@ -146,7 +147,7 @@ export default function SignalsPage() {
             className="shrink-0"
             title="הוסף סטאפ שהסורק פספס — למעקב חי"
           >
-            <span className="hidden sm:inline">הוסף למעקב</span>
+            <span className="hidden sm:inline">הוסף סטאפ</span>
           </Button>
         </div>
 
