@@ -327,7 +327,7 @@ export async function applyTradeCleanup(uid, { updates = [], deletes = [] }) {
 export const USER_SUBCOLLECTIONS = [
   'trades', 'journals', 'backtests', 'backtestJournals', 'dca',
   'tradingPlans', 'notes', 'strategies', 'morningJournals', 'eveningJournals',
-  'processes', 'signals', 'watchlist', 'settings',
+  'processes', 'signals', 'watchlist', 'wyckoffSetups', 'settings',
 ];
 
 /** Delete all documents in a user's subcollection */
