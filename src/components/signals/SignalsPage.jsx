@@ -1,8 +1,9 @@
 import { useState } from 'react';
 import { motion } from 'framer-motion';
-import { Plus, Radar, Flag } from 'lucide-react';
+import { Plus, Radar, Flag, GraduationCap } from 'lucide-react';
 import toast from 'react-hot-toast';
 import { useSignals } from '../../hooks/useSignals';
+import { useWyckoffSetups } from '../../hooks/useWyckoffSetups';
 import { useWatchlist } from '../../hooks/useWatchlist';
 import { useCryptoPrices } from '../../hooks/useCryptoPrices';
 import WatchlistPage from '../watchlist/WatchlistPage';
@@ -13,6 +14,7 @@ import SignalCard from './SignalCard';
 import SignalForm from './SignalForm';
 import ConfirmDialog from '../shared/ConfirmDialog';
 import EmptyState from '../shared/EmptyState';
+import { signalToSetup } from '../../utils/wyckoff';
 import { pageVariants, pageTransition, staggerContainer } from '../../utils/animations';
 
 const TABS = [
@@ -31,6 +33,7 @@ function getCoinFromPair(pair = '') {
 // "watchlist" page is folded in here (embedded) so there's a single place to work.
 export default function SignalsPage() {
   const { signals, loading, addSignal, updateSignal, deleteSignal } = useSignals();
+  const { setups, loading: setupsLoading, addSetup, updateSetup, deleteSetup } = useWyckoffSetups();
   const { items: watchItems } = useWatchlist();
   const { prices } = useCryptoPrices();
   const taggedCount = watchItems.filter((i) => i.bias === 'long' || i.bias === 'short').length;
@@ -84,6 +87,31 @@ export default function SignalsPage() {
     }
   };
 
+  // Feedback loop: 👍/👎 on a detected setup → ground-truth DB, no retyping.
+  // Dedup by signalId (one training row per signal; re-clicking updates it),
+  // and stamp the verdict back on the signal so the card stays highlighted.
+  const handleLabel = async (signal, label) => {
+    try {
+      const existing = setups.find((s) => s.signalId === signal.id);
+      const payload = signalToSetup(signal, label);
+      if (existing) await updateSetup(existing.id, payload);
+      else await addSetup(payload);
+      await updateSignal(signal.id, { labeled: label });
+      toast.success(label === 'valid' ? '👍 נשמר לאימון כתקין' : '👎 נשמר לאימון כלא-תקין');
+    } catch {
+      toast.error('שגיאה בתיוג');
+    }
+  };
+
+  const handleSetupDelete = async (id) => {
+    try {
+      await deleteSetup(id);
+      toast.success('הסטאפ נמחק מהמאגר');
+    } catch {
+      toast.error('שגיאה במחיקה');
+    }
+  };
+
   return (
     <motion.div variants={pageVariants} initial="initial" animate="animate" exit="exit" transition={pageTransition} className="max-w-5xl mx-auto">
       {/* Premium scanner hero — true-black card, live radar sweep, uniform chips */}
@@ -95,8 +123,8 @@ export default function SignalsPage() {
           <span className="w-6 h-6 rounded-lg bg-accent-primary/12 flex items-center justify-center shrink-0">
             <Flag className="w-3.5 h-3.5 text-accent-primary" />
           </span>
-          <h2 className="text-sm font-bold text-text-primary">המטבעות שאני סורק</h2>
-          <span className="text-[11px] text-text-muted">— תייג לונג/שורט, השאר עלינו</span>
+          <h2 className="text-sm font-bold text-text-primary">מטבעות בסריקה</h2>
+          <span className="text-[11px] text-text-muted">— הקלט של הסורק: תייג לונג/שורט, השאר עלינו</span>
         </div>
         <WatchlistPage embedded />
       </section>
@@ -116,9 +144,9 @@ export default function SignalsPage() {
             icon={Plus}
             onClick={() => { setEditingSignal(null); setFormOpen(true); }}
             className="shrink-0"
-            title="הוסף סטאפ ידנית למעקב"
+            title="הוסף סטאפ שהסורק פספס — למעקב חי"
           >
-            <span className="hidden sm:inline">הוסף ידנית</span>
+            <span className="hidden sm:inline">הוסף למעקב</span>
           </Button>
         </div>
 
@@ -168,6 +196,7 @@ export default function SignalsPage() {
                     onEdit={(s) => { setEditingSignal(s); setFormOpen(true); }}
                     onDelete={setDeleteTarget}
                     onStatusChange={handleStatusChange}
+                    onLabel={handleLabel}
                   />
                 </motion.div>
               );
@@ -176,8 +205,23 @@ export default function SignalsPage() {
         )}
       </section>
 
-      {/* ── Section 3: labeled-setups database (ground truth for the scanner) ── */}
-      <SetupsDatabase />
+      {/* ── Divider: below is the calibration/training layer, not the live engine ── */}
+      <div className="flex items-center gap-3 mt-9 mb-1">
+        <div className="h-px flex-1 bg-border-primary" />
+        <span className="flex items-center gap-1.5 text-[11px] font-semibold text-text-muted tracking-wide">
+          <GraduationCap className="w-3.5 h-3.5" /> כיול ואימון
+        </span>
+        <div className="h-px flex-1 bg-border-primary" />
+      </div>
+
+      {/* ── Section 3: ground-truth training DB (the scanner learns from this) ── */}
+      <SetupsDatabase
+        setups={setups}
+        loading={setupsLoading}
+        onAdd={addSetup}
+        onUpdate={updateSetup}
+        onDelete={handleSetupDelete}
+      />
 
       <SignalForm
         isOpen={formOpen}

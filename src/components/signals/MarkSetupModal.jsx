@@ -79,7 +79,7 @@ export default function MarkSetupModal({ isOpen, onClose, onSave, setup }) {
   );
 
   return (
-    <Modal isOpen={isOpen} onClose={onClose} title={setup ? 'עריכת סטאפ' : 'סמן סטאפ למאגר'} maxWidth="max-w-md">
+    <Modal isOpen={isOpen} onClose={onClose} title={setup ? 'עריכת סטאפ' : 'סמן סטאפ לאימון'} maxWidth="max-w-md">
       <div className="space-y-4">
         {/* pair + direction */}
         <div className="grid grid-cols-2 gap-3">

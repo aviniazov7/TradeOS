@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { Pencil, Trash2, CheckCircle2, Clock, Zap, Maximize2, Radar } from 'lucide-react';
+import { Pencil, Trash2, CheckCircle2, Clock, Zap, Maximize2, Radar, ThumbsUp, ThumbsDown } from 'lucide-react';
 import CoinIcon from '../shared/CoinIcon';
 import SignalTrack from './SignalTrack';
 import SetupChart from './SetupChart';
@@ -11,9 +11,9 @@ const STATUS = {
   closed:  { label: 'הושלם', icon: CheckCircle2, className: 'text-profit bg-profit/10 border-profit/30' },
 };
 
-export default function SignalCard({ signal, currentPrice, onEdit, onDelete, onStatusChange }) {
+export default function SignalCard({ signal, currentPrice, onEdit, onDelete, onStatusChange, onLabel }) {
   const [chartOpen, setChartOpen] = useState(false);
-  const { pair, direction, timeframe, entryPrice, stopLoss, tps = [], status, notes, source, confidence } = signal;
+  const { pair, direction, timeframe, entryPrice, stopLoss, tps = [], status, notes, source, confidence, labeled } = signal;
   const isLong = direction === 'long';
   const isScanner = source === 'scanner';
   const conf = confidence != null ? Number(confidence) : null;
@@ -112,6 +112,33 @@ export default function SignalCard({ signal, currentPrice, onEdit, onDelete, onS
         {/* Notes */}
         {notes && (
           <p className="text-xs text-text-muted leading-relaxed line-clamp-2">{notes}</p>
+        )}
+
+        {/* Feedback loop → ground-truth DB: one click labels this setup into the
+            training DB (no retyping). The active verdict stays highlighted and
+            is changeable. */}
+        {onLabel && entryPrice != null && (
+          <div className="flex items-center gap-1.5">
+            <span className="text-[10px] text-text-muted shrink-0">לאימון:</span>
+            <button
+              onClick={() => onLabel(signal, 'valid')}
+              title="הסטאפ תקין — שמור לאימון הסורק"
+              className={`flex-1 flex items-center justify-center gap-1 py-1 rounded-lg text-[11px] font-semibold border transition-colors cursor-pointer ${
+                labeled === 'valid' ? 'bg-profit/15 text-profit border-profit/40' : 'text-text-muted border-border-primary hover:text-profit hover:border-profit/30'
+              }`}
+            >
+              <ThumbsUp className="w-3 h-3" /> תקין
+            </button>
+            <button
+              onClick={() => onLabel(signal, 'invalid')}
+              title="לא תקין — שמור לאימון הסורק"
+              className={`flex-1 flex items-center justify-center gap-1 py-1 rounded-lg text-[11px] font-semibold border transition-colors cursor-pointer ${
+                labeled === 'invalid' ? 'bg-loss/15 text-loss border-loss/40' : 'text-text-muted border-border-primary hover:text-loss hover:border-loss/30'
+              }`}
+            >
+              <ThumbsDown className="w-3 h-3" /> לא תקין
+            </button>
+          </div>
         )}
 
         {/* Actions */}
