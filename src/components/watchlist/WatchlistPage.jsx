@@ -81,7 +81,7 @@ export default function WatchlistPage({ embedded = false }) {
 
   const handleAdd = async (coin) => {
     if (items.some((i) => i.coingeckoId === coin.coingeckoId)) {
-      toast.error('המטבע כבר במעקב');
+      toast.error('המטבע כבר בסריקה');
       setQuery(''); setShowResults(false);
       return;
     }
@@ -93,7 +93,7 @@ export default function WatchlistPage({ embedded = false }) {
         coingeckoId: coin.coingeckoId, symbol: coin.symbol, name: coin.name,
         thumb: coin.thumb || null, addedPrice, note: '', targetPrice: null, tvLink: '', bias: null,
       });
-      toast.success(`${coin.symbol} נוסף למעקב`);
+      toast.success(`${coin.symbol} נוסף לסריקה`);
       setQuery(''); setResults([]); setShowResults(false);
     } catch { toast.error('הוספה נכשלה'); }
     finally { setAdding(false); }
@@ -156,7 +156,7 @@ export default function WatchlistPage({ embedded = false }) {
       {!embedded && (
         <div className="flex items-center gap-2 mb-3">
           <Star className="w-5 h-5 text-accent-primary" />
-          <h1 className="text-lg font-bold text-text-primary">מעקב מטבעות</h1>
+          <h1 className="text-lg font-bold text-text-primary">מטבעות בסריקה</h1>
           <span className="text-xs text-text-muted">({items.length})</span>
         </div>
       )}
@@ -177,7 +177,7 @@ export default function WatchlistPage({ embedded = false }) {
           <input
             type="text" value={query} onChange={(e) => setQuery(e.target.value)}
             onFocus={() => results.length && setShowResults(true)}
-            placeholder="חפש מטבע להוספה למעקב..."
+            placeholder="חפש מטבע להוספה לסריקה..."
             className="bg-transparent text-sm text-text-primary placeholder-text-muted outline-none w-full"
           />
           {adding && <span className="text-[11px] text-text-muted shrink-0">מוסיף…</span>}
@@ -204,7 +204,7 @@ export default function WatchlistPage({ embedded = false }) {
       {loading ? (
         <p className="text-sm text-text-muted text-center py-10">טוען…</p>
       ) : items.length === 0 ? (
-        <EmptyState icon={Star} title="אין מטבעות במעקב"
+        <EmptyState icon={Star} title="אין מטבעות בסריקה"
           description="הוסף מטבע שאתה מנתח, תייג אותו לונג/שורט, ותקבל התראה כשנוצר סטאפ ויקוף." />
       ) : (
         <div className="rounded-2xl border border-border-primary bg-bg-secondary/40 overflow-hidden">
