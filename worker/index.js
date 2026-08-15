@@ -1791,14 +1791,16 @@ async function scanWyckoffSetups(env) {
   try { users = await listAllUsersAdmin(env); } catch { return; }
   let token;
   try { token = await getFirebaseAdminToken(env); } catch { return; }
-  // Scanner is OWNER-ONLY for now (still being calibrated) — only admins scanned.
-  const isOwner = (u) => u.role === 'admin';
+  // Scanner is a Premium feature — scan admins + active-premium users.
+  const nowMs = Date.now();
+  const canScan = (u) => u.role === 'admin'
+    || (u.plan === 'premium' && (!u.planExpires || new Date(u.planExpires).getTime() > nowMs));
 
   const candleCache = new Map();                       // symbol → 30m candles (dedup fetches this tick)
   let scans = 0;
 
   for (const u of users) {
-    if (!isOwner(u)) continue;                          // owner-only while calibrating
+    if (!canScan(u)) continue;                          // premium-only feature
     if (scans >= SCAN_MAX_PER_TICK) break;
     let watch;
     try { watch = await scanReadWatchlist(env, token, u.uid); } catch { continue; }

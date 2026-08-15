@@ -5,7 +5,7 @@ import { AuthProvider } from './contexts/AuthContext';
 import { JournalProvider } from './contexts/JournalContext';
 import { BacktestProvider } from './contexts/BacktestContext';
 import ProtectedRoute from './components/auth/ProtectedRoute';
-import AdminRoute from './components/auth/AdminRoute';
+import PremiumRoute from './components/auth/PremiumRoute';
 import LoginPage from './components/auth/LoginPage';
 import AuthGooglePopup from './components/auth/AuthGooglePopup';
 import Layout from './components/layout/Layout';
@@ -131,7 +131,7 @@ function MainApp() {
                     so old links/bookmarks still land somewhere sensible. */}
                 <Route path="whales" element={<Navigate to="/market" replace />} />
                 {/* Wyckoff setup scanner — Premium only. */}
-                <Route path="scanner" element={<AdminRoute><ScannerPage /></AdminRoute>} />
+                <Route path="scanner" element={<PremiumRoute><ScannerPage /></PremiumRoute>} />
                 {/* Visible to all in the menu; the page shows a locked teaser to non-premium (no PremiumRoute redirect). */}
                 <Route path="polymarket" element={<PolymarketPage />} />
                 <Route path="polymarket/wallet/:address" element={<WalletDetailPage />} />
