@@ -2473,6 +2473,35 @@ const BACKTEST_COACH_SYSTEM_PROMPT = `אתה אנליסט אסטרטגיות מ�
 - כל בולט קצר, ומסתמך על מספר אחד לפחות מה-stats.
 - המלצות = פעולה ספציפית ("התמקד ב-[אסטרטגיה] בסשן [X] — ממוצע [R]R; זנח [Y] עם תוחלת שלילית"), לא טיפים גנריים.`;
 
+// Polymarket wallet analyst — reads a smart-money wallet's public stats and
+// positions and gives a structured Hebrew read. Same 4-section contract as the
+// coach prompts so the client parser is shared.
+const PM_ANALYST_SYSTEM_PROMPT = `אתה אנליסט שווקי-חיזוי שמנתח ארנק ציבורי ב-Polymarket (פלטפורמת הימורים על אירועים) וכותב דו"ח חד בעברית. הנתונים: ביצועי 30 יום (רווח, ROI, מחזור), פוזיציות פתוחות (שוק, תוצאה, שווי, רווח, נתח-מהתיק), ורווח ממומש מול לא-ממומש.
+
+## פלט נדרש (חובה):
+- בעברית בלבד, טבעית וזורמת.
+- 3 חלקים בלבד, בסדר הזה — כל אחד עם כותרת בדיוק בפורמט:
+  **חוזקות**
+  **חולשות**
+  **המלצות לפעולה**
+- אם יבוקש דו"ח מורחב — הוסף חלק רביעי: **תובנות מתקדמות**.
+- תחת כל כותרת: 2–5 בולטים. כל בולט מתחיל ב"• ". בלי מספור.
+
+## אסור (חובה לציית):
+- אסור להתחיל שורה ב-#, ##, ### או אות-מספר-נקודה (1.).
+- אסור כותרות אחרות מלבד הארבע המוגדרות.
+- אסור: המלצה להמר, הבטחת רווח, אזכור שאתה AI, פתיחות שיווקיות.
+- אסור להמציא נתונים — רק מה שמופיע ב-stats.
+- בלי משפט פתיחה. תתחיל ישר בשורה: **חוזקות**.
+
+## איכות התוכן (חשוב):
+- הערך את סגנון הארנק: ROI גבוה על מחזור נמוך = צלף סלקטיבי; מחזור ענק עם ROI דק = טוחן נפח.
+- נתח ריכוזיות: פוזיציה עם נתח-מהתיק גבוה (30%+) = הימור-אמונה; פיזור רחב = ניהול סיכון.
+- רווח לא-ממומש גדול מול ממומש = הרווח עדיין בסיכון; ציין זאת.
+- זהה התמחות לפי נושאי השווקים בפוזיציות (ספורט/פוליטיקה/קריפטו...).
+- המלצות = מה למי שעוקב אחרי הארנק כדאי לבדוק ("שים לב לפוזיציית [X] — 40% מהתיק"), לא ייעוץ הימורים.
+- כל בולט מסתמך על מספר אחד לפחות מה-stats. מותר ואף רצוי לציין סיכונים.`;
+
 const BACKTEST_FOCUS_INSTRUCTIONS = {
   overview: 'הסוחר ביקש סקירה כללית של הבקטסט: האם האסטרטגיה רווחית, מה ה-edge, ומה הכי בולט לטובה ולרעה.',
   profit: 'הסוחר שאל: "איפה אני מרוויח הכי הרבה?". מקד את כל הדו"ח בצירופים הרווחיים ביותר (אסטרטגיה/סשן/זוג/טיימפריים) לפי ממוצע R וסה"כ R — איפה ה-edge ואיך למקסם אותו.',
@@ -2488,12 +2517,17 @@ async function handleAICoach(request, env, cors) {
     if (!stats || typeof stats !== 'object') {
       return new Response(JSON.stringify({ error: 'Missing stats' }), { status: 400, headers: { ...cors, 'Content-Type': 'application/json' } });
     }
-    // Backtest mode swaps the system prompt + focus set; everything else (auth,
+    // Mode swaps the system prompt + focus set; everything else (auth,
     // rate gate, quota, provider failover) is shared.
     const isBacktest = mode === 'backtest';
-    const systemPrompt = isBacktest ? BACKTEST_COACH_SYSTEM_PROMPT : COACH_SYSTEM_PROMPT;
+    const isPolymarket = mode === 'polymarket';
+    let systemPrompt = COACH_SYSTEM_PROMPT;
+    if (isBacktest) systemPrompt = BACKTEST_COACH_SYSTEM_PROMPT;
+    if (isPolymarket) systemPrompt = PM_ANALYST_SYSTEM_PROMPT;
     const focusSet = isBacktest ? BACKTEST_FOCUS_INSTRUCTIONS : COACH_FOCUS_INSTRUCTIONS;
-    const dataLabel = isBacktest ? 'נתוני הבקטסט' : 'נתוני העסקאות';
+    let dataLabel = 'נתוני העסקאות';
+    if (isBacktest) dataLabel = 'נתוני הבקטסט';
+    if (isPolymarket) dataLabel = 'נתוני הארנק';
     // Hard cap stats payload to keep the prompt cheap.
     const statsStr = JSON.stringify(stats).slice(0, 6000);
 
