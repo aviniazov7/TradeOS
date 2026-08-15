@@ -33,7 +33,8 @@ const navItems = [
   // Visible to everyone in the menu (no admin/premium filter flag), but the page
   // itself is Premium — non-premium land on a locked teaser. The crown signals it.
   { to: '/polymarket', label: 'Polymarket', icon: Trophy, premiumBadge: true },
-  { to: '/scanner', label: 'סורק סטאפים', icon: Radar, admin: true },
+  // Premium-visible like the rest of the premium items; the crown marks it.
+  { to: '/scanner', label: 'הסורק החכם', icon: Radar, premium: true, premiumBadge: true },
   { to: '/trade-ai', label: 'TradeAI', icon: Bot },
   { to: '/news', label: 'חדשות', icon: Newspaper },
   { to: '/premium', label: 'שדרוג Premium', icon: Crown, highlight: true },
@@ -42,8 +43,8 @@ const navItems = [
 export default function Sidebar({ mobileOpen, onClose }) {
   const { isAdmin, isPremium } = useAuth();
   const [calcOpen, setCalcOpen] = useState(false);
-  // Most items are Premium-gated; the scanner is admin-only for now (owner-only
-  // while it's being calibrated). Route guards enforce this too.
+  // Premium items are hidden from free users; admin items only for admins.
+  // Route guards enforce this too.
   const base = navItems.filter((i) => (!i.premium || isPremium) && (!i.admin || isAdmin));
   const items = isAdmin
     ? [...base, { to: '/admin', label: 'ניהול', icon: Shield }]

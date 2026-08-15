@@ -13,7 +13,7 @@ import { pageVariants, pageTransition } from '../../utils/animations';
 const SORTS = [
   { key: 'value', label: 'שווי', val: (p) => p.currentValue },
   { key: 'pnl', label: 'רווח', val: (p) => p.cashPnl },
-  { key: 'conviction', label: 'שכנוע', val: (p) => p.conviction },
+  { key: 'conviction', label: 'נתח מהתיק', val: (p) => p.conviction },
 ];
 
 function cents(p) {
@@ -85,9 +85,9 @@ function PositionCard({ p }) {
         <Field label="הושקע" value={fmtUsd(p.initialValue)} />
       </div>
 
-      {/* conviction */}
-      <div className="flex items-center gap-2 mt-2" title={`${convPct}% מהתיק`}>
-        <span className="text-[9px] text-text-muted shrink-0">שכנוע</span>
+      {/* conviction = share of the wallet's live book in this one position */}
+      <div className="flex items-center gap-2 mt-2" title={`הפוזיציה הזו היא ${convPct}% מכל התיק של הארנק — נתח גדול = ביטחון גבוה`}>
+        <span className="text-[9px] text-text-muted shrink-0">נתח מהתיק</span>
         <div className="h-1.5 rounded-full bg-bg-tertiary overflow-hidden flex-1">
           <div className="h-full rounded-full bg-accent-primary" style={{ width: `${convPct}%` }} />
         </div>
