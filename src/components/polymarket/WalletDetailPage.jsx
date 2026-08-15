@@ -1,9 +1,10 @@
 import { useMemo, useState } from 'react';
 import { motion } from 'framer-motion';
 import { useParams, useLocation, useNavigate, Navigate } from 'react-router-dom';
-import { ArrowRight, ExternalLink, ShieldCheck, AlertCircle, Wallet } from 'lucide-react';
+import { ArrowRight, ExternalLink, ShieldCheck, AlertCircle, Wallet, Clock } from 'lucide-react';
 import { useAuth } from '../../contexts/AuthContext';
 import { useWalletPositions } from '../../hooks/useWalletPositions';
+import { useWalletActivity } from '../../hooks/useWalletActivity';
 import ScoreRing from './ScoreRing';
 import { pnlSplit, fmtUsd, fmtPct, shortWallet } from '../../utils/polymarketScore';
 import { profileUrl } from '../../services/polymarketService';
@@ -96,6 +97,42 @@ function PositionCard({ p }) {
   );
 }
 
+function timeAgo(ts) {
+  if (!ts) return '';
+  const secs = Math.max(0, Math.floor(Date.now() / 1000) - ts);
+  if (secs < 60) return 'עכשיו';
+  const mins = Math.floor(secs / 60);
+  if (mins < 60) return `לפני ${mins} ד׳`;
+  const hrs = Math.floor(mins / 60);
+  if (hrs < 24) return `לפני ${hrs} ש׳`;
+  const days = Math.floor(hrs / 24);
+  return `לפני ${days} י׳`;
+}
+
+function ActivityRow({ a }) {
+  const isBuy = a.side === 'BUY';
+  const label = a.side ? (isBuy ? 'קנייה' : 'מכירה') : a.type;
+  return (
+    <div className="flex items-center gap-2.5 px-3 py-2.5 rounded-xl bg-bg-secondary border border-border-primary">
+      {a.icon
+        ? <img src={a.icon} alt="" className="w-7 h-7 rounded-lg object-cover shrink-0" loading="lazy" />
+        : <div className="w-7 h-7 rounded-lg bg-bg-tertiary shrink-0" />}
+      <div className="min-w-0 flex-1">
+        <div className="text-xs font-semibold text-text-primary truncate">{a.title}</div>
+        <div className="flex items-center gap-2 mt-0.5">
+          <span className={`text-[10px] font-bold px-1.5 py-0.5 rounded ${a.side ? (isBuy ? 'bg-profit/10 text-profit' : 'bg-loss/10 text-loss') : 'bg-bg-tertiary text-text-muted'}`}>{label}</span>
+          {a.outcome && <span className="text-[10px] text-text-muted">{a.outcome}</span>}
+          <span className="text-[10px] text-text-muted num-mono">· {timeAgo(a.timestamp)}</span>
+        </div>
+      </div>
+      <div className="text-left shrink-0">
+        <div className="text-xs font-bold num-mono text-text-primary">{fmtUsd(a.usdcSize)}</div>
+        <div className="text-[10px] num-mono text-text-muted">{Math.round(a.price * 100)}¢</div>
+      </div>
+    </div>
+  );
+}
+
 // Full wallet page — every position the wallet holds, in detail. Opened by
 // clicking a wallet on the leaderboard (passes its 30d stats via router state).
 export default function WalletDetailPage() {
@@ -104,9 +141,12 @@ export default function WalletDetailPage() {
   const { state } = useLocation();
   const navigate = useNavigate();
   const [sort, setSort] = useState('value');
+  const [tab, setTab] = useState('positions');
 
   const row = state?.row || null;
   const { positions, loading, error } = useWalletPositions(address, 500);
+  // History loads lazily — only when the tab is opened.
+  const { activity, loading: actLoading, error: actError } = useWalletActivity(address, { limit: 100, enabled: tab === 'history' });
 
   const split = pnlSplit(positions);
   const bookValue = useMemo(() => positions.reduce((s, p) => s + (p.currentValue || 0), 0), [positions]);
@@ -168,12 +208,19 @@ export default function WalletDetailPage() {
         )}
       </div>
 
-      {/* Positions header + sort */}
-      <div className="flex items-center justify-between gap-2 mb-2">
-        <h2 className="text-sm font-bold text-text-primary">
-          פוזיציות {positions.length > 0 && <span className="text-text-muted font-normal">({positions.length})</span>}
-        </h2>
-        {positions.length > 1 && (
+      {/* Tabs: positions | history */}
+      <div className="flex items-center justify-between gap-2 mb-3">
+        <div className="inline-flex bg-bg-secondary border border-border-primary rounded-lg p-0.5 gap-0.5">
+          <button onClick={() => setTab('positions')}
+            className={`px-3 py-1.5 text-xs font-semibold rounded-md transition-colors cursor-pointer ${tab === 'positions' ? 'bg-accent-primary/15 text-accent-primary' : 'text-text-muted hover:text-text-primary'}`}>
+            פוזיציות {positions.length > 0 && `(${positions.length})`}
+          </button>
+          <button onClick={() => setTab('history')}
+            className={`inline-flex items-center gap-1 px-3 py-1.5 text-xs font-semibold rounded-md transition-colors cursor-pointer ${tab === 'history' ? 'bg-accent-primary/15 text-accent-primary' : 'text-text-muted hover:text-text-primary'}`}>
+            <Clock className="w-3.5 h-3.5" /> היסטוריה
+          </button>
+        </div>
+        {tab === 'positions' && positions.length > 1 && (
           <div className="inline-flex bg-bg-secondary border border-border-primary rounded-lg p-0.5 gap-0.5">
             {SORTS.map((s) => (
               <button key={s.key} onClick={() => setSort(s.key)}
@@ -185,17 +232,34 @@ export default function WalletDetailPage() {
         )}
       </div>
 
-      {/* Positions */}
-      {loading ? (
-        <div className="space-y-2">{Array.from({ length: 5 }).map((_, i) => <div key={i} className="h-28 rounded-xl bg-bg-secondary animate-pulse" />)}</div>
-      ) : error ? (
-        <div className="flex items-center justify-center gap-2 py-12 text-sm text-loss"><AlertCircle className="w-4 h-4" />{error}</div>
-      ) : positions.length === 0 ? (
-        <div className="py-12 text-center text-sm text-text-muted">אין פוזיציות פתוחות כרגע</div>
-      ) : (
-        <div className="space-y-2">
-          {sorted.map((p) => <PositionCard key={`${p.conditionId}-${p.outcome}`} p={p} />)}
-        </div>
+      {/* Positions tab */}
+      {tab === 'positions' && (
+        loading ? (
+          <div className="space-y-2">{Array.from({ length: 5 }).map((_, i) => <div key={i} className="h-28 rounded-xl bg-bg-secondary animate-pulse" />)}</div>
+        ) : error ? (
+          <div className="flex items-center justify-center gap-2 py-12 text-sm text-loss"><AlertCircle className="w-4 h-4" />{error}</div>
+        ) : positions.length === 0 ? (
+          <div className="py-12 text-center text-sm text-text-muted">אין פוזיציות פתוחות כרגע</div>
+        ) : (
+          <div className="space-y-2">
+            {sorted.map((p) => <PositionCard key={`${p.conditionId}-${p.outcome}`} p={p} />)}
+          </div>
+        )
+      )}
+
+      {/* History tab */}
+      {tab === 'history' && (
+        actLoading ? (
+          <div className="space-y-2">{Array.from({ length: 6 }).map((_, i) => <div key={i} className="h-14 rounded-xl bg-bg-secondary animate-pulse" />)}</div>
+        ) : actError ? (
+          <div className="flex items-center justify-center gap-2 py-12 text-sm text-loss"><AlertCircle className="w-4 h-4" />{actError}</div>
+        ) : activity.length === 0 ? (
+          <div className="py-12 text-center text-sm text-text-muted">אין היסטוריית מסחר</div>
+        ) : (
+          <div className="space-y-2">
+            {activity.map((a) => <ActivityRow key={a.id} a={a} />)}
+          </div>
+        )
       )}
     </motion.div>
   );
