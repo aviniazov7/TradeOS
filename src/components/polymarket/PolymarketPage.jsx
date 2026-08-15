@@ -17,12 +17,19 @@ const SORTS = [
   { key: 'volume', label: 'מחזור' },
 ];
 
-// Verified live: the leaderboard `category` param supports these (others return empty).
+// Verified live: the leaderboard `category` param returns data only for these
+// slugs (others — e.g. business, world, gaming — come back empty).
 const CATEGORIES = [
   { key: 'overall', label: 'כל הנושאים' },
   { key: 'crypto', label: 'קריפטו' },
   { key: 'politics', label: 'פוליטיקה' },
   { key: 'sports', label: 'ספורט' },
+  { key: 'esports', label: 'Esports' },
+  { key: 'finance', label: 'פיננסים' },
+  { key: 'tech', label: 'טכנולוגיה' },
+  { key: 'culture', label: 'תרבות' },
+  { key: 'weather', label: 'מזג אוויר' },
+  { key: 'mentions', label: 'אזכורים' },
 ];
 
 // Rank medals — a premium leaderboard convention (gold / silver / bronze) that
