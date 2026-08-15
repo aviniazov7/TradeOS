@@ -28,7 +28,7 @@ function fmtShares(n) {
 }
 
 function Stat({ label, value, tone }) {
-  const color = tone === 'profit' ? 'text-profit' : tone === 'loss' ? 'text-loss' : tone === 'brand' ? 'text-purple-300' : 'text-text-primary';
+  const color = tone === 'profit' ? 'text-profit' : tone === 'loss' ? 'text-loss' : tone === 'accent' ? 'text-accent-primary' : 'text-text-primary';
   return (
     <div className="bg-bg-secondary border border-border-primary rounded-xl px-3 py-2.5 min-w-0">
       <div className="text-[10px] text-text-muted">{label}</div>
@@ -63,7 +63,7 @@ function PositionCard({ p }) {
             <span className="text-xs font-semibold text-text-primary truncate">{p.title}</span>
             {marketUrl && (
               <a href={marketUrl} target="_blank" rel="noopener noreferrer" onClick={(e) => e.stopPropagation()}
-                className="text-text-muted hover:text-purple-300 transition-colors shrink-0"><ExternalLink className="w-3 h-3" /></a>
+                className="text-text-muted hover:text-accent-primary transition-colors shrink-0" title="פתח את השוק ב-Polymarket"><ExternalLink className="w-3 h-3" /></a>
             )}
           </div>
           <span className={`inline-flex text-[10px] font-bold px-1.5 py-0.5 rounded mt-1 ${p.outcome === 'Yes' ? 'bg-profit/10 text-profit' : p.outcome === 'No' ? 'bg-loss/10 text-loss' : 'bg-bg-tertiary text-text-muted'}`}>
@@ -88,7 +88,7 @@ function PositionCard({ p }) {
       <div className="flex items-center gap-2 mt-2" title={`${convPct}% מהתיק`}>
         <span className="text-[9px] text-text-muted shrink-0">שכנוע</span>
         <div className="h-1.5 rounded-full bg-bg-tertiary overflow-hidden flex-1">
-          <div className="h-full rounded-full bg-purple-500" style={{ width: `${convPct}%` }} />
+          <div className="h-full rounded-full bg-accent-primary" style={{ width: `${convPct}%` }} />
         </div>
         <span className="text-[10px] text-text-muted num-mono shrink-0">{convPct}%</span>
       </div>
@@ -128,15 +128,16 @@ export default function WalletDetailPage() {
       </button>
 
       {/* Header */}
-      <div className="rounded-2xl border border-purple-500/20 p-4 mb-4" style={{ background: 'linear-gradient(135deg, rgba(168,85,247,0.16) 0%, #0f0b17 55%)' }}>
-        <div className="flex items-center gap-3">
+      <div className="relative overflow-hidden rounded-2xl border border-accent-primary/20 bg-[#070b12] p-4 mb-4">
+        <div className="absolute -top-16 -left-16 w-56 h-56 rounded-full bg-accent-primary/10 blur-3xl pointer-events-none" />
+        <div className="relative flex items-center gap-3">
           {row?.profileImage
             ? <img src={row.profileImage} alt="" className="w-12 h-12 rounded-full object-cover" loading="lazy" />
-            : <div className="w-12 h-12 rounded-full bg-white/10 flex items-center justify-center"><Wallet className="w-5 h-5 text-purple-300" /></div>}
+            : <div className="w-12 h-12 rounded-full bg-white/10 flex items-center justify-center"><Wallet className="w-5 h-5 text-accent-primary" /></div>}
           <div className="min-w-0 flex-1">
             <div className="flex items-center gap-1.5">
               <span className="text-base font-bold text-white truncate">{name}</span>
-              {row?.verified && <ShieldCheck className="w-4 h-4 text-purple-300 shrink-0" />}
+              {row?.verified && <ShieldCheck className="w-4 h-4 text-accent-primary shrink-0" />}
             </div>
             <span className="text-[11px] text-white/50 num-mono" dir="ltr">{shortWallet(address)}</span>
           </div>
@@ -144,7 +145,7 @@ export default function WalletDetailPage() {
         </div>
         {link && (
           <a href={link} target="_blank" rel="noopener noreferrer"
-            className="inline-flex items-center gap-1.5 mt-3 text-[11px] font-semibold text-purple-300 hover:text-purple-200 transition-colors">
+            className="relative inline-flex items-center gap-1.5 mt-3 text-[11px] font-semibold text-accent-primary hover:text-accent-hover transition-colors">
             פרופיל מלא ב-Polymarket <ExternalLink className="w-3 h-3" />
           </a>
         )}
@@ -160,7 +161,7 @@ export default function WalletDetailPage() {
           </>
         ) : (
           <>
-            <Stat label="שווי תיק" value={fmtUsd(bookValue)} tone="brand" />
+            <Stat label="שווי תיק" value={fmtUsd(bookValue)} tone="accent" />
             <Stat label="ממומש" value={fmtUsd(split.realized)} tone={split.realized >= 0 ? 'profit' : 'loss'} />
             <Stat label="לא-ממומש" value={fmtUsd(split.unrealized)} tone={split.unrealized >= 0 ? 'profit' : 'loss'} />
           </>
@@ -176,7 +177,7 @@ export default function WalletDetailPage() {
           <div className="inline-flex bg-bg-secondary border border-border-primary rounded-lg p-0.5 gap-0.5">
             {SORTS.map((s) => (
               <button key={s.key} onClick={() => setSort(s.key)}
-                className={`px-2.5 py-1 text-[11px] font-semibold rounded-md transition-colors cursor-pointer ${sort === s.key ? 'bg-purple-500/20 text-purple-300' : 'text-text-muted hover:text-text-primary'}`}>
+                className={`px-2.5 py-1 text-[11px] font-semibold rounded-md transition-colors cursor-pointer ${sort === s.key ? 'bg-accent-primary/15 text-accent-primary' : 'text-text-muted hover:text-text-primary'}`}>
                 {s.label}
               </button>
             ))}

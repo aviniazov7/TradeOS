@@ -1,7 +1,7 @@
 import { useMemo, useState } from 'react';
 import { motion } from 'framer-motion';
 import { useNavigate } from 'react-router-dom';
-import { Wallet, Crown, Lock, Search, ShieldCheck, Info, ArrowDownUp, AlertCircle, RefreshCw, Star } from 'lucide-react';
+import { Trophy, Crown, Lock, Search, ShieldCheck, Info, ArrowDownUp, AlertCircle, RefreshCw, Star, ChevronDown } from 'lucide-react';
 import { useAuth } from '../../contexts/AuthContext';
 import { usePolymarketLeaderboard } from '../../hooks/usePolymarketLeaderboard';
 import { usePolymarketWatch } from '../../hooks/usePolymarketWatch';
@@ -17,6 +17,23 @@ const SORTS = [
   { key: 'volume', label: 'מחזור' },
 ];
 
+// Verified live: the leaderboard `category` param supports these (others return empty).
+const CATEGORIES = [
+  { key: 'overall', label: 'כל הנושאים' },
+  { key: 'crypto', label: 'קריפטו' },
+  { key: 'politics', label: 'פוליטיקה' },
+  { key: 'sports', label: 'ספורט' },
+];
+
+// Rank medals — a premium leaderboard convention (gold / silver / bronze) that
+// reads as ranking, not as a second theme color. Everything interactive stays
+// on the app's accent.
+const MEDAL = {
+  1: { card: 'border-amber-400/40', badge: 'bg-amber-400/15 text-amber-300 border-amber-400/40', glow: 'radial-gradient(100% 80% at 50% 0%, rgba(251,191,36,0.13), transparent 60%)' },
+  2: { card: 'border-slate-300/25', badge: 'bg-slate-300/10 text-slate-300 border-slate-300/30', glow: null },
+  3: { card: 'border-orange-400/25', badge: 'bg-orange-400/10 text-orange-400 border-orange-400/30', glow: null },
+};
+
 function median(nums) {
   if (!nums.length) return 0;
   const s = [...nums].sort((a, b) => a - b);
@@ -25,31 +42,31 @@ function median(nums) {
 }
 
 function HeroTile({ value, label, tone }) {
-  const color = tone === 'profit' ? 'text-profit' : tone === 'brand' ? 'text-purple-300' : 'text-white';
+  const color = tone === 'profit' ? 'text-profit' : tone === 'accent' ? 'text-accent-primary' : 'text-white';
   return (
-    <div className="rounded-xl bg-white/[0.04] border border-white/10 px-3 py-2.5">
+    <div className="rounded-xl bg-white/[0.04] border border-white/10 px-3 py-2.5 transition-colors hover:border-accent-primary/40">
       <div className={`text-base font-extrabold num-mono leading-none ${color}`}>{value}</div>
       <div className="text-[10px] text-white/50 mt-1.5">{label}</div>
     </div>
   );
 }
 
-// Distinct purple "trader leaderboard" identity — a flat gradient banner, no
-// radar (that's the scanner's language).
+// App-native identity: a dark card with the app accent (no radar — that's the
+// scanner's language; the distinction here is the podium + wallet page).
 function Hero({ stats }) {
   const count = useCountUp(stats?.count ?? 0);
   return (
-    <div className="relative overflow-hidden rounded-2xl border border-purple-500/20 p-5 mb-5"
-      style={{ background: 'linear-gradient(135deg, rgba(168,85,247,0.22) 0%, #0f0b17 45%, #0f0b17 100%)' }}>
-      <div className="flex items-start gap-3">
-        <div className="w-11 h-11 rounded-2xl flex items-center justify-center shrink-0 text-purple-300"
-          style={{ background: 'linear-gradient(145deg, rgba(168,85,247,0.28), transparent)', boxShadow: 'inset 0 0 0 1px rgba(168,85,247,0.4), 0 0 24px -6px rgba(168,85,247,0.7)' }}>
-          <Wallet className="w-6 h-6" />
+    <div className="relative overflow-hidden rounded-2xl border border-accent-primary/20 bg-[#070b12] p-5 mb-5">
+      <div className="absolute -top-20 -left-16 w-64 h-64 rounded-full bg-accent-primary/10 blur-3xl pointer-events-none" />
+      <div className="relative flex items-start gap-3">
+        <div className="w-11 h-11 rounded-2xl flex items-center justify-center shrink-0 text-accent-primary bg-accent-primary/15 border border-accent-primary/40"
+          style={{ boxShadow: '0 0 24px -6px rgba(59,130,246,0.6)' }}>
+          <Trophy className="w-6 h-6" />
         </div>
         <div className="min-w-0">
           <div className="flex items-center gap-2 flex-wrap">
             <h1 className="text-lg font-bold text-white">ארנקים מובילים · Polymarket</h1>
-            <span className="inline-flex items-center gap-1 text-[10px] px-1.5 py-0.5 rounded-full bg-purple-500 text-white font-bold"><Crown className="w-2.5 h-2.5" /> Premium</span>
+            <span className="inline-flex items-center gap-1 text-[10px] px-1.5 py-0.5 rounded-full bg-accent-primary text-bg-primary font-bold"><Crown className="w-2.5 h-2.5" /> Premium</span>
           </div>
           <p className="text-xs text-white/60 leading-relaxed mt-1">
             הטריידרים הרווחיים ב-Polymarket, מדורגים לפי יעילות (רווח לכל $ מחזור) — לא רק רווח גולמי. דאטה ציבורי, 30 יום.
@@ -57,10 +74,10 @@ function Hero({ stats }) {
         </div>
       </div>
       {stats && (
-        <div className="grid grid-cols-3 gap-2 mt-4">
+        <div className="relative grid grid-cols-3 gap-2 mt-4">
           <HeroTile value={fmtUsd(stats.topPnl)} label="הרווח המוביל" tone="profit" />
           <HeroTile value={count} label="ארנקים כשירים" />
-          <HeroTile value={fmtPct(stats.medianRoi)} label="ROI חציוני" tone="brand" />
+          <HeroTile value={fmtPct(stats.medianRoi)} label="ROI חציוני" tone="accent" />
         </div>
       )}
     </div>
@@ -85,27 +102,25 @@ function Avatar({ src, className }) {
     : <div className={`rounded-full bg-bg-tertiary shrink-0 ${className}`} />;
 }
 
-// Top-3 as a podium of cards — the biggest visual break from the scanner.
+// Top-3 as a podium of cards with rank medals — the visual break from the scanner.
 function PodiumCard({ r, rank, isWatched, onToggle, onOpen }) {
   const name = r.name || shortWallet(r.wallet);
-  const top = rank === 1;
+  const m = MEDAL[rank] || MEDAL[3];
   return (
     <div onClick={onOpen} role="button" tabIndex={0}
       onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); onOpen(); } }}
-      className={`group relative flex flex-col items-center text-center gap-2 p-3 rounded-2xl border cursor-pointer transition-all overflow-hidden outline-none ${
-        top ? 'border-purple-500/50 bg-purple-500/[0.07]' : 'border-border-primary bg-bg-secondary hover:border-purple-500/30'
-      }`}>
-      {top && <div className="absolute inset-0 pointer-events-none" style={{ background: 'radial-gradient(100% 80% at 50% 0%, rgba(168,85,247,0.14), transparent 60%)' }} />}
+      className={`group relative flex flex-col items-center text-center gap-2 p-3 rounded-2xl border bg-bg-secondary cursor-pointer transition-all overflow-hidden outline-none hover:-translate-y-0.5 hover:shadow-lg ${m.card}`}>
+      {m.glow && <div className="absolute inset-0 pointer-events-none" style={{ background: m.glow }} />}
       <div className="relative flex items-center justify-between w-full">
-        <span className={`flex items-center justify-center w-6 h-6 rounded-full text-[11px] font-extrabold num-mono ${top ? 'bg-purple-500/20 text-purple-300 border border-purple-500/40' : 'bg-bg-tertiary text-text-secondary border border-border-primary'}`}>
-          {top ? <Crown className="w-3.5 h-3.5 text-purple-300" /> : rank}
+        <span className={`flex items-center justify-center w-6 h-6 rounded-full text-[11px] font-extrabold num-mono border ${m.badge}`}>
+          {rank === 1 ? <Crown className="w-3.5 h-3.5" /> : rank}
         </span>
         <StarBtn isWatched={isWatched} onToggle={onToggle} />
       </div>
       <Avatar src={r.profileImage} className="w-12 h-12" />
       <div className="relative flex items-center gap-1 min-w-0 max-w-full">
         <span className="text-sm font-bold text-text-primary truncate">{name}</span>
-        {r.verified && <ShieldCheck className="w-3.5 h-3.5 text-purple-400 shrink-0" />}
+        {r.verified && <ShieldCheck className="w-3.5 h-3.5 text-accent-primary shrink-0" />}
       </div>
       <ScoreRing score={r.smartScore} size="lg" />
       <div>
@@ -122,21 +137,21 @@ function WalletRow({ r, rank, isWatched, onToggle, onOpen }) {
   return (
     <div onClick={onOpen} role="button" tabIndex={0}
       onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); onOpen(); } }}
-      className="group relative w-full flex items-center gap-3 px-3 py-2.5 rounded-xl bg-bg-secondary border border-border-primary text-right cursor-pointer transition-colors hover:border-purple-500/40 outline-none focus-visible:border-purple-500/60">
+      className="group relative w-full flex items-center gap-3 px-3 py-2.5 rounded-xl bg-bg-secondary border border-border-primary text-right cursor-pointer transition-colors hover:border-accent-primary/40 outline-none focus-visible:border-accent-primary/60">
       {rank != null && <span className="w-6 text-center text-xs font-bold text-text-muted num-mono shrink-0">{rank}</span>}
       <ScoreRing score={r.smartScore} size="md" />
       <Avatar src={r.profileImage} className="w-8 h-8" />
       <div className="min-w-0 flex-1">
         <div className="flex items-center gap-1.5">
           <span className="text-sm font-bold text-text-primary truncate">{name}</span>
-          {r.verified && <ShieldCheck className="w-3.5 h-3.5 text-purple-400 shrink-0" />}
+          {r.verified && <ShieldCheck className="w-3.5 h-3.5 text-accent-primary shrink-0" />}
         </div>
         {hasComposition ? (
           <div className="flex items-center gap-1.5 mt-1">
-            {/* why this wallet ranks: dark = size, bright = efficiency; filled = score */}
+            {/* why this wallet ranks: light = size, bright = efficiency; filled = score */}
             <div className="h-1 rounded-full overflow-hidden flex w-24 bg-bg-tertiary" title="הרכב הציון: גודל מול יעילות">
-              <div className="h-full bg-purple-600" style={{ width: `${r.sizeShare * 50}%` }} />
-              <div className="h-full bg-purple-300" style={{ width: `${r.effShare * 50}%` }} />
+              <div className="h-full bg-accent-primary/40" style={{ width: `${r.sizeShare * 50}%` }} />
+              <div className="h-full bg-accent-primary" style={{ width: `${r.effShare * 50}%` }} />
             </div>
             <span className="text-[9px] text-text-muted num-mono" dir="ltr">{shortWallet(r.wallet)}</span>
           </div>
@@ -192,7 +207,7 @@ function LockedTeaser() {
       <div className="space-y-2 p-3 blur-sm select-none pointer-events-none" aria-hidden="true">
         {[92, 81, 74, 66, 59].map((s, i) => (
           <div key={i} className="flex items-center gap-3 px-3 py-2.5 rounded-xl bg-bg-secondary border border-border-primary">
-            <span className="w-9 h-9 rounded-full bg-purple-500/15" />
+            <span className="w-9 h-9 rounded-full bg-accent-primary/15" />
             <div className="w-8 h-8 rounded-full bg-bg-tertiary" />
             <div className="flex-1"><div className="h-3 w-28 bg-bg-tertiary rounded" /><div className="h-2 w-20 bg-bg-tertiary rounded mt-1.5" /></div>
             <div className="h-4 w-16 bg-bg-tertiary rounded" />
@@ -200,17 +215,17 @@ function LockedTeaser() {
         ))}
       </div>
       <div className="absolute inset-0 flex flex-col items-center justify-center gap-3 bg-bg-primary/40 backdrop-blur-[2px] text-center px-6">
-        <div className="w-14 h-14 rounded-2xl bg-purple-500/15 border border-purple-500/30 flex items-center justify-center">
-          <Lock className="w-7 h-7 text-purple-300" />
+        <div className="w-14 h-14 rounded-2xl bg-accent-primary/15 border border-accent-primary/30 flex items-center justify-center">
+          <Lock className="w-7 h-7 text-accent-primary" />
         </div>
         <h2 className="text-lg font-bold text-text-primary flex items-center gap-2">
-          תוכן Premium <span className="inline-flex items-center gap-1 text-[10px] px-1.5 py-0.5 rounded-full bg-purple-500 text-white font-bold"><Crown className="w-2.5 h-2.5" /> Premium</span>
+          תוכן Premium <span className="inline-flex items-center gap-1 text-[10px] px-1.5 py-0.5 rounded-full bg-accent-primary text-bg-primary font-bold"><Crown className="w-2.5 h-2.5" /> Premium</span>
         </h2>
         <p className="text-sm text-text-secondary max-w-sm leading-relaxed">
           הכירו את הטריידרים הרווחיים ביותר ב-Polymarket, מדורגים לפי יעילות אמיתית — ועקבו אחרי הארנקים החכמים.
         </p>
         <button onClick={() => navigate('/premium')}
-          className="px-5 py-2.5 rounded-xl bg-purple-500 text-white text-sm font-semibold hover:bg-purple-600 transition-colors cursor-pointer">
+          className="px-5 py-2.5 rounded-xl bg-accent-primary text-bg-primary text-sm font-semibold hover:bg-accent-hover transition-colors cursor-pointer">
           שדרג ל-Premium
         </button>
       </div>
@@ -222,7 +237,8 @@ function LockedTeaser() {
 // fetched or scored for non-premium (the scoring is the paid deliverable).
 function PolymarketBoard() {
   const navigate = useNavigate();
-  const { rows, loading, error, refetch } = usePolymarketLeaderboard('overall');
+  const [category, setCategory] = useState('overall');
+  const { rows, loading, error, refetch } = usePolymarketLeaderboard(category);
   const { watched, watchedSet, toggle } = usePolymarketWatch();
   const [sort, setSort] = useState('score');
   const [query, setQuery] = useState('');
@@ -279,23 +295,31 @@ function PolymarketBoard() {
 
       {/* Controls */}
       <div className="flex flex-wrap items-center gap-2 mb-3">
-        <div className="flex items-center gap-2 bg-bg-secondary border border-border-primary rounded-xl px-3 py-2 flex-1 min-w-[180px] focus-within:border-purple-500/50 transition-colors">
+        {/* category dropdown */}
+        <div className="relative shrink-0">
+          <select value={category} onChange={(e) => setCategory(e.target.value)}
+            className="appearance-none bg-bg-secondary border border-border-primary rounded-lg py-2 ps-3 pe-8 text-sm font-semibold text-text-primary cursor-pointer outline-none focus:border-accent-primary/50">
+            {CATEGORIES.map((c) => <option key={c.key} value={c.key}>{c.label}</option>)}
+          </select>
+          <ChevronDown className="w-4 h-4 text-text-muted absolute inset-y-0 my-auto left-2 pointer-events-none" />
+        </div>
+        <div className="flex items-center gap-2 bg-bg-secondary border border-border-primary rounded-lg px-3 py-2 flex-1 min-w-[150px] focus-within:border-accent-primary/50 transition-colors">
           <Search className="w-4 h-4 text-text-muted shrink-0" />
-          <input value={query} onChange={(e) => setQuery(e.target.value)} placeholder="חפש ארנק (שם או כתובת)…"
+          <input value={query} onChange={(e) => setQuery(e.target.value)} placeholder="חפש ארנק…"
             className="bg-transparent text-sm text-text-primary placeholder-text-muted outline-none w-full" />
         </div>
         <div className="inline-flex bg-bg-secondary border border-border-primary rounded-lg p-0.5 gap-0.5 overflow-x-auto">
           {SORTS.map((s) => (
             <button key={s.key} onClick={() => setSort(s.key)}
-              className={`px-2.5 py-1 text-[11px] font-semibold rounded-md transition-colors cursor-pointer whitespace-nowrap ${sort === s.key ? 'bg-purple-500/20 text-purple-300' : 'text-text-muted hover:text-text-primary'}`}>
+              className={`px-2.5 py-1 text-[11px] font-semibold rounded-md transition-colors cursor-pointer whitespace-nowrap ${sort === s.key ? 'bg-accent-primary/15 text-accent-primary' : 'text-text-muted hover:text-text-primary'}`}>
               {s.label}
             </button>
           ))}
         </div>
         <button onClick={() => setEligibleOnly((v) => !v)}
-          title="הצג רק ארנקים שעברו את סף הכשירות (מחזור מספק, רווח חיובי)"
-          className={`inline-flex items-center gap-1 px-2.5 py-1.5 rounded-lg text-[11px] font-semibold border transition-colors cursor-pointer ${eligibleOnly ? 'bg-purple-500/20 text-purple-300 border-purple-500/40' : 'text-text-muted border-border-primary'}`}>
-          <ArrowDownUp className="w-3 h-3" /> כשירים בלבד
+          title="הצג רק ארנקים איכותיים: מחזור $10K+ ורווח חיובי ב-30 יום (מסנן קטנים/מפסידים)"
+          className={`inline-flex items-center gap-1 px-2.5 py-1.5 rounded-lg text-[11px] font-semibold border transition-colors cursor-pointer ${eligibleOnly ? 'bg-accent-primary/15 text-accent-primary border-accent-primary/40' : 'text-text-muted border-border-primary'}`}>
+          <ArrowDownUp className="w-3 h-3" /> רווחיים בלבד
         </button>
       </div>
 
@@ -306,7 +330,7 @@ function PolymarketBoard() {
         <div className="flex flex-col items-center gap-2 py-10 rounded-2xl border border-loss/25 bg-loss/5 text-center">
           <AlertCircle className="w-6 h-6 text-loss" />
           <p className="text-sm text-text-secondary max-w-xs">{error}</p>
-          <button onClick={refetch} className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-bg-tertiary text-xs font-semibold text-text-primary hover:text-purple-300 transition-colors cursor-pointer">
+          <button onClick={refetch} className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-bg-tertiary text-xs font-semibold text-text-primary hover:text-accent-primary transition-colors cursor-pointer">
             <RefreshCw className="w-3.5 h-3.5" /> נסה שוב
           </button>
         </div>
@@ -316,7 +340,7 @@ function PolymarketBoard() {
           <span className="text-sm font-medium">לא נמצאו ארנקים בסינון הזה</span>
           {(query || eligibleOnly) && (
             <button onClick={() => { setQuery(''); setEligibleOnly(false); }}
-              className="text-[11px] font-semibold text-purple-300 hover:text-purple-200 transition-colors cursor-pointer">
+              className="text-[11px] font-semibold text-accent-primary hover:text-accent-hover transition-colors cursor-pointer">
               נקה סינון
             </button>
           )}
