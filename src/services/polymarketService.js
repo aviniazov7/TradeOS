@@ -115,6 +115,105 @@ export async function fetchActivity(wallet, { limit = 100, signal } = {}) {
   return (Array.isArray(rows) ? rows : []).map(normalizeActivity);
 }
 
+function parseJsonArray(v) {
+  if (Array.isArray(v)) return v;
+  try { const a = JSON.parse(v); return Array.isArray(a) ? a : []; } catch { return []; }
+}
+
+// A conditionId is a 32-byte hex hash — validate before using it in URLs/keys.
+const isConditionId = (c) => typeof c === 'string' && /^0x[0-9a-fA-F]{64}$/.test(c);
+
+function normalizeMarket(m) {
+  const outcomes = parseJsonArray(m.outcomes);
+  const prices = parseJsonArray(m.outcomePrices).map((p) => Number(p) || 0);
+  const sum = prices.reduce((s, p) => s + p, 0);
+  return {
+    id: m.id,
+    conditionId: m.conditionId,
+    question: m.question || '—',
+    slug: m.slug || null,
+    eventSlug: m.events?.[0]?.slug || null,
+    icon: safeHttpUrl(m.icon || m.image) || null,
+    outcomes,
+    prices,
+    priceSum: sum,                               // ≠1 on a binary market → mispricing gap
+    volume24hr: Number(m.volume24hr) || 0,
+    liquidity: Number(m.liquidityNum ?? m.liquidity) || 0,
+    spread: Number(m.spread) || 0,
+    oneDayChange: Number(m.oneDayPriceChange) || 0,
+    endDate: m.endDate || null,
+    isNew: !!m.new,
+  };
+}
+
+// Open markets from the Gamma API (CORS-open, verified live). Ordered
+// server-side; the explorer re-sorts/filters client-side on this set.
+export async function fetchMarkets({ limit = 60, order = 'volume24hr', signal } = {}) {
+  const url = `${C.GAMMA_API}/markets?closed=false&active=true&limit=${limit}`
+    + `&order=${encodeURIComponent(order)}&ascending=false`;
+  const rows = await getJson(url, { signal });
+  return (Array.isArray(rows) ? rows : [])
+    .map(normalizeMarket)
+    .filter((m) => isConditionId(m.conditionId) && m.outcomes.length >= 2);
+}
+
+// Who holds a market — one entry per outcome token, holders sorted by amount.
+// The raw holder rows carry profile fields; keep only what we render.
+export async function fetchHolders(conditionId, { signal } = {}) {
+  if (!isConditionId(conditionId)) return [];
+  const url = `${C.DATA_API}/holders?market=${conditionId}&limit=20`;
+  const rows = await getJson(url, { signal });
+  return (Array.isArray(rows) ? rows : []).map((t) => ({
+    token: t.token,
+    holders: (Array.isArray(t.holders) ? t.holders : [])
+      .filter((h) => isAddress(h.proxyWallet))
+      .map((h) => ({
+        wallet: h.proxyWallet,
+        name: h.name || h.pseudonym || null,
+        profileImage: safeHttpUrl(h.profileImageOptimized || h.profileImage) || null,
+        amount: Number(h.amount) || 0,
+        outcomeIndex: h.outcomeIndex ?? null,
+      })),
+  }));
+}
+
+// Market page on Polymarket (fixed https origin + slug-encoded).
+export function marketUrl(eventSlug, slug) {
+  const s = eventSlug || slug;
+  return s ? `https://polymarket.com/event/${encodeURIComponent(s)}` : null;
+}
+
+function normalizeTrade(t) {
+  const size = Number(t.size) || 0;
+  const price = Number(t.price) || 0;
+  return {
+    id: `${t.proxyWallet}-${t.conditionId}-${t.timestamp}-${t.side}`,
+    wallet: t.proxyWallet,
+    name: (typeof t.name === 'string' && t.name && !t.name.toLowerCase().startsWith('0x')) ? t.name : null,
+    side: t.side || null,               // BUY / SELL
+    size,
+    price,
+    usd: size * price,                  // /trades has no usdcSize — derive it
+    title: t.title || t.slug || '—',
+    slug: t.slug || null,
+    eventSlug: t.eventSlug || null,
+    icon: safeHttpUrl(t.icon) || null,
+    outcome: t.outcome || null,
+    conditionId: t.conditionId,
+    timestamp: Number(t.timestamp) || 0,
+  };
+}
+
+// The live tape — recent trades across all of Polymarket (the whale radar
+// polls this and filters by $ size client-side).
+export async function fetchTrades({ limit = 100, signal } = {}) {
+  const url = `${C.DATA_API}/trades?limit=${limit}`;
+  const rows = await getJson(url, { signal });
+  return (Array.isArray(rows) ? rows : [])
+    .map(normalizeTrade)
+    .filter((t) => isAddress(t.wallet));
+}
+
 // Profile link on Polymarket. Fixed https origin + validated address → the href
 // can never be turned into a javascript:/data: scheme or leave polymarket.com.
 export function profileUrl(wallet) {
