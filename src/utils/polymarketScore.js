@@ -37,11 +37,12 @@ export function scoreLeaderboard(rows) {
   return rows.map((w) => {
     const roi = roiPct(w);
     const elig = isEligible(w);
-    if (!elig) return { ...w, roi, eligible: false, smartScore: null };
-    const pnlN = Math.max(0, w.pnl) / maxPnl;          // 0..1
-    const roiN = (roi - minRoi) / roiSpan;             // 0..1
+    if (!elig) return { ...w, roi, eligible: false, smartScore: null, sizeShare: 0, effShare: 0 };
+    const pnlN = Math.max(0, w.pnl) / maxPnl;          // 0..1 — size component
+    const roiN = (roi - minRoi) / roiSpan;             // 0..1 — efficiency component
     const smartScore = Math.round((pnlN * 0.5 + roiN * 0.5) * 100);
-    return { ...w, roi, eligible: true, smartScore };
+    // Expose the two halves so the UI can show WHY a wallet ranks (big vs efficient).
+    return { ...w, roi, eligible: true, smartScore, sizeShare: pnlN, effShare: roiN };
   });
 }
 
