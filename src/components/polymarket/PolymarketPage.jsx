@@ -298,9 +298,6 @@ function PolymarketBoard() {
   const { watched, watchedSet, toggle } = usePolymarketWatch();
   const { strategies } = usePolymarketStrategies();
   const strategyCount = strategies.length;
-  // Consensus doubles as the "how many smart wallets hold this market" source
-  // for the strategy filter — computed once here, shared with the tabs.
-  const { countByMarket } = useSmartConsensus({ enabled: mainTab === 'consensus' || strategyOpen || analystOpen });
   const [sort, setSort] = useState('score');
   const [query, setQuery] = useState('');
   const [eligibleOnly, setEligibleOnly] = useState(true);
@@ -308,6 +305,10 @@ function PolymarketBoard() {
   const [analystOpen, setAnalystOpen] = useState(false);
   const [strategyOpen, setStrategyOpen] = useState(false);
   const [academyOpen, setAcademyOpen] = useState(false);
+  // Consensus doubles as the "how many smart wallets hold this market" source
+  // for the strategy filter. MUST come after the modal state it reads — a const
+  // is in its temporal dead zone until declared, which crashed the page.
+  const { countByMarket } = useSmartConsensus({ enabled: mainTab === 'consensus' || strategyOpen || analystOpen });
 
   const openWallet = (r) => navigate(`/polymarket/wallet/${r.wallet}`, { state: { row: r } });
 
