@@ -1,8 +1,14 @@
 // Polymarket public-data client (read-only, no auth, no private keys).
 // The Data API sends `access-control-allow-origin: *`, so the browser calls it
 // directly. The API returns camelCase; we normalize to a stable internal shape
-// here so the rest of the app never depends on their field names.
+// here so the rest of the app never depends on their field names — and we
+// sanitize every external URL (image/link) through the app's safeHttpUrl guard
+// at this boundary, so nothing downstream ever renders a raw untrusted url.
 import { POLYMARKET as C } from '../config/polymarket';
+import { safeHttpUrl } from '../utils/urls';
+
+// A wallet is an EVM address; keep only well-formed ones so links/keys are sound.
+const isAddress = (w) => typeof w === 'string' && /^0x[0-9a-fA-F]{40}$/.test(w);
 
 async function getJson(url, { signal } = {}) {
   const res = await fetch(url, { signal, headers: { accept: 'application/json' } });
@@ -22,13 +28,16 @@ function normalizeLeaderboardRow(r) {
     verified: !!r.verifiedBadge,
     volume: Number(r.vol) || 0,
     pnl: Number(r.pnl) || 0,
-    profileImage: r.profileImage || null,
+    profileImage: safeHttpUrl(r.profileImage) || null,
   };
 }
 
 // Leaderboard is hard-capped at 50 rows/call — paginate via offset up to `top`.
+// Drops malformed wallets and de-dupes by wallet (defensive: keeps React keys
+// unique even if a wallet surfaces on two pages).
 export async function fetchLeaderboard({ top = C.LEADERBOARD_TOP, category = 'overall', signal } = {}) {
   const pages = Math.ceil(top / C.LEADERBOARD_PAGE);
+  const seen = new Set();
   const out = [];
   for (let p = 0; p < pages; p++) {
     const offset = p * C.LEADERBOARD_PAGE;
@@ -38,10 +47,14 @@ export async function fetchLeaderboard({ top = C.LEADERBOARD_TOP, category = 'ov
       + `&category=${encodeURIComponent(category)}`;
     const rows = await getJson(url, { signal }); // sequential: offset pagination
     if (!Array.isArray(rows) || rows.length === 0) break;
-    out.push(...rows);
+    for (const r of rows) {
+      if (!isAddress(r.proxyWallet) || seen.has(r.proxyWallet)) continue;
+      seen.add(r.proxyWallet);
+      out.push(normalizeLeaderboardRow(r));
+    }
     if (rows.length < limit) break; // reached the end
   }
-  return out.map(normalizeLeaderboardRow);
+  return out;
 }
 
 function normalizePosition(p) {
@@ -51,7 +64,7 @@ function normalizePosition(p) {
     title: p.title || p.slug || '—',
     slug: p.slug || null,
     eventSlug: p.eventSlug || null,
-    icon: p.icon || null,
+    icon: safeHttpUrl(p.icon) || null,
     outcome: p.outcome,
     size: Number(p.size) || 0,
     avgPrice: Number(p.avgPrice) || 0,
@@ -68,12 +81,14 @@ function normalizePosition(p) {
 
 // Current open/closed positions for a wallet — the rich per-market detail.
 export async function fetchPositions(wallet, { limit = 100, signal } = {}) {
-  if (!wallet) return [];
+  if (!isAddress(wallet)) return [];
   const url = `${C.DATA_API}/positions?user=${encodeURIComponent(wallet)}&limit=${limit}`;
   const rows = await getJson(url, { signal });
   return (Array.isArray(rows) ? rows : []).map(normalizePosition);
 }
 
+// Profile link on Polymarket. Fixed https origin + validated address → the href
+// can never be turned into a javascript:/data: scheme or leave polymarket.com.
 export function profileUrl(wallet) {
-  return wallet ? `${C.PROFILE_URL}/${wallet}` : null;
+  return isAddress(wallet) ? `${C.PROFILE_URL}/${wallet}` : null;
 }

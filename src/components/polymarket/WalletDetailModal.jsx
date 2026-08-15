@@ -1,5 +1,6 @@
-import { ExternalLink, TrendingUp, TrendingDown, ShieldCheck } from 'lucide-react';
+import { ExternalLink, TrendingUp, ShieldCheck, AlertCircle } from 'lucide-react';
 import Modal from '../shared/Modal';
+import ScoreRing from './ScoreRing';
 import { useWalletPositions } from '../../hooks/useWalletPositions';
 import { pnlSplit, fmtUsd, fmtPct, shortWallet } from '../../utils/polymarketScore';
 import { profileUrl } from '../../services/polymarketService';
@@ -7,7 +8,7 @@ import { profileUrl } from '../../services/polymarketService';
 function Metric({ label, value, tone }) {
   const color = tone === 'profit' ? 'text-profit' : tone === 'loss' ? 'text-loss' : 'text-text-primary';
   return (
-    <div className="bg-bg-tertiary/50 rounded-lg p-2.5 min-w-0 text-center">
+    <div className="bg-bg-tertiary/50 rounded-lg px-3 py-2 min-w-0">
       <div className="text-[10px] text-text-muted">{label}</div>
       <div className={`text-sm font-extrabold num-mono mt-0.5 truncate ${color}`}>{value}</div>
     </div>
@@ -28,8 +29,7 @@ function PositionRow({ p }) {
           <span className={`text-[10px] font-bold px-1.5 py-0.5 rounded ${p.outcome === 'Yes' ? 'bg-profit/10 text-profit' : p.outcome === 'No' ? 'bg-loss/10 text-loss' : 'bg-bg-tertiary text-text-muted'}`}>
             {p.outcome}
           </span>
-          {/* conviction — share of the wallet's live book */}
-          <div className="flex items-center gap-1 min-w-0 flex-1">
+          <div className="flex items-center gap-1 min-w-0 flex-1" title={`conviction — ${convPct}% מהתיק`}>
             <div className="h-1.5 rounded-full bg-bg-tertiary overflow-hidden flex-1 max-w-[90px]">
               <div className="h-full rounded-full bg-accent-primary" style={{ width: `${convPct}%` }} />
             </div>
@@ -54,6 +54,9 @@ export default function WalletDetailModal({ walletRow, isOpen, onClose }) {
   if (!walletRow) return null;
 
   const split = pnlSplit(positions);
+  const mag = Math.abs(split.realized) + Math.abs(split.unrealized) || 1;
+  const realizedShare = (Math.abs(split.realized) / mag) * 100;
+  const unrealizedShare = (Math.abs(split.unrealized) / mag) * 100;
   const title = walletRow.name || shortWallet(walletRow.wallet);
   const link = profileUrl(walletRow.wallet);
 
@@ -61,10 +64,10 @@ export default function WalletDetailModal({ walletRow, isOpen, onClose }) {
     <Modal isOpen={isOpen} onClose={onClose} title={`ארנק · ${title}`} maxWidth="max-w-lg">
       <div className="space-y-4">
         {/* Header */}
-        <div className="flex items-center gap-2 flex-wrap">
+        <div className="flex items-center gap-2.5 flex-wrap">
           {walletRow.profileImage
-            ? <img src={walletRow.profileImage} alt="" className="w-8 h-8 rounded-full object-cover" loading="lazy" />
-            : <div className="w-8 h-8 rounded-full bg-bg-tertiary" />}
+            ? <img src={walletRow.profileImage} alt="" className="w-9 h-9 rounded-full object-cover" loading="lazy" />
+            : <div className="w-9 h-9 rounded-full bg-bg-tertiary" />}
           <div className="min-w-0">
             <div className="flex items-center gap-1.5">
               <span className="text-sm font-bold text-text-primary truncate">{title}</span>
@@ -72,11 +75,7 @@ export default function WalletDetailModal({ walletRow, isOpen, onClose }) {
             </div>
             <span className="text-[11px] text-text-muted num-mono" dir="ltr">{shortWallet(walletRow.wallet)}</span>
           </div>
-          {walletRow.smartScore != null && (
-            <span className="ms-auto inline-flex items-center gap-1 text-xs font-bold px-2 py-1 rounded-lg bg-accent-primary/15 text-accent-primary">
-              ציון {walletRow.smartScore}
-            </span>
-          )}
+          <div className="ms-auto"><ScoreRing score={walletRow.smartScore} size="lg" /></div>
         </div>
 
         {/* Wallet-level metrics (30d, from the leaderboard) */}
@@ -86,29 +85,39 @@ export default function WalletDetailModal({ walletRow, isOpen, onClose }) {
           <Metric label="מחזור" value={fmtUsd(walletRow.volume)} />
         </div>
 
+        {/* Realized vs unrealized — locked-in vs still-at-risk */}
+        {positions.length > 0 && (
+          <div className="rounded-xl bg-bg-tertiary/50 p-3">
+            <div className="flex items-center justify-between text-[11px] mb-1.5">
+              <span className="text-text-muted">ממומש</span>
+              <span className={`num-mono font-bold ${split.realized >= 0 ? 'text-profit' : 'text-loss'}`}>{fmtUsd(split.realized)}</span>
+            </div>
+            <div className="h-2 rounded-full bg-bg-tertiary overflow-hidden flex">
+              <div className="h-full bg-profit" style={{ width: `${realizedShare}%` }} />
+              <div className="h-full bg-profit/35" style={{ width: `${unrealizedShare}%` }} />
+            </div>
+            <div className="flex items-center justify-between text-[11px] mt-1.5">
+              <span className="text-text-muted">לא-ממומש (בסיכון)</span>
+              <span className={`num-mono font-bold ${split.unrealized >= 0 ? 'text-profit' : 'text-loss'}`}>{fmtUsd(split.unrealized)}</span>
+            </div>
+          </div>
+        )}
+
         {/* Positions */}
         <div>
           <div className="flex items-center justify-between mb-2">
             <span className="text-xs font-bold text-text-primary">פוזיציות פתוחות {positions.length > 0 && `(${positions.length})`}</span>
-            {positions.length > 0 && (
-              <span className="text-[11px] num-mono">
-                <span className="text-text-muted">ממומש </span>
-                <span className={split.realized >= 0 ? 'text-profit' : 'text-loss'}>{fmtUsd(split.realized)}</span>
-                <span className="text-text-muted"> · לא-ממומש </span>
-                <span className={split.unrealized >= 0 ? 'text-profit' : 'text-loss'}>{fmtUsd(split.unrealized)}</span>
-              </span>
-            )}
           </div>
 
           {loading ? (
             <div className="space-y-2">{[1, 2, 3].map((i) => <div key={i} className="h-14 rounded-xl bg-bg-secondary animate-pulse" />)}</div>
           ) : error ? (
-            <div className="py-6 text-center text-sm text-loss flex items-center justify-center gap-1.5"><TrendingDown className="w-4 h-4" />{error}</div>
+            <div className="py-6 text-center text-sm text-loss flex items-center justify-center gap-1.5"><AlertCircle className="w-4 h-4" />{error}</div>
           ) : positions.length === 0 ? (
             <div className="py-6 text-center text-sm text-text-muted">אין פוזיציות פתוחות כרגע</div>
           ) : (
             <div className="space-y-2 max-h-[42vh] overflow-y-auto pe-1">
-              {positions.map((p) => <PositionRow key={p.conditionId} p={p} />)}
+              {positions.map((p) => <PositionRow key={`${p.conditionId}-${p.outcome}`} p={p} />)}
             </div>
           )}
         </div>

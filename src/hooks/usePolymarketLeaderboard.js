@@ -8,13 +8,15 @@ import { POLYMARKET as C } from '../config/polymarket';
 let cache = { at: 0, category: null, data: null };
 
 export function usePolymarketLeaderboard(category = 'overall') {
-  const [rows, setRows] = useState(() => (cache.category === category ? cache.data : null));
-  const [loading, setLoading] = useState(() => !(cache.category === category && cache.data));
+  const hit = () => (cache.category === category && cache.data ? cache.data : null);
+  const [rows, setRows] = useState(hit);
+  const [loading, setLoading] = useState(() => !hit());
   const [error, setError] = useState('');
+  const [nonce, setNonce] = useState(0); // bump to force a refetch (bypasses cache)
 
   useEffect(() => {
     const controller = new AbortController();
-    const fresh = cache.data && cache.category === category && Date.now() - cache.at < C.CACHE_TTL_MS;
+    const fresh = nonce === 0 && cache.data && cache.category === category && Date.now() - cache.at < C.CACHE_TTL_MS;
     if (fresh) {
       setRows(cache.data);
       setLoading(false);
@@ -35,7 +37,7 @@ export function usePolymarketLeaderboard(category = 'overall') {
         setLoading(false);
       });
     return () => controller.abort();
-  }, [category]);
+  }, [category, nonce]);
 
-  return { rows: rows || [], loading, error };
+  return { rows: rows || [], loading, error, refetch: () => setNonce((n) => n + 1) };
 }
