@@ -67,8 +67,16 @@ function PositionCard({ p }) {
                 className="text-text-muted hover:text-accent-primary transition-colors shrink-0" title="פתח את השוק ב-Polymarket"><ExternalLink className="w-3 h-3" /></a>
             )}
           </div>
-          <span className={`inline-flex text-[10px] font-bold px-1.5 py-0.5 rounded mt-1 ${p.outcome === 'Yes' ? 'bg-profit/10 text-profit' : p.outcome === 'No' ? 'bg-loss/10 text-loss' : 'bg-bg-tertiary text-text-muted'}`}>
-            {p.outcome}
+          <span className="inline-flex items-center gap-1 mt-1">
+            <span className={`text-[10px] font-bold px-1.5 py-0.5 rounded ${p.outcome === 'Yes' ? 'bg-profit/10 text-profit' : p.outcome === 'No' ? 'bg-loss/10 text-loss' : 'bg-bg-tertiary text-text-muted'}`}>
+              {p.outcome}
+            </span>
+            {p.redeemable && (
+              <span className="text-[10px] font-bold px-1.5 py-0.5 rounded bg-amber-400/15 text-amber-400"
+                title="השוק הוכרע והזכייה ממתינה למימוש (Claim) ב-Polymarket">
+                ניתן למימוש 🏆
+              </span>
+            )}
           </span>
         </div>
         <div className="text-left shrink-0">

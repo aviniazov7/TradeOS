@@ -1,12 +1,14 @@
 import { useMemo, useState } from 'react';
 import { motion } from 'framer-motion';
 import { useNavigate } from 'react-router-dom';
-import { Trophy, Crown, Lock, Search, ShieldCheck, Info, ArrowDownUp, AlertCircle, RefreshCw, Star, ChevronDown } from 'lucide-react';
+import { Trophy, Crown, Lock, Search, ShieldCheck, Info, ArrowDownUp, AlertCircle, RefreshCw, Star, ChevronDown, Users, Globe, Waves } from 'lucide-react';
 import { useAuth } from '../../contexts/AuthContext';
 import { usePolymarketLeaderboard } from '../../hooks/usePolymarketLeaderboard';
 import { usePolymarketWatch } from '../../hooks/usePolymarketWatch';
 import { useCountUp } from '../../hooks/useCountUp';
 import ScoreRing from './ScoreRing';
+import MarketsExplorer from './MarketsExplorer';
+import WhaleRadar from './WhaleRadar';
 import { fmtUsd, fmtPct, shortWallet, roiPct } from '../../utils/polymarketScore';
 import { pageVariants, pageTransition, staggerContainer, staggerItem } from '../../utils/animations';
 
@@ -244,6 +246,7 @@ function LockedTeaser() {
 // fetched or scored for non-premium (the scoring is the paid deliverable).
 function PolymarketBoard() {
   const navigate = useNavigate();
+  const [mainTab, setMainTab] = useState('wallets'); // wallets | markets | radar
   const [category, setCategory] = useState('overall');
   const { rows, loading, error, refetch } = usePolymarketLeaderboard(category);
   const { watched, watchedSet, toggle } = usePolymarketWatch();
@@ -280,10 +283,33 @@ function PolymarketBoard() {
   const podium = query ? [] : view.slice(0, 3);
   const listRows = query ? view : view.slice(3);
 
+  const MAIN_TABS = [
+    { key: 'wallets', label: 'ארנקים מובילים', icon: Users },
+    { key: 'markets', label: 'שווקים', icon: Globe },
+    { key: 'radar', label: 'ראדאר כרישים', icon: Waves },
+  ];
+
   return (
     <>
       <Hero stats={hasData ? stats : null} />
 
+      {/* Main tabs: the smart-money board / the markets board / the live tape */}
+      <div className="flex bg-bg-secondary border border-border-primary rounded-xl p-1 gap-0.5 mb-4 overflow-x-auto">
+        {MAIN_TABS.map((t) => (
+          <button key={t.key} onClick={() => setMainTab(t.key)}
+            className={`flex-1 inline-flex items-center justify-center gap-1.5 px-3 py-1.5 text-sm font-semibold rounded-lg transition-all cursor-pointer whitespace-nowrap ${
+              mainTab === t.key ? 'bg-accent-primary/15 text-accent-primary shadow-[0_0_18px_-6px_rgba(59,130,246,0.6)]' : 'text-text-muted hover:text-text-primary'
+            }`}>
+            <t.icon className="w-4 h-4" /> {t.label}
+          </button>
+        ))}
+      </div>
+
+      {mainTab === 'markets' && <MarketsExplorer />}
+      {mainTab === 'radar' && <WhaleRadar />}
+
+      {mainTab === 'wallets' && (
+      <>
       {/* My tracked wallets (persisted in Firestore) */}
       {watchedRows.length > 0 && (
         <section className="mb-4">
@@ -371,6 +397,8 @@ function PolymarketBoard() {
             ))}
           </motion.div>
         </>
+      )}
+      </>
       )}
 
       {/* Disclaimer */}
