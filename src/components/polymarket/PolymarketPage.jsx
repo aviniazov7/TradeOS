@@ -6,13 +6,14 @@ import toast from 'react-hot-toast';
 import { useAuth } from '../../contexts/AuthContext';
 import { usePolymarketLeaderboard } from '../../hooks/usePolymarketLeaderboard';
 import { usePolymarketWatch } from '../../hooks/usePolymarketWatch';
+import { usePolymarketStrategies } from '../../hooks/usePolymarketStrategies';
 import { useSmartConsensus } from '../../hooks/useSmartConsensus';
 import { useCountUp } from '../../hooks/useCountUp';
 import ScoreRing from './ScoreRing';
 import MarketsExplorer from './MarketsExplorer';
 import WhaleRadar from './WhaleRadar';
-import StrategyTab from './StrategyTab';
-import PersonalAnalyst from './PersonalAnalyst';
+import StrategyModal from './StrategyModal';
+import PersonalAnalystModal from './PersonalAnalystModal';
 import SmartConsensus from './SmartConsensus';
 import WatchedWalletsModal from './WatchedWalletsModal';
 import AcademyModal from './AcademyModal';
@@ -93,7 +94,7 @@ function HeroAction({ icon, label, badge, onClick }) {
 
 // App-native identity: a dark card with the app accent (no radar — that's the
 // scanner's language; the distinction here is the podium + wallet page).
-function Hero({ stats, watchedCount = 0, onOpenWatched, onOpenAcademy }) {
+function Hero({ stats, watchedCount = 0, strategyCount = 0, onOpenAnalyst, onOpenStrategy, onOpenWatched, onOpenAcademy }) {
   const count = useCountUp(stats?.count ?? 0);
   return (
     <div className="relative overflow-hidden rounded-2xl border border-accent-primary/20 bg-[#070b12] p-5 mb-5">
@@ -112,18 +113,18 @@ function Hero({ stats, watchedCount = 0, onOpenWatched, onOpenAcademy }) {
             הטריידרים הרווחיים ב-Polymarket, מדורגים לפי יעילות (רווח לכל $ מחזור) — לא רק רווח גולמי. דאטה ציבורי, 30 יום.
           </p>
         </div>
-        {/* Title-row actions — watchlist + academy, each opens a modal */}
-        {(onOpenWatched || onOpenAcademy) && (
+        {/* Title-row actions = my personal workspace (the tabs stay for browsing) */}
+        {onOpenAcademy && (
           <div className="flex items-center gap-1.5 shrink-0">
-            {onOpenWatched && (
-              <HeroAction onClick={onOpenWatched} badge={watchedCount}
-                label={`הארנקים שאני עוקב (${watchedCount})`}
-                icon={<Star className={`w-4 h-4 ${watchedCount > 0 ? 'text-amber-400 fill-amber-400' : ''}`} />} />
-            )}
-            {onOpenAcademy && (
-              <HeroAction onClick={onOpenAcademy} label="איך קוראים את הלוח הזה"
-                icon={<GraduationCap className="w-4 h-4" />} />
-            )}
+            <HeroAction onClick={onOpenAnalyst} label="האנליסט הפרטי שלי"
+              icon={<UserRoundSearch className="w-4 h-4" />} />
+            <HeroAction onClick={onOpenStrategy} badge={strategyCount} label={`האסטרטגיות שלי (${strategyCount})`}
+              icon={<Compass className="w-4 h-4" />} />
+            <HeroAction onClick={onOpenWatched} badge={watchedCount}
+              label={`הארנקים שאני עוקב (${watchedCount})`}
+              icon={<Star className={`w-4 h-4 ${watchedCount > 0 ? 'text-amber-400 fill-amber-400' : ''}`} />} />
+            <HeroAction onClick={onOpenAcademy} label="איך קוראים את הלוח הזה"
+              icon={<GraduationCap className="w-4 h-4" />} />
           </div>
         )}
       </div>
@@ -295,13 +296,17 @@ function PolymarketBoard() {
   const [category, setCategory] = useState('overall');
   const { rows, loading, error, refetch } = usePolymarketLeaderboard(category);
   const { watched, watchedSet, toggle } = usePolymarketWatch();
+  const { strategies } = usePolymarketStrategies();
+  const strategyCount = strategies.length;
   // Consensus doubles as the "how many smart wallets hold this market" source
   // for the strategy filter — computed once here, shared with the tabs.
-  const { countByMarket } = useSmartConsensus({ enabled: mainTab === 'strategy' || mainTab === 'analyst' || mainTab === 'consensus' });
+  const { countByMarket } = useSmartConsensus({ enabled: mainTab === 'consensus' || strategyOpen || analystOpen });
   const [sort, setSort] = useState('score');
   const [query, setQuery] = useState('');
   const [eligibleOnly, setEligibleOnly] = useState(true);
   const [watchedOpen, setWatchedOpen] = useState(false);
+  const [analystOpen, setAnalystOpen] = useState(false);
+  const [strategyOpen, setStrategyOpen] = useState(false);
   const [academyOpen, setAcademyOpen] = useState(false);
 
   const openWallet = (r) => navigate(`/polymarket/wallet/${r.wallet}`, { state: { row: r } });
@@ -345,18 +350,18 @@ function PolymarketBoard() {
   const podium = usePodium ? view.slice(0, 3) : [];
   const listRows = usePodium ? view.slice(3) : view;
 
+  // Tabs browse market data; the personal workspace lives in the hero icons.
   const MAIN_TABS = [
-    { key: 'analyst', label: 'האנליסט שלי', icon: UserRoundSearch },
     { key: 'wallets', label: 'ארנקים', icon: Users },
     { key: 'markets', label: 'שווקים', icon: Globe },
     { key: 'consensus', label: 'כסף חכם', icon: Gem },
-    { key: 'strategy', label: 'אסטרטגיה', icon: Compass },
     { key: 'radar', label: 'ראדאר', icon: Waves },
   ];
 
   return (
     <>
-      <Hero stats={hasData ? stats : null} watchedCount={watchedRows.length}
+      <Hero stats={hasData ? stats : null} watchedCount={watchedRows.length} strategyCount={strategyCount}
+        onOpenAnalyst={() => setAnalystOpen(true)} onOpenStrategy={() => setStrategyOpen(true)}
         onOpenWatched={() => setWatchedOpen(true)} onOpenAcademy={() => setAcademyOpen(true)} />
 
       {/* Main tabs: the smart-money board / the markets board / the live tape */}
@@ -371,10 +376,8 @@ function PolymarketBoard() {
         ))}
       </div>
 
-      {mainTab === 'analyst' && <PersonalAnalyst smartCountByMarket={countByMarket} />}
       {mainTab === 'markets' && <MarketsExplorer />}
       {mainTab === 'consensus' && <SmartConsensus />}
-      {mainTab === 'strategy' && <StrategyTab smartCountByMarket={countByMarket} />}
       {mainTab === 'radar' && <WhaleRadar />}
 
       {mainTab === 'wallets' && (
@@ -458,6 +461,8 @@ function PolymarketBoard() {
       </>
       )}
 
+      <PersonalAnalystModal isOpen={analystOpen} onClose={() => setAnalystOpen(false)} smartCountByMarket={countByMarket} />
+      <StrategyModal isOpen={strategyOpen} onClose={() => setStrategyOpen(false)} smartCountByMarket={countByMarket} />
       <WatchedWalletsModal isOpen={watchedOpen} onClose={() => setWatchedOpen(false)}
         rows={watchedRows} onOpen={openWallet} onRemove={toggle} />
       <AcademyModal isOpen={academyOpen} onClose={() => setAcademyOpen(false)} />
