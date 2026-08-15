@@ -1,16 +1,18 @@
 import { useMemo, useState } from 'react';
 import { motion } from 'framer-motion';
 import { useNavigate } from 'react-router-dom';
-import { Trophy, Crown, Lock, Search, ShieldCheck, Info, ArrowDownUp, AlertCircle, RefreshCw, Star, ChevronDown, Users, Globe, Waves, Compass, UserRoundSearch } from 'lucide-react';
+import { Trophy, Crown, Lock, Search, ShieldCheck, Info, ArrowDownUp, AlertCircle, RefreshCw, Star, ChevronDown, Users, Globe, Waves, Compass, UserRoundSearch, Gem } from 'lucide-react';
 import { useAuth } from '../../contexts/AuthContext';
 import { usePolymarketLeaderboard } from '../../hooks/usePolymarketLeaderboard';
 import { usePolymarketWatch } from '../../hooks/usePolymarketWatch';
+import { useSmartConsensus } from '../../hooks/useSmartConsensus';
 import { useCountUp } from '../../hooks/useCountUp';
 import ScoreRing from './ScoreRing';
 import MarketsExplorer from './MarketsExplorer';
 import WhaleRadar from './WhaleRadar';
 import StrategyTab from './StrategyTab';
 import PersonalAnalyst from './PersonalAnalyst';
+import SmartConsensus from './SmartConsensus';
 import { fmtUsd, fmtPct, shortWallet, roiPct } from '../../utils/polymarketScore';
 import { pageVariants, pageTransition, staggerContainer, staggerItem } from '../../utils/animations';
 
@@ -248,10 +250,13 @@ function LockedTeaser() {
 // fetched or scored for non-premium (the scoring is the paid deliverable).
 function PolymarketBoard() {
   const navigate = useNavigate();
-  const [mainTab, setMainTab] = useState('wallets'); // wallets | markets | radar
+  const [mainTab, setMainTab] = useState('wallets'); // analyst|wallets|markets|strategy|consensus|radar
   const [category, setCategory] = useState('overall');
   const { rows, loading, error, refetch } = usePolymarketLeaderboard(category);
   const { watched, watchedSet, toggle } = usePolymarketWatch();
+  // Consensus doubles as the "how many smart wallets hold this market" source
+  // for the strategy filter — computed once here, shared with the tabs.
+  const { countByMarket } = useSmartConsensus({ enabled: mainTab === 'strategy' || mainTab === 'analyst' || mainTab === 'consensus' });
   const [sort, setSort] = useState('score');
   const [query, setQuery] = useState('');
   const [eligibleOnly, setEligibleOnly] = useState(true);
@@ -292,6 +297,7 @@ function PolymarketBoard() {
     { key: 'analyst', label: 'האנליסט שלי', icon: UserRoundSearch },
     { key: 'wallets', label: 'ארנקים', icon: Users },
     { key: 'markets', label: 'שווקים', icon: Globe },
+    { key: 'consensus', label: 'כסף חכם', icon: Gem },
     { key: 'strategy', label: 'אסטרטגיה', icon: Compass },
     { key: 'radar', label: 'ראדאר', icon: Waves },
   ];
@@ -312,9 +318,10 @@ function PolymarketBoard() {
         ))}
       </div>
 
-      {mainTab === 'analyst' && <PersonalAnalyst />}
+      {mainTab === 'analyst' && <PersonalAnalyst smartCountByMarket={countByMarket} />}
       {mainTab === 'markets' && <MarketsExplorer />}
-      {mainTab === 'strategy' && <StrategyTab />}
+      {mainTab === 'consensus' && <SmartConsensus />}
+      {mainTab === 'strategy' && <StrategyTab smartCountByMarket={countByMarket} />}
       {mainTab === 'radar' && <WhaleRadar />}
 
       {mainTab === 'wallets' && (
