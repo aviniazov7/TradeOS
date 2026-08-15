@@ -16,7 +16,7 @@ import {
   Crown,
   Bot,
   Radar,
-  Crosshair,
+  Trophy,
 } from 'lucide-react';
 import PositionCalculator from '../calculator/PositionCalculator';
 import { useAuth } from '../../contexts/AuthContext';
@@ -32,7 +32,7 @@ const navItems = [
   { to: '/market', label: 'סקירת שוק', icon: Activity },
   // Visible to everyone in the menu (no admin/premium filter flag), but the page
   // itself is Premium — non-premium land on a locked teaser. The crown signals it.
-  { to: '/polymarket', label: 'מכ״ם כסף חכם', icon: Crosshair, premiumBadge: true },
+  { to: '/polymarket', label: 'Polymarket', icon: Trophy, premiumBadge: true },
   { to: '/scanner', label: 'סורק סטאפים', icon: Radar, admin: true },
   { to: '/trade-ai', label: 'TradeAI', icon: Bot },
   { to: '/news', label: 'חדשות', icon: Newspaper },
