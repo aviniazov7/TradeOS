@@ -150,6 +150,18 @@ export default function WalletAnalystModal({ isOpen, onClose, row, positions, sp
             </button>
           </motion.div>
         )}
+
+        {/* The model answered but broke the section contract — show the raw text
+            rather than leaving a blank modal with no way to retry. */}
+        {report && sections.length === 0 && !loading && (
+          <div className="space-y-3">
+            <div className="rounded-2xl border border-border-primary bg-bg-tertiary/40 p-4 text-sm text-text-primary leading-relaxed whitespace-pre-wrap">{report}</div>
+            <button onClick={run}
+              className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-bg-tertiary text-xs font-semibold text-text-secondary hover:text-accent-primary transition-colors cursor-pointer">
+              <RefreshCw className="w-3.5 h-3.5" /> נתח שוב
+            </button>
+          </div>
+        )}
       </div>
     </Modal>
   );

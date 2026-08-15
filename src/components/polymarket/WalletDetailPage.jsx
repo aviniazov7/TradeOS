@@ -8,7 +8,7 @@ import { useWalletActivity } from '../../hooks/useWalletActivity';
 import ScoreRing from './ScoreRing';
 import WalletAnalystModal from './WalletAnalystModal';
 import { pnlSplit, fmtUsd, fmtPct, shortWallet } from '../../utils/polymarketScore';
-import { profileUrl } from '../../services/polymarketService';
+import { profileUrl, marketUrl } from '../../services/polymarketService';
 import { pageVariants, pageTransition } from '../../utils/animations';
 
 const SORTS = [
@@ -52,7 +52,7 @@ function Field({ label, value, tone }) {
 function PositionCard({ p }) {
   const up = (p.cashPnl || 0) >= 0;
   const convPct = Math.round((p.conviction || 0) * 100);
-  const marketUrl = p.eventSlug ? `https://polymarket.com/event/${p.eventSlug}` : null;
+  const link = marketUrl(p.eventSlug, p.slug); // service helper — encoded, fixed origin
   return (
     <div className="rounded-xl bg-bg-secondary border border-border-primary p-3">
       {/* top: market + outcome */}
@@ -63,8 +63,8 @@ function PositionCard({ p }) {
         <div className="min-w-0 flex-1">
           <div className="flex items-center gap-1.5">
             <span className="text-xs font-semibold text-text-primary truncate">{p.title}</span>
-            {marketUrl && (
-              <a href={marketUrl} target="_blank" rel="noopener noreferrer" onClick={(e) => e.stopPropagation()}
+            {link && (
+              <a href={link} target="_blank" rel="noopener noreferrer" onClick={(e) => e.stopPropagation()}
                 className="text-text-muted hover:text-accent-primary transition-colors shrink-0" title="פתח את השוק ב-Polymarket"><ExternalLink className="w-3 h-3" /></a>
             )}
           </div>
@@ -82,7 +82,8 @@ function PositionCard({ p }) {
         </div>
         <div className="text-left shrink-0">
           <div className="text-sm font-extrabold num-mono text-text-primary">{fmtUsd(p.currentValue)}</div>
-          <div className={`text-[11px] font-bold num-mono ${up ? 'text-profit' : 'text-loss'}`}>{fmtUsd(p.cashPnl)} · {fmtPct(p.percentPnl * 100)}</div>
+          {/* API already returns percentPnl AS a percent — no ×100 */}
+          <div className={`text-[11px] font-bold num-mono ${up ? 'text-profit' : 'text-loss'}`}>{fmtUsd(p.cashPnl)} · {fmtPct(p.percentPnl)}</div>
         </div>
       </div>
 
@@ -274,7 +275,7 @@ export default function WalletDetailPage() {
           <div className="py-12 text-center text-sm text-text-muted">אין היסטוריית מסחר</div>
         ) : (
           <div className="space-y-2">
-            {activity.map((a) => <ActivityRow key={a.id} a={a} />)}
+            {activity.map((a, i) => <ActivityRow key={`${a.id}-${i}`} a={a} />)}
           </div>
         )
       )}

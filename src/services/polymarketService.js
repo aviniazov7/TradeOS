@@ -154,7 +154,9 @@ export async function fetchMarkets({ limit = 60, order = 'volume24hr', signal } 
   const rows = await getJson(url, { signal });
   return (Array.isArray(rows) ? rows : [])
     .map(normalizeMarket)
-    .filter((m) => isConditionId(m.conditionId) && m.outcomes.length >= 2);
+    // Require a price per outcome — a market whose outcomePrices didn't parse
+    // would otherwise show a bogus 0% and a false "gap 100¢" badge.
+    .filter((m) => isConditionId(m.conditionId) && m.outcomes.length >= 2 && m.prices.length === m.outcomes.length);
 }
 
 // Who holds a market — one entry per outcome token, holders sorted by amount.
@@ -172,7 +174,7 @@ export async function fetchHolders(conditionId, { signal } = {}) {
         name: h.name || h.pseudonym || null,
         profileImage: safeHttpUrl(h.profileImageOptimized || h.profileImage) || null,
         amount: Number(h.amount) || 0,
-        outcomeIndex: h.outcomeIndex ?? null,
+        outcomeIndex: Number.isInteger(h.outcomeIndex) ? h.outcomeIndex : null,
       })),
   }));
 }
@@ -187,7 +189,9 @@ function normalizeTrade(t) {
   const size = Number(t.size) || 0;
   const price = Number(t.price) || 0;
   return {
-    id: `${t.proxyWallet}-${t.conditionId}-${t.timestamp}-${t.side}`,
+    // txHash makes fills unique — a whale sweep split across fills in the same
+    // second/side would otherwise collapse into one row in the radar's dedup.
+    id: `${t.transactionHash || 'n'}-${t.proxyWallet}-${t.conditionId}-${t.timestamp}-${t.side}-${t.size}`,
     wallet: t.proxyWallet,
     name: (typeof t.name === 'string' && t.name && !t.name.toLowerCase().startsWith('0x')) ? t.name : null,
     side: t.side || null,               // BUY / SELL

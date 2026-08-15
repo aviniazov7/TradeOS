@@ -11,6 +11,13 @@ import { marketUrl } from '../../services/polymarketService';
 import ScoreRing from './ScoreRing';
 import { pageVariants, pageTransition } from '../../utils/animations';
 
+function fmtShares(n) {
+  const v = Math.abs(Number(n) || 0);
+  if (v >= 1_000_000) return `${(v / 1_000_000).toFixed(1)}M`;
+  if (v >= 1_000) return `${(v / 1_000).toFixed(1)}K`;
+  return `${Math.round(v)}`;
+}
+
 function daysLeft(endDate) {
   if (!endDate) return null;
   const d = Math.ceil((new Date(endDate).getTime() - Date.now()) / 86400000);
@@ -29,7 +36,7 @@ function Stat({ label, value, tone }) {
 
 // The moat: cross-reference this market's biggest holders against OUR smart-money
 // leaderboard + the user's tracked wallets — "who of the sharp money is in here".
-function SmartHolders({ conditionId, outcomes }) {
+function SmartHolders({ conditionId, outcomes, prices }) {
   const { holders, loading } = useMarketHolders(conditionId);
   const { rows } = usePolymarketLeaderboard('overall'); // module-cached; no extra paging
   const { watchedSet } = usePolymarketWatch();
@@ -43,11 +50,20 @@ function SmartHolders({ conditionId, outcomes }) {
         const lb = byWallet.get(h.wallet);
         const tracked = watchedSet.has(h.wallet);
         if (!lb && !tracked) continue;
-        out.push({ ...h, lbRow: lb || null, tracked, outcome: outcomes[h.outcomeIndex] ?? `#${h.outcomeIndex}` });
+        // `amount` from /holders is a SHARE COUNT — price it to get $ exposure.
+        const idx = Number.isInteger(h.outcomeIndex) ? h.outcomeIndex : null;
+        const valueUsd = h.amount * (idx != null ? (prices?.[idx] ?? 0) : 0);
+        out.push({
+          ...h,
+          lbRow: lb || null,
+          tracked,
+          valueUsd,
+          outcome: (idx != null && outcomes[idx]) || '—',
+        });
       }
     }
-    return out.sort((a, b) => b.amount - a.amount).slice(0, 12);
-  }, [holders, rows, watchedSet, outcomes]);
+    return out.sort((a, b) => b.valueUsd - a.valueUsd).slice(0, 12);
+  }, [holders, rows, watchedSet, outcomes, prices]);
 
   return (
     <section className="mt-4">
@@ -78,7 +94,10 @@ function SmartHolders({ conditionId, outcomes }) {
                   <span className="text-xs font-bold text-text-primary truncate">{h.name || shortWallet(h.wallet)}</span>
                   {h.tracked && <Star className="w-3 h-3 text-amber-400 fill-amber-400 shrink-0" />}
                 </div>
-                <span className="text-[10px] text-text-muted">מחזיק <span className="num-mono">{fmtUsd(h.amount)}</span> · {h.outcome}</span>
+                <span className="text-[10px] text-text-muted">
+                  מחזיק <span className="num-mono">{fmtUsd(h.valueUsd)}</span>
+                  <span className="num-mono"> ({fmtShares(h.amount)} מניות)</span> · {h.outcome}
+                </span>
               </div>
               {h.lbRow?.smartScore != null && <ScoreRing score={h.lbRow.smartScore} size="md" />}
             </div>
@@ -161,7 +180,7 @@ export default function MarketDetailPage() {
         <Stat label="ספרד" value={`${Math.round((m.spread || 0) * 100)}¢`} />
       </div>
 
-      <SmartHolders conditionId={m.conditionId} outcomes={m.outcomes} />
+      <SmartHolders conditionId={m.conditionId} outcomes={m.outcomes} prices={m.prices} />
     </motion.div>
   );
 }
