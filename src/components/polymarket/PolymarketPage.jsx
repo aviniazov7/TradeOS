@@ -1,7 +1,7 @@
 import { useMemo, useState } from 'react';
 import { motion } from 'framer-motion';
 import { useNavigate } from 'react-router-dom';
-import { Trophy, Crown, Lock, Search, ShieldCheck, Info, ArrowDownUp, AlertCircle, RefreshCw, Star, ChevronDown, Users, Globe, Waves, Compass, UserRoundSearch, Gem, Download } from 'lucide-react';
+import { Trophy, Crown, Lock, Search, ShieldCheck, Info, ArrowDownUp, AlertCircle, RefreshCw, Star, ChevronDown, Users, Globe, Waves, Compass, UserRoundSearch, Gem, Download, GraduationCap } from 'lucide-react';
 import toast from 'react-hot-toast';
 import { useAuth } from '../../contexts/AuthContext';
 import { usePolymarketLeaderboard } from '../../hooks/usePolymarketLeaderboard';
@@ -14,8 +14,8 @@ import WhaleRadar from './WhaleRadar';
 import StrategyTab from './StrategyTab';
 import PersonalAnalyst from './PersonalAnalyst';
 import SmartConsensus from './SmartConsensus';
-import WatchedWallets from './WatchedWallets';
-import AcademyCards from './AcademyCards';
+import WatchedWalletsModal from './WatchedWalletsModal';
+import AcademyModal from './AcademyModal';
 import { fmtUsd, fmtPct, shortWallet, roiPct } from '../../utils/polymarketScore';
 import { downloadCsv, stampedName } from '../../utils/csv';
 import { pageVariants, pageTransition, staggerContainer, staggerItem } from '../../utils/animations';
@@ -76,9 +76,24 @@ function HeroTile({ value, label, tone }) {
   );
 }
 
+// Hero action — an icon button that sits on the title row and opens a modal.
+function HeroAction({ icon, label, badge, onClick }) {
+  return (
+    <button onClick={onClick} title={label} aria-label={label}
+      className="relative w-9 h-9 rounded-xl flex items-center justify-center shrink-0 text-white/70 bg-white/[0.06] border border-white/10 hover:text-accent-primary hover:border-accent-primary/40 hover:bg-accent-primary/10 transition-colors cursor-pointer">
+      {icon}
+      {badge > 0 && (
+        <span className="absolute -top-1 -left-1 min-w-[16px] h-4 px-1 rounded-full bg-amber-400 text-[9px] font-extrabold text-bg-primary num-mono flex items-center justify-center">
+          {badge > 99 ? '99+' : badge}
+        </span>
+      )}
+    </button>
+  );
+}
+
 // App-native identity: a dark card with the app accent (no radar — that's the
 // scanner's language; the distinction here is the podium + wallet page).
-function Hero({ stats }) {
+function Hero({ stats, watchedCount = 0, onOpenWatched, onOpenAcademy }) {
   const count = useCountUp(stats?.count ?? 0);
   return (
     <div className="relative overflow-hidden rounded-2xl border border-accent-primary/20 bg-[#070b12] p-5 mb-5">
@@ -88,7 +103,7 @@ function Hero({ stats }) {
           style={{ boxShadow: '0 0 24px -6px rgba(59,130,246,0.6)' }}>
           <Trophy className="w-6 h-6" />
         </div>
-        <div className="min-w-0">
+        <div className="min-w-0 flex-1">
           <div className="flex items-center gap-2 flex-wrap">
             <h1 className="text-lg font-bold text-white">ארנקים מובילים · Polymarket</h1>
             <span className="inline-flex items-center gap-1 text-[10px] px-1.5 py-0.5 rounded-full bg-accent-primary text-bg-primary font-bold"><Crown className="w-2.5 h-2.5" /> Premium</span>
@@ -97,6 +112,20 @@ function Hero({ stats }) {
             הטריידרים הרווחיים ב-Polymarket, מדורגים לפי יעילות (רווח לכל $ מחזור) — לא רק רווח גולמי. דאטה ציבורי, 30 יום.
           </p>
         </div>
+        {/* Title-row actions — watchlist + academy, each opens a modal */}
+        {(onOpenWatched || onOpenAcademy) && (
+          <div className="flex items-center gap-1.5 shrink-0">
+            {onOpenWatched && (
+              <HeroAction onClick={onOpenWatched} badge={watchedCount}
+                label={`הארנקים שאני עוקב (${watchedCount})`}
+                icon={<Star className={`w-4 h-4 ${watchedCount > 0 ? 'text-amber-400 fill-amber-400' : ''}`} />} />
+            )}
+            {onOpenAcademy && (
+              <HeroAction onClick={onOpenAcademy} label="איך קוראים את הלוח הזה"
+                icon={<GraduationCap className="w-4 h-4" />} />
+            )}
+          </div>
+        )}
       </div>
       {stats && (
         <div className="relative grid grid-cols-3 gap-2 mt-4">
@@ -272,6 +301,8 @@ function PolymarketBoard() {
   const [sort, setSort] = useState('score');
   const [query, setQuery] = useState('');
   const [eligibleOnly, setEligibleOnly] = useState(true);
+  const [watchedOpen, setWatchedOpen] = useState(false);
+  const [academyOpen, setAcademyOpen] = useState(false);
 
   const openWallet = (r) => navigate(`/polymarket/wallet/${r.wallet}`, { state: { row: r } });
 
@@ -325,7 +356,8 @@ function PolymarketBoard() {
 
   return (
     <>
-      <Hero stats={hasData ? stats : null} />
+      <Hero stats={hasData ? stats : null} watchedCount={watchedRows.length}
+        onOpenWatched={() => setWatchedOpen(true)} onOpenAcademy={() => setAcademyOpen(true)} />
 
       {/* Main tabs: the smart-money board / the markets board / the live tape */}
       <div className="flex bg-bg-secondary border border-border-primary rounded-xl p-1 gap-0.5 mb-4 overflow-x-auto">
@@ -347,9 +379,6 @@ function PolymarketBoard() {
 
       {mainTab === 'wallets' && (
       <>
-      {/* My tracked wallets — collapsible panel that scales to a long list */}
-      <WatchedWallets rows={watchedRows} onOpen={openWallet} onRemove={toggle} />
-
       {/* Controls */}
       <div className="flex flex-wrap items-center gap-2 mb-3">
         {/* category dropdown */}
@@ -429,8 +458,9 @@ function PolymarketBoard() {
       </>
       )}
 
-      {/* Academy — the concepts everything above assumes you know */}
-      <AcademyCards />
+      <WatchedWalletsModal isOpen={watchedOpen} onClose={() => setWatchedOpen(false)}
+        rows={watchedRows} onOpen={openWallet} onRemove={toggle} />
+      <AcademyModal isOpen={academyOpen} onClose={() => setAcademyOpen(false)} />
 
       {/* Disclaimer */}
       <div className="flex items-start gap-2 mt-5 p-3 rounded-xl bg-bg-secondary/60 border border-border-primary text-[11px] text-text-muted leading-relaxed">

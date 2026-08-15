@@ -1,6 +1,7 @@
 import { useState } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { GraduationCap, ChevronDown, Percent, Scale, Brain, Wallet, Trophy, ShieldAlert } from 'lucide-react';
+import Modal from '../shared/Modal';
 
 // Short explainers for the concepts the rest of the page assumes you know.
 // Deliberately concrete: every card ends with what it means for YOUR decision.
@@ -71,33 +72,27 @@ function Card({ c, isOpen, onToggle }) {
   );
 }
 
-// Academy strip — collapsed by default so it never competes with the data.
-export default function AcademyCards() {
-  const [openIdx, setOpenIdx] = useState(null);
-  const [show, setShow] = useState(false);
+// Academy, in a modal: six explainers for the concepts the board assumes you
+// know. One card open at a time so the modal never becomes a wall of text.
+export default function AcademyModal({ isOpen, onClose }) {
+  const [openIdx, setOpenIdx] = useState(0);
 
   return (
-    <section className="mt-5">
-      <button onClick={() => setShow((v) => !v)}
-        className="w-full flex items-center gap-2 px-3 py-2.5 rounded-xl bg-bg-secondary/60 border border-border-primary text-right cursor-pointer hover:border-accent-primary/30 transition-colors">
-        <GraduationCap className="w-4 h-4 text-accent-primary shrink-0" />
-        <span className="text-sm font-bold text-text-primary">איך קוראים את הלוח הזה</span>
-        <span className="text-[11px] text-text-muted hidden sm:inline">— 6 מושגים שכל מה שכאן נשען עליהם</span>
-        <ChevronDown className={`w-4 h-4 text-text-muted ms-auto shrink-0 transition-transform ${show ? 'rotate-180' : ''}`} />
-      </button>
-
-      <AnimatePresence initial={false}>
-        {show && (
-          <motion.div initial={{ height: 0, opacity: 0 }} animate={{ height: 'auto', opacity: 1 }} exit={{ height: 0, opacity: 0 }}
-            className="overflow-hidden">
-            <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 mt-2">
-              {CARDS.map((c, i) => (
-                <Card key={c.title} c={c} isOpen={openIdx === i} onToggle={() => setOpenIdx((cur) => (cur === i ? null : i))} />
-              ))}
-            </div>
-          </motion.div>
-        )}
-      </AnimatePresence>
-    </section>
+    <Modal isOpen={isOpen} onClose={onClose} maxWidth="max-w-lg"
+      title={(
+        <span className="inline-flex items-center gap-2">
+          <GraduationCap className="w-4 h-4 text-accent-primary" />
+          <span className="font-bold text-text-primary">איך קוראים את הלוח הזה</span>
+        </span>
+      )}>
+      <div className="space-y-2">
+        <p className="text-[11px] text-text-muted leading-relaxed">
+          שישה מושגים שכל מה שבעמוד נשען עליהם. כל אחד נגמר במה שזה אומר להחלטה שלך.
+        </p>
+        {CARDS.map((c, i) => (
+          <Card key={c.title} c={c} isOpen={openIdx === i} onToggle={() => setOpenIdx((cur) => (cur === i ? null : i))} />
+        ))}
+      </div>
+    </Modal>
   );
 }
