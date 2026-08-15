@@ -87,6 +87,34 @@ export async function fetchPositions(wallet, { limit = 100, signal } = {}) {
   return (Array.isArray(rows) ? rows : []).map(normalizePosition);
 }
 
+function normalizeActivity(a) {
+  return {
+    id: a.transactionHash ? `${a.transactionHash}-${a.conditionId}-${a.outcomeIndex ?? ''}` : `${a.conditionId}-${a.timestamp}`,
+    type: a.type || 'TRADE',        // TRADE / REDEEM / SPLIT / MERGE …
+    side: a.side || null,           // BUY / SELL
+    size: Number(a.size) || 0,
+    price: Number(a.price) || 0,
+    usdcSize: Number(a.usdcSize) || 0,
+    title: a.title || a.slug || '—',
+    slug: a.slug || null,
+    eventSlug: a.eventSlug || null,
+    icon: safeHttpUrl(a.icon) || null,
+    outcome: a.outcome || null,
+    outcomeIndex: a.outcomeIndex ?? null,
+    conditionId: a.conditionId,
+    timestamp: Number(a.timestamp) || 0, // unix seconds
+  };
+}
+
+// A wallet's full chronological trade history (BUY/SELL/redeem…) — how it
+// actually trades, not just what it holds now.
+export async function fetchActivity(wallet, { limit = 100, signal } = {}) {
+  if (!isAddress(wallet)) return [];
+  const url = `${C.DATA_API}/activity?user=${encodeURIComponent(wallet)}&limit=${limit}`;
+  const rows = await getJson(url, { signal });
+  return (Array.isArray(rows) ? rows : []).map(normalizeActivity);
+}
+
 // Profile link on Polymarket. Fixed https origin + validated address → the href
 // can never be turned into a javascript:/data: scheme or leave polymarket.com.
 export function profileUrl(wallet) {
