@@ -2,9 +2,9 @@ import { useState, useEffect } from 'react';
 import { fetchPositions } from '../services/polymarketService';
 import { withConviction } from '../utils/polymarketScore';
 
-// Fetch a single wallet's positions on demand (for the detail modal). Sorted by
-// size with a conviction share attached. Passing a falsy wallet resets to idle.
-export function useWalletPositions(wallet) {
+// Fetch a single wallet's positions on demand. Sorted by size with a conviction
+// share attached. Passing a falsy wallet resets to idle.
+export function useWalletPositions(wallet, limit = 100) {
   const [positions, setPositions] = useState([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
@@ -14,7 +14,7 @@ export function useWalletPositions(wallet) {
     const controller = new AbortController();
     setLoading(true);
     setError('');
-    fetchPositions(wallet, { signal: controller.signal })
+    fetchPositions(wallet, { limit, signal: controller.signal })
       .then((rows) => { setPositions(withConviction(rows)); setLoading(false); })
       .catch((e) => {
         if (e.name === 'AbortError') return;
@@ -22,7 +22,7 @@ export function useWalletPositions(wallet) {
         setLoading(false);
       });
     return () => controller.abort();
-  }, [wallet]);
+  }, [wallet, limit]);
 
   return { positions, loading, error };
 }

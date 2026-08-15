@@ -38,6 +38,7 @@ const loadRefundPolicy = () => import('./components/legal/RefundPolicyPage');
 const loadAccessibility = () => import('./components/legal/AccessibilityStatement');
 const loadScannerPage = () => import('./components/signals/SignalsPage');
 const loadPolymarketPage = () => import('./components/polymarket/PolymarketPage');
+const loadWalletDetailPage = () => import('./components/polymarket/WalletDetailPage');
 const loadAdminPanel = () => import('./components/admin/AdminPanel');
 // Redesign preview — new "Daily Briefing" home screen (blue + bilingual).
 // Lives at /briefing so we can review the direction without touching the
@@ -67,6 +68,7 @@ const RefundPolicyPage = lazy(loadRefundPolicy);
 const AccessibilityStatement = lazy(loadAccessibility);
 const ScannerPage = lazy(loadScannerPage);
 const PolymarketPage = lazy(loadPolymarketPage);
+const WalletDetailPage = lazy(loadWalletDetailPage);
 const AdminPanel = lazy(loadAdminPanel);
 const DailyBriefing = lazy(loadDailyBriefing);
 
@@ -132,6 +134,7 @@ function MainApp() {
                 <Route path="scanner" element={<AdminRoute><ScannerPage /></AdminRoute>} />
                 {/* Visible to all in the menu; the page shows a locked teaser to non-premium (no PremiumRoute redirect). */}
                 <Route path="polymarket" element={<PolymarketPage />} />
+                <Route path="polymarket/wallet/:address" element={<WalletDetailPage />} />
                 <Route path="trade-ai" element={<TradeAIPage />} />
                 <Route path="news" element={<NewsPage />} />
                 <Route path="exchange" element={<ExchangeSettings />} />
