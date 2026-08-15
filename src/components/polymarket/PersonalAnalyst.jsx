@@ -28,7 +28,7 @@ function Tile({ icon, value, label }) {
 // "האנליסט הפרטי שלי" — reads YOUR workspace (tracked wallets, their latest
 // moves, your saved strategies and what matches them right now) and writes a
 // personal Hebrew brief. Distinct from the per-wallet analyst.
-export default function PersonalAnalyst({ smartCountByMarket = {} }) {
+export default function PersonalAnalyst({ smartCountByMarket = {}, embedded = false }) {
   const { watched } = usePolymarketWatch();
   const { strategies } = usePolymarketStrategies();
   const { markets } = usePolymarkets();
@@ -98,7 +98,15 @@ export default function PersonalAnalyst({ smartCountByMarket = {} }) {
 
   return (
     <div>
-      {/* Header */}
+      {/* Header — the modal supplies the title when embedded, so only the
+          summary tiles are kept there. */}
+      {embedded ? (
+        <div className="grid grid-cols-3 gap-2 mb-4">
+          <Tile icon={<Star className="w-3.5 h-3.5" />} value={watched.length} label="ארנקים במעקב" />
+          <Tile icon={<Target className="w-3.5 h-3.5" />} value={strategies.length} label="אסטרטגיות" />
+          <Tile icon={<Activity className="w-3.5 h-3.5" />} value={totalMatches} label="התאמות פתוחות" />
+        </div>
+      ) : (
       <div className="relative overflow-hidden rounded-2xl border border-accent-primary/20 bg-[#070b12] p-4 mb-4">
         <div className="absolute -top-16 -left-16 w-56 h-56 rounded-full bg-accent-primary/10 blur-3xl pointer-events-none" />
         <div className="relative flex items-start gap-3">
@@ -119,6 +127,7 @@ export default function PersonalAnalyst({ smartCountByMarket = {} }) {
           <Tile icon={<Activity className="w-3.5 h-3.5" />} value={totalMatches} label="התאמות פתוחות" />
         </div>
       </div>
+      )}
 
       {/* Run */}
       {!report && !loading && (
