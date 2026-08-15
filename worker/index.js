@@ -2502,6 +2502,34 @@ const PM_ANALYST_SYSTEM_PROMPT = `אתה אנליסט שווקי-חיזוי שמ
 - המלצות = מה למי שעוקב אחרי הארנק כדאי לבדוק ("שים לב לפוזיציית [X] — 40% מהתיק"), לא ייעוץ הימורים.
 - כל בולט מסתמך על מספר אחד לפחות מה-stats. מותר ואף רצוי לציין סיכונים.`;
 
+// Personal analyst — the user's OWN Polymarket workspace: the wallets they
+// track, what those wallets did recently, their saved strategies and the
+// markets matching them right now. A daily-brief voice, not a wallet report.
+const PM_BRIEF_SYSTEM_PROMPT = `אתה האנליסט האישי של המשתמש לשווקי-חיזוי (Polymarket). אתה מקבל את סביבת העבודה שלו: הארנקים שהוא עוקב אחריהם וביצועיהם, מהלכים אחרונים שלהם, האסטרטגיות ששמר, והשווקים שתואמים להן כרגע. אתה כותב לו תדרוך אישי חד בעברית.
+
+## פלט נדרש (חובה):
+- בעברית בלבד, בגוף שני ("הארנקים שלך", "האסטרטגיה שלך"), טבעית וזורמת.
+- 3 חלקים בלבד, בסדר הזה — כל אחד עם כותרת בדיוק בפורמט:
+  **חוזקות**
+  **חולשות**
+  **המלצות לפעולה**
+- אם יבוקש דו"ח מורחב — הוסף חלק רביעי: **תובנות מתקדמות**.
+- תחת כל כותרת: 2–5 בולטים. כל בולט מתחיל ב"• ". בלי מספור.
+
+## אסור (חובה לציית):
+- אסור להתחיל שורה ב-#, ##, ### או אות-מספר-נקודה (1.).
+- אסור כותרות אחרות מלבד הארבע המוגדרות.
+- אסור: המלצה להמר או להיכנס לפוזיציה, הבטחת רווח, אזכור שאתה AI, פתיחות שיווקיות.
+- אסור להמציא נתונים — רק מה שמופיע ב-stats. אם חלק ריק (אין ארנקים במעקב / אין אסטרטגיה) — אמור זאת מפורשות והמלץ להשלים אותו.
+- בלי משפט פתיחה. תתחיל ישר בשורה: **חוזקות**.
+
+## איכות התוכן (חשוב):
+- "חוזקות" = מה מסודר אצלו: איכות הארנקים שבמעקב (ציון/ROI), אסטרטגיה מוגדרת היטב, התאמות איכותיות שנמצאו.
+- "חולשות" = פערים: מעקב ריק או אחרי ארנקים חלשים, אסטרטגיה רחבה מדי (יותר מדי התאמות = לא מסננת) או צרה מדי (אפס התאמות), ריכוז יתר בנושא אחד.
+- "המלצות לפעולה" = צעדים קונקרטיים על סביבת העבודה: "הדק את רצפת הנזילות ל-X", "הוסף למעקב את [ארנק] — ROI [Y]", "בדוק את [שוק] — [N] ארנקים חכמים נכנסו", "צמצם את חלון הזמן".
+- קשר בין הדברים: אם ארנק במעקב נכנס לשוק שתואם לאסטרטגיה — זו התובנה הכי חשובה, ציין אותה ראשונה.
+- כל בולט מסתמך על מספר או שם אחד לפחות מה-stats.`;
+
 const BACKTEST_FOCUS_INSTRUCTIONS = {
   overview: 'הסוחר ביקש סקירה כללית של הבקטסט: האם האסטרטגיה רווחית, מה ה-edge, ומה הכי בולט לטובה ולרעה.',
   profit: 'הסוחר שאל: "איפה אני מרוויח הכי הרבה?". מקד את כל הדו"ח בצירופים הרווחיים ביותר (אסטרטגיה/סשן/זוג/טיימפריים) לפי ממוצע R וסה"כ R — איפה ה-edge ואיך למקסם אותו.',
@@ -2520,18 +2548,21 @@ async function handleAICoach(request, env, cors) {
     // Mode swaps the system prompt + focus set; everything else (auth,
     // rate gate, quota, provider failover) is shared.
     const isBacktest = mode === 'backtest';
-    const isPolymarket = mode === 'polymarket';
+    const isPolymarket = mode === 'polymarket';       // one public wallet
+    const isPmBrief = mode === 'polymarket-brief';    // the user's own workspace
     let systemPrompt = COACH_SYSTEM_PROMPT;
     if (isBacktest) systemPrompt = BACKTEST_COACH_SYSTEM_PROMPT;
     if (isPolymarket) systemPrompt = PM_ANALYST_SYSTEM_PROMPT;
-    // Polymarket has no quick-prompts — an empty set keeps journal directives
-    // from leaking into a wallet report.
+    if (isPmBrief) systemPrompt = PM_BRIEF_SYSTEM_PROMPT;
+    // Polymarket modes have no quick-prompts — an empty set keeps journal
+    // directives from leaking into those reports.
     let focusSet = COACH_FOCUS_INSTRUCTIONS;
     if (isBacktest) focusSet = BACKTEST_FOCUS_INSTRUCTIONS;
-    if (isPolymarket) focusSet = {};
+    if (isPolymarket || isPmBrief) focusSet = {};
     let dataLabel = 'נתוני העסקאות';
     if (isBacktest) dataLabel = 'נתוני הבקטסט';
     if (isPolymarket) dataLabel = 'נתוני הארנק';
+    if (isPmBrief) dataLabel = 'סביבת העבודה שלך';
     // Hard cap stats payload to keep the prompt cheap.
     const statsStr = JSON.stringify(stats).slice(0, 6000);
 
