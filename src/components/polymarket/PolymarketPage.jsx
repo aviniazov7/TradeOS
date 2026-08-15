@@ -280,8 +280,11 @@ function PolymarketBoard() {
   }, [rows, eligibleOnly, query, sort]);
 
   const hasData = !loading && !error && rows.length > 0;
-  const podium = query ? [] : view.slice(0, 3);
-  const listRows = query ? view : view.slice(3);
+  // Podium only with 3+ results; otherwise everything falls through to the list
+  // (a 1–2 result view must never render empty).
+  const usePodium = !query && view.length >= 3;
+  const podium = usePodium ? view.slice(0, 3) : [];
+  const listRows = usePodium ? view.slice(3) : view;
 
   const MAIN_TABS = [
     { key: 'wallets', label: 'ארנקים מובילים', icon: Users },

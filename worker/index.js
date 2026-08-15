@@ -2524,7 +2524,11 @@ async function handleAICoach(request, env, cors) {
     let systemPrompt = COACH_SYSTEM_PROMPT;
     if (isBacktest) systemPrompt = BACKTEST_COACH_SYSTEM_PROMPT;
     if (isPolymarket) systemPrompt = PM_ANALYST_SYSTEM_PROMPT;
-    const focusSet = isBacktest ? BACKTEST_FOCUS_INSTRUCTIONS : COACH_FOCUS_INSTRUCTIONS;
+    // Polymarket has no quick-prompts — an empty set keeps journal directives
+    // from leaking into a wallet report.
+    let focusSet = COACH_FOCUS_INSTRUCTIONS;
+    if (isBacktest) focusSet = BACKTEST_FOCUS_INSTRUCTIONS;
+    if (isPolymarket) focusSet = {};
     let dataLabel = 'נתוני העסקאות';
     if (isBacktest) dataLabel = 'נתוני הבקטסט';
     if (isPolymarket) dataLabel = 'נתוני הארנק';
@@ -2565,9 +2569,12 @@ async function handleAICoach(request, env, cors) {
 
     // Turn the clicked quick-prompt (stats.focus) into an explicit, prominent
     // directive so each button yields a genuinely different, focused report.
+    // Own-property lookup only — a focus like "constructor" must not resolve
+    // through the prototype chain into the prompt.
     const focusKey = typeof stats.focus === 'string' ? stats.focus : '';
-    const focusLine = focusSet[focusKey]
-      ? `## מיקוד הדו"ח (חובה):\n${focusSet[focusKey]}\nכל סעיף בדו"ח חייב לענות על השאלה הזו — אל תיתן דו"ח כללי.\n\n`
+    const focusText = Object.prototype.hasOwnProperty.call(focusSet, focusKey) ? focusSet[focusKey] : null;
+    const focusLine = focusText
+      ? `## מיקוד הדו"ח (חובה):\n${focusText}\nכל סעיף בדו"ח חייב לענות על השאלה הזו — אל תיתן דו"ח כללי.\n\n`
       : '';
 
     const userPrompt =

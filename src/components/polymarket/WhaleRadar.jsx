@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { useNavigate } from 'react-router-dom';
 import { Waves, Star, AlertCircle } from 'lucide-react';
@@ -62,7 +62,6 @@ export default function WhaleRadar() {
   const [feed, setFeed] = useState([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
-  const seen = useRef(new Set());
 
   useEffect(() => {
     let stop = false;
@@ -71,15 +70,17 @@ export default function WhaleRadar() {
       try {
         const rows = await fetchTrades({ limit: 100 });
         if (stop) return;
+        // Dedup derives from `prev` inside the updater (not a mutated ref), so a
+        // double-invoked updater under StrictMode can't silently drop a batch.
         setFeed((prev) => {
+          const known = new Set(prev.map((x) => x.id));
           const merged = [...prev];
           for (const t of rows) {
-            if (seen.current.has(t.id)) continue;
-            seen.current.add(t.id);
+            if (known.has(t.id)) continue;
+            known.add(t.id);
             merged.push(t);
           }
           merged.sort((a, b) => b.timestamp - a.timestamp);
-          if (seen.current.size > 600) seen.current = new Set(merged.slice(0, 300).map((x) => x.id));
           return merged.slice(0, 300);
         });
         setError('');
