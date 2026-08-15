@@ -1,7 +1,7 @@
 import { useMemo, useState } from 'react';
 import { motion } from 'framer-motion';
 import { useNavigate } from 'react-router-dom';
-import { Trophy, Crown, Lock, Search, ShieldCheck, Info, ArrowDownUp, AlertCircle, RefreshCw, Star, ChevronDown, Users, Globe, Waves } from 'lucide-react';
+import { Trophy, Crown, Lock, Search, ShieldCheck, Info, ArrowDownUp, AlertCircle, RefreshCw, Star, ChevronDown, Users, Globe, Waves, Compass, UserRoundSearch } from 'lucide-react';
 import { useAuth } from '../../contexts/AuthContext';
 import { usePolymarketLeaderboard } from '../../hooks/usePolymarketLeaderboard';
 import { usePolymarketWatch } from '../../hooks/usePolymarketWatch';
@@ -9,6 +9,8 @@ import { useCountUp } from '../../hooks/useCountUp';
 import ScoreRing from './ScoreRing';
 import MarketsExplorer from './MarketsExplorer';
 import WhaleRadar from './WhaleRadar';
+import StrategyTab from './StrategyTab';
+import PersonalAnalyst from './PersonalAnalyst';
 import { fmtUsd, fmtPct, shortWallet, roiPct } from '../../utils/polymarketScore';
 import { pageVariants, pageTransition, staggerContainer, staggerItem } from '../../utils/animations';
 
@@ -287,9 +289,11 @@ function PolymarketBoard() {
   const listRows = usePodium ? view.slice(3) : view;
 
   const MAIN_TABS = [
-    { key: 'wallets', label: 'ארנקים מובילים', icon: Users },
+    { key: 'analyst', label: 'האנליסט שלי', icon: UserRoundSearch },
+    { key: 'wallets', label: 'ארנקים', icon: Users },
     { key: 'markets', label: 'שווקים', icon: Globe },
-    { key: 'radar', label: 'ראדאר כרישים', icon: Waves },
+    { key: 'strategy', label: 'אסטרטגיה', icon: Compass },
+    { key: 'radar', label: 'ראדאר', icon: Waves },
   ];
 
   return (
@@ -308,7 +312,9 @@ function PolymarketBoard() {
         ))}
       </div>
 
+      {mainTab === 'analyst' && <PersonalAnalyst />}
       {mainTab === 'markets' && <MarketsExplorer />}
+      {mainTab === 'strategy' && <StrategyTab />}
       {mainTab === 'radar' && <WhaleRadar />}
 
       {mainTab === 'wallets' && (
