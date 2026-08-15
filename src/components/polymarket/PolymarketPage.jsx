@@ -1,7 +1,8 @@
 import { useMemo, useState } from 'react';
 import { motion } from 'framer-motion';
 import { useNavigate } from 'react-router-dom';
-import { Trophy, Crown, Lock, Search, ShieldCheck, Info, ArrowDownUp, AlertCircle, RefreshCw, Star, ChevronDown, Users, Globe, Waves, Compass, UserRoundSearch, Gem } from 'lucide-react';
+import { Trophy, Crown, Lock, Search, ShieldCheck, Info, ArrowDownUp, AlertCircle, RefreshCw, Star, ChevronDown, Users, Globe, Waves, Compass, UserRoundSearch, Gem, Download } from 'lucide-react';
+import toast from 'react-hot-toast';
 import { useAuth } from '../../contexts/AuthContext';
 import { usePolymarketLeaderboard } from '../../hooks/usePolymarketLeaderboard';
 import { usePolymarketWatch } from '../../hooks/usePolymarketWatch';
@@ -13,7 +14,10 @@ import WhaleRadar from './WhaleRadar';
 import StrategyTab from './StrategyTab';
 import PersonalAnalyst from './PersonalAnalyst';
 import SmartConsensus from './SmartConsensus';
+import WatchedWallets from './WatchedWallets';
+import AcademyCards from './AcademyCards';
 import { fmtUsd, fmtPct, shortWallet, roiPct } from '../../utils/polymarketScore';
+import { downloadCsv, stampedName } from '../../utils/csv';
 import { pageVariants, pageTransition, staggerContainer, staggerItem } from '../../utils/animations';
 
 const SORTS = [
@@ -22,6 +26,14 @@ const SORTS = [
   { key: 'roi', label: 'יעילות (ROI)' },
   { key: 'volume', label: 'מחזור' },
 ];
+
+// Lookup instead of a nested ternary — keeps the sort memo compilable.
+const SORT_VALUE = {
+  score: (r) => r.smartScore ?? -1,
+  pnl: (r) => r.pnl,
+  roi: (r) => r.roi,
+  volume: (r) => r.volume,
+};
 
 // Verified live: the leaderboard `category` param returns data only for these
 // slugs (others — e.g. business, world, gaming — come back empty).
@@ -282,9 +294,18 @@ function PolymarketBoard() {
     if (eligibleOnly) list = list.filter((r) => r.eligible);
     const q = query.trim().toLowerCase();
     if (q) list = list.filter((r) => (r.name || '').toLowerCase().includes(q) || (r.wallet || '').toLowerCase().includes(q));
-    const val = (r) => (sort === 'score' ? (r.smartScore ?? -1) : sort === 'pnl' ? r.pnl : sort === 'roi' ? r.roi : r.volume);
+    const val = SORT_VALUE[sort] || SORT_VALUE.score;
     return [...list].sort((a, b) => val(b) - val(a));
   }, [rows, eligibleOnly, query, sort]);
+
+  const exportWallets = () => {
+    downloadCsv(
+      stampedName('polymarket_wallets'),
+      ['דירוג', 'שם', 'ארנק', 'ציון', 'רווח 30 יום ($)', 'ROI %', 'מחזור ($)'],
+      view.map((r, i) => [i + 1, r.name || '', r.wallet, r.smartScore ?? '', Math.round(r.pnl), r.roi.toFixed(2), Math.round(r.volume)]),
+    );
+    toast.success('הקובץ הורד');
+  };
 
   const hasData = !loading && !error && rows.length > 0;
   // Podium only with 3+ results; otherwise everything falls through to the list
@@ -326,21 +347,8 @@ function PolymarketBoard() {
 
       {mainTab === 'wallets' && (
       <>
-      {/* My tracked wallets (persisted in Firestore) */}
-      {watchedRows.length > 0 && (
-        <section className="mb-4">
-          <div className="flex items-center gap-1.5 mb-2">
-            <Star className="w-3.5 h-3.5 text-amber-400 fill-amber-400" />
-            <h2 className="text-sm font-bold text-text-primary">הארנקים שאני עוקב</h2>
-            <span className="text-[11px] text-text-muted">({watchedRows.length})</span>
-          </div>
-          <div className="space-y-2">
-            {watchedRows.map((r) => (
-              <WalletRow key={r.wallet} r={r} rank={null} isWatched onToggle={() => toggle(r)} onOpen={() => openWallet(r)} />
-            ))}
-          </div>
-        </section>
-      )}
+      {/* My tracked wallets — collapsible panel that scales to a long list */}
+      <WatchedWallets rows={watchedRows} onOpen={openWallet} onRemove={toggle} />
 
       {/* Controls */}
       <div className="flex flex-wrap items-center gap-2 mb-3">
@@ -369,6 +377,10 @@ function PolymarketBoard() {
           title="הצג רק ארנקים איכותיים: מחזור $10K+ ורווח חיובי ב-30 יום (מסנן קטנים/מפסידים)"
           className={`inline-flex items-center gap-1 px-2.5 py-1.5 rounded-lg text-[11px] font-semibold border transition-colors cursor-pointer ${eligibleOnly ? 'bg-accent-primary/15 text-accent-primary border-accent-primary/40' : 'text-text-muted border-border-primary'}`}>
           <ArrowDownUp className="w-3 h-3" /> רווחיים בלבד
+        </button>
+        <button onClick={exportWallets} disabled={view.length === 0} title="ייצוא הדירוג ל-CSV"
+          className="inline-flex items-center gap-1 px-2.5 py-1.5 rounded-lg text-[11px] font-semibold border border-border-primary text-text-muted hover:text-accent-primary transition-colors cursor-pointer disabled:opacity-40">
+          <Download className="w-3 h-3" /> CSV
         </button>
       </div>
 
@@ -416,6 +428,9 @@ function PolymarketBoard() {
       )}
       </>
       )}
+
+      {/* Academy — the concepts everything above assumes you know */}
+      <AcademyCards />
 
       {/* Disclaimer */}
       <div className="flex items-start gap-2 mt-5 p-3 rounded-xl bg-bg-secondary/60 border border-border-primary text-[11px] text-text-muted leading-relaxed">

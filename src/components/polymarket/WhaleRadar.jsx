@@ -3,6 +3,7 @@ import { motion, AnimatePresence } from 'framer-motion';
 import { useNavigate } from 'react-router-dom';
 import { Waves, Star, AlertCircle } from 'lucide-react';
 import { fetchTrades } from '../../services/polymarketService';
+import { openTradeStream } from '../../services/polymarketLive';
 import { usePolymarketWatch } from '../../hooks/usePolymarketWatch';
 import { fmtUsd, shortWallet } from '../../utils/polymarketScore';
 
@@ -52,9 +53,10 @@ function TradeRow({ t, tracked, onOpenWallet }) {
   );
 }
 
-// The whale radar — a live tape of Polymarket's biggest trades, polled every
-// 20s while the tab is open. Trades by wallets on YOUR watchlist get an amber
-// highlight. Size filter keeps the noise out.
+// The whale radar — a genuinely real-time tape over Polymarket's public
+// live-data socket (every trade on the platform, pushed). REST seeds the list
+// so the tab isn't empty on open, and polling only takes over if the socket
+// can't hold. Trades by wallets on YOUR watchlist are highlighted.
 export default function WhaleRadar() {
   const navigate = useNavigate();
   const { watchedSet } = usePolymarketWatch();
@@ -62,37 +64,57 @@ export default function WhaleRadar() {
   const [feed, setFeed] = useState([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
+  const [status, setStatus] = useState('connecting'); // connecting | live | down
 
+  // Merge helper shared by the socket and the REST fallback.
+  const merge = (rows) => setFeed((prev) => {
+    const known = new Set(prev.map((x) => x.id));
+    const merged = [...prev];
+    for (const t of rows) {
+      if (known.has(t.id)) continue;
+      known.add(t.id);
+      merged.push(t);
+    }
+    merged.sort((a, b) => b.timestamp - a.timestamp);
+    return merged.slice(0, 400);
+  });
+
+  // Seed from REST once so the tape has history immediately.
   useEffect(() => {
+    let stop = false;
+    fetchTrades({ limit: 100 })
+      .then((rows) => { if (!stop) { merge(rows); setLoading(false); } })
+      .catch(() => { if (!stop) setLoading(false); });
+    return () => { stop = true; };
+  }, []);
+
+  // Live socket — pushes every trade as it happens.
+  useEffect(() => {
+    const stopStream = openTradeStream(
+      (t) => { merge([t]); setLoading(false); },
+      (s) => { setStatus(s); if (s === 'live') setError(''); },
+    );
+    return stopStream;
+  }, []);
+
+  // Fallback: if the socket is down, keep the tape alive over REST.
+  useEffect(() => {
+    if (status !== 'down') return undefined;
     let stop = false;
     let timer;
     const tick = async () => {
       try {
         const rows = await fetchTrades({ limit: 100 });
-        if (stop) return;
-        // Dedup derives from `prev` inside the updater (not a mutated ref), so a
-        // double-invoked updater under StrictMode can't silently drop a batch.
-        setFeed((prev) => {
-          const known = new Set(prev.map((x) => x.id));
-          const merged = [...prev];
-          for (const t of rows) {
-            if (known.has(t.id)) continue;
-            known.add(t.id);
-            merged.push(t);
-          }
-          merged.sort((a, b) => b.timestamp - a.timestamp);
-          return merged.slice(0, 300);
-        });
-        setError('');
+        if (!stop) { merge(rows); setError(''); }
       } catch {
-        if (!stop) setError('טעינת הפיד נכשלה. מנסה שוב…');
+        if (!stop) setError('החיבור החי נפל — מנסה להתחבר מחדש…');
       } finally {
-        if (!stop) { setLoading(false); timer = setTimeout(tick, POLL_MS); }
+        if (!stop) timer = setTimeout(tick, POLL_MS);
       }
     };
     tick();
     return () => { stop = true; clearTimeout(timer); };
-  }, []);
+  }, [status]);
 
   const view = useMemo(
     () => feed.filter((t) => t.usd >= minUsd || watchedSet.has(t.wallet)).slice(0, MAX_FEED),
@@ -105,10 +127,12 @@ export default function WhaleRadar() {
       <div className="flex items-center justify-between gap-2 mb-3 flex-wrap">
         <div className="flex items-center gap-1.5 text-xs text-text-secondary">
           <span className="relative flex h-2 w-2">
-            <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-profit opacity-60" />
-            <span className="relative inline-flex rounded-full h-2 w-2 bg-profit" />
+            {status === 'live' && <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-profit opacity-60" />}
+            <span className={`relative inline-flex rounded-full h-2 w-2 ${status === 'live' ? 'bg-profit' : 'bg-text-muted'}`} />
           </span>
-          פיד חי · מתעדכן כל 20 שניות
+          {status === 'live' && 'זמן אמת · כל עסקה ברגע שהיא קורית'}
+          {status === 'connecting' && 'מתחבר לשידור החי…'}
+          {status === 'down' && 'מצב גיבוי · מתעדכן כל 20 שניות'}
         </div>
         <div className="inline-flex bg-bg-secondary border border-border-primary rounded-lg p-0.5 gap-0.5">
           {SIZES.map((s) => (
