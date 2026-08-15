@@ -1,9 +1,10 @@
 import { useMemo, useState } from 'react';
 import { motion } from 'framer-motion';
 import { useNavigate } from 'react-router-dom';
-import { Crosshair, Crown, Lock, Search, ShieldCheck, Info, ArrowDownUp, AlertCircle, RefreshCw } from 'lucide-react';
+import { Crosshair, Crown, Lock, Search, ShieldCheck, Info, ArrowDownUp, AlertCircle, RefreshCw, Star } from 'lucide-react';
 import { useAuth } from '../../contexts/AuthContext';
 import { usePolymarketLeaderboard } from '../../hooks/usePolymarketLeaderboard';
+import { usePolymarketWatch } from '../../hooks/usePolymarketWatch';
 import { useCountUp } from '../../hooks/useCountUp';
 import WalletDetailModal from './WalletDetailModal';
 import ScoreRing from './ScoreRing';
@@ -81,25 +82,32 @@ function Hero({ stats }) {
   );
 }
 
-function WalletRow({ r, rank, onClick }) {
+function RankMarker({ rank, isTop, isPodium }) {
+  if (isPodium) {
+    return (
+      <span className={`relative flex items-center justify-center w-6 h-6 rounded-full shrink-0 ${isTop ? 'bg-amber-400/15 border border-amber-400/40' : 'bg-text-secondary/10 border border-text-secondary/25'}`}>
+        {isTop ? <Crown className="w-3.5 h-3.5 text-amber-400" /> : <span className="text-[11px] font-extrabold num-mono text-text-secondary">{rank}</span>}
+      </span>
+    );
+  }
+  if (rank != null) return <span className="w-6 text-center text-xs font-bold text-text-muted num-mono shrink-0">{rank}</span>;
+  return null;
+}
+
+function WalletRow({ r, rank, onClick, isWatched, onToggleWatch }) {
   const name = r.name || shortWallet(r.wallet);
   const isTop = rank === 1;
-  const isPodium = rank <= 3;
+  const isPodium = rank != null && rank <= 3;
+  const hasComposition = r.smartScore != null && (r.sizeShare || r.effShare);
   return (
-    <button onClick={onClick}
-      className={`group relative w-full flex items-center gap-3 bg-bg-secondary border text-right cursor-pointer transition-colors overflow-hidden ${
+    <div onClick={onClick} role="button" tabIndex={0}
+      onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); onClick(); } }}
+      className={`group relative w-full flex items-center gap-3 bg-bg-secondary border text-right cursor-pointer transition-colors overflow-hidden outline-none focus-visible:border-accent-primary/60 ${
         isTop ? 'px-4 py-3.5 rounded-2xl border-amber-400/30' : 'px-3 py-2.5 rounded-xl border-border-primary hover:border-accent-primary/40'
       }`}>
       {isTop && <div className="absolute inset-0 pointer-events-none" style={{ background: 'radial-gradient(120% 100% at 100% 0%, rgba(245,158,11,0.10), transparent 60%)' }} />}
 
-      {/* rank marker */}
-      {isPodium ? (
-        <span className={`relative flex items-center justify-center w-6 h-6 rounded-full shrink-0 ${isTop ? 'bg-amber-400/15 border border-amber-400/40' : 'bg-text-secondary/10 border border-text-secondary/25'}`}>
-          {isTop ? <Crown className="w-3.5 h-3.5 text-amber-400" /> : <span className="text-[11px] font-extrabold num-mono text-text-secondary">{rank}</span>}
-        </span>
-      ) : (
-        <span className="w-6 text-center text-xs font-bold text-text-muted num-mono shrink-0">{rank}</span>
-      )}
+      <RankMarker rank={rank} isTop={isTop} isPodium={isPodium} />
 
       <ScoreRing score={r.smartScore} size={isTop ? 'lg' : 'md'} />
 
@@ -112,7 +120,7 @@ function WalletRow({ r, rank, onClick }) {
           <span className={`font-bold text-text-primary truncate ${isTop ? 'text-base' : 'text-sm'}`}>{name}</span>
           {r.verified && <ShieldCheck className="w-3.5 h-3.5 text-accent-primary shrink-0" />}
         </div>
-        {r.smartScore != null ? (
+        {hasComposition ? (
           <div className="flex items-center gap-1.5 mt-1">
             {/* why this wallet ranks: purple = size, accent = efficiency; filled = score */}
             <div className="h-1 rounded-full overflow-hidden flex w-24 bg-bg-tertiary" title="הרכב הציון: גודל מול יעילות">
@@ -133,8 +141,35 @@ function WalletRow({ r, rank, onClick }) {
           <span className="text-[10px] text-text-muted num-mono">· {fmtUsd(r.volume)}</span>
         </div>
       </div>
-    </button>
+
+      {onToggleWatch && (
+        <button
+          onClick={(e) => { e.stopPropagation(); onToggleWatch(r); }}
+          title={isWatched ? 'הסר מהמעקב' : 'הוסף למעקב'}
+          className="relative p-1.5 rounded-lg text-text-muted hover:text-amber-400 hover:bg-bg-tertiary transition-colors cursor-pointer shrink-0"
+        >
+          <Star className={`w-4 h-4 ${isWatched ? 'fill-amber-400 text-amber-400' : ''}`} />
+        </button>
+      )}
+    </div>
   );
+}
+
+// Build a row-shaped object from a stored watch snapshot (for tracked wallets
+// that aren't in this month's leaderboard).
+function snapshotToRow(w) {
+  return {
+    wallet: w.wallet,
+    name: w.name || null,
+    profileImage: w.profileImage || null,
+    verified: false,
+    pnl: w.snapshot?.pnl ?? 0,
+    roi: w.snapshot?.roi ?? 0,
+    volume: w.snapshot?.volume ?? 0,
+    smartScore: w.snapshot?.smartScore ?? null,
+    sizeShare: 0,
+    effShare: 0,
+  };
 }
 
 function RowSkeleton() {
@@ -188,10 +223,18 @@ function LockedTeaser() {
 // fetched or scored for non-premium (the scoring is the paid deliverable).
 function PolymarketBoard() {
   const { rows, loading, error, refetch } = usePolymarketLeaderboard('overall');
+  const { watched, watchedSet, toggle } = usePolymarketWatch();
   const [sort, setSort] = useState('score');
   const [query, setQuery] = useState('');
   const [eligibleOnly, setEligibleOnly] = useState(true);
   const [selected, setSelected] = useState(null);
+
+  // Tracked wallets: prefer this month's live leaderboard data, fall back to the
+  // stored snapshot so a tracked wallet always renders.
+  const watchedRows = useMemo(
+    () => watched.map((w) => rows.find((r) => r.wallet === w.wallet) || snapshotToRow(w)),
+    [watched, rows],
+  );
 
   const stats = useMemo(() => {
     const elig = rows.filter((r) => r.eligible);
@@ -216,6 +259,22 @@ function PolymarketBoard() {
   return (
     <>
       <Hero stats={hasData ? stats : null} />
+
+      {/* My tracked wallets (persisted in Firestore) */}
+      {watchedRows.length > 0 && (
+        <section className="mb-4">
+          <div className="flex items-center gap-1.5 mb-2">
+            <Star className="w-3.5 h-3.5 text-amber-400 fill-amber-400" />
+            <h2 className="text-sm font-bold text-text-primary">הארנקים שאני עוקב</h2>
+            <span className="text-[11px] text-text-muted">({watchedRows.length})</span>
+          </div>
+          <div className="space-y-2">
+            {watchedRows.map((r) => (
+              <WalletRow key={r.wallet} r={r} rank={null} onClick={() => setSelected(r)} isWatched onToggleWatch={toggle} />
+            ))}
+          </div>
+        </section>
+      )}
 
       {/* Controls */}
       <div className="flex flex-wrap items-center gap-2 mb-3">
@@ -265,7 +324,7 @@ function PolymarketBoard() {
         <motion.div className="space-y-2" variants={staggerContainer} initial="initial" animate="animate">
           {view.map((r, i) => (
             <motion.div key={r.wallet} variants={staggerItem}>
-              <WalletRow r={r} rank={i + 1} onClick={() => setSelected(r)} />
+              <WalletRow r={r} rank={i + 1} onClick={() => setSelected(r)} isWatched={watchedSet.has(r.wallet)} onToggleWatch={toggle} />
             </motion.div>
           ))}
         </motion.div>
