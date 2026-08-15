@@ -1,11 +1,12 @@
 import { useMemo, useState } from 'react';
 import { motion } from 'framer-motion';
 import { useParams, useLocation, useNavigate, Navigate } from 'react-router-dom';
-import { ArrowRight, ExternalLink, ShieldCheck, AlertCircle, Wallet, Clock } from 'lucide-react';
+import { ArrowRight, ExternalLink, ShieldCheck, AlertCircle, Wallet, Clock, BrainCircuit } from 'lucide-react';
 import { useAuth } from '../../contexts/AuthContext';
 import { useWalletPositions } from '../../hooks/useWalletPositions';
 import { useWalletActivity } from '../../hooks/useWalletActivity';
 import ScoreRing from './ScoreRing';
+import WalletAnalystModal from './WalletAnalystModal';
 import { pnlSplit, fmtUsd, fmtPct, shortWallet } from '../../utils/polymarketScore';
 import { profileUrl } from '../../services/polymarketService';
 import { pageVariants, pageTransition } from '../../utils/animations';
@@ -150,6 +151,7 @@ export default function WalletDetailPage() {
   const navigate = useNavigate();
   const [sort, setSort] = useState('value');
   const [tab, setTab] = useState('positions');
+  const [analystOpen, setAnalystOpen] = useState(false);
 
   const row = state?.row || null;
   const { positions, loading, error } = useWalletPositions(address, 500);
@@ -191,12 +193,19 @@ export default function WalletDetailPage() {
           </div>
           {row?.smartScore != null && <ScoreRing score={row.smartScore} size="xl" />}
         </div>
-        {link && (
-          <a href={link} target="_blank" rel="noopener noreferrer"
-            className="relative inline-flex items-center gap-1.5 mt-3 text-[11px] font-semibold text-accent-primary hover:text-accent-hover transition-colors">
-            פרופיל מלא ב-Polymarket <ExternalLink className="w-3 h-3" />
-          </a>
-        )}
+        <div className="relative flex items-center justify-between gap-2 mt-3 flex-wrap">
+          {link && (
+            <a href={link} target="_blank" rel="noopener noreferrer"
+              className="inline-flex items-center gap-1.5 text-[11px] font-semibold text-accent-primary hover:text-accent-hover transition-colors">
+              פרופיל מלא ב-Polymarket <ExternalLink className="w-3 h-3" />
+            </a>
+          )}
+          {/* "האנליסט הפרטי" — AI read of this wallet's public book */}
+          <button onClick={() => setAnalystOpen(true)}
+            className="inline-flex items-center gap-1.5 px-3.5 py-1.5 rounded-lg bg-accent-primary text-bg-primary text-xs font-bold hover:bg-accent-hover transition-colors cursor-pointer">
+            <BrainCircuit className="w-3.5 h-3.5" /> נתח ארנק (AI)
+          </button>
+        </div>
       </div>
 
       {/* Stats */}
@@ -269,6 +278,8 @@ export default function WalletDetailPage() {
           </div>
         )
       )}
+
+      <WalletAnalystModal isOpen={analystOpen} onClose={() => setAnalystOpen(false)} row={row} positions={positions} split={split} />
     </motion.div>
   );
 }
