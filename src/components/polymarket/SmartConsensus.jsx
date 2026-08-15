@@ -1,9 +1,11 @@
 import { useState, useMemo } from 'react';
 import { motion } from 'framer-motion';
 import { useNavigate } from 'react-router-dom';
-import { Gem, AlertCircle, RefreshCw, Users, Layers, TrendingUp } from 'lucide-react';
+import { Gem, AlertCircle, RefreshCw, Users, Layers, TrendingUp, Download } from 'lucide-react';
+import toast from 'react-hot-toast';
 import { useSmartConsensus } from '../../hooks/useSmartConsensus';
 import { fmtUsd, shortWallet } from '../../utils/polymarketScore';
+import { downloadCsv, stampedName } from '../../utils/csv';
 import { staggerContainer, staggerItem } from '../../utils/animations';
 
 const SORTS = [
@@ -68,6 +70,19 @@ export default function SmartConsensus() {
     capital: consensus.reduce((s, c) => s + c.valueUsd, 0),
   }), [consensus]);
 
+  const exportCsv = () => {
+    downloadCsv(
+      stampedName('polymarket_smart_money'),
+      ['שוק', 'תוצאה', 'מס׳ ארנקים', 'שווי מצטבר ($)', 'רווח ($)', 'מחיר (¢)', 'ארנקים'],
+      view.map((c) => [
+        c.title, c.outcome, c.holders, Math.round(c.valueUsd), Math.round(c.pnlUsd),
+        Math.round((c.curPrice || 0) * 100),
+        c.wallets.map((w) => w.name || shortWallet(w.wallet)).join(' | '),
+      ]),
+    );
+    toast.success('הקובץ הורד');
+  };
+
   return (
     <div>
       {/* Header */}
@@ -77,13 +92,19 @@ export default function SmartConsensus() {
           <h2 className="text-sm font-bold text-text-primary shrink-0">לאן הכסף החכם זורם</h2>
           <span className="text-[11px] text-text-muted truncate">— התיקים של {cohortSize} הארנקים המובילים, מאוחדים לתמונה אחת</span>
         </div>
-        <div className="inline-flex bg-bg-secondary border border-border-primary rounded-lg p-0.5 gap-0.5 shrink-0">
-          {SORTS.map((s) => (
-            <button key={s.key} onClick={() => setSort(s.key)}
-              className={`px-2.5 py-1 text-[11px] font-semibold rounded-md transition-colors cursor-pointer whitespace-nowrap ${sort === s.key ? 'bg-accent-primary/15 text-accent-primary' : 'text-text-muted hover:text-text-primary'}`}>
-              {s.label}
-            </button>
-          ))}
+        <div className="flex items-center gap-2 shrink-0">
+          <div className="inline-flex bg-bg-secondary border border-border-primary rounded-lg p-0.5 gap-0.5">
+            {SORTS.map((s) => (
+              <button key={s.key} onClick={() => setSort(s.key)}
+                className={`px-2.5 py-1 text-[11px] font-semibold rounded-md transition-colors cursor-pointer whitespace-nowrap ${sort === s.key ? 'bg-accent-primary/15 text-accent-primary' : 'text-text-muted hover:text-text-primary'}`}>
+                {s.label}
+              </button>
+            ))}
+          </div>
+          <button onClick={exportCsv} disabled={consensus.length === 0} title="ייצוא ל-CSV"
+            className="inline-flex items-center gap-1 px-2.5 py-1.5 rounded-lg text-[11px] font-semibold border border-border-primary text-text-muted hover:text-accent-primary transition-colors cursor-pointer disabled:opacity-40">
+            <Download className="w-3 h-3" /> CSV
+          </button>
         </div>
       </div>
 
