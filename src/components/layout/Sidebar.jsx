@@ -33,8 +33,8 @@ const navItems = [
   // Visible to everyone in the menu (no admin/premium filter flag), but the page
   // itself is Premium — non-premium land on a locked teaser. The crown signals it.
   { to: '/polymarket', label: 'Polymarket', icon: Trophy, premiumBadge: true },
-  // Premium-visible like the rest of the premium items; the crown marks it.
-  { to: '/scanner', label: 'הסורק החכם', icon: Radar, premium: true, premiumBadge: true },
+  // Owner-only while the engine is being calibrated — hidden from everyone else.
+  { to: '/scanner', label: 'הסורק החכם', icon: Radar, admin: true },
   { to: '/trade-ai', label: 'TradeAI', icon: Bot },
   { to: '/news', label: 'חדשות', icon: Newspaper },
   { to: '/premium', label: 'שדרוג Premium', icon: Crown, highlight: true },

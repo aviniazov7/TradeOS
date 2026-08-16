@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react';
 import { motion } from 'framer-motion';
-import { Radar, Crown } from 'lucide-react';
+import { Radar } from 'lucide-react';
 
 // Count from 0 → target on mount (and whenever the target changes), eased.
 function useCountUp(target, duration = 900) {
@@ -67,7 +67,7 @@ function RadarField() {
   );
 }
 
-// Premium scanner hero — true-black card, live radar sweep, uniform stat chips.
+// Scanner hero — true-black card, live radar sweep, uniform stat chips.
 export default function ScannerHero({ taggedCount = 0, activeCount = 0 }) {
   return (
     <div className="relative overflow-hidden rounded-2xl border border-white/10 bg-[#050609] mb-6">
@@ -85,7 +85,6 @@ export default function ScannerHero({ taggedCount = 0, activeCount = 0 }) {
           <div className="min-w-0">
             <div className="flex items-center gap-2 flex-wrap">
               <h1 className="text-xl font-extrabold text-text-primary tracking-tight">הסורק החכם</h1>
-              <span className="inline-flex items-center gap-1 text-[10px] px-1.5 py-0.5 rounded-full bg-accent-primary text-bg-primary font-bold"><Crown className="w-2.5 h-2.5" /> Premium</span>
             </div>
             <p className="text-[12px] text-text-muted leading-snug max-w-[44ch]">זיהוי אוטומטי של סטאפי ויקוף — LPS / LPSY על שלושה טיימפריימים</p>
           </div>

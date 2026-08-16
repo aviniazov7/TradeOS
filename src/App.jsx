@@ -6,6 +6,7 @@ import { JournalProvider } from './contexts/JournalContext';
 import { BacktestProvider } from './contexts/BacktestContext';
 import ProtectedRoute from './components/auth/ProtectedRoute';
 import PremiumRoute from './components/auth/PremiumRoute';
+import AdminRoute from './components/auth/AdminRoute';
 import LoginPage from './components/auth/LoginPage';
 import AuthGooglePopup from './components/auth/AuthGooglePopup';
 import Layout from './components/layout/Layout';
@@ -132,8 +133,8 @@ function MainApp() {
                 {/* Whales moved into Market Overview; keep the path as a redirect
                     so old links/bookmarks still land somewhere sensible. */}
                 <Route path="whales" element={<Navigate to="/market" replace />} />
-                {/* Wyckoff setup scanner — Premium only. */}
-                <Route path="scanner" element={<PremiumRoute><ScannerPage /></PremiumRoute>} />
+                {/* Wyckoff setup scanner — owner-only while it's being calibrated. */}
+                <Route path="scanner" element={<AdminRoute><ScannerPage /></AdminRoute>} />
                 {/* Visible to all in the menu; the page shows a locked teaser to non-premium (no PremiumRoute redirect). */}
                 {/* Own boundary: this section streams live third-party data, so a
                     throw here should degrade the page, not blank the whole app. */}
