@@ -1,13 +1,13 @@
-import { useMemo } from 'react';
+import { useMemo, useState, useEffect } from 'react';
 import { motion } from 'framer-motion';
 import { useParams, useLocation, useNavigate, Navigate } from 'react-router-dom';
-import { ArrowRight, ExternalLink, Gem, Star, CalendarClock } from 'lucide-react';
+import { ArrowRight, ExternalLink, Gem, Star, CalendarClock, AlertCircle } from 'lucide-react';
 import { useAuth } from '../../contexts/AuthContext';
 import { usePolymarketLeaderboard } from '../../hooks/usePolymarketLeaderboard';
 import { usePolymarketWatch } from '../../hooks/usePolymarketWatch';
 import { useMarketHolders } from '../../hooks/usePolymarkets';
 import { fmtUsd, shortWallet } from '../../utils/polymarketScore';
-import { marketUrl } from '../../services/polymarketService';
+import { marketUrl, fetchMarketByCondition } from '../../services/polymarketService';
 import ScoreRing from './ScoreRing';
 import { pageVariants, pageTransition } from '../../utils/animations';
 
@@ -116,10 +116,48 @@ export default function MarketDetailPage() {
   const { state } = useLocation();
   const navigate = useNavigate();
 
-  const m = state?.market || null;
+  // Arriving from the board carries the market in router state; a refresh or a
+  // shared link doesn't, so fetch it by id instead of bouncing the user back.
+  const passed = state?.market?.conditionId === conditionId ? state.market : null;
+  const [fetched, setFetched] = useState(null);
+  const [loadErr, setLoadErr] = useState(false);
+
+  useEffect(() => {
+    if (passed || !conditionId) return undefined;
+    const controller = new AbortController();
+    setLoadErr(false);
+    fetchMarketByCondition(conditionId, { signal: controller.signal })
+      .then((row) => { if (row) setFetched(row); else setLoadErr(true); })
+      .catch((e) => { if (e.name !== 'AbortError') setLoadErr(true); });
+    return () => controller.abort();
+  }, [conditionId, passed]);
+
+  const m = passed || fetched;
+
   if (!isPremium) return <Navigate to="/polymarket" replace />;
-  // Deep-link without router state → back to the explorer (market list is cached).
-  if (!m || m.conditionId !== conditionId) return <Navigate to="/polymarket" replace />;
+
+  if (!m) {
+    return (
+      <div className="max-w-3xl mx-auto">
+        <button onClick={() => navigate('/polymarket')} className="inline-flex items-center gap-1.5 text-sm text-text-muted hover:text-text-primary transition-colors mb-3 cursor-pointer">
+          <ArrowRight className="w-4 h-4" /> חזרה לשווקים
+        </button>
+        {loadErr ? (
+          <div className="flex flex-col items-center gap-2 py-16 text-center">
+            <AlertCircle className="w-7 h-7 text-loss" />
+            <p className="text-sm text-text-primary font-medium">השוק לא נמצא</p>
+            <p className="text-[11px] text-text-muted max-w-xs leading-relaxed">ייתכן שהשוק נסגר או הוסר. חזור לרשימת השווקים ובחר אחר.</p>
+          </div>
+        ) : (
+          <div className="space-y-3">
+            <div className="h-28 rounded-2xl bg-bg-secondary animate-pulse" />
+            <div className="h-16 rounded-xl bg-bg-secondary animate-pulse" />
+            <div className="h-16 rounded-xl bg-bg-secondary animate-pulse" />
+          </div>
+        )}
+      </div>
+    );
+  }
 
   const link = marketUrl(m.eventSlug, m.slug);
   const dl = daysLeft(m.endDate);

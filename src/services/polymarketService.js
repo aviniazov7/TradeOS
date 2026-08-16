@@ -146,17 +146,30 @@ function normalizeMarket(m) {
   };
 }
 
+// A market is only usable if it has a price per outcome — one whose
+// outcomePrices didn't parse would render 0% and a false "gap 100¢" badge.
+const isUsableMarket = (m) => isConditionId(m.conditionId)
+  && m.outcomes.length >= 2
+  && m.prices.length === m.outcomes.length;
+
 // Open markets from the Gamma API (CORS-open, verified live). Ordered
 // server-side; the explorer re-sorts/filters client-side on this set.
 export async function fetchMarkets({ limit = 60, order = 'volume24hr', signal } = {}) {
   const url = `${C.GAMMA_API}/markets?closed=false&active=true&limit=${limit}`
     + `&order=${encodeURIComponent(order)}&ascending=false`;
   const rows = await getJson(url, { signal });
-  return (Array.isArray(rows) ? rows : [])
-    .map(normalizeMarket)
-    // Require a price per outcome — a market whose outcomePrices didn't parse
-    // would otherwise show a bogus 0% and a false "gap 100¢" badge.
-    .filter((m) => isConditionId(m.conditionId) && m.outcomes.length >= 2 && m.prices.length === m.outcomes.length);
+  return (Array.isArray(rows) ? rows : []).map(normalizeMarket).filter(isUsableMarket);
+}
+
+// One market by conditionId — lets the market page survive a refresh or a
+// shared link instead of bouncing back to the board (verified: gamma supports
+// ?condition_ids= and returns an exact single match).
+export async function fetchMarketByCondition(conditionId, { signal } = {}) {
+  if (!isConditionId(conditionId)) return null;
+  const url = `${C.GAMMA_API}/markets?condition_ids=${conditionId}`;
+  const rows = await getJson(url, { signal });
+  const m = (Array.isArray(rows) ? rows : []).map(normalizeMarket).find(isUsableMarket);
+  return m || null;
 }
 
 // Who holds a market — one entry per outcome token, holders sorted by amount.
