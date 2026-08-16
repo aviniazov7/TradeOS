@@ -68,11 +68,11 @@ function median(nums) {
 }
 
 function HeroTile({ value, label, tone }) {
-  const color = tone === 'profit' ? 'text-profit' : tone === 'accent' ? 'text-accent-primary' : 'text-white';
+  const color = tone === 'profit' ? 'text-profit' : tone === 'accent' ? 'text-accent-primary' : '';
   return (
-    <div className="rounded-xl bg-white/[0.04] border border-white/10 px-3 py-2.5 transition-colors hover:border-accent-primary/40">
-      <div className={`text-base font-extrabold num-mono leading-none ${color}`}>{value}</div>
-      <div className="text-[10px] text-white/50 mt-1.5">{label}</div>
+    <div className="rounded-xl px-3 py-2.5 border transition-colors hover:border-accent-primary/40" style={{ background: 'var(--pm-hero-tile)', borderColor: 'var(--pm-hero-line)' }}>
+      <div className={`text-base font-extrabold num-mono leading-none ${color}`} style={color ? undefined : { color: 'var(--pm-hero-fg)' }}>{value}</div>
+      <div className="text-[10px] mt-1.5" style={{ color: 'var(--pm-hero-fg-faint)' }}>{label}</div>
     </div>
   );
 }
@@ -81,7 +81,8 @@ function HeroTile({ value, label, tone }) {
 function HeroAction({ icon, label, badge, onClick }) {
   return (
     <button onClick={onClick} title={label} aria-label={label}
-      className="relative w-9 h-9 rounded-xl flex items-center justify-center shrink-0 text-white/70 bg-white/[0.06] border border-white/10 hover:text-accent-primary hover:border-accent-primary/40 hover:bg-accent-primary/10 transition-colors cursor-pointer">
+      className="relative w-9 h-9 rounded-xl flex items-center justify-center shrink-0 border hover:text-accent-primary hover:border-accent-primary/40 hover:bg-accent-primary/10 transition-colors cursor-pointer"
+      style={{ color: 'var(--pm-hero-fg-soft)', background: 'var(--pm-hero-tile)', borderColor: 'var(--pm-hero-line)' }}>
       {icon}
       {badge > 0 && (
         <span className="absolute -top-1 -left-1 min-w-[16px] h-4 px-1 rounded-full bg-amber-400 text-[9px] font-extrabold text-bg-primary num-mono flex items-center justify-center">
@@ -97,7 +98,7 @@ function HeroAction({ icon, label, badge, onClick }) {
 function Hero({ stats, watchedCount = 0, strategyCount = 0, onOpenAnalyst, onOpenStrategy, onOpenWatched, onOpenAcademy }) {
   const count = useCountUp(stats?.count ?? 0);
   return (
-    <div className="relative overflow-hidden rounded-2xl border border-accent-primary/20 bg-[#070b12] p-5 mb-5">
+    <div className="relative overflow-hidden rounded-2xl border border-accent-primary/20 p-5 mb-5" style={{ background: 'var(--pm-hero-bg)' }}>
       <div className="absolute -top-20 -left-16 w-64 h-64 rounded-full bg-accent-primary/10 blur-3xl pointer-events-none" />
       {/* On mobile the actions wrap to their own row — squeezing them beside
           the title broke it into three lines. */}
@@ -109,10 +110,10 @@ function Hero({ stats, watchedCount = 0, strategyCount = 0, onOpenAnalyst, onOpe
           </div>
           <div className="min-w-0 flex-1">
             <div className="flex items-center gap-2 flex-wrap">
-              <h1 className="text-base sm:text-lg font-bold text-white leading-tight">ארנקים מובילים · Polymarket</h1>
+              <h1 className="text-base sm:text-lg font-bold leading-tight" style={{ color: 'var(--pm-hero-fg)' }}>ארנקים מובילים · Polymarket</h1>
               <span className="inline-flex items-center gap-1 text-[10px] px-1.5 py-0.5 rounded-full bg-accent-primary text-bg-primary font-bold"><Crown className="w-2.5 h-2.5" /> Premium</span>
             </div>
-            <p className="text-[11px] sm:text-xs text-white/60 leading-relaxed mt-1">
+            <p className="text-[11px] sm:text-xs leading-relaxed mt-1" style={{ color: 'var(--pm-hero-fg-soft)' }}>
               הטריידרים הרווחיים ב-Polymarket, מדורגים לפי יעילות (רווח לכל $ מחזור) — לא רק רווח גולמי. דאטה ציבורי, 30 יום.
             </p>
           </div>

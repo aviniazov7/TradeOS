@@ -169,16 +169,16 @@ export default function MarketDetailPage() {
       </button>
 
       {/* Header */}
-      <div className="relative overflow-hidden rounded-2xl border border-accent-primary/20 bg-[#070b12] p-4 mb-4">
+      <div className="relative overflow-hidden rounded-2xl border border-accent-primary/20 p-4 mb-4" style={{ background: 'var(--pm-hero-bg)' }}>
         <div className="absolute -top-16 -left-16 w-56 h-56 rounded-full bg-accent-primary/10 blur-3xl pointer-events-none" />
         <div className="relative flex items-center gap-3">
           {m.icon
             ? <img src={m.icon} alt="" className="w-12 h-12 rounded-xl object-cover" loading="lazy" />
             : <div className="w-12 h-12 rounded-xl bg-white/10" />}
           <div className="min-w-0 flex-1">
-            <h1 className="text-base font-bold text-white leading-snug" dir="auto">{m.question}</h1>
+            <h1 className="text-base font-bold leading-snug" dir="auto" style={{ color: 'var(--pm-hero-fg)' }}>{m.question}</h1>
             {dl != null && (
-              <span className="inline-flex items-center gap-1 text-[11px] text-white/50 mt-1">
+              <span className="inline-flex items-center gap-1 text-[11px] mt-1" style={{ color: 'var(--pm-hero-fg-faint)' }}>
                 <CalendarClock className="w-3 h-3" /> {dl <= 0 ? 'נסגר היום' : `נסגר בעוד ${dl} ימים`}
               </span>
             )}

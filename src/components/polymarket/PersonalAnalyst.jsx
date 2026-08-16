@@ -107,7 +107,7 @@ export default function PersonalAnalyst({ smartCountByMarket = {}, smartLoading 
           <Tile icon={<Activity className="w-3.5 h-3.5" />} value={totalMatches} label="התאמות פתוחות" />
         </div>
       ) : (
-      <div className="relative overflow-hidden rounded-2xl border border-accent-primary/20 bg-[#070b12] p-4 mb-4">
+      <div className="relative overflow-hidden rounded-2xl border border-accent-primary/20 p-4 mb-4" style={{ background: 'var(--pm-hero-bg)' }}>
         <div className="absolute -top-16 -left-16 w-56 h-56 rounded-full bg-accent-primary/10 blur-3xl pointer-events-none" />
         <div className="relative flex items-start gap-3">
           <div className="w-11 h-11 rounded-2xl flex items-center justify-center shrink-0 text-accent-primary bg-accent-primary/15 border border-accent-primary/40"
@@ -115,8 +115,8 @@ export default function PersonalAnalyst({ smartCountByMarket = {}, smartLoading 
             <UserRoundSearch className="w-6 h-6" />
           </div>
           <div className="min-w-0 flex-1">
-            <h2 className="text-base font-bold text-white">האנליסט הפרטי שלי</h2>
-            <p className="text-xs text-white/60 leading-relaxed mt-1">
+            <h2 className="text-base font-bold" style={{ color: 'var(--pm-hero-fg)' }}>האנליסט הפרטי שלי</h2>
+            <p className="text-xs leading-relaxed mt-1" style={{ color: 'var(--pm-hero-fg-soft)' }}>
               תדרוך אישי על סביבת העבודה שלך — הארנקים שאתה עוקב, מה הם עשו לאחרונה, והאם משהו תואם לאסטרטגיות שלך.
             </p>
           </div>
