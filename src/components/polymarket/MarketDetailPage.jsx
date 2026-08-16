@@ -94,9 +94,9 @@ function SmartHolders({ conditionId, outcomes, prices }) {
                   <span className="text-xs font-bold text-text-primary truncate" dir="auto">{h.name || shortWallet(h.wallet)}</span>
                   {h.tracked && <Star className="w-3 h-3 text-amber-400 fill-amber-400 shrink-0" />}
                 </div>
-                <span className="text-[10px] text-text-muted">
-                  מחזיק <span className="num-mono">{fmtUsd(h.valueUsd)}</span>
-                  <span className="num-mono"> ({fmtShares(h.amount)} מניות)</span> · {h.outcome}
+                <span className="text-[10px] text-text-muted" dir="ltr">
+                  <span className="num-mono">{fmtUsd(h.valueUsd)}</span>
+                  <span className="num-mono"> · {fmtShares(h.amount)} shares</span> · {h.outcome}
                 </span>
               </div>
               {h.lbRow?.smartScore != null && <ScoreRing score={h.lbRow.smartScore} size="md" />}

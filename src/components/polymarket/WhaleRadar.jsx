@@ -6,6 +6,7 @@ import { fetchTrades } from '../../services/polymarketService';
 import { openTradeStream } from '../../services/polymarketLive';
 import { usePolymarketWatch } from '../../hooks/usePolymarketWatch';
 import { fmtUsd, shortWallet } from '../../utils/polymarketScore';
+import { timeAgoEn, sideLabelEn } from '../../utils/polymarketLabels';
 
 const POLL_MS = 20_000;
 const SIZES = [
@@ -19,14 +20,6 @@ const MAX_FEED = 60;
 // out — which is why the default view looked empty. Drop dust at ingest so the
 // buffer holds a long window of trades the user actually filters on.
 const KEEP_MIN_USD = 1_000;
-
-function timeAgo(ts) {
-  const secs = Math.max(0, Math.floor(Date.now() / 1000) - ts);
-  if (secs < 60) return 'עכשיו';
-  const mins = Math.floor(secs / 60);
-  if (mins < 60) return `לפני ${mins} ד׳`;
-  return `לפני ${Math.floor(mins / 60)} ש׳`;
-}
 
 function TradeRow({ t, tracked, onOpenWallet }) {
   const isBuy = t.side === 'BUY';
@@ -42,12 +35,12 @@ function TradeRow({ t, tracked, onOpenWallet }) {
           {tracked && <Star className="w-3 h-3 text-amber-400 fill-amber-400 shrink-0" title="ארנק במעקב שלך" />}
         </div>
         <div className="flex items-center gap-1.5 mt-0.5 flex-wrap">
-          <span className={`text-[10px] font-bold px-1.5 py-0.5 rounded ${isBuy ? 'bg-profit/10 text-profit' : 'bg-loss/10 text-loss'}`}>{isBuy ? 'קנייה' : 'מכירה'}</span>
+          <span className={`text-[10px] font-bold px-1.5 py-0.5 rounded ${isBuy ? 'bg-profit/10 text-profit' : 'bg-loss/10 text-loss'}`}>{sideLabelEn(t.side)}</span>
           {t.outcome && <span className="text-[10px] text-text-muted">{t.outcome}</span>}
           <button onClick={() => onOpenWallet(t)} className="text-[10px] text-text-muted hover:text-accent-primary transition-colors num-mono cursor-pointer" dir="ltr">
             {t.name || shortWallet(t.wallet)}
           </button>
-          <span className="text-[10px] text-text-muted num-mono">· {timeAgo(t.timestamp)}</span>
+          <span className="text-[10px] text-text-muted num-mono">· {timeAgoEn(t.timestamp)}</span>
         </div>
       </div>
       <div className="text-left shrink-0">

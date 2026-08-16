@@ -103,11 +103,11 @@ export default function Modal({ isOpen, onClose, title, ariaLabel, children, max
                 {/* Header — opaque strip: a translucent one let scrolled
                     content read through and collide with the title. */}
                 <div
-                  className="flex items-center justify-between px-5 py-3 sticky top-0 z-10 bg-bg-overlay"
+                  className="flex items-center justify-between px-5 py-3 sticky top-0 z-10"
                   style={{
                     borderBottom: '1px solid var(--glass-border)',
-                    backdropFilter: 'blur(24px) saturate(140%)',
-                    WebkitBackdropFilter: 'blur(24px) saturate(140%)',
+                    // Opaque — no blur needed once nothing shows through.
+                    background: 'var(--modal-header-solid)',
                   }}
                 >
                   <h2 className="text-base font-bold text-text-primary">{title}</h2>
