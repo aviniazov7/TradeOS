@@ -29,7 +29,7 @@ function MatchRow({ match, onOpen }) {
         ? <img src={market.icon} alt="" className="w-9 h-9 rounded-lg object-cover shrink-0" loading="lazy" />
         : <div className="w-9 h-9 rounded-lg bg-bg-tertiary shrink-0" />}
       <div className="min-w-0 flex-1">
-        <div className="text-xs font-semibold text-text-primary truncate">{market.question}</div>
+        <div className="text-xs font-semibold text-text-primary truncate" dir="auto">{market.question}</div>
         <div className="flex items-center gap-2 mt-1 text-[10px] text-text-muted num-mono flex-wrap">
           <span className="text-accent-primary font-bold">{band.outcome} · {Math.round(band.price * 100)}¢</span>
           <span>· נזילות {fmtUsd(market.liquidity)}</span>

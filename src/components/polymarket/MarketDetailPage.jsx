@@ -91,7 +91,7 @@ function SmartHolders({ conditionId, outcomes, prices }) {
                 : <div className="w-7 h-7 rounded-full bg-bg-tertiary shrink-0" />}
               <div className="min-w-0 flex-1">
                 <div className="flex items-center gap-1.5">
-                  <span className="text-xs font-bold text-text-primary truncate">{h.name || shortWallet(h.wallet)}</span>
+                  <span className="text-xs font-bold text-text-primary truncate" dir="auto">{h.name || shortWallet(h.wallet)}</span>
                   {h.tracked && <Star className="w-3 h-3 text-amber-400 fill-amber-400 shrink-0" />}
                 </div>
                 <span className="text-[10px] text-text-muted">
@@ -139,7 +139,7 @@ export default function MarketDetailPage() {
   if (!m) {
     return (
       <div className="max-w-3xl mx-auto">
-        <button onClick={() => navigate('/polymarket')} className="inline-flex items-center gap-1.5 text-sm text-text-muted hover:text-text-primary transition-colors mb-3 cursor-pointer">
+        <button onClick={() => navigate(state?.from || '/polymarket')} className="inline-flex items-center gap-1.5 text-sm text-text-muted hover:text-text-primary transition-colors mb-3 cursor-pointer">
           <ArrowRight className="w-4 h-4" /> חזרה לשווקים
         </button>
         {loadErr ? (
@@ -164,7 +164,7 @@ export default function MarketDetailPage() {
 
   return (
     <motion.div variants={pageVariants} initial="initial" animate="animate" exit="exit" transition={pageTransition} className="max-w-3xl mx-auto">
-      <button onClick={() => navigate(-1)} className="inline-flex items-center gap-1.5 text-sm text-text-muted hover:text-text-primary transition-colors mb-3 cursor-pointer">
+      <button onClick={() => navigate(state?.from || '/polymarket')} className="inline-flex items-center gap-1.5 text-sm text-text-muted hover:text-text-primary transition-colors mb-3 cursor-pointer">
         <ArrowRight className="w-4 h-4" /> חזרה לשווקים
       </button>
 
@@ -176,7 +176,7 @@ export default function MarketDetailPage() {
             ? <img src={m.icon} alt="" className="w-12 h-12 rounded-xl object-cover" loading="lazy" />
             : <div className="w-12 h-12 rounded-xl bg-white/10" />}
           <div className="min-w-0 flex-1">
-            <h1 className="text-base font-bold text-white leading-snug">{m.question}</h1>
+            <h1 className="text-base font-bold text-white leading-snug" dir="auto">{m.question}</h1>
             {dl != null && (
               <span className="inline-flex items-center gap-1 text-[11px] text-white/50 mt-1">
                 <CalendarClock className="w-3 h-3" /> {dl <= 0 ? 'נסגר היום' : `נסגר בעוד ${dl} ימים`}
@@ -200,7 +200,7 @@ export default function MarketDetailPage() {
           return (
             <div key={o} className="rounded-xl bg-bg-secondary border border-border-primary p-3">
               <div className="flex items-center justify-between mb-1.5">
-                <span className="text-xs font-semibold text-text-primary truncate">{o}</span>
+                <span className="text-xs font-semibold text-text-primary truncate" dir="auto">{o}</span>
                 <span className={`text-sm font-extrabold num-mono ${lead ? 'text-profit' : 'text-loss'}`}>{Math.round(p * 100)}%</span>
               </div>
               <div className="h-2 rounded-full bg-bg-tertiary overflow-hidden">

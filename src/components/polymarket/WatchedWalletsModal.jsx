@@ -40,7 +40,7 @@ function WatchRow({ r, onOpen, onRemove }) {
         ? <img src={r.profileImage} alt="" className="w-7 h-7 rounded-full object-cover shrink-0" loading="lazy" />
         : <div className="w-7 h-7 rounded-full bg-bg-tertiary shrink-0" />}
       <div className="min-w-0 flex-1">
-        <div className="text-xs font-bold text-text-primary truncate">{r.name || shortWallet(r.wallet)}</div>
+        <div className="text-xs font-bold text-text-primary truncate" dir="auto">{r.name || shortWallet(r.wallet)}</div>
         <div className="text-[10px] text-text-muted num-mono truncate" dir="ltr">{shortWallet(r.wallet)}</div>
       </div>
       <div className="text-left shrink-0">
