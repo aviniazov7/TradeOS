@@ -81,6 +81,9 @@ body {
   --glass-bg: rgba(10, 10, 12, 0.66);
   --glass-border: rgba(255, 255, 255, 0.12);
   --glass-header: rgba(16, 16, 18, 0.6);
+  /* Fully opaque sticky-header fill: a translucent one let scrolled modal
+     content read through and collide with the title. */
+  --modal-header-solid: #101012;
   --glass-shadow: 0 32px 80px rgba(0, 0, 0, 0.65), 0 0 0 1px rgba(255, 255, 255, 0.1) inset;
   --glass-shadow-sm: 0 28px 70px rgba(0, 0, 0, 0.6);
 }
@@ -90,6 +93,7 @@ body {
   --glass-bg: rgba(255, 255, 255, 0.72);
   --glass-border: rgba(15, 23, 42, 0.08);
   --glass-header: rgba(255, 255, 255, 0.55);
+  --modal-header-solid: #f8fafd;
   --glass-shadow: 0 32px 80px rgba(31, 41, 79, 0.18), 0 0 0 1px rgba(255, 255, 255, 0.5) inset;
   --glass-shadow-sm: 0 28px 70px rgba(31, 41, 79, 0.16);
   --color-bg-primary: #e8ecf4;

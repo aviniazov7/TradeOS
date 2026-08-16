@@ -9,6 +9,7 @@ import ScoreRing from './ScoreRing';
 import WalletAnalystModal from './WalletAnalystModal';
 import { pnlSplit, fmtUsd, fmtPct, shortWallet } from '../../utils/polymarketScore';
 import { profileUrl, marketUrl } from '../../services/polymarketService';
+import { timeAgoEn, sideLabelEn } from '../../utils/polymarketLabels';
 import { pageVariants, pageTransition } from '../../utils/animations';
 
 const SORTS = [
@@ -107,21 +108,9 @@ function PositionCard({ p }) {
   );
 }
 
-function timeAgo(ts) {
-  if (!ts) return '';
-  const secs = Math.max(0, Math.floor(Date.now() / 1000) - ts);
-  if (secs < 60) return 'עכשיו';
-  const mins = Math.floor(secs / 60);
-  if (mins < 60) return `לפני ${mins} ד׳`;
-  const hrs = Math.floor(mins / 60);
-  if (hrs < 24) return `לפני ${hrs} ש׳`;
-  const days = Math.floor(hrs / 24);
-  return `לפני ${days} י׳`;
-}
-
 function ActivityRow({ a }) {
   const isBuy = a.side === 'BUY';
-  const label = a.side ? (isBuy ? 'קנייה' : 'מכירה') : a.type;
+  const label = sideLabelEn(a.side, a.type);
   return (
     <div className="flex items-center gap-2.5 px-3 py-2.5 rounded-xl bg-bg-secondary border border-border-primary">
       {a.icon
@@ -132,7 +121,7 @@ function ActivityRow({ a }) {
         <div className="flex items-center gap-2 mt-0.5">
           <span className={`text-[10px] font-bold px-1.5 py-0.5 rounded ${a.side ? (isBuy ? 'bg-profit/10 text-profit' : 'bg-loss/10 text-loss') : 'bg-bg-tertiary text-text-muted'}`}>{label}</span>
           {a.outcome && <span className="text-[10px] text-text-muted">{a.outcome}</span>}
-          <span className="text-[10px] text-text-muted num-mono">· {timeAgo(a.timestamp)}</span>
+          <span className="text-[10px] text-text-muted num-mono">· {timeAgoEn(a.timestamp)}</span>
         </div>
       </div>
       <div className="text-left shrink-0">
