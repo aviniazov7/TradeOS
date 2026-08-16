@@ -78,7 +78,7 @@ export default function AcademyModal({ isOpen, onClose }) {
   const [openIdx, setOpenIdx] = useState(0);
 
   return (
-    <Modal isOpen={isOpen} onClose={onClose} maxWidth="max-w-lg"
+    <Modal isOpen={isOpen} onClose={onClose} ariaLabel="איך קוראים את הלוח הזה" maxWidth="max-w-lg"
       title={(
         <span className="inline-flex items-center gap-2">
           <GraduationCap className="w-4 h-4 text-accent-primary" />

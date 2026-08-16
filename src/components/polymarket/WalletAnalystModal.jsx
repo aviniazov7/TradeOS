@@ -91,7 +91,7 @@ export default function WalletAnalystModal({ isOpen, onClose, row, positions, sp
   const title = row?.name || shortWallet(row?.wallet);
 
   return (
-    <Modal isOpen={isOpen} onClose={onClose} maxWidth="max-w-2xl"
+    <Modal isOpen={isOpen} onClose={onClose} ariaLabel="ניתוח ארנק AI" maxWidth="max-w-2xl"
       title={(
         <span className="inline-flex items-center gap-2">
           <BrainCircuit className="w-4 h-4 text-accent-primary" />

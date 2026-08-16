@@ -79,7 +79,7 @@ export default function WatchedWalletsModal({ isOpen, onClose, rows, onOpen, onR
   }, [rows, query, sort]);
 
   return (
-    <Modal isOpen={isOpen} onClose={onClose} maxWidth="max-w-lg"
+    <Modal isOpen={isOpen} onClose={onClose} ariaLabel="הארנקים שאני עוקב" maxWidth="max-w-lg"
       title={(
         <span className="inline-flex items-center gap-2">
           <Star className="w-4 h-4 text-amber-400 fill-amber-400" />

@@ -292,7 +292,7 @@ function LockedTeaser() {
 // fetched or scored for non-premium (the scoring is the paid deliverable).
 function PolymarketBoard() {
   const navigate = useNavigate();
-  const [mainTab, setMainTab] = useState('wallets'); // analyst|wallets|markets|strategy|consensus|radar
+  const [mainTab, setMainTab] = useState('wallets'); // wallets | markets | consensus | radar
   const [category, setCategory] = useState('overall');
   const { rows, loading, error, refetch } = usePolymarketLeaderboard(category);
   const { watched, watchedSet, toggle } = usePolymarketWatch();
@@ -308,7 +308,7 @@ function PolymarketBoard() {
   // Consensus doubles as the "how many smart wallets hold this market" source
   // for the strategy filter. MUST come after the modal state it reads — a const
   // is in its temporal dead zone until declared, which crashed the page.
-  const { countByMarket } = useSmartConsensus({ enabled: mainTab === 'consensus' || strategyOpen || analystOpen });
+  const { countByMarket, loading: smartLoading } = useSmartConsensus({ enabled: mainTab === 'consensus' || strategyOpen || analystOpen });
 
   const openWallet = (r) => navigate(`/polymarket/wallet/${r.wallet}`, { state: { row: r } });
 
@@ -462,8 +462,8 @@ function PolymarketBoard() {
       </>
       )}
 
-      <PersonalAnalystModal isOpen={analystOpen} onClose={() => setAnalystOpen(false)} smartCountByMarket={countByMarket} />
-      <StrategyModal isOpen={strategyOpen} onClose={() => setStrategyOpen(false)} smartCountByMarket={countByMarket} />
+      <PersonalAnalystModal isOpen={analystOpen} onClose={() => setAnalystOpen(false)} smartCountByMarket={countByMarket} smartLoading={smartLoading} />
+      <StrategyModal isOpen={strategyOpen} onClose={() => setStrategyOpen(false)} smartCountByMarket={countByMarket} smartLoading={smartLoading} />
       <WatchedWalletsModal isOpen={watchedOpen} onClose={() => setWatchedOpen(false)}
         rows={watchedRows} onOpen={openWallet} onRemove={toggle} />
       <AcademyModal isOpen={academyOpen} onClose={() => setAcademyOpen(false)} />

@@ -8,7 +8,9 @@ const CONCURRENCY = 4;    // be polite to the public API
 const MIN_HOLDERS = 2;    // a "consensus" needs at least two independent wallets
 
 // Consensus is expensive (N positions calls) — cache the aggregate per session.
+// `inflight` dedups concurrent callers (the page and the tab both mount it).
 let cache = { at: 0, data: null };
+let inflight = null;
 
 async function mapLimit(items, limit, fn) {
   const out = [];
@@ -55,14 +57,28 @@ export function useSmartConsensus({ enabled = true } = {}) {
       try {
         const wallets = cohortKey.split(',');
         const byWallet = new Map(cohort.map((r) => [r.wallet, r]));
-        const books = await mapLimit(wallets, CONCURRENCY, async (w) => {
-          try { return { wallet: w, positions: await fetchPositions(w, { limit: 60 }) }; }
-          catch { return { wallet: w, positions: [] }; }
-        });
+        // Share one fan-out between concurrent mounts instead of firing 2×N.
+        if (!inflight) {
+          inflight = (async () => {
+            let failed = 0;
+            const books = await mapLimit(wallets, CONCURRENCY, async (w) => {
+              try { return { wallet: w, positions: await fetchPositions(w, { limit: 60 }) }; }
+              catch { failed += 1; return { wallet: w, positions: [] }; }
+            });
+            return { books, byWallet, failed, total: wallets.length, at: Date.now() };
+          })().finally(() => { inflight = null; });
+        }
+        const data = await inflight;
         if (stop) return;
-        const data = { books, byWallet, at: Date.now() };
-        cache = { at: Date.now(), data };
-        setRaw(data);
+        // Most of the cohort failing means we know nothing — say so instead of
+        // rendering an empty list as "no consensus in the market right now".
+        if (data.failed > data.total / 2) {
+          setError('טעינת התיקים נכשלה — לא ניתן לחשב קונסנזוס כרגע.');
+          setRaw(null);
+        } else {
+          cache = { at: Date.now(), data };
+          setRaw(data);
+        }
       } catch {
         if (!stop) setError('חישוב הקונסנזוס נכשל.');
       } finally {
