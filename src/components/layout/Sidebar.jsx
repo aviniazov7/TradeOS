@@ -16,6 +16,7 @@ import {
   Crown,
   Bot,
   Radar,
+  Trophy,
 } from 'lucide-react';
 import PositionCalculator from '../calculator/PositionCalculator';
 import { useAuth } from '../../contexts/AuthContext';
@@ -29,7 +30,11 @@ const navItems = [
   { to: '/wallets', label: 'ארנקים', icon: Wallet },
   { to: '/plans', label: 'תוכניות מסחר', icon: ClipboardList },
   { to: '/market', label: 'סקירת שוק', icon: Activity },
-  { to: '/scanner', label: 'סורק סטאפים', icon: Radar, admin: true },
+  // Visible to everyone in the menu (no admin/premium filter flag), but the page
+  // itself is Premium — non-premium land on a locked teaser. The crown signals it.
+  { to: '/polymarket', label: 'Polymarket', icon: Trophy, premiumBadge: true },
+  // Owner-only while the engine is being calibrated — hidden from everyone else.
+  { to: '/scanner', label: 'הסורק החכם', icon: Radar, admin: true },
   { to: '/trade-ai', label: 'TradeAI', icon: Bot },
   { to: '/news', label: 'חדשות', icon: Newspaper },
   { to: '/premium', label: 'שדרוג Premium', icon: Crown, highlight: true },
@@ -38,8 +43,8 @@ const navItems = [
 export default function Sidebar({ mobileOpen, onClose }) {
   const { isAdmin, isPremium } = useAuth();
   const [calcOpen, setCalcOpen] = useState(false);
-  // Most items are Premium-gated; the scanner is admin-only for now (owner-only
-  // while it's being calibrated). Route guards enforce this too.
+  // Premium items are hidden from free users; admin items only for admins.
+  // Route guards enforce this too.
   const base = navItems.filter((i) => (!i.premium || isPremium) && (!i.admin || isAdmin));
   const items = isAdmin
     ? [...base, { to: '/admin', label: 'ניהול', icon: Shield }]
@@ -118,6 +123,7 @@ export default function Sidebar({ mobileOpen, onClose }) {
                             style={grad ? { stroke: 'url(#ai-grad)' } : undefined}
                           />
                           <span className={grad ? 'text-gradient font-semibold' : ''}>{item.label}</span>
+                          {item.premiumBadge && <Crown className="w-3.5 h-3.5 text-amber-400 ms-auto shrink-0" />}
                         </>
                       );
                     }}

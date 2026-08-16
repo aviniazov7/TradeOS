@@ -5,9 +5,13 @@ import { motion, AnimatePresence } from 'framer-motion';
 
 let modalCount = 0;
 
-export default function Modal({ isOpen, onClose, title, children, maxWidth = 'max-w-xl' }) {
+export default function Modal({ isOpen, onClose, title, ariaLabel, children, maxWidth = 'max-w-xl' }) {
   const cardRef = useRef(null);
   const prevFocusRef = useRef(null);
+  // Depth at which this modal opened. With nested modals (a form inside a
+  // workspace) only the topmost may act on Escape — otherwise one keypress
+  // closes the child AND its parent, discarding the form.
+  const depthRef = useRef(0);
   // onClose via ref so the Escape/focus effect can depend on [isOpen] only (a
   // parent that recreates onClose each render must not re-run it and steal focus).
   const onCloseRef = useRef(onClose);
@@ -16,6 +20,7 @@ export default function Modal({ isOpen, onClose, title, children, maxWidth = 'ma
   useEffect(() => {
     if (isOpen) {
       modalCount++;
+      depthRef.current = modalCount;
       document.body.style.overflow = 'hidden';
       window.dispatchEvent(new CustomEvent('closeSidebar'));
     }
@@ -36,7 +41,11 @@ export default function Modal({ isOpen, onClose, title, children, maxWidth = 'ma
     if (!isOpen) return undefined;
     prevFocusRef.current = document.activeElement;
     const t = setTimeout(() => cardRef.current?.focus(), 0);
-    const onKey = (e) => { if (e.key === 'Escape') onCloseRef.current?.(); };
+    const onKey = (e) => {
+      if (e.key !== 'Escape') return;
+      if (depthRef.current !== modalCount) return; // not the topmost modal
+      onCloseRef.current?.();
+    };
     document.addEventListener('keydown', onKey);
     return () => {
       clearTimeout(t);
@@ -71,7 +80,7 @@ export default function Modal({ isOpen, onClose, title, children, maxWidth = 'ma
               ref={cardRef}
               role="dialog"
               aria-modal="true"
-              aria-label={title || 'חלון'}
+              aria-label={ariaLabel || (typeof title === 'string' ? title : 'חלון')}
               tabIndex={-1}
               className={`relative ${maxWidth} w-full rounded-2xl overflow-hidden pointer-events-auto outline-none`}
               style={{
@@ -91,14 +100,14 @@ export default function Modal({ isOpen, onClose, title, children, maxWidth = 'ma
             >
               {/* Scrollable inner */}
               <div className="relative overflow-y-auto" style={{ maxHeight: 'calc(100vh - 4.5rem)' }}>
-                {/* Header — subtle translucent strip over the glass */}
+                {/* Header — opaque strip: a translucent one let scrolled
+                    content read through and collide with the title. */}
                 <div
                   className="flex items-center justify-between px-5 py-3 sticky top-0 z-10"
                   style={{
                     borderBottom: '1px solid var(--glass-border)',
-                    background: 'var(--glass-header)',
-                    backdropFilter: 'blur(12px)',
-                    WebkitBackdropFilter: 'blur(12px)',
+                    // Opaque — no blur needed once nothing shows through.
+                    background: 'var(--modal-header-solid)',
                   }}
                 >
                   <h2 className="text-base font-bold text-text-primary">{title}</h2>

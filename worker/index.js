@@ -1589,7 +1589,13 @@ async function handleCron(env) {
 // Gated by env.SCANNER_ENABLED — fails closed (only the exact string 'true'
 // activates it). Currently ENABLED on the prod cron worker (worker/wrangler.toml).
 const FS_BASE = `https://firestore.googleapis.com/v1/projects/${FIREBASE_PROJECT_ID}/databases/(default)`;
-const SCAN_MIN_CONFIDENCE = 60;   // don't alert below this score
+// Default alert threshold — users/{uid}/settings/scanner.minConfidence overrides
+// it (per user, no redeploy). Post-HTF scores can only be 75/85/95 (base 55 +
+// vol 10 + RSI 10 + mandatory HTF 20), so 60 = alert on everything.
+const SCAN_MIN_CONFIDENCE = 60;
+// Hard ceiling on the stop-buffer override — a fat-fingered settings write must
+// not be able to push the stop into another galaxy.
+const SCAN_MAX_STOP_BUFFER_PCT = 5;
 // Global hard cap on klines fetches per cron tick — kept well under the free
 // Workers plan's ~50-subrequest budget (shared with the other cron jobs). The
 // real control is the 15-tag-per-user cap in the watchlist UI.
@@ -1606,7 +1612,7 @@ const scanRound = (x) => {
 // Fetch OHLCV candles server-side via the same Bybit→Binance klines proxy the
 // app uses. Returns oldest-first [{t,o,h,l,c,v}] or null (unsupported pair / error).
 async function scanFetchCandles(symbol, interval, limit) {
-  const raw = await bybitAsBinance('klines', new URLSearchParams({ symbol, interval, limit: String(limit) }));
+  const raw = await bybitAsBinance('klines', new URLSearchParams({ symbol, interval, limit: String(limit), category: 'linear' }));
   if (!raw) return null;
   let arr;
   try { arr = JSON.parse(raw); } catch { return null; }
@@ -1748,6 +1754,27 @@ async function scanReadWatchlist(env, token, uid) {
   return out.slice(0, 15);
 }
 
+// Per-user engine calibration (users/{uid}/settings/scanner) — the owner tunes
+// the alert threshold and stop buffer from the scanner page and the next cron
+// tick picks them up, no redeploy. Missing/unreadable doc → code defaults.
+// Values are clamped so a raw-SDK write can't disable the engine or explode
+// the stop distance.
+async function scanReadSettings(env, token, uid) {
+  const cfg = { minConfidence: SCAN_MIN_CONFIDENCE, stopBufferPct: 0 };
+  try {
+    const res = await fetch(`${FS_BASE}/documents/users/${encodeURIComponent(uid)}/settings/scanner`, {
+      headers: { Authorization: `Bearer ${token}` },
+    });
+    if (!res.ok) return cfg;
+    const f = (await res.json()).fields || {};
+    const num = (v) => (v?.doubleValue != null ? Number(v.doubleValue) : v?.integerValue != null ? Number(v.integerValue) : NaN);
+    const mc = num(f.minConfidence), sb = num(f.stopBufferPct);
+    if (Number.isFinite(mc)) cfg.minConfidence = Math.min(100, Math.max(0, mc));
+    if (Number.isFinite(sb)) cfg.stopBufferPct = Math.min(SCAN_MAX_STOP_BUFFER_PCT, Math.max(0, sb));
+  } catch { /* keep defaults */ }
+  return cfg;
+}
+
 // wyckoffAlerts toggle (settings/notifications). Defaults ON when unset/unreadable.
 async function scanWyckoffAlertsOn(env, token, uid) {
   try {
@@ -1791,19 +1818,20 @@ async function scanWyckoffSetups(env) {
   try { users = await listAllUsersAdmin(env); } catch { return; }
   let token;
   try { token = await getFirebaseAdminToken(env); } catch { return; }
-  // Scanner is OWNER-ONLY for now (still being calibrated) — only admins scanned.
-  const isOwner = (u) => u.role === 'admin';
+  // Scanner is OWNER-ONLY while it's still being calibrated — admins only.
+  const canScan = (u) => u.role === 'admin';
 
   const candleCache = new Map();                       // symbol → 30m candles (dedup fetches this tick)
   let scans = 0;
 
   for (const u of users) {
-    if (!isOwner(u)) continue;                          // owner-only while calibrating
+    if (!canScan(u)) continue;                          // owner-only while calibrating
     if (scans >= SCAN_MAX_PER_TICK) break;
     let watch;
     try { watch = await scanReadWatchlist(env, token, u.uid); } catch { continue; }
     if (!watch.length) continue;
     let alertsOn = null;                                // read the toggle lazily, only if a setup fires
+    let cfg = null;                                     // per-user calibration, same lazy pattern
 
     for (const item of watch) {
       if (scans >= SCAN_MAX_PER_TICK) break;
@@ -1824,7 +1852,18 @@ async function scanWyckoffSetups(env) {
       if (h4 === undefined) { h4 = await scanFetchCandles(sym, '4h', 200); candleCache.set(`${sym}:4h`, h4); scans++; }
       if (!detectHTFStructure(d1, item.bias) || !detectHTFStructure(h4, item.bias)) continue;
       setup.confidence = Math.min(setup.confidence + 20, 95);   // both higher timeframes confirm
-      if (setup.confidence < SCAN_MIN_CONFIDENCE) continue;
+
+      // Calibration gate + stop buffer — the user-tuned values (settings/scanner),
+      // fetched only now that a setup actually fired (one extra subrequest per
+      // user per firing tick, nothing on quiet ticks).
+      if (cfg === null) cfg = await scanReadSettings(env, token, u.uid);
+      if (setup.confidence < cfg.minConfidence) continue;
+      if (cfg.stopBufferPct > 0) {
+        // Push the stop BEYOND the pivot (short: above the high, long: below
+        // the low) — Avi places his stop past the wick, never on it.
+        const f = cfg.stopBufferPct / 100;
+        setup.stop = scanRound(setup.direction === 'short' ? setup.stop * (1 + f) : setup.stop * (1 - f));
+      }
 
       // Dedup: one alert per (user, coin, setup). The signature = direction+stop
       // (stable for a given setup); a genuinely new setup has a new stop.
@@ -2471,6 +2510,63 @@ const BACKTEST_COACH_SYSTEM_PROMPT = `אתה אנליסט אסטרטגיות מ�
 - כל בולט קצר, ומסתמך על מספר אחד לפחות מה-stats.
 - המלצות = פעולה ספציפית ("התמקד ב-[אסטרטגיה] בסשן [X] — ממוצע [R]R; זנח [Y] עם תוחלת שלילית"), לא טיפים גנריים.`;
 
+// Polymarket wallet analyst — reads a smart-money wallet's public stats and
+// positions and gives a structured Hebrew read. Same 4-section contract as the
+// coach prompts so the client parser is shared.
+const PM_ANALYST_SYSTEM_PROMPT = `אתה אנליסט שווקי-חיזוי שמנתח ארנק ציבורי ב-Polymarket (פלטפורמת הימורים על אירועים) וכותב דו"ח חד בעברית. הנתונים: ביצועי 30 יום (רווח, ROI, מחזור), פוזיציות פתוחות (שוק, תוצאה, שווי, רווח, נתח-מהתיק), ורווח ממומש מול לא-ממומש.
+
+## פלט נדרש (חובה):
+- בעברית בלבד, טבעית וזורמת.
+- 3 חלקים בלבד, בסדר הזה — כל אחד עם כותרת בדיוק בפורמט:
+  **חוזקות**
+  **חולשות**
+  **המלצות לפעולה**
+- אם יבוקש דו"ח מורחב — הוסף חלק רביעי: **תובנות מתקדמות**.
+- תחת כל כותרת: 2–5 בולטים. כל בולט מתחיל ב"• ". בלי מספור.
+
+## אסור (חובה לציית):
+- אסור להתחיל שורה ב-#, ##, ### או אות-מספר-נקודה (1.).
+- אסור כותרות אחרות מלבד הארבע המוגדרות.
+- אסור: המלצה להמר, הבטחת רווח, אזכור שאתה AI, פתיחות שיווקיות.
+- אסור להמציא נתונים — רק מה שמופיע ב-stats.
+- בלי משפט פתיחה. תתחיל ישר בשורה: **חוזקות**.
+
+## איכות התוכן (חשוב):
+- הערך את סגנון הארנק: ROI גבוה על מחזור נמוך = צלף סלקטיבי; מחזור ענק עם ROI דק = טוחן נפח.
+- נתח ריכוזיות: פוזיציה עם נתח-מהתיק גבוה (30%+) = הימור-אמונה; פיזור רחב = ניהול סיכון.
+- רווח לא-ממומש גדול מול ממומש = הרווח עדיין בסיכון; ציין זאת.
+- זהה התמחות לפי נושאי השווקים בפוזיציות (ספורט/פוליטיקה/קריפטו...).
+- המלצות = מה למי שעוקב אחרי הארנק כדאי לבדוק ("שים לב לפוזיציית [X] — 40% מהתיק"), לא ייעוץ הימורים.
+- כל בולט מסתמך על מספר אחד לפחות מה-stats. מותר ואף רצוי לציין סיכונים.`;
+
+// Personal analyst — the user's OWN Polymarket workspace: the wallets they
+// track, what those wallets did recently, their saved strategies and the
+// markets matching them right now. A daily-brief voice, not a wallet report.
+const PM_BRIEF_SYSTEM_PROMPT = `אתה האנליסט האישי של המשתמש לשווקי-חיזוי (Polymarket). אתה מקבל את סביבת העבודה שלו: הארנקים שהוא עוקב אחריהם וביצועיהם, מהלכים אחרונים שלהם, האסטרטגיות ששמר, והשווקים שתואמים להן כרגע. אתה כותב לו תדרוך אישי חד בעברית.
+
+## פלט נדרש (חובה):
+- בעברית בלבד, בגוף שני ("הארנקים שלך", "האסטרטגיה שלך"), טבעית וזורמת.
+- 3 חלקים בלבד, בסדר הזה — כל אחד עם כותרת בדיוק בפורמט:
+  **חוזקות**
+  **חולשות**
+  **המלצות לפעולה**
+- אם יבוקש דו"ח מורחב — הוסף חלק רביעי: **תובנות מתקדמות**.
+- תחת כל כותרת: 2–5 בולטים. כל בולט מתחיל ב"• ". בלי מספור.
+
+## אסור (חובה לציית):
+- אסור להתחיל שורה ב-#, ##, ### או אות-מספר-נקודה (1.).
+- אסור כותרות אחרות מלבד הארבע המוגדרות.
+- אסור: המלצה להמר או להיכנס לפוזיציה, הבטחת רווח, אזכור שאתה AI, פתיחות שיווקיות.
+- אסור להמציא נתונים — רק מה שמופיע ב-stats. אם חלק ריק (אין ארנקים במעקב / אין אסטרטגיה) — אמור זאת מפורשות והמלץ להשלים אותו.
+- בלי משפט פתיחה. תתחיל ישר בשורה: **חוזקות**.
+
+## איכות התוכן (חשוב):
+- "חוזקות" = מה מסודר אצלו: איכות הארנקים שבמעקב (ציון/ROI), אסטרטגיה מוגדרת היטב, התאמות איכותיות שנמצאו.
+- "חולשות" = פערים: מעקב ריק או אחרי ארנקים חלשים, אסטרטגיה רחבה מדי (יותר מדי התאמות = לא מסננת) או צרה מדי (אפס התאמות), ריכוז יתר בנושא אחד.
+- "המלצות לפעולה" = צעדים קונקרטיים על סביבת העבודה: "הדק את רצפת הנזילות ל-X", "הוסף למעקב את [ארנק] — ROI [Y]", "בדוק את [שוק] — [N] ארנקים חכמים נכנסו", "צמצם את חלון הזמן".
+- קשר בין הדברים: אם ארנק במעקב נכנס לשוק שתואם לאסטרטגיה — זו התובנה הכי חשובה, ציין אותה ראשונה.
+- כל בולט מסתמך על מספר או שם אחד לפחות מה-stats.`;
+
 const BACKTEST_FOCUS_INSTRUCTIONS = {
   overview: 'הסוחר ביקש סקירה כללית של הבקטסט: האם האסטרטגיה רווחית, מה ה-edge, ומה הכי בולט לטובה ולרעה.',
   profit: 'הסוחר שאל: "איפה אני מרוויח הכי הרבה?". מקד את כל הדו"ח בצירופים הרווחיים ביותר (אסטרטגיה/סשן/זוג/טיימפריים) לפי ממוצע R וסה"כ R — איפה ה-edge ואיך למקסם אותו.',
@@ -2486,12 +2582,24 @@ async function handleAICoach(request, env, cors) {
     if (!stats || typeof stats !== 'object') {
       return new Response(JSON.stringify({ error: 'Missing stats' }), { status: 400, headers: { ...cors, 'Content-Type': 'application/json' } });
     }
-    // Backtest mode swaps the system prompt + focus set; everything else (auth,
+    // Mode swaps the system prompt + focus set; everything else (auth,
     // rate gate, quota, provider failover) is shared.
     const isBacktest = mode === 'backtest';
-    const systemPrompt = isBacktest ? BACKTEST_COACH_SYSTEM_PROMPT : COACH_SYSTEM_PROMPT;
-    const focusSet = isBacktest ? BACKTEST_FOCUS_INSTRUCTIONS : COACH_FOCUS_INSTRUCTIONS;
-    const dataLabel = isBacktest ? 'נתוני הבקטסט' : 'נתוני העסקאות';
+    const isPolymarket = mode === 'polymarket';       // one public wallet
+    const isPmBrief = mode === 'polymarket-brief';    // the user's own workspace
+    let systemPrompt = COACH_SYSTEM_PROMPT;
+    if (isBacktest) systemPrompt = BACKTEST_COACH_SYSTEM_PROMPT;
+    if (isPolymarket) systemPrompt = PM_ANALYST_SYSTEM_PROMPT;
+    if (isPmBrief) systemPrompt = PM_BRIEF_SYSTEM_PROMPT;
+    // Polymarket modes have no quick-prompts — an empty set keeps journal
+    // directives from leaking into those reports.
+    let focusSet = COACH_FOCUS_INSTRUCTIONS;
+    if (isBacktest) focusSet = BACKTEST_FOCUS_INSTRUCTIONS;
+    if (isPolymarket || isPmBrief) focusSet = {};
+    let dataLabel = 'נתוני העסקאות';
+    if (isBacktest) dataLabel = 'נתוני הבקטסט';
+    if (isPolymarket) dataLabel = 'נתוני הארנק';
+    if (isPmBrief) dataLabel = 'סביבת העבודה שלך';
     // Hard cap stats payload to keep the prompt cheap.
     const statsStr = JSON.stringify(stats).slice(0, 6000);
 
@@ -2529,9 +2637,12 @@ async function handleAICoach(request, env, cors) {
 
     // Turn the clicked quick-prompt (stats.focus) into an explicit, prominent
     // directive so each button yields a genuinely different, focused report.
+    // Own-property lookup only — a focus like "constructor" must not resolve
+    // through the prototype chain into the prompt.
     const focusKey = typeof stats.focus === 'string' ? stats.focus : '';
-    const focusLine = focusSet[focusKey]
-      ? `## מיקוד הדו"ח (חובה):\n${focusSet[focusKey]}\nכל סעיף בדו"ח חייב לענות על השאלה הזו — אל תיתן דו"ח כללי.\n\n`
+    const focusText = Object.prototype.hasOwnProperty.call(focusSet, focusKey) ? focusSet[focusKey] : null;
+    const focusLine = focusText
+      ? `## מיקוד הדו"ח (חובה):\n${focusText}\nכל סעיף בדו"ח חייב לענות על השאלה הזו — אל תיתן דו"ח כללי.\n\n`
       : '';
 
     const userPrompt =
@@ -3182,11 +3293,14 @@ async function bybitAsBinance(subPath, searchParams) {
       const MAP = { '1m': '1', '3m': '3', '5m': '5', '15m': '15', '30m': '30', '1h': '60', '2h': '120', '4h': '240', '6h': '360', '12h': '720', '1d': 'D', '1w': 'W', '1M': 'M' };
       const byInterval = MAP[interval];
       if (!byInterval) return null;
+      // Default spot; the Wyckoff scanner passes category=linear (perpetual) so
+      // its data matches the perp contracts the trader actually charts.
+      const category = (searchParams.get('category') === 'linear') ? 'linear' : 'spot';
       // Optional explicit time window — Binance uses startTime/endTime (ms);
       // Bybit's kline endpoint takes start/end (ms). Forward when present.
       const startTime = searchParams.get('startTime');
       const endTime = searchParams.get('endTime');
-      let bybitUrl = `https://api.bybit.com/v5/market/kline?category=spot&symbol=${encodeURIComponent(symbol)}&interval=${byInterval}&limit=${limit}`;
+      let bybitUrl = `https://api.bybit.com/v5/market/kline?category=${category}&symbol=${encodeURIComponent(symbol)}&interval=${byInterval}&limit=${limit}`;
       if (startTime) bybitUrl += `&start=${encodeURIComponent(startTime)}`;
       if (endTime) bybitUrl += `&end=${encodeURIComponent(endTime)}`;
       const r = await fetch(bybitUrl, { headers: { 'Accept': 'application/json' } });

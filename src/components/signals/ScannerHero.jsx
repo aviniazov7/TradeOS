@@ -67,7 +67,7 @@ function RadarField() {
   );
 }
 
-// Premium scanner hero — true-black card, live radar sweep, uniform stat chips.
+// Scanner hero — true-black card, live radar sweep, uniform stat chips.
 export default function ScannerHero({ taggedCount = 0, activeCount = 0 }) {
   return (
     <div className="relative overflow-hidden rounded-2xl border border-white/10 bg-[#050609] mb-6">
@@ -83,7 +83,9 @@ export default function ScannerHero({ taggedCount = 0, activeCount = 0 }) {
             </motion.span>
           </div>
           <div className="min-w-0">
-            <h1 className="text-xl font-extrabold text-text-primary tracking-tight">סורק סטאפים</h1>
+            <div className="flex items-center gap-2 flex-wrap">
+              <h1 className="text-xl font-extrabold text-text-primary tracking-tight">הסורק החכם</h1>
+            </div>
             <p className="text-[12px] text-text-muted leading-snug max-w-[44ch]">זיהוי אוטומטי של סטאפי ויקוף — LPS / LPSY על שלושה טיימפריימים</p>
           </div>
         </div>

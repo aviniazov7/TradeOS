@@ -5,6 +5,7 @@ import { AuthProvider } from './contexts/AuthContext';
 import { JournalProvider } from './contexts/JournalContext';
 import { BacktestProvider } from './contexts/BacktestContext';
 import ProtectedRoute from './components/auth/ProtectedRoute';
+import PremiumRoute from './components/auth/PremiumRoute';
 import AdminRoute from './components/auth/AdminRoute';
 import LoginPage from './components/auth/LoginPage';
 import AuthGooglePopup from './components/auth/AuthGooglePopup';
@@ -37,6 +38,9 @@ const loadCouponLanding = () => import('./components/premium/CouponLandingPage')
 const loadRefundPolicy = () => import('./components/legal/RefundPolicyPage');
 const loadAccessibility = () => import('./components/legal/AccessibilityStatement');
 const loadScannerPage = () => import('./components/signals/SignalsPage');
+const loadPolymarketPage = () => import('./components/polymarket/PolymarketPage');
+const loadWalletDetailPage = () => import('./components/polymarket/WalletDetailPage');
+const loadMarketDetailPage = () => import('./components/polymarket/MarketDetailPage');
 const loadAdminPanel = () => import('./components/admin/AdminPanel');
 // Redesign preview — new "Daily Briefing" home screen (blue + bilingual).
 // Lives at /briefing so we can review the direction without touching the
@@ -65,6 +69,9 @@ const CouponLandingPage = lazy(loadCouponLanding);
 const RefundPolicyPage = lazy(loadRefundPolicy);
 const AccessibilityStatement = lazy(loadAccessibility);
 const ScannerPage = lazy(loadScannerPage);
+const PolymarketPage = lazy(loadPolymarketPage);
+const WalletDetailPage = lazy(loadWalletDetailPage);
+const MarketDetailPage = lazy(loadMarketDetailPage);
 const AdminPanel = lazy(loadAdminPanel);
 const DailyBriefing = lazy(loadDailyBriefing);
 
@@ -126,8 +133,14 @@ function MainApp() {
                 {/* Whales moved into Market Overview; keep the path as a redirect
                     so old links/bookmarks still land somewhere sensible. */}
                 <Route path="whales" element={<Navigate to="/market" replace />} />
-                {/* Wyckoff setup scanner — Premium only. */}
+                {/* Wyckoff setup scanner — owner-only while it's being calibrated. */}
                 <Route path="scanner" element={<AdminRoute><ScannerPage /></AdminRoute>} />
+                {/* Visible to all in the menu; the page shows a locked teaser to non-premium (no PremiumRoute redirect). */}
+                {/* Own boundary: this section streams live third-party data, so a
+                    throw here should degrade the page, not blank the whole app. */}
+                <Route path="polymarket" element={<ErrorBoundary><PolymarketPage /></ErrorBoundary>} />
+                <Route path="polymarket/wallet/:address" element={<ErrorBoundary><WalletDetailPage /></ErrorBoundary>} />
+                <Route path="polymarket/market/:conditionId" element={<ErrorBoundary><MarketDetailPage /></ErrorBoundary>} />
                 <Route path="trade-ai" element={<TradeAIPage />} />
                 <Route path="news" element={<NewsPage />} />
                 <Route path="exchange" element={<ExchangeSettings />} />

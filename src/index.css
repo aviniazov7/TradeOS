@@ -81,6 +81,17 @@ body {
   --glass-bg: rgba(10, 10, 12, 0.66);
   --glass-border: rgba(255, 255, 255, 0.12);
   --glass-header: rgba(16, 16, 18, 0.6);
+  /* Fully opaque sticky-header fill: a translucent one let scrolled modal
+     content read through and collide with the title. */
+  --modal-header-solid: #101012;
+  /* Polymarket banner cards. They were hardcoded near-black with white text,
+     which read as a black blot on the light theme — these resolve per theme. */
+  --pm-hero-bg: #070b12;
+  --pm-hero-fg: #ffffff;
+  --pm-hero-fg-soft: rgba(255, 255, 255, 0.62);
+  --pm-hero-fg-faint: rgba(255, 255, 255, 0.5);
+  --pm-hero-tile: rgba(255, 255, 255, 0.04);
+  --pm-hero-line: rgba(255, 255, 255, 0.10);
   --glass-shadow: 0 32px 80px rgba(0, 0, 0, 0.65), 0 0 0 1px rgba(255, 255, 255, 0.1) inset;
   --glass-shadow-sm: 0 28px 70px rgba(0, 0, 0, 0.6);
 }
@@ -90,6 +101,13 @@ body {
   --glass-bg: rgba(255, 255, 255, 0.72);
   --glass-border: rgba(15, 23, 42, 0.08);
   --glass-header: rgba(255, 255, 255, 0.55);
+  --modal-header-solid: #f8fafd;
+  --pm-hero-bg: #ffffff;
+  --pm-hero-fg: #0f172a;
+  --pm-hero-fg-soft: #475569;
+  --pm-hero-fg-faint: #64748b;
+  --pm-hero-tile: rgba(15, 23, 42, 0.04);
+  --pm-hero-line: rgba(15, 23, 42, 0.10);
   --glass-shadow: 0 32px 80px rgba(31, 41, 79, 0.18), 0 0 0 1px rgba(255, 255, 255, 0.5) inset;
   --glass-shadow-sm: 0 28px 70px rgba(31, 41, 79, 0.16);
   --color-bg-primary: #e8ecf4;
