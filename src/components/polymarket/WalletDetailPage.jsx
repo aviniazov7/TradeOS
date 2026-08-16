@@ -168,7 +168,7 @@ export default function WalletDetailPage() {
       </button>
 
       {/* Header */}
-      <div className="relative overflow-hidden rounded-2xl border border-accent-primary/20 bg-[#070b12] p-4 mb-4">
+      <div className="relative overflow-hidden rounded-2xl border border-accent-primary/20 p-4 mb-4" style={{ background: 'var(--pm-hero-bg)' }}>
         <div className="absolute -top-16 -left-16 w-56 h-56 rounded-full bg-accent-primary/10 blur-3xl pointer-events-none" />
         <div className="relative flex items-center gap-3">
           {row?.profileImage
@@ -176,10 +176,10 @@ export default function WalletDetailPage() {
             : <div className="w-12 h-12 rounded-full bg-white/10 flex items-center justify-center"><Wallet className="w-5 h-5 text-accent-primary" /></div>}
           <div className="min-w-0 flex-1">
             <div className="flex items-center gap-1.5">
-              <span className="text-base font-bold text-white truncate" dir="auto">{name}</span>
+              <span className="text-base font-bold truncate" dir="auto" style={{ color: 'var(--pm-hero-fg)' }}>{name}</span>
               {row?.verified && <ShieldCheck className="w-4 h-4 text-accent-primary shrink-0" />}
             </div>
-            <span className="text-[11px] text-white/50 num-mono" dir="ltr">{shortWallet(address)}</span>
+            <span className="text-[11px] num-mono" dir="ltr" style={{ color: 'var(--pm-hero-fg-faint)' }}>{shortWallet(address)}</span>
           </div>
           {row?.smartScore != null && <ScoreRing score={row.smartScore} size="xl" />}
         </div>
