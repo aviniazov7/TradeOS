@@ -6,24 +6,28 @@ import { safeHttpUrl } from '../utils/urls';
 const WS_URL = 'wss://ws-live-data.polymarket.com';
 const SUB = JSON.stringify({ action: 'subscribe', subscriptions: [{ topic: 'activity', type: 'trades' }] });
 const isAddress = (w) => typeof w === 'string' && /^0x[0-9a-fA-F]{40}$/.test(w);
+// Socket fields are untrusted: a non-string here would be rendered as a React
+// child and throw ("Objects are not valid as a React child"), blanking the app.
+const str = (v) => (typeof v === 'string' ? v : null);
 
 function normalize(p) {
   const size = Number(p.size) || 0;
   const price = Number(p.price) || 0;
   const name = typeof p.name === 'string' && p.name && !p.name.toLowerCase().startsWith('0x') ? p.name : null;
   return {
-    id: `${p.transactionHash || 'n'}-${p.proxyWallet}-${p.asset}-${p.timestamp}-${size}`,
+    // Same shape as the REST id so socket + REST dedup against each other.
+    id: `${p.transactionHash || 'n'}-${p.proxyWallet}-${p.conditionId}-${p.timestamp}-${p.side}-${size}`,
     wallet: p.proxyWallet,
     name,
-    side: p.side || null,
+    side: str(p.side),
     size,
     price,
     usd: size * price,
-    title: p.title || p.slug || '—',
-    slug: p.slug || null,
-    eventSlug: p.eventSlug || null,
+    title: str(p.title) || str(p.slug) || '—',
+    slug: str(p.slug),
+    eventSlug: str(p.eventSlug),
     icon: safeHttpUrl(p.icon) || null,
-    outcome: p.outcome || null,
+    outcome: str(p.outcome),
     conditionId: p.conditionId,
     timestamp: Number(p.timestamp) || Math.floor(Date.now() / 1000),
   };

@@ -1,4 +1,4 @@
-import { useState, useEffect, useMemo } from 'react';
+import { useState, useEffect, useMemo, useRef } from 'react';
 import toast from 'react-hot-toast';
 import {
   subscribeToUserCollection,
@@ -27,6 +27,9 @@ export function usePolymarketWatch() {
   }, [user]);
 
   const watchedSet = useMemo(() => new Set(watched.map((w) => w.wallet)), [watched]);
+  // Dedup relies on `watched` state, which lags a fast second click — without
+  // this guard a double-click writes two docs for the same wallet.
+  const pending = useRef(new Set());
 
   // Toggle tracking for a wallet-row object. Client-side dedup (we hold the full
   // set) prevents duplicate docs since we use auto-ids. Always reports the
@@ -34,6 +37,8 @@ export function usePolymarketWatch() {
   // dead button.
   const toggle = async (row) => {
     if (!user || !row?.wallet) return;
+    if (pending.current.has(row.wallet)) return;
+    pending.current.add(row.wallet);
     const existing = watched.find((w) => w.wallet === row.wallet);
     try {
       if (existing) {
@@ -60,6 +65,8 @@ export function usePolymarketWatch() {
         ? 'אין הרשאה לשמור — יש לפרוס את חוקי ה-Firestore (firebase deploy --only firestore:rules)'
         : 'שמירת המעקב נכשלה');
       console.error('polymarketWatch toggle failed:', e);
+    } finally {
+      pending.current.delete(row.wallet);
     }
   };
 

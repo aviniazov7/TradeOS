@@ -135,9 +135,11 @@ function MainApp() {
                 {/* Wyckoff setup scanner — Premium only. */}
                 <Route path="scanner" element={<PremiumRoute><ScannerPage /></PremiumRoute>} />
                 {/* Visible to all in the menu; the page shows a locked teaser to non-premium (no PremiumRoute redirect). */}
-                <Route path="polymarket" element={<PolymarketPage />} />
-                <Route path="polymarket/wallet/:address" element={<WalletDetailPage />} />
-                <Route path="polymarket/market/:conditionId" element={<MarketDetailPage />} />
+                {/* Own boundary: this section streams live third-party data, so a
+                    throw here should degrade the page, not blank the whole app. */}
+                <Route path="polymarket" element={<ErrorBoundary><PolymarketPage /></ErrorBoundary>} />
+                <Route path="polymarket/wallet/:address" element={<ErrorBoundary><WalletDetailPage /></ErrorBoundary>} />
+                <Route path="polymarket/market/:conditionId" element={<ErrorBoundary><MarketDetailPage /></ErrorBoundary>} />
                 <Route path="trade-ai" element={<TradeAIPage />} />
                 <Route path="news" element={<NewsPage />} />
                 <Route path="exchange" element={<ExchangeSettings />} />

@@ -3,7 +3,10 @@
 // silently shifts columns (a real risk with free-text notes / market titles).
 function escapeCell(v) {
   if (v == null) return '';
-  const s = String(v);
+  let s = String(v);
+  // Spreadsheet formula injection: untrusted text (market titles, display
+  // names) starting with these is executed by Excel/Sheets. Neutralise first.
+  if (/^[=+\-@\t\r]/.test(s)) s = `'${s}`;
   return /[",\n\r]/.test(s) ? `"${s.replace(/"/g, '""')}"` : s;
 }
 

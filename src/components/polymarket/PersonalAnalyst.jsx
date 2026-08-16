@@ -28,7 +28,7 @@ function Tile({ icon, value, label }) {
 // "האנליסט הפרטי שלי" — reads YOUR workspace (tracked wallets, their latest
 // moves, your saved strategies and what matches them right now) and writes a
 // personal Hebrew brief. Distinct from the per-wallet analyst.
-export default function PersonalAnalyst({ smartCountByMarket = {}, embedded = false }) {
+export default function PersonalAnalyst({ smartCountByMarket = {}, smartLoading = false, embedded = false }) {
   const { watched } = usePolymarketWatch();
   const { strategies } = usePolymarketStrategies();
   const { markets } = usePolymarkets();
@@ -141,9 +141,10 @@ export default function PersonalAnalyst({ smartCountByMarket = {}, embedded = fa
               <p className="text-sm text-text-secondary max-w-md mx-auto leading-relaxed mb-4 px-6">
                 ה-AI יקרא {watched.length} ארנקים במעקב, {strategies.length} אסטרטגיות ו-{totalMatches} התאמות פתוחות — ויכתוב לך מה חשוב עכשיו.
               </p>
-              <button onClick={run}
-                className="inline-flex items-center gap-1.5 px-5 py-2.5 rounded-xl bg-accent-primary text-bg-primary text-sm font-semibold hover:bg-accent-hover transition-colors cursor-pointer">
-                <UserRoundSearch className="w-4 h-4" /> תן לי תדרוך
+              <button onClick={run} disabled={smartLoading}
+                title={smartLoading ? 'ממתין לנתוני הכסף החכם' : undefined}
+                className="inline-flex items-center gap-1.5 px-5 py-2.5 rounded-xl bg-accent-primary text-bg-primary text-sm font-semibold hover:bg-accent-hover transition-colors cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed">
+                <UserRoundSearch className="w-4 h-4" /> {smartLoading ? 'טוען נתונים…' : 'תן לי תדרוך'}
               </button>
             </>
           )}

@@ -98,12 +98,14 @@ export default function StrategyFormModal({ isOpen, onClose, onSave, strategy })
               <div>
                 <label className={LABEL}>ממחיר (¢)</label>
                 <input type="number" min="1" max="99" value={Math.round(form.priceMin * 100)}
-                  onChange={(e) => set('priceMin', num(e.target.value, 5) / 100)} dir="ltr" className={INPUT} />
+                  onChange={(e) => { const v = e.target.value; if (v !== '') set('priceMin', Number(v) / 100); }}
+                  dir="ltr" className={INPUT} />
               </div>
               <div>
                 <label className={LABEL}>עד מחיר (¢)</label>
                 <input type="number" min="1" max="99" value={Math.round(form.priceMax * 100)}
-                  onChange={(e) => set('priceMax', num(e.target.value, 95) / 100)} dir="ltr" className={INPUT} />
+                  onChange={(e) => { const v = e.target.value; if (v !== '') set('priceMax', Number(v) / 100); }}
+                  dir="ltr" className={INPUT} />
               </div>
             </div>
           )}

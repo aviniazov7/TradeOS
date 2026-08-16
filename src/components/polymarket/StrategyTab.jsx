@@ -74,7 +74,7 @@ function StrategyCard({ s, active, matchCount, onRun, onEdit, onDelete }) {
 
 // End-to-end strategy workflow: define the rule-set → run it against the live
 // market board → get a ranked shortlist → open a market to act on it.
-export default function StrategyTab({ smartCountByMarket = {} }) {
+export default function StrategyTab({ smartCountByMarket = {}, smartLoading = false }) {
   const navigate = useNavigate();
   const { strategies, loading, addStrategy, updateStrategy, deleteStrategy } = usePolymarketStrategies();
   const { markets, loading: marketsLoading, error } = usePolymarkets();
@@ -154,8 +154,11 @@ export default function StrategyTab({ smartCountByMarket = {} }) {
             <span className="text-[11px] text-text-muted">({matches.length} מתוך {markets.length} שווקים)</span>
           </div>
 
-          {marketsLoading ? (
-            <div className="space-y-2">{Array.from({ length: 5 }).map((_, i) => <div key={i} className="h-16 rounded-xl bg-bg-secondary animate-pulse" />)}</div>
+          {marketsLoading || smartLoading ? (
+            <div className="space-y-2">
+              {smartLoading && !marketsLoading && <p className="text-[11px] text-text-muted">בודק אילו ארנקים חכמים מחזיקים בכל שוק…</p>}
+              {Array.from({ length: 5 }).map((_, i) => <div key={i} className="h-16 rounded-xl bg-bg-secondary animate-pulse" />)}
+            </div>
           ) : error ? (
             <div className="flex items-center justify-center gap-2 py-10 text-sm text-loss"><AlertCircle className="w-4 h-4" />{error}</div>
           ) : matches.length === 0 ? (

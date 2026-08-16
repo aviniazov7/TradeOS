@@ -50,7 +50,11 @@ function bandMatch(market, s) {
  * @param {object} s       strategy rule-set
  * @param {number} smartCount  how many smart/tracked wallets hold it (0 if unknown)
  */
-export function matchMarket(market, s, smartCount = 0) {
+export function matchMarket(market, rawStrategy, smartCount = 0) {
+  // A market with no parsed prices, or a strategy doc missing fields (legacy or
+  // hand-edited), must not throw or produce NaN scores.
+  if (!Array.isArray(market?.prices) || !market.prices.length) return null;
+  const s = { ...STRATEGY_DEFAULTS, ...rawStrategy };
   const dtc = daysToClose(market.endDate);
 
   // Hard filters
@@ -75,14 +79,15 @@ export function matchMarket(market, s, smartCount = 0) {
 
 /** Run a strategy over a market list; returns matches sorted by fit. */
 export function runStrategy(markets, s, smartCountByMarket = {}) {
-  return markets
+  return (Array.isArray(markets) ? markets : [])
     .map((m) => matchMarket(m, s, smartCountByMarket[m.conditionId] || 0))
     .filter(Boolean)
     .sort((a, b) => b.fit - a.fit);
 }
 
 /** One-line human summary of the rule-set (shown on the strategy card). */
-export function describeStrategy(s) {
+export function describeStrategy(raw) {
+  const s = { ...STRATEGY_DEFAULTS, ...raw };
   const liq = s.minLiquidity >= 1000 ? `${Math.round(s.minLiquidity / 1000)}K` : String(s.minLiquidity);
   const parts = [
     `${Math.round(s.priceMin * 100)}–${Math.round(s.priceMax * 100)}¢`,
