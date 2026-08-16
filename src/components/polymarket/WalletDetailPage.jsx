@@ -62,7 +62,7 @@ function PositionCard({ p }) {
           : <div className="w-8 h-8 rounded-lg bg-bg-tertiary shrink-0" />}
         <div className="min-w-0 flex-1">
           <div className="flex items-center gap-1.5">
-            <span className="text-xs font-semibold text-text-primary truncate">{p.title}</span>
+            <span className="text-xs font-semibold text-text-primary truncate" dir="auto">{p.title}</span>
             {link && (
               <a href={link} target="_blank" rel="noopener noreferrer" onClick={(e) => e.stopPropagation()}
                 className="text-text-muted hover:text-accent-primary transition-colors shrink-0" title="פתח את השוק ב-Polymarket"><ExternalLink className="w-3 h-3" /></a>
@@ -128,7 +128,7 @@ function ActivityRow({ a }) {
         ? <img src={a.icon} alt="" className="w-7 h-7 rounded-lg object-cover shrink-0" loading="lazy" />
         : <div className="w-7 h-7 rounded-lg bg-bg-tertiary shrink-0" />}
       <div className="min-w-0 flex-1">
-        <div className="text-xs font-semibold text-text-primary truncate">{a.title}</div>
+        <div className="text-xs font-semibold text-text-primary truncate" dir="auto">{a.title}</div>
         <div className="flex items-center gap-2 mt-0.5">
           <span className={`text-[10px] font-bold px-1.5 py-0.5 rounded ${a.side ? (isBuy ? 'bg-profit/10 text-profit' : 'bg-loss/10 text-loss') : 'bg-bg-tertiary text-text-muted'}`}>{label}</span>
           {a.outcome && <span className="text-[10px] text-text-muted">{a.outcome}</span>}
@@ -174,7 +174,7 @@ export default function WalletDetailPage() {
   return (
     <motion.div variants={pageVariants} initial="initial" animate="animate" exit="exit" transition={pageTransition} className="max-w-3xl mx-auto">
       {/* Back */}
-      <button onClick={() => navigate(-1)} className="inline-flex items-center gap-1.5 text-sm text-text-muted hover:text-text-primary transition-colors mb-3 cursor-pointer">
+      <button onClick={() => navigate(state?.from || '/polymarket')} className="inline-flex items-center gap-1.5 text-sm text-text-muted hover:text-text-primary transition-colors mb-3 cursor-pointer">
         <ArrowRight className="w-4 h-4" /> חזרה לדירוג
       </button>
 
@@ -187,7 +187,7 @@ export default function WalletDetailPage() {
             : <div className="w-12 h-12 rounded-full bg-white/10 flex items-center justify-center"><Wallet className="w-5 h-5 text-accent-primary" /></div>}
           <div className="min-w-0 flex-1">
             <div className="flex items-center gap-1.5">
-              <span className="text-base font-bold text-white truncate">{name}</span>
+              <span className="text-base font-bold text-white truncate" dir="auto">{name}</span>
               {row?.verified && <ShieldCheck className="w-4 h-4 text-accent-primary shrink-0" />}
             </div>
             <span className="text-[11px] text-white/50 num-mono" dir="ltr">{shortWallet(address)}</span>

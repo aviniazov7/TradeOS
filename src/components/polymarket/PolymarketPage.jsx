@@ -1,6 +1,6 @@
 import { useMemo, useState } from 'react';
 import { motion } from 'framer-motion';
-import { useNavigate } from 'react-router-dom';
+import { useNavigate, useSearchParams } from 'react-router-dom';
 import { Trophy, Crown, Lock, Search, ShieldCheck, Info, ArrowDownUp, AlertCircle, RefreshCw, Star, ChevronDown, Users, Globe, Waves, Compass, UserRoundSearch, Gem, Download, GraduationCap } from 'lucide-react';
 import toast from 'react-hot-toast';
 import { useAuth } from '../../contexts/AuthContext';
@@ -99,23 +99,27 @@ function Hero({ stats, watchedCount = 0, strategyCount = 0, onOpenAnalyst, onOpe
   return (
     <div className="relative overflow-hidden rounded-2xl border border-accent-primary/20 bg-[#070b12] p-5 mb-5">
       <div className="absolute -top-20 -left-16 w-64 h-64 rounded-full bg-accent-primary/10 blur-3xl pointer-events-none" />
-      <div className="relative flex items-start gap-3">
-        <div className="w-11 h-11 rounded-2xl flex items-center justify-center shrink-0 text-accent-primary bg-accent-primary/15 border border-accent-primary/40"
-          style={{ boxShadow: '0 0 24px -6px rgba(59,130,246,0.6)' }}>
-          <Trophy className="w-6 h-6" />
-        </div>
-        <div className="min-w-0 flex-1">
-          <div className="flex items-center gap-2 flex-wrap">
-            <h1 className="text-lg font-bold text-white">ארנקים מובילים · Polymarket</h1>
-            <span className="inline-flex items-center gap-1 text-[10px] px-1.5 py-0.5 rounded-full bg-accent-primary text-bg-primary font-bold"><Crown className="w-2.5 h-2.5" /> Premium</span>
+      {/* On mobile the actions wrap to their own row — squeezing them beside
+          the title broke it into three lines. */}
+      <div className="relative flex flex-col sm:flex-row sm:items-start gap-3">
+        <div className="flex items-start gap-3 min-w-0 flex-1">
+          <div className="w-11 h-11 rounded-2xl flex items-center justify-center shrink-0 text-accent-primary bg-accent-primary/15 border border-accent-primary/40"
+            style={{ boxShadow: '0 0 24px -6px rgba(59,130,246,0.6)' }}>
+            <Trophy className="w-6 h-6" />
           </div>
-          <p className="text-xs text-white/60 leading-relaxed mt-1">
-            הטריידרים הרווחיים ב-Polymarket, מדורגים לפי יעילות (רווח לכל $ מחזור) — לא רק רווח גולמי. דאטה ציבורי, 30 יום.
-          </p>
+          <div className="min-w-0 flex-1">
+            <div className="flex items-center gap-2 flex-wrap">
+              <h1 className="text-base sm:text-lg font-bold text-white leading-tight">ארנקים מובילים · Polymarket</h1>
+              <span className="inline-flex items-center gap-1 text-[10px] px-1.5 py-0.5 rounded-full bg-accent-primary text-bg-primary font-bold"><Crown className="w-2.5 h-2.5" /> Premium</span>
+            </div>
+            <p className="text-[11px] sm:text-xs text-white/60 leading-relaxed mt-1">
+              הטריידרים הרווחיים ב-Polymarket, מדורגים לפי יעילות (רווח לכל $ מחזור) — לא רק רווח גולמי. דאטה ציבורי, 30 יום.
+            </p>
+          </div>
         </div>
-        {/* Title-row actions = my personal workspace (the tabs stay for browsing) */}
+        {/* Personal-workspace actions (the tabs stay for browsing) */}
         {onOpenAcademy && (
-          <div className="flex items-center gap-1.5 shrink-0">
+          <div className="flex items-center gap-1.5 shrink-0 self-end sm:self-auto">
             <HeroAction onClick={onOpenAnalyst} label="האנליסט הפרטי שלי"
               icon={<UserRoundSearch className="w-4 h-4" />} />
             <HeroAction onClick={onOpenStrategy} badge={strategyCount} label={`האסטרטגיות שלי (${strategyCount})`}
@@ -174,7 +178,7 @@ function PodiumCard({ r, rank, isWatched, onToggle, onOpen }) {
       </div>
       <Avatar src={r.profileImage} className="w-12 h-12" />
       <div className="relative flex items-center gap-1 min-w-0 max-w-full">
-        <span className="text-sm font-bold text-text-primary truncate">{name}</span>
+        <span className="text-sm font-bold text-text-primary truncate" dir="auto">{name}</span>
         {r.verified && <ShieldCheck className="w-3.5 h-3.5 text-accent-primary shrink-0" />}
       </div>
       <ScoreRing score={r.smartScore} size="lg" />
@@ -198,7 +202,7 @@ function WalletRow({ r, rank, isWatched, onToggle, onOpen }) {
       <Avatar src={r.profileImage} className="w-8 h-8" />
       <div className="min-w-0 flex-1">
         <div className="flex items-center gap-1.5">
-          <span className="text-sm font-bold text-text-primary truncate">{name}</span>
+          <span className="text-sm font-bold text-text-primary truncate" dir="auto">{name}</span>
           {r.verified && <ShieldCheck className="w-3.5 h-3.5 text-accent-primary shrink-0" />}
         </div>
         {hasComposition ? (
@@ -292,7 +296,13 @@ function LockedTeaser() {
 // fetched or scored for non-premium (the scoring is the paid deliverable).
 function PolymarketBoard() {
   const navigate = useNavigate();
-  const [mainTab, setMainTab] = useState('wallets'); // wallets | markets | consensus | radar
+  // Tab lives in the URL so returning from a market/wallet page (and a plain
+  // refresh) lands back where you were instead of resetting to wallets.
+  const [searchParams, setSearchParams] = useSearchParams();
+  const TAB_KEYS = ['wallets', 'markets', 'consensus', 'radar'];
+  const urlTab = searchParams.get('tab');
+  const mainTab = TAB_KEYS.includes(urlTab) ? urlTab : 'wallets';
+  const setMainTab = (key) => setSearchParams({ tab: key }, { replace: true });
   const [category, setCategory] = useState('overall');
   const { rows, loading, error, refetch } = usePolymarketLeaderboard(category);
   const { watched, watchedSet, toggle } = usePolymarketWatch();
@@ -310,7 +320,7 @@ function PolymarketBoard() {
   // is in its temporal dead zone until declared, which crashed the page.
   const { countByMarket, loading: smartLoading } = useSmartConsensus({ enabled: mainTab === 'consensus' || strategyOpen || analystOpen });
 
-  const openWallet = (r) => navigate(`/polymarket/wallet/${r.wallet}`, { state: { row: r } });
+  const openWallet = (r) => navigate(`/polymarket/wallet/${r.wallet}`, { state: { row: r, from: `/polymarket?tab=${mainTab}` } });
 
   const watchedRows = useMemo(
     () => watched.map((w) => rows.find((r) => r.wallet === w.wallet) || snapshotToRow(w)),
@@ -366,13 +376,16 @@ function PolymarketBoard() {
         onOpenWatched={() => setWatchedOpen(true)} onOpenAcademy={() => setAcademyOpen(true)} />
 
       {/* Main tabs: the smart-money board / the markets board / the live tape */}
-      <div className="flex bg-bg-secondary border border-border-primary rounded-xl p-1 gap-0.5 mb-4 overflow-x-auto">
+      {/* Equal-width grid instead of a scrolling flex row — on a phone the
+          labels shrink and the row still fits without sideways scroll. */}
+      <div className="grid grid-cols-4 bg-bg-secondary border border-border-primary rounded-xl p-1 gap-0.5 mb-4">
         {MAIN_TABS.map((t) => (
-          <button key={t.key} onClick={() => setMainTab(t.key)}
-            className={`flex-1 inline-flex items-center justify-center gap-1.5 px-3 py-1.5 text-sm font-semibold rounded-lg transition-all cursor-pointer whitespace-nowrap ${
+          <button key={t.key} onClick={() => setMainTab(t.key)} title={t.label}
+            className={`min-w-0 inline-flex items-center justify-center gap-1 sm:gap-1.5 px-1.5 sm:px-3 py-1.5 text-[11px] sm:text-sm font-semibold rounded-lg transition-all cursor-pointer ${
               mainTab === t.key ? 'bg-accent-primary/15 text-accent-primary shadow-[0_0_18px_-6px_rgba(59,130,246,0.6)]' : 'text-text-muted hover:text-text-primary'
             }`}>
-            <t.icon className="w-4 h-4" /> {t.label}
+            <t.icon className="w-4 h-4 shrink-0" />
+            <span className="truncate">{t.label}</span>
           </button>
         ))}
       </div>

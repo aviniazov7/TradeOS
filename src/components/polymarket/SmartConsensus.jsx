@@ -26,7 +26,7 @@ function ConsensusRow({ c, rank, onOpen }) {
         : <div className="w-9 h-9 rounded-lg bg-bg-tertiary shrink-0" />}
 
       <div className="min-w-0 flex-1">
-        <div className="text-xs font-semibold text-text-primary truncate">{c.title}</div>
+        <div className="text-xs font-semibold text-text-primary truncate" dir="auto">{c.title}</div>
         <div className="flex items-center gap-2 mt-1 flex-wrap">
           <span className="text-[10px] font-bold px-1.5 py-0.5 rounded bg-accent-primary/10 text-accent-primary">{c.outcome}</span>
           <span className="inline-flex items-center gap-0.5 text-[10px] font-bold text-text-secondary num-mono">
@@ -152,7 +152,7 @@ export default function SmartConsensus() {
         <motion.div className="space-y-2" variants={staggerContainer} initial="initial" animate="animate">
           {view.map((c, i) => (
             <motion.div key={`${c.conditionId}-${c.outcome}`} variants={staggerItem}>
-              <ConsensusRow c={c} rank={i + 1} onOpen={() => navigate(`/polymarket/market/${c.conditionId}`)} />
+              <ConsensusRow c={c} rank={i + 1} onOpen={() => navigate(`/polymarket/market/${c.conditionId}`, { state: { from: '/polymarket?tab=consensus' } })} />
             </motion.div>
           ))}
         </motion.div>

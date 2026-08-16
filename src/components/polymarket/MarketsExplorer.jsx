@@ -42,7 +42,7 @@ function MarketRow({ m, onOpen }) {
 
       <div className="min-w-0 flex-1">
         <div className="flex items-center gap-1.5">
-          <span className="text-xs font-semibold text-text-primary truncate">{m.question}</span>
+          <span className="text-xs font-semibold text-text-primary truncate" dir="auto">{m.question}</span>
           {m.isNew && <span className="text-[9px] font-bold px-1 py-0.5 rounded bg-accent-primary/15 text-accent-primary shrink-0">חדש</span>}
           {hasArb && (
             <span className="text-[9px] font-bold px-1 py-0.5 rounded bg-amber-400/15 text-amber-400 shrink-0"
@@ -131,7 +131,7 @@ export default function MarketsExplorer() {
         <motion.div className="space-y-2" variants={staggerContainer} initial="initial" animate="animate">
           {view.map((m) => (
             <motion.div key={m.conditionId} variants={staggerItem}>
-              <MarketRow m={m} onOpen={() => navigate(`/polymarket/market/${m.conditionId}`, { state: { market: m } })} />
+              <MarketRow m={m} onOpen={() => navigate(`/polymarket/market/${m.conditionId}`, { state: { market: m, from: '/polymarket?tab=markets' } })} />
             </motion.div>
           ))}
         </motion.div>

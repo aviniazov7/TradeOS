@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { useNavigate } from 'react-router-dom';
 import { Waves, Star, AlertCircle } from 'lucide-react';
@@ -14,6 +14,11 @@ const SIZES = [
   { key: 50_000, label: '$50K+' },
 ];
 const MAX_FEED = 60;
+// The tape runs at ~40 trades/sec, nearly all of it dust. Keeping every trade
+// meant a 300-row buffer held ~7 seconds and the big ones scrolled straight
+// out — which is why the default view looked empty. Drop dust at ingest so the
+// buffer holds a long window of trades the user actually filters on.
+const KEEP_MIN_USD = 1_000;
 
 function timeAgo(ts) {
   const secs = Math.max(0, Math.floor(Date.now() / 1000) - ts);
@@ -33,7 +38,7 @@ function TradeRow({ t, tracked, onOpenWallet }) {
         : <div className="w-8 h-8 rounded-lg bg-bg-tertiary shrink-0" />}
       <div className="min-w-0 flex-1">
         <div className="flex items-center gap-1.5">
-          <span className="text-xs font-semibold text-text-primary truncate">{t.title}</span>
+          <span className="text-xs font-semibold text-text-primary truncate" dir="auto">{t.title}</span>
           {tracked && <Star className="w-3 h-3 text-amber-400 fill-amber-400 shrink-0" title="ארנק במעקב שלך" />}
         </div>
         <div className="flex items-center gap-1.5 mt-0.5 flex-wrap">
@@ -60,11 +65,14 @@ function TradeRow({ t, tracked, onOpenWallet }) {
 export default function WhaleRadar() {
   const navigate = useNavigate();
   const { watchedSet } = usePolymarketWatch();
-  const [minUsd, setMinUsd] = useState(10_000);
+  const [minUsd, setMinUsd] = useState(1_000);
   const [feed, setFeed] = useState([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
   const [status, setStatus] = useState('connecting'); // connecting | live | down
+  // Read inside the ingest filter without re-subscribing the socket on change.
+  const watchedRef = useRef(watchedSet);
+  watchedRef.current = watchedSet;
 
   // Merge helper shared by the socket and the REST fallback.
   const merge = (rows) => setFeed((prev) => {
@@ -72,6 +80,8 @@ export default function WhaleRadar() {
     const merged = [...prev];
     for (const t of rows) {
       if (known.has(t.id)) continue;
+      // Keep it only if it's notable, or it's a wallet the user tracks.
+      if (t.usd < KEEP_MIN_USD && !watchedRef.current.has(t.wallet)) continue;
       known.add(t.id);
       merged.push(t);
     }
@@ -153,7 +163,7 @@ export default function WhaleRadar() {
       ) : view.length === 0 ? (
         <div className="flex flex-col items-center justify-center gap-2 py-12 rounded-2xl border border-dashed border-border-primary text-text-muted">
           <Waves className="w-7 h-7 opacity-60" />
-          <span className="text-sm font-medium">אין עסקאות מעל הסף כרגע — הפיד ימשיך להתעדכן</span>
+          <span className="text-sm font-medium">אין עדיין עסקאות מעל הסף — הפיד חי וימשיך להתעדכן</span>
         </div>
       ) : (
         <div className="space-y-2">
