@@ -29,7 +29,8 @@ function Stat({ label, value, tone }) {
   return (
     <div className="bg-bg-secondary border border-border-primary rounded-xl px-3 py-2.5 min-w-0">
       <div className="text-[10px] text-text-muted">{label}</div>
-      <div className={`text-sm font-extrabold num-mono mt-0.5 truncate ${color}`}>{value}</div>
+      {/* no truncate on a number — clipping digits misreports the value */}
+      <div className={`text-sm font-extrabold num-mono mt-0.5 tabular-nums ${color}`}>{value}</div>
     </div>
   );
 }
