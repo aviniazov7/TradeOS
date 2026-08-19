@@ -89,7 +89,14 @@ export function fmtUsd(n) {
 
 export function fmtPct(n, digits = 1) {
   const v = Number(n) || 0;
-  return `${v >= 0 ? '+' : ''}${v.toFixed(digits)}%`;
+  const sign = v >= 0 ? '+' : '-';
+  const a = Math.abs(v);
+  // ROI here reaches five digits (a +94,581% wallet is real), which overflowed
+  // the stat tiles — abbreviate the big ones the same way money is abbreviated.
+  if (a >= 1_000_000) return `${sign}${(a / 1_000_000).toFixed(1)}M%`;
+  if (a >= 10_000) return `${sign}${(a / 1_000).toFixed(1)}K%`;
+  if (a >= 1_000) return `${sign}${Math.round(a)}%`;
+  return `${sign}${a.toFixed(digits)}%`;
 }
 
 export function shortWallet(w) {
