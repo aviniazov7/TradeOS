@@ -305,13 +305,14 @@ function PolymarketBoard() {
   const mainTab = TAB_KEYS.includes(urlTab) ? urlTab : 'wallets';
   const setMainTab = (key) => setSearchParams({ tab: key }, { replace: true });
   const [category, setCategory] = useState('overall');
-  const { rows, loading, error, refetch } = usePolymarketLeaderboard(category);
+  const { rows, loading, loadingMore, error, hasMore, loadMore, refetch } = usePolymarketLeaderboard(category);
   const { watched, watchedSet, toggle } = usePolymarketWatch();
   const { strategies } = usePolymarketStrategies();
   const strategyCount = strategies.length;
   const [sort, setSort] = useState('score');
   const [query, setQuery] = useState('');
   const [eligibleOnly, setEligibleOnly] = useState(true);
+  const [visible, setVisible] = useState(25);   // rows painted; grows on demand
   const [watchedOpen, setWatchedOpen] = useState(false);
   const [analystOpen, setAnalystOpen] = useState(false);
   const [strategyOpen, setStrategyOpen] = useState(false);
@@ -401,7 +402,7 @@ function PolymarketBoard() {
       <div className="flex flex-wrap items-center gap-2 mb-3">
         {/* category dropdown */}
         <div className="relative shrink-0">
-          <select value={category} onChange={(e) => setCategory(e.target.value)}
+          <select value={category} onChange={(e) => { setCategory(e.target.value); setVisible(25); }}
             className="appearance-none bg-bg-secondary border border-border-primary rounded-lg py-2 ps-3 pe-8 text-sm font-semibold text-text-primary cursor-pointer outline-none focus:border-accent-primary/50">
             {CATEGORIES.map((c) => <option key={c.key} value={c.key}>{c.label}</option>)}
           </select>
@@ -409,18 +410,18 @@ function PolymarketBoard() {
         </div>
         <div className="flex items-center gap-2 bg-bg-secondary border border-border-primary rounded-lg px-3 py-2 flex-1 min-w-[150px] focus-within:border-accent-primary/50 transition-colors">
           <Search className="w-4 h-4 text-text-muted shrink-0" />
-          <input value={query} onChange={(e) => setQuery(e.target.value)} placeholder="חפש ארנק…"
+          <input value={query} onChange={(e) => { setQuery(e.target.value); setVisible(25); }} placeholder="חפש ארנק…"
             className="bg-transparent text-sm text-text-primary placeholder-text-muted outline-none w-full" />
         </div>
         <div className="inline-flex bg-bg-secondary border border-border-primary rounded-lg p-0.5 gap-0.5 overflow-x-auto">
           {SORTS.map((s) => (
-            <button key={s.key} onClick={() => setSort(s.key)}
+            <button key={s.key} onClick={() => { setSort(s.key); setVisible(25); }}
               className={`px-2.5 py-1 text-[11px] font-semibold rounded-md transition-colors cursor-pointer whitespace-nowrap ${sort === s.key ? 'bg-accent-primary/15 text-accent-primary' : 'text-text-muted hover:text-text-primary'}`}>
               {s.label}
             </button>
           ))}
         </div>
-        <button onClick={() => setEligibleOnly((v) => !v)}
+        <button onClick={() => { setEligibleOnly((v) => !v); setVisible(25); }}
           title="הצג רק ארנקים איכותיים: מחזור $10K+ ורווח חיובי ב-30 יום (מסנן קטנים/מפסידים)"
           className={`inline-flex items-center gap-1 px-2.5 py-1.5 rounded-lg text-[11px] font-semibold border transition-colors cursor-pointer ${eligibleOnly ? 'bg-accent-primary/15 text-accent-primary border-accent-primary/40' : 'text-text-muted border-border-primary'}`}>
           <ArrowDownUp className="w-3 h-3" /> רווחיים בלבד
@@ -463,14 +464,26 @@ function PolymarketBoard() {
               ))}
             </div>
           )}
-          {/* The rest */}
+          {/* The rest — painted in chunks, then more pulled from the API */}
           <motion.div className="space-y-2" variants={staggerContainer} initial="initial" animate="animate">
-            {listRows.map((r, i) => (
+            {listRows.slice(0, visible).map((r, i) => (
               <motion.div key={r.wallet} variants={staggerItem}>
                 <WalletRow r={r} rank={podium.length + i + 1} isWatched={watchedSet.has(r.wallet)} onToggle={() => toggle(r)} onOpen={() => openWallet(r)} />
               </motion.div>
             ))}
           </motion.div>
+
+          {(listRows.length > visible || hasMore) && (
+            <button
+              onClick={() => {
+                if (listRows.length > visible) setVisible((v) => v + 25);
+                else loadMore();
+              }}
+              disabled={loadingMore}
+              className="w-full mt-3 py-2.5 rounded-xl border border-border-primary text-sm font-semibold text-text-secondary hover:text-accent-primary hover:border-accent-primary/40 transition-colors cursor-pointer disabled:opacity-50">
+              {loadingMore ? 'טוען…' : 'טען עוד'}
+            </button>
+          )}
         </>
       )}
       </>
