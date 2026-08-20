@@ -1,15 +1,17 @@
-import { useState } from 'react';
+import { useRef, useState } from 'react';
 import { motion } from 'framer-motion';
 import {
   BrainCircuit, Crown, RefreshCw, AlertCircle, Lock, Sparkles,
-  TrendingUp, TrendingDown, Target, Lightbulb,
+  TrendingUp, TrendingDown, Target, Lightbulb, HeartPulse,
 } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
 import ThinkingIndicator from '../shared/ThinkingIndicator';
 import { renderBulletHtml } from '../../utils/renderBulletHtml';
 import { useAuth } from '../../contexts/AuthContext';
 import { generateCoachReport } from '../../services/aiCoachService';
-import { buildCoachStats } from '../../utils/coachStats';
+import { getUserCollectionDocs } from '../../services/firestoreService';
+import { buildCoachStats, coachScopeTrades } from '../../utils/coachStats';
+import { buildPsychologyStats } from '../../utils/coachPsychology';
 
 // Quick prompts the user can click to seed the report.
 const FREE_PROMPTS = [
@@ -22,6 +24,7 @@ const PREMIUM_PROMPTS = [
   { id: 'sessionEdge', label: 'איזה סשן הכי רווחי?' },
   { id: 'compareMonth', label: 'איך החודש מול הקודם?' },
   { id: 'strategyEdge', label: 'איזו אסטרטגיה מצליחה?' },
+  { id: 'psychology', label: 'כמה מצב הראש עולה לי?' },
 ];
 
 // Each section header maps to an icon + accent color. The model is locked to
@@ -208,6 +211,100 @@ function TradeRows({ title, rows, Icon }) {
   );
 }
 
+// Psychology — each row is a bucket (an emotion, a readiness band, a routine
+// item) measured against the user's own baseline. A bucket under the minimum
+// sample gets a "מדגם קטן" chip instead of being hidden, so a thin number is
+// never read as a conclusion.
+function DeltaRows({ title, rows, Icon, sub }) {
+  if (!rows?.length) return null;
+  return (
+    <div className="bg-bg-secondary border border-border-primary rounded-xl p-4">
+      <div className="flex items-center gap-2 mb-1">
+        {Icon && <Icon className="w-4 h-4 text-accent-primary" />}
+        <h4 className="text-sm font-semibold text-text-primary">{title}</h4>
+      </div>
+      {sub && <p className="text-[10px] text-text-muted mb-2">{sub}</p>}
+      <div className="space-y-2 mt-2">
+        {rows.map((r) => (
+          <div key={r.label} className="flex items-center justify-between gap-2 text-xs">
+            <span className="text-text-secondary min-w-0 truncate">
+              {r.label}
+              <span className="text-text-muted"> · {r.trades} עסקאות</span>
+              {r.thin && (
+                <span className="mr-1.5 text-[9px] px-1 py-0.5 rounded bg-bg-tertiary text-text-muted align-middle">
+                  מדגם קטן
+                </span>
+              )}
+            </span>
+            <span className={`font-semibold shrink-0 ${r.delta >= 0 ? 'text-profit' : 'text-loss'}`} dir="ltr">
+              {fmt$(r.delta)}
+            </span>
+          </div>
+        ))}
+      </div>
+    </div>
+  );
+}
+
+function PsychologyPanel({ psych }) {
+  if (!psych) return null;
+  const emotionRows = psych.emotions.map((e) => ({ label: e.label, trades: e.trades, thin: e.thin, delta: e.avgPnlDelta }));
+  const routineRows = psych.routine.map((c) => ({ label: c.label, trades: c.done.trades, thin: c.done.thin || c.skipped.thin, delta: c.avgPnlDelta }));
+  const d = psych.discipline;
+  return (
+    <div className="space-y-3">
+      <div className="grid grid-cols-2 md:grid-cols-4 gap-2">
+        <StatCard label="ימים מוצלבים" value={psych.daysCovered} sub="יומן בוקר + עסקאות" Icon={HeartPulse} />
+        <StatCard
+          label="ממוצע לעסקה (בסיס)"
+          value={fmt$Compact(psych.baseline.avgPnl)}
+          sub={`${psych.baseline.winRate}% הצלחה`}
+          tone={psych.baseline.avgPnl >= 0 ? 'profit' : 'loss'}
+          Icon={Target}
+        />
+        <StatCard label="מוכנות בימים ירוקים" value={psych.avgReadinessOnGreenDays} sub="מתוך 10" tone="profit" Icon={TrendingUp} />
+        <StatCard label="מוכנות בימים אדומים" value={psych.avgReadinessOnRedDays} sub="מתוך 10" tone="loss" Icon={TrendingDown} />
+      </div>
+
+      <div className="grid grid-cols-1 md:grid-cols-2 gap-2">
+        <DeltaRows
+          title="רגש הבוקר → כסף"
+          sub="פער ברווח הממוצע לעסקה מול הבסיס שלך"
+          rows={emotionRows}
+          Icon={HeartPulse}
+        />
+        <DeltaRows
+          title="שגרת הבוקר → כסף"
+          sub="ההפרש בין ימים שביצעת את הפעולה לימים שלא"
+          rows={routineRows}
+          Icon={Sparkles}
+        />
+      </div>
+
+      {d && (
+        <div className="bg-bg-secondary border border-border-primary rounded-xl p-4">
+          <div className="flex items-center gap-2 mb-3">
+            <Target className="w-4 h-4 text-accent-primary" />
+            <h4 className="text-sm font-semibold text-text-primary">משמעת מול תוצאה</h4>
+          </div>
+          <div className="grid grid-cols-2 gap-2">
+            <div className="rounded-lg bg-bg-tertiary p-3">
+              <div className="text-[11px] text-text-muted mb-1">עמדת בתוכנית</div>
+              <div className="text-base font-bold text-profit" dir="ltr">{fmt$(d.followedPlan.avgPnl)}</div>
+              <div className="text-[10px] text-text-muted mt-0.5">{d.followedPlan.trades} עסקאות · {d.followedPlan.winRate}%</div>
+            </div>
+            <div className="rounded-lg bg-bg-tertiary p-3">
+              <div className="text-[11px] text-text-muted mb-1">סטית מהתוכנית</div>
+              <div className="text-base font-bold text-loss" dir="ltr">{fmt$(d.brokePlan.avgPnl)}</div>
+              <div className="text-[10px] text-text-muted mt-0.5">{d.brokePlan.trades} עסקאות · {d.brokePlan.winRate}%</div>
+            </div>
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
 // This-month vs previous-month comparison table (Premium stats only).
 function CompareMonths({ cmp }) {
   const prev = cmp?.prevMonth;
@@ -279,6 +376,15 @@ function StatsDashboard({ stats, focus }) {
   if (focus === 'compareMonth' && stats.compareToPrevMonth) {
     return <CompareMonths cmp={stats.compareToPrevMonth} />;
   }
+  if (focus === 'psychology') {
+    return stats.psychology
+      ? <PsychologyPanel psych={stats.psychology} />
+      : (
+        <div className="bg-bg-secondary border border-border-primary rounded-xl p-4 text-xs text-text-secondary">
+          אין עדיין ימים שבהם מילאת יומן בוקר וגם סגרת עסקה — בלי הצלבה כזו אי אפשר למדוד את ההשפעה של מצב הראש.
+        </div>
+      );
+  }
   if (focus === 'mistakes' && (stats.worstTrades?.length || losingPairs.length)) {
     return (
       <div className="space-y-3">
@@ -335,13 +441,28 @@ function StatsDashboard({ stats, focus }) {
 // the model is actually working, not just spinning a wheel.
 
 export default function AICoachPanel({ trades }) {
-  const { isPremium } = useAuth();
+  const { user, isPremium } = useAuth();
   const navigate = useNavigate();
   const [loading, setLoading] = useState(false);
   const [report, setReport] = useState('');
   const [stats, setStats] = useState(null); // computed snapshot used by the dashboard
   const [error, setError] = useState('');
   const [activePrompt, setActivePrompt] = useState(null);
+  // The mentality journals are fetched once, on the first analysis, instead of
+  // held on a live subscription — the journal page already carries two of those
+  // and this data only matters at the moment the coach runs.
+  const journalsRef = useRef(null);
+
+  const loadMentalityJournals = async () => {
+    if (!user) return null;
+    if (journalsRef.current) return journalsRef.current;
+    const [morning, evening] = await Promise.all([
+      getUserCollectionDocs(user.uid, 'morningJournals'),
+      getUserCollectionDocs(user.uid, 'eveningJournals'),
+    ]);
+    journalsRef.current = { morning, evening };
+    return journalsRef.current;
+  };
 
   const run = async (promptKey = null) => {
     setActivePrompt(promptKey);
@@ -354,6 +475,17 @@ export default function AICoachPanel({ trades }) {
         setReport('');
         setStats(null);
         return;
+      }
+      // Psychology is an enrichment, never a prerequisite — if the journals
+      // fail to load the report still goes out, just without that section.
+      try {
+        const j = await loadMentalityJournals();
+        // Same trade window buildCoachStats used, so a free user doesn't get
+        // this-month headline numbers next to an all-time psychology section.
+        const psych = j && buildPsychologyStats(coachScopeTrades(trades, { premium: isPremium }), j.morning, j.evening);
+        if (psych) built.psychology = psych;
+      } catch {
+        journalsRef.current = null;
       }
       setStats(built);
       const text = await generateCoachReport(promptKey ? { ...built, focus: promptKey } : built, isPremium ? 'deep' : 'short');
