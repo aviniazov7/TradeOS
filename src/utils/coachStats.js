@@ -61,6 +61,17 @@ function topGroups(trades, keyFn, take = 5) {
     }));
 }
 
+// The exact trade set buildCoachStats will summarize. Exported so anything that
+// enriches the same payload (the psychology cross-reference) measures the same
+// period — a free user must not get month-scoped headline numbers alongside an
+// all-time psychology section.
+export function coachScopeTrades(allTrades, { premium = false } = {}) {
+  const closed = (allTrades || []).filter(isClosed);
+  if (premium) return closed;
+  const monthStart = new Date(new Date().getFullYear(), new Date().getMonth(), 1).getTime();
+  return closed.filter((t) => tradeMs(t) >= monthStart);
+}
+
 export function buildCoachStats(allTrades, { premium = false } = {}) {
   const closed = (allTrades || []).filter(isClosed);
   if (!closed.length) return { empty: true };
