@@ -1,0 +1,61 @@
+import { BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer, PieChart, Pie, Cell } from 'recharts';
+import EquityCurveChart from '../analytics/EquityCurveChart';
+import TradeDurationChart from '../analytics/TradeDurationChart';
+
+// The journal's analytics charts. Split out so `recharts` (~414 kB) is only
+// downloaded when the analytics tab is opened — it used to load eagerly on the
+// trades tab, which is the default landing view.
+export default function JournalCharts({
+  analytics, stats, periodTrades, cardClass, tooltipStyle, pieColors, formatCurrency, onFilterJump,
+}) {
+  if (!analytics) return null;
+
+  return (
+    <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4 mb-6">
+      <div className={`${cardClass} p-5`}>
+        <h3 className="text-sm font-semibold text-text-primary mb-3">התפלגות תוצאות</h3>
+        <ResponsiveContainer width="100%" height={160}>
+          <PieChart>
+            <Pie data={analytics.pieData} dataKey="value" nameKey="name" cx="50%" cy="50%" innerRadius={40} outerRadius={65} paddingAngle={3}>
+              {analytics.pieData.map((d, i) => <Cell key={d.name} fill={pieColors[i]} />)}
+            </Pie>
+            <Tooltip contentStyle={tooltipStyle} labelStyle={{ color: 'var(--color-text-secondary)', fontSize: '11px' }} itemStyle={{ color: 'var(--color-text-primary)' }} cursor={{ fill: 'var(--color-bg-tertiary)' }} />
+          </PieChart>
+        </ResponsiveContainer>
+        <div className="flex justify-center gap-3 text-[10px] mt-1">
+          {analytics.pieData.map((d, i) => {
+            let resultKey = 'breakeven';
+            if (d.name === 'רווח') resultKey = 'win';
+            else if (d.name === 'הפסד') resultKey = 'loss';
+            return (
+              <div key={d.name} onClick={() => onFilterJump({ result: resultKey })}
+                className="flex items-center gap-1 cursor-pointer hover:opacity-80 transition-opacity">
+                <div className="w-2 h-2 rounded-full" style={{ background: pieColors[i] }} />
+                <span className="text-text-muted">{d.name} ({d.value}) ↗</span>
+              </div>
+            );
+          })}
+        </div>
+      </div>
+
+      <div className={`${cardClass} p-5`}>
+        <h3 className="text-sm font-semibold text-text-primary mb-3">רווח/הפסד יומי</h3>
+        <ResponsiveContainer width="100%" height={170}>
+          <BarChart data={analytics.dailyPnL}>
+            <XAxis dataKey="date" tick={{ fill: 'var(--color-text-muted)', fontSize: 9 }} axisLine={false} tickLine={false} />
+            <YAxis tick={{ fill: 'var(--color-text-muted)', fontSize: 10 }} axisLine={false} tickLine={false} orientation="right" />
+            <Tooltip contentStyle={tooltipStyle} labelStyle={{ color: 'var(--color-text-secondary)', fontSize: '11px' }} itemStyle={{ color: 'var(--color-text-primary)' }} cursor={{ fill: 'var(--color-bg-tertiary)' }} formatter={(val) => [formatCurrency(val), 'רווח/הפסד']} />
+            <Bar dataKey="pnl" radius={[4, 4, 0, 0]} animationDuration={800}>
+              {analytics.dailyPnL.map((entry) => (
+                <Cell key={entry.date} fill={entry.pnl >= 0 ? '#22c55e' : '#ef4444'} />
+              ))}
+            </Bar>
+          </BarChart>
+        </ResponsiveContainer>
+      </div>
+
+      <EquityCurveChart data={stats.equityChartData} />
+      <TradeDurationChart trades={periodTrades} />
+    </div>
+  );
+}

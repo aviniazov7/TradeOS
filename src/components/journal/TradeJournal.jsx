@@ -1,4 +1,4 @@
-import { useState, useMemo, useEffect, useRef } from 'react';
+import { useState, useMemo, useEffect, useRef, lazy, Suspense } from 'react';
 import { useSearchParams } from 'react-router-dom';
 import { motion } from 'framer-motion';
 import {
@@ -8,7 +8,6 @@ import {
   Clock, DollarSign, Percent, Link2, Undo2, BrainCircuit, Star,
   Sparkles, ChevronLeft,
 } from 'lucide-react';
-import { BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer, PieChart, Pie, Cell } from 'recharts';
 import { format } from 'date-fns';
 import toast from 'react-hot-toast';
 import confetti from 'canvas-confetti';
@@ -28,10 +27,6 @@ import TimePeriodFilter from '../dashboard/TimePeriodFilter';
 import StrategyPerformanceTable from '../dashboard/StrategyPerformanceTable';
 import MonthlyPerformanceTable from '../dashboard/MonthlyPerformanceTable';
 import TradeHeatmap from '../dashboard/TradeHeatmap';
-import EquityCurveChart from '../analytics/EquityCurveChart';
-import SessionAnalysisChart from '../analytics/SessionAnalysisChart';
-import DayOfWeekChart from '../analytics/DayOfWeekChart';
-import TradeDurationChart from '../analytics/TradeDurationChart';
 import MonthlyCalendar from './MonthlyCalendar';
 import AICoachPanel from './AICoachPanel';
 import Modal from '../shared/Modal';
@@ -49,6 +44,12 @@ import { TAG_LABELS } from '../../utils/constants';
 import { pageVariants, pageTransition, staggerContainer } from '../../utils/animations';
 
 const defaultFilters = { search: '', direction: '', result: '', strategy: '', tag: '', timeframe: '', month: '' };
+// recharts is ~414 kB. The charts live only in the analytics tab, so they load
+// on demand instead of on the default trades view.
+const JournalCharts = lazy(() => import('./JournalCharts'));
+const SessionAnalysisChart = lazy(() => import('../analytics/SessionAnalysisChart'));
+const DayOfWeekChart = lazy(() => import('../analytics/DayOfWeekChart'));
+
 const tooltipStyle = { background: 'var(--color-bg-overlay)', border: '1px solid var(--color-border-primary)', borderRadius: '8px', fontSize: '12px', color: 'var(--color-text-primary)' };
 const PIE_COLORS = ['#22c55e', '#ef4444', '#eab308'];
 
@@ -840,48 +841,13 @@ export default function TradeJournal() {
           {analytics && (
             <>
 
-              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4 mb-6">
-                <div className={`${cardClass} p-5`}>
-                  <h3 className="text-sm font-semibold text-text-primary mb-3">התפלגות תוצאות</h3>
-                  <ResponsiveContainer width="100%" height={160}>
-                    <PieChart>
-                      <Pie data={analytics.pieData} dataKey="value" nameKey="name" cx="50%" cy="50%" innerRadius={40} outerRadius={65} paddingAngle={3}>
-                        {analytics.pieData.map((d, i) => <Cell key={d.name} fill={PIE_COLORS[i]} />)}
-                      </Pie>
-                      <Tooltip contentStyle={tooltipStyle} labelStyle={{ color: 'var(--color-text-secondary)', fontSize: '11px' }} itemStyle={{ color: 'var(--color-text-primary)' }} cursor={{ fill: 'var(--color-bg-tertiary)' }} />
-                    </PieChart>
-                  </ResponsiveContainer>
-                  <div className="flex justify-center gap-3 text-[10px] mt-1">
-                    {analytics.pieData.map((d, i) => {
-                      const resultKey = d.name === 'רווח' ? 'win' : d.name === 'הפסד' ? 'loss' : 'breakeven';
-                      return (
-                        <div key={d.name} onClick={() => filterAndJump({ result: resultKey })}
-                          className="flex items-center gap-1 cursor-pointer hover:opacity-80 transition-opacity">
-                          <div className="w-2 h-2 rounded-full" style={{ background: PIE_COLORS[i] }} />
-                          <span className="text-text-muted">{d.name} ({d.value}) ↗</span>
-                        </div>
-                      );
-                    })}
-                  </div>
-                </div>
-                <div className={`${cardClass} p-5`}>
-                  <h3 className="text-sm font-semibold text-text-primary mb-3">רווח/הפסד יומי</h3>
-                  <ResponsiveContainer width="100%" height={170}>
-                    <BarChart data={analytics.dailyPnL}>
-                      <XAxis dataKey="date" tick={{ fill: 'var(--color-text-muted)', fontSize: 9 }} axisLine={false} tickLine={false} />
-                      <YAxis tick={{ fill: 'var(--color-text-muted)', fontSize: 10 }} axisLine={false} tickLine={false} orientation="right" />
-                      <Tooltip contentStyle={tooltipStyle} labelStyle={{ color: 'var(--color-text-secondary)', fontSize: '11px' }} itemStyle={{ color: 'var(--color-text-primary)' }} cursor={{ fill: 'var(--color-bg-tertiary)' }} formatter={(val) => [formatCurrency(val), 'רווח/הפסד']} />
-                      <Bar dataKey="pnl" radius={[4, 4, 0, 0]} animationDuration={800}>
-                        {analytics.dailyPnL.map((entry) => (
-                          <Cell key={entry.date} fill={entry.pnl >= 0 ? '#22c55e' : '#ef4444'} />
-                        ))}
-                      </Bar>
-                    </BarChart>
-                  </ResponsiveContainer>
-                </div>
-                <EquityCurveChart data={stats.equityChartData} />
-                <TradeDurationChart trades={periodTrades} />
-              </div>
+              <Suspense fallback={<div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4 mb-6">{[1, 2, 3, 4].map((i) => <div key={i} className={`${cardClass} p-5 h-48 animate-pulse`} />)}</div>}>
+                <JournalCharts
+                  analytics={analytics} stats={stats} periodTrades={periodTrades}
+                  cardClass={cardClass} tooltipStyle={tooltipStyle} pieColors={PIE_COLORS}
+                  formatCurrency={formatCurrency} onFilterJump={filterAndJump}
+                />
+              </Suspense>
             </>
           )}
 
@@ -929,8 +895,12 @@ export default function TradeJournal() {
           </div>
 
           <div className="grid grid-cols-1 lg:grid-cols-3 gap-4 mb-6">
-            <SessionAnalysisChart data={stats.sessionPerformance} />
-            <DayOfWeekChart data={stats.dayOfWeekPerformance} />
+            <Suspense fallback={<div className={`${cardClass} p-5 h-56 animate-pulse`} />}>
+              <SessionAnalysisChart data={stats.sessionPerformance} />
+            </Suspense>
+            <Suspense fallback={<div className={`${cardClass} p-5 h-56 animate-pulse`} />}>
+              <DayOfWeekChart data={stats.dayOfWeekPerformance} />
+            </Suspense>
             {analytics?.byTag?.length > 0 && (
               <div className={`${cardClass} p-5`}>
                 <h3 className="text-sm font-semibold text-text-primary mb-3">ביצועים לפי תגית</h3>
