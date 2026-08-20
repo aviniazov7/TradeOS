@@ -126,10 +126,17 @@ body {
   --color-accent-muted: #1e3a8a;
   --color-bg-overlay: rgba(248, 250, 253, 0.98);
   --color-bg-solid: rgba(245, 247, 251, 0.98);
-  /* Darker profit/loss for foreground TEXT so the headline P/L numbers pass
-     WCAG AA on the light glass cards. Still vivid enough for fills/badges. */
+  /* Darker profit/loss/breakeven for foreground TEXT so the headline P/L
+     numbers pass WCAG AA on the light glass cards. Still vivid enough for
+     fills/badges. Same rule for all three: keep the dark hue family, drop the
+     weight (green-500→700, red-500→600, amber-500→700).
+     Breakeven was the one token missing an override — amber-500 scored
+     1.4–1.9:1 on every light surface (unreadable). amber-700 lands at exactly
+     the same contrast as --color-profit everywhere: 4.24 on the page bg,
+     4.50 on a bg-secondary card, 3.43 inside a scrimmed modal. */
   --color-profit: #15803d;
   --color-loss: #dc2626;
+  --color-breakeven: #b45309;
   --color-long: #15803d;
   --color-short: #dc2626;
   --color-chart-purple: #7c3aed;

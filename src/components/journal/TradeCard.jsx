@@ -35,7 +35,7 @@ export default function TradeCard({ trade, onEdit, onDelete }) {
         <ArrowLeft className="w-3 h-3 text-text-muted" />
         <span className="text-text-secondary">
           {formatNumber(trade.exitPrice)}
-          {trade.status === 'partial' && <span className="text-[10px] text-amber-500 mr-0.5">(חלקית)</span>}
+          {trade.status === 'partial' && <span className="text-[10px] text-breakeven mr-0.5">(חלקית)</span>}
         </span>
         <span className={`mr-auto text-lg font-bold ${pnlColor(pnl)}`}>
           {formatCurrency(pnl)}
