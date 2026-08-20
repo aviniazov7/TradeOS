@@ -2,16 +2,18 @@ import { useRef, useState } from 'react';
 import { motion } from 'framer-motion';
 import {
   BrainCircuit, Crown, RefreshCw, AlertCircle, Lock, Sparkles,
-  TrendingUp, TrendingDown, Target, Lightbulb, HeartPulse,
+  TrendingUp, TrendingDown, Target, Lightbulb, HeartPulse, ClipboardCheck, ShieldAlert,
 } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
 import ThinkingIndicator from '../shared/ThinkingIndicator';
 import { renderBulletHtml } from '../../utils/renderBulletHtml';
 import { useAuth } from '../../contexts/AuthContext';
+import { useJournalContext } from '../../contexts/JournalContext';
 import { generateCoachReport } from '../../services/aiCoachService';
 import { getUserCollectionDocs } from '../../services/firestoreService';
 import { buildCoachStats, coachScopeTrades } from '../../utils/coachStats';
 import { buildPsychologyStats } from '../../utils/coachPsychology';
+import { auditPlan } from '../../utils/planAudit';
 
 // Quick prompts the user can click to seed the report.
 const FREE_PROMPTS = [
@@ -25,6 +27,7 @@ const PREMIUM_PROMPTS = [
   { id: 'compareMonth', label: 'איך החודש מול הקודם?' },
   { id: 'strategyEdge', label: 'איזו אסטרטגיה מצליחה?' },
   { id: 'psychology', label: 'כמה מצב הראש עולה לי?' },
+  { id: 'planAudit', label: 'האם אני עומד בתוכנית שלי?' },
 ];
 
 // Each section header maps to an icon + accent color. The model is locked to
@@ -305,6 +308,70 @@ function PsychologyPanel({ psych }) {
   );
 }
 
+// Plan audit — what the trader wrote down vs what they actually did. Rules the
+// audit could not measure are listed explicitly; a rule the user defined must
+// never just vanish from the report.
+function PlanAuditPanel({ audit }) {
+  if (!audit) return null;
+  const c = audit.compliance;
+  return (
+    <div className="space-y-3">
+      <div className="grid grid-cols-2 md:grid-cols-4 gap-2">
+        <StatCard label="התוכנית" value={audit.planName} sub={audit.planActive ? 'פעילה' : 'לא פעילה'} Icon={ClipboardCheck} />
+        <StatCard label="עסקאות שנבדקו" value={audit.tradesAudited} Icon={Target} />
+        {c && (
+          <StatCard
+            label="בתוך התוכנית"
+            value={fmt$Compact(c.onPlan.avgPnl)}
+            sub={`${c.onPlan.trades} עסקאות · ${c.onPlan.winRate}%`}
+            tone="profit"
+            Icon={TrendingUp}
+          />
+        )}
+        {c && (
+          <StatCard
+            label="חריגה מהתוכנית"
+            value={fmt$Compact(c.offPlan.avgPnl)}
+            sub={`${c.offPlan.trades} עסקאות · ${c.offPlan.winRate}%`}
+            tone="loss"
+            Icon={TrendingDown}
+          />
+        )}
+      </div>
+
+      {audit.findings.length > 0 && (
+        <div className="bg-bg-secondary border border-border-primary rounded-xl p-4">
+          <div className="flex items-center gap-2 mb-2">
+            <ShieldAlert className="w-4 h-4 text-accent-primary" />
+            <h4 className="text-sm font-semibold text-text-primary">חריגות, לפי העלות שלהן</h4>
+          </div>
+          <ul className="space-y-1.5">
+            {audit.findings.map((f) => (
+              <li key={f} className="flex gap-2 text-xs text-text-secondary leading-relaxed">
+                <span className="mt-1.5 inline-block w-1.5 h-1.5 rounded-full bg-loss shrink-0" />
+                <span>{f}</span>
+              </li>
+            ))}
+          </ul>
+        </div>
+      )}
+
+      {audit.notMeasurable.length > 0 && (
+        <div className="bg-bg-secondary border border-border-primary rounded-xl p-4">
+          <h4 className="text-sm font-semibold text-text-primary mb-2">מה לא ניתן היה לבדוק</h4>
+          <ul className="space-y-1">
+            {audit.notMeasurable.map((n) => (
+              <li key={n.rule} className="text-[11px] text-text-muted">
+                <span className="text-text-secondary">{n.rule}</span> — {n.reason}
+              </li>
+            ))}
+          </ul>
+        </div>
+      )}
+    </div>
+  );
+}
+
 // This-month vs previous-month comparison table (Premium stats only).
 function CompareMonths({ cmp }) {
   const prev = cmp?.prevMonth;
@@ -376,6 +443,15 @@ function StatsDashboard({ stats, focus }) {
   if (focus === 'compareMonth' && stats.compareToPrevMonth) {
     return <CompareMonths cmp={stats.compareToPrevMonth} />;
   }
+  if (focus === 'planAudit') {
+    return stats.planAudit
+      ? <PlanAuditPanel audit={stats.planAudit} />
+      : (
+        <div className="bg-bg-secondary border border-border-primary rounded-xl p-4 text-xs text-text-secondary">
+          לא נמצאה תוכנית מסחר לבדוק מולה. צור תוכנית במסך "תוכניות מסחר" והגדר בה מטבעות, טיימפריימים, סשנים ותקרות סיכון.
+        </div>
+      );
+  }
   if (focus === 'psychology') {
     return stats.psychology
       ? <PsychologyPanel psych={stats.psychology} />
@@ -442,6 +518,7 @@ function StatsDashboard({ stats, focus }) {
 
 export default function AICoachPanel({ trades }) {
   const { user, isPremium } = useAuth();
+  const { activeJournal } = useJournalContext();
   const navigate = useNavigate();
   const [loading, setLoading] = useState(false);
   const [report, setReport] = useState('');
@@ -452,6 +529,9 @@ export default function AICoachPanel({ trades }) {
   // held on a live subscription — the journal page already carries two of those
   // and this data only matters at the moment the coach runs.
   const journalsRef = useRef(null);
+  // undefined = never fetched. null is a real answer (the user has no plan),
+  // so it can't double as the "not loaded yet" marker.
+  const plansRef = useRef(undefined);
 
   const loadMentalityJournals = async () => {
     if (!user) return null;
@@ -462,6 +542,16 @@ export default function AICoachPanel({ trades }) {
     ]);
     journalsRef.current = { morning, evening };
     return journalsRef.current;
+  };
+
+  const loadActivePlan = async () => {
+    if (!user) return null;
+    if (plansRef.current !== undefined) return plansRef.current;
+    const plans = await getUserCollectionDocs(user.uid, 'tradingPlans');
+    // A trader can keep several plans around; the audit is only meaningful
+    // against the one they declared active.
+    plansRef.current = plans.find((p) => p.isActive) || plans[0] || null;
+    return plansRef.current;
   };
 
   const run = async (promptKey = null) => {
@@ -486,6 +576,16 @@ export default function AICoachPanel({ trades }) {
         if (psych) built.psychology = psych;
       } catch {
         journalsRef.current = null;
+      }
+      // Same deal for the plan audit — an enrichment, never a prerequisite.
+      try {
+        const plan = await loadActivePlan();
+        const audit = plan && auditPlan(plan, coachScopeTrades(trades, { premium: isPremium }), {
+          accountBalance: Number(activeJournal?.initialBalance) || 0,
+        });
+        if (audit) built.planAudit = audit;
+      } catch {
+        plansRef.current = undefined;
       }
       setStats(built);
       const text = await generateCoachReport(promptKey ? { ...built, focus: promptKey } : built, isPremium ? 'deep' : 'short');
