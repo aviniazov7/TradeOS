@@ -554,7 +554,7 @@ export default function TradeForm({ isOpen, onClose, trade, onSave, riskSettings
               const statusCfg = {
                 limit:   { icon: Clock,         color: 'text-text-muted',    bg: 'bg-bg-tertiary',       border: 'border-border-primary/50', dot: 'bg-text-muted',    label: 'ממתין לכניסה' },
                 open:    { icon: CircleDot,     color: 'text-accent-primary', bg: 'bg-accent-primary/8', border: 'border-accent-primary/20', dot: 'bg-accent-primary animate-pulse', label: 'עסקה פתוחה' },
-                partial: { icon: CircleDot,     color: 'text-amber-400',     bg: 'bg-amber-400/8',       border: 'border-amber-400/20',      dot: 'bg-amber-400 animate-pulse',      label: `${additionalExitsPercent.toFixed(0)}% נסגר` },
+                partial: { icon: CircleDot,     color: 'text-breakeven',     bg: 'bg-breakeven/8',       border: 'border-breakeven/20',      dot: 'bg-breakeven animate-pulse',      label: `${additionalExitsPercent.toFixed(0)}% נסגר` },
                 closed:  { icon: CheckCircle2,  color: calc?.netPnl > 0 ? 'text-profit' : 'text-loss', bg: calc?.netPnl > 0 ? 'bg-profit/8' : 'bg-loss/8', border: calc?.netPnl > 0 ? 'border-profit/20' : 'border-loss/20', dot: calc?.netPnl > 0 ? 'bg-profit' : 'bg-loss', label: 'נסגרה' },
               };
               const cfg = statusCfg[currentStatus];
@@ -682,7 +682,7 @@ export default function TradeForm({ isOpen, onClose, trade, onSave, riskSettings
                   <span className={`text-[10px] font-semibold px-2 py-0.5 rounded-full ${
                     additionalExitsPercent > 100 ? 'bg-loss/20 text-loss' :
                     additionalExitsPercent === 100 ? 'bg-profit/20 text-profit' :
-                    'bg-amber-400/15 text-amber-400'
+                    'bg-breakeven/15 text-breakeven'
                   }`}>
                     {additionalExitsPercent > 100
                       ? `${additionalExitsPercent.toFixed(0)}% — חורג מ-100%`
@@ -800,7 +800,7 @@ export default function TradeForm({ isOpen, onClose, trade, onSave, riskSettings
                 riskInfo.severity === 'critical'
                   ? 'bg-loss/10 border-loss/30 text-loss'
                   : riskInfo.severity === 'warning'
-                    ? 'bg-amber-500/10 border-amber-500/30 text-amber-500'
+                    ? 'bg-breakeven/10 border-breakeven/30 text-breakeven'
                     : 'bg-accent-primary/10 border-accent-primary/30 text-accent-primary'
               }`}>
                 {riskInfo.severity === 'info'

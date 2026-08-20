@@ -2557,7 +2557,7 @@ const PM_BRIEF_SYSTEM_PROMPT = `אתה האנליסט האישי של המשתמ
 - אסור להתחיל שורה ב-#, ##, ### או אות-מספר-נקודה (1.).
 - אסור כותרות אחרות מלבד הארבע המוגדרות.
 - אסור: המלצה להמר או להיכנס לפוזיציה, הבטחת רווח, אזכור שאתה AI, פתיחות שיווקיות.
-- אסור להמציא נתונים — רק מה שמופיע ב-stats. אם חלק ריק (אין ארנקים במעקב / אין אסטרטגיה) — אמור זאת מפורשות והמלץ להשלים אותו.
+- אסור להמציא נתונים — רק מה שמופיע ב-stats. אם חלק ריק (אין ארנקים במעקב / אין אסטרטגיה) — אמור זאת מפורשות והמלץ להשלים אותו, אבל רק כשהמפתח מופיע ב-JSON עם ערך ריק; רשימה שנחתכה (ראה "_truncated") אינה מעקב ריק.
 - בלי משפט פתיחה. תתחיל ישר בשורה: **חוזקות**.
 
 ## איכות התוכן (חשוב):
@@ -2575,11 +2575,161 @@ const BACKTEST_FOCUS_INSTRUCTIONS = {
   improve: 'הסוחר שאל: "מה לשפר?". מקד את הדו"ח בחולשות הניתנות לתיקון — צירופים מפסידים לזנוח, טיימפריימים/סשנים חלשים, ומה לבדוק יותר לפני מעבר למסחר חי.',
 };
 
+// ---- coach stats payload packing ----
+// The prompt that follows the "אסור להמציא נתונים" rule must not be handed a
+// JSON fragment. The budget below is measured in ESTIMATED TOKENS, not
+// characters, because the thing it protects is a TOKEN bucket: one shared Groq
+// free-tier key serves chat + coach + coin descriptions + digest (see
+// groqFetchWithRetry), and its per-minute budget on the 70B is what a runaway
+// payload actually breaks. Characters are a 3-4x wrong proxy for that — ASCII
+// JSON runs ~3-4 chars/token while Hebrew (strategy names, market questions,
+// notes) runs closer to 1 char/token in these BPE vocabularies, so a
+// Hebrew-heavy payload sails through a char cap and then 429s.
+// Sizing: deep = 5000 prompt tokens + ~900 system + 1400 answer ≈ 7.3K/run —
+// inside the per-minute window, and ~13 deep runs against the 100K-tokens/day
+// budget referenced below. Neither model's CONTEXT is the constraint
+// (llama-3.3-70b 128K, gemini-2.0-flash 1M); the rate buckets are. Raise these
+// only together with what the client sends, not instead of it.
+const COACH_STATS_BUDGET_SHORT = 2500;
+const COACH_STATS_BUDGET_DEEP = 5000;
+// Successive trim passes: max array elements kept, max string length kept.
+// Arrays lose their TAIL — every payload we send is ranked or most-recent-first
+// (bestTrades/worstTrades, byPair, trackedWallets, topMatches), so the head is
+// the part worth keeping.
+const COACH_STATS_LADDER = [
+  { arr: 40, str: 600 },
+  { arr: 24, str: 400 },
+  { arr: 12, str: 300 },
+  { arr: 8, str: 220 },
+  { arr: 5, str: 160 },
+  { arr: 3, str: 120 },
+  { arr: 2, str: 90 },
+  { arr: 1, str: 60 },
+];
+// stats is client-supplied; cap the recursion. Real payloads are <= 4 deep.
+const COACH_STATS_MAX_DEPTH = 12;
+// Absolute floor for a payload that cannot be trimmed into budget at all (only
+// reachable with a crafted request — e.g. hundreds of top-level keys with huge
+// NAMES, which no trimming of values can shrink). Pure ASCII, ~25 tokens, and
+// contains NO client-controlled text: it always parses and always fits.
+const COACH_STATS_OVERFLOW = '{"_truncated":{"_all":"payload exceeded the size limit - nothing was sent"}}';
+
+// Appended to EVERY coach system prompt. Without it the modes that are ordered
+// to announce an empty section (PM_BRIEF_SYSTEM_PROMPT: "אם חלק ריק … אמור זאת
+// מפורשות") would read a trimmed section as an empty one and tell the user they
+// track no wallets. Lives in the SYSTEM message on purpose — nothing derived
+// from the client payload may be interpolated into the prompt outside the
+// ```json fence.
+const COACH_TRUNCATION_RULE = `
+
+## נתונים חתוכים (חובה):
+- ה-JSON עלול להישלח מקוצר בגלל מגבלת גודל. אם מופיע בו מפתח "_truncated" — הערכים שם מציינים כמה פריטים מתוך כמה נשלחו בכל רשימה (למשל "6 of 24").
+- במקרה כזה הסתמך רק על מה שקיבלת, וציין שהמדגם חלקי אם זה משנה למסקנה.
+- מה שנחתך אינו "ריק": אל תסיק שאין שם נתונים, אל תמציא אותם, ואל תמליץ להשלים חלק שרק נחתך. "ריק" ייאמר רק כשהמפתח עצמו מופיע ב-JSON עם ערך ריק.`;
+
+// ~tokens for a serialized payload. ASCII at 3 chars/token, everything else at
+// 1 — both deliberately pessimistic, so the estimate never under-states cost.
+function estimateCoachTokens(str) {
+  let ascii = 0;
+  for (let i = 0; i < str.length; i++) if (str.charCodeAt(i) < 128) ascii += 1;
+  return Math.ceil(ascii / 3) + (str.length - ascii);
+}
+
+// Cut without leaving a dangling half of a surrogate pair behind.
+function cutCoachText(str, max) {
+  let out = str.slice(0, max);
+  const last = out.charCodeAt(out.length - 1);
+  if (last >= 0xd800 && last <= 0xdbff) out = out.slice(0, -1);
+  return out;
+}
+
+// Trim VALUES, never keys. Invariants that the callers rely on:
+//   * every key at every level survives;
+//   * a non-empty array never becomes empty (>= 1 element is always kept);
+//   * a string is never emptied.
+// That is what makes "this section is empty" impossible to infer falsely from a
+// trimmed payload.
+function trimCoachValue(value, path, caps, report, depth) {
+  if (depth > COACH_STATS_MAX_DEPTH) {
+    report.depth += 1;
+    return '[nested]';
+  }
+  if (typeof value === 'string') {
+    if (value.length <= caps.str) return value;
+    report.strings += 1;
+    return `${cutCoachText(value, caps.str)}…`;
+  }
+  if (Array.isArray(value)) {
+    const keep = value.length ? Math.max(1, Math.min(value.length, caps.arr)) : 0;
+    if (keep < value.length) {
+      const seen = report.arrays.get(path) || { kept: 0, total: 0, places: 0 };
+      seen.kept += keep;
+      seen.total += value.length;
+      seen.places += 1;
+      report.arrays.set(path, seen);
+    }
+    const out = [];
+    for (let i = 0; i < keep; i++) out.push(trimCoachValue(value[i], `${path}[]`, caps, report, depth + 1));
+    return out;
+  }
+  if (value && typeof value === 'object') {
+    // Null prototype: a literal "__proto__" key in the client JSON then lands as
+    // a plain own property instead of hitting the prototype setter and silently
+    // disappearing (which would break the "every key survives" invariant).
+    const out = Object.create(null);
+    for (const k of Object.keys(value)) {
+      out[k] = trimCoachValue(value[k], path ? `${path}.${k}` : k, caps, report, depth + 1);
+    }
+    return out;
+  }
+  return value; // number | boolean | null
+}
+
+function coachTruncationNote(report) {
+  const note = Object.create(null);
+  for (const [path, seen] of report.arrays) {
+    note[path] = seen.places > 1
+      ? `${seen.kept} of ${seen.total} (across ${seen.places} lists)`
+      : `${seen.kept} of ${seen.total}`;
+  }
+  if (report.strings) note._strings = `${report.strings} long text values shortened`;
+  if (report.depth) note._depth = `${report.depth} deeply nested values replaced`;
+  return note;
+}
+
+// Fit `stats` into `budget` estimated tokens WITHOUT ever emitting broken JSON.
+// The previous `JSON.stringify(stats).slice(0, 6000)` cut mid-structure, so the
+// model got malformed JSON inside a ```json fence and invented the missing tail.
+// Dropping whole top-level keys instead is no better: a missing section is
+// indistinguishable from an empty one, and the prompts order the model to call
+// out empty sections. So keep EVERY key and trim the CONTENTS — array tails and
+// over-long strings — reporting inside the JSON, under "_truncated", how much of
+// each list was sent ("6 of 24"). The return value always parses and is always
+// within budget; nothing client-controlled escapes into the prompt.
+// stats comes from request.json(), so it is plain JSON data: JSON.stringify here
+// cannot throw and cannot return undefined.
+function packCoachStats(stats, budget) {
+  const asIs = JSON.stringify(stats);
+  if (estimateCoachTokens(asIs) <= budget) return asIs;
+  for (const caps of COACH_STATS_LADDER) {
+    const report = { arrays: new Map(), strings: 0, depth: 0 };
+    const trimmed = trimCoachValue(stats, '', caps, report, 0);
+    const note = coachTruncationNote(report);
+    if (Object.keys(note).length) trimmed._truncated = note;
+    const json = JSON.stringify(trimmed);
+    if (estimateCoachTokens(json) <= budget) return json;
+  }
+  return COACH_STATS_OVERFLOW;
+}
+
 async function handleAICoach(request, env, cors) {
   try {
     const body = await request.json().catch(() => ({}));
     const { stats, depth = 'short', mode = 'journal' } = body || {};
-    if (!stats || typeof stats !== 'object') {
+    // Arrays are rejected too: every caller sends a keyed object, and the
+    // packer's whole contract is per-SECTION reporting, which a bare array has
+    // no place to carry.
+    if (!stats || typeof stats !== 'object' || Array.isArray(stats)) {
       return new Response(JSON.stringify({ error: 'Missing stats' }), { status: 400, headers: { ...cors, 'Content-Type': 'application/json' } });
     }
     // Mode swaps the system prompt + focus set; everything else (auth,
@@ -2591,6 +2741,10 @@ async function handleAICoach(request, env, cors) {
     if (isBacktest) systemPrompt = BACKTEST_COACH_SYSTEM_PROMPT;
     if (isPolymarket) systemPrompt = PM_ANALYST_SYSTEM_PROMPT;
     if (isPmBrief) systemPrompt = PM_BRIEF_SYSTEM_PROMPT;
+    // All four modes forbid inventing data; all four can now receive a trimmed
+    // payload, so all four need the rule that says a trimmed list is not an
+    // empty one (see packCoachStats).
+    systemPrompt += COACH_TRUNCATION_RULE;
     // Polymarket modes have no quick-prompts — an empty set keeps journal
     // directives from leaking into those reports.
     let focusSet = COACH_FOCUS_INSTRUCTIONS;
@@ -2600,8 +2754,8 @@ async function handleAICoach(request, env, cors) {
     if (isBacktest) dataLabel = 'נתוני הבקטסט';
     if (isPolymarket) dataLabel = 'נתוני הארנק';
     if (isPmBrief) dataLabel = 'סביבת העבודה שלך';
-    // Hard cap stats payload to keep the prompt cheap.
-    const statsStr = JSON.stringify(stats).slice(0, 6000);
+    // NOTE: the stats payload is serialized further down, AFTER the premium
+    // lookup — its budget is depth-aware (see packCoachStats).
 
     const authHeader = request.headers.get('Authorization') || '';
     const token = authHeader.replace('Bearer ', '');
@@ -2644,6 +2798,12 @@ async function handleAICoach(request, env, cors) {
     const focusLine = focusText
       ? `## מיקוד הדו"ח (חובה):\n${focusText}\nכל סעיף בדו"ח חייב לענות על השאלה הזו — אל תיתן דו"ח כללי.\n\n`
       : '';
+
+    // Structure-aware size cap. A blind slice handed the model a JSON fragment;
+    // packCoachStats keeps every section, trims list tails instead, and reports
+    // what it trimmed INSIDE the fenced JSON ("_truncated"). Nothing derived
+    // from the client payload is interpolated outside the fence.
+    const statsStr = packCoachStats(stats, premium && depth === 'deep' ? COACH_STATS_BUDGET_DEEP : COACH_STATS_BUDGET_SHORT);
 
     const userPrompt =
       focusLine +
