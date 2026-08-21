@@ -4,7 +4,7 @@ import { createPortal } from 'react-dom';
 import { motion, AnimatePresence } from 'framer-motion';
 import {
   Search, CornerDownLeft, LayoutDashboard, BookOpen, Brain, FlaskConical,
-  Coins, Wallet, ClipboardList, Activity, Bot, Newspaper, Crown, User, Building2,
+  Coins, Wallet, ClipboardList, Activity, Bot, Newspaper, Crown, User, Building2, Gauge,
 } from 'lucide-react';
 import { getUserCollectionDocs } from '../../services/firestoreService';
 import { useAuth } from '../../contexts/AuthContext';
@@ -18,6 +18,7 @@ const PAGES = [
   { label: 'מעקב DCA', path: '/dca', icon: Coins, kw: 'dca' },
   { label: 'ארנקים', path: '/wallets', icon: Wallet, kw: 'wallets ארנק יתרה' },
   { label: 'תוכניות מסחר', path: '/plans', icon: ClipboardList, kw: 'plans תוכנית' },
+  { label: 'האנליסט האישי', path: '/analyst', icon: Gauge, kw: 'analyst סיכון risk מפקח ניתוח' },
   { label: 'סקירת שוק', path: '/market', icon: Activity, kw: 'market שוק' },
   { label: 'TradeAI', path: '/trade-ai', icon: Bot, kw: 'ai בינה מלאכותית' },
   { label: 'חדשות', path: '/news', icon: Newspaper, kw: 'news' },

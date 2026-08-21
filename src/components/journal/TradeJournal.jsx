@@ -194,6 +194,8 @@ export default function TradeJournal() {
     // open journal settings (where the balance field lives) instead of just
     // landing on the journal, mirroring the ?new=1 → trade-form pattern.
     if (searchParams.get('settings') === '1') setSettingsOpen(true);
+    // Deep-link from the analyst page — it hands off to the full AI report.
+    if (searchParams.get('ai') === '1') setAiModalOpen(true);
   }, [searchParams]);
 
   // Period-filtered trades — same logic as useDashboardStats so analytics match the selected period

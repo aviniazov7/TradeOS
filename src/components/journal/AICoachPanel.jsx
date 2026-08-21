@@ -14,6 +14,7 @@ import { getUserCollectionDocs } from '../../services/firestoreService';
 import { buildCoachStats, coachScopeTrades } from '../../utils/coachStats';
 import { buildPsychologyStats } from '../../utils/coachPsychology';
 import { auditPlan } from '../../utils/planAudit';
+import { pickActivePlan } from '../../utils/pickActivePlan';
 
 // Quick prompts the user can click to seed the report.
 const FREE_PROMPTS = [
@@ -107,6 +108,15 @@ const COACH_STEPS = [
 // Renders deterministic stats + mini charts BEFORE the AI commentary so the
 // numbers come from us (trusted), not the model. The model only contextualizes
 // them in the section cards below.
+
+// findingsRanked is a UI-only field on the enrichment payloads. The prompt's
+// contract is `findings`, and shipping both would spend the token budget on the
+// same sentences twice.
+const forModel = (obj) => {
+  const copy = { ...obj };
+  delete copy.findingsRanked;
+  return copy;
+};
 
 const fmt$ = (v) => `${v >= 0 ? '+' : '-'}$${Math.abs(v).toFixed(2)}`;
 const fmt$Compact = (v) => {
@@ -559,22 +569,8 @@ export default function AICoachPanel({ trades }) {
     if (!user) return null;
     if (plansRef.current !== undefined) return plansRef.current;
     const plans = await getUserCollectionDocs(user.uid, 'tradingPlans');
-    // Every plan is created with isActive: true, so several active plans is the
-    // normal state — .find() would pick by Firestore doc-ID order. Take the most
-    // recently touched one, with a stable tiebreak so the pick never wobbles.
-    const active = plans.filter((p) => p.isActive);
-    const pool = active.length ? active : plans;
-    const stamp = (v) => {
-      if (!v) return 0;
-      if (typeof v?.toDate === 'function') return v.toDate().getTime();
-      const t = new Date(v).getTime();
-      return Number.isNaN(t) ? 0 : t;
-    };
-    plansRef.current = [...pool].sort((a, b) => (
-      (stamp(b.updatedAt) - stamp(a.updatedAt))
-      || (stamp(b.createdAt) - stamp(a.createdAt))
-      || String(a.id).localeCompare(String(b.id))
-    ))[0] || null;
+    // Shared with the analyst page — the two must never audit different plans.
+    plansRef.current = pickActivePlan(plans);
     return plansRef.current;
   };
 
@@ -597,7 +593,7 @@ export default function AICoachPanel({ trades }) {
         // Same trade window buildCoachStats used, so a free user doesn't get
         // this-month headline numbers next to an all-time psychology section.
         const psych = j && buildPsychologyStats(coachScopeTrades(trades, { premium: isPremium }), j.morning, j.evening);
-        if (psych) built.psychology = psych;
+        if (psych) built.psychology = forModel(psych);
       } catch {
         journalsRef.current = null;
       }
@@ -607,7 +603,7 @@ export default function AICoachPanel({ trades }) {
         const audit = plan && auditPlan(plan, coachScopeTrades(trades, { premium: isPremium }), {
           accountBalance: Number(activeJournal?.initialBalance) || 0,
         });
-        if (audit) built.planAudit = audit;
+        if (audit) built.planAudit = forModel(audit);
       } catch {
         plansRef.current = undefined;
       }

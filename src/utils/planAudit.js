@@ -266,6 +266,9 @@ export function auditPlan(plan, allTrades, { accountBalance = 0 } = {}) {
   if (compliance && !compliance.onPlan.thin && !compliance.offPlan.thin && compliance.avgPnlDelta !== 0) {
     findings.push({
       cost: Math.abs(compliance.offPlan.pnl),
+      // A negative delta means the off-plan trades did BETTER — that is a
+      // finding about the plan being too narrow, not about money lost.
+      kind: compliance.avgPnlDelta > 0 ? 'cost' : 'gain',
       text: compliance.avgPnlDelta > 0
         ? `עסקאות שחרגו מכללי התוכנית (מטבע/טיימפריים/סשן) הניבו פחות ב-${usdAbs(compliance.avgPnlDelta)} לעסקה מעסקאות שעמדו בהם (${compliance.offPlan.trades} מול ${compliance.onPlan.trades} עסקאות).`
         : `העסקאות שחרגו מכללי התוכנית (מטבע/טיימפריים/סשן) דווקא הניבו יותר ב-${usdAbs(compliance.avgPnlDelta)} לעסקה — התוכנית עצמה צרה מדי, לא המשמעת.`,
@@ -315,7 +318,12 @@ export function auditPlan(plan, allTrades, { accountBalance = 0 } = {}) {
       ? 'התוכנית מגבילה לפוזיציה אחת בכל רגע'
       : `התוכנית מגבילה ל-${positions.limit} פוזיציות במקביל`;
     findings.push({
+      // A rule breach with no dollar figure attached. `priced: false` is not the
+      // same as cost 0 — a compliance finding can legitimately price at exactly
+      // zero — and the UI must not sort or bar-chart this one as if it had a
+      // measured cost.
       cost: 0,
+      priced: false,
       text: `${cap}, ובפועל הגעת ל-${positions.peakConcurrent} (${positions.peakDate}).`,
     });
   }
@@ -339,7 +347,17 @@ export function auditPlan(plan, allTrades, { accountBalance = 0 } = {}) {
     taggedMistakes,
     declaredMistakes: matchedMistakes,
     notMeasurable,
+    // `findings` is the AI payload contract — plain sentences, described as such
+    // in COACH_SYSTEM_PROMPT. `findingsRanked` carries the dollar cost behind
+    // each one so the analyst page can rank and colour them; callers building
+    // the model payload strip it (see AICoachPanel).
     findings: findings.map((f) => f.text),
+    findingsRanked: findings.map((f) => ({
+      text: f.text,
+      cost: f.cost,
+      kind: f.kind || 'cost',
+      priced: f.priced !== false,
+    })),
     minSampleForConclusion: AUDIT_MIN_SAMPLE,
   };
 }

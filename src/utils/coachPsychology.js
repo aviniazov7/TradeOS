@@ -84,27 +84,42 @@ export function buildPsychologyStats(trades, morningEntries, eveningEntries) {
   // Pre-phrased, already-grounded one-liners. The model may quote these
   // verbatim; it must not invent a number that isn't here.
   const findings = [];
+  const ranked = [];
   const solid = (x) => x && !x.thin;
+  // push(text, impactPerTrade, tradeCount) — impact is what the sentence rests
+  // on, so the analyst page can rank a psychology finding against a plan breach
+  // on the same scale: dollars actually moved, not dollars per trade.
+  // kind: 'cost' = the sentence describes money the behaviour took away,
+  // 'gain' = money it earned. Only the call site knows which — the sign of the
+  // arithmetic does not ("standing by the plan earned $X more" is a positive
+  // delta but belongs under costs, because the loss is in breaking it).
+  const finding = (text, impactPerTrade, tradeCount, kind = 'cost') => {
+    findings.push(text);
+    ranked.push({ text, kind, cost: Math.abs(r2(impactPerTrade * tradeCount)) });
+  };
 
   // `emotions` is sorted by |avgPnlDelta| descending, so the first match on
   // each side is already the strongest one — no re-sorting needed.
   const worstEmotion = emotions.find((e) => solid(e) && e.avgPnlDelta < 0);
   if (worstEmotion) {
-    findings.push(
+    finding(
       `בימים שנפתחו ברגש "${worstEmotion.label}" הרווח הממוצע לעסקה נמוך ב-${usdAbs(worstEmotion.avgPnlDelta)} מהממוצע שלך (${worstEmotion.trades} עסקאות, ${worstEmotion.winRate}% הצלחה).`,
+      worstEmotion.avgPnlDelta, worstEmotion.trades,
     );
   }
   const bestEmotion = emotions.find((e) => solid(e) && e.avgPnlDelta > 0);
   if (bestEmotion) {
-    findings.push(
+    finding(
       `הרגש "${bestEmotion.label}" הוא המצב הרווחי ביותר שלך: ${usd(bestEmotion.avgPnlDelta)} לעסקה מעל הממוצע (${bestEmotion.trades} עסקאות).`,
+      bestEmotion.avgPnlDelta, bestEmotion.trades, 'gain',
     );
   }
   if (discipline && solid(discipline.followedPlan) && solid(discipline.brokePlan) && discipline.avgPnlDelta !== 0) {
-    findings.push(
+    finding(
       discipline.avgPnlDelta > 0
         ? `בימים שדיווחת ביומן הערב שעמדת בתוכנית הרווחת ${usdAbs(discipline.avgPnlDelta)} יותר לעסקה מאשר בימים שדיווחת שסטית ממנה (${discipline.followedPlan.trades} מול ${discipline.brokePlan.trades} עסקאות).`
         : `דווקא בימים שדיווחת ביומן הערב שסטית מהתוכנית התוצאה הייתה טובה יותר ב-${usdAbs(discipline.avgPnlDelta)} לעסקה — סימן שהתוכנית עצמה צריכה בדיקה, לא המשמעת.`,
+      discipline.avgPnlDelta, discipline.brokePlan.trades,
     );
   }
   const topRoutine = routine.find((c) => solid(c.done) && solid(c.skipped) && c.avgPnlDelta !== 0);
@@ -117,17 +132,20 @@ export function buildPsychologyStats(trades, morningEntries, eveningEntries) {
     if (wrd === 0) wrClause = ' וללא שינוי באחוז ההצלחה';
     else if (wrd > 0) wrClause = ` ולצידו עוד ${ppAbs(wrd)} נקודות אחוז בהצלחה`;
     else wrClause = ` אך עם ${ppAbs(wrd)} נקודות אחוז פחות בהצלחה`;
-    findings.push(
+    finding(
       topRoutine.avgPnlDelta > 0
         ? `הפעולה "${topRoutine.label}" לפני המסחר שווה לך ${usdAbs(topRoutine.avgPnlDelta)} לעסקה,${wrClause}.`
         : `הפעולה "${topRoutine.label}" לא שיפרה את התוצאות שלך — בימים שדילגת עליה הרווח לעסקה היה גבוה ב-${usdAbs(topRoutine.avgPnlDelta)}.`,
+      topRoutine.avgPnlDelta, topRoutine.done.trades,
+      topRoutine.avgPnlDelta > 0 ? 'gain' : 'cost',
     );
   }
   const high = readiness.find((g) => g.label.startsWith('גבוהה'));
   const low = readiness.find((g) => g.label.startsWith('נמוכה'));
   if (solid(high) && solid(low) && high.avgPnl !== low.avgPnl) {
-    findings.push(
+    finding(
       `מוכנות גבוהה (7-10): ${usd(high.avgPnl)} לעסקה מול ${usd(low.avgPnl)} במוכנות נמוכה (1-3).`,
+      high.avgPnl - low.avgPnl, low.trades, 'gain',
     );
   }
 
@@ -141,6 +159,9 @@ export function buildPsychologyStats(trades, morningEntries, eveningEntries) {
     routine,
     discipline,
     findings,
+    // Payload contract stays a string array; the page uses findingsRanked and
+    // callers building the model payload strip it.
+    findingsRanked: ranked,
     minSampleForConclusion: PSYCH_MIN_SAMPLE,
   };
 }
