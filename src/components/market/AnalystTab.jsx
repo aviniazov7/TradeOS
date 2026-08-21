@@ -1,17 +1,16 @@
 import { Link } from 'react-router-dom';
 import { BookOpen, ArrowLeft } from 'lucide-react';
 import { useJournalContext } from '../../contexts/JournalContext';
-import { useTrades } from '../../hooks/useTrades';
 import AnalystInsights from '../journal/AnalystInsights';
 
 /**
  * The same deterministic analysis the journal's AI modal shows, on the TradeAI
- * page. It owns the trades subscription so the parent never pays for it — the
- * component is only mounted while its tab is selected.
+ * page. Trades come from the page so there is one subscription for all three
+ * tabs, and the component is only mounted while its own tab is selected.
  */
-export default function AnalystTab({ heightClass }) {
-  const { activeJournalId, activeJournal } = useJournalContext();
-  const { trades, loading } = useTrades(activeJournalId);
+export default function AnalystTab({ heightClass, trades }) {
+  const { activeJournal } = useJournalContext();
+  const list = trades || [];
 
   return (
     <div className={`max-w-2xl mx-auto w-full ${heightClass} overflow-y-auto rounded-2xl border border-border-primary bg-bg-secondary/40 p-4`}>
@@ -30,9 +29,7 @@ export default function AnalystTab({ heightClass }) {
         </Link>
       </div>
 
-      {loading && <div className="h-28 rounded-xl bg-bg-secondary animate-pulse" />}
-
-      {!loading && !trades.length && (
+      {!list.length && (
         <div className="flex items-start gap-3 rounded-xl border border-border-primary bg-bg-secondary p-4">
           <BookOpen className="w-5 h-5 text-text-muted shrink-0 mt-0.5" />
           <div>
@@ -47,7 +44,7 @@ export default function AnalystTab({ heightClass }) {
         </div>
       )}
 
-      {!loading && trades.length > 0 && <AnalystInsights trades={trades} />}
+      {list.length > 0 && <AnalystInsights trades={list} />}
     </div>
   );
 }
