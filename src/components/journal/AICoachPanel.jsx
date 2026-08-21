@@ -2,16 +2,18 @@ import { useRef, useState } from 'react';
 import { motion } from 'framer-motion';
 import {
   BrainCircuit, Crown, RefreshCw, AlertCircle, Lock, Sparkles,
-  TrendingUp, TrendingDown, Target, Lightbulb, HeartPulse,
+  TrendingUp, TrendingDown, Target, Lightbulb, HeartPulse, ClipboardCheck, ShieldAlert,
 } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
 import ThinkingIndicator from '../shared/ThinkingIndicator';
 import { renderBulletHtml } from '../../utils/renderBulletHtml';
 import { useAuth } from '../../contexts/AuthContext';
+import { useJournalContext } from '../../contexts/JournalContext';
 import { generateCoachReport } from '../../services/aiCoachService';
 import { getUserCollectionDocs } from '../../services/firestoreService';
 import { buildCoachStats, coachScopeTrades } from '../../utils/coachStats';
 import { buildPsychologyStats } from '../../utils/coachPsychology';
+import { auditPlan } from '../../utils/planAudit';
 
 // Quick prompts the user can click to seed the report.
 const FREE_PROMPTS = [
@@ -25,6 +27,7 @@ const PREMIUM_PROMPTS = [
   { id: 'compareMonth', label: 'איך החודש מול הקודם?' },
   { id: 'strategyEdge', label: 'איזו אסטרטגיה מצליחה?' },
   { id: 'psychology', label: 'כמה מצב הראש עולה לי?' },
+  { id: 'planAudit', label: 'האם אני עומד בתוכנית שלי?' },
 ];
 
 // Each section header maps to an icon + accent color. The model is locked to
@@ -113,15 +116,18 @@ const fmt$Compact = (v) => {
   return `${sign}$${a.toFixed(0)}`;
 };
 
-function StatCard({ label, value, sub, tone = 'neutral', Icon }) {
+// dir defaults to ltr because almost every value here is a number, but a caller
+// passing free-form Hebrew (a plan name) must be able to opt out — forcing LTR
+// on a mixed string reorders its runs against how it reads everywhere else.
+function StatCard({ label, value, sub, tone = 'neutral', Icon, dir = 'ltr' }) {
   const toneClass = tone === 'profit' ? 'text-profit' : tone === 'loss' ? 'text-loss' : 'text-text-primary';
   return (
-    <div className="bg-bg-secondary border border-border-primary rounded-xl p-3">
+    <div className="bg-bg-secondary border border-border-primary rounded-xl p-3 min-w-0">
       <div className="flex items-center gap-1.5 text-[11px] text-text-muted mb-1">
         {Icon && <Icon className="w-3.5 h-3.5" />}
         {label}
       </div>
-      <div className={`text-lg font-bold ${toneClass}`} dir="ltr">{value}</div>
+      <div className={`text-lg font-bold truncate ${toneClass}`} dir={dir} title={typeof value === 'string' ? value : undefined}>{value}</div>
       {sub && <div className="text-[10px] text-text-muted mt-0.5">{sub}</div>}
     </div>
   );
@@ -285,20 +291,92 @@ function PsychologyPanel({ psych }) {
         <div className="bg-bg-secondary border border-border-primary rounded-xl p-4">
           <div className="flex items-center gap-2 mb-3">
             <Target className="w-4 h-4 text-accent-primary" />
-            <h4 className="text-sm font-semibold text-text-primary">משמעת מול תוצאה</h4>
+            <div>
+              <h4 className="text-sm font-semibold text-text-primary">משמעת מול תוצאה</h4>
+              <p className="text-[10px] text-text-muted">דיווח עצמי ביומן הערב, ברמת יום</p>
+            </div>
           </div>
           <div className="grid grid-cols-2 gap-2">
             <div className="rounded-lg bg-bg-tertiary p-3">
               <div className="text-[11px] text-text-muted mb-1">עמדת בתוכנית</div>
-              <div className="text-base font-bold text-profit" dir="ltr">{fmt$(d.followedPlan.avgPnl)}</div>
+              <div className={`text-base font-bold ${d.followedPlan.avgPnl >= 0 ? 'text-profit' : 'text-loss'}`} dir="ltr">{fmt$(d.followedPlan.avgPnl)}</div>
               <div className="text-[10px] text-text-muted mt-0.5">{d.followedPlan.trades} עסקאות · {d.followedPlan.winRate}%</div>
             </div>
             <div className="rounded-lg bg-bg-tertiary p-3">
               <div className="text-[11px] text-text-muted mb-1">סטית מהתוכנית</div>
-              <div className="text-base font-bold text-loss" dir="ltr">{fmt$(d.brokePlan.avgPnl)}</div>
+              <div className={`text-base font-bold ${d.brokePlan.avgPnl >= 0 ? 'text-profit' : 'text-loss'}`} dir="ltr">{fmt$(d.brokePlan.avgPnl)}</div>
               <div className="text-[10px] text-text-muted mt-0.5">{d.brokePlan.trades} עסקאות · {d.brokePlan.winRate}%</div>
             </div>
           </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
+// Plan audit — what the trader wrote down vs what they actually did. Rules the
+// audit could not measure are listed explicitly; a rule the user defined must
+// never just vanish from the report.
+function PlanAuditPanel({ audit }) {
+  if (!audit) return null;
+  const c = audit.compliance;
+  return (
+    <div className="space-y-3">
+      <div className="grid grid-cols-2 md:grid-cols-4 gap-2">
+        <StatCard label="התוכנית" value={audit.planName} sub={audit.planActive ? 'פעילה' : 'לא פעילה'} Icon={ClipboardCheck} dir="auto" />
+        <StatCard
+          label="עסקאות שנבדקו"
+          value={audit.tradesAudited}
+          sub={c?.unmeasuredTrades ? `${c.unmeasuredTrades} ללא שדות להשוואה` : 'נמדד ברמת עסקה'}
+          Icon={Target}
+        />
+        {c && (
+          <StatCard
+            label="בתוך התוכנית"
+            value={fmt$Compact(c.onPlan.avgPnl)}
+            sub={`${c.onPlan.trades} עסקאות · ${c.onPlan.winRate}% · מול כללי התוכנית`}
+            tone={c.onPlan.avgPnl >= 0 ? 'profit' : 'loss'}
+            Icon={TrendingUp}
+          />
+        )}
+        {c && (
+          <StatCard
+            label="חריגה מהתוכנית"
+            value={fmt$Compact(c.offPlan.avgPnl)}
+            sub={`${c.offPlan.trades} עסקאות · ${c.offPlan.winRate}% · מול כללי התוכנית`}
+            tone={c.offPlan.avgPnl >= 0 ? 'profit' : 'loss'}
+            Icon={TrendingDown}
+          />
+        )}
+      </div>
+
+      {audit.findings.length > 0 && (
+        <div className="bg-bg-secondary border border-border-primary rounded-xl p-4">
+          <div className="flex items-center gap-2 mb-2">
+            <ShieldAlert className="w-4 h-4 text-accent-primary" />
+            <h4 className="text-sm font-semibold text-text-primary">חריגות, לפי העלות שלהן</h4>
+          </div>
+          <ul className="space-y-1.5">
+            {audit.findings.map((f) => (
+              <li key={f} className="flex gap-2 text-xs text-text-secondary leading-relaxed">
+                <span className="mt-1.5 inline-block w-1.5 h-1.5 rounded-full bg-loss shrink-0" />
+                <span>{f}</span>
+              </li>
+            ))}
+          </ul>
+        </div>
+      )}
+
+      {audit.notMeasurable.length > 0 && (
+        <div className="bg-bg-secondary border border-border-primary rounded-xl p-4">
+          <h4 className="text-sm font-semibold text-text-primary mb-2">מה לא ניתן היה לבדוק</h4>
+          <ul className="space-y-1">
+            {audit.notMeasurable.map((n) => (
+              <li key={n.rule} className="text-[11px] text-text-muted">
+                <span className="text-text-secondary">{n.rule}</span> — {n.reason}
+              </li>
+            ))}
+          </ul>
         </div>
       )}
     </div>
@@ -376,6 +454,15 @@ function StatsDashboard({ stats, focus }) {
   if (focus === 'compareMonth' && stats.compareToPrevMonth) {
     return <CompareMonths cmp={stats.compareToPrevMonth} />;
   }
+  if (focus === 'planAudit') {
+    return stats.planAudit
+      ? <PlanAuditPanel audit={stats.planAudit} />
+      : (
+        <div className="bg-bg-secondary border border-border-primary rounded-xl p-4 text-xs text-text-secondary">
+          לא נמצאה תוכנית מסחר לבדוק מולה. צור תוכנית במסך "תוכניות מסחר" והגדר בה מטבעות, טיימפריימים, סשנים ותקרות סיכון.
+        </div>
+      );
+  }
   if (focus === 'psychology') {
     return stats.psychology
       ? <PsychologyPanel psych={stats.psychology} />
@@ -442,6 +529,7 @@ function StatsDashboard({ stats, focus }) {
 
 export default function AICoachPanel({ trades }) {
   const { user, isPremium } = useAuth();
+  const { activeJournal } = useJournalContext();
   const navigate = useNavigate();
   const [loading, setLoading] = useState(false);
   const [report, setReport] = useState('');
@@ -452,6 +540,9 @@ export default function AICoachPanel({ trades }) {
   // held on a live subscription — the journal page already carries two of those
   // and this data only matters at the moment the coach runs.
   const journalsRef = useRef(null);
+  // undefined = never fetched. null is a real answer (the user has no plan),
+  // so it can't double as the "not loaded yet" marker.
+  const plansRef = useRef(undefined);
 
   const loadMentalityJournals = async () => {
     if (!user) return null;
@@ -462,6 +553,29 @@ export default function AICoachPanel({ trades }) {
     ]);
     journalsRef.current = { morning, evening };
     return journalsRef.current;
+  };
+
+  const loadActivePlan = async () => {
+    if (!user) return null;
+    if (plansRef.current !== undefined) return plansRef.current;
+    const plans = await getUserCollectionDocs(user.uid, 'tradingPlans');
+    // Every plan is created with isActive: true, so several active plans is the
+    // normal state — .find() would pick by Firestore doc-ID order. Take the most
+    // recently touched one, with a stable tiebreak so the pick never wobbles.
+    const active = plans.filter((p) => p.isActive);
+    const pool = active.length ? active : plans;
+    const stamp = (v) => {
+      if (!v) return 0;
+      if (typeof v?.toDate === 'function') return v.toDate().getTime();
+      const t = new Date(v).getTime();
+      return Number.isNaN(t) ? 0 : t;
+    };
+    plansRef.current = [...pool].sort((a, b) => (
+      (stamp(b.updatedAt) - stamp(a.updatedAt))
+      || (stamp(b.createdAt) - stamp(a.createdAt))
+      || String(a.id).localeCompare(String(b.id))
+    ))[0] || null;
+    return plansRef.current;
   };
 
   const run = async (promptKey = null) => {
@@ -486,6 +600,16 @@ export default function AICoachPanel({ trades }) {
         if (psych) built.psychology = psych;
       } catch {
         journalsRef.current = null;
+      }
+      // Same deal for the plan audit — an enrichment, never a prerequisite.
+      try {
+        const plan = await loadActivePlan();
+        const audit = plan && auditPlan(plan, coachScopeTrades(trades, { premium: isPremium }), {
+          accountBalance: Number(activeJournal?.initialBalance) || 0,
+        });
+        if (audit) built.planAudit = audit;
+      } catch {
+        plansRef.current = undefined;
       }
       setStats(built);
       const text = await generateCoachReport(promptKey ? { ...built, focus: promptKey } : built, isPremium ? 'deep' : 'short');
