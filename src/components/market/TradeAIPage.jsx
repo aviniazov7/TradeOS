@@ -1,13 +1,15 @@
 import { useEffect, useState } from 'react';
 import { motion } from 'framer-motion';
-import { MessageCircle, BarChart3 } from 'lucide-react';
+import { MessageCircle, BarChart3, Gauge } from 'lucide-react';
 import { pageVariants, pageTransition } from '../../utils/animations';
 import AIChat from './AIChat';
 import ChartAnalyzer from './ChartAnalyzer';
+import AnalystTab from './AnalystTab';
 
 const TABS = [
   { id: 'chat', label: 'צ׳אט', icon: MessageCircle },
   { id: 'analyze', label: 'ניתוח גרפים', icon: BarChart3 },
+  { id: 'analyst', label: 'האנליסט שלך', icon: Gauge },
 ];
 
 export default function TradeAIPage() {
@@ -45,7 +47,7 @@ export default function TradeAIPage() {
     >
       {/* Tab switch: chat ↔ chart analysis */}
       <div className="max-w-2xl mx-auto w-full mb-3">
-        <div className="grid grid-cols-2 gap-1 p-1 rounded-2xl bg-bg-secondary/50 border border-border-primary">
+        <div className="grid grid-cols-3 gap-1 p-1 rounded-2xl bg-bg-secondary/50 border border-border-primary">
           {TABS.map((t) => (
             <button
               key={t.id}
@@ -63,10 +65,11 @@ export default function TradeAIPage() {
         </div>
       </div>
 
-      {tab === 'chat'
-        ? <AIChat heightClass={heightClass} />
-        : <ChartAnalyzer heightClass={heightClass} />
-      }
+      {tab === 'chat' && <AIChat heightClass={heightClass} />}
+      {tab === 'analyze' && <ChartAnalyzer heightClass={heightClass} />}
+      {/* Mounted only while selected, so its trades subscription and the two
+          Firestore reads inside AnalystInsights cost nothing on the other tabs. */}
+      {tab === 'analyst' && <AnalystTab heightClass={heightClass} />}
     </motion.div>
   );
 }
