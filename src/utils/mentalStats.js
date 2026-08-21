@@ -13,7 +13,12 @@ export function computeMentalStats(trades, morningEntries, eveningEntries) {
   //    journals' entry keys)
   const tradesByDate = {};
   closed.forEach((t) => {
-    const key = localDayKey(t.exitDate);
+    // exitDate || entryDate is the app's canonical day key (planAudit and
+    // useDashboardStats both use it). A closed trade with no exitDate is a
+    // supported case — CSV imports write exitDate: null — and keying on
+    // exitDate alone sent every one of them to '1970-01-01', where no journal
+    // entry could ever match, so they vanished from the cross-reference.
+    const key = localDayKey(t.exitDate || t.entryDate);
     if (!tradesByDate[key]) tradesByDate[key] = [];
     tradesByDate[key].push(t);
   });

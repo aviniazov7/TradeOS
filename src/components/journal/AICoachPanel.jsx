@@ -116,15 +116,18 @@ const fmt$Compact = (v) => {
   return `${sign}$${a.toFixed(0)}`;
 };
 
-function StatCard({ label, value, sub, tone = 'neutral', Icon }) {
+// dir defaults to ltr because almost every value here is a number, but a caller
+// passing free-form Hebrew (a plan name) must be able to opt out — forcing LTR
+// on a mixed string reorders its runs against how it reads everywhere else.
+function StatCard({ label, value, sub, tone = 'neutral', Icon, dir = 'ltr' }) {
   const toneClass = tone === 'profit' ? 'text-profit' : tone === 'loss' ? 'text-loss' : 'text-text-primary';
   return (
-    <div className="bg-bg-secondary border border-border-primary rounded-xl p-3">
+    <div className="bg-bg-secondary border border-border-primary rounded-xl p-3 min-w-0">
       <div className="flex items-center gap-1.5 text-[11px] text-text-muted mb-1">
         {Icon && <Icon className="w-3.5 h-3.5" />}
         {label}
       </div>
-      <div className={`text-lg font-bold ${toneClass}`} dir="ltr">{value}</div>
+      <div className={`text-lg font-bold truncate ${toneClass}`} dir={dir} title={typeof value === 'string' ? value : undefined}>{value}</div>
       {sub && <div className="text-[10px] text-text-muted mt-0.5">{sub}</div>}
     </div>
   );
@@ -288,17 +291,20 @@ function PsychologyPanel({ psych }) {
         <div className="bg-bg-secondary border border-border-primary rounded-xl p-4">
           <div className="flex items-center gap-2 mb-3">
             <Target className="w-4 h-4 text-accent-primary" />
-            <h4 className="text-sm font-semibold text-text-primary">משמעת מול תוצאה</h4>
+            <div>
+              <h4 className="text-sm font-semibold text-text-primary">משמעת מול תוצאה</h4>
+              <p className="text-[10px] text-text-muted">דיווח עצמי ביומן הערב, ברמת יום</p>
+            </div>
           </div>
           <div className="grid grid-cols-2 gap-2">
             <div className="rounded-lg bg-bg-tertiary p-3">
               <div className="text-[11px] text-text-muted mb-1">עמדת בתוכנית</div>
-              <div className="text-base font-bold text-profit" dir="ltr">{fmt$(d.followedPlan.avgPnl)}</div>
+              <div className={`text-base font-bold ${d.followedPlan.avgPnl >= 0 ? 'text-profit' : 'text-loss'}`} dir="ltr">{fmt$(d.followedPlan.avgPnl)}</div>
               <div className="text-[10px] text-text-muted mt-0.5">{d.followedPlan.trades} עסקאות · {d.followedPlan.winRate}%</div>
             </div>
             <div className="rounded-lg bg-bg-tertiary p-3">
               <div className="text-[11px] text-text-muted mb-1">סטית מהתוכנית</div>
-              <div className="text-base font-bold text-loss" dir="ltr">{fmt$(d.brokePlan.avgPnl)}</div>
+              <div className={`text-base font-bold ${d.brokePlan.avgPnl >= 0 ? 'text-profit' : 'text-loss'}`} dir="ltr">{fmt$(d.brokePlan.avgPnl)}</div>
               <div className="text-[10px] text-text-muted mt-0.5">{d.brokePlan.trades} עסקאות · {d.brokePlan.winRate}%</div>
             </div>
           </div>
@@ -317,14 +323,19 @@ function PlanAuditPanel({ audit }) {
   return (
     <div className="space-y-3">
       <div className="grid grid-cols-2 md:grid-cols-4 gap-2">
-        <StatCard label="התוכנית" value={audit.planName} sub={audit.planActive ? 'פעילה' : 'לא פעילה'} Icon={ClipboardCheck} />
-        <StatCard label="עסקאות שנבדקו" value={audit.tradesAudited} Icon={Target} />
+        <StatCard label="התוכנית" value={audit.planName} sub={audit.planActive ? 'פעילה' : 'לא פעילה'} Icon={ClipboardCheck} dir="auto" />
+        <StatCard
+          label="עסקאות שנבדקו"
+          value={audit.tradesAudited}
+          sub={c?.unmeasuredTrades ? `${c.unmeasuredTrades} ללא שדות להשוואה` : 'נמדד ברמת עסקה'}
+          Icon={Target}
+        />
         {c && (
           <StatCard
             label="בתוך התוכנית"
             value={fmt$Compact(c.onPlan.avgPnl)}
-            sub={`${c.onPlan.trades} עסקאות · ${c.onPlan.winRate}%`}
-            tone="profit"
+            sub={`${c.onPlan.trades} עסקאות · ${c.onPlan.winRate}% · מול כללי התוכנית`}
+            tone={c.onPlan.avgPnl >= 0 ? 'profit' : 'loss'}
             Icon={TrendingUp}
           />
         )}
@@ -332,8 +343,8 @@ function PlanAuditPanel({ audit }) {
           <StatCard
             label="חריגה מהתוכנית"
             value={fmt$Compact(c.offPlan.avgPnl)}
-            sub={`${c.offPlan.trades} עסקאות · ${c.offPlan.winRate}%`}
-            tone="loss"
+            sub={`${c.offPlan.trades} עסקאות · ${c.offPlan.winRate}% · מול כללי התוכנית`}
+            tone={c.offPlan.avgPnl >= 0 ? 'profit' : 'loss'}
             Icon={TrendingDown}
           />
         )}
@@ -548,9 +559,22 @@ export default function AICoachPanel({ trades }) {
     if (!user) return null;
     if (plansRef.current !== undefined) return plansRef.current;
     const plans = await getUserCollectionDocs(user.uid, 'tradingPlans');
-    // A trader can keep several plans around; the audit is only meaningful
-    // against the one they declared active.
-    plansRef.current = plans.find((p) => p.isActive) || plans[0] || null;
+    // Every plan is created with isActive: true, so several active plans is the
+    // normal state — .find() would pick by Firestore doc-ID order. Take the most
+    // recently touched one, with a stable tiebreak so the pick never wobbles.
+    const active = plans.filter((p) => p.isActive);
+    const pool = active.length ? active : plans;
+    const stamp = (v) => {
+      if (!v) return 0;
+      if (typeof v?.toDate === 'function') return v.toDate().getTime();
+      const t = new Date(v).getTime();
+      return Number.isNaN(t) ? 0 : t;
+    };
+    plansRef.current = [...pool].sort((a, b) => (
+      (stamp(b.updatedAt) - stamp(a.updatedAt))
+      || (stamp(b.createdAt) - stamp(a.createdAt))
+      || String(a.id).localeCompare(String(b.id))
+    ))[0] || null;
     return plansRef.current;
   };
 

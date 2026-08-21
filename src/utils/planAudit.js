@@ -7,6 +7,7 @@ export const AUDIT_MIN_SAMPLE = 5;
 
 const r2 = (v) => Math.round(v * 100) / 100;
 const usdAbs = (v) => `$${Math.abs(r2(v)).toFixed(2)}`;
+const countTrades = (n) => (n === 1 ? 'עסקה אחת' : `${n} עסקאות`);
 const pnlOf = (t) => Number(t.netPnl ?? t.pnl ?? 0) || 0;
 const norm = (v) => String(v ?? '').trim().toLowerCase();
 
@@ -59,10 +60,11 @@ function allowListRule({ key, label, allowed, trades, valueOf }) {
     onPlan: summary(inside),
     offPlan: summary(outside),
     offPlanValues: [...offValues.entries()]
-      .map(([value, v]) => ({ value, trades: v.trades, pnl: r2(v.pnl) }))
+      .map(([value, v]) => ({ value, trades: v.trades, pnl: r2(v.pnl), thin: v.trades < AUDIT_MIN_SAMPLE }))
       .sort((a, b) => a.pnl - b.pnl)
       .slice(0, 5),
     _offTrades: outside,
+    _onTrades: inside,
   };
 }
 
@@ -70,10 +72,17 @@ function allowListRule({ key, label, allowed, trades, valueOf }) {
 // three days occupies a slot on all three. Sweep line over open/close events.
 function maxConcurrent(trades) {
   const events = [];
+  let noStart = 0;    // no usable entry timestamp — invisible to the sweep
+  let noDuration = 0; // exit missing or equal to entry — can never overlap
   for (const t of trades) {
     const start = ms(t.entryDate) || ms(t.createdAt);
-    if (!start) continue;
-    const end = Math.max(ms(t.exitDate) || start, start + 1);
+    if (!start) {
+      noStart += 1;
+      continue;
+    }
+    const rawEnd = ms(t.exitDate);
+    if (!rawEnd || rawEnd <= start) noDuration += 1;
+    const end = Math.max(rawEnd || start, start + 1);
     events.push({ at: start, delta: 1 }, { at: end, delta: -1 });
   }
   // Closes are processed before opens at the same instant, so back-to-back
@@ -89,7 +98,7 @@ function maxConcurrent(trades) {
       peakAt = e.at;
     }
   }
-  return { peak, peakAt };
+  return { peak, peakAt, measurable: trades.length - noStart - noDuration, noStart, noDuration };
 }
 
 // Cross-references the active trading plan against what actually happened.
@@ -127,14 +136,26 @@ export function auditPlan(plan, allTrades, { accountBalance = 0 } = {}) {
   if (!maxPositions) {
     notMeasurable.push({ rule: 'מקסימום פוזיציות', reason: 'לא הוגדר בתוכנית' });
   } else {
-    const { peak, peakAt } = maxConcurrent(trades);
+    const sweep = maxConcurrent(trades);
+    const breached = sweep.peak > maxPositions;
     positions = {
       limit: maxPositions,
-      peakConcurrent: peak,
-      peakDate: peakAt ? localDayKey(new Date(peakAt)) : null,
-      breached: peak > maxPositions,
+      peakConcurrent: sweep.peak,
+      peakDate: sweep.peakAt ? localDayKey(new Date(sweep.peakAt)) : null,
+      // The sweep can only under-count, so a breach it sees is always a real
+      // breach. The absence of one is only evidence if the timestamps could
+      // have expressed an overlap in the first place.
+      breached,
+      conclusive: breached || sweep.measurable > 1,
+      tradesWithUsableTimes: sweep.measurable,
       basis: 'חפיפה אמיתית בין זמן כניסה לזמן יציאה',
     };
+    if (!positions.conclusive) {
+      notMeasurable.push({
+        rule: 'מקסימום פוזיציות',
+        reason: 'לזמני הכניסה/יציאה של העסקאות אין משך שמאפשר לזהות חפיפה — אי אפשר לקבוע שלא חרגת',
+      });
+    }
   }
 
   // Max daily loss, expressed in the plan as a percentage of the account.
@@ -182,40 +203,63 @@ export function auditPlan(plan, allTrades, { accountBalance = 0 } = {}) {
     }
   }
   const taggedMistakes = [...mistakeAgg.entries()]
-    .map(([key, v]) => ({ label: MISTAKE_LABELS[key] || key, trades: v.trades, pnl: r2(v.pnl) }))
+    .map(([key, v]) => ({ label: MISTAKE_LABELS[key] || key, trades: v.trades, pnl: r2(v.pnl), thin: v.trades < AUDIT_MIN_SAMPLE }))
     .sort((a, b) => a.pnl - b.pnl)
     .slice(0, 5);
 
   const declaredMistakes = Array.isArray(plan.mistakesToAvoid) ? plan.mistakesToAvoid : [];
-  const matchedMistakes = declaredMistakes
-    .map((text) => {
-      const hit = taggedMistakes.find((m) => norm(m.label).includes(norm(text)) || norm(text).includes(norm(m.label)));
-      return hit ? { declared: text, trades: hit.trades, pnl: hit.pnl } : null;
-    })
-    .filter(Boolean);
-  if (declaredMistakes.length && !matchedMistakes.length) {
-    notMeasurable.push({
-      rule: 'טעויות להימנע מהן',
-      reason: 'הטעויות בתוכנית נכתבו כטקסט חופשי ולא תואמות אף תגית טעות בעסקאות',
-    });
+  const matchedMistakes = [];
+  const seenUnmatched = new Set();
+  for (const text of declaredMistakes) {
+    const t = norm(text);
+    if (!t) continue; // an empty entry substring-matches every label
+    const hit = taggedMistakes.find((m) => norm(m.label).includes(t) || t.includes(norm(m.label)));
+    if (hit) {
+      matchedMistakes.push({ declared: text, trades: hit.trades, pnl: hit.pnl, thin: hit.thin });
+      continue;
+    }
+    // Reported one by one. An all-or-nothing guard dropped every unmatched rule
+    // as soon as a single other one happened to match.
+    const rule = `טעות: ${text}`;
+    if (seenUnmatched.has(rule)) continue;
+    seenUnmatched.add(rule);
+    notMeasurable.push({ rule, reason: 'נכתבה כטקסט חופשי ולא תואמת אף תגית טעות בעסקאות' });
   }
 
   // Headline: does breaking the plan cost money? A trade is off-plan if it
   // breached any of the allow-list rules.
+  const idOf = (t) => t.id ?? t;
   const offSet = new Set();
-  for (const rule of rules) for (const t of rule._offTrades) offSet.add(t.id ?? t);
-  const offPlanTrades = trades.filter((t) => offSet.has(t.id ?? t));
-  const onPlanTrades = trades.filter((t) => !offSet.has(t.id ?? t));
+  const measured = new Set();
+  for (const rule of rules) {
+    for (const t of rule._offTrades) {
+      offSet.add(idOf(t));
+      measured.add(idOf(t));
+    }
+    for (const t of rule._onTrades) measured.add(idOf(t));
+  }
+  const offPlanTrades = trades.filter((t) => offSet.has(idOf(t)));
+  // On-plan means "at least one rule looked at it and it passed" — NOT "no rule
+  // caught it". A trade saved with an empty pair/timeframe/session was never
+  // evaluated, and counting it as compliant made the headline claim that
+  // following the plan loses money.
+  const onPlanTrades = trades.filter((t) => measured.has(idOf(t)) && !offSet.has(idOf(t)));
+  const unmeasuredTrades = trades.length - measured.size;
+  const avgOf = (arr) => (arr.length ? arr.reduce((sum, t) => sum + pnlOf(t), 0) / arr.length : 0);
   const compliance = rules.length
     ? {
       onPlan: summary(onPlanTrades),
       offPlan: summary(offPlanTrades),
-      avgPnlDelta: r2(
-        (onPlanTrades.length ? onPlanTrades.reduce((s, t) => s + pnlOf(t), 0) / onPlanTrades.length : 0)
-          - (offPlanTrades.length ? offPlanTrades.reduce((s, t) => s + pnlOf(t), 0) / offPlanTrades.length : 0),
-      ),
+      unmeasuredTrades,
+      avgPnlDelta: r2(avgOf(onPlanTrades) - avgOf(offPlanTrades)),
     }
     : null;
+  if (unmeasuredTrades > 0) {
+    notMeasurable.push({
+      rule: 'השוואת עמידה בתוכנית',
+      reason: `${unmeasuredTrades} עסקאות נשמרו בלי מטבע/טיימפריים/סשן ולכן לא נכללו בהשוואה`,
+    });
+  }
 
   // Finished sentences, ranked by how much money the breach is associated with.
   const findings = [];
@@ -223,8 +267,8 @@ export function auditPlan(plan, allTrades, { accountBalance = 0 } = {}) {
     findings.push({
       cost: Math.abs(compliance.offPlan.pnl),
       text: compliance.avgPnlDelta > 0
-        ? `עסקאות שחרגו מהתוכנית הניבו פחות ב-${usdAbs(compliance.avgPnlDelta)} לעסקה מעסקאות שעמדו בה (${compliance.offPlan.trades} מול ${compliance.onPlan.trades} עסקאות).`
-        : `העסקאות שחרגו מהתוכנית דווקא הניבו יותר ב-${usdAbs(compliance.avgPnlDelta)} לעסקה — התוכנית עצמה צרה מדי, לא המשמעת.`,
+        ? `עסקאות שחרגו מכללי התוכנית (מטבע/טיימפריים/סשן) הניבו פחות ב-${usdAbs(compliance.avgPnlDelta)} לעסקה מעסקאות שעמדו בהם (${compliance.offPlan.trades} מול ${compliance.onPlan.trades} עסקאות).`
+        : `העסקאות שחרגו מכללי התוכנית (מטבע/טיימפריים/סשן) דווקא הניבו יותר ב-${usdAbs(compliance.avgPnlDelta)} לעסקה — התוכנית עצמה צרה מדי, לא המשמעת.`,
     });
   }
   // When the same trades breach several rules at once (an off-plan pair that is
@@ -232,17 +276,32 @@ export function auditPlan(plan, allTrades, { accountBalance = 0 } = {}) {
   // three times and read as three separate problems.
   const seenBreachSets = new Set();
   for (const rule of [...rules].sort((a, b) => a.offPlan.pnl - b.offPlan.pnl)) {
-    const worst = rule.offPlanValues[0];
-    if (!worst || worst.pnl >= 0 || rule.offPlan.thin) continue;
+    if (rule.offPlan.thin || rule.offPlan.pnl >= 0) continue;
     const signature = rule._offTrades.map((t) => t.id ?? '?').sort((a, b) => String(a).localeCompare(String(b))).join('|');
     if (seenBreachSets.has(signature)) continue;
     seenBreachSets.add(signature);
-    findings.push({
-      cost: Math.abs(worst.pnl),
-      text: `"${worst.value}" לא נמצא ב${rule.label} של התוכנית, ועלה ${usdAbs(worst.pnl)} על פני ${worst.trades} עסקאות.`,
-    });
+    // The rule-level breach is what cleared the sample floor. Only name a single
+    // value when that value clears it too — otherwise it is a lead, not a
+    // finding, and saying "cost you $X over 1 trade" invites a rule built on one
+    // bad trade.
+    const solidValue = rule.offPlanValues.find((v) => v.pnl < 0 && !v.thin);
+    const lead = rule.offPlanValues[0];
+    if (solidValue) {
+      findings.push({
+        cost: Math.abs(solidValue.pnl),
+        text: `"${solidValue.value}" לא נמצא ב${rule.label} של התוכנית, ועלה ${usdAbs(solidValue.pnl)} על פני ${countTrades(solidValue.trades)}.`,
+      });
+    } else {
+      findings.push({
+        cost: Math.abs(rule.offPlan.pnl),
+        text: `${rule.offPlan.trades} עסקאות חרגו מ${rule.label} של התוכנית ועלו ${usdAbs(rule.offPlan.pnl)}. הבולטת ביניהן "${lead.value}", אך היא נשענת על ${countTrades(lead.trades)} בלבד — מדגם קטן מכדי להסיק על הערך עצמו.`,
+      });
+    }
   }
-  for (const rule of rules) delete rule._offTrades;
+  for (const rule of rules) {
+    delete rule._offTrades;
+    delete rule._onTrades;
+  }
   if (dailyLoss?.breachDays) {
     const w = dailyLoss.worstDays[0];
     const days = dailyLoss.breachDays === 1 ? 'ביום אחד' : `ב-${dailyLoss.breachDays} ימים`;
@@ -252,16 +311,19 @@ export function auditPlan(plan, allTrades, { accountBalance = 0 } = {}) {
     });
   }
   if (positions?.breached) {
+    const cap = positions.limit === 1
+      ? 'התוכנית מגבילה לפוזיציה אחת בכל רגע'
+      : `התוכנית מגבילה ל-${positions.limit} פוזיציות במקביל`;
     findings.push({
       cost: 0,
-      text: `התוכנית מגבילה ל-${positions.limit} פוזיציות במקביל, ובפועל הגעת ל-${positions.peakConcurrent} (${positions.peakDate}).`,
+      text: `${cap}, ובפועל הגעת ל-${positions.peakConcurrent} (${positions.peakDate}).`,
     });
   }
   const worstMistake = taggedMistakes[0];
   if (worstMistake && worstMistake.pnl < 0 && worstMistake.trades >= AUDIT_MIN_SAMPLE) {
     findings.push({
       cost: Math.abs(worstMistake.pnl),
-      text: `הטעות "${worstMistake.label}" מתויגת ב-${worstMistake.trades} עסקאות שסיכומן ${usdAbs(worstMistake.pnl)} הפסד.`,
+      text: `הטעות "${worstMistake.label}" מתויגת ב-${countTrades(worstMistake.trades)} שסיכומן ${usdAbs(worstMistake.pnl)} הפסד.`,
     });
   }
   findings.sort((a, b) => b.cost - a.cost);

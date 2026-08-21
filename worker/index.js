@@ -2472,7 +2472,7 @@ const COACH_SYSTEM_PROMPT = `אתה מנטור מסחר אישי שמנתח את
 - "psychology.findings" הן שורות מוכנות ומדויקות. מותר לצטט או לנסח אותן מחדש, אסור לשנות בהן מספר.
 - כל ההשוואות הן מול "psychology.baseline" — הממוצע של הסוחר עצמו בימים מתועדים, לא מול אפס ולא מול השוק.
 - דלי שמסומן "thin": true נשען על פחות מ-minSampleForConclusion עסקאות. מותר להזכיר אותו רק עם הסתייגות מפורשת ("מדגם קטן מכדי להסיק"), ואסור לבנות עליו המלצה.
-- אם המפתח לא קיים — אל תיגע בנושא ואל תבקש מהסוחר למלא יומן.
+- אם המפתח לא קיים — אל תיגע בנושא ואל תבקש מהסוחר למלא יומן, אלא אם מיקוד הדו"ח המפורש הוא psychology. במקרה כזה אמור בבולט הראשון שאין עדיין ימים שבהם מולא יומן בוקר וגם נסגרה עסקה, ומה צריך למלא כדי לאפשר את המדידה.
 
 ## המפתח "planAudit" (רק אם הוא קיים ב-stats):
 הצלבה בין תוכנית המסחר שהסוחר כתב לבין מה שהוא באמת עשה. גם כאן כל המספרים כבר חושבו — אסור להסיק מספר שלא כתוב.
@@ -2480,7 +2480,13 @@ const COACH_SYSTEM_PROMPT = `אתה מנטור מסחר אישי שמנתח את
 - "compliance" משווה עסקאות שעמדו בתוכנית מול עסקאות שחרגו ממנה. אם החריגות דווקא הרוויחו יותר — אמור זאת: הבעיה בתוכנית, לא במשמעת.
 - "notMeasurable" הוא כלל שהסוחר הגדיר ולא ניתן היה לבדוק. אם יש שם משהו, הזכר אותו ב"המלצות לפעולה" עם הפעולה שתאפשר לבדוק אותו (למשל להזין יתרת פתיחה ליומן).
 - דלי עם "thin": true נשען על פחות מ-minSampleForConclusion עסקאות — הסתייגות חובה, אסור לבנות עליו המלצה.
-- אסור להציע לסוחר לשנות את התוכנית רק כדי להתאים אותה למה שהוא עשה בפועל, אלא אם המספרים מראים שהחריגות רווחיות יותר.`;
+- אסור להציע לסוחר לשנות את התוכנית רק כדי להתאים אותה למה שהוא עשה בפועל, אלא אם המספרים מראים שהחריגות רווחיות יותר.
+- "compliance" מכסה רק עסקאות שאחד הכללים באמת בדק. "unmeasuredTrades" הן עסקאות שנשמרו בלי מטבע/טיימפריים/סשן ולכן לא נכללו — אם הערך גדול מאפס, ציין זאת ואל תציג את ההשוואה כאילו היא מכסה את כל העסקאות.
+- אם "positions.conclusive" הוא false — אסור לקבוע שלא חרגת ממספר הפוזיציות. הנתונים פשוט לא מאפשרים לדעת.
+- אם המפתח לא קיים — אל תיגע בנושא, אלא אם מיקוד הדו"ח המפורש הוא planAudit. במקרה כזה אמור בבולט הראשון שאין תוכנית פעילה להשוות מולה ומה צריך להגדיר בה.
+
+## אל תערבב בין שתי מדידות המשמעת:
+"psychology.discipline" הוא דיווח עצמי של הסוחר ביומן הערב, ברמת יום. "planAudit.compliance" הוא מדידה של חריגה מכללי התוכנית הכתובים, ברמת עסקה. הם יכולים לסתור זה את זה, וזו לא טעות. אם שניהם קיימים — אסור לאחד אותם לבולט אחד או להציג מספר אחד כאילו הוא מאשש את השני. ציין ליד כל מספר מאיזו מדידה הוא בא.`;
 
 // Maps the quick-prompt the user clicked (stats.focus) to an explicit directive.
 // Without this the model gets the same generic 4-section report every time —
@@ -2658,7 +2664,15 @@ function cutCoachText(str, max) {
   let out = str.slice(0, max);
   const last = out.charCodeAt(out.length - 1);
   if (last >= 0xd800 && last <= 0xdbff) out = out.slice(0, -1);
-  return out;
+  // Never end inside a token. psychology.findings and planAudit.findings are
+  // pre-phrased sentences the prompt authorises the model to quote verbatim, so
+  // a cut landing inside "$612.40" would hand it "$612." as a real figure. Back
+  // up to the last space, but only when that keeps most of the budgeted text —
+  // the floor preserves the "a string is never emptied" invariant for
+  // space-free strings.
+  const sp = out.lastIndexOf(' ');
+  if (sp > max * 0.6) out = out.slice(0, sp);
+  return out.trimEnd();
 }
 
 // Trim VALUES, never keys. Invariants that the callers rely on:
