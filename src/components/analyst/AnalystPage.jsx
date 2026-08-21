@@ -2,7 +2,7 @@ import { useEffect, useMemo, useState } from 'react';
 import { motion } from 'framer-motion';
 import { Link } from 'react-router-dom';
 import {
-  Gauge, ShieldAlert, Wallet, ClipboardList, Brain, HelpCircle, ArrowLeft, RefreshCw,
+  Gauge, ShieldAlert, Wallet, ClipboardList, Brain, HelpCircle, ArrowLeft, RefreshCw, TrendingUp,
 } from 'lucide-react';
 import { useAuth } from '../../contexts/AuthContext';
 import { useJournalContext } from '../../contexts/JournalContext';
@@ -23,9 +23,13 @@ const SOURCE = {
   psych: { label: 'יומן בוקר/ערב · לפי יום', Icon: Brain },
 };
 
+// Only priced rows get a bar and a figure. An unpriced breach (a max-positions
+// violation has no dollar amount) still has to be shown — dropping it and then
+// printing "no pattern is measurable yet" would be a false claim about a
+// finding we did measure.
 function CostFindings({ rows }) {
   if (!rows.length) return null;
-  const max = Math.max(...rows.map((r) => r.cost), 1);
+  const max = Math.max(...rows.filter((r) => r.priced !== false).map((r) => r.cost), 1);
   return (
     <ul className="space-y-2">
       {rows.map((r) => {
@@ -38,12 +42,14 @@ function CostFindings({ rows }) {
               <Icon className="w-4 h-4 text-accent-primary shrink-0 mt-0.5" />
               <div className="min-w-0 flex-1">
                 <p className="text-sm text-text-primary leading-relaxed">{r.text}</p>
-                <div className="flex items-center gap-2 mt-2">
-                  <div className="h-1 flex-1 rounded-full bg-bg-tertiary overflow-hidden">
-                    <div className="h-full rounded-full bg-loss" style={{ width: `${share}%` }} />
+                {r.priced !== false && (
+                  <div className="flex items-center gap-2 mt-2">
+                    <div className="h-1 flex-1 rounded-full bg-bg-tertiary overflow-hidden">
+                      <div className={`h-full rounded-full ${r.kind === 'gain' ? 'bg-profit' : 'bg-loss'}`} style={{ width: `${share}%` }} />
+                    </div>
+                    <span className="text-[10px] text-text-muted shrink-0" dir="ltr">{fmt$(r.cost)}</span>
                   </div>
-                  <span className="text-[10px] text-text-muted shrink-0" dir="ltr">{fmt$(r.cost)}</span>
-                </div>
+                )}
                 <span className="inline-block text-[10px] text-text-muted mt-1.5">{meta.label}</span>
               </div>
             </div>
@@ -55,7 +61,7 @@ function CostFindings({ rows }) {
 }
 
 export default function AnalystPage() {
-  const { user } = useAuth();
+  const { user, isPremium } = useAuth();
   const { activeJournal, activeJournalId } = useJournalContext();
   const { trades, loading: tradesLoading } = useTrades(activeJournalId);
 
@@ -119,23 +125,38 @@ export default function AnalystPage() {
     [journals, trades],
   );
 
-  // One ranked list. Both sources measure dollars actually moved, so they rank
-  // on the same scale — but each row still says which measurement it came from.
-  const costFindings = useMemo(() => {
+  // Both sources measure dollars actually moved, so they rank on the same
+  // scale — but each row still says which measurement produced it, and a gain
+  // never gets filed under "what is costing you money".
+  const { costs, gains } = useMemo(() => {
     const rows = [
       ...(audit?.findingsRanked || []).map((f) => ({ ...f, source: 'plan' })),
       ...(psych?.findingsRanked || []).map((f) => ({ ...f, source: 'psych' })),
     ];
-    return rows.filter((r) => r.cost > 0).sort((a, b) => b.cost - a.cost);
+    const byCost = (a, b) => b.cost - a.cost;
+    // Unpriced rows have no sort key, so they go last rather than pretending to
+    // a cost of zero.
+    const rank = (arr) => [
+      ...arr.filter((r) => r.priced !== false).sort(byCost),
+      ...arr.filter((r) => r.priced === false),
+    ];
+    return {
+      costs: rank(rows.filter((r) => r.kind !== 'gain')),
+      gains: rank(rows.filter((r) => r.kind === 'gain')),
+    };
   }, [audit, psych]);
 
+  // Only meaningful once the reads have actually returned. Rendering "you have
+  // no plan" while still loading, or after a failed read, sends the user to
+  // create something they may already have.
   const gaps = useMemo(() => {
+    if (side === undefined || loadError) return [];
     const rows = [...(audit?.notMeasurable || [])];
     if (!plan) rows.push({ rule: 'תוכנית מסחר', reason: 'אין תוכנית פעילה — אין מול מה להשוות את העסקאות' });
     if (!accountBalance) rows.push({ rule: 'יתרת פתיחה ליומן', reason: 'בלעדיה אי אפשר לתרגם אחוזי סיכון לדולרים' });
     if (!psych) rows.push({ rule: 'יומן בוקר בימי מסחר', reason: 'בלי הצלבה של יומן ועסקאות אי אפשר למדוד את השפעת מצב הראש' });
     return rows;
-  }, [audit, plan, accountBalance, psych]);
+  }, [side, loadError, audit, plan, accountBalance, psych]);
 
   const loading = tradesLoading || sideLoading;
 
@@ -180,23 +201,41 @@ export default function AnalystPage() {
           <h2 className="text-sm font-bold text-text-primary">מפקח הסיכון</h2>
           <span className="text-[10px] text-text-muted">מצב הספר הפתוח ברגע זה</span>
         </div>
-        {loading ? <div className="h-32 rounded-xl bg-bg-secondary animate-pulse" /> : <RiskSupervisor risk={risk} />}
+        {loading && <div className="h-32 rounded-xl bg-bg-secondary animate-pulse" />}
+        {!loading && loadError && (
+          <p className="text-xs text-text-secondary bg-bg-secondary border border-border-primary rounded-xl p-4">
+            הבדיקות מול התוכנית לא רצו כי טעינת התוכנית נכשלה. רענן כדי לנסות שוב — עד אז אין כאן
+            תשובה, לא "הכול תקין".
+          </p>
+        )}
+        {!loading && !loadError && <RiskSupervisor risk={risk} />}
       </div>
 
       <div>
         <div className="flex items-center gap-2 mb-3">
           <Wallet className="w-4 h-4 text-accent-primary" />
           <h2 className="text-sm font-bold text-text-primary">מה עולה לך כסף</h2>
-          <span className="text-[10px] text-text-muted">מדורג לפי הסכום שזז בפועל</span>
+          <span className="text-[10px] text-text-muted">כל העסקאות הסגורות ביומן · מדורג לפי הסכום שזז בפועל</span>
         </div>
-        {!loading && costFindings.length === 0 && (
+        {!loading && !loadError && costs.length === 0 && (
           <p className="text-xs text-text-secondary bg-bg-secondary border border-border-primary rounded-xl p-4">
             אין עדיין דפוס עם מספיק עסקאות מאחוריו כדי לכמת אותו בכסף. זה לא אומר שהכול תקין — זה אומר
             שהמדגם קטן מכדי להסיק ממנו, וכל מסקנה בשלב הזה תהיה ניחוש.
           </p>
         )}
-        <CostFindings rows={costFindings} />
+        <CostFindings rows={costs} />
       </div>
+
+      {gains.length > 0 && (
+        <div>
+          <div className="flex items-center gap-2 mb-3">
+            <TrendingUp className="w-4 h-4 text-accent-primary" />
+            <h2 className="text-sm font-bold text-text-primary">מה כן עובד לך</h2>
+            <span className="text-[10px] text-text-muted">אותה מדידה, בכיוון השני</span>
+          </div>
+          <CostFindings rows={gains} />
+        </div>
+      )}
 
       {gaps.length > 0 && (
         <div>
@@ -221,6 +260,12 @@ export default function AnalystPage() {
         >
           לניתוח AI מלא <ArrowLeft className="w-4 h-4" />
         </Link>
+        {!isPremium && (
+          <p className="w-full text-[11px] text-text-muted">
+            שים לב: העמוד הזה מודד את כל העסקאות הסגורות ביומן, בעוד שניתוח ה-AI במסלול החינמי
+            מכסה רק את החודש הנוכחי — ולכן המספרים שם יהיו קטנים יותר.
+          </p>
+        )}
         <Link
           to="/plans"
           className="inline-flex items-center gap-1.5 px-4 py-2 rounded-xl border border-border-primary text-text-secondary text-sm hover:text-text-primary hover:border-border-hover transition-colors"

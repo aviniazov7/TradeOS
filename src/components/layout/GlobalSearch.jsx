@@ -1,11 +1,10 @@
-import {
-  Gauge, useState, useEffect, useRef, useMemo } from 'react';
+import { useState, useEffect, useRef, useMemo } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { createPortal } from 'react-dom';
 import { motion, AnimatePresence } from 'framer-motion';
 import {
   Search, CornerDownLeft, LayoutDashboard, BookOpen, Brain, FlaskConical,
-  Coins, Wallet, ClipboardList, Activity, Bot, Newspaper, Crown, User, Building2,
+  Coins, Wallet, ClipboardList, Activity, Bot, Newspaper, Crown, User, Building2, Gauge,
 } from 'lucide-react';
 import { getUserCollectionDocs } from '../../services/firestoreService';
 import { useAuth } from '../../contexts/AuthContext';

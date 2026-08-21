@@ -12,23 +12,44 @@ const num = (v) => {
 };
 const pnlOf = (t) => num(t.netPnl ?? t.pnl);
 const usd = (v) => `$${Math.abs(Math.round(v * 100) / 100).toFixed(2)}`;
+const count = (n, one, many) => (n === 1 ? one : `${n} ${many}`);
 const isOpen = (t) => !!t && !isClosedTrade(t);
+const dayOf = (t) => localDayKey(t.exitDate || t.entryDate);
 
-// The dollar amount actually at risk on an open position. riskAmount is the
-// field the trade form asks for; when it is missing we derive it from the stop,
-// and when there is no stop either the position is unbounded — which is itself
-// the finding, so it must not silently read as zero risk.
+// How many units the position actually holds. positionSize is persisted as the
+// USD NOTIONAL in every write path (useTrades.buildTradeDoc: entryPrice ×
+// quantity for crypto, price × pointValue × contracts for futures), so
+// notional / entry is the one conversion that is right for both asset classes —
+// for futures the quotient is pointValue × contracts. trade.quantity is NOT
+// interchangeable: on futures it holds the bare contract count with pointValue
+// stripped out, which would understate the risk by the point value.
+function unitsOf(trade, entry) {
+  const notional = num(trade.positionSize);
+  if (entry > 0 && notional > 0) return notional / entry;
+  if (trade.assetClass === 'futures_cme') return 0; // no notional, no safe conversion
+  return num(trade.quantity);
+}
+
+// The dollar amount at risk on an open position right now.
+//
+// The live stop wins over the declared riskAmount. riskAmount is the risk
+// planned at entry and TradeForm keeps it untouched when the trade is edited,
+// so a position moved to breakeven would otherwise keep reporting the risk it
+// no longer carries. A supervisor that reports stale risk as current is worse
+// than one that reports nothing.
 function riskOf(trade) {
-  const explicit = num(trade.riskAmount);
-  if (explicit > 0) return { usd: explicit, source: 'declared' };
-
   const entry = num(trade.entryPrice);
   const stop = num(trade.stopLoss);
-  const size = num(trade.positionSize) || num(trade.contracts);
-  if (entry > 0 && stop > 0 && size > 0) {
-    return { usd: Math.abs(entry - stop) * size, source: 'derived' };
+  const units = unitsOf(trade, entry);
+
+  if (entry > 0 && stop > 0 && units > 0) {
+    return { usd: Math.abs(entry - stop) * units, source: 'derived' };
   }
-  return { usd: 0, source: stop > 0 ? 'unknown' : 'no-stop' };
+  const declared = num(trade.riskAmount);
+  if (declared > 0) return { usd: declared, source: 'declared' };
+  // 'unsized' = there is a stop but no way to price it. Different fact from
+  // 'no-stop', and the two must never be merged into one counter.
+  return { usd: 0, source: stop > 0 ? 'unsized' : 'no-stop' };
 }
 
 /**
@@ -45,8 +66,13 @@ export function superviseRisk(trades, plan, { accountBalance = 0, now = new Date
   const all = trades || [];
   const open = all.filter(isOpen);
   const today = localDayKey(now);
-  const closedToday = all.filter((t) => isClosedTrade(t) && localDayKey(t.exitDate || t.entryDate) === today);
-  const realizedToday = closedToday.reduce((s, t) => s + pnlOf(t), 0);
+
+  // Money booked today comes from two places. A partially-closed position is
+  // still open, but the P&L on the legs already sold is realized — leaving it
+  // out let real losses accumulate against a hard stop-trading rule unseen.
+  const closedToday = all.filter((t) => isClosedTrade(t) && dayOf(t) === today);
+  const partialsToday = all.filter((t) => t.status === 'partial' && pnlOf(t) !== 0 && dayOf(t) === today);
+  const realizedToday = [...closedToday, ...partialsToday].reduce((s, t) => s + pnlOf(t), 0);
 
   const findings = [];
   const add = (f) => findings.push(f);
@@ -75,25 +101,26 @@ export function superviseRisk(trades, plan, { accountBalance = 0, now = new Date
 
   // --- today's realized loss vs the daily cap ------------------------------
   const maxDailyLoss = num(plan?.maxDailyLoss);
-  if (maxDailyLoss > 0 && accountBalance > 0) {
-    const limit = (accountBalance * maxDailyLoss) / 100;
-    const lossToday = realizedToday < 0 ? Math.abs(realizedToday) : 0;
-    const usedPct = limit > 0 ? (lossToday / limit) * 100 : 0;
-    if (lossToday > limit) {
+  const dailyLimit = maxDailyLoss > 0 && accountBalance > 0 ? (accountBalance * maxDailyLoss) / 100 : null;
+  const lossToday = realizedToday < 0 ? Math.abs(realizedToday) : 0;
+  if (dailyLimit !== null) {
+    const bookedCount = closedToday.length + partialsToday.length;
+    const usedPct = (lossToday / dailyLimit) * 100;
+    if (lossToday > dailyLimit) {
       add({
         id: 'daily-loss-over',
         severity: 'critical',
-        title: `עברת את תקרת ההפסד היומי: ${usd(lossToday)} מתוך ${usd(limit)}`,
+        title: `עברת את תקרת ההפסד היומי: ${usd(lossToday)} מתוך ${usd(dailyLimit)}`,
         detail: 'התוכנית שלך אומרת לעצור להיום. כל עסקה נוספת היא כבר החלטה נגד התוכנית.',
-        evidence: [`${closedToday.length} עסקאות נסגרו היום`, `${maxDailyLoss}% מ-${usd(accountBalance)}`],
+        evidence: [count(bookedCount, 'עסקה אחת נסגרה היום', 'עסקאות נסגרו היום'), `${maxDailyLoss}% מ-${usd(accountBalance)}`],
       });
     } else if (usedPct >= 70 && lossToday > 0) {
       add({
         id: 'daily-loss-near',
         severity: 'warning',
         title: `ניצלת ${Math.round(usedPct)}% מתקרת ההפסד היומי`,
-        detail: `נשארו ${usd(limit - lossToday)} עד לגבול שהגדרת.`,
-        evidence: [`הפסד היום ${usd(lossToday)}`, `תקרה ${usd(limit)}`],
+        detail: `נשארו ${usd(dailyLimit - lossToday)} עד לגבול שהגדרת.`,
+        evidence: [`הפסד היום ${usd(lossToday)}`, `תקרה ${usd(dailyLimit)}`],
       });
     }
   } else if (maxDailyLoss > 0) {
@@ -112,17 +139,18 @@ export function superviseRisk(trades, plan, { accountBalance = 0, now = new Date
     add({
       id: 'no-stop',
       severity: 'critical',
-      title: `${unprotected.length === 1 ? 'פוזיציה פתוחה אחת' : `${unprotected.length} פוזיציות פתוחות`} בלי סטופ לוס`,
+      title: `${count(unprotected.length, 'פוזיציה פתוחה אחת', 'פוזיציות פתוחות')} בלי סטופ לוס`,
       detail: 'בלי סטופ אין תקרה להפסד, ואף כלל סיכון אחר בתוכנית לא באמת חל.',
       evidence: unprotected.map((t) => t.pair || t.symbol || '—'),
     });
   }
 
   // --- open positions outside the plan's allow-lists ------------------------
+  // Labels carry no definite article — the ל prefix below supplies it.
   const allowRules = [
-    { key: 'pairs', label: 'המטבעות', allowed: plan?.pairs, valueOf: (t) => t.pair || t.symbol },
-    { key: 'timeframes', label: 'הטיימפריימים', allowed: plan?.timeframes, valueOf: (t) => t.timeframe },
-    { key: 'sessions', label: 'הסשנים', allowed: plan?.sessions, valueOf: (t) => t.session },
+    { key: 'pairs', label: 'מטבעות', allowed: plan?.pairs, valueOf: (t) => t.pair || t.symbol },
+    { key: 'timeframes', label: 'טיימפריימים', allowed: plan?.timeframes, valueOf: (t) => t.timeframe },
+    { key: 'sessions', label: 'סשנים', allowed: plan?.sessions, valueOf: (t) => t.session },
   ];
   for (const rule of allowRules) {
     if (!Array.isArray(rule.allowed) || !rule.allowed.length) continue;
@@ -137,7 +165,7 @@ export function superviseRisk(trades, plan, { accountBalance = 0, now = new Date
     add({
       id: `off-plan-${rule.key}`,
       severity: 'warning',
-      title: `${offenders.length === 1 ? 'פוזיציה פתוחה' : `${offenders.length} פוזיציות פתוחות`} מחוץ ל${rule.label} של התוכנית`,
+      title: `${count(offenders.length, 'פוזיציה פתוחה אחת', 'פוזיציות פתוחות')} מחוץ ל${rule.label} של התוכנית`,
       detail: 'לא בהכרח טעות, אבל זו לא העסקה שתכננת מראש — ולכן אין לך עליה סטטיסטיקה.',
       evidence: [...new Set(offenders.map((t) => rule.valueOf(t)))],
     });
@@ -145,21 +173,34 @@ export function superviseRisk(trades, plan, { accountBalance = 0, now = new Date
 
   // --- total exposure across the open book ----------------------------------
   let riskUsd = 0;
-  let unbounded = 0;
+  let unsized = 0;
   for (const t of open) {
     const r = riskOf(t);
-    if (r.source === 'no-stop' || r.source === 'unknown') unbounded += 1;
+    if (r.source === 'unsized') unsized += 1;
     riskUsd += r.usd;
   }
+  // Positions that could not be priced contribute nothing, so this is a lower
+  // bound on the real exposure. Every claim built on it must stay one-directional:
+  // "already too big" is safe, "small enough" is not.
+  const unmeasurable = unprotected.length + unsized;
   const exposurePct = accountBalance > 0 ? (riskUsd / accountBalance) * 100 : null;
-  if (exposurePct !== null && riskUsd > 0 && maxDailyLoss > 0 && riskUsd > (accountBalance * maxDailyLoss) / 100) {
-    add({
-      id: 'exposure-over-daily-cap',
-      severity: 'critical',
-      title: `הסיכון הפתוח (${usd(riskUsd)}) גדול מתקרת ההפסד היומי שלך`,
-      detail: 'אם כל הסטופים ייפגעו היום, תעבור את הגבול שהגדרת — גם בלי לפתוח עוד עסקה אחת.',
-      evidence: [`${open.length} פוזיציות פתוחות`, `תקרה יומית ${usd((accountBalance * maxDailyLoss) / 100)}`],
-    });
+  if (dailyLimit !== null && riskUsd > 0) {
+    // What the day would look like if every open stop were hit, on top of what
+    // is already booked. Ignoring the realized loss let a guaranteed breach pass.
+    const worstCase = lossToday + riskUsd;
+    if (worstCase > dailyLimit) {
+      add({
+        id: 'exposure-over-daily-cap',
+        severity: 'critical',
+        title: `אם כל הסטופים ייפגעו היום תסיים ב-${usd(worstCase)} הפסד, מעל התקרה של ${usd(dailyLimit)}`,
+        detail: 'זה כבר נכון עכשיו, בלי לפתוח אף עסקה נוספת. הקטן פוזיציה או הדק סטופ.',
+        evidence: [
+          count(open.length, 'פוזיציה פתוחה אחת', 'פוזיציות פתוחות'),
+          `סיכון פתוח ${usd(riskUsd)}`,
+          ...(lossToday > 0 ? [`הפסד שכבר מומש ${usd(lossToday)}`] : []),
+        ],
+      });
+    }
   }
 
   findings.sort((a, b) => SEVERITY_ORDER[a.severity] - SEVERITY_ORDER[b.severity]);
@@ -167,12 +208,17 @@ export function superviseRisk(trades, plan, { accountBalance = 0, now = new Date
   return {
     openCount: open.length,
     closedTodayCount: closedToday.length,
+    partialTodayCount: partialsToday.length,
     realizedToday: Math.round(realizedToday * 100) / 100,
+    openRiskUsd: Math.round(riskUsd * 100) / 100,
     // null, not 0 — "no balance on file" and "nothing at risk" are different
     // answers and the UI must be able to tell them apart.
-    openRiskUsd: riskUsd > 0 ? Math.round(riskUsd * 100) / 100 : 0,
     openRiskPct: exposurePct === null ? null : Math.round(exposurePct * 10) / 10,
-    unboundedPositions: unbounded,
+    // Derived from the SAME array the no-stop finding is built from, so the tile
+    // can never contradict the finding rendered under it.
+    stoplessPositions: unprotected.length,
+    unsizedPositions: unsized,
+    unmeasurablePositions: unmeasurable,
     hasPlan: !!plan,
     findings,
   };

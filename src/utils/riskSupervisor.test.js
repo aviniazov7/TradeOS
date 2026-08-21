@@ -62,7 +62,7 @@ describe('superviseRisk', () => {
     const r = superviseRisk([open({ id: 'a', pair: 'BTCUSDT' })], null, { now: NOW });
     const f = r.findings.find((x) => x.id === 'no-stop');
     expect(f.severity).toBe('critical');
-    expect(r.unboundedPositions).toBe(1);
+    expect(r.stoplessPositions).toBe(1);
   });
 
   it('does not treat a missing field as an off-plan breach', () => {
@@ -74,15 +74,49 @@ describe('superviseRisk', () => {
     const r = superviseRisk(trades, { pairs: ['BTCUSDT'], sessions: ['London'] }, { now: NOW });
     const f = r.findings.find((x) => x.id === 'off-plan-sessions');
     expect(f.evidence).toEqual(['Asia']);
-    expect(f.title).toContain('פוזיציה פתוחה');
+    expect(f.title).toContain('פוזיציה פתוחה אחת');
+    expect(f.title).toContain('מחוץ לסשנים'); // never "מחוץ להסשנים"
+    expect(f.title).not.toContain('לה');
     expect(r.findings.find((x) => x.id === 'off-plan-pairs')).toBeUndefined();
   });
 
-  it('derives open risk from the stop when riskAmount is missing', () => {
-    const trades = [open({ id: 'a', pair: 'BTCUSDT', entryPrice: 100, stopLoss: 95, positionSize: 10 })];
+  it('treats positionSize as notional USD, not a unit count', () => {
+    // positionSize is persisted as entryPrice x quantity (useTrades.buildTradeDoc).
+    // Reading it as units multiplied the answer by entryPrice — on a BTC trade
+    // that is a 100,000x error driving a false critical alert.
+    const trades = [open({ id: 'a', pair: 'BTCUSDT', entryPrice: 100, stopLoss: 95, positionSize: 200 })];
     const r = superviseRisk(trades, null, { accountBalance: 1000, now: NOW });
-    expect(r.openRiskUsd).toBe(50);
-    expect(r.openRiskPct).toBe(5);
+    expect(r.openRiskUsd).toBe(10); // 2 units x $5
+    expect(r.openRiskPct).toBe(1);
+  });
+
+  it('prices a real BTC position correctly', () => {
+    const trades = [open({ id: 'a', pair: 'BTCUSDT', entryPrice: 100000, stopLoss: 99000, positionSize: 10000 })];
+    const r = superviseRisk(trades, { maxDailyLoss: 3 }, { accountBalance: 10000, now: NOW });
+    expect(r.openRiskUsd).toBe(100); // 0.1 BTC x $1,000
+    expect(r.openRiskPct).toBe(1);
+    expect(r.findings.find((x) => x.id === 'exposure-over-daily-cap')).toBeUndefined();
+  });
+
+  it('prices a futures position through the notional, not the contract count', () => {
+    // quantity holds the bare contract count with pointValue stripped out, so
+    // using it directly would understate ES risk by the point value.
+    const trades = [open({
+      id: 'es', assetClass: 'futures_cme', entryPrice: 5000, stopLoss: 4990,
+      positionSize: 500000, quantity: 2,
+    })];
+    const r = superviseRisk(trades, null, { now: NOW });
+    expect(r.openRiskUsd).toBe(1000); // 10 pts x 50 pointValue x 2 contracts
+  });
+
+  it('prefers the live stop over the risk declared at entry', () => {
+    // riskAmount is captured at entry and TradeForm keeps it on edit, so a
+    // position moved to breakeven would keep reporting risk it no longer carries.
+    const trades = [open({
+      id: 'a', pair: 'BTCUSDT', entryPrice: 100, stopLoss: 100, positionSize: 1000, riskAmount: 500,
+    })];
+    const r = superviseRisk(trades, null, { accountBalance: 10000, now: NOW });
+    expect(r.openRiskUsd).toBe(0);
   });
 
   it('reports open risk pct as null rather than 0 when no balance is on file', () => {
@@ -92,10 +126,47 @@ describe('superviseRisk', () => {
     expect(r.openRiskUsd).toBe(50);
   });
 
+  it('separates "no stop" from "has a stop we cannot price"', () => {
+    // The tile used to merge these, so it could claim "1 בלי סטופ" about a
+    // position that had one, contradicting the finding rendered right below it.
+    const trades = [
+      open({ id: 'nostop', pair: 'BTCUSDT' }),
+      open({ id: 'unsized', pair: 'ETHUSDT', stopLoss: 90 }),
+    ];
+    const r = superviseRisk(trades, null, { now: NOW });
+    expect(r.stoplessPositions).toBe(1);
+    expect(r.unsizedPositions).toBe(1);
+    expect(r.findings.find((x) => x.id === 'no-stop').evidence).toEqual(['BTCUSDT']);
+  });
+
+  it('counts partial exits booked today toward the daily loss cap', () => {
+    // A partial is still open, but the legs already sold are realized money and
+    // the daily cap is a hard stop-trading rule.
+    const trades = [
+      { id: 'p1', status: 'partial', pair: 'BTCUSDT', exitDate: '2026-08-20T10:00:00', netPnl: -400 },
+      { id: 'p2', status: 'partial', pair: 'ETHUSDT', exitDate: '2026-08-20T11:00:00', netPnl: -400 },
+    ];
+    const r = superviseRisk(trades, { maxDailyLoss: 3 }, { accountBalance: 10000, now: NOW });
+    expect(r.realizedToday).toBe(-800);
+    expect(r.partialTodayCount).toBe(2);
+    expect(r.findings.find((x) => x.id === 'daily-loss-over').severity).toBe('critical');
+  });
+
+  it('adds the loss already realized today to the worst-case exposure', () => {
+    const trades = [
+      closed({ id: 'c', exitDate: '2026-08-20T09:00:00', netPnl: -200 }),
+      open({ id: 'o', pair: 'BTCUSDT', entryPrice: 100, stopLoss: 95, positionSize: 3000 }), // $150 risk
+    ];
+    // $200 booked + $150 at risk = $350 against a $300 cap. Neither half alone
+    // breaches it.
+    const r = superviseRisk(trades, { maxDailyLoss: 3 }, { accountBalance: 10000, now: NOW });
+    expect(r.findings.find((x) => x.id === 'exposure-over-daily-cap').severity).toBe('critical');
+  });
+
   it('flags open risk that already exceeds the daily cap', () => {
     const trades = [
-      open({ id: 'a', pair: 'BTCUSDT', riskAmount: 250, stopLoss: 90 }),
-      open({ id: 'b', pair: 'ETHUSDT', riskAmount: 250, stopLoss: 90 }),
+      open({ id: 'a', pair: 'BTCUSDT', riskAmount: 250 }),
+      open({ id: 'b', pair: 'ETHUSDT', riskAmount: 250 }),
     ];
     const r = superviseRisk(trades, { maxDailyLoss: 3 }, { accountBalance: 10000, now: NOW });
     expect(r.findings.find((x) => x.id === 'exposure-over-daily-cap').severity).toBe('critical');

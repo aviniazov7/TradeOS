@@ -89,9 +89,13 @@ export function buildPsychologyStats(trades, morningEntries, eveningEntries) {
   // push(text, impactPerTrade, tradeCount) — impact is what the sentence rests
   // on, so the analyst page can rank a psychology finding against a plan breach
   // on the same scale: dollars actually moved, not dollars per trade.
-  const finding = (text, impactPerTrade, tradeCount) => {
+  // kind: 'cost' = the sentence describes money the behaviour took away,
+  // 'gain' = money it earned. Only the call site knows which — the sign of the
+  // arithmetic does not ("standing by the plan earned $X more" is a positive
+  // delta but belongs under costs, because the loss is in breaking it).
+  const finding = (text, impactPerTrade, tradeCount, kind = 'cost') => {
     findings.push(text);
-    ranked.push({ text, cost: Math.abs(r2(impactPerTrade * tradeCount)) });
+    ranked.push({ text, kind, cost: Math.abs(r2(impactPerTrade * tradeCount)) });
   };
 
   // `emotions` is sorted by |avgPnlDelta| descending, so the first match on
@@ -107,7 +111,7 @@ export function buildPsychologyStats(trades, morningEntries, eveningEntries) {
   if (bestEmotion) {
     finding(
       `הרגש "${bestEmotion.label}" הוא המצב הרווחי ביותר שלך: ${usd(bestEmotion.avgPnlDelta)} לעסקה מעל הממוצע (${bestEmotion.trades} עסקאות).`,
-      bestEmotion.avgPnlDelta, bestEmotion.trades,
+      bestEmotion.avgPnlDelta, bestEmotion.trades, 'gain',
     );
   }
   if (discipline && solid(discipline.followedPlan) && solid(discipline.brokePlan) && discipline.avgPnlDelta !== 0) {
@@ -133,6 +137,7 @@ export function buildPsychologyStats(trades, morningEntries, eveningEntries) {
         ? `הפעולה "${topRoutine.label}" לפני המסחר שווה לך ${usdAbs(topRoutine.avgPnlDelta)} לעסקה,${wrClause}.`
         : `הפעולה "${topRoutine.label}" לא שיפרה את התוצאות שלך — בימים שדילגת עליה הרווח לעסקה היה גבוה ב-${usdAbs(topRoutine.avgPnlDelta)}.`,
       topRoutine.avgPnlDelta, topRoutine.done.trades,
+      topRoutine.avgPnlDelta > 0 ? 'gain' : 'cost',
     );
   }
   const high = readiness.find((g) => g.label.startsWith('גבוהה'));
@@ -140,7 +145,7 @@ export function buildPsychologyStats(trades, morningEntries, eveningEntries) {
   if (solid(high) && solid(low) && high.avgPnl !== low.avgPnl) {
     finding(
       `מוכנות גבוהה (7-10): ${usd(high.avgPnl)} לעסקה מול ${usd(low.avgPnl)} במוכנות נמוכה (1-3).`,
-      high.avgPnl - low.avgPnl, low.trades,
+      high.avgPnl - low.avgPnl, low.trades, 'gain',
     );
   }
 
