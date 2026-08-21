@@ -85,9 +85,15 @@ function TypingIndicator() {
   );
 }
 
-export default function AIChat({ heightClass = 'h-[calc(100dvh-13.5rem)] md:h-[calc(100vh-220px)]' }) {
+export default function AIChat({ heightClass = 'h-[calc(100dvh-13.5rem)] md:h-[calc(100vh-220px)]', seedQuestion = '' }) {
   const [messages, setMessages] = useState([]);
   const [input, setInput] = useState('');
+  // A question picked from the hub lands in the box, it is never auto-sent —
+  // the user still gets to edit it, and an accidental chip tap must not spend
+  // one of their AI questions.
+  useEffect(() => {
+    if (seedQuestion) setInput(seedQuestion);
+  }, [seedQuestion]);
   const [streaming, setStreaming] = useState(false);
   const [streamingText, setStreamingText] = useState('');
   const [error, setError] = useState(null);
