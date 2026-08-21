@@ -1,4 +1,5 @@
-import { useState, useEffect, useRef, useMemo } from 'react';
+import {
+  Gauge, useState, useEffect, useRef, useMemo } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { createPortal } from 'react-dom';
 import { motion, AnimatePresence } from 'framer-motion';
@@ -18,6 +19,7 @@ const PAGES = [
   { label: 'מעקב DCA', path: '/dca', icon: Coins, kw: 'dca' },
   { label: 'ארנקים', path: '/wallets', icon: Wallet, kw: 'wallets ארנק יתרה' },
   { label: 'תוכניות מסחר', path: '/plans', icon: ClipboardList, kw: 'plans תוכנית' },
+  { label: 'האנליסט האישי', path: '/analyst', icon: Gauge, kw: 'analyst סיכון risk מפקח ניתוח' },
   { label: 'סקירת שוק', path: '/market', icon: Activity, kw: 'market שוק' },
   { label: 'TradeAI', path: '/trade-ai', icon: Bot, kw: 'ai בינה מלאכותית' },
   { label: 'חדשות', path: '/news', icon: Newspaper, kw: 'news' },

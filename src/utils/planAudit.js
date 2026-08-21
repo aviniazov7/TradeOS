@@ -339,7 +339,12 @@ export function auditPlan(plan, allTrades, { accountBalance = 0 } = {}) {
     taggedMistakes,
     declaredMistakes: matchedMistakes,
     notMeasurable,
+    // `findings` is the AI payload contract — plain sentences, described as such
+    // in COACH_SYSTEM_PROMPT. `findingsRanked` carries the dollar cost behind
+    // each one so the analyst page can rank and colour them; callers building
+    // the model payload strip it (see AICoachPanel).
     findings: findings.map((f) => f.text),
+    findingsRanked: findings.map((f) => ({ text: f.text, cost: f.cost })),
     minSampleForConclusion: AUDIT_MIN_SAMPLE,
   };
 }
