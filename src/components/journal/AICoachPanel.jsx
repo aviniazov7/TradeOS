@@ -15,6 +15,7 @@ import { buildCoachStats, coachScopeTrades } from '../../utils/coachStats';
 import { buildPsychologyStats } from '../../utils/coachPsychology';
 import { auditPlan } from '../../utils/planAudit';
 import { pickActivePlan } from '../../utils/pickActivePlan';
+import AnalystInsights from './AnalystInsights';
 
 // Quick prompts the user can click to seed the report.
 const FREE_PROMPTS = [
@@ -658,6 +659,15 @@ export default function AICoachPanel({ trades }) {
           </button>
         </div>
       </motion.div>
+
+      {/* Deterministic analysis — correct on open, costs nothing, needs no model */}
+      <AnalystInsights trades={trades} />
+
+      <div className="flex items-center gap-2 pt-1">
+        <div className="h-px flex-1 bg-border-primary" />
+        <span className="text-[10px] text-text-muted">פרשנות AI</span>
+        <div className="h-px flex-1 bg-border-primary" />
+      </div>
 
       {/* Quick prompts */}
       <div className="flex flex-wrap gap-2">

@@ -91,7 +91,9 @@ export default function TradeAgentCard({ trades }) {
       )}
 
       <button
-        onClick={() => navigate('/trade-ai')}
+        // This card is about the trader's own book, so it opens the full
+        // analysis modal rather than the TradeAI chat.
+        onClick={() => navigate('/journal?ai=1')}
         className="mt-3.5 w-full flex items-center justify-center gap-1.5 text-xs font-bold py-2.5 rounded-xl text-white transition-transform hover:brightness-110"
         style={{ background: 'linear-gradient(135deg, #2563eb 0%, #38bdf8 100%)' }}
       >

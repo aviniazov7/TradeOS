@@ -16,7 +16,6 @@ import {
   Crown,
   Bot,
   Radar,
-  Gauge,
   Trophy,
 } from 'lucide-react';
 import PositionCalculator from '../calculator/PositionCalculator';
@@ -30,7 +29,6 @@ const navItems = [
   { to: '/dca', label: 'מעקב DCA', icon: Coins },
   { to: '/wallets', label: 'ארנקים', icon: Wallet },
   { to: '/plans', label: 'תוכניות מסחר', icon: ClipboardList },
-  { to: '/analyst', label: 'האנליסט האישי', icon: Gauge },
   { to: '/market', label: 'סקירת שוק', icon: Activity },
   // Visible to everyone in the menu (no admin/premium filter flag), but the page
   // itself is Premium — non-premium land on a locked teaser. The crown signals it.

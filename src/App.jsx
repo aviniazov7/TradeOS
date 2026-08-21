@@ -27,7 +27,6 @@ const loadMorningJournal = () => import('./components/mentality/MorningJournal')
 const loadEveningJournal = () => import('./components/mentality/EveningJournal');
 const loadPsychologicalJourney = () => import('./components/mentality/PsychologicalJourney');
 const loadMentalStats = () => import('./components/mentality/MentalStats');
-const loadAnalystPage = () => import('./components/analyst/AnalystPage');
 const loadMarketOverview = () => import('./components/market/MarketOverview');
 const loadTradeAIPage = () => import('./components/market/TradeAIPage');
 const loadNewsPage = () => import('./components/news/NewsPage');
@@ -59,7 +58,6 @@ const MorningJournal = lazy(loadMorningJournal);
 const EveningJournal = lazy(loadEveningJournal);
 const PsychologicalJourney = lazy(loadPsychologicalJourney);
 const MentalStats = lazy(loadMentalStats);
-const AnalystPage = lazy(loadAnalystPage);
 const MarketOverview = lazy(loadMarketOverview);
 const TradeAIPage = lazy(loadTradeAIPage);
 const NewsPage = lazy(loadNewsPage);
@@ -125,7 +123,6 @@ function MainApp() {
                 <Route path="backtest" element={<BacktestTracker />} />
                 <Route path="dca" element={<DCATracker />} />
                 <Route path="plans" element={<PlansPage />} />
-                <Route path="analyst" element={<ErrorBoundary><AnalystPage /></ErrorBoundary>} />
                 <Route path="mentality" element={<MentalityZone />} />
                 <Route path="mentality/morning" element={<MorningJournal />} />
                 <Route path="mentality/evening" element={<EveningJournal />} />
