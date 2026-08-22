@@ -91,9 +91,11 @@ export default function TradeAgentCard({ trades }) {
       )}
 
       <button
-        // This card is about the trader's own book, so it opens the full
-        // analysis modal rather than the TradeAI chat.
-        onClick={() => navigate('/journal?ai=1')}
+        // TradeAI is the AI destination: it opens on this same book (the hub
+        // shows P&L, win rate and open positions), and from there the trader
+        // can reach the chat, the chart reader and the full analyst without
+        // leaving the page. The journal modal is the narrower of the two.
+        onClick={() => navigate('/trade-ai')}
         className="mt-3.5 w-full flex items-center justify-center gap-1.5 text-xs font-bold py-2.5 rounded-xl text-white transition-transform hover:brightness-110"
         style={{ background: 'linear-gradient(135deg, #2563eb 0%, #38bdf8 100%)' }}
       >
