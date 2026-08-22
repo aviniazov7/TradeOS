@@ -4,6 +4,22 @@ import { fetchNewsImpact } from '../../services/newsService';
 
 const AGE = (min) => (min < 60 ? `לפני ${min} דק׳` : `לפני ${Math.round(min / 60)} שע׳`);
 
+// The window the coverage is drawn from, in words. Stated plainly and always —
+// the reader needs to know how fresh the news behind a claim is, and a number
+// they can read beats a status word they have to decode.
+// Returns the whole phrase, prefix included: a Hebrew prefix takes a maqaf
+// before a numeral ("מ-4 השעות") but not before a word ("מהשעה"), so the two
+// cannot be concatenated by the caller.
+const windowLabel = (min) => {
+  if (!min) return '';
+  if (min < 60) return `חדשות מ-${min} הדקות האחרונות`;
+  if (min === 90) return 'חדשות משעה וחצי האחרונה';
+  const h = Math.round(min / 60);
+  if (h === 1) return 'חדשות מהשעה האחרונה';
+  if (h === 2) return 'חדשות מהשעתיים האחרונות';
+  return `חדשות מ-${h} השעות האחרונות`;
+};
+
 // Cause decides the border, because "we know why" and "we do not" are the two
 // states the reader actually needs to tell apart at a glance.
 const CAUSE = {
@@ -67,10 +83,7 @@ export default function WhyItMoved() {
   if (data === undefined) return <div className="h-24 rounded-2xl bg-bg-secondary animate-pulse mb-5" />;
   if (!data) return null; // a failed read stays silent rather than claiming the market is quiet
 
-  const { findings = [], loudest = [], newsSource, windowMin } = data;
-  // Say when the coverage is the slower fallback. A panel that looks identical
-  // whether its news is 2 minutes or 4 hours old is quietly misleading.
-  const delayed = newsSource === 'rss-fallback';
+  const { findings = [], loudest = [], windowMin } = data;
 
   return (
     <section className="mb-6 space-y-3">
@@ -80,9 +93,9 @@ export default function WhyItMoved() {
         <span className="text-[10px] text-text-muted">
           תנועה חריגה במחיר ובווליום, והסיקור שהתפרסם במקביל
         </span>
-        {delayed && (
-          <span className="text-[10px] px-1.5 py-0.5 rounded-full border border-breakeven/40 text-breakeven">
-            סיקור מושהה · חלון {Math.round((windowMin || 240) / 60)} שעות
+        {windowMin > 0 && (
+          <span className="text-[10px] px-1.5 py-0.5 rounded-full border border-border-primary text-text-muted">
+            {windowLabel(windowMin)}
           </span>
         )}
       </div>
