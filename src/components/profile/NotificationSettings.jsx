@@ -1,4 +1,5 @@
-import { useState, useEffect, useCallback } from 'react';
+import {
+  Activity, useState, useEffect, useCallback } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { Bell, BellRing, BellOff, Send, NotebookPen, BarChart3, CalendarClock, ChevronDown, Zap, Radar } from 'lucide-react';
 import toast from 'react-hot-toast';
@@ -21,6 +22,7 @@ const SCHEDULE_DEFAULTS = {
   journal: { enabled: false, time: '21:00' },
   summary: { enabled: false, time: '22:00' },
   calendar: { enabled: false },
+  newsImpact: { enabled: false },
 };
 
 // Small right-aligned toggle, matching the main push toggle's look.
@@ -90,6 +92,13 @@ function ScheduleSection({ user }) {
     { key: 'journal', label: 'תזכורת מילוי יומן', Icon: NotebookPen, hasTime: true },
     { key: 'summary', label: 'סיכום יומי', Icon: BarChart3, hasTime: true },
     { key: 'calendar', label: 'אירועים כלכליים (שעה לפני)', Icon: CalendarClock, hasTime: false },
+    {
+      key: 'newsImpact',
+      label: 'תנועת מחיר חריגה עם סיבה',
+      Icon: Activity,
+      hasTime: false,
+      hint: 'רק כשמחיר וווליום חורגים יחד ויש סיקור מאושש שמסביר — לא התראה על כל כותרת.',
+    },
   ];
 
   return (
@@ -99,15 +108,20 @@ function ScheduleSection({ user }) {
         const { key, label, hasTime } = row;
         const Icon = row.Icon;
         return (
-        <div key={key} className="flex items-center justify-between gap-2 min-h-9">
+        <div key={key} className="flex items-start justify-between gap-2 min-h-9 py-0.5">
           {/* Right side (RTL start): icon + label toggle the row */}
           <button
             onClick={() => update({ ...schedule, [key]: { ...schedule[key], enabled: !schedule[key].enabled } })}
             disabled={saving}
             className="flex items-center gap-2.5 text-sm text-text-primary cursor-pointer disabled:opacity-50"
           >
-            <Icon className={`w-4 h-4 ${schedule[key].enabled ? 'text-accent-primary' : 'text-text-muted'}`} />
-            <span className="text-right">{label}</span>
+            <Icon className={`w-4 h-4 shrink-0 ${schedule[key].enabled ? 'text-accent-primary' : 'text-text-muted'}`} />
+            <span className="text-right">
+              {label}
+              {/* A toggle that can wake someone at 3am should say what triggers
+                  it before they turn it on, not after. */}
+              {row.hint && <span className="block text-[10px] text-text-muted font-normal leading-snug">{row.hint}</span>}
+            </span>
           </button>
           {/* Left side: time picker, then the toggle FLUSH at the far left
               (last in DOM = leftmost in RTL), per Avi's layout request. */}
