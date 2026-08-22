@@ -1,8 +1,9 @@
-import { useState, useEffect, useRef } from 'react';
+import { useState, useEffect, useMemo, useRef } from 'react';
 import { createPortal } from 'react-dom';
 import { motion, AnimatePresence } from 'framer-motion';
 import { Bot, Send, RotateCcw, User, Sparkles, BarChart3, History, Trash2, Crown, Image as ImageIcon, Copy, Check } from 'lucide-react';
 import { sendMessageStream } from '../../services/groqApi';
+import { buildCoachStats } from '../../utils/coachStats';
 import { formatAIText } from '../../utils/aiChatHelpers';
 import { detectCoinFromText } from '../../utils/technicals';
 import { fetchCoinChart } from '../../services/coingeckoApi';
@@ -85,9 +86,16 @@ function TypingIndicator() {
   );
 }
 
-export default function AIChat({ heightClass = 'h-[calc(100dvh-13.5rem)] md:h-[calc(100vh-220px)]', seedQuestion = '' }) {
+export default function AIChat({ heightClass = 'h-[calc(100dvh-13.5rem)] md:h-[calc(100vh-220px)]', seedQuestion = '', trades = null }) {
   const [messages, setMessages] = useState([]);
   const [input, setInput] = useState('');
+  // The trader's own book, in the same compact shape the AI coach uses. Built
+  // once per trades change and sent with every turn, so a question about "my"
+  // trades is answered from them rather than from general advice.
+  const journalContext = useMemo(
+    () => (trades?.length ? buildCoachStats(trades, { premium: true }) : null),
+    [trades],
+  );
   // A question picked from the hub lands in the box, it is never auto-sent —
   // the user still gets to edit it, and an accidental chip tap must not spend
   // one of their AI questions.
@@ -228,7 +236,7 @@ export default function AIChat({ heightClass = 'h-[calc(100dvh-13.5rem)] md:h-[c
             batchTimeoutRef.current = null;
           }, 30);
         }
-      });
+      }, 2, journalContext);
 
       // Flush any pending batch
       if (batchTimeoutRef.current) {

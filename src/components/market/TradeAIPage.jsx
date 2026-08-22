@@ -134,7 +134,7 @@ export default function TradeAIPage() {
         </div>
       </div>
 
-      {tab === 'chat' && <AIChat heightClass={heightClass} seedQuestion={seed} />}
+      {tab === 'chat' && <AIChat heightClass={heightClass} seedQuestion={seed} trades={trades} />}
       {tab === 'analyze' && <ChartAnalyzer heightClass={heightClass} />}
       {/* Mounted only while selected, so the two Firestore reads inside
           AnalystInsights cost nothing on the other tabs. */}
