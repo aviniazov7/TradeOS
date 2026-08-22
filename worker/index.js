@@ -27,6 +27,7 @@ const DEFAULT_SETTINGS = {
   journal: { enabled: false, time: '21:00' },
   summary: { enabled: false, time: '22:00' },
   calendar: { enabled: false },
+  newsImpact: { enabled: false },
 };
 
 // ==================== Helpers ====================
@@ -3772,6 +3773,46 @@ async function buildNewsImpact(env) {
   };
 }
 
+// Only a move that cleared both gates AND has corroborated coverage behind it is
+// worth interrupting someone for. An unexplained move is interesting on the page
+// and not worth a notification: without a cause there is nothing to act on.
+const IMPACT_PUSH_MIN_PCT = 4;
+// One alert per asset per window. Six outlets publishing the same story over an
+// hour must not become six pushes, and a coin that keeps twitching must not
+// re-alert every cron tick.
+const IMPACT_PUSH_COOLDOWN_HOURS = 4;
+
+async function pushNewsImpact(env, impact) {
+  const worthy = (impact.findings || []).filter(
+    (f) => f.cause !== 'unexplained' && Math.abs(f.changePct) >= IMPACT_PUSH_MIN_PCT,
+  );
+  if (!worthy.length) return;
+
+  const settingsMap = (await env.ALERTS_KV.get('usettings:ALL', 'json')) || {};
+  const users = Object.entries(settingsMap)
+    .filter(([, s]) => s?.newsImpact?.enabled)
+    .map(([uid]) => uid);
+  if (!users.length) return;
+
+  const bucket = Math.floor(Date.now() / (IMPACT_PUSH_COOLDOWN_HOURS * 3600_000));
+  for (const f of worthy) {
+    const seenKey = `sent:impact:${f.ticker}:${bucket}`;
+    if (await env.ALERTS_KV.get(seenKey)) continue;
+    await env.ALERTS_KV.put(seenKey, '1', { expirationTtl: IMPACT_PUSH_COOLDOWN_HOURS * 3600 });
+
+    const dir = f.changePct >= 0 ? '▲' : '▼';
+    for (const uid of users) {
+      await sendPushToUser(env, uid, {
+        // The title carries the fact; the body carries the cause and the
+        // refusal to predict. Neither ever suggests an action.
+        title: `${dir} ${f.ticker} ${f.changePct >= 0 ? '+' : ''}${f.changePct}% ב-${f.windowMin} דק׳`,
+        body: f.text,
+        url: '/news',
+      });
+    }
+  }
+}
+
 async function refreshNewsImpact(env) {
   try {
     const ts = parseInt((await env.ALERTS_KV.get('news:impact:ts')) || '0', 10);
@@ -3779,6 +3820,9 @@ async function refreshNewsImpact(env) {
     const impact = await buildNewsImpact(env);
     await env.ALERTS_KV.put('news:impact', JSON.stringify(impact), { expirationTtl: 60 * 60 * 6 });
     await env.ALERTS_KV.put('news:impact:ts', String(impact.updatedAt), { expirationTtl: 60 * 60 * 6 });
+    // Push AFTER the blob is stored, so the notification always links to a page
+    // that already shows what it is about.
+    await pushNewsImpact(env, impact);
   } catch (err) {
     console.error('news impact refresh failed:', err);
   }
