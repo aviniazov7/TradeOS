@@ -9,6 +9,7 @@ import { useCryptoPrices } from '../../hooks/useCryptoPrices';
 import WatchlistPage from '../watchlist/WatchlistPage';
 import ScannerHero from './ScannerHero';
 import ScannerCalibration from './ScannerCalibration';
+import ScannerSteps from './ScannerSteps';
 import SetupsDatabase from './SetupsDatabase';
 import Button from '../shared/Button';
 import SignalCard from './SignalCard';
@@ -29,9 +30,10 @@ function getCoinFromPair(pair = '') {
   return pair.replace(/USDT$|BUSD$|USDC$|USD$/, '').toUpperCase();
 }
 
-// One page, one flow: the top half is the scan universe (tag coins long/short),
-// the bottom half is the setups the engine detected for them. The old separate
-// "watchlist" page is folded in here (embedded) so there's a single place to work.
+// One page, one pipeline. The two halves used to read as separate features —
+// "tag coins" and "detected setups" — with nothing saying that the first
+// produces the second. They are now steps 1 and 3 of a stated flow, with the
+// engine itself as step 2.
 export default function SignalsPage() {
   const { signals, loading, addSignal, updateSignal, deleteSignal } = useSignals();
   const { setups, loading: setupsLoading, addSetup, updateSetup, deleteSetup } = useWyckoffSetups();
@@ -118,27 +120,32 @@ export default function SignalsPage() {
       {/* Premium scanner hero — true-black card, live radar sweep, uniform chips */}
       <ScannerHero taggedCount={taggedCount} activeCount={counts.active} />
 
-      {/* ── Section 1: the scan universe (tag coins long/short) ── */}
+      {/* The pipeline, stated once, instead of implied by two section headers */}
+      <ScannerSteps />
+
+      {/* ── Step 1: the scan universe (tag coins long/short) ── */}
       <section className="mb-7">
-        <div className="flex items-center gap-1.5 mb-2.5">
-          <span className="w-6 h-6 rounded-lg bg-accent-primary/12 flex items-center justify-center shrink-0">
-            <Flag className="w-3.5 h-3.5 text-accent-primary" />
+        <div className="flex items-center gap-2 mb-2.5">
+          <span className="w-6 h-6 rounded-lg bg-accent-primary/12 border border-accent-primary/25 flex items-center justify-center shrink-0 text-[11px] font-bold text-accent-primary tabular-nums">
+            1
           </span>
-          <h2 className="text-sm font-bold text-text-primary">מטבעות בסריקה</h2>
-          <span className="text-[11px] text-text-muted">— הקלט של הסורק: תייג לונג/שורט, השאר עלינו</span>
+          <Flag className="w-3.5 h-3.5 text-accent-primary shrink-0" />
+          <h2 className="text-sm font-bold text-text-primary">מה נסרק</h2>
+          <span className="text-[11px] text-text-muted">— תייג מטבע בלונג או בשורט כדי להכניס אותו לסריקה</span>
         </div>
         <WatchlistPage embedded />
       </section>
 
-      {/* ── Section 2: detected setups ── */}
+      {/* ── Step 3: detected setups (step 2, the engine, runs server-side) ── */}
       <section>
         <div className="flex items-center justify-between gap-2 mb-3">
-          <div className="flex items-center gap-1.5">
-            <span className="w-6 h-6 rounded-lg bg-accent-primary/12 flex items-center justify-center shrink-0">
-              <Radar className="w-3.5 h-3.5 text-accent-primary" />
+          <div className="flex items-center gap-2 min-w-0">
+            <span className="w-6 h-6 rounded-lg bg-accent-primary/12 border border-accent-primary/25 flex items-center justify-center shrink-0 text-[11px] font-bold text-accent-primary tabular-nums">
+              3
             </span>
-            <h2 className="text-sm font-bold text-text-primary">סטאפים שאותרו</h2>
-            <span className="text-[11px] text-text-muted hidden sm:inline">— נקודות כניסה שהסורק מצא</span>
+            <Radar className="w-3.5 h-3.5 text-accent-primary shrink-0" />
+            <h2 className="text-sm font-bold text-text-primary">מה נמצא</h2>
+            <span className="text-[11px] text-text-muted hidden sm:inline">— נקודות כניסה שהמנוע איתר</span>
           </div>
           <Button
             variant="ghost"
@@ -146,7 +153,7 @@ export default function SignalsPage() {
             icon={Plus}
             onClick={() => { setEditingSignal(null); setFormOpen(true); }}
             className="shrink-0"
-            title="הוסף סטאפ שהסורק פספס — למעקב חי"
+            title="הוסף סטאפ שהמנוע פספס — למעקב חי"
           >
             <span className="hidden sm:inline">הוסף סטאפ</span>
           </Button>
@@ -178,7 +185,7 @@ export default function SignalsPage() {
           <EmptyState
             icon={Radar}
             title={tab === 'all' ? 'אין סטאפים עדיין' : `אין סטאפים ב${TABS.find((t) => t.key === tab)?.label}`}
-            description="תייג מטבעות למעלה בלונג/שורט — והסורק יזהה עבורך סטאפי כניסה (LPS/LPSY) אוטומטית, וישלח התראה ברגע שהמדרגה השנייה נשברת."
+            description="עדיין לא אותרה נקודת כניסה. זה תקין — המנוע מחכה למבנה ויקוף שלם, ולא כל מטבע מתויג מייצר סטאף. תייג עוד מטבעות בשלב 1 כדי להרחיב את הסריקה."
           />
         ) : (
           <motion.div
