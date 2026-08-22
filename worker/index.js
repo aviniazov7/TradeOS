@@ -6,17 +6,28 @@
  * - Market data proxies + AI endpoints for the app
  */
 
+import {
+  buildMentionIndex, attributeMoves, describeFinding, ATTRIBUTION_WINDOW_MIN,
+} from './newsImpact.js';
+
 // Binance's public market-data mirror — api.binance.com returns 403 to
 // Cloudflare Worker egress IPs in many regions, but data-api.binance.vision
 // (same /api/v3 spot surface) isn't geo-blocked. Futures (fapi) has no mirror.
 const BINANCE_SPOT = 'https://data-api.binance.vision/api/v3';
 const BINANCE_FUTURES = 'https://fapi.binance.com/fapi/v1';
 const CALENDAR_API = 'https://nfs.faireconomy.media/ff_calendar_thisweek.json';
+// Fast aggregated news. Free, no key, and materially faster than the RSS feeds
+// below: measured live, its newest item was 2 minutes old while the six RSS
+// sources ranged 12-53 minutes. It also carries Twitter/Truth Social posts
+// (including @realDonaldTrump) and exchange listing notices, which no RSS feed
+// here does.
+const FAST_NEWS_API = 'https://news.treeofalpha.com/api/news?limit=200';
 
 const DEFAULT_SETTINGS = {
   journal: { enabled: false, time: '21:00' },
   summary: { enabled: false, time: '22:00' },
   calendar: { enabled: false },
+  newsImpact: { enabled: false },
 };
 
 // ==================== Helpers ====================
@@ -1472,6 +1483,89 @@ async function checkJournalReminders(env, settingsMap) {
   }
 }
 
+// Firestore REST returns every value wrapped in a type key. Trades are written
+// by several paths over the app's life (form, CSV import, exchange sync), so a
+// number may arrive as doubleValue, integerValue or even stringValue.
+function fsNum(v) {
+  if (!v) return 0;
+  const raw = v.doubleValue ?? v.integerValue ?? v.stringValue;
+  const n = Number(raw);
+  return Number.isFinite(n) ? n : 0;
+}
+
+// Israel-local midnight, as the true UTC instant Firestore compares against.
+//
+// getIsraelTime() returns a Date whose *wall clock* reads Israel time, so the
+// gap between it and the real clock is the zone offset. Measuring that gap
+// instead of hard-coding +2/+3 means DST needs no special case.
+function israelDayStartIso() {
+  const israelNow = getIsraelTime();
+  const offsetMs = israelNow.getTime() - Date.now();
+  const midnightWall = new Date(israelNow);
+  midnightWall.setHours(0, 0, 0, 0);
+  return new Date(midnightWall.getTime() - offsetMs).toISOString();
+}
+
+// Today's closed trades, read straight from Firestore at the moment the summary
+// is sent.
+//
+// This replaces a client-written KV blob, and the difference is the whole bug:
+// useDailySummarySync runs ONCE per browser session, at app load. It wrote
+// whatever the day looked like at that instant — usually zero, because the app
+// is normally opened in the morning — and nothing ever refreshed it. Trades
+// closed later in the day never reached KV, so the 22:00 push reported "no
+// closed trades" on days full of them. If the app was never opened that day
+// there was no key at all, with the same result.
+async function summaryFetchTodayTrades(token, uid) {
+  const res = await fetch(`${FS_BASE}/documents/users/${encodeURIComponent(uid)}:runQuery`, {
+    method: 'POST',
+    headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
+    body: JSON.stringify({
+      structuredQuery: {
+        from: [{ collectionId: 'trades' }],
+        where: {
+          fieldFilter: {
+            field: { fieldPath: 'exitDate' },
+            op: 'GREATER_THAN_OR_EQUAL',
+            value: { timestampValue: israelDayStartIso() },
+          },
+        },
+        limit: 200,
+      },
+    }),
+  });
+  if (!res.ok) return null;
+  const rows = await res.json();
+  if (!Array.isArray(rows)) return null;
+
+  const closed = [];
+  for (const row of rows) {
+    const f = row?.document?.fields;
+    if (!f) continue;
+    const status = f.status?.stringValue;
+    // Same predicate the app uses: an explicit closed status, or an exit price.
+    const isClosed = status === 'closed' || (status !== 'open' && status !== 'partial' && fsNum(f.exitPrice) > 0);
+    if (!isClosed) continue;
+    closed.push({
+      pair: f.pair?.stringValue || f.symbol?.stringValue || '?',
+      pnl: f.netPnl ? fsNum(f.netPnl) : fsNum(f.pnl),
+      result: f.result?.stringValue || '',
+    });
+  }
+
+  let bestTrade = null;
+  let worstTrade = null;
+  let pnl = 0;
+  let wins = 0;
+  for (const t of closed) {
+    pnl += t.pnl;
+    if (t.result === 'win' || t.pnl > 0) wins += 1;
+    if (!bestTrade || t.pnl > bestTrade.pnl) bestTrade = { pair: t.pair, pnl: t.pnl };
+    if (!worstTrade || t.pnl < worstTrade.pnl) worstTrade = { pair: t.pair, pnl: t.pnl };
+  }
+  return { tradeCount: closed.length, pnl, wins, losses: closed.length - wins, bestTrade, worstTrade };
+}
+
 async function checkDailySummaries(env, settingsMap) {
   const currentTime = getIsraelHHMM();
   const today = getIsraelDateStr();
@@ -1479,7 +1573,20 @@ async function checkDailySummaries(env, settingsMap) {
     if (!s?.summary?.enabled || !scheduleDue(s.summary.time, currentTime)) continue;
     const sentKey = `sent:summary:${uid}:${today}`;
     if (await env.ALERTS_KV.get(sentKey)) continue;
-    const stats = await env.ALERTS_KV.get(`dailystats:u:${uid}:${today}`, 'json');
+
+    // Read the day from Firestore at send time. There is deliberately no
+    // fallback: the old KV blob is exactly what produced the false "no closed
+    // trades" push, and falling back to it would reproduce the bug under a new
+    // name. If the read fails, skip WITHOUT marking the user as sent, so the
+    // next tick can try again rather than asserting a quiet day that was not.
+    let stats = null;
+    try {
+      const token = await getFirebaseAdminToken(env);
+      stats = await summaryFetchTodayTrades(token, uid);
+    } catch (err) {
+      console.error('daily summary: firestore read failed', err);
+    }
+    if (!stats) continue;
     let body;
     if (stats && stats.tradeCount > 0) {
       const pnlStr = stats.pnl >= 0 ? `+$${stats.pnl.toFixed(2)}` : `-$${Math.abs(stats.pnl).toFixed(2)}`;
@@ -1487,7 +1594,9 @@ async function checkDailySummaries(env, settingsMap) {
       body = `${stats.tradeCount} עסקאות · P&L: ‏${pnlStr} · Win Rate: ‏${wr}%`;
       if (stats.bestTrade && stats.bestTrade.pnl > 0) body += ` · 🏆 ${stats.bestTrade.pair} ‏+$${stats.bestTrade.pnl.toFixed(2)}`;
     } else {
-      body = 'אין עסקאות סגורות היום. מחר יום חדש! 💪';
+      // Say which day, so a summary that lands after midnight is not read as
+      // being about the wrong one.
+      body = 'לא נסגרו עסקאות היום. מחר יום חדש! 💪';
     }
     await sendPushToUser(env, uid, {
       title: `📊 סיכום יומי — ${formatIsraelDate()}`,
@@ -1576,6 +1685,7 @@ async function handleCron(env) {
     checkChurnedPremium(env),
     checkWeeklyDigest(env),
     refreshNewsDigest(env),
+    refreshNewsImpact(env),
     scanWyckoffSetups(env),
   ]);
 }
@@ -2092,6 +2202,21 @@ async function geminiStreamToOpenAI(geminiBody) {
   });
 }
 
+// Budget for the journal snapshot carried on every chat turn. Deliberately far
+// below the coach's (2500) because this rides along with the conversation
+// history and the Wyckoff system prompt on an endpoint that already hits Groq's
+// per-minute cap.
+const CHAT_CONTEXT_BUDGET = 900;
+
+const CHAT_CONTEXT_PROMPT = `
+## יומן המסחר של הסוחר (JSON):
+זהו הספר האמיתי שלו. כשהוא שואל על עצמו — "איפה אני מפסיד", "מה עובד לי" — ענה מהנתונים האלה ולא בעצה כללית.
+- אסור להמציא מספר שלא מופיע כאן.
+- אם הנתונים לא מכילים את מה שנשאלת עליו, אמור זאת במפורש והצע מה להוסיף ליומן.
+- "_truncated" מציין שקוצץ חלק מרשימה — זה לא אומר שהיא ריקה.
+\`\`\`json
+`;
+
 const WYCKOFF_SYSTEM_PROMPT = `אתה TradeAI — מנטור מסחר מקצועי ומומחה לשיטת ויקוף (Wyckoff). אתה עוזר לסוחרים לזהות דפוסי שוק, לנתח גרפים ולשפר את המסחר.
 
 ## עקרונות
@@ -2198,7 +2323,7 @@ async function handleAIChat(request, env, cors) {
   let charged = null;
   try {
     // Parse request
-    const { messages } = await request.json();
+    const { messages, context } = await request.json();
     if (!messages || !Array.isArray(messages) || messages.length === 0) {
       return new Response(JSON.stringify({ error: 'Missing messages' }), { status: 400, headers: { ...cors, 'Content-Type': 'application/json' } });
     }
@@ -2299,8 +2424,20 @@ async function handleAIChat(request, env, cors) {
     // Only the image at lastImageIdx (gated above) is forwarded — older ones
     // bloat the payload past the providers' per-request caps.
     const MAX_TURN_CHARS = 2500;
+
+    // The trader's own book, so the chat can answer "where am I losing money"
+    // instead of giving generic advice. Kept small on purpose: this rides along
+    // with EVERY turn (the system message is rebuilt per request), and the whole
+    // reason history is trimmed above is that this endpoint blows Groq's
+    // tokens-per-minute cap easily. Skipped entirely for image turns, where the
+    // picture is the subject and the budget is already tight.
+    const journalContext = (!hasImage && context && typeof context === 'object' && !Array.isArray(context))
+      ? packCoachStats(context, CHAT_CONTEXT_BUDGET)
+      : null;
+
     const apiMessages = [
       { role: 'system', content: hasImage ? WYCKOFF_VISION_PROMPT : WYCKOFF_SYSTEM_PROMPT },
+      ...(journalContext ? [{ role: 'system', content: CHAT_CONTEXT_PROMPT + journalContext + '\n```' }] : []),
       ...recent.map((msg, i) => {
         const text = String(msg.text || '').slice(0, MAX_TURN_CHARS);
         if (i === lastImageIdx) {
@@ -2457,14 +2594,36 @@ const COACH_SYSTEM_PROMPT = `אתה מנטור מסחר אישי שמנתח את
 ## אסור (חובה לציית):
 - אסור להתחיל שורה ב-#, ##, ### או כל סוג של אות-מספר-נקודה (1.).
 - אסור לקרוא לסעיף "מסקנות", "סיכום" או כל כותרת אחרת מלבד הארבע המוגדרות.
-- אסור: תחזיות מחיר, "בוליש/בריש", פסיכולוגיה כללית, פתיחות שיווקיות, אזכור שאתה AI, סלוגנים.
+- אסור: תחזיות מחיר, "בוליש/בריש", פסיכולוגיה כללית ("תשמור על קור רוח"), פתיחות שיווקיות, אזכור שאתה AI, סלוגנים.
 - אסור להמציא נתונים — השתמש רק במה שמופיע ב-stats.
 - בלי משפט פתיחה ("הנה ניתוח..."). תתחיל ישר בשורה: **חוזקות**.
 
 ## איכות התוכן:
 - כל בולט קצר, ענייני, מסתמך על מספר אחד לפחות מה-stats.
 - המלצות = פעולה ספציפית למסחר ("הפסק לסחור [מטבע] עד שתבקטסט [תנאי]"), לא טיפים גנריים ("התנהל בזהירות").
-- אל תחזור על נתון שכבר הצגת בסעיף קודם.`;
+- אל תחזור על נתון שכבר הצגת בסעיף קודם.
+
+## המפתח "psychology" (רק אם הוא קיים ב-stats):
+הצלבה בין יומן הבוקר/ערב של הסוחר לבין העסקאות שנסגרו באותם ימים. כל המספרים שם כבר חושבו — אסור לחשב מחדש, לסכם או להסיק מספר שלא כתוב שם במפורש.
+- אם המפתח קיים, חובה לשלב לפחות בולט אחד שנשען עליו. זו לא "פסיכולוגיה כללית" אלא ממצא כספי מדוד, ולכן מותר.
+- "psychology.findings" הן שורות מוכנות ומדויקות. מותר לצטט או לנסח אותן מחדש, אסור לשנות בהן מספר.
+- כל ההשוואות הן מול "psychology.baseline" — הממוצע של הסוחר עצמו בימים מתועדים, לא מול אפס ולא מול השוק.
+- דלי שמסומן "thin": true נשען על פחות מ-minSampleForConclusion עסקאות. מותר להזכיר אותו רק עם הסתייגות מפורשת ("מדגם קטן מכדי להסיק"), ואסור לבנות עליו המלצה.
+- אם המפתח לא קיים — אל תיגע בנושא ואל תבקש מהסוחר למלא יומן, אלא אם מיקוד הדו"ח המפורש הוא psychology. במקרה כזה אמור בבולט הראשון שאין עדיין ימים שבהם מולא יומן בוקר וגם נסגרה עסקה, ומה צריך למלא כדי לאפשר את המדידה.
+
+## המפתח "planAudit" (רק אם הוא קיים ב-stats):
+הצלבה בין תוכנית המסחר שהסוחר כתב לבין מה שהוא באמת עשה. גם כאן כל המספרים כבר חושבו — אסור להסיק מספר שלא כתוב.
+- "planAudit.findings" הן חריגות מנוסחות ומסודרות לפי העלות הכספית שלהן. התייחס אליהן לפי הסדר.
+- "compliance" משווה עסקאות שעמדו בתוכנית מול עסקאות שחרגו ממנה. אם החריגות דווקא הרוויחו יותר — אמור זאת: הבעיה בתוכנית, לא במשמעת.
+- "notMeasurable" הוא כלל שהסוחר הגדיר ולא ניתן היה לבדוק. אם יש שם משהו, הזכר אותו ב"המלצות לפעולה" עם הפעולה שתאפשר לבדוק אותו (למשל להזין יתרת פתיחה ליומן).
+- דלי עם "thin": true נשען על פחות מ-minSampleForConclusion עסקאות — הסתייגות חובה, אסור לבנות עליו המלצה.
+- אסור להציע לסוחר לשנות את התוכנית רק כדי להתאים אותה למה שהוא עשה בפועל, אלא אם המספרים מראים שהחריגות רווחיות יותר.
+- "compliance" מכסה רק עסקאות שאחד הכללים באמת בדק. "unmeasuredTrades" הן עסקאות שנשמרו בלי מטבע/טיימפריים/סשן ולכן לא נכללו — אם הערך גדול מאפס, ציין זאת ואל תציג את ההשוואה כאילו היא מכסה את כל העסקאות.
+- אם "positions.conclusive" הוא false — אסור לקבוע שלא חרגת ממספר הפוזיציות. הנתונים פשוט לא מאפשרים לדעת.
+- אם המפתח לא קיים — אל תיגע בנושא, אלא אם מיקוד הדו"ח המפורש הוא planAudit. במקרה כזה אמור בבולט הראשון שאין תוכנית פעילה להשוות מולה ומה צריך להגדיר בה.
+
+## אל תערבב בין שתי מדידות המשמעת:
+"psychology.discipline" הוא דיווח עצמי של הסוחר ביומן הערב, ברמת יום. "planAudit.compliance" הוא מדידה של חריגה מכללי התוכנית הכתובים, ברמת עסקה. הם יכולים לסתור זה את זה, וזו לא טעות. אם שניהם קיימים — אסור לאחד אותם לבולט אחד או להציג מספר אחד כאילו הוא מאשש את השני. ציין ליד כל מספר מאיזו מדידה הוא בא.`;
 
 // Maps the quick-prompt the user clicked (stats.focus) to an explicit directive.
 // Without this the model gets the same generic 4-section report every time —
@@ -2479,6 +2638,8 @@ const COACH_FOCUS_INSTRUCTIONS = {
   sessionEdge: 'הסוחר שאל: "איזה סשן הכי רווחי?". מקד את כל הדו"ח בהשוואת סשני המסחר (bySession) — מתי כדאי לסחור ומתי להימנע, עם המספרים.',
   compareMonth: 'הסוחר שאל: "איך החודש מול הקודם?". מקד את כל הדו"ח בהשוואה בין התקופות — מה השתפר, מה הידרדר, ולמה, עם המספרים משני הצדדים.',
   strategyEdge: 'הסוחר שאל: "איזו אסטרטגיה מצליחה?". מקד את כל הדו"ח בהשוואת האסטרטגיות (byStrategy) — איזו מניבה הכי טוב ואיזו לזנוח, עם המספרים.',
+  planAudit: 'הסוחר שאל: "האם אני עומד בתוכנית שלי?". מקד את כל הדו"ח במפתח planAudit. "חוזקות" = הכללים שהוא כן שומר עליהם ומה זה מכניס לו. "חולשות" = החריגות לפי סדר העלות. "המלצות לפעולה" = כלל אכיפה קונקרטי אחד לכל חריגה ("אל תפתח פוזיציה שלישית באותו יום"), ולא "תהיה ממושמע יותר". אם המפתח planAudit חסר — אמור בבולט הראשון שאין תוכנית פעילה להשוות מולה, והסבר מה צריך להגדיר בה.',
+  psychology: 'הסוחר שאל: "כמה מצב הראש עולה לי?". מקד את כל הדו"ח במפתח psychology — תרגם רגש בוקר, רמת מוכנות, שגרת טרום-מסחר ועמידה בתוכנית לסכום כסף לעסקה מול ה-baseline שלו. "המלצות לפעולה" חייבות להיות כללי סינון קונקרטיים ("אל תפתח פוזיציה בימים שדירגת מוכנות מתחת ל-X"), לא עצות רגשיות. אם המפתח psychology חסר — אמור זאת מפורשות בבולט הראשון והסבר שצריך למלא יומן בוקר בימי מסחר.',
 };
 
 // Backtest mode — same 4-section output format (so the client parser is shared)
@@ -2557,7 +2718,7 @@ const PM_BRIEF_SYSTEM_PROMPT = `אתה האנליסט האישי של המשתמ
 - אסור להתחיל שורה ב-#, ##, ### או אות-מספר-נקודה (1.).
 - אסור כותרות אחרות מלבד הארבע המוגדרות.
 - אסור: המלצה להמר או להיכנס לפוזיציה, הבטחת רווח, אזכור שאתה AI, פתיחות שיווקיות.
-- אסור להמציא נתונים — רק מה שמופיע ב-stats. אם חלק ריק (אין ארנקים במעקב / אין אסטרטגיה) — אמור זאת מפורשות והמלץ להשלים אותו.
+- אסור להמציא נתונים — רק מה שמופיע ב-stats. אם חלק ריק (אין ארנקים במעקב / אין אסטרטגיה) — אמור זאת מפורשות והמלץ להשלים אותו, אבל רק כשהמפתח מופיע ב-JSON עם ערך ריק; רשימה שנחתכה (ראה "_truncated") אינה מעקב ריק.
 - בלי משפט פתיחה. תתחיל ישר בשורה: **חוזקות**.
 
 ## איכות התוכן (חשוב):
@@ -2575,11 +2736,169 @@ const BACKTEST_FOCUS_INSTRUCTIONS = {
   improve: 'הסוחר שאל: "מה לשפר?". מקד את הדו"ח בחולשות הניתנות לתיקון — צירופים מפסידים לזנוח, טיימפריימים/סשנים חלשים, ומה לבדוק יותר לפני מעבר למסחר חי.',
 };
 
+// ---- coach stats payload packing ----
+// The prompt that follows the "אסור להמציא נתונים" rule must not be handed a
+// JSON fragment. The budget below is measured in ESTIMATED TOKENS, not
+// characters, because the thing it protects is a TOKEN bucket: one shared Groq
+// free-tier key serves chat + coach + coin descriptions + digest (see
+// groqFetchWithRetry), and its per-minute budget on the 70B is what a runaway
+// payload actually breaks. Characters are a 3-4x wrong proxy for that — ASCII
+// JSON runs ~3-4 chars/token while Hebrew (strategy names, market questions,
+// notes) runs closer to 1 char/token in these BPE vocabularies, so a
+// Hebrew-heavy payload sails through a char cap and then 429s.
+// Sizing: deep = 5000 prompt tokens + ~900 system + 1400 answer ≈ 7.3K/run —
+// inside the per-minute window, and ~13 deep runs against the 100K-tokens/day
+// budget referenced below. Neither model's CONTEXT is the constraint
+// (llama-3.3-70b 128K, gemini-2.0-flash 1M); the rate buckets are. Raise these
+// only together with what the client sends, not instead of it.
+const COACH_STATS_BUDGET_SHORT = 2500;
+const COACH_STATS_BUDGET_DEEP = 5000;
+// Successive trim passes: max array elements kept, max string length kept.
+// Arrays lose their TAIL — every payload we send is ranked or most-recent-first
+// (bestTrades/worstTrades, byPair, trackedWallets, topMatches), so the head is
+// the part worth keeping.
+const COACH_STATS_LADDER = [
+  { arr: 40, str: 600 },
+  { arr: 24, str: 400 },
+  { arr: 12, str: 300 },
+  { arr: 8, str: 220 },
+  { arr: 5, str: 160 },
+  { arr: 3, str: 120 },
+  { arr: 2, str: 90 },
+  { arr: 1, str: 60 },
+];
+// stats is client-supplied; cap the recursion. Real payloads are <= 4 deep.
+const COACH_STATS_MAX_DEPTH = 12;
+// Absolute floor for a payload that cannot be trimmed into budget at all (only
+// reachable with a crafted request — e.g. hundreds of top-level keys with huge
+// NAMES, which no trimming of values can shrink). Pure ASCII, ~25 tokens, and
+// contains NO client-controlled text: it always parses and always fits.
+const COACH_STATS_OVERFLOW = '{"_truncated":{"_all":"payload exceeded the size limit - nothing was sent"}}';
+
+// Appended to EVERY coach system prompt. Without it the modes that are ordered
+// to announce an empty section (PM_BRIEF_SYSTEM_PROMPT: "אם חלק ריק … אמור זאת
+// מפורשות") would read a trimmed section as an empty one and tell the user they
+// track no wallets. Lives in the SYSTEM message on purpose — nothing derived
+// from the client payload may be interpolated into the prompt outside the
+// ```json fence.
+const COACH_TRUNCATION_RULE = `
+
+## נתונים חתוכים (חובה):
+- ה-JSON עלול להישלח מקוצר בגלל מגבלת גודל. אם מופיע בו מפתח "_truncated" — הערכים שם מציינים כמה פריטים מתוך כמה נשלחו בכל רשימה (למשל "6 of 24").
+- במקרה כזה הסתמך רק על מה שקיבלת, וציין שהמדגם חלקי אם זה משנה למסקנה.
+- מה שנחתך אינו "ריק": אל תסיק שאין שם נתונים, אל תמציא אותם, ואל תמליץ להשלים חלק שרק נחתך. "ריק" ייאמר רק כשהמפתח עצמו מופיע ב-JSON עם ערך ריק.`;
+
+// ~tokens for a serialized payload. ASCII at 3 chars/token, everything else at
+// 1 — both deliberately pessimistic, so the estimate never under-states cost.
+function estimateCoachTokens(str) {
+  let ascii = 0;
+  for (let i = 0; i < str.length; i++) if (str.charCodeAt(i) < 128) ascii += 1;
+  return Math.ceil(ascii / 3) + (str.length - ascii);
+}
+
+// Cut without leaving a dangling half of a surrogate pair behind.
+function cutCoachText(str, max) {
+  let out = str.slice(0, max);
+  const last = out.charCodeAt(out.length - 1);
+  if (last >= 0xd800 && last <= 0xdbff) out = out.slice(0, -1);
+  // Never end inside a token. psychology.findings and planAudit.findings are
+  // pre-phrased sentences the prompt authorises the model to quote verbatim, so
+  // a cut landing inside "$612.40" would hand it "$612." as a real figure. Back
+  // up to the last space, but only when that keeps most of the budgeted text —
+  // the floor preserves the "a string is never emptied" invariant for
+  // space-free strings.
+  const sp = out.lastIndexOf(' ');
+  if (sp > max * 0.6) out = out.slice(0, sp);
+  return out.trimEnd();
+}
+
+// Trim VALUES, never keys. Invariants that the callers rely on:
+//   * every key at every level survives;
+//   * a non-empty array never becomes empty (>= 1 element is always kept);
+//   * a string is never emptied.
+// That is what makes "this section is empty" impossible to infer falsely from a
+// trimmed payload.
+function trimCoachValue(value, path, caps, report, depth) {
+  if (depth > COACH_STATS_MAX_DEPTH) {
+    report.depth += 1;
+    return '[nested]';
+  }
+  if (typeof value === 'string') {
+    if (value.length <= caps.str) return value;
+    report.strings += 1;
+    return `${cutCoachText(value, caps.str)}…`;
+  }
+  if (Array.isArray(value)) {
+    const keep = value.length ? Math.max(1, Math.min(value.length, caps.arr)) : 0;
+    if (keep < value.length) {
+      const seen = report.arrays.get(path) || { kept: 0, total: 0, places: 0 };
+      seen.kept += keep;
+      seen.total += value.length;
+      seen.places += 1;
+      report.arrays.set(path, seen);
+    }
+    const out = [];
+    for (let i = 0; i < keep; i++) out.push(trimCoachValue(value[i], `${path}[]`, caps, report, depth + 1));
+    return out;
+  }
+  if (value && typeof value === 'object') {
+    // Null prototype: a literal "__proto__" key in the client JSON then lands as
+    // a plain own property instead of hitting the prototype setter and silently
+    // disappearing (which would break the "every key survives" invariant).
+    const out = Object.create(null);
+    for (const k of Object.keys(value)) {
+      out[k] = trimCoachValue(value[k], path ? `${path}.${k}` : k, caps, report, depth + 1);
+    }
+    return out;
+  }
+  return value; // number | boolean | null
+}
+
+function coachTruncationNote(report) {
+  const note = Object.create(null);
+  for (const [path, seen] of report.arrays) {
+    note[path] = seen.places > 1
+      ? `${seen.kept} of ${seen.total} (across ${seen.places} lists)`
+      : `${seen.kept} of ${seen.total}`;
+  }
+  if (report.strings) note._strings = `${report.strings} long text values shortened`;
+  if (report.depth) note._depth = `${report.depth} deeply nested values replaced`;
+  return note;
+}
+
+// Fit `stats` into `budget` estimated tokens WITHOUT ever emitting broken JSON.
+// The previous `JSON.stringify(stats).slice(0, 6000)` cut mid-structure, so the
+// model got malformed JSON inside a ```json fence and invented the missing tail.
+// Dropping whole top-level keys instead is no better: a missing section is
+// indistinguishable from an empty one, and the prompts order the model to call
+// out empty sections. So keep EVERY key and trim the CONTENTS — array tails and
+// over-long strings — reporting inside the JSON, under "_truncated", how much of
+// each list was sent ("6 of 24"). The return value always parses and is always
+// within budget; nothing client-controlled escapes into the prompt.
+// stats comes from request.json(), so it is plain JSON data: JSON.stringify here
+// cannot throw and cannot return undefined.
+function packCoachStats(stats, budget) {
+  const asIs = JSON.stringify(stats);
+  if (estimateCoachTokens(asIs) <= budget) return asIs;
+  for (const caps of COACH_STATS_LADDER) {
+    const report = { arrays: new Map(), strings: 0, depth: 0 };
+    const trimmed = trimCoachValue(stats, '', caps, report, 0);
+    const note = coachTruncationNote(report);
+    if (Object.keys(note).length) trimmed._truncated = note;
+    const json = JSON.stringify(trimmed);
+    if (estimateCoachTokens(json) <= budget) return json;
+  }
+  return COACH_STATS_OVERFLOW;
+}
+
 async function handleAICoach(request, env, cors) {
   try {
     const body = await request.json().catch(() => ({}));
     const { stats, depth = 'short', mode = 'journal' } = body || {};
-    if (!stats || typeof stats !== 'object') {
+    // Arrays are rejected too: every caller sends a keyed object, and the
+    // packer's whole contract is per-SECTION reporting, which a bare array has
+    // no place to carry.
+    if (!stats || typeof stats !== 'object' || Array.isArray(stats)) {
       return new Response(JSON.stringify({ error: 'Missing stats' }), { status: 400, headers: { ...cors, 'Content-Type': 'application/json' } });
     }
     // Mode swaps the system prompt + focus set; everything else (auth,
@@ -2591,6 +2910,10 @@ async function handleAICoach(request, env, cors) {
     if (isBacktest) systemPrompt = BACKTEST_COACH_SYSTEM_PROMPT;
     if (isPolymarket) systemPrompt = PM_ANALYST_SYSTEM_PROMPT;
     if (isPmBrief) systemPrompt = PM_BRIEF_SYSTEM_PROMPT;
+    // All four modes forbid inventing data; all four can now receive a trimmed
+    // payload, so all four need the rule that says a trimmed list is not an
+    // empty one (see packCoachStats).
+    systemPrompt += COACH_TRUNCATION_RULE;
     // Polymarket modes have no quick-prompts — an empty set keeps journal
     // directives from leaking into those reports.
     let focusSet = COACH_FOCUS_INSTRUCTIONS;
@@ -2600,8 +2923,8 @@ async function handleAICoach(request, env, cors) {
     if (isBacktest) dataLabel = 'נתוני הבקטסט';
     if (isPolymarket) dataLabel = 'נתוני הארנק';
     if (isPmBrief) dataLabel = 'סביבת העבודה שלך';
-    // Hard cap stats payload to keep the prompt cheap.
-    const statsStr = JSON.stringify(stats).slice(0, 6000);
+    // NOTE: the stats payload is serialized further down, AFTER the premium
+    // lookup — its budget is depth-aware (see packCoachStats).
 
     const authHeader = request.headers.get('Authorization') || '';
     const token = authHeader.replace('Bearer ', '');
@@ -2644,6 +2967,12 @@ async function handleAICoach(request, env, cors) {
     const focusLine = focusText
       ? `## מיקוד הדו"ח (חובה):\n${focusText}\nכל סעיף בדו"ח חייב לענות על השאלה הזו — אל תיתן דו"ח כללי.\n\n`
       : '';
+
+    // Structure-aware size cap. A blind slice handed the model a JSON fragment;
+    // packCoachStats keeps every section, trims list tails instead, and reports
+    // what it trimmed INSIDE the fenced JSON ("_truncated"). Nothing derived
+    // from the client payload is interpolated outside the fence.
+    const statsStr = packCoachStats(stats, premium && depth === 'deep' ? COACH_STATS_BUDGET_DEEP : COACH_STATS_BUDGET_SHORT);
 
     const userPrompt =
       focusLine +
@@ -3244,6 +3573,262 @@ function isAllowedOrigin(origin) {
 }
 
 // Serve a Binance /api/v3 request from Bybit, returning Binance-shaped JSON.
+// ==================== News → price attribution ================================
+// Answers "why did the price move", which is a different and far more honest
+// question than "will it move". Detection is PRICE-first because only ~16% of
+// headlines coincide with any price anomaly; the news is only ever the
+// explanation. The scoring itself lives in ./newsImpact.js so it can be unit
+// tested outside the Worker runtime.
+//
+// Subrequest budget per run: 1 news + 1 ticker list + IMPACT_SCAN_TOP klines.
+const IMPACT_SCAN_TOP = 8;        // candidates promoted to a kline read
+const IMPACT_WINDOW_BARS = 3;     // 3 x 5m = the 15-minute move window
+const IMPACT_BASELINE_BARS = 24;  // 2h of 5m bars as the volume baseline
+const IMPACT_MIN_QUOTE_VOL = 5_000_000; // ignore illiquid pairs entirely
+// The attribution window has to scale with how fast the source can deliver.
+// Measured on the live feeds: the fast source's newest item is ~2 minutes old,
+// so 90 minutes is generous. RSS cannot do better than ~10-50 minutes, and a
+// 90-minute window over it caught only 3 items from 3 outlets — too thin for
+// any topic to reach two corroborating sources, which is why the panel came up
+// empty. 240 minutes yields 13 items from 5 outlets while still being today's
+// news. Widening it does weaken the claim, so the payload reports which window
+// was used and every finding still carries the age of its coverage.
+const IMPACT_RSS_WINDOW_MIN = 240;
+
+// Normalize the fast-news feed into the shape newsImpact expects. Anything
+// without a title or a timestamp is dropped rather than defaulted.
+//
+// Returns { items, error } rather than a bare array: a silent [] is
+// indistinguishable from "the world is quiet", and that is exactly the bug this
+// shipped with — the first production run returned newsCount 0 while the same
+// request worked from a laptop, and nothing in the payload said why.
+async function fetchFastNews() {
+  try {
+    const r = await fetch(FAST_NEWS_API, {
+      headers: { Accept: 'application/json', 'User-Agent': 'Mozilla/5.0 TradeOS' },
+      signal: AbortSignal.timeout(8000),
+    });
+    if (!r.ok) return { items: [], error: `fast-news ${r.status}` };
+    const raw = await r.json();
+    if (!Array.isArray(raw)) return { items: [], error: 'fast-news shape' };
+    const items = raw.map((x) => ({
+      id: x._id || x.url || '',
+      title: String(x.title || '').slice(0, 300),
+      url: typeof x.url === 'string' ? x.url : '',
+      // sourceName is the outlet ("WSJ"); source is the channel ("Blogs").
+      // Corroboration must count outlets, so the outlet wins when present.
+      source: String(x.sourceName || x.source || '').slice(0, 60),
+      ms: Number(x.time) || 0,
+      symbols: Array.isArray(x.symbols) ? x.symbols.slice(0, 8) : [],
+    })).filter((n) => n.title && n.ms);
+    return { items, error: items.length ? '' : 'fast-news empty' };
+  } catch (err) {
+    return { items: [], error: `fast-news ${String(err?.name || err).slice(0, 40)}` };
+  }
+}
+
+// The same RSS feeds the digest already uses, normalized for the attribution
+// engine. Slower than the fast feed by 10-40 minutes, but it is proven to work
+// from Worker egress, so it keeps the panel alive if the fast source blocks us.
+async function fetchRssNewsForImpact() {
+  const results = await Promise.allSettled(NEWS_FEEDS.crypto.map(async (source) => {
+    const r = await fetch(source.rss, {
+      headers: { 'User-Agent': 'Mozilla/5.0 TradeOS' },
+      signal: AbortSignal.timeout(8000),
+    });
+    if (!r.ok) throw new Error(`${source.key} ${r.status}`);
+    return parseRssItems(await r.text(), source);
+  }));
+  return results
+    .filter((r) => r.status === 'fulfilled')
+    .flatMap((r) => r.value)
+    .map((it) => ({
+      id: it.link,
+      title: String(it.title || '').slice(0, 300),
+      url: it.link,
+      source: it.sourceLabel || it.sourceKey,
+      ms: Date.parse(it.pubDate) || 0,
+      symbols: [],
+    }))
+    .filter((n) => n.title && n.ms);
+}
+
+// The short-window move for one symbol, measured against its own recent volume
+// rather than a global constant — a 3x volume spike means something different
+// on BTC than on a microcap.
+async function symbolWindowMove(symbol) {
+  const raw = await bybitAsBinance('klines', new URLSearchParams({
+    symbol, interval: '5m', limit: String(IMPACT_BASELINE_BARS + IMPACT_WINDOW_BARS),
+  }));
+  if (!raw) return null;
+  let rows;
+  try { rows = JSON.parse(raw); } catch { return null; }
+  if (!Array.isArray(rows) || rows.length < IMPACT_BASELINE_BARS + IMPACT_WINDOW_BARS) return null;
+
+  const window = rows.slice(-IMPACT_WINDOW_BARS);
+  const baseline = rows.slice(0, rows.length - IMPACT_WINDOW_BARS);
+  const openPrice = Number(window[0][1]);
+  const closePrice = Number(window[window.length - 1][4]);
+  if (!(openPrice > 0) || !(closePrice > 0)) return null;
+
+  const windowVol = window.reduce((sum, k) => sum + (Number(k[5]) || 0), 0) / window.length;
+  const baseVol = baseline.reduce((sum, k) => sum + (Number(k[5]) || 0), 0) / baseline.length;
+  if (!(baseVol > 0)) return null;
+
+  return {
+    symbol,
+    changePct: ((closePrice - openPrice) / openPrice) * 100,
+    volumeX: windowVol / baseVol,
+    windowMin: IMPACT_WINDOW_BARS * 5,
+  };
+}
+
+// One ticker call prices every listed pair; only the few moving RIGHT NOW are
+// worth a kline read, so the expensive step stays bounded however many pairs
+// the exchange lists.
+//
+// Candidates are ranked against a price snapshot from the previous run, not by
+// 24h change. That distinction was found by running this live: TRUMPUSDT ranked
+// first on 24h change while its actual 15-minute move was +0.04%, so a 24h
+// ranking spends the whole kline budget on coins that moved hours ago and never
+// looks at the one spiking this minute. The snapshot costs one KV read and one
+// write, and yields a real short-window mover list across every symbol.
+async function scanCandidateMoves(env) {
+  const rawTickers = await bybitAsBinance('ticker/24hr', new URLSearchParams());
+  if (!rawTickers) return [];
+  let tickers;
+  try { tickers = JSON.parse(rawTickers); } catch { return []; }
+  if (!Array.isArray(tickers)) return [];
+
+  const liquid = tickers.filter((t) => String(t.symbol || '').endsWith('USDT')
+    && (Number(t.quoteVolume) || 0) >= IMPACT_MIN_QUOTE_VOL
+    && Number(t.lastPrice) > 0);
+
+  const prev = (await env.ALERTS_KV.get('news:impact:prices', 'json')) || {};
+  const snapshot = {};
+  for (const t of liquid) snapshot[t.symbol] = Number(t.lastPrice);
+  // Written before the kline reads so a later failure still advances the
+  // baseline — a stuck snapshot would inflate every subsequent delta.
+  await env.ALERTS_KV.put('news:impact:prices', JSON.stringify(snapshot), { expirationTtl: 60 * 60 * 3 });
+
+  const ranked = liquid
+    .map((t) => {
+      const before = Number(prev[t.symbol]) || 0;
+      const nowPrice = Number(t.lastPrice);
+      // No baseline yet (first run, or a newly listed pair) — fall back to the
+      // 24h figure so the very first run still produces something.
+      const delta = before > 0
+        ? ((nowPrice - before) / before) * 100
+        : (Number(t.priceChangePercent) || 0);
+      return { symbol: t.symbol, delta };
+    })
+    .sort((a, b) => Math.abs(b.delta) - Math.abs(a.delta))
+    .slice(0, IMPACT_SCAN_TOP)
+    .map((t) => t.symbol);
+
+  const settled = await Promise.allSettled(ranked.map(symbolWindowMove));
+  return settled.filter((r) => r.status === 'fulfilled' && r.value).map((r) => r.value);
+}
+
+async function buildNewsImpact(env) {
+  const now = Date.now();
+  const [fast, moves] = await Promise.all([fetchFastNews(), scanCandidateMoves(env)]);
+  let news = fast.items;
+  let newsSource = 'fast';
+  let windowMin = ATTRIBUTION_WINDOW_MIN;
+  const newsError = fast.error;
+  if (!news.length) {
+    // The fast feed is unreachable from here — it 403s Worker egress, the same
+    // way api.binance.com does. RSS is slower but demonstrably works, so the
+    // panel degrades instead of going blank.
+    news = await fetchRssNewsForImpact();
+    newsSource = news.length ? 'rss-fallback' : 'none';
+    windowMin = IMPACT_RSS_WINDOW_MIN;
+  }
+  const index = buildMentionIndex(news, { now, windowMin });
+  const findings = attributeMoves(moves, index, { now }).map((f) => ({ ...f, text: describeFinding(f) }));
+
+  // What the market is loudest about right now, whether or not price moved.
+  // Shown as context; it is explicitly NOT a signal and carries no direction.
+  const loudest = [...index.values()]
+    .filter((m) => m.sources.length >= 2)
+    .sort((a, b) => b.sources.length - a.sources.length)
+    .slice(0, 6)
+    .map((m) => ({
+      key: m.key, kind: m.kind, entity: m.entity, title: m.title, url: m.url,
+      sourceCount: m.sources.length, sources: m.sources.slice(0, 6),
+      ageMin: Math.max(0, Math.round((now - m.newestMs) / 60000)),
+    }));
+
+  return {
+    updatedAt: now,
+    newsCount: news.length,
+    newsSource,
+    newsError,
+    windowMin,
+    scanned: moves.length,
+    findings,
+    loudest,
+  };
+}
+
+// Only a move that cleared both gates AND has corroborated coverage behind it is
+// worth interrupting someone for. An unexplained move is interesting on the page
+// and not worth a notification: without a cause there is nothing to act on.
+const IMPACT_PUSH_MIN_PCT = 4;
+// One alert per asset per window. Six outlets publishing the same story over an
+// hour must not become six pushes, and a coin that keeps twitching must not
+// re-alert every cron tick.
+const IMPACT_PUSH_COOLDOWN_HOURS = 4;
+
+async function pushNewsImpact(env, impact) {
+  const worthy = (impact.findings || []).filter(
+    (f) => f.cause !== 'unexplained' && Math.abs(f.changePct) >= IMPACT_PUSH_MIN_PCT,
+  );
+  if (!worthy.length) return;
+
+  const settingsMap = (await env.ALERTS_KV.get('usettings:ALL', 'json')) || {};
+  const users = Object.entries(settingsMap)
+    .filter(([, s]) => s?.newsImpact?.enabled)
+    .map(([uid]) => uid);
+  if (!users.length) return;
+
+  const bucket = Math.floor(Date.now() / (IMPACT_PUSH_COOLDOWN_HOURS * 3600_000));
+  for (const f of worthy) {
+    const seenKey = `sent:impact:${f.ticker}:${bucket}`;
+    if (await env.ALERTS_KV.get(seenKey)) continue;
+    await env.ALERTS_KV.put(seenKey, '1', { expirationTtl: IMPACT_PUSH_COOLDOWN_HOURS * 3600 });
+
+    const dir = f.changePct >= 0 ? '▲' : '▼';
+    for (const uid of users) {
+      await sendPushToUser(env, uid, {
+        // The title carries the fact; the body carries the cause and the
+        // refusal to predict. Neither ever suggests an action.
+        title: `${dir} ${f.ticker} ${f.changePct >= 0 ? '+' : ''}${f.changePct}% ב-${f.windowMin} דק׳`,
+        body: f.text,
+        url: '/news',
+      });
+    }
+  }
+}
+
+async function refreshNewsImpact(env) {
+  try {
+    // No staleness guard: the cron IS the schedule. The previous guard used a
+    // window equal to the cron period, against a timestamp captured before the
+    // build ran, so whether it tripped depended on how long the last build took
+    // — it skipped roughly every other tick at random. Dropping it also removes
+    // one KV write per tick (~144/day against a 1,000/day free budget).
+    const impact = await buildNewsImpact(env);
+    await env.ALERTS_KV.put('news:impact', JSON.stringify(impact), { expirationTtl: 60 * 60 * 6 });
+    // Push AFTER the blob is stored, so the notification always links to a page
+    // that already shows what it is about.
+    await pushNewsImpact(env, impact);
+  } catch (err) {
+    console.error('news impact refresh failed:', err);
+  }
+}
+
 // Covers the two endpoints the app actually uses — ticker/24hr (single symbol
 // or a symbols=[...] batch) and klines. Returns a JSON string, or null when
 // the subpath isn't covered / Bybit fails (caller then falls back to stale).
@@ -3392,6 +3977,38 @@ async function handleRequest(request, env) {
     } catch {
       return new Response(JSON.stringify({ error: 'fetch failed' }), { status: 502, headers: { ...cors, 'Content-Type': 'application/json' } });
     }
+  }
+
+  // News → price attribution. Public read of the cron-prepared blob, same
+  // reasoning as the digest below: public data, and the expensive part already
+  // happened on the cron. A cold cache builds on demand so the first visitor
+  // after a KV expiry still gets an answer.
+  if (request.method === 'GET' && path === '/news/impact') {
+    // Edge cache first, like /news/digest below. Public non-credentialed data,
+    // so a repeat hit costs ZERO KV reads — without this every visitor paid one.
+    const cacheKey = new Request('https://cache.tradeos/news-impact', { method: 'GET' });
+    const cache = caches.default;
+    const hit = await cache.match(cacheKey);
+    if (hit) {
+      const body = await hit.text();
+      return new Response(body, { headers: { ...cors, 'Content-Type': 'application/json' } });
+    }
+    let impact = await env.ALERTS_KV.get('news:impact', 'json');
+    if (!impact) {
+      impact = await buildNewsImpact(env);
+      await env.ALERTS_KV.put('news:impact', JSON.stringify(impact), { expirationTtl: 60 * 60 * 6 });
+    }
+    const body = JSON.stringify(impact);
+    // Awaited, not waitUntil: handleRequest has no ctx, and the digest handler
+    // below awaits its own cache.put for the same reason. Best-effort.
+    try {
+      await cache.put(cacheKey, new Response(body, {
+        headers: { 'Content-Type': 'application/json', 'Cache-Control': 'public, max-age=120' },
+      }));
+    } catch { /* cache put is best-effort */ }
+    return new Response(body, {
+      headers: { ...cors, 'Content-Type': 'application/json', 'Cache-Control': 'public, max-age=120' },
+    });
   }
 
   // AI news digest — public read of the cron-prepared KV blob (news is public

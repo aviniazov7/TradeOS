@@ -84,7 +84,7 @@ export default function ScannerHero({ taggedCount = 0, activeCount = 0 }) {
           </div>
           <div className="min-w-0">
             <div className="flex items-center gap-2 flex-wrap">
-              <h1 className="text-xl font-extrabold text-text-primary tracking-tight">הסורק החכם</h1>
+              <h1 className="text-xl font-extrabold text-text-primary tracking-tight">מנוע ויקוף</h1>
             </div>
             <p className="text-[12px] text-text-muted leading-snug max-w-[44ch]">זיהוי אוטומטי של סטאפי ויקוף — LPS / LPSY על שלושה טיימפריימים</p>
           </div>

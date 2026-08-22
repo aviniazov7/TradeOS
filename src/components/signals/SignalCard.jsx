@@ -18,8 +18,8 @@ export default function SignalCard({ signal, currentPrice, onEdit, onDelete, onS
   const isScanner = source === 'scanner';
   const conf = confidence != null ? Number(confidence) : null;
   const scannerTitle = conf != null
-    ? `אותר אוטומטית על ידי הסורק · ציון ביטחון ${conf}`
-    : 'אותר אוטומטית על ידי הסורק';
+    ? `אותר אוטומטית על ידי המנוע · ציון ביטחון ${conf}`
+    : 'אותר אוטומטית על ידי המנוע';
   const statusInfo = STATUS[status] || STATUS.waiting;
   const StatusIcon = statusInfo.icon;
   const isWaiting = status === 'waiting';
@@ -86,7 +86,7 @@ export default function SignalCard({ signal, currentPrice, onEdit, onDelete, onS
         {isScanner && conf != null && (
           <div>
             <div className="flex items-center justify-between text-[10px] text-text-muted mb-1">
-              <span>ביטחון הסורק</span>
+              <span>ביטחון המנוע</span>
               <span className="num-mono font-bold text-accent-primary">{conf}</span>
             </div>
             <div className="h-1.5 rounded-full bg-bg-tertiary overflow-hidden">
@@ -122,7 +122,7 @@ export default function SignalCard({ signal, currentPrice, onEdit, onDelete, onS
             <span className="text-[10px] text-text-muted shrink-0">לאימון:</span>
             <button
               onClick={() => onLabel(signal, 'valid')}
-              title="הסטאפ תקין — שמור לאימון הסורק"
+              title="הסטאפ תקין — שמור לאימון המנוע"
               className={`flex-1 flex items-center justify-center gap-1 py-1 rounded-lg text-[11px] font-semibold border transition-colors cursor-pointer ${
                 labeled === 'valid' ? 'bg-profit/15 text-profit border-profit/40' : 'text-text-muted border-border-primary hover:text-profit hover:border-profit/30'
               }`}
@@ -131,7 +131,7 @@ export default function SignalCard({ signal, currentPrice, onEdit, onDelete, onS
             </button>
             <button
               onClick={() => onLabel(signal, 'invalid')}
-              title="לא תקין — שמור לאימון הסורק"
+              title="לא תקין — שמור לאימון המנוע"
               className={`flex-1 flex items-center justify-center gap-1 py-1 rounded-lg text-[11px] font-semibold border transition-colors cursor-pointer ${
                 labeled === 'invalid' ? 'bg-loss/15 text-loss border-loss/40' : 'text-text-muted border-border-primary hover:text-loss hover:border-loss/30'
               }`}

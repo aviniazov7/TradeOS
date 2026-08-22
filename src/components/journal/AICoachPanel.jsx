@@ -1,15 +1,21 @@
-import { useState } from 'react';
+import { useRef, useState } from 'react';
 import { motion } from 'framer-motion';
 import {
   BrainCircuit, Crown, RefreshCw, AlertCircle, Lock, Sparkles,
-  TrendingUp, TrendingDown, Target, Lightbulb,
+  TrendingUp, TrendingDown, Target, Lightbulb, HeartPulse, ClipboardCheck, ShieldAlert,
 } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
 import ThinkingIndicator from '../shared/ThinkingIndicator';
 import { renderBulletHtml } from '../../utils/renderBulletHtml';
 import { useAuth } from '../../contexts/AuthContext';
+import { useJournalContext } from '../../contexts/JournalContext';
 import { generateCoachReport } from '../../services/aiCoachService';
-import { buildCoachStats } from '../../utils/coachStats';
+import { getUserCollectionDocs } from '../../services/firestoreService';
+import { buildCoachStats, coachScopeTrades } from '../../utils/coachStats';
+import { buildPsychologyStats } from '../../utils/coachPsychology';
+import { auditPlan } from '../../utils/planAudit';
+import { pickActivePlan } from '../../utils/pickActivePlan';
+import AnalystInsights from './AnalystInsights';
 
 // Quick prompts the user can click to seed the report.
 const FREE_PROMPTS = [
@@ -22,6 +28,8 @@ const PREMIUM_PROMPTS = [
   { id: 'sessionEdge', label: 'איזה סשן הכי רווחי?' },
   { id: 'compareMonth', label: 'איך החודש מול הקודם?' },
   { id: 'strategyEdge', label: 'איזו אסטרטגיה מצליחה?' },
+  { id: 'psychology', label: 'כמה מצב הראש עולה לי?' },
+  { id: 'planAudit', label: 'האם אני עומד בתוכנית שלי?' },
 ];
 
 // Each section header maps to an icon + accent color. The model is locked to
@@ -102,6 +110,15 @@ const COACH_STEPS = [
 // numbers come from us (trusted), not the model. The model only contextualizes
 // them in the section cards below.
 
+// findingsRanked is a UI-only field on the enrichment payloads. The prompt's
+// contract is `findings`, and shipping both would spend the token budget on the
+// same sentences twice.
+const forModel = (obj) => {
+  const copy = { ...obj };
+  delete copy.findingsRanked;
+  return copy;
+};
+
 const fmt$ = (v) => `${v >= 0 ? '+' : '-'}$${Math.abs(v).toFixed(2)}`;
 const fmt$Compact = (v) => {
   const sign = v >= 0 ? '+' : '-';
@@ -110,15 +127,18 @@ const fmt$Compact = (v) => {
   return `${sign}$${a.toFixed(0)}`;
 };
 
-function StatCard({ label, value, sub, tone = 'neutral', Icon }) {
+// dir defaults to ltr because almost every value here is a number, but a caller
+// passing free-form Hebrew (a plan name) must be able to opt out — forcing LTR
+// on a mixed string reorders its runs against how it reads everywhere else.
+function StatCard({ label, value, sub, tone = 'neutral', Icon, dir = 'ltr' }) {
   const toneClass = tone === 'profit' ? 'text-profit' : tone === 'loss' ? 'text-loss' : 'text-text-primary';
   return (
-    <div className="bg-bg-secondary border border-border-primary rounded-xl p-3">
+    <div className="bg-bg-secondary border border-border-primary rounded-xl p-3 min-w-0">
       <div className="flex items-center gap-1.5 text-[11px] text-text-muted mb-1">
         {Icon && <Icon className="w-3.5 h-3.5" />}
         {label}
       </div>
-      <div className={`text-lg font-bold ${toneClass}`} dir="ltr">{value}</div>
+      <div className={`text-lg font-bold truncate ${toneClass}`} dir={dir} title={typeof value === 'string' ? value : undefined}>{value}</div>
       {sub && <div className="text-[10px] text-text-muted mt-0.5">{sub}</div>}
     </div>
   );
@@ -208,6 +228,172 @@ function TradeRows({ title, rows, Icon }) {
   );
 }
 
+// Psychology — each row is a bucket (an emotion, a readiness band, a routine
+// item) measured against the user's own baseline. A bucket under the minimum
+// sample gets a "מדגם קטן" chip instead of being hidden, so a thin number is
+// never read as a conclusion.
+function DeltaRows({ title, rows, Icon, sub }) {
+  if (!rows?.length) return null;
+  return (
+    <div className="bg-bg-secondary border border-border-primary rounded-xl p-4">
+      <div className="flex items-center gap-2 mb-1">
+        {Icon && <Icon className="w-4 h-4 text-accent-primary" />}
+        <h4 className="text-sm font-semibold text-text-primary">{title}</h4>
+      </div>
+      {sub && <p className="text-[10px] text-text-muted mb-2">{sub}</p>}
+      <div className="space-y-2 mt-2">
+        {rows.map((r) => (
+          <div key={r.label} className="flex items-center justify-between gap-2 text-xs">
+            <span className="text-text-secondary min-w-0 truncate">
+              {r.label}
+              <span className="text-text-muted"> · {r.trades} עסקאות</span>
+              {r.thin && (
+                <span className="mr-1.5 text-[9px] px-1 py-0.5 rounded bg-bg-tertiary text-text-muted align-middle">
+                  מדגם קטן
+                </span>
+              )}
+            </span>
+            <span className={`font-semibold shrink-0 ${r.delta >= 0 ? 'text-profit' : 'text-loss'}`} dir="ltr">
+              {fmt$(r.delta)}
+            </span>
+          </div>
+        ))}
+      </div>
+    </div>
+  );
+}
+
+function PsychologyPanel({ psych }) {
+  if (!psych) return null;
+  const emotionRows = psych.emotions.map((e) => ({ label: e.label, trades: e.trades, thin: e.thin, delta: e.avgPnlDelta }));
+  const routineRows = psych.routine.map((c) => ({ label: c.label, trades: c.done.trades, thin: c.done.thin || c.skipped.thin, delta: c.avgPnlDelta }));
+  const d = psych.discipline;
+  return (
+    <div className="space-y-3">
+      <div className="grid grid-cols-2 md:grid-cols-4 gap-2">
+        <StatCard label="ימים מוצלבים" value={psych.daysCovered} sub="יומן בוקר + עסקאות" Icon={HeartPulse} />
+        <StatCard
+          label="ממוצע לעסקה (בסיס)"
+          value={fmt$Compact(psych.baseline.avgPnl)}
+          sub={`${psych.baseline.winRate}% הצלחה`}
+          tone={psych.baseline.avgPnl >= 0 ? 'profit' : 'loss'}
+          Icon={Target}
+        />
+        <StatCard label="מוכנות בימים ירוקים" value={psych.avgReadinessOnGreenDays} sub="מתוך 10" tone="profit" Icon={TrendingUp} />
+        <StatCard label="מוכנות בימים אדומים" value={psych.avgReadinessOnRedDays} sub="מתוך 10" tone="loss" Icon={TrendingDown} />
+      </div>
+
+      <div className="grid grid-cols-1 md:grid-cols-2 gap-2">
+        <DeltaRows
+          title="רגש הבוקר → כסף"
+          sub="פער ברווח הממוצע לעסקה מול הבסיס שלך"
+          rows={emotionRows}
+          Icon={HeartPulse}
+        />
+        <DeltaRows
+          title="שגרת הבוקר → כסף"
+          sub="ההפרש בין ימים שביצעת את הפעולה לימים שלא"
+          rows={routineRows}
+          Icon={Sparkles}
+        />
+      </div>
+
+      {d && (
+        <div className="bg-bg-secondary border border-border-primary rounded-xl p-4">
+          <div className="flex items-center gap-2 mb-3">
+            <Target className="w-4 h-4 text-accent-primary" />
+            <div>
+              <h4 className="text-sm font-semibold text-text-primary">משמעת מול תוצאה</h4>
+              <p className="text-[10px] text-text-muted">דיווח עצמי ביומן הערב, ברמת יום</p>
+            </div>
+          </div>
+          <div className="grid grid-cols-2 gap-2">
+            <div className="rounded-lg bg-bg-tertiary p-3">
+              <div className="text-[11px] text-text-muted mb-1">עמדת בתוכנית</div>
+              <div className={`text-base font-bold ${d.followedPlan.avgPnl >= 0 ? 'text-profit' : 'text-loss'}`} dir="ltr">{fmt$(d.followedPlan.avgPnl)}</div>
+              <div className="text-[10px] text-text-muted mt-0.5">{d.followedPlan.trades} עסקאות · {d.followedPlan.winRate}%</div>
+            </div>
+            <div className="rounded-lg bg-bg-tertiary p-3">
+              <div className="text-[11px] text-text-muted mb-1">סטית מהתוכנית</div>
+              <div className={`text-base font-bold ${d.brokePlan.avgPnl >= 0 ? 'text-profit' : 'text-loss'}`} dir="ltr">{fmt$(d.brokePlan.avgPnl)}</div>
+              <div className="text-[10px] text-text-muted mt-0.5">{d.brokePlan.trades} עסקאות · {d.brokePlan.winRate}%</div>
+            </div>
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
+// Plan audit — what the trader wrote down vs what they actually did. Rules the
+// audit could not measure are listed explicitly; a rule the user defined must
+// never just vanish from the report.
+function PlanAuditPanel({ audit }) {
+  if (!audit) return null;
+  const c = audit.compliance;
+  return (
+    <div className="space-y-3">
+      <div className="grid grid-cols-2 md:grid-cols-4 gap-2">
+        <StatCard label="התוכנית" value={audit.planName} sub={audit.planActive ? 'פעילה' : 'לא פעילה'} Icon={ClipboardCheck} dir="auto" />
+        <StatCard
+          label="עסקאות שנבדקו"
+          value={audit.tradesAudited}
+          sub={c?.unmeasuredTrades ? `${c.unmeasuredTrades} ללא שדות להשוואה` : 'נמדד ברמת עסקה'}
+          Icon={Target}
+        />
+        {c && (
+          <StatCard
+            label="בתוך התוכנית"
+            value={fmt$Compact(c.onPlan.avgPnl)}
+            sub={`${c.onPlan.trades} עסקאות · ${c.onPlan.winRate}% · מול כללי התוכנית`}
+            tone={c.onPlan.avgPnl >= 0 ? 'profit' : 'loss'}
+            Icon={TrendingUp}
+          />
+        )}
+        {c && (
+          <StatCard
+            label="חריגה מהתוכנית"
+            value={fmt$Compact(c.offPlan.avgPnl)}
+            sub={`${c.offPlan.trades} עסקאות · ${c.offPlan.winRate}% · מול כללי התוכנית`}
+            tone={c.offPlan.avgPnl >= 0 ? 'profit' : 'loss'}
+            Icon={TrendingDown}
+          />
+        )}
+      </div>
+
+      {audit.findings.length > 0 && (
+        <div className="bg-bg-secondary border border-border-primary rounded-xl p-4">
+          <div className="flex items-center gap-2 mb-2">
+            <ShieldAlert className="w-4 h-4 text-accent-primary" />
+            <h4 className="text-sm font-semibold text-text-primary">חריגות, לפי העלות שלהן</h4>
+          </div>
+          <ul className="space-y-1.5">
+            {audit.findings.map((f) => (
+              <li key={f} className="flex gap-2 text-xs text-text-secondary leading-relaxed">
+                <span className="mt-1.5 inline-block w-1.5 h-1.5 rounded-full bg-loss shrink-0" />
+                <span>{f}</span>
+              </li>
+            ))}
+          </ul>
+        </div>
+      )}
+
+      {audit.notMeasurable.length > 0 && (
+        <div className="bg-bg-secondary border border-border-primary rounded-xl p-4">
+          <h4 className="text-sm font-semibold text-text-primary mb-2">מה לא ניתן היה לבדוק</h4>
+          <ul className="space-y-1">
+            {audit.notMeasurable.map((n) => (
+              <li key={n.rule} className="text-[11px] text-text-muted">
+                <span className="text-text-secondary">{n.rule}</span> — {n.reason}
+              </li>
+            ))}
+          </ul>
+        </div>
+      )}
+    </div>
+  );
+}
+
 // This-month vs previous-month comparison table (Premium stats only).
 function CompareMonths({ cmp }) {
   const prev = cmp?.prevMonth;
@@ -279,6 +465,24 @@ function StatsDashboard({ stats, focus }) {
   if (focus === 'compareMonth' && stats.compareToPrevMonth) {
     return <CompareMonths cmp={stats.compareToPrevMonth} />;
   }
+  if (focus === 'planAudit') {
+    return stats.planAudit
+      ? <PlanAuditPanel audit={stats.planAudit} />
+      : (
+        <div className="bg-bg-secondary border border-border-primary rounded-xl p-4 text-xs text-text-secondary">
+          לא נמצאה תוכנית מסחר לבדוק מולה. צור תוכנית במסך "תוכניות מסחר" והגדר בה מטבעות, טיימפריימים, סשנים ותקרות סיכון.
+        </div>
+      );
+  }
+  if (focus === 'psychology') {
+    return stats.psychology
+      ? <PsychologyPanel psych={stats.psychology} />
+      : (
+        <div className="bg-bg-secondary border border-border-primary rounded-xl p-4 text-xs text-text-secondary">
+          אין עדיין ימים שבהם מילאת יומן בוקר וגם סגרת עסקה — בלי הצלבה כזו אי אפשר למדוד את ההשפעה של מצב הראש.
+        </div>
+      );
+  }
   if (focus === 'mistakes' && (stats.worstTrades?.length || losingPairs.length)) {
     return (
       <div className="space-y-3">
@@ -335,13 +539,41 @@ function StatsDashboard({ stats, focus }) {
 // the model is actually working, not just spinning a wheel.
 
 export default function AICoachPanel({ trades }) {
-  const { isPremium } = useAuth();
+  const { user, isPremium } = useAuth();
+  const { activeJournal } = useJournalContext();
   const navigate = useNavigate();
   const [loading, setLoading] = useState(false);
   const [report, setReport] = useState('');
   const [stats, setStats] = useState(null); // computed snapshot used by the dashboard
   const [error, setError] = useState('');
   const [activePrompt, setActivePrompt] = useState(null);
+  // The mentality journals are fetched once, on the first analysis, instead of
+  // held on a live subscription — the journal page already carries two of those
+  // and this data only matters at the moment the coach runs.
+  const journalsRef = useRef(null);
+  // undefined = never fetched. null is a real answer (the user has no plan),
+  // so it can't double as the "not loaded yet" marker.
+  const plansRef = useRef(undefined);
+
+  const loadMentalityJournals = async () => {
+    if (!user) return null;
+    if (journalsRef.current) return journalsRef.current;
+    const [morning, evening] = await Promise.all([
+      getUserCollectionDocs(user.uid, 'morningJournals'),
+      getUserCollectionDocs(user.uid, 'eveningJournals'),
+    ]);
+    journalsRef.current = { morning, evening };
+    return journalsRef.current;
+  };
+
+  const loadActivePlan = async () => {
+    if (!user) return null;
+    if (plansRef.current !== undefined) return plansRef.current;
+    const plans = await getUserCollectionDocs(user.uid, 'tradingPlans');
+    // Shared with the analyst page — the two must never audit different plans.
+    plansRef.current = pickActivePlan(plans);
+    return plansRef.current;
+  };
 
   const run = async (promptKey = null) => {
     setActivePrompt(promptKey);
@@ -354,6 +586,27 @@ export default function AICoachPanel({ trades }) {
         setReport('');
         setStats(null);
         return;
+      }
+      // Psychology is an enrichment, never a prerequisite — if the journals
+      // fail to load the report still goes out, just without that section.
+      try {
+        const j = await loadMentalityJournals();
+        // Same trade window buildCoachStats used, so a free user doesn't get
+        // this-month headline numbers next to an all-time psychology section.
+        const psych = j && buildPsychologyStats(coachScopeTrades(trades, { premium: isPremium }), j.morning, j.evening);
+        if (psych) built.psychology = forModel(psych);
+      } catch {
+        journalsRef.current = null;
+      }
+      // Same deal for the plan audit — an enrichment, never a prerequisite.
+      try {
+        const plan = await loadActivePlan();
+        const audit = plan && auditPlan(plan, coachScopeTrades(trades, { premium: isPremium }), {
+          accountBalance: Number(activeJournal?.initialBalance) || 0,
+        });
+        if (audit) built.planAudit = forModel(audit);
+      } catch {
+        plansRef.current = undefined;
       }
       setStats(built);
       const text = await generateCoachReport(promptKey ? { ...built, focus: promptKey } : built, isPremium ? 'deep' : 'short');
@@ -406,6 +659,15 @@ export default function AICoachPanel({ trades }) {
           </button>
         </div>
       </motion.div>
+
+      {/* Deterministic analysis — correct on open, costs nothing, needs no model */}
+      <AnalystInsights trades={trades} />
+
+      <div className="flex items-center gap-2 pt-1">
+        <div className="h-px flex-1 bg-border-primary" />
+        <span className="text-[10px] text-text-muted">פרשנות AI</span>
+        <div className="h-px flex-1 bg-border-primary" />
+      </div>
 
       {/* Quick prompts */}
       <div className="flex flex-wrap gap-2">

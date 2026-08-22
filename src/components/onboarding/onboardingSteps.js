@@ -37,9 +37,13 @@ export const ONBOARDING_STEPS = [
     subtitle: 'נתונים שהופכים אותך לסוחר טוב יותר',
     description: 'Win Rate, Profit Factor, Sharpe Ratio, Drawdown ועוד. נתח לפי אסטרטגיה, זוג, טווח זמן ויום בשבוע.',
     highlights: ['סטטיסטיקות מקצועיות', 'ניתוח לפי אסטרטגיה', 'מטריצת קורלציה'],
-    color: 'text-breakeven',
-    bgColor: 'bg-breakeven/15',
-    glowColor: 'rgba(234, 179, 8, 0.15)',
+    // Palette literal, NOT --color-breakeven: the wizard is a permanently dark
+    // overlay in both themes (bg-black/80 scrim under a translucent card), so a
+    // light-theme-darkened token would go the wrong way here. Matches the -400
+    // weight its sibling steps use (purple-400 / sky-400).
+    color: 'text-amber-400',
+    bgColor: 'bg-amber-400/15',
+    glowColor: 'rgba(251, 191, 36, 0.15)',
   },
   {
     icon: Share2,

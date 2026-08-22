@@ -12,6 +12,7 @@ import {
   Newspaper,
   Calculator,
   Shield,
+  Lock,
   Wallet,
   Crown,
   Bot,
@@ -34,7 +35,9 @@ const navItems = [
   // itself is Premium — non-premium land on a locked teaser. The crown signals it.
   { to: '/polymarket', label: 'Polymarket', icon: Trophy, premiumBadge: true },
   // Owner-only while the engine is being calibrated — hidden from everyone else.
-  { to: '/scanner', label: 'הסורק החכם', icon: Radar, admin: true },
+  // A bare lock, styled exactly like Polymarket's crown above: one icon, no
+  // label. A text pill next to a plain icon reads as two different systems.
+  { to: '/scanner', label: 'מנוע ויקוף', icon: Radar, admin: true, adminBadge: true },
   { to: '/trade-ai', label: 'TradeAI', icon: Bot },
   { to: '/news', label: 'חדשות', icon: Newspaper },
   { to: '/premium', label: 'שדרוג Premium', icon: Crown, highlight: true },
@@ -124,6 +127,9 @@ export default function Sidebar({ mobileOpen, onClose }) {
                           />
                           <span className={grad ? 'text-gradient font-semibold' : ''}>{item.label}</span>
                           {item.premiumBadge && <Crown className="w-3.5 h-3.5 text-amber-400 ms-auto shrink-0" />}
+                          {item.adminBadge && (
+                            <Lock className="w-3.5 h-3.5 text-accent-primary ms-auto shrink-0" aria-label="גלוי רק לך" />
+                          )}
                         </>
                       );
                     }}

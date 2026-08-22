@@ -53,7 +53,7 @@ export default function TradeTable({ trades, onEdit, onDelete, onShare, isLimitP
   const statusBadge = (status, isPending) => {
     if (isPending) return <span className="text-xs font-semibold px-2 py-0.5 rounded bg-text-muted/15 text-text-muted">Limit ממתין</span>;
     if (status === 'open')    return <span className="text-xs font-semibold px-2 py-0.5 rounded bg-breakeven/15 text-breakeven">פתוחה</span>;
-    if (status === 'partial') return <span className="text-xs font-semibold px-2 py-0.5 rounded bg-amber-500/15 text-amber-500">חלקית</span>;
+    if (status === 'partial') return <span className="text-xs font-semibold px-2 py-0.5 rounded bg-breakeven/15 text-breakeven">חלקית</span>;
     return <span className="text-xs font-semibold px-2 py-0.5 rounded bg-accent-primary/15 text-accent-primary">סגורה</span>;
   };
 

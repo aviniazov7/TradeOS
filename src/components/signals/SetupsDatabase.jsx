@@ -162,7 +162,7 @@ export default function SetupsDatabase({ setups = [], loading, onAdd, onUpdate, 
             <GraduationCap className="w-3.5 h-3.5 text-accent-primary" />
           </span>
           <h2 className="text-sm font-bold text-text-primary shrink-0">מאגר האימון</h2>
-          <span className="text-[11px] text-text-muted truncate">— הסטאפים שאני מסמן כדי לכייל ולאמן את הסורק</span>
+          <span className="text-[11px] text-text-muted truncate">— הסטאפים שאני מסמן כדי לכייל ולאמן את המנוע</span>
         </div>
         <button
           onClick={() => { setEditing(null); setModalOpen(true); }}
@@ -177,11 +177,11 @@ export default function SetupsDatabase({ setups = [], loading, onAdd, onUpdate, 
         <div className="mb-3 rounded-xl border border-accent-primary/20 bg-accent-primary/5 p-3">
           <div className="flex items-center justify-between gap-2">
             <div className="flex items-center gap-1.5 text-xs text-text-secondary">
-              <Target className="w-3.5 h-3.5 text-accent-primary" /> דיוק הסורק
+              <Target className="w-3.5 h-3.5 text-accent-primary" /> דיוק המנוע
             </div>
             <span className="text-lg font-extrabold num-mono text-accent-primary leading-none">{stats.precision}%</span>
           </div>
-          <div className="text-[10px] text-text-muted mt-0.5">{stats.scannerValid} תקינים מתוך {stats.judged} סטאפים שהסורק אותר וסימנת</div>
+          <div className="text-[10px] text-text-muted mt-0.5">{stats.scannerValid} תקינים מתוך {stats.judged} סטאפים שהמנוע אותר וסימנת</div>
           {BUCKET_ORDER.some((b) => stats.buckets[b]) && (
             <div className="mt-2 space-y-1">
               {BUCKET_ORDER.filter((b) => stats.buckets[b]).map((b) => {
@@ -232,7 +232,7 @@ export default function SetupsDatabase({ setups = [], loading, onAdd, onUpdate, 
         >
           <GraduationCap className="w-7 h-7 opacity-60" />
           <span className="text-sm font-medium">המאגר ריק</span>
-          <span className="text-[11px]">סמן סטאפ אמיתי (LPS/LPSY), או תייג 👍/👎 סטאפ שהסורק אותר למעלה — כך הסורק לומד מה נחשב כניסה טובה עבורך</span>
+          <span className="text-[11px]">סמן סטאפ אמיתי (LPS/LPSY), או תייג 👍/👎 סטאפ שהמנוע אותר למעלה — כך המנוע לומד מה נחשב כניסה טובה עבורך</span>
         </button>
       ) : sorted.length === 0 ? (
         <div className="py-8 text-center text-sm text-text-muted">אין סטאפים בסינון הזה</div>

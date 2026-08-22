@@ -56,10 +56,10 @@ export default function TradeAgentCard({ trades }) {
 
   return (
     <div
-      className="relative overflow-hidden rounded-2xl p-4 mb-4 border"
+      className="relative overflow-hidden rounded-2xl p-4 mb-4 border bg-bg-secondary"
       style={{
         borderColor: 'rgba(59,130,246,0.32)',
-        background: 'radial-gradient(130% 120% at 100% 0%, rgba(59,130,246,0.15) 0%, transparent 58%), rgba(13,13,18,0.75)',
+        backgroundImage: 'radial-gradient(130% 120% at 100% 0%, rgba(59,130,246,0.15) 0%, transparent 58%)',
       }}
     >
       <div className="flex items-start gap-3">
@@ -91,6 +91,10 @@ export default function TradeAgentCard({ trades }) {
       )}
 
       <button
+        // TradeAI is the AI destination: it opens on this same book (the hub
+        // shows P&L, win rate and open positions), and from there the trader
+        // can reach the chat, the chart reader and the full analyst without
+        // leaving the page. The journal modal is the narrower of the two.
         onClick={() => navigate('/trade-ai')}
         className="mt-3.5 w-full flex items-center justify-center gap-1.5 text-xs font-bold py-2.5 rounded-xl text-white transition-transform hover:brightness-110"
         style={{ background: 'linear-gradient(135deg, #2563eb 0%, #38bdf8 100%)' }}

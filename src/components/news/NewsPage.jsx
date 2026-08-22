@@ -2,6 +2,7 @@ import { useState, useEffect, useCallback, useMemo } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { Newspaper, ExternalLink, Clock, Filter, CalendarDays, Volume2, Globe, BrainCircuit, RefreshCw, Bitcoin, CandlestickChart } from 'lucide-react';
 import { fetchNewsDigest, translateNews } from '../../services/newsService';
+import WhyItMoved from './WhyItMoved';
 import { hebrewEventTitle } from '../../utils/econCalendarTerms';
 import { safeHttpUrl } from '../../utils/urls';
 import SelectDropdown from '../shared/SelectDropdown';
@@ -1204,7 +1205,15 @@ export default function NewsPage() {
           exit={{ opacity: 0, x: activeTab === 'news' ? 20 : -20 }}
           transition={{ duration: 0.25 }}
         >
-          {activeTab === 'news' ? <NewsFeed market={market} /> : <EconomicCalendar />}
+          {activeTab === 'news' ? (
+            <>
+              {/* Deterministic, cron-prepared: costs no AI call and states no
+                  direction. Crypto only — the attribution engine is keyed on
+                  crypto tickers. */}
+              {market === 'crypto' && <WhyItMoved />}
+              <NewsFeed market={market} />
+            </>
+          ) : <EconomicCalendar />}
         </motion.div>
       </AnimatePresence>
     </div>

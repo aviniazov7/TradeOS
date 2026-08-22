@@ -54,7 +54,7 @@ function ThinkingTimeline() {
       initial={{ opacity: 0, y: 10 }}
       animate={{ opacity: 1, y: 0 }}
       exit={{ opacity: 0 }}
-      className="rounded-2xl border border-border-primary bg-bg-secondary/60 p-4"
+      className="rounded-2xl border border-border-primary bg-bg-secondary p-4"
     >
       <div className="flex items-center gap-2.5 mb-4">
         <motion.div
@@ -249,7 +249,7 @@ export default function ChartAnalyzer({ heightClass = '' }) {
 
   return (
     <div className="max-w-2xl mx-auto w-full">
-      <div className={`relative flex flex-col rounded-3xl overflow-hidden border border-border-primary bg-bg-secondary/40 ${heightClass} min-h-[420px]`}>
+      <div className={`relative flex flex-col rounded-3xl overflow-hidden border border-border-primary bg-bg-secondary ${heightClass} sm:min-h-[420px]`}>
         {/* Ambient accent glow at the top — subtle premium depth */}
         <div className="pointer-events-none absolute inset-x-0 top-0 h-28 bg-gradient-to-b from-accent-primary/8 to-transparent" />
 
@@ -292,7 +292,7 @@ export default function ChartAnalyzer({ heightClass = '' }) {
               className={`group relative flex flex-col items-center justify-center gap-4 rounded-2xl border-2 border-dashed px-6 py-12 cursor-pointer transition-all outline-none focus-visible:ring-2 focus-visible:ring-accent-primary/50 ${
                 dragOver
                   ? 'border-accent-primary bg-accent-primary/10'
-                  : 'border-border-primary/80 bg-bg-secondary/40 hover:border-accent-primary/50 hover:bg-bg-secondary/70'
+                  : 'border-border-primary/80 bg-bg-secondary hover:border-accent-primary/50 hover:bg-bg-secondary/70'
               }`}
             >
               <motion.div
@@ -407,7 +407,7 @@ export default function ChartAnalyzer({ heightClass = '' }) {
             <motion.div
               initial={{ opacity: 0, y: 10 }}
               animate={{ opacity: 1, y: 0 }}
-              className="rounded-2xl border border-border-primary bg-bg-secondary/60 overflow-hidden"
+              className="rounded-2xl border border-border-primary bg-bg-secondary overflow-hidden"
             >
               <div className="h-0.5" style={{ background: 'linear-gradient(90deg, #2563eb, #38bdf8, transparent)' }} />
               <div className="flex items-center justify-between px-4 py-3 border-b border-border-primary/60">
@@ -458,7 +458,7 @@ export default function ChartAnalyzer({ heightClass = '' }) {
           )}
 
           {/* Educational notice */}
-          <div className="flex items-start gap-2 rounded-xl bg-bg-secondary/50 border border-border-primary px-3 py-2.5">
+          <div className="flex items-start gap-2 rounded-xl bg-bg-secondary border border-border-primary px-3 py-2.5">
             <Info className="w-3.5 h-3.5 text-text-muted shrink-0 mt-0.5" />
             <p className="text-[10px] leading-relaxed text-text-muted">
               הקריאה מופקת אוטומטית למטרות לימוד והעשרה, ואינה ייעוץ השקעות או הזמנה לפעולה.

@@ -73,7 +73,10 @@ const RATING_COLORS = ['text-loss', 'text-orange-400', 'text-breakeven', 'text-l
 const MENTAL_RATINGS = [
   { key: 'focusRating', label: 'ריכוז וחדות', Icon: Target },
   { key: 'planAdherenceRating', label: 'הצמדות לתוכנית', Icon: ClipboardCheck },
-  { key: 'stressRating', label: 'לחץ / סטרס', Icon: Gauge },
+  // Stress is the one scale where 5 is the BAD answer, so the shared red-to-
+  // green ramp has to run backwards for it — otherwise maximum stress renders
+  // green and reads as a good day.
+  { key: 'stressRating', label: 'לחץ / סטרס', Icon: Gauge, invert: true },
   { key: 'confidenceRating', label: 'ביטחון בעסקה', Icon: ShieldCheck },
 ];
 
@@ -554,7 +557,7 @@ export default function TradeForm({ isOpen, onClose, trade, onSave, riskSettings
               const statusCfg = {
                 limit:   { icon: Clock,         color: 'text-text-muted',    bg: 'bg-bg-tertiary',       border: 'border-border-primary/50', dot: 'bg-text-muted',    label: 'ממתין לכניסה' },
                 open:    { icon: CircleDot,     color: 'text-accent-primary', bg: 'bg-accent-primary/8', border: 'border-accent-primary/20', dot: 'bg-accent-primary animate-pulse', label: 'עסקה פתוחה' },
-                partial: { icon: CircleDot,     color: 'text-amber-400',     bg: 'bg-amber-400/8',       border: 'border-amber-400/20',      dot: 'bg-amber-400 animate-pulse',      label: `${additionalExitsPercent.toFixed(0)}% נסגר` },
+                partial: { icon: CircleDot,     color: 'text-breakeven',     bg: 'bg-breakeven/8',       border: 'border-breakeven/20',      dot: 'bg-breakeven animate-pulse',      label: `${additionalExitsPercent.toFixed(0)}% נסגר` },
                 closed:  { icon: CheckCircle2,  color: calc?.netPnl > 0 ? 'text-profit' : 'text-loss', bg: calc?.netPnl > 0 ? 'bg-profit/8' : 'bg-loss/8', border: calc?.netPnl > 0 ? 'border-profit/20' : 'border-loss/20', dot: calc?.netPnl > 0 ? 'bg-profit' : 'bg-loss', label: 'נסגרה' },
               };
               const cfg = statusCfg[currentStatus];
@@ -682,7 +685,7 @@ export default function TradeForm({ isOpen, onClose, trade, onSave, riskSettings
                   <span className={`text-[10px] font-semibold px-2 py-0.5 rounded-full ${
                     additionalExitsPercent > 100 ? 'bg-loss/20 text-loss' :
                     additionalExitsPercent === 100 ? 'bg-profit/20 text-profit' :
-                    'bg-amber-400/15 text-amber-400'
+                    'bg-breakeven/15 text-breakeven'
                   }`}>
                     {additionalExitsPercent > 100
                       ? `${additionalExitsPercent.toFixed(0)}% — חורג מ-100%`
@@ -800,7 +803,7 @@ export default function TradeForm({ isOpen, onClose, trade, onSave, riskSettings
                 riskInfo.severity === 'critical'
                   ? 'bg-loss/10 border-loss/30 text-loss'
                   : riskInfo.severity === 'warning'
-                    ? 'bg-amber-500/10 border-amber-500/30 text-amber-500'
+                    ? 'bg-breakeven/10 border-breakeven/30 text-breakeven'
                     : 'bg-accent-primary/10 border-accent-primary/30 text-accent-primary'
               }`}>
                 {riskInfo.severity === 'info'
@@ -894,7 +897,7 @@ export default function TradeForm({ isOpen, onClose, trade, onSave, riskSettings
           <div className="bg-bg-tertiary rounded-xl p-3 grid grid-cols-2 gap-x-4 gap-y-2">
             {MENTAL_RATINGS.map((rating) => {
               const val = form[rating.key];
-              const color = RATING_COLORS[val - 1] || 'text-text-muted';
+              const color = RATING_COLORS[rating.invert ? 5 - val : val - 1] || 'text-text-muted';
               const Icon = rating.Icon;
               return (
                 <div key={rating.key}>

@@ -58,7 +58,7 @@ export async function fetchProjectDescription(coinName, symbol, retries = 2) {
 // Generous enough to cover a slow vision model's first token (reset per chunk).
 const STREAM_IDLE_TIMEOUT_MS = 45000;
 
-export async function sendMessageStream(messages, onChunk, retries = 2) {
+export async function sendMessageStream(messages, onChunk, retries = 2, context = null) {
   const auth = getAuth();
   const user = auth.currentUser;
   if (!user) throw new Error('יש להתחבר כדי להשתמש בצ׳אט');
@@ -80,6 +80,10 @@ export async function sendMessageStream(messages, onChunk, retries = 2) {
       text: msg.text,
       ...(i === lastImageIdx ? { image: msg.image } : {}),
     })),
+    // The trader's own book. The worker sizes it down and skips it on image
+    // turns; sending it means "where am I losing money" is answered from the
+    // journal instead of from general trading advice.
+    ...(context ? { context } : {}),
   });
 
   for (let attempt = 0; attempt <= retries; attempt++) {
