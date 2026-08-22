@@ -25,9 +25,25 @@ const tradeMs = (t) => {
   return Number.isNaN(ms) ? 0 : ms;
 };
 
+const HUB_KEY = 'tradeai:hub-open';
+
 export default function TradeAIPage() {
   const [tab, setTab] = useState('chat');
   const [seed, setSeed] = useState('');
+  // The hub is useful on arrival and in the way once you are typing, so it
+  // collapses — and the choice sticks, because re-collapsing it on every visit
+  // would be its own annoyance.
+  const [hubOpen, setHubOpen] = useState(() => {
+    try { return localStorage.getItem(HUB_KEY) !== '0'; } catch { return true; }
+  });
+
+  const toggleHub = () => {
+    setHubOpen((v) => {
+      const next = !v;
+      try { localStorage.setItem(HUB_KEY, next ? '1' : '0'); } catch { /* private mode */ }
+      return next;
+    });
+  };
   const { activeJournalId, activeJournal } = useJournalContext();
   // One subscription for the whole page — the hub, the analyst tab and the
   // chat read the same book rather than each opening its own listener.
@@ -75,8 +91,11 @@ export default function TradeAIPage() {
     setSeed(`${text}`);
   };
 
-  // The hub takes vertical space, so the tab panes get a shorter viewport.
-  const heightClass = 'h-[calc(100dvh-27rem)] min-h-[17rem] md:h-[calc(100vh-25rem)] md:min-h-[22rem]';
+  // Collapsed, the pane reclaims the ~13rem the hub occupies. Both states keep a
+  // floor so the chat never becomes unusable on a short viewport.
+  const heightClass = hubOpen
+    ? 'h-[calc(100dvh-27rem)] min-h-[20rem] md:h-[calc(100vh-25rem)] md:min-h-[24rem]'
+    : 'h-[calc(100dvh-14rem)] min-h-[26rem] md:h-[calc(100vh-13rem)] md:min-h-[30rem]';
 
   return (
     <motion.div
@@ -92,6 +111,8 @@ export default function TradeAIPage() {
         tradesCount={closedCount}
         equityCurve={equityCurve}
         onAsk={askFromHub}
+        open={hubOpen}
+        onToggle={toggleHub}
       />
 
       <div className="max-w-2xl mx-auto w-full">

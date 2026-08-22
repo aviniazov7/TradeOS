@@ -1,4 +1,5 @@
-import { TrendingUp, Target, Layers, Gauge, Sparkles } from 'lucide-react';
+import { motion, AnimatePresence } from 'framer-motion';
+import { TrendingUp, Target, Layers, Gauge, Sparkles, ChevronUp } from 'lucide-react';
 
 // The questions worth asking about YOUR OWN book, not about the market. Each
 // one is answerable from the journal, which is the whole point of asking it
@@ -62,7 +63,7 @@ function InsightCard({ label, value, sub, tone = 'neutral', Icon, spark, sparkPo
  * questions worth asking about them. A generic assistant can answer anything;
  * the reason to ask it HERE is that it can see this book.
  */
-export default function TradeAIHub({ stats, tradesCount, equityCurve, onAsk }) {
+export default function TradeAIHub({ stats, tradesCount, equityCurve, onAsk, open = true, onToggle }) {
   const pnl = Number(stats?.totalPnL) || 0;
   const winRate = Number(stats?.winRate) || 0;
   const pf = stats?.profitFactor;
@@ -70,7 +71,7 @@ export default function TradeAIHub({ stats, tradesCount, equityCurve, onAsk }) {
 
   return (
     <section className="max-w-2xl mx-auto w-full space-y-3">
-      <div className="text-center">
+      <div className="text-center relative">
         <h1 className="text-lg md:text-xl font-bold text-text-primary inline-flex items-center gap-2">
           <Sparkles className="w-5 h-5 text-accent-primary" />
           מה תרצה לדעת על המסחר שלך?
@@ -80,8 +81,29 @@ export default function TradeAIHub({ stats, tradesCount, equityCurve, onAsk }) {
             ? `הסוכן רואה את ${tradesCount} העסקאות שלך, את התוכנית ואת יומן המנטליות.`
             : 'הוסף עסקאות כדי שהסוכן יוכל לנתח את הספר שלך.'}
         </p>
+        {onToggle && (
+          <button
+            onClick={onToggle}
+            aria-expanded={open}
+            title={open ? 'כווץ כדי להגדיל את הצ׳אט' : 'הצג את הנתונים שלך'}
+            className="absolute top-0 left-0 inline-flex items-center gap-1 text-[10px] text-text-muted hover:text-text-primary transition-colors cursor-pointer px-2 py-1 rounded-lg hover:bg-bg-secondary"
+          >
+            {open ? 'כווץ' : 'הנתונים שלי'}
+            <ChevronUp className={`w-3 h-3 transition-transform duration-200 ${open ? '' : 'rotate-180'}`} />
+          </button>
+        )}
       </div>
 
+      <AnimatePresence initial={false}>
+        {open && (
+          <motion.div
+            key="hub-body"
+            initial={{ height: 0, opacity: 0 }}
+            animate={{ height: 'auto', opacity: 1 }}
+            exit={{ height: 0, opacity: 0 }}
+            transition={{ duration: 0.22, ease: 'easeOut' }}
+            className="overflow-hidden space-y-3"
+          >
       <div className="grid grid-cols-2 md:grid-cols-4 gap-2">
         <InsightCard
           label="P&L כולל"
@@ -114,16 +136,22 @@ export default function TradeAIHub({ stats, tradesCount, equityCurve, onAsk }) {
       </div>
 
       <div className="flex flex-wrap justify-center gap-1.5 pt-0.5">
-        {QUICK_QUESTIONS.map((q) => (
-          <button
+        {QUICK_QUESTIONS.map((q, i) => (
+          <motion.button
             key={q.id}
+            initial={{ opacity: 0, y: 4 }}
+            animate={{ opacity: 1, y: 0 }}
+            transition={{ delay: 0.03 * i, duration: 0.18 }}
             onClick={() => onAsk(q.text)}
-            className="text-[11px] px-2.5 py-1.5 rounded-full border border-border-primary bg-bg-secondary/60 text-text-secondary hover:text-text-primary hover:border-border-hover transition-colors cursor-pointer"
+            className="text-[11px] px-2.5 py-1.5 rounded-full border border-border-primary bg-bg-secondary/60 text-text-secondary hover:text-text-primary hover:border-border-hover hover:-translate-y-0.5 transition-all cursor-pointer"
           >
             <span aria-hidden="true">{q.icon}</span> {q.text}
-          </button>
+          </motion.button>
         ))}
       </div>
+          </motion.div>
+        )}
+      </AnimatePresence>
     </section>
   );
 }
