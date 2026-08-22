@@ -9,6 +9,7 @@ import ThinkingIndicator from '../shared/ThinkingIndicator';
 import { renderBulletHtml } from '../../utils/renderBulletHtml';
 import { useAuth } from '../../contexts/AuthContext';
 import { useJournalContext } from '../../contexts/JournalContext';
+import { useLinkedExchangeBalance } from '../../hooks/useLinkedExchangeBalance';
 import { generateCoachReport } from '../../services/aiCoachService';
 import { getUserCollectionDocs } from '../../services/firestoreService';
 import { buildCoachStats, coachScopeTrades } from '../../utils/coachStats';
@@ -541,6 +542,7 @@ function StatsDashboard({ stats, focus }) {
 export default function AICoachPanel({ trades }) {
   const { user, isPremium } = useAuth();
   const { activeJournal } = useJournalContext();
+  const liveBalance = useLinkedExchangeBalance(activeJournal?.exchange);
   const navigate = useNavigate();
   const [loading, setLoading] = useState(false);
   const [report, setReport] = useState('');
@@ -602,7 +604,10 @@ export default function AICoachPanel({ trades }) {
       try {
         const plan = await loadActivePlan();
         const audit = plan && auditPlan(plan, coachScopeTrades(trades, { premium: isPremium }), {
-          accountBalance: Number(activeJournal?.initialBalance) || 0,
+          // Same basis the analyst panel uses: the live wallet when the journal
+          // is linked to a connected exchange, the typed opening balance only
+          // as a fallback.
+          accountBalance: liveBalance != null ? liveBalance : (Number(activeJournal?.initialBalance) || 0),
         });
         if (audit) built.planAudit = forModel(audit);
       } catch {

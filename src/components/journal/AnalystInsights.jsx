@@ -2,6 +2,7 @@ import { useEffect, useMemo, useState } from 'react';
 import { ShieldAlert, Wallet, ClipboardList, Brain, HelpCircle, TrendingUp, ChevronDown } from 'lucide-react';
 import { useAuth } from '../../contexts/AuthContext';
 import { useJournalContext } from '../../contexts/JournalContext';
+import { useLinkedExchangeBalance } from '../../hooks/useLinkedExchangeBalance';
 import { getUserCollectionDocs } from '../../services/firestoreService';
 import { superviseRisk } from '../../utils/riskSupervisor';
 import { auditPlan } from '../../utils/planAudit';
@@ -105,7 +106,15 @@ export default function AnalystInsights({ trades }) {
   const journals = side?.journals ?? null;
   const loadError = side?.error || '';
   const loading = side === undefined;
-  const accountBalance = Number(activeJournal?.initialBalance) || 0;
+  // A daily-loss cap is a percentage of what the trader HAS, not of what they
+  // started with. When the journal is linked to a connected exchange the app
+  // already knows the live wallet balance and refreshes it every minute, so
+  // asking the user to type a number by hand was both redundant and less
+  // accurate: someone who started at $1,000 and grew to $5,000 would have had a
+  // 3% cap enforced at $30 instead of $150.
+  const liveBalance = useLinkedExchangeBalance(activeJournal?.exchange);
+  const accountBalance = liveBalance != null ? liveBalance : (Number(activeJournal?.initialBalance) || 0);
+  const balanceIsLive = liveBalance != null;
 
   const risk = useMemo(() => superviseRisk(trades, plan, { accountBalance }), [trades, plan, accountBalance]);
   const audit = useMemo(() => (plan ? auditPlan(plan, trades, { accountBalance }) : null), [plan, trades, accountBalance]);
@@ -138,7 +147,12 @@ export default function AnalystInsights({ trades }) {
     if (loading || loadError) return [];
     const rows = [...(audit?.notMeasurable || [])];
     if (!plan) rows.push({ rule: 'תוכנית מסחר', reason: 'אין תוכנית פעילה — אין מול מה להשוות את העסקאות' });
-    if (!accountBalance) rows.push({ rule: 'יתרת פתיחה ליומן', reason: 'בלעדיה אי אפשר לתרגם אחוזי סיכון לדולרים' });
+    if (!accountBalance) {
+      rows.push({
+        rule: 'יתרת החשבון',
+        reason: 'חבר את היומן לבורסה, או הזן יתרה התחלתית בהגדרות היומן — בלי אחד מהם אי אפשר לתרגם אחוזי סיכון לדולרים',
+      });
+    }
     if (!psych) rows.push({ rule: 'יומן בוקר בימי מסחר', reason: 'בלי הצלבה של יומן ועסקאות אי אפשר למדוד את השפעת מצב הראש' });
     return rows;
   }, [loading, loadError, audit, plan, accountBalance, psych]);
@@ -151,7 +165,13 @@ export default function AnalystInsights({ trades }) {
 
   return (
     <div className="space-y-4">
-      <Section icon={ShieldAlert} title="מפקח הסיכון" sub="מצב הספר הפתוח ברגע זה">
+      <Section
+        icon={ShieldAlert}
+        title="מפקח הסיכון"
+        sub={balanceIsLive
+          ? 'מצב הספר הפתוח ברגע זה · מחושב מול היתרה החיה בבורסה'
+          : 'מצב הספר הפתוח ברגע זה'}
+      >
         {loadError
           ? <p className="text-xs text-text-secondary bg-bg-secondary border border-border-primary rounded-xl p-3">{loadError} רענן כדי לנסות שוב — עד אז אין כאן תשובה, לא &quot;הכול תקין&quot;.</p>
           : <RiskSupervisor risk={risk} />}
