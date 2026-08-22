@@ -170,7 +170,7 @@ export default function PsychologicalJourney() {
         animate={{ opacity: showLoader ? 0 : 1, y: showLoader ? 10 : 0 }}
         transition={{ duration: 0.5 }}
         className="flex flex-col overflow-hidden"
-        style={{ height: 'calc(100vh - 7rem)' }}
+        style={{ height: 'calc(100dvh - 7rem)' }}
       >
         {/* Header row */}
         <div className="flex items-center justify-between mb-2 md:mb-3">

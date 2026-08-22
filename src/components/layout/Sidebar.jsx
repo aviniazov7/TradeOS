@@ -84,7 +84,7 @@ export default function Sidebar({ mobileOpen, onClose }) {
             animate={{ x: 0 }}
             exit={{ x: '100%' }}
             transition={{ type: 'tween', duration: 0.25 }}
-            className="fixed right-0 top-14 md:top-16 h-[calc(100vh-3.5rem)] md:h-[calc(100vh-4rem)] w-64 border-l border-border-primary z-50 flex flex-col"
+            className="fixed right-0 top-14 md:top-16 h-[calc(100dvh-3.5rem)] md:h-[calc(100dvh-4rem)] w-64 border-l border-border-primary z-50 flex flex-col"
             style={{ background: 'var(--color-bg-solid)', backdropFilter: 'blur(24px)', WebkitBackdropFilter: 'blur(24px)' }}
           >
 
@@ -138,7 +138,10 @@ export default function Sidebar({ mobileOpen, onClose }) {
             </nav>
 
             {/* Calculator button */}
-            <div className="px-3 py-3 border-t border-border-primary">
+            <div
+              className="px-3 py-3 border-t border-border-primary shrink-0"
+              style={{ paddingBottom: 'calc(0.75rem + env(safe-area-inset-bottom, 0px))' }}
+            >
               <button
                 onClick={() => { setCalcOpen(true); onClose(); }}
                 className="flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-medium transition-colors text-text-secondary hover:text-text-primary hover:bg-bg-tertiary w-full cursor-pointer"
