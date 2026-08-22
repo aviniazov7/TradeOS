@@ -1,12 +1,18 @@
 @import "tailwindcss";
 
-/* Prevent pinch-to-zoom and overscroll bounce on mobile */
+/* Block pinch-zoom and overscroll bounce on mobile.
+   `touch-action: manipulation` only removes the double-tap zoom - it does NOT
+   stop a pinch, which is why the layout could still be zoomed apart despite the
+   old comment here claiming otherwise. `pan-x pan-y` keeps scrolling in both
+   directions and drops every other gesture, pinch included.
+   Note the trade-off: this also removes zoom for users who rely on it. It is a
+   deliberate product decision for a fixed-layout trading UI, not an oversight. */
 html {
-  touch-action: manipulation;
+  touch-action: pan-x pan-y;
   overscroll-behavior: none;
   scroll-behavior: smooth;
   -webkit-overflow-scrolling: touch;
-  -ms-touch-action: manipulation;
+  -ms-touch-action: pan-x pan-y;
 }
 
 body {
