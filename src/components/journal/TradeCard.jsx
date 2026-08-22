@@ -18,9 +18,9 @@ export default function TradeCard({ trade, onEdit, onDelete }) {
     >
       {/* Top row */}
       <div className="flex items-center justify-between mb-3">
-        <div className="flex items-center gap-2">
-          <CoinIcon pair={trade.pair} className="w-4 h-4" />
-          <span className="text-text-primary font-semibold">{trade.pair}</span>
+        <div className="flex items-center gap-2 min-w-0 flex-1">
+          <CoinIcon pair={trade.pair} className="w-4 h-4 shrink-0" />
+          <span className="text-text-primary font-semibold truncate min-w-0" title={trade.pair}>{trade.pair}</span>
           <span className={`px-2 py-0.5 rounded text-xs font-semibold ${trade.direction === 'long' ? 'bg-long/15 text-long' : 'bg-short/15 text-short'}`}>
             {trade.direction === 'long' ? 'Long' : 'Short'}
           </span>
