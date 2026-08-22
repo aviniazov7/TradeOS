@@ -117,7 +117,7 @@ export default function TradeAIHub({ stats, tradesCount, equityCurve, onAsk, ope
         <InsightCard
           label="אחוז הצלחה"
           value={`${winRate.toFixed(1)}%`}
-          sub={`${stats?.wins ?? 0} מול ${stats?.losses ?? 0}`}
+          sub={`${stats?.winCount ?? 0} מול ${stats?.lossCount ?? 0}`}
           Icon={Target}
         />
         <InsightCard

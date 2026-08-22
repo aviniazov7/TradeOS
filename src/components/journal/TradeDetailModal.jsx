@@ -29,11 +29,14 @@ const num = (v) => {
 
 const toDate = (d) => (d?.toDate ? d.toDate() : d ? new Date(d) : null);
 
+// Quality labels: higher is better. Wrong for stress, where 5 is the worst
+// answer — it used to render maximum stress as "מעולה" in green.
 const RATING_LABELS = { 1: 'נמוך', 2: 'בינוני-', 3: 'בינוני', 4: 'טוב', 5: 'מעולה' };
+const STRESS_LABELS = { 1: 'רגוע', 2: 'נמוך', 3: 'בינוני', 4: 'גבוה', 5: 'גבוה מאוד' };
 const MENTAL_FIELDS = [
   { key: 'focusRating', label: 'ריכוז' },
   { key: 'confidenceRating', label: 'ביטחון' },
-  { key: 'stressRating', label: 'לחץ' },
+  { key: 'stressRating', label: 'לחץ', invert: true },
   { key: 'planAdherenceRating', label: 'עקביות' },
 ];
 
@@ -321,13 +324,20 @@ export default function TradeDetailModal({
             {MENTAL_FIELDS.map((f) => {
               const val = trade[f.key];
               if (!val) return null;
+              // On an inverted scale a high score is the bad outcome, so both
+              // the colour and the wording have to flip with it.
+              const good = f.invert ? val <= 2 : val >= 4;
+              const bad = f.invert ? val >= 4 : val <= 2;
+              let tone = 'text-text-primary';
+              if (good) tone = 'text-profit';
+              else if (bad) tone = 'text-loss';
               return (
                 <span key={f.key} className="text-text-secondary whitespace-nowrap">
                   {f.label}{' '}
                   <span
-                    className={`font-semibold ${val >= 4 ? 'text-profit' : val <= 2 ? 'text-loss' : 'text-text-primary'}`}
+                    className={`font-semibold ${tone}`}
                     dir="ltr"
-                    title={RATING_LABELS[val]}
+                    title={(f.invert ? STRESS_LABELS : RATING_LABELS)[val]}
                   >
                     {val}/5
                   </span>
