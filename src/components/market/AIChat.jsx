@@ -183,8 +183,23 @@ export default function AIChat({ heightClass = 'h-[calc(100dvh-13.5rem)] md:h-[c
   }, [messages]); // eslint-disable-line react-hooks/exhaustive-deps
 
   // Scroll to bottom
+  // Stick-to-bottom instead of scroll-to-bottom. The previous version called
+  // smooth scrollIntoView on every streamed batch — ~33 times a second — which
+  // restarted its own animation each frame and dragged the reader back down the
+  // moment they scrolled up to re-read something.
+  const stickRef = useRef(true);
+  const [atBottom, setAtBottom] = useState(true);
+  const onMessagesScroll = (e) => {
+    const el = e.currentTarget;
+    const near = el.scrollHeight - el.scrollTop - el.clientHeight < 80;
+    stickRef.current = near;
+    setAtBottom(near);
+  };
   useEffect(() => {
-    messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
+    if (!stickRef.current) return;
+    // 'auto' while tokens stream: a smooth animation cannot keep up with its own
+    // restart rate, and the result is a permanently jittering viewport.
+    messagesEndRef.current?.scrollIntoView({ behavior: streaming ? 'auto' : 'smooth' });
   }, [messages, streaming, streamingText]);
 
   const lastPromptRef = useRef('');
@@ -344,9 +359,9 @@ export default function AIChat({ heightClass = 'h-[calc(100dvh-13.5rem)] md:h-[c
 
   return (
     <div className="max-w-2xl mx-auto w-full">
-      <div className={`flex flex-col bg-bg-secondary/30 border border-border-primary rounded-2xl overflow-hidden ${heightClass} min-h-[400px]`}>
+      <div className={`relative flex flex-col bg-bg-secondary border border-border-primary rounded-2xl overflow-hidden ${heightClass} sm:min-h-[400px]`}>
         {/* Header */}
-        <div className="flex items-center justify-between px-4 py-3 border-b border-border-primary bg-bg-secondary/50">
+        <div className="flex items-center justify-between px-4 py-3 border-b border-border-primary bg-bg-secondary">
           <div className="flex items-center gap-2.5">
             <div className="w-8 h-8 rounded-xl bg-accent-primary/15 flex items-center justify-center">
               <Bot className="w-5 h-5 text-accent-primary" />
@@ -432,7 +447,7 @@ export default function AIChat({ heightClass = 'h-[calc(100dvh-13.5rem)] md:h-[c
         )}
 
         {/* Messages */}
-        <div className="flex-1 overflow-y-auto px-4 py-4 space-y-4">
+        <div className="flex-1 overflow-y-auto px-4 py-4 space-y-4 relative" onScroll={onMessagesScroll}>
           <AnimatePresence initial={false}>
             {messages.map((msg) => (
               <motion.div
@@ -471,7 +486,7 @@ export default function AIChat({ heightClass = 'h-[calc(100dvh-13.5rem)] md:h-[c
                               <ImageIcon className="w-3 h-3" /> צורפה תמונת גרף
                             </span>
                           )}
-                          <p>{msg.text}</p>
+                          <p dir="auto">{msg.text}</p>
                         </>
                       : <>
                           {msg.chart && <ChatChart prices={msg.chart.prices} coinSymbol={msg.chart.symbol} />}
@@ -583,7 +598,16 @@ export default function AIChat({ heightClass = 'h-[calc(100dvh-13.5rem)] md:h-[c
         </AnimatePresence>
 
         {/* Input */}
-        <div className="border-t border-border-primary px-4 py-3 bg-bg-secondary/50">
+        {!atBottom && (
+          <button
+            onClick={() => { stickRef.current = true; setAtBottom(true); messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' }); }}
+            className="absolute bottom-20 left-1/2 -translate-x-1/2 z-10 inline-flex items-center gap-1 text-[11px] px-3 py-1.5 rounded-full bg-bg-tertiary border border-border-primary text-text-secondary hover:text-text-primary shadow-lg cursor-pointer"
+          >
+            קפוץ לתשובה האחרונה ↓
+          </button>
+        )}
+
+        <div className="border-t border-border-primary px-4 py-3 bg-bg-secondary">
           {/* Daily AI quota — resets at Israel midnight. Both tiers see a bar
               so premium users know they have a (generous) cap too. */}
           {!aiUsage.loading && aiUsage.limit && (() => {

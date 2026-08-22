@@ -42,7 +42,7 @@ function InsightCard({ label, value, sub, tone = 'neutral', Icon, spark, sparkPo
   if (tone === 'profit') toneClass = 'text-profit';
   else if (tone === 'loss') toneClass = 'text-loss';
   return (
-    <div className="min-w-0 rounded-2xl border border-border-primary bg-bg-secondary/60 p-3 flex flex-col justify-between">
+    <div className="min-w-0 rounded-2xl border border-border-primary bg-bg-secondary p-3 flex flex-col justify-between">
       <div className="flex items-center gap-1.5 text-[11px] text-text-muted">
         {Icon && <Icon className="w-3.5 h-3.5 shrink-0" />}
         <span className="truncate">{label}</span>
@@ -71,7 +71,8 @@ export default function TradeAIHub({ stats, tradesCount, equityCurve, onAsk, ope
 
   return (
     <section className="max-w-2xl mx-auto w-full space-y-3">
-      <div className="text-center relative">
+      <div className="flex items-start gap-2">
+        <div className="min-w-0 flex-1 text-center">
         <h1 className="text-lg md:text-xl font-bold text-text-primary inline-flex items-center gap-2">
           <Sparkles className="w-5 h-5 text-accent-primary" />
           מה תרצה לדעת על המסחר שלך?
@@ -81,12 +82,13 @@ export default function TradeAIHub({ stats, tradesCount, equityCurve, onAsk, ope
             ? `הסוכן רואה את ${tradesCount} העסקאות הסגורות שלך. לתוכנית וליומן המנטליות — פתח את "האנליסט שלך".`
             : 'הוסף עסקאות כדי שהסוכן יוכל לנתח את הספר שלך.'}
         </p>
+        </div>
         {onToggle && (
           <button
             onClick={onToggle}
             aria-expanded={open}
             title={open ? 'כווץ כדי להגדיל את הצ׳אט' : 'הצג את הנתונים שלך'}
-            className="absolute top-0 left-0 inline-flex items-center gap-1 text-[10px] text-text-muted hover:text-text-primary transition-colors cursor-pointer px-2 py-1 rounded-lg hover:bg-bg-secondary"
+            className="shrink-0 inline-flex items-center gap-1 text-[10px] text-text-muted hover:text-text-primary transition-colors cursor-pointer px-2 py-1 rounded-lg"
           >
             {open ? 'כווץ' : 'הנתונים שלי'}
             <ChevronUp className={`w-3 h-3 transition-transform duration-200 ${open ? '' : 'rotate-180'}`} />
@@ -143,7 +145,7 @@ export default function TradeAIHub({ stats, tradesCount, equityCurve, onAsk, ope
             animate={{ opacity: 1, y: 0 }}
             transition={{ delay: 0.03 * i, duration: 0.18 }}
             onClick={() => onAsk(q.text)}
-            className="text-[11px] px-2.5 py-1.5 rounded-full border border-border-primary bg-bg-secondary/60 text-text-secondary hover:text-text-primary hover:border-border-hover hover:-translate-y-0.5 transition-all cursor-pointer"
+            className="text-[11px] px-2.5 py-1.5 rounded-full border border-border-primary bg-bg-secondary text-text-secondary hover:text-text-primary hover:border-border-hover hover:-translate-y-0.5 transition-all cursor-pointer"
           >
             <span aria-hidden="true">{q.icon}</span> {q.text}
           </motion.button>

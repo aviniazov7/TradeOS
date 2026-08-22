@@ -96,9 +96,12 @@ export default function TradeAIPage() {
 
   // Collapsed, the pane reclaims the ~13rem the hub occupies. Both states keep a
   // floor so the chat never becomes unusable on a short viewport.
+  // Grows at exactly the rate the hub folds; without this the pane snapped on
+  // frame 1 and the hub then slid slowly into the gap it had left.
+  const paneMotion = 'transition-[height,min-height] duration-[220ms] ease-out';
   const heightClass = hubOpen
-    ? 'h-[calc(100dvh-27rem)] min-h-[20rem] md:h-[calc(100vh-25rem)] md:min-h-[24rem]'
-    : 'h-[calc(100dvh-14rem)] min-h-[26rem] md:h-[calc(100vh-13rem)] md:min-h-[30rem]';
+    ? `${paneMotion} h-[calc(100dvh-27rem)] min-h-[20rem] md:h-[calc(100vh-25rem)] md:min-h-[24rem]`
+    : `${paneMotion} h-[calc(100dvh-14rem)] min-h-[26rem] md:h-[calc(100vh-13rem)] md:min-h-[30rem]`;
 
   return (
     <motion.div
@@ -119,7 +122,7 @@ export default function TradeAIPage() {
       />
 
       <div className="max-w-2xl mx-auto w-full">
-        <div className="grid grid-cols-3 gap-1 p-1 rounded-2xl bg-bg-secondary/50 border border-border-primary">
+        <div className="grid grid-cols-3 gap-1 p-1 rounded-2xl bg-bg-secondary border border-border-primary">
           {TABS.map((t) => (
             <button
               key={t.id}

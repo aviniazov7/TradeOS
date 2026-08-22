@@ -56,10 +56,10 @@ export default function TradeAgentCard({ trades }) {
 
   return (
     <div
-      className="relative overflow-hidden rounded-2xl p-4 mb-4 border"
+      className="relative overflow-hidden rounded-2xl p-4 mb-4 border bg-bg-secondary"
       style={{
         borderColor: 'rgba(59,130,246,0.32)',
-        background: 'radial-gradient(130% 120% at 100% 0%, rgba(59,130,246,0.15) 0%, transparent 58%), rgba(13,13,18,0.75)',
+        backgroundImage: 'radial-gradient(130% 120% at 100% 0%, rgba(59,130,246,0.15) 0%, transparent 58%)',
       }}
     >
       <div className="flex items-start gap-3">

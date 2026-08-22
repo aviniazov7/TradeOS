@@ -813,9 +813,13 @@ export default function PendingLimitOrders({ trades, livePrices }) {
 
             // Card frame — consistent blue (demo look), independent of P&L so a
             // losing position no longer paints the whole card red.
+            // bg-bg-secondary carries the base colour so the light theme can
+            // reach it; the accent wash rides on backgroundImage below. An
+            // inline `background` shorthand painted a near-black slab that no
+            // stylesheet could override.
             const cardStyle = isTradeActive
-              ? 'border-accent-primary/25 hover:border-accent-primary/45'
-              : 'border-border-primary/25 hover:border-border-primary/50';
+              ? 'bg-bg-secondary border-accent-primary/25 hover:border-accent-primary/45'
+              : 'bg-bg-secondary border-border-primary/25 hover:border-border-primary/50';
 
             // R:R badge
             const sl = parseFloat(trade.stopLoss);
@@ -849,7 +853,7 @@ export default function PendingLimitOrders({ trades, livePrices }) {
                 transition={{ duration: 0.2 }}
               >
                 <div className={`w-full border rounded-2xl px-3.5 py-3 transition-colors text-right ${cardStyle}`}
-                  style={{ background: 'radial-gradient(150% 130% at 100% 0%, rgba(59,130,246,0.13) 0%, transparent 55%), rgba(13,13,18,0.75)' }}>
+                  style={{ backgroundImage: 'radial-gradient(150% 130% at 100% 0%, rgba(59,130,246,0.13) 0%, transparent 55%)' }}>
                   {/* Card header — coin + direction always left, actions right */}
                   <div className="flex items-center gap-2" dir="ltr">
                     <CoinIcon pair={pair} className={`w-4 h-4 shrink-0 ${!isTradeActive ? 'opacity-50' : ''}`} />
