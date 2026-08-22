@@ -1482,6 +1482,89 @@ async function checkJournalReminders(env, settingsMap) {
   }
 }
 
+// Firestore REST returns every value wrapped in a type key. Trades are written
+// by several paths over the app's life (form, CSV import, exchange sync), so a
+// number may arrive as doubleValue, integerValue or even stringValue.
+function fsNum(v) {
+  if (!v) return 0;
+  const raw = v.doubleValue ?? v.integerValue ?? v.stringValue;
+  const n = Number(raw);
+  return Number.isFinite(n) ? n : 0;
+}
+
+// Israel-local midnight, as the true UTC instant Firestore compares against.
+//
+// getIsraelTime() returns a Date whose *wall clock* reads Israel time, so the
+// gap between it and the real clock is the zone offset. Measuring that gap
+// instead of hard-coding +2/+3 means DST needs no special case.
+function israelDayStartIso() {
+  const israelNow = getIsraelTime();
+  const offsetMs = israelNow.getTime() - Date.now();
+  const midnightWall = new Date(israelNow);
+  midnightWall.setHours(0, 0, 0, 0);
+  return new Date(midnightWall.getTime() - offsetMs).toISOString();
+}
+
+// Today's closed trades, read straight from Firestore at the moment the summary
+// is sent.
+//
+// This replaces a client-written KV blob, and the difference is the whole bug:
+// useDailySummarySync runs ONCE per browser session, at app load. It wrote
+// whatever the day looked like at that instant — usually zero, because the app
+// is normally opened in the morning — and nothing ever refreshed it. Trades
+// closed later in the day never reached KV, so the 22:00 push reported "no
+// closed trades" on days full of them. If the app was never opened that day
+// there was no key at all, with the same result.
+async function summaryFetchTodayTrades(token, uid) {
+  const res = await fetch(`${FS_BASE}/documents/users/${encodeURIComponent(uid)}:runQuery`, {
+    method: 'POST',
+    headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
+    body: JSON.stringify({
+      structuredQuery: {
+        from: [{ collectionId: 'trades' }],
+        where: {
+          fieldFilter: {
+            field: { fieldPath: 'exitDate' },
+            op: 'GREATER_THAN_OR_EQUAL',
+            value: { timestampValue: israelDayStartIso() },
+          },
+        },
+        limit: 200,
+      },
+    }),
+  });
+  if (!res.ok) return null;
+  const rows = await res.json();
+  if (!Array.isArray(rows)) return null;
+
+  const closed = [];
+  for (const row of rows) {
+    const f = row?.document?.fields;
+    if (!f) continue;
+    const status = f.status?.stringValue;
+    // Same predicate the app uses: an explicit closed status, or an exit price.
+    const isClosed = status === 'closed' || (status !== 'open' && status !== 'partial' && fsNum(f.exitPrice) > 0);
+    if (!isClosed) continue;
+    closed.push({
+      pair: f.pair?.stringValue || f.symbol?.stringValue || '?',
+      pnl: f.netPnl ? fsNum(f.netPnl) : fsNum(f.pnl),
+      result: f.result?.stringValue || '',
+    });
+  }
+
+  let bestTrade = null;
+  let worstTrade = null;
+  let pnl = 0;
+  let wins = 0;
+  for (const t of closed) {
+    pnl += t.pnl;
+    if (t.result === 'win' || t.pnl > 0) wins += 1;
+    if (!bestTrade || t.pnl > bestTrade.pnl) bestTrade = { pair: t.pair, pnl: t.pnl };
+    if (!worstTrade || t.pnl < worstTrade.pnl) worstTrade = { pair: t.pair, pnl: t.pnl };
+  }
+  return { tradeCount: closed.length, pnl, wins, losses: closed.length - wins, bestTrade, worstTrade };
+}
+
 async function checkDailySummaries(env, settingsMap) {
   const currentTime = getIsraelHHMM();
   const today = getIsraelDateStr();
@@ -1489,7 +1572,20 @@ async function checkDailySummaries(env, settingsMap) {
     if (!s?.summary?.enabled || !scheduleDue(s.summary.time, currentTime)) continue;
     const sentKey = `sent:summary:${uid}:${today}`;
     if (await env.ALERTS_KV.get(sentKey)) continue;
-    const stats = await env.ALERTS_KV.get(`dailystats:u:${uid}:${today}`, 'json');
+
+    // Read the day from Firestore at send time. There is deliberately no
+    // fallback: the old KV blob is exactly what produced the false "no closed
+    // trades" push, and falling back to it would reproduce the bug under a new
+    // name. If the read fails, skip WITHOUT marking the user as sent, so the
+    // next tick can try again rather than asserting a quiet day that was not.
+    let stats = null;
+    try {
+      const token = await getFirebaseAdminToken(env);
+      stats = await summaryFetchTodayTrades(token, uid);
+    } catch (err) {
+      console.error('daily summary: firestore read failed', err);
+    }
+    if (!stats) continue;
     let body;
     if (stats && stats.tradeCount > 0) {
       const pnlStr = stats.pnl >= 0 ? `+$${stats.pnl.toFixed(2)}` : `-$${Math.abs(stats.pnl).toFixed(2)}`;
@@ -1497,7 +1593,9 @@ async function checkDailySummaries(env, settingsMap) {
       body = `${stats.tradeCount} עסקאות · P&L: ‏${pnlStr} · Win Rate: ‏${wr}%`;
       if (stats.bestTrade && stats.bestTrade.pnl > 0) body += ` · 🏆 ${stats.bestTrade.pair} ‏+$${stats.bestTrade.pnl.toFixed(2)}`;
     } else {
-      body = 'אין עסקאות סגורות היום. מחר יום חדש! 💪';
+      // Say which day, so a summary that lands after midnight is not read as
+      // being about the wrong one.
+      body = 'לא נסגרו עסקאות היום. מחר יום חדש! 💪';
     }
     await sendPushToUser(env, uid, {
       title: `📊 סיכום יומי — ${formatIsraelDate()}`,
