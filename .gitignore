@@ -44,3 +44,6 @@ worker/.wrangler/
 .dev.vars*
 !.dev.vars.example
 !.env.example
+
+# Browser-automation artifacts (screenshots, console logs) from agent runs
+.playwright-mcp/
