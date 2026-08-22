@@ -3463,13 +3463,21 @@ const IMPACT_MIN_QUOTE_VOL = 5_000_000; // ignore illiquid pairs entirely
 
 // Normalize the fast-news feed into the shape newsImpact expects. Anything
 // without a title or a timestamp is dropped rather than defaulted.
+//
+// Returns { items, error } rather than a bare array: a silent [] is
+// indistinguishable from "the world is quiet", and that is exactly the bug this
+// shipped with — the first production run returned newsCount 0 while the same
+// request worked from a laptop, and nothing in the payload said why.
 async function fetchFastNews() {
   try {
-    const r = await fetch(FAST_NEWS_API, { headers: { Accept: 'application/json' } });
-    if (!r.ok) return [];
+    const r = await fetch(FAST_NEWS_API, {
+      headers: { Accept: 'application/json', 'User-Agent': 'Mozilla/5.0 TradeOS' },
+      signal: AbortSignal.timeout(8000),
+    });
+    if (!r.ok) return { items: [], error: `fast-news ${r.status}` };
     const raw = await r.json();
-    if (!Array.isArray(raw)) return [];
-    return raw.map((x) => ({
+    if (!Array.isArray(raw)) return { items: [], error: 'fast-news shape' };
+    const items = raw.map((x) => ({
       id: x._id || x.url || '',
       title: String(x.title || '').slice(0, 300),
       url: typeof x.url === 'string' ? x.url : '',
@@ -3479,9 +3487,36 @@ async function fetchFastNews() {
       ms: Number(x.time) || 0,
       symbols: Array.isArray(x.symbols) ? x.symbols.slice(0, 8) : [],
     })).filter((n) => n.title && n.ms);
-  } catch {
-    return [];
+    return { items, error: items.length ? '' : 'fast-news empty' };
+  } catch (err) {
+    return { items: [], error: `fast-news ${String(err?.name || err).slice(0, 40)}` };
   }
+}
+
+// The same RSS feeds the digest already uses, normalized for the attribution
+// engine. Slower than the fast feed by 10-40 minutes, but it is proven to work
+// from Worker egress, so it keeps the panel alive if the fast source blocks us.
+async function fetchRssNewsForImpact() {
+  const results = await Promise.allSettled(NEWS_FEEDS.crypto.map(async (source) => {
+    const r = await fetch(source.rss, {
+      headers: { 'User-Agent': 'Mozilla/5.0 TradeOS' },
+      signal: AbortSignal.timeout(8000),
+    });
+    if (!r.ok) throw new Error(`${source.key} ${r.status}`);
+    return parseRssItems(await r.text(), source);
+  }));
+  return results
+    .filter((r) => r.status === 'fulfilled')
+    .flatMap((r) => r.value)
+    .map((it) => ({
+      id: it.link,
+      title: String(it.title || '').slice(0, 300),
+      url: it.link,
+      source: it.sourceLabel || it.sourceKey,
+      ms: Date.parse(it.pubDate) || 0,
+      symbols: [],
+    }))
+    .filter((n) => n.title && n.ms);
 }
 
 // The short-window move for one symbol, measured against its own recent volume
@@ -3563,7 +3598,17 @@ async function scanCandidateMoves(env) {
 
 async function buildNewsImpact(env) {
   const now = Date.now();
-  const [news, moves] = await Promise.all([fetchFastNews(), scanCandidateMoves(env)]);
+  const [fast, moves] = await Promise.all([fetchFastNews(), scanCandidateMoves(env)]);
+  let news = fast.items;
+  let newsSource = 'fast';
+  let newsError = fast.error;
+  if (!news.length) {
+    // The fast feed is unreachable from here. RSS is 10-40 minutes slower but
+    // it demonstrably works from Worker egress, so the panel degrades instead
+    // of going blank.
+    news = await fetchRssNewsForImpact();
+    newsSource = news.length ? 'rss-fallback' : 'none';
+  }
   const index = buildMentionIndex(news, { now, windowMin: ATTRIBUTION_WINDOW_MIN });
   const findings = attributeMoves(moves, index, { now }).map((f) => ({ ...f, text: describeFinding(f) }));
 
@@ -3582,6 +3627,8 @@ async function buildNewsImpact(env) {
   return {
     updatedAt: now,
     newsCount: news.length,
+    newsSource,
+    newsError,
     scanned: moves.length,
     findings,
     loudest,
