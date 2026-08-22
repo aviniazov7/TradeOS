@@ -149,7 +149,7 @@ function ScheduleSection({ user }) {
 }
 
 export default function NotificationSettings() {
-  const { user } = useAuth();
+  const { user, isAdmin } = useAuth();
   const [settings, setSettings] = useState(DEFAULTS);
   const [permission, setPermission] = useState(
     typeof Notification !== 'undefined' ? Notification.permission : 'denied'
@@ -328,17 +328,25 @@ export default function NotificationSettings() {
                                 <MiniToggle on={settings.tradeOpenAlerts !== false} />
                               </button>
                             </div>
-                            {/* Setup scanner (Firestore setting; the worker enforces it once the engine lands). */}
-                            <div className="flex items-center justify-between gap-2 min-h-9">
-                              <button onClick={() => save({ wyckoffAlerts: settings.wyckoffAlerts === false })}
-                                className="flex items-center gap-2.5 text-sm text-text-primary cursor-pointer text-right">
-                                <Radar className={`w-4 h-4 shrink-0 ${settings.wyckoffAlerts !== false ? 'text-accent-primary' : 'text-text-muted'}`} />
-                                <span>סורק סטאפים (ויקוף)<span className="block text-[10px] text-text-muted font-normal">LPS / LPSY על המטבעות שתייגת</span></span>
-                              </button>
-                              <button onClick={() => save({ wyckoffAlerts: settings.wyckoffAlerts === false })} className="cursor-pointer shrink-0" aria-label="סורק סטאפים">
-                                <MiniToggle on={settings.wyckoffAlerts !== false} />
-                              </button>
-                            </div>
+                            {/* Owner-only, matching the page itself and the
+                                worker's scan gate. Showing this row to everyone
+                                advertised a feature nobody else can reach, and
+                                let them toggle a setting that does nothing. */}
+                            {isAdmin && (
+                              <div className="flex items-center justify-between gap-2 min-h-9">
+                                <button onClick={() => save({ wyckoffAlerts: settings.wyckoffAlerts === false })}
+                                  className="flex items-center gap-2.5 text-sm text-text-primary cursor-pointer text-right">
+                                  <Radar className={`w-4 h-4 shrink-0 ${settings.wyckoffAlerts !== false ? 'text-accent-primary' : 'text-text-muted'}`} />
+                                  <span>
+                                    מנוע ויקוף
+                                    <span className="block text-[10px] text-text-muted font-normal">LPS / LPSY על המטבעות שתייגת · גלוי רק לך</span>
+                                  </span>
+                                </button>
+                                <button onClick={() => save({ wyckoffAlerts: settings.wyckoffAlerts === false })} className="cursor-pointer shrink-0" aria-label="מנוע ויקוף">
+                                  <MiniToggle on={settings.wyckoffAlerts !== false} />
+                                </button>
+                              </div>
+                            )}
                             <ScheduleSection user={user} />
                           </div>
                         </motion.div>
