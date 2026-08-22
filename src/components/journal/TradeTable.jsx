@@ -81,18 +81,21 @@ export default function TradeTable({ trades, onEdit, onDelete, onShare, isLimitP
                 className="flex items-center justify-between cursor-pointer"
                 onClick={() => setDetailTrade(trade)}
               >
-                <div className="flex items-center gap-2 min-w-0">
-                  <CoinIcon pair={trade.pair} className="w-4 h-4" />
-                  <span className="text-text-primary font-semibold text-sm">{trade.pair}</span>
-                  <span className={`inline-flex items-center gap-0.5 text-xs font-medium px-1.5 py-0.5 rounded ${trade.direction === 'long' ? 'bg-long/10 text-long' : 'bg-short/10 text-short'}`}>
+                <div className="flex items-center gap-2 min-w-0 flex-1">
+                  <CoinIcon pair={trade.pair} className="w-4 h-4 shrink-0" />
+                  <span className="text-text-primary font-semibold text-sm truncate min-w-0" title={trade.pair}>{trade.pair}</span>
+                  <span className={`shrink-0 inline-flex items-center gap-0.5 text-xs font-medium px-1.5 py-0.5 rounded ${trade.direction === 'long' ? 'bg-long/10 text-long' : 'bg-short/10 text-short'}`}>
                     {trade.direction === 'long' ? <TrendingUp className="w-3 h-3" /> : <TrendingDown className="w-3 h-3" />}
                     {trade.direction === 'long' ? 'Long' : 'Short'}
                   </span>
-                  {statusBadge(status, isPending)}
+                  <span className="shrink-0">{statusBadge(status, isPending)}</span>
                   {trade.source && trade.source !== 'manual' && (
-                    <ExchangeIcon source={trade.source} />
+                    <span className="shrink-0"><ExchangeIcon source={trade.source} /></span>
                   )}
-                  <span className="text-[11px] text-text-muted">{formatDate(trade.entryDate)}</span>
+                  {/* The date is the first thing to go when a long symbol eats
+                      the row: the list already groups by month, so the day is
+                      the least load-bearing item here. */}
+                  <span className="hidden sm:inline text-[11px] text-text-muted shrink-0">{formatDate(trade.entryDate)}</span>
                 </div>
                 <div className="flex items-center gap-2 flex-shrink-0">
                   {status !== 'open' && !isPending && <span className={`text-sm font-bold ${pnlColor(pnl)}`}>{formatCurrency(pnl)}</span>}
@@ -149,10 +152,10 @@ export default function TradeTable({ trades, onEdit, onDelete, onShare, isLimitP
                     className={`border-b border-border-primary/50 cursor-pointer hover:bg-bg-tertiary/50 transition-colors ${isPending ? 'opacity-60' : ''}`}
                     onClick={() => setDetailTrade(trade)}
                   >
-                    <td className="py-2.5 px-2 text-text-primary font-semibold whitespace-nowrap">
-                      <span className="inline-flex items-center gap-1.5">
-                        <CoinIcon pair={trade.pair} className="w-4 h-4" />
-                        {trade.pair}
+                    <td className="py-2.5 px-2 text-text-primary font-semibold max-w-[13rem]">
+                      <span className="inline-flex items-center gap-1.5 max-w-full">
+                        <CoinIcon pair={trade.pair} className="w-4 h-4 shrink-0" />
+                        <span className="truncate" title={trade.pair}>{trade.pair}</span>
                         {trade.source && trade.source !== 'manual' && (
                           <ExchangeIcon source={trade.source} />
                         )}
