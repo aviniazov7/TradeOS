@@ -91,7 +91,12 @@ export default function Modal({ isOpen, onClose, title, ariaLabel, children, max
                 WebkitBackdropFilter: 'blur(28px)',
                 border: '1px solid var(--glass-border)',
                 boxShadow: 'var(--glass-shadow)',
-                maxHeight: 'calc(100vh - 4.5rem)',
+                // dvh, not vh: on mobile Safari 100vh includes the area behind
+                // the browser chrome, so the card was taller than the visible
+                // viewport and its bottom edge fell off-screen — the modal
+                // looked like it simply had no end. The app already relies on
+                // dvh elsewhere.
+                maxHeight: 'calc(100dvh - 4.5rem)',
               }}
               initial={{ opacity: 0, y: 18 }}
               animate={{ opacity: 1, y: 0 }}
@@ -99,7 +104,7 @@ export default function Modal({ isOpen, onClose, title, ariaLabel, children, max
               transition={{ type: 'spring', damping: 26, stiffness: 320, mass: 0.85 }}
             >
               {/* Scrollable inner */}
-              <div className="relative overflow-y-auto" style={{ maxHeight: 'calc(100vh - 4.5rem)' }}>
+              <div className="relative overflow-y-auto overscroll-contain" style={{ maxHeight: 'calc(100dvh - 4.5rem)' }}>
                 {/* Header — opaque strip: a translucent one let scrolled
                     content read through and collide with the title. */}
                 <div
@@ -121,7 +126,12 @@ export default function Modal({ isOpen, onClose, title, ariaLabel, children, max
                 </div>
 
                 {/* Content */}
-                <div className="p-5 md:px-6 md:py-5">{children}</div>
+                <div
+                  className="p-5 md:px-6 md:py-5"
+                  style={{ paddingBottom: 'calc(1.5rem + env(safe-area-inset-bottom, 0px))' }}
+                >
+                  {children}
+                </div>
               </div>
             </motion.div>
           </div>
