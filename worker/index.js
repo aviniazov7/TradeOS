@@ -3460,6 +3460,15 @@ const IMPACT_SCAN_TOP = 8;        // candidates promoted to a kline read
 const IMPACT_WINDOW_BARS = 3;     // 3 x 5m = the 15-minute move window
 const IMPACT_BASELINE_BARS = 24;  // 2h of 5m bars as the volume baseline
 const IMPACT_MIN_QUOTE_VOL = 5_000_000; // ignore illiquid pairs entirely
+// The attribution window has to scale with how fast the source can deliver.
+// Measured on the live feeds: the fast source's newest item is ~2 minutes old,
+// so 90 minutes is generous. RSS cannot do better than ~10-50 minutes, and a
+// 90-minute window over it caught only 3 items from 3 outlets — too thin for
+// any topic to reach two corroborating sources, which is why the panel came up
+// empty. 240 minutes yields 13 items from 5 outlets while still being today's
+// news. Widening it does weaken the claim, so the payload reports which window
+// was used and every finding still carries the age of its coverage.
+const IMPACT_RSS_WINDOW_MIN = 240;
 
 // Normalize the fast-news feed into the shape newsImpact expects. Anything
 // without a title or a timestamp is dropped rather than defaulted.
@@ -3601,15 +3610,17 @@ async function buildNewsImpact(env) {
   const [fast, moves] = await Promise.all([fetchFastNews(), scanCandidateMoves(env)]);
   let news = fast.items;
   let newsSource = 'fast';
-  let newsError = fast.error;
+  let windowMin = ATTRIBUTION_WINDOW_MIN;
+  const newsError = fast.error;
   if (!news.length) {
-    // The fast feed is unreachable from here. RSS is 10-40 minutes slower but
-    // it demonstrably works from Worker egress, so the panel degrades instead
-    // of going blank.
+    // The fast feed is unreachable from here — it 403s Worker egress, the same
+    // way api.binance.com does. RSS is slower but demonstrably works, so the
+    // panel degrades instead of going blank.
     news = await fetchRssNewsForImpact();
     newsSource = news.length ? 'rss-fallback' : 'none';
+    windowMin = IMPACT_RSS_WINDOW_MIN;
   }
-  const index = buildMentionIndex(news, { now, windowMin: ATTRIBUTION_WINDOW_MIN });
+  const index = buildMentionIndex(news, { now, windowMin });
   const findings = attributeMoves(moves, index, { now }).map((f) => ({ ...f, text: describeFinding(f) }));
 
   // What the market is loudest about right now, whether or not price moved.
@@ -3629,6 +3640,7 @@ async function buildNewsImpact(env) {
     newsCount: news.length,
     newsSource,
     newsError,
+    windowMin,
     scanned: moves.length,
     findings,
     loudest,
