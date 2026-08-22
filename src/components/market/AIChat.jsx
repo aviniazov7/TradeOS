@@ -1,4 +1,4 @@
-import { useState, useEffect, useMemo, useRef } from 'react';
+import { useState, useEffect, useMemo, useRef, lazy, Suspense } from 'react';
 import { createPortal } from 'react-dom';
 import { motion, AnimatePresence } from 'framer-motion';
 import { Bot, Send, RotateCcw, User, Sparkles, BarChart3, History, Trash2, Crown, Image as ImageIcon, Copy, Check } from 'lucide-react';
@@ -8,7 +8,7 @@ import { formatAIText } from '../../utils/aiChatHelpers';
 import { detectCoinFromText } from '../../utils/technicals';
 import { fetchCoinChart } from '../../services/coingeckoApi';
 import { useAiUsage } from '../../hooks/useAiUsage';
-import ChatChart from './ChatChart';
+const ChatChart = lazy(() => import('./ChatChart'));
 
 const STORAGE_KEY = 'tradeos-ai-conversations';
 const LEGACY_KEY = 'tradeos-ai-chat-history';
@@ -489,7 +489,11 @@ export default function AIChat({ heightClass = 'h-[calc(100dvh-13.5rem)] md:h-[c
                           <p dir="auto">{msg.text}</p>
                         </>
                       : <>
-                          {msg.chart && <ChatChart prices={msg.chart.prices} coinSymbol={msg.chart.symbol} />}
+                          {msg.chart && (
+                            <Suspense fallback={<div className="h-40 rounded-xl bg-bg-tertiary animate-pulse" />}>
+                              <ChatChart prices={msg.chart.prices} coinSymbol={msg.chart.symbol} />
+                            </Suspense>
+                          )}
                           <div className="space-y-0">{formatAIText(msg.text)}</div>
                         </>
                     }

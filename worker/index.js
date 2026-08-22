@@ -3581,7 +3581,6 @@ function isAllowedOrigin(origin) {
 // tested outside the Worker runtime.
 //
 // Subrequest budget per run: 1 news + 1 ticker list + IMPACT_SCAN_TOP klines.
-const IMPACT_REFRESH_MIN = 10;    // matches the cron tick; the work is cheap
 const IMPACT_SCAN_TOP = 8;        // candidates promoted to a kline read
 const IMPACT_WINDOW_BARS = 3;     // 3 x 5m = the 15-minute move window
 const IMPACT_BASELINE_BARS = 24;  // 2h of 5m bars as the volume baseline
@@ -3815,11 +3814,13 @@ async function pushNewsImpact(env, impact) {
 
 async function refreshNewsImpact(env) {
   try {
-    const ts = parseInt((await env.ALERTS_KV.get('news:impact:ts')) || '0', 10);
-    if (Date.now() - ts < IMPACT_REFRESH_MIN * 60 * 1000) return;
+    // No staleness guard: the cron IS the schedule. The previous guard used a
+    // window equal to the cron period, against a timestamp captured before the
+    // build ran, so whether it tripped depended on how long the last build took
+    // — it skipped roughly every other tick at random. Dropping it also removes
+    // one KV write per tick (~144/day against a 1,000/day free budget).
     const impact = await buildNewsImpact(env);
     await env.ALERTS_KV.put('news:impact', JSON.stringify(impact), { expirationTtl: 60 * 60 * 6 });
-    await env.ALERTS_KV.put('news:impact:ts', String(impact.updatedAt), { expirationTtl: 60 * 60 * 6 });
     // Push AFTER the blob is stored, so the notification always links to a page
     // that already shows what it is about.
     await pushNewsImpact(env, impact);
@@ -3983,13 +3984,29 @@ async function handleRequest(request, env) {
   // happened on the cron. A cold cache builds on demand so the first visitor
   // after a KV expiry still gets an answer.
   if (request.method === 'GET' && path === '/news/impact') {
+    // Edge cache first, like /news/digest below. Public non-credentialed data,
+    // so a repeat hit costs ZERO KV reads — without this every visitor paid one.
+    const cacheKey = new Request('https://cache.tradeos/news-impact', { method: 'GET' });
+    const cache = caches.default;
+    const hit = await cache.match(cacheKey);
+    if (hit) {
+      const body = await hit.text();
+      return new Response(body, { headers: { ...cors, 'Content-Type': 'application/json' } });
+    }
     let impact = await env.ALERTS_KV.get('news:impact', 'json');
     if (!impact) {
       impact = await buildNewsImpact(env);
       await env.ALERTS_KV.put('news:impact', JSON.stringify(impact), { expirationTtl: 60 * 60 * 6 });
-      await env.ALERTS_KV.put('news:impact:ts', String(impact.updatedAt), { expirationTtl: 60 * 60 * 6 });
     }
-    return new Response(JSON.stringify(impact), {
+    const body = JSON.stringify(impact);
+    // Awaited, not waitUntil: handleRequest has no ctx, and the digest handler
+    // below awaits its own cache.put for the same reason. Best-effort.
+    try {
+      await cache.put(cacheKey, new Response(body, {
+        headers: { 'Content-Type': 'application/json', 'Cache-Control': 'public, max-age=120' },
+      }));
+    } catch { /* cache put is best-effort */ }
+    return new Response(body, {
       headers: { ...cors, 'Content-Type': 'application/json', 'Cache-Control': 'public, max-age=120' },
     });
   }

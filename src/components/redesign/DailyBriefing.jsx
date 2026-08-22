@@ -1,3 +1,7 @@
+// Initialised here rather than in main.jsx: i18n is used only by this route
+// and the switcher inside it, both of which live in this lazy chunk. In the
+// eager shell it cost 55 kB for a page that is not linked from any nav.
+import '../../i18n';
 import { useTranslation } from 'react-i18next';
 import LanguageSwitcher from './LanguageSwitcher';
 
