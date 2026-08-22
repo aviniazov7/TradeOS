@@ -86,7 +86,7 @@ function TypingIndicator() {
   );
 }
 
-export default function AIChat({ heightClass = 'h-[calc(100dvh-13.5rem)] md:h-[calc(100vh-220px)]', seedQuestion = '', trades = null }) {
+export default function AIChat({ heightClass = 'h-[calc(100dvh-13.5rem)] md:h-[calc(100vh-220px)]', seedQuestion = null, trades = null }) {
   const [messages, setMessages] = useState([]);
   const [input, setInput] = useState('');
   // The trader's own book, in the same compact shape the AI coach uses. Built
@@ -100,7 +100,7 @@ export default function AIChat({ heightClass = 'h-[calc(100dvh-13.5rem)] md:h-[c
   // the user still gets to edit it, and an accidental chip tap must not spend
   // one of their AI questions.
   useEffect(() => {
-    if (seedQuestion) setInput(seedQuestion);
+    if (seedQuestion?.text) setInput(seedQuestion.text);
   }, [seedQuestion]);
   const [streaming, setStreaming] = useState(false);
   const [streamingText, setStreamingText] = useState('');

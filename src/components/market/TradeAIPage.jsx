@@ -29,7 +29,7 @@ const HUB_KEY = 'tradeai:hub-open';
 
 export default function TradeAIPage() {
   const [tab, setTab] = useState('chat');
-  const [seed, setSeed] = useState('');
+  const [seed, setSeed] = useState(null);
   // The hub is useful on arrival and in the way once you are typing, so it
   // collapses — and the choice sticks, because re-collapsing it on every visit
   // would be its own annoyance.
@@ -61,8 +61,10 @@ export default function TradeAIPage() {
       return acc;
     }, []);
     if (curve.length <= 40) return curve;
-    const step = curve.length / 40;
-    return Array.from({ length: 40 }, (_, i) => curve[Math.min(curve.length - 1, Math.floor(i * step))]);
+    // Span the full range: floor(39 * len/40) never reaches len-1, so the spark
+    // used to end on an earlier value than the P&L figure printed beside it.
+    const step = (curve.length - 1) / 39;
+    return Array.from({ length: 40 }, (_, i) => curve[Math.round(i * step)]);
   }, [trades]);
 
   // Lock body scroll while the page is open on mobile (iOS needs
@@ -86,9 +88,10 @@ export default function TradeAIPage() {
 
   const askFromHub = (text) => {
     setTab('chat');
-    // A fresh string every time, so tapping the same chip twice still refills
-    // the box after the user has cleared it.
-    setSeed(`${text}`);
+    // A new OBJECT every time. The previous version passed a string, which is
+    // identical on a second tap — React bails out, the effect never re-runs, and
+    // the chip silently does nothing after you have cleared the box.
+    setSeed({ text });
   };
 
   // Collapsed, the pane reclaims the ~13rem the hub occupies. Both states keep a

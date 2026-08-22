@@ -73,7 +73,10 @@ const RATING_COLORS = ['text-loss', 'text-orange-400', 'text-breakeven', 'text-l
 const MENTAL_RATINGS = [
   { key: 'focusRating', label: 'ריכוז וחדות', Icon: Target },
   { key: 'planAdherenceRating', label: 'הצמדות לתוכנית', Icon: ClipboardCheck },
-  { key: 'stressRating', label: 'לחץ / סטרס', Icon: Gauge },
+  // Stress is the one scale where 5 is the BAD answer, so the shared red-to-
+  // green ramp has to run backwards for it — otherwise maximum stress renders
+  // green and reads as a good day.
+  { key: 'stressRating', label: 'לחץ / סטרס', Icon: Gauge, invert: true },
   { key: 'confidenceRating', label: 'ביטחון בעסקה', Icon: ShieldCheck },
 ];
 
@@ -894,7 +897,7 @@ export default function TradeForm({ isOpen, onClose, trade, onSave, riskSettings
           <div className="bg-bg-tertiary rounded-xl p-3 grid grid-cols-2 gap-x-4 gap-y-2">
             {MENTAL_RATINGS.map((rating) => {
               const val = form[rating.key];
-              const color = RATING_COLORS[val - 1] || 'text-text-muted';
+              const color = RATING_COLORS[rating.invert ? 5 - val : val - 1] || 'text-text-muted';
               const Icon = rating.Icon;
               return (
                 <div key={rating.key}>
