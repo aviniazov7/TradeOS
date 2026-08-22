@@ -92,7 +92,7 @@ export default function ScannerCalibration({ setups = [] }) {
           <SlidersHorizontal className="w-3.5 h-3.5 text-accent-primary" />
         </span>
         <h2 className="text-sm font-bold text-text-primary shrink-0">כיול המנוע</h2>
-        <span className="text-[11px] text-text-muted truncate">— הסורק קורא את הערכים לפני כל התראה, בלי דיפלוי</span>
+        <span className="text-[11px] text-text-muted truncate">— המנוע קורא את הערכים לפני כל התראה, בלי דיפלוי</span>
       </div>
 
       <div className="rounded-xl border border-border-primary bg-bg-secondary p-4">
