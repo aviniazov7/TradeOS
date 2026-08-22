@@ -4,6 +4,7 @@ import { MessageCircle, BarChart3, Gauge } from 'lucide-react';
 import { pageVariants, pageTransition } from '../../utils/animations';
 import { useJournalContext } from '../../contexts/JournalContext';
 import { useTrades } from '../../hooks/useTrades';
+import { useLinkedExchangeBalance } from '../../hooks/useLinkedExchangeBalance';
 import { useDashboardStats } from '../../hooks/useDashboardStats';
 import { isClosedTrade } from '../../utils/calculations';
 import AIChat from './AIChat';
@@ -48,7 +49,10 @@ export default function TradeAIPage() {
   // One subscription for the whole page — the hub, the analyst tab and the
   // chat read the same book rather than each opening its own listener.
   const { trades } = useTrades(activeJournalId);
-  const stats = useDashboardStats(trades, Number(activeJournal?.initialBalance) || 0);
+  // Same basis as the analyst tab beside it: the live wallet when the journal
+  // is linked, the typed opening balance otherwise.
+  const liveBalance = useLinkedExchangeBalance(activeJournal?.exchange);
+  const stats = useDashboardStats(trades, liveBalance != null ? liveBalance : (Number(activeJournal?.initialBalance) || 0));
 
   const closedCount = useMemo(() => (trades || []).filter(isClosedTrade).length, [trades]);
 
