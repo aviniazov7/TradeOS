@@ -92,10 +92,7 @@ export default function TradeTable({ trades, onEdit, onDelete, onShare, isLimitP
                   {trade.source && trade.source !== 'manual' && (
                     <span className="shrink-0"><ExchangeIcon source={trade.source} /></span>
                   )}
-                  {/* The date is the first thing to go when a long symbol eats
-                      the row: the list already groups by month, so the day is
-                      the least load-bearing item here. */}
-                  <span className="hidden sm:inline text-[11px] text-text-muted shrink-0">{formatDate(trade.entryDate)}</span>
+                  <span className="text-[11px] text-text-muted shrink-0">{formatDate(trade.entryDate)}</span>
                 </div>
                 <div className="flex items-center gap-2 flex-shrink-0">
                   {status !== 'open' && !isPending && <span className={`text-sm font-bold ${pnlColor(pnl)}`}>{formatCurrency(pnl)}</span>}
