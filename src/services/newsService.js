@@ -11,6 +11,14 @@ export async function fetchNewsDigest(market = 'crypto') {
   return res.json();
 }
 
+// News -> price attribution, prepared on the cron. Returns
+// { updatedAt, findings[], loudest[] }; findings carry a ready Hebrew sentence.
+export async function fetchNewsImpact() {
+  const res = await fetch(`${WORKER_BASE}/news/impact`);
+  if (!res.ok) throw new Error('טעינת ניתוח התנועות נכשלה');
+  return res.json();
+}
+
 // Batch-translate feed items to Hebrew. Returns an array aligned to the input
 // (null entries = no translation, caller falls back to English), or null when
 // the call as a whole failed — callers should treat both as "keep original".

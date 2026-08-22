@@ -6,12 +6,22 @@
  * - Market data proxies + AI endpoints for the app
  */
 
+import {
+  buildMentionIndex, attributeMoves, describeFinding, ATTRIBUTION_WINDOW_MIN,
+} from './newsImpact.js';
+
 // Binance's public market-data mirror — api.binance.com returns 403 to
 // Cloudflare Worker egress IPs in many regions, but data-api.binance.vision
 // (same /api/v3 spot surface) isn't geo-blocked. Futures (fapi) has no mirror.
 const BINANCE_SPOT = 'https://data-api.binance.vision/api/v3';
 const BINANCE_FUTURES = 'https://fapi.binance.com/fapi/v1';
 const CALENDAR_API = 'https://nfs.faireconomy.media/ff_calendar_thisweek.json';
+// Fast aggregated news. Free, no key, and materially faster than the RSS feeds
+// below: measured live, its newest item was 2 minutes old while the six RSS
+// sources ranged 12-53 minutes. It also carries Twitter/Truth Social posts
+// (including @realDonaldTrump) and exchange listing notices, which no RSS feed
+// here does.
+const FAST_NEWS_API = 'https://news.treeofalpha.com/api/news?limit=200';
 
 const DEFAULT_SETTINGS = {
   journal: { enabled: false, time: '21:00' },
@@ -1576,6 +1586,7 @@ async function handleCron(env) {
     checkChurnedPremium(env),
     checkWeeklyDigest(env),
     refreshNewsDigest(env),
+    refreshNewsImpact(env),
     scanWyckoffSetups(env),
   ]);
 }
@@ -3436,6 +3447,159 @@ function isAllowedOrigin(origin) {
 }
 
 // Serve a Binance /api/v3 request from Bybit, returning Binance-shaped JSON.
+// ==================== News → price attribution ================================
+// Answers "why did the price move", which is a different and far more honest
+// question than "will it move". Detection is PRICE-first because only ~16% of
+// headlines coincide with any price anomaly; the news is only ever the
+// explanation. The scoring itself lives in ./newsImpact.js so it can be unit
+// tested outside the Worker runtime.
+//
+// Subrequest budget per run: 1 news + 1 ticker list + IMPACT_SCAN_TOP klines.
+const IMPACT_REFRESH_MIN = 10;    // matches the cron tick; the work is cheap
+const IMPACT_SCAN_TOP = 8;        // candidates promoted to a kline read
+const IMPACT_WINDOW_BARS = 3;     // 3 x 5m = the 15-minute move window
+const IMPACT_BASELINE_BARS = 24;  // 2h of 5m bars as the volume baseline
+const IMPACT_MIN_QUOTE_VOL = 5_000_000; // ignore illiquid pairs entirely
+
+// Normalize the fast-news feed into the shape newsImpact expects. Anything
+// without a title or a timestamp is dropped rather than defaulted.
+async function fetchFastNews() {
+  try {
+    const r = await fetch(FAST_NEWS_API, { headers: { Accept: 'application/json' } });
+    if (!r.ok) return [];
+    const raw = await r.json();
+    if (!Array.isArray(raw)) return [];
+    return raw.map((x) => ({
+      id: x._id || x.url || '',
+      title: String(x.title || '').slice(0, 300),
+      url: typeof x.url === 'string' ? x.url : '',
+      // sourceName is the outlet ("WSJ"); source is the channel ("Blogs").
+      // Corroboration must count outlets, so the outlet wins when present.
+      source: String(x.sourceName || x.source || '').slice(0, 60),
+      ms: Number(x.time) || 0,
+      symbols: Array.isArray(x.symbols) ? x.symbols.slice(0, 8) : [],
+    })).filter((n) => n.title && n.ms);
+  } catch {
+    return [];
+  }
+}
+
+// The short-window move for one symbol, measured against its own recent volume
+// rather than a global constant — a 3x volume spike means something different
+// on BTC than on a microcap.
+async function symbolWindowMove(symbol) {
+  const raw = await bybitAsBinance('klines', new URLSearchParams({
+    symbol, interval: '5m', limit: String(IMPACT_BASELINE_BARS + IMPACT_WINDOW_BARS),
+  }));
+  if (!raw) return null;
+  let rows;
+  try { rows = JSON.parse(raw); } catch { return null; }
+  if (!Array.isArray(rows) || rows.length < IMPACT_BASELINE_BARS + IMPACT_WINDOW_BARS) return null;
+
+  const window = rows.slice(-IMPACT_WINDOW_BARS);
+  const baseline = rows.slice(0, rows.length - IMPACT_WINDOW_BARS);
+  const openPrice = Number(window[0][1]);
+  const closePrice = Number(window[window.length - 1][4]);
+  if (!(openPrice > 0) || !(closePrice > 0)) return null;
+
+  const windowVol = window.reduce((sum, k) => sum + (Number(k[5]) || 0), 0) / window.length;
+  const baseVol = baseline.reduce((sum, k) => sum + (Number(k[5]) || 0), 0) / baseline.length;
+  if (!(baseVol > 0)) return null;
+
+  return {
+    symbol,
+    changePct: ((closePrice - openPrice) / openPrice) * 100,
+    volumeX: windowVol / baseVol,
+    windowMin: IMPACT_WINDOW_BARS * 5,
+  };
+}
+
+// One ticker call prices every listed pair; only the few moving RIGHT NOW are
+// worth a kline read, so the expensive step stays bounded however many pairs
+// the exchange lists.
+//
+// Candidates are ranked against a price snapshot from the previous run, not by
+// 24h change. That distinction was found by running this live: TRUMPUSDT ranked
+// first on 24h change while its actual 15-minute move was +0.04%, so a 24h
+// ranking spends the whole kline budget on coins that moved hours ago and never
+// looks at the one spiking this minute. The snapshot costs one KV read and one
+// write, and yields a real short-window mover list across every symbol.
+async function scanCandidateMoves(env) {
+  const rawTickers = await bybitAsBinance('ticker/24hr', new URLSearchParams());
+  if (!rawTickers) return [];
+  let tickers;
+  try { tickers = JSON.parse(rawTickers); } catch { return []; }
+  if (!Array.isArray(tickers)) return [];
+
+  const liquid = tickers.filter((t) => String(t.symbol || '').endsWith('USDT')
+    && (Number(t.quoteVolume) || 0) >= IMPACT_MIN_QUOTE_VOL
+    && Number(t.lastPrice) > 0);
+
+  const prev = (await env.ALERTS_KV.get('news:impact:prices', 'json')) || {};
+  const snapshot = {};
+  for (const t of liquid) snapshot[t.symbol] = Number(t.lastPrice);
+  // Written before the kline reads so a later failure still advances the
+  // baseline — a stuck snapshot would inflate every subsequent delta.
+  await env.ALERTS_KV.put('news:impact:prices', JSON.stringify(snapshot), { expirationTtl: 60 * 60 * 3 });
+
+  const ranked = liquid
+    .map((t) => {
+      const before = Number(prev[t.symbol]) || 0;
+      const nowPrice = Number(t.lastPrice);
+      // No baseline yet (first run, or a newly listed pair) — fall back to the
+      // 24h figure so the very first run still produces something.
+      const delta = before > 0
+        ? ((nowPrice - before) / before) * 100
+        : (Number(t.priceChangePercent) || 0);
+      return { symbol: t.symbol, delta };
+    })
+    .sort((a, b) => Math.abs(b.delta) - Math.abs(a.delta))
+    .slice(0, IMPACT_SCAN_TOP)
+    .map((t) => t.symbol);
+
+  const settled = await Promise.allSettled(ranked.map(symbolWindowMove));
+  return settled.filter((r) => r.status === 'fulfilled' && r.value).map((r) => r.value);
+}
+
+async function buildNewsImpact(env) {
+  const now = Date.now();
+  const [news, moves] = await Promise.all([fetchFastNews(), scanCandidateMoves(env)]);
+  const index = buildMentionIndex(news, { now, windowMin: ATTRIBUTION_WINDOW_MIN });
+  const findings = attributeMoves(moves, index, { now }).map((f) => ({ ...f, text: describeFinding(f) }));
+
+  // What the market is loudest about right now, whether or not price moved.
+  // Shown as context; it is explicitly NOT a signal and carries no direction.
+  const loudest = [...index.values()]
+    .filter((m) => m.sources.length >= 2)
+    .sort((a, b) => b.sources.length - a.sources.length)
+    .slice(0, 6)
+    .map((m) => ({
+      key: m.key, kind: m.kind, entity: m.entity, title: m.title, url: m.url,
+      sourceCount: m.sources.length, sources: m.sources.slice(0, 6),
+      ageMin: Math.max(0, Math.round((now - m.newestMs) / 60000)),
+    }));
+
+  return {
+    updatedAt: now,
+    newsCount: news.length,
+    scanned: moves.length,
+    findings,
+    loudest,
+  };
+}
+
+async function refreshNewsImpact(env) {
+  try {
+    const ts = parseInt((await env.ALERTS_KV.get('news:impact:ts')) || '0', 10);
+    if (Date.now() - ts < IMPACT_REFRESH_MIN * 60 * 1000) return;
+    const impact = await buildNewsImpact(env);
+    await env.ALERTS_KV.put('news:impact', JSON.stringify(impact), { expirationTtl: 60 * 60 * 6 });
+    await env.ALERTS_KV.put('news:impact:ts', String(impact.updatedAt), { expirationTtl: 60 * 60 * 6 });
+  } catch (err) {
+    console.error('news impact refresh failed:', err);
+  }
+}
+
 // Covers the two endpoints the app actually uses — ticker/24hr (single symbol
 // or a symbols=[...] batch) and klines. Returns a JSON string, or null when
 // the subpath isn't covered / Bybit fails (caller then falls back to stale).
@@ -3584,6 +3748,22 @@ async function handleRequest(request, env) {
     } catch {
       return new Response(JSON.stringify({ error: 'fetch failed' }), { status: 502, headers: { ...cors, 'Content-Type': 'application/json' } });
     }
+  }
+
+  // News → price attribution. Public read of the cron-prepared blob, same
+  // reasoning as the digest below: public data, and the expensive part already
+  // happened on the cron. A cold cache builds on demand so the first visitor
+  // after a KV expiry still gets an answer.
+  if (request.method === 'GET' && path === '/news/impact') {
+    let impact = await env.ALERTS_KV.get('news:impact', 'json');
+    if (!impact) {
+      impact = await buildNewsImpact(env);
+      await env.ALERTS_KV.put('news:impact', JSON.stringify(impact), { expirationTtl: 60 * 60 * 6 });
+      await env.ALERTS_KV.put('news:impact:ts', String(impact.updatedAt), { expirationTtl: 60 * 60 * 6 });
+    }
+    return new Response(JSON.stringify(impact), {
+      headers: { ...cors, 'Content-Type': 'application/json', 'Cache-Control': 'public, max-age=120' },
+    });
   }
 
   // AI news digest — public read of the cron-prepared KV blob (news is public
