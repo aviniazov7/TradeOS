@@ -2103,6 +2103,21 @@ async function geminiStreamToOpenAI(geminiBody) {
   });
 }
 
+// Budget for the journal snapshot carried on every chat turn. Deliberately far
+// below the coach's (2500) because this rides along with the conversation
+// history and the Wyckoff system prompt on an endpoint that already hits Groq's
+// per-minute cap.
+const CHAT_CONTEXT_BUDGET = 900;
+
+const CHAT_CONTEXT_PROMPT = `
+## יומן המסחר של הסוחר (JSON):
+זהו הספר האמיתי שלו. כשהוא שואל על עצמו — "איפה אני מפסיד", "מה עובד לי" — ענה מהנתונים האלה ולא בעצה כללית.
+- אסור להמציא מספר שלא מופיע כאן.
+- אם הנתונים לא מכילים את מה שנשאלת עליו, אמור זאת במפורש והצע מה להוסיף ליומן.
+- "_truncated" מציין שקוצץ חלק מרשימה — זה לא אומר שהיא ריקה.
+\`\`\`json
+`;
+
 const WYCKOFF_SYSTEM_PROMPT = `אתה TradeAI — מנטור מסחר מקצועי ומומחה לשיטת ויקוף (Wyckoff). אתה עוזר לסוחרים לזהות דפוסי שוק, לנתח גרפים ולשפר את המסחר.
 
 ## עקרונות
@@ -2209,7 +2224,7 @@ async function handleAIChat(request, env, cors) {
   let charged = null;
   try {
     // Parse request
-    const { messages } = await request.json();
+    const { messages, context } = await request.json();
     if (!messages || !Array.isArray(messages) || messages.length === 0) {
       return new Response(JSON.stringify({ error: 'Missing messages' }), { status: 400, headers: { ...cors, 'Content-Type': 'application/json' } });
     }
@@ -2310,8 +2325,20 @@ async function handleAIChat(request, env, cors) {
     // Only the image at lastImageIdx (gated above) is forwarded — older ones
     // bloat the payload past the providers' per-request caps.
     const MAX_TURN_CHARS = 2500;
+
+    // The trader's own book, so the chat can answer "where am I losing money"
+    // instead of giving generic advice. Kept small on purpose: this rides along
+    // with EVERY turn (the system message is rebuilt per request), and the whole
+    // reason history is trimmed above is that this endpoint blows Groq's
+    // tokens-per-minute cap easily. Skipped entirely for image turns, where the
+    // picture is the subject and the budget is already tight.
+    const journalContext = (!hasImage && context && typeof context === 'object' && !Array.isArray(context))
+      ? packCoachStats(context, CHAT_CONTEXT_BUDGET)
+      : null;
+
     const apiMessages = [
       { role: 'system', content: hasImage ? WYCKOFF_VISION_PROMPT : WYCKOFF_SYSTEM_PROMPT },
+      ...(journalContext ? [{ role: 'system', content: CHAT_CONTEXT_PROMPT + journalContext + '\n```' }] : []),
       ...recent.map((msg, i) => {
         const text = String(msg.text || '').slice(0, MAX_TURN_CHARS);
         if (i === lastImageIdx) {

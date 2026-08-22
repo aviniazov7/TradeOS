@@ -78,7 +78,7 @@ export default function TradeAIHub({ stats, tradesCount, equityCurve, onAsk, ope
         </h1>
         <p className="text-[11px] text-text-muted mt-1">
           {tradesCount
-            ? `הסוכן רואה את ${tradesCount} העסקאות שלך, את התוכנית ואת יומן המנטליות.`
+            ? `הסוכן רואה את ${tradesCount} העסקאות הסגורות שלך. לתוכנית וליומן המנטליות — פתח את "האנליסט שלך".`
             : 'הוסף עסקאות כדי שהסוכן יוכל לנתח את הספר שלך.'}
         </p>
         {onToggle && (
