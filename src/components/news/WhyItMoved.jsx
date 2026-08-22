@@ -67,7 +67,10 @@ export default function WhyItMoved() {
   if (data === undefined) return <div className="h-24 rounded-2xl bg-bg-secondary animate-pulse mb-5" />;
   if (!data) return null; // a failed read stays silent rather than claiming the market is quiet
 
-  const { findings = [], loudest = [] } = data;
+  const { findings = [], loudest = [], newsSource, windowMin } = data;
+  // Say when the coverage is the slower fallback. A panel that looks identical
+  // whether its news is 2 minutes or 4 hours old is quietly misleading.
+  const delayed = newsSource === 'rss-fallback';
 
   return (
     <section className="mb-6 space-y-3">
@@ -77,6 +80,11 @@ export default function WhyItMoved() {
         <span className="text-[10px] text-text-muted">
           תנועה חריגה במחיר ובווליום, והסיקור שהתפרסם במקביל
         </span>
+        {delayed && (
+          <span className="text-[10px] px-1.5 py-0.5 rounded-full border border-breakeven/40 text-breakeven">
+            סיקור מושהה · חלון {Math.round((windowMin || 240) / 60)} שעות
+          </span>
+        )}
       </div>
 
       {findings.length > 0 ? (
