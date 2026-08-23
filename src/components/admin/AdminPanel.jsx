@@ -15,76 +15,14 @@ import { adminListCoupons, adminCreateCoupon, adminDeleteCoupon, couponShareUrl 
 import LoadingSpinner from '../shared/LoadingSpinner';
 import SelectDropdown from '../shared/SelectDropdown';
 import Modal from '../shared/Modal';
+import {
+  toDate, formatDate, isUserPremium, lastActiveMs, daysSinceActive, activeWithin,
+  daysUntilExpiry, relativeActive, ILS, csvCell,
+} from '../../utils/adminStats';
 
 // Compute effective premium status from a user doc (admins are always premium;
 // otherwise plan='premium' and planExpires (if set) must be in the future).
-function isUserPremium(u) {
-  if (!u) return false;
-  if (u.role === 'admin') return true;
-  if (u.plan !== 'premium') return false;
-  if (!u.planExpires) return true; // lifetime
-  // Must go through toDate — planExpires is a Firestore Timestamp, and
-  // new Date(Timestamp) is Invalid Date → NaN → a real premium user would be
-  // shown as "חינמי". If it's set but truly unparseable, keep the badge
-  // (plan is explicitly 'premium') rather than falsely stripping it.
-  const d = toDate(u.planExpires);
-  return d ? d.getTime() > Date.now() : true;
-}
-
-function toDate(v) {
-  if (!v) return null;
-  if (typeof v.toDate === 'function') return v.toDate();        // Firestore SDK Timestamp
-  if (typeof v === 'number') return new Date(v);                 // epoch ms
-  if (typeof v === 'object') {                                   // serialized Timestamp
-    const s = v.seconds ?? v._seconds;
-    if (typeof s === 'number') return new Date(s * 1000);
-  }
-  const d = new Date(v);                                         // ISO string / Date
-  return isNaN(d) ? null : d;
-}
-
-function formatDate(v) {
-  const d = toDate(v);
-  return d ? d.toLocaleDateString('he-IL', { day: '2-digit', month: '2-digit', year: 'numeric' }) : '—';
-}
-
 const DAY_MS = 24 * 60 * 60 * 1000;
-function lastActiveMs(u) {
-  return toDate(u?.lastActive)?.getTime() || 0;
-}
-function daysSinceActive(u) {
-  const t = lastActiveMs(u);
-  return t ? Math.floor((Date.now() - t) / DAY_MS) : Infinity;
-}
-// Hebrew relative "last seen" label.
-function relativeActive(v) {
-  const d = toDate(v);
-  if (!d) return 'מעולם לא';
-  const diff = Date.now() - d.getTime();
-  if (diff < 60 * 1000) return 'עכשיו';
-  const mins = Math.floor(diff / 60000);
-  if (mins < 60) return `לפני ${mins} ד'`;
-  const hrs = Math.floor(mins / 60);
-  if (hrs < 24) return `לפני ${hrs} שע'`;
-  const days = Math.floor(hrs / 24);
-  if (days === 1) return 'אתמול';
-  if (days < 30) return `לפני ${days} ימים`;
-  const months = Math.floor(days / 30);
-  return months === 1 ? 'לפני חודש' : `לפני ${months} חודשים`;
-}
-// Active = opened the app within the last `days` days.
-function activeWithin(u, days) {
-  return daysSinceActive(u) <= days;
-}
-
-// Days until Premium expires (negative if already expired, Infinity if lifetime).
-function daysUntilExpiry(u) {
-  const d = toDate(u?.planExpires);
-  if (!d) return Infinity; // lifetime / unknown
-  return Math.ceil((d.getTime() - Date.now()) / DAY_MS);
-}
-
-const ILS = (n) => '₪' + Math.round(Number(n) || 0).toLocaleString('he-IL');
 
 // Revenue-chart buckets, derived from each payment's `days` field (addPayment
 // stores days: null for lifetime grants). Stack order = object order.
@@ -215,10 +153,6 @@ function sortValue(u, key) {
   return (u[key] || '').toString().toLowerCase();
 }
 
-function csvCell(v) {
-  const s = (v ?? '').toString();
-  return /[",\n]/.test(s) ? `"${s.replace(/"/g, '""')}"` : s;
-}
 
 export default function AdminPanel() {
   const { isAdmin, profile } = useAuth();
