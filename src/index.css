@@ -54,7 +54,10 @@ body {
 
   /* Text */
   --color-text-primary: #f0f0f0;
-  --color-text-secondary: #a0a0b0;
+  /* Lifted with --color-text-muted below so the two stay a distinguishable
+     tier apart: at the old #a0a0b0 the pair measured 1.30:1, which made every
+     `text-text-muted hover:text-text-secondary` affordance imperceptible. */
+  --color-text-secondary: #bcbcc9;
   /* Lifted from #606070, which measured ~3:1 on the near-black surfaces —
      below the 4.5:1 AA floor for normal text, and this is the default for
      almost every small label, caption and metadata string in the app. */
@@ -178,13 +181,42 @@ body {
    (bg-accent-primary/10|15|20) used for subtle chips/active highlights, which
    must stay as faint solid washes. Background-image paints over Tailwind's
    background-color, so solid accent buttons/badges/active tabs become gradient. */
+/* The app chrome's real height in one place. The header pads itself by the top
+   safe-area inset (index.html sets viewport-fit=cover), so anything positioned
+   under the header MUST measure against this and not a hardcoded 3.5rem —
+   otherwise the header simply covers the top of the page on a notched device. */
+:root { --app-header-h: calc(3.5rem + env(safe-area-inset-top, 0px)); }
+@media (min-width: 768px) {
+  :root { --app-header-h: calc(4rem + env(safe-area-inset-top, 0px)); }
+}
+
 /* Keyboard focus was invisible app-wide: no :focus-visible rule existed and
    ~50 components set `outline-none`. :focus-visible (not :focus) keeps mouse
-   users unaffected while giving keyboard users a real, consistent indicator. */
+   users unaffected while giving keyboard users a real, consistent indicator.
+   The offset is NEGATIVE on purpose: an outward ring is clipped away entirely
+   by the `overflow-hidden` wrappers every dropdown, segmented control and
+   stepper in this app is built from, which would leave exactly the widgets a
+   keyboard user most needs with no indicator at all. And no `border-radius`
+   here: border-radius is not an inherited property, so `inherit` would force
+   the PARENT's radius onto the focused element and square off round cards. */
 :focus-visible {
   outline: 2px solid var(--color-accent-primary);
-  outline-offset: 2px;
-  border-radius: inherit;
+  outline-offset: -2px;
+}
+/* The shared dialog is focused programmatically on open; ringing the whole
+   card reads as a bug, and the Tab trap already keeps focus inside it. */
+[role="dialog"]:focus-visible { outline: none; }
+
+/* Accent tints used from inline styles, kept here so the plain-colour fallback
+   applies on engines without color-mix() (Safari < 16.2). Tailwind emits the
+   same @supports guard for its own /opacity modifiers. */
+.nav-active-wash { background: linear-gradient(90deg, rgba(59, 130, 246, 0.14) 0%, rgba(139, 92, 246, 0.07) 100%); }
+.nav-active-glow { box-shadow: 0 0 10px 0 rgba(59, 130, 246, 0.6); }
+@supports (color: color-mix(in srgb, red, red)) {
+  .nav-active-wash {
+    background: linear-gradient(90deg, color-mix(in srgb, var(--color-accent-primary) 14%, transparent) 0%, rgba(139, 92, 246, 0.07) 100%);
+  }
+  .nav-active-glow { box-shadow: 0 0 10px 0 color-mix(in srgb, var(--color-accent-primary) 60%, transparent); }
 }
 
 [class~="bg-accent-primary"] {

@@ -219,7 +219,7 @@ async function sendWebPush(env, subscription, data) {
   try {
     const body = await encryptPush(p256dh, auth, JSON.stringify(data));
     const audience = new URL(endpoint).origin;
-    const res = await fetch(endpoint, {
+    const res = await fetchT(endpoint, {
       method: 'POST',
       headers: {
         'Authorization': await vapidAuthHeader(env, audience),
@@ -1325,7 +1325,11 @@ const CG_PARAMS = [
   'community_data', 'developer_data', 'include_24hr_change', 'include_24hr_vol',
   'include_market_cap', 'include_last_updated_at',
 ];
-const BNB_PARAMS = ['symbol', 'symbols', 'interval', 'limit', 'startTime', 'endTime', 'timeZone'];
+// `category` matters even though Binance ignores it: the Bybit fallback below
+// reads it to choose spot vs linear, so leaving it out of the canonical query
+// let PERPETUAL candles be cached under a key that reads as spot and served to
+// every later spot request for the life of the entry.
+const BNB_PARAMS = ['symbol', 'symbols', 'interval', 'limit', 'startTime', 'endTime', 'timeZone', 'category'];
 
 function canonicalQuery(search, allowed) {
   const src = new URLSearchParams(search);
@@ -4223,7 +4227,7 @@ async function handleRequest(request, env, ctx) {
       if (hit) return hit;
       // Browser-like UA — CoinGecko's free tier 403s bare server-side fetches
       // from Cloudflare egress IPs but generally serves browser-looking ones.
-      const res = await fetch(cgUrl, { headers: { 'Accept': 'application/json', 'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36' } });
+      const res = await fetchT(cgUrl, { headers: { 'Accept': 'application/json', 'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36' } });
       if (!res.ok) return new Response(JSON.stringify({ error: res.status }), { status: res.status, headers: { ...cors, 'Content-Type': 'application/json' } });
       const text = await res.text();
       // ACAO '*' — public non-credentialed data, so the edge-cached copy
@@ -4265,7 +4269,12 @@ async function handleRequest(request, env, ctx) {
       let res = null;
       let lastStatus = 0;
       for (const host of BNB_HOSTS) {
-        const r = await fetchT(`${host}/api/v3/${subPath}${bnbQuery}`, { headers: { 'Accept': 'application/json' } });
+        // .catch here is what makes fetchT safe on this route: an abort rejects,
+        // and an unguarded rejection would unwind past the mirror host, past the
+        // Bybit translation AND past the stale-cache rescue, turning a slow
+        // upstream into a hard 502 — the opposite of the intent.
+        const r = await fetchT(`${host}/api/v3/${subPath}${bnbQuery}`, { headers: { 'Accept': 'application/json' } }).catch(() => null);
+        if (!r) { lastStatus = lastStatus || 504; continue; }
         if (r.ok) { res = r; break; }
         lastStatus = r.status;
       }
@@ -4278,7 +4287,7 @@ async function handleRequest(request, env, ctx) {
       if (res) {
         text = await res.text();
       } else {
-        text = await bybitAsBinance(subPath, url.searchParams);
+        text = await bybitAsBinance(subPath, new URLSearchParams(bnbQuery));
       }
       if (text === null) {
         // Bybit translation didn't cover this subpath / upstream failed —
@@ -5051,13 +5060,17 @@ async function handleRequest(request, env, ctx) {
     // grant race; if the plan write below fails, the user can try again — the
     // marker is per-uid so they won't double-redeem either way.
     //
-    // The claim is written with a SHORT TTL and only made permanent once the
-    // plan write succeeds. The explicit rollback below covers a failed write,
-    // but nothing covered the isolate dying mid-flow (eviction, subrequest cap,
-    // a network reject): the user was then permanently told "כבר מימשת את הקוד
-    // הזה" while never having received Premium. Now that self-heals in 10
-    // minutes instead of becoming a support ticket.
-    await env.ALERTS_KV.put(redeemKey, '1', { expirationTtl: 600 });
+    // This claim is PERMANENT from the moment it is written, deliberately. An
+    // earlier revision gave it a short TTL so an interrupted redeem could heal
+    // itself, and that was wrong: once firebaseAdminPatchUser has committed the
+    // grant, a claim that later expires lets the same code be redeemed again
+    // and `startFrom = max(currentExpiry, now)` STACKS a second window on top —
+    // a single-use code paying out twice. It also silently shrank the maxUses
+    // count, which is derived by listing these very markers. The trade-off the
+    // original design chose stands: a redeem interrupted between the claim and
+    // the grant leaves the user claimed-but-ungranted, which an admin can fix,
+    // and that is strictly better than an unbounded free grant.
+    await env.ALERTS_KV.put(redeemKey, '1');
 
     // Enforce maxUses by COUNTING the per-uid markers after claiming (#202) —
     // the used-counter's get→+1→put raced under concurrency, letting a capped
@@ -5091,10 +5104,6 @@ async function handleRequest(request, env, ctx) {
       await env.ALERTS_KV.delete(redeemKey);
       return new Response(JSON.stringify({ error: 'מימוש הקופון נכשל. נסה שוב.', detail: wrote.error }), { status: 502, headers: { ...cors, 'Content-Type': 'application/json' } });
     }
-
-    // The grant landed — make the claim permanent (it was written with a short
-    // TTL above so an interrupted redeem could be retried).
-    await env.ALERTS_KV.put(redeemKey, '1');
 
     // Bust the 10-minute plan cache so Premium kicks in IMMEDIATELY (#203) —
     // the admin grant path already does this via /admin/refresh-plan; without

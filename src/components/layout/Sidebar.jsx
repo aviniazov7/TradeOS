@@ -84,7 +84,8 @@ export default function Sidebar({ mobileOpen, onClose }) {
             animate={{ x: 0 }}
             exit={{ x: '100%' }}
             transition={{ type: 'tween', duration: 0.25 }}
-            className="fixed right-0 top-14 md:top-16 h-[calc(100dvh-3.5rem)] md:h-[calc(100dvh-4rem)] w-64 border-l border-border-primary z-50 flex flex-col"
+            className="fixed right-0 w-64 border-l border-border-primary z-50 flex flex-col"
+            style={{ top: 'var(--app-header-h)', height: 'calc(100dvh - var(--app-header-h))' }}
             style={{ background: 'var(--color-bg-solid)', backdropFilter: 'blur(24px)', WebkitBackdropFilter: 'blur(24px)' }}
           >
 
@@ -99,16 +100,11 @@ export default function Sidebar({ mobileOpen, onClose }) {
                     className={({ isActive }) =>
                       `group relative flex items-center gap-3 px-3 py-2.5 rounded-xl text-sm font-medium transition-all duration-200 ${
                         isActive
-                          ? 'border border-accent-primary/20'
+                          ? 'border border-accent-primary/20 nav-active-wash'
                           : item.highlight
                             ? 'border border-transparent hover:bg-bg-tertiary/60'
                             : 'border border-transparent text-text-secondary hover:text-text-primary hover:bg-bg-tertiary/60'
                       }`
-                    }
-                    style={({ isActive }) =>
-                      isActive
-                        ? { background: 'linear-gradient(90deg, color-mix(in srgb, var(--color-accent-primary) 14%, transparent) 0%, rgba(139,92,246,0.07) 100%)' }
-                        : undefined
                     }
                   >
                     {({ isActive }) => {
@@ -117,8 +113,8 @@ export default function Sidebar({ mobileOpen, onClose }) {
                         <>
                           {isActive && (
                             <span
-                              className="absolute right-0 top-1/2 -translate-y-1/2 h-7 w-1 rounded-full"
-                              style={{ background: 'linear-gradient(180deg,#60a5fa,#2563eb)', boxShadow: '0 0 10px 0 color-mix(in srgb, var(--color-accent-primary) 60%, transparent)' }}
+                              className="absolute right-0 top-1/2 -translate-y-1/2 h-7 w-1 rounded-full nav-active-glow"
+                              style={{ background: 'linear-gradient(180deg,#60a5fa,#2563eb)' }}
                             />
                           )}
                           <item.icon

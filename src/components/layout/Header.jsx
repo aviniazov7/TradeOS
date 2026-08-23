@@ -10,7 +10,7 @@ export default function Header({ onToggleSidebar, sidebarOpen }) {
 
   return (
     <header
-      className="h-14 md:h-16 border-b border-border-primary flex items-center px-4 md:px-6 gap-3 fixed top-0 left-0 right-0 z-[60] box-content"
+      className="border-b border-border-primary flex items-center px-4 md:px-6 gap-3 fixed top-0 left-0 right-0 z-[60]"
       style={{
         background: 'var(--color-bg-solid)',
         backdropFilter: 'blur(18px)',
@@ -18,8 +18,11 @@ export default function Header({ onToggleSidebar, sidebarOpen }) {
         // index.html sets viewport-fit=cover, so the layout runs under the
         // notch. The bottom inset was padded everywhere but the top was not,
         // leaving the burger, search and avatar partly under the status bar in
-        // the installed iOS PWA. box-content keeps the bar's own height intact
-        // while the inset is added on top of it.
+        // the installed iOS PWA. --app-header-h carries the bar PLUS that
+        // inset, and everything positioned below the header measures against
+        // the same token — padding the header alone would just move the
+        // problem from "chrome under the notch" to "chrome over the content".
+        height: 'var(--app-header-h)',
         paddingTop: 'env(safe-area-inset-top, 0px)',
       }}
     >

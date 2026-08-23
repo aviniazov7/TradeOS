@@ -40,24 +40,29 @@ export default function Layout() {
       <BackgroundIcons />
       <Sidebar mobileOpen={sidebarOpen} onClose={() => setSidebarOpen(false)} />
 
-      {!isOnline && (
-        <div
-          role="status"
-          aria-live="polite"
-          className="fixed top-0 left-0 right-0 z-[100] flex items-center justify-center gap-2 bg-loss/90 text-white text-xs font-semibold py-1.5"
-          style={{ paddingTop: 'calc(0.375rem + env(safe-area-inset-top, 0px))' }}
-          dir="rtl"
-        >
-          <WifiOff className="w-3.5 h-3.5" /> אין חיבור לאינטרנט
-        </div>
-      )}
+      {/* Always mounted so it is a LIVE region whose CONTENT changes — a region
+          inserted together with its text is a documented VoiceOver/Safari
+          miss, and the installed iOS PWA is exactly the target here. Sits
+          BELOW the header rather than over it: both are fixed to the top, and
+          the banner (z-[100]) used to paint across the header's controls. */}
+      <div
+        role="status"
+        className={isOnline
+          ? 'sr-only'
+          : 'fixed left-0 right-0 z-[55] flex items-center justify-center gap-2 bg-loss/90 text-white text-xs font-semibold py-1.5'}
+        style={isOnline ? undefined : { top: 'var(--app-header-h)' }}
+        dir="rtl"
+      >
+        {!isOnline && (<><WifiOff className="w-3.5 h-3.5" /> אין חיבור לאינטרנט</>)}
+      </div>
 
       <Header onToggleSidebar={() => setSidebarOpen((v) => !v)} sidebarOpen={sidebarOpen} />
 
       {/* Scrollable content — independent scroll context so iOS fixed nav never jumps */}
       <div
         id="app-scroll"
-        className="absolute inset-0 mt-14 md:mt-16 overflow-y-auto overflow-x-hidden"
+        className="absolute inset-0 overflow-y-auto overflow-x-hidden"
+        style={{ marginTop: 'var(--app-header-h)' }}
         style={{ WebkitOverflowScrolling: 'touch' }}
       >
         <main className="p-3 md:p-6 pb-[calc(env(safe-area-inset-bottom,0px)+96px)] lg:pb-6">

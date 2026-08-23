@@ -60,7 +60,15 @@ export default function Modal({ isOpen, onClose, title, ariaLabel, children, max
       const first = items[0];
       const last = items[items.length - 1];
       const active = document.activeElement;
-      if (!cardRef.current?.contains(active)) { e.preventDefault(); first.focus(); return; }
+      // Only pull focus back when it escaped into the PAGE. Several widgets
+      // used inside modals (SelectDropdown, StrategySelector, react-datepicker)
+      // portal their popup to document.body / #datepicker-portal — outside the
+      // card but conceptually inside the dialog. Treating those as "escaped"
+      // made the date grid and every dropdown option keyboard-unreachable.
+      const appRoot = document.getElementById('root');
+      const escapedToPage = appRoot?.contains(active) && !cardRef.current?.contains(active);
+      if (escapedToPage) { e.preventDefault(); first.focus(); return; }
+      if (!cardRef.current?.contains(active)) return; // in a portalled popup — let it tab freely
       if (e.shiftKey && active === first) { e.preventDefault(); last.focus(); }
       else if (!e.shiftKey && active === last) { e.preventDefault(); first.focus(); }
     };

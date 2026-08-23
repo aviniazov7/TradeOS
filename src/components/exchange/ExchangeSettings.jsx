@@ -262,7 +262,7 @@ export function SyncModal({ exchange, trades, onClose, onImport, existingExterna
         className="rounded-t-2xl sm:rounded-2xl w-full sm:max-w-lg max-h-[80dvh] sm:max-h-[85dvh] flex flex-col shadow-2xl"
         style={{
           background: 'var(--color-bg-secondary)',
-          border: '1px solid color-mix(in srgb, var(--color-accent-primary) 22%, transparent)',
+          border: '1px solid var(--glass-border)',
           boxShadow: '0 32px 80px rgba(0,0,0,0.5), 0 0 0 1px rgba(255,255,255,0.04) inset',
         }}
         onClick={e => e.stopPropagation()}>

@@ -192,7 +192,15 @@ export default function MonthlyCalendar({ trades, journalName }) {
                 {data && (
                   <span className={`text-[10px] font-semibold ${pnl >= 0 ? 'text-profit' : 'text-loss'}`}>
                     <span className="hidden md:inline">{formatCurrency(pnl)}</span>
-                    <span className="md:hidden">{pnl >= 0 ? '+' : ''}{pnl.toFixed(0)}$</span>
+                    {/* A day cell is ~43px wide on a 375px screen, so a
+                        four-figure result has to be abbreviated or it spills
+                        out of the cell at this (now readable) size. */}
+                    <span className="md:hidden">
+                      {pnl >= 0 ? '+' : '-'}
+                      {Math.abs(pnl) >= 1000
+                        ? `${(Math.abs(pnl) / 1000).toFixed(1)}k`
+                        : Math.abs(pnl).toFixed(0)}$
+                    </span>
                   </span>
                 )}
               </button>

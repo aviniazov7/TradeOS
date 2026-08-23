@@ -149,7 +149,12 @@ self.addEventListener('notificationclick', (event) => {
   const sameOrigin = (raw) => {
     try {
       const u = new URL(raw ?? '', self.location.origin);
-      return u.origin === self.location.origin ? u.pathname + u.search + u.hash : '/';
+      // Return the ABSOLUTE href, not a relative-looking path. A payload like
+      // '/..//evil.com' normalises to the pathname '//evil.com' on an origin
+      // that still matches ours — and navigate()/openWindow() would resolve
+      // that string a SECOND time, where a leading '//' is protocol-relative
+      // and lands cross-origin. An href cannot be re-resolved.
+      return u.origin === self.location.origin ? u.href : '/';
     } catch {
       return '/';
     }
