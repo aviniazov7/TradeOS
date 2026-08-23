@@ -27,7 +27,14 @@ import CoinIcon from '../shared/CoinIcon';
 import { useJournalContext } from '../../contexts/JournalContext';
 import { useAuth } from '../../contexts/AuthContext';
 import { updateUserDocument, arrayUnion, timestamp } from '../../services/firestoreService';
-import { computeTradeFields } from '../../utils/calculations';
+import {
+  isLimitTriggered as checkLimitTriggered,
+  isMarketActive as checkMarketActive,
+  isStopHit,
+  reachedTakeProfits,
+  livePnl,
+  buildCloseUpdate,
+} from '../../utils/orderTracking';
 import { auth } from '../../services/firebase';
 import { WORKER_BASE } from '../../config/workerBase';
 
@@ -59,11 +66,8 @@ function TrackBar({ trade, currentPrice, tpReached = [], onTpReached, onLimitTri
   const tpPrices = [...executedExits.map(e => e.price), ...plannedTps];
 
   const limitFiredRef = useRef(false);
-  const isLimitTriggered = trade.limitTriggered ||
-    (trade.orderType === 'limit' && currentPrice != null &&
-      (isLong ? currentPrice <= entry : currentPrice >= entry));
-
-  const isMarketActive = trade.orderType !== 'limit' || isLimitTriggered;
+  const isLimitTriggered = checkLimitTriggered(trade, currentPrice);
+  const isMarketActive = checkMarketActive(trade, currentPrice);
 
   // Limit trigger side-effect — only in useEffect, never during render
   useEffect(() => {
@@ -88,17 +92,17 @@ function TrackBar({ trade, currentPrice, tpReached = [], onTpReached, onLimitTri
 
   const SL_COOLDOWN = 6000;
 
-  // SL hit detection — useEffect only, never during render
+  // SL hit detection — useEffect only, never during render. The predicate is
+  // pure (see utils/orderTracking); the cooldown and the fired-once ref are the
+  // React-side concerns that stay here.
   useEffect(() => {
-    if (trade.status === 'closed' || !isMarketActive || currentPrice == null) return;
     if (slFiredRef.current) return;
     if (Date.now() - slChangedAtRef.current < SL_COOLDOWN) return;
-    const hit = isLong ? currentPrice <= sl : currentPrice >= sl;
-    if (hit) {
+    if (isStopHit(trade, currentPrice)) {
       slFiredRef.current = true;
       onSLHit?.();
     }
-  }, [currentPrice, isMarketActive, sl, isLong, trade.status, onSLHit]);
+  }, [currentPrice, trade, onSLHit]);
 
 
   // Pure check — safe to call during render (no side-effects)
@@ -107,15 +111,10 @@ function TrackBar({ trade, currentPrice, tpReached = [], onTpReached, onLimitTri
     return currentPrice != null && (isLong ? currentPrice >= tp : currentPrice <= tp);
   };
 
-  // Side-effects (Firestore writes + flash animation) live in useEffect only
+  // Side-effects (Firestore writes + flash animation) live in useEffect only.
+  // Which levels were newly reached is decided by the pure helper.
   useEffect(() => {
-    if (!isMarketActive || currentPrice == null || trade.status === 'closed') return;
-    plannedTps.forEach((tp, i) => {
-      const tpIdx = executedExits.length + i;
-      if (tpReached.includes(tpIdx)) return;
-      const reached = isLong ? currentPrice >= tp : currentPrice <= tp;
-      if (!reached) return;
-      const isLast = tpIdx === tpPrices.length - 1;
+    for (const { index: tpIdx, isLast } of reachedTakeProfits(trade, currentPrice, tpReached)) {
       onTpReached?.(tpIdx, isLast);
       if (!flashedRef.current.has(tpIdx)) {
         flashedRef.current.add(tpIdx);
@@ -126,7 +125,7 @@ function TrackBar({ trade, currentPrice, tpReached = [], onTpReached, onLimitTri
           return next;
         }), 1200);
       }
-    });
+    }
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [currentPrice, isMarketActive, trade.status]);
 
@@ -523,30 +522,6 @@ function TrackBar({ trade, currentPrice, tpReached = [], onTpReached, onLimitTri
   );
 }
 
-// Build the Firestore update for a trade closing at `closePrice` via a live
-// SL/TP hit. Completes the exits (existing partial TPs + the remaining size at
-// the close price) and runs the canonical computeTradeFields, so the stored
-// netPnl/result account for partial exits AND fees — and a stop that still
-// lands in net profit (after earlier TPs) is no longer mislabeled a 'loss'.
-function closeTradeAt(trade, closePrice) {
-  const price = parseFloat(closePrice);
-  const entry = parseFloat(trade.entryPrice) || 0;
-  const existing = (trade.exits || [])
-    .map((e) => ({ price: parseFloat(e.price), percent: parseFloat(e.percent) }))
-    .filter((e) => e.price > 0 && e.percent > 0);
-  const executedPct = existing.reduce((s, e) => s + e.percent, 0);
-  const remainingPct = Math.max(0, 100 - executedPct);
-  // Only synthesize a final exit when partial TPs were already taken; a clean
-  // full close just uses exitPrice (computeTradeFields handles both paths).
-  const exits = existing.length && remainingPct > 0 ? [...existing, { price, percent: remainingPct }] : existing;
-  const quantity = parseFloat(trade.quantity) || (entry > 0 ? (parseFloat(trade.positionSize) || 0) / entry : 0);
-  const { pnl, pnlPercent, rrRatio, netPnl, result } =
-    computeTradeFields({ ...trade, status: 'closed', exitPrice: price, exits, quantity });
-  const update = { status: 'closed', exitPrice: price, exitDate: timestamp(), pnl, pnlPercent, rrRatio, netPnl, result };
-  if (existing.length) update.exits = exits;
-  return update;
-}
-
 function getTimeSince(trade) {
   const raw = trade.entryDate || trade.createdAt;
   if (!raw) return null;
@@ -612,13 +587,7 @@ export default function PendingLimitOrders({ trades, livePrices }) {
 
   const handleTpReached = useCallback((trade, tpIdx, currentPrice, isLastTp) => {
     if (!user?.uid) return;
-    const pnl = (() => {
-      const entry = parseFloat(trade.entryPrice);
-      const posSize = parseFloat(trade.positionSize);
-      if (!currentPrice || !entry || !posSize) return null;
-      const qty = posSize / entry;
-      return trade.direction === 'long' ? (currentPrice - entry) * qty : (entry - currentPrice) * qty;
-    })();
+    const pnl = livePnl(trade, currentPrice);
     // Exchange trades: don't touch the doc — the sync closes them with the real
     // fill + settled PnL. Just notify so the user still gets the TP alert.
     if (isExchangeTrade(trade)) {
@@ -626,7 +595,7 @@ export default function PendingLimitOrders({ trades, livePrices }) {
       return;
     }
     const updates = { tpReached: arrayUnion(tpIdx) };
-    if (isLastTp) Object.assign(updates, closeTradeAt(trade, currentPrice));
+    if (isLastTp) Object.assign(updates, buildCloseUpdate(trade, currentPrice, timestamp()));
     updateUserDocument(user.uid, 'trades', trade.id, updates).catch(() => {});
     sendNotification('tp', trade, currentPrice, pnl, { tpIndex: tpIdx, isLastTp });
   }, [user?.uid, sendNotification]);
@@ -671,19 +640,13 @@ export default function PendingLimitOrders({ trades, livePrices }) {
 
   const handleSLHit = useCallback((trade, currentPrice) => {
     if (!user?.uid) return;
-    const entry = parseFloat(trade.entryPrice);
-    const posSize = parseFloat(trade.positionSize);
-    let pnl = null;
-    if (currentPrice && entry && posSize) {
-      const qty = posSize / entry;
-      pnl = trade.direction === 'long' ? (currentPrice - entry) * qty : (entry - currentPrice) * qty;
-    }
+    const pnl = livePnl(trade, currentPrice);
     // Exchange trades: let the sync record the real close/PnL — just notify.
     if (isExchangeTrade(trade)) {
       sendNotification('sl', trade, currentPrice, pnl);
       return;
     }
-    updateUserDocument(user.uid, 'trades', trade.id, closeTradeAt(trade, currentPrice)).catch(() => {});
+    updateUserDocument(user.uid, 'trades', trade.id, buildCloseUpdate(trade, currentPrice, timestamp())).catch(() => {});
     sendNotification('sl', trade, currentPrice, pnl);
   }, [user?.uid, sendNotification]);
 
