@@ -72,15 +72,27 @@ function hashStr(s) {
 }
 
 // Map an entry timestamp to one of the SESSIONS the journal supports.
-// UTC bands: London 08:00-13:00, London/NY Overlap 13:00-17:00,
-// New York 17:00-22:00, Asia the rest.
+//
+// ISRAEL-local bands, byte-for-byte the same as src/utils/sessions.js:
+// London 09:00-14:00, London/NY Overlap 14:00-18:00, New York 18:00-23:00,
+// Asia the rest. These used to be fixed UTC bands, which do not line up with
+// Israel time in either DST or winter — so the SAME wall-clock entry was
+// bucketed into different sessions depending only on whether the trade was
+// imported from an exchange or typed in by hand (09:30 Israel winter landed in
+// 'London' manually and 'Asia' on import), silently splitting every
+// session-performance breakdown. Any client change to the bands must be
+// mirrored here.
 function sessionFromDate(isoOrMs) {
   if (!isoOrMs) return null;
-  const h = new Date(isoOrMs).getUTCHours();
+  const d = new Date(isoOrMs);
+  if (Number.isNaN(d.getTime())) return null;
+  const h = parseInt(new Intl.DateTimeFormat('en-US', {
+    hour: 'numeric', hour12: false, timeZone: 'Asia/Jerusalem',
+  }).format(d), 10);
   if (Number.isNaN(h)) return null;
-  if (h >= 13 && h < 17) return 'London/NY Overlap';
-  if (h >= 8 && h < 13) return 'London';
-  if (h >= 17 && h < 22) return 'New York';
+  if (h >= 14 && h < 18) return 'London/NY Overlap';
+  if (h >= 9 && h < 14) return 'London';
+  if (h >= 18 && h < 23) return 'New York';
   return 'Asia';
 }
 
@@ -3950,14 +3962,23 @@ async function handleRequest(request, env) {
     }
     const body = await request.json().catch(() => ({}));
     const hhmm = (v, dflt) => (typeof v === 'string' && /^([01]\d|2[0-3]):[0-5]\d$/.test(v) ? v : dflt);
-    const s = {
-      journal: { enabled: body?.journal?.enabled === true, time: hhmm(body?.journal?.time, '21:00') },
-      summary: { enabled: body?.summary?.enabled === true, time: hhmm(body?.summary?.time, '22:00') },
-      calendar: { enabled: body?.calendar?.enabled === true },
-    };
+    // Derived FROM DEFAULT_SETTINGS instead of a hand-written literal. The
+    // literal had drifted: it rebuilt the object with journal/summary/calendar
+    // only, so `newsImpact` was silently dropped on every save and the
+    // news-impact push — which selects recipients on newsImpact.enabled — could
+    // never reach anyone, while the endpoint still answered 200 and echoed the
+    // toggle back reset. Deriving the shape means a new key in DEFAULT_SETTINGS
+    // can never again be accepted by the client and discarded by the server.
+    const s = {};
+    for (const [key, dflt] of Object.entries(DEFAULT_SETTINGS)) {
+      s[key] = { enabled: body?.[key]?.enabled === true };
+      if (typeof dflt.time === 'string') s[key].time = hhmm(body?.[key]?.time, dflt.time);
+    }
     await env.ALERTS_KV.put(`usettings:${uid}`, JSON.stringify(s));
     const all = (await env.ALERTS_KV.get('usettings:ALL', 'json')) || {};
-    const anyOn = s.journal.enabled || s.summary.enabled || s.calendar.enabled;
+    // A user whose ONLY enabled toggle is newsImpact must stay in the rolled-up
+    // blob — the cron reads recipients from it.
+    const anyOn = Object.values(s).some((v) => v?.enabled === true);
     if (anyOn) all[uid] = s; else delete all[uid];
     await env.ALERTS_KV.put('usettings:ALL', JSON.stringify(all));
     return new Response(JSON.stringify({ ok: true, settings: s }), { headers: { ...cors, 'Content-Type': 'application/json' } });
@@ -6019,6 +6040,18 @@ async function handleRequest(request, env) {
             // MEXC vol is in CONTRACTS — convert to coin units via contractSize.
             quantity: (parseFloat(p.closeVol || p.close_vol || p.holdVol || p.hold_vol) || 0) * (csMap[sym.replace(/_/g, '')] || 1),
             leverage: parseFloat(p.leverage) || 1,
+            // OPEN QUESTION — do NOT "fix" this without evidence. The app treats
+            // pnlFromExchange as GROSS and derives netPnl = pnl - fees, which is
+            // why the Bybit branch below deliberately ADDS its fees back
+            // (closedPnl is documented net). MEXC's `realised` is passed through
+            // as-is while `fees` is populated separately just above, so IF
+            // MEXC's realised is likewise net of trading fees, every MEXC trade
+            // is under-reported by exactly one fee. This could not be settled
+            // from the code or the docs (MEXC's API host is unreachable from
+            // CI), and guessing wrong breaks the numbers in the other
+            // direction. Settle it by comparing one imported MEXC trade's
+            // netPnl against the figure MEXC itself displays, then either add
+            // the fees back here or stop populating `fees` for MEXC.
             pnlFromExchange: parseFloat(p.realised || p.realisedPnl || p.realise || p.realised_pnl) || 0,
             fees,
             entryDate,
