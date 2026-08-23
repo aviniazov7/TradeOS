@@ -102,67 +102,67 @@ function MainApp() {
     <AuthProvider>
       <JournalProvider>
         <TradesProvider>
-        <BacktestProvider>
-          <Suspense fallback={<LoadingSpinner />}>
-            <Routes>
-              <Route path="/login" element={<LoginPage />} />
-              {/* Public coupon share landing — accessible without auth so a
-                  shared link works for logged-out friends; redeeming itself
-                  sends them through /login and back. */}
-              <Route path="/redeem/:code" element={<CouponLandingPage />} />
-              {/* Accessibility statement — public (reachable without login, as
-                  required for an Israeli-standard accessibility statement). */}
-              <Route path="/accessibility" element={<AccessibilityStatement />} />
-              <Route
-                element={
-                  <ProtectedRoute>
-                    <Layout />
-                  </ProtectedRoute>
-                }
-              >
-                <Route index element={<Dashboard />} />
-                <Route path="journal" element={<TradeJournal />} />
-                <Route path="backtest" element={<BacktestTracker />} />
-                <Route path="dca" element={<DCATracker />} />
-                <Route path="plans" element={<PlansPage />} />
-                <Route path="mentality" element={<MentalityZone />} />
-                <Route path="mentality/morning" element={<MorningJournal />} />
-                <Route path="mentality/evening" element={<EveningJournal />} />
-                <Route path="mentality/journey" element={<PsychologicalJourney />} />
-                <Route path="mentality/stats" element={<MentalStats />} />
-                {/* <Route path="leaderboard" element={<LeaderboardPage />} /> */}
-                <Route path="market" element={<MarketOverview />} />
-                {/* Whales moved into Market Overview; keep the path as a redirect
-                    so old links/bookmarks still land somewhere sensible. */}
-                <Route path="whales" element={<Navigate to="/market" replace />} />
-                {/* Wyckoff setup scanner — owner-only while it's being calibrated. */}
-                <Route path="scanner" element={<AdminRoute><ScannerPage /></AdminRoute>} />
-                {/* Visible to all in the menu; the page shows a locked teaser to non-premium (no PremiumRoute redirect). */}
-                {/* Own boundary: this section streams live third-party data, so a
-                    throw here should degrade the page, not blank the whole app. */}
-                <Route path="polymarket" element={<ErrorBoundary><PolymarketPage /></ErrorBoundary>} />
-                <Route path="polymarket/wallet/:address" element={<ErrorBoundary><WalletDetailPage /></ErrorBoundary>} />
-                <Route path="polymarket/market/:conditionId" element={<ErrorBoundary><MarketDetailPage /></ErrorBoundary>} />
-                <Route path="trade-ai" element={<TradeAIPage />} />
-                <Route path="news" element={<NewsPage />} />
-                <Route path="exchange" element={<ExchangeSettings />} />
-                <Route path="wallets" element={<WalletsPage />} />
-                {/* Watchlist is now folded into the scanner page (tag coins there);
-                    keep the path as a redirect so old links still land right. */}
-                <Route path="watchlist" element={<Navigate to="/scanner" replace />} />
-                <Route path="premium" element={<PremiumPage />} />
-                <Route path="premium/checkout" element={<CheckoutPage />} />
-                <Route path="refund-policy" element={<RefundPolicyPage />} />
-                <Route path="admin" element={<AdminPanel />} />
-                <Route path="briefing" element={<DailyBriefing />} />
-                <Route path="profile" element={<ProfilePage />} />
-              </Route>
-            </Routes>
-          </Suspense>
-          <Toast />
-          {/* Site-wide accessibility menu — present on every route. */}
-          <AccessibilityWidget />
-        </BacktestProvider>
+          <BacktestProvider>
+            <Suspense fallback={<LoadingSpinner />}>
+              <Routes>
+                <Route path="/login" element={<LoginPage />} />
+                {/* Public coupon share landing — accessible without auth so a
+                    shared link works for logged-out friends; redeeming itself
+                    sends them through /login and back. */}
+                <Route path="/redeem/:code" element={<CouponLandingPage />} />
+                {/* Accessibility statement — public (reachable without login, as
+                    required for an Israeli-standard accessibility statement). */}
+                <Route path="/accessibility" element={<AccessibilityStatement />} />
+                <Route
+                  element={
+                    <ProtectedRoute>
+                      <Layout />
+                    </ProtectedRoute>
+                  }
+                >
+                  <Route index element={<Dashboard />} />
+                  <Route path="journal" element={<TradeJournal />} />
+                  <Route path="backtest" element={<BacktestTracker />} />
+                  <Route path="dca" element={<DCATracker />} />
+                  <Route path="plans" element={<PlansPage />} />
+                  <Route path="mentality" element={<MentalityZone />} />
+                  <Route path="mentality/morning" element={<MorningJournal />} />
+                  <Route path="mentality/evening" element={<EveningJournal />} />
+                  <Route path="mentality/journey" element={<PsychologicalJourney />} />
+                  <Route path="mentality/stats" element={<MentalStats />} />
+                  {/* <Route path="leaderboard" element={<LeaderboardPage />} /> */}
+                  <Route path="market" element={<MarketOverview />} />
+                  {/* Whales moved into Market Overview; keep the path as a redirect
+                      so old links/bookmarks still land somewhere sensible. */}
+                  <Route path="whales" element={<Navigate to="/market" replace />} />
+                  {/* Wyckoff setup scanner — owner-only while it's being calibrated. */}
+                  <Route path="scanner" element={<AdminRoute><ScannerPage /></AdminRoute>} />
+                  {/* Visible to all in the menu; the page shows a locked teaser to non-premium (no PremiumRoute redirect). */}
+                  {/* Own boundary: this section streams live third-party data, so a
+                      throw here should degrade the page, not blank the whole app. */}
+                  <Route path="polymarket" element={<ErrorBoundary><PolymarketPage /></ErrorBoundary>} />
+                  <Route path="polymarket/wallet/:address" element={<ErrorBoundary><WalletDetailPage /></ErrorBoundary>} />
+                  <Route path="polymarket/market/:conditionId" element={<ErrorBoundary><MarketDetailPage /></ErrorBoundary>} />
+                  <Route path="trade-ai" element={<TradeAIPage />} />
+                  <Route path="news" element={<NewsPage />} />
+                  <Route path="exchange" element={<ExchangeSettings />} />
+                  <Route path="wallets" element={<WalletsPage />} />
+                  {/* Watchlist is now folded into the scanner page (tag coins there);
+                      keep the path as a redirect so old links still land right. */}
+                  <Route path="watchlist" element={<Navigate to="/scanner" replace />} />
+                  <Route path="premium" element={<PremiumPage />} />
+                  <Route path="premium/checkout" element={<CheckoutPage />} />
+                  <Route path="refund-policy" element={<RefundPolicyPage />} />
+                  <Route path="admin" element={<AdminPanel />} />
+                  <Route path="briefing" element={<DailyBriefing />} />
+                  <Route path="profile" element={<ProfilePage />} />
+                </Route>
+              </Routes>
+            </Suspense>
+            <Toast />
+            {/* Site-wide accessibility menu — present on every route. */}
+            <AccessibilityWidget />
+          </BacktestProvider>
         </TradesProvider>
       </JournalProvider>
     </AuthProvider>
