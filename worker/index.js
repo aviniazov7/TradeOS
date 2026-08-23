@@ -1340,14 +1340,35 @@ function canonicalQuery(search, allowed) {
 }
 
 const COUPON_TRIES_PER_HOUR = 10;
-async function couponRateLimited(env, request, uid) {
-  const ip = request.headers.get('CF-Connecting-IP') || 'noip';
-  const buckets = [`rl:coupon:ip:${ip}`];
-  if (uid) buckets.push(`rl:coupon:u:${uid}`);
-  for (const key of buckets) {
-    const { count } = await bumpWindow(env, key, 3600);
-    if (count > COUPON_TRIES_PER_HOUR) return true;
+
+// Throttling counter backed by the EDGE CACHE, not KV. bumpWindow writes a KV
+// key on every single call, and the free tier allows roughly a thousand writes
+// a day — putting that in front of an unauthenticated endpoint would hand an
+// attacker a cheaper outage (exhaust the write quota, breaking coupons, quotas
+// and push registration alike) than the enumeration it is meant to stop. The
+// Cache API has no write quota. It is per-colo and eventually consistent, so
+// it is only ever used to throttle abuse; the exactly-once guarantees still
+// come from the per-uid redeem marker.
+async function edgeRateLimited(name, id, limit, windowSec) {
+  try {
+    const bucket = Math.floor(Date.now() / (windowSec * 1000));
+    const key = new Request(`https://rl.tradeos.internal/${name}/${encodeURIComponent(id)}/${bucket}`);
+    const cache = caches.default;
+    const hit = await cache.match(key);
+    const count = (hit ? parseInt(await hit.text(), 10) || 0 : 0) + 1;
+    await cache.put(key, new Response(String(count), {
+      headers: { 'Cache-Control': `max-age=${windowSec}` },
+    }));
+    return count > limit;
+  } catch {
+    return false; // never let the throttle itself break the endpoint
   }
+}
+
+async function couponRateLimited(request, uid) {
+  const ip = request.headers.get('CF-Connecting-IP') || 'noip';
+  if (await edgeRateLimited('coupon-ip', ip, COUPON_TRIES_PER_HOUR, 3600)) return true;
+  if (uid && await edgeRateLimited('coupon-uid', uid, COUPON_TRIES_PER_HOUR, 3600)) return true;
   return false;
 }
 
@@ -4846,7 +4867,7 @@ async function handleRequest(request, env, ctx) {
   if (request.method === 'GET' && path.startsWith('/coupons/info/')) {
     const code = normalizeCouponCode(decodeURIComponent(path.split('/')[3] || ''));
     if (!code) return new Response(JSON.stringify({ error: 'missing code' }), { status: 400, headers: { ...cors, 'Content-Type': 'application/json' } });
-    if (await couponRateLimited(env, request, null)) {
+    if (await couponRateLimited(request, null)) {
       return new Response(JSON.stringify({ error: 'יותר מדי נסיונות — נסה שוב בעוד שעה' }), { status: 429, headers: { ...cors, 'Content-Type': 'application/json' } });
     }
     const coupon = await env.ALERTS_KV.get(`coupon:${code}`, 'json');
@@ -4990,7 +5011,7 @@ async function handleRequest(request, env, ctx) {
 
     const code = normalizeCouponCode((await request.json().catch(() => ({}))).code);
     if (!code) return new Response(JSON.stringify({ error: 'הזן קוד קופון' }), { status: 400, headers: { ...cors, 'Content-Type': 'application/json' } });
-    if (await couponRateLimited(env, request, uid)) {
+    if (await couponRateLimited(request, uid)) {
       return new Response(JSON.stringify({ error: 'יותר מדי נסיונות מימוש — נסה שוב בעוד שעה' }), { status: 429, headers: { ...cors, 'Content-Type': 'application/json' } });
     }
 
