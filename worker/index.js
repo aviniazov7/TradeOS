@@ -255,6 +255,15 @@ async function sendPushToUser(env, uid, data) {
 }
 
 // ---- Background exchange polling for push notifications ----------------------
+
+// Every upstream call should go through this. A plain fetch() in the Workers
+// runtime has no timeout, so one unresponsive exchange or push endpoint pinned
+// the whole cron tick (or an HTTP request) until the platform killed it,
+// starving every user queued behind it.
+function fetchT(url, init = {}, ms = 10000) {
+  return fetch(url, { ...init, signal: AbortSignal.timeout(ms) });
+}
+
 // Bybit v5 HMAC-SHA256 signature (hex).
 async function bybitHmacHex(secret, msg) {
   const enc = new TextEncoder();
@@ -269,9 +278,12 @@ async function fetchBybitClosedPnl(apiKey, apiSecret, limit = 50) {
   const recvWindow = '5000';
   const qs = `category=linear&limit=${Math.min(limit, 200)}`;
   const sign = await bybitHmacHex(apiSecret, ts + apiKey + recvWindow + qs);
-  const res = await fetch(`https://api.bybit.com/v5/position/closed-pnl?${qs}`, {
+  // The fetch itself is guarded, not just res.json(): a network-level reject
+  // broke the documented "returns null on error" contract and escaped.
+  const res = await fetchT(`https://api.bybit.com/v5/position/closed-pnl?${qs}`, {
     headers: { 'X-BAPI-API-KEY': apiKey, 'X-BAPI-TIMESTAMP': ts, 'X-BAPI-SIGN': sign, 'X-BAPI-RECV-WINDOW': recvWindow },
-  });
+  }).catch(() => null);
+  if (!res) return null;
   const data = await res.json().catch(() => ({}));
   if (data.retCode !== 0) return null;
   return (data.result?.list || []).map((p) => {
@@ -664,10 +676,15 @@ async function checkWeeklyDigest(env) {
   if (hhmm < '09:00' || hhmm >= '09:10') return; // once that morning
   if (!env.FIREBASE_SERVICE_ACCOUNT) return;
 
-  // Dedupe per week so a restart in the window doesn't double-send.
+  // Dedupe per week so a restart in the window doesn't double-send. The marker
+  // is written AFTER the digest actually goes out — writing it up front meant a
+  // single transient failure below silently skipped the digest for a whole
+  // week, since no later tick would retry. (checkDailySummaries already marks
+  // only on success; the two encoded opposite policies for the same problem.)
+  // The push tag dedupes at the notification layer if a retry does overlap.
   const wk = getIsraelDateStr();
-  if (await env.ALERTS_KV.get(`digest:${wk}`)) return;
-  await env.ALERTS_KV.put(`digest:${wk}`, '1', { expirationTtl: 60 * 60 * 24 * 8 });
+  const digestKey = `digest:${wk}`;
+  if (await env.ALERTS_KV.get(digestKey)) return;
 
   let users;
   try { users = await listAllUsersAdmin(env); }
@@ -686,6 +703,10 @@ async function checkWeeklyDigest(env) {
       tag: 'weekly-digest',
     });
   }
+  // Marked here: the pushes are the digest's user-visible half, and the email
+  // section below has its own early return that would otherwise leave the week
+  // unmarked after already notifying every admin.
+  await env.ALERTS_KV.put(digestKey, '1', { expirationTtl: 60 * 60 * 24 * 8 });
 
   // Email digest — same content as push, prettier presentation. Each admin
   // gets a one-glance dashboard in their inbox. MAIL_TO_ADMIN_OVERRIDE pins
@@ -713,9 +734,10 @@ async function fetchBybitOpen(apiKey, apiSecret) {
   const recvWindow = '5000';
   const qs = 'category=linear&settleCoin=USDT';
   const sign = await bybitHmacHex(apiSecret, ts + apiKey + recvWindow + qs);
-  const res = await fetch(`https://api.bybit.com/v5/position/list?${qs}`, {
+  const res = await fetchT(`https://api.bybit.com/v5/position/list?${qs}`, {
     headers: { 'X-BAPI-API-KEY': apiKey, 'X-BAPI-TIMESTAMP': ts, 'X-BAPI-SIGN': sign, 'X-BAPI-RECV-WINDOW': recvWindow },
-  });
+  }).catch(() => null);
+  if (!res) return null;
   const data = await res.json().catch(() => ({}));
   if (data.retCode !== 0) return null;
   return (data.result?.list || []).filter((p) => parseFloat(p.size) > 0).map((p) => ({
@@ -748,105 +770,119 @@ async function checkExchangeClosedTrades(env) {
   const dayStartMs = Date.now() - ((it.getHours() * 3600 + it.getMinutes() * 60 + it.getSeconds()) * 1000);
 
   for (const name of keyNames) {
-    const [, uid, exchange] = name.split(':');
-    if (exchange !== 'bybit') continue; // only Bybit polling for now
-    const creds = await loadExchangeCreds(env, uid, exchange); // decrypts + self-heals legacy plaintext
-    if (!creds?.apiKey || !creds?.apiSecret) {
-      // Key expired (CREDS_TTL) or was deleted — prune it from the index so
-      // the cron stops re-checking a dead entry.
-      await pushexchIndexRemove(env, (n) => n === name).catch(() => {});
-      continue;
-    }
+    // One user must never abort the tick for everyone behind them in the
+    // index. A network-level reject or a single corrupt KV value used to
+    // propagate straight out of this loop, silently skipping every remaining
+    // user — and, because the poison never cleared, on every future tick too.
+    try {
+      const [, uid, exchange] = name.split(':');
+      if (exchange !== 'bybit') continue; // only Bybit polling for now
+      const creds = await loadExchangeCreds(env, uid, exchange); // decrypts + self-heals legacy plaintext
+      if (!creds?.apiKey || !creds?.apiSecret) {
+        // Key expired (CREDS_TTL) or was deleted — prune it from the index so
+        // the cron stops re-checking a dead entry.
+        await pushexchIndexRemove(env, (n) => n === name).catch(() => {});
+        continue;
+      }
 
-    // ---- Position-opened notifications ----
-    // Compare the live open positions to the snapshot from the previous tick;
-    // anything new → "position opened". First run only seeds the snapshot.
-    const openPositions = await fetchBybitOpen(creds.apiKey, creds.apiSecret);
-    if (openPositions) {
-      const openKey = `pushopen:${uid}:${exchange}`;
-      const prevRaw = await env.ALERTS_KV.get(openKey);
-      const curIds = openPositions.map((p) => p.id);
-      if (prevRaw !== null) {
-        const prev = new Set(JSON.parse(prevRaw));
-        const opened = openPositions.filter((p) => !prev.has(p.id)).slice(0, 5);
-        for (const p of opened) {
-          const dir = p.direction === 'long' ? 'Long' : 'Short';
+      // ---- Position-opened notifications ----
+      // Compare the live open positions to the snapshot from the previous tick;
+      // anything new → "position opened". First run only seeds the snapshot.
+      const openPositions = await fetchBybitOpen(creds.apiKey, creds.apiSecret);
+      if (openPositions) {
+        const openKey = `pushopen:${uid}:${exchange}`;
+        const prevRaw = await env.ALERTS_KV.get(openKey);
+        const curIds = openPositions.map((p) => p.id);
+        // A malformed snapshot must not throw: the healing rewrite below never
+        // ran, so one corrupt value permanently killed this user's pushes.
+        // Treating it as "no snapshot" reseeds it on this tick instead.
+        let prev = null;
+        if (prevRaw !== null) {
+          try { prev = new Set(JSON.parse(prevRaw)); } catch { prev = null; }
+        }
+        if (prev) {
+          const opened = openPositions.filter((p) => !prev.has(p.id)).slice(0, 5);
+          for (const p of opened) {
+            const dir = p.direction === 'long' ? 'Long' : 'Short';
+            await sendPushToUser(env, uid, {
+              title: `🔵 נפתחה עסקה — ${p.pair} ${dir}`,
+              body: `כניסה: ${fmtPrice(p.entryPrice)}${p.leverage > 1 ? ` · מינוף ${p.leverage}x` : ''}`,
+              url: '/journal',
+              tag: `open-${p.id}`,
+            });
+          }
+        }
+        // Only write when the open-position set actually changed — the previous
+        // unconditional write ran every 10-min tick for every exchange user and
+        // alone blew the KV daily write quota.
+        const curJson = JSON.stringify(curIds);
+        if (prevRaw !== curJson) {
+          await env.ALERTS_KV.put(openKey, curJson, { expirationTtl: 60 * 60 * 24 * 7 });
+        }
+      }
+
+      const trades = await fetchBybitClosedPnl(creds.apiKey, creds.apiSecret, 50);
+      if (!trades || !trades.length) continue;
+
+      // ---- New-closed notifications ----
+      const cursorKey = `pushcursor:${uid}:${exchange}`;
+      const cursorRaw = await env.ALERTS_KV.get(cursorKey);
+      const maxExit = Math.max(...trades.map((t) => t.exitMs));
+      if (cursorRaw === null) {
+        // First run for this user: start watching from now, don't replay history.
+        await env.ALERTS_KV.put(cursorKey, String(maxExit), { expirationTtl: 60 * 60 * 24 * 60 });
+      } else {
+        const cursor = parseInt(cursorRaw) || 0;
+        const fresh = trades
+          .filter((t) => t.exitMs > cursor)
+          .sort((a, b) => a.exitMs - b.exitMs)
+          .slice(0, 5); // anti-flood per tick — the overflow ships on later ticks
+        for (const t of fresh) {
+          const dedupKey = `pushsent:${uid}:${t.externalId}`;
+          if (await env.ALERTS_KV.get(dedupKey)) continue;
+          await env.ALERTS_KV.put(dedupKey, '1', { expirationTtl: 60 * 60 * 24 * 3 });
+          const win = t.pnl >= 0;
+          const dir = t.direction === 'long' ? 'Long' : 'Short';
+          // A profitable close ≈ take-profit hit; a losing close ≈ stop-loss hit.
           await sendPushToUser(env, uid, {
-            title: `🔵 נפתחה עסקה — ${p.pair} ${dir}`,
-            body: `כניסה: ${fmtPrice(p.entryPrice)}${p.leverage > 1 ? ` · מינוף ${p.leverage}x` : ''}`,
+            title: win
+              ? `🎯 טייק פרופיט — ${t.pair} ${dir}`
+              : `🛑 סטופ לוס — ${t.pair} ${dir}`,
+            body: `${win ? 'רווח' : 'הפסד'}: ${fmtPnl(t.pnl)} (${fmtPct(t.roiPct)})`,
             url: '/journal',
-            tag: `open-${p.id}`,
+            tag: `closed-${t.externalId}`,
           });
         }
+        // Advance the cursor only to the newest close we actually PROCESSED —
+        // advancing straight to maxExit permanently skipped every close between
+        // the 5 oldest and the newest (7 closes in one window → 2 vanished).
+        // The overflow stays above the cursor and ships on the next ticks;
+        // pushsent dedup guards against any replay.
+        const newCursor = fresh.length ? fresh[fresh.length - 1].exitMs : maxExit;
+        if (newCursor > cursor) await env.ALERTS_KV.put(cursorKey, String(newCursor), { expirationTtl: 60 * 60 * 24 * 60 });
       }
-      // Only write when the open-position set actually changed — the previous
-      // unconditional write ran every 10-min tick for every exchange user and
-      // alone blew the KV daily write quota.
-      const curJson = JSON.stringify(curIds);
-      if (prevRaw !== curJson) {
-        await env.ALERTS_KV.put(openKey, curJson, { expirationTtl: 60 * 60 * 24 * 7 });
-      }
-    }
 
-    const trades = await fetchBybitClosedPnl(creds.apiKey, creds.apiSecret, 50);
-    if (!trades || !trades.length) continue;
-
-    // ---- New-closed notifications ----
-    const cursorKey = `pushcursor:${uid}:${exchange}`;
-    const cursorRaw = await env.ALERTS_KV.get(cursorKey);
-    const maxExit = Math.max(...trades.map((t) => t.exitMs));
-    if (cursorRaw === null) {
-      // First run for this user: start watching from now, don't replay history.
-      await env.ALERTS_KV.put(cursorKey, String(maxExit), { expirationTtl: 60 * 60 * 24 * 60 });
-    } else {
-      const cursor = parseInt(cursorRaw) || 0;
-      const fresh = trades
-        .filter((t) => t.exitMs > cursor)
-        .sort((a, b) => a.exitMs - b.exitMs)
-        .slice(0, 5); // anti-flood per tick — the overflow ships on later ticks
-      for (const t of fresh) {
-        const dedupKey = `pushsent:${uid}:${t.externalId}`;
-        if (await env.ALERTS_KV.get(dedupKey)) continue;
-        await env.ALERTS_KV.put(dedupKey, '1', { expirationTtl: 60 * 60 * 24 * 3 });
-        const win = t.pnl >= 0;
-        const dir = t.direction === 'long' ? 'Long' : 'Short';
-        // A profitable close ≈ take-profit hit; a losing close ≈ stop-loss hit.
-        await sendPushToUser(env, uid, {
-          title: win
-            ? `🎯 טייק פרופיט — ${t.pair} ${dir}`
-            : `🛑 סטופ לוס — ${t.pair} ${dir}`,
-          body: `${win ? 'רווח' : 'הפסד'}: ${fmtPnl(t.pnl)} (${fmtPct(t.roiPct)})`,
-          url: '/journal',
-          tag: `closed-${t.externalId}`,
-        });
-      }
-      // Advance the cursor only to the newest close we actually PROCESSED —
-      // advancing straight to maxExit permanently skipped every close between
-      // the 5 oldest and the newest (7 closes in one window → 2 vanished).
-      // The overflow stays above the cursor and ships on the next ticks;
-      // pushsent dedup guards against any replay.
-      const newCursor = fresh.length ? fresh[fresh.length - 1].exitMs : maxExit;
-      if (newCursor > cursor) await env.ALERTS_KV.put(cursorKey, String(newCursor), { expirationTtl: 60 * 60 * 24 * 60 });
-    }
-
-    // ---- Daily summary (once per Israel day, ~22:00) ----
-    if (summaryWindow) {
-      const sentKey = `pushdaily:${uid}:${israelDate}`;
-      if (!(await env.ALERTS_KV.get(sentKey))) {
-        await env.ALERTS_KV.put(sentKey, '1', { expirationTtl: 60 * 60 * 48 });
-        const todays = trades.filter((t) => t.exitMs >= dayStartMs);
-        if (todays.length) {
-          const total = todays.reduce((s, t) => s + t.pnl, 0);
-          const wins = todays.filter((t) => t.pnl >= 0).length;
-          const wr = Math.round((wins / todays.length) * 100);
-          await sendPushToUser(env, uid, {
-            title: `📊 סיכום יומי — ${todays.length} עסקאות`,
-            body: `P&L יומי: ${fmtPnl(total)} · אחוז הצלחה ${wr}%`,
-            url: '/dashboard',
-            tag: `daily-${israelDate}`,
-          });
+      // ---- Daily summary (once per Israel day, ~22:00) ----
+      if (summaryWindow) {
+        const sentKey = `pushdaily:${uid}:${israelDate}`;
+        if (!(await env.ALERTS_KV.get(sentKey))) {
+          await env.ALERTS_KV.put(sentKey, '1', { expirationTtl: 60 * 60 * 48 });
+          const todays = trades.filter((t) => t.exitMs >= dayStartMs);
+          if (todays.length) {
+            const total = todays.reduce((s, t) => s + t.pnl, 0);
+            const wins = todays.filter((t) => t.pnl >= 0).length;
+            const wr = Math.round((wins / todays.length) * 100);
+            await sendPushToUser(env, uid, {
+              title: `📊 סיכום יומי — ${todays.length} עסקאות`,
+              body: `P&L יומי: ${fmtPnl(total)} · אחוז הצלחה ${wr}%`,
+              url: '/dashboard',
+              tag: `daily-${israelDate}`,
+            });
+          }
         }
       }
+    } catch (e) {
+      console.error('exchange poll failed for', name, e);
     }
   }
 }
@@ -1266,6 +1302,55 @@ const AI_WINDOWS_SEC = { minute: 60, hour: 3600, day: 86400 };
 // Increment a rolling-window counter atomically-enough via read-modify-write.
 // Returns the new count after the increment. start is reset whenever a window
 // elapses, so consecutive bursts inside the window accumulate as expected.
+// Coupon codes are admin-chosen and therefore guessable (WELCOME, PROMO2026…).
+// Neither redeem nor info was rate-limited, so a single free account could
+// enumerate them and claim Premium — /coupons/info is public and confirms a
+// code's existence outright. Limited per caller AND per IP, since signing up
+// for another Firebase account is free.
+// The public market-data proxies are unauthenticated and lean entirely on the
+// edge cache to absorb load — but the cache key was built from the caller's RAW
+// query string, so appending a throwaway parameter (…&_=<random>) forced a
+// permanent MISS and turned every single request into a Worker invocation plus
+// an upstream fetch. An outsider could drain the daily invocation budget and
+// get the shared CoinGecko/Binance tiers to rate-limit our egress IP.
+// Canonicalising the query fixes it at the root: unknown parameters are
+// dropped and the rest are sorted, so cache-busting is not expressible.
+const CG_PARAMS = [
+  // NOTE both spellings: /coins/markets takes vs_currency, /simple/price takes
+  // vs_currencies. Dropping the plural would have silently broken every price
+  // lookup, so any new CoinGecko parameter must be added here as well.
+  'vs_currency', 'vs_currencies', 'ids', 'names', 'symbols', 'category', 'order',
+  'per_page', 'page', 'sparkline', 'price_change_percentage', 'locale', 'precision',
+  'days', 'interval', 'from', 'to', 'query', 'localization', 'tickers', 'market_data',
+  'community_data', 'developer_data', 'include_24hr_change', 'include_24hr_vol',
+  'include_market_cap', 'include_last_updated_at',
+];
+const BNB_PARAMS = ['symbol', 'symbols', 'interval', 'limit', 'startTime', 'endTime', 'timeZone'];
+
+function canonicalQuery(search, allowed) {
+  const src = new URLSearchParams(search);
+  const out = new URLSearchParams();
+  for (const key of allowed) {
+    const v = src.get(key);
+    if (v != null && v !== '') out.append(key, v);
+  }
+  out.sort();
+  const q = out.toString();
+  return q ? `?${q}` : '';
+}
+
+const COUPON_TRIES_PER_HOUR = 10;
+async function couponRateLimited(env, request, uid) {
+  const ip = request.headers.get('CF-Connecting-IP') || 'noip';
+  const buckets = [`rl:coupon:ip:${ip}`];
+  if (uid) buckets.push(`rl:coupon:u:${uid}`);
+  for (const key of buckets) {
+    const { count } = await bumpWindow(env, key, 3600);
+    if (count > COUPON_TRIES_PER_HOUR) return true;
+  }
+  return false;
+}
+
 async function bumpWindow(env, key, windowSec) {
   const now = Date.now();
   const cur = await env.ALERTS_KV.get(key, 'json');
@@ -3924,7 +4009,12 @@ async function bybitAsBinance(subPath, searchParams) {
   }
 }
 
-async function handleRequest(request, env) {
+async function handleRequest(request, env, ctx) {
+  // Work started after the Response is returned MUST be registered with
+  // waitUntil — the Workers runtime is free to cancel anything else the moment
+  // the response is sent, which is why coupon confirmation emails and pushes
+  // went missing intermittently on the one flow that can least afford it.
+  const background = (p) => { try { ctx?.waitUntil?.(p); } catch { /* no ctx (cron/tests) */ } return p; };
   const origin = request.headers.get('Origin') || '';
   const allowedOrigin = isAllowedOrigin(origin) ? origin : ALLOWED_ORIGINS[0];
   const cors = {
@@ -4100,10 +4190,13 @@ async function handleRequest(request, env) {
     if (!CG_ALLOWED.test(subPath)) {
       return new Response(JSON.stringify({ error: 'forbidden' }), { status: 403, headers: { ...cors, 'Content-Type': 'application/json' } });
     }
-    const cgUrl = `https://api.coingecko.com/api/v3/${subPath}${url.search}`;
+    // Canonical, not raw: see canonicalQuery. Used for the upstream call too so
+    // a cached body always corresponds to the key it is stored under.
+    const cgQuery = canonicalQuery(url.search, CG_PARAMS);
+    const cgUrl = `https://api.coingecko.com/api/v3/${subPath}${cgQuery}`;
     const ttl = subPath.startsWith('coins/markets') ? 3600 : 300; // 1h for markets, 5m for details/chart
     const cache = caches.default;
-    const cacheKey = new Request(`https://cache.tradeos.internal/cg/${subPath}${url.search}`);
+    const cacheKey = new Request(`https://cache.tradeos.internal/cg/${subPath}${cgQuery}`);
     try {
       const hit = await cache.match(cacheKey);
       if (hit) return hit;
@@ -4140,8 +4233,9 @@ async function handleRequest(request, env) {
     const cache = caches.default;
     // Cache API keys are URLs — no 512-byte KV key limit, so long symbol
     // lists no longer need hashing.
-    const cacheKey = new Request(`https://cache.tradeos.internal/bnb/${subPath}${url.search}`);
-    const staleKey = new Request(`https://cache.tradeos.internal/bnb-stale/${subPath}${url.search}`);
+    const bnbQuery = canonicalQuery(url.search, BNB_PARAMS);
+    const cacheKey = new Request(`https://cache.tradeos.internal/bnb/${subPath}${bnbQuery}`);
+    const staleKey = new Request(`https://cache.tradeos.internal/bnb-stale/${subPath}${bnbQuery}`);
     const ttl = 60; // prices refresh via client polling anyway
     try {
       const hit = await cache.match(cacheKey);
@@ -4150,7 +4244,7 @@ async function handleRequest(request, env) {
       let res = null;
       let lastStatus = 0;
       for (const host of BNB_HOSTS) {
-        const r = await fetch(`${host}/api/v3/${subPath}${url.search}`, { headers: { 'Accept': 'application/json' } });
+        const r = await fetchT(`${host}/api/v3/${subPath}${bnbQuery}`, { headers: { 'Accept': 'application/json' } });
         if (r.ok) { res = r; break; }
         lastStatus = r.status;
       }
@@ -4589,10 +4683,16 @@ async function handleRequest(request, env) {
 
     // Every subcollection the app writes — keep in sync with the client's
     // USER_SUBCOLLECTIONS (src/services/firestoreService.js).
+    // Keep in sync with USER_SUBCOLLECTIONS in src/services/firestoreService.js.
+    // It had drifted: wyckoffSetups / polymarketWatch / polymarketStrategies
+    // were left behind on an admin delete, so the parent user document and the
+    // Auth account went while that data stayed in Firestore with no owner able
+    // to reach it — the opposite of what "delete this user" promises.
     const SUBS = [
       'trades', 'journals', 'backtests', 'backtestJournals', 'dca',
       'tradingPlans', 'notes', 'strategies', 'morningJournals',
-      'eveningJournals', 'processes', 'signals', 'watchlist', 'settings',
+      'eveningJournals', 'processes', 'signals', 'watchlist',
+      'wyckoffSetups', 'polymarketWatch', 'polymarketStrategies', 'settings',
     ];
     let deletedDocs = 0;
     for (const sub of SUBS) {
@@ -4625,10 +4725,16 @@ async function handleRequest(request, env) {
       body: JSON.stringify({ localId: uid }),
     });
 
-    // Per-user KV leftovers: plan cache + push subscriptions.
+    // Per-user KV leftovers: plan cache + push subscriptions + the encrypted
+    // exchange API keys. The credentials were previously left behind, so a
+    // deleted user's trade/withdraw-capable keys stayed in KV until their
+    // 120-day TTL expired — still valid on the exchange the whole time.
     await env.ALERTS_KV.delete(`planflag:${uid}`).catch(() => {});
     const pushKeys = await env.ALERTS_KV.list({ prefix: `push:${uid}:` });
     for (const k of pushKeys.keys) await env.ALERTS_KV.delete(k.name).catch(() => {});
+    const credKeys = await env.ALERTS_KV.list({ prefix: `pushexch:${uid}:` });
+    for (const k of credKeys.keys) await env.ALERTS_KV.delete(k.name).catch(() => {});
+    await pushexchIndexRemove(env, (n) => n.startsWith(`pushexch:${uid}:`)).catch(() => {});
 
     await appendAudit(env, {
       kind: 'account_deleted', source: 'admin', actor: adminUid, target: uid,
@@ -4740,6 +4846,9 @@ async function handleRequest(request, env) {
   if (request.method === 'GET' && path.startsWith('/coupons/info/')) {
     const code = normalizeCouponCode(decodeURIComponent(path.split('/')[3] || ''));
     if (!code) return new Response(JSON.stringify({ error: 'missing code' }), { status: 400, headers: { ...cors, 'Content-Type': 'application/json' } });
+    if (await couponRateLimited(env, request, null)) {
+      return new Response(JSON.stringify({ error: 'יותר מדי נסיונות — נסה שוב בעוד שעה' }), { status: 429, headers: { ...cors, 'Content-Type': 'application/json' } });
+    }
     const coupon = await env.ALERTS_KV.get(`coupon:${code}`, 'json');
     if (!coupon) return new Response(JSON.stringify({ ok: false, error: 'not-found' }), { status: 404, headers: { ...cors, 'Content-Type': 'application/json' } });
     const expired = coupon.expiresAt && new Date(coupon.expiresAt).getTime() < Date.now();
@@ -4881,6 +4990,9 @@ async function handleRequest(request, env) {
 
     const code = normalizeCouponCode((await request.json().catch(() => ({}))).code);
     if (!code) return new Response(JSON.stringify({ error: 'הזן קוד קופון' }), { status: 400, headers: { ...cors, 'Content-Type': 'application/json' } });
+    if (await couponRateLimited(env, request, uid)) {
+      return new Response(JSON.stringify({ error: 'יותר מדי נסיונות מימוש — נסה שוב בעוד שעה' }), { status: 429, headers: { ...cors, 'Content-Type': 'application/json' } });
+    }
 
     const coupon = await env.ALERTS_KV.get(`coupon:${code}`, 'json');
     if (!coupon) return new Response(JSON.stringify({ error: 'הקוד לא נמצא' }), { status: 404, headers: { ...cors, 'Content-Type': 'application/json' } });
@@ -4917,7 +5029,14 @@ async function handleRequest(request, env) {
     // Mark the code as redeemed BEFORE writing the plan to prevent a double-
     // grant race; if the plan write below fails, the user can try again — the
     // marker is per-uid so they won't double-redeem either way.
-    await env.ALERTS_KV.put(redeemKey, '1');
+    //
+    // The claim is written with a SHORT TTL and only made permanent once the
+    // plan write succeeds. The explicit rollback below covers a failed write,
+    // but nothing covered the isolate dying mid-flow (eviction, subrequest cap,
+    // a network reject): the user was then permanently told "כבר מימשת את הקוד
+    // הזה" while never having received Premium. Now that self-heals in 10
+    // minutes instead of becoming a support ticket.
+    await env.ALERTS_KV.put(redeemKey, '1', { expirationTtl: 600 });
 
     // Enforce maxUses by COUNTING the per-uid markers after claiming (#202) —
     // the used-counter's get→+1→put raced under concurrency, letting a capped
@@ -4952,6 +5071,10 @@ async function handleRequest(request, env) {
       return new Response(JSON.stringify({ error: 'מימוש הקופון נכשל. נסה שוב.', detail: wrote.error }), { status: 502, headers: { ...cors, 'Content-Type': 'application/json' } });
     }
 
+    // The grant landed — make the claim permanent (it was written with a short
+    // TTL above so an interrupted redeem could be retried).
+    await env.ALERTS_KV.put(redeemKey, '1');
+
     // Bust the 10-minute plan cache so Premium kicks in IMMEDIATELY (#203) —
     // the admin grant path already does this via /admin/refresh-plan; without
     // it a redeeming user stayed "free" for up to 10 minutes after paying.
@@ -4960,17 +5083,17 @@ async function handleRequest(request, env) {
     appendAudit(env, { kind: 'coupon_redeem', actor: uid, code, days: coupon.days, planExpires: newExpiry });
 
     // Schedule the expiry reminders and push a confirmation. Both best-effort.
-    schedulePlanExpiryReminders(env, uid, newExpiry).catch(() => {});
-    sendPushToUser(env, uid, {
+    background(schedulePlanExpiryReminders(env, uid, newExpiry).catch(() => {}));
+    background(sendPushToUser(env, uid, {
       title: '🎉 קוד הקופון מומש בהצלחה',
       body: `קיבלת ${coupon.days} ימי Premium. תוקף עד ${new Date(newExpiry).toLocaleDateString('he-IL')}.`,
       url: '/premium',
       tag: `coupon-${code}-${uid}`,
-    }).catch(() => {});
+    }).catch(() => {}));
 
     // Best-effort: branded confirmation email to the redeemer (delivery to
     // arbitrary inboxes requires a verified sender domain on Resend).
-    (async () => {
+    background((async () => {
       const me = await fetch(`https://firestore.googleapis.com/v1/projects/${FIREBASE_PROJECT_ID}/databases/(default)/documents/users/${uid}`, {
         headers: { Authorization: `Bearer ${token}` },
       });
@@ -4986,11 +5109,11 @@ async function handleRequest(request, env) {
         code,
       });
       await sendEmail(env, { to: email, subject, html });
-    })().catch(() => {});
+    })().catch(() => {}));
 
     // Notify the admin who created the coupon that someone just redeemed it.
     if (coupon.createdBy) {
-      (async () => {
+      background((async () => {
         let who = 'משתמש';
         try {
           const me = await fetch(`https://firestore.googleapis.com/v1/projects/${FIREBASE_PROJECT_ID}/databases/(default)/documents/users/${uid}`, {
@@ -5009,7 +5132,7 @@ async function handleRequest(request, env) {
           url: '/admin',
           tag: `coupon-redeem-${code}-${uid}`,
         });
-      })().catch(() => {});
+      })().catch(() => {}));
     }
 
     return new Response(JSON.stringify({
@@ -6461,6 +6584,6 @@ async function handleRequest(request, env) {
 }
 
 export default {
-  fetch: handleRequest,
+  fetch: (request, env, ctx) => handleRequest(request, env, ctx),
   scheduled: (event, env) => handleCron(env),
 };

@@ -141,7 +141,20 @@ self.addEventListener('push', (event) => {
 // Handle notification clicks
 self.addEventListener('notificationclick', (event) => {
   event.notification.close();
-  const urlPath = event.notification.data?.url || '/mentality';
+  // Resolve the payload's url against our own origin and REFUSE anything that
+  // lands elsewhere. The url arrives in the push payload, and the admin
+  // broadcast endpoint forwards whatever it is given, so an absolute
+  // https://evil.com would otherwise navigate every recipient's open tab to a
+  // phishing page on a single click.
+  const sameOrigin = (raw) => {
+    try {
+      const u = new URL(raw ?? '', self.location.origin);
+      return u.origin === self.location.origin ? u.pathname + u.search + u.hash : '/';
+    } catch {
+      return '/';
+    }
+  };
+  const urlPath = sameOrigin(event.notification.data?.url || '/mentality');
   event.waitUntil(
     self.clients.matchAll({ type: 'window', includeUncontrolled: true }).then((clients) => {
       const client = clients.find((c) => c.visibilityState === 'visible');

@@ -1,5 +1,6 @@
 import { createContext, useContext, useState, useEffect, useMemo, useCallback } from 'react';
 import { planExpiresMs } from '../utils/premium';
+import { deleteExchangeCredentials } from '../services/exchangeService';
 import { APP_VERSION } from '../utils/constants';
 // Firebase Auth operations (login/logout/register/reset…).
 import {
@@ -196,6 +197,14 @@ export function AuthProvider({ children }) {
         ? firstFailure.reason
         : new Error('מחיקת הנתונים נכשלה — נסה שוב');
     }
+
+    // Destroy the server-side exchange credentials as well. They live in the
+    // Worker's KV with a 120-day TTL, entirely outside Firestore, so deleting
+    // the account left trade/withdraw-capable API keys sitting there — still
+    // valid on the exchange — for months after the user believed everything
+    // was gone. Called with no argument: delete every exchange for this uid.
+    // Best-effort by design; it must not block the account deletion itself.
+    try { await deleteExchangeCredentials(); } catch { /* keys may already be gone */ }
 
     // Delete user doc
     await deleteUserProfile(currentUser.uid);
