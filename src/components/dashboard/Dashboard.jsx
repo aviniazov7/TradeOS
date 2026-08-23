@@ -13,7 +13,7 @@ import { useTradingPlans } from '../../hooks/useTradingPlans';
 import { useDCA } from '../../hooks/useDCA';
 import { useMentalityJournals } from '../../hooks/useMentalityJournals';
 import { useLinkedJournalsBalance } from '../../hooks/useLinkedExchangeBalance';
-import { isClosedTrade } from '../../utils/calculations';
+import { isClosedTrade, calculateWinRate } from '../../utils/calculations';
 import DashboardSkeleton from './DashboardSkeleton';
 import PendingLimitOrders from './PendingLimitOrders';
 import TradeAgentCard from './TradeAgentCard';
@@ -69,8 +69,11 @@ export default function Dashboard() {
     const closed = relevantTrades.filter(isClosedTrade);
     const openTrades = relevantTrades.filter((t) => !isClosedTrade(t));
     const totalPnL = closed.reduce((s, t) => s + (t.netPnl ?? t.pnl ?? 0), 0);
-    const wins = closed.filter((t) => t.result === 'win').length;
-    const winRate = closed.length > 0 ? (wins / closed.length) * 100 : 0;
+    // One definition for every surface: DECIDED trades only (see
+    // calculateWinRate). Dividing by every closed row counted breakevens and
+    // undecided legacy rows, so the dashboard radar and the journal disagreed
+    // about the same trades.
+    const winRate = calculateWinRate(closed);
     // Per-journal: prefer live wallet when linked. Derive a synthetic
     // initialBalance for linked journals so percentages stay consistent with
     // the wallet (effInit = live − that journal's closed PnL).
@@ -191,8 +194,7 @@ export default function Dashboard() {
       const jTrades = allTrades.filter((t) => t.journalId === j.id);
       const closed = jTrades.filter(isClosedTrade);
       const pnl = closed.reduce((s, t) => s + (t.netPnl ?? t.pnl ?? 0), 0);
-      const wins = closed.filter((t) => t.result === 'win').length;
-      const winRate = closed.length > 0 ? (wins / closed.length) * 100 : 0;
+      const winRate = calculateWinRate(closed);
       const balance = linkedBalances[j.id] != null
         ? linkedBalances[j.id]
         : (j.initialBalance || 0) + pnl;
@@ -379,7 +381,7 @@ export default function Dashboard() {
 
     const kpi = {
       netPnl, tradeCount: closed.length,
-      winRate: (wins + losses + beCount) > 0 ? (wins / (wins + losses + beCount)) * 100 : 0,
+      winRate: calculateWinRate(closed),
       wins, breakeven: beCount, losses,
       avgWin, avgLoss, avgWinLossRatio: ratio,
       profitFactor,
