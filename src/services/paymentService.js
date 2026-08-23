@@ -1,6 +1,7 @@
 import { getAuth } from 'firebase/auth';
+import { WORKER_BASE } from '../config/workerBase';
 
-const WORKER_BASE = import.meta.env.VITE_WORKER_URL || 'https://trade-os.tradeos.workers.dev';
+
 
 async function authHeader() {
   const user = getAuth().currentUser;

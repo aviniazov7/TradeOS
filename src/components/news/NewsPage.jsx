@@ -6,6 +6,7 @@ import WhyItMoved from './WhyItMoved';
 import { hebrewEventTitle } from '../../utils/econCalendarTerms';
 import { safeHttpUrl } from '../../utils/urls';
 import SelectDropdown from '../shared/SelectDropdown';
+import { WORKER_BASE } from '../../config/workerBase';
 
 // ─── News Sources (per market) ───
 const FEED_SOURCES = {
@@ -92,7 +93,7 @@ function saveHeCache(map, key = HE_CACHE_KEY) {
 }
 
 // ─── Economic Calendar (Forex Factory via allorigins proxy) ───
-const WORKER_URL = import.meta.env.VITE_WORKER_URL || 'https://trade-os.tradeos.workers.dev';
+const WORKER_URL = WORKER_BASE;
 const CALENDAR_URL = 'https://nfs.faireconomy.media/ff_calendar_thisweek.json';
 const CALENDAR_CACHE_KEY = 'tradeos_econ_calendar_v3';
 const CALENDAR_CACHE_TTL = 60 * 60 * 1000; // 1 hour

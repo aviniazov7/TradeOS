@@ -29,6 +29,7 @@ import { useAuth } from '../../contexts/AuthContext';
 import { updateUserDocument, arrayUnion, timestamp } from '../../services/firestoreService';
 import { computeTradeFields } from '../../utils/calculations';
 import { auth } from '../../services/firebase';
+import { WORKER_BASE } from '../../config/workerBase';
 
 function fmt(price) {
   if (!price && price !== 0) return '';
@@ -580,7 +581,7 @@ export default function PendingLimitOrders({ trades, livePrices }) {
   const { setActiveJournalId } = useJournalContext();
   const { user } = useAuth();
 
-  const workerUrl = import.meta.env.VITE_WORKER_URL || '';
+  const workerUrl = WORKER_BASE;
 
   const sendNotification = useCallback(async (type, trade, price, pnlDollar = null, extra = {}) => {
     if (!user?.uid || !workerUrl) return;

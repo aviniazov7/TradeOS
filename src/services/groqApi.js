@@ -1,6 +1,7 @@
 import { getAuth } from 'firebase/auth';
+import { WORKER_BASE } from '../config/workerBase';
 
-const WORKER_BASE = import.meta.env.VITE_WORKER_URL || 'https://trade-os.tradeos.workers.dev';
+
 const WORKER_URL = `${WORKER_BASE}/ai-chat`;
 const PROJECT_DESC_URL = `${WORKER_BASE}/ai-project-desc`;
 

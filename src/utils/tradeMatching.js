@@ -157,6 +157,35 @@ export function matchOpenPosition(trades, row, {
  * The journal trade an incoming sync row should UPDATE, or null when it is
  * genuinely new. Ids first, position identity second.
  */
+/**
+ * Journal trades still marked open for an exchange that no longer reports them.
+ *
+ * These are the residue of a bug that is now fixed: a position imported while
+ * open, whose close then landed as a SEPARATE trade because the two carry
+ * unrelated exchange ids. The close cannot reconcile them retroactively — it
+ * was already imported — so they sit in the journal forever, counted by
+ * RiskSupervisor as live risk that does not exist.
+ *
+ * `openRows` MUST come from a SUCCESSFUL open-positions response: an empty list
+ * because the call failed is indistinguishable from an empty list because
+ * nothing is open, and acting on the former would flag every live position as
+ * stale. Callers are responsible for that distinction.
+ */
+export function findStaleOpenTrades(trades, openRows, source) {
+  if (!source || !Array.isArray(openRows)) return [];
+  const live = new Set(
+    openRows
+      .filter((r) => r?.pair && r?.direction)
+      .map((r) => `${String(r.pair).toUpperCase()}|${r.direction}`)
+  );
+  return (trades || []).filter((t) =>
+    t?.status === 'open'
+    && t.source === source
+    && t.pair && t.direction
+    && !live.has(`${String(t.pair).toUpperCase()}|${t.direction}`)
+  );
+}
+
 export function matchSyncRow(trades, row, { isOpenRow = false, exclude = null } = {}) {
   return matchByExternalId(trades, row, { requireOpen: isOpenRow })
     || matchOpenPosition(trades, row, {

@@ -1,3 +1,4 @@
+import { WORKER_BASE } from '../config/workerBase';
 const CACHE_KEY = 'tradeos_coin_images';
 const CACHE_VERSION = 7; // bump to invalidate stale localStorage with wrong URLs
 const CACHE_DURATION = 7 * 24 * 60 * 60 * 1000; // 7 days (image URLs are stable)
@@ -331,7 +332,7 @@ export async function prefetchCoinImages() {
 
     lastApiAttempt = Date.now();
     try {
-      const workerUrl = import.meta.env.VITE_WORKER_URL || '';
+      const workerUrl = WORKER_BASE;
       let fetched = 0;
 
       // 1. Try Cloudflare Worker proxy

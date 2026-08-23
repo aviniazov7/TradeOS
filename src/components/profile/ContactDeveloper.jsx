@@ -3,8 +3,9 @@ import { motion, AnimatePresence } from 'framer-motion';
 import { LifeBuoy, Send, Loader2 } from 'lucide-react';
 import toast from 'react-hot-toast';
 import { useAuth } from '../../contexts/AuthContext';
+import { WORKER_BASE } from '../../config/workerBase';
 
-const WORKER_URL = import.meta.env.VITE_WORKER_URL || 'https://trade-os.tradeos.workers.dev';
+const WORKER_URL = WORKER_BASE;
 const MAX_LEN = 2000;
 const MIN_LEN = 3;
 

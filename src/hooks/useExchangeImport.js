@@ -4,7 +4,7 @@ import { useTrades } from './useTrades';
 import { addToUserCollection, updateUserDocument, timestamp, dateToTimestamp } from '../services/firestoreService';
 import { DEFAULT_LEVERAGE } from '../utils/constants';
 import { tradeExternalIds } from '../utils/tradeIds';
-import { matchSyncRow } from '../utils/tradeMatching';
+import { matchSyncRow, findStaleOpenTrades } from '../utils/tradeMatching';
 
 // Imports a single exchange-synced trade into the given journal. Shared by the
 // journal's exchange tab, the trades-tab proposal banner AND the standalone
@@ -13,7 +13,7 @@ import { matchSyncRow } from '../utils/tradeMatching';
 // imported from the proposals banner.
 export function useExchangeImport(journalId) {
   const { user } = useAuth();
-  const { trades, updateTrade } = useTrades(journalId);
+  const { trades, updateTrade, deleteTrade } = useTrades(journalId);
 
   // Every close-order id already present in this journal — used by the sync
   // modal to flag rows as updates rather than new trades.
@@ -231,6 +231,24 @@ export function useExchangeImport(journalId) {
     return results;
   }, [importTrade]);
 
+  // Journal rows still marked open that this exchange no longer reports. Pass
+  // ONLY a successful open-positions response — see findStaleOpenTrades.
+  const staleOpenTrades = useCallback(
+    (openRows, source) => findStaleOpenTrades(trades, openRows, source),
+    [trades]
+  );
+
+  // Remove rows the user confirmed are stale. They are duplicates left by an
+  // import bug, not real positions, so deleting is the correct repair — the
+  // trade that actually closed was imported separately and is untouched.
+  const removeTrades = useCallback(async (ids) => {
+    let removed = 0;
+    for (const id of ids || []) {
+      try { await deleteTrade(id); removed++; } catch { /* keep going */ }
+    }
+    return removed;
+  }, [deleteTrade]);
+
   // Whether an incoming sync row will UPDATE a journal trade rather than
   // create one. The sync modal badges rows with this, so a reconciled open
   // position reads as "update" instead of quietly looking like a new trade.
@@ -241,5 +259,5 @@ export function useExchangeImport(journalId) {
 
   // importTrade is deliberately NOT exported: fanning out over it concurrently
   // is exactly the pattern that let two rows reconcile into one document.
-  return { importTrades, existingExternalIds, matchExisting };
+  return { importTrades, existingExternalIds, matchExisting, staleOpenTrades, removeTrades };
 }

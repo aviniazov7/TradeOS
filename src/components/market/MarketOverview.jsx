@@ -16,8 +16,9 @@ import { fetchSpotTickersAsBinance, fetchLinearTickers, fetchAccountRatio } from
 import CoinIcon from '../shared/CoinIcon';
 import Reveal from '../shared/Reveal';
 import RollingNumber from '../shared/RollingNumber';
+import { WORKER_BASE } from '../../config/workerBase';
 
-const WORKER_URL = import.meta.env.VITE_WORKER_URL || '';
+const WORKER_URL = WORKER_BASE;
 const CG_PROXY = WORKER_URL + '/cg';
 const CG_DIRECT = 'https://api.coingecko.com/api/v3';
 

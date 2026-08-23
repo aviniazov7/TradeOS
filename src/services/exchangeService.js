@@ -1,7 +1,7 @@
 import { auth } from './firebase';
+import { WORKER_BASE } from '../config/workerBase';
 
-const WORKER_URL =
-  import.meta.env.VITE_WORKER_URL || 'https://trade-os.tradeos.workers.dev';
+const WORKER_URL = WORKER_BASE;
 
 async function authedFetch(path, body, method = 'POST') {
   const token = await auth.currentUser?.getIdToken();

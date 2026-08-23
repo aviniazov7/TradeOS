@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { matchSyncRow, matchByExternalId, matchOpenPosition, tradeDateMs } from './tradeMatching';
+import { matchSyncRow, matchByExternalId, matchOpenPosition, findStaleOpenTrades, tradeDateMs } from './tradeMatching';
 
 // The reconciliation these cover is the one that used to leave a phantom OPEN
 // row in the journal forever and import its close as a duplicate trade.
@@ -259,5 +259,37 @@ describe('matchByExternalId — scoping', () => {
     expect(matchSyncRow([closedDoc], openRow, { isOpenRow: true })).toBe(null);
     // A closed row may still legitimately update it (a later close of the same position).
     expect(matchByExternalId([closedDoc], { source: 'okx', externalId: 'pos-9' })?.id).toBe('c1');
+  });
+});
+
+describe('findStaleOpenTrades — the residue of the pre-fix duplicate bug', () => {
+  const open = (id, pair, direction, source = 'bybit') =>
+    ({ id, status: 'open', source, pair, direction });
+
+  it('flags an open trade the exchange no longer reports', () => {
+    const trades = [open('a', 'BTCUSDT', 'long'), open('b', 'ETHUSDT', 'short')];
+    const live = [{ pair: 'BTCUSDT', direction: 'long' }];
+    expect(findStaleOpenTrades(trades, live, 'bybit').map((t) => t.id)).toEqual(['b']);
+  });
+
+  it('never touches closed trades, other exchanges, or manual entries', () => {
+    const trades = [
+      { id: 'closed', status: 'closed', source: 'bybit', pair: 'ETHUSDT', direction: 'short' },
+      open('other', 'ETHUSDT', 'short', 'mexc'),
+      { id: 'manual', status: 'open', pair: 'ETHUSDT', direction: 'short' },
+    ];
+    expect(findStaleOpenTrades(trades, [], 'bybit')).toEqual([]);
+  });
+
+  it('matches pair case-insensitively and respects direction', () => {
+    const trades = [open('a', 'btcusdt', 'long')];
+    expect(findStaleOpenTrades(trades, [{ pair: 'BTCUSDT', direction: 'long' }], 'bybit')).toEqual([]);
+    expect(findStaleOpenTrades(trades, [{ pair: 'BTCUSDT', direction: 'short' }], 'bybit').map((t) => t.id)).toEqual(['a']);
+  });
+
+  it('a non-array openRows (a failed call) flags nothing', () => {
+    const trades = [open('a', 'BTCUSDT', 'long')];
+    expect(findStaleOpenTrades(trades, null, 'bybit')).toEqual([]);
+    expect(findStaleOpenTrades(trades, undefined, 'bybit')).toEqual([]);
   });
 });

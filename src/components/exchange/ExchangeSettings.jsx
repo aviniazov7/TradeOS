@@ -1,9 +1,6 @@
 import { useState, useEffect, useMemo, useRef } from 'react';
 import { motion, AnimatePresence, useMotionValue, useTransform } from 'framer-motion';
-import {
-  Shield, Eye, EyeOff, Check, ExternalLink,
-  RefreshCw, Download, X, Zap, HelpCircle, Pencil, Link2,
-} from 'lucide-react';
+import { Shield, Eye, EyeOff, Check, ExternalLink, RefreshCw, Download, X, Zap, HelpCircle, Pencil, Link2, AlertTriangle } from 'lucide-react';
 import toast from 'react-hot-toast';
 import { getUserSetting, setUserSetting } from '../../services/firestoreService';
 import { syncExchangeTrades, syncOpenPositions, fetchExchangeBalance, storeExchangeCredentials, deleteExchangeCredentials, getConnectedExchanges } from '../../services/exchangeService';
@@ -221,8 +218,10 @@ function fmtPrice(p) {
   return `$${p.toFixed(4)}`;
 }
 
-export function SyncModal({ exchange, trades, onClose, onImport, existingExternalIds = new Set(), matchExisting = null }) {
+export function SyncModal({ exchange, trades, onClose, onImport, existingExternalIds = new Set(), matchExisting = null, stale = [], onRemoveStale = null }) {
   const [selected, setSelected] = useState(() => new Set(trades.map((_, i) => i)));
+  const [staleRows, setStaleRows] = useState(stale);
+  const [removing, setRemoving] = useState(false);
   const [importing, setImporting] = useState(false);
   const toggle = i => setSelected(p => { const n = new Set(p); n.has(i) ? n.delete(i) : n.add(i); return n; });
   const toggleAll = () => setSelected(selected.size === trades.length ? new Set() : new Set(trades.map((_, i) => i)));
@@ -291,6 +290,32 @@ export function SyncModal({ exchange, trades, onClose, onImport, existingExterna
             </button>
           </div>
         </div>
+        {/* Journal rows this exchange no longer reports as open. They are the
+            residue of an old import bug (the close landed as its own trade),
+            so removing them is a repair — the closed trade itself is untouched. */}
+        {staleRows.length > 0 && (
+          <div className="flex items-center gap-3 px-4 py-2.5 bg-loss/10 border-b border-loss/25">
+            <AlertTriangle className="w-4 h-4 text-loss shrink-0" />
+            <p className="text-xs text-text-secondary flex-1 min-w-0">
+              {staleRows.length} פוזיציות פתוחות ביומן כבר לא פתוחות ב{exchange}
+            </p>
+            <button
+              onClick={async () => {
+                setRemoving(true);
+                try {
+                  const n = await onRemoveStale?.(staleRows.map((t) => t.id));
+                  setStaleRows([]);
+                  if (n) toast.success(`הוסרו ${n} שורות תקועות`);
+                } finally { setRemoving(false); }
+              }}
+              disabled={removing || !onRemoveStale}
+              className="text-xs font-semibold px-2.5 py-1 rounded-lg bg-loss/15 text-loss hover:bg-loss/25 transition-colors cursor-pointer disabled:opacity-40 shrink-0"
+            >
+              {removing ? 'מסיר…' : 'הסר'}
+            </button>
+          </div>
+        )}
+
         {/* Trade list */}
         <div className="overflow-y-auto flex-1 divide-y divide-border-primary/30">
           {trades.map((trade, i) => {
@@ -622,7 +647,7 @@ export default function ExchangeSettings({ journalId: propJournalId } = {}) {
   // Shared import logic (upsert on close-order-id overlap) — the standalone
   // /exchange route used to blind-add every synced row as a NEW trade, so a
   // TP1 already imported from the journal's proposal banner got counted twice.
-  const { importTrades, existingExternalIds, matchExisting } = useExchangeImport(activeJournalId);
+  const { importTrades, existingExternalIds, matchExisting, staleOpenTrades, removeTrades } = useExchangeImport(activeJournalId);
   const [exchanges, setExchanges] = useState({});
   const [savedExchanges, setSavedExchanges] = useState({});
   const [loading, setLoading] = useState(true);
@@ -738,8 +763,11 @@ export default function ExchangeSettings({ journalId: propJournalId } = {}) {
       const openPos = openResult.status === 'fulfilled' ? openResult.value : [];
       const taggedOpen = openPos.map(p => ({ ...p, _isOpen: true, pnlFromExchange: null }));
       const merged = [...taggedOpen, ...closedTrades];
-      if (!merged.length) { toast('לא נמצאו עסקאות', { icon: 'ℹ️' }); return; }
-      setSyncModal({ exchange: EXCHANGES.find(e => e.id === id)?.name || id, trades: merged });
+      // Only a SUCCEEDED open-positions call can prove a journal row is stale;
+      // a failed one returns [] and would flag every live position.
+      const stale = openResult.status === 'fulfilled' ? staleOpenTrades(openPos, id) : [];
+      if (!merged.length && !stale.length) { toast('לא נמצאו עסקאות', { icon: 'ℹ️' }); return; }
+      setSyncModal({ exchange: EXCHANGES.find(e => e.id === id)?.name || id, trades: merged, stale });
     } catch (err) { toast.error(`שגיאת סנכרון: ${err.message}`); } finally { setSyncing(null); }
   };
 
@@ -816,6 +844,7 @@ export default function ExchangeSettings({ journalId: propJournalId } = {}) {
         {syncModal && (
           <SyncModal exchange={syncModal.exchange} trades={syncModal.trades}
             onClose={() => setSyncModal(null)} onImport={handleImport}
+            stale={syncModal.stale} onRemoveStale={removeTrades}
             existingExternalIds={existingExternalIds} matchExisting={matchExisting} />
         )}
       </AnimatePresence>
