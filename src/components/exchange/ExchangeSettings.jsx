@@ -221,7 +221,7 @@ function fmtPrice(p) {
   return `$${p.toFixed(4)}`;
 }
 
-export function SyncModal({ exchange, trades, onClose, onImport, existingExternalIds = new Set() }) {
+export function SyncModal({ exchange, trades, onClose, onImport, existingExternalIds = new Set(), matchExisting = null }) {
   const [selected, setSelected] = useState(() => new Set(trades.map((_, i) => i)));
   const [importing, setImporting] = useState(false);
   const toggle = i => setSelected(p => { const n = new Set(p); n.has(i) ? n.delete(i) : n.add(i); return n; });
@@ -238,7 +238,12 @@ export function SyncModal({ exchange, trades, onClose, onImport, existingExterna
   // A row is an UPDATE when ANY of its close-order ids is already journaled —
   // a Multi-TP row carries every close's id in externalIds, and only its
   // first-close externalId matches the previously imported document.
-  const isUpdate = (t) => tradeExternalIds(t).some((id) => existingExternalIds.has(id));
+  // `matchExisting` also catches rows that reconcile to an open position by
+  // identity (their ids can never overlap); the id set alone showed those as
+  // new right up until the import turned them into an update.
+  const isUpdate = (t) => (matchExisting
+    ? !!matchExisting(t)
+    : tradeExternalIds(t).some((id) => existingExternalIds.has(id)));
   const updatesCount = trades.filter((t, i) => selected.has(i) && isUpdate(t)).length;
   const newCount = selected.size - updatesCount;
   return (
@@ -611,7 +616,7 @@ export default function ExchangeSettings({ journalId: propJournalId } = {}) {
   // Shared import logic (upsert on close-order-id overlap) — the standalone
   // /exchange route used to blind-add every synced row as a NEW trade, so a
   // TP1 already imported from the journal's proposal banner got counted twice.
-  const { importTrade, existingExternalIds } = useExchangeImport(activeJournalId);
+  const { importTrade, existingExternalIds, matchExisting } = useExchangeImport(activeJournalId);
   const [exchanges, setExchanges] = useState({});
   const [savedExchanges, setSavedExchanges] = useState({});
   const [loading, setLoading] = useState(true);
@@ -805,7 +810,7 @@ export default function ExchangeSettings({ journalId: propJournalId } = {}) {
         {syncModal && (
           <SyncModal exchange={syncModal.exchange} trades={syncModal.trades}
             onClose={() => setSyncModal(null)} onImport={handleImport}
-            existingExternalIds={existingExternalIds} />
+            existingExternalIds={existingExternalIds} matchExisting={matchExisting} />
         )}
       </AnimatePresence>
     </>

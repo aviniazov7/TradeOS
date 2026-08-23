@@ -1,9 +1,10 @@
 import { useCallback, useMemo } from 'react';
 import { useAuth } from '../contexts/AuthContext';
 import { useTrades } from './useTrades';
-import { addToUserCollection, timestamp, dateToTimestamp } from '../services/firestoreService';
+import { addToUserCollection, updateUserDocument, timestamp, dateToTimestamp } from '../services/firestoreService';
 import { DEFAULT_LEVERAGE } from '../utils/constants';
 import { tradeExternalIds } from '../utils/tradeIds';
+import { matchSyncRow } from '../utils/tradeMatching';
 
 // Imports a single exchange-synced trade into the given journal. Shared by the
 // journal's exchange tab, the trades-tab proposal banner AND the standalone
@@ -40,6 +41,30 @@ export function useExchangeImport(journalId) {
       const ep = t.entryPrice > 0 ? t.entryPrice : 0;
       const qty = t.quantity > 0 ? t.quantity : 0;
       const lev = Math.min(200, Math.max(1, t.leverage || DEFAULT_LEVERAGE));
+
+      // The open-position id embeds the exchange's `updatedTime`, so the SAME
+      // live position arrives with a brand-new id on every sync and used to
+      // import as another duplicate row. Refresh the position we already hold
+      // instead, and remember this snapshot's id so the next sync matches it
+      // outright. entryDate is deliberately left alone: it records when the
+      // position opened, and each snapshot would drag it forward.
+      const live = matchSyncRow(trades, t, { isOpenRow: true });
+      if (live) {
+        return updateUserDocument(user.uid, 'trades', live.id, {
+          entryPrice: ep, quantity: qty, leverage: lev,
+          stopLoss: parseFloat(t.stopLoss) || 0,
+          ...(Array.isArray(t.tps) && t.tps.length ? { tps: t.tps } : {}),
+          fees,
+          status: 'open',
+          positionSize: t.positionSize || ep * qty,
+          margin: ep * qty / lev,
+          ...(t.liquidationPrice ? { liquidationPrice: t.liquidationPrice } : {}),
+          externalId: live.externalId || t.externalId,
+          externalIds: [...new Set([...tradeExternalIds(live), ...tradeExternalIds(t)])],
+          updatedAt: timestamp(),
+        });
+      }
+
       return addToUserCollection(user.uid, 'trades', {
         pair: t.pair, direction: t.direction,
         entryPrice: ep, quantity: qty, leverage: lev,
@@ -63,10 +88,13 @@ export function useExchangeImport(journalId) {
     // Upsert: the row belongs to an existing trade when ANY of its close-order
     // ids matches — a Multi-TP position that closed across two syncs carries
     // the already-imported close's id alongside the new ones.
+    // …and when NOTHING overlaps, the row may still be the close of a position
+    // we imported while it was open — those carry a position-snapshot id that
+    // can never match a closing order's id. Reconciling on position identity
+    // is what stops the close landing as a duplicate trade while the original
+    // open row lingers forever as phantom live risk.
     const rowIds = tradeExternalIds(t);
-    const existing = rowIds.length
-      ? trades.find((tr) => tradeExternalIds(tr).some((id) => rowIds.includes(id)))
-      : null;
+    const existing = matchSyncRow(trades, t);
     if (existing) {
       // Pass the FULL merged shape — updateTrade recomputes pnl / R / percent /
       // result / positionSize from exactly what it's given, so the old partial
@@ -138,5 +166,13 @@ export function useExchangeImport(journalId) {
     });
   }, [user, trades, updateTrade, journalId]);
 
-  return { importTrade, existingExternalIds };
+  // Whether an incoming sync row will UPDATE a journal trade rather than
+  // create one. The sync modal badges rows with this, so a reconciled open
+  // position reads as "update" instead of quietly looking like a new trade.
+  const matchExisting = useCallback(
+    (row) => matchSyncRow(trades, row, { isOpenRow: !!row?._isOpen }),
+    [trades]
+  );
+
+  return { importTrade, existingExternalIds, matchExisting };
 }

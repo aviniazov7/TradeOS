@@ -6,6 +6,7 @@ import { EXCHANGES, SyncModal } from '../exchange/ExchangeSettings';
 import { getExchangeLogo } from '../../utils/constants';
 import { useExchangeProposals } from '../../hooks/useExchangeProposals';
 import { tradeExternalIds } from '../../utils/tradeIds';
+import { matchSyncRow } from '../../utils/tradeMatching';
 
 // A stable dedup key: closed trades key off the exchange's externalId; open
 // positions (whose externalId can change between syncs) key off pair+direction
@@ -82,6 +83,13 @@ export default function ExchangeProposals({ exchange, trades, onImportTrade, ena
     for (const t of trades || []) for (const id of tradeExternalIds(t)) s.add(id);
     return s;
   }, [trades]);
+
+  // Same matcher the import itself uses, so the modal's "עדכון" badge and its
+  // button count agree with what the import will actually do.
+  const matchExisting = useMemo(
+    () => (row) => matchSyncRow(trades || [], row, { isOpenRow: !!row?._isOpen }),
+    [trades]
+  );
 
   if (!active || !meta) return null;
 
@@ -219,6 +227,7 @@ export default function ExchangeProposals({ exchange, trades, onImportTrade, ena
             exchange={name}
             trades={modalTrades}
             existingExternalIds={existingExternalIds}
+            matchExisting={matchExisting}
             onClose={() => !importing && setModalOpen(false)}
             onImport={handleImport}
           />
