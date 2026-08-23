@@ -66,7 +66,7 @@ export default function OnboardingWizard() {
             className="relative max-w-lg w-full rounded-2xl overflow-hidden shadow-2xl"
             style={{
               background: 'var(--color-bg-secondary)',
-              border: '1px solid rgba(0,191,255,0.22)',
+              border: '1px solid color-mix(in srgb, var(--color-accent-primary) 22%, transparent)',
               boxShadow: '0 32px 80px rgba(0,0,0,0.5), 0 0 0 1px rgba(255,255,255,0.04) inset',
             }}
             initial={{ scale: 0.9, opacity: 0, y: 20 }}

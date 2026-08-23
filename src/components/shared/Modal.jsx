@@ -41,10 +41,28 @@ export default function Modal({ isOpen, onClose, title, ariaLabel, children, max
     if (!isOpen) return undefined;
     prevFocusRef.current = document.activeElement;
     const t = setTimeout(() => cardRef.current?.focus(), 0);
+    // Focusable descendants, in DOM order, skipping anything inert.
+    const focusables = () => Array.from(
+      cardRef.current?.querySelectorAll(
+        'a[href], button:not([disabled]), input:not([disabled]), select:not([disabled]), textarea:not([disabled]), [tabindex]:not([tabindex="-1"])'
+      ) || []
+    ).filter((el) => el.offsetParent !== null || el === document.activeElement);
     const onKey = (e) => {
-      if (e.key !== 'Escape') return;
       if (depthRef.current !== modalCount) return; // not the topmost modal
-      onCloseRef.current?.();
+      if (e.key === 'Escape') { onCloseRef.current?.(); return; }
+      // Trap Tab inside the dialog. Focus was set on open and restored on
+      // close, but never confined, so tabbing walked straight out into the
+      // page behind the modal — invisible to a keyboard user and meaningless
+      // to a screen reader.
+      if (e.key !== 'Tab') return;
+      const items = focusables();
+      if (!items.length) { e.preventDefault(); cardRef.current?.focus(); return; }
+      const first = items[0];
+      const last = items[items.length - 1];
+      const active = document.activeElement;
+      if (!cardRef.current?.contains(active)) { e.preventDefault(); first.focus(); return; }
+      if (e.shiftKey && active === first) { e.preventDefault(); last.focus(); }
+      else if (!e.shiftKey && active === last) { e.preventDefault(); first.focus(); }
     };
     document.addEventListener('keydown', onKey);
     return () => {

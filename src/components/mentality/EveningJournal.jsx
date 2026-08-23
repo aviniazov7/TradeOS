@@ -90,7 +90,7 @@ export default function EveningJournal() {
       animate={{ opacity: 1, y: 0 }}
       transition={{ duration: 0.3 }}
       className="flex flex-col max-w-4xl mx-auto w-full"
-      style={{ minHeight: 'calc(100vh - 7rem)' }}
+      style={{ minHeight: 'calc(100dvh - 7rem)' }}
     >
       {/* Compact header */}
       <div className="bg-bg-secondary border border-border-primary rounded-xl p-3 mb-3">

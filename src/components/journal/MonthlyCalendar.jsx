@@ -170,7 +170,7 @@ export default function MonthlyCalendar({ trades, journalName }) {
         {/* Calendar Grid */}
         <div className="grid grid-cols-7 gap-1">
           {calendarDays.map((day, idx) => {
-            if (!day) return <div key={`empty-${idx}`} className="h-10 md:h-14" />;
+            if (!day) return <div key={`empty-${idx}`} className="h-12 md:h-14" />;
 
             const key = format(day, 'yyyy-MM-dd');
             const data = dailyData[key];
@@ -190,7 +190,7 @@ export default function MonthlyCalendar({ trades, journalName }) {
                   {dayNum}
                 </span>
                 {data && (
-                  <span className={`text-[8px] md:text-[10px] font-semibold ${pnl >= 0 ? 'text-profit' : 'text-loss'}`}>
+                  <span className={`text-[10px] font-semibold ${pnl >= 0 ? 'text-profit' : 'text-loss'}`}>
                     <span className="hidden md:inline">{formatCurrency(pnl)}</span>
                     <span className="md:hidden">{pnl >= 0 ? '+' : ''}{pnl.toFixed(0)}$</span>
                   </span>

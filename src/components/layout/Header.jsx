@@ -10,8 +10,18 @@ export default function Header({ onToggleSidebar, sidebarOpen }) {
 
   return (
     <header
-      className="h-14 md:h-16 border-b border-border-primary flex items-center px-4 md:px-6 gap-3 fixed top-0 left-0 right-0 z-[60]"
-      style={{ background: 'var(--color-bg-solid)', backdropFilter: 'blur(18px)', WebkitBackdropFilter: 'blur(18px)' }}
+      className="h-14 md:h-16 border-b border-border-primary flex items-center px-4 md:px-6 gap-3 fixed top-0 left-0 right-0 z-[60] box-content"
+      style={{
+        background: 'var(--color-bg-solid)',
+        backdropFilter: 'blur(18px)',
+        WebkitBackdropFilter: 'blur(18px)',
+        // index.html sets viewport-fit=cover, so the layout runs under the
+        // notch. The bottom inset was padded everywhere but the top was not,
+        // leaving the burger, search and avatar partly under the status bar in
+        // the installed iOS PWA. box-content keeps the bar's own height intact
+        // while the inset is added on top of it.
+        paddingTop: 'env(safe-area-inset-top, 0px)',
+      }}
     >
       {/* Burger - rightmost in RTL */}
       <button

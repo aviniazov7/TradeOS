@@ -55,7 +55,10 @@ body {
   /* Text */
   --color-text-primary: #f0f0f0;
   --color-text-secondary: #a0a0b0;
-  --color-text-muted: #606070;
+  /* Lifted from #606070, which measured ~3:1 on the near-black surfaces —
+     below the 4.5:1 AA floor for normal text, and this is the default for
+     almost every small label, caption and metadata string in the app. */
+  --color-text-muted: #8b8b99;
 
   /* Accent (Cyan/turquoise) — base accent for TEXT, icons, borders and tints.
      Buttons/fills keep the violet→cyan --accent-gradient overlay on top, so the
@@ -175,6 +178,15 @@ body {
    (bg-accent-primary/10|15|20) used for subtle chips/active highlights, which
    must stay as faint solid washes. Background-image paints over Tailwind's
    background-color, so solid accent buttons/badges/active tabs become gradient. */
+/* Keyboard focus was invisible app-wide: no :focus-visible rule existed and
+   ~50 components set `outline-none`. :focus-visible (not :focus) keeps mouse
+   users unaffected while giving keyboard users a real, consistent indicator. */
+:focus-visible {
+  outline: 2px solid var(--color-accent-primary);
+  outline-offset: 2px;
+  border-radius: inherit;
+}
+
 [class~="bg-accent-primary"] {
   background-image: var(--accent-gradient);
   /* White label — matches the reference "Analyze" button and stays identical in

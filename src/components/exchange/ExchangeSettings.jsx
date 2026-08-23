@@ -259,10 +259,10 @@ export function SyncModal({ exchange, trades, onClose, onImport, existingExterna
       onClick={onClose}>
       <motion.div initial={{ y: 60, opacity: 0 }} animate={{ y: 0, opacity: 1 }} exit={{ y: 60, opacity: 0 }}
         transition={{ type: 'spring', damping: 26, stiffness: 320 }}
-        className="rounded-t-2xl sm:rounded-2xl w-full sm:max-w-lg max-h-[80vh] sm:max-h-[85vh] flex flex-col shadow-2xl"
+        className="rounded-t-2xl sm:rounded-2xl w-full sm:max-w-lg max-h-[80dvh] sm:max-h-[85dvh] flex flex-col shadow-2xl"
         style={{
           background: 'var(--color-bg-secondary)',
-          border: '1px solid rgba(0,191,255,0.22)',
+          border: '1px solid color-mix(in srgb, var(--color-accent-primary) 22%, transparent)',
           boxShadow: '0 32px 80px rgba(0,0,0,0.5), 0 0 0 1px rgba(255,255,255,0.04) inset',
         }}
         onClick={e => e.stopPropagation()}>

@@ -41,7 +41,13 @@ export default function Layout() {
       <Sidebar mobileOpen={sidebarOpen} onClose={() => setSidebarOpen(false)} />
 
       {!isOnline && (
-        <div className="fixed top-0 left-0 right-0 z-[100] flex items-center justify-center gap-2 bg-loss/90 text-white text-xs font-semibold py-1.5" dir="rtl">
+        <div
+          role="status"
+          aria-live="polite"
+          className="fixed top-0 left-0 right-0 z-[100] flex items-center justify-center gap-2 bg-loss/90 text-white text-xs font-semibold py-1.5"
+          style={{ paddingTop: 'calc(0.375rem + env(safe-area-inset-top, 0px))' }}
+          dir="rtl"
+        >
           <WifiOff className="w-3.5 h-3.5" /> אין חיבור לאינטרנט
         </div>
       )}

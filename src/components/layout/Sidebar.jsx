@@ -99,7 +99,7 @@ export default function Sidebar({ mobileOpen, onClose }) {
                     className={({ isActive }) =>
                       `group relative flex items-center gap-3 px-3 py-2.5 rounded-xl text-sm font-medium transition-all duration-200 ${
                         isActive
-                          ? 'border border-cyan-400/20'
+                          ? 'border border-accent-primary/20'
                           : item.highlight
                             ? 'border border-transparent hover:bg-bg-tertiary/60'
                             : 'border border-transparent text-text-secondary hover:text-text-primary hover:bg-bg-tertiary/60'
@@ -107,7 +107,7 @@ export default function Sidebar({ mobileOpen, onClose }) {
                     }
                     style={({ isActive }) =>
                       isActive
-                        ? { background: 'linear-gradient(90deg, rgba(34,211,238,0.14) 0%, rgba(139,92,246,0.07) 100%)' }
+                        ? { background: 'linear-gradient(90deg, color-mix(in srgb, var(--color-accent-primary) 14%, transparent) 0%, rgba(139,92,246,0.07) 100%)' }
                         : undefined
                     }
                   >
@@ -118,7 +118,7 @@ export default function Sidebar({ mobileOpen, onClose }) {
                           {isActive && (
                             <span
                               className="absolute right-0 top-1/2 -translate-y-1/2 h-7 w-1 rounded-full"
-                              style={{ background: 'linear-gradient(180deg,#60a5fa,#2563eb)', boxShadow: '0 0 10px 0 rgba(34,211,238,0.6)' }}
+                              style={{ background: 'linear-gradient(180deg,#60a5fa,#2563eb)', boxShadow: '0 0 10px 0 color-mix(in srgb, var(--color-accent-primary) 60%, transparent)' }}
                             />
                           )}
                           <item.icon
