@@ -1,6 +1,5 @@
-import { useState, useEffect, useMemo } from 'react';
+import { useMemo } from 'react';
 import {
-  subscribeToUserCollection,
   addToUserCollection,
   addToUserCollectionBulk,
   updateUserDocument,
@@ -9,37 +8,14 @@ import {
   dateToTimestamp,
 } from '../services/firestoreService';
 import { useAuth } from '../contexts/AuthContext';
+import { useAllTrades } from '../contexts/TradesContext';
 import { computeTradeFields, calculateFuturesNotional } from '../utils/calculations';
 
 export function useTrades(journalId = null) {
   const { user } = useAuth();
-  const [allTrades, setAllTrades] = useState([]);
-  const [loading, setLoading] = useState(true);
-
-  // Subscribe to ALL trades once, filter client-side by journalId
-  useEffect(() => {
-    if (!user) {
-      setAllTrades([]);
-      setLoading(false);
-      return;
-    }
-
-    setLoading(true);
-
-    return subscribeToUserCollection(
-      user.uid,
-      'trades',
-      {},
-      (data) => {
-        setAllTrades(data);
-        setLoading(false);
-      },
-      (error) => {
-        console.error('Firestore trades listener error:', error);
-        setLoading(false);
-      }
-    );
-  }, [user]);
+  // The subscription itself lives in TradesProvider — see that file for why.
+  // This hook is now a selector plus the mutations.
+  const { allTrades, loading } = useAllTrades();
 
   // Client-side filter by journalId — instant switching, no re-subscription
   const trades = useMemo(() => {

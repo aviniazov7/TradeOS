@@ -3,6 +3,7 @@ import { MotionConfig } from 'framer-motion';
 import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom';
 import { AuthProvider } from './contexts/AuthContext';
 import { JournalProvider } from './contexts/JournalContext';
+import { TradesProvider } from './contexts/TradesContext';
 import { BacktestProvider } from './contexts/BacktestContext';
 import ProtectedRoute from './components/auth/ProtectedRoute';
 import PremiumRoute from './components/auth/PremiumRoute';
@@ -100,6 +101,7 @@ function MainApp() {
     <MotionConfig reducedMotion="user">
     <AuthProvider>
       <JournalProvider>
+        <TradesProvider>
         <BacktestProvider>
           <Suspense fallback={<LoadingSpinner />}>
             <Routes>
@@ -161,6 +163,7 @@ function MainApp() {
           {/* Site-wide accessibility menu — present on every route. */}
           <AccessibilityWidget />
         </BacktestProvider>
+        </TradesProvider>
       </JournalProvider>
     </AuthProvider>
     </MotionConfig>
