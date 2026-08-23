@@ -41,8 +41,8 @@ function ExLogo({ id, name, accent, size = 40 }) {
 // Trades-tab banner that proactively proposes new exchange trades for import,
 // so the user no longer has to open the exchange tab and click sync manually.
 // `trades` is the journal's current trades (used to dedup already-logged rows);
-// `onImportTrade` is the single-trade import handler shared with ExchangeSettings.
-export default function ExchangeProposals({ exchange, trades, onImportTrade, enabled = true }) {
+// `onImportTrades` is the ordered batch importer shared with ExchangeSettings.
+export default function ExchangeProposals({ exchange, trades, onImportTrades, enabled = true }) {
   const meta = useMemo(() => EXCHANGES.find((e) => e.id === exchange), [exchange]);
   const { rows, loading, error, refresh, active, lastSyncedAt } = useExchangeProposals(exchange, { enabled });
 
@@ -100,7 +100,7 @@ export default function ExchangeProposals({ exchange, trades, onImportTrade, ena
     if (!selected.length) return;
     setImporting(true);
     try {
-      const results = await Promise.allSettled(selected.map((t) => onImportTrade(t)));
+      const results = await onImportTrades(selected);
       const ok = results.filter((r) => r.status === 'fulfilled').length;
       const failed = results.length - ok;
       // Optimistically hide ONLY the rows that imported successfully so the

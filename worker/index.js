@@ -82,13 +82,17 @@ function hashStr(s) {
 // 'London' manually and 'Asia' on import), silently splitting every
 // session-performance breakdown. Any client change to the bands must be
 // mirrored here.
+// Built ONCE. sessionFromDate runs per row inside the sync map (up to
+// MAX_TRADES), and constructing a formatter per call measured ~118ms of CPU for
+// a full sync against a 10ms free-plan CPU budget; hoisting it costs ~1.8ms.
+const IL_HOUR_FMT = new Intl.DateTimeFormat('en-US', {
+  hour: 'numeric', hour12: false, timeZone: 'Asia/Jerusalem',
+});
 function sessionFromDate(isoOrMs) {
   if (!isoOrMs) return null;
   const d = new Date(isoOrMs);
   if (Number.isNaN(d.getTime())) return null;
-  const h = parseInt(new Intl.DateTimeFormat('en-US', {
-    hour: 'numeric', hour12: false, timeZone: 'Asia/Jerusalem',
-  }).format(d), 10);
+  const h = parseInt(IL_HOUR_FMT.format(d), 10);
   if (Number.isNaN(h)) return null;
   if (h >= 14 && h < 18) return 'London/NY Overlap';
   if (h >= 9 && h < 14) return 'London';

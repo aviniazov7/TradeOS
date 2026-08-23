@@ -22,6 +22,13 @@ import { tradeExternalIds } from './tradeIds';
 // position on the same pair doesn't get swallowed.
 const ENTRY_PRICE_TOLERANCE = 0.01; // 1%
 
+// How much of the open position an incoming close must account for before we
+// believe it closed it. Anything materially smaller is a PARTIAL close: the
+// position is still live on the exchange, and reconciling it would mark a
+// running trade closed, hide it from risk supervision and record a fabricated
+// size. Partials are left to import as their own realized rows.
+const QUANTITY_TOLERANCE = 0.01; // 1%
+
 /**
  * Milliseconds for any date shape the app stores: Firestore Timestamp (live or
  * serialized), Date, ISO string, or epoch ms. Returns null when unparseable —
@@ -49,10 +56,39 @@ export function tradeDateMs(value) {
  * highest-confidence match. A Multi-TP position that closed across two syncs
  * carries the already-imported close's id alongside the new ones.
  */
-export function matchByExternalId(trades, row) {
+export function matchByExternalId(trades, row, { requireOpen = false } = {}) {
   const rowIds = tradeExternalIds(row);
   if (!rowIds.length) return null;
-  return (trades || []).find((t) => tradeExternalIds(t).some((id) => rowIds.includes(id))) || null;
+  const rowSource = row?.source || null;
+  return (trades || []).find((t) => {
+    // MEXC/OKX/Bitget position ids are bare numbers, so an unscoped comparison
+    // can collide across exchanges and rewrite a completely unrelated trade.
+    if (rowSource && t?.source && t.source !== rowSource) return false;
+    // An incoming OPEN row must never resurrect a closed trade: the payload
+    // would set status back to 'open' while its realized exit fields stayed
+    // behind, hiding the P&L from every stat and re-arming it as live risk.
+    if (requireOpen && t?.status === 'closed') return false;
+    return tradeExternalIds(t).some((id) => rowIds.includes(id));
+  }) || null;
+}
+
+/**
+ * The last moment we have positive evidence the exchange still held this
+ * position open.
+ *
+ * `updatedAt` is deliberately NOT consulted: it is a generic mutation stamp
+ * that every journal edit bumps, so annotating a live position would push it
+ * past the close's timestamp and permanently block that close from ever
+ * reconciling — the exact bug this matcher exists to prevent. `exchangeOpenAt`
+ * is written only by a sync that actually saw the position live; the other two
+ * cover documents written before that field existed.
+ */
+function lastSeenOpenMs(t) {
+  return Math.max(
+    tradeDateMs(t?.exchangeOpenAt) ?? -Infinity,
+    tradeDateMs(t?.entryDate) ?? -Infinity,
+    tradeDateMs(t?.createdAt) ?? -Infinity,
+  );
 }
 
 /**
@@ -66,27 +102,37 @@ export function matchByExternalId(trades, row) {
  * demanding a price match there would duplicate the row every time the user
  * scaled in and moved the average.
  */
-export function matchOpenPosition(trades, row, { requireEntryPrice = true } = {}) {
+export function matchOpenPosition(trades, row, {
+  requireEntryPrice = true,
+  requireFullClose = true,
+  exclude = null,
+} = {}) {
   if (!row?.source || !row?.pair || !row?.direction) return null;
   const rowEntry = Number(row.entryPrice) || 0;
+  const rowQty = Number(row.quantity) || 0;
   const closeMs = tradeDateMs(row.exitDate);
 
   const candidates = (trades || []).filter((t) => {
     if (t?.status !== 'open') return false;
     if (t.source !== row.source) return false;
     if (t.pair !== row.pair || t.direction !== row.direction) return false;
+    // Already claimed by another row of the same import batch. Imports fan out
+    // concurrently over a `trades` snapshot that cannot update between calls,
+    // so without this every close sharing a position's identity would match
+    // the SAME document and the last write would silently destroy the rest.
+    if (exclude && t.id != null && exclude.has(t.id)) return false;
     // A close that happened BEFORE the exchange last told us this position was
     // still open cannot belong to it. Without this, syncing a long history
     // while holding a live position would let a months-old close on the same
-    // pair reconcile into it and mark it closed. `updatedAt` is the strongest
-    // signal we have (the row was refreshed from live open positions then);
-    // entryDate/createdAt cover documents written before that was tracked.
-    const lastKnownOpenMs = Math.max(
-      tradeDateMs(t.entryDate) ?? -Infinity,
-      tradeDateMs(t.createdAt) ?? -Infinity,
-      tradeDateMs(t.updatedAt) ?? -Infinity,
-    );
-    if (closeMs != null && Number.isFinite(lastKnownOpenMs) && lastKnownOpenMs > closeMs) return false;
+    // pair reconcile into it and mark it closed.
+    const seenOpenMs = lastSeenOpenMs(t);
+    if (closeMs != null && Number.isFinite(seenOpenMs) && seenOpenMs > closeMs) return false;
+    // A close that covers materially less than the position is a PARTIAL —
+    // the rest is still running, so the journal's open row must survive it.
+    if (requireFullClose) {
+      const openQty = Number(t.quantity) || 0;
+      if (openQty > 0 && rowQty > 0 && rowQty < openQty * (1 - QUANTITY_TOLERANCE)) return false;
+    }
     if (!requireEntryPrice) return true;
     const openEntry = Number(t.entryPrice) || 0;
     if (!(openEntry > 0) || !(rowEntry > 0)) return false;
@@ -111,7 +157,11 @@ export function matchOpenPosition(trades, row, { requireEntryPrice = true } = {}
  * The journal trade an incoming sync row should UPDATE, or null when it is
  * genuinely new. Ids first, position identity second.
  */
-export function matchSyncRow(trades, row, { isOpenRow = false } = {}) {
-  return matchByExternalId(trades, row)
-    || matchOpenPosition(trades, row, { requireEntryPrice: !isOpenRow });
+export function matchSyncRow(trades, row, { isOpenRow = false, exclude = null } = {}) {
+  return matchByExternalId(trades, row, { requireOpen: isOpenRow })
+    || matchOpenPosition(trades, row, {
+      requireEntryPrice: !isOpenRow,
+      requireFullClose: !isOpenRow,
+      exclude,
+    });
 }

@@ -186,7 +186,7 @@ export default function TradeJournal() {
   // the exchange tab (ExchangeSettings) and the trades-tab proposal banner
   // (ExchangeProposals) so both add trades identically, upserting when any of
   // the row's close-order ids is already in the journal.
-  const { importTrade: importExchangeTrade } = useExchangeImport(activeJournalId);
+  const { importTrades: importExchangeTrades } = useExchangeImport(activeJournalId);
 
   useEffect(() => {
     if (searchParams.get('new') === '1') setFormOpen(true);
@@ -666,7 +666,7 @@ export default function TradeJournal() {
             <ExchangeProposals
               exchange={activeJournal.exchange}
               trades={trades}
-              onImportTrade={importExchangeTrade}
+              onImportTrades={importExchangeTrades}
               enabled={balanceIsLive}
             />
           )}

@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef } from 'react';
+import { useState, useEffect, useMemo, useRef } from 'react';
 import { motion, AnimatePresence, useMotionValue, useTransform } from 'framer-motion';
 import {
   Shield, Eye, EyeOff, Check, ExternalLink,
@@ -241,10 +241,16 @@ export function SyncModal({ exchange, trades, onClose, onImport, existingExterna
   // `matchExisting` also catches rows that reconcile to an open position by
   // identity (their ids can never overlap); the id set alone showed those as
   // new right up until the import turned them into an update.
-  const isUpdate = (t) => (matchExisting
-    ? !!matchExisting(t)
-    : tradeExternalIds(t).some((id) => existingExternalIds.has(id)));
-  const updatesCount = trades.filter((t, i) => selected.has(i) && isUpdate(t)).length;
+  // Resolved ONCE per row rather than per render: matchExisting walks the whole
+  // journal, and this is read twice for every row (the count and the badge), so
+  // recomputing it on each checkbox toggle rescanned every trade.
+  const updateFlags = useMemo(
+    () => trades.map((t) => (matchExisting
+      ? !!matchExisting(t)
+      : tradeExternalIds(t).some((id) => existingExternalIds.has(id)))),
+    [trades, matchExisting, existingExternalIds]
+  );
+  const updatesCount = trades.filter((_, i) => selected.has(i) && updateFlags[i]).length;
   const newCount = selected.size - updatesCount;
   return (
     <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}
@@ -296,7 +302,7 @@ export function SyncModal({ exchange, trades, onClose, onImport, existingExterna
             if (netVal !== null) {
               pnlClass = netVal >= 0 ? 'text-profit' : 'text-loss';
             }
-            const isExisting = isUpdate(trade);
+            const isExisting = updateFlags[i];
             return (
               <button key={i} onClick={() => toggle(i)}
                 className={`w-full flex items-center gap-3 px-4 py-3 hover:bg-bg-tertiary transition-colors cursor-pointer text-right ${!sel ? 'opacity-35' : ''}`}>
@@ -616,7 +622,7 @@ export default function ExchangeSettings({ journalId: propJournalId } = {}) {
   // Shared import logic (upsert on close-order-id overlap) — the standalone
   // /exchange route used to blind-add every synced row as a NEW trade, so a
   // TP1 already imported from the journal's proposal banner got counted twice.
-  const { importTrade, existingExternalIds, matchExisting } = useExchangeImport(activeJournalId);
+  const { importTrades, existingExternalIds, matchExisting } = useExchangeImport(activeJournalId);
   const [exchanges, setExchanges] = useState({});
   const [savedExchanges, setSavedExchanges] = useState({});
   const [loading, setLoading] = useState(true);
@@ -742,7 +748,7 @@ export default function ExchangeSettings({ journalId: propJournalId } = {}) {
       toast.error('בחר יומן לפני הייבוא');
       return;
     }
-    const results = await Promise.allSettled(trades.map(t => importTrade(t)));
+    const results = await importTrades(trades);
     const imported = results.filter(r => r.status === 'fulfilled').length;
     const failed = results.filter(r => r.status === 'rejected');
     setSyncModal(null);

@@ -143,14 +143,14 @@ describe('matchOpenPosition — a live position is not closed by an older close'
   // same pair, at a similar price, must not reconcile into the open row.
   const heldSinceJune = {
     id: 'held', status: 'open', source: 'bybit', pair: 'BTCUSDT', direction: 'long',
-    entryPrice: 60000,
+    entryPrice: 60000, quantity: 1,
     entryDate: ts('2026-06-01T10:00:00Z'),
-    // The exchange reported it still open at this sync.
-    updatedAt: ts('2026-08-20T10:00:00Z'),
+    // A sync saw it live here.
+    exchangeOpenAt: ts('2026-08-20T10:00:00Z'),
   };
   const julyClose = {
     source: 'bybit', pair: 'BTCUSDT', direction: 'long',
-    entryPrice: 60200, exitPrice: 61000,
+    entryPrice: 60200, exitPrice: 61000, quantity: 1,
     exitDate: '2026-07-15T10:00:00Z',
     externalId: 'july-close',
   };
@@ -164,10 +164,100 @@ describe('matchOpenPosition — a live position is not closed by an older close'
     expect(matchOpenPosition([heldSinceJune], laterClose)?.id).toBe('held');
   });
 
-  it('a pending serverTimestamp (null updatedAt) falls back to the other dates', () => {
-    const pending = { ...heldSinceJune, updatedAt: null };
-    expect(matchOpenPosition([pending], julyClose)?.id).toBe('held');
-    const openedAfter = { ...pending, entryDate: ts('2026-07-20T10:00:00Z') };
-    expect(matchOpenPosition([openedAfter], julyClose)).toBe(null);
+  it('IGNORES updatedAt — a user annotating a live trade must not block its close', () => {
+    // updatedAt is bumped by every journal edit. Folding it into the guard
+    // meant adding a note to an open position permanently prevented its close
+    // from ever reconciling, reinstating the duplicate-trade bug.
+    const edited = {
+      ...heldSinceJune,
+      exchangeOpenAt: ts('2026-08-20T10:00:00Z'),
+      updatedAt: ts('2026-08-25T20:00:00Z'), // user edited AFTER the close
+    };
+    const closeBeforeTheEdit = { ...julyClose, exitDate: '2026-08-21T09:00:00Z', externalId: 'c1' };
+    expect(matchOpenPosition([edited], closeBeforeTheEdit)?.id).toBe('held');
+  });
+
+  it('legacy documents with no exchangeOpenAt fall back to entryDate/createdAt', () => {
+    const legacy = { ...heldSinceJune, exchangeOpenAt: undefined };
+    expect(matchOpenPosition([legacy], julyClose)?.id).toBe('held');
+    const openedAfterTheClose = { ...legacy, entryDate: ts('2026-07-20T10:00:00Z') };
+    expect(matchOpenPosition([openedAfterTheClose], julyClose)).toBe(null);
+  });
+});
+
+describe('matchOpenPosition — a PARTIAL close must not close a live position', () => {
+  const open2btc = {
+    id: 'p1', status: 'open', source: 'bybit', pair: 'BTCUSDT', direction: 'long',
+    entryPrice: 60000, quantity: 2,
+    entryDate: ts('2026-08-01T10:00:00Z'),
+    exchangeOpenAt: ts('2026-08-01T10:00:00Z'),
+  };
+  // Bybit emits one closed-pnl row per closing order, carrying the POSITION's
+  // average entry but only the CLOSED slice's quantity — indistinguishable
+  // from a full close on price alone.
+  const tp1 = {
+    source: 'bybit', pair: 'BTCUSDT', direction: 'long',
+    entryPrice: 60000, exitPrice: 62000, quantity: 1,
+    exitDate: '2026-08-02T10:00:00Z', externalId: 'tp1',
+  };
+
+  it('rejects a close covering only part of the position', () => {
+    expect(matchOpenPosition([open2btc], tp1)).toBe(null);
+  });
+
+  it('accepts the close that covers the whole position', () => {
+    expect(matchOpenPosition([open2btc], { ...tp1, quantity: 2 })?.id).toBe('p1');
+  });
+
+  it('tolerates rounding just under the full size, and a scaled-up close', () => {
+    expect(matchOpenPosition([open2btc], { ...tp1, quantity: 1.995 })?.id).toBe('p1');
+    expect(matchOpenPosition([open2btc], { ...tp1, quantity: 3 })?.id).toBe('p1');
+  });
+
+  it('an OPEN row still matches the remainder regardless of size', () => {
+    const remainder = { source: 'bybit', pair: 'BTCUSDT', direction: 'long', entryPrice: 60000, quantity: 1, externalId: 'snap2' };
+    expect(matchSyncRow([open2btc], remainder, { isOpenRow: true })?.id).toBe('p1');
+  });
+});
+
+describe('matchSyncRow — batch claims stop two rows collapsing onto one document', () => {
+  const openDoc = {
+    id: 'D', status: 'open', source: 'bybit', pair: 'BTCUSDT', direction: 'long',
+    entryPrice: 60000, quantity: 1,
+    entryDate: ts('2026-08-01T10:00:00Z'),
+    exchangeOpenAt: ts('2026-08-01T10:00:00Z'),
+  };
+
+  it('a claimed document is invisible to the next row of the batch', () => {
+    const close = {
+      source: 'bybit', pair: 'BTCUSDT', direction: 'long',
+      entryPrice: 60000, exitPrice: 62000, quantity: 1,
+      exitDate: '2026-08-03T10:00:00Z', externalId: 'close-a',
+    };
+    const claimed = new Set();
+    expect(matchSyncRow([openDoc], close, { exclude: claimed })?.id).toBe('D');
+    claimed.add('D');
+    // The open row of a DIFFERENT position on the same pair must now create
+    // its own document instead of overwriting the one just closed.
+    const newPosition = { source: 'bybit', pair: 'BTCUSDT', direction: 'long', entryPrice: 61500, quantity: 1, externalId: 'snap-new' };
+    expect(matchSyncRow([openDoc], newPosition, { isOpenRow: true, exclude: claimed })).toBe(null);
+  });
+});
+
+describe('matchByExternalId — scoping', () => {
+  it('does not match across exchanges (position ids are bare numbers)', () => {
+    const mexcTrade = { id: 'm1', source: 'mexc', externalId: '123456' };
+    const okxRow = { source: 'okx', externalId: '123456' };
+    expect(matchByExternalId([mexcTrade], okxRow)).toBe(null);
+    expect(matchByExternalId([mexcTrade], { source: 'mexc', externalId: '123456' })?.id).toBe('m1');
+  });
+
+  it('an incoming OPEN row never resurrects a closed trade', () => {
+    const closedDoc = { id: 'c1', status: 'closed', source: 'okx', externalId: 'pos-9' };
+    const openRow = { source: 'okx', pair: 'BTCUSDT', direction: 'long', externalId: 'pos-9' };
+    expect(matchByExternalId([closedDoc], openRow, { requireOpen: true })).toBe(null);
+    expect(matchSyncRow([closedDoc], openRow, { isOpenRow: true })).toBe(null);
+    // A closed row may still legitimately update it (a later close of the same position).
+    expect(matchByExternalId([closedDoc], { source: 'okx', externalId: 'pos-9' })?.id).toBe('c1');
   });
 });

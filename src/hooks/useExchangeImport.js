@@ -23,8 +23,20 @@ export function useExchangeImport(journalId) {
     return s;
   }, [trades]);
 
-  const importTrade = useCallback(async (t) => {
+  // `claimed` is the set of journal-document ids another row of the SAME import
+  // batch has already reconciled into. Imports run against a `trades` snapshot
+  // that cannot refresh between rows, so without it every row sharing a
+  // position's identity matches the same document and the last write silently
+  // destroys the others.
+  const importTrade = useCallback(async (t, claimed = null) => {
     if (!user) throw new Error('No user');
+    const claim = (doc, row) => {
+      // Only identity matches need claiming — an id match is unique to its row.
+      const ids = tradeExternalIds(row);
+      const byId = ids.length && tradeExternalIds(doc).some((id) => ids.includes(id));
+      if (!byId && claimed && doc?.id != null) claimed.add(doc.id);
+      return doc;
+    };
     const safeTs = (raw) => {
       if (!raw) return null;
       const d = new Date(raw);
@@ -45,22 +57,34 @@ export function useExchangeImport(journalId) {
       // The open-position id embeds the exchange's `updatedTime`, so the SAME
       // live position arrives with a brand-new id on every sync and used to
       // import as another duplicate row. Refresh the position we already hold
-      // instead, and remember this snapshot's id so the next sync matches it
-      // outright. entryDate is deliberately left alone: it records when the
-      // position opened, and each snapshot would drag it forward.
-      const live = matchSyncRow(trades, t, { isOpenRow: true });
+      // instead. Only values the exchange actually reports are written: the
+      // worker hardcodes fees:0 on every open position and reports stopLoss:0
+      // whenever the stop is not attached exchange-side, so writing those
+      // unconditionally erased a stop the user had typed in and fired a false
+      // "position with no protective stop" alert. entryDate is left alone too:
+      // it records when the position opened, and each snapshot would drag it
+      // forward. The snapshot id is NOT accumulated into externalIds — the next
+      // snapshot's id differs by construction, so it could never match anyway
+      // and the array would grow on every single sync.
+      const live = matchSyncRow(trades, t, { isOpenRow: true, exclude: claimed });
       if (live) {
+        claim(live, t);
+        const slOpen = parseFloat(t.stopLoss) || 0;
         return updateUserDocument(user.uid, 'trades', live.id, {
           entryPrice: ep, quantity: qty, leverage: lev,
-          stopLoss: parseFloat(t.stopLoss) || 0,
+          ...(slOpen > 0 ? { stopLoss: slOpen } : {}),
           ...(Array.isArray(t.tps) && t.tps.length ? { tps: t.tps } : {}),
-          fees,
+          ...(fees > 0 ? { fees } : {}),
           status: 'open',
           positionSize: t.positionSize || ep * qty,
           margin: ep * qty / lev,
           ...(t.liquidationPrice ? { liquidationPrice: t.liquidationPrice } : {}),
           externalId: live.externalId || t.externalId,
-          externalIds: [...new Set([...tradeExternalIds(live), ...tradeExternalIds(t)])],
+          // Positive evidence the exchange still held this position open, which
+          // is what the reconciler's freshness guard needs. `updatedAt` cannot
+          // serve: every journal edit bumps it, and a user annotating a live
+          // position would then block its close from ever reconciling.
+          exchangeOpenAt: timestamp(),
           updatedAt: timestamp(),
         });
       }
@@ -80,6 +104,8 @@ export function useExchangeImport(journalId) {
         ...(t.session ? { session: t.session } : {}),
         ...(t.liquidationPrice ? { liquidationPrice: t.liquidationPrice } : {}),
         journalId: journalId || null,
+        // See the refresh path above — this is what the close reconciler reads.
+        exchangeOpenAt: timestamp(),
         createdAt: timestamp(),
         updatedAt: timestamp(),
       });
@@ -94,7 +120,8 @@ export function useExchangeImport(journalId) {
     // is what stops the close landing as a duplicate trade while the original
     // open row lingers forever as phantom live risk.
     const rowIds = tradeExternalIds(t);
-    const existing = matchSyncRow(trades, t);
+    const existing = matchSyncRow(trades, t, { exclude: claimed });
+    if (existing) claim(existing, t);
     if (existing) {
       // Pass the FULL merged shape — updateTrade recomputes pnl / R / percent /
       // result / positionSize from exactly what it's given, so the old partial
@@ -102,7 +129,9 @@ export function useExchangeImport(journalId) {
       // left quantity/exits/result stale: a stop-out arriving after TP1 turned
       // the pnl negative while the trade stayed a 'win'.
       const ep = t.entryPrice > 0 ? t.entryPrice : existing.entryPrice;
-      const xp = t.exitPrice > 0 ? t.exitPrice : existing.exitPrice;
+      // An open document has NO exitPrice, and Firestore rejects an update that
+      // carries `undefined` — the whole write would throw, losing the close.
+      const xp = t.exitPrice > 0 ? t.exitPrice : (existing.exitPrice || 0);
       const qty = t.quantity > 0 ? t.quantity : existing.quantity;
       const lev = Math.min(200, Math.max(1, t.leverage || existing.leverage || DEFAULT_LEVERAGE));
       return updateTrade(existing.id, {
@@ -121,6 +150,12 @@ export function useExchangeImport(journalId) {
         externalId: existing.externalId || t.externalId,
         externalIds: [...new Set([...tradeExternalIds(existing), ...rowIds])],
         ...(t.session ? { session: t.session } : {}),
+        // Reconciling a position that was open: a liquidation price is
+        // meaningless once the position is gone and would keep rendering on
+        // the closed trade.
+        ...(existing.status === 'open' && existing.liquidationPrice != null
+          ? { liquidationPrice: null }
+          : {}),
       });
     }
 
@@ -166,6 +201,36 @@ export function useExchangeImport(journalId) {
     });
   }, [user, trades, updateTrade, journalId]);
 
+  // Import a whole selection. Callers MUST use this rather than fanning out
+  // over importTrade: rows are matched against a `trades` snapshot that cannot
+  // refresh mid-batch, so running them concurrently let two rows reconcile into
+  // the same document and one write silently destroyed the other.
+  //
+  // Order matters as much as serialisation. A close and the open row of a
+  // DIFFERENT position on the same pair both look like that one document —
+  // e.g. yesterday's long closed and a new long opened before this sync — and
+  // only the close is entitled to it. Closes therefore run first and claim
+  // their document, leaving the open row to correctly create a new one.
+  //
+  // Returns Promise.allSettled-shaped results in the caller's original row
+  // order, so each row's success can still be mapped back to the row.
+  const importTrades = useCallback(async (rows) => {
+    const list = rows || [];
+    const claimed = new Set();
+    const ordered = list
+      .map((row, index) => ({ row, index }))
+      .sort((a, b) => Number(!!a.row?._isOpen) - Number(!!b.row?._isOpen));
+    const results = new Array(list.length);
+    for (const { row, index } of ordered) {
+      try {
+        results[index] = { status: 'fulfilled', value: await importTrade(row, claimed) };
+      } catch (reason) {
+        results[index] = { status: 'rejected', reason };
+      }
+    }
+    return results;
+  }, [importTrade]);
+
   // Whether an incoming sync row will UPDATE a journal trade rather than
   // create one. The sync modal badges rows with this, so a reconciled open
   // position reads as "update" instead of quietly looking like a new trade.
@@ -174,5 +239,7 @@ export function useExchangeImport(journalId) {
     [trades]
   );
 
-  return { importTrade, existingExternalIds, matchExisting };
+  // importTrade is deliberately NOT exported: fanning out over it concurrently
+  // is exactly the pattern that let two rows reconcile into one document.
+  return { importTrades, existingExternalIds, matchExisting };
 }
