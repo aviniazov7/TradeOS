@@ -21,7 +21,12 @@ function summarize(trades) {
   const wins = trades.filter((t) => pnlOf(t) > 0);
   const losses = trades.filter((t) => pnlOf(t) < 0);
   const pnl = trades.reduce((s, t) => s + pnlOf(t), 0);
-  const wr = total ? Math.round((wins.length / total) * 1000) / 10 : 0;
+  // DECIDED trades only, matching calculateWinRate — the app's one win-rate
+  // definition, which every dashboard surface was unified on. Dividing by the
+  // full total counted breakevens in the denominator, so the analyst quoted a
+  // lower win rate than the dashboard showed for the very same trades.
+  const decided = wins.length + losses.length;
+  const wr = decided ? Math.round((wins.length / decided) * 1000) / 10 : 0;
   const avgWin = wins.length ? wins.reduce((s, t) => s + pnlOf(t), 0) / wins.length : 0;
   const avgLoss = losses.length ? losses.reduce((s, t) => s + pnlOf(t), 0) / losses.length : 0;
   const profitFactor = losses.length && avgLoss < 0
