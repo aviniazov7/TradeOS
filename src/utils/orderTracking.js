@@ -107,7 +107,11 @@ export function livePnl(trade, currentPrice) {
  * this stays a pure function of its inputs.
  */
 export function buildCloseUpdate(trade, closePrice, exitDate) {
-  const price = num(closePrice);
+  // Refuse rather than coerce. This is a WRITE path: a price that does not
+  // parse used to land as NaN, which is loudly broken; coercing it to 0 would
+  // instead store a plausible-looking total loss, permanently.
+  const price = parseFloat(closePrice);
+  if (!Number.isFinite(price) || price <= 0) return null;
   const entry = num(trade?.entryPrice);
 
   const executed = (trade?.exits || [])

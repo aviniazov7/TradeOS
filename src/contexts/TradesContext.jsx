@@ -15,33 +15,55 @@ import { useAuth } from './AuthContext';
 // This mirrors what JournalContext already does correctly for journals: hold
 // the subscription once, and let useTrades become a selector over it.
 
-const TradesContext = createContext({ allTrades: [], loading: true });
+const TradesContext = createContext(null);
 
 const SIGNED_OUT = { allTrades: [], loading: false };
 const AWAITING = { allTrades: [], loading: true };
+const EMPTY = { uid: null, allTrades: [], loading: true };
+
+// A listener that errors out used to heal on the next navigation, because each
+// consumer re-subscribed on mount. There is only one listener now, so a single
+// failure would leave the whole app without trades until a reload.
+const RETRY_MS = 5000;
 
 export function TradesProvider({ children }) {
   const { user } = useAuth();
-  // Snapshot is stamped with the uid it belongs to. Deriving the exposed value
-  // from that (rather than clearing state when the user changes) keeps the
-  // effect free of synchronous setState AND guarantees one account's trades can
-  // never be served for a moment to the next one after a soft account switch.
-  const [snapshot, setSnapshot] = useState({ uid: null, allTrades: [], loading: true });
+  // The snapshot is stamped with the uid it came from, and the exposed value is
+  // derived from that. That keeps the effect free of synchronous setState and
+  // guarantees one account's trades are never served to the next.
+  const [snapshot, setSnapshot] = useState(EMPTY);
+  const [retry, setRetry] = useState(0);
 
   useEffect(() => {
     if (!user) return undefined;
     const uid = user.uid;
-    return subscribeToUserCollection(
+    let retryTimer = null;
+
+    const unsubscribe = subscribeToUserCollection(
       uid,
       'trades',
       {},
       (data) => setSnapshot({ uid, allTrades: data, loading: false }),
       (error) => {
         console.error('Firestore trades listener error:', error);
-        setSnapshot((prev) => (prev.uid === uid ? { ...prev, loading: false } : { uid, allTrades: [], loading: false }));
+        // Only ever touch state belonging to THIS listener — a late error from a
+        // previous user's listener must not stamp their uid back over the
+        // current one and pin the app on "awaiting".
+        setSnapshot((prev) => (prev.uid === uid ? { ...prev, loading: false } : prev));
+        retryTimer = setTimeout(() => setRetry((n) => n + 1), RETRY_MS);
       }
     );
-  }, [user]);
+
+    return () => {
+      if (retryTimer) clearTimeout(retryTimer);
+      unsubscribe?.();
+      // Drop the cached rows with the subscription. Without this a sign-out
+      // left the previous session's trades in state, and signing back in as the
+      // SAME account served them as fresh — loading:false over stale data —
+      // until the new snapshot arrived.
+      setSnapshot(EMPTY);
+    };
+  }, [user, retry]);
 
   const value = useMemo(() => {
     if (!user) return SIGNED_OUT;
@@ -54,5 +76,10 @@ export function TradesProvider({ children }) {
 
 // eslint-disable-next-line react-refresh/only-export-components
 export function useAllTrades() {
-  return useContext(TradesContext);
+  const ctx = useContext(TradesContext);
+  // Throw rather than hand back an empty default, matching every other context
+  // here: a consumer mounted outside the provider would otherwise render a
+  // permanent "no trades" state that looks like real data.
+  if (!ctx) throw new Error('useAllTrades must be used within a TradesProvider');
+  return ctx;
 }

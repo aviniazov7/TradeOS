@@ -595,7 +595,8 @@ export default function PendingLimitOrders({ trades, livePrices }) {
       return;
     }
     const updates = { tpReached: arrayUnion(tpIdx) };
-    if (isLastTp) Object.assign(updates, buildCloseUpdate(trade, currentPrice, timestamp()));
+    const close = isLastTp ? buildCloseUpdate(trade, currentPrice, timestamp()) : null;
+    if (close) Object.assign(updates, close);
     updateUserDocument(user.uid, 'trades', trade.id, updates).catch(() => {});
     sendNotification('tp', trade, currentPrice, pnl, { tpIndex: tpIdx, isLastTp });
   }, [user?.uid, sendNotification]);
@@ -646,7 +647,8 @@ export default function PendingLimitOrders({ trades, livePrices }) {
       sendNotification('sl', trade, currentPrice, pnl);
       return;
     }
-    updateUserDocument(user.uid, 'trades', trade.id, buildCloseUpdate(trade, currentPrice, timestamp())).catch(() => {});
+    const close = buildCloseUpdate(trade, currentPrice, timestamp());
+    if (close) updateUserDocument(user.uid, 'trades', trade.id, close).catch(() => {});
     sendNotification('sl', trade, currentPrice, pnl);
   }, [user?.uid, sendNotification]);
 

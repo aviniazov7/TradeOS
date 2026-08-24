@@ -60,6 +60,15 @@ describe('isStopHit', () => {
     expect(isStopHit(long({ stopLoss: 0 }), 1)).toBe(false);
     expect(isStopHit(long(), null)).toBe(false);
   });
+
+  it('a SHORT with no stop never fires — the old inline check closed it instantly', () => {
+    // `currentPrice >= 0` is true for every real price, so a short saved with an
+    // empty stop-loss field (stored as 0) was auto-closed at the mark price ~6s
+    // after the dashboard mounted. This guard is the reason that stops.
+    expect(isStopHit(short({ stopLoss: 0 }), 50000)).toBe(false);
+    expect(isStopHit(short({ stopLoss: undefined }), 50000)).toBe(false);
+    expect(isStopHit(short({ stopLoss: '' }), 50000)).toBe(false);
+  });
 });
 
 describe('reachedTakeProfits', () => {
@@ -150,5 +159,12 @@ describe('buildCloseUpdate', () => {
 
   it('omits exitDate entirely when none is supplied', () => {
     expect('exitDate' in buildCloseUpdate(long({ quantity: 1 }), 110)).toBe(false);
+  });
+
+  it('REFUSES a price that does not parse rather than storing a total loss', () => {
+    expect(buildCloseUpdate(long({ quantity: 1 }), 'abc', 'TS')).toBe(null);
+    expect(buildCloseUpdate(long({ quantity: 1 }), null, 'TS')).toBe(null);
+    expect(buildCloseUpdate(long({ quantity: 1 }), 0, 'TS')).toBe(null);
+    expect(buildCloseUpdate(long({ quantity: 1 }), -5, 'TS')).toBe(null);
   });
 });
