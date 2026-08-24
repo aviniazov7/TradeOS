@@ -9,6 +9,7 @@
 import {
   buildMentionIndex, attributeMoves, describeFinding, ATTRIBUTION_WINDOW_MIN,
 } from './newsImpact.js';
+import { mergeClosedPositions } from './tradeMerge.js';
 
 // Binance's public market-data mirror — api.binance.com returns 403 to
 // Cloudflare Worker egress IPs in many regions, but data-api.binance.vision
@@ -6390,89 +6391,11 @@ async function handleRequest(request, env, ctx) {
         });
 
         // Bybit's closed-pnl returns ONE ROW PER CLOSING ORDER, so a position
-        // that closed across several TPs arrives as several rows and used to
-        // import as several separate journal trades. Rows of the same position
-        // share pair+direction+avgEntryPrice — merge those (when their close
-        // times are within a week of each other) into a single trade whose
-        // exits[] carries the TP1/TP2/… breakdown, like a manually-entered
-        // multi-TP trade.
-        const posGroups = new Map();
-        for (const t of trades) {
-          // Group by the matched OPENING order when we have one — grouping by
-          // entry price alone merged two DIFFERENT positions that happened to
-          // fill at the same limit price within the window into one trade
-          // with a combined qty and a fabricated TP1/TP2 breakdown.
-          const key = t._openOrderId
-            ? `${t.pair}|${t.direction}|#${t._openOrderId}`
-            : `${t.pair}|${t.direction}|${t.entryPrice}`;
-          if (!posGroups.has(key)) posGroups.set(key, []);
-          posGroups.get(key).push(t);
-        }
-        const MERGE_WINDOW_MS = 7 * DAY_MS;
-        const mergedTrades = [];
-        for (const rows of posGroups.values()) {
-          rows.sort((a, b) => new Date(a.exitDate) - new Date(b.exitDate));
-          let cluster = [];
-          const flush = () => {
-            if (!cluster.length) return;
-            if (cluster.length === 1) { mergedTrades.push({ ...cluster[0], externalIds: [cluster[0].externalId] }); cluster = []; return; }
-            const totalQty = cluster.reduce((s, r) => s + r.quantity, 0);
-            const exits = cluster.map((r) => ({
-              price: r.exitPrice,
-              percent: totalQty > 0 ? Math.round((r.quantity / totalQty) * 10000) / 100 : 0,
-            }));
-            // Pin the last slice so the percents sum to EXACTLY 100 — rounded
-            // thirds (33.33×3 = 99.99) demoted the trade from 'closed' to
-            // 'partial' on its next edit-save (vanishing from analytics), and
-            // 100.01 blocked saving altogether.
-            const sumButLast = exits.slice(0, -1).reduce((s, e) => s + e.percent, 0);
-            exits[exits.length - 1].percent = Number(Math.max(0, 100 - sumButLast).toFixed(2));
-            const rawWeighted = totalQty > 0
-              ? cluster.reduce((s, r) => s + r.exitPrice * r.quantity, 0) / totalQty
-              : cluster[cluster.length - 1].exitPrice;
-            // Trim float noise (0.16276246773993532 → 0.16276247) so the UI
-            // shows a sane weighted price.
-            const exitPrice = rawWeighted > 0 ? Number(rawWeighted.toPrecision(8)) : rawWeighted;
-            const mergedSl = cluster.find((r) => r.stopLoss > 0)?.stopLoss || 0;
-            const first = cluster[0];
-            // Recompute risk/R for the FULL position (per-record values cover
-            // only that record's qty slice).
-            const mSlDist = mergedSl > 0 ? Math.abs(first.entryPrice - mergedSl) : 0;
-            const mRisk = mSlDist > 0 ? Number((mSlDist * totalQty).toPrecision(6)) : 0;
-            // Unsigned, like the per-row rrRatio above.
-            const mRR = mSlDist > 0 && exitPrice > 0
-              ? Number((Math.abs(exitPrice - first.entryPrice) / mSlDist).toFixed(2))
-              : 0;
-            mergedTrades.push({
-              ...first,
-              quantity: totalQty,
-              exitPrice,
-              exits,
-              pnlFromExchange: cluster.reduce((s, r) => s + r.pnlFromExchange, 0),
-              fees: +(cluster.reduce((s, r) => s + r.fees, 0)).toPrecision(10),
-              entryDate: cluster.reduce((m, r) => (new Date(r.entryDate) < new Date(m) ? r.entryDate : m), first.entryDate),
-              exitDate: cluster[cluster.length - 1].exitDate,
-              stopLoss: mergedSl,
-              riskAmount: mRisk,
-              rrRatio: mRR,
-              // EVERY closing order's id — the client upserts on any-id
-              // overlap, so a position that keeps closing across syncs updates
-              // the same journal trade instead of being filtered out as
-              // "already imported" (which silently dropped every close after
-              // the first and froze the trade as a win).
-              externalIds: cluster.map((r) => r.externalId),
-            });
-            cluster = [];
-          };
-          for (const r of rows) {
-            if (cluster.length && new Date(r.exitDate) - new Date(cluster[cluster.length - 1].exitDate) > MERGE_WINDOW_MS) flush();
-            cluster.push(r);
-          }
-          flush();
-        }
-        for (const t of mergedTrades) delete t._openOrderId;
-        mergedTrades.sort((a, b) => new Date(b.exitDate) - new Date(a.exitDate));
-        trades = mergedTrades;
+        // closed across several TPs arrives as several rows. The grouping and
+        // merge rules live in ./tradeMerge.js so they can be unit tested
+        // outside the Worker runtime — this is the code most likely to corrupt
+        // journal data when the exchange changes its API.
+        trades = mergeClosedPositions(trades);
       }
 
       else if (exchange === 'okx') {
