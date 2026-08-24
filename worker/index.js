@@ -10,6 +10,7 @@ import {
   buildMentionIndex, attributeMoves, describeFinding, ATTRIBUTION_WINDOW_MIN,
 } from './newsImpact.js';
 import { mergeClosedPositions } from './tradeMerge.js';
+import { normalizeClosedPnl, tradingFees, positionDirection } from './bybitPnl.js';
 
 // Binance's public market-data mirror — api.binance.com returns 403 to
 // Cloudflare Worker egress IPs in many regions, but data-api.binance.vision
@@ -287,23 +288,18 @@ async function fetchBybitClosedPnl(apiKey, apiSecret, limit = 50) {
   if (!res) return null;
   const data = await res.json().catch(() => ({}));
   if (data.retCode !== 0) return null;
+  // Shared normalizer (./bybitPnl.js) — the fee and side semantics are stated
+  // once there rather than re-derived here and in the sync route. The push
+  // reports Bybit's OWN net figure, which is what the exchange app shows.
   return (data.result?.list || []).map((p) => {
-    const exitMs = parseInt(p.updatedTime) || parseInt(p.createdTime) || 0;
-    const pnl = parseFloat(p.closedPnl) || 0;
-    const entryPrice = parseFloat(p.avgEntryPrice || p.entryPrice) || 0;
-    const qty = parseFloat(p.qty) || 0;
-    const leverage = parseFloat(p.leverage) || 1;
-    // ROI% on the margin actually committed ≈ pnl / (notional / leverage).
-    const margin = entryPrice > 0 && qty > 0 ? (entryPrice * qty) / leverage : 0;
-    const roiPct = margin > 0 ? (pnl / margin) * 100 : 0;
+    const n = normalizeClosedPnl(p);
     return {
-      externalId: p.orderId || String(p.updatedTime || p.createdTime || Math.random()),
-      pair: p.symbol,
-      // closed-pnl `side` is the CLOSING order side — position side is the opposite
-      direction: p.side === 'Sell' ? 'long' : 'short',
-      pnl,
-      roiPct,
-      exitMs,
+      externalId: n.externalId || String(Math.random()),
+      pair: n.pair,
+      direction: n.direction,
+      pnl: n.netPnl,
+      roiPct: n.roiPct,
+      exitMs: n.exitMs,
     };
   });
 }
@@ -6277,23 +6273,14 @@ async function handleRequest(request, env, ctx) {
 
         trades = list.map(p => {
           const exitDate = p.updatedTime ? new Date(parseInt(p.updatedTime)).toISOString() : new Date().toISOString();
-          // Real trading fees: closed-pnl carries openFee + closeFee per
-          // record (the old execFee/cumExecFee fields don't exist on this
-          // endpoint, which is why fees always imported as 0).
-          // toPrecision(10) trims the float-sum noise (openFee+closeFee could
-          // land on e.g. 5.07900000003, which then showed as a 12-digit number
-          // in the edit form).
-          const feesRaw = Math.abs(parseFloat(p.openFee) || 0) + Math.abs(parseFloat(p.closeFee) || 0)
-            || Math.abs(parseFloat(p.execFee || p.tradingFee || p.cumExecFee || 0) || 0);
-          const fees = feesRaw ? +feesRaw.toPrecision(10) : 0;
-          // Bybit's closed-pnl `side` is the side of the CLOSING order — a
-          // long position is closed by a Sell, so the POSITION side is the
-          // opposite (verified against a real account: a long imported as
-          // short before this flip).
+          // Fees and the closing-side flip both live in ./bybitPnl.js so the
+          // cron poller and this route can never drift apart on them again.
+          const fees = tradingFees(p);
+          const direction = positionDirection(p);
+          // The opening-order match below still needs the CLOSING order's side.
           const posSide = p.side === 'Sell' ? 'Buy' : 'Sell';
           const entryPrice = parseFloat(p.avgEntryPrice || p.entryPrice) || 0;
           const quantity = parseFloat(p.qty) || 0;
-          const direction = posSide === 'Buy' ? 'long' : 'short';
           const exitPrice = parseFloat(p.avgExitPrice || p.exitPrice) || 0;
           // Match the opening order to recover its configured SL/TP, order
           // type, and the exact entry time. A LIMIT entry is PLACED long
