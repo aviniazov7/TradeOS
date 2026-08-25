@@ -11,6 +11,7 @@ import {
 } from './newsImpact.js';
 import { mergeClosedPositions } from './tradeMerge.js';
 import { normalizeClosedPnl, tradingFees, positionDirection } from './bybitPnl.js';
+import { normalizeClosedPosition as normalizeMexcPosition } from './mexcPnl.js';
 
 // Binance's public market-data mirror — api.binance.com returns 403 to
 // Cloudflare Worker egress IPs in many regions, but data-api.binance.vision
@@ -6179,60 +6180,33 @@ async function handleRequest(request, env, ctx) {
             : rawUpdateMs > openMs
               ? new Date(rawUpdateMs).toISOString()
               : entryDate;
-          const posType = p.positionType ?? p.position_type;
-          const fees = Math.abs(parseFloat(p.fee || p.fees || p.closeFee || p.close_fee || p.holdFee || p.totalFee || 0) || 0);
-          // Prefer SL/TP captured from the opening order; fall back to any
-          // values that happened to live on the position object itself.
-          const slTp = slTpById.get(posId) || {};
-          const slMexc = (slTp.sl > 0 ? slTp.sl : parseFloat(p.stopLossPrice || p.stop_loss_price || 0)) || 0;
-          const tpMexc = (slTp.tp > 0 ? slTp.tp : parseFloat(p.takeProfitPrice || p.take_profit_price || 0)) || 0;
-          // Risk ($) and realized R from the REAL exchange stop and size, the
-          // same way the Bybit branch does it — MEXC imports carried the stop
-          // but neither of these, so a MEXC trade landed in the journal with no
-          // risk and no R and had to be filled in by hand. `slMexc` comes from
-          // the matched OPENING order, so it is the original stop rather than
-          // one later moved to break-even.
-          const entryPriceMexc = parseFloat(p.openAvgPrice || p.open_avg_price) || 0;
-          const exitPriceMexc = parseFloat(p.closeAvgPrice || p.close_avg_price) || 0;
-          // MEXC vol is in CONTRACTS — convert to coin units via contractSize.
-          const qtyMexc = (parseFloat(p.closeVol || p.close_vol || p.holdVol || p.hold_vol) || 0)
-            * (csMap[sym.replace(/_/g, '')] || 1);
-          const slDistMexc = slMexc > 0 ? Math.abs(entryPriceMexc - slMexc) : 0;
-          const riskAmountMexc = slDistMexc > 0 ? Number((slDistMexc * qtyMexc).toPrecision(6)) : 0;
-          // UNSIGNED: the app stores R unsigned and takes the sign from pnl at
-          // display time, so a signed value here renders as "--1.04R".
-          const rrRatioMexc = slDistMexc > 0 && exitPriceMexc > 0
-            ? Number((Math.abs(exitPriceMexc - entryPriceMexc) / slDistMexc).toFixed(2))
-            : 0;
+          // Fees, the contract-size conversion, the net-versus-gross rule and
+          // the risk/R derivation all live in ./mexcPnl.js so they are stated
+          // once and can be unit tested outside the Worker runtime.
+          const n = normalizeMexcPosition(p, {
+            contractSize: csMap[sym.replace(/_/g, '')] || 1,
+            // The matched OPENING order carries the ORIGINAL stop, rather than
+            // one that was later moved to break-even.
+            openOrder: slTpById.get(posId) || null,
+          });
           return {
             pair: sym.replace(/_/g, ''),
-            direction: posType === 1 ? 'long' : 'short',
-            entryPrice: entryPriceMexc,
-            exitPrice: exitPriceMexc,
-            quantity: qtyMexc,
-            leverage: parseFloat(p.leverage) || 1,
-            // SETTLED against a real account: MEXC's `realised` is NET, exactly
-            // like Bybit's closedPnl. On an ICPUSDT long of 3,055.4826 USDT at
-            // 2.437 closed at 2.383, the price-only P&L is -67.7046 while MEXC
-            // reported -68.5272 — the -0.8226 difference being the costs baked
-            // in. The app treats pnlFromExchange as GROSS and derives
-            // netPnl = pnl - fees downstream, so the fees are added back here
-            // and the subtraction lands on exactly the figure MEXC displays.
-            //
-            // Today `fees` usually resolves to 0 because this endpoint does not
-            // return any of the fee field names below, which is why the net
-            // figure was already correct — but it also meant the trade showed
-            // "fees: $0" for a cost that was really charged, and the moment
-            // MEXC does return one of those fields the old code would have
-            // subtracted it a second time.
-            pnlFromExchange: (parseFloat(p.realised || p.realisedPnl || p.realise || p.realised_pnl) || 0) + fees,
-            fees,
+            direction: n.direction,
+            entryPrice: n.entryPrice,
+            exitPrice: n.exitPrice,
+            quantity: n.quantity,
+            leverage: n.leverage,
+            // GROSS: the journal derives netPnl = pnl - fees downstream, and
+            // MEXC's `realised` is already net (measured against a real
+            // account — see mexcPnl.js), so the fees are added back here.
+            pnlFromExchange: n.grossPnl,
+            fees: n.fees,
             entryDate,
             exitDate,
-            stopLoss: slMexc,
-            riskAmount: riskAmountMexc,
-            rrRatio: rrRatioMexc,
-            tps: tpMexc > 0 ? [tpMexc] : [],
+            stopLoss: n.stopLoss,
+            riskAmount: n.riskAmount,
+            rrRatio: n.rrRatio,
+            tps: n.takeProfit > 0 ? [n.takeProfit] : [],
             source: 'mexc',
             externalId: posId,
             session: sessionFromDate(entryDate),
