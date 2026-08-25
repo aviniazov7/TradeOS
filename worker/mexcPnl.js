@@ -24,7 +24,11 @@ const num = (v) => {
  * gross figure, so a field appearing later cannot silently double-subtract.
  */
 export function tradingFees(p) {
-  return Math.abs(num(p?.fee ?? p?.fees ?? p?.closeFee ?? p?.close_fee ?? p?.holdFee ?? p?.totalFee));
+  // The chain is `||`, not `??`, to match the code this replaced — and the
+  // Bybit module, which was aligned for the same reason. They differ on a
+  // NUMERIC zero: `{ fee: 0, fees: 2 }` falls through to 2 with `||` and stops
+  // at 0 with `??`. This is a refactor, so the original behaviour wins.
+  return Math.abs(num(p?.fee || p?.fees || p?.closeFee || p?.close_fee || p?.holdFee || p?.totalFee || 0));
 }
 
 /** positionType 1 is a long; anything else is a short. */
@@ -40,7 +44,7 @@ export function positionDirection(p) {
  * quantity, position size and every P&L derived from them by 100x-10,000x.
  */
 export function positionQuantity(p, contractSize = 1) {
-  return num(p?.closeVol ?? p?.close_vol ?? p?.holdVol ?? p?.hold_vol) * (contractSize || 1);
+  return num(p?.closeVol || p?.close_vol || p?.holdVol || p?.hold_vol || 0) * (contractSize || 1);
 }
 
 /**
@@ -59,13 +63,13 @@ export function positionQuantity(p, contractSize = 1) {
  */
 export function normalizeClosedPosition(p, { contractSize = 1, openOrder = null } = {}) {
   const fees = tradingFees(p);
-  const netPnl = num(p?.realised ?? p?.realisedPnl ?? p?.realise ?? p?.realised_pnl);
-  const entryPrice = num(p?.openAvgPrice ?? p?.open_avg_price);
-  const exitPrice = num(p?.closeAvgPrice ?? p?.close_avg_price);
+  const netPnl = num(p?.realised || p?.realisedPnl || p?.realise || p?.realised_pnl || 0);
+  const entryPrice = num(p?.openAvgPrice || p?.open_avg_price || 0);
+  const exitPrice = num(p?.closeAvgPrice || p?.close_avg_price || 0);
   const quantity = positionQuantity(p, contractSize);
 
-  const stopLoss = (openOrder?.sl > 0 ? openOrder.sl : num(p?.stopLossPrice ?? p?.stop_loss_price)) || 0;
-  const takeProfit = (openOrder?.tp > 0 ? openOrder.tp : num(p?.takeProfitPrice ?? p?.take_profit_price)) || 0;
+  const stopLoss = (openOrder?.sl > 0 ? openOrder.sl : num(p?.stopLossPrice || p?.stop_loss_price || 0)) || 0;
+  const takeProfit = (openOrder?.tp > 0 ? openOrder.tp : num(p?.takeProfitPrice || p?.take_profit_price || 0)) || 0;
 
   // Risk in dollars and realized R, the same way the Bybit path derives them.
   const slDist = stopLoss > 0 ? Math.abs(entryPrice - stopLoss) : 0;

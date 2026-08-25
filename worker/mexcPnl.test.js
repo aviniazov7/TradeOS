@@ -51,6 +51,14 @@ describe('tradingFees', () => {
     expect(tradingFees({ closeFee: '-1.5' })).toBeCloseTo(1.5);
     expect(tradingFees({ totalFee: '2' })).toBe(2);
   });
+
+  it('keeps the original || fallthrough, which a numeric zero triggers', () => {
+    // `||` and `??` differ here, and this is a refactor: the behaviour the
+    // inline code had wins. A numeric zero falls through to the next spelling;
+    // the STRING "0" is truthy and stops the chain.
+    expect(tradingFees({ fee: 0, fees: '2' })).toBe(2);
+    expect(tradingFees({ fee: '0', fees: '2' })).toBe(0);
+  });
 });
 
 describe('normalizeClosedPosition — the real trade', () => {
