@@ -6186,31 +6186,52 @@ async function handleRequest(request, env, ctx) {
           const slTp = slTpById.get(posId) || {};
           const slMexc = (slTp.sl > 0 ? slTp.sl : parseFloat(p.stopLossPrice || p.stop_loss_price || 0)) || 0;
           const tpMexc = (slTp.tp > 0 ? slTp.tp : parseFloat(p.takeProfitPrice || p.take_profit_price || 0)) || 0;
+          // Risk ($) and realized R from the REAL exchange stop and size, the
+          // same way the Bybit branch does it — MEXC imports carried the stop
+          // but neither of these, so a MEXC trade landed in the journal with no
+          // risk and no R and had to be filled in by hand. `slMexc` comes from
+          // the matched OPENING order, so it is the original stop rather than
+          // one later moved to break-even.
+          const entryPriceMexc = parseFloat(p.openAvgPrice || p.open_avg_price) || 0;
+          const exitPriceMexc = parseFloat(p.closeAvgPrice || p.close_avg_price) || 0;
+          // MEXC vol is in CONTRACTS — convert to coin units via contractSize.
+          const qtyMexc = (parseFloat(p.closeVol || p.close_vol || p.holdVol || p.hold_vol) || 0)
+            * (csMap[sym.replace(/_/g, '')] || 1);
+          const slDistMexc = slMexc > 0 ? Math.abs(entryPriceMexc - slMexc) : 0;
+          const riskAmountMexc = slDistMexc > 0 ? Number((slDistMexc * qtyMexc).toPrecision(6)) : 0;
+          // UNSIGNED: the app stores R unsigned and takes the sign from pnl at
+          // display time, so a signed value here renders as "--1.04R".
+          const rrRatioMexc = slDistMexc > 0 && exitPriceMexc > 0
+            ? Number((Math.abs(exitPriceMexc - entryPriceMexc) / slDistMexc).toFixed(2))
+            : 0;
           return {
             pair: sym.replace(/_/g, ''),
             direction: posType === 1 ? 'long' : 'short',
-            entryPrice: parseFloat(p.openAvgPrice || p.open_avg_price) || 0,
-            exitPrice: parseFloat(p.closeAvgPrice || p.close_avg_price) || 0,
-            // MEXC vol is in CONTRACTS — convert to coin units via contractSize.
-            quantity: (parseFloat(p.closeVol || p.close_vol || p.holdVol || p.hold_vol) || 0) * (csMap[sym.replace(/_/g, '')] || 1),
+            entryPrice: entryPriceMexc,
+            exitPrice: exitPriceMexc,
+            quantity: qtyMexc,
             leverage: parseFloat(p.leverage) || 1,
-            // OPEN QUESTION — do NOT "fix" this without evidence. The app treats
-            // pnlFromExchange as GROSS and derives netPnl = pnl - fees, which is
-            // why the Bybit branch below deliberately ADDS its fees back
-            // (closedPnl is documented net). MEXC's `realised` is passed through
-            // as-is while `fees` is populated separately just above, so IF
-            // MEXC's realised is likewise net of trading fees, every MEXC trade
-            // is under-reported by exactly one fee. This could not be settled
-            // from the code or the docs (MEXC's API host is unreachable from
-            // CI), and guessing wrong breaks the numbers in the other
-            // direction. Settle it by comparing one imported MEXC trade's
-            // netPnl against the figure MEXC itself displays, then either add
-            // the fees back here or stop populating `fees` for MEXC.
-            pnlFromExchange: parseFloat(p.realised || p.realisedPnl || p.realise || p.realised_pnl) || 0,
+            // SETTLED against a real account: MEXC's `realised` is NET, exactly
+            // like Bybit's closedPnl. On an ICPUSDT long of 3,055.4826 USDT at
+            // 2.437 closed at 2.383, the price-only P&L is -67.7046 while MEXC
+            // reported -68.5272 — the -0.8226 difference being the costs baked
+            // in. The app treats pnlFromExchange as GROSS and derives
+            // netPnl = pnl - fees downstream, so the fees are added back here
+            // and the subtraction lands on exactly the figure MEXC displays.
+            //
+            // Today `fees` usually resolves to 0 because this endpoint does not
+            // return any of the fee field names below, which is why the net
+            // figure was already correct — but it also meant the trade showed
+            // "fees: $0" for a cost that was really charged, and the moment
+            // MEXC does return one of those fields the old code would have
+            // subtracted it a second time.
+            pnlFromExchange: (parseFloat(p.realised || p.realisedPnl || p.realise || p.realised_pnl) || 0) + fees,
             fees,
             entryDate,
             exitDate,
             stopLoss: slMexc,
+            riskAmount: riskAmountMexc,
+            rrRatio: rrRatioMexc,
             tps: tpMexc > 0 ? [tpMexc] : [],
             source: 'mexc',
             externalId: posId,
