@@ -324,8 +324,10 @@ export default function TradeJournal() {
     const shortTrades = closed.filter((t) => t.direction === 'short');
     const longWins = longTrades.filter((t) => t.result === 'win').length;
     const shortWins = shortTrades.filter((t) => t.result === 'win').length;
-    const longWinRate = longTrades.length ? (longWins / longTrades.length) * 100 : 0;
-    const shortWinRate = shortTrades.length ? (shortWins / shortTrades.length) * 100 : 0;
+    const longLosses = longTrades.filter((t) => t.result === 'loss').length;
+    const shortLosses = shortTrades.filter((t) => t.result === 'loss').length;
+    const longWinRate = groupWinRate(longWins, longLosses);
+    const shortWinRate = groupWinRate(shortWins, shortLosses);
     const longPnl = longTrades.reduce((s, t) => s + (t.netPnl ?? t.pnl ?? 0), 0);
     const shortPnl = shortTrades.reduce((s, t) => s + (t.netPnl ?? t.pnl ?? 0), 0);
 
@@ -343,7 +345,7 @@ export default function TradeJournal() {
       .map(([name, d]) => ({ name, ...d, winRate: groupWinRate(d.wins, d.losses) }))
       .sort((a, b) => b.count - a.count);
 
-    return { avgWin, avgLoss, largestWin, largestLoss, pieData, dailyPnL, byPair, byTimeframe, byTag, byStrategy, maxWin, maxLoss, longWinRate, shortWinRate, longPnl, shortPnl, longCount: longTrades.length, shortCount: shortTrades.length, longWins, shortWins };
+    return { avgWin, avgLoss, largestWin, largestLoss, pieData, dailyPnL, byPair, byTimeframe, byTag, byStrategy, maxWin, maxLoss, longWinRate, shortWinRate, longPnl, shortPnl, longCount: longTrades.length, shortCount: shortTrades.length, longWins, shortWins, longLosses, shortLosses };
   }, [periodTrades]);
 
   const handleSave = async (data) => {
@@ -864,7 +866,7 @@ export default function TradeJournal() {
                   className="cursor-pointer rounded-lg p-2 hover:bg-accent-primary/5 transition-colors">
                   <div className="flex items-center justify-between mb-1.5">
                     <span className="text-xs font-semibold text-profit">Long ↗</span>
-                    <span className="text-xs text-text-muted">{analytics.longCount} עסקאות · {analytics.longWins}W</span>
+                    <span className="text-xs text-text-muted">{analytics.longCount} עסקאות · {analytics.longWins}W {analytics.longLosses}L</span>
                   </div>
                   <div className="h-2 bg-bg-tertiary rounded-full overflow-hidden mb-1.5">
                     <div className="h-full bg-profit rounded-full transition-all duration-700" style={{ width: `${analytics.longWinRate}%` }} />
@@ -879,7 +881,7 @@ export default function TradeJournal() {
                   className="cursor-pointer rounded-lg p-2 hover:bg-accent-primary/5 transition-colors">
                   <div className="flex items-center justify-between mb-1.5">
                     <span className="text-xs font-semibold text-loss">Short ↗</span>
-                    <span className="text-xs text-text-muted">{analytics.shortCount} עסקאות · {analytics.shortWins}W</span>
+                    <span className="text-xs text-text-muted">{analytics.shortCount} עסקאות · {analytics.shortWins}W {analytics.shortLosses}L</span>
                   </div>
                   <div className="h-2 bg-bg-tertiary rounded-full overflow-hidden mb-1.5">
                     <div className="h-full bg-loss rounded-full transition-all duration-700" style={{ width: `${analytics.shortWinRate}%` }} />

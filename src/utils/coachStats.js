@@ -63,7 +63,12 @@ function topGroups(trades, keyFn, take = 5) {
       key,
       trades: v.trades,
       pnl: Math.round(v.pnl * 100) / 100,
-      // Decided-only, like every other win rate in the app.
+      // Decided-only, like every other win rate in the app — so wins and
+      // losses ship with it. Without them the model sees `trades` and
+      // `winRate` measured over DIFFERENT denominators and can state a
+      // contradiction it has no way to detect.
+      wins: v.wins,
+      losses: v.losses,
       winRate: Math.round(groupWinRate(v.wins, v.losses) * 10) / 10,
     }));
 }

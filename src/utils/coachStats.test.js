@@ -125,6 +125,26 @@ describe('buildCoachStats — groupings and highlighted trades', () => {
     expect(out.byPair[0].winRate).toBe(50);
   });
 
+  it('a breakeven counts in the group total but NOT in its win rate', () => {
+    // Makes the group loss counter load-bearing: without it this reads 100.
+    const out = buildCoachStats([
+      t({ pair: 'BTCUSDT', netPnl: 10 }), t({ pair: 'BTCUSDT', netPnl: -5 }),
+      t({ pair: 'BTCUSDT', netPnl: 0 }),
+    ]);
+    expect(out.byPair[0].trades).toBe(3);
+    expect(out.byPair[0].wins).toBe(1);
+    expect(out.byPair[0].losses).toBe(1);
+    expect(out.byPair[0].winRate).toBe(50);
+  });
+
+  it('ships the denominator alongside the rate, so the model cannot contradict itself', () => {
+    // `trades` counts everything; `winRate` counts decided only. Without wins
+    // and losses on the row the model has no way to see the difference.
+    const row = buildCoachStats([t({ netPnl: 10 })]).byPair[0];
+    expect(row).toHaveProperty('wins');
+    expect(row).toHaveProperty('losses');
+  });
+
   it('skips rows with no value for the grouping key instead of bucketing them as undefined', () => {
     const out = buildCoachStats([t({ strategy: null }), t({ strategy: 'breakout' })], { premium: true });
     expect(out.byStrategy).toHaveLength(1);

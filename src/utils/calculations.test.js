@@ -18,6 +18,7 @@ import {
   calculateMaxDrawdown,
   computeTradeFields,
   groupWinRate,
+  tallyByKey,
 } from './calculations';
 import { planExpiresMs } from './premium';
 
@@ -253,5 +254,51 @@ describe('groupWinRate — one definition for every breakdown', () => {
   it('nothing decided is 0, not NaN', () => {
     expect(groupWinRate(0, 0)).toBe(0);
     expect(groupWinRate()).toBe(0);
+  });
+});
+
+describe('tallyByKey — the bucketing every breakdown shares', () => {
+  const t = (result, strategy, pnl = 0) => ({ result, strategy, netPnl: pnl });
+
+  it('counts wins and losses separately, and rates over decided only', () => {
+    // The whole point: a breakeven inside a bucket must not drag its rate down.
+    const [b] = tallyByKey(
+      [t('win', 'A', 10), t('win', 'A', 10), t('loss', 'A', -5), t('breakeven', 'A', 0)],
+      (x) => x.strategy,
+      (x) => x.netPnl,
+    );
+    expect(b.count).toBe(4);
+    expect(b.wins).toBe(2);
+    expect(b.losses).toBe(1);
+    expect(b.winRate).toBeCloseTo(66.667, 2);
+    expect(b.pnl).toBe(15);
+  });
+
+  it('a bucket of nothing but breakevens is 0%, not 100%', () => {
+    // groupWinRate(0, 0) is 0 — this is the case a missing loss counter fakes.
+    const [b] = tallyByKey([t('breakeven', 'A')], (x) => x.strategy);
+    expect(b.winRate).toBe(0);
+    expect(b.count).toBe(1);
+  });
+
+  it('separates buckets and skips trades with no key', () => {
+    const out = tallyByKey([t('win', 'A'), t('loss', 'B'), t('win', null)], (x) => x.strategy);
+    expect(out.map((b) => b.key).sort()).toEqual(['A', 'B']);
+  });
+
+  it('keeps a numeric key of 0 — weekday Sunday must not be dropped', () => {
+    const out = tallyByKey([{ result: 'win', day: 0 }], (x) => x.day);
+    expect(out).toHaveLength(1);
+    expect(out[0].key).toBe(0);
+  });
+
+  it('sums nothing when no value function is given, and tolerates junk amounts', () => {
+    expect(tallyByKey([t('win', 'A')], (x) => x.strategy)[0].pnl).toBe(0);
+    expect(tallyByKey([t('win', 'A')], (x) => x.strategy, () => NaN)[0].pnl).toBe(0);
+  });
+
+  it('handles an empty or missing list', () => {
+    expect(tallyByKey([], () => 'k')).toEqual([]);
+    expect(tallyByKey(null, () => 'k')).toEqual([]);
   });
 });

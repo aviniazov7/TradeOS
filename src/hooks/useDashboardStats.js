@@ -1,5 +1,5 @@
 import { useMemo } from 'react';
-import { calculateWinRate, calculateProfitFactor, calculateExpectancy, calculateAvgRR, calculateMaxDrawdown, calculateSharpeRatio, calculateCalmarRatio, calculateCurrentStreak, calculateAvgDuration, calculateSortinoRatio, calculateRecoveryFactor, pearsonCorrelation, clampRatio, isClosedTrade, localDayKey, safePnl, groupWinRate } from '../utils/calculations';
+import { calculateWinRate, calculateProfitFactor, calculateExpectancy, calculateAvgRR, calculateMaxDrawdown, calculateSharpeRatio, calculateCalmarRatio, calculateCurrentStreak, calculateAvgDuration, calculateSortinoRatio, calculateRecoveryFactor, pearsonCorrelation, clampRatio, isClosedTrade, localDayKey, safePnl, tallyByKey } from '../utils/calculations';
 import { getSessionFromDate, SESSION_UNKNOWN } from '../utils/sessions';
 import { getPeriodStart, toDate } from '../utils/period';
 
@@ -79,69 +79,39 @@ export function useDashboardStats(trades, initialBalance = 0, period = 'all') {
       .reduce((s, t) => s + (safePnl(t)), 0);
 
     // Strategy Performance
-    const strategyMap = {};
-    closed.forEach((t) => {
-      const strat = t.strategy || 'ללא אסטרטגיה';
-      if (!strategyMap[strat]) strategyMap[strat] = { wins: 0, losses: 0, pnl: 0, count: 0 };
-      strategyMap[strat].count++;
-      if (t.result === 'win') strategyMap[strat].wins++;
-      else if (t.result === 'loss') strategyMap[strat].losses++;
-      strategyMap[strat].pnl += safePnl(t);
-    });
-    const strategyPerformance = Object.entries(strategyMap)
-      .map(([name, d]) => ({ name, ...d, winRate: groupWinRate(d.wins, d.losses) }))
+    const strategyPerformance = tallyByKey(closed, (t) => t.strategy || 'ללא אסטרטגיה', safePnl)
+      .map((b) => ({ ...b, name: b.key }))
       .sort((a, b) => b.pnl - a.pnl);
     const bestStrategy = strategyPerformance[0]?.name || '–';
 
     // Monthly Performance
-    const monthlyMap = {};
-    sorted.forEach((t) => {
-      const d = tradeDate(t);
-      const key = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`;
-      if (!monthlyMap[key]) monthlyMap[key] = { wins: 0, losses: 0, pnl: 0, count: 0 };
-      monthlyMap[key].count++;
-      if (t.result === 'win') monthlyMap[key].wins++;
-      else if (t.result === 'loss') monthlyMap[key].losses++;
-      monthlyMap[key].pnl += safePnl(t);
-    });
     let cumulativePnl = 0;
     // Keys are formatted YYYY-MM (zero-padded), so a plain string compare gives
     // chronological order without depending on locale-specific collation rules.
-    const monthlyPerformance = Object.entries(monthlyMap)
-      .sort(([a], [b]) => (a < b ? -1 : a > b ? 1 : 0))
-      .map(([month, d]) => {
-        cumulativePnl += d.pnl;
-        return { month, ...d, winRate: groupWinRate(d.wins, d.losses), cumulativePnl };
+    const monthlyPerformance = tallyByKey(sorted, (t) => {
+      const d = tradeDate(t);
+      return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`;
+    }, safePnl)
+      .sort((a, b) => (a.key < b.key ? -1 : a.key > b.key ? 1 : 0))
+      .map((b) => {
+        cumulativePnl += b.pnl;
+        return { ...b, month: b.key, cumulativePnl };
       });
 
     // Session Performance — uses shared utility (Israel timezone, single source of truth)
-    const sessionMap = {};
-    closed.forEach((t) => {
-      const sess = t.session || getSessionFromDate(t.entryDate, { fallback: SESSION_UNKNOWN });
-      if (!sessionMap[sess]) sessionMap[sess] = { name: sess, count: 0, wins: 0, losses: 0, pnl: 0 };
-      sessionMap[sess].count++;
-      if (t.result === 'win') sessionMap[sess].wins++;
-      else if (t.result === 'loss') sessionMap[sess].losses++;
-      sessionMap[sess].pnl += safePnl(t);
-    });
-    const sessionPerformance = Object.values(sessionMap)
-      .map((s) => ({ ...s, winRate: groupWinRate(s.wins, s.losses), pnl: parseFloat(s.pnl.toFixed(2)) }))
+    const sessionPerformance = tallyByKey(
+      closed,
+      (t) => t.session || getSessionFromDate(t.entryDate, { fallback: SESSION_UNKNOWN }),
+      safePnl,
+    )
+      .map((b) => ({ ...b, name: b.key, pnl: parseFloat(b.pnl.toFixed(2)) }))
       .sort((a, b) => b.pnl - a.pnl);
 
     // Day of Week Performance
     const dayNames = ['ראשון', 'שני', 'שלישי', 'רביעי', 'חמישי', 'שישי', 'שבת'];
-    const dayMap = {};
-    dayNames.forEach((name, i) => { dayMap[i] = { name, count: 0, wins: 0, losses: 0, pnl: 0 }; });
-    closed.forEach((t) => {
-      const day = tradeDate(t).getDay();
-      dayMap[day].count++;
-      if (t.result === 'win') dayMap[day].wins++;
-      else if (t.result === 'loss') dayMap[day].losses++;
-      dayMap[day].pnl += safePnl(t);
-    });
-    const dayOfWeekPerformance = Object.values(dayMap)
-      .filter((d) => d.count > 0)
-      .map((d) => ({ ...d, winRate: groupWinRate(d.wins, d.losses), pnl: parseFloat((isNaN(d.pnl) ? 0 : d.pnl).toFixed(2)) }));
+    const dayOfWeekPerformance = tallyByKey(closed, (t) => tradeDate(t).getDay(), safePnl)
+      .sort((a, b) => a.key - b.key)
+      .map((b) => ({ ...b, name: dayNames[b.key], pnl: parseFloat((isNaN(b.pnl) ? 0 : b.pnl).toFixed(2)) }));
 
     // Streak History
     const streakHistory = [];

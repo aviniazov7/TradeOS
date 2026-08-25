@@ -170,6 +170,33 @@ export function groupWinRate(wins = 0, losses = 0) {
 }
 
 /**
+ * Bucket trades by a key and tally the counters every breakdown needs.
+ *
+ * Shared so the win/loss tally is written ONCE. It is the piece the group
+ * win rate depends on, and it was previously re-typed in a dozen places —
+ * a bucket that forgot to count losses reported 100% and nothing noticed,
+ * because `groupWinRate(wins, undefined)` is 100.
+ *
+ * @param {Array} trades
+ * @param {(t) => string|null} keyFn  bucket key; a falsy key skips the trade
+ * @param {(t) => number} valueFn     the amount to sum per bucket
+ */
+export function tallyByKey(trades, keyFn, valueFn = () => 0) {
+  const map = new Map();
+  for (const t of trades || []) {
+    const key = keyFn(t);
+    if (!key && key !== 0) continue;
+    const cur = map.get(key) || { key, count: 0, wins: 0, losses: 0, pnl: 0 };
+    cur.count++;
+    if (t?.result === 'win') cur.wins++;
+    else if (t?.result === 'loss') cur.losses++;
+    cur.pnl += valueFn(t) || 0;
+    map.set(key, cur);
+  }
+  return [...map.values()].map((b) => ({ ...b, winRate: groupWinRate(b.wins, b.losses) }));
+}
+
+/**
  * Calculate profit factor
  */
 export function calculateProfitFactor(trades) {

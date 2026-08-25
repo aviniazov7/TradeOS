@@ -65,7 +65,9 @@ describe('formatCompactUsd', () => {
     expect(formatCompactUsd(1.5e12)).toBe('$1.50T');
     expect(formatCompactUsd(2.3e9)).toBe('$2.3B');
     expect(formatCompactUsd(4.5e6)).toBe('$4.5M');
-    expect(formatCompactUsd(12345)).toContain('12,345');
+    // toLocaleString() with no locale follows the machine's default, so assert
+    // the branch rather than the separator — otherwise this fails under de_DE.
+    expect(formatCompactUsd(12345)).toMatch(/^\$12[.,]345$/);
   });
   it('renders an em-dash for nothing rather than $0', () => {
     // These are market cap and open interest — "$0" reads as a real figure.
@@ -77,7 +79,7 @@ describe('formatCompactUsd', () => {
 
 describe('formatCoinPrice', () => {
   it('prefixes $ and switches precision at $1', () => {
-    expect(formatCoinPrice(1234.5678)).toBe('$1,234.57');
+    expect(formatCoinPrice(1234.5678)).toMatch(/^\$1[.,]234[.,]57$/);
     expect(formatCoinPrice(0.000123)).toBe('$0.000123');
   });
   it('distinguishes a real zero price from no price at all', () => {

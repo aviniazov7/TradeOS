@@ -1,7 +1,6 @@
 import { useMemo } from 'react';
 import { BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer, Cell, LabelList } from 'recharts';
-import { isClosedTrade } from '../../utils/calculations';
-import { groupWinRate } from '../../utils/calculations';
+import { isClosedTrade, groupWinRate } from '../../utils/calculations';
 
 const tooltipStyle = {
   background: 'var(--color-bg-overlay)',

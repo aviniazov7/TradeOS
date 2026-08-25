@@ -62,6 +62,26 @@ describe('computeMentalStats — the baseline every bucket is measured against',
   });
 });
 
+describe('computeMentalStats — a breakeven must not drag a bucket down', () => {
+  it('counts a breakeven in the trade total but keeps it out of the win rate', () => {
+    // Makes the loss counter in calcGroupStats load-bearing: without it this
+    // bucket reads 50 instead of 100, and the coach quotes the wrong number.
+    const r = computeMentalStats(
+      [
+        trade({ exitDate: '2026-08-03T12:00:00', result: 'win', netPnl: 100 }),
+        trade({ exitDate: '2026-08-03T13:00:00', result: 'breakeven', netPnl: 0 }),
+      ],
+      [morning('2026-08-03', { emotion: 'calm' })],
+      []
+    );
+    const calm = r.emotionStatsArray.find((e) => e.key === 'calm');
+    expect(calm.trades).toBe(2);
+    expect(calm.winRate).toBe(100);
+    expect(r.baseline.trades).toBe(2);
+    expect(r.baseline.winRate).toBe(100);
+  });
+});
+
 describe('computeMentalStats — emotion buckets', () => {
   it('groups by the morning emotion and reports only emotions actually used', () => {
     const r = computeMentalStats(
