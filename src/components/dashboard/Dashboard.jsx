@@ -13,7 +13,7 @@ import { useTradingPlans } from '../../hooks/useTradingPlans';
 import { useDCA } from '../../hooks/useDCA';
 import { useMentalityJournals } from '../../hooks/useMentalityJournals';
 import { useLinkedJournalsBalance } from '../../hooks/useLinkedExchangeBalance';
-import { isClosedTrade, calculateWinRate } from '../../utils/calculations';
+import { isClosedTrade, calculateWinRate, groupWinRate } from '../../utils/calculations';
 import DashboardSkeleton from './DashboardSkeleton';
 import PendingLimitOrders from './PendingLimitOrders';
 import TradeAgentCard from './TradeAgentCard';
@@ -210,7 +210,8 @@ export default function Dashboard() {
   const backtestStats = useMemo(() => {
     if (!backtests.length) return null;
     const wins = backtests.filter((b) => b.result === 'win').length;
-    const winRate = (wins / backtests.length) * 100;
+    const losses = backtests.filter((b) => b.result === 'loss').length;
+    const winRate = groupWinRate(wins, losses);
     const avgR = backtests.reduce((s, b) => s + (b.rResult || 0), 0) / backtests.length;
     const pairCounts = {};
     backtests.forEach((b) => { if (b.pair) pairCounts[b.pair] = (pairCounts[b.pair] || 0) + 1; });

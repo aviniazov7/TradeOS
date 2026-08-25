@@ -1,5 +1,5 @@
 import { MENTALITY_EMOTIONS, PRE_MARKET_CHECKLIST } from './constants';
-import { isClosedTrade, localDayKey } from './calculations';
+import { isClosedTrade, localDayKey, groupWinRate } from './calculations';
 
 // Pure cross-reference between the mentality journals and the trades that were
 // closed on the same day. Extracted out of useMentalStats so the AI coach can
@@ -52,10 +52,12 @@ export function computeMentalStats(trades, morningEntries, eveningEntries) {
   const calcGroupStats = (groupTrades) => {
     const total = groupTrades.length;
     const wins = groupTrades.filter((t) => t.result === 'win').length;
+    const losses = groupTrades.filter((t) => t.result === 'loss').length;
     const totalPnl = groupTrades.reduce((s, t) => s + (t.netPnl ?? t.pnl ?? 0), 0);
     return {
       trades: total,
-      winRate: total > 0 ? Math.round((wins / total) * 100) : 0,
+      // Decided only, like every other win rate in the app.
+      winRate: Math.round(groupWinRate(wins, losses)),
       avgPnl: total > 0 ? totalPnl / total : 0,
       totalPnl,
     };

@@ -1,6 +1,7 @@
 import { useMemo } from 'react';
 import { BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer, Cell, LabelList } from 'recharts';
 import { isClosedTrade } from '../../utils/calculations';
+import { groupWinRate } from '../../utils/calculations';
 
 const tooltipStyle = {
   background: 'var(--color-bg-overlay)',
@@ -15,18 +16,21 @@ export default function WinRateChart({ trades }) {
     const closed = trades.filter((t) => isClosedTrade(t) && t.strategy);
     const groups = {};
     closed.forEach((t) => {
-      if (!groups[t.strategy]) groups[t.strategy] = { wins: 0, total: 0 };
+      if (!groups[t.strategy]) groups[t.strategy] = { wins: 0, losses: 0, total: 0 };
       groups[t.strategy].total++;
       if (t.result === 'win') groups[t.strategy].wins++;
+      else if (t.result === 'loss') groups[t.strategy].losses++;
     });
 
     return Object.entries(groups)
-      .map(([strategy, { wins, total }]) => ({
+      .map(([strategy, { wins, losses, total }]) => ({
         strategy: strategy.length > 14 ? strategy.slice(0, 14) + '…' : strategy,
-        winRate: parseFloat(((wins / total) * 100).toFixed(1)),
+        winRate: parseFloat(groupWinRate(wins, losses).toFixed(1)),
         count: total,
         wins,
-        losses: total - wins,
+        // Real losses, not "everything that is not a win" — the tooltip's
+        // W/L label counted every breakeven as a loss.
+        losses,
       }))
       .sort((a, b) => b.count - a.count); // sort by number of trades, not win rate
   }, [trades]);

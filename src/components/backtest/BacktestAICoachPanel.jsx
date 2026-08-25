@@ -7,6 +7,7 @@ import { renderBulletHtml } from '../../utils/renderBulletHtml';
 import { useAuth } from '../../contexts/AuthContext';
 import { useBacktestStats } from '../../hooks/useBacktestStats';
 import { generateCoachReport } from '../../services/aiCoachService';
+import { groupWinRate } from '../../utils/calculations';
 
 // AI backtest analyst — premium only. Sends a compact R-based stats summary to
 // the worker's /ai-coach (mode:'backtest', which swaps in a strategy-validation
@@ -57,13 +58,14 @@ function aggBy(rows, field) {
   const m = {};
   for (const b of rows) {
     const k = b[field] || '—';
-    if (!m[k]) m[k] = { name: k, count: 0, wins: 0, totalR: 0 };
+    if (!m[k]) m[k] = { name: k, count: 0, wins: 0, losses: 0, totalR: 0 };
     m[k].count++;
     if (b.result === 'win') m[k].wins++;
+    else if (b.result === 'loss') m[k].losses++;
     m[k].totalR += b.rResult || 0;
   }
   return Object.values(m)
-    .map((x) => ({ name: x.name, count: x.count, winRate: round(x.count ? (x.wins / x.count) * 100 : 0), avgR: round(x.count ? x.totalR / x.count : 0), totalR: round(x.totalR) }))
+    .map((x) => ({ name: x.name, count: x.count, winRate: round(groupWinRate(x.wins, x.losses)), avgR: round(x.count ? x.totalR / x.count : 0), totalR: round(x.totalR) }))
     .sort((a, b) => b.totalR - a.totalR);
 }
 
