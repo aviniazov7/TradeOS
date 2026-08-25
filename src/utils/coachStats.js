@@ -2,7 +2,7 @@
 // re-deriving everything from raw fields. Free = current month; Premium = full
 // history (and adds previous-month comparison + extended breakdowns).
 
-import { isClosedTrade } from './calculations';
+import { isClosedTrade, groupWinRate } from './calculations';
 
 const tradeMs = (t) => {
   const d = t.exitDate || t.entryDate || t.createdAt;
@@ -49,10 +49,11 @@ function topGroups(trades, keyFn, take = 5) {
   for (const t of trades) {
     const k = keyFn(t);
     if (!k) continue;
-    const cur = m.get(k) || { trades: 0, pnl: 0, wins: 0 };
+    const cur = m.get(k) || { trades: 0, pnl: 0, wins: 0, losses: 0 };
     cur.trades++;
     cur.pnl += pnlOf(t);
     if (pnlOf(t) > 0) cur.wins++;
+    else if (pnlOf(t) < 0) cur.losses++;
     m.set(k, cur);
   }
   return [...m.entries()]
@@ -62,7 +63,8 @@ function topGroups(trades, keyFn, take = 5) {
       key,
       trades: v.trades,
       pnl: Math.round(v.pnl * 100) / 100,
-      winRate: Math.round((v.wins / v.trades) * 1000) / 10,
+      // Decided-only, like every other win rate in the app.
+      winRate: Math.round(groupWinRate(v.wins, v.losses) * 10) / 10,
     }));
 }
 

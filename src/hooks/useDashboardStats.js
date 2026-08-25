@@ -1,22 +1,5 @@
 import { useMemo } from 'react';
-import {
-  calculateWinRate,
-  calculateProfitFactor,
-  calculateExpectancy,
-  calculateAvgRR,
-  calculateMaxDrawdown,
-  calculateSharpeRatio,
-  calculateCalmarRatio,
-  calculateCurrentStreak,
-  calculateAvgDuration,
-  calculateSortinoRatio,
-  calculateRecoveryFactor,
-  pearsonCorrelation,
-  clampRatio,
-  isClosedTrade,
-  localDayKey,
-  safePnl,
-} from '../utils/calculations';
+import { calculateWinRate, calculateProfitFactor, calculateExpectancy, calculateAvgRR, calculateMaxDrawdown, calculateSharpeRatio, calculateCalmarRatio, calculateCurrentStreak, calculateAvgDuration, calculateSortinoRatio, calculateRecoveryFactor, pearsonCorrelation, clampRatio, isClosedTrade, localDayKey, safePnl, groupWinRate } from '../utils/calculations';
 import { getSessionFromDate, SESSION_UNKNOWN } from '../utils/sessions';
 import { getPeriodStart, toDate } from '../utils/period';
 
@@ -106,7 +89,7 @@ export function useDashboardStats(trades, initialBalance = 0, period = 'all') {
       strategyMap[strat].pnl += safePnl(t);
     });
     const strategyPerformance = Object.entries(strategyMap)
-      .map(([name, d]) => ({ name, ...d, winRate: d.count > 0 ? (d.wins / d.count) * 100 : 0 }))
+      .map(([name, d]) => ({ name, ...d, winRate: groupWinRate(d.wins, d.losses) }))
       .sort((a, b) => b.pnl - a.pnl);
     const bestStrategy = strategyPerformance[0]?.name || '–';
 
@@ -128,7 +111,7 @@ export function useDashboardStats(trades, initialBalance = 0, period = 'all') {
       .sort(([a], [b]) => (a < b ? -1 : a > b ? 1 : 0))
       .map(([month, d]) => {
         cumulativePnl += d.pnl;
-        return { month, ...d, winRate: d.count > 0 ? (d.wins / d.count) * 100 : 0, cumulativePnl };
+        return { month, ...d, winRate: groupWinRate(d.wins, d.losses), cumulativePnl };
       });
 
     // Session Performance — uses shared utility (Israel timezone, single source of truth)
@@ -142,22 +125,23 @@ export function useDashboardStats(trades, initialBalance = 0, period = 'all') {
       sessionMap[sess].pnl += safePnl(t);
     });
     const sessionPerformance = Object.values(sessionMap)
-      .map((s) => ({ ...s, winRate: s.count > 0 ? (s.wins / s.count) * 100 : 0, pnl: parseFloat(s.pnl.toFixed(2)) }))
+      .map((s) => ({ ...s, winRate: groupWinRate(s.wins, s.losses), pnl: parseFloat(s.pnl.toFixed(2)) }))
       .sort((a, b) => b.pnl - a.pnl);
 
     // Day of Week Performance
     const dayNames = ['ראשון', 'שני', 'שלישי', 'רביעי', 'חמישי', 'שישי', 'שבת'];
     const dayMap = {};
-    dayNames.forEach((name, i) => { dayMap[i] = { name, count: 0, wins: 0, pnl: 0 }; });
+    dayNames.forEach((name, i) => { dayMap[i] = { name, count: 0, wins: 0, losses: 0, pnl: 0 }; });
     closed.forEach((t) => {
       const day = tradeDate(t).getDay();
       dayMap[day].count++;
       if (t.result === 'win') dayMap[day].wins++;
+      else if (t.result === 'loss') dayMap[day].losses++;
       dayMap[day].pnl += safePnl(t);
     });
     const dayOfWeekPerformance = Object.values(dayMap)
       .filter((d) => d.count > 0)
-      .map((d) => ({ ...d, winRate: d.count > 0 ? (d.wins / d.count) * 100 : 0, pnl: parseFloat((isNaN(d.pnl) ? 0 : d.pnl).toFixed(2)) }));
+      .map((d) => ({ ...d, winRate: groupWinRate(d.wins, d.losses), pnl: parseFloat((isNaN(d.pnl) ? 0 : d.pnl).toFixed(2)) }));
 
     // Streak History
     const streakHistory = [];

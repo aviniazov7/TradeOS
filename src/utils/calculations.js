@@ -156,6 +156,20 @@ export function calculateWinRate(trades) {
 }
 
 /**
+ * Win rate for a pre-aggregated GROUP (by pair, session, strategy, month…).
+ *
+ * Same definition as calculateWinRate — decided trades only — expressed for
+ * callers that already counted wins and losses while bucketing. Group
+ * breakdowns used to divide by the group's full trade count, so a breakeven
+ * inside a bucket pulled that bucket's rate below the headline computed from
+ * the very same trades.
+ */
+export function groupWinRate(wins = 0, losses = 0) {
+  const decided = wins + losses;
+  return decided > 0 ? (wins / decided) * 100 : 0;
+}
+
+/**
  * Calculate profit factor
  */
 export function calculateProfitFactor(trades) {

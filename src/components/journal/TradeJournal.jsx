@@ -14,7 +14,7 @@ import confetti from 'canvas-confetti';
 import { useTrades } from '../../hooks/useTrades';
 import { useCryptoPrices } from '../../hooks/useCryptoPrices';
 import { useJournalContext } from '../../contexts/JournalContext';
-import { calculatePnL, calculateFuturesPnL, isClosedTrade, safePnl } from '../../utils/calculations';
+import { calculatePnL, calculateFuturesPnL, isClosedTrade, safePnl, groupWinRate } from '../../utils/calculations';
 import { useDashboardStats } from '../../hooks/useDashboardStats';
 import { useLinkedExchangeBalance } from '../../hooks/useLinkedExchangeBalance';
 import { useExchangeImport } from '../../hooks/useExchangeImport';
@@ -286,18 +286,19 @@ export default function TradeJournal() {
     });
     const byPair = Object.entries(pairMap).map(([pair, d]) => {
       const total = d.wins + d.losses;
-      return { pair, ...d, total, winRate: total > 0 ? (d.wins / total) * 100 : 0 };
+      return { pair, ...d, total, winRate: groupWinRate(d.wins, d.losses) };
     }).sort((a, b) => b.pnl - a.pnl);
 
     const tfMap = {};
     closed.forEach((t) => {
       const tf = t.timeframe || 'N/A';
-      if (!tfMap[tf]) tfMap[tf] = { wins: 0, total: 0, pnl: 0 };
+      if (!tfMap[tf]) tfMap[tf] = { wins: 0, losses: 0, total: 0, pnl: 0 };
       tfMap[tf].total++;
       if (t.result === 'win') tfMap[tf].wins++;
+      else if (t.result === 'loss') tfMap[tf].losses++;
       tfMap[tf].pnl += t.netPnl ?? t.pnl ?? 0;
     });
-    const byTimeframe = Object.entries(tfMap).map(([tf, d]) => ({ timeframe: tf, ...d, winRate: ((d.wins / d.total) * 100) })).sort((a, b) => b.pnl - a.pnl);
+    const byTimeframe = Object.entries(tfMap).map(([tf, d]) => ({ timeframe: tf, ...d, winRate: groupWinRate(d.wins, d.losses) })).sort((a, b) => b.pnl - a.pnl);
 
     const tagMap = {};
     closed.forEach((t) => {
@@ -310,7 +311,7 @@ export default function TradeJournal() {
         tagMap[tag].pnl += t.netPnl ?? t.pnl ?? 0;
       });
     });
-    const byTag = Object.entries(tagMap).map(([tag, d]) => ({ tag, ...d, winRate: d.count > 0 ? (d.wins / d.count) * 100 : 0 })).sort((a, b) => b.pnl - a.pnl);
+    const byTag = Object.entries(tagMap).map(([tag, d]) => ({ tag, ...d, winRate: groupWinRate(d.wins, d.losses) })).sort((a, b) => b.pnl - a.pnl);
 
     let curWin = 0, curLoss = 0, maxWin = 0, maxLoss = 0;
     sorted.forEach((t) => {
@@ -339,7 +340,7 @@ export default function TradeJournal() {
       stratMap[t.strategy].pnl += t.netPnl ?? t.pnl ?? 0;
     });
     const byStrategy = Object.entries(stratMap)
-      .map(([name, d]) => ({ name, ...d, winRate: d.count > 0 ? (d.wins / d.count) * 100 : 0 }))
+      .map(([name, d]) => ({ name, ...d, winRate: groupWinRate(d.wins, d.losses) }))
       .sort((a, b) => b.count - a.count);
 
     return { avgWin, avgLoss, largestWin, largestLoss, pieData, dailyPnL, byPair, byTimeframe, byTag, byStrategy, maxWin, maxLoss, longWinRate, shortWinRate, longPnl, shortPnl, longCount: longTrades.length, shortCount: shortTrades.length, longWins, shortWins };

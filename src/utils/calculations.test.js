@@ -17,6 +17,7 @@ import {
   calculateProfitFactor,
   calculateMaxDrawdown,
   computeTradeFields,
+  groupWinRate,
 } from './calculations';
 import { planExpiresMs } from './premium';
 
@@ -232,5 +233,25 @@ describe('computeTradeFields — the canonical trade P&L (journal + auto-close)'
     expect(r.pnl).toBe(-3.2);
     expect(r.netPnl).toBe(-3.2);
     expect(r.result).toBe('loss');
+  });
+});
+
+describe('groupWinRate — one definition for every breakdown', () => {
+  it('is decided trades only, matching calculateWinRate', () => {
+    expect(groupWinRate(3, 1)).toBe(75);
+    expect(groupWinRate(1, 1)).toBe(50);
+  });
+  it('a breakeven in the bucket does NOT drag the bucket below the headline', () => {
+    // Group breakdowns used to divide by the bucket's full trade count, so the
+    // same trades produced a lower rate per pair/session than in the headline.
+    expect(groupWinRate(2, 1)).toBeCloseTo(66.667, 2); // 3 decided + any breakevens
+  });
+  it('all wins is 100, all losses is 0', () => {
+    expect(groupWinRate(4, 0)).toBe(100);
+    expect(groupWinRate(0, 4)).toBe(0);
+  });
+  it('nothing decided is 0, not NaN', () => {
+    expect(groupWinRate(0, 0)).toBe(0);
+    expect(groupWinRate()).toBe(0);
   });
 });
