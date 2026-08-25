@@ -3,9 +3,13 @@
  * it can be unit tested outside the Worker runtime (same reasoning as
  * newsImpact.js, tradeMerge.js and bybitPnl.js).
  *
- * Two things here were settled against a real account rather than the docs,
- * because MEXC's API host is unreachable from CI. Both are stated once, here,
- * so the sync route and anything added later cannot drift apart on them.
+ * On the net-versus-gross question, read the note on normalizeClosedPosition
+ * before changing anything: it is settled by CONVENTION, not by measurement.
+ *
+ * This module covers the CLOSED-position path only. The open-positions branch
+ * in the sync route still derives direction inline and accepts a third
+ * spelling (`p.type`) that positionDirection does not, so the two are not yet
+ * a single source of truth.
  */
 
 const num = (v) => {
@@ -48,20 +52,47 @@ export function positionQuantity(p, contractSize = 1) {
 }
 
 /**
+ * Whether the contract size is actually KNOWN.
+ *
+ * mexcContractSizes() returns {} when its fetch or parse fails, and the call
+ * site coerces a missing entry to 1 — which silently leaves the quantity in
+ * CONTRACTS. That was tolerable while quantity fed only display, but a risk
+ * figure in DOLLARS derived from it would be wrong by the contract size, up to
+ * 10,000x, and would look entirely plausible on screen.
+ */
+const sizeKnown = (contractSize) => Number.isFinite(contractSize) && contractSize > 0;
+
+/**
  * Normalized view of one closed position.
  *
- * `realised` is NET of costs, exactly like Bybit's closedPnl. Measured on a
- * real ICPUSDT long — 3,055.4826 USDT at 2.437 closed at 2.383 — where the
- * price-only P&L is -67.7046 and MEXC reported -68.5272, the -0.8226 gap being
- * the costs baked in. The journal treats pnlFromExchange as GROSS and derives
- * net = gross - fees downstream, so `grossPnl` adds the fees back and the
- * subtraction lands on exactly the figure MEXC displays.
+ * NET VERSUS GROSS — settled by CONVENTION, not measurement. Exchange
+ * realized-PnL fields are net of costs (Bybit documents closedPnl that way),
+ * and MEXC is assumed to follow. An attempt to confirm it from a screenshot of
+ * a real ICPUSDT trade did NOT discriminate: the residual it produced depends
+ * entirely on which price MEXC's Amount(USDT) is measured at, and the reading
+ * that reproduces MEXC's own PNL Rate makes `realised` LESS negative than the
+ * price move, which costs cannot do. The prices are also displayed to only
+ * three decimals, so the price-only P&L is knowable to about +/-1.25 USDT —
+ * wider than any fee being looked for. Settling it properly needs one API
+ * capture of a closed position with its matching fee and funding records.
  *
- * `stopLoss` should come from the matched OPENING order when one was found, so
- * that it is the ORIGINAL stop rather than one later moved to break-even —
- * pass it in as `openOrder`.
+ * What IS certain, and is why this is safe either way: netPnl is INVARIANT.
+ * The journal derives net = gross - fees, and grossPnl is netPnl + fees, so
+ * (netPnl + f) - f = netPnl for every f. The journal's Net P&L equals the
+ * figure MEXC displays no matter which convention is true. Only `pnl` and the
+ * return percentage read the gross value, and only when a fee field is present
+ * — which this endpoint does not currently return.
+ *
+ * `stopLoss` prefers the `openOrder` the caller matched. Note that the sync
+ * route matches that order on TIME alone (within two minutes, no price gate,
+ * unlike the Bybit path), and falls back to the position's CURRENT stop when
+ * nothing matched — so this is the original stop in the common case, not a
+ * guarantee.
  */
-export function normalizeClosedPosition(p, { contractSize = 1, openOrder = null } = {}) {
+// `contractSize` must be the REAL size, or null/undefined when it could not
+// be looked up — do not coerce it to 1 at the call site, or the risk guard
+// below can never fire.
+export function normalizeClosedPosition(p, { contractSize = null, openOrder = null } = {}) {
   const fees = tradingFees(p);
   const netPnl = num(p?.realised || p?.realisedPnl || p?.realise || p?.realised_pnl || 0);
   const entryPrice = num(p?.openAvgPrice || p?.open_avg_price || 0);
@@ -72,8 +103,12 @@ export function normalizeClosedPosition(p, { contractSize = 1, openOrder = null 
   const takeProfit = (openOrder?.tp > 0 ? openOrder.tp : num(p?.takeProfitPrice || p?.take_profit_price || 0)) || 0;
 
   // Risk in dollars and realized R, the same way the Bybit path derives them.
+  // Risk is withheld when the contract size is unknown: quantity would still be
+  // in contracts, and a dollar figure off by the contract size reads as fact.
   const slDist = stopLoss > 0 ? Math.abs(entryPrice - stopLoss) : 0;
-  const riskAmount = slDist > 0 ? Number((slDist * quantity).toPrecision(6)) : 0;
+  const riskAmount = slDist > 0 && sizeKnown(contractSize)
+    ? Number((slDist * quantity).toPrecision(6))
+    : 0;
   // UNSIGNED: the app stores R unsigned and takes the sign from pnl at display
   // time, so a signed value here renders as "--1.04R".
   const rrRatio = slDist > 0 && exitPrice > 0

@@ -6184,7 +6184,12 @@ async function handleRequest(request, env, ctx) {
           // the risk/R derivation all live in ./mexcPnl.js so they are stated
           // once and can be unit tested outside the Worker runtime.
           const n = normalizeMexcPosition(p, {
-            contractSize: csMap[sym.replace(/_/g, '')] || 1,
+            // NOT `|| 1`: mexcContractSizes() returns {} when its fetch fails,
+            // and coercing the miss to 1 leaves the quantity in CONTRACTS while
+            // looking normal. Passing the miss through lets the module withhold
+            // the dollar risk figure rather than state one that is wrong by the
+            // contract size.
+            contractSize: csMap[sym.replace(/_/g, '')],
             // The matched OPENING order carries the ORIGINAL stop, rather than
             // one that was later moved to break-even.
             openOrder: slTpById.get(posId) || null,
