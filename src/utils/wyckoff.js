@@ -35,6 +35,11 @@ export function signalToSetup(signal, label) {
 
 /** Confidence bucket label for a scanner setup (for precision breakdown). */
 export function confidenceBucket(conf) {
+  // `Number(null)` is 0, which IS finite — so a setup with no confidence
+  // (signalToSetup writes null for a manual one) used to land in the LOWEST
+  // band and quietly pollute precision-by-confidence with rows the scanner
+  // never scored. Unscored means no bucket.
+  if (conf == null || conf === '') return null;
   const c = Number(conf);
   if (!Number.isFinite(c)) return null;
   if (c >= 90) return '90–95';
