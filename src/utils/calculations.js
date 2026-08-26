@@ -438,13 +438,19 @@ export function computeTradeFields(tradeData) {
     rrRatio = calculateRR(tradeData.entryPrice, tradeData.exitPrice, tradeData.stopLoss);
   }
 
+  // Return is computed from NET, not gross. The exchange's own "PNL Rate" is
+  // net of costs, so a gross-based percentage disagreed with it on every
+  // imported trade — by 1.19 percentage points on a typical Bybit close, where
+  // a real $10.02 win with $3.57 of fees showed as 4.53% against the 3.34% the
+  // exchange displayed. It also flattered every trade: the number went up
+  // exactly as much as the trade cost.
+  const netPnl = calculateNetPnL(pnl, tradeData.fees);
   if (isFutures) {
     const notional = calculateFuturesNotional(tradeData.entryPrice, tradeData.contract.pointValue, tradeData.contract.contracts);
-    pnlPercent = notional ? (pnl / notional) * 100 : 0;
+    pnlPercent = notional ? (netPnl / notional) * 100 : 0;
   } else {
-    pnlPercent = calculatePnLPercent(pnl, tradeData.entryPrice, tradeData.quantity, tradeData.leverage);
+    pnlPercent = calculatePnLPercent(netPnl, tradeData.entryPrice, tradeData.quantity, tradeData.leverage);
   }
-  const netPnl = calculateNetPnL(pnl, tradeData.fees);
   const result = getTradeResult(netPnl);
   return { pnl, pnlPercent, rrRatio, netPnl, result };
 }

@@ -35,9 +35,15 @@ export function tradingFees(p) {
   return Math.abs(num(p?.fee || p?.fees || p?.closeFee || p?.close_fee || p?.holdFee || p?.totalFee || 0));
 }
 
-/** positionType 1 is a long; anything else is a short. */
+/**
+ * positionType 1 is a long; anything else is a short.
+ *
+ * THREE spellings, because the open-positions branch of the sync route reads a
+ * third one (`p.type`) that this used to miss — so the same position could be
+ * imported long while it was open and short once it closed.
+ */
 export function positionDirection(p) {
-  return (p?.positionType ?? p?.position_type) === 1 ? 'long' : 'short';
+  return (p?.positionType ?? p?.position_type ?? p?.type) === 1 ? 'long' : 'short';
 }
 
 /**

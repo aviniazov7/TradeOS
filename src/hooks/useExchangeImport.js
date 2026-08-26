@@ -189,7 +189,9 @@ export function useExchangeImport(journalId) {
       // matched to this document by id overlap (see the upsert above).
       ...(rowIds.length > 1 ? { externalIds: rowIds } : {}),
       pnlFromExchange: pnl, pnl, netPnl: netPnlImport,
-      pnlPercent: (pnl / (ep * qty)) * 100 * lev,
+      // NET-based, matching computeTradeFields and the exchange's own PNL Rate.
+      // A gross-based figure overstated the return by the cost of the trade.
+      pnlPercent: (netPnlImport / (ep * qty)) * 100 * lev,
       // Risk ($) and realized R computed by the worker from the REAL exchange
       // SL and quantity — so nothing needs manual entry after import.
       riskAmount: parseFloat(t.riskAmount) || 0,

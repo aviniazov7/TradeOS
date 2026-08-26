@@ -6147,17 +6147,28 @@ async function handleRequest(request, env, ctx) {
           }
 
           // Opening order → SL/TP. Allow ±2 min tolerance around the
-          // position's createTime to absorb minor clock skew.
+          // position's createTime to absorb minor clock skew, AND require the
+          // fill price to agree within 0.2% — the same gate the Bybit branch
+          // uses. Time alone let an unrelated order that happened to fill in
+          // the same two-minute window donate its stop, and now that the stop
+          // drives a dollar risk figure and an R on screen, a wrong one is not
+          // a cosmetic slip.
           const opens = pool[sym]?.[openSide];
           if (opens) {
             const TOL = 2 * 60 * 1000;
+            const openAvg = parseFloat(p.openAvgPrice || p.open_avg_price || p.holdAvgPrice || p.hold_avg_price) || 0;
             let bestIdx = -1;
             let bestDelta = Infinity;
             for (let i = 0; i < opens.length; i++) {
               const o = opens[i];
               if (o.used) continue;
               const d = Math.abs(o.fillTime - openMs);
-              if (d <= TOL && d < bestDelta) { bestDelta = d; bestIdx = i; }
+              if (d > TOL || d >= bestDelta) continue;
+              // Price gate only when BOTH prices are known — an order with no
+              // recorded fill price still matches on time, as it did before.
+              const ap = parseFloat(o.price || o.avgPrice || o.dealAvgPrice || 0) || 0;
+              if (ap > 0 && openAvg > 0 && Math.abs(ap - openAvg) > openAvg * 0.002) continue;
+              bestDelta = d; bestIdx = i;
             }
             if (bestIdx >= 0) {
               opens[bestIdx].used = true;

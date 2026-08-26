@@ -302,3 +302,35 @@ describe('tallyByKey — the bucketing every breakdown shares', () => {
     expect(tallyByKey(null, () => 'k')).toEqual([]);
   });
 });
+
+describe('computeTradeFields — return is measured on NET, like the exchange', () => {
+  it('a gross-based return overstated every trade by its own cost', () => {
+    // Real Bybit shape: $10.02 net win on a $3,000 notional at 10x, $3.57 fees.
+    // Gross-based showed 4.53%; the exchange's PNL Rate says 3.34%.
+    const r = computeTradeFields({
+      direction: 'long', entryPrice: 60000, quantity: 0.05, leverage: 10,
+      status: 'closed', pnlFromExchange: 13.59, fees: 3.57,
+    });
+    expect(r.pnl).toBeCloseTo(13.59);       // gross, as the exchange reports it grossed up
+    expect(r.netPnl).toBeCloseTo(10.02);
+    expect(r.pnlPercent).toBeCloseTo(3.34, 2);
+  });
+
+  it('with no fees, net and gross returns are the same number', () => {
+    const r = computeTradeFields({
+      direction: 'long', entryPrice: 100, quantity: 10, leverage: 1,
+      exitPrice: 110, status: 'closed', fees: 0,
+    });
+    expect(r.pnlPercent).toBeCloseTo(10);
+  });
+
+  it('fees can turn a positive return negative, matching the result field', () => {
+    const r = computeTradeFields({
+      direction: 'long', entryPrice: 100, quantity: 1, leverage: 1,
+      exitPrice: 101, status: 'closed', fees: 3,
+    });
+    expect(r.pnl).toBeCloseTo(1);
+    expect(r.pnlPercent).toBeLessThan(0);
+    expect(r.result).toBe('loss');
+  });
+});
