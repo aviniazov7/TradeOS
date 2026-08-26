@@ -6,10 +6,10 @@
  * On the net-versus-gross question, read the note on normalizeClosedPosition
  * before changing anything: it is settled by CONVENTION, not by measurement.
  *
- * This module covers the CLOSED-position path only. The open-positions branch
- * in the sync route still derives direction inline and accepts a third
- * spelling (`p.type`) that positionDirection does not, so the two are not yet
- * a single source of truth.
+ * Direction IS a single source of truth now: both the closed-position loop and
+ * the open-positions branch of the sync route call positionDirection, so a new
+ * field spelling has exactly one place to be added. They diverged before, and
+ * the same record then imported long while open and short once closed.
  */
 
 const num = (v) => {
@@ -89,11 +89,10 @@ const sizeKnown = (contractSize) => Number.isFinite(contractSize) && contractSiz
  * return percentage read the gross value, and only when a fee field is present
  * — which this endpoint does not currently return.
  *
- * `stopLoss` prefers the `openOrder` the caller matched. Note that the sync
- * route matches that order on TIME alone (within two minutes, no price gate,
- * unlike the Bybit path), and falls back to the position's CURRENT stop when
- * nothing matched — so this is the original stop in the common case, not a
- * guarantee.
+ * `stopLoss` prefers the `openOrder` the caller matched — see matchOpeningOrder
+ * below for the time and price gates that matching applies. It falls back to
+ * the position's CURRENT stop when nothing matched, so this is the original
+ * stop in the common case, not a guarantee.
  */
 // `contractSize` must be the REAL size, or null/undefined when it could not
 // be looked up — do not coerce it to 1 at the call site, or the risk guard
@@ -135,4 +134,41 @@ export function normalizeClosedPosition(p, { contractSize = null, openOrder = nu
     riskAmount,
     rrRatio,
   };
+}
+
+// Pick the opening order that belongs to a closed position, so its stop and
+// target can be carried onto the journal entry.
+//
+// `opens` are the same-symbol, same-side filled orders, ascending by fillTime,
+// each { fillTime, price, used, sl, tp }; `used` claims one order per position
+// so two positions opened minutes apart cannot both inherit the same stop.
+//
+// The match is the nearest fill in time within TOL_MS whose price agrees with
+// the position's average open price to within PRICE_TOL. The price gate is what
+// keeps an unrelated order that merely filled in the same two-minute window
+// from donating its stop — and now that the stop drives a dollar risk and an R
+// on screen, a wrong one is not a cosmetic slip. It applies only when BOTH
+// prices are known: an order with no recorded fill price still matches on time,
+// exactly as it did before the gate existed.
+export const OPEN_MATCH_TOL_MS = 2 * 60 * 1000;
+export const OPEN_MATCH_PRICE_TOL = 0.002;
+
+export function matchOpeningOrder(opens, openMs, openAvg) {
+  if (!Array.isArray(opens) || !(openMs > 0)) return -1;
+  const avg = num(openAvg);
+  let bestIdx = -1;
+  let bestDelta = Infinity;
+  for (let i = 0; i < opens.length; i++) {
+    const o = opens[i];
+    if (!o || o.used) continue;
+    const d = Math.abs(num(o.fillTime) - openMs);
+    // Strictly-better only: on a tie the earlier order wins, which keeps the
+    // result stable regardless of how the exchange ordered equal timestamps.
+    if (d > OPEN_MATCH_TOL_MS || d >= bestDelta) continue;
+    const ap = num(o.price);
+    if (ap > 0 && avg > 0 && Math.abs(ap - avg) > avg * OPEN_MATCH_PRICE_TOL) continue;
+    bestDelta = d;
+    bestIdx = i;
+  }
+  return bestIdx;
 }

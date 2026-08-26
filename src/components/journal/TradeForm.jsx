@@ -283,10 +283,11 @@ export default function TradeForm({ isOpen, onClose, trade, onSave, riskSettings
       if (!entry || !contractSpec || !contractsNum || !futExits.length) return null;
       const pnl = calculateFuturesContractsPnL(form.direction, entry, futExits, contractSpec.pointValue);
       const notional = calculateFuturesNotional(entry, contractSpec.pointValue, contractsNum);
-      const pnlPercent = notional ? (pnl / notional) * 100 : 0;
       const weightedExit = calculateWeightedExitPrice(futExits.map(e => ({ price: e.price, percent: e.contracts })));
       const rrRatio = calculateRR(entry, weightedExit, sl);
       const netPnl = calculateNetPnL(pnl, fees);
+      // Net, exactly as computeTradeFields saves it — see the note below.
+      const pnlPercent = notional ? (netPnl / notional) * 100 : 0;
       return { pnl, pnlPercent, rrRatio, netPnl };
     }
 
@@ -302,16 +303,20 @@ export default function TradeForm({ isOpen, onClose, trade, onSave, riskSettings
     const pnl = isImported
       ? form.pnlFromExchange
       : calculatePartialPnL(form.direction, entry, allExits, calculatedQty);
-    const pnlPercent = isImported
-      ? (typeof form.pnlPercent === 'number' ? form.pnlPercent : calculatePnLPercent(pnl, entry, calculatedQty, form.leverage))
-      : calculatePnLPercent(pnl, entry, calculatedQty, form.leverage);
     const weightedExit = calculateWeightedExitPrice(allExits);
     const rrRatio = calculateRR(entry, weightedExit, sl);
     const netPnl = calculateNetPnL(pnl, fees);
+    // This live figure MUST use the same inputs computeTradeFields will use on
+    // save — net P&L, not gross — or the user reads one return in the form and
+    // a different one on the card a second later. For an imported trade the
+    // stored percent was preferred here instead; that is now the same number
+    // (both paths are netPnl / (entry × qty) × leverage) except when the fees
+    // field is edited, and there the stored one is the stale one.
+    const pnlPercent = calculatePnLPercent(netPnl, entry, calculatedQty, form.leverage);
 
     return { pnl, pnlPercent, rrRatio, netPnl };
   }, [form.direction, form.entryPrice, form.additionalExits, form.stopLoss, calculatedQty, form.fees,
-      form.leverage, form.pnlFromExchange, form.pnlPercent, isFutures, contractSpec, contractsNum]);
+      form.leverage, form.pnlFromExchange, isFutures, contractSpec, contractsNum]);
 
   // Risk warning
   const riskInfo = useMemo(() => {

@@ -1,6 +1,7 @@
 import { describe, it, expect } from 'vitest';
 import {
   normalizeClosedPosition, tradingFees, positionDirection, positionQuantity,
+  matchOpeningOrder, OPEN_MATCH_TOL_MS,
 } from './mexcPnl';
 
 // The real trade, rebuilt from what the two screenshots actually support.
@@ -193,5 +194,62 @@ describe('normalizeClosedPosition — malformed input', () => {
     expect(n.exitPrice).toBe(110);
     expect(n.quantity).toBe(2);
     expect(n.netPnl).toBe(20);
+  });
+});
+
+describe('matchOpeningOrder', () => {
+  const o = (fillTime, price, over = {}) => ({ fillTime, price, used: false, sl: 0, tp: 0, ...over });
+
+  it('picks the nearest fill in time', () => {
+    const opens = [o(1000, 100), o(5000, 100), o(9000, 100)];
+    expect(matchOpeningOrder(opens, 5400, 100)).toBe(1);
+  });
+
+  it('rejects a fill outside the two-minute window even with no rival', () => {
+    expect(matchOpeningOrder([o(0, 100)], OPEN_MATCH_TOL_MS + 1, 100)).toBe(-1);
+    expect(matchOpeningOrder([o(0, 100)], OPEN_MATCH_TOL_MS, 100)).toBe(0);
+  });
+
+  it('skips an order already claimed by another position', () => {
+    // Without the claim, two positions opened seconds apart both inherit the
+    // same stop and the second one shows a risk it never had.
+    const opens = [o(1000, 100, { used: true }), o(4000, 100)];
+    expect(matchOpeningOrder(opens, 1000, 100)).toBe(1);
+  });
+
+  it('refuses a nearer order whose price disagrees by more than 0.2%', () => {
+    // THE POINT OF THE GATE. Both filled inside the window; only one is this
+    // position's. Time alone would hand over the wrong stop.
+    const opens = [o(5000, 103), o(9000, 100)];
+    expect(matchOpeningOrder(opens, 5000, 100)).toBe(1);
+  });
+
+  it('accepts a price inside the tolerance and rejects one outside', () => {
+    // Not asserted at exactly 0.2%: 100 * 1.002 - 100 is 0.20000000000000284
+    // in binary floating point, so the exact boundary lands on whichever side
+    // the representation error falls. A real fill never sits on it, and a code
+    // change to force it there would be fitting the code to the test.
+    expect(matchOpeningOrder([o(5000, 100.15)], 5000, 100)).toBe(0);
+    expect(matchOpeningOrder([o(5000, 100.3)], 5000, 100)).toBe(-1);
+    expect(matchOpeningOrder([o(5000, 99.7)], 5000, 100)).toBe(-1);
+  });
+
+  it('falls back to time alone when either price is unknown', () => {
+    // Pre-gate behaviour, deliberately preserved: an order with no recorded
+    // fill price must still match, or every such position silently loses its
+    // stop — a regression dressed as a fix.
+    expect(matchOpeningOrder([o(5000, 0)], 5000, 100)).toBe(0);
+    expect(matchOpeningOrder([o(5000, 999)], 5000, 0)).toBe(0);
+  });
+
+  it('is stable on a tie — the earlier order wins', () => {
+    const opens = [o(4000, 100), o(6000, 100)];
+    expect(matchOpeningOrder(opens, 5000, 100)).toBe(0);
+  });
+
+  it('returns -1 rather than throwing on junk', () => {
+    expect(matchOpeningOrder(null, 5000, 100)).toBe(-1);
+    expect(matchOpeningOrder([o(5000, 100)], 0, 100)).toBe(-1);
+    expect(matchOpeningOrder([null, undefined], 5000, 100)).toBe(-1);
   });
 });

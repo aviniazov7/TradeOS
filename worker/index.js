@@ -11,7 +11,11 @@ import {
 } from './newsImpact.js';
 import { mergeClosedPositions } from './tradeMerge.js';
 import { normalizeClosedPnl, tradingFees, positionDirection } from './bybitPnl.js';
-import { normalizeClosedPosition as normalizeMexcPosition } from './mexcPnl.js';
+import {
+  normalizeClosedPosition as normalizeMexcPosition,
+  positionDirection as mexcDirection,
+  matchOpeningOrder,
+} from './mexcPnl.js';
 
 // Binance's public market-data mirror — api.binance.com returns 403 to
 // Cloudflare Worker egress IPs in many regions, but data-api.binance.vision
@@ -5556,7 +5560,9 @@ async function handleRequest(request, env, ctx) {
 
         const csMap = await mexcContractSizes();
         const positions = rawList.map(p => {
-          const posType = p.positionType ?? p.position_type ?? p.type;
+          // Last inline copy of the side rule, routed through the helper so a
+          // new field spelling has exactly one place to be added.
+          const isLong = mexcDirection(p) === 'long';
           const sym = (p.symbol || '').replace(/_/g, '');
           // MEXC uses openAvgPrice or holdAvgPrice for average entry
           const entryPrice = parseFloat(p.openAvgPrice || p.open_avg_price || p.holdAvgPrice || p.hold_avg_price) || 0;
@@ -5567,7 +5573,7 @@ async function handleRequest(request, env, ctx) {
           const liqMx = parseFloat(p.liquidatePrice || p.liquidate_price || p.liqPrice || 0) || 0;
           return {
             pair: sym,
-            direction: posType === 1 ? 'long' : 'short',
+            direction: isLong ? 'long' : 'short',
             entryPrice,
             quantity: qty,
             leverage: parseFloat(p.leverage) || 1,
@@ -6083,7 +6089,7 @@ async function handleRequest(request, env, ctx) {
         // from close orders (sides 2/4) and (b) recover the configured SL/TP
         // for each position from its opening order (sides 1/3). MEXC's
         // position-history endpoint doesn't expose SL/TP.
-        // pool[symbol][side] = sorted array of { fillTime, used, sl, tp }
+        // pool[symbol][side] = sorted array of { fillTime, price, used, sl, tp }
         const pool = {};
         try {
           const ts2 = Date.now().toString();
@@ -6111,7 +6117,14 @@ async function handleRequest(request, env, ctx) {
               const tp = side === 1 || side === 3
                 ? parseFloat(o.takeProfitPrice || o.take_profit_price || o.tpPrice || o.tp_price || 0) || 0
                 : 0;
-              pool[sym][side].push({ fillTime, used: false, sl, tp });
+              // The average FILL price, not o.price — that one is the limit
+              // price, and it is 0 or a trigger level on a market order.
+              // Without this the price gate below has nothing to compare and
+              // silently degrades to the time-only match it replaced.
+              const price = parseFloat(
+                o.dealAvgPrice || o.deal_avg_price || o.avgPrice || o.avg_price || o.price || 0
+              ) || 0;
+              pool[sym][side].push({ fillTime, price, used: false, sl, tp });
             }
             for (const sym of Object.keys(pool))
               for (const side of Object.keys(pool[sym]))
@@ -6129,9 +6142,15 @@ async function handleRequest(request, env, ctx) {
           toMs(a.createTime || a.openTime || 0) - toMs(b.createTime || b.openTime || 0)
         );
         for (const p of sorted) {
-          const posType = p.positionType ?? p.position_type;
-          const openSide = posType === 1 ? 1 : 3;
-          const closeSide = posType === 1 ? 4 : 2;
+          // Read the side through the SAME helper normalizeMexcPosition uses.
+          // Deriving it here from two field spellings while the helper read
+          // three meant a record carrying only `type` imported as a long and
+          // then matched its close and its stop against SHORT-side orders —
+          // so it took an unrelated stop, or one on the wrong side of entry,
+          // straight into the risk figure and the R.
+          const isLong = mexcDirection(p) === 'long';
+          const openSide = isLong ? 1 : 3;
+          const closeSide = isLong ? 4 : 2;
           const sym = p.symbol;
           const openMs = toMs(p.createTime || p.openTime || p.create_time || p.openTimestamp);
           const posId = String(p.id || sym + '_' + openMs);
@@ -6146,30 +6165,12 @@ async function handleRequest(request, env, ctx) {
             }
           }
 
-          // Opening order → SL/TP. Allow ±2 min tolerance around the
-          // position's createTime to absorb minor clock skew, AND require the
-          // fill price to agree within 0.2% — the same gate the Bybit branch
-          // uses. Time alone let an unrelated order that happened to fill in
-          // the same two-minute window donate its stop, and now that the stop
-          // drives a dollar risk figure and an R on screen, a wrong one is not
-          // a cosmetic slip.
+          // Opening order → SL/TP. Nearest fill in time that also agrees on
+          // price; see matchOpeningOrder in mexcPnl.js for why both gates.
           const opens = pool[sym]?.[openSide];
           if (opens) {
-            const TOL = 2 * 60 * 1000;
             const openAvg = parseFloat(p.openAvgPrice || p.open_avg_price || p.holdAvgPrice || p.hold_avg_price) || 0;
-            let bestIdx = -1;
-            let bestDelta = Infinity;
-            for (let i = 0; i < opens.length; i++) {
-              const o = opens[i];
-              if (o.used) continue;
-              const d = Math.abs(o.fillTime - openMs);
-              if (d > TOL || d >= bestDelta) continue;
-              // Price gate only when BOTH prices are known — an order with no
-              // recorded fill price still matches on time, as it did before.
-              const ap = parseFloat(o.price || o.avgPrice || o.dealAvgPrice || 0) || 0;
-              if (ap > 0 && openAvg > 0 && Math.abs(ap - openAvg) > openAvg * 0.002) continue;
-              bestDelta = d; bestIdx = i;
-            }
+            const bestIdx = matchOpeningOrder(opens, openMs, openAvg);
             if (bestIdx >= 0) {
               opens[bestIdx].used = true;
               slTpById.set(posId, { sl: opens[bestIdx].sl, tp: opens[bestIdx].tp });

@@ -316,6 +316,34 @@ describe('computeTradeFields — return is measured on NET, like the exchange', 
     expect(r.pnlPercent).toBeCloseTo(3.34, 2);
   });
 
+  it('the FUTURES branch measures on net too', () => {
+    // Its own line, its own divisor (notional, no leverage). Reverting just
+    // that line left all 441 tests green, so half the change was unpinned.
+    // ES 1 contract, +10 points at $50 = $500 gross on a $250,000 notional,
+    // $100 of commission: 0.16%, not the 0.20% a gross figure would show.
+    const r = computeTradeFields({
+      assetClass: 'futures_cme', contract: { pointValue: 50, contracts: 1 },
+      direction: 'long', entryPrice: 5000, exitPrice: 5010,
+      status: 'closed', fees: 100,
+    });
+    expect(r.pnl).toBeCloseTo(500);
+    expect(r.netPnl).toBeCloseTo(400);
+    expect(r.pnlPercent).toBeCloseTo(0.16, 4);
+  });
+
+  it('futures fees can flip the return negative, exactly as they do in cash', () => {
+    const r = computeTradeFields({
+      assetClass: 'futures_cme', contract: { pointValue: 50, contracts: 1 },
+      direction: 'long', entryPrice: 5000, exitPrice: 5001,
+      status: 'closed', fees: 100,
+    });
+    expect(r.pnl).toBeCloseTo(50);
+    expect(r.pnlPercent).toBeLessThan(0);
+    expect(r.result).toBe('loss');
+  });
+
+  // CONTROL: passes under both conventions by construction. It guards the
+  // no-fee path from an unrelated regression, it does not pin this change.
   it('with no fees, net and gross returns are the same number', () => {
     const r = computeTradeFields({
       direction: 'long', entryPrice: 100, quantity: 10, leverage: 1,
