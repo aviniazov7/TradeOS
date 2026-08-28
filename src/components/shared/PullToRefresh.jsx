@@ -95,8 +95,10 @@ export default function PullToRefresh({ children }) {
       {/* Pull indicator */}
       <div
         className="fixed left-0 right-0 z-40 flex justify-center pointer-events-none transition-opacity duration-200 lg:hidden"
-        style={{ top: 'var(--app-header-h)' }}
-        style={{ opacity: pullDistance > 10 ? 1 : 0, transform: `translateY(${pullDistance * 0.3}px)` }}
+        style={{
+          top: 'var(--app-header-h)',
+          opacity: pullDistance > 10 ? 1 : 0, transform: `translateY(${pullDistance * 0.3}px)`,
+        }}
       >
         <div className="bg-bg-secondary border border-border-primary rounded-full p-2 shadow-lg">
           <RefreshCw

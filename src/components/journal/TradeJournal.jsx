@@ -1,4 +1,5 @@
 import { useState, useMemo, useEffect, useRef, lazy, Suspense } from 'react';
+import TradesLoadError from '../shared/TradesLoadError';
 import { useSearchParams } from 'react-router-dom';
 import { motion } from 'framer-motion';
 import {
@@ -55,7 +56,7 @@ const PIE_COLORS = ['#22c55e', '#ef4444', '#eab308'];
 
 export default function TradeJournal() {
   const { activeJournal, activeJournalId, journals, addJournal } = useJournalContext();
-  const { trades, loading, addTrade, addTradesBulk, updateTrade, deleteTrade } = useTrades(activeJournalId);
+  const { trades, loading, error, addTrade, addTradesBulk, updateTrade, deleteTrade } = useTrades(activeJournalId);
   const { prices } = useCryptoPrices();
   const [searchParams] = useSearchParams();
   const [formOpen, setFormOpen] = useState(false);
@@ -518,6 +519,7 @@ export default function TradeJournal() {
     return trade.direction === 'long' ? currentPrice > entry : currentPrice < entry;
   };
 
+  if (error) return <TradesLoadError code={error} />;
   if (loading) return <JournalSkeleton />;
 
   if (!activeJournal && journals.length === 0) {

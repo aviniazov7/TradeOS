@@ -1,4 +1,5 @@
 import { useState, useMemo, useEffect } from 'react';
+import TradesLoadError from '../shared/TradesLoadError';
 import { useNavigate } from 'react-router-dom';
 import { motion, AnimatePresence } from 'framer-motion';
 import {
@@ -50,7 +51,7 @@ export default function Dashboard() {
     });
   };
   const m = (val) => hideBalances ? '••••' : val;
-  const { trades: allTrades, loading: tradesLoading } = useTrades(); // all trades, no journal filter
+  const { trades: allTrades, loading: tradesLoading, error } = useTrades(); // all trades, no journal filter
   const { backtests: allBacktests, loading: backtestsLoading } = useBacktests();
   const backtests = useMemo(() => allBacktests.filter((b) => b.backtestJournalId), [allBacktests]);
   const { plans, loading: plansLoading } = useTradingPlans();
@@ -398,6 +399,7 @@ export default function Dashboard() {
     };
   }, [allTrades, journals, globalStats.winRate, globalStats.avgRR]);
 
+  if (error) return <TradesLoadError code={error} />;
   if (loading) return <DashboardSkeleton />;
 
   const cardClass = 'bg-bg-secondary border border-border-primary rounded-xl p-5';

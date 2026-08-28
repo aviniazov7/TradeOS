@@ -1,4 +1,5 @@
 import { createContext, useContext, useEffect, useMemo, useState } from 'react';
+import { tradesValue, backoffMs } from './tradesValue';
 import { subscribeToUserCollection } from '../services/firestoreService';
 import { useAuth } from './AuthContext';
 
@@ -17,14 +18,12 @@ import { useAuth } from './AuthContext';
 
 const TradesContext = createContext(null);
 
-const SIGNED_OUT = { allTrades: [], loading: false };
-const AWAITING = { allTrades: [], loading: true };
 const EMPTY = { uid: null, allTrades: [], loading: true };
 
 // A listener that errors out used to heal on the next navigation, because each
 // consumer re-subscribed on mount. There is only one listener now, so a single
-// failure would leave the whole app without trades until a reload.
-const RETRY_MS = 5000;
+// failure would leave the whole app without trades until a reload — see
+// tradesValue.js for what it exposes on failure and how the retry is paced.
 
 export function TradesProvider({ children }) {
   const { user } = useAuth();
@@ -33,6 +32,10 @@ export function TradesProvider({ children }) {
   // guarantees one account's trades are never served to the next.
   const [snapshot, setSnapshot] = useState(EMPTY);
   const [retry, setRetry] = useState(0);
+  // Failure is stamped with its own uid and kept beside the snapshot rather
+  // than folded into it — tradesValue.js explains why folding it in could not
+  // clear `loading` at all.
+  const [failure, setFailure] = useState(null);
 
   useEffect(() => {
     if (!user) return undefined;
@@ -43,14 +46,19 @@ export function TradesProvider({ children }) {
       uid,
       'trades',
       {},
-      (data) => setSnapshot({ uid, allTrades: data, loading: false }),
+      (data) => {
+        setSnapshot({ uid, allTrades: data, loading: false });
+        // A recovered listener clears the failure and resets the backoff, so
+        // the next unrelated blip is retried promptly again.
+        setFailure((prev) => (prev ? null : prev));
+        setRetry((n) => (n ? 0 : n));
+      },
       (error) => {
         console.error('Firestore trades listener error:', error);
-        // Only ever touch state belonging to THIS listener — a late error from a
-        // previous user's listener must not stamp their uid back over the
-        // current one and pin the app on "awaiting".
-        setSnapshot((prev) => (prev.uid === uid ? { ...prev, loading: false } : prev));
-        retryTimer = setTimeout(() => setRetry((n) => n + 1), RETRY_MS);
+        // Stamped with THIS listener's uid — a late error from a previous
+        // user's listener must not surface on the current account's screen.
+        setFailure({ uid, code: error?.code || 'unknown' });
+        retryTimer = setTimeout(() => setRetry((n) => n + 1), backoffMs(retry));
       }
     );
 
@@ -65,11 +73,7 @@ export function TradesProvider({ children }) {
     };
   }, [user, retry]);
 
-  const value = useMemo(() => {
-    if (!user) return SIGNED_OUT;
-    if (snapshot.uid !== user.uid) return AWAITING;
-    return { allTrades: snapshot.allTrades, loading: snapshot.loading };
-  }, [user, snapshot]);
+  const value = useMemo(() => tradesValue(user, snapshot, failure), [user, snapshot, failure]);
 
   return <TradesContext.Provider value={value}>{children}</TradesContext.Provider>;
 }

@@ -85,8 +85,10 @@ export default function Sidebar({ mobileOpen, onClose }) {
             exit={{ x: '100%' }}
             transition={{ type: 'tween', duration: 0.25 }}
             className="fixed right-0 w-64 border-l border-border-primary z-50 flex flex-col"
-            style={{ top: 'var(--app-header-h)', height: 'calc(100dvh - var(--app-header-h))' }}
-            style={{ background: 'var(--color-bg-solid)', backdropFilter: 'blur(24px)', WebkitBackdropFilter: 'blur(24px)' }}
+            style={{
+              top: 'var(--app-header-h)', height: 'calc(100dvh - var(--app-header-h))',
+              background: 'var(--color-bg-solid)', backdropFilter: 'blur(24px)', WebkitBackdropFilter: 'blur(24px)',
+            }}
           >
 
             {/* Navigation */}

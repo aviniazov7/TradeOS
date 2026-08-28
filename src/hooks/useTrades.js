@@ -15,7 +15,7 @@ export function useTrades(journalId = null) {
   const { user } = useAuth();
   // The subscription itself lives in TradesProvider — see that file for why.
   // This hook is now a selector plus the mutations.
-  const { allTrades, loading } = useAllTrades();
+  const { allTrades, loading, error } = useAllTrades();
 
   // Client-side filter by journalId — instant switching, no re-subscription
   const trades = useMemo(() => {
@@ -128,5 +128,5 @@ export function useTrades(journalId = null) {
     }
   };
 
-  return { trades, loading, addTrade, addTradesBulk, updateTrade, deleteTrade };
+  return { trades, loading, error, addTrade, addTradesBulk, updateTrade, deleteTrade };
 }
