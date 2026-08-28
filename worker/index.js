@@ -983,6 +983,23 @@ async function getAiUsage(env, uid) {
   return { used: v ? parseInt(v, 10) || 0 : 0, limit: AI_DAILY_LIMIT, date };
 }
 
+// KV HAS NO ATOMIC INCREMENT. Every counter below is a read-modify-write, so
+// N genuinely simultaneous requests can all read the same value and all write
+// count+1 — the daily budget then over-serves by up to N-1. Charging BEFORE
+// serving (rather than after) removes the much larger window where a user held
+// a slow provider call open and fired more requests through the un-incremented
+// count, but it does not make the increment itself atomic, and a comment that
+// claimed otherwise would send the next reader looking for a bug elsewhere.
+//
+// aiBurstBlocked bounds what is left. It is a per-uid Cache-API counter, so it
+// is per-colo and eventually consistent too — but it is a far tighter window
+// than KV's, and its only job is to cap how many requests can be in flight at
+// once. That turns an unbounded overshoot into a small one. Closing the race
+// completely needs a Durable Object, the only Workers primitive with real
+// atomicity; that is a bigger change than this file should absorb today.
+const AI_BURST_PER_10S = 3;
+const aiBurstBlocked = (uid) => edgeRateLimited('ai-burst', uid, AI_BURST_PER_10S, 10);
+
 async function incrementAiUsage(env, uid) {
   const date = getIsraelDateStr();
   const key = `aiusage:${uid}:${date}`;
@@ -2526,9 +2543,14 @@ async function handleAIChat(request, env, cors) {
           premiumRequired: true,
         }), { status: 403, headers: { ...cors, 'Content-Type': 'application/json' } });
       }
-      // CHARGE-then-check (#202): the old read→check→serve→increment raced —
-      // N parallel requests all read the same pre-increment count and all
-      // passed. Charging first closes the gate; provider failures refund.
+      // CHARGE-then-check (#202): the old read→check→serve→increment let a user
+      // hold a slow provider call open and fire more requests through the
+      // un-incremented count. Charging first shuts that window; provider
+      // failures refund. It does NOT make the KV counter atomic — see the note
+      // on incrementAiUsage — so bound the burst first.
+      if (await aiBurstBlocked(uid)) {
+        return new Response(JSON.stringify({ error: 'יותר מדי בקשות בבת אחת. נסה שוב בעוד רגע.' }), { status: 429, headers: { ...cors, 'Content-Type': 'application/json' } });
+      }
       const imgUsed = await incrementAiImageUsage(env, uid);
       if (imgUsed > AI_IMAGE_DAILY_LIMIT) {
         return new Response(JSON.stringify({
@@ -2541,6 +2563,9 @@ async function handleAIChat(request, env, cors) {
     // Daily AI usage counter — kept for BOTH tiers so each user sees their
     // own progress bar. Premium just has a higher cap (handled in aiRateGate).
     // Charged upfront (#202); refunded via refundAiCharge on provider failure.
+    if (await aiBurstBlocked(uid)) {
+      return new Response(JSON.stringify({ error: 'יותר מדי בקשות בבת אחת. נסה שוב בעוד רגע.' }), { status: 429, headers: { ...cors, 'Content-Type': 'application/json' } });
+    }
     const dailyUsed = await incrementAiUsage(env, uid);
     if (!premium && dailyUsed > AI_DAILY_LIMIT) {
       return new Response(JSON.stringify({
@@ -3189,6 +3214,9 @@ async function handleAIProjectDescription(request, env, cors) {
     // old read→check→serve→increment raced under parallel requests. A failed
     // provider call refunds the charge below.
     if (!premium) {
+      if (await aiBurstBlocked(uid)) {
+        return new Response(JSON.stringify({ error: 'יותר מדי בקשות בבת אחת. נסה שוב בעוד רגע.' }), { status: 429, headers: { ...cors, 'Content-Type': 'application/json' } });
+      }
       const dailyUsed = await incrementAiUsage(env, uid);
       if (dailyUsed > AI_DAILY_LIMIT) {
         return new Response(JSON.stringify({
