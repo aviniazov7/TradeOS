@@ -1,4 +1,6 @@
 import { useMemo, useState, useRef } from 'react';
+import { isClosedTrade } from '../../utils/calculations';
+import { safeDate } from '../../utils/formatters';
 
 const DAYS = ['ראשון', 'שני', 'שלישי', 'רביעי', 'חמישי', 'שישי', 'שבת'];
 const HOURS = Array.from({ length: 24 }, (_, i) => i);
@@ -33,9 +35,16 @@ export default function TradeHeatmap({ trades }) {
     });
     HOURS.forEach((h) => { byHour[h] = 0; });
 
+    // isClosedTrade, not an exit PRICE check: a broker CSV closes a trade with
+    // a real profit and no exit price, so every such trade was invisible here
+    // — and for a journal built entirely from broker imports the whole card
+    // disappeared. MonthlyCalendar and MonthlyShareCard were already fixed to
+    // honour the same shape. safeDate also removes a latent g[NaN][NaN] crash
+    // on an unparseable date.
     trades.forEach((t) => {
-      if (!t.exitDate || !t.exitPrice) return;
-      const date = t.exitDate?.toDate ? t.exitDate.toDate() : new Date(t.exitDate);
+      if (!isClosedTrade(t)) return;
+      const date = safeDate(t.exitDate || t.entryDate);
+      if (!date) return;
       const day = date.getDay();
       const hour = date.getHours();
       const pnl = t.netPnl ?? t.pnl ?? 0;
@@ -49,7 +58,7 @@ export default function TradeHeatmap({ trades }) {
     return { grid: g, maxVal: max, totalByDay: byDay, totalByHour: byHour };
   }, [trades]);
 
-  const hasData = trades.some((t) => t.exitDate && t.exitPrice);
+  const hasData = trades.some((t) => isClosedTrade(t) && safeDate(t.exitDate || t.entryDate));
   if (!hasData) return null;
 
   // Calculate position relative to container (fixes backdrop-filter stacking context bug in Safari)

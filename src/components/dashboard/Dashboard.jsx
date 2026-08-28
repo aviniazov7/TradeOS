@@ -81,13 +81,26 @@ export default function Dashboard() {
     // the wallet (effInit = live − that journal's closed PnL).
     let totalInitial = 0;
     let totalBalance = 0;
+    // A linked journal's balance IS the exchange wallet, and the hook hands the
+    // same wallet to every journal on that exchange. Adding it per journal
+    // counted one wallet twice as soon as the user kept two journals on the
+    // same exchange — a normal setup, one per strategy — so the hero
+    // "שווי תיקים כללי" figure and its percentage both doubled. Count each
+    // wallet once, against the COMBINED P&L of the journals sharing it.
+    const wallets = new Map();
     for (const j of journals) {
       const jPnL = closed
         .filter((t) => t.journalId === j.id)
         .reduce((acc, t) => acc + (t.netPnl ?? t.pnl ?? 0), 0);
+
       if (linkedBalances[j.id] != null) {
-        totalInitial += Math.max(0, linkedBalances[j.id] - jPnL);
-        totalBalance += linkedBalances[j.id];
+        // Fall back to the journal id when the exchange link was just removed
+        // and the balance map has not caught up — one bucket either way, and
+        // the journal never silently drops out of the total.
+        const key = j.exchange || `journal:${j.id}`;
+        const seen = wallets.get(key);
+        if (seen) seen.pnl += jPnL;
+        else wallets.set(key, { balance: linkedBalances[j.id], pnl: jPnL });
       } else if (j.initialBalance > 0) {
         // Only count an unlinked journal in the portfolio VALUE when it has a real
         // starting balance. Otherwise (initial 0 + a negative PnL) it invents a
@@ -96,6 +109,10 @@ export default function Dashboard() {
         totalBalance += j.initialBalance + jPnL;
       }
       // else: unlinked journal with no starting balance → not part of the total value.
+    }
+    for (const { balance, pnl } of wallets.values()) {
+      totalInitial += Math.max(0, balance - pnl);
+      totalBalance += balance;
     }
     // Balance-based %: value vs its own initial, so it stays consistent with the
     // counted journals and isn't skewed by PnL from journals excluded above.

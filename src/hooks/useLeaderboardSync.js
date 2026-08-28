@@ -7,7 +7,10 @@ import {
   deleteLeaderboardEntry,
   timestamp,
 } from '../services/firestoreService';
-import { calculateProfitFactor, calculateMaxDrawdown, isClosedTrade } from '../utils/calculations';
+import {
+  calculateProfitFactor, calculateMaxDrawdown, isClosedTrade,
+  calculateWinRate, calculateAvgRR, groupWinRate,
+} from '../utils/calculations';
 
 /**
  * Computes a 0-100 score based on live trading + backtest performance.
@@ -68,16 +71,20 @@ export function useLeaderboardSync() {
         const closed = trades.filter(isClosedTrade);
         if (closed.length < 10) return; // minimum threshold
 
-        const wins = closed.filter((t) => t.result === 'win');
-        const winRate = (wins.length / closed.length) * 100;
+        // The app has ONE win-rate definition — decided trades only, wins over
+        // wins+losses — and every other surface was deliberately unified on it.
+        // This one divided by ALL closed trades, so breakevens and undecided
+        // legacy rows sat in the denominator and dragged the PUBLISHED rate
+        // below what the trader's own dashboard showed them.
+        const winRate = calculateWinRate(closed);
         const totalPnL = closed.reduce((s, t) => s + (t.netPnl ?? t.pnl ?? 0), 0);
         const totalInitial = journals.reduce((s, j) => s + (j.initialBalance || 0), 0);
         const pnlPercent = totalInitial > 0 ? (totalPnL / totalInitial) * 100 : 0;
         const profitFactor = calculateProfitFactor(closed);
-        const avgRR =
-          closed.length > 0
-            ? closed.reduce((s, t) => s + (t.rrRatio || 0), 0) / closed.length
-            : 0;
+        // Same story for R:R — the shared helper averages winning trades that
+        // actually recorded one, so a trade saved without a stop no longer
+        // contributes a silent 0 and halves the average.
+        const avgRR = calculateAvgRR(closed);
 
         // Max drawdown
         const sorted = [...closed].sort((a, b) => {
@@ -103,7 +110,8 @@ export function useLeaderboardSync() {
 
         // ── Backtest Stats ──
         const backtestWins = backtests.filter((b) => b.result === 'win');
-        const backtestWinRate = backtests.length > 0 ? (backtestWins.length / backtests.length) * 100 : 0;
+        const backtestLosses = backtests.filter((b) => b.result === 'loss');
+        const backtestWinRate = groupWinRate(backtestWins.length, backtestLosses.length);
         const avgR =
           backtests.length > 0
             ? backtests.reduce((s, b) => s + (b.rResult || 0), 0) / backtests.length

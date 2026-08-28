@@ -132,6 +132,12 @@ export function isClosedTrade(t) {
  * midnight — every screen that groups by day must go through this helper.
  */
 export function localDayKey(date = new Date()) {
+  // null is NOT a date. `new Date(null)` is the epoch, not Invalid Date, so a
+  // null slipped past the NaN guard below and bucketed the row under
+  // 1970-01-01 — a real-looking bucket in the distant past. Callers that pass
+  // `t.exitDate || t.entryDate` hit this whenever a trade carries neither.
+  // undefined already failed correctly; this makes null agree with it.
+  if (date === null) return '';
   let d = date;
   if (typeof d?.toDate === 'function') d = d.toDate(); // Firestore Timestamp
   else if (!(d instanceof Date)) d = new Date(d);

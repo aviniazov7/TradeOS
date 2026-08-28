@@ -15,7 +15,7 @@ import confetti from 'canvas-confetti';
 import { useTrades } from '../../hooks/useTrades';
 import { useCryptoPrices } from '../../hooks/useCryptoPrices';
 import { useJournalContext } from '../../contexts/JournalContext';
-import { calculatePnL, calculateFuturesPnL, isClosedTrade, safePnl, groupWinRate } from '../../utils/calculations';
+import { calculatePnL, calculateFuturesPnL, isClosedTrade, safePnl, groupWinRate, localDayKey } from '../../utils/calculations';
 import { useDashboardStats } from '../../hooks/useDashboardStats';
 import { useLinkedExchangeBalance } from '../../hooks/useLinkedExchangeBalance';
 import { useExchangeImport } from '../../hooks/useExchangeImport';
@@ -144,7 +144,15 @@ export default function TradeJournal() {
 
   // Reset filters when switching journals — prevents stale filters from one journal
   // bleeding into another (e.g. filtering by strategy "SOW" that doesn't exist in Journal B)
+  // Only on an ACTUAL journal change. An effect with a dep array also runs on
+  // mount, so this fired immediately after the first commit and threw away the
+  // filters the lazy initializer had just restored — then the persist effect
+  // below wrote the defaults back over the saved value. The feature had never
+  // worked; the restore and the reset were cancelling each other out.
+  const prevJournalId = useRef(activeJournalId);
   useEffect(() => {
+    if (prevJournalId.current === activeJournalId) return;
+    prevJournalId.current = activeJournalId;
     setFilters(defaultFilters);
   }, [activeJournalId]);
 
@@ -269,14 +277,22 @@ export default function TradeJournal() {
       { name: 'אפס', value: be },
     ].filter((d) => d.value > 0);
 
+    // Bucket on the FULL local day, not MM/dd. The period filter defaults to
+    // 'all', so a month-day key merged every anniversary in the user's history
+    // into one bar: a +$800 day in 2026 and a -$900 day in 2025 rendered as a
+    // single red -$100 bar labelled 03/15, and N years collapsed into at most
+    // 366 bars. MM/dd survives only as the axis label.
     const dailyMap = {};
     sorted.forEach((t) => {
       const d = safeTradeDate(t);
-      const key = format(d, 'MM/dd');
-      if (!dailyMap[key]) dailyMap[key] = 0;
-      dailyMap[key] += t.netPnl ?? t.pnl ?? 0;
+      const key = localDayKey(d);
+      if (!key) return;
+      if (!dailyMap[key]) dailyMap[key] = { label: format(d, 'MM/dd'), pnl: 0 };
+      dailyMap[key].pnl += t.netPnl ?? t.pnl ?? 0;
     });
-    const dailyPnL = Object.entries(dailyMap).map(([date, pnl]) => ({ date, pnl: parseFloat(pnl.toFixed(2)) }));
+    const dailyPnL = Object.entries(dailyMap)
+      .sort(([a], [b]) => (a < b ? -1 : a > b ? 1 : 0))
+      .map(([, v]) => ({ date: v.label, pnl: parseFloat(v.pnl.toFixed(2)) }));
 
     const pairMap = {};
     closed.forEach((t) => {

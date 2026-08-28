@@ -1,7 +1,10 @@
-import {
-  Activity, useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
-import { Bell, BellRing, BellOff, Send, NotebookPen, BarChart3, CalendarClock, ChevronDown, Zap, Radar } from 'lucide-react';
+// Activity belongs HERE. It was imported from 'react', which resolves silently
+// because React 19 exports its own Activity (the former Offscreen API) — so the
+// news-impact row rendered a behaviour wrapper instead of an icon, with no
+// error and no icon.
+import { Activity, Bell, BellRing, BellOff, Send, NotebookPen, BarChart3, CalendarClock, ChevronDown, Zap, Radar } from 'lucide-react';
 import toast from 'react-hot-toast';
 import { useAuth } from '../../contexts/AuthContext';
 import SelectDropdown from '../shared/SelectDropdown';

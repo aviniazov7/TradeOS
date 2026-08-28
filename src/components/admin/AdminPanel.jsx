@@ -1,4 +1,5 @@
 import { useState, useEffect, useMemo } from 'react';
+import { localDayKey } from '../../utils/calculations';
 import { Navigate } from 'react-router-dom';
 import { Users, UserPlus, ShieldCheck, CheckCircle2, Search, RefreshCw, Download, ChevronUp, ChevronDown, ChevronLeft, Mail, Calendar, Coins, TrendingUp, Percent, Sparkles, BookOpen, FlaskConical, Activity, FileText, Brain, Crown, Send, X, Ticket, Plus, Minus, Trash2, Copy, ScrollText, Share2, Link2, BarChart3, AlertTriangle, Clock, DollarSign, Hourglass, Image, Trophy, Loader2, Bell, StickyNote, Flame, Ban, Smartphone } from 'lucide-react';
 import { motion } from 'framer-motion';
@@ -306,16 +307,24 @@ export default function AdminPanel() {
     }
     const buckets = {};
     const series = [];
+    // Walk CALENDAR days, not fixed 24-hour steps. Israel's spring-forward day
+    // is 23 hours long, so stepping by 86,400,000 ms across it produced 30
+    // timestamps landing on only 29 distinct dates — one calendar day was
+    // skipped entirely, and every account created that day vanished from the
+    // chart behind what looked like a zero-signup gap. localDayKey also
+    // zero-pads, so the bucket keys and the user keys cannot disagree on
+    // "2026-3-7" versus "2026-03-07".
+    const base = new Date(now);
     for (let i = 29; i >= 0; i--) {
-      const d = new Date(now - i * DAY);
-      const key = `${d.getFullYear()}-${d.getMonth() + 1}-${d.getDate()}`;
+      const d = new Date(base.getFullYear(), base.getMonth(), base.getDate() - i);
+      const key = localDayKey(d);
       buckets[key] = 0;
       series.push({ key, date: d });
     }
     for (const u of users) {
       const c = toDate(u.createdAt);
       if (!c) continue;
-      const key = `${c.getFullYear()}-${c.getMonth() + 1}-${c.getDate()}`;
+      const key = localDayKey(c);
       if (key in buckets) buckets[key]++;
     }
     return { dau, wau, mau, signups: series.map((s) => ({ date: s.date, count: buckets[s.key] })) };
