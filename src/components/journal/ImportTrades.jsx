@@ -3,6 +3,7 @@ import { Upload, FileText, AlertCircle, Check } from 'lucide-react';
 import toast from 'react-hot-toast';
 import Modal from '../shared/Modal';
 import { DEFAULT_LEVERAGE } from '../../utils/constants';
+import { sizeAndQuantity } from '../../utils/importSize';
 
 const COLUMN_MAP = {
   pair: ['pair', 'symbol', 'coin', 'market', 'instrument', 'זוג'],
@@ -10,7 +11,19 @@ const COLUMN_MAP = {
   entryPrice: ['entryprice', 'entry_price', 'entry', 'open_price', 'openprice', 'open price', 'price open', 'מחיר כניסה', 'כניסה'],
   exitPrice: ['exitprice', 'exit_price', 'exit', 'close_price', 'closeprice', 'close price', 'price close', 'מחיר יציאה', 'סגירה'],
   stopLoss: ['stoploss', 'stop_loss', 'sl', 's/l', 'סטופ', 'סטופ לוס'],
-  positionSize: ['positionsize', 'position_size', 'size', 'amount', 'qty', 'quantity', 'volume', 'lots', 'lot', 'גודל', 'גודל עסקה'],
+  // SIZE IS TWO DIFFERENT THINGS and conflating them was wrong by a factor of
+  // the entry price. positionSize is money; quantity is a count of units. Every
+  // unit column below — MT5's "Volume" in lots, Binance and Bybit's "Qty" in
+  // coins — used to land on positionSize and then be divided by the entry
+  // price, so 0.5 BTC at $60,000 was stored as a quantity of 0.0000083 and the
+  // journal showed a $500 win as a $0.01 win.
+  //
+  // 'size' and 'amount' stay on positionSize deliberately: they are genuinely
+  // ambiguous across exchanges, and this app's own vocabulary reads them as
+  // money, so moving them would silently change results for anyone already
+  // importing with them. They can still be re-pointed by hand in the mapping.
+  positionSize: ['positionsize', 'position_size', 'notional', 'size', 'amount', 'value', 'גודל', 'גודל עסקה'],
+  quantity: ['qty', 'quantity', 'volume', 'lots', 'lot', 'units', 'contracts', 'כמות'],
   leverage: ['leverage', 'lev', 'מינוף'],
   fees: ['fees', 'fee', 'commission', 'עמלות'],
   // MT5 / forex brokers report realized profit directly — use it instead of
@@ -169,13 +182,18 @@ export default function ImportTrades({ isOpen, onClose, onImport, onImportBulk }
       const entryPrice = parseNumber(get('entryPrice')) || 0;
       const exitPrice = parseNumber(get('exitPrice')) || 0;
       const pair = get('pair') || 'BTCUSDT';
-      const positionSize = parseNumber(get('positionSize')) || 0;
       const rawLeverage = Math.round(parseNumber(get('leverage'))) || DEFAULT_LEVERAGE;
       const leverage = Math.min(200, Math.max(1, rawLeverage));
-      // Calculate quantity from positionSize — required for PnL calculation
-      const quantity = entryPrice > 0 && positionSize > 0
-        ? positionSize / entryPrice
-        : 0;
+      // A mapped quantity column is the unit count and is used as-is; the
+      // money figure is then derived from it. Only when there is no quantity
+      // column does the old direction apply — size in dollars, divided by the
+      // entry price to get units. Doing that to a column that was already
+      // units is what produced $0.01 wins.
+      const { positionSize, quantity } = sizeAndQuantity(
+        parseNumber(get('quantity')),
+        parseNumber(get('positionSize')),
+        entryPrice,
+      );
 
       const profitRaw = get('profit');
       const profitNum = parseNumber(profitRaw);
@@ -278,7 +296,8 @@ export default function ImportTrades({ isOpen, onClose, onImport, onImportBulk }
     { key: 'entryPrice', label: 'מחיר כניסה', required: true },
     { key: 'exitPrice', label: 'מחיר יציאה' },
     { key: 'stopLoss', label: 'סטופ לוס' },
-    { key: 'positionSize', label: 'גודל עסקה' },
+    { key: 'positionSize', label: 'גודל עסקה ($)' },
+    { key: 'quantity', label: 'כמות (יחידות)' },
     { key: 'leverage', label: 'מינוף' },
     { key: 'profit', label: 'רווח/הפסד' },
     { key: 'fees', label: 'עמלות' },

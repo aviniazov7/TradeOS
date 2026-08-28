@@ -1351,9 +1351,17 @@ const COUPON_TRIES_PER_HOUR = 10;
 // key on every single call, and the free tier allows roughly a thousand writes
 // a day — putting that in front of an unauthenticated endpoint would hand an
 // attacker a cheaper outage (exhaust the write quota, breaking coupons, quotas
-// and push registration alike) than the enumeration it is meant to stop. The
-// Cache API has no write quota. It is per-colo and eventually consistent, so
-// it is only ever used to throttle abuse; the exactly-once guarantees still
+// and push registration alike) than the enumeration it is meant to stop.
+//
+// That outage did not need an attacker. The polled endpoints were on
+// bumpWindow: the client refreshes /exchange/balance every 60 s, so ONE user
+// with the journal open for a day spent the whole account's write budget by
+// itself. Every route here that throttles rather than meters now uses this.
+// The rule: a THROTTLE belongs on the edge cache; a QUOTA that must survive —
+// the AI day counters, the coupon redeem marker — stays in KV.
+//
+// The Cache API has no write quota. It is per-colo and eventually consistent,
+// so it is only ever used to throttle abuse; the exactly-once guarantees still
 // come from the per-uid redeem marker.
 async function edgeRateLimited(name, id, limit, windowSec) {
   try {
@@ -3468,9 +3476,12 @@ async function handleNewsTranslate(request, env, cors) {
     const uid = await verifyFirebaseToken(token);
     if (!uid) return new Response(JSON.stringify({ error: 'unauthorized' }), { status: 401, headers: jsonHeaders });
 
-    // Light per-user gate: normal use is ≤3 batches per feed load.
-    const minute = await bumpWindow(env, `newstr:min:${uid}`, 60);
-    if (minute.count > 10) {
+    // Light per-user gate: normal use is ≤3 batches per feed load. Edge cache
+    // rather than KV — this is a throttle, not a quota, so it does not need to
+    // be durable, and a KV write per request eats a budget of ~1000 a DAY. The
+    // day counters below stay in KV: those DO need to survive, and they are
+    // charged once per accepted request rather than once per attempt.
+    if (await edgeRateLimited('newstr-min', uid, 10, 60)) {
       return new Response(JSON.stringify({ error: 'rate limited' }), { status: 429, headers: jsonHeaders });
     }
 
@@ -5527,8 +5538,17 @@ async function handleRequest(request, env, ctx) {
       const token = (request.headers.get('Authorization') || '').replace('Bearer ', '');
       const uid = await verifyFirebaseToken(token);
       if (!uid) return new Response(JSON.stringify({ error: 'unauthorized' }), { status: 401, headers: { ...cors, 'Content-Type': 'application/json' } });
-      const _rl = await bumpWindow(env, `rl:exch:${uid}`, 60);
-      if (_rl.count > 30) return new Response(JSON.stringify({ error: 'יותר מדי בקשות לבורסה. נסה שוב בעוד רגע.' }), { status: 429, headers: { ...cors, 'Content-Type': 'application/json' } });
+      // edgeRateLimited, NOT bumpWindow: this endpoint is polled on a 60 s
+      // timer by the client, not driven by a click, and bumpWindow writes a KV
+      // key on every call. The free tier allows ~1000 KV writes a DAY, so one
+      // user leaving the journal open for a day spent the entire account's
+      // write budget — and once it is gone every other KV write fails with it:
+      // push subscriptions silently dropped, coupon claims 502, the AI daily
+      // cap stops charging, and the cron's dedup markers stop persisting so the
+      // same push is re-sent every ten minutes. The Cache-API limiter has the
+      // same semantics and no write quota; it was written for exactly this and
+      // wired only into the coupon routes.
+      if (await edgeRateLimited('exch', uid, 30, 60)) return new Response(JSON.stringify({ error: 'יותר מדי בקשות לבורסה. נסה שוב בעוד רגע.' }), { status: 429, headers: { ...cors, 'Content-Type': 'application/json' } });
       const _body = await request.json().catch(() => ({}));
       const { exchange } = _body;
       if (!exchange) return new Response(JSON.stringify({ ok: false, error: 'Missing exchange' }), { headers: { ...cors, 'Content-Type': 'application/json' }, status: 400 });
@@ -5770,8 +5790,17 @@ async function handleRequest(request, env, ctx) {
       const token = (request.headers.get('Authorization') || '').replace('Bearer ', '');
       const uid = await verifyFirebaseToken(token);
       if (!uid) return new Response(JSON.stringify({ error: 'unauthorized' }), { status: 401, headers: { ...cors, 'Content-Type': 'application/json' } });
-      const _rl = await bumpWindow(env, `rl:exch:${uid}`, 60);
-      if (_rl.count > 30) return new Response(JSON.stringify({ error: 'יותר מדי בקשות לבורסה. נסה שוב בעוד רגע.' }), { status: 429, headers: { ...cors, 'Content-Type': 'application/json' } });
+      // edgeRateLimited, NOT bumpWindow: this endpoint is polled on a 60 s
+      // timer by the client, not driven by a click, and bumpWindow writes a KV
+      // key on every call. The free tier allows ~1000 KV writes a DAY, so one
+      // user leaving the journal open for a day spent the entire account's
+      // write budget — and once it is gone every other KV write fails with it:
+      // push subscriptions silently dropped, coupon claims 502, the AI daily
+      // cap stops charging, and the cron's dedup markers stop persisting so the
+      // same push is re-sent every ten minutes. The Cache-API limiter has the
+      // same semantics and no write quota; it was written for exactly this and
+      // wired only into the coupon routes.
+      if (await edgeRateLimited('exch', uid, 30, 60)) return new Response(JSON.stringify({ error: 'יותר מדי בקשות לבורסה. נסה שוב בעוד רגע.' }), { status: 429, headers: { ...cors, 'Content-Type': 'application/json' } });
       const _body = await request.json().catch(() => ({}));
       const { exchange } = _body;
       if (!exchange) {
@@ -5870,8 +5899,10 @@ async function handleRequest(request, env, ctx) {
     if (!uid) return new Response(JSON.stringify({ ok: false, error: 'unauthorized' }), { status: 401, headers: { ...cors, 'Content-Type': 'application/json' } });
     // Per-user rate limit — /wallet fans out several Moralis calls, so a tight
     // loop could burn the shared MORALIS quota for everyone.
-    const _wrl = await bumpWindow(env, `rl:wallet:${uid}`, 60);
-    if (_wrl.count > 15) return new Response(JSON.stringify({ ok: false, error: 'יותר מדי בקשות, נסה שוב בעוד רגע.' }), { status: 429, headers: { ...cors, 'Content-Type': 'application/json' } });
+    // Edge cache, not KV — see the note on the /exchange routes: a KV write per
+    // request against a ~1000/day quota is a cheaper outage than the thing it
+    // is throttling.
+    if (await edgeRateLimited('wallet', uid, 15, 60)) return new Response(JSON.stringify({ ok: false, error: 'יותר מדי בקשות, נסה שוב בעוד רגע.' }), { status: 429, headers: { ...cors, 'Content-Type': 'application/json' } });
     if (!env.MORALIS_API_KEY) return new Response(JSON.stringify({ ok: false, error: 'מעקב ארנקים לא מוגדר בשרת' }), { status: 400, headers: { ...cors, 'Content-Type': 'application/json' } });
     try {
       const { address } = await request.json().catch(() => ({}));
@@ -5995,8 +6026,17 @@ async function handleRequest(request, env, ctx) {
       const token = (request.headers.get('Authorization') || '').replace('Bearer ', '');
       const uid = await verifyFirebaseToken(token);
       if (!uid) return new Response(JSON.stringify({ error: 'unauthorized' }), { status: 401, headers: { ...cors, 'Content-Type': 'application/json' } });
-      const _rl = await bumpWindow(env, `rl:exch:${uid}`, 60);
-      if (_rl.count > 30) return new Response(JSON.stringify({ error: 'יותר מדי בקשות לבורסה. נסה שוב בעוד רגע.' }), { status: 429, headers: { ...cors, 'Content-Type': 'application/json' } });
+      // edgeRateLimited, NOT bumpWindow: this endpoint is polled on a 60 s
+      // timer by the client, not driven by a click, and bumpWindow writes a KV
+      // key on every call. The free tier allows ~1000 KV writes a DAY, so one
+      // user leaving the journal open for a day spent the entire account's
+      // write budget — and once it is gone every other KV write fails with it:
+      // push subscriptions silently dropped, coupon claims 502, the AI daily
+      // cap stops charging, and the cron's dedup markers stop persisting so the
+      // same push is re-sent every ten minutes. The Cache-API limiter has the
+      // same semantics and no write quota; it was written for exactly this and
+      // wired only into the coupon routes.
+      if (await edgeRateLimited('exch', uid, 30, 60)) return new Response(JSON.stringify({ error: 'יותר מדי בקשות לבורסה. נסה שוב בעוד רגע.' }), { status: 429, headers: { ...cors, 'Content-Type': 'application/json' } });
       const _body = await request.json().catch(() => ({}));
       const { exchange, limit = 50, days = 0, debug = false } = _body;
       if (!exchange) {

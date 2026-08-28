@@ -1,4 +1,5 @@
 import { useState, useEffect, useMemo, useRef } from 'react';
+import { resolveExitState } from '../../utils/exitState';
 import toast from 'react-hot-toast';
 import DatePicker, { registerLocale } from 'react-datepicker';
 import { he } from 'date-fns/locale';
@@ -448,7 +449,6 @@ export default function TradeForm({ isOpen, onClose, trade, onSave, riskSettings
       const leverage = isFutures ? 1 : Math.min(200, Math.max(1, parseInt(form.leverage) || 1));
 
       const allExits = validAdditional;
-      const exitPrice = calculateWeightedExitPrice(allExits);
       // Closed when the whole position is out. For futures compare contracts
       // (exact); for crypto compare the percent sum — with a small rounding
       // tolerance (33.33×3 = 99.99 is a FULL close, and treating it as
@@ -456,7 +456,16 @@ export default function TradeForm({ isOpen, onClose, trade, onSave, riskSettings
       const fullyClosed = isFutures
         ? allExits.reduce((s, e) => s + e.contracts, 0) >= contractsNum
         : allExits.reduce((s, e) => s + e.percent, 0) >= 99.95;
-      const status = !allExits.length ? 'open' : fullyClosed ? 'closed' : 'partial';
+      // resolveExitState, not an inline rule: a trade can be closed with NO
+      // exit price, and demoting it on an empty exit list destroyed real P&L.
+      // See src/utils/exitState.js.
+      const { status, exitPrice } = resolveExitState({
+        prevStatus: trade?.status,
+        prevExitPrice: trade?.exitPrice,
+        weightedExit: calculateWeightedExitPrice(allExits),
+        exitCount: allExits.length,
+        fullyClosed,
+      });
 
       // Planned targets (no exit recorded yet): price set but no %/contracts.
       const tpsOnly = form.additionalExits
