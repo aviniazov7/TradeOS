@@ -997,7 +997,15 @@ async function getAiUsage(env, uid) {
 // once. That turns an unbounded overshoot into a small one. Closing the race
 // completely needs a Durable Object, the only Workers primitive with real
 // atomicity; that is a bigger change than this file should absorb today.
-const AI_BURST_PER_10S = 3;
+// 6, not a tighter number: the client's OWN retry logic (groqApi.js) backs off
+// a rate-limited attempt at +3s and +6s, so one legitimate request that hits a
+// transient hiccup and retries twice already spends 3 of the budget by itself
+// — a tighter cap left no headroom for a second, unrelated AI panel the user
+// opens in the same window, and would have told them "too many requests" for
+// perfectly ordinary use. 6 keeps that headroom while still turning a
+// deliberate parallel flood into a small, bounded overshoot instead of an
+// unbounded one.
+const AI_BURST_PER_10S = 6;
 const aiBurstBlocked = (uid) => edgeRateLimited('ai-burst', uid, AI_BURST_PER_10S, 10);
 
 async function incrementAiUsage(env, uid) {

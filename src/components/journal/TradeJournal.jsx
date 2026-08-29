@@ -290,9 +290,13 @@ export default function TradeJournal() {
       if (!dailyMap[key]) dailyMap[key] = { label: format(d, 'MM/dd'), pnl: 0 };
       dailyMap[key].pnl += t.netPnl ?? t.pnl ?? 0;
     });
+    // `key` rides along for React's list key — two different years can share
+    // the same MM/dd display label now that bars are no longer merged by it,
+    // and a duplicate `date` as the key silently swapped bar colours between
+    // renders (React reusing the wrong Cell instance) instead of just warning.
     const dailyPnL = Object.entries(dailyMap)
       .sort(([a], [b]) => (a < b ? -1 : a > b ? 1 : 0))
-      .map(([, v]) => ({ date: v.label, pnl: parseFloat(v.pnl.toFixed(2)) }));
+      .map(([key, v]) => ({ key, date: v.label, pnl: parseFloat(v.pnl.toFixed(2)) }));
 
     const pairMap = {};
     closed.forEach((t) => {

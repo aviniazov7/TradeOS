@@ -47,7 +47,7 @@ export default function JournalCharts({
             <Tooltip contentStyle={tooltipStyle} labelStyle={{ color: 'var(--color-text-secondary)', fontSize: '11px' }} itemStyle={{ color: 'var(--color-text-primary)' }} cursor={{ fill: 'var(--color-bg-tertiary)' }} formatter={(val) => [formatCurrency(val), 'רווח/הפסד']} />
             <Bar dataKey="pnl" radius={[4, 4, 0, 0]} animationDuration={800}>
               {analytics.dailyPnL.map((entry) => (
-                <Cell key={entry.date} fill={entry.pnl >= 0 ? '#22c55e' : '#ef4444'} />
+                <Cell key={entry.key ?? entry.date} fill={entry.pnl >= 0 ? '#22c55e' : '#ef4444'} />
               ))}
             </Bar>
           </BarChart>
