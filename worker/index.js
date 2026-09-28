@@ -3248,6 +3248,7 @@ async function buildNewsDigest(env, market) {
       headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${env.GROQ_API_KEY}` },
       body: JSON.stringify({
         model: GROQ_MODEL,
+        ...reasoningOpt(GROQ_MODEL),
         messages: [
           { role: 'system', content: NEWS_EDITOR_PROMPTS[market] || NEWS_EDITOR_PROMPTS.crypto },
           { role: 'user', content: JSON.stringify(modelInput) },
@@ -5182,7 +5183,7 @@ async function handleRequest(request, env) {
       try {
         const r = await fetch(GROQ_URL, {
           method: 'POST', headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${env.GROQ_API_KEY}` },
-          body: JSON.stringify({ model: GROQ_MODEL, messages: ping, max_tokens: 5, stream: false }),
+          body: JSON.stringify({ model: GROQ_MODEL, ...reasoningOpt(GROQ_MODEL), messages: ping, max_tokens: 5, stream: false }),
         });
         const body = await r.text().catch(() => '');
         out.groq = { ok: r.ok, status: r.status, model: GROQ_MODEL, error: r.ok ? null : body.slice(0, 400) };
@@ -5201,7 +5202,7 @@ async function handleRequest(request, env) {
         try {
           const r = await fetch(GROQ_URL, {
             method: 'POST', headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${env.GROQ_API_KEY}` },
-            body: JSON.stringify({ model, messages: ping, max_tokens: 5, stream: false }),
+            body: JSON.stringify({ model, ...reasoningOpt(model), messages: ping, max_tokens: 5, stream: false }),
           });
           const body = await r.text().catch(() => '');
           out[label] = { ok: r.ok, status: r.status, model, error: r.ok ? null : body.slice(0, 400) };
