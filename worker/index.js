@@ -2163,7 +2163,10 @@ async function scanWyckoffSetups(env) {
 // ==================== AI Chat — Groq Proxy ====================
 
 const GROQ_URL = 'https://api.groq.com/openai/v1/chat/completions';
-const GROQ_MODEL = 'llama-3.3-70b-versatile';
+// Groq SHUT DOWN llama-3.3-70b-versatile and llama-3.1-8b-instant on
+// 2026-08-16 (both returned 404 model_not_found). gpt-oss-120b is Groq's
+// recommended replacement for the 70B.
+const GROQ_MODEL = 'openai/gpt-oss-120b';
 // Chart-image requests go to a vision model. Groq DECOMMISSIONED BOTH Llama 4
 // vision models — Scout (2026-07-17) and Maverick (2026-03-09) — each began
 // returning 404. Qwen 3.6 27B is Groq's current (and only) documented vision
@@ -2174,9 +2177,16 @@ const GROQ_MODEL = 'llama-3.3-70b-versatile';
 // answer — otherwise the chart read shows the model's English thinking.
 const GROQ_VISION_MODEL = 'qwen/qwen3.6-27b';
 const GROQ_VISION_FALLBACK_MODEL = 'qwen/qwen3.6-27b';
-// Suppress Qwen's reasoning output. Added ONLY for the Qwen vision model — the
-// Llama text models get {} back (the param is never sent to them).
-const reasoningOpt = (model) => (model === GROQ_VISION_MODEL ? { reasoning_effort: 'none' } : {});
+// Reasoning control per model family:
+// - Qwen vision: 'none' suppresses the <think> monologue entirely.
+// - gpt-oss: reasoning tokens count against max_tokens, so 'low' keeps short
+//   budgets (coach 700, ping 5) from being eaten by thinking. The reasoning is
+//   returned in a separate field, never mixed into `content`.
+const reasoningOpt = (model) => {
+  if (model === GROQ_VISION_MODEL) return { reasoning_effort: 'none' };
+  if (model.startsWith('openai/gpt-oss')) return { reasoning_effort: 'low' };
+  return {};
+};
 
 // Non-streaming Groq call with 429 resilience. The shared free-tier key has
 // tight per-minute token budgets on the 70B (and one key serves chat + coach +
@@ -3483,10 +3493,12 @@ const NEWS_TRANSLATE_PROMPT = `אתה מתרגם חדשות פיננסיות מ�
 החזר JSON בלבד: {"items":[{"id":0,"title":"...","desc":"..."}]}`;
 
 // Translation is high-volume/low-difficulty — run it on Groq's small instant
-// model, which has a much higher tokens-per-minute allowance than the 70B
-// (the 70B budget is reserved for chat/coach/digest). Falls back to the main
-// model if the instant model is ever retired (4xx).
-const NEWS_TRANSLATE_MODEL = 'llama-3.1-8b-instant';
+// model, which has a much higher tokens-per-minute allowance than the main
+// model (whose budget is reserved for chat/coach/digest). Falls back to the
+// main model if the small model is ever retired (4xx).
+// llama-3.1-8b-instant was shut down 2026-08-16 → gpt-oss-20b (Groq's
+// recommended replacement).
+const NEWS_TRANSLATE_MODEL = 'openai/gpt-oss-20b';
 
 async function groqTranslateCall(env, missing, model) {
   return fetch(GROQ_URL, {
@@ -3501,6 +3513,7 @@ async function groqTranslateCall(env, missing, model) {
       temperature: 0.2,
       max_tokens: 2500,
       response_format: { type: 'json_object' },
+      ...reasoningOpt(model),
     }),
   });
 }

@@ -47,7 +47,8 @@ const AI_IMAGE_LIMIT = 10; // premium only
 
 // Rough $ cost estimate. We track request COUNTS (not tokens), so we assume
 // average token sizes per request and apply Groq pay-as-you-go pricing
-// (Llama 3.3 70B for text, Llama 4 Scout for vision). Estimate only.
+// (historical Llama 3.3 70B / Llama 4 Scout rates; text now runs on
+// gpt-oss-120b and vision on Qwen 3.6 27B). Estimate only.
 const AI_COST_EST = {
   textPerReq: (800 * 0.59 + 500 * 0.79) / 1e6,   // ≈ $0.00087
   imagePerReq: (1600 * 0.11 + 500 * 0.34) / 1e6, // ≈ $0.00035
