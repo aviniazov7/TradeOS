@@ -1,5 +1,5 @@
 import { useState, useMemo, Fragment } from 'react';
-import { Pencil, Trash2, Share2, Eye, TrendingUp, TrendingDown } from 'lucide-react';
+import { Pencil, Trash2, Share2, Eye, TrendingUp, TrendingDown, Copy, Check, ArrowUp, ArrowDown, ArrowUpDown } from 'lucide-react';
 import { formatDate, formatPrice, formatCurrency, formatPercent, formatRR } from '../../utils/formatters';
 import { isClosedTrade, safePnl } from '../../utils/calculations';
 import { getExchangeLogo } from '../../utils/constants';
@@ -83,7 +83,40 @@ const stripeClass = (status, isPending, pnl) => {
   return pnl > 0 ? 'border-s-profit' : pnl < 0 ? 'border-s-loss' : 'border-s-breakeven';
 };
 
-export default function TradeTable({ trades, allTrades, onEdit, onDelete, onShare, isLimitPending }) {
+// "Live" marker next to an open position's floating P&L.
+function LiveTag() {
+  // font-sans: the P&L cell uses the mono number face, which mangles Hebrew.
+  return <span className="font-sans text-[10px] font-bold px-1.5 py-0.5 rounded bg-accent-primary/15 text-accent-primary leading-none tracking-normal" dir="rtl">חי</span>;
+}
+
+function SelectBox({ checked }) {
+  return (
+    <span className={`w-4 h-4 rounded border-2 inline-flex items-center justify-center shrink-0 transition-colors ${checked ? 'bg-accent-primary border-accent-primary' : 'border-border-hover'}`}>
+      {checked && <Check className="w-2.5 h-2.5" strokeWidth={3} />}
+    </span>
+  );
+}
+
+// Clickable, sortable column header.
+function SortTh({ label, sortKey, sort, onSortChange }) {
+  const active = sort?.key === sortKey;
+  const Arrow = !active ? ArrowUpDown : sort.dir === 'asc' ? ArrowUp : ArrowDown;
+  return (
+    <th className="py-2 px-2 text-right font-medium" aria-sort={active ? (sort.dir === 'asc' ? 'ascending' : 'descending') : 'none'}>
+      <button type="button" onClick={() => onSortChange?.(sortKey)}
+        className={`inline-flex items-center gap-1 cursor-pointer hover:text-text-primary transition-colors ${active ? 'text-accent-primary' : ''}`}>
+        {label}
+        <Arrow className={`w-3 h-3 ${active ? '' : 'opacity-40'}`} />
+      </button>
+    </th>
+  );
+}
+
+export default function TradeTable({
+  trades, allTrades, liveById = {}, sort, onSortChange, showMonths = true,
+  selectMode = false, selectedIds, onToggleSelect,
+  onEdit, onDelete, onDuplicate, onShare, isLimitPending,
+}) {
   const [detailTrade, setDetailTrade] = useState(null);
   const monthTotals = useMemo(() => buildMonthTotals(allTrades || trades), [allTrades, trades]);
   const pending = (t) => isLimitPending?.(t) ?? false;
@@ -103,9 +136,11 @@ export default function TradeTable({ trades, allTrades, onEdit, onDelete, onShar
           const status = getStatus(trade);
           const isPending = pending(trade);
           const pnl = trade.netPnl ?? trade.pnl;
-          const showMonthSep = idx === 0 || getMonthKey(trade) !== getMonthKey(trades[idx - 1]);
+          const showMonthSep = showMonths && (idx === 0 || getMonthKey(trade) !== getMonthKey(trades[idx - 1]));
           const done = status !== 'open' && !isPending;
           const rr = formatRR(trade.rrRatio, pnl);
+          const live = status === 'open' && !isPending ? liveById[trade.id] : null;
+          const selected = selectMode && selectedIds?.has(trade.id);
 
           return (
             <Fragment key={trade.id}>
@@ -116,11 +151,13 @@ export default function TradeTable({ trades, allTrades, onEdit, onDelete, onShar
               )}
               <button
                 type="button"
-                onClick={() => setDetailTrade(trade)}
-                className={`w-full text-right bg-bg-secondary border border-border-primary border-s-[3px] ${stripeClass(status, isPending, pnl)} rounded-xl px-3 py-2.5 cursor-pointer hover:border-border-hover active:scale-[0.99] transition ${isPending ? 'opacity-60' : ''}`}
+                onClick={() => (selectMode ? onToggleSelect?.(trade.id) : setDetailTrade(trade))}
+                aria-pressed={selectMode ? selected : undefined}
+                className={`w-full text-right bg-bg-secondary border border-border-primary border-s-[3px] ${stripeClass(status, isPending, pnl)} rounded-xl px-3 py-2.5 cursor-pointer hover:border-border-hover active:scale-[0.99] transition ${isPending ? 'opacity-60' : ''} ${selected ? 'ring-2 ring-accent-primary/60' : ''}`}
               >
                 <div className="flex items-center justify-between gap-2">
                   <div className="flex items-center gap-2 min-w-0 flex-1">
+                    {selectMode && <SelectBox checked={selected} />}
                     <CoinIcon pair={trade.pair} className="w-4 h-4 shrink-0" />
                     <span className="text-text-primary font-semibold text-sm truncate min-w-0" title={trade.pair}>{trade.pair}</span>
                     <span className={`shrink-0 inline-flex items-center gap-0.5 text-xs font-medium px-1.5 py-0.5 rounded ${trade.direction === 'long' ? 'bg-long/10 text-long' : 'bg-short/10 text-short'}`}>
@@ -134,7 +171,9 @@ export default function TradeTable({ trades, allTrades, onEdit, onDelete, onShar
                   </div>
                   {done
                     ? <span className={`num-mono text-sm font-bold shrink-0 ${pnlColor(pnl)}`} dir="ltr">{formatCurrency(pnl)}</span>
-                    : <span className="text-xs text-text-muted shrink-0">—</span>}
+                    : live
+                      ? <span className="shrink-0 inline-flex items-center gap-1.5"><LiveTag /><span className={`num-mono text-sm font-bold ${pnlColor(live.pnl)}`} dir="ltr">{formatCurrency(live.pnl)}</span></span>
+                      : <span className="text-xs text-text-muted shrink-0">—</span>}
                 </div>
                 <div className="flex items-center justify-between gap-2 mt-1 text-[11px]">
                   <span className="text-text-muted truncate min-w-0">
@@ -145,6 +184,9 @@ export default function TradeTable({ trades, allTrades, onEdit, onDelete, onShar
                       <span className={pnlColor(trade.pnlPercent)}>{formatPercent(trade.pnlPercent)}</span>
                       {rr !== '–' && <span className={pnl < 0 ? 'text-loss' : 'text-text-secondary'}>{rr}</span>}
                     </span>
+                  )}
+                  {live && (
+                    <span className={`num-mono shrink-0 ${pnlColor(live.percent)}`} dir="ltr">{formatPercent(live.percent)}</span>
                   )}
                 </div>
               </button>
@@ -161,17 +203,18 @@ export default function TradeTable({ trades, allTrades, onEdit, onDelete, onShar
         <table className="w-full text-xs">
           <thead className="xl:sticky xl:top-0 xl:z-[5] xl:bg-bg-primary">
             <tr className="text-text-muted border-b border-border-primary">
-              <th className="py-2 px-2 text-right font-medium">זוג</th>
+              {selectMode && <th className="py-2 ps-2 w-6" aria-label="בחירה" />}
+              <SortTh label="זוג" sortKey="pair" sort={sort} onSortChange={onSortChange} />
               <th className="py-2 px-2 text-right font-medium">כיוון</th>
               <th className="py-2 px-2 text-right font-medium">סטטוס</th>
               <th className="py-2 px-2 text-right font-medium">אסטרטגיה</th>
-              <th className="py-2 px-2 text-right font-medium">תאריך</th>
+              <SortTh label="תאריך" sortKey="date" sort={sort} onSortChange={onSortChange} />
               <th className="py-2 px-2 text-right font-medium">כניסה</th>
               <th className="py-2 px-2 text-right font-medium">סגירה</th>
               <th className="py-2 px-2 text-right font-medium">SL</th>
               <th className="py-2 px-2 text-right font-medium">%</th>
-              <th className="py-2 px-2 text-right font-medium">R:R</th>
-              <th className="py-2 px-2 text-right font-medium">P&L</th>
+              <SortTh label="R:R" sortKey="r" sort={sort} onSortChange={onSortChange} />
+              <SortTh label="P&L" sortKey="pnl" sort={sort} onSortChange={onSortChange} />
               <th className="py-2 px-2 text-right font-medium">פעולות</th>
             </tr>
           </thead>
@@ -180,21 +223,25 @@ export default function TradeTable({ trades, allTrades, onEdit, onDelete, onShar
               const status = getStatus(trade);
               const pnl = trade.netPnl ?? trade.pnl;
               const isPending = pending(trade);
-              const showMonthSep = idx === 0 || getMonthKey(trade) !== getMonthKey(trades[idx - 1]);
+              const showMonthSep = showMonths && (idx === 0 || getMonthKey(trade) !== getMonthKey(trades[idx - 1]));
+              const live = status === 'open' && !isPending ? liveById[trade.id] : null;
+              const selected = selectMode && selectedIds?.has(trade.id);
 
               return (
                 <Fragment key={trade.id}>
                   {showMonthSep && (
                     <tr>
-                      <td colSpan={12} className={`${idx === 0 ? 'pt-2' : 'pt-7'} pb-3 px-2`}>
+                      <td colSpan={selectMode ? 13 : 12} className={`${idx === 0 ? 'pt-2' : 'pt-7'} pb-3 px-2`}>
                         <MonthSeparator trade={trade} totals={monthTotals.get(getMonthKey(trade))} />
                       </td>
                     </tr>
                   )}
                   <tr
-                    className={`border-b border-border-primary/50 cursor-pointer hover:bg-bg-tertiary/50 transition-colors ${isPending ? 'opacity-60' : ''}`}
-                    onClick={() => setDetailTrade(trade)}
+                    className={`border-b border-border-primary/50 cursor-pointer transition-colors ${selected ? 'bg-accent-primary/10' : 'hover:bg-bg-tertiary/50'} ${isPending ? 'opacity-60' : ''}`}
+                    onClick={() => (selectMode ? onToggleSelect?.(trade.id) : setDetailTrade(trade))}
+                    aria-selected={selectMode ? selected : undefined}
                   >
+                    {selectMode && <td className="py-2.5 ps-2"><SelectBox checked={selected} /></td>}
                     <td className="py-2.5 px-2 text-text-primary font-semibold max-w-[13rem]">
                       <span className="inline-flex items-center gap-1.5 max-w-full">
                         <CoinIcon pair={trade.pair} className="w-4 h-4 shrink-0" />
@@ -222,12 +269,16 @@ export default function TradeTable({ trades, allTrades, onEdit, onDelete, onShar
                       )}
                     </td>
                     <td className="py-2.5 px-2 text-text-primary whitespace-nowrap num-mono"><StopValue trade={trade} /></td>
-                    <td className={`py-2.5 px-2 whitespace-nowrap num-mono ${status === 'open' ? 'text-text-muted' : pnlColor(trade.pnlPercent)}`}>
-                      {status === 'open' ? '—' : formatPercent(trade.pnlPercent)}
+                    <td className={`py-2.5 px-2 whitespace-nowrap num-mono ${status === 'open' ? (live ? pnlColor(live.percent) : 'text-text-muted') : pnlColor(trade.pnlPercent)}`}>
+                      <span dir="ltr">{status === 'open' ? (live ? formatPercent(live.percent) : '—') : formatPercent(trade.pnlPercent)}</span>
                     </td>
-                    <td className={`py-2.5 px-2 whitespace-nowrap num-mono ${pnl < 0 ? 'text-loss' : 'text-text-secondary'}`}>{formatRR(trade.rrRatio, pnl)}</td>
-                    <td className={`py-2.5 px-2 font-bold whitespace-nowrap num-mono ${status === 'open' ? 'text-text-muted' : pnlColor(pnl)}`}>
-                      {status === 'open' ? '—' : formatCurrency(pnl)}
+                    <td className={`py-2.5 px-2 whitespace-nowrap num-mono ${pnl < 0 ? 'text-loss' : 'text-text-secondary'}`}><span dir="ltr">{formatRR(trade.rrRatio, pnl)}</span></td>
+                    <td className={`py-2.5 px-2 font-bold whitespace-nowrap num-mono ${status === 'open' ? (live ? pnlColor(live.pnl) : 'text-text-muted') : pnlColor(pnl)}`}>
+                      {status !== 'open' ? <span dir="ltr">{formatCurrency(pnl)}</span> : live ? (
+                        <span className="inline-flex items-center gap-1.5" title="רווח/הפסד חי לפי המחיר הנוכחי (לפני עמלות)">
+                          <LiveTag /><span dir="ltr">{formatCurrency(live.pnl)}</span>
+                        </span>
+                      ) : '—'}
                     </td>
                     <td className="py-2.5 px-2">
                       <div className="flex items-center gap-1">
@@ -236,10 +287,15 @@ export default function TradeTable({ trades, allTrades, onEdit, onDelete, onShar
                             <Share2 className="w-3.5 h-3.5" />
                           </button>
                         )}
-                        <button onClick={(e) => { e.stopPropagation(); onEdit(trade); }} className="p-1 rounded text-text-muted hover:text-accent-primary hover:bg-bg-tertiary transition-colors cursor-pointer">
+                        <button onClick={(e) => { e.stopPropagation(); onEdit(trade); }} className="p-1 rounded text-text-muted hover:text-accent-primary hover:bg-bg-tertiary transition-colors cursor-pointer" title="עריכה">
                           <Pencil className="w-3.5 h-3.5" />
                         </button>
-                        <button onClick={(e) => { e.stopPropagation(); onDelete(trade); }} className="p-1 rounded text-text-muted hover:text-loss hover:bg-bg-tertiary transition-colors cursor-pointer">
+                        {onDuplicate && (
+                          <button onClick={(e) => { e.stopPropagation(); onDuplicate(trade); }} className="p-1 rounded text-text-muted hover:text-accent-primary hover:bg-bg-tertiary transition-colors cursor-pointer" title="שכפול — עסקה חדשה עם אותם פרטים">
+                            <Copy className="w-3.5 h-3.5" />
+                          </button>
+                        )}
+                        <button onClick={(e) => { e.stopPropagation(); onDelete(trade); }} className="p-1 rounded text-text-muted hover:text-loss hover:bg-bg-tertiary transition-colors cursor-pointer" title="מחיקה">
                           <Trash2 className="w-3.5 h-3.5" />
                         </button>
                         <button onClick={(e) => { e.stopPropagation(); setDetailTrade(trade); }} className="p-1 rounded text-text-muted hover:text-accent-primary hover:bg-bg-tertiary transition-colors cursor-pointer" title="פרטים"><Eye className="w-3.5 h-3.5" /></button>
@@ -253,7 +309,7 @@ export default function TradeTable({ trades, allTrades, onEdit, onDelete, onShar
           </tbody>
         </table>
       </div>
-      <TradeDetailModal trade={detailTrade} isOpen={!!detailTrade} onClose={() => setDetailTrade(null)} onEdit={onEdit} onDelete={onDelete} onShare={onShare} />
+      <TradeDetailModal trade={detailTrade} isOpen={!!detailTrade} onClose={() => setDetailTrade(null)} onEdit={onEdit} onDelete={onDelete} onDuplicate={onDuplicate} onShare={onShare} />
     </>
   );
 }

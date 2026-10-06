@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { filterTradesByPeriod, computeJournalAnalytics, summarizeTrades } from './journalAnalytics';
+import { filterTradesByPeriod, computeJournalAnalytics, summarizeTrades, computeUnrealized, sortJournalTrades } from './journalAnalytics';
 
 const trade = (over) => ({
   pair: 'BTCUSDT', direction: 'long', status: 'closed', exitPrice: 110, entryPrice: 100,
@@ -97,5 +97,55 @@ describe('summarizeTrades', () => {
     expect(s.losses).toBe(1);
     expect(s.winRate).toBeCloseTo(66.67, 1);
     expect(s.avgR).toBe(1); // (+3 − 1) / 2 — the trade without R is skipped
+  });
+});
+
+describe('computeUnrealized', () => {
+  const open = (over) => trade({ status: 'open', exitPrice: 0, quantity: 2, entryPrice: 100, leverage: 5, ...over });
+
+  it('computes long and short P&L on the open size', () => {
+    expect(computeUnrealized(open(), 110)).toEqual({ pnl: 20, percent: 50 });
+    expect(computeUnrealized(open({ direction: 'short' }), 110).pnl).toBe(-20);
+  });
+
+  it('falls back to positionSize when quantity is missing', () => {
+    expect(computeUnrealized(open({ quantity: undefined, positionSize: 300 }), 110).pnl).toBe(30);
+  });
+
+  it('only counts the part of a partial position that is still open', () => {
+    const partial = open({ status: 'partial', exits: [{ price: 105, percent: 50 }] });
+    expect(computeUnrealized(partial, 110).pnl).toBe(10);
+  });
+
+  it('returns null for closed trades, CME futures and missing prices', () => {
+    expect(computeUnrealized(trade(), 110)).toBeNull();
+    expect(computeUnrealized(open({ assetClass: 'futures_cme' }), 110)).toBeNull();
+    expect(computeUnrealized(open(), undefined)).toBeNull();
+    expect(computeUnrealized(open({ quantity: 0, positionSize: 0 }), 110)).toBeNull();
+  });
+});
+
+describe('sortJournalTrades', () => {
+  const list = [
+    trade({ id: 'a', pair: 'ETHUSDT', netPnl: 5, rrRatio: 1, entryDate: '2026-09-01T00:00:00Z' }),
+    trade({ id: 'b', pair: 'BTCUSDT', result: 'loss', netPnl: -8, rrRatio: 2, entryDate: '2026-09-03T00:00:00Z' }),
+    trade({ id: 'c', pair: 'SOLUSDT', status: 'open', exitPrice: 0, netPnl: 0, entryDate: '2026-09-02T00:00:00Z' }),
+  ];
+  const ids = (arr) => arr.map((t) => t.id);
+
+  it('sorts by date both ways (default newest first)', () => {
+    expect(ids(sortJournalTrades(list))).toEqual(['b', 'c', 'a']);
+    expect(ids(sortJournalTrades(list, { key: 'date', dir: 'asc' }))).toEqual(['a', 'c', 'b']);
+  });
+
+  it('sorts by P&L using live P&L for open trades', () => {
+    expect(ids(sortJournalTrades(list, { key: 'pnl', dir: 'desc' }, { c: { pnl: 20 } }))).toEqual(['c', 'a', 'b']);
+    // Without a live value the open trade sinks to the bottom either way.
+    expect(ids(sortJournalTrades(list, { key: 'pnl', dir: 'asc' }))).toEqual(['b', 'a', 'c']);
+  });
+
+  it('sorts by signed R and by pair', () => {
+    expect(ids(sortJournalTrades(list, { key: 'r', dir: 'desc' }))).toEqual(['a', 'b', 'c']);
+    expect(ids(sortJournalTrades(list, { key: 'pair', dir: 'asc' }))).toEqual(['b', 'a', 'c']);
   });
 });

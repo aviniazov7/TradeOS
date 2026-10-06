@@ -1,5 +1,5 @@
 import { format } from 'date-fns';
-import { isClosedTrade, safePnl } from './calculations';
+import { isClosedTrade, safePnl, calculatePnL } from './calculations';
 
 // Pure analytics for the journal's analytics tab. Extracted from TradeJournal
 // so the (heavy) computation only runs when that tab is open, and so it can be
@@ -151,4 +151,57 @@ export function summarizeTrades(trades) {
     winRate: closed.length ? (wins / closed.length) * 100 : null,
     avgR: rs.length ? rs.reduce((s, r) => s + r, 0) / rs.length : null,
   };
+}
+
+// Live (unrealized) P&L of an open crypto position at `livePrice`. A partially
+// closed position counts only the part still open. Gross (before fees).
+// null when it can't be computed: closed trade, CME futures (no live feed),
+// or no price / size.
+export function computeUnrealized(trade, livePrice) {
+  if (!(livePrice > 0) || isClosedTrade(trade) || trade.assetClass === 'futures_cme') return null;
+  const entry = parseFloat(trade.entryPrice);
+  if (!(entry > 0)) return null;
+  let qty = parseFloat(trade.quantity);
+  if (!(qty > 0)) {
+    const ps = parseFloat(trade.positionSize);
+    qty = ps > 0 ? ps / entry : 0;
+  }
+  const closedPct = (trade.exits || []).reduce((s, e) => s + (parseFloat(e.percent) || 0), 0);
+  const openQty = qty * Math.max(0, 100 - closedPct) / 100;
+  if (!(openQty > 0)) return null;
+  const pnl = calculatePnL(trade.direction, entry, livePrice, openQty);
+  const lev = parseFloat(trade.leverage) || 1;
+  return { pnl, percent: (pnl / (entry * openQty)) * 100 * lev };
+}
+
+const entryTime = (t) => {
+  const raw = t.entryDate;
+  if (!raw) return 0;
+  const d = typeof raw.toDate === 'function' ? raw.toDate() : new Date(raw);
+  return isNaN(d.getTime()) ? 0 : d.getTime();
+};
+
+// Sort keys for the trades table. Each returns a number/string, or null for
+// "no value" (those always sink to the bottom, whatever the direction).
+const SORT_VALUES = {
+  date: (t) => entryTime(t),
+  // Closed trades by realized P&L; open ones by their live P&L when known.
+  pnl: (t, live) => (isClosedTrade(t) ? safePnl(t) : live?.[t.id]?.pnl ?? null),
+  r: (t) => (isClosedTrade(t) ? signedR(t) : null),
+  pair: (t) => (t.pair || '').toUpperCase(),
+};
+
+export function sortJournalTrades(trades, { key = 'date', dir = 'desc' } = {}, liveById = {}) {
+  const value = SORT_VALUES[key] || SORT_VALUES.date;
+  const sign = dir === 'asc' ? 1 : -1;
+  return [...trades].sort((a, b) => {
+    const va = value(a, liveById);
+    const vb = value(b, liveById);
+    if (va === null && vb === null) return entryTime(b) - entryTime(a);
+    if (va === null) return 1;
+    if (vb === null) return -1;
+    const cmp = typeof va === 'string' ? va.localeCompare(vb) : va - vb;
+    // Ties fall back to newest first so the order is stable and predictable.
+    return cmp !== 0 ? cmp * sign : entryTime(b) - entryTime(a);
+  });
 }

@@ -16,8 +16,13 @@ function Cell({ label, value, sub, valueClass = 'text-text-primary', className =
 // Compact numbers for whatever the trades tab is currently showing — they
 // follow the active filters, so "filter by BTC" immediately answers "how am I
 // doing on BTC?" without switching to the analytics tab.
-export default function JournalSummaryBar({ trades, filtered }) {
+export default function JournalSummaryBar({ trades, filtered, liveById = {} }) {
   const s = useMemo(() => summarizeTrades(trades), [trades]);
+  // Live P&L of the open positions in view (only those with a price feed).
+  const live = useMemo(() => {
+    const vals = trades.map((t) => liveById[t.id]?.pnl).filter((v) => typeof v === 'number');
+    return vals.length ? vals.reduce((a, b) => a + b, 0) : null;
+  }, [trades, liveById]);
   const pnlClass = s.net > 0 ? 'text-profit' : s.net < 0 ? 'text-loss' : 'text-text-primary';
   const rClass = s.avgR == null ? 'text-text-muted' : s.avgR >= 0 ? 'text-profit' : 'text-loss';
 
@@ -30,7 +35,15 @@ export default function JournalSummaryBar({ trades, filtered }) {
         value={s.closed}
         sub={s.open > 0 ? `+ ${s.open} פתוחות` : 'סגורות'}
       />
-      <Cell className="md:border-e" label="רווח נקי" value={s.closed ? formatCurrency(s.net) : '—'} valueClass={s.closed ? pnlClass : 'text-text-muted'} />
+      <Cell
+        className="md:border-e"
+        label="רווח נקי"
+        value={s.closed ? formatCurrency(s.net) : '—'}
+        valueClass={s.closed ? pnlClass : 'text-text-muted'}
+        sub={live !== null && (
+          <span>פתוחות עכשיו: <span className={`num-mono font-semibold ${live >= 0 ? 'text-profit' : 'text-loss'}`} dir="ltr">{formatCurrency(live)}</span></span>
+        )}
+      />
       <Cell
         className="border-e border-t md:border-t-0"
         label="אחוז הצלחה"

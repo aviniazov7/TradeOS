@@ -1,12 +1,13 @@
 import { useState, useMemo, useEffect, useRef, lazy, Suspense } from 'react';
 import { useSearchParams } from 'react-router-dom';
 import { motion } from 'framer-motion';
-import { Plus, BookOpen, Settings, Undo2, BrainCircuit } from 'lucide-react';
+import { Plus, BookOpen, Settings, Undo2, BrainCircuit, ListChecks, Trash2 } from 'lucide-react';
 import toast from 'react-hot-toast';
 import { useTrades } from '../../hooks/useTrades';
 import { useCryptoPrices } from '../../hooks/useCryptoPrices';
 import { useJournalContext } from '../../contexts/JournalContext';
-import { calculatePnL, calculateFuturesPnL, isClosedTrade, safePnl } from '../../utils/calculations';
+import { calculatePnL, calculateFuturesPnL, isClosedTrade, safePnl, localDayKey } from '../../utils/calculations';
+import { computeUnrealized, sortJournalTrades } from '../../utils/journalAnalytics';
 import { useDashboardStats } from '../../hooks/useDashboardStats';
 import { useLinkedExchangeBalance } from '../../hooks/useLinkedExchangeBalance';
 import { useExchangeImport } from '../../hooks/useExchangeImport';
@@ -17,6 +18,7 @@ import TradeTable from './TradeTable';
 import TradeFilters from './TradeFilters';
 import TimePeriodFilter from '../dashboard/TimePeriodFilter';
 import Modal from '../shared/Modal';
+import SelectDropdown from '../shared/SelectDropdown';
 import Card from '../shared/Card';
 import ArchiveAnimation from './ArchiveAnimation';
 import EmptyState from '../shared/EmptyState';
@@ -24,10 +26,26 @@ import ExchangeProposals from './ExchangeProposals';
 import JournalSkeleton from './JournalSkeleton';
 import JournalFormModal from './JournalFormModal';
 import { formatDate } from '../../utils/formatters';
+import { TAG_LABELS } from '../../utils/constants';
 import { pageVariants, pageTransition } from '../../utils/animations';
 
 const JOURNAL_TABS = ['trades', 'analytics', 'calendar', 'exchange'];
-const defaultFilters = { search: '', direction: '', result: '', strategy: '', tag: '', timeframe: '', month: '' };
+const defaultFilters = { search: '', direction: '', result: '', status: '', strategy: '', tag: '', timeframe: '', month: '', from: '', to: '' };
+const defaultSort = { key: 'date', dir: 'desc' };
+// Phone sort picker (desktop sorts by clicking column headers).
+const SORT_OPTIONS = [
+  { value: 'date:desc', label: 'חדשות קודם' },
+  { value: 'date:asc', label: 'ישנות קודם' },
+  { value: 'pnl:desc', label: 'רווח גבוה קודם' },
+  { value: 'pnl:asc', label: 'הפסד גבוה קודם' },
+  { value: 'r:desc', label: 'R גבוה קודם' },
+  { value: 'r:asc', label: 'R נמוך קודם' },
+  { value: 'pair:asc', label: 'זוג A–Z' },
+  { value: 'pair:desc', label: 'זוג Z–A' },
+];
+
+const getCoinFromPair = (pair = '') => pair.replace(/USDT$|BUSD$|USDC$|USD$/, '').toUpperCase();
+const entryDay = (t) => (t.entryDate ? localDayKey(t.entryDate) : '');
 
 // Everything below is loaded on demand: the default trades view only needs the
 // table. The form alone pulls in react-datepicker (~130 kB), and the analytics
@@ -61,6 +79,15 @@ export default function TradeJournal() {
   const { activeJournal, activeJournalId, journals, addJournal } = useJournalContext();
   const { trades, loading, addTrade, addTradesBulk, updateTrade, deleteTrade } = useTrades(activeJournalId);
   const { prices } = useCryptoPrices();
+  const livePriceOf = (trade) => prices[getCoinFromPair(trade.pair)]?.price;
+  const isLimitPending = (trade) => {
+    if (trade.orderType !== 'limit' || trade.exitPrice > 0) return false;
+    if (trade.limitTriggered) return false; // triggered → active, not pending
+    const currentPrice = livePriceOf(trade);
+    if (!currentPrice || !trade.entryPrice) return true; // no price data → assume pending
+    const entry = parseFloat(trade.entryPrice);
+    return trade.direction === 'long' ? currentPrice > entry : currentPrice < entry;
+  };
   const [searchParams, setSearchParams] = useSearchParams();
   const [formOpen, setFormOpen] = useState(false);
   const [editingTrade, setEditingTrade] = useState(null);
@@ -76,6 +103,17 @@ export default function TradeJournal() {
     } catch { return defaultFilters; }
   });
   const [period, setPeriod] = useState('all');
+  const [sort, setSort] = useState(() => {
+    try {
+      const saved = JSON.parse(localStorage.getItem('tj_sort') || 'null');
+      return saved && typeof saved.key === 'string' && (saved.dir === 'asc' || saved.dir === 'desc') ? saved : defaultSort;
+    } catch { return defaultSort; }
+  });
+  // Bulk selection on the trades tab.
+  const [selectMode, setSelectMode] = useState(false);
+  const [selectedIds, setSelectedIds] = useState(() => new Set());
+  // "Duplicate trade": the source trade seeds a NEW trade form.
+  const [templateTrade, setTemplateTrade] = useState(null);
   // The active tab lives in the URL (?tab=analytics) so a refresh keeps it and
   // the browser's back button steps between tabs. 'trades' is the bare URL.
   const tabParam = searchParams.get('tab');
@@ -173,10 +211,20 @@ export default function TradeJournal() {
     try { localStorage.setItem('tj_filters', JSON.stringify(filters)); } catch {}
   }, [filters]);
 
+  useEffect(() => {
+    try { localStorage.setItem('tj_sort', JSON.stringify(sort)); } catch { /* storage unavailable */ }
+  }, [sort]);
+
   // Reset the rendered window when the visible set changes
   useEffect(() => {
     setVisibleCount(50);
-  }, [filters, activeJournalId]);
+  }, [filters, sort, activeJournalId]);
+
+  // A selection only makes sense for the list it was made on.
+  useEffect(() => {
+    setSelectMode(false);
+    setSelectedIds(new Set());
+  }, [filters, activeJournalId, tab]);
 
   // When the journal is linked to a connected exchange, derive the starting
   // balance so currentBalance + every percentage-based stat (drawdown,
@@ -244,11 +292,23 @@ export default function TradeJournal() {
       if (isNaN(d.getTime())) return '';
       return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`;
     };
+    const q = filters.search.trim().toLowerCase();
+    // Search looks at the pair and at the trade's own words (strategy, notes,
+    // entry reason, tags) — "breakout" finds every trade tagged or noted so.
+    const matchesSearch = (t) => [t.pair, t.strategy, t.notes, t.entryReason, ...(Array.isArray(t.tags) ? t.tags.map((tag) => `${tag} ${TAG_LABELS[tag] || ''}`) : [])]
+      .some((v) => typeof v === 'string' && v.toLowerCase().includes(q));
     return trades.filter((t) => {
       if (pendingDeletes.has(t.id)) return false;
-      if (filters.search && !t.pair.toLowerCase().includes(filters.search.toLowerCase())) return false;
+      if (q && !matchesSearch(t)) return false;
       if (filters.direction && t.direction !== filters.direction) return false;
       if (filters.result && t.result !== filters.result) return false;
+      if (filters.status === 'open' && isClosedTrade(t)) return false;
+      if (filters.status === 'closed' && !isClosedTrade(t)) return false;
+      if (filters.from || filters.to) {
+        // Same date the table shows (entry date), compared as local YYYY-MM-DD.
+        const day = entryDay(t);
+        if (!day || (filters.from && day < filters.from) || (filters.to && day > filters.to)) return false;
+      }
       if (filters.strategy && t.strategy !== filters.strategy) return false;
       if (filters.timeframe && (filters.timeframe === 'N/A' ? !!t.timeframe : t.timeframe !== filters.timeframe)) return false;
       if (filters.tag && !(Array.isArray(t.tags) ? t.tags : []).includes(filters.tag)) return false;
@@ -257,6 +317,23 @@ export default function TradeJournal() {
     }).sort((a, b) => getTime(b) - getTime(a));
   }, [trades, filters, pendingDeletes]);
   const hasActiveFilters = Object.values(filters).some(Boolean);
+
+  // Live P&L of every open position in view, from the same price feed the
+  // limit-order check uses. Pending limits haven't filled, so they have none.
+  const liveById = useMemo(() => {
+    const map = {};
+    filteredTrades.forEach((t) => {
+      if (isClosedTrade(t) || isLimitPending(t)) return;
+      const live = computeUnrealized(t, livePriceOf(t));
+      if (live) map[t.id] = live;
+    });
+    return map;
+  }, [filteredTrades, prices]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  const sortedTrades = useMemo(() => sortJournalTrades(filteredTrades, sort, liveById), [filteredTrades, sort, liveById]);
+  const changeSort = (key) => setSort((cur) => (
+    cur.key === key ? { key, dir: cur.dir === 'desc' ? 'asc' : 'desc' } : { key, dir: key === 'pair' ? 'asc' : 'desc' }
+  ));
 
   const handleSave = async (data) => {
     try {
@@ -309,9 +386,16 @@ export default function TradeJournal() {
     setFormOpen(true);
   };
 
-  const handleDeleteWithUndo = (trade) => {
-    setPendingDeletes((prev) => new Set(prev).add(trade.id));
-    deleteBatchRef.current.add(trade.id);
+  // Delete one or many trades behind a single 5-second "undo" toast.
+  const handleDeleteWithUndo = (tradeOrTrades) => {
+    const list = Array.isArray(tradeOrTrades) ? tradeOrTrades : [tradeOrTrades];
+    if (!list.length) return;
+    setPendingDeletes((prev) => {
+      const next = new Set(prev);
+      list.forEach((t) => next.add(t.id));
+      return next;
+    });
+    list.forEach((t) => deleteBatchRef.current.add(t.id));
 
     // Reset the batch timer so it starts fresh after each delete
     if (deleteBatchTimerRef.current) clearTimeout(deleteBatchTimerRef.current);
@@ -378,10 +462,28 @@ export default function TradeJournal() {
   const handleCloseForm = () => {
     setFormOpen(false);
     setEditingTrade(null);
+    setTemplateTrade(null);
+  };
+
+  const handleDuplicate = (trade) => {
+    setEditingTrade(null);
+    setTemplateTrade(trade);
+    setFormOpen(true);
+  };
+
+  const toggleSelected = (id) => setSelectedIds((prev) => {
+    const next = new Set(prev);
+    if (next.has(id)) next.delete(id); else next.add(id);
+    return next;
+  });
+  const deleteSelected = () => {
+    handleDeleteWithUndo(sortedTrades.filter((t) => selectedIds.has(t.id)));
+    setSelectedIds(new Set());
+    setSelectMode(false);
   };
 
   const exportCSV = () => {
-    if (!filteredTrades.length) return;
+    if (!sortedTrades.length) return;
     // Escape a CSV cell: quote when it contains a comma/quote/newline, and
     // neutralize spreadsheet formula injection on a leading =,+,-,@.
     const cell = (v) => {
@@ -392,7 +494,7 @@ export default function TradeJournal() {
     };
     const toDate = (raw) => (raw ? (raw.toDate ? raw.toDate() : new Date(raw)) : null);
     const headers = ['תאריך', 'תאריך סגירה', 'זוג', 'כיוון', 'כניסה', 'סגירה', 'סטופ לוס', 'גודל עסקה', 'מינוף', 'עמלות', 'רווח/הפסד', '%', 'R:R', 'אסטרטגיה', 'טווח זמן', 'סטטוס', 'סיבת כניסה', 'הערות', 'תגיות', 'רגש לפני', 'רגש אחרי', 'טעויות', 'ביטחון'];
-    const rows = filteredTrades.map((t) => {
+    const rows = sortedTrades.map((t) => {
       const d = toDate(t.entryDate) || new Date();
       const xd = toDate(t.exitDate);
       const pnl = t.netPnl ?? t.pnl ?? 0;
@@ -417,17 +519,6 @@ export default function TradeJournal() {
     a.href = url; a.download = `trades_${new Date().toISOString().slice(0, 10)}.csv`;
     a.click(); URL.revokeObjectURL(url);
     toast.success('הקובץ הורד');
-  };
-
-  const getCoinFromPair = (pair = '') => pair.replace(/USDT$|BUSD$|USDC$|USD$/, '').toUpperCase();
-
-  const isLimitPending = (trade) => {
-    if (trade.orderType !== 'limit' || trade.exitPrice > 0) return false;
-    if (trade.limitTriggered) return false; // triggered → active, not pending
-    const currentPrice = prices[getCoinFromPair(trade.pair)]?.price;
-    if (!currentPrice || !trade.entryPrice) return true; // no price data → assume pending
-    const entry = parseFloat(trade.entryPrice);
-    return trade.direction === 'long' ? currentPrice > entry : currentPrice < entry;
   };
 
   if (loading) return <JournalSkeleton />;
@@ -535,22 +626,82 @@ export default function TradeJournal() {
             )
           ) : (
             <>
-              <JournalSummaryBar trades={filteredTrades} filtered={hasActiveFilters} />
+              <JournalSummaryBar trades={filteredTrades} filtered={hasActiveFilters} liveById={liveById} />
+
+              {/* List toolbar: sort (phones — desktop sorts by clicking a column
+                  header) and the bulk-selection toggle. */}
+              <div className="flex items-center justify-between gap-2 mb-2">
+                <div className="md:hidden min-w-0">
+                  <SelectDropdown compact value={`${sort.key}:${sort.dir}`} options={SORT_OPTIONS}
+                    onChange={(v) => { const [key, dir] = (v || 'date:desc').split(':'); setSort({ key, dir }); }} />
+                </div>
+                <span className="hidden md:inline text-[11px] text-text-muted">לחץ על כותרת עמודה כדי למיין</span>
+                <button
+                  type="button"
+                  onClick={() => { setSelectMode((m) => !m); setSelectedIds(new Set()); }}
+                  className={`h-8 inline-flex items-center gap-1.5 px-3 rounded-lg text-xs font-medium border transition-colors cursor-pointer shrink-0 ${
+                    selectMode ? 'bg-accent-primary/15 text-accent-primary border-accent-primary/40' : 'text-text-muted border-border-primary hover:text-text-primary hover:border-border-hover'
+                  }`}
+                >
+                  <ListChecks className="w-3.5 h-3.5" />
+                  {selectMode ? 'סיום בחירה' : 'בחירה מרובה'}
+                </button>
+              </div>
+
               <TradeTable
-                trades={filteredTrades.slice(0, visibleCount)}
-                allTrades={filteredTrades}
+                trades={sortedTrades.slice(0, visibleCount)}
+                allTrades={sortedTrades}
+                liveById={liveById}
+                sort={sort}
+                onSortChange={changeSort}
+                showMonths={sort.key === 'date'}
+                selectMode={selectMode}
+                selectedIds={selectedIds}
+                onToggleSelect={toggleSelected}
                 onEdit={handleEdit}
                 onDelete={handleDeleteWithUndo}
+                onDuplicate={handleDuplicate}
                 onShare={setShareTarget}
                 isLimitPending={isLimitPending}
               />
-              {filteredTrades.length > visibleCount && (
+              {sortedTrades.length > visibleCount && (
                 <button
                   onClick={() => setVisibleCount((c) => c + 50)}
                   className="mt-3 w-full py-2.5 rounded-lg bg-bg-tertiary text-text-primary border border-border-primary hover:bg-border-hover transition-colors cursor-pointer text-sm"
                 >
-                  טען עוד ({filteredTrades.length - visibleCount})
+                  טען עוד ({sortedTrades.length - visibleCount})
                 </button>
+              )}
+
+              {/* Bulk action bar — sticks to the bottom of the scroll area,
+                  above the phone tab bar. Solid fill so rows don't show through. */}
+              {selectMode && (
+                <div className="sticky bottom-24 lg:bottom-4 z-20 mt-3">
+                  <div className="flex items-center justify-between gap-2 rounded-xl border border-border-primary px-3 md:px-4 py-2.5 shadow-[0_12px_40px_rgba(0,0,0,0.45)]"
+                    style={{ background: 'var(--modal-header-solid)' }}>
+                    <div className="min-w-0">
+                      <p className="text-sm font-semibold text-text-primary">
+                        {selectedIds.size ? `נבחרו ${selectedIds.size} עסקאות` : 'סמן עסקאות ברשימה'}
+                      </p>
+                      <button type="button"
+                        onClick={() => setSelectedIds(selectedIds.size === sortedTrades.length ? new Set() : new Set(sortedTrades.map((t) => t.id)))}
+                        className="text-[11px] text-accent-primary hover:underline cursor-pointer">
+                        {selectedIds.size === sortedTrades.length ? 'נקה בחירה' : `בחר את כל ${sortedTrades.length}`}
+                      </button>
+                    </div>
+                    <div className="flex items-center gap-2 shrink-0">
+                      <button type="button" onClick={() => { setSelectMode(false); setSelectedIds(new Set()); }}
+                        className="h-9 px-3 rounded-lg border border-border-primary text-xs text-text-secondary hover:bg-bg-tertiary transition-colors cursor-pointer">
+                        ביטול
+                      </button>
+                      <button type="button" onClick={deleteSelected} disabled={!selectedIds.size}
+                        className="h-9 inline-flex items-center gap-1.5 px-3 rounded-lg text-xs font-semibold bg-loss/15 text-loss border border-loss/30 hover:bg-loss/25 transition-colors cursor-pointer disabled:opacity-40 disabled:cursor-not-allowed">
+                        <Trash2 className="w-3.5 h-3.5" />
+                        מחק{selectedIds.size ? ` (${selectedIds.size})` : ''}
+                      </button>
+                    </div>
+                  </div>
+                </div>
               )}
             </>
           )}
@@ -609,7 +760,7 @@ export default function TradeJournal() {
           fallback={null}: the Modal draws its own backdrop once loaded. */}
       <Suspense fallback={null}>
         {formMounted && (
-          <TradeForm isOpen={formOpen} onClose={handleCloseForm} trade={editingTrade} onSave={handleSave}
+          <TradeForm isOpen={formOpen} onClose={handleCloseForm} trade={editingTrade} template={templateTrade} onSave={handleSave}
             riskSettings={{ riskType: activeJournal?.riskType, riskValue: activeJournal?.riskValue, currentBalance: displayedCurrentBalance }}
             journalAssetClass={activeJournal?.assetClass || 'crypto'}
             livePrices={prices} />

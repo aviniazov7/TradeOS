@@ -19,6 +19,7 @@ import {
   Share2,
   ExternalLink,
   ImageOff,
+  Copy,
 } from 'lucide-react';
 
 // Safe numeric coercion — returns null when not a finite number.
@@ -89,6 +90,7 @@ export default function TradeDetailModal({
   onClose,
   onEdit,
   onDelete,
+  onDuplicate,
   onShare,
 }) {
   // Track WHICH trade's image failed (not a boolean) so switching to another
@@ -171,6 +173,10 @@ export default function TradeDetailModal({
     onClose?.();
     onDelete?.(trade);
   };
+  const handleDuplicate = () => {
+    onClose?.();
+    onDuplicate?.(trade);
+  };
 
   // ── Status badge ──────────────────────────────────────────────────
   const statusBadge =
@@ -249,6 +255,16 @@ export default function TradeDetailModal({
               className="p-2 rounded-lg text-text-muted hover:text-text-primary hover:bg-bg-tertiary transition-colors cursor-pointer"
             >
               <Pencil className="w-4 h-4" />
+            </button>
+          )}
+          {onDuplicate && (
+            <button
+              type="button"
+              onClick={handleDuplicate}
+              title="שכפול — עסקה חדשה עם אותם פרטים"
+              className="p-2 rounded-lg text-text-muted hover:text-text-primary hover:bg-bg-tertiary transition-colors cursor-pointer"
+            >
+              <Copy className="w-4 h-4" />
             </button>
           )}
           {onDelete && (
