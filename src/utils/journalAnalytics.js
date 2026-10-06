@@ -1,5 +1,5 @@
 import { format } from 'date-fns';
-import { isClosedTrade } from './calculations';
+import { isClosedTrade, safePnl } from './calculations';
 
 // Pure analytics for the journal's analytics tab. Extracted from TradeJournal
 // so the (heavy) computation only runs when that tab is open, and so it can be
@@ -124,4 +124,31 @@ export function computeJournalAnalytics(periodTrades) {
     .sort((a, b) => b.count - a.count);
 
   return { avgWin, avgLoss, largestWin, largestLoss, pieData, dailyPnL, byPair, byTimeframe, byTag, byStrategy, maxWin, maxLoss, longWinRate, shortWinRate, longPnl, shortPnl, longCount: longTrades.length, shortCount: shortTrades.length, longWins, shortWins };
+}
+
+// Signed R of a closed trade: rrRatio is stored as a magnitude, the sign comes
+// from the P&L (same convention as formatRR). null when there's no stop/R.
+const signedR = (t) => {
+  const rr = Math.abs(Number(t.rrRatio));
+  if (!Number.isFinite(rr) || rr === 0) return null;
+  return safePnl(t) < 0 ? -rr : rr;
+};
+
+// Headline numbers for the trades tab's summary bar (follows the filters).
+export function summarizeTrades(trades) {
+  const closed = trades.filter(isClosedTrade);
+  const open = trades.length - closed.length;
+  const net = closed.reduce((s, t) => s + safePnl(t), 0);
+  const wins = closed.filter((t) => t.result === 'win').length;
+  const losses = closed.filter((t) => t.result === 'loss').length;
+  const rs = closed.map(signedR).filter((r) => r !== null);
+  return {
+    closed: closed.length,
+    open,
+    net,
+    wins,
+    losses,
+    winRate: closed.length ? (wins / closed.length) * 100 : null,
+    avgR: rs.length ? rs.reduce((s, r) => s + r, 0) / rs.length : null,
+  };
 }

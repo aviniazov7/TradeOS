@@ -21,7 +21,11 @@ const SessionAnalysisChart = lazy(() => import('../analytics/SessionAnalysisChar
 const DayOfWeekChart = lazy(() => import('../analytics/DayOfWeekChart'));
 
 const tooltipStyle = { background: 'var(--color-bg-overlay)', border: '1px solid var(--color-border-primary)', borderRadius: '8px', fontSize: '12px', color: 'var(--color-text-primary)' };
-const PIE_COLORS = ['#22c55e', '#ef4444', '#eab308'];
+// Keyed by slice name, not position: pieData drops empty slices, so an index
+// lookup painted losses green whenever there were no wins. Values match the
+// dark-theme --color-profit/loss/breakeven tokens (SVG fill attrs can't read
+// CSS variables).
+const PIE_COLORS = { 'רווח': '#22c55e', 'הפסד': '#ef4444', 'אפס': '#f59e0b' };
 const cardClass = 'bg-bg-secondary border border-border-primary rounded-xl p-4';
 const pnlColor = (v) => v >= 0 ? 'text-profit' : 'text-loss';
 
@@ -85,7 +89,7 @@ export default function JournalAnalyticsTab({
             {/* animated gradient wash */}
             <div
               className="absolute inset-0 opacity-90"
-              style={{ background: 'linear-gradient(135deg, rgba(139,92,246,0.16) 0%, rgba(99,102,241,0.10) 45%, rgba(6,182,212,0.16) 100%)' }}
+              style={{ background: 'linear-gradient(135deg, rgba(37,99,235,0.16) 0%, rgba(59,130,246,0.08) 45%, rgba(56,189,248,0.16) 100%)' }}
             />
             {/* shimmer sweep */}
             <motion.div
@@ -98,11 +102,11 @@ export default function JournalAnalyticsTab({
             <div className="relative flex items-center gap-3 px-4 py-3.5 md:px-5 md:py-4">
               {/* icon medallion with soft glow */}
               <span className="relative flex-shrink-0 grid place-items-center w-11 h-11 rounded-xl"
-                style={{ background: 'rgba(139,92,246,0.14)', border: '1px solid rgba(139,92,246,0.30)' }}>
+                style={{ background: 'rgba(37,99,235,0.14)', border: '1px solid rgba(56,189,248,0.30)' }}>
                 <motion.span
                   aria-hidden
                   className="absolute inset-0 rounded-xl"
-                  style={{ boxShadow: '0 0 22px 2px rgba(139,92,246,0.35)' }}
+                  style={{ boxShadow: '0 0 22px 2px rgba(56,189,248,0.30)' }}
                   animate={{ opacity: [0.35, 0.8, 0.35] }}
                   transition={{ duration: 2.6, repeat: Infinity, ease: 'easeInOut' }}
                 />

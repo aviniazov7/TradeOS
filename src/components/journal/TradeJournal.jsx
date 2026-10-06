@@ -11,10 +11,13 @@ import { useDashboardStats } from '../../hooks/useDashboardStats';
 import { useLinkedExchangeBalance } from '../../hooks/useLinkedExchangeBalance';
 import { useExchangeImport } from '../../hooks/useExchangeImport';
 import JournalSwitcher from './JournalSwitcher';
+import JournalTabs from './JournalTabs';
+import JournalSummaryBar from './JournalSummaryBar';
 import TradeTable from './TradeTable';
 import TradeFilters from './TradeFilters';
 import TimePeriodFilter from '../dashboard/TimePeriodFilter';
 import Modal from '../shared/Modal';
+import Card from '../shared/Card';
 import ArchiveAnimation from './ArchiveAnimation';
 import EmptyState from '../shared/EmptyState';
 import ExchangeProposals from './ExchangeProposals';
@@ -23,6 +26,7 @@ import JournalFormModal from './JournalFormModal';
 import { formatDate } from '../../utils/formatters';
 import { pageVariants, pageTransition } from '../../utils/animations';
 
+const JOURNAL_TABS = ['trades', 'analytics', 'calendar', 'exchange'];
 const defaultFilters = { search: '', direction: '', result: '', strategy: '', tag: '', timeframe: '', month: '' };
 
 // Everything below is loaded on demand: the default trades view only needs the
@@ -57,7 +61,7 @@ export default function TradeJournal() {
   const { activeJournal, activeJournalId, journals, addJournal } = useJournalContext();
   const { trades, loading, addTrade, addTradesBulk, updateTrade, deleteTrade } = useTrades(activeJournalId);
   const { prices } = useCryptoPrices();
-  const [searchParams] = useSearchParams();
+  const [searchParams, setSearchParams] = useSearchParams();
   const [formOpen, setFormOpen] = useState(false);
   const [editingTrade, setEditingTrade] = useState(null);
   const [pendingDeletes, setPendingDeletes] = useState(new Set());
@@ -72,7 +76,19 @@ export default function TradeJournal() {
     } catch { return defaultFilters; }
   });
   const [period, setPeriod] = useState('all');
-  const [tab, setTab] = useState('trades');
+  // The active tab lives in the URL (?tab=analytics) so a refresh keeps it and
+  // the browser's back button steps between tabs. 'trades' is the bare URL.
+  const tabParam = searchParams.get('tab');
+  const tab = JOURNAL_TABS.includes(tabParam) ? tabParam : 'trades';
+  const setTab = (next) => {
+    if (next === tab) return;
+    setSearchParams((prev) => {
+      const params = new URLSearchParams(prev);
+      if (next === 'trades') params.delete('tab');
+      else params.set('tab', next);
+      return params;
+    });
+  };
   const [aiModalOpen, setAiModalOpen] = useState(false);
   const [importOpen, setImportOpen] = useState(false);
   const [settingsOpen, setSettingsOpen] = useState(false);
@@ -194,14 +210,25 @@ export default function TradeJournal() {
   const { importTrade: importExchangeTrade } = useExchangeImport(activeJournalId);
 
   useEffect(() => {
-    if (searchParams.get('new') === '1') setFormOpen(true);
+    const isNew = searchParams.get('new') === '1';
     // Deep-link from the dashboard "set opening balance" checklist step —
     // open journal settings (where the balance field lives) instead of just
     // landing on the journal, mirroring the ?new=1 → trade-form pattern.
-    if (searchParams.get('settings') === '1') setSettingsOpen(true);
+    const isSettings = searchParams.get('settings') === '1';
     // Deep-link from the analyst page — it hands off to the full AI report.
-    if (searchParams.get('ai') === '1') setAiModalOpen(true);
-  }, [searchParams]);
+    const isAi = searchParams.get('ai') === '1';
+    if (!isNew && !isSettings && !isAi) return;
+    if (isNew) setFormOpen(true);
+    if (isSettings) setSettingsOpen(true);
+    if (isAi) setAiModalOpen(true);
+    // One-shot flags: strip them so switching tabs (which also writes the URL)
+    // doesn't re-open the modal every time.
+    setSearchParams((prev) => {
+      const next = new URLSearchParams(prev);
+      ['new', 'settings', 'ai'].forEach((k) => next.delete(k));
+      return next;
+    }, { replace: true });
+  }, [searchParams, setSearchParams]);
 
   const filteredTrades = useMemo(() => {
     const getTime = (t) => {
@@ -229,6 +256,7 @@ export default function TradeJournal() {
       return true;
     }).sort((a, b) => getTime(b) - getTime(a));
   }, [trades, filters, pendingDeletes]);
+  const hasActiveFilters = Object.values(filters).some(Boolean);
 
   const handleSave = async (data) => {
     try {
@@ -440,46 +468,14 @@ export default function TradeJournal() {
           faint "glass band" that flashed whenever a hover re-rasterized the
           layer (e.g. hovering the period-filter pills). The bg-bg-secondary
           fill is kept, so it looks identical in both themes. */}
-      <div className="bg-bg-secondary border border-border-primary rounded-xl mb-4 px-3 md:px-4 py-2.5 space-y-2 relative z-10" style={{ backdropFilter: 'none', WebkitBackdropFilter: 'none' }}>
+      <Card className="mb-4 px-3 md:px-4 py-2.5 space-y-2 relative z-10" style={{ backdropFilter: 'none', WebkitBackdropFilter: 'none' }}>
         {/* Row 1: Journal switcher + Actions */}
         <div className="flex items-center justify-between gap-2">
           <div className="flex items-center gap-1 md:gap-3 min-w-0">
             <JournalSwitcher compact />
             <div className="hidden md:block w-px h-6 bg-border-primary flex-shrink-0" />
-            {/* Desktop tabs inline */}
-            <div className="hidden md:flex items-center">
-              <button
-                onClick={() => setTab('trades')}
-                className={`h-9 inline-flex items-center px-3.5 text-sm font-medium rounded-lg transition-colors cursor-pointer whitespace-nowrap ${
-                  tab === 'trades' ? 'bg-accent-primary/15 text-accent-primary' : 'text-text-muted hover:text-text-primary hover:bg-bg-tertiary'
-                }`}
-              >
-                עסקאות ({trades.length})
-              </button>
-              <button
-                onClick={() => setTab('analytics')}
-                className={`h-9 inline-flex items-center px-3.5 text-sm font-medium rounded-lg transition-colors cursor-pointer whitespace-nowrap ${
-                  tab === 'analytics' ? 'bg-accent-primary/15 text-accent-primary' : 'text-text-muted hover:text-text-primary hover:bg-bg-tertiary'
-                }`}
-              >
-                ניתוחים
-              </button>
-              <button
-                onClick={() => setTab('calendar')}
-                className={`h-9 inline-flex items-center px-3.5 text-sm font-medium rounded-lg transition-colors cursor-pointer whitespace-nowrap ${
-                  tab === 'calendar' ? 'bg-accent-primary/15 text-accent-primary' : 'text-text-muted hover:text-text-primary hover:bg-bg-tertiary'
-                }`}
-              >
-                יומן חודשי
-              </button>
-              <button
-                onClick={() => setTab('exchange')}
-                className={`h-9 inline-flex items-center px-3.5 text-sm font-medium rounded-lg transition-colors cursor-pointer whitespace-nowrap ${
-                  tab === 'exchange' ? 'bg-accent-primary/15 text-accent-primary' : 'text-text-muted hover:text-text-primary hover:bg-bg-tertiary'
-                }`}
-              >
-                חיבור בורסאות
-              </button>
+            <div className="hidden md:block">
+              <JournalTabs tabs={JOURNAL_TABS} value={tab} onChange={setTab} tradesCount={trades.length} />
             </div>
           </div>
 
@@ -503,42 +499,9 @@ export default function TradeJournal() {
         {/* Row 2: Mobile tabs (scroll horizontally so they never compress each
             other). The period filter lives up in Row 1's action group. */}
         <div className="md:hidden">
-          <div className="flex items-center overflow-x-auto no-scrollbar -mx-1 px-1">
-            <button
-              onClick={() => setTab('trades')}
-              className={`px-2.5 py-1.5 text-xs font-medium rounded-lg transition-colors cursor-pointer whitespace-nowrap flex-shrink-0 ${
-                tab === 'trades' ? 'bg-accent-primary/15 text-accent-primary' : 'text-text-muted hover:text-text-primary hover:bg-bg-tertiary'
-              }`}
-            >
-              עסקאות ({trades.length})
-            </button>
-            <button
-              onClick={() => setTab('analytics')}
-              className={`px-2.5 py-1.5 text-xs font-medium rounded-lg transition-colors cursor-pointer whitespace-nowrap flex-shrink-0 ${
-                tab === 'analytics' ? 'bg-accent-primary/15 text-accent-primary' : 'text-text-muted hover:text-text-primary hover:bg-bg-tertiary'
-              }`}
-            >
-              ניתוחים
-            </button>
-            <button
-              onClick={() => setTab('calendar')}
-              className={`px-2.5 py-1.5 text-xs font-medium rounded-lg transition-colors cursor-pointer whitespace-nowrap flex-shrink-0 ${
-                tab === 'calendar' ? 'bg-accent-primary/15 text-accent-primary' : 'text-text-muted hover:text-text-primary hover:bg-bg-tertiary'
-              }`}
-            >
-              יומן חודשי
-            </button>
-            <button
-              onClick={() => setTab('exchange')}
-              className={`px-2.5 py-1.5 text-xs font-medium rounded-lg transition-colors cursor-pointer whitespace-nowrap flex-shrink-0 ${
-                tab === 'exchange' ? 'bg-accent-primary/15 text-accent-primary' : 'text-text-muted hover:text-text-primary hover:bg-bg-tertiary'
-              }`}
-            >
-              בורסאות
-            </button>
-          </div>
+          <JournalTabs tabs={JOURNAL_TABS} value={tab} onChange={setTab} tradesCount={trades.length} variant="mobile" />
         </div>
-      </div>
+      </Card>
 
       {tab === 'trades' && (
         <>
@@ -553,31 +516,34 @@ export default function TradeJournal() {
           {trades.length > 0 && <TradeFilters filters={filters} onChange={setFilters} trades={trades} />}
 
           {filteredTrades.length === 0 && !loading ? (
-            <EmptyState
-              icon={BookOpen}
-              title={trades.length === 0 ? 'אין עסקאות עדיין' : 'אין עסקאות תואמות'}
-              description={trades.length === 0 ? 'התחל לתעד את העסקאות שלך למעקב ביצועים' : 'נסה לשנות את הפילטרים'}
-              action={
-                trades.length === 0 ? (
-                  <button
-                    onClick={() => setFormOpen(true)}
-                    className="mt-2 px-4 py-2 bg-accent-primary text-bg-primary font-semibold rounded-lg hover:bg-accent-hover transition-colors cursor-pointer"
-                  >
-                    הוסף את העסקה הראשונה
-                  </button>
-                ) : (
-                  <button
-                    onClick={() => setFilters(defaultFilters)}
-                    className="mt-2 px-4 py-2 bg-bg-tertiary text-text-primary border border-border-primary rounded-lg hover:bg-border-hover transition-colors cursor-pointer text-sm"
-                  >
-                    נקה פילטרים
-                  </button>
-                )
-              }
-            />
+            trades.length === 0 ? (
+              <EmptyState
+                icon={BookOpen}
+                title="אין עסקאות עדיין"
+                description="התחל לתעד את העסקאות שלך למעקב ביצועים"
+                actionLabel="הוסף את העסקה הראשונה"
+                onAction={() => setFormOpen(true)}
+              />
+            ) : (
+              <EmptyState
+                icon={BookOpen}
+                title="אין עסקאות תואמות"
+                description="נסה לשנות את הפילטרים"
+                actionLabel="נקה פילטרים"
+                onAction={() => setFilters(defaultFilters)}
+              />
+            )
           ) : (
             <>
-              <TradeTable trades={filteredTrades.slice(0, visibleCount)} onEdit={handleEdit} onDelete={handleDeleteWithUndo} onShare={setShareTarget} isLimitPending={isLimitPending} />
+              <JournalSummaryBar trades={filteredTrades} filtered={hasActiveFilters} />
+              <TradeTable
+                trades={filteredTrades.slice(0, visibleCount)}
+                allTrades={filteredTrades}
+                onEdit={handleEdit}
+                onDelete={handleDeleteWithUndo}
+                onShare={setShareTarget}
+                isLimitPending={isLimitPending}
+              />
               {filteredTrades.length > visibleCount && (
                 <button
                   onClick={() => setVisibleCount((c) => c + 50)}

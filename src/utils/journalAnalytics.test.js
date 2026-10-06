@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { filterTradesByPeriod, computeJournalAnalytics } from './journalAnalytics';
+import { filterTradesByPeriod, computeJournalAnalytics, summarizeTrades } from './journalAnalytics';
 
 const trade = (over) => ({
   pair: 'BTCUSDT', direction: 'long', status: 'closed', exitPrice: 110, entryPrice: 100,
@@ -75,5 +75,27 @@ describe('computeJournalAnalytics', () => {
     expect(a.byTag.find((t) => t.tag === 'breakout')).toMatchObject({ count: 2, wins: 1, pnl: 40, winRate: 50 });
     expect(a.byTimeframe.map((t) => t.timeframe).sort()).toEqual(['4H', 'N/A']);
     expect(a.byStrategy).toEqual([{ name: 'SOW', wins: 1, losses: 1, pnl: 40, count: 2, winRate: 50 }]);
+  });
+});
+
+describe('summarizeTrades', () => {
+  it('handles an empty list', () => {
+    expect(summarizeTrades([])).toMatchObject({ closed: 0, open: 0, net: 0, winRate: null, avgR: null });
+  });
+
+  it('counts open trades separately and signs R by the P&L', () => {
+    const s = summarizeTrades([
+      trade({ netPnl: 30, rrRatio: 3 }),
+      trade({ result: 'loss', netPnl: -10, rrRatio: 1 }),
+      trade({ netPnl: 5, rrRatio: undefined }),
+      trade({ status: 'open', exitPrice: 0, netPnl: 0 }),
+    ]);
+    expect(s.closed).toBe(3);
+    expect(s.open).toBe(1);
+    expect(s.net).toBe(25);
+    expect(s.wins).toBe(2);
+    expect(s.losses).toBe(1);
+    expect(s.winRate).toBeCloseTo(66.67, 1);
+    expect(s.avgR).toBe(1); // (+3 − 1) / 2 — the trade without R is skipped
   });
 });
