@@ -10,7 +10,8 @@ import {
   buildMentionIndex, attributeMoves, describeFinding, ATTRIBUTION_WINDOW_MIN,
 } from './newsImpact.js';
 import {
-  classifyExchangeAuthError, mexcStopsByPosition, mexcEntryTypeByPosition, mexcOrderKind, normalizeMexcClosed, normalizeOkxClosed, normalizeOkxOpen, normalizeBitgetClosed,
+  classifyExchangeAuthError, mexcStopsByPosition, mexcEntryTypeByPosition, mexcOrderKind, mexcExitsByPosition,
+  enrichWithOrders, okxOrderRow, okxStopRow, bitgetOrderRow, bitgetStopRow, normalizeMexcClosed, normalizeOkxClosed, normalizeOkxOpen, normalizeBitgetClosed,
 } from './exchangeNormalize.js';
 
 // Binance's public market-data mirror — api.binance.com returns 403 to
@@ -6033,6 +6034,7 @@ async function handleRequest(request, env) {
 
         // ── Step 4: Build trade objects ───────────────────────────────────
         const csMap = await mexcContractSizes();
+        const exitsByPos = mexcExitsByPosition(filledOrders, (sym) => csMap[sym] || 1);
         trades = positions.map(p => {
           const openMs = toMs(p.createTime || p.openTime || p.create_time || p.openTimestamp);
           const entryDate = openMs > 0 ? new Date(openMs).toISOString() : new Date().toISOString();
@@ -6060,6 +6062,7 @@ async function handleRequest(request, env) {
               // Limit vs market from the opening order (by positionId, else
               // the time-matched one).
               orderType: entryTypeByPos.get(String(p.positionId ?? '')) || byTime.kind,
+              exits: exitsByPos.get(String(p.positionId ?? '')),
             }),
             session: sessionFromDate(entryDate),
           };
@@ -6355,8 +6358,42 @@ async function handleRequest(request, env) {
           okxRows = await okxFetch('');
         }
         const ctMap = await okxContractValues();
+        // positions-history has no stop, order type or TP breakdown — the
+        // order history does. Both lookups are best-effort: a failure just
+        // leaves those fields empty, as before.
+        const okxGet = async (path) => {
+          const ts = new Date().toISOString();
+          const sign = await hmacBase64(apiSecret, ts + 'GET' + path);
+          const r = await fetch(`https://www.okx.com${path}`, {
+            headers: { 'OK-ACCESS-KEY': apiKey, 'OK-ACCESS-SIGN': sign, 'OK-ACCESS-TIMESTAMP': ts, 'OK-ACCESS-PASSPHRASE': passphrase || '', 'Content-Type': 'application/json' },
+          });
+          const d = await r.json();
+          if (d.code !== '0') throw new Error(`OKX ${d.code}: ${d.msg || 'error'}`);
+          return d.data || [];
+        };
+        let okxOrders = [];
+        try {
+          // Filled orders, last 3 months, newest first; `after` pages by ordId.
+          let after = '';
+          for (let i = 0; i < 3; i++) {
+            const chunk = await okxGet(`/api/v5/trade/orders-history-archive?instType=SWAP&state=filled&limit=100${after ? `&after=${after}` : ''}`);
+            okxOrders = okxOrders.concat(chunk);
+            if (chunk.length < 100) break;
+            after = chunk[chunk.length - 1].ordId || '';
+            if (!after) break;
+          }
+        } catch { /* optional */ }
+        // TP/SL set after entry live in conditional / oco algo orders.
+        let okxAlgos = [];
+        for (const ordType of ['conditional', 'oco']) {
+          for (const state of ['effective', 'canceled']) {
+            try { okxAlgos = okxAlgos.concat(await okxGet(`/api/v5/trade/orders-algo-history?ordType=${ordType}&state=${state}&limit=100`)); } catch { /* optional */ }
+          }
+        }
+        const okxOrderRows = okxOrders.map((o) => okxOrderRow(o, ctMap[o.instId] || 1));
+        const okxStopRows = okxAlgos.map(okxStopRow);
         trades = okxRows.map((p) => {
-          const t = normalizeOkxClosed(p, ctMap[p.instId] || 1);
+          const t = enrichWithOrders(normalizeOkxClosed(p, ctMap[p.instId] || 1), okxOrderRows, okxStopRows);
           return { ...t, session: sessionFromDate(t.entryDate) };
         });
       }
@@ -6396,10 +6433,41 @@ async function handleRequest(request, env) {
         } else {
           bgRows = (await bitgetFetch('')).list;
         }
+        // history-position has no stop, order type or TP breakdown — the
+        // order history (and TP/SL plan history) does. Best-effort, 90 days.
+        const bitgetGet = async (path) => {
+          const ts = String(Date.now());
+          const sign = await hmacBase64(apiSecret, ts + 'GET' + path);
+          const r = await fetch(`https://api.bitget.com${path}`, {
+            headers: { 'ACCESS-KEY': apiKey, 'ACCESS-SIGN': sign, 'ACCESS-TIMESTAMP': ts, 'ACCESS-PASSPHRASE': passphrase || '', 'Content-Type': 'application/json' },
+          });
+          const d = await r.json();
+          if (d.code !== '00000') throw new Error(`Bitget ${d.code}: ${d.msg || 'error'}`);
+          return d.data || {};
+        };
+        const bgWindow = `&startTime=${Date.now() - 89 * DAY_MS}&endTime=${Date.now()}`;
+        let bgOrders = [];
+        try {
+          let idLessThan = '';
+          for (let i = 0; i < 3; i++) {
+            const d = await bitgetGet(`/api/v2/mix/order/orders-history?productType=USDT-FUTURES&limit=100${bgWindow}${idLessThan ? `&idLessThan=${idLessThan}` : ''}`);
+            const list = d.entrustedList || [];
+            bgOrders = bgOrders.concat(list);
+            if (list.length < 100 || !d.endId) break;
+            idLessThan = d.endId;
+          }
+        } catch { /* optional */ }
+        let bgPlans = [];
+        try {
+          const d = await bitgetGet(`/api/v2/mix/order/orders-plan-history?productType=USDT-FUTURES&planType=profit_loss&limit=100${bgWindow}`);
+          bgPlans = d.entrustedList || [];
+        } catch { /* optional */ }
+        const bgOrderRows = bgOrders.filter((o) => parseFloat(o.baseVolume) > 0).map(bitgetOrderRow);
+        const bgStopRows = bgPlans.map(bitgetStopRow);
         trades = bgRows.map((p) => {
           // Correct v2 field names (openAvgPrice/closeAvgPrice/openFee/…) and
           // the gross/fee convention live in exchangeNormalize.
-          const t = normalizeBitgetClosed(p);
+          const t = enrichWithOrders(normalizeBitgetClosed(p), bgOrderRows, bgStopRows);
           return { ...t, session: sessionFromDate(t.entryDate) };
         });
       }

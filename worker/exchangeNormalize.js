@@ -130,6 +130,8 @@ export function normalizeMexcClosed(p, ctx = {}) {
       : [],
     source: 'mexc',
     externalId: ctx.externalId,
+    // TP1/TP2/… breakdown from the position's closing fills (2+ closes).
+    ...(ctx.exits ? { exits: ctx.exits } : {}),
   });
 }
 
@@ -269,4 +271,148 @@ export function classifyExchangeAuthError(exchange, code, message = '') {
   }
   for (const [reason, re] of AUTH_PATTERNS) if (re.test(msg)) return reason;
   return null;
+}
+
+// ── Order-history enrichment (OKX / Bitget) ──────────────────────────────────
+// Their position-history rows carry no stop, no order type and no TP
+// breakdown. The order history does, so each venue's orders are first mapped
+// to one shape:
+//   { pair, direction, role: 'open'|'close', kind: 'limit'|'market',
+//     price, size (coins), time (ms), sl, tp }
+// and TP/SL plan orders to { pair, direction, sl, tp, time }. Then
+// enrichWithOrders() attaches them to a closed trade by pair + direction +
+// the position's time window — the same idea the Bybit path uses.
+
+const MIN = 60 * 1000;
+
+// Exits breakdown (TP1/TP2/…) from 2+ closing fills; percents sum to exactly
+// 100 (the last slice absorbs rounding — see the Bybit merge for why).
+export function buildExits(fills) {
+  const usable = fills.filter((f) => f.price > 0 && f.size > 0).sort((a, b) => a.time - b.time);
+  if (usable.length < 2) return null;
+  const total = usable.reduce((s, f) => s + f.size, 0);
+  const exits = usable.map((f) => ({ price: f.price, percent: Math.round((f.size / total) * 10000) / 100 }));
+  const sumButLast = exits.slice(0, -1).reduce((s, e) => s + e.percent, 0);
+  exits[exits.length - 1].percent = Number(Math.max(0, 100 - sumButLast).toFixed(2));
+  return exits;
+}
+
+export function enrichWithOrders(trade, orders = [], stops = []) {
+  const entryMs = Date.parse(trade.entryDate) || 0;
+  const exitMs = Date.parse(trade.exitDate) || entryMs;
+  if (!entryMs) return trade;
+  const same = (o) => o.pair === trade.pair && o.direction === trade.direction;
+  const byTime = (a, b) => a.time - b.time;
+  const inPosition = orders.filter((o) => same(o) && o.time >= entryMs - 2 * MIN && o.time <= exitMs + 2 * MIN);
+  const opens = inPosition.filter((o) => o.role === 'open').sort(byTime);
+  const closes = inPosition.filter((o) => o.role === 'close');
+  // The ORIGINAL stop: the attached one on the opening order, else the
+  // earliest TP/SL order placed during the position (a stop later moved to
+  // break-even would give risk ≈ 0 and an absurd R).
+  const planned = stops.filter((st) => same(st) && st.time >= entryMs - 10 * MIN && st.time <= exitMs + MIN).sort(byTime);
+  const out = { ...trade };
+  if (opens[0]?.kind) out.orderType = opens[0].kind;
+  if (!(out.stopLoss > 0)) out.stopLoss = opens.find((o) => o.sl > 0)?.sl || planned.find((st) => st.sl > 0)?.sl || 0;
+  if (!out.tps?.length) {
+    const tp = opens.find((o) => o.tp > 0)?.tp || planned.find((st) => st.tp > 0)?.tp || 0;
+    out.tps = tp > 0 ? [tp] : [];
+  }
+  const exits = buildExits(closes);
+  if (exits) out.exits = exits;
+  return withRisk(out);
+}
+
+// Which position a fill belongs to. Hedge mode names it (posSide); in one-way
+// ("net") mode a reduce-only fill closes the side opposite to its own.
+const sideToDirection = (side, closing) => {
+  const buy = String(side).toLowerCase().startsWith('buy');
+  return closing ? (buy ? 'short' : 'long') : (buy ? 'long' : 'short');
+};
+
+// OKX /trade/orders-history-archive row (filled).
+export function okxOrderRow(o, ctVal = 1) {
+  const hedge = o.posSide === 'long' || o.posSide === 'short';
+  const buy = o.side === 'buy';
+  const closing = String(o.reduceOnly) === 'true' || (hedge && ((o.posSide === 'long' && !buy) || (o.posSide === 'short' && buy)));
+  const algo = Array.isArray(o.attachAlgoOrds) ? o.attachAlgoOrds : [];
+  return {
+    pair: okxPair(o.instId),
+    direction: hedge ? o.posSide : sideToDirection(o.side, closing),
+    role: closing ? 'close' : 'open',
+    // market / optimal_limit_ioc fill at market; limit, post_only, fok, ioc are priced.
+    kind: o.ordType === 'market' || o.ordType === 'optimal_limit_ioc' ? 'market' : 'limit',
+    price: num(o.avgPx),
+    size: trim(num(o.accFillSz) * (ctVal || 1)),
+    time: parseInt(o.fillTime) || parseInt(o.uTime) || parseInt(o.cTime) || 0,
+    sl: num(o.slTriggerPx) || num(algo.find((a) => has(a.slTriggerPx))?.slTriggerPx),
+    tp: num(o.tpTriggerPx) || num(algo.find((a) => has(a.tpTriggerPx))?.tpTriggerPx),
+  };
+}
+
+// OKX /trade/orders-algo-history row (conditional / oco TP-SL).
+export function okxStopRow(a) {
+  const hedge = a.posSide === 'long' || a.posSide === 'short';
+  return {
+    pair: okxPair(a.instId),
+    // A stop closes the position, so its side is the opposite one.
+    direction: hedge ? a.posSide : sideToDirection(a.side, true),
+    sl: num(a.slTriggerPx),
+    tp: num(a.tpTriggerPx),
+    time: parseInt(a.cTime) || 0,
+  };
+}
+
+// Bitget v2 /mix/order/orders-history row.
+export function bitgetOrderRow(o) {
+  const hedge = o.posSide === 'long' || o.posSide === 'short';
+  const closing = /close/i.test(o.tradeSide || '') || String(o.reduceOnly).toUpperCase() === 'YES';
+  return {
+    pair: (o.symbol || '').replace(/_.*/, '').toUpperCase(),
+    direction: hedge ? o.posSide : sideToDirection(o.side, closing),
+    role: closing ? 'close' : 'open',
+    kind: o.orderType === 'market' ? 'market' : 'limit',
+    price: num(o.priceAvg),
+    size: num(o.baseVolume),
+    time: parseInt(o.uTime) || parseInt(o.cTime) || 0,
+    sl: num(o.presetStopLossPrice),
+    tp: num(o.presetStopSurplusPrice),
+  };
+}
+
+// Bitget v2 /mix/order/orders-plan-history?planType=profit_loss row.
+const BITGET_SL_PLANS = ['loss_plan', 'pos_loss'];
+const BITGET_TP_PLANS = ['profit_plan', 'pos_profit'];
+export function bitgetStopRow(p) {
+  const hedge = p.posSide === 'long' || p.posSide === 'short';
+  const holdSide = p.holdSide === 'long' || p.holdSide === 'short' ? p.holdSide : null;
+  const trigger = num(p.triggerPrice);
+  return {
+    pair: (p.symbol || '').replace(/_.*/, '').toUpperCase(),
+    direction: hedge ? p.posSide : holdSide || sideToDirection(p.side, true),
+    sl: BITGET_SL_PLANS.includes(p.planType) ? trigger : 0,
+    tp: BITGET_TP_PLANS.includes(p.planType) ? trigger : 0,
+    time: parseInt(p.cTime) || 0,
+  };
+}
+
+// MEXC: TP breakdown from the position's closing fills (side 2 = close short,
+// 4 = close long), matched exactly by positionId. Map(positionId → exits).
+export function mexcExitsByPosition(orders = [], contractSizeOf = () => 1) {
+  const fills = new Map();
+  for (const o of orders) {
+    const side = parseInt(o?.side);
+    if (side !== 2 && side !== 4) continue;
+    const id = o.positionId != null ? String(o.positionId) : '';
+    if (!id || id === '0') continue;
+    const sym = (o.symbol || '').replace(/_/g, '');
+    const f = { price: num(o.dealAvgPrice), size: num(o.dealVol) * (contractSizeOf(sym) || 1), time: parseInt(o.updateTime ?? o.createTime) || 0 };
+    if (!fills.has(id)) fills.set(id, []);
+    fills.get(id).push(f);
+  }
+  const out = new Map();
+  for (const [id, list] of fills) {
+    const exits = buildExits(list);
+    if (exits) out.set(id, exits);
+  }
+  return out;
 }

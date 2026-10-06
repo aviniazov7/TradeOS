@@ -1,6 +1,6 @@
 import { describe, it, expect } from 'vitest';
 import {
-  withRisk, classifyExchangeAuthError, mexcTradeFee, mexcStopsByPosition, mexcOrderKind, mexcEntryTypeByPosition, normalizeMexcClosed, normalizeOkxClosed, normalizeOkxOpen, normalizeBitgetClosed,
+  withRisk, classifyExchangeAuthError, buildExits, enrichWithOrders, okxOrderRow, okxStopRow, bitgetOrderRow, bitgetStopRow, mexcExitsByPosition, mexcTradeFee, mexcStopsByPosition, mexcOrderKind, mexcEntryTypeByPosition, normalizeMexcClosed, normalizeOkxClosed, normalizeOkxOpen, normalizeBitgetClosed,
 } from './exchangeNormalize';
 
 // Sample rows are the exchanges' own documented example responses (as quoted
@@ -239,5 +239,105 @@ describe('classifyExchangeAuthError', () => {
     expect(classifyExchangeAuthError('okx', null, 'API key has expired')).toBe('key_expired');
     expect(classifyExchangeAuthError('bybit', 10006, 'Too many visits!')).toBeNull();
     expect(classifyExchangeAuthError('mexc', null, 'fetch failed')).toBeNull();
+  });
+});
+
+describe('buildExits', () => {
+  it('needs at least two closing fills', () => {
+    expect(buildExits([{ price: 10, size: 1, time: 1 }])).toBeNull();
+  });
+  it('orders by time and makes the percents sum to exactly 100', () => {
+    const e = buildExits([
+      { price: 12, size: 1, time: 3 }, { price: 10, size: 1, time: 1 }, { price: 11, size: 1, time: 2 },
+    ]);
+    expect(e.map((x) => x.price)).toEqual([10, 11, 12]);
+    expect(e.reduce((s, x) => s + x.percent, 0)).toBeCloseTo(100, 8);
+  });
+});
+
+describe('OKX order rows', () => {
+  // The documented closing-order sample: net mode, reduce-only sell.
+  const CLOSE = {
+    instId: 'LINK-USDT-SWAP', ordType: 'limit', posSide: 'net', reduceOnly: 'true', side: 'sell',
+    avgPx: '13.142', accFillSz: '0.1', state: 'filled', fillTime: '1751705807467', cTime: '1751705801423',
+    slTriggerPx: '', tpTriggerPx: '', attachAlgoOrds: [],
+  };
+  it('reads a reduce-only sell in net mode as closing a LONG, in coins', () => {
+    expect(okxOrderRow(CLOSE, 1)).toMatchObject({ pair: 'LINKUSDT', direction: 'long', role: 'close', kind: 'limit', price: 13.142, size: 0.1, time: 1751705807467 });
+  });
+  it('reads an opening market buy with an attached stop', () => {
+    const open = okxOrderRow({ ...CLOSE, ordType: 'market', reduceOnly: 'false', side: 'buy', attachAlgoOrds: [{ slTriggerPx: '12.5', tpTriggerPx: '14' }] }, 10);
+    expect(open).toMatchObject({ direction: 'long', role: 'open', kind: 'market', sl: 12.5, tp: 14, size: 1 });
+  });
+  it('uses posSide in hedge mode', () => {
+    expect(okxOrderRow({ ...CLOSE, posSide: 'short', side: 'buy', reduceOnly: 'false' })).toMatchObject({ direction: 'short', role: 'close' });
+  });
+  it('maps a TP/SL algo order to the position it protects', () => {
+    expect(okxStopRow({ instId: 'BTC-USDT-SWAP', posSide: 'net', side: 'sell', slTriggerPx: '60000', tpTriggerPx: '', cTime: '5' }))
+      .toEqual({ pair: 'BTCUSDT', direction: 'long', sl: 60000, tp: 0, time: 5 });
+  });
+});
+
+describe('Bitget order rows', () => {
+  // The documented orders-history sample (hedge mode).
+  const ROW = {
+    symbol: 'BTCUSDT', size: '0.002', priceAvg: '37000', status: 'filled', side: 'buy', posSide: 'long',
+    tradeSide: 'open', orderType: 'limit', presetStopSurplusPrice: '39000', presetStopLossPrice: '36000',
+    reduceOnly: 'NO', baseVolume: '0.002', cTime: '1700727885449', uTime: '1700727944563',
+  };
+  it('reads an opening limit order with preset SL/TP', () => {
+    expect(bitgetOrderRow(ROW)).toMatchObject({ pair: 'BTCUSDT', direction: 'long', role: 'open', kind: 'limit', price: 37000, size: 0.002, sl: 36000, tp: 39000 });
+  });
+  it('reads a closing order', () => {
+    expect(bitgetOrderRow({ ...ROW, side: 'sell', tradeSide: 'close', orderType: 'market' })).toMatchObject({ role: 'close', direction: 'long', kind: 'market' });
+  });
+  it('maps TP/SL plans by plan type', () => {
+    expect(bitgetStopRow({ symbol: 'BTCUSDT', posSide: 'long', planType: 'pos_loss', triggerPrice: '35500', cTime: '9' })).toMatchObject({ direction: 'long', sl: 35500, tp: 0 });
+    expect(bitgetStopRow({ symbol: 'BTCUSDT', holdSide: 'short', planType: 'profit_plan', triggerPrice: '30000', cTime: '9' })).toMatchObject({ direction: 'short', sl: 0, tp: 30000 });
+  });
+});
+
+describe('enrichWithOrders', () => {
+  const trade = withRisk({
+    pair: 'BTCUSDT', direction: 'long', entryPrice: 100, exitPrice: 0, quantity: 2, stopLoss: 0, tps: [],
+    entryDate: new Date(1_000_000).toISOString(), exitDate: new Date(5_000_000).toISOString(),
+  });
+  const orders = [
+    { pair: 'BTCUSDT', direction: 'long', role: 'open', kind: 'limit', price: 100, size: 2, time: 1_000_500, sl: 0, tp: 0 },
+    { pair: 'BTCUSDT', direction: 'long', role: 'close', kind: 'limit', price: 110, size: 1, time: 3_000_000, sl: 0, tp: 0 },
+    { pair: 'BTCUSDT', direction: 'long', role: 'close', kind: 'market', price: 120, size: 1, time: 4_000_000, sl: 0, tp: 0 },
+    { pair: 'BTCUSDT', direction: 'long', role: 'open', kind: 'market', price: 90, size: 1, time: 9_000_000, sl: 0, tp: 0 }, // a later position
+    { pair: 'ETHUSDT', direction: 'long', role: 'open', kind: 'market', price: 5, size: 1, time: 1_000_100, sl: 0, tp: 0 },  // other pair
+  ];
+  const stops = [
+    { pair: 'BTCUSDT', direction: 'long', sl: 99, tp: 0, time: 2_000_000 },   // moved to near break-even
+    { pair: 'BTCUSDT', direction: 'long', sl: 95, tp: 0, time: 1_200_000 },   // original
+  ];
+  const t = enrichWithOrders({ ...trade, exitPrice: 115 }, orders, stops);
+
+  it('takes the order type from the opening order of THIS position', () => {
+    expect(t.orderType).toBe('limit');
+  });
+  it('takes the ORIGINAL stop and derives risk/R', () => {
+    expect(t).toMatchObject({ stopLoss: 95, riskAmount: 10, rrRatio: 3 });
+  });
+  it('builds the TP breakdown from the closing fills', () => {
+    expect(t.exits).toEqual([{ price: 110, percent: 50 }, { price: 120, percent: 50 }]);
+  });
+  it('keeps a stop the exchange already reported', () => {
+    expect(enrichWithOrders({ ...trade, stopLoss: 97 }, orders, stops).stopLoss).toBe(97);
+  });
+});
+
+describe('mexcExitsByPosition', () => {
+  it('builds exits from a position\'s closing fills, in coins', () => {
+    const m = mexcExitsByPosition([
+      { positionId: 5, symbol: 'RVN_USDT', side: 4, dealAvgPrice: '0.035', dealVol: '600', updateTime: 2 },
+      { positionId: 5, symbol: 'RVN_USDT', side: 4, dealAvgPrice: '0.036', dealVol: '400', updateTime: 3 },
+      { positionId: 5, symbol: 'RVN_USDT', side: 1, dealAvgPrice: '0.034', dealVol: '1000', updateTime: 1 }, // the open
+      { positionId: 6, symbol: 'RVN_USDT', side: 4, dealAvgPrice: '0.04', dealVol: '1', updateTime: 4 },      // single close
+    ], () => 10);
+    expect(m.get('5')).toEqual([{ price: 0.035, percent: 60 }, { price: 0.036, percent: 40 }]);
+    expect(m.has('6')).toBe(false);
   });
 });
