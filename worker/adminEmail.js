@@ -65,3 +65,24 @@ export function chunk(list, size) {
   for (let i = 0; i < list.length; i += size) out.push(list.slice(i, i + size));
   return out;
 }
+
+// Resend's error → one plain Hebrew sentence the admin can act on. The raw
+// status code stays at the end for debugging.
+export function friendlyResendError(status, message = '') {
+  const m = String(message || '').toLowerCase();
+  let text;
+  if (/testing email|own email|verify a domain|resend\.dev/.test(m) || (status === 422 && /to` field|to field/.test(m))) {
+    text = 'חיבור המיילים עדיין במצב בדיקה ושולח רק אליך. כדי לשלוח למשתמשים צריך לחבר דומיין ב-Resend';
+  } else if (/domain is not verified|not verified/.test(m)) {
+    text = 'הדומיין של כתובת השולח עוד לא אומת ב-Resend';
+  } else if (status === 401 || /api key/.test(m)) {
+    text = 'מפתח ה-Resend לא תקין או חסר';
+  } else if (status === 429 || /rate limit|too many/.test(m)) {
+    text = 'נשלחו יותר מדי מיילים בבת אחת — נסה שוב בעוד דקה';
+  } else if (status === 422) {
+    text = 'כתובת המייל של הנמען לא תקינה';
+  } else {
+    text = 'שליחת המייל נכשלה';
+  }
+  return status ? `${text} · קוד ${status}` : text;
+}

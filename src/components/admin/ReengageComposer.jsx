@@ -102,17 +102,24 @@ export default function ReengageComposer({ recipients, onSent }) {
   const applyTemplate = (t) => { setTitle(t.title); setBody(t.body); setCta(t.cta); setPath(t.path); setPushText(''); setHook(null); };
   const pushBody = (pushText.trim() || body.trim()).slice(0, 400);
 
-  // Sends through the chosen channels and reports both results in one toast.
+  // Sends through the chosen channels and reports both results in one toast,
+  // one plain line per channel.
   const deliver = async (targets, mode) => {
     setSending(mode);
-    const parts = [];
+    const lines = [];
     let failed = false;
+    let anySent = false;
+    const single = targets.length === 1;
     try {
       if (usePush && targets.some((r) => r.id)) {
         try {
           const r = await adminSendBulkNotification({ uids: targets.map((t) => t.id).filter(Boolean), title: title.trim(), body: pushBody, url: path });
-          parts.push(`Push: ${r?.recipients ?? 0} משתמשים`);
-        } catch (e) { failed = true; parts.push(`Push נכשל: ${e.message}`); }
+          const n = r?.recipients ?? 0;
+          if (n > 0) anySent = true;
+          lines.push(n > 0
+            ? `התראה לטלפון נשלחה ל-${n === 1 ? 'משתמש אחד' : `${n} משתמשים`}`
+            : single ? 'התראה לטלפון לא נשלחה — המשתמש לא אישר התראות' : 'התראה לטלפון לא נשלחה — אף אחד מהנמענים לא אישר התראות');
+        } catch (e) { failed = true; lines.push(`ההתראה לא נשלחה: ${e.message}`); }
       }
       const mailTargets = targets.filter((t) => t.email);
       if (useEmail && mailTargets.length) {
@@ -121,12 +128,20 @@ export default function ReengageComposer({ recipients, onSent }) {
             recipients: mailTargets.map((t) => ({ email: t.email, name: t.name })),
             subject: title.trim(), headline: title.trim(), message: body.trim(), ctaText: cta.trim(), ctaPath: path,
           });
-          parts.push(`מייל: ${r.sent} נשלחו${r.failed ? `, ${r.failed} נכשלו` : ''}`);
-          if (r.error) { failed = true; parts.push(r.error); }
-        } catch (e) { failed = true; parts.push(`מייל נכשל: ${e.message}`); }
+          if (r.sent) anySent = true;
+          if (r.sent) lines.push(`מייל נשלח ל-${r.sent === 1 ? 'נמען אחד' : `${r.sent} נמענים`}${r.failed ? ` (${r.failed} נכשלו)` : ''}`);
+          if (r.error) { failed = true; lines.push(`המייל לא נשלח: ${r.error}`); }
+        } catch (e) { failed = true; lines.push(`המייל לא נשלח: ${e.message}`); }
+      } else if (useEmail && !mailTargets.length) {
+        lines.push(single ? 'למשתמש אין כתובת מייל' : 'לאף נמען אין כתובת מייל');
       }
-      (failed ? toast.error : toast.success)(parts.join(' · ') || 'לא נשלח דבר', { duration: failed ? 8000 : 4000 });
-      if (!failed && mode === 'all') onSent?.();
+      const content = lines.length ? (
+        <div className="space-y-1 text-right">{lines.map((l) => <div key={l}>{l}</div>)}</div>
+      ) : 'לא נשלח דבר';
+      if (failed) toast.error(content, { duration: 9000 });
+      else if (anySent) toast.success(content, { duration: 5000 });
+      else toast(content, { duration: 7000 }); // nothing to deliver, but nothing broke
+      if (!failed && anySent && mode === 'all') onSent?.();
     } finally {
       setSending(null);
     }

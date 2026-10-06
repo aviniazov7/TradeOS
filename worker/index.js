@@ -14,7 +14,7 @@ import {
   enrichWithOrders, okxOrderRow, okxStopRow, bitgetOrderRow, bitgetStopRow, mexcCronOpen, mexcCronClosed,
   normalizeMexcClosed, normalizeOkxClosed, normalizeOkxOpen, normalizeBitgetClosed,
 } from './exchangeNormalize.js';
-import { buildCampaignEmails, chunk } from './adminEmail.js';
+import { buildCampaignEmails, chunk, friendlyResendError } from './adminEmail.js';
 import { emailShell, C as EMAIL_C, bg as emailBg, txt as emailTxt, esc as emailEsc, para as emailPara } from './emailTheme.js';
 import { buildDigestEmail } from './adminDigest.js';
 import { pickMarketFacts, HOOK_SYSTEM_PROMPT, buildHookUserMessage, validateHook, templateHook } from './marketHook.js';
@@ -4442,7 +4442,7 @@ async function handleRequest(request, env) {
     if (!r.ok) {
       // Pass the actual Resend message back so the admin sees the real reason
       // (e.g. "you can only send testing emails to your own email address").
-      return new Response(JSON.stringify({ error: `Resend ${r.status}: ${r.message || 'unknown error'}`, sentTo: adminTo }), { status: 502, headers: { ...cors, 'Content-Type': 'application/json' } });
+      return new Response(JSON.stringify({ error: friendlyResendError(r.status, r.message), sentTo: adminTo }), { status: 502, headers: { ...cors, 'Content-Type': 'application/json' } });
     }
     return new Response(JSON.stringify({ ok: true, sentTo: adminTo, stats: { newUsers: report.digest.newWeek, upgrades: report.digest.upgrades, expiringSoon: report.digest.expiring.length, churn: report.digest.churn.length } }), { headers: { ...cors, 'Content-Type': 'application/json' } });
   }
@@ -4473,7 +4473,7 @@ async function handleRequest(request, env) {
     if (!r.ok) {
       // Pass Resend's real message through — e.g. the test-mode "can only send
       // to your own address" error — so the admin sees exactly why.
-      return new Response(JSON.stringify({ error: `Resend ${r.status}: ${r.message || r.error || 'unknown error'}`, sentTo: email }), { status: 502, headers: { ...cors, 'Content-Type': 'application/json' } });
+      return new Response(JSON.stringify({ error: friendlyResendError(r.status, r.message || r.error), sentTo: email }), { status: 502, headers: { ...cors, 'Content-Type': 'application/json' } });
     }
     appendAudit(env, { kind: 'payment_email', actor: adminUid, target: email, amount: amt, days: Number(days) || null });
     return new Response(JSON.stringify({ ok: true, sentTo: email }), { headers: { ...cors, 'Content-Type': 'application/json' } });
@@ -4534,7 +4534,7 @@ async function handleRequest(request, env) {
     for (const batch of chunk(emails, 100)) {
       const r = await sendEmailBatch(env, batch);
       if (r.ok) sent += batch.length;
-      else { failed += batch.length; if (!firstError) firstError = `Resend ${r.status}: ${r.message || 'error'}`; }
+      else { failed += batch.length; if (!firstError) firstError = friendlyResendError(r.status, r.message); }
     }
     appendAudit(env, { kind: 'email-campaign', actor: adminUid, targeted: emails.length, sent, failed, subject: String(subject || headline).slice(0, 120) });
     return new Response(JSON.stringify({ ok: sent > 0, sent, failed, targeted: emails.length, ...(firstError ? { error: firstError } : {}) }), {
