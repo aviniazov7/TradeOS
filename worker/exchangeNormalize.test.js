@@ -1,6 +1,6 @@
 import { describe, it, expect } from 'vitest';
 import {
-  withRisk, mexcTradeFee, normalizeMexcClosed, normalizeOkxClosed, normalizeOkxOpen, normalizeBitgetClosed,
+  withRisk, mexcTradeFee, mexcStopsByPosition, normalizeMexcClosed, normalizeOkxClosed, normalizeOkxOpen, normalizeBitgetClosed,
 } from './exchangeNormalize';
 
 // Sample rows are the exchanges' own documented example responses (as quoted
@@ -157,5 +157,37 @@ describe('Bitget closed position', () => {
     expect(t).toMatchObject({ pair: 'BTCUSDT', direction: 'long', source: 'bitget', externalId: 'BTCUSDT_1700720651684' });
     expect(t.entryDate).toBe(new Date(1700720651684).toISOString());
     expect(t.exitDate).toBe(new Date(1700720700400).toISOString());
+  });
+});
+
+describe('MEXC stop loss / take profit per position', () => {
+  it('takes the ORIGINAL (earliest) stop, even if it was later moved', () => {
+    const m = mexcStopsByPosition([
+      { positionId: 7, stopLossPrice: '0.3490', createTime: 2000 }, // moved to break-even
+      { positionId: 7, stopLossPrice: '0.3400', createTime: 1000 }, // original
+      { positionId: 7, takeProfitPrice: '0.3700', createTime: 1500 },
+    ]);
+    expect(m.get('7')).toEqual({ sl: 0.34, tp: 0.37 });
+  });
+
+  it('combines an SL from a stop order with a TP from the opening order', () => {
+    const m = mexcStopsByPosition([
+      { positionId: '9', stopLossPrice: '0', takeProfitPrice: '120', createTime: 10 }, // filled open order
+      { positionId: '9', stopLossPrice: '95', takeProfitPrice: '0', createTime: 20 },  // TP/SL stop order
+    ]);
+    expect(m.get('9')).toEqual({ sl: 95, tp: 120 });
+  });
+
+  it('ignores rows without a position or without prices', () => {
+    const m = mexcStopsByPosition([{ stopLossPrice: '1' }, { positionId: 0, stopLossPrice: '1' }, { positionId: 3 }]);
+    expect(m.size).toBe(0);
+  });
+
+  it('feeds risk and R into the closed trade', () => {
+    const t = normalizeMexcClosed(
+      { ...MEXC_SAMPLE, openAvgPrice: '100', closeAvgPrice: '110', closeVol: '10' },
+      { contractSize: 1, sl: 95, tp: 120, entryDate: 'a', exitDate: 'b', externalId: 'x' },
+    );
+    expect(t).toMatchObject({ stopLoss: 95, tps: [120], riskAmount: 50, rrRatio: 2 });
   });
 });
