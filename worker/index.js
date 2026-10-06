@@ -10,7 +10,7 @@ import {
   buildMentionIndex, attributeMoves, describeFinding, ATTRIBUTION_WINDOW_MIN,
 } from './newsImpact.js';
 import {
-  mexcStopsByPosition, normalizeMexcClosed, normalizeOkxClosed, normalizeOkxOpen, normalizeBitgetClosed,
+  mexcStopsByPosition, mexcEntryTypeByPosition, mexcOrderKind, normalizeMexcClosed, normalizeOkxClosed, normalizeOkxOpen, normalizeBitgetClosed,
 } from './exchangeNormalize.js';
 
 // Binance's public market-data mirror — api.binance.com returns 403 to
@@ -5953,6 +5953,7 @@ async function handleRequest(request, env) {
           stopOrders = await mexcList('/api/v1/private/stoporder/list/orders', { start_time: startTime }, 5);
         } catch { /* optional */ }
         const stopsByPos = mexcStopsByPosition([...filledOrders, ...stopOrders]);
+        const entryTypeByPos = mexcEntryTypeByPosition(filledOrders);
         if (debug) debugRaw = { positions: positions.slice(0, 3), orders: filledOrders.slice(0, 5), stopOrders: stopOrders.slice(0, 5) };
         for (const o of filledOrders) {
           const side = parseInt(o.side);
@@ -5970,7 +5971,7 @@ async function handleRequest(request, env) {
           const tp = side === 1 || side === 3
             ? parseFloat(o.takeProfitPrice || o.take_profit_price || o.tpPrice || o.tp_price || 0) || 0
             : 0;
-          pool[sym][side].push({ fillTime, used: false, sl, tp });
+          pool[sym][side].push({ fillTime, used: false, sl, tp, kind: mexcOrderKind(o.orderType) });
         }
         for (const sym of Object.keys(pool))
           for (const side of Object.keys(pool[sym]))
@@ -6018,7 +6019,7 @@ async function handleRequest(request, env) {
             }
             if (bestIdx >= 0) {
               opens[bestIdx].used = true;
-              slTpById.set(posId, { sl: opens[bestIdx].sl, tp: opens[bestIdx].tp });
+              slTpById.set(posId, { sl: opens[bestIdx].sl, tp: opens[bestIdx].tp, kind: opens[bestIdx].kind });
             }
           }
         }
@@ -6049,6 +6050,9 @@ async function handleRequest(request, env) {
             ...normalizeMexcClosed(p, {
               contractSize: csMap[sym.replace(/_/g, '')] || 1,
               entryDate, exitDate, externalId: posId, sl: slTp.sl, tp: slTp.tp,
+              // Limit vs market from the opening order (by positionId, else
+              // the time-matched one).
+              orderType: entryTypeByPos.get(String(p.positionId ?? '')) || byTime.kind,
             }),
             session: sessionFromDate(entryDate),
           };

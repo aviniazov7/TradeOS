@@ -74,7 +74,34 @@ export function mexcStopsByPosition(rows = []) {
   return out;
 }
 
-// ctx: { contractSize, entryDate, exitDate, externalId, sl, tp } — dates and
+// MEXC order types: 1 limit, 2 post-only maker, 3 IOC, 4 FOK (all priced
+// orders → 'limit'), 5 market, 6 market-converted-to-limit → 'market'.
+// null when the row has no orderType.
+export function mexcOrderKind(orderType) {
+  const n = parseInt(orderType);
+  if (!Number.isFinite(n)) return null;
+  return n === 5 || n === 6 ? 'market' : 'limit';
+}
+
+// Entry order type per position: the EARLIEST opening order (side 1 = open
+// long, 3 = open short) that carries the positionId.
+// Returns Map(positionId → 'limit' | 'market').
+export function mexcEntryTypeByPosition(orders = []) {
+  const first = new Map();
+  for (const o of orders) {
+    const side = parseInt(o?.side);
+    if (side !== 1 && side !== 3) continue;
+    const id = o.positionId != null ? String(o.positionId) : '';
+    const kind = mexcOrderKind(o.orderType);
+    if (!id || id === '0' || !kind) continue;
+    const at = parseInt(o.createTime ?? o.updateTime) || Number.MAX_SAFE_INTEGER;
+    const cur = first.get(id);
+    if (!cur || at < cur.at) first.set(id, { kind, at });
+  }
+  return new Map([...first].map(([id, v]) => [id, v.kind]));
+}
+
+// ctx: { contractSize, entryDate, exitDate, externalId, sl, tp, orderType } — dates, order type and
 // SL/TP come from the caller's order-history matching.
 export function normalizeMexcClosed(p, ctx = {}) {
   const fees = mexcTradeFee(p);
@@ -87,6 +114,7 @@ export function normalizeMexcClosed(p, ctx = {}) {
   return withRisk({
     pair: sym,
     direction: posType === 1 ? 'long' : 'short',
+    orderType: ctx.orderType === 'limit' ? 'limit' : 'market',
     entryPrice: num(p.openAvgPrice ?? p.open_avg_price),
     exitPrice: num(p.closeAvgPrice ?? p.close_avg_price),
     // MEXC vol is in CONTRACTS — convert to coin units via contractSize.

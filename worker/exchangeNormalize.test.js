@@ -1,6 +1,6 @@
 import { describe, it, expect } from 'vitest';
 import {
-  withRisk, mexcTradeFee, mexcStopsByPosition, normalizeMexcClosed, normalizeOkxClosed, normalizeOkxOpen, normalizeBitgetClosed,
+  withRisk, mexcTradeFee, mexcStopsByPosition, mexcOrderKind, mexcEntryTypeByPosition, normalizeMexcClosed, normalizeOkxClosed, normalizeOkxOpen, normalizeBitgetClosed,
 } from './exchangeNormalize';
 
 // Sample rows are the exchanges' own documented example responses (as quoted
@@ -189,5 +189,30 @@ describe('MEXC stop loss / take profit per position', () => {
       { contractSize: 1, sl: 95, tp: 120, entryDate: 'a', exitDate: 'b', externalId: 'x' },
     );
     expect(t).toMatchObject({ stopLoss: 95, tps: [120], riskAmount: 50, rrRatio: 2 });
+  });
+});
+
+describe('MEXC entry order type', () => {
+  it('maps MEXC order types to limit / market', () => {
+    expect([1, 2, 3, 4].map(mexcOrderKind)).toEqual(['limit', 'limit', 'limit', 'limit']);
+    expect(mexcOrderKind('5')).toBe('market');
+    expect(mexcOrderKind(6)).toBe('market');
+    expect(mexcOrderKind(undefined)).toBeNull();
+  });
+
+  it("takes the position's first OPENING order, ignoring closes", () => {
+    const m = mexcEntryTypeByPosition([
+      { positionId: 1, side: 4, orderType: 5, createTime: 50 },  // close long, market (ignored)
+      { positionId: 1, side: 1, orderType: 1, createTime: 10 },  // open long, limit
+      { positionId: 1, side: 1, orderType: 5, createTime: 20 },  // later add-on, market
+      { positionId: 2, side: 3, orderType: 5, createTime: 30 },  // open short, market
+    ]);
+    expect(m.get('1')).toBe('limit');
+    expect(m.get('2')).toBe('market');
+  });
+
+  it('puts the order type on the closed trade (market when unknown)', () => {
+    expect(normalizeMexcClosed(MEXC_SAMPLE, { orderType: 'limit' }).orderType).toBe('limit');
+    expect(normalizeMexcClosed(MEXC_SAMPLE, {}).orderType).toBe('market');
   });
 });

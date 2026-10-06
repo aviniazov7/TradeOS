@@ -88,6 +88,9 @@ export function useExchangeImport(journalId) {
         stopLoss: parseFloat(t.stopLoss) || existing.stopLoss || 0,
         ...(Array.isArray(t.exits) && t.exits.length ? { exits: t.exits } : {}),
         riskAmount: parseFloat(t.riskAmount) || existing.riskAmount || 0,
+        // The exchange knows limit vs market — a re-sync corrects rows that
+        // were imported before a venue reported it (they defaulted to market).
+        ...(t.orderType ? { orderType: t.orderType } : {}),
         pnlFromExchange: t.pnlFromExchange ?? existing.pnlFromExchange,
         status: 'closed',
         externalId: existing.externalId || t.externalId,
