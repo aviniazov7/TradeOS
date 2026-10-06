@@ -109,7 +109,7 @@ function UserPanel({ user, onOpenDetail, onDeleted }) {
         ].map((s) => (
           <div key={s.label} className="rounded-xl bg-bg-tertiary px-3 py-2.5 flex flex-col gap-1 min-w-0">
             <span className="text-xs text-text-secondary">{s.label}</span>
-            <b className={`text-[15px] text-text-primary truncate ${s.mono ? 'num-mono' : ''}`}>{s.value}</b>
+            <b className={`text-[15px] leading-snug text-text-primary ${s.mono ? 'num-mono' : ''}`}>{s.value}</b>
           </div>
         ))}
       </div>
@@ -157,10 +157,12 @@ function UserPanel({ user, onOpenDetail, onDeleted }) {
       </div>
 
       {user.role !== 'admin' && (
-        <button type="button" onClick={() => setConfirmDelete(true)}
-          className="self-start h-10 px-1 inline-flex items-center gap-1.5 text-[13px] font-semibold text-loss/90 hover:text-loss cursor-pointer">
-          <Trash2 className="w-4 h-4" /> מחיקת משתמש
-        </button>
+        <div className="pt-3 border-t border-border-primary flex justify-center">
+          <button type="button" onClick={() => setConfirmDelete(true)}
+            className="h-10 px-4 inline-flex items-center gap-1.5 rounded-xl text-[13px] font-semibold text-loss/90 hover:text-loss hover:bg-loss/10 transition-colors cursor-pointer">
+            <Trash2 className="w-4 h-4" /> מחיקת משתמש
+          </button>
+        </div>
       )}
       <ConfirmDialog
         isOpen={confirmDelete}

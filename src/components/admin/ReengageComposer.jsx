@@ -193,13 +193,13 @@ export default function ReengageComposer({ recipients, onSent }) {
 
       {/* Live preview of the email, so what lands in the inbox is no surprise. */}
       {useEmail && (title || body) && (
-        <div className="rounded-xl border border-accent-primary/20 bg-[#0f1521] p-4 text-right">
+        <div className="rounded-2xl border border-[#26262b] bg-[#0c0c0e] p-4 text-right">
           <div className="text-[10px] text-text-muted mb-2">תצוגה מקדימה של המייל</div>
-          <div className="text-base font-bold text-[#e5e7eb]">{title || '—'}</div>
-          <div className="text-sm text-[#cbd0d8] mt-2">היי {recipients.length === 1 && recipients[0].name ? recipients[0].name : '{שם}'},</div>
-          <div className="text-sm text-[#cbd0d8] mt-1 whitespace-pre-line leading-relaxed">{body}</div>
+          <div className="text-lg font-bold text-[#f0f0f0]">{(title || '—').replace(/\p{Extended_Pictographic}\uFE0F?/gu, '').trim() || '—'}</div>
+          <div className="text-sm text-[#a0a0b0] mt-2">היי {recipients.length === 1 && recipients[0].name ? recipients[0].name : '{שם}'},</div>
+          <div className="text-sm text-[#a0a0b0] mt-1 whitespace-pre-line leading-relaxed">{body}</div>
           <div className="mt-4 flex justify-center">
-            <span className="inline-block px-6 py-2.5 rounded-lg bg-[#00bfff] text-[#0a0e16] text-sm font-bold">{cta || 'כניסה ל-TradeOS'}</span>
+            <span className="inline-block px-6 py-2.5 rounded-xl bg-[#3b82f6] text-white text-sm font-bold">{cta || 'כניסה ל-TradeOS'}</span>
           </div>
         </div>
       )}

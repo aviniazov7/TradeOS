@@ -1,6 +1,7 @@
 // Admin "come back to TradeOS" emails: one message to one user or a whole
 // segment, personalised per recipient. Pure (no fetch / env) so it is
 // unit-tested; index.js sends the result through Resend's batch API.
+import { C, txt } from './emailTheme.js';
 
 const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 export const APP_URL = 'https://tradeos-91a58.web.app';
@@ -18,7 +19,7 @@ export function messageToHtml(message) {
     .trim()
     .split(/\n\s*\n/)
     .filter((p) => p.trim())
-    .map((p) => `<p style="margin:0 0 14px;font-size:15px;color:#cbd0d8;line-height:1.7">${esc(p.trim()).replace(/\n/g, '<br>')}</p>`)
+    .map((p) => `<p style="margin:0 0 14px;font-size:15px;color:${C.sub};line-height:1.7;text-align:right">${txt(esc(p.trim()).replace(/\n/g, '<br>'))}</p>`)
     .join('');
 }
 

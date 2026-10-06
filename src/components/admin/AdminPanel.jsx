@@ -1,6 +1,6 @@
 import { useState, useEffect, useMemo } from 'react';
 import { Navigate, useSearchParams } from 'react-router-dom';
-import { UserPlus, ShieldCheck, CheckCircle2, RefreshCw, Mail, Calendar, Coins, TrendingUp, Percent, Sparkles, BookOpen, FlaskConical, Activity, FileText, Brain, Crown, Send, X, Ticket, Plus, Minus, Trash2, Copy, ScrollText, Share2, Link2, AlertTriangle, Clock, DollarSign, Image, Loader2, Bell, StickyNote, Ban, Smartphone } from 'lucide-react';
+import { UserPlus, ShieldCheck, CheckCircle2, RefreshCw, Calendar, Coins, BookOpen, FlaskConical, Activity, FileText, Brain, Crown, Send, X, Ticket, Plus, Minus, Trash2, Copy, ScrollText, Share2, Link2, AlertTriangle, Clock, DollarSign, Loader2, Ban, ChevronDown } from 'lucide-react';
 import { motion } from 'framer-motion';
 import toast from 'react-hot-toast';
 import { useAuth } from '../../contexts/AuthContext';
@@ -9,10 +9,10 @@ import AdminOverview from './AdminOverview';
 import AdminUsers from './AdminUsers';
 import AdminGrowth from './AdminGrowth';
 import AdminSystem from './AdminSystem';
-import { primaryBtn } from './AdminUi';
+import { primaryBtn, softBtn, Pill, Meter, Avatar } from './AdminUi';
 import {
   DAY_MS, RISK_DAYS, ILS, EXCHANGE_NAMES, KIND_META, toDate, formatDate, isUserPremium, lastActiveMs, createdMs,
-  daysSinceActive, relativeActive, activeWithin, daysUntilExpiry, isAtRisk, systemChecks,
+  daysSinceActive, relativeActive, activeWithin, daysUntilExpiry, isAtRisk, systemChecks, userStatus,
 } from './adminUtils';
 import { getAllUsers, getUserSubcollectionCount, adminGrantPremium, adminRevokePremium, addPayment, getAllPayments, getAdminMeta, setAdminMeta } from '../../services/firestoreService';
 import { APP_VERSION } from '../../utils/constants';
@@ -491,17 +491,29 @@ const SEGMENT_LABELS = {
 
 function BulkNotifyModal({ isOpen, onClose, segments, initialSegment = 'all' }) {
   // Each opening starts on the audience it was opened for, until another is picked.
-  const [picked, setSeg] = useState(null);
+  const [picked, setPicked] = useState(null);
+  // People taken off this send by hand (ids), and whether the list is open.
+  const [excluded, setExcluded] = useState(() => new Set());
+  const [listOpen, setListOpen] = useState(false);
   const seg = picked ?? initialSegment;
-  const close = () => { setSeg(null); onClose(); };
+  const pick = (k) => { setPicked(k); setExcluded(new Set()); };
+  const close = () => { setPicked(null); setExcluded(new Set()); setListOpen(false); onClose(); };
+  const toggle = (id) => setExcluded((prev) => {
+    const next = new Set(prev);
+    if (next.has(id)) next.delete(id); else next.add(id);
+    return next;
+  });
+
   const targets = segments?.[seg] || [];
-  const recipients = targets.map((u) => ({ id: u.id, email: u.email || '', name: u.displayName || '' }));
+  const chosen = targets.filter((u) => !excluded.has(u.id));
+  const recipients = chosen.map((u) => ({ id: u.id, email: u.email || '', name: u.displayName || '' }));
+  const withEmail = chosen.filter((u) => u.email).length;
 
   return (
     <Modal isOpen={isOpen} onClose={close} title="שליחת תזכורת למשתמשים" maxWidth="max-w-xl">
       <div className="p-4 space-y-4">
         <div>
-          <label className="text-[11px] text-text-muted block mb-1.5">למי לשלוח</label>
+          <label className="text-xs text-text-secondary block mb-1.5">למי לשלוח</label>
           <div className="flex flex-wrap gap-1.5">
             {Object.keys(SEGMENT_LABELS).map((k) => {
               const count = segments?.[k]?.length || 0;
@@ -511,35 +523,66 @@ function BulkNotifyModal({ isOpen, onClose, segments, initialSegment = 'all' }) 
                 <button
                   key={k}
                   type="button"
-                  onClick={() => setSeg(k)}
-                  className={`px-2.5 py-1.5 rounded-lg text-xs font-medium border transition-colors cursor-pointer ${active ? 'bg-accent-primary/15 border-accent-primary/40 text-accent-primary' : 'bg-bg-tertiary border-border-primary text-text-secondary hover:text-text-primary'}`}
+                  onClick={() => pick(k)}
+                  className={`h-8 px-3 rounded-full text-xs font-semibold border transition-colors cursor-pointer ${active ? 'bg-accent-primary/15 border-accent-primary/50 text-sky-200' : 'bg-bg-tertiary border-border-primary text-text-secondary hover:text-text-primary'}`}
                 >
-                  {SEGMENT_LABELS[k]} ({count})
+                  {SEGMENT_LABELS[k]} <span className="num-mono opacity-75">{count}</span>
                 </button>
               );
             })}
           </div>
         </div>
-        {/* key: a new audience starts a fresh form */}
-        <ReengageComposer key={seg} recipients={recipients} onSent={close} />
+
+        {/* Exactly who gets it — open the list to see everyone and take
+            people off before sending. */}
+        <div className="rounded-xl border border-border-primary bg-bg-tertiary/50">
+          <button type="button" onClick={() => setListOpen((v) => !v)} aria-expanded={listOpen}
+            className="w-full flex items-center gap-3 px-3.5 py-3 text-right cursor-pointer">
+            <span className="flex -space-x-2 space-x-reverse shrink-0">
+              {chosen.slice(0, 5).map((u) => (
+                <span key={u.id} className="rounded-full ring-2 ring-bg-primary"><Avatar user={u} size="w-7 h-7 text-[10px]" /></span>
+              ))}
+            </span>
+            <span className="flex-1 min-w-0">
+              <span className="block text-sm font-semibold text-text-primary">
+                {chosen.length === 0 ? 'אין נמענים' : `${chosen.length} נמענים`}
+                {excluded.size > 0 && <span className="text-text-secondary font-normal"> · {excluded.size} הוסרו</span>}
+              </span>
+              <span className="block text-xs text-text-secondary truncate">
+                {chosen.slice(0, 3).map((u) => u.displayName || u.email).join(', ')}{chosen.length > 3 ? ` ועוד ${chosen.length - 3}` : ''}
+                {chosen.length > 0 && ` · ${withEmail} עם מייל`}
+              </span>
+            </span>
+            <span className="text-xs font-semibold text-accent-hover shrink-0">{listOpen ? 'סגירה' : 'הצגת הרשימה'}</span>
+            <ChevronDown className={`w-4 h-4 text-text-secondary shrink-0 transition-transform ${listOpen ? 'rotate-180' : ''}`} />
+          </button>
+          {listOpen && (
+            <div className="border-t border-border-primary max-h-64 overflow-y-auto px-1.5 py-1.5">
+              {targets.map((u) => {
+                const on = !excluded.has(u.id);
+                return (
+                  <label key={u.id} className={`flex items-center gap-3 px-2 py-2 rounded-lg cursor-pointer hover:bg-bg-tertiary transition-opacity ${on ? '' : 'opacity-45'}`}>
+                    <input type="checkbox" checked={on} onChange={() => toggle(u.id)} className="w-4 h-4 accent-blue-500 cursor-pointer shrink-0" />
+                    <Avatar user={u} size="w-7 h-7 text-[10px]" />
+                    <span className="flex-1 min-w-0">
+                      <span className="block text-sm text-text-primary truncate">{u.displayName || u.email || '—'}</span>
+                      <span className="block text-xs text-text-secondary truncate" dir="ltr" style={{ textAlign: 'right' }}>{u.email || 'אין מייל — רק התראה'}</span>
+                    </span>
+                    <span className="text-xs text-text-secondary whitespace-nowrap">{relativeActive(u.lastActive)}</span>
+                  </label>
+                );
+              })}
+            </div>
+          )}
+        </div>
+
+        <ReengageComposer recipients={recipients} onSent={close} />
       </div>
     </Modal>
   );
 }
 
 // ── User detail modal ────────────────────────────────────────────────────────
-function DetailRow({ icon, label, value }) {
-  return (
-    <div className="flex items-start gap-3 py-2">
-      <div className="mt-0.5 text-text-muted">{icon}</div>
-      <div className="flex-1 min-w-0">
-        <div className="text-[11px] text-text-muted">{label}</div>
-        <div className="text-sm text-text-primary break-words">{value || '—'}</div>
-      </div>
-    </div>
-  );
-}
-
 const COUNT_COLLECTIONS = [
   { key: 'trades', label: 'עסקאות', icon: Activity },
   { key: 'journals', label: 'יומני מסחר', icon: BookOpen },
@@ -769,123 +812,112 @@ function UserDetailModal({ user, onClose, onUserChanged, startWith = null }) {
   }, [user]);
 
   if (!user) return null;
-  const settings = user.settings || {};
+  const status = userStatus(user);
+  const premium = user.role !== 'admin' && isUserPremium(user);
+  const plan = user.role === 'admin' ? null
+    : premium ? (user.planExpires ? `Premium · עד ${formatDate(user.planExpires)}` : 'Premium · ללא הגבלה')
+      : 'חינם';
+  const count = (k) => (counts === null ? '…' : counts[k] == null ? '—' : counts[k]);
+  // Everything beyond trades/journals, folded into one quiet line.
+  const extraUsage = counts ? COUNT_COLLECTIONS
+    .filter((c) => !['trades', 'journals'].includes(c.key) && counts[c.key] > 0)
+    .map((c) => `${counts[c.key]} ${c.label}`) : null;
+  const outdated = user.appVersion && user.appVersion !== APP_VERSION;
+  const copyEmail = () => {
+    if (!user.email) return;
+    navigator.clipboard?.writeText(user.email);
+    toast.success('המייל הועתק');
+  };
+  const section = 'rounded-2xl border border-border-primary bg-bg-tertiary/40 p-4';
+  const row = 'flex items-center justify-between gap-3 py-2.5 border-t border-border-primary/70 first:border-t-0 text-sm';
 
   return (
     <Modal isOpen={!!user} onClose={onClose} title="פרטי משתמש" maxWidth="max-w-3xl">
       <div className="space-y-4">
-        {/* Header */}
-        <div className="flex items-center gap-4">
-          {user.photoURL ? (
-            <img src={user.photoURL} alt="" className="w-14 h-14 rounded-full object-cover" referrerPolicy="no-referrer" />
-          ) : (
-            <div className="w-14 h-14 rounded-full bg-bg-primary border border-border-primary flex items-center justify-center text-text-secondary font-bold text-lg">
-              {(user.displayName || user.email || '?').charAt(0).toUpperCase()}
-            </div>
-          )}
-          <div className="flex-1 min-w-0">
-            <div className="text-lg font-bold text-text-primary truncate">{user.displayName || '—'}</div>
-            <div className="text-sm text-text-secondary truncate">{user.email || '—'}</div>
-            <div className="mt-1 flex items-center gap-2 flex-wrap">
-              {user.role === 'admin' ? (
-                <span className="inline-flex items-center gap-1 text-[11px] px-2 py-0.5 rounded-full bg-accent-primary/15 text-accent-primary border border-accent-primary/30">
-                  <ShieldCheck className="w-3 h-3" /> אדמין
-                </span>
-              ) : isUserPremium(user) ? (
-                <span className="inline-flex items-center gap-1 text-[11px] px-2 py-0.5 rounded-full bg-amber-500/15 text-amber-400 border border-amber-500/30 font-semibold">
-                  <Crown className="w-3 h-3" /> Premium
-                  {user.planExpires && <span className="text-text-muted font-normal">· עד {formatDate(user.planExpires)}</span>}
-                </span>
-              ) : (
-                <span className="text-[11px] px-2 py-0.5 rounded-full bg-bg-tertiary text-text-secondary border border-border-primary">חינמי</span>
-              )}
-              {user.onboardingCompleted ? (
-                <span className="inline-flex items-center gap-1 text-[11px] px-2 py-0.5 rounded-full bg-profit/15 text-profit border border-profit/30">
-                  <CheckCircle2 className="w-3 h-3" /> אונבורדינג הושלם
-                </span>
-              ) : (
-                <span className="text-[11px] px-2 py-0.5 rounded-full bg-bg-tertiary text-text-secondary border border-border-primary">אונבורדינג לא הושלם</span>
-              )}
+        {/* Who + the two actions that matter */}
+        <div className="flex flex-wrap items-center gap-4">
+          <Avatar user={user} size="w-16 h-16 text-xl" />
+          <div className="flex-1 basis-56 min-w-0 flex flex-col gap-1.5">
+            <div className="text-xl font-bold text-text-primary truncate">{user.displayName || user.email || '—'}</div>
+            {user.email && (
+              <button type="button" onClick={copyEmail} title="העתקת מייל"
+                className="self-start inline-flex items-center gap-1.5 text-sm text-text-secondary hover:text-text-primary cursor-pointer max-w-full">
+                <span className="truncate" dir="ltr">{user.email}</span>
+                <Copy className="w-3.5 h-3.5 shrink-0" />
+              </button>
+            )}
+            <div className="flex flex-wrap gap-1.5">
+              {premium
+                ? <Pill className="text-violet-300 bg-violet-500/15">{plan}</Pill>
+                : <Pill className={status.cls}>{status.label}</Pill>}
+              <Pill className={user.onboardingCompleted ? 'text-profit bg-profit/12' : 'text-text-secondary bg-bg-tertiary'}>
+                {user.onboardingCompleted ? 'סיים היכרות' : 'לא סיים היכרות'}
+              </Pill>
             </div>
           </div>
-        </div>
-
-        {/* Admin actions */}
-        <div className="grid grid-cols-2 gap-2">
-          {user.role !== 'admin' && (
-            isUserPremium(user) ? (
-              <button
-                onClick={revoke}
-                disabled={granting}
-                className="flex items-center justify-center gap-1.5 px-3 py-2 rounded-lg border border-border-primary text-sm text-text-secondary hover:text-loss hover:border-loss/40 transition-colors cursor-pointer disabled:opacity-50"
-              >
-                <X className="w-4 h-4" /> בטל Premium
+          <div className="flex gap-2 w-full sm:w-auto">
+            <button type="button" onClick={() => { setNotifyOpen((v) => !v); setGrantOpen(false); }} className={`${primaryBtn} h-11 flex-1 sm:flex-none`}>
+              <Send className="w-4 h-4" /> שליחת תזכורת
+            </button>
+            {user.role !== 'admin' && (premium ? (
+              <button type="button" onClick={revoke} disabled={granting} className={`${softBtn} h-11 flex-1 sm:flex-none`}>
+                <X className="w-4 h-4" /> ביטול Premium
               </button>
             ) : (
-              <button
-                onClick={() => setGrantOpen(true)}
-                disabled={granting}
-                className="flex items-center justify-center gap-1.5 px-3 py-2 rounded-lg bg-amber-500/15 border border-amber-500/30 text-amber-400 text-sm font-semibold hover:bg-amber-500/20 transition-colors cursor-pointer disabled:opacity-50"
-              >
-                <Crown className="w-4 h-4" /> הענק Premium
+              <button type="button" onClick={() => { setGrantOpen((v) => !v); setNotifyOpen(false); }} disabled={granting} className={`${softBtn} h-11 flex-1 sm:flex-none`}>
+                <Crown className="w-4 h-4" /> הענקת Premium
               </button>
-            )
-          )}
-          <button
-            onClick={() => setNotifyOpen(true)}
-            className="flex items-center justify-center gap-1.5 px-3 py-2 rounded-lg bg-accent-primary/10 border border-accent-primary/30 text-accent-primary text-sm font-semibold hover:bg-accent-primary/20 transition-colors cursor-pointer"
-          >
-            <Send className="w-4 h-4" /> שלח תזכורת
-          </button>
+            ))}
+          </div>
         </div>
 
         {/* Grant Premium duration picker */}
         {grantOpen && (
-          <div className="bg-amber-500/5 border border-amber-500/30 rounded-xl p-3 space-y-3">
+          <div className={`${section} space-y-3`}>
             <div className="flex items-center justify-between">
-              <span className="text-sm font-semibold text-text-primary">בחר משך Premium</span>
-              <button onClick={() => setGrantOpen(false)} className="text-text-muted hover:text-text-primary cursor-pointer">
+              <span className="text-sm font-bold text-text-primary">הענקת Premium</span>
+              <button onClick={() => setGrantOpen(false)} className="text-text-muted hover:text-text-primary cursor-pointer" aria-label="סגירה">
                 <X className="w-4 h-4" />
               </button>
             </div>
-            {/* Optional amount paid — feeds revenue / MRR analytics. */}
-            <div>
-              <label className="text-[11px] text-text-muted block mb-1">סכום ששולם (₪) — לא חובה</label>
-              <div className="relative">
-                <span className="absolute right-3 top-1/2 -translate-y-1/2 text-text-muted text-sm pointer-events-none">₪</span>
+            <div className="grid sm:grid-cols-2 gap-3">
+              {/* Optional amount paid — feeds revenue / MRR analytics. */}
+              <div>
+                <label className="text-xs text-text-secondary block mb-1">סכום ששולם (₪) — לא חובה</label>
                 <input
                   type="number"
                   min="0"
                   value={grantAmount}
                   onChange={(e) => setGrantAmount(e.target.value)}
                   placeholder="לדוגמה 29"
-                  className="w-full bg-bg-secondary border border-border-primary rounded-lg pr-7 pl-3 py-2 text-sm text-text-primary outline-none focus:border-amber-500"
+                  className="w-full h-10 bg-bg-tertiary border border-border-primary rounded-lg px-3 text-sm text-text-primary outline-none focus:border-accent-primary"
                 />
               </div>
-            </div>
-            {/* Payment method — feeds the confirmation email */}
-            <div>
-              <label className="text-[11px] text-text-muted block mb-1">אמצעי תשלום</label>
-              <div className="flex flex-wrap gap-1.5">
-                {[
-                  { id: 'bit', label: 'ביט' },
-                  { id: 'crypto', label: 'קריפטו' },
-                  { id: 'transfer', label: 'העברה בנקאית' },
-                  { id: 'cash', label: 'מזומן' },
-                  { id: 'other', label: 'אחר' },
-                ].map((m) => (
-                  <button
-                    key={m.id}
-                    onClick={() => setPayMethod(m.id)}
-                    className={`text-xs px-2.5 py-1 rounded-full border transition-colors cursor-pointer ${
-                      payMethod === m.id
-                        ? 'bg-amber-500/15 border-amber-500 text-amber-400 font-semibold'
-                        : 'bg-bg-secondary border-border-primary text-text-secondary hover:text-text-primary'
-                    }`}
-                  >
-                    {m.label}
-                  </button>
-                ))}
+              {/* Payment method — feeds the confirmation email */}
+              <div>
+                <label className="text-xs text-text-secondary block mb-1">אמצעי תשלום</label>
+                <div className="flex flex-wrap gap-1.5">
+                  {[
+                    { id: 'bit', label: 'ביט' },
+                    { id: 'crypto', label: 'קריפטו' },
+                    { id: 'transfer', label: 'העברה' },
+                    { id: 'cash', label: 'מזומן' },
+                    { id: 'other', label: 'אחר' },
+                  ].map((m) => (
+                    <button
+                      key={m.id}
+                      type="button"
+                      onClick={() => setPayMethod(m.id)}
+                      className={`h-8 text-xs px-3 rounded-full border transition-colors cursor-pointer ${
+                        payMethod === m.id
+                          ? 'bg-accent-primary/15 border-accent-primary/50 text-sky-200 font-semibold'
+                          : 'bg-bg-tertiary border-border-primary text-text-secondary hover:text-text-primary'
+                      }`}
+                    >
+                      {m.label}
+                    </button>
+                  ))}
+                </div>
               </div>
             </div>
             {/* Confirmation email toggle */}
@@ -895,11 +927,11 @@ function UserDetailModal({ user, onClose, onUserChanged, startWith = null }) {
                 checked={sendReceipt}
                 onChange={(e) => setSendReceipt(e.target.checked)}
                 disabled={!user.email}
-                className="w-3.5 h-3.5 accent-amber-500 cursor-pointer"
+                className="w-3.5 h-3.5 accent-blue-500 cursor-pointer"
               />
-              שלח מייל אישור מעוצב {user.email ? `(${user.email})` : '(אין אימייל בפרופיל)'}
+              שליחת מייל אישור {user.email ? `ל-${user.email}` : '(אין מייל בפרופיל)'}
             </label>
-            <div className="grid grid-cols-3 sm:grid-cols-4 gap-1.5">
+            <div className="grid grid-cols-3 sm:grid-cols-6 gap-1.5">
               {[
                 { d: 1, label: 'יום' },
                 { d: 7, label: 'שבוע' },
@@ -910,9 +942,10 @@ function UserDetailModal({ user, onClose, onUserChanged, startWith = null }) {
               ].map((opt) => (
                 <button
                   key={String(opt.d)}
+                  type="button"
                   onClick={() => grant(opt.d)}
                   disabled={granting}
-                  className="text-xs px-2 py-2 rounded-lg bg-bg-secondary border border-border-primary text-text-primary hover:border-amber-500/40 hover:text-amber-400 transition-colors cursor-pointer disabled:opacity-50"
+                  className={`${softBtn} px-2`}
                 >
                   {opt.label}
                 </button>
@@ -923,10 +956,10 @@ function UserDetailModal({ user, onClose, onUserChanged, startWith = null }) {
 
         {/* Reminder composer — push and/or email to this user. */}
         {notifyOpen && (
-          <div className="bg-accent-primary/5 border border-accent-primary/30 rounded-xl p-3 space-y-3">
+          <div className={`${section} space-y-3`}>
             <div className="flex items-center justify-between">
-              <span className="text-sm font-semibold text-text-primary">תזכורת למשתמש</span>
-              <button onClick={() => setNotifyOpen(false)} className="text-text-muted hover:text-text-primary cursor-pointer" aria-label="סגור">
+              <span className="text-sm font-bold text-text-primary">תזכורת ל{(user.displayName || '').split(' ')[0] || 'משתמש'}</span>
+              <button onClick={() => setNotifyOpen(false)} className="text-text-muted hover:text-text-primary cursor-pointer" aria-label="סגירה">
                 <X className="w-4 h-4" />
               </button>
             </div>
@@ -937,214 +970,129 @@ function UserDetailModal({ user, onClose, onUserChanged, startWith = null }) {
           </div>
         )}
 
-        {/* Details — two professional columns on desktop so the modal fits the
-            screen without scrolling; stacks to one column on mobile. */}
-        <div className="grid lg:grid-cols-2 gap-4">
-          {/* Left column: identity & settings */}
-          <div className="space-y-4">
-            <div>
-              <div className="text-[11px] text-text-muted mb-2 flex items-center gap-1.5">
-                <FileText className="w-3.5 h-3.5" /> פרטים כלליים
-              </div>
-              <div className="bg-bg-tertiary/40 border border-border-primary rounded-xl px-4 py-1 divide-y divide-border-primary/40">
-                <DetailRow icon={<Mail className="w-4 h-4" />} label="אימייל" value={user.email} />
-                <DetailRow icon={<Calendar className="w-4 h-4" />} label="הצטרף" value={formatDate(user.createdAt)} />
-                <DetailRow icon={<Clock className="w-4 h-4" />} label="פעילות אחרונה"
-                  value={lastActiveMs(user) ? `${relativeActive(user.lastActive)} · ${formatDate(user.lastActive)}` : 'מעולם לא'} />
-                {/* App version the user's client last reported (via touchLastActive).
-                    Amber when it lags the current release — spots users stuck on old builds. */}
-                <DetailRow icon={<Smartphone className="w-4 h-4" />} label="גרסת אפליקציה"
-                  value={user.appVersion
-                    ? <span className={user.appVersion !== APP_VERSION ? 'text-amber-400' : ''}>
-                        {user.appVersion}{user.appVersion !== APP_VERSION ? ` · ישנה (נוכחית ${APP_VERSION})` : ' · עדכנית'}
-                      </span>
-                    : 'לא ידוע'} />
-                <DetailRow icon={<Coins className="w-4 h-4" />} label="מטבע בסיס" value={settings.baseCurrency} />
-                <DetailRow icon={<TrendingUp className="w-4 h-4" />} label="מינוף ברירת מחדל" value={settings.defaultLeverage ? `${settings.defaultLeverage}x` : null} />
-                <DetailRow icon={<Percent className="w-4 h-4" />} label="סיכון ברירת מחדל" value={settings.defaultRiskPercent != null ? `${settings.defaultRiskPercent}%` : null} />
-              </div>
+        {/* The four numbers worth a glance */}
+        <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
+          {[
+            { label: 'עסקאות', value: count('trades'), mono: true },
+            { label: 'יומני מסחר', value: count('journals'), mono: true },
+            { label: 'הצטרף', value: formatDate(user.createdAt), mono: true },
+            { label: 'כניסה אחרונה', value: relativeActive(user.lastActive) },
+          ].map((s) => (
+            <div key={s.label} className="rounded-xl bg-bg-tertiary border border-border-primary px-3.5 py-3 flex flex-col gap-1 min-w-0">
+              <span className="text-xs text-text-secondary">{s.label}</span>
+              <b className={`text-lg leading-snug text-text-primary ${s.mono ? 'num-mono' : ''}`}>{s.value}</b>
             </div>
+          ))}
+        </div>
+        {countsError && <div className="text-xs text-loss">{countsError}</div>}
 
-            {/* AI daily usage */}
-            <div>
-              <div className="text-[11px] text-text-muted mb-2 flex items-center gap-1.5">
-                <Sparkles className="w-3.5 h-3.5" /> שימוש ב-AI היום
-              </div>
-              {aiUsage ? (() => {
-                const pct = Math.min(100, (aiUsage.used / aiUsage.limit) * 100);
-                const low = (aiUsage.limit - aiUsage.used) <= 3;
-                const hasImg = typeof aiUsage.imageLimit === 'number' && aiUsage.imageLimit > 0;
-                const imgPct = hasImg ? Math.min(100, (aiUsage.imageUsed / aiUsage.imageLimit) * 100) : 0;
-                const imgLow = hasImg && (aiUsage.imageLimit - aiUsage.imageUsed) <= 1;
-                return (
-                  <div className="bg-bg-tertiary/40 border border-border-primary rounded-lg px-3 py-2.5 space-y-2.5">
-                    <div>
-                      <div className="flex items-center justify-between text-xs mb-1.5">
-                        <span className="text-text-secondary">בקשות שנוצלו</span>
-                        <span className={`font-semibold ${low ? 'text-loss' : 'text-text-primary'}`}>{aiUsage.used} / {aiUsage.limit}</span>
-                      </div>
-                      <div className="h-1.5 bg-bg-tertiary rounded-full overflow-hidden">
-                        <div className={`h-full rounded-full ${low ? 'bg-loss' : 'bg-accent-primary'}`} style={{ width: `${pct}%` }} />
-                      </div>
-                    </div>
-                    {hasImg && (
-                      <div>
-                        <div className="flex items-center justify-between text-xs mb-1.5">
-                          <span className="text-text-secondary flex items-center gap-1"><Image className="w-3 h-3" /> ניתוחי תמונה</span>
-                          <span className={`font-semibold ${imgLow ? 'text-loss' : 'text-text-primary'}`}>{aiUsage.imageUsed} / {aiUsage.imageLimit}</span>
-                        </div>
-                        <div className="h-1.5 bg-bg-tertiary rounded-full overflow-hidden">
-                          <div className={`h-full rounded-full ${imgLow ? 'bg-loss' : 'bg-accent-primary'}`} style={{ width: `${imgPct}%` }} />
-                        </div>
-                      </div>
-                    )}
-                  </div>
-                );
-              })() : (
-                <div className="text-xs text-text-muted">…</div>
-              )}
+        <div className="grid lg:grid-cols-2 gap-4 items-start">
+          {/* Account: connections, version, AI today, other usage */}
+          <section className={section}>
+            <h3 className="text-sm font-bold text-text-primary mb-1">חשבון</h3>
+            <div className={row}>
+              <span className="text-text-secondary">בורסות</span>
+              <span className="flex flex-wrap justify-end gap-1.5">
+                {connections === null ? '…'
+                  : !connections.exchanges ? '—'
+                    : connections.exchanges.length === 0 ? <span className="text-text-secondary">לא חובר</span>
+                      : connections.exchanges.map((ex) => (
+                        <Pill key={ex} className="text-profit bg-profit/12"><span dir="ltr">{EXCHANGE_NAMES[ex] || ex}</span></Pill>
+                      ))}
+              </span>
             </div>
-
-          </div>
-
-          {/* Right column: activity counts */}
-          <div className="space-y-4">
-            {/* Activity counts (read-only — uses Firestore count aggregation) */}
-            <div>
-              <div className="text-[11px] text-text-muted mb-2 flex items-center gap-1.5">
-                <Activity className="w-3.5 h-3.5" /> שימוש (קריאה בלבד)
-              </div>
-              <div className="grid grid-cols-2 gap-2">
-                {COUNT_COLLECTIONS.map((c) => {
-                  const Icon = c.icon;
-                  const n = counts?.[c.key];
-                  return (
-                    <div key={c.key} className="bg-bg-tertiary/40 border border-border-primary rounded-lg px-3 py-2 flex items-center gap-2">
-                      <Icon className="w-4 h-4 text-text-muted shrink-0" />
-                      <div className="flex-1 min-w-0">
-                        <div className="text-[10px] text-text-muted truncate">{c.label}</div>
-                        <div className="text-sm font-semibold text-text-primary">
-                          {counts === null ? '…' : n == null ? '—' : n}
-                        </div>
-                      </div>
-                    </div>
-                  );
-                })}
-              </div>
-              {countsError && (
-                <div className="mt-2 text-[11px] text-loss">{countsError}</div>
-              )}
+            <div className={row}>
+              <span className="text-text-secondary">התראות לטלפון</span>
+              <span className="font-semibold text-text-primary">
+                {connections === null ? '…'
+                  : connections.devices == null ? '—'
+                    : connections.devices > 0 ? (connections.devices === 1 ? 'מכשיר אחד' : `${connections.devices} מכשירים`) : 'לא מאושרות'}
+              </span>
             </div>
-
-            {/* Connections — push devices + linked exchanges (status only;
-                subscriptions and API keys never leave the worker's KV). */}
-            <div>
-              <div className="text-[11px] text-text-muted mb-2 flex items-center gap-1.5">
-                <Link2 className="w-3.5 h-3.5" /> חיבורים
+            <div className={row}>
+              <span className="text-text-secondary">גרסת אפליקציה</span>
+              {user.appVersion ? (
+                <span className={`font-semibold ${outdated ? 'text-amber-400' : 'text-text-primary'}`}>
+                  <span className="num-mono">{user.appVersion}</span>{outdated ? ' · ישנה' : ''}
+                </span>
+              ) : <span className="text-text-secondary">לא ידוע</span>}
+            </div>
+            <div className={`${row} flex-col items-stretch`}>
+              <div className="flex items-center justify-between gap-3">
+                <span className="text-text-secondary">AI היום</span>
+                <span className="font-semibold text-text-primary num-mono" dir="ltr">
+                  {aiUsage ? `${aiUsage.used} / ${aiUsage.limit}` : '…'}
+                </span>
               </div>
-              {connections === null ? (
-                <div className="text-xs text-text-muted">…</div>
-              ) : (
-                <div className="flex items-center gap-1.5 flex-wrap">
-                  {connections.devices == null ? (
-                    <span className="inline-flex items-center gap-1 text-[11px] px-2 py-0.5 rounded-full bg-bg-tertiary text-text-muted border border-border-primary">
-                      <Bell className="w-3 h-3" /> Push: —
-                    </span>
-                  ) : connections.devices > 0 ? (
-                    <span className="inline-flex items-center gap-1 text-[11px] px-2 py-0.5 rounded-full bg-accent-primary/10 text-accent-primary border border-accent-primary/30 font-semibold">
-                      <Bell className="w-3 h-3" /> Push: {connections.devices === 1 ? 'מכשיר אחד' : `${connections.devices} מכשירים`}
-                    </span>
-                  ) : (
-                    <span className="inline-flex items-center gap-1 text-[11px] px-2 py-0.5 rounded-full bg-bg-tertiary text-text-muted border border-border-primary">
-                      <Bell className="w-3 h-3" /> Push: לא רשום
-                    </span>
-                  )}
-                  {(connections.exchanges || []).map((ex) => (
-                    <span key={ex} className="inline-flex items-center gap-1 text-[11px] px-2 py-0.5 rounded-full bg-profit/10 text-profit border border-profit/30 font-semibold" dir="ltr">
-                      <Link2 className="w-3 h-3" /> {EXCHANGE_NAMES[ex] || ex}
-                    </span>
-                  ))}
-                  {connections.exchanges && connections.exchanges.length === 0 && (
-                    <span className="text-[11px] px-2 py-0.5 rounded-full bg-bg-tertiary text-text-muted border border-border-primary">
-                      אין בורסות מחוברות
-                    </span>
-                  )}
+              {aiUsage && <Meter pct={(aiUsage.used / aiUsage.limit) * 100} className="mt-2" />}
+              {aiUsage && typeof aiUsage.imageLimit === 'number' && aiUsage.imageLimit > 0 && (
+                <div className="mt-2 flex items-center justify-between text-xs text-text-secondary">
+                  <span>ניתוחי תמונה</span><span className="num-mono" dir="ltr">{aiUsage.imageUsed} / {aiUsage.imageLimit}</span>
                 </div>
               )}
             </div>
+            <div className={`${row} items-start`}>
+              <span className="text-text-secondary shrink-0">עוד בשימוש</span>
+              <span className="text-text-primary text-left">
+                {extraUsage === null ? '…' : extraUsage.length ? extraUsage.join(' · ') : 'אין'}
+              </span>
+            </div>
+          </section>
 
-            {/* Private admin note — stored at adminNotes/{uid}, never visible
-                to the user (admin-only read/write per firestore.rules). */}
-            <div>
-              <div className="text-[11px] text-text-muted mb-2 flex items-center gap-1.5">
-                <StickyNote className="w-3.5 h-3.5" /> הערת אדמין (פרטית)
-              </div>
+          {/* Private note + what happened with this customer */}
+          <div className="space-y-4">
+            <section className={section}>
+              <h3 className="text-sm font-bold text-text-primary mb-2">הערה פנימית</h3>
               <textarea
                 value={noteText}
                 onChange={(e) => setNoteText(e.target.value)}
-                placeholder={noteLoading ? 'טוען…' : 'הערה פנימית על הלקוח — גלויה לאדמינים בלבד'}
+                placeholder={noteLoading ? 'טוען…' : 'רק אדמינים רואים את זה'}
                 disabled={noteLoading}
                 maxLength={2000}
                 rows={3}
-                className="w-full bg-bg-tertiary/40 border border-border-primary rounded-lg px-3 py-2 text-sm text-text-primary outline-none focus:border-accent-primary resize-none disabled:opacity-50"
+                className="w-full bg-bg-tertiary border border-border-primary rounded-xl px-3 py-2.5 text-sm text-text-primary placeholder:text-text-muted outline-none focus:border-accent-primary resize-none disabled:opacity-50"
               />
-              <button
-                onClick={saveNote}
-                disabled={noteLoading || noteSaving}
-                className="mt-1.5 w-full flex items-center justify-center gap-1.5 px-3 py-2 rounded-lg border border-border-primary text-sm text-text-secondary hover:text-text-primary hover:border-accent-primary/40 transition-colors cursor-pointer disabled:opacity-50"
-              >
-                {noteSaving && <Loader2 className="w-4 h-4 animate-spin" />}
-                {noteSaving ? 'שומר…' : 'שמור הערה'}
-              </button>
-            </div>
+              <div className="mt-2 flex justify-end">
+                <button type="button" onClick={saveNote} disabled={noteLoading || noteSaving} className={softBtn}>
+                  {noteSaving && <Loader2 className="w-4 h-4 animate-spin" />}
+                  {noteSaving ? 'שומר…' : 'שמירה'}
+                </button>
+              </div>
+            </section>
+            <section className={section}>
+              <CustomerTimeline user={user} />
+            </section>
           </div>
         </div>
-
-        {/* Customer timeline — full-width row at the bottom. Combines audit
-            log entries scoped to this user, payments scoped to this user,
-            and synthetic events (registration, last active) into one
-            chronological feed, newest first. */}
-        <CustomerTimeline user={user} />
 
         {/* Danger zone — permanent deletion runs through the worker's service
             account (admins are read-only on other users' data client-side, and
             only the service account can delete somebody else's Auth user). */}
         {user.role !== 'admin' && (
-          confirmDelete ? (
-            <div className="bg-loss/5 border border-loss/30 rounded-xl p-3 space-y-2">
-              <p className="text-xs text-loss leading-relaxed">
-                פעולה בלתי הפיכה: כל הנתונים, רשומת הלידרבורד וחשבון ההתחברות של{' '}
-                <span className="font-bold">{user.email || user.displayName || user.id}</span> יימחקו לצמיתות.
-              </p>
-              <div className="flex gap-2">
-                <button
-                  onClick={doDelete}
-                  disabled={deleting}
-                  className="flex-1 flex items-center justify-center gap-1.5 px-3 py-2 rounded-lg bg-loss text-white text-sm font-bold hover:bg-loss/80 transition-colors cursor-pointer disabled:opacity-50"
-                >
-                  {deleting ? <RefreshCw className="w-4 h-4 animate-spin" /> : <Trash2 className="w-4 h-4" />}
-                  {deleting ? 'מוחק…' : 'אשר מחיקה סופית'}
-                </button>
-                <button
-                  onClick={() => setConfirmDelete(false)}
-                  disabled={deleting}
-                  className="px-4 py-2 rounded-lg border border-border-primary text-sm text-text-secondary hover:text-text-primary transition-colors cursor-pointer disabled:opacity-50"
-                >
-                  ביטול
-                </button>
-              </div>
-            </div>
-          ) : (
-            <button
-              onClick={() => setConfirmDelete(true)}
-              className="w-full flex items-center justify-center gap-1.5 px-3 py-2 rounded-lg border border-loss/30 text-sm text-loss/80 hover:text-loss hover:bg-loss/5 transition-colors cursor-pointer"
-            >
-              <Trash2 className="w-4 h-4" /> מחק משתמש לצמיתות
-            </button>
-          )
+          <div className="pt-4 border-t border-border-primary flex flex-col items-center gap-3">
+            {confirmDelete ? (
+              <>
+                <p className="text-sm text-loss text-center max-w-md leading-relaxed">
+                  כל הנתונים, רשומת הלידרבורד וחשבון ההתחברות של{' '}
+                  <span className="font-bold">{user.email || user.displayName || user.id}</span> יימחקו. אי אפשר לבטל.
+                </p>
+                <div className="flex gap-2">
+                  <button type="button" onClick={doDelete} disabled={deleting}
+                    className="h-10 px-5 inline-flex items-center gap-1.5 rounded-xl bg-loss text-white text-sm font-bold hover:bg-loss/85 transition-colors cursor-pointer disabled:opacity-50">
+                    {deleting ? <Loader2 className="w-4 h-4 animate-spin" /> : <Trash2 className="w-4 h-4" />}
+                    {deleting ? 'מוחק…' : 'מחיקה סופית'}
+                  </button>
+                  <button type="button" onClick={() => setConfirmDelete(false)} disabled={deleting} className={softBtn}>ביטול</button>
+                </div>
+              </>
+            ) : (
+              <button type="button" onClick={() => setConfirmDelete(true)}
+                className="h-10 px-4 inline-flex items-center gap-1.5 rounded-xl text-[13px] font-semibold text-loss/90 hover:text-loss hover:bg-loss/10 transition-colors cursor-pointer">
+                <Trash2 className="w-4 h-4" /> מחיקת משתמש
+              </button>
+            )}
+          </div>
         )}
-
-
       </div>
     </Modal>
   );
@@ -1650,6 +1598,7 @@ function fmtRelativeTime(ts) {
   const days = Math.floor(hrs / 24);
   if (days === 1) return 'אתמול';
   if (days < 7) return `לפני ${days} ימים`;
+  if (days < 14) return 'לפני שבוע';
   if (days < 30) return `לפני ${Math.floor(days / 7)} שבועות`;
   const months = Math.floor(days / 30);
   return months === 1 ? 'לפני חודש' : `לפני ${months} חודשים`;
@@ -1657,6 +1606,7 @@ function fmtRelativeTime(ts) {
 
 function CustomerTimeline({ user }) {
   const [events, setEvents] = useState(null);
+  const [showAll, setShowAll] = useState(false);
 
   useEffect(() => {
     if (!user) { setEvents(null); return; }
@@ -1757,32 +1707,31 @@ function CustomerTimeline({ user }) {
     return () => { cancelled = true; };
   }, [user]);
 
+  const shown = events && !showAll ? events.slice(0, 5) : events;
   return (
     <div>
-      <div className="text-[11px] text-text-muted mb-2 flex items-center gap-1.5">
-        <Clock className="w-3.5 h-3.5" /> ציר זמן הלקוח
+      <div className="flex items-center justify-between gap-3 mb-2">
+        <h3 className="text-sm font-bold text-text-primary">היסטוריה</h3>
+        {events && events.length > 5 && (
+          <button type="button" onClick={() => setShowAll((v) => !v)} className="text-xs font-semibold text-accent-hover hover:text-accent-primary cursor-pointer">
+            {showAll ? 'פחות' : `הכל (${events.length})`}
+          </button>
+        )}
       </div>
-
       {events === null ? (
-        <div className="text-xs text-text-muted text-center py-6">טוען היסטוריה…</div>
+        <div className="text-xs text-text-secondary py-3">טוען…</div>
       ) : events.length === 0 ? (
-        <div className="text-xs text-text-muted text-center py-6 border border-dashed border-border-primary rounded-xl">
-          אין אירועים עדיין.
-        </div>
+        <div className="text-xs text-text-secondary py-3">אין אירועים עדיין</div>
       ) : (
-        <div className="space-y-1.5">
-          {events.map((ev, i) => (
-            <div key={i} className="bg-bg-tertiary/40 border border-border-primary rounded-lg px-3 py-2 flex items-start gap-3">
-              <div className={`w-7 h-7 rounded-full border flex items-center justify-center shrink-0 ${ev.color}`}>
-                {ev.iconNode}
-              </div>
+        <div>
+          {shown.map((ev, i) => (
+            <div key={i} className="flex items-center gap-3 py-2 border-t border-border-primary/70 first:border-t-0" title={fmtFullDate(ev.ts)}>
+              <span className={`w-7 h-7 rounded-lg border grid place-items-center shrink-0 ${ev.color}`}>{ev.iconNode}</span>
               <div className="flex-1 min-w-0">
-                <div className="text-sm font-medium text-text-primary">{ev.title}</div>
-                {ev.sub && <div className="text-[11px] text-text-muted">{ev.sub}</div>}
-                <div className="text-[10px] text-text-muted mt-0.5">
-                  {fmtRelativeTime(ev.ts)} · {fmtFullDate(ev.ts)}
-                </div>
+                <div className="text-sm text-text-primary truncate">{ev.title}</div>
+                {ev.sub && <div className="text-xs text-text-secondary truncate">{ev.sub}</div>}
               </div>
+              <span className="text-xs text-text-secondary whitespace-nowrap">{fmtRelativeTime(ev.ts)}</span>
             </div>
           ))}
         </div>
