@@ -1,6 +1,6 @@
 import { describe, it, expect } from 'vitest';
 import {
-  withRisk, classifyExchangeAuthError, buildExits, enrichWithOrders, okxOrderRow, okxStopRow, bitgetOrderRow, bitgetStopRow, mexcExitsByPosition, mexcTradeFee, mexcStopsByPosition, mexcOrderKind, mexcEntryTypeByPosition, normalizeMexcClosed, normalizeOkxClosed, normalizeOkxOpen, normalizeBitgetClosed,
+  withRisk, classifyExchangeAuthError, mexcCronOpen, mexcCronClosed, buildExits, enrichWithOrders, okxOrderRow, okxStopRow, bitgetOrderRow, bitgetStopRow, mexcExitsByPosition, mexcTradeFee, mexcStopsByPosition, mexcOrderKind, mexcEntryTypeByPosition, normalizeMexcClosed, normalizeOkxClosed, normalizeOkxOpen, normalizeBitgetClosed,
 } from './exchangeNormalize';
 
 // Sample rows are the exchanges' own documented example responses (as quoted
@@ -339,5 +339,18 @@ describe('mexcExitsByPosition', () => {
     ], () => 10);
     expect(m.get('5')).toEqual([{ price: 0.035, percent: 60 }, { price: 0.036, percent: 40 }]);
     expect(m.has('6')).toBe(false);
+  });
+});
+
+describe('MEXC rows for the background alerts', () => {
+  it('maps a closed position (net P&L, ROI on margin, close time)', () => {
+    const c = mexcCronClosed(MEXC_SAMPLE, 0.1);
+    expect(c).toMatchObject({ externalId: '390281084', pair: 'RVNUSDT', direction: 'long', pnl: 0.1829, exitMs: 1711512553000 });
+    // margin = 0.03491 × 1141 × 0.1 / 50 ≈ 0.0797 → ROI ≈ 229.6%
+    expect(c.roiPct).toBeCloseTo((0.1829 / (0.03491 * 1141 * 0.1 / 50)) * 100, 6);
+  });
+  it('maps an open position', () => {
+    expect(mexcCronOpen({ positionId: 77, symbol: 'BTC_USDT', positionType: 2, holdAvgPrice: '60000', leverage: '20' }))
+      .toEqual({ id: '77', pair: 'BTCUSDT', direction: 'short', entryPrice: 60000, leverage: 20 });
   });
 });

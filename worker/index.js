@@ -11,7 +11,8 @@ import {
 } from './newsImpact.js';
 import {
   classifyExchangeAuthError, mexcStopsByPosition, mexcEntryTypeByPosition, mexcOrderKind, mexcExitsByPosition,
-  enrichWithOrders, okxOrderRow, okxStopRow, bitgetOrderRow, bitgetStopRow, normalizeMexcClosed, normalizeOkxClosed, normalizeOkxOpen, normalizeBitgetClosed,
+  enrichWithOrders, okxOrderRow, okxStopRow, bitgetOrderRow, bitgetStopRow, mexcCronOpen, mexcCronClosed,
+  normalizeMexcClosed, normalizeOkxClosed, normalizeOkxOpen, normalizeBitgetClosed,
 } from './exchangeNormalize.js';
 
 // Binance's public market-data mirror — api.binance.com returns 403 to
@@ -739,6 +740,40 @@ async function fetchBybitOpen(apiKey, apiSecret) {
 }
 
 
+// ---- MEXC equivalents for the alerts cron (same shapes as the Bybit pair) ----
+async function mexcPrivateGet(apiKey, apiSecret, path, params = {}) {
+  const ts = Date.now().toString();
+  const qs = Object.keys(params).sort().map((k) => `${k}=${params[k]}`).join('&');
+  const sign = await bybitHmacHex(apiSecret, apiKey + ts + qs); // HMAC-SHA256 hex, same primitive
+  const res = await fetch(`https://contract.mexc.com${path}${qs ? `?${qs}` : ''}`, {
+    headers: { ApiKey: apiKey, 'Request-Time': ts, Signature: sign, 'Content-Type': 'application/json' },
+  });
+  const data = await res.json().catch(() => ({}));
+  if (!(data.success === true || data.code === 0)) return null;
+  return Array.isArray(data.data) ? data.data : (data.data?.resultList || data.data?.list || []);
+}
+
+async function fetchMexcOpen(apiKey, apiSecret) {
+  const rows = await mexcPrivateGet(apiKey, apiSecret, '/api/v1/private/position/open_positions');
+  return rows ? rows.filter((p) => parseFloat(p.holdVol) > 0).map(mexcCronOpen) : null;
+}
+
+async function fetchMexcClosed(apiKey, apiSecret) {
+  const rows = await mexcPrivateGet(apiKey, apiSecret, '/api/v1/private/position/list/history_positions', {
+    page_num: '1', page_size: '50', start_time: String(Date.now() - 7 * 24 * 60 * 60 * 1000),
+  });
+  if (!rows) return null;
+  const cs = await mexcContractSizes();
+  return rows.map((p) => mexcCronClosed(p, cs[(p.symbol || '').replace(/_/g, '')] || 1));
+}
+
+// Venues the alerts cron can watch, and how to label them in a notification.
+const ALERT_FETCHERS = {
+  bybit: { open: fetchBybitOpen, closed: (k, s) => fetchBybitClosedPnl(k, s, 50) },
+  mexc: { open: fetchMexcOpen, closed: fetchMexcClosed },
+};
+const ALERT_EXCHANGE_NAMES = { bybit: 'Bybit', mexc: 'MEXC' };
+
 // pushexch:{uid}:{exchange}) for newly closed trades → push a result
 // notification, plus a once-a-day summary. Runs from the 10-minute cron.
 async function checkExchangeClosedTrades(env) {
@@ -760,7 +795,9 @@ async function checkExchangeClosedTrades(env) {
 
   for (const name of keyNames) {
     const [, uid, exchange] = name.split(':');
-    if (exchange !== 'bybit') continue; // only Bybit polling for now
+    const fetchers = ALERT_FETCHERS[exchange];
+    if (!fetchers) continue; // venue not watched in the background (yet)
+    const venue = ALERT_EXCHANGE_NAMES[exchange] || exchange;
     const creds = await loadExchangeCreds(env, uid, exchange); // decrypts + self-heals legacy plaintext
     if (!creds?.apiKey || !creds?.apiSecret) {
       // Key expired (CREDS_TTL) or was deleted — prune it from the index so
@@ -772,7 +809,7 @@ async function checkExchangeClosedTrades(env) {
     // ---- Position-opened notifications ----
     // Compare the live open positions to the snapshot from the previous tick;
     // anything new → "position opened". First run only seeds the snapshot.
-    const openPositions = await fetchBybitOpen(creds.apiKey, creds.apiSecret);
+    const openPositions = await fetchers.open(creds.apiKey, creds.apiSecret);
     if (openPositions) {
       const openKey = `pushopen:${uid}:${exchange}`;
       const prevRaw = await env.ALERTS_KV.get(openKey);
@@ -783,7 +820,7 @@ async function checkExchangeClosedTrades(env) {
         for (const p of opened) {
           const dir = p.direction === 'long' ? 'Long' : 'Short';
           await sendPushToUser(env, uid, {
-            title: `🔵 נפתחה עסקה — ${p.pair} ${dir}`,
+            title: `🔵 נפתחה עסקה — ${p.pair} ${dir} · ${venue}`,
             body: `כניסה: ${fmtPrice(p.entryPrice)}${p.leverage > 1 ? ` · מינוף ${p.leverage}x` : ''}`,
             url: '/journal',
             tag: `open-${p.id}`,
@@ -799,7 +836,7 @@ async function checkExchangeClosedTrades(env) {
       }
     }
 
-    const trades = await fetchBybitClosedPnl(creds.apiKey, creds.apiSecret, 50);
+    const trades = await fetchers.closed(creds.apiKey, creds.apiSecret);
     if (!trades || !trades.length) continue;
 
     // ---- New-closed notifications ----
@@ -824,8 +861,8 @@ async function checkExchangeClosedTrades(env) {
         // A profitable close ≈ take-profit hit; a losing close ≈ stop-loss hit.
         await sendPushToUser(env, uid, {
           title: win
-            ? `🎯 טייק פרופיט — ${t.pair} ${dir}`
-            : `🛑 סטופ לוס — ${t.pair} ${dir}`,
+            ? `🎯 טייק פרופיט — ${t.pair} ${dir} · ${venue}`
+            : `🛑 סטופ לוס — ${t.pair} ${dir} · ${venue}`,
           body: `${win ? 'רווח' : 'הפסד'}: ${fmtPnl(t.pnl)} (${fmtPct(t.roiPct)})`,
           url: '/journal',
           tag: `closed-${t.externalId}`,
@@ -842,7 +879,8 @@ async function checkExchangeClosedTrades(env) {
 
     // ---- Daily summary (once per Israel day, ~22:00) ----
     if (summaryWindow) {
-      const sentKey = `pushdaily:${uid}:${israelDate}`;
+      // Bybit keeps its original key; other venues get their own summary.
+      const sentKey = `pushdaily:${uid}:${israelDate}${exchange === 'bybit' ? '' : `:${exchange}`}`;
       if (!(await env.ALERTS_KV.get(sentKey))) {
         await env.ALERTS_KV.put(sentKey, '1', { expirationTtl: 60 * 60 * 48 });
         const todays = trades.filter((t) => t.exitMs >= dayStartMs);
@@ -851,10 +889,10 @@ async function checkExchangeClosedTrades(env) {
           const wins = todays.filter((t) => t.pnl >= 0).length;
           const wr = Math.round((wins / todays.length) * 100);
           await sendPushToUser(env, uid, {
-            title: `📊 סיכום יומי — ${todays.length} עסקאות`,
+            title: `📊 סיכום יומי ${venue} — ${todays.length} עסקאות`,
             body: `P&L יומי: ${fmtPnl(total)} · אחוז הצלחה ${wr}%`,
             url: '/dashboard',
-            tag: `daily-${israelDate}`,
+            tag: `daily-${israelDate}-${exchange}`,
           });
         }
       }

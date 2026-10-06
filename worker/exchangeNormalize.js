@@ -416,3 +416,38 @@ export function mexcExitsByPosition(orders = [], contractSizeOf = () => 1) {
   }
   return out;
 }
+
+// ── Background alerts (cron) ─────────────────────────────────────────────────
+// The 10-minute alerts cron works on two small shapes, whatever the venue:
+//   open:   { id, pair, direction, entryPrice, leverage }
+//   closed: { externalId, pair, direction, pnl (net), roiPct, exitMs }
+
+// MEXC open_positions row → cron "open" shape.
+export function mexcCronOpen(p) {
+  const posType = parseInt(p.positionType ?? p.position_type);
+  return {
+    id: String(p.positionId ?? `${p.symbol}_${posType}`),
+    pair: (p.symbol || '').replace(/_/g, ''),
+    direction: posType === 1 ? 'long' : 'short',
+    entryPrice: num(p.holdAvgPrice || p.openAvgPrice),
+    leverage: num(p.leverage) || 1,
+  };
+}
+
+// MEXC history_positions row → cron "closed" shape. `realised` is the net
+// P&L MEXC shows; ROI is on the margin committed (notional / leverage).
+export function mexcCronClosed(p, contractSize = 1) {
+  const pnl = num(p.realised ?? p.realisedPnl);
+  const entry = num(p.openAvgPrice);
+  const lev = num(p.leverage) || 1;
+  const margin = entry * num(p.closeVol) * (contractSize || 1) / lev;
+  const posType = parseInt(p.positionType ?? p.position_type);
+  return {
+    externalId: String(p.positionId ?? p.id ?? `${p.symbol}_${p.createTime}`),
+    pair: (p.symbol || '').replace(/_/g, ''),
+    direction: posType === 1 ? 'long' : 'short',
+    pnl,
+    roiPct: margin > 0 ? (pnl / margin) * 100 : 0,
+    exitMs: parseInt(p.updateTime) || parseInt(p.createTime) || 0,
+  };
+}
