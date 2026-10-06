@@ -7,10 +7,11 @@ import Card from '../shared/Card';
 import AnimatedValue from '../shared/AnimatedValue';
 import { ResponsiveContainer, AreaChart, Area, Tooltip, XAxis, YAxis, BarChart, Bar } from 'recharts';
 import { useAuth } from '../../contexts/AuthContext';
+import ReengageComposer from './ReengageComposer';
 import { getAllUsers, getUserSubcollectionCount, adminGrantPremium, adminRevokePremium, addPayment, getAllPayments, getAdminMeta, setAdminMeta } from '../../services/firestoreService';
 import { APP_VERSION } from '../../utils/constants';
 import { fetchUserAiUsage, fetchGlobalAiUsage, fetchAiStats, fetchSystemHealth, testAiProviders } from '../../hooks/useAiUsage';
-import { adminSendNotification, adminSendBulkNotification, adminScheduleExpiryReminders, adminCancelExpiryReminders, adminRefreshPlanCache, adminListAuditEvents, adminSendTestDigest, adminSendPaymentEmail, adminDeleteUser, adminGetPushStatus, adminGetExchangesStatus, adminGetFirebaseUsage } from '../../services/pushService';
+import { adminSendNotification, adminScheduleExpiryReminders, adminCancelExpiryReminders, adminRefreshPlanCache, adminListAuditEvents, adminSendTestDigest, adminSendPaymentEmail, adminDeleteUser, adminGetPushStatus, adminGetExchangesStatus, adminGetFirebaseUsage } from '../../services/pushService';
 import { adminListCoupons, adminCreateCoupon, adminDeleteCoupon, couponShareUrl } from '../../services/couponService';
 import LoadingSpinner from '../shared/LoadingSpinner';
 import SelectDropdown from '../shared/SelectDropdown';
@@ -705,7 +706,7 @@ export default function AdminPanel() {
           {[
             { label: 'אנליטיקס', Icon: BarChart3, onClick: () => setAnalyticsOpen(true), tone: 'accent' },
             { label: 'מובילים', Icon: Trophy, onClick: () => setLeaderboardOpen(true) },
-            { label: 'שליחה קבוצתית', Icon: Send, onClick: () => setBulkOpen(true) },
+            { label: 'שליחת תזכורת', Icon: Send, onClick: () => setBulkOpen(true) },
             { label: 'קופונים', Icon: Ticket, onClick: () => setCouponsOpen(true), tone: 'amber' },
             { label: 'יומן פעולות', Icon: ScrollText, onClick: () => setAuditOpen(true) },
             { label: 'רענן', Icon: RefreshCw, onClick: load, disabled: loading, spin: loading },
@@ -1684,35 +1685,15 @@ function QuotaBar({ label, used, limit }) {
 }
 
 function BulkNotifyModal({ isOpen, onClose, segments }) {
-  const [seg, setSeg] = useState('premium');
-  const [title, setTitle] = useState('');
-  const [body, setBody] = useState('');
-  const [url, setUrl] = useState('');
-  const [sending, setSending] = useState(false);
-
-  useEffect(() => { if (!isOpen) { setTitle(''); setBody(''); setUrl(''); setSeg('premium'); } }, [isOpen]);
-
+  const [seg, setSeg] = useState('all');
   const targets = segments?.[seg] || [];
-  const send = async () => {
-    if (!title.trim() || !body.trim() || !targets.length) return;
-    setSending(true);
-    try {
-      const uids = targets.map((u) => u.id);
-      const r = await adminSendBulkNotification({ uids, title: title.trim(), body: body.trim(), url: url.trim() || '/' });
-      toast.success(`נשלח ל-${r?.recipients ?? 0} משתמשים (${r?.sent ?? 0} מכשירים)`);
-      onClose();
-    } catch {
-      toast.error('השליחה נכשלה');
-    } finally {
-      setSending(false);
-    }
-  };
+  const recipients = targets.map((u) => ({ id: u.id, email: u.email || '', name: u.displayName || '' }));
 
   return (
-    <Modal isOpen={isOpen} onClose={onClose} title="שליחת התראה קבוצתית" maxWidth="max-w-lg">
-      <div className="p-4 space-y-3">
+    <Modal isOpen={isOpen} onClose={onClose} title="שליחת תזכורת למשתמשים" maxWidth="max-w-xl">
+      <div className="p-4 space-y-4">
         <div>
-          <label className="text-[11px] text-text-muted block mb-1.5">קהל יעד</label>
+          <label className="text-[11px] text-text-muted block mb-1.5">למי לשלוח</label>
           <div className="flex flex-wrap gap-1.5">
             {Object.keys(SEGMENT_LABELS).map((k) => {
               const count = segments?.[k]?.length || 0;
@@ -1730,38 +1711,8 @@ function BulkNotifyModal({ isOpen, onClose, segments }) {
             })}
           </div>
         </div>
-        <input
-          value={title}
-          onChange={(e) => setTitle(e.target.value)}
-          placeholder="כותרת ההתראה"
-          maxLength={120}
-          className="w-full bg-bg-tertiary border border-border-primary rounded-lg px-3 py-2 text-sm text-text-primary outline-none focus:border-accent-primary"
-        />
-        <textarea
-          value={body}
-          onChange={(e) => setBody(e.target.value)}
-          placeholder="תוכן ההתראה"
-          maxLength={400}
-          rows={3}
-          className="w-full bg-bg-tertiary border border-border-primary rounded-lg px-3 py-2 text-sm text-text-primary outline-none focus:border-accent-primary resize-none"
-        />
-        <input
-          value={url}
-          onChange={(e) => setUrl(e.target.value)}
-          placeholder="קישור (ברירת מחדל: דף הבית)"
-          dir="ltr"
-          className="w-full bg-bg-tertiary border border-border-primary rounded-lg px-3 py-2 text-sm text-text-primary outline-none focus:border-accent-primary text-right"
-        />
-        <button
-          type="button"
-          onClick={send}
-          disabled={sending || !title.trim() || !body.trim() || !targets.length}
-          className="w-full py-2.5 rounded-lg bg-accent-primary text-bg-primary text-sm font-bold hover:bg-accent-hover transition-colors cursor-pointer disabled:opacity-50 flex items-center justify-center gap-2"
-        >
-          {sending ? <Loader2 className="w-4 h-4 animate-spin" /> : <Send className="w-4 h-4" />}
-          שלח ל-{targets.length} משתמשים
-        </button>
-        <p className="text-[11px] text-text-muted text-center">נשלח רק למשתמשים שאישרו התראות Push.</p>
+        {/* key: a new audience starts a fresh form */}
+        <ReengageComposer key={seg} recipients={recipients} onSent={onClose} />
       </div>
     </Modal>
   );
@@ -1804,9 +1755,6 @@ function UserDetailModal({ user, onClose, onUserChanged }) {
   const [payMethod, setPayMethod] = useState('bit');
   const [sendReceipt, setSendReceipt] = useState(true);
   const [notifyOpen, setNotifyOpen] = useState(false);
-  const [notifyTitle, setNotifyTitle] = useState('');
-  const [notifyBody, setNotifyBody] = useState('');
-  const [notifying, setNotifying] = useState(false);
   const [confirmDelete, setConfirmDelete] = useState(false);
   const [deleting, setDeleting] = useState(false);
   // Connection status: Web Push devices + linked exchanges (ids only).
@@ -1983,23 +1931,6 @@ function UserDetailModal({ user, onClose, onUserChanged }) {
     }
   };
 
-  const sendNotify = async () => {
-    if (!notifyTitle.trim() || !notifyBody.trim()) return;
-    setNotifying(true);
-    try {
-      const r = await adminSendNotification({ uid: user.id, title: notifyTitle.trim(), body: notifyBody.trim() });
-      if (r.sent > 0) toast.success(`ההתראה נשלחה ל-${r.sent} מכשירים`);
-      else if (r.total === 0) toast.error('למשתמש אין התראות מופעלות');
-      else toast.error('שליחה נכשלה');
-      setNotifyOpen(false);
-      setNotifyTitle(''); setNotifyBody('');
-    } catch (e) {
-      toast.error(e.message || 'השליחה נכשלה');
-    } finally {
-      setNotifying(false);
-    }
-  };
-
   useEffect(() => {
     if (!user) { setCounts(null); setCountsError(null); return; }
     let cancelled = false;
@@ -2088,7 +2019,7 @@ function UserDetailModal({ user, onClose, onUserChanged }) {
             onClick={() => setNotifyOpen(true)}
             className="flex items-center justify-center gap-1.5 px-3 py-2 rounded-lg bg-accent-primary/10 border border-accent-primary/30 text-accent-primary text-sm font-semibold hover:bg-accent-primary/20 transition-colors cursor-pointer"
           >
-            <Send className="w-4 h-4" /> שלח הודעת Push
+            <Send className="w-4 h-4" /> שלח תזכורת
           </button>
         </div>
 
@@ -2174,37 +2105,19 @@ function UserDetailModal({ user, onClose, onUserChanged }) {
           </div>
         )}
 
-        {/* Notification composer */}
+        {/* Reminder composer — push and/or email to this user. */}
         {notifyOpen && (
-          <div className="bg-accent-primary/5 border border-accent-primary/30 rounded-xl p-3 space-y-2">
+          <div className="bg-accent-primary/5 border border-accent-primary/30 rounded-xl p-3 space-y-3">
             <div className="flex items-center justify-between">
-              <span className="text-sm font-semibold text-text-primary">הודעת Push למשתמש</span>
-              <button onClick={() => setNotifyOpen(false)} className="text-text-muted hover:text-text-primary cursor-pointer">
+              <span className="text-sm font-semibold text-text-primary">תזכורת למשתמש</span>
+              <button onClick={() => setNotifyOpen(false)} className="text-text-muted hover:text-text-primary cursor-pointer" aria-label="סגור">
                 <X className="w-4 h-4" />
               </button>
             </div>
-            <input
-              value={notifyTitle}
-              onChange={(e) => setNotifyTitle(e.target.value)}
-              placeholder="כותרת"
-              maxLength={120}
-              className="w-full bg-bg-secondary border border-border-primary rounded-lg px-3 py-2 text-sm text-text-primary outline-none focus:border-accent-primary"
+            <ReengageComposer
+              recipients={[{ id: user.id, email: user.email || '', name: user.displayName || '' }]}
+              onSent={() => setNotifyOpen(false)}
             />
-            <textarea
-              value={notifyBody}
-              onChange={(e) => setNotifyBody(e.target.value)}
-              placeholder="גוף ההודעה"
-              maxLength={400}
-              rows={3}
-              className="w-full bg-bg-secondary border border-border-primary rounded-lg px-3 py-2 text-sm text-text-primary outline-none focus:border-accent-primary resize-none"
-            />
-            <button
-              onClick={sendNotify}
-              disabled={notifying || !notifyTitle.trim() || !notifyBody.trim()}
-              className="w-full flex items-center justify-center gap-1.5 px-3 py-2 rounded-lg bg-accent-primary text-bg-primary text-sm font-bold hover:bg-accent-hover transition-colors cursor-pointer disabled:opacity-50"
-            >
-              <Send className="w-4 h-4" /> {notifying ? 'שולח...' : 'שלח עכשיו'}
-            </button>
           </div>
         )}
 

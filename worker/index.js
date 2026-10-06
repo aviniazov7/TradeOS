@@ -14,6 +14,7 @@ import {
   enrichWithOrders, okxOrderRow, okxStopRow, bitgetOrderRow, bitgetStopRow, mexcCronOpen, mexcCronClosed,
   normalizeMexcClosed, normalizeOkxClosed, normalizeOkxOpen, normalizeBitgetClosed,
 } from './exchangeNormalize.js';
+import { buildCampaignEmails, chunk } from './adminEmail.js';
 
 // Binance's public market-data mirror — api.binance.com returns 403 to
 // Cloudflare Worker egress IPs in many regions, but data-api.binance.vision
@@ -528,6 +529,31 @@ async function sendEmail(env, { to, subject, html, replyTo }) {
   } catch (e) {
     console.error('Resend send threw:', e);
     return { ok: false, status: 0, error: e.message };
+  }
+}
+
+// Many emails in few requests: Resend's batch endpoint takes up to 100
+// messages per call (one Worker subrequest per 100 recipients).
+async function sendEmailBatch(env, messages) {
+  if (!env.RESEND_API_KEY) return { ok: false, status: 0, message: 'no-api-key' };
+  const from = env.MAIL_FROM_ADDRESS
+    ? `${env.MAIL_FROM_NAME || 'TradeOS'} <${env.MAIL_FROM_ADDRESS}>`
+    : 'TradeOS <onboarding@resend.dev>';
+  try {
+    const res = await fetch('https://api.resend.com/emails/batch', {
+      method: 'POST',
+      headers: { Authorization: `Bearer ${env.RESEND_API_KEY}`, 'Content-Type': 'application/json' },
+      body: JSON.stringify(messages.map((m) => ({ from, to: [m.to], subject: m.subject, html: m.html }))),
+    });
+    if (!res.ok) {
+      const detail = await res.text().catch(() => '');
+      let message = '';
+      try { message = JSON.parse(detail).message || ''; } catch { /* not JSON */ }
+      return { ok: false, status: res.status, message: message || detail.slice(0, 200) };
+    }
+    return { ok: true, status: res.status };
+  } catch (e) {
+    return { ok: false, status: 0, message: e.message };
   }
 }
 
@@ -4598,6 +4624,32 @@ async function handleRequest(request, env) {
     for (const r of results) { sent += r.sent || 0; if ((r.sent || 0) > 0) recipients++; }
     appendAudit(env, { kind: 'notify-bulk', actor: adminUid, targeted: capped.length, recipients, sent, title: payload.title });
     return new Response(JSON.stringify({ ok: true, sent, recipients, targeted: capped.length }), { headers: { ...cors, 'Content-Type': 'application/json' } });
+  }
+
+  // Admin-only: a "come back to TradeOS" email to one user or a segment —
+  // reaches users who never enabled push. Personalised per recipient
+  // (adminEmail.js), sent through Resend in batches of 100.
+  if (request.method === 'POST' && path === '/admin/email-campaign') {
+    const token = (request.headers.get('Authorization') || '').replace('Bearer ', '');
+    const adminUid = await verifyAdminFromToken(token);
+    if (!adminUid) return new Response(JSON.stringify({ error: 'forbidden' }), { status: 403, headers: { ...cors, 'Content-Type': 'application/json' } });
+    if (!env.RESEND_API_KEY) return new Response(JSON.stringify({ error: 'RESEND_API_KEY חסר ב-Worker — לא ניתן לשלוח מיילים' }), { status: 503, headers: { ...cors, 'Content-Type': 'application/json' } });
+    const { recipients, subject, headline, message, ctaText, ctaPath } = await request.json().catch(() => ({}));
+    if (!Array.isArray(recipients) || !recipients.length || !(subject || headline) || !message) {
+      return new Response(JSON.stringify({ error: 'missing fields' }), { status: 400, headers: { ...cors, 'Content-Type': 'application/json' } });
+    }
+    const emails = buildCampaignEmails({ recipients, subject, headline, message, ctaText, ctaPath }, emailShell);
+    if (!emails.length) return new Response(JSON.stringify({ error: 'אין כתובות מייל תקינות' }), { status: 400, headers: { ...cors, 'Content-Type': 'application/json' } });
+    let sent = 0, failed = 0, firstError = '';
+    for (const batch of chunk(emails, 100)) {
+      const r = await sendEmailBatch(env, batch);
+      if (r.ok) sent += batch.length;
+      else { failed += batch.length; if (!firstError) firstError = `Resend ${r.status}: ${r.message || 'error'}`; }
+    }
+    appendAudit(env, { kind: 'email-campaign', actor: adminUid, targeted: emails.length, sent, failed, subject: String(subject || headline).slice(0, 120) });
+    return new Response(JSON.stringify({ ok: sent > 0, sent, failed, targeted: emails.length, ...(firstError ? { error: firstError } : {}) }), {
+      status: sent > 0 || !failed ? 200 : 502, headers: { ...cors, 'Content-Type': 'application/json' },
+    });
   }
 
   // Admin-only: invalidate the cached premium flag for a user. Called right
