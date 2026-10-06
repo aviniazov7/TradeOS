@@ -1,6 +1,6 @@
 import { describe, it, expect } from 'vitest';
 import {
-  withRisk, mexcTradeFee, mexcStopsByPosition, mexcOrderKind, mexcEntryTypeByPosition, normalizeMexcClosed, normalizeOkxClosed, normalizeOkxOpen, normalizeBitgetClosed,
+  withRisk, classifyExchangeAuthError, mexcTradeFee, mexcStopsByPosition, mexcOrderKind, mexcEntryTypeByPosition, normalizeMexcClosed, normalizeOkxClosed, normalizeOkxOpen, normalizeBitgetClosed,
 } from './exchangeNormalize';
 
 // Sample rows are the exchanges' own documented example responses (as quoted
@@ -214,5 +214,30 @@ describe('MEXC entry order type', () => {
   it('puts the order type on the closed trade (market when unknown)', () => {
     expect(normalizeMexcClosed(MEXC_SAMPLE, { orderType: 'limit' }).orderType).toBe('limit');
     expect(normalizeMexcClosed(MEXC_SAMPLE, {}).orderType).toBe('market');
+  });
+});
+
+describe('classifyExchangeAuthError', () => {
+  it('recognises an expired key by code', () => {
+    expect(classifyExchangeAuthError('mexc', 402, 'Api_key expired')).toBe('key_expired');
+    expect(classifyExchangeAuthError('bybit', 33004, 'Your api key has expired.')).toBe('key_expired');
+  });
+
+  it('reads the code out of a wrapped message', () => {
+    expect(classifyExchangeAuthError('mexc', null, 'Error: MEXC 402: Api_key expired')).toBe('key_expired');
+    expect(classifyExchangeAuthError('okx', undefined, 'OKX 50111: Invalid OK-ACCESS-KEY')).toBe('key_invalid');
+  });
+
+  it('separates invalid keys, IP blocks and missing permissions', () => {
+    expect(classifyExchangeAuthError('mexc', 602, 'Verify failed')).toBe('key_invalid');
+    expect(classifyExchangeAuthError('bybit', 10010, 'Unmatched IP')).toBe('ip_blocked');
+    expect(classifyExchangeAuthError('mexc', 406, 'Accessed IP is not in the whitelist')).toBe('ip_blocked');
+    expect(classifyExchangeAuthError('bitget', 40014, 'Incorrect permissions')).toBe('no_permission');
+  });
+
+  it('falls back to the message, and returns null for non-auth errors', () => {
+    expect(classifyExchangeAuthError('okx', null, 'API key has expired')).toBe('key_expired');
+    expect(classifyExchangeAuthError('bybit', 10006, 'Too many visits!')).toBeNull();
+    expect(classifyExchangeAuthError('mexc', null, 'fetch failed')).toBeNull();
   });
 });

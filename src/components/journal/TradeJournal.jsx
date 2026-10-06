@@ -1,7 +1,7 @@
 import { useState, useMemo, useEffect, useRef, lazy, Suspense } from 'react';
 import { useSearchParams } from 'react-router-dom';
 import { motion } from 'framer-motion';
-import { Plus, BookOpen, Settings, Undo2, BrainCircuit, ListChecks, Trash2 } from 'lucide-react';
+import { Plus, BookOpen, Settings, Undo2, BrainCircuit, ListChecks, Trash2, AlertTriangle } from 'lucide-react';
 import toast from 'react-hot-toast';
 import { useTrades } from '../../hooks/useTrades';
 import { useCryptoPrices } from '../../hooks/useCryptoPrices';
@@ -9,7 +9,8 @@ import { useJournalContext } from '../../contexts/JournalContext';
 import { calculatePnL, calculateFuturesPnL, isClosedTrade, safePnl, localDayKey } from '../../utils/calculations';
 import { computeUnrealized, sortJournalTrades } from '../../utils/journalAnalytics';
 import { useDashboardStats } from '../../hooks/useDashboardStats';
-import { useLinkedExchangeBalance } from '../../hooks/useLinkedExchangeBalance';
+import { useLinkedExchange } from '../../hooks/useLinkedExchangeBalance';
+import { KEY_PROBLEM_TEXT } from '../../services/exchangeService';
 import { useExchangeImport } from '../../hooks/useExchangeImport';
 import JournalSwitcher from './JournalSwitcher';
 import JournalTabs from './JournalTabs';
@@ -229,7 +230,7 @@ export default function TradeJournal() {
   // Recovery, Sortino, Calmar, Sharpe…) is calibrated to the real wallet:
   //   effectiveInitial = liveBalance − totalPnL(closed)
   // so stats.currentBalance = effectiveInitial + totalPnL = liveBalance.
-  const liveExchangeBalance = useLinkedExchangeBalance(activeJournal?.exchange);
+  const { balance: liveExchangeBalance, keyProblem } = useLinkedExchange(activeJournal?.exchange);
   const balanceIsLive = liveExchangeBalance != null;
   // Must use the SAME closed-trade predicate as useDashboardStats (which counts
   // 'partial' rows too), otherwise effectiveInitial is calibrated against a
@@ -587,6 +588,21 @@ export default function TradeJournal() {
 
       {tab === 'trades' && (
         <>
+          {/* The linked exchange's API key stopped working (e.g. a MEXC key
+              expired after 90 days) — sync and the live balance silently
+              stop, so say it here with a one-click way to fix it. */}
+          {activeJournal?.exchange && keyProblem && (
+            <div role="alert" className="mb-3 flex flex-wrap items-center justify-between gap-2 rounded-xl border border-loss/30 bg-loss/10 px-3 md:px-4 py-2.5">
+              <p className="text-sm text-loss font-semibold inline-flex items-center gap-1.5 min-w-0">
+                <AlertTriangle className="w-4 h-4 shrink-0" />
+                <span className="truncate">החיבור ל-{activeJournal.exchange.toUpperCase()} הפסיק לעבוד: {KEY_PROBLEM_TEXT[keyProblem]}</span>
+              </p>
+              <button type="button" onClick={() => setTab('exchange')}
+                className="h-8 px-3 rounded-lg text-xs font-semibold bg-loss/15 text-loss border border-loss/30 hover:bg-loss/25 transition-colors cursor-pointer shrink-0">
+                לתיקון החיבור
+              </button>
+            </div>
+          )}
           {activeJournal?.exchange && (
             <ExchangeProposals
               exchange={activeJournal.exchange}

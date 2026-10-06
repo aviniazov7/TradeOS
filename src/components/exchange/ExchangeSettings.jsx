@@ -1,12 +1,12 @@
 import { useState, useEffect } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import {
-  Shield, Eye, EyeOff, ExternalLink, RefreshCw, Zap, Pencil, Plus, Unplug, Wallet, Link2, Lock,
+  Shield, Eye, EyeOff, ExternalLink, RefreshCw, Zap, Pencil, Plus, Unplug, Wallet, Link2, Lock, AlertTriangle, Clock,
 } from 'lucide-react';
 import toast from 'react-hot-toast';
 import { useNavigate } from 'react-router-dom';
 import { getUserSetting, setUserSetting } from '../../services/firestoreService';
-import { syncExchangeTrades, syncOpenPositions, fetchExchangeBalance, storeExchangeCredentials, deleteExchangeCredentials, getConnectedExchanges } from '../../services/exchangeService';
+import { syncExchangeTrades, syncOpenPositions, fetchExchangeBalance, storeExchangeCredentials, deleteExchangeCredentials, getConnectedExchanges, KEY_PROBLEM_TEXT } from '../../services/exchangeService';
 import { useAuth } from '../../contexts/AuthContext';
 import { useJournalContext } from '../../contexts/JournalContext';
 import { useExchangeImport } from '../../hooks/useExchangeImport';
@@ -30,6 +30,25 @@ const SYNC_PERIODS = [
 ];
 
 const fmtUsd = (v) => `$${v.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
+
+const DAY_MS = 24 * 60 * 60 * 1000;
+// Remind this many days before a key with a fixed lifetime expires.
+const EXPIRY_WARN_DAYS = 14;
+
+// What to do about each API-key problem the Worker diagnosed.
+const PROBLEM_HELP = {
+  key_expired: (ex) => `צור מפתח חדש ב-${ex.name}${ex.renewHint ? ` (או חדש את הקיים: ${ex.renewHint})` : ''} ועדכן אותו כאן.`,
+  key_invalid: () => 'ייתכן שהמפתח נמחק בבורסה או הועתק לא במלואו. צור מפתח חדש ועדכן אותו כאן.',
+  ip_blocked: () => 'הסר את הגבלת ה-IP מהמפתח בבורסה — TradeOS מתחבר מכתובות משתנות — ועדכן כאן.',
+  no_permission: () => 'ודא שלמפתח יש הרשאות קריאה לחשבון ולפקודות של Futures, ועדכן כאן.',
+};
+
+// Days left on a key with a fixed lifetime (MEXC), from when it was saved.
+const keyDaysLeft = (exchange, marker, now) => (
+  exchange.keyLifetimeDays && marker?.connectedAt
+    ? Math.ceil(exchange.keyLifetimeDays - (now - marker.connectedAt) / DAY_MS)
+    : null
+);
 
 // ── Real logo with fallback ───────────────────────────────────────────────────
 function ExLogo({ id, size = 48, accent }) {
@@ -78,9 +97,12 @@ function SectionTitle({ children, aside }) {
 // ── Connected exchange card ───────────────────────────────────────────────────
 // The live state of one connection: balance, sync controls, key management.
 // No key inputs here — editing keys happens in the connect dialog.
-function ConnectedCard({ exchange, balance, syncing, onSync, onEdit, onDisconnect, index }) {
+function ConnectedCard({ exchange, balance, syncing, onSync, onEdit, onDisconnect, onRenewed, daysLeft, estimated, index }) {
   const [syncDays, setSyncDays] = useState('0'); // '0' = last 50; else import window in days
   const { id, name, tagline, accent, canSync } = exchange;
+
+  const problem = balance && typeof balance === 'object' ? balance.problem : null;
+  const expiringSoon = !problem && daysLeft !== null && daysLeft <= EXPIRY_WARN_DAYS;
 
   let balanceView;
   if (!canSync) balanceView = <span className="text-sm text-text-muted">סנכרון אוטומטי לא נתמך</span>;
@@ -116,16 +138,47 @@ function ConnectedCard({ exchange, balance, syncing, onSync, onEdit, onDisconnec
         </span>
       </div>
 
-      <div className="relative">
-        <p className="text-[11px] text-text-muted mb-1">יתרה בבורסה</p>
-        {balanceView}
-      </div>
+      {problem ? (
+        // The key itself is the problem (expired / invalid / IP / permission):
+        // say so and offer the fix, instead of a silent "balance unavailable".
+        <div className="relative rounded-xl border border-loss/30 bg-loss/10 px-3 py-2.5" role="alert">
+          <p className="text-sm font-semibold text-loss flex items-center gap-1.5">
+            <AlertTriangle className="w-4 h-4 shrink-0" />{KEY_PROBLEM_TEXT[problem]}
+          </p>
+          <p className="text-[11px] text-text-secondary mt-1 leading-relaxed">{PROBLEM_HELP[problem](exchange)}</p>
+          <button type="button" onClick={onEdit}
+            className="mt-2 h-8 inline-flex items-center gap-1.5 px-3 rounded-lg text-xs font-semibold bg-loss/15 text-loss border border-loss/30 hover:bg-loss/25 transition-colors cursor-pointer">
+            <Pencil className="w-3.5 h-3.5" />עדכון מפתחות
+          </button>
+        </div>
+      ) : (
+        <div className="relative">
+          <p className="text-[11px] text-text-muted mb-1">יתרה בבורסה</p>
+          {balanceView}
+        </div>
+      )}
+
+      {expiringSoon && (
+        <div className="relative rounded-xl border border-breakeven/30 bg-breakeven/10 px-3 py-2.5">
+          <p className="text-sm font-semibold text-breakeven flex items-center gap-1.5">
+            <Clock className="w-4 h-4 shrink-0" />
+            {daysLeft <= 0 ? 'המפתח פג היום' : `המפתח יפוג בעוד ${daysLeft} ${daysLeft === 1 ? 'יום' : 'ימים'}`}{estimated ? ' (הערכה)' : ''}
+          </p>
+          <p className="text-[11px] text-text-secondary mt-1 leading-relaxed">
+            חדש אותו ב-{name}{exchange.renewHint ? ` (${exchange.renewHint})` : ''} — או צור מפתח חדש ועדכן כאן.
+          </p>
+          <button type="button" onClick={onRenewed}
+            className="mt-2 h-8 inline-flex items-center gap-1.5 px-3 rounded-lg text-xs font-semibold bg-breakeven/15 text-breakeven border border-breakeven/30 hover:bg-breakeven/25 transition-colors cursor-pointer">
+            חידשתי את המפתח
+          </button>
+        </div>
+      )}
 
       {canSync ? (
         <div className="relative flex items-stretch gap-2">
           <SelectDropdown compact value={syncDays} onChange={setSyncDays} options={SYNC_PERIODS}
             className="w-32 shrink-0" triggerClassName="h-full rounded-xl" />
-          <button onClick={() => onSync(Number(syncDays))} disabled={syncing}
+          <button onClick={() => onSync(Number(syncDays))} disabled={syncing || !!problem}
             className="flex-1 h-11 rounded-xl text-sm font-bold cursor-pointer disabled:opacity-50 flex items-center justify-center gap-2 transition-[filter] hover:brightness-110"
             style={{ background: `${accent}1f`, color: accent, border: `1px solid ${accent}55` }}>
             {syncing ? <RefreshCw className="w-4 h-4 animate-spin" /> : <><Zap className="w-4 h-4" />סנכרן עסקאות</>}
@@ -137,11 +190,16 @@ function ConnectedCard({ exchange, balance, syncing, onSync, onEdit, onDisconnec
         </div>
       )}
 
-      <div className="relative flex items-center justify-between pt-3 border-t border-border-primary">
+      <div className="relative flex items-center justify-between gap-2 pt-3 border-t border-border-primary">
         <button onClick={onEdit}
           className="inline-flex items-center gap-1.5 text-xs text-text-muted hover:text-text-primary transition-colors cursor-pointer">
           <Pencil className="w-3.5 h-3.5" />עדכון מפתחות
         </button>
+        {daysLeft !== null && !expiringSoon && !problem && (
+          <span className="text-[11px] text-text-muted" title="מפתח MEXC בלי IP מוגבל ל-90 יום">
+            בתוקף עוד {daysLeft} ימים{estimated ? ' (הערכה)' : ''}
+          </span>
+        )}
         <button onClick={onDisconnect}
           className="inline-flex items-center gap-1.5 text-xs text-text-muted hover:text-loss transition-colors cursor-pointer">
           <Unplug className="w-3.5 h-3.5" />נתק
@@ -333,6 +391,8 @@ export default function ExchangeSettings({ journalId: propJournalId } = {}) {
   // Futures wallet balance per connected exchange: undefined = loading,
   // number = ok, false = failed.
   const [balances, setBalances] = useState({});
+  // Fixed "now" for the key-expiry countdown (render must stay pure).
+  const [now] = useState(() => Date.now());
   const [balanceNonce, setBalanceNonce] = useState(0);
 
   // Load connected exchanges. Credentials live encrypted server-side, so the
@@ -347,7 +407,12 @@ export default function ExchangeSettings({ journalId: propJournalId } = {}) {
           getConnectedExchanges().catch(() => []),
         ]);
         const markers = {};
-        for (const eid of connected) markers[eid] = { connected: true };
+        // Keep when each key was saved (drives the expiry reminder).
+        const markerFor = (eid) => ({
+          connected: true,
+          ...(legacy?.[eid]?.connectedAt ? { connectedAt: legacy[eid].connectedAt, connectedAtEstimated: !!legacy[eid].connectedAtEstimated } : {}),
+        });
+        for (const eid of connected) markers[eid] = markerFor(eid);
 
         // One-time migration of any legacy PLAINTEXT credentials still in
         // Firestore: push them to the encrypted server-side store, then strip
@@ -357,7 +422,7 @@ export default function ExchangeSettings({ journalId: propJournalId } = {}) {
         let hadPlaintext = false, anyFailed = false;
         if (legacy && typeof legacy === 'object') {
           for (const [eid, conf] of Object.entries(legacy)) {
-            if (conf?.connected) markers[eid] = { connected: true };
+            if (conf?.connected) markers[eid] = markerFor(eid);
             if (conf?.apiKey && conf?.apiSecret) {
               hadPlaintext = true;
               // Always re-store (idempotent) so the encrypted KV blob is written
@@ -366,13 +431,25 @@ export default function ExchangeSettings({ journalId: propJournalId } = {}) {
               try {
                 const extraKey = EXCHANGES.find(e => e.id === eid)?.extraField?.key;
                 await storeExchangeCredentials(eid, { apiKey: conf.apiKey, apiSecret: conf.apiSecret, passphrase: extraKey ? conf[extraKey] : undefined });
-                markers[eid] = { connected: true };
+                markers[eid] = markerFor(eid);
               } catch { anyFailed = true; }
             }
           }
         }
+        // Keys with a fixed lifetime connected before this was tracked get
+        // "today" as an estimated start — a real expiry is still caught by the
+        // balance check, which reports key_expired.
+        let stamped = false;
+        for (const ex of EXCHANGES) {
+          if (ex.keyLifetimeDays && markers[ex.id]?.connected && !markers[ex.id].connectedAt) {
+            markers[ex.id] = { ...markers[ex.id], connectedAt: Date.now(), connectedAtEstimated: true };
+            stamped = true;
+          }
+        }
         setSavedExchanges(markers);
-        if (hadPlaintext && !anyFailed) {
+        // merge:false replaces the doc — never write while legacy plaintext
+        // keys are still there and failed to migrate (that would delete them).
+        if ((hadPlaintext && !anyFailed) || (stamped && !hadPlaintext)) {
           try { await setUserSetting(user.uid, 'exchanges', markers, false); } catch { /* ignore */ }
         }
       } finally {
@@ -391,7 +468,7 @@ export default function ExchangeSettings({ journalId: propJournalId } = {}) {
     balanceIds.split(',').forEach((id) => {
       fetchExchangeBalance(id)
         .then((res) => { if (!cancelled) setBalances((b) => ({ ...b, [id]: typeof res?.balance === 'number' ? res.balance : false })); })
-        .catch(() => { if (!cancelled) setBalances((b) => ({ ...b, [id]: false })); });
+        .catch((err) => { if (!cancelled) setBalances((b) => ({ ...b, [id]: err?.reason ? { problem: err.reason } : false })); });
     });
     return () => { cancelled = true; };
   }, [balanceIds, balanceNonce]);
@@ -445,7 +522,7 @@ export default function ExchangeSettings({ journalId: propJournalId } = {}) {
       await storeExchangeCredentials(id, { apiKey: conf.apiKey, apiSecret: conf.apiSecret, passphrase: extraKey ? conf[extraKey] : undefined });
       // Persist only a non-secret marker; merge:false replaces the doc so no
       // plaintext key can linger.
-      const newMarkers = { ...savedExchanges, [id]: { connected: true } };
+      const newMarkers = { ...savedExchanges, [id]: { connected: true, connectedAt: Date.now() } };
       await setUserSetting(user.uid, 'exchanges', newMarkers, false);
       setSavedExchanges(newMarkers);
       // Drop the typed secret from React state immediately.
@@ -471,6 +548,17 @@ export default function ExchangeSettings({ journalId: propJournalId } = {}) {
     } catch { toast.error('שגיאה בניתוק'); }
   };
 
+  // "I renewed the key at the exchange" — restart its lifetime countdown.
+  const handleRenewed = async (id) => {
+    const newMarkers = { ...savedExchanges, [id]: { ...savedExchanges[id], connectedAt: Date.now(), connectedAtEstimated: false } };
+    try {
+      await setUserSetting(user.uid, 'exchanges', newMarkers, false);
+      setSavedExchanges(newMarkers);
+      const ex = EXCHANGES.find((e) => e.id === id);
+      toast.success(`התזכורת אופסה — ${ex?.keyLifetimeDays || ''} יום מהיום`);
+    } catch { toast.error('שגיאה בשמירה'); }
+  };
+
   const handleSync = async (id, days = 0) => {
     // One-time diagnostic: set localStorage.tradeos_sync_debug='1' to log the
     // raw upstream rows to the console (helps map missing fields like SL/TP).
@@ -487,7 +575,15 @@ export default function ExchangeSettings({ journalId: propJournalId } = {}) {
       const merged = [...taggedOpen, ...closedTrades];
       if (!merged.length) { toast('לא נמצאו עסקאות', { icon: 'ℹ️' }); return; }
       setSyncModal({ exchange: EXCHANGES.find(e => e.id === id)?.name || id, trades: merged });
-    } catch (err) { toast.error(`שגיאת סנכרון: ${err.message}`); } finally { setSyncing(null); }
+    } catch (err) {
+      if (err.reason) {
+        // Show the key problem on the card too, so the fix is one click away.
+        setBalances((b) => ({ ...b, [id]: { problem: err.reason } }));
+        toast.error(`${err.message} — לחץ "עדכון מפתחות"`);
+      } else {
+        toast.error(`שגיאת סנכרון: ${err.message}`);
+      }
+    } finally { setSyncing(null); }
   };
 
   const handleImport = async (trades) => {
@@ -515,6 +611,7 @@ export default function ExchangeSettings({ journalId: propJournalId } = {}) {
   const knownBalances = connected.map((e) => balances[e.id]).filter((b) => typeof b === 'number');
   const balancesLoading = connected.some((e) => e.canSync && balances[e.id] === undefined);
   const totalBalance = knownBalances.reduce((s, b) => s + b, 0);
+  const problemCount = connected.filter((e) => balances[e.id]?.problem).length;
   const dialogExchange = dialog ? EXCHANGES.find((e) => e.id === dialog.id) : null;
   const disconnectExchange = confirmDisconnect ? EXCHANGES.find((e) => e.id === confirmDisconnect) : null;
 
@@ -533,7 +630,8 @@ export default function ExchangeSettings({ journalId: propJournalId } = {}) {
             </div>
             <div className="grid grid-cols-3 gap-2 md:gap-2.5 lg:w-[480px]">
               <KpiTile icon={Link2} label="מחוברות" value={`${connectedCount}/${EXCHANGES.length}`}
-                sub={!isPremium ? `חינמי: עד ${FREE_LIMITS.exchanges}` : 'ללא הגבלה'} />
+                sub={problemCount ? `${problemCount} ${problemCount === 1 ? 'דורשת' : 'דורשות'} טיפול` : (!isPremium ? `חינמי: עד ${FREE_LIMITS.exchanges}` : 'ללא הגבלה')}
+                valueClass={problemCount ? 'text-loss' : 'text-text-primary'} />
               <KpiTile icon={Wallet} label="יתרה כוללת"
                 value={knownBalances.length ? fmtUsd(totalBalance) : (balancesLoading ? '…' : '—')}
                 sub={knownBalances.length ? `מ-${knownBalances.length} ${knownBalances.length === 1 ? 'בורסה' : 'בורסות'}` : null} />
@@ -555,7 +653,10 @@ export default function ExchangeSettings({ journalId: propJournalId } = {}) {
                   syncing={syncing === exchange.id}
                   onSync={(days) => handleSync(exchange.id, days)}
                   onEdit={() => openEdit(exchange.id)}
-                  onDisconnect={() => setConfirmDisconnect(exchange.id)} />
+                  onDisconnect={() => setConfirmDisconnect(exchange.id)}
+                  onRenewed={() => handleRenewed(exchange.id)}
+                  daysLeft={keyDaysLeft(exchange, savedExchanges[exchange.id], now)}
+                  estimated={!!savedExchanges[exchange.id]?.connectedAtEstimated} />
               ))}
             </div>
           ) : (

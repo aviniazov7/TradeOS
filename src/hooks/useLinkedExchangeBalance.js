@@ -5,15 +5,17 @@ import { fetchExchangeBalance } from '../services/exchangeService';
 
 const REFRESH_MS = 60_000; // refetch every minute
 
-// Live futures wallet balance for the exchange a journal is linked to.
-// Returns null while loading or when the journal has no exchange / the
-// exchange isn't connected; otherwise returns the balance number.
-export function useLinkedExchangeBalance(exchangeId) {
+// Live futures wallet balance for the exchange a journal is linked to, plus
+// the API-key problem when the balance call failed because of the key
+// (`keyProblem`: key_expired / key_invalid / ip_blocked / no_permission).
+// balance is null while loading or when the journal has no exchange / the
+// exchange isn't connected.
+export function useLinkedExchange(exchangeId) {
   const { user } = useAuth();
-  const [balance, setBalance] = useState(null);
+  const [state, setState] = useState({ balance: null, keyProblem: null });
 
   useEffect(() => {
-    if (!user || !exchangeId) { setBalance(null); return; }
+    if (!user || !exchangeId) { setState({ balance: null, keyProblem: null }); return; }
     let cancelled = false;
     let timer = null;
 
@@ -23,11 +25,11 @@ export function useLinkedExchangeBalance(exchangeId) {
         const conf = exchanges?.[exchangeId];
         // `connected` is the new non-secret marker; the apiKey check keeps
         // legacy (pre-migration) entries working until they migrate.
-        if (!conf?.connected && !(conf?.apiKey && conf?.apiSecret)) { setBalance(null); return; }
+        if (!conf?.connected && !(conf?.apiKey && conf?.apiSecret)) { if (!cancelled) setState({ balance: null, keyProblem: null }); return; }
         const res = await fetchExchangeBalance(exchangeId);
-        if (!cancelled) setBalance(res.balance);
-      } catch {
-        if (!cancelled) setBalance(null);
+        if (!cancelled) setState({ balance: res.balance, keyProblem: null });
+      } catch (err) {
+        if (!cancelled) setState({ balance: null, keyProblem: err?.reason || null });
       }
     };
 
@@ -36,7 +38,12 @@ export function useLinkedExchangeBalance(exchangeId) {
     return () => { cancelled = true; if (timer) clearInterval(timer); };
   }, [user, exchangeId]);
 
-  return balance;
+  return state;
+}
+
+// Balance only — the shape most callers want.
+export function useLinkedExchangeBalance(exchangeId) {
+  return useLinkedExchange(exchangeId).balance;
 }
 
 // Live balance for every journal that's linked to a connected exchange.

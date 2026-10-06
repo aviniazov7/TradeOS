@@ -233,3 +233,40 @@ export function normalizeBitgetClosed(p) {
     externalId: p.positionId || `${pair}_${entryMs}`,
   });
 }
+
+// ── API-key problems ─────────────────────────────────────────────────────────
+// Turns an exchange's auth error into one reason the app can explain:
+//   'key_expired' | 'key_invalid' | 'ip_blocked' | 'no_permission' | null
+// by documented code first, message as fallback (codes are also parsed out of
+// messages like "MEXC 402: Api_key expired"). MEXC keys without a linked IP
+// expire after 90 days — the main case this exists for.
+const AUTH_CODES = {
+  key_expired: { mexc: [402], bybit: [33004] },
+  ip_blocked: { mexc: [406], bybit: [10010], okx: [50110], bitget: [40018] },
+  no_permission: { bybit: [10005], bitget: [40014] },
+  key_invalid: {
+    mexc: [401, 602], bybit: [10003, 10004], okx: [50105, 50111, 50113, 50119], bitget: [40006, 40009, 40012],
+  },
+};
+const AUTH_PATTERNS = [
+  ['key_expired', /expired/i],
+  ['ip_blocked', /white\s?list|unmatched ip|invalid ip|ip.*not allowed/i],
+  ['no_permission', /permission/i],
+  ['key_invalid', /api.?key|access.?key|invalid sign|sign(ature)? (error|fail|verif)|verify failed|passphrase/i],
+];
+
+export function classifyExchangeAuthError(exchange, code, message = '') {
+  const msg = String(message || '');
+  let n = parseInt(code);
+  if (!Number.isFinite(n)) {
+    const m = msg.match(/\b(\d{3,5})\b/);
+    n = m ? parseInt(m[1]) : NaN;
+  }
+  if (Number.isFinite(n)) {
+    for (const [reason, byExchange] of Object.entries(AUTH_CODES)) {
+      if ((byExchange[exchange] || []).includes(n)) return reason;
+    }
+  }
+  for (const [reason, re] of AUTH_PATTERNS) if (re.test(msg)) return reason;
+  return null;
+}

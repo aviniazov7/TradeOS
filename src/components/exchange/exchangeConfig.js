@@ -21,6 +21,10 @@ export const EXCHANGES = [
     id: 'mexc',    name: 'MEXC',    tagline: 'Global Crypto Exchange',
     accent: '#2B78FF', glow: 'rgba(43,120,255,0.35)',
     apiUrl: 'https://www.mexc.com/user/openapi', canSync: true,
+    // A MEXC key without a linked IP (TradeOS connects from changing
+    // Cloudflare IPs, so no IP can be linked) expires after 90 days.
+    keyLifetimeDays: 90,
+    renewHint: 'My API Key → Action → Renew',
     steps: [
       { text: 'Profile → API Management → Create API Key', n: '1' },
       { text: 'שם: "TradeOS"', n: '2' },

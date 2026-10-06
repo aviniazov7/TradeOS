@@ -10,7 +10,7 @@ import {
   buildMentionIndex, attributeMoves, describeFinding, ATTRIBUTION_WINDOW_MIN,
 } from './newsImpact.js';
 import {
-  mexcStopsByPosition, mexcEntryTypeByPosition, mexcOrderKind, normalizeMexcClosed, normalizeOkxClosed, normalizeOkxOpen, normalizeBitgetClosed,
+  classifyExchangeAuthError, mexcStopsByPosition, mexcEntryTypeByPosition, mexcOrderKind, normalizeMexcClosed, normalizeOkxClosed, normalizeOkxOpen, normalizeBitgetClosed,
 } from './exchangeNormalize.js';
 
 // Binance's public market-data mirror — api.binance.com returns 403 to
@@ -5598,6 +5598,7 @@ async function handleRequest(request, env) {
   // app can show "Bybit: $1,234" on each connected exchange card instead of
   // making the user type a starting balance every time.
   if (request.method === 'POST' && path === '/exchange/balance') {
+    let balanceExchange = '';
     try {
       // Auth: any authenticated user may call (uses caller-supplied exchange keys).
       const token = (request.headers.get('Authorization') || '').replace('Bearer ', '');
@@ -5607,6 +5608,7 @@ async function handleRequest(request, env) {
       if (_rl.count > 30) return new Response(JSON.stringify({ error: 'יותר מדי בקשות לבורסה. נסה שוב בעוד רגע.' }), { status: 429, headers: { ...cors, 'Content-Type': 'application/json' } });
       const _body = await request.json().catch(() => ({}));
       const { exchange } = _body;
+      balanceExchange = exchange || '';
       if (!exchange) {
         return new Response(JSON.stringify({ ok: false, error: 'Missing exchange' }), { status: 400, headers: { ...cors, 'Content-Type': 'application/json' } });
       }
@@ -5636,7 +5638,7 @@ async function handleRequest(request, env) {
           headers: { 'X-BAPI-API-KEY': apiKey, 'X-BAPI-TIMESTAMP': ts, 'X-BAPI-SIGN': sig, 'X-BAPI-RECV-WINDOW': recvWindow },
         });
         const data = await res.json();
-        if (data.retCode !== 0) throw new Error(data.retMsg || `Bybit ${data.retCode}`);
+        if (data.retCode !== 0) throw new Error(`Bybit ${data.retCode}: ${data.retMsg || 'error'}`);
         balance = parseFloat(data.result?.list?.[0]?.totalEquity) || 0;
       }
 
@@ -5647,7 +5649,7 @@ async function handleRequest(request, env) {
           headers: { ApiKey: apiKey, 'Request-Time': ts, Signature: sig, 'Content-Type': 'application/json' },
         });
         const data = await res.json();
-        if (!(data.success === true || data.code === 0)) throw new Error(data.message || data.msg || 'MEXC error');
+        if (!(data.success === true || data.code === 0)) throw new Error(`MEXC ${data.code}: ${data.message || data.msg || 'error'}`);
         const rawList = Array.isArray(data.data) ? data.data : (data.data?.list || []);
         // Sum equity across stablecoin assets (USDT/USDC) as USD-equivalent
         for (const a of rawList) {
@@ -5691,7 +5693,10 @@ async function handleRequest(request, env) {
 
       return new Response(JSON.stringify({ ok: true, balance, currency: 'USD' }), { headers: { ...cors, 'Content-Type': 'application/json' } });
     } catch (err) {
-      return new Response(JSON.stringify({ ok: false, error: err.message }), { status: 400, headers: { ...cors, 'Content-Type': 'application/json' } });
+      // `reason` (key_expired / key_invalid / ip_blocked / no_permission) lets
+      // the app say "your key expired — update it" instead of a dead balance.
+      const reason = classifyExchangeAuthError(balanceExchange, null, err.message);
+      return new Response(JSON.stringify({ ok: false, error: err.message, reason }), { status: 400, headers: { ...cors, 'Content-Type': 'application/json' } });
     }
   }
 
@@ -5823,6 +5828,7 @@ async function handleRequest(request, env) {
 
   // Exchange trade sync — signs HMAC on behalf of the frontend so secrets stay server-side
   if (request.method === 'POST' && path === '/exchange/sync') {
+    let syncExchange = '';
     try {
       // Auth: any authenticated user may call (uses caller-supplied exchange keys).
       const token = (request.headers.get('Authorization') || '').replace('Bearer ', '');
@@ -5832,6 +5838,7 @@ async function handleRequest(request, env) {
       if (_rl.count > 30) return new Response(JSON.stringify({ error: 'יותר מדי בקשות לבורסה. נסה שוב בעוד רגע.' }), { status: 429, headers: { ...cors, 'Content-Type': 'application/json' } });
       const _body = await request.json().catch(() => ({}));
       const { exchange, limit = 50, days = 0, debug = false } = _body;
+      syncExchange = exchange || '';
       if (!exchange) {
         return new Response(JSON.stringify({ error: 'Missing exchange' }), { status: 400, headers: { ...cors, 'Content-Type': 'application/json' } });
       }
@@ -6068,7 +6075,7 @@ async function handleRequest(request, env) {
             headers: { 'X-BAPI-API-KEY': apiKey, 'X-BAPI-TIMESTAMP': tsW, 'X-BAPI-SIGN': sigW, 'X-BAPI-RECV-WINDOW': recvWindow },
           });
           const d = await r.json();
-          if (d.retCode !== 0) throw new Error(d.retMsg || `Bybit error ${d.retCode}`);
+          if (d.retCode !== 0) throw new Error(`Bybit ${d.retCode}: ${d.retMsg || 'error'}`);
           return d.result || {};
         };
 
@@ -6411,7 +6418,8 @@ async function handleRequest(request, env) {
 
       return new Response(JSON.stringify({ ok: true, trades, ...(debug ? { _raw: debugRaw } : {}) }), { headers: { ...cors, 'Content-Type': 'application/json' } });
     } catch (e) {
-      return new Response(JSON.stringify({ error: String(e) }), { status: 400, headers: { ...cors, 'Content-Type': 'application/json' } });
+      const reason = classifyExchangeAuthError(syncExchange, null, String(e?.message || e));
+      return new Response(JSON.stringify({ error: String(e), reason }), { status: 400, headers: { ...cors, 'Content-Type': 'application/json' } });
     }
   }
 

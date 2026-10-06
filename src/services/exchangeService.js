@@ -43,10 +43,28 @@ export async function getConnectedExchanges() {
 
 // ── Read-only data calls (no secrets in the request) ────────────────────────
 
+// An Error that also carries the Worker's API-key diagnosis
+// (key_expired / key_invalid / ip_blocked / no_permission), when there is one.
+function exchangeError(message, reason) {
+  const err = new Error(message);
+  if (reason) err.reason = reason;
+  return err;
+}
+
+// What to tell the user for each API-key problem.
+export const KEY_PROBLEM_TEXT = {
+  key_expired: 'מפתח ה-API פג תוקף',
+  key_invalid: 'מפתח ה-API לא תקין או נמחק בבורסה',
+  ip_blocked: 'הבורסה חוסמת את החיבור בגלל הגבלת IP על המפתח',
+  no_permission: 'למפתח חסרות הרשאות קריאה',
+};
+
 export async function syncExchangeTrades(exchange, { limit = 50, days = 0, debug = false } = {}) {
   const res = await authedFetch('/exchange/sync', { exchange, limit, days, debug });
   const data = await res.json();
-  if (!res.ok || data.error) throw new Error(data.error || 'הסנכרון נכשל');
+  if (!res.ok || data.error) {
+    throw exchangeError(data.reason ? KEY_PROBLEM_TEXT[data.reason] : (data.error || 'הסנכרון נכשל'), data.reason);
+  }
   if (data._raw) {
     // eslint-disable-next-line no-console
     console.log(`[sync raw] ${exchange} — raw upstream rows:`, data._raw);
@@ -64,6 +82,6 @@ export async function syncOpenPositions(exchange) {
 export async function fetchExchangeBalance(exchange) {
   const res = await authedFetch('/exchange/balance', { exchange });
   const data = await res.json();
-  if (!data.ok) throw new Error(data.error || 'שגיאה בטעינת היתרה');
+  if (!data.ok) throw exchangeError(data.error || 'שגיאה בטעינת היתרה', data.reason);
   return { balance: data.balance || 0, currency: data.currency || 'USD' };
 }
