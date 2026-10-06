@@ -1,8 +1,8 @@
 import { useState } from 'react';
-import { Send, Loader2, Mail, Bell, FlaskConical } from 'lucide-react';
+import { Send, Loader2, Mail, Bell, FlaskConical, Sparkles, RefreshCw } from 'lucide-react';
 import toast from 'react-hot-toast';
 import { useAuth } from '../../contexts/AuthContext';
-import { adminSendBulkNotification, adminSendEmailCampaign } from '../../services/pushService';
+import { adminSendBulkNotification, adminSendEmailCampaign, adminGenerateMarketHook } from '../../services/pushService';
 
 // Ready-made "come back" messages — a click fills the form, then edit freely.
 const TEMPLATES = [
@@ -32,6 +32,8 @@ const TEMPLATES = [
 // Where the email button / notification tap leads.
 const DESTINATIONS = [
   { path: '/', label: 'דף הבית' },
+  { path: '/market', label: 'סקירת שוק' },
+  { path: '/news', label: 'חדשות' },
   { path: '/journal', label: 'יומן מסחר' },
   { path: '/journal?tab=analytics', label: 'ניתוחים' },
   { path: '/mentality', label: 'האזור המנטלי' },
@@ -73,11 +75,30 @@ export default function ReengageComposer({ recipients, onSent }) {
   const [usePush, setUsePush] = useState(true);
   const [useEmail, setUseEmail] = useState(true);
   const [sending, setSending] = useState(null); // 'all' | 'test' | null
+  // Short phone-notification text (the AI writes one); empty = the message's start.
+  const [pushText, setPushText] = useState('');
+  // The real market numbers the AI copy was built from — shown for review.
+  const [hook, setHook] = useState(null); // { facts, source }
+  const [generating, setGenerating] = useState(false);
+
+  const generate = async () => {
+    setGenerating(true);
+    try {
+      const h = await adminGenerateMarketHook();
+      setTitle(h.title); setBody(h.email); setPushText(h.push); setCta(h.cta); setPath(h.path);
+      setHook({ facts: h.facts, source: h.source });
+    } catch (e) {
+      toast.error(e.message || 'יצירת ההודעה נכשלה');
+    } finally {
+      setGenerating(false);
+    }
+  };
 
   const withEmail = recipients.filter((r) => r.email);
   const ready = title.trim() && body.trim() && (usePush || useEmail);
 
-  const applyTemplate = (t) => { setTitle(t.title); setBody(t.body); setCta(t.cta); setPath(t.path); };
+  const applyTemplate = (t) => { setTitle(t.title); setBody(t.body); setCta(t.cta); setPath(t.path); setPushText(''); setHook(null); };
+  const pushBody = (pushText.trim() || body.trim()).slice(0, 400);
 
   // Sends through the chosen channels and reports both results in one toast.
   const deliver = async (targets, mode) => {
@@ -87,7 +108,7 @@ export default function ReengageComposer({ recipients, onSent }) {
     try {
       if (usePush && targets.some((r) => r.id)) {
         try {
-          const r = await adminSendBulkNotification({ uids: targets.map((t) => t.id).filter(Boolean), title: title.trim(), body: body.trim().slice(0, 400), url: path });
+          const r = await adminSendBulkNotification({ uids: targets.map((t) => t.id).filter(Boolean), title: title.trim(), body: pushBody, url: path });
           parts.push(`Push: ${r?.recipients ?? 0} משתמשים`);
         } catch (e) { failed = true; parts.push(`Push נכשל: ${e.message}`); }
       }
@@ -112,8 +133,30 @@ export default function ReengageComposer({ recipients, onSent }) {
   const sendTest = () => deliver([{ id: me?.uid, email: me?.email, name: me?.displayName || '' }], 'test');
   const sendAll = () => deliver(recipients, 'all');
 
+  const fmtFact = (f) => `${f.coin} ${f.change > 0 ? '+' : ''}${f.change}%`;
+  const factLine = hook?.facts
+    ? [hook.facts.btc, hook.facts.eth, ...hook.facts.gainers, ...hook.facts.losers].filter(Boolean).map(fmtFact).join(' · ')
+    : '';
+
   return (
     <div className="space-y-3">
+      {/* The strongest hook: what's actually moving right now, written by AI
+          from live market data (numbers are checked on the server). */}
+      <button type="button" onClick={generate} disabled={generating}
+        className="w-full h-11 inline-flex items-center justify-center gap-2 rounded-xl bg-accent-primary text-sm font-bold cursor-pointer disabled:opacity-60">
+        {generating ? <Loader2 className="w-4 h-4 animate-spin" /> : (hook ? <RefreshCw className="w-4 h-4" /> : <Sparkles className="w-4 h-4" />)}
+        {generating ? 'בודק מה חם בשוק…' : hook ? 'נסח מחדש עם AI' : 'AI: מה חם עכשיו בשוק'}
+      </button>
+      {hook && (
+        <div className="rounded-xl border border-border-primary bg-bg-tertiary px-3 py-2 text-[11px] text-text-secondary leading-relaxed">
+          <span className={`inline-block me-1.5 px-1.5 py-0.5 rounded font-bold ${hook.source === 'ai' ? 'bg-accent-primary/15 text-accent-primary' : 'bg-bg-secondary text-text-muted'}`}>
+            {hook.source === 'ai' ? 'AI' : 'תבנית'}
+          </span>
+          על בסיס נתוני שוק אמיתיים מהרגע: <span className="num-mono" dir="ltr">{factLine}</span>
+          {hook.facts.headlines?.[0] && <span className="block text-text-muted mt-0.5">כותרת: {hook.facts.headlines[0]}</span>}
+        </div>
+      )}
+
       <div className="flex flex-wrap gap-1.5">
         {TEMPLATES.map((t) => (
           <button key={t.label} type="button" onClick={() => applyTemplate(t)}
@@ -131,7 +174,11 @@ export default function ReengageComposer({ recipients, onSent }) {
       </div>
 
       <input value={title} onChange={(e) => setTitle(e.target.value)} placeholder="כותרת (גם נושא המייל)" maxLength={120} className={field} />
-      <textarea value={body} onChange={(e) => setBody(e.target.value)} placeholder="ההודעה" maxLength={1500} rows={4} className={`${field} resize-none`} />
+      <textarea value={body} onChange={(e) => setBody(e.target.value)} placeholder="ההודעה (גוף המייל)" maxLength={1500} rows={4} className={`${field} resize-none`} />
+      {usePush && (
+        <input value={pushText} onChange={(e) => setPushText(e.target.value)} maxLength={180}
+          placeholder="טקסט קצר להתראה בטלפון (ריק = תחילת ההודעה)" className={field} />
+      )}
 
       <div className="grid grid-cols-2 gap-2">
         <input value={cta} onChange={(e) => setCta(e.target.value)} placeholder="טקסט הכפתור במייל" maxLength={40} className={field} disabled={!useEmail} />

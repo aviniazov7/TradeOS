@@ -15,6 +15,7 @@ import {
   normalizeMexcClosed, normalizeOkxClosed, normalizeOkxOpen, normalizeBitgetClosed,
 } from './exchangeNormalize.js';
 import { buildCampaignEmails, chunk } from './adminEmail.js';
+import { pickMarketFacts, HOOK_SYSTEM_PROMPT, buildHookUserMessage, validateHook, templateHook } from './marketHook.js';
 
 // Binance's public market-data mirror — api.binance.com returns 403 to
 // Cloudflare Worker egress IPs in many regions, but data-api.binance.vision
@@ -4650,6 +4651,52 @@ async function handleRequest(request, env) {
     return new Response(JSON.stringify({ ok: sent > 0, sent, failed, targeted: emails.length, ...(firstError ? { error: firstError } : {}) }), {
       status: sent > 0 || !failed ? 200 : 502, headers: { ...cors, 'Content-Type': 'application/json' },
     });
+  }
+
+  // Admin-only: "what's hot right now" reminder copy. Real market facts
+  // (Bybit spot tickers + the cached news digest) → the model writes the
+  // hook → every % it mentions is checked against the facts (marketHook.js).
+  // A failed/invented answer falls back to a template built from the facts,
+  // so the admin always gets something true. Facts are returned for review.
+  if (request.method === 'POST' && path === '/admin/ai-hook') {
+    const token = (request.headers.get('Authorization') || '').replace('Bearer ', '');
+    const adminUid = await verifyAdminFromToken(token);
+    if (!adminUid) return new Response(JSON.stringify({ error: 'forbidden' }), { status: 403, headers: { ...cors, 'Content-Type': 'application/json' } });
+    try {
+      const [tickRes, digest] = await Promise.all([
+        fetch('https://api.bybit.com/v5/market/tickers?category=spot', { headers: { Accept: 'application/json' } })
+          .then((r) => r.json()).catch(() => null),
+        env.ALERTS_KV.get('news:digest:crypto', 'json').catch(() => null),
+      ]);
+      const facts = pickMarketFacts(tickRes?.result?.list || [], digest);
+      if (!facts.btc && !facts.gainers.length) {
+        return new Response(JSON.stringify({ error: 'אין כרגע נתוני שוק — נסה שוב בעוד רגע' }), { status: 503, headers: { ...cors, 'Content-Type': 'application/json' } });
+      }
+      let hook = null;
+      if (env.GROQ_API_KEY) {
+        const res = await groqFetchWithRetry(env, {
+          model: GROQ_MODEL,
+          messages: [
+            { role: 'system', content: HOOK_SYSTEM_PROMPT },
+            { role: 'user', content: buildHookUserMessage(facts) },
+          ],
+          temperature: 0.8,
+          max_tokens: 700,
+          response_format: { type: 'json_object' },
+        });
+        if (res.ok) {
+          const data = await res.json().catch(() => null);
+          let parsed = null;
+          try { parsed = JSON.parse(data?.choices?.[0]?.message?.content || ''); } catch { /* not JSON */ }
+          hook = validateHook(parsed, facts);
+        }
+      }
+      const source = hook ? 'ai' : 'template';
+      hook = hook || templateHook(facts);
+      return new Response(JSON.stringify({ ok: true, source, ...hook, facts }), { headers: { ...cors, 'Content-Type': 'application/json' } });
+    } catch (e) {
+      return new Response(JSON.stringify({ error: e.message || 'שגיאה' }), { status: 500, headers: { ...cors, 'Content-Type': 'application/json' } });
+    }
   }
 
   // Admin-only: invalidate the cached premium flag for a user. Called right
