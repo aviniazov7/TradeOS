@@ -17,6 +17,7 @@ import { buildPsychologyStats } from '../../utils/coachPsychology';
 import { auditPlan } from '../../utils/planAudit';
 import { pickActivePlan } from '../../utils/pickActivePlan';
 import AnalystInsights from './AnalystInsights';
+import { LRM } from '../../utils/formatters';
 
 // Quick prompts the user can click to seed the report.
 const FREE_PROMPTS = [
@@ -120,9 +121,9 @@ const forModel = (obj) => {
   return copy;
 };
 
-const fmt$ = (v) => `${v >= 0 ? '+' : '-'}$${Math.abs(v).toFixed(2)}`;
+const fmt$ = (v) => `${LRM}${v >= 0 ? '+' : '-'}$${Math.abs(v).toFixed(2)}`;
 const fmt$Compact = (v) => {
-  const sign = v >= 0 ? '+' : '-';
+  const sign = `${LRM}${v >= 0 ? '+' : '-'}`;
   const a = Math.abs(v);
   if (a >= 1000) return `${sign}$${(a / 1000).toFixed(1)}K`;
   return `${sign}$${a.toFixed(0)}`;

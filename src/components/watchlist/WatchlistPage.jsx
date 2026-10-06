@@ -8,6 +8,7 @@ import EmptyState from '../shared/EmptyState';
 import Modal from '../shared/Modal';
 import RollingNumber from '../shared/RollingNumber';
 import toast from 'react-hot-toast';
+import { LRM } from '../../utils/formatters';
 
 function fmtPrice(p) {
   if (p == null || isNaN(p)) return '—';
@@ -260,7 +261,7 @@ export default function WatchlistPage({ embedded = false }) {
                     <p className="text-sm font-bold num-mono text-text-primary leading-none"><RollingNumber value={fmtPrice(cur)} /></p>
                     {ch24 != null && (
                       <p className={`text-[11px] font-semibold num-mono mt-0.5 ${ch24 >= 0 ? 'text-profit' : 'text-loss'}`}>
-                        {ch24 >= 0 ? '+' : ''}{ch24.toFixed(2)}%
+                        {LRM}{ch24 >= 0 ? '+' : ''}{ch24.toFixed(2)}%
                       </p>
                     )}
                   </div>

@@ -29,6 +29,7 @@ import { useAuth } from '../../contexts/AuthContext';
 import { updateUserDocument, arrayUnion, timestamp } from '../../services/firestoreService';
 import { computeTradeFields } from '../../utils/calculations';
 import { auth } from '../../services/firebase';
+import { LRM } from '../../utils/formatters';
 
 function fmt(price) {
   if (!price && price !== 0) return '';
@@ -752,11 +753,11 @@ export default function PendingLimitOrders({ trades, livePrices }) {
               <div className="flex items-center gap-1.5" dir="ltr">
                 <span className="text-[10px] text-text-muted uppercase tracking-widest font-semibold">P&L</span>
                 <span className={`text-sm font-bold font-mono ${totalPnlDollar >= 0 ? 'text-profit' : 'text-loss'}`}>
-                  {totalPnlDollar >= 0 ? '+' : '−'}${Math.abs(totalPnlDollar).toFixed(2)}
+                  {LRM}{totalPnlDollar >= 0 ? '+' : '−'}${Math.abs(totalPnlDollar).toFixed(2)}
                 </span>
                 {totalPnlPct !== null && (
                   <span className={`text-[10px] font-semibold font-mono ${totalPnlPct >= 0 ? 'text-profit/70' : 'text-loss/70'}`}>
-                    · {totalPnlPct >= 0 ? '+' : ''}{totalPnlPct.toFixed(2)}%
+                    · {LRM}{totalPnlPct >= 0 ? '+' : ''}{totalPnlPct.toFixed(2)}%
                   </span>
                 )}
               </div>
@@ -863,12 +864,12 @@ export default function PendingLimitOrders({ trades, livePrices }) {
                     </span>
                     {hdrPnlPct != null && (
                       <span className={`text-xs font-bold font-mono ${hdrPnlPct > 0 ? 'text-profit' : hdrPnlPct < 0 ? 'text-loss' : 'text-text-muted'}`}>
-                        {hdrPnlPct > 0 ? '+' : ''}{hdrPnlPct.toFixed(2)}%
+                        {LRM}{hdrPnlPct > 0 ? '+' : ''}{hdrPnlPct.toFixed(2)}%
                       </span>
                     )}
                     {hdrPnlDollar != null && (
                       <span className={`text-[10px] font-semibold font-mono ${hdrPnlDollar > 0 ? 'text-profit/80' : 'text-loss/80'}`}>
-                        {hdrPnlDollar > 0 ? '+' : ''}${Math.abs(hdrPnlDollar).toFixed(2)}
+                        {LRM}{hdrPnlDollar > 0 ? '+' : ''}${Math.abs(hdrPnlDollar).toFixed(2)}
                       </span>
                     )}
 

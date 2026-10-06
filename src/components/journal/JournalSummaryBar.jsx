@@ -1,6 +1,6 @@
 import { useMemo } from 'react';
 import { summarizeTrades } from '../../utils/journalAnalytics';
-import { formatCurrency } from '../../utils/formatters';
+import { formatCurrency, LRM } from '../../utils/formatters';
 import Card from '../shared/Card';
 
 function Cell({ label, value, sub, valueClass = 'text-text-primary', className = '' }) {
@@ -50,7 +50,7 @@ export default function JournalSummaryBar({ trades, filtered, liveById = {} }) {
         value={s.winRate == null ? '—' : `${s.winRate.toFixed(1)}%`}
         sub={s.closed ? `${s.wins}W · ${s.losses}L` : null}
       />
-      <Cell className="border-t md:border-t-0" label="R ממוצע" value={s.avgR == null ? '—' : `${s.avgR >= 0 ? '+' : ''}${s.avgR.toFixed(2)}R`} valueClass={rClass} />
+      <Cell className="border-t md:border-t-0" label="R ממוצע" value={s.avgR == null ? '—' : `${LRM}${s.avgR >= 0 ? '+' : ''}${s.avgR.toFixed(2)}R`} valueClass={rClass} />
     </Card>
   );
 }

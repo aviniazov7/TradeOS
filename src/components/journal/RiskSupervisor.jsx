@@ -1,6 +1,7 @@
 import {
   ShieldAlert, ShieldCheck, AlertTriangle, Info, Layers, TrendingUp, TrendingDown, Minus, Wallet,
 } from 'lucide-react';
+import { LRM } from '../../utils/formatters';
 
 // Severity carries meaning here, so it gets form as well as colour — a chip and
 // a rule, not just a hue. Semantic tokens, never a raw palette colour.
@@ -10,7 +11,7 @@ const SEVERITY = {
   info: { label: 'לידיעה', Icon: Info, text: 'text-text-secondary', bg: 'bg-bg-tertiary', border: 'border-border-primary', rule: 'bg-border-hover' },
 };
 
-const fmt$ = (v) => `${v >= 0 ? '+' : '-'}$${Math.abs(v).toFixed(2)}`;
+const fmt$ = (v) => `${LRM}${v >= 0 ? '+' : '-'}$${Math.abs(v).toFixed(2)}`;
 
 // dir defaults to ltr because most values here are numbers; a Hebrew value has
 // to be able to opt out or the bidi algorithm reorders its words.

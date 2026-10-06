@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react';
 import { Activity, ExternalLink, Radio, TrendingUp, TrendingDown } from 'lucide-react';
 import { fetchNewsImpact } from '../../services/newsService';
+import { LRM } from '../../utils/formatters';
 
 const AGE = (min) => (min < 60 ? `לפני ${min} דק׳` : `לפני ${Math.round(min / 60)} שע׳`);
 
@@ -39,7 +40,7 @@ function MoveCard({ f }) {
           <div className="flex flex-wrap items-center gap-2">
             <span className="text-sm font-bold text-text-primary" dir="ltr">{f.ticker}</span>
             <span className={`text-sm font-bold ${f.changePct >= 0 ? 'text-profit' : 'text-loss'}`} dir="ltr">
-              {f.changePct >= 0 ? '+' : ''}{f.changePct}%
+              {LRM}{f.changePct >= 0 ? '+' : ''}{f.changePct}%
             </span>
             <span className="text-[10px] text-text-muted">ווליום ×{f.volumeX}</span>
             <span className="text-[10px] px-1.5 py-0.5 rounded-full border border-border-primary text-text-muted">

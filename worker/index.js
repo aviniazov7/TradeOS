@@ -58,14 +58,17 @@ function fmtPrice(p) {
   if (p >= 0.01) return `$${p.toFixed(4)}`;
   return `$${p.toFixed(6)}`;
 }
+// Notification bodies are Hebrew (RTL): a leading LEFT-TO-RIGHT MARK keeps
+// the sign in front of the number ("-$5.00", not "$5.00-").
+const LRM = '\u200E';
 function fmtPct(v) {
   const sign = v >= 0 ? '+' : '';
-  return `${sign}${v.toFixed(2)}%`;
+  return `${LRM}${sign}${v.toFixed(2)}%`;
 }
 // Signed USD amount for P&L notifications, e.g. +$12.34 / -$5.00
 function fmtPnl(v) {
   const sign = v >= 0 ? '+' : '-';
-  return `${sign}$${Math.abs(v).toFixed(2)}`;
+  return `${LRM}${sign}$${Math.abs(v).toFixed(2)}`;
 }
 // ==================== Data Fetching ====================
 

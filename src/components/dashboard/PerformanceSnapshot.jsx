@@ -1,5 +1,6 @@
 import { useMemo } from 'react';
 import { isClosedTrade } from '../../utils/calculations';
+import { LRM } from '../../utils/formatters';
 
 // ── Performance snapshot ────────────────────────────────────────────────────
 // The green "הביצועים שלך" card from the home mockup, fed by REAL trade data:
@@ -16,7 +17,7 @@ const tradeMs = (t) => {
   return Number.isNaN(ms) ? 0 : ms;
 };
 const pnlOf = (t) => Number(t.netPnl ?? t.pnl ?? 0) || 0;
-const money = (v) => `${v >= 0 ? '+' : '−'}$${Math.abs(Math.round(v)).toLocaleString()}`;
+const money = (v) => `${LRM}${v >= 0 ? '+' : '−'}$${Math.abs(Math.round(v)).toLocaleString()}`;
 
 // Tiny inline sparkline from a numeric series (cumulative P&L).
 function Spark({ points, up }) {

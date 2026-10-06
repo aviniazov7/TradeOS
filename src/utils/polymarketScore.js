@@ -7,6 +7,7 @@
 // history and time-series snapshots — that arrives with server ingestion
 // (phase 2). Everything here is a pure function so it's trivial to extend.
 import { POLYMARKET as C } from '../config/polymarket';
+import { LRM } from './formatters';
 
 /** ROI as a percentage: PnL per dollar of volume. The luck-vs-skill separator. */
 export function roiPct(w) {
@@ -89,7 +90,7 @@ export function fmtUsd(n) {
 
 export function fmtPct(n, digits = 1) {
   const v = Number(n) || 0;
-  const sign = v >= 0 ? '+' : '-';
+  const sign = `${LRM}${v >= 0 ? '+' : '-'}`;
   const a = Math.abs(v);
   // ROI here reaches five digits (a +94,581% wallet is real), which overflowed
   // the stat tiles — abbreviate the big ones the same way money is abbreviated.

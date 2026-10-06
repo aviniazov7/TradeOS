@@ -3,6 +3,7 @@ import { ExternalLink, Pencil, Trash2, TrendingUp, TrendingDown } from 'lucide-r
 import Modal from '../shared/Modal';
 import CoinIcon from '../shared/CoinIcon';
 import { safeHttpUrl } from '../../utils/urls';
+import { LRM } from '../../utils/formatters';
 
 // A TradingView snapshot short-link (tradingview.com/x/SLUG) exposes its image
 // at s3.tradingview.com/snapshots/<first-char-lowercase>/SLUG.png — derive it so
@@ -72,7 +73,7 @@ export default function BacktestTradeModal({ trade, isOpen, onClose, onEdit, onD
           </span>
           <span className={`text-xs font-bold px-2 py-0.5 rounded ${resultCls}`}>{resultLabel}</span>
           <span className={`ms-auto text-lg font-extrabold num-mono ${(rr || 0) >= 0 ? 'text-profit' : 'text-loss'}`}>
-            {rr != null ? `${rr >= 0 ? '+' : ''}${rr.toFixed(2)}R` : '–'}
+            {rr != null ? `${LRM}${rr >= 0 ? '+' : ''}${rr.toFixed(2)}R` : '–'}
           </span>
         </div>
 

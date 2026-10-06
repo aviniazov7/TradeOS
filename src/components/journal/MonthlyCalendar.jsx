@@ -4,7 +4,7 @@ import {
   format, addMonths, subMonths, isToday,
 } from 'date-fns';
 import { ChevronRight, ChevronLeft, DollarSign, Share2 } from 'lucide-react';
-import { formatCurrency, safeDate } from '../../utils/formatters';
+import { formatCurrency, safeDate, LRM } from '../../utils/formatters';
 import { isClosedTrade } from '../../utils/calculations';
 import Modal from '../shared/Modal';
 import MonthlyShareModal from './MonthlyShareModal';
@@ -192,7 +192,7 @@ export default function MonthlyCalendar({ trades, journalName }) {
                 {data && (
                   <span className={`text-[8px] md:text-[10px] font-semibold ${pnl >= 0 ? 'text-profit' : 'text-loss'}`}>
                     <span className="hidden md:inline">{formatCurrency(pnl)}</span>
-                    <span className="md:hidden">{pnl >= 0 ? '+' : ''}{pnl.toFixed(0)}$</span>
+                    <span className="md:hidden">{LRM}{pnl >= 0 ? '+' : ''}{pnl.toFixed(0)}$</span>
                   </span>
                 )}
               </button>

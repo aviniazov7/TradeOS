@@ -11,7 +11,7 @@ import MonthlyPerformanceTable from '../dashboard/MonthlyPerformanceTable';
 import TradeHeatmap from '../dashboard/TradeHeatmap';
 import EmptyState from '../shared/EmptyState';
 import JournalRCard from './JournalRCard';
-import { formatCurrency, formatPercent, formatDuration } from '../../utils/formatters';
+import { formatCurrency, formatPercent, formatDuration, LRM } from '../../utils/formatters';
 import { TAG_LABELS } from '../../utils/constants';
 import { staggerContainer } from '../../utils/animations';
 
@@ -151,7 +151,7 @@ export default function JournalAnalyticsTab({
                 { label: 'תשואה/נפילה', value: stats.calmarRatio.toFixed(2) },
                 { label: 'תשואה/הפסדים', value: stats.sortinoRatio === Infinity ? '∞' : stats.sortinoRatio.toFixed(2) },
                 { label: 'התאוששות', value: stats.recoveryFactor.toFixed(2), color: stats.recoveryFactor >= 1 ? 'text-profit' : 'text-loss' },
-                { label: 'ירידה מקס׳', value: `-${stats.maxDrawdown.toFixed(1)}%`, color: 'text-loss' },
+                { label: 'ירידה מקס׳', value: `${LRM}-${stats.maxDrawdown.toFixed(1)}%`, color: 'text-loss' },
                 { label: 'סיכון/סיכוי', value: `1:${stats.avgRR.toFixed(2)}` },
                 { label: 'ימי מסחר', value: stats.tradingDays },
                 { label: 'עסקאות/יום', value: stats.tradesPerDay.toFixed(1) },
@@ -208,7 +208,7 @@ export default function JournalAnalyticsTab({
                   </div>
                   <div className="flex items-center justify-between text-[11px]">
                     <span className="font-bold text-profit">{analytics.longWinRate.toFixed(1)}% הצלחה</span>
-                    <span className={analytics.longPnl >= 0 ? 'text-profit' : 'text-loss'}>{analytics.longPnl >= 0 ? '+' : ''}{analytics.longPnl.toFixed(2)}$</span>
+                    <span className={analytics.longPnl >= 0 ? 'text-profit' : 'text-loss'}>{LRM}{analytics.longPnl >= 0 ? '+' : ''}{analytics.longPnl.toFixed(2)}$</span>
                   </div>
                 </div>
                 {/* Short */}
@@ -223,7 +223,7 @@ export default function JournalAnalyticsTab({
                   </div>
                   <div className="flex items-center justify-between text-[11px]">
                     <span className="font-bold text-loss">{analytics.shortWinRate.toFixed(1)}% הצלחה</span>
-                    <span className={analytics.shortPnl >= 0 ? 'text-profit' : 'text-loss'}>{analytics.shortPnl >= 0 ? '+' : ''}{analytics.shortPnl.toFixed(2)}$</span>
+                    <span className={analytics.shortPnl >= 0 ? 'text-profit' : 'text-loss'}>{LRM}{analytics.shortPnl >= 0 ? '+' : ''}{analytics.shortPnl.toFixed(2)}$</span>
                   </div>
                 </div>
               </div>
