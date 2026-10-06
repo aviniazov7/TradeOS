@@ -104,9 +104,9 @@ export default function AdminOverview({
   if (segments.notOnboarded.length) {
     todos.push({
       key: 'onboarding', icon: Plug, tone: 'blue',
-      title: `${segments.notOnboarded.length} נרשמו ועדיין לא סיימו את ההיכרות`,
-      sub: 'נרשמו בשבועיים האחרונים · בלי היכרות קשה להתחיל',
-      onTitle: () => onShowList('לא סיימו היכרות', segments.notOnboarded),
+      title: `${segments.notOnboarded.length} נרשמו ועדיין לא השלימו את ההגדרה הראשונית`,
+      sub: 'נרשמו בשבועיים האחרונים · בלי הגדרה ראשונית קשה להתחיל',
+      onTitle: () => onShowList('לא השלימו הגדרה ראשונית', segments.notOnboarded),
       action: 'שליחת תזכורת', onAction: () => onRemind('notOnboarded'),
     });
   }
@@ -193,8 +193,8 @@ export default function AdminOverview({
                     <div className="text-xs text-text-secondary">{relativeActive(u.createdAt)}</div>
                   </div>
                   {u.onboardingCompleted
-                    ? <Pill className="text-profit bg-profit/12 font-semibold">סיים היכרות</Pill>
-                    : <Pill className="text-text-secondary bg-bg-tertiary font-semibold">בלי היכרות</Pill>}
+                    ? <Pill className="text-profit bg-profit/12 font-semibold">הגדרה הושלמה</Pill>
+                    : <Pill className="text-text-secondary bg-bg-tertiary font-semibold">ללא הגדרה</Pill>}
                 </button>
               ))}
             </div>

@@ -132,7 +132,7 @@ function UserPanel({ user, onOpenDetail, onDeleted }) {
           </dd>
         </div>
         <div className="flex justify-between gap-3">
-          <dt className="text-text-secondary">היכרות</dt>
+          <dt className="text-text-secondary">הגדרה ראשונית</dt>
           <dd className="font-semibold text-text-primary">{user.onboardingCompleted ? 'הושלמה' : 'לא הושלמה'}</dd>
         </div>
       </dl>
@@ -207,7 +207,7 @@ export default function AdminUsers({ users, loading, selectedId, onSelect, onOpe
   };
 
   const exportCsv = () => {
-    const header = ['שם', 'אימייל', 'סטטוס', 'הצטרף', 'כניסה אחרונה', 'היכרות'];
+    const header = ['שם', 'אימייל', 'סטטוס', 'הצטרף', 'כניסה אחרונה', 'הגדרה ראשונית'];
     const lines = rows.map((u) => [
       u.displayName || '', u.email || '', userStatus(u).label, formatDate(u.createdAt),
       lastActiveMs(u) ? formatDate(u.lastActive) : '', u.onboardingCompleted ? 'הושלמה' : 'לא הושלמה',

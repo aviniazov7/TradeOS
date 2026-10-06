@@ -104,7 +104,7 @@ export function digestEmailBody(d) {
     todo.push(row(C.dotAmber, d.inactive.length === 1 ? `משתמש אחד לא נכנס ${RISK_DAYS}+ ימים` : `${d.inactive.length} משתמשים לא נכנסו ${RISK_DAYS}+ ימים`, names(d.inactive)));
   }
   if (d.notOnboarded) {
-    todo.push(row(C.dotBlue, d.notOnboarded === 1 ? 'משתמש אחד נרשם ועדיין לא סיים את ההיכרות' : `${d.notOnboarded} נרשמו ועדיין לא סיימו את ההיכרות`, 'נרשמו בשבועיים האחרונים'));
+    todo.push(row(C.dotBlue, d.notOnboarded === 1 ? 'משתמש אחד נרשם ועדיין לא השלים את ההגדרה הראשונית' : `${d.notOnboarded} נרשמו ועדיין לא השלימו את ההגדרה הראשונית`, 'נרשמו בשבועיים האחרונים'));
   }
 
   const joinedRows = d.joined.slice(0, 6).map((j) => row(C.dotGreen, j.name, `הצטרף ב-${fmtDay(j.at)}`)).join('')

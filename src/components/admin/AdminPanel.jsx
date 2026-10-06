@@ -282,7 +282,7 @@ export default function AdminPanel() {
     const active7 = returned.filter((u) => activeWithin(u, 7));
     const raw = [
       { key: 'registered', label: 'נרשמו', count: registered.length, note: 'מסמך משתמש קיים · role ≠ admin' },
-      { key: 'onboarded', label: 'סיימו היכרות', count: onboarded.length, note: 'onboardingCompleted = true' },
+      { key: 'onboarded', label: 'השלימו הגדרה ראשונית', count: onboarded.length, note: 'onboardingCompleted = true' },
       { key: 'returned', label: 'חזרו אחרי יום ההרשמה', count: returned.length, note: 'lastActive מאוחר ביום+ מ-createdAt' },
       { key: 'active7', label: 'פעילים השבוע', count: active7.length, note: 'lastActive בתוך 7 ימים' },
     ];
@@ -485,8 +485,8 @@ const SEGMENT_LABELS = {
   newThisWeek: 'חדשים השבוע',
   premium: 'לקוחות Premium',
   churned: 'Premium בסיכון',
-  notOnboarded: 'לא סיימו היכרות',
-  onboarded: 'סיימו היכרות',
+  notOnboarded: 'לא השלימו הגדרה ראשונית',
+  onboarded: 'השלימו הגדרה ראשונית',
 };
 
 function BulkNotifyModal({ isOpen, onClose, segments, initialSegment = 'all' }) {
@@ -851,7 +851,7 @@ function UserDetailModal({ user, onClose, onUserChanged, startWith = null }) {
                 ? <Pill className="text-violet-300 bg-violet-500/15">{plan}</Pill>
                 : <Pill className={status.cls}>{status.label}</Pill>}
               <Pill className={user.onboardingCompleted ? 'text-profit bg-profit/12' : 'text-text-secondary bg-bg-tertiary'}>
-                {user.onboardingCompleted ? 'סיים היכרות' : 'לא סיים היכרות'}
+                {user.onboardingCompleted ? 'השלים הגדרה ראשונית' : 'לא השלים הגדרה ראשונית'}
               </Pill>
             </div>
           </div>
