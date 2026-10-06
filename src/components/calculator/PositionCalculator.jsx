@@ -2,7 +2,7 @@ import { useState, useEffect, useMemo } from 'react';
 import { Copy, Check, TrendingUp, TrendingDown } from 'lucide-react';
 import Modal from '../shared/Modal';
 import { useJournalContext } from '../../contexts/JournalContext';
-import { formatNumber } from '../../utils/formatters';
+import { formatNumber, LRM } from '../../utils/formatters';
 import toast from 'react-hot-toast';
 
 const inputClass = 'w-full bg-bg-tertiary border border-border-primary rounded-lg px-3 py-2.5 text-sm text-text-primary outline-none focus:border-accent-primary transition-colors text-right';
@@ -118,8 +118,8 @@ export default function PositionCalculator({ isOpen, onClose }) {
     { key: 'sl', label: 'מרחק SL', value: `${results.slDistancePercent.toFixed(2)}%`, color: 'text-text-primary', raw: results.slDistancePercent.toFixed(2) },
     ...(results.riskPercent != null ? [{ key: 'riskPct', label: '% מהחשבון בסיכון', value: `${results.riskPercent.toFixed(2)}%`, color: results.riskPercent > 3 ? 'text-loss' : 'text-text-primary', raw: results.riskPercent.toFixed(2) }] : []),
     ...(results.rrRatio != null ? [{ key: 'rr', label: 'R:R', value: `1:${results.rrRatio.toFixed(2)}`, color: results.rrRatio >= 2 ? 'text-profit' : results.rrRatio >= 1 ? 'text-amber-500' : 'text-loss', raw: results.rrRatio.toFixed(2) }] : []),
-    ...(results.potentialProfit != null ? [{ key: 'profit', label: 'רווח פוטנציאלי', value: `${results.potentialProfit >= 0 ? '+' : ''}$${formatNumber(results.potentialProfit)}`, color: results.potentialProfit >= 0 ? 'text-profit' : 'text-loss', raw: results.potentialProfit.toFixed(2) }] : []),
-    { key: 'loss', label: 'הפסד פוטנציאלי', value: `-$${formatNumber(Math.abs(results.potentialLoss))}`, color: 'text-loss', raw: results.potentialLoss.toFixed(2) },
+    ...(results.potentialProfit != null ? [{ key: 'profit', label: 'רווח פוטנציאלי', value: `${LRM}${results.potentialProfit >= 0 ? '+' : ''}$${formatNumber(results.potentialProfit)}`, color: results.potentialProfit >= 0 ? 'text-profit' : 'text-loss', raw: results.potentialProfit.toFixed(2) }] : []),
+    { key: 'loss', label: 'הפסד פוטנציאלי', value: `${LRM}-$${formatNumber(Math.abs(results.potentialLoss))}`, color: 'text-loss', raw: results.potentialLoss.toFixed(2) },
   ] : [];
 
   return (

@@ -2,7 +2,7 @@ import { forwardRef, useMemo } from 'react';
 import {
   startOfMonth, endOfMonth, eachDayOfInterval, getDay, format,
 } from 'date-fns';
-import { formatCurrency, safeDate } from '../../utils/formatters';
+import { formatCurrency, safeDate, LRM } from '../../utils/formatters';
 import { isClosedTrade } from '../../utils/calculations';
 
 const HEBREW_MONTHS = {
@@ -198,7 +198,7 @@ const MonthlyShareCard = forwardRef(function MonthlyShareCard({ trades, currentM
             <div style={{ textAlign: 'center', whiteSpace: 'nowrap', flexShrink: 0 }}>
               <div style={{ fontSize: 10, color: '#707080', marginBottom: 2 }}>אחוז שינוי</div>
               <div style={{ fontSize: showPnl ? 14 : 20, fontWeight: 700, color: pnlColor(monthStats.totalPnl) }}>
-                {monthStats.totalPnl >= 0 ? '+' : ''}{((monthStats.totalPnl / (Math.abs(monthStats.totalPnl) + 1000)) * 100).toFixed(1)}%
+                {LRM}{monthStats.totalPnl >= 0 ? '+' : ''}{((monthStats.totalPnl / (Math.abs(monthStats.totalPnl) + 1000)) * 100).toFixed(1)}%
               </div>
             </div>
             <div style={{ width: 1, height: 30, background: 'rgba(255,255,255,0.08)' }} />
@@ -267,7 +267,7 @@ const MonthlyShareCard = forwardRef(function MonthlyShareCard({ trades, currentM
                 </span>
                 {data && showPnl && (
                   <span style={{ fontSize: 8, fontWeight: 700, color: pnlColor(pnl) }}>
-                    {pnl >= 0 ? '+' : ''}{pnl.toFixed(0)}$
+                    {LRM}{pnl >= 0 ? '+' : ''}{pnl.toFixed(0)}$
                   </span>
                 )}
               </div>

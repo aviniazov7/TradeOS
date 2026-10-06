@@ -31,7 +31,7 @@ import CoinIcon from '../shared/CoinIcon';
 import AnimatedValue from '../shared/AnimatedValue';
 import Card from '../shared/Card';
 import Reveal from '../shared/Reveal';
-import { formatCurrency, formatCompactUsd as formatNum } from '../../utils/formatters';
+import { formatCurrency, formatCompactUsd as formatNum, LRM } from '../../utils/formatters';
 import { EXCHANGES, MENTALITY_EMOTIONS } from '../../utils/constants';
 import { pageVariants, pageTransition } from '../../utils/animations';
 import { fetchPerpPrices } from '../../services/bybitDirect';
@@ -499,7 +499,7 @@ export default function Dashboard() {
                     globalStats.pnlPercent >= 0 ? 'bg-profit/15 text-profit' : 'bg-loss/15 text-loss'
                   }`}
                 >
-                  {m(`${globalStats.pnlPercent > 0 ? '+' : ''}${globalStats.pnlPercent.toFixed(1)}%`)}
+                  {m(`${LRM}${globalStats.pnlPercent > 0 ? '+' : ''}${globalStats.pnlPercent.toFixed(1)}%`)}
                 </span>
               )}
             </div>
@@ -792,7 +792,7 @@ export default function Dashboard() {
                   <span className="text-[11px] text-text-muted">שווי שוק כולל</span>
                   {globalMarket.market_cap_change_percentage_24h_usd != null && (
                     <span className={`text-[10px] font-bold px-1.5 py-0.5 rounded ${globalMarket.market_cap_change_percentage_24h_usd >= 0 ? 'bg-profit/15 text-profit' : 'bg-loss/15 text-loss'}`}>
-                      {globalMarket.market_cap_change_percentage_24h_usd >= 0 ? '+' : ''}{globalMarket.market_cap_change_percentage_24h_usd.toFixed(2)}%
+                      {LRM}{globalMarket.market_cap_change_percentage_24h_usd >= 0 ? '+' : ''}{globalMarket.market_cap_change_percentage_24h_usd.toFixed(2)}%
                     </span>
                   )}
                 </div>

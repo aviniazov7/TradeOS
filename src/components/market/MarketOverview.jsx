@@ -1,6 +1,6 @@
 import { useState, useEffect, useCallback, useRef, useMemo } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
-import { formatCompactUsd as formatNum, formatCoinPrice as formatPrice } from '../../utils/formatters';
+import { formatCompactUsd as formatNum, formatCoinPrice as formatPrice, LRM } from '../../utils/formatters';
 import {
   Activity, TrendingUp, TrendingDown, Bitcoin, DollarSign,
   PieChart, Flame, ArrowUpRight, ArrowDownRight, Layers, Rocket, Grid3X3,
@@ -181,7 +181,7 @@ function CategoryBubble({ name, change, index }) {
           {name}
         </span>
         <span className="text-[11px] font-bold mt-0.5" style={{ color: iconColor }}>
-          {isPositive ? '+' : ''}{change.toFixed(1)}%
+          {LRM}{isPositive ? '+' : ''}{change.toFixed(1)}%
         </span>
       </motion.div>
     </motion.div>
@@ -250,7 +250,7 @@ function HeatmapCell({ coin, index, sizeClass }) {
         <span className="text-xs font-bold text-text-primary">{coin.symbol?.toUpperCase()}</span>
       </div>
       <span className={`text-[11px] font-semibold mt-0.5 ${change >= 0 ? 'text-green-300' : 'text-red-300'}`}>
-        {change != null ? `${change >= 0 ? '+' : ''}${change.toFixed(1)}%` : '—'}
+        {change != null ? `${LRM}${change >= 0 ? '+' : ''}${change.toFixed(1)}%` : '—'}
       </span>
     </motion.div>
   );
@@ -1104,7 +1104,7 @@ export default function MarketOverview() {
             <div className="h-4 mt-2">
               {s.delta != null ? (
                 <span className={`text-xs font-semibold ${s.delta >= 0 ? 'text-profit' : 'text-loss'}`}>
-                  {s.delta >= 0 ? '+' : ''}{s.delta.toFixed(2)}%
+                  {LRM}{s.delta >= 0 ? '+' : ''}{s.delta.toFixed(2)}%
                 </span>
               ) : s.sub ? (
                 <span className="text-xs text-text-muted">{s.sub}</span>
@@ -1118,7 +1118,7 @@ export default function MarketOverview() {
           {global?.volume_24h_change_pct != null ? (
             <>
               <p className={`text-2xl font-bold leading-none num-mono ${global.volume_24h_change_pct >= 0 ? 'text-profit' : 'text-loss'}`}>
-                <RollingNumber value={`${global.volume_24h_change_pct >= 0 ? '+' : ''}${global.volume_24h_change_pct.toFixed(1)}%`} />
+                <RollingNumber value={`${LRM}${global.volume_24h_change_pct >= 0 ? '+' : ''}${global.volume_24h_change_pct.toFixed(1)}%`} />
               </p>
               <div className="h-4 mt-2">
                 <span className="text-xs text-text-muted">מול אתמול</span>
@@ -1324,7 +1324,7 @@ export default function MarketOverview() {
                     {/* Far-right: 24h change */}
                     <span className={`flex items-center gap-0.5 text-[11px] font-medium shrink-0 ${up ? 'text-profit' : 'text-loss'}`}>
                       {up ? <ArrowUpRight className="w-3 h-3" /> : <ArrowDownRight className="w-3 h-3" />}
-                      {up ? '+' : ''}{chg.toFixed(1)}%
+                      {LRM}{up ? '+' : ''}{chg.toFixed(1)}%
                     </span>
                   </motion.div>
                 );

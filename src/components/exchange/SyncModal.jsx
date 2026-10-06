@@ -2,11 +2,12 @@ import { useState } from 'react';
 import { motion } from 'framer-motion';
 import { Check, RefreshCw, Download, X } from 'lucide-react';
 import { tradeExternalIds } from '../../utils/tradeIds';
+import { LRM } from '../../utils/formatters';
 
 // ── Sync modal ────────────────────────────────────────────────────────────────
 function fmtPnl(v) {
   if (v == null) return '—';
-  return `${v >= 0 ? '+' : ''}$${Math.abs(v).toFixed(2)}`;
+  return `${LRM}${v >= 0 ? '+' : ''}$${Math.abs(v).toFixed(2)}`;
 }
 function fmtDate(iso) {
   if (!iso) return '—';

@@ -1,3 +1,4 @@
+import { LRM } from '../../utils/formatters';
 export default function SignalTrack({ signal, currentPrice }) {
   const { entryPrice, stopLoss, tps = [], direction } = signal;
 
@@ -83,7 +84,7 @@ export default function SignalTrack({ signal, currentPrice }) {
       {/* PnL indicator */}
       {pnlPct != null && (
         <div className={`text-right text-[11px] font-semibold mt-0.5 ${pnlPct >= 0 ? 'text-profit' : 'text-loss'}`}>
-          {pnlPct >= 0 ? '+' : ''}{pnlPct.toFixed(2)}%
+          {LRM}{pnlPct >= 0 ? '+' : ''}{pnlPct.toFixed(2)}%
         </div>
       )}
     </div>

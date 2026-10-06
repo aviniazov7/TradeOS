@@ -1,13 +1,19 @@
 import { format, formatDistanceToNow } from 'date-fns';
 import { he } from 'date-fns/locale';
 
+// Invisible LEFT-TO-RIGHT MARK. A signed number shown inside Hebrew (RTL)
+// text loses its sign to the end ("$14.13-") because the sign and "$" carry no
+// direction of their own. Prefixing the mark keeps it "-$14.13" everywhere —
+// it renders as nothing and survives copy/paste harmlessly.
+export const LRM = '\u200E';
+
 /**
  * Format currency value: $1,234.56
  */
 export function formatCurrency(value, decimals = 2) {
   if (value == null || isNaN(value)) return '$0.00';
   const sign = value >= 0 ? '+' : '-';
-  return `${sign}$${Math.abs(value).toLocaleString('en-US', {
+  return `${LRM}${sign}$${Math.abs(value).toLocaleString('en-US', {
     minimumFractionDigits: decimals,
     maximumFractionDigits: decimals,
   })}`;
@@ -19,7 +25,7 @@ export function formatCurrency(value, decimals = 2) {
 export function formatPercent(value, decimals = 2) {
   if (value == null || isNaN(value)) return '0.00%';
   const sign = value >= 0 ? '+' : '-';
-  return `${sign}${Math.abs(value).toFixed(decimals)}%`;
+  return `${LRM}${sign}${Math.abs(value).toFixed(decimals)}%`;
 }
 
 /**
@@ -152,5 +158,5 @@ export function formatDuration(hours) {
 export function formatRR(value, pnl) {
   if (!value || isNaN(value)) return '–';
   const isLoss = pnl !== undefined && pnl < 0;
-  return `${isLoss ? '-' : ''}${value.toFixed(2)}R`;
+  return `${LRM}${isLoss ? '-' : ''}${value.toFixed(2)}R`;
 }
