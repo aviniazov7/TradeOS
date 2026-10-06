@@ -30,6 +30,7 @@ import { useUserStrategies } from '../../hooks/useUserStrategies';
 import { useUserTimeframes } from '../../hooks/useUserTimeframes';
 import { useUserTriggers } from '../../hooks/useUserTriggers';
 import { pageVariants, pageTransition } from '../../utils/animations';
+import TabStrip from '../shared/TabStrip';
 
 
 function getSessionFromDate(date) {
@@ -247,23 +248,8 @@ export default function BacktestTracker() {
             <BacktestSwitcher compact />
             <div className="hidden md:block w-px h-6 bg-border-primary flex-shrink-0" />
             {/* Desktop tabs */}
-            <div className="hidden md:flex items-center">
-              <button
-                onClick={() => setTab('records')}
-                className={`h-9 inline-flex items-center px-3.5 text-sm font-medium rounded-lg transition-colors cursor-pointer whitespace-nowrap ${
-                  tab === 'records' ? 'bg-accent-primary/15 text-accent-primary' : 'text-text-muted hover:text-text-primary hover:bg-bg-tertiary'
-                }`}
-              >
-                עסקאות ({backtests.length})
-              </button>
-              <button
-                onClick={() => setTab('analytics')}
-                className={`h-9 inline-flex items-center px-3.5 text-sm font-medium rounded-lg transition-colors cursor-pointer whitespace-nowrap ${
-                  tab === 'analytics' ? 'bg-accent-primary/15 text-accent-primary' : 'text-text-muted hover:text-text-primary hover:bg-bg-tertiary'
-                }`}
-              >
-                ניתוחים
-              </button>
+            <div className="hidden md:block">
+              <TabStrip tabs={[{ id: 'records', label: 'עסקאות', count: backtests.length }, { id: 'analytics', label: 'ניתוחים' }]} value={tab} onChange={setTab} layoutKey="backtest-tab" />
             </div>
           </div>
 
@@ -291,23 +277,8 @@ export default function BacktestTracker() {
         </div>
 
         {/* Row 2: Mobile tabs */}
-        <div className="md:hidden flex items-center">
-          <button
-            onClick={() => setTab('records')}
-            className={`px-2.5 py-1.5 text-xs font-medium rounded-lg transition-colors cursor-pointer whitespace-nowrap ${
-              tab === 'records' ? 'bg-accent-primary/15 text-accent-primary' : 'text-text-muted hover:text-text-primary hover:bg-bg-tertiary'
-            }`}
-          >
-            עסקאות ({backtests.length})
-          </button>
-          <button
-            onClick={() => setTab('analytics')}
-            className={`px-2.5 py-1.5 text-xs font-medium rounded-lg transition-colors cursor-pointer whitespace-nowrap ${
-              tab === 'analytics' ? 'bg-accent-primary/15 text-accent-primary' : 'text-text-muted hover:text-text-primary hover:bg-bg-tertiary'
-            }`}
-          >
-            ניתוחים
-          </button>
+        <div className="md:hidden">
+          <TabStrip tabs={[{ id: 'records', label: 'עסקאות', count: backtests.length }, { id: 'analytics', label: 'ניתוחים' }]} value={tab} onChange={setTab} variant="mobile" layoutKey="backtest-tab" />
         </div>
       </div>
 

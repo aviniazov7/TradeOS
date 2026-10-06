@@ -6,6 +6,8 @@ import WhyItMoved from './WhyItMoved';
 import { hebrewEventTitle } from '../../utils/econCalendarTerms';
 import { safeHttpUrl } from '../../utils/urls';
 import SelectDropdown from '../shared/SelectDropdown';
+import PageHeader from '../shared/PageHeader';
+import TabStrip from '../shared/TabStrip';
 
 // ─── News Sources (per market) ───
 const FEED_SOURCES = {
@@ -1142,34 +1144,22 @@ export default function NewsPage() {
 
   return (
     <div className="max-w-5xl mx-auto px-4 py-6 pb-24 lg:pb-6">
-      {/* Header with Tabs — a shared layoutId pill slides between the active
-          tab instead of a hard color swap (21st.dev animated-tabs look). */}
-      <div className="flex items-center justify-center gap-2 mb-6">
-        {tabs.map((tab) => {
-          const active = activeTab === tab.key;
-          return (
-            <button
-              key={tab.key}
-              onClick={() => setActiveTab(tab.key)}
-              className={`relative flex items-center gap-2 px-5 py-2.5 rounded-xl text-sm font-semibold transition-colors ${
-                active ? 'text-white' : 'bg-bg-secondary border border-border-primary text-text-secondary hover:text-text-primary hover:bg-bg-tertiary'
-              }`}
-            >
-              {active && (
-                <motion.span
-                  layoutId="news-tab-pill"
-                  className="absolute inset-0 rounded-xl bg-accent-primary shadow-lg shadow-accent-primary/25"
-                  transition={{ type: 'spring', stiffness: 380, damping: 32 }}
-                />
-              )}
-              <span className="relative flex items-center gap-2">
-                <tab.icon className="w-4.5 h-4.5" />
-                {tab.label}
-              </span>
-            </button>
-          );
-        })}
-      </div>
+      {/* Shared page header; news ⇄ economic calendar via the shared tab strip. */}
+      <PageHeader
+        icon={Newspaper}
+        title="חדשות"
+        subtitle="חדשות שוק ויומן כלכלי — מה זז ולמה"
+        actions={(
+          <div className="rounded-xl bg-bg-tertiary border border-border-primary p-1">
+            <TabStrip
+              tabs={tabs.map((t) => ({ id: t.key, label: t.label }))}
+              value={activeTab}
+              onChange={setActiveTab}
+              layoutKey="news-tab"
+            />
+          </div>
+        )}
+      />
 
       {/* Market toggle — crypto ⇄ stocks (news tab only) */}
       {activeTab === 'news' && (

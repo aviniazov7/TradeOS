@@ -3,18 +3,10 @@ import { Target, ShieldAlert } from 'lucide-react';
 import { computeRStats } from '../../utils/journalAnalytics';
 import { formatCurrency } from '../../utils/formatters';
 import Card from '../shared/Card';
+import StatTile from '../shared/StatTile';
 
 const fmtR = (v, digits = 2) => (v === null || v === undefined ? '—' : `${v > 0 ? '+' : ''}${v.toFixed(digits)}R`);
 const rTone = (v) => (v === null || v === undefined ? 'text-text-muted' : v > 0 ? 'text-profit' : v < 0 ? 'text-loss' : 'text-text-primary');
-
-function Metric({ label, value, tone = 'text-text-primary', hint }) {
-  return (
-    <div className="min-w-0 rounded-xl bg-bg-tertiary border border-border-primary px-3 py-2.5" title={hint}>
-      <div className="text-[10px] md:text-[11px] text-text-muted truncate">{label}</div>
-      <div className={`num-mono text-base md:text-lg font-bold truncate ${tone}`} dir="ltr" style={{ textAlign: 'right' }}>{value}</div>
-    </div>
-  );
-}
 
 // Performance measured in R (multiples of the risk taken). Only trades with a
 // stop have an R, so the card also calls out how much trading happened
@@ -48,14 +40,14 @@ export default function JournalRCard({ trades }) {
       {r.withStop > 0 ? (
         <div className="relative grid grid-cols-1 lg:grid-cols-5 gap-4">
           <div className="lg:col-span-2 grid grid-cols-2 gap-2 content-start">
-            <Metric label="תוחלת לעסקה" value={fmtR(r.expectancyR)} tone={rTone(r.expectancyR)}
-              hint="הממוצע של R לכל עסקה — מעל 0 אומר שהשיטה מרוויחה לאורך זמן" />
-            <Metric label="סה״כ R בתקופה" value={fmtR(r.totalR, 1)} tone={rTone(r.totalR)} />
-            <Metric label="רווח ממוצע" value={fmtR(r.avgWinR)} tone={rTone(r.avgWinR)} />
-            <Metric label="הפסד ממוצע" value={fmtR(r.avgLossR)} tone={rTone(r.avgLossR)}
-              hint="מתחת ל-‎-1R אומר שהפסדים עוברים את הסטופ (החלקה או הזזת סטופ)" />
-            <Metric label="העסקה הטובה" value={fmtR(r.bestR, 1)} tone={rTone(r.bestR)} />
-            <Metric label="העסקה הגרועה" value={fmtR(r.worstR, 1)} tone={rTone(r.worstR)} />
+            <StatTile inset label="תוחלת לעסקה" value={fmtR(r.expectancyR)} tone={rTone(r.expectancyR)}
+              title="הממוצע של R לכל עסקה — מעל 0 אומר שהשיטה מרוויחה לאורך זמן" />
+            <StatTile inset label="סה״כ R בתקופה" value={fmtR(r.totalR, 1)} tone={rTone(r.totalR)} />
+            <StatTile inset label="רווח ממוצע" value={fmtR(r.avgWinR)} tone={rTone(r.avgWinR)} />
+            <StatTile inset label="הפסד ממוצע" value={fmtR(r.avgLossR)} tone={rTone(r.avgLossR)}
+              title="מתחת ל-‎-1R אומר שהפסדים עוברים את הסטופ (החלקה או הזזת סטופ)" />
+            <StatTile inset label="העסקה הטובה" value={fmtR(r.bestR, 1)} tone={rTone(r.bestR)} />
+            <StatTile inset label="העסקה הגרועה" value={fmtR(r.worstR, 1)} tone={rTone(r.worstR)} />
           </div>
 
           {/* Distribution — plain bars (no chart library on this card). */}

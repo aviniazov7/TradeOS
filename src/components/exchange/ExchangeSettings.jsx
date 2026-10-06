@@ -17,6 +17,9 @@ import SelectDropdown from '../shared/SelectDropdown';
 import Card from '../shared/Card';
 import Modal from '../shared/Modal';
 import ConfirmDialog from '../shared/ConfirmDialog';
+import PageHeader from '../shared/PageHeader';
+import StatTile from '../shared/StatTile';
+import SectionTitle from '../shared/SectionTitle';
 import { EXCHANGES } from './exchangeConfig';
 import { SyncModal } from './SyncModal';
 
@@ -65,31 +68,6 @@ function ExLogo({ id, size = 48, accent }) {
     <div className="rounded-xl flex items-center justify-center font-black text-white text-sm shrink-0"
       style={{ width: size, height: size, background: accent }}>
       {id[0].toUpperCase()}
-    </div>
-  );
-}
-
-// ── Summary tile (page header) ────────────────────────────────────────────────
-function KpiTile({ icon: Icon, label, value, sub, valueClass = 'text-text-primary', mono = true }) {
-  return (
-    <div className="min-w-0 rounded-xl bg-bg-tertiary border border-border-primary px-3 py-2.5">
-      <div className="flex items-center gap-1.5 text-[10px] md:text-[11px] text-text-muted">
-        {Icon && <Icon className="w-3.5 h-3.5 shrink-0" />}
-        <span className="truncate">{label}</span>
-      </div>
-      {/* Numbers in the tabular mono face; text (Hebrew) in the UI font —
-          monospace spreads Hebrew letters apart. */}
-      <div className={`${mono ? 'num-mono' : ''} text-base md:text-lg font-bold mt-0.5 truncate ${valueClass}`} dir={mono ? 'ltr' : undefined} style={{ textAlign: 'right' }}>{value}</div>
-      {sub && <div className="text-[10px] text-text-muted truncate">{sub}</div>}
-    </div>
-  );
-}
-
-function SectionTitle({ children, aside }) {
-  return (
-    <div className="flex items-center justify-between gap-3 mb-3">
-      <h2 className="text-sm font-semibold text-text-primary">{children}</h2>
-      {aside}
     </div>
   );
 }
@@ -217,6 +195,7 @@ function AvailableTile({ exchange, locked, onConnect, index }) {
       as={motion.button}
       type="button"
       hover
+      spotlight
       onClick={onConnect}
       initial={{ opacity: 0, y: 12 }}
       animate={{ opacity: 1, y: 0 }}
@@ -619,26 +598,19 @@ export default function ExchangeSettings({ journalId: propJournalId } = {}) {
     <>
       <motion.div variants={pageVariants} initial="initial" animate="animate" exit="exit" transition={pageTransition}>
 
-        {/* Header: title + at-a-glance numbers */}
-        <Card className="relative overflow-hidden p-5 md:p-6 mb-6">
-          <div className="absolute inset-0 pointer-events-none"
-            style={{ background: 'radial-gradient(80% 140% at 100% 0%, rgba(37,99,235,0.14) 0%, transparent 60%)' }} />
-          <div className="relative flex flex-col lg:flex-row lg:items-center gap-5">
-            <div className="flex-1 min-w-0">
-              <h1 className="text-xl md:text-2xl font-bold text-text-primary">חיבור בורסות</h1>
-              <p className="text-sm text-text-muted mt-1">חבר את הבורסה שלך וייבא עסקאות ישירות ליומן — בלי להקליד אותן ידנית.</p>
-            </div>
-            <div className="grid grid-cols-3 gap-2 md:gap-2.5 lg:w-[480px]">
-              <KpiTile icon={Link2} label="מחוברות" value={`${connectedCount}/${EXCHANGES.length}`}
-                sub={problemCount ? `${problemCount} ${problemCount === 1 ? 'דורשת' : 'דורשות'} טיפול` : (!isPremium ? `חינמי: עד ${FREE_LIMITS.exchanges}` : 'ללא הגבלה')}
-                valueClass={problemCount ? 'text-loss' : 'text-text-primary'} />
-              <KpiTile icon={Wallet} label="יתרה כוללת"
-                value={knownBalances.length ? fmtUsd(totalBalance) : (balancesLoading ? '…' : '—')}
-                sub={knownBalances.length ? `מ-${knownBalances.length} ${knownBalances.length === 1 ? 'בורסה' : 'בורסות'}` : null} />
-              <KpiTile icon={Shield} label="אבטחה" value="מוגן" mono={false} valueClass="text-profit" sub="מפתח לקריאה בלבד" />
-            </div>
+        {/* Header: title + at-a-glance numbers (shared page header). */}
+        <PageHeader icon={Link2} title="חיבור בורסות"
+          subtitle="חבר את הבורסה שלך וייבא עסקאות ישירות ליומן — בלי להקליד אותן ידנית.">
+          <div className="grid grid-cols-3 gap-2 md:gap-2.5 lg:w-[480px]">
+            <StatTile inset icon={Link2} label="מחוברות" value={`${connectedCount}/${EXCHANGES.length}`}
+              sub={problemCount ? `${problemCount} ${problemCount === 1 ? 'דורשת' : 'דורשות'} טיפול` : (!isPremium ? `חינמי: עד ${FREE_LIMITS.exchanges}` : 'ללא הגבלה')}
+              tone={problemCount ? 'text-loss' : 'text-text-primary'} />
+            <StatTile inset icon={Wallet} label="יתרה כוללת"
+              value={knownBalances.length ? fmtUsd(totalBalance) : (balancesLoading ? '…' : '—')}
+              sub={knownBalances.length ? `מ-${knownBalances.length} ${knownBalances.length === 1 ? 'בורסה' : 'בורסות'}` : null} />
+            <StatTile inset icon={Shield} label="אבטחה" value="מוגן" mono={false} tone="text-profit" sub="מפתח לקריאה בלבד" />
           </div>
-        </Card>
+        </PageHeader>
 
         {/* Connected */}
         <section className="mb-7">

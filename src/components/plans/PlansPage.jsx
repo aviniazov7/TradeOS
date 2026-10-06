@@ -18,6 +18,7 @@ import EmptyState from '../shared/EmptyState';
 import StrategySelector from '../shared/StrategySelector';
 import SelectDropdown from '../shared/SelectDropdown';
 import PlansSkeleton from './PlansSkeleton';
+import TabStrip from '../shared/TabStrip';
 import { pageVariants, pageTransition, staggerContainer } from '../../utils/animations';
 
 function toImageUrl(url) {
@@ -153,17 +154,10 @@ export default function PlansPage() {
           <div className="bg-bg-secondary border border-border-primary rounded-xl mb-4 px-3 md:px-4 py-2.5 space-y-2">
             <div className="flex items-center justify-between gap-2">
               <div className="flex items-center gap-1 md:gap-3 min-w-0">
-                <h1 className="text-sm md:text-base font-bold text-text-primary whitespace-nowrap">תוכניות מסחר</h1>
+                <h1 className="text-sm font-bold text-text-primary whitespace-nowrap inline-flex items-center gap-2"><ClipboardList className="w-4 h-4 text-accent-primary" />תוכניות מסחר</h1>
                 <div className="hidden md:block w-px h-6 bg-border-primary flex-shrink-0" />
-                <div className="hidden md:flex items-center">
-                  <button onClick={() => setTab('plans')}
-                    className={`px-3.5 py-1.5 text-sm font-medium rounded-lg transition-colors cursor-pointer whitespace-nowrap ${tab === 'plans' ? 'bg-accent-primary/15 text-accent-primary' : 'text-text-muted hover:text-text-primary hover:bg-bg-tertiary'}`}>
-                    תוכניות ({plans.length})
-                  </button>
-                  <button onClick={() => setTab('processes')}
-                    className={`px-3.5 py-1.5 text-sm font-medium rounded-lg transition-colors cursor-pointer whitespace-nowrap ${tab === 'processes' ? 'bg-accent-primary/15 text-accent-primary' : 'text-text-muted hover:text-text-primary hover:bg-bg-tertiary'}`}>
-                    ניתוחים ({processes.length})
-                  </button>
+                <div className="hidden md:block">
+                  <TabStrip tabs={[{ id: 'plans', label: 'תוכניות', count: plans.length }, { id: 'processes', label: 'ניתוחים', count: processes.length }]} value={tab} onChange={setTab} layoutKey="plans-tab" />
                 </div>
               </div>
               <div className="flex items-center gap-1.5">
@@ -179,15 +173,8 @@ export default function PlansPage() {
                 )}
               </div>
             </div>
-            <div className="md:hidden flex items-center">
-              <button onClick={() => setTab('plans')}
-                className={`px-2.5 py-1.5 text-xs font-medium rounded-lg transition-colors cursor-pointer whitespace-nowrap ${tab === 'plans' ? 'bg-accent-primary/15 text-accent-primary' : 'text-text-muted hover:text-text-primary hover:bg-bg-tertiary'}`}>
-                תוכניות ({plans.length})
-              </button>
-              <button onClick={() => setTab('processes')}
-                className={`px-2.5 py-1.5 text-xs font-medium rounded-lg transition-colors cursor-pointer whitespace-nowrap ${tab === 'processes' ? 'bg-accent-primary/15 text-accent-primary' : 'text-text-muted hover:text-text-primary hover:bg-bg-tertiary'}`}>
-                ניתוחים ({processes.length})
-              </button>
+            <div className="md:hidden">
+              <TabStrip tabs={[{ id: 'plans', label: 'תוכניות', count: plans.length }, { id: 'processes', label: 'ניתוחים', count: processes.length }]} value={tab} onChange={setTab} variant="mobile" layoutKey="plans-tab" />
             </div>
           </div>
 

@@ -414,9 +414,12 @@ export default function Dashboard() {
       <GettingStartedCard trades={allTrades} journals={journals} morningCount={morningEntries.length} />
 
       {/* Total portfolio value — the hero figure of the dashboard. */}
-      <Card className="mb-4 px-4 py-3.5 flex items-center justify-between gap-4">
-        <div className="flex items-center gap-3 min-w-0">
-          <div className="w-10 h-10 rounded-xl bg-accent-primary/12 flex items-center justify-center shrink-0">
+      <Card className="relative overflow-hidden mb-4 px-4 py-3.5 md:px-5 md:py-4 flex items-center justify-between gap-4">
+        {/* Same wash + medallion as the shared PageHeader. */}
+        <div aria-hidden className="absolute inset-0 pointer-events-none"
+          style={{ background: 'radial-gradient(80% 160% at 100% 0%, rgba(37,99,235,0.14) 0%, transparent 60%)' }} />
+        <div className="relative flex items-center gap-3 min-w-0">
+          <div className="w-10 h-10 md:w-11 md:h-11 rounded-xl bg-accent-primary/12 border border-accent-primary/20 flex items-center justify-center shrink-0">
             <Wallet className="w-5 h-5 text-accent-primary" />
           </div>
           <div className="text-right min-w-0">
@@ -443,7 +446,7 @@ export default function Dashboard() {
         </div>
         <button
           onClick={toggleHide}
-          className="p-2 rounded-lg text-text-muted hover:text-text-primary hover:bg-bg-tertiary transition-colors cursor-pointer shrink-0"
+          className="relative p-2 rounded-lg text-text-muted hover:text-text-primary hover:bg-bg-tertiary transition-colors cursor-pointer shrink-0"
           title={hideBalances ? 'הצג סכומים' : 'הסתר סכומים'}
         >
           {hideBalances ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
