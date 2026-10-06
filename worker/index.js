@@ -10,7 +10,7 @@ import {
   buildMentionIndex, attributeMoves, describeFinding, ATTRIBUTION_WINDOW_MIN,
 } from './newsImpact.js';
 import {
-  normalizeMexcClosed, normalizeOkxClosed, normalizeOkxOpen, normalizeBitgetClosed,
+  mexcStopsByPosition, normalizeMexcClosed, normalizeOkxClosed, normalizeOkxOpen, normalizeBitgetClosed,
 } from './exchangeNormalize.js';
 
 // Binance's public market-data mirror — api.binance.com returns 403 to
@@ -5916,7 +5916,6 @@ async function handleRequest(request, env) {
           positions = Array.isArray(rawPos) ? rawPos : (rawPos?.resultList || rawPos?.list || []);
         }
 
-        if (debug) debugRaw = positions.slice(0, 3);
 
         // ── Step 2: Fetch order history to (a) recover accurate exit times
         // from close orders (sides 2/4) and (b) recover the configured SL/TP
@@ -5924,39 +5923,58 @@ async function handleRequest(request, env) {
         // position-history endpoint doesn't expose SL/TP.
         // pool[symbol][side] = sorted array of { fillTime, used, sl, tp }
         const pool = {};
-        try {
-          const ts2 = Date.now().toString();
-          const ordParamStr = buildParams({ page_num: '1', page_size: '200', start_time: startTime, states: '2' });
-          const ordRes = await fetch(
-            `https://contract.mexc.com/api/v1/private/order/list/history_orders?${ordParamStr}`,
-            { headers: { ...mexcHeaders(ts2), ...(await mexcSign(ts2, ordParamStr)) } }
-          );
-          const ordData = await ordRes.json();
-          if (ordData.code === 0) {
-            const orders = ordData.data?.resultList || ordData.data?.list || (Array.isArray(ordData.data) ? ordData.data : []);
-            for (const o of orders) {
-              const side = parseInt(o.side);
-              if (side !== 1 && side !== 2 && side !== 3 && side !== 4) continue;
-              const sym = o.symbol;
-              const fillTime = toMs(o.updateTime || o.update_time || o.createTime || o.create_time);
-              if (!fillTime) continue;
-              if (!pool[sym]) pool[sym] = {};
-              if (!pool[sym][side]) pool[sym][side] = [];
-              // SL/TP only exist on opening orders. Names vary in MEXC's
-              // contract endpoints — try the common shapes.
-              const sl = side === 1 || side === 3
-                ? parseFloat(o.stopLossPrice || o.stop_loss_price || o.slPrice || o.sl_price || 0) || 0
-                : 0;
-              const tp = side === 1 || side === 3
-                ? parseFloat(o.takeProfitPrice || o.take_profit_price || o.tpPrice || o.tp_price || 0) || 0
-                : 0;
-              pool[sym][side].push({ fillTime, used: false, sl, tp });
-            }
-            for (const sym of Object.keys(pool))
-              for (const side of Object.keys(pool[sym]))
-                pool[sym][side].sort((a, b) => a.fillTime - b.fillTime);
+        // Paged GET on a MEXC private list endpoint (max page_size is 100).
+        const mexcList = async (path, params, maxPages) => {
+          let rows = [];
+          for (let page = 1; page <= maxPages; page++) {
+            const tsL = Date.now().toString();
+            const ps = buildParams({ ...params, page_num: String(page), page_size: '100' });
+            const r = await fetch(`https://contract.mexc.com${path}?${ps}`,
+              { headers: { ...mexcHeaders(tsL), ...(await mexcSign(tsL, ps)) } });
+            const d = await r.json();
+            if (d.code !== 0) break;
+            const chunk = d.data?.resultList || d.data?.list || (Array.isArray(d.data) ? d.data : []);
+            rows = rows.concat(chunk);
+            if (chunk.length < 100) break;
           }
-        } catch (_) { /* order history optional — fall back to entryDate */ }
+          return rows;
+        };
+        // Filled orders (states=3 — '2' is "uncompleted", which returned no
+        // fills, so exit times and attached SL/TP never matched) …
+        let filledOrders = [];
+        try {
+          filledOrders = await mexcList('/api/v1/private/order/list/history_orders', { start_time: startTime, states: '3' }, 5);
+        } catch { /* optional — fall back to the position's own times */ }
+        // … and TP/SL stop orders, where an SL set from the position panel
+        // lives. Both carry positionId, so SL/TP attach to the right position
+        // directly instead of by time proximity.
+        let stopOrders = [];
+        try {
+          stopOrders = await mexcList('/api/v1/private/stoporder/list/orders', { start_time: startTime }, 5);
+        } catch { /* optional */ }
+        const stopsByPos = mexcStopsByPosition([...filledOrders, ...stopOrders]);
+        if (debug) debugRaw = { positions: positions.slice(0, 3), orders: filledOrders.slice(0, 5), stopOrders: stopOrders.slice(0, 5) };
+        for (const o of filledOrders) {
+          const side = parseInt(o.side);
+          if (side !== 1 && side !== 2 && side !== 3 && side !== 4) continue;
+          const sym = o.symbol;
+          const fillTime = toMs(o.updateTime || o.update_time || o.createTime || o.create_time);
+          if (!fillTime) continue;
+          if (!pool[sym]) pool[sym] = {};
+          if (!pool[sym][side]) pool[sym][side] = [];
+          // SL/TP only exist on opening orders. Names vary in MEXC's
+          // contract endpoints — try the common shapes.
+          const sl = side === 1 || side === 3
+            ? parseFloat(o.stopLossPrice || o.stop_loss_price || o.slPrice || o.sl_price || 0) || 0
+            : 0;
+          const tp = side === 1 || side === 3
+            ? parseFloat(o.takeProfitPrice || o.take_profit_price || o.tpPrice || o.tp_price || 0) || 0
+            : 0;
+          pool[sym][side].push({ fillTime, used: false, sl, tp });
+        }
+        for (const sym of Object.keys(pool))
+          for (const side of Object.keys(pool[sym]))
+            pool[sym][side].sort((a, b) => a.fillTime - b.fillTime);
 
         // ── Step 3: Match positions → opening + closing orders ───────────
         // Each position is paired with the earliest close order after its open
@@ -6021,8 +6039,11 @@ async function handleRequest(request, env) {
             : rawUpdateMs > openMs
               ? new Date(rawUpdateMs).toISOString()
               : entryDate;
-          // SL/TP captured from the opening order (the position row has none).
-          const slTp = slTpById.get(posId) || {};
+          // SL/TP by positionId (stop orders + opening order); the old
+          // time-proximity match is only the fallback.
+          const byPos = stopsByPos.get(String(p.positionId ?? '')) || {};
+          const byTime = slTpById.get(posId) || {};
+          const slTp = { sl: byPos.sl || byTime.sl || 0, tp: byPos.tp || byTime.tp || 0 };
           // Field mapping + the gross/fee convention live in exchangeNormalize.
           return {
             ...normalizeMexcClosed(p, {

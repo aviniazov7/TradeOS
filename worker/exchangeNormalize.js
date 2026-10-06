@@ -50,6 +50,30 @@ export function mexcTradeFee(p) {
   return 0;
 }
 
+// SL / TP per MEXC position, from rows that carry a positionId: filled
+// orders (an SL/TP attached when opening) and TP/SL stop orders (set from the
+// position panel — the common case). The EARLIEST value wins: that's the
+// ORIGINAL stop. A stop later moved to break-even would make the risk ≈ 0 and
+// the R absurd (the same rule the Bybit path uses).
+// Returns Map(positionId → { sl, tp }).
+export function mexcStopsByPosition(rows = []) {
+  const best = new Map();
+  for (const r of rows) {
+    const id = r?.positionId != null ? String(r.positionId) : '';
+    if (!id || id === '0') continue;
+    const at = parseInt(r.createTime ?? r.updateTime) || Number.MAX_SAFE_INTEGER;
+    const cur = best.get(id) || { sl: 0, slAt: Infinity, tp: 0, tpAt: Infinity };
+    const sl = num(r.stopLossPrice);
+    const tp = num(r.takeProfitPrice);
+    if (sl > 0 && at < cur.slAt) { cur.sl = sl; cur.slAt = at; }
+    if (tp > 0 && at < cur.tpAt) { cur.tp = tp; cur.tpAt = at; }
+    best.set(id, cur);
+  }
+  const out = new Map();
+  for (const [id, v] of best) if (v.sl > 0 || v.tp > 0) out.set(id, { sl: v.sl, tp: v.tp });
+  return out;
+}
+
 // ctx: { contractSize, entryDate, exitDate, externalId, sl, tp } — dates and
 // SL/TP come from the caller's order-history matching.
 export function normalizeMexcClosed(p, ctx = {}) {

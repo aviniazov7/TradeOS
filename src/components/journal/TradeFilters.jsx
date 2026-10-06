@@ -15,17 +15,34 @@ const HEBREW_MONTHS = ['ינואר', 'פברואר', 'מרץ', 'אפריל', 'מ
 
 const EMPTY_FILTERS = { search: '', direction: '', result: '', status: '', strategy: '', tag: '', timeframe: '', month: '', from: '', to: '' };
 
+// One native date input. An EMPTY date input isn't blank everywhere — Safari
+// paints today's date and Chrome paints "dd/mm/yyyy" — which read as an
+// active filter. While empty (and not being edited) the native text is made
+// transparent and our own label shows instead — on the side where the date
+// text sits (the picker icon takes the other side).
+function DateField({ value, onChange, label, min, max }) {
+  return (
+    <div className="relative flex-1 min-w-0">
+      <input type="date" aria-label={label} value={value} min={min || undefined} max={max || undefined}
+        onChange={(e) => onChange(e.target.value)}
+        className={`peer w-full h-8 bg-bg-tertiary border border-border-primary rounded-lg px-2 text-xs outline-none focus:border-accent-primary/50 ${
+          value ? 'text-text-primary' : 'text-transparent focus:text-text-primary'
+        }`} />
+      {!value && (
+        <span className="pointer-events-none absolute inset-y-0 end-2 flex items-center text-xs text-text-muted peer-focus:hidden">{label}</span>
+      )}
+    </div>
+  );
+}
+
 // From–to date range on the trade's entry date (native picker: light, no
 // extra bundle, and the phone's own date UI on mobile).
 function DateRange({ from, to, onChange, className = '' }) {
-  const input = 'h-8 bg-bg-tertiary border border-border-primary rounded-lg px-2 text-xs text-text-primary outline-none focus:border-accent-primary/50 min-w-0';
   return (
     <div className={`flex items-center gap-1.5 ${className}`}>
-      <input type="date" aria-label="מתאריך" value={from} max={to || undefined}
-        onChange={(e) => onChange('from', e.target.value)} className={`${input} flex-1`} />
+      <DateField label="מתאריך" value={from} max={to} onChange={(v) => onChange('from', v)} />
       <span className="text-[11px] text-text-muted shrink-0">עד</span>
-      <input type="date" aria-label="עד תאריך" value={to} min={from || undefined}
-        onChange={(e) => onChange('to', e.target.value)} className={`${input} flex-1`} />
+      <DateField label="עד תאריך" value={to} min={from} onChange={(v) => onChange('to', v)} />
     </div>
   );
 }
