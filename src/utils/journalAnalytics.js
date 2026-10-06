@@ -205,3 +205,47 @@ export function sortJournalTrades(trades, { key = 'date', dir = 'desc' } = {}, l
     return cmp !== 0 ? cmp * sign : entryTime(b) - entryTime(a);
   });
 }
+
+// R buckets for the distribution chart. Edges are explicit so a clean stop-out
+// at exactly -1R lands in "-2R…-1R" (the common case) and breakeven in "0…1R".
+export const R_BUCKETS = [
+  { label: '≤ -2R', side: 'loss', test: (r) => r <= -2 },
+  { label: '-2R…-1R', side: 'loss', test: (r) => r > -2 && r <= -1 },
+  { label: '-1R…0', side: 'loss', test: (r) => r > -1 && r < 0 },
+  { label: '0…1R', side: 'win', test: (r) => r >= 0 && r < 1 },
+  { label: '1R…2R', side: 'win', test: (r) => r >= 1 && r < 2 },
+  { label: '2R…3R', side: 'win', test: (r) => r >= 2 && r < 3 },
+  { label: '≥ 3R', side: 'win', test: (r) => r >= 3 },
+];
+
+// Everything the "R" card needs, from the closed trades of the period.
+// Only trades with a stop have an R; the rest are reported separately
+// because their risk was never defined.
+export function computeRStats(trades) {
+  const closed = trades.filter(isClosedTrade);
+  const withR = [];
+  const noStop = { count: 0, pnl: 0 };
+  for (const t of closed) {
+    const r = signedR(t);
+    if (r === null) { noStop.count++; noStop.pnl += safePnl(t); } else withR.push(r);
+  }
+  const sum = (a) => a.reduce((s, x) => s + x, 0);
+  const winsR = withR.filter((r) => r > 0);
+  const lossesR = withR.filter((r) => r < 0);
+  const buckets = R_BUCKETS.map(({ label, side, test }) => ({
+    label, side, count: withR.filter(test).length,
+  }));
+  return {
+    closed: closed.length,
+    withStop: withR.length,
+    stopRate: closed.length ? (withR.length / closed.length) * 100 : null,
+    totalR: sum(withR),
+    expectancyR: withR.length ? sum(withR) / withR.length : null,
+    avgWinR: winsR.length ? sum(winsR) / winsR.length : null,
+    avgLossR: lossesR.length ? sum(lossesR) / lossesR.length : null,
+    bestR: withR.length ? Math.max(...withR) : null,
+    worstR: withR.length ? Math.min(...withR) : null,
+    buckets,
+    noStop,
+  };
+}
