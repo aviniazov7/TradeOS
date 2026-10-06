@@ -47,11 +47,13 @@ export function useLinkedExchangeBalance(exchangeId) {
 }
 
 // Live balance for every journal that's linked to a connected exchange.
-// Returns a `{ [journalId]: balance }` map so the dashboard can override the
-// computed (initial + PnL) balance with the real wallet figure.
-export function useLinkedJournalsBalance(journals) {
+// `balances` is a `{ [journalId]: balance }` map so the dashboard can override
+// the computed (initial + PnL) balance with the real wallet figure; `problems`
+// is `{ [journalId]: reason }` when the exchange answered with an API-key
+// problem (key_expired / key_invalid / ip_blocked / no_permission).
+export function useLinkedJournals(journals) {
   const { user } = useAuth();
-  const [byJournal, setByJournal] = useState({});
+  const [state, setState] = useState({ balances: {}, problems: {} });
 
   // Distinct exchange ids referenced by the journals (string for stable key).
   const exchangeIdsKey = useMemo(() => {
@@ -67,7 +69,7 @@ export function useLinkedJournalsBalance(journals) {
   );
 
   useEffect(() => {
-    if (!user || !exchangeIdsKey) { setByJournal({}); return; }
+    if (!user || !exchangeIdsKey) { setState({ balances: {}, problems: {} }); return; }
     const exchangeIds = exchangeIdsKey.split(',').filter(Boolean);
     let cancelled = false;
     let timer = null;
@@ -76,21 +78,25 @@ export function useLinkedJournalsBalance(journals) {
       try {
         const allCreds = (await getUserSetting(user.uid, 'exchanges')) || {};
         const balances = {};
+        const reasons = {};
         await Promise.all(exchangeIds.map(async (exId) => {
           const conf = allCreds[exId];
           if (!conf?.connected && !(conf?.apiKey && conf?.apiSecret)) return;
           try {
             const res = await fetchExchangeBalance(exId);
             balances[exId] = res.balance;
-          } catch { /* skip this exchange */ }
+          } catch (err) {
+            if (err?.reason) reasons[exId] = err.reason;
+          }
         }));
         if (cancelled) return;
-        const next = {};
+        const next = { balances: {}, problems: {} };
         for (const entry of journalsKey.split('|')) {
           const [jid, exId] = entry.split(':');
-          if (balances[exId] != null) next[jid] = balances[exId];
+          if (balances[exId] != null) next.balances[jid] = balances[exId];
+          if (reasons[exId]) next.problems[jid] = reasons[exId];
         }
-        setByJournal(next);
+        setState(next);
       } catch { /* keep last */ }
     };
 
@@ -99,5 +105,10 @@ export function useLinkedJournalsBalance(journals) {
     return () => { cancelled = true; if (timer) clearInterval(timer); };
   }, [user, exchangeIdsKey, journalsKey]);
 
-  return byJournal;
+  return state;
+}
+
+// Balances only — the shape the portfolio totals want.
+export function useLinkedJournalsBalance(journals) {
+  return useLinkedJournals(journals).balances;
 }

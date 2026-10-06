@@ -10,7 +10,7 @@ import {
   buildMentionIndex, attributeMoves, describeFinding, ATTRIBUTION_WINDOW_MIN,
 } from './newsImpact.js';
 import {
-  classifyExchangeAuthError, mexcStopsByPosition, mexcEntryTypeByPosition, mexcOrderKind, mexcExitsByPosition,
+  bybitWalletEquity, classifyExchangeAuthError, mexcStopsByPosition, mexcEntryTypeByPosition, mexcOrderKind, mexcExitsByPosition,
   enrichWithOrders, okxOrderRow, okxStopRow, bitgetOrderRow, bitgetStopRow, mexcCronOpen, mexcCronClosed,
   normalizeMexcClosed, normalizeOkxClosed, normalizeOkxOpen, normalizeBitgetClosed,
 } from './exchangeNormalize.js';
@@ -5669,16 +5669,33 @@ async function handleRequest(request, env) {
       let balance = 0;
 
       if (exchange === 'bybit') {
-        const ts = Date.now().toString();
         const recvWindow = '5000';
-        const qs = 'accountType=UNIFIED';
-        const sig = await hmacHex(apiSecret, ts + apiKey + recvWindow + qs);
-        const res = await fetch(`https://api.bybit.com/v5/account/wallet-balance?${qs}`, {
-          headers: { 'X-BAPI-API-KEY': apiKey, 'X-BAPI-TIMESTAMP': ts, 'X-BAPI-SIGN': sig, 'X-BAPI-RECV-WINDOW': recvWindow },
-        });
-        const data = await res.json();
-        if (data.retCode !== 0) throw new Error(`Bybit ${data.retCode}: ${data.retMsg || 'error'}`);
-        balance = parseFloat(data.result?.list?.[0]?.totalEquity) || 0;
+        const wallet = async (accountType) => {
+          const ts = Date.now().toString();
+          const qs = `accountType=${accountType}`;
+          const sig = await hmacHex(apiSecret, ts + apiKey + recvWindow + qs);
+          const res = await fetch(`https://api.bybit.com/v5/account/wallet-balance?${qs}`, {
+            headers: { 'X-BAPI-API-KEY': apiKey, 'X-BAPI-TIMESTAMP': ts, 'X-BAPI-SIGN': sig, 'X-BAPI-RECV-WINDOW': recvWindow },
+          });
+          return res.json();
+        };
+        // Unified account first. A Classic account has its futures money in
+        // CONTRACT, and UNIFIED returns nothing (or 0) for it — the card then
+        // showed $0.00 for a funded account. So fall back to CONTRACT unless
+        // the key itself is the problem.
+        const uni = await wallet('UNIFIED');
+        const uniAuth = uni.retCode !== 0 && classifyExchangeAuthError('bybit', uni.retCode, uni.retMsg);
+        if (uniAuth) throw new Error(`Bybit ${uni.retCode}: ${uni.retMsg || 'error'}`);
+        const uniEquity = uni.retCode === 0 ? bybitWalletEquity(uni.result?.list) : null;
+        if (uniEquity) {
+          balance = uniEquity;
+        } else {
+          const classic = await wallet('CONTRACT').catch(() => null);
+          const classicEquity = classic?.retCode === 0 ? bybitWalletEquity(classic.result?.list) : null;
+          if (classicEquity !== null) balance = classicEquity;
+          else if (uniEquity !== null) balance = uniEquity;
+          else throw new Error(`Bybit ${uni.retCode}: ${uni.retMsg || 'no wallet data'}`);
+        }
       }
 
       else if (exchange === 'mexc') {

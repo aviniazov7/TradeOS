@@ -451,3 +451,21 @@ export function mexcCronClosed(p, contractSize = 1) {
     exitMs: parseInt(p.updateTime) || parseInt(p.createTime) || 0,
   };
 }
+
+// ── Bybit wallet balance ─────────────────────────────────────────────────────
+// /v5/account/wallet-balance list → USD equity, or null when the account type
+// returned nothing. A Unified account reports totalEquity; a Classic CONTRACT
+// account leaves the totals empty, so sum the coins' USD value (stablecoins at
+// par when usdValue is missing).
+export function bybitWalletEquity(list = []) {
+  const acct = Array.isArray(list) ? list[0] : null;
+  if (!acct) return null;
+  if (has(acct.totalEquity)) return num(acct.totalEquity);
+  let sum = 0;
+  let any = false;
+  for (const c of acct.coin || []) {
+    if (has(c.usdValue)) { sum += num(c.usdValue); any = true; }
+    else if ((c.coin === 'USDT' || c.coin === 'USDC') && has(c.equity)) { sum += num(c.equity); any = true; }
+  }
+  return any ? trim(sum) : 0;
+}

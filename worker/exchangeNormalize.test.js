@@ -1,6 +1,6 @@
 import { describe, it, expect } from 'vitest';
 import {
-  withRisk, classifyExchangeAuthError, mexcCronOpen, mexcCronClosed, buildExits, enrichWithOrders, okxOrderRow, okxStopRow, bitgetOrderRow, bitgetStopRow, mexcExitsByPosition, mexcTradeFee, mexcStopsByPosition, mexcOrderKind, mexcEntryTypeByPosition, normalizeMexcClosed, normalizeOkxClosed, normalizeOkxOpen, normalizeBitgetClosed,
+  withRisk, bybitWalletEquity, classifyExchangeAuthError, mexcCronOpen, mexcCronClosed, buildExits, enrichWithOrders, okxOrderRow, okxStopRow, bitgetOrderRow, bitgetStopRow, mexcExitsByPosition, mexcTradeFee, mexcStopsByPosition, mexcOrderKind, mexcEntryTypeByPosition, normalizeMexcClosed, normalizeOkxClosed, normalizeOkxOpen, normalizeBitgetClosed,
 } from './exchangeNormalize';
 
 // Sample rows are the exchanges' own documented example responses (as quoted
@@ -352,5 +352,21 @@ describe('MEXC rows for the background alerts', () => {
   it('maps an open position', () => {
     expect(mexcCronOpen({ positionId: 77, symbol: 'BTC_USDT', positionType: 2, holdAvgPrice: '60000', leverage: '20' }))
       .toEqual({ id: '77', pair: 'BTCUSDT', direction: 'short', entryPrice: 60000, leverage: 20 });
+  });
+});
+
+describe('bybitWalletEquity', () => {
+  it('reads a Unified account total', () => {
+    expect(bybitWalletEquity([{ accountType: 'UNIFIED', totalEquity: '18070.32797922', coin: [] }])).toBeCloseTo(18070.328, 3);
+  });
+  it('sums coin USD values on a Classic CONTRACT account (no totals)', () => {
+    expect(bybitWalletEquity([{ accountType: 'CONTRACT', totalEquity: '', coin: [
+      { coin: 'USDT', equity: '400.5', usdValue: '' },
+      { coin: 'BTC', equity: '0.001', usdValue: '60.25' },
+    ] }])).toBeCloseTo(460.75, 6);
+  });
+  it('returns null when the account type has nothing, 0 for an empty wallet', () => {
+    expect(bybitWalletEquity([])).toBeNull();
+    expect(bybitWalletEquity([{ accountType: 'UNIFIED', totalEquity: '0', coin: [] }])).toBe(0);
   });
 });
