@@ -9,6 +9,9 @@
 import {
   buildMentionIndex, attributeMoves, describeFinding, ATTRIBUTION_WINDOW_MIN,
 } from './newsImpact.js';
+import {
+  normalizeMexcClosed, normalizeOkxClosed, normalizeOkxOpen, normalizeBitgetClosed,
+} from './exchangeNormalize.js';
 
 // Binance's public market-data mirror — api.binance.com returns 403 to
 // Cloudflare Worker egress IPs in many regions, but data-api.binance.vision
@@ -108,6 +111,29 @@ async function mexcContractSizes() {
     if (Object.keys(map).length) { _mexcCsCache = map; _mexcCsAt = now; }
     return map;
   } catch { return _mexcCsCache || {}; }
+}
+
+// OKX SWAP sizes are in CONTRACTS (BTC-USDT-SWAP: 1 = 0.01 BTC). Public
+// instruments list → { instId: coins per contract }, cached like MEXC's.
+// Only linear (USDT/USDC-settled) swaps: there ctVal is in the base coin. An
+// inverse swap's ctVal is in USD, so it's left out (falls back to 1).
+let _okxCtCache = null;
+let _okxCtAt = 0;
+async function okxContractValues() {
+  const now = Date.now();
+  if (_okxCtCache && now - _okxCtAt < 6 * 60 * 60 * 1000) return _okxCtCache;
+  try {
+    const r = await fetch('https://www.okx.com/api/v5/public/instruments?instType=SWAP');
+    const d = await r.json().catch(() => ({}));
+    const map = {};
+    for (const i of (Array.isArray(d.data) ? d.data : [])) {
+      if (!['USDT', 'USDC'].includes(i.settleCcy)) continue;
+      const v = parseFloat(i.ctVal) * (parseFloat(i.ctMult) || 1);
+      if (i.instId && v > 0) map[i.instId] = v;
+    }
+    if (Object.keys(map).length) { _okxCtCache = map; _okxCtAt = now; }
+    return map;
+  } catch { return _okxCtCache || {}; }
 }
 
 // ── AI usage quota (daily, resets at Israel midnight) ────────────────────────
@@ -5504,36 +5530,11 @@ async function handleRequest(request, env) {
         });
         const data = await res.json();
         if (data.code !== '0') return new Response(JSON.stringify({ ok: false, error: `OKX ${data.code}: ${data.msg || 'error'}` }), { headers: { ...cors, 'Content-Type': 'application/json' }, status: 400 });
+        const ctMap = await okxContractValues();
         const positions = (data.data || []).filter((p2) => parseFloat(p2.pos) !== 0).map((p2) => {
-          const parts = (p2.instId || '').split('-');
-          const pair = parts.length >= 2 ? (parts[0] + parts[1]).toUpperCase() : (p2.instId || '').toUpperCase();
-          const entryPrice = parseFloat(p2.avgPx) || 0;
-          const qty = Math.abs(parseFloat(p2.pos) || 0);
-          const entryDate = p2.cTime ? new Date(parseInt(p2.cTime)).toISOString() : new Date().toISOString();
-          const liq = parseFloat(p2.liqPx) || 0;
-          const tp = parseFloat(p2.tpTriggerPx || 0) || 0;
-          return {
-            pair,
-            direction: p2.posSide === 'short' || parseFloat(p2.pos) < 0 ? 'short' : 'long',
-            entryPrice,
-            quantity: qty,
-            leverage: parseFloat(p2.lever) || 1,
-            stopLoss: parseFloat(p2.slTriggerPx || 0) || 0,
-            positionSize: qty * entryPrice,
-            fees: 0,
-            status: 'open',
-            source: 'okx',
-            externalId: String(p2.posId || `${pair}_${p2.cTime}`),
-            orderType: 'market',
-            entryDate,
-            tps: tp > 0 ? [tp] : [],
-            exits: null,
-            tpReached: [],
-            result: null,
-            journalId: null,
-            liquidationPrice: liq > 0 ? liq : null,
-            session: sessionFromDate(entryDate),
-          };
+          // Contracts → coins and the SL/TP from closeOrderAlgo: exchangeNormalize.
+          const pos = normalizeOkxOpen(p2, ctMap[p2.instId] || 1);
+          return { ...pos, exits: null, tpReached: [], result: null, journalId: null, session: sessionFromDate(pos.entryDate) };
         });
         return new Response(JSON.stringify({ ok: true, positions, count: positions.length }), { headers: { ...cors, 'Content-Type': 'application/json' } });
       }
@@ -6010,6 +6011,8 @@ async function handleRequest(request, env) {
           const openMs = toMs(p.createTime || p.openTime || p.create_time || p.openTimestamp);
           const entryDate = openMs > 0 ? new Date(openMs).toISOString() : new Date().toISOString();
           const sym = p.symbol || '';
+          // Kept as-is (not positionId): it's the externalId already stored
+          // on every imported MEXC trade — changing it would re-import them.
           const posId = String(p.id || sym + '_' + openMs);
           const closeMs = exitTimeById.get(posId) || 0;
           const rawUpdateMs = toMs(p.updateTime || p.update_time || p.closeTime || p.close_time || 0);
@@ -6018,29 +6021,14 @@ async function handleRequest(request, env) {
             : rawUpdateMs > openMs
               ? new Date(rawUpdateMs).toISOString()
               : entryDate;
-          const posType = p.positionType ?? p.position_type;
-          const fees = Math.abs(parseFloat(p.fee || p.fees || p.closeFee || p.close_fee || p.holdFee || p.totalFee || 0) || 0);
-          // Prefer SL/TP captured from the opening order; fall back to any
-          // values that happened to live on the position object itself.
+          // SL/TP captured from the opening order (the position row has none).
           const slTp = slTpById.get(posId) || {};
-          const slMexc = (slTp.sl > 0 ? slTp.sl : parseFloat(p.stopLossPrice || p.stop_loss_price || 0)) || 0;
-          const tpMexc = (slTp.tp > 0 ? slTp.tp : parseFloat(p.takeProfitPrice || p.take_profit_price || 0)) || 0;
+          // Field mapping + the gross/fee convention live in exchangeNormalize.
           return {
-            pair: sym.replace(/_/g, ''),
-            direction: posType === 1 ? 'long' : 'short',
-            entryPrice: parseFloat(p.openAvgPrice || p.open_avg_price) || 0,
-            exitPrice: parseFloat(p.closeAvgPrice || p.close_avg_price) || 0,
-            // MEXC vol is in CONTRACTS — convert to coin units via contractSize.
-            quantity: (parseFloat(p.closeVol || p.close_vol || p.holdVol || p.hold_vol) || 0) * (csMap[sym.replace(/_/g, '')] || 1),
-            leverage: parseFloat(p.leverage) || 1,
-            pnlFromExchange: parseFloat(p.realised || p.realisedPnl || p.realise || p.realised_pnl) || 0,
-            fees,
-            entryDate,
-            exitDate,
-            stopLoss: slMexc,
-            tps: tpMexc > 0 ? [tpMexc] : [],
-            source: 'mexc',
-            externalId: posId,
+            ...normalizeMexcClosed(p, {
+              contractSize: csMap[sym.replace(/_/g, '')] || 1,
+              entryDate, exitDate, externalId: posId, sl: slTp.sl, tp: slTp.tp,
+            }),
             session: sessionFromDate(entryDate),
           };
         });
@@ -6325,36 +6313,19 @@ async function handleRequest(request, env) {
             if (!chunk.length) break;
             okxRows = okxRows.concat(chunk);
             const oldest = chunk[chunk.length - 1];
-            after = oldest.posId || '';
+            // `after` pages by update TIME (ms), not by posId — passing a
+            // posId (an 18-digit number) re-fetched the same newest page.
+            after = oldest.uTime || '';
             if (parseInt(oldest.cTime || 0) < sinceMs || chunk.length < 100 || !after) break;
           }
           okxRows = okxRows.filter((p) => parseInt(p.cTime || 0) >= sinceMs);
         } else {
           okxRows = await okxFetch('');
         }
-        trades = okxRows.map(p => {
-          const parts = (p.instId || '').split('-');
-          const pair = parts.length >= 2 ? (parts[0] + parts[1]).toUpperCase() : (p.instId || '').toUpperCase();
-          const entryDate = p.cTime ? new Date(parseInt(p.cTime)).toISOString() : new Date().toISOString();
-          const slOkx = parseFloat(p.slTriggerPx || p.slOrdPx || 0) || 0;
-          const tpOkx = parseFloat(p.tpTriggerPx || p.tpOrdPx || 0) || 0;
-          return {
-            pair,
-            direction: p.direction === 'long' ? 'long' : 'short',
-            entryPrice: parseFloat(p.openAvgPx) || 0,
-            exitPrice: parseFloat(p.closeAvgPx) || 0,
-            quantity: parseFloat(p.closeTotalPos || p.openMaxPos) || 0,
-            leverage: parseFloat(p.lever) || 1,
-            pnlFromExchange: parseFloat(p.pnl) || 0,
-            fees: Math.abs(parseFloat(p.fee) || 0),
-            entryDate,
-            exitDate: p.uTime ? new Date(parseInt(p.uTime)).toISOString() : new Date().toISOString(),
-            stopLoss: slOkx,
-            tps: tpOkx > 0 ? [tpOkx] : [],
-            source: 'okx',
-            externalId: p.posId || (pair + '_' + p.cTime),
-            session: sessionFromDate(entryDate),
-          };
+        const ctMap = await okxContractValues();
+        trades = okxRows.map((p) => {
+          const t = normalizeOkxClosed(p, ctMap[p.instId] || 1);
+          return { ...t, session: sessionFromDate(t.entryDate) };
         });
       }
 
@@ -6373,7 +6344,7 @@ async function handleRequest(request, env) {
           });
           const d = await r.json();
           if (d.code !== '00000') throw new Error(`Bitget ${d.code}: ${d.msg || 'error'}`);
-          return d.data?.list || (Array.isArray(d.data) ? d.data : []);
+          return { list: d.data?.list || (Array.isArray(d.data) ? d.data : []), endId: d.data?.endId || '' };
         };
 
         let bgRows = [];
@@ -6381,38 +6352,23 @@ async function handleRequest(request, env) {
           const startExtra = `&startTime=${sinceMs}&endTime=${Date.now()}`;
           let idLessThan = '';
           for (let reqs = 0; reqs < MAX_REQUESTS && bgRows.length < MAX_TRADES; reqs++) {
-            const chunk = await bitgetFetch(startExtra + (idLessThan ? `&idLessThan=${idLessThan}` : ''));
+            const { list: chunk, endId } = await bitgetFetch(startExtra + (idLessThan ? `&idLessThan=${idLessThan}` : ''));
             if (!chunk.length) break;
             bgRows = bgRows.concat(chunk);
-            const oldest = chunk[chunk.length - 1];
-            idLessThan = oldest.positionId || '';
+            // History rows carry no positionId — the page cursor is the
+            // response's endId (the old code read a missing field and never
+            // got past the first page).
+            idLessThan = endId;
             if (chunk.length < 100 || !idLessThan) break;
           }
         } else {
-          bgRows = await bitgetFetch('');
+          bgRows = (await bitgetFetch('')).list;
         }
-        trades = bgRows.map(p => {
-          const pair = (p.symbol || '').replace(/_.*/, '').toUpperCase();
-          const entryDate = p.ctime ? new Date(parseInt(p.ctime)).toISOString() : new Date().toISOString();
-          const slBg = parseFloat(p.presetStopLossPrice || p.stopLossPrice || 0) || 0;
-          const tpBg = parseFloat(p.presetStopSurplusPrice || p.takeProfitPrice || 0) || 0;
-          return {
-            pair,
-            direction: p.holdSide === 'long' ? 'long' : 'short',
-            entryPrice: parseFloat(p.openPriceAvg || p.openAvgPx) || 0,
-            exitPrice: parseFloat(p.closePriceAvg || p.closeAvgPx) || 0,
-            quantity: parseFloat(p.openSize || p.closeTotalPos) || 0,
-            leverage: parseFloat(p.leverage) || 1,
-            pnlFromExchange: parseFloat(p.pnl) || 0,
-            fees: Math.abs(parseFloat(p.fee || p.totalFee) || 0),
-            entryDate,
-            exitDate: p.utime ? new Date(parseInt(p.utime)).toISOString() : new Date().toISOString(),
-            stopLoss: slBg,
-            tps: tpBg > 0 ? [tpBg] : [],
-            source: 'bitget',
-            externalId: p.positionId || (pair + '_' + p.ctime),
-            session: sessionFromDate(entryDate),
-          };
+        trades = bgRows.map((p) => {
+          // Correct v2 field names (openAvgPrice/closeAvgPrice/openFee/…) and
+          // the gross/fee convention live in exchangeNormalize.
+          const t = normalizeBitgetClosed(p);
+          return { ...t, session: sessionFromDate(t.entryDate) };
         });
       }
 
