@@ -13,7 +13,7 @@ const COLUMN_MAP = {
   positionSize: ['positionsize', 'position_size', 'size', 'amount', 'qty', 'quantity', 'volume', 'lots', 'lot', 'גודל', 'גודל עסקה'],
   leverage: ['leverage', 'lev', 'מינוף'],
   fees: ['fees', 'fee', 'commission', 'עמלות'],
-  // MT5 / forex brokers report realized profit directly — use it instead of
+  // Brokers that report realized profit directly — use it instead of
   // recomputing from price×qty, which is wrong when contract sizes vary (lots).
   profit: ['profit', 'pnl', 'p/l', 'p&l', 'net p/l', 'realized', 'realized pnl', 'רווח', 'רווח/הפסד'],
   entryDate: ['entrydate', 'entry_date', 'open_date', 'opendate', 'open time', 'date', 'תאריך כניסה', 'תאריך'],
@@ -98,8 +98,8 @@ function buildDate(y, mo, d, h, mi, s) {
 
 function parseDate(val) {
   if (!val) return null;
-  // MT5/MetaTrader format — "2024.01.15 09:30:00" (also yyyy-MM-dd and
-  // yyyy/MM/dd, time optional). new Date() on the dotted form fails in
+  // Year-first dates — "2024.01.15 09:30:00", yyyy-MM-dd and yyyy/MM/dd,
+  // time optional. new Date() on the dotted form fails in
   // Firefox/Safari, which used to stamp TODAY on every imported trade.
   const iso = val.match(/^(\d{4})[/.-](\d{1,2})[/.-](\d{1,2})(?:[ T](\d{1,2}):(\d{2})(?::(\d{2}))?)?$/);
   if (iso) {
@@ -206,7 +206,7 @@ export default function ImportTrades({ isOpen, onClose, onImport, onImportBulk }
         positionSize,
         leverage,
         fees: parseNumber(get('fees')) || 0,
-        // Realized profit from the broker (MT5/forex) — useTrades uses this verbatim
+        // Realized profit reported by the broker — useTrades uses this verbatim
         // as PnL, avoiding wrong price×qty math when contract sizes vary.
         ...(hasProfit ? { pnlFromExchange: profitNum } : {}),
         entryDate: entryDate || new Date(),
@@ -311,7 +311,7 @@ export default function ImportTrades({ isOpen, onClose, onImport, onImportBulk }
           >
             <Upload className="w-10 h-10 text-text-muted mx-auto mb-3" />
             <p className="text-sm text-text-primary font-medium">גרור קובץ CSV או לחץ לבחירה</p>
-            <p className="text-xs text-text-muted mt-1">תומך בייצוא מ-MetaTrader 5, Bybit, MEXC ופורמטים נפוצים</p>
+            <p className="text-xs text-text-muted mt-1">תומך בייצוא מ-Bybit, MEXC ופורמטים נפוצים</p>
           </div>
           <input ref={fileRef} type="file" accept=".csv" onChange={handleFile} className="hidden" />
         </div>

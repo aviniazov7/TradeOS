@@ -44,7 +44,6 @@
 - Syncs fees, leverage, direction, P&L from exchange
 - **Upsert logic** — re-sync updates existing trades instead of creating duplicates
 - Passphrase support for OKX and Bitget
-- **MT5** — CSV import with step-by-step guide
 - **Binance** — guide only (IP whitelist limitation)
 - Visual preview of trades before import, with "update" badge for existing ones
 
@@ -305,7 +304,6 @@ npx wrangler deploy
 | OKX | ✅ | ✅ | Requires Passphrase |
 | Bitget | ✅ | ✅ | Requires Passphrase |
 | Binance | ❌ | ✅ | IP whitelist limitation |
-| MetaTrader 5 | ❌ | ✅ | CSV export from History Center |
 
 API keys are **read-only** and signed server-side via the Cloudflare Worker — secrets never reach the browser.
 

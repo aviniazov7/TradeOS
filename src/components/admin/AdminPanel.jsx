@@ -96,9 +96,9 @@ const REVENUE_BUCKETS = {
 };
 
 // Display names for connected-exchange ids (the worker returns ids only —
-// mirrors the list in ExchangeSettings.jsx).
+// mirrors the list in exchange/exchangeConfig.js).
 const EXCHANGE_NAMES = {
-  bybit: 'Bybit', mexc: 'MEXC', okx: 'OKX', bitget: 'Bitget', binance: 'Binance', mt5: 'MetaTrader 5',
+  bybit: 'Bybit', mexc: 'MEXC', okx: 'OKX', bitget: 'Bitget', binance: 'Binance',
 };
 
 // Mirrors the worker's AI caps (FREE_LIMITS.aiPerDay / AI_PREMIUM_LIMITS.day /

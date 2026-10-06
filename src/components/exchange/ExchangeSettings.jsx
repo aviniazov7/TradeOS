@@ -1,19 +1,24 @@
-import { useState, useEffect, useRef } from 'react';
-import { motion, AnimatePresence, useMotionValue, useTransform } from 'framer-motion';
+import { useState, useEffect } from 'react';
+import { motion, AnimatePresence } from 'framer-motion';
 import {
-  Shield, Eye, EyeOff, Check, ExternalLink,
-  RefreshCw, Download, X, Zap, HelpCircle, Pencil, Link2,
+  Shield, Eye, EyeOff, ExternalLink, RefreshCw, Zap, Pencil, Plus, Unplug, Wallet, Link2, Lock,
 } from 'lucide-react';
 import toast from 'react-hot-toast';
+import { useNavigate } from 'react-router-dom';
 import { getUserSetting, setUserSetting } from '../../services/firestoreService';
 import { syncExchangeTrades, syncOpenPositions, fetchExchangeBalance, storeExchangeCredentials, deleteExchangeCredentials, getConnectedExchanges } from '../../services/exchangeService';
 import { useAuth } from '../../contexts/AuthContext';
 import { useJournalContext } from '../../contexts/JournalContext';
 import { useExchangeImport } from '../../hooks/useExchangeImport';
-import { tradeExternalIds } from '../../utils/tradeIds';
 import { pageVariants, pageTransition } from '../../utils/animations';
+import { getExchangeLogo, FREE_LIMITS } from '../../utils/constants';
 import LoadingSpinner from '../shared/LoadingSpinner';
 import SelectDropdown from '../shared/SelectDropdown';
+import Card from '../shared/Card';
+import Modal from '../shared/Modal';
+import ConfirmDialog from '../shared/ConfirmDialog';
+import { EXCHANGES } from './exchangeConfig';
+import { SyncModal } from './SyncModal';
 
 // Import-window options for the exchange sync (value in days; '0' = last 50).
 const SYNC_PERIODS = [
@@ -23,582 +28,286 @@ const SYNC_PERIODS = [
   { value: '180', label: '6 חודשים' },
   { value: '365', label: 'שנה' },
 ];
-import { getExchangeLogo, FREE_LIMITS } from '../../utils/constants';
-import { useNavigate } from 'react-router-dom';
 
-// ── Exchange config ───────────────────────────────────────────────────────────
-// Exported so the trades-tab proposal banner (ExchangeProposals) can reuse the
-// per-exchange display name / accent / canSync flag without duplicating them.
-export const EXCHANGES = [
-  {
-    id: 'bybit',   name: 'Bybit',   tagline: 'Derivatives Exchange',
-    accent: '#F7A600', glow: 'rgba(247,166,0,0.35)',
-    apiUrl: 'https://www.bybit.com/app/user/api-management', canSync: true,
-    steps: [
-      { text: 'Account → API Management → Create New Key', n: '1' },
-      { text: 'בחר "System-generated API Keys"', n: '2' },
-      { text: 'שם: "TradeOS"', n: '3' },
-      { text: 'Permissions → Read-Only בלבד ✓', n: '4', ok: true },
-      { text: 'אל תסמן Trade / Withdraw / Transfer', n: '!', warn: true },
-      { text: 'Submit → 2FA → העתק מפתחות', n: '5' },
-    ],
-  },
-  {
-    id: 'mexc',    name: 'MEXC',    tagline: 'Global Crypto Exchange',
-    accent: '#2B78FF', glow: 'rgba(43,120,255,0.35)',
-    apiUrl: 'https://www.mexc.com/user/openapi', canSync: true,
-    steps: [
-      { text: 'Profile → API Management → Create API Key', n: '1' },
-      { text: 'שם: "TradeOS"', n: '2' },
-      { text: 'Futures → Account: View Account Details ✓', n: '3', ok: true },
-      { text: 'Futures → Trade: View Order Details ✓', n: '4', ok: true },
-      { text: 'אל תסמן Order Placing / Withdraw / Trade', n: '!', warn: true },
-      { text: 'Create → 2FA → העתק מפתחות', n: '5' },
-    ],
-  },
-  {
-    id: 'okx',     name: 'OKX',     tagline: 'Advanced Trading Platform',
-    accent: '#0AC18E', glow: 'rgba(10,193,142,0.35)',
-    apiUrl: 'https://www.okx.com/account/my-api', canSync: true,
-    steps: [
-      { text: 'Profile → API → Create API', n: '1' },
-      { text: 'שם: "TradeOS" → קבע Passphrase', n: '2' },
-      { text: 'Permissions → Read ✓ בלבד', n: '3', ok: true },
-      { text: 'אל תסמן Trade / Withdraw', n: '!', warn: true },
-      { text: 'Confirm → 2FA → העתק Key + Secret + Passphrase', n: '4' },
-    ],
-    extraField: { key: 'passphrase', label: 'Passphrase', placeholder: 'OKX Passphrase', required: true },
-  },
-  {
-    id: 'bitget',  name: 'Bitget',  tagline: 'Copy Trading & Futures',
-    accent: '#00C580', glow: 'rgba(0,197,128,0.35)',
-    apiUrl: 'https://www.bitget.com/account/newapi', canSync: true,
-    steps: [
-      { text: 'Account → API Management → Create API', n: '1' },
-      { text: 'שם: "TradeOS" → קבע Passphrase', n: '2' },
-      { text: 'Permissions → Read Only ✓', n: '3', ok: true },
-      { text: 'אל תסמן Trade / Withdrawal', n: '!', warn: true },
-      { text: 'Confirm → 2FA → העתק Key + Secret + Passphrase', n: '4' },
-    ],
-    extraField: { key: 'passphrase', label: 'Passphrase', placeholder: 'Bitget Passphrase', required: true },
-  },
-  {
-    id: 'binance', name: 'Binance', tagline: "World's Largest Exchange",
-    accent: '#F0B90B', glow: 'rgba(240,185,11,0.35)',
-    apiUrl: 'https://www.binance.com/en/my/settings/api-management', canSync: false,
-    steps: [
-      { text: 'Profile → API Management → Create API', n: '1' },
-      { text: 'בחר "System Generated" → שם: "TradeOS"', n: '2' },
-      { text: 'Restrictions → Enable Reading בלבד ✓', n: '3', ok: true },
-      { text: 'אל תסמן Spot Trading / Futures / Withdrawals', n: '!', warn: true },
-      { text: 'שמור API Key + Secret Key', n: '4' },
-    ],
-  },
-  {
-    id: 'mt5',     name: 'MetaTrader 5', tagline: 'Forex & CFD Platform',
-    accent: '#7B5EA7', glow: 'rgba(123,94,167,0.35)',
-    apiUrl: '', canSync: false, csvOnly: true,
-    steps: [
-      { text: 'פתח MT5 → Toolbox → לשונית History', n: '1' },
-      { text: 'לחץ ימני על הרשימה → בחר טווח תאריכים', n: '2' },
-      { text: 'לחץ ימני → Report → Save as CSV', n: '3', ok: true },
-      { text: 'ודא שיש עמודות Symbol, Type, Open/Close Price, Profit', n: '!', warn: true },
-      { text: 'ב-TradeOS → ייבוא → בחר קובץ CSV (המיפוי אוטומטי)', n: '5', ok: true },
-    ],
-  },
-];
-
-// ── Floating orb background ───────────────────────────────────────────────────
-function FloatingOrb({ color, style }) {
-  return (
-    <motion.div
-      className="absolute rounded-full pointer-events-none"
-      style={{ background: `radial-gradient(circle, ${color} 0%, transparent 70%)`, ...style }}
-      animate={{ scale: [1, 1.15, 1], opacity: [0.4, 0.65, 0.4] }}
-      transition={{ duration: 4 + Math.random() * 2, repeat: Infinity, ease: 'easeInOut' }}
-    />
-  );
-}
+const fmtUsd = (v) => `$${v.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
 
 // ── Real logo with fallback ───────────────────────────────────────────────────
 function ExLogo({ id, size = 48, accent }) {
   const [err, setErr] = useState(false);
   const url = getExchangeLogo(id);
   if (!err && url) return (
-    <div className="rounded-xl overflow-hidden flex items-center justify-center"
+    <div className="rounded-xl overflow-hidden flex items-center justify-center shrink-0"
       style={{ width: size, height: size, background: `${accent}22`, border: `1px solid ${accent}40` }}>
       <img src={url} alt={id} width={size * 0.65} height={size * 0.65}
         className="rounded object-contain" onError={() => setErr(true)} />
     </div>
   );
   return (
-    <div className="rounded-xl flex items-center justify-center font-black text-white text-sm"
+    <div className="rounded-xl flex items-center justify-center font-black text-white text-sm shrink-0"
       style={{ width: size, height: size, background: accent }}>
       {id[0].toUpperCase()}
     </div>
   );
 }
 
-// ── Guide modal ───────────────────────────────────────────────────────────────
-function GuideModal({ exchange, onClose }) {
+// ── Summary tile (page header) ────────────────────────────────────────────────
+function KpiTile({ icon: Icon, label, value, sub, valueClass = 'text-text-primary', mono = true }) {
   return (
-    <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}
-      className="fixed inset-0 bg-black/80 z-50 flex items-center justify-center p-4"
-      style={{ backdropFilter: 'blur(8px)' }} onClick={onClose}>
-      <motion.div
-        initial={{ scale: 0.9, opacity: 0, y: 20 }} animate={{ scale: 1, opacity: 1, y: 0 }}
-        exit={{ scale: 0.9, opacity: 0, y: 20 }} transition={{ type: 'spring', damping: 22, stiffness: 320 }}
-        className="relative w-full max-w-sm rounded-2xl overflow-hidden shadow-2xl"
-        style={{ background: 'var(--color-bg-secondary)', border: `1px solid ${exchange.accent}30` }}
-        onClick={e => e.stopPropagation()}>
-        {/* Glow top */}
-        <div className="absolute top-0 left-1/2 -translate-x-1/2 w-40 h-20 pointer-events-none"
-          style={{ background: `radial-gradient(ellipse, ${exchange.glow} 0%, transparent 70%)` }} />
-        {/* Header */}
-        <div className="flex items-center justify-between px-5 pt-5 pb-4 relative">
-          {/* Logo + title on RIGHT (first in DOM = right in RTL) */}
-          <div className="flex items-center gap-3">
-            <ExLogo id={exchange.id} size={36} accent={exchange.accent} />
-            <div>
-              <p className="text-sm font-bold text-text-primary">איך מחברים {exchange.name}?</p>
-              <a href={exchange.apiUrl} target="_blank" rel="noopener noreferrer"
-                className="text-[11px] flex items-center gap-1 hover:opacity-80 transition-opacity"
-                style={{ color: exchange.accent }}>
-                פתח דף API <ExternalLink className="w-3 h-3" />
-              </a>
-            </div>
-          </div>
-          {/* X on LEFT (last in DOM = left in RTL) */}
-          <button onClick={onClose} className="p-1.5 rounded-lg hover:bg-white/10 transition-colors cursor-pointer">
-            <X className="w-4 h-4 text-text-muted" />
-          </button>
-        </div>
-        {/* Steps */}
-        <div className="px-4 pb-2 space-y-1">
-          {exchange.steps.map((step, i) => (
-            <motion.div key={i} initial={{ opacity: 0, x: 10 }} animate={{ opacity: 1, x: 0 }}
-              transition={{ delay: i * 0.06 }}
-              className="flex items-start gap-3 rounded-xl px-3 py-2.5"
-              style={{
-                background: step.warn ? 'rgba(239,68,68,0.07)' : step.ok ? `${exchange.accent}12` : 'transparent',
-              }}>
-              <span className="text-[10px] font-black w-5 h-5 rounded-full flex items-center justify-center shrink-0 mt-0.5"
-                style={{
-                  background: step.warn ? 'rgba(239,68,68,0.2)' : step.ok ? `${exchange.accent}30` : 'var(--color-bg-tertiary)',
-                  color: step.warn ? '#ef4444' : step.ok ? exchange.accent : 'var(--color-text-muted)',
-                }}>
-                {step.n}
-              </span>
-              <p className="text-[12px] leading-snug text-right flex-1"
-                style={{ color: step.warn ? '#ef4444' : step.ok ? 'var(--color-text-primary)' : 'var(--color-text-muted)' }}>
-                {step.text}
-              </p>
-            </motion.div>
-          ))}
-        </div>
-        <div className="px-5 py-4 flex items-center justify-center gap-2 text-[11px] text-text-muted border-t border-white/5 mt-2">
-          <Shield className="w-3.5 h-3.5 text-profit" />
-          Read-Only בלבד · לא ניתן לבצע פעולות מסחר
-        </div>
-      </motion.div>
-    </motion.div>
+    <div className="min-w-0 rounded-xl bg-bg-tertiary border border-border-primary px-3 py-2.5">
+      <div className="flex items-center gap-1.5 text-[10px] md:text-[11px] text-text-muted">
+        {Icon && <Icon className="w-3.5 h-3.5 shrink-0" />}
+        <span className="truncate">{label}</span>
+      </div>
+      {/* Numbers in the tabular mono face; text (Hebrew) in the UI font —
+          monospace spreads Hebrew letters apart. */}
+      <div className={`${mono ? 'num-mono' : ''} text-base md:text-lg font-bold mt-0.5 truncate ${valueClass}`} dir={mono ? 'ltr' : undefined} style={{ textAlign: 'right' }}>{value}</div>
+      {sub && <div className="text-[10px] text-text-muted truncate">{sub}</div>}
+    </div>
   );
 }
 
-// ── Sync modal ────────────────────────────────────────────────────────────────
-function fmtPnl(v) {
-  if (v == null) return '—';
-  return `${v >= 0 ? '+' : ''}$${Math.abs(v).toFixed(2)}`;
-}
-function fmtDate(iso) {
-  if (!iso) return '—';
-  return new Date(iso).toLocaleDateString('he-IL', { day: '2-digit', month: '2-digit', year: '2-digit' });
-}
-function fmtPrice(p) {
-  if (!p) return '—';
-  if (p >= 1000) return `$${p.toLocaleString('en-US', { maximumFractionDigits: 0 })}`;
-  if (p >= 1) return `$${p.toFixed(2)}`;
-  return `$${p.toFixed(4)}`;
-}
-
-export function SyncModal({ exchange, trades, onClose, onImport, existingExternalIds = new Set() }) {
-  const [selected, setSelected] = useState(() => new Set(trades.map((_, i) => i)));
-  const [importing, setImporting] = useState(false);
-  const toggle = i => setSelected(p => { const n = new Set(p); n.has(i) ? n.delete(i) : n.add(i); return n; });
-  const toggleAll = () => setSelected(selected.size === trades.length ? new Set() : new Set(trades.map((_, i) => i)));
-  const handleImport = async () => { setImporting(true); try { await onImport(trades.filter((_, i) => selected.has(i))); } finally { setImporting(false); } };
-  // pnlFromExchange is GROSS (before fees); the imported journal row stores
-  // net = gross - fees. Show the SAME net here so the preview matches both the
-  // exchange's own P&L card and the row that will land in the journal.
-  const netPnlOf = (t) => (typeof t.pnlFromExchange === 'number' ? t.pnlFromExchange - (t.fees || 0) : null);
-  const totalPnl = trades.filter((t, i) => selected.has(i) && t.pnlFromExchange != null).reduce((s, t) => s + (netPnlOf(t) || 0), 0);
-  const wins = trades.filter((t, i) => selected.has(i) && t.pnlFromExchange != null && netPnlOf(t) >= 0).length;
-  const losses = trades.filter((t, i) => selected.has(i) && t.pnlFromExchange != null && netPnlOf(t) < 0).length;
-  const allSelected = selected.size === trades.length;
-  // A row is an UPDATE when ANY of its close-order ids is already journaled —
-  // a Multi-TP row carries every close's id in externalIds, and only its
-  // first-close externalId matches the previously imported document.
-  const isUpdate = (t) => tradeExternalIds(t).some((id) => existingExternalIds.has(id));
-  const updatesCount = trades.filter((t, i) => selected.has(i) && isUpdate(t)).length;
-  const newCount = selected.size - updatesCount;
+function SectionTitle({ children, aside }) {
   return (
-    <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}
-      className="fixed inset-0 bg-black/80 z-50 flex items-end sm:items-center justify-center p-0 sm:p-4 pb-[calc(env(safe-area-inset-bottom,0px)+84px)] sm:!pb-4"
-      style={{ backdropFilter: 'blur(8px)' }}
-      onClick={onClose}>
-      <motion.div initial={{ y: 60, opacity: 0 }} animate={{ y: 0, opacity: 1 }} exit={{ y: 60, opacity: 0 }}
-        transition={{ type: 'spring', damping: 26, stiffness: 320 }}
-        className="rounded-t-2xl sm:rounded-2xl w-full sm:max-w-lg max-h-[80vh] sm:max-h-[85vh] flex flex-col shadow-2xl"
-        style={{
-          background: 'var(--color-bg-secondary)',
-          border: '1px solid rgba(0,191,255,0.22)',
-          boxShadow: '0 32px 80px rgba(0,0,0,0.5), 0 0 0 1px rgba(255,255,255,0.04) inset',
-        }}
-        onClick={e => e.stopPropagation()}>
-        {/* Header — single row, RTL: title+stats on right, X+toggle on left */}
-        <div className="flex items-center justify-between px-5 py-3 border-b border-border-primary">
-          {/* First in DOM → RIGHT in RTL: title + stats */}
-          <div className="flex items-center gap-3 min-w-0">
-            <div className="text-right shrink-0">
-              <p className="text-sm font-bold text-text-primary">עסקאות מ-{exchange}</p>
-              <p className="text-xs text-text-muted">{trades.length} נמצאו — בחר מה לייבא</p>
-            </div>
-            <div className="flex items-center gap-1.5 shrink-0" dir="ltr">
-              <span className="text-xs text-text-muted">{selected.size}/{trades.length}</span>
-              <span className="text-xs font-semibold text-profit">{wins}W</span>
-              <span className="text-xs font-semibold text-loss">{losses}L</span>
-              <span className={`text-sm font-bold font-mono ${totalPnl >= 0 ? 'text-profit' : 'text-loss'}`}>{fmtPnl(totalPnl)}</span>
-            </div>
-          </div>
-          {/* Last in DOM → LEFT in RTL: toggle + X */}
-          <div className="flex items-center gap-2 shrink-0">
-            <button onClick={toggleAll} className="text-xs text-accent-primary hover:underline cursor-pointer whitespace-nowrap">
-              {allSelected ? 'בטל הכל' : 'בחר הכל'}
-            </button>
-            <button onClick={onClose} className="p-1.5 rounded-lg hover:bg-bg-tertiary cursor-pointer">
-              <X className="w-4 h-4 text-text-muted" />
-            </button>
-          </div>
-        </div>
-        {/* Trade list */}
-        <div className="overflow-y-auto flex-1 divide-y divide-border-primary/30">
-          {trades.map((trade, i) => {
-            const sel = selected.has(i);
-            // null/undefined PnL (open positions) must not satisfy >= 0 and
-            // render green — show neutral until the exchange reports a number.
-            let pnlClass = 'text-text-muted';
-            const netVal = netPnlOf(trade);
-            if (netVal !== null) {
-              pnlClass = netVal >= 0 ? 'text-profit' : 'text-loss';
-            }
-            const isExisting = isUpdate(trade);
-            return (
-              <button key={i} onClick={() => toggle(i)}
-                className={`w-full flex items-center gap-3 px-4 py-3 hover:bg-bg-tertiary transition-colors cursor-pointer text-right ${!sel ? 'opacity-35' : ''}`}>
-                <div className={`w-4 h-4 rounded border-2 flex items-center justify-center shrink-0 transition-all ${sel ? 'bg-accent-primary border-accent-primary' : 'border-border-primary'}`}>
-                  {sel && <Check className="w-2.5 h-2.5 text-bg-primary" strokeWidth={3} />}
-                </div>
-                <div className="flex-1 min-w-0">
-                  <div className="flex items-center justify-between">
-                    <span className={`text-sm font-bold font-mono ${pnlClass}`} dir="ltr">{fmtPnl(netVal)}</span>
-                    <div className="flex items-center gap-1.5">
-                      {isExisting && (
-                        <span className="text-[9px] font-bold px-1.5 py-0.5 rounded-full bg-accent-primary/15 text-accent-primary border border-accent-primary/30">עדכון</span>
-                      )}
-                      {trade._isOpen && (
-                        <span className="text-[9px] font-bold px-1.5 py-0.5 rounded-full bg-profit/15 text-profit border border-profit/30">פתוח</span>
-                      )}
-                      <span className={`text-[10px] font-semibold px-1.5 py-0.5 rounded-full ${trade.direction === 'long' ? 'bg-profit/10 text-profit' : 'bg-loss/10 text-loss'}`}>
-                        {trade.direction === 'long' ? 'Long ↗' : 'Short ↘'}
-                      </span>
-                      <span className="text-sm font-bold text-text-primary">{trade.pair}</span>
-                    </div>
-                  </div>
-                  <div className="flex items-center justify-between mt-0.5">
-                    <div className="flex items-center gap-1.5" dir="ltr">
-                      {trade.leverage > 1 && (
-                        <span className="text-[10px] font-bold px-1 py-0.5 rounded bg-bg-tertiary text-text-muted border border-border-primary">{trade.leverage}x</span>
-                      )}
-                      <span className="text-[10px] text-text-muted font-mono">
-                        {trade._isOpen ? fmtPrice(trade.entryPrice) : `${fmtPrice(trade.entryPrice)} → ${fmtPrice(trade.exitPrice)}`}
-                      </span>
-                    </div>
-                    <span className="text-[10px] text-text-muted">{fmtDate(trade.entryDate)}</span>
-                  </div>
-                </div>
-              </button>
-            );
-          })}
-        </div>
-        {/* Footer */}
-        <div className="flex gap-2 px-5 py-4 border-t border-border-primary">
-          <button onClick={onClose} className="px-4 py-2.5 rounded-xl border border-border-primary text-sm text-text-secondary hover:bg-bg-tertiary transition-colors cursor-pointer">ביטול</button>
-          <button onClick={handleImport} disabled={selected.size === 0 || importing}
-            className="flex-1 py-2.5 rounded-xl bg-accent-primary text-bg-primary text-sm font-bold hover:bg-accent-hover transition-colors cursor-pointer disabled:opacity-40 flex items-center justify-center gap-2">
-            {importing ? <RefreshCw className="w-4 h-4 animate-spin" /> : (
-              <><Download className="w-4 h-4" />
-              {updatesCount > 0 && newCount === 0 ? `עדכן ${updatesCount} עסקאות` :
-               updatesCount > 0 ? `ייבא ${newCount} + עדכן ${updatesCount}` :
-               `ייבא ${selected.size} עסקאות`}
-              </>
-            )}
-          </button>
-        </div>
-      </motion.div>
-    </motion.div>
+    <div className="flex items-center justify-between gap-3 mb-3">
+      <h2 className="text-sm font-semibold text-text-primary">{children}</h2>
+      {aside}
+    </div>
   );
 }
 
-// ── Exchange card ─────────────────────────────────────────────────────────────
-function ExchangeCard({ exchange, data, savedData, syncing, saving, onUpdate, onSave, onDisconnect, onSync, index }) {
-  const [showSecret, setShowSecret] = useState(false);
-  const [showExtra, setShowExtra] = useState(false);
-  const [editing, setEditing] = useState(false);
-  const [guideOpen, setGuideOpen] = useState(false);
-  const [hovered, setHovered] = useState(false);
-  const [balance, setBalance] = useState(null);
+// ── Connected exchange card ───────────────────────────────────────────────────
+// The live state of one connection: balance, sync controls, key management.
+// No key inputs here — editing keys happens in the connect dialog.
+function ConnectedCard({ exchange, balance, syncing, onSync, onEdit, onDisconnect, index }) {
   const [syncDays, setSyncDays] = useState('0'); // '0' = last 50; else import window in days
-  const { id, name, tagline, accent, glow, canSync, extraField } = exchange;
+  const { id, name, tagline, accent, canSync } = exchange;
 
-  // "Connected" is now a non-secret marker — the secret itself lives encrypted
-  // server-side and is never held in the browser.
-  const isConnected = !!savedData?.connected;
+  let balanceView;
+  if (!canSync) balanceView = <span className="text-sm text-text-muted">סנכרון אוטומטי לא נתמך</span>;
+  else if (balance === undefined || balance === null) balanceView = <span className="block h-8 w-36 rounded-lg bg-bg-tertiary animate-pulse" />;
+  else if (typeof balance === 'number') balanceView = <span className="num-mono text-2xl md:text-[28px] font-bold text-text-primary" dir="ltr">{fmtUsd(balance)}</span>;
+  else balanceView = <span className="text-sm text-text-muted">היתרה לא זמינה כרגע</span>;
+
+  return (
+    <Card
+      as={motion.div}
+      glow
+      initial={{ opacity: 0, y: 16 }}
+      animate={{ opacity: 1, y: 0 }}
+      transition={{ delay: index * 0.06, type: 'spring', damping: 24, stiffness: 260 }}
+      className="relative overflow-hidden p-5 flex flex-col gap-4"
+      // Hover beam in the exchange's own colour, not the default brand blue.
+      style={{ borderColor: `${accent}40`, '--beam-from': accent, '--beam-to': `${accent}99` }}
+    >
+      {/* Brand wash from the logo corner + a hairline of the exchange colour */}
+      <div className="absolute inset-0 pointer-events-none" style={{ background: `radial-gradient(120% 90% at 100% 0%, ${accent}1f 0%, transparent 55%)` }} />
+      <div className="absolute inset-x-0 top-0 h-px pointer-events-none" style={{ background: `linear-gradient(90deg, transparent, ${accent}, transparent)` }} />
+
+      <div className="relative flex items-center gap-3">
+        <ExLogo id={id} size={42} accent={accent} />
+        <div className="flex-1 min-w-0">
+          <p className="text-base font-bold text-text-primary truncate">{name}</p>
+          <p className="text-[11px] text-text-muted truncate" dir="ltr" style={{ textAlign: 'right' }}>{tagline}</p>
+        </div>
+        <span className="flex items-center gap-1.5 text-[11px] font-semibold px-2.5 py-1 rounded-full shrink-0 bg-profit/10 text-profit border border-profit/25">
+          <motion.span animate={{ opacity: [1, 0.35, 1] }} transition={{ repeat: Infinity, duration: 2 }}
+            className="w-1.5 h-1.5 rounded-full bg-profit inline-block" />
+          מחובר
+        </span>
+      </div>
+
+      <div className="relative">
+        <p className="text-[11px] text-text-muted mb-1">יתרה בבורסה</p>
+        {balanceView}
+      </div>
+
+      {canSync ? (
+        <div className="relative flex items-stretch gap-2">
+          <SelectDropdown compact value={syncDays} onChange={setSyncDays} options={SYNC_PERIODS}
+            className="w-32 shrink-0" triggerClassName="h-full rounded-xl" />
+          <button onClick={() => onSync(Number(syncDays))} disabled={syncing}
+            className="flex-1 h-11 rounded-xl text-sm font-bold cursor-pointer disabled:opacity-50 flex items-center justify-center gap-2 transition-[filter] hover:brightness-110"
+            style={{ background: `${accent}1f`, color: accent, border: `1px solid ${accent}55` }}>
+            {syncing ? <RefreshCw className="w-4 h-4 animate-spin" /> : <><Zap className="w-4 h-4" />סנכרן עסקאות</>}
+          </button>
+        </div>
+      ) : (
+        <div className="relative h-11 rounded-xl text-xs text-text-muted border border-dashed border-border-primary flex items-center justify-center gap-1.5">
+          <Link2 className="w-3.5 h-3.5" />ייבוא עסקאות דרך קובץ CSV בלבד
+        </div>
+      )}
+
+      <div className="relative flex items-center justify-between pt-3 border-t border-border-primary">
+        <button onClick={onEdit}
+          className="inline-flex items-center gap-1.5 text-xs text-text-muted hover:text-text-primary transition-colors cursor-pointer">
+          <Pencil className="w-3.5 h-3.5" />עדכון מפתחות
+        </button>
+        <button onClick={onDisconnect}
+          className="inline-flex items-center gap-1.5 text-xs text-text-muted hover:text-loss transition-colors cursor-pointer">
+          <Unplug className="w-3.5 h-3.5" />נתק
+        </button>
+      </div>
+    </Card>
+  );
+}
+
+// ── Available exchange tile ───────────────────────────────────────────────────
+function AvailableTile({ exchange, locked, onConnect, index }) {
+  const { id, name, tagline, accent, canSync } = exchange;
+  return (
+    <Card
+      as={motion.button}
+      type="button"
+      hover
+      onClick={onConnect}
+      initial={{ opacity: 0, y: 12 }}
+      animate={{ opacity: 1, y: 0 }}
+      transition={{ delay: 0.1 + index * 0.05 }}
+      className="group relative overflow-hidden w-full text-right p-4 flex items-center gap-3"
+    >
+      <div className="absolute inset-0 pointer-events-none opacity-0 group-hover:opacity-100 transition-opacity duration-300"
+        style={{ background: `radial-gradient(90% 120% at 100% 50%, ${accent}17 0%, transparent 60%)` }} />
+      <ExLogo id={id} size={40} accent={accent} />
+      <div className="relative flex-1 min-w-0">
+        <p className="text-sm font-semibold text-text-primary truncate">{name}</p>
+        <p className="text-[11px] text-text-muted truncate" dir="ltr" style={{ textAlign: 'right' }}>{tagline}</p>
+        {!canSync && <p className="text-[10px] text-text-muted mt-0.5">ללא סנכרון אוטומטי</p>}
+      </div>
+      <span className="relative inline-flex items-center gap-1 shrink-0 h-8 px-3 rounded-lg text-xs font-semibold text-accent-primary border border-accent-primary/40 group-hover:bg-accent-primary/10 transition-colors">
+        {locked ? <><Lock className="w-3.5 h-3.5" />Premium</> : <><Plus className="w-3.5 h-3.5" />חבר</>}
+      </span>
+    </Card>
+  );
+}
+
+// ── Connect / edit-keys dialog ────────────────────────────────────────────────
+function SecretInput({ value, onChange, placeholder, accent, secret = false }) {
+  const [show, setShow] = useState(false);
+  return (
+    <div className="relative">
+      <input
+        type={secret && !show ? 'password' : 'text'}
+        value={value}
+        onChange={(e) => onChange(e.target.value)}
+        placeholder={placeholder}
+        autoComplete="off"
+        spellCheck={false}
+        dir="ltr"
+        className={`w-full h-11 bg-bg-tertiary border border-border-primary rounded-xl px-3 ${secret ? 'pr-10' : ''} text-sm text-text-primary outline-none transition-all placeholder-text-muted font-mono`}
+        onFocus={(e) => { e.target.style.borderColor = accent; e.target.style.boxShadow = `0 0 0 3px ${accent}25`; }}
+        onBlur={(e) => { e.target.style.borderColor = ''; e.target.style.boxShadow = ''; }}
+      />
+      {secret && (
+        <button type="button" onClick={() => setShow((s) => !s)} aria-label={show ? 'הסתר' : 'הצג'}
+          className="absolute right-3 top-1/2 -translate-y-1/2 text-text-muted hover:text-text-primary cursor-pointer transition-colors">
+          {show ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
+        </button>
+      )}
+    </div>
+  );
+}
+
+function ConnectDialog({ exchange, editing, data, saving, onUpdate, onSave, onClose }) {
+  const isOpen = !!exchange;
+  // Keep the last exchange while the close animation plays.
+  const [shown, setShown] = useState(exchange);
+  if (exchange && exchange !== shown) setShown(exchange);
+  const ex = exchange || shown;
+  if (!ex) return null;
+
+  const { name, tagline, accent, glow, apiUrl, steps, extraField } = ex;
   // Saving requires both fields freshly entered (we can't prefill the secret),
   // plus the extra field (OKX/Bitget passphrase) when the exchange requires it.
-  const hasChanges = (data?.apiKey || '').length > 0 && (data?.apiSecret || '').length > 0
-    && (!extraField?.required || (data?.[extraField.key] || '').trim().length > 0);
-  // Key + secret typed but the required passphrase is still empty — surface a
-  // dedicated hint instead of silently hiding the save button.
-  const missingExtra = !!extraField?.required
-    && (data?.apiKey || '').length > 0 && (data?.apiSecret || '').length > 0
-    && (data?.[extraField.key] || '').trim().length === 0;
-
-  // Pull the futures wallet balance once the exchange is connected, so the
-  // card shows "Bybit: $1,234" without asking the user to type a starting value.
-  // The Worker looks up the stored credentials by uid — no secret sent.
-  useEffect(() => {
-    if (!isConnected || !canSync) { setBalance(null); return; }
-    let cancelled = false;
-    setBalance(null);
-    fetchExchangeBalance(id)
-      .then((res) => { if (!cancelled) setBalance(res.balance); })
-      .catch(() => { if (!cancelled) setBalance(false); }); // false = failed; row hidden
-    return () => { cancelled = true; };
-  }, [isConnected, canSync, id]);
-
-  const startEdit = () => {
-    // The secret is not held client-side, so editing starts from empty inputs.
-    onUpdate('apiKey', '');
-    onUpdate('apiSecret', '');
-    if (extraField) onUpdate(extraField.key, '');
-    setEditing(true);
-  };
+  const hasKeys = (data?.apiKey || '').length > 0 && (data?.apiSecret || '').length > 0;
+  const missingExtra = !!extraField?.required && hasKeys && (data?.[extraField.key] || '').trim().length === 0;
+  const canSave = hasKeys && !missingExtra && !saving;
 
   return (
-    <>
-      <motion.div
-        initial={{ opacity: 0, y: 30 }}
-        animate={{ opacity: 1, y: 0 }}
-        transition={{ delay: index * 0.1, type: 'spring', damping: 22, stiffness: 260 }}
-        onHoverStart={() => setHovered(true)}
-        onHoverEnd={() => setHovered(false)}
-        className="relative rounded-2xl overflow-hidden"
-        style={{
-          background: 'var(--color-bg-secondary)',
-          border: `1px solid ${isConnected ? `${accent}45` : 'var(--color-border-primary)'}`,
-          transition: 'border-color 0.3s, box-shadow 0.3s',
-          boxShadow: hovered || isConnected ? `0 0 30px -8px ${glow}` : 'none',
-        }}>
-
-        {/* Ambient glow when connected */}
-        <AnimatePresence>
-          {isConnected && (
-            <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}
-              className="absolute inset-0 pointer-events-none"
-              style={{ background: `radial-gradient(ellipse at 50% 0%, ${accent}12 0%, transparent 65%)` }} />
-          )}
-        </AnimatePresence>
-
-        {/* Top bar */}
-        <motion.div className="h-0.5 w-full"
-          animate={{ background: isConnected ? `linear-gradient(90deg, transparent, ${accent}, transparent)` : 'transparent' }}
-          transition={{ duration: 0.5 }} />
-
-        {/* Header */}
-        <div className="px-5 pt-4 pb-3 flex items-center gap-3 relative">
-          <motion.div whileHover={{ scale: 1.08 }} transition={{ type: 'spring', stiffness: 400 }}>
-            <ExLogo id={id} size={44} accent={accent} />
-          </motion.div>
-          <div className="flex-1 min-w-0 text-right">
-            {/* One compact row: balance · badge · name (no separate balance
-                line stacked below). */}
-            <div className="flex items-center justify-end gap-2">
-              {isConnected && !editing && typeof balance === 'number' && (
-                <span className="text-[11px] font-bold shrink-0" dir="ltr" style={{ color: accent }}>
-                  ${balance.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
-                </span>
-              )}
-              <AnimatePresence>
-                {isConnected && !editing && (
-                  <motion.span initial={{ opacity: 0, scale: 0.8 }} animate={{ opacity: 1, scale: 1 }} exit={{ opacity: 0, scale: 0.8 }}
-                    className="flex items-center gap-1 text-[10px] font-bold px-2 py-0.5 rounded-full shrink-0"
-                    style={{ background: `${accent}20`, color: accent, border: `1px solid ${accent}40` }}>
-                    <motion.span animate={{ scale: [1, 1.3, 1] }} transition={{ repeat: Infinity, duration: 2 }}
-                      className="w-1.5 h-1.5 rounded-full inline-block" style={{ background: accent }} />
-                    מחובר
-                  </motion.span>
-                )}
-              </AnimatePresence>
-              <span className="text-base font-bold text-text-primary truncate">{name}</span>
+    <Modal isOpen={isOpen} onClose={onClose} maxWidth="max-w-3xl"
+      title={editing ? `עדכון מפתחות · ${name}` : `חיבור ${name}`}>
+      <div className="grid md:grid-cols-5 gap-5">
+        {/* Form */}
+        <form className="md:col-span-3 space-y-3"
+          onSubmit={(e) => { e.preventDefault(); if (canSave) onSave(); }}>
+          <div className="flex items-center gap-3 pb-1">
+            <ExLogo id={ex.id} size={40} accent={accent} />
+            <div className="min-w-0">
+              <p className="text-sm font-bold text-text-primary">{name}</p>
+              <p className="text-[11px] text-text-muted" dir="ltr" style={{ textAlign: 'right' }}>{tagline}</p>
             </div>
-            <p className="text-[11px] text-text-muted text-left" dir="ltr">{tagline}</p>
           </div>
-          <motion.button onClick={() => setGuideOpen(true)} whileHover={{ scale: 1.15, rotate: 15 }}
-            whileTap={{ scale: 0.9 }} transition={{ type: 'spring', stiffness: 400 }}
-            className="p-1.5 rounded-lg hover:bg-bg-tertiary transition-colors cursor-pointer shrink-0">
-            <HelpCircle className="w-4 h-4 text-text-muted" />
-          </motion.button>
-        </div>
+          {editing && <p className="text-xs text-text-muted">מטעמי אבטחה המפתחות הקיימים לא מוצגים — הזן מפתחות חדשים כדי להחליף אותם.</p>}
 
-        <div className="h-px mx-5" style={{ background: `linear-gradient(90deg, transparent, ${accent}25, transparent)` }} />
-
-        {/* Body */}
-        <div className="px-5 py-4 space-y-3 relative">
-          {isConnected && !editing ? (
-            /* Connected view — masked */
-            <div className="space-y-2">
-              {[
-              { label: 'API Key', val: '••••••••••••••••••••' },
-              { label: 'API Secret', val: '••••••••••••••••••••' },
-              ...(extraField ? [{ label: extraField.label, val: '••••••••••••' }] : []),
-            ].map(({ label, val }) => (
-                <div key={label} className="flex items-center gap-2 px-3 py-2.5 rounded-xl transition-colors" dir="ltr"
-                  style={{ background: `${accent}08`, border: `1px solid ${accent}20` }}>
-                  <div className="flex-1">
-                    <p className="text-[10px] mb-0.5" style={{ color: accent }}>{label}</p>
-                    <p className="text-xs font-mono text-text-primary tracking-wider">{val}</p>
-                  </div>
-                  <motion.button onClick={startEdit} whileHover={{ scale: 1.1 }} whileTap={{ scale: 0.9 }}
-                    className="text-text-muted hover:text-text-primary transition-colors cursor-pointer shrink-0">
-                    <Pencil className="w-3.5 h-3.5" />
-                  </motion.button>
-                </div>
-              ))}
-            </div>
-          ) : (
-            /* Input fields */
-            <div className="space-y-2">
-              {editing && <p className="text-[11px] text-text-muted text-right">עדכן את המפתחות</p>}
-              <input value={data?.apiKey || ''} onChange={e => onUpdate('apiKey', e.target.value)}
-                className="w-full bg-bg-tertiary border border-border-primary rounded-xl px-3 py-2.5 text-sm text-text-primary outline-none transition-all placeholder-text-muted font-mono"
-                style={{ '--tw-ring-color': accent }}
-                onFocus={e => { e.target.style.borderColor = accent; e.target.style.boxShadow = `0 0 0 2px ${accent}25`; }}
-                onBlur={e => { e.target.style.borderColor = ''; e.target.style.boxShadow = ''; }}
-                placeholder="API Key" dir="ltr" />
-              <div className="relative">
-                <input type={showSecret ? 'text' : 'password'} value={data?.apiSecret || ''}
-                  onChange={e => onUpdate('apiSecret', e.target.value)}
-                  className="w-full bg-bg-tertiary border border-border-primary rounded-xl px-3 py-2.5 pr-10 text-sm text-text-primary outline-none transition-all placeholder-text-muted font-mono"
-                  onFocus={e => { e.target.style.borderColor = accent; e.target.style.boxShadow = `0 0 0 2px ${accent}25`; }}
-                  onBlur={e => { e.target.style.borderColor = ''; e.target.style.boxShadow = ''; }}
-                  placeholder="API Secret" dir="ltr" />
-                <button type="button" onClick={() => setShowSecret(s => !s)}
-                  className="absolute right-3 top-1/2 -translate-y-1/2 text-text-muted hover:text-text-primary cursor-pointer transition-colors">
-                  {showSecret ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
-                </button>
-              </div>
-              {extraField && (
-                <div className="relative">
-                  <input type={showExtra ? 'text' : 'password'} value={data?.[extraField.key] || ''}
-                    onChange={e => onUpdate(extraField.key, e.target.value)}
-                    className="w-full bg-bg-tertiary border border-border-primary rounded-xl px-3 py-2.5 pr-10 text-sm text-text-primary outline-none transition-all placeholder-text-muted font-mono"
-                    onFocus={e => { e.target.style.borderColor = accent; e.target.style.boxShadow = `0 0 0 2px ${accent}25`; }}
-                    onBlur={e => { e.target.style.borderColor = ''; e.target.style.boxShadow = ''; }}
-                    placeholder={extraField.placeholder || extraField.label} dir="ltr" />
-                  <button type="button" onClick={() => setShowExtra(s => !s)}
-                    className="absolute right-3 top-1/2 -translate-y-1/2 text-text-muted hover:text-text-primary cursor-pointer transition-colors">
-                    {showExtra ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
-                  </button>
-                </div>
-              )}
-              <div className="flex items-center justify-end gap-1.5 text-[10px] text-text-muted">
-                <Shield className="w-3 h-3 text-profit" />מומלץ: מפתח לקריאה בלבד (ללא מסחר/משיכה)
-              </div>
-            </div>
+          <label className="block">
+            <span className="block text-[11px] text-text-muted mb-1">API Key</span>
+            <SecretInput value={data?.apiKey || ''} onChange={(v) => onUpdate('apiKey', v)} placeholder="API Key" accent={accent} />
+          </label>
+          <label className="block">
+            <span className="block text-[11px] text-text-muted mb-1">API Secret</span>
+            <SecretInput value={data?.apiSecret || ''} onChange={(v) => onUpdate('apiSecret', v)} placeholder="API Secret" accent={accent} secret />
+          </label>
+          {extraField && (
+            <label className="block">
+              <span className="block text-[11px] text-text-muted mb-1">{extraField.label}{extraField.required ? ' (חובה)' : ''}</span>
+              <SecretInput value={data?.[extraField.key] || ''} onChange={(v) => onUpdate(extraField.key, v)}
+                placeholder={extraField.placeholder || extraField.label} accent={accent} secret />
+            </label>
           )}
 
-          {/* Action buttons */}
-          <div className="flex gap-2">
-            {isConnected && !editing && !hasChanges ? (
-              // Single action row: disconnect · import-period dropdown · sync.
-              // The period selector sits inline (h-full matches the buttons)
-              // instead of occupying its own labeled row.
-              <div className="w-full flex items-stretch gap-2">
-                <motion.button onClick={onDisconnect} whileHover={{ scale: 1.03 }} whileTap={{ scale: 0.97 }}
-                  className="px-3 py-2.5 rounded-xl border border-border-primary text-xs text-text-muted hover:border-loss hover:text-loss transition-colors cursor-pointer">
-                  נתק
-                </motion.button>
-                {canSync ? (
-                  <>
-                    <SelectDropdown compact value={syncDays} onChange={setSyncDays} options={SYNC_PERIODS}
-                      className="w-28 shrink-0" triggerClassName="h-full rounded-xl" />
-                    <button onClick={() => onSync(Number(syncDays))} disabled={syncing}
-                      className="flex-1 py-2.5 rounded-xl text-sm font-bold cursor-pointer disabled:opacity-50 flex items-center justify-center gap-2 transition-colors"
-                      style={{ background: `${accent}18`, color: accent, border: `1px solid ${accent}40` }}>
-                      {syncing ? <RefreshCw className="w-4 h-4 animate-spin" /> : (
-                        <>
-                          <Zap className="w-4 h-4" />
-                          סנכרן עסקאות
-                        </>
-                      )}
-                    </button>
-                  </>
-                ) : (
-                  <div className="flex-1 py-2.5 rounded-xl text-xs text-center text-text-muted border border-dashed border-border-primary flex items-center justify-center gap-1.5">
-                    <Link2 className="w-3.5 h-3.5" />ייבוא CSV בלבד
-                  </div>
-                )}
-              </div>
-            ) : editing && !hasChanges ? (
-              <>
-                {missingExtra && (
-                  <div className="flex-1 py-2.5 rounded-xl text-xs text-center text-text-muted border border-dashed border-border-primary flex items-center justify-center gap-1.5">
-                    <Link2 className="w-3.5 h-3.5" />הזן {extraField.label} לחיבור {name}
-                  </div>
-                )}
-                <motion.button onClick={() => setEditing(false)} whileHover={{ scale: 1.02 }} whileTap={{ scale: 0.97 }}
-                  className={`${missingExtra ? 'px-4' : 'flex-1'} py-2.5 rounded-xl border border-border-primary text-sm text-text-muted hover:bg-bg-tertiary transition-colors cursor-pointer`}>
-                  ביטול
-                </motion.button>
-              </>
-            ) : hasChanges ? (
-              <>
-                <motion.button whileHover={{ scale: 1.03 }} whileTap={{ scale: 0.97 }}
-                  onClick={() => { setEditing(false); onUpdate('apiKey', ''); onUpdate('apiSecret', ''); if (extraField) onUpdate(extraField.key, ''); }}
-                  className="px-3 py-2.5 rounded-xl border border-border-primary text-xs text-text-muted hover:bg-bg-tertiary transition-colors cursor-pointer">
-                  ביטול
-                </motion.button>
-                <motion.button whileHover={{ scale: 1.03 }} whileTap={{ scale: 0.97 }}
-                  onClick={async () => { await onSave(); setEditing(false); }} disabled={saving}
-                  className="flex-1 py-2.5 rounded-xl text-sm font-bold transition-all cursor-pointer disabled:opacity-50 flex items-center justify-center gap-2"
-                  style={{ background: `linear-gradient(135deg, ${accent}, ${accent}cc)`, color: '#000', boxShadow: `0 4px 20px ${glow}` }}>
-                  {saving ? <RefreshCw className="w-4 h-4 animate-spin" /> : 'שמור מפתחות'}
-                </motion.button>
-              </>
-            ) : (
-              <div className="flex-1 py-2.5 rounded-xl text-xs text-center text-text-muted border border-dashed border-border-primary flex items-center justify-center gap-1.5">
-                <Link2 className="w-3.5 h-3.5" />
-                {missingExtra ? `הזן ${extraField.label} לחיבור ${name}` : 'הזן API Key ו-Secret לחיבור'}
-              </div>
+          <div className="flex items-start gap-2 rounded-xl px-3 py-2.5 bg-profit/5 border border-profit/20 text-[11px] text-text-secondary leading-relaxed">
+            <Shield className="w-3.5 h-3.5 text-profit shrink-0 mt-0.5" />
+            <span>מומלץ ליצור מפתח לקריאה בלבד — ללא הרשאות מסחר או משיכה. המפתחות נשמרים בשרת ולא נשארים בדפדפן.</span>
+          </div>
+
+          {missingExtra && (
+            <p className="text-xs text-breakeven">הזן {extraField.label} כדי לחבר את {name}</p>
+          )}
+
+          <div className="flex gap-2 pt-1">
+            <button type="button" onClick={onClose}
+              className="h-11 px-5 rounded-xl border border-border-primary text-sm text-text-secondary hover:bg-bg-tertiary transition-colors cursor-pointer">
+              ביטול
+            </button>
+            <button type="submit" disabled={!canSave}
+              className="flex-1 h-11 rounded-xl text-sm font-bold transition-all cursor-pointer disabled:opacity-40 disabled:cursor-not-allowed flex items-center justify-center gap-2"
+              style={{ background: `linear-gradient(135deg, ${accent}, ${accent}cc)`, color: '#000', boxShadow: canSave ? `0 6px 22px -6px ${glow}` : 'none' }}>
+              {saving ? <RefreshCw className="w-4 h-4 animate-spin" /> : (editing ? 'שמור מפתחות חדשים' : `חבר את ${name}`)}
+            </button>
+          </div>
+        </form>
+
+        {/* Guide */}
+        <aside className="md:col-span-2 rounded-xl bg-bg-tertiary/60 border border-border-primary p-4 h-fit">
+          <div className="flex items-center justify-between gap-2 mb-3">
+            <p className="text-xs font-semibold text-text-primary">איך יוצרים מפתח API</p>
+            {apiUrl && (
+              <a href={apiUrl} target="_blank" rel="noopener noreferrer"
+                className="text-[11px] inline-flex items-center gap-1 hover:opacity-80 transition-opacity shrink-0"
+                style={{ color: accent }}>
+                לדף ה-API <ExternalLink className="w-3 h-3" />
+              </a>
             )}
           </div>
-        </div>
-      </motion.div>
-
-      <AnimatePresence>
-        {guideOpen && <GuideModal exchange={exchange} onClose={() => setGuideOpen(false)} />}
-      </AnimatePresence>
-    </>
+          <ol className="space-y-1.5">
+            {steps.map((step, i) => (
+              <li key={i} className="flex items-start gap-2.5 rounded-lg px-2 py-1.5"
+                style={{ background: step.warn ? 'rgba(239,68,68,0.07)' : step.ok ? `${accent}12` : 'transparent' }}>
+                <span className="text-[10px] font-black w-5 h-5 rounded-full flex items-center justify-center shrink-0 mt-px"
+                  style={{
+                    background: step.warn ? 'rgba(239,68,68,0.2)' : step.ok ? `${accent}30` : 'var(--color-bg-secondary)',
+                    color: step.warn ? 'var(--color-loss)' : step.ok ? accent : 'var(--color-text-muted)',
+                  }}>
+                  {step.n}
+                </span>
+                <span className={`text-[12px] leading-snug ${step.warn ? 'text-loss' : step.ok ? 'text-text-primary' : 'text-text-secondary'}`}>
+                  {step.text}
+                </span>
+              </li>
+            ))}
+          </ol>
+        </aside>
+      </div>
+    </Modal>
   );
 }
 
@@ -618,6 +327,13 @@ export default function ExchangeSettings({ journalId: propJournalId } = {}) {
   const [saving, setSaving] = useState(null);
   const [syncing, setSyncing] = useState(null);
   const [syncModal, setSyncModal] = useState(null);
+  // Connect / edit-keys dialog: { id, editing } | null
+  const [dialog, setDialog] = useState(null);
+  const [confirmDisconnect, setConfirmDisconnect] = useState(null);
+  // Futures wallet balance per connected exchange: undefined = loading,
+  // number = ok, false = failed.
+  const [balances, setBalances] = useState({});
+  const [balanceNonce, setBalanceNonce] = useState(0);
 
   // Load connected exchanges. Credentials live encrypted server-side, so the
   // browser only learns WHICH exchanges are connected (a non-secret marker),
@@ -665,22 +381,59 @@ export default function ExchangeSettings({ journalId: propJournalId } = {}) {
     })();
   }, [user]);
 
+  // Pull the futures wallet balance of every connected, syncable exchange so
+  // its card shows "$1,234" without asking the user to type a starting value.
+  // The Worker looks up the stored credentials by uid — no secret sent.
+  const balanceIds = EXCHANGES.filter((e) => e.canSync && savedExchanges[e.id]?.connected).map((e) => e.id).join(',');
+  useEffect(() => {
+    if (!balanceIds) return undefined;
+    let cancelled = false;
+    balanceIds.split(',').forEach((id) => {
+      fetchExchangeBalance(id)
+        .then((res) => { if (!cancelled) setBalances((b) => ({ ...b, [id]: typeof res?.balance === 'number' ? res.balance : false })); })
+        .catch(() => { if (!cancelled) setBalances((b) => ({ ...b, [id]: false })); });
+    });
+    return () => { cancelled = true; };
+  }, [balanceIds, balanceNonce]);
+
   const updateField = (id, field, value) =>
     setExchanges(p => ({ ...p, [id]: { ...p[id], [field]: value } }));
+
+  const connectedCount = EXCHANGES.filter(e => savedExchanges[e.id]?.connected).length;
+  const atFreeLimit = !isPremium && connectedCount >= FREE_LIMITS.exchanges;
+
+  const goPremium = () => {
+    toast.error(`במסלול החינמי אפשר לחבר בורסה אחת. שדרג ל-Premium לחיבורים ללא הגבלה.`);
+    navigate('/premium');
+  };
+
+  const openConnect = (id) => {
+    if (atFreeLimit && !savedExchanges[id]?.connected) { goPremium(); return; }
+    setExchanges(p => ({ ...p, [id]: {} }));
+    setDialog({ id, editing: false });
+  };
+  // The secret is not held client-side, so editing starts from empty inputs.
+  const openEdit = (id) => {
+    setExchanges(p => ({ ...p, [id]: {} }));
+    setDialog({ id, editing: true });
+  };
+  const closeDialog = () => {
+    // Drop anything typed — secrets never linger in state after the dialog.
+    if (dialog) setExchanges(p => ({ ...p, [dialog.id]: {} }));
+    setDialog(null);
+  };
 
   const handleSave = async (id) => {
     // Free tier caps how many exchanges can be connected at once.
     const alreadyConnected = !!savedExchanges[id]?.connected;
-    const connectedNow = Object.values(savedExchanges).filter((e) => e?.connected).length;
-    if (!isPremium && !alreadyConnected && connectedNow >= FREE_LIMITS.exchanges) {
-      toast.error(`במסלול החינמי אפשר לחבר בורסה אחת. שדרג ל-Premium לחיבורים ללא הגבלה.`);
-      navigate('/premium');
+    if (!isPremium && !alreadyConnected && connectedCount >= FREE_LIMITS.exchanges) {
+      goPremium();
       return;
     }
     const conf = exchanges[id] || {};
     const exDef = EXCHANGES.find(e => e.id === id);
     const extraKey = exDef?.extraField?.key;
-    // Second gate behind the button's hasChanges check: never store OKX/Bitget
+    // Second gate behind the button's canSave check: never store OKX/Bitget
     // credentials without the passphrase — every later sync would fail auth.
     if (exDef?.extraField?.required && !(conf[extraKey] || '').trim()) {
       toast.error(`חסר ${exDef.extraField.label} — חובה לחיבור ${exDef.name}`);
@@ -697,7 +450,11 @@ export default function ExchangeSettings({ journalId: propJournalId } = {}) {
       setSavedExchanges(newMarkers);
       // Drop the typed secret from React state immediately.
       setExchanges(p => ({ ...p, [id]: {} }));
-      toast.success('המפתחות נשמרו ✓');
+      // New keys → re-read the balance (show the loading state meanwhile).
+      setBalances((b) => ({ ...b, [id]: undefined }));
+      setBalanceNonce((n) => n + 1);
+      setDialog(null);
+      toast.success(alreadyConnected ? 'המפתחות עודכנו ✓' : `${exDef?.name || id} חוברה ✓`);
     } catch (e) { toast.error(e.message || 'שגיאה בשמירה'); } finally { setSaving(null); }
   };
 
@@ -709,6 +466,7 @@ export default function ExchangeSettings({ journalId: propJournalId } = {}) {
       await setUserSetting(user.uid, 'exchanges', newMarkers, false);
       setSavedExchanges(newMarkers);
       setExchanges(p => ({ ...p, [id]: {} }));
+      setBalances((b) => { const next = { ...b }; delete next[id]; return next; });
       toast.success('הבורסה נותקה');
     } catch { toast.error('שגיאה בניתוק'); }
   };
@@ -752,54 +510,108 @@ export default function ExchangeSettings({ journalId: propJournalId } = {}) {
 
   if (loading) return <LoadingSpinner />;
 
-  const connectedCount = EXCHANGES.filter(e => savedExchanges[e.id]?.connected).length;
+  const connected = EXCHANGES.filter(e => savedExchanges[e.id]?.connected);
+  const available = EXCHANGES.filter(e => !savedExchanges[e.id]?.connected);
+  const knownBalances = connected.map((e) => balances[e.id]).filter((b) => typeof b === 'number');
+  const balancesLoading = connected.some((e) => e.canSync && balances[e.id] === undefined);
+  const totalBalance = knownBalances.reduce((s, b) => s + b, 0);
+  const dialogExchange = dialog ? EXCHANGES.find((e) => e.id === dialog.id) : null;
+  const disconnectExchange = confirmDisconnect ? EXCHANGES.find((e) => e.id === confirmDisconnect) : null;
 
   return (
     <>
-      <motion.div variants={pageVariants} initial="initial" animate="animate" exit="exit" transition={pageTransition}
-        className="relative">
+      <motion.div variants={pageVariants} initial="initial" animate="animate" exit="exit" transition={pageTransition}>
 
-        {/* Ambient background orbs */}
-        <div className="absolute inset-0 overflow-hidden pointer-events-none" style={{ zIndex: -1 }}>
-          <FloatingOrb color="rgba(247,166,0,0.12)" style={{ width: 300, height: 300, top: -80, right: -60 }} />
-          <FloatingOrb color="rgba(43,120,255,0.1)" style={{ width: 250, height: 250, bottom: 0, left: -40 }} />
-          <FloatingOrb color="rgba(99,102,241,0.08)" style={{ width: 200, height: 200, top: '40%', left: '50%' }} />
-        </div>
-
-        {/* Page header */}
-        <motion.div initial={{ opacity: 0, y: -10 }} animate={{ opacity: 1, y: 0 }} className="mb-6 text-right">
-          <h1 className="text-2xl font-bold text-text-primary">חיבור בורסה</h1>
-          <div className="flex items-center justify-start gap-3 mt-1">
-            <p className="text-sm text-text-muted">חבר את הבורסה שלך וייבא עסקאות ישירות ליומן</p>
-            {connectedCount > 0 && (
-              <motion.span initial={{ scale: 0 }} animate={{ scale: 1 }} transition={{ type: 'spring', delay: 0.3 }}
-                className="text-[11px] font-semibold px-2.5 py-1 rounded-full bg-profit/10 text-profit border border-profit/20">
-                {connectedCount} מחובר{connectedCount > 1 ? 'ות' : 'ת'}
-              </motion.span>
-            )}
+        {/* Header: title + at-a-glance numbers */}
+        <Card className="relative overflow-hidden p-5 md:p-6 mb-6">
+          <div className="absolute inset-0 pointer-events-none"
+            style={{ background: 'radial-gradient(80% 140% at 100% 0%, rgba(37,99,235,0.14) 0%, transparent 60%)' }} />
+          <div className="relative flex flex-col lg:flex-row lg:items-center gap-5">
+            <div className="flex-1 min-w-0">
+              <h1 className="text-xl md:text-2xl font-bold text-text-primary">חיבור בורסות</h1>
+              <p className="text-sm text-text-muted mt-1">חבר את הבורסה שלך וייבא עסקאות ישירות ליומן — בלי להקליד אותן ידנית.</p>
+            </div>
+            <div className="grid grid-cols-3 gap-2 md:gap-2.5 lg:w-[480px]">
+              <KpiTile icon={Link2} label="מחוברות" value={`${connectedCount}/${EXCHANGES.length}`}
+                sub={!isPremium ? `חינמי: עד ${FREE_LIMITS.exchanges}` : 'ללא הגבלה'} />
+              <KpiTile icon={Wallet} label="יתרה כוללת"
+                value={knownBalances.length ? fmtUsd(totalBalance) : (balancesLoading ? '…' : '—')}
+                sub={knownBalances.length ? `מ-${knownBalances.length} ${knownBalances.length === 1 ? 'בורסה' : 'בורסות'}` : null} />
+              <KpiTile icon={Shield} label="אבטחה" value="מוגן" mono={false} valueClass="text-profit" sub="מפתח לקריאה בלבד" />
+            </div>
           </div>
-        </motion.div>
+        </Card>
 
-        {/* Cards grid */}
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-5">
-          {EXCHANGES.map((exchange, i) => (
-            <ExchangeCard key={exchange.id} exchange={exchange} index={i}
-              data={exchanges[exchange.id]} savedData={savedExchanges[exchange.id]}
-              syncing={syncing === exchange.id} saving={saving === exchange.id}
-              onUpdate={(field, val) => updateField(exchange.id, field, val)}
-              onSave={() => handleSave(exchange.id)}
-              onDisconnect={() => handleDisconnect(exchange.id)}
-              onSync={(days) => handleSync(exchange.id, days)} />
-          ))}
-        </div>
+        {/* Connected */}
+        <section className="mb-7">
+          <SectionTitle aside={connected.length > 0 && <span className="text-[11px] text-text-muted">{connected.length} פעילות</span>}>
+            הבורסות שלי
+          </SectionTitle>
+          {connected.length > 0 ? (
+            <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-4">
+              {connected.map((exchange, i) => (
+                <ConnectedCard key={exchange.id} exchange={exchange} index={i}
+                  balance={balances[exchange.id]}
+                  syncing={syncing === exchange.id}
+                  onSync={(days) => handleSync(exchange.id, days)}
+                  onEdit={() => openEdit(exchange.id)}
+                  onDisconnect={() => setConfirmDisconnect(exchange.id)} />
+              ))}
+            </div>
+          ) : (
+            <div className="rounded-xl border border-dashed border-border-primary px-5 py-8 text-center">
+              <Link2 className="w-6 h-6 text-text-muted mx-auto mb-2" />
+              <p className="text-sm font-medium text-text-primary">עוד לא חיברת בורסה</p>
+              <p className="text-xs text-text-muted mt-1">בחר בורסה מהרשימה למטה — העסקאות שלך ייובאו אוטומטית ליומן.</p>
+            </div>
+          )}
+        </section>
+
+        {/* Available */}
+        {available.length > 0 && (
+          <section>
+            <SectionTitle aside={atFreeLimit && (
+              <button onClick={() => navigate('/premium')} className="text-[11px] text-accent-primary hover:underline cursor-pointer">
+                שדרג ל-Premium לחיבורים נוספים
+              </button>
+            )}>
+              בורסות זמינות
+            </SectionTitle>
+            <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-3 gap-3">
+              {available.map((exchange, i) => (
+                <AvailableTile key={exchange.id} exchange={exchange} index={i}
+                  locked={atFreeLimit}
+                  onConnect={() => openConnect(exchange.id)} />
+              ))}
+            </div>
+          </section>
+        )}
 
         {/* Security footer */}
-        <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} transition={{ delay: 0.4 }}
-          className="mt-6 flex items-center justify-center gap-2 text-[11px] text-text-muted">
-          <Shield className="w-3.5 h-3.5 text-profit" />
-          המפתחות נשמרים בחשבונך האישי בלבד (מוגנים בהרשאות גישה). מומלץ ליצור מפתח API לקריאה בלבד — ללא הרשאות מסחר או משיכה.
-        </motion.div>
+        <div className="mt-8 flex items-center justify-center gap-2 text-[11px] text-text-muted text-center">
+          <Shield className="w-3.5 h-3.5 text-profit shrink-0" />
+          המפתחות נשמרים בשרת ולא נשארים בדפדפן. מומלץ מפתח API לקריאה בלבד — ללא הרשאות מסחר או משיכה.
+        </div>
       </motion.div>
+
+      <ConnectDialog
+        exchange={dialogExchange}
+        editing={!!dialog?.editing}
+        data={dialog ? exchanges[dialog.id] : null}
+        saving={!!dialog && saving === dialog.id}
+        onUpdate={(field, val) => dialog && updateField(dialog.id, field, val)}
+        onSave={() => dialog && handleSave(dialog.id)}
+        onClose={closeDialog}
+      />
+
+      <ConfirmDialog
+        isOpen={!!confirmDisconnect}
+        onClose={() => setConfirmDisconnect(null)}
+        onConfirm={() => handleDisconnect(confirmDisconnect)}
+        title={`לנתק את ${disconnectExchange?.name || ''}?`}
+        message="המפתחות יימחקו מהשרת. עסקאות שכבר יובאו נשארות ביומן."
+        confirmText="נתק"
+      />
 
       <AnimatePresence>
         {syncModal && (
