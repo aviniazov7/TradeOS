@@ -3,6 +3,7 @@ import { Send, Loader2, Mail, Bell, FlaskConical, Sparkles, RefreshCw } from 'lu
 import toast from 'react-hot-toast';
 import { useAuth } from '../../contexts/AuthContext';
 import { adminSendBulkNotification, adminSendEmailCampaign, adminGenerateMarketHook } from '../../services/pushService';
+import SelectDropdown from '../shared/SelectDropdown';
 
 // Ready-made "come back" messages — a click fills the form, then edit freely.
 const TEMPLATES = [
@@ -40,7 +41,8 @@ const DESTINATIONS = [
   { path: '/premium', label: 'Premium' },
 ];
 
-const field = 'w-full bg-bg-secondary border border-border-primary rounded-lg px-3 py-2 text-sm text-text-primary outline-none focus:border-accent-primary';
+// Same look as the app's SelectDropdown so inputs and the destination menu match.
+const field = 'w-full bg-bg-tertiary border border-border-primary rounded-lg px-3 py-2.5 text-sm text-text-primary placeholder:text-text-muted outline-none focus:border-accent-primary transition-colors';
 
 function ChannelToggle({ checked, onChange, icon: Icon, label, hint, disabled }) {
   return (
@@ -182,9 +184,11 @@ export default function ReengageComposer({ recipients, onSent }) {
 
       <div className="grid grid-cols-2 gap-2">
         <input value={cta} onChange={(e) => setCta(e.target.value)} placeholder="טקסט הכפתור במייל" maxLength={40} className={field} disabled={!useEmail} />
-        <select value={path} onChange={(e) => setPath(e.target.value)} className={`${field} cursor-pointer`}>
-          {DESTINATIONS.map((d) => <option key={d.path} value={d.path}>{d.label}</option>)}
-        </select>
+        <SelectDropdown
+          value={path}
+          onChange={setPath}
+          options={DESTINATIONS.map((d) => ({ value: d.path, label: d.label }))}
+        />
       </div>
 
       {/* Live preview of the email, so what lands in the inbox is no surprise. */}

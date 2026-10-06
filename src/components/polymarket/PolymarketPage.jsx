@@ -1,7 +1,7 @@
 import { useMemo, useState } from 'react';
 import { motion } from 'framer-motion';
 import { useNavigate, useSearchParams } from 'react-router-dom';
-import { Trophy, Crown, Lock, Search, ShieldCheck, Info, ArrowDownUp, AlertCircle, RefreshCw, Star, ChevronDown, Users, Globe, Waves, Compass, UserRoundSearch, Gem, Download, GraduationCap } from 'lucide-react';
+import { Trophy, Crown, Lock, Search, ShieldCheck, Info, ArrowDownUp, AlertCircle, RefreshCw, Star, Users, Globe, Waves, Compass, UserRoundSearch, Gem, Download, GraduationCap } from 'lucide-react';
 import toast from 'react-hot-toast';
 import { useAuth } from '../../contexts/AuthContext';
 import { usePolymarketLeaderboard } from '../../hooks/usePolymarketLeaderboard';
@@ -17,6 +17,7 @@ import PersonalAnalystModal from './PersonalAnalystModal';
 import SmartConsensus from './SmartConsensus';
 import WatchedWalletsModal from './WatchedWalletsModal';
 import AcademyModal from './AcademyModal';
+import SelectDropdown from '../shared/SelectDropdown';
 import { fmtUsd, fmtPct, shortWallet, roiPct } from '../../utils/polymarketScore';
 import { downloadCsv, stampedName } from '../../utils/csv';
 import { pageVariants, pageTransition, staggerContainer, staggerItem } from '../../utils/animations';
@@ -401,13 +402,13 @@ function PolymarketBoard() {
       {/* Controls */}
       <div className="flex flex-wrap items-center gap-2 mb-3">
         {/* category dropdown */}
-        <div className="relative shrink-0">
-          <select value={category} onChange={(e) => { setCategory(e.target.value); setVisible(25); }}
-            className="appearance-none bg-bg-secondary border border-border-primary rounded-lg py-2 ps-3 pe-8 text-sm font-semibold text-text-primary cursor-pointer outline-none focus:border-accent-primary/50">
-            {CATEGORIES.map((c) => <option key={c.key} value={c.key}>{c.label}</option>)}
-          </select>
-          <ChevronDown className="w-4 h-4 text-text-muted absolute inset-y-0 my-auto left-2 pointer-events-none" />
-        </div>
+        <SelectDropdown
+          className="shrink-0 w-44"
+          triggerClassName="py-2 font-semibold"
+          value={category}
+          onChange={(v) => { setCategory(v); setVisible(25); }}
+          options={CATEGORIES.map((c) => ({ value: c.key, label: c.label }))}
+        />
         <div className="flex items-center gap-2 bg-bg-secondary border border-border-primary rounded-lg px-3 py-2 flex-1 min-w-[150px] focus-within:border-accent-primary/50 transition-colors">
           <Search className="w-4 h-4 text-text-muted shrink-0" />
           <input value={query} onChange={(e) => { setQuery(e.target.value); setVisible(25); }} placeholder="חפש ארנק…"
