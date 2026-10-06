@@ -30,7 +30,7 @@ function StopValue({ trade }) {
 }
 
 const pnlColor = (val) => (val > 0 ? 'text-profit' : val < 0 ? 'text-loss' : 'text-breakeven');
-// Honor the saved status — broker CSV imports (MT5) are status:'closed' with
+// Honor the saved status — broker CSV imports are status:'closed' with
 // pnlFromExchange but NO exit price, and deriving from exitPrice alone showed
 // them as eternally "open" with a — in the P&L column.
 const getStatus = (trade) => trade.status === 'partial' ? 'partial' : (isClosedTrade(trade) ? 'closed' : 'open');
@@ -110,7 +110,7 @@ export default function TradeTable({ trades, allTrades, onEdit, onDelete, onShar
           return (
             <Fragment key={trade.id}>
               {showMonthSep && (
-                <div className={`px-1 ${idx === 0 ? 'mb-2' : 'my-2'}`}>
+                <div className={`px-1 ${idx === 0 ? 'mb-3' : 'mt-5 mb-3'}`}>
                   <MonthSeparator trade={trade} totals={monthTotals.get(getMonthKey(trade))} />
                 </div>
               )}
@@ -186,7 +186,7 @@ export default function TradeTable({ trades, allTrades, onEdit, onDelete, onShar
                 <Fragment key={trade.id}>
                   {showMonthSep && (
                     <tr>
-                      <td colSpan={12} className={`${idx === 0 ? 'pt-2' : 'pt-3'} pb-1 px-2`}>
+                      <td colSpan={12} className={`${idx === 0 ? 'pt-2' : 'pt-7'} pb-3 px-2`}>
                         <MonthSeparator trade={trade} totals={monthTotals.get(getMonthKey(trade))} />
                       </td>
                     </tr>

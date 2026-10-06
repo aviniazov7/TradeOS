@@ -114,7 +114,7 @@ export function getTradeResult(pnl) {
 /**
  * The ONE closed-trade predicate, shared by the dashboard stats, the trade
  * table and the monthly calendar — so a trade never counts as closed on one
- * screen and open on another. Broker CSV imports (MT5/forex) carry
+ * screen and open on another. Broker CSV imports carry
  * status:'closed' + pnlFromExchange with NO exit price, so exitPrice alone
  * must not decide; explicit 'open'/'partial' status always wins.
  */
