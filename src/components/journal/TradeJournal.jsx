@@ -1,16 +1,8 @@
 import { useState, useMemo, useEffect, useRef, lazy, Suspense } from 'react';
 import { useSearchParams } from 'react-router-dom';
 import { motion } from 'framer-motion';
-import {
-  Plus, BookOpen, Settings,
-  Wallet, TrendingUp, Target, Zap, Flame, Snowflake, Signal,
-  Scale, BarChart3, Activity, Calendar,
-  Clock, DollarSign, Percent, Link2, Undo2, BrainCircuit, Star,
-  Sparkles, ChevronLeft,
-} from 'lucide-react';
-import { format } from 'date-fns';
+import { Plus, BookOpen, Settings, Undo2, BrainCircuit } from 'lucide-react';
 import toast from 'react-hot-toast';
-import confetti from 'canvas-confetti';
 import { useTrades } from '../../hooks/useTrades';
 import { useCryptoPrices } from '../../hooks/useCryptoPrices';
 import { useJournalContext } from '../../contexts/JournalContext';
@@ -19,39 +11,47 @@ import { useDashboardStats } from '../../hooks/useDashboardStats';
 import { useLinkedExchangeBalance } from '../../hooks/useLinkedExchangeBalance';
 import { useExchangeImport } from '../../hooks/useExchangeImport';
 import JournalSwitcher from './JournalSwitcher';
-import TradeForm from './TradeForm';
 import TradeTable from './TradeTable';
 import TradeFilters from './TradeFilters';
-import StatCard from '../dashboard/StatCard';
 import TimePeriodFilter from '../dashboard/TimePeriodFilter';
-import StrategyPerformanceTable from '../dashboard/StrategyPerformanceTable';
-import MonthlyPerformanceTable from '../dashboard/MonthlyPerformanceTable';
-import TradeHeatmap from '../dashboard/TradeHeatmap';
-import MonthlyCalendar from './MonthlyCalendar';
-import AICoachPanel from './AICoachPanel';
 import Modal from '../shared/Modal';
-import ImportTrades from './ImportTrades';
-import JournalSettingsModal from './JournalSettingsModal';
 import ArchiveAnimation from './ArchiveAnimation';
 import EmptyState from '../shared/EmptyState';
-import ExchangeSettings from '../exchange/ExchangeSettings';
 import ExchangeProposals from './ExchangeProposals';
-import TradeShareModal from './TradeShareModal';
 import JournalSkeleton from './JournalSkeleton';
 import JournalFormModal from './JournalFormModal';
-import { formatCurrency, formatPercent, formatDuration, formatDate } from '../../utils/formatters';
-import { TAG_LABELS } from '../../utils/constants';
-import { pageVariants, pageTransition, staggerContainer } from '../../utils/animations';
+import { formatDate } from '../../utils/formatters';
+import { pageVariants, pageTransition } from '../../utils/animations';
 
 const defaultFilters = { search: '', direction: '', result: '', strategy: '', tag: '', timeframe: '', month: '' };
-// recharts is ~414 kB. The charts live only in the analytics tab, so they load
-// on demand instead of on the default trades view.
-const JournalCharts = lazy(() => import('./JournalCharts'));
-const SessionAnalysisChart = lazy(() => import('../analytics/SessionAnalysisChart'));
-const DayOfWeekChart = lazy(() => import('../analytics/DayOfWeekChart'));
 
-const tooltipStyle = { background: 'var(--color-bg-overlay)', border: '1px solid var(--color-border-primary)', borderRadius: '8px', fontSize: '12px', color: 'var(--color-text-primary)' };
-const PIE_COLORS = ['#22c55e', '#ef4444', '#eab308'];
+// Everything below is loaded on demand: the default trades view only needs the
+// table. The form alone pulls in react-datepicker (~130 kB), and the analytics
+// tab pulls in recharts (~414 kB).
+const JournalAnalyticsTab = lazy(() => import('./JournalAnalyticsTab'));
+const MonthlyCalendar = lazy(() => import('./MonthlyCalendar'));
+const ExchangeSettings = lazy(() => import('../exchange/ExchangeSettings'));
+const TradeForm = lazy(() => import('./TradeForm'));
+const AICoachPanel = lazy(() => import('./AICoachPanel'));
+const ImportTrades = lazy(() => import('./ImportTrades'));
+const JournalSettingsModal = lazy(() => import('./JournalSettingsModal'));
+const TradeShareModal = lazy(() => import('./TradeShareModal'));
+
+// Mount a lazy modal only once it is first opened (so its chunk isn't fetched
+// on page load), then keep it mounted so its close animation still plays.
+function useOpenedOnce(isOpen) {
+  const [opened, setOpened] = useState(isOpen);
+  if (isOpen && !opened) setOpened(true);
+  return opened;
+}
+
+function TabFallback() {
+  return (
+    <div className="grid grid-cols-2 md:grid-cols-4 gap-2.5 md:gap-3">
+      {[1, 2, 3, 4].map((i) => <div key={i} className="bg-bg-secondary border border-border-primary rounded-xl h-24 animate-pulse" />)}
+    </div>
+  );
+}
 
 export default function TradeJournal() {
   const { activeJournal, activeJournalId, journals, addJournal } = useJournalContext();
@@ -92,6 +92,10 @@ export default function TradeJournal() {
     }
   };
   const [shareTarget, setShareTarget] = useState(null);
+  const formMounted = useOpenedOnce(formOpen);
+  const importMounted = useOpenedOnce(importOpen);
+  const settingsMounted = useOpenedOnce(settingsOpen);
+  const shareMounted = useOpenedOnce(!!shareTarget);
   // Render only a window of rows so the table stays fast with hundreds of trades.
   // Analytics/calendar still use the full `trades` array — this caps the DOM only.
   const [visibleCount, setVisibleCount] = useState(50);
@@ -112,7 +116,8 @@ export default function TradeJournal() {
   const filterAndJump = (partialFilter) => {
     setFilters(f => ({ ...f, ...partialFilter }));
     setTab('trades');
-    setTimeout(() => window.scrollTo({ top: 0, behavior: 'smooth' }), 100);
+    // The page scrolls inside Layout's #app-scroll container, not the window.
+    setTimeout(() => document.getElementById('app-scroll')?.scrollTo({ top: 0, behavior: 'smooth' }), 100);
   };
   const deleteBatchToastRef = useRef(null);
 
@@ -198,22 +203,6 @@ export default function TradeJournal() {
     if (searchParams.get('ai') === '1') setAiModalOpen(true);
   }, [searchParams]);
 
-  // Period-filtered trades — same logic as useDashboardStats so analytics match the selected period
-  const periodTrades = useMemo(() => {
-    if (period === 'all') return trades;
-    const now = new Date();
-    const start = new Date(now);
-    if (period === 'week')  { start.setDate(start.getDate() - 7); start.setHours(0, 0, 0, 0); }
-    if (period === 'month') { start.setMonth(start.getMonth() - 1); start.setHours(0, 0, 0, 0); }
-    if (period === 'year')  { start.setFullYear(start.getFullYear() - 1); start.setHours(0, 0, 0, 0); }
-    return trades.filter((t) => {
-      const raw = t.exitDate || t.entryDate;
-      if (!raw) return false;
-      const d = raw?.toDate ? raw.toDate() : new Date(raw);
-      return d >= start;
-    });
-  }, [trades, period]);
-
   const filteredTrades = useMemo(() => {
     const getTime = (t) => {
       const raw = t.entryDate;
@@ -240,110 +229,6 @@ export default function TradeJournal() {
       return true;
     }).sort((a, b) => getTime(b) - getTime(a));
   }, [trades, filters, pendingDeletes]);
-
-  const analytics = useMemo(() => {
-    const closed = periodTrades.filter(isClosedTrade);
-    if (!closed.length) return null;
-
-    const wins = closed.filter((t) => t.result === 'win');
-    const losses = closed.filter((t) => t.result === 'loss');
-    const avgWin = wins.length ? wins.reduce((s, t) => s + (t.netPnl ?? t.pnl ?? 0), 0) / wins.length : 0;
-    const avgLoss = losses.length ? Math.abs(losses.reduce((s, t) => s + (t.netPnl ?? t.pnl ?? 0), 0) / losses.length) : 0;
-    const largestWin = wins.length ? Math.max(...wins.map((t) => t.netPnl ?? t.pnl ?? 0)) : 0;
-    const largestLoss = losses.length ? Math.min(...losses.map((t) => t.netPnl ?? t.pnl ?? 0)) : 0;
-
-    const safeTradeDate = (t) => {
-      const raw = t.exitDate || t.entryDate;
-      if (!raw) return new Date(0);
-      const d = raw?.toDate ? raw.toDate() : new Date(raw);
-      return isNaN(d.getTime()) ? new Date(0) : d;
-    };
-
-    const sorted = [...closed].sort((a, b) => safeTradeDate(a) - safeTradeDate(b));
-
-    const be = closed.filter((t) => t.result === 'breakeven').length;
-    const pieData = [
-      { name: 'רווח', value: wins.length },
-      { name: 'הפסד', value: losses.length },
-      { name: 'אפס', value: be },
-    ].filter((d) => d.value > 0);
-
-    const dailyMap = {};
-    sorted.forEach((t) => {
-      const d = safeTradeDate(t);
-      const key = format(d, 'MM/dd');
-      if (!dailyMap[key]) dailyMap[key] = 0;
-      dailyMap[key] += t.netPnl ?? t.pnl ?? 0;
-    });
-    const dailyPnL = Object.entries(dailyMap).map(([date, pnl]) => ({ date, pnl: parseFloat(pnl.toFixed(2)) }));
-
-    const pairMap = {};
-    closed.forEach((t) => {
-      if (!pairMap[t.pair]) pairMap[t.pair] = { wins: 0, losses: 0, pnl: 0 };
-      if (t.result === 'win') pairMap[t.pair].wins++;
-      else if (t.result === 'loss') pairMap[t.pair].losses++;
-      pairMap[t.pair].pnl += t.netPnl ?? t.pnl ?? 0;
-    });
-    const byPair = Object.entries(pairMap).map(([pair, d]) => {
-      const total = d.wins + d.losses;
-      return { pair, ...d, total, winRate: total > 0 ? (d.wins / total) * 100 : 0 };
-    }).sort((a, b) => b.pnl - a.pnl);
-
-    const tfMap = {};
-    closed.forEach((t) => {
-      const tf = t.timeframe || 'N/A';
-      if (!tfMap[tf]) tfMap[tf] = { wins: 0, total: 0, pnl: 0 };
-      tfMap[tf].total++;
-      if (t.result === 'win') tfMap[tf].wins++;
-      tfMap[tf].pnl += t.netPnl ?? t.pnl ?? 0;
-    });
-    const byTimeframe = Object.entries(tfMap).map(([tf, d]) => ({ timeframe: tf, ...d, winRate: ((d.wins / d.total) * 100) })).sort((a, b) => b.pnl - a.pnl);
-
-    const tagMap = {};
-    closed.forEach((t) => {
-      const tags = Array.isArray(t.tags) ? t.tags : [];
-      tags.forEach((tag) => {
-        if (!tagMap[tag]) tagMap[tag] = { wins: 0, losses: 0, pnl: 0, count: 0 };
-        tagMap[tag].count++;
-        if (t.result === 'win') tagMap[tag].wins++;
-        else if (t.result === 'loss') tagMap[tag].losses++;
-        tagMap[tag].pnl += t.netPnl ?? t.pnl ?? 0;
-      });
-    });
-    const byTag = Object.entries(tagMap).map(([tag, d]) => ({ tag, ...d, winRate: d.count > 0 ? (d.wins / d.count) * 100 : 0 })).sort((a, b) => b.pnl - a.pnl);
-
-    let curWin = 0, curLoss = 0, maxWin = 0, maxLoss = 0;
-    sorted.forEach((t) => {
-      if (t.result === 'win') { curWin++; curLoss = 0; maxWin = Math.max(maxWin, curWin); }
-      else if (t.result === 'loss') { curLoss++; curWin = 0; maxLoss = Math.max(maxLoss, curLoss); }
-      else { curWin = 0; curLoss = 0; }
-    });
-
-    const longTrades = closed.filter((t) => t.direction === 'long');
-    const shortTrades = closed.filter((t) => t.direction === 'short');
-    const longWins = longTrades.filter((t) => t.result === 'win').length;
-    const shortWins = shortTrades.filter((t) => t.result === 'win').length;
-    const longWinRate = longTrades.length ? (longWins / longTrades.length) * 100 : 0;
-    const shortWinRate = shortTrades.length ? (shortWins / shortTrades.length) * 100 : 0;
-    const longPnl = longTrades.reduce((s, t) => s + (t.netPnl ?? t.pnl ?? 0), 0);
-    const shortPnl = shortTrades.reduce((s, t) => s + (t.netPnl ?? t.pnl ?? 0), 0);
-
-    // By strategy — sorted by trade count
-    const stratMap = {};
-    closed.forEach((t) => {
-      if (!t.strategy) return;
-      if (!stratMap[t.strategy]) stratMap[t.strategy] = { wins: 0, losses: 0, pnl: 0, count: 0 };
-      stratMap[t.strategy].count++;
-      if (t.result === 'win') stratMap[t.strategy].wins++;
-      else if (t.result === 'loss') stratMap[t.strategy].losses++;
-      stratMap[t.strategy].pnl += t.netPnl ?? t.pnl ?? 0;
-    });
-    const byStrategy = Object.entries(stratMap)
-      .map(([name, d]) => ({ name, ...d, winRate: d.count > 0 ? (d.wins / d.count) * 100 : 0 }))
-      .sort((a, b) => b.count - a.count);
-
-    return { avgWin, avgLoss, largestWin, largestLoss, pieData, dailyPnL, byPair, byTimeframe, byTag, byStrategy, maxWin, maxLoss, longWinRate, shortWinRate, longPnl, shortPnl, longCount: longTrades.length, shortCount: shortTrades.length, longWins, shortWins };
-  }, [periodTrades]);
 
   const handleSave = async (data) => {
     try {
@@ -379,7 +264,9 @@ export default function TradeJournal() {
             ? calculateFuturesPnL(data.direction, data.entryPrice, data.exitPrice, data.contract.pointValue, data.contract.contracts)
             : calculatePnL(data.direction, data.entryPrice, data.exitPrice, data.quantity);
         if (pnl > 0) {
-          confetti({ particleCount: 120, spread: 80, origin: { y: 0.7 }, colors: ['#22c55e', '#4ade80', '#86efac', '#fbbf24', '#38bdf8'] });
+          import('canvas-confetti').then(({ default: confetti }) => {
+            confetti({ particleCount: 120, spread: 80, origin: { y: 0.7 }, colors: ['#22c55e', '#4ade80', '#86efac', '#fbbf24', '#38bdf8'] });
+          }).catch(() => {});
         }
       }
     } catch (error) {
@@ -490,7 +377,7 @@ export default function TradeJournal() {
         formatDate(d), xd ? formatDate(xd) : '', t.pair, t.direction, t.entryPrice, t.exitPrice,
         t.stopLoss, t.positionSize, t.leverage, t.fees, pnl.toFixed(2),
         (isNaN(pnlPct) ? 0 : pnlPct).toFixed(2), ((pnl < 0 ? -1 : 1) * Math.abs(t.rrRatio ?? 0)).toFixed(2), t.strategy || '',
-        t.timeframe || '', t.exitPrice > 0 ? 'סגורה' : 'פתוחה',
+        t.timeframe || '', t.status === 'partial' ? 'חלקית' : (isClosedTrade(t) ? 'סגורה' : 'פתוחה'),
         t.entryReason || '', t.notes || '', tags, t.emotionBefore || '', t.emotionAfter || '', mistakes, t.confidenceRating ?? '',
       ];
     });
@@ -544,13 +431,6 @@ export default function TradeJournal() {
       </motion.div>
     );
   }
-
-  const streakText = stats.currentStreak.count > 0
-    ? `${stats.currentStreak.count} ${stats.currentStreak.type === 'win' ? 'רווחים' : 'הפסדים'}`
-    : '0';
-  const streakColor = stats.currentStreak.type === 'win' ? 'text-profit' : stats.currentStreak.type === 'loss' ? 'text-loss' : 'text-text-primary';
-  const cardClass = 'bg-bg-secondary border border-border-primary rounded-xl p-4';
-  const pnlColor = (v) => v >= 0 ? 'text-profit' : 'text-loss';
 
   return (
     <motion.div variants={pageVariants} initial="initial" animate="animate" exit="exit" transition={pageTransition}>
@@ -711,292 +591,27 @@ export default function TradeJournal() {
         </>
       )}
 
-      {/* Empty gate: `analytics` is null when the PERIOD-FILTERED set has no
-          closed trades. Two very different situations share that condition:
-          a brand-new account (show onboarding copy + first-trade CTA) and a
-          veteran whose selected period is simply empty (say so truthfully and
-          offer to widen the period — telling them to "close their first
-          trade" would be false). */}
-      {tab === 'analytics' && analytics === null && (
-        trades.some(isClosedTrade) ? (
-          <EmptyState
-            icon={BarChart3}
-            title="אין עסקאות סגורות בתקופה שנבחרה"
-            description="טווח הזמן שבחרת לא כולל עסקאות סגורות — נסה תקופה רחבה יותר."
-            actionLabel="הצג את כל התקופות"
-            onAction={() => setPeriod('all')}
+      {tab === 'analytics' && (
+        <Suspense fallback={<TabFallback />}>
+          <JournalAnalyticsTab
+            trades={trades}
+            period={period}
+            onPeriodChange={setPeriod}
+            stats={stats}
+            activeJournal={activeJournal}
+            balanceIsLive={balanceIsLive}
+            displayedCurrentBalance={displayedCurrentBalance}
+            onOpenAI={() => setAiModalOpen(true)}
+            onFilterJump={filterAndJump}
+            onAddFirstTrade={() => { setTab('trades'); setFormOpen(true); }}
           />
-        ) : (
-          <EmptyState
-            icon={BarChart3}
-            title="אין עדיין נתונים לניתוח"
-            description="הניתוחים נבנים מהעסקאות הסגורות שלך — ברגע שתסגור את העסקה הראשונה, הגרפים והמדדים יתעוררו כאן."
-            actionLabel="הוסף עסקה ראשונה"
-            onAction={() => { setTab('trades'); setFormOpen(true); }}
-          />
-        )
-      )}
-
-      {tab === 'analytics' && analytics !== null && (
-        <>
-          {/* AI analysis launcher — 21st.dev-style gradient card with a shimmer
-              sweep. Opens the beautiful animated AI modal. */}
-          <motion.button
-            type="button"
-            onClick={() => setAiModalOpen(true)}
-            initial={{ opacity: 0, y: 8 }}
-            animate={{ opacity: 1, y: 0 }}
-            whileHover={{ scale: 1.01 }}
-            whileTap={{ scale: 0.99 }}
-            className="group relative w-full overflow-hidden rounded-2xl mb-3 md:mb-4 cursor-pointer text-right"
-            style={{ border: '1px solid var(--glass-border)' }}
-          >
-            {/* animated gradient wash */}
-            <div
-              className="absolute inset-0 opacity-90"
-              style={{ background: 'linear-gradient(135deg, rgba(139,92,246,0.16) 0%, rgba(99,102,241,0.10) 45%, rgba(6,182,212,0.16) 100%)' }}
-            />
-            {/* shimmer sweep */}
-            <motion.div
-              aria-hidden
-              className="absolute inset-y-0 -left-1/2 w-1/2 skew-x-12"
-              style={{ background: 'linear-gradient(90deg, transparent, rgba(255,255,255,0.14), transparent)' }}
-              animate={{ x: ['0%', '400%'] }}
-              transition={{ duration: 2.4, repeat: Infinity, repeatDelay: 2.4, ease: 'easeInOut' }}
-            />
-            <div className="relative flex items-center gap-3 px-4 py-3.5 md:px-5 md:py-4">
-              {/* icon medallion with soft glow */}
-              <span className="relative flex-shrink-0 grid place-items-center w-11 h-11 rounded-xl"
-                style={{ background: 'rgba(139,92,246,0.14)', border: '1px solid rgba(139,92,246,0.30)' }}>
-                <motion.span
-                  aria-hidden
-                  className="absolute inset-0 rounded-xl"
-                  style={{ boxShadow: '0 0 22px 2px rgba(139,92,246,0.35)' }}
-                  animate={{ opacity: [0.35, 0.8, 0.35] }}
-                  transition={{ duration: 2.6, repeat: Infinity, ease: 'easeInOut' }}
-                />
-                <BrainCircuit className="relative w-5 h-5" style={{ stroke: 'url(#ai-grad)' }} />
-              </span>
-              <div className="min-w-0 flex-1">
-                <div className="flex items-center gap-1.5">
-                  <span className="text-sm md:text-base font-bold text-gradient">ניתוח AI של המסחר שלך</span>
-                  <Sparkles className="w-3.5 h-3.5 flex-shrink-0" style={{ stroke: 'url(#ai-grad)' }} />
-                </div>
-                <p className="text-xs text-text-muted mt-0.5 truncate">
-                  תובנות חכמות, דפוסים חוזרים והמלצות — לחצו לפתיחה
-                </p>
-              </div>
-              <ChevronLeft className="w-5 h-5 flex-shrink-0 text-accent-primary transition-transform group-hover:-translate-x-1" />
-            </div>
-          </motion.button>
-
-          {/* Row 1: Main Stats */}
-          <motion.div className="grid grid-cols-2 md:grid-cols-4 gap-2.5 md:gap-3 mb-3 md:mb-4" variants={staggerContainer} initial="initial" animate="animate">
-            <StatCard label={balanceIsLive ? `יתרה נוכחית · ${activeJournal.exchange}` : 'יתרה נוכחית'}
-              value={formatCurrency(displayedCurrentBalance).replace('+', '')}
-              subtitle={balanceIsLive ? 'מסונכרן עם הבורסה' : (activeJournal?.initialBalance > 0 ? `${formatPercent(stats.balanceChangePercent)} מההתחלה` : `${stats.totalTrades} עסקאות`)}
-              subtitleColor={balanceIsLive ? 'text-accent-primary' : (stats.balanceChangePercent >= 0 ? 'text-profit' : 'text-loss')} icon={Wallet} color="text-accent-primary"
-              gradient={stats.totalPnL >= 0 ? 'profit' : 'loss'} />
-            <StatCard label="רווח נקי" value={formatCurrency(stats.totalPnL)} subtitle={`${stats.totalTrades} עסקאות`}
-              icon={DollarSign} color={stats.totalPnL >= 0 ? 'text-profit' : 'text-loss'} />
-            <StatCard label="אחוז הצלחה" value={`${stats.winRate.toFixed(1)}%`} subtitle={`${stats.winCount}W ${stats.lossCount}L`}
-              icon={Target} color="text-accent-primary" />
-            <StatCard label="תוחלת" value={formatCurrency(stats.expectancy)} subtitle={`ממוצע ${stats.avgRR.toFixed(2)}R`}
-              icon={Zap} color={stats.expectancy >= 0 ? 'text-profit' : 'text-loss'} />
-          </motion.div>
-
-          {/* Combined Metrics Grid */}
-          <div className="bg-bg-secondary border border-border-primary rounded-xl mb-4 md:mb-6 p-3">
-            <div className="grid grid-cols-3 md:grid-cols-5 lg:grid-cols-10 gap-px">
-              {[
-                { label: 'רצף נוכחי', value: streakText, color: streakColor },
-                { label: 'מקדם רווח', value: stats.profitFactor === Infinity ? '∞' : stats.profitFactor.toFixed(2), color: stats.profitFactor >= 1.5 ? 'text-profit' : 'text-loss' },
-                { label: 'תשואה/תנודתיות', value: stats.sharpeRatio.toFixed(2) },
-                { label: 'תשואה/נפילה', value: stats.calmarRatio.toFixed(2) },
-                { label: 'תשואה/הפסדים', value: stats.sortinoRatio === Infinity ? '∞' : stats.sortinoRatio.toFixed(2) },
-                { label: 'התאוששות', value: stats.recoveryFactor.toFixed(2), color: stats.recoveryFactor >= 1 ? 'text-profit' : 'text-loss' },
-                { label: 'ירידה מקס׳', value: `-${stats.maxDrawdown.toFixed(1)}%`, color: 'text-loss' },
-                { label: 'סיכון/סיכוי', value: `1:${stats.avgRR.toFixed(2)}` },
-                { label: 'ימי מסחר', value: stats.tradingDays },
-                { label: 'עסקאות/יום', value: stats.tradesPerDay.toFixed(1) },
-                { label: 'משך ממוצע', value: formatDuration(stats.avgDurationHours) },
-                { label: 'עמלות', value: formatCurrency(-stats.totalFees), color: 'text-loss' },
-                ...(analytics ? [
-                  { label: 'ממוצע רווח', value: formatCurrency(analytics.avgWin), color: 'text-profit' },
-                  { label: 'ממוצע הפסד', value: formatCurrency(-analytics.avgLoss), color: 'text-loss' },
-                  { label: 'רווח מקס׳', value: formatCurrency(analytics.largestWin), color: 'text-profit' },
-                  { label: 'הפסד מקס׳', value: formatCurrency(analytics.largestLoss), color: 'text-loss' },
-                  { label: 'רצף רווחים', value: analytics.maxWin, color: 'text-profit' },
-                  { label: 'רצף הפסדים', value: analytics.maxLoss, color: 'text-loss' },
-                  { label: `לונג (${analytics.longCount})`, value: `${analytics.longWinRate.toFixed(0)}%`, color: 'text-long' },
-                  { label: `שורט (${analytics.shortCount})`, value: `${analytics.shortWinRate.toFixed(0)}%`, color: 'text-short' },
-                ] : []),
-              ].map((item) => (
-                <div key={item.label} className="flex flex-col items-center py-3 px-2">
-                  <span className="text-[10px] text-text-muted whitespace-nowrap mb-1">{item.label}</span>
-                  <span className={`text-sm font-bold ${item.color || 'text-text-primary'} whitespace-nowrap`}>{item.value}</span>
-                </div>
-              ))}
-            </div>
-          </div>
-
-          {analytics && (
-            <>
-
-              <Suspense fallback={<div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4 mb-6">{[1, 2, 3, 4].map((i) => <div key={i} className={`${cardClass} p-5 h-48 animate-pulse`} />)}</div>}>
-                <JournalCharts
-                  analytics={analytics} stats={stats} periodTrades={periodTrades}
-                  cardClass={cardClass} tooltipStyle={tooltipStyle} pieColors={PIE_COLORS}
-                  formatCurrency={formatCurrency} onFilterJump={filterAndJump}
-                />
-              </Suspense>
-            </>
-          )}
-
-          {/* Long vs Short visual card */}
-          {analytics && (analytics.longCount > 0 || analytics.shortCount > 0) && (
-            <div className={`${cardClass} mb-4 p-5`}>
-              <h3 className="text-sm font-semibold text-text-primary mb-3">Long vs Short</h3>
-              <div className="grid grid-cols-2 gap-4">
-                {/* Long */}
-                <div onClick={() => filterAndJump({ direction: 'long' })}
-                  className="cursor-pointer rounded-lg p-2 hover:bg-accent-primary/5 transition-colors">
-                  <div className="flex items-center justify-between mb-1.5">
-                    <span className="text-xs font-semibold text-profit">Long ↗</span>
-                    <span className="text-xs text-text-muted">{analytics.longCount} עסקאות · {analytics.longWins}W</span>
-                  </div>
-                  <div className="h-2 bg-bg-tertiary rounded-full overflow-hidden mb-1.5">
-                    <div className="h-full bg-profit rounded-full transition-all duration-700" style={{ width: `${analytics.longWinRate}%` }} />
-                  </div>
-                  <div className="flex items-center justify-between text-[11px]">
-                    <span className="font-bold text-profit">{analytics.longWinRate.toFixed(1)}% הצלחה</span>
-                    <span className={analytics.longPnl >= 0 ? 'text-profit' : 'text-loss'}>{analytics.longPnl >= 0 ? '+' : ''}{analytics.longPnl.toFixed(2)}$</span>
-                  </div>
-                </div>
-                {/* Short */}
-                <div onClick={() => filterAndJump({ direction: 'short' })}
-                  className="cursor-pointer rounded-lg p-2 hover:bg-accent-primary/5 transition-colors">
-                  <div className="flex items-center justify-between mb-1.5">
-                    <span className="text-xs font-semibold text-loss">Short ↗</span>
-                    <span className="text-xs text-text-muted">{analytics.shortCount} עסקאות · {analytics.shortWins}W</span>
-                  </div>
-                  <div className="h-2 bg-bg-tertiary rounded-full overflow-hidden mb-1.5">
-                    <div className="h-full bg-loss rounded-full transition-all duration-700" style={{ width: `${analytics.shortWinRate}%` }} />
-                  </div>
-                  <div className="flex items-center justify-between text-[11px]">
-                    <span className="font-bold text-loss">{analytics.shortWinRate.toFixed(1)}% הצלחה</span>
-                    <span className={analytics.shortPnl >= 0 ? 'text-profit' : 'text-loss'}>{analytics.shortPnl >= 0 ? '+' : ''}{analytics.shortPnl.toFixed(2)}$</span>
-                  </div>
-                </div>
-              </div>
-            </div>
-          )}
-
-          <div className="mb-6">
-            <TradeHeatmap trades={periodTrades} />
-          </div>
-
-          <div className="grid grid-cols-1 lg:grid-cols-3 gap-4 mb-6">
-            <Suspense fallback={<div className={`${cardClass} p-5 h-56 animate-pulse`} />}>
-              <SessionAnalysisChart data={stats.sessionPerformance} />
-            </Suspense>
-            <Suspense fallback={<div className={`${cardClass} p-5 h-56 animate-pulse`} />}>
-              <DayOfWeekChart data={stats.dayOfWeekPerformance} />
-            </Suspense>
-            {analytics?.byTag?.length > 0 && (
-              <div className={`${cardClass} p-5`}>
-                <h3 className="text-sm font-semibold text-text-primary mb-3">ביצועים לפי תגית</h3>
-                <div className="overflow-x-auto">
-                  <table className="w-full text-sm">
-                    <thead><tr className="text-xs text-text-muted border-b border-border-primary">
-                      <th className="text-right pb-2 font-medium">תגית</th>
-                      <th className="text-right pb-2 font-medium">עסקאות</th>
-                      <th className="text-right pb-2 font-medium">% הצלחה</th>
-                      <th className="text-right pb-2 font-medium">רווח/הפסד</th>
-                    </tr></thead>
-                    <tbody>
-                      {analytics.byTag.map((t) => (
-                        <tr key={t.tag} onClick={() => filterAndJump({ tag: t.tag })}
-                          className="border-b border-border-primary/50 cursor-pointer hover:bg-accent-primary/5 transition-colors">
-                          <td className="py-2 text-text-primary font-medium">{TAG_LABELS[t.tag] || t.tag} <span className="text-text-muted text-[10px] opacity-50">↗</span></td>
-                          <td className="py-2 text-text-secondary">{t.count}</td>
-                          <td className="py-2 text-text-secondary">{t.winRate.toFixed(1)}%</td>
-                          <td className={`py-2 font-medium ${pnlColor(t.pnl)}`}>{formatCurrency(t.pnl)}</td>
-                        </tr>
-                      ))}
-                    </tbody>
-                  </table>
-                </div>
-              </div>
-            )}
-          </div>
-
-          <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-4 gap-4 mb-6">
-            <StrategyPerformanceTable
-              data={analytics?.byStrategy}
-              onStrategyClick={(name) => filterAndJump({ strategy: name })}
-            />
-            <MonthlyPerformanceTable data={stats.monthlyPerformance} />
-            {analytics && (
-              <div className={`${cardClass} p-5`}>
-                <h3 className="text-sm font-semibold text-text-primary mb-3">ביצועים לפי זוג</h3>
-                <div className="overflow-x-auto">
-                  <table className="w-full text-sm">
-                    <thead><tr className="text-xs text-text-muted border-b border-border-primary">
-                      <th className="text-right pb-2 font-medium">זוג</th>
-                      <th className="text-right pb-2 font-medium">עסקאות</th>
-                      <th className="text-right pb-2 font-medium">% הצלחה</th>
-                      <th className="text-right pb-2 font-medium">רווח/הפסד</th>
-                    </tr></thead>
-                    <tbody>
-                      {analytics.byPair.map((p) => (
-                        <tr key={p.pair} onClick={() => filterAndJump({ search: p.pair })}
-                          className="border-b border-border-primary/50 cursor-pointer hover:bg-accent-primary/5 transition-colors">
-                          <td className="py-2 text-text-primary font-medium">{p.pair} <span className="text-text-muted text-[10px] opacity-50">↗</span></td>
-                          <td className="py-2 text-text-secondary">{p.wins + p.losses}</td>
-                          <td className="py-2 text-text-secondary">{p.winRate.toFixed(1)}%</td>
-                          <td className={`py-2 font-medium ${pnlColor(p.pnl)}`}>{formatCurrency(p.pnl)}</td>
-                        </tr>
-                      ))}
-                    </tbody>
-                  </table>
-                </div>
-                <p className="text-[10px] text-text-muted mt-2 text-center">לחץ על שורה לסינון עסקאות לפי זוג</p>
-              </div>
-            )}
-            {analytics?.byTimeframe?.length > 0 && (
-              <div className={`${cardClass} p-5`}>
-                <h3 className="text-sm font-semibold text-text-primary mb-3">ביצועים לפי טווח זמן</h3>
-                <div className="overflow-x-auto">
-                  <table className="w-full text-sm">
-                    <thead><tr className="text-xs text-text-muted border-b border-border-primary">
-                      <th className="text-right pb-2 font-medium">טווח זמן</th>
-                      <th className="text-right pb-2 font-medium">עסקאות</th>
-                      <th className="text-right pb-2 font-medium">% הצלחה</th>
-                      <th className="text-right pb-2 font-medium">רווח/הפסד</th>
-                    </tr></thead>
-                    <tbody>
-                      {analytics.byTimeframe.map((tf) => (
-                        <tr key={tf.timeframe} onClick={() => filterAndJump({ timeframe: tf.timeframe })}
-                          className="border-b border-border-primary/50 cursor-pointer hover:bg-accent-primary/5 transition-colors">
-                          <td className="py-2 text-text-primary font-medium">{tf.timeframe} <span className="text-text-muted text-[10px] opacity-50">↗</span></td>
-                          <td className="py-2 text-text-secondary">{tf.total}</td>
-                          <td className="py-2 text-text-secondary">{tf.winRate.toFixed(1)}%</td>
-                          <td className={`py-2 font-medium ${pnlColor(tf.pnl)}`}>{formatCurrency(tf.pnl)}</td>
-                        </tr>
-                      ))}
-                    </tbody>
-                  </table>
-                </div>
-                <p className="text-[10px] text-text-muted mt-2 text-center">לחץ על שורה לסינון עסקאות לפי טווח זמן</p>
-              </div>
-            )}
-          </div>
-        </>
+        </Suspense>
       )}
 
       {tab === 'calendar' && (
-        <MonthlyCalendar trades={trades} journalName={activeJournal?.name} />
+        <Suspense fallback={<TabFallback />}>
+          <MonthlyCalendar trades={trades} journalName={activeJournal?.name} />
+        </Suspense>
       )}
 
       <Modal
@@ -1010,36 +625,56 @@ export default function TradeJournal() {
           </span>
         )}
       >
-        <AICoachPanel trades={trades} />
+        <Suspense fallback={<div className="h-40 animate-pulse rounded-xl bg-bg-tertiary" />}>
+          <AICoachPanel trades={trades} />
+        </Suspense>
       </Modal>
 
       {tab === 'exchange' && (
         <div className="mt-2">
-          <ExchangeSettings journalId={activeJournalId} />
+          <Suspense fallback={<TabFallback />}>
+            <ExchangeSettings journalId={activeJournalId} />
+          </Suspense>
         </div>
       )}
 
-      <TradeForm isOpen={formOpen} onClose={handleCloseForm} trade={editingTrade} onSave={handleSave}
-        riskSettings={{ riskType: activeJournal?.riskType, riskValue: activeJournal?.riskValue, currentBalance: displayedCurrentBalance }}
-        journalAssetClass={activeJournal?.assetClass || 'crypto'}
-        livePrices={prices} />
-
-      <ImportTrades isOpen={importOpen} onClose={() => setImportOpen(false)} onImport={addTrade} onImportBulk={addTradesBulk} />
-
-      <JournalSettingsModal
-        isOpen={settingsOpen}
-        onClose={() => setSettingsOpen(false)}
-        onArchive={(name) => { setArchiveTargetName(name); setArchiveAnimating(true); }}
-        onImport={() => setImportOpen(true)}
-        onExport={exportCSV}
-        canExport={trades.length > 0}
-      />
-
-      <TradeShareModal
-        isOpen={!!shareTarget}
-        onClose={() => setShareTarget(null)}
-        trade={shareTarget}
-      />
+      {/* Lazy modals, each in its own boundary so one loading (e.g. import,
+          opened from inside settings) never blanks another that is open.
+          fallback={null}: the Modal draws its own backdrop once loaded. */}
+      <Suspense fallback={null}>
+        {formMounted && (
+          <TradeForm isOpen={formOpen} onClose={handleCloseForm} trade={editingTrade} onSave={handleSave}
+            riskSettings={{ riskType: activeJournal?.riskType, riskValue: activeJournal?.riskValue, currentBalance: displayedCurrentBalance }}
+            journalAssetClass={activeJournal?.assetClass || 'crypto'}
+            livePrices={prices} />
+        )}
+      </Suspense>
+      <Suspense fallback={null}>
+        {importMounted && (
+          <ImportTrades isOpen={importOpen} onClose={() => setImportOpen(false)} onImport={addTrade} onImportBulk={addTradesBulk} />
+        )}
+      </Suspense>
+      <Suspense fallback={null}>
+        {settingsMounted && (
+          <JournalSettingsModal
+            isOpen={settingsOpen}
+            onClose={() => setSettingsOpen(false)}
+            onArchive={(name) => { setArchiveTargetName(name); setArchiveAnimating(true); }}
+            onImport={() => setImportOpen(true)}
+            onExport={exportCSV}
+            canExport={trades.length > 0}
+          />
+        )}
+      </Suspense>
+      <Suspense fallback={null}>
+        {shareMounted && (
+          <TradeShareModal
+            isOpen={!!shareTarget}
+            onClose={() => setShareTarget(null)}
+            trade={shareTarget}
+          />
+        )}
+      </Suspense>
 
       <ArchiveAnimation
         isOpen={archiveAnimating}
