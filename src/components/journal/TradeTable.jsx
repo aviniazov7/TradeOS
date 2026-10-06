@@ -1,5 +1,5 @@
 import { useState, useMemo, Fragment } from 'react';
-import { Pencil, Trash2, Share2, Eye, TrendingUp, TrendingDown, Copy, Check, ArrowUp, ArrowDown, ArrowUpDown } from 'lucide-react';
+import { Pencil, Trash2, Share2, Eye, TrendingUp, TrendingDown, Check, ArrowUp, ArrowDown, ArrowUpDown } from 'lucide-react';
 import { formatDate, formatPrice, formatCurrency, formatPercent, formatRR } from '../../utils/formatters';
 import { isClosedTrade, safePnl } from '../../utils/calculations';
 import { getExchangeLogo } from '../../utils/constants';
@@ -115,7 +115,7 @@ function SortTh({ label, sortKey, sort, onSortChange }) {
 export default function TradeTable({
   trades, allTrades, liveById = {}, sort, onSortChange, showMonths = true,
   selectMode = false, selectedIds, onToggleSelect,
-  onEdit, onDelete, onDuplicate, onShare, isLimitPending,
+  onEdit, onDelete, onShare, isLimitPending,
 }) {
   const [detailTrade, setDetailTrade] = useState(null);
   const monthTotals = useMemo(() => buildMonthTotals(allTrades || trades), [allTrades, trades]);
@@ -290,11 +290,6 @@ export default function TradeTable({
                         <button onClick={(e) => { e.stopPropagation(); onEdit(trade); }} className="p-1 rounded text-text-muted hover:text-accent-primary hover:bg-bg-tertiary transition-colors cursor-pointer" title="עריכה">
                           <Pencil className="w-3.5 h-3.5" />
                         </button>
-                        {onDuplicate && (
-                          <button onClick={(e) => { e.stopPropagation(); onDuplicate(trade); }} className="p-1 rounded text-text-muted hover:text-accent-primary hover:bg-bg-tertiary transition-colors cursor-pointer" title="שכפול — עסקה חדשה עם אותם פרטים">
-                            <Copy className="w-3.5 h-3.5" />
-                          </button>
-                        )}
                         <button onClick={(e) => { e.stopPropagation(); onDelete(trade); }} className="p-1 rounded text-text-muted hover:text-loss hover:bg-bg-tertiary transition-colors cursor-pointer" title="מחיקה">
                           <Trash2 className="w-3.5 h-3.5" />
                         </button>
@@ -309,7 +304,7 @@ export default function TradeTable({
           </tbody>
         </table>
       </div>
-      <TradeDetailModal trade={detailTrade} isOpen={!!detailTrade} onClose={() => setDetailTrade(null)} onEdit={onEdit} onDelete={onDelete} onDuplicate={onDuplicate} onShare={onShare} />
+      <TradeDetailModal trade={detailTrade} isOpen={!!detailTrade} onClose={() => setDetailTrade(null)} onEdit={onEdit} onDelete={onDelete} onShare={onShare} />
     </>
   );
 }

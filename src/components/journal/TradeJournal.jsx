@@ -112,8 +112,6 @@ export default function TradeJournal() {
   // Bulk selection on the trades tab.
   const [selectMode, setSelectMode] = useState(false);
   const [selectedIds, setSelectedIds] = useState(() => new Set());
-  // "Duplicate trade": the source trade seeds a NEW trade form.
-  const [templateTrade, setTemplateTrade] = useState(null);
   // The active tab lives in the URL (?tab=analytics) so a refresh keeps it and
   // the browser's back button steps between tabs. 'trades' is the bare URL.
   const tabParam = searchParams.get('tab');
@@ -462,13 +460,6 @@ export default function TradeJournal() {
   const handleCloseForm = () => {
     setFormOpen(false);
     setEditingTrade(null);
-    setTemplateTrade(null);
-  };
-
-  const handleDuplicate = (trade) => {
-    setEditingTrade(null);
-    setTemplateTrade(trade);
-    setFormOpen(true);
   };
 
   const toggleSelected = (id) => setSelectedIds((prev) => {
@@ -660,7 +651,6 @@ export default function TradeJournal() {
                 onToggleSelect={toggleSelected}
                 onEdit={handleEdit}
                 onDelete={handleDeleteWithUndo}
-                onDuplicate={handleDuplicate}
                 onShare={setShareTarget}
                 isLimitPending={isLimitPending}
               />
@@ -760,7 +750,7 @@ export default function TradeJournal() {
           fallback={null}: the Modal draws its own backdrop once loaded. */}
       <Suspense fallback={null}>
         {formMounted && (
-          <TradeForm isOpen={formOpen} onClose={handleCloseForm} trade={editingTrade} template={templateTrade} onSave={handleSave}
+          <TradeForm isOpen={formOpen} onClose={handleCloseForm} trade={editingTrade} onSave={handleSave}
             riskSettings={{ riskType: activeJournal?.riskType, riskValue: activeJournal?.riskValue, currentBalance: displayedCurrentBalance }}
             journalAssetClass={activeJournal?.assetClass || 'crypto'}
             livePrices={prices} />

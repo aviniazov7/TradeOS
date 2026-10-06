@@ -80,7 +80,7 @@ const MENTAL_RATINGS = [
   { key: 'confidenceRating', label: 'ביטחון בעסקה', Icon: ShieldCheck },
 ];
 
-export default function TradeForm({ isOpen, onClose, trade, template = null, onSave, riskSettings, livePrices = {}, journalAssetClass = 'crypto' }) {
+export default function TradeForm({ isOpen, onClose, trade, onSave, riskSettings, livePrices = {}, journalAssetClass = 'crypto' }) {
   // Asset class is owned by the JOURNAL — every trade inherits it, no per-trade
   // toggle. Editing a trade keeps that trade's own stored class.
   const newTradeAssetClass = journalAssetClass === 'futures_cme' ? 'futures_cme' : 'crypto';
@@ -177,24 +177,6 @@ export default function TradeForm({ isOpen, onClose, trade, template = null, onS
         stressRating: trade.stressRating ?? 3,
         confidenceRating: trade.confidenceRating ?? 3,
       });
-    } else if (template && (template.assetClass || 'crypto') === newTradeAssetClass) {
-      // "Duplicate": a NEW trade seeded with the setup of an existing one
-      // (instrument, side, strategy, timeframe, sizing style, tags) — never its
-      // prices, dates, results or notes, which belong to that one trade.
-      setForm({
-        ...defaultForm,
-        assetClass: newTradeAssetClass,
-        pair: template.pair || template.symbol || (newTradeAssetClass === 'futures_cme' ? 'ES' : 'BTCUSDT'),
-        contracts: template.contract?.contracts != null ? String(template.contract.contracts) : '1',
-        direction: template.direction || 'long',
-        orderType: template.orderType || 'market',
-        marketType: template.marketType || 'futures',
-        strategy: template.strategy || '',
-        trigger: template.trigger || '',
-        timeframe: template.timeframe || '4H',
-        leverage: template.leverage ?? DEFAULT_LEVERAGE,
-        tags: Array.isArray(template.tags) ? template.tags : [],
-      });
     } else {
       // New trade: seed the asset class from the user's profile preference and
       // pick a sensible default symbol for it.
@@ -206,7 +188,7 @@ export default function TradeForm({ isOpen, onClose, trade, template = null, onS
     }
     setActiveTab('trade');
     sessionManuallySet.current = false;
-  }, [trade, template, isOpen]); // allStrategies intentionally excluded — it only affects dropdown options, not form state; including it caused form resets mid-edit
+  }, [trade, isOpen]); // allStrategies intentionally excluded — it only affects dropdown options, not form state; including it caused form resets mid-edit
 
   // Auto-detect session from entry date (only if user hasn't manually selected)
   useEffect(() => {
@@ -548,7 +530,7 @@ export default function TradeForm({ isOpen, onClose, trade, template = null, onS
   const labelClass = 'block text-xs text-text-muted mb-1';
 
   return (
-    <Modal isOpen={isOpen} onClose={onClose} title={trade ? 'עריכת עסקה' : template ? 'עסקה חדשה (שכפול)' : 'עסקה חדשה'} maxWidth="max-w-2xl">
+    <Modal isOpen={isOpen} onClose={onClose} title={trade ? 'עריכת עסקה' : 'עסקה חדשה'} maxWidth="max-w-2xl">
       <form onSubmit={handleSubmit}>
 
         {/* Tab bar */}
