@@ -83,10 +83,10 @@ const stripeClass = (status, isPending, pnl) => {
   return pnl > 0 ? 'border-s-profit' : pnl < 0 ? 'border-s-loss' : 'border-s-breakeven';
 };
 
-// "Live" marker next to an open position's floating P&L.
+// "LIVE" marker next to an open position's floating P&L.
 function LiveTag() {
   // font-sans: the P&L cell uses the mono number face, which mangles Hebrew.
-  return <span className="font-sans text-[10px] font-bold px-1.5 py-0.5 rounded bg-accent-primary/15 text-accent-primary leading-none tracking-normal" dir="rtl">חי</span>;
+  return <span className="font-sans text-[10px] font-bold px-1.5 py-0.5 rounded bg-accent-primary/15 text-accent-primary leading-none tracking-wide" dir="ltr">LIVE</span>;
 }
 
 function SelectBox({ checked }) {

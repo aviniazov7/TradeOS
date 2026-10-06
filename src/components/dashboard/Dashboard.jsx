@@ -39,7 +39,7 @@ import { fetchPerpPrices } from '../../services/bybitDirect';
 const getExchangeLabel = (value) => EXCHANGES.find((e) => e.value === value)?.label || value;
 
 // One journal on the dashboard: the portfolio value says where it comes from
-// — the live exchange wallet ("חי"), the starting balance + P&L ("מחושב"), or
+// — the live exchange wallet ("LIVE"), the starting balance + P&L ("מחושב"), or
 // nothing we can stand behind (no live wallet and no starting balance).
 function JournalTile({ j, mask, onOpen }) {
   const pnlCls = j.pnl > 0 ? 'text-profit' : j.pnl < 0 ? 'text-loss' : 'text-text-secondary';
@@ -55,8 +55,9 @@ function JournalTile({ j, mask, onOpen }) {
         </div>
         {j.balance !== null && (
           j.live ? (
-            <span className="inline-flex items-center gap-1 text-[10px] font-semibold px-2 py-0.5 rounded-full bg-profit/10 text-profit border border-profit/25 shrink-0">
-              <span className="w-1.5 h-1.5 rounded-full bg-profit" />חי
+            <span dir="ltr" className="inline-flex items-center gap-1.5 text-[10px] font-bold tracking-wide px-2 py-0.5 rounded-full bg-profit/10 text-profit border border-profit/25 shrink-0"
+              title="שווי חי מהבורסה">
+              <span className="w-1.5 h-1.5 rounded-full bg-profit animate-pulse" />LIVE
             </span>
           ) : (
             <span className="text-[10px] font-semibold px-2 py-0.5 rounded-full bg-bg-tertiary text-text-muted border border-border-primary shrink-0"
