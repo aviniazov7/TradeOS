@@ -96,7 +96,8 @@ function ConnectedCard({ exchange, balance, syncing, onSync, onEdit, onDisconnec
       animate={{ opacity: 1, y: 0 }}
       transition={{ delay: index * 0.06, type: 'spring', damping: 24, stiffness: 260 }}
       className="relative overflow-hidden p-5 flex flex-col gap-4"
-      style={{ borderColor: `${accent}40` }}
+      // Hover beam in the exchange's own colour, not the default brand blue.
+      style={{ borderColor: `${accent}40`, '--beam-from': accent, '--beam-to': `${accent}99` }}
     >
       {/* Brand wash from the logo corner + a hairline of the exchange colour */}
       <div className="absolute inset-0 pointer-events-none" style={{ background: `radial-gradient(120% 90% at 100% 0%, ${accent}1f 0%, transparent 55%)` }} />
