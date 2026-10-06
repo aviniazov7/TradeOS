@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { messageToHtml, ctaUrlFor, buildCampaignEmails, chunk, CAMPAIGN_MAX, APP_URL } from './adminEmail';
+import { messageToHtml, ctaUrlFor, buildCampaignEmails, chunk, CAMPAIGN_MAX, APP_URL, friendlyResendError } from './adminEmail';
 
 // A stand-in for index.js's emailShell that exposes what it was given.
 const shell = (o) => JSON.stringify(o);
@@ -52,5 +52,19 @@ describe('buildCampaignEmails', () => {
 describe('chunk', () => {
   it('splits into batches of the given size', () => {
     expect(chunk([1, 2, 3, 4, 5], 2)).toEqual([[1, 2], [3, 4], [5]]);
+  });
+});
+
+describe('friendlyResendError', () => {
+  it('explains test mode in Hebrew', () => {
+    expect(friendlyResendError(422, 'Invalid `to` field. Please use our testing email address instead of domains like `example.com`.'))
+      .toMatch(/^חיבור המיילים עדיין במצב בדיקה.* · קוד 422$/);
+    expect(friendlyResendError(403, 'You can only send testing emails to your own email address')).toMatch(/במצב בדיקה/);
+  });
+  it('covers the other common failures', () => {
+    expect(friendlyResendError(403, 'The x.com domain is not verified')).toMatch(/לא אומת/);
+    expect(friendlyResendError(401, 'API key is invalid')).toMatch(/מפתח/);
+    expect(friendlyResendError(429, 'Too many requests')).toMatch(/בעוד דקה/);
+    expect(friendlyResendError(500, '')).toBe('שליחת המייל נכשלה · קוד 500');
   });
 });
