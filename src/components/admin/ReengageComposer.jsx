@@ -3,6 +3,7 @@ import { Send, Loader2, Mail, Bell, FlaskConical, Sparkles, RefreshCw } from 'lu
 import toast from 'react-hot-toast';
 import { useAuth } from '../../contexts/AuthContext';
 import { adminSendBulkNotification, adminSendEmailCampaign, adminGenerateMarketHook } from '../../services/pushService';
+import SelectDropdown from '../shared/SelectDropdown';
 
 // Ready-made "come back" messages — a click fills the form, then edit freely.
 const TEMPLATES = [
@@ -40,7 +41,8 @@ const DESTINATIONS = [
   { path: '/premium', label: 'Premium' },
 ];
 
-const field = 'w-full bg-bg-secondary border border-border-primary rounded-lg px-3 py-2 text-sm text-text-primary outline-none focus:border-accent-primary';
+// Same look as the app's SelectDropdown so inputs and the destination menu match.
+const field = 'w-full bg-bg-tertiary border border-border-primary rounded-lg px-3 py-2.5 text-sm text-text-primary placeholder:text-text-muted outline-none focus:border-accent-primary transition-colors';
 
 function ChannelToggle({ checked, onChange, icon: Icon, label, hint, disabled }) {
   return (
@@ -182,20 +184,22 @@ export default function ReengageComposer({ recipients, onSent }) {
 
       <div className="grid grid-cols-2 gap-2">
         <input value={cta} onChange={(e) => setCta(e.target.value)} placeholder="טקסט הכפתור במייל" maxLength={40} className={field} disabled={!useEmail} />
-        <select value={path} onChange={(e) => setPath(e.target.value)} className={`${field} cursor-pointer`}>
-          {DESTINATIONS.map((d) => <option key={d.path} value={d.path}>{d.label}</option>)}
-        </select>
+        <SelectDropdown
+          value={path}
+          onChange={setPath}
+          options={DESTINATIONS.map((d) => ({ value: d.path, label: d.label }))}
+        />
       </div>
 
       {/* Live preview of the email, so what lands in the inbox is no surprise. */}
       {useEmail && (title || body) && (
-        <div className="rounded-xl border border-accent-primary/20 bg-[#0f1521] p-4 text-right">
+        <div className="rounded-2xl border border-[#26262b] bg-[#0c0c0e] p-4 text-right">
           <div className="text-[10px] text-text-muted mb-2">תצוגה מקדימה של המייל</div>
-          <div className="text-base font-bold text-[#e5e7eb]">{title || '—'}</div>
-          <div className="text-sm text-[#cbd0d8] mt-2">היי {recipients.length === 1 && recipients[0].name ? recipients[0].name : '{שם}'},</div>
-          <div className="text-sm text-[#cbd0d8] mt-1 whitespace-pre-line leading-relaxed">{body}</div>
+          <div className="text-lg font-bold text-[#f0f0f0]">{(title || '—').replace(/\p{Extended_Pictographic}\uFE0F?/gu, '').trim() || '—'}</div>
+          <div className="text-sm text-[#a0a0b0] mt-2">היי {recipients.length === 1 && recipients[0].name ? recipients[0].name : '{שם}'},</div>
+          <div className="text-sm text-[#a0a0b0] mt-1 whitespace-pre-line leading-relaxed">{body}</div>
           <div className="mt-4 flex justify-center">
-            <span className="inline-block px-6 py-2.5 rounded-lg bg-[#00bfff] text-[#0a0e16] text-sm font-bold">{cta || 'כניסה ל-TradeOS'}</span>
+            <span className="inline-block px-6 py-2.5 rounded-xl bg-[#3b82f6] text-white text-sm font-bold">{cta || 'כניסה ל-TradeOS'}</span>
           </div>
         </div>
       )}

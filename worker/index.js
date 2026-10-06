@@ -15,6 +15,8 @@ import {
   normalizeMexcClosed, normalizeOkxClosed, normalizeOkxOpen, normalizeBitgetClosed,
 } from './exchangeNormalize.js';
 import { buildCampaignEmails, chunk } from './adminEmail.js';
+import { emailShell, C as EMAIL_C, bg as emailBg, txt as emailTxt, esc as emailEsc, para as emailPara } from './emailTheme.js';
+import { buildDigestEmail } from './adminDigest.js';
 import { pickMarketFacts, HOOK_SYSTEM_PROMPT, buildHookUserMessage, validateHook, templateHook } from './marketHook.js';
 
 // Binance's public market-data mirror — api.binance.com returns 403 to
@@ -443,6 +445,7 @@ async function listAllUsersAdmin(env) {
         lastActive: f.lastActive?.timestampValue || f.lastActive?.stringValue || null,
         email: f.email?.stringValue || null,
         displayName: f.displayName?.stringValue || f.email?.stringValue || 'משתמש',
+        onboardingCompleted: f.onboardingCompleted?.booleanValue === true,
       });
     }
     if (!data.nextPageToken) break;
@@ -558,53 +561,6 @@ async function sendEmailBatch(env, messages) {
   }
 }
 
-// Branded RTL email shell. All CSS is inlined because most mail clients strip
-// <style> blocks. The CTA button uses table-based layout for Outlook
-// compatibility.
-function emailShell({ headline, intro, ctaText, ctaUrl, body, footer }) {
-  const APP_URL = 'https://tradeos-91a58.web.app';
-  const esc = (s) => String(s || '').replace(/[&<>"']/g, (c) => (
-    { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]
-  ));
-  const cta = ctaUrl && ctaText ? `
-    <table role="presentation" cellspacing="0" cellpadding="0" border="0" align="center" style="margin:28px auto 8px">
-      <tr><td align="center" bgcolor="#00bfff" style="border-radius:10px">
-        <a href="${esc(ctaUrl)}" target="_blank" style="display:inline-block;padding:14px 32px;font-family:Arial,sans-serif;font-size:15px;font-weight:bold;color:#0a0e16;text-decoration:none;border-radius:10px">${esc(ctaText)}</a>
-      </td></tr>
-    </table>` : '';
-  return `<!DOCTYPE html><html lang="he" dir="rtl"><head><meta charset="utf-8" /><meta name="viewport" content="width=device-width, initial-scale=1" />
-<meta name="color-scheme" content="dark" />
-<meta name="supported-color-schemes" content="dark" />
-<style>:root{color-scheme:dark;supported-color-schemes:dark}</style></head>
-<body bgcolor="#0a0e16" style="margin:0;padding:0;background:#0a0e16;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Arial,sans-serif">
-  <table role="presentation" width="100%" cellspacing="0" cellpadding="0" border="0" bgcolor="#0a0e16" style="background:#0a0e16">
-    <tr><td align="center" style="padding:32px 16px">
-      <table role="presentation" width="100%" cellspacing="0" cellpadding="0" border="0" bgcolor="#0f1521" style="max-width:560px;background:#0f1521;border:1px solid rgba(0,191,255,0.18);border-radius:16px;overflow:hidden">
-        <!-- Header / brand -->
-        <tr><td style="padding:24px 28px;border-bottom:1px solid rgba(255,255,255,0.06);text-align:right">
-          <div style="display:inline-block;vertical-align:middle">
-            <span style="font-size:20px;font-weight:bold;color:#e5e7eb">TradeOS</span>
-            <span style="display:inline-block;margin-right:6px;color:#00bfff;font-size:12px;letter-spacing:1px">— יומן מסחר חכם</span>
-          </div>
-        </td></tr>
-        <!-- Body -->
-        <tr><td style="padding:32px 28px;color:#e5e7eb;text-align:right;line-height:1.6">
-          <h1 style="margin:0 0 12px;font-size:22px;color:#e5e7eb;font-weight:bold">${esc(headline)}</h1>
-          ${intro ? `<p style="margin:0 0 16px;font-size:15px;color:#cbd0d8">${esc(intro)}</p>` : ''}
-          ${body || ''}
-          ${cta}
-        </td></tr>
-        <!-- Footer -->
-        <tr><td style="padding:18px 28px;border-top:1px solid rgba(255,255,255,0.06);text-align:right">
-          <p style="margin:0;font-size:12px;color:#7d8492">${footer || `קיבלת את ההודעה הזו כי יש לך חשבון פעיל ב-TradeOS. <a href="${APP_URL}" style="color:#00bfff;text-decoration:none">פתח את האפליקציה</a>`}</p>
-        </td></tr>
-      </table>
-      <p style="margin:16px 0 0;font-size:11px;color:#5a6171;text-align:center">TradeOS &copy; ${new Date().getFullYear()}</p>
-    </td></tr>
-  </table>
-</body></html>`;
-}
-
 // Branded confirmation email for a Premium grant — payment, gift, or coupon
 // redemption. Shared by /admin/payment-email and the coupon-redeem flow so
 // every path sends the same polished email.
@@ -614,8 +570,8 @@ function buildPremiumEmail({ kind = 'payment', name, amount, methodLabel, days, 
   ));
   const row = (label, value) => `
     <tr>
-      <td style="padding:8px 0;font-size:13px;color:#7d8492;text-align:right">${esc(label)}</td>
-      <td style="padding:8px 0;font-size:14px;color:#e5e7eb;font-weight:bold;text-align:left" dir="ltr">${esc(value)}</td>
+      <td style="padding:10px 0;font-size:13px;color:${EMAIL_C.sub};text-align:right;border-bottom:1px solid ${EMAIL_C.line}">${emailTxt(esc(label))}</td>
+      <td style="padding:10px 0;font-size:14px;color:${EMAIL_C.text};font-weight:bold;text-align:left;border-bottom:1px solid ${EMAIL_C.line}" dir="ltr">${emailTxt(esc(value))}</td>
     </tr>`;
   const rows = [];
   if (kind === 'payment' && amount > 0) rows.push(row('סכום ששולם', `₪${amount}`));
@@ -624,19 +580,19 @@ function buildPremiumEmail({ kind = 'payment', name, amount, methodLabel, days, 
   rows.push(row('תקופת המנוי', days ? `${days} ימים` : 'ללא הגבלה'));
   if (expiresStr) rows.push(row('בתוקף עד', expiresStr));
 
-  const featureLi = (t) => `<li style="margin:0 0 6px;font-size:14px;color:#cbd0d8">${esc(t)}</li>`;
+  const featureLi = (t) => `<li style="margin:0 0 6px;font-size:14px;color:${EMAIL_C.sub}">${emailTxt(esc(t))}</li>`;
   const body = `
-    <div style="background:rgba(0,191,255,0.06);border:1px solid rgba(0,191,255,0.22);border-radius:12px;padding:6px 18px;margin:4px 0 18px">
+    <div style="${emailBg(EMAIL_C.tile)}border:1px solid ${EMAIL_C.line};border-radius:14px;padding:4px 18px;margin:4px 0 20px">
       <table role="presentation" width="100%" cellspacing="0" cellpadding="0" border="0">${rows.join('')}</table>
     </div>
-    <p style="margin:0 0 8px;font-size:14px;color:#e5e7eb;font-weight:bold">מה נפתח לך עכשיו:</p>
+    ${emailPara('מה נפתח לך עכשיו:', { size: 14, color: EMAIL_C.text, bold: true, margin: '0 0 8px' })}
     <ul style="margin:0 0 4px;padding-right:18px;text-align:right">
       ${featureLi('TradeAI ללא הגבלה — שאלות, ניתוחי גרפים ותובנות')}
       ${featureLi('ניתוח AI מלא של יומן המסחר')}
       ${featureLi('יומני מסחר, ארנקים והתראות ללא הגבלה')}
       ${featureLi('חיבורי בורסה וניתוחים מתקדמים')}
     </ul>
-    ${kind === 'payment' ? '<p style="margin:14px 0 0;font-size:12px;color:#7d8492">אישור זה נשלח לנוחותך ואינו מהווה חשבונית מס/קבלה.</p>' : ''}`;
+    ${kind === 'payment' ? emailPara('אישור זה נשלח לנוחותך ואינו מהווה חשבונית מס/קבלה.', { size: 12, color: EMAIL_C.muted, margin: '14px 0 0' }) : ''}`;
 
   const first = (name || '').trim().split(/\s+/)[0];
   const hey = first ? `היי ${first}, ` : '';
@@ -649,50 +605,6 @@ function buildPremiumEmail({ kind = 'payment', name, amount, methodLabel, days, 
     subject: meta.subject,
     html: emailShell({ headline: meta.headline, intro: meta.intro, body, ctaText: 'פתח את TradeOS', ctaUrl: 'https://tradeos-91a58.web.app' }),
   };
-}
-
-// Build the weekly admin digest content (stats + push body + email html).
-// Shared between the Sunday cron and the on-demand /admin/test-digest endpoint
-// so they're guaranteed to look identical.
-function buildAdminDigest(users) {
-  const now = Date.now();
-  const WEEK = 7 * 86400000;
-  const isPrem = (u) => u.plan === 'premium' && (!u.planExpires || new Date(u.planExpires).getTime() > now);
-  const ms = (v) => (v ? new Date(v).getTime() : 0);
-
-  let newUsers = 0, upgrades = 0, expiringSoon = 0, churn = 0;
-  for (const u of users) {
-    if (u.role === 'admin') continue;
-    if (now - ms(u.createdAt) < WEEK && ms(u.createdAt) > 0) newUsers++;
-    if (isPrem(u) && now - ms(u.planGrantedAt) < WEEK && ms(u.planGrantedAt) > 0) upgrades++;
-    if (isPrem(u) && u.planExpires) {
-      const exp = ms(u.planExpires) - now;
-      if (exp > 0 && exp < WEEK) expiringSoon++;
-    }
-    if (isPrem(u) && ms(u.lastActive) > 0 && now - ms(u.lastActive) >= WEEK) churn++;
-  }
-
-  const pushBody = `📈 ${newUsers} נרשמו · 👑 ${upgrades} שדרגו · ⏳ ${expiringSoon} עומדים להסתיים · ⚠️ ${churn} בסיכון נטישה`;
-  const emailBody = `
-    <div style="display:grid;gap:10px;margin:8px 0 4px">
-      <div style="background:rgba(0,191,255,0.08);border:1px solid rgba(0,191,255,0.25);border-radius:10px;padding:14px 16px;text-align:right">
-        <div style="font-size:11px;color:#7d8492">חדשים השבוע</div>
-        <div style="font-size:24px;font-weight:bold;color:#00bfff">📈 ${newUsers}</div>
-      </div>
-      <div style="background:rgba(245,158,11,0.08);border:1px solid rgba(245,158,11,0.3);border-radius:10px;padding:14px 16px;text-align:right">
-        <div style="font-size:11px;color:#7d8492">שדרגו ל-Premium</div>
-        <div style="font-size:24px;font-weight:bold;color:#f59e0b">👑 ${upgrades}</div>
-      </div>
-      <div style="background:rgba(245,158,11,0.05);border:1px solid rgba(245,158,11,0.25);border-radius:10px;padding:14px 16px;text-align:right">
-        <div style="font-size:11px;color:#7d8492">מנויים שעומדים להסתיים השבוע</div>
-        <div style="font-size:24px;font-weight:bold;color:#f59e0b">⏳ ${expiringSoon}</div>
-      </div>
-      <div style="background:rgba(239,68,68,0.06);border:1px solid rgba(239,68,68,0.3);border-radius:10px;padding:14px 16px;text-align:right">
-        <div style="font-size:11px;color:#7d8492">לקוחות בסיכון נטישה</div>
-        <div style="font-size:24px;font-weight:bold;color:#ef4444">⚠️ ${churn}</div>
-      </div>
-    </div>`;
-  return { newUsers, upgrades, expiringSoon, churn, pushBody, emailBody };
 }
 
 // ---- Weekly admin digest ---------------------------------------------------
@@ -719,33 +631,25 @@ async function checkWeeklyDigest(env) {
   const admins = users.filter((u) => u.role === 'admin').map((u) => u.uid);
   if (!admins.length) return;
 
-  const digest = buildAdminDigest(users);
+  const report = buildDigestEmail(users);
   for (const adminUid of admins) {
     await sendPushToUser(env, adminUid, {
-      title: '📊 הסיכום השבועי שלך — TradeOS',
-      body: digest.pushBody,
+      title: 'הדוח השבועי — TradeOS',
+      body: report.push,
       url: '/admin',
       tag: 'weekly-digest',
     });
   }
 
-  // Email digest — same content as push, prettier presentation. Each admin
-  // gets a one-glance dashboard in their inbox. MAIL_TO_ADMIN_OVERRIDE pins
-  // the recipient to a fixed address (see /admin/test-digest for why).
+  // Email — same numbers, full report. MAIL_TO_ADMIN_OVERRIDE pins the
+  // recipient to a fixed address (see /admin/test-digest for why).
   const adminUsers = users.filter((u) => u.role === 'admin' && u.email);
   if (adminUsers.length === 0 && !env.MAIL_TO_ADMIN_OVERRIDE) return;
-  const html = emailShell({
-    headline: '📊 הסיכום השבועי שלך',
-    intro: `הנה הדופק של TradeOS השבוע, ${il.toLocaleDateString('he-IL', { day: '2-digit', month: 'long' })}.`,
-    body: digest.emailBody,
-    ctaText: 'פתח את פאנל הניהול',
-    ctaUrl: 'https://tradeos-91a58.web.app/admin',
-  });
   const recipients = env.MAIL_TO_ADMIN_OVERRIDE
     ? [env.MAIL_TO_ADMIN_OVERRIDE]
     : adminUsers.map((a) => a.email);
   for (const to of recipients) {
-    await sendEmail(env, { to, subject: '📊 הסיכום השבועי שלך — TradeOS', html });
+    await sendEmail(env, { to, subject: report.subject, html: report.html });
   }
 }
 
@@ -3544,13 +3448,6 @@ async function refreshNewsDigest(env) {
 
 // ==================== Contact Developer ====================
 
-function escapeHtml(str) {
-  return String(str ?? '')
-    .replace(/&/g, '&amp;')
-    .replace(/</g, '&lt;')
-    .replace(/>/g, '&gt;');
-}
-
 async function handleContact(request, env, cors) {
   const jsonHeaders = { ...cors, 'Content-Type': 'application/json' };
   try {
@@ -3632,11 +3529,11 @@ async function handleContact(request, env, cors) {
     let emailOk = false;
     if (recipients.length) {
       const html = emailShell({
-        headline: '📨 הודעה חדשה מ-TradeOS',
-        intro: `${escapeHtml(name)} (${escapeHtml(tokenEmail || 'ללא מייל')}) שלח/ה הודעה מהאפליקציה.`,
+        headline: 'הודעה חדשה מ-TradeOS',
+        intro: `${name} (${tokenEmail || 'ללא מייל'}) שלח/ה הודעה מהאפליקציה.`,
         body:
-          `<p style="margin:0 0 12px;font-size:12px;color:#7d8492">UID: <code>${escapeHtml(uid)}</code></p>` +
-          `<p style="margin:0;font-size:14px;color:#e6e9ef;white-space:pre-wrap;text-align:right">${escapeHtml(message)}</p>`,
+          emailPara(`UID: ${emailEsc(uid)}`, { size: 12, color: EMAIL_C.muted, margin: '0 0 12px' }) +
+          `<div style="${emailBg(EMAIL_C.tile)}border:1px solid ${EMAIL_C.line};border-radius:14px;padding:16px 18px;font-size:14px;line-height:1.7;color:${EMAIL_C.text};white-space:pre-wrap;text-align:right">${emailTxt(emailEsc(message))}</div>`,
         ctaText: 'פתח את פאנל הניהול',
         ctaUrl: 'https://tradeos-91a58.web.app/admin',
       });
@@ -4540,22 +4437,14 @@ async function handleRequest(request, env) {
     const adminTo = env.MAIL_TO_ADMIN_OVERRIDE || me?.email;
     if (!adminTo) return new Response(JSON.stringify({ error: 'admin email not found on profile' }), { status: 400, headers: { ...cors, 'Content-Type': 'application/json' } });
 
-    const digest = buildAdminDigest(users);
-    const il = getIsraelTime();
-    const html = emailShell({
-      headline: '📊 הסיכום השבועי שלך',
-      intro: `הנה הדופק של TradeOS היום, ${il.toLocaleDateString('he-IL', { day: '2-digit', month: 'long' })} (בדיקה).`,
-      body: digest.emailBody,
-      ctaText: 'פתח את פאנל הניהול',
-      ctaUrl: 'https://tradeos-91a58.web.app/admin',
-    });
-    const r = await sendEmail(env, { to: adminTo, subject: '[TEST] 📊 הסיכום השבועי שלך — TradeOS', html });
+    const report = buildDigestEmail(users, { test: true });
+    const r = await sendEmail(env, { to: adminTo, subject: report.subject, html: report.html });
     if (!r.ok) {
       // Pass the actual Resend message back so the admin sees the real reason
       // (e.g. "you can only send testing emails to your own email address").
       return new Response(JSON.stringify({ error: `Resend ${r.status}: ${r.message || 'unknown error'}`, sentTo: adminTo }), { status: 502, headers: { ...cors, 'Content-Type': 'application/json' } });
     }
-    return new Response(JSON.stringify({ ok: true, sentTo: adminTo, stats: { newUsers: digest.newUsers, upgrades: digest.upgrades, expiringSoon: digest.expiringSoon, churn: digest.churn } }), { headers: { ...cors, 'Content-Type': 'application/json' } });
+    return new Response(JSON.stringify({ ok: true, sentTo: adminTo, stats: { newUsers: report.digest.newWeek, upgrades: report.digest.upgrades, expiringSoon: report.digest.expiring.length, churn: report.digest.churn.length } }), { headers: { ...cors, 'Content-Type': 'application/json' } });
   }
 
   // Admin-only: send a branded Premium confirmation email (payment / gift) to

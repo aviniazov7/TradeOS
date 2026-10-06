@@ -2,6 +2,7 @@ import { useState, useRef } from 'react';
 import { Upload, FileText, AlertCircle, Check } from 'lucide-react';
 import toast from 'react-hot-toast';
 import Modal from '../shared/Modal';
+import SelectDropdown from '../shared/SelectDropdown';
 import { DEFAULT_LEVERAGE } from '../../utils/constants';
 
 const COLUMN_MAP = {
@@ -336,16 +337,15 @@ export default function ImportTrades({ isOpen, onClose, onImport, onImportBulk }
                   <label className="text-xs text-text-muted w-20 shrink-0">
                     {f.label} {f.required && <span className="text-loss">*</span>}
                   </label>
-                  <select
+                  <SelectDropdown
+                    compact
+                    allowClear
+                    className="flex-1 min-w-0"
                     value={columnMapping[f.key] || ''}
-                    onChange={(e) => updateMapping(f.key, e.target.value)}
-                    className="flex-1 bg-bg-tertiary border border-border-primary rounded px-2 py-1.5 text-xs text-text-primary outline-none"
-                  >
-                    <option value="">-- לא ממופה --</option>
-                    {parsed.headers.map((h) => (
-                      <option key={h} value={h}>{h}</option>
-                    ))}
-                  </select>
+                    onChange={(v) => updateMapping(f.key, v)}
+                    placeholder="-- לא ממופה --"
+                    options={parsed.headers.map((h) => ({ value: h, label: h }))}
+                  />
                   {columnMapping[f.key] && <Check className="w-3.5 h-3.5 text-profit shrink-0" />}
                 </div>
               ))}
