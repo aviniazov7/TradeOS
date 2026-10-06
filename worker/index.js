@@ -10,7 +10,9 @@ import {
   buildMentionIndex, attributeMoves, describeFinding, ATTRIBUTION_WINDOW_MIN,
 } from './newsImpact.js';
 import {
-  mexcStopsByPosition, mexcEntryTypeByPosition, mexcOrderKind, normalizeMexcClosed, normalizeOkxClosed, normalizeOkxOpen, normalizeBitgetClosed,
+  bybitWalletEquity, classifyExchangeAuthError, mexcStopsByPosition, mexcEntryTypeByPosition, mexcOrderKind, mexcExitsByPosition,
+  enrichWithOrders, okxOrderRow, okxStopRow, bitgetOrderRow, bitgetStopRow, mexcCronOpen, mexcCronClosed,
+  normalizeMexcClosed, normalizeOkxClosed, normalizeOkxOpen, normalizeBitgetClosed,
 } from './exchangeNormalize.js';
 
 // Binance's public market-data mirror — api.binance.com returns 403 to
@@ -738,6 +740,40 @@ async function fetchBybitOpen(apiKey, apiSecret) {
 }
 
 
+// ---- MEXC equivalents for the alerts cron (same shapes as the Bybit pair) ----
+async function mexcPrivateGet(apiKey, apiSecret, path, params = {}) {
+  const ts = Date.now().toString();
+  const qs = Object.keys(params).sort().map((k) => `${k}=${params[k]}`).join('&');
+  const sign = await bybitHmacHex(apiSecret, apiKey + ts + qs); // HMAC-SHA256 hex, same primitive
+  const res = await fetch(`https://contract.mexc.com${path}${qs ? `?${qs}` : ''}`, {
+    headers: { ApiKey: apiKey, 'Request-Time': ts, Signature: sign, 'Content-Type': 'application/json' },
+  });
+  const data = await res.json().catch(() => ({}));
+  if (!(data.success === true || data.code === 0)) return null;
+  return Array.isArray(data.data) ? data.data : (data.data?.resultList || data.data?.list || []);
+}
+
+async function fetchMexcOpen(apiKey, apiSecret) {
+  const rows = await mexcPrivateGet(apiKey, apiSecret, '/api/v1/private/position/open_positions');
+  return rows ? rows.filter((p) => parseFloat(p.holdVol) > 0).map(mexcCronOpen) : null;
+}
+
+async function fetchMexcClosed(apiKey, apiSecret) {
+  const rows = await mexcPrivateGet(apiKey, apiSecret, '/api/v1/private/position/list/history_positions', {
+    page_num: '1', page_size: '50', start_time: String(Date.now() - 7 * 24 * 60 * 60 * 1000),
+  });
+  if (!rows) return null;
+  const cs = await mexcContractSizes();
+  return rows.map((p) => mexcCronClosed(p, cs[(p.symbol || '').replace(/_/g, '')] || 1));
+}
+
+// Venues the alerts cron can watch, and how to label them in a notification.
+const ALERT_FETCHERS = {
+  bybit: { open: fetchBybitOpen, closed: (k, s) => fetchBybitClosedPnl(k, s, 50) },
+  mexc: { open: fetchMexcOpen, closed: fetchMexcClosed },
+};
+const ALERT_EXCHANGE_NAMES = { bybit: 'Bybit', mexc: 'MEXC' };
+
 // pushexch:{uid}:{exchange}) for newly closed trades → push a result
 // notification, plus a once-a-day summary. Runs from the 10-minute cron.
 async function checkExchangeClosedTrades(env) {
@@ -759,7 +795,9 @@ async function checkExchangeClosedTrades(env) {
 
   for (const name of keyNames) {
     const [, uid, exchange] = name.split(':');
-    if (exchange !== 'bybit') continue; // only Bybit polling for now
+    const fetchers = ALERT_FETCHERS[exchange];
+    if (!fetchers) continue; // venue not watched in the background (yet)
+    const venue = ALERT_EXCHANGE_NAMES[exchange] || exchange;
     const creds = await loadExchangeCreds(env, uid, exchange); // decrypts + self-heals legacy plaintext
     if (!creds?.apiKey || !creds?.apiSecret) {
       // Key expired (CREDS_TTL) or was deleted — prune it from the index so
@@ -771,7 +809,7 @@ async function checkExchangeClosedTrades(env) {
     // ---- Position-opened notifications ----
     // Compare the live open positions to the snapshot from the previous tick;
     // anything new → "position opened". First run only seeds the snapshot.
-    const openPositions = await fetchBybitOpen(creds.apiKey, creds.apiSecret);
+    const openPositions = await fetchers.open(creds.apiKey, creds.apiSecret);
     if (openPositions) {
       const openKey = `pushopen:${uid}:${exchange}`;
       const prevRaw = await env.ALERTS_KV.get(openKey);
@@ -782,7 +820,7 @@ async function checkExchangeClosedTrades(env) {
         for (const p of opened) {
           const dir = p.direction === 'long' ? 'Long' : 'Short';
           await sendPushToUser(env, uid, {
-            title: `🔵 נפתחה עסקה — ${p.pair} ${dir}`,
+            title: `🔵 נפתחה עסקה — ${p.pair} ${dir} · ${venue}`,
             body: `כניסה: ${fmtPrice(p.entryPrice)}${p.leverage > 1 ? ` · מינוף ${p.leverage}x` : ''}`,
             url: '/journal',
             tag: `open-${p.id}`,
@@ -798,7 +836,7 @@ async function checkExchangeClosedTrades(env) {
       }
     }
 
-    const trades = await fetchBybitClosedPnl(creds.apiKey, creds.apiSecret, 50);
+    const trades = await fetchers.closed(creds.apiKey, creds.apiSecret);
     if (!trades || !trades.length) continue;
 
     // ---- New-closed notifications ----
@@ -823,8 +861,8 @@ async function checkExchangeClosedTrades(env) {
         // A profitable close ≈ take-profit hit; a losing close ≈ stop-loss hit.
         await sendPushToUser(env, uid, {
           title: win
-            ? `🎯 טייק פרופיט — ${t.pair} ${dir}`
-            : `🛑 סטופ לוס — ${t.pair} ${dir}`,
+            ? `🎯 טייק פרופיט — ${t.pair} ${dir} · ${venue}`
+            : `🛑 סטופ לוס — ${t.pair} ${dir} · ${venue}`,
           body: `${win ? 'רווח' : 'הפסד'}: ${fmtPnl(t.pnl)} (${fmtPct(t.roiPct)})`,
           url: '/journal',
           tag: `closed-${t.externalId}`,
@@ -841,7 +879,8 @@ async function checkExchangeClosedTrades(env) {
 
     // ---- Daily summary (once per Israel day, ~22:00) ----
     if (summaryWindow) {
-      const sentKey = `pushdaily:${uid}:${israelDate}`;
+      // Bybit keeps its original key; other venues get their own summary.
+      const sentKey = `pushdaily:${uid}:${israelDate}${exchange === 'bybit' ? '' : `:${exchange}`}`;
       if (!(await env.ALERTS_KV.get(sentKey))) {
         await env.ALERTS_KV.put(sentKey, '1', { expirationTtl: 60 * 60 * 48 });
         const todays = trades.filter((t) => t.exitMs >= dayStartMs);
@@ -850,10 +889,10 @@ async function checkExchangeClosedTrades(env) {
           const wins = todays.filter((t) => t.pnl >= 0).length;
           const wr = Math.round((wins / todays.length) * 100);
           await sendPushToUser(env, uid, {
-            title: `📊 סיכום יומי — ${todays.length} עסקאות`,
+            title: `📊 סיכום יומי ${venue} — ${todays.length} עסקאות`,
             body: `P&L יומי: ${fmtPnl(total)} · אחוז הצלחה ${wr}%`,
             url: '/dashboard',
-            tag: `daily-${israelDate}`,
+            tag: `daily-${israelDate}-${exchange}`,
           });
         }
       }
@@ -5598,6 +5637,7 @@ async function handleRequest(request, env) {
   // app can show "Bybit: $1,234" on each connected exchange card instead of
   // making the user type a starting balance every time.
   if (request.method === 'POST' && path === '/exchange/balance') {
+    let balanceExchange = '';
     try {
       // Auth: any authenticated user may call (uses caller-supplied exchange keys).
       const token = (request.headers.get('Authorization') || '').replace('Bearer ', '');
@@ -5607,6 +5647,7 @@ async function handleRequest(request, env) {
       if (_rl.count > 30) return new Response(JSON.stringify({ error: 'יותר מדי בקשות לבורסה. נסה שוב בעוד רגע.' }), { status: 429, headers: { ...cors, 'Content-Type': 'application/json' } });
       const _body = await request.json().catch(() => ({}));
       const { exchange } = _body;
+      balanceExchange = exchange || '';
       if (!exchange) {
         return new Response(JSON.stringify({ ok: false, error: 'Missing exchange' }), { status: 400, headers: { ...cors, 'Content-Type': 'application/json' } });
       }
@@ -5628,16 +5669,33 @@ async function handleRequest(request, env) {
       let balance = 0;
 
       if (exchange === 'bybit') {
-        const ts = Date.now().toString();
         const recvWindow = '5000';
-        const qs = 'accountType=UNIFIED';
-        const sig = await hmacHex(apiSecret, ts + apiKey + recvWindow + qs);
-        const res = await fetch(`https://api.bybit.com/v5/account/wallet-balance?${qs}`, {
-          headers: { 'X-BAPI-API-KEY': apiKey, 'X-BAPI-TIMESTAMP': ts, 'X-BAPI-SIGN': sig, 'X-BAPI-RECV-WINDOW': recvWindow },
-        });
-        const data = await res.json();
-        if (data.retCode !== 0) throw new Error(data.retMsg || `Bybit ${data.retCode}`);
-        balance = parseFloat(data.result?.list?.[0]?.totalEquity) || 0;
+        const wallet = async (accountType) => {
+          const ts = Date.now().toString();
+          const qs = `accountType=${accountType}`;
+          const sig = await hmacHex(apiSecret, ts + apiKey + recvWindow + qs);
+          const res = await fetch(`https://api.bybit.com/v5/account/wallet-balance?${qs}`, {
+            headers: { 'X-BAPI-API-KEY': apiKey, 'X-BAPI-TIMESTAMP': ts, 'X-BAPI-SIGN': sig, 'X-BAPI-RECV-WINDOW': recvWindow },
+          });
+          return res.json();
+        };
+        // Unified account first. A Classic account has its futures money in
+        // CONTRACT, and UNIFIED returns nothing (or 0) for it — the card then
+        // showed $0.00 for a funded account. So fall back to CONTRACT unless
+        // the key itself is the problem.
+        const uni = await wallet('UNIFIED');
+        const uniAuth = uni.retCode !== 0 && classifyExchangeAuthError('bybit', uni.retCode, uni.retMsg);
+        if (uniAuth) throw new Error(`Bybit ${uni.retCode}: ${uni.retMsg || 'error'}`);
+        const uniEquity = uni.retCode === 0 ? bybitWalletEquity(uni.result?.list) : null;
+        if (uniEquity) {
+          balance = uniEquity;
+        } else {
+          const classic = await wallet('CONTRACT').catch(() => null);
+          const classicEquity = classic?.retCode === 0 ? bybitWalletEquity(classic.result?.list) : null;
+          if (classicEquity !== null) balance = classicEquity;
+          else if (uniEquity !== null) balance = uniEquity;
+          else throw new Error(`Bybit ${uni.retCode}: ${uni.retMsg || 'no wallet data'}`);
+        }
       }
 
       else if (exchange === 'mexc') {
@@ -5647,7 +5705,7 @@ async function handleRequest(request, env) {
           headers: { ApiKey: apiKey, 'Request-Time': ts, Signature: sig, 'Content-Type': 'application/json' },
         });
         const data = await res.json();
-        if (!(data.success === true || data.code === 0)) throw new Error(data.message || data.msg || 'MEXC error');
+        if (!(data.success === true || data.code === 0)) throw new Error(`MEXC ${data.code}: ${data.message || data.msg || 'error'}`);
         const rawList = Array.isArray(data.data) ? data.data : (data.data?.list || []);
         // Sum equity across stablecoin assets (USDT/USDC) as USD-equivalent
         for (const a of rawList) {
@@ -5691,7 +5749,10 @@ async function handleRequest(request, env) {
 
       return new Response(JSON.stringify({ ok: true, balance, currency: 'USD' }), { headers: { ...cors, 'Content-Type': 'application/json' } });
     } catch (err) {
-      return new Response(JSON.stringify({ ok: false, error: err.message }), { status: 400, headers: { ...cors, 'Content-Type': 'application/json' } });
+      // `reason` (key_expired / key_invalid / ip_blocked / no_permission) lets
+      // the app say "your key expired — update it" instead of a dead balance.
+      const reason = classifyExchangeAuthError(balanceExchange, null, err.message);
+      return new Response(JSON.stringify({ ok: false, error: err.message, reason }), { status: 400, headers: { ...cors, 'Content-Type': 'application/json' } });
     }
   }
 
@@ -5823,6 +5884,7 @@ async function handleRequest(request, env) {
 
   // Exchange trade sync — signs HMAC on behalf of the frontend so secrets stay server-side
   if (request.method === 'POST' && path === '/exchange/sync') {
+    let syncExchange = '';
     try {
       // Auth: any authenticated user may call (uses caller-supplied exchange keys).
       const token = (request.headers.get('Authorization') || '').replace('Bearer ', '');
@@ -5832,6 +5894,7 @@ async function handleRequest(request, env) {
       if (_rl.count > 30) return new Response(JSON.stringify({ error: 'יותר מדי בקשות לבורסה. נסה שוב בעוד רגע.' }), { status: 429, headers: { ...cors, 'Content-Type': 'application/json' } });
       const _body = await request.json().catch(() => ({}));
       const { exchange, limit = 50, days = 0, debug = false } = _body;
+      syncExchange = exchange || '';
       if (!exchange) {
         return new Response(JSON.stringify({ error: 'Missing exchange' }), { status: 400, headers: { ...cors, 'Content-Type': 'application/json' } });
       }
@@ -6026,6 +6089,7 @@ async function handleRequest(request, env) {
 
         // ── Step 4: Build trade objects ───────────────────────────────────
         const csMap = await mexcContractSizes();
+        const exitsByPos = mexcExitsByPosition(filledOrders, (sym) => csMap[sym] || 1);
         trades = positions.map(p => {
           const openMs = toMs(p.createTime || p.openTime || p.create_time || p.openTimestamp);
           const entryDate = openMs > 0 ? new Date(openMs).toISOString() : new Date().toISOString();
@@ -6053,6 +6117,7 @@ async function handleRequest(request, env) {
               // Limit vs market from the opening order (by positionId, else
               // the time-matched one).
               orderType: entryTypeByPos.get(String(p.positionId ?? '')) || byTime.kind,
+              exits: exitsByPos.get(String(p.positionId ?? '')),
             }),
             session: sessionFromDate(entryDate),
           };
@@ -6068,7 +6133,7 @@ async function handleRequest(request, env) {
             headers: { 'X-BAPI-API-KEY': apiKey, 'X-BAPI-TIMESTAMP': tsW, 'X-BAPI-SIGN': sigW, 'X-BAPI-RECV-WINDOW': recvWindow },
           });
           const d = await r.json();
-          if (d.retCode !== 0) throw new Error(d.retMsg || `Bybit error ${d.retCode}`);
+          if (d.retCode !== 0) throw new Error(`Bybit ${d.retCode}: ${d.retMsg || 'error'}`);
           return d.result || {};
         };
 
@@ -6348,8 +6413,42 @@ async function handleRequest(request, env) {
           okxRows = await okxFetch('');
         }
         const ctMap = await okxContractValues();
+        // positions-history has no stop, order type or TP breakdown — the
+        // order history does. Both lookups are best-effort: a failure just
+        // leaves those fields empty, as before.
+        const okxGet = async (path) => {
+          const ts = new Date().toISOString();
+          const sign = await hmacBase64(apiSecret, ts + 'GET' + path);
+          const r = await fetch(`https://www.okx.com${path}`, {
+            headers: { 'OK-ACCESS-KEY': apiKey, 'OK-ACCESS-SIGN': sign, 'OK-ACCESS-TIMESTAMP': ts, 'OK-ACCESS-PASSPHRASE': passphrase || '', 'Content-Type': 'application/json' },
+          });
+          const d = await r.json();
+          if (d.code !== '0') throw new Error(`OKX ${d.code}: ${d.msg || 'error'}`);
+          return d.data || [];
+        };
+        let okxOrders = [];
+        try {
+          // Filled orders, last 3 months, newest first; `after` pages by ordId.
+          let after = '';
+          for (let i = 0; i < 3; i++) {
+            const chunk = await okxGet(`/api/v5/trade/orders-history-archive?instType=SWAP&state=filled&limit=100${after ? `&after=${after}` : ''}`);
+            okxOrders = okxOrders.concat(chunk);
+            if (chunk.length < 100) break;
+            after = chunk[chunk.length - 1].ordId || '';
+            if (!after) break;
+          }
+        } catch { /* optional */ }
+        // TP/SL set after entry live in conditional / oco algo orders.
+        let okxAlgos = [];
+        for (const ordType of ['conditional', 'oco']) {
+          for (const state of ['effective', 'canceled']) {
+            try { okxAlgos = okxAlgos.concat(await okxGet(`/api/v5/trade/orders-algo-history?ordType=${ordType}&state=${state}&limit=100`)); } catch { /* optional */ }
+          }
+        }
+        const okxOrderRows = okxOrders.map((o) => okxOrderRow(o, ctMap[o.instId] || 1));
+        const okxStopRows = okxAlgos.map(okxStopRow);
         trades = okxRows.map((p) => {
-          const t = normalizeOkxClosed(p, ctMap[p.instId] || 1);
+          const t = enrichWithOrders(normalizeOkxClosed(p, ctMap[p.instId] || 1), okxOrderRows, okxStopRows);
           return { ...t, session: sessionFromDate(t.entryDate) };
         });
       }
@@ -6389,10 +6488,41 @@ async function handleRequest(request, env) {
         } else {
           bgRows = (await bitgetFetch('')).list;
         }
+        // history-position has no stop, order type or TP breakdown — the
+        // order history (and TP/SL plan history) does. Best-effort, 90 days.
+        const bitgetGet = async (path) => {
+          const ts = String(Date.now());
+          const sign = await hmacBase64(apiSecret, ts + 'GET' + path);
+          const r = await fetch(`https://api.bitget.com${path}`, {
+            headers: { 'ACCESS-KEY': apiKey, 'ACCESS-SIGN': sign, 'ACCESS-TIMESTAMP': ts, 'ACCESS-PASSPHRASE': passphrase || '', 'Content-Type': 'application/json' },
+          });
+          const d = await r.json();
+          if (d.code !== '00000') throw new Error(`Bitget ${d.code}: ${d.msg || 'error'}`);
+          return d.data || {};
+        };
+        const bgWindow = `&startTime=${Date.now() - 89 * DAY_MS}&endTime=${Date.now()}`;
+        let bgOrders = [];
+        try {
+          let idLessThan = '';
+          for (let i = 0; i < 3; i++) {
+            const d = await bitgetGet(`/api/v2/mix/order/orders-history?productType=USDT-FUTURES&limit=100${bgWindow}${idLessThan ? `&idLessThan=${idLessThan}` : ''}`);
+            const list = d.entrustedList || [];
+            bgOrders = bgOrders.concat(list);
+            if (list.length < 100 || !d.endId) break;
+            idLessThan = d.endId;
+          }
+        } catch { /* optional */ }
+        let bgPlans = [];
+        try {
+          const d = await bitgetGet(`/api/v2/mix/order/orders-plan-history?productType=USDT-FUTURES&planType=profit_loss&limit=100${bgWindow}`);
+          bgPlans = d.entrustedList || [];
+        } catch { /* optional */ }
+        const bgOrderRows = bgOrders.filter((o) => parseFloat(o.baseVolume) > 0).map(bitgetOrderRow);
+        const bgStopRows = bgPlans.map(bitgetStopRow);
         trades = bgRows.map((p) => {
           // Correct v2 field names (openAvgPrice/closeAvgPrice/openFee/…) and
           // the gross/fee convention live in exchangeNormalize.
-          const t = normalizeBitgetClosed(p);
+          const t = enrichWithOrders(normalizeBitgetClosed(p), bgOrderRows, bgStopRows);
           return { ...t, session: sessionFromDate(t.entryDate) };
         });
       }
@@ -6411,7 +6541,8 @@ async function handleRequest(request, env) {
 
       return new Response(JSON.stringify({ ok: true, trades, ...(debug ? { _raw: debugRaw } : {}) }), { headers: { ...cors, 'Content-Type': 'application/json' } });
     } catch (e) {
-      return new Response(JSON.stringify({ error: String(e) }), { status: 400, headers: { ...cors, 'Content-Type': 'application/json' } });
+      const reason = classifyExchangeAuthError(syncExchange, null, String(e?.message || e));
+      return new Response(JSON.stringify({ error: String(e), reason }), { status: 400, headers: { ...cors, 'Content-Type': 'application/json' } });
     }
   }
 

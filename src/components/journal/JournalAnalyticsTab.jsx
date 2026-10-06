@@ -10,6 +10,7 @@ import StrategyPerformanceTable from '../dashboard/StrategyPerformanceTable';
 import MonthlyPerformanceTable from '../dashboard/MonthlyPerformanceTable';
 import TradeHeatmap from '../dashboard/TradeHeatmap';
 import EmptyState from '../shared/EmptyState';
+import JournalRCard from './JournalRCard';
 import { formatCurrency, formatPercent, formatDuration } from '../../utils/formatters';
 import { TAG_LABELS } from '../../utils/constants';
 import { staggerContainer } from '../../utils/animations';
@@ -174,6 +175,8 @@ export default function JournalAnalyticsTab({
               ))}
             </div>
           </div>
+
+          <JournalRCard trades={periodTrades} />
 
           {analytics && (
             <>

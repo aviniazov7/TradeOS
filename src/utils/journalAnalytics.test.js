@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { filterTradesByPeriod, computeJournalAnalytics, summarizeTrades, computeUnrealized, sortJournalTrades } from './journalAnalytics';
+import { filterTradesByPeriod, computeJournalAnalytics, summarizeTrades, computeUnrealized, sortJournalTrades, computeRStats } from './journalAnalytics';
 
 const trade = (over) => ({
   pair: 'BTCUSDT', direction: 'long', status: 'closed', exitPrice: 110, entryPrice: 100,
@@ -147,5 +147,49 @@ describe('sortJournalTrades', () => {
   it('sorts by signed R and by pair', () => {
     expect(ids(sortJournalTrades(list, { key: 'r', dir: 'desc' }))).toEqual(['a', 'b', 'c']);
     expect(ids(sortJournalTrades(list, { key: 'pair', dir: 'asc' }))).toEqual(['b', 'a', 'c']);
+  });
+});
+
+describe('computeRStats', () => {
+  const list = [
+    trade({ netPnl: 30, rrRatio: 3 }),                      // +3R
+    trade({ netPnl: 10, rrRatio: 1.5 }),                    // +1.5R
+    trade({ result: 'loss', netPnl: -10, rrRatio: 1 }),     // -1R
+    trade({ result: 'loss', netPnl: -25, rrRatio: 2.5 }),   // -2.5R (slipped past the stop)
+    trade({ netPnl: 40, rrRatio: undefined }),              // no stop
+    trade({ result: 'loss', netPnl: -15, rrRatio: 0 }),     // no stop
+    trade({ status: 'open', exitPrice: 0, rrRatio: 2 }),    // open → ignored
+  ];
+  const r = computeRStats(list);
+
+  it('splits trades with and without a stop', () => {
+    expect(r.closed).toBe(6);
+    expect(r.withStop).toBe(4);
+    expect(r.stopRate).toBeCloseTo(66.67, 1);
+    expect(r.noStop).toEqual({ count: 2, pnl: 25 });
+  });
+
+  it('computes total R, expectancy and averages', () => {
+    expect(r.totalR).toBeCloseTo(1, 6);
+    expect(r.expectancyR).toBeCloseTo(0.25, 6);
+    expect(r.avgWinR).toBeCloseTo(2.25, 6);
+    expect(r.avgLossR).toBeCloseTo(-1.75, 6);
+    expect(r.bestR).toBe(3);
+    expect(r.worstR).toBe(-2.5);
+  });
+
+  it('buckets the distribution', () => {
+    const byLabel = Object.fromEntries(r.buckets.map((b) => [b.label, b.count]));
+    expect(byLabel['≤ -2R']).toBe(1);
+    expect(byLabel['-1R…0']).toBe(0);
+    expect(byLabel['-2R…-1R']).toBe(1); // a clean -1R stop-out
+    expect(byLabel['1R…2R']).toBe(1);
+    expect(byLabel['≥ 3R']).toBe(1);
+    expect(r.buckets.reduce((s, b) => s + b.count, 0)).toBe(4);
+  });
+
+  it('handles a period without stops', () => {
+    const none = computeRStats([trade({ netPnl: 5, rrRatio: 0 })]);
+    expect(none).toMatchObject({ withStop: 0, expectancyR: null, avgWinR: null });
   });
 });

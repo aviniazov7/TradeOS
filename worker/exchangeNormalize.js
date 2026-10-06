@@ -130,6 +130,8 @@ export function normalizeMexcClosed(p, ctx = {}) {
       : [],
     source: 'mexc',
     externalId: ctx.externalId,
+    // TP1/TP2/… breakdown from the position's closing fills (2+ closes).
+    ...(ctx.exits ? { exits: ctx.exits } : {}),
   });
 }
 
@@ -232,4 +234,238 @@ export function normalizeBitgetClosed(p) {
     source: 'bitget',
     externalId: p.positionId || `${pair}_${entryMs}`,
   });
+}
+
+// ── API-key problems ─────────────────────────────────────────────────────────
+// Turns an exchange's auth error into one reason the app can explain:
+//   'key_expired' | 'key_invalid' | 'ip_blocked' | 'no_permission' | null
+// by documented code first, message as fallback (codes are also parsed out of
+// messages like "MEXC 402: Api_key expired"). MEXC keys without a linked IP
+// expire after 90 days — the main case this exists for.
+const AUTH_CODES = {
+  key_expired: { mexc: [402], bybit: [33004] },
+  ip_blocked: { mexc: [406], bybit: [10010], okx: [50110], bitget: [40018] },
+  no_permission: { bybit: [10005], bitget: [40014] },
+  key_invalid: {
+    mexc: [401, 602], bybit: [10003, 10004], okx: [50105, 50111, 50113, 50119], bitget: [40006, 40009, 40012],
+  },
+};
+const AUTH_PATTERNS = [
+  ['key_expired', /expired/i],
+  ['ip_blocked', /white\s?list|unmatched ip|invalid ip|ip.*not allowed/i],
+  ['no_permission', /permission/i],
+  ['key_invalid', /api.?key|access.?key|invalid sign|sign(ature)? (error|fail|verif)|verify failed|passphrase/i],
+];
+
+export function classifyExchangeAuthError(exchange, code, message = '') {
+  const msg = String(message || '');
+  let n = parseInt(code);
+  if (!Number.isFinite(n)) {
+    const m = msg.match(/\b(\d{3,5})\b/);
+    n = m ? parseInt(m[1]) : NaN;
+  }
+  if (Number.isFinite(n)) {
+    for (const [reason, byExchange] of Object.entries(AUTH_CODES)) {
+      if ((byExchange[exchange] || []).includes(n)) return reason;
+    }
+  }
+  for (const [reason, re] of AUTH_PATTERNS) if (re.test(msg)) return reason;
+  return null;
+}
+
+// ── Order-history enrichment (OKX / Bitget) ──────────────────────────────────
+// Their position-history rows carry no stop, no order type and no TP
+// breakdown. The order history does, so each venue's orders are first mapped
+// to one shape:
+//   { pair, direction, role: 'open'|'close', kind: 'limit'|'market',
+//     price, size (coins), time (ms), sl, tp }
+// and TP/SL plan orders to { pair, direction, sl, tp, time }. Then
+// enrichWithOrders() attaches them to a closed trade by pair + direction +
+// the position's time window — the same idea the Bybit path uses.
+
+const MIN = 60 * 1000;
+
+// Exits breakdown (TP1/TP2/…) from 2+ closing fills; percents sum to exactly
+// 100 (the last slice absorbs rounding — see the Bybit merge for why).
+export function buildExits(fills) {
+  const usable = fills.filter((f) => f.price > 0 && f.size > 0).sort((a, b) => a.time - b.time);
+  if (usable.length < 2) return null;
+  const total = usable.reduce((s, f) => s + f.size, 0);
+  const exits = usable.map((f) => ({ price: f.price, percent: Math.round((f.size / total) * 10000) / 100 }));
+  const sumButLast = exits.slice(0, -1).reduce((s, e) => s + e.percent, 0);
+  exits[exits.length - 1].percent = Number(Math.max(0, 100 - sumButLast).toFixed(2));
+  return exits;
+}
+
+export function enrichWithOrders(trade, orders = [], stops = []) {
+  const entryMs = Date.parse(trade.entryDate) || 0;
+  const exitMs = Date.parse(trade.exitDate) || entryMs;
+  if (!entryMs) return trade;
+  const same = (o) => o.pair === trade.pair && o.direction === trade.direction;
+  const byTime = (a, b) => a.time - b.time;
+  const inPosition = orders.filter((o) => same(o) && o.time >= entryMs - 2 * MIN && o.time <= exitMs + 2 * MIN);
+  const opens = inPosition.filter((o) => o.role === 'open').sort(byTime);
+  const closes = inPosition.filter((o) => o.role === 'close');
+  // The ORIGINAL stop: the attached one on the opening order, else the
+  // earliest TP/SL order placed during the position (a stop later moved to
+  // break-even would give risk ≈ 0 and an absurd R).
+  const planned = stops.filter((st) => same(st) && st.time >= entryMs - 10 * MIN && st.time <= exitMs + MIN).sort(byTime);
+  const out = { ...trade };
+  if (opens[0]?.kind) out.orderType = opens[0].kind;
+  if (!(out.stopLoss > 0)) out.stopLoss = opens.find((o) => o.sl > 0)?.sl || planned.find((st) => st.sl > 0)?.sl || 0;
+  if (!out.tps?.length) {
+    const tp = opens.find((o) => o.tp > 0)?.tp || planned.find((st) => st.tp > 0)?.tp || 0;
+    out.tps = tp > 0 ? [tp] : [];
+  }
+  const exits = buildExits(closes);
+  if (exits) out.exits = exits;
+  return withRisk(out);
+}
+
+// Which position a fill belongs to. Hedge mode names it (posSide); in one-way
+// ("net") mode a reduce-only fill closes the side opposite to its own.
+const sideToDirection = (side, closing) => {
+  const buy = String(side).toLowerCase().startsWith('buy');
+  return closing ? (buy ? 'short' : 'long') : (buy ? 'long' : 'short');
+};
+
+// OKX /trade/orders-history-archive row (filled).
+export function okxOrderRow(o, ctVal = 1) {
+  const hedge = o.posSide === 'long' || o.posSide === 'short';
+  const buy = o.side === 'buy';
+  const closing = String(o.reduceOnly) === 'true' || (hedge && ((o.posSide === 'long' && !buy) || (o.posSide === 'short' && buy)));
+  const algo = Array.isArray(o.attachAlgoOrds) ? o.attachAlgoOrds : [];
+  return {
+    pair: okxPair(o.instId),
+    direction: hedge ? o.posSide : sideToDirection(o.side, closing),
+    role: closing ? 'close' : 'open',
+    // market / optimal_limit_ioc fill at market; limit, post_only, fok, ioc are priced.
+    kind: o.ordType === 'market' || o.ordType === 'optimal_limit_ioc' ? 'market' : 'limit',
+    price: num(o.avgPx),
+    size: trim(num(o.accFillSz) * (ctVal || 1)),
+    time: parseInt(o.fillTime) || parseInt(o.uTime) || parseInt(o.cTime) || 0,
+    sl: num(o.slTriggerPx) || num(algo.find((a) => has(a.slTriggerPx))?.slTriggerPx),
+    tp: num(o.tpTriggerPx) || num(algo.find((a) => has(a.tpTriggerPx))?.tpTriggerPx),
+  };
+}
+
+// OKX /trade/orders-algo-history row (conditional / oco TP-SL).
+export function okxStopRow(a) {
+  const hedge = a.posSide === 'long' || a.posSide === 'short';
+  return {
+    pair: okxPair(a.instId),
+    // A stop closes the position, so its side is the opposite one.
+    direction: hedge ? a.posSide : sideToDirection(a.side, true),
+    sl: num(a.slTriggerPx),
+    tp: num(a.tpTriggerPx),
+    time: parseInt(a.cTime) || 0,
+  };
+}
+
+// Bitget v2 /mix/order/orders-history row.
+export function bitgetOrderRow(o) {
+  const hedge = o.posSide === 'long' || o.posSide === 'short';
+  const closing = /close/i.test(o.tradeSide || '') || String(o.reduceOnly).toUpperCase() === 'YES';
+  return {
+    pair: (o.symbol || '').replace(/_.*/, '').toUpperCase(),
+    direction: hedge ? o.posSide : sideToDirection(o.side, closing),
+    role: closing ? 'close' : 'open',
+    kind: o.orderType === 'market' ? 'market' : 'limit',
+    price: num(o.priceAvg),
+    size: num(o.baseVolume),
+    time: parseInt(o.uTime) || parseInt(o.cTime) || 0,
+    sl: num(o.presetStopLossPrice),
+    tp: num(o.presetStopSurplusPrice),
+  };
+}
+
+// Bitget v2 /mix/order/orders-plan-history?planType=profit_loss row.
+const BITGET_SL_PLANS = ['loss_plan', 'pos_loss'];
+const BITGET_TP_PLANS = ['profit_plan', 'pos_profit'];
+export function bitgetStopRow(p) {
+  const hedge = p.posSide === 'long' || p.posSide === 'short';
+  const holdSide = p.holdSide === 'long' || p.holdSide === 'short' ? p.holdSide : null;
+  const trigger = num(p.triggerPrice);
+  return {
+    pair: (p.symbol || '').replace(/_.*/, '').toUpperCase(),
+    direction: hedge ? p.posSide : holdSide || sideToDirection(p.side, true),
+    sl: BITGET_SL_PLANS.includes(p.planType) ? trigger : 0,
+    tp: BITGET_TP_PLANS.includes(p.planType) ? trigger : 0,
+    time: parseInt(p.cTime) || 0,
+  };
+}
+
+// MEXC: TP breakdown from the position's closing fills (side 2 = close short,
+// 4 = close long), matched exactly by positionId. Map(positionId → exits).
+export function mexcExitsByPosition(orders = [], contractSizeOf = () => 1) {
+  const fills = new Map();
+  for (const o of orders) {
+    const side = parseInt(o?.side);
+    if (side !== 2 && side !== 4) continue;
+    const id = o.positionId != null ? String(o.positionId) : '';
+    if (!id || id === '0') continue;
+    const sym = (o.symbol || '').replace(/_/g, '');
+    const f = { price: num(o.dealAvgPrice), size: num(o.dealVol) * (contractSizeOf(sym) || 1), time: parseInt(o.updateTime ?? o.createTime) || 0 };
+    if (!fills.has(id)) fills.set(id, []);
+    fills.get(id).push(f);
+  }
+  const out = new Map();
+  for (const [id, list] of fills) {
+    const exits = buildExits(list);
+    if (exits) out.set(id, exits);
+  }
+  return out;
+}
+
+// ── Background alerts (cron) ─────────────────────────────────────────────────
+// The 10-minute alerts cron works on two small shapes, whatever the venue:
+//   open:   { id, pair, direction, entryPrice, leverage }
+//   closed: { externalId, pair, direction, pnl (net), roiPct, exitMs }
+
+// MEXC open_positions row → cron "open" shape.
+export function mexcCronOpen(p) {
+  const posType = parseInt(p.positionType ?? p.position_type);
+  return {
+    id: String(p.positionId ?? `${p.symbol}_${posType}`),
+    pair: (p.symbol || '').replace(/_/g, ''),
+    direction: posType === 1 ? 'long' : 'short',
+    entryPrice: num(p.holdAvgPrice || p.openAvgPrice),
+    leverage: num(p.leverage) || 1,
+  };
+}
+
+// MEXC history_positions row → cron "closed" shape. `realised` is the net
+// P&L MEXC shows; ROI is on the margin committed (notional / leverage).
+export function mexcCronClosed(p, contractSize = 1) {
+  const pnl = num(p.realised ?? p.realisedPnl);
+  const entry = num(p.openAvgPrice);
+  const lev = num(p.leverage) || 1;
+  const margin = entry * num(p.closeVol) * (contractSize || 1) / lev;
+  const posType = parseInt(p.positionType ?? p.position_type);
+  return {
+    externalId: String(p.positionId ?? p.id ?? `${p.symbol}_${p.createTime}`),
+    pair: (p.symbol || '').replace(/_/g, ''),
+    direction: posType === 1 ? 'long' : 'short',
+    pnl,
+    roiPct: margin > 0 ? (pnl / margin) * 100 : 0,
+    exitMs: parseInt(p.updateTime) || parseInt(p.createTime) || 0,
+  };
+}
+
+// ── Bybit wallet balance ─────────────────────────────────────────────────────
+// /v5/account/wallet-balance list → USD equity, or null when the account type
+// returned nothing. A Unified account reports totalEquity; a Classic CONTRACT
+// account leaves the totals empty, so sum the coins' USD value (stablecoins at
+// par when usdValue is missing).
+export function bybitWalletEquity(list = []) {
+  const acct = Array.isArray(list) ? list[0] : null;
+  if (!acct) return null;
+  if (has(acct.totalEquity)) return num(acct.totalEquity);
+  let sum = 0;
+  let any = false;
+  for (const c of acct.coin || []) {
+    if (has(c.usdValue)) { sum += num(c.usdValue); any = true; }
+    else if ((c.coin === 'USDT' || c.coin === 'USDC') && has(c.equity)) { sum += num(c.equity); any = true; }
+  }
+  return any ? trim(sum) : 0;
 }

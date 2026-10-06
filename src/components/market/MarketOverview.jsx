@@ -7,6 +7,8 @@ import {
   Percent, BarChart3, Zap, Sparkles, Bot,
 } from 'lucide-react';
 import { pageVariants, pageTransition, staggerContainer } from '../../utils/animations';
+import PageHeader from '../shared/PageHeader';
+import TabStrip from '../shared/TabStrip';
 import FearGreedGauge from '../dashboard/FearGreedGauge';
 import CoinAnalysis from './CoinAnalysis';
 import MarketSessionsCard from './MarketSessionsCard';
@@ -1048,28 +1050,22 @@ export default function MarketOverview() {
 
   return (
     <motion.div variants={pageVariants} initial="initial" animate="animate" exit="exit" transition={pageTransition}>
-      {/* Tabs */}
-      <div className="grid grid-cols-2 sm:flex sm:flex-wrap sm:justify-center gap-2 mb-6">
-        {[
-          { key: 'overview', label: 'סקירה',      shortLabel: 'סקירה',   icon: Activity },
-          { key: 'analysis', label: 'ניתוח מטבע', shortLabel: 'ניתוח',   icon: Sparkles },
-        ].map((tab) => (
-          <button
-            key={tab.key}
-            onClick={() => setActiveTab(tab.key)}
-            className={`flex items-center justify-center gap-1.5 sm:gap-2 px-3 sm:px-5 py-2.5 rounded-xl text-xs sm:text-sm font-semibold transition-all cursor-pointer ${
-              activeTab === tab.key
-                ? 'bg-accent-primary text-white shadow-lg'
-                : 'bg-bg-secondary border border-border-primary text-text-secondary hover:text-text-primary hover:bg-bg-tertiary'
-            }`}
-            style={activeTab === tab.key ? { boxShadow: '0 6px 22px -6px #8b5cf680' } : undefined}
-          >
-            <tab.icon className="w-4 h-4 sm:w-4.5 sm:h-4.5 shrink-0" />
-            <span className="sm:hidden">{tab.shortLabel}</span>
-            <span className="hidden sm:inline">{tab.label}</span>
-          </button>
-        ))}
-      </div>
+      {/* Shared page header; the two views switch with the shared tab strip. */}
+      <PageHeader
+        icon={Activity}
+        title="סקירת שוק"
+        subtitle="מצב השוק, מטבעות חמים, לווייתנים וניתוח מטבע — במקום אחד"
+        actions={(
+          <div className="rounded-xl bg-bg-tertiary border border-border-primary p-1">
+            <TabStrip
+              tabs={[{ id: 'overview', label: 'סקירה' }, { id: 'analysis', label: 'ניתוח מטבע' }]}
+              value={activeTab}
+              onChange={setActiveTab}
+              layoutKey="market-tab"
+            />
+          </div>
+        )}
+      />
 
       <AnimatePresence mode="wait">
       {activeTab === 'overview' ? (

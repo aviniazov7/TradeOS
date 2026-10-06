@@ -11,6 +11,7 @@ import ConfirmDialog from '../shared/ConfirmDialog';
 import EmptyState from '../shared/EmptyState';
 import DCASkeleton from './DCASkeleton';
 import { pageVariants, pageTransition } from '../../utils/animations';
+import TabStrip from '../shared/TabStrip';
 import { formatNumber, formatPrice, formatCurrency, formatPercent } from '../../utils/formatters';
 import { COINS, DCA_FREQUENCY_LABELS, DCA_STATUS_LABELS } from '../../utils/constants';
 
@@ -98,23 +99,8 @@ export default function DCATracker() {
             </div>
             <div className="hidden md:block w-px h-6 bg-border-primary flex-shrink-0" />
             {/* Desktop tabs */}
-            <div className="hidden md:flex items-center">
-              <button
-                onClick={() => setTab('plans')}
-                className={`h-9 inline-flex items-center px-3.5 text-sm font-medium rounded-lg transition-colors cursor-pointer whitespace-nowrap ${
-                  tab === 'plans' ? 'bg-accent-primary/15 text-accent-primary' : 'text-text-muted hover:text-text-primary hover:bg-bg-tertiary'
-                }`}
-              >
-                תוכניות ({dcaPlans.length})
-              </button>
-              <button
-                onClick={() => setTab('summary')}
-                className={`h-9 inline-flex items-center px-3.5 text-sm font-medium rounded-lg transition-colors cursor-pointer whitespace-nowrap ${
-                  tab === 'summary' ? 'bg-accent-primary/15 text-accent-primary' : 'text-text-muted hover:text-text-primary hover:bg-bg-tertiary'
-                }`}
-              >
-                ניתוחים
-              </button>
+            <div className="hidden md:block">
+              <TabStrip tabs={[{ id: 'plans', label: 'תוכניות', count: dcaPlans.length }, { id: 'summary', label: 'ניתוחים' }]} value={tab} onChange={setTab} layoutKey="dca-tab" />
             </div>
           </div>
 
@@ -131,23 +117,8 @@ export default function DCATracker() {
         </div>
 
         {/* Row 2: Mobile tabs */}
-        <div className="md:hidden flex items-center">
-          <button
-            onClick={() => setTab('plans')}
-            className={`px-2.5 py-1.5 text-xs font-medium rounded-lg transition-colors cursor-pointer whitespace-nowrap ${
-              tab === 'plans' ? 'bg-accent-primary/15 text-accent-primary' : 'text-text-muted hover:text-text-primary hover:bg-bg-tertiary'
-            }`}
-          >
-            תוכניות ({dcaPlans.length})
-          </button>
-          <button
-            onClick={() => setTab('summary')}
-            className={`px-2.5 py-1.5 text-xs font-medium rounded-lg transition-colors cursor-pointer whitespace-nowrap ${
-              tab === 'summary' ? 'bg-accent-primary/15 text-accent-primary' : 'text-text-muted hover:text-text-primary hover:bg-bg-tertiary'
-            }`}
-          >
-            ניתוחים
-          </button>
+        <div className="md:hidden">
+          <TabStrip tabs={[{ id: 'plans', label: 'תוכניות', count: dcaPlans.length }, { id: 'summary', label: 'ניתוחים' }]} value={tab} onChange={setTab} variant="mobile" layoutKey="dca-tab" />
         </div>
       </div>
 

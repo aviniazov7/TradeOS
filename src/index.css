@@ -591,6 +591,23 @@ input[type="number"] {
   transition: opacity 0.3s;
 }
 .border-beam-hover:hover::after { opacity: 1; animation: beamSpin 4s linear infinite; }
+/* Spotlight card (Card spotlight prop): a soft light that follows the cursor.
+   --spot-x/--spot-y are set on mousemove; hover-capable pointers only. */
+.spotlight-card { position: relative; }
+.spotlight-card::before {
+  content: '';
+  position: absolute;
+  inset: 0;
+  border-radius: inherit;
+  pointer-events: none;
+  opacity: 0;
+  transition: opacity 0.3s;
+  background: radial-gradient(240px circle at var(--spot-x, 50%) var(--spot-y, 50%), rgba(56, 189, 248, 0.10), transparent 65%);
+}
+@media (hover: hover) { .spotlight-card:hover::before { opacity: 1; } }
+.light .spotlight-card::before {
+  background: radial-gradient(240px circle at var(--spot-x, 50%) var(--spot-y, 50%), rgba(37, 99, 235, 0.08), transparent 65%);
+}
 /* Faint scan-line highlight along the top edge */
 .bento-card::before {
   content: '';
