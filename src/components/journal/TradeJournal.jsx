@@ -1,63 +1,95 @@
 import { useState, useMemo, useEffect, useRef, lazy, Suspense } from 'react';
 import { useSearchParams } from 'react-router-dom';
 import { motion } from 'framer-motion';
-import {
-  Plus, BookOpen, Settings,
-  Wallet, TrendingUp, Target, Zap, Flame, Snowflake, Signal,
-  Scale, BarChart3, Activity, Calendar,
-  Clock, DollarSign, Percent, Link2, Undo2, BrainCircuit, Star,
-  Sparkles, ChevronLeft,
-} from 'lucide-react';
-import { format } from 'date-fns';
+import { Plus, BookOpen, Settings, Undo2, BrainCircuit, ListChecks, Trash2, AlertTriangle } from 'lucide-react';
 import toast from 'react-hot-toast';
-import confetti from 'canvas-confetti';
 import { useTrades } from '../../hooks/useTrades';
 import { useCryptoPrices } from '../../hooks/useCryptoPrices';
 import { useJournalContext } from '../../contexts/JournalContext';
-import { calculatePnL, calculateFuturesPnL, isClosedTrade, safePnl } from '../../utils/calculations';
+import { calculatePnL, calculateFuturesPnL, isClosedTrade, safePnl, localDayKey } from '../../utils/calculations';
+import { computeUnrealized, sortJournalTrades } from '../../utils/journalAnalytics';
 import { useDashboardStats } from '../../hooks/useDashboardStats';
-import { useLinkedExchangeBalance } from '../../hooks/useLinkedExchangeBalance';
+import { useLinkedExchange } from '../../hooks/useLinkedExchangeBalance';
+import { KEY_PROBLEM_TEXT } from '../../services/exchangeService';
 import { useExchangeImport } from '../../hooks/useExchangeImport';
 import JournalSwitcher from './JournalSwitcher';
-import TradeForm from './TradeForm';
+import JournalTabs from './JournalTabs';
+import JournalSummaryBar from './JournalSummaryBar';
 import TradeTable from './TradeTable';
 import TradeFilters from './TradeFilters';
-import StatCard from '../dashboard/StatCard';
 import TimePeriodFilter from '../dashboard/TimePeriodFilter';
-import StrategyPerformanceTable from '../dashboard/StrategyPerformanceTable';
-import MonthlyPerformanceTable from '../dashboard/MonthlyPerformanceTable';
-import TradeHeatmap from '../dashboard/TradeHeatmap';
-import MonthlyCalendar from './MonthlyCalendar';
-import AICoachPanel from './AICoachPanel';
 import Modal from '../shared/Modal';
-import ImportTrades from './ImportTrades';
-import JournalSettingsModal from './JournalSettingsModal';
+import SelectDropdown from '../shared/SelectDropdown';
+import Card from '../shared/Card';
 import ArchiveAnimation from './ArchiveAnimation';
 import EmptyState from '../shared/EmptyState';
-import ExchangeSettings from '../exchange/ExchangeSettings';
 import ExchangeProposals from './ExchangeProposals';
-import TradeShareModal from './TradeShareModal';
 import JournalSkeleton from './JournalSkeleton';
 import JournalFormModal from './JournalFormModal';
-import { formatCurrency, formatPercent, formatDuration, formatDate } from '../../utils/formatters';
+import { formatDate } from '../../utils/formatters';
 import { TAG_LABELS } from '../../utils/constants';
-import { pageVariants, pageTransition, staggerContainer } from '../../utils/animations';
+import { pageVariants, pageTransition } from '../../utils/animations';
 
-const defaultFilters = { search: '', direction: '', result: '', strategy: '', tag: '', timeframe: '', month: '' };
-// recharts is ~414 kB. The charts live only in the analytics tab, so they load
-// on demand instead of on the default trades view.
-const JournalCharts = lazy(() => import('./JournalCharts'));
-const SessionAnalysisChart = lazy(() => import('../analytics/SessionAnalysisChart'));
-const DayOfWeekChart = lazy(() => import('../analytics/DayOfWeekChart'));
+const JOURNAL_TABS = ['trades', 'analytics', 'calendar', 'exchange'];
+const defaultFilters = { search: '', direction: '', result: '', status: '', strategy: '', tag: '', timeframe: '', month: '', from: '', to: '' };
+const defaultSort = { key: 'date', dir: 'desc' };
+// Phone sort picker (desktop sorts by clicking column headers).
+const SORT_OPTIONS = [
+  { value: 'date:desc', label: 'חדשות קודם' },
+  { value: 'date:asc', label: 'ישנות קודם' },
+  { value: 'pnl:desc', label: 'רווח גבוה קודם' },
+  { value: 'pnl:asc', label: 'הפסד גבוה קודם' },
+  { value: 'r:desc', label: 'R גבוה קודם' },
+  { value: 'r:asc', label: 'R נמוך קודם' },
+  { value: 'pair:asc', label: 'זוג A–Z' },
+  { value: 'pair:desc', label: 'זוג Z–A' },
+];
 
-const tooltipStyle = { background: 'var(--color-bg-overlay)', border: '1px solid var(--color-border-primary)', borderRadius: '8px', fontSize: '12px', color: 'var(--color-text-primary)' };
-const PIE_COLORS = ['#22c55e', '#ef4444', '#eab308'];
+const getCoinFromPair = (pair = '') => pair.replace(/USDT$|BUSD$|USDC$|USD$/, '').toUpperCase();
+const entryDay = (t) => (t.entryDate ? localDayKey(t.entryDate) : '');
+
+// Everything below is loaded on demand: the default trades view only needs the
+// table. The form alone pulls in react-datepicker (~130 kB), and the analytics
+// tab pulls in recharts (~414 kB).
+const JournalAnalyticsTab = lazy(() => import('./JournalAnalyticsTab'));
+const MonthlyCalendar = lazy(() => import('./MonthlyCalendar'));
+const ExchangeSettings = lazy(() => import('../exchange/ExchangeSettings'));
+const TradeForm = lazy(() => import('./TradeForm'));
+const AICoachPanel = lazy(() => import('./AICoachPanel'));
+const ImportTrades = lazy(() => import('./ImportTrades'));
+const JournalSettingsModal = lazy(() => import('./JournalSettingsModal'));
+const TradeShareModal = lazy(() => import('./TradeShareModal'));
+
+// Mount a lazy modal only once it is first opened (so its chunk isn't fetched
+// on page load), then keep it mounted so its close animation still plays.
+function useOpenedOnce(isOpen) {
+  const [opened, setOpened] = useState(isOpen);
+  if (isOpen && !opened) setOpened(true);
+  return opened;
+}
+
+function TabFallback() {
+  return (
+    <div className="grid grid-cols-2 md:grid-cols-4 gap-2.5 md:gap-3">
+      {[1, 2, 3, 4].map((i) => <div key={i} className="bg-bg-secondary border border-border-primary rounded-xl h-24 animate-pulse" />)}
+    </div>
+  );
+}
 
 export default function TradeJournal() {
   const { activeJournal, activeJournalId, journals, addJournal } = useJournalContext();
   const { trades, loading, addTrade, addTradesBulk, updateTrade, deleteTrade } = useTrades(activeJournalId);
   const { prices } = useCryptoPrices();
-  const [searchParams] = useSearchParams();
+  const livePriceOf = (trade) => prices[getCoinFromPair(trade.pair)]?.price;
+  const isLimitPending = (trade) => {
+    if (trade.orderType !== 'limit' || trade.exitPrice > 0) return false;
+    if (trade.limitTriggered) return false; // triggered → active, not pending
+    const currentPrice = livePriceOf(trade);
+    if (!currentPrice || !trade.entryPrice) return true; // no price data → assume pending
+    const entry = parseFloat(trade.entryPrice);
+    return trade.direction === 'long' ? currentPrice > entry : currentPrice < entry;
+  };
+  const [searchParams, setSearchParams] = useSearchParams();
   const [formOpen, setFormOpen] = useState(false);
   const [editingTrade, setEditingTrade] = useState(null);
   const [pendingDeletes, setPendingDeletes] = useState(new Set());
@@ -72,7 +104,28 @@ export default function TradeJournal() {
     } catch { return defaultFilters; }
   });
   const [period, setPeriod] = useState('all');
-  const [tab, setTab] = useState('trades');
+  const [sort, setSort] = useState(() => {
+    try {
+      const saved = JSON.parse(localStorage.getItem('tj_sort') || 'null');
+      return saved && typeof saved.key === 'string' && (saved.dir === 'asc' || saved.dir === 'desc') ? saved : defaultSort;
+    } catch { return defaultSort; }
+  });
+  // Bulk selection on the trades tab.
+  const [selectMode, setSelectMode] = useState(false);
+  const [selectedIds, setSelectedIds] = useState(() => new Set());
+  // The active tab lives in the URL (?tab=analytics) so a refresh keeps it and
+  // the browser's back button steps between tabs. 'trades' is the bare URL.
+  const tabParam = searchParams.get('tab');
+  const tab = JOURNAL_TABS.includes(tabParam) ? tabParam : 'trades';
+  const setTab = (next) => {
+    if (next === tab) return;
+    setSearchParams((prev) => {
+      const params = new URLSearchParams(prev);
+      if (next === 'trades') params.delete('tab');
+      else params.set('tab', next);
+      return params;
+    });
+  };
   const [aiModalOpen, setAiModalOpen] = useState(false);
   const [importOpen, setImportOpen] = useState(false);
   const [settingsOpen, setSettingsOpen] = useState(false);
@@ -92,6 +145,10 @@ export default function TradeJournal() {
     }
   };
   const [shareTarget, setShareTarget] = useState(null);
+  const formMounted = useOpenedOnce(formOpen);
+  const importMounted = useOpenedOnce(importOpen);
+  const settingsMounted = useOpenedOnce(settingsOpen);
+  const shareMounted = useOpenedOnce(!!shareTarget);
   // Render only a window of rows so the table stays fast with hundreds of trades.
   // Analytics/calendar still use the full `trades` array — this caps the DOM only.
   const [visibleCount, setVisibleCount] = useState(50);
@@ -112,7 +169,8 @@ export default function TradeJournal() {
   const filterAndJump = (partialFilter) => {
     setFilters(f => ({ ...f, ...partialFilter }));
     setTab('trades');
-    setTimeout(() => window.scrollTo({ top: 0, behavior: 'smooth' }), 100);
+    // The page scrolls inside Layout's #app-scroll container, not the window.
+    setTimeout(() => document.getElementById('app-scroll')?.scrollTo({ top: 0, behavior: 'smooth' }), 100);
   };
   const deleteBatchToastRef = useRef(null);
 
@@ -152,17 +210,27 @@ export default function TradeJournal() {
     try { localStorage.setItem('tj_filters', JSON.stringify(filters)); } catch {}
   }, [filters]);
 
+  useEffect(() => {
+    try { localStorage.setItem('tj_sort', JSON.stringify(sort)); } catch { /* storage unavailable */ }
+  }, [sort]);
+
   // Reset the rendered window when the visible set changes
   useEffect(() => {
     setVisibleCount(50);
-  }, [filters, activeJournalId]);
+  }, [filters, sort, activeJournalId]);
+
+  // A selection only makes sense for the list it was made on.
+  useEffect(() => {
+    setSelectMode(false);
+    setSelectedIds(new Set());
+  }, [filters, activeJournalId, tab]);
 
   // When the journal is linked to a connected exchange, derive the starting
   // balance so currentBalance + every percentage-based stat (drawdown,
   // Recovery, Sortino, Calmar, Sharpe…) is calibrated to the real wallet:
   //   effectiveInitial = liveBalance − totalPnL(closed)
   // so stats.currentBalance = effectiveInitial + totalPnL = liveBalance.
-  const liveExchangeBalance = useLinkedExchangeBalance(activeJournal?.exchange);
+  const { balance: liveExchangeBalance, keyProblem } = useLinkedExchange(activeJournal?.exchange);
   const balanceIsLive = liveExchangeBalance != null;
   // Must use the SAME closed-trade predicate as useDashboardStats (which counts
   // 'partial' rows too), otherwise effectiveInitial is calibrated against a
@@ -189,30 +257,25 @@ export default function TradeJournal() {
   const { importTrade: importExchangeTrade } = useExchangeImport(activeJournalId);
 
   useEffect(() => {
-    if (searchParams.get('new') === '1') setFormOpen(true);
+    const isNew = searchParams.get('new') === '1';
     // Deep-link from the dashboard "set opening balance" checklist step —
     // open journal settings (where the balance field lives) instead of just
     // landing on the journal, mirroring the ?new=1 → trade-form pattern.
-    if (searchParams.get('settings') === '1') setSettingsOpen(true);
+    const isSettings = searchParams.get('settings') === '1';
     // Deep-link from the analyst page — it hands off to the full AI report.
-    if (searchParams.get('ai') === '1') setAiModalOpen(true);
-  }, [searchParams]);
-
-  // Period-filtered trades — same logic as useDashboardStats so analytics match the selected period
-  const periodTrades = useMemo(() => {
-    if (period === 'all') return trades;
-    const now = new Date();
-    const start = new Date(now);
-    if (period === 'week')  { start.setDate(start.getDate() - 7); start.setHours(0, 0, 0, 0); }
-    if (period === 'month') { start.setMonth(start.getMonth() - 1); start.setHours(0, 0, 0, 0); }
-    if (period === 'year')  { start.setFullYear(start.getFullYear() - 1); start.setHours(0, 0, 0, 0); }
-    return trades.filter((t) => {
-      const raw = t.exitDate || t.entryDate;
-      if (!raw) return false;
-      const d = raw?.toDate ? raw.toDate() : new Date(raw);
-      return d >= start;
-    });
-  }, [trades, period]);
+    const isAi = searchParams.get('ai') === '1';
+    if (!isNew && !isSettings && !isAi) return;
+    if (isNew) setFormOpen(true);
+    if (isSettings) setSettingsOpen(true);
+    if (isAi) setAiModalOpen(true);
+    // One-shot flags: strip them so switching tabs (which also writes the URL)
+    // doesn't re-open the modal every time.
+    setSearchParams((prev) => {
+      const next = new URLSearchParams(prev);
+      ['new', 'settings', 'ai'].forEach((k) => next.delete(k));
+      return next;
+    }, { replace: true });
+  }, [searchParams, setSearchParams]);
 
   const filteredTrades = useMemo(() => {
     const getTime = (t) => {
@@ -228,11 +291,23 @@ export default function TradeJournal() {
       if (isNaN(d.getTime())) return '';
       return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`;
     };
+    const q = filters.search.trim().toLowerCase();
+    // Search looks at the pair and at the trade's own words (strategy, notes,
+    // entry reason, tags) — "breakout" finds every trade tagged or noted so.
+    const matchesSearch = (t) => [t.pair, t.strategy, t.notes, t.entryReason, ...(Array.isArray(t.tags) ? t.tags.map((tag) => `${tag} ${TAG_LABELS[tag] || ''}`) : [])]
+      .some((v) => typeof v === 'string' && v.toLowerCase().includes(q));
     return trades.filter((t) => {
       if (pendingDeletes.has(t.id)) return false;
-      if (filters.search && !t.pair.toLowerCase().includes(filters.search.toLowerCase())) return false;
+      if (q && !matchesSearch(t)) return false;
       if (filters.direction && t.direction !== filters.direction) return false;
       if (filters.result && t.result !== filters.result) return false;
+      if (filters.status === 'open' && isClosedTrade(t)) return false;
+      if (filters.status === 'closed' && !isClosedTrade(t)) return false;
+      if (filters.from || filters.to) {
+        // Same date the table shows (entry date), compared as local YYYY-MM-DD.
+        const day = entryDay(t);
+        if (!day || (filters.from && day < filters.from) || (filters.to && day > filters.to)) return false;
+      }
       if (filters.strategy && t.strategy !== filters.strategy) return false;
       if (filters.timeframe && (filters.timeframe === 'N/A' ? !!t.timeframe : t.timeframe !== filters.timeframe)) return false;
       if (filters.tag && !(Array.isArray(t.tags) ? t.tags : []).includes(filters.tag)) return false;
@@ -240,110 +315,24 @@ export default function TradeJournal() {
       return true;
     }).sort((a, b) => getTime(b) - getTime(a));
   }, [trades, filters, pendingDeletes]);
+  const hasActiveFilters = Object.values(filters).some(Boolean);
 
-  const analytics = useMemo(() => {
-    const closed = periodTrades.filter(isClosedTrade);
-    if (!closed.length) return null;
-
-    const wins = closed.filter((t) => t.result === 'win');
-    const losses = closed.filter((t) => t.result === 'loss');
-    const avgWin = wins.length ? wins.reduce((s, t) => s + (t.netPnl ?? t.pnl ?? 0), 0) / wins.length : 0;
-    const avgLoss = losses.length ? Math.abs(losses.reduce((s, t) => s + (t.netPnl ?? t.pnl ?? 0), 0) / losses.length) : 0;
-    const largestWin = wins.length ? Math.max(...wins.map((t) => t.netPnl ?? t.pnl ?? 0)) : 0;
-    const largestLoss = losses.length ? Math.min(...losses.map((t) => t.netPnl ?? t.pnl ?? 0)) : 0;
-
-    const safeTradeDate = (t) => {
-      const raw = t.exitDate || t.entryDate;
-      if (!raw) return new Date(0);
-      const d = raw?.toDate ? raw.toDate() : new Date(raw);
-      return isNaN(d.getTime()) ? new Date(0) : d;
-    };
-
-    const sorted = [...closed].sort((a, b) => safeTradeDate(a) - safeTradeDate(b));
-
-    const be = closed.filter((t) => t.result === 'breakeven').length;
-    const pieData = [
-      { name: 'רווח', value: wins.length },
-      { name: 'הפסד', value: losses.length },
-      { name: 'אפס', value: be },
-    ].filter((d) => d.value > 0);
-
-    const dailyMap = {};
-    sorted.forEach((t) => {
-      const d = safeTradeDate(t);
-      const key = format(d, 'MM/dd');
-      if (!dailyMap[key]) dailyMap[key] = 0;
-      dailyMap[key] += t.netPnl ?? t.pnl ?? 0;
+  // Live P&L of every open position in view, from the same price feed the
+  // limit-order check uses. Pending limits haven't filled, so they have none.
+  const liveById = useMemo(() => {
+    const map = {};
+    filteredTrades.forEach((t) => {
+      if (isClosedTrade(t) || isLimitPending(t)) return;
+      const live = computeUnrealized(t, livePriceOf(t));
+      if (live) map[t.id] = live;
     });
-    const dailyPnL = Object.entries(dailyMap).map(([date, pnl]) => ({ date, pnl: parseFloat(pnl.toFixed(2)) }));
+    return map;
+  }, [filteredTrades, prices]); // eslint-disable-line react-hooks/exhaustive-deps
 
-    const pairMap = {};
-    closed.forEach((t) => {
-      if (!pairMap[t.pair]) pairMap[t.pair] = { wins: 0, losses: 0, pnl: 0 };
-      if (t.result === 'win') pairMap[t.pair].wins++;
-      else if (t.result === 'loss') pairMap[t.pair].losses++;
-      pairMap[t.pair].pnl += t.netPnl ?? t.pnl ?? 0;
-    });
-    const byPair = Object.entries(pairMap).map(([pair, d]) => {
-      const total = d.wins + d.losses;
-      return { pair, ...d, total, winRate: total > 0 ? (d.wins / total) * 100 : 0 };
-    }).sort((a, b) => b.pnl - a.pnl);
-
-    const tfMap = {};
-    closed.forEach((t) => {
-      const tf = t.timeframe || 'N/A';
-      if (!tfMap[tf]) tfMap[tf] = { wins: 0, total: 0, pnl: 0 };
-      tfMap[tf].total++;
-      if (t.result === 'win') tfMap[tf].wins++;
-      tfMap[tf].pnl += t.netPnl ?? t.pnl ?? 0;
-    });
-    const byTimeframe = Object.entries(tfMap).map(([tf, d]) => ({ timeframe: tf, ...d, winRate: ((d.wins / d.total) * 100) })).sort((a, b) => b.pnl - a.pnl);
-
-    const tagMap = {};
-    closed.forEach((t) => {
-      const tags = Array.isArray(t.tags) ? t.tags : [];
-      tags.forEach((tag) => {
-        if (!tagMap[tag]) tagMap[tag] = { wins: 0, losses: 0, pnl: 0, count: 0 };
-        tagMap[tag].count++;
-        if (t.result === 'win') tagMap[tag].wins++;
-        else if (t.result === 'loss') tagMap[tag].losses++;
-        tagMap[tag].pnl += t.netPnl ?? t.pnl ?? 0;
-      });
-    });
-    const byTag = Object.entries(tagMap).map(([tag, d]) => ({ tag, ...d, winRate: d.count > 0 ? (d.wins / d.count) * 100 : 0 })).sort((a, b) => b.pnl - a.pnl);
-
-    let curWin = 0, curLoss = 0, maxWin = 0, maxLoss = 0;
-    sorted.forEach((t) => {
-      if (t.result === 'win') { curWin++; curLoss = 0; maxWin = Math.max(maxWin, curWin); }
-      else if (t.result === 'loss') { curLoss++; curWin = 0; maxLoss = Math.max(maxLoss, curLoss); }
-      else { curWin = 0; curLoss = 0; }
-    });
-
-    const longTrades = closed.filter((t) => t.direction === 'long');
-    const shortTrades = closed.filter((t) => t.direction === 'short');
-    const longWins = longTrades.filter((t) => t.result === 'win').length;
-    const shortWins = shortTrades.filter((t) => t.result === 'win').length;
-    const longWinRate = longTrades.length ? (longWins / longTrades.length) * 100 : 0;
-    const shortWinRate = shortTrades.length ? (shortWins / shortTrades.length) * 100 : 0;
-    const longPnl = longTrades.reduce((s, t) => s + (t.netPnl ?? t.pnl ?? 0), 0);
-    const shortPnl = shortTrades.reduce((s, t) => s + (t.netPnl ?? t.pnl ?? 0), 0);
-
-    // By strategy — sorted by trade count
-    const stratMap = {};
-    closed.forEach((t) => {
-      if (!t.strategy) return;
-      if (!stratMap[t.strategy]) stratMap[t.strategy] = { wins: 0, losses: 0, pnl: 0, count: 0 };
-      stratMap[t.strategy].count++;
-      if (t.result === 'win') stratMap[t.strategy].wins++;
-      else if (t.result === 'loss') stratMap[t.strategy].losses++;
-      stratMap[t.strategy].pnl += t.netPnl ?? t.pnl ?? 0;
-    });
-    const byStrategy = Object.entries(stratMap)
-      .map(([name, d]) => ({ name, ...d, winRate: d.count > 0 ? (d.wins / d.count) * 100 : 0 }))
-      .sort((a, b) => b.count - a.count);
-
-    return { avgWin, avgLoss, largestWin, largestLoss, pieData, dailyPnL, byPair, byTimeframe, byTag, byStrategy, maxWin, maxLoss, longWinRate, shortWinRate, longPnl, shortPnl, longCount: longTrades.length, shortCount: shortTrades.length, longWins, shortWins };
-  }, [periodTrades]);
+  const sortedTrades = useMemo(() => sortJournalTrades(filteredTrades, sort, liveById), [filteredTrades, sort, liveById]);
+  const changeSort = (key) => setSort((cur) => (
+    cur.key === key ? { key, dir: cur.dir === 'desc' ? 'asc' : 'desc' } : { key, dir: key === 'pair' ? 'asc' : 'desc' }
+  ));
 
   const handleSave = async (data) => {
     try {
@@ -379,7 +368,9 @@ export default function TradeJournal() {
             ? calculateFuturesPnL(data.direction, data.entryPrice, data.exitPrice, data.contract.pointValue, data.contract.contracts)
             : calculatePnL(data.direction, data.entryPrice, data.exitPrice, data.quantity);
         if (pnl > 0) {
-          confetti({ particleCount: 120, spread: 80, origin: { y: 0.7 }, colors: ['#22c55e', '#4ade80', '#86efac', '#fbbf24', '#38bdf8'] });
+          import('canvas-confetti').then(({ default: confetti }) => {
+            confetti({ particleCount: 120, spread: 80, origin: { y: 0.7 }, colors: ['#22c55e', '#4ade80', '#86efac', '#fbbf24', '#38bdf8'] });
+          }).catch(() => {});
         }
       }
     } catch (error) {
@@ -394,9 +385,16 @@ export default function TradeJournal() {
     setFormOpen(true);
   };
 
-  const handleDeleteWithUndo = (trade) => {
-    setPendingDeletes((prev) => new Set(prev).add(trade.id));
-    deleteBatchRef.current.add(trade.id);
+  // Delete one or many trades behind a single 5-second "undo" toast.
+  const handleDeleteWithUndo = (tradeOrTrades) => {
+    const list = Array.isArray(tradeOrTrades) ? tradeOrTrades : [tradeOrTrades];
+    if (!list.length) return;
+    setPendingDeletes((prev) => {
+      const next = new Set(prev);
+      list.forEach((t) => next.add(t.id));
+      return next;
+    });
+    list.forEach((t) => deleteBatchRef.current.add(t.id));
 
     // Reset the batch timer so it starts fresh after each delete
     if (deleteBatchTimerRef.current) clearTimeout(deleteBatchTimerRef.current);
@@ -465,8 +463,19 @@ export default function TradeJournal() {
     setEditingTrade(null);
   };
 
+  const toggleSelected = (id) => setSelectedIds((prev) => {
+    const next = new Set(prev);
+    if (next.has(id)) next.delete(id); else next.add(id);
+    return next;
+  });
+  const deleteSelected = () => {
+    handleDeleteWithUndo(sortedTrades.filter((t) => selectedIds.has(t.id)));
+    setSelectedIds(new Set());
+    setSelectMode(false);
+  };
+
   const exportCSV = () => {
-    if (!filteredTrades.length) return;
+    if (!sortedTrades.length) return;
     // Escape a CSV cell: quote when it contains a comma/quote/newline, and
     // neutralize spreadsheet formula injection on a leading =,+,-,@.
     const cell = (v) => {
@@ -477,7 +486,7 @@ export default function TradeJournal() {
     };
     const toDate = (raw) => (raw ? (raw.toDate ? raw.toDate() : new Date(raw)) : null);
     const headers = ['תאריך', 'תאריך סגירה', 'זוג', 'כיוון', 'כניסה', 'סגירה', 'סטופ לוס', 'גודל עסקה', 'מינוף', 'עמלות', 'רווח/הפסד', '%', 'R:R', 'אסטרטגיה', 'טווח זמן', 'סטטוס', 'סיבת כניסה', 'הערות', 'תגיות', 'רגש לפני', 'רגש אחרי', 'טעויות', 'ביטחון'];
-    const rows = filteredTrades.map((t) => {
+    const rows = sortedTrades.map((t) => {
       const d = toDate(t.entryDate) || new Date();
       const xd = toDate(t.exitDate);
       const pnl = t.netPnl ?? t.pnl ?? 0;
@@ -490,7 +499,7 @@ export default function TradeJournal() {
         formatDate(d), xd ? formatDate(xd) : '', t.pair, t.direction, t.entryPrice, t.exitPrice,
         t.stopLoss, t.positionSize, t.leverage, t.fees, pnl.toFixed(2),
         (isNaN(pnlPct) ? 0 : pnlPct).toFixed(2), ((pnl < 0 ? -1 : 1) * Math.abs(t.rrRatio ?? 0)).toFixed(2), t.strategy || '',
-        t.timeframe || '', t.exitPrice > 0 ? 'סגורה' : 'פתוחה',
+        t.timeframe || '', t.status === 'partial' ? 'חלקית' : (isClosedTrade(t) ? 'סגורה' : 'פתוחה'),
         t.entryReason || '', t.notes || '', tags, t.emotionBefore || '', t.emotionAfter || '', mistakes, t.confidenceRating ?? '',
       ];
     });
@@ -502,17 +511,6 @@ export default function TradeJournal() {
     a.href = url; a.download = `trades_${new Date().toISOString().slice(0, 10)}.csv`;
     a.click(); URL.revokeObjectURL(url);
     toast.success('הקובץ הורד');
-  };
-
-  const getCoinFromPair = (pair = '') => pair.replace(/USDT$|BUSD$|USDC$|USD$/, '').toUpperCase();
-
-  const isLimitPending = (trade) => {
-    if (trade.orderType !== 'limit' || trade.exitPrice > 0) return false;
-    if (trade.limitTriggered) return false; // triggered → active, not pending
-    const currentPrice = prices[getCoinFromPair(trade.pair)]?.price;
-    if (!currentPrice || !trade.entryPrice) return true; // no price data → assume pending
-    const entry = parseFloat(trade.entryPrice);
-    return trade.direction === 'long' ? currentPrice > entry : currentPrice < entry;
   };
 
   if (loading) return <JournalSkeleton />;
@@ -545,13 +543,6 @@ export default function TradeJournal() {
     );
   }
 
-  const streakText = stats.currentStreak.count > 0
-    ? `${stats.currentStreak.count} ${stats.currentStreak.type === 'win' ? 'רווחים' : 'הפסדים'}`
-    : '0';
-  const streakColor = stats.currentStreak.type === 'win' ? 'text-profit' : stats.currentStreak.type === 'loss' ? 'text-loss' : 'text-text-primary';
-  const cardClass = 'bg-bg-secondary border border-border-primary rounded-xl p-4';
-  const pnlColor = (v) => v >= 0 ? 'text-profit' : 'text-loss';
-
   return (
     <motion.div variants={pageVariants} initial="initial" animate="animate" exit="exit" transition={pageTransition}>
       {/* Top Navigation Bar. backdrop-filter is force-disabled here: this panel
@@ -560,46 +551,14 @@ export default function TradeJournal() {
           faint "glass band" that flashed whenever a hover re-rasterized the
           layer (e.g. hovering the period-filter pills). The bg-bg-secondary
           fill is kept, so it looks identical in both themes. */}
-      <div className="bg-bg-secondary border border-border-primary rounded-xl mb-4 px-3 md:px-4 py-2.5 space-y-2 relative z-10" style={{ backdropFilter: 'none', WebkitBackdropFilter: 'none' }}>
+      <Card className="mb-4 px-3 md:px-4 py-2.5 space-y-2 relative z-10" style={{ backdropFilter: 'none', WebkitBackdropFilter: 'none' }}>
         {/* Row 1: Journal switcher + Actions */}
         <div className="flex items-center justify-between gap-2">
           <div className="flex items-center gap-1 md:gap-3 min-w-0">
             <JournalSwitcher compact />
             <div className="hidden md:block w-px h-6 bg-border-primary flex-shrink-0" />
-            {/* Desktop tabs inline */}
-            <div className="hidden md:flex items-center">
-              <button
-                onClick={() => setTab('trades')}
-                className={`h-9 inline-flex items-center px-3.5 text-sm font-medium rounded-lg transition-colors cursor-pointer whitespace-nowrap ${
-                  tab === 'trades' ? 'bg-accent-primary/15 text-accent-primary' : 'text-text-muted hover:text-text-primary hover:bg-bg-tertiary'
-                }`}
-              >
-                עסקאות ({trades.length})
-              </button>
-              <button
-                onClick={() => setTab('analytics')}
-                className={`h-9 inline-flex items-center px-3.5 text-sm font-medium rounded-lg transition-colors cursor-pointer whitespace-nowrap ${
-                  tab === 'analytics' ? 'bg-accent-primary/15 text-accent-primary' : 'text-text-muted hover:text-text-primary hover:bg-bg-tertiary'
-                }`}
-              >
-                ניתוחים
-              </button>
-              <button
-                onClick={() => setTab('calendar')}
-                className={`h-9 inline-flex items-center px-3.5 text-sm font-medium rounded-lg transition-colors cursor-pointer whitespace-nowrap ${
-                  tab === 'calendar' ? 'bg-accent-primary/15 text-accent-primary' : 'text-text-muted hover:text-text-primary hover:bg-bg-tertiary'
-                }`}
-              >
-                יומן חודשי
-              </button>
-              <button
-                onClick={() => setTab('exchange')}
-                className={`h-9 inline-flex items-center px-3.5 text-sm font-medium rounded-lg transition-colors cursor-pointer whitespace-nowrap ${
-                  tab === 'exchange' ? 'bg-accent-primary/15 text-accent-primary' : 'text-text-muted hover:text-text-primary hover:bg-bg-tertiary'
-                }`}
-              >
-                חיבור בורסאות
-              </button>
+            <div className="hidden md:block">
+              <JournalTabs tabs={JOURNAL_TABS} value={tab} onChange={setTab} tradesCount={trades.length} />
             </div>
           </div>
 
@@ -623,45 +582,27 @@ export default function TradeJournal() {
         {/* Row 2: Mobile tabs (scroll horizontally so they never compress each
             other). The period filter lives up in Row 1's action group. */}
         <div className="md:hidden">
-          <div className="flex items-center overflow-x-auto no-scrollbar -mx-1 px-1">
-            <button
-              onClick={() => setTab('trades')}
-              className={`px-2.5 py-1.5 text-xs font-medium rounded-lg transition-colors cursor-pointer whitespace-nowrap flex-shrink-0 ${
-                tab === 'trades' ? 'bg-accent-primary/15 text-accent-primary' : 'text-text-muted hover:text-text-primary hover:bg-bg-tertiary'
-              }`}
-            >
-              עסקאות ({trades.length})
-            </button>
-            <button
-              onClick={() => setTab('analytics')}
-              className={`px-2.5 py-1.5 text-xs font-medium rounded-lg transition-colors cursor-pointer whitespace-nowrap flex-shrink-0 ${
-                tab === 'analytics' ? 'bg-accent-primary/15 text-accent-primary' : 'text-text-muted hover:text-text-primary hover:bg-bg-tertiary'
-              }`}
-            >
-              ניתוחים
-            </button>
-            <button
-              onClick={() => setTab('calendar')}
-              className={`px-2.5 py-1.5 text-xs font-medium rounded-lg transition-colors cursor-pointer whitespace-nowrap flex-shrink-0 ${
-                tab === 'calendar' ? 'bg-accent-primary/15 text-accent-primary' : 'text-text-muted hover:text-text-primary hover:bg-bg-tertiary'
-              }`}
-            >
-              יומן חודשי
-            </button>
-            <button
-              onClick={() => setTab('exchange')}
-              className={`px-2.5 py-1.5 text-xs font-medium rounded-lg transition-colors cursor-pointer whitespace-nowrap flex-shrink-0 ${
-                tab === 'exchange' ? 'bg-accent-primary/15 text-accent-primary' : 'text-text-muted hover:text-text-primary hover:bg-bg-tertiary'
-              }`}
-            >
-              בורסאות
-            </button>
-          </div>
+          <JournalTabs tabs={JOURNAL_TABS} value={tab} onChange={setTab} tradesCount={trades.length} variant="mobile" />
         </div>
-      </div>
+      </Card>
 
       {tab === 'trades' && (
         <>
+          {/* The linked exchange's API key stopped working (e.g. a MEXC key
+              expired after 90 days) — sync and the live balance silently
+              stop, so say it here with a one-click way to fix it. */}
+          {activeJournal?.exchange && keyProblem && (
+            <div role="alert" className="mb-3 flex flex-wrap items-center justify-between gap-2 rounded-xl border border-loss/30 bg-loss/10 px-3 md:px-4 py-2.5">
+              <p className="text-sm text-loss font-semibold inline-flex items-center gap-1.5 min-w-0">
+                <AlertTriangle className="w-4 h-4 shrink-0" />
+                <span className="truncate">החיבור ל-{activeJournal.exchange.toUpperCase()} הפסיק לעבוד: {KEY_PROBLEM_TEXT[keyProblem]}</span>
+              </p>
+              <button type="button" onClick={() => setTab('exchange')}
+                className="h-8 px-3 rounded-lg text-xs font-semibold bg-loss/15 text-loss border border-loss/30 hover:bg-loss/25 transition-colors cursor-pointer shrink-0">
+                לתיקון החיבור
+              </button>
+            </div>
+          )}
           {activeJournal?.exchange && (
             <ExchangeProposals
               exchange={activeJournal.exchange}
@@ -673,330 +614,127 @@ export default function TradeJournal() {
           {trades.length > 0 && <TradeFilters filters={filters} onChange={setFilters} trades={trades} />}
 
           {filteredTrades.length === 0 && !loading ? (
-            <EmptyState
-              icon={BookOpen}
-              title={trades.length === 0 ? 'אין עסקאות עדיין' : 'אין עסקאות תואמות'}
-              description={trades.length === 0 ? 'התחל לתעד את העסקאות שלך למעקב ביצועים' : 'נסה לשנות את הפילטרים'}
-              action={
-                trades.length === 0 ? (
-                  <button
-                    onClick={() => setFormOpen(true)}
-                    className="mt-2 px-4 py-2 bg-accent-primary text-bg-primary font-semibold rounded-lg hover:bg-accent-hover transition-colors cursor-pointer"
-                  >
-                    הוסף את העסקה הראשונה
-                  </button>
-                ) : (
-                  <button
-                    onClick={() => setFilters(defaultFilters)}
-                    className="mt-2 px-4 py-2 bg-bg-tertiary text-text-primary border border-border-primary rounded-lg hover:bg-border-hover transition-colors cursor-pointer text-sm"
-                  >
-                    נקה פילטרים
-                  </button>
-                )
-              }
-            />
+            trades.length === 0 ? (
+              <EmptyState
+                icon={BookOpen}
+                title="אין עסקאות עדיין"
+                description="התחל לתעד את העסקאות שלך למעקב ביצועים"
+                actionLabel="הוסף את העסקה הראשונה"
+                onAction={() => setFormOpen(true)}
+              />
+            ) : (
+              <EmptyState
+                icon={BookOpen}
+                title="אין עסקאות תואמות"
+                description="נסה לשנות את הפילטרים"
+                actionLabel="נקה פילטרים"
+                onAction={() => setFilters(defaultFilters)}
+              />
+            )
           ) : (
             <>
-              <TradeTable trades={filteredTrades.slice(0, visibleCount)} onEdit={handleEdit} onDelete={handleDeleteWithUndo} onShare={setShareTarget} isLimitPending={isLimitPending} />
-              {filteredTrades.length > visibleCount && (
+              <JournalSummaryBar trades={filteredTrades} filtered={hasActiveFilters} liveById={liveById} />
+
+              {/* List toolbar: sort (phones — desktop sorts by clicking a column
+                  header) and the bulk-selection toggle. */}
+              <div className="flex items-center justify-between gap-2 mb-2">
+                <div className="md:hidden min-w-0">
+                  <SelectDropdown compact value={`${sort.key}:${sort.dir}`} options={SORT_OPTIONS}
+                    onChange={(v) => { const [key, dir] = (v || 'date:desc').split(':'); setSort({ key, dir }); }} />
+                </div>
+                <span className="hidden md:inline text-[11px] text-text-muted">לחץ על כותרת עמודה כדי למיין</span>
+                <button
+                  type="button"
+                  onClick={() => { setSelectMode((m) => !m); setSelectedIds(new Set()); }}
+                  className={`h-8 inline-flex items-center gap-1.5 px-3 rounded-lg text-xs font-medium border transition-colors cursor-pointer shrink-0 ${
+                    selectMode ? 'bg-accent-primary/15 text-accent-primary border-accent-primary/40' : 'text-text-muted border-border-primary hover:text-text-primary hover:border-border-hover'
+                  }`}
+                >
+                  <ListChecks className="w-3.5 h-3.5" />
+                  {selectMode ? 'סיום בחירה' : 'בחירה מרובה'}
+                </button>
+              </div>
+
+              <TradeTable
+                trades={sortedTrades.slice(0, visibleCount)}
+                allTrades={sortedTrades}
+                liveById={liveById}
+                sort={sort}
+                onSortChange={changeSort}
+                showMonths={sort.key === 'date'}
+                selectMode={selectMode}
+                selectedIds={selectedIds}
+                onToggleSelect={toggleSelected}
+                onEdit={handleEdit}
+                onDelete={handleDeleteWithUndo}
+                onShare={setShareTarget}
+                isLimitPending={isLimitPending}
+              />
+              {sortedTrades.length > visibleCount && (
                 <button
                   onClick={() => setVisibleCount((c) => c + 50)}
                   className="mt-3 w-full py-2.5 rounded-lg bg-bg-tertiary text-text-primary border border-border-primary hover:bg-border-hover transition-colors cursor-pointer text-sm"
                 >
-                  טען עוד ({filteredTrades.length - visibleCount})
+                  טען עוד ({sortedTrades.length - visibleCount})
                 </button>
+              )}
+
+              {/* Bulk action bar — sticks to the bottom of the scroll area,
+                  above the phone tab bar. Solid fill so rows don't show through. */}
+              {selectMode && (
+                <div className="sticky bottom-24 lg:bottom-4 z-20 mt-3">
+                  <div className="flex items-center justify-between gap-2 rounded-xl border border-border-primary px-3 md:px-4 py-2.5 shadow-[0_12px_40px_rgba(0,0,0,0.45)]"
+                    style={{ background: 'var(--modal-header-solid)' }}>
+                    <div className="min-w-0">
+                      <p className="text-sm font-semibold text-text-primary">
+                        {selectedIds.size ? `נבחרו ${selectedIds.size} עסקאות` : 'סמן עסקאות ברשימה'}
+                      </p>
+                      <button type="button"
+                        onClick={() => setSelectedIds(selectedIds.size === sortedTrades.length ? new Set() : new Set(sortedTrades.map((t) => t.id)))}
+                        className="text-[11px] text-accent-primary hover:underline cursor-pointer">
+                        {selectedIds.size === sortedTrades.length ? 'נקה בחירה' : `בחר את כל ${sortedTrades.length}`}
+                      </button>
+                    </div>
+                    <div className="flex items-center gap-2 shrink-0">
+                      <button type="button" onClick={() => { setSelectMode(false); setSelectedIds(new Set()); }}
+                        className="h-9 px-3 rounded-lg border border-border-primary text-xs text-text-secondary hover:bg-bg-tertiary transition-colors cursor-pointer">
+                        ביטול
+                      </button>
+                      <button type="button" onClick={deleteSelected} disabled={!selectedIds.size}
+                        className="h-9 inline-flex items-center gap-1.5 px-3 rounded-lg text-xs font-semibold bg-loss/15 text-loss border border-loss/30 hover:bg-loss/25 transition-colors cursor-pointer disabled:opacity-40 disabled:cursor-not-allowed">
+                        <Trash2 className="w-3.5 h-3.5" />
+                        מחק{selectedIds.size ? ` (${selectedIds.size})` : ''}
+                      </button>
+                    </div>
+                  </div>
+                </div>
               )}
             </>
           )}
         </>
       )}
 
-      {/* Empty gate: `analytics` is null when the PERIOD-FILTERED set has no
-          closed trades. Two very different situations share that condition:
-          a brand-new account (show onboarding copy + first-trade CTA) and a
-          veteran whose selected period is simply empty (say so truthfully and
-          offer to widen the period — telling them to "close their first
-          trade" would be false). */}
-      {tab === 'analytics' && analytics === null && (
-        trades.some(isClosedTrade) ? (
-          <EmptyState
-            icon={BarChart3}
-            title="אין עסקאות סגורות בתקופה שנבחרה"
-            description="טווח הזמן שבחרת לא כולל עסקאות סגורות — נסה תקופה רחבה יותר."
-            actionLabel="הצג את כל התקופות"
-            onAction={() => setPeriod('all')}
+      {tab === 'analytics' && (
+        <Suspense fallback={<TabFallback />}>
+          <JournalAnalyticsTab
+            trades={trades}
+            period={period}
+            onPeriodChange={setPeriod}
+            stats={stats}
+            activeJournal={activeJournal}
+            balanceIsLive={balanceIsLive}
+            displayedCurrentBalance={displayedCurrentBalance}
+            onOpenAI={() => setAiModalOpen(true)}
+            onFilterJump={filterAndJump}
+            onAddFirstTrade={() => { setTab('trades'); setFormOpen(true); }}
           />
-        ) : (
-          <EmptyState
-            icon={BarChart3}
-            title="אין עדיין נתונים לניתוח"
-            description="הניתוחים נבנים מהעסקאות הסגורות שלך — ברגע שתסגור את העסקה הראשונה, הגרפים והמדדים יתעוררו כאן."
-            actionLabel="הוסף עסקה ראשונה"
-            onAction={() => { setTab('trades'); setFormOpen(true); }}
-          />
-        )
-      )}
-
-      {tab === 'analytics' && analytics !== null && (
-        <>
-          {/* AI analysis launcher — 21st.dev-style gradient card with a shimmer
-              sweep. Opens the beautiful animated AI modal. */}
-          <motion.button
-            type="button"
-            onClick={() => setAiModalOpen(true)}
-            initial={{ opacity: 0, y: 8 }}
-            animate={{ opacity: 1, y: 0 }}
-            whileHover={{ scale: 1.01 }}
-            whileTap={{ scale: 0.99 }}
-            className="group relative w-full overflow-hidden rounded-2xl mb-3 md:mb-4 cursor-pointer text-right"
-            style={{ border: '1px solid var(--glass-border)' }}
-          >
-            {/* animated gradient wash */}
-            <div
-              className="absolute inset-0 opacity-90"
-              style={{ background: 'linear-gradient(135deg, rgba(139,92,246,0.16) 0%, rgba(99,102,241,0.10) 45%, rgba(6,182,212,0.16) 100%)' }}
-            />
-            {/* shimmer sweep */}
-            <motion.div
-              aria-hidden
-              className="absolute inset-y-0 -left-1/2 w-1/2 skew-x-12"
-              style={{ background: 'linear-gradient(90deg, transparent, rgba(255,255,255,0.14), transparent)' }}
-              animate={{ x: ['0%', '400%'] }}
-              transition={{ duration: 2.4, repeat: Infinity, repeatDelay: 2.4, ease: 'easeInOut' }}
-            />
-            <div className="relative flex items-center gap-3 px-4 py-3.5 md:px-5 md:py-4">
-              {/* icon medallion with soft glow */}
-              <span className="relative flex-shrink-0 grid place-items-center w-11 h-11 rounded-xl"
-                style={{ background: 'rgba(139,92,246,0.14)', border: '1px solid rgba(139,92,246,0.30)' }}>
-                <motion.span
-                  aria-hidden
-                  className="absolute inset-0 rounded-xl"
-                  style={{ boxShadow: '0 0 22px 2px rgba(139,92,246,0.35)' }}
-                  animate={{ opacity: [0.35, 0.8, 0.35] }}
-                  transition={{ duration: 2.6, repeat: Infinity, ease: 'easeInOut' }}
-                />
-                <BrainCircuit className="relative w-5 h-5" style={{ stroke: 'url(#ai-grad)' }} />
-              </span>
-              <div className="min-w-0 flex-1">
-                <div className="flex items-center gap-1.5">
-                  <span className="text-sm md:text-base font-bold text-gradient">ניתוח AI של המסחר שלך</span>
-                  <Sparkles className="w-3.5 h-3.5 flex-shrink-0" style={{ stroke: 'url(#ai-grad)' }} />
-                </div>
-                <p className="text-xs text-text-muted mt-0.5 truncate">
-                  תובנות חכמות, דפוסים חוזרים והמלצות — לחצו לפתיחה
-                </p>
-              </div>
-              <ChevronLeft className="w-5 h-5 flex-shrink-0 text-accent-primary transition-transform group-hover:-translate-x-1" />
-            </div>
-          </motion.button>
-
-          {/* Row 1: Main Stats */}
-          <motion.div className="grid grid-cols-2 md:grid-cols-4 gap-2.5 md:gap-3 mb-3 md:mb-4" variants={staggerContainer} initial="initial" animate="animate">
-            <StatCard label={balanceIsLive ? `יתרה נוכחית · ${activeJournal.exchange}` : 'יתרה נוכחית'}
-              value={formatCurrency(displayedCurrentBalance).replace('+', '')}
-              subtitle={balanceIsLive ? 'מסונכרן עם הבורסה' : (activeJournal?.initialBalance > 0 ? `${formatPercent(stats.balanceChangePercent)} מההתחלה` : `${stats.totalTrades} עסקאות`)}
-              subtitleColor={balanceIsLive ? 'text-accent-primary' : (stats.balanceChangePercent >= 0 ? 'text-profit' : 'text-loss')} icon={Wallet} color="text-accent-primary"
-              gradient={stats.totalPnL >= 0 ? 'profit' : 'loss'} />
-            <StatCard label="רווח נקי" value={formatCurrency(stats.totalPnL)} subtitle={`${stats.totalTrades} עסקאות`}
-              icon={DollarSign} color={stats.totalPnL >= 0 ? 'text-profit' : 'text-loss'} />
-            <StatCard label="אחוז הצלחה" value={`${stats.winRate.toFixed(1)}%`} subtitle={`${stats.winCount}W ${stats.lossCount}L`}
-              icon={Target} color="text-accent-primary" />
-            <StatCard label="תוחלת" value={formatCurrency(stats.expectancy)} subtitle={`ממוצע ${stats.avgRR.toFixed(2)}R`}
-              icon={Zap} color={stats.expectancy >= 0 ? 'text-profit' : 'text-loss'} />
-          </motion.div>
-
-          {/* Combined Metrics Grid */}
-          <div className="bg-bg-secondary border border-border-primary rounded-xl mb-4 md:mb-6 p-3">
-            <div className="grid grid-cols-3 md:grid-cols-5 lg:grid-cols-10 gap-px">
-              {[
-                { label: 'רצף נוכחי', value: streakText, color: streakColor },
-                { label: 'מקדם רווח', value: stats.profitFactor === Infinity ? '∞' : stats.profitFactor.toFixed(2), color: stats.profitFactor >= 1.5 ? 'text-profit' : 'text-loss' },
-                { label: 'תשואה/תנודתיות', value: stats.sharpeRatio.toFixed(2) },
-                { label: 'תשואה/נפילה', value: stats.calmarRatio.toFixed(2) },
-                { label: 'תשואה/הפסדים', value: stats.sortinoRatio === Infinity ? '∞' : stats.sortinoRatio.toFixed(2) },
-                { label: 'התאוששות', value: stats.recoveryFactor.toFixed(2), color: stats.recoveryFactor >= 1 ? 'text-profit' : 'text-loss' },
-                { label: 'ירידה מקס׳', value: `-${stats.maxDrawdown.toFixed(1)}%`, color: 'text-loss' },
-                { label: 'סיכון/סיכוי', value: `1:${stats.avgRR.toFixed(2)}` },
-                { label: 'ימי מסחר', value: stats.tradingDays },
-                { label: 'עסקאות/יום', value: stats.tradesPerDay.toFixed(1) },
-                { label: 'משך ממוצע', value: formatDuration(stats.avgDurationHours) },
-                { label: 'עמלות', value: formatCurrency(-stats.totalFees), color: 'text-loss' },
-                ...(analytics ? [
-                  { label: 'ממוצע רווח', value: formatCurrency(analytics.avgWin), color: 'text-profit' },
-                  { label: 'ממוצע הפסד', value: formatCurrency(-analytics.avgLoss), color: 'text-loss' },
-                  { label: 'רווח מקס׳', value: formatCurrency(analytics.largestWin), color: 'text-profit' },
-                  { label: 'הפסד מקס׳', value: formatCurrency(analytics.largestLoss), color: 'text-loss' },
-                  { label: 'רצף רווחים', value: analytics.maxWin, color: 'text-profit' },
-                  { label: 'רצף הפסדים', value: analytics.maxLoss, color: 'text-loss' },
-                  { label: `לונג (${analytics.longCount})`, value: `${analytics.longWinRate.toFixed(0)}%`, color: 'text-long' },
-                  { label: `שורט (${analytics.shortCount})`, value: `${analytics.shortWinRate.toFixed(0)}%`, color: 'text-short' },
-                ] : []),
-              ].map((item) => (
-                <div key={item.label} className="flex flex-col items-center py-3 px-2">
-                  <span className="text-[10px] text-text-muted whitespace-nowrap mb-1">{item.label}</span>
-                  <span className={`text-sm font-bold ${item.color || 'text-text-primary'} whitespace-nowrap`}>{item.value}</span>
-                </div>
-              ))}
-            </div>
-          </div>
-
-          {analytics && (
-            <>
-
-              <Suspense fallback={<div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4 mb-6">{[1, 2, 3, 4].map((i) => <div key={i} className={`${cardClass} p-5 h-48 animate-pulse`} />)}</div>}>
-                <JournalCharts
-                  analytics={analytics} stats={stats} periodTrades={periodTrades}
-                  cardClass={cardClass} tooltipStyle={tooltipStyle} pieColors={PIE_COLORS}
-                  formatCurrency={formatCurrency} onFilterJump={filterAndJump}
-                />
-              </Suspense>
-            </>
-          )}
-
-          {/* Long vs Short visual card */}
-          {analytics && (analytics.longCount > 0 || analytics.shortCount > 0) && (
-            <div className={`${cardClass} mb-4 p-5`}>
-              <h3 className="text-sm font-semibold text-text-primary mb-3">Long vs Short</h3>
-              <div className="grid grid-cols-2 gap-4">
-                {/* Long */}
-                <div onClick={() => filterAndJump({ direction: 'long' })}
-                  className="cursor-pointer rounded-lg p-2 hover:bg-accent-primary/5 transition-colors">
-                  <div className="flex items-center justify-between mb-1.5">
-                    <span className="text-xs font-semibold text-profit">Long ↗</span>
-                    <span className="text-xs text-text-muted">{analytics.longCount} עסקאות · {analytics.longWins}W</span>
-                  </div>
-                  <div className="h-2 bg-bg-tertiary rounded-full overflow-hidden mb-1.5">
-                    <div className="h-full bg-profit rounded-full transition-all duration-700" style={{ width: `${analytics.longWinRate}%` }} />
-                  </div>
-                  <div className="flex items-center justify-between text-[11px]">
-                    <span className="font-bold text-profit">{analytics.longWinRate.toFixed(1)}% הצלחה</span>
-                    <span className={analytics.longPnl >= 0 ? 'text-profit' : 'text-loss'}>{analytics.longPnl >= 0 ? '+' : ''}{analytics.longPnl.toFixed(2)}$</span>
-                  </div>
-                </div>
-                {/* Short */}
-                <div onClick={() => filterAndJump({ direction: 'short' })}
-                  className="cursor-pointer rounded-lg p-2 hover:bg-accent-primary/5 transition-colors">
-                  <div className="flex items-center justify-between mb-1.5">
-                    <span className="text-xs font-semibold text-loss">Short ↗</span>
-                    <span className="text-xs text-text-muted">{analytics.shortCount} עסקאות · {analytics.shortWins}W</span>
-                  </div>
-                  <div className="h-2 bg-bg-tertiary rounded-full overflow-hidden mb-1.5">
-                    <div className="h-full bg-loss rounded-full transition-all duration-700" style={{ width: `${analytics.shortWinRate}%` }} />
-                  </div>
-                  <div className="flex items-center justify-between text-[11px]">
-                    <span className="font-bold text-loss">{analytics.shortWinRate.toFixed(1)}% הצלחה</span>
-                    <span className={analytics.shortPnl >= 0 ? 'text-profit' : 'text-loss'}>{analytics.shortPnl >= 0 ? '+' : ''}{analytics.shortPnl.toFixed(2)}$</span>
-                  </div>
-                </div>
-              </div>
-            </div>
-          )}
-
-          <div className="mb-6">
-            <TradeHeatmap trades={periodTrades} />
-          </div>
-
-          <div className="grid grid-cols-1 lg:grid-cols-3 gap-4 mb-6">
-            <Suspense fallback={<div className={`${cardClass} p-5 h-56 animate-pulse`} />}>
-              <SessionAnalysisChart data={stats.sessionPerformance} />
-            </Suspense>
-            <Suspense fallback={<div className={`${cardClass} p-5 h-56 animate-pulse`} />}>
-              <DayOfWeekChart data={stats.dayOfWeekPerformance} />
-            </Suspense>
-            {analytics?.byTag?.length > 0 && (
-              <div className={`${cardClass} p-5`}>
-                <h3 className="text-sm font-semibold text-text-primary mb-3">ביצועים לפי תגית</h3>
-                <div className="overflow-x-auto">
-                  <table className="w-full text-sm">
-                    <thead><tr className="text-xs text-text-muted border-b border-border-primary">
-                      <th className="text-right pb-2 font-medium">תגית</th>
-                      <th className="text-right pb-2 font-medium">עסקאות</th>
-                      <th className="text-right pb-2 font-medium">% הצלחה</th>
-                      <th className="text-right pb-2 font-medium">רווח/הפסד</th>
-                    </tr></thead>
-                    <tbody>
-                      {analytics.byTag.map((t) => (
-                        <tr key={t.tag} onClick={() => filterAndJump({ tag: t.tag })}
-                          className="border-b border-border-primary/50 cursor-pointer hover:bg-accent-primary/5 transition-colors">
-                          <td className="py-2 text-text-primary font-medium">{TAG_LABELS[t.tag] || t.tag} <span className="text-text-muted text-[10px] opacity-50">↗</span></td>
-                          <td className="py-2 text-text-secondary">{t.count}</td>
-                          <td className="py-2 text-text-secondary">{t.winRate.toFixed(1)}%</td>
-                          <td className={`py-2 font-medium ${pnlColor(t.pnl)}`}>{formatCurrency(t.pnl)}</td>
-                        </tr>
-                      ))}
-                    </tbody>
-                  </table>
-                </div>
-              </div>
-            )}
-          </div>
-
-          <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-4 gap-4 mb-6">
-            <StrategyPerformanceTable
-              data={analytics?.byStrategy}
-              onStrategyClick={(name) => filterAndJump({ strategy: name })}
-            />
-            <MonthlyPerformanceTable data={stats.monthlyPerformance} />
-            {analytics && (
-              <div className={`${cardClass} p-5`}>
-                <h3 className="text-sm font-semibold text-text-primary mb-3">ביצועים לפי זוג</h3>
-                <div className="overflow-x-auto">
-                  <table className="w-full text-sm">
-                    <thead><tr className="text-xs text-text-muted border-b border-border-primary">
-                      <th className="text-right pb-2 font-medium">זוג</th>
-                      <th className="text-right pb-2 font-medium">עסקאות</th>
-                      <th className="text-right pb-2 font-medium">% הצלחה</th>
-                      <th className="text-right pb-2 font-medium">רווח/הפסד</th>
-                    </tr></thead>
-                    <tbody>
-                      {analytics.byPair.map((p) => (
-                        <tr key={p.pair} onClick={() => filterAndJump({ search: p.pair })}
-                          className="border-b border-border-primary/50 cursor-pointer hover:bg-accent-primary/5 transition-colors">
-                          <td className="py-2 text-text-primary font-medium">{p.pair} <span className="text-text-muted text-[10px] opacity-50">↗</span></td>
-                          <td className="py-2 text-text-secondary">{p.wins + p.losses}</td>
-                          <td className="py-2 text-text-secondary">{p.winRate.toFixed(1)}%</td>
-                          <td className={`py-2 font-medium ${pnlColor(p.pnl)}`}>{formatCurrency(p.pnl)}</td>
-                        </tr>
-                      ))}
-                    </tbody>
-                  </table>
-                </div>
-                <p className="text-[10px] text-text-muted mt-2 text-center">לחץ על שורה לסינון עסקאות לפי זוג</p>
-              </div>
-            )}
-            {analytics?.byTimeframe?.length > 0 && (
-              <div className={`${cardClass} p-5`}>
-                <h3 className="text-sm font-semibold text-text-primary mb-3">ביצועים לפי טווח זמן</h3>
-                <div className="overflow-x-auto">
-                  <table className="w-full text-sm">
-                    <thead><tr className="text-xs text-text-muted border-b border-border-primary">
-                      <th className="text-right pb-2 font-medium">טווח זמן</th>
-                      <th className="text-right pb-2 font-medium">עסקאות</th>
-                      <th className="text-right pb-2 font-medium">% הצלחה</th>
-                      <th className="text-right pb-2 font-medium">רווח/הפסד</th>
-                    </tr></thead>
-                    <tbody>
-                      {analytics.byTimeframe.map((tf) => (
-                        <tr key={tf.timeframe} onClick={() => filterAndJump({ timeframe: tf.timeframe })}
-                          className="border-b border-border-primary/50 cursor-pointer hover:bg-accent-primary/5 transition-colors">
-                          <td className="py-2 text-text-primary font-medium">{tf.timeframe} <span className="text-text-muted text-[10px] opacity-50">↗</span></td>
-                          <td className="py-2 text-text-secondary">{tf.total}</td>
-                          <td className="py-2 text-text-secondary">{tf.winRate.toFixed(1)}%</td>
-                          <td className={`py-2 font-medium ${pnlColor(tf.pnl)}`}>{formatCurrency(tf.pnl)}</td>
-                        </tr>
-                      ))}
-                    </tbody>
-                  </table>
-                </div>
-                <p className="text-[10px] text-text-muted mt-2 text-center">לחץ על שורה לסינון עסקאות לפי טווח זמן</p>
-              </div>
-            )}
-          </div>
-        </>
+        </Suspense>
       )}
 
       {tab === 'calendar' && (
-        <MonthlyCalendar trades={trades} journalName={activeJournal?.name} />
+        <Suspense fallback={<TabFallback />}>
+          <MonthlyCalendar trades={trades} journalName={activeJournal?.name} />
+        </Suspense>
       )}
 
       <Modal
@@ -1010,36 +748,56 @@ export default function TradeJournal() {
           </span>
         )}
       >
-        <AICoachPanel trades={trades} />
+        <Suspense fallback={<div className="h-40 animate-pulse rounded-xl bg-bg-tertiary" />}>
+          <AICoachPanel trades={trades} />
+        </Suspense>
       </Modal>
 
       {tab === 'exchange' && (
         <div className="mt-2">
-          <ExchangeSettings journalId={activeJournalId} />
+          <Suspense fallback={<TabFallback />}>
+            <ExchangeSettings journalId={activeJournalId} />
+          </Suspense>
         </div>
       )}
 
-      <TradeForm isOpen={formOpen} onClose={handleCloseForm} trade={editingTrade} onSave={handleSave}
-        riskSettings={{ riskType: activeJournal?.riskType, riskValue: activeJournal?.riskValue, currentBalance: displayedCurrentBalance }}
-        journalAssetClass={activeJournal?.assetClass || 'crypto'}
-        livePrices={prices} />
-
-      <ImportTrades isOpen={importOpen} onClose={() => setImportOpen(false)} onImport={addTrade} onImportBulk={addTradesBulk} />
-
-      <JournalSettingsModal
-        isOpen={settingsOpen}
-        onClose={() => setSettingsOpen(false)}
-        onArchive={(name) => { setArchiveTargetName(name); setArchiveAnimating(true); }}
-        onImport={() => setImportOpen(true)}
-        onExport={exportCSV}
-        canExport={trades.length > 0}
-      />
-
-      <TradeShareModal
-        isOpen={!!shareTarget}
-        onClose={() => setShareTarget(null)}
-        trade={shareTarget}
-      />
+      {/* Lazy modals, each in its own boundary so one loading (e.g. import,
+          opened from inside settings) never blanks another that is open.
+          fallback={null}: the Modal draws its own backdrop once loaded. */}
+      <Suspense fallback={null}>
+        {formMounted && (
+          <TradeForm isOpen={formOpen} onClose={handleCloseForm} trade={editingTrade} onSave={handleSave}
+            riskSettings={{ riskType: activeJournal?.riskType, riskValue: activeJournal?.riskValue, currentBalance: displayedCurrentBalance }}
+            journalAssetClass={activeJournal?.assetClass || 'crypto'}
+            livePrices={prices} />
+        )}
+      </Suspense>
+      <Suspense fallback={null}>
+        {importMounted && (
+          <ImportTrades isOpen={importOpen} onClose={() => setImportOpen(false)} onImport={addTrade} onImportBulk={addTradesBulk} />
+        )}
+      </Suspense>
+      <Suspense fallback={null}>
+        {settingsMounted && (
+          <JournalSettingsModal
+            isOpen={settingsOpen}
+            onClose={() => setSettingsOpen(false)}
+            onArchive={(name) => { setArchiveTargetName(name); setArchiveAnimating(true); }}
+            onImport={() => setImportOpen(true)}
+            onExport={exportCSV}
+            canExport={trades.length > 0}
+          />
+        )}
+      </Suspense>
+      <Suspense fallback={null}>
+        {shareMounted && (
+          <TradeShareModal
+            isOpen={!!shareTarget}
+            onClose={() => setShareTarget(null)}
+            trade={shareTarget}
+          />
+        )}
+      </Suspense>
 
       <ArchiveAnimation
         isOpen={archiveAnimating}

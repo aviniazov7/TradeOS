@@ -9,6 +9,7 @@ import {
   formatDateTime,
 } from '../../utils/formatters';
 import { MISTAKE_LABELS } from '../../utils/constants';
+import { isClosedTrade } from '../../utils/calculations';
 import { safeHttpUrl } from '../../utils/urls';
 import {
   TrendingUp,
@@ -98,10 +99,12 @@ export default function TradeDetailModal({
 
   const pair = trade.pair || trade.symbol || '';
   const pnl = trade.netPnl ?? trade.pnl ?? 0;
+  // Same predicate as the table: a broker CSV import is status:'closed' with
+  // pnlFromExchange but no exit price, and must not read as "open" here.
   const status =
     trade.status === 'partial'
       ? 'partial'
-      : Number(trade.exitPrice) > 0
+      : isClosedTrade(trade)
         ? 'closed'
         : 'open';
   const pnlColor = (v) =>
@@ -291,7 +294,8 @@ export default function TradeDetailModal({
               : []),
             {
               label: partialExits ? 'סגירה (משוקלל)' : 'סגירה',
-              value: status === 'open' ? null : formatPrice(trade.exitPrice),
+              // Closed imports may have no exit price — hide the row instead of "0".
+              value: status === 'open' || !(Number(trade.exitPrice) > 0) ? null : formatPrice(trade.exitPrice),
               cls: pnlColor(pnl),
             },
           ]}

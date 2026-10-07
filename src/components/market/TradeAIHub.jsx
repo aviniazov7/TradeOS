@@ -1,5 +1,6 @@
 import { motion, AnimatePresence } from 'framer-motion';
 import { TrendingUp, Target, Layers, Gauge, Sparkles, ChevronUp } from 'lucide-react';
+import { LRM } from '../../utils/formatters';
 
 // The questions worth asking about YOUR OWN book, not about the market. Each
 // one is answerable from the journal, which is the whole point of asking it
@@ -14,7 +15,7 @@ const QUICK_QUESTIONS = [
 ];
 
 const fmt$ = (v) => {
-  const sign = v >= 0 ? '+' : '-';
+  const sign = `${LRM}${v >= 0 ? '+' : '-'}`;
   const a = Math.abs(v);
   if (a >= 1000) return `${sign}$${(a / 1000).toFixed(1)}K`;
   return `${sign}$${a.toFixed(0)}`;

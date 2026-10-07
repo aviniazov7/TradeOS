@@ -24,12 +24,13 @@ import PairSearch from '../journal/PairSearch';
 import TimeframeSelector from '../shared/TimeframeSelector';
 import StrategySelector from '../shared/StrategySelector';
 import { PAIRS, SESSIONS, getSessionClasses } from '../../utils/constants';
-import { formatDate, formatDateShort, formatTime } from '../../utils/formatters';
+import { formatDate, formatDateShort, formatTime, LRM } from '../../utils/formatters';
 import { safeHttpUrl } from '../../utils/urls';
 import { useUserStrategies } from '../../hooks/useUserStrategies';
 import { useUserTimeframes } from '../../hooks/useUserTimeframes';
 import { useUserTriggers } from '../../hooks/useUserTriggers';
 import { pageVariants, pageTransition } from '../../utils/animations';
+import TabStrip from '../shared/TabStrip';
 
 
 function getSessionFromDate(date) {
@@ -247,23 +248,8 @@ export default function BacktestTracker() {
             <BacktestSwitcher compact />
             <div className="hidden md:block w-px h-6 bg-border-primary flex-shrink-0" />
             {/* Desktop tabs */}
-            <div className="hidden md:flex items-center">
-              <button
-                onClick={() => setTab('records')}
-                className={`h-9 inline-flex items-center px-3.5 text-sm font-medium rounded-lg transition-colors cursor-pointer whitespace-nowrap ${
-                  tab === 'records' ? 'bg-accent-primary/15 text-accent-primary' : 'text-text-muted hover:text-text-primary hover:bg-bg-tertiary'
-                }`}
-              >
-                עסקאות ({backtests.length})
-              </button>
-              <button
-                onClick={() => setTab('analytics')}
-                className={`h-9 inline-flex items-center px-3.5 text-sm font-medium rounded-lg transition-colors cursor-pointer whitespace-nowrap ${
-                  tab === 'analytics' ? 'bg-accent-primary/15 text-accent-primary' : 'text-text-muted hover:text-text-primary hover:bg-bg-tertiary'
-                }`}
-              >
-                ניתוחים
-              </button>
+            <div className="hidden md:block">
+              <TabStrip tabs={[{ id: 'records', label: 'עסקאות', count: backtests.length }, { id: 'analytics', label: 'ניתוחים' }]} value={tab} onChange={setTab} layoutKey="backtest-tab" />
             </div>
           </div>
 
@@ -291,23 +277,8 @@ export default function BacktestTracker() {
         </div>
 
         {/* Row 2: Mobile tabs */}
-        <div className="md:hidden flex items-center">
-          <button
-            onClick={() => setTab('records')}
-            className={`px-2.5 py-1.5 text-xs font-medium rounded-lg transition-colors cursor-pointer whitespace-nowrap ${
-              tab === 'records' ? 'bg-accent-primary/15 text-accent-primary' : 'text-text-muted hover:text-text-primary hover:bg-bg-tertiary'
-            }`}
-          >
-            עסקאות ({backtests.length})
-          </button>
-          <button
-            onClick={() => setTab('analytics')}
-            className={`px-2.5 py-1.5 text-xs font-medium rounded-lg transition-colors cursor-pointer whitespace-nowrap ${
-              tab === 'analytics' ? 'bg-accent-primary/15 text-accent-primary' : 'text-text-muted hover:text-text-primary hover:bg-bg-tertiary'
-            }`}
-          >
-            ניתוחים
-          </button>
+        <div className="md:hidden">
+          <TabStrip tabs={[{ id: 'records', label: 'עסקאות', count: backtests.length }, { id: 'analytics', label: 'ניתוחים' }]} value={tab} onChange={setTab} variant="mobile" layoutKey="backtest-tab" />
         </div>
       </div>
 
@@ -327,11 +298,11 @@ export default function BacktestTracker() {
               </span>
               <span className="inline-flex items-baseline gap-1.5">
                 <span className="text-xs text-text-muted">ממוצע R</span>
-                <span className={`text-sm font-bold ${recordStats.avgR >= 0 ? 'text-profit' : 'text-loss'}`} dir="ltr">{recordStats.avgR >= 0 ? '+' : ''}{recordStats.avgR.toFixed(2)}R</span>
+                <span className={`text-sm font-bold ${recordStats.avgR >= 0 ? 'text-profit' : 'text-loss'}`} dir="ltr">{LRM}{recordStats.avgR >= 0 ? '+' : ''}{recordStats.avgR.toFixed(2)}R</span>
               </span>
               <span className="inline-flex items-baseline gap-1.5">
                 <span className="text-xs text-text-muted">סה״כ R</span>
-                <span className={`text-sm font-bold ${recordStats.totalR >= 0 ? 'text-profit' : 'text-loss'}`} dir="ltr">{recordStats.totalR >= 0 ? '+' : ''}{recordStats.totalR.toFixed(2)}R</span>
+                <span className={`text-sm font-bold ${recordStats.totalR >= 0 ? 'text-profit' : 'text-loss'}`} dir="ltr">{LRM}{recordStats.totalR >= 0 ? '+' : ''}{recordStats.totalR.toFixed(2)}R</span>
               </span>
               <span className="inline-flex items-baseline gap-1.5">
                 <span className="text-xs text-text-muted">PF</span>
@@ -389,7 +360,7 @@ export default function BacktestTracker() {
                         <span className="text-[11px] text-text-muted">{formatDateShort(bt.date)}</span>
                       </div>
                       <span className={`text-sm font-bold flex-shrink-0 ${(bt.rResult || 0) >= 0 ? 'text-profit' : 'text-loss'}`}>
-                        {bt.rResult != null ? `${bt.rResult >= 0 ? '+' : ''}${bt.rResult.toFixed(2)}R` : '–'}
+                        {bt.rResult != null ? `${LRM}${bt.rResult >= 0 ? '+' : ''}${bt.rResult.toFixed(2)}R` : '–'}
                       </span>
                     </div>
                   </div>
@@ -445,7 +416,7 @@ export default function BacktestTracker() {
                         <td className="py-2.5 text-text-primary text-xs">{bt.maxR ? `${bt.maxR.toFixed(1)}` : '–'}</td>
                         <td className="py-2.5 text-text-primary text-xs">{bt.stopDistancePct ? `${bt.stopDistancePct.toFixed(2)}%` : '–'}</td>
                         <td className={`py-2.5 text-xs font-medium ${(bt.rResult || 0) >= 0 ? 'text-profit' : 'text-loss'}`}>
-                          {bt.rResult != null ? `${bt.rResult >= 0 ? '+' : ''}${bt.rResult.toFixed(2)}R` : '–'}
+                          {bt.rResult != null ? `${LRM}${bt.rResult >= 0 ? '+' : ''}${bt.rResult.toFixed(2)}R` : '–'}
                         </td>
                         <td className="py-2.5">
                           <span className={`text-xs font-medium px-2 py-0.5 rounded ${

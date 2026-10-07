@@ -17,20 +17,20 @@ export default function JournalCharts({
         <ResponsiveContainer width="100%" height={160}>
           <PieChart>
             <Pie data={analytics.pieData} dataKey="value" nameKey="name" cx="50%" cy="50%" innerRadius={40} outerRadius={65} paddingAngle={3}>
-              {analytics.pieData.map((d, i) => <Cell key={d.name} fill={pieColors[i]} />)}
+              {analytics.pieData.map((d) => <Cell key={d.name} fill={pieColors[d.name]} />)}
             </Pie>
             <Tooltip contentStyle={tooltipStyle} labelStyle={{ color: 'var(--color-text-secondary)', fontSize: '11px' }} itemStyle={{ color: 'var(--color-text-primary)' }} cursor={{ fill: 'var(--color-bg-tertiary)' }} />
           </PieChart>
         </ResponsiveContainer>
         <div className="flex justify-center gap-3 text-[10px] mt-1">
-          {analytics.pieData.map((d, i) => {
+          {analytics.pieData.map((d) => {
             let resultKey = 'breakeven';
             if (d.name === 'רווח') resultKey = 'win';
             else if (d.name === 'הפסד') resultKey = 'loss';
             return (
               <div key={d.name} onClick={() => onFilterJump({ result: resultKey })}
                 className="flex items-center gap-1 cursor-pointer hover:opacity-80 transition-opacity">
-                <div className="w-2 h-2 rounded-full" style={{ background: pieColors[i] }} />
+                <div className="w-2 h-2 rounded-full" style={{ background: pieColors[d.name] }} />
                 <span className="text-text-muted">{d.name} ({d.value}) ↗</span>
               </div>
             );

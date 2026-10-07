@@ -205,6 +205,28 @@ export async function adminSendBulkNotification({ uids, title, body, url }) {
   return data;
 }
 
+// Admin-only: a "come back to TradeOS" email to one user or a segment.
+// recipients: [{ email, name }]. Returns { ok, sent, failed, targeted, error? }.
+export async function adminSendEmailCampaign({ recipients, subject, headline, message, ctaText, ctaPath }) {
+  const res = await fetch(`${WORKER_BASE}/admin/email-campaign`, {
+    method: 'POST',
+    headers: await authHeader(),
+    body: JSON.stringify({ recipients, subject, headline, message, ctaText, ctaPath }),
+  });
+  const data = await res.json().catch(() => ({}));
+  if (!res.ok) throw new Error(data.error || 'שליחת המיילים נכשלה');
+  return data;
+}
+
+// Admin-only: reminder copy from what's actually moving in the market now.
+// Returns { source: 'ai'|'template', title, push, email, cta, path, facts }.
+export async function adminGenerateMarketHook() {
+  const res = await fetch(`${WORKER_BASE}/admin/ai-hook`, { method: 'POST', headers: await authHeader(), body: '{}' });
+  const data = await res.json().catch(() => ({}));
+  if (!res.ok) throw new Error(data.error || 'יצירת ההודעה נכשלה');
+  return data;
+}
+
 // Admin-only: how many Web Push devices a user has registered (count only —
 // the worker never returns the subscriptions themselves).
 export async function adminGetPushStatus(uid) {

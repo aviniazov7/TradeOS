@@ -4,7 +4,7 @@ import { Search, Sparkles, TrendingUp, TrendingDown, Minus, RotateCcw, Activity,
 import { AreaChart, Area, XAxis, YAxis, Tooltip, ResponsiveContainer, ReferenceLine } from 'recharts';
 import DOMPurify from 'dompurify';
 import { searchCoins, fetchCoinDetails, fetchCoinChart, fetchKlines } from '../../services/coingeckoApi';
-import { formatCompactUsd as formatNum, formatCoinPrice as formatPrice } from '../../utils/formatters';
+import { formatCompactUsd as formatNum, formatCoinPrice as formatPrice, LRM } from '../../utils/formatters';
 import { fetchAnalysisLiquidity } from '../../services/bybitDirect';
 import { fetchProjectDescription } from '../../services/groqApi';
 import { computeRSI, computeMA, computeVolatility } from '../../utils/technicals';
@@ -833,19 +833,19 @@ export default function CoinAnalysis() {
                 {[
                   md.price_change_percentage_24h != null && {
                     label: '24 שעות',
-                    value: `${md.price_change_percentage_24h >= 0 ? '+' : ''}${md.price_change_percentage_24h.toFixed(2)}%`,
+                    value: `${LRM}${md.price_change_percentage_24h >= 0 ? '+' : ''}${md.price_change_percentage_24h.toFixed(2)}%`,
                     valueColor: md.price_change_percentage_24h >= 0 ? 'text-profit' : 'text-loss',
                     icon: md.price_change_percentage_24h >= 0 ? TrendingUp : TrendingDown,
                   },
                   md.price_change_percentage_7d != null && {
                     label: '7 ימים',
-                    value: `${md.price_change_percentage_7d >= 0 ? '+' : ''}${md.price_change_percentage_7d.toFixed(2)}%`,
+                    value: `${LRM}${md.price_change_percentage_7d >= 0 ? '+' : ''}${md.price_change_percentage_7d.toFixed(2)}%`,
                     valueColor: md.price_change_percentage_7d >= 0 ? 'text-profit' : 'text-loss',
                     icon: md.price_change_percentage_7d >= 0 ? TrendingUp : TrendingDown,
                   },
                   md.price_change_percentage_30d != null && {
                     label: '30 ימים',
-                    value: `${md.price_change_percentage_30d >= 0 ? '+' : ''}${md.price_change_percentage_30d.toFixed(2)}%`,
+                    value: `${LRM}${md.price_change_percentage_30d >= 0 ? '+' : ''}${md.price_change_percentage_30d.toFixed(2)}%`,
                     valueColor: md.price_change_percentage_30d >= 0 ? 'text-profit' : 'text-loss',
                     icon: md.price_change_percentage_30d >= 0 ? TrendingUp : TrendingDown,
                   },
@@ -1174,7 +1174,7 @@ export default function CoinAnalysis() {
                             </h4>
                             <div className="text-center mb-2">
                               <AnimatedValue
-                                value={`${rate >= 0 ? '+' : ''}${rate.toFixed(4)}%`}
+                                value={`${LRM}${rate >= 0 ? '+' : ''}${rate.toFixed(4)}%`}
                                 className={`text-lg font-bold font-mono ${rate > 0 ? 'text-loss' : rate < 0 ? 'text-profit' : 'text-text-secondary'}`}
                               />
                               <p className={`text-[10px] mt-0.5 font-semibold ${rate > 0.01 ? 'text-loss' : rate < -0.01 ? 'text-profit' : 'text-text-muted'}`}>
@@ -1839,7 +1839,7 @@ function ChangeCard({ label, value }) {
       <p className="text-[11px] text-text-muted mb-0.5 relative">{label}</p>
       <div className={`flex items-center justify-center gap-1 relative ${isPositive ? 'text-profit' : 'text-loss'}`}>
         {isPositive ? <ChevronUp className="w-3.5 h-3.5" /> : <ChevronDown className="w-3.5 h-3.5" />}
-        <span className="text-base font-bold font-mono">{isPositive ? '+' : ''}{value.toFixed(2)}%</span>
+        <span className="text-base font-bold font-mono">{LRM}{isPositive ? '+' : ''}{value.toFixed(2)}%</span>
       </div>
     </div>
   );

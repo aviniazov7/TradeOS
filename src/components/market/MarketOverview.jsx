@@ -1,12 +1,14 @@
 import { useState, useEffect, useCallback, useRef, useMemo } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
-import { formatCompactUsd as formatNum, formatCoinPrice as formatPrice } from '../../utils/formatters';
+import { formatCompactUsd as formatNum, formatCoinPrice as formatPrice, LRM } from '../../utils/formatters';
 import {
   Activity, TrendingUp, TrendingDown, Bitcoin, DollarSign,
   PieChart, Flame, ArrowUpRight, ArrowDownRight, Layers, Rocket, Grid3X3,
   Percent, BarChart3, Zap, Sparkles, Bot,
 } from 'lucide-react';
 import { pageVariants, pageTransition, staggerContainer } from '../../utils/animations';
+import PageHeader from '../shared/PageHeader';
+import TabStrip from '../shared/TabStrip';
 import FearGreedGauge from '../dashboard/FearGreedGauge';
 import CoinAnalysis from './CoinAnalysis';
 import MarketSessionsCard from './MarketSessionsCard';
@@ -179,7 +181,7 @@ function CategoryBubble({ name, change, index }) {
           {name}
         </span>
         <span className="text-[11px] font-bold mt-0.5" style={{ color: iconColor }}>
-          {isPositive ? '+' : ''}{change.toFixed(1)}%
+          {LRM}{isPositive ? '+' : ''}{change.toFixed(1)}%
         </span>
       </motion.div>
     </motion.div>
@@ -248,7 +250,7 @@ function HeatmapCell({ coin, index, sizeClass }) {
         <span className="text-xs font-bold text-text-primary">{coin.symbol?.toUpperCase()}</span>
       </div>
       <span className={`text-[11px] font-semibold mt-0.5 ${change >= 0 ? 'text-green-300' : 'text-red-300'}`}>
-        {change != null ? `${change >= 0 ? '+' : ''}${change.toFixed(1)}%` : '—'}
+        {change != null ? `${LRM}${change >= 0 ? '+' : ''}${change.toFixed(1)}%` : '—'}
       </span>
     </motion.div>
   );
@@ -1048,28 +1050,22 @@ export default function MarketOverview() {
 
   return (
     <motion.div variants={pageVariants} initial="initial" animate="animate" exit="exit" transition={pageTransition}>
-      {/* Tabs */}
-      <div className="grid grid-cols-2 sm:flex sm:flex-wrap sm:justify-center gap-2 mb-6">
-        {[
-          { key: 'overview', label: 'סקירה',      shortLabel: 'סקירה',   icon: Activity },
-          { key: 'analysis', label: 'ניתוח מטבע', shortLabel: 'ניתוח',   icon: Sparkles },
-        ].map((tab) => (
-          <button
-            key={tab.key}
-            onClick={() => setActiveTab(tab.key)}
-            className={`flex items-center justify-center gap-1.5 sm:gap-2 px-3 sm:px-5 py-2.5 rounded-xl text-xs sm:text-sm font-semibold transition-all cursor-pointer ${
-              activeTab === tab.key
-                ? 'bg-accent-primary text-white shadow-lg'
-                : 'bg-bg-secondary border border-border-primary text-text-secondary hover:text-text-primary hover:bg-bg-tertiary'
-            }`}
-            style={activeTab === tab.key ? { boxShadow: '0 6px 22px -6px #8b5cf680' } : undefined}
-          >
-            <tab.icon className="w-4 h-4 sm:w-4.5 sm:h-4.5 shrink-0" />
-            <span className="sm:hidden">{tab.shortLabel}</span>
-            <span className="hidden sm:inline">{tab.label}</span>
-          </button>
-        ))}
-      </div>
+      {/* Shared page header; the two views switch with the shared tab strip. */}
+      <PageHeader
+        icon={Activity}
+        title="סקירת שוק"
+        subtitle="מצב השוק, מטבעות חמים, לווייתנים וניתוח מטבע — במקום אחד"
+        actions={(
+          <div className="rounded-xl bg-bg-tertiary border border-border-primary p-1">
+            <TabStrip
+              tabs={[{ id: 'overview', label: 'סקירה' }, { id: 'analysis', label: 'ניתוח מטבע' }]}
+              value={activeTab}
+              onChange={setActiveTab}
+              layoutKey="market-tab"
+            />
+          </div>
+        )}
+      />
 
       <AnimatePresence mode="wait">
       {activeTab === 'overview' ? (
@@ -1108,7 +1104,7 @@ export default function MarketOverview() {
             <div className="h-4 mt-2">
               {s.delta != null ? (
                 <span className={`text-xs font-semibold ${s.delta >= 0 ? 'text-profit' : 'text-loss'}`}>
-                  {s.delta >= 0 ? '+' : ''}{s.delta.toFixed(2)}%
+                  {LRM}{s.delta >= 0 ? '+' : ''}{s.delta.toFixed(2)}%
                 </span>
               ) : s.sub ? (
                 <span className="text-xs text-text-muted">{s.sub}</span>
@@ -1122,7 +1118,7 @@ export default function MarketOverview() {
           {global?.volume_24h_change_pct != null ? (
             <>
               <p className={`text-2xl font-bold leading-none num-mono ${global.volume_24h_change_pct >= 0 ? 'text-profit' : 'text-loss'}`}>
-                <RollingNumber value={`${global.volume_24h_change_pct >= 0 ? '+' : ''}${global.volume_24h_change_pct.toFixed(1)}%`} />
+                <RollingNumber value={`${LRM}${global.volume_24h_change_pct >= 0 ? '+' : ''}${global.volume_24h_change_pct.toFixed(1)}%`} />
               </p>
               <div className="h-4 mt-2">
                 <span className="text-xs text-text-muted">מול אתמול</span>
@@ -1328,7 +1324,7 @@ export default function MarketOverview() {
                     {/* Far-right: 24h change */}
                     <span className={`flex items-center gap-0.5 text-[11px] font-medium shrink-0 ${up ? 'text-profit' : 'text-loss'}`}>
                       {up ? <ArrowUpRight className="w-3 h-3" /> : <ArrowDownRight className="w-3 h-3" />}
-                      {up ? '+' : ''}{chg.toFixed(1)}%
+                      {LRM}{up ? '+' : ''}{chg.toFixed(1)}%
                     </span>
                   </motion.div>
                 );

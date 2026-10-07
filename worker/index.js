@@ -9,6 +9,15 @@
 import {
   buildMentionIndex, attributeMoves, describeFinding, ATTRIBUTION_WINDOW_MIN,
 } from './newsImpact.js';
+import {
+  bybitWalletEquity, classifyExchangeAuthError, mexcStopsByPosition, mexcEntryTypeByPosition, mexcOrderKind, mexcExitsByPosition,
+  enrichWithOrders, okxOrderRow, okxStopRow, bitgetOrderRow, bitgetStopRow, mexcCronOpen, mexcCronClosed,
+  normalizeMexcClosed, normalizeOkxClosed, normalizeOkxOpen, normalizeBitgetClosed,
+} from './exchangeNormalize.js';
+import { buildCampaignEmails, chunk, friendlyResendError } from './adminEmail.js';
+import { emailShell, C as EMAIL_C, bg as emailBg, txt as emailTxt, esc as emailEsc, para as emailPara } from './emailTheme.js';
+import { buildDigestEmail } from './adminDigest.js';
+import { pickMarketFacts, HOOK_SYSTEM_PROMPT, buildHookUserMessage, validateHook, templateHook } from './marketHook.js';
 
 // Binance's public market-data mirror — api.binance.com returns 403 to
 // Cloudflare Worker egress IPs in many regions, but data-api.binance.vision
@@ -53,14 +62,17 @@ function fmtPrice(p) {
   if (p >= 0.01) return `$${p.toFixed(4)}`;
   return `$${p.toFixed(6)}`;
 }
+// Notification bodies are Hebrew (RTL): a leading LEFT-TO-RIGHT MARK keeps
+// the sign in front of the number ("-$5.00", not "$5.00-").
+const LRM = '\u200E';
 function fmtPct(v) {
   const sign = v >= 0 ? '+' : '';
-  return `${sign}${v.toFixed(2)}%`;
+  return `${LRM}${sign}${v.toFixed(2)}%`;
 }
 // Signed USD amount for P&L notifications, e.g. +$12.34 / -$5.00
 function fmtPnl(v) {
   const sign = v >= 0 ? '+' : '-';
-  return `${sign}$${Math.abs(v).toFixed(2)}`;
+  return `${LRM}${sign}$${Math.abs(v).toFixed(2)}`;
 }
 // ==================== Data Fetching ====================
 
@@ -108,6 +120,29 @@ async function mexcContractSizes() {
     if (Object.keys(map).length) { _mexcCsCache = map; _mexcCsAt = now; }
     return map;
   } catch { return _mexcCsCache || {}; }
+}
+
+// OKX SWAP sizes are in CONTRACTS (BTC-USDT-SWAP: 1 = 0.01 BTC). Public
+// instruments list → { instId: coins per contract }, cached like MEXC's.
+// Only linear (USDT/USDC-settled) swaps: there ctVal is in the base coin. An
+// inverse swap's ctVal is in USD, so it's left out (falls back to 1).
+let _okxCtCache = null;
+let _okxCtAt = 0;
+async function okxContractValues() {
+  const now = Date.now();
+  if (_okxCtCache && now - _okxCtAt < 6 * 60 * 60 * 1000) return _okxCtCache;
+  try {
+    const r = await fetch('https://www.okx.com/api/v5/public/instruments?instType=SWAP');
+    const d = await r.json().catch(() => ({}));
+    const map = {};
+    for (const i of (Array.isArray(d.data) ? d.data : [])) {
+      if (!['USDT', 'USDC'].includes(i.settleCcy)) continue;
+      const v = parseFloat(i.ctVal) * (parseFloat(i.ctMult) || 1);
+      if (i.instId && v > 0) map[i.instId] = v;
+    }
+    if (Object.keys(map).length) { _okxCtCache = map; _okxCtAt = now; }
+    return map;
+  } catch { return _okxCtCache || {}; }
 }
 
 // ── AI usage quota (daily, resets at Israel midnight) ────────────────────────
@@ -410,6 +445,7 @@ async function listAllUsersAdmin(env) {
         lastActive: f.lastActive?.timestampValue || f.lastActive?.stringValue || null,
         email: f.email?.stringValue || null,
         displayName: f.displayName?.stringValue || f.email?.stringValue || 'משתמש',
+        onboardingCompleted: f.onboardingCompleted?.booleanValue === true,
       });
     }
     if (!data.nextPageToken) break;
@@ -500,51 +536,29 @@ async function sendEmail(env, { to, subject, html, replyTo }) {
   }
 }
 
-// Branded RTL email shell. All CSS is inlined because most mail clients strip
-// <style> blocks. The CTA button uses table-based layout for Outlook
-// compatibility.
-function emailShell({ headline, intro, ctaText, ctaUrl, body, footer }) {
-  const APP_URL = 'https://tradeos-91a58.web.app';
-  const esc = (s) => String(s || '').replace(/[&<>"']/g, (c) => (
-    { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]
-  ));
-  const cta = ctaUrl && ctaText ? `
-    <table role="presentation" cellspacing="0" cellpadding="0" border="0" align="center" style="margin:28px auto 8px">
-      <tr><td align="center" bgcolor="#00bfff" style="border-radius:10px">
-        <a href="${esc(ctaUrl)}" target="_blank" style="display:inline-block;padding:14px 32px;font-family:Arial,sans-serif;font-size:15px;font-weight:bold;color:#0a0e16;text-decoration:none;border-radius:10px">${esc(ctaText)}</a>
-      </td></tr>
-    </table>` : '';
-  return `<!DOCTYPE html><html lang="he" dir="rtl"><head><meta charset="utf-8" /><meta name="viewport" content="width=device-width, initial-scale=1" />
-<meta name="color-scheme" content="dark" />
-<meta name="supported-color-schemes" content="dark" />
-<style>:root{color-scheme:dark;supported-color-schemes:dark}</style></head>
-<body bgcolor="#0a0e16" style="margin:0;padding:0;background:#0a0e16;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Arial,sans-serif">
-  <table role="presentation" width="100%" cellspacing="0" cellpadding="0" border="0" bgcolor="#0a0e16" style="background:#0a0e16">
-    <tr><td align="center" style="padding:32px 16px">
-      <table role="presentation" width="100%" cellspacing="0" cellpadding="0" border="0" bgcolor="#0f1521" style="max-width:560px;background:#0f1521;border:1px solid rgba(0,191,255,0.18);border-radius:16px;overflow:hidden">
-        <!-- Header / brand -->
-        <tr><td style="padding:24px 28px;border-bottom:1px solid rgba(255,255,255,0.06);text-align:right">
-          <div style="display:inline-block;vertical-align:middle">
-            <span style="font-size:20px;font-weight:bold;color:#e5e7eb">TradeOS</span>
-            <span style="display:inline-block;margin-right:6px;color:#00bfff;font-size:12px;letter-spacing:1px">— יומן מסחר חכם</span>
-          </div>
-        </td></tr>
-        <!-- Body -->
-        <tr><td style="padding:32px 28px;color:#e5e7eb;text-align:right;line-height:1.6">
-          <h1 style="margin:0 0 12px;font-size:22px;color:#e5e7eb;font-weight:bold">${esc(headline)}</h1>
-          ${intro ? `<p style="margin:0 0 16px;font-size:15px;color:#cbd0d8">${esc(intro)}</p>` : ''}
-          ${body || ''}
-          ${cta}
-        </td></tr>
-        <!-- Footer -->
-        <tr><td style="padding:18px 28px;border-top:1px solid rgba(255,255,255,0.06);text-align:right">
-          <p style="margin:0;font-size:12px;color:#7d8492">${footer || `קיבלת את ההודעה הזו כי יש לך חשבון פעיל ב-TradeOS. <a href="${APP_URL}" style="color:#00bfff;text-decoration:none">פתח את האפליקציה</a>`}</p>
-        </td></tr>
-      </table>
-      <p style="margin:16px 0 0;font-size:11px;color:#5a6171;text-align:center">TradeOS &copy; ${new Date().getFullYear()}</p>
-    </td></tr>
-  </table>
-</body></html>`;
+// Many emails in few requests: Resend's batch endpoint takes up to 100
+// messages per call (one Worker subrequest per 100 recipients).
+async function sendEmailBatch(env, messages) {
+  if (!env.RESEND_API_KEY) return { ok: false, status: 0, message: 'no-api-key' };
+  const from = env.MAIL_FROM_ADDRESS
+    ? `${env.MAIL_FROM_NAME || 'TradeOS'} <${env.MAIL_FROM_ADDRESS}>`
+    : 'TradeOS <onboarding@resend.dev>';
+  try {
+    const res = await fetch('https://api.resend.com/emails/batch', {
+      method: 'POST',
+      headers: { Authorization: `Bearer ${env.RESEND_API_KEY}`, 'Content-Type': 'application/json' },
+      body: JSON.stringify(messages.map((m) => ({ from, to: [m.to], subject: m.subject, html: m.html }))),
+    });
+    if (!res.ok) {
+      const detail = await res.text().catch(() => '');
+      let message = '';
+      try { message = JSON.parse(detail).message || ''; } catch { /* not JSON */ }
+      return { ok: false, status: res.status, message: message || detail.slice(0, 200) };
+    }
+    return { ok: true, status: res.status };
+  } catch (e) {
+    return { ok: false, status: 0, message: e.message };
+  }
 }
 
 // Branded confirmation email for a Premium grant — payment, gift, or coupon
@@ -556,8 +570,8 @@ function buildPremiumEmail({ kind = 'payment', name, amount, methodLabel, days, 
   ));
   const row = (label, value) => `
     <tr>
-      <td style="padding:8px 0;font-size:13px;color:#7d8492;text-align:right">${esc(label)}</td>
-      <td style="padding:8px 0;font-size:14px;color:#e5e7eb;font-weight:bold;text-align:left" dir="ltr">${esc(value)}</td>
+      <td style="padding:10px 0;font-size:13px;color:${EMAIL_C.sub};text-align:right;border-bottom:1px solid ${EMAIL_C.line}">${emailTxt(esc(label))}</td>
+      <td style="padding:10px 0;font-size:14px;color:${EMAIL_C.text};font-weight:bold;text-align:left;border-bottom:1px solid ${EMAIL_C.line}" dir="ltr">${emailTxt(esc(value))}</td>
     </tr>`;
   const rows = [];
   if (kind === 'payment' && amount > 0) rows.push(row('סכום ששולם', `₪${amount}`));
@@ -566,19 +580,19 @@ function buildPremiumEmail({ kind = 'payment', name, amount, methodLabel, days, 
   rows.push(row('תקופת המנוי', days ? `${days} ימים` : 'ללא הגבלה'));
   if (expiresStr) rows.push(row('בתוקף עד', expiresStr));
 
-  const featureLi = (t) => `<li style="margin:0 0 6px;font-size:14px;color:#cbd0d8">${esc(t)}</li>`;
+  const featureLi = (t) => `<li style="margin:0 0 6px;font-size:14px;color:${EMAIL_C.sub}">${emailTxt(esc(t))}</li>`;
   const body = `
-    <div style="background:rgba(0,191,255,0.06);border:1px solid rgba(0,191,255,0.22);border-radius:12px;padding:6px 18px;margin:4px 0 18px">
+    <div style="${emailBg(EMAIL_C.tile)}border:1px solid ${EMAIL_C.line};border-radius:14px;padding:4px 18px;margin:4px 0 20px">
       <table role="presentation" width="100%" cellspacing="0" cellpadding="0" border="0">${rows.join('')}</table>
     </div>
-    <p style="margin:0 0 8px;font-size:14px;color:#e5e7eb;font-weight:bold">מה נפתח לך עכשיו:</p>
+    ${emailPara('מה נפתח לך עכשיו:', { size: 14, color: EMAIL_C.text, bold: true, margin: '0 0 8px' })}
     <ul style="margin:0 0 4px;padding-right:18px;text-align:right">
       ${featureLi('TradeAI ללא הגבלה — שאלות, ניתוחי גרפים ותובנות')}
       ${featureLi('ניתוח AI מלא של יומן המסחר')}
       ${featureLi('יומני מסחר, ארנקים והתראות ללא הגבלה')}
       ${featureLi('חיבורי בורסה וניתוחים מתקדמים')}
     </ul>
-    ${kind === 'payment' ? '<p style="margin:14px 0 0;font-size:12px;color:#7d8492">אישור זה נשלח לנוחותך ואינו מהווה חשבונית מס/קבלה.</p>' : ''}`;
+    ${kind === 'payment' ? emailPara('אישור זה נשלח לנוחותך ואינו מהווה חשבונית מס/קבלה.', { size: 12, color: EMAIL_C.muted, margin: '14px 0 0' }) : ''}`;
 
   const first = (name || '').trim().split(/\s+/)[0];
   const hey = first ? `היי ${first}, ` : '';
@@ -591,50 +605,6 @@ function buildPremiumEmail({ kind = 'payment', name, amount, methodLabel, days, 
     subject: meta.subject,
     html: emailShell({ headline: meta.headline, intro: meta.intro, body, ctaText: 'פתח את TradeOS', ctaUrl: 'https://tradeos-91a58.web.app' }),
   };
-}
-
-// Build the weekly admin digest content (stats + push body + email html).
-// Shared between the Sunday cron and the on-demand /admin/test-digest endpoint
-// so they're guaranteed to look identical.
-function buildAdminDigest(users) {
-  const now = Date.now();
-  const WEEK = 7 * 86400000;
-  const isPrem = (u) => u.plan === 'premium' && (!u.planExpires || new Date(u.planExpires).getTime() > now);
-  const ms = (v) => (v ? new Date(v).getTime() : 0);
-
-  let newUsers = 0, upgrades = 0, expiringSoon = 0, churn = 0;
-  for (const u of users) {
-    if (u.role === 'admin') continue;
-    if (now - ms(u.createdAt) < WEEK && ms(u.createdAt) > 0) newUsers++;
-    if (isPrem(u) && now - ms(u.planGrantedAt) < WEEK && ms(u.planGrantedAt) > 0) upgrades++;
-    if (isPrem(u) && u.planExpires) {
-      const exp = ms(u.planExpires) - now;
-      if (exp > 0 && exp < WEEK) expiringSoon++;
-    }
-    if (isPrem(u) && ms(u.lastActive) > 0 && now - ms(u.lastActive) >= WEEK) churn++;
-  }
-
-  const pushBody = `📈 ${newUsers} נרשמו · 👑 ${upgrades} שדרגו · ⏳ ${expiringSoon} עומדים להסתיים · ⚠️ ${churn} בסיכון נטישה`;
-  const emailBody = `
-    <div style="display:grid;gap:10px;margin:8px 0 4px">
-      <div style="background:rgba(0,191,255,0.08);border:1px solid rgba(0,191,255,0.25);border-radius:10px;padding:14px 16px;text-align:right">
-        <div style="font-size:11px;color:#7d8492">חדשים השבוע</div>
-        <div style="font-size:24px;font-weight:bold;color:#00bfff">📈 ${newUsers}</div>
-      </div>
-      <div style="background:rgba(245,158,11,0.08);border:1px solid rgba(245,158,11,0.3);border-radius:10px;padding:14px 16px;text-align:right">
-        <div style="font-size:11px;color:#7d8492">שדרגו ל-Premium</div>
-        <div style="font-size:24px;font-weight:bold;color:#f59e0b">👑 ${upgrades}</div>
-      </div>
-      <div style="background:rgba(245,158,11,0.05);border:1px solid rgba(245,158,11,0.25);border-radius:10px;padding:14px 16px;text-align:right">
-        <div style="font-size:11px;color:#7d8492">מנויים שעומדים להסתיים השבוע</div>
-        <div style="font-size:24px;font-weight:bold;color:#f59e0b">⏳ ${expiringSoon}</div>
-      </div>
-      <div style="background:rgba(239,68,68,0.06);border:1px solid rgba(239,68,68,0.3);border-radius:10px;padding:14px 16px;text-align:right">
-        <div style="font-size:11px;color:#7d8492">לקוחות בסיכון נטישה</div>
-        <div style="font-size:24px;font-weight:bold;color:#ef4444">⚠️ ${churn}</div>
-      </div>
-    </div>`;
-  return { newUsers, upgrades, expiringSoon, churn, pushBody, emailBody };
 }
 
 // ---- Weekly admin digest ---------------------------------------------------
@@ -661,33 +631,25 @@ async function checkWeeklyDigest(env) {
   const admins = users.filter((u) => u.role === 'admin').map((u) => u.uid);
   if (!admins.length) return;
 
-  const digest = buildAdminDigest(users);
+  const report = buildDigestEmail(users);
   for (const adminUid of admins) {
     await sendPushToUser(env, adminUid, {
-      title: '📊 הסיכום השבועי שלך — TradeOS',
-      body: digest.pushBody,
+      title: 'הדוח השבועי — TradeOS',
+      body: report.push,
       url: '/admin',
       tag: 'weekly-digest',
     });
   }
 
-  // Email digest — same content as push, prettier presentation. Each admin
-  // gets a one-glance dashboard in their inbox. MAIL_TO_ADMIN_OVERRIDE pins
-  // the recipient to a fixed address (see /admin/test-digest for why).
+  // Email — same numbers, full report. MAIL_TO_ADMIN_OVERRIDE pins the
+  // recipient to a fixed address (see /admin/test-digest for why).
   const adminUsers = users.filter((u) => u.role === 'admin' && u.email);
   if (adminUsers.length === 0 && !env.MAIL_TO_ADMIN_OVERRIDE) return;
-  const html = emailShell({
-    headline: '📊 הסיכום השבועי שלך',
-    intro: `הנה הדופק של TradeOS השבוע, ${il.toLocaleDateString('he-IL', { day: '2-digit', month: 'long' })}.`,
-    body: digest.emailBody,
-    ctaText: 'פתח את פאנל הניהול',
-    ctaUrl: 'https://tradeos-91a58.web.app/admin',
-  });
   const recipients = env.MAIL_TO_ADMIN_OVERRIDE
     ? [env.MAIL_TO_ADMIN_OVERRIDE]
     : adminUsers.map((a) => a.email);
   for (const to of recipients) {
-    await sendEmail(env, { to, subject: '📊 הסיכום השבועי שלך — TradeOS', html });
+    await sendEmail(env, { to, subject: report.subject, html: report.html });
   }
 }
 
@@ -712,6 +674,40 @@ async function fetchBybitOpen(apiKey, apiSecret) {
 }
 
 
+// ---- MEXC equivalents for the alerts cron (same shapes as the Bybit pair) ----
+async function mexcPrivateGet(apiKey, apiSecret, path, params = {}) {
+  const ts = Date.now().toString();
+  const qs = Object.keys(params).sort().map((k) => `${k}=${params[k]}`).join('&');
+  const sign = await bybitHmacHex(apiSecret, apiKey + ts + qs); // HMAC-SHA256 hex, same primitive
+  const res = await fetch(`https://contract.mexc.com${path}${qs ? `?${qs}` : ''}`, {
+    headers: { ApiKey: apiKey, 'Request-Time': ts, Signature: sign, 'Content-Type': 'application/json' },
+  });
+  const data = await res.json().catch(() => ({}));
+  if (!(data.success === true || data.code === 0)) return null;
+  return Array.isArray(data.data) ? data.data : (data.data?.resultList || data.data?.list || []);
+}
+
+async function fetchMexcOpen(apiKey, apiSecret) {
+  const rows = await mexcPrivateGet(apiKey, apiSecret, '/api/v1/private/position/open_positions');
+  return rows ? rows.filter((p) => parseFloat(p.holdVol) > 0).map(mexcCronOpen) : null;
+}
+
+async function fetchMexcClosed(apiKey, apiSecret) {
+  const rows = await mexcPrivateGet(apiKey, apiSecret, '/api/v1/private/position/list/history_positions', {
+    page_num: '1', page_size: '50', start_time: String(Date.now() - 7 * 24 * 60 * 60 * 1000),
+  });
+  if (!rows) return null;
+  const cs = await mexcContractSizes();
+  return rows.map((p) => mexcCronClosed(p, cs[(p.symbol || '').replace(/_/g, '')] || 1));
+}
+
+// Venues the alerts cron can watch, and how to label them in a notification.
+const ALERT_FETCHERS = {
+  bybit: { open: fetchBybitOpen, closed: (k, s) => fetchBybitClosedPnl(k, s, 50) },
+  mexc: { open: fetchMexcOpen, closed: fetchMexcClosed },
+};
+const ALERT_EXCHANGE_NAMES = { bybit: 'Bybit', mexc: 'MEXC' };
+
 // pushexch:{uid}:{exchange}) for newly closed trades → push a result
 // notification, plus a once-a-day summary. Runs from the 10-minute cron.
 async function checkExchangeClosedTrades(env) {
@@ -733,7 +729,9 @@ async function checkExchangeClosedTrades(env) {
 
   for (const name of keyNames) {
     const [, uid, exchange] = name.split(':');
-    if (exchange !== 'bybit') continue; // only Bybit polling for now
+    const fetchers = ALERT_FETCHERS[exchange];
+    if (!fetchers) continue; // venue not watched in the background (yet)
+    const venue = ALERT_EXCHANGE_NAMES[exchange] || exchange;
     const creds = await loadExchangeCreds(env, uid, exchange); // decrypts + self-heals legacy plaintext
     if (!creds?.apiKey || !creds?.apiSecret) {
       // Key expired (CREDS_TTL) or was deleted — prune it from the index so
@@ -745,7 +743,7 @@ async function checkExchangeClosedTrades(env) {
     // ---- Position-opened notifications ----
     // Compare the live open positions to the snapshot from the previous tick;
     // anything new → "position opened". First run only seeds the snapshot.
-    const openPositions = await fetchBybitOpen(creds.apiKey, creds.apiSecret);
+    const openPositions = await fetchers.open(creds.apiKey, creds.apiSecret);
     if (openPositions) {
       const openKey = `pushopen:${uid}:${exchange}`;
       const prevRaw = await env.ALERTS_KV.get(openKey);
@@ -756,7 +754,7 @@ async function checkExchangeClosedTrades(env) {
         for (const p of opened) {
           const dir = p.direction === 'long' ? 'Long' : 'Short';
           await sendPushToUser(env, uid, {
-            title: `🔵 נפתחה עסקה — ${p.pair} ${dir}`,
+            title: `🔵 נפתחה עסקה — ${p.pair} ${dir} · ${venue}`,
             body: `כניסה: ${fmtPrice(p.entryPrice)}${p.leverage > 1 ? ` · מינוף ${p.leverage}x` : ''}`,
             url: '/journal',
             tag: `open-${p.id}`,
@@ -772,7 +770,7 @@ async function checkExchangeClosedTrades(env) {
       }
     }
 
-    const trades = await fetchBybitClosedPnl(creds.apiKey, creds.apiSecret, 50);
+    const trades = await fetchers.closed(creds.apiKey, creds.apiSecret);
     if (!trades || !trades.length) continue;
 
     // ---- New-closed notifications ----
@@ -797,8 +795,8 @@ async function checkExchangeClosedTrades(env) {
         // A profitable close ≈ take-profit hit; a losing close ≈ stop-loss hit.
         await sendPushToUser(env, uid, {
           title: win
-            ? `🎯 טייק פרופיט — ${t.pair} ${dir}`
-            : `🛑 סטופ לוס — ${t.pair} ${dir}`,
+            ? `🎯 טייק פרופיט — ${t.pair} ${dir} · ${venue}`
+            : `🛑 סטופ לוס — ${t.pair} ${dir} · ${venue}`,
           body: `${win ? 'רווח' : 'הפסד'}: ${fmtPnl(t.pnl)} (${fmtPct(t.roiPct)})`,
           url: '/journal',
           tag: `closed-${t.externalId}`,
@@ -815,7 +813,8 @@ async function checkExchangeClosedTrades(env) {
 
     // ---- Daily summary (once per Israel day, ~22:00) ----
     if (summaryWindow) {
-      const sentKey = `pushdaily:${uid}:${israelDate}`;
+      // Bybit keeps its original key; other venues get their own summary.
+      const sentKey = `pushdaily:${uid}:${israelDate}${exchange === 'bybit' ? '' : `:${exchange}`}`;
       if (!(await env.ALERTS_KV.get(sentKey))) {
         await env.ALERTS_KV.put(sentKey, '1', { expirationTtl: 60 * 60 * 48 });
         const todays = trades.filter((t) => t.exitMs >= dayStartMs);
@@ -824,10 +823,10 @@ async function checkExchangeClosedTrades(env) {
           const wins = todays.filter((t) => t.pnl >= 0).length;
           const wr = Math.round((wins / todays.length) * 100);
           await sendPushToUser(env, uid, {
-            title: `📊 סיכום יומי — ${todays.length} עסקאות`,
+            title: `📊 סיכום יומי ${venue} — ${todays.length} עסקאות`,
             body: `P&L יומי: ${fmtPnl(total)} · אחוז הצלחה ${wr}%`,
             url: '/dashboard',
-            tag: `daily-${israelDate}`,
+            tag: `daily-${israelDate}-${exchange}`,
           });
         }
       }
@@ -3248,6 +3247,7 @@ async function buildNewsDigest(env, market) {
       headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${env.GROQ_API_KEY}` },
       body: JSON.stringify({
         model: GROQ_MODEL,
+        ...reasoningOpt(GROQ_MODEL),
         messages: [
           { role: 'system', content: NEWS_EDITOR_PROMPTS[market] || NEWS_EDITOR_PROMPTS.crypto },
           { role: 'user', content: JSON.stringify(modelInput) },
@@ -3448,13 +3448,6 @@ async function refreshNewsDigest(env) {
 
 // ==================== Contact Developer ====================
 
-function escapeHtml(str) {
-  return String(str ?? '')
-    .replace(/&/g, '&amp;')
-    .replace(/</g, '&lt;')
-    .replace(/>/g, '&gt;');
-}
-
 async function handleContact(request, env, cors) {
   const jsonHeaders = { ...cors, 'Content-Type': 'application/json' };
   try {
@@ -3536,11 +3529,11 @@ async function handleContact(request, env, cors) {
     let emailOk = false;
     if (recipients.length) {
       const html = emailShell({
-        headline: '📨 הודעה חדשה מ-TradeOS',
-        intro: `${escapeHtml(name)} (${escapeHtml(tokenEmail || 'ללא מייל')}) שלח/ה הודעה מהאפליקציה.`,
+        headline: 'הודעה חדשה מ-TradeOS',
+        intro: `${name} (${tokenEmail || 'ללא מייל'}) שלח/ה הודעה מהאפליקציה.`,
         body:
-          `<p style="margin:0 0 12px;font-size:12px;color:#7d8492">UID: <code>${escapeHtml(uid)}</code></p>` +
-          `<p style="margin:0;font-size:14px;color:#e6e9ef;white-space:pre-wrap;text-align:right">${escapeHtml(message)}</p>`,
+          emailPara(`UID: ${emailEsc(uid)}`, { size: 12, color: EMAIL_C.muted, margin: '0 0 12px' }) +
+          `<div style="${emailBg(EMAIL_C.tile)}border:1px solid ${EMAIL_C.line};border-radius:14px;padding:16px 18px;font-size:14px;line-height:1.7;color:${EMAIL_C.text};white-space:pre-wrap;text-align:right">${emailTxt(emailEsc(message))}</div>`,
         ctaText: 'פתח את פאנל הניהול',
         ctaUrl: 'https://tradeos-91a58.web.app/admin',
       });
@@ -4444,22 +4437,14 @@ async function handleRequest(request, env) {
     const adminTo = env.MAIL_TO_ADMIN_OVERRIDE || me?.email;
     if (!adminTo) return new Response(JSON.stringify({ error: 'admin email not found on profile' }), { status: 400, headers: { ...cors, 'Content-Type': 'application/json' } });
 
-    const digest = buildAdminDigest(users);
-    const il = getIsraelTime();
-    const html = emailShell({
-      headline: '📊 הסיכום השבועי שלך',
-      intro: `הנה הדופק של TradeOS היום, ${il.toLocaleDateString('he-IL', { day: '2-digit', month: 'long' })} (בדיקה).`,
-      body: digest.emailBody,
-      ctaText: 'פתח את פאנל הניהול',
-      ctaUrl: 'https://tradeos-91a58.web.app/admin',
-    });
-    const r = await sendEmail(env, { to: adminTo, subject: '[TEST] 📊 הסיכום השבועי שלך — TradeOS', html });
+    const report = buildDigestEmail(users, { test: true });
+    const r = await sendEmail(env, { to: adminTo, subject: report.subject, html: report.html });
     if (!r.ok) {
       // Pass the actual Resend message back so the admin sees the real reason
       // (e.g. "you can only send testing emails to your own email address").
-      return new Response(JSON.stringify({ error: `Resend ${r.status}: ${r.message || 'unknown error'}`, sentTo: adminTo }), { status: 502, headers: { ...cors, 'Content-Type': 'application/json' } });
+      return new Response(JSON.stringify({ error: friendlyResendError(r.status, r.message), sentTo: adminTo }), { status: 502, headers: { ...cors, 'Content-Type': 'application/json' } });
     }
-    return new Response(JSON.stringify({ ok: true, sentTo: adminTo, stats: { newUsers: digest.newUsers, upgrades: digest.upgrades, expiringSoon: digest.expiringSoon, churn: digest.churn } }), { headers: { ...cors, 'Content-Type': 'application/json' } });
+    return new Response(JSON.stringify({ ok: true, sentTo: adminTo, stats: { newUsers: report.digest.newWeek, upgrades: report.digest.upgrades, expiringSoon: report.digest.expiring.length, churn: report.digest.churn.length } }), { headers: { ...cors, 'Content-Type': 'application/json' } });
   }
 
   // Admin-only: send a branded Premium confirmation email (payment / gift) to
@@ -4488,7 +4473,7 @@ async function handleRequest(request, env) {
     if (!r.ok) {
       // Pass Resend's real message through — e.g. the test-mode "can only send
       // to your own address" error — so the admin sees exactly why.
-      return new Response(JSON.stringify({ error: `Resend ${r.status}: ${r.message || r.error || 'unknown error'}`, sentTo: email }), { status: 502, headers: { ...cors, 'Content-Type': 'application/json' } });
+      return new Response(JSON.stringify({ error: friendlyResendError(r.status, r.message || r.error), sentTo: email }), { status: 502, headers: { ...cors, 'Content-Type': 'application/json' } });
     }
     appendAudit(env, { kind: 'payment_email', actor: adminUid, target: email, amount: amt, days: Number(days) || null });
     return new Response(JSON.stringify({ ok: true, sentTo: email }), { headers: { ...cors, 'Content-Type': 'application/json' } });
@@ -4529,6 +4514,78 @@ async function handleRequest(request, env) {
     for (const r of results) { sent += r.sent || 0; if ((r.sent || 0) > 0) recipients++; }
     appendAudit(env, { kind: 'notify-bulk', actor: adminUid, targeted: capped.length, recipients, sent, title: payload.title });
     return new Response(JSON.stringify({ ok: true, sent, recipients, targeted: capped.length }), { headers: { ...cors, 'Content-Type': 'application/json' } });
+  }
+
+  // Admin-only: a "come back to TradeOS" email to one user or a segment —
+  // reaches users who never enabled push. Personalised per recipient
+  // (adminEmail.js), sent through Resend in batches of 100.
+  if (request.method === 'POST' && path === '/admin/email-campaign') {
+    const token = (request.headers.get('Authorization') || '').replace('Bearer ', '');
+    const adminUid = await verifyAdminFromToken(token);
+    if (!adminUid) return new Response(JSON.stringify({ error: 'forbidden' }), { status: 403, headers: { ...cors, 'Content-Type': 'application/json' } });
+    if (!env.RESEND_API_KEY) return new Response(JSON.stringify({ error: 'RESEND_API_KEY חסר ב-Worker — לא ניתן לשלוח מיילים' }), { status: 503, headers: { ...cors, 'Content-Type': 'application/json' } });
+    const { recipients, subject, headline, message, ctaText, ctaPath } = await request.json().catch(() => ({}));
+    if (!Array.isArray(recipients) || !recipients.length || !(subject || headline) || !message) {
+      return new Response(JSON.stringify({ error: 'missing fields' }), { status: 400, headers: { ...cors, 'Content-Type': 'application/json' } });
+    }
+    const emails = buildCampaignEmails({ recipients, subject, headline, message, ctaText, ctaPath }, emailShell);
+    if (!emails.length) return new Response(JSON.stringify({ error: 'אין כתובות מייל תקינות' }), { status: 400, headers: { ...cors, 'Content-Type': 'application/json' } });
+    let sent = 0, failed = 0, firstError = '';
+    for (const batch of chunk(emails, 100)) {
+      const r = await sendEmailBatch(env, batch);
+      if (r.ok) sent += batch.length;
+      else { failed += batch.length; if (!firstError) firstError = friendlyResendError(r.status, r.message); }
+    }
+    appendAudit(env, { kind: 'email-campaign', actor: adminUid, targeted: emails.length, sent, failed, subject: String(subject || headline).slice(0, 120) });
+    return new Response(JSON.stringify({ ok: sent > 0, sent, failed, targeted: emails.length, ...(firstError ? { error: firstError } : {}) }), {
+      status: sent > 0 || !failed ? 200 : 502, headers: { ...cors, 'Content-Type': 'application/json' },
+    });
+  }
+
+  // Admin-only: "what's hot right now" reminder copy. Real market facts
+  // (Bybit spot tickers + the cached news digest) → the model writes the
+  // hook → every % it mentions is checked against the facts (marketHook.js).
+  // A failed/invented answer falls back to a template built from the facts,
+  // so the admin always gets something true. Facts are returned for review.
+  if (request.method === 'POST' && path === '/admin/ai-hook') {
+    const token = (request.headers.get('Authorization') || '').replace('Bearer ', '');
+    const adminUid = await verifyAdminFromToken(token);
+    if (!adminUid) return new Response(JSON.stringify({ error: 'forbidden' }), { status: 403, headers: { ...cors, 'Content-Type': 'application/json' } });
+    try {
+      const [tickRes, digest] = await Promise.all([
+        fetch('https://api.bybit.com/v5/market/tickers?category=spot', { headers: { Accept: 'application/json' } })
+          .then((r) => r.json()).catch(() => null),
+        env.ALERTS_KV.get('news:digest:crypto', 'json').catch(() => null),
+      ]);
+      const facts = pickMarketFacts(tickRes?.result?.list || [], digest);
+      if (!facts.btc && !facts.gainers.length) {
+        return new Response(JSON.stringify({ error: 'אין כרגע נתוני שוק — נסה שוב בעוד רגע' }), { status: 503, headers: { ...cors, 'Content-Type': 'application/json' } });
+      }
+      let hook = null;
+      if (env.GROQ_API_KEY) {
+        const res = await groqFetchWithRetry(env, {
+          model: GROQ_MODEL,
+          messages: [
+            { role: 'system', content: HOOK_SYSTEM_PROMPT },
+            { role: 'user', content: buildHookUserMessage(facts) },
+          ],
+          temperature: 0.8,
+          max_tokens: 700,
+          response_format: { type: 'json_object' },
+        });
+        if (res.ok) {
+          const data = await res.json().catch(() => null);
+          let parsed = null;
+          try { parsed = JSON.parse(data?.choices?.[0]?.message?.content || ''); } catch { /* not JSON */ }
+          hook = validateHook(parsed, facts);
+        }
+      }
+      const source = hook ? 'ai' : 'template';
+      hook = hook || templateHook(facts);
+      return new Response(JSON.stringify({ ok: true, source, ...hook, facts }), { headers: { ...cors, 'Content-Type': 'application/json' } });
+    } catch (e) {
+      return new Response(JSON.stringify({ error: e.message || 'שגיאה' }), { status: 500, headers: { ...cors, 'Content-Type': 'application/json' } });
+    }
   }
 
   // Admin-only: invalidate the cached premium flag for a user. Called right
@@ -5182,7 +5239,7 @@ async function handleRequest(request, env) {
       try {
         const r = await fetch(GROQ_URL, {
           method: 'POST', headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${env.GROQ_API_KEY}` },
-          body: JSON.stringify({ model: GROQ_MODEL, messages: ping, max_tokens: 5, stream: false }),
+          body: JSON.stringify({ model: GROQ_MODEL, ...reasoningOpt(GROQ_MODEL), messages: ping, max_tokens: 5, stream: false }),
         });
         const body = await r.text().catch(() => '');
         out.groq = { ok: r.ok, status: r.status, model: GROQ_MODEL, error: r.ok ? null : body.slice(0, 400) };
@@ -5201,7 +5258,7 @@ async function handleRequest(request, env) {
         try {
           const r = await fetch(GROQ_URL, {
             method: 'POST', headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${env.GROQ_API_KEY}` },
-            body: JSON.stringify({ model, messages: ping, max_tokens: 5, stream: false }),
+            body: JSON.stringify({ model, ...reasoningOpt(model), messages: ping, max_tokens: 5, stream: false }),
           });
           const body = await r.text().catch(() => '');
           out[label] = { ok: r.ok, status: r.status, model, error: r.ok ? null : body.slice(0, 400) };
@@ -5503,36 +5560,11 @@ async function handleRequest(request, env) {
         });
         const data = await res.json();
         if (data.code !== '0') return new Response(JSON.stringify({ ok: false, error: `OKX ${data.code}: ${data.msg || 'error'}` }), { headers: { ...cors, 'Content-Type': 'application/json' }, status: 400 });
+        const ctMap = await okxContractValues();
         const positions = (data.data || []).filter((p2) => parseFloat(p2.pos) !== 0).map((p2) => {
-          const parts = (p2.instId || '').split('-');
-          const pair = parts.length >= 2 ? (parts[0] + parts[1]).toUpperCase() : (p2.instId || '').toUpperCase();
-          const entryPrice = parseFloat(p2.avgPx) || 0;
-          const qty = Math.abs(parseFloat(p2.pos) || 0);
-          const entryDate = p2.cTime ? new Date(parseInt(p2.cTime)).toISOString() : new Date().toISOString();
-          const liq = parseFloat(p2.liqPx) || 0;
-          const tp = parseFloat(p2.tpTriggerPx || 0) || 0;
-          return {
-            pair,
-            direction: p2.posSide === 'short' || parseFloat(p2.pos) < 0 ? 'short' : 'long',
-            entryPrice,
-            quantity: qty,
-            leverage: parseFloat(p2.lever) || 1,
-            stopLoss: parseFloat(p2.slTriggerPx || 0) || 0,
-            positionSize: qty * entryPrice,
-            fees: 0,
-            status: 'open',
-            source: 'okx',
-            externalId: String(p2.posId || `${pair}_${p2.cTime}`),
-            orderType: 'market',
-            entryDate,
-            tps: tp > 0 ? [tp] : [],
-            exits: null,
-            tpReached: [],
-            result: null,
-            journalId: null,
-            liquidationPrice: liq > 0 ? liq : null,
-            session: sessionFromDate(entryDate),
-          };
+          // Contracts → coins and the SL/TP from closeOrderAlgo: exchangeNormalize.
+          const pos = normalizeOkxOpen(p2, ctMap[p2.instId] || 1);
+          return { ...pos, exits: null, tpReached: [], result: null, journalId: null, session: sessionFromDate(pos.entryDate) };
         });
         return new Response(JSON.stringify({ ok: true, positions, count: positions.length }), { headers: { ...cors, 'Content-Type': 'application/json' } });
       }
@@ -5596,6 +5628,7 @@ async function handleRequest(request, env) {
   // app can show "Bybit: $1,234" on each connected exchange card instead of
   // making the user type a starting balance every time.
   if (request.method === 'POST' && path === '/exchange/balance') {
+    let balanceExchange = '';
     try {
       // Auth: any authenticated user may call (uses caller-supplied exchange keys).
       const token = (request.headers.get('Authorization') || '').replace('Bearer ', '');
@@ -5605,6 +5638,7 @@ async function handleRequest(request, env) {
       if (_rl.count > 30) return new Response(JSON.stringify({ error: 'יותר מדי בקשות לבורסה. נסה שוב בעוד רגע.' }), { status: 429, headers: { ...cors, 'Content-Type': 'application/json' } });
       const _body = await request.json().catch(() => ({}));
       const { exchange } = _body;
+      balanceExchange = exchange || '';
       if (!exchange) {
         return new Response(JSON.stringify({ ok: false, error: 'Missing exchange' }), { status: 400, headers: { ...cors, 'Content-Type': 'application/json' } });
       }
@@ -5626,16 +5660,33 @@ async function handleRequest(request, env) {
       let balance = 0;
 
       if (exchange === 'bybit') {
-        const ts = Date.now().toString();
         const recvWindow = '5000';
-        const qs = 'accountType=UNIFIED';
-        const sig = await hmacHex(apiSecret, ts + apiKey + recvWindow + qs);
-        const res = await fetch(`https://api.bybit.com/v5/account/wallet-balance?${qs}`, {
-          headers: { 'X-BAPI-API-KEY': apiKey, 'X-BAPI-TIMESTAMP': ts, 'X-BAPI-SIGN': sig, 'X-BAPI-RECV-WINDOW': recvWindow },
-        });
-        const data = await res.json();
-        if (data.retCode !== 0) throw new Error(data.retMsg || `Bybit ${data.retCode}`);
-        balance = parseFloat(data.result?.list?.[0]?.totalEquity) || 0;
+        const wallet = async (accountType) => {
+          const ts = Date.now().toString();
+          const qs = `accountType=${accountType}`;
+          const sig = await hmacHex(apiSecret, ts + apiKey + recvWindow + qs);
+          const res = await fetch(`https://api.bybit.com/v5/account/wallet-balance?${qs}`, {
+            headers: { 'X-BAPI-API-KEY': apiKey, 'X-BAPI-TIMESTAMP': ts, 'X-BAPI-SIGN': sig, 'X-BAPI-RECV-WINDOW': recvWindow },
+          });
+          return res.json();
+        };
+        // Unified account first. A Classic account has its futures money in
+        // CONTRACT, and UNIFIED returns nothing (or 0) for it — the card then
+        // showed $0.00 for a funded account. So fall back to CONTRACT unless
+        // the key itself is the problem.
+        const uni = await wallet('UNIFIED');
+        const uniAuth = uni.retCode !== 0 && classifyExchangeAuthError('bybit', uni.retCode, uni.retMsg);
+        if (uniAuth) throw new Error(`Bybit ${uni.retCode}: ${uni.retMsg || 'error'}`);
+        const uniEquity = uni.retCode === 0 ? bybitWalletEquity(uni.result?.list) : null;
+        if (uniEquity) {
+          balance = uniEquity;
+        } else {
+          const classic = await wallet('CONTRACT').catch(() => null);
+          const classicEquity = classic?.retCode === 0 ? bybitWalletEquity(classic.result?.list) : null;
+          if (classicEquity !== null) balance = classicEquity;
+          else if (uniEquity !== null) balance = uniEquity;
+          else throw new Error(`Bybit ${uni.retCode}: ${uni.retMsg || 'no wallet data'}`);
+        }
       }
 
       else if (exchange === 'mexc') {
@@ -5645,7 +5696,7 @@ async function handleRequest(request, env) {
           headers: { ApiKey: apiKey, 'Request-Time': ts, Signature: sig, 'Content-Type': 'application/json' },
         });
         const data = await res.json();
-        if (!(data.success === true || data.code === 0)) throw new Error(data.message || data.msg || 'MEXC error');
+        if (!(data.success === true || data.code === 0)) throw new Error(`MEXC ${data.code}: ${data.message || data.msg || 'error'}`);
         const rawList = Array.isArray(data.data) ? data.data : (data.data?.list || []);
         // Sum equity across stablecoin assets (USDT/USDC) as USD-equivalent
         for (const a of rawList) {
@@ -5689,7 +5740,10 @@ async function handleRequest(request, env) {
 
       return new Response(JSON.stringify({ ok: true, balance, currency: 'USD' }), { headers: { ...cors, 'Content-Type': 'application/json' } });
     } catch (err) {
-      return new Response(JSON.stringify({ ok: false, error: err.message }), { status: 400, headers: { ...cors, 'Content-Type': 'application/json' } });
+      // `reason` (key_expired / key_invalid / ip_blocked / no_permission) lets
+      // the app say "your key expired — update it" instead of a dead balance.
+      const reason = classifyExchangeAuthError(balanceExchange, null, err.message);
+      return new Response(JSON.stringify({ ok: false, error: err.message, reason }), { status: 400, headers: { ...cors, 'Content-Type': 'application/json' } });
     }
   }
 
@@ -5821,6 +5875,7 @@ async function handleRequest(request, env) {
 
   // Exchange trade sync — signs HMAC on behalf of the frontend so secrets stay server-side
   if (request.method === 'POST' && path === '/exchange/sync') {
+    let syncExchange = '';
     try {
       // Auth: any authenticated user may call (uses caller-supplied exchange keys).
       const token = (request.headers.get('Authorization') || '').replace('Bearer ', '');
@@ -5830,6 +5885,7 @@ async function handleRequest(request, env) {
       if (_rl.count > 30) return new Response(JSON.stringify({ error: 'יותר מדי בקשות לבורסה. נסה שוב בעוד רגע.' }), { status: 429, headers: { ...cors, 'Content-Type': 'application/json' } });
       const _body = await request.json().catch(() => ({}));
       const { exchange, limit = 50, days = 0, debug = false } = _body;
+      syncExchange = exchange || '';
       if (!exchange) {
         return new Response(JSON.stringify({ error: 'Missing exchange' }), { status: 400, headers: { ...cors, 'Content-Type': 'application/json' } });
       }
@@ -5914,7 +5970,6 @@ async function handleRequest(request, env) {
           positions = Array.isArray(rawPos) ? rawPos : (rawPos?.resultList || rawPos?.list || []);
         }
 
-        if (debug) debugRaw = positions.slice(0, 3);
 
         // ── Step 2: Fetch order history to (a) recover accurate exit times
         // from close orders (sides 2/4) and (b) recover the configured SL/TP
@@ -5922,39 +5977,59 @@ async function handleRequest(request, env) {
         // position-history endpoint doesn't expose SL/TP.
         // pool[symbol][side] = sorted array of { fillTime, used, sl, tp }
         const pool = {};
-        try {
-          const ts2 = Date.now().toString();
-          const ordParamStr = buildParams({ page_num: '1', page_size: '200', start_time: startTime, states: '2' });
-          const ordRes = await fetch(
-            `https://contract.mexc.com/api/v1/private/order/list/history_orders?${ordParamStr}`,
-            { headers: { ...mexcHeaders(ts2), ...(await mexcSign(ts2, ordParamStr)) } }
-          );
-          const ordData = await ordRes.json();
-          if (ordData.code === 0) {
-            const orders = ordData.data?.resultList || ordData.data?.list || (Array.isArray(ordData.data) ? ordData.data : []);
-            for (const o of orders) {
-              const side = parseInt(o.side);
-              if (side !== 1 && side !== 2 && side !== 3 && side !== 4) continue;
-              const sym = o.symbol;
-              const fillTime = toMs(o.updateTime || o.update_time || o.createTime || o.create_time);
-              if (!fillTime) continue;
-              if (!pool[sym]) pool[sym] = {};
-              if (!pool[sym][side]) pool[sym][side] = [];
-              // SL/TP only exist on opening orders. Names vary in MEXC's
-              // contract endpoints — try the common shapes.
-              const sl = side === 1 || side === 3
-                ? parseFloat(o.stopLossPrice || o.stop_loss_price || o.slPrice || o.sl_price || 0) || 0
-                : 0;
-              const tp = side === 1 || side === 3
-                ? parseFloat(o.takeProfitPrice || o.take_profit_price || o.tpPrice || o.tp_price || 0) || 0
-                : 0;
-              pool[sym][side].push({ fillTime, used: false, sl, tp });
-            }
-            for (const sym of Object.keys(pool))
-              for (const side of Object.keys(pool[sym]))
-                pool[sym][side].sort((a, b) => a.fillTime - b.fillTime);
+        // Paged GET on a MEXC private list endpoint (max page_size is 100).
+        const mexcList = async (path, params, maxPages) => {
+          let rows = [];
+          for (let page = 1; page <= maxPages; page++) {
+            const tsL = Date.now().toString();
+            const ps = buildParams({ ...params, page_num: String(page), page_size: '100' });
+            const r = await fetch(`https://contract.mexc.com${path}?${ps}`,
+              { headers: { ...mexcHeaders(tsL), ...(await mexcSign(tsL, ps)) } });
+            const d = await r.json();
+            if (d.code !== 0) break;
+            const chunk = d.data?.resultList || d.data?.list || (Array.isArray(d.data) ? d.data : []);
+            rows = rows.concat(chunk);
+            if (chunk.length < 100) break;
           }
-        } catch (_) { /* order history optional — fall back to entryDate */ }
+          return rows;
+        };
+        // Filled orders (states=3 — '2' is "uncompleted", which returned no
+        // fills, so exit times and attached SL/TP never matched) …
+        let filledOrders = [];
+        try {
+          filledOrders = await mexcList('/api/v1/private/order/list/history_orders', { start_time: startTime, states: '3' }, 5);
+        } catch { /* optional — fall back to the position's own times */ }
+        // … and TP/SL stop orders, where an SL set from the position panel
+        // lives. Both carry positionId, so SL/TP attach to the right position
+        // directly instead of by time proximity.
+        let stopOrders = [];
+        try {
+          stopOrders = await mexcList('/api/v1/private/stoporder/list/orders', { start_time: startTime }, 5);
+        } catch { /* optional */ }
+        const stopsByPos = mexcStopsByPosition([...filledOrders, ...stopOrders]);
+        const entryTypeByPos = mexcEntryTypeByPosition(filledOrders);
+        if (debug) debugRaw = { positions: positions.slice(0, 3), orders: filledOrders.slice(0, 5), stopOrders: stopOrders.slice(0, 5) };
+        for (const o of filledOrders) {
+          const side = parseInt(o.side);
+          if (side !== 1 && side !== 2 && side !== 3 && side !== 4) continue;
+          const sym = o.symbol;
+          const fillTime = toMs(o.updateTime || o.update_time || o.createTime || o.create_time);
+          if (!fillTime) continue;
+          if (!pool[sym]) pool[sym] = {};
+          if (!pool[sym][side]) pool[sym][side] = [];
+          // SL/TP only exist on opening orders. Names vary in MEXC's
+          // contract endpoints — try the common shapes.
+          const sl = side === 1 || side === 3
+            ? parseFloat(o.stopLossPrice || o.stop_loss_price || o.slPrice || o.sl_price || 0) || 0
+            : 0;
+          const tp = side === 1 || side === 3
+            ? parseFloat(o.takeProfitPrice || o.take_profit_price || o.tpPrice || o.tp_price || 0) || 0
+            : 0;
+          pool[sym][side].push({ fillTime, used: false, sl, tp, kind: mexcOrderKind(o.orderType) });
+        }
+        for (const sym of Object.keys(pool))
+          for (const side of Object.keys(pool[sym]))
+            pool[sym][side].sort((a, b) => a.fillTime - b.fillTime);
 
         // ── Step 3: Match positions → opening + closing orders ───────────
         // Each position is paired with the earliest close order after its open
@@ -5998,17 +6073,20 @@ async function handleRequest(request, env) {
             }
             if (bestIdx >= 0) {
               opens[bestIdx].used = true;
-              slTpById.set(posId, { sl: opens[bestIdx].sl, tp: opens[bestIdx].tp });
+              slTpById.set(posId, { sl: opens[bestIdx].sl, tp: opens[bestIdx].tp, kind: opens[bestIdx].kind });
             }
           }
         }
 
         // ── Step 4: Build trade objects ───────────────────────────────────
         const csMap = await mexcContractSizes();
+        const exitsByPos = mexcExitsByPosition(filledOrders, (sym) => csMap[sym] || 1);
         trades = positions.map(p => {
           const openMs = toMs(p.createTime || p.openTime || p.create_time || p.openTimestamp);
           const entryDate = openMs > 0 ? new Date(openMs).toISOString() : new Date().toISOString();
           const sym = p.symbol || '';
+          // Kept as-is (not positionId): it's the externalId already stored
+          // on every imported MEXC trade — changing it would re-import them.
           const posId = String(p.id || sym + '_' + openMs);
           const closeMs = exitTimeById.get(posId) || 0;
           const rawUpdateMs = toMs(p.updateTime || p.update_time || p.closeTime || p.close_time || 0);
@@ -6017,29 +6095,21 @@ async function handleRequest(request, env) {
             : rawUpdateMs > openMs
               ? new Date(rawUpdateMs).toISOString()
               : entryDate;
-          const posType = p.positionType ?? p.position_type;
-          const fees = Math.abs(parseFloat(p.fee || p.fees || p.closeFee || p.close_fee || p.holdFee || p.totalFee || 0) || 0);
-          // Prefer SL/TP captured from the opening order; fall back to any
-          // values that happened to live on the position object itself.
-          const slTp = slTpById.get(posId) || {};
-          const slMexc = (slTp.sl > 0 ? slTp.sl : parseFloat(p.stopLossPrice || p.stop_loss_price || 0)) || 0;
-          const tpMexc = (slTp.tp > 0 ? slTp.tp : parseFloat(p.takeProfitPrice || p.take_profit_price || 0)) || 0;
+          // SL/TP by positionId (stop orders + opening order); the old
+          // time-proximity match is only the fallback.
+          const byPos = stopsByPos.get(String(p.positionId ?? '')) || {};
+          const byTime = slTpById.get(posId) || {};
+          const slTp = { sl: byPos.sl || byTime.sl || 0, tp: byPos.tp || byTime.tp || 0 };
+          // Field mapping + the gross/fee convention live in exchangeNormalize.
           return {
-            pair: sym.replace(/_/g, ''),
-            direction: posType === 1 ? 'long' : 'short',
-            entryPrice: parseFloat(p.openAvgPrice || p.open_avg_price) || 0,
-            exitPrice: parseFloat(p.closeAvgPrice || p.close_avg_price) || 0,
-            // MEXC vol is in CONTRACTS — convert to coin units via contractSize.
-            quantity: (parseFloat(p.closeVol || p.close_vol || p.holdVol || p.hold_vol) || 0) * (csMap[sym.replace(/_/g, '')] || 1),
-            leverage: parseFloat(p.leverage) || 1,
-            pnlFromExchange: parseFloat(p.realised || p.realisedPnl || p.realise || p.realised_pnl) || 0,
-            fees,
-            entryDate,
-            exitDate,
-            stopLoss: slMexc,
-            tps: tpMexc > 0 ? [tpMexc] : [],
-            source: 'mexc',
-            externalId: posId,
+            ...normalizeMexcClosed(p, {
+              contractSize: csMap[sym.replace(/_/g, '')] || 1,
+              entryDate, exitDate, externalId: posId, sl: slTp.sl, tp: slTp.tp,
+              // Limit vs market from the opening order (by positionId, else
+              // the time-matched one).
+              orderType: entryTypeByPos.get(String(p.positionId ?? '')) || byTime.kind,
+              exits: exitsByPos.get(String(p.positionId ?? '')),
+            }),
             session: sessionFromDate(entryDate),
           };
         });
@@ -6054,7 +6124,7 @@ async function handleRequest(request, env) {
             headers: { 'X-BAPI-API-KEY': apiKey, 'X-BAPI-TIMESTAMP': tsW, 'X-BAPI-SIGN': sigW, 'X-BAPI-RECV-WINDOW': recvWindow },
           });
           const d = await r.json();
-          if (d.retCode !== 0) throw new Error(d.retMsg || `Bybit error ${d.retCode}`);
+          if (d.retCode !== 0) throw new Error(`Bybit ${d.retCode}: ${d.retMsg || 'error'}`);
           return d.result || {};
         };
 
@@ -6324,36 +6394,53 @@ async function handleRequest(request, env) {
             if (!chunk.length) break;
             okxRows = okxRows.concat(chunk);
             const oldest = chunk[chunk.length - 1];
-            after = oldest.posId || '';
+            // `after` pages by update TIME (ms), not by posId — passing a
+            // posId (an 18-digit number) re-fetched the same newest page.
+            after = oldest.uTime || '';
             if (parseInt(oldest.cTime || 0) < sinceMs || chunk.length < 100 || !after) break;
           }
           okxRows = okxRows.filter((p) => parseInt(p.cTime || 0) >= sinceMs);
         } else {
           okxRows = await okxFetch('');
         }
-        trades = okxRows.map(p => {
-          const parts = (p.instId || '').split('-');
-          const pair = parts.length >= 2 ? (parts[0] + parts[1]).toUpperCase() : (p.instId || '').toUpperCase();
-          const entryDate = p.cTime ? new Date(parseInt(p.cTime)).toISOString() : new Date().toISOString();
-          const slOkx = parseFloat(p.slTriggerPx || p.slOrdPx || 0) || 0;
-          const tpOkx = parseFloat(p.tpTriggerPx || p.tpOrdPx || 0) || 0;
-          return {
-            pair,
-            direction: p.direction === 'long' ? 'long' : 'short',
-            entryPrice: parseFloat(p.openAvgPx) || 0,
-            exitPrice: parseFloat(p.closeAvgPx) || 0,
-            quantity: parseFloat(p.closeTotalPos || p.openMaxPos) || 0,
-            leverage: parseFloat(p.lever) || 1,
-            pnlFromExchange: parseFloat(p.pnl) || 0,
-            fees: Math.abs(parseFloat(p.fee) || 0),
-            entryDate,
-            exitDate: p.uTime ? new Date(parseInt(p.uTime)).toISOString() : new Date().toISOString(),
-            stopLoss: slOkx,
-            tps: tpOkx > 0 ? [tpOkx] : [],
-            source: 'okx',
-            externalId: p.posId || (pair + '_' + p.cTime),
-            session: sessionFromDate(entryDate),
-          };
+        const ctMap = await okxContractValues();
+        // positions-history has no stop, order type or TP breakdown — the
+        // order history does. Both lookups are best-effort: a failure just
+        // leaves those fields empty, as before.
+        const okxGet = async (path) => {
+          const ts = new Date().toISOString();
+          const sign = await hmacBase64(apiSecret, ts + 'GET' + path);
+          const r = await fetch(`https://www.okx.com${path}`, {
+            headers: { 'OK-ACCESS-KEY': apiKey, 'OK-ACCESS-SIGN': sign, 'OK-ACCESS-TIMESTAMP': ts, 'OK-ACCESS-PASSPHRASE': passphrase || '', 'Content-Type': 'application/json' },
+          });
+          const d = await r.json();
+          if (d.code !== '0') throw new Error(`OKX ${d.code}: ${d.msg || 'error'}`);
+          return d.data || [];
+        };
+        let okxOrders = [];
+        try {
+          // Filled orders, last 3 months, newest first; `after` pages by ordId.
+          let after = '';
+          for (let i = 0; i < 3; i++) {
+            const chunk = await okxGet(`/api/v5/trade/orders-history-archive?instType=SWAP&state=filled&limit=100${after ? `&after=${after}` : ''}`);
+            okxOrders = okxOrders.concat(chunk);
+            if (chunk.length < 100) break;
+            after = chunk[chunk.length - 1].ordId || '';
+            if (!after) break;
+          }
+        } catch { /* optional */ }
+        // TP/SL set after entry live in conditional / oco algo orders.
+        let okxAlgos = [];
+        for (const ordType of ['conditional', 'oco']) {
+          for (const state of ['effective', 'canceled']) {
+            try { okxAlgos = okxAlgos.concat(await okxGet(`/api/v5/trade/orders-algo-history?ordType=${ordType}&state=${state}&limit=100`)); } catch { /* optional */ }
+          }
+        }
+        const okxOrderRows = okxOrders.map((o) => okxOrderRow(o, ctMap[o.instId] || 1));
+        const okxStopRows = okxAlgos.map(okxStopRow);
+        trades = okxRows.map((p) => {
+          const t = enrichWithOrders(normalizeOkxClosed(p, ctMap[p.instId] || 1), okxOrderRows, okxStopRows);
+          return { ...t, session: sessionFromDate(t.entryDate) };
         });
       }
 
@@ -6372,7 +6459,7 @@ async function handleRequest(request, env) {
           });
           const d = await r.json();
           if (d.code !== '00000') throw new Error(`Bitget ${d.code}: ${d.msg || 'error'}`);
-          return d.data?.list || (Array.isArray(d.data) ? d.data : []);
+          return { list: d.data?.list || (Array.isArray(d.data) ? d.data : []), endId: d.data?.endId || '' };
         };
 
         let bgRows = [];
@@ -6380,38 +6467,54 @@ async function handleRequest(request, env) {
           const startExtra = `&startTime=${sinceMs}&endTime=${Date.now()}`;
           let idLessThan = '';
           for (let reqs = 0; reqs < MAX_REQUESTS && bgRows.length < MAX_TRADES; reqs++) {
-            const chunk = await bitgetFetch(startExtra + (idLessThan ? `&idLessThan=${idLessThan}` : ''));
+            const { list: chunk, endId } = await bitgetFetch(startExtra + (idLessThan ? `&idLessThan=${idLessThan}` : ''));
             if (!chunk.length) break;
             bgRows = bgRows.concat(chunk);
-            const oldest = chunk[chunk.length - 1];
-            idLessThan = oldest.positionId || '';
+            // History rows carry no positionId — the page cursor is the
+            // response's endId (the old code read a missing field and never
+            // got past the first page).
+            idLessThan = endId;
             if (chunk.length < 100 || !idLessThan) break;
           }
         } else {
-          bgRows = await bitgetFetch('');
+          bgRows = (await bitgetFetch('')).list;
         }
-        trades = bgRows.map(p => {
-          const pair = (p.symbol || '').replace(/_.*/, '').toUpperCase();
-          const entryDate = p.ctime ? new Date(parseInt(p.ctime)).toISOString() : new Date().toISOString();
-          const slBg = parseFloat(p.presetStopLossPrice || p.stopLossPrice || 0) || 0;
-          const tpBg = parseFloat(p.presetStopSurplusPrice || p.takeProfitPrice || 0) || 0;
-          return {
-            pair,
-            direction: p.holdSide === 'long' ? 'long' : 'short',
-            entryPrice: parseFloat(p.openPriceAvg || p.openAvgPx) || 0,
-            exitPrice: parseFloat(p.closePriceAvg || p.closeAvgPx) || 0,
-            quantity: parseFloat(p.openSize || p.closeTotalPos) || 0,
-            leverage: parseFloat(p.leverage) || 1,
-            pnlFromExchange: parseFloat(p.pnl) || 0,
-            fees: Math.abs(parseFloat(p.fee || p.totalFee) || 0),
-            entryDate,
-            exitDate: p.utime ? new Date(parseInt(p.utime)).toISOString() : new Date().toISOString(),
-            stopLoss: slBg,
-            tps: tpBg > 0 ? [tpBg] : [],
-            source: 'bitget',
-            externalId: p.positionId || (pair + '_' + p.ctime),
-            session: sessionFromDate(entryDate),
-          };
+        // history-position has no stop, order type or TP breakdown — the
+        // order history (and TP/SL plan history) does. Best-effort, 90 days.
+        const bitgetGet = async (path) => {
+          const ts = String(Date.now());
+          const sign = await hmacBase64(apiSecret, ts + 'GET' + path);
+          const r = await fetch(`https://api.bitget.com${path}`, {
+            headers: { 'ACCESS-KEY': apiKey, 'ACCESS-SIGN': sign, 'ACCESS-TIMESTAMP': ts, 'ACCESS-PASSPHRASE': passphrase || '', 'Content-Type': 'application/json' },
+          });
+          const d = await r.json();
+          if (d.code !== '00000') throw new Error(`Bitget ${d.code}: ${d.msg || 'error'}`);
+          return d.data || {};
+        };
+        const bgWindow = `&startTime=${Date.now() - 89 * DAY_MS}&endTime=${Date.now()}`;
+        let bgOrders = [];
+        try {
+          let idLessThan = '';
+          for (let i = 0; i < 3; i++) {
+            const d = await bitgetGet(`/api/v2/mix/order/orders-history?productType=USDT-FUTURES&limit=100${bgWindow}${idLessThan ? `&idLessThan=${idLessThan}` : ''}`);
+            const list = d.entrustedList || [];
+            bgOrders = bgOrders.concat(list);
+            if (list.length < 100 || !d.endId) break;
+            idLessThan = d.endId;
+          }
+        } catch { /* optional */ }
+        let bgPlans = [];
+        try {
+          const d = await bitgetGet(`/api/v2/mix/order/orders-plan-history?productType=USDT-FUTURES&planType=profit_loss&limit=100${bgWindow}`);
+          bgPlans = d.entrustedList || [];
+        } catch { /* optional */ }
+        const bgOrderRows = bgOrders.filter((o) => parseFloat(o.baseVolume) > 0).map(bitgetOrderRow);
+        const bgStopRows = bgPlans.map(bitgetStopRow);
+        trades = bgRows.map((p) => {
+          // Correct v2 field names (openAvgPrice/closeAvgPrice/openFee/…) and
+          // the gross/fee convention live in exchangeNormalize.
+          const t = enrichWithOrders(normalizeBitgetClosed(p), bgOrderRows, bgStopRows);
+          return { ...t, session: sessionFromDate(t.entryDate) };
         });
       }
 
@@ -6429,7 +6532,8 @@ async function handleRequest(request, env) {
 
       return new Response(JSON.stringify({ ok: true, trades, ...(debug ? { _raw: debugRaw } : {}) }), { headers: { ...cors, 'Content-Type': 'application/json' } });
     } catch (e) {
-      return new Response(JSON.stringify({ error: String(e) }), { status: 400, headers: { ...cors, 'Content-Type': 'application/json' } });
+      const reason = classifyExchangeAuthError(syncExchange, null, String(e?.message || e));
+      return new Response(JSON.stringify({ error: String(e), reason }), { status: 400, headers: { ...cors, 'Content-Type': 'application/json' } });
     }
   }
 

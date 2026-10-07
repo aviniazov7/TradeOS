@@ -516,6 +516,11 @@ input[type="range"]::-moz-range-thumb {
 /* Hide native number-input spinner arrows app-wide. They render inconsistently
    across browsers and clash with the dark UI; where stepping is useful we
    provide our own NumberStepper (−/+) control instead. */
+/* Native date pickers (journal date-range filter): match the theme so the
+   calendar popup and the picker icon aren't light-on-dark / dark-on-light. */
+input[type="date"] { color-scheme: dark; }
+.light input[type="date"] { color-scheme: light; }
+
 input[type="number"]::-webkit-outer-spin-button,
 input[type="number"]::-webkit-inner-spin-button {
   -webkit-appearance: none;
@@ -557,7 +562,7 @@ input[type="number"] {
   inset: 0;
   border-radius: inherit;
   padding: 1.5px;
-  background: conic-gradient(from var(--beam-angle), transparent 0 62%, #2563eb 78%, #38bdf8 92%, transparent 100%);
+  background: conic-gradient(from var(--beam-angle), transparent 0 62%, var(--beam-from, #2563eb) 78%, var(--beam-to, #38bdf8) 92%, transparent 100%);
   -webkit-mask: linear-gradient(#000 0 0) content-box, linear-gradient(#000 0 0);
   -webkit-mask-composite: xor;
   mask: linear-gradient(#000 0 0) content-box, linear-gradient(#000 0 0);
@@ -567,14 +572,16 @@ input[type="number"] {
 }
 @keyframes beamSpin { to { --beam-angle: 360deg; } }
 /* Hover-only border beam — calm at rest, the light travels on hover. For KPI /
-   stat cards. Apply to a position:relative, rounded element (Card glow prop). */
+   stat cards. Apply to a position:relative, rounded element (Card glow prop).
+   Both beams default to the brand blue; set --beam-from / --beam-to on the
+   element to tint it (e.g. an exchange card in that exchange's colour). */
 .border-beam-hover::after {
   content: '';
   position: absolute;
   inset: 0;
   border-radius: inherit;
   padding: 1.5px;
-  background: conic-gradient(from var(--beam-angle), transparent 0 62%, #2563eb 78%, #38bdf8 92%, transparent 100%);
+  background: conic-gradient(from var(--beam-angle), transparent 0 62%, var(--beam-from, #2563eb) 78%, var(--beam-to, #38bdf8) 92%, transparent 100%);
   -webkit-mask: linear-gradient(#000 0 0) content-box, linear-gradient(#000 0 0);
   -webkit-mask-composite: xor;
   mask: linear-gradient(#000 0 0) content-box, linear-gradient(#000 0 0);
@@ -584,6 +591,23 @@ input[type="number"] {
   transition: opacity 0.3s;
 }
 .border-beam-hover:hover::after { opacity: 1; animation: beamSpin 4s linear infinite; }
+/* Spotlight card (Card spotlight prop): a soft light that follows the cursor.
+   --spot-x/--spot-y are set on mousemove; hover-capable pointers only. */
+.spotlight-card { position: relative; }
+.spotlight-card::before {
+  content: '';
+  position: absolute;
+  inset: 0;
+  border-radius: inherit;
+  pointer-events: none;
+  opacity: 0;
+  transition: opacity 0.3s;
+  background: radial-gradient(240px circle at var(--spot-x, 50%) var(--spot-y, 50%), rgba(56, 189, 248, 0.10), transparent 65%);
+}
+@media (hover: hover) { .spotlight-card:hover::before { opacity: 1; } }
+.light .spotlight-card::before {
+  background: radial-gradient(240px circle at var(--spot-x, 50%) var(--spot-y, 50%), rgba(37, 99, 235, 0.08), transparent 65%);
+}
 /* Faint scan-line highlight along the top edge */
 .bento-card::before {
   content: '';

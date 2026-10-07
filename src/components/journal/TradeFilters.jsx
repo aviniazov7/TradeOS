@@ -13,15 +13,48 @@ const btnClass = (active) =>
 
 const HEBREW_MONTHS = ['ינואר', 'פברואר', 'מרץ', 'אפריל', 'מאי', 'יוני', 'יולי', 'אוגוסט', 'ספטמבר', 'אוקטובר', 'נובמבר', 'דצמבר'];
 
-const EMPTY_FILTERS = { search: '', direction: '', result: '', strategy: '', tag: '', timeframe: '', month: '' };
+const EMPTY_FILTERS = { search: '', direction: '', result: '', status: '', strategy: '', tag: '', timeframe: '', month: '', from: '', to: '' };
+
+// One native date input. An EMPTY date input isn't blank everywhere — Safari
+// paints today's date and Chrome paints "dd/mm/yyyy" — which read as an
+// active filter. While empty (and not being edited) the native text is made
+// transparent and our own label shows instead — on the side where the date
+// text sits (the picker icon takes the other side).
+function DateField({ value, onChange, label, min, max }) {
+  return (
+    <div className="relative flex-1 min-w-0">
+      <input type="date" aria-label={label} value={value} min={min || undefined} max={max || undefined}
+        onChange={(e) => onChange(e.target.value)}
+        className={`peer w-full h-8 bg-bg-tertiary border border-border-primary rounded-lg px-2 text-xs outline-none focus:border-accent-primary/50 ${
+          value ? 'text-text-primary' : 'text-transparent focus:text-text-primary'
+        }`} />
+      {!value && (
+        <span className="pointer-events-none absolute inset-y-0 end-2 flex items-center text-xs text-text-muted peer-focus:hidden">{label}</span>
+      )}
+    </div>
+  );
+}
+
+// From–to date range on the trade's entry date (native picker: light, no
+// extra bundle, and the phone's own date UI on mobile).
+function DateRange({ from, to, onChange, className = '' }) {
+  return (
+    <div className={`flex items-center gap-1.5 ${className}`}>
+      <DateField label="מתאריך" value={from} max={to} onChange={(v) => onChange('from', v)} />
+      <span className="text-[11px] text-text-muted shrink-0">עד</span>
+      <DateField label="עד תאריך" value={to} min={from} onChange={(v) => onChange('to', v)} />
+    </div>
+  );
+}
 
 export default function TradeFilters({ filters, onChange, trades = [] }) {
   const { allStrategies } = useUserStrategies('journal');
   const [open, setOpen] = useState(false);
   const set = (key, value) => onChange({ ...filters, [key]: value });
   const toggle = (key, value) => set(key, filters[key] === value ? '' : value);
-  const hasFilters = filters.search || filters.direction || filters.result || filters.strategy || filters.tag || filters.timeframe || filters.month;
-  const activeCount = [filters.direction, filters.result, filters.strategy, filters.tag, filters.timeframe, filters.month].filter(Boolean).length;
+  const hasFilters = Object.values(filters).some(Boolean);
+  // Search shows in its own box; a date range counts once.
+  const activeCount = [filters.direction, filters.result, filters.status, filters.strategy, filters.tag, filters.timeframe, filters.month, filters.from || filters.to].filter(Boolean).length;
 
   const allTags = useMemo(() => {
     const tagSet = new Set();
@@ -58,26 +91,36 @@ export default function TradeFilters({ filters, onChange, trades = [] }) {
     <div className="mb-4">
       {/* Mobile: Collapsible */}
       <div className="md:hidden">
-        <button
-          onClick={() => setOpen(!open)}
-          className={`flex items-center gap-2 px-3 py-2 rounded-lg text-xs font-medium transition-colors cursor-pointer w-full ${
+        {/* Toggle + clear sit side by side inside one pill — a <button> can't
+            contain another <button> (invalid HTML; taps could hit the wrong one). */}
+        <div
+          className={`flex items-center rounded-lg text-xs font-medium transition-colors w-full ${
             open || hasFilters ? 'bg-accent-primary/10 text-accent-primary border border-accent-primary/30' : 'bg-bg-tertiary text-text-muted border border-border-primary'
           }`}
         >
-          <SlidersHorizontal className="w-3.5 h-3.5" />
-          <span>סינון</span>
-          {activeCount > 0 && (
-            <span className="bg-accent-primary text-black text-[10px] font-bold px-1.5 py-0.5 rounded-full">{activeCount}</span>
-          )}
+          <button
+            type="button"
+            onClick={() => setOpen(!open)}
+            aria-expanded={open}
+            className="flex-1 flex items-center gap-2 px-3 py-2 cursor-pointer"
+          >
+            <SlidersHorizontal className="w-3.5 h-3.5" />
+            <span>סינון</span>
+            {activeCount > 0 && (
+              <span className="bg-accent-primary text-black text-[10px] font-bold px-1.5 py-0.5 rounded-full">{activeCount}</span>
+            )}
+          </button>
           {hasFilters && (
             <button
-              onClick={(e) => { e.stopPropagation(); onChange(EMPTY_FILTERS); }}
-              className="mr-auto p-0.5 rounded text-text-muted hover:text-loss transition-colors cursor-pointer"
+              type="button"
+              onClick={() => onChange(EMPTY_FILTERS)}
+              aria-label="נקה סינון"
+              className="p-2 rounded text-text-muted hover:text-loss transition-colors cursor-pointer"
             >
               <X className="w-3.5 h-3.5" />
             </button>
           )}
-        </button>
+        </div>
 
         {open && (
           <div className="mt-2 bg-bg-secondary border border-border-primary rounded-xl p-3 space-y-2.5">
@@ -87,7 +130,7 @@ export default function TradeFilters({ filters, onChange, trades = [] }) {
                 type="text"
                 value={filters.search}
                 onChange={(e) => set('search', e.target.value)}
-                placeholder="חפש זוג..."
+                placeholder="חיפוש: זוג, אסטרטגיה, הערה…"
                 className="bg-transparent text-xs text-text-primary placeholder-text-muted outline-none w-full"
               />
             </div>
@@ -101,6 +144,15 @@ export default function TradeFilters({ filters, onChange, trades = [] }) {
               <span className="text-[11px] text-text-muted w-12 flex-shrink-0">תוצאה</span>
               <button className={`${btnClass(filters.result === 'win')} flex-1`} onClick={() => toggle('result', 'win')}>רווח</button>
               <button className={`${btnClass(filters.result === 'loss')} flex-1`} onClick={() => toggle('result', 'loss')}>הפסד</button>
+            </div>
+            <div className="flex items-center gap-1.5">
+              <span className="text-[11px] text-text-muted w-12 flex-shrink-0">סטטוס</span>
+              <button className={`${btnClass(filters.status === 'open')} flex-1`} onClick={() => toggle('status', 'open')}>פתוחות</button>
+              <button className={`${btnClass(filters.status === 'closed')} flex-1`} onClick={() => toggle('status', 'closed')}>סגורות</button>
+            </div>
+            <div className="flex items-center gap-1.5">
+              <span className="text-[11px] text-text-muted w-12 flex-shrink-0">תאריכים</span>
+              <DateRange from={filters.from} to={filters.to} onChange={set} className="flex-1 min-w-0" />
             </div>
 
             <div className="flex gap-2">
@@ -153,7 +205,7 @@ export default function TradeFilters({ filters, onChange, trades = [] }) {
             type="text"
             value={filters.search}
             onChange={(e) => set('search', e.target.value)}
-            placeholder="חפש זוג..."
+            placeholder="חיפוש: זוג, אסטרטגיה, הערה…"
             className="bg-transparent text-xs text-text-primary placeholder-text-muted outline-none w-full"
           />
         </div>
@@ -163,6 +215,11 @@ export default function TradeFilters({ filters, onChange, trades = [] }) {
 
         <button className={btnClass(filters.result === 'win')} onClick={() => toggle('result', 'win')}>רווח</button>
         <button className={btnClass(filters.result === 'loss')} onClick={() => toggle('result', 'loss')}>הפסד</button>
+
+        <button className={btnClass(filters.status === 'open')} onClick={() => toggle('status', 'open')}>פתוחות</button>
+        <button className={btnClass(filters.status === 'closed')} onClick={() => toggle('status', 'closed')}>סגורות</button>
+
+        <DateRange from={filters.from} to={filters.to} onChange={set} className="w-[17rem]" />
 
         <SelectDropdown
           value={filters.strategy}

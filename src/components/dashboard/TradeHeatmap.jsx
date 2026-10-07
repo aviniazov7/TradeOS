@@ -1,4 +1,5 @@
 import { useMemo, useState, useRef } from 'react';
+import { LRM } from '../../utils/formatters';
 
 const DAYS = ['ראשון', 'שני', 'שלישי', 'רביעי', 'חמישי', 'שישי', 'שבת'];
 const HOURS = Array.from({ length: 24 }, (_, i) => i);
@@ -79,7 +80,7 @@ export default function TradeHeatmap({ trades }) {
             boxShadow: '0 4px 16px rgba(0,0,0,0.5)',
           }}
         >
-          {tooltip.label} · {tooltip.val >= 0 ? '+' : ''}${tooltip.val.toFixed(2)}
+          {tooltip.label} · {LRM}{tooltip.val >= 0 ? '+' : ''}${tooltip.val.toFixed(2)}
         </div>
       )}
 

@@ -7,6 +7,7 @@ import { useAuth } from '../../contexts/AuthContext';
 import { getUserSetting, setUserSetting } from '../../services/firestoreService';
 import { fetchWalletData } from '../../services/walletService';
 import { formatCurrency } from '../../utils/formatters';
+import Card from '../shared/Card';
 import BlockchainAnimation from '../shared/BlockchainAnimation';
 import { FREE_LIMITS } from '../../utils/constants';
 import { pageVariants, pageTransition } from '../../utils/animations';
@@ -140,11 +141,17 @@ export default function WalletsPage() {
       <div className="max-w-3xl mx-auto space-y-4">
 
         {/* Header — compact on mobile; the explanation lives behind a "?" */}
-        <div className="relative overflow-hidden bg-bg-secondary border border-border-primary rounded-2xl p-5">
-          <div className="flex items-center justify-between gap-3">
-            <div className="flex items-center gap-2 text-text-primary min-w-0">
-              <Wallet className="w-5 h-5 text-accent-primary shrink-0" />
-              <h1 className="text-lg font-bold">ארנקים</h1>
+        <Card className="relative overflow-hidden p-4 md:p-6">
+          <div aria-hidden className="absolute inset-0 pointer-events-none"
+            style={{ background: 'radial-gradient(80% 140% at 100% 0%, rgba(37,99,235,0.14) 0%, transparent 60%)' }} />
+          {/* Same title treatment as the shared PageHeader (icon medallion +
+              title); this header keeps its own "?" explainer and animation. */}
+          <div className="relative flex items-center justify-between gap-3">
+            <div className="flex items-center gap-3 text-text-primary min-w-0">
+              <span className="w-10 h-10 md:w-11 md:h-11 rounded-xl bg-accent-primary/12 border border-accent-primary/20 grid place-items-center shrink-0">
+                <Wallet className="w-5 h-5 text-accent-primary" />
+              </span>
+              <h1 className="text-xl md:text-2xl font-bold">ארנקים</h1>
               <motion.button
                 onClick={() => setShowInfo((v) => !v)}
                 whileTap={{ scale: 0.9 }}
@@ -156,7 +163,7 @@ export default function WalletsPage() {
             </div>
             <div className="text-left shrink-0">
               <div className="text-[11px] text-text-muted">שווי כולל</div>
-              <div className="text-2xl font-bold text-text-primary" dir="ltr">{formatCurrency(grandTotal)}</div>
+              <div className="num-mono text-xl md:text-2xl font-bold text-text-primary" dir="ltr">{formatCurrency(grandTotal)}</div>
             </div>
           </div>
 
@@ -168,7 +175,7 @@ export default function WalletsPage() {
                 animate={{ height: 'auto', opacity: 1 }}
                 exit={{ height: 0, opacity: 0 }}
                 transition={{ duration: 0.25 }}
-                className="overflow-hidden"
+                className="relative overflow-hidden"
               >
                 <p className="text-sm text-text-secondary mt-3 leading-relaxed">
                   עקוב אחר שווי הארנקים שלך בכל הרשתות — <span className="font-semibold text-text-primary">EVM, Solana ו-Bitcoin</span> במקום אחד. מזין כתובת ציבורית ורואה יתרות, אחזקות ושווי מעודכן.
@@ -182,8 +189,8 @@ export default function WalletsPage() {
           </AnimatePresence>
 
           {/* On-chain blockchain animation */}
-          <BlockchainAnimation className="mt-3 h-14 w-full opacity-90" />
-        </div>
+          <BlockchainAnimation className="relative mt-3 h-14 w-full opacity-90" />
+        </Card>
 
         {/* Portfolio allocation — by coin, aggregated across all wallets */}
         {allocation.total > 0 && (

@@ -1,6 +1,7 @@
 import { useNavigate } from 'react-router-dom';
 import { motion } from 'framer-motion';
-import { Sunrise, Moon, Route, BarChart3 } from 'lucide-react';
+import { Sunrise, Moon, Route, BarChart3, Brain } from 'lucide-react';
+import PageHeader from '../shared/PageHeader';
 import MentalityCard from './MentalityCard';
 import MoodHeatmap from './MoodHeatmap';
 import BreathingExercise from './BreathingExercise';
@@ -96,23 +97,22 @@ export default function MentalityZone() {
         aria-hidden="true"
       />
 
-      <div className="mb-6 flex items-start justify-between flex-wrap gap-3">
-        <div>
-          <h1 className="text-2xl font-bold text-text-primary">האזור המנטלי</h1>
-          <p className="text-sm text-text-secondary mt-1">כלים לפיתוח חוסן מנטלי והתמודדות עם אתגרי המסחר</p>
-        </div>
-        {moodLabel && (
+      <PageHeader
+        icon={Brain}
+        title="האזור המנטלי"
+        subtitle="כלים לפיתוח חוסן מנטלי והתמודדות עם אתגרי המסחר"
+        actions={moodLabel && (
           <motion.div
             initial={{ opacity: 0, scale: 0.9 }}
             animate={{ opacity: 1, scale: 1 }}
             transition={{ delay: 0.3, duration: 0.4 }}
-            className="flex items-center gap-2 bg-bg-secondary/60 backdrop-blur-sm border border-border-primary/60 rounded-full px-3 py-1.5"
+            className="flex items-center gap-2 bg-bg-tertiary border border-border-primary rounded-full px-3 py-1.5"
           >
             <span className="text-base">{moodLabel.emoji}</span>
             <span className={`text-xs font-semibold ${moodLabel.color}`}>{moodLabel.text}</span>
           </motion.div>
         )}
-      </div>
+      />
 
       <motion.div
         variants={staggerContainer}

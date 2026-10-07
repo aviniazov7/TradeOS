@@ -5,6 +5,7 @@ import { useLeaderboard } from '../../hooks/useLeaderboard';
 import { useAuth } from '../../contexts/AuthContext';
 import LeaderboardSkeleton from './LeaderboardSkeleton';
 import { pageVariants, pageTransition, staggerContainer, staggerItem, cardHover } from '../../utils/animations';
+import { LRM } from '../../utils/formatters';
 
 const SORT_OPTIONS = [
   { key: 'score', label: 'ציון כללי' },
@@ -145,7 +146,7 @@ export default function LeaderboardPage() {
                       <div className="flex items-center justify-between">
                         <span className="text-text-muted">PnL</span>
                         <span className={`font-medium ${(entry.live?.pnlPercent || 0) >= 0 ? 'text-profit' : 'text-loss'}`}>
-                          {entry.live?.pnlPercent > 0 ? '+' : ''}{entry.live?.pnlPercent || 0}%
+                          {LRM}{entry.live?.pnlPercent > 0 ? '+' : ''}{entry.live?.pnlPercent || 0}%
                         </span>
                       </div>
                     </div>
@@ -203,7 +204,7 @@ export default function LeaderboardPage() {
                           <td className="px-4 py-3 text-center font-bold text-text-primary">{entry.score}</td>
                           <td className="px-4 py-3 text-center text-text-primary">{entry.live?.winRate || 0}%</td>
                           <td className={`px-4 py-3 text-center font-medium ${(entry.live?.pnlPercent || 0) >= 0 ? 'text-profit' : 'text-loss'}`}>
-                            {entry.live?.pnlPercent > 0 ? '+' : ''}{entry.live?.pnlPercent || 0}%
+                            {LRM}{entry.live?.pnlPercent > 0 ? '+' : ''}{entry.live?.pnlPercent || 0}%
                           </td>
                           <td className="px-4 py-3 text-center text-text-primary">{entry.live?.profitFactor || 0}</td>
                           <td className="px-4 py-3 text-center text-text-primary">{entry.live?.avgRR || 0}</td>
@@ -243,7 +244,7 @@ export default function LeaderboardPage() {
                             <div className="flex items-center gap-2 text-[10px] text-text-muted mt-0.5">
                               <span>Win {entry.live?.winRate || 0}%</span>
                               <span className={`${(entry.live?.pnlPercent || 0) >= 0 ? 'text-profit' : 'text-loss'}`}>
-                                PnL {entry.live?.pnlPercent > 0 ? '+' : ''}{entry.live?.pnlPercent || 0}%
+                                PnL {LRM}{entry.live?.pnlPercent > 0 ? '+' : ''}{entry.live?.pnlPercent || 0}%
                               </span>
                               <span>{entry.live?.totalTrades || 0} עסקאות</span>
                             </div>
