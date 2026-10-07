@@ -1,6 +1,7 @@
 import { useState } from 'react';
 import { motion } from 'framer-motion';
-import { BrainCircuit, Crown, RefreshCw, AlertCircle, Lock, Sparkles, TrendingUp, TrendingDown, Target, Lightbulb } from 'lucide-react';
+import { Crown, RefreshCw, AlertCircle, Lock, Sparkles, TrendingUp, TrendingDown, Target, Lightbulb, MessageSquareText } from 'lucide-react';
+import { LRM } from '../../utils/formatters';
 import { useNavigate } from 'react-router-dom';
 import ThinkingIndicator from '../shared/ThinkingIndicator';
 import { renderBulletHtml } from '../../utils/renderBulletHtml';
@@ -22,7 +23,7 @@ const PROMPTS = [
 const SECTION_META = {
   'חוזקות': { Icon: TrendingUp, color: 'text-profit', bg: 'bg-profit/10', border: 'border-profit/30' },
   'חולשות': { Icon: TrendingDown, color: 'text-loss', bg: 'bg-loss/10', border: 'border-loss/30' },
-  'המלצות לפעולה': { Icon: Target, color: 'text-accent-primary', bg: 'bg-accent-primary/10', border: 'border-accent-primary/30' },
+  'המלצות לפעולה': { Icon: Target, color: 'text-accent-hover', bg: 'bg-accent-primary/10', border: 'border-accent-primary/30' },
   'תובנות מתקדמות': { Icon: Lightbulb, color: 'text-amber-400', bg: 'bg-amber-500/10', border: 'border-amber-500/30' },
 };
 const DEFAULT_META = { Icon: Sparkles, color: 'text-text-primary', bg: 'bg-bg-tertiary', border: 'border-border-primary' };
@@ -122,65 +123,75 @@ export default function BacktestAICoachPanel({ backtests }) {
   // Premium gate — this analysis is a Premium feature.
   if (!isPremium) {
     return (
-      <div className="mt-2 max-w-lg mx-auto text-center py-8">
-        <div className="inline-flex items-center justify-center w-14 h-14 rounded-2xl bg-accent-primary/15 border border-accent-primary/30 mb-4">
-          <Lock className="w-7 h-7 text-accent-primary" />
-        </div>
-        <h2 className="text-lg font-bold text-text-primary mb-1.5 flex items-center justify-center gap-2">
-          ניתוח AI לבקטסט
-          <span className="inline-flex items-center gap-1 text-[10px] px-1.5 py-0.5 rounded-full bg-accent-primary text-bg-primary font-bold"><Crown className="w-2.5 h-2.5" /> Premium</span>
-        </h2>
-        <p className="text-sm text-text-secondary leading-relaxed mb-5">
-          תן ל-AI לנתח את תוכנית הבקטסט שלך — היכן ה-edge, אילו אסטרטגיות וסשנים רווחיים, והאם התוכנית מוכנה למסחר חי.
+      <div className="max-w-md mx-auto text-center py-8">
+        <span className="inline-grid place-items-center w-14 h-14 rounded-2xl mb-4" style={{ background: 'var(--accent-gradient)' }}>
+          <Lock className="w-6 h-6" style={{ color: '#06060a' }} />
+        </span>
+        <h2 className="text-lg font-bold text-text-primary">ניתוח AI לבקטסט הוא חלק מ-Premium</h2>
+        <p className="text-sm text-text-secondary leading-relaxed mt-2 mb-5">
+          ה-AI בודק איפה ה-edge שלך, אילו אסטרטגיות וסשנים רווחיים, והאם התוכנית מוכנה למסחר חי.
         </p>
-        <button onClick={() => navigate('/premium')} className="px-5 py-2.5 rounded-xl bg-accent-primary text-bg-primary text-sm font-semibold hover:bg-accent-hover transition-colors cursor-pointer">
-          שדרג ל-Premium
+        <button onClick={() => navigate('/premium')} className="h-11 px-5 inline-flex items-center gap-2 rounded-xl bg-accent-muted hover:bg-accent-primary text-white text-sm font-bold transition-colors cursor-pointer">
+          <Crown className="w-4 h-4" /> שדרוג ל-Premium
         </button>
       </div>
     );
   }
 
   const sections = report ? parseSections(report) : [];
+  const signed = (v, suffix = '') => `${LRM}${v > 0 ? '+' : ''}${round(v)}${suffix}`;
+  const tone = (v) => (v > 0 ? 'text-profit' : v < 0 ? 'text-loss' : 'text-text-primary');
+  const pf = stats.profitFactorR === Infinity ? '∞' : round(stats.profitFactorR);
+  // The backtest at a glance — computed here, so it is right before any AI call.
+  const figures = [
+    { label: 'עסקאות', value: stats.total || 0, sub: `${stats.wins || 0} רווח · ${stats.losses || 0} הפסד` },
+    { label: 'אחוז הצלחה', value: `${Math.round(stats.winRate || 0)}%` },
+    { label: 'R ממוצע', value: signed(stats.avgR || 0, 'R'), cls: tone(stats.avgR) },
+    { label: 'סה"כ R', value: signed(stats.totalR || 0, 'R'), cls: tone(stats.totalR), sub: `מקדם רווח ${pf}` },
+  ];
 
   return (
-    <div className="space-y-4 mt-2 max-w-3xl mx-auto">
-      {/* Header */}
-      <motion.div initial={{ opacity: 0, y: 6 }} animate={{ opacity: 1, y: 0 }}
-        className="relative overflow-hidden rounded-2xl border border-accent-primary/25 bg-gradient-to-l from-accent-primary/10 via-bg-secondary to-bg-secondary p-5">
-        <div className="flex items-start justify-between gap-3">
-          <div className="flex items-start gap-3">
-            <div className="shrink-0 w-11 h-11 rounded-2xl bg-accent-primary/15 border border-accent-primary/40 flex items-center justify-center">
-              <BrainCircuit className="w-6 h-6 text-accent-primary" />
-            </div>
-            <div>
-              <div className="flex items-center gap-2 mb-1">
-                <h2 className="text-base font-bold text-text-primary">ניתוח AI לבקטסט</h2>
-                <span className="inline-flex items-center gap-1 text-[10px] px-1.5 py-0.5 rounded-full bg-accent-primary text-bg-primary font-bold"><Crown className="w-2.5 h-2.5" /> Premium</span>
-              </div>
-              <p className="text-xs text-text-secondary leading-relaxed">
-                ה-AI יעריך את ה-edge של האסטרטגיה, יאתר את הצירופים הרווחיים, ויגיד לך אם התוכנית מוכנה למסחר חי.
-              </p>
-            </div>
+    <div className="space-y-4">
+      <div className="grid grid-cols-2 sm:grid-cols-4 gap-px rounded-2xl overflow-hidden border border-border-primary bg-border-primary">
+        {figures.map((f) => (
+          <div key={f.label} className="bg-bg-tertiary px-3.5 py-3 min-w-0">
+            <div className="text-xs text-text-secondary">{f.label}</div>
+            <div className={`num-mono text-lg font-bold mt-0.5 ${f.cls || 'text-text-primary'}`} dir="ltr" style={{ textAlign: 'right' }}>{f.value}</div>
+            {f.sub && <div className="text-[11px] text-text-muted mt-0.5 truncate">{f.sub}</div>}
+          </div>
+        ))}
+      </div>
+
+      <div className="rounded-2xl border border-border-primary bg-bg-secondary p-4">
+        <div className="flex flex-wrap items-center justify-between gap-3">
+          <div className="min-w-0">
+            <h3 className="flex items-center gap-2 text-sm font-bold text-text-primary">
+              <Sparkles className="w-4 h-4 text-accent-hover" /> מה ה-AI בודק
+            </h3>
+            <p className="text-xs text-text-secondary mt-1">ה-edge לפי אסטרטגיה, סשן וטיימפריים — והאם התוכנית מוכנה למסחר חי</p>
           </div>
           <button onClick={() => run(null)} disabled={loading}
-            className="shrink-0 inline-flex items-center gap-1.5 px-4 py-2 rounded-xl bg-accent-primary text-bg-primary text-sm font-semibold hover:bg-accent-hover transition-colors cursor-pointer disabled:opacity-50">
-            {loading ? <><RefreshCw className="w-4 h-4 animate-spin" /> מנתח...</> : <><BrainCircuit className="w-4 h-4" /> נתח בקטסט</>}
+            className="shrink-0 h-10 px-4 inline-flex items-center gap-1.5 rounded-xl bg-accent-muted hover:bg-accent-primary text-white text-sm font-bold transition-colors cursor-pointer disabled:opacity-50">
+            {loading ? <><RefreshCw className="w-4 h-4 animate-spin" /> מנתח...</> : <><Sparkles className="w-4 h-4" /> ניתוח מלא</>}
           </button>
         </div>
-      </motion.div>
-
-      {/* Quick prompts */}
-      <div className="flex flex-wrap gap-2">
-        {PROMPTS.map((p) => (
-          <button key={p.id} onClick={() => run(p.id)} disabled={loading}
-            className={`text-xs px-3 py-1.5 rounded-full border transition-colors cursor-pointer disabled:opacity-50 ${
-              activePrompt === p.id
-                ? 'bg-accent-primary/15 border-accent-primary text-accent-primary'
-                : 'bg-bg-secondary border-border-primary text-text-secondary hover:text-text-primary hover:border-border-hover'
-            }`}>
-            {p.label}
-          </button>
-        ))}
+        <div className="mt-4 pt-4 border-t border-border-primary">
+          <p className="flex items-center gap-1.5 text-xs font-semibold text-text-muted mb-2.5">
+            <MessageSquareText className="w-3.5 h-3.5" /> או שאלה ממוקדת
+          </p>
+          <div className="flex flex-wrap gap-2">
+            {PROMPTS.map((p) => (
+              <button key={p.id} onClick={() => run(p.id)} disabled={loading}
+                className={`text-[13px] h-9 px-3.5 rounded-xl border transition-colors cursor-pointer disabled:opacity-50 ${
+                  activePrompt === p.id
+                    ? 'bg-accent-primary/15 border-accent-primary/60 text-accent-hover font-semibold'
+                    : 'bg-bg-tertiary border-border-primary text-text-secondary hover:text-text-primary hover:border-border-hover'
+                }`}>
+                {p.label}
+              </button>
+            ))}
+          </div>
+        </div>
       </div>
 
       {loading && <ThinkingIndicator steps={COACH_STEPS} />}
@@ -199,14 +210,14 @@ export default function BacktestAICoachPanel({ backtests }) {
             const { Icon } = meta;
             return (
               <motion.div key={`${s.title}-${idx}`} initial={{ opacity: 0, y: 6 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.05 * idx }}
-                className={`border ${meta.border} ${meta.bg} rounded-2xl p-4 space-y-2`}>
-                <div className="flex items-center gap-2">
-                  <Icon className={`w-4 h-4 ${meta.color}`} />
-                  <h3 className={`text-sm font-bold ${meta.color}`}>{s.title || 'מסקנות'}</h3>
-                </div>
-                <ul className="space-y-1.5">
+                className="rounded-2xl border border-border-primary bg-bg-secondary p-4">
+                <h3 className={`flex items-center gap-2 text-sm font-bold ${meta.color}`}>
+                  <span className={`w-7 h-7 grid place-items-center rounded-lg ${meta.bg}`}>{Icon && <Icon className="w-4 h-4" />}</span>
+                  {s.title || 'מסקנות'}
+                </h3>
+                <ul className="mt-3 space-y-2">
                   {s.bullets.map((b, i) => (
-                    <li key={i} className="flex gap-2 text-sm text-text-primary leading-relaxed">
+                    <li key={i} className="flex gap-2.5 text-sm text-text-primary leading-relaxed">
                       <span className={`mt-2 inline-block w-1.5 h-1.5 rounded-full ${meta.color.replace('text-', 'bg-')} shrink-0`} />
                       <span dangerouslySetInnerHTML={{ __html: renderBulletHtml(b) }} />
                     </li>

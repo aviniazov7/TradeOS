@@ -148,12 +148,14 @@ export default function LoginPage() {
   return (
     <div className="min-h-dvh bg-bg-primary grid lg:grid-cols-2">
       {/* Brand panel — wide screens only */}
-      <aside className="hidden lg:flex relative overflow-hidden flex-col justify-between p-12 border-l border-border-primary bg-bg-secondary">
+      <aside className="hidden lg:flex relative overflow-hidden flex-col items-center justify-between p-12 border-l border-border-primary bg-bg-secondary">
         <div aria-hidden className="absolute inset-0 pointer-events-none"
           style={{ background: 'radial-gradient(70% 60% at 100% 0%, rgba(37,99,235,0.18) 0%, transparent 60%), radial-gradient(60% 50% at 0% 100%, rgba(56,189,248,0.08) 0%, transparent 60%)' }} />
         <div className="relative"><BrandMark size="lg" /></div>
 
-        <div className="relative max-w-lg">
+        {/* Centred in the half, so the pitch sits in the middle of the panel
+            rather than hugging its edge. */}
+        <div className="relative w-full max-w-lg text-center">
           <h2 className="text-4xl font-extrabold text-text-primary leading-tight">
             יומן המסחר
             <br />
@@ -165,7 +167,7 @@ export default function LoginPage() {
           <div className="mt-8 rounded-2xl border border-border-primary bg-bg-primary/60 p-4">
             <CurveArt />
           </div>
-          <ul className="mt-8 space-y-5">
+          <ul className="mt-8 space-y-5 text-right">
             {FEATURES.map((f) => (
               <li key={f.title} className="flex items-start gap-3.5">
                 <span className="w-10 h-10 shrink-0 rounded-xl bg-accent-primary/12 border border-accent-primary/20 grid place-items-center">

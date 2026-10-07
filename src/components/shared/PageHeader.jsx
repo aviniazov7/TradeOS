@@ -13,9 +13,14 @@ export default function PageHeader({ icon: Icon, title, subtitle, meta, tabs, ac
     <TabStrip tabs={tabs.tabs} value={tabs.value} onChange={tabs.onChange} variant={variant} layoutKey={tabs.layoutKey || 'page-tab'} />
   );
   return (
-    <Card className={`relative overflow-hidden p-4 md:p-6 mb-4 md:mb-6 ${className}`}>
-      <div aria-hidden className="absolute inset-0 pointer-events-none"
-        style={{ background: 'radial-gradient(80% 140% at 100% 0%, rgba(37,99,235,0.14) 0%, transparent 60%)' }} />
+    // No overflow clipping on the card itself, and a z-index above the page
+    // below it: menus that open from the header (journal switcher, period)
+    // must hang over the content, not get cut at the header's bottom edge.
+    // Only the decorative glow is clipped to the rounded corners.
+    <Card className={`relative z-20 p-4 md:p-6 mb-4 md:mb-6 ${className}`}>
+      <div aria-hidden className="absolute inset-0 rounded-[inherit] overflow-hidden pointer-events-none">
+        <div className="absolute inset-0" style={{ background: 'radial-gradient(80% 140% at 100% 0%, rgba(37,99,235,0.14) 0%, transparent 60%)' }} />
+      </div>
       <div className="relative flex flex-col lg:flex-row lg:items-center gap-4 lg:gap-6">
         {/* Phones: actions wrap onto their own row under the title instead of
             squeezing it (basis-full); from sm up they sit beside it. */}

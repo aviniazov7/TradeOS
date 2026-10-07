@@ -44,7 +44,7 @@ export default function BacktestSwitcher({ compact }) {
           </button>
 
           {open && (
-            <div className="absolute top-full right-0 mt-1.5 w-56 bg-bg-overlay border border-border-primary rounded-xl shadow-lg z-50 overflow-hidden">
+            <div className="absolute top-full right-0 mt-1.5 w-72 max-w-[calc(100vw-2rem)] bg-bg-overlay border border-border-primary rounded-xl shadow-lg z-50 overflow-hidden">
               <div className="max-h-60 overflow-y-auto">
                 {journals.map((j) => (
                   <button
