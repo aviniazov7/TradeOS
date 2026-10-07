@@ -928,13 +928,34 @@ async function getAiUsage(env, uid) {
   return { used: v ? parseInt(v, 10) || 0 : 0, limit: AI_DAILY_LIMIT, date };
 }
 
+// A KV write that never throws. KV's free tier allows 1,000 writes a day; once
+// it's spent every put() throws — and an AI request must still be answered
+// rather than crash on its own bookkeeping (counters just stop moving).
+async function kvPutSafe(env, key, value, opts) {
+  try { await env.ALERTS_KV.put(key, value, opts); return true; } catch (e) {
+    console.error('KV put failed (quota?)', key, e?.message || e);
+    return false;
+  }
+}
+
+// The last time every AI provider failed, with each one's status and error
+// text — shown in the admin panel so a dead model/key is visible at a glance.
+// At most one write per 10 minutes (KV writes are scarce).
+async function recordAiFailure(env, fails) {
+  try {
+    const prev = await env.ALERTS_KV.get('ai:lastfail', 'json');
+    if (prev && Date.now() - prev.t < 10 * 60 * 1000) return;
+    await kvPutSafe(env, 'ai:lastfail', JSON.stringify({ t: Date.now(), fails: (fails || []).slice(0, 5) }), { expirationTtl: 60 * 60 * 24 * 3 });
+  } catch { /* best-effort */ }
+}
+
 async function incrementAiUsage(env, uid) {
   const date = getIsraelDateStr();
   const key = `aiusage:${uid}:${date}`;
   const v = await env.ALERTS_KV.get(key);
   const used = (v ? parseInt(v, 10) || 0 : 0) + 1;
   // 48h TTL so the entry survives across midnight and a small clock skew
-  await env.ALERTS_KV.put(key, String(used), { expirationTtl: 172800 });
+  await kvPutSafe(env, key, String(used), { expirationTtl: 172800 });
   return used;
 }
 
@@ -953,7 +974,7 @@ async function getAiImageUsage(env, uid) {
 // preserve the "failed calls don't burn quota" behavior.
 async function decrementKvCounter(env, key) {
   const v = parseInt(await env.ALERTS_KV.get(key), 10) || 0;
-  if (v > 0) await env.ALERTS_KV.put(key, String(v - 1), { expirationTtl: 172800 });
+  if (v > 0) await kvPutSafe(env, key, String(v - 1), { expirationTtl: 172800 });
 }
 async function refundAiCharge(env, uid, hasImage) {
   const date = getIsraelDateStr();
@@ -966,7 +987,7 @@ async function incrementAiImageUsage(env, uid) {
   const key = `aiimg:${uid}:${date}`;
   const v = await env.ALERTS_KV.get(key);
   const used = (v ? parseInt(v, 10) || 0 : 0) + 1;
-  await env.ALERTS_KV.put(key, String(used), { expirationTtl: 172800 });
+  await kvPutSafe(env, key, String(used), { expirationTtl: 172800 });
   return used;
 }
 
@@ -977,7 +998,7 @@ async function recordAiStat(env, date, { text = 0, image = 0, tokIn = 0, tokOut 
   const key = `aistat:${date}`;
   const cur = (await env.ALERTS_KV.get(key, 'json')) || { text: 0, image: 0, tokIn: 0, tokOut: 0 };
   cur.text += text; cur.image += image; cur.tokIn += tokIn; cur.tokOut += tokOut;
-  await env.ALERTS_KV.put(key, JSON.stringify(cur), { expirationTtl: 60 * 60 * 24 * 95 });
+  await kvPutSafe(env, key, JSON.stringify(cur), { expirationTtl: 60 * 60 * 24 * 95 });
 }
 
 // Pass an OpenAI-style SSE stream straight through to the client while reading
@@ -1254,10 +1275,10 @@ async function bumpWindow(env, key, windowSec) {
   const cur = await env.ALERTS_KV.get(key, 'json');
   if (cur && now - cur.start < windowSec * 1000) {
     const next = cur.count + 1;
-    await env.ALERTS_KV.put(key, JSON.stringify({ start: cur.start, count: next }), { expirationTtl: windowSec + 60 });
+    await kvPutSafe(env, key, JSON.stringify({ start: cur.start, count: next }), { expirationTtl: windowSec + 60 });
     return { count: next, start: cur.start };
   }
-  await env.ALERTS_KV.put(key, JSON.stringify({ start: now, count: 1 }), { expirationTtl: windowSec + 60 });
+  await kvPutSafe(env, key, JSON.stringify({ start: now, count: 1 }), { expirationTtl: windowSec + 60 });
   return { count: 1, start: now };
 }
 
@@ -1283,7 +1304,7 @@ async function aiRateGate(env, uid, premium) {
   const m = roll(doc.m, AI_WINDOWS_SEC.minute);
   const h = roll(doc.h, AI_WINDOWS_SEC.hour);
   const d = roll(doc.d, AI_WINDOWS_SEC.day);
-  await env.ALERTS_KV.put(rlKey, JSON.stringify({ m, h, d }), { expirationTtl: AI_WINDOWS_SEC.day + 60 });
+  await kvPutSafe(env, rlKey, JSON.stringify({ m, h, d }), { expirationTtl: AI_WINDOWS_SEC.day + 60 });
 
   if (premium) {
     // Premium: 5/min, 50/hr, 200/day (soft caps for "unlimited").
@@ -2043,7 +2064,7 @@ const GROQ_VISION_FALLBACK_MODEL = 'qwen/qwen3.6-27b';
 //   budgets (coach 700, ping 5) from being eaten by thinking. The reasoning is
 //   returned in a separate field, never mixed into `content`.
 const reasoningOpt = (model) => {
-  if (model === GROQ_VISION_MODEL) return { reasoning_effort: 'none' };
+  if (model.startsWith('qwen/')) return { reasoning_effort: 'none' };
   if (model.startsWith('openai/gpt-oss')) return { reasoning_effort: 'low' };
   return {};
 };
@@ -2061,6 +2082,12 @@ const reasoningOpt = (model) => {
 // chart chat, sits on a separate per-model rate bucket, and its id is kept
 // current (it's the one users hit for image analysis, so it can't go stale).
 const GROQ_FALLBACK_MODEL = GROQ_VISION_MODEL;
+// Text models tried in order when the primary is rate-limited (each has its
+// own per-model quota on Groq), retired (404) or not answering in time. Ids
+// that no longer exist just 404 and the chain moves on.
+const GROQ_TEXT_FALLBACKS = ['openai/gpt-oss-20b', 'qwen/qwen3-32b'];
+// Statuses that mean "try the next provider/model".
+const AI_RETRYABLE = new Set([404, 408, 413, 429, 500, 502, 503, 504]);
 async function groqFetchWithRetry(env, payload) {
   const call = (model) => fetchFirstByte(GROQ_URL, {
     method: 'POST',
@@ -2079,14 +2106,15 @@ async function groqFetchWithRetry(env, payload) {
   // Still failing on a recoverable status → try ONCE on the fallback model (a
   // separate rate bucket + a live id). 404 is included so a DECOMMISSIONED model
   // — what took down Scout — self-heals instead of hard-failing the coach.
-  if (!res.ok && payload.model !== GROQ_FALLBACK_MODEL
-      && (res.status === 429 || res.status === 404 || res.status >= 500)) {
-    console.error(`groq ${res.status} on ${payload.model} — falling back to ${GROQ_FALLBACK_MODEL}`);
-    const fb = await call(GROQ_FALLBACK_MODEL);
-    if (fb.ok || fb.status !== 429) return fb;
-    // Log the fallback's own 429 body — without this the coach error only
-    // shows the primary model's body and the fallback failure is invisible.
-    console.error(`groq fallback ${GROQ_FALLBACK_MODEL} also 429:`, await fb.text().catch(() => ''));
+  if (!res.ok && AI_RETRYABLE.has(res.status)) {
+    for (const fbModel of GROQ_TEXT_FALLBACKS) {
+      if (fbModel === payload.model) continue;
+      console.error(`groq ${res.status} on ${payload.model} — trying ${fbModel}`);
+      const fb = await call(fbModel);
+      if (fb.ok || !AI_RETRYABLE.has(fb.status)) return fb;
+      console.error(`groq fallback ${fbModel} failed ${fb.status}:`, (await fb.text().catch(() => '')).slice(0, 300));
+      res = fb;
+    }
   }
   return res;
 }
@@ -2109,6 +2137,9 @@ const MAX_IMAGE_CHARS = 4_000_000;
 // available to new projects. If this ever 404s too, check /admin/ai-test for
 // the exact error and swap to a currently-available model.
 const GEMINI_MODEL = 'gemini-2.0-flash';
+// thinkingConfig only exists on the 2.5 "thinking" models — sending it to
+// 2.0-flash makes the request fail, which silently broke every Gemini call.
+const GEMINI_THINKING_OFF = GEMINI_MODEL.includes('2.5') ? { thinkingConfig: { thinkingBudget: 0 } } : {};
 const GEMINI_STREAM_URL = (key) =>
   `https://generativelanguage.googleapis.com/v1beta/models/${GEMINI_MODEL}:streamGenerateContent?alt=sse&key=${encodeURIComponent(key)}`;
 const GEMINI_URL = (key) =>
@@ -2132,7 +2163,7 @@ async function geminiGenerateFallback(env, systemPrompt, userPrompt, maxTokens) 
         // thinkingBudget: 0 — 2.5-flash is a thinking model; without this it
         // spends the whole maxOutputTokens budget on internal thoughts and
         // returns an empty candidate.
-        generationConfig: { temperature: 0.5, maxOutputTokens: maxTokens, thinkingConfig: { thinkingBudget: 0 } },
+        generationConfig: { temperature: 0.5, maxOutputTokens: maxTokens, ...GEMINI_THINKING_OFF },
       }),
     });
     if (!res.ok) {
@@ -2173,7 +2204,7 @@ function toGeminiBody(apiMessages) {
     })),
     // thinkingBudget: 0 — 2.5-flash defaults to spending output tokens on
     // internal thinking; chat wants fast first-token and full budget for text.
-    generationConfig: { temperature: 0.7, maxOutputTokens: 2048, thinkingConfig: { thinkingBudget: 0 } },
+    generationConfig: { temperature: 0.7, maxOutputTokens: 2048, ...GEMINI_THINKING_OFF },
   };
 }
 
@@ -2494,65 +2525,15 @@ async function handleAIChat(request, env, cors) {
       'Cache-Control': 'no-cache',
       Connection: 'keep-alive',
     };
+    const stream = (body) => new Response(meterStream(env, body, { hasImage }), { headers: sseHeaders });
+    const fails = [];
 
-    // Gemini routing is gated behind GEMINI_ENABLED=true. Free-tier Gemini
-    // has a tight shared quota (≈15 RPM) that we keep blowing through, so by
-    // default everyone runs on Groq (which has been stable at 30 RPM). Flip
-    // the env var once a paid Gemini key is in place.
-    if (premium && env.GEMINI_API_KEY && env.GEMINI_ENABLED === 'true') {
-      const gemRes = await fetchFirstByte(GEMINI_STREAM_URL(env.GEMINI_API_KEY), {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(toGeminiBody(apiMessages)),
-      }, AI_FIRST_BYTE_MS);
-      if (!gemRes.ok) {
-        const errText = await gemRes.text().catch(() => '');
-        console.error('Gemini API error:', gemRes.status, errText);
-        // Fall back to Groq with up to 3 attempts (exponential backoff). The
-        // free-tier shared key quotas are tight (Gemini 15 RPM, Groq 30 RPM)
-        // so spaced retries usually clear the limit within a few seconds.
-        const callGroq = () => fetchFirstByte(GROQ_URL, {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${env.GROQ_API_KEY}` },
-          body: JSON.stringify({ model: hasImage ? GROQ_VISION_MODEL : GROQ_MODEL, ...reasoningOpt(hasImage ? GROQ_VISION_MODEL : GROQ_MODEL), messages: apiMessages, temperature: 0.7, max_tokens: 1500, stream: true, stream_options: { include_usage: true } }),
-        }, AI_FIRST_BYTE_MS);
-        const delays = [0, 2000, 4000]; // immediate, +2s, +4s = ~6s total worst-case
-        let groqFallback;
-        for (const wait of delays) {
-          if (wait) await new Promise((r) => setTimeout(r, wait));
-          groqFallback = await callGroq();
-          if (groqFallback.ok) {
-            return new Response(meterStream(env, groqFallback.body, { hasImage }), { headers: sseHeaders });
-          }
-          if (groqFallback.status === 504 || (groqFallback.status !== 429 && groqFallback.status < 500)) break; // timeout / 4xx (≠429): stop; 429/5xx keep retrying
-        }
-        const fbErrText = await groqFallback.text().catch(() => '');
-        console.error('Groq fallback also failed:', groqFallback.status, fbErrText);
-        const rateLimited = gemRes.status === 429 || groqFallback.status === 429;
-        const friendly = rateLimited
-          ? 'שני ספקי ה-AI עמוסים. המתן 10–20 שניות ונסה שוב.'
-          : `שגיאת AI: ${gemRes.status}/${groqFallback.status}`;
-        // Refund the prepaid quota charge — a failed call must not burn it.
-        await refundAiCharge(env, uid, hasImage);
-        // 429 (not 502) for rate limits, so the client's own backoff retries too.
-        return new Response(JSON.stringify({
-          error: friendly,
-          gemini: gemRes.status,
-          groq: groqFallback.status,
-        }), { status: rateLimited ? 429 : 502, headers: { ...cors, 'Content-Type': 'application/json' } });
-      }
-      return new Response(meterStream(env, await geminiStreamToOpenAI(gemRes.body), { hasImage }), { headers: sseHeaders });
-    }
-
-    // Free tier (or premium without a Gemini key configured) → Groq, with
-    // retries: the shared key has tight per-minute token limits, so back off
-    // and retry inside the worker (worst case ~7.5s) before surfacing an error.
+    // Groq: the primary model (one short retry if it's rate-limited), then the
+    // fallbacks — each has its own quota — until one answers. Vision has a
+    // single Groq model; Gemini below covers it.
     const callGroq = (model) => fetchFirstByte(GROQ_URL, {
       method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        Authorization: `Bearer ${env.GROQ_API_KEY}`,
-      },
+      headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${env.GROQ_API_KEY}` },
       body: JSON.stringify({
         model,
         ...reasoningOpt(model),
@@ -2563,45 +2544,57 @@ async function handleAIChat(request, env, cors) {
         stream_options: { include_usage: true },
       }),
     }, AI_FIRST_BYTE_MS);
-
-    // 429 = transient rate limit → back off and retry the SAME model. 404 = the
-    // model id was decommissioned (exactly what killed Llama 4 Scout) → retrying
-    // it is futile, so switch to the fallback model ONCE, immediately. This makes
-    // provider model-churn self-healing instead of surfacing a hard 404 to users.
-    let groqModel = hasImage ? GROQ_VISION_MODEL : GROQ_MODEL;
-    const groqFallbackModel = hasImage ? GROQ_VISION_FALLBACK_MODEL : GROQ_FALLBACK_MODEL;
-    let switchedModel = false;
-    let groqResponse;
-    for (const wait of [0, 2500, 5000]) {
-      if (wait) await new Promise((r) => setTimeout(r, wait));
-      groqResponse = await callGroq(groqModel);
-      if (groqResponse.ok) {
-        return new Response(meterStream(env, groqResponse.body, { hasImage }), { headers: sseHeaders });
-      }
-      // 404 = model retired, 504 = provider didn't start answering in time:
-      // both go straight to the fallback model (separate bucket) once.
-      if ((groqResponse.status === 404 || groqResponse.status === 504) && !switchedModel && groqFallbackModel !== groqModel) {
-        console.error(`Groq model ${groqModel} returned 404 (decommissioned) — switching to ${groqFallbackModel}`);
-        switchedModel = true;
-        groqModel = groqFallbackModel;
-        groqResponse = await callGroq(groqModel);
-        if (groqResponse.ok) {
-          return new Response(meterStream(env, groqResponse.body, { hasImage }), { headers: sseHeaders });
+    const tryGroq = async () => {
+      if (!env.GROQ_API_KEY) { fails.push('groq:no-key'); return null; }
+      const chain = hasImage ? [GROQ_VISION_MODEL] : [GROQ_MODEL, ...GROQ_TEXT_FALLBACKS];
+      for (let i = 0; i < chain.length; i++) {
+        let res = await callGroq(chain[i]);
+        if (!res.ok && res.status === 429 && i === 0) {
+          await new Promise((r) => setTimeout(r, 1500));
+          res = await callGroq(chain[i]);
         }
+        if (res.ok) return stream(res.body);
+        const detail = (await res.text().catch(() => '')).slice(0, 240);
+        console.error(`Groq ${chain[i]} failed ${res.status}:`, detail);
+        fails.push({ provider: 'groq', model: chain[i], status: res.status, detail });
+        if (!AI_RETRYABLE.has(res.status)) break; // bad key / bad request — other models won't help
       }
-      if (groqResponse.status === 504 || (groqResponse.status !== 429 && groqResponse.status < 500)) break; // timeout / 4xx (≠429): stop; 429/5xx keep retrying
-    }
+      return null;
+    };
 
-    const errText = await groqResponse.text().catch(() => '');
-    console.error('Groq API error:', groqResponse.status, errText);
-    // Refund the prepaid quota charge — a failed call must not burn it.
+    // Gemini (handles images too): first for premium when enabled, otherwise
+    // the last resort when every Groq model is busy.
+    const tryGemini = async () => {
+      if (!env.GEMINI_API_KEY) return null;
+      const res = await fetchFirstByte(GEMINI_STREAM_URL(env.GEMINI_API_KEY), {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(toGeminiBody(apiMessages)),
+      }, AI_FIRST_BYTE_MS);
+      if (res.ok) return stream(await geminiStreamToOpenAI(res.body));
+      const detail = (await res.text().catch(() => '')).slice(0, 240);
+      console.error('Gemini failed', res.status, detail);
+      fails.push({ provider: 'gemini', model: GEMINI_MODEL, status: res.status, detail });
+      return null;
+    };
+
+    const geminiFirst = premium && env.GEMINI_API_KEY && env.GEMINI_ENABLED === 'true';
+    const answer = geminiFirst
+      ? (await tryGemini()) || (await tryGroq())
+      : (await tryGroq()) || (await tryGemini());
+    if (answer) return answer;
+
+    // Every provider failed: keep the evidence for the admin panel, refund the
+    // charge, and say it plainly.
+    await recordAiFailure(env, fails);
     await refundAiCharge(env, uid, hasImage);
-    // 429 (not 502) for rate limits, so the client's own backoff retries too.
-    const rateLimited = groqResponse.status === 429;
-    return new Response(
-      JSON.stringify({ error: rateLimited ? 'ספק ה-AI עמוס כרגע, נסה שוב בעוד רגע' : groqResponse.status === 504 ? 'ספק ה-AI לא הגיב בזמן. נסה שוב בעוד רגע.' : `שגיאת AI: ${groqResponse.status}` }),
-      { status: rateLimited ? 429 : 502, headers: { ...cors, 'Content-Type': 'application/json' } },
-    );
+    const rateLimited = fails.some((f) => f.status === 429);
+    return new Response(JSON.stringify({
+      error: rateLimited
+        ? 'כל ספקי ה-AI עמוסים כרגע. נסה שוב בעוד דקה.'
+        : 'שירות ה-AI לא זמין כרגע. נסה שוב בעוד כמה דקות.',
+      providers: fails.map((f) => `${f.provider}:${f.status}`),
+    }), { status: rateLimited ? 429 : 502, headers: { ...cors, 'Content-Type': 'application/json' } });
   } catch (err) {
     console.error('AI Chat error:', err);
     // A thrown provider fetch lands here AFTER charging — refund so a transient
@@ -5197,6 +5190,7 @@ async function handleRequest(request, env) {
     const cronRaw = await env.ALERTS_KV.get('cron:last');
     const cronLast = cronRaw ? parseInt(cronRaw, 10) || null : null;
     const quotas = await fetchCloudflareQuotas(env);
+    const aiLastFail = await env.ALERTS_KV.get('ai:lastfail', 'json').catch(() => null);
     // Which AI models are actually wired up right now + their daily caps, so
     // the admin panel shows the live routing (Gemini premium vs Groq fallback)
     // without hard-coding model names on the client.
@@ -5225,6 +5219,7 @@ async function handleRequest(request, env) {
         },
       },
       quotas,
+      aiLastFail,
     }), { headers: { ...cors, 'Content-Type': 'application/json' } });
   }
 

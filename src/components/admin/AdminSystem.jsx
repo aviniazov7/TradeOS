@@ -24,8 +24,9 @@ function Tile({ label, value, pct, children }) {
   );
 }
 
-function AiDetails({ health, globalAi, aiStats, statsDays, setStatsDays, aiTest, aiTesting, runAiTest, users, onOpenUser }) {
+function AiDetails({ health, globalAi, aiStats, statsDays, setStatsDays, aiTest, aiTesting, runAiTest, users, onOpenUser, service }) {
   const ai = health.ai;
+  const lastFail = service?.lastFail;
   // Today's bar is backfilled from the live counters — token metering only
   // accrues going forward, so the stored day can lag behind real usage.
   const series = (aiStats?.stats || []).map((s) => (globalAi && s.date === globalAi.date
@@ -43,6 +44,19 @@ function AiDetails({ health, globalAi, aiStats, statsDays, setStatsDays, aiTest,
 
   return (
     <div className="flex flex-col gap-3">
+      {lastFail && (
+        <div className="rounded-xl border border-loss/30 bg-loss/8 px-3.5 py-3 text-sm">
+          <div className="font-bold text-loss mb-1.5">כל הספקים נכשלו {relativeActive(lastFail.t)}</div>
+          <ul className="space-y-1">
+            {(lastFail.fails || []).map((f, i) => (
+              <li key={i} className="text-xs text-text-secondary">
+                <b className="text-text-primary" dir="ltr">{f.provider} · {f.model}</b> — {f.status}
+                {f.detail && <span className="block font-mono text-[11px] text-text-muted truncate" dir="ltr" title={f.detail}>{f.detail}</span>}
+              </li>
+            ))}
+          </ul>
+        </div>
+      )}
       {ai && (
         <div className="grid grid-cols-1 sm:grid-cols-3 gap-2">
           {[
@@ -123,7 +137,7 @@ function AiDetails({ health, globalAi, aiStats, statsDays, setStatsDays, aiTest,
 
 function ServiceDetails({ service, ...p }) {
   const { health, fbUsage, fbLoading, refreshFbUsage } = p;
-  if (service.id === 'ai') return <AiDetails {...p} />;
+  if (service.id === 'ai') return <AiDetails {...p} service={service} />;
   if (service.id === 'cloudflare') {
     return (
       <div className="grid grid-cols-[repeat(auto-fit,minmax(190px,1fr))] gap-2">

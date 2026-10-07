@@ -193,18 +193,25 @@ export function systemChecks({ health, globalAi, aiTest, fbUsage }) {
   const failing = aiTest && !aiTest.error
     ? [['Gemini', aiTest.gemini], ['Groq', aiTest.groq]].filter(([, r]) => r && !r.ok).map(([n]) => n)
     : [];
+  // Every provider failed at once recently (the worker logs it) — users saw
+  // an error then.
+  const lastFail = health.aiLastFail && Date.now() - health.aiLastFail.t < 60 * 60 * 1000 ? health.aiLastFail : null;
   let aiStatus = 'ok';
   if (!health.aiConfigured || failing.includes('Groq')) aiStatus = 'bad';
+  else if (lastFail) aiStatus = 'bad';
   else if (failing.length || (aiPct != null && aiPct >= 60)) aiStatus = 'warn';
   services.push({
     id: 'ai',
     name: `AI · ${health.ai?.geminiActive ? 'Gemini + Groq' : 'Groq'}`,
     status: aiStatus,
     pct: aiPct,
+    lastFail,
     sub: !health.aiConfigured ? 'לא מוגדר'
-      : today != null ? `${today.toLocaleString()} מתוך ${ceiling.toLocaleString()} בקשות היום` : 'מחובר',
+      : lastFail ? `כל הספקים נכשלו ${relativeActive(lastFail.t)}: ${(lastFail.fails || []).map((f) => `${f.provider} ${f.status}`).join(' · ')}`
+        : today != null ? `${today.toLocaleString()} מתוך ${ceiling.toLocaleString()} בקשות היום` : 'מחובר',
     issue: !health.aiConfigured ? 'ה-AI לא מוגדר'
-      : failing.length ? `בדיקת חיבור נכשלה: ${failing.join(', ')}` : 'ה-AI קרוב למגבלה היומית',
+      : lastFail ? 'ה-AI נכשל אצל כל הספקים בשעה האחרונה'
+        : failing.length ? `בדיקת חיבור נכשלה: ${failing.join(', ')}` : 'ה-AI קרוב למגבלה היומית',
   });
 
   if (health.quotas?.configured) {
