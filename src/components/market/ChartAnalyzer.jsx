@@ -248,8 +248,8 @@ export default function ChartAnalyzer({ heightClass = '' }) {
   const lensLabel = LENSES.find((l) => l.id === lens)?.label;
 
   return (
-    <div className="max-w-2xl mx-auto w-full">
-      <div className={`relative flex flex-col rounded-3xl overflow-hidden border border-border-primary bg-bg-secondary ${heightClass} sm:min-h-[420px]`}>
+    <div className="w-full">
+      <div className={`relative flex flex-col rounded-2xl overflow-hidden border border-border-primary bg-bg-secondary ${heightClass}`}>
         {/* Ambient accent glow at the top — subtle premium depth */}
         <div className="pointer-events-none absolute inset-x-0 top-0 h-28 bg-gradient-to-b from-accent-primary/8 to-transparent" />
 
