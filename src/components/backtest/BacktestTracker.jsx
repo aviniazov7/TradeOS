@@ -31,7 +31,7 @@ import { useUserTimeframes } from '../../hooks/useUserTimeframes';
 import { useUserTriggers } from '../../hooks/useUserTriggers';
 import { pageVariants, pageTransition } from '../../utils/animations';
 import PageHeader from '../shared/PageHeader';
-import { headerIconBtn, headerPrimaryBtn } from '../shared/headerStyles';
+import { headerIconBtn, headerPrimaryBtn, headerAiBtn } from '../shared/headerStyles';
 
 
 function getSessionFromDate(date) {
@@ -245,9 +245,14 @@ export default function BacktestTracker() {
         meta={<BacktestSwitcher compact />}
         tabs={{ tabs: [{ id: 'records', label: 'עסקאות', count: backtests.length }, { id: 'analytics', label: 'ניתוחים' }], value: tab, onChange: setTab, layoutKey: 'backtest-tab' }}
         actions={(
-          <div className="flex items-center gap-2 w-full sm:w-auto">
-            {tab === 'analytics' && <div className="hidden md:block"><TimePeriodFilter value={period} onChange={setPeriod} compact /></div>}
-            {tab === 'analytics' && <div className="md:hidden"><TimePeriodFilter value={period} onChange={setPeriod} dropdown /></div>}
+          <div className="flex flex-wrap items-center gap-2 w-full sm:w-auto">
+            {tab === 'analytics' && <TimePeriodFilter value={period} onChange={setPeriod} />}
+            {tab === 'analytics' && backtests.length > 0 && (
+              <button onClick={() => setAiModalOpen(true)} className={headerAiBtn} title="ניתוח AI לבקטסט">
+                <Sparkles className="w-[18px] h-[18px]" />
+                <span className="hidden sm:inline">ניתוח AI</span>
+              </button>
+            )}
             <button onClick={() => setViewOpen(true)} className={headerIconBtn} title="תצוגת עמודות" aria-label="תצוגת עמודות">
               <Eye className="w-[18px] h-[18px]" />
             </button>
@@ -259,7 +264,7 @@ export default function BacktestTracker() {
                 <Download className="w-[18px] h-[18px]" />
               </button>
             )}
-            <button onClick={openNew} className={`${headerPrimaryBtn} flex-1 sm:flex-none`}>
+            <button onClick={openNew} className={`${headerPrimaryBtn} flex-1 sm:flex-none min-w-[8.5rem]`}>
               <Plus className="w-4 h-4" /> הוסף עסקה
             </button>
           </div>
@@ -454,26 +459,6 @@ export default function BacktestTracker() {
             actionLabel="עבור לרשומות" onAction={() => setTab('records')} />
         ) : (
           <div className="space-y-4">
-            {/* AI launcher — the analysis opens in a modal (like the journal),
-                not inline, so the charts aren't pushed down the page. */}
-            <button
-              onClick={() => setAiModalOpen(true)}
-              className="w-full group relative overflow-hidden rounded-2xl border border-accent-primary/25 bg-gradient-to-l from-accent-primary/10 via-bg-secondary to-bg-secondary p-4 flex items-center gap-3 text-right hover:border-accent-primary/40 transition-colors cursor-pointer"
-            >
-              <div className="shrink-0 w-11 h-11 rounded-2xl bg-accent-primary/15 border border-accent-primary/40 flex items-center justify-center">
-                <BrainCircuit className="w-6 h-6 text-accent-primary" />
-              </div>
-              <div className="min-w-0 flex-1">
-                <div className="flex items-center gap-2">
-                  <h3 className="text-sm font-bold text-text-primary">ניתוח AI לבקטסט</h3>
-                  <span className="inline-flex items-center gap-1 text-[10px] px-1.5 py-0.5 rounded-full bg-accent-primary text-bg-primary font-bold"><Crown className="w-2.5 h-2.5" /> Premium</span>
-                </div>
-                <p className="text-xs text-text-secondary leading-relaxed mt-0.5 truncate">האם התוכנית רווחית, היכן ה-edge, ומה כדאי לשפר — בחלון נפרד</p>
-              </div>
-              <span className="shrink-0 inline-flex items-center gap-1.5 px-3.5 py-2 rounded-xl bg-accent-primary text-bg-primary text-sm font-semibold group-hover:bg-accent-hover transition-colors">
-                <Sparkles className="w-4 h-4" /> נתח
-              </span>
-            </button>
             <BacktestAnalytics backtests={backtests} period={period} />
           </div>
         )
@@ -486,7 +471,7 @@ export default function BacktestTracker() {
         maxWidth="max-w-2xl"
         title={(
           <span className="inline-flex items-center gap-2">
-            <BrainCircuit className="w-4 h-4 text-accent-primary" />
+            <Sparkles className="w-4 h-4 text-accent-hover" />
             <span className="font-bold text-text-primary">ניתוח AI לבקטסט</span>
           </span>
         )}
