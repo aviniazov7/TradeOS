@@ -2,7 +2,8 @@ import { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { motion } from 'framer-motion';
 import {
-  Crown, Check, Bot, BookOpen, Wallet, Link2, Bell, BarChart3, Sparkles, Ticket, Loader2, Image, Layers,
+  Crown, Check, Bot, BookOpen, Wallet, Link2, Bell, BarChart3, Sparkles, Ticket, Loader2, Image, Layers, Trophy,
+  ShieldCheck, CalendarClock, Minus,
 } from 'lucide-react';
 import toast from 'react-hot-toast';
 import { useAuth } from '../../contexts/AuthContext';
@@ -10,8 +11,27 @@ import { PREMIUM_FEATURES, PREMIUM_PRICING } from '../../utils/constants';
 import { pageVariants, pageTransition } from '../../utils/animations';
 import { redeemCoupon } from '../../services/couponService';
 import { planExpiresMs } from '../../utils/premium';
+import PageHeader from '../shared/PageHeader';
 
-const ICONS = { Bot, BookOpen, Wallet, Link2, Bell, BarChart3, Sparkles, Image, Layers };
+const ICONS = { Bot, BookOpen, Wallet, Link2, Bell, BarChart3, Sparkles, Image, Layers, Trophy };
+
+// The four things that make the upgrade worth it, shown next to the price.
+const HIGHLIGHTS = [
+  'סוכן AI עד 200 שאלות ביום',
+  'ניתוח גרפים מקצועי מצילום מסך',
+  'יומנים, ארנקים וחיבורי בורסה ללא הגבלה',
+  'ניתוחים מתקדמים ו-Polymarket',
+];
+
+const yearlySavePct = Math.round((1 - PREMIUM_PRICING.yearly.price / (PREMIUM_PRICING.monthly.price * 12)) * 100);
+
+// A comparison cell: "כלול" becomes a check, "—" a muted dash, anything else
+// the text itself.
+function Cell({ value, premium }) {
+  if (value === 'כלול') return <Check className={`w-4 h-4 mx-auto ${premium ? 'text-accent-hover' : 'text-text-secondary'}`} strokeWidth={3} />;
+  if (value === '—') return <Minus className="w-4 h-4 mx-auto text-text-muted/60" />;
+  return <span className={`text-[13px] ${premium ? 'font-bold text-text-primary' : 'text-text-muted'}`}>{value}</span>;
+}
 
 // Human-friendly "time remaining" string for a Premium plan with an expiry.
 // Returns null when the plan is lifetime (no expiry) or invalid.
@@ -43,6 +63,8 @@ export default function PremiumPage() {
   const timeLeft = timeLeftLabel(profile?.planExpires);
   const [couponCode, setCouponCode] = useState('');
   const [redeeming, setRedeeming] = useState(false);
+  const [cycle, setCycle] = useState('yearly');
+  const plan = PREMIUM_PRICING[cycle];
 
   const handleRedeem = async () => {
     const code = couponCode.trim();
@@ -63,122 +85,153 @@ export default function PremiumPage() {
 
   return (
     <motion.div variants={pageVariants} initial="initial" animate="animate" exit="exit" transition={pageTransition}
-      className="px-4 py-6">
-      <div className="max-w-2xl mx-auto space-y-5">
+      className="max-w-4xl mx-auto">
+      <PageHeader
+        icon={Crown}
+        title="TradeOS Premium"
+        subtitle={isPremium ? 'המנוי שלך פעיל — כל הכלים פתוחים' : 'כל הכלים, בלי מגבלות'}
+      />
 
-        {/* Hero */}
-        <div className="border-beam relative overflow-hidden rounded-2xl border border-accent-primary/30 bg-gradient-to-b from-accent-primary/10 to-bg-secondary p-6 text-center">
-          {/* violet→cyan top hairline */}
-          <div className="absolute top-0 inset-x-0 h-px pointer-events-none"
-            style={{ background: 'linear-gradient(to right, transparent, #8b5cf6, #06b6d4, transparent)' }} />
-          <div className="mx-auto w-14 h-14 rounded-2xl flex items-center justify-center mb-3" style={{ background: 'var(--accent-gradient)' }}>
-            <Crown className="w-7 h-7 text-white" />
+      <div className="space-y-4">
+        {isPremium ? (
+          // Active plan status + renew
+          <div className="rounded-2xl border border-accent-primary/30 bg-bg-secondary p-5 md:p-6 flex flex-col md:flex-row md:items-center gap-5">
+            <div className="flex items-center gap-4 flex-1 min-w-0">
+              <span className="w-12 h-12 shrink-0 rounded-2xl grid place-items-center" style={{ background: 'var(--accent-gradient)' }}>
+                <Crown className="w-6 h-6" style={{ color: '#06060a' }} />
+              </span>
+              <div className="min-w-0">
+                <p className="text-lg font-bold text-text-primary">המנוי שלך פעיל</p>
+                {timeLeft ? (
+                  <p className="flex items-center gap-1.5 text-sm text-text-secondary mt-0.5">
+                    <CalendarClock className="w-4 h-4 text-accent-hover shrink-0" />
+                    נשארו <b className="text-text-primary">{timeLeft}</b> · עד {expiresAt}
+                  </p>
+                ) : (
+                  <p className="text-sm text-text-secondary mt-0.5">גישה ללא הגבלת זמן. תודה על התמיכה!</p>
+                )}
+              </div>
+            </div>
+            {timeLeft && (
+              <button
+                onClick={() => navigate('/premium/checkout')}
+                className="h-11 px-5 inline-flex items-center justify-center gap-2 rounded-xl bg-accent-muted hover:bg-accent-primary text-white text-sm font-bold transition-colors cursor-pointer"
+              >
+                <Crown className="w-4 h-4" /> הארכת המנוי
+              </button>
+            )}
           </div>
-          {isPremium ? (
-            <>
-              <h1 className="text-xl font-bold text-text-primary">אתה במנוי Premium 👑</h1>
-              <p className="text-sm text-text-secondary mt-1">כל הפיצ'רים פתוחים. תודה על התמיכה!</p>
-              {timeLeft ? (
-                <div className="mt-3 inline-flex items-center gap-2 px-3 py-1.5 rounded-full bg-accent-primary/10 border border-accent-primary/30 text-xs">
-                  <span className="text-accent-primary font-semibold">נשארו {timeLeft}</span>
-                  <span className="text-text-muted">· מסתיים ב-{expiresAt}</span>
-                </div>
-              ) : (
-                <div
-                  className="mt-3 inline-flex items-center gap-1.5 px-3.5 py-1.5 rounded-full text-xs font-bold text-white"
-                  style={{ background: 'var(--accent-gradient)', boxShadow: '0 4px 16px -4px rgba(139,92,246,0.55)' }}
-                >
-                  <Crown className="w-3.5 h-3.5" /> גישה ללא הגבלת זמן
-                </div>
-              )}
-            </>
-          ) : (
-            <>
-              <h1 className="text-xl font-bold text-text-primary">שדרג ל-TradeOS Premium</h1>
-              <p className="text-sm text-text-secondary mt-1">פתח את כל היכולות — בלי הגבלות.</p>
-            </>
-          )}
-        </div>
+        ) : (
+          // Price + what you get
+          <div className="relative overflow-hidden rounded-2xl border border-accent-primary/30 bg-bg-secondary">
+            <div aria-hidden className="absolute inset-0 pointer-events-none"
+              style={{ background: 'radial-gradient(60% 90% at 0% 0%, rgba(37,99,235,0.16) 0%, transparent 65%)' }} />
+            <div className="relative grid md:grid-cols-[1.1fr_1fr]">
+              <div className="p-5 md:p-7">
+                <h2 className="text-xl md:text-2xl font-extrabold text-text-primary leading-snug">
+                  המסחר שלך, <span className="text-gradient">ברמה אחרת</span>
+                </h2>
+                <p className="text-sm text-text-secondary mt-2">כל מה שבחינם, ועוד הכלים שעוזרים לך להפסיק להפסיד על אותן טעויות.</p>
+                <ul className="mt-5 space-y-3">
+                  {HIGHLIGHTS.map((h) => (
+                    <li key={h} className="flex items-center gap-3 text-sm text-text-primary">
+                      <span className="w-5 h-5 shrink-0 grid place-items-center rounded-full bg-accent-primary/15">
+                        <Check className="w-3 h-3 text-accent-hover" strokeWidth={3} />
+                      </span>
+                      {h}
+                    </li>
+                  ))}
+                </ul>
+              </div>
 
-        {/* Comparison */}
+              <div className="p-5 md:p-7 border-t md:border-t-0 md:border-r border-border-primary bg-bg-primary/40 flex flex-col">
+                <div role="radiogroup" aria-label="מסלול חיוב" className="grid grid-cols-2 p-1 rounded-xl bg-bg-tertiary border border-border-primary">
+                  {Object.values(PREMIUM_PRICING).map((p) => (
+                    <button key={p.id} role="radio" aria-checked={cycle === p.id} onClick={() => setCycle(p.id)}
+                      className={`h-9 rounded-lg text-sm font-bold transition-colors cursor-pointer inline-flex items-center justify-center gap-1.5 ${cycle === p.id ? 'bg-bg-secondary text-text-primary shadow-sm' : 'text-text-muted hover:text-text-primary'}`}>
+                      {p.label}
+                      {p.id === 'yearly' && <span dir="ltr" className="text-[10px] font-bold px-1.5 py-0.5 rounded-full bg-profit/15 text-profit">-{yearlySavePct}%</span>}
+                    </button>
+                  ))}
+                </div>
+
+                <div className="mt-5 flex items-baseline gap-1.5">
+                  <span className="num-mono text-4xl font-extrabold text-text-primary" dir="ltr">₪{plan.price}</span>
+                  <span className="text-sm text-text-muted">/ {plan.per}</span>
+                </div>
+                <p className="text-xs text-text-muted mt-1 min-h-[1rem]">
+                  {cycle === 'yearly' ? <>שווה ל-<bdi dir="ltr">₪{Math.round(plan.price / 12)}</bdi> לחודש · חודשיים חינם</> : 'חיוב חודשי, אפשר לבטל בכל עת'}
+                </p>
+
+                <button
+                  onClick={() => navigate(`/premium/checkout?cycle=${cycle}`)}
+                  className="mt-5 w-full h-12 inline-flex items-center justify-center gap-2 rounded-xl bg-accent-muted hover:bg-accent-primary text-white text-sm font-bold transition-colors cursor-pointer"
+                >
+                  <Crown className="w-4 h-4" /> שדרוג ל-Premium
+                </button>
+                <p className="mt-3 flex items-center justify-center gap-1.5 text-xs text-text-muted">
+                  <ShieldCheck className="w-3.5 h-3.5 text-profit" /> ביטול בכל עת · ללא התחייבות
+                </p>
+              </div>
+            </div>
+          </div>
+        )}
+
+        {/* Free vs Premium */}
         <div className="bg-bg-secondary border border-border-primary rounded-2xl overflow-hidden">
-          <div className="grid grid-cols-[1fr_auto_auto] items-center px-4 py-3 border-b border-border-primary text-xs text-text-muted">
-            <span>פיצ'ר</span>
-            <span className="w-20 text-center">חינם</span>
-            <span className="w-24 text-center text-accent-primary font-semibold flex items-center justify-center gap-1">
-              <Sparkles className="w-3.5 h-3.5" /> Premium
-            </span>
+          <div className="grid grid-cols-[minmax(0,1fr)_4.5rem_6rem] sm:grid-cols-[minmax(0,1fr)_7rem_8rem] items-center px-4 md:px-5 py-3 border-b border-border-primary text-xs font-semibold text-text-muted">
+            <span>מה מקבלים</span>
+            <span className="text-center">חינם</span>
+            <span className="text-center text-accent-hover flex items-center justify-center gap-1"><Crown className="w-3.5 h-3.5" /> Premium</span>
           </div>
           {PREMIUM_FEATURES.map((f) => {
             const Icon = ICONS[f.icon] || Check;
             return (
-              <div key={f.title} className="grid grid-cols-[1fr_auto_auto] items-center px-4 py-3 border-b border-border-primary last:border-0">
-                <div className="flex items-center gap-2.5 min-w-0">
+              <div key={f.title} className="grid grid-cols-[minmax(0,1fr)_4.5rem_6rem] sm:grid-cols-[minmax(0,1fr)_7rem_8rem] items-center px-4 md:px-5 py-3 border-b border-border-primary last:border-0">
+                <div className="flex items-center gap-3 min-w-0">
                   <Icon className="w-4 h-4 text-text-muted shrink-0" />
-                  <span className="text-sm text-text-primary truncate">{f.title}</span>
+                  <span className="text-sm text-text-primary">{f.title}</span>
                 </div>
-                <span className="w-20 text-center text-xs text-text-muted">{f.free}</span>
-                <span className="w-24 text-center text-xs font-semibold text-accent-primary">{f.premium}</span>
+                <span className="text-center"><Cell value={f.free} /></span>
+                <span className="text-center bg-accent-primary/[0.06] -my-3 py-3"><Cell value={f.premium} premium /></span>
               </div>
             );
           })}
         </div>
 
-        {/* CTA — shown to everyone. A premium user gets a "renew by payment"
-            button so an intent-to-pay is never missed; the checkout captures
-            the lead until card checkout is live. (Also: the border-beam was
-            hidden from premium users before, since this block was gated.) */}
-        <div className="border-beam relative overflow-hidden bg-bg-secondary border border-accent-primary/30 rounded-2xl p-5 text-center space-y-3">
-          <div className="flex items-center justify-center gap-1.5">
-            <span className="text-3xl font-bold text-text-primary" dir="ltr">₪{PREMIUM_PRICING.monthly.price}</span>
-            <span className="text-sm text-text-muted">/ חודש</span>
+        {/* Coupon — shown to everyone. For a premium user this is the renewal
+            path: the worker extends from max(currentExpiry, now) + days, so
+            redeeming while still active adds days rather than overwriting. */}
+        <div className="bg-bg-secondary border border-border-primary rounded-2xl p-4 md:p-5 flex flex-col sm:flex-row sm:items-center gap-3">
+          <div className="flex items-center gap-2.5 sm:flex-1 min-w-0">
+            <Ticket className="w-5 h-5 text-accent-hover shrink-0" />
+            <div className="min-w-0">
+              <p className="text-sm font-bold text-text-primary">{isPremium ? 'יש לך קוד להארכת המנוי?' : 'יש לך קוד קופון?'}</p>
+              <p className="text-xs text-text-muted">הימים מתווספים לתוקף מיד</p>
+            </div>
           </div>
-          <button
-            onClick={() => navigate('/premium/checkout')}
-            className="w-full py-3 rounded-xl bg-accent-primary text-bg-primary text-sm font-bold hover:bg-accent-hover transition-colors cursor-pointer flex items-center justify-center gap-2"
-          >
-            <Crown className="w-4 h-4" /> {isPremium ? 'חדש בתשלום' : 'שדרג עכשיו'}
-          </button>
-          <p className="text-[11px] text-text-muted">אפשר גם מסלול שנתי עם חודשיים חינם.</p>
+          <div className="flex gap-2 sm:w-80">
+            <input
+              type="text"
+              value={couponCode}
+              onChange={(e) => setCouponCode(e.target.value.toUpperCase())}
+              onKeyDown={(e) => { if (e.key === 'Enter') handleRedeem(); }}
+              placeholder="הזן קוד"
+              disabled={redeeming}
+              aria-label="קוד קופון"
+              className="flex-1 min-w-0 h-10 bg-bg-tertiary border border-border-primary rounded-xl px-3 text-sm text-text-primary outline-none focus:border-accent-primary font-mono uppercase text-right"
+              dir="rtl"
+              maxLength={32}
+            />
+            <button
+              onClick={handleRedeem}
+              disabled={redeeming || !couponCode.trim()}
+              className="h-10 px-4 rounded-xl border border-border-hover text-text-primary text-sm font-bold hover:bg-bg-tertiary transition-colors cursor-pointer disabled:opacity-50 inline-flex items-center gap-1.5"
+            >
+              {redeeming ? <Loader2 className="w-4 h-4 animate-spin" /> : 'מימוש'}
+            </button>
+          </div>
         </div>
-
-        {/* Coupon redeem — shown to EVERYONE. For a premium user this is the
-            renewal path: the worker extends from the current expiry
-            (max(currentExpiry, now) + days), so redeeming while still active
-            adds days rather than overwriting. Card checkout isn't live yet, so
-            without this an expiring user who taps "חדש עכשיו" (→ /premium) hits
-            a dead end. */}
-        {(
-          <div className="bg-bg-secondary border border-border-primary rounded-2xl p-4 space-y-2">
-            <div className="flex items-center gap-2 text-sm font-semibold text-text-primary">
-              <Ticket className="w-4 h-4 text-accent-primary" /> {isPremium ? 'יש לך קוד להארכת המנוי?' : 'יש לך קוד קופון?'}
-            </div>
-            <div className="flex gap-2">
-              <input
-                type="text"
-                value={couponCode}
-                onChange={(e) => setCouponCode(e.target.value.toUpperCase())}
-                onKeyDown={(e) => { if (e.key === 'Enter') handleRedeem(); }}
-                placeholder="הזן קוד"
-                disabled={redeeming}
-                className="flex-1 bg-bg-tertiary border border-border-primary rounded-lg px-3 py-2 text-sm text-text-primary outline-none focus:border-accent-primary font-mono uppercase text-right"
-                dir="rtl"
-                maxLength={32}
-              />
-              <button
-                onClick={handleRedeem}
-                disabled={redeeming || !couponCode.trim()}
-                className="px-4 py-2 rounded-lg bg-accent-primary text-bg-primary text-sm font-bold hover:bg-accent-hover transition-colors cursor-pointer disabled:opacity-50 flex items-center gap-1.5"
-              >
-                {redeeming ? <Loader2 className="w-4 h-4 animate-spin" /> : 'מימוש'}
-              </button>
-            </div>
-          </div>
-        )}
-
-        <p className="text-center text-[11px] text-text-muted">
-          ביטול בכל עת · ללא התחייבות
-        </p>
       </div>
     </motion.div>
   );
