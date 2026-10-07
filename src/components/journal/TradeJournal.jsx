@@ -13,7 +13,8 @@ import { useLinkedExchange } from '../../hooks/useLinkedExchangeBalance';
 import { KEY_PROBLEM_TEXT } from '../../services/exchangeService';
 import { useExchangeImport } from '../../hooks/useExchangeImport';
 import JournalSwitcher from './JournalSwitcher';
-import JournalTabs from './JournalTabs';
+import PageHeader from '../shared/PageHeader';
+import { headerIconBtn, headerPrimaryBtn } from '../shared/headerStyles';
 import JournalSummaryBar from './JournalSummaryBar';
 import TradeTable from './TradeTable';
 import TradeFilters from './TradeFilters';
@@ -31,6 +32,9 @@ import { TAG_LABELS } from '../../utils/constants';
 import { pageVariants, pageTransition } from '../../utils/animations';
 
 const JOURNAL_TABS = ['trades', 'analytics', 'calendar', 'exchange'];
+const TAB_LABELS = { trades: 'עסקאות', analytics: 'ניתוחים', calendar: 'יומן חודשי', exchange: 'חיבור בורסאות' };
+// Narrow screens: shorter label so all four fit without scrolling on most phones.
+const TAB_MOBILE_LABELS = { ...TAB_LABELS, exchange: 'בורסאות' };
 const defaultFilters = { search: '', direction: '', result: '', status: '', strategy: '', tag: '', timeframe: '', month: '', from: '', to: '' };
 const defaultSort = { key: 'date', dir: 'desc' };
 // Phone sort picker (desktop sorts by clicking column headers).
@@ -545,46 +549,31 @@ export default function TradeJournal() {
 
   return (
     <motion.div variants={pageVariants} initial="initial" animate="animate" exit="exit" transition={pageTransition}>
-      {/* Top Navigation Bar. backdrop-filter is force-disabled here: this panel
-          sits at the very top of the scroll content with nothing behind it to
-          frost, and as a raised (z-10) translucent blur layer it rendered as a
-          faint "glass band" that flashed whenever a hover re-rasterized the
-          layer (e.g. hovering the period-filter pills). The bg-bg-secondary
-          fill is kept, so it looks identical in both themes. */}
-      <Card className="mb-4 px-3 md:px-4 py-2.5 space-y-2 relative z-10" style={{ backdropFilter: 'none', WebkitBackdropFilter: 'none' }}>
-        {/* Row 1: Journal switcher + Actions */}
-        <div className="flex items-center justify-between gap-2">
-          <div className="flex items-center gap-1 md:gap-3 min-w-0">
-            <JournalSwitcher compact />
-            <div className="hidden md:block w-px h-6 bg-border-primary flex-shrink-0" />
-            <div className="hidden md:block">
-              <JournalTabs tabs={JOURNAL_TABS} value={tab} onChange={setTab} tradesCount={trades.length} />
-            </div>
-          </div>
-
-          <div className="flex items-center gap-1.5 md:gap-2 flex-shrink-0">
+      {/* The shared page header: the journal's name (switcher) under the title,
+          its views as tabs, and the two actions. */}
+      <PageHeader
+        icon={BookOpen}
+        title="יומן המסחר"
+        meta={<JournalSwitcher compact />}
+        tabs={{
+          tabs: JOURNAL_TABS.map((id) => ({ id, label: TAB_LABELS[id], mobileLabel: TAB_MOBILE_LABELS[id], count: id === 'trades' ? trades.length : 0 })),
+          value: tab,
+          onChange: setTab,
+          layoutKey: 'journal-tab',
+        }}
+        actions={(
+          <div className="flex items-center gap-2 w-full sm:w-auto">
             {tab === 'analytics' && <div className="hidden md:block"><TimePeriodFilter value={period} onChange={setPeriod} compact /></div>}
-            {/* Mobile: period filter sits up here next to the actions (dropdown
-                is compact) instead of taking its own row under the tabs. */}
             {tab === 'analytics' && <div className="md:hidden"><TimePeriodFilter value={period} onChange={setPeriod} dropdown /></div>}
-            <button onClick={() => setSettingsOpen(true)} className="h-9 w-9 inline-flex items-center justify-center rounded-lg text-text-muted hover:text-text-primary hover:bg-bg-tertiary transition-colors cursor-pointer border border-border-primary" title="הגדרות יומן">
-              <Settings className="w-4 h-4" />
+            <button onClick={() => setSettingsOpen(true)} className={headerIconBtn} title="הגדרות יומן" aria-label="הגדרות יומן">
+              <Settings className="w-[18px] h-[18px]" />
             </button>
-            {/* Accent-colored so it stands out (like the old filled button),
-                but no solid fill — just accent text + a subtle accent border,
-                with a light accent tint only on hover. */}
-            <button onClick={() => setFormOpen(true)} className="h-9 inline-flex items-center gap-1.5 px-3 rounded-lg text-accent-primary border border-accent-primary/40 hover:bg-accent-primary/10 transition-colors cursor-pointer text-sm font-semibold">
-              <Plus className="w-4 h-4" /> <span className="hidden sm:inline">עסקה חדשה</span>
+            <button onClick={() => setFormOpen(true)} className={`${headerPrimaryBtn} flex-1 sm:flex-none`}>
+              <Plus className="w-4 h-4" /> עסקה חדשה
             </button>
           </div>
-        </div>
-
-        {/* Row 2: Mobile tabs (scroll horizontally so they never compress each
-            other). The period filter lives up in Row 1's action group. */}
-        <div className="md:hidden">
-          <JournalTabs tabs={JOURNAL_TABS} value={tab} onChange={setTab} tradesCount={trades.length} variant="mobile" />
-        </div>
-      </Card>
+        )}
+      />
 
       {tab === 'trades' && (
         <>

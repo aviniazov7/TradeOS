@@ -2,6 +2,8 @@ import { useState, useEffect, useRef } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { motion, AnimatePresence } from 'framer-motion';
 import { ArrowRight, ArrowLeft, Clock, Calendar, Save, History, Sunrise, Anchor } from 'lucide-react';
+import PageHeader from '../shared/PageHeader';
+import { headerIconBtn } from '../shared/headerStyles';
 import toast from 'react-hot-toast';
 import EmotionPicker from './EmotionPicker';
 import ReadinessSlider from './ReadinessSlider';
@@ -131,59 +133,30 @@ export default function MorningJournal() {
       // the bottom without making a short page scroll.
       className="flex flex-col max-w-4xl mx-auto w-full min-h-[calc(100dvh-10.25rem-env(safe-area-inset-bottom))] md:min-h-[calc(100dvh-7rem)]"
     >
-      {/* Compact header */}
-      <div className="bg-bg-secondary border border-border-primary rounded-xl p-3 mb-3">
-        <div className="flex items-center justify-between mb-2">
-          <div className="flex items-center gap-2">
-            <button
-              onClick={() => navigate('/mentality')}
-              className="text-text-secondary hover:text-text-primary transition-colors"
-            >
-              <ArrowRight className="w-4 h-4" />
-            </button>
-            <div className="flex items-center gap-2 text-xs text-text-muted">
-              <Calendar className="w-3 h-3" />
-              {dateStr}
+      {/* The shared page header: date & time, how much is filled in, the
+          day's quote, and the form / history views as tabs. */}
+      <PageHeader
+        icon={Sunrise}
+        title="יומן בוקר"
+        subtitle={`${dateStr} · ${timeStr}`}
+        meta={(
+          <div className="space-y-1.5 max-w-md">
+            <div className="flex items-center gap-2">
+              <div className="flex-1 h-1.5 bg-bg-tertiary rounded-full overflow-hidden">
+                <div className="h-full bg-accent-primary rounded-full transition-all duration-300" style={{ width: `${completionPct}%` }} />
+              </div>
+              <span className="num-mono text-xs text-text-secondary">{completionPct}%</span>
             </div>
+            <p className="text-xs text-text-muted italic">"{quote}"</p>
           </div>
-          <div className="flex items-center gap-2 text-xs text-text-muted">
-            <Clock className="w-3 h-3" />
-            {timeStr}
-          </div>
-        </div>
-
-        <h1 className="text-lg font-bold text-accent-primary text-center mb-1.5">יומן סוחר - בוקר</h1>
-
-        <div className="flex items-center gap-2 mb-1.5">
-          <div className="flex-1 h-1 bg-bg-tertiary rounded-full overflow-hidden">
-            <div className="h-full bg-accent-primary rounded-full transition-all duration-300" style={{ width: `${completionPct}%` }} />
-          </div>
-          <span className="text-[10px] text-text-muted">{completionPct}%</span>
-        </div>
-
-        <p className="text-center text-[11px] text-text-muted italic">"{quote}"</p>
-
-        <div className="flex gap-2 mt-2.5">
-          <button
-            onClick={() => setActiveTab('form')}
-            className={`flex-1 flex items-center justify-center gap-1.5 py-1.5 rounded-lg text-xs font-medium transition-colors ${
-              activeTab === 'form' ? 'bg-accent-primary text-white' : 'bg-bg-tertiary text-text-secondary hover:text-text-primary'
-            }`}
-          >
-            <Sunrise className="w-3.5 h-3.5" />
-            יומן בוקר
+        )}
+        tabs={{ tabs: [{ id: 'form', label: 'יומן בוקר' }, { id: 'history', label: 'היסטוריה' }], value: activeTab, onChange: setActiveTab, layoutKey: 'morning-tab' }}
+        actions={(
+          <button onClick={() => navigate('/mentality')} className={headerIconBtn} title="חזרה לאזור המנטלי" aria-label="חזרה לאזור המנטלי">
+            <ArrowRight className="w-[18px] h-[18px]" />
           </button>
-          <button
-            onClick={() => setActiveTab('history')}
-            className={`flex-1 flex items-center justify-center gap-1.5 py-1.5 rounded-lg text-xs font-medium transition-colors ${
-              activeTab === 'history' ? 'bg-accent-primary text-white' : 'bg-bg-tertiary text-text-secondary hover:text-text-primary'
-            }`}
-          >
-            <History className="w-3.5 h-3.5" />
-            היסטוריית יומנים
-          </button>
-        </div>
-      </div>
+        )}
+      />
 
       {activeTab === 'history' ? (
         <JournalHistory entries={morningEntries} type="morning" onDeleteEntry={deleteMorningEntry} />

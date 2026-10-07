@@ -1,10 +1,17 @@
 import Card from './Card';
+import TabStrip from './TabStrip';
 
 // The one page header: icon medallion, title, subtitle, actions, and an
 // optional slot (usually a row of StatTiles) beside it on wide screens and
 // below it on phones. Every top-level page uses this so titles stop coming in
 // five different sizes.
-export default function PageHeader({ icon: Icon, title, subtitle, actions, children, className = '' }) {
+//   meta  — a control right under the title (e.g. the journal switcher)
+//   tabs  — { tabs, value, onChange, layoutKey }: the page's views; beside the
+//           actions on wide screens, their own row at the bottom on phones
+export default function PageHeader({ icon: Icon, title, subtitle, meta, tabs, actions, children, className = '' }) {
+  const tabStrip = (variant) => tabs && (
+    <TabStrip tabs={tabs.tabs} value={tabs.value} onChange={tabs.onChange} variant={variant} layoutKey={tabs.layoutKey || 'page-tab'} />
+  );
   return (
     <Card className={`relative overflow-hidden p-4 md:p-6 mb-4 md:mb-6 ${className}`}>
       <div aria-hidden className="absolute inset-0 pointer-events-none"
@@ -21,11 +28,18 @@ export default function PageHeader({ icon: Icon, title, subtitle, actions, child
           <div className="min-w-0 flex-1">
             <h1 className="text-xl md:text-2xl font-bold text-text-primary leading-tight">{title}</h1>
             {subtitle && <p className="text-sm text-text-muted mt-1">{subtitle}</p>}
+            {meta && <div className="mt-2">{meta}</div>}
           </div>
-          {actions && <div className="flex items-center gap-2 shrink-0 basis-full sm:basis-auto">{actions}</div>}
+          {(actions || tabs) && (
+            <div className="flex items-center gap-2 shrink-0 basis-full sm:basis-auto">
+              {tabs && <div className="hidden md:block rounded-xl bg-bg-tertiary border border-border-primary p-1">{tabStrip('desktop')}</div>}
+              {actions}
+            </div>
+          )}
         </div>
         {children && <div className="min-w-0 lg:max-w-[60%]">{children}</div>}
       </div>
+      {tabs && <div className="relative md:hidden mt-3 rounded-xl bg-bg-tertiary border border-border-primary p-1">{tabStrip('mobile')}</div>}
     </Card>
   );
 }

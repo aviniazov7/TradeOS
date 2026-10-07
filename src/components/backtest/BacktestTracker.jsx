@@ -30,7 +30,8 @@ import { useUserStrategies } from '../../hooks/useUserStrategies';
 import { useUserTimeframes } from '../../hooks/useUserTimeframes';
 import { useUserTriggers } from '../../hooks/useUserTriggers';
 import { pageVariants, pageTransition } from '../../utils/animations';
-import TabStrip from '../shared/TabStrip';
+import PageHeader from '../shared/PageHeader';
+import { headerIconBtn, headerPrimaryBtn } from '../shared/headerStyles';
 
 
 function getSessionFromDate(date) {
@@ -236,51 +237,34 @@ export default function BacktestTracker() {
 
   return (
     <motion.div variants={pageVariants} initial="initial" animate="animate" exit="exit" transition={pageTransition}>
-      {/* Top Navigation Bar. backdrop-filter is force-disabled here (same as the
-          journal toolbar): a raised translucent blur layer at the top of the
-          page rendered as a faint "glass band" that flashed on hover-triggered
-          re-rasterization. Keeping the bg-bg-secondary fill keeps it identical
-          in both themes. */}
-      <div className="bg-bg-secondary border border-border-primary rounded-xl mb-4 px-3 md:px-4 py-2.5 space-y-2 relative z-10" style={{ backdropFilter: 'none', WebkitBackdropFilter: 'none' }}>
-        {/* Row 1: Switcher + Tabs + Actions */}
-        <div className="flex items-center justify-between gap-2">
-          <div className="flex items-center gap-1 md:gap-3 min-w-0">
-            <BacktestSwitcher compact />
-            <div className="hidden md:block w-px h-6 bg-border-primary flex-shrink-0" />
-            {/* Desktop tabs */}
-            <div className="hidden md:block">
-              <TabStrip tabs={[{ id: 'records', label: 'עסקאות', count: backtests.length }, { id: 'analytics', label: 'ניתוחים' }]} value={tab} onChange={setTab} layoutKey="backtest-tab" />
-            </div>
-          </div>
-
-          <div className="flex items-center gap-1.5 md:gap-2 flex-shrink-0">
-            {/* Period filter lives in the toolbar (like the journal) — compact
-                segmented control on desktop, dropdown on mobile — shown only on
-                the analytics tab. */}
+      {/* The shared page header: the backtest journal (switcher) under the
+          title, its views as tabs, and the actions. */}
+      <PageHeader
+        icon={FlaskConical}
+        title="בקטסט"
+        meta={<BacktestSwitcher compact />}
+        tabs={{ tabs: [{ id: 'records', label: 'עסקאות', count: backtests.length }, { id: 'analytics', label: 'ניתוחים' }], value: tab, onChange: setTab, layoutKey: 'backtest-tab' }}
+        actions={(
+          <div className="flex items-center gap-2 w-full sm:w-auto">
             {tab === 'analytics' && <div className="hidden md:block"><TimePeriodFilter value={period} onChange={setPeriod} compact /></div>}
             {tab === 'analytics' && <div className="md:hidden"><TimePeriodFilter value={period} onChange={setPeriod} dropdown /></div>}
-            <button onClick={() => setViewOpen(true)} className="h-9 w-9 inline-flex items-center justify-center rounded-lg text-text-muted hover:text-text-primary hover:bg-bg-tertiary transition-colors cursor-pointer border border-border-primary" title="צפייה ביומן">
-              <Eye className="w-4 h-4" />
+            <button onClick={() => setViewOpen(true)} className={headerIconBtn} title="תצוגת עמודות" aria-label="תצוגת עמודות">
+              <Eye className="w-[18px] h-[18px]" />
             </button>
-            <button onClick={() => setSettingsOpen(true)} className="h-9 w-9 inline-flex items-center justify-center rounded-lg text-text-muted hover:text-text-primary hover:bg-bg-tertiary transition-colors cursor-pointer border border-border-primary" title="הגדרות">
-              <Settings className="w-4 h-4" />
+            <button onClick={() => setSettingsOpen(true)} className={headerIconBtn} title="הגדרות" aria-label="הגדרות">
+              <Settings className="w-[18px] h-[18px]" />
             </button>
             {backtests.length > 0 && (
-              <button onClick={exportCSV} className="h-9 w-9 inline-flex items-center justify-center rounded-lg text-text-muted hover:text-text-primary hover:bg-bg-tertiary transition-colors cursor-pointer border border-border-primary" title="ייצוא CSV">
-                <Download className="w-4 h-4" />
+              <button onClick={exportCSV} className={headerIconBtn} title="ייצוא CSV" aria-label="ייצוא CSV">
+                <Download className="w-[18px] h-[18px]" />
               </button>
             )}
-            <button onClick={openNew} className="h-9 inline-flex items-center gap-1.5 text-accent-primary border border-accent-primary/40 font-semibold px-3.5 rounded-lg hover:bg-accent-primary/10 transition-colors cursor-pointer text-sm">
-              <Plus className="w-4 h-4" /> <span className="hidden sm:inline">הוסף עסקה</span>
+            <button onClick={openNew} className={`${headerPrimaryBtn} flex-1 sm:flex-none`}>
+              <Plus className="w-4 h-4" /> הוסף עסקה
             </button>
           </div>
-        </div>
-
-        {/* Row 2: Mobile tabs */}
-        <div className="md:hidden">
-          <TabStrip tabs={[{ id: 'records', label: 'עסקאות', count: backtests.length }, { id: 'analytics', label: 'ניתוחים' }]} value={tab} onChange={setTab} variant="mobile" layoutKey="backtest-tab" />
-        </div>
-      </div>
+        )}
+      />
 
       {/* Tab: Records */}
       {tab === 'records' && (

@@ -11,7 +11,8 @@ import ConfirmDialog from '../shared/ConfirmDialog';
 import EmptyState from '../shared/EmptyState';
 import DCASkeleton from './DCASkeleton';
 import { pageVariants, pageTransition } from '../../utils/animations';
-import TabStrip from '../shared/TabStrip';
+import PageHeader from '../shared/PageHeader';
+import { headerIconBtn, headerPrimaryBtn } from '../shared/headerStyles';
 import { formatNumber, formatPrice, formatCurrency, formatPercent } from '../../utils/formatters';
 import { COINS, DCA_FREQUENCY_LABELS, DCA_STATUS_LABELS } from '../../utils/constants';
 
@@ -85,42 +86,24 @@ export default function DCATracker() {
 
   return (
     <motion.div variants={pageVariants} initial="initial" animate="animate" exit="exit" transition={pageTransition}>
-      {/* Top Navigation Bar. backdrop-filter force-disabled (same as journal +
-          backtest toolbars) — a translucent blur panel at the top of the page
-          has nothing behind it to frost and produced a faint glass-band/hover
-          flicker. The bg-bg-secondary fill keeps it identical in both themes. */}
-      <div className="bg-bg-secondary border border-border-primary rounded-xl mb-4 px-3 md:px-4 py-2.5 space-y-2" style={{ backdropFilter: 'none', WebkitBackdropFilter: 'none' }}>
-        {/* Row 1: Title + Tabs + Actions */}
-        <div className="flex items-center justify-between gap-2">
-          <div className="flex items-center gap-1 md:gap-3 min-w-0">
-            <div className="flex items-center gap-2 flex-shrink-0">
-              <Coins className="w-4 h-4 text-accent-primary" />
-              <span className="text-sm font-bold text-text-primary">מעקב DCA</span>
-            </div>
-            <div className="hidden md:block w-px h-6 bg-border-primary flex-shrink-0" />
-            {/* Desktop tabs */}
-            <div className="hidden md:block">
-              <TabStrip tabs={[{ id: 'plans', label: 'תוכניות', count: dcaPlans.length }, { id: 'summary', label: 'ניתוחים' }]} value={tab} onChange={setTab} layoutKey="dca-tab" />
-            </div>
-          </div>
-
-          <div className="flex items-center gap-1.5 md:gap-2 flex-shrink-0">
+      <PageHeader
+        icon={Coins}
+        title="מעקב DCA"
+        subtitle="קניות קבועות לאורך זמן ומה הן שוות היום"
+        tabs={{ tabs: [{ id: 'plans', label: 'תוכניות', count: dcaPlans.length }, { id: 'summary', label: 'ניתוחים' }], value: tab, onChange: setTab, layoutKey: 'dca-tab' }}
+        actions={(
+          <div className="flex items-center gap-2 w-full sm:w-auto">
             {dcaPlans.length > 0 && (
-              <button onClick={exportCSV} className="h-9 w-9 inline-flex items-center justify-center rounded-lg text-text-muted hover:text-text-primary hover:bg-bg-tertiary transition-colors cursor-pointer border border-border-primary" title="ייצוא CSV">
-                <Download className="w-4 h-4" />
+              <button onClick={exportCSV} className={headerIconBtn} title="ייצוא CSV" aria-label="ייצוא CSV">
+                <Download className="w-[18px] h-[18px]" />
               </button>
             )}
-            <button onClick={() => setFormOpen(true)} className="h-9 inline-flex items-center gap-1.5 text-accent-primary border border-accent-primary/40 font-semibold px-3.5 rounded-lg hover:bg-accent-primary/10 transition-colors cursor-pointer text-sm">
-              <Plus className="w-4 h-4" /> <span className="hidden sm:inline">תוכנית חדשה</span>
+            <button onClick={() => setFormOpen(true)} className={`${headerPrimaryBtn} flex-1 sm:flex-none`}>
+              <Plus className="w-4 h-4" /> תוכנית חדשה
             </button>
           </div>
-        </div>
-
-        {/* Row 2: Mobile tabs */}
-        <div className="md:hidden">
-          <TabStrip tabs={[{ id: 'plans', label: 'תוכניות', count: dcaPlans.length }, { id: 'summary', label: 'ניתוחים' }]} value={tab} onChange={setTab} variant="mobile" layoutKey="dca-tab" />
-        </div>
-      </div>
+        )}
+      />
 
       {/* Tab: Plans */}
       {tab === 'plans' && (
