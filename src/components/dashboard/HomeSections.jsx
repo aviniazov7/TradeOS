@@ -131,7 +131,7 @@ export function RecentTradesCard({ trades, hidden, className = '' }) {
               <button key={t.id} type="button" onClick={() => navigate('/journal')}
                 className="w-full flex items-center gap-3 py-2.5 border-t border-border-primary/70 first:border-t-0 text-right cursor-pointer hover:bg-bg-tertiary/40 rounded-lg transition-colors">
                 <span className="w-9 h-9 rounded-full bg-bg-tertiary border border-border-primary grid place-items-center shrink-0">
-                  <CoinIcon pair={t.pair || t.symbol} className="w-6 h-6" />
+                  <CoinIcon pair={t.pair || t.symbol} assetClass={t.assetClass} className="w-6 h-6" />
                 </span>
                 <span className="flex-1 min-w-0 flex flex-col gap-0.5">
                   <span className="flex items-center gap-2 min-w-0">

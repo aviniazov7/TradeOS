@@ -159,7 +159,7 @@ export default function TradeTable({
                 <div className="flex items-center justify-between gap-2">
                   <div className="flex items-center gap-2 min-w-0 flex-1">
                     {selectMode && <SelectBox checked={selected} />}
-                    <CoinIcon pair={trade.pair} className="w-4 h-4 shrink-0" />
+                    <CoinIcon pair={trade.pair} assetClass={trade.assetClass} className="w-4 h-4 shrink-0" />
                     <FitText className="text-text-primary font-semibold text-sm flex-initial" min={11} title={trade.pair}>{trade.pair}</FitText>
                     <span className={`shrink-0 inline-flex items-center gap-0.5 text-xs font-medium px-1.5 py-0.5 rounded ${trade.direction === 'long' ? 'bg-long/10 text-long' : 'bg-short/10 text-short'}`}>
                       {trade.direction === 'long' ? <TrendingUp className="w-3 h-3" /> : <TrendingDown className="w-3 h-3" />}
@@ -247,7 +247,7 @@ export default function TradeTable({
                     {selectMode && <td className="py-2.5 ps-2"><SelectBox checked={selected} /></td>}
                     <td className="py-2.5 px-2 text-text-primary font-semibold max-w-[13rem]">
                       <span className="inline-flex items-center gap-1.5 max-w-full">
-                        <CoinIcon pair={trade.pair} className="w-4 h-4 shrink-0" />
+                        <CoinIcon pair={trade.pair} assetClass={trade.assetClass} className="w-4 h-4 shrink-0" />
                         <span className="truncate" title={trade.pair}>{trade.pair}</span>
                         {trade.source && trade.source !== 'manual' && (
                           <ExchangeIcon source={trade.source} />

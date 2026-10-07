@@ -3932,6 +3932,17 @@ async function bybitAsBinance(subPath, searchParams) {
   }
 }
 
+// Edge-cached responses keep the CORS headers of whoever filled the cache, and
+// the Cache API ignores Vary: Origin — so a preview-channel hit would CORS-block
+// production for the cache lifetime. Always answer with THIS request's CORS.
+async function withCors(cached, cors, extra = {}) {
+  const body = await cached.text();
+  return new Response(body, {
+    status: cached.status,
+    headers: { ...cors, 'Content-Type': cached.headers.get('Content-Type') || 'application/json', ...extra },
+  });
+}
+
 async function handleRequest(request, env) {
   const origin = request.headers.get('Origin') || '';
   const allowedOrigin = isAllowedOrigin(origin) ? origin : ALLOWED_ORIGINS[0];
@@ -4105,7 +4116,7 @@ async function handleRequest(request, env) {
     const cacheKey = new Request(`https://cache.tradeos.internal/cg/${subPath}${url.search}`);
     try {
       const hit = await cache.match(cacheKey);
-      if (hit) return hit;
+      if (hit) return withCors(hit, cors, { 'X-Cache': 'HIT' });
       // Browser-like UA — CoinGecko's free tier 403s bare server-side fetches
       // from Cloudflare egress IPs but generally serves browser-looking ones.
       const res = await fetch(cgUrl, { headers: { 'Accept': 'application/json', 'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36' } });
@@ -4144,7 +4155,7 @@ async function handleRequest(request, env) {
     const ttl = 60; // prices refresh via client polling anyway
     try {
       const hit = await cache.match(cacheKey);
-      if (hit) return hit;
+      if (hit) return withCors(hit, cors, { 'X-Cache': 'HIT' });
 
       let res = null;
       let lastStatus = 0;
@@ -4207,13 +4218,13 @@ async function handleRequest(request, env) {
     const staleKeyReq = new Request(`https://cache.tradeos.internal/cx-stale/${ckey}`);
     try {
       const hit = await cache.match(freshKey);
-      if (hit) return hit;
+      if (hit) return withCors(hit, cors, { 'X-Cache': 'HIT' });
 
       // One call returns every spot ticker; we pick the ones we want.
       const r = await fetch('https://api.bybit.com/v5/market/tickers?category=spot', { headers: { 'Accept': 'application/json' } });
       if (!r.ok) {
         const stale = await cache.match(staleKeyReq);
-        if (stale) return stale;
+        if (stale) return withCors(stale, cors, { 'X-Cache': 'STALE' });
         return new Response(JSON.stringify({ error: r.status }), { status: r.status, headers: { ...cors, 'Content-Type': 'application/json' } });
       }
       const j = await r.json();
@@ -4256,7 +4267,7 @@ async function handleRequest(request, env) {
     const staleKeyReq = new Request(`https://cache.tradeos.internal/fut-stale/${ckey}`);
     try {
       const hit = await cache.match(freshKey);
-      if (hit) return hit;
+      if (hit) return withCors(hit, cors, { 'X-Cache': 'HIT' });
 
       const out = {};
       // Fan out per symbol (Yahoo's chart endpoint is per-ticker). Capped by the
@@ -4282,7 +4293,7 @@ async function handleRequest(request, env) {
 
       if (!Object.keys(out).length) {
         const stale = await cache.match(staleKeyReq);
-        if (stale) return stale;
+        if (stale) return withCors(stale, cors, { 'X-Cache': 'STALE' });
         return new Response(JSON.stringify({ error: 'upstream failed' }), { status: 502, headers: { ...cors, 'Content-Type': 'application/json' } });
       }
       const text = JSON.stringify(out);
@@ -4292,6 +4303,102 @@ async function handleRequest(request, env) {
       return new Response(text, { headers: { ...h, 'X-Cache': 'MISS' } });
     } catch (err) {
       return new Response(JSON.stringify({ error: err.message }), { status: 502, headers: { ...cors, 'Content-Type': 'application/json' } });
+    }
+  }
+
+  // Stock quotes (US + other Yahoo-listed markets, ~real-time during US hours)
+  // via Yahoo's per-ticker chart API, edge-cached (never KV — quota).
+  // GET /stk/quotes?symbols=AAPL,TSLA,TEVA.TA → { AAPL: { price, change24h,
+  // prevClose, currency, name, exchange, marketState }, ... }. Symbols are
+  // shape-validated and capped so the route can't be used as an open proxy.
+  if (request.method === 'GET' && path === '/stk/quotes') {
+    const wanted = [...new Set((url.searchParams.get('symbols') || '')
+      .split(',').map((s) => s.trim().toUpperCase())
+      .filter((s) => /^[A-Z0-9][A-Z0-9.\-^=]{0,14}$/.test(s)))].slice(0, 40);
+    if (!wanted.length) return new Response(JSON.stringify({ error: 'no valid symbols' }), { status: 400, headers: { ...cors, 'Content-Type': 'application/json' } });
+    const cache = caches.default;
+    const ckey = wanted.slice().sort().join(',');
+    const freshKey = new Request(`https://cache.tradeos.internal/stk/${ckey}`);
+    const staleKeyReq = new Request(`https://cache.tradeos.internal/stk-stale/${ckey}`);
+    try {
+      const hit = await cache.match(freshKey);
+      if (hit) return withCors(hit, cors, { 'X-Cache': 'HIT' });
+      const out = {};
+      await Promise.all(wanted.map(async (sym) => {
+        try {
+          const r = await fetch(
+            `https://query1.finance.yahoo.com/v8/finance/chart/${encodeURIComponent(sym)}?interval=1d&range=2d`,
+            { headers: { 'Accept': 'application/json', 'User-Agent': 'Mozilla/5.0' } },
+          );
+          if (!r.ok) return;
+          const j = await r.json();
+          const meta = j?.chart?.result?.[0]?.meta;
+          // Tel Aviv quotes come in agorot (ILA): convert to shekels.
+          const div = meta?.currency === 'ILA' ? 100 : 1;
+          const rawPrice = meta?.regularMarketPrice;
+          if (typeof rawPrice !== 'number') return;
+          const price = rawPrice / div;
+          const rawPrev = meta?.chartPreviousClose ?? meta?.previousClose;
+          const prev = typeof rawPrev === 'number' ? rawPrev / div : rawPrev;
+          // Market state from the trading-period windows Yahoo returns.
+          const now = Math.floor(Date.now() / 1000);
+          const tp = meta?.currentTradingPeriod || {};
+          let marketState = 'CLOSED';
+          if (tp.regular && now >= tp.regular.start && now < tp.regular.end) marketState = 'REGULAR';
+          else if (tp.pre && now >= tp.pre.start && now < tp.pre.end) marketState = 'PRE';
+          else if (tp.post && now >= tp.post.start && now < tp.post.end) marketState = 'POST';
+          out[sym] = {
+            price,
+            prevClose: typeof prev === 'number' ? prev : null,
+            change24h: (typeof prev === 'number' && prev > 0) ? ((price - prev) / prev) * 100 : 0,
+            currency: div === 100 ? 'ILS' : (meta?.currency || 'USD'),
+            name: meta?.shortName || meta?.longName || sym,
+            exchange: meta?.fullExchangeName || meta?.exchangeName || '',
+            marketState,
+          };
+        } catch { /* skip symbol on upstream failure */ }
+      }));
+      if (!Object.keys(out).length) {
+        const stale = await cache.match(staleKeyReq);
+        if (stale) return withCors(stale, cors, { 'X-Cache': 'STALE' });
+        return new Response(JSON.stringify({ error: 'upstream failed' }), { status: 502, headers: { ...cors, 'Content-Type': 'application/json' } });
+      }
+      const text = JSON.stringify(out);
+      const h = { ...cors, 'Content-Type': 'application/json' };
+      await cache.put(freshKey, new Response(text, { headers: { ...h, 'Cache-Control': 'public, max-age=30' } }));
+      await cache.put(staleKeyReq, new Response(text, { headers: { ...h, 'Cache-Control': 'public, max-age=3600' } }));
+      return new Response(text, { headers: { ...h, 'X-Cache': 'MISS' } });
+    } catch (err) {
+      return new Response(JSON.stringify({ error: err.message }), { status: 502, headers: { ...cors, 'Content-Type': 'application/json' } });
+    }
+  }
+
+  // Stock symbol search (Yahoo), stocks + ETFs only, edge-cached for a day.
+  // GET /stk/search?q=nvid → [{ symbol, name, exchange, type }]
+  if (request.method === 'GET' && path === '/stk/search') {
+    const q = (url.searchParams.get('q') || '').trim().slice(0, 40);
+    if (!q) return new Response('[]', { headers: { ...cors, 'Content-Type': 'application/json' } });
+    const cache = caches.default;
+    const key = new Request(`https://cache.tradeos.internal/stk-search/${encodeURIComponent(q.toLowerCase())}`);
+    try {
+      const hit = await cache.match(key);
+      if (hit) return withCors(hit, cors, { 'X-Cache': 'HIT' });
+      const r = await fetch(
+        `https://query1.finance.yahoo.com/v1/finance/search?q=${encodeURIComponent(q)}&quotesCount=10&newsCount=0&listsCount=0`,
+        { headers: { 'Accept': 'application/json', 'User-Agent': 'Mozilla/5.0' } },
+      );
+      if (!r.ok) return new Response('[]', { status: 200, headers: { ...cors, 'Content-Type': 'application/json' } });
+      const j = await r.json();
+      const list = (j?.quotes || [])
+        .filter((x) => x?.symbol && (x.quoteType === 'EQUITY' || x.quoteType === 'ETF'))
+        .slice(0, 8)
+        .map((x) => ({ symbol: x.symbol, name: x.shortname || x.longname || x.symbol, exchange: x.exchDisp || x.exchange || '', type: x.quoteType }));
+      const text = JSON.stringify(list);
+      const res = new Response(text, { headers: { ...cors, 'Content-Type': 'application/json', 'Cache-Control': 'public, max-age=86400' } });
+      await cache.put(key, res.clone());
+      return res;
+    } catch {
+      return new Response('[]', { headers: { ...cors, 'Content-Type': 'application/json' } });
     }
   }
 

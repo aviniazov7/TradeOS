@@ -1,6 +1,6 @@
 import { useState, useRef, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { ChevronDown, Plus, BookOpen, Star, Archive, ArchiveRestore, Trash2 } from 'lucide-react';
+import { ChevronDown, Plus, BookOpen, Star, Archive, ArchiveRestore, Trash2, Briefcase } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
 import toast from 'react-hot-toast';
 import { useJournalContext } from '../../contexts/JournalContext';
@@ -91,6 +91,8 @@ export default function JournalSwitcher({ compact }) {
           >
             {activeJournal?.exchange ? (
               <ExchangeLogo exchange={activeJournal.exchange} size="w-3.5 h-3.5" />
+            ) : activeJournal?.assetClass === 'stocks' ? (
+              <Briefcase className="w-3.5 h-3.5 text-emerald-300 flex-shrink-0" />
             ) : (
               <BookOpen className="w-3.5 h-3.5 text-accent-primary flex-shrink-0" />
             )}
@@ -114,6 +116,8 @@ export default function JournalSwitcher({ compact }) {
                     >
                       {j.exchange ? (
                         <ExchangeLogo exchange={j.exchange} size="w-4 h-4" />
+                      ) : j.assetClass === 'stocks' ? (
+                        <Briefcase className="w-3.5 h-3.5 flex-shrink-0 text-emerald-300" />
                       ) : (
                         <BookOpen className="w-3.5 h-3.5 flex-shrink-0" />
                       )}

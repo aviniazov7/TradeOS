@@ -6,6 +6,8 @@ import { fetchPrices } from '../../services/coingeckoApi';
 import { formatPrice, formatPercent } from '../../utils/formatters';
 import { TrendingUp, TrendingDown, Droplet, Flame, Gem, Landmark, CandlestickChart } from 'lucide-react';
 import CoinIcon from '../shared/CoinIcon';
+import StockLogo from '../stocks/StockLogo';
+import { TICKER_STOCKS } from '../../utils/stocks';
 
 // Crypto symbols shown in the ticker (kept small to keep the API request light).
 const TICKER_SYMBOLS = ['BTC','ETH','SOL','AVAX','BNB','ADA','XRP','DOGE','TRX','SUI','NEAR','LINK','DOT','PEPE','WIF','ARB','UNI','ATOM'];
@@ -27,15 +29,17 @@ function futuresIcon(symbol) {
 export default function PriceTicker() {
   const { profile } = useAuth();
   // What the user trades drives what the ticker shows. Default crypto for
-  // back-compat / signed-out. 'stocks' has no price feed yet, so it's ignored.
+  // back-compat / signed-out. Stocks come from the worker's Yahoo feed.
   const assetClasses = profile?.settings?.assetClasses?.length ? profile.settings.assetClasses : ['crypto'];
   const showCrypto = assetClasses.includes('crypto');
   const showFutures = assetClasses.includes('futures_cme');
+  const showStocks = assetClasses.includes('stocks');
 
   // Crypto via Bybit (/cx) and futures via Yahoo (/fut) — both reachable from
   // the worker, where Binance + CoinGecko return 403.
   const { prices: cryptoPrices, loading: cryptoLoading } = useWorkerQuotes('/cx/quotes', TICKER_SYMBOLS, { enabled: showCrypto });
   const { prices: futuresPrices, loading: futuresLoading } = useWorkerQuotes('/fut/quotes', TICKER_FUTURES, { enabled: showFutures });
+  const { prices: stockPrices, loading: stocksLoading } = useWorkerQuotes('/stk/quotes', TICKER_STOCKS, { enabled: showStocks });
 
   // Gold (XAU) isn't on the crypto quote feed (Bybit), so pull it from CoinGecko
   // (pax-gold) via fetchPrices — geo-safe through the worker proxy. Refreshed
@@ -70,9 +74,14 @@ export default function PriceTicker() {
         label: c.symbol, data: futuresPrices[c.symbol],
       }))
     : [];
-  const items = [...cryptoItems, ...goldItems, ...futuresItems];
+  const stockItems = showStocks
+    ? TICKER_STOCKS.filter((sym) => stockPrices[sym]).map((sym) => ({
+        key: `s-${sym}`, kind: 'stock', symbol: sym, label: sym, data: stockPrices[sym],
+      }))
+    : [];
+  const items = [...stockItems, ...cryptoItems, ...goldItems, ...futuresItems];
 
-  const anyLoading = (showCrypto && cryptoLoading) || (showFutures && futuresLoading);
+  const anyLoading = (showCrypto && cryptoLoading) || (showFutures && futuresLoading) || (showStocks && stocksLoading);
 
   if (!items.length) {
     if (anyLoading) {
@@ -105,7 +114,9 @@ export default function PriceTicker() {
     const fut = item.kind === 'futures' ? futuresIcon(item.symbol) : null;
     return (
       <div key={`${item.key}-${index}`} className="flex items-center gap-2 px-4 whitespace-nowrap">
-        {item.kind === 'crypto'
+        {item.kind === 'stock'
+          ? <StockLogo symbol={item.symbol} className="w-4 h-4" rounded="rounded" />
+          : item.kind === 'crypto'
           ? <CoinIcon pair={`${item.symbol}USDT`} className="w-3.5 h-3.5" />
           : item.kind === 'gold'
             ? <Gem className="w-3.5 h-3.5 text-amber-400" />

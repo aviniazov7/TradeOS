@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react';
-import { Coins, LineChart } from 'lucide-react';
+import { Coins, LineChart, Briefcase } from 'lucide-react';
 import Modal from '../shared/Modal';
 import ExchangeSearch from '../shared/ExchangeSearch';
 import { EXCHANGES } from '../../utils/constants';
@@ -9,6 +9,7 @@ const defaultForm = { name: '', exchange: '', initialBalance: '', currency: 'USD
 const ASSET_CLASS_OPTIONS = [
   { id: 'crypto', label: 'קריפטו', Icon: Coins },
   { id: 'futures_cme', label: 'חוזים עתידיים', Icon: LineChart },
+  { id: 'stocks', label: 'מניות', Icon: Briefcase },
 ];
 
 export default function JournalFormModal({ isOpen, onClose, journal = null, onSave, defaultAssetClass = 'crypto' }) {
