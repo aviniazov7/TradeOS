@@ -28,6 +28,7 @@ import { formatCurrency } from '../../utils/formatters';
 import { EXCHANGES } from '../../utils/constants';
 import { pageVariants, pageTransition } from '../../utils/animations';
 import { fetchPerpPrices } from '../../services/bybitDirect';
+import { fetchStockQuotes } from '../../services/stocksApi';
 
 const getExchangeLabel = (value) => EXCHANGES.find((e) => e.value === value)?.label || value;
 
@@ -241,11 +242,20 @@ export default function Dashboard() {
 
     // Bybit, not Binance — fapi.binance.com is geo-blocked from Israeli
     // browsers, which left every open position without a live price.
+    // Stock positions are priced from the stock feed (keyed by ticker, the
+    // same key the position cards look up), crypto from the perp feed.
     const fetchLivePrices = async () => {
-      const pairs = [...new Set(globalStats.openTrades.map((t) => t.pair || t.symbol).filter(Boolean))];
+      const isStock = (t) => t.assetClass === 'stocks';
+      const pairs = [...new Set(globalStats.openTrades.filter((t) => !isStock(t)).map((t) => t.pair || t.symbol).filter(Boolean))];
+      const tickers = [...new Set(globalStats.openTrades.filter(isStock).map((t) => t.pair || t.symbol).filter(Boolean))];
       try {
-        const newPrices = await fetchPerpPrices(pairs);
-        if (!cancelled && newPrices && Object.keys(newPrices).length) setLivePrices(newPrices);
+        const [perp, stocks] = await Promise.all([
+          pairs.length ? fetchPerpPrices(pairs) : {},
+          fetchStockQuotes(tickers),
+        ]);
+        const merged = { ...(perp || {}) };
+        Object.entries(stocks).forEach(([sym, q]) => { if (q?.price > 0) merged[sym] = q.price; });
+        if (!cancelled && Object.keys(merged).length) setLivePrices(merged);
       } catch (e) { console.error(e); }
     };
 
