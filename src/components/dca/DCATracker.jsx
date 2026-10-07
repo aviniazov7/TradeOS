@@ -13,8 +13,9 @@ import DCASkeleton from './DCASkeleton';
 import { pageVariants, pageTransition } from '../../utils/animations';
 import PageHeader from '../shared/PageHeader';
 import { headerIconBtn, headerPrimaryBtn } from '../shared/headerStyles';
-import { formatNumber, formatPrice, formatCurrency, formatPercent } from '../../utils/formatters';
 import { COINS, DCA_FREQUENCY_LABELS, DCA_STATUS_LABELS } from '../../utils/constants';
+import { downloadCsv } from '../../utils/csv';
+import { localDayKey } from '../../utils/calculations';
 
 export default function DCATracker() {
   const { dcaPlans, loading, addPlan, addEntry, updatePlan, deletePlan } = useDCA();
@@ -72,13 +73,8 @@ export default function DCATracker() {
       p.coin, DCA_STATUS_LABELS[p.status] || p.status, DCA_FREQUENCY_LABELS[p.frequency] || p.frequency,
       p.amountPerEntry || '', p.totalInvested || 0, p.totalCoins || 0, p.avgPrice || 0, (p.entries || []).length,
     ]);
-    const bom = '\uFEFF';
-    const csv = bom + [headers.join(','), ...rows.map((r) => r.join(','))].join('\n');
-    const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' });
-    const url = URL.createObjectURL(blob);
-    const a = document.createElement('a');
-    a.href = url; a.download = `dca_${new Date().toISOString().slice(0, 10)}.csv`;
-    a.click(); URL.revokeObjectURL(url);
+    // Escaped, BOM-prefixed CSV; the file name uses the LOCAL date.
+    downloadCsv(`dca_${localDayKey(new Date())}.csv`, headers, rows);
     toast.success('הקובץ הורד');
   };
 
