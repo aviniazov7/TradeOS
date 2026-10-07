@@ -554,7 +554,7 @@ export default function TradeJournal() {
       <PageHeader
         icon={BookOpen}
         title="יומן המסחר"
-        meta={<JournalSwitcher compact />}
+        titleAside={<JournalSwitcher compact />}
         tabs={{
           tabs: JOURNAL_TABS.map((id) => ({ id, label: TAB_LABELS[id], mobileLabel: TAB_MOBILE_LABELS[id], count: id === 'trades' ? trades.length : 0 })),
           value: tab,

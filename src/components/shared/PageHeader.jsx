@@ -5,10 +5,12 @@ import TabStrip from './TabStrip';
 // optional slot (usually a row of StatTiles) beside it on wide screens and
 // below it on phones. Every top-level page uses this so titles stop coming in
 // five different sizes.
-//   meta  — a control right under the title (e.g. the journal switcher)
+//   meta  — content right under the title (e.g. a progress line)
+//   titleAside — a small control on the title's own line (e.g. the journal
+//           switcher), so the header stays one row tall
 //   tabs  — { tabs, value, onChange, layoutKey }: the page's views; beside the
 //           actions on wide screens, their own row at the bottom on phones
-export default function PageHeader({ icon: Icon, title, subtitle, meta, tabs, actions, children, className = '' }) {
+export default function PageHeader({ icon: Icon, title, titleAside, subtitle, meta, tabs, actions, children, className = '' }) {
   const tabStrip = (variant) => tabs && (
     <TabStrip tabs={tabs.tabs} value={tabs.value} onChange={tabs.onChange} variant={variant} layoutKey={tabs.layoutKey || 'page-tab'} />
   );
@@ -24,14 +26,21 @@ export default function PageHeader({ icon: Icon, title, subtitle, meta, tabs, ac
       <div className="relative flex flex-col lg:flex-row lg:items-center gap-4 lg:gap-6">
         {/* Phones: actions wrap onto their own row under the title instead of
             squeezing it (basis-full); from sm up they sit beside it. */}
-        <div className="flex flex-wrap items-start gap-3 flex-1 min-w-0">
+        <div className={`flex flex-wrap ${subtitle || meta ? 'items-start' : 'items-center'} gap-3 flex-1 min-w-0`}>
           {Icon && (
             <span className="w-10 h-10 md:w-11 md:h-11 rounded-xl bg-accent-primary/12 border border-accent-primary/20 grid place-items-center shrink-0">
               <Icon className="w-5 h-5 text-accent-primary" />
             </span>
           )}
           <div className="min-w-0 flex-1">
-            <h1 className="text-xl md:text-2xl font-bold text-text-primary leading-tight">{title}</h1>
+            {titleAside ? (
+              <div className="flex flex-wrap items-center gap-x-3 gap-y-2">
+                <h1 className="text-xl md:text-2xl font-bold text-text-primary leading-tight">{title}</h1>
+                <div className="min-w-0">{titleAside}</div>
+              </div>
+            ) : (
+              <h1 className="text-xl md:text-2xl font-bold text-text-primary leading-tight">{title}</h1>
+            )}
             {subtitle && <p className="text-sm text-text-muted mt-1">{subtitle}</p>}
             {meta && <div className="mt-2">{meta}</div>}
           </div>

@@ -242,7 +242,7 @@ export default function BacktestTracker() {
       <PageHeader
         icon={FlaskConical}
         title="בקטסט"
-        meta={<BacktestSwitcher compact />}
+        titleAside={<BacktestSwitcher compact />}
         tabs={{ tabs: [{ id: 'records', label: 'עסקאות', count: backtests.length }, { id: 'analytics', label: 'ניתוחים' }], value: tab, onChange: setTab, layoutKey: 'backtest-tab' }}
         actions={(
           <div className="flex flex-wrap items-center gap-2 w-full sm:w-auto">
