@@ -1,5 +1,6 @@
 import { Users, Activity, Crown, UserPlus, Clock, Plug, Hourglass, Sparkles, AlertTriangle, CheckCircle2 } from 'lucide-react';
 import Card from '../shared/Card';
+import FitText from '../shared/FitText';
 import { Panel, Pill, Avatar, softBtn } from './AdminUi';
 import { ILS, RISK_DAYS, DAY_MS, createdMs, daysUntilExpiry, displayName, relativeActive } from './adminUtils';
 
@@ -10,8 +11,8 @@ function Kpi({ icon: Icon, label, value, sub, subTone = 'text-text-secondary' })
         <span className="truncate">{label}</span>
         {Icon && <Icon className="w-4 h-4 shrink-0" />}
       </div>
-      <div className="num-mono text-3xl md:text-[34px] font-extrabold leading-none text-text-primary" dir="ltr" style={{ textAlign: 'right' }}>{value}</div>
-      {sub && <div className={`text-xs font-semibold truncate ${subTone}`}>{sub}</div>}
+      <FitText as="div" min={16} className="num-mono text-3xl md:text-[34px] font-extrabold leading-tight text-text-primary" dir="ltr" style={{ textAlign: 'right' }}>{value}</FitText>
+      {sub && <div className={`text-xs font-semibold leading-snug ${subTone}`}>{sub}</div>}
     </Card>
   );
 }
