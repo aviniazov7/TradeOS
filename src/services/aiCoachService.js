@@ -13,11 +13,19 @@ async function authHeader() {
 // depth: 'short' (free) | 'deep' (premium).
 // mode: 'journal' (default) | 'backtest' (swaps the worker's system prompt).
 export async function generateCoachReport(stats, depth = 'short', mode = 'journal') {
-  const res = await fetch(`${WORKER_BASE}/ai-coach`, {
-    method: 'POST',
-    headers: await authHeader(),
-    body: JSON.stringify({ stats, depth, mode }),
-  });
+  let res;
+  try {
+    res = await fetch(`${WORKER_BASE}/ai-coach`, {
+      method: 'POST',
+      headers: await authHeader(),
+      body: JSON.stringify({ stats, depth, mode }),
+      // A report can take a while, but never forever: past this, say so.
+      signal: AbortSignal.timeout(75000),
+    });
+  } catch (e) {
+    if (e.name === 'TimeoutError' || e.name === 'AbortError') throw new Error('הניתוח לוקח יותר מדי זמן. נסה שוב בעוד רגע.');
+    throw new Error('בעיית תקשורת עם השרת. בדוק את החיבור ונסה שוב.');
+  }
   const data = await res.json().catch(() => ({}));
   if (!res.ok || !data.ok) {
     const err = new Error(data.error || 'הניתוח נכשל');

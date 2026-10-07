@@ -179,7 +179,7 @@ export async function fetchCoinDetails(coinId, symbol = null) {
 // ── Coin chart: Binance klines first, CoinGecko fallback ─────────────────────
 async function fetchBinanceKlines(symbol, days) {
   const limit = Math.min(days + 2, 1000);
-  const res = await fetch(`${BINANCE_BASE}/klines?symbol=${symbol}USDT&interval=1d&limit=${limit}`);
+  const res = await fetch(`${BINANCE_BASE}/klines?symbol=${symbol}USDT&interval=1d&limit=${limit}`, { signal: AbortSignal.timeout(6000) });
   if (!res.ok) throw new Error(`Binance klines: ${res.status}`);
   const klines = await res.json();
   return {
@@ -250,7 +250,8 @@ export async function fetchCoinChart(coinId, days = 30, symbol = null) {
 
   // Fallback: CoinGecko proxy
   const url = `${BASE_URL}/coins/${coinId}/market_chart?vs_currency=usd&days=${days}`;
-  const response = await fetch(url);
+  // Bounded: a slow/rate-limited CoinGecko must never leave a caller waiting.
+  const response = await fetch(url, { signal: AbortSignal.timeout(8000) });
   if (!response.ok) throw new Error(`CoinGecko error: ${response.status}`);
   const data = await response.json();
   setCache(key, data);

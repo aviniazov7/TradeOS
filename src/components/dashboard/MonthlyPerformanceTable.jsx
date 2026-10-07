@@ -24,7 +24,7 @@ export default function MonthlyPerformanceTable({ data }) {
           numeric values are wrapped in dir="ltr" so the $, %, +/- don't reorder
           inside the RTL row. */}
       <div className="overflow-x-auto">
-        <table className="w-full text-sm tabular-nums">
+        <table className="w-full text-xs sm:text-sm tabular-nums">
           <thead>
             <tr className="text-xs text-text-muted border-b border-border-primary">
               <th className="text-right pb-2 ps-3 font-medium whitespace-nowrap">חודש</th>

@@ -245,7 +245,7 @@ export default function JournalAnalyticsTab({
               <div className={`${cardClass} p-5`}>
                 <h3 className="text-sm font-semibold text-text-primary mb-3">ביצועים לפי תגית</h3>
                 <div className="overflow-x-auto">
-                  <table className="w-full text-sm">
+                  <table className="w-full text-xs sm:text-sm">
                     <thead><tr className="text-xs text-text-muted border-b border-border-primary">
                       <th className="text-right pb-2 font-medium">תגית</th>
                       <th className="text-right pb-2 font-medium">עסקאות</th>
@@ -269,7 +269,7 @@ export default function JournalAnalyticsTab({
             )}
           </div>
 
-          <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-4 gap-4 mb-6">
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-6">
             <StrategyPerformanceTable
               data={analytics?.byStrategy}
               onStrategyClick={(name) => onFilterJump({ strategy: name })}
@@ -279,7 +279,7 @@ export default function JournalAnalyticsTab({
               <div className={`${cardClass} p-5`}>
                 <h3 className="text-sm font-semibold text-text-primary mb-3">ביצועים לפי זוג</h3>
                 <div className="overflow-x-auto">
-                  <table className="w-full text-sm">
+                  <table className="w-full text-xs sm:text-sm">
                     <thead><tr className="text-xs text-text-muted border-b border-border-primary">
                       <th className="text-right pb-2 font-medium">זוג</th>
                       <th className="text-right pb-2 font-medium">עסקאות</th>
@@ -306,7 +306,7 @@ export default function JournalAnalyticsTab({
               <div className={`${cardClass} p-5`}>
                 <h3 className="text-sm font-semibold text-text-primary mb-3">ביצועים לפי טווח זמן</h3>
                 <div className="overflow-x-auto">
-                  <table className="w-full text-sm">
+                  <table className="w-full text-xs sm:text-sm">
                     <thead><tr className="text-xs text-text-muted border-b border-border-primary">
                       <th className="text-right pb-2 font-medium">טווח זמן</th>
                       <th className="text-right pb-2 font-medium">עסקאות</th>

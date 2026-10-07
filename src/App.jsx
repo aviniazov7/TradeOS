@@ -130,9 +130,9 @@ function MainApp() {
                 <Route path="mentality/stats" element={<MentalStats />} />
                 {/* <Route path="leaderboard" element={<LeaderboardPage />} /> */}
                 <Route path="market" element={<MarketOverview />} />
-                {/* Whales moved into Market Overview; keep the path as a redirect
-                    so old links/bookmarks still land somewhere sensible. */}
-                <Route path="whales" element={<Navigate to="/market" replace />} />
+                {/* Whales live in their own tab of Market Overview; keep the old
+                    path so links/bookmarks land on that tab. */}
+                <Route path="whales" element={<Navigate to="/market?tab=whales" replace />} />
                 {/* Wyckoff setup scanner — owner-only while it's being calibrated. */}
                 <Route path="scanner" element={<AdminRoute><ScannerPage /></AdminRoute>} />
                 {/* Visible to all in the menu; the page shows a locked teaser to non-premium (no PremiumRoute redirect). */}
