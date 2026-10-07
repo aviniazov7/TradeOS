@@ -1,42 +1,43 @@
 import { useState, useMemo, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { motion, AnimatePresence } from 'framer-motion';
-import {
-  Wallet, BookOpen, FlaskConical, ClipboardList, Target, AlertCircle, Trash2, Undo2,
-  TrendingUp, DollarSign, Coins, Brain, Sunrise, Moon, CheckCircle2, Clock, ChevronDown, Eye, EyeOff,
-  Activity, Newspaper, Flame, Award, TrendingDown, CalendarDays, LineChart, Gauge,
-} from 'lucide-react';
+import { LineChart, Eye, EyeOff, Plus, ChevronDown } from 'lucide-react';
 import { useTrades } from '../../hooks/useTrades';
 import { useJournalContext } from '../../contexts/JournalContext';
+import { useAuth } from '../../contexts/AuthContext';
 import { useBacktests } from '../../hooks/useBacktests';
 import { useTradingPlans } from '../../hooks/useTradingPlans';
 import { useDCA } from '../../hooks/useDCA';
 import { useMentalityJournals } from '../../hooks/useMentalityJournals';
 import { useLinkedJournals } from '../../hooks/useLinkedExchangeBalance';
 import { KEY_PROBLEM_TEXT } from '../../services/exchangeService';
-import SectionTitle from '../shared/SectionTitle';
 import { isClosedTrade } from '../../utils/calculations';
 import DashboardSkeleton from './DashboardSkeleton';
 import PendingLimitOrders from './PendingLimitOrders';
 import TradeAgentCard from './TradeAgentCard';
-import PerformanceSnapshot from './PerformanceSnapshot';
 import GettingStartedCard from './GettingStartedCard';
-import DashboardKpis from './DashboardKpis';
-import GoalRing from './GoalRing';
-import NewsTicker from './NewsTicker';
-import EquityGrowthCard from './EquityGrowthCard';
-import PerformanceRadar from './PerformanceRadar';
+import PortfolioHero from './PortfolioHero';
+import { HomePanel, HomeKpis, RecentTradesCard, ScoreCard, QuickLinks, MarketCard } from './HomeSections';
+import { NewsList } from './NewsList';
+import PageHeader from '../shared/PageHeader';
 import ExchangeLogo from '../shared/ExchangeLogo';
-import CoinIcon from '../shared/CoinIcon';
-import AnimatedValue from '../shared/AnimatedValue';
 import Card from '../shared/Card';
 import Reveal from '../shared/Reveal';
-import { formatCurrency, formatCompactUsd as formatNum, LRM } from '../../utils/formatters';
-import { EXCHANGES, MENTALITY_EMOTIONS } from '../../utils/constants';
+import { formatCurrency } from '../../utils/formatters';
+import { EXCHANGES } from '../../utils/constants';
 import { pageVariants, pageTransition } from '../../utils/animations';
 import { fetchPerpPrices } from '../../services/bybitDirect';
 
 const getExchangeLabel = (value) => EXCHANGES.find((e) => e.value === value)?.label || value;
+
+// "Good evening, Avi" + today's date, for the page header.
+function greetingFor(name) {
+  const h = new Date().getHours();
+  const hello = h >= 5 && h < 12 ? 'בוקר טוב' : h >= 12 && h < 17 ? 'צהריים טובים' : h >= 17 && h < 22 ? 'ערב טוב' : 'לילה טוב';
+  const first = String(name || '').trim().split(/\s+/)[0];
+  return first ? `${hello}, ${first}` : hello;
+}
+const todayLabel = () => new Date().toLocaleDateString('he-IL', { weekday: 'long', day: 'numeric', month: 'long' });
 
 // One journal on the dashboard: the portfolio value says where it comes from
 // — the live exchange wallet ("LIVE"), the starting balance + P&L ("מחושב"), or
@@ -93,6 +94,7 @@ function JournalTile({ j, mask, onOpen }) {
 
 export default function Dashboard() {
   const navigate = useNavigate();
+  const { user, profile } = useAuth();
   const { journals, setActiveJournalId } = useJournalContext();
   const [showAllJournals, setShowAllJournals] = useState(false);
   const [hideBalances, setHideBalances] = useState(() => localStorage.getItem('tradeos_hideBalances') === 'true');
@@ -109,7 +111,7 @@ export default function Dashboard() {
   const backtests = useMemo(() => allBacktests.filter((b) => b.backtestJournalId), [allBacktests]);
   const { plans, loading: plansLoading } = useTradingPlans();
   const { dcaPlans, loading: dcaLoading } = useDCA();
-  const { todayMorning, todayEvening, morningEntries, eveningEntries } = useMentalityJournals();
+  const { todayMorning, todayEvening, morningEntries } = useMentalityJournals();
 
   const loading = tradesLoading || backtestsLoading || plansLoading || dcaLoading;
 
@@ -218,6 +220,17 @@ export default function Dashboard() {
     return () => { controller.abort(); clearInterval(interval); };
   }, []);
 
+  // Fear & Greed index (alternative.me, CORS-open, daily value).
+  const [fng, setFng] = useState(null);
+  useEffect(() => {
+    const controller = new AbortController();
+    fetch('https://api.alternative.me/fng/?limit=1', { signal: controller.signal })
+      .then((r) => (r.ok ? r.json() : null))
+      .then((j) => { if (j?.data?.[0]) setFng(j.data[0]); })
+      .catch(() => { /* optional widget */ });
+    return () => controller.abort();
+  }, []);
+
   // Live prices for open trades
   const [livePrices, setLivePrices] = useState({});
 
@@ -280,18 +293,8 @@ export default function Dashboard() {
     return { winRate, avgR, topPair: topPair?.[0], topStrategy: topStrategy?.[0] };
   }, [backtests]);
 
-  // DCA stats
-  const dcaStats = useMemo(() => {
-    if (!dcaPlans.length) return null;
-    const totalInvested = dcaPlans.reduce((s, p) => s + (p.totalInvested || 0), 0);
-    const totalEntries = dcaPlans.reduce((s, p) => s + (p.entries || []).length, 0);
-    const activeCount = dcaPlans.filter((d) => d.status === 'active').length;
-    const coins = dcaPlans.map((p) => p.coin).filter(Boolean);
-    return { totalInvested, totalEntries, activeCount, coins };
-  }, [dcaPlans]);
-
-  // Extra insight widgets — equity curve, streak, this-month, best/worst, top pair/session.
-  const extraStats = useMemo(() => {
+  // Equity series (oldest → newest, running total) and the latest closed trades.
+  const { equitySeries, recentClosed } = useMemo(() => {
     const journalIds = new Set(journals.map((j) => j.id));
     const closed = allTrades
       .filter((t) => !t.journalId || journalIds.has(t.journalId))
@@ -306,46 +309,10 @@ export default function Dashboard() {
       return Number.isNaN(ms) ? 0 : ms;
     };
     const sorted = [...closed].sort((a, b) => tradeMs(a) - tradeMs(b));
-
     let cum = 0;
-    const equitySeries = sorted.map((t) => { cum += pnlOf(t); return { t: tradeMs(t), value: cum }; });
-    const equity = equitySeries.map((p) => p.value);
-
-    // current win/loss streak, walking back from the latest trade
-    let streak = 0; let streakWin = null;
-    for (let i = sorted.length - 1; i >= 0; i--) {
-      const win = pnlOf(sorted[i]) >= 0;
-      if (streakWin === null) { streakWin = win; streak = 1; }
-      else if (win === streakWin) streak++;
-      else break;
-    }
-
-    const now = new Date();
-    const monthStart = new Date(now.getFullYear(), now.getMonth(), 1).getTime();
-    const monthTrades = sorted.filter((t) => tradeMs(t) >= monthStart);
-    const monthPnl = monthTrades.reduce((s, t) => s + pnlOf(t), 0);
-
-    let best = null; let worst = null;
-    for (const t of closed) {
-      if (best === null || pnlOf(t) > pnlOf(best)) best = t;
-      if (worst === null || pnlOf(t) < pnlOf(worst)) worst = t;
-    }
-
-    const pairCount = {};
-    for (const t of closed) { const p = t.pair || t.symbol; if (p) pairCount[p] = (pairCount[p] || 0) + 1; }
-    const topPair = Object.entries(pairCount).sort((a, b) => b[1] - a[1])[0];
-
-    const sessionPnl = {};
-    for (const t of closed) { if (t.session) sessionPnl[t.session] = (sessionPnl[t.session] || 0) + pnlOf(t); }
-    const bestSession = Object.entries(sessionPnl).sort((a, b) => b[1] - a[1])[0];
-
     return {
-      equity, equitySeries, count: closed.length,
-      streak, streakWin,
-      monthPnl, monthCount: monthTrades.length,
-      best, worst, bestPnl: best ? pnlOf(best) : 0, worstPnl: worst ? pnlOf(worst) : 0,
-      topPair: topPair?.[0], topPairCount: topPair?.[1] || 0,
-      bestSession: bestSession?.[0], bestSessionPnl: bestSession?.[1] || 0,
+      equitySeries: sorted.map((t) => { cum += pnlOf(t); return { t: tradeMs(t), pnl: pnlOf(t), value: cum }; }),
+      recentClosed: sorted.slice(-5).reverse(),
     };
   }, [allTrades, journals]);
 
@@ -401,8 +368,8 @@ export default function Dashboard() {
 
     const metrics = [
       { label: 'אחוז הצלחה', value: winRate },
-      { label: 'Profit Factor', value: pfScore },
-      { label: 'יחס R:R', value: rrScore },
+      { label: 'פקטור רווח', value: pfScore },
+      { label: 'יחס סיכון/סיכוי', value: rrScore },
       { label: 'עקביות', value: consistency },
       { label: 'ניהול סיכון', value: riskMgmt },
       { label: 'התאוששות', value: recoveryScore },
@@ -446,6 +413,7 @@ export default function Dashboard() {
       avgWin, avgLoss, avgWinLossRatio: ratio,
       profitFactor,
       streakDays, streakTrades,
+      lastResults: tradeBools.slice(-5),
     };
 
     return {
@@ -458,399 +426,120 @@ export default function Dashboard() {
 
   if (loading) return <DashboardSkeleton />;
 
-  const cardClass = 'bg-bg-secondary border border-border-primary rounded-xl p-5';
+  const openJournal = (j) => { setActiveJournalId(j.id); navigate('/journal'); };
+  const synced = Object.keys(linkedBalances || {}).length > 0;
 
   return (
     <motion.div variants={pageVariants} initial="initial" animate="animate" exit="exit" transition={pageTransition}>
+      <PageHeader
+        icon={LineChart}
+        title={greetingFor(profile?.displayName || user?.displayName)}
+        subtitle={(
+          <span className="inline-flex flex-wrap items-center gap-x-2.5 gap-y-1">
+            {todayLabel()}
+            {synced && (
+              <span className="inline-flex items-center gap-1.5 text-profit font-semibold">
+                <span className="w-1.5 h-1.5 rounded-full bg-profit" style={{ boxShadow: '0 0 8px var(--color-profit)' }} />
+                מסונכרן מהבורסה
+              </span>
+            )}
+          </span>
+        )}
+        actions={(
+          <div className="flex items-center gap-2 w-full sm:w-auto">
+            <button type="button" onClick={toggleHide} aria-label={hideBalances ? 'הצגת סכומים' : 'הסתרת סכומים'} title={hideBalances ? 'הצגת סכומים' : 'הסתרת סכומים'}
+              className="w-11 h-11 shrink-0 rounded-xl border border-border-primary bg-bg-tertiary text-text-secondary hover:text-text-primary grid place-items-center cursor-pointer">
+              {hideBalances ? <EyeOff className="w-[18px] h-[18px]" /> : <Eye className="w-[18px] h-[18px]" />}
+            </button>
+            <button type="button" onClick={() => navigate('/journal?new=1')}
+              className="h-11 px-4 flex-1 sm:flex-none inline-flex items-center justify-center gap-2 rounded-xl bg-accent-muted hover:bg-accent-primary text-white text-sm font-bold transition-colors cursor-pointer">
+              <Plus className="w-4 h-4" /> עסקה חדשה
+            </button>
+          </div>
+        )}
+      />
+
       <PendingLimitOrders trades={globalStats.openTrades} livePrices={livePrices} />
 
-      {/* AI agent — a compact, real-data summary of the user's trades. */}
-      <TradeAgentCard trades={allTrades} />
-
-      {/* Performance snapshot — weekly P&L + sparkline + today/R:R/win-rate. */}
-      <PerformanceSnapshot trades={allTrades} stats={globalStats} synced={Object.keys(linkedBalances || {}).length > 0} />
-
-      {/* First-steps checklist — renders only for fresh accounts (hides
-          itself for veterans / when everything is done / when dismissed). */}
+      {/* First-steps checklist — renders only for fresh accounts. */}
       <GettingStartedCard trades={allTrades} journals={journals} morningCount={morningEntries.length} />
 
-      {/* Total portfolio value — the hero figure of the dashboard. */}
-      <Card className="relative overflow-hidden mb-4 px-4 py-3.5 md:px-5 md:py-4 flex items-center justify-between gap-4">
-        {/* Same wash + medallion as the shared PageHeader. */}
-        <div aria-hidden className="absolute inset-0 pointer-events-none"
-          style={{ background: 'radial-gradient(80% 160% at 100% 0%, rgba(37,99,235,0.14) 0%, transparent 60%)' }} />
-        <div className="relative flex items-center gap-3 min-w-0">
-          <div className="w-10 h-10 md:w-11 md:h-11 rounded-xl bg-accent-primary/12 border border-accent-primary/20 flex items-center justify-center shrink-0">
-            <Wallet className="w-5 h-5 text-accent-primary" />
+      <div className="space-y-4 mb-6">
+        {/* The account (value + cumulative P&L) beside the AI read of it. */}
+        <div className="grid grid-cols-1 lg:grid-cols-3 gap-4 items-stretch">
+          <div className="lg:col-span-2 min-w-0">
+            <PortfolioHero balance={globalStats.totalBalance} pnlPercent={globalStats.pnlPercent} series={equitySeries} hidden={hideBalances} />
           </div>
-          <div className="text-right min-w-0">
-            <div className="text-xs text-text-muted mb-0.5">שווי תיקים כללי</div>
-            <div className="flex items-center gap-2 flex-wrap">
-              <span dir="ltr">
-                <AnimatedValue
-                  value={m(formatCurrency(globalStats.totalBalance).replace('+', ''))}
-                  className="text-3xl font-bold text-text-primary leading-none"
-                />
-              </span>
-              {globalStats.pnlPercent !== 0 && (
-                <span
-                  dir="ltr"
-                  className={`text-xs font-semibold px-1.5 py-0.5 rounded ${
-                    globalStats.pnlPercent >= 0 ? 'bg-profit/15 text-profit' : 'bg-loss/15 text-loss'
-                  }`}
-                >
-                  {m(`${LRM}${globalStats.pnlPercent > 0 ? '+' : ''}${globalStats.pnlPercent.toFixed(1)}%`)}
-                </span>
-              )}
-            </div>
-          </div>
-        </div>
-        <button
-          onClick={toggleHide}
-          className="relative p-2 rounded-lg text-text-muted hover:text-text-primary hover:bg-bg-tertiary transition-colors cursor-pointer shrink-0"
-          title={hideBalances ? 'הצג סכומים' : 'הסתר סכומים'}
-        >
-          {hideBalances ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
-        </button>
-      </Card>
-
-      {/* KPI strip (TradeZella-style) — always shown so new users see it too */}
-      <DashboardKpis kpi={kpi} hidden={hideBalances} extra={<GoalRing trades={allTrades} />} />
-      <div className="mb-6" />
-
-      {/* TradeZella-style hero: cumulative P&L area + performance radar */}
-      <Reveal>
-        <div className="grid grid-cols-1 lg:grid-cols-3 gap-3 mb-6 items-stretch">
-          <div className="lg:col-span-2 lg:h-[280px]"><EquityGrowthCard series={extraStats.equitySeries} trades={allTrades} hidden={hideBalances} /></div>
-          <div className="lg:col-span-1 lg:h-[280px]"><PerformanceRadar metrics={perf.metrics} score={perf.score} /></div>
-        </div>
-      </Reveal>
-
-      {/* Journals overview */}
-      <Reveal>
-      <Card className="p-4 md:p-5 mb-6">
-        <SectionTitle icon={BookOpen} aside={(
-          <button onClick={() => navigate('/journal')} className="text-xs text-accent-primary hover:underline cursor-pointer">
-            לכל היומנים
-          </button>
-        )}>
-          יומני מסחר ({journals.length})
-        </SectionTitle>
-        {journalStats.length > 0 ? (
-          <>
-            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3">
-              {journalStats.slice(0, 3).map((j) => (
-                <JournalTile key={j.id} j={j} mask={m} onOpen={() => { setActiveJournalId(j.id); navigate('/journal'); }} />
-              ))}
-            </div>
-            <AnimatePresence initial={false}>
-              {showAllJournals && journalStats.length > 3 && (
-                <motion.div
-                  initial={{ height: 0, opacity: 0 }}
-                  animate={{ height: 'auto', opacity: 1 }}
-                  exit={{ height: 0, opacity: 0 }}
-                  transition={{ duration: 0.3, ease: 'easeInOut' }}
-                  className="overflow-hidden"
-                >
-                  <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3 mt-3">
-                    {journalStats.slice(3).map((j) => (
-                      <JournalTile key={j.id} j={j} mask={m} onOpen={() => { setActiveJournalId(j.id); navigate('/journal'); }} />
-                    ))}
-                  </div>
-                </motion.div>
-              )}
-            </AnimatePresence>
-            {journalStats.length > 3 && (
-              <button
-                onClick={() => setShowAllJournals((v) => !v)}
-                className="flex items-center justify-center gap-1 w-full mt-3 py-2 text-xs text-text-muted hover:text-accent-primary transition-colors cursor-pointer"
-              >
-                <span>{showAllJournals ? 'הצג פחות' : `הצג עוד ${journalStats.length - 3} יומנים`}</span>
-                <ChevronDown className={`w-3.5 h-3.5 transition-transform duration-300 ${showAllJournals ? 'rotate-180' : ''}`} />
-              </button>
-            )}
-          </>
-        ) : (
-          <p className="text-sm text-text-muted">אין יומנים עדיין</p>
-        )}
-      </Card>
-      </Reveal>
-
-      {/* Quick stats row */}
-      <Reveal>
-      <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-6">
-        {/* Backtests */}
-        <button onClick={() => navigate('/backtest')} className={`${cardClass} text-right hover:border-accent-primary/30 transition-colors cursor-pointer`}>
-          <div className="flex items-center justify-between mb-3">
-            <div className="flex items-center gap-2">
-              <FlaskConical className="w-4 h-4 text-accent-primary" />
-              <span className="text-sm font-semibold text-text-primary">בקטסטים</span>
-            </div>
-            <span className="text-lg font-bold text-text-primary">{backtests.length}</span>
-          </div>
-          {backtestStats ? (
-            <div className="space-y-2">
-              <div className="flex items-center justify-between">
-                <span className="text-xs text-text-muted">אחוז הצלחה</span>
-                <span className={`text-xs font-bold ${backtestStats.winRate >= 50 ? 'text-profit' : 'text-loss'}`}>{backtestStats.winRate.toFixed(1)}%</span>
-              </div>
-              <div className="flex items-center justify-between">
-                <span className="text-xs text-text-muted">ממוצע R</span>
-                <span className={`text-xs font-bold ${backtestStats.avgR >= 0 ? 'text-profit' : 'text-loss'}`}>{backtestStats.avgR.toFixed(2)}R</span>
-              </div>
-              {backtestStats.topPair && (
-                <div className="flex items-center justify-between">
-                  <span className="text-xs text-text-muted">זוג מוביל</span>
-                  <span className="text-xs font-medium text-accent-primary">{backtestStats.topPair}</span>
-                </div>
-              )}
-              {backtestStats.topStrategy && (
-                <div className="flex items-center justify-between">
-                  <span className="text-xs text-text-muted">אסטרטגיה</span>
-                  <span className="text-xs font-medium text-text-secondary truncate max-w-[120px]">{backtestStats.topStrategy}</span>
-                </div>
-              )}
-            </div>
-          ) : (
-            <p className="text-xs text-text-muted">אין בקטסטים עדיין</p>
-          )}
-        </button>
-
-        {/* Trading Plans */}
-        <button onClick={() => navigate('/plans')} className={`${cardClass} text-right hover:border-accent-primary/30 transition-colors cursor-pointer`}>
-          <div className="flex items-center justify-between mb-3">
-            <div className="flex items-center gap-2">
-              <ClipboardList className="w-4 h-4 text-accent-primary" />
-              <span className="text-sm font-semibold text-text-primary">תוכניות מסחר</span>
-            </div>
-            <span className="text-lg font-bold text-text-primary">{plans.length}</span>
-          </div>
-          {plans.length > 0 ? (
-            <div className="space-y-2">
-              <div className="flex items-center justify-between">
-                <span className="text-xs text-text-muted">פעילות</span>
-                <span className={`text-xs font-bold ${activePlans.length > 0 ? 'text-profit' : 'text-text-muted'}`}>{activePlans.length} / {plans.length}</span>
-              </div>
-              {activePlans.slice(0, 2).map((p) => (
-                <div key={p.id} className="flex items-center justify-between">
-                  <span className="text-xs text-text-secondary truncate max-w-[140px]">{p.name}</span>
-                  <span className="text-[10px] text-profit">פעילה</span>
-                </div>
-              ))}
-              {plans[0]?.pairs?.length > 0 && (
-                <div className="flex items-center justify-between">
-                  <span className="text-xs text-text-muted">זוגות</span>
-                  <span className="text-xs text-text-secondary">{[...new Set(plans.flatMap((p) => p.pairs || []))].length} זוגות</span>
-                </div>
-              )}
-            </div>
-          ) : (
-            <p className="text-xs text-text-muted">אין תוכניות עדיין</p>
-          )}
-        </button>
-
-        {/* DCA */}
-        <button onClick={() => navigate('/dca')} className={`${cardClass} text-right hover:border-accent-primary/30 transition-colors cursor-pointer`}>
-          <div className="flex items-center justify-between mb-3">
-            <div className="flex items-center gap-2">
-              <Coins className="w-4 h-4 text-accent-primary" />
-              <span className="text-sm font-semibold text-text-primary">מעקב DCA</span>
-            </div>
-            <span className="text-lg font-bold text-text-primary">{dcaPlans.length}</span>
-          </div>
-          {dcaStats ? (
-            <div className="space-y-2">
-              <div className="flex items-center justify-between">
-                <span className="text-xs text-text-muted">סה״כ מושקע</span>
-                <span className="text-xs font-bold text-text-primary">{m(`$${formatCurrency(dcaStats.totalInvested).replace(/[+$]/g, '')}`)}</span>
-              </div>
-              <div className="flex items-center justify-between">
-                <span className="text-xs text-text-muted">רכישות</span>
-                <span className="text-xs font-medium text-text-secondary">{dcaStats.totalEntries}</span>
-              </div>
-              <div className="flex items-center justify-between">
-                <span className="text-xs text-text-muted">פעילים</span>
-                <span className={`text-xs font-bold ${dcaStats.activeCount > 0 ? 'text-profit' : 'text-text-muted'}`}>{dcaStats.activeCount} / {dcaPlans.length}</span>
-              </div>
-              {dcaStats.coins.length > 0 && (
-                <div className="flex items-center justify-between">
-                  <span className="text-xs text-text-muted">מטבעות</span>
-                  <span className="text-xs text-accent-primary font-medium">{dcaStats.coins.join(', ')}</span>
-                </div>
-              )}
-            </div>
-          ) : (
-            <p className="text-xs text-text-muted">אין תוכניות DCA עדיין</p>
-          )}
-        </button>
-      </div>
-
-      </Reveal>
-
-      {/* Mentality Zone */}
-      <Reveal>
-      <div className={`${cardClass} mb-6`}>
-        <div className="flex items-center justify-between mb-4">
-          <h2 className="text-sm font-semibold text-text-primary flex items-center gap-2">
-            <Brain className="w-4 h-4" /> האזור המנטלי
-          </h2>
-          <button
-            onClick={() => navigate('/mentality')}
-            className="text-xs text-accent-primary hover:underline cursor-pointer"
-          >
-            לאזור המנטלי
-          </button>
+          <div className="min-w-0"><TradeAgentCard trades={allTrades} /></div>
         </div>
 
-        <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
-          {/* Morning journal status */}
-          <button
-            onClick={() => navigate('/mentality/morning')}
-            className="bg-bg-tertiary border border-border-primary rounded-lg p-3 text-right hover:border-accent-primary/30 transition-colors cursor-pointer"
-          >
-            <div className="flex items-center justify-between mb-2">
-              <div className="flex items-center gap-2">
-                <Sunrise className="w-4 h-4 text-amber-400" />
-                <span className="text-sm font-medium text-text-primary">יומן בוקר</span>
-              </div>
-              {todayMorning ? (
-                <CheckCircle2 className="w-4 h-4 text-profit" />
-              ) : (
-                <Clock className="w-4 h-4 text-text-muted" />
-              )}
-            </div>
-            <div className="text-xs text-text-muted">
-              {todayMorning
-                ? `${(MENTALITY_EMOTIONS.find((e) => e.key === todayMorning.emotion)?.emoji || '')} מולא היום`
-                : 'טרם מולא היום'}
-            </div>
-            <div className="text-[11px] text-text-muted mt-1">{morningEntries.length} רשומות סה״כ</div>
-          </button>
+        <HomeKpis kpi={kpi} hidden={hideBalances} />
 
-          {/* Evening journal status */}
-          <button
-            onClick={() => navigate('/mentality/evening')}
-            className="bg-bg-tertiary border border-border-primary rounded-lg p-3 text-right hover:border-accent-primary/30 transition-colors cursor-pointer"
-          >
-            <div className="flex items-center justify-between mb-2">
-              <div className="flex items-center gap-2">
-                <Moon className="w-4 h-4 text-indigo-400" />
-                <span className="text-sm font-medium text-text-primary">יומן ערב</span>
-              </div>
-              {todayEvening ? (
-                <CheckCircle2 className="w-4 h-4 text-profit" />
-              ) : (
-                <Clock className="w-4 h-4 text-text-muted" />
-              )}
-            </div>
-            <div className="text-xs text-text-muted">
-              {todayEvening
-                ? `${(MENTALITY_EMOTIONS.find((e) => e.key === todayEvening.emotionAfter)?.emoji || '')} מולא היום`
-                : 'טרם מולא היום'}
-            </div>
-            <div className="text-[11px] text-text-muted mt-1">{eveningEntries.length} רשומות סה״כ</div>
-          </button>
-
-          {/* Journey shortcut */}
-          <button
-            onClick={() => navigate('/mentality/journey')}
-            className="bg-bg-tertiary border border-border-primary rounded-lg p-3 text-right hover:border-accent-primary/30 transition-colors cursor-pointer"
-          >
-            <div className="flex items-center gap-2 mb-2">
-              <Brain className="w-4 h-4 text-accent-primary" />
-              <span className="text-sm font-medium text-text-primary">המסע הפסיכולוגי</span>
-            </div>
-            <div className="text-xs text-text-muted">המסלול הקלאסי שרוב הסוחרים עוברים</div>
-            <div className="text-[11px] text-accent-primary mt-1">7 שלבים →</div>
-          </button>
-        </div>
-      </div>
-
-      </Reveal>
-
-      {/* Market Overview & News */}
-      <Reveal>
-      <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-6">
-        {/* Market Overview */}
-        <div className={cardClass}>
-          <div className="flex items-center justify-between mb-4">
-            <h2 className="text-sm font-semibold text-text-primary flex items-center gap-2">
-              <Activity className="w-4 h-4" /> סקירת שוק
-            </h2>
-            <button
-              onClick={() => navigate('/market')}
-              className="text-xs text-accent-primary hover:underline cursor-pointer"
-            >
-              לסקירה המלאה
-            </button>
+        <Reveal>
+          <div className="grid grid-cols-1 lg:grid-cols-3 gap-4 items-start">
+            <RecentTradesCard trades={recentClosed} hidden={hideBalances} className="lg:col-span-2" />
+            <ScoreCard metrics={perf.metrics} score={perf.score} />
           </div>
-          {globalMarket ? (
-            <div className="grid grid-cols-2 gap-2.5">
-              {/* Row 1 - cell 1: Market Cap */}
-              <div className="bg-bg-tertiary border border-border-primary rounded-lg p-3 col-span-2">
-                <div className="flex items-center justify-between">
-                  <span className="text-[11px] text-text-muted">שווי שוק כולל</span>
-                  {globalMarket.market_cap_change_percentage_24h_usd != null && (
-                    <span className={`text-[10px] font-bold px-1.5 py-0.5 rounded ${globalMarket.market_cap_change_percentage_24h_usd >= 0 ? 'bg-profit/15 text-profit' : 'bg-loss/15 text-loss'}`}>
-                      {LRM}{globalMarket.market_cap_change_percentage_24h_usd >= 0 ? '+' : ''}{globalMarket.market_cap_change_percentage_24h_usd.toFixed(2)}%
-                    </span>
+        </Reveal>
+
+        <Reveal>
+          <HomePanel title={`היומנים שלך (${journals.length})`} link="לכל היומנים" onLink={() => navigate('/journal')}>
+            {journalStats.length > 0 ? (
+              <>
+                <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3">
+                  {journalStats.slice(0, 3).map((j) => (
+                    <JournalTile key={j.id} j={j} mask={m} onOpen={() => openJournal(j)} />
+                  ))}
+                </div>
+                <AnimatePresence initial={false}>
+                  {showAllJournals && journalStats.length > 3 && (
+                    <motion.div
+                      initial={{ height: 0, opacity: 0 }}
+                      animate={{ height: 'auto', opacity: 1 }}
+                      exit={{ height: 0, opacity: 0 }}
+                      transition={{ duration: 0.3, ease: 'easeInOut' }}
+                      className="overflow-hidden"
+                    >
+                      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3 mt-3">
+                        {journalStats.slice(3).map((j) => (
+                          <JournalTile key={j.id} j={j} mask={m} onOpen={() => openJournal(j)} />
+                        ))}
+                      </div>
+                    </motion.div>
                   )}
-                </div>
-                <div className="text-xl font-bold text-text-primary mt-1">{formatNum(globalMarket.total_market_cap?.usd)}</div>
-              </div>
-              {/* Row 2: BTC.D + ETH.D */}
-              <div className="bg-bg-tertiary border border-border-primary rounded-lg p-3">
-                <div className="flex items-center gap-1.5 mb-1">
-                  <div className="w-1.5 h-1.5 rounded-full bg-accent-primary" />
-                  <span className="text-[11px] text-text-muted">BTC דומיננטיות</span>
-                </div>
-                <div className="text-base font-bold text-accent-primary">{globalMarket.market_cap_percentage?.btc?.toFixed(1)}%</div>
-              </div>
-              <div className="bg-bg-tertiary border border-border-primary rounded-lg p-3">
-                <div className="flex items-center gap-1.5 mb-1">
-                  <div className="w-1.5 h-1.5 rounded-full bg-indigo-400" />
-                  <span className="text-[11px] text-text-muted">ETH דומיננטיות</span>
-                </div>
-                <div className="text-base font-bold text-indigo-400">{globalMarket.market_cap_percentage?.eth?.toFixed(1)}%</div>
-              </div>
-              {/* Row 3: Volume + Active coins */}
-              <div className="bg-bg-tertiary border border-border-primary rounded-lg p-3">
-                <div className="flex items-center gap-1.5 mb-1">
-                  <TrendingUp className="w-3 h-3 text-text-muted" />
-                  <span className="text-[11px] text-text-muted">נפח מסחר 24ש</span>
-                </div>
-                <div className="text-base font-bold text-text-primary">{formatNum(globalMarket.total_volume?.usd)}</div>
-              </div>
-              <div className="bg-bg-tertiary border border-border-primary rounded-lg p-3">
-                <div className="flex items-center gap-1.5 mb-1">
-                  <Coins className="w-3 h-3 text-text-muted" />
-                  <span className="text-[11px] text-text-muted">מטבעות פעילים</span>
-                </div>
-                <div className="text-base font-bold text-text-primary">{globalMarket.active_cryptocurrencies?.toLocaleString()}</div>
-              </div>
-            </div>
-          ) : (
-            <p className="text-xs text-text-muted">טוען נתוני שוק...</p>
-          )}
-        </div>
+                </AnimatePresence>
+                {journalStats.length > 3 && (
+                  <button
+                    onClick={() => setShowAllJournals((v) => !v)}
+                    className="flex items-center justify-center gap-1 w-full mt-3 py-2 text-xs text-text-secondary hover:text-accent-primary transition-colors cursor-pointer"
+                  >
+                    <span>{showAllJournals ? 'הצג פחות' : `הצג עוד ${journalStats.length - 3} יומנים`}</span>
+                    <ChevronDown className={`w-3.5 h-3.5 transition-transform duration-300 ${showAllJournals ? 'rotate-180' : ''}`} />
+                  </button>
+                )}
+              </>
+            ) : (
+              <p className="text-sm text-text-secondary">אין יומנים עדיין</p>
+            )}
+          </HomePanel>
+        </Reveal>
 
-        {/* Latest News */}
-        <div className={cardClass}>
-          <div className="flex items-center justify-between mb-4">
-            <h2 className="text-sm font-semibold text-text-primary flex items-center gap-2">
-              <Newspaper className="w-4 h-4" /> חדשות אחרונות
-            </h2>
-            <button
-              onClick={() => navigate('/news')}
-              className="text-xs text-accent-primary hover:underline cursor-pointer"
-            >
-              לכל החדשות
-            </button>
+        <Reveal>
+          <QuickLinks
+            backtests={backtests} backtestStats={backtestStats} plans={plans} activePlans={activePlans}
+            dcaPlans={dcaPlans} todayMorning={todayMorning} todayEvening={todayEvening}
+          />
+        </Reveal>
+
+        <Reveal>
+          <div className="grid grid-cols-1 lg:grid-cols-3 gap-4 items-start">
+            <MarketCard market={globalMarket} fng={fng} />
+            <HomePanel title="חדשות" link="לכל החדשות" onLink={() => navigate('/news')} className="lg:col-span-2">
+              <NewsList items={latestNews} max={3} />
+            </HomePanel>
           </div>
-          <NewsTicker items={latestNews} />
-        </div>
+        </Reveal>
       </div>
-      </Reveal>
     </motion.div>
   );
 }
