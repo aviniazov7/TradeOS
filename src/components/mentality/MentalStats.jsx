@@ -2,6 +2,8 @@ import { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { motion, AnimatePresence } from 'framer-motion';
 import { ArrowRight, BarChart3, Brain, ListChecks, ClipboardCheck, TrendingUp, TrendingDown, Minus, ChevronDown } from 'lucide-react';
+import PageHeader from '../shared/PageHeader';
+import { headerIconBtn } from '../shared/headerStyles';
 import { useMentalityJournals } from '../../hooks/useMentalityJournals';
 import { useTrades } from '../../hooks/useTrades';
 import { useMentalStats } from '../../hooks/useMentalStats';
@@ -26,16 +28,16 @@ export default function MentalStats() {
       animate={{ opacity: 1, y: 0 }}
       transition={{ duration: 0.3 }}
     >
-      {/* Header */}
-      <div className="flex items-center gap-2 mb-4">
-        <button
-          onClick={() => navigate('/mentality')}
-          className="text-text-secondary hover:text-text-primary transition-colors"
-        >
-          <ArrowRight className="w-5 h-5" />
-        </button>
-        <h1 className="text-xl font-bold text-text-primary">סטטיסטיקות מנטליות</h1>
-      </div>
+      <PageHeader
+        icon={BarChart3}
+        title="סטטיסטיקות מנטליות"
+        subtitle="איך מצב הרוח והמשמעת שלך משפיעים על התוצאות"
+        actions={(
+          <button onClick={() => navigate('/mentality')} className={headerIconBtn} title="חזרה לאזור המנטלי" aria-label="חזרה לאזור המנטלי">
+            <ArrowRight className="w-[18px] h-[18px]" />
+          </button>
+        )}
+      />
 
       {noData ? (
         <div className="bg-bg-secondary border border-border-primary rounded-xl p-8 text-center">

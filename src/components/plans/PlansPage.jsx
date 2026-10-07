@@ -18,7 +18,8 @@ import EmptyState from '../shared/EmptyState';
 import StrategySelector from '../shared/StrategySelector';
 import SelectDropdown from '../shared/SelectDropdown';
 import PlansSkeleton from './PlansSkeleton';
-import TabStrip from '../shared/TabStrip';
+import PageHeader from '../shared/PageHeader';
+import { headerPrimaryBtn } from '../shared/headerStyles';
 import { pageVariants, pageTransition, staggerContainer } from '../../utils/animations';
 
 function toImageUrl(url) {
@@ -150,33 +151,26 @@ export default function PlansPage() {
   return (
     <motion.div variants={pageVariants} initial="initial" animate="animate" exit="exit" transition={pageTransition}>
       <>
-          {/* Top Navigation Bar */}
-          <div className="bg-bg-secondary border border-border-primary rounded-xl mb-4 px-3 md:px-4 py-2.5 space-y-2">
-            <div className="flex items-center justify-between gap-2">
-              <div className="flex items-center gap-1 md:gap-3 min-w-0">
-                <h1 className="text-sm font-bold text-text-primary whitespace-nowrap inline-flex items-center gap-2"><ClipboardList className="w-4 h-4 text-accent-primary" />תוכניות מסחר</h1>
-                <div className="hidden md:block w-px h-6 bg-border-primary flex-shrink-0" />
-                <div className="hidden md:block">
-                  <TabStrip tabs={[{ id: 'plans', label: 'תוכניות', count: plans.length }, { id: 'processes', label: 'ניתוחים', count: processes.length }]} value={tab} onChange={setTab} layoutKey="plans-tab" />
-                </div>
-              </div>
-              <div className="flex items-center gap-1.5">
+          <PageHeader
+            icon={ClipboardList}
+            title="תוכניות מסחר"
+            subtitle="החוקים והאסטרטגיות שלך, וניתוחים לפני עסקה"
+            tabs={{ tabs: [{ id: 'plans', label: 'תוכניות', count: plans.length }, { id: 'processes', label: 'ניתוחים', count: processes.length }], value: tab, onChange: setTab, layoutKey: 'plans-tab' }}
+            actions={(
+              <div className="flex items-center gap-2 w-full sm:w-auto">
                 {tab === 'plans' && (
-                  <button onClick={() => setFormOpen(true)} className="flex items-center gap-1.5 text-accent-primary border border-accent-primary/40 font-semibold px-2.5 py-1.5 md:px-3.5 md:py-2 rounded-lg hover:bg-accent-primary/10 transition-colors cursor-pointer text-xs md:text-sm">
-                    <Plus className="w-4 h-4" /> <span className="hidden sm:inline">תוכנית חדשה</span>
+                  <button onClick={() => setFormOpen(true)} className={`${headerPrimaryBtn} flex-1 sm:flex-none`}>
+                    <Plus className="w-4 h-4" /> תוכנית חדשה
                   </button>
                 )}
                 {tab === 'processes' && (
-                  <button onClick={() => { setProcessForm(defaultProcessForm); setEditingProcessId(null); setProcessFormOpen(true); }} className="flex items-center gap-1.5 text-accent-primary border border-accent-primary/40 font-semibold px-2.5 py-1.5 md:px-3.5 md:py-2 rounded-lg hover:bg-accent-primary/10 transition-colors cursor-pointer text-xs md:text-sm">
-                    <Plus className="w-4 h-4" /> <span className="hidden sm:inline">הוסף ניתוח</span>
+                  <button onClick={() => { setProcessForm(defaultProcessForm); setEditingProcessId(null); setProcessFormOpen(true); }} className={`${headerPrimaryBtn} flex-1 sm:flex-none`}>
+                    <Plus className="w-4 h-4" /> הוסף ניתוח
                   </button>
                 )}
               </div>
-            </div>
-            <div className="md:hidden">
-              <TabStrip tabs={[{ id: 'plans', label: 'תוכניות', count: plans.length }, { id: 'processes', label: 'ניתוחים', count: processes.length }]} value={tab} onChange={setTab} variant="mobile" layoutKey="plans-tab" />
-            </div>
-          </div>
+            )}
+          />
 
           {/* Tab: Plans */}
           {tab === 'plans' && (
