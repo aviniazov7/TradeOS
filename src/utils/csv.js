@@ -3,7 +3,11 @@
 // silently shifts columns (a real risk with free-text notes / market titles).
 function escapeCell(v) {
   if (v == null) return '';
+  // Numbers are data, not formulas: a negative P&L must stay "-12.5" (a
+  // number in Excel), not the text "'-12.5" the injection guard would make.
+  if (typeof v === 'number') return Number.isFinite(v) ? String(v) : '';
   let s = String(v);
+  if (/^-?\d+(\.\d+)?$/.test(s)) return s;
   // Spreadsheet formula injection: untrusted text (market titles, display
   // names) starting with these is executed by Excel/Sheets. Neutralise first.
   if (/^[=+\-@\t\r]/.test(s)) s = `'${s}`;
