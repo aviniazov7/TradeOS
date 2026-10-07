@@ -130,6 +130,10 @@ export function normalizeMexcClosed(p, ctx = {}) {
       : [],
     source: 'mexc',
     externalId: ctx.externalId,
+    // The live position's id — the OPEN trade imported earlier was stored
+    // under it, so the app can close that trade instead of adding a second
+    // one (externalId stays the history row id for backward compatibility).
+    ...(p.positionId != null && String(p.positionId) !== '0' ? { positionId: String(p.positionId) } : {}),
     // TP1/TP2/… breakdown from the position's closing fills (2+ closes).
     ...(ctx.exits ? { exits: ctx.exits } : {}),
   });
@@ -169,6 +173,9 @@ export function normalizeOkxClosed(p, ctVal = 1) {
     tps: tp > 0 ? [tp] : [],
     source: 'okx',
     externalId: p.posId ? `${p.posId}:${entryMs}` : `${pair}_${entryMs}`,
+    // The open position's externalId (normalizeOkxOpen) — lets the app
+    // close the trade imported while the position was open.
+    ...(p.posId ? { positionId: String(p.posId) } : {}),
   });
 }
 
@@ -233,6 +240,7 @@ export function normalizeBitgetClosed(p) {
     tps: tp > 0 ? [tp] : [],
     source: 'bitget',
     externalId: p.positionId || `${pair}_${entryMs}`,
+    ...(p.positionId ? { positionId: String(p.positionId) } : {}),
   });
 }
 
