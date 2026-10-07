@@ -51,7 +51,6 @@
 - P&L chart, win rate breakdown, equity curve
 - Trade heatmap, streak analysis, **day-of-week** performance
 - **Session analysis** using Israel timezone (Asia/Jerusalem) — Asian/London/NY/Overlap
-- Correlation heatmap between pairs
 - Monthly performance table, strategy comparison
 - Sharpe Ratio, Sortino Ratio, Profit Factor, Calmar Ratio, Max Drawdown, Recovery Factor
 - Live crypto price ticker, Fear & Greed gauge
@@ -65,20 +64,19 @@
 
 ### Backtesting
 - Separate journals for strategy backtesting
-- Side-by-side strategy comparison
 - Auto-detected trading sessions
 - Backtest-specific analytics
 
-### DCA Tracker
-- Dollar-cost averaging position tracker
-- Per-coin analytics with average entry price
-- Portfolio summary
+### Portfolio (`/portfolio`)
+- **DCA tab** — dollar-cost averaging position tracker, per-coin analytics with average entry price
+- **Wallets tab** — read-only on-chain wallet balances (EVM, Solana, Bitcoin)
 
 ### Market Data
 - Real-time prices: market cap, BTC dominance, 24h volume
 - Fear & Greed Index with history
 - Altcoin Season Index (90-day)
 - Top gainers/losers, trending coins, interactive heatmap
+- Coin analysis, whale tracking and Polymarket (Premium) as tabs of the Market page
 - Crypto news feed + economic calendar
 
 ### Plans & Analysis
@@ -215,7 +213,7 @@ flowchart LR
 TradeOS/
 ├── src/
 │   ├── components/
-│   │   ├── analytics/       # Advanced stats, equity curve, heatmap, streaks
+│   │   ├── analytics/       # Equity curve, session, day-of-week, duration charts
 │   │   ├── auth/            # Login page
 │   │   ├── backtest/        # Backtesting tracker & analytics
 │   │   ├── dashboard/       # Dashboard, stat cards, charts, performance tables
@@ -223,16 +221,14 @@ TradeOS/
 │   │   ├── exchange/        # Exchange API settings & sync UI
 │   │   ├── journal/         # Trade journal, calendar, form, filters
 │   │   ├── layout/          # Header, sidebar, mobile nav
-│   │   ├── leaderboard/     # User rankings
 │   │   ├── market/          # Market overview
 │   │   ├── mentality/       # Morning/evening journals, mental stats
 │   │   ├── news/            # News feed + economic calendar
-│   │   ├── notes/           # Trading notes
 │   │   ├── onboarding/      # First-time user wizard
 │   │   ├── plans/           # Trading plans & analysis cards
 │   │   ├── profile/         # User profile, notification settings
-│   │   ├── shared/          # Reusable UI components
-│   │   └── strategies/      # Custom strategy management
+│   │   ├── portfolio/       # Portfolio page (DCA + wallets tabs)
+│   │   └── shared/          # Reusable UI components
 │   ├── contexts/            # React contexts (Auth, Journal, Backtest)
 │   ├── hooks/               # Custom hooks (trades, stats, DCA, alerts, etc.)
 │   ├── services/            # Firebase, Firestore, push, exchange APIs

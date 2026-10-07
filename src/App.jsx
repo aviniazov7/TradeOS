@@ -1,6 +1,6 @@
 import { lazy, Suspense } from 'react';
 import { MotionConfig } from 'framer-motion';
-import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom';
+import { BrowserRouter, Routes, Route, Navigate, useSearchParams } from 'react-router-dom';
 import { AuthProvider } from './contexts/AuthContext';
 import { JournalProvider } from './contexts/JournalContext';
 import { BacktestProvider } from './contexts/BacktestContext';
@@ -19,7 +19,7 @@ import ErrorBoundary from './components/shared/ErrorBoundary';
 const loadDashboard = () => import('./components/dashboard/Dashboard');
 const loadTradeJournal = () => import('./components/journal/TradeJournal');
 const loadBacktestTracker = () => import('./components/backtest/BacktestTracker');
-const loadDCATracker = () => import('./components/dca/DCATracker');
+const loadPortfolioPage = () => import('./components/portfolio/PortfolioPage');
 const loadPlansPage = () => import('./components/plans/PlansPage');
 const loadProfilePage = () => import('./components/profile/ProfilePage');
 const loadMentalityZone = () => import('./components/mentality/MentalityZone');
@@ -30,15 +30,12 @@ const loadMentalStats = () => import('./components/mentality/MentalStats');
 const loadMarketOverview = () => import('./components/market/MarketOverview');
 const loadTradeAIPage = () => import('./components/market/TradeAIPage');
 const loadNewsPage = () => import('./components/news/NewsPage');
-const loadExchangeSettings = () => import('./components/exchange/ExchangeSettings');
-const loadWalletsPage = () => import('./components/wallets/WalletsPage');
 const loadPremiumPage = () => import('./components/premium/PremiumPage');
 const loadCheckoutPage = () => import('./components/premium/CheckoutPage');
 const loadCouponLanding = () => import('./components/premium/CouponLandingPage');
 const loadRefundPolicy = () => import('./components/legal/RefundPolicyPage');
 const loadAccessibility = () => import('./components/legal/AccessibilityStatement');
 const loadScannerPage = () => import('./components/signals/SignalsPage');
-const loadPolymarketPage = () => import('./components/polymarket/PolymarketPage');
 const loadWalletDetailPage = () => import('./components/polymarket/WalletDetailPage');
 const loadMarketDetailPage = () => import('./components/polymarket/MarketDetailPage');
 const loadAdminPanel = () => import('./components/admin/AdminPanel');
@@ -46,7 +43,7 @@ const loadAdminPanel = () => import('./components/admin/AdminPanel');
 const Dashboard = lazy(loadDashboard);
 const TradeJournal = lazy(loadTradeJournal);
 const BacktestTracker = lazy(loadBacktestTracker);
-const DCATracker = lazy(loadDCATracker);
+const PortfolioPage = lazy(loadPortfolioPage);
 const PlansPage = lazy(loadPlansPage);
 const ProfilePage = lazy(loadProfilePage);
 const MentalityZone = lazy(loadMentalityZone);
@@ -57,15 +54,12 @@ const MentalStats = lazy(loadMentalStats);
 const MarketOverview = lazy(loadMarketOverview);
 const TradeAIPage = lazy(loadTradeAIPage);
 const NewsPage = lazy(loadNewsPage);
-const ExchangeSettings = lazy(loadExchangeSettings);
-const WalletsPage = lazy(loadWalletsPage);
 const PremiumPage = lazy(loadPremiumPage);
 const CheckoutPage = lazy(loadCheckoutPage);
 const CouponLandingPage = lazy(loadCouponLanding);
 const RefundPolicyPage = lazy(loadRefundPolicy);
 const AccessibilityStatement = lazy(loadAccessibility);
 const ScannerPage = lazy(loadScannerPage);
-const PolymarketPage = lazy(loadPolymarketPage);
 const WalletDetailPage = lazy(loadWalletDetailPage);
 const MarketDetailPage = lazy(loadMarketDetailPage);
 const AdminPanel = lazy(loadAdminPanel);
@@ -85,6 +79,16 @@ if (typeof window !== 'undefined') {
       loadTradeJournal();
     });
   }
+}
+
+// Polymarket now lives as a tab of the Market page. Old links may carry the
+// board's sub-tab as ?tab=markets — carry it over as ?pm= so they still land
+// on the same view.
+function PolymarketRedirect() {
+  const [searchParams] = useSearchParams();
+  const sub = searchParams.get('tab');
+  const to = sub ? `/market?tab=polymarket&pm=${encodeURIComponent(sub)}` : '/market?tab=polymarket';
+  return <Navigate to={to} replace />;
 }
 
 function MainApp() {
@@ -116,7 +120,11 @@ function MainApp() {
                 <Route index element={<Dashboard />} />
                 <Route path="journal" element={<TradeJournal />} />
                 <Route path="backtest" element={<BacktestTracker />} />
-                <Route path="dca" element={<DCATracker />} />
+                {/* DCA + wallets are the two tabs of the Portfolio page; the old
+                    paths stay as redirects so links/bookmarks land right. */}
+                <Route path="portfolio" element={<PortfolioPage />} />
+                <Route path="dca" element={<Navigate to="/portfolio?tab=dca" replace />} />
+                <Route path="wallets" element={<Navigate to="/portfolio?tab=wallets" replace />} />
                 <Route path="plans" element={<PlansPage />} />
                 <Route path="mentality" element={<MentalityZone />} />
                 <Route path="mentality/morning" element={<MorningJournal />} />
@@ -129,16 +137,16 @@ function MainApp() {
                 <Route path="whales" element={<Navigate to="/market?tab=whales" replace />} />
                 {/* Wyckoff setup scanner — owner-only while it's being calibrated. */}
                 <Route path="scanner" element={<AdminRoute><ScannerPage /></AdminRoute>} />
-                {/* Visible to all in the menu; the page shows a locked teaser to non-premium (no PremiumRoute redirect). */}
-                {/* Own boundary: this section streams live third-party data, so a
-                    throw here should degrade the page, not blank the whole app. */}
-                <Route path="polymarket" element={<ErrorBoundary><PolymarketPage /></ErrorBoundary>} />
+                {/* Polymarket is a tab of the Market page (locked teaser for
+                    non-premium there); its detail pages keep their own routes
+                    with their own boundary, since they stream live third-party data. */}
+                <Route path="polymarket" element={<PolymarketRedirect />} />
                 <Route path="polymarket/wallet/:address" element={<ErrorBoundary><WalletDetailPage /></ErrorBoundary>} />
                 <Route path="polymarket/market/:conditionId" element={<ErrorBoundary><MarketDetailPage /></ErrorBoundary>} />
                 <Route path="trade-ai" element={<TradeAIPage />} />
                 <Route path="news" element={<NewsPage />} />
-                <Route path="exchange" element={<ExchangeSettings />} />
-                <Route path="wallets" element={<WalletsPage />} />
+                {/* Exchange connections live in the journal's "exchange" tab. */}
+                <Route path="exchange" element={<Navigate to="/journal?tab=exchange" replace />} />
                 {/* Watchlist is now folded into the scanner page (tag coins there);
                     keep the path as a redirect so old links still land right. */}
                 <Route path="watchlist" element={<Navigate to="/scanner" replace />} />
@@ -147,6 +155,8 @@ function MainApp() {
                 <Route path="refund-policy" element={<RefundPolicyPage />} />
                 <Route path="admin" element={<AdminPanel />} />
                 <Route path="profile" element={<ProfilePage />} />
+                {/* Unknown URLs go home instead of rendering a blank page. */}
+                <Route path="*" element={<Navigate to="/" replace />} />
               </Route>
             </Routes>
           </Suspense>

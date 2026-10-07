@@ -156,7 +156,7 @@ export default function WalletDetailPage() {
     return [...positions].sort((a, b) => f(b) - f(a));
   }, [positions, sort]);
 
-  if (!isPremium) return <Navigate to="/polymarket" replace />;
+  if (!isPremium) return <Navigate to="/market?tab=polymarket" replace />;
 
   const name = row?.name || shortWallet(address);
   const link = profileUrl(address);
@@ -164,7 +164,7 @@ export default function WalletDetailPage() {
   return (
     <motion.div variants={pageVariants} initial="initial" animate="animate" exit="exit" transition={pageTransition} className="max-w-3xl mx-auto">
       {/* Back */}
-      <button onClick={() => navigate(state?.from || '/polymarket')} className="inline-flex items-center gap-1.5 text-sm text-text-muted hover:text-text-primary transition-colors mb-3 cursor-pointer">
+      <button onClick={() => navigate(state?.from || '/market?tab=polymarket')} className="inline-flex items-center gap-1.5 text-sm text-text-muted hover:text-text-primary transition-colors mb-3 cursor-pointer">
         <ArrowRight className="w-4 h-4" /> חזרה לדירוג
       </button>
 
