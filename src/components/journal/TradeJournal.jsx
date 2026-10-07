@@ -1,7 +1,7 @@
 import { useState, useMemo, useEffect, useRef, lazy, Suspense } from 'react';
 import { useSearchParams } from 'react-router-dom';
 import { motion } from 'framer-motion';
-import { Plus, BookOpen, Settings, Undo2, BrainCircuit, ListChecks, Trash2, AlertTriangle, Sparkles } from 'lucide-react';
+import { Plus, BookOpen, Settings, Undo2, BrainCircuit, ListChecks, Trash2, AlertTriangle, Sparkles, Briefcase } from 'lucide-react';
 import toast from 'react-hot-toast';
 import { useTrades } from '../../hooks/useTrades';
 import { useCryptoPrices } from '../../hooks/useCryptoPrices';
@@ -14,6 +14,9 @@ import { KEY_PROBLEM_TEXT } from '../../services/exchangeService';
 import { useExchangeImport } from '../../hooks/useExchangeImport';
 import JournalSwitcher from './JournalSwitcher';
 import PageHeader from '../shared/PageHeader';
+import StockMarketPanel from '../stocks/StockMarketPanel';
+import { useStockQuotes } from '../../hooks/useStockQuotes';
+import { stockSymbol } from '../../utils/stocks';
 import { headerIconBtn, headerPrimaryBtn, headerAiBtn } from '../shared/headerStyles';
 import JournalSummaryBar from './JournalSummaryBar';
 import TradeTable from './TradeTable';
@@ -84,7 +87,16 @@ export default function TradeJournal() {
   const { activeJournal, activeJournalId, journals, addJournal } = useJournalContext();
   const { trades, loading, addTrade, addTradesBulk, updateTrade, deleteTrade } = useTrades(activeJournalId);
   const { prices } = useCryptoPrices();
-  const livePriceOf = (trade) => prices[getCoinFromPair(trade.pair)]?.price;
+  // Stock journals: live quotes for the tickers that are still open.
+  const isStockJournal = activeJournal?.assetClass === 'stocks';
+  const openStockSymbols = useMemo(
+    () => trades.filter((t) => t.assetClass === 'stocks' && !isClosedTrade(t)).map((t) => t.pair),
+    [trades],
+  );
+  const { quotes: stockQuotes } = useStockQuotes(openStockSymbols, { enabled: openStockSymbols.length > 0 });
+  const livePriceOf = (trade) => (trade.assetClass === 'stocks'
+    ? stockQuotes[stockSymbol(trade.pair)]?.price
+    : prices[getCoinFromPair(trade.pair)]?.price);
   const isLimitPending = (trade) => {
     if (trade.orderType !== 'limit' || trade.exitPrice > 0) return false;
     if (trade.limitTriggered) return false; // triggered → active, not pending
@@ -331,7 +343,7 @@ export default function TradeJournal() {
       if (live) map[t.id] = live;
     });
     return map;
-  }, [filteredTrades, prices]); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [filteredTrades, prices, stockQuotes]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const sortedTrades = useMemo(() => sortJournalTrades(filteredTrades, sort, liveById), [filteredTrades, sort, liveById]);
   const changeSort = (key) => setSort((cur) => (
@@ -552,8 +564,8 @@ export default function TradeJournal() {
       {/* The shared page header: the journal's name (switcher) under the title,
           its views as tabs, and the two actions. */}
       <PageHeader
-        icon={BookOpen}
-        title="יומן המסחר"
+        icon={isStockJournal ? Briefcase : BookOpen}
+        title={isStockJournal ? 'יומן מניות' : 'יומן המסחר'}
         titleAside={<JournalSwitcher compact />}
         tabs={{
           tabs: JOURNAL_TABS.map((id) => ({ id, label: TAB_LABELS[id], mobileLabel: TAB_MOBILE_LABELS[id], count: id === 'trades' ? trades.length : 0 })),
@@ -581,6 +593,7 @@ export default function TradeJournal() {
 
       {tab === 'trades' && (
         <>
+          {isStockJournal && <StockMarketPanel trades={trades} quotes={stockQuotes} />}
           {/* The linked exchange's API key stopped working (e.g. a MEXC key
               expired after 90 days) — sync and the live balance silently
               stop, so say it here with a one-click way to fix it. */}

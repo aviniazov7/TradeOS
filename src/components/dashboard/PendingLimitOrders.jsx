@@ -857,7 +857,7 @@ export default function PendingLimitOrders({ trades, livePrices }) {
                   style={{ backgroundImage: 'radial-gradient(150% 130% at 100% 0%, rgba(59,130,246,0.13) 0%, transparent 55%)' }}>
                   {/* Card header — coin + direction always left, actions right */}
                   <div className="flex items-center gap-2" dir="ltr">
-                    <CoinIcon pair={pair} className={`w-4 h-4 shrink-0 ${!isTradeActive ? 'opacity-50' : ''}`} />
+                    <CoinIcon pair={pair} assetClass={trade.assetClass} className={`w-4 h-4 shrink-0 ${!isTradeActive ? 'opacity-50' : ''}`} />
                     <span className={`text-sm font-bold ${isTradeActive ? 'text-text-primary' : 'text-text-muted'}`}>{pair}</span>
                     <span className={`text-[10px] font-bold px-1.5 py-0.5 rounded ${trade.direction === 'long' ? 'bg-profit/15 text-profit' : 'bg-loss/15 text-loss'} ${!isTradeActive ? 'opacity-50' : ''}`}>
                       {trade.direction === 'long' ? 'Long' : 'Short'}

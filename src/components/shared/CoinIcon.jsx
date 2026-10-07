@@ -1,5 +1,6 @@
 import { useState, useEffect } from 'react';
 import { getCachedImage, prefetchCoinImages } from '../../services/coinImageCache';
+import StockLogo from '../stocks/StockLogo';
 
 const SYMBOL_COLORS = {
   BTC: '#f7931a', ETH: '#627eea', SOL: '#9945ff', BNB: '#f3ba2f',
@@ -18,7 +19,14 @@ export function getCoinIcon(pair) {
   return getCachedImage(symbol);
 }
 
-export default function CoinIcon({ pair, className = 'w-4 h-4' }) {
+// A trade's icon: the company logo for a stock trade, the coin image otherwise.
+// Callers that render trades pass the trade's assetClass; everything else is crypto.
+export default function CoinIcon({ pair, className = 'w-4 h-4', assetClass }) {
+  if (assetClass === 'stocks') return <StockLogo symbol={pair} className={className} rounded="rounded-full" />;
+  return <CryptoIcon pair={pair} className={className} />;
+}
+
+function CryptoIcon({ pair, className = 'w-4 h-4' }) {
   const symbol = (pair || '').replace(/USDT$/i, '').toUpperCase();
   const [imageUrl, setImageUrl] = useState(() => getCachedImage(symbol));
   const [failed, setFailed] = useState(false);

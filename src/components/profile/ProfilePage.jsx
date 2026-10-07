@@ -41,12 +41,11 @@ import { planExpiresMs } from '../../utils/premium';
 const APP_URL = 'https://tradeos-91a58.web.app';
 
 // What the user trades. Drives the new-trade form's default + which symbol
-// catalog it shows. Multi-select: pick crypto, futures, or both. Stocks is
-// on the roadmap (epic) but not wired yet, so it's shown disabled.
+// catalog it shows. Multi-select (Premium): crypto, futures, stocks.
 const ASSET_CLASSES = [
   { id: 'crypto', label: 'קריפטו', desc: 'מטבעות וחוזי פרפ', Icon: Coins },
   { id: 'futures_cme', label: 'חוזים עתידיים', desc: 'מדדים וסחורות — ES, NQ, GC', Icon: LineChart },
-  { id: 'stocks', label: 'מניות', desc: 'בקרוב', Icon: Briefcase, soon: true },
+  { id: 'stocks', label: 'מניות', desc: 'מניות ו-ETF — AAPL, NVDA, SPY', Icon: Briefcase },
 ];
 
 // Small section heading that groups the settings cards into clear topics.

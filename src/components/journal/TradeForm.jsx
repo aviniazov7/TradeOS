@@ -6,6 +6,7 @@ import 'react-datepicker/dist/react-datepicker.css';
 import { X, Plus, AlertTriangle, ShieldAlert, Percent, TrendingUp, TrendingDown, Check, Clock, CircleDot, CheckCircle2, Target, ClipboardCheck, Gauge, ShieldCheck } from 'lucide-react';
 import Modal from '../shared/Modal';
 import PairSearch from './PairSearch';
+import StockSearch from '../stocks/StockSearch';
 import SelectDropdown from '../shared/SelectDropdown';
 import NumberStepper from '../shared/NumberStepper';
 import TimeframeSelector from '../shared/TimeframeSelector';
@@ -27,6 +28,7 @@ const defaultForm = {
   assetClass: 'crypto',
   pair: 'BTCUSDT',
   contracts: '1',
+  shares: '',
   direction: 'long',
   orderType: 'market',
   marketType: 'futures',
@@ -83,7 +85,7 @@ const MENTAL_RATINGS = [
 export default function TradeForm({ isOpen, onClose, trade, onSave, riskSettings, livePrices = {}, journalAssetClass = 'crypto' }) {
   // Asset class is owned by the JOURNAL — every trade inherits it, no per-trade
   // toggle. Editing a trade keeps that trade's own stored class.
-  const newTradeAssetClass = journalAssetClass === 'futures_cme' ? 'futures_cme' : 'crypto';
+  const newTradeAssetClass = ['futures_cme', 'stocks'].includes(journalAssetClass) ? journalAssetClass : 'crypto';
   const { allStrategies, addStrategy, removeStrategy } = useUserStrategies('journal');
   const { allTimeframes, addTimeframe, removeTimeframe } = useUserTimeframes();
   const { allTriggers, addTrigger, removeTrigger } = useUserTriggers();
@@ -151,6 +153,8 @@ export default function TradeForm({ isOpen, onClose, trade, onSave, riskSettings
         ...trade,
         // A pre-existing trade without assetClass is crypto (back-compat).
         assetClass: trade.assetClass || 'crypto',
+        // Stocks are sized in shares; the stored quantity IS the share count.
+        shares: trade.assetClass === 'stocks' && trade.quantity ? String(+Number(trade.quantity).toFixed(6)) : '',
         contracts: trade.contract?.contracts != null ? String(trade.contract.contracts) : '1',
         pair: trade.pair || trade.symbol || 'BTCUSDT',
         orderType: trade.orderType || 'market',
@@ -183,7 +187,7 @@ export default function TradeForm({ isOpen, onClose, trade, onSave, riskSettings
       setForm({
         ...defaultForm,
         assetClass: newTradeAssetClass,
-        pair: newTradeAssetClass === 'futures_cme' ? 'ES' : 'BTCUSDT',
+        pair: newTradeAssetClass === 'futures_cme' ? 'ES' : newTradeAssetClass === 'stocks' ? 'AAPL' : 'BTCUSDT',
       });
     }
     setActiveTab('trade');
@@ -207,6 +211,9 @@ export default function TradeForm({ isOpen, onClose, trade, onSave, riskSettings
   const isFutures = form.assetClass === 'futures_cme';
   const contractSpec = isFutures ? getContractSpec(form.pair) : null;
   const contractsNum = parseInt(form.contracts) || 0;
+  // Stocks: plain cash equity — size in shares, no leverage, dollar fees.
+  const isStocks = form.assetClass === 'stocks';
+  const sharesNum = parseFloat(form.shares) || 0;
 
   const addAdditionalExit = () => {
     setForm(f => ({ ...f, additionalExits: [...f.additionalExits, { price: '', percent: '', contracts: '' }] }));
@@ -253,14 +260,17 @@ export default function TradeForm({ isOpen, onClose, trade, onSave, riskSettings
   }, [form.entryPrice, form.stopLoss, form.riskAmount]);
 
   // Use auto-calculated or manual position size
-  const effectivePositionSize = autoPositionSize ?? (parseFloat(form.positionSize) || 0);
+  // Stocks: an explicit share count wins over the risk-derived size.
+  const effectivePositionSize = (isStocks && sharesNum > 0 && parseFloat(form.entryPrice) > 0)
+    ? sharesNum * parseFloat(form.entryPrice)
+    : autoPositionSize ?? (parseFloat(form.positionSize) || 0);
 
   // Calculated margin
   const calculatedMargin = useMemo(() => {
-    const lev = parseInt(form.leverage) || 1;
+    const lev = isStocks ? 1 : (parseInt(form.leverage) || 1);
     if (!effectivePositionSize) return null;
     return effectivePositionSize / lev;
-  }, [effectivePositionSize, form.leverage]);
+  }, [effectivePositionSize, form.leverage, isStocks]);
 
   // Calculated quantity (for internal use)
   const calculatedQty = useMemo(() => {
@@ -304,14 +314,14 @@ export default function TradeForm({ isOpen, onClose, trade, onSave, riskSettings
       : calculatePartialPnL(form.direction, entry, allExits, calculatedQty);
     const pnlPercent = isImported
       ? (typeof form.pnlPercent === 'number' ? form.pnlPercent : calculatePnLPercent(pnl, entry, calculatedQty, form.leverage))
-      : calculatePnLPercent(pnl, entry, calculatedQty, form.leverage);
+      : calculatePnLPercent(pnl, entry, calculatedQty, isStocks ? 1 : form.leverage);
     const weightedExit = calculateWeightedExitPrice(allExits);
     const rrRatio = calculateRR(entry, weightedExit, sl);
     const netPnl = calculateNetPnL(pnl, fees);
 
     return { pnl, pnlPercent, rrRatio, netPnl };
   }, [form.direction, form.entryPrice, form.additionalExits, form.stopLoss, calculatedQty, form.fees,
-      form.leverage, form.pnlFromExchange, form.pnlPercent, isFutures, contractSpec, contractsNum]);
+      form.leverage, form.pnlFromExchange, form.pnlPercent, isFutures, contractSpec, contractsNum, isStocks]);
 
   // Risk warning
   const riskInfo = useMemo(() => {
@@ -364,7 +374,7 @@ export default function TradeForm({ isOpen, onClose, trade, onSave, riskSettings
         return;
       }
     } else if (!ps || ps <= 0) {
-      toast.error('נא להזין סיכון או גודל עסקה');
+      toast.error(isStocks ? 'נא להזין מספר מניות או סכום סיכון' : 'נא להזין סיכון או גודל עסקה');
       return;
     }
 
@@ -440,7 +450,7 @@ export default function TradeForm({ isOpen, onClose, trade, onSave, riskSettings
       const quantity = isFutures ? contractsNum : ps / entryPrice;
       // Match ImportTrades' clamp range (1–200x) so manual entry can't produce
       // out-of-range values that break downstream stats.
-      const leverage = isFutures ? 1 : Math.min(200, Math.max(1, parseInt(form.leverage) || 1));
+      const leverage = (isFutures || isStocks) ? 1 : Math.min(200, Math.max(1, parseInt(form.leverage) || 1));
 
       const allExits = validAdditional;
       const exitPrice = calculateWeightedExitPrice(allExits);
@@ -462,7 +472,7 @@ export default function TradeForm({ isOpen, onClose, trade, onSave, riskSettings
         pair: finalPair,
         direction: form.direction,
         orderType: form.orderType || 'market',
-        marketType: 'futures',
+        marketType: isStocks ? 'spot' : 'futures',
         strategy: finalStrategy,
         timeframe: finalTimeframe,
         trigger: finalTrigger,
@@ -587,6 +597,11 @@ export default function TradeForm({ isOpen, onClose, trade, onSave, riskSettings
                   onChange={(sym) => update('pair', sym)}
                   options={FUTURES_CONTRACTS.map((c) => ({ value: c.symbol, label: `${c.symbol} — ${c.name}` }))}
                   placeholder="בחר חוזה..."
+                />
+              ) : isStocks ? (
+                <StockSearch
+                  value={form.pair}
+                  onChange={(sym) => update('pair', sym)}
                 />
               ) : (
                 <PairSearch
@@ -781,6 +796,21 @@ export default function TradeForm({ isOpen, onClose, trade, onSave, riskSettings
                   <input type="number" step="any" value={form.fees} onChange={(e) => update('fees', e.target.value)} className={inputClass} placeholder="0.00" />
                 </div>
               </div>
+            ) : isStocks ? (
+              <div className="grid grid-cols-3 gap-2">
+                <div>
+                  <label className={labelClass}>מספר מניות</label>
+                  <input type="number" step="any" min="0" value={form.shares} onChange={(e) => update('shares', e.target.value)} className={inputClass} placeholder="10" inputMode="decimal" />
+                </div>
+                <div>
+                  <label className={labelClass}>{sharesNum > 0 ? 'סיכון ($) · לתיעוד' : 'או לפי סיכון ($)'}</label>
+                  <input type="number" step="any" value={form.riskAmount} onChange={(e) => update('riskAmount', e.target.value)} className={inputClass} placeholder="100" inputMode="decimal" />
+                </div>
+                <div>
+                  <label className={labelClass}>עמלות ($)</label>
+                  <input type="number" step="any" value={form.fees} onChange={(e) => update('fees', e.target.value)} className={inputClass} placeholder="0.00" />
+                </div>
+              </div>
             ) : (
               <div className="grid grid-cols-3 gap-2">
                 <div>
@@ -822,6 +852,16 @@ export default function TradeForm({ isOpen, onClose, trade, onSave, riskSettings
                   <div><span className="text-text-muted">נומינלי: </span><span className="text-accent-primary font-semibold">${calculateFuturesNotional(parseFloat(form.entryPrice), contractSpec.pointValue, contractsNum).toLocaleString('en-US', { maximumFractionDigits: 0 })}</span></div>
                   <div><span className="text-text-muted">ערך נקודה: </span><span className="text-text-primary font-medium">${contractSpec.pointValue}</span></div>
                   <div><span className="text-text-muted">חוזים: </span><span className="text-text-primary font-medium">{contractsNum}</span></div>
+                </div>
+              )
+            ) : isStocks ? (
+              effectivePositionSize > 0 && (
+                <div className="bg-bg-tertiary rounded-lg p-2 flex flex-wrap gap-x-4 gap-y-0.5 text-[11px]">
+                  <div><span className="text-text-muted">שווי פוזיציה: </span><span className="text-accent-primary font-semibold">${effectivePositionSize.toLocaleString('en-US', { maximumFractionDigits: 2 })}</span></div>
+                  <div><span className="text-text-muted">מניות: </span><span className="text-text-primary font-medium">{+calculatedQty.toFixed(4)}</span></div>
+                  {parseFloat(form.stopLoss) > 0 && (
+                    <div><span className="text-text-muted">סיכון עד הסטופ: </span><span className="text-loss font-medium">${(calculatedQty * Math.abs(parseFloat(form.entryPrice) - parseFloat(form.stopLoss))).toFixed(2)}</span></div>
+                  )}
                 </div>
               )
             ) : (
