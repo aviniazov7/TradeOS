@@ -216,14 +216,20 @@ export default function TradeJournal() {
   }, []);
 
   // Reset filters when switching journals — prevents stale filters from one journal
-  // bleeding into another (e.g. filtering by strategy "SOW" that doesn't exist in Journal B)
+  // bleeding into another (e.g. filtering by strategy "SOW" that doesn't exist in Journal B).
+  // Only on a REAL switch (one journal id → another): this effect also runs on
+  // mount and when the journal list loads (null → id), and resetting there
+  // wiped the filters just restored from localStorage ('tj_filters').
+  const prevJournalIdRef = useRef(activeJournalId);
   useEffect(() => {
-    setFilters(defaultFilters);
+    const prev = prevJournalIdRef.current;
+    prevJournalIdRef.current = activeJournalId;
+    if (prev && activeJournalId && prev !== activeJournalId) setFilters(defaultFilters);
   }, [activeJournalId]);
 
   // Persist filters to localStorage
   useEffect(() => {
-    try { localStorage.setItem('tj_filters', JSON.stringify(filters)); } catch {}
+    try { localStorage.setItem('tj_filters', JSON.stringify(filters)); } catch { /* storage unavailable */ }
   }, [filters]);
 
   useEffect(() => {
