@@ -1,7 +1,7 @@
 import { useState, useMemo, useEffect, useRef, lazy, Suspense } from 'react';
 import { useSearchParams } from 'react-router-dom';
 import { motion } from 'framer-motion';
-import { Plus, BookOpen, Settings, Undo2, BrainCircuit, ListChecks, Trash2, AlertTriangle } from 'lucide-react';
+import { Plus, BookOpen, Settings, Undo2, BrainCircuit, ListChecks, Trash2, AlertTriangle, Sparkles } from 'lucide-react';
 import toast from 'react-hot-toast';
 import { useTrades } from '../../hooks/useTrades';
 import { useCryptoPrices } from '../../hooks/useCryptoPrices';
@@ -14,7 +14,7 @@ import { KEY_PROBLEM_TEXT } from '../../services/exchangeService';
 import { useExchangeImport } from '../../hooks/useExchangeImport';
 import JournalSwitcher from './JournalSwitcher';
 import PageHeader from '../shared/PageHeader';
-import { headerIconBtn, headerPrimaryBtn } from '../shared/headerStyles';
+import { headerIconBtn, headerPrimaryBtn, headerAiBtn } from '../shared/headerStyles';
 import JournalSummaryBar from './JournalSummaryBar';
 import TradeTable from './TradeTable';
 import TradeFilters from './TradeFilters';
@@ -562,13 +562,17 @@ export default function TradeJournal() {
           layoutKey: 'journal-tab',
         }}
         actions={(
-          <div className="flex items-center gap-2 w-full sm:w-auto">
-            {tab === 'analytics' && <div className="hidden md:block"><TimePeriodFilter value={period} onChange={setPeriod} compact /></div>}
-            {tab === 'analytics' && <div className="md:hidden"><TimePeriodFilter value={period} onChange={setPeriod} dropdown /></div>}
+          <div className="flex flex-wrap items-center gap-2 w-full sm:w-auto">
+            {tab === 'analytics' && <TimePeriodFilter value={period} onChange={setPeriod} />}
+            {/* The AI analysis — a compact header action instead of a full-width banner */}
+            <button onClick={() => setAiModalOpen(true)} className={headerAiBtn} title="ניתוח AI של המסחר שלך">
+              <Sparkles className="w-[18px] h-[18px]" />
+              <span className="hidden sm:inline">ניתוח AI</span>
+            </button>
             <button onClick={() => setSettingsOpen(true)} className={headerIconBtn} title="הגדרות יומן" aria-label="הגדרות יומן">
               <Settings className="w-[18px] h-[18px]" />
             </button>
-            <button onClick={() => setFormOpen(true)} className={`${headerPrimaryBtn} flex-1 sm:flex-none`}>
+            <button onClick={() => setFormOpen(true)} className={`${headerPrimaryBtn} flex-1 sm:flex-none min-w-[8.5rem]`}>
               <Plus className="w-4 h-4" /> עסקה חדשה
             </button>
           </div>
@@ -713,7 +717,6 @@ export default function TradeJournal() {
             activeJournal={activeJournal}
             balanceIsLive={balanceIsLive}
             displayedCurrentBalance={displayedCurrentBalance}
-            onOpenAI={() => setAiModalOpen(true)}
             onFilterJump={filterAndJump}
             onAddFirstTrade={() => { setTab('trades'); setFormOpen(true); }}
           />

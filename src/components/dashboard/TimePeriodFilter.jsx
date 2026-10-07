@@ -1,69 +1,98 @@
 import { useState, useRef, useEffect } from 'react';
-import { ChevronDown } from 'lucide-react';
-import { TIME_PERIODS } from '../../utils/constants';
+import { createPortal } from 'react-dom';
+import { CalendarDays, ChevronDown, Check } from 'lucide-react';
 
-export default function TimePeriodFilter({ value, onChange, dropdown }) {
+// Rolling windows (see filterTradesByPeriod): the label says exactly what is
+// counted, so "שבוע" is never read as "this calendar week".
+const PERIODS = [
+  { key: 'week', label: '7 הימים האחרונים', short: '7 ימים' },
+  { key: 'month', label: 'החודש האחרון', short: 'חודש' },
+  { key: 'year', label: 'השנה האחרונה', short: 'שנה' },
+  { key: 'all', label: 'כל הזמן', short: 'כל הזמן' },
+];
+
+// One compact button (same height as the header's icon buttons) that opens a
+// short menu. The menu lives in a portal so a header card with overflow
+// clipping, or an animated list, can never cut it off.
+export default function TimePeriodFilter({ value, onChange }) {
   const [open, setOpen] = useState(false);
-  const ref = useRef(null);
-  const currentLabel = TIME_PERIODS.find((p) => p.key === value)?.label || value;
+  const [pos, setPos] = useState(null);
+  const btnRef = useRef(null);
+  const current = PERIODS.find((p) => p.key === value) || PERIODS[3];
+
+  const place = () => {
+    const r = btnRef.current?.getBoundingClientRect();
+    if (!r) return;
+    // Anchor the menu's left edge to the button's left edge (RTL page: the
+    // button sits at the left end of the header), clamped to the viewport.
+    const width = 200;
+    const left = Math.max(8, Math.min(r.left, window.innerWidth - width - 8));
+    setPos({ top: r.bottom + 6, left, width });
+  };
 
   useEffect(() => {
-    if (!open) return;
-    const close = (e) => { if (ref.current && !ref.current.contains(e.target)) setOpen(false); };
-    document.addEventListener('pointerdown', close);
-    return () => document.removeEventListener('pointerdown', close);
+    if (!open) return undefined;
+    const onKey = (e) => { if (e.key === 'Escape') setOpen(false); };
+    window.addEventListener('resize', place);
+    window.addEventListener('scroll', place, true);
+    window.addEventListener('keydown', onKey);
+    return () => {
+      window.removeEventListener('resize', place);
+      window.removeEventListener('scroll', place, true);
+      window.removeEventListener('keydown', onKey);
+    };
   }, [open]);
 
-  if (dropdown) {
-    return (
-      <div ref={ref} className="relative">
-        <button
-          onClick={() => setOpen((v) => !v)}
-          className="h-9 inline-flex items-center gap-1 px-3 rounded-lg border border-border-primary text-[11px] font-medium text-accent-primary cursor-pointer transition-colors hover:bg-bg-tertiary"
-        >
-          {currentLabel}
-          <ChevronDown className={`w-3 h-3 transition-transform duration-200 ${open ? 'rotate-180' : ''}`} />
-        </button>
-        {open && (
-          <div className="absolute top-full left-0 mt-1 bg-bg-overlay border border-border-primary rounded-lg shadow-xl z-50 min-w-[100px] overflow-hidden">
-            {TIME_PERIODS.map((p) => (
-              <button
-                key={p.key}
-                onClick={() => { onChange(p.key); setOpen(false); }}
-                className={`block w-full text-right px-3 py-2 text-xs font-medium transition-colors cursor-pointer ${
-                  value === p.key
-                    ? 'bg-accent-primary/15 text-accent-primary'
-                    : 'text-text-muted hover:text-text-primary hover:bg-bg-tertiary'
-                }`}
-              >
-                {p.label}
-              </button>
-            ))}
-          </div>
-        )}
-      </div>
-    );
-  }
-
-  // Segmented control. A bordered track (no translucent fill) so it matches the
-  // other toolbar icon-buttons and never picks up the global glass blur that
-  // made it look like a nested "mirror" panel. Equal-width pills so every
-  // period reads the same size.
   return (
-    <div className="h-9 inline-flex items-center gap-0.5 rounded-lg border border-border-primary px-1">
-      {TIME_PERIODS.map((p) => (
-        <button
-          key={p.key}
-          onClick={() => onChange(p.key)}
-          className={`h-7 min-w-[2.5rem] inline-flex items-center justify-center rounded-md text-xs font-medium transition-colors cursor-pointer ${
-            value === p.key
-              ? 'bg-accent-primary text-black'
-              : 'text-text-muted hover:text-text-primary'
-          }`}
-        >
-          {p.label}
-        </button>
-      ))}
-    </div>
+    <>
+      <button
+        ref={btnRef}
+        type="button"
+        onClick={() => { if (!open) place(); setOpen((v) => !v); }}
+        aria-haspopup="listbox"
+        aria-expanded={open}
+        title="תקופה"
+        className={`h-11 shrink-0 inline-flex items-center gap-2 px-3 sm:px-3.5 rounded-xl border bg-bg-tertiary text-sm font-semibold transition-colors cursor-pointer ${
+          open ? 'border-accent-primary/50 text-text-primary' : 'border-border-primary text-text-secondary hover:text-text-primary hover:border-border-hover'
+        }`}
+      >
+        <CalendarDays className="w-[18px] h-[18px] text-accent-hover" />
+        <span className="whitespace-nowrap">{current.short}</span>
+        <ChevronDown className={`hidden sm:block w-4 h-4 text-text-muted transition-transform ${open ? 'rotate-180' : ''}`} />
+      </button>
+
+      {open && pos && createPortal(
+        <div className="fixed inset-0 z-[100]" onClick={() => setOpen(false)}>
+          <div
+            role="listbox"
+            aria-label="תקופה"
+            dir="rtl"
+            className="absolute rounded-xl border border-border-primary bg-bg-overlay shadow-[0_16px_48px_rgba(0,0,0,0.5)] p-1"
+            style={{ top: pos.top, left: pos.left, width: pos.width }}
+            onClick={(e) => e.stopPropagation()}
+          >
+            {PERIODS.map((p) => {
+              const on = p.key === current.key;
+              return (
+                <button
+                  key={p.key}
+                  type="button"
+                  role="option"
+                  aria-selected={on}
+                  onClick={() => { onChange(p.key); setOpen(false); }}
+                  className={`w-full h-10 flex items-center justify-between gap-2 px-3 rounded-lg text-sm text-right transition-colors cursor-pointer ${
+                    on ? 'bg-accent-primary/12 text-accent-hover font-semibold' : 'text-text-primary hover:bg-bg-tertiary'
+                  }`}
+                >
+                  {p.label}
+                  {on && <Check className="w-4 h-4" />}
+                </button>
+              );
+            })}
+          </div>
+        </div>,
+        document.body,
+      )}
+    </>
   );
 }
