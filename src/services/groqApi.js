@@ -160,11 +160,13 @@ export async function sendMessageStream(messages, onChunk, retries = 2, context 
         if (err?.quotaExceeded) {
           throw new Error(err.error || 'הגעת למכסה היומית. תוכל להמשיך מחר.');
         }
-        if (attempt < retries) {
-          await new Promise((r) => setTimeout(r, (attempt + 1) * 3000));
+        // The worker already walked its whole provider chain before saying
+        // 429, so one calm retry is plenty — more just burns the rate limit.
+        if (attempt < Math.min(retries, 1)) {
+          await new Promise((r) => setTimeout(r, 4000));
           continue;
         }
-        throw new Error('שירות ה-AI עמוס כרגע (מגבלת קצב). המתן כ-30 שניות ונסה שוב.');
+        throw new Error(err.error || 'שירות ה-AI עמוס כרגע. נסה שוב בעוד דקה.');
       }
       if (response.status === 401) {
         // One silent recovery: a rejected token (revocation / clock skew / key
