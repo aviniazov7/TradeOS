@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useState } from 'react';
 import { ShieldAlert, Wallet, ClipboardList, Brain, HelpCircle, TrendingUp, ChevronDown } from 'lucide-react';
+import { LRM } from '../../utils/formatters';
 import { useAuth } from '../../contexts/AuthContext';
 import { useJournalContext } from '../../contexts/JournalContext';
 import { useLinkedExchangeBalance } from '../../hooks/useLinkedExchangeBalance';
@@ -10,42 +11,39 @@ import { buildPsychologyStats } from '../../utils/coachPsychology';
 import { pickActivePlan } from '../../utils/pickActivePlan';
 import RiskSupervisor from './RiskSupervisor';
 
-const fmt$ = (v) => `$${Math.abs(v).toFixed(2)}`;
+const fmt$ = (v, gain) => `${LRM}${gain ? '+' : '-'}$${Math.abs(v).toLocaleString('en-US', { maximumFractionDigits: v >= 100 ? 0 : 2 })}`;
 const PREVIEW = 3;
 
 // Where a finding came from, so two different measurements of "did I follow my
 // plan" can never be read as one number confirming the other.
 const SOURCE = {
-  plan: { label: 'כללי התוכנית · לפי עסקה', Icon: ClipboardList },
-  psych: { label: 'יומן בוקר/ערב · לפי יום', Icon: Brain },
+  plan: { label: 'מול התוכנית', Icon: ClipboardList },
+  psych: { label: 'מצב רוח · יומן בוקר/ערב', Icon: Brain },
 };
 
-function FindingRows({ rows, max }) {
+// One finding per row: what happened on the right, what it moved in dollars
+// on the left — the figure is the point, so it gets the weight.
+function FindingRows({ rows }) {
   return (
-    <ul className="space-y-2">
+    <ul className="rounded-2xl border border-border-primary bg-bg-tertiary divide-y divide-border-primary overflow-hidden">
       {rows.map((r) => {
         const meta = SOURCE[r.source];
         const { Icon } = meta;
-        const share = Math.max((r.cost / max) * 100, 2);
+        const gain = r.kind === 'gain';
         return (
-          <li key={r.text} className="bg-bg-secondary border border-border-primary rounded-xl p-3">
-            <div className="flex items-start gap-2.5">
-              <Icon className="w-3.5 h-3.5 text-accent-primary shrink-0 mt-1" />
-              <div className="min-w-0 flex-1">
-                <p className="text-xs text-text-primary leading-relaxed">{r.text}</p>
-                {/* Only a priced finding gets a bar and a figure — a rule breach
-                    with no dollar amount must not be drawn as if it had one. */}
-                {r.priced !== false && (
-                  <div className="flex items-center gap-2 mt-1.5">
-                    <div className="h-1 flex-1 rounded-full bg-bg-tertiary overflow-hidden">
-                      <div className={`h-full rounded-full ${r.kind === 'gain' ? 'bg-profit' : 'bg-loss'}`} style={{ width: `${share}%` }} />
-                    </div>
-                    <span className="text-[10px] text-text-muted shrink-0" dir="ltr">{fmt$(r.cost)}</span>
-                  </div>
-                )}
-                <span className="inline-block text-[10px] text-text-muted mt-1">{meta.label}</span>
-              </div>
+          <li key={r.text} className="flex items-start gap-3 px-4 py-3">
+            {Icon && <Icon className="w-4 h-4 text-text-muted shrink-0 mt-0.5" />}
+            <div className="min-w-0 flex-1">
+              <p className="text-[13px] text-text-primary leading-relaxed">{r.text}</p>
+              <span className="inline-block text-[11px] text-text-muted mt-1">{meta.label}</span>
             </div>
+            {/* Only a priced finding gets a figure — a rule breach with no
+                dollar amount must not be drawn as if it had one. */}
+            {r.priced !== false && (
+              <span dir="ltr" className={`num-mono shrink-0 text-sm font-bold mt-0.5 ${gain ? 'text-profit' : 'text-loss'}`}>
+                {fmt$(r.cost, gain)}
+              </span>
+            )}
           </li>
         );
       })}
@@ -60,10 +58,12 @@ function Section({ icon, title, sub, children }) {
   const Icon = icon;
   return (
     <div>
-      <div className="flex flex-wrap items-center gap-2 mb-2">
-        <Icon className="w-4 h-4 text-accent-primary shrink-0" />
-        <h3 className="text-sm font-bold text-text-primary">{title}</h3>
-        {sub && <span className="text-[10px] text-text-muted">{sub}</span>}
+      <div className="flex flex-wrap items-baseline gap-x-2 gap-y-0.5 mb-2.5">
+        <h3 className="flex items-center gap-2 text-sm font-bold text-text-primary">
+          {Icon && <Icon className="w-4 h-4 text-accent-hover shrink-0" />}
+          {title}
+        </h3>
+        {sub && <span className="text-xs text-text-muted">{sub}</span>}
       </div>
       {children}
     </div>
@@ -76,12 +76,13 @@ function Section({ icon, title, sub, children }) {
  * AI call, no quota, and it is correct the moment the modal opens.
  */
 export default function AnalystInsights({ trades }) {
-  const { user, isPremium } = useAuth();
+  const { user } = useAuth();
   const { activeJournal } = useJournalContext();
   // undefined = still loading. Keeping it in one piece of state means the effect
   // never has to set anything synchronously just to show a skeleton.
   const [side, setSide] = useState(undefined);
   const [expanded, setExpanded] = useState(false);
+  const [gapsOpen, setGapsOpen] = useState(false);
 
   useEffect(() => {
     if (!user) return undefined;
@@ -157,33 +158,29 @@ export default function AnalystInsights({ trades }) {
     return rows;
   }, [loading, loadError, audit, plan, accountBalance, psych]);
 
-  if (loading) return <div className="h-28 rounded-xl bg-bg-secondary animate-pulse" />;
+  if (loading) return <div className="h-36 rounded-2xl bg-bg-tertiary animate-pulse" />;
 
   const shownCosts = expanded ? costs : costs.slice(0, PREVIEW);
-  const maxCost = Math.max(...costs.filter((r) => r.priced !== false).map((r) => r.cost), 1);
-  const maxGain = Math.max(...gains.filter((r) => r.priced !== false).map((r) => r.cost), 1);
 
   return (
-    <div className="space-y-4">
+    <div className="space-y-5">
       <Section
         icon={ShieldAlert}
         title="מפקח הסיכון"
-        sub={balanceIsLive
-          ? 'מצב הספר הפתוח ברגע זה · מחושב מול היתרה החיה בבורסה'
-          : 'מצב הספר הפתוח ברגע זה'}
+        sub={balanceIsLive ? 'עכשיו · מול היתרה החיה בבורסה' : 'מצב הפוזיציות הפתוחות עכשיו'}
       >
         {loadError
-          ? <p className="text-xs text-text-secondary bg-bg-secondary border border-border-primary rounded-xl p-3">{loadError} רענן כדי לנסות שוב — עד אז אין כאן תשובה, לא &quot;הכול תקין&quot;.</p>
+          ? <p className="text-[13px] text-text-secondary bg-bg-tertiary border border-border-primary rounded-2xl p-4">{loadError} רענן כדי לנסות שוב — עד אז אין כאן תשובה, לא &quot;הכול תקין&quot;.</p>
           : <RiskSupervisor risk={risk} />}
       </Section>
 
       {costs.length > 0 && (
-        <Section icon={Wallet} title="מה עולה לך כסף" sub="כל העסקאות הסגורות ביומן · לפי הסכום שזז בפועל">
-          <FindingRows rows={shownCosts} max={maxCost} />
+        <Section icon={Wallet} title="מה עולה לך כסף" sub="מכל העסקאות הסגורות · מהיקר לזול">
+          <FindingRows rows={shownCosts} />
           {costs.length > PREVIEW && (
             <button
               onClick={() => setExpanded((v) => !v)}
-              className="mt-2 inline-flex items-center gap-1 text-[11px] text-accent-primary hover:text-accent-hover cursor-pointer"
+              className="mt-2 inline-flex items-center gap-1 text-xs font-semibold text-accent-hover hover:text-accent-primary cursor-pointer"
             >
               <ChevronDown className={`w-3.5 h-3.5 transition-transform ${expanded ? 'rotate-180' : ''}`} />
               {expanded ? 'הצג פחות' : `עוד ${costs.length - PREVIEW} ממצאים`}
@@ -193,28 +190,34 @@ export default function AnalystInsights({ trades }) {
       )}
 
       {gains.length > 0 && (
-        <Section icon={TrendingUp} title="מה כן עובד לך" sub="אותה מדידה, בכיוון השני">
-          <FindingRows rows={gains} max={maxGain} />
+        <Section icon={TrendingUp} title="מה כן עובד לך">
+          <FindingRows rows={gains} />
         </Section>
       )}
 
       {gaps.length > 0 && (
-        <Section icon={HelpCircle} title="מה חסר כדי למדוד">
-          <ul className="bg-bg-secondary border border-border-primary rounded-xl p-3 space-y-1.5">
-            {gaps.map((g) => (
-              <li key={`${g.rule}-${g.reason}`} className="text-[11px] text-text-muted">
-                <span className="text-text-secondary font-medium">{g.rule}</span> — {g.reason}
-              </li>
-            ))}
-          </ul>
-        </Section>
-      )}
-
-      {!isPremium && (
-        <p className="text-[11px] text-text-muted">
-          המדדים כאן מכסים את כל העסקאות הסגורות ביומן. ניתוח ה-AI במסלול החינמי מכסה רק את החודש
-          הנוכחי, ולכן המספרים שם יהיו קטנים יותר.
-        </p>
+        <div className="rounded-2xl border border-dashed border-border-primary">
+          <button
+            onClick={() => setGapsOpen((v) => !v)}
+            aria-expanded={gapsOpen}
+            className="w-full flex items-center gap-2 px-4 py-3 text-right cursor-pointer"
+          >
+            <HelpCircle className="w-4 h-4 text-text-muted shrink-0" />
+            <span className="flex-1 text-[13px] text-text-secondary">
+              {gaps.length === 1 ? 'נתון אחד חסר כדי למדוד הכול' : `${gaps.length} נתונים חסרים כדי למדוד הכול`}
+            </span>
+            <ChevronDown className={`w-4 h-4 text-text-muted transition-transform ${gapsOpen ? 'rotate-180' : ''}`} />
+          </button>
+          {gapsOpen && (
+            <ul className="px-4 pb-3 space-y-1.5">
+              {gaps.map((g) => (
+                <li key={`${g.rule}-${g.reason}`} className="text-xs text-text-muted leading-relaxed">
+                  <span className="text-text-secondary font-semibold">{g.rule}</span> — {g.reason}
+                </li>
+              ))}
+            </ul>
+          )}
+        </div>
       )}
     </div>
   );

@@ -629,79 +629,75 @@ export default function AICoachPanel({ trades }) {
 
   return (
     <div className="space-y-4 mt-2 max-w-3xl mx-auto">
-      {/* Header card */}
+      {/* Header */}
       <motion.div
         initial={{ opacity: 0, y: 6 }} animate={{ opacity: 1, y: 0 }}
-        className="relative overflow-hidden rounded-2xl border border-accent-primary/25 bg-gradient-to-l from-accent-primary/10 via-bg-secondary to-bg-secondary p-5"
+        className="flex flex-wrap items-center justify-between gap-3 rounded-2xl border border-border-primary bg-bg-secondary px-4 py-3.5"
       >
-        <div className="flex items-start justify-between gap-3">
-          <div className="flex items-start gap-3">
-            <div className="shrink-0 w-11 h-11 rounded-2xl bg-accent-primary/15 border border-accent-primary/40 flex items-center justify-center">
-              <BrainCircuit className="w-6 h-6 text-accent-primary" />
+        <div className="flex items-center gap-3 min-w-0">
+          <span className="shrink-0 w-10 h-10 rounded-xl grid place-items-center" style={{ background: 'linear-gradient(135deg, #2563eb 0%, #38bdf8 100%)' }}>
+            <BrainCircuit className="w-5 h-5" style={{ color: '#06060a' }} />
+          </span>
+          <div className="min-w-0">
+            <div className="flex items-center gap-2">
+              <h2 className="text-base font-bold text-text-primary">ניתוח AI אישי</h2>
+              {isPremium && (
+                <span className="inline-flex items-center gap-1 text-[10px] px-1.5 py-0.5 rounded-full bg-accent-primary/15 text-accent-hover font-bold">
+                  <Crown className="w-2.5 h-2.5" /> Premium
+                </span>
+              )}
             </div>
-            <div>
-              <div className="flex items-center gap-2 mb-1">
-                <h2 className="text-base font-bold text-text-primary">ניתוח AI אישי</h2>
-                {isPremium && (
-                  <span className="inline-flex items-center gap-1 text-[10px] px-1.5 py-0.5 rounded-full bg-accent-primary text-bg-primary font-bold">
-                    <Crown className="w-2.5 h-2.5" /> Premium
-                  </span>
-                )}
-              </div>
-              <p className="text-xs text-text-secondary leading-relaxed">
-                ה-AI יעבור על העסקאות שלך, יזהה דפוסים, ויכתוב לך מה לשפר.
-                {!isPremium && ' במסלול החינמי הניתוח מבוסס על החודש האחרון בלבד.'}
-              </p>
-            </div>
+            <p className="text-xs text-text-secondary mt-0.5">
+              {isPremium ? 'מבוסס על כל העסקאות הסגורות ביומן' : 'במסלול החינמי: מבוסס על החודש האחרון'}
+            </p>
           </div>
-          <button
-            onClick={() => run(null)}
-            disabled={loading}
-            className="shrink-0 inline-flex items-center gap-1.5 px-4 py-2 rounded-xl bg-accent-primary text-bg-primary text-sm font-semibold hover:bg-accent-hover transition-colors cursor-pointer disabled:opacity-50"
-          >
-            {loading
-              ? <><RefreshCw className="w-4 h-4 animate-spin" /> מנתח...</>
-              : <><BrainCircuit className="w-4 h-4" /> נתח עסקאות</>}
-          </button>
         </div>
+        <button
+          onClick={() => run(null)}
+          disabled={loading}
+          className="shrink-0 inline-flex items-center gap-1.5 h-10 px-4 rounded-xl bg-accent-muted hover:bg-accent-primary text-white text-sm font-bold transition-colors cursor-pointer disabled:opacity-50"
+        >
+          {loading
+            ? <><RefreshCw className="w-4 h-4 animate-spin" /> מנתח...</>
+            : <><Sparkles className="w-4 h-4" /> ניתוח מלא</>}
+        </button>
       </motion.div>
 
       {/* Deterministic analysis — correct on open, costs nothing, needs no model */}
       <AnalystInsights trades={trades} />
 
-      <div className="flex items-center gap-2 pt-1">
-        <div className="h-px flex-1 bg-border-primary" />
-        <span className="text-[10px] text-text-muted">פרשנות AI</span>
-        <div className="h-px flex-1 bg-border-primary" />
-      </div>
-
-      {/* Quick prompts */}
-      <div className="flex flex-wrap gap-2">
-        {(isPremium ? [...FREE_PROMPTS, ...PREMIUM_PROMPTS] : FREE_PROMPTS).map((p) => (
-          <button
-            key={p.id}
-            onClick={() => run(p.id)}
-            disabled={loading}
-            className={`text-xs px-3 py-1.5 rounded-full border transition-colors cursor-pointer disabled:opacity-50 ${
-              activePrompt === p.id
-                ? 'bg-accent-primary/15 border-accent-primary text-accent-primary'
-                : 'bg-bg-secondary border-border-primary text-text-secondary hover:text-text-primary hover:border-border-hover'
-            }`}
-          >
-            {p.label}
-          </button>
-        ))}
-        {!isPremium && PREMIUM_PROMPTS.map((p) => (
-          <button
-            key={p.id}
-            onClick={() => navigate('/premium')}
-            className="text-xs px-3 py-1.5 rounded-full border border-accent-primary/30 bg-bg-secondary text-text-muted hover:text-accent-primary cursor-pointer inline-flex items-center gap-1"
-            title="שדרג ל-Premium כדי לפתוח"
-          >
-            <Lock className="w-3 h-3" />
-            {p.label}
-          </button>
-        ))}
+      {/* Focused questions for the model */}
+      <div className="rounded-2xl border border-border-primary bg-bg-secondary p-4">
+        <h3 className="flex items-center gap-2 text-sm font-bold text-text-primary mb-3">
+          <Sparkles className="w-4 h-4 text-accent-hover" /> שאל את ה-AI על המסחר שלך
+        </h3>
+        <div className="flex flex-wrap gap-2">
+          {(isPremium ? [...FREE_PROMPTS, ...PREMIUM_PROMPTS] : FREE_PROMPTS).map((p) => (
+            <button
+              key={p.id}
+              onClick={() => run(p.id)}
+              disabled={loading}
+              className={`text-[13px] h-9 px-3.5 rounded-xl border transition-colors cursor-pointer disabled:opacity-50 ${
+                activePrompt === p.id
+                  ? 'bg-accent-primary/15 border-accent-primary/60 text-accent-hover font-semibold'
+                  : 'bg-bg-tertiary border-border-primary text-text-secondary hover:text-text-primary hover:border-border-hover'
+              }`}
+            >
+              {p.label}
+            </button>
+          ))}
+          {!isPremium && PREMIUM_PROMPTS.map((p) => (
+            <button
+              key={p.id}
+              onClick={() => navigate('/premium')}
+              className="text-[13px] h-9 px-3.5 rounded-xl border border-dashed border-border-hover bg-transparent text-text-muted hover:text-accent-hover cursor-pointer inline-flex items-center gap-1.5"
+              title="שדרג ל-Premium כדי לפתוח"
+            >
+              <Lock className="w-3 h-3" />
+              {p.label}
+            </button>
+          ))}
+        </div>
       </div>
 
       {/* Thinking indicator while the model is working */}
@@ -760,8 +756,8 @@ export default function AICoachPanel({ trades }) {
 
       {/* Footer upsell for free users */}
       {!isPremium && (
-        <div className="text-center text-[11px] text-text-muted pt-2">
-          {`במסלול החינמי: 5 ניתוחים בחודש, מבוסס על החודש האחרון בלבד.`}
+        <div className="text-center text-xs text-text-muted pt-1">
+          {`במסלול החינמי: 5 ניתוחים בחודש.`}
           <button onClick={() => navigate('/premium')} className="text-accent-primary mr-1 cursor-pointer">
             שדרג ל-Premium לניתוחים ללא הגבלה
           </button>
