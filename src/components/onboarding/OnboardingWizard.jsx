@@ -1,7 +1,7 @@
 import { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { motion, AnimatePresence } from 'framer-motion';
-import { ChevronLeft, ChevronRight, PlusCircle, Link2 } from 'lucide-react';
+import { ChevronLeft, ChevronRight, PlusCircle, Link2, Check } from 'lucide-react';
 import { getUserProfile, setUserProfile } from '../../services/firestoreService';
 import { useAuth } from '../../contexts/AuthContext';
 import { onboardingStep } from '../../utils/animations';
@@ -61,32 +61,29 @@ export default function OnboardingWizard() {
           initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}
           transition={{ duration: 0.22 }}
         >
-          {/* Wizard card */}
           <motion.div
-            className="relative max-w-lg w-full rounded-2xl overflow-hidden shadow-2xl"
-            style={{
-              background: 'var(--color-bg-secondary)',
-              border: '1px solid rgba(0,191,255,0.22)',
-              boxShadow: '0 32px 80px rgba(0,0,0,0.5), 0 0 0 1px rgba(255,255,255,0.04) inset',
-            }}
-            initial={{ scale: 0.9, opacity: 0, y: 20 }}
+            role="dialog"
+            aria-modal="true"
+            aria-label="הגדרה ראשונית"
+            className="relative max-w-md w-full rounded-2xl overflow-hidden border border-border-primary bg-bg-secondary"
+            style={{ boxShadow: '0 32px 80px rgba(0,0,0,0.55)' }}
+            initial={{ scale: 0.94, opacity: 0, y: 16 }}
             animate={{ scale: 1, opacity: 1, y: 0 }}
-            exit={{ scale: 0.9, opacity: 0, y: 20 }}
-            transition={{ type: 'spring', damping: 22, stiffness: 320 }}
+            exit={{ scale: 0.94, opacity: 0, y: 16 }}
+            transition={{ type: 'spring', damping: 24, stiffness: 320 }}
           >
-            {/* Top glow */}
-            <div
-              className="absolute top-0 left-1/2 -translate-x-1/2 w-80 h-40 rounded-full pointer-events-none transition-colors duration-500"
-              style={{ background: `radial-gradient(circle, ${current.glowColor} 0%, transparent 70%)`, top: -60 }}
-            />
-
-            {/* Step counter */}
-            <div className="absolute top-4 left-4 text-[10px] text-text-muted font-medium">
-              {step + 1}/{ONBOARDING_STEPS.length}
+            {/* Progress — one segment per slide */}
+            <div className="flex items-center gap-3 px-5 pt-5">
+              <div className="flex-1 flex gap-1.5" aria-hidden="true">
+                {ONBOARDING_STEPS.map((_, i) => (
+                  <span key={i} className={`h-1 flex-1 rounded-full transition-colors duration-300 ${i <= step ? 'bg-accent-primary' : 'bg-bg-tertiary'}`} />
+                ))}
+              </div>
+              <span className="text-xs text-text-muted num-mono" dir="ltr">{step + 1}/{ONBOARDING_STEPS.length}</span>
             </div>
 
-            {/* Step content */}
-            <div className="px-8 pt-10 pb-6 min-h-[340px] flex flex-col items-center justify-center text-center overflow-hidden relative">
+            {/* Slide */}
+            <div className="px-6 pt-6 pb-6 min-h-[360px] overflow-hidden relative">
               <AnimatePresence mode="wait" custom={direction}>
                 <motion.div
                   key={step}
@@ -95,107 +92,75 @@ export default function OnboardingWizard() {
                   initial="enter"
                   animate="center"
                   exit="exit"
-                  className="flex flex-col items-center"
                 >
-                  {/* Icon with glow ring */}
-                  <div className="relative mb-6">
-                    <div
-                      className="absolute inset-0 rounded-2xl blur-xl opacity-40 transition-colors duration-500"
-                      style={{ background: current.glowColor }}
-                    />
-                    <div className={`relative w-16 h-16 rounded-2xl ${current.bgColor} flex items-center justify-center border border-white/5`}>
-                      <Icon className={`w-8 h-8 ${current.color}`} />
-                    </div>
-                  </div>
+                  <span
+                    className="w-14 h-14 rounded-2xl grid place-items-center mb-5"
+                    style={{ background: 'linear-gradient(135deg, #2563eb 0%, #38bdf8 100%)', boxShadow: '0 0 32px -8px rgba(59,130,246,0.75)' }}
+                  >
+                    {Icon && <Icon className="w-7 h-7" style={{ color: '#06060a' }} />}
+                  </span>
+                  <h2 className="text-[22px] font-extrabold text-text-primary leading-tight">{current.title}</h2>
+                  <p className="text-sm text-text-secondary leading-relaxed mt-2">{current.description}</p>
 
-                  {/* Title + subtitle */}
-                  <h2 className="text-xl font-bold text-text-primary mb-1">{current.title}</h2>
-                  <p className="text-xs text-text-muted mb-4">{current.subtitle}</p>
-
-                  {/* Description */}
-                  <p className="text-sm text-text-secondary leading-relaxed max-w-sm mb-5">{current.description}</p>
-
-                  {/* Feature highlights */}
-                  {current.highlights && (
-                    <div className="flex flex-wrap justify-center gap-2">
-                      {current.highlights.map((h) => (
-                        <span
-                          key={h}
-                          className={`text-[11px] px-2.5 py-1 rounded-full border font-medium ${current.bgColor} ${current.color} border-current/20`}
-                        >
-                          {h}
+                  <ul className="mt-5 rounded-xl border border-border-primary bg-bg-tertiary divide-y divide-border-primary">
+                    {current.highlights.map((h) => (
+                      <li key={h} className="flex items-center gap-3 px-3.5 py-3">
+                        <span className="w-5 h-5 shrink-0 grid place-items-center rounded-full bg-accent-primary/15">
+                          <Check className="w-3 h-3 text-accent-hover" strokeWidth={3} />
                         </span>
-                      ))}
-                    </div>
-                  )}
+                        <span className="text-[13px] text-text-primary">{h}</span>
+                      </li>
+                    ))}
+                  </ul>
                 </motion.div>
               </AnimatePresence>
             </div>
 
-            {/* Footer — flex-wrap: on the last slide the two labeled CTAs
-                take a full second row on phones (five items never fit one
-                358px-wide row; the dots collapsed and labels wrapped). */}
-            <div className="px-6 py-4 border-t border-border-primary/50 flex items-center justify-between flex-wrap gap-y-2 bg-bg-tertiary/30">
-              {/* Skip / finish-without-action */}
-              <button
-                onClick={complete}
-                className="text-xs text-text-muted hover:text-text-primary transition-colors cursor-pointer"
-              >
-                {isLast ? 'סיים' : 'דלג'}
-              </button>
-
-              {/* Step dots */}
-              <div className="flex gap-1.5">
-                {ONBOARDING_STEPS.map((_, i) => (
-                  <div
-                    key={i}
-                    className={`h-1.5 rounded-full transition-all duration-300 ${
-                      i === step ? `w-6 ${current.bgColor.replace('/15', '')}` : 'w-1.5 bg-bg-tertiary'
-                    }`}
-                  />
-                ))}
-              </div>
-
-              {/* Nav buttons — on the last slide the CTA pair claims the full
-                  width on mobile (wraps below skip+dots) and shrinks back
-                  inline on ≥sm screens. */}
-              <div className={`flex gap-2 ${isLast ? 'w-full sm:w-auto' : ''}`}>
-                {step > 0 && (
+            {/* Footer — on the last slide the two first actions take the full
+                width, so they never squeeze on a phone. */}
+            <div className="px-5 py-4 border-t border-border-primary flex items-center justify-between gap-2 flex-wrap">
+              {isLast ? (
+                <div className="w-full grid grid-cols-2 gap-2">
                   <button
-                    onClick={back}
-                    className="p-2 rounded-lg bg-bg-tertiary text-text-primary hover:bg-border-hover transition-colors cursor-pointer shrink-0"
+                    onClick={() => completeAnd('/exchange')}
+                    className="h-11 inline-flex items-center justify-center gap-1.5 rounded-xl border border-border-hover text-text-primary text-sm font-bold hover:bg-bg-tertiary transition-colors cursor-pointer whitespace-nowrap"
                   >
-                    <ChevronRight className="w-4 h-4" />
+                    <Link2 className="w-4 h-4" /> חיבור בורסה
                   </button>
-                )}
-                {isLast ? (
-                  <>
-                    {/* Real first actions instead of a dead "let's go" */}
-                    <button
-                      onClick={() => completeAnd('/exchange')}
-                      className="flex-1 sm:flex-initial flex items-center justify-center gap-1 px-3 py-2 text-xs font-semibold whitespace-nowrap rounded-lg border border-accent-primary/40 text-accent-primary hover:bg-accent-primary/10 transition-colors cursor-pointer"
-                    >
-                      <Link2 className="w-3.5 h-3.5" />
-                      חבר בורסה
-                    </button>
-                    <button
-                      onClick={() => completeAnd('/journal?new=1')}
-                      className="flex-1 sm:flex-initial flex items-center justify-center gap-1 px-3 py-2 text-xs font-semibold whitespace-nowrap rounded-lg bg-accent-primary text-bg-primary hover:bg-accent-hover transition-colors cursor-pointer"
-                    >
-                      <PlusCircle className="w-3.5 h-3.5" />
-                      הוסף עסקה ראשונה
-                    </button>
-                  </>
-                ) : (
                   <button
-                    onClick={next}
-                    className="flex items-center gap-1 px-4 py-2 text-xs font-semibold rounded-lg bg-accent-primary text-bg-primary hover:bg-accent-hover transition-colors cursor-pointer"
+                    onClick={() => completeAnd('/journal?new=1')}
+                    className="h-11 inline-flex items-center justify-center gap-1.5 rounded-xl bg-accent-muted hover:bg-accent-primary text-white text-sm font-bold transition-colors cursor-pointer whitespace-nowrap"
                   >
-                    הבא
-                    <ChevronLeft className="w-3.5 h-3.5" />
+                    <PlusCircle className="w-4 h-4" /> עסקה ראשונה
                   </button>
-                )}
-              </div>
+                  <button onClick={complete} className="col-span-2 h-8 text-xs text-text-muted hover:text-text-primary transition-colors cursor-pointer">
+                    אעשה את זה אחר כך
+                  </button>
+                </div>
+              ) : (
+                <>
+                  <button onClick={complete} className="h-10 px-2 text-sm text-text-muted hover:text-text-primary transition-colors cursor-pointer">
+                    דלג
+                  </button>
+                  <div className="flex gap-2">
+                    {step > 0 && (
+                      <button
+                        onClick={back}
+                        aria-label="הקודם"
+                        className="w-10 h-10 grid place-items-center rounded-xl border border-border-primary text-text-secondary hover:text-text-primary hover:bg-bg-tertiary transition-colors cursor-pointer"
+                      >
+                        <ChevronRight className="w-4 h-4" />
+                      </button>
+                    )}
+                    <button
+                      onClick={next}
+                      className="h-10 inline-flex items-center gap-1 px-5 rounded-xl bg-accent-muted hover:bg-accent-primary text-white text-sm font-bold transition-colors cursor-pointer"
+                    >
+                      הבא <ChevronLeft className="w-4 h-4" />
+                    </button>
+                  </div>
+                </>
+              )}
             </div>
           </motion.div>
         </motion.div>

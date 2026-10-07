@@ -3,20 +3,19 @@ import { useNavigate } from 'react-router-dom';
 import { motion, AnimatePresence } from 'framer-motion';
 import {
   Sparkles, Brain, TrendingUp, Target, ImagePlus, RefreshCw, X,
-  Copy, Check, Crown, Info, Eye, Activity, Layers, Lightbulb, Shapes, BarChart3,
+  Copy, Check, Crown, Eye, Activity, Layers, Lightbulb, BarChart3, GitBranch,
 } from 'lucide-react';
 import { sendMessageStream } from '../../services/groqApi';
 import { useAiUsage } from '../../hooks/useAiUsage';
 import { useAuth } from '../../contexts/AuthContext';
 import { fileToCompressedDataUrl, formatAIText } from '../../utils/aiChatHelpers';
 
-// Focus lenses — steer WHERE the read looks, not how long it is. A single,
-// concise analysis (no "deep" mode) keeps every request well under the vision
-// model's per-minute token cap, so full-Wyckoff no longer rate-limits (429).
-const LENSES = [
-  { id: 'patterns', label: 'תבניות מחיר', icon: Shapes },
-  { id: 'trend', label: 'מבנה ומגמה', icon: TrendingUp },
-  { id: 'levels', label: 'אזורי מפתח', icon: Target },
+// What one analysis covers — shown before upload so it's clear what you get.
+const COVERS = [
+  { label: 'מגמה ומבנה שוק', icon: TrendingUp },
+  { label: 'שלב ויקוף ותבניות', icon: Layers },
+  { label: 'אזורי מפתח ונפח', icon: Target },
+  { label: 'תרחישים ורמות אישור', icon: GitBranch },
 ];
 
 // Staged "thinking" timeline shown while the model works. Steps advance on a
@@ -29,16 +28,10 @@ const THINK_STEPS = [
   { label: 'מגבש תרחישים', icon: Lightbulb },
 ];
 
-// The server-side Wyckoff prompt owns the structure and forbids entry/exit
-// advice; this only points the focus and asks for a tight, professional read.
-function buildPrompt(lens) {
-  const lensText = {
-    patterns: 'שים דגש על תבניות מחיר: דגלים, ראש וכתפיים, משולשים, תחתית/פסגה כפולה, טריזים, ואירועי ויקוף כמו Spring ו-UTAD.',
-    trend: 'שים דגש על מבנה השוק והמגמה: רצף שיאים ושפלים (HH/HL/LH/LL), שבירות מבנה (BOS/MSB), והפאזה הנוכחית במחזור ויקוף (A–E).',
-    levels: 'שים דגש על אזורי מפתח: תמיכות והתנגדויות מרכזיות, Creek/Ice, אזורי היצע וביקוש, ורמות שהחליפו תפקיד לאחר פריצה.',
-  }[lens];
-  return `נתח את הגרף שבתמונה לפי המבנה הקבוע (הטיה טכנית + 6 הסעיפים הממוספרים). שמור כל סעיף תמציתי, חד ומקצועי — עד 3–4 שורות לכל סעיף, בלי חזרות ובלי מילוי. ${lensText}`;
-}
+// One complete, professional read (the server-side Wyckoff prompt owns the
+// structure and forbids entry/exit advice). Tight sections keep the request
+// well under the vision model's per-minute token cap.
+const ANALYSIS_PROMPT = 'נתח את הגרף שבתמונה ניתוח מקצועי ומלא לפי המבנה הקבוע (הטיה טכנית + 6 הסעיפים הממוספרים): מגמה ומבנה שוק, שלב במחזור ויקוף ואירועים (Spring/UTAD/LPS/LPSY), תבניות מחיר, אזורי תמיכה והתנגדות מרכזיים, נפח מול תנועת מחיר, ושני תרחישים (שורי ודובי) עם הרמה שמאשרת כל אחד והרמה שמבטלת אותו. כל סעיף 2–4 שורות, חד, בלי חזרות ובלי מילוי.';
 
 function ThinkingTimeline() {
   const [step, setStep] = useState(0);
@@ -119,7 +112,6 @@ function ThinkingTimeline() {
 }
 
 export default function ChartAnalyzer({ heightClass = '' }) {
-  const [lens, setLens] = useState('patterns');
   const [image, setImage] = useState(null); // { dataUrl, name }
   const [analyzing, setAnalyzing] = useState(false);
   const [resultText, setResultText] = useState('');
@@ -194,7 +186,7 @@ export default function ChartAnalyzer({ heightClass = '' }) {
     resultRef.current = '';
     try {
       await sendMessageStream(
-        [{ role: 'user', text: buildPrompt(lens), image: image.dataUrl }],
+        [{ role: 'user', text: ANALYSIS_PROMPT, image: image.dataUrl }],
         (chunk) => {
           resultRef.current += chunk;
           if (!batchRef.current) {
@@ -245,226 +237,140 @@ export default function ChartAnalyzer({ heightClass = '' }) {
   };
 
   const imgRemaining = Math.max(0, aiUsage.imageLimit - aiUsage.imageUsed);
-  const lensLabel = LENSES.find((l) => l.id === lens)?.label;
 
   return (
     <div className="w-full">
       <div className={`relative flex flex-col rounded-2xl overflow-hidden border border-border-primary bg-bg-secondary ${heightClass}`}>
-        {/* Ambient accent glow at the top — subtle premium depth */}
-        <div className="pointer-events-none absolute inset-x-0 top-0 h-28 bg-gradient-to-b from-accent-primary/8 to-transparent" />
-
-        {/* Header */}
-        <div className="relative flex items-center justify-between px-5 py-4 border-b border-border-primary/70">
-          <div className="flex items-center gap-3">
-            <div className="w-10 h-10 rounded-2xl bg-gradient-to-br from-accent-primary/30 to-accent-primary/5 ring-1 ring-accent-primary/25 flex items-center justify-center">
-              <Sparkles className="w-5 h-5 text-accent-primary" />
-            </div>
-            <div>
-              <h3 className="text-[15px] font-bold text-text-primary tracking-tight">TradeAI Vision</h3>
-              <p className="text-[11px] text-text-muted">קריאת גרף חכמה בשיטת ויקוף</p>
-            </div>
-          </div>
+        {/* Toolbar */}
+        <div className="flex items-center justify-between gap-3 px-4 py-2.5 border-b border-border-primary">
+          <span className="text-sm font-semibold text-text-primary">ניתוח גרף מתמונה</span>
           {isPremium && aiUsage.imageLimit > 0 && (
-            <span className={`text-[10px] font-medium px-2.5 py-1 rounded-full border ${
-              imgRemaining <= 2
-                ? 'border-loss/40 text-loss bg-loss/5'
-                : 'border-accent-primary/30 text-accent-primary bg-accent-primary/5'
-            }`}>
-              {imgRemaining} נותרו היום
+            <span className={`text-xs font-semibold px-2.5 py-1 rounded-full ${imgRemaining <= 2 ? 'bg-loss/12 text-loss' : 'bg-accent-primary/12 text-accent-hover'}`}>
+              {imgRemaining} ניתוחים נותרו היום
             </span>
           )}
         </div>
 
-        {/* Body */}
-        <div className="relative flex-1 overflow-y-auto px-5 py-5 space-y-5">
+        <div className="flex-1 overflow-y-auto overscroll-contain p-4 md:p-5">
           <input ref={fileInputRef} type="file" accept="image/*" className="hidden" onChange={onInputChange} />
 
-          {/* Upload zone / preview */}
           {!image ? (
-            <div
-              role="button"
-              tabIndex={0}
-              onClick={openPicker}
-              onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); openPicker(); } }}
-              onDragOver={(e) => { e.preventDefault(); if (!premiumLocked) setDragOver(true); }}
-              onDragLeave={() => setDragOver(false)}
-              onDrop={onDrop}
-              className={`group relative flex flex-col items-center justify-center gap-4 rounded-2xl border-2 border-dashed px-6 py-12 cursor-pointer transition-all outline-none focus-visible:ring-2 focus-visible:ring-accent-primary/50 ${
-                dragOver
-                  ? 'border-accent-primary bg-accent-primary/10'
-                  : 'border-border-primary/80 bg-bg-secondary hover:border-accent-primary/50 hover:bg-bg-secondary/70'
-              }`}
-            >
-              <motion.div
-                animate={{ y: [0, -5, 0] }}
-                transition={{ duration: 2.6, repeat: Infinity, ease: 'easeInOut' }}
-                className="w-16 h-16 rounded-2xl bg-gradient-to-br from-accent-primary/25 to-accent-primary/5 ring-1 ring-accent-primary/20 flex items-center justify-center group-hover:scale-105 transition-transform"
+            // Empty state: one clear drop zone + what the analysis covers.
+            <div className="h-full min-h-[18rem] flex flex-col items-center justify-center gap-6">
+              <div
+                role="button"
+                tabIndex={0}
+                onClick={openPicker}
+                onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); openPicker(); } }}
+                onDragOver={(e) => { e.preventDefault(); if (!premiumLocked) setDragOver(true); }}
+                onDragLeave={() => setDragOver(false)}
+                onDrop={onDrop}
+                className={`w-full max-w-xl flex flex-col items-center justify-center gap-4 rounded-2xl border-2 border-dashed px-6 py-10 cursor-pointer transition-colors outline-none focus-visible:ring-2 focus-visible:ring-accent-primary ${
+                  dragOver ? 'border-accent-primary bg-accent-primary/10' : 'border-border-hover bg-bg-tertiary hover:border-accent-primary/50'
+                }`}
               >
-                {premiumLocked
-                  ? <Crown className="w-7 h-7 text-accent-primary" />
-                  : <ImagePlus className="w-7 h-7 text-accent-primary" />
-                }
-              </motion.div>
-              {premiumLocked ? (
-                <div className="text-center">
-                  <p className="text-sm font-semibold text-text-primary">ניתוח גרפים בתמונה — למנויי Premium</p>
-                  <p className="text-[11px] text-text-muted mt-1">שדרג כדי להעלות צילומי גרף ולקבל קריאת ויקוף מלאה</p>
-                  <span className="inline-flex items-center gap-1.5 mt-3 text-xs font-bold text-white rounded-xl px-4 py-2 shadow-lg shadow-accent-primary/25" style={{ background: 'linear-gradient(135deg, #2563eb, #38bdf8)' }}>
-                    <Crown className="w-3.5 h-3.5" /> שדרג ל-Premium
-                  </span>
-                </div>
-              ) : (
-                <div className="text-center">
-                  <p className="text-sm font-semibold text-text-primary">גרור לכאן צילום גרף</p>
-                  <p className="text-[11px] text-text-muted mt-1">או לחץ לבחירת קובץ · PNG / JPG / WebP</p>
-                </div>
-              )}
-            </div>
-          ) : (
-            <motion.div
-              initial={{ opacity: 0, scale: 0.98 }}
-              animate={{ opacity: 1, scale: 1 }}
-              className={`relative rounded-2xl border overflow-hidden ${analyzing ? 'border-accent-primary/60' : 'border-border-primary'}`}
-            >
-              <img src={image.dataUrl} alt="הגרף שהועלה" className="w-full max-h-72 object-contain bg-black/40" />
-              {/* Sweeping scan beam while analyzing */}
-              {analyzing && (
-                <motion.div
-                  initial={{ left: '-12%' }}
-                  animate={{ left: ['-12%', '104%'] }}
-                  transition={{ duration: 2.2, repeat: Infinity, ease: 'easeInOut' }}
-                  className="pointer-events-none absolute inset-y-0 w-12"
-                  style={{ background: 'linear-gradient(90deg, transparent, rgba(56,189,248,0.35), transparent)' }}
-                />
-              )}
-              <div className="absolute top-2 left-2 flex gap-1.5">
-                <button
-                  onClick={() => fileInputRef.current?.click()}
-                  disabled={analyzing}
-                  aria-label="בחר תמונה אחרת"
-                  className="p-1.5 rounded-lg bg-black/60 backdrop-blur text-text-secondary hover:text-text-primary transition-colors cursor-pointer disabled:opacity-40"
-                  title="בחר תמונה אחרת"
-                >
-                  <RefreshCw className="w-3.5 h-3.5" />
-                </button>
-                <button
-                  onClick={reset}
-                  disabled={analyzing}
-                  aria-label="הסר תמונה"
-                  className="p-1.5 rounded-lg bg-black/60 backdrop-blur text-text-secondary hover:text-loss transition-colors cursor-pointer disabled:opacity-40"
-                  title="הסר תמונה"
-                >
-                  <X className="w-3.5 h-3.5" />
-                </button>
-              </div>
-            </motion.div>
-          )}
-
-          {/* Focus + analyze — shown once an image is chosen, hidden while the
-              model works (the timeline takes over) and while a result is up. */}
-          {image && !resultText && !analyzing && (
-            <>
-              <div className="space-y-2">
-                <p className="text-[11px] font-medium text-text-muted px-0.5">מיקוד הניתוח</p>
-                <div className="grid grid-cols-3 gap-2">
-                  {LENSES.map((l) => (
-                    <button
-                      key={l.id}
-                      onClick={() => setLens(l.id)}
-                      disabled={analyzing}
-                      className={`flex flex-col items-center gap-1.5 px-2 py-2.5 rounded-xl border text-center transition-all cursor-pointer disabled:opacity-50 ${
-                        lens === l.id
-                          ? 'bg-accent-primary/10 border-accent-primary/50 text-accent-primary'
-                          : 'bg-bg-secondary border-border-primary text-text-secondary hover:border-border-primary/80 hover:text-text-primary'
-                      }`}
-                    >
-                      <l.icon className="w-4 h-4" />
-                      <span className="text-[11px] font-medium">{l.label}</span>
-                    </button>
-                  ))}
-                </div>
-              </div>
-
-              <button
-                onClick={analyze}
-                disabled={analyzing}
-                className="group relative w-full flex items-center justify-center gap-2 py-3.5 rounded-2xl text-sm font-bold text-white overflow-hidden transition-all cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed shadow-lg shadow-accent-primary/25"
-                style={{ background: 'linear-gradient(135deg, #2563eb, #38bdf8)' }}
-              >
-                <Sparkles className="w-4 h-4" />
-                {analyzing ? 'מנתח את הגרף...' : 'הפעל ניתוח'}
-              </button>
-            </>
-          )}
-
-          {/* Thinking timeline */}
-          <AnimatePresence>
-            {analyzing && !resultText && <ThinkingTimeline />}
-          </AnimatePresence>
-
-          {/* Result */}
-          {resultText && (
-            <motion.div
-              initial={{ opacity: 0, y: 10 }}
-              animate={{ opacity: 1, y: 0 }}
-              className="rounded-2xl border border-border-primary bg-bg-secondary overflow-hidden"
-            >
-              <div className="h-0.5" style={{ background: 'linear-gradient(90deg, #2563eb, #38bdf8, transparent)' }} />
-              <div className="flex items-center justify-between px-4 py-3 border-b border-border-primary/60">
-                <span className="flex items-center gap-2 text-[13px] font-bold text-text-primary">
-                  <Sparkles className="w-4 h-4 text-accent-primary" />
-                  קריאת הגרף
-                  <span className="text-[10px] font-medium px-2 py-0.5 rounded-full bg-accent-primary/10 text-accent-primary">
-                    {lensLabel}
-                  </span>
+                <span className="w-14 h-14 rounded-2xl grid place-items-center" style={{ background: 'linear-gradient(135deg, #2563eb 0%, #38bdf8 100%)', boxShadow: '0 0 28px -6px rgba(59,130,246,0.7)' }}>
+                  {premiumLocked ? <Crown className="w-7 h-7" style={{ color: '#06060a' }} /> : <ImagePlus className="w-7 h-7" style={{ color: '#06060a' }} />}
                 </span>
-                {!analyzing && (
-                  <button
-                    onClick={copyResult}
-                    className="flex items-center gap-1 text-[11px] text-text-muted hover:text-text-primary transition-colors cursor-pointer"
-                    title="העתק ניתוח"
-                  >
-                    {copied
-                      ? <><Check className="w-3 h-3 text-profit" /> הועתק</>
-                      : <><Copy className="w-3 h-3" /> העתק</>
-                    }
-                  </button>
+                {premiumLocked ? (
+                  <div className="text-center">
+                    <p className="text-base font-bold text-text-primary">ניתוח גרפים מתמונה — למנויי Premium</p>
+                    <p className="text-sm text-text-secondary mt-1">שדרג כדי להעלות צילום גרף ולקבל ניתוח מקצועי מלא</p>
+                    <span className="inline-flex items-center gap-1.5 mt-4 h-10 px-4 rounded-xl bg-accent-muted text-white text-sm font-bold">
+                      <Crown className="w-4 h-4" /> שדרוג ל-Premium
+                    </span>
+                  </div>
+                ) : (
+                  <div className="text-center">
+                    <p className="text-base font-bold text-text-primary">גרור לכאן צילום של גרף</p>
+                    <p className="text-sm text-text-secondary mt-1">או לחץ לבחירת קובץ · PNG, JPG או WebP</p>
+                  </div>
                 )}
               </div>
-              <div className="px-4 py-4 text-[13px] leading-relaxed text-text-secondary">
-                {formatAIText(resultText)}
+              <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 w-full max-w-xl">
+                {COVERS.map((c) => (
+                  <div key={c.label} className="flex flex-col items-center gap-1.5 text-center rounded-xl bg-bg-tertiary border border-border-primary px-2 py-3">
+                    {c.icon && <c.icon className="w-4 h-4 text-accent-hover" />}
+                    <span className="text-xs text-text-secondary leading-snug">{c.label}</span>
+                  </div>
+                ))}
               </div>
-              {!analyzing && (
-                <div className="px-4 pb-4">
-                  <button
-                    onClick={newAnalysis}
-                    className="w-full py-2.5 rounded-xl border border-border-primary text-xs font-medium text-text-secondary hover:text-text-primary hover:bg-bg-tertiary transition-colors cursor-pointer"
-                  >
-                    ניתוח חדש
-                  </button>
+            </div>
+          ) : (
+            // Chart beside its analysis on wide screens, stacked on phones.
+            <div className="grid grid-cols-1 lg:grid-cols-[minmax(0,0.9fr)_minmax(0,1.1fr)] gap-4 items-start">
+              <div className="space-y-3 lg:sticky lg:top-0">
+                <div className={`relative rounded-2xl border overflow-hidden bg-black/40 ${analyzing ? 'border-accent-primary/60' : 'border-border-primary'}`}>
+                  <img src={image.dataUrl} alt="הגרף שהועלה" className="w-full max-h-[22rem] object-contain" />
+                  {analyzing && (
+                    <motion.div
+                      initial={{ left: '-12%' }}
+                      animate={{ left: ['-12%', '104%'] }}
+                      transition={{ duration: 2.2, repeat: Infinity, ease: 'easeInOut' }}
+                      className="pointer-events-none absolute inset-y-0 w-12"
+                      style={{ background: 'linear-gradient(90deg, transparent, rgba(56,189,248,0.35), transparent)' }}
+                    />
+                  )}
+                  <div className="absolute top-2 left-2 flex gap-1.5">
+                    <button onClick={() => fileInputRef.current?.click()} disabled={analyzing} aria-label="בחר תמונה אחרת" title="בחר תמונה אחרת"
+                      className="w-9 h-9 grid place-items-center rounded-lg bg-black/60 backdrop-blur text-text-secondary hover:text-text-primary transition-colors cursor-pointer disabled:opacity-40">
+                      <RefreshCw className="w-4 h-4" />
+                    </button>
+                    <button onClick={reset} disabled={analyzing} aria-label="הסר תמונה" title="הסר תמונה"
+                      className="w-9 h-9 grid place-items-center rounded-lg bg-black/60 backdrop-blur text-text-secondary hover:text-loss transition-colors cursor-pointer disabled:opacity-40">
+                      <X className="w-4 h-4" />
+                    </button>
+                  </div>
                 </div>
-              )}
-            </motion.div>
+                {!resultText && !analyzing && (
+                  <button onClick={analyze} className="w-full h-12 inline-flex items-center justify-center gap-2 rounded-xl bg-accent-muted hover:bg-accent-primary text-white text-sm font-bold transition-colors cursor-pointer">
+                    <Sparkles className="w-4 h-4" /> נתח את הגרף
+                  </button>
+                )}
+                {error && (
+                  <div className="bg-loss/10 border border-loss/25 rounded-xl px-4 py-3 text-sm text-loss text-center">{error}</div>
+                )}
+              </div>
+
+              <div className="min-w-0">
+                <AnimatePresence>
+                  {analyzing && !resultText && <ThinkingTimeline />}
+                </AnimatePresence>
+
+                {resultText ? (
+                  <motion.div initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }} className="rounded-2xl border border-border-primary bg-bg-tertiary overflow-hidden">
+                    <div className="flex items-center justify-between gap-2 px-4 py-3 border-b border-border-primary">
+                      <span className="flex items-center gap-2 text-sm font-bold text-text-primary">
+                        <Sparkles className="w-4 h-4 text-accent-hover" /> הניתוח
+                      </span>
+                      {!analyzing && (
+                        <div className="flex items-center gap-1">
+                          <button onClick={copyResult} className="h-8 px-2.5 inline-flex items-center gap-1 rounded-lg text-xs text-text-secondary hover:text-text-primary hover:bg-bg-secondary cursor-pointer">
+                            {copied ? <><Check className="w-3.5 h-3.5 text-profit" /> הועתק</> : <><Copy className="w-3.5 h-3.5" /> העתק</>}
+                          </button>
+                          <button onClick={newAnalysis} className="h-8 px-2.5 inline-flex items-center gap-1 rounded-lg text-xs text-text-secondary hover:text-text-primary hover:bg-bg-secondary cursor-pointer">
+                            <RefreshCw className="w-3.5 h-3.5" /> ניתוח חדש
+                          </button>
+                        </div>
+                      )}
+                    </div>
+                    <div className="px-4 py-4 text-[15px] leading-relaxed text-text-primary/90">
+                      {formatAIText(resultText)}
+                    </div>
+                  </motion.div>
+                ) : !analyzing && (
+                  <div className="hidden lg:flex h-full min-h-[14rem] flex-col items-center justify-center text-center gap-2 rounded-2xl border border-dashed border-border-primary px-6">
+                    <Sparkles className="w-6 h-6 text-accent-hover" />
+                    <p className="text-sm text-text-secondary">הניתוח יופיע כאן: מגמה, שלב ויקוף, אזורי מפתח ותרחישים.</p>
+                  </div>
+                )}
+              </div>
+            </div>
           )}
 
-          {error && (
-            <motion.div
-              initial={{ opacity: 0 }}
-              animate={{ opacity: 1 }}
-              className="bg-loss/10 border border-loss/20 rounded-xl px-4 py-2.5 text-xs text-loss text-center"
-            >
-              {error}
-            </motion.div>
-          )}
-
-          {/* Educational notice */}
-          <div className="flex items-start gap-2 rounded-xl bg-bg-secondary border border-border-primary px-3 py-2.5">
-            <Info className="w-3.5 h-3.5 text-text-muted shrink-0 mt-0.5" />
-            <p className="text-[10px] leading-relaxed text-text-muted">
-              הקריאה מופקת אוטומטית למטרות לימוד והעשרה, ואינה ייעוץ השקעות או הזמנה לפעולה.
-              ייתכנו אי-דיוקים — ההחלטות והאחריות עליהן הן של הסוחר בלבד.
-            </p>
-          </div>
+          <p className="mt-5 text-[11px] leading-relaxed text-text-muted text-center">
+            הניתוח מופק אוטומטית למטרות לימוד ואינו ייעוץ השקעות. ההחלטות והאחריות הן של הסוחר בלבד.
+          </p>
         </div>
       </div>
     </div>
