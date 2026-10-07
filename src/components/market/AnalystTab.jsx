@@ -13,7 +13,7 @@ export default function AnalystTab({ heightClass, trades }) {
   const list = trades || [];
 
   return (
-    <div className={`max-w-2xl mx-auto w-full ${heightClass} overflow-y-auto rounded-2xl border border-border-primary bg-bg-secondary p-4`}>
+    <div className={`w-full ${heightClass} overflow-y-auto overscroll-contain rounded-2xl border border-border-primary bg-bg-secondary p-4`}>
       <div className="flex flex-wrap items-baseline justify-between gap-2 mb-4">
         <div>
           <h2 className="text-sm font-bold text-text-primary">האנליסט שלך</h2>

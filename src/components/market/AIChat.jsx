@@ -1,7 +1,7 @@
 import { useState, useEffect, useMemo, useRef, lazy, Suspense } from 'react';
 import { createPortal } from 'react-dom';
 import { motion, AnimatePresence } from 'framer-motion';
-import { Bot, Send, RotateCcw, User, Sparkles, BarChart3, History, Trash2, Crown, Image as ImageIcon, Copy, Check } from 'lucide-react';
+import { Bot, Send, RotateCcw, Sparkles, BarChart3, History, Trash2, Crown, Image as ImageIcon, Copy, Check, TrendingDown, Target, Clock, AlertTriangle, ShieldCheck, ClipboardList } from 'lucide-react';
 import { sendMessageStream } from '../../services/groqApi';
 import { buildCoachStats } from '../../utils/coachStats';
 import { formatAIText } from '../../utils/aiChatHelpers';
@@ -54,23 +54,23 @@ const WELCOME_MESSAGE = {
   text: 'שלום! אני TradeAI — המנטור שלך לשיטת ויקוף. אפשר לשאול אותי על שלבי איסוף ופיזור, LPSY, LPS, Spring, ניתוח Volume ועוד. רוצה ניתוח של צילום גרף? עבור לטאב "ניתוח גרפים". במה אוכל לעזור?',
 };
 
+// The questions worth asking about YOUR OWN book — answerable from the
+// journal, which is the reason to ask them here and not in a generic chatbot.
 const QUICK_QUESTIONS = [
-  'מה זה LPSY?',
-  'מה זה LPS?',
-  'הסבר Spring',
-  'שלבי איסוף',
-  'איך לזהות פיזור?',
-  'חוק מאמץ מול תוצאה',
+  { Icon: TrendingDown, text: 'איפה אני מפסיד הכי הרבה כסף?' },
+  { Icon: Target, text: 'איזו אסטרטגיה עובדת לי הכי טוב?' },
+  { Icon: Clock, text: 'באילו שעות אני סוחר הכי טוב?' },
+  { Icon: AlertTriangle, text: 'מה 3 הטעויות שחוזרות אצלי?' },
+  { Icon: ShieldCheck, text: 'האם הסיכון שלי כרגע סביר?' },
+  { Icon: ClipboardList, text: 'האם אני עומד בתוכנית המסחר שלי?' },
 ];
 
 
 function TypingIndicator() {
   return (
-    <div className="flex items-center gap-3 max-w-[85%] flex-row-reverse">
-      <div className="w-7 h-7 rounded-lg bg-accent-primary/15 flex items-center justify-center shrink-0">
-        <Bot className="w-4 h-4 text-accent-primary" />
-      </div>
-      <div className="bg-bg-secondary border border-border-primary rounded-2xl rounded-tl-sm px-4 py-3">
+    <div className="flex items-start gap-2.5 flex-row-reverse">
+      <BotMark />
+      <div className="bg-bg-tertiary rounded-2xl rounded-tl-md px-4 py-3">
         <div className="flex items-center gap-1">
           {[0, 1, 2].map((i) => (
             <motion.div
@@ -86,7 +86,16 @@ function TypingIndicator() {
   );
 }
 
-export default function AIChat({ heightClass = 'h-[calc(100dvh-13.5rem)] md:h-[calc(100vh-220px)]', seedQuestion = null, trades = null }) {
+// The assistant's small mark beside its messages.
+function BotMark() {
+  return (
+    <div className="w-8 h-8 rounded-xl shrink-0 grid place-items-center" style={{ background: 'linear-gradient(135deg, #2563eb 0%, #38bdf8 100%)' }}>
+      <Sparkles className="w-4 h-4" style={{ color: '#06060a' }} />
+    </div>
+  );
+}
+
+export default function AIChat({ heightClass = 'h-[calc(100dvh-13.5rem)] md:h-[calc(100vh-220px)]', seedQuestion = null, trades = null, hint = '' }) {
   const [messages, setMessages] = useState([]);
   const [input, setInput] = useState('');
   // The trader's own book, in the same compact shape the AI coach uses. Built
@@ -364,57 +373,46 @@ export default function AIChat({ heightClass = 'h-[calc(100dvh-13.5rem)] md:h-[c
     if (id === currentConvId) clearChat();
   };
 
-  const showQuickQuestions = messages.length <= 1 && !streaming;
+
+  // An empty conversation shows a welcome screen with suggestions instead of
+  // the canned greeting bubble.
+  const isEmpty = !messages.some((m) => m.role === 'user') && !streaming;
+  const pickSuggestion = (text) => {
+    // Lands in the box, never auto-sent: the user can edit it, and a stray
+    // tap must not spend one of their daily questions.
+    setInput(text);
+    inputRef.current?.focus();
+  };
+  const currentTitle = currentConvId ? (conversations.find((c) => c.id === currentConvId)?.title || 'שיחה') : 'שיחה חדשה';
+  const remaining = !aiUsage.loading && aiUsage.limit ? Math.max(0, aiUsage.limit - aiUsage.used) : null;
+  const toolBtn = 'h-9 inline-flex items-center gap-1.5 px-2.5 sm:px-3 rounded-xl text-xs font-semibold whitespace-nowrap shrink-0 text-text-secondary hover:text-text-primary bg-bg-tertiary border border-border-primary hover:border-border-hover transition-colors cursor-pointer';
 
   return (
-    <div className="max-w-2xl mx-auto w-full">
-      <div className={`relative flex flex-col bg-bg-secondary border border-border-primary rounded-2xl overflow-hidden ${heightClass} sm:min-h-[400px]`}>
-        {/* Header */}
-        <div className="flex items-center justify-between px-4 py-3 border-b border-border-primary bg-bg-secondary">
-          <div className="flex items-center gap-2.5">
-            <div className="w-8 h-8 rounded-xl bg-accent-primary/15 flex items-center justify-center">
-              <Bot className="w-5 h-5 text-accent-primary" />
-            </div>
-            <div>
-              <h3 className="text-sm font-bold text-text-primary">TradeAI</h3>
-              <p className="text-[10px] text-text-muted">מנטור מסחר — שיטת ויקוף</p>
-            </div>
-            <motion.div
-              animate={{ scale: [1, 1.2, 1] }}
-              transition={{ duration: 2, repeat: Infinity }}
-              className="w-2 h-2 rounded-full bg-profit"
-            />
+    <div className="w-full">
+      <div className={`relative flex flex-col bg-bg-secondary border border-border-primary rounded-2xl overflow-hidden ${heightClass}`}>
+        {/* Toolbar: which conversation you're in + history / new chat. */}
+        <div className="flex items-center justify-between gap-3 px-4 py-2.5 border-b border-border-primary">
+          <div className="flex items-center gap-2 min-w-0">
+            <span className="w-2 h-2 rounded-full bg-profit shrink-0" style={{ boxShadow: '0 0 8px var(--color-profit)' }} />
+            <span className="text-sm font-semibold text-text-primary truncate">{currentTitle}</span>
           </div>
-          <div className="flex items-center gap-2 relative">
-            <button
-              ref={historyBtnRef}
-              onClick={() => setHistoryOpen((v) => !v)}
-              className="flex items-center gap-1.5 px-2.5 sm:px-3 py-1.5 rounded-lg text-xs whitespace-nowrap shrink-0 text-text-muted hover:text-text-primary hover:bg-bg-tertiary transition-colors cursor-pointer border border-border-primary"
-              title="היסטוריית שיחות"
-            >
-              <History className="w-3.5 h-3.5 sm:w-3 sm:h-3" />
+          <div className="flex items-center gap-2">
+            <button ref={historyBtnRef} onClick={() => setHistoryOpen((v) => !v)} className={toolBtn} title="היסטוריית שיחות">
+              <History className="w-4 h-4" />
               <span className="hidden sm:inline">היסטוריה</span>
               {conversations.length > 0 && (
-                <span className="text-[9px] px-1.5 py-0.5 rounded-full bg-accent-primary/15 text-accent-primary">
-                  {conversations.length}
-                </span>
+                <span className="num-mono text-[10px] px-1.5 rounded-full bg-accent-primary/15 text-accent-hover">{conversations.length}</span>
               )}
             </button>
-            <button
-              onClick={clearChat}
-              className="flex items-center gap-1.5 px-2.5 sm:px-3 py-1.5 rounded-lg text-xs whitespace-nowrap shrink-0 text-text-muted hover:text-text-primary hover:bg-bg-tertiary transition-colors cursor-pointer border border-border-primary"
-              title="שיחה חדשה"
-            >
-              <RotateCcw className="w-3.5 h-3.5 sm:w-3 sm:h-3" />
+            <button onClick={clearChat} className={toolBtn} title="שיחה חדשה">
+              <RotateCcw className="w-4 h-4" />
               <span className="hidden sm:inline">שיחה חדשה</span>
             </button>
-
           </div>
         </div>
 
         {/* History dropdown — rendered in a portal at document.body so no
-            parent stacking context, transform, or overflow can clip it or
-            leak content through it. */}
+            parent stacking context, transform, or overflow can clip it. */}
         {historyOpen && historyPos && createPortal(
           <>
             <div className="fixed inset-0 z-[9998] bg-black/50" onClick={() => setHistoryOpen(false)} />
@@ -422,29 +420,23 @@ export default function AIChat({ heightClass = 'h-[calc(100dvh-13.5rem)] md:h-[c
               className="fixed z-[9999] border border-border-primary rounded-xl shadow-2xl overflow-hidden"
               style={{ top: historyPos.top, left: historyPos.left, width: historyPos.width, backgroundColor: 'var(--color-bg-overlay)' }}
             >
-              <div className="px-3 py-2 text-[11px] text-text-muted border-b border-border-primary/50">
+              <div className="px-3 py-2 text-xs text-text-secondary border-b border-border-primary/50">
                 {conversations.length === 0 ? 'אין שיחות שמורות' : `${conversations.length} שיחות אחרונות (עד ${MAX_CONVERSATIONS})`}
               </div>
-              <div className="max-h-80 overflow-y-auto">
+              <div className="max-h-80 overflow-y-auto overscroll-contain">
                 {conversations.map((c) => (
                   <div
                     key={c.id}
                     onClick={() => loadConversation(c.id)}
-                    className={`group flex items-center gap-2 px-3 py-2 cursor-pointer hover:bg-bg-tertiary transition-colors ${
-                      c.id === currentConvId ? 'bg-accent-primary/10' : ''
-                    }`}
+                    className={`group flex items-center gap-2 px-3 py-2.5 cursor-pointer hover:bg-bg-tertiary transition-colors ${c.id === currentConvId ? 'bg-accent-primary/10' : ''}`}
                   >
                     <div className="flex-1 min-w-0">
-                      <div className="text-xs text-text-primary truncate">{c.title}</div>
-                      <div className="text-[10px] text-text-muted">
+                      <div className="text-sm text-text-primary truncate">{c.title}</div>
+                      <div className="text-[11px] text-text-secondary">
                         {new Date(c.updatedAt).toLocaleString('he-IL', { day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' })}
                       </div>
                     </div>
-                    <button
-                      onClick={(e) => deleteConversation(c.id, e)}
-                      className="p-1 rounded text-text-muted hover:text-loss opacity-0 group-hover:opacity-100 transition-opacity"
-                      title="מחק שיחה"
-                    >
+                    <button onClick={(e) => deleteConversation(c.id, e)} className="p-1.5 rounded-lg text-text-muted hover:text-loss sm:opacity-0 group-hover:opacity-100 transition-opacity cursor-pointer" title="מחק שיחה">
                       <Trash2 className="w-3.5 h-3.5" />
                     </button>
                   </div>
@@ -455,217 +447,160 @@ export default function AIChat({ heightClass = 'h-[calc(100dvh-13.5rem)] md:h-[c
           document.body,
         )}
 
-        {/* Messages */}
-        <div className="flex-1 overflow-y-auto px-4 py-4 space-y-4 relative" onScroll={onMessagesScroll}>
-          <AnimatePresence initial={false}>
-            {messages.map((msg) => (
-              <motion.div
-                key={msgKey(msg)}
-                initial={{ opacity: 0, y: 10 }}
-                animate={{ opacity: 1, y: 0 }}
-                transition={{ duration: 0.3 }}
-                className={`flex items-start gap-2.5 ${msg.role === 'user' ? '' : 'flex-row-reverse'}`}
-              >
-                {/* Avatar */}
-                <div className={`w-7 h-7 rounded-lg flex items-center justify-center shrink-0 ${
-                  msg.role === 'user'
-                    ? 'bg-accent-primary/20'
-                    : 'bg-accent-primary/10'
-                }`}>
-                  {msg.role === 'user'
-                    ? <User className="w-4 h-4 text-accent-primary" />
-                    : <Bot className="w-4 h-4 text-accent-primary" />
-                  }
-                </div>
-
-                {/* Bubble + copy button */}
-                <div className="max-w-[85%] flex flex-col gap-0.5">
-                  <div className={`rounded-2xl px-4 py-2.5 text-sm leading-relaxed ${
-                    msg.role === 'user'
-                      ? 'bg-accent-primary/15 border border-accent-primary/25 text-text-primary rounded-tr-sm'
-                      : 'bg-bg-secondary border border-border-primary text-text-secondary rounded-tl-sm'
-                  }`}>
-                    {msg.role === 'user'
-                      ? <>
-                          {msg.image && (
-                            <img src={msg.image} alt="גרף שצורף" className="mb-2 rounded-lg max-h-48 w-auto border border-border-primary" />
-                          )}
-                          {!msg.image && msg.hadImage && (
-                            <span className="flex items-center gap-1 text-[10px] text-text-muted mb-1">
-                              <ImageIcon className="w-3 h-3" /> צורפה תמונת גרף
-                            </span>
-                          )}
-                          <p dir="auto">{msg.text}</p>
-                        </>
-                      : <>
-                          {msg.chart && (
-                            <Suspense fallback={<div className="h-40 rounded-xl bg-bg-tertiary animate-pulse" />}>
-                              <ChatChart prices={msg.chart.prices} coinSymbol={msg.chart.symbol} />
-                            </Suspense>
-                          )}
-                          <div className="space-y-0">{formatAIText(msg.text)}</div>
-                        </>
-                    }
-                  </div>
-                  {msg.text && (
-                    <button
-                      onClick={() => copyMessage(msgKey(msg), msg.text)}
-                      className={`flex items-center gap-1 text-[10px] text-text-muted hover:text-text-primary transition-colors cursor-pointer px-1 ${
-                        msg.role === 'user' ? 'self-start' : 'self-end'
-                      }`}
-                      title="העתק הודעה"
-                    >
-                      {copiedIdx === msgKey(msg)
-                        ? <><Check className="w-3 h-3 text-profit" /> הועתק</>
-                        : <><Copy className="w-3 h-3" /> העתק</>
-                      }
-                    </button>
-                  )}
-                </div>
-              </motion.div>
-            ))}
-          </AnimatePresence>
+        {/* Messages / welcome */}
+        <div className={`flex-1 overflow-y-auto overscroll-contain px-3 sm:px-5 py-5 space-y-5 relative ${isEmpty ? 'flex flex-col' : ''}`} onScroll={onMessagesScroll}>
+          {isEmpty ? (
+            <div className="flex-1 flex flex-col items-center justify-center text-center gap-5">
+              <div className="w-14 h-14 rounded-2xl grid place-items-center" style={{ background: 'linear-gradient(135deg, #2563eb 0%, #38bdf8 100%)', boxShadow: '0 0 28px -6px rgba(59,130,246,0.7)' }}>
+                <Sparkles className="w-7 h-7" style={{ color: '#06060a' }} />
+              </div>
+              <div className="space-y-1.5">
+                <h2 className="text-xl md:text-2xl font-bold text-text-primary">הסוכן מכיר כל עסקה שלך</h2>
+                <p className="text-sm text-text-secondary max-w-md mx-auto leading-relaxed">
+                  {hint || 'שאל על הביצועים, הטעויות והסיכון שלך. התשובות מבוססות על היומן שלך, לא על עצות כלליות.'}
+                </p>
+              </div>
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 w-full max-w-xl">
+                {QUICK_QUESTIONS.map(({ Icon, text }) => (
+                  <button
+                    key={text}
+                    onClick={() => pickSuggestion(text)}
+                    className="flex items-center gap-3 px-3.5 py-3 rounded-xl text-right bg-bg-tertiary border border-border-primary hover:border-accent-primary/40 hover:bg-accent-primary/5 transition-colors cursor-pointer"
+                  >
+                    <span className="w-8 h-8 rounded-lg bg-accent-primary/12 text-accent-hover grid place-items-center shrink-0">
+                      {Icon && <Icon className="w-4 h-4" />}
+                    </span>
+                    <span className="text-sm text-text-primary">{text}</span>
+                  </button>
+                ))}
+              </div>
+            </div>
+          ) : (
+            <AnimatePresence initial={false}>
+              {messages.filter((m) => m !== WELCOME_MESSAGE).map((msg) => {
+                const mine = msg.role === 'user';
+                return (
+                  <motion.div
+                    key={msgKey(msg)}
+                    initial={{ opacity: 0, y: 8 }}
+                    animate={{ opacity: 1, y: 0 }}
+                    transition={{ duration: 0.25 }}
+                    className={`group flex items-start gap-2.5 ${mine ? '' : 'flex-row-reverse'}`}
+                  >
+                    {!mine && <BotMark />}
+                    <div className={`flex flex-col gap-1 min-w-0 ${mine ? 'max-w-[85%] sm:max-w-[75%]' : 'max-w-[92%] sm:max-w-[85%]'}`}>
+                      <div className={`rounded-2xl px-4 py-3 text-[15px] leading-relaxed ${
+                        mine
+                          ? 'bg-accent-primary/15 border border-accent-primary/25 text-text-primary rounded-tr-md'
+                          : 'bg-bg-tertiary text-text-primary/90 rounded-tl-md'
+                      }`}>
+                        {mine ? (
+                          <>
+                            {msg.image && <img src={msg.image} alt="גרף שצורף" className="mb-2 rounded-lg max-h-48 w-auto border border-border-primary" />}
+                            {!msg.image && msg.hadImage && (
+                              <span className="flex items-center gap-1 text-xs text-text-secondary mb-1"><ImageIcon className="w-3 h-3" /> צורפה תמונת גרף</span>
+                            )}
+                            <p dir="auto">{msg.text}</p>
+                          </>
+                        ) : (
+                          <>
+                            {msg.chart && (
+                              <Suspense fallback={<div className="h-40 rounded-xl bg-bg-secondary animate-pulse mb-2" />}>
+                                <ChatChart prices={msg.chart.prices} coinSymbol={msg.chart.symbol} />
+                              </Suspense>
+                            )}
+                            <div className="space-y-0">{formatAIText(msg.text)}</div>
+                          </>
+                        )}
+                      </div>
+                      {msg.text && (
+                        <button
+                          onClick={() => copyMessage(msgKey(msg), msg.text)}
+                          className={`inline-flex items-center gap-1 text-[11px] text-text-muted hover:text-text-primary transition-opacity cursor-pointer px-1 sm:opacity-0 group-hover:opacity-100 ${mine ? 'self-start' : 'self-end'}`}
+                          title="העתק הודעה"
+                        >
+                          {copiedIdx === msgKey(msg) ? <><Check className="w-3 h-3 text-profit" /> הועתק</> : <><Copy className="w-3 h-3" /> העתק</>}
+                        </button>
+                      )}
+                    </div>
+                  </motion.div>
+                );
+              })}
+            </AnimatePresence>
+          )}
 
           {/* Streaming AI response */}
           {streaming && streamingText && (
-            <motion.div
-              initial={{ opacity: 0, y: 10 }}
-              animate={{ opacity: 1, y: 0 }}
-              className="flex items-start gap-2.5 flex-row-reverse"
-            >
-              <div className="w-7 h-7 rounded-lg bg-accent-primary/10 flex items-center justify-center shrink-0">
-                <Bot className="w-4 h-4 text-accent-primary" />
-              </div>
-              <div className="max-w-[85%] rounded-2xl rounded-tl-sm px-4 py-2.5 text-sm leading-relaxed bg-bg-secondary border border-border-primary text-text-secondary">
-                {/* Chart loading skeleton */}
+            <div className="flex items-start gap-2.5 flex-row-reverse">
+              <BotMark />
+              <div className="max-w-[92%] sm:max-w-[85%] rounded-2xl rounded-tl-md px-4 py-3 text-[15px] leading-relaxed bg-bg-tertiary text-text-primary/90">
                 {pendingChart && (
-                  <div className="mb-3 rounded-xl bg-bg-tertiary/50 border border-border-primary overflow-hidden">
-                    <div className="flex items-center gap-2 px-3 py-2 border-b border-border-primary">
-                      <motion.div animate={{ opacity: [0.3, 0.7, 0.3] }} transition={{ duration: 1.5, repeat: Infinity }}>
-                        <BarChart3 className="w-3.5 h-3.5 text-accent-primary" />
-                      </motion.div>
-                      <span className="text-[10px] font-mono text-text-muted">טוען גרף {pendingChart}...</span>
-                    </div>
-                    <div className="h-44 flex items-center justify-center">
-                      <motion.div
-                        animate={{ opacity: [0.2, 0.5, 0.2] }}
-                        transition={{ duration: 2, repeat: Infinity }}
-                        className="text-[10px] text-text-muted font-mono"
-                      >
-                        LOADING CHART DATA
-                      </motion.div>
-                    </div>
+                  <div className="mb-3 h-10 rounded-xl bg-bg-secondary border border-border-primary flex items-center gap-2 px-3 text-xs text-text-secondary">
+                    <BarChart3 className="w-3.5 h-3.5 text-accent-primary animate-pulse" /> טוען גרף {pendingChart}…
                   </div>
                 )}
                 <div className="space-y-0">{formatAIText(streamingText)}</div>
               </div>
-            </motion.div>
+            </div>
           )}
 
           {/* Typing indicator - before first chunk arrives */}
-          {streaming && !streamingText && (
-            <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }}>
-              <TypingIndicator />
-            </motion.div>
-          )}
+          {streaming && !streamingText && <TypingIndicator />}
 
           {error && (
-            <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} className="flex justify-center">
-              <div className="bg-loss/10 border border-loss/20 rounded-xl px-4 py-2 text-xs text-loss text-center">
+            <div className="flex justify-center">
+              <div className="bg-loss/10 border border-loss/25 rounded-xl px-4 py-2.5 text-sm text-loss text-center">
                 {error}
-                <button onClick={() => handleSend(lastPromptRef.current)} className="block mx-auto mt-1 underline cursor-pointer text-text-muted hover:text-text-primary">
+                <button onClick={() => handleSend(lastPromptRef.current)} className="block mx-auto mt-1 text-xs underline cursor-pointer text-text-secondary hover:text-text-primary">
                   נסה שוב
                 </button>
               </div>
-            </motion.div>
+            </div>
           )}
 
           <div ref={messagesEndRef} />
         </div>
 
-        {/* Quick Questions */}
-        <AnimatePresence>
-          {showQuickQuestions && (
-            <motion.div
-              initial={{ opacity: 0, y: 10 }}
-              animate={{ opacity: 1, y: 0 }}
-              exit={{ opacity: 0, y: 10 }}
-              className="px-4 pb-2"
-            >
-              <p className="text-[10px] text-text-muted mb-2 flex items-center gap-1">
-                <Sparkles className="w-3 h-3 text-accent-primary" /> שאלות מוצעות
-              </p>
-              <div className="flex flex-wrap gap-1.5">
-                {QUICK_QUESTIONS.map((q) => (
-                  <button
-                    key={q}
-                    onClick={() => handleSend(q)}
-                    className="px-3 py-1.5 rounded-lg text-xs bg-bg-secondary border border-border-primary text-text-secondary hover:text-accent-primary hover:border-accent-primary/40 transition-all cursor-pointer"
-                  >
-                    {q}
-                  </button>
-                ))}
-              </div>
-            </motion.div>
-          )}
-        </AnimatePresence>
-
-        {/* Input */}
-        {!atBottom && (
+        {!atBottom && !isEmpty && (
           <button
             onClick={() => { stickRef.current = true; setAtBottom(true); messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' }); }}
-            className="absolute bottom-20 left-1/2 -translate-x-1/2 z-10 inline-flex items-center gap-1 text-[11px] px-3 py-1.5 rounded-full bg-bg-tertiary border border-border-primary text-text-secondary hover:text-text-primary shadow-lg cursor-pointer"
+            className="absolute bottom-24 left-1/2 -translate-x-1/2 z-10 inline-flex items-center gap-1 text-xs px-3 py-1.5 rounded-full bg-bg-tertiary border border-border-primary text-text-secondary hover:text-text-primary shadow-lg cursor-pointer"
           >
-            קפוץ לתשובה האחרונה ↓
+            לתשובה האחרונה ↓
           </button>
         )}
 
-        <div className="border-t border-border-primary px-4 py-3 bg-bg-secondary">
-          {/* Daily AI quota — resets at Israel midnight. Both tiers see a bar
-              so premium users know they have a (generous) cap too. */}
-          {!aiUsage.loading && aiUsage.limit && (() => {
-            const remaining = Math.max(0, aiUsage.limit - aiUsage.used);
-            const pct = Math.min(100, (aiUsage.used / aiUsage.limit) * 100);
-            const low = remaining <= 3;
-            return (
-              <div className="mb-2">
-                <div className="flex items-center justify-between text-[10px] mb-1">
-                  <span className="text-text-muted flex items-center gap-1">
-                    {aiUsage.premium && <Crown className="w-2.5 h-2.5 text-accent-primary" />}
-                    {aiUsage.premium ? 'מכסה יומית · Premium' : 'מכסה יומית'}
-                  </span>
-                  <span className={low ? 'text-loss font-semibold' : 'text-text-secondary'}>
-                    נשארו {remaining} מתוך {aiUsage.limit}
-                  </span>
-                </div>
-                <div className="h-1 bg-bg-tertiary rounded-full overflow-hidden">
-                  <div
-                    className={`h-full rounded-full transition-all ${low ? 'bg-loss' : 'bg-accent-primary'}`}
-                    style={{ width: `${pct}%` }}
-                  />
-                </div>
-              </div>
-            );
-          })()}
-          <div className="flex items-end gap-2">
+        {/* Input — one box with the send button inside, quota underneath. */}
+        <div className="border-t border-border-primary px-3 sm:px-4 pt-3 pb-2.5">
+          <div className="flex items-end gap-2 rounded-2xl bg-bg-tertiary border border-border-primary focus-within:border-accent-primary/60 transition-colors p-1.5 ps-3">
             <textarea
               ref={inputRef}
               value={input}
               onChange={(e) => setInput(e.target.value)}
               onKeyDown={handleKeyDown}
-              placeholder="שאל על ויקוף, LPSY, LPS..."
+              placeholder="שאל על המסחר שלך, על ויקוף או על מטבע…"
               rows={1}
-              className="flex-1 bg-bg-tertiary border border-border-primary rounded-xl px-4 py-2.5 text-sm text-text-primary placeholder-text-muted outline-none resize-none focus:border-accent-primary/50 transition-colors"
-              style={{ maxHeight: '100px' }}
+              className="flex-1 bg-transparent py-2 text-[15px] text-text-primary placeholder-text-muted outline-none resize-none"
+              style={{ maxHeight: '120px' }}
             />
             <button
               onClick={() => handleSend()}
               disabled={!input.trim() || streaming || cooldown}
-              className="w-10 h-10 rounded-xl bg-accent-primary text-bg-primary flex items-center justify-center hover:bg-accent-hover transition-colors cursor-pointer disabled:opacity-30 disabled:cursor-not-allowed shrink-0 shadow-lg shadow-accent-primary/20"
+              aria-label="שליחה"
+              className="w-10 h-10 rounded-xl bg-accent-muted hover:bg-accent-primary text-white grid place-items-center transition-colors cursor-pointer disabled:opacity-30 disabled:cursor-not-allowed shrink-0"
             >
               <Send className="w-4 h-4" />
             </button>
           </div>
+          {remaining != null && (
+            <div className="flex items-center justify-between gap-2 mt-1.5 px-1 text-[11px] text-text-muted">
+              <span className="inline-flex items-center gap-1">
+                {aiUsage.premium && <Crown className="w-3 h-3 text-accent-hover" />}
+                {aiUsage.premium ? 'Premium' : 'מסלול חינמי'}
+              </span>
+              <span className={remaining <= 3 ? 'text-loss font-semibold' : ''}>נשארו {remaining} מתוך {aiUsage.limit} שאלות היום</span>
+            </div>
+          )}
         </div>
       </div>
     </div>
