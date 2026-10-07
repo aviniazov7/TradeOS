@@ -277,7 +277,7 @@ export default function AdminSystem({ checks, users, auditKey, onOpenAudit, onOp
           return (
             <div key={i} className="flex items-center gap-3 py-3 border-t border-border-primary first:border-t-0 text-sm">
               <span className={`w-8 h-8 rounded-[10px] grid place-items-center shrink-0 ${meta.tile}`}><Icon className="w-[15px] h-[15px]" /></span>
-              <span className="flex-1 min-w-0 truncate">
+              <span className="flex-1 min-w-0 line-clamp-2 leading-snug">
                 <span className="text-text-primary">{meta.label}{target ? ` · ${target}` : ''}</span>
                 {extra && <span className="text-text-secondary"> · {extra}</span>}
               </span>

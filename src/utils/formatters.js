@@ -20,6 +20,19 @@ export function formatCurrency(value, decimals = 2) {
 }
 
 /**
+ * Signed money for tight spots (small tiles on a phone): full value up to
+ * $99,999.99, then $123.4K / $1.12M so it never has to be cut.
+ */
+export function formatCurrencyShort(value) {
+  if (value == null || isNaN(value)) return '$0.00';
+  const abs = Math.abs(value);
+  if (abs < 1e5) return formatCurrency(value);
+  const sign = value >= 0 ? '+' : '-';
+  const body = abs >= 1e9 ? `${(abs / 1e9).toFixed(2)}B` : abs >= 1e6 ? `${(abs / 1e6).toFixed(2)}M` : `${(abs / 1e3).toFixed(1)}K`;
+  return `${LRM}${sign}$${body}`;
+}
+
+/**
  * Format percentage: +3.85%
  */
 export function formatPercent(value, decimals = 2) {

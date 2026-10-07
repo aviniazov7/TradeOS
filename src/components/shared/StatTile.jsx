@@ -1,5 +1,6 @@
 import { ArrowUpRight, ArrowDownRight } from 'lucide-react';
 import Card from './Card';
+import FitText from './FitText';
 
 // KPI tile (21st.dev "stats card" style): small label + icon, a big tabular
 // number, an optional change pill (↑ +5.4%) and a muted sub-line.
@@ -17,7 +18,7 @@ export default function StatTile({
         {Icon && <Icon className="w-3.5 h-3.5 shrink-0 opacity-80" />}
       </div>
       <div className="relative flex items-center gap-2 mt-1 min-w-0">
-        <span className={`${mono ? 'num-mono' : ''} text-base md:text-xl font-bold truncate ${tone}`} dir={mono ? 'ltr' : undefined}>{value}</span>
+        <FitText className={`${mono ? 'num-mono' : ''} text-base md:text-xl font-bold flex-initial ${tone}`} dir={mono ? 'ltr' : undefined}>{value}</FitText>
         {delta && delta.value != null && (
           <span dir="ltr" className={`shrink-0 inline-flex items-center gap-0.5 text-[10px] font-semibold px-1.5 py-0.5 rounded-md ${
             delta.positive ? 'bg-profit/15 text-profit' : 'bg-loss/15 text-loss'

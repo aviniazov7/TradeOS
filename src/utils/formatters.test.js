@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { formatCurrency, formatPercent, formatRR, LRM } from './formatters';
+import { formatCurrency, formatCurrencyShort, formatPercent, formatRR, LRM } from './formatters';
 
 // Signed numbers carry a leading LEFT-TO-RIGHT MARK so, inside Hebrew text,
 // the sign stays in front of the number instead of jumping to its end.
@@ -9,6 +9,12 @@ describe('signed number formatters', () => {
     expect(formatCurrency(1234.5)).toBe(`${LRM}+$1,234.50`);
     // callers that strip the plus still work
     expect(formatCurrency(5).replace('+', '')).toBe(`${LRM}$5.00`);
+  });
+  it('formatCurrencyShort abbreviates only big amounts', () => {
+    expect(formatCurrencyShort(-2647.19)).toBe(`${LRM}-$2,647.19`);
+    expect(formatCurrencyShort(99999.99)).toBe(`${LRM}+$99,999.99`);
+    expect(formatCurrencyShort(123456)).toBe(`${LRM}+$123.5K`);
+    expect(formatCurrencyShort(-1118566.25)).toBe(`${LRM}-$1.12M`);
   });
   it('formatPercent keeps the sign in front', () => {
     expect(formatPercent(-5.72)).toBe(`${LRM}-5.72%`);
