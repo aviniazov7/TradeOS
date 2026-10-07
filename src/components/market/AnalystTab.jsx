@@ -1,5 +1,5 @@
 import { Link } from 'react-router-dom';
-import { BookOpen, ArrowLeft } from 'lucide-react';
+import { BookOpen, ArrowLeft, Sparkles } from 'lucide-react';
 import { useJournalContext } from '../../contexts/JournalContext';
 import AnalystInsights from '../journal/AnalystInsights';
 
@@ -13,38 +13,40 @@ export default function AnalystTab({ heightClass, trades }) {
   const list = trades || [];
 
   return (
-    <div className={`w-full ${heightClass} overflow-y-auto overscroll-contain rounded-2xl border border-border-primary bg-bg-secondary p-4`}>
-      <div className="flex flex-wrap items-baseline justify-between gap-2 mb-4">
-        <div>
-          <h2 className="text-sm font-bold text-text-primary">האנליסט שלך</h2>
-          <p className="text-[11px] text-text-muted mt-0.5">
-            נמדד על {activeJournal?.name || 'היומן הפעיל'} — כל המספרים מחושבים מהעסקאות שלך, לא נכתבים על ידי מודל.
+    <div className={`w-full ${heightClass} overflow-y-auto overscroll-contain rounded-2xl border border-border-primary bg-bg-secondary`}>
+      <div className="flex flex-wrap items-center justify-between gap-3 px-4 py-3 border-b border-border-primary">
+        <div className="min-w-0">
+          <h2 className="text-sm font-semibold text-text-primary">האנליסט שלך</h2>
+          <p className="text-xs text-text-muted mt-0.5 truncate">
+            {activeJournal?.name || 'היומן הפעיל'} · מחושב ישירות מהעסקאות שלך
           </p>
         </div>
         <Link
           to="/journal?ai=1"
-          className="inline-flex items-center gap-1 text-[11px] text-accent-primary hover:text-accent-hover"
+          className="shrink-0 inline-flex items-center gap-1.5 h-9 px-3.5 rounded-xl bg-accent-primary/12 border border-accent-primary/30 text-accent-hover text-xs font-bold hover:bg-accent-primary/20 transition-colors"
         >
-          לניתוח AI מלא <ArrowLeft className="w-3 h-3" />
+          <Sparkles className="w-3.5 h-3.5" /> ניתוח AI מלא
         </Link>
       </div>
 
-      {!list.length && (
-        <div className="flex items-start gap-3 rounded-xl border border-border-primary bg-bg-secondary p-4">
-          <BookOpen className="w-5 h-5 text-text-muted shrink-0 mt-0.5" />
-          <div>
-            <p className="text-sm font-semibold text-text-primary">אין עדיין עסקאות ביומן הזה</p>
-            <p className="text-xs text-text-secondary mt-0.5">
-              האנליסט מודד את מה שבאמת עשית מול התוכנית שהגדרת, אז הוא מתחיל לעבוד ברגע שיש מה למדוד.
-            </p>
-            <Link to="/journal?new=1" className="inline-flex items-center gap-1 text-xs text-accent-primary mt-2">
-              להוספת עסקה <ArrowLeft className="w-3 h-3" />
+      <div className="p-4 md:p-5 max-w-4xl mx-auto">
+        {list.length > 0 ? <AnalystInsights trades={list} /> : (
+          <div className="flex flex-col items-center text-center gap-3 py-12">
+            <span className="w-12 h-12 rounded-2xl grid place-items-center bg-bg-tertiary border border-border-primary">
+              <BookOpen className="w-6 h-6 text-text-muted" />
+            </span>
+            <div>
+              <p className="text-sm font-bold text-text-primary">אין עדיין עסקאות ביומן הזה</p>
+              <p className="text-[13px] text-text-secondary mt-1 max-w-sm">
+                האנליסט מודד את מה שעשית בפועל מול התוכנית שלך — הוא מתחיל לעבוד מהעסקה הראשונה.
+              </p>
+            </div>
+            <Link to="/journal?new=1" className="inline-flex items-center gap-1.5 h-10 px-4 rounded-xl bg-accent-muted hover:bg-accent-primary text-white text-sm font-bold transition-colors">
+              הוספת עסקה <ArrowLeft className="w-4 h-4" />
             </Link>
           </div>
-        </div>
-      )}
-
-      {list.length > 0 && <AnalystInsights trades={list} />}
+        )}
+      </div>
     </div>
   );
 }

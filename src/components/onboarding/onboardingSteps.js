@@ -1,68 +1,46 @@
-import { Rocket, BookOpen, BarChart3, Brain, Share2, Shield } from 'lucide-react';
+import { Rocket, BookOpen, Sparkles, Brain } from 'lucide-react';
 
+// Four short slides, one brand colour. Each one says what the user gets, in
+// three concrete lines — the last slide hands off to a real first action.
 export const ONBOARDING_STEPS = [
   {
     icon: Rocket,
     title: 'ברוכים הבאים ל-TradeOS',
-    subtitle: 'מערכת ההפעלה למסחר שלך',
-    description: 'תעד, נתח ושפר את המסחר שלך במקום אחד. הכל מותאם לפיוצ׳רס עם ממשק בעברית.',
-    highlights: ['יומן מסחר מתקדם', 'ניתוחים וסטטיסטיקות', 'בקטסטינג ותוכניות'],
-    color: 'text-accent-primary',
-    bgColor: 'bg-accent-primary/15',
-    glowColor: 'rgba(99, 102, 241, 0.15)',
+    description: 'כל המסחר שלך במקום אחד: מתעדים, מודדים ומשתפרים — עסקה אחרי עסקה.',
+    highlights: [
+      'חיבור לבורסה ומשיכת עסקאות אוטומטית',
+      'יומן מסחר מלא עם ניתוחים מקצועיים',
+      'סוכן AI שמכיר כל עסקה שלך',
+    ],
   },
   {
     icon: BookOpen,
-    title: 'יומן מסחר חכם',
-    subtitle: 'תיעוד מדויק של כל עסקה',
-    description: 'תעד כניסות, יציאות חלקיות עם אחוזים, סטופ לוס ואסטרטגיה. המערכת מחשבת אוטומטית PnL, R:R וממוצע משוקלל.',
-    highlights: ['יציאות חלקיות (Partial TP)', 'חישוב R:R אוטומטי', 'לוח חודשי צבעוני'],
-    color: 'text-profit',
-    bgColor: 'bg-profit/15',
-    glowColor: 'rgba(34, 197, 94, 0.15)',
+    title: 'יומן מסחר מדויק',
+    description: 'כל עסקה עם כניסה, יציאות חלקיות, סטופ ואסטרטגיה. החישובים נעשים לבד.',
+    highlights: [
+      'רווח/הפסד, R:R וממוצע משוקלל אוטומטית',
+      'לוח חודשי, סטטיסטיקות ופילוח לפי מטבע וסשן',
+      'כרטיס שיתוף מעוצב לכל עסקה',
+    ],
+  },
+  {
+    icon: Sparkles,
+    title: 'סוכן AI ואנליסט אישי',
+    description: 'שאל בעברית על המסחר שלך וקבל תשובה מבוססת על הנתונים שלך — לא תשובה כללית.',
+    highlights: [
+      'איפה אתה מפסיד ומה כן עובד לך',
+      'ניתוח גרף מקצועי מצילום מסך',
+      'מפקח סיכון שבודק אותך מול התוכנית',
+    ],
   },
   {
     icon: Brain,
-    title: 'מעקב מנטלי',
-    subtitle: 'הצד הפסיכולוגי של המסחר',
-    description: 'דרג את הריכוז, הביטחון, הסטרס וההצמדות לתוכנית בכל עסקה. זהה דפוסים רגשיים שמשפיעים על הביצועים.',
-    highlights: ['דירוג מנטלי לכל עסקה', 'זיהוי טעויות חוזרות', 'סשן אוטומטי'],
-    color: 'text-purple-400',
-    bgColor: 'bg-purple-400/15',
-    glowColor: 'rgba(192, 132, 252, 0.15)',
-  },
-  {
-    icon: BarChart3,
-    title: 'ניתוחים מתקדמים',
-    subtitle: 'נתונים שהופכים אותך לסוחר טוב יותר',
-    description: 'Win Rate, Profit Factor, Sharpe Ratio, Drawdown ועוד. נתח לפי אסטרטגיה, זוג, טווח זמן ויום בשבוע.',
-    highlights: ['סטטיסטיקות מקצועיות', 'ניתוח לפי אסטרטגיה', 'מטריצת קורלציה'],
-    // Palette literal, NOT --color-breakeven: the wizard is a permanently dark
-    // overlay in both themes (bg-black/80 scrim under a translucent card), so a
-    // light-theme-darkened token would go the wrong way here. Matches the -400
-    // weight its sibling steps use (purple-400 / sky-400).
-    color: 'text-amber-400',
-    bgColor: 'bg-amber-400/15',
-    glowColor: 'rgba(251, 191, 36, 0.15)',
-  },
-  {
-    icon: Share2,
-    title: 'שתף את ההצלחות',
-    subtitle: 'כרטיסי שיתוף מעוצבים',
-    description: 'שתף עסקאות ויומן חודשי כתמונה מעוצבת. בחר מה לחשוף — סכומים, אחוזים או רק צבעים.',
-    highlights: ['כרטיס עסקה מעוצב', 'שיתוף יומן חודשי', 'שליטה בפרטיות'],
-    color: 'text-sky-400',
-    bgColor: 'bg-sky-400/15',
-    glowColor: 'rgba(56, 189, 248, 0.15)',
-  },
-  {
-    icon: Shield,
-    title: 'ניהול סיכונים',
-    subtitle: 'הגן על ההון שלך',
-    description: 'הגדר מגבלות סיכון לעסקה — אחוז מהתיק או סכום קבוע. המערכת תתריע כשאתה חורג מהמגבלה.',
-    highlights: ['התראות סיכון בזמן אמת', 'הגבלה באחוז או בדולר', 'לידרבורד תחרותי'],
-    color: 'text-loss',
-    bgColor: 'bg-loss/15',
-    glowColor: 'rgba(239, 68, 68, 0.15)',
+    title: 'משמעת ומנטליות',
+    description: 'התוכנית והראש הם חצי מהמסחר. TradeOS מודד גם אותם.',
+    highlights: [
+      'יומן בוקר וערב קצר לכל יום מסחר',
+      'תוכנית מסחר עם מגבלות סיכון',
+      'כמה עולה לך כל סטייה מהתוכנית, בדולרים',
+    ],
   },
 ];
