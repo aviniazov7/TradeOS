@@ -257,11 +257,11 @@ export default function AdminUsers({ users, loading, selectedId, onSelect, onOpe
         </div>
 
         <div className="overflow-x-auto -mx-1">
-          <table className="w-full min-w-[330px] sm:min-w-[560px] text-sm border-separate border-spacing-0">
+          <table className="w-full sm:min-w-[560px] text-sm border-separate border-spacing-0">
             <thead>
               <tr className="text-xs text-text-secondary text-right">
                 {COLUMNS.map((c) => (
-                  <th key={c.key} scope="col" className={`font-semibold px-3 py-2 ${c.wide ? 'hidden sm:table-cell' : ''}`}>
+                  <th key={c.key} scope="col" className={`font-semibold px-2 sm:px-3 py-2 ${c.wide ? 'hidden sm:table-cell' : ''}`}>
                     <button type="button" onClick={() => toggleSort(c.key)} className="inline-flex items-center gap-1 hover:text-text-primary cursor-pointer">
                       {c.label}
                       {sortKey === c.key && (sortDir === 'asc' ? <ChevronUp className="w-3.5 h-3.5" /> : <ChevronDown className="w-3.5 h-3.5" />)}
@@ -278,7 +278,7 @@ export default function AdminUsers({ users, loading, selectedId, onSelect, onOpe
               ) : rows.slice(0, limit).map((u) => {
                 const st = userStatus(u);
                 const on = u.id === selectedId;
-                const cell = `px-3 py-2.5 border-t border-border-primary/60 ${on ? 'bg-accent-primary/10' : 'group-hover:bg-bg-tertiary/60'}`;
+                const cell = `px-2 sm:px-3 py-2.5 border-t border-border-primary/60 ${on ? 'bg-accent-primary/10' : 'group-hover:bg-bg-tertiary/60'}`;
                 return (
                   <tr key={u.id} onClick={() => onSelect(u)} className="group cursor-pointer">
                     <td className={`${cell} rounded-r-xl`}>
@@ -286,14 +286,14 @@ export default function AdminUsers({ users, loading, selectedId, onSelect, onOpe
                         className="flex items-center gap-2.5 text-right cursor-pointer min-w-0">
                         <Avatar user={u} size="w-[34px] h-[34px] text-xs" />
                         <span className="flex flex-col min-w-0">
-                          <span className="font-semibold text-text-primary truncate max-w-[140px] sm:max-w-[220px]">{u.displayName || '—'}</span>
-                          <span className="text-xs text-text-secondary truncate max-w-[140px] sm:max-w-[220px]" dir="ltr" style={{ textAlign: 'right' }}>{u.email || ''}</span>
+                          <span className="font-semibold text-text-primary truncate max-w-[104px] sm:max-w-[220px]">{u.displayName || '—'}</span>
+                          <span className="text-xs text-text-secondary truncate max-w-[104px] sm:max-w-[220px]" dir="ltr" style={{ textAlign: 'right' }}>{u.email || ''}</span>
                         </span>
                       </button>
                     </td>
                     <td className={cell}><Pill className={st.cls}>{st.label}</Pill></td>
                     <td className={`${cell} hidden sm:table-cell text-text-secondary num-mono`}>{shortDate(u.createdAt)}</td>
-                    <td className={`${cell} rounded-l-xl whitespace-nowrap ${st.key === 'risk' ? 'text-amber-400' : 'text-text-secondary'}`}>
+                    <td className={`${cell} rounded-l-xl sm:whitespace-nowrap ${st.key === 'risk' ? 'text-amber-400' : 'text-text-secondary'}`}>
                       {relativeActive(u.lastActive)}
                     </td>
                   </tr>

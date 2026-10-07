@@ -51,7 +51,7 @@ export default function CheckoutPage() {
 
   return (
     <motion.div variants={pageVariants} initial="initial" animate="animate" exit="exit" transition={pageTransition}
-      className="min-h-[calc(100vh-4rem)] px-4 py-6">
+      className="px-4 py-6">
       <div className="max-w-md mx-auto space-y-4">
 
         <button onClick={() => navigate('/premium')} className="flex items-center gap-1 text-xs text-text-muted hover:text-text-primary cursor-pointer">

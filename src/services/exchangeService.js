@@ -36,6 +36,7 @@ export async function getConnectedExchanges() {
   const token = await auth.currentUser?.getIdToken();
   const res = await fetch(`${WORKER_URL}/exchange/credentials/status`, {
     headers: { Authorization: `Bearer ${token}` },
+    signal: AbortSignal.timeout(8000),
   });
   const data = await res.json().catch(() => ({}));
   return Array.isArray(data.exchanges) ? data.exchanges : [];

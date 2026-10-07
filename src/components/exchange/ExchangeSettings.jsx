@@ -349,6 +349,15 @@ function ConnectDialog({ exchange, editing, data, saving, onUpdate, onSave, onCl
 }
 
 // ── Main ──────────────────────────────────────────────────────────────────────
+// Per-user cache of the last known connections and balances (device only,
+// no secrets) — lets the page open instantly and refresh in the background.
+function readExchCache(uid, suffix) {
+  try { return uid ? JSON.parse(localStorage.getItem(`tradeos_exch_${uid}${suffix}`) || 'null') : null; } catch { return null; }
+}
+function writeExchCache(uid, suffix, value) {
+  try { if (uid) localStorage.setItem(`tradeos_exch_${uid}${suffix}`, JSON.stringify(value)); } catch { /* private mode */ }
+}
+
 export default function ExchangeSettings({ journalId: propJournalId } = {}) {
   const { user, isPremium } = useAuth();
   const navigate = useNavigate();
@@ -359,8 +368,12 @@ export default function ExchangeSettings({ journalId: propJournalId } = {}) {
   // TP1 already imported from the journal's proposal banner got counted twice.
   const { importTrade, existingExternalIds } = useExchangeImport(activeJournalId);
   const [exchanges, setExchanges] = useState({});
-  const [savedExchanges, setSavedExchanges] = useState({});
-  const [loading, setLoading] = useState(true);
+  // Last known connections + balances are kept on the device, so the page
+  // opens instantly with them and refreshes in the background (it used to
+  // show a spinner until the server answered, then wait again for balances).
+  const uid = user?.uid;
+  const [savedExchanges, setSavedExchanges] = useState(() => readExchCache(uid, '') || {});
+  const [loading, setLoading] = useState(() => !readExchCache(uid, ''));
   const [saving, setSaving] = useState(null);
   const [syncing, setSyncing] = useState(null);
   const [syncModal, setSyncModal] = useState(null);
@@ -369,7 +382,7 @@ export default function ExchangeSettings({ journalId: propJournalId } = {}) {
   const [confirmDisconnect, setConfirmDisconnect] = useState(null);
   // Futures wallet balance per connected exchange: undefined = loading,
   // number = ok, false = failed.
-  const [balances, setBalances] = useState({});
+  const [balances, setBalances] = useState(() => readExchCache(uid, '_bal') || {});
   // Fixed "now" for the key-expiry countdown (render must stay pure).
   const [now] = useState(() => Date.now());
   const [balanceNonce, setBalanceNonce] = useState(0);
@@ -426,10 +439,12 @@ export default function ExchangeSettings({ journalId: propJournalId } = {}) {
           }
         }
         setSavedExchanges(markers);
+        writeExchCache(user.uid, '', markers);
         // merge:false replaces the doc — never write while legacy plaintext
         // keys are still there and failed to migrate (that would delete them).
+        // Fire-and-forget: the page doesn't wait on this write to appear.
         if ((hadPlaintext && !anyFailed) || (stamped && !hadPlaintext)) {
-          try { await setUserSetting(user.uid, 'exchanges', markers, false); } catch { /* ignore */ }
+          setUserSetting(user.uid, 'exchanges', markers, false).catch(() => { /* ignore */ });
         }
       } finally {
         setLoading(false);
@@ -446,11 +461,19 @@ export default function ExchangeSettings({ journalId: propJournalId } = {}) {
     let cancelled = false;
     balanceIds.split(',').forEach((id) => {
       fetchExchangeBalance(id)
-        .then((res) => { if (!cancelled) setBalances((b) => ({ ...b, [id]: typeof res?.balance === 'number' ? res.balance : false })); })
+        .then((res) => {
+          if (cancelled) return;
+          setBalances((b) => {
+            const next = { ...b, [id]: typeof res?.balance === 'number' ? res.balance : false };
+            // Remember plain numbers only, for the next instant open.
+            writeExchCache(uid, '_bal', Object.fromEntries(Object.entries(next).filter(([, v]) => typeof v === 'number')));
+            return next;
+          });
+        })
         .catch((err) => { if (!cancelled) setBalances((b) => ({ ...b, [id]: err?.reason ? { problem: err.reason } : false })); });
     });
     return () => { cancelled = true; };
-  }, [balanceIds, balanceNonce]);
+  }, [balanceIds, balanceNonce, uid]);
 
   const updateField = (id, field, value) =>
     setExchanges(p => ({ ...p, [id]: { ...p[id], [field]: value } }));

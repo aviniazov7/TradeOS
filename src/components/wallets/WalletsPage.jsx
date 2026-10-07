@@ -137,7 +137,7 @@ export default function WalletsPage() {
 
   return (
     <motion.div variants={pageVariants} initial="initial" animate="animate" exit="exit" transition={pageTransition}
-      className="min-h-[calc(100vh-4rem)] px-4 py-6">
+      className="px-4 py-6">
       <div className="max-w-3xl mx-auto space-y-4">
 
         {/* Header — compact on mobile; the explanation lives behind a "?" */}

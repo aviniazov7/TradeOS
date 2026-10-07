@@ -1,4 +1,5 @@
 import { useState, useEffect, useCallback, useRef, useMemo } from 'react';
+import { useSearchParams } from 'react-router-dom';
 import { motion, AnimatePresence } from 'framer-motion';
 import { formatCompactUsd as formatNum, formatCoinPrice as formatPrice, LRM } from '../../utils/formatters';
 import {
@@ -672,8 +673,23 @@ function CryptoHeatmap({ coins, loading }) {
   );
 }
 
+
+// The page's three views, switched by the shared tab strip.
+const MARKET_TABS = [
+  { id: 'overview', label: 'סקירה' },
+  { id: 'analysis', label: 'ניתוח מטבע' },
+  { id: 'whales', label: 'מעקב לווייתנים', mobileLabel: 'לווייתנים' },
+];
 export default function MarketOverview() {
-  const [activeTab, setActiveTab] = useState('overview');
+  // The tab lives in the URL (?tab=analysis / ?tab=whales) so links and the
+  // back button land on the right view.
+  const [searchParams, setSearchParams] = useSearchParams();
+  const activeTab = MARKET_TABS.some((t) => t.id === searchParams.get('tab')) ? searchParams.get('tab') : 'overview';
+  const setActiveTab = (id) => setSearchParams((prev) => {
+    const next = new URLSearchParams(prev);
+    if (id === 'overview') next.delete('tab'); else next.set('tab', id);
+    return next;
+  }, { replace: true });
   const [global, setGlobal] = useState(null);
   const [trending, setTrending] = useState([]);
   const [topCoins, setTopCoins] = useState([]);
@@ -1058,7 +1074,7 @@ export default function MarketOverview() {
         actions={(
           <div className="rounded-xl bg-bg-tertiary border border-border-primary p-1">
             <TabStrip
-              tabs={[{ id: 'overview', label: 'סקירה' }, { id: 'analysis', label: 'ניתוח מטבע' }]}
+              tabs={MARKET_TABS}
               value={activeTab}
               onChange={setActiveTab}
               layoutKey="market-tab"
@@ -1356,17 +1372,16 @@ export default function MarketOverview() {
       <CryptoHeatmap coins={allCoins} loading={loading} />
       </Reveal>
 
-      {/* Whales — moved here from its own page: live big-trade & liquidation feed. */}
-      <Reveal>
-      <div className="mt-5 md:mt-6">
-        <WhalesPage embedded />
-      </div>
-      </Reveal>
-
       </motion.div>
-      ) : (
+      ) : activeTab === 'analysis' ? (
       <motion.div key="analysis" initial={{ opacity: 0, x: 20 }} animate={{ opacity: 1, x: 0 }} exit={{ opacity: 0, x: -20 }} transition={{ duration: 0.25 }}>
         <CoinAnalysis />
+      </motion.div>
+      ) : (
+      // Whale tracking — live big trades & liquidations, its own tab next to
+      // the coin analysis.
+      <motion.div key="whales" initial={{ opacity: 0, x: 20 }} animate={{ opacity: 1, x: 0 }} exit={{ opacity: 0, x: -20 }} transition={{ duration: 0.25 }}>
+        <WhalesPage embedded />
       </motion.div>
       )}
       </AnimatePresence>

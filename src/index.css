@@ -15,6 +15,15 @@ html {
   -ms-touch-action: pan-x pan-y;
 }
 
+/* Nothing scrolls sideways at page level — content is sized to the screen.
+   `clip` (not `hidden`) so it doesn't create a scroll container and sticky
+   headers keep working. Intended sideways scrollers (wide tables, tab strips)
+   are their own overflow-x-auto boxes and are unaffected. */
+html, body {
+  overflow-x: clip;
+  max-width: 100%;
+}
+
 body {
   overscroll-behavior: none;
   /* True black (iOS-style) — a single whisper-faint neutral glow for depth,
@@ -22,7 +31,11 @@ body {
   background:
     radial-gradient(ellipse 1100px 700px at 50% -8%, rgba(255, 255, 255, 0.022) 0%, transparent 60%),
     #000000;
+  /* dvh = the screen height you actually see. 100vh on phones includes the
+     area behind the browser bar, which made the whole app scroll up and down a
+     little even when there was nothing to scroll. */
   min-height: 100vh;
+  min-height: 100dvh;
 }
 
 .light body {

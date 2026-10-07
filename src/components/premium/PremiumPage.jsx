@@ -63,7 +63,7 @@ export default function PremiumPage() {
 
   return (
     <motion.div variants={pageVariants} initial="initial" animate="animate" exit="exit" transition={pageTransition}
-      className="min-h-[calc(100vh-4rem)] px-4 py-6">
+      className="px-4 py-6">
       <div className="max-w-2xl mx-auto space-y-5">
 
         {/* Hero */}
