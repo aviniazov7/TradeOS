@@ -42,10 +42,6 @@ const loadPolymarketPage = () => import('./components/polymarket/PolymarketPage'
 const loadWalletDetailPage = () => import('./components/polymarket/WalletDetailPage');
 const loadMarketDetailPage = () => import('./components/polymarket/MarketDetailPage');
 const loadAdminPanel = () => import('./components/admin/AdminPanel');
-// Redesign preview — new "Daily Briefing" home screen (blue + bilingual).
-// Lives at /briefing so we can review the direction without touching the
-// current home. Not linked from the nav yet.
-const loadDailyBriefing = () => import('./components/redesign/DailyBriefing');
 
 const Dashboard = lazy(loadDashboard);
 const TradeJournal = lazy(loadTradeJournal);
@@ -73,7 +69,6 @@ const PolymarketPage = lazy(loadPolymarketPage);
 const WalletDetailPage = lazy(loadWalletDetailPage);
 const MarketDetailPage = lazy(loadMarketDetailPage);
 const AdminPanel = lazy(loadAdminPanel);
-const DailyBriefing = lazy(loadDailyBriefing);
 
 // Preload only the two most-likely-next routes during idle — and skip entirely
 // on Save-Data / slow connections. This is an installable PWA, so eagerly
@@ -128,7 +123,6 @@ function MainApp() {
                 <Route path="mentality/evening" element={<EveningJournal />} />
                 <Route path="mentality/journey" element={<PsychologicalJourney />} />
                 <Route path="mentality/stats" element={<MentalStats />} />
-                {/* <Route path="leaderboard" element={<LeaderboardPage />} /> */}
                 <Route path="market" element={<MarketOverview />} />
                 {/* Whales live in their own tab of Market Overview; keep the old
                     path so links/bookmarks land on that tab. */}
@@ -152,7 +146,6 @@ function MainApp() {
                 <Route path="premium/checkout" element={<CheckoutPage />} />
                 <Route path="refund-policy" element={<RefundPolicyPage />} />
                 <Route path="admin" element={<AdminPanel />} />
-                <Route path="briefing" element={<DailyBriefing />} />
                 <Route path="profile" element={<ProfilePage />} />
               </Route>
             </Routes>
