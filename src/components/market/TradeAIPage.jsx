@@ -1,75 +1,56 @@
 import { useEffect, useMemo, useState } from 'react';
 import { motion } from 'framer-motion';
-import { MessageCircle, BarChart3, Gauge } from 'lucide-react';
+import { Sparkles } from 'lucide-react';
 import { pageVariants, pageTransition } from '../../utils/animations';
 import { useJournalContext } from '../../contexts/JournalContext';
 import { useTrades } from '../../hooks/useTrades';
 import { useLinkedExchangeBalance } from '../../hooks/useLinkedExchangeBalance';
 import { useDashboardStats } from '../../hooks/useDashboardStats';
 import { isClosedTrade } from '../../utils/calculations';
+import { LRM } from '../../utils/formatters';
+import PageHeader from '../shared/PageHeader';
+import TabStrip from '../shared/TabStrip';
 import AIChat from './AIChat';
 import ChartAnalyzer from './ChartAnalyzer';
 import AnalystTab from './AnalystTab';
-import TradeAIHub from './TradeAIHub';
 
 const TABS = [
-  { id: 'chat', label: 'צ׳אט', icon: MessageCircle },
-  { id: 'analyze', label: 'ניתוח גרפים', icon: BarChart3 },
-  { id: 'analyst', label: 'האנליסט שלך', icon: Gauge },
+  { id: 'chat', label: 'צ׳אט' },
+  { id: 'analyze', label: 'ניתוח גרפים' },
+  { id: 'analyst', label: 'האנליסט שלך' },
 ];
 
-const tradeMs = (t) => {
-  const d = t.exitDate || t.entryDate || t.createdAt;
-  if (!d) return 0;
-  if (typeof d?.toDate === 'function') return d.toDate().getTime();
-  const ms = new Date(d).getTime();
-  return Number.isNaN(ms) ? 0 : ms;
+const fmtK = (v) => {
+  const a = Math.abs(v);
+  const body = a >= 1000 ? `$${(a / 1000).toFixed(1)}K` : `$${a.toFixed(0)}`;
+  return `${LRM}${v >= 0 ? '+' : '-'}${body}`;
 };
 
-const HUB_KEY = 'tradeai:hub-open';
-
+// One clean page like the rest of the app: the shared header (with the tabs in
+// it, as on the news and market pages) and the selected tool filling the rest
+// of the screen. The trader's own numbers sit in one quiet line instead of a
+// row of cards — they're on the home page already.
 export default function TradeAIPage() {
   const [tab, setTab] = useState('chat');
-  const [seed, setSeed] = useState(null);
-  // The hub is useful on arrival and in the way once you are typing, so it
-  // collapses — and the choice sticks, because re-collapsing it on every visit
-  // would be its own annoyance.
-  const [hubOpen, setHubOpen] = useState(() => {
-    try { return localStorage.getItem(HUB_KEY) !== '0'; } catch { return true; }
-  });
-
-  const toggleHub = () => {
-    setHubOpen((v) => {
-      const next = !v;
-      try { localStorage.setItem(HUB_KEY, next ? '1' : '0'); } catch { /* private mode */ }
-      return next;
-    });
-  };
   const { activeJournalId, activeJournal } = useJournalContext();
-  // One subscription for the whole page — the hub, the analyst tab and the
-  // chat read the same book rather than each opening its own listener.
+  // One subscription for the whole page — the analyst tab and the chat read
+  // the same book rather than each opening its own listener.
   const { trades } = useTrades(activeJournalId);
-  // Same basis as the analyst tab beside it: the live wallet when the journal
-  // is linked, the typed opening balance otherwise.
   const liveBalance = useLinkedExchangeBalance(activeJournal?.exchange);
   const stats = useDashboardStats(trades, liveBalance != null ? liveBalance : (Number(activeJournal?.initialBalance) || 0));
-
   const closedCount = useMemo(() => (trades || []).filter(isClosedTrade).length, [trades]);
 
-  // Cumulative P&L for the sparkline, downsampled so a long history stays legible.
-  const equityCurve = useMemo(() => {
-    const closed = (trades || []).filter(isClosedTrade).sort((a, b) => tradeMs(a) - tradeMs(b));
-    const curve = closed.reduce((acc, t) => {
-      const prev = acc.length ? acc[acc.length - 1] : 0;
-      acc.push(Math.round((prev + (Number(t.netPnl ?? t.pnl ?? 0) || 0)) * 100) / 100);
-      return acc;
-    }, []);
-    if (curve.length <= 40) return curve;
-    // Span the full range: floor(39 * len/40) never reaches len-1, so the spark
-    // used to end on an earlier value than the P&L figure printed beside it.
-    const step = (curve.length - 1) / 39;
-    return Array.from({ length: 40 }, (_, i) => curve[Math.round(i * step)]);
-  }, [trades]);
+  // Numbers sit in their own LTR spans so signs stay in front in Hebrew text.
+  const pnl = Number(stats?.totalPnL) || 0;
+  const pf = stats?.profitFactor;
+  const contextLine = closedCount ? (
+    <>
+      הסוכן רואה את {closedCount} העסקאות הסגורות שלך
+      {' · '}<span dir="ltr" className={pnl >= 0 ? 'text-profit' : 'text-loss'}>{fmtK(pnl)}</span>
+      {' · '}<span dir="ltr">{(Number(stats?.winRate) || 0).toFixed(1)}%</span> הצלחה
+      {Number.isFinite(pf) && <>{' · '}פקטור רווח <span dir="ltr">{pf.toFixed(2)}</span></>}
+    </>
+  ) : 'הוסף עסקאות ליומן כדי שהסוכן יוכל לנתח את המסחר שלך.';
 
   // Lock body scroll while the page is open on mobile (iOS needs
   // position:fixed) — each tab manages its own internal scrolling.
@@ -90,61 +71,24 @@ export default function TradeAIPage() {
     };
   }, []);
 
-  const askFromHub = (text) => {
-    setTab('chat');
-    // A new OBJECT every time. The previous version passed a string, which is
-    // identical on a second tap — React bails out, the effect never re-runs, and
-    // the chip silently does nothing after you have cleared the box.
-    setSeed({ text });
-  };
-
-  // Collapsed, the pane reclaims the ~13rem the hub occupies. Both states keep a
-  // floor so the chat never becomes unusable on a short viewport.
-  // Grows at exactly the rate the hub folds; without this the pane snapped on
-  // frame 1 and the hub then slid slowly into the gap it had left.
-  const paneMotion = 'transition-[height,min-height] duration-[220ms] ease-out';
-  const heightClass = hubOpen
-    ? `${paneMotion} h-[calc(100dvh-27rem)] min-h-[20rem] md:h-[calc(100vh-25rem)] md:min-h-[24rem]`
-    : `${paneMotion} h-[calc(100dvh-14rem)] min-h-[26rem] md:h-[calc(100vh-13rem)] md:min-h-[30rem]`;
+  // The tool fills the screen under the header: screen − app header − page
+  // padding − this page's header (phones also keep room for the bottom nav).
+  const heightClass = 'h-[calc(100dvh-21.5rem-env(safe-area-inset-bottom))] min-h-[22rem] md:h-[calc(100dvh-15.5rem)] md:min-h-[26rem]';
 
   return (
-    <motion.div
-      variants={pageVariants}
-      initial="initial"
-      animate="animate"
-      exit="exit"
-      transition={pageTransition}
-      className="overflow-hidden space-y-3"
-    >
-      <TradeAIHub
-        stats={stats}
-        tradesCount={closedCount}
-        equityCurve={equityCurve}
-        onAsk={askFromHub}
-        open={hubOpen}
-        onToggle={toggleHub}
+    <motion.div variants={pageVariants} initial="initial" animate="animate" exit="exit" transition={pageTransition} className="max-w-5xl mx-auto">
+      <PageHeader
+        icon={Sparkles}
+        title="TradeAI"
+        subtitle={contextLine}
+        actions={(
+          <div className="rounded-xl bg-bg-tertiary border border-border-primary p-1 w-full sm:w-auto">
+            <TabStrip tabs={TABS} value={tab} onChange={setTab} layoutKey="tradeai-tab" />
+          </div>
+        )}
       />
 
-      <div className="max-w-2xl mx-auto w-full">
-        <div className="grid grid-cols-3 gap-1 p-1 rounded-2xl bg-bg-secondary border border-border-primary">
-          {TABS.map((t) => (
-            <button
-              key={t.id}
-              onClick={() => setTab(t.id)}
-              className={`flex items-center justify-center gap-1.5 py-2 rounded-xl text-xs font-semibold transition-all cursor-pointer ${
-                tab === t.id
-                  ? 'bg-accent-primary text-bg-primary shadow-lg shadow-accent-primary/20'
-                  : 'text-text-secondary hover:text-text-primary'
-              }`}
-            >
-              <t.icon className="w-3.5 h-3.5 shrink-0" />
-              <span className="truncate">{t.label}</span>
-            </button>
-          ))}
-        </div>
-      </div>
-
-      {tab === 'chat' && <AIChat heightClass={heightClass} seedQuestion={seed} trades={trades} />}
+      {tab === 'chat' && <AIChat heightClass={heightClass} trades={trades} />}
       {tab === 'analyze' && <ChartAnalyzer heightClass={heightClass} />}
       {/* Mounted only while selected, so the two Firestore reads inside
           AnalystInsights cost nothing on the other tabs. */}
