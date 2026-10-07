@@ -1,7 +1,8 @@
 import { useMemo, useRef, useState } from 'react';
 import Card from '../shared/Card';
 import AnimatedValue from '../shared/AnimatedValue';
-import { formatCurrency, LRM } from '../../utils/formatters';
+import FitText from '../shared/FitText';
+import { formatCurrency, formatCurrencyShort, LRM } from '../../utils/formatters';
 
 const W = 600;
 const H = 170;
@@ -15,7 +16,8 @@ const PERIODS = [
 ];
 const PERIOD_KEY = 'tradeos_home_period';
 
-const money = (v) => formatCurrency(v);
+// Tiles are narrow on a phone: very large amounts switch to $1.12M.
+const money = (v) => formatCurrencyShort(v);
 const fmtDate = (ms) => { if (!ms) return ''; const d = new Date(ms); return `${d.getDate()}/${d.getMonth() + 1}`; };
 
 // Cumulative P&L line + area for the chosen window. "All" keeps the account's
@@ -96,14 +98,14 @@ export default function PortfolioHero({ balance, pnlPercent, series, hidden }) {
   return (
     <Card className="rounded-2xl p-4 md:p-5 flex flex-col gap-4 h-full">
       <div className="flex flex-wrap items-start justify-between gap-3">
-        <div className="flex flex-col gap-1.5 min-w-0">
+        <div className="flex flex-col gap-1.5 min-w-0 flex-1 basis-48">
           <span className="text-[13px] font-medium text-text-secondary">שווי תיקים כולל</span>
-          <div className="flex items-center gap-2.5 flex-wrap">
-            <span dir="ltr">
-              <AnimatedValue value={m(formatCurrency(balance).replace('+', ''))} className="num-mono text-3xl md:text-[40px] font-extrabold text-text-primary leading-none" />
-            </span>
+          <div className="flex items-center gap-2.5 min-w-0">
+            <FitText dir="ltr" min={18} className="num-mono text-3xl md:text-[40px] font-extrabold text-text-primary leading-none flex-initial">
+              <AnimatedValue value={m(formatCurrency(balance).replace('+', ''))} />
+            </FitText>
             {pnlPercent !== 0 && (
-              <span dir="ltr" className={`text-[13px] font-bold px-2 py-0.5 rounded-lg ${pnlPercent >= 0 ? 'bg-profit/15 text-profit' : 'bg-loss/15 text-loss'}`}>
+              <span dir="ltr" className={`shrink-0 text-[13px] font-bold px-2 py-0.5 rounded-lg ${pnlPercent >= 0 ? 'bg-profit/15 text-profit' : 'bg-loss/15 text-loss'}`}>
                 {m(`${LRM}${pnlPercent > 0 ? '+' : ''}${pnlPercent.toFixed(1)}%`)}
               </span>
             )}
@@ -122,15 +124,15 @@ export default function PortfolioHero({ balance, pnlPercent, series, hidden }) {
       <div className="grid grid-cols-3 gap-2.5">
         <div className={tile}>
           <span className="text-xs text-text-secondary truncate" title={s.def.id === 'all' ? 'רווח/הפסד נקי מתחילת התיק' : `רווח/הפסד נקי ${s.def.label}`}>רווח/הפסד</span>
-          <b className={`num-mono text-base md:text-xl ${tone(s.pnl)}`} dir="ltr" style={{ textAlign: 'right' }}>{m(money(s.pnl))}</b>
+          <FitText as="b" className={`num-mono text-base md:text-xl ${tone(s.pnl)}`} dir="ltr" style={{ textAlign: 'right' }}>{m(money(s.pnl))}</FitText>
         </div>
         <div className={tile}>
           <span className="text-xs text-text-secondary">עסקאות</span>
-          <b className="num-mono text-base md:text-xl text-text-primary">{s.count}</b>
+          <FitText as="b" className="num-mono text-base md:text-xl text-text-primary">{s.count}</FitText>
         </div>
         <div className={tile}>
           <span className="text-xs text-text-secondary truncate">{third.label}</span>
-          <b className={`num-mono text-base md:text-xl ${third.cls}`} dir="ltr" style={{ textAlign: 'right' }}>{third.value}</b>
+          <FitText as="b" className={`num-mono text-base md:text-xl ${third.cls}`} dir="ltr" style={{ textAlign: 'right' }}>{third.value}</FitText>
         </div>
       </div>
 

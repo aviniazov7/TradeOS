@@ -5,6 +5,7 @@ import { isClosedTrade, safePnl } from '../../utils/calculations';
 import { getExchangeLogo } from '../../utils/constants';
 import TradeDetailModal from './TradeDetailModal';
 import CoinIcon from '../shared/CoinIcon';
+import FitText from '../shared/FitText';
 
 function ExchangeIcon({ source }) {
   const url = getExchangeLogo(source);
@@ -159,25 +160,27 @@ export default function TradeTable({
                   <div className="flex items-center gap-2 min-w-0 flex-1">
                     {selectMode && <SelectBox checked={selected} />}
                     <CoinIcon pair={trade.pair} className="w-4 h-4 shrink-0" />
-                    <span className="text-text-primary font-semibold text-sm truncate min-w-0" title={trade.pair}>{trade.pair}</span>
+                    <FitText className="text-text-primary font-semibold text-sm flex-initial" min={11} title={trade.pair}>{trade.pair}</FitText>
                     <span className={`shrink-0 inline-flex items-center gap-0.5 text-xs font-medium px-1.5 py-0.5 rounded ${trade.direction === 'long' ? 'bg-long/10 text-long' : 'bg-short/10 text-short'}`}>
                       {trade.direction === 'long' ? <TrendingUp className="w-3 h-3" /> : <TrendingDown className="w-3 h-3" />}
                       {trade.direction === 'long' ? 'Long' : 'Short'}
                     </span>
-                    <span className="shrink-0">{statusBadge(status, isPending)}</span>
-                    {trade.source && trade.source !== 'manual' && (
-                      <span className="shrink-0"><ExchangeIcon source={trade.source} /></span>
-                    )}
                   </div>
                   {done
-                    ? <span className={`num-mono text-sm font-bold shrink-0 ${pnlColor(pnl)}`} dir="ltr">{formatCurrency(pnl)}</span>
+                    ? <FitText className={`num-mono text-sm font-bold shrink-0 max-w-[42%] ${pnlColor(pnl)}`} min={11} dir="ltr">{formatCurrency(pnl)}</FitText>
                     : live
                       ? <span className="shrink-0 inline-flex items-center gap-1.5"><LiveTag /><span className={`num-mono text-sm font-bold ${pnlColor(live.pnl)}`} dir="ltr">{formatCurrency(live.pnl)}</span></span>
                       : <span className="text-xs text-text-muted shrink-0">—</span>}
                 </div>
                 <div className="flex items-center justify-between gap-2 mt-1 text-[11px]">
-                  <span className="text-text-muted truncate min-w-0">
-                    {formatDate(trade.entryDate)}{trade.strategy ? ` · ${trade.strategy}` : ''}
+                  <span className="flex items-center gap-1.5 min-w-0">
+                    <span className="shrink-0">{statusBadge(status, isPending)}</span>
+                    {trade.source && trade.source !== 'manual' && (
+                      <span className="shrink-0"><ExchangeIcon source={trade.source} /></span>
+                    )}
+                    {/* The date always shows in full; only a long strategy name is cut. */}
+                    <span className="text-text-muted shrink-0 num-mono">{formatDate(trade.entryDate)}</span>
+                    {trade.strategy && <span className="text-text-muted truncate min-w-0">· {trade.strategy}</span>}
                   </span>
                   {done && (
                     <span className="num-mono shrink-0 inline-flex items-center gap-1.5" dir="ltr">

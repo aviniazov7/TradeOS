@@ -22,6 +22,7 @@ import { NewsList } from './NewsList';
 import PageHeader from '../shared/PageHeader';
 import ExchangeLogo from '../shared/ExchangeLogo';
 import Card from '../shared/Card';
+import FitText from '../shared/FitText';
 import Reveal from '../shared/Reveal';
 import { formatCurrency } from '../../utils/formatters';
 import { EXCHANGES } from '../../utils/constants';
@@ -72,9 +73,9 @@ function JournalTile({ j, mask, onOpen }) {
       <div className="relative">
         <div className="text-[11px] text-text-muted mb-0.5">שווי התיק</div>
         {j.balance !== null ? (
-          <div className="num-mono text-xl font-bold text-text-primary" dir="ltr" style={{ textAlign: 'right' }}>
+          <FitText as="div" className="num-mono text-xl font-bold text-text-primary" dir="ltr" style={{ textAlign: 'right' }}>
             {mask(formatCurrency(j.balance).replace('+', ''))}
-          </div>
+          </FitText>
         ) : (
           <>
             <div className="text-xl font-bold text-text-muted">—</div>

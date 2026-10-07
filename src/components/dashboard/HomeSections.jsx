@@ -2,6 +2,7 @@ import { useNavigate } from 'react-router-dom';
 import { FlaskConical, ClipboardList, Coins, Sunrise, Moon, ChevronLeft } from 'lucide-react';
 import Card from '../shared/Card';
 import CoinIcon from '../shared/CoinIcon';
+import FitText from '../shared/FitText';
 import { formatCurrency, formatCompactUsd, formatRelativeTime, LRM } from '../../utils/formatters';
 
 // The home page's sections, all on the same surface: rounded-2xl cards, a
@@ -29,9 +30,9 @@ function Kpi({ label, value, valueCls = 'text-text-primary', mono = true, bar, s
   return (
     <Card spotlight className="rounded-2xl p-4 flex flex-col gap-2.5 min-w-0">
       <span className="text-[13px] text-text-secondary">{label}</span>
-      <b className={`${mono ? 'num-mono text-[28px] md:text-[30px]' : 'text-2xl'} font-extrabold leading-none ${valueCls}`} dir={mono ? 'ltr' : undefined} style={mono ? { textAlign: 'right' } : undefined}>
+      <FitText as="b" min={14} className={`${mono ? 'num-mono text-[28px] md:text-[30px]' : 'text-2xl'} font-extrabold leading-tight ${valueCls}`} dir={mono ? 'ltr' : undefined} style={mono ? { textAlign: 'right' } : undefined}>
         {value}
-      </b>
+      </FitText>
       {bar}
       {sub && <span className="text-xs text-text-secondary leading-snug">{sub}</span>}
     </Card>
@@ -133,16 +134,16 @@ export function RecentTradesCard({ trades, hidden, className = '' }) {
                   <CoinIcon pair={t.pair || t.symbol} className="w-6 h-6" />
                 </span>
                 <span className="flex-1 min-w-0 flex flex-col gap-0.5">
-                  <span className="flex items-center gap-2">
-                    <span className="text-sm font-bold text-text-primary truncate" dir="ltr">{t.pair || t.symbol}</span>
-                    <span className={`text-[10px] font-extrabold px-1.5 py-0.5 rounded ${long ? 'bg-long/15 text-long' : 'bg-short/15 text-short'}`}>{long ? 'LONG' : 'SHORT'}</span>
+                  <span className="flex items-center gap-2 min-w-0">
+                    <FitText className="text-sm font-bold text-text-primary flex-initial" dir="ltr">{t.pair || t.symbol}</FitText>
+                    <span className={`shrink-0 text-[10px] font-extrabold px-1.5 py-0.5 rounded ${long ? 'bg-long/15 text-long' : 'bg-short/15 text-short'}`}>{long ? 'LONG' : 'SHORT'}</span>
                   </span>
                   <span className="text-xs text-text-secondary">
                     {formatRelativeTime(t.exitDate || t.entryDate)}
                     {r != null && <> · <span dir="ltr">{LRM}{r > 0 ? '+' : ''}{r.toFixed(1)}R</span></>}
                   </span>
                 </span>
-                <b className={`num-mono text-[15px] ${p > 0 ? 'text-profit' : p < 0 ? 'text-loss' : 'text-text-secondary'}`} dir="ltr">{m(formatCurrency(p))}</b>
+                <FitText as="b" className={`num-mono text-[15px] shrink-0 max-w-[45%] ${p > 0 ? 'text-profit' : p < 0 ? 'text-loss' : 'text-text-secondary'}`} dir="ltr" style={{ width: 'auto' }}>{m(formatCurrency(p))}</FitText>
               </button>
             );
           })}
@@ -252,7 +253,7 @@ export function MarketCard({ market, fng, className = '' }) {
             <div className="text-xs text-text-secondary">שווי שוק</div>
             <div className="flex items-baseline gap-1.5 flex-wrap" dir="ltr" style={{ justifyContent: 'flex-end' }}>
               {chg != null && <span className={`text-xs font-bold ${chg >= 0 ? 'text-profit' : 'text-loss'}`}>{chg >= 0 ? '+' : ''}{chg.toFixed(1)}%</span>}
-              <b className="num-mono text-base text-text-primary">{formatCompactUsd(market.total_market_cap?.usd)}</b>
+              <b className="num-mono text-base text-text-primary whitespace-nowrap">{formatCompactUsd(market.total_market_cap?.usd)}</b>
             </div>
           </div>
           <div className={cell}>

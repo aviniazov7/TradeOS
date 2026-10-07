@@ -437,9 +437,10 @@ function LongShortCard({ data, loading }) {
                 <CoinTag symbol={d.symbol} className="w-16 shrink-0" />
                 {/* Track is bg-bg-primary (distinct from the row's hover tint) so
                     the hover highlight frames the bar instead of bleeding into it.
-                    Exact %s (sum to 100, no minWidth → no overflow); the label
-                    shows only when its side is wide enough to fit. */}
-                <div className="flex flex-1 h-5 rounded-lg overflow-hidden bg-bg-primary border border-border-primary">
+                    The percentages sit OUTSIDE the bar, so they're always fully
+                    visible however narrow a side gets (phones). */}
+                <span className="w-10 shrink-0 text-[11px] font-bold num-mono text-profit text-right">{longPct}%</span>
+                <div className="flex flex-1 min-w-0 h-5 rounded-lg overflow-hidden bg-bg-primary border border-border-primary">
                   <motion.div
                     initial={{ width: 0 }}
                     animate={{ width: `${longPct}%` }}
@@ -447,7 +448,6 @@ function LongShortCard({ data, loading }) {
                     className="h-full flex items-center justify-center overflow-hidden"
                     style={{ backgroundColor: 'rgba(34, 197, 94, 0.3)' }}
                   >
-                    {Number(longPct) >= 14 && <span className="text-[9px] font-bold num-mono text-profit">{longPct}%</span>}
                   </motion.div>
                   <motion.div
                     initial={{ width: 0 }}
@@ -456,9 +456,9 @@ function LongShortCard({ data, loading }) {
                     className="h-full flex items-center justify-center overflow-hidden"
                     style={{ backgroundColor: 'rgba(239, 68, 68, 0.3)' }}
                   >
-                    {Number(shortPct) >= 14 && <span className="text-[9px] font-bold num-mono text-loss">{shortPct}%</span>}
                   </motion.div>
                 </div>
+                <span className="w-10 shrink-0 text-[11px] font-bold num-mono text-loss">{shortPct}%</span>
               </motion.div>
             );
           })}
