@@ -1,7 +1,9 @@
 import { useState, useMemo, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { motion, AnimatePresence } from 'framer-motion';
-import { ArrowRight, ArrowLeft, Lightbulb, AlertTriangle } from 'lucide-react';
+import { Brain, ArrowRight, ArrowLeft, Lightbulb, AlertTriangle } from 'lucide-react';
+import PageHeader from '../shared/PageHeader';
+import { headerIconBtn } from '../shared/headerStyles';
 import { JOURNEY_STAGES } from '../../utils/constants';
 
 // ─── Loading Screen ───────────────────────────────────────
@@ -172,25 +174,23 @@ export default function PsychologicalJourney() {
         className="flex flex-col overflow-hidden"
         style={{ height: 'calc(100dvh - 7rem)' }}
       >
-        {/* Header row */}
-        <div className="flex items-center justify-between mb-2 md:mb-3">
-          <div className="flex items-center gap-2 md:gap-3">
-            <button
-              onClick={() => navigate('/mentality')}
-              className="text-text-secondary hover:text-text-primary transition-colors"
-            >
-              <ArrowRight className="w-5 h-5" />
-            </button>
-            <div>
-              <h1 className="text-base md:text-xl font-bold text-accent-primary">המסע הפסיכולוגי של הסוחר/ת</h1>
-              <p className="text-[10px] md:text-xs text-text-secondary">המסלול הקלאסי שרוב הסוחרים עוברים</p>
+        <PageHeader
+          icon={Brain}
+          title="המסע הפסיכולוגי"
+          subtitle="המסלול הקלאסי שרוב הסוחרים עוברים"
+          className="!mb-3"
+          actions={(
+            <div className="flex items-center gap-2">
+              <div className="h-11 px-3 rounded-xl bg-accent-primary/12 border border-accent-primary/30 flex flex-col justify-center text-center">
+                <div className="text-xs font-bold text-accent-hover leading-tight">{stage.title}</div>
+                <div className="text-[10px] text-text-secondary leading-tight">שלב {activeStage + 1} מתוך {totalStages}</div>
+              </div>
+              <button onClick={() => navigate('/mentality')} className={headerIconBtn} title="חזרה לאזור המנטלי" aria-label="חזרה לאזור המנטלי">
+                <ArrowRight className="w-[18px] h-[18px]" />
+              </button>
             </div>
-          </div>
-          <div className="bg-accent-primary/15 border border-accent-primary/30 rounded-xl px-2.5 py-1 md:px-3 md:py-1.5 text-center flex-shrink-0">
-            <div className="text-[11px] md:text-xs font-bold text-accent-primary">{stage.title}</div>
-            <div className="text-[9px] md:text-[10px] text-text-muted">שלב {activeStage + 1} מתוך {totalStages}</div>
-          </div>
-        </div>
+          )}
+        />
 
         {/* Chart */}
         <div className="mt-5 mb-2 md:my-3">

@@ -39,7 +39,7 @@ export default function BacktestSwitcher({ compact }) {
             className="h-9 inline-flex items-center gap-1.5 px-3 rounded-lg text-sm font-medium bg-bg-tertiary border border-border-primary hover:border-border-hover transition-colors cursor-pointer"
           >
             <FlaskConical className="w-3.5 h-3.5 text-accent-primary flex-shrink-0" />
-            <span className="truncate max-w-[80px] md:max-w-[120px] text-text-primary">{activeJournal?.name || 'בקטסט'}</span>
+            <span className="truncate max-w-[220px] md:max-w-[360px] text-text-primary font-semibold">{activeJournal?.name || 'בקטסט'}</span>
             <ChevronDown className={`w-3.5 h-3.5 text-text-muted transition-transform flex-shrink-0 ${open ? 'rotate-180' : ''}`} />
           </button>
 

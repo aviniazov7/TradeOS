@@ -22,7 +22,10 @@ import {
   Coins,
   LineChart,
   Briefcase,
+  UserRound,
 } from 'lucide-react';
+import PageHeader from '../shared/PageHeader';
+import { headerIconBtn } from '../shared/headerStyles';
 import toast from 'react-hot-toast';
 import { getUserProfile, setUserProfile, deleteLeaderboardEntry } from '../../services/firestoreService';
 import { useAuth } from '../../contexts/AuthContext';
@@ -234,31 +237,16 @@ export default function ProfilePage() {
       className="px-4 py-6">
       <div className="max-w-lg mx-auto">
 
-      {/* Back — a real button, not a background click (which fired on any tap) */}
-      <button
-        onClick={() => navigate(-1)}
-        className="p-2 -mr-2 mb-2 rounded-lg text-text-muted hover:text-text-primary hover:bg-bg-tertiary transition-colors cursor-pointer"
-        aria-label="חזרה"
-      >
-        <ChevronRight className="w-5 h-5" />
-      </button>
-
-      {/* Profile Card */}
-      <div className="bg-bg-secondary border border-border-primary rounded-2xl p-6 mb-4 text-center">
-        {user?.photoURL ? (
-          <img src={user.photoURL} alt={user.displayName}
-            className="w-20 h-20 rounded-full border-2 border-border-primary mx-auto mb-3" />
-        ) : (
-          <div className="w-20 h-20 rounded-full bg-accent-primary/20 flex items-center justify-center text-accent-primary text-2xl font-bold mx-auto mb-3">
-            {user?.displayName?.[0] || user?.email?.[0] || '?'}
-          </div>
+      <PageHeader
+        icon={UserRound}
+        title={user?.displayName || 'הפרופיל שלי'}
+        subtitle={[user?.email, user?.metadata?.creationTime ? `הצטרף ${formatDate(new Date(user.metadata.creationTime))}` : null].filter(Boolean).join(' · ')}
+        actions={(
+          <button onClick={() => navigate(-1)} className={headerIconBtn} title="חזרה" aria-label="חזרה">
+            <ChevronRight className="w-[18px] h-[18px]" />
+          </button>
         )}
-        <h1 className="text-xl font-bold text-text-primary">{user?.displayName || 'משתמש'}</h1>
-        <p className="text-sm text-text-muted mt-1">{user?.email}</p>
-        <p className="text-xs text-text-muted mt-2">
-          הצטרף {user?.metadata?.creationTime ? formatDate(new Date(user.metadata.creationTime)) : ''}
-        </p>
-      </div>
+      />
 
       {/* ── Section: Trading ─────────────────────────────────────── */}
       <SectionTitle>מסחר</SectionTitle>

@@ -94,7 +94,7 @@ export default function JournalSwitcher({ compact }) {
             ) : (
               <BookOpen className="w-3.5 h-3.5 text-accent-primary flex-shrink-0" />
             )}
-            <span className="truncate max-w-[80px] md:max-w-[120px] text-text-primary">{activeJournal?.name || 'יומן'}</span>
+            <span className="truncate max-w-[220px] md:max-w-[360px] text-text-primary font-semibold">{activeJournal?.name || 'יומן'}</span>
             <ChevronDown className={`w-3.5 h-3.5 text-text-muted transition-transform flex-shrink-0 ${open ? 'rotate-180' : ''}`} />
           </button>
 
