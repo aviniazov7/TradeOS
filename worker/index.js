@@ -2000,6 +2000,28 @@ async function scanWyckoffSetups(env) {
 
 // ==================== AI Chat — Groq Proxy ====================
 
+// fetch() that gives up if the provider hasn't STARTED answering within `ms`
+// (no response headers yet) — a wedged provider then fails fast and the next
+// model/provider is tried, instead of the user staring at a spinner. Once the
+// headers arrive the timer is cleared, so a long streamed answer is never cut.
+// A timeout comes back as a synthetic 504 so callers treat it like a 5xx.
+async function fetchFirstByte(url, init, ms) {
+  const ac = new AbortController();
+  const timer = setTimeout(() => ac.abort(), ms);
+  try {
+    return await fetch(url, { ...init, signal: ac.signal });
+  } catch (e) {
+    if (e?.name === 'AbortError') {
+      return new Response(JSON.stringify({ error: 'provider timeout' }), { status: 504, headers: { 'Content-Type': 'application/json' } });
+    }
+    throw e;
+  } finally {
+    clearTimeout(timer);
+  }
+}
+const AI_FIRST_BYTE_MS = 15000;      // streamed chat: first token should come fast
+const AI_NONSTREAM_MS = 45000;        // whole non-streamed answer (coach, digest)
+
 const GROQ_URL = 'https://api.groq.com/openai/v1/chat/completions';
 // Groq SHUT DOWN llama-3.3-70b-versatile and llama-3.1-8b-instant on
 // 2026-08-16 (both returned 404 model_not_found). gpt-oss-120b is Groq's
@@ -2040,18 +2062,19 @@ const reasoningOpt = (model) => {
 // current (it's the one users hit for image analysis, so it can't go stale).
 const GROQ_FALLBACK_MODEL = GROQ_VISION_MODEL;
 async function groqFetchWithRetry(env, payload) {
-  const call = (model) => fetch(GROQ_URL, {
+  const call = (model) => fetchFirstByte(GROQ_URL, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${env.GROQ_API_KEY}` },
     body: JSON.stringify({ ...payload, model, ...reasoningOpt(model) }),
-  });
+  }, AI_NONSTREAM_MS);
   let res;
   for (const wait of [0, 2500, 5000]) {
     if (wait) await new Promise((r) => setTimeout(r, wait));
     res = await call(payload.model);
     // Retry TRANSIENT failures (429 rate-limit, 5xx provider overload) on the
-    // same model; return immediately on success or a non-transient 4xx.
-    if (res.ok || (res.status !== 429 && res.status < 500)) break;
+    // same model; return immediately on success or a non-transient 4xx. A
+    // timeout (504) goes straight to the fallback — waiting again won't help.
+    if (res.ok || res.status === 504 || (res.status !== 429 && res.status < 500)) break;
   }
   // Still failing on a recoverable status → try ONCE on the fallback model (a
   // separate rate bucket + a live id). 404 is included so a DECOMMISSIONED model
@@ -2477,22 +2500,22 @@ async function handleAIChat(request, env, cors) {
     // default everyone runs on Groq (which has been stable at 30 RPM). Flip
     // the env var once a paid Gemini key is in place.
     if (premium && env.GEMINI_API_KEY && env.GEMINI_ENABLED === 'true') {
-      const gemRes = await fetch(GEMINI_STREAM_URL(env.GEMINI_API_KEY), {
+      const gemRes = await fetchFirstByte(GEMINI_STREAM_URL(env.GEMINI_API_KEY), {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(toGeminiBody(apiMessages)),
-      });
+      }, AI_FIRST_BYTE_MS);
       if (!gemRes.ok) {
         const errText = await gemRes.text().catch(() => '');
         console.error('Gemini API error:', gemRes.status, errText);
         // Fall back to Groq with up to 3 attempts (exponential backoff). The
         // free-tier shared key quotas are tight (Gemini 15 RPM, Groq 30 RPM)
         // so spaced retries usually clear the limit within a few seconds.
-        const callGroq = () => fetch(GROQ_URL, {
+        const callGroq = () => fetchFirstByte(GROQ_URL, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${env.GROQ_API_KEY}` },
           body: JSON.stringify({ model: hasImage ? GROQ_VISION_MODEL : GROQ_MODEL, ...reasoningOpt(hasImage ? GROQ_VISION_MODEL : GROQ_MODEL), messages: apiMessages, temperature: 0.7, max_tokens: 1500, stream: true, stream_options: { include_usage: true } }),
-        });
+        }, AI_FIRST_BYTE_MS);
         const delays = [0, 2000, 4000]; // immediate, +2s, +4s = ~6s total worst-case
         let groqFallback;
         for (const wait of delays) {
@@ -2501,7 +2524,7 @@ async function handleAIChat(request, env, cors) {
           if (groqFallback.ok) {
             return new Response(meterStream(env, groqFallback.body, { hasImage }), { headers: sseHeaders });
           }
-          if (groqFallback.status !== 429 && groqFallback.status < 500) break; // 4xx (≠429) non-retryable; 429/5xx keep retrying
+          if (groqFallback.status === 504 || (groqFallback.status !== 429 && groqFallback.status < 500)) break; // timeout / 4xx (≠429): stop; 429/5xx keep retrying
         }
         const fbErrText = await groqFallback.text().catch(() => '');
         console.error('Groq fallback also failed:', groqFallback.status, fbErrText);
@@ -2524,7 +2547,7 @@ async function handleAIChat(request, env, cors) {
     // Free tier (or premium without a Gemini key configured) → Groq, with
     // retries: the shared key has tight per-minute token limits, so back off
     // and retry inside the worker (worst case ~7.5s) before surfacing an error.
-    const callGroq = (model) => fetch(GROQ_URL, {
+    const callGroq = (model) => fetchFirstByte(GROQ_URL, {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
@@ -2539,7 +2562,7 @@ async function handleAIChat(request, env, cors) {
         stream: true,
         stream_options: { include_usage: true },
       }),
-    });
+    }, AI_FIRST_BYTE_MS);
 
     // 429 = transient rate limit → back off and retry the SAME model. 404 = the
     // model id was decommissioned (exactly what killed Llama 4 Scout) → retrying
@@ -2555,7 +2578,9 @@ async function handleAIChat(request, env, cors) {
       if (groqResponse.ok) {
         return new Response(meterStream(env, groqResponse.body, { hasImage }), { headers: sseHeaders });
       }
-      if (groqResponse.status === 404 && !switchedModel && groqFallbackModel !== groqModel) {
+      // 404 = model retired, 504 = provider didn't start answering in time:
+      // both go straight to the fallback model (separate bucket) once.
+      if ((groqResponse.status === 404 || groqResponse.status === 504) && !switchedModel && groqFallbackModel !== groqModel) {
         console.error(`Groq model ${groqModel} returned 404 (decommissioned) — switching to ${groqFallbackModel}`);
         switchedModel = true;
         groqModel = groqFallbackModel;
@@ -2564,7 +2589,7 @@ async function handleAIChat(request, env, cors) {
           return new Response(meterStream(env, groqResponse.body, { hasImage }), { headers: sseHeaders });
         }
       }
-      if (groqResponse.status !== 429 && groqResponse.status < 500) break; // 4xx (≠429) non-retryable; 429/5xx keep retrying
+      if (groqResponse.status === 504 || (groqResponse.status !== 429 && groqResponse.status < 500)) break; // timeout / 4xx (≠429): stop; 429/5xx keep retrying
     }
 
     const errText = await groqResponse.text().catch(() => '');
@@ -2574,7 +2599,7 @@ async function handleAIChat(request, env, cors) {
     // 429 (not 502) for rate limits, so the client's own backoff retries too.
     const rateLimited = groqResponse.status === 429;
     return new Response(
-      JSON.stringify({ error: rateLimited ? 'ספק ה-AI עמוס כרגע, נסה שוב בעוד רגע' : `שגיאת AI: ${groqResponse.status}` }),
+      JSON.stringify({ error: rateLimited ? 'ספק ה-AI עמוס כרגע, נסה שוב בעוד רגע' : groqResponse.status === 504 ? 'ספק ה-AI לא הגיב בזמן. נסה שוב בעוד רגע.' : `שגיאת AI: ${groqResponse.status}` }),
       { status: rateLimited ? 429 : 502, headers: { ...cors, 'Content-Type': 'application/json' } },
     );
   } catch (err) {

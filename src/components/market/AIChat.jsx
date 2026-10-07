@@ -233,7 +233,7 @@ export default function AIChat({ heightClass = 'h-[calc(100dvh-13.5rem)] md:h-[c
     const detectedCoin = detectCoinFromText(text);
     if (detectedCoin) {
       setPendingChart(detectedCoin.symbol);
-      chartPromiseRef.current = fetchCoinChart(detectedCoin.coingeckoId, 30).catch((err) => {
+      chartPromiseRef.current = fetchCoinChart(detectedCoin.coingeckoId, 30, detectedCoin.symbol).catch((err) => {
         console.warn('Chart fetch failed:', err);
         return null;
       });
@@ -259,25 +259,34 @@ export default function AIChat({ heightClass = 'h-[calc(100dvh-13.5rem)] md:h-[c
         batchTimeoutRef.current = null;
       }
 
-      // Wait for chart data if we started fetching
-      const chartResult = chartPromiseRef.current ? await chartPromiseRef.current : null;
-
+      // The answer is shown right away — the coin chart never holds it back.
+      // If the chart is already here it rides along; if it lands later it's
+      // attached to this answer then; if it never comes, there's no chart.
+      const chartPromise = chartPromiseRef.current;
+      const readyChart = chartPromise
+        ? await Promise.race([chartPromise, new Promise((r) => setTimeout(() => r(undefined), 300))])
+        : null;
       const aiMsg = {
         role: 'model',
         text: streamingTextRef.current,
         timestamp: Date.now(),
-        chart: chartResult?.prices ? { prices: chartResult.prices, symbol: detectedCoin.symbol } : undefined,
+        chart: readyChart?.prices ? { prices: readyChart.prices, symbol: detectedCoin.symbol } : undefined,
       };
       setMessages((prev) => [...prev, aiMsg]);
+      if (chartPromise && readyChart === undefined) {
+        chartPromise.then((late) => {
+          if (!late?.prices) return;
+          setMessages((prev) => prev.map((m) => (m === aiMsg ? { ...m, chart: { prices: late.prices, symbol: detectedCoin.symbol } } : m)));
+        });
+      }
     } catch (err) {
       setError(err.message || 'שגיאה בתקשורת עם ה-AI');
       if (streamingTextRef.current) {
-        const chartResult = chartPromiseRef.current ? await chartPromiseRef.current.catch(() => null) : null;
+        // Keep the partial answer; don't wait on the chart for it.
         const aiMsg = {
           role: 'model',
           text: streamingTextRef.current,
           timestamp: Date.now(),
-          chart: chartResult?.prices && detectedCoin ? { prices: chartResult.prices, symbol: detectedCoin.symbol } : undefined,
         };
         setMessages((prev) => [...prev, aiMsg]);
       } else {

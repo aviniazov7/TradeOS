@@ -9,7 +9,7 @@ export default function StrategyPerformanceTable({ data, onStrategyClick }) {
     <div className="bg-bg-secondary border border-border-primary rounded-xl p-5">
       <h3 className="text-sm font-semibold text-text-primary mb-3">ביצועים לפי אסטרטגיה</h3>
       <div className="overflow-x-auto">
-        <table className="w-full text-sm">
+        <table className="w-full text-xs sm:text-sm">
           <thead>
             <tr className="text-xs text-text-muted border-b border-border-primary">
               <th className="text-right pb-2 font-medium">אסטרטגיה</th>

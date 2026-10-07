@@ -89,8 +89,10 @@ export default function EveningJournal() {
       initial={{ opacity: 0, y: 10 }}
       animate={{ opacity: 1, y: 0 }}
       transition={{ duration: 0.3 }}
-      className="flex flex-col max-w-4xl mx-auto w-full"
-      style={{ minHeight: 'calc(100vh - 7rem)' }}
+      // Exactly the visible scroll area (screen − header − page padding; the
+      // phone also keeps room for the bottom nav), so the save bar sits at
+      // the bottom without making a short page scroll.
+      className="flex flex-col max-w-4xl mx-auto w-full min-h-[calc(100dvh-10.25rem-env(safe-area-inset-bottom))] md:min-h-[calc(100dvh-7rem)]"
     >
       {/* Compact header */}
       <div className="bg-bg-secondary border border-border-primary rounded-xl p-3 mb-3">

@@ -51,7 +51,7 @@ export default function Layout() {
       {/* Scrollable content — independent scroll context so iOS fixed nav never jumps */}
       <div
         id="app-scroll"
-        className="absolute inset-0 mt-14 md:mt-16 overflow-y-auto overflow-x-hidden"
+        className="absolute inset-0 mt-14 md:mt-16 overflow-y-auto overflow-x-hidden overscroll-y-contain"
         style={{ WebkitOverflowScrolling: 'touch' }}
       >
         <main className="p-3 md:p-6 pb-[calc(env(safe-area-inset-bottom,0px)+96px)] lg:pb-6">
