@@ -20,11 +20,15 @@ on:
     branches: [main, dev]
   workflow_dispatch: {}
 
-# Each ref gets its own concurrency group — pushing twice to the same branch
-# cancels the in-flight run, but different branches deploy in parallel.
+# main and dev both deploy the SAME two Workers (trade-os + tradeos-alerts),
+# so they share one queue and never run at once — a release merged right
+# after its dev merge used to race, and the second `wrangler secret put` on
+# tradeos-alerts failed with "latest version isn't currently deployed".
+# Those two are never cancelled mid-deploy. Every other ref keeps its own
+# group, where a newer push cancels the in-flight run.
 concurrency:
-  group: deploy-${{ github.ref }}
-  cancel-in-progress: true
+  group: ${{ (github.event_name == 'push' && (github.ref == 'refs/heads/main' || github.ref == 'refs/heads/dev')) && 'deploy-workers' || format('deploy-{0}', github.ref) }}
+  cancel-in-progress: ${{ !(github.event_name == 'push' && (github.ref == 'refs/heads/main' || github.ref == 'refs/heads/dev')) }}
 
 permissions:
   contents: write       # for the auto-version-bump push back to main
