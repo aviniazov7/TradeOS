@@ -779,7 +779,8 @@ export default function TradeJournal() {
       </Suspense>
       <Suspense fallback={null}>
         {importMounted && (
-          <ImportTrades isOpen={importOpen} onClose={() => setImportOpen(false)} onImport={addTrade} onImportBulk={addTradesBulk} />
+          <ImportTrades isOpen={importOpen} onClose={() => setImportOpen(false)} onImport={addTrade} onImportBulk={addTradesBulk}
+            assetClass={activeJournal?.assetClass || 'crypto'} existingTrades={trades} />
         )}
       </Suspense>
       <Suspense fallback={null}>
