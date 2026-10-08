@@ -15,7 +15,6 @@ import {
   Brain,
   Newspaper,
   Radar,
-  Receipt,
   User,
 } from 'lucide-react';
 import PositionCalculator from '../calculator/PositionCalculator';
@@ -36,7 +35,6 @@ const navItems = [
   { key: 'market', to: '/market', label: 'שוק', icon: Activity, match: ['/polymarket', '/whales'] },
   { key: 'news', to: '/news', label: 'חדשות', icon: Newspaper },
   { key: 'portfolio', to: '/portfolio', label: 'תיק', icon: Briefcase, match: ['/dca', '/wallets'] },
-  { key: 'tax', to: '/tax', label: 'דוח מס', icon: Receipt },
   { key: 'scanner', to: '/scanner', label: 'מנוע ויקוף', icon: Radar, admin: true },
 ];
 

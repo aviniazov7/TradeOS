@@ -1,29 +1,7 @@
 import { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { motion, AnimatePresence } from 'framer-motion';
-import {
-  LogOut,
-  Trash2,
-  Lock,
-  Mail,
-  Share2,
-  Download,
-  Eye,
-  EyeOff,
-  Sun,
-  Moon,
-  Trophy,
-  Crown,
-  ShieldCheck,
-  Clock,
-  ArrowLeft,
-  ChevronRight,
-  Check,
-  Coins,
-  LineChart,
-  Briefcase,
-  UserRound,
-} from 'lucide-react';
+import { LogOut, Trash2, Lock, Mail, Share2, Download, Eye, EyeOff, Sun, Moon, Trophy, Crown, ShieldCheck, Clock, ArrowLeft, ChevronRight, Check, Coins, LineChart, Briefcase, UserRound, Receipt, ChevronLeft } from 'lucide-react';
 import PageHeader from '../shared/PageHeader';
 import { headerIconBtn } from '../shared/headerStyles';
 import toast from 'react-hot-toast';
@@ -311,6 +289,24 @@ export default function ProfilePage() {
         isPremium={isPremium}
         onUpgrade={() => navigate('/premium')}
       />
+
+      {/* ── Section: Reports ─────────────────────────────────────── */}
+      {/* Yearly tools that aren't daily destinations live here, not in the
+          main menu. */}
+      <SectionTitle>דוחות</SectionTitle>
+      <div className={cardClass}>
+        <button onClick={() => navigate('/tax')}
+          className="w-full flex items-center gap-3 px-5 py-4 text-right hover:bg-bg-tertiary transition-colors cursor-pointer">
+          <span className="w-9 h-9 shrink-0 grid place-items-center rounded-xl bg-accent-primary/12 border border-accent-primary/20">
+            <Receipt className="w-[18px] h-[18px] text-accent-hover" />
+          </span>
+          <span className="flex-1 min-w-0">
+            <span className="block text-sm font-semibold text-text-primary">דוח מס שנתי</span>
+            <span className="block text-xs text-text-muted mt-0.5">רווחי הון בשקלים לפי שער בנק ישראל — לרואה החשבון</span>
+          </span>
+          <ChevronLeft className="w-4 h-4 text-text-muted shrink-0" />
+        </button>
+      </div>
 
       {/* ── Section: Notifications ───────────────────────────────── */}
       <SectionTitle>התראות</SectionTitle>
