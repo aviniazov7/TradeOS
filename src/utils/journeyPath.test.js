@@ -23,6 +23,7 @@ describe('journeyPath', () => {
     expect(peak.y).toBeLessThan(JOURNEY_POINTS[0].y);
     expect(valley.y).toBe(Math.max(...JOURNEY_POINTS.map((p) => p.y)));
     expect(top.y).toBeLessThan(JOURNEY_POINTS[STAGE_POINT_INDEX[3]].y);
+    expect(top.y).toBeLessThan(peak.y); // the real top beats beginner's luck
     // x only moves forward.
     for (let i = 1; i < JOURNEY_POINTS.length; i++) expect(JOURNEY_POINTS[i].x).toBeGreaterThan(JOURNEY_POINTS[i - 1].x);
   });
@@ -32,7 +33,7 @@ describe('journeyPath', () => {
     const first = stagePoint(L, 0);
     const last = stagePoint(L, 5);
     expect(first).toMatchObject({ x: 40, fraction: 0 });
-    expect(first.y).toBeCloseTo(30 + 0.68 * 170);
+    expect(first.y).toBeCloseTo(30 + 0.6 * 170);
     expect(last.x).toBeCloseTo(960);
     expect(last.fraction).toBeCloseTo(1);
     const mid = stagePoint(L, 2);

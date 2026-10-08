@@ -11,20 +11,20 @@
 // mirrors x when it draws (the journey starts on the right).
 
 export const JOURNEY_POINTS = [
-  { x: 0.0, y: 0.68 }, //  0  stage 1 · בונה בסיס (the start)
-  { x: 0.07, y: 0.5 }, //  1  rising
-  { x: 0.16, y: 0.06 }, // 2  the peak of beginner's luck
-  { x: 0.29, y: 0.92 }, // 3  stage 2 · צובר ניסיון (the valley of losses)
-  { x: 0.35, y: 0.7 }, //  4  learning — recover
-  { x: 0.41, y: 0.8 }, //  5  dip
-  { x: 0.48, y: 0.6 }, //  6  stage 3 · מגבש שיטה (a method takes shape)
-  { x: 0.55, y: 0.72 }, // 7  dip
-  { x: 0.62, y: 0.82 }, // 8  stage 4 · מנהל סיכון (the base of the climb)
+  { x: 0.0, y: 0.6 }, //   0  stage 1 · בונה בסיס (the start)
+  { x: 0.07, y: 0.44 }, // 1  rising
+  { x: 0.16, y: 0.16 }, // 2  the peak of beginner's luck
+  { x: 0.29, y: 0.96 }, // 3  stage 2 · צובר ניסיון (the valley of losses)
+  { x: 0.35, y: 0.74 }, // 4  learning — recover
+  { x: 0.41, y: 0.84 }, // 5  dip
+  { x: 0.48, y: 0.64 }, // 6  stage 3 · מגבש שיטה (a method takes shape)
+  { x: 0.55, y: 0.76 }, // 7  dip
+  { x: 0.62, y: 0.86 }, // 8  stage 4 · מנהל סיכון (the base of the climb)
   { x: 0.7, y: 0.6 }, //   9  climb
   { x: 0.75, y: 0.66 }, // 10 small pullback
-  { x: 0.84, y: 0.38 }, // 11 stage 5 · עקבי
-  { x: 0.9, y: 0.42 }, //  12 small pullback
-  { x: 1.0, y: 0.08 }, //  13 stage 6 · מקצוען (the top)
+  { x: 0.84, y: 0.34 }, // 11 stage 5 · עקבי
+  { x: 0.9, y: 0.4 }, //   12 small pullback
+  { x: 1.0, y: 0.0 }, //   13 stage 6 · מקצוען (the top, above the beginner's luck)
 ];
 
 // Index into JOURNEY_POINTS of each stage, in STAGES order.
@@ -32,6 +32,13 @@ export const STAGE_POINT_INDEX = [0, 3, 6, 8, 11, 13];
 
 // The classic-journey landmark that is not a stage of its own.
 export const PEAK_POINT_INDEX = 2;
+
+// Seconds the line takes to draw itself on mount.
+export const DRAW_SECONDS = 1.6;
+
+// Status of stage i (0-based) relative to the user's stage `cur` (null = no
+// assessment yet, every stage still ahead).
+export const stageStatus = (i, cur) => (cur == null ? 'future' : i < cur ? 'past' : i === cur ? 'current' : 'future');
 
 // The line draws itself with this easing (easeOutCubic). Kept here, with its
 // inverse, so each stage dot can pop in exactly when the pen reaches it.
