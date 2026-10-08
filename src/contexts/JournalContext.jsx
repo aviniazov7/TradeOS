@@ -11,6 +11,7 @@ import {
   batchDeleteByFilter,
   timestamp,
 } from '../services/firestoreService';
+import { deleteImagesForTrades } from '../services/tradeImageService';
 import { useAuth } from './AuthContext';
 import { FREE_LIMITS } from '../utils/constants';
 
@@ -208,7 +209,12 @@ export function JournalProvider({ children }) {
     }
     // Batch delete all trades belonging to this journal
     const tradesSnap = await getRawCollectionSnapshot(user.uid, 'trades');
-    await batchDeleteByFilter(tradesSnap.docs, (d) => d.data().journalId === journalId);
+    const inJournal = (d) => d.data().journalId === journalId;
+    await batchDeleteByFilter(tradesSnap.docs, inJournal);
+    // Best-effort: their chart screenshots too (not awaited — never blocks
+    // or fails the journal delete).
+    deleteImagesForTrades(user.uid, tradesSnap.docs.filter(inJournal).map((d) => d.id))
+      .catch((e) => console.warn('Journal screenshot cleanup failed:', e));
     await deleteUserDocument(user.uid, 'journals', journalId);
     if (activeJournalId === journalId) {
       const remaining = journals.filter((j) => j.id !== journalId);
