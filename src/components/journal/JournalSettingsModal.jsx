@@ -6,10 +6,16 @@ import ConfirmDialog from '../shared/ConfirmDialog';
 import ExchangeSearch from '../shared/ExchangeSearch';
 import { useJournalContext } from '../../contexts/JournalContext';
 import { EXCHANGES } from '../../utils/constants';
+import PropFirmSettings from '../propfirm/PropFirmSettings';
+import { propFirmToForm, formToPropFirm } from '../propfirm/propFirmForm';
+import { normalizeCommissions } from '../../utils/tradeFormHelpers';
 
 export default function JournalSettingsModal({ isOpen, onClose, onArchive, onImport, onExport, canExport }) {
   const { journals, activeJournal, activeJournalId, updateJournal, deleteJournal, archiveJournal } = useJournalContext();
   const [form, setForm] = useState({ name: '', exchange: '', initialBalance: '', currency: 'USDT', description: '', riskType: 'percent', riskValue: '', assetClass: 'crypto' });
+  const [propForm, setPropForm] = useState(() => propFirmToForm(null));
+  // Commission presets (string inputs; normalized on save). See the "עמלות" section.
+  const [commissions, setCommissions] = useState({});
   const [saving, setSaving] = useState(false);
   const [deleteOpen, setDeleteOpen] = useState(false);
   const [archiveOpen, setArchiveOpen] = useState(false);
@@ -26,12 +32,19 @@ export default function JournalSettingsModal({ isOpen, onClose, onArchive, onImp
         riskValue: activeJournal.riskValue || '',
         assetClass: activeJournal.assetClass || 'crypto',
       });
+      setPropForm(propFirmToForm(activeJournal.propFirm));
+      setCommissions(Object.fromEntries(Object.entries(activeJournal.commissions || {}).map(([k, v]) => [k, v ? String(v) : ''])));
     }
   }, [activeJournal, isOpen]);
 
   const handleSave = async (e) => {
     e.preventDefault();
     if (!form.name.trim()) return;
+    const propFirm = formToPropFirm(propForm);
+    if (propFirm.enabled && !(propFirm.accountSize > 0)) {
+      toast.error('הזינו גודל חשבון לחשבון הפרופ');
+      return;
+    }
     setSaving(true);
     try {
       await updateJournal(activeJournalId, {
@@ -43,6 +56,11 @@ export default function JournalSettingsModal({ isOpen, onClose, onArchive, onImp
         riskType: form.riskType,
         riskValue: parseFloat(form.riskValue) || 0,
         assetClass: form.assetClass,
+        // One map field for the whole prop-firm setup. Journals that never
+        // enabled it don't get the field at all; disabling keeps the rules
+        // so turning it back on restores them.
+        ...(propFirm.enabled || activeJournal?.propFirm ? { propFirm } : {}),
+        commissions: normalizeCommissions(commissions),
       });
       toast.success('היומן עודכן');
       onClose();
@@ -144,6 +162,41 @@ export default function JournalSettingsModal({ isOpen, onClose, onArchive, onImp
               onChange={(e) => setForm((f) => ({ ...f, riskValue: e.target.value }))}
               className={inputClass}
               placeholder={form.riskType === 'percent' ? 'למשל: 1' : 'למשל: 50'} />
+          </div>
+
+          <PropFirmSettings value={propForm} onChange={setPropForm} />
+          {/* ── עמלות (commission presets) ── pre-fills the fees field in the trade form. */}
+          <div className="rounded-xl border border-border-primary p-3 space-y-2">
+            <div>
+              <label className={labelClass + ' !mb-0 font-semibold'}>עמלות</label>
+              <p className="text-[11px] text-text-muted">טופס העסקה ימלא את שדה העמלות (הלוך-חזור) לפי הפריסט. אפשר לדרוס ידנית בכל עסקה.</p>
+            </div>
+            {(() => {
+              const field = (key, label, placeholder) => (
+                <div key={key}>
+                  <label className={labelClass}>{label}</label>
+                  <input type="number" step="any" min="0" inputMode="decimal" value={commissions[key] ?? ''} placeholder={placeholder}
+                    onChange={(e) => setCommissions((c) => ({ ...c, [key]: e.target.value }))} className={inputClass} />
+                </div>
+              );
+              if (form.assetClass === 'futures_cme') {
+                return field('futuresPerContractSide', '$ לחוזה לכל צד', '2.25');
+              }
+              if (form.assetClass === 'stocks') {
+                return (
+                  <div className="grid grid-cols-2 gap-2">
+                    {field('stockPerShare', '$ למניה', '0.005')}
+                    {field('stockMinPerOrder', 'מינימום $ להוראה', '1')}
+                  </div>
+                );
+              }
+              return (
+                <div className="grid grid-cols-2 gap-2">
+                  {field('cryptoMakerPct', 'Maker (% מהנומינלי)', '0.02')}
+                  {field('cryptoTakerPct', 'Taker (% מהנומינלי)', '0.055')}
+                </div>
+              );
+            })()}
           </div>
 
           <div className="flex gap-3 pt-2">

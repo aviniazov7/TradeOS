@@ -1,5 +1,6 @@
 import { useState } from 'react';
 import Modal from '../shared/Modal';
+import TradeScreenshots from './TradeScreenshots';
 import {
   formatCurrency,
   formatPrice,
@@ -428,6 +429,9 @@ export default function TradeDetailModal({
           )}
         </div>
       )}
+
+      {/* 7) Uploaded chart screenshots (own component + subcollection) */}
+      {trade.id && <TradeScreenshots key={trade.id} tradeId={trade.id} pair={pair} />}
     </Modal>
   );
 }

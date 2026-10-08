@@ -5,7 +5,7 @@ import { motion, AnimatePresence } from 'framer-motion';
 import {
   Search, CornerDownLeft, LayoutDashboard, BookOpen, Brain, FlaskConical,
   Coins, Wallet, ClipboardList, Activity, Bot, Newspaper, Crown, User, Building2,
-  Briefcase, Trophy, Fish, LineChart,
+  Briefcase, Trophy, Fish, LineChart, Receipt,
 } from 'lucide-react';
 import { getUserCollectionDocs } from '../../services/firestoreService';
 import { useAuth } from '../../contexts/AuthContext';
@@ -19,6 +19,7 @@ const PAGES = [
   { label: 'תיק', path: '/portfolio', icon: Briefcase, kw: 'portfolio תיק השקעות' },
   { label: 'מעקב DCA', path: '/portfolio?tab=dca', icon: Coins, kw: 'dca תיק' },
   { label: 'ארנקים', path: '/portfolio?tab=wallets', icon: Wallet, kw: 'wallets ארנק יתרה תיק' },
+  { label: 'דוח מס', path: '/tax', icon: Receipt, kw: 'tax מס רווחי הון רואה חשבון דוח שנתי שקלים' },
   { label: 'תוכניות מסחר', path: '/plans', icon: ClipboardList, kw: 'plans תוכנית' },
   { label: 'סקירת שוק', path: '/market', icon: Activity, kw: 'market שוק' },
   { label: 'ניתוח מטבע', path: '/market?tab=analysis', icon: LineChart, kw: 'analysis ניתוח מטבע שוק' },

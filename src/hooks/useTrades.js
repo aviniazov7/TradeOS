@@ -8,6 +8,7 @@ import {
   timestamp,
   dateToTimestamp,
 } from '../services/firestoreService';
+import { deleteTradeImages } from '../services/tradeImageService';
 import { useAuth } from '../contexts/AuthContext';
 import { computeTradeFields, calculateFuturesNotional } from '../utils/calculations';
 
@@ -146,6 +147,9 @@ export function useTrades(journalId = null) {
     if (!user) throw new Error('No user');
     try {
       await deleteUserDocument(user.uid, 'trades', tradeId);
+      // Best-effort: drop the trade's chart screenshots too (separate
+      // subcollection). Not awaited — a failure must not fail the delete.
+      deleteTradeImages(user.uid, tradeId).catch((e) => console.warn('Trade screenshot cleanup failed:', e));
     } catch (error) {
       console.error('Failed to delete trade:', error);
       throw error;
