@@ -50,7 +50,7 @@ before releasing. Summary:
   `scripts/bump-version.mjs`) — this forces the service worker to update and
   triggers the "גרסה חדשה זמינה" prompt. Never touch it manually.
 - `APP_VERSION` (`src/utils/constants.js`) is the **marketing version, set by
-  hand**, currently pinned at `2.0.0`. A normal release does NOT require bumping
+  hand**, currently pinned at `2.1.0`. A normal release does NOT require bumping
   it. Bump it (semver MAJOR/MINOR/PATCH — see the guide) only for a
   user-visible milestone, and only as the owner's call. When in doubt, don't
   bump — just release.
