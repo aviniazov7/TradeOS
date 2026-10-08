@@ -193,5 +193,13 @@ export function canMoveStopToBreakeven(t) {
   const entry = num(t?.entryPrice);
   if (!(entry > 0)) return false;
   if (!(initialStopLoss(t) > 0)) return false;
-  return num(t?.stopLoss) !== entry;
+  // Tolerance: a scale-in average is written back rounded (toPrecision), so
+  // "already at entry" must not hinge on the 12th significant digit.
+  return Math.abs(num(t?.stopLoss) - entry) > entry * 1e-9;
+}
+
+/** The breakeven stop as a clean input string (no float noise). */
+export function breakevenStopValue(entryPrice) {
+  const e = num(entryPrice);
+  return e > 0 ? String(+e.toPrecision(12)) : '';
 }
