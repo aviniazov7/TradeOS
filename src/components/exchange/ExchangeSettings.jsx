@@ -6,7 +6,7 @@ import {
 import toast from 'react-hot-toast';
 import { useNavigate } from 'react-router-dom';
 import { getUserSetting, setUserSetting } from '../../services/firestoreService';
-import { syncExchangeTrades, syncOpenPositions, fetchExchangeBalance, storeExchangeCredentials, deleteExchangeCredentials, getConnectedExchanges, KEY_PROBLEM_TEXT } from '../../services/exchangeService';
+import { syncExchangeTrades, syncOpenPositions, fetchExchangeBalance, storeExchangeCredentials, deleteExchangeCredentials, getConnectedExchanges, KEY_PROBLEM_TEXT, isHyperliquidAddress, setHyperliquidAddressCache } from '../../services/exchangeService';
 import { useAuth } from '../../contexts/AuthContext';
 import { useJournalContext } from '../../contexts/JournalContext';
 import { useExchangeImport } from '../../hooks/useExchangeImport';
@@ -171,7 +171,7 @@ function ConnectedCard({ exchange, balance, syncing, onSync, onEdit, onDisconnec
       <div className="relative flex items-center justify-between gap-2 pt-3 border-t border-border-primary">
         <button onClick={onEdit}
           className="inline-flex items-center gap-1.5 text-xs text-text-muted hover:text-text-primary transition-colors cursor-pointer">
-          <Pencil className="w-3.5 h-3.5" />עדכון מפתחות
+          <Pencil className="w-3.5 h-3.5" />{exchange.authType === 'address' ? 'עדכון כתובת' : 'עדכון מפתחות'}
         </button>
         {daysLeft !== null && !expiringSoon && !problem && (
           <span className="text-[11px] text-text-muted" title="מפתח MEXC בלי IP מוגבל ל-90 יום">
@@ -252,16 +252,22 @@ function ConnectDialog({ exchange, editing, data, saving, onUpdate, onSave, onCl
   const ex = exchange || shown;
   if (!ex) return null;
 
-  const { name, tagline, accent, glow, apiUrl, steps, extraField } = ex;
+  const { name, tagline, accent, glow, apiUrl, steps, extraField, addressField } = ex;
+  const byAddress = ex.authType === 'address';
+  const address = (data?.address || '').trim();
+  const addressInvalid = byAddress && address.length > 0 && !isHyperliquidAddress(address);
   // Saving requires both fields freshly entered (we can't prefill the secret),
   // plus the extra field (OKX/Bitget passphrase) when the exchange requires it.
-  const hasKeys = (data?.apiKey || '').length > 0 && (data?.apiSecret || '').length > 0;
+  // Address-based venues (Hyperliquid) need just a valid wallet address.
+  const hasKeys = byAddress
+    ? isHyperliquidAddress(address)
+    : (data?.apiKey || '').length > 0 && (data?.apiSecret || '').length > 0;
   const missingExtra = !!extraField?.required && hasKeys && (data?.[extraField.key] || '').trim().length === 0;
   const canSave = hasKeys && !missingExtra && !saving;
 
   return (
     <Modal isOpen={isOpen} onClose={onClose} maxWidth="max-w-3xl"
-      title={editing ? `עדכון מפתחות · ${name}` : `חיבור ${name}`}>
+      title={editing ? (byAddress ? `עדכון כתובת · ${name}` : `עדכון מפתחות · ${name}`) : `חיבור ${name}`}>
       <div className="grid md:grid-cols-5 gap-5">
         {/* Form */}
         <form className="md:col-span-3 space-y-3"
@@ -273,16 +279,26 @@ function ConnectDialog({ exchange, editing, data, saving, onUpdate, onSave, onCl
               <p className="text-[11px] text-text-muted" dir="ltr" style={{ textAlign: 'right' }}>{tagline}</p>
             </div>
           </div>
-          {editing && <p className="text-xs text-text-muted">מטעמי אבטחה המפתחות הקיימים לא מוצגים — הזן מפתחות חדשים כדי להחליף אותם.</p>}
+          {editing && !byAddress && <p className="text-xs text-text-muted">מטעמי אבטחה המפתחות הקיימים לא מוצגים — הזן מפתחות חדשים כדי להחליף אותם.</p>}
 
-          <label className="block">
-            <span className="block text-[11px] text-text-muted mb-1">API Key</span>
-            <SecretInput value={data?.apiKey || ''} onChange={(v) => onUpdate('apiKey', v)} placeholder="API Key" accent={accent} />
-          </label>
-          <label className="block">
-            <span className="block text-[11px] text-text-muted mb-1">API Secret</span>
-            <SecretInput value={data?.apiSecret || ''} onChange={(v) => onUpdate('apiSecret', v)} placeholder="API Secret" accent={accent} secret />
-          </label>
+          {byAddress ? (
+            <label className="block">
+              <span className="block text-[11px] text-text-muted mb-1">{addressField?.label || 'כתובת ארנק'}</span>
+              <SecretInput value={data?.address || ''} onChange={(v) => onUpdate('address', v)} placeholder={addressField?.placeholder || '0x…'} accent={accent} />
+              {addressInvalid && <span className="block text-xs text-loss mt-1">כתובת לא תקינה — 0x ואחריו 40 תווים (0-9, a-f)</span>}
+            </label>
+          ) : (
+            <>
+              <label className="block">
+                <span className="block text-[11px] text-text-muted mb-1">API Key</span>
+                <SecretInput value={data?.apiKey || ''} onChange={(v) => onUpdate('apiKey', v)} placeholder="API Key" accent={accent} />
+              </label>
+              <label className="block">
+                <span className="block text-[11px] text-text-muted mb-1">API Secret</span>
+                <SecretInput value={data?.apiSecret || ''} onChange={(v) => onUpdate('apiSecret', v)} placeholder="API Secret" accent={accent} secret />
+              </label>
+            </>
+          )}
           {extraField && (
             <label className="block">
               <span className="block text-[11px] text-text-muted mb-1">{extraField.label}{extraField.required ? ' (חובה)' : ''}</span>
@@ -293,7 +309,11 @@ function ConnectDialog({ exchange, editing, data, saving, onUpdate, onSave, onCl
 
           <div className="flex items-start gap-2 rounded-xl px-3 py-2.5 bg-profit/5 border border-profit/20 text-[11px] text-text-secondary leading-relaxed">
             <Shield className="w-3.5 h-3.5 text-profit shrink-0 mt-0.5" />
-            <span>מומלץ ליצור מפתח לקריאה בלבד — ללא הרשאות מסחר או משיכה. המפתחות נשמרים בשרת ולא נשארים בדפדפן.</span>
+            <span>
+              {byAddress
+                ? 'כתובת הארנק היא מידע ציבורי (לא סוד) ומאפשרת קריאה בלבד של העסקאות — אי אפשר לסחור או למשוך בעזרתה. היא נשמרת בהגדרות החשבון שלך.'
+                : 'מומלץ ליצור מפתח לקריאה בלבד — ללא הרשאות מסחר או משיכה. המפתחות נשמרים בשרת ולא נשארים בדפדפן.'}
+            </span>
           </div>
 
           {missingExtra && (
@@ -308,7 +328,7 @@ function ConnectDialog({ exchange, editing, data, saving, onUpdate, onSave, onCl
             <button type="submit" disabled={!canSave}
               className="flex-1 h-11 rounded-xl text-sm font-bold transition-all cursor-pointer disabled:opacity-40 disabled:cursor-not-allowed flex items-center justify-center gap-2"
               style={{ background: `linear-gradient(135deg, ${accent}, ${accent}cc)`, color: '#000', boxShadow: canSave ? `0 6px 22px -6px ${glow}` : 'none' }}>
-              {saving ? <RefreshCw className="w-4 h-4 animate-spin" /> : (editing ? 'שמור מפתחות חדשים' : `חבר את ${name}`)}
+              {saving ? <RefreshCw className="w-4 h-4 animate-spin" /> : (editing ? (byAddress ? 'שמור כתובת' : 'שמור מפתחות חדשים') : `חבר את ${name}`)}
             </button>
           </div>
         </form>
@@ -316,7 +336,7 @@ function ConnectDialog({ exchange, editing, data, saving, onUpdate, onSave, onCl
         {/* Guide */}
         <aside className="md:col-span-2 rounded-xl bg-bg-tertiary/60 border border-border-primary p-4 h-fit">
           <div className="flex items-center justify-between gap-2 mb-3">
-            <p className="text-xs font-semibold text-text-primary">איך יוצרים מפתח API</p>
+            <p className="text-xs font-semibold text-text-primary">{byAddress ? 'איפה מוצאים את הכתובת' : 'איך יוצרים מפתח API'}</p>
             {apiUrl && (
               <a href={apiUrl} target="_blank" rel="noopener noreferrer"
                 className="text-[11px] inline-flex items-center gap-1 hover:opacity-80 transition-opacity shrink-0"
@@ -403,6 +423,8 @@ export default function ExchangeSettings({ journalId: propJournalId } = {}) {
         const markerFor = (eid) => ({
           connected: true,
           ...(legacy?.[eid]?.connectedAt ? { connectedAt: legacy[eid].connectedAt, connectedAtEstimated: !!legacy[eid].connectedAtEstimated } : {}),
+          // Hyperliquid: the public wallet address IS the connection (no keys).
+          ...(legacy?.[eid]?.address ? { address: legacy[eid].address } : {}),
         });
         for (const eid of connected) markers[eid] = markerFor(eid);
 
@@ -438,6 +460,7 @@ export default function ExchangeSettings({ journalId: propJournalId } = {}) {
             stamped = true;
           }
         }
+        setHyperliquidAddressCache(markers.hyperliquid?.address || null);
         setSavedExchanges(markers);
         writeExchCache(user.uid, '', markers);
         // merge:false replaces the doc — never write while legacy plaintext
@@ -493,7 +516,8 @@ export default function ExchangeSettings({ journalId: propJournalId } = {}) {
   };
   // The secret is not held client-side, so editing starts from empty inputs.
   const openEdit = (id) => {
-    setExchanges(p => ({ ...p, [id]: {} }));
+    // A wallet address isn't a secret — prefill it; API keys start empty.
+    setExchanges(p => ({ ...p, [id]: savedExchanges[id]?.address ? { address: savedExchanges[id].address } : {} }));
     setDialog({ id, editing: true });
   };
   const closeDialog = () => {
@@ -512,6 +536,12 @@ export default function ExchangeSettings({ journalId: propJournalId } = {}) {
     const conf = exchanges[id] || {};
     const exDef = EXCHANGES.find(e => e.id === id);
     const extraKey = exDef?.extraField?.key;
+    const byAddress = exDef?.authType === 'address';
+    const address = (conf.address || '').trim().toLowerCase();
+    if (byAddress && !isHyperliquidAddress(address)) {
+      toast.error('כתובת ארנק לא תקינה');
+      return;
+    }
     // Second gate behind the button's canSave check: never store OKX/Bitget
     // credentials without the passphrase — every later sync would fail auth.
     if (exDef?.extraField?.required && !(conf[extraKey] || '').trim()) {
@@ -521,11 +551,13 @@ export default function ExchangeSettings({ journalId: propJournalId } = {}) {
     setSaving(id);
     try {
       // Send the secret to the encrypted server-side store exactly once.
-      await storeExchangeCredentials(id, { apiKey: conf.apiKey, apiSecret: conf.apiSecret, passphrase: extraKey ? conf[extraKey] : undefined });
-      // Persist only a non-secret marker; merge:false replaces the doc so no
-      // plaintext key can linger.
-      const newMarkers = { ...savedExchanges, [id]: { connected: true, connectedAt: Date.now() } };
+      // (Address-based venues have no secret: nothing goes to the server.)
+      if (!byAddress) await storeExchangeCredentials(id, { apiKey: conf.apiKey, apiSecret: conf.apiSecret, passphrase: extraKey ? conf[extraKey] : undefined });
+      // Persist only a non-secret marker (plus the public wallet address for
+      // Hyperliquid); merge:false replaces the doc so no plaintext key can linger.
+      const newMarkers = { ...savedExchanges, [id]: { connected: true, connectedAt: Date.now(), ...(byAddress ? { address } : {}) } };
       await setUserSetting(user.uid, 'exchanges', newMarkers, false);
+      if (byAddress) setHyperliquidAddressCache(address);
       setSavedExchanges(newMarkers);
       // Drop the typed secret from React state immediately.
       setExchanges(p => ({ ...p, [id]: {} }));
@@ -533,7 +565,7 @@ export default function ExchangeSettings({ journalId: propJournalId } = {}) {
       setBalances((b) => ({ ...b, [id]: undefined }));
       setBalanceNonce((n) => n + 1);
       setDialog(null);
-      toast.success(alreadyConnected ? 'המפתחות עודכנו ✓' : `${exDef?.name || id} חוברה ✓`);
+      toast.success(alreadyConnected ? (byAddress ? 'הכתובת עודכנה ✓' : 'המפתחות עודכנו ✓') : `${exDef?.name || id} חוברה ✓`);
     } catch (e) { toast.error(e.message || 'שגיאה בשמירה'); } finally { setSaving(null); }
   };
 
@@ -541,8 +573,9 @@ export default function ExchangeSettings({ journalId: propJournalId } = {}) {
     const newMarkers = { ...savedExchanges };
     delete newMarkers[id];
     try {
-      await deleteExchangeCredentials(id);
+      if (id !== 'hyperliquid') await deleteExchangeCredentials(id);
       await setUserSetting(user.uid, 'exchanges', newMarkers, false);
+      if (id === 'hyperliquid') setHyperliquidAddressCache(null);
       setSavedExchanges(newMarkers);
       setExchanges(p => ({ ...p, [id]: {} }));
       setBalances((b) => { const next = { ...b }; delete next[id]; return next; });
@@ -705,7 +738,7 @@ export default function ExchangeSettings({ journalId: propJournalId } = {}) {
         onClose={() => setConfirmDisconnect(null)}
         onConfirm={() => handleDisconnect(confirmDisconnect)}
         title={`לנתק את ${disconnectExchange?.name || ''}?`}
-        message="המפתחות יימחקו מהשרת. עסקאות שכבר יובאו נשארות ביומן."
+        message={disconnectExchange?.authType === 'address' ? 'כתובת הארנק תימחק מהחשבון שלך. עסקאות שכבר יובאו נשארות ביומן.' : 'המפתחות יימחקו מהשרת. עסקאות שכבר יובאו נשארות ביומן.'}
         confirmText="נתק"
       />
 

@@ -12,6 +12,7 @@ import {
 import { MISTAKE_LABELS } from '../../utils/constants';
 import { isClosedTrade } from '../../utils/calculations';
 import { safeHttpUrl } from '../../utils/urls';
+import TradeExcursion from './TradeExcursion';
 import {
   TrendingUp,
   TrendingDown,
@@ -320,6 +321,8 @@ export default function TradeDetailModal({
           ]}
         />
       </div>
+
+      {status === 'closed' && <TradeExcursion key={trade.id} trade={trade} />}
 
       {/* 5) Full-width details */}
       <div className="mt-3 space-y-3 text-xs">

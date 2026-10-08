@@ -105,6 +105,9 @@ export function useExchangeImport(journalId) {
         // were imported before a venue reported it (they defaulted to market).
         ...(t.orderType ? { orderType: t.orderType } : {}),
         pnlFromExchange: t.pnlFromExchange ?? existing.pnlFromExchange,
+        // Funding paid/received (Hyperliquid) — already inside pnlFromExchange,
+        // kept as its own field for reference.
+        ...(typeof t.funding === 'number' && t.funding !== 0 ? { funding: t.funding } : {}),
         status: 'closed',
         // A reconciled open trade takes the CLOSED row's id as its primary id
         // (later syncs report that one); the open-position id stays in
@@ -152,6 +155,7 @@ export function useExchangeImport(journalId) {
       // matched to this document by id overlap (see the upsert above).
       ...(rowIds.length > 1 ? { externalIds: rowIds } : {}),
       pnlFromExchange: pnl, pnl, netPnl: netPnlImport,
+      ...(typeof t.funding === 'number' && t.funding !== 0 ? { funding: t.funding } : {}),
       pnlPercent: (pnl / (ep * qty)) * 100 * lev,
       // Risk ($) and realized R computed by the worker from the REAL exchange
       // SL and quantity — so nothing needs manual entry after import.

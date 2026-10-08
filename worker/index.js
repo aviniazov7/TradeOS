@@ -27,6 +27,8 @@ import {
 } from './userData.js';
 import { trBucketKey, mergeTrBucket, lookupTr, TR_BUCKET_TTL } from './newsTranslateCache.js';
 import { handleFxUsdIls } from './fxRates.js';
+import { handleHyperliquidRoute } from './hyperliquid.js';
+import { handleCandlesRoute } from './candles.js';
 
 // Binance's public market-data mirror — api.binance.com returns 403 to
 // Cloudflare Worker egress IPs in many regions, but data-api.binance.vision
@@ -6853,6 +6855,23 @@ async function handleRequest(request, env) {
       const reason = classifyExchangeAuthError(syncExchange, null, String(e?.message || e));
       return new Response(JSON.stringify({ error: String(e), reason }), { status: 400, headers: { ...cors, 'Content-Type': 'application/json' } });
     }
+  }
+
+  // Hyperliquid sync (wallet address only, no stored secrets) — worker/hyperliquid.js
+  if (request.method === 'GET' && (path === '/hl/trades' || path === '/hl/positions')) {
+    return handleHyperliquidRoute(request, url, cors, {
+      verifyToken: verifyFirebaseToken, rateLimit: (key, sec) => bumpWindow(env, key, sec), sessionFromDate,
+    });
+  }
+
+  // OHLC candles for the journal's MAE/MFE — worker/candles.js (edge-cached, no KV)
+  if (request.method === 'GET' && path === '/candles') {
+    const token = (request.headers.get('Authorization') || '').replace('Bearer ', '');
+    const uid = token ? await verifyFirebaseToken(token) : null;
+    if (!uid) return new Response(JSON.stringify({ error: 'unauthorized' }), { status: 401, headers: { ...cors, 'Content-Type': 'application/json' } });
+    const _rl = await bumpWindow(env, `rl:candles:${uid}`, 60);
+    if (_rl.count > 40) return new Response(JSON.stringify({ error: 'יותר מדי בקשות. נסה שוב בעוד רגע.' }), { status: 429, headers: { ...cors, 'Content-Type': 'application/json' } });
+    return handleCandlesRoute(request, url, cors);
   }
 
   return new Response('TradeOS Worker', { headers: cors });
