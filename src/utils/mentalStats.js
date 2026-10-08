@@ -1,5 +1,5 @@
 import { MENTALITY_EMOTIONS, PRE_MARKET_CHECKLIST } from './constants';
-import { isClosedTrade, localDayKey } from './calculations';
+import { isClosedTrade, localDayKey, winRateOf, safePnl } from './calculations';
 
 // Pure cross-reference between the mentality journals and the trades that were
 // closed on the same day. Extracted out of useMentalStats so the AI coach can
@@ -52,10 +52,12 @@ export function computeMentalStats(trades, morningEntries, eveningEntries) {
   const calcGroupStats = (groupTrades) => {
     const total = groupTrades.length;
     const wins = groupTrades.filter((t) => t.result === 'win').length;
-    const totalPnl = groupTrades.reduce((s, t) => s + (t.netPnl ?? t.pnl ?? 0), 0);
+    const losses = groupTrades.filter((t) => t.result === 'loss').length;
+    const totalPnl = groupTrades.reduce((s, t) => s + safePnl(t), 0);
     return {
       trades: total,
-      winRate: total > 0 ? Math.round((wins / total) * 100) : 0,
+      // wins / (wins + losses) — breakevens excluded, same as every screen.
+      winRate: Math.round(winRateOf(wins, losses)),
       avgPnl: total > 0 ? totalPnl / total : 0,
       totalPnl,
     };
@@ -111,7 +113,7 @@ export function computeMentalStats(trades, morningEntries, eveningEntries) {
   const profitDaysReadiness = [];
   const lossDaysReadiness = [];
   crossDays.forEach((day) => {
-    const dayPnl = day.trades.reduce((s, t) => s + (t.netPnl ?? t.pnl ?? 0), 0);
+    const dayPnl = day.trades.reduce((s, t) => s + safePnl(t), 0);
     if (dayPnl > 0) profitDaysReadiness.push(day.morning.readinessLevel);
     else if (dayPnl < 0) lossDaysReadiness.push(day.morning.readinessLevel);
   });
