@@ -14,7 +14,7 @@ import { useAuth } from '../../contexts/AuthContext';
 const PAGES = [
   { label: 'דשבורד', path: '/', icon: LayoutDashboard, kw: 'בית home dashboard ראשי' },
   { label: 'יומן מסחר', path: '/journal', icon: BookOpen, kw: 'עסקאות trades journal' },
-  { label: 'טרמינל', path: '/terminal', icon: CandlestickChart, kw: 'terminal פוזיציות פקודות פתוחות positions orders גרפים charts בורסה live' },
+  { label: 'עמדת מסחר', path: '/terminal', icon: CandlestickChart, kw: 'terminal טרמינל trading desk פוזיציות פקודות פתוחות positions orders גרפים charts בורסה live' },
   { label: 'האזור המנטלי', path: '/mentality', icon: Brain, kw: 'מנטל פסיכולוגיה mentality mindset' },
   { label: 'בקטסט', path: '/backtest', icon: FlaskConical, kw: 'backtest' },
   { label: 'תיק', path: '/portfolio', icon: Briefcase, kw: 'portfolio תיק השקעות' },
