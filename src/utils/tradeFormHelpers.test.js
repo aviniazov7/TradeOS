@@ -10,6 +10,11 @@ import {
   loadLastTradeChoices,
   saveLastTradeChoices,
   canMoveStopToBreakeven,
+  riskBudgetCheck,
+  riskToStop,
+  stopDistancePct,
+  rMultiple,
+  plannedRewardRisk,
 } from './tradeFormHelpers';
 import { computeTradeFields } from './calculations';
 
@@ -206,5 +211,48 @@ describe('canMoveStopToBreakeven', () => {
   it('false without any defined risk', () => {
     expect(canMoveStopToBreakeven({ direction: 'long', entryPrice: 100, stopLoss: 0 })).toBe(false);
     expect(canMoveStopToBreakeven({ direction: 'long', entryPrice: 0, stopLoss: 95 })).toBe(false);
+  });
+});
+
+describe('ticket summary', () => {
+  it('riskBudgetCheck: % of balance, flagged past a percent limit', () => {
+    const settings = { riskType: 'percent', riskValue: 1, currentBalance: 10000 };
+    expect(riskBudgetCheck(50, settings)).toMatchObject({ severity: 'info', exceeds: false, limitLabel: '1%', message: 'סיכון 0.5% מהתיק' });
+    expect(riskBudgetCheck(150, settings)).toMatchObject({ severity: 'warning', exceeds: true });
+    expect(riskBudgetCheck(250, settings).severity).toBe('critical');
+    expect(riskBudgetCheck(250, settings).percent).toBeCloseTo(2.5, 10);
+  });
+  it('riskBudgetCheck: fixed-$ limit without a balance, null when nothing to say', () => {
+    expect(riskBudgetCheck(120, { riskType: 'fixed', riskValue: 100 })).toMatchObject({ severity: 'warning', percent: null, limitLabel: '$100' });
+    expect(riskBudgetCheck(201, { riskType: 'fixed', riskValue: 100 }).severity).toBe('critical');
+    expect(riskBudgetCheck(80, { riskType: 'fixed', riskValue: 100 })).toBeNull();
+    expect(riskBudgetCheck(0, { riskType: 'percent', riskValue: 1, currentBalance: 1000 })).toBeNull();
+    expect(riskBudgetCheck('', undefined)).toBeNull();
+  });
+  it('riskToStop and stopDistancePct', () => {
+    expect(riskToStop({ entry: 100, stop: 95, units: 4 })).toBe(20);
+    // ES: 10 points × $50 × 2 contracts
+    expect(riskToStop({ entry: 5000, stop: 4990, units: 2, pointValue: 50 })).toBe(1000);
+    expect(riskToStop({ entry: 100, stop: 0, units: 4 })).toBe(0);
+    expect(stopDistancePct(100, 95)).toBeCloseTo(5, 10);
+    expect(stopDistancePct(100, '')).toBeNull();
+  });
+  it('rMultiple is signed by direction', () => {
+    expect(rMultiple('long', 100, 95, 110)).toBeCloseTo(2, 10);
+    expect(rMultiple('long', 100, 95, 95)).toBeCloseTo(-1, 10);
+    expect(rMultiple('short', 100, 105, 90)).toBeCloseTo(2, 10);
+    expect(rMultiple('long', 100, 100, 110)).toBeNull();
+    // The owner's INJ example: long 7.715, stop 7.652, out at 7.65 → just past −1R
+    expect(rMultiple('long', 7.715, 7.652, 7.65)).toBeCloseTo(-1.0317, 3);
+  });
+  it('plannedRewardRisk: TP1 and the blended target', () => {
+    const base = { direction: 'long', entry: 100, stop: 95 };
+    // Equal blend of 110 and 120 → 115 → 3R
+    expect(plannedRewardRisk({ ...base, targets: [{ price: 110 }, { price: 120 }] })).toEqual({ tp1: 2, blended: 3 });
+    // 25% at 110, the other 75% at 120 → 117.5 → 3.5R
+    const r = plannedRewardRisk({ ...base, targets: [{ price: 110, weight: 25 }, { price: 120 }] });
+    expect(r.blended).toBeCloseTo(3.5, 10);
+    expect(plannedRewardRisk({ ...base, targets: [] })).toEqual({ tp1: null, blended: null });
+    expect(plannedRewardRisk({ ...base, stop: 0, targets: [{ price: 110 }] })).toEqual({ tp1: null, blended: null });
   });
 });

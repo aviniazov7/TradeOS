@@ -672,6 +672,19 @@ input[type="number"] {
   letter-spacing: -0.02em;
   font-variant-numeric: tabular-nums;
 }
+
+/* Trade ticket: the shared pickers (pair/stock search, strategy, timeframe,
+   select) keep their own py-2.5 trigger, ~42px. Inside .tt-pick their trigger
+   — the direct child of the picker's root, never its .absolute menu — takes
+   the ticket's 40px / rounded-xl control size so a row of fields lines up. */
+.tt-pick > div > button,
+.tt-pick > div > div:not(.absolute),
+.tt-pick > div > div.relative > input {
+  height: 2.5rem;
+  padding-top: 0;
+  padding-bottom: 0;
+  border-radius: 0.75rem;
+}
 /* Light theme: solid card */
 :root.light .bento-card,
 [data-theme='light'] .bento-card {
