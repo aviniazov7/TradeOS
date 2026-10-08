@@ -182,8 +182,8 @@ service cloud.firestore {
       }
       // Chart screenshots attached to a trade (TradeScreenshots.jsx). Kept out
       // of the trade doc itself — trades are subscribed live everywhere, so
-      // image payloads there would slow every screen. Owner-only, admins
-      // included: a screenshot can show balances/positions, and the admin
+      // image payloads there would slow every screen. Owner-only (no admin
+      // read either): a screenshot can show balances/positions, and the admin
       // panel never needs it.
       // Doc ids are the fixed slots `${tradeId}_0..3`, which caps a trade at
       // 4 screenshots server-side and lets trade deletion clean up without
