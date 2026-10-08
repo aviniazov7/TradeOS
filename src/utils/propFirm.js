@@ -260,6 +260,7 @@ export function evaluatePropFirm(trades, rawConfig, { now = new Date(), unrealiz
       floor: todayStart - limitUsd,
       breached: !!pastBreach,
       breachDay: pastBreach?.day || null,
+      breachAmount: pastBreach?.amount ?? null,
       worstDayLoss,
       state: meterState(usedPct, !!pastBreach),
     };
