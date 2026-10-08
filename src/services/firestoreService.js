@@ -328,6 +328,7 @@ export const USER_SUBCOLLECTIONS = [
   'trades', 'journals', 'backtests', 'backtestJournals', 'dca',
   'tradingPlans', 'notes', 'strategies', 'morningJournals', 'eveningJournals',
   'processes', 'signals', 'watchlist', 'wyckoffSetups', 'polymarketWatch', 'polymarketStrategies', 'settings',
+  'tradeImages',
 ];
 
 /** Delete all documents in a user's subcollection */
