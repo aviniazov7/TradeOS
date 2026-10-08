@@ -155,23 +155,26 @@ export default function SetupsDatabase({ setups = [], loading, onAdd, onUpdate, 
   };
 
   return (
-    <section>
-      <div className="flex items-center justify-between gap-2 mb-3">
-        <div className="flex items-center gap-1.5 min-w-0">
-          <span className="w-6 h-6 rounded-lg bg-accent-primary/12 flex items-center justify-center shrink-0">
-            <GraduationCap className="w-3.5 h-3.5 text-accent-primary" />
-          </span>
-          <h2 className="text-sm font-bold text-text-primary shrink-0">מאגר האימון</h2>
-          <span className="text-[11px] text-text-muted truncate">— הסטאפים שאני מסמן כדי לכייל ולאמן את המנוע</span>
+    <section className="rounded-2xl border border-border-primary bg-bg-secondary">
+      <div className="flex items-center justify-between gap-2 px-4 py-3 border-b border-border-primary">
+        <div className="flex items-center gap-2.5 min-w-0">
+          <GraduationCap className="w-4 h-4 text-accent-primary shrink-0" />
+          <div className="min-w-0">
+            <h2 className="text-sm font-bold text-text-primary">מאגר האימון</h2>
+            <p className="text-[11px] text-text-muted truncate">סטאפים מסומנים שמכיילים את המנוע</p>
+          </div>
         </div>
         <button
           onClick={() => { setEditing(null); setModalOpen(true); }}
-          className="shrink-0 inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-accent-primary text-white text-sm font-bold hover:brightness-110 transition cursor-pointer"
+          className="shrink-0 inline-flex items-center gap-1.5 h-9 px-3 rounded-xl bg-accent-muted hover:bg-accent-primary text-white text-sm font-bold transition-colors cursor-pointer"
+          title="סמן סטאפ לאימון"
+          aria-label="סמן סטאפ לאימון"
         >
           <Plus className="w-4 h-4" /> <span className="hidden sm:inline">סמן לאימון</span>
         </button>
       </div>
 
+      <div className="p-3 md:p-4">
       {/* Scanner precision — how often the engine's detections matched a "valid" verdict */}
       {stats.judged > 0 && (
         <div className="mb-3 rounded-xl border border-accent-primary/20 bg-accent-primary/5 p-3">
@@ -204,7 +207,7 @@ export default function SetupsDatabase({ setups = [], loading, onAdd, onUpdate, 
 
       {/* Stats strip */}
       {stats.total > 0 && (
-        <div className="flex items-center gap-2 mb-3">
+        <div className="flex flex-wrap items-center gap-2 mb-3">
           <Stat label="סה״כ" value={stats.total} />
           <Stat label="תקינים" value={stats.valid} tone="profit" />
           <Stat label="לא תקינים" value={stats.invalid} tone="loss" />
@@ -228,11 +231,11 @@ export default function SetupsDatabase({ setups = [], loading, onAdd, onUpdate, 
       ) : stats.total === 0 ? (
         <button
           onClick={() => { setEditing(null); setModalOpen(true); }}
-          className="w-full flex flex-col items-center justify-center gap-2 py-8 rounded-2xl border border-dashed border-border-primary text-text-muted hover:text-accent-primary hover:border-accent-primary/40 transition-colors cursor-pointer"
+          className="w-full flex flex-col items-center justify-center gap-2 px-4 py-8 text-center rounded-xl border border-dashed border-border-primary text-text-muted hover:text-accent-primary hover:border-accent-primary/40 transition-colors cursor-pointer"
         >
           <GraduationCap className="w-7 h-7 opacity-60" />
           <span className="text-sm font-medium">המאגר ריק</span>
-          <span className="text-[11px]">סמן סטאפ אמיתי (LPS/LPSY), או תייג 👍/👎 סטאפ שהמנוע אותר למעלה — כך המנוע לומד מה נחשב כניסה טובה עבורך</span>
+          <span className="text-[11px] max-w-sm">סמן סטאפ אמיתי (LPS / LPSY), או סמן תקין / לא תקין על סטאפ שהמנוע איתר.</span>
         </button>
       ) : sorted.length === 0 ? (
         <div className="py-8 text-center text-sm text-text-muted">אין סטאפים בסינון הזה</div>
@@ -245,6 +248,8 @@ export default function SetupsDatabase({ setups = [], loading, onAdd, onUpdate, 
           </AnimatePresence>
         </div>
       )}
+
+      </div>
 
       <MarkSetupModal
         isOpen={modalOpen}
