@@ -1,4 +1,5 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
+import { useSearchParams } from 'react-router-dom';
 import { motion } from 'framer-motion';
 import { Plus, Coins, Download, List, BarChart3 } from 'lucide-react';
 import toast from 'react-hot-toast';
@@ -12,16 +13,16 @@ import EmptyState from '../shared/EmptyState';
 import DCASkeleton from './DCASkeleton';
 import { pageVariants, pageTransition } from '../../utils/animations';
 import PageHeader from '../shared/PageHeader';
-import TabStrip from '../shared/TabStrip';
 import { headerIconBtn, headerPrimaryBtn } from '../shared/headerStyles';
 import { COINS, DCA_FREQUENCY_LABELS, DCA_STATUS_LABELS } from '../../utils/constants';
 import { downloadCsv } from '../../utils/csv';
 import { localDayKey } from '../../utils/calculations';
 
-// `embedded` — rendered inside the Portfolio page, which already has the page
-// header: show a compact toolbar (inner tabs + actions) instead of a second
-// full header.
-export default function DCATracker({ embedded = false }) {
+// `embedded` — rendered inside the Portfolio page, which owns the page header:
+// the view ('plans' | 'summary') comes from the Portfolio tabs, and the
+// header's buttons reach this component through one-shot URL flags
+// (?new=1 opens the form, ?export=1 downloads the CSV) — no second toolbar.
+export default function DCATracker({ embedded = false, view }) {
   const { dcaPlans, loading, addPlan, addEntry, updatePlan, deletePlan } = useDCA();
   const coinSymbols = [...new Set(dcaPlans.map((p) => p.coin))];
   const extraCoins = dcaPlans
@@ -31,7 +32,10 @@ export default function DCATracker({ embedded = false }) {
   const [formOpen, setFormOpen] = useState(false);
   const [editingPlan, setEditingPlan] = useState(null);
   const [deleteTarget, setDeleteTarget] = useState(null);
-  const [tab, setTab] = useState('plans');
+  const [ownTab, setOwnTab] = useState('plans');
+  const tab = embedded && view ? view : ownTab;
+  const setTab = setOwnTab;
+  const [searchParams, setSearchParams] = useSearchParams();
 
   const handleSave = async (data) => {
     try {
@@ -82,6 +86,23 @@ export default function DCATracker({ embedded = false }) {
     toast.success('הקובץ הורד');
   };
 
+  // One-shot flags from the Portfolio header (embedded mode).
+  const wantsNew = searchParams.get('new') === '1';
+  const wantsExport = searchParams.get('export') === '1';
+  const clearFlag = (name) => setSearchParams((prev) => {
+    const next = new URLSearchParams(prev);
+    next.delete(name);
+    return next;
+  }, { replace: true });
+  // ?export=1 is an action, not UI state: run it once and drop the flag.
+  useEffect(() => {
+    if (!embedded || loading || !wantsExport) return;
+    if (dcaPlans.length) exportCSV();
+    clearFlag('export');
+  }, [embedded, loading, wantsExport]); // eslint-disable-line react-hooks/exhaustive-deps
+  // ?new=1 opens the create form for as long as the flag is in the URL.
+  const formShown = formOpen || (embedded && wantsNew);
+
   if (loading) return <DCASkeleton />;
 
   const dcaTabs = [{ id: 'plans', label: 'תוכניות', count: dcaPlans.length }, { id: 'summary', label: 'ניתוחים' }];
@@ -100,14 +121,7 @@ export default function DCATracker({ embedded = false }) {
 
   return (
     <motion.div variants={pageVariants} initial="initial" animate="animate" exit="exit" transition={pageTransition}>
-      {embedded ? (
-        <div className="flex flex-wrap items-center justify-between gap-3 mb-4 md:mb-6">
-          <div className="rounded-xl bg-bg-secondary border border-border-primary p-1">
-            <TabStrip tabs={dcaTabs} value={tab} onChange={setTab} layoutKey="dca-tab" />
-          </div>
-          {dcaActions}
-        </div>
-      ) : (
+      {embedded ? null : (
         <PageHeader
           icon={Coins}
           title="מעקב DCA"
@@ -160,7 +174,7 @@ export default function DCATracker({ embedded = false }) {
       )}
 
       {/* Create/Edit form modal */}
-      <DCAForm isOpen={formOpen} onClose={handleCloseForm} plan={editingPlan} onSave={handleSave} />
+      <DCAForm isOpen={formShown} onClose={() => { if (wantsNew) clearFlag('new'); handleCloseForm(); }} plan={editingPlan} onSave={handleSave} />
 
       {/* Delete confirmation */}
       <ConfirmDialog
