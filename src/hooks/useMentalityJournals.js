@@ -1,5 +1,6 @@
-import { useState, useEffect, useMemo, useCallback } from 'react';
+import { useState, useEffect, useMemo } from 'react';
 import { localDayKey } from '../utils/calculations';
+import { findEntryForDay } from '../utils/mentalityJournalForm';
 import {
   subscribeToUserCollection,
   addToUserCollection,
@@ -81,49 +82,41 @@ export function useMentalityJournals() {
     return () => clearInterval(interval);
   }, [todayStr]);
 
+  // Today's entry by LOCAL day (see findEntryForDay: `date` first, else the
+  // local day of createdAt; the newest edit wins over a duplicate).
   const todayMorning = useMemo(
-    () => morningEntries.find((e) => e.date === todayStr) || null,
+    () => findEntryForDay(morningEntries, todayStr),
     [morningEntries, todayStr]
   );
 
   const todayEvening = useMemo(
-    () => eveningEntries.find((e) => e.date === todayStr) || null,
+    () => findEntryForDay(eveningEntries, todayStr),
     [eveningEntries, todayStr]
   );
 
-  const saveMorningEntry = async (data) => {
+  // Create-or-update for one local day. `id` (the entry being edited) wins;
+  // otherwise the day's existing doc is updated, so saving twice never makes a
+  // duplicate. Resolves with the doc id.
+  const saveEntry = async (collectionName, entries, data, id) => {
     if (!user) throw new Error('No user');
-    const existing = morningEntries.find((e) => e.date === data.date);
-    if (existing) {
-      await updateUserDocument(user.uid, 'morningJournals', existing.id, {
+    const existingId = id || findEntryForDay(entries, data.date)?.id;
+    if (existingId) {
+      await updateUserDocument(user.uid, collectionName, existingId, {
         ...data,
         updatedAt: timestamp(),
       });
-    } else {
-      await addToUserCollection(user.uid, 'morningJournals', {
-        ...data,
-        createdAt: timestamp(),
-        updatedAt: timestamp(),
-      });
+      return existingId;
     }
+    const ref = await addToUserCollection(user.uid, collectionName, {
+      ...data,
+      createdAt: timestamp(),
+      updatedAt: timestamp(),
+    });
+    return ref?.id || null;
   };
 
-  const saveEveningEntry = async (data) => {
-    if (!user) throw new Error('No user');
-    const existing = eveningEntries.find((e) => e.date === data.date);
-    if (existing) {
-      await updateUserDocument(user.uid, 'eveningJournals', existing.id, {
-        ...data,
-        updatedAt: timestamp(),
-      });
-    } else {
-      await addToUserCollection(user.uid, 'eveningJournals', {
-        ...data,
-        createdAt: timestamp(),
-        updatedAt: timestamp(),
-      });
-    }
-  };
+  const saveMorningEntry = (data, id) => saveEntry('morningJournals', morningEntries, data, id);
+  const saveEveningEntry = (data, id) => saveEntry('eveningJournals', eveningEntries, data, id);
 
   const deleteMorningEntry = async (id) => {
     if (!user) throw new Error('No user');
