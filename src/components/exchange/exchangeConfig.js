@@ -61,6 +61,23 @@ export const EXCHANGES = [
     extraField: { key: 'passphrase', label: 'Passphrase', placeholder: 'Bitget Passphrase', required: true },
   },
   {
+    // Perp DEX: everything is public on-chain data, so the "credential" is the
+    // wallet address — no API key/secret exists or is stored (see
+    // exchangeService.js). `authType: 'address'` switches the connect dialog.
+    id: 'hyperliquid', name: 'Hyperliquid', tagline: 'Perp DEX · On-chain',
+    accent: '#50D2C1', glow: 'rgba(80,210,193,0.35)',
+    apiUrl: 'https://app.hyperliquid.xyz/portfolio', canSync: true,
+    authType: 'address',
+    steps: [
+      { text: 'פתח את Hyperliquid → Portfolio', n: '1' },
+      { text: 'העתק את כתובת הארנק הראשי (0x…) מהפינה העליונה', n: '2' },
+      { text: 'לא צריך מפתח API ולא חתימה — הנתונים ציבוריים', n: '3', ok: true },
+      { text: 'אל תזין מפתח פרטי או Seed Phrase לעולם', n: '!', warn: true },
+      { text: 'ארנק משנה / Agent Wallet? השתמש בכתובת החשבון הראשי', n: '4' },
+    ],
+    addressField: { label: 'כתובת ארנק', placeholder: '0x…' },
+  },
+  {
     id: 'binance', name: 'Binance', tagline: "World's Largest Exchange",
     accent: '#F0B90B', glow: 'rgba(240,185,11,0.35)',
     apiUrl: 'https://www.binance.com/en/my/settings/api-management', canSync: false,
