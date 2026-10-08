@@ -111,8 +111,10 @@ function ThinkingTimeline() {
   );
 }
 
-export default function ChartAnalyzer({ heightClass = '' }) {
-  const [image, setImage] = useState(null); // { dataUrl, name }
+export default function ChartAnalyzer({ heightClass = '', initialImage = null }) {
+  // initialImage ({ dataUrl, name }) pre-loads a chart, e.g. a trade screenshot
+  // handed over from the journal (TradeScreenshots).
+  const [image, setImage] = useState(initialImage); // { dataUrl, name }
   const [analyzing, setAnalyzing] = useState(false);
   const [resultText, setResultText] = useState('');
   const [error, setError] = useState(null);
