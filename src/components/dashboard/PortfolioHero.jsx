@@ -3,6 +3,7 @@ import Card from '../shared/Card';
 import AnimatedValue from '../shared/AnimatedValue';
 import FitText from '../shared/FitText';
 import { formatCurrency, formatCurrencyShort, LRM } from '../../utils/formatters';
+import { winRateOf } from '../../utils/calculations';
 
 const W = 600;
 const H = 170;
@@ -49,14 +50,16 @@ function summarize(series, period) {
     points = series.length ? [{ t: series[0].t, value: 0 }, ...series.map((p) => ({ t: p.t, value: p.value }))] : [];
   }
   const pnl = inRange.reduce((s, p) => s + p.pnl, 0);
+  // Same definition as everywhere: wins / (wins + losses), breakevens out.
   const wins = inRange.filter((p) => p.pnl > 0).length;
+  const losses = inRange.filter((p) => p.pnl < 0).length;
   const dayStart = new Date(); dayStart.setHours(0, 0, 0, 0);
   const today = series.filter((p) => p.t >= dayStart.getTime()).reduce((s, p) => s + p.pnl, 0);
   return {
     def,
     pnl,
     count: inRange.length,
-    winRate: inRange.length ? Math.round((wins / inRange.length) * 100) : null,
+    winRate: inRange.length ? Math.round(winRateOf(wins, losses)) : null,
     today,
     chart: buildChart(points),
   };

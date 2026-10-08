@@ -4,7 +4,6 @@ import {
   calculateProfitFactor,
   calculateExpectancy,
   calculateAvgRR,
-  calculateMaxDrawdown,
   calculateSharpeRatio,
   calculateCalmarRatio,
   calculateCurrentStreak,
@@ -16,6 +15,9 @@ import {
   isClosedTrade,
   localDayKey,
   safePnl,
+  winRateOf,
+  computeDrawdown,
+  partialRealizedPnl,
 } from '../utils/calculations';
 import { getSessionFromDate, SESSION_UNKNOWN } from '../utils/sessions';
 import { getPeriodStart, toDate } from '../utils/period';
@@ -33,7 +35,7 @@ export function tradeDate(t) {
 
 export function useDashboardStats(trades, initialBalance = 0, period = 'all') {
   // Step 1: Filter & sort trades
-  const { closed, sorted, openCount, prePeriodPnl } = useMemo(() => {
+  const { closed, sorted, openCount, prePeriodPnl, partialRealizedPnL, partialCount } = useMemo(() => {
     const periodStart = getPeriodStart(period);
     const filtered = periodStart
       ? trades.filter((t) => {
@@ -49,6 +51,11 @@ export function useDashboardStats(trades, initialBalance = 0, period = 'all') {
     // net profit up and craters the win rate; 'open' rows carry a live mark
     // price whose unrealized PnL would swing the numbers day to day.
     const cl = filtered.filter(isClosedTrade);
+    // Realized P&L of the legs already sold from still-open partial positions
+    // (see partialRealizedPnl). Reported SEPARATELY — not folded into
+    // totalPnL: exits have no timestamp (no honest day to book them on), and
+    // the journal's live-wallet calibration assumes totalPnL = Σ closed.
+    const partials = filtered.filter((t) => partialRealizedPnl(t) !== 0);
     // openCount is derived from closed so the two counts always sum to filtered.length
     const oc = filtered.length - cl.length;
     const sr = [...cl].sort((a, b) => tradeDate(a) - tradeDate(b));
@@ -58,7 +65,8 @@ export function useDashboardStats(trades, initialBalance = 0, period = 'all') {
     const prePeriodPnl = periodStart
       ? trades.filter((t) => isClosedTrade(t) && tradeDate(t) < periodStart).reduce((s, t) => s + safePnl(t), 0)
       : 0;
-    return { closed: cl, sorted: sr, openCount: oc, prePeriodPnl };
+    const partialRealizedPnL = partials.reduce((s, t) => s + partialRealizedPnl(t), 0);
+    return { closed: cl, sorted: sr, openCount: oc, prePeriodPnl, partialRealizedPnL, partialCount: partials.length };
   }, [trades, period]);
 
   // Step 2: Core stats + performance breakdowns
@@ -106,7 +114,7 @@ export function useDashboardStats(trades, initialBalance = 0, period = 'all') {
       strategyMap[strat].pnl += safePnl(t);
     });
     const strategyPerformance = Object.entries(strategyMap)
-      .map(([name, d]) => ({ name, ...d, winRate: d.count > 0 ? (d.wins / d.count) * 100 : 0 }))
+      .map(([name, d]) => ({ name, ...d, winRate: winRateOf(d.wins, d.losses) }))
       .sort((a, b) => b.pnl - a.pnl);
     const bestStrategy = strategyPerformance[0]?.name || '–';
 
@@ -128,7 +136,7 @@ export function useDashboardStats(trades, initialBalance = 0, period = 'all') {
       .sort(([a], [b]) => (a < b ? -1 : a > b ? 1 : 0))
       .map(([month, d]) => {
         cumulativePnl += d.pnl;
-        return { month, ...d, winRate: d.count > 0 ? (d.wins / d.count) * 100 : 0, cumulativePnl };
+        return { month, ...d, winRate: winRateOf(d.wins, d.losses), cumulativePnl };
       });
 
     // Session Performance — uses shared utility (Israel timezone, single source of truth)
@@ -142,22 +150,23 @@ export function useDashboardStats(trades, initialBalance = 0, period = 'all') {
       sessionMap[sess].pnl += safePnl(t);
     });
     const sessionPerformance = Object.values(sessionMap)
-      .map((s) => ({ ...s, winRate: s.count > 0 ? (s.wins / s.count) * 100 : 0, pnl: parseFloat(s.pnl.toFixed(2)) }))
+      .map((s) => ({ ...s, winRate: winRateOf(s.wins, s.losses), pnl: parseFloat(s.pnl.toFixed(2)) }))
       .sort((a, b) => b.pnl - a.pnl);
 
     // Day of Week Performance
     const dayNames = ['ראשון', 'שני', 'שלישי', 'רביעי', 'חמישי', 'שישי', 'שבת'];
     const dayMap = {};
-    dayNames.forEach((name, i) => { dayMap[i] = { name, count: 0, wins: 0, pnl: 0 }; });
+    dayNames.forEach((name, i) => { dayMap[i] = { name, count: 0, wins: 0, losses: 0, pnl: 0 }; });
     closed.forEach((t) => {
       const day = tradeDate(t).getDay();
       dayMap[day].count++;
       if (t.result === 'win') dayMap[day].wins++;
+      else if (t.result === 'loss') dayMap[day].losses++;
       dayMap[day].pnl += safePnl(t);
     });
     const dayOfWeekPerformance = Object.values(dayMap)
       .filter((d) => d.count > 0)
-      .map((d) => ({ ...d, winRate: d.count > 0 ? (d.wins / d.count) * 100 : 0, pnl: parseFloat((isNaN(d.pnl) ? 0 : d.pnl).toFixed(2)) }));
+      .map((d) => ({ ...d, winRate: winRateOf(d.wins, d.losses), pnl: parseFloat((isNaN(d.pnl) ? 0 : d.pnl).toFixed(2)) }));
 
     // Streak History
     const streakHistory = [];
@@ -209,8 +218,10 @@ export function useDashboardStats(trades, initialBalance = 0, period = 'all') {
       sessionPerformance,
       dayOfWeekPerformance,
       streakHistory,
+      partialRealizedPnL,
+      partialCount,
     };
-  }, [closed, sorted, openCount, initialBalance, prePeriodPnl]);
+  }, [closed, sorted, openCount, initialBalance, prePeriodPnl, partialRealizedPnL, partialCount]);
 
   // Step 3: Equity curve + advanced metrics (depends on sorted + balance)
   const advancedStats = useMemo(() => {
@@ -223,23 +234,17 @@ export function useDashboardStats(trades, initialBalance = 0, period = 'all') {
     // so drawdown/Calmar/recovery on a FILTERED view match the equity chart.
     const startBalance = (initialBalance || 0) + prePeriodPnl;
 
-    let equity = startBalance;
-    const equityCurve = sorted.map((t) => {
-      equity += safePnl(t);
-      return equity;
-    });
     // startBalance is the true starting peak so drawdown from the first losing
-    // trade of the period is captured correctly (also fixes initialBalance=0).
-    const maxDrawdown = equityCurve.length ? calculateMaxDrawdown(equityCurve, startBalance) : 0;
-    const calmarRatio = clampRatio(calculateCalmarRatio(coreStats.balanceChangePercent, maxDrawdown));
+    // trade of the period is captured correctly. With NO starting capital the
+    // percent is meaningless (it would be measured on cumulative P&L: +10 then
+    // −9 = "90%"), so maxDrawdown / calmarRatio are null and the UI shows the
+    // dollar drawdown instead. Capital means a real starting balance (or a
+    // live wallet) — pre-period P&L on a zero balance is still just P&L.
+    const hasCapital = (initialBalance || 0) > 0 && startBalance > 0;
+    const { maxDrawdownPct, maxDrawdownAbs: maxDrawdownAbsolute } = computeDrawdown(sorted.map(safePnl), hasCapital ? startBalance : 0);
+    const maxDrawdown = maxDrawdownPct;
+    const calmarRatio = hasCapital ? clampRatio(calculateCalmarRatio(coreStats.balanceChangePercent, maxDrawdown)) : null;
 
-    let peakEquity = startBalance;
-    let maxDrawdownAbsolute = 0;
-    for (const val of equityCurve) {
-      if (val > peakEquity) peakEquity = val;
-      const dd = peakEquity - val;
-      if (dd > maxDrawdownAbsolute) maxDrawdownAbsolute = dd;
-    }
     const recoveryFactor = calculateRecoveryFactor(coreStats.totalPnL, maxDrawdownAbsolute);
 
     // Chart shares the same period-start baseline as the drawdown KPI above.
@@ -249,12 +254,12 @@ export function useDashboardStats(trades, initialBalance = 0, period = 'all') {
       const d = tradeDate(t);
       eqVal += safePnl(t);
       if (eqVal > eqPeak) eqPeak = eqVal;
-      const dd = eqPeak > 0 ? ((eqPeak - eqVal) / eqPeak) * 100 : 0;
+      const dd = hasCapital && eqPeak > 0 ? ((eqPeak - eqVal) / eqPeak) * 100 : 0;
       const label = `${String(d.getDate()).padStart(2, '0')}/${String(d.getMonth() + 1).padStart(2, '0')}`;
       return { date: label, equity: parseFloat(eqVal.toFixed(2)), drawdown: parseFloat(dd.toFixed(2)) };
     });
 
-    return { sharpeRatio, sortinoRatio, maxDrawdown, calmarRatio, recoveryFactor, equityChartData };
+    return { sharpeRatio, sortinoRatio, maxDrawdown, maxDrawdownAbsolute, calmarRatio, recoveryFactor, equityChartData };
   }, [closed, sorted, initialBalance, prePeriodPnl, coreStats.balanceChangePercent, coreStats.totalPnL]);
 
   // Step 4: Correlation matrix (heavy — isolated, with symmetric optimization)

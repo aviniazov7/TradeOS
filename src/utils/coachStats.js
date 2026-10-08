@@ -2,7 +2,7 @@
 // re-deriving everything from raw fields. Free = current month; Premium = full
 // history (and adds previous-month comparison + extended breakdowns).
 
-import { isClosedTrade } from './calculations';
+import { isClosedTrade, winRateOf } from './calculations';
 
 const tradeMs = (t) => {
   const d = t.exitDate || t.entryDate || t.createdAt;
@@ -21,7 +21,8 @@ function summarize(trades) {
   const wins = trades.filter((t) => pnlOf(t) > 0);
   const losses = trades.filter((t) => pnlOf(t) < 0);
   const pnl = trades.reduce((s, t) => s + pnlOf(t), 0);
-  const wr = total ? Math.round((wins.length / total) * 1000) / 10 : 0;
+  // wins / (wins + losses) — breakevens excluded, same as every screen.
+  const wr = Math.round(winRateOf(wins.length, losses.length) * 10) / 10;
   const avgWin = wins.length ? wins.reduce((s, t) => s + pnlOf(t), 0) / wins.length : 0;
   const avgLoss = losses.length ? losses.reduce((s, t) => s + pnlOf(t), 0) / losses.length : 0;
   const profitFactor = losses.length && avgLoss < 0
@@ -44,10 +45,11 @@ function topGroups(trades, keyFn, take = 5) {
   for (const t of trades) {
     const k = keyFn(t);
     if (!k) continue;
-    const cur = m.get(k) || { trades: 0, pnl: 0, wins: 0 };
+    const cur = m.get(k) || { trades: 0, pnl: 0, wins: 0, losses: 0 };
     cur.trades++;
     cur.pnl += pnlOf(t);
     if (pnlOf(t) > 0) cur.wins++;
+    else if (pnlOf(t) < 0) cur.losses++;
     m.set(k, cur);
   }
   return [...m.entries()]
@@ -57,7 +59,7 @@ function topGroups(trades, keyFn, take = 5) {
       key,
       trades: v.trades,
       pnl: Math.round(v.pnl * 100) / 100,
-      winRate: Math.round((v.wins / v.trades) * 1000) / 10,
+      winRate: Math.round(winRateOf(v.wins, v.losses) * 10) / 10,
     }));
 }
 

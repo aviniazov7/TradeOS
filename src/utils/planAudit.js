@@ -1,5 +1,5 @@
 import { MISTAKE_LABELS } from './constants';
-import { isClosedTrade, localDayKey } from './calculations';
+import { isClosedTrade, localDayKey, winRateOf } from './calculations';
 
 // A rule needs at least this many trades on the offending side before we let it
 // become a finding. Below it the rule still ships, marked thin.
@@ -23,11 +23,13 @@ function summary(trades) {
   const n = trades.length;
   const pnl = trades.reduce((s, t) => s + pnlOf(t), 0);
   const wins = trades.filter((t) => pnlOf(t) > 0).length;
+  const losses = trades.filter((t) => pnlOf(t) < 0).length;
   return {
     trades: n,
     pnl: r2(pnl),
     avgPnl: n ? r2(pnl / n) : 0,
-    winRate: n ? Math.round((wins / n) * 100) : 0,
+    // wins / (wins + losses) — breakevens excluded, same as every screen.
+    winRate: Math.round(winRateOf(wins, losses)),
     thin: n < AUDIT_MIN_SAMPLE,
   };
 }

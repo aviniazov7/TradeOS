@@ -2,6 +2,7 @@ import { useState } from 'react';
 import { motion } from 'framer-motion';
 import { Crown, RefreshCw, AlertCircle, Lock, Sparkles, TrendingUp, TrendingDown, Target, Lightbulb, MessageSquareText } from 'lucide-react';
 import { LRM } from '../../utils/formatters';
+import { winRateOf } from '../../utils/calculations';
 import { useNavigate } from 'react-router-dom';
 import ThinkingIndicator from '../shared/ThinkingIndicator';
 import { renderBulletHtml } from '../../utils/renderBulletHtml';
@@ -58,13 +59,14 @@ function aggBy(rows, field) {
   const m = {};
   for (const b of rows) {
     const k = b[field] || '—';
-    if (!m[k]) m[k] = { name: k, count: 0, wins: 0, totalR: 0 };
+    if (!m[k]) m[k] = { name: k, count: 0, wins: 0, losses: 0, totalR: 0 };
     m[k].count++;
     if (b.result === 'win') m[k].wins++;
+    else if (b.result === 'loss') m[k].losses++;
     m[k].totalR += b.rResult || 0;
   }
   return Object.values(m)
-    .map((x) => ({ name: x.name, count: x.count, winRate: round(x.count ? (x.wins / x.count) * 100 : 0), avgR: round(x.count ? x.totalR / x.count : 0), totalR: round(x.totalR) }))
+    .map((x) => ({ name: x.name, count: x.count, winRate: round(winRateOf(x.wins, x.losses)), avgR: round(x.count ? x.totalR / x.count : 0), totalR: round(x.totalR) }))
     .sort((a, b) => b.totalR - a.totalR);
 }
 

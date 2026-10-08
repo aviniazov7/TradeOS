@@ -1,6 +1,6 @@
 import { useMemo } from 'react';
 import { getPeriodStart, toDate } from '../utils/period';
-import { localDayKey } from '../utils/calculations';
+import { localDayKey, winRateOf, calculateMaxStreaks } from '../utils/calculations';
 
 export function useBacktestStats(backtests, period = 'all') {
   return useMemo(() => {
@@ -24,7 +24,8 @@ export function useBacktestStats(backtests, period = 'all') {
     const losses = filtered.filter((b) => b.result === 'loss').length;
     const breakevens = filtered.filter((b) => b.result === 'breakeven').length;
     const total = filtered.length;
-    const winRate = total > 0 ? (wins / total) * 100 : 0;
+    // wins / (wins + losses) — breakevens excluded, same as the live journal.
+    const winRate = winRateOf(wins, losses);
 
     const rValues = filtered.map((b) => b.rResult || 0);
     const totalR = rValues.reduce((s, r) => s + r, 0);
@@ -37,75 +38,65 @@ export function useBacktestStats(backtests, period = 'all') {
     const negativeR = Math.abs(rValues.filter((r) => r < 0).reduce((s, r) => s + r, 0));
     const profitFactorR = negativeR > 0 ? positiveR / negativeR : positiveR > 0 ? Infinity : 0;
 
-    // Win/Loss streaks
-    let maxWinStreak = 0, maxLossStreak = 0, curWin = 0, curLoss = 0;
+    // Win/Loss streaks — a breakeven neither extends nor breaks a run.
     // Sort by date for streaks
     const sorted = [...filtered].sort((a, b) => toDate(a.date || a.createdAt) - toDate(b.date || b.createdAt));
-    sorted.forEach((b) => {
-      if (b.result === 'win') {
-        curWin++;
-        curLoss = 0;
-        maxWinStreak = Math.max(maxWinStreak, curWin);
-      } else if (b.result === 'loss') {
-        curLoss++;
-        curWin = 0;
-        maxLossStreak = Math.max(maxLossStreak, curLoss);
-      } else {
-        curWin = 0;
-        curLoss = 0;
-      }
-    });
+    const { maxWin: maxWinStreak, maxLoss: maxLossStreak } = calculateMaxStreaks(sorted);
 
     // By Strategy
     const stratMap = {};
     filtered.forEach((b) => {
       const key = b.strategy || 'ללא אסטרטגיה';
-      if (!stratMap[key]) stratMap[key] = { strategy: key, count: 0, wins: 0, totalR: 0 };
+      if (!stratMap[key]) stratMap[key] = { strategy: key, count: 0, wins: 0, losses: 0, totalR: 0 };
       stratMap[key].count++;
       if (b.result === 'win') stratMap[key].wins++;
+      else if (b.result === 'loss') stratMap[key].losses++;
       stratMap[key].totalR += b.rResult || 0;
     });
     const byStrategy = Object.values(stratMap)
-      .map((s) => ({ ...s, winRate: s.count > 0 ? (s.wins / s.count) * 100 : 0, avgR: s.count > 0 ? s.totalR / s.count : 0 }))
+      .map((s) => ({ ...s, winRate: winRateOf(s.wins, s.losses), avgR: s.count > 0 ? s.totalR / s.count : 0 }))
       .sort((a, b) => b.totalR - a.totalR);
 
     // By Pair
     const pairMap = {};
     filtered.forEach((b) => {
       const key = b.pair || '–';
-      if (!pairMap[key]) pairMap[key] = { pair: key, count: 0, wins: 0, totalR: 0 };
+      if (!pairMap[key]) pairMap[key] = { pair: key, count: 0, wins: 0, losses: 0, totalR: 0 };
       pairMap[key].count++;
       if (b.result === 'win') pairMap[key].wins++;
+      else if (b.result === 'loss') pairMap[key].losses++;
       pairMap[key].totalR += b.rResult || 0;
     });
     const byPair = Object.values(pairMap)
-      .map((p) => ({ ...p, winRate: p.count > 0 ? (p.wins / p.count) * 100 : 0, avgR: p.count > 0 ? p.totalR / p.count : 0 }))
+      .map((p) => ({ ...p, winRate: winRateOf(p.wins, p.losses), avgR: p.count > 0 ? p.totalR / p.count : 0 }))
       .sort((a, b) => b.totalR - a.totalR);
 
     // By Session
     const sessionMap = {};
     filtered.forEach((b) => {
       const key = b.session || 'לא ידוע';
-      if (!sessionMap[key]) sessionMap[key] = { session: key, count: 0, wins: 0, totalR: 0 };
+      if (!sessionMap[key]) sessionMap[key] = { session: key, count: 0, wins: 0, losses: 0, totalR: 0 };
       sessionMap[key].count++;
       if (b.result === 'win') sessionMap[key].wins++;
+      else if (b.result === 'loss') sessionMap[key].losses++;
       sessionMap[key].totalR += b.rResult || 0;
     });
     const bySession = Object.values(sessionMap)
-      .map((s) => ({ ...s, winRate: s.count > 0 ? (s.wins / s.count) * 100 : 0, avgR: s.count > 0 ? s.totalR / s.count : 0 }))
+      .map((s) => ({ ...s, winRate: winRateOf(s.wins, s.losses), avgR: s.count > 0 ? s.totalR / s.count : 0 }))
       .sort((a, b) => b.totalR - a.totalR);
 
     // By Timeframe
     const tfMap = {};
     filtered.forEach((b) => {
       const key = b.timeframe || '–';
-      if (!tfMap[key]) tfMap[key] = { timeframe: key, count: 0, wins: 0, totalR: 0 };
+      if (!tfMap[key]) tfMap[key] = { timeframe: key, count: 0, wins: 0, losses: 0, totalR: 0 };
       tfMap[key].count++;
       if (b.result === 'win') tfMap[key].wins++;
+      else if (b.result === 'loss') tfMap[key].losses++;
       tfMap[key].totalR += b.rResult || 0;
     });
     const byTimeframe = Object.values(tfMap)
-      .map((t) => ({ ...t, winRate: t.count > 0 ? (t.wins / t.count) * 100 : 0 }))
+      .map((t) => ({ ...t, winRate: winRateOf(t.wins, t.losses) }))
       .sort((a, b) => b.totalR - a.totalR);
 
     // Monthly Performance
@@ -113,9 +104,10 @@ export function useBacktestStats(backtests, period = 'all') {
     sorted.forEach((b) => {
       const d = toDate(b.date || b.createdAt);
       const key = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`;
-      if (!monthMap[key]) monthMap[key] = { month: key, count: 0, wins: 0, totalR: 0 };
+      if (!monthMap[key]) monthMap[key] = { month: key, count: 0, wins: 0, losses: 0, totalR: 0 };
       monthMap[key].count++;
       if (b.result === 'win') monthMap[key].wins++;
+      else if (b.result === 'loss') monthMap[key].losses++;
       monthMap[key].totalR += b.rResult || 0;
     });
     let cumulativeR = 0;
@@ -123,7 +115,7 @@ export function useBacktestStats(backtests, period = 'all') {
       .sort(([a], [b]) => a.localeCompare(b))
       .map(([month, d]) => {
         cumulativeR += d.totalR;
-        return { ...d, winRate: d.count > 0 ? (d.wins / d.count) * 100 : 0, cumulativeR };
+        return { ...d, winRate: winRateOf(d.wins, d.losses), cumulativeR };
       });
 
     // Daily R (for bar chart)

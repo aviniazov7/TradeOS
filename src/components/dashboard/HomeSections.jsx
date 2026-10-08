@@ -4,6 +4,7 @@ import Card from '../shared/Card';
 import CoinIcon from '../shared/CoinIcon';
 import FitText from '../shared/FitText';
 import { formatCurrency, formatCompactUsd, formatRelativeTime, LRM } from '../../utils/formatters';
+import { safePnl, tradeRMultiple } from '../../utils/calculations';
 
 // The home page's sections, all on the same surface: rounded-2xl cards, a
 // bold title + a quiet link, big tabular numbers, one thin colour bar.
@@ -105,13 +106,10 @@ export function HomeKpis({ kpi, hidden }) {
   );
 }
 
-const pnlOf = (t) => t.netPnl ?? t.pnl ?? 0;
-function rMultiple(t) {
-  const risk = t.direction === 'short' ? t.stopLoss - t.entryPrice : t.entryPrice - t.stopLoss;
-  if (!(t.stopLoss > 0 && t.entryPrice > 0 && t.exitPrice > 0 && risk > 0)) return null;
-  const reward = t.direction === 'short' ? t.entryPrice - t.exitPrice : t.exitPrice - t.entryPrice;
-  return reward / risk;
-}
+const pnlOf = safePnl;
+// Signed R against the risk taken at entry (original stop) — the same R as the
+// journal and the home average, so a stop trailed to breakeven keeps its R.
+const rMultiple = tradeRMultiple;
 
 // The last five closed trades, each with its real coin logo.
 export function RecentTradesCard({ trades, hidden, className = '' }) {
