@@ -18,7 +18,8 @@ describe('journalWindowState', () => {
   });
   it('is done once an entry exists, with its creation time', () => {
     const entry = { createdAt: { toDate: () => at(7, 5) } };
-    expect(journalWindowState('morning', entry, at(20))).toMatchObject({ status: 'done', doneAt: '07:05' });
+    expect(journalWindowState('morning', entry, at(20))).toMatchObject({ status: 'done', doneAt: '07:05', inWindow: true });
+    expect(journalWindowState('evening', { createdAt: at(17) }, at(20))).toMatchObject({ doneAt: '17:00', inWindow: false });
     expect(journalWindowState('morning', { createdAt: null }, at(20))).toMatchObject({ status: 'done', doneAt: null });
   });
 });

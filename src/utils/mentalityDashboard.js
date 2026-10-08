@@ -36,7 +36,13 @@ export function journalWindowState(kind, entry, now = new Date()) {
   const endM = win.end * 60;
   if (entry) {
     const at = toDate(entry.createdAt);
-    return { status: 'done', doneAt: at ? hhmm(at.getHours(), at.getMinutes()) : null, window: win };
+    const atM = at ? at.getHours() * 60 + at.getMinutes() : null;
+    return {
+      status: 'done',
+      doneAt: at ? hhmm(at.getHours(), at.getMinutes()) : null,
+      inWindow: atM == null ? null : atM >= startM && atM < endM,
+      window: win,
+    };
   }
   if (minutes >= startM && minutes < endM) return { status: 'open', minutesLeft: endM - minutes, window: win };
   if (minutes < startM) return { status: 'upcoming', minutesLeft: startM - minutes, window: win };
