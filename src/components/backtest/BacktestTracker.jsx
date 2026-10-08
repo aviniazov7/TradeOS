@@ -244,9 +244,9 @@ export default function BacktestTracker() {
         title="בקטסט"
         titleAside={<BacktestSwitcher compact />}
         tabs={{ tabs: [{ id: 'records', label: 'עסקאות', count: backtests.length }, { id: 'analytics', label: 'ניתוחים' }], value: tab, onChange: setTab, layoutKey: 'backtest-tab' }}
+        tabsLead={tab === 'analytics' ? <TimePeriodFilter value={period} onChange={setPeriod} /> : null}
         actions={(
           <div className="flex flex-wrap items-center gap-2 w-full sm:w-auto">
-            {tab === 'analytics' && <TimePeriodFilter value={period} onChange={setPeriod} />}
             {/* On both tabs, like the journal's header. */}
             {backtests.length > 0 && (
               <button onClick={() => setAiModalOpen(true)} className={headerAiBtn} title="ניתוח AI לבקטסט" aria-label="ניתוח AI">

@@ -8,9 +8,12 @@ import TabStrip from './TabStrip';
 //   meta  — content right under the title (e.g. a progress line)
 //   titleAside — a small control on the title's own line (e.g. the journal
 //           switcher), so the header stays one row tall
+//   tabsLead — a control that sits just before (to the right of, in RTL) the
+//           tab box, e.g. the period picker: it appears without pushing the
+//           tabs sideways when it shows up on one tab only
 //   tabs  — { tabs, value, onChange, layoutKey }: the page's views; beside the
 //           actions on wide screens, their own row at the bottom on phones
-export default function PageHeader({ icon: Icon, title, titleAside, subtitle, meta, tabs, actions, children, className = '' }) {
+export default function PageHeader({ icon: Icon, title, titleAside, subtitle, meta, tabs, tabsLead, actions, children, className = '' }) {
   const tabStrip = (variant) => tabs && (
     <TabStrip tabs={tabs.tabs} value={tabs.value} onChange={tabs.onChange} variant={variant} layoutKey={tabs.layoutKey || 'page-tab'} />
   );
@@ -44,8 +47,9 @@ export default function PageHeader({ icon: Icon, title, titleAside, subtitle, me
             {subtitle && <p className="text-sm text-text-muted mt-1">{subtitle}</p>}
             {meta && <div className="mt-2">{meta}</div>}
           </div>
-          {(actions || tabs) && (
-            <div className="flex items-center gap-2 shrink-0 basis-full sm:basis-auto">
+          {(actions || tabs || tabsLead) && (
+            <div className="flex flex-wrap items-center gap-2 shrink-0 basis-full sm:basis-auto">
+              {tabsLead}
               {tabs && <div className="hidden md:block rounded-xl bg-bg-tertiary border border-border-primary p-1">{tabStrip('desktop')}</div>}
               {actions}
             </div>
