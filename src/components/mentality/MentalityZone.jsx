@@ -17,13 +17,6 @@ const stagger = {
   visible: { transition: { staggerChildren: 0.06 } },
 };
 
-// Faint page tint from today's journaled emotions (morning + evening).
-const MOOD_GRADIENTS = {
-  positive: 'radial-gradient(ellipse 80% 50% at 50% 0%, rgba(34, 197, 94, 0.08), transparent 70%)',
-  neutral: 'radial-gradient(ellipse 80% 50% at 50% 0%, rgba(59, 130, 246, 0.07), transparent 70%)',
-  negative: 'radial-gradient(ellipse 80% 50% at 50% 0%, rgba(239, 68, 68, 0.07), transparent 70%)',
-};
-
 // A clock that ticks once a minute, so the window states and the "now" marker
 // stay current while the page is open.
 function useMinuteClock() {
@@ -54,7 +47,6 @@ export default function MentalityZone() {
   const summary = useMemo(() => weekSummary(week), [week]);
   const streak = useMemo(() => journalStreak(morningEntries, eveningEntries, now), [morningEntries, eveningEntries, now]);
   const headline = useMemo(() => headlineMentalStat(morningEntries, eveningEntries, now), [morningEntries, eveningEntries, now]);
-  const todayTone = week[week.length - 1]?.tone;
 
   const morningTile = journalTile('morning', todayMorning, now, loading);
   const eveningTile = journalTile('evening', todayEvening, now, loading);
@@ -66,18 +58,6 @@ export default function MentalityZone() {
       transition={{ duration: 0.3 }}
       className="relative"
     >
-      {todayTone && (
-        <motion.div
-          key={todayTone}
-          initial={{ opacity: 0 }}
-          animate={{ opacity: 1 }}
-          transition={{ duration: 1.2, ease: 'easeOut' }}
-          className="absolute inset-0 -top-4 pointer-events-none -z-10"
-          style={{ background: MOOD_GRADIENTS[todayTone] }}
-          aria-hidden="true"
-        />
-      )}
-
       <PageHeader
         icon={Brain}
         title="האזור המנטלי"

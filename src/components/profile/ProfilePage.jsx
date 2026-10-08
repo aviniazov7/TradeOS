@@ -1,8 +1,9 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { motion, AnimatePresence } from 'framer-motion';
-import { LogOut, Trash2, Lock, Mail, Share2, Download, Eye, EyeOff, Sun, Moon, Trophy, Crown, ShieldCheck, Clock, ArrowLeft, ChevronRight, Check, Coins, LineChart, Briefcase, UserRound, Receipt, ChevronLeft } from 'lucide-react';
-import PageHeader from '../shared/PageHeader';
+import { LogOut, Trash2, Lock, Mail, Share2, Download, Eye, EyeOff, Sun, Moon, Trophy, Crown, ShieldCheck, Clock, ArrowLeft, ChevronRight, Check, Coins, LineChart, Briefcase, Receipt, ChevronLeft, Camera } from 'lucide-react';
+import UserAvatar from '../shared/UserAvatar';
+import { makeAvatarDataUrl } from '../../utils/avatarImage';
 import { headerIconBtn } from '../shared/headerStyles';
 import toast from 'react-hot-toast';
 import { getUserProfile, setUserProfile, deleteLeaderboardEntry } from '../../services/firestoreService';
@@ -15,6 +16,18 @@ import { useTheme } from '../../hooks/useTheme';
 import NotificationSettings from './NotificationSettings';
 import ContactDeveloper from './ContactDeveloper';
 import { planExpiresMs } from '../../utils/premium';
+
+/* global __APP_BUILD__, __APP_BUILD_DATE__ */
+// Release stamp next to the hand-set marketing version: the auto-bumped
+// production build number and the build date.
+const BUILD_LABEL = (() => {
+  const build = typeof __APP_BUILD__ !== 'undefined' ? __APP_BUILD__ : '';
+  const date = typeof __APP_BUILD_DATE__ !== 'undefined' ? new Date(__APP_BUILD_DATE__) : null;
+  const parts = [];
+  if (build) parts.push(`build ${build}`);
+  if (date && !Number.isNaN(date.getTime())) parts.push(date.toLocaleDateString('he-IL'));
+  return parts.length ? ` · ${parts.join(' · ')}` : '';
+})();
 
 const APP_URL = 'https://tradeos-91a58.web.app';
 
@@ -35,6 +48,37 @@ const cardClass = 'bg-bg-secondary border border-border-primary rounded-2xl over
 
 export default function ProfilePage() {
   const { user, profile, isAdmin, isPremium, logout, changePassword, resetPassword, deleteAccount, isEmailUser } = useAuth();
+  // Profile picture: compressed client-side and saved on the user's own
+  // profile doc; the live profile subscription updates every avatar.
+  const avatarInputRef = useRef(null);
+  const [avatarBusy, setAvatarBusy] = useState(false);
+  const onAvatarFile = async (e) => {
+    const file = e.target.files?.[0];
+    e.target.value = '';
+    if (!file || !user) return;
+    setAvatarBusy(true);
+    try {
+      const avatarDataUrl = await makeAvatarDataUrl(file);
+      await setUserProfile(user.uid, { avatarDataUrl });
+      toast.success('תמונת הפרופיל עודכנה');
+    } catch (err) {
+      toast.error(err?.message?.length < 60 ? err.message : 'עדכון התמונה נכשל');
+    } finally {
+      setAvatarBusy(false);
+    }
+  };
+  const removeAvatar = async () => {
+    if (!user) return;
+    setAvatarBusy(true);
+    try {
+      await setUserProfile(user.uid, { avatarDataUrl: '' });
+      toast.success('התמונה הוסרה');
+    } catch {
+      toast.error('הסרת התמונה נכשלה');
+    } finally {
+      setAvatarBusy(false);
+    }
+  };
   const { toggleTheme, isDark } = useTheme();
   const navigate = useNavigate();
 
@@ -214,16 +258,49 @@ export default function ProfilePage() {
       className="px-4 py-6">
       <div className="max-w-lg mx-auto">
 
-      <PageHeader
-        icon={UserRound}
-        title={user?.displayName || 'הפרופיל שלי'}
-        subtitle={[user?.email, user?.metadata?.creationTime ? `הצטרף ${formatDate(new Date(user.metadata.creationTime))}` : null].filter(Boolean).join(' · ')}
-        actions={(
-          <button onClick={() => navigate(-1)} className={headerIconBtn} title="חזרה" aria-label="חזרה">
+      {/* Profile hero: the picture (tap to change), name, email, plan. */}
+      <div className="relative overflow-hidden bg-bg-secondary border border-border-primary rounded-2xl p-5 mb-2">
+        <div aria-hidden className="absolute inset-0 pointer-events-none"
+          style={{ background: 'radial-gradient(80% 140% at 100% 0%, rgba(37,99,235,0.14) 0%, transparent 60%)' }} />
+        <div className="relative flex items-center gap-4">
+          <div className="relative shrink-0">
+            <button type="button" onClick={() => avatarInputRef.current?.click()} disabled={avatarBusy}
+              className="group relative block rounded-full ring-2 ring-border-primary hover:ring-accent-primary/60 transition cursor-pointer disabled:opacity-60"
+              title="החלפת תמונת פרופיל" aria-label="החלפת תמונת פרופיל">
+              <UserAvatar className="w-[72px] h-[72px]" textClass="text-2xl" />
+              <span className="absolute -bottom-0.5 -left-0.5 w-7 h-7 grid place-items-center rounded-full bg-accent-muted text-white border-2 border-bg-secondary">
+                {avatarBusy ? <span className="w-3.5 h-3.5 rounded-full border-2 border-white/40 border-t-white animate-spin" /> : <Camera className="w-3.5 h-3.5" />}
+              </span>
+            </button>
+            <input ref={avatarInputRef} type="file" accept="image/*" className="hidden" onChange={onAvatarFile} />
+          </div>
+          <div className="min-w-0 flex-1">
+            <h1 className="text-xl font-bold text-text-primary truncate">{profile?.displayName || user?.displayName || 'הפרופיל שלי'}</h1>
+            <p className="text-sm text-text-muted truncate" dir="ltr" style={{ textAlign: 'right' }}>{user?.email}</p>
+            <div className="flex flex-wrap items-center gap-1.5 mt-2">
+              <span className={`inline-flex items-center gap-1 h-6 px-2 rounded-md text-[11px] font-bold border ${
+                isAdmin ? 'bg-accent-primary/12 text-accent-hover border-accent-primary/30'
+                  : isPremium ? 'bg-amber-400/12 text-amber-300 border-amber-400/30'
+                    : 'bg-bg-tertiary text-text-secondary border-border-primary'}`}>
+                {isAdmin ? <ShieldCheck className="w-3 h-3" /> : isPremium ? <Crown className="w-3 h-3" /> : null}
+                {isAdmin ? 'אדמין' : isPremium ? 'Premium' : 'חינמי'}
+              </span>
+              {user?.metadata?.creationTime && (
+                <span className="text-[11px] text-text-muted">הצטרף {formatDate(new Date(user.metadata.creationTime))}</span>
+              )}
+              {profile?.avatarDataUrl && (
+                <button type="button" onClick={removeAvatar} disabled={avatarBusy}
+                  className="text-[11px] text-text-muted hover:text-loss underline-offset-2 hover:underline cursor-pointer">
+                  הסרת תמונה
+                </button>
+              )}
+            </div>
+          </div>
+          <button onClick={() => navigate(-1)} className={`${headerIconBtn} self-start`} title="חזרה" aria-label="חזרה">
             <ChevronRight className="w-[18px] h-[18px]" />
           </button>
-        )}
-      />
+        </div>
+      </div>
 
       {/* ── Section: Trading ─────────────────────────────────────── */}
       <SectionTitle>מסחר</SectionTitle>
@@ -489,7 +566,7 @@ export default function ProfilePage() {
       </div>
 
       <div className="text-center text-xs text-text-muted mt-2" dir="ltr">
-        TradeOS v{APP_VERSION}
+        TradeOS v{APP_VERSION}{BUILD_LABEL}
       </div>
 
       {/* Delete Confirmation */}
