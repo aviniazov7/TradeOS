@@ -115,6 +115,29 @@ export async function fetchPerpPrices(pairs) {
   return out;
 }
 
+// Live MARK prices for perp pairs (e.g. 'BTCUSDT') — the trading terminal's
+// between-polls price. A handful of pairs → one tiny per-symbol call each;
+// more → the one full linear ticker list. Pairs Bybit doesn't list are
+// simply missing from the result. { BTCUSDT: 64123.5, … }
+export async function fetchPerpMarks(pairs) {
+  const list = [...new Set((pairs || []).map((p) => String(p).toUpperCase()))].filter((p) => /^[A-Z0-9]{2,30}$/.test(p));
+  if (!list.length) return {};
+  const out = {};
+  const take = (t) => {
+    const price = parseFloat(t?.markPrice) || parseFloat(t?.lastPrice);
+    if (t?.symbol && Number.isFinite(price) && price > 0) out[t.symbol] = price;
+  };
+  if (list.length > 6) {
+    const j = await getJson(`${BYBIT}/v5/market/tickers?category=linear`);
+    const wanted = new Set(list);
+    for (const t of j?.result?.list || []) if (wanted.has(t.symbol)) take(t);
+    return out;
+  }
+  const rows = await Promise.all(list.map((p) => getJson(`${BYBIT}/v5/market/tickers?category=linear&symbol=${encodeURIComponent(p)}`, 5000)));
+  for (const j of rows) take(j?.result?.list?.[0]);
+  return out;
+}
+
 // Liquidity snapshot for the coin-analysis screen — replaces six direct
 // Binance calls (book ticker, OI, funding, depth) with Bybit equivalents,
 // translated to the Binance field names the UI consumes.
