@@ -1,83 +1,63 @@
-import { useNavigate } from 'react-router-dom';
+import { useEffect, useMemo, useState } from 'react';
 import { motion } from 'framer-motion';
-import { Sunrise, Moon, Route, BarChart3, Brain } from 'lucide-react';
+import { Brain, Sunrise, Moon, Flame, Activity } from 'lucide-react';
 import PageHeader from '../shared/PageHeader';
-import MentalityCard from './MentalityCard';
-import MoodHeatmap from './MoodHeatmap';
+import StatTile from '../shared/StatTile';
+import JournalTodayCard from './JournalTodayCard';
 import BreathingExercise from './BreathingExercise';
+import { MoodWeekTile, MentalStatsTile, JourneyTile } from './ZoneTiles';
+import { tileItem } from './zoneStyle';
 import { useMentalityJournals } from '../../hooks/useMentalityJournals';
+import {
+  buildWeek, weekSummary, journalStreak, headlineMentalStat, journalWindowState,
+} from '../../utils/mentalityDashboard';
 
-const staggerContainer = {
+const stagger = {
   hidden: {},
-  visible: { transition: { staggerChildren: 0.08 } },
+  visible: { transition: { staggerChildren: 0.06 } },
 };
 
-// Emotion categorization for dynamic background tint
-const POSITIVE_EMOTIONS = ['inspired', 'grateful', 'excited', 'calm', 'happy'];
-const NEGATIVE_EMOTIONS = ['anxious', 'frustrated'];
-
-function getMoodCategory(morning, evening) {
-  const emotions = [evening?.emotionAfter, morning?.emotion].filter(Boolean); // evening mood is stored as `emotionAfter`
-  if (emotions.length === 0) return 'none';
-  const pos = emotions.filter((e) => POSITIVE_EMOTIONS.includes(e)).length;
-  const neg = emotions.filter((e) => NEGATIVE_EMOTIONS.includes(e)).length;
-  if (pos > neg) return 'positive';
-  if (neg > pos) return 'negative';
-  return 'neutral';
-}
-
+// Faint page tint from today's journaled emotions (morning + evening).
 const MOOD_GRADIENTS = {
   positive: 'radial-gradient(ellipse 80% 50% at 50% 0%, rgba(34, 197, 94, 0.08), transparent 70%)',
   neutral: 'radial-gradient(ellipse 80% 50% at 50% 0%, rgba(59, 130, 246, 0.07), transparent 70%)',
   negative: 'radial-gradient(ellipse 80% 50% at 50% 0%, rgba(239, 68, 68, 0.07), transparent 70%)',
-  none: 'transparent',
 };
 
-const MOOD_LABELS = {
-  positive: { emoji: '🌱', text: 'יום טוב', color: 'text-profit' },
-  neutral: { emoji: '💧', text: 'יום ניטרלי', color: 'text-blue-400' },
-  negative: { emoji: '🌧️', text: 'יום מאתגר', color: 'text-loss' },
-  none: null,
-};
+// A clock that ticks once a minute, so the window states and the "now" marker
+// stay current while the page is open.
+function useMinuteClock() {
+  const [now, setNow] = useState(() => new Date());
+  useEffect(() => {
+    const id = setInterval(() => setNow(new Date()), 60_000);
+    return () => clearInterval(id);
+  }, []);
+  return now;
+}
+
+function journalTile(kind, entry, now, loading) {
+  const isMorning = kind === 'morning';
+  const base = { icon: isMorning ? Sunrise : Moon, label: isMorning ? 'יומן בוקר' : 'יומן ערב', mono: false };
+  if (loading) return { ...base, value: '–', tone: 'text-text-muted' };
+  const st = journalWindowState(kind, entry, now);
+  if (st.status === 'done') return { ...base, value: 'הושלם', tone: 'text-profit', sub: st.doneAt ? `ב-${st.doneAt}` : 'היום' };
+  if (st.status === 'open') return { ...base, value: 'ממתין', tone: 'text-text-primary', sub: 'החלון פתוח עכשיו' };
+  if (st.status === 'upcoming') return { ...base, value: 'ממתין', tone: 'text-text-secondary', sub: `נפתח ב-${st.window.label.slice(0, 5)}` };
+  return { ...base, value: 'לא מולא', tone: 'text-text-secondary', sub: 'החלון נסגר' };
+}
 
 export default function MentalityZone() {
-  const navigate = useNavigate();
-  const { todayMorning, todayEvening } = useMentalityJournals();
-  const moodCategory = getMoodCategory(todayMorning, todayEvening);
-  const moodLabel = MOOD_LABELS[moodCategory];
+  const now = useMinuteClock();
+  const { morningEntries, eveningEntries, todayMorning, todayEvening, loading } = useMentalityJournals();
 
-  const cards = [
-    {
-      icon: Sunrise,
-      title: 'יומן בוקר',
-      description: 'הכנה מנטלית לפני המסחר',
-      badge: 'מומלץ 5:00-11:59',
-      badgeColor: 'bg-accent-primary/15 text-accent-primary',
-      status: todayMorning ? 'filled' : 'pending',
-      onClick: () => navigate('/mentality/morning'),
-    },
-    {
-      icon: Moon,
-      title: 'יומן ערב',
-      description: 'סיכום יום המסחר, מה עבד ומה פחות',
-      badge: 'מומלץ 19:00-23:59',
-      badgeColor: 'bg-accent-primary/15 text-accent-primary',
-      status: todayEvening ? 'filled' : 'pending',
-      onClick: () => navigate('/mentality/evening'),
-    },
-    {
-      icon: Route,
-      title: 'המסע הפסיכולוגי של הסוחר',
-      description: 'המסלול הקלאסי שרוב הסוחרים עוברים',
-      onClick: () => navigate('/mentality/journey'),
-    },
-    {
-      icon: BarChart3,
-      title: 'סטטיסטיקות מנטליות',
-      description: 'קורלציה בין רגשות, מוכנות וביצועים',
-      onClick: () => navigate('/mentality/stats'),
-    },
-  ];
+  const week = useMemo(() => buildWeek(morningEntries, eveningEntries, now), [morningEntries, eveningEntries, now]);
+  const summary = useMemo(() => weekSummary(week), [week]);
+  const streak = useMemo(() => journalStreak(morningEntries, eveningEntries, now), [morningEntries, eveningEntries, now]);
+  const headline = useMemo(() => headlineMentalStat(morningEntries, eveningEntries, now), [morningEntries, eveningEntries, now]);
+  const todayTone = week[week.length - 1]?.tone;
+
+  const morningTile = journalTile('morning', todayMorning, now, loading);
+  const eveningTile = journalTile('evening', todayEvening, now, loading);
 
   return (
     <motion.div
@@ -86,45 +66,69 @@ export default function MentalityZone() {
       transition={{ duration: 0.3 }}
       className="relative"
     >
-      {/* Dynamic background tint based on today's mood */}
-      <motion.div
-        key={moodCategory}
-        initial={{ opacity: 0 }}
-        animate={{ opacity: 1 }}
-        transition={{ duration: 1.2, ease: 'easeOut' }}
-        className="absolute inset-0 -top-4 pointer-events-none -z-10"
-        style={{ background: MOOD_GRADIENTS[moodCategory] }}
-        aria-hidden="true"
-      />
+      {todayTone && (
+        <motion.div
+          key={todayTone}
+          initial={{ opacity: 0 }}
+          animate={{ opacity: 1 }}
+          transition={{ duration: 1.2, ease: 'easeOut' }}
+          className="absolute inset-0 -top-4 pointer-events-none -z-10"
+          style={{ background: MOOD_GRADIENTS[todayTone] }}
+          aria-hidden="true"
+        />
+      )}
 
       <PageHeader
         icon={Brain}
         title="האזור המנטלי"
-        subtitle="כלים לפיתוח חוסן מנטלי והתמודדות עם אתגרי המסחר"
-        actions={moodLabel && (
-          <motion.div
-            initial={{ opacity: 0, scale: 0.9 }}
-            animate={{ opacity: 1, scale: 1 }}
-            transition={{ delay: 0.3, duration: 0.4 }}
-            className="flex items-center gap-2 bg-bg-tertiary border border-border-primary rounded-full px-3 py-1.5"
-          >
-            <span className="text-base">{moodLabel.emoji}</span>
-            <span className={`text-xs font-semibold ${moodLabel.color}`}>{moodLabel.text}</span>
-          </motion.div>
-        )}
-      />
-
-      <motion.div
-        variants={staggerContainer}
-        initial="hidden"
-        animate="visible"
-        className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4"
+        subtitle="מוכנות, משמעת ומצב רוח: הצד המנטלי של המסחר שלך"
       >
-        {cards.map((card) => (
-          <MentalityCard key={card.title} {...card} />
-        ))}
-        <MoodHeatmap />
-        <BreathingExercise />
+        <div className="grid grid-cols-2 sm:grid-cols-4 gap-2" aria-label="מוכנות היום במבט אחד">
+          <StatTile inset {...morningTile} />
+          <StatTile inset {...eveningTile} />
+          <StatTile
+            inset
+            icon={Flame}
+            label="רצף תיעוד"
+            value={loading ? '–' : streak}
+            sub={streak === 1 ? 'יום' : 'ימים ברצף'}
+            tone={streak > 0 ? 'text-text-primary' : 'text-text-muted'}
+          />
+          <StatTile
+            inset
+            icon={Activity}
+            label="ממוצע השבוע"
+            value={loading || summary.avg == null ? '–' : summary.avg.toFixed(1)}
+            sub={loading ? undefined : `מתוך 10 · ${summary.logged}/7 ימים`}
+            tone={summary.avg == null ? 'text-text-muted' : summary.avg >= 7 ? 'text-profit' : summary.avg < 4 ? 'text-loss' : 'text-text-primary'}
+          />
+        </div>
+      </PageHeader>
+
+      <motion.div variants={stagger} initial="hidden" animate="visible" className="space-y-4">
+        <section aria-label="היומנים של היום" className="grid grid-cols-1 md:grid-cols-2 gap-4">
+          <motion.div variants={tileItem} className="min-w-0">
+            <JournalTodayCard kind="morning" entry={todayMorning} now={now} loading={loading} />
+          </motion.div>
+          <motion.div variants={tileItem} className="min-w-0">
+            <JournalTodayCard kind="evening" entry={todayEvening} now={now} loading={loading} />
+          </motion.div>
+        </section>
+
+        <section aria-label="כלים ותובנות" className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-4 gap-4">
+          <motion.div variants={tileItem} className="min-w-0">
+            <MoodWeekTile week={week} summary={summary} loading={loading} />
+          </motion.div>
+          <motion.div variants={tileItem} className="min-w-0">
+            <MentalStatsTile stat={headline} loading={loading} />
+          </motion.div>
+          <motion.div variants={tileItem} className="min-w-0">
+            <JourneyTile />
+          </motion.div>
+          <motion.div variants={tileItem} className="min-w-0">
+            <BreathingExercise />
+          </motion.div>
+        </section>
       </motion.div>
     </motion.div>
   );
