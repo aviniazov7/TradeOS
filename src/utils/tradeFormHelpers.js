@@ -203,3 +203,100 @@ export function breakevenStopValue(entryPrice) {
   const e = num(entryPrice);
   return e > 0 ? String(+e.toPrecision(12)) : '';
 }
+
+// ── Ticket summary (display only) ───────────────────────────────────────────
+// The numbers in the trade ticket's summary rail. None of these feed the
+// saved trade — handleSubmit computes what is stored on its own.
+
+/**
+ * The trade's risk against the account. With a balance: % of it, flagged
+ * when it breaks a percent limit (critical past twice the limit). Without a
+ * balance: only a fixed-$ limit can be checked. null when there is nothing
+ * to report. limitLabel is the journal limit for display ("1%" / "$100").
+ */
+export function riskBudgetCheck(risk, { riskType, riskValue, currentBalance } = {}) {
+  const r = num(risk);
+  if (!(r > 0)) return null;
+  const limit = num(riskValue);
+  const limitLabel = limit > 0
+    ? (riskType === 'percent' ? `${riskValue}%` : riskType === 'fixed' ? `$${riskValue}` : null)
+    : null;
+  if (num(currentBalance) > 0) {
+    const percent = (r / num(currentBalance)) * 100;
+    const exceeds = riskType === 'percent' && limit > 0 && percent > limit;
+    const critical = exceeds && percent > limit * 2;
+    return {
+      percent,
+      exceeds,
+      limitLabel,
+      severity: critical ? 'critical' : exceeds ? 'warning' : 'info',
+      message: exceeds
+        ? `סיכון ${percent.toFixed(1)}% מהתיק — חורג מהמגבלה (${riskValue}%)`
+        : `סיכון ${percent.toFixed(1)}% מהתיק`,
+    };
+  }
+  if (riskType === 'fixed' && limit > 0 && r > limit) {
+    return {
+      percent: null,
+      exceeds: true,
+      limitLabel,
+      severity: r > limit * 2 ? 'critical' : 'warning',
+      message: `סיכון $${r.toFixed(2)} — חורג מהמגבלה ($${riskValue})`,
+    };
+  }
+  return null;
+}
+
+/** Dollar risk to the stop: size × |entry − stop| × point value (1 outside futures). */
+export function riskToStop({ entry, stop, units, pointValue = 1 } = {}) {
+  const e = num(entry);
+  const s = num(stop);
+  const u = num(units);
+  if (!(e > 0) || !(s > 0) || !(u > 0)) return 0;
+  return u * Math.abs(e - s) * num(pointValue);
+}
+
+/** Stop distance as % of the entry price, or null when either is missing. */
+export function stopDistancePct(entry, stop) {
+  const e = num(entry);
+  const s = num(stop);
+  if (!(e > 0) || !(s > 0)) return null;
+  return (Math.abs(e - s) / e) * 100;
+}
+
+/**
+ * Signed R multiple of a price: the move from entry in the trade's favour,
+ * in units of the stop distance (long 100 / stop 95 → 110 = +2R, 95 = −1R).
+ * null when entry, stop or price is missing.
+ */
+export function rMultiple(direction, entry, stop, price) {
+  const e = num(entry);
+  const s = num(stop);
+  const p = num(price);
+  if (!(e > 0) || !(s > 0) || !(p > 0) || e === s) return null;
+  const move = direction === 'short' ? e - p : p - e;
+  return move / Math.abs(e - s);
+}
+
+/**
+ * Planned reward:risk of the targets — to TP1 and to the blended target.
+ * targets: [{ price, weight }] where weight is the % of the position the
+ * target closes (0 / empty = not set). Targets with a weight keep it; the
+ * rest of the position is split evenly over the targets without one, so a
+ * plain list of TPs blends equally. Fields are null when there is no stop or
+ * no target.
+ */
+export function plannedRewardRisk({ direction, entry, stop, targets } = {}) {
+  const list = (targets || [])
+    .map((t) => ({ price: num(t?.price), weight: Math.max(0, num(t?.weight)) }))
+    .filter((t) => t.price > 0);
+  const tp1 = list.length ? rMultiple(direction, entry, stop, list[0].price) : null;
+  if (tp1 == null) return { tp1: null, blended: null };
+  const used = list.reduce((s, t) => s + t.weight, 0);
+  const open = list.filter((t) => !(t.weight > 0)).length;
+  const rest = Math.max(0, 100 - used);
+  const weights = list.map((t) => (t.weight > 0 ? t.weight : open ? rest / open : 0));
+  const total = weights.reduce((s, w) => s + w, 0);
+  const price = total > 0 ? list.reduce((s, t, i) => s + t.price * weights[i], 0) / total : list[0].price;
+  return { tp1, blended: rMultiple(direction, entry, stop, price) };
+}
