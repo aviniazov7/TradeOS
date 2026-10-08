@@ -5,6 +5,7 @@ import toast from 'react-hot-toast';
 import Modal from '../shared/Modal';
 import { MENTALITY_EMOTIONS, PRE_MARKET_CHECKLIST } from '../../utils/constants';
 import { formatDate } from '../../utils/formatters';
+import { SLEEP_OPTIONS, BIAS_OPTIONS, labelOf } from '../../utils/mentalityJournalForm';
 
 const staggerContainer = {
   hidden: {},
@@ -42,6 +43,41 @@ function ViewMorningModal({ entry, isOpen, onClose }) {
           </div>
         </div>
 
+        {(entry.sleepQuality || entry.marketBias) && (
+          <div className="flex items-center justify-between">
+            <div>
+              <span className="text-xs text-text-muted">שינה</span>
+              <p className="text-sm text-text-primary">{labelOf(SLEEP_OPTIONS, entry.sleepQuality) || '-'}</p>
+            </div>
+            <div className="text-left">
+              <span className="text-xs text-text-muted">הטיית שוק</span>
+              <p className="text-sm text-text-primary">{labelOf(BIAS_OPTIONS, entry.marketBias) || '-'}</p>
+            </div>
+          </div>
+        )}
+
+        {entry.keyLevels?.trim() && (
+          <div>
+            <span className="text-xs text-text-muted block mb-1">רמות מפתח</span>
+            <p className="text-sm text-text-primary bg-bg-tertiary rounded-lg px-3 py-2">{entry.keyLevels}</p>
+          </div>
+        )}
+
+        {entry.rulesChecked?.length > 0 && (
+          <div>
+            <span className="text-xs text-text-muted block mb-1.5">
+              כללים שהתחייבתי אליהם{entry.rulesTotal ? ` (${entry.rulesChecked.length}/${entry.rulesTotal})` : ''}
+            </span>
+            <ul className="space-y-1">
+              {entry.rulesChecked.map((r) => (
+                <li key={r} className="text-sm text-text-secondary flex items-start gap-2">
+                  <span className="text-accent-primary mt-0.5">&#x2022;</span>{r}
+                </li>
+              ))}
+            </ul>
+          </div>
+        )}
+
         {entry.preMarketChecklist?.length > 0 && (
           <div>
             <span className="text-xs text-text-muted block mb-1.5">שגרת פרה-מרקט</span>
@@ -70,7 +106,7 @@ function ViewMorningModal({ entry, isOpen, onClose }) {
 
         {entry.mainGoal?.trim() && (
           <div>
-            <span className="text-xs text-text-muted block mb-1">מטרה ראשית</span>
+            <span className="text-xs text-text-muted block mb-1">הכוונה להיום</span>
             <p className="text-sm text-text-primary bg-bg-tertiary rounded-lg px-3 py-2">{entry.mainGoal}</p>
           </div>
         )}
@@ -108,17 +144,26 @@ function ViewEveningModal({ entry, isOpen, onClose }) {
         <div className="flex items-center justify-between">
           <div>
             <span className="text-xs text-text-muted">רגש</span>
-            <p className="text-sm text-text-primary">{getEmotionDisplay(entry.emotionAfter)}</p>
+            <p className="text-sm text-text-primary">
+              {(entry.emotionsAfter?.length ? entry.emotionsAfter : [entry.emotionAfter]).map(getEmotionDisplay).join(' · ')}
+            </p>
           </div>
           <div className="text-center">
             <span className="text-xs text-text-muted">עקב אחרי תוכנית</span>
-            <p className="text-sm font-medium">{entry.followedPlan === true ? '✅ כן' : entry.followedPlan === false ? '❌ לא' : '-'}</p>
+            <p className="text-sm font-medium">{entry.planAdherence === 'partial' ? 'חלקית' : entry.followedPlan === true ? 'כן' : entry.followedPlan === false ? 'לא' : '-'}</p>
           </div>
           <div className="text-left">
             <span className="text-xs text-text-muted">דירוג היום</span>
             <p className="text-sm text-accent-primary font-bold">{entry.dayRating || '-'}/10</p>
           </div>
         </div>
+
+        {entry.planNote?.trim() && (
+          <div>
+            <span className="text-xs text-text-muted block mb-1">הערה על התוכנית</span>
+            <p className="text-sm text-text-primary bg-bg-tertiary rounded-lg px-3 py-2 whitespace-pre-wrap">{entry.planNote}</p>
+          </div>
+        )}
 
         {entry.whatWentWell?.trim() && (
           <div>
@@ -136,7 +181,7 @@ function ViewEveningModal({ entry, isOpen, onClose }) {
 
         {entry.lessonsLearned?.trim() && (
           <div>
-            <span className="text-xs text-text-muted block mb-1">לקחים שלמדתי</span>
+            <span className="text-xs text-text-muted block mb-1">הלקח למחר</span>
             <p className="text-sm text-text-primary bg-bg-tertiary rounded-lg px-3 py-2 whitespace-pre-wrap">{entry.lessonsLearned}</p>
           </div>
         )}
