@@ -24,6 +24,24 @@ html, body {
   max-width: 100%;
 }
 
+/* iOS Safari: form controls keep an intrinsic minimum width (a date input is
+   ~230px, a number input next to a unit toggle won't shrink in a flex row),
+   so on a phone they pushed modals wider than the screen and the whole sheet
+   could be dragged sideways. Let every control shrink to its box, and drop the
+   native date chrome that ignores `width`. */
+input, select, textarea {
+  min-width: 0;
+  max-width: 100%;
+}
+input[type="date"],
+input[type="datetime-local"],
+input[type="time"],
+input[type="month"] {
+  -webkit-appearance: none;
+  appearance: none;
+  min-height: 2.5rem;
+}
+
 body {
   overscroll-behavior: none;
   /* True black (iOS-style) — a single whisper-faint neutral glow for depth,
