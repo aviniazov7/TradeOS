@@ -40,7 +40,8 @@ function facts(kind, entry) {
     if (entry.emotionAfter && EMOTION_LABEL[entry.emotionAfter]) out.push(EMOTION_LABEL[entry.emotionAfter]);
     if (entry.dayRating) out.push(`דירוג יום ${entry.dayRating}/10`);
     if (entry.followedPlan === true) out.push('עקבתי אחרי התוכנית');
-    if (entry.followedPlan === false) out.push('סטיתי מהתוכנית');
+    else if (entry.planAdherence === 'partial') out.push('עקבתי חלקית');
+    else if (entry.followedPlan === false) out.push('סטיתי מהתוכנית');
   }
   return out;
 }
@@ -48,7 +49,7 @@ function facts(kind, entry) {
 function noteLine(kind, entry) {
   const text = kind === 'morning' ? entry?.mainGoal : entry?.lessonsLearned;
   if (!text || !String(text).trim()) return null;
-  return { label: kind === 'morning' ? 'המטרה להיום' : 'הלקח', text: String(text).trim() };
+  return { label: kind === 'morning' ? 'הכוונה להיום' : 'הלקח', text: String(text).trim() };
 }
 
 // 24h track, right-to-left like the page: 00:00 on the right edge.

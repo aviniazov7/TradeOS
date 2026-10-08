@@ -1,243 +1,148 @@
-import { useState, useEffect, useRef } from 'react';
-import { useNavigate } from 'react-router-dom';
-import { motion } from 'framer-motion';
-import { ArrowRight, Save, Moon, History, Clock, Calendar } from 'lucide-react';
-import PageHeader from '../shared/PageHeader';
-import { headerIconBtn } from '../shared/headerStyles';
-import toast from 'react-hot-toast';
-import EmotionPicker from './EmotionPicker';
-import ReadinessSlider from './ReadinessSlider';
-import JournalHistory from './JournalHistory';
+import { useCallback } from 'react';
+import { Moon, Target } from 'lucide-react';
+import JournalPage from './journal/JournalPage';
+import {
+  OptionGroup, RatingScale, Field, JournalSection, Disclosure, ContextNote,
+} from './journal/JournalControls';
+import { FactGrid, Answer, SummaryStack } from './journal/JournalSummary';
+import { EMOTION_OPTIONS, emotionLabel, inputCls } from './journal/journalUi';
 import { useMentalityJournals } from '../../hooks/useMentalityJournals';
-import { MOTIVATIONAL_QUOTES } from '../../utils/constants';
-import { localDayKey } from '../../utils/calculations';
+import {
+  emptyEveningForm, eveningFormFromEntry, eveningPayload, EVENING_REQUIRED,
+  ADHERENCE_OPTIONS, MAX_EVENING_EMOTIONS,
+} from '../../utils/mentalityJournalForm';
 
-const emptyForm = {
-  emotionAfter: '',
-  followedPlan: null,
-  whatWentWell: '',
-  whatDidntGoWell: '',
-  lessonsLearned: '',
-  gratitude: '',
-  dayRating: 5,
+// Evening journal — four short steps on one page:
+//   1 איך היה היום       rating 1–10 + up to two emotions
+//   2 תוכנית            followed the plan? yes / partly / no + why
+//   3 מה עבד / מה לשפר   two short notes
+//   4 לקח אחד למחר       one lesson (+ optional gratitude)
+// Saved → a completed summary with "ערוך" (see JournalPage).
+
+const LABELS = { done: 'יומן הערב הושלם', save: 'שמור יומן ערב', saved: 'יומן הערב נשמר', updated: 'יומן הערב עודכן' };
+const REQUIRED_SECTION = { dayRating: 'e-day', emotionsAfter: 'e-day', planAdherence: 'e-plan', lessonsLearned: 'e-lesson' };
+const NEXT_STEP = { to: '/mentality', title: 'לאזור המנטלי', text: 'הסטרייק, מצב הרוח השבועי והתובנות' };
+
+const ADHERENCE_SUMMARY = { yes: 'עקבתי', partial: 'חלקית', no: 'סטיתי' };
+
+const NOTE_PROMPT = {
+  yes: 'מה עזר לי להישאר בתוכנית?',
+  partial: 'איפה סטיתי, ולמה?',
+  no: 'מה גרם לי לסטות?',
 };
 
+function EveningSummary({ entry }) {
+  const form = eveningFormFromEntry(entry);
+  return (
+    <SummaryStack>
+      <Answer label="הלקח שלי למחר" text={entry.lessonsLearned} primary />
+      <FactGrid
+        facts={[
+          { label: 'דירוג היום', value: entry.dayRating ? `${entry.dayRating}/10` : '' },
+          { label: 'רגש', value: form.emotionsAfter.map(emotionLabel).filter(Boolean).join(' · ') },
+          { label: 'תוכנית', value: ADHERENCE_SUMMARY[form.planAdherence] || '' },
+        ]}
+      />
+      <Answer label={NOTE_PROMPT[form.planAdherence] || 'הערה על התוכנית'} text={entry.planNote} />
+      <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+        <Answer label="מה עבד" text={entry.whatWentWell} />
+        <Answer label="מה לשפר" text={entry.whatDidntGoWell} />
+      </div>
+      <Answer label="אסיר תודה על" text={entry.gratitude} />
+    </SummaryStack>
+  );
+}
+
 export default function EveningJournal() {
-  const navigate = useNavigate();
-  const { todayEvening, eveningEntries, saveEveningEntry, deleteEveningEntry } = useMentalityJournals();
-  const [activeTab, setActiveTab] = useState('form');
-  const [saving, setSaving] = useState(false);
-  const [form, setForm] = useState(emptyForm);
-  const justSaved = useRef(false);
+  const {
+    todayEvening, todayMorning, eveningEntries, loading, saveEveningEntry, deleteEveningEntry,
+  } = useMentalityJournals();
+  const morningIntention = todayMorning?.mainGoal?.trim() || '';
 
-  const todayStr = localDayKey();
+  const toPayload = useCallback((form, date) => eveningPayload(form, { date }), []);
 
-  const [quote] = useState(
-    () => MOTIVATIONAL_QUOTES[Math.floor(Math.random() * MOTIVATIONAL_QUOTES.length)]
+  const renderForm = ({ form, update }) => (
+    <>
+      <JournalSection id="e-day" n={1} title="איך היה היום" subtitle="דירוג כללי ומה הרגשתי בסוף" done={form.dayRating != null && form.emotionsAfter.length > 0}>
+        <Field label="דירוג היום" required>
+          {({ labelId }) => (
+            <RatingScale value={form.dayRating} onChange={(v) => update('dayRating', v)} lowLabel="יום קשה" highLabel="יום מצוין" ariaLabelledBy={labelId} />
+          )}
+        </Field>
+        <Field label="איך אני מרגיש עכשיו?" required hint={`אפשר לבחור עד ${MAX_EVENING_EMOTIONS}`}>
+          {({ labelId }) => (
+            <OptionGroup type="multi" max={MAX_EVENING_EMOTIONS} options={EMOTION_OPTIONS} value={form.emotionsAfter} onChange={(v) => update('emotionsAfter', v)} ariaLabelledBy={labelId} />
+          )}
+        </Field>
+      </JournalSection>
+
+      <JournalSection id="e-plan" n={2} title="תוכנית" subtitle="האם עמדתי במה שתכננתי" done={!!form.planAdherence}>
+        <ContextNote icon={Target} label="הכוונה שלך הבוקר" text={morningIntention} />
+        <Field label="עקבתי אחרי תוכנית המסחר?" required>
+          {({ labelId }) => (
+            <OptionGroup variant="segmented" options={ADHERENCE_OPTIONS} value={form.planAdherence} onChange={(v) => update('planAdherence', v)} ariaLabelledBy={labelId} />
+          )}
+        </Field>
+        {form.planAdherence && (
+          <Field label={NOTE_PROMPT[form.planAdherence]} optional>
+            {({ id }) => (
+              <input id={id} type="text" maxLength={200} value={form.planNote} onChange={(e) => update('planNote', e.target.value)} placeholder={form.planAdherence === 'yes' ? 'לדוגמה: חיכיתי לאישור לפני כל כניסה' : 'לדוגמה: נכנסתי בלי אישור אחרי הפסד'} className={inputCls} />
+            )}
+          </Field>
+        )}
+      </JournalSection>
+
+      <JournalSection id="e-review" n={3} title="מה עבד / מה לשפר" subtitle="משפט או שניים, לא יותר" optional>
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+          <Field label="מה עבד היום">
+            {({ id }) => (
+              <textarea id={id} rows={3} maxLength={500} value={form.whatWentWell} onChange={(e) => update('whatWentWell', e.target.value)} placeholder="לדוגמה: חיכיתי בסבלנות לסטאפ, יצאתי לפי התוכנית" className={`${inputCls} resize-none`} />
+            )}
+          </Field>
+          <Field label="מה לשפר">
+            {({ id }) => (
+              <textarea id={id} rows={3} maxLength={500} value={form.whatDidntGoWell} onChange={(e) => update('whatDidntGoWell', e.target.value)} placeholder="לדוגמה: הזזתי סטופ, נכנסתי מוקדם מדי" className={`${inputCls} resize-none`} />
+            )}
+          </Field>
+        </div>
+      </JournalSection>
+
+      <JournalSection id="e-lesson" n={4} title="לקח אחד למחר" subtitle="הוא יחכה לך ביומן הבוקר" done={!!form.lessonsLearned.trim()}>
+        <Field label="הלקח שלי למחר" required>
+          {({ id }) => (
+            <input id={id} type="text" maxLength={200} value={form.lessonsLearned} onChange={(e) => update('lessonsLearned', e.target.value)} placeholder="לדוגמה: אחרי שני הפסדים אני סוגר את המסך" className={inputCls} />
+          )}
+        </Field>
+        <Disclosure title="הכרת תודה (רשות)" defaultOpen={!!form.gratitude.trim()}>
+          <Field label="על מה אני אסיר תודה היום">
+            {({ id }) => (
+              <textarea id={id} rows={2} maxLength={500} value={form.gratitude} onChange={(e) => update('gratitude', e.target.value)} placeholder="דבר אחד קטן מספיק" className={`${inputCls} resize-none`} />
+            )}
+          </Field>
+        </Disclosure>
+      </JournalSection>
+    </>
   );
 
-  useEffect(() => {
-    if (justSaved.current) {
-      justSaved.current = false;
-      return;
-    }
-    if (todayEvening) {
-      setForm({
-        emotionAfter: todayEvening.emotionAfter || '',
-        followedPlan: todayEvening.followedPlan ?? null,
-        whatWentWell: todayEvening.whatWentWell || '',
-        whatDidntGoWell: todayEvening.whatDidntGoWell || '',
-        lessonsLearned: todayEvening.lessonsLearned || '',
-        gratitude: todayEvening.gratitude || '',
-        dayRating: todayEvening.dayRating || 5,
-      });
-    }
-  }, [todayEvening]);
-
-  const handleSave = async () => {
-    if (!form.emotionAfter) {
-      toast.error('בחר רגש לפני השמירה');
-      return;
-    }
-    setSaving(true);
-    try {
-      await saveEveningEntry({ ...form, date: todayStr });
-      toast.success(todayEvening ? 'יומן ערב עודכן' : 'יומן ערב נשמר');
-      justSaved.current = true;
-      setForm(emptyForm);
-    } catch (err) {
-      console.error(err);
-      toast.error('שגיאה בשמירה');
-    }
-    setSaving(false);
-  };
-
-
-  const now = new Date();
-  const timeStr = now.toLocaleTimeString('he-IL', { hour: '2-digit', minute: '2-digit' });
-  const dateStr = now.toLocaleDateString('he-IL', { weekday: 'long', day: 'numeric', month: 'long', year: 'numeric' });
-
-  let filled = 0;
-  if (form.emotionAfter) filled++;
-  if (form.followedPlan !== null) filled++;
-  if (form.whatWentWell.trim()) filled++;
-  if (form.whatDidntGoWell.trim()) filled++;
-  if (form.lessonsLearned.trim()) filled++;
-  if (form.gratitude.trim()) filled++;
-  const completionPct = Math.round((filled / 6) * 100);
-
   return (
-    <motion.div
-      initial={{ opacity: 0, y: 10 }}
-      animate={{ opacity: 1, y: 0 }}
-      transition={{ duration: 0.3 }}
-      // Exactly the visible scroll area (screen − header − page padding; the
-      // phone also keeps room for the bottom nav), so the save bar sits at
-      // the bottom without making a short page scroll.
-      className="flex flex-col max-w-4xl mx-auto w-full min-h-[calc(100dvh-10.25rem-env(safe-area-inset-bottom))] md:min-h-[calc(100dvh-7rem)]"
-    >
-      {/* The shared page header: date & time, how much is filled in, the
-          day's quote, and the form / history views as tabs. */}
-      <PageHeader
-        icon={Moon}
-        title="יומן ערב"
-        subtitle={`${dateStr} · ${timeStr}`}
-        meta={(
-          <div className="space-y-1.5 max-w-md">
-            <div className="flex items-center gap-2">
-              <div className="flex-1 h-1.5 bg-bg-tertiary rounded-full overflow-hidden">
-                <div className="h-full bg-accent-primary rounded-full transition-all duration-300" style={{ width: `${completionPct}%` }} />
-              </div>
-              <span className="num-mono text-xs text-text-secondary">{completionPct}%</span>
-            </div>
-            <p className="text-xs text-text-muted italic">"{quote}"</p>
-          </div>
-        )}
-        tabs={{ tabs: [{ id: 'form', label: 'יומן ערב' }, { id: 'history', label: 'היסטוריה' }], value: activeTab, onChange: setActiveTab, layoutKey: 'evening-tab' }}
-        actions={(
-          <button onClick={() => navigate('/mentality')} className={headerIconBtn} title="חזרה לאזור המנטלי" aria-label="חזרה לאזור המנטלי">
-            <ArrowRight className="w-[18px] h-[18px]" />
-          </button>
-        )}
-      />
-
-      {activeTab === 'history' ? (
-        <JournalHistory entries={eveningEntries} type="evening" onDeleteEntry={deleteEveningEntry} />
-      ) : (
-        <div className="bg-bg-secondary border border-border-primary rounded-xl p-4 flex-1 flex flex-col">
-          <div className="flex-1 space-y-3">
-            {/* Emotion + Followed plan side by side */}
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-              <EmotionPicker
-                value={form.emotionAfter}
-                onChange={(v) => setForm((p) => ({ ...p, emotionAfter: v }))}
-                label="איך אני מרגיש אחרי יום המסחר?"
-              />
-
-              <div className="space-y-3">
-                {/* Followed plan toggle */}
-                <div>
-                  <label className="block text-sm font-medium text-text-primary mb-2">
-                    האם עקבתי אחרי תוכנית המסחר שלי?
-                  </label>
-                  <div className="flex gap-2">
-                    {[
-                      { value: true, label: 'כן', emoji: '✅' },
-                      { value: false, label: 'לא', emoji: '❌' },
-                    ].map((opt) => (
-                      <button
-                        key={String(opt.value)}
-                        type="button"
-                        onClick={() => setForm((p) => ({ ...p, followedPlan: opt.value }))}
-                        className={`flex-1 flex items-center justify-center gap-2 py-2.5 rounded-xl border text-sm font-medium transition-all ${
-                          form.followedPlan === opt.value
-                            ? 'bg-accent-primary/15 border-accent-primary text-accent-primary'
-                            : 'bg-bg-tertiary border-border-primary text-text-secondary hover:border-border-hover'
-                        }`}
-                      >
-                        <span>{opt.emoji}</span>
-                        {opt.label}
-                      </button>
-                    ))}
-                  </div>
-                </div>
-
-                <ReadinessSlider
-                  value={form.dayRating}
-                  onChange={(v) => setForm((p) => ({ ...p, dayRating: v }))}
-                  label="דירוג היום"
-                  lowLabel="יום גרוע"
-                  highLabel="יום מעולה"
-                />
-              </div>
-            </div>
-
-            {/* Textareas in 2-col grid */}
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-              <div>
-                <label className="block text-sm font-medium text-text-primary mb-1.5">
-                  מה הלך טוב היום? <span className="text-red-400">*</span>
-                </label>
-                <textarea
-                  value={form.whatWentWell}
-                  onChange={(e) => setForm((p) => ({ ...p, whatWentWell: e.target.value }))}
-                  placeholder="דברים שעבדו טוב במסחר היום..."
-                  rows={2}
-                  className="w-full bg-bg-tertiary border border-border-primary rounded-lg px-3 py-2 text-sm text-text-primary placeholder:text-text-muted focus:outline-none focus:border-accent-primary resize-none"
-                />
-              </div>
-
-              <div>
-                <label className="block text-sm font-medium text-text-primary mb-1.5">
-                  מה לא הלך טוב? <span className="text-red-400">*</span>
-                </label>
-                <textarea
-                  value={form.whatDidntGoWell}
-                  onChange={(e) => setForm((p) => ({ ...p, whatDidntGoWell: e.target.value }))}
-                  placeholder="דברים שאני צריך לשפר..."
-                  rows={2}
-                  className="w-full bg-bg-tertiary border border-border-primary rounded-lg px-3 py-2 text-sm text-text-primary placeholder:text-text-muted focus:outline-none focus:border-accent-primary resize-none"
-                />
-              </div>
-
-              <div>
-                <label className="block text-sm font-medium text-text-primary mb-1.5">
-                  לקחים שלמדתי
-                </label>
-                <textarea
-                  value={form.lessonsLearned}
-                  onChange={(e) => setForm((p) => ({ ...p, lessonsLearned: e.target.value }))}
-                  placeholder="לקחים ותובנות מהיום..."
-                  rows={2}
-                  className="w-full bg-bg-tertiary border border-border-primary rounded-lg px-3 py-2 text-sm text-text-primary placeholder:text-text-muted focus:outline-none focus:border-accent-primary resize-none"
-                />
-              </div>
-
-              <div>
-                <label className="block text-sm font-medium text-text-primary mb-1.5">
-                  על מה אני אסיר תודה היום?
-                </label>
-                <textarea
-                  value={form.gratitude}
-                  onChange={(e) => setForm((p) => ({ ...p, gratitude: e.target.value }))}
-                  placeholder="דבר אחד שאני אסיר תודה עליו היום..."
-                  rows={2}
-                  className="w-full bg-bg-tertiary border border-border-primary rounded-lg px-3 py-2 text-sm text-text-primary placeholder:text-text-muted focus:outline-none focus:border-accent-primary resize-none"
-                />
-              </div>
-            </div>
-          </div>
-
-          <button
-            onClick={handleSave}
-            disabled={saving}
-            className="w-full flex items-center justify-center gap-2 bg-accent-primary text-white py-2.5 rounded-lg font-medium hover:bg-accent-hover transition-colors disabled:opacity-50 mt-3"
-          >
-            <Save className="w-4 h-4" />
-            {saving ? 'שומר...' : todayEvening ? 'עדכן יומן ערב' : 'שמור יומן ערב'}
-          </button>
-        </div>
-      )}
-    </motion.div>
+    <JournalPage
+      kind="evening"
+      icon={Moon}
+      title="יומן ערב"
+      labels={LABELS}
+      entries={eveningEntries}
+      todayEntry={todayEvening}
+      loading={loading}
+      onSave={saveEveningEntry}
+      onDelete={deleteEveningEntry}
+      emptyForm={emptyEveningForm}
+      fromEntry={eveningFormFromEntry}
+      toPayload={toPayload}
+      required={EVENING_REQUIRED}
+      requiredSection={REQUIRED_SECTION}
+      renderForm={renderForm}
+      renderSummary={(entry) => <EveningSummary entry={entry} />}
+      nextStep={NEXT_STEP}
+    />
   );
 }
