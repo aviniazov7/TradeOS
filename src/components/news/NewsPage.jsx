@@ -1,13 +1,22 @@
 import { useState, useEffect, useCallback, useMemo } from 'react';
+import { useSearchParams } from 'react-router-dom';
 import { motion, AnimatePresence } from 'framer-motion';
-import { Newspaper, ExternalLink, Clock, Filter, CalendarDays, Volume2, Globe, BrainCircuit, RefreshCw, Bitcoin, CandlestickChart } from 'lucide-react';
+import { Newspaper, ExternalLink, Clock, Filter, CalendarDays, Volume2, Globe, BrainCircuit, RefreshCw } from 'lucide-react';
 import { fetchNewsDigest, translateNews } from '../../services/newsService';
 import WhyItMoved from './WhyItMoved';
 import { hebrewEventTitle } from '../../utils/econCalendarTerms';
 import { safeHttpUrl } from '../../utils/urls';
 import SelectDropdown from '../shared/SelectDropdown';
 import PageHeader from '../shared/PageHeader';
-import TabStrip from '../shared/TabStrip';
+
+// Feed text arrives with HTML entities (S&amp;P) and in either language.
+// plaintext bidi orders each line by its own first strong character, so an
+// English headline keeps its "?" and "." at the end while still sitting
+// right-aligned in the RTL page.
+const decodeEntities = (t) => String(t || '')
+  .replace(/&amp;/g, '&').replace(/&quot;/g, '"').replace(/&#0?39;|&apos;/g, "'")
+  .replace(/&lt;/g, '<').replace(/&gt;/g, '>').replace(/&nbsp;/g, ' ');
+const bidiText = { unicodeBidi: 'plaintext', textAlign: 'right' };
 
 // ─── News Sources (per market) ───
 const FEED_SOURCES = {
@@ -712,11 +721,10 @@ const BRIEF_IMPACT = {
 function AiBrief({ market }) {
   const [digest, setDigest] = useState(null);
   const [loading, setLoading] = useState(true);
-  const [idx, setIdx] = useState(0);
-  const [paused, setPaused] = useState(false);
+  const [showAll, setShowAll] = useState(false);
 
   // No reset-on-market-change needed: the page remounts this component when
-  // the market toggle flips (keyed motion.div), so initial state covers it.
+  // the market tab changes (keyed motion.div), so initial state covers it.
   useEffect(() => {
     let cancelled = false;
     fetchNewsDigest(market)
@@ -726,111 +734,67 @@ function AiBrief({ market }) {
     return () => { cancelled = true; };
   }, [market]);
 
-  // Slow ticker-style rotation through the ranked stories; pauses on hover so
-  // the user can read/click, and when there's only one story.
-  const count = digest?.stories?.length || 0;
-  useEffect(() => {
-    if (count < 2 || paused) return undefined;
-    const t = setInterval(() => setIdx((i) => (i + 1) % count), 7000);
-    return () => clearInterval(t);
-  }, [count, paused]);
-
   if (loading) {
     return (
-      <div className="bg-bg-secondary border border-border-primary rounded-xl p-4 mb-6 animate-pulse">
-        <div className="h-3 bg-bg-tertiary rounded w-24 mb-2.5" />
-        <div className="h-4 bg-bg-tertiary rounded w-3/4 mb-2" />
-        <div className="h-3 bg-bg-tertiary rounded w-1/2" />
+      <div className="bg-bg-secondary border border-border-primary rounded-2xl p-4 mb-5 animate-pulse">
+        <div className="h-3 bg-bg-tertiary rounded w-28 mb-3" />
+        {[0, 1, 2].map((i) => <div key={i} className="h-4 bg-bg-tertiary rounded w-full mb-2.5" />)}
       </div>
     );
   }
-  if (!count) return null;
+  const stories = digest?.stories || [];
+  if (!stories.length) return null;
+  const shown = showAll ? stories : stories.slice(0, 3);
 
-  const story = digest.stories[idx % count];
-  const impact = BRIEF_IMPACT[story.impact] || BRIEF_IMPACT.medium;
-  const mainLink = story.sources?.[0]?.link;
-
+  // The ranked stories as a list — every headline readable at a glance,
+  // instead of a carousel that shows one at a time.
   return (
-    <div className="mb-6">
-      <div className="flex items-center gap-2 mb-2.5">
-        <BrainCircuit className="w-5 h-5" style={{ stroke: 'url(#ai-grad)' }} />
-        <h2 className="text-base font-bold text-gradient">מה חשוב עכשיו</h2>
+    <section className="bg-bg-secondary border border-border-primary rounded-2xl mb-5 overflow-hidden">
+      <div className="flex items-center gap-2 px-4 py-3 border-b border-border-primary">
+        <BrainCircuit className="w-[18px] h-[18px]" style={{ stroke: 'url(#ai-grad)' }} />
+        <h2 className="text-sm font-bold text-text-primary">מה חשוב עכשיו</h2>
         {digest.updatedAt > 0 && (
-          <span className="flex items-center gap-1 text-[11px] text-text-muted mr-auto">
+          <span className="flex items-center gap-1 text-[11px] text-text-muted ms-auto">
             <RefreshCw className="w-3 h-3" /> עודכן {timeAgo(digest.updatedAt)}
           </span>
         )}
       </div>
-
-      {/* Single rolling card */}
-      <div
-        className={`relative overflow-hidden bg-bg-secondary border rounded-xl ${
-          story.impact === 'high' ? 'border-red-500/30' : 'border-border-primary'
-        }`}
-        onMouseEnter={() => setPaused(true)}
-        onMouseLeave={() => setPaused(false)}
-      >
-        <AnimatePresence mode="wait">
-          <motion.div
-            key={idx % count}
-            initial={{ y: 26, opacity: 0 }}
-            animate={{ y: 0, opacity: 1 }}
-            exit={{ y: -26, opacity: 0 }}
-            transition={{ duration: 0.45, ease: 'easeInOut' }}
-            className="p-4 min-h-[104px]"
-          >
-            {mainLink ? (
-              <a href={mainLink} target="_blank" rel="noopener noreferrer" className="group block">
-                <BriefStoryBody story={story} impact={impact} rank={(idx % count) + 1} count={count} />
-              </a>
-            ) : (
-              <BriefStoryBody story={story} impact={impact} rank={(idx % count) + 1} count={count} />
-            )}
-          </motion.div>
-        </AnimatePresence>
-
-        {/* Dots — jump to a specific story */}
-        <div className="flex items-center justify-center gap-1.5 pb-2.5">
-          {digest.stories.map((s, i) => (
-            <button
-              key={`${s.headline}-${i}`}
-              onClick={() => setIdx(i)}
-              aria-label={`סיפור ${i + 1}`}
-              className={`h-1.5 rounded-full transition-all cursor-pointer ${
-                i === idx % count ? 'w-4 bg-accent-primary' : 'w-1.5 bg-border-primary hover:bg-text-muted'
-              }`}
-            />
-          ))}
-        </div>
-      </div>
-    </div>
-  );
-}
-
-function BriefStoryBody({ story, impact, rank, count }) {
-  return (
-    <>
-      <div className="flex items-center gap-1.5 mb-2">
-        <span className="text-[10px] font-bold text-text-muted num-mono">{rank}/{count}</span>
-        <span className={`px-2 py-0.5 rounded-full text-[10px] font-bold border ${impact.cls}`}>
-          {impact.label}
-        </span>
-        <span className="px-2 py-0.5 rounded-full text-[10px] font-medium bg-bg-tertiary text-text-secondary">
-          {story.category}
-        </span>
-      </div>
-      <p className="text-sm sm:text-base font-semibold text-text-primary group-hover:text-accent-primary transition-colors leading-snug">
-        {story.headline}
-      </p>
-      <p className="text-xs text-text-muted mt-1 line-clamp-2">{story.why}</p>
-      <div className="flex items-center gap-2.5 mt-2 flex-wrap">
-        {(story.sources || []).map((src) => (
-          <span key={src.link} className="flex items-center gap-1 text-[10px] text-text-muted">
-            <ExternalLink className="w-2.5 h-2.5" /> {src.label}
-          </span>
-        ))}
-      </div>
-    </>
+      <ol className="divide-y divide-border-primary">
+        {shown.map((story, i) => {
+          const impact = BRIEF_IMPACT[story.impact] || BRIEF_IMPACT.medium;
+          const link = story.sources?.[0]?.link;
+          const Row = link ? 'a' : 'div';
+          return (
+            <li key={`${story.headline}-${i}`}>
+              <Row
+                {...(link ? { href: link, target: '_blank', rel: 'noopener noreferrer' } : {})}
+                className="group flex items-start gap-3 px-4 py-3 hover:bg-bg-tertiary/50 transition-colors"
+              >
+                <span className="num-mono w-6 h-6 shrink-0 grid place-items-center rounded-lg bg-bg-tertiary text-[11px] font-bold text-text-secondary mt-0.5">{i + 1}</span>
+                <span className="min-w-0 flex-1">
+                  <span className="block text-sm font-semibold text-text-primary group-hover:text-accent-hover transition-colors leading-snug" style={bidiText}>{decodeEntities(story.headline)}</span>
+                  {story.why && <span className="block text-xs text-text-muted mt-1 line-clamp-2">{story.why}</span>}
+                  <span className="flex flex-wrap items-center gap-1.5 mt-1.5">
+                    <span className={`px-1.5 py-px rounded-md text-[10px] font-bold border ${impact.cls}`}>{impact.label}</span>
+                    {story.category && <span className="px-1.5 py-px rounded-md text-[10px] font-medium bg-bg-tertiary text-text-secondary">{story.category}</span>}
+                    {(story.sources || []).slice(0, 3).map((src) => (
+                      <span key={src.link} className="text-[10px] text-text-muted">· {src.label}</span>
+                    ))}
+                  </span>
+                </span>
+                {link && <ExternalLink className="w-3.5 h-3.5 text-text-muted opacity-0 group-hover:opacity-100 transition-opacity shrink-0 mt-1" />}
+              </Row>
+            </li>
+          );
+        })}
+      </ol>
+      {stories.length > 3 && (
+        <button onClick={() => setShowAll((v) => !v)}
+          className="w-full py-2.5 text-xs font-semibold text-accent-hover hover:bg-bg-tertiary/50 border-t border-border-primary transition-colors cursor-pointer">
+          {showAll ? 'הצג פחות' : `עוד ${stories.length - 3} נושאים`}
+        </button>
+      )}
+    </section>
   );
 }
 
@@ -1011,10 +975,17 @@ function NewsFeed({ market }) {
       {/* Category filter — a professional dropdown (like the rest of the app)
           instead of a scrolling chip row. Only categories present in the
           current feed are listed, each with its live count. */}
-      {visibleTopics.length > 1 && (
-        <div className="flex items-center justify-center gap-2 mb-6">
+      {!loading && !error && (
+        <div className="flex items-center justify-between gap-3 mb-4">
+          <div className="flex items-center gap-2 min-w-0">
+            <Newspaper className="w-4 h-4 text-text-muted shrink-0" />
+            <span className="text-sm font-bold text-text-primary whitespace-nowrap">כל הכתבות</span>
+            <span className="text-xs text-text-muted truncate"><span className="num-mono">{filtered.length}</span><span className="hidden sm:inline"> ב-24 השעות האחרונות</span></span>
+          </div>
+          {visibleTopics.length > 1 && (
+          <div className="flex items-center gap-2 shrink-0">
           <Filter className="w-3.5 h-3.5 text-text-muted flex-shrink-0" />
-          <div className="w-48">
+          <div className="w-40">
             <SelectDropdown
               compact
               value={topic}
@@ -1026,6 +997,8 @@ function NewsFeed({ market }) {
               placeholder="כל הקטגוריות"
             />
           </div>
+          </div>
+          )}
         </div>
       )}
 
@@ -1072,7 +1045,7 @@ function NewsFeed({ market }) {
                   <span className="text-[11px] text-text-muted">{group.items.length} כתבות</span>
                   <div className="flex-1 h-px bg-border-primary" />
                 </div>
-                <div className="space-y-4">
+                <div className="space-y-2.5">
                   {group.items.map((article, i) => (
                     <motion.a
                       key={`${article.link}-${i}`}
@@ -1083,11 +1056,11 @@ function NewsFeed({ market }) {
                       animate={{ opacity: 1, y: 0 }}
                       exit={{ opacity: 0, y: -10 }}
                       transition={{ duration: 0.3, delay: i < 10 ? i * 0.05 : 0 }}
-                      className="block bg-bg-secondary border border-border-primary rounded-xl p-4 hover:border-accent-primary/50 hover:bg-bg-tertiary/50 transition-all group"
+                      className="block bg-bg-secondary border border-border-primary rounded-2xl p-3.5 md:p-4 hover:border-border-hover hover:bg-bg-tertiary/40 transition-colors group"
                     >
-                      <div className="flex gap-4">
+                      <div className="flex gap-3.5 md:gap-4">
                         {article.thumbnail && (
-                          <div className="w-24 h-24 md:w-32 md:h-24 flex-shrink-0 rounded-lg overflow-hidden bg-bg-tertiary">
+                          <div className="w-20 h-20 md:w-28 md:h-[5.25rem] flex-shrink-0 rounded-xl overflow-hidden bg-bg-tertiary">
                             <img
                               src={article.thumbnail}
                               alt=""
@@ -1098,14 +1071,14 @@ function NewsFeed({ market }) {
                           </div>
                         )}
                         <div className="flex-1 min-w-0">
-                          <h3 className="text-sm md:text-base font-semibold text-text-primary mb-1.5 line-clamp-2 group-hover:text-accent-primary transition-colors" title={heMap[article.link] ? article.title : undefined}>
-                            {heMap[article.link]?.title || article.title}
+                          <h3 className="text-sm md:text-[15px] font-bold text-text-primary mb-1 line-clamp-2 leading-snug group-hover:text-accent-hover transition-colors" title={heMap[article.link] ? decodeEntities(article.title) : undefined} style={bidiText}>
+                            {decodeEntities(heMap[article.link]?.title || article.title)}
                           </h3>
-                          <p className="text-xs md:text-sm text-text-muted line-clamp-2 mb-2 hidden sm:block">
-                            {heMap[article.link]?.desc || article.description}
+                          <p className="text-xs md:text-sm text-text-muted line-clamp-2 mb-2 hidden sm:block" style={bidiText}>
+                            {decodeEntities(heMap[article.link]?.desc || article.description)}
                           </p>
-                          <div className="flex items-center gap-3 text-[11px] text-text-muted">
-                            <span className="px-2 py-0.5 bg-bg-tertiary rounded-full font-medium">
+                          <div className="flex items-center gap-2.5 text-[11px] text-text-muted">
+                            <span className="px-1.5 py-px bg-bg-tertiary border border-border-primary rounded-md font-semibold text-text-secondary">
                               {article.sourceLabel}
                             </span>
                             <span className="flex items-center gap-1">
@@ -1133,77 +1106,51 @@ function NewsFeed({ market }) {
 }
 
 // ─── Main Page ───
-export default function NewsPage() {
-  const [activeTab, setActiveTab] = useState('news');
-  const [market, setMarket] = useState('crypto');
+// Three views in the header's tab strip — crypto news, stock news and the
+// economic calendar — kept in the URL (?tab=) like every other page.
+const NEWS_TABS = [
+  { id: 'crypto', label: 'קריפטו' },
+  { id: 'stocks', label: 'מניות' },
+  { id: 'calendar', label: 'יומן כלכלי' },
+];
 
-  const tabs = [
-    { key: 'news', label: '\u05D7\u05D3\u05E9\u05D5\u05EA', icon: Newspaper },
-    { key: 'calendar', label: '\u05D9\u05D5\u05DE\u05DF \u05DB\u05DC\u05DB\u05DC\u05D9', icon: CalendarDays },
-  ];
+export default function NewsPage() {
+  const [params, setParams] = useSearchParams();
+  const tabParam = params.get('tab');
+  const tab = NEWS_TABS.some((t) => t.id === tabParam) ? tabParam : 'crypto';
+  const setTab = (next) => setParams((prev) => {
+    const p = new URLSearchParams(prev);
+    if (next === 'crypto') p.delete('tab'); else p.set('tab', next);
+    return p;
+  }, { replace: true });
+  const isCalendar = tab === 'calendar';
 
   return (
-    <div className="max-w-5xl mx-auto px-4 py-6 pb-24 lg:pb-6">
-      {/* Shared page header; news ⇄ economic calendar via the shared tab strip. */}
+    <div className="max-w-5xl mx-auto pb-24 lg:pb-6">
       <PageHeader
         icon={Newspaper}
         title="חדשות"
-        subtitle="חדשות שוק ויומן כלכלי — מה זז ולמה"
-        actions={(
-          <div className="rounded-xl bg-bg-tertiary border border-border-primary p-1">
-            <TabStrip
-              tabs={tabs.map((t) => ({ id: t.key, label: t.label }))}
-              value={activeTab}
-              onChange={setActiveTab}
-              layoutKey="news-tab"
-            />
-          </div>
-        )}
+        subtitle={isCalendar ? 'אירועים כלכליים שמזיזים את השוק' : 'מה זז בשוק ולמה — מתעדכן כל הזמן'}
+        tabs={{ tabs: NEWS_TABS, value: tab, onChange: setTab, layoutKey: 'news-tab' }}
       />
 
-      {/* Market toggle — crypto ⇄ stocks (news tab only) */}
-      {activeTab === 'news' && (
-        <div className="flex items-center justify-center mb-6">
-          <div className="inline-flex bg-bg-secondary border border-border-primary rounded-full p-1">
-            {[
-              { key: 'crypto', label: 'קריפטו', Icon: Bitcoin },
-              { key: 'stocks', label: 'מניות', Icon: CandlestickChart },
-            ].map((m) => (
-              <button
-                key={m.key}
-                onClick={() => setMarket(m.key)}
-                className={`inline-flex items-center gap-1.5 px-4 py-1.5 rounded-full text-xs font-bold transition-all cursor-pointer ${
-                  market === m.key
-                    ? 'bg-accent-primary text-white shadow-sm'
-                    : 'text-text-secondary hover:text-text-primary'
-                }`}
-              >
-                <m.Icon className="w-3.5 h-3.5" />
-                {m.label}
-              </button>
-            ))}
-          </div>
-        </div>
-      )}
-
-      {/* Tab Content */}
       <AnimatePresence mode="wait">
         <motion.div
-          key={`${activeTab}-${market}`}
-          initial={{ opacity: 0, x: activeTab === 'news' ? -20 : 20 }}
-          animate={{ opacity: 1, x: 0 }}
-          exit={{ opacity: 0, x: activeTab === 'news' ? 20 : -20 }}
-          transition={{ duration: 0.25 }}
+          key={tab}
+          initial={{ opacity: 0, y: 8 }}
+          animate={{ opacity: 1, y: 0 }}
+          exit={{ opacity: 0, y: -6 }}
+          transition={{ duration: 0.2 }}
         >
-          {activeTab === 'news' ? (
+          {isCalendar ? <EconomicCalendar /> : (
             <>
               {/* Deterministic, cron-prepared: costs no AI call and states no
                   direction. Crypto only — the attribution engine is keyed on
                   crypto tickers. */}
-              {market === 'crypto' && <WhyItMoved />}
-              <NewsFeed market={market} />
+              {tab === 'crypto' && <WhyItMoved />}
+              <NewsFeed market={tab} />
             </>
-          ) : <EconomicCalendar />}
+          )}
         </motion.div>
       </AnimatePresence>
     </div>
