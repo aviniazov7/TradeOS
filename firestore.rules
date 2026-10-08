@@ -180,6 +180,31 @@ service cloud.firestore {
           && isValidWatchlistItem(request.resource.data);
         allow delete: if request.auth != null && request.auth.uid == userId;
       }
+      // Chart screenshots attached to a trade (TradeScreenshots.jsx). Kept out
+      // of the trade doc itself — trades are subscribed live everywhere, so
+      // image payloads there would slow every screen. Owner-only, admins
+      // included: a screenshot can show balances/positions, and the admin
+      // panel never needs it.
+      // Doc ids are the fixed slots `${tradeId}_0..3`, which caps a trade at
+      // 4 screenshots server-side and lets trade deletion clean up without
+      // reading. A slot can only be CREATED (a setDoc over a taken slot is an
+      // update and fails the unchanged-image check); afterwards only the tag
+      // and caption may change.
+      match /tradeImages/{imageId} {
+        allow read: if request.auth != null && request.auth.uid == userId;
+        allow create: if request.auth != null && request.auth.uid == userId
+          && isValidTradeImage(request.resource.data)
+          && imageId in [
+            request.resource.data.tradeId + '_0',
+            request.resource.data.tradeId + '_1',
+            request.resource.data.tradeId + '_2',
+            request.resource.data.tradeId + '_3'
+          ];
+        allow update: if request.auth != null && request.auth.uid == userId
+          && isValidTradeImage(request.resource.data)
+          && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['kind', 'caption', 'updatedAt']);
+        allow delete: if request.auth != null && request.auth.uid == userId;
+      }
     }
 
     // Admin private notes & tags — per-user, only admins can read or write.
@@ -319,6 +344,26 @@ service cloud.firestore {
         && (!('tvLink' in data) || data.tvLink == null || (data.tvLink is string && data.tvLink.size() <= 1000))
         && (!('targetPrice' in data) || data.targetPrice == null || data.targetPrice is number)
         && (!('addedPrice' in data) || data.addedPrice == null || data.addedPrice is number);
+    }
+
+    // Trade screenshot validation. Must match the exact shape the client
+    // writes (tradeImageService.addTradeImage / updateTradeImage). dataUrl is
+    // a client-compressed WebP/JPEG (≤ ~250K chars in practice); the 350,000
+    // char cap keeps every doc far below Firestore's 1 MiB limit, and the
+    // prefix check means only raster image data URLs are ever rendered as
+    // <img src> (no SVG, no arbitrary URLs).
+    function isValidTradeImage(data) {
+      return data.keys().hasAll(['tradeId', 'dataUrl', 'kind', 'createdAt'])
+        && data.keys().hasOnly(['tradeId', 'dataUrl', 'kind', 'caption', 'width', 'height', 'createdAt', 'updatedAt'])
+        && data.tradeId is string && data.tradeId.size() > 0 && data.tradeId.size() <= 128
+        && data.dataUrl is string && data.dataUrl.size() <= 350000
+        && data.dataUrl.matches('data:image/(webp|jpeg|png);base64,.+')
+        && data.kind in ['before', 'after', 'other']
+        && (!('caption' in data) || (data.caption is string && data.caption.size() <= 200))
+        && (!('width' in data) || (data.width is int && data.width > 0 && data.width <= 10000))
+        && (!('height' in data) || (data.height is int && data.height > 0 && data.height <= 10000))
+        && data.createdAt is timestamp
+        && (!('updatedAt' in data) || data.updatedAt is timestamp);
     }
   }
 }
