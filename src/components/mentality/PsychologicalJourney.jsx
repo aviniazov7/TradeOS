@@ -12,9 +12,10 @@ import { useJournalContext } from '../../contexts/JournalContext';
 import { useAuth } from '../../contexts/AuthContext';
 import { assessTrader } from '../../utils/traderStage';
 import {
-  StageLadder, DimensionRadar, Milestones, SnapshotLists, DimensionCard, StagesReference, PanelTitle,
+  DimensionRadar, Milestones, SnapshotLists, DimensionCard, StagesReference, PanelTitle,
 } from './JourneyParts';
 import JourneyAiPanel from './JourneyAiPanel';
+import { JourneyMap } from './JourneyPath';
 import { writeStageSnapshot } from './journeyStorage';
 import { panel } from './journeyStyle';
 import { tileItem } from './zoneStyle';
@@ -131,7 +132,7 @@ export default function PsychologicalJourney() {
             <motion.div variants={tileItem}><LowDataNotice assessment={a} /></motion.div>
           )}
 
-          <motion.div variants={tileItem}><StageLadder assessment={a} /></motion.div>
+          <motion.div variants={tileItem}><JourneyMap assessment={a} /></motion.div>
 
           {/* Two balanced columns: the radar on one side; goals plus the
               strengths/blockers snapshot stacked on the other, so neither
