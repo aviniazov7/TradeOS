@@ -37,7 +37,7 @@ export default function PortfolioPage() {
         tabs={{ tabs: PORTFOLIO_TABS, value: tab, onChange: setTab, layoutKey: 'portfolio-tab' }}
       />
       <Suspense fallback={<LoadingSpinner />}>
-        {tab === 'wallets' ? <WalletsPage key="wallets" embedded /> : <DCATracker key="dca" />}
+        {tab === 'wallets' ? <WalletsPage key="wallets" embedded /> : <DCATracker key="dca" embedded />}
       </Suspense>
     </motion.div>
   );
