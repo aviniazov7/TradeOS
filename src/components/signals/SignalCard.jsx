@@ -1,5 +1,6 @@
 import { useState } from 'react';
-import { Pencil, Trash2, CheckCircle2, Clock, Zap, Maximize2, Radar, ThumbsUp, ThumbsDown } from 'lucide-react';
+import { Pencil, Trash2, CheckCircle2, Clock, Zap, Maximize2, Radar, ThumbsUp, ThumbsDown, TrendingUp, TrendingDown } from 'lucide-react';
+import { safeDate, formatRelativeTime, formatDateTime } from '../../utils/formatters';
 import CoinIcon from '../shared/CoinIcon';
 import SignalTrack from './SignalTrack';
 import SetupChart from './SetupChart';
@@ -24,38 +25,42 @@ export default function SignalCard({ signal, currentPrice, onEdit, onDelete, onS
   const StatusIcon = statusInfo.icon;
   const isWaiting = status === 'waiting';
 
-  return (
-    <div className={`bg-bg-secondary rounded-2xl border transition-all ${isWaiting ? 'border-border-primary opacity-80' : 'border-border-primary hover:border-accent-primary/30 hover:shadow-lg'}`}>
-      <div className="p-4 space-y-3">
+  const found = safeDate(signal.createdAt);
 
-        {/* Top row: coin + direction + status + actions */}
-        <div className="flex items-center justify-between gap-2">
-          <div className="flex items-center gap-2 min-w-0">
-            <CoinIcon pair={pair} className="w-6 h-6 shrink-0" />
+  return (
+    <div className={`h-full bg-bg-secondary rounded-2xl border border-border-primary transition-colors ${isWaiting ? '' : 'hover:border-accent-primary/30'}`}>
+      <div className="h-full p-4 flex flex-col gap-3">
+
+        {/* Top row: coin + direction + timeframe · status */}
+        <div className="flex items-start justify-between gap-2">
+          <div className="flex items-center gap-2.5 min-w-0">
+            <CoinIcon pair={pair} className="w-8 h-8 shrink-0" />
             <div className="min-w-0">
-              <div className="flex items-center gap-1.5">
-                <span className="text-sm font-bold text-text-primary">{pair}</span>
-                {timeframe && <span className="text-xs text-text-muted">{timeframe}</span>}
-                <span className={`text-[11px] font-bold px-1.5 py-0.5 rounded ${isLong ? 'bg-profit/15 text-profit' : 'bg-loss/15 text-loss'}`}>
+              <div className="flex items-center gap-1.5 flex-wrap">
+                <span className="text-sm font-bold text-text-primary" dir="ltr">{pair}</span>
+                <span className={`inline-flex items-center gap-0.5 text-[10px] font-bold px-1.5 py-0.5 rounded-md ${isLong ? 'bg-profit/15 text-profit' : 'bg-loss/15 text-loss'}`}>
+                  {isLong ? <TrendingUp className="w-3 h-3" /> : <TrendingDown className="w-3 h-3" />}
                   {isLong ? 'LONG' : 'SHORT'}
                 </span>
+                {timeframe && <span className="text-[10px] font-semibold num-mono px-1.5 py-0.5 rounded-md bg-bg-tertiary border border-border-primary text-text-secondary">{timeframe}</span>}
+              </div>
+              <div className="flex items-center gap-1.5 mt-0.5 text-[11px] text-text-muted min-w-0">
+                {found && <time dateTime={found.toISOString()} title={formatDateTime(found)} className="truncate">{formatRelativeTime(found)}</time>}
+                {isScanner ? (
+                  <span className="inline-flex items-center gap-1 text-accent-primary shrink-0" title={scannerTitle}>
+                    {found && <span className="text-text-muted">·</span>}
+                    <Radar className="w-3 h-3" /> מנוע{conf != null && <span className="num-mono font-bold">{conf}</span>}
+                  </span>
+                ) : (
+                  <span className="shrink-0">{found && '· '}ידני</span>
+                )}
               </div>
             </div>
           </div>
-          <div className="flex items-center gap-1 shrink-0">
-            {isScanner && (
-              <span
-                className="flex items-center gap-0.5 text-[10px] font-bold px-1.5 py-0.5 rounded-full bg-accent-primary/15 text-accent-primary"
-                title={scannerTitle}
-              >
-                <Radar className="w-2.5 h-2.5" />{conf != null ? conf : 'אותר'}
-              </span>
-            )}
-            <span className={`flex items-center gap-1 text-[11px] font-medium px-2 py-0.5 rounded-full border ${statusInfo.className}`}>
-              <StatusIcon className="w-3 h-3" />
-              {statusInfo.label}
-            </span>
-          </div>
+          <span className={`shrink-0 flex items-center gap-1 text-[11px] font-semibold px-2 py-0.5 rounded-full border ${statusInfo.className}`}>
+            <StatusIcon className="w-3 h-3" />
+            {statusInfo.label}
+          </span>
         </div>
 
         {/* Setup chart — click to open the full 3-timeframe view */}
@@ -66,13 +71,6 @@ export default function SignalCard({ signal, currentPrice, onEdit, onDelete, onS
               <Maximize2 className="w-2.5 h-2.5" /> 3 מימדי זמן
             </span>
           </button>
-        )}
-
-        {/* Entry zone */}
-        {entryPrice != null && (
-          <p className="text-[11px] text-center text-text-secondary">
-            🎯 אזור כניסה סביב <span className="font-bold num-mono text-accent-primary">{formatPrice(entryPrice)}</span>
-          </p>
         )}
 
         {/* Price info */}
@@ -142,7 +140,7 @@ export default function SignalCard({ signal, currentPrice, onEdit, onDelete, onS
         )}
 
         {/* Actions */}
-        <div className="flex items-center gap-1.5 pt-1 border-t border-border-primary">
+        <div className="mt-auto flex items-center gap-1.5 pt-2 border-t border-border-primary">
           {/* Status toggle */}
           {status === 'waiting' && (
             <button
@@ -154,12 +152,16 @@ export default function SignalCard({ signal, currentPrice, onEdit, onDelete, onS
           )}
           <button
             onClick={() => onEdit(signal)}
+            title="עריכה"
+            aria-label="עריכה"
             className="p-1.5 rounded-lg text-text-muted hover:text-accent-primary hover:bg-bg-tertiary transition-colors cursor-pointer"
           >
             <Pencil className="w-3.5 h-3.5" />
           </button>
           <button
             onClick={() => onDelete(signal.id)}
+            title="מחיקה"
+            aria-label="מחיקה"
             className="p-1.5 rounded-lg text-text-muted hover:text-loss hover:bg-bg-tertiary transition-colors cursor-pointer"
           >
             <Trash2 className="w-3.5 h-3.5" />
@@ -176,7 +178,7 @@ function PriceCell({ label, value, color }) {
   return (
     <div className="bg-bg-tertiary rounded-lg py-1.5">
       <div className="text-[10px] text-text-muted mb-0.5">{label}</div>
-      <div className={`text-xs font-bold ${color}`}>{value != null ? formatPrice(value) : '—'}</div>
+      <div dir="ltr" className={`text-xs font-bold num-mono ${color}`}>{value != null ? formatPrice(value) : '—'}</div>
     </div>
   );
 }

@@ -1,7 +1,9 @@
 import { useState, useEffect, useRef } from 'react';
-import { motion, AnimatePresence } from 'framer-motion';
-import { Wind, Play, Pause, RotateCcw } from 'lucide-react';
+import { motion, AnimatePresence, useReducedMotion } from 'framer-motion';
+import { Wind, Play, Pause, RotateCcw, Lightbulb } from 'lucide-react';
 import Modal from '../shared/Modal';
+import { ZoneTile } from './ZoneTiles';
+import { ZONE_COLORS, tint } from './zoneStyle';
 
 // Simple comfortable breathing: 4-4-6
 const PHASES = [
@@ -10,7 +12,13 @@ const PHASES = [
   { key: 'exhale', label: 'נשיפה', duration: 6, instruction: 'נשוף דרך הפה', color: '#3b82f6' },
 ];
 
+// Preview ring keyframes: grow over the inhale, hold, shrink over the exhale.
+const CYCLE = PHASES.reduce((a, p) => a + p.duration, 0);
+const PREVIEW_TIMES = [0, PHASES[0].duration / CYCLE, (PHASES[0].duration + PHASES[1].duration) / CYCLE, 1];
+const color = ZONE_COLORS.breathing;
+
 export default function BreathingExercise() {
+  const reduceMotion = useReducedMotion();
   const [modalOpen, setModalOpen] = useState(false);
   const [isRunning, setIsRunning] = useState(false);
   const [phaseIdx, setPhaseIdx] = useState(0);
@@ -55,32 +63,48 @@ export default function BreathingExercise() {
 
   return (
     <>
-      {/* Card */}
-      <motion.div
-        variants={{
-          hidden: { opacity: 0, y: 20 },
-          visible: { opacity: 1, y: 0 },
-        }}
+      {/* Tile */}
+      <ZoneTile
+        as="button"
+        type="button"
         onClick={() => setModalOpen(true)}
-        className="relative bg-bg-secondary border border-border-primary rounded-xl p-6 transition-all cursor-pointer hover:border-accent-primary/30 hover:bg-bg-secondary/80"
-      >
-        <span className="absolute top-3 left-3 text-[10px] font-semibold px-2.5 py-1 rounded-full bg-accent-primary/15 text-accent-primary">
-          4-4-6
-        </span>
-
-        <div className="flex flex-col items-center text-center gap-3">
-          <div className="w-14 h-14 rounded-2xl flex items-center justify-center bg-accent-primary/15">
-            <Wind className="w-7 h-7 text-accent-primary" />
-          </div>
-          <div>
-            <h3 className="text-base font-semibold text-text-primary mb-1">תרגיל נשימה</h3>
-            <p className="text-xs text-text-secondary leading-relaxed">הרגעה מהירה לפני עסקה — שאיפה 4, החזקה 4, נשיפה 6</p>
-          </div>
-          <span className="text-[11px] font-medium px-3 py-1 rounded-full bg-accent-primary/10 text-accent-primary">
+        aria-label="תרגיל נשימה 4-4-6 · התחל תרגיל"
+        aria-haspopup="dialog"
+        interactive
+        icon={Wind}
+        color={color}
+        title="תרגיל נשימה"
+        caption="איפוס מהיר לפני עסקה"
+        footer={(
+          <span className="inline-flex items-center gap-1.5 text-xs font-semibold text-text-secondary group-hover:text-text-primary transition-colors">
+            <Play className="w-3.5 h-3.5" aria-hidden />
             התחל תרגיל
           </span>
+        )}
+      >
+        <div className="flex items-center gap-4">
+          {/* Calm preview: the ring breathes in the same 4-4-6 rhythm. */}
+          <div className="relative w-16 h-16 shrink-0 grid place-items-center" aria-hidden>
+            <span className="absolute inset-0 rounded-full border" style={{ borderColor: tint(color, 30) }} />
+            <motion.span
+              className="w-12 h-12 rounded-full"
+              style={{ background: `radial-gradient(circle at 50% 40%, ${tint(color, 55)}, ${tint(color, 18)})`, boxShadow: `0 0 18px ${tint(color, 30)}` }}
+              initial={{ scale: 0.62 }}
+              animate={reduceMotion ? { scale: 0.85 } : { scale: [0.62, 1, 1, 0.62] }}
+              transition={reduceMotion ? { duration: 0 } : { duration: CYCLE, times: PREVIEW_TIMES, ease: 'easeInOut', repeat: Infinity }}
+            />
+          </div>
+          <ul className="space-y-1 text-xs min-w-0">
+            {PHASES.map((p) => (
+              <li key={p.key} className="flex items-center gap-2 text-text-secondary">
+                <span className="w-1.5 h-1.5 rounded-full shrink-0" style={{ background: p.color }} aria-hidden />
+                <span>{p.label}</span>
+                <span className="text-text-muted"><span className="num-mono">{p.duration}</span> ש׳</span>
+              </li>
+            ))}
+          </ul>
         </div>
-      </motion.div>
+      </ZoneTile>
 
       {/* Modal */}
       <Modal isOpen={modalOpen} onClose={handleClose} title="תרגיל נשימה 4-4-6" maxWidth="max-w-md">
@@ -200,7 +224,8 @@ export default function BreathingExercise() {
 
           {/* Tip */}
           <div className="text-[11px] text-text-muted text-center px-4 leading-relaxed">
-            💡 <strong>טיפ:</strong> 3-4 מחזורים לפני עסקה מפחיתים סטרס
+            <Lightbulb className="inline w-3.5 h-3.5 -mt-0.5 ml-1" aria-hidden />
+            <strong>טיפ:</strong> 3-4 מחזורים לפני עסקה מפחיתים סטרס
           </div>
         </div>
       </Modal>

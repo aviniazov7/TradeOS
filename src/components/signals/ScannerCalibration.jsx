@@ -20,7 +20,7 @@ const clampBuf = (v) => {
 // worker reads before alerting (scanReadSettings). Tuning here takes effect on
 // the next tick, no redeploy. The threshold slider simulates against the
 // training DB (wyckoffSetups) so the owner sees what each cutoff would have
-// kept, judged by his own 👍/👎 verdicts.
+// kept, judged by his own valid/invalid verdicts.
 export default function ScannerCalibration({ setups = [] }) {
   const { user } = useAuth();
   const [minConfidence, setMinConfidence] = useState(DEFAULTS.minConfidence);
@@ -86,17 +86,17 @@ export default function ScannerCalibration({ setups = [] }) {
   };
 
   return (
-    <section className="mb-7">
-      <div className="flex items-center gap-1.5 mb-3">
-        <span className="w-6 h-6 rounded-lg bg-accent-primary/12 flex items-center justify-center shrink-0">
-          <SlidersHorizontal className="w-3.5 h-3.5 text-accent-primary" />
-        </span>
-        <h2 className="text-sm font-bold text-text-primary shrink-0">כיול המנוע</h2>
-        <span className="text-[11px] text-text-muted truncate">— המנוע קורא את הערכים לפני כל התראה, בלי דיפלוי</span>
+    <section className="@container rounded-2xl border border-border-primary bg-bg-secondary">
+      <div className="flex items-center gap-2.5 px-4 py-3 border-b border-border-primary">
+        <SlidersHorizontal className="w-4 h-4 text-accent-primary shrink-0" />
+        <div className="min-w-0">
+          <h2 className="text-sm font-bold text-text-primary">כיול המנוע</h2>
+          <p className="text-[11px] text-text-muted">נקרא לפני כל התראה, בלי דיפלוי</p>
+        </div>
       </div>
 
-      <div className="rounded-xl border border-border-primary bg-bg-secondary p-4">
-        <div className="grid grid-cols-1 sm:grid-cols-2 gap-x-6 gap-y-4">
+      <div className="p-4">
+        <div className="grid grid-cols-1 @xl:grid-cols-2 gap-x-6 gap-y-4">
           {/* Confidence threshold */}
           <div>
             <div className="flex items-center justify-between mb-1.5">
@@ -149,7 +149,7 @@ export default function ScannerCalibration({ setups = [] }) {
                 {sim.filtered > 0 && <> · {sim.filtered} מסוננים</>}
               </>
             ) : (
-              'תייג סטאפים שאותרו (👍/👎) כדי לראות כאן מה כל סף היה מסנן'
+              'סמן סטאפים שאותרו כתקין / לא תקין כדי לראות כאן מה כל סף היה מסנן'
             )}
           </span>
           <button
