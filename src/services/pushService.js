@@ -23,9 +23,29 @@ async function authHeader() {
   return { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' };
 }
 
-// Subscribe this browser to push and register the subscription with the worker.
-export async function subscribeToPush() {
-  if (!pushSupported()) throw new Error('הדפדפן לא תומך בהתראות');
+// ── Registration marker ─────────────────────────────────────────────────────
+// Remembers which subscription (uid + endpoint + keys) this browser last
+// registered and when, so the app-open auto-register (usePushAutoRegister)
+// doesn't POST — and the worker doesn't spend a scarce KV write — on every
+// single app open. Re-sent at most once a day, or immediately when the
+// subscription itself changed (rotated endpoint/keys, different user).
+const PUSH_REG_MARKER = 'tradeos_pushreg';
+const PUSH_REG_MAX_AGE_MS = 24 * 60 * 60 * 1000;
+
+function subscriptionSig(uid, json) {
+  return [uid, json?.endpoint || '', json?.keys?.p256dh || '', json?.keys?.auth || ''].join('|');
+}
+function readRegMarker() {
+  try { return JSON.parse(localStorage.getItem(PUSH_REG_MARKER) || 'null'); } catch { return null; }
+}
+function writeRegMarker(sig) {
+  try { localStorage.setItem(PUSH_REG_MARKER, JSON.stringify({ sig, t: Date.now() })); } catch { /* storage unavailable */ }
+}
+function clearRegMarker() {
+  try { localStorage.removeItem(PUSH_REG_MARKER); } catch { /* storage unavailable */ }
+}
+
+async function getOrCreateSubscription() {
   const reg = await navigator.serviceWorker.ready;
   let sub = await reg.pushManager.getSubscription();
   if (!sub) {
@@ -34,12 +54,42 @@ export async function subscribeToPush() {
       applicationServerKey: urlBase64ToUint8Array(VAPID_PUBLIC_KEY),
     });
   }
+  return sub;
+}
+
+async function registerSubscription(sub) {
+  const json = sub.toJSON();
   const res = await fetch(`${WORKER_BASE}/push/subscribe`, {
     method: 'POST',
     headers: await authHeader(),
-    body: JSON.stringify({ subscription: sub.toJSON() }),
+    body: JSON.stringify({ subscription: json }),
   });
   if (!res.ok) throw new Error('רישום ההתראות נכשל');
+  const uid = getAuth().currentUser?.uid || '';
+  writeRegMarker(subscriptionSig(uid, json));
+  return true;
+}
+
+// Subscribe this browser to push and register the subscription with the worker.
+// Explicit user action (settings screens) — always registers.
+export async function subscribeToPush() {
+  if (!pushSupported()) throw new Error('הדפדפן לא תומך בהתראות');
+  const sub = await getOrCreateSubscription();
+  return registerSubscription(sub);
+}
+
+// App-open keep-alive: registers only when this device's subscription changed
+// since the last successful registration, or that was over a day ago.
+// Returns true when a registration request was actually sent.
+export async function ensurePushRegistered() {
+  if (!pushSupported()) return false;
+  const uid = getAuth().currentUser?.uid;
+  if (!uid) return false;
+  const sub = await getOrCreateSubscription();
+  const sig = subscriptionSig(uid, sub.toJSON());
+  const marker = readRegMarker();
+  if (marker && marker.sig === sig && Date.now() - (marker.t || 0) < PUSH_REG_MAX_AGE_MS) return false;
+  await registerSubscription(sub);
   return true;
 }
 
@@ -48,6 +98,7 @@ export async function unsubscribeFromPush() {
   if (!pushSupported()) return;
   const reg = await navigator.serviceWorker.ready;
   const sub = await reg.pushManager.getSubscription();
+  clearRegMarker();
   if (!sub) return;
   try {
     await fetch(`${WORKER_BASE}/push/unsubscribe`, {

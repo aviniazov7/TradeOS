@@ -39,6 +39,7 @@ export default function DCAAnalytics({ plans, prices }) {
     plans.forEach((p) => {
       (p.entries || []).forEach((e) => {
         const d = e.date?.toDate ? e.date.toDate() : new Date(e.date);
+        if (Number.isNaN(d.getTime())) return; // a bad legacy date must not crash the page
         const key = format(d, 'yyyy-MM');
         if (!monthMap[key]) monthMap[key] = 0;
         monthMap[key] += e.amount || 0;
@@ -46,7 +47,12 @@ export default function DCAAnalytics({ plans, prices }) {
     });
     const monthlyData = Object.entries(monthMap)
       .sort(([a], [b]) => a.localeCompare(b))
-      .map(([month, amount]) => ({ month: format(new Date(month + '-01'), 'MM/yy'), amount }));
+      .map(([month, amount]) => {
+        // Local first-of-month: new Date('2026-03-01') is UTC midnight, which
+        // is the previous month in any timezone west of UTC.
+        const [y, m] = month.split('-').map(Number);
+        return { month: format(new Date(y, m - 1, 1), 'MM/yy'), amount };
+      });
 
     // Allocation by coin
     const allocationData = plans

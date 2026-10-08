@@ -11,7 +11,7 @@ import { useDCA } from '../../hooks/useDCA';
 import { useMentalityJournals } from '../../hooks/useMentalityJournals';
 import { useLinkedJournals } from '../../hooks/useLinkedExchangeBalance';
 import { KEY_PROBLEM_TEXT } from '../../services/exchangeService';
-import { isClosedTrade } from '../../utils/calculations';
+import { isClosedTrade, safePnl, calculateWinRate, winRateOf, tradeRMultiple } from '../../utils/calculations';
 import DashboardSkeleton from './DashboardSkeleton';
 import PendingLimitOrders from './PendingLimitOrders';
 import TradeAgentCard from './TradeAgentCard';
@@ -127,9 +127,9 @@ export default function Dashboard() {
     const relevantTrades = allTrades.filter((t) => !t.journalId || journalIds.has(t.journalId));
     const closed = relevantTrades.filter(isClosedTrade);
     const openTrades = relevantTrades.filter((t) => !isClosedTrade(t));
-    const totalPnL = closed.reduce((s, t) => s + (t.netPnl ?? t.pnl ?? 0), 0);
-    const wins = closed.filter((t) => t.result === 'win').length;
-    const winRate = closed.length > 0 ? (wins / closed.length) * 100 : 0;
+    const totalPnL = closed.reduce((s, t) => s + safePnl(t), 0);
+    // The ONE win-rate definition (breakevens excluded) — same as the journal.
+    const winRate = calculateWinRate(closed);
     // Per-journal: prefer live wallet when linked. Derive a synthetic
     // initialBalance for linked journals so percentages stay consistent with
     // the wallet (effInit = live − that journal's closed PnL).
@@ -138,7 +138,7 @@ export default function Dashboard() {
     for (const j of journals) {
       const jPnL = closed
         .filter((t) => t.journalId === j.id)
-        .reduce((acc, t) => acc + (t.netPnl ?? t.pnl ?? 0), 0);
+        .reduce((acc, t) => acc + safePnl(t), 0);
       if (linkedBalances[j.id] != null) {
         totalInitial += Math.max(0, linkedBalances[j.id] - jPnL);
         totalBalance += linkedBalances[j.id];
@@ -155,26 +155,13 @@ export default function Dashboard() {
     // counted journals and isn't skewed by PnL from journals excluded above.
     const pnlPercent = totalInitial > 0 ? ((totalBalance - totalInitial) / totalInitial) * 100 : 0;
 
-    // Average R:R — only for closed trades that have a valid stop loss
-    const tradesWithRR = closed.filter((t) => {
-      const risk = t.direction === 'short'
-        ? (t.stopLoss - t.entryPrice)
-        : (t.entryPrice - t.stopLoss);
-      return t.stopLoss > 0 && t.entryPrice > 0 && t.exitPrice > 0 && risk > 0;
-    });
-    const avgRR = tradesWithRR.length > 0
-      ? tradesWithRR.reduce((s, t) => {
-          const risk = t.direction === 'short'
-            ? (t.stopLoss - t.entryPrice)
-            : (t.entryPrice - t.stopLoss);
-          const reward = t.direction === 'short'
-            ? (t.entryPrice - t.exitPrice)
-            : (t.exitPrice - t.entryPrice);
-          return s + reward / risk;
-        }, 0) / tradesWithRR.length
-      : null;
+    // Average signed R — net P&L over the risk taken at ENTRY (original stop),
+    // the same R the journal shows. Measuring against the current stop made a
+    // trade trailed to breakeven drop out as "no stop" (or explode in R).
+    const rs = closed.map(tradeRMultiple).filter((r) => r !== null);
+    const avgRR = rs.length > 0 ? rs.reduce((s, r) => s + r, 0) / rs.length : null;
 
-    return { totalPnL, totalTrades: closed.length, winRate, totalBalance, pnlPercent, openTrades, avgRR };
+    return { totalPnL, totalTrades: closed.length, winRate, totalBalance, totalInitial, pnlPercent, openTrades, avgRR };
   }, [allTrades, journals, linkedBalances]);
 
   // Global market data + latest news
@@ -269,9 +256,8 @@ export default function Dashboard() {
     return journals.map((j) => {
       const jTrades = allTrades.filter((t) => t.journalId === j.id);
       const closed = jTrades.filter(isClosedTrade);
-      const pnl = closed.reduce((s, t) => s + (t.netPnl ?? t.pnl ?? 0), 0);
-      const wins = closed.filter((t) => t.result === 'win').length;
-      const winRate = closed.length > 0 ? (wins / closed.length) * 100 : 0;
+      const pnl = closed.reduce((s, t) => s + safePnl(t), 0);
+      const winRate = calculateWinRate(closed);
       // Live wallet when the exchange answered; else initial + P&L when a
       // starting balance was set; else unknown. (initial 0 + P&L used to show
       // the P&L itself as a negative "portfolio value".)
@@ -293,7 +279,8 @@ export default function Dashboard() {
   const backtestStats = useMemo(() => {
     if (!backtests.length) return null;
     const wins = backtests.filter((b) => b.result === 'win').length;
-    const winRate = (wins / backtests.length) * 100;
+    const losses = backtests.filter((b) => b.result === 'loss').length;
+    const winRate = winRateOf(wins, losses);
     const avgR = backtests.reduce((s, b) => s + (b.rResult || 0), 0) / backtests.length;
     const pairCounts = {};
     backtests.forEach((b) => { if (b.pair) pairCounts[b.pair] = (pairCounts[b.pair] || 0) + 1; });
@@ -310,7 +297,7 @@ export default function Dashboard() {
     const closed = allTrades
       .filter((t) => !t.journalId || journalIds.has(t.journalId))
       .filter(isClosedTrade);
-    const pnlOf = (t) => (t.netPnl ?? t.pnl ?? 0);
+    const pnlOf = safePnl;
     const tradeMs = (t) => {
       const d = t.exitDate || t.entryDate || t.createdAt;
       if (!d) return 0;
@@ -333,7 +320,7 @@ export default function Dashboard() {
     const closed = allTrades
       .filter((t) => !t.journalId || journalIds.has(t.journalId))
       .filter(isClosedTrade);
-    const pnlOf = (t) => (t.netPnl ?? t.pnl ?? 0);
+    const pnlOf = safePnl;
     const dateOf = (t) => {
       const d = t.exitDate || t.entryDate || t.createdAt;
       if (!d) return null;
@@ -341,12 +328,13 @@ export default function Dashboard() {
       const dt = new Date(d);
       return Number.isNaN(dt.getTime()) ? null : dt;
     };
-    // Win/loss counts + P&L by trading session
+    // Win/loss counts (by the stored result, like calculateWinRate) + P&L by
+    // trading session
     let wins = 0, losses = 0;
     const sessionMap = {};
     for (const t of closed) {
       const p = pnlOf(t);
-      if (p > 0) wins++; else if (p < 0) losses++;
+      if (t.result === 'win') wins++; else if (t.result === 'loss') losses++;
       if (t.session) sessionMap[t.session] = (sessionMap[t.session] || 0) + p;
     }
     const sessions = Object.entries(sessionMap)
@@ -374,7 +362,13 @@ export default function Dashboard() {
     const pfScore = clamp((profitFactor / 2) * 100);                      // PF 2 → 100
     const rrScore = globalStats.avgRR != null ? clamp((globalStats.avgRR / 2) * 100) : 0; // R:R 2 → 100
     const consistency = grossProfit > 0 ? clamp(100 - (largestWin / grossProfit) * 100) : 0;
-    const riskMgmt = peak > 0 ? clamp(100 - (maxDD / peak) * 100) : (closed.length ? 60 : 0);
+    // Drawdown as a % only against real capital (starting balance / live
+    // wallet). On bare cumulative P&L, +10 then −9 would read as a 90%
+    // drawdown — so without capital the score stays neutral instead.
+    const capital = globalStats.totalInitial;
+    const riskMgmt = capital > 0
+      ? clamp(100 - (maxDD / (capital + peak)) * 100)
+      : (closed.length ? 60 : 0);
     const recoveryScore = clamp((recovery / 3) * 100);                    // RF 3 → 100
 
     const metrics = [
@@ -389,8 +383,10 @@ export default function Dashboard() {
 
     // KPI strip numbers
     const beCount = Math.max(0, closed.length - wins - losses);
-    const avgWin = wins ? grossProfit / wins : 0;
-    const avgLoss = losses ? -(grossLoss / losses) : 0;
+    const posCount = closed.filter((t) => pnlOf(t) > 0).length;
+    const negCount = closed.filter((t) => pnlOf(t) < 0).length;
+    const avgWin = posCount ? grossProfit / posCount : 0;
+    const avgLoss = negCount ? -(grossLoss / negCount) : 0;
     const ratio = avgLoss !== 0 ? avgWin / Math.abs(avgLoss) : (avgWin > 0 ? avgWin : 0);
     const netPnl = closed.reduce((s, t) => s + pnlOf(t), 0);
 
@@ -404,8 +400,13 @@ export default function Dashboard() {
       }
       return { current: cur, best, win: curWin };
     };
+    // Breakevens neither extend nor break a streak (same rule as the journal's
+    // current/max streak), so they are left out of the run instead of
+    // counting as wins.
     const byDate = [...closed].sort((a, b) => (dateOf(a)?.getTime() || 0) - (dateOf(b)?.getTime() || 0));
-    const tradeBools = byDate.map((t) => pnlOf(t) >= 0);
+    const tradeBools = byDate
+      .filter((t) => t.result === 'win' || t.result === 'loss')
+      .map((t) => t.result === 'win');
     const dayMap = new Map();
     for (const t of closed) {
       const d = dateOf(t);
@@ -413,13 +414,13 @@ export default function Dashboard() {
       const dk = new Date(d.getFullYear(), d.getMonth(), d.getDate()).getTime();
       dayMap.set(dk, (dayMap.get(dk) || 0) + pnlOf(t));
     }
-    const dayBools = [...dayMap.entries()].sort((a, b) => a[0] - b[0]).map((e) => e[1] >= 0);
-    const streakTrades = closed.length ? runStats(tradeBools) : { current: 0, best: 0, win: true };
-    const streakDays = dayMap.size ? runStats(dayBools) : { current: 0, best: 0, win: true };
+    const dayBools = [...dayMap.entries()].sort((a, b) => a[0] - b[0]).filter((e) => e[1] !== 0).map((e) => e[1] > 0);
+    const streakTrades = tradeBools.length ? runStats(tradeBools) : { current: 0, best: 0, win: true };
+    const streakDays = dayBools.length ? runStats(dayBools) : { current: 0, best: 0, win: true };
 
     const kpi = {
       netPnl, tradeCount: closed.length,
-      winRate: (wins + losses + beCount) > 0 ? (wins / (wins + losses + beCount)) * 100 : 0,
+      winRate: winRateOf(wins, losses),
       wins, breakeven: beCount, losses,
       avgWin, avgLoss, avgWinLossRatio: ratio,
       profitFactor,
@@ -433,7 +434,7 @@ export default function Dashboard() {
       sessionBars: sessions,
       kpi,
     };
-  }, [allTrades, journals, globalStats.winRate, globalStats.avgRR]);
+  }, [allTrades, journals, globalStats.winRate, globalStats.avgRR, globalStats.totalInitial]);
 
   if (loading) return <DashboardSkeleton />;
 

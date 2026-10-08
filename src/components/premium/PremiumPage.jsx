@@ -61,6 +61,8 @@ export default function PremiumPage() {
     ? new Date(expiresAtMs).toLocaleDateString('he-IL', { day: '2-digit', month: '2-digit', year: 'numeric' })
     : null;
   const timeLeft = timeLeftLabel(profile?.planExpires);
+  // Lifetime plan = premium with no expiry date (admins included).
+  const isLifetime = isPremium && !expiresAtMs;
   const [couponCode, setCouponCode] = useState('');
   const [redeeming, setRedeeming] = useState(false);
   const [cycle, setCycle] = useState('yearly');
@@ -199,9 +201,12 @@ export default function PremiumPage() {
           })}
         </div>
 
-        {/* Coupon — shown to everyone. For a premium user this is the renewal
-            path: the worker extends from max(currentExpiry, now) + days, so
-            redeeming while still active adds days rather than overwriting. */}
+        {/* Coupon — the renewal path for a time-limited plan: the worker
+            extends from max(currentExpiry, now) + days, so redeeming while
+            still active adds days rather than overwriting. Hidden for a
+            lifetime plan (premium with no expiry) — a coupon could only turn
+            it into a time-limited one, and the worker refuses that anyway. */}
+        {!isLifetime && (
         <div className="bg-bg-secondary border border-border-primary rounded-2xl p-4 md:p-5 flex flex-col sm:flex-row sm:items-center gap-3">
           <div className="flex items-center gap-2.5 sm:flex-1 min-w-0">
             <Ticket className="w-5 h-5 text-accent-hover shrink-0" />
@@ -232,6 +237,7 @@ export default function PremiumPage() {
             </button>
           </div>
         </div>
+        )}
       </div>
     </motion.div>
   );

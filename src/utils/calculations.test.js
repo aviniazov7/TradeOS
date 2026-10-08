@@ -17,6 +17,19 @@ import {
   calculateProfitFactor,
   calculateMaxDrawdown,
   computeTradeFields,
+  winRateOf,
+  calculateSortinoRatio,
+  initialStopLoss,
+  isStopOnRiskSide,
+  initialRiskUsd,
+  tradeRMultiple,
+  tradeRewardRisk,
+  positionUnits,
+  calculateAvgRR,
+  computeDrawdown,
+  calculateMaxStreaks,
+  calculateCurrentStreak,
+  partialRealizedPnl,
 } from './calculations';
 import { planExpiresMs } from './premium';
 
@@ -232,5 +245,127 @@ describe('computeTradeFields — the canonical trade P&L (journal + auto-close)'
     expect(r.pnl).toBe(-3.2);
     expect(r.netPnl).toBe(-3.2);
     expect(r.result).toBe('loss');
+  });
+});
+
+describe('winRateOf — the ONE win-rate definition', () => {
+  it('wins / (wins + losses); breakevens never enter the denominator', () => {
+    expect(winRateOf(2, 1)).toBeCloseTo(66.67, 1);
+    expect(winRateOf(0, 0)).toBe(0);
+    expect(winRateOf(3, 0)).toBe(100);
+  });
+});
+
+describe('calculateSortinoRatio — standard downside deviation', () => {
+  it('divides squared downside by ALL observations, not just the losers', () => {
+    // mean 3.75; downside Σ = 25 + 100 = 125; /4 = 31.25
+    expect(calculateSortinoRatio([10, -5, 20, -10])).toBeCloseTo(3.75 / Math.sqrt(31.25), 6);
+  });
+  it('no losers → Infinity when profitable', () => {
+    expect(calculateSortinoRatio([1, 2, 3])).toBe(Infinity);
+  });
+});
+
+describe('R with a moved stop — measured against the ORIGINAL stop', () => {
+  // Long 100, original stop 90, 10 units ($100 risk), stop trailed to 100 (BE).
+  const base = {
+    direction: 'long', entryPrice: 100, originalStopLoss: 90, stopLoss: 100,
+    positionSize: 1000, quantity: 10, status: 'closed', exitPrice: 120,
+  };
+
+  it('initialStopLoss prefers originalStopLoss and ignores a breakeven stop', () => {
+    expect(initialStopLoss(base)).toBe(90);
+    expect(initialStopLoss({ ...base, originalStopLoss: undefined })).toBe(0); // BE stop defines no risk
+    expect(initialStopLoss({ ...base, originalStopLoss: undefined, stopLoss: 95 })).toBe(95);
+    expect(initialStopLoss({ direction: 'short', entryPrice: 100, originalStopLoss: 110, stopLoss: 98 })).toBe(110);
+  });
+
+  it('isStopOnRiskSide', () => {
+    expect(isStopOnRiskSide('long', 100, 90)).toBe(true);
+    expect(isStopOnRiskSide('long', 100, 100)).toBe(false);
+    expect(isStopOnRiskSide('short', 100, 90)).toBe(false);
+    expect(isStopOnRiskSide('short', 100, 110)).toBe(true);
+  });
+
+  it('a stop at breakeven does not make the trade "no stop": R = net / initial risk $', () => {
+    expect(initialRiskUsd(base)).toBe(100);
+    expect(tradeRMultiple({ ...base, netPnl: 200 })).toBe(2);
+  });
+
+  it('R uses NET P&L — fees are inside the R, sign and magnitude together', () => {
+    // Gross +$5 but $10 fees → net −$5 → −0.05R.
+    expect(tradeRMultiple({ ...base, exitPrice: 100.5, netPnl: -5 })).toBeCloseTo(-0.05, 9);
+  });
+
+  it('falls back to the declared riskAmount when the stop cannot price the risk', () => {
+    const legacy = { ...base, originalStopLoss: undefined, riskAmount: 50, netPnl: 100 };
+    expect(tradeRMultiple(legacy)).toBe(2);
+    expect(tradeRMultiple({ ...legacy, riskAmount: 0 })).toBeNull();
+  });
+
+  it('computeTradeFields stores rrRatio against the original stop', () => {
+    // Before: risk |100 − 100| = 0 → rrRatio 0 ("no stop").
+    expect(computeTradeFields(base).rrRatio).toBe(2);
+  });
+
+  it('calculateAvgRR recomputes from the original stop at read time', () => {
+    const stale = { ...base, result: 'win', rrRatio: 0, stopLoss: 105 }; // stop trailed into profit
+    expect(calculateAvgRR([stale])).toBe(2);
+    // Legacy rows without prices keep their stored value.
+    expect(calculateAvgRR([{ result: 'win', rrRatio: 1.5 }])).toBe(1.5);
+  });
+
+  it('tradeRewardRisk uses the weighted exit of partial exits', () => {
+    const t = { ...base, exitPrice: 130, exits: [{ price: 110, percent: 50 }, { price: 130, percent: 50 }] };
+    expect(tradeRewardRisk(t)).toBe(2); // weighted exit 120
+  });
+
+  it('positionUnits: notional / entry, futures via the contract spec', () => {
+    expect(positionUnits({ entryPrice: 100, positionSize: 1000 })).toBe(10);
+    expect(positionUnits({ entryPrice: 5000, assetClass: 'futures_cme', contract: { pointValue: 50, contracts: 2 } })).toBe(100);
+    expect(positionUnits({ quantity: 3 })).toBe(3);
+  });
+});
+
+describe('computeDrawdown — no fake percentages without capital', () => {
+  it('with no starting balance: dollar drawdown only, percent is null', () => {
+    // +10 then −9 used to read as a 90% drawdown.
+    const dd = computeDrawdown([10, -9], 0);
+    expect(dd.maxDrawdownAbs).toBe(9);
+    expect(dd.maxDrawdownPct).toBeNull();
+  });
+  it('with capital: percent against the real peak', () => {
+    const dd = computeDrawdown([10, -9], 1000);
+    expect(dd.maxDrawdownAbs).toBe(9);
+    expect(dd.maxDrawdownPct).toBeCloseTo((9 / 1010) * 100, 9);
+    expect(dd.curve).toEqual([1010, 1001]);
+  });
+  it('empty sequence', () => {
+    expect(computeDrawdown([], 1000)).toEqual({ curve: [], maxDrawdownAbs: 0, maxDrawdownPct: 0 });
+  });
+});
+
+describe('streaks — a breakeven neither extends nor breaks a run', () => {
+  const seq = ['win', 'breakeven', 'win', 'loss', 'breakeven', 'loss', 'loss'].map((result) => ({ result }));
+  it('max streaks skip breakevens', () => {
+    expect(calculateMaxStreaks(seq)).toEqual({ maxWin: 2, maxLoss: 3 });
+  });
+  it('current streak uses the same rule', () => {
+    expect(calculateCurrentStreak(seq)).toEqual({ type: 'loss', count: 3 });
+  });
+});
+
+describe('partialRealizedPnl — realized legs of an open partial', () => {
+  it('manual partial: the stored net P&L of the executed exits', () => {
+    expect(partialRealizedPnl({ status: 'partial', exits: [{ price: 110, percent: 50 }], netPnl: 50 })).toBe(50);
+  });
+  it('ignores closed/open rows, partials without exits and exchange-sourced rows', () => {
+    expect(partialRealizedPnl({ status: 'closed', netPnl: 50 })).toBe(0);
+    expect(partialRealizedPnl({ status: 'partial', exits: [], netPnl: 50 })).toBe(0);
+    expect(partialRealizedPnl({ status: 'partial', exits: [{ price: 1, percent: 50 }], netPnl: 50, pnlFromExchange: 80 })).toBe(0);
+    expect(partialRealizedPnl({ status: 'partial', exits: [{ price: 1, percent: 50 }], netPnl: 50, externalId: 'x' })).toBe(0);
+  });
+  it('isClosedTrade still excludes partials (not redefined globally)', () => {
+    expect(isClosedTrade({ status: 'partial', exitPrice: 110 })).toBe(false);
   });
 });

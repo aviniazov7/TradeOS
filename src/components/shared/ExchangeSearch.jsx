@@ -1,9 +1,35 @@
 import { useState, useEffect, useRef } from 'react';
 import { Search, X } from 'lucide-react';
 import { EXCHANGES } from '../../utils/constants';
+import { EXCHANGES as CONNECTABLE_EXCHANGES } from '../exchange/exchangeConfig';
 import ExchangeLogo from './ExchangeLogo';
 
+// Only these have a working API sync; every other venue in the list is a label
+// for manually logged trades — say so, so the picker doesn't imply sync.
+const SYNCABLE = new Set(CONNECTABLE_EXCHANGES.filter((e) => e.canSync).map((e) => e.id));
+
 const inputClass = 'w-full bg-bg-tertiary border border-border-primary rounded-lg px-3 py-2.5 text-sm text-text-primary outline-none focus:border-accent-primary transition-colors';
+
+function Option({ ex, selected, onSelect }) {
+  const manual = !SYNCABLE.has(ex.value);
+  return (
+    <button
+      type="button"
+      onClick={() => onSelect(ex)}
+      className={`w-full flex items-center gap-2.5 px-3 py-2 text-right hover:bg-bg-tertiary transition-colors cursor-pointer ${
+        selected ? 'bg-accent-primary/10' : ''
+      }`}
+    >
+      <ExchangeLogo exchange={ex.value} size="w-5 h-5" />
+      <span className="text-sm font-medium text-text-primary">{ex.label}</span>
+      {manual && (
+        <span className="ms-auto shrink-0 text-[10px] px-1.5 py-0.5 rounded-full bg-bg-tertiary border border-border-primary text-text-muted" title="ללא סנכרון API — העסקאות נרשמות ידנית">
+          ידני
+        </span>
+      )}
+    </button>
+  );
+}
 
 export default function ExchangeSearch({ value, onChange, label = 'בורסה / ברוקר / תיק ממומן', className = '' }) {
   const [query, setQuery] = useState('');
@@ -95,55 +121,19 @@ export default function ExchangeSearch({ value, onChange, label = 'בורסה / 
             {exchanges.length > 0 && (
               <>
                 <div className="px-3 py-1.5 text-[10px] font-semibold text-text-muted uppercase tracking-wider bg-bg-tertiary/50 sticky top-0">בורסות</div>
-                {exchanges.map((ex) => (
-                  <button
-                    key={ex.value}
-                    type="button"
-                    onClick={() => handleSelect(ex)}
-                    className={`w-full flex items-center gap-2.5 px-3 py-2 text-right hover:bg-bg-tertiary transition-colors cursor-pointer ${
-                      value === ex.value ? 'bg-accent-primary/10' : ''
-                    }`}
-                  >
-                    <ExchangeLogo exchange={ex.value} size="w-5 h-5" />
-                    <span className="text-sm font-medium text-text-primary">{ex.label}</span>
-                  </button>
-                ))}
+                {exchanges.map((ex) => <Option key={ex.value} ex={ex} selected={value === ex.value} onSelect={handleSelect} />)}
               </>
             )}
             {brokers.length > 0 && (
               <>
                 <div className="px-3 py-1.5 text-[10px] font-semibold text-text-muted uppercase tracking-wider bg-bg-tertiary/50 sticky top-0">ברוקרים</div>
-                {brokers.map((ex) => (
-                  <button
-                    key={ex.value}
-                    type="button"
-                    onClick={() => handleSelect(ex)}
-                    className={`w-full flex items-center gap-2.5 px-3 py-2 text-right hover:bg-bg-tertiary transition-colors cursor-pointer ${
-                      value === ex.value ? 'bg-accent-primary/10' : ''
-                    }`}
-                  >
-                    <ExchangeLogo exchange={ex.value} size="w-5 h-5" />
-                    <span className="text-sm font-medium text-text-primary">{ex.label}</span>
-                  </button>
-                ))}
+                {brokers.map((ex) => <Option key={ex.value} ex={ex} selected={value === ex.value} onSelect={handleSelect} />)}
               </>
             )}
             {props.length > 0 && (
               <>
                 <div className="px-3 py-1.5 text-[10px] font-semibold text-text-muted uppercase tracking-wider bg-bg-tertiary/50 sticky top-0">תיקים ממומנים</div>
-                {props.map((ex) => (
-                  <button
-                    key={ex.value}
-                    type="button"
-                    onClick={() => handleSelect(ex)}
-                    className={`w-full flex items-center gap-2.5 px-3 py-2 text-right hover:bg-bg-tertiary transition-colors cursor-pointer ${
-                      value === ex.value ? 'bg-accent-primary/10' : ''
-                    }`}
-                  >
-                    <ExchangeLogo exchange={ex.value} size="w-5 h-5" />
-                    <span className="text-sm font-medium text-text-primary">{ex.label}</span>
-                  </button>
-                ))}
+                {props.map((ex) => <Option key={ex.value} ex={ex} selected={value === ex.value} onSelect={handleSelect} />)}
               </>
             )}
             {query.trim() && !filtered.some((e) => e.label.toLowerCase() === query.trim().toLowerCase()) && (

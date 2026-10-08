@@ -5,16 +5,29 @@ import DatePicker from 'react-datepicker';
 import 'react-datepicker/dist/react-datepicker.css';
 import toast from 'react-hot-toast';
 import { COINS, DCA_FREQUENCY_LABELS, DCA_STATUS_LABELS } from '../../utils/constants';
-import { calculateDCAAvgPrice } from '../../utils/calculations';
+import { calculateDCAAvgPrice, localDayKey } from '../../utils/calculations';
 import { formatNumber, formatPrice, formatDate, formatCurrency, formatPercent } from '../../utils/formatters';
 import { staggerItem, cardHover } from '../../utils/animations';
+
+// The form keeps the purchase day as a LOCAL 'YYYY-MM-DD' key. A UTC key
+// (toISOString) put a purchase entered 00:00-03:00 Israel time - or the local
+// midnight the date picker hands back - on the previous day.
+const todayKey = () => localDayKey(new Date());
+// 'YYYY-MM-DD' -> local Date at noon (noon keeps the day stable even if the
+// timestamp is later read in another timezone). null for an empty/bad key.
+function dayKeyToDate(key) {
+  const m = /^(\d{4})-(\d{2})-(\d{2})$/.exec(key || '');
+  if (!m) return null;
+  const d = new Date(+m[1], +m[2] - 1, +m[3], 12, 0, 0);
+  return Number.isNaN(d.getTime()) ? null : d;
+}
 
 const miniInputClass = 'w-full bg-bg-tertiary border border-border-primary rounded-lg px-2 py-1.5 text-xs text-text-primary outline-none focus:border-accent-primary transition-colors';
 
 export default function DCACard({ plan, onAddEntry, onEdit, onDelete, currentPrice }) {
   const [expanded, setExpanded] = useState(false);
   const [entryFormOpen, setEntryFormOpen] = useState(false);
-  const [entryForm, setEntryForm] = useState({ date: new Date().toISOString().slice(0, 10), amount: '', price: '' });
+  const [entryForm, setEntryForm] = useState({ date: todayKey(), amount: '', price: '' });
   const [saving, setSaving] = useState(false);
 
   const coinInfo = COINS.find((c) => c.symbol === plan.coin) || { symbol: plan.coin, name: plan.coin };
@@ -34,10 +47,15 @@ export default function DCACard({ plan, onAddEntry, onEdit, onDelete, currentPri
   const handleAddEntry = async (e) => {
     e.preventDefault();
     if (!entryForm.amount || !entryForm.price || parseFloat(entryForm.price) === 0) return;
+    const entryDate = dayKeyToDate(entryForm.date);
+    if (!entryDate) {
+      toast.error('בחר תאריך רכישה');
+      return;
+    }
     setSaving(true);
     try {
       const entry = {
-        date: new Date(entryForm.date),
+        date: entryDate,
         amount: parseFloat(entryForm.amount),
         price: parseFloat(entryForm.price),
         coins: parseFloat(entryForm.amount) / parseFloat(entryForm.price),
@@ -45,7 +63,7 @@ export default function DCACard({ plan, onAddEntry, onEdit, onDelete, currentPri
       await onAddEntry(plan.id, entry);
       toast.success('הרכישה נוספה');
       setEntryFormOpen(false);
-      setEntryForm({ date: new Date().toISOString().slice(0, 10), amount: '', price: '' });
+      setEntryForm({ date: todayKey(), amount: '', price: '' });
     } catch (err) {
       console.error('Add entry failed:', err);
       toast.error('שגיאה בהוספת רכישה');
@@ -176,8 +194,10 @@ export default function DCACard({ plan, onAddEntry, onEdit, onDelete, currentPri
                 <div>
                   <label className="block text-[10px] text-text-muted mb-1">תאריך</label>
                   <DatePicker
-                    selected={entryForm.date ? new Date(entryForm.date) : new Date()}
-                    onChange={(date) => setEntryForm((f) => ({ ...f, date: date.toISOString().slice(0, 10) }))}
+                    selected={dayKeyToDate(entryForm.date)}
+                    // Clearing the field hands back null - keep it empty
+                    // (submit asks for a date) instead of crashing.
+                    onChange={(date) => setEntryForm((f) => ({ ...f, date: date ? localDayKey(date) : '' }))}
                     dateFormat="dd/MM/yyyy"
                     locale="he"
                     placeholderText="בחר תאריך..."
@@ -217,7 +237,7 @@ export default function DCACard({ plan, onAddEntry, onEdit, onDelete, currentPri
               )}
 
               <div className="flex gap-2">
-                <button type="button" onClick={() => { setEntryFormOpen(false); setEntryForm({ date: new Date().toISOString().slice(0, 10), amount: '', price: '' }); }}
+                <button type="button" onClick={() => { setEntryFormOpen(false); setEntryForm({ date: todayKey(), amount: '', price: '' }); }}
                   className="flex-1 py-2 rounded-lg bg-bg-secondary text-text-primary text-xs hover:bg-border-hover transition-colors cursor-pointer">
                   ביטול
                 </button>

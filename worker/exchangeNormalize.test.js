@@ -370,3 +370,26 @@ describe('bybitWalletEquity', () => {
     expect(bybitWalletEquity([{ accountType: 'UNIFIED', totalEquity: '0', coin: [] }])).toBe(0);
   });
 });
+
+// An open position is imported under its OPEN id and later arrives closed
+// under a different externalId — the closed row must also carry the live
+// position's id so the app can close that open trade instead of duplicating.
+describe('closed rows expose the open position id', () => {
+  it('OKX: positionId is the posId the open row used as externalId', () => {
+    const closed = normalizeOkxClosed(OKX_SAMPLE, 100);
+    const open = normalizeOkxOpen({ ...OKX_SAMPLE, avgPx: '0.623', pos: '27', posSide: 'long' }, 100);
+    expect(closed.positionId).toBe(open.externalId);
+    expect(closed.externalId).not.toBe(open.externalId);
+  });
+
+  it('MEXC: positionId is the live position id, externalId stays the history id', () => {
+    const closed = normalizeMexcClosed(MEXC_SAMPLE, { externalId: 'hist-1' });
+    expect(closed.positionId).toBe('390281084');
+    expect(closed.externalId).toBe('hist-1');
+  });
+
+  it('Bitget: positionId only when the payload has one', () => {
+    expect(normalizeBitgetClosed(BITGET_SAMPLE)).not.toHaveProperty('positionId');
+    expect(normalizeBitgetClosed({ ...BITGET_SAMPLE, positionId: '55' })).toMatchObject({ positionId: '55', externalId: '55' });
+  });
+});

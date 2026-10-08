@@ -18,7 +18,7 @@ import { useUserTimeframes } from '../../hooks/useUserTimeframes';
 import { useUserTriggers } from '../../hooks/useUserTriggers';
 import { useUserTags } from '../../hooks/useUserTags';
 import { useUserMistakes } from '../../hooks/useUserMistakes';
-import { calculatePnLPercent, calculateRR, calculateNetPnL, calculatePartialPnL, calculateWeightedExitPrice, calculateFuturesContractsPnL, calculateFuturesNotional } from '../../utils/calculations';
+import { calculatePnLPercent, calculateRR, calculateNetPnL, calculatePartialPnL, calculateWeightedExitPrice, calculateFuturesContractsPnL, calculateFuturesNotional, initialStopLoss, isClosedTrade, safePnl } from '../../utils/calculations';
 import { getSessionFromDate } from '../../utils/sessions';
 import { formatCurrency, formatPercent, formatRR } from '../../utils/formatters';
 
@@ -93,6 +93,12 @@ export default function TradeForm({ isOpen, onClose, trade, onSave, riskSettings
   const { allMistakes, addMistake, removeMistake } = useUserMistakes();
   const [form, setForm] = useState(defaultForm);
   const [saving, setSaving] = useState(false);
+  // Editing an existing trade keeps its stored size (units). The risk-based
+  // auto-size (risk x entry / |entry - stop|) only runs on create, or after the
+  // user explicitly retypes the risk — otherwise moving the stop on edit
+  // silently rescaled the position and rewrote its P&L (risk $100, entry 100:
+  // stop 90 -> 10 units, move the stop to 95 -> 20 units).
+  const [lockedQty, setLockedQty] = useState(0);
   const sessionManuallySet = useRef(false);
   const [activeTab, setActiveTab] = useState('trade');
   const livePricesRef = useRef(livePrices);
@@ -103,10 +109,19 @@ export default function TradeForm({ isOpen, onClose, trade, onSave, riskSettings
     if (trade) {
       const ps = trade.positionSize || (trade.entryPrice && trade.quantity ? trade.entryPrice * trade.quantity : '');
       let derivedRisk = trade.riskAmount ?? '';
-      if (!derivedRisk && ps && trade.entryPrice && trade.stopLoss) {
+      // Risk is defined by the ORIGINAL stop — a stop already trailed to
+      // breakeven would otherwise derive a risk of ~0.
+      const riskStop = initialStopLoss(trade);
+      if (!derivedRisk && ps && trade.entryPrice && riskStop) {
         const qty = parseFloat(ps) / parseFloat(trade.entryPrice);
-        derivedRisk = (qty * Math.abs(parseFloat(trade.entryPrice) - parseFloat(trade.stopLoss))).toFixed(2);
+        derivedRisk = (qty * Math.abs(parseFloat(trade.entryPrice) - riskStop)).toFixed(2);
       }
+      const storedQty = parseFloat(trade.quantity) > 0
+        ? parseFloat(trade.quantity)
+        : (parseFloat(ps) > 0 && parseFloat(trade.entryPrice) > 0 ? parseFloat(ps) / parseFloat(trade.entryPrice) : 0);
+      // Futures size in contracts and stocks in shares (both loaded below), so
+      // only the risk-sized crypto path needs the lock.
+      setLockedQty(['futures_cme', 'stocks'].includes(trade.assetClass) ? 0 : storedQty);
 
       // Combine exits (with %/contracts) + tps (price only). Futures exits also
       // carry a contract count so the editor shows contracts, not percent.
@@ -182,6 +197,7 @@ export default function TradeForm({ isOpen, onClose, trade, onSave, riskSettings
         confidenceRating: trade.confidenceRating ?? 3,
       });
     } else {
+      setLockedQty(0);
       // New trade: seed the asset class from the user's profile preference and
       // pick a sensible default symbol for it.
       setForm({
@@ -242,28 +258,51 @@ export default function TradeForm({ isOpen, onClose, trade, onSave, riskSettings
     return form.additionalExits.reduce((s, e) => s + (parseFloat(e.percent) || 0), 0);
   }, [form.additionalExits, isFutures, contractsNum]);
 
+  // A closed broker/exchange import often has a settled P&L but NO exit rows
+  // (and no exit price), so the editor loads with zero exits. Saving it
+  // untouched used to flip it to 'open' and recompute its P&L to 0. While the
+  // user hasn't recorded any exit, it stays closed with its stored P&L.
+  const keepsImportedClose = !!trade && isClosedTrade(trade)
+    && !(trade.exits?.length) && !(parseFloat(trade.exitPrice) > 0)
+    && additionalExitsPercent === 0;
+
   const currentStatus = useMemo(() => {
+    if (keepsImportedClose) return 'closed';
     if (form.orderType === 'limit' && additionalExitsPercent === 0) return 'limit';
     if (additionalExitsPercent >= 100) return 'closed';
     if (additionalExitsPercent > 0) return 'partial';
     return 'open';
-  }, [form.orderType, additionalExitsPercent]);
+  }, [form.orderType, additionalExitsPercent, keepsImportedClose]);
 
-  // Auto-calculate position size from risk amount
+  // The stop that defines the trade's risk: on edit, the ORIGINAL stop (the
+  // current one may be trailed to breakeven or into profit); on create, the
+  // stop being typed.
+  const riskStopLoss = useMemo(() => {
+    if (trade) {
+      const orig = initialStopLoss({ ...trade, direction: form.direction, entryPrice: form.entryPrice });
+      if (orig > 0) return orig;
+    }
+    return parseFloat(form.stopLoss) || 0;
+  }, [trade, form.direction, form.entryPrice, form.stopLoss]);
+
+  // Auto-calculate position size from risk amount (create, or explicit risk edit)
   const autoPositionSize = useMemo(() => {
     const entry = parseFloat(form.entryPrice);
-    const sl = parseFloat(form.stopLoss);
+    const sl = riskStopLoss;
     const risk = parseFloat(form.riskAmount);
     if (!entry || !sl || !risk || entry === sl) return null;
     const distance = Math.abs(entry - sl);
     return (risk * entry) / distance;
-  }, [form.entryPrice, form.stopLoss, form.riskAmount]);
+  }, [form.entryPrice, riskStopLoss, form.riskAmount]);
 
-  // Use auto-calculated or manual position size
-  // Stocks: an explicit share count wins over the risk-derived size.
-  const effectivePositionSize = (isStocks && sharesNum > 0 && parseFloat(form.entryPrice) > 0)
-    ? sharesNum * parseFloat(form.entryPrice)
-    : autoPositionSize ?? (parseFloat(form.positionSize) || 0);
+  // Use the stored size (edit), the share count (stocks), or the risk-derived
+  // size — in that order.
+  const entryNum = parseFloat(form.entryPrice);
+  const effectivePositionSize = (isStocks && sharesNum > 0 && entryNum > 0)
+    ? sharesNum * entryNum
+    : (!isStocks && lockedQty > 0 && entryNum > 0)
+      ? lockedQty * entryNum
+      : autoPositionSize ?? (parseFloat(form.positionSize) || 0);
 
   // Calculated margin
   const calculatedMargin = useMemo(() => {
@@ -281,7 +320,6 @@ export default function TradeForm({ isOpen, onClose, trade, onSave, riskSettings
 
   const calc = useMemo(() => {
     const entry = parseFloat(form.entryPrice);
-    const sl = parseFloat(form.stopLoss);
     const fees = parseFloat(form.fees) || 0;
 
     // Futures: dollar P&L = points × pointValue × contracts, summed exactly
@@ -295,7 +333,7 @@ export default function TradeForm({ isOpen, onClose, trade, onSave, riskSettings
       const notional = calculateFuturesNotional(entry, contractSpec.pointValue, contractsNum);
       const pnlPercent = notional ? (pnl / notional) * 100 : 0;
       const weightedExit = calculateWeightedExitPrice(futExits.map(e => ({ price: e.price, percent: e.contracts })));
-      const rrRatio = calculateRR(entry, weightedExit, sl);
+      const rrRatio = calculateRR(entry, weightedExit, riskStopLoss);
       const netPnl = calculateNetPnL(pnl, fees);
       return { pnl, pnlPercent, rrRatio, netPnl };
     }
@@ -316,11 +354,12 @@ export default function TradeForm({ isOpen, onClose, trade, onSave, riskSettings
       ? (typeof form.pnlPercent === 'number' ? form.pnlPercent : calculatePnLPercent(pnl, entry, calculatedQty, form.leverage))
       : calculatePnLPercent(pnl, entry, calculatedQty, isStocks ? 1 : form.leverage);
     const weightedExit = calculateWeightedExitPrice(allExits);
-    const rrRatio = calculateRR(entry, weightedExit, sl);
+    // R against the original stop (see riskStopLoss), like computeTradeFields.
+    const rrRatio = calculateRR(entry, weightedExit, riskStopLoss);
     const netPnl = calculateNetPnL(pnl, fees);
 
     return { pnl, pnlPercent, rrRatio, netPnl };
-  }, [form.direction, form.entryPrice, form.additionalExits, form.stopLoss, calculatedQty, form.fees,
+  }, [form.direction, form.entryPrice, form.additionalExits, riskStopLoss, calculatedQty, form.fees,
       form.leverage, form.pnlFromExchange, form.pnlPercent, isFutures, contractSpec, contractsNum, isStocks]);
 
   // Risk warning
@@ -378,8 +417,18 @@ export default function TradeForm({ isOpen, onClose, trade, onSave, riskSettings
       return;
     }
 
-    // SL validation based on direction
-    if (sl && entryPrice) {
+    // SL validation based on direction. On an EXISTING trade a stop at/through
+    // entry is legitimate — it was trailed to breakeven or into profit (the
+    // dashboard SL editor does exactly that). It is allowed when the original
+    // stop is on the risk side, or when the stored stop is simply unchanged
+    // (legacy trades trailed before originalStopLoss existed). New trades
+    // still validate the stop they are opened with.
+    const storedStop = parseFloat(trade?.stopLoss) || 0;
+    const isTrailedStop = !!trade && (
+      initialStopLoss({ ...trade, direction: form.direction, entryPrice }) > 0
+      || (sl > 0 && sl === storedStop)
+    );
+    if (sl && entryPrice && !isTrailedStop) {
       if (form.direction === 'long' && sl >= entryPrice) {
         toast.error('סטופ לוס חייב להיות מתחת למחיר הכניסה בלונג');
         return;
@@ -447,13 +496,19 @@ export default function TradeForm({ isOpen, onClose, trade, onSave, riskSettings
       const finalTrigger = form.trigger;
       // Futures: quantity is the contract count (satisfies the >0 rule and is
       // the meaningful unit); leverage is fixed at 1 (margin is exchange-set).
-      const quantity = isFutures ? contractsNum : ps / entryPrice;
+      const quantity = isFutures
+        ? contractsNum
+        // Edit keeps the stored units exactly (no ps/entry float round-trip).
+        : (!isStocks && lockedQty > 0) ? lockedQty : ps / entryPrice;
       // Match ImportTrades' clamp range (1–200x) so manual entry can't produce
       // out-of-range values that break downstream stats.
       const leverage = (isFutures || isStocks) ? 1 : Math.min(200, Math.max(1, parseInt(form.leverage) || 1));
 
       const allExits = validAdditional;
-      const exitPrice = calculateWeightedExitPrice(allExits);
+      // An untouched closed import keeps status 'closed' (and no exit price) so
+      // computeTradeFields keeps using its settled pnlFromExchange.
+      const keepClosed = keepsImportedClose && !allExits.length;
+      const exitPrice = keepClosed ? 0 : calculateWeightedExitPrice(allExits);
       // Closed when the whole position is out. For futures compare contracts
       // (exact); for crypto compare the percent sum — with a small rounding
       // tolerance (33.33×3 = 99.99 is a FULL close, and treating it as
@@ -461,7 +516,7 @@ export default function TradeForm({ isOpen, onClose, trade, onSave, riskSettings
       const fullyClosed = isFutures
         ? allExits.reduce((s, e) => s + e.contracts, 0) >= contractsNum
         : allExits.reduce((s, e) => s + e.percent, 0) >= 99.95;
-      const status = !allExits.length ? 'open' : fullyClosed ? 'closed' : 'partial';
+      const status = keepClosed ? 'closed' : !allExits.length ? 'open' : fullyClosed ? 'closed' : 'partial';
 
       // Planned targets (no exit recorded yet): price set but no %/contracts.
       const tpsOnly = form.additionalExits
@@ -485,7 +540,9 @@ export default function TradeForm({ isOpen, onClose, trade, onSave, riskSettings
         // The first-recorded stop. Set once on create and preserved on every
         // edit, so the UI can show "New Stop" while keeping the original.
         originalStopLoss: trade
-          ? (trade.originalStopLoss ?? trade.stopLoss ?? (sl || 0))
+          ? (parseFloat(trade.originalStopLoss) > 0
+            ? parseFloat(trade.originalStopLoss)
+            : (parseFloat(trade.stopLoss) || sl || 0))
           : (sl || 0),
         takeProfit: 0,
         quantity,
@@ -572,17 +629,22 @@ export default function TradeForm({ isOpen, onClose, trade, onSave, riskSettings
               };
               const cfg = statusCfg[currentStatus];
               const Icon = cfg.icon;
+              // A closed import with no exit rows has no live calc — show its
+              // stored P&L instead of nothing.
+              const shown = calc || (keepsImportedClose
+                ? { netPnl: safePnl(trade), pnlPercent: Number(trade.pnlPercent) || 0, rrRatio: Number(trade.rrRatio) || 0 }
+                : null);
               return (
                 <div className={`flex items-center justify-between px-3 py-2 rounded-xl border ${cfg.bg} ${cfg.border} mb-1`}>
                   <div className="flex items-center gap-2">
                     <div className={`w-2 h-2 rounded-full shrink-0 ${cfg.dot}`} />
                     <span className={`text-xs font-semibold ${cfg.color}`}>{cfg.label}</span>
                   </div>
-                  {calc && (
+                  {shown && (
                     <div className="flex items-center gap-2.5">
-                      <span className={`text-sm font-bold ${pnlColor(calc.netPnl)}`}>{formatCurrency(calc.netPnl)}</span>
-                      <span className={`text-xs font-semibold ${pnlColor(calc.pnlPercent)}`}>{formatPercent(calc.pnlPercent)}</span>
-                      <span className={`text-[10px] font-medium px-1.5 py-0.5 rounded bg-bg-tertiary ${pnlColor(calc.netPnl)}`}>{formatRR(calc.rrRatio, calc.netPnl)}</span>
+                      <span className={`text-sm font-bold ${pnlColor(shown.netPnl)}`}>{formatCurrency(shown.netPnl)}</span>
+                      <span className={`text-xs font-semibold ${pnlColor(shown.pnlPercent)}`}>{formatPercent(shown.pnlPercent)}</span>
+                      <span className={`text-[10px] font-medium px-1.5 py-0.5 rounded bg-bg-tertiary ${pnlColor(shown.netPnl)}`}>{formatRR(shown.rrRatio, shown.netPnl)}</span>
                     </div>
                   )}
                 </div>
@@ -804,7 +866,7 @@ export default function TradeForm({ isOpen, onClose, trade, onSave, riskSettings
                 </div>
                 <div>
                   <label className={labelClass}>{sharesNum > 0 ? 'סיכון ($) · לתיעוד' : 'או לפי סיכון ($)'}</label>
-                  <input type="number" step="any" value={form.riskAmount} onChange={(e) => update('riskAmount', e.target.value)} className={inputClass} placeholder="100" inputMode="decimal" />
+                  <input type="number" step="any" value={form.riskAmount} onChange={(e) => { update('riskAmount', e.target.value); setLockedQty(0); }} className={inputClass} placeholder="100" inputMode="decimal" />
                 </div>
                 <div>
                   <label className={labelClass}>עמלות ($)</label>
@@ -815,7 +877,7 @@ export default function TradeForm({ isOpen, onClose, trade, onSave, riskSettings
               <div className="grid grid-cols-3 gap-2">
                 <div>
                   <label className={labelClass}>סיכון ($)</label>
-                  <input type="number" step="any" value={form.riskAmount} onChange={(e) => update('riskAmount', e.target.value)} className={inputClass} placeholder="50" inputMode="decimal" />
+                  <input type="number" step="any" value={form.riskAmount} onChange={(e) => { update('riskAmount', e.target.value); setLockedQty(0); }} className={inputClass} placeholder="50" inputMode="decimal" />
                 </div>
                 <div>
                   <label className={labelClass}>מינוף</label>

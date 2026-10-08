@@ -5,6 +5,7 @@ import { motion, AnimatePresence } from 'framer-motion';
 import {
   Search, CornerDownLeft, LayoutDashboard, BookOpen, Brain, FlaskConical,
   Coins, Wallet, ClipboardList, Activity, Bot, Newspaper, Crown, User, Building2,
+  Briefcase, Trophy, Fish, LineChart,
 } from 'lucide-react';
 import { getUserCollectionDocs } from '../../services/firestoreService';
 import { useAuth } from '../../contexts/AuthContext';
@@ -15,13 +16,17 @@ const PAGES = [
   { label: 'יומן מסחר', path: '/journal', icon: BookOpen, kw: 'עסקאות trades journal' },
   { label: 'האזור המנטלי', path: '/mentality', icon: Brain, kw: 'מנטל פסיכולוגיה mentality mindset' },
   { label: 'בקטסט', path: '/backtest', icon: FlaskConical, kw: 'backtest' },
-  { label: 'מעקב DCA', path: '/dca', icon: Coins, kw: 'dca' },
-  { label: 'ארנקים', path: '/wallets', icon: Wallet, kw: 'wallets ארנק יתרה' },
+  { label: 'תיק', path: '/portfolio', icon: Briefcase, kw: 'portfolio תיק השקעות' },
+  { label: 'מעקב DCA', path: '/portfolio?tab=dca', icon: Coins, kw: 'dca תיק' },
+  { label: 'ארנקים', path: '/portfolio?tab=wallets', icon: Wallet, kw: 'wallets ארנק יתרה תיק' },
   { label: 'תוכניות מסחר', path: '/plans', icon: ClipboardList, kw: 'plans תוכנית' },
   { label: 'סקירת שוק', path: '/market', icon: Activity, kw: 'market שוק' },
+  { label: 'ניתוח מטבע', path: '/market?tab=analysis', icon: LineChart, kw: 'analysis ניתוח מטבע שוק' },
+  { label: 'מעקב לווייתנים', path: '/market?tab=whales', icon: Fish, kw: 'whales לווייתנים שוק' },
+  { label: 'Polymarket', path: '/market?tab=polymarket', icon: Trophy, kw: 'polymarket פולימרקט הימורים שוק' },
   { label: 'TradeAI', path: '/trade-ai', icon: Bot, kw: 'ai בינה מלאכותית' },
   { label: 'חדשות', path: '/news', icon: Newspaper, kw: 'news' },
-  { label: 'בורסות', path: '/exchange', icon: Building2, kw: 'exchange חיבור api מפתח' },
+  { label: 'בורסות', path: '/journal?tab=exchange', icon: Building2, kw: 'exchange חיבור api מפתח' },
   { label: 'שדרוג Premium', path: '/premium', icon: Crown, kw: 'premium פרימיום שדרוג' },
   { label: 'פרופיל', path: '/profile', icon: User, kw: 'profile הגדרות settings חשבון' },
 ];

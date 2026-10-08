@@ -1,4 +1,4 @@
-import { isClosedTrade, localDayKey } from './calculations';
+import { isClosedTrade, localDayKey, positionUnits } from './calculations';
 
 // Severity is about what the trader can still do about it, not about size.
 // critical — a plan limit is breached RIGHT NOW by something still open.
@@ -16,37 +16,39 @@ const count = (n, one, many) => (n === 1 ? one : `${n} ${many}`);
 const isOpen = (t) => !!t && !isClosedTrade(t);
 const dayOf = (t) => localDayKey(t.exitDate || t.entryDate);
 
-// How many units the position actually holds. positionSize is persisted as the
-// USD NOTIONAL in every write path (useTrades.buildTradeDoc: entryPrice ×
-// quantity for crypto, price × pointValue × contracts for futures), so
-// notional / entry is the one conversion that is right for both asset classes —
-// for futures the quotient is pointValue × contracts. trade.quantity is NOT
-// interchangeable: on futures it holds the bare contract count with pointValue
-// stripped out, which would understate the risk by the point value.
-function unitsOf(trade, entry) {
-  const notional = num(trade.positionSize);
-  if (entry > 0 && notional > 0) return notional / entry;
-  if (trade.assetClass === 'futures_cme') return 0; // no notional, no safe conversion
-  return num(trade.quantity);
+// Share of the position still open (0..1). Partial exits (TP1 taken) already
+// left the market — their size can no longer be stopped out.
+function openFraction(trade) {
+  const exitedPct = (Array.isArray(trade.exits) ? trade.exits : [])
+    .reduce((s, e) => s + num(e?.percent), 0);
+  return Math.max(0, Math.min(1, 1 - exitedPct / 100));
 }
 
 // The dollar amount at risk on an open position right now.
+//
+//   risk = max(0, (entry − stop) × sign) × units × (1 − exited% / 100)
 //
 // The live stop wins over the declared riskAmount. riskAmount is the risk
 // planned at entry and TradeForm keeps it untouched when the trade is edited,
 // so a position moved to breakeven would otherwise keep reporting the risk it
 // no longer carries. A supervisor that reports stale risk as current is worse
-// than one that reports nothing.
+// than one that reports nothing. A stop trailed INTO profit locks gains in —
+// it is zero risk, not |entry − stop| of risk. Units come from the shared
+// positionUnits (notional / entry — right for crypto and futures alike).
 function riskOf(trade) {
   const entry = num(trade.entryPrice);
   const stop = num(trade.stopLoss);
-  const units = unitsOf(trade, entry);
+  const units = positionUnits(trade);
+  const remaining = openFraction(trade);
 
   if (entry > 0 && stop > 0 && units > 0) {
-    return { usd: Math.abs(entry - stop) * units, source: 'derived' };
+    // Without a recorded direction the side is unknowable — keep the distance.
+    const sign = trade.direction === 'short' ? -1 : trade.direction === 'long' ? 1 : null;
+    const perUnit = sign === null ? Math.abs(entry - stop) : Math.max(0, (entry - stop) * sign);
+    return { usd: perUnit * units * remaining, source: 'derived' };
   }
   const declared = num(trade.riskAmount);
-  if (declared > 0) return { usd: declared, source: 'declared' };
+  if (declared > 0) return { usd: declared * remaining, source: 'declared' };
   // 'unsized' = there is a stop but no way to price it. Different fact from
   // 'no-stop', and the two must never be merged into one counter.
   return { usd: 0, source: stop > 0 ? 'unsized' : 'no-stop' };

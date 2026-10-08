@@ -49,9 +49,12 @@ const BTC_RE = /^(bc1[a-z0-9]{25,62}|[13][a-km-zA-HJ-NP-Z1-9]{25,34})$/;
 const SOL_RE = /^[1-9A-HJ-NP-Za-km-z]{40,44}$/;
 const isValidAddress = (a) => EVM_RE.test(a) || BTC_RE.test(a) || SOL_RE.test(a);
 
-export default function WalletsPage() {
+// `embedded`: rendered as a tab of the Portfolio page, which owns the page
+// title (h1) and the outer padding.
+export default function WalletsPage({ embedded = false }) {
   const { user, isPremium } = useAuth();
   const navigate = useNavigate();
+  const TitleTag = embedded ? 'h2' : 'h1';
   const [wallets, setWallets] = useState([]);      // [{ id, address, label }]
   const [data, setData] = useState({});            // address -> { totalUsd, chains, tokens } | { error }
   const [loadingAddr, setLoadingAddr] = useState({});
@@ -137,7 +140,7 @@ export default function WalletsPage() {
 
   return (
     <motion.div variants={pageVariants} initial="initial" animate="animate" exit="exit" transition={pageTransition}
-      className="px-4 py-6">
+      className={embedded ? '' : 'px-4 py-6'}>
       <div className="max-w-3xl mx-auto space-y-4">
 
         {/* Header — compact on mobile; the explanation lives behind a "?" */}
@@ -151,7 +154,7 @@ export default function WalletsPage() {
               <span className="w-10 h-10 md:w-11 md:h-11 rounded-xl bg-accent-primary/12 border border-accent-primary/20 grid place-items-center shrink-0">
                 <Wallet className="w-5 h-5 text-accent-primary" />
               </span>
-              <h1 className="text-xl md:text-2xl font-bold">ארנקים</h1>
+              <TitleTag className="text-xl md:text-2xl font-bold">ארנקים</TitleTag>
               <motion.button
                 onClick={() => setShowInfo((v) => !v)}
                 whileTap={{ scale: 0.9 }}

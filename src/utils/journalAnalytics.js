@@ -1,5 +1,5 @@
 import { format } from 'date-fns';
-import { isClosedTrade, safePnl, calculatePnL } from './calculations';
+import { isClosedTrade, safePnl, calculatePnL, localDayKey, winRateOf, calculateMaxStreaks, tradeRMultiple } from './calculations';
 
 // Pure analytics for the journal's analytics tab. Extracted from TradeJournal
 // so the (heavy) computation only runs when that tab is open, and so it can be
@@ -12,7 +12,9 @@ const tradeDate = (t) => {
   return isNaN(d.getTime()) ? null : d;
 };
 
-const netOf = (t) => t.netPnl ?? t.pnl ?? 0;
+// safePnl, not `netPnl ?? pnl`: a numeric-string or NaN P&L from a dirty
+// import would otherwise concatenate into a string sum and crash .toFixed.
+const netOf = safePnl;
 
 // Period-filtered trades — same window logic as useDashboardStats so the
 // analytics match the selected period.
@@ -50,13 +52,22 @@ export function computeJournalAnalytics(periodTrades) {
     { name: 'אפס', value: be },
   ].filter((d) => d.value > 0);
 
-  const dailyMap = {};
+  // Bucket by the full local day (yyyy-MM-dd) — keying by 'MM/dd' merged the
+  // same calendar day of different years into one bar. Only the LABEL is
+  // short; it gains the year when the range spans more than one.
+  const dailyMap = new Map();
   sorted.forEach((t) => {
-    const key = format(safeTradeDate(t), 'MM/dd');
-    if (!dailyMap[key]) dailyMap[key] = 0;
-    dailyMap[key] += netOf(t);
+    const d = safeTradeDate(t);
+    const key = localDayKey(d);
+    const cur = dailyMap.get(key) || { d, pnl: 0 };
+    cur.pnl += netOf(t);
+    dailyMap.set(key, cur);
   });
-  const dailyPnL = Object.entries(dailyMap).map(([date, pnl]) => ({ date, pnl: parseFloat(pnl.toFixed(2)) }));
+  const years = new Set([...dailyMap.keys()].map((k) => k.slice(0, 4)));
+  const labelFmt = years.size > 1 ? 'MM/dd/yy' : 'MM/dd';
+  const dailyPnL = [...dailyMap.entries()].map(([key, { d, pnl }]) => ({
+    key, date: format(d, labelFmt), pnl: parseFloat(pnl.toFixed(2)),
+  }));
 
   const pairMap = {};
   closed.forEach((t) => {
@@ -67,18 +78,19 @@ export function computeJournalAnalytics(periodTrades) {
   });
   const byPair = Object.entries(pairMap).map(([pair, d]) => {
     const total = d.wins + d.losses;
-    return { pair, ...d, total, winRate: total > 0 ? (d.wins / total) * 100 : 0 };
+    return { pair, ...d, total, winRate: winRateOf(d.wins, d.losses) };
   }).sort((a, b) => b.pnl - a.pnl);
 
   const tfMap = {};
   closed.forEach((t) => {
     const tf = t.timeframe || 'N/A';
-    if (!tfMap[tf]) tfMap[tf] = { wins: 0, total: 0, pnl: 0 };
+    if (!tfMap[tf]) tfMap[tf] = { wins: 0, losses: 0, total: 0, pnl: 0 };
     tfMap[tf].total++;
     if (t.result === 'win') tfMap[tf].wins++;
+    else if (t.result === 'loss') tfMap[tf].losses++;
     tfMap[tf].pnl += netOf(t);
   });
-  const byTimeframe = Object.entries(tfMap).map(([tf, d]) => ({ timeframe: tf, ...d, winRate: ((d.wins / d.total) * 100) })).sort((a, b) => b.pnl - a.pnl);
+  const byTimeframe = Object.entries(tfMap).map(([tf, d]) => ({ timeframe: tf, ...d, winRate: winRateOf(d.wins, d.losses) })).sort((a, b) => b.pnl - a.pnl);
 
   const tagMap = {};
   closed.forEach((t) => {
@@ -91,21 +103,19 @@ export function computeJournalAnalytics(periodTrades) {
       tagMap[tag].pnl += netOf(t);
     });
   });
-  const byTag = Object.entries(tagMap).map(([tag, d]) => ({ tag, ...d, winRate: d.count > 0 ? (d.wins / d.count) * 100 : 0 })).sort((a, b) => b.pnl - a.pnl);
+  const byTag = Object.entries(tagMap).map(([tag, d]) => ({ tag, ...d, winRate: winRateOf(d.wins, d.losses) })).sort((a, b) => b.pnl - a.pnl);
 
-  let curWin = 0, curLoss = 0, maxWin = 0, maxLoss = 0;
-  sorted.forEach((t) => {
-    if (t.result === 'win') { curWin++; curLoss = 0; maxWin = Math.max(maxWin, curWin); }
-    else if (t.result === 'loss') { curLoss++; curWin = 0; maxLoss = Math.max(maxLoss, curLoss); }
-    else { curWin = 0; curLoss = 0; }
-  });
+  // Breakevens neither extend nor break a run — same rule as the current streak.
+  const { maxWin, maxLoss } = calculateMaxStreaks(sorted);
 
   const longTrades = closed.filter((t) => t.direction === 'long');
   const shortTrades = closed.filter((t) => t.direction === 'short');
   const longWins = longTrades.filter((t) => t.result === 'win').length;
   const shortWins = shortTrades.filter((t) => t.result === 'win').length;
-  const longWinRate = longTrades.length ? (longWins / longTrades.length) * 100 : 0;
-  const shortWinRate = shortTrades.length ? (shortWins / shortTrades.length) * 100 : 0;
+  const longLosses = longTrades.filter((t) => t.result === 'loss').length;
+  const shortLosses = shortTrades.filter((t) => t.result === 'loss').length;
+  const longWinRate = winRateOf(longWins, longLosses);
+  const shortWinRate = winRateOf(shortWins, shortLosses);
   const longPnl = longTrades.reduce((s, t) => s + netOf(t), 0);
   const shortPnl = shortTrades.reduce((s, t) => s + netOf(t), 0);
 
@@ -120,15 +130,20 @@ export function computeJournalAnalytics(periodTrades) {
     stratMap[t.strategy].pnl += netOf(t);
   });
   const byStrategy = Object.entries(stratMap)
-    .map(([name, d]) => ({ name, ...d, winRate: d.count > 0 ? (d.wins / d.count) * 100 : 0 }))
+    .map(([name, d]) => ({ name, ...d, winRate: winRateOf(d.wins, d.losses) }))
     .sort((a, b) => b.count - a.count);
 
   return { avgWin, avgLoss, largestWin, largestLoss, pieData, dailyPnL, byPair, byTimeframe, byTag, byStrategy, maxWin, maxLoss, longWinRate, shortWinRate, longPnl, shortPnl, longCount: longTrades.length, shortCount: shortTrades.length, longWins, shortWins };
 }
 
-// Signed R of a closed trade: rrRatio is stored as a magnitude, the sign comes
-// from the P&L (same convention as formatRR). null when there's no stop/R.
+// Signed R of a closed trade: NET P&L / the dollars risked at entry (from the
+// ORIGINAL stop, so a stop trailed to breakeven keeps the trade's real R and
+// never makes it count as "no stop"). Legacy rows whose risk can't be priced
+// (no size on file) fall back to the stored rrRatio magnitude signed by the
+// P&L. null when the trade never had a defined risk.
 const signedR = (t) => {
+  const r = tradeRMultiple(t);
+  if (r !== null) return r;
   const rr = Math.abs(Number(t.rrRatio));
   if (!Number.isFinite(rr) || rr === 0) return null;
   return safePnl(t) < 0 ? -rr : rr;
@@ -148,7 +163,8 @@ export function summarizeTrades(trades) {
     net,
     wins,
     losses,
-    winRate: closed.length ? (wins / closed.length) * 100 : null,
+    // Same definition as every other screen: breakevens are excluded.
+    winRate: closed.length ? winRateOf(wins, losses) : null,
     avgR: rs.length ? rs.reduce((s, r) => s + r, 0) / rs.length : null,
   };
 }

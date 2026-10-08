@@ -298,13 +298,19 @@ function LockedTeaser() {
 // fetched or scored for non-premium (the scoring is the paid deliverable).
 function PolymarketBoard() {
   const navigate = useNavigate();
-  // Tab lives in the URL so returning from a market/wallet page (and a plain
-  // refresh) lands back where you were instead of resetting to wallets.
+  // Sub-tab lives in the URL (?pm=…) so returning from a market/wallet page
+  // (and a plain refresh) lands back where you were instead of resetting to
+  // wallets. `pm`, not `tab`: this board is itself the Polymarket tab of the
+  // Market page (/market?tab=polymarket), which owns `tab`.
   const [searchParams, setSearchParams] = useSearchParams();
   const TAB_KEYS = ['wallets', 'markets', 'consensus', 'radar'];
-  const urlTab = searchParams.get('tab');
+  const urlTab = searchParams.get('pm');
   const mainTab = TAB_KEYS.includes(urlTab) ? urlTab : 'wallets';
-  const setMainTab = (key) => setSearchParams({ tab: key }, { replace: true });
+  const setMainTab = (key) => setSearchParams((prev) => {
+    const next = new URLSearchParams(prev);
+    next.set('pm', key);
+    return next;
+  }, { replace: true });
   const [category, setCategory] = useState('overall');
   const { rows, loading, loadingMore, error, hasMore, loadMore, refetch } = usePolymarketLeaderboard(category);
   const { watched, watchedSet, toggle } = usePolymarketWatch();
@@ -323,7 +329,7 @@ function PolymarketBoard() {
   // is in its temporal dead zone until declared, which crashed the page.
   const { countByMarket, loading: smartLoading } = useSmartConsensus({ enabled: mainTab === 'consensus' || strategyOpen || analystOpen });
 
-  const openWallet = (r) => navigate(`/polymarket/wallet/${r.wallet}`, { state: { row: r, from: `/polymarket?tab=${mainTab}` } });
+  const openWallet = (r) => navigate(`/polymarket/wallet/${r.wallet}`, { state: { row: r, from: `/market?tab=polymarket&pm=${mainTab}` } });
 
   const watchedRows = useMemo(
     () => watched.map((w) => rows.find((r) => r.wallet === w.wallet) || snapshotToRow(w)),

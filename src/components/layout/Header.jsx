@@ -15,7 +15,10 @@ export default function Header({ onToggleSidebar, sidebarOpen }) {
     >
       {/* Burger - rightmost in RTL */}
       <button
+        type="button"
         onClick={onToggleSidebar}
+        aria-label={sidebarOpen ? 'סגירת התפריט' : 'פתיחת התפריט'}
+        aria-expanded={sidebarOpen}
         className="p-1.5 rounded-lg text-text-muted hover:text-text-primary hover:bg-bg-tertiary transition-colors cursor-pointer shrink-0"
       >
         <motion.div

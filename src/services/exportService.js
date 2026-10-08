@@ -2,6 +2,9 @@
 // Loaded lazily by ProfilePage so the xlsx bundle doesn't ship to every user.
 
 import { getUserCollectionDocs, getUserProfile } from './firestoreService';
+import {
+  ASSET_CLASS_LABELS, tradeAssetClass, tradeUnits, exitsSummary, grossPnl, signedR, statusLabel,
+} from '../utils/tradeExport';
 
 const fmtDate = (v) => {
   if (!v) return '';
@@ -26,28 +29,31 @@ const SHEETS = {
     title: 'עסקאות',
     columns: [
       { header: 'מטבע', get: (t) => t.pair || t.symbol },
+      { header: 'סוג נכס', get: (t) => ASSET_CLASS_LABELS[tradeAssetClass(t)] },
       { header: 'כיוון', get: (t) => t.direction === 'long' ? 'Long' : t.direction === 'short' ? 'Short' : '' },
-      { header: 'סטטוס', get: (t) => t.status === 'closed' ? 'סגורה' : t.status === 'open' ? 'פתוחה' : t.status || '' },
+      { header: 'סטטוס', get: (t) => statusLabel(t) },
       { header: 'תוצאה', get: (t) => t.result === 'win' ? 'רווח' : t.result === 'loss' ? 'הפסד' : t.result === 'breakeven' ? 'אפס' : '' },
       { header: 'תאריך כניסה', get: (t) => fmtDate(t.entryDate) },
       { header: 'תאריך יציאה', get: (t) => fmtDate(t.exitDate) },
       { header: 'מחיר כניסה', get: (t) => fmtNum(t.entryPrice, 6) },
       { header: 'מחיר יציאה', get: (t) => fmtNum(t.exitPrice, 6) },
       { header: 'סטופ לוס', get: (t) => fmtNum(t.stopLoss, 6) },
+      { header: 'סטופ מקורי', get: (t) => fmtNum(t.originalStopLoss, 6) },
       { header: 'טייק פרופיט', get: (t) => fmtNum(Array.isArray(t.tps) ? t.tps[0] : t.takeProfit, 6) },
-      { header: 'כמות', get: (t) => fmtNum(t.quantity, 6) },
+      // Coins / shares / contracts — the unit is in the next column.
+      { header: 'כמות', get: (t) => fmtNum(tradeUnits(t).qty, 6) },
+      { header: 'יחידת כמות', get: (t) => tradeUnits(t).unit },
       { header: 'מינוף', get: (t) => fmtNum(t.leverage, 0) },
       { header: 'גודל פוזיציה ($)', get: (t) => fmtNum(t.positionSize) },
+      { header: 'יציאות', get: (t) => exitsSummary(t) },
+      { header: 'P&L ברוטו ($)', get: (t) => fmtNum(grossPnl(t)) },
       { header: 'עמלות', get: (t) => fmtNum(t.fees) },
       { header: 'P&L נטו ($)', get: (t) => fmtNum(t.netPnl ?? t.pnl) },
       { header: 'אחוז P&L', get: (t) => fmtNum(t.pnlPercent) },
       // The field is rrRatio (t.rr never existed — the column exported empty
       // forever). Stored unsigned; the sign comes from the pnl, matching the
       // in-app display (formatRR) and the journal's CSV export.
-      { header: 'R:R', get: (t) => {
-        const rr = Math.abs(parseFloat(t.rrRatio) || 0);
-        return rr ? fmtNum((parseFloat(t.netPnl ?? t.pnl) || 0) < 0 ? -rr : rr) : '';
-      } },
+      { header: 'R:R', get: (t) => (signedR(t) ? fmtNum(signedR(t)) : '') },
       { header: 'אסטרטגיה', get: (t) => t.strategy },
       { header: 'סשן', get: (t) => t.session },
       { header: 'טווח זמן', get: (t) => t.timeframe },

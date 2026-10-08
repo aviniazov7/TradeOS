@@ -247,8 +247,9 @@ export default function BacktestTracker() {
         actions={(
           <div className="flex flex-wrap items-center gap-2 w-full sm:w-auto">
             {tab === 'analytics' && <TimePeriodFilter value={period} onChange={setPeriod} />}
-            {tab === 'analytics' && backtests.length > 0 && (
-              <button onClick={() => setAiModalOpen(true)} className={headerAiBtn} title="ניתוח AI לבקטסט">
+            {/* On both tabs, like the journal's header. */}
+            {backtests.length > 0 && (
+              <button onClick={() => setAiModalOpen(true)} className={headerAiBtn} title="ניתוח AI לבקטסט" aria-label="ניתוח AI">
                 <Sparkles className="w-[18px] h-[18px]" />
                 <span className="hidden sm:inline">ניתוח AI</span>
               </button>
@@ -265,7 +266,7 @@ export default function BacktestTracker() {
               </button>
             )}
             <button onClick={openNew} className={`${headerPrimaryBtn} flex-1 sm:flex-none min-w-[8.5rem]`}>
-              <Plus className="w-4 h-4" /> הוסף עסקה
+              <Plus className="w-4 h-4" /> עסקה חדשה
             </button>
           </div>
         )}

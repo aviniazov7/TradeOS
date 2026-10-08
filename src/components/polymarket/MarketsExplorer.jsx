@@ -131,7 +131,7 @@ export default function MarketsExplorer() {
         <motion.div className="space-y-2" variants={staggerContainer} initial="initial" animate="animate">
           {view.map((m) => (
             <motion.div key={m.conditionId} variants={staggerItem}>
-              <MarketRow m={m} onOpen={() => navigate(`/polymarket/market/${m.conditionId}`, { state: { market: m, from: '/polymarket?tab=markets' } })} />
+              <MarketRow m={m} onOpen={() => navigate(`/polymarket/market/${m.conditionId}`, { state: { market: m, from: '/market?tab=polymarket&pm=markets' } })} />
             </motion.div>
           ))}
         </motion.div>

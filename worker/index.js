@@ -18,6 +18,14 @@ import { buildCampaignEmails, chunk, friendlyResendError } from './adminEmail.js
 import { emailShell, C as EMAIL_C, bg as emailBg, txt as emailTxt, esc as emailEsc, para as emailPara } from './emailTheme.js';
 import { buildDigestEmail } from './adminDigest.js';
 import { pickMarketFacts, HOOK_SYSTEM_PROMPT, buildHookUserMessage, validateHook, templateHook } from './marketHook.js';
+import {
+  planAiCharge, planAiRefund, quotaUsage, createWindowCounters, createStatBuffer, mergeStat,
+} from './aiQuota.js';
+import {
+  USER_SUBCOLLECTIONS, userSingleKvKeys, isLifetimePlan, samePushSubscription,
+  USETTINGS_PREFIX, USETTINGS_LEGACY_ALL, buildSettingsMap, settingsAnyOn,
+} from './userData.js';
+import { trBucketKey, mergeTrBucket, lookupTr, TR_BUCKET_TTL } from './newsTranslateCache.js';
 
 // Binance's public market-data mirror — api.binance.com returns 403 to
 // Cloudflare Worker egress IPs in many regions, but data-api.binance.vision
@@ -825,7 +833,7 @@ async function checkExchangeClosedTrades(env) {
           await sendPushToUser(env, uid, {
             title: `📊 סיכום יומי ${venue} — ${todays.length} עסקאות`,
             body: `P&L יומי: ${fmtPnl(total)} · אחוז הצלחה ${wr}%`,
-            url: '/dashboard',
+            url: '/', // the dashboard is the app root — '/dashboard' isn't a route
             tag: `daily-${israelDate}-${exchange}`,
           });
         }
@@ -921,11 +929,19 @@ async function verifyFirebaseToken(token) {
 }
 
 
+// Per-user AI quota document (aiq:{uid}) — see worker/aiQuota.js for the
+// layout. ONE KV write per allowed AI request, none for a rejected one.
+const aiQuotaKey = (uid) => `aiq:${uid}`;
+const AI_QUOTA_TTL = 60 * 60 * 48; // survives midnight + the 24h rolling window
+
+async function readAiQuotaDoc(env, uid) {
+  return env.ALERTS_KV.get(aiQuotaKey(uid), 'json').catch(() => null);
+}
+
 async function getAiUsage(env, uid) {
   const date = getIsraelDateStr();
-  const key = `aiusage:${uid}:${date}`;
-  const v = await env.ALERTS_KV.get(key);
-  return { used: v ? parseInt(v, 10) || 0 : 0, limit: AI_DAILY_LIMIT, date };
+  const { used } = quotaUsage(await readAiQuotaDoc(env, uid), date);
+  return { used, limit: AI_DAILY_LIMIT, date };
 }
 
 // A KV write that never throws. KV's free tier allows 1,000 writes a day; once
@@ -949,56 +965,42 @@ async function recordAiFailure(env, fails) {
   } catch { /* best-effort */ }
 }
 
-async function incrementAiUsage(env, uid) {
-  const date = getIsraelDateStr();
-  const key = `aiusage:${uid}:${date}`;
-  const v = await env.ALERTS_KV.get(key);
-  const used = (v ? parseInt(v, 10) || 0 : 0) + 1;
-  // 48h TTL so the entry survives across midnight and a small clock skew
-  await kvPutSafe(env, key, String(used), { expirationTtl: 172800 });
-  return used;
-}
-
 // Chart-image analyses get their own (much smaller) daily budget on top of the
 // regular request counter — vision calls burn far more tokens than text.
 async function getAiImageUsage(env, uid) {
   const date = getIsraelDateStr();
-  const key = `aiimg:${uid}:${date}`;
-  const v = await env.ALERTS_KV.get(key);
-  return { used: v ? parseInt(v, 10) || 0 : 0, limit: AI_IMAGE_DAILY_LIMIT, date };
+  const { imageUsed } = quotaUsage(await readAiQuotaDoc(env, uid), date);
+  return { used: imageUsed, limit: AI_IMAGE_DAILY_LIMIT, date };
 }
 
-// Refund a prepaid quota charge (#202): quotas are now charged BEFORE the
-// provider call (check-then-serve raced under parallel bursts and let a free
-// user blow past the daily cap), so a provider failure refunds the charge to
-// preserve the "failed calls don't burn quota" behavior.
-async function decrementKvCounter(env, key) {
-  const v = parseInt(await env.ALERTS_KV.get(key), 10) || 0;
-  if (v > 0) await kvPutSafe(env, key, String(v - 1), { expirationTtl: 172800 });
-}
-async function refundAiCharge(env, uid, hasImage) {
+// Refund a prepaid quota charge (#202): quotas are charged BEFORE the provider
+// call (check-then-serve raced under parallel bursts and let a free user blow
+// past the daily cap), so a provider failure refunds the charge to preserve
+// the "failed calls don't burn quota" behavior. Costs a write only on failure.
+async function refundAiCharge(env, uid, { daily = true, image = false } = {}) {
   const date = getIsraelDateStr();
-  await decrementKvCounter(env, `aiusage:${uid}:${date}`);
-  if (hasImage) await decrementKvCounter(env, `aiimg:${uid}:${date}`);
-}
-
-async function incrementAiImageUsage(env, uid) {
-  const date = getIsraelDateStr();
-  const key = `aiimg:${uid}:${date}`;
-  const v = await env.ALERTS_KV.get(key);
-  const used = (v ? parseInt(v, 10) || 0 : 0) + 1;
-  await kvPutSafe(env, key, String(used), { expirationTtl: 172800 });
-  return used;
+  const next = planAiRefund(await readAiQuotaDoc(env, uid), { date, daily, image });
+  if (next) await kvPutSafe(env, aiQuotaKey(uid), JSON.stringify(next), { expirationTtl: AI_QUOTA_TTL });
 }
 
 // Persistent daily AI stats (request counts + real token usage) for the admin
-// time graph. Kept ~95 days (vs the 48h per-user quota counters) so we can show
-// 7/30-day trends and an accurate, token-based cost.
-async function recordAiStat(env, date, { text = 0, image = 0, tokIn = 0, tokOut = 0 }) {
-  const key = `aistat:${date}`;
-  const cur = (await env.ALERTS_KV.get(key, 'json')) || { text: 0, image: 0, tokIn: 0, tokOut: 0 };
-  cur.text += text; cur.image += image; cur.tokIn += tokIn; cur.tokOut += tokOut;
-  await kvPutSafe(env, key, JSON.stringify(cur), { expirationTtl: 60 * 60 * 24 * 95 });
+// time graph, kept ~95 days. Buffered per isolate (worker/aiQuota.js) and
+// merged into aistat:{date} at most once per 10 minutes — it used to be one
+// KV write per AI message.
+const AI_STAT_BUFFER = createStatBuffer(10 * 60_000);
+async function flushAiStats(env, force = false) {
+  const deltas = AI_STAT_BUFFER.take(Date.now(), force);
+  if (!deltas) return;
+  for (const [date, delta] of Object.entries(deltas)) {
+    const key = `aistat:${date}`;
+    const cur = await env.ALERTS_KV.get(key, 'json').catch(() => null);
+    const ok = await kvPutSafe(env, key, JSON.stringify(mergeStat(cur, delta)), { expirationTtl: 60 * 60 * 24 * 95 });
+    if (!ok) AI_STAT_BUFFER.restore({ [date]: delta });
+  }
+}
+async function recordAiStat(env, date, delta) {
+  AI_STAT_BUFFER.add(date, delta);
+  await flushAiStats(env);
 }
 
 // Pass an OpenAI-style SSE stream straight through to the client while reading
@@ -1253,7 +1255,8 @@ async function isUserPremium(env, token, uid) {
   // read, skip the cache so the next request re-reads. Grants still bust this key
   // explicitly (/admin/refresh-plan).
   if (read) {
-    await env.ALERTS_KV.put(cacheKey, JSON.stringify({ p: premium ? 1 : 0, exp: premium ? expMs : null }), { expirationTtl: 600 });
+    // kvPutSafe: a spent KV write quota must not break every AI request.
+    await kvPutSafe(env, cacheKey, JSON.stringify({ p: premium ? 1 : 0, exp: premium ? expMs : null }), { expirationTtl: 600 });
   }
   return premium;
 }
@@ -1267,64 +1270,109 @@ const AI_FREE_BURST_PER_MIN = 20; // same as before, just named
 const AI_GLOBAL_DAILY_CEILING = 50_000; // circuit breaker across ALL users
 const AI_WINDOWS_SEC = { minute: 60, hour: 3600, day: 86400 };
 
-// Increment a rolling-window counter atomically-enough via read-modify-write.
-// Returns the new count after the increment. start is reset whenever a window
-// elapses, so consecutive bursts inside the window accumulate as expected.
-async function bumpWindow(env, key, windowSec) {
-  const now = Date.now();
-  const cur = await env.ALERTS_KV.get(key, 'json');
-  if (cur && now - cur.start < windowSec * 1000) {
-    const next = cur.count + 1;
-    await kvPutSafe(env, key, JSON.stringify({ start: cur.start, count: next }), { expirationTtl: windowSec + 60 });
-    return { count: next, start: cur.start };
-  }
-  await kvPutSafe(env, key, JSON.stringify({ start: now, count: 1 }), { expirationTtl: windowSec + 60 });
-  return { count: 1, start: now };
+// ---- Edge counters (zero KV writes) -----------------------------------------
+// Approximate limits — the global AI circuit breaker and the news-translate
+// throttles — live in isolate memory, mirrored best-effort into the Cache API
+// (free, data-center local) so isolates in the same colo share a count. They
+// used to be KV read-modify-writes: one KV write per AI request just to count.
+const EDGE_COUNTERS = createWindowCounters();
+const edgeCounterUrl = (key) => `https://internal.tradeos/edge-counter/${encodeURIComponent(key)}`;
+
+// The colo-shared window ({ s: start, c: count }) or null.
+async function edgeCounterShared(key, windowSec, now) {
+  try {
+    if (typeof caches === 'undefined') return null;
+    const hit = await caches.default.match(edgeCounterUrl(key));
+    if (!hit) return null;
+    const v = await hit.json();
+    return v && typeof v.s === 'number' && typeof v.c === 'number' && now - v.s < windowSec * 1000 ? v : null;
+  } catch { return null; } // cache is best-effort
 }
 
-// Check (and on success, accrue) all applicable AI rate-limit windows.
-// Returns null when allowed, or a { status, body } object to short-circuit.
-async function aiRateGate(env, uid, premium) {
-  // Global circuit breaker — protects against runaway-cost surprises.
-  const israelDate = getIsraelDateStr();
-  const gKey = `aiglobal:${israelDate}`;
-  const g = await env.ALERTS_KV.get(gKey, 'json');
-  if (g && g.count >= AI_GLOBAL_DAILY_CEILING) {
-    return { status: 503, body: { error: 'המערכת בעומס שיא היום. נסה מאוחר יותר.' } };
-  }
-
-  // All per-user windows live in ONE KV document (airl:{uid}) — a single
-  // get+put per request instead of one pair per window. The old 3-key premium
-  // path alone cost 6 KV ops per AI message and was a top contributor to the
-  // free tier's 1,000-writes/day ceiling.
+async function edgeCounterRead(key, windowSec) {
   const now = Date.now();
-  const rlKey = `airl:${uid}`;
-  const doc = (await env.ALERTS_KV.get(rlKey, 'json')) || {};
-  const roll = (w, sec) => (w && now - w.s < sec * 1000 ? { s: w.s, c: w.c + 1 } : { s: now, c: 1 });
-  const m = roll(doc.m, AI_WINDOWS_SEC.minute);
-  const h = roll(doc.h, AI_WINDOWS_SEC.hour);
-  const d = roll(doc.d, AI_WINDOWS_SEC.day);
-  await kvPutSafe(env, rlKey, JSON.stringify({ m, h, d }), { expirationTtl: AI_WINDOWS_SEC.day + 60 });
+  const shared = await edgeCounterShared(key, windowSec, now);
+  return Math.max(shared?.c || 0, EDGE_COUNTERS.peek(key, windowSec * 1000, now));
+}
 
-  if (premium) {
-    // Premium: 5/min, 50/hr, 200/day (soft caps for "unlimited").
-    if (m.c > AI_PREMIUM_LIMITS.minute) {
-      return { status: 429, body: { error: 'יותר מדי בקשות בדקה. המתן רגע ונסה שוב.' } };
+async function edgeCounterBump(key, windowSec) {
+  const now = Date.now();
+  const shared = await edgeCounterShared(key, windowSec, now);
+  const w = EDGE_COUNTERS.bump(key, windowSec * 1000, now, shared);
+  try {
+    if (typeof caches !== 'undefined') {
+      // Expire with the window itself (its START, not this hit), so a steady
+      // trickle of requests can't keep an old window alive forever.
+      const ttl = Math.max(1, Math.ceil((w.s + windowSec * 1000 - now) / 1000));
+      await caches.default.put(edgeCounterUrl(key), new Response(JSON.stringify(w), {
+        headers: { 'Content-Type': 'application/json', 'Cache-Control': `max-age=${ttl}` },
+      }));
     }
-    if (h.c > AI_PREMIUM_LIMITS.hour) {
-      return { status: 429, body: { error: 'הגעת לתקרה השעתית של Premium (50). נסה בעוד שעה.' } };
-    }
-    if (d.c > AI_PREMIUM_LIMITS.day) {
-      return { status: 429, body: { error: 'הגעת לתקרה היומית של Premium (200). נסה מחר.', quotaExceeded: true } };
-    }
-  } else if (m.c > AI_FREE_BURST_PER_MIN) {
-    // Free: per-minute burst cap; the daily quota is enforced separately by
-    // getAiUsage / incrementAiUsage in the route handler.
-    return { status: 429, body: { error: 'המערכת עמוסה. המתן כמה שניות ונסה שוב.' } };
-  }
+  } catch { /* cache is best-effort */ }
+  return w.c;
+}
 
-  // All windows passed — increment the global counter.
-  await bumpWindow(env, gKey, AI_WINDOWS_SEC.day);
+// Per-user anti-abuse throttles (exchange sync, wallet lookups, news
+// translate). Same { count } shape the KV version returned — but it no longer
+// writes KV: each call used to cost one KV write just to count.
+async function bumpWindow(_env, key, windowSec) {
+  return { count: await edgeCounterBump(key, windowSec) };
+}
+
+const aiGlobalKey = () => `aiglobal:${getIsraelDateStr()}`;
+async function aiGlobalCeilingHit() {
+  return (await edgeCounterRead(aiGlobalKey(), AI_WINDOWS_SEC.day)) >= AI_GLOBAL_DAILY_CEILING;
+}
+
+const AI_DENY = {
+  minute: { status: 429, body: { error: 'יותר מדי בקשות בדקה. המתן רגע ונסה שוב.' } },
+  hour: { status: 429, body: { error: 'הגעת לתקרה השעתית של Premium (50). נסה בעוד שעה.' } },
+  day: { status: 429, body: { error: 'הגעת לתקרה היומית של Premium (200). נסה מחר.', quotaExceeded: true } },
+  burst: { status: 429, body: { error: 'המערכת עמוסה. המתן כמה שניות ונסה שוב.' } },
+  imagePremium: { status: 403, body: { error: 'ניתוח תמונות גרף זמין למנויי Premium בלבד. שדרג כדי לצרף גרפים לניתוח.', premiumRequired: true } },
+  imageQuota: { status: 429, body: {
+    error: `הגעת למכסת ניתוחי התמונות היומית (${AI_IMAGE_DAILY_LIMIT}). אפשר להמשיך לשוחח בטקסט, והמכסה תתאפס מחר.`,
+    quotaExceeded: true, used: AI_IMAGE_DAILY_LIMIT, limit: AI_IMAGE_DAILY_LIMIT,
+  } },
+  daily: { status: 429, body: {
+    error: `הגעת למכסה היומית (${AI_DAILY_LIMIT} בקשות). שדרג ל-Premium ל-${AI_PREMIUM_LIMITS.day} בקשות ביום.`,
+    quotaExceeded: true, used: AI_DAILY_LIMIT, limit: AI_DAILY_LIMIT,
+  } },
+  ceiling: { status: 503, body: { error: 'המערכת בעומס שיא היום. נסה מאוחר יותר.' } },
+  // The counter write failed (KV quota spent). Free users are DENIED rather
+  // than silently unlimited; premium keeps working on its soft caps.
+  unavailable: { status: 503, body: { error: 'שירות ה-AI אינו זמין זמנית. נסה שוב מאוחר יותר.' } },
+};
+
+// Gate + charge one AI request: global circuit breaker, per-user rate windows
+// (premium soft caps / free burst cap), the premium-only image gate + image
+// quota, and the daily quota — all from ONE KV document, persisted with ONE
+// write only when the request is allowed. Returns null when allowed, or a
+// { status, body } to short-circuit with. `overrides` replaces a deny body by
+// reason (routes word the daily-quota message differently).
+async function aiCharge(env, uid, premium, { chargeDaily = false, image = false, overrides = {} } = {}) {
+  const deny = (reason) => {
+    const base = AI_DENY[reason];
+    return { status: base.status, body: overrides[reason] || base.body };
+  };
+  if (await aiGlobalCeilingHit()) return deny('ceiling');
+
+  const date = getIsraelDateStr();
+  const plan = planAiCharge(await readAiQuotaDoc(env, uid), {
+    now: Date.now(), date, premium, chargeDaily, image,
+    limits: {
+      premium: AI_PREMIUM_LIMITS,
+      freeBurstPerMin: AI_FREE_BURST_PER_MIN,
+      freeDaily: AI_DAILY_LIMIT,
+      imageDaily: AI_IMAGE_DAILY_LIMIT,
+    },
+  });
+  if (plan.deny) return deny(plan.deny);
+
+  const wrote = await kvPutSafe(env, aiQuotaKey(uid), JSON.stringify(plan.next), { expirationTtl: AI_QUOTA_TTL });
+  if (!wrote && !premium) return deny('unavailable');
+
+  await edgeCounterBump(aiGlobalKey(), AI_WINDOWS_SEC.day);
   return null;
 }
 
@@ -1426,6 +1474,56 @@ async function pushexchIndexRemove(env, predicate) {
   }
 }
 
+// Remove EVERY per-user KV record for a deleted account: encrypted exchange
+// keys (+ their index entry, so the cron stops polling the exchange), push
+// subscriptions, notification schedule (+ the legacy usettings:ALL entry),
+// plan cache, AI quota doc and pending plan-expiry reminders. Used by both
+// the self-service and the admin deletion paths. Best-effort per key — one
+// failed delete must not stop the rest.
+async function purgeUserKv(env, uid) {
+  const del = (k) => env.ALERTS_KV.delete(k).catch(() => {});
+  const listAll = async (prefix) => {
+    const names = [];
+    let cursor;
+    do {
+      const page = await env.ALERTS_KV.list({ prefix, cursor });
+      names.push(...page.keys.map((k) => k.name));
+      cursor = page.list_complete ? undefined : page.cursor;
+    } while (cursor);
+    return names;
+  };
+
+  const exchKeys = await listAll(`pushexch:${uid}:`).catch(() => []);
+  for (const k of exchKeys) {
+    await del(k);
+    // The cron's per-exchange poll state for this user (TTL'd, but no reason
+    // to keep it around).
+    const exchange = k.slice(`pushexch:${uid}:`.length);
+    if (exchange) {
+      await del(`pushopen:${uid}:${exchange}`);
+      await del(`pushcursor:${uid}:${exchange}`);
+    }
+  }
+  await pushexchIndexRemove(env, (n) => n.startsWith(`pushexch:${uid}:`)).catch(() => {});
+
+  const pushKeys = await listAll(`push:${uid}:`).catch(() => []);
+  for (const k of pushKeys) await del(k);
+
+  for (const k of userSingleKvKeys(uid)) await del(k);
+
+  // Legacy rolled-up schedule blob — only rewritten when the uid is in it.
+  try {
+    const all = await env.ALERTS_KV.get(USETTINGS_LEGACY_ALL, 'json');
+    if (all && Object.prototype.hasOwnProperty.call(all, uid)) {
+      delete all[uid];
+      await env.ALERTS_KV.put(USETTINGS_LEGACY_ALL, JSON.stringify(all));
+    }
+  } catch { /* best-effort */ }
+
+  await cancelPlanExpiryReminders(env, uid).catch(() => {});
+  return { exchanges: exchKeys.length, pushSubs: pushKeys.length };
+}
+
 const validExchangeId = (x) => /^[a-z0-9_-]{1,20}$/.test(x || '');
 
 async function loadExchangeCreds(env, uid, exchange) {
@@ -1469,9 +1567,53 @@ async function fetchEconomicCalendar(env) {
 
 // ==================== Cron Functions ====================
 
-// ---- Aggregate KV snapshots ------------------------------------------------
-// To avoid an N+1 read per cron tick, the cron reads one rolled-up blob:
-//   usettings:ALL = { [uid]: schedule }   (written by /notify-settings)
+// ---- Notification schedules -------------------------------------------------
+// usettings:{uid} stores the schedule as its value AND as KV metadata, so one
+// list({prefix:'usettings:'}) returns every schedule — no N+1 reads, and no
+// shared read-modify-write blob. The old usettings:ALL blob lost updates when
+// two users saved at once; it is now frozen and consulted only for keys saved
+// before this change (no metadata yet). Those are migrated (re-put WITH
+// metadata) the first time the cron meets them — a one-time write per legacy
+// key, after which the cron reads them from the list for free.
+const SETTINGS_MIGRATE_PER_TICK = 25;
+let SETTINGS_MAP_MEMO = null; // { at, map } — one list per tick, shared by callers
+
+async function loadSettingsMap(env) {
+  if (SETTINGS_MAP_MEMO && Date.now() - SETTINGS_MAP_MEMO.at < 60_000) return SETTINGS_MAP_MEMO.map;
+  const keys = [];
+  let cursor;
+  do {
+    const page = await env.ALERTS_KV.list({ prefix: USETTINGS_PREFIX, cursor });
+    keys.push(...page.keys);
+    cursor = page.list_complete ? undefined : page.cursor;
+  } while (cursor);
+
+  const needsLegacy = keys.some((k) => k.name !== USETTINGS_LEGACY_ALL && !k.metadata);
+  const legacyAll = needsLegacy ? ((await env.ALERTS_KV.get(USETTINGS_LEGACY_ALL, 'json').catch(() => null)) || {}) : {};
+  const { map, needFetch } = buildSettingsMap(keys, legacyAll);
+
+  // Legacy keys: migrate a few per tick (value → value + metadata).
+  const legacyUids = keys
+    .filter((k) => k.name !== USETTINGS_LEGACY_ALL && !k.metadata)
+    .map((k) => k.name.slice(USETTINGS_PREFIX.length))
+    .filter((uid) => uid && !uid.includes(':'));
+  const toMigrate = legacyUids.slice(0, SETTINGS_MIGRATE_PER_TICK);
+  for (const uid of toMigrate) {
+    const s = await env.ALERTS_KV.get(`${USETTINGS_PREFIX}${uid}`, 'json').catch(() => null);
+    if (!s || typeof s !== 'object') continue;
+    if (settingsAnyOn(s)) map[uid] = s; else delete map[uid];
+    await kvPutSafe(env, `${USETTINGS_PREFIX}${uid}`, JSON.stringify(s), { metadata: s });
+  }
+  // needFetch ⊆ legacyUids; anything not migrated this tick is still served
+  // from a direct read so nobody misses a reminder meanwhile.
+  for (const uid of needFetch.filter((u) => !toMigrate.includes(u))) {
+    const s = await env.ALERTS_KV.get(`${USETTINGS_PREFIX}${uid}`, 'json').catch(() => null);
+    if (settingsAnyOn(s)) map[uid] = s;
+  }
+
+  SETTINGS_MAP_MEMO = { at: Date.now(), map };
+  return map;
+}
 
 // The cron ticks every 10 minutes, so an EXACT HH:MM comparison silently
 // skipped any scheduled time that isn't a multiple of 10 (a user who typed
@@ -1687,9 +1829,9 @@ async function handleCron(env) {
     }
   } catch { /* best-effort, never blocks the jobs below */ }
 
-  // Everything is Web Push, keyed by uid (#219). One rolled-up blob
-  // (usettings:ALL) — a single KV read per tick for the schedule data.
-  const usettingsAll = (await env.ALERTS_KV.get('usettings:ALL', 'json')) || {};
+  // Everything is Web Push, keyed by uid (#219). Schedules come from one
+  // list() of usettings:* (the schedule rides in each key's metadata).
+  const usettingsAll = await loadSettingsMap(env);
 
   const settingsMap = {};
   for (const [uid, settings] of Object.entries(usettingsAll)) {
@@ -2438,43 +2580,15 @@ async function handleAIChat(request, env, cors) {
 
     const premium = await isUserPremium(env, token, uid);
 
-    // Multi-window rate limiting (+ global circuit breaker). Premium gets soft
-    // caps (5/min, 50/hr, 200/day) so 'unlimited' can't be weaponized. Runs
-    // before the premium-image 403 so hammering the gate is rate-limited too.
-    const gate = await aiRateGate(env, uid, premium);
+    // One gate + one charge (aiCharge): global circuit breaker, multi-window
+    // rate limits (premium soft caps 5/min, 50/hr, 200/day so 'unlimited'
+    // can't be weaponized; free burst cap), the premium-only chart-image gate
+    // with its own small daily budget (vision burns far more tokens), and the
+    // daily usage counter — kept for BOTH tiers so each user sees their own
+    // progress bar. Charged upfront (#202: check-then-serve raced under
+    // parallel bursts); refunded via refundAiCharge on provider failure.
+    const gate = await aiCharge(env, uid, premium, { chargeDaily: true, image: hasImage });
     if (gate) return new Response(JSON.stringify(gate.body), { status: gate.status, headers: { ...cors, 'Content-Type': 'application/json' } });
-
-    // Chart-image analysis is premium-only, with its own small daily budget —
-    // vision requests burn far more provider tokens than text.
-    if (hasImage) {
-      if (!premium) {
-        return new Response(JSON.stringify({
-          error: 'ניתוח תמונות גרף זמין למנויי Premium בלבד. שדרג כדי לצרף גרפים לניתוח.',
-          premiumRequired: true,
-        }), { status: 403, headers: { ...cors, 'Content-Type': 'application/json' } });
-      }
-      // CHARGE-then-check (#202): the old read→check→serve→increment raced —
-      // N parallel requests all read the same pre-increment count and all
-      // passed. Charging first closes the gate; provider failures refund.
-      const imgUsed = await incrementAiImageUsage(env, uid);
-      if (imgUsed > AI_IMAGE_DAILY_LIMIT) {
-        return new Response(JSON.stringify({
-          error: `הגעת למכסת ניתוחי התמונות היומית (${AI_IMAGE_DAILY_LIMIT}). אפשר להמשיך לשוחח בטקסט, והמכסה תתאפס מחר.`,
-          quotaExceeded: true, used: AI_IMAGE_DAILY_LIMIT, limit: AI_IMAGE_DAILY_LIMIT,
-        }), { status: 429, headers: { ...cors, 'Content-Type': 'application/json' } });
-      }
-    }
-
-    // Daily AI usage counter — kept for BOTH tiers so each user sees their
-    // own progress bar. Premium just has a higher cap (handled in aiRateGate).
-    // Charged upfront (#202); refunded via refundAiCharge on provider failure.
-    const dailyUsed = await incrementAiUsage(env, uid);
-    if (!premium && dailyUsed > AI_DAILY_LIMIT) {
-      return new Response(JSON.stringify({
-        error: `הגעת למכסה היומית (${AI_DAILY_LIMIT} בקשות). שדרג ל-Premium ל-${AI_PREMIUM_LIMITS.day} בקשות ביום.`,
-        quotaExceeded: true, used: AI_DAILY_LIMIT, limit: AI_DAILY_LIMIT,
-      }), { status: 429, headers: { ...cors, 'Content-Type': 'application/json' } });
-    }
 
     // Past every gate with both counters charged — from here a provider failure
     // must refund the prepaid quota: inline on a non-ok Response (below), or via
@@ -2587,7 +2701,7 @@ async function handleAIChat(request, env, cors) {
     // Every provider failed: keep the evidence for the admin panel, refund the
     // charge, and say it plainly.
     await recordAiFailure(env, fails);
-    await refundAiCharge(env, uid, hasImage);
+    await refundAiCharge(env, uid, { daily: true, image: hasImage });
     const rateLimited = fails.some((f) => f.status === 429);
     return new Response(JSON.stringify({
       error: rateLimited
@@ -2599,7 +2713,7 @@ async function handleAIChat(request, env, cors) {
     console.error('AI Chat error:', err);
     // A thrown provider fetch lands here AFTER charging — refund so a transient
     // network blip doesn't silently burn the user's quota slot(s).
-    if (charged) await refundAiCharge(env, charged.uid, charged.hasImage);
+    if (charged) await refundAiCharge(env, charged.uid, { daily: true, image: charged.hasImage });
     return new Response(JSON.stringify({ error: 'שגיאה פנימית' }), { status: 500, headers: { ...cors, 'Content-Type': 'application/json' } });
   }
 }
@@ -2961,12 +3075,10 @@ async function handleAICoach(request, env, cors) {
     }
     const premium = await isUserPremium(env, token, uid);
 
-    // Shared rate gate + circuit breaker (same windows as /ai-chat).
-    const gate = await aiRateGate(env, uid, premium);
-    if (gate) return new Response(JSON.stringify(gate.body), { status: gate.status, headers: { ...cors, 'Content-Type': 'application/json' } });
-
     // Free users get 5 coach runs/month tracked separately from the daily AI
-    // quota — Premium is unmetered (covered by the soft caps in aiRateGate).
+    // quota — Premium is unmetered (covered by the soft caps in aiCharge).
+    // Checked BEFORE the rate gate so a user who is out of monthly runs is
+    // turned away without spending a KV write on the rate windows.
     // NOTE: the slot is charged only AFTER a successful provider response
     // (below), mirroring /ai-coin-description — a Groq 429 must not burn one
     // of the user's 5 monthly analyses.
@@ -2982,8 +3094,14 @@ async function handleAICoach(request, env, cors) {
         }), { status: 429, headers: { ...cors, 'Content-Type': 'application/json' } });
       }
       // 60-day TTL so the entry survives the month it covers.
-      chargeCoachQuota = () => env.ALERTS_KV.put(monthKey, String(used + 1), { expirationTtl: 60 * 60 * 24 * 60 });
+      // kvPutSafe: a spent KV quota must not turn an already-generated report
+      // into a 500.
+      chargeCoachQuota = () => kvPutSafe(env, monthKey, String(used + 1), { expirationTtl: 60 * 60 * 24 * 60 });
     }
+
+    // Shared rate gate + circuit breaker (same windows as /ai-chat).
+    const gate = await aiCharge(env, uid, premium);
+    if (gate) return new Response(JSON.stringify(gate.body), { status: gate.status, headers: { ...cors, 'Content-Type': 'application/json' } });
 
     // Turn the clicked quick-prompt (stats.focus) into an explicit, prominent
     // directive so each button yields a genuinely different, focused report.
@@ -3072,22 +3190,20 @@ async function handleAIProjectDescription(request, env, cors) {
 
     const premium = await isUserPremium(env, token, uid);
 
-    // Multi-window rate limiting + global circuit breaker (shared with /ai-chat).
-    const gate = await aiRateGate(env, uid, premium);
-    if (gate) return new Response(JSON.stringify(gate.body), { status: gate.status, headers: { ...cors, 'Content-Type': 'application/json' } });
-
-    // Free-tier daily quota — charged UPFRONT (#202, mirrors /ai-chat): the
-    // old read→check→serve→increment raced under parallel requests. A failed
-    // provider call refunds the charge below.
-    if (!premium) {
-      const dailyUsed = await incrementAiUsage(env, uid);
-      if (dailyUsed > AI_DAILY_LIMIT) {
-        return new Response(JSON.stringify({
+    // Multi-window rate limiting + global circuit breaker (shared with
+    // /ai-chat), plus the free-tier daily quota — charged UPFRONT in the same
+    // single write (#202, mirrors /ai-chat): the old read→check→serve→increment
+    // raced under parallel requests. A failed provider call refunds below.
+    const gate = await aiCharge(env, uid, premium, {
+      chargeDaily: !premium,
+      overrides: {
+        daily: {
           error: `הגעת למכסה היומית (${AI_DAILY_LIMIT} בקשות). שדרג ל-Premium לשימוש ללא הגבלה.`,
           quotaExceeded: true, used: AI_DAILY_LIMIT, limit: AI_DAILY_LIMIT,
-        }), { status: 429, headers: { ...cors, 'Content-Type': 'application/json' } });
-      }
-    }
+        },
+      },
+    });
+    if (gate) return new Response(JSON.stringify(gate.body), { status: gate.status, headers: { ...cors, 'Content-Type': 'application/json' } });
 
     const userPrompt = `כתוב מאמרון על הפרויקט שמאחורי המטבע ${coinName}${symbol ? ` (${String(symbol).toUpperCase()})` : ''}.`;
 
@@ -3106,7 +3222,7 @@ async function handleAIProjectDescription(request, env, cors) {
       const errText = await groqResponse.text();
       console.error('Groq API error:', groqResponse.status, errText);
       // Refund the prepaid charge — a failed call must not burn the quota.
-      if (!premium) await refundAiCharge(env, uid, false);
+      if (!premium) await refundAiCharge(env, uid, { daily: true });
       return new Response(JSON.stringify({ error: groqResponse.status === 429 ? 'ספק ה-AI עמוס כרגע, נסה שוב בעוד רגע' : `שגיאת AI: ${groqResponse.status}` }), { status: 502, headers: { ...cors, 'Content-Type': 'application/json' } });
     }
 
@@ -3364,6 +3480,25 @@ async function groqTranslateCall(env, missing, model) {
   });
 }
 
+// Daily translation buckets (worker/newsTranslateCache.js), memoized per
+// isolate for a minute so a burst of feed loads reads KV once.
+const TR_BUCKET_MEMO = new Map(); // date → { at, bucket }
+async function loadTrBucket(env, date, { fresh = false } = {}) {
+  const memo = TR_BUCKET_MEMO.get(date);
+  if (!fresh && memo && Date.now() - memo.at < 60_000) return memo.bucket;
+  const bucket = (await env.ALERTS_KV.get(trBucketKey(date), 'json').catch(() => null)) || {};
+  TR_BUCKET_MEMO.set(date, { at: Date.now(), bucket });
+  if (TR_BUCKET_MEMO.size > 4) TR_BUCKET_MEMO.delete(TR_BUCKET_MEMO.keys().next().value);
+  return bucket;
+}
+async function saveTrBucket(env, date, additions) {
+  // Re-read right before the write to keep the lost-update window small (a
+  // lost entry is only a cache miss — it gets translated again next time).
+  const merged = mergeTrBucket(await loadTrBucket(env, date, { fresh: true }), additions);
+  TR_BUCKET_MEMO.set(date, { at: Date.now(), bucket: merged });
+  await kvPutSafe(env, trBucketKey(date), JSON.stringify(merged), { expirationTtl: TR_BUCKET_TTL });
+}
+
 async function handleNewsTranslate(request, env, cors) {
   const jsonHeaders = { ...cors, 'Content-Type': 'application/json' };
   try {
@@ -3393,8 +3528,12 @@ async function handleNewsTranslate(request, env, cors) {
     // descriptions can drift (view counts, edits) and would cause a permanent
     // cache miss → a recurring provider call for the same article. null key for
     // empty-title slots keeps `out` index-aligned with what the client sent.
-    const keys = await Promise.all(items.map(async (it) => (it.title ? `news:tr:${await newsHash(it.title)}` : null)));
-    const out = await Promise.all(keys.map((k) => (k ? env.ALERTS_KV.get(k, 'json') : null)));
+    const keys = await Promise.all(items.map(async (it) => (it.title ? await newsHash(it.title) : null)));
+    const today = getIsraelDateStr();
+    const yesterdayD = new Date(getIsraelTime().getTime() - 86400000);
+    const yesterday = `${yesterdayD.getFullYear()}-${String(yesterdayD.getMonth() + 1).padStart(2, '0')}-${String(yesterdayD.getDate()).padStart(2, '0')}`;
+    const buckets = await Promise.all([loadTrBucket(env, today), loadTrBucket(env, yesterday)]);
+    const out = keys.map((k) => (k ? lookupTr(buckets, k) : null));
 
     const missing = [];
     items.forEach((it, i) => { if (it.title && !out[i]) missing.push({ id: i, title: it.title, desc: it.desc }); });
@@ -3402,13 +3541,11 @@ async function handleNewsTranslate(request, env, cors) {
     if (missing.length && env.GROQ_API_KEY) {
       // Respect + contribute to the same global daily AI ceiling as chat/coach,
       // plus a per-user daily cap — the translate route must not be an
-      // unmetered path to drain the shared Groq/KV budget.
-      const gKey = `aiglobal:${getIsraelDateStr()}`;
-      const [g, uDay] = await Promise.all([
-        env.ALERTS_KV.get(gKey, 'json'),
-        env.ALERTS_KV.get(`newstr:day:${uid}`, 'json'),
-      ]);
-      const overCeiling = (g && g.count >= AI_GLOBAL_DAILY_CEILING) || (uDay && uDay.count >= 60);
+      // unmetered path to drain the shared Groq budget. Both are edge
+      // counters (no KV writes).
+      const dayKey = `newstr:day:${uid}`;
+      const overCeiling = (await aiGlobalCeilingHit())
+        || (await edgeCounterRead(dayKey, AI_WINDOWS_SEC.day)) >= 60;
       if (overCeiling) {
         // Serve whatever is already cached; skip new provider work.
         return new Response(JSON.stringify({ items: out }), { headers: jsonHeaders });
@@ -3421,20 +3558,21 @@ async function handleNewsTranslate(request, env, cors) {
       }
       if (groqRes.ok) {
         // Count this provider call against both ceilings.
-        await Promise.all([
-          bumpWindow(env, gKey, AI_WINDOWS_SEC.day),
-          bumpWindow(env, `newstr:day:${uid}`, AI_WINDOWS_SEC.day),
-        ]);
+        await edgeCounterBump(aiGlobalKey(), AI_WINDOWS_SEC.day);
+        await edgeCounterBump(dayKey, AI_WINDOWS_SEC.day);
         const data = await groqRes.json();
         let parsed;
         try { parsed = JSON.parse(data.choices?.[0]?.message?.content || ''); } catch { parsed = null; }
+        const additions = {};
         for (const tr of (Array.isArray(parsed?.items) ? parsed.items : [])) {
           const i = Number(tr?.id);
           if (!Number.isInteger(i) || i < 0 || i >= items.length || out[i] || !tr?.title || !keys[i]) continue;
           const entry = { title: String(tr.title).slice(0, 300), desc: String(tr.desc || '').slice(0, 400) };
           out[i] = entry;
-          await env.ALERTS_KV.put(keys[i], JSON.stringify(entry), { expirationTtl: 60 * 60 * 24 * 3 }).catch(() => {});
+          additions[keys[i]] = entry;
         }
+        // ONE write for the whole batch (was one per headline).
+        if (Object.keys(additions).length) await saveTrBucket(env, today, additions);
       } else {
         console.error('news translate groq error:', groqRes.status);
       }
@@ -3811,7 +3949,7 @@ async function pushNewsImpact(env, impact) {
   );
   if (!worthy.length) return;
 
-  const settingsMap = (await env.ALERTS_KV.get('usettings:ALL', 'json')) || {};
+  const settingsMap = await loadSettingsMap(env);
   const users = Object.entries(settingsMap)
     .filter(([, s]) => s?.newsImpact?.enabled)
     .map(([uid]) => uid);
@@ -3943,15 +4081,37 @@ async function withCors(cached, cors, extra = {}) {
   });
 }
 
-async function handleRequest(request, env) {
+function corsHeadersFor(request) {
   const origin = request.headers.get('Origin') || '';
   const allowedOrigin = isAllowedOrigin(origin) ? origin : ALLOWED_ORIGINS[0];
-  const cors = {
+  return {
     'Access-Control-Allow-Origin': allowedOrigin,
     'Access-Control-Allow-Methods': 'GET, POST, DELETE, OPTIONS',
     'Access-Control-Allow-Headers': 'Content-Type, Authorization',
     'Vary': 'Origin',
   };
+}
+
+// Top-level safety net: any route that throws (KV quota exhausted, a bad
+// upstream payload, …) used to surface as Cloudflare's bare 1101 error page
+// WITHOUT CORS headers — which the browser reports as an opaque CORS failure.
+// Now it's a JSON { error } with this request's CORS headers and a log line.
+async function safeHandleRequest(request, env, ctx) {
+  try {
+    return await handleRequest(request, env, ctx);
+  } catch (err) {
+    let path = '';
+    try { path = new URL(request.url).pathname; } catch { /* ignore */ }
+    console.error('Unhandled worker error', request.method, path, err?.stack || err?.message || err);
+    return new Response(JSON.stringify({ error: 'שגיאה פנימית בשרת' }), {
+      status: 500,
+      headers: { ...corsHeadersFor(request), 'Content-Type': 'application/json' },
+    });
+  }
+}
+
+async function handleRequest(request, env) {
+  const cors = corsHeadersFor(request);
   if (request.method === 'OPTIONS') return new Response(null, { headers: cors });
 
   const url = new URL(request.url);
@@ -3990,11 +4150,12 @@ async function handleRequest(request, env) {
       summary: { enabled: body?.summary?.enabled === true, time: hhmm(body?.summary?.time, '22:00') },
       calendar: { enabled: body?.calendar?.enabled === true },
     };
-    await env.ALERTS_KV.put(`usettings:${uid}`, JSON.stringify(s));
-    const all = (await env.ALERTS_KV.get('usettings:ALL', 'json')) || {};
-    const anyOn = s.journal.enabled || s.summary.enabled || s.calendar.enabled;
-    if (anyOn) all[uid] = s; else delete all[uid];
-    await env.ALERTS_KV.put('usettings:ALL', JSON.stringify(all));
+    // ONE write: the schedule rides along as KV metadata, which the cron reads
+    // straight from a list() (loadSettingsMap). The old shared usettings:ALL
+    // blob was read-modify-written here and lost updates when two users saved
+    // at once; it is no longer written (only read as a legacy fallback).
+    const ok = await kvPutSafe(env, `usettings:${uid}`, JSON.stringify(s), { metadata: s });
+    if (!ok) return new Response(JSON.stringify({ error: 'שמירת ההגדרות נכשלה, נסה שוב מאוחר יותר' }), { status: 503, headers: { ...cors, 'Content-Type': 'application/json' } });
     return new Response(JSON.stringify({ ok: true, settings: s }), { headers: { ...cors, 'Content-Type': 'application/json' } });
   }
 
@@ -4434,7 +4595,14 @@ async function handleRequest(request, env) {
     if (!subscription?.endpoint) return new Response(JSON.stringify({ error: 'missing subscription' }), { status: 400, headers: { ...cors, 'Content-Type': 'application/json' } });
     // One KV entry per endpoint (hashed) so multiple devices each get pushes.
     const key = `push:${uid}:${hashStr(subscription.endpoint)}`;
-    await env.ALERTS_KV.put(key, JSON.stringify(subscription));
+    // Every app open re-registers the device; only WRITE when the stored
+    // subscription actually differs (a read is ~free, a write is scarce).
+    const stored = await env.ALERTS_KV.get(key, 'json').catch(() => null);
+    if (samePushSubscription(stored, subscription)) {
+      return new Response(JSON.stringify({ ok: true, unchanged: true }), { headers: { ...cors, 'Content-Type': 'application/json' } });
+    }
+    const ok = await kvPutSafe(env, key, JSON.stringify(subscription));
+    if (!ok) return new Response(JSON.stringify({ error: 'רישום ההתראות נכשל, נסה שוב מאוחר יותר' }), { status: 503, headers: { ...cors, 'Content-Type': 'application/json' } });
     return new Response(JSON.stringify({ ok: true }), { headers: { ...cors, 'Content-Type': 'application/json' } });
   }
 
@@ -4757,15 +4925,10 @@ async function handleRequest(request, env) {
     const email = fields.email?.stringValue || null;
     const displayName = fields.displayName?.stringValue || null;
 
-    // Every subcollection the app writes — keep in sync with the client's
-    // USER_SUBCOLLECTIONS (src/services/firestoreService.js).
-    const SUBS = [
-      'trades', 'journals', 'backtests', 'backtestJournals', 'dca',
-      'tradingPlans', 'notes', 'strategies', 'morningJournals',
-      'eveningJournals', 'processes', 'signals', 'watchlist', 'settings',
-    ];
+    // Every subcollection the app writes — shared list (worker/userData.js),
+    // test-enforced to match the client's USER_SUBCOLLECTIONS.
     let deletedDocs = 0;
-    for (const sub of SUBS) {
+    for (const sub of USER_SUBCOLLECTIONS) {
       let pageToken = '';
       do {
         // __name__-only mask: we only need document paths for the deletes.
@@ -4795,10 +4958,9 @@ async function handleRequest(request, env) {
       body: JSON.stringify({ localId: uid }),
     });
 
-    // Per-user KV leftovers: plan cache + push subscriptions.
-    await env.ALERTS_KV.delete(`planflag:${uid}`).catch(() => {});
-    const pushKeys = await env.ALERTS_KV.list({ prefix: `push:${uid}:` });
-    for (const k of pushKeys.keys) await env.ALERTS_KV.delete(k.name).catch(() => {});
+    // Per-user KV leftovers: encrypted exchange keys (so the cron stops
+    // polling the exchange), push subscriptions, schedule, plan cache, …
+    await purgeUserKv(env, uid).catch((e) => console.error('purgeUserKv failed', uid, e?.message || e));
 
     await appendAudit(env, {
       kind: 'account_deleted', source: 'admin', actor: adminUid, target: uid,
@@ -4807,20 +4969,31 @@ async function handleRequest(request, env) {
     return new Response(JSON.stringify({ ok: true, docs: deletedDocs, authDeleted: authRes.ok }), { headers: { ...cors, 'Content-Type': 'application/json' } });
   }
 
-  // Self-service deletion audit — called by the client right before it
-  // deletes its own Auth user (the data wipe already happened), so the admin
-  // panel can show who deleted their account and when.
+  // Self-service deletion — called by the client right before it deletes its
+  // own Auth user (the Firestore wipe already happened). Purges the user's
+  // server-side KV records — encrypted exchange API keys (else the cron keeps
+  // polling a deleted user's exchange), push subscriptions, schedule, … —
+  // and leaves an audit entry so the admin panel shows who left and when.
+  // Authenticated by the caller's own ID token: a user can only purge
+  // themselves.
   if (request.method === 'POST' && path === '/account/deleted') {
     const token = (request.headers.get('Authorization') || '').replace('Bearer ', '');
     const uid = await verifyFirebaseToken(token);
     if (!uid) return new Response(JSON.stringify({ error: 'forbidden' }), { status: 403, headers: { ...cors, 'Content-Type': 'application/json' } });
     const { email, displayName } = await request.json().catch(() => ({}));
+    let purged = null;
+    try {
+      purged = await purgeUserKv(env, uid);
+    } catch (e) {
+      console.error('account/deleted purge failed', uid, e?.message || e);
+    }
     await appendAudit(env, {
       kind: 'account_deleted', source: 'self', actor: uid, target: uid,
       email: typeof email === 'string' ? email.slice(0, 120) : null,
       displayName: typeof displayName === 'string' ? displayName.slice(0, 80) : null,
+      kvPurged: !!purged,
     });
-    return new Response(JSON.stringify({ ok: true }), { headers: { ...cors, 'Content-Type': 'application/json' } });
+    return new Response(JSON.stringify({ ok: true, purged: !!purged }), { headers: { ...cors, 'Content-Type': 'application/json' } });
   }
 
   // Admin-only: list recent audit log entries (newest first). Optional ?limit
@@ -5065,9 +5238,11 @@ async function handleRequest(request, env) {
       return new Response(JSON.stringify({ error: 'כבר מימשת את הקוד הזה' }), { status: 409, headers: { ...cors, 'Content-Type': 'application/json' } });
     }
 
-    // Read the user's current planExpires (via their own token; the firestore
-    // rule allows owner reads) so we can extend, not overwrite, an existing
-    // Premium window.
+    // Read the user's current plan (via their own token; the firestore rule
+    // allows owner reads) so we can extend, not overwrite, an existing
+    // Premium window. A failed read must NOT default to "no plan": for a
+    // lifetime member that would write now+days and silently downgrade them.
+    let currentPlan = null;
     let currentExpiryMs = 0;
     try {
       const me = await fetch(`https://firestore.googleapis.com/v1/projects/${FIREBASE_PROJECT_ID}/databases/(default)/documents/users/${uid}`, {
@@ -5075,10 +5250,18 @@ async function handleRequest(request, env) {
       });
       if (me.ok) {
         const f = (await me.json()).fields || {};
-        const raw = f.planExpires?.timestampValue || f.planExpires?.stringValue;
-        if (raw) currentExpiryMs = new Date(raw).getTime() || 0;
+        currentPlan = { plan: f.plan?.stringValue || null, expiresRaw: f.planExpires?.timestampValue || f.planExpires?.stringValue || null };
+      } else if (me.status === 404) {
+        currentPlan = { plan: null, expiresRaw: null }; // no profile doc yet → free
       }
-    } catch { /* default to 0 → start from now */ }
+    } catch { /* handled below */ }
+    if (!currentPlan) {
+      return new Response(JSON.stringify({ error: 'לא הצלחנו לבדוק את המנוי הנוכחי. נסה שוב בעוד רגע.' }), { status: 503, headers: { ...cors, 'Content-Type': 'application/json' } });
+    }
+    if (isLifetimePlan(currentPlan.plan, currentPlan.expiresRaw)) {
+      return new Response(JSON.stringify({ error: 'יש לך מנוי לכל החיים — אין צורך בקופון', lifetime: true }), { status: 409, headers: { ...cors, 'Content-Type': 'application/json' } });
+    }
+    if (currentPlan.expiresRaw) currentExpiryMs = new Date(currentPlan.expiresRaw).getTime() || 0;
 
     const now = Date.now();
     const startFrom = Math.max(currentExpiryMs, now);
@@ -5249,21 +5432,22 @@ async function handleRequest(request, env) {
     const date = getIsraelDateStr();
     const perUser = {};
     let totalText = 0, totalImage = 0;
-    const collect = async (prefix, field) => {
-      const list = await env.ALERTS_KV.list({ prefix });
-      const todays = list.keys.filter((k) => k.name.endsWith(`:${date}`));
-      const vals = await Promise.all(todays.map((k) => env.ALERTS_KV.get(k.name)));
-      todays.forEach((k, i) => {
-        const n = parseInt(vals[i], 10) || 0;
-        if (!n) return;
-        const uid = k.name.split(':')[1];
-        if (!perUser[uid]) perUser[uid] = { text: 0, image: 0 };
-        perUser[uid][field] += n;
-        if (field === 'text') totalText += n; else totalImage += n;
+    // One aiq:{uid} quota doc per user (worker/aiQuota.js) holds both the
+    // text (u) and image (i) counters for its `date`.
+    let cursor;
+    do {
+      const list = await env.ALERTS_KV.list({ prefix: 'aiq:', cursor });
+      cursor = list.list_complete ? undefined : list.cursor;
+      const docs = await Promise.all(list.keys.map((k) => env.ALERTS_KV.get(k.name, 'json').catch(() => null)));
+      list.keys.forEach((k, i) => {
+        const { used, imageUsed } = quotaUsage(docs[i], date);
+        if (!used && !imageUsed) return;
+        const uid = k.name.slice('aiq:'.length);
+        perUser[uid] = { text: used, image: imageUsed };
+        totalText += used;
+        totalImage += imageUsed;
       });
-    };
-    await collect('aiusage:', 'text');
-    await collect('aiimg:', 'image');
+    } while (cursor);
     return new Response(JSON.stringify({ date, totalText, totalImage, perUser }), { headers: { ...cors, 'Content-Type': 'application/json' } });
   }
 
@@ -5273,6 +5457,9 @@ async function handleRequest(request, env) {
     const token = (request.headers.get('Authorization') || '').replace('Bearer ', '');
     const adminUid = await verifyAdminFromToken(token);
     if (!adminUid) return new Response(JSON.stringify({ error: 'forbidden' }), { status: 403, headers: { ...cors, 'Content-Type': 'application/json' } });
+    // Merge this isolate's buffered stats first so the graph is as fresh as
+    // possible (other isolates flush on their own 10-minute cadence).
+    await flushAiStats(env, true).catch(() => {});
     const qDays = parseInt(new URL(request.url).searchParams.get('days') || '30', 10);
     const days = Math.min(90, Math.max(1, Number.isFinite(qDays) ? qDays : 30));
     const base = getIsraelTime();
@@ -6668,6 +6855,6 @@ async function handleRequest(request, env) {
 }
 
 export default {
-  fetch: handleRequest,
+  fetch: safeHandleRequest,
   scheduled: (event, env) => handleCron(env),
 };

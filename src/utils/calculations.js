@@ -140,6 +140,17 @@ export function localDayKey(date = new Date()) {
 }
 
 /**
+ * THE win-rate definition, shared by every screen: wins / (wins + losses).
+ * Breakevens are excluded from the denominator (they are neither), so a
+ * per-strategy / per-month / per-session table can never disagree with the
+ * headline number. 0 when nothing is decided yet.
+ */
+export function winRateOf(wins, losses) {
+  const decided = (wins || 0) + (losses || 0);
+  return decided > 0 ? ((wins || 0) / decided) * 100 : 0;
+}
+
+/**
  * Calculate win rate from an array of trades
  */
 export function calculateWinRate(trades) {
@@ -150,9 +161,7 @@ export function calculateWinRate(trades) {
   // consistent with the "41W 33L" sub-label, which counts only wins + losses.
   const wins = trades.filter((t) => t.result === 'win').length;
   const losses = trades.filter((t) => t.result === 'loss').length;
-  const decided = wins + losses;
-  if (!decided) return 0;
-  return (wins / decided) * 100;
+  return winRateOf(wins, losses);
 }
 
 /**
@@ -210,12 +219,47 @@ export function calculateMaxDrawdown(equityCurve, initialBalance = 0) {
 }
 
 /**
- * Calculate average R:R (winning trades only — rrRatio is unsigned)
+ * Drawdown of a P&L sequence (chronological, one value per closed trade).
+ *
+ * The dollar drawdown is always meaningful. The PERCENT drawdown is only
+ * meaningful against real capital: with no starting balance the "equity" is
+ * just cumulative P&L, so +10 then −9 would read as a 90% drawdown on a $1
+ * account move. In that case maxDrawdownPct is null — the UI shows the dollar
+ * figure instead of inventing a percentage.
+ */
+export function computeDrawdown(pnls, startBalance = 0) {
+  const start = Number.isFinite(startBalance) ? startBalance : 0;
+  let equity = start;
+  let peak = start;
+  let maxDrawdownAbs = 0;
+  const curve = [];
+  for (const p of pnls) {
+    equity += Number.isFinite(p) ? p : 0;
+    curve.push(equity);
+    if (equity > peak) peak = equity;
+    if (peak - equity > maxDrawdownAbs) maxDrawdownAbs = peak - equity;
+  }
+  const hasCapital = start > 0;
+  return {
+    curve,
+    maxDrawdownAbs,
+    maxDrawdownPct: hasCapital ? (curve.length ? calculateMaxDrawdown(curve, start) : 0) : null,
+  };
+}
+
+/**
+ * Calculate average R:R (winning trades only — unsigned reward/risk).
+ * Computed at read time from the INITIAL stop (originalStopLoss), so a stop
+ * trailed to breakeven or into profit doesn't rewrite the R the trade was
+ * taken at. Falls back to the stored rrRatio when the prices aren't there.
  */
 export function calculateAvgRR(trades) {
-  const winningWithRR = trades.filter((t) => t.result === 'win' && t.rrRatio > 0);
-  if (!winningWithRR.length) return 0;
-  return winningWithRR.reduce((s, t) => s + t.rrRatio, 0) / winningWithRR.length;
+  const rrs = trades
+    .filter((t) => t.result === 'win')
+    .map(tradeRewardRisk)
+    .filter((rr) => rr > 0);
+  if (!rrs.length) return 0;
+  return rrs.reduce((s, rr) => s + rr, 0) / rrs.length;
 }
 
 /**
@@ -280,6 +324,21 @@ export function calculateCurrentStreak(sortedTrades) {
 }
 
 /**
+ * Longest winning / losing runs over trades sorted oldest → newest. Same
+ * streak rule as calculateCurrentStreak: a breakeven neither extends nor
+ * breaks a run (W, BE, W is a 2-win streak).
+ */
+export function calculateMaxStreaks(sortedTrades) {
+  let curWin = 0, curLoss = 0, maxWin = 0, maxLoss = 0;
+  for (const t of sortedTrades) {
+    if (t.result === 'win') { curWin++; curLoss = 0; maxWin = Math.max(maxWin, curWin); }
+    else if (t.result === 'loss') { curLoss++; curWin = 0; maxLoss = Math.max(maxLoss, curLoss); }
+    // breakeven / undecided: skipped
+  }
+  return { maxWin, maxLoss };
+}
+
+/**
  * Calculate average trade duration in milliseconds
  */
 export function calculateAvgDuration(trades) {
@@ -294,7 +353,10 @@ export function calculateAvgDuration(trades) {
 }
 
 /**
- * Calculate Sortino Ratio (like Sharpe but only penalizes downside volatility)
+ * Calculate Sortino Ratio (like Sharpe but only penalizes downside volatility).
+ * Standard downside deviation (target 0): sqrt(Σ min(r, 0)² / N) over ALL N
+ * observations. Dividing by the number of losers instead overstated the
+ * downside deviation (and understated Sortino) whenever most trades won.
  */
 export function calculateSortinoRatio(returns) {
   if (!returns.length) return 0;
@@ -303,7 +365,7 @@ export function calculateSortinoRatio(returns) {
   const mean = clean.reduce((s, r) => s + r, 0) / clean.length;
   const downsideReturns = clean.filter((r) => r < 0);
   if (!downsideReturns.length) return mean > 0 ? Infinity : 0;
-  const downsideVariance = downsideReturns.reduce((s, r) => s + Math.pow(r, 2), 0) / downsideReturns.length;
+  const downsideVariance = downsideReturns.reduce((s, r) => s + Math.pow(r, 2), 0) / clean.length;
   const downsideDev = Math.sqrt(downsideVariance);
   if (downsideDev === 0) return 0;
   return mean / downsideDev;
@@ -359,6 +421,117 @@ export function safePnl(t) {
   return Number.isFinite(v) ? v : 0;
 }
 
+const toNum = (v) => {
+  const n = Number(v);
+  return Number.isFinite(n) ? n : 0;
+};
+
+/**
+ * True when `stop` sits on the LOSING side of `entry` — i.e. it actually
+ * defines risk. A stop at or through entry (moved to breakeven / trailed into
+ * profit) defines none. Unknown direction: any stop other than entry counts.
+ */
+export function isStopOnRiskSide(direction, entry, stop) {
+  const e = toNum(entry);
+  const s = toNum(stop);
+  if (!(e > 0) || !(s > 0)) return false;
+  if (direction === 'long') return s < e;
+  if (direction === 'short') return s > e;
+  return s !== e;
+}
+
+/**
+ * The stop that defined the trade's risk AT ENTRY. originalStopLoss is written
+ * once on create and kept on every edit / SL move, so it wins; legacy trades
+ * without it fall back to the current stop. Either one only counts while it is
+ * on the risk side — a breakeven stop is not "the risk". 0 when unknown.
+ */
+export function initialStopLoss(t) {
+  if (!t) return 0;
+  if (isStopOnRiskSide(t.direction, t.entryPrice, t.originalStopLoss)) return toNum(t.originalStopLoss);
+  if (isStopOnRiskSide(t.direction, t.entryPrice, t.stopLoss)) return toNum(t.stopLoss);
+  return 0;
+}
+
+/**
+ * How many price units the position holds (P&L per $1 move). positionSize is
+ * persisted as the USD NOTIONAL (entry × quantity for crypto/stocks, price ×
+ * pointValue × contracts for CME futures), so notional / entry is right for
+ * every asset class. trade.quantity on futures is the bare contract count, so
+ * it is only used directly for non-futures trades.
+ */
+export function positionUnits(t) {
+  const entry = toNum(t?.entryPrice);
+  const notional = toNum(t?.positionSize);
+  if (entry > 0 && notional > 0) return notional / entry;
+  if (t?.assetClass === 'futures_cme') {
+    const pv = toNum(t?.contract?.pointValue);
+    const c = toNum(t?.contract?.contracts);
+    return pv > 0 && c > 0 ? pv * c : 0;
+  }
+  return Math.max(0, toNum(t?.quantity));
+}
+
+/**
+ * The dollars at risk when the trade was opened: |entry − initial stop| × units.
+ * Falls back to the declared riskAmount when the stop/size can't price it
+ * (e.g. a legacy trade whose stop was moved to breakeven before
+ * originalStopLoss existed). 0 when the risk was never defined.
+ */
+export function initialRiskUsd(t) {
+  const entry = toNum(t?.entryPrice);
+  const stop = initialStopLoss(t);
+  const units = positionUnits(t);
+  if (stop > 0 && units > 0) return Math.abs(entry - stop) * units;
+  const declared = toNum(t?.riskAmount);
+  return declared > 0 ? declared : 0;
+}
+
+/**
+ * Signed R-multiple of a closed trade: NET P&L / initial risk in dollars.
+ * Using net P&L for both magnitude and sign (instead of a gross price-based
+ * rrRatio signed by the net P&L) keeps fees inside the R. Measured against the
+ * ORIGINAL stop, so trailing the stop never rewrites a trade's R. null when
+ * the trade had no defined risk.
+ */
+export function tradeRMultiple(t) {
+  const risk = initialRiskUsd(t);
+  return risk > 0 ? safePnl(t) / risk : null;
+}
+
+/**
+ * Unsigned reward:risk on price (|exit − entry| / |entry − initial stop|), at
+ * read time. Falls back to the stored rrRatio when exit/stop prices are absent
+ * (broker imports) — legacy values may be signed, hence Math.abs.
+ */
+export function tradeRewardRisk(t) {
+  const stop = initialStopLoss(t);
+  const entry = toNum(t?.entryPrice);
+  const exits = Array.isArray(t?.exits)
+    ? t.exits.map((e) => ({ price: toNum(e?.price), percent: toNum(e?.percent) })).filter((e) => e.price > 0 && e.percent > 0)
+    : [];
+  const exit = exits.length ? calculateWeightedExitPrice(exits) : toNum(t?.exitPrice);
+  if (stop > 0 && entry > 0 && exit > 0) return calculateRR(entry, exit, stop);
+  return Math.abs(toNum(t?.rrRatio));
+}
+
+/**
+ * Realized P&L sitting inside a still-open PARTIAL position (TP1 taken, rest
+ * running). For a manual partial, computeTradeFields stores the P&L of the
+ * executed exits only, so the stored net P&L IS the realized part.
+ * Exchange-sourced rows are excluded: their stored P&L is the exchange's
+ * figure for the whole position, not the executed legs. 0 for anything else.
+ *
+ * Deliberately NOT folded into isClosedTrade / closed-trade totals: exits carry
+ * no timestamp (so the P&L can't be put on the right calendar day), and the
+ * live-wallet calibration in the journal assumes total P&L = Σ closed trades.
+ */
+export function partialRealizedPnl(t) {
+  if (!t || t.status !== 'partial' || !Array.isArray(t.exits) || !t.exits.length) return 0;
+  if (t.pnlFromExchange != null || t.externalId) return 0;
+  return safePnl(t);
+}
+
 /**
  * The ONE canonical P&L computation for a trade — shared by the journal
  * (add / import / edit) and the dashboard's live SL/TP auto-close, so a trade
@@ -371,30 +544,33 @@ export function computeTradeFields(tradeData) {
   const isFutures = tradeData.assetClass === 'futures_cme' && tradeData.contract;
   const hasExchangePnl = typeof tradeData.pnlFromExchange === 'number';
   const isClosed = (tradeData.exitPrice > 0) || tradeData.status === 'closed';
+  // R is measured against the stop the trade was OPENED with — trailing the
+  // stop to breakeven must not turn a 2R winner into "4R" or "no R".
+  const riskStop = initialStopLoss(tradeData);
 
   if (hasExchangePnl && isClosed) {
     pnl = tradeData.pnlFromExchange;
     const exitForRR = tradeData.exits?.length
       ? calculateWeightedExitPrice(tradeData.exits)
       : (tradeData.exitPrice || 0);
-    rrRatio = calculateRR(tradeData.entryPrice, exitForRR, tradeData.stopLoss);
+    rrRatio = calculateRR(tradeData.entryPrice, exitForRR, riskStop);
   } else if (isFutures) {
     const { pointValue, contracts } = tradeData.contract;
     if (tradeData.exits?.length) {
       pnl = tradeData.exits.some((e) => e.contracts != null)
         ? calculateFuturesContractsPnL(tradeData.direction, tradeData.entryPrice, tradeData.exits, pointValue)
         : calculateFuturesPartialPnL(tradeData.direction, tradeData.entryPrice, tradeData.exits, pointValue, contracts);
-      rrRatio = calculateRR(tradeData.entryPrice, calculateWeightedExitPrice(tradeData.exits), tradeData.stopLoss);
+      rrRatio = calculateRR(tradeData.entryPrice, calculateWeightedExitPrice(tradeData.exits), riskStop);
     } else {
       pnl = calculateFuturesPnL(tradeData.direction, tradeData.entryPrice, tradeData.exitPrice, pointValue, contracts);
-      rrRatio = calculateRR(tradeData.entryPrice, tradeData.exitPrice, tradeData.stopLoss);
+      rrRatio = calculateRR(tradeData.entryPrice, tradeData.exitPrice, riskStop);
     }
   } else if (tradeData.exits?.length) {
     pnl = calculatePartialPnL(tradeData.direction, tradeData.entryPrice, tradeData.exits, tradeData.quantity);
-    rrRatio = calculateRR(tradeData.entryPrice, calculateWeightedExitPrice(tradeData.exits), tradeData.stopLoss);
+    rrRatio = calculateRR(tradeData.entryPrice, calculateWeightedExitPrice(tradeData.exits), riskStop);
   } else {
     pnl = calculatePnL(tradeData.direction, tradeData.entryPrice, tradeData.exitPrice, tradeData.quantity);
-    rrRatio = calculateRR(tradeData.entryPrice, tradeData.exitPrice, tradeData.stopLoss);
+    rrRatio = calculateRR(tradeData.entryPrice, tradeData.exitPrice, riskStop);
   }
 
   if (isFutures) {
