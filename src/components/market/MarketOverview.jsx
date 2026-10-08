@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback, useRef, useMemo } from 'react';
+import { useState, useEffect, useCallback, useRef, useMemo, lazy, Suspense } from 'react';
 import { useSearchParams } from 'react-router-dom';
 import { motion, AnimatePresence } from 'framer-motion';
 import { formatCompactUsd as formatNum, formatCoinPrice as formatPrice, LRM } from '../../utils/formatters';
@@ -9,11 +9,12 @@ import {
 } from 'lucide-react';
 import { pageVariants, pageTransition, staggerContainer } from '../../utils/animations';
 import PageHeader from '../shared/PageHeader';
-import TabStrip from '../shared/TabStrip';
 import FearGreedGauge from '../dashboard/FearGreedGauge';
 import CoinAnalysis from './CoinAnalysis';
 import MarketSessionsCard from './MarketSessionsCard';
 import WhalesPage from '../whales/WhalesPage';
+import ErrorBoundary from '../shared/ErrorBoundary';
+import LoadingSpinner from '../shared/LoadingSpinner';
 import { getCachedImage, hasKnownIcon } from '../../services/coinImageCache';
 import { fetchSpotTickersAsBinance, fetchLinearTickers, fetchAccountRatio } from '../../services/bybitDirect';
 import CoinIcon from '../shared/CoinIcon';
@@ -674,20 +675,28 @@ function CryptoHeatmap({ coins, loading }) {
 }
 
 
-// The page's three views, switched by the shared tab strip.
+// Polymarket is its own heavy chunk (live third-party feeds) — loaded only
+// when its tab is opened.
+const PolymarketPage = lazy(() => import('../polymarket/PolymarketPage'));
+
+// The page's views, switched by the shared tab strip. Polymarket stays visible
+// to everyone; the board itself shows a locked teaser to non-premium users.
 const MARKET_TABS = [
   { id: 'overview', label: 'סקירה' },
   { id: 'analysis', label: 'ניתוח מטבע' },
   { id: 'whales', label: 'מעקב לווייתנים', mobileLabel: 'לווייתנים' },
+  { id: 'polymarket', label: 'Polymarket' },
 ];
 export default function MarketOverview() {
-  // The tab lives in the URL (?tab=analysis / ?tab=whales) so links and the
-  // back button land on the right view.
+  // The tab lives in the URL (?tab=analysis / ?tab=whales / ?tab=polymarket)
+  // so links and the back button land on the right view.
   const [searchParams, setSearchParams] = useSearchParams();
   const activeTab = MARKET_TABS.some((t) => t.id === searchParams.get('tab')) ? searchParams.get('tab') : 'overview';
   const setActiveTab = (id) => setSearchParams((prev) => {
     const next = new URLSearchParams(prev);
     if (id === 'overview') next.delete('tab'); else next.set('tab', id);
+    // `pm` is the Polymarket board's own sub-tab — drop it when leaving.
+    if (id !== 'polymarket') next.delete('pm');
     return next;
   }, { replace: true });
   const [global, setGlobal] = useState(null);
@@ -1066,21 +1075,12 @@ export default function MarketOverview() {
 
   return (
     <motion.div variants={pageVariants} initial="initial" animate="animate" exit="exit" transition={pageTransition}>
-      {/* Shared page header; the two views switch with the shared tab strip. */}
+      {/* Shared page header; the views switch with its tab strip. */}
       <PageHeader
         icon={Activity}
         title="סקירת שוק"
-        subtitle="מצב השוק, מטבעות חמים, לווייתנים וניתוח מטבע — במקום אחד"
-        actions={(
-          <div className="rounded-xl bg-bg-tertiary border border-border-primary p-1">
-            <TabStrip
-              tabs={MARKET_TABS}
-              value={activeTab}
-              onChange={setActiveTab}
-              layoutKey="market-tab"
-            />
-          </div>
-        )}
+        subtitle="מצב השוק, מטבעות חמים, לווייתנים, ניתוח מטבע ו-Polymarket — במקום אחד"
+        tabs={{ tabs: MARKET_TABS, value: activeTab, onChange: setActiveTab, layoutKey: 'market-tab' }}
       />
 
       <AnimatePresence mode="wait">
@@ -1376,6 +1376,16 @@ export default function MarketOverview() {
       ) : activeTab === 'analysis' ? (
       <motion.div key="analysis" initial={{ opacity: 0, x: 20 }} animate={{ opacity: 1, x: 0 }} exit={{ opacity: 0, x: -20 }} transition={{ duration: 0.25 }}>
         <CoinAnalysis />
+      </motion.div>
+      ) : activeTab === 'polymarket' ? (
+      // Own boundary: this tab streams live third-party data, so a throw here
+      // should degrade the tab, not blank the whole page.
+      <motion.div key="polymarket" initial={{ opacity: 0, x: 20 }} animate={{ opacity: 1, x: 0 }} exit={{ opacity: 0, x: -20 }} transition={{ duration: 0.25 }}>
+        <ErrorBoundary>
+          <Suspense fallback={<LoadingSpinner />}>
+            <PolymarketPage />
+          </Suspense>
+        </ErrorBoundary>
       </motion.div>
       ) : (
       // Whale tracking — live big trades & liquidations, its own tab next to

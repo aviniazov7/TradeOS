@@ -8,7 +8,6 @@ import PullToRefresh from '../shared/PullToRefresh';
 import OnboardingWizard from '../onboarding/OnboardingWizard';
 import PushNudge from '../shared/PushNudge';
 import { useTheme } from '../../hooks/useTheme';
-// import { useLeaderboardSync } from '../../hooks/useLeaderboardSync';
 import { usePushAutoRegister } from '../../hooks/usePushAutoRegister';
 import { WifiOff } from 'lucide-react';
 
@@ -30,7 +29,6 @@ export default function Layout() {
     window.addEventListener('closeSidebar', handler);
     return () => window.removeEventListener('closeSidebar', handler);
   }, []);
-  // useLeaderboardSync();
   // Keep granted devices registered for push on every app open (admins can then
   // reach installed users), and nudge un-granted installed users to enable it.
   usePushAutoRegister();

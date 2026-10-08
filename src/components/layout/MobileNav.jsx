@@ -1,24 +1,26 @@
 import { useLayoutEffect, useRef, useState, useCallback } from 'react';
-import { NavLink, useLocation } from 'react-router-dom';
+import { Link, NavLink, useLocation } from 'react-router-dom';
 import { motion } from 'framer-motion';
 import {
   LayoutDashboard,
   BookOpen,
   Activity,
-  Newspaper,
   Bot,
+  Plus,
 } from 'lucide-react';
 
 // The bottom bar holds the DAILY quick-access screens (Hebrew labels, matching
-// the sidebar). Backtest / Mental / DCA stay one tap away in the menu — they're
-// occasional, not everyday.
+// the sidebar), split around a centre "+" that opens the new-trade form.
+// Backtest / plans / portfolio stay one tap away in the menu (header burger).
+//   match — extra path prefixes that light the tab up (pages living under it)
 const mobileItems = [
   { to: '/', label: 'בית', icon: LayoutDashboard },
   { to: '/journal', label: 'יומן', icon: BookOpen },
-  { to: '/market', label: 'שוק', icon: Activity },
-  { to: '/news', label: 'חדשות', icon: Newspaper },
   { to: '/trade-ai', label: 'TradeAI', icon: Bot },
+  { to: '/market', label: 'שוק', icon: Activity, match: ['/news', '/polymarket', '/scanner'] },
 ];
+// The "+" sits between these two halves of mobileItems.
+const SPLIT_AT = 2;
 
 export default function MobileNav() {
   const { pathname } = useLocation();
@@ -28,7 +30,7 @@ export default function MobileNav() {
 
   const activeIndex = (() => {
     const match = mobileItems.findIndex(
-      (i) => i.to !== '/' && pathname.startsWith(i.to)
+      (i) => i.to !== '/' && [i.to, ...(i.match || [])].some((p) => pathname.startsWith(p))
     );
     if (match !== -1) return match;
     return pathname === '/' ? 0 : -1;
@@ -57,6 +59,39 @@ export default function MobileNav() {
       window.removeEventListener('resize', measure);
     };
   }, [measure]);
+
+  const renderItem = (item, i) => {
+    const isActive = activeIndex === i;
+    return (
+      <NavLink
+        key={item.to}
+        to={item.to}
+        end={item.to === '/'}
+        ref={(el) => (itemRefs.current[i] = el)}
+        onClick={() => {
+          // Tapping the already-active tab scrolls the page back to the top.
+          if (isActive) {
+            document.getElementById('app-scroll')?.scrollTo({ top: 0, behavior: 'smooth' });
+          }
+        }}
+        className="relative z-10 flex-1 flex flex-col items-center justify-center gap-1 rounded-full px-2 py-2 text-[11px] font-medium"
+      >
+        {/* Monochrome, X-style: active = primary text color, no accent
+            gradients — the neutral pill carries the state. */}
+        <span
+          className={`flex flex-col items-center gap-1 transition-colors duration-200 ${
+            isActive ? 'text-text-primary' : 'text-text-muted'
+          }`}
+        >
+          <item.icon
+            className="w-[22px] h-[22px]"
+            strokeWidth={isActive ? 2.2 : 1.8}
+          />
+          <span className={`leading-none ${isActive ? 'font-semibold' : ''}`}>{item.label}</span>
+        </span>
+      </NavLink>
+    );
+  };
 
   return (
     <nav
@@ -95,38 +130,23 @@ export default function MobileNav() {
           style={{ left: 0 }}
         />
 
-        {mobileItems.map((item, i) => {
-          const isActive = activeIndex === i;
-          return (
-            <NavLink
-              key={item.to}
-              to={item.to}
-              end={item.to === '/'}
-              ref={(el) => (itemRefs.current[i] = el)}
-              onClick={() => {
-                // Tapping the already-active tab scrolls the page back to the top.
-                if (isActive) {
-                  document.getElementById('app-scroll')?.scrollTo({ top: 0, behavior: 'smooth' });
-                }
-              }}
-              className="relative z-10 flex-1 flex flex-col items-center justify-center gap-1 rounded-full px-2 py-2 text-[11px] font-medium"
-            >
-              {/* Monochrome, X-style: active = primary text color, no accent
-                  gradients — the neutral pill carries the state. */}
-              <span
-                className={`flex flex-col items-center gap-1 transition-colors duration-200 ${
-                  isActive ? 'text-text-primary' : 'text-text-muted'
-                }`}
-              >
-                <item.icon
-                  className="w-[22px] h-[22px]"
-                  strokeWidth={isActive ? 2.2 : 1.8}
-                />
-                <span className={`leading-none ${isActive ? 'font-semibold' : ''}`}>{item.label}</span>
-              </span>
-            </NavLink>
-          );
-        })}
+        {mobileItems.slice(0, SPLIT_AT).map((item, i) => renderItem(item, i))}
+
+        {/* Centre action: new trade. ?new=1 opens the journal's trade form
+            (also when the journal is already open). */}
+        <div className="relative z-10 flex-1 flex items-center justify-center">
+          <Link
+            to="/journal?new=1"
+            aria-label="עסקה חדשה"
+            title="עסקה חדשה"
+            className="w-12 h-12 rounded-full grid place-items-center text-white bg-accent-muted hover:bg-accent-primary transition-colors"
+            style={{ boxShadow: '0 6px 20px rgba(37,99,235,0.45)' }}
+          >
+            <Plus className="w-6 h-6" strokeWidth={2.4} />
+          </Link>
+        </div>
+
+        {mobileItems.slice(SPLIT_AT).map((item, j) => renderItem(item, SPLIT_AT + j))}
       </div>
     </nav>
   );

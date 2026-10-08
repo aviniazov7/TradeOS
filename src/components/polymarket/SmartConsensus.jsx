@@ -152,7 +152,7 @@ export default function SmartConsensus() {
         <motion.div className="space-y-2" variants={staggerContainer} initial="initial" animate="animate">
           {view.map((c, i) => (
             <motion.div key={`${c.conditionId}-${c.outcome}`} variants={staggerItem}>
-              <ConsensusRow c={c} rank={i + 1} onOpen={() => navigate(`/polymarket/market/${c.conditionId}`, { state: { from: '/polymarket?tab=consensus' } })} />
+              <ConsensusRow c={c} rank={i + 1} onOpen={() => navigate(`/polymarket/market/${c.conditionId}`, { state: { from: '/market?tab=polymarket&pm=consensus' } })} />
             </motion.div>
           ))}
         </motion.div>
