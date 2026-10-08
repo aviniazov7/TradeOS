@@ -66,6 +66,42 @@ describe('computeJournalAnalytics', () => {
     expect(a.avgWin).toBe(5);
   });
 
+  it('buckets daily P&L by the full date — the same day of different years stays apart', () => {
+    const a = computeJournalAnalytics([
+      trade({ netPnl: 10, exitDate: new Date(2025, 8, 1, 12) }),
+      trade({ netPnl: 20, exitDate: new Date(2026, 8, 1, 12) }),
+      trade({ netPnl: 5, exitDate: new Date(2026, 8, 1, 15) }),
+    ]);
+    expect(a.dailyPnL).toEqual([
+      { key: '2025-09-01', date: '09/01/25', pnl: 10 },
+      { key: '2026-09-01', date: '09/01/26', pnl: 25 },
+    ]);
+  });
+
+  it('keeps the short MM/dd label within a single year', () => {
+    const a = computeJournalAnalytics([trade({ netPnl: 10, exitDate: new Date(2026, 8, 1, 12) })]);
+    expect(a.dailyPnL).toEqual([{ key: '2026-09-01', date: '09/01', pnl: 10 }]);
+  });
+
+  it('survives string P&L from a dirty import (safePnl)', () => {
+    const a = computeJournalAnalytics([trade({ netPnl: '12.5' }), trade({ netPnl: '7.5' })]);
+    expect(a.avgWin).toBe(10);
+    expect(a.dailyPnL[0].pnl).toBe(20);
+  });
+
+  it('win rates exclude breakevens and breakevens do not break a streak', () => {
+    const a = computeJournalAnalytics([
+      trade({ netPnl: 10, strategy: 'S', timeframe: '1H', exitDate: '2026-09-01T00:00:00Z' }),
+      trade({ result: 'breakeven', netPnl: 0, strategy: 'S', timeframe: '1H', exitDate: '2026-09-02T00:00:00Z' }),
+      trade({ netPnl: 10, strategy: 'S', timeframe: '1H', exitDate: '2026-09-03T00:00:00Z' }),
+      trade({ result: 'loss', netPnl: -10, strategy: 'S', timeframe: '1H', exitDate: '2026-09-04T00:00:00Z' }),
+    ]);
+    expect(a.byStrategy[0].winRate).toBeCloseTo(66.67, 1); // 2W / (2W + 1L), not 2/4
+    expect(a.byTimeframe[0].winRate).toBeCloseTo(66.67, 1);
+    expect(a.longWinRate).toBeCloseTo(66.67, 1);
+    expect(a.maxWin).toBe(2); // W, BE, W
+  });
+
   it('groups by pair, tag, timeframe and strategy', () => {
     const a = computeJournalAnalytics([
       trade({ pair: 'ETHUSDT', netPnl: 50, tags: ['breakout'], timeframe: '4H', strategy: 'SOW' }),
@@ -186,6 +222,27 @@ describe('computeRStats', () => {
     expect(byLabel['1R…2R']).toBe(1);
     expect(byLabel['≥ 3R']).toBe(1);
     expect(r.buckets.reduce((s, b) => s + b.count, 0)).toBe(4);
+  });
+
+  it('measures R from the ORIGINAL stop, so a breakeven stop is not "no stop"', () => {
+    // Long 100, original stop 90, 10 units = $100 risk; stop since trailed to 100.
+    const moved = trade({
+      netPnl: 200, entryPrice: 100, exitPrice: 120, stopLoss: 100, originalStopLoss: 90,
+      positionSize: 1000, quantity: 10, rrRatio: 0,
+    });
+    const s = computeRStats([moved]);
+    expect(s.withStop).toBe(1);
+    expect(s.noStop.count).toBe(0);
+    expect(s.totalR).toBe(2);
+  });
+
+  it('signs AND sizes R by the net P&L (fees included)', () => {
+    // Price says +0.05R gross, but $10 fees make it −$5 net → −0.05R.
+    const t = trade({
+      result: 'loss', netPnl: -5, entryPrice: 100, exitPrice: 100.5, stopLoss: 90,
+      positionSize: 1000, quantity: 10, rrRatio: 0.05,
+    });
+    expect(computeRStats([t]).totalR).toBeCloseTo(-0.05, 9);
   });
 
   it('handles a period without stops', () => {
