@@ -2,7 +2,7 @@ import { useCallback, useMemo, useRef, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { motion } from 'framer-motion';
 import {
-  CandlestickChart, RefreshCw, Square, Columns2, Grid2x2, Link2, TriangleAlert, Layers, ListOrdered,
+  CandlestickChart, RefreshCw, Link2, TriangleAlert, Layers, ListOrdered,
 } from 'lucide-react';
 import PageHeader from '../shared/PageHeader';
 import Card from '../shared/Card';
@@ -27,15 +27,8 @@ import {
 const MotionDiv = motion.div;
 
 const LS_SEL = 'tradeos_terminal_symbol';
-const LS_LAYOUT = 'tradeos_terminal_layout';
 const lsGet = (k) => { try { return localStorage.getItem(k); } catch { return null; } };
 const lsSet = (k, v) => { try { localStorage.setItem(k, v); } catch { /* private mode */ } };
-
-const LAYOUTS = [
-  { id: 1, icon: Square, label: 'גרף אחד' },
-  { id: 2, icon: Columns2, label: 'שני גרפים' },
-  { id: 4, icon: Grid2x2, label: 'ארבעה גרפים' },
-];
 
 const posKey = (p) => `${p.source}|${p.externalId || ''}|${p.pair}|${p.direction}`;
 
@@ -46,32 +39,6 @@ function UpdatedLabel({ at, refreshing }) {
       <span className={`w-1.5 h-1.5 rounded-full ${at ? 'bg-profit' : 'bg-text-muted'} ${refreshing ? 'animate-pulse' : ''}`} />
       {at ? `עודכן ${agoLabel(at, now)}` : 'טוען…'}
     </span>
-  );
-}
-
-function LayoutToggle({ value, onChange }) {
-  return (
-    <div role="radiogroup" aria-label="פריסת גרפים" className="hidden md:inline-flex items-center gap-0.5 h-11 rounded-xl bg-bg-tertiary border border-border-primary p-1">
-      {LAYOUTS.map(({ id, icon, label }) => {
-        const Icon = icon;
-        return (
-        <button
-          key={id}
-          type="button"
-          role="radio"
-          aria-checked={value === id}
-          title={label}
-          aria-label={label}
-          onClick={() => onChange(id)}
-          className={`w-9 h-full rounded-lg grid place-items-center transition-colors cursor-pointer ${
-            value === id ? 'bg-accent-primary/15 text-accent-primary' : 'text-text-muted hover:text-text-primary'
-          }`}
-        >
-          <Icon className="w-4 h-4" />
-        </button>
-        );
-      })}
-    </div>
   );
 }
 
@@ -165,11 +132,6 @@ export default function TerminalPage() {
 
   const [tab, setTab] = useState('positions');
   const [exFilter, setExFilter] = useState('all');
-  const [layout, setLayoutState] = useState(() => {
-    const v = parseInt(lsGet(LS_LAYOUT), 10);
-    return [1, 2, 4].includes(v) ? v : 4;
-  });
-  const setLayout = (v) => { setLayoutState(v); lsSet(LS_LAYOUT, String(v)); };
 
   // The charted symbol: what the user picked (remembered), else the biggest
   // open position, else BTC.
@@ -265,7 +227,6 @@ export default function TerminalPage() {
         actions={(
           <>
             {!noExchanges && <UpdatedLabel at={lastUpdated} refreshing={refreshing} />}
-            <LayoutToggle value={layout} onChange={setLayout} />
             {!noExchanges && (
               <button type="button" onClick={refresh} disabled={refreshing || connected === null} className={headerIconBtn} title="רענון" aria-label="רענון">
                 <RefreshCw className={`w-5 h-5 ${refreshing ? 'animate-spin' : ''}`} />
@@ -281,7 +242,7 @@ export default function TerminalPage() {
         <div ref={chartsRef} className="scroll-mt-20">
           <TerminalCharts
             symbol={tvSymbol(selected.pair, selected.exchange)}
-            layout={layout}
+            exchange={selected.exchange}
             theme={theme}
             mobile={mobile}
             toolbar={<SymbolBar selected={selected} choices={symbolChoices} onPick={(c) => pick(c.pair, c.exchange)} />}

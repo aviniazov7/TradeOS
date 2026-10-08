@@ -12,13 +12,29 @@ export const EXCHANGE_LABELS = {
 };
 
 // ── Charts ───────────────────────────────────────────────────────────────────
-// Chart timeframes (TradingView interval codes).
+// Chart timeframes (TradingView interval codes), shortest first.
 export const TIMEFRAMES = [
-  { id: 'W', label: 'W', interval: 'W' },
-  { id: 'D', label: 'D', interval: 'D' },
-  { id: '4H', label: '4H', interval: '240' },
+  { id: '1m', label: '1m', interval: '1' },
+  { id: '5m', label: '5m', interval: '5' },
+  { id: '15m', label: '15m', interval: '15' },
   { id: '30m', label: '30m', interval: '30' },
+  { id: '1H', label: '1H', interval: '60' },
+  { id: '4H', label: '4H', interval: '240' },
+  { id: 'D', label: 'D', interval: 'D' },
+  { id: 'W', label: 'W', interval: 'W' },
+  { id: 'M', label: 'M', interval: 'M' },
 ];
+
+export const tfById = (id) => TIMEFRAMES.find((t) => t.id === id) || TIMEFRAMES.find((t) => t.id === '4H');
+
+// The widget's `style` codes: 0 bars (OHLC), 1 candles, 2 line, 9 hollow candles.
+export const CHART_STYLES = [
+  { id: '1', label: 'נרות' },
+  { id: '0', label: 'ברים (OHLC)' },
+  { id: '9', label: 'נרות חלולים' },
+  { id: '2', label: 'קו' },
+];
+const STYLE_IDS = new Set(CHART_STYLES.map((s) => s.id));
 
 // TradingView's perpetual listing per venue is "<PREFIX>:<PAIR>.P". Hyperliquid
 // isn't on TradingView: its pairs already use Bybit's naming (BTCUSDT,
@@ -37,7 +53,11 @@ export function tvSymbol(pair, exchange) {
 // The free Advanced Chart widget as a plain iframe — the same
 // s.tradingview.com/embed-widget origin the coin-analysis page embeds, so no
 // script tag and no CSP change are needed.
-export function tvChartUrl({ symbol, interval = 'D', theme = 'dark', timezone } = {}) {
+//   style      a CHART_STYLES id ('1' candles by default)
+//   black      dark theme on pure black instead of the app's near-black panel
+//   drawTools  show the left drawing toolbar (hidden by default)
+//   topBar     TradingView's own top toolbar (interval, indicators); false = clean
+export function tvChartUrl({ symbol, interval = 'D', theme = 'dark', timezone, style = '1', black = false, drawTools = false, topBar = true } = {}) {
   const dark = theme !== 'light';
   const config = {
     autosize: true,
@@ -45,15 +65,16 @@ export function tvChartUrl({ symbol, interval = 'D', theme = 'dark', timezone } 
     interval,
     timezone: timezone || 'Etc/UTC',
     theme: dark ? 'dark' : 'light',
-    style: '1',
+    style: STYLE_IDS.has(String(style)) ? String(style) : '1',
     locale: 'en',
     allow_symbol_change: true,
-    hide_side_toolbar: true,
+    hide_side_toolbar: !drawTools,
+    hide_top_toolbar: !topBar,
     hide_volume: false,
     save_image: false,
     calendar: false,
     withdateranges: false,
-    backgroundColor: dark ? 'rgba(10, 10, 12, 1)' : 'rgba(255, 255, 255, 1)',
+    backgroundColor: dark ? (black ? 'rgba(0, 0, 0, 1)' : 'rgba(10, 10, 12, 1)') : 'rgba(255, 255, 255, 1)',
     gridColor: dark ? 'rgba(255, 255, 255, 0.04)' : 'rgba(15, 23, 42, 0.06)',
     support_host: 'https://www.tradingview.com',
   };

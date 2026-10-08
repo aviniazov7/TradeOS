@@ -38,6 +38,19 @@ it('tvChartUrl builds the advanced-chart embed with the interval and theme', () 
   const cfg = JSON.parse(decodeURIComponent(url.split('#')[1]));
   expect(cfg).toMatchObject({ symbol: 'BYBIT:SOLUSDT.P', interval: '240', theme: 'dark', timezone: 'Asia/Jerusalem', autosize: true });
   expect(JSON.parse(decodeURIComponent(tvChartUrl({ symbol: 'X', theme: 'light' }).split('#')[1])).theme).toBe('light');
+  expect(cfg).toMatchObject({ style: '1', hide_side_toolbar: true, hide_volume: false, backgroundColor: 'rgba(10, 10, 12, 1)' });
+});
+
+it('tvChartUrl passes the chart style, pure black and the drawing toolbar', () => {
+  const cfgOf = (o) => JSON.parse(decodeURIComponent(tvChartUrl({ symbol: 'X', ...o }).split('#')[1]));
+  expect(cfgOf({ style: '0' }).style).toBe('0');
+  expect(cfgOf({ style: '9' }).style).toBe('9');
+  expect(cfgOf({ style: 'zzz' }).style).toBe('1');
+  expect(cfgOf({ black: true }).backgroundColor).toBe('rgba(0, 0, 0, 1)');
+  expect(cfgOf({ black: true, theme: 'light' }).backgroundColor).toBe('rgba(255, 255, 255, 1)');
+  expect(cfgOf({ drawTools: true }).hide_side_toolbar).toBe(false);
+  expect(cfgOf({}).hide_top_toolbar).toBe(false);
+  expect(cfgOf({ topBar: false }).hide_top_toolbar).toBe(true);
 });
 
 describe('stops and targets from orders', () => {
