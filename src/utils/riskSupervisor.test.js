@@ -119,6 +119,34 @@ describe('superviseRisk', () => {
     expect(r.openRiskUsd).toBe(0);
   });
 
+  it('counts a stop trailed into profit as zero risk, not |entry − stop|', () => {
+    const trades = [
+      open({ id: 'l', pair: 'BTCUSDT', direction: 'long', entryPrice: 100, stopLoss: 110, positionSize: 1000 }),
+      open({ id: 's', pair: 'ETHUSDT', direction: 'short', entryPrice: 100, stopLoss: 90, positionSize: 1000 }),
+    ];
+    const r = superviseRisk(trades, null, { accountBalance: 10000, now: NOW });
+    expect(r.openRiskUsd).toBe(0);
+  });
+
+  it('prices a short on the right side of entry', () => {
+    const trades = [open({ id: 's', pair: 'ETHUSDT', direction: 'short', entryPrice: 100, stopLoss: 105, positionSize: 1000 })];
+    expect(superviseRisk(trades, null, { now: NOW }).openRiskUsd).toBe(50); // 10 units × $5
+  });
+
+  it('only the size still open after partial exits is at risk', () => {
+    // TP1 took 60% off: 10 units × $10 × 40% = $40.
+    const trades = [open({
+      id: 'p', status: 'partial', pair: 'BTCUSDT', direction: 'long', entryPrice: 100, stopLoss: 90,
+      positionSize: 1000, exits: [{ price: 120, percent: 60 }],
+    })];
+    expect(superviseRisk(trades, null, { now: NOW }).openRiskUsd).toBe(40);
+  });
+
+  it('scales a declared risk by the open fraction too', () => {
+    const trades = [open({ id: 'd', pair: 'BTCUSDT', riskAmount: 100, exits: [{ price: 120, percent: 50 }] })];
+    expect(superviseRisk(trades, null, { now: NOW }).openRiskUsd).toBe(50);
+  });
+
   it('reports open risk pct as null rather than 0 when no balance is on file', () => {
     // "nothing at risk" and "we cannot say" must not render the same.
     const r = superviseRisk([open({ id: 'a', riskAmount: 50, stopLoss: 90 })], null, { now: NOW });
