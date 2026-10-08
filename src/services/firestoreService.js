@@ -379,6 +379,14 @@ export async function getTodayClosedTrades(uid) {
   return snap.docs.map((d) => ({ id: d.id, ...d.data() }));
 }
 
+/** The user's OPEN trades (all journals) — one equality filter, so no
+ *  composite index; the trading terminal reads their original stops. */
+export async function getOpenTrades(uid) {
+  const q = query(collection(db, 'users', uid, 'trades'), where('status', '==', 'open'));
+  const snap = await getDocs(q);
+  return snap.docs.map((d) => ({ id: d.id, ...d.data() }));
+}
+
 // ─── Utilities ──────────────────────────────────────────────────
 
 /** Get a server timestamp */

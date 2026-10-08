@@ -132,6 +132,49 @@ export async function syncOpenPositions(exchange) {
   return data.positions || [];
 }
 
+// Resting orders (limit / TP / SL / trigger / trailing) in the Worker's
+// normalized shape (worker/openOrders.js). `partial` = one of the venue's
+// secondary order lists (algo / plan / stop orders) couldn't be read.
+export async function fetchOpenOrders(exchange) {
+  let qs = `exchange=${encodeURIComponent(exchange)}`;
+  if (exchange === 'hyperliquid') {
+    const address = await getHyperliquidAddress();
+    if (!address) throw new Error('חבר מחדש את Hyperliquid — כתובת הארנק חסרה');
+    qs += `&address=${address}`;
+  }
+  const res = await authedFetch(`/exchange/open-orders?${qs}`, undefined, 'GET');
+  const data = await res.json().catch(() => ({}));
+  if (!res.ok || !data.ok) {
+    const msg = data.reason ? KEY_PROBLEM_TEXT[data.reason]
+      : data.error === 'reconnect_required' ? 'צריך לחבר מחדש את הבורסה'
+        : (data.error || 'שגיאה בטעינת הפקודות הפתוחות');
+    throw exchangeError(msg, data.reason);
+  }
+  return { orders: data.orders || [], partial: !!data.partial };
+}
+
+/**
+ * Everything the trading terminal shows for one venue, in one go:
+ * { positions, orders, ordersPartial, positionsError, ordersError }.
+ * Hyperliquid answers both from one call (/hl/positions returns its open
+ * orders too). Throws only when nothing could be read.
+ */
+export async function fetchTerminalSnapshot(exchange) {
+  if (exchange === 'hyperliquid') {
+    const data = await hlGet('/hl/positions', {});
+    return { positions: data.positions || [], orders: data.orders || [], ordersPartial: false, positionsError: null, ordersError: null };
+  }
+  const [pos, ord] = await Promise.allSettled([syncOpenPositions(exchange), fetchOpenOrders(exchange)]);
+  if (pos.status === 'rejected' && ord.status === 'rejected') throw pos.reason;
+  return {
+    positions: pos.status === 'fulfilled' ? pos.value : [],
+    orders: ord.status === 'fulfilled' ? ord.value.orders : [],
+    ordersPartial: ord.status === 'fulfilled' ? ord.value.partial : false,
+    positionsError: pos.status === 'rejected' ? (pos.reason?.message || 'שגיאה') : null,
+    ordersError: ord.status === 'rejected' ? (ord.reason?.message || 'שגיאה') : null,
+  };
+}
+
 export async function fetchExchangeBalance(exchange) {
   if (exchange === 'hyperliquid') {
     const data = await hlGet('/hl/positions', {});

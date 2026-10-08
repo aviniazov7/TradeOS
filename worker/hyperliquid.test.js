@@ -221,5 +221,10 @@ describe('handleHyperliquidRoute', () => {
     expect(data.positions[0]).toMatchObject({ pair: 'FILUSDT', status: 'open' });
     expect(data.accountValue).toBeCloseTo(parseFloat(fx.filOpen.clearinghouseState.marginSummary.accountValue), 6);
     expect(data.accountValue).toBeGreaterThan(0);
+    // Terminal fields + the open orders it fetched anyway (no second call).
+    expect(data.positions[0]).toMatchObject({ marginMode: 'isolated', margin: 9851.876634, unrealizedPnl: 421.84008, funding: -3.765333 });
+    expect(data.positions[0].markPrice).toBeCloseTo(47731.2434 / 45506, 8);
+    expect(data.orders).toHaveLength(1);
+    expect(data.orders[0]).toMatchObject({ kind: 'take_profit', wholePosition: true, pair: 'FILUSDT' });
   });
 });

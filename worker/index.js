@@ -13,6 +13,7 @@ import {
   bybitWalletEquity, classifyExchangeAuthError, mexcStopsByPosition, mexcEntryTypeByPosition, mexcOrderKind, mexcExitsByPosition,
   enrichWithOrders, okxOrderRow, okxStopRow, bitgetOrderRow, bitgetStopRow, mexcCronOpen, mexcCronClosed,
   normalizeMexcClosed, normalizeOkxClosed, normalizeOkxOpen, normalizeBitgetClosed,
+  normalizeBybitOpen, normalizeMexcOpen, normalizeBitgetOpen,
 } from './exchangeNormalize.js';
 import { buildCampaignEmails, chunk, friendlyResendError } from './adminEmail.js';
 import { emailShell, C as EMAIL_C, bg as emailBg, txt as emailTxt, esc as emailEsc, para as emailPara } from './emailTheme.js';
@@ -29,6 +30,7 @@ import { trBucketKey, mergeTrBucket, lookupTr, TR_BUCKET_TTL } from './newsTrans
 import { handleFxUsdIls } from './fxRates.js';
 import { handleHyperliquidRoute } from './hyperliquid.js';
 import { handleCandlesRoute } from './candles.js';
+import { handleOpenOrdersRoute } from './openOrders.js';
 
 // Binance's public market-data mirror — api.binance.com returns 403 to
 // Cloudflare Worker egress IPs in many regions, but data-api.binance.vision
@@ -5769,38 +5771,10 @@ async function handleRequest(request, env) {
           : (data.data?.resultList || data.data?.list || []);
 
         const csMap = await mexcContractSizes();
-        const positions = rawList.map(p => {
-          const posType = p.positionType ?? p.position_type ?? p.type;
-          const sym = (p.symbol || '').replace(/_/g, '');
-          // MEXC uses openAvgPrice or holdAvgPrice for average entry
-          const entryPrice = parseFloat(p.openAvgPrice || p.open_avg_price || p.holdAvgPrice || p.hold_avg_price) || 0;
-          // MEXC vol is in CONTRACTS — convert to coin units via contractSize.
-          const qty = (parseFloat(p.holdVol || p.hold_vol || p.positionAmt || p.vol) || 0) * (csMap[sym] || 1);
-          const entryDate = new Date(Number(p.createTime || p.openTime || p.create_time || Date.now())).toISOString();
-          const tpMx = parseFloat(p.takeProfitPrice || p.take_profit_price || 0) || 0;
-          const liqMx = parseFloat(p.liquidatePrice || p.liquidate_price || p.liqPrice || 0) || 0;
-          return {
-            pair: sym,
-            direction: posType === 1 ? 'long' : 'short',
-            entryPrice,
-            quantity: qty,
-            leverage: parseFloat(p.leverage) || 1,
-            stopLoss: parseFloat(p.stopLossPrice || p.stop_loss_price || 0) || 0,
-            positionSize: qty * entryPrice,
-            fees: 0,
-            status: 'open',
-            source: 'mexc',
-            externalId: String(p.positionId || p.position_id || sym + '_' + ts),
-            orderType: 'market',
-            entryDate,
-            tps: tpMx > 0 ? [tpMx] : [],
-            exits: null,
-            tpReached: [],
-            result: null,
-            journalId: null,
-            liquidationPrice: liqMx > 0 ? liqMx : null,
-            session: sessionFromDate(entryDate),
-          };
+        // Contracts → coins and the terminal fields: exchangeNormalize.normalizeMexcOpen.
+        const positions = rawList.map((p) => {
+          const pos = normalizeMexcOpen(p, { contractSize: csMap[(p.symbol || '').replace(/_/g, '')] || 1, fallbackId: ts });
+          return { ...pos, session: sessionFromDate(pos.entryDate) };
         });
         return new Response(JSON.stringify({ ok: true, positions, count: positions.length }), { headers: { ...cors, 'Content-Type': 'application/json' } });
       }
@@ -5812,55 +5786,28 @@ async function handleRequest(request, env) {
           const sig = await crypto.subtle.sign('HMAC', key, enc.encode(msg));
           return Array.from(new Uint8Array(sig)).map(b => b.toString(16).padStart(2, '0')).join('');
         };
-        const ts = Date.now().toString();
-        const recvWindow = '5000';
-        const qs = 'category=linear&settleCoin=USDT';
-        const sign = await hmac(apiSecret, ts + apiKey + recvWindow + qs);
-        const res = await fetch(`https://api.bybit.com/v5/position/list?${qs}`, {
-          headers: { 'X-BAPI-API-KEY': apiKey, 'X-BAPI-TIMESTAMP': ts, 'X-BAPI-SIGN': sign, 'X-BAPI-RECV-WINDOW': recvWindow },
-        });
-        const data = await res.json();
+        const bybitGet = async (apiPath, qs) => {
+          const ts = Date.now().toString();
+          const recvWindow = '5000';
+          const sign = await hmac(apiSecret, ts + apiKey + recvWindow + qs);
+          const r = await fetch(`https://api.bybit.com${apiPath}${qs ? `?${qs}` : ''}`, {
+            headers: { 'X-BAPI-API-KEY': apiKey, 'X-BAPI-TIMESTAMP': ts, 'X-BAPI-SIGN': sign, 'X-BAPI-RECV-WINDOW': recvWindow },
+          });
+          return r.json();
+        };
+        // The account's margin mode rides along (best-effort): a Unified
+        // account sets cross/isolated per account, not on the position.
+        const [data, acctInfo] = await Promise.all([
+          bybitGet('/v5/position/list', 'category=linear&settleCoin=USDT'),
+          bybitGet('/v5/account/info', '').catch(() => null),
+        ]);
         if (data.retCode !== 0) return new Response(JSON.stringify({ ok: false, error: data.retMsg || `Bybit ${data.retCode}` }), { headers: { ...cors, 'Content-Type': 'application/json' }, status: 400 });
+        const accountMarginMode = acctInfo?.retCode === 0 ? acctInfo.result?.marginMode || null : null;
         const list = (data.result?.list || []).filter((p) => parseFloat(p.size) > 0);
+        // Field mapping (incl. mark / uPnL / margin): exchangeNormalize.normalizeBybitOpen.
         const positions = list.map((p) => {
-          const entryPrice = parseFloat(p.avgPrice) || 0;
-          const qty = parseFloat(p.size) || 0;
-          const tp = parseFloat(p.takeProfit) || 0;
-          // Bybit's `createdTime` is the FIRST time a position was ever
-          // opened on this symbol — for a freshly opened position it can be
-          // months old. `updatedTime` matches the latest activity (≈ open
-          // time when the position was just opened), which is what the user
-          // expects in their journal.
-          const entryDate = p.updatedTime
-            ? new Date(parseInt(p.updatedTime)).toISOString()
-            : (p.createdTime ? new Date(parseInt(p.createdTime)).toISOString() : new Date().toISOString());
-          const liqPrice = parseFloat(p.liqPrice) || 0;
-          return {
-            pair: p.symbol,
-            direction: p.side === 'Buy' ? 'long' : 'short',
-            entryPrice,
-            quantity: qty,
-            leverage: parseFloat(p.leverage) || 1,
-            stopLoss: parseFloat(p.stopLoss) || 0,
-            positionSize: qty * entryPrice,
-            fees: 0,
-            status: 'open',
-            source: 'bybit',
-            externalId: String(p.positionIdx != null ? `${p.symbol}_${p.positionIdx}_${p.updatedTime || p.createdTime}` : `${p.symbol}_${p.updatedTime || p.createdTime}`),
-            orderType: 'market',
-            entryDate,
-            // Carry the live TP from Bybit so the imported trade already has
-            // the planned target set (the trade form stores `tps` as plain
-            // price numbers).
-            tps: tp > 0 ? [tp] : [],
-            exits: null,
-            tpReached: [],
-            result: null,
-            journalId: null,
-            // Bybit-only extras the journal can show alongside the trade.
-            liquidationPrice: liqPrice > 0 ? liqPrice : null,
-            session: sessionFromDate(entryDate),
-          };
+          const pos = normalizeBybitOpen(p, { accountMarginMode });
+          return { ...pos, session: sessionFromDate(pos.entryDate) };
         });
         return new Response(JSON.stringify({ ok: true, positions, count: positions.length }), { headers: { ...cors, 'Content-Type': 'application/json' } });
       }
@@ -5905,35 +5852,10 @@ async function handleRequest(request, env) {
         const data = await res.json();
         if (data.code !== '00000') return new Response(JSON.stringify({ ok: false, error: `Bitget ${data.code}: ${data.msg || 'error'}` }), { headers: { ...cors, 'Content-Type': 'application/json' }, status: 400 });
         const list = (Array.isArray(data.data) ? data.data : (data.data?.list || [])).filter((p2) => parseFloat(p2.total || p2.openSize || 0) > 0);
+        // Field mapping (incl. mark / uPnL / margin): exchangeNormalize.normalizeBitgetOpen.
         const positions = list.map((p2) => {
-          const pair = (p2.symbol || '').replace(/_.*/, '').toUpperCase();
-          const entryPrice = parseFloat(p2.openPriceAvg || p2.averageOpenPrice) || 0;
-          const qty = parseFloat(p2.total || p2.openSize) || 0;
-          const entryDate = p2.cTime ? new Date(parseInt(p2.cTime)).toISOString() : new Date().toISOString();
-          const liq = parseFloat(p2.liquidationPrice || 0) || 0;
-          const tp = parseFloat(p2.presetStopSurplusPrice || 0) || 0;
-          return {
-            pair,
-            direction: p2.holdSide === 'short' ? 'short' : 'long',
-            entryPrice,
-            quantity: qty,
-            leverage: parseFloat(p2.leverage) || 1,
-            stopLoss: parseFloat(p2.presetStopLossPrice || 0) || 0,
-            positionSize: qty * entryPrice,
-            fees: 0,
-            status: 'open',
-            source: 'bitget',
-            externalId: String(p2.positionId || `${pair}_${p2.cTime}`),
-            orderType: 'market',
-            entryDate,
-            tps: tp > 0 ? [tp] : [],
-            exits: null,
-            tpReached: [],
-            result: null,
-            journalId: null,
-            liquidationPrice: liq > 0 ? liq : null,
-            session: sessionFromDate(entryDate),
-          };
+          const pos = normalizeBitgetOpen(p2);
+          return { ...pos, session: sessionFromDate(pos.entryDate) };
         });
         return new Response(JSON.stringify({ ok: true, positions, count: positions.length }), { headers: { ...cors, 'Content-Type': 'application/json' } });
       }
@@ -6861,6 +6783,18 @@ async function handleRequest(request, env) {
   if (request.method === 'GET' && (path === '/hl/trades' || path === '/hl/positions')) {
     return handleHyperliquidRoute(request, url, cors, {
       verifyToken: verifyFirebaseToken, rateLimit: (key, sec) => bumpWindow(env, key, sec), sessionFromDate,
+    });
+  }
+
+  // Resting orders for the trading terminal — worker/openOrders.js (read-only
+  // keys, no KV write, nothing cached: the rows are private).
+  if (request.method === 'GET' && path === '/exchange/open-orders') {
+    return handleOpenOrdersRoute(request, url, cors, {
+      verifyToken: verifyFirebaseToken,
+      rateLimit: (key, sec) => bumpWindow(env, key, sec),
+      resolveCreds: (uid, exchange) => resolveExchangeCreds(env, uid, exchange),
+      mexcContractSizes,
+      okxContractValues,
     });
   }
 

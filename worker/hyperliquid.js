@@ -333,10 +333,81 @@ export function normalizeHlOpen(ap, trip = null, stops = []) {
     tps: tp > 0 ? [tp] : [],
     liquidationPrice: liq > 0 ? liq : null,
     unrealizedPnl: num(p.unrealizedPnl),
+    // Terminal fields (see exchangeNormalize.js). positionValue is size × mark.
+    markPrice: quantity > 0 && num(p.positionValue) > 0 ? +(num(p.positionValue) / quantity).toPrecision(10) : null,
+    marginMode: p.leverage?.type === 'isolated' ? 'isolated' : (p.leverage?.type === 'cross' ? 'cross' : null),
+    margin: num(p.marginUsed) > 0 ? num(p.marginUsed) : null,
+    realizedPnl: null,
+    feesPaid: null,
+    // cumFunding counts what the account PAID; the app's sign is + = received.
+    funding: p.cumFunding?.sinceOpen != null ? -num(p.cumFunding.sinceOpen) : null,
   };
 }
 
+/**
+ * frontendOpenOrders rows → the terminal's open-order shape (the same one
+ * worker/openOrders.js emits for the key-based venues):
+ *   { id, exchange, pair, side: 'buy'|'sell', effect: 'open'|'close',
+ *     positionSide: 'long'|'short', kind, orderType, price, triggerPrice,
+ *     qty, filledQty, wholePosition, reduceOnly, createdAt, status }
+ * A position TP/SL (isPositionTpsl) has size 0 = the whole position. TP/SL
+ * attached to a resting entry order (children) are listed too, after it.
+ */
+export function normalizeHlOpenOrders(rows = []) {
+  const out = [];
+  const add = (o, parentId = null) => {
+    if (!o || !isPerpFill(o)) return;
+    const type = String(o.orderType || (o.isTrigger ? 'Trigger' : 'Limit'));
+    const buy = o.side === 'B';
+    const closing = o.reduceOnly === true || o.isPositionTpsl === true || parentId != null;
+    const isTp = /take profit/i.test(type);
+    const isStop = /stop/i.test(type);
+    const kind = isTp ? 'take_profit'
+      : isStop ? (closing ? 'stop_loss' : 'trigger')
+        : o.isTrigger ? 'trigger'
+          : /market/i.test(type) ? 'market' : 'limit';
+    const sz = num(o.sz);
+    const orig = num(o.origSz);
+    const kids = Array.isArray(o.children) ? o.children : [];
+    const childPx = (re) => num(kids.find((c) => re.test(String(c?.orderType || '')))?.triggerPx);
+    out.push({
+      id: `hl-${o.oid}`,
+      exchange: 'hyperliquid',
+      pair: hlPair(o.coin),
+      side: buy ? 'buy' : 'sell',
+      effect: closing ? 'close' : 'open',
+      positionSide: closing ? (buy ? 'short' : 'long') : (buy ? 'long' : 'short'),
+      kind,
+      orderType: type,
+      // A *Market trigger's limitPx is only the slippage cap, not a price.
+      price: /market/i.test(type) ? 0 : num(o.limitPx),
+      triggerPrice: o.isTrigger ? num(o.triggerPx) : 0,
+      qty: sz,
+      filledQty: orig > sz ? trim(orig - sz) : 0,
+      wholePosition: o.isPositionTpsl === true || (closing && !(sz > 0)),
+      reduceOnly: closing,
+      createdAt: parseInt(o.timestamp) || 0,
+      status: 'open',
+      attachedTp: closing ? 0 : childPx(/take profit/i),
+      attachedSl: closing ? 0 : childPx(/stop/i),
+      ...(parentId ? { parentId } : {}),
+    });
+  };
+  for (const r of rows) {
+    const o = r?.order || r;
+    add(o);
+    for (const c of o?.children || []) add(c, `hl-${o.oid}`);
+  }
+  return out;
+}
+
 // ── Network ──────────────────────────────────────────────────────────────────
+
+/** The address's resting orders (perps), in the terminal's order shape. */
+export async function fetchHlOpenOrders(user, fetchImpl = fetch) {
+  const rows = await hlInfo({ type: 'frontendOpenOrders', user }, fetchImpl);
+  return normalizeHlOpenOrders(Array.isArray(rows) ? rows : []);
+}
 
 async function hlInfo(body, fetchImpl = fetch) {
   const r = await fetchImpl(HL_INFO_URL, {
@@ -427,7 +498,10 @@ export async function handleHyperliquidRoute(request, url, cors, deps, fetchImpl
         .filter((ap) => !flat(num(ap?.position?.szi)))
         .map((ap) => withSession(normalizeHlOpen(ap, open.get(ap.position.coin), stops)));
       const accountValue = num(state?.marginSummary?.accountValue);
-      return json({ ok: true, positions, count: positions.length, accountValue });
+      // The open orders were fetched anyway (for SL/TP) — the terminal shows
+      // them too, so it needs no second call for Hyperliquid.
+      const orders = normalizeHlOpenOrders(Array.isArray(openOrders) ? openOrders : []);
+      return json({ ok: true, positions, count: positions.length, accountValue, orders });
     }
 
     const since = Math.max(0, parseInt(url.searchParams.get('since') || '0', 10) || 0);
