@@ -39,6 +39,7 @@ const loadScannerPage = () => import('./components/signals/SignalsPage');
 const loadWalletDetailPage = () => import('./components/polymarket/WalletDetailPage');
 const loadMarketDetailPage = () => import('./components/polymarket/MarketDetailPage');
 const loadAdminPanel = () => import('./components/admin/AdminPanel');
+const loadTaxReport = () => import('./components/tax/TaxReportPage');
 
 const Dashboard = lazy(loadDashboard);
 const TradeJournal = lazy(loadTradeJournal);
@@ -63,6 +64,7 @@ const ScannerPage = lazy(loadScannerPage);
 const WalletDetailPage = lazy(loadWalletDetailPage);
 const MarketDetailPage = lazy(loadMarketDetailPage);
 const AdminPanel = lazy(loadAdminPanel);
+const TaxReportPage = lazy(loadTaxReport);
 
 // Preload only the two most-likely-next routes during idle — and skip entirely
 // on Save-Data / slow connections. This is an installable PWA, so eagerly
@@ -126,6 +128,7 @@ function MainApp() {
                 <Route path="dca" element={<Navigate to="/portfolio?tab=dca" replace />} />
                 <Route path="wallets" element={<Navigate to="/portfolio?tab=wallets" replace />} />
                 <Route path="plans" element={<PlansPage />} />
+                <Route path="tax" element={<TaxReportPage />} />
                 <Route path="mentality" element={<MentalityZone />} />
                 <Route path="mentality/morning" element={<MorningJournal />} />
                 <Route path="mentality/evening" element={<EveningJournal />} />
