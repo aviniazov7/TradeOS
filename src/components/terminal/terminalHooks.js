@@ -1,4 +1,47 @@
-import { useEffect, useState } from 'react';
+import { useCallback, useEffect, useState } from 'react';
+
+/**
+ * JSON state mirrored to localStorage (per-viewer UI prefs). `parse` turns
+ * whatever was stored (or null) into a valid value; storage failures (private
+ * mode, blocked site data) just mean nothing is remembered.
+ */
+export function useStoredJson(key, parse) {
+  const [value, setValue] = useState(() => {
+    let raw = null;
+    try { raw = JSON.parse(localStorage.getItem(key) || 'null'); } catch { raw = null; }
+    return parse(raw);
+  });
+  useEffect(() => {
+    try { localStorage.setItem(key, JSON.stringify(value)); } catch { /* not remembered */ }
+  }, [key, value]);
+  return [value, setValue];
+}
+
+const fsElement = () => (typeof document === 'undefined' ? null : document.fullscreenElement || document.webkitFullscreenElement || null);
+
+/** Fullscreen API for one element: [isFullscreen, toggle, supported]. */
+export function useFullscreen(ref) {
+  const supported = typeof document !== 'undefined' && !!(document.fullscreenEnabled || document.webkitFullscreenEnabled);
+  const [on, setOn] = useState(false);
+  useEffect(() => {
+    const sync = () => setOn(!!ref.current && fsElement() === ref.current);
+    document.addEventListener('fullscreenchange', sync);
+    document.addEventListener('webkitfullscreenchange', sync);
+    return () => {
+      document.removeEventListener('fullscreenchange', sync);
+      document.removeEventListener('webkitfullscreenchange', sync);
+    };
+  }, [ref]);
+  const toggle = useCallback(() => {
+    const el = ref.current;
+    if (!el) return;
+    try {
+      if (fsElement()) (document.exitFullscreen || document.webkitExitFullscreen)?.call(document);
+      else (el.requestFullscreen || el.webkitRequestFullscreen)?.call(el)?.catch?.(() => {});
+    } catch { /* refused */ }
+  }, [ref]);
+  return [on, toggle, supported];
+}
 
 /** Re-renders its caller every `ms` (for "updated Xs ago"). */
 export function useNow(ms = 1000) {
