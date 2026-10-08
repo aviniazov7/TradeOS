@@ -260,7 +260,7 @@ export default function TerminalPage() {
     <MotionDiv variants={pageVariants} initial="initial" animate="animate" exit="exit" transition={pageTransition}>
       <PageHeader
         icon={CandlestickChart}
-        title="טרמינל"
+        title="עמדת מסחר"
         subtitle="פוזיציות, פקודות וגרפים חיים מכל הבורסות המחוברות — קריאה בלבד"
         actions={(
           <>
