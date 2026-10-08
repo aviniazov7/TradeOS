@@ -1,12 +1,13 @@
 import { useMemo } from 'react';
 import { Link } from 'react-router-dom';
-import { motion, useReducedMotion } from 'framer-motion';
+import { motion } from 'framer-motion';
 import { Activity, BarChart3, Route, ArrowLeft } from 'lucide-react';
 import Card from '../shared/Card';
 import FitText from '../shared/FitText';
 import { useAuth } from '../../contexts/AuthContext';
 import { STAGES } from '../../utils/traderStage';
 import { readStageSnapshot } from './journeyStorage';
+import { JourneyMiniPath } from './JourneyPathSvg';
 import { ZONE_COLORS, tint, tileInteractive } from './zoneStyle';
 
 // Building blocks of the mental-zone landing page: the per-tile accent, the
@@ -207,7 +208,6 @@ export function MentalStatsTile({ stat, loading }) {
 // trades collection. Before the first visit it is a teaser.
 export function JourneyTile() {
   const color = ZONE_COLORS.journey;
-  const reduce = useReducedMotion();
   const { user } = useAuth();
   const snap = useMemo(() => readStageSnapshot(user?.uid), [user?.uid]);
   const n = STAGES.length;
@@ -237,26 +237,10 @@ export function JourneyTile() {
             : `${n} שלבים, מ${STAGES[0].name} ועד ${STAGES[n - 1].name}`}
         </p>
       </div>
-      {/* The ladder in miniature: one segment per stage, right to left. */}
-      <ol className="grid gap-1 mt-3" style={{ gridTemplateColumns: `repeat(${n}, minmax(0, 1fr))` }} aria-hidden>
-        {STAGES.map((s, i) => {
-          // Reached stages full, the next one filled by the progress toward it.
-          const fill = !snap ? 0 : i < cur ? 100 : i === cur ? progress : 0;
-          return (
-            <li key={s.id} className="h-1.5 rounded-full bg-bg-tertiary overflow-hidden">
-              {fill > 0 && (
-                <motion.div
-                  className="h-full rounded-full"
-                  style={{ background: i < cur ? color : tint(color, 45) }}
-                  initial={reduce ? false : { width: 0 }}
-                  animate={{ width: `${fill}%` }}
-                  transition={{ duration: 0.5, ease: 'easeOut', delay: 0.1 + i * 0.05 }}
-                />
-              )}
-            </li>
-          );
-        })}
-      </ol>
+      {/* The journey path in miniature, the marker at the user's stage. */}
+      <div className="mt-3">
+        <JourneyMiniPath cur={snap ? cur - 1 : null} progress={snap?.nextName ? progress : 0} color={color} />
+      </div>
       <p className="text-xs text-text-muted mt-2">
         {!snap && 'הערכה אישית לפי העסקאות, התוכנית והיומנים שלך'}
         {snap && snap.nextName && <><span className="num-mono font-semibold text-text-secondary" dir="ltr">{progress}%</span> לשלב הבא · {snap.nextName}</>}

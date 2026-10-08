@@ -1,15 +1,16 @@
 import { useState } from 'react';
 import { motion, AnimatePresence, useReducedMotion } from 'framer-motion';
 import {
-  Check, ChevronDown, CheckCircle2, Circle, History, ShieldCheck, Activity, ClipboardCheck, Brain, TrendingUp,
-  Flag, Target, ThumbsUp, AlertTriangle, BookOpen,
+  ChevronDown, CheckCircle2, Circle, History, ShieldCheck, Activity, ClipboardCheck, Brain, TrendingUp,
+  Target, ThumbsUp, AlertTriangle, BookOpen,
 } from 'lucide-react';
 import { STAGES, formatGateValue, formatGateTarget } from '../../utils/traderStage';
 import { panel, scoreTone } from './journeyStyle';
 
 // Building blocks of the development map page (PsychologicalJourney.jsx):
-// the stage ladder, the dimension radar, the next-milestones checklist, the
-// dimension cards and the collapsible stages reference.
+// the dimension radar, the next-milestones checklist, the
+// dimension cards and the collapsible stages reference. The animated journey
+// path at the top of the page lives in JourneyPath.jsx.
 
 const DIMENSION_ICONS = {
   experience: History,
@@ -45,89 +46,6 @@ export function PanelTitle({ icon: Icon, children, aside }) {
       </h2>
       {aside && <div className="shrink-0 text-xs text-text-muted">{aside}</div>}
     </div>
-  );
-}
-
-// ── Stage ladder ──────────────────────────────────────────────────────────
-// Six nodes on one track, right to left (RTL). The filled part of the track
-// runs from the first node to the user's position: their stage plus the
-// progress made toward the next one.
-export function StageLadder({ assessment }) {
-  const { stage, nextStage, stageProgress } = assessment;
-  const n = STAGES.length;
-  const cur = stage.index - 1;
-  const pos = nextStage ? cur + stageProgress / 100 : cur;
-  const fill = `${(pos / n) * 100}%`;
-  return (
-    <section className={panel} aria-label="סולם ההתפתחות">
-      <PanelTitle icon={Flag} aside={<span className="num-mono" dir="ltr">{stage.index}/{n}</span>}>סולם ההתפתחות</PanelTitle>
-
-      <div className="relative pt-6">
-        {/* Track: from the centre of the first node to the centre of the last. */}
-        <div className="absolute top-[calc(1.5rem+15px)] h-0.5 rounded-full bg-border-primary" style={{ insetInlineStart: `${50 / n}%`, width: `${((n - 1) / n) * 100}%` }} aria-hidden />
-        <motion.div
-          className="absolute top-[calc(1.5rem+15px)] h-0.5 rounded-full bg-accent-primary"
-          style={{ insetInlineStart: `${50 / n}%` }}
-          initial={{ width: 0 }}
-          animate={{ width: fill }}
-          transition={{ duration: 0.9, ease: 'easeOut', delay: 0.15 }}
-          aria-hidden
-        />
-        <ol className="relative grid" style={{ gridTemplateColumns: `repeat(${n}, minmax(0, 1fr))` }}>
-          {STAGES.map((s, i) => {
-            const past = i < cur;
-            const isCur = i === cur;
-            return (
-              <li key={s.id} className="flex flex-col items-center text-center min-w-0" aria-current={isCur ? 'step' : undefined}>
-                <span className="relative">
-                  {isCur && (
-                    <span className="absolute -top-6 left-1/2 -translate-x-1/2 whitespace-nowrap text-[10px] font-bold text-accent-hover bg-accent-primary/12 border border-accent-primary/30 rounded-full px-1.5 py-px">
-                      אתה כאן
-                    </span>
-                  )}
-                  <span
-                    className={`relative w-[30px] h-[30px] rounded-full grid place-items-center text-xs font-bold num-mono border-2 transition-colors ${
-                      past ? 'bg-accent-primary border-accent-primary text-white'
-                        : isCur ? 'bg-bg-primary border-accent-primary text-accent-hover shadow-[0_0_0_4px_color-mix(in_srgb,var(--color-accent-primary)_18%,transparent)]'
-                          : 'bg-bg-primary border-border-hover text-text-muted'
-                    }`}
-                  >
-                    {past ? <Check className="w-3.5 h-3.5" aria-hidden /> : i + 1}
-                  </span>
-                </span>
-                <span className={`mt-2 text-[10px] sm:text-xs leading-tight px-0.5 ${isCur ? 'font-bold text-text-primary' : past ? 'text-text-secondary' : 'text-text-muted'}`}>
-                  {s.name}
-                </span>
-              </li>
-            );
-          })}
-        </ol>
-      </div>
-
-      <div className="mt-5 grid gap-4 md:grid-cols-[minmax(0,1fr)_16rem] md:items-end">
-        <div className="min-w-0">
-          <p className="text-xs text-text-muted">השלב שלך · {stage.index} מתוך {n}</p>
-          <h2 className="text-lg md:text-xl font-bold text-text-primary mt-0.5">{stage.name}</h2>
-          <p className="text-sm text-text-secondary leading-relaxed mt-1.5">{stage.description}</p>
-          <p className="text-xs text-text-muted mt-2">
-            <span className="font-semibold text-text-secondary">המיקוד עכשיו: </span>{stage.focus}
-          </p>
-        </div>
-        <div className="rounded-xl bg-bg-tertiary border border-border-primary p-3 min-w-0">
-          {nextStage ? (
-            <>
-              <div className="flex items-baseline justify-between gap-2">
-                <span className="text-xs text-text-muted">התקדמות ל<span className="font-semibold text-text-secondary">{nextStage.name}</span></span>
-                <span className="num-mono text-xl font-bold text-text-primary" dir="ltr">{stageProgress}%</span>
-              </div>
-              <Bar value={stageProgress} color="var(--color-accent-primary)" className="h-2 mt-2" />
-            </>
-          ) : (
-            <p className="text-sm font-semibold text-profit">הגעת לשלב העליון. המשימה עכשיו: לשמר.</p>
-          )}
-        </div>
-      </div>
-    </section>
   );
 }
 
