@@ -1,7 +1,7 @@
 import { useEffect, useMemo } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import { motion } from 'framer-motion';
-import { Route, ArrowRight, Flag, Gauge, ListChecks, Radar, Info } from 'lucide-react';
+import { Route, ArrowRight, Flag, Gauge, ListChecks, Radar, Info, Activity } from 'lucide-react';
 import PageHeader from '../shared/PageHeader';
 import StatTile from '../shared/StatTile';
 import { headerIconBtn } from '../shared/headerStyles';
@@ -133,13 +133,25 @@ export default function PsychologicalJourney() {
 
           <motion.div variants={tileItem}><StageLadder assessment={a} /></motion.div>
 
-          <div className="grid gap-4 lg:grid-cols-2">
-            <motion.section variants={tileItem} className={panel} aria-label="פרופיל המדדים">
+          {/* Two balanced columns: the radar on one side; goals plus the
+              strengths/blockers snapshot stacked on the other, so neither
+              column leaves an empty gap under it. */}
+          <div className="grid gap-4 lg:grid-cols-2 items-stretch">
+            <motion.section variants={tileItem} className={`${panel} flex flex-col`} aria-label="פרופיל המדדים">
               <PanelTitle icon={Radar} aside="0–100">פרופיל המדדים</PanelTitle>
-              <DimensionRadar dimensions={a.dimensions} />
-              <SnapshotLists strengths={a.strengths} blockers={a.blockers} />
+              <div className="flex-1 grid place-items-center">
+                <DimensionRadar dimensions={a.dimensions} />
+              </div>
             </motion.section>
-            <motion.div variants={tileItem} className="min-w-0"><Milestones assessment={a} /></motion.div>
+            <motion.div variants={tileItem} className="min-w-0 flex flex-col gap-4">
+              <Milestones assessment={a} />
+              {(a.strengths.length > 0 || a.blockers.length > 0) && (
+                <section className={`${panel} flex-1`} aria-label="תמונת מצב">
+                  <PanelTitle icon={Activity}>תמונת מצב</PanelTitle>
+                  <SnapshotLists strengths={a.strengths} blockers={a.blockers} className="" />
+                </section>
+              )}
+            </motion.div>
           </div>
 
           <section aria-label="המדדים בפירוט" className="grid gap-4 sm:grid-cols-2 xl:grid-cols-3">
