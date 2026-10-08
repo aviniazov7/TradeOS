@@ -1,6 +1,6 @@
 import { describe, it, expect } from 'vitest';
 import {
-  assessTrader, buildAiSummary, STAGES, MIN_CLOSED_TRADES, formatGateValue, formatGateTarget,
+  assessTrader, buildAiSummary, STAGES, MIN_CLOSED_TRADES, formatGateValue, formatGateTarget, stageGates,
 } from './traderStage';
 import { localDayKey } from './calculations';
 
@@ -73,6 +73,13 @@ describe('assessTrader — low data', () => {
     expect(dim(a, 'edge').score).toBeNull();
     expect(a.dataNeeded.length).toBeGreaterThan(0);
     expect(a.dataNeeded[0]).toContain(String(MIN_CLOSED_TRADES));
+    expect(a.dataNeeded.some((s) => s.includes('סטופ'))).toBe(true);
+    expect(a.overall).toBe(0);
+  });
+
+  it('does not ask for stops when the few trades there are already have them', () => {
+    const a = assessTrader({ trades: series(5), now: NOW });
+    expect(a.dataNeeded.some((s) => s.includes('סטופ'))).toBe(false);
     expect(a.nextMilestones.map((g) => g.id)).toEqual(['trades20', 'weeks4']);
   });
 
@@ -211,7 +218,8 @@ describe('plan adherence', () => {
   it('is near zero with no plan and no journals', () => {
     const d = dim(assessTrader({ trades: series(20), now: NOW }), 'plan');
     expect(d.evidence[0]).toBe('אין תוכנית מסחר פעילה');
-    expect(d.score).toBeLessThan(20);
+    // No plan and nothing self-reported: no neutral credit anywhere.
+    expect(d.score).toBe(0);
     expect(d.tip).toContain('כתוב תוכנית');
   });
 
@@ -350,6 +358,15 @@ describe('stage ladder', () => {
       expect(s.description.length).toBeGreaterThan(40);
       expect(s.focus).toBeTruthy();
     }
+  });
+
+  it('keeps the written requirements in step with the measured gates', () => {
+    const gates = stageGates({}, {});
+    expect(gates).toHaveLength(STAGES.length - 1);
+    gates.forEach((list, i) => {
+      expect(STAGES[i + 1].requirements).toHaveLength(list.length);
+      list.forEach((g, j) => expect(STAGES[i + 1].requirements[j]).toContain(String(g.target === 1 && g.kind === 'bool' ? 'תוכנית' : g.target)));
+    });
   });
 
   it('is deterministic for the same input', () => {
