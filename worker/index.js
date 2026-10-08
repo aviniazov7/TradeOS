@@ -26,6 +26,7 @@ import {
   USETTINGS_PREFIX, USETTINGS_LEGACY_ALL, buildSettingsMap, settingsAnyOn,
 } from './userData.js';
 import { trBucketKey, mergeTrBucket, lookupTr, TR_BUCKET_TTL } from './newsTranslateCache.js';
+import { handleFxUsdIls } from './fxRates.js';
 
 // Binance's public market-data mirror — api.binance.com returns 403 to
 // Cloudflare Worker egress IPs in many regions, but data-api.binance.vision
@@ -4533,6 +4534,9 @@ async function handleRequest(request, env) {
       return new Response(JSON.stringify({ error: err.message }), { status: 502, headers: { ...cors, 'Content-Type': 'application/json' } });
     }
   }
+
+  // USD/ILS representative rates (Bank of Israel) for the tax report.
+  if (request.method === 'GET' && path === '/fx/usdils') return handleFxUsdIls(url, cors);
 
   // Stock symbol search (Yahoo), stocks + ETFs only, edge-cached for a day.
   // GET /stk/search?q=nvid → [{ symbol, name, exchange, type }]
