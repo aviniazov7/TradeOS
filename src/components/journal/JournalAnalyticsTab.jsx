@@ -82,7 +82,10 @@ export default function JournalAnalyticsTab({
               subtitle={balanceIsLive ? 'מסונכרן עם הבורסה' : (activeJournal?.initialBalance > 0 ? `${formatPercent(stats.balanceChangePercent)} מההתחלה` : `${stats.totalTrades} עסקאות`)}
               subtitleColor={balanceIsLive ? 'text-accent-primary' : (stats.balanceChangePercent >= 0 ? 'text-profit' : 'text-loss')} icon={Wallet} color="text-accent-primary"
               gradient={stats.totalPnL >= 0 ? 'profit' : 'loss'} />
-            <StatCard label="רווח נקי" value={formatCurrency(stats.totalPnL)} subtitle={`${stats.totalTrades} עסקאות`}
+            {/* Realized legs of still-open partial positions are shown beside
+                the closed-trade total, not inside it (see partialRealizedPnl). */}
+            <StatCard label="רווח נקי" value={formatCurrency(stats.totalPnL)}
+              subtitle={stats.partialRealizedPnL ? `${stats.totalTrades} עסקאות · ${formatCurrency(stats.partialRealizedPnL)} ממומש בפוזיציות חלקיות` : `${stats.totalTrades} עסקאות`}
               icon={DollarSign} color={stats.totalPnL >= 0 ? 'text-profit' : 'text-loss'} />
             <StatCard label="אחוז הצלחה" value={`${stats.winRate.toFixed(1)}%`} subtitle={`${stats.winCount}W ${stats.lossCount}L`}
               icon={Target} color="text-accent-primary" />
@@ -97,10 +100,12 @@ export default function JournalAnalyticsTab({
                 { label: 'רצף נוכחי', value: streakText, color: streakColor },
                 { label: 'מקדם רווח', value: stats.profitFactor === Infinity ? '∞' : stats.profitFactor.toFixed(2), color: stats.profitFactor >= 1.5 ? 'text-profit' : 'text-loss' },
                 { label: 'תשואה/תנודתיות', value: stats.sharpeRatio.toFixed(2) },
-                { label: 'תשואה/נפילה', value: stats.calmarRatio.toFixed(2) },
+                // Calmar needs real capital — without a starting balance it is null.
+                { label: 'תשואה/נפילה', value: stats.calmarRatio == null ? '—' : stats.calmarRatio.toFixed(2) },
                 { label: 'תשואה/הפסדים', value: stats.sortinoRatio === Infinity ? '∞' : stats.sortinoRatio.toFixed(2) },
                 { label: 'התאוששות', value: stats.recoveryFactor.toFixed(2), color: stats.recoveryFactor >= 1 ? 'text-profit' : 'text-loss' },
-                { label: 'ירידה מקס׳', value: `${LRM}-${stats.maxDrawdown.toFixed(1)}%`, color: 'text-loss' },
+                // Percent only against real capital; otherwise the dollar drawdown.
+                { label: 'ירידה מקס׳', value: stats.maxDrawdown == null ? (stats.maxDrawdownAbsolute > 0 ? formatCurrency(-stats.maxDrawdownAbsolute) : '$0.00') : `${LRM}-${stats.maxDrawdown.toFixed(1)}%`, color: 'text-loss' },
                 { label: 'סיכון/סיכוי', value: `1:${stats.avgRR.toFixed(2)}` },
                 { label: 'ימי מסחר', value: stats.tradingDays },
                 { label: 'עסקאות/יום', value: stats.tradesPerDay.toFixed(1) },
