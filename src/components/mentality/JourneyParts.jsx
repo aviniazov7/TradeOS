@@ -241,10 +241,10 @@ export function Milestones({ assessment }) {
 }
 
 // ── Strengths / blockers ──────────────────────────────────────────────────
-export function SnapshotLists({ strengths, blockers }) {
+export function SnapshotLists({ strengths, blockers, className = 'mt-4' }) {
   if (!strengths.length && !blockers.length) return null;
   return (
-    <div className="grid gap-3 sm:grid-cols-2 mt-4">
+    <div className={`grid gap-3 sm:grid-cols-2 ${className}`}>
       <div className="rounded-xl bg-bg-tertiary border border-border-primary p-3 min-w-0">
         <h3 className="flex items-center gap-1.5 text-xs font-bold text-profit mb-2"><ThumbsUp className="w-3.5 h-3.5" aria-hidden />חוזקות</h3>
         {strengths.length ? (
