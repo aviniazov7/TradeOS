@@ -5,7 +5,7 @@ import { motion, AnimatePresence } from 'framer-motion';
 import {
   Search, CornerDownLeft, LayoutDashboard, BookOpen, Brain, FlaskConical,
   Coins, Wallet, ClipboardList, Activity, Bot, Newspaper, Crown, User, Building2,
-  Briefcase, Trophy, Fish, LineChart, Receipt,
+  Briefcase, Trophy, Fish, LineChart, Receipt, CandlestickChart,
 } from 'lucide-react';
 import { getUserCollectionDocs } from '../../services/firestoreService';
 import { useAuth } from '../../contexts/AuthContext';
@@ -14,6 +14,7 @@ import { useAuth } from '../../contexts/AuthContext';
 const PAGES = [
   { label: 'דשבורד', path: '/', icon: LayoutDashboard, kw: 'בית home dashboard ראשי' },
   { label: 'יומן מסחר', path: '/journal', icon: BookOpen, kw: 'עסקאות trades journal' },
+  { label: 'טרמינל', path: '/terminal', icon: CandlestickChart, kw: 'terminal פוזיציות פקודות פתוחות positions orders גרפים charts בורסה live' },
   { label: 'האזור המנטלי', path: '/mentality', icon: Brain, kw: 'מנטל פסיכולוגיה mentality mindset' },
   { label: 'בקטסט', path: '/backtest', icon: FlaskConical, kw: 'backtest' },
   { label: 'תיק', path: '/portfolio', icon: Briefcase, kw: 'portfolio תיק השקעות' },

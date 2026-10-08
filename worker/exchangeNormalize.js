@@ -179,6 +179,165 @@ export function normalizeOkxClosed(p, ctVal = 1) {
   });
 }
 
+// ── Open positions: the live "terminal" fields ───────────────────────────────
+// Every open-position row also carries what a trading terminal shows, each
+// null when the venue doesn't report it (the client then derives what it can
+// from a live mark price):
+//   markPrice      exchange mark price
+//   unrealizedPnl  $ (signed)
+//   marginMode     'cross' | 'isolated'
+//   margin         initial margin committed to the position, $
+//   realizedPnl    realized so far on the OPEN position (fees, funding,
+//                  partial closes), signed — the venue's own figure
+//   feesPaid       trading fees paid on the position, positive
+//   funding        funding so far, signed (+ = received)
+// The journal import ignores them (useExchangeImport picks its own fields).
+const orNull = (v) => (has(v) ? num(v) : null);
+const posOrNull = (v) => (num(v) > 0 ? num(v) : null);
+export const marginModeOf = (v) => {
+  const s = String(v ?? '').toLowerCase();
+  if (!s) return null;
+  if (s.startsWith('iso') || s === '1') return 'isolated';
+  if (s.startsWith('cross') || s === 'crossed' || s === '0' || s === '2' || s.includes('regular') || s.includes('portfolio')) return 'cross';
+  return null;
+};
+
+// Bybit v5 /position/list row (linear). `accountMarginMode` is
+// /v5/account/info's marginMode — a Unified account sets cross/isolated per
+// ACCOUNT and always reports tradeMode 0 on the position, so the account
+// value wins when we have it.
+export function normalizeBybitOpen(p, { accountMarginMode = null } = {}) {
+  const entryPrice = num(p.avgPrice);
+  const qty = num(p.size);
+  const tp = num(p.takeProfit);
+  // Bybit's `createdTime` is the FIRST time a position was ever opened on
+  // this symbol — for a freshly opened position it can be months old.
+  // `updatedTime` matches the latest activity (≈ open time when the position
+  // was just opened), which is what the user expects in their journal.
+  const entryDate = p.updatedTime
+    ? new Date(parseInt(p.updatedTime)).toISOString()
+    : (p.createdTime ? new Date(parseInt(p.createdTime)).toISOString() : new Date().toISOString());
+  const liqPrice = num(p.liqPrice);
+  const acct = String(accountMarginMode || '').toUpperCase();
+  const marginMode = acct === 'ISOLATED_MARGIN' ? 'isolated'
+    : (acct === 'REGULAR_MARGIN' || acct === 'PORTFOLIO_MARGIN') ? 'cross'
+      : (String(p.tradeMode) === '1' ? 'isolated' : 'cross');
+  return {
+    pair: p.symbol,
+    direction: p.side === 'Buy' ? 'long' : 'short',
+    entryPrice,
+    quantity: qty,
+    leverage: num(p.leverage) || 1,
+    stopLoss: num(p.stopLoss),
+    positionSize: qty * entryPrice,
+    fees: 0,
+    status: 'open',
+    source: 'bybit',
+    externalId: String(p.positionIdx != null ? `${p.symbol}_${p.positionIdx}_${p.updatedTime || p.createdTime}` : `${p.symbol}_${p.updatedTime || p.createdTime}`),
+    orderType: 'market',
+    entryDate,
+    // Carry the live TP so the imported trade already has the planned
+    // target set (the trade form stores `tps` as plain price numbers).
+    tps: tp > 0 ? [tp] : [],
+    exits: null,
+    tpReached: [],
+    result: null,
+    journalId: null,
+    liquidationPrice: liqPrice > 0 ? liqPrice : null,
+    markPrice: posOrNull(p.markPrice),
+    unrealizedPnl: orNull(p.unrealisedPnl),
+    marginMode,
+    margin: posOrNull(p.positionIM) ?? posOrNull(p.positionBalance),
+    realizedPnl: orNull(p.curRealisedPnl),
+    feesPaid: null,
+    funding: null,
+  };
+}
+
+// MEXC /position/open_positions row. Volume is in CONTRACTS → coins via
+// contractSize. MEXC reports no mark price / unrealized P&L here (the client
+// derives them from a live price). openType 1 = isolated, 2 = cross.
+// `realised` on an open position is what was realized so far (fees, funding,
+// partial closes); holdFee is the funding, positive = received.
+export function normalizeMexcOpen(p, { contractSize = 1, fallbackId = '' } = {}) {
+  const posType = p.positionType ?? p.position_type ?? p.type;
+  const sym = (p.symbol || '').replace(/_/g, '');
+  // MEXC uses openAvgPrice or holdAvgPrice for average entry
+  const entryPrice = num(p.openAvgPrice || p.open_avg_price || p.holdAvgPrice || p.hold_avg_price);
+  const qty = num(p.holdVol || p.hold_vol || p.positionAmt || p.vol) * (contractSize || 1);
+  const entryDate = new Date(Number(p.createTime || p.openTime || p.create_time || Date.now())).toISOString();
+  const tp = num(p.takeProfitPrice || p.take_profit_price || 0);
+  const liq = num(p.liquidatePrice || p.liquidate_price || p.liqPrice || 0);
+  return {
+    pair: sym,
+    direction: parseInt(posType) === 1 ? 'long' : 'short',
+    entryPrice,
+    quantity: qty,
+    leverage: num(p.leverage) || 1,
+    stopLoss: num(p.stopLossPrice || p.stop_loss_price || 0),
+    positionSize: qty * entryPrice,
+    fees: 0,
+    status: 'open',
+    source: 'mexc',
+    externalId: String(p.positionId || p.position_id || sym + '_' + fallbackId),
+    orderType: 'market',
+    entryDate,
+    tps: tp > 0 ? [tp] : [],
+    exits: null,
+    tpReached: [],
+    result: null,
+    journalId: null,
+    liquidationPrice: liq > 0 ? liq : null,
+    markPrice: null,
+    unrealizedPnl: null,
+    marginMode: marginModeOf(p.openType ?? p.open_type),
+    margin: posOrNull(p.im) ?? posOrNull(p.oim),
+    realizedPnl: orNull(p.realised),
+    feesPaid: null,
+    funding: orNull(p.holdFee),
+  };
+}
+
+// Bitget v2 /mix/position/all-position row. `total` is in coins already.
+// marginMode 'crossed' | 'isolated'; deductedFee = trading fees paid during
+// the position, totalFee = the funding (signed), achievedProfits = realized.
+export function normalizeBitgetOpen(p) {
+  const pair = (p.symbol || '').replace(/_.*/, '').toUpperCase();
+  const entryPrice = num(p.openPriceAvg || p.averageOpenPrice);
+  const qty = num(p.total || p.openSize);
+  const entryDate = p.cTime ? new Date(parseInt(p.cTime)).toISOString() : new Date().toISOString();
+  const liq = num(p.liquidationPrice || 0);
+  const tp = num(p.takeProfit) || num(p.presetStopSurplusPrice);
+  return {
+    pair,
+    direction: p.holdSide === 'short' ? 'short' : 'long',
+    entryPrice,
+    quantity: qty,
+    leverage: num(p.leverage) || 1,
+    stopLoss: num(p.stopLoss) || num(p.presetStopLossPrice),
+    positionSize: qty * entryPrice,
+    fees: 0,
+    status: 'open',
+    source: 'bitget',
+    externalId: String(p.positionId || `${pair}_${p.cTime}`),
+    orderType: 'market',
+    entryDate,
+    tps: tp > 0 ? [tp] : [],
+    exits: null,
+    tpReached: [],
+    result: null,
+    journalId: null,
+    liquidationPrice: liq > 0 ? liq : null,
+    markPrice: posOrNull(p.markPrice),
+    unrealizedPnl: orNull(p.unrealizedPL),
+    marginMode: marginModeOf(p.marginMode),
+    margin: posOrNull(p.marginSize),
+    realizedPnl: orNull(p.achievedProfits),
+    feesPaid: has(p.deductedFee) ? trim(Math.abs(num(p.deductedFee))) : null,
+    funding: orNull(p.totalFee),
+  };
+}
+
 // /account/positions row (open). `pos` is in contracts; an attached SL/TP
 // lives in closeOrderAlgo[], not on the position itself.
 export function normalizeOkxOpen(p, ctVal = 1) {
@@ -189,6 +348,7 @@ export function normalizeOkxOpen(p, ctVal = 1) {
   const sl = num(p.slTriggerPx) || num(algo.find((a) => has(a.slTriggerPx))?.slTriggerPx);
   const tp = num(p.tpTriggerPx) || num(algo.find((a) => has(a.tpTriggerPx))?.tpTriggerPx);
   const liq = num(p.liqPx);
+  const marginMode = marginModeOf(p.mgnMode);
   return {
     pair,
     direction: p.posSide === 'short' || num(p.pos) < 0 ? 'short' : 'long',
@@ -205,6 +365,14 @@ export function normalizeOkxOpen(p, ctVal = 1) {
     entryDate: iso(parseInt(p.cTime)) || new Date().toISOString(),
     tps: tp > 0 ? [tp] : [],
     liquidationPrice: liq > 0 ? liq : null,
+    markPrice: posOrNull(p.markPx),
+    unrealizedPnl: orNull(p.upl),
+    marginMode,
+    // Isolated positions report `margin`; cross ones only the initial margin requirement.
+    margin: marginMode === 'isolated' ? (posOrNull(p.margin) ?? posOrNull(p.imr)) : (posOrNull(p.imr) ?? posOrNull(p.margin)),
+    realizedPnl: orNull(p.realizedPnl),
+    feesPaid: has(p.fee) ? trim(Math.abs(num(p.fee))) : null,
+    funding: orNull(p.fundingFee),
   };
 }
 
