@@ -1,9 +1,12 @@
+import { useMemo } from 'react';
 import { Link } from 'react-router-dom';
 import { motion, useReducedMotion } from 'framer-motion';
 import { Activity, BarChart3, Route, ArrowLeft } from 'lucide-react';
 import Card from '../shared/Card';
 import FitText from '../shared/FitText';
-import { JOURNEY_STAGES } from '../../utils/constants';
+import { useAuth } from '../../contexts/AuthContext';
+import { STAGES } from '../../utils/traderStage';
+import { readStageSnapshot } from './journeyStorage';
 import { ZONE_COLORS, tint, tileInteractive } from './zoneStyle';
 
 // Building blocks of the mental-zone landing page: the per-tile accent, the
@@ -198,58 +201,67 @@ export function MentalStatsTile({ stat, loading }) {
   );
 }
 
-// ── Journey ──────────────────────────────────────────────────────────────
-// A miniature of the journey chart: early luck, the drawdown valley, then the
-// long climb. Dots mark the stages.
-const CURVE = [[6, 38], [26, 24], [44, 14], [66, 44], [88, 52], [112, 44], [136, 34], [160, 24], [194, 8]];
-const STAGE_POINTS = [0, 2, 3, 5, 6, 7, 8];
-const CURVE_D = CURVE.map(([x, y], i) => `${i ? 'L' : 'M'}${x} ${y}`).join(' ');
-
+// ── Journey (development map) ────────────────────────────────────────────
+// Shows the user's real stage from the snapshot the development map page
+// leaves behind (journeyStorage) — the zone itself never subscribes to the
+// trades collection. Before the first visit it is a teaser.
 export function JourneyTile() {
   const color = ZONE_COLORS.journey;
   const reduce = useReducedMotion();
-  const stages = JOURNEY_STAGES.length;
+  const { user } = useAuth();
+  const snap = useMemo(() => readStageSnapshot(user?.uid), [user?.uid]);
+  const n = STAGES.length;
+  const cur = snap ? Math.min(n, Math.max(1, snap.index)) : 0;
+  const progress = snap?.nextName ? Math.min(100, Math.max(0, snap.progress || 0)) : 100;
   return (
     <ZoneTile
       as={Link}
       to="/mentality/journey"
-      aria-label={`המסע הפסיכולוגי של הסוחר · ${stages} שלבים`}
+      aria-label={snap
+        ? `מפת ההתפתחות · שלב ${cur} מתוך ${n}: ${snap.name}${snap.nextName ? ` · ${progress}% לשלב הבא` : ''}`
+        : `מפת ההתפתחות · ${n} שלבים · גלה איפה אתה`}
       interactive
       icon={Route}
       color={color}
-      title="המסע הפסיכולוגי"
-      caption="המסלול שרוב הסוחרים עוברים"
-      footer={<TileLinkFooter label="לגלות איפה אני" />}
+      title="מפת ההתפתחות"
+      caption="איפה אתה עומד כסוחר"
+      footer={<TileLinkFooter label={snap ? 'לפירוט המלא' : 'לגלות איפה אני'} />}
     >
-      <div className="flex items-baseline gap-1.5">
-        <span className="num-mono text-2xl md:text-[28px] font-bold text-text-primary leading-none">{stages}</span>
-        <span className="text-xs text-text-muted">שלבים, מהתחלה ועד שליטה עצמית</span>
+      <div className="min-w-0">
+        <FitText className="text-2xl md:text-[28px] font-bold text-text-primary leading-none" style={{ textAlign: 'right' }}>
+          {snap ? snap.name : 'גלה איפה אתה'}
+        </FitText>
+        <p className="text-xs text-text-muted mt-2">
+          {snap
+            ? <>שלב <span className="num-mono font-semibold text-text-secondary">{cur}</span> מתוך <span className="num-mono">{n}</span>{snap.insufficient ? ' · נתונים חלקיים' : ''}</>
+            : `${n} שלבים, מ${STAGES[0].name} ועד ${STAGES[n - 1].name}`}
+        </p>
       </div>
-      <svg viewBox="0 0 200 60" className="w-full h-16 mt-3 overflow-visible" dir="ltr" aria-hidden>
-        <line x1="0" y1="56" x2="200" y2="56" stroke="var(--color-border-primary)" strokeWidth="1" />
-        <motion.path
-          d={CURVE_D}
-          fill="none"
-          stroke={color}
-          strokeWidth="2"
-          strokeLinecap="round"
-          strokeLinejoin="round"
-          initial={reduce ? false : { pathLength: 0 }}
-          animate={{ pathLength: 1 }}
-          transition={{ duration: 1.1, ease: 'easeInOut', delay: 0.2 }}
-        />
-        {STAGE_POINTS.map((idx, i) => (
-          <circle
-            key={idx}
-            cx={CURVE[idx][0]}
-            cy={CURVE[idx][1]}
-            r={i === STAGE_POINTS.length - 1 ? 3.5 : 2.5}
-            fill={i === STAGE_POINTS.length - 1 ? color : 'var(--color-bg-primary)'}
-            stroke={color}
-            strokeWidth="1.5"
-          />
-        ))}
-      </svg>
+      {/* The ladder in miniature: one segment per stage, right to left. */}
+      <ol className="grid gap-1 mt-3" style={{ gridTemplateColumns: `repeat(${n}, minmax(0, 1fr))` }} aria-hidden>
+        {STAGES.map((s, i) => {
+          // Reached stages full, the next one filled by the progress toward it.
+          const fill = !snap ? 0 : i < cur ? 100 : i === cur ? progress : 0;
+          return (
+            <li key={s.id} className="h-1.5 rounded-full bg-bg-tertiary overflow-hidden">
+              {fill > 0 && (
+                <motion.div
+                  className="h-full rounded-full"
+                  style={{ background: i < cur ? color : tint(color, 45) }}
+                  initial={reduce ? false : { width: 0 }}
+                  animate={{ width: `${fill}%` }}
+                  transition={{ duration: 0.5, ease: 'easeOut', delay: 0.1 + i * 0.05 }}
+                />
+              )}
+            </li>
+          );
+        })}
+      </ol>
+      <p className="text-xs text-text-muted mt-2">
+        {!snap && 'הערכה אישית לפי העסקאות, התוכנית והיומנים שלך'}
+        {snap && snap.nextName && <><span className="num-mono font-semibold text-text-secondary" dir="ltr">{progress}%</span> לשלב הבא · {snap.nextName}</>}
+        {snap && !snap.nextName && 'השלב העליון בסולם'}
+      </p>
     </ZoneTile>
   );
 }
