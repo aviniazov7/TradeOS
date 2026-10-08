@@ -142,3 +142,16 @@ export async function fetchExchangeBalance(exchange) {
   if (!data.ok) throw exchangeError(data.error || 'שגיאה בטעינת היתרה', data.reason);
   return { balance: data.balance || 0, currency: data.currency || 'USD' };
 }
+
+// ── Price candles (MAE/MFE) ─────────────────────────────────────────────────
+// OHLC between two instants from the Worker's /candles route (Bybit for crypto,
+// Yahoo for stocks/futures; edge-cached, the interval is chosen server-side).
+// → { symbol, source, interval (minutes), candles: [{ t, o, h, l, c }] }
+export async function fetchCandles({ symbol, asset = 'crypto', from, to }) {
+  const qs = new URLSearchParams({ symbol, asset, from: String(Math.floor(from)), to: String(Math.floor(to)) });
+  const res = await authedFetch(`/candles?${qs}`, undefined, 'GET');
+  const data = await res.json().catch(() => ({}));
+  if (res.status === 404) throw new Error('אין נתוני מחיר זמינים לנכס ולטווח הזה');
+  if (!res.ok || data.error) throw new Error(data.error || 'טעינת נתוני המחיר נכשלה');
+  return data;
+}
