@@ -1,13 +1,11 @@
+import UserAvatar from '../shared/UserAvatar';
 import { Link } from 'react-router-dom';
 import { motion } from 'framer-motion';
-import { useAuth } from '../../contexts/AuthContext';
 import { Menu, X } from 'lucide-react';
 import PriceTicker from './PriceTicker';
 import GlobalSearch from './GlobalSearch';
 
 export default function Header({ onToggleSidebar, sidebarOpen }) {
-  const { user } = useAuth();
-
   return (
     <header
       className="h-14 md:h-16 border-b border-border-primary flex items-center px-4 md:px-6 gap-3 fixed top-0 left-0 right-0 z-[60]"
@@ -39,17 +37,9 @@ export default function Header({ onToggleSidebar, sidebarOpen }) {
 
       {/* User avatar - leftmost in RTL, links to profile */}
       <Link to="/profile" className="shrink-0">
-        {user?.photoURL ? (
-          <img
-            src={user.photoURL}
-            alt={user.displayName}
-            className="w-8 h-8 rounded-full border border-border-primary hover:border-accent-primary transition-colors cursor-pointer"
-          />
-        ) : (
-          <div className="w-8 h-8 rounded-full bg-accent-primary/20 flex items-center justify-center text-accent-primary text-sm font-semibold hover:bg-accent-primary/30 transition-colors cursor-pointer">
-            {user?.displayName?.[0] || user?.email?.[0] || '?'}
-          </div>
-        )}
+        <span className="block rounded-full border border-border-primary hover:border-accent-primary transition-colors">
+          <UserAvatar className="w-8 h-8" />
+        </span>
       </Link>
     </header>
   );
