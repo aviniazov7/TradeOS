@@ -5,7 +5,10 @@ import { motion, AnimatePresence } from 'framer-motion';
 
 let modalCount = 0;
 
-export default function Modal({ isOpen, onClose, title, ariaLabel, children, maxWidth = 'max-w-xl' }) {
+// footer (optional): pinned to the bottom of the card while the body scrolls —
+// for action bars. A submit button in it can target a form in the body via the
+// `form` attribute. The safe-area inset moves from the body to the footer.
+export default function Modal({ isOpen, onClose, title, ariaLabel, children, maxWidth = 'max-w-xl', footer = null }) {
   const cardRef = useRef(null);
   const prevFocusRef = useRef(null);
   // Depth at which this modal opened. With nested modals (a form inside a
@@ -128,10 +131,23 @@ export default function Modal({ isOpen, onClose, title, ariaLabel, children, max
                 {/* Content */}
                 <div
                   className="p-5 md:px-6 md:py-5"
-                  style={{ paddingBottom: 'calc(1.5rem + env(safe-area-inset-bottom, 0px))' }}
+                  style={{ paddingBottom: footer ? '1.25rem' : 'calc(1.5rem + env(safe-area-inset-bottom, 0px))' }}
                 >
                   {children}
                 </div>
+
+                {footer && (
+                  <div
+                    className="sticky bottom-0 z-10 px-5 md:px-6 pt-3"
+                    style={{
+                      borderTop: '1px solid var(--glass-border)',
+                      background: 'var(--modal-header-solid)',
+                      paddingBottom: 'calc(0.75rem + env(safe-area-inset-bottom, 0px))',
+                    }}
+                  >
+                    {footer}
+                  </div>
+                )}
               </div>
             </motion.div>
           </div>

@@ -3,7 +3,7 @@ import toast from 'react-hot-toast';
 import DatePicker, { registerLocale } from 'react-datepicker';
 import { he } from 'date-fns/locale';
 import 'react-datepicker/dist/react-datepicker.css';
-import { X, Plus, AlertTriangle, ShieldAlert, Percent, TrendingUp, TrendingDown, Check, Clock, CircleDot, CheckCircle2, Target, ClipboardCheck, Gauge, ShieldCheck, Layers, Calculator } from 'lucide-react';
+import { X, Plus, AlertTriangle, ShieldAlert, TrendingUp, TrendingDown, Check, Target, ClipboardCheck, Gauge, ShieldCheck, Layers, Calculator, ChevronDown } from 'lucide-react';
 import Modal from '../shared/Modal';
 import PairSearch from './PairSearch';
 import StockSearch from '../stocks/StockSearch';
@@ -12,7 +12,7 @@ import NumberStepper from '../shared/NumberStepper';
 import TimeframeSelector from '../shared/TimeframeSelector';
 import StrategySelector from '../shared/StrategySelector';
 import MultiSelector from '../shared/MultiSelector';
-import { PAIRS, MISTAKE_LABELS, TAG_LABELS, SESSIONS, getSessionClasses, FUTURES_CONTRACTS, getContractSpec, DEFAULT_LEVERAGE } from '../../utils/constants';
+import { PAIRS, MISTAKE_LABELS, TAG_LABELS, SESSIONS, FUTURES_CONTRACTS, getContractSpec, DEFAULT_LEVERAGE } from '../../utils/constants';
 import { useUserStrategies } from '../../hooks/useUserStrategies';
 import { useUserTimeframes } from '../../hooks/useUserTimeframes';
 import { useUserTriggers } from '../../hooks/useUserTriggers';
@@ -24,6 +24,7 @@ import {
   aggregateFills, exitsClosedPercent, hasCommissionPreset, estimateCommission,
   buildChecklistRows, checklistAdherence, loadLastTradeChoices, saveLastTradeChoices,
   canMoveStopToBreakeven, breakevenStopValue,
+  riskBudgetCheck, riskToStop, stopDistancePct, rMultiple, plannedRewardRisk,
 } from '../../utils/tradeFormHelpers';
 import { calculatePnLPercent, calculateRR, calculateNetPnL, calculatePartialPnL, calculateWeightedExitPrice, calculateFuturesContractsPnL, calculateFuturesNotional, initialStopLoss, isClosedTrade, safePnl } from '../../utils/calculations';
 import { getSessionFromDate } from '../../utils/sessions';
@@ -83,18 +84,112 @@ function parseDate(val) {
   return isNaN(d.getTime()) ? null : d;
 }
 
-// Color scale from low (red) to high (green), used by the mental sliders.
-const RATING_COLORS = ['text-loss', 'text-orange-400', 'text-breakeven', 'text-lime-400', 'text-profit'];
-
 const MENTAL_RATINGS = [
   { key: 'focusRating', label: 'ריכוז וחדות', Icon: Target },
   { key: 'planAdherenceRating', label: 'הצמדות לתוכנית', Icon: ClipboardCheck },
-  // Stress is the one scale where 5 is the BAD answer, so the shared red-to-
-  // green ramp has to run backwards for it — otherwise maximum stress renders
-  // green and reads as a good day.
-  { key: 'stressRating', label: 'לחץ / סטרס', Icon: Gauge, invert: true },
+  // Stress is the one scale where 5 is the BAD answer — the hint says so.
+  { key: 'stressRating', label: 'לחץ / סטרס', Icon: Gauge, hint: '5 = גבוה' },
   { key: 'confidenceRating', label: 'ביטחון בעסקה', Icon: ShieldCheck },
 ];
+
+const ASSET_LABELS = { crypto: 'קריפטו', stocks: 'מניות', futures_cme: 'חוזים עתידיים' };
+
+// ── Ticket building blocks ──────────────────────────────────────────────────
+// One visual language for every control: 40px high, rounded-xl, small muted
+// labels, numbers in num-mono, a single accent colour. Profit/loss tokens are
+// kept for direction and P&L only.
+// ctlBase carries no padding / text size / colour / alignment so each use
+// adds its own without two utilities of the same property fighting.
+const ctlBase = 'h-10 w-full min-w-0 bg-bg-tertiary border border-border-primary rounded-xl outline-none focus:border-accent-primary transition-colors placeholder:text-text-muted/60';
+const inputClass = `${ctlBase} px-3 text-sm text-text-primary text-right`;
+const numInputClass = `${inputClass} num-mono`;
+const compactNumClass = `${ctlBase} px-2 text-xs text-text-primary text-right num-mono`;
+const readoutClass = 'h-10 w-full min-w-0 rounded-xl border border-dashed border-border-primary px-3 flex items-center justify-end text-sm num-mono text-text-secondary';
+
+const fmtNum = (v, max = 8) => (Number.isFinite(v) ? (+v.toPrecision(10)).toLocaleString('en-US', { maximumFractionDigits: max }) : '—');
+const fmtUsd = (v, max = 2) => (Number.isFinite(v) ? `$${v.toLocaleString('en-US', { minimumFractionDigits: Math.min(2, max), maximumFractionDigits: max })}` : '—');
+const fmtR = (r) => (r == null || !Number.isFinite(r) ? '—' : `${r < 0 ? '−' : ''}${Math.abs(r).toFixed(2)}R`);
+
+/** A numbered ticket section: caption on a hairline, optionally collapsible. */
+function Section({ n, title, aside, collapsible = false, open = true, onToggle, children }) {
+  const caption = (
+    <>
+      <span className="num-mono text-[10px] font-semibold text-accent-primary">{String(n).padStart(2, '0')}</span>
+      <span className="text-xs font-semibold text-text-primary whitespace-nowrap">{title}</span>
+      <span className="flex-1 h-px bg-border-primary min-w-4" aria-hidden="true" />
+      {aside}
+      {collapsible && <ChevronDown className={`w-4 h-4 shrink-0 text-text-muted transition-transform ${open ? 'rotate-180' : ''}`} />}
+    </>
+  );
+  return (
+    <section className="pt-5 first:pt-0">
+      {collapsible ? (
+        <button type="button" onClick={onToggle} aria-expanded={open}
+          className="w-full flex items-center gap-2 cursor-pointer text-right rounded-lg outline-none focus-visible:ring-2 focus-visible:ring-accent-primary/40">
+          {caption}
+        </button>
+      ) : (
+        <div className="flex items-center gap-2">{caption}</div>
+      )}
+      {open && <div className="mt-3">{children}</div>}
+    </section>
+  );
+}
+
+/** Label + control. `pick` sizes a shared picker to the ticket's controls. */
+function Field({ label, htmlFor, aside, hint, hintTone = 'text-text-muted', hintDir, pick = false, className = '', children }) {
+  return (
+    <div className={`min-w-0 ${className}`}>
+      <div className="flex items-center justify-between gap-1 mb-1 min-h-[18px]">
+        {htmlFor
+          ? <label htmlFor={htmlFor} className="text-[11px] text-text-muted truncate">{label}</label>
+          : <span className="text-[11px] text-text-muted truncate">{label}</span>}
+        {aside}
+      </div>
+      {pick ? <div className="tt-pick">{children}</div> : children}
+      {hint && <p dir={hintDir} className={`text-[10px] mt-1 truncate text-right ${hintDir === 'ltr' ? 'num-mono ' : ''}${hintTone}`}>{hint}</p>}
+    </div>
+  );
+}
+
+/** Segmented control (radio group) — 40px, one accent unless a tone is given. */
+function Segmented({ value, onChange, options, ariaLabel, size = 'md' }) {
+  return (
+    <div role="radiogroup" aria-label={ariaLabel}
+      className={`flex gap-0.5 p-0.5 rounded-xl bg-bg-tertiary border border-border-primary ${size === 'sm' ? 'h-8' : 'h-10'}`}>
+      {options.map((o) => {
+        const on = value === o.value;
+        return (
+          <button key={o.value} type="button" role="radio" aria-checked={on} aria-label={o.aria} onClick={() => onChange(o.value)}
+            className={`flex-1 min-w-0 rounded-[10px] flex items-center justify-center gap-1 font-semibold transition-colors cursor-pointer ${
+              size === 'sm' ? 'text-[11px] num-mono' : 'text-xs'
+            } ${on ? (o.onClass || 'bg-accent-primary/15 text-accent-primary') : 'text-text-muted hover:text-text-primary'}`}>
+            {o.icon}{o.label}
+          </button>
+        );
+      })}
+    </div>
+  );
+}
+
+/** label · value row of the summary rail. */
+function Row({ label, value, tone = 'text-text-primary', strong = false }) {
+  return (
+    <div className="flex items-baseline justify-between gap-3 py-[3px]">
+      <span className="text-[11px] text-text-muted shrink-0">{label}</span>
+      <span className={`num-mono text-right truncate ${strong ? 'text-sm font-bold' : 'text-xs font-medium'} ${tone}`} dir="ltr">{value}</span>
+    </div>
+  );
+}
+
+function RailBlock({ title, children }) {
+  return (
+    <div className="px-4 py-2.5 border-t border-border-primary">
+      <p className="text-[10px] font-semibold tracking-wider text-text-muted mb-1">{title}</p>
+      {children}
+    </div>
+  );
+}
 
 export default function TradeForm({ isOpen, onClose, trade, onSave, riskSettings, livePrices = {}, journalAssetClass = 'crypto' }) {
   // Asset class is owned by the JOURNAL — every trade inherits it, no per-trade
@@ -120,7 +215,12 @@ export default function TradeForm({ isOpen, onClose, trade, onSave, riskSettings
   // stop 90 -> 10 units, move the stop to 95 -> 20 units).
   const [lockedQty, setLockedQty] = useState(0);
   const sessionManuallySet = useRef(false);
-  const [activeTab, setActiveTab] = useState('trade');
+  // Collapsible sections: null = automatic (see planOpen / journalOpen below),
+  // true/false once the user toggles. Reset whenever the ticket opens.
+  const [planOpenState, setPlanOpenState] = useState(null);
+  const [journalOpenState, setJournalOpenState] = useState(null);
+  const [scaleOpenState, setScaleOpenState] = useState(null);
+  const submitRef = useRef(null);
   const livePricesRef = useRef(livePrices);
   useEffect(() => { livePricesRef.current = livePrices; });
   useEffect(() => {
@@ -251,7 +351,9 @@ export default function TradeForm({ isOpen, onClose, trade, onSave, riskSettings
       });
       setFeesAuto(true);
     }
-    setActiveTab('trade');
+    setPlanOpenState(null);
+    setJournalOpenState(null);
+    setScaleOpenState(null);
     sessionManuallySet.current = false;
   }, [trade, isOpen]); // allStrategies intentionally excluded — it only affects dropdown options, not form state; including it caused form resets mid-edit
 
@@ -512,37 +614,69 @@ export default function TradeForm({ isOpen, onClose, trade, onSave, riskSettings
       originalStopLoss: parseFloat(trade.originalStopLoss) > 0 ? trade.originalStopLoss : trade.stopLoss,
     });
 
-  const TABS = [
-    { id: 'trade', label: 'עסקה' },
-    { id: 'plan', label: adherencePct != null ? `תוכנית · ${adherencePct}%` : 'תוכנית' },
-    { id: 'mental', label: 'מנטליות' },
-  ];
+  // ── Summary rail (display only — handleSubmit computes what is saved) ──
+  // Risk in dollars: the typed risk, else what the size loses at the
+  // original stop. Futures have no risk input, so theirs is always the stop
+  // risk (points × point value × contracts).
+  const pointValue = isFutures ? (contractSpec?.pointValue || 0) : 1;
+  const stopRisk = riskToStop({ entry: avgEntry, stop: riskStopLoss, units: totalUnits, pointValue });
+  const typedRisk = parseFloat(form.riskAmount) || 0;
+  const riskDollars = !isFutures && typedRisk > 0 ? typedRisk : stopRisk;
+  const riskInfo = useMemo(() => riskBudgetCheck(riskDollars, riskSettings || {}), [riskDollars, riskSettings]);
+  const stopDistance = stopDistancePct(avgEntry, riskStopLoss);
 
-  // Risk warning
-  const riskInfo = useMemo(() => {
-    if (!form.riskAmount) return null;
-    const risk = parseFloat(form.riskAmount);
-    if (!risk || risk <= 0) return null;
-    const { riskType, riskValue, currentBalance } = riskSettings || {};
-    if (currentBalance > 0) {
-      const riskPercent = (risk / currentBalance) * 100;
-      const exceeds = riskType === 'percent' && riskValue > 0 && riskPercent > riskValue;
-      const critical = exceeds && riskPercent > riskValue * 2;
-      return {
-        message: exceeds
-          ? `סיכון ${riskPercent.toFixed(1)}% מהתיק — חורג מהמגבלה (${riskValue}%)`
-          : `סיכון ${riskPercent.toFixed(1)}% מהתיק`,
-        severity: critical ? 'critical' : exceeds ? 'warning' : 'info',
-      };
+  // Planned R:R — every target with a price; futures weights are contracts,
+  // turned into % of the position.
+  const planned = useMemo(() => plannedRewardRisk({
+    direction: form.direction,
+    entry: avgEntry,
+    stop: riskStopLoss,
+    targets: form.additionalExits.map((e) => ({
+      price: e.price,
+      weight: isFutures
+        ? (totalContracts > 0 ? ((parseFloat(e.contracts) || 0) / totalContracts) * 100 : 0)
+        : parseFloat(e.percent) || 0,
+    })),
+  }), [form.direction, avgEntry, riskStopLoss, form.additionalExits, isFutures, totalContracts]);
+
+  // Realized result: the live calc, or — for a closed import with no exit
+  // rows — the stored P&L.
+  const shown = calc || (keepsImportedClose
+    ? { netPnl: safePnl(trade), pnlPercent: Number(trade.pnlPercent) || 0, rrRatio: Number(trade.rrRatio) || 0, pnl: null }
+    : null);
+  const feesNum = parseFloat(feesValue) || 0;
+
+  // Collapsible sections. Plan: open while there is a plan to pick or one
+  // is linked. Journal: closed on a new trade, open on edit when anything in
+  // it was filled. Scale-ins: open once there are rows.
+  const planOpen = planOpenState ?? (!!form.planId || planOptions.length > 0);
+  const journalHasContent = !!(form.entryReason?.trim() || form.notes?.trim() || form.tags?.length || form.mistakes?.length
+    || form.tradingViewUrl?.trim() || MENTAL_RATINGS.some((r) => form[r.key] !== 3));
+  const journalOpen = journalOpenState ?? (!!trade && journalHasContent);
+  const scaleOpen = scaleOpenState ?? form.scaleIns.length > 0;
+
+  const statusCfg = {
+    limit: { label: 'ממתין לכניסה', dot: 'bg-text-muted' },
+    open: { label: 'פתוחה', dot: 'bg-accent-primary animate-pulse' },
+    partial: { label: `${additionalExitsPercent.toFixed(0)}% נסגר`, dot: 'bg-accent-primary' },
+    closed: { label: 'סגורה', dot: shown ? (shown.netPnl > 0 ? 'bg-profit' : shown.netPnl < 0 ? 'bg-loss' : 'bg-breakeven') : 'bg-text-muted' },
+  }[currentStatus];
+
+  const riskTone = riskInfo?.severity === 'critical' ? 'text-loss' : riskInfo?.severity === 'warning' ? 'text-breakeven' : 'text-text-primary';
+
+  // Enter inside a field must not submit half a ticket; Ctrl/Cmd+Enter saves
+  // (through the real submit button, so a disabled save stays disabled and
+  // the browser still validates the fields).
+  const handleFormKeyDown = (e) => {
+    if (e.key !== 'Enter' || e.nativeEvent.isComposing) return;
+    if (e.metaKey || e.ctrlKey) {
+      e.preventDefault();
+      submitRef.current?.click();
+      return;
     }
-    if (riskType === 'fixed' && riskValue > 0 && risk > riskValue) {
-      return {
-        message: `סיכון $${risk.toFixed(2)} — חורג מהמגבלה ($${riskValue})`,
-        severity: risk > riskValue * 2 ? 'critical' : 'warning',
-      };
-    }
-    return null;
-  }, [form.riskAmount, riskSettings]);
+    const t = e.target;
+    if (t.tagName === 'INPUT' && !['checkbox', 'radio', 'submit', 'button'].includes(t.type)) e.preventDefault();
+  };
 
   const handleSubmit = async (e) => {
     e.preventDefault();
@@ -802,275 +936,392 @@ export default function TradeForm({ isOpen, onClose, trade, onSave, riskSettings
   };
 
   const pnlColor = (val) => (val > 0 ? 'text-profit' : val < 0 ? 'text-loss' : 'text-breakeven');
-  const inputClass = 'w-full bg-bg-tertiary border border-border-primary rounded-lg px-3 py-2.5 text-sm text-text-primary outline-none focus:border-accent-primary transition-colors text-right';
-  const labelClass = 'block text-xs text-text-muted mb-1';
-  const dateInputClass = 'w-full bg-bg-tertiary border border-border-primary rounded-lg px-2 py-2.5 text-xs text-text-primary outline-none focus:border-accent-primary transition-colors text-right';
-  const compactInputClass = 'w-full min-w-0 bg-bg-tertiary border border-border-primary rounded-lg px-2 py-2 text-xs text-text-primary outline-none focus:border-accent-primary transition-colors text-right';
+  const textareaClass = 'w-full min-w-0 h-24 bg-bg-tertiary border border-border-primary rounded-xl px-3 py-2 text-sm text-text-primary outline-none focus:border-accent-primary transition-colors text-right resize-none placeholder:text-text-muted/60';
+  const isLong = form.direction === 'long';
+  // Futures exits are recorded in contracts; crypto / stocks in percent.
+  const exitField = isFutures ? 'contracts' : 'percent';
 
-  // Fees input — shared by the three asset-class rows. While it follows the
+  // Fees input — shared by the three asset classes. While it follows the
   // journal preset it shows the estimate; typing switches it to manual, and
   // the calculator button re-applies the preset.
-  const renderFees = (label) => (
-    <div>
-      <div className="flex items-center justify-between gap-1 mb-1">
-        <label className={labelClass + ' !mb-0 truncate'}>{label}</label>
-        {feesFromPreset && <span className="text-[9px] text-accent-primary shrink-0">פריסט</span>}
-        {hasPreset && !feesFromPreset && presetFees != null && (
+  const feesField = (
+    <Field label={isFutures || isStocks ? 'עמלות ($)' : 'עמלות (USDT)'} htmlFor="tt-fees"
+      aside={feesFromPreset
+        ? <span className="text-[10px] font-semibold text-accent-primary shrink-0">פריסט</span>
+        : (hasPreset && presetFees != null) ? (
           <button type="button" onClick={() => setFeesAuto(true)}
-            title={`חישוב לפי פריסט העמלות ביומן ($${presetFees})`}
+            title={`חישוב לפי פריסט העמלות ביומן ($${presetFees})`} aria-label="חישוב לפי פריסט העמלות"
             className="p-0.5 rounded text-text-muted hover:text-accent-primary transition-colors cursor-pointer shrink-0">
             <Calculator className="w-3.5 h-3.5" />
           </button>
-        )}
-      </div>
-      <input type="number" step="any" min="0" value={feesValue}
+        ) : null}>
+      <input id="tt-fees" type="number" step="any" min="0" value={feesValue}
         onChange={(e) => { setFeesAuto(false); update('fees', e.target.value); }}
-        className={inputClass} placeholder="0.00" inputMode="decimal"
+        className={numInputClass} placeholder="0.00" inputMode="decimal"
         title={feesFromPreset ? 'מחושב לפי פריסט העמלות של היומן — הקלדה תעבור למצב ידני' : undefined} />
-    </div>
+    </Field>
+  );
+
+  // Size inputs per asset class (two cells of the entry grid).
+  const sizeFields = isFutures ? (
+    <>
+      <Field label={hasScaleIns ? 'חוזים · כניסה 1' : 'מספר חוזים'}>
+        <NumberStepper value={form.contracts} onChange={(v) => update('contracts', v)} min={1} placeholder="1" className="h-10 rounded-xl" />
+      </Field>
+      <Field label="ערך נקודה">
+        <div className={readoutClass}>{contractSpec ? `$${contractSpec.pointValue}` : '—'}</div>
+      </Field>
+    </>
+  ) : isStocks ? (
+    <>
+      <Field label={hasScaleIns ? 'מניות · כניסה 1' : 'מספר מניות'} htmlFor="tt-shares">
+        <input id="tt-shares" type="number" step="any" min="0" value={form.shares} onChange={(e) => update('shares', e.target.value)} className={numInputClass} placeholder="10" inputMode="decimal" />
+      </Field>
+      <Field label={sharesNum > 0 ? 'סיכון ($) · לתיעוד' : 'או לפי סיכון ($)'} htmlFor="tt-risk">
+        <input id="tt-risk" type="number" step="any" value={form.riskAmount} onChange={(e) => { update('riskAmount', e.target.value); setLockedQty(0); }} className={numInputClass} placeholder="100" inputMode="decimal" />
+      </Field>
+    </>
+  ) : (
+    <>
+      <Field label={hasScaleIns ? 'סיכון · כניסה 1' : 'סיכון ($)'} htmlFor="tt-risk">
+        <input id="tt-risk" type="number" step="any" value={form.riskAmount} onChange={(e) => { update('riskAmount', e.target.value); setLockedQty(0); }} className={numInputClass} placeholder="50" inputMode="decimal" />
+      </Field>
+      <Field label="מינוף" htmlFor="tt-leverage">
+        <input id="tt-leverage" type="number" value={form.leverage} onChange={(e) => update('leverage', e.target.value)} className={numInputClass} inputMode="numeric" />
+      </Field>
+    </>
+  );
+
+  const exitGrid = 'grid grid-cols-[1.75rem_minmax(0,1fr)_4.5rem_4.5rem_1.5rem] sm:grid-cols-[2rem_minmax(0,1fr)_5.5rem_3.75rem_4.75rem_1.5rem] gap-2 items-center';
+  const exitedTone = additionalExitsPercent > 100.05 ? 'bg-loss/15 text-loss' : 'bg-accent-primary/10 text-accent-primary';
+  const doneCount = checklistRows.filter((r) => r.done).length;
+  const adherenceTone = adherencePct >= 80 ? 'text-accent-primary bg-accent-primary/10' : adherencePct >= 50 ? 'text-text-secondary bg-bg-tertiary' : 'text-breakeven bg-breakeven/10';
+  const journalSummary = [
+    form.tags?.length ? `${form.tags.length} תגיות` : null,
+    form.mistakes?.length ? `${form.mistakes.length} טעויות` : null,
+    (form.entryReason?.trim() || form.notes?.trim()) ? 'הערות' : null,
+  ].filter(Boolean).join(' · ');
+  const riskLabel = !isFutures && typedRisk > 0 ? 'סכום בסיכון' : 'סיכון עד הסטופ';
+
+  const rail = (
+    // Desktop: sticky under the modal header and capped to the visible body
+    // (viewport − card margins − header − footer) so its end never hides
+    // behind the action bar.
+    <aside className="mt-6 lg:mt-0 lg:sticky lg:top-16 lg:self-start lg:max-h-[calc(100dvh-13rem)] lg:overflow-y-auto overscroll-contain rounded-2xl" aria-label="סיכום העסקה">
+      <div className="rounded-2xl border border-border-primary bg-bg-tertiary">
+        <div className="p-4">
+          <div className="flex items-center justify-between gap-2">
+            <span className="num-mono text-lg font-bold text-text-primary truncate" dir="ltr">{form.pair || '—'}</span>
+            <span className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-md text-[11px] font-bold shrink-0 ${isLong ? 'bg-long/15 text-long' : 'bg-short/15 text-short'}`}>
+              {isLong ? <TrendingUp className="w-3 h-3" /> : <TrendingDown className="w-3 h-3" />}
+              {isLong ? 'LONG' : 'SHORT'}
+            </span>
+          </div>
+          <p className="mt-1 text-[11px] text-text-muted truncate">
+            {ASSET_LABELS[form.assetClass] || 'קריפטו'} · {form.orderType === 'limit' ? 'Limit' : 'Market'}{form.timeframe ? ` · ${form.timeframe}` : ''}
+          </p>
+          <div className="mt-3 flex items-center gap-2">
+            <span className={`w-2 h-2 rounded-full shrink-0 ${statusCfg.dot}`} />
+            <span className="text-xs font-semibold text-text-secondary">{statusCfg.label}</span>
+          </div>
+        </div>
+
+        {shown && (
+          <RailBlock title="תוצאה">
+            <div className="flex items-baseline justify-between gap-2 py-1">
+              <span className={`num-mono text-xl font-bold ${pnlColor(shown.netPnl)}`} dir="ltr">{formatCurrency(shown.netPnl)}</span>
+              <span className={`num-mono text-xs font-semibold ${pnlColor(shown.pnlPercent)}`} dir="ltr">{formatPercent(shown.pnlPercent)}</span>
+            </div>
+            {shown.pnl != null && <Row label="ברוטו" value={formatCurrency(shown.pnl)} tone="text-text-secondary" />}
+            <Row label="R בפועל" value={formatRR(shown.rrRatio, shown.netPnl)} tone={pnlColor(shown.netPnl)} />
+          </RailBlock>
+        )}
+
+        <RailBlock title="פוזיציה">
+          <Row label={isFutures ? 'נומינלי' : isStocks ? 'שווי פוזיציה' : 'גודל פוזיציה'} value={totalNotional > 0 ? fmtUsd(totalNotional) : '—'} />
+          {!isFutures && !isStocks && <Row label="מרג׳ין" value={calculatedMargin != null ? fmtUsd(calculatedMargin) : '—'} />}
+          <Row label={isFutures ? 'חוזים' : isStocks ? 'מניות' : 'כמות'} value={totalUnits > 0 ? fmtNum(totalUnits, isFutures ? 0 : 6) : '—'} />
+          {hasScaleIns && avgEntry > 0 && <Row label="כניסה ממוצעת" value={fmtNum(avgEntry)} />}
+          {isFutures && contractSpec && <Row label="ערך נקודה" value={`$${contractSpec.pointValue}`} />}
+          {!isFutures && !isStocks && <Row label="מינוף" value={`${parseInt(form.leverage) || 1}x`} />}
+        </RailBlock>
+
+        <RailBlock title="סיכון">
+          <Row label={riskLabel} value={riskDollars > 0 ? fmtUsd(riskDollars) : '—'} tone={riskTone} strong />
+          <Row label="מהתיק" value={riskInfo?.percent != null ? `${riskInfo.percent.toFixed(2)}%` : '—'} tone={riskTone} />
+          {riskInfo?.limitLabel && <Row label="מגבלה" value={riskInfo.limitLabel} tone="text-text-secondary" />}
+          <Row label="מרחק לסטופ" value={stopDistance != null ? `${stopDistance.toFixed(2)}%` : '—'} tone="text-text-secondary" />
+          {riskInfo && riskInfo.severity !== 'info' && (
+            <p role="alert" className={`mt-2 flex items-start gap-1.5 text-[11px] leading-snug ${riskInfo.severity === 'critical' ? 'text-loss' : 'text-breakeven'}`}>
+              {riskInfo.severity === 'critical' ? <ShieldAlert className="w-3.5 h-3.5 shrink-0 mt-px" /> : <AlertTriangle className="w-3.5 h-3.5 shrink-0 mt-px" />}
+              <span>{riskInfo.message}</span>
+            </p>
+          )}
+        </RailBlock>
+
+        <RailBlock title="יעדים">
+          <Row label="R:R ל-TP1" value={fmtR(planned.tp1)} />
+          <Row label="R:R משוקלל" value={fmtR(planned.blended)} />
+        </RailBlock>
+
+        <RailBlock title="עלויות ומשמעת">
+          <Row label="עמלות" value={feesNum > 0 ? fmtUsd(feesNum, 4) : '—'} />
+          <Row label="עמידה בתוכנית" value={adherencePct != null ? `${adherencePct}%` : '—'} />
+        </RailBlock>
+      </div>
+    </aside>
+  );
+
+  const footer = (
+    <>
+      {/* Phones: the key numbers stay in view above the buttons. */}
+      <div className="lg:hidden grid grid-cols-3 gap-2 mb-2.5">
+        <MiniStat label="סיכון" value={riskDollars > 0 ? fmtUsd(riskDollars) : '—'} tone={riskTone} />
+        <MiniStat label={shown ? 'R בפועל' : 'R:R מתוכנן'} value={shown ? formatRR(shown.rrRatio, shown.netPnl) : fmtR(planned.blended)} />
+        <MiniStat label="P&L נטו" value={shown ? formatCurrency(shown.netPnl) : '—'} tone={shown ? pnlColor(shown.netPnl) : 'text-text-primary'} />
+      </div>
+      <div className="flex items-center gap-2.5">
+        <p className="hidden lg:block flex-1 text-[11px] text-text-muted">
+          <span className="num-mono" dir="ltr">Ctrl/⌘ + Enter</span> לשמירה · <span className="num-mono">Esc</span> לסגירה
+        </p>
+        <button type="button" onClick={onClose}
+          className="flex-1 lg:flex-none lg:w-32 h-10 rounded-xl border border-border-primary bg-bg-tertiary text-sm text-text-primary hover:border-border-hover transition-colors cursor-pointer">
+          ביטול
+        </button>
+        <button ref={submitRef} type="submit" form="trade-ticket-form" disabled={saving || additionalExitsPercent > 100}
+          title={additionalExitsPercent > 100 ? 'סך אחוזי היציאות חורג מ-100%' : undefined}
+          className="flex-[1.4] lg:flex-none lg:w-44 h-10 rounded-xl bg-accent-primary text-black text-sm font-semibold hover:bg-accent-hover transition-colors cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed">
+          {saving ? 'שומר...' : trade ? 'עדכן עסקה' : 'שמור עסקה'}
+        </button>
+      </div>
+    </>
   );
 
   return (
-    <Modal isOpen={isOpen} onClose={onClose} title={trade ? 'עריכת עסקה' : 'עסקה חדשה'} maxWidth="max-w-2xl">
-      <form onSubmit={handleSubmit}>
+    <Modal isOpen={isOpen} onClose={onClose} title={trade ? 'עריכת עסקה' : 'עסקה חדשה'} maxWidth="max-w-5xl" footer={footer}>
+      <form id="trade-ticket-form" onSubmit={handleSubmit} onKeyDown={handleFormKeyDown}
+        className="lg:grid lg:grid-cols-[minmax(0,1fr)_288px] lg:gap-6 lg:items-start">
+        <div className="min-w-0">
 
-        {/* Tab bar */}
-        <div className="flex gap-1 p-1 bg-bg-tertiary rounded-xl mb-4">
-          {TABS.map(tab => (
-            <button key={tab.id} type="button" onClick={() => setActiveTab(tab.id)}
-              className={`flex-1 min-w-0 truncate py-2 rounded-lg text-[13px] sm:text-sm font-semibold transition-all cursor-pointer ${
-                activeTab === tab.id
-                  ? 'bg-bg-primary text-text-primary shadow-sm'
-                  : 'text-text-muted hover:text-text-primary'
-              }`}>
-              {tab.label}
-            </button>
-          ))}
-        </div>
-
-        {/* Trade tab */}
-        <div className={`space-y-2 ${activeTab !== 'trade' ? 'hidden' : ''}`}>
-
-            {/* Asset class is inherited from the journal — no per-trade toggle. */}
-
-            {/* Status header — only when editing */}
-            {trade && (() => {
-              const statusCfg = {
-                limit:   { icon: Clock,         color: 'text-text-muted',    bg: 'bg-bg-tertiary',       border: 'border-border-primary/50', dot: 'bg-text-muted',    label: 'ממתין לכניסה' },
-                open:    { icon: CircleDot,     color: 'text-accent-primary', bg: 'bg-accent-primary/8', border: 'border-accent-primary/20', dot: 'bg-accent-primary animate-pulse', label: 'עסקה פתוחה' },
-                partial: { icon: CircleDot,     color: 'text-breakeven',     bg: 'bg-breakeven/8',       border: 'border-breakeven/20',      dot: 'bg-breakeven animate-pulse',      label: `${additionalExitsPercent.toFixed(0)}% נסגר` },
-                closed:  { icon: CheckCircle2,  color: calc?.netPnl > 0 ? 'text-profit' : 'text-loss', bg: calc?.netPnl > 0 ? 'bg-profit/8' : 'bg-loss/8', border: calc?.netPnl > 0 ? 'border-profit/20' : 'border-loss/20', dot: calc?.netPnl > 0 ? 'bg-profit' : 'bg-loss', label: 'נסגרה' },
-              };
-              const cfg = statusCfg[currentStatus];
-              const Icon = cfg.icon;
-              // A closed import with no exit rows has no live calc — show its
-              // stored P&L instead of nothing.
-              const shown = calc || (keepsImportedClose
-                ? { netPnl: safePnl(trade), pnlPercent: Number(trade.pnlPercent) || 0, rrRatio: Number(trade.rrRatio) || 0 }
-                : null);
-              return (
-                <div className={`flex items-center justify-between px-3 py-2 rounded-xl border ${cfg.bg} ${cfg.border} mb-1`}>
-                  <div className="flex items-center gap-2">
-                    <div className={`w-2 h-2 rounded-full shrink-0 ${cfg.dot}`} />
-                    <span className={`text-xs font-semibold ${cfg.color}`}>{cfg.label}</span>
-                  </div>
-                  {shown && (
-                    <div className="flex items-center gap-2.5">
-                      <span className={`text-sm font-bold ${pnlColor(shown.netPnl)}`}>{formatCurrency(shown.netPnl)}</span>
-                      <span className={`text-xs font-semibold ${pnlColor(shown.pnlPercent)}`}>{formatPercent(shown.pnlPercent)}</span>
-                      <span className={`text-[10px] font-medium px-1.5 py-0.5 rounded bg-bg-tertiary ${pnlColor(shown.netPnl)}`}>{formatRR(shown.rrRatio, shown.netPnl)}</span>
-                    </div>
-                  )}
-                </div>
-              );
-            })()}
-
-            <div className="grid grid-cols-2 gap-2">
-              {isFutures ? (
-                <SelectDropdown
-                  label="חוזה"
-                  value={form.pair}
-                  onChange={(sym) => update('pair', sym)}
-                  options={FUTURES_CONTRACTS.map((c) => ({ value: c.symbol, label: `${c.symbol} — ${c.name}` }))}
-                  placeholder="בחר חוזה..."
+          {/* 01 — instrument & direction. Asset class is inherited from the
+              journal — no per-trade toggle. */}
+          <Section n={1} title="מכשיר וכיוון">
+            <div className="grid grid-cols-2 md:grid-cols-12 gap-3">
+              <Field label={isFutures ? 'חוזה' : isStocks ? 'מניה' : 'זוג'} pick className="col-span-2 md:col-span-6"
+                hint={isFutures && contractSpec ? `${contractSpec.name} · $${contractSpec.pointValue}/pt · tick ${contractSpec.tickSize}` : undefined} hintDir="ltr">
+                {isFutures ? (
+                  <SelectDropdown
+                    value={form.pair}
+                    onChange={(sym) => update('pair', sym)}
+                    options={FUTURES_CONTRACTS.map((c) => ({ value: c.symbol, label: `${c.symbol} — ${c.name}` }))}
+                    placeholder="בחר חוזה..."
+                  />
+                ) : isStocks ? (
+                  <StockSearch label="" value={form.pair} onChange={(sym) => update('pair', sym)} />
+                ) : (
+                  <PairSearch label="" value={form.pair} onChange={(pair) => update('pair', pair || 'BTCUSDT')} />
+                )}
+              </Field>
+              <Field label="כיוון" className="md:col-span-3">
+                <Segmented ariaLabel="כיוון" value={form.direction} onChange={(d) => update('direction', d)} options={[
+                  { value: 'long', label: 'Long', icon: <TrendingUp className="w-3.5 h-3.5" />, onClass: 'bg-long/15 text-long' },
+                  { value: 'short', label: 'Short', icon: <TrendingDown className="w-3.5 h-3.5" />, onClass: 'bg-short/15 text-short' },
+                ]} />
+              </Field>
+              <Field label="סוג פקודה" className="md:col-span-3">
+                <Segmented ariaLabel="סוג פקודה" value={form.orderType} onChange={(v) => update('orderType', v)} options={[
+                  { value: 'market', label: 'Market' },
+                  { value: 'limit', label: 'Limit' },
+                ]} />
+              </Field>
+              <Field label="אסטרטגיה" pick className="col-span-2 md:col-span-4">
+                <StrategySelector
+                  value={form.strategy}
+                  onChange={(s) => update('strategy', s)}
+                  strategies={allStrategies}
+                  onAdd={addStrategy}
+                  onRemove={removeStrategy}
                 />
-              ) : isStocks ? (
-                <StockSearch
-                  value={form.pair}
-                  onChange={(sym) => update('pair', sym)}
+              </Field>
+              <Field label="טווח זמן" pick className="md:col-span-4">
+                <TimeframeSelector
+                  value={form.timeframe}
+                  onChange={(tf) => update('timeframe', tf)}
+                  timeframes={allTimeframes}
+                  onAdd={addTimeframe}
+                  onRemove={removeTimeframe}
                 />
-              ) : (
-                <PairSearch
-                  value={form.pair}
-                  onChange={(pair) => update('pair', pair || 'BTCUSDT')}
+              </Field>
+              <Field label="טריגר כניסה" pick className="md:col-span-4">
+                <StrategySelector
+                  value={form.trigger}
+                  onChange={(t) => update('trigger', t)}
+                  strategies={allTriggers}
+                  onAdd={addTrigger}
+                  onRemove={removeTrigger}
+                  addLabel="טריגר מותאם"
+                  inputPlaceholder="שם טריגר..."
+                  emptyText="אין טריגרים"
+                  placeholder="בחר טריגר..."
                 />
-              )}
-              <StrategySelector
-                label="אסטרטגיה"
-                value={form.strategy}
-                onChange={(s) => update('strategy', s)}
-                strategies={allStrategies}
-                onAdd={addStrategy}
-                onRemove={removeStrategy}
-              />
-            </div>
-
-            <div className="grid grid-cols-2 gap-2">
-              <TimeframeSelector
-                label="טווח זמן"
-                value={form.timeframe}
-                onChange={(tf) => update('timeframe', tf)}
-                timeframes={allTimeframes}
-                onAdd={addTimeframe}
-                onRemove={removeTimeframe}
-              />
-              <StrategySelector
-                label="טריגר כניסה"
-                value={form.trigger}
-                onChange={(t) => update('trigger', t)}
-                strategies={allTriggers}
-                onAdd={addTrigger}
-                onRemove={removeTrigger}
-                addLabel="טריגר מותאם"
-                inputPlaceholder="שם טריגר..."
-                emptyText="אין טריגרים"
-                placeholder="בחר טריגר..."
-              />
-            </div>
-
-            <div className="grid grid-cols-2 gap-3">
-              <div>
-                <label className={labelClass}>כיוון</label>
-                <div className="flex gap-1">
-                  {['long', 'short'].map((d) => (
-                    <button key={d} type="button" onClick={() => update('direction', d)}
-                      className={`flex-1 py-2.5 rounded-lg text-sm font-semibold transition-all cursor-pointer flex items-center justify-center gap-1 ${
-                        form.direction === d
-                          ? d === 'long' ? 'bg-long/15 text-long border border-long/30' : 'bg-short/15 text-short border border-short/30'
-                          : 'bg-bg-tertiary text-text-muted border border-transparent'
-                      }`}>
-                      {d === 'long' ? <TrendingUp className="w-3 h-3" /> : <TrendingDown className="w-3 h-3" />}
-                      {d === 'long' ? 'Long' : 'Short'}
-                    </button>
+              </Field>
+              <Field label="סשן" className="col-span-2 md:col-span-12"
+                aside={form.session ? <span className="text-[10px] text-text-muted">מתמלא אוטומטית לפי שעת הכניסה</span> : null}>
+                <div className="flex flex-wrap gap-1.5" role="radiogroup" aria-label="סשן">
+                  {SESSIONS.map((s) => (
+                    <button key={s} type="button" role="radio" aria-checked={form.session === s}
+                      onClick={() => { sessionManuallySet.current = true; update('session', s); }}
+                      className={`h-8 px-3 rounded-lg text-[11px] font-medium transition-colors cursor-pointer border ${
+                        form.session === s
+                          ? 'bg-accent-primary/15 text-accent-primary border-accent-primary/30'
+                          : 'bg-bg-tertiary text-text-muted border-border-primary hover:text-text-primary'
+                      }`}>{s}</button>
                   ))}
                 </div>
-              </div>
-              <div>
-                <label className={labelClass}>סוג פקודה</label>
-                <div className="flex gap-1">
-                  {[{ v: 'market', l: 'Market' }, { v: 'limit', l: 'Limit' }].map(({ v, l }) => (
-                    <button key={v} type="button" onClick={() => update('orderType', v)}
-                      className={`flex-1 py-2.5 rounded-lg text-sm font-semibold transition-all cursor-pointer ${
-                        form.orderType === v
-                          ? 'bg-accent-primary/15 text-accent-primary border border-accent-primary/30'
-                          : 'bg-bg-tertiary text-text-muted border border-transparent'
-                      }`}>
-                      {l}
-                    </button>
-                  ))}
-                </div>
-              </div>
+              </Field>
             </div>
+          </Section>
 
-            {/* Dates — compact row. The exit date fills itself in when the
-                exits reach 100% (see setExits). */}
-            <div className="grid grid-cols-2 gap-2">
-              <div>
-                <label className={labelClass}>תאריך כניסה</label>
-                <DatePicker selected={form.entryDate} onChange={(date) => update('entryDate', date)}
+          {/* 02 — entry, stop, size, costs, dates, scale-ins. The exit date
+              fills itself in when the exits reach 100% (see setExits). */}
+          <Section n={2} title="כניסה וסיכון">
+            <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
+              <Field label={hasScaleIns ? 'כניסה ראשונה' : 'מחיר כניסה'} htmlFor="tt-entry"
+                hint={hasScaleIns && avgEntry > 0 ? <>ממוצע <span className="num-mono">{fmtNum(avgEntry)}</span></> : undefined} hintTone="text-accent-primary">
+                <input id="tt-entry" type="number" step="any" value={form.entryPrice} onChange={(e) => update('entryPrice', e.target.value)} className={numInputClass} placeholder="0.00" inputMode="decimal" />
+              </Field>
+              <Field label="סטופ לוס" htmlFor="tt-stop"
+                aside={showBreakeven ? (
+                  <button type="button" onClick={() => update('stopLoss', breakevenStopValue(avgEntry))}
+                    title="הזזת הסטופ למחיר הכניסה (הסטופ המקורי נשמר לחישוב ה-R)"
+                    className="text-[10px] font-semibold leading-none px-1.5 py-0.5 rounded-md border border-accent-primary/30 text-accent-primary bg-accent-primary/10 hover:bg-accent-primary/20 transition-colors cursor-pointer shrink-0">
+                    SL→BE
+                  </button>
+                ) : null}
+                hint={trade?.liquidationPrice > 0 ? <>ליקווידציה <span className="num-mono">{parseFloat(trade.liquidationPrice).toLocaleString('en-US', { maximumFractionDigits: 8 })}</span></> : undefined}
+                hintTone="text-loss/80">
+                <input id="tt-stop" type="number" step="any" value={form.stopLoss} onChange={(e) => update('stopLoss', e.target.value)} className={numInputClass} placeholder="0.00" inputMode="decimal" />
+              </Field>
+              {sizeFields}
+              <Field label="תאריך כניסה" htmlFor="tt-entry-date">
+                <DatePicker id="tt-entry-date" selected={form.entryDate} onChange={(date) => update('entryDate', date)}
                   showTimeSelect timeFormat="HH:mm" timeIntervals={15} dateFormat="dd/MM/yy HH:mm"
                   maxDate={new Date()}
-                  locale="he" placeholderText="עכשיו" className={dateInputClass} wrapperClassName="w-full"
+                  locale="he" placeholderText="עכשיו" className={numInputClass} wrapperClassName="w-full"
                   popperPlacement="bottom-start" portalId="datepicker-portal" />
-              </div>
-              <div>
-                <label className={labelClass}>תאריך סגירה</label>
-                <DatePicker selected={form.exitDate} onChange={(date) => update('exitDate', date)}
+              </Field>
+              <Field label="תאריך סגירה" htmlFor="tt-exit-date">
+                <DatePicker id="tt-exit-date" selected={form.exitDate} onChange={(date) => update('exitDate', date)}
                   showTimeSelect timeFormat="HH:mm" timeIntervals={15} dateFormat="dd/MM/yy HH:mm"
                   maxDate={new Date()}
                   minDate={form.entryDate || undefined}
-                  locale="he" placeholderText="—" className={dateInputClass} wrapperClassName="w-full"
+                  locale="he" placeholderText="—" className={numInputClass} wrapperClassName="w-full"
                   popperPlacement="bottom-start" portalId="datepicker-portal" />
-              </div>
+              </Field>
+              {feesField}
+              <Field label="מרחק לסטופ">
+                <div className={readoutClass}>{stopDistance != null ? `${stopDistance.toFixed(2)}%` : '—'}</div>
+              </Field>
             </div>
 
-            <div className="grid grid-cols-2 gap-2">
-              <div>
-                <label className={labelClass}>{hasScaleIns ? 'כניסה ראשונה' : 'מחיר כניסה'}</label>
-                <input type="number" step="any" value={form.entryPrice} onChange={(e) => update('entryPrice', e.target.value)} className={inputClass} placeholder="0.00" inputMode="decimal" />
+            {/* Scale-in / add to position. The first fill is the entry + size
+                above; each row here is a further fill. Entry price and size
+                are stored as the size-weighted aggregate. */}
+            <div className={`mt-3 rounded-xl border ${form.scaleIns.length ? 'border-border-primary' : 'border-dashed border-border-primary'}`}>
+              <button type="button" aria-expanded={form.scaleIns.length ? scaleOpen : undefined}
+                onClick={() => {
+                  if (!form.scaleIns.length) { addScaleIn(); setScaleOpenState(true); } else setScaleOpenState(!scaleOpen);
+                }}
+                className="w-full h-10 flex items-center gap-2 px-3 text-xs text-text-secondary hover:text-text-primary transition-colors cursor-pointer text-right">
+                <Layers className="w-3.5 h-3.5 shrink-0 text-accent-primary" />
+                <span className="font-semibold shrink-0">הוספה לפוזיציה</span>
+                {form.scaleIns.length > 0 && (
+                  <span className="num-mono text-[10px] font-semibold px-1.5 py-0.5 rounded-md bg-accent-primary/10 text-accent-primary shrink-0">{form.scaleIns.length}</span>
+                )}
+                <span className="flex-1" />
                 {hasScaleIns && avgEntry > 0 && (
-                  <p className="text-[10px] text-accent-primary mt-1">
-                    ממוצע: {(+avgEntry.toPrecision(10)).toLocaleString('en-US', { maximumFractionDigits: 8 })}
-                  </p>
-                )}
-              </div>
-              <div>
-                <div className="flex items-center justify-between gap-1 mb-1">
-                  <label className={labelClass + ' !mb-0'}>סטופ לוס</label>
-                  {showBreakeven && (
-                    <button type="button" onClick={() => update('stopLoss', breakevenStopValue(avgEntry))}
-                      title="הזזת הסטופ למחיר הכניסה (הסטופ המקורי נשמר לחישוב ה-R)"
-                      className="text-[10px] font-semibold leading-none px-1.5 py-1 rounded-md border border-accent-primary/30 text-accent-primary bg-accent-primary/10 hover:bg-accent-primary/20 transition-colors cursor-pointer">
-                      SL→BE
-                    </button>
-                  )}
-                </div>
-                <input type="number" step="any" value={form.stopLoss} onChange={(e) => update('stopLoss', e.target.value)} className={inputClass} placeholder="0.00" inputMode="decimal" />
-                {trade?.liquidationPrice > 0 && (
-                  <p className="text-[10px] text-loss/80 mt-1">
-                    ליקווידציה: {parseFloat(trade.liquidationPrice).toLocaleString('en-US', { maximumFractionDigits: 8 })}
-                  </p>
-                )}
-              </div>
-            </div>
-
-            {/* Take Profit */}
-            <div className="rounded-xl border border-profit/20 overflow-hidden">
-              <div className="flex items-center justify-between px-3 py-2.5 bg-profit/5 border-b border-profit/15">
-                <span className="text-xs font-semibold text-profit/90">Take Profit</span>
-                {additionalExitsPercent > 0 && (
-                  <span className={`text-[10px] font-semibold px-2 py-0.5 rounded-full ${
-                    additionalExitsPercent > 100 ? 'bg-loss/20 text-loss' :
-                    additionalExitsPercent === 100 ? 'bg-profit/20 text-profit' :
-                    'bg-breakeven/15 text-breakeven'
-                  }`}>
-                    {additionalExitsPercent > 100
-                      ? `${additionalExitsPercent.toFixed(0)}% — חורג מ-100%`
-                      : `${additionalExitsPercent.toFixed(0)}% נסגר`}
+                  <span className="text-[11px] text-text-muted truncate">
+                    ממוצע <span className="num-mono text-text-primary">{fmtNum(avgEntry)}</span>
+                    <span className="hidden sm:inline">{' · '}סה״כ <span className="num-mono text-text-primary">{fmtNum(totalUnits, isFutures ? 0 : 6)}</span> {sizeUnitLabel}</span>
                   </span>
                 )}
-              </div>
+                {form.scaleIns.length
+                  ? <ChevronDown className={`w-4 h-4 shrink-0 text-text-muted transition-transform ${scaleOpen ? 'rotate-180' : ''}`} />
+                  : <Plus className="w-3.5 h-3.5 shrink-0 text-text-muted" />}
+              </button>
+              {scaleOpen && form.scaleIns.length > 0 && (
+                <div className="border-t border-border-primary p-2 space-y-1.5">
+                  <div className="grid grid-cols-[minmax(0,1fr)_minmax(0,1fr)_minmax(0,1.3fr)_1.5rem] gap-1.5 px-0.5 text-[10px] text-text-muted">
+                    <span>מחיר</span><span>גודל ({sizeUnitLabel})</span><span>תאריך</span><span />
+                  </div>
+                  {form.scaleIns.map((a, i) => (
+                    <div key={i} className="grid grid-cols-[minmax(0,1fr)_minmax(0,1fr)_minmax(0,1.3fr)_1.5rem] gap-1.5 items-center">
+                      <input type="number" step="any" value={a.price} onChange={(e) => updateScaleIn(i, 'price', e.target.value)}
+                        className={compactNumClass} placeholder="מחיר" inputMode="decimal" aria-label={`מחיר הוספה ${i + 1}`} />
+                      <input type="number" step={isFutures ? '1' : 'any'} min="0" value={a.size} onChange={(e) => updateScaleIn(i, 'size', e.target.value)}
+                        className={compactNumClass} placeholder={sizeUnitLabel} inputMode={isFutures ? 'numeric' : 'decimal'} aria-label={`גודל הוספה ${i + 1}`} />
+                      <DatePicker selected={a.date} onChange={(date) => updateScaleIn(i, 'date', date)}
+                        showTimeSelect timeFormat="HH:mm" timeIntervals={15} dateFormat="dd/MM HH:mm"
+                        maxDate={new Date()} minDate={form.entryDate || undefined}
+                        locale="he" placeholderText="תאריך" className={compactNumClass} wrapperClassName="w-full min-w-0"
+                        popperPlacement="bottom-start" portalId="datepicker-portal" />
+                      <button type="button" onClick={() => removeScaleIn(i)} aria-label="הסרת הוספה"
+                        className="h-8 w-6 flex items-center justify-center text-text-muted hover:text-loss transition-colors cursor-pointer">
+                        <X className="w-3.5 h-3.5" />
+                      </button>
+                    </div>
+                  ))}
+                  <button type="button" onClick={addScaleIn}
+                    className="w-full h-8 flex items-center justify-center gap-1.5 rounded-lg text-xs text-text-muted hover:text-accent-primary hover:bg-accent-primary/5 transition-colors cursor-pointer">
+                    <Plus className="w-3 h-3" /> הוסף כניסה
+                  </button>
+                </div>
+              )}
+            </div>
+          </Section>
 
+          {/* 03 — take-profit targets and recorded exits. A row is a planned
+              target until it gets a %/contract count, then it is an exit. */}
+          <Section n={3} title="יציאות"
+            aside={additionalExitsPercent > 0 ? (
+              <span className={`text-[10px] font-semibold px-1.5 py-0.5 rounded-md shrink-0 ${exitedTone}`}>
+                {additionalExitsPercent > 100
+                  ? `${additionalExitsPercent.toFixed(0)}% — חורג מ-100%`
+                  : `${additionalExitsPercent.toFixed(0)}% נסגר`}
+              </span>
+            ) : null}>
+            <div className="rounded-xl border border-border-primary">
+              {form.additionalExits.length > 0 && (
+                <div className={`${exitGrid} px-2.5 h-8 text-[10px] text-text-muted border-b border-border-primary`}>
+                  <span>#</span>
+                  <span>מחיר יעד</span>
+                  <span>{isFutures ? 'חוזים' : '% מהפוזיציה'}</span>
+                  <span className="hidden sm:block">R</span>
+                  <span>סטטוס</span>
+                  <span />
+                </div>
+              )}
               {form.additionalExits.map((exit, i) => {
                 // Futures exits are recorded in contracts; crypto in percent.
-                const exitField = isFutures ? 'contracts' : 'percent';
                 const isExecuted = parseFloat(exit[exitField]) > 0;
                 const otherUsed = form.additionalExits.reduce((s, e, idx) => idx !== i ? s + (parseFloat(e[exitField]) || 0) : s, 0);
                 const suggested = isFutures
                   ? Math.max(0, totalContracts - otherUsed)
                   : Math.max(0, 100 - otherUsed);
+                const r = rMultiple(form.direction, avgEntry, riskStopLoss, exit.price);
                 return (
-                  <div key={i} className={`relative flex items-center gap-2 px-3 py-2.5 border-b border-border-primary/20 last:border-b-0 transition-all duration-200 ${isExecuted ? 'bg-profit/5' : ''}`}>
-                    {/* Executed accent bar */}
-                    <div className={`absolute left-0 top-0 bottom-0 w-0.5 rounded-r transition-all duration-300 ${isExecuted ? 'bg-profit' : 'bg-transparent'}`} />
-
-                    <span className={`text-[11px] font-bold w-8 shrink-0 text-right transition-colors ${isExecuted ? 'text-profit' : 'text-profit/50'}`}>
-                      TP{i + 1}
-                    </span>
-
+                  <div key={i} className={`${exitGrid} px-2.5 py-1.5 border-b border-border-primary/60 last:border-b-0 ${isExecuted ? 'bg-accent-primary/[0.04]' : ''}`}>
+                    <span className={`num-mono text-[11px] font-semibold ${isExecuted ? 'text-accent-primary' : 'text-text-muted'}`}>TP{i + 1}</span>
                     <input
                       type="number" step="any"
                       value={exit.price}
                       onChange={(e) => updateAdditionalExit(i, 'price', e.target.value)}
-                      className={`flex-1 min-w-0 bg-transparent text-sm outline-none text-right transition-colors placeholder-text-muted/40 ${isExecuted ? 'text-text-primary font-medium' : 'text-text-primary'}`}
-                      placeholder="מחיר יעד"
+                      className={`${ctlBase} px-2.5 text-sm text-text-primary text-right num-mono`}
+                      placeholder="מחיר"
                       inputMode="decimal"
+                      aria-label={`מחיר יעד ${i + 1}`}
                     />
-
-                    {/* contracts (futures) / % (crypto) field */}
-                    <div className={`flex items-center gap-0.5 ${isFutures ? 'w-20' : 'w-16'} shrink-0 rounded-lg px-2 py-1 transition-all border ${
-                      isExecuted ? 'bg-profit/10 border-profit/25' : 'bg-bg-tertiary/60 border-border-primary/30'
-                    }`}>
+                    <div className="relative">
                       <input
                         // Percent must allow decimals (exchange-synced trades
                         // arrive with e.g. 12.5%) — the number input's default
@@ -1080,345 +1331,162 @@ export default function TradeForm({ isOpen, onClose, trade, onSave, riskSettings
                         min={isFutures ? '1' : '0.01'} max={isFutures ? totalContracts || undefined : 100}
                         value={exit[exitField] ?? ''}
                         onChange={(e) => updateAdditionalExit(i, exitField, e.target.value)}
-                        className={`w-full bg-transparent text-xs outline-none text-right font-semibold ${isExecuted ? 'text-profit' : 'text-text-muted'}`}
+                        className={`${ctlBase} pr-2 pl-6 text-sm text-right num-mono ${isExecuted ? 'text-accent-primary font-semibold' : 'text-text-primary'}`}
                         placeholder="—"
                         inputMode={isFutures ? 'numeric' : 'decimal'}
+                        aria-label={isFutures ? `חוזים ביעד ${i + 1}` : `אחוז ביעד ${i + 1}`}
                       />
-                      <span className={`text-[10px] shrink-0 ${isExecuted ? 'text-profit/60' : 'text-text-muted/40'}`}>{isFutures ? 'ח׳' : '%'}</span>
+                      <span className="pointer-events-none absolute left-2 top-1/2 -translate-y-1/2 text-[10px] text-text-muted">{isFutures ? 'ח׳' : '%'}</span>
                     </div>
-
-                    {/* Mark as executed button */}
+                    <span className="hidden sm:block num-mono text-[11px] text-text-secondary" dir="ltr" style={{ textAlign: 'right' }}>{fmtR(r)}</span>
+                    {/* Mark as executed */}
                     <button
                       type="button"
                       onClick={() => updateAdditionalExit(i, exitField, isExecuted ? '' : String(suggested))}
-                      className={`shrink-0 flex items-center gap-1 px-2 py-1 rounded-lg text-[10px] font-semibold transition-all cursor-pointer border ${
+                      aria-pressed={isExecuted}
+                      className={`h-8 w-full flex items-center justify-center gap-1 rounded-lg text-[11px] font-semibold transition-colors cursor-pointer border ${
                         isExecuted
-                          ? 'bg-profit/20 text-profit border-profit/30 hover:bg-loss/10 hover:text-loss hover:border-loss/30'
-                          : 'bg-bg-tertiary text-text-muted border-border-primary/40 hover:border-profit/40 hover:text-profit'
+                          ? 'bg-accent-primary/15 text-accent-primary border-accent-primary/30 hover:bg-loss/10 hover:text-loss hover:border-loss/30'
+                          : 'bg-bg-tertiary text-text-muted border-border-primary hover:border-accent-primary/40 hover:text-accent-primary'
                       }`}
                     >
                       {isExecuted ? <><Check className="w-3 h-3" />בוצע</> : 'סמן'}
                     </button>
-
-                    <button type="button" onClick={() => removeAdditionalExit(i)}
-                      className="p-1 text-text-muted/40 hover:text-loss transition-colors cursor-pointer shrink-0">
+                    <button type="button" onClick={() => removeAdditionalExit(i)} aria-label={`הסרת יעד ${i + 1}`}
+                      className="h-8 flex items-center justify-center text-text-muted hover:text-loss transition-colors cursor-pointer">
                       <X className="w-3.5 h-3.5" />
                     </button>
                   </div>
                 );
               })}
-
               <button type="button" onClick={addAdditionalExit}
-                className="w-full flex items-center justify-center gap-1.5 py-2.5 text-xs text-text-muted hover:text-profit hover:bg-profit/5 transition-all cursor-pointer">
-                <Plus className="w-3 h-3" /> הוסף TP
+                className={`w-full h-10 flex items-center justify-center gap-1.5 text-xs text-text-muted hover:text-accent-primary hover:bg-accent-primary/5 transition-colors cursor-pointer rounded-b-xl ${form.additionalExits.length ? 'border-t border-border-primary' : 'rounded-t-xl'}`}>
+                <Plus className="w-3.5 h-3.5" /> הוסף יעד (TP)
               </button>
             </div>
-            {isFutures ? (
-              <div className="grid grid-cols-3 gap-2">
-                <div>
-                  <label className={labelClass}>{hasScaleIns ? 'חוזים · כניסה 1' : 'מספר חוזים'}</label>
-                  <NumberStepper value={form.contracts} onChange={(v) => update('contracts', v)} min={1} placeholder="1" />
-                </div>
-                <div>
-                  <label className={labelClass}>ערך נקודה</label>
-                  <input type="text" value={contractSpec ? `$${contractSpec.pointValue}` : '—'} readOnly tabIndex={-1} className={inputClass + ' opacity-70 cursor-default'} />
-                </div>
-                {renderFees('עמלות ($)')}
-              </div>
-            ) : isStocks ? (
-              <div className="grid grid-cols-3 gap-2">
-                <div>
-                  <label className={labelClass}>{hasScaleIns ? 'מניות · כניסה 1' : 'מספר מניות'}</label>
-                  <input type="number" step="any" min="0" value={form.shares} onChange={(e) => update('shares', e.target.value)} className={inputClass} placeholder="10" inputMode="decimal" />
-                </div>
-                <div>
-                  <label className={labelClass}>{sharesNum > 0 ? 'סיכון ($) · לתיעוד' : 'או לפי סיכון ($)'}</label>
-                  <input type="number" step="any" value={form.riskAmount} onChange={(e) => { update('riskAmount', e.target.value); setLockedQty(0); }} className={inputClass} placeholder="100" inputMode="decimal" />
-                </div>
-                {renderFees('עמלות ($)')}
-              </div>
-            ) : (
-              <div className="grid grid-cols-3 gap-2">
-                <div>
-                  <label className={labelClass}>{hasScaleIns ? 'סיכון · כניסה 1' : 'סיכון ($)'}</label>
-                  <input type="number" step="any" value={form.riskAmount} onChange={(e) => { update('riskAmount', e.target.value); setLockedQty(0); }} className={inputClass} placeholder="50" inputMode="decimal" />
-                </div>
-                <div>
-                  <label className={labelClass}>מינוף</label>
-                  <input type="number" value={form.leverage} onChange={(e) => update('leverage', e.target.value)} className={inputClass} inputMode="numeric" />
-                </div>
-                {renderFees('עמלות (USDT)')}
-              </div>
-            )}
+          </Section>
 
-            {/* Scale-in / add to position. The first fill is the entry + size
-                above; each row here is a further fill. Entry price and size
-                are stored as the size-weighted aggregate. */}
-            {form.scaleIns.length === 0 ? (
-              <button type="button" onClick={addScaleIn}
-                className="w-full flex items-center justify-center gap-1.5 py-2 rounded-lg border border-dashed border-border-primary text-xs text-text-muted hover:text-accent-primary hover:border-accent-primary/40 transition-colors cursor-pointer">
-                <Layers className="w-3.5 h-3.5" /> הוספה לפוזיציה
-              </button>
+          {/* 04 — link the trade to a trading plan and tick its pre-entry
+              checklist. Adherence = share of items ticked. */}
+          <Section n={4} title="תוכנית מסחר" collapsible open={planOpen} onToggle={() => setPlanOpenState(!planOpen)}
+            aside={adherencePct != null ? (
+              <span dir="ltr" className={`num-mono text-[10px] font-semibold px-1.5 py-0.5 rounded-md shrink-0 ${adherenceTone}`}>
+                {doneCount}/{checklistRows.length} · {adherencePct}%
+              </span>
+            ) : null}>
+            {planOptions.length === 0 && !form.planId ? (
+              <p className="flex items-center gap-2 text-[11px] text-text-muted">
+                <ClipboardCheck className="w-4 h-4 shrink-0" />
+                אין תוכניות מסחר פעילות — צור תוכנית עם צ׳קליסט בעמוד התוכניות כדי לבדוק כל עסקה מולה.
+              </p>
             ) : (
-              <div className="rounded-xl border border-accent-primary/20 overflow-hidden">
-                <div className="flex items-center justify-between gap-2 px-3 py-2 bg-accent-primary/5 border-b border-accent-primary/15">
-                  <span className="flex items-center gap-1.5 text-xs font-semibold text-accent-primary/90">
-                    <Layers className="w-3.5 h-3.5" /> הוספה לפוזיציה
-                  </span>
-                  {hasScaleIns && avgEntry > 0 && (
-                    <span className="text-[10px] text-text-muted truncate">
-                      ממוצע <span className="text-text-primary font-semibold">{(+avgEntry.toPrecision(8)).toLocaleString('en-US', { maximumFractionDigits: 8 })}</span>
-                      {' · '}סה״כ <span className="text-text-primary font-semibold">{+totalUnits.toFixed(isFutures ? 0 : 6)}</span> {sizeUnitLabel}
-                    </span>
-                  )}
+              <div className="space-y-3">
+                <div className="grid md:grid-cols-2 gap-3">
+                  <Field label="תוכנית" pick>
+                    <SelectDropdown
+                      value={form.planId}
+                      onChange={(id) => setForm((f) => ({ ...f, planId: id, checklist: [] }))}
+                      options={planOptions}
+                      placeholder="ללא תוכנית"
+                      allowClear
+                    />
+                  </Field>
                 </div>
-                <div className="p-2 space-y-1.5">
-                  {form.scaleIns.map((a, i) => (
-                    <div key={i} className="grid grid-cols-[1fr_1fr_1.25fr_auto] gap-1.5 items-center">
-                      <input type="number" step="any" value={a.price} onChange={(e) => updateScaleIn(i, 'price', e.target.value)}
-                        className={compactInputClass} placeholder="מחיר" inputMode="decimal" aria-label={`מחיר הוספה ${i + 1}`} />
-                      <input type="number" step={isFutures ? '1' : 'any'} min="0" value={a.size} onChange={(e) => updateScaleIn(i, 'size', e.target.value)}
-                        className={compactInputClass} placeholder={sizeUnitLabel} inputMode={isFutures ? 'numeric' : 'decimal'} aria-label={`גודל הוספה ${i + 1}`} />
-                      <DatePicker selected={a.date} onChange={(date) => updateScaleIn(i, 'date', date)}
-                        showTimeSelect timeFormat="HH:mm" timeIntervals={15} dateFormat="dd/MM HH:mm"
-                        maxDate={new Date()} minDate={form.entryDate || undefined}
-                        locale="he" placeholderText="תאריך" className={compactInputClass} wrapperClassName="w-full min-w-0"
-                        popperPlacement="bottom-start" portalId="datepicker-portal" />
-                      <button type="button" onClick={() => removeScaleIn(i)} aria-label="הסרת הוספה"
-                        className="p-1 text-text-muted/50 hover:text-loss transition-colors cursor-pointer">
-                        <X className="w-3.5 h-3.5" />
-                      </button>
+                {form.planId && (
+                  checklistRows.length === 0 ? (
+                    <p className="text-[11px] text-text-muted">לתוכנית הזו אין צ׳קליסט.</p>
+                  ) : (
+                    <div>
+                      <div className="flex items-center gap-3 mb-1.5">
+                        <span className="text-[11px] text-text-muted shrink-0">צ׳קליסט לפני כניסה</span>
+                        <div className="flex-1 h-1 rounded-full bg-bg-tertiary overflow-hidden">
+                          <div className="h-full bg-accent-primary transition-all" style={{ width: `${adherencePct}%` }} />
+                        </div>
+                      </div>
+                      <div className="grid sm:grid-cols-2 gap-x-4">
+                        {checklistRows.map((r) => (
+                          <button key={r.item} type="button" onClick={() => toggleChecklistItem(r.item)}
+                            role="checkbox" aria-checked={r.done}
+                            className="w-full min-h-9 flex items-center gap-2.5 px-1.5 py-1.5 rounded-lg text-right hover:bg-bg-tertiary transition-colors cursor-pointer">
+                            <span className={`w-4 h-4 shrink-0 rounded border flex items-center justify-center transition-colors ${
+                              r.done ? 'bg-accent-primary border-accent-primary text-black' : 'border-border-hover'
+                            }`}>
+                              {r.done && <Check className="w-3 h-3" />}
+                            </span>
+                            <span className={`text-xs leading-snug ${r.done ? 'text-text-primary' : 'text-text-secondary'}`}>{r.item}</span>
+                          </button>
+                        ))}
+                      </div>
                     </div>
-                  ))}
-                </div>
-                <button type="button" onClick={addScaleIn}
-                  className="w-full flex items-center justify-center gap-1.5 py-2 text-xs text-text-muted hover:text-accent-primary hover:bg-accent-primary/5 border-t border-border-primary/20 transition-all cursor-pointer">
-                  <Plus className="w-3 h-3" /> הוסף כניסה
-                </button>
+                  )
+                )}
               </div>
             )}
+          </Section>
 
-            {riskInfo && (
-              <div className={`flex items-center gap-2 p-2.5 rounded-lg border text-xs ${
-                riskInfo.severity === 'critical'
-                  ? 'bg-loss/10 border-loss/30 text-loss'
-                  : riskInfo.severity === 'warning'
-                    ? 'bg-breakeven/10 border-breakeven/30 text-breakeven'
-                    : 'bg-accent-primary/10 border-accent-primary/30 text-accent-primary'
-              }`}>
-                {riskInfo.severity === 'info'
-                  ? <Percent className="w-4 h-4 shrink-0" />
-                  : riskInfo.severity === 'critical'
-                    ? <ShieldAlert className="w-4 h-4 shrink-0" />
-                    : <AlertTriangle className="w-4 h-4 shrink-0" />}
-                <span>{riskInfo.message}</span>
+          {/* 05 — journal & psychology. */}
+          <Section n={5} title="יומן ופסיכולוגיה" collapsible open={journalOpen} onToggle={() => setJournalOpenState(!journalOpen)}
+            aside={!journalOpen && journalSummary ? <span className="text-[10px] text-text-muted shrink-0">{journalSummary}</span> : null}>
+            <div className="space-y-3">
+              <div className="grid md:grid-cols-2 gap-3">
+                <Field label="סיבת כניסה" htmlFor="tt-reason">
+                  <textarea id="tt-reason" value={form.entryReason} onChange={(e) => update('entryReason', e.target.value)}
+                    className={textareaClass} placeholder="למה נכנסת לעסקה הזו?" />
+                </Field>
+                <Field label={currentStatus === 'closed' ? 'הערות ולקחים' : 'הערות'} htmlFor="tt-notes">
+                  <textarea id="tt-notes" value={form.notes} onChange={(e) => update('notes', e.target.value)}
+                    className={textareaClass} placeholder={currentStatus === 'closed' ? 'מה למדת מהעסקה הזו?' : 'הערות נוספות...'} />
+                </Field>
               </div>
-            )}
-
-            {/* Calculated values */}
-            {isFutures ? (
-              (contractSpec && totalContracts > 0 && avgEntry > 0) && (
-                <div className="bg-bg-tertiary rounded-lg p-2 flex flex-wrap gap-x-4 gap-y-0.5 text-[11px]">
-                  <div><span className="text-text-muted">נומינלי: </span><span className="text-accent-primary font-semibold">${totalNotional.toLocaleString('en-US', { maximumFractionDigits: 0 })}</span></div>
-                  <div><span className="text-text-muted">ערך נקודה: </span><span className="text-text-primary font-medium">${contractSpec.pointValue}</span></div>
-                  <div><span className="text-text-muted">חוזים: </span><span className="text-text-primary font-medium">{totalContracts}</span></div>
-                </div>
-              )
-            ) : isStocks ? (
-              totalNotional > 0 && (
-                <div className="bg-bg-tertiary rounded-lg p-2 flex flex-wrap gap-x-4 gap-y-0.5 text-[11px]">
-                  <div><span className="text-text-muted">שווי פוזיציה: </span><span className="text-accent-primary font-semibold">${totalNotional.toLocaleString('en-US', { maximumFractionDigits: 2 })}</span></div>
-                  <div><span className="text-text-muted">מניות: </span><span className="text-text-primary font-medium">{+totalUnits.toFixed(4)}</span></div>
-                  {parseFloat(form.stopLoss) > 0 && (
-                    <div><span className="text-text-muted">סיכון עד הסטופ: </span><span className="text-loss font-medium">${(totalUnits * Math.abs(avgEntry - parseFloat(form.stopLoss))).toFixed(2)}</span></div>
-                  )}
-                </div>
-              )
-            ) : (
-              (totalNotional > 0 || calculatedMargin || totalUnits > 0) && (
-                <div className="bg-bg-tertiary rounded-lg p-2 flex flex-wrap gap-x-4 gap-y-0.5 text-[11px]">
-                  {totalNotional > 0 && (
-                    <div><span className="text-text-muted">גודל: </span><span className="text-accent-primary font-semibold">${totalNotional.toFixed(2)}</span></div>
-                  )}
-                  {calculatedMargin != null && (
-                    <div><span className="text-text-muted">מרג׳ין: </span><span className="text-text-primary font-medium">${calculatedMargin.toFixed(2)}</span></div>
-                  )}
-                  {totalUnits > 0 && (
-                    <div><span className="text-text-muted">כמות: </span><span className="text-text-primary font-medium">{totalUnits.toFixed(6)}</span></div>
-                  )}
-                </div>
-              )
-            )}
-
-            {calc && !trade && (
-              <div className="bg-bg-tertiary rounded-lg p-2 grid grid-cols-4 gap-2">
-                <div>
-                  <span className="text-[10px] text-text-muted block">PnL</span>
-                  <span className={`text-xs font-bold ${pnlColor(calc.pnl)}`}>{formatCurrency(calc.pnl)}</span>
-                </div>
-                <div>
-                  <span className="text-[10px] text-text-muted block">PnL %</span>
-                  <span className={`text-xs font-bold ${pnlColor(calc.pnlPercent)}`}>{formatPercent(calc.pnlPercent)}</span>
-                </div>
-                <div>
-                  <span className="text-[10px] text-text-muted block">R:R</span>
-                  <span className={`text-xs font-bold ${pnlColor(calc.pnl)}`}>{formatRR(calc.rrRatio, calc.pnl)}</span>
-                </div>
-                <div>
-                  <span className="text-[10px] text-text-muted block">נטו</span>
-                  <span className={`text-xs font-bold ${pnlColor(calc.netPnl)}`}>{formatCurrency(calc.netPnl)}</span>
-                </div>
+              <div className="grid md:grid-cols-2 gap-3">
+                <Field label="תגיות">
+                  <MultiSelector values={form.tags} onChange={(arr) => update('tags', arr)}
+                    options={allTags} labels={TAG_LABELS} onAdd={addTag} onRemove={removeTag}
+                    addLabel="תגית מותאמת" inputPlaceholder="שם תגית..." emptyText="אין תגיות"
+                    placeholder="בחר תגיות..." chipClass="bg-accent-primary text-black" />
+                </Field>
+                <Field label="טעויות">
+                  <MultiSelector values={form.mistakes} onChange={(arr) => update('mistakes', arr)}
+                    options={allMistakes} labels={MISTAKE_LABELS} onAdd={addMistake} onRemove={removeMistake}
+                    addLabel="טעות מותאמת" inputPlaceholder="שם טעות..." emptyText="אין טעויות"
+                    placeholder="בחר טעויות..." chipClass="bg-loss text-white" />
+                </Field>
               </div>
-            )}
-
-
-          </div>
-
-        {/* Plan tab — link the trade to a trading plan and tick its
-            pre-entry checklist. Adherence = share of items ticked. */}
-        <div className={`space-y-3 ${activeTab !== 'plan' ? 'hidden' : ''}`}>
-          {planOptions.length === 0 && !form.planId ? (
-            <div className="flex flex-col items-center gap-1.5 text-center py-6 px-3 rounded-xl border border-dashed border-border-primary">
-              <ClipboardCheck className="w-5 h-5 text-text-muted" />
-              <p className="text-xs text-text-secondary">אין תוכניות מסחר פעילות</p>
-              <p className="text-[11px] text-text-muted">צור תוכנית עם צ׳קליסט בעמוד התוכניות כדי לבדוק כל עסקה מולה.</p>
+              {/* Mental ratings: 1–5 segmented. */}
+              <div className="grid sm:grid-cols-2 gap-x-4 gap-y-3">
+                {MENTAL_RATINGS.map((rating) => {
+                  const { key, label, hint } = rating;
+                  const Icon = rating.Icon;
+                  return (
+                    <Field key={key}
+                      label={<span className="inline-flex items-center gap-1"><Icon className="w-3 h-3" />{label}</span>}
+                      aside={hint ? <span className="text-[10px] text-text-muted">{hint}</span> : null}>
+                      <Segmented size="sm" ariaLabel={label} value={form[key]} onChange={(v) => update(key, v)}
+                        options={[1, 2, 3, 4, 5].map((v) => ({ value: v, label: String(v), aria: `${label} ${v} מתוך 5` }))} />
+                    </Field>
+                  );
+                })}
+              </div>
+              <Field label="קישור TradingView" htmlFor="tt-tv">
+                <input id="tt-tv" type="url" dir="ltr" value={form.tradingViewUrl} onChange={(e) => update('tradingViewUrl', e.target.value)}
+                  className={`${ctlBase} px-3 text-sm text-text-primary text-left`} placeholder="https://www.tradingview.com/x/..." />
+              </Field>
             </div>
-          ) : (
-            <>
-              <SelectDropdown
-                label="תוכנית מסחר"
-                value={form.planId}
-                onChange={(id) => setForm((f) => ({ ...f, planId: id, checklist: [] }))}
-                options={planOptions}
-                placeholder="ללא תוכנית"
-                allowClear
-              />
-              {form.planId && (
-                checklistRows.length === 0 ? (
-                  <p className="text-[11px] text-text-muted">לתוכנית הזו אין צ׳קליסט.</p>
-                ) : (
-                  <div className="rounded-xl border border-border-primary overflow-hidden">
-                    <div className="flex items-center justify-between gap-2 px-3 py-2 bg-bg-tertiary">
-                      <span className="text-xs font-semibold text-text-secondary">צ׳קליסט לפני כניסה</span>
-                      <span className={`text-[11px] font-bold ${
-                        adherencePct >= 80 ? 'text-profit' : adherencePct >= 50 ? 'text-breakeven' : 'text-loss'
-                      }`}>
-                        {checklistRows.filter((r) => r.done).length}/{checklistRows.length} · {adherencePct}%
-                      </span>
-                    </div>
-                    <div className="h-1 bg-bg-tertiary">
-                      <div className={`h-full transition-all ${adherencePct >= 80 ? 'bg-profit' : adherencePct >= 50 ? 'bg-breakeven' : 'bg-loss'}`}
-                        style={{ width: `${adherencePct}%` }} />
-                    </div>
-                    <div className="divide-y divide-border-primary/30">
-                      {checklistRows.map((r) => (
-                        <button key={r.item} type="button" onClick={() => toggleChecklistItem(r.item)}
-                          role="checkbox" aria-checked={r.done}
-                          className="w-full flex items-center gap-2.5 px-3 py-2.5 text-right hover:bg-bg-tertiary/60 transition-colors cursor-pointer">
-                          <span className={`w-4 h-4 shrink-0 rounded border flex items-center justify-center transition-colors ${
-                            r.done ? 'bg-profit border-profit text-white' : 'border-border-primary'
-                          }`}>
-                            {r.done && <Check className="w-3 h-3" />}
-                          </span>
-                          <span className={`text-xs ${r.done ? 'text-text-primary' : 'text-text-secondary'}`}>{r.item}</span>
-                        </button>
-                      ))}
-                    </div>
-                  </div>
-                )
-              )}
-            </>
-          )}
+          </Section>
         </div>
 
-        {/* Mental tab */}
-        <div className={`space-y-3 ${activeTab !== 'mental' ? 'hidden' : ''}`}>
-
-          {/* Tags + Mistakes — top */}
-          <div className="grid grid-cols-2 gap-2">
-            <MultiSelector label="תגיות" values={form.tags} onChange={(arr) => update('tags', arr)}
-              options={allTags} labels={TAG_LABELS} onAdd={addTag} onRemove={removeTag}
-              addLabel="תגית מותאמת" inputPlaceholder="שם תגית..." emptyText="אין תגיות"
-              placeholder="בחר תגיות..." chipClass="bg-accent-primary text-black" />
-            <MultiSelector label="טעויות" values={form.mistakes} onChange={(arr) => update('mistakes', arr)}
-              options={allMistakes} labels={MISTAKE_LABELS} onAdd={addMistake} onRemove={removeMistake}
-              addLabel="טעות מותאמת" inputPlaceholder="שם טעות..." emptyText="אין טעויות"
-              placeholder="בחר טעויות..." chipClass="bg-loss text-white" />
-          </div>
-
-          {/* Entry reason + Notes */}
-          <div className="grid grid-cols-2 gap-2">
-            <div>
-              <label className={labelClass}>סיבת כניסה</label>
-              <textarea value={form.entryReason} onChange={(e) => update('entryReason', e.target.value)}
-                className={`${inputClass} h-24 resize-none`} placeholder="למה נכנסת לעסקה הזו?" />
-            </div>
-            <div>
-              <label className={labelClass}>{currentStatus === 'closed' ? 'הערות ולקחים' : 'הערות'}</label>
-              <textarea value={form.notes} onChange={(e) => update('notes', e.target.value)}
-                className={`${inputClass} h-24 resize-none`} placeholder={currentStatus === 'closed' ? 'מה למדת מהעסקה הזו?' : 'הערות נוספות...'} />
-            </div>
-          </div>
-
-          {/* Mental ratings — compact 2-col */}
-          <div className="bg-bg-tertiary rounded-xl p-3 grid grid-cols-2 gap-x-4 gap-y-2">
-            {MENTAL_RATINGS.map((rating) => {
-              const val = form[rating.key];
-              const color = RATING_COLORS[rating.invert ? 5 - val : val - 1] || 'text-text-muted';
-              const Icon = rating.Icon;
-              return (
-                <div key={rating.key}>
-                  <div className="flex items-center justify-between mb-0.5">
-                    <span className="text-[11px] text-text-secondary">{rating.label}</span>
-                    <span className={`flex items-center gap-1 text-[11px] font-semibold ${color}`}>
-                      <Icon className="w-3.5 h-3.5" />
-                      {val}/5
-                    </span>
-                  </div>
-                  <input type="range" min="1" max="5" value={val}
-                    onChange={(e) => update(rating.key, parseInt(e.target.value))} className="w-full" />
-                </div>
-              );
-            })}
-          </div>
-
-          {/* Session */}
-          <div>
-            <div className="flex items-center gap-2 mb-1">
-              <label className={labelClass + ' !mb-0'}>סשן</label>
-              {form.session && <span className="text-[10px] text-accent-primary">מתמלא אוטומטית</span>}
-            </div>
-            <div className="flex flex-wrap gap-1.5">
-              {SESSIONS.map((s) => (
-                <button key={s} type="button" onClick={() => { sessionManuallySet.current = true; update('session', s); }}
-                  className={`px-2.5 py-1.5 rounded-lg text-[11px] font-medium transition-all cursor-pointer border ${
-                    form.session === s ? getSessionClasses(s) : 'bg-bg-tertiary text-text-muted border-transparent'
-                  }`}>{s}</button>
-              ))}
-            </div>
-          </div>
-
-          {/* TradingView */}
-          <div>
-            <label className={labelClass}>קישור TradingView</label>
-            <input type="url" value={form.tradingViewUrl} onChange={(e) => update('tradingViewUrl', e.target.value)}
-              className={inputClass} placeholder="https://www.tradingview.com/x/..." />
-          </div>
-        </div>
-
-        {/* Actions */}
-        <div className="flex gap-3 pt-4">
-          <button type="button" onClick={onClose}
-            className="flex-1 py-2.5 rounded-lg bg-bg-tertiary text-text-primary hover:bg-border-hover transition-colors cursor-pointer">
-            ביטול
-          </button>
-          <button type="submit" disabled={saving || additionalExitsPercent > 100}
-            title={additionalExitsPercent > 100 ? 'סך אחוזי היציאות חורג מ-100%' : undefined}
-            className="flex-1 py-2.5 rounded-lg bg-accent-primary text-black font-semibold hover:bg-accent-hover transition-colors cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed">
-            {saving ? 'שומר...' : trade ? 'עדכן עסקה' : 'שמור עסקה'}
-          </button>
-        </div>
+        {rail}
       </form>
     </Modal>
+  );
+}
+
+/** One cell of the phone summary bar. */
+function MiniStat({ label, value, tone = 'text-text-primary' }) {
+  return (
+    <div className="min-w-0 rounded-lg bg-bg-tertiary border border-border-primary px-2 py-1">
+      <p className="text-[10px] text-text-muted truncate">{label}</p>
+      <p className={`num-mono text-xs font-semibold truncate text-right ${tone}`} dir="ltr">{value}</p>
+    </div>
   );
 }
