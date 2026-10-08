@@ -15,6 +15,7 @@ import { useExchangeImport } from '../../hooks/useExchangeImport';
 import JournalSwitcher from './JournalSwitcher';
 import PageHeader from '../shared/PageHeader';
 import StockMarketPanel from '../stocks/StockMarketPanel';
+import PropFirmPanel from '../propfirm/PropFirmPanel';
 import { useStockQuotes } from '../../hooks/useStockQuotes';
 import { stockSymbol } from '../../utils/stocks';
 import { headerIconBtn, headerPrimaryBtn, headerAiBtn } from '../shared/headerStyles';
@@ -572,6 +573,9 @@ export default function TradeJournal() {
       {tab === 'trades' && (
         <>
           {isStockJournal && <StockMarketPanel trades={trades} quotes={stockQuotes} />}
+          {activeJournal?.propFirm?.enabled && (
+            <PropFirmPanel propFirm={activeJournal.propFirm} trades={trades} onEdit={() => setSettingsOpen(true)} />
+          )}
           {/* The linked exchange's API key stopped working (e.g. a MEXC key
               expired after 90 days) — sync and the live balance silently
               stop, so say it here with a one-click way to fix it. */}

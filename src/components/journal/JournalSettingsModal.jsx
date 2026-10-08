@@ -6,10 +6,13 @@ import ConfirmDialog from '../shared/ConfirmDialog';
 import ExchangeSearch from '../shared/ExchangeSearch';
 import { useJournalContext } from '../../contexts/JournalContext';
 import { EXCHANGES } from '../../utils/constants';
+import PropFirmSettings from '../propfirm/PropFirmSettings';
+import { propFirmToForm, formToPropFirm } from '../propfirm/propFirmForm';
 
 export default function JournalSettingsModal({ isOpen, onClose, onArchive, onImport, onExport, canExport }) {
   const { journals, activeJournal, activeJournalId, updateJournal, deleteJournal, archiveJournal } = useJournalContext();
   const [form, setForm] = useState({ name: '', exchange: '', initialBalance: '', currency: 'USDT', description: '', riskType: 'percent', riskValue: '', assetClass: 'crypto' });
+  const [propForm, setPropForm] = useState(() => propFirmToForm(null));
   const [saving, setSaving] = useState(false);
   const [deleteOpen, setDeleteOpen] = useState(false);
   const [archiveOpen, setArchiveOpen] = useState(false);
@@ -26,12 +29,18 @@ export default function JournalSettingsModal({ isOpen, onClose, onArchive, onImp
         riskValue: activeJournal.riskValue || '',
         assetClass: activeJournal.assetClass || 'crypto',
       });
+      setPropForm(propFirmToForm(activeJournal.propFirm));
     }
   }, [activeJournal, isOpen]);
 
   const handleSave = async (e) => {
     e.preventDefault();
     if (!form.name.trim()) return;
+    const propFirm = formToPropFirm(propForm);
+    if (propFirm.enabled && !(propFirm.accountSize > 0)) {
+      toast.error('הזינו גודל חשבון לחשבון הפרופ');
+      return;
+    }
     setSaving(true);
     try {
       await updateJournal(activeJournalId, {
@@ -43,6 +52,10 @@ export default function JournalSettingsModal({ isOpen, onClose, onArchive, onImp
         riskType: form.riskType,
         riskValue: parseFloat(form.riskValue) || 0,
         assetClass: form.assetClass,
+        // One map field for the whole prop-firm setup. Journals that never
+        // enabled it don't get the field at all; disabling keeps the rules
+        // so turning it back on restores them.
+        ...(propFirm.enabled || activeJournal?.propFirm ? { propFirm } : {}),
       });
       toast.success('היומן עודכן');
       onClose();
@@ -145,6 +158,8 @@ export default function JournalSettingsModal({ isOpen, onClose, onArchive, onImp
               className={inputClass}
               placeholder={form.riskType === 'percent' ? 'למשל: 1' : 'למשל: 50'} />
           </div>
+
+          <PropFirmSettings value={propForm} onChange={setPropForm} />
 
           <div className="flex gap-3 pt-2">
             <button type="button" onClick={onClose}

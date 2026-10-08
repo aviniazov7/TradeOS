@@ -455,3 +455,190 @@ export const JOURNEY_STAGES = [
     tips: ['המשך לכתוב ביומן מנטלי', 'זהה דפוסים רגשיים חוזרים', 'פתח שגרת פרה-מרקט'],
   },
 ];
+
+// ── Prop-firm challenge presets ─────────────────────────────────────────────
+// Rule shapes (evaluated by utils/propFirm.js):
+//   profitTarget    { value, unit: 'pct' | 'usd' } — null = no target (funded)
+//   maxDailyLoss    { value, unit, basis: 'initial' | 'start_of_day' } — null = none.
+//                   'initial' → % of the account size; 'start_of_day' → % of the
+//                   day's opening balance. Either way the day's loss is measured
+//                   from the day's opening balance.
+//   maxDrawdown     { value, unit, type: 'static' | 'trailing_eod' | 'trailing_intraday',
+//                     lockOffset: null | $ } — a trailing floor stops rising once it
+//                   reaches accountSize + lockOffset (Topstep: 0, Apex: 100).
+//   minTradingDays  number (0 = none)
+//   consistencyPct  max share (%) of total profit one day may hold (null = none)
+// Rule precedence when building a journal's rules: rules → sizeRules[size] →
+// phase.rules (object rules merge field-by-field; null removes the rule).
+// `verified: false` marks values we could not pin down with certainty — the UI
+// shows "ערכי ברירת מחדל — בדקו מול תנאי החברה". Firms change their terms
+// often, so every value stays editable in the journal settings.
+export const PROP_FIRM_PRESETS = [
+  {
+    id: 'ftmo',
+    name: 'FTMO',
+    market: 'פורקס / CFD',
+    verified: true,
+    sizes: [10000, 25000, 50000, 100000, 200000],
+    defaultSize: 100000,
+    rules: {
+      profitTarget: { value: 10, unit: 'pct' },
+      maxDailyLoss: { value: 5, unit: 'pct', basis: 'initial' },
+      maxDrawdown: { value: 10, unit: 'pct', type: 'static', lockOffset: null },
+      minTradingDays: 4,
+      consistencyPct: null,
+    },
+    phases: [
+      { id: 'phase1', label: 'שלב 1 · Challenge', rules: { profitTarget: { value: 10, unit: 'pct' } } },
+      { id: 'phase2', label: 'שלב 2 · Verification', rules: { profitTarget: { value: 5, unit: 'pct' } } },
+    ],
+  },
+  {
+    id: 'ftmo_funded',
+    name: 'FTMO Funded',
+    market: 'פורקס / CFD',
+    verified: true,
+    sizes: [10000, 25000, 50000, 100000, 200000],
+    defaultSize: 100000,
+    rules: {
+      profitTarget: null,
+      maxDailyLoss: { value: 5, unit: 'pct', basis: 'initial' },
+      maxDrawdown: { value: 10, unit: 'pct', type: 'static', lockOffset: null },
+      minTradingDays: 0,
+      consistencyPct: null,
+    },
+    phases: [{ id: 'funded', label: 'חשבון ממומן', rules: {} }],
+  },
+  {
+    id: 'the5ers',
+    name: 'The5ers',
+    market: 'פורקס / CFD',
+    verified: false,
+    sizes: [5000, 10000, 20000, 60000, 100000],
+    defaultSize: 100000,
+    rules: {
+      profitTarget: { value: 8, unit: 'pct' },
+      maxDailyLoss: { value: 5, unit: 'pct', basis: 'start_of_day' },
+      maxDrawdown: { value: 10, unit: 'pct', type: 'static', lockOffset: null },
+      minTradingDays: 3,
+      consistencyPct: null,
+    },
+    phases: [
+      { id: 'phase1', label: 'High Stakes · שלב 1', rules: { profitTarget: { value: 8, unit: 'pct' } } },
+      { id: 'phase2', label: 'High Stakes · שלב 2', rules: { profitTarget: { value: 5, unit: 'pct' } } },
+      { id: 'funded', label: 'חשבון ממומן', rules: { profitTarget: null, minTradingDays: 0 } },
+    ],
+  },
+  {
+    id: 'apex',
+    name: 'Apex Trader Funding',
+    market: 'חוזים עתידיים',
+    verified: false,
+    sizes: [25000, 50000, 100000, 150000],
+    defaultSize: 50000,
+    rules: {
+      profitTarget: { value: 3000, unit: 'usd' },
+      maxDailyLoss: null,
+      maxDrawdown: { value: 2500, unit: 'usd', type: 'trailing_intraday', lockOffset: 100 },
+      minTradingDays: 1,
+      consistencyPct: 30,
+    },
+    // $-denominated rules scale with the account size.
+    sizeRules: {
+      25000: { profitTarget: { value: 1500, unit: 'usd' }, maxDrawdown: { value: 1500 } },
+      50000: { profitTarget: { value: 3000, unit: 'usd' }, maxDrawdown: { value: 2500 } },
+      100000: { profitTarget: { value: 6000, unit: 'usd' }, maxDrawdown: { value: 3000 } },
+      150000: { profitTarget: { value: 9000, unit: 'usd' }, maxDrawdown: { value: 5000 } },
+    },
+    phases: [
+      { id: 'eval', label: 'הערכה · Intraday', rules: {} },
+      { id: 'eval_eod', label: 'הערכה · EOD', rules: { maxDrawdown: { type: 'trailing_eod' } } },
+      { id: 'funded', label: 'PA · חשבון ממומן', rules: { profitTarget: null } },
+    ],
+  },
+  {
+    id: 'topstep',
+    name: 'Topstep',
+    market: 'חוזים עתידיים',
+    verified: false,
+    sizes: [50000, 100000, 150000],
+    defaultSize: 50000,
+    rules: {
+      profitTarget: { value: 3000, unit: 'usd' },
+      maxDailyLoss: { value: 1000, unit: 'usd', basis: 'start_of_day' },
+      maxDrawdown: { value: 2000, unit: 'usd', type: 'trailing_eod', lockOffset: 0 },
+      minTradingDays: 2,
+      consistencyPct: 50,
+    },
+    sizeRules: {
+      50000: { profitTarget: { value: 3000, unit: 'usd' }, maxDailyLoss: { value: 1000 }, maxDrawdown: { value: 2000 } },
+      100000: { profitTarget: { value: 6000, unit: 'usd' }, maxDailyLoss: { value: 2000 }, maxDrawdown: { value: 3000 } },
+      150000: { profitTarget: { value: 9000, unit: 'usd' }, maxDailyLoss: { value: 3000 }, maxDrawdown: { value: 4500 } },
+    },
+    phases: [
+      { id: 'combine', label: 'Trading Combine', rules: {} },
+      { id: 'funded', label: 'Express Funded', rules: { profitTarget: null, minTradingDays: 0, consistencyPct: null } },
+    ],
+  },
+  {
+    id: 'cft',
+    name: 'Crypto Fund Trader',
+    market: 'קריפטו',
+    verified: false,
+    sizes: [10000, 25000, 50000, 100000, 200000],
+    defaultSize: 100000,
+    rules: {
+      profitTarget: { value: 8, unit: 'pct' },
+      maxDailyLoss: { value: 5, unit: 'pct', basis: 'start_of_day' },
+      maxDrawdown: { value: 10, unit: 'pct', type: 'static', lockOffset: null },
+      minTradingDays: 0,
+      consistencyPct: null,
+    },
+    phases: [
+      { id: 'phase1', label: 'שלב 1', rules: { profitTarget: { value: 8, unit: 'pct' } } },
+      { id: 'phase2', label: 'שלב 2', rules: { profitTarget: { value: 5, unit: 'pct' } } },
+      { id: 'funded', label: 'חשבון ממומן', rules: { profitTarget: null } },
+    ],
+  },
+  {
+    id: 'breakout',
+    name: 'Breakout',
+    market: 'קריפטו',
+    verified: false,
+    sizes: [5000, 10000, 25000, 50000, 100000],
+    defaultSize: 25000,
+    rules: {
+      profitTarget: { value: 10, unit: 'pct' },
+      maxDailyLoss: { value: 4, unit: 'pct', basis: 'start_of_day' },
+      maxDrawdown: { value: 6, unit: 'pct', type: 'static', lockOffset: null },
+      minTradingDays: 0,
+      consistencyPct: null,
+    },
+    phases: [
+      { id: 'one_step', label: 'שלב אחד', rules: {} },
+      { id: 'funded', label: 'חשבון ממומן', rules: { profitTarget: null } },
+    ],
+  },
+  {
+    id: 'custom',
+    name: 'מותאם אישית',
+    market: '',
+    verified: true,
+    sizes: [10000, 25000, 50000, 100000, 200000],
+    defaultSize: 100000,
+    rules: {
+      profitTarget: { value: 10, unit: 'pct' },
+      maxDailyLoss: { value: 5, unit: 'pct', basis: 'initial' },
+      maxDrawdown: { value: 10, unit: 'pct', type: 'static', lockOffset: null },
+      minTradingDays: 0,
+      consistencyPct: null,
+    },
+    phases: [{ id: 'custom', label: 'אתגר', rules: {} }],
+  },
+];
+
+export const PROP_FIRM_DD_TYPE_LABELS = {
+  static: 'סטטי',
+  trailing_eod: 'נגרר · סוף יום',
+  trailing_intraday: 'נגרר · תוך יומי',
+};
