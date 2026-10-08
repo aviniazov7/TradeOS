@@ -107,7 +107,7 @@ export default function Modal({ isOpen, onClose, title, ariaLabel, children, max
               transition={{ type: 'spring', damping: 26, stiffness: 320, mass: 0.85 }}
             >
               {/* Scrollable inner */}
-              <div className="relative overflow-y-auto overscroll-contain" style={{ maxHeight: 'calc(100dvh - 4.5rem)' }}>
+              <div className="relative overflow-y-auto overflow-x-hidden overscroll-contain" style={{ maxHeight: 'calc(100dvh - 4.5rem)', touchAction: 'pan-y' }}>
                 {/* Header — opaque strip: a translucent one let scrolled
                     content read through and collide with the title. */}
                 <div

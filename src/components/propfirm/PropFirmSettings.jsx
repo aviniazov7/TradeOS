@@ -37,9 +37,9 @@ function AmountField({ label, hint, value, unit, onValue, onUnit, placeholder = 
   return (
     <div className="min-w-0">
       <label className={labelClass}>{label}</label>
-      <div className="flex gap-1.5">
+      <div className="flex gap-1.5 min-w-0">
         <input type="number" step="any" min="0" inputMode="decimal" value={value} placeholder={placeholder}
-          onChange={(e) => onValue(e.target.value)} className={inputClass} dir="ltr" style={{ textAlign: 'right' }} />
+          onChange={(e) => onValue(e.target.value)} className={`${inputClass} flex-1 min-w-0`} dir="ltr" style={{ textAlign: 'right' }} />
         <UnitToggle value={unit} onChange={onUnit} />
       </div>
       {hint && <p className="text-[11px] text-text-muted mt-1">{hint}</p>}
