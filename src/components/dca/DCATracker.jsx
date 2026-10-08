@@ -12,12 +12,16 @@ import EmptyState from '../shared/EmptyState';
 import DCASkeleton from './DCASkeleton';
 import { pageVariants, pageTransition } from '../../utils/animations';
 import PageHeader from '../shared/PageHeader';
+import TabStrip from '../shared/TabStrip';
 import { headerIconBtn, headerPrimaryBtn } from '../shared/headerStyles';
 import { COINS, DCA_FREQUENCY_LABELS, DCA_STATUS_LABELS } from '../../utils/constants';
 import { downloadCsv } from '../../utils/csv';
 import { localDayKey } from '../../utils/calculations';
 
-export default function DCATracker() {
+// `embedded` — rendered inside the Portfolio page, which already has the page
+// header: show a compact toolbar (inner tabs + actions) instead of a second
+// full header.
+export default function DCATracker({ embedded = false }) {
   const { dcaPlans, loading, addPlan, addEntry, updatePlan, deletePlan } = useDCA();
   const coinSymbols = [...new Set(dcaPlans.map((p) => p.coin))];
   const extraCoins = dcaPlans
@@ -80,26 +84,38 @@ export default function DCATracker() {
 
   if (loading) return <DCASkeleton />;
 
+  const dcaTabs = [{ id: 'plans', label: 'תוכניות', count: dcaPlans.length }, { id: 'summary', label: 'ניתוחים' }];
+  const dcaActions = (
+    <div className="flex items-center gap-2 w-full sm:w-auto">
+      {dcaPlans.length > 0 && (
+        <button onClick={exportCSV} className={headerIconBtn} title="ייצוא CSV" aria-label="ייצוא CSV">
+          <Download className="w-[18px] h-[18px]" />
+        </button>
+      )}
+      <button onClick={() => setFormOpen(true)} className={`${headerPrimaryBtn} flex-1 sm:flex-none`}>
+        <Plus className="w-4 h-4" /> תוכנית חדשה
+      </button>
+    </div>
+  );
+
   return (
     <motion.div variants={pageVariants} initial="initial" animate="animate" exit="exit" transition={pageTransition}>
-      <PageHeader
-        icon={Coins}
-        title="מעקב DCA"
-        subtitle="קניות קבועות לאורך זמן ומה הן שוות היום"
-        tabs={{ tabs: [{ id: 'plans', label: 'תוכניות', count: dcaPlans.length }, { id: 'summary', label: 'ניתוחים' }], value: tab, onChange: setTab, layoutKey: 'dca-tab' }}
-        actions={(
-          <div className="flex items-center gap-2 w-full sm:w-auto">
-            {dcaPlans.length > 0 && (
-              <button onClick={exportCSV} className={headerIconBtn} title="ייצוא CSV" aria-label="ייצוא CSV">
-                <Download className="w-[18px] h-[18px]" />
-              </button>
-            )}
-            <button onClick={() => setFormOpen(true)} className={`${headerPrimaryBtn} flex-1 sm:flex-none`}>
-              <Plus className="w-4 h-4" /> תוכנית חדשה
-            </button>
+      {embedded ? (
+        <div className="flex flex-wrap items-center justify-between gap-3 mb-4 md:mb-6">
+          <div className="rounded-xl bg-bg-secondary border border-border-primary p-1">
+            <TabStrip tabs={dcaTabs} value={tab} onChange={setTab} layoutKey="dca-tab" />
           </div>
-        )}
-      />
+          {dcaActions}
+        </div>
+      ) : (
+        <PageHeader
+          icon={Coins}
+          title="מעקב DCA"
+          subtitle="קניות קבועות לאורך זמן ומה הן שוות היום"
+          tabs={{ tabs: dcaTabs, value: tab, onChange: setTab, layoutKey: 'dca-tab' }}
+          actions={dcaActions}
+        />
+      )}
 
       {/* Tab: Plans */}
       {tab === 'plans' && (
