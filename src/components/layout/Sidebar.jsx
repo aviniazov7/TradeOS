@@ -29,7 +29,7 @@ import { useAuth } from '../../contexts/AuthContext';
 const navItems = [
   { key: 'home', to: '/', label: 'בית', icon: LayoutDashboard },
   { key: 'journal', to: '/journal', label: 'יומן מסחר', icon: BookOpen },
-  { key: 'terminal', to: '/terminal', label: 'טרמינל', icon: CandlestickChart },
+  { key: 'terminal', to: '/terminal', label: 'עמדת מסחר', icon: CandlestickChart },
   { key: 'backtest', to: '/backtest', label: 'בקטסט', icon: FlaskConical },
   { key: 'plans', to: '/plans', label: 'תוכניות מסחר', icon: ClipboardList },
   { key: 'mentality', to: '/mentality', label: 'האזור המנטלי', icon: Brain },
