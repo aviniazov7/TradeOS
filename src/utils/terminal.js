@@ -56,7 +56,8 @@ export function tvSymbol(pair, exchange) {
 //   style      a CHART_STYLES id ('1' candles by default)
 //   black      dark theme on pure black instead of the app's near-black panel
 //   drawTools  show the left drawing toolbar (hidden by default)
-export function tvChartUrl({ symbol, interval = 'D', theme = 'dark', timezone, style = '1', black = false, drawTools = false } = {}) {
+//   topBar     TradingView's own top toolbar (interval, indicators); false = clean
+export function tvChartUrl({ symbol, interval = 'D', theme = 'dark', timezone, style = '1', black = false, drawTools = false, topBar = true } = {}) {
   const dark = theme !== 'light';
   const config = {
     autosize: true,
@@ -68,6 +69,7 @@ export function tvChartUrl({ symbol, interval = 'D', theme = 'dark', timezone, s
     locale: 'en',
     allow_symbol_change: true,
     hide_side_toolbar: !drawTools,
+    hide_top_toolbar: !topBar,
     hide_volume: false,
     save_image: false,
     calendar: false,

@@ -49,6 +49,8 @@ it('tvChartUrl passes the chart style, pure black and the drawing toolbar', () =
   expect(cfgOf({ black: true }).backgroundColor).toBe('rgba(0, 0, 0, 1)');
   expect(cfgOf({ black: true, theme: 'light' }).backgroundColor).toBe('rgba(255, 255, 255, 1)');
   expect(cfgOf({ drawTools: true }).hide_side_toolbar).toBe(false);
+  expect(cfgOf({}).hide_top_toolbar).toBe(false);
+  expect(cfgOf({ topBar: false }).hide_top_toolbar).toBe(true);
 });
 
 describe('stops and targets from orders', () => {
