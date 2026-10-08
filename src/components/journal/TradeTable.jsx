@@ -263,7 +263,10 @@ export default function TradeTable({
                     <td className="py-2.5 px-2">
                       {statusBadge(status, isPending)}
                     </td>
-                    <td className="py-2.5 px-2 text-text-secondary max-w-[120px] truncate">{trade.strategy || '—'}</td>
+                    <td className="py-2.5 px-2 text-text-secondary max-w-[120px] truncate"
+                      title={Number.isFinite(trade.checklistAdherence) ? `הצמדות לצ׳קליסט התוכנית: ${trade.checklistAdherence}%${trade.planName ? ` · ${trade.planName}` : ''}` : undefined}>
+                      {trade.strategy || '—'}
+                    </td>
                     <td className="py-2.5 px-2 text-text-muted whitespace-nowrap">{formatDate(trade.entryDate)}</td>
                     <td className="py-2.5 px-2 text-text-primary whitespace-nowrap num-mono">{formatPrice(trade.entryPrice)}</td>
                     <td className="py-2.5 px-2 text-text-primary whitespace-nowrap num-mono">
