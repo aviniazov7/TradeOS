@@ -1,5 +1,5 @@
 import { memo, useEffect, useMemo, useRef, useState } from 'react';
-import { Link2, Link2Off, PenLine, PanelTop, Moon, Expand, Shrink, Maximize2, Minimize2, X } from 'lucide-react';
+import { Link2, Link2Off, PenLine, PanelTop, Moon, Expand, Shrink, Maximize2, Minimize2, X, ExternalLink } from 'lucide-react';
 import ResizableGrid from './ResizableGrid';
 import { useStoredJson, useFullscreen } from './terminalHooks';
 import { TIMEFRAMES, CHART_STYLES, tfById, tvChartUrl } from '../../utils/terminal';
@@ -322,6 +322,18 @@ function ChartPane({ index, pane, symbol, sync, exchange, chartOpts, surface, ma
         </select>
 
         <span className="flex-1" />
+        {/* The embed can't sign in, so hand off to the user's own TradingView
+            (their account, saved layouts and indicators) with the same chart. */}
+        <a
+          href={`https://www.tradingview.com/chart/?symbol=${encodeURIComponent(symbol)}&interval=${encodeURIComponent(tf.interval)}`}
+          target="_blank"
+          rel="noopener noreferrer"
+          title="פתח ב-TradingView בחשבון שלך"
+          aria-label="פתח ב-TradingView"
+          className="w-6 h-6 grid place-items-center rounded-md text-text-muted hover:text-text-primary hover:bg-white/5 shrink-0"
+        >
+          <ExternalLink className="w-3.5 h-3.5" />
+        </a>
         {canMaximize && (
           <button
             type="button"
