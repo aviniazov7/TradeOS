@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react';
-import { Navigate } from 'react-router-dom';
+import { Navigate, useLocation } from 'react-router-dom';
 import { motion, AnimatePresence } from 'framer-motion';
 import { useAuth } from '../../contexts/AuthContext';
 import LoadingSpinner from '../shared/LoadingSpinner';
@@ -7,6 +7,7 @@ import OfflineScreen from '../shared/OfflineScreen';
 
 export default function ProtectedRoute({ children }) {
   const { user, loading } = useAuth();
+  const location = useLocation();
   const [isOffline, setIsOffline] = useState(!navigator.onLine);
   const [showSplash, setShowSplash] = useState(true);
   const [offlineTimedOut, setOfflineTimedOut] = useState(false);
@@ -43,7 +44,12 @@ export default function ProtectedRoute({ children }) {
 
   if (isOffline && loading && !offlineTimedOut) return <OfflineScreen />;
 
-  if (!loading && !user) return <Navigate to="/login" replace />;
+  // Remember where the user was headed — LoginPage honours ?redirect= (same-app
+  // relative paths only) and sends them back there after signing in.
+  if (!loading && !user) {
+    const redirect = encodeURIComponent(location.pathname + location.search);
+    return <Navigate to={`/login?redirect=${redirect}`} replace />;
+  }
 
   return (
     <>
