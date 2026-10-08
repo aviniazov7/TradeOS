@@ -3,7 +3,7 @@ import { useAuth } from '../contexts/AuthContext';
 import { syncExchangeTrades, syncOpenPositions } from '../services/exchangeService';
 
 // Exchanges the Worker can pull trades from via API (the rest are CSV-only).
-const SYNCABLE = new Set(['bybit', 'mexc', 'okx', 'bitget']);
+const SYNCABLE = new Set(['bybit', 'mexc', 'okx', 'bitget', 'hyperliquid']);
 
 // In-memory cache keyed by "uid|exchangeId" so switching tabs / journals back
 // and forth doesn't re-hit the exchange API (and the Worker's KV) every time.

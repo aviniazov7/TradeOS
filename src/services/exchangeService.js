@@ -1,4 +1,5 @@
 import { auth } from './firebase';
+import { getUserSetting } from './firestoreService';
 
 const WORKER_URL =
   import.meta.env.VITE_WORKER_URL || 'https://trade-os.tradeos.workers.dev';
@@ -39,7 +40,53 @@ export async function getConnectedExchanges() {
     signal: AbortSignal.timeout(8000),
   });
   const data = await res.json().catch(() => ({}));
-  return Array.isArray(data.exchanges) ? data.exchanges : [];
+  const list = Array.isArray(data.exchanges) ? data.exchanges : [];
+  // Hyperliquid has no server-side credentials — it counts as connected when
+  // the user saved a wallet address.
+  if (!list.includes('hyperliquid') && (await getHyperliquidAddress())) list.push('hyperliquid');
+  return list;
+}
+
+// ── Hyperliquid (wallet address instead of API keys) ───────────────────────
+// Hyperliquid's data is public on-chain, so the only "credential" is the user's
+// wallet address. It is NOT secret and is not sent to the credentials store
+// (no KV write at all): it lives in the user's own Firestore settings doc,
+// users/{uid}/settings/exchanges → hyperliquid.address (owner-only rules),
+// written once on connect together with the non-secret "connected" marker the
+// other exchanges already keep there. Each sync passes the address to the
+// Worker's /hl/* routes, which only read the public Hyperliquid info API.
+
+export const isHyperliquidAddress = (a) => /^0x[0-9a-fA-F]{40}$/.test(String(a || '').trim());
+
+const hlCache = { uid: null, address: undefined };
+
+/** Remember (or clear, with null) the address after the settings doc was written. */
+export function setHyperliquidAddressCache(address) {
+  hlCache.uid = auth.currentUser?.uid || null;
+  hlCache.address = address || null;
+}
+
+export async function getHyperliquidAddress() {
+  const uid = auth.currentUser?.uid;
+  if (!uid) return null;
+  if (hlCache.uid === uid && hlCache.address !== undefined) return hlCache.address;
+  try {
+    const conf = (await getUserSetting(uid, 'exchanges'))?.hyperliquid;
+    const address = conf?.connected && isHyperliquidAddress(conf.address) ? conf.address.trim().toLowerCase() : null;
+    hlCache.uid = uid;
+    hlCache.address = address;
+    return address;
+  } catch { return null; }
+}
+
+async function hlGet(path, params) {
+  const address = await getHyperliquidAddress();
+  if (!address) throw new Error('חבר מחדש את Hyperliquid — כתובת הארנק חסרה');
+  const qs = new URLSearchParams({ address, ...params }).toString();
+  const res = await authedFetch(`${path}?${qs}`, undefined, 'GET');
+  const data = await res.json().catch(() => ({}));
+  if (!res.ok || data.error) throw new Error(data.message || data.error || 'שגיאת Hyperliquid');
+  return data;
 }
 
 // ── Read-only data calls (no secrets in the request) ────────────────────────
@@ -61,6 +108,10 @@ export const KEY_PROBLEM_TEXT = {
 };
 
 export async function syncExchangeTrades(exchange, { limit = 50, days = 0, debug = false } = {}) {
+  if (exchange === 'hyperliquid') {
+    const since = days > 0 ? Date.now() - days * 24 * 60 * 60 * 1000 : 0;
+    return (await hlGet('/hl/trades', { limit: String(limit), ...(since ? { since: String(since) } : {}) })).trades || [];
+  }
   const res = await authedFetch('/exchange/sync', { exchange, limit, days, debug });
   const data = await res.json();
   if (!res.ok || data.error) {
@@ -74,6 +125,7 @@ export async function syncExchangeTrades(exchange, { limit = 50, days = 0, debug
 }
 
 export async function syncOpenPositions(exchange) {
+  if (exchange === 'hyperliquid') return (await hlGet('/hl/positions', {})).positions || [];
   const res = await authedFetch('/exchange/open-positions', { exchange });
   const data = await res.json();
   if (!data.ok) throw new Error(data.error || 'שגיאה בטעינת הפוזיציות הפתוחות');
@@ -81,8 +133,25 @@ export async function syncOpenPositions(exchange) {
 }
 
 export async function fetchExchangeBalance(exchange) {
+  if (exchange === 'hyperliquid') {
+    const data = await hlGet('/hl/positions', {});
+    return { balance: data.accountValue || 0, currency: 'USD' };
+  }
   const res = await authedFetch('/exchange/balance', { exchange });
   const data = await res.json();
   if (!data.ok) throw exchangeError(data.error || 'שגיאה בטעינת היתרה', data.reason);
   return { balance: data.balance || 0, currency: data.currency || 'USD' };
+}
+
+// ── Price candles (MAE/MFE) ─────────────────────────────────────────────────
+// OHLC between two instants from the Worker's /candles route (Bybit for crypto,
+// Yahoo for stocks/futures; edge-cached, the interval is chosen server-side).
+// → { symbol, source, interval (minutes), candles: [{ t, o, h, l, c }] }
+export async function fetchCandles({ symbol, asset = 'crypto', from, to }) {
+  const qs = new URLSearchParams({ symbol, asset, from: String(Math.floor(from)), to: String(Math.floor(to)) });
+  const res = await authedFetch(`/candles?${qs}`, undefined, 'GET');
+  const data = await res.json().catch(() => ({}));
+  if (res.status === 404) throw new Error('אין נתוני מחיר זמינים לנכס ולטווח הזה');
+  if (!res.ok || data.error) throw new Error(data.error || 'טעינת נתוני המחיר נכשלה');
+  return data;
 }
