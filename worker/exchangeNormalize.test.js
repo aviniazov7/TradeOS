@@ -1,6 +1,7 @@
 import { describe, it, expect } from 'vitest';
 import {
   withRisk, bybitWalletEquity, classifyExchangeAuthError, mexcCronOpen, mexcCronClosed, buildExits, enrichWithOrders, okxOrderRow, okxStopRow, bitgetOrderRow, bitgetStopRow, mexcExitsByPosition, mexcTradeFee, mexcStopsByPosition, mexcOrderKind, mexcEntryTypeByPosition, normalizeMexcClosed, normalizeOkxClosed, normalizeOkxOpen, normalizeBitgetClosed,
+  normalizeBybitOpen, normalizeMexcOpen, normalizeBitgetOpen,
 } from './exchangeNormalize';
 
 // Sample rows are the exchanges' own documented example responses (as quoted
@@ -391,5 +392,85 @@ describe('closed rows expose the open position id', () => {
   it('Bitget: positionId only when the payload has one', () => {
     expect(normalizeBitgetClosed(BITGET_SAMPLE)).not.toHaveProperty('positionId');
     expect(normalizeBitgetClosed({ ...BITGET_SAMPLE, positionId: '55' })).toMatchObject({ positionId: '55', externalId: '55' });
+  });
+});
+
+// ── Open positions: terminal fields ──────────────────────────────────────────
+// Samples follow each venue's documented open-position payload.
+describe('open positions carry the terminal fields', () => {
+  const TERMINAL = ['markPrice', 'unrealizedPnl', 'marginMode', 'margin', 'realizedPnl', 'feesPaid', 'funding'];
+
+  it('Bybit /v5/position/list (linear)', () => {
+    const row = {
+      positionIdx: 0, symbol: 'SOLUSDT', side: 'Buy', size: '12', avgPrice: '150.5', positionValue: '1806',
+      tradeMode: 0, leverage: '10', positionBalance: '0', markPrice: '152.1', liqPrice: '137.2',
+      positionIM: '180.6', positionMM: '9.03', takeProfit: '170', stopLoss: '145', unrealisedPnl: '19.2',
+      curRealisedPnl: '-0.99', cumRealisedPnl: '-120', createdTime: '1676538056258', updatedTime: '1697673600012',
+    };
+    const p = normalizeBybitOpen(row);
+    for (const k of TERMINAL) expect(p).toHaveProperty(k);
+    expect(p).toMatchObject({
+      pair: 'SOLUSDT', direction: 'long', entryPrice: 150.5, quantity: 12, leverage: 10, stopLoss: 145, tps: [170],
+      liquidationPrice: 137.2, markPrice: 152.1, unrealizedPnl: 19.2, marginMode: 'cross', margin: 180.6, realizedPnl: -0.99,
+      externalId: 'SOLUSDT_0_1697673600012', entryDate: new Date(1697673600012).toISOString(), source: 'bybit', status: 'open',
+    });
+    // A Unified account's margin mode comes from /v5/account/info.
+    expect(normalizeBybitOpen(row, { accountMarginMode: 'ISOLATED_MARGIN' }).marginMode).toBe('isolated');
+    expect(normalizeBybitOpen({ ...row, tradeMode: 1 }).marginMode).toBe('isolated');
+    // Empty liq / mark → null, not 0.
+    expect(normalizeBybitOpen({ ...row, liqPrice: '', markPrice: '' })).toMatchObject({ liquidationPrice: null, markPrice: null });
+  });
+
+  it('MEXC /position/open_positions (contracts → coins, no mark price)', () => {
+    const row = {
+      positionId: 1394650, symbol: 'ETH_USDT', positionType: 2, openType: 1, state: 1, holdVol: 10, frozenVol: 0,
+      closeVol: 0, holdAvgPrice: 1217.3, openAvgPrice: 1217.3, liquidatePrice: 1270.05, oim: 0.6, im: 0.6087,
+      holdFee: -0.01, realised: -0.0073, leverage: 20, createTime: 1609991676000, updateTime: 1609991676000,
+    };
+    const p = normalizeMexcOpen(row, { contractSize: 0.01 });
+    for (const k of TERMINAL) expect(p).toHaveProperty(k);
+    expect(p).toMatchObject({
+      pair: 'ETHUSDT', direction: 'short', quantity: 0.1, entryPrice: 1217.3, leverage: 20, liquidationPrice: 1270.05,
+      externalId: '1394650', markPrice: null, unrealizedPnl: null, marginMode: 'isolated', margin: 0.6087,
+      realizedPnl: -0.0073, funding: -0.01,
+    });
+    expect(p.positionSize).toBeCloseTo(121.73, 6);
+    expect(normalizeMexcOpen({ ...row, positionType: '1', openType: 2 }).direction).toBe('long');
+    expect(normalizeMexcOpen({ ...row, openType: 2 }).marginMode).toBe('cross');
+  });
+
+  it('Bitget v2 /mix/position/all-position', () => {
+    const row = {
+      marginCoin: 'USDT', symbol: 'BTCUSDT', holdSide: 'long', openDelegateSize: '0', marginSize: '3.73555',
+      available: '0.002', locked: '0', total: '0.002', leverage: '20', achievedProfits: '0', openPriceAvg: '37355.5',
+      marginMode: 'crossed', posMode: 'hedge_mode', unrealizedPL: '0.007', liquidationPrice: '31724.70741331',
+      keepMarginRate: '0.004', markPrice: '37359', breakEvenPrice: '24521.5', totalFee: '', deductedFee: '0.0372',
+      takeProfit: '', stopLoss: '36000', cTime: '1700807507275', uTime: '1700807507275',
+    };
+    const p = normalizeBitgetOpen(row);
+    for (const k of TERMINAL) expect(p).toHaveProperty(k);
+    expect(p).toMatchObject({
+      pair: 'BTCUSDT', direction: 'long', quantity: 0.002, entryPrice: 37355.5, leverage: 20, stopLoss: 36000, tps: [],
+      markPrice: 37359, unrealizedPnl: 0.007, marginMode: 'cross', margin: 3.73555, realizedPnl: 0,
+      feesPaid: 0.0372, funding: null, liquidationPrice: 31724.70741331,
+    });
+    // Older payloads: preset SL/TP fields.
+    expect(normalizeBitgetOpen({ ...row, stopLoss: '', presetStopLossPrice: '35000', presetStopSurplusPrice: '40000' }))
+      .toMatchObject({ stopLoss: 35000, tps: [40000] });
+  });
+
+  it('OKX /account/positions', () => {
+    const row = {
+      instId: 'BTC-USDT-SWAP', posSide: 'net', pos: '2', avgPx: '60000', lever: '5', liqPx: '50000', markPx: '61000',
+      upl: '20', mgnMode: 'cross', imr: '244', margin: '', realizedPnl: '-0.6', fee: '-0.6', fundingFee: '0.05',
+      cTime: '1700000000000', posId: '9',
+    };
+    const p = normalizeOkxOpen(row, 0.01);
+    for (const k of TERMINAL) expect(p).toHaveProperty(k);
+    expect(p).toMatchObject({
+      quantity: 0.02, markPrice: 61000, unrealizedPnl: 20, marginMode: 'cross', margin: 244,
+      realizedPnl: -0.6, feesPaid: 0.6, funding: 0.05,
+    });
+    expect(normalizeOkxOpen({ ...row, mgnMode: 'isolated', margin: '240' }, 0.01)).toMatchObject({ marginMode: 'isolated', margin: 240 });
   });
 });
