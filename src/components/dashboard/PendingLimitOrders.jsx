@@ -1,7 +1,7 @@
 import { motion, AnimatePresence } from 'framer-motion';
 import { useState, useRef, useCallback, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { ChevronDown, Pencil, Check, X, ChevronRight, Plus, Minus } from 'lucide-react';
+import { ChevronDown, Pencil, Check, X, ChevronRight, Plus, Minus, ShieldCheck } from 'lucide-react';
 
 // Trades that came from a connected exchange are closed by the exchange SYNC
 // with the real settled PnL. Auto-closing them here from a live mark price
@@ -27,7 +27,7 @@ import CoinIcon from '../shared/CoinIcon';
 import { useJournalContext } from '../../contexts/JournalContext';
 import { useAuth } from '../../contexts/AuthContext';
 import { updateUserDocument, arrayUnion, timestamp } from '../../services/firestoreService';
-import { computeTradeFields } from '../../utils/calculations';
+import { computeTradeFields, isStopOnRiskSide } from '../../utils/calculations';
 import { auth } from '../../services/firebase';
 import { LRM } from '../../utils/formatters';
 
@@ -41,7 +41,7 @@ function fmt(price) {
   return n.toPrecision(3);
 }
 
-function TrackBar({ trade, currentPrice, tpReached = [], onTpReached, onLimitTriggered, onSLHit, onUpdateSL, isActive, previewSL, rrBadge, timeSince, isEditMode, onEditStop, suppressBE = false }) {
+function TrackBar({ trade, currentPrice, tpReached = [], onTpReached, onLimitTriggered, onSLHit, onUpdateSL, isActive, previewSL, rrBadge, timeSince, isEditMode, onEditStop, onMoveToBE, suppressBE = false }) {
   const { entryPrice, stopLoss, direction, tps = [], leverage = 1 } = trade;
   const entry = parseFloat(entryPrice);
   const sl = parseFloat(stopLoss);
@@ -503,6 +503,17 @@ function TrackBar({ trade, currentPrice, tpReached = [], onTpReached, onLimitTri
               <Pencil className="w-2.5 h-2.5" /> SL
             </button>
           )}
+          {/* Only while the stop still carries risk — a stop already at or
+              through entry would be LOOSENED by moving it back to entry. */}
+          {onMoveToBE && !isBreakEven && isStopOnRiskSide(direction, entry, sl) && (
+            <button
+              onClick={onMoveToBE}
+              title="הזז סטופ לנקודת הכניסה (ברייק-איבן)"
+              className="flex items-center gap-1 text-[10px] font-semibold text-accent-primary px-1.5 py-0.5 rounded-md bg-accent-primary/10 border border-accent-primary/30 hover:bg-accent-primary/20 transition-colors cursor-pointer"
+            >
+              <ShieldCheck className="w-2.5 h-2.5" /> SL→BE
+            </button>
+          )}
           {parseFloat(leverage) > 1 && (
             <>
               <span className="text-text-muted/25 text-[10px]">·</span>
@@ -544,6 +555,25 @@ function closeTradeAt(trade, closePrice) {
     computeTradeFields({ ...trade, status: 'closed', exitPrice: price, exits, quantity });
   const update = { status: 'closed', exitPrice: price, exitDate: timestamp(), pnl, pnlPercent, rrRatio, netPnl, result };
   if (existing.length) update.exits = exits;
+  return update;
+}
+
+// Share of the position still open after partial exits (TP1 taken etc.).
+function openFraction(trade) {
+  const executedPct = (trade.exits || []).reduce((s, e) => s + (parseFloat(e.percent) || 0), 0);
+  return Math.max(0, Math.min(1, 1 - executedPct / 100));
+}
+
+// Every stop update keeps the stop the trade was OPENED with, so R and the
+// track's "original SL" anchor survive a trail to breakeven / into profit.
+// Only a stop that actually defined risk is recorded as the original.
+function stopUpdate(trade, newStop) {
+  const update = { stopLoss: newStop };
+  const hasOriginal = parseFloat(trade.originalStopLoss) > 0;
+  const current = parseFloat(trade.stopLoss);
+  if (!hasOriginal && isStopOnRiskSide(trade.direction, trade.entryPrice, current)) {
+    update.originalStopLoss = current;
+  }
   return update;
 }
 
@@ -643,7 +673,7 @@ export default function PendingLimitOrders({ trades, livePrices }) {
 
   const handleUpdateSL = useCallback((trade, newSL) => {
     if (!user?.uid || !newSL || isNaN(newSL)) return;
-    updateUserDocument(user.uid, 'trades', trade.id, { stopLoss: String(newSL) }).catch(() => {});
+    updateUserDocument(user.uid, 'trades', trade.id, stopUpdate(trade, String(newSL))).catch(() => {});
   }, [user?.uid]);
 
   const handleSaveSL = useCallback(async (trade, newSLVal) => {
@@ -652,7 +682,7 @@ export default function PendingLimitOrders({ trades, livePrices }) {
     setIsSaving(true);
     setSaveError(null);
     try {
-      await updateUserDocument(user.uid, 'trades', trade.id, { stopLoss: n });
+      await updateUserDocument(user.uid, 'trades', trade.id, stopUpdate(trade, n));
       toast.success(`SL עודכן ל-${fmt(n)} ✓`, {
         style: { background: 'var(--color-bg-overlay)', color: 'var(--color-text-primary)', border: '1px solid rgba(34,197,94,0.35)', borderRadius: '8px', fontSize: '13px' },
         duration: 2500,
@@ -666,6 +696,28 @@ export default function PendingLimitOrders({ trades, livePrices }) {
       setSaveError('שגיאה בשמירה, נסה שוב');
     } finally {
       setIsSaving(false);
+    }
+  }, [user?.uid]);
+
+  // One tap: stop → entry (breakeven). Refused when price is already on the
+  // losing side of entry — that stop would close the trade at a loss the
+  // moment it is saved.
+  const handleMoveToBE = useCallback(async (trade, currentPrice) => {
+    const entry = parseFloat(trade.entryPrice);
+    if (!user?.uid || !(entry > 0)) return;
+    const isLong = trade.direction === 'long';
+    if (currentPrice != null && (isLong ? currentPrice <= entry : currentPrice >= entry)) {
+      toast.error('המחיר כבר מעבר לנקודת הכניסה — סטופ בכניסה יסגור את העסקה מיד');
+      return;
+    }
+    try {
+      await updateUserDocument(user.uid, 'trades', trade.id, stopUpdate(trade, entry));
+      toast.success(`SL הוזז לכניסה (${fmt(entry)}) ✓`, {
+        style: { background: 'var(--color-bg-overlay)', color: 'var(--color-text-primary)', border: '1px solid rgba(34,197,94,0.35)', borderRadius: '8px', fontSize: '13px' },
+        duration: 2500,
+      });
+    } catch {
+      toast.error('שגיאה בשמירה, נסה שוב');
     }
   }, [user?.uid]);
 
@@ -717,9 +769,12 @@ export default function PendingLimitOrders({ trades, livePrices }) {
     const posSize = parseFloat(trade.positionSize);
     if (!(posSize > 0)) continue;
     const lev = parseFloat(trade.leverage) || 1;
-    const qty = posSize / entry;
+    // Only the size still open after partial exits — the same basis as each
+    // position card, so the header total equals the sum of the cards.
+    const openSize = posSize * openFraction(trade);
+    const qty = openSize / entry;
     totalPnlDollar += trade.direction === 'long' ? (cp - entry) * qty : (entry - cp) * qty;
-    totalMarginDollar += posSize / lev;
+    totalMarginDollar += openSize / lev;
   }
   const totalPnlPct = totalMarginDollar > 0 ? (totalPnlDollar / totalMarginDollar) * 100 : null;
   const hasPnl = totalMarginDollar > 0;
@@ -806,8 +861,7 @@ export default function PendingLimitOrders({ trades, livePrices }) {
                 : ((entry - currentPrice) / entry) * lev * 100;
               const size = parseFloat(trade.positionSize);
               if (size > 0) {
-                const executedPct = (trade.exits || []).reduce((s, e) => s + (e.percent || 0), 0);
-                const qty = (size * Math.max(0, 1 - executedPct / 100)) / entry;
+                const qty = (size * openFraction(trade)) / entry;
                 hdrPnlDollar = trade.direction === 'long' ? (currentPrice - entry) * qty : (entry - currentPrice) * qty;
               }
             }
@@ -937,6 +991,7 @@ export default function PendingLimitOrders({ trades, livePrices }) {
                     previewSL={isEditing ? (parseFloat(editSL) || 0) : 0}
                     isEditMode={isEditing}
                     onEditStop={isTradeActive && !isEditing ? () => { setEditingId(trade.id); setEditSL(String(slNum || '')); setSaveError(null); } : null}
+                    onMoveToBE={isTradeActive && !isEditing ? () => handleMoveToBE(trade, currentPrice) : null}
                     suppressBE={!!savedFlash[trade.id]}
                     rrBadge={isTradeActive ? rrBadge : null}
                     timeSince={isTradeActive ? getTimeSince(trade) : null}
