@@ -41,3 +41,10 @@ export function confidenceBucket(conf) {
   if (c >= 75) return '75–89';
   return '60–74';
 }
+
+/**
+ * Cap on scanned (long/short-tagged) coins per user, so the scanner stays
+ * within the free Cloudflare/Firestore budget — applies to Premium too, on
+ * purpose. The worker enforces the same cap server-side.
+ */
+export const MAX_SCAN_TAGS = 15;
