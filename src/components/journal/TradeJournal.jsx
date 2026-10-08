@@ -134,7 +134,11 @@ export default function TradeJournal() {
   // The active tab lives in the URL (?tab=analytics) so a refresh keeps it and
   // the browser's back button steps between tabs. 'trades' is the bare URL.
   const tabParam = searchParams.get('tab');
-  const tab = JOURNAL_TABS.includes(tabParam) ? tabParam : 'trades';
+  // Exchange connections are crypto-only (stock and futures journals have no
+  // exchange sync), so their tab exists only in crypto journals.
+  const isCryptoJournal = (activeJournal?.assetClass || 'crypto') === 'crypto';
+  const journalTabs = isCryptoJournal ? JOURNAL_TABS : JOURNAL_TABS.filter((t) => t !== 'exchange');
+  const tab = journalTabs.includes(tabParam) ? tabParam : 'trades';
   const setTab = (next) => {
     if (next === tab) return;
     setSearchParams((prev) => {
@@ -547,7 +551,7 @@ export default function TradeJournal() {
         title={isStockJournal ? 'יומן מניות' : 'יומן המסחר'}
         titleAside={<JournalSwitcher compact />}
         tabs={{
-          tabs: JOURNAL_TABS.map((id) => ({ id, label: TAB_LABELS[id], mobileLabel: TAB_MOBILE_LABELS[id], count: id === 'trades' ? trades.length : 0 })),
+          tabs: journalTabs.map((id) => ({ id, label: TAB_LABELS[id], mobileLabel: TAB_MOBILE_LABELS[id], count: id === 'trades' ? trades.length : 0 })),
           value: tab,
           onChange: setTab,
           layoutKey: 'journal-tab',
