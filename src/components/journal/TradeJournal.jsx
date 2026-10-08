@@ -552,9 +552,9 @@ export default function TradeJournal() {
           onChange: setTab,
           layoutKey: 'journal-tab',
         }}
+        tabsLead={tab === 'analytics' ? <TimePeriodFilter value={period} onChange={setPeriod} /> : null}
         actions={(
           <div className="flex flex-wrap items-center gap-2 w-full sm:w-auto">
-            {tab === 'analytics' && <TimePeriodFilter value={period} onChange={setPeriod} />}
             {/* The AI analysis — a compact header action instead of a full-width banner */}
             <button onClick={() => setAiModalOpen(true)} className={headerAiBtn} title="ניתוח AI של המסחר שלך">
               <Sparkles className="w-[18px] h-[18px]" />
