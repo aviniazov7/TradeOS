@@ -30,7 +30,8 @@ import EmptyState from '../shared/EmptyState';
 import ExchangeProposals from './ExchangeProposals';
 import JournalSkeleton from './JournalSkeleton';
 import JournalFormModal from './JournalFormModal';
-import { formatDate } from '../../utils/formatters';
+import { downloadCsv } from '../../utils/csv';
+import { JOURNAL_CSV_HEADERS, journalCsvRow } from '../../utils/tradeExport';
 import { TAG_LABELS } from '../../utils/constants';
 import { pageVariants, pageTransition } from '../../utils/animations';
 
@@ -216,14 +217,20 @@ export default function TradeJournal() {
   }, []);
 
   // Reset filters when switching journals — prevents stale filters from one journal
-  // bleeding into another (e.g. filtering by strategy "SOW" that doesn't exist in Journal B)
+  // bleeding into another (e.g. filtering by strategy "SOW" that doesn't exist in Journal B).
+  // Only on a REAL switch (one journal id → another): this effect also runs on
+  // mount and when the journal list loads (null → id), and resetting there
+  // wiped the filters just restored from localStorage ('tj_filters').
+  const prevJournalIdRef = useRef(activeJournalId);
   useEffect(() => {
-    setFilters(defaultFilters);
+    const prev = prevJournalIdRef.current;
+    prevJournalIdRef.current = activeJournalId;
+    if (prev && activeJournalId && prev !== activeJournalId) setFilters(defaultFilters);
   }, [activeJournalId]);
 
   // Persist filters to localStorage
   useEffect(() => {
-    try { localStorage.setItem('tj_filters', JSON.stringify(filters)); } catch {}
+    try { localStorage.setItem('tj_filters', JSON.stringify(filters)); } catch { /* storage unavailable */ }
   }, [filters]);
 
   useEffect(() => {
@@ -492,40 +499,11 @@ export default function TradeJournal() {
 
   const exportCSV = () => {
     if (!sortedTrades.length) return;
-    // Escape a CSV cell: quote when it contains a comma/quote/newline, and
-    // neutralize spreadsheet formula injection on a leading =,+,-,@.
-    const cell = (v) => {
-      let s = v == null ? '' : String(v);
-      if (/^[=+\-@]/.test(s)) s = `'${s}`;
-      if (/[",\n\r]/.test(s)) s = `"${s.replace(/"/g, '""')}"`;
-      return s;
-    };
-    const toDate = (raw) => (raw ? (raw.toDate ? raw.toDate() : new Date(raw)) : null);
-    const headers = ['תאריך', 'תאריך סגירה', 'זוג', 'כיוון', 'כניסה', 'סגירה', 'סטופ לוס', 'גודל עסקה', 'מינוף', 'עמלות', 'רווח/הפסד', '%', 'R:R', 'אסטרטגיה', 'טווח זמן', 'סטטוס', 'סיבת כניסה', 'הערות', 'תגיות', 'רגש לפני', 'רגש אחרי', 'טעויות', 'ביטחון'];
-    const rows = sortedTrades.map((t) => {
-      const d = toDate(t.entryDate) || new Date();
-      const xd = toDate(t.exitDate);
-      const pnl = t.netPnl ?? t.pnl ?? 0;
-      const pnlPct = t.pnlPercent != null
-        ? t.pnlPercent
-        : (t.entryPrice > 0 && t.quantity > 0 ? (pnl / (t.entryPrice * t.quantity)) * 100 * (t.leverage || 1) : 0);
-      const tags = Array.isArray(t.tags) ? t.tags.join(' ') : (t.tags || '');
-      const mistakes = Array.isArray(t.mistakes) ? t.mistakes.join(' ') : (t.mistakes || '');
-      return [
-        formatDate(d), xd ? formatDate(xd) : '', t.pair, t.direction, t.entryPrice, t.exitPrice,
-        t.stopLoss, t.positionSize, t.leverage, t.fees, pnl.toFixed(2),
-        (isNaN(pnlPct) ? 0 : pnlPct).toFixed(2), ((pnl < 0 ? -1 : 1) * Math.abs(t.rrRatio ?? 0)).toFixed(2), t.strategy || '',
-        t.timeframe || '', t.status === 'partial' ? 'חלקית' : (isClosedTrade(t) ? 'סגורה' : 'פתוחה'),
-        t.entryReason || '', t.notes || '', tags, t.emotionBefore || '', t.emotionAfter || '', mistakes, t.confidenceRating ?? '',
-      ];
-    });
-    const bom = '\uFEFF';
-    const csv = bom + [headers, ...rows].map((r) => r.map(cell).join(',')).join('\n');
-    const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' });
-    const url = URL.createObjectURL(blob);
-    const a = document.createElement('a');
-    a.href = url; a.download = `trades_${new Date().toISOString().slice(0, 10)}.csv`;
-    a.click(); URL.revokeObjectURL(url);
+    // Columns/values live in utils/tradeExport (shared with the Excel export):
+    // units per asset class, exits, gross + net P&L, fees, signed R, original
+    // stop. downloadCsv writes a UTF-8 BOM (Excel renders Hebrew), escapes
+    // cells, neutralises formula injection and keeps negative numbers numeric.
+    downloadCsv(`trades_${localDayKey(new Date())}.csv`, JOURNAL_CSV_HEADERS, sortedTrades.map(journalCsvRow));
     toast.success('הקובץ הורד');
   };
 
@@ -779,7 +757,8 @@ export default function TradeJournal() {
       </Suspense>
       <Suspense fallback={null}>
         {importMounted && (
-          <ImportTrades isOpen={importOpen} onClose={() => setImportOpen(false)} onImport={addTrade} onImportBulk={addTradesBulk} />
+          <ImportTrades isOpen={importOpen} onClose={() => setImportOpen(false)} onImport={addTrade} onImportBulk={addTradesBulk}
+            assetClass={activeJournal?.assetClass || 'crypto'} existingTrades={trades} />
         )}
       </Suspense>
       <Suspense fallback={null}>

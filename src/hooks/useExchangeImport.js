@@ -1,9 +1,10 @@
-import { useCallback, useMemo } from 'react';
+import { useCallback, useMemo, useRef } from 'react';
 import { useAuth } from '../contexts/AuthContext';
 import { useTrades } from './useTrades';
 import { addToUserCollection, timestamp, dateToTimestamp } from '../services/firestoreService';
 import { DEFAULT_LEVERAGE } from '../utils/constants';
 import { tradeExternalIds } from '../utils/tradeIds';
+import { findOpenTradeForClosed } from '../utils/exchangeReconcile';
 
 // Imports a single exchange-synced trade into the given journal. Shared by the
 // journal's exchange tab, the trades-tab proposal banner AND the standalone
@@ -13,6 +14,11 @@ import { tradeExternalIds } from '../utils/tradeIds';
 export function useExchangeImport(journalId) {
   const { user } = useAuth();
   const { trades, updateTrade } = useTrades(journalId);
+  // Open trades already being closed by a row of the current import batch.
+  // Callers import a batch with Promise.allSettled over one `trades`
+  // snapshot, so without this two closed rows could both "close" the same
+  // open trade. Released again when the update fails, so a retry can match.
+  const claimedOpenIds = useRef(new Set());
 
   // Every close-order id already present in this journal — used by the sync
   // modal to flag rows as updates rather than new trades.
@@ -64,9 +70,16 @@ export function useExchangeImport(journalId) {
     // ids matches — a Multi-TP position that closed across two syncs carries
     // the already-imported close's id alongside the new ones.
     const rowIds = tradeExternalIds(t);
-    const existing = rowIds.length
+    const byId = rowIds.length
       ? trades.find((tr) => tradeExternalIds(tr).some((id) => rowIds.includes(id)))
       : null;
+    // No id match: the position may have been imported while still OPEN —
+    // its open-position id never equals the closed row's id, so match it by
+    // exchange + pair + direction + entry (see exchangeReconcile) and close
+    // THAT trade instead of adding a second one next to a ghost open trade.
+    const openMatch = byId ? null : findOpenTradeForClosed(t, trades, { claimed: claimedOpenIds.current });
+    const existing = byId || openMatch;
+    if (openMatch) claimedOpenIds.current.add(openMatch.id);
     if (existing) {
       // Pass the FULL merged shape — updateTrade recomputes pnl / R / percent /
       // result / positionSize from exactly what it's given, so the old partial
@@ -77,7 +90,7 @@ export function useExchangeImport(journalId) {
       const xp = t.exitPrice > 0 ? t.exitPrice : existing.exitPrice;
       const qty = t.quantity > 0 ? t.quantity : existing.quantity;
       const lev = Math.min(200, Math.max(1, t.leverage || existing.leverage || DEFAULT_LEVERAGE));
-      return updateTrade(existing.id, {
+      const update = updateTrade(existing.id, {
         entryDate: entryD,
         exitDate: exitD,
         fees,
@@ -93,10 +106,20 @@ export function useExchangeImport(journalId) {
         ...(t.orderType ? { orderType: t.orderType } : {}),
         pnlFromExchange: t.pnlFromExchange ?? existing.pnlFromExchange,
         status: 'closed',
-        externalId: existing.externalId || t.externalId,
+        // A reconciled open trade takes the CLOSED row's id as its primary id
+        // (later syncs report that one); the open-position id stays in
+        // externalIds so the open-positions banner still sees it as logged.
+        externalId: openMatch ? (t.externalId || existing.externalId) : (existing.externalId || t.externalId),
         externalIds: [...new Set([...tradeExternalIds(existing), ...rowIds])],
         ...(t.session ? { session: t.session } : {}),
       });
+      if (openMatch) {
+        return update.catch((err) => {
+          claimedOpenIds.current.delete(openMatch.id);
+          throw err;
+        });
+      }
+      return update;
     }
 
     // Create new trade — compute netPnl correctly by subtracting fees, and
