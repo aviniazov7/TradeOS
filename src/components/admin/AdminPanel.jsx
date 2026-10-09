@@ -506,8 +506,9 @@ function BulkNotifyModal({ isOpen, onClose, segments, initialSegment = 'all' }) 
 
   const targets = segments?.[seg] || [];
   const chosen = targets.filter((u) => !excluded.has(u.id));
-  const recipients = chosen.map((u) => ({ id: u.id, email: u.email || '', name: u.displayName || '' }));
-  const withEmail = chosen.filter((u) => u.email).length;
+  // `marketing`: the user opted in to email updates — the only ones a campaign reaches.
+  const recipients = chosen.map((u) => ({ id: u.id, email: u.email || '', name: u.displayName || '', marketing: u.marketingEmails === true }));
+  const withEmail = chosen.filter((u) => u.email && u.marketingEmails === true).length;
 
   return (
     <Modal isOpen={isOpen} onClose={close} title="שליחת תזכורת למשתמשים" maxWidth="max-w-xl">
@@ -550,7 +551,7 @@ function BulkNotifyModal({ isOpen, onClose, segments, initialSegment = 'all' }) 
               </span>
               <span className="block text-xs text-text-secondary truncate">
                 {chosen.slice(0, 3).map((u) => u.displayName || u.email).join(', ')}{chosen.length > 3 ? ` ועוד ${chosen.length - 3}` : ''}
-                {chosen.length > 0 && ` · ${withEmail} עם מייל`}
+                {chosen.length > 0 && ` · ${withEmail} אישרו דיוור במייל`}
               </span>
             </span>
             <span className="text-xs font-semibold text-accent-hover shrink-0">{listOpen ? 'סגירה' : 'הצגת הרשימה'}</span>
@@ -964,7 +965,7 @@ function UserDetailModal({ user, onClose, onUserChanged, startWith = null }) {
               </button>
             </div>
             <ReengageComposer
-              recipients={[{ id: user.id, email: user.email || '', name: user.displayName || '' }]}
+              recipients={[{ id: user.id, email: user.email || '', name: user.displayName || '', marketing: user.marketingEmails === true }]}
               onSent={() => setNotifyOpen(false)}
             />
           </div>

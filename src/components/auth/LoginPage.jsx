@@ -69,6 +69,8 @@ export default function LoginPage() {
   const [displayName, setDisplayName] = useState('');
   const [showPassword, setShowPassword] = useState(false);
   const [submitting, setSubmitting] = useState(false);
+  // Opt-in to marketing email — unticked by default, never required.
+  const [marketingEmails, setMarketingEmails] = useState(false);
   // Error for the last submit, shown inline under the form (role="alert") —
   // a toast alone was easy to miss, so a wrong password looked like nothing
   // happened. Cleared as soon as the user edits a field or switches tab.
@@ -110,7 +112,7 @@ export default function LoginPage() {
           setSubmitting(false);
           return;
         }
-        await registerWithEmail(email, password, displayName || email.split('@')[0]);
+        await registerWithEmail(email, password, displayName || email.split('@')[0], { marketingEmails });
         toast.success('החשבון נוצר בהצלחה');
       } else {
         await loginWithEmail(email, password);
@@ -267,6 +269,14 @@ export default function LoginPage() {
                 </ul>
               )}
             </div>
+
+            {!isLogin && (
+              <label className="flex items-start gap-2.5 text-xs text-text-secondary leading-relaxed cursor-pointer select-none">
+                <input type="checkbox" checked={marketingEmails} onChange={(e) => setMarketingEmails(e.target.checked)}
+                  className="mt-0.5 w-4 h-4 shrink-0 accent-[#3b82f6] cursor-pointer" />
+                <span>אשמח לקבל עדכונים והטבות במייל מ-TradeOS. אפשר להסיר בכל רגע.</span>
+              </label>
+            )}
 
             {formError && (
               <p role="alert" className="flex items-start gap-2 rounded-xl border border-loss/30 bg-loss/10 px-3 py-2.5 text-sm text-loss">

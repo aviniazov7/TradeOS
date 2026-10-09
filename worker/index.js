@@ -15,7 +15,8 @@ import {
   normalizeMexcClosed, normalizeOkxClosed, normalizeOkxOpen, normalizeBitgetClosed,
   normalizeBybitOpen, normalizeMexcOpen, normalizeBitgetOpen,
 } from './exchangeNormalize.js';
-import { buildCampaignEmails, chunk, friendlyResendError } from './adminEmail.js';
+import { buildCampaignEmails, chunk, friendlyResendError, CAMPAIGN_MAX } from './adminEmail.js';
+import { unsubscribeUrl, verifyUnsubscribe, unsubscribePage, UID_RE } from './unsubscribe.js';
 import { emailShell, C as EMAIL_C, bg as emailBg, txt as emailTxt, esc as emailEsc, para as emailPara } from './emailTheme.js';
 import { buildDigestEmail } from './adminDigest.js';
 import { pickMarketFacts, HOOK_SYSTEM_PROMPT, buildHookUserMessage, validateHook, templateHook } from './marketHook.js';
@@ -560,7 +561,7 @@ async function sendEmailBatch(env, messages) {
     const res = await fetch('https://api.resend.com/emails/batch', {
       method: 'POST',
       headers: { Authorization: `Bearer ${env.RESEND_API_KEY}`, 'Content-Type': 'application/json' },
-      body: JSON.stringify(messages.map((m) => ({ from, to: [m.to], subject: m.subject, html: m.html }))),
+      body: JSON.stringify(messages.map((m) => ({ from, to: [m.to], subject: m.subject, html: m.html, ...(m.headers ? { headers: m.headers } : {}) }))),
     });
     if (!res.ok) {
       const detail = await res.text().catch(() => '');
@@ -4817,28 +4818,81 @@ async function handleRequest(request, env) {
     return new Response(JSON.stringify({ ok: true, sent, recipients, targeted: capped.length }), { headers: { ...cors, 'Content-Type': 'application/json' } });
   }
 
-  // Admin-only: a "come back to TradeOS" email to one user or a segment —
-  // reaches users who never enabled push. Personalised per recipient
-  // (adminEmail.js), sent through Resend in batches of 100.
+  // Public, token-signed opt-out from marketing email (the link in every
+  // campaign footer and the List-Unsubscribe header). GET shows a page, POST is
+  // the RFC 8058 one-click form mail clients use. No login: the HMAC token over
+  // the uid is the proof, and the only thing it can do is turn consent OFF.
+  if ((request.method === 'GET' || request.method === 'POST') && path === '/email/unsubscribe') {
+    const u = url.searchParams.get('u') || '';
+    const t = url.searchParams.get('t') || '';
+    let ok = false;
+    if (UID_RE.test(u) && await verifyUnsubscribe(env.UNSUBSCRIBE_SECRET, u, t)) {
+      const r = await firebaseAdminPatchUser(env, u, {
+        marketingEmails: { booleanValue: false },
+        marketingEmailsAt: { timestampValue: new Date().toISOString() },
+      }, ['marketingEmails', 'marketingEmailsAt']);
+      ok = !!r.ok;
+    }
+    if (request.method === 'POST') {
+      return new Response(JSON.stringify({ ok }), { status: ok ? 200 : 400, headers: { ...cors, 'Content-Type': 'application/json' } });
+    }
+    return new Response(unsubscribePage(ok), {
+      status: ok ? 200 : 400,
+      headers: { 'Content-Type': 'text/html; charset=utf-8', 'Cache-Control': 'no-store', 'X-Robots-Tag': 'noindex' },
+    });
+  }
+
+  // Admin-only marketing campaign by email. Consent is enforced HERE, not in the
+  // panel: the request carries uids only, and each recipient's address and
+  // `marketingEmails === true` opt-in are read from their own profile — an
+  // address the browser supplied is never mailed. Every message gets the
+  // "פרסומת" subject prefix and a signed one-click unsubscribe link; without
+  // UNSUBSCRIBE_SECRET nothing is sent. The admin's own uid (the "test to me"
+  // button) skips the consent check — it only mails the admin.
   if (request.method === 'POST' && path === '/admin/email-campaign') {
     const token = (request.headers.get('Authorization') || '').replace('Bearer ', '');
     const adminUid = await verifyAdminFromToken(token);
     if (!adminUid) return new Response(JSON.stringify({ error: 'forbidden' }), { status: 403, headers: { ...cors, 'Content-Type': 'application/json' } });
     if (!env.RESEND_API_KEY) return new Response(JSON.stringify({ error: 'RESEND_API_KEY חסר ב-Worker — לא ניתן לשלוח מיילים' }), { status: 503, headers: { ...cors, 'Content-Type': 'application/json' } });
-    const { recipients, subject, headline, message, ctaText, ctaPath } = await request.json().catch(() => ({}));
-    if (!Array.isArray(recipients) || !recipients.length || !(subject || headline) || !message) {
+    if (!env.UNSUBSCRIBE_SECRET) return new Response(JSON.stringify({ error: 'UNSUBSCRIBE_SECRET חסר ב-Worker — לא שולחים דיוור בלי קישור הסרה' }), { status: 503, headers: { ...cors, 'Content-Type': 'application/json' } });
+    const { uids, subject, headline, message, ctaText, ctaPath } = await request.json().catch(() => ({}));
+    const wanted = [...new Set(Array.isArray(uids) ? uids.filter((x) => typeof x === 'string' && UID_RE.test(x)) : [])].slice(0, CAMPAIGN_MAX);
+    if (!wanted.length || !(subject || headline) || !message) {
       return new Response(JSON.stringify({ error: 'missing fields' }), { status: 400, headers: { ...cors, 'Content-Type': 'application/json' } });
     }
+    const gtoken = await getFirebaseAdminToken(env);
+    const docBase = `projects/${FIREBASE_PROJECT_ID}/databases/(default)/documents`;
+    const bg = await fetch(`https://firestore.googleapis.com/v1/${docBase}:batchGet`, {
+      method: 'POST',
+      headers: { Authorization: `Bearer ${gtoken}`, 'Content-Type': 'application/json' },
+      body: JSON.stringify({ documents: wanted.map((id) => `${docBase}/users/${id}`), mask: { fieldPaths: ['email', 'displayName', 'marketingEmails'] } }),
+    });
+    if (!bg.ok) return new Response(JSON.stringify({ error: 'לא ניתן לאמת הסכמות דיוור כרגע' }), { status: 502, headers: { ...cors, 'Content-Type': 'application/json' } });
+    const rows = await bg.json().catch(() => []);
+    const workerBase = new URL(request.url).origin;
+    const recipients = [];
+    let skippedNoConsent = 0;
+    for (const row of Array.isArray(rows) ? rows : []) {
+      const f = row?.found?.fields;
+      if (!f) { skippedNoConsent++; continue; }
+      const uid = row.found.name.split('/').pop();
+      const email = f.email?.stringValue;
+      const consented = f.marketingEmails?.booleanValue === true || uid === adminUid;
+      if (!email || !consented) { skippedNoConsent++; continue; }
+      recipients.push({ email, name: f.displayName?.stringValue || '', unsubscribeUrl: await unsubscribeUrl(workerBase, env.UNSUBSCRIBE_SECRET, uid) });
+    }
     const emails = buildCampaignEmails({ recipients, subject, headline, message, ctaText, ctaPath }, emailShell);
-    if (!emails.length) return new Response(JSON.stringify({ error: 'אין כתובות מייל תקינות' }), { status: 400, headers: { ...cors, 'Content-Type': 'application/json' } });
+    if (!emails.length) {
+      return new Response(JSON.stringify({ error: 'אף אחד מהנמענים לא אישר קבלת עדכונים במייל', skippedNoConsent }), { status: 400, headers: { ...cors, 'Content-Type': 'application/json' } });
+    }
     let sent = 0, failed = 0, firstError = '';
     for (const batch of chunk(emails, 100)) {
       const r = await sendEmailBatch(env, batch);
       if (r.ok) sent += batch.length;
       else { failed += batch.length; if (!firstError) firstError = friendlyResendError(r.status, r.message); }
     }
-    appendAudit(env, { kind: 'email-campaign', actor: adminUid, targeted: emails.length, sent, failed, subject: String(subject || headline).slice(0, 120) });
-    return new Response(JSON.stringify({ ok: sent > 0, sent, failed, targeted: emails.length, ...(firstError ? { error: firstError } : {}) }), {
+    appendAudit(env, { kind: 'email-campaign', actor: adminUid, targeted: emails.length, skippedNoConsent, sent, failed, subject: String(subject || headline).slice(0, 120) });
+    return new Response(JSON.stringify({ ok: sent > 0, sent, failed, targeted: emails.length, skippedNoConsent, ...(firstError ? { error: firstError } : {}) }), {
       status: sent > 0 || !failed ? 200 : 502, headers: { ...cors, 'Content-Type': 'application/json' },
     });
   }

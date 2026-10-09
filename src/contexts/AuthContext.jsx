@@ -52,6 +52,10 @@ export function AuthProvider({ children }) {
   // account is created — BEFORE updateProfile sets the Auth displayName — so
   // the first profile doc used to get the email prefix instead of the name.
   const pendingNameRef = useRef(null);
+  // The "send me updates by email" box ticked on the signup form (opt-in,
+  // unticked by default). Same timing as the name: captured when the account
+  // appears, written to the profile once it exists.
+  const pendingConsentRef = useRef(false);
 
   useEffect(() => {
     // Handle redirect result from PWA Google Sign-In
@@ -92,6 +96,7 @@ export function AuthProvider({ children }) {
 
         // Load the profile doc in the background (also creates it on first
         // sign-in). Used for the `role` field that gates the admin panel.
+        const signupConsent = pendingConsentRef.current === true;
         const defaultProfile = {
           displayName: pendingNameRef.current || firebaseUser.displayName || firebaseUser.email?.split('@')[0] || 'User',
           email: firebaseUser.email,
@@ -140,7 +145,13 @@ export function AuthProvider({ children }) {
               Promise.all([
                 setUserProfile(firebaseUser.uid, defaultProfile, false),
                 setUserSetting(firebaseUser.uid, 'notifications', { pushEnabled: true, tradeOpenAlerts: true }, true),
-              ]).catch(() => {});
+              ])
+                // Consent goes in its own write AFTER the profile exists, so a
+                // refusal of these two fields can never cost the user their profile.
+                .then(() => (signupConsent
+                  ? setUserProfile(firebaseUser.uid, { marketingEmails: true, marketingEmailsAt: timestamp() })
+                  : null))
+                .catch(() => {});
             }
           })
           .catch(() => {});
@@ -162,12 +173,14 @@ export function AuthProvider({ children }) {
 
   const loginWithGoogleIdToken = useCallback((idToken) => authLoginWithGoogleIdToken(idToken), []);
 
-  const registerWithEmail = useCallback(async (email, password, displayName) => {
+  const registerWithEmail = useCallback(async (email, password, displayName, { marketingEmails = false } = {}) => {
     pendingNameRef.current = displayName?.trim() || null;
+    pendingConsentRef.current = marketingEmails === true;
     try {
       return await authRegisterWithEmail(email, password, displayName);
     } finally {
       pendingNameRef.current = null;
+      pendingConsentRef.current = false;
     }
   }, []);
 

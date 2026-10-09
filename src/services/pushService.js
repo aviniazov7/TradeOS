@@ -257,12 +257,15 @@ export async function adminSendBulkNotification({ uids, title, body, url }) {
 }
 
 // Admin-only: a "come back to TradeOS" email to one user or a segment.
-// recipients: [{ email, name }]. Returns { ok, sent, failed, targeted, error? }.
-export async function adminSendEmailCampaign({ recipients, subject, headline, message, ctaText, ctaPath }) {
+// uids: the users to mail. The Worker reads each one's address and marketing
+// opt-in from their profile and mails ONLY those who opted in (plus the admin
+// themself, for the test button). Returns { ok, sent, failed, targeted,
+// skippedNoConsent, error? }.
+export async function adminSendEmailCampaign({ uids, subject, headline, message, ctaText, ctaPath }) {
   const res = await fetch(`${WORKER_BASE}/admin/email-campaign`, {
     method: 'POST',
     headers: await authHeader(),
-    body: JSON.stringify({ recipients, subject, headline, message, ctaText, ctaPath }),
+    body: JSON.stringify({ uids, subject, headline, message, ctaText, ctaPath }),
   });
   const data = await res.json().catch(() => ({}));
   if (!res.ok) throw new Error(data.error || 'שליחת המיילים נכשלה');

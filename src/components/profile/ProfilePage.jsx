@@ -16,6 +16,7 @@ import ConfirmDialog from '../shared/ConfirmDialog';
 import { pageVariants, pageTransition } from '../../utils/animations';
 import { useTheme } from '../../hooks/useTheme';
 import NotificationSettings from './NotificationSettings';
+import MarketingEmailToggle from './MarketingEmailToggle';
 import ContactDeveloper from './ContactDeveloper';
 import { planExpiresMs } from '../../utils/premium';
 
@@ -389,6 +390,8 @@ export default function ProfilePage() {
       <div className={cardClass}>
         {/* Push notifications */}
         <NotificationSettings />
+        {/* Marketing email consent (opt-in) */}
+        <MarketingEmailToggle />
       </div>
 
       {/* ── Section: General ─────────────────────────────────────── */}
