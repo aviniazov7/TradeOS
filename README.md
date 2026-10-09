@@ -248,15 +248,15 @@ TradeOS/
 | Service | Account | What lives there |
 |---|---|---|
 | GitHub | `aviniazov7` (personal), private repo `aviniazov7/TradeOS` | code, CI, CI secrets |
-| Firebase / Google Cloud | project `tradeos-91a58` (number `80529278454`); the local `firebase` CLI is logged in as `aviniazov18@gmail.com` | Auth, Firestore, Hosting, Cloud Function `googleSignIn` (`europe-west1`) |
-| Cloudflare — **app account** | the account shown as `Tradeos.app@gmail…` (workers.dev subdomain `tradeos`) | Workers `trade-os` (all HTTP), `tradeos-alerts` (cron, every 10 min), `trade-os-staging` (unused), KV namespace `ALERTS_KV` |
+| Firebase / Google Cloud | project `tradeos-91a58` (number `80529278454`); **Owners: `aviniazov18@gmail.com` (personal) and `tradeos.app@gmail.com` (app)**; the local `firebase` CLI is logged in as `aviniazov18@gmail.com` | Auth, Firestore, Hosting, Cloud Function `googleSignIn` (`europe-west1`) |
+| Cloudflare — **app account** | `tradeos.app@gmail.com` (workers.dev subdomain `tradeos`) | Workers `trade-os` (all HTTP), `tradeos-alerts` (cron, every 10 min), `trade-os-staging` (unused), KV namespace `ALERTS_KV` |
 | Cloudflare — personal | `aviniazov7@icloud.com` | **not** TradeOS: other workers (`safety-groq-proxy`, `workout-bot`, `pump-detector`) and `tradeos-google-auth`, which nothing in this repo references |
 | Resend, Groq, Moralis | API keys are stored as Worker secrets (see below) | email sending, AI chat, wallet lookups |
 
 **Ownership policy (target):** every production asset has two Owners — the app account and the personal account — so losing one login (2FA, recovery) never locks the project out.
 - Firebase: *Project settings → Users and permissions* — both accounts with the **Owner** role.
 - Cloudflare: the personal account added as a member of the app account (*Manage account → Members*) with a Super Administrator role, so one login reaches both.
-- Status of both: **to be confirmed** by the owner; update this line when done.
+- Status: **Firebase confirmed 2026-10-09** (both accounts are Owner under *Users and permissions*). Cloudflare: **to be confirmed** — check *Manage account → Members* in the app account and update this line.
 
 ### Where credentials live
 
