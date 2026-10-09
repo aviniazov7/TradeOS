@@ -4,6 +4,9 @@ import { Navigate, useSearchParams, Link } from 'react-router-dom';
 import { Mail, Eye, EyeOff, Lock, User, Link2, BarChart3, Sparkles, Check, ShieldCheck, Loader2, AlertCircle } from 'lucide-react';
 import toast from 'react-hot-toast';
 import { authErrorHe, authErrorMessage, isSilentAuthError } from '../../utils/authErrors';
+// Live checklist on sign-up, so the user sees what is missing before pressing
+// the button instead of after.
+import { PASSWORD_RULES, passwordProblem } from '../../utils/passwordPolicy';
 
 // What the product does, in three lines — shown beside the form on wide screens.
 const FEATURES = [
@@ -12,13 +15,6 @@ const FEATURES = [
   { icon: Sparkles, title: 'סוכן AI אישי', text: 'שואלים בעברית ומקבלים תשובה מבוססת על העסקאות שלך' },
 ];
 
-// Live password rules for sign-up, so the user sees what is missing before
-// pressing the button instead of after.
-const PASSWORD_RULES = [
-  { id: 'len', label: '8 תווים לפחות', test: (p) => p.length >= 8 },
-  { id: 'upper', label: 'אות גדולה באנגלית', test: (p) => /[A-Z]/.test(p) },
-  { id: 'digit', label: 'ספרה', test: (p) => /[0-9]/.test(p) },
-];
 
 function BrandMark({ size = 'md' }) {
   const box = size === 'lg' ? 'w-12 h-12 rounded-2xl' : 'w-10 h-10 rounded-xl';
@@ -108,13 +104,9 @@ export default function LoginPage() {
     setSubmitting(true);
     try {
       if (mode === 'register') {
-        if (password.length < 8) {
-          setFormError('הסיסמה חייבת להכיל לפחות 8 תווים');
-          setSubmitting(false);
-          return;
-        }
-        if (!/[A-Z]/.test(password) || !/[0-9]/.test(password)) {
-          setFormError('הסיסמה חייבת להכיל אות גדולה ומספר');
+        const problem = passwordProblem(password);
+        if (problem) {
+          setFormError(problem);
           setSubmitting(false);
           return;
         }

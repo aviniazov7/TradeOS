@@ -1,4 +1,6 @@
 import { useState, useEffect, useRef } from 'react';
+import { passwordProblem } from '../../utils/passwordPolicy';
+import { authErrorHe } from '../../utils/authErrors';
 import { useNavigate } from 'react-router-dom';
 import { motion, AnimatePresence } from 'framer-motion';
 import { LogOut, Trash2, Lock, Mail, Share2, Download, Eye, EyeOff, Sun, Moon, Trophy, Crown, ShieldCheck, Clock, ArrowLeft, ChevronRight, Check, Coins, LineChart, Briefcase, Receipt, ChevronLeft, Camera } from 'lucide-react';
@@ -170,12 +172,9 @@ export default function ProfilePage() {
 
   const handleChangePassword = async (e) => {
     e.preventDefault();
-    if (newPassword.length < 8) {
-      toast.error('הסיסמה חייבת להכיל לפחות 8 תווים');
-      return;
-    }
-    if (!/[A-Z]/.test(newPassword) || !/[0-9]/.test(newPassword)) {
-      toast.error('הסיסמה חייבת להכיל אות גדולה ומספר');
+    const problem = passwordProblem(newPassword);
+    if (problem) {
+      toast.error(problem);
       return;
     }
     setSaving(true);
@@ -189,7 +188,7 @@ export default function ProfilePage() {
       console.error('Change password failed:', err);
       const msg = err.code === 'auth/wrong-password' || err.code === 'auth/invalid-credential'
         ? 'סיסמה נוכחית שגויה'
-        : 'שגיאה בשינוי סיסמה';
+        : authErrorHe(err, 'שגיאה בשינוי סיסמה');
       toast.error(msg);
     } finally {
       setSaving(false);

@@ -14,6 +14,8 @@ import {
   changePassword as authChangePassword,
   reauthenticate,
   deleteAuthUser,
+  sendVerificationEmail as authSendVerificationEmail,
+  refreshEmailVerified as authRefreshEmailVerified,
 } from '../services/authService';
 // Profile + settings, plus the account-deletion wipe (all subcollections +
 // leaderboard + user doc).
@@ -220,6 +222,18 @@ export function AuthProvider({ children }) {
   }, [user]);
 
   const isEmailUser = user?.providerData?.some((p) => p.providerId === 'password') || false;
+  // Email/password accounts that haven't clicked the verification link yet
+  // (Google accounts are verified by Google). Shown as a reminder, not a gate.
+  // uid confirmed verified in this session (user.reload() mutates the Firebase
+  // user in place, which React can't see) — keyed by uid so a user switch resets it.
+  const [verifiedUid, setVerifiedUid] = useState(null);
+  const needsEmailVerification = isEmailUser && !user?.emailVerified && verifiedUid !== user?.uid;
+  const resendVerification = useCallback(() => authSendVerificationEmail(), []);
+  const checkEmailVerified = useCallback(async () => {
+    const ok = await authRefreshEmailVerified();
+    if (ok) setVerifiedUid(user?.uid ?? null);
+    return ok;
+  }, [user?.uid]);
   const isAdmin = profile?.role === 'admin';
   // Premium gate. Admins are always premium. A plan with an expiry only counts
   // while it hasn't lapsed. planExpires may be a Firestore Timestamp / ISO
@@ -235,9 +249,11 @@ export function AuthProvider({ children }) {
     user, profile, isAdmin, isPremium, plan, loading,
     loginWithGoogle, loginWithGoogleIdToken, registerWithEmail, loginWithEmail,
     logout, changePassword, resetPassword, deleteAccount, isEmailUser,
+    needsEmailVerification, resendVerification, checkEmailVerified,
   }), [user, profile, isAdmin, isPremium, plan, loading, isEmailUser,
     loginWithGoogle, loginWithGoogleIdToken, registerWithEmail, loginWithEmail,
-    logout, changePassword, resetPassword, deleteAccount]);
+    logout, changePassword, resetPassword, deleteAccount,
+    needsEmailVerification, resendVerification, checkEmailVerified]);
 
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;
 }
