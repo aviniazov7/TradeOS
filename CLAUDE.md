@@ -47,8 +47,8 @@ Preview channels live 7 days then auto-delete.
 before releasing. Summary:
 
 - `CACHE_NAME` (`public/sw.js`) is **auto-bumped** on every push to `main` (via
-  `scripts/bump-version.mjs`) — this forces the service worker to update and
-  triggers the "גרסה חדשה זמינה" prompt. Never touch it manually.
+  `scripts/bump-version.mjs`) — this makes the service worker take over silently
+  on the user's next open (there is no update prompt). Never touch it manually.
 - `APP_VERSION` (`src/utils/constants.js`) is the **marketing version, set by
   hand**, currently pinned at `2.1.0`. A normal release does NOT require bumping
   it. Bump it (semver MAJOR/MINOR/PATCH — see the guide) only for a
@@ -100,6 +100,17 @@ changes.
   staging modify real production data. Don't run destructive bulk operations.
 - **Cron triggers:** disabled in staging so admins don't receive duplicate
   weekly digest / churn / expiry pushes.
+
+## Accounts — read before touching secrets
+
+The TradeOS Workers live in the **app's** Cloudflare account. The local
+`wrangler` is logged in to the owner's **personal** Cloudflare account, which
+does not contain them — so never run `wrangler secret put` / `deploy` from the
+machine without an explicit `CLOUDFLARE_ACCOUNT_ID` + the app account's token.
+New Worker secrets are added in the dashboard (*Workers & Pages → trade-os →
+Settings → Variables and Secrets*) or via CI. Exchange API keys are stored only
+encrypted in KV (never Firestore) — see "Accounts, ownership & credentials" in
+`README.md` for the full map.
 
 ## Admin panel
 

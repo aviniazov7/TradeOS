@@ -14,137 +14,77 @@
 
 # TradeOS — Trading Operating System
 
-<div dir="rtl">
+A trading journal and analytics platform for crypto, stocks and futures traders: trade journal with R-multiples, live exchange sync, a live trading desk, backtesting, a psychology journal, market data, an AI coach and Web Push alerts. The product UI is **Hebrew, right-to-left** (this repository's documentation is in English, except the internal hand-over notes in `docs/NEXT.md` and `docs/VERSIONING.md`).
 
-פלטפורמה מקיפה לניהול מסחר בקריפטו (פיוצ'רס) — יומן מסחר, אנליטיקס מתקדם, אזור מנטליות, חיבור בורסות, התראות Web Push מתוך האפליקציה, ועוד. הכל בעברית ובממשק RTL מודרני.
-
-</div>
-
-**Live:** [tradeos-91a58.web.app](https://tradeos-91a58.web.app)
-
-> 👉 ממשיכים מפה / עובדים ממחשב אחר? קראו קודם את **[docs/NEXT.md](docs/NEXT.md)** — מה נשאר לעשות.
+**Live:** [tradeos-91a58.web.app](https://tradeos-91a58.web.app) · **Working from another machine?** Read [`docs/NEXT.md`](docs/NEXT.md) first (what is open, what shipped) and [`CLAUDE.md`](CLAUDE.md) (the rules for any AI agent or developer).
 
 ---
 
 ## Features
 
-### Trading Journal
-- Log futures trades with entry/exit prices, leverage, fees, and notes
-- Automatic P&L, ROI%, R:R, and net PnL calculations
-- Filter by pair, strategy, result, tag — **filters persist across page reloads**
-- Multiple journals per exchange/strategy
-- Monthly calendar with color-coded daily P&L
-- CSV import (Bybit / MEXC / OKX / Bitget format) + CSV export with correct % calculation
-- **Duplicate trade detection** — warns if a similar trade already exists
-- **Undo delete** — 5-second undo window with batched toast notifications
+### Trading journal
+- Three asset classes — crypto, stocks and CME futures — with their own forms, fees and risk maths. Several journals per user (free plan: 2).
+- Single-screen **trade ticket**: entry, stop, targets, scale-in fills, exits with per-target percentages, trade plan checklist and adherence, screenshots (up to 4 per trade, compressed), notes, tags, strategy and timeframe memory.
+- Automatic P&L, ROI, **R-multiple** (against the *original* stop), fees from per-journal **commission presets**, **MAE / MFE** excursion, partial exits and break-even moves.
+- Filters (pair, strategy, result, tag, dates) that persist across reloads; monthly calendar with daily P&L; CSV import/export; duplicate detection; 5-second undo for deletes.
+- **Prop-firm tracker** (profit target, daily/overall drawdown rules) per journal.
+- **Stocks journal** with company logos and live quotes (via the Worker); an **exchange** tab only for crypto journals.
+- Entry and exit times can't be set in the future, nor an exit before the entry.
 
-### Exchange Sync
-- **Direct API sync** from Bybit, MEXC, OKX, Bitget — no manual CSV needed
-- Accurate **entry & exit timestamps** (MEXC: dual-API chronological matching)
-- Syncs fees, leverage, direction, P&L from exchange
-- **Upsert logic** — re-sync updates existing trades instead of creating duplicates
-- Passphrase support for OKX and Bitget
-- **Binance** — guide only (IP whitelist limitation)
-- Visual preview of trades before import, with "update" badge for existing ones
+### Exchange sync (read-only)
+- Direct API sync from **Bybit, MEXC, OKX, Bitget** and **Hyperliquid** (wallet address only, public data); **Binance** is CSV-only (its API needs a static IP).
+- Keys are stored **encrypted on the server** and the app tells users to create **read-only** keys. See [Security](#security--privacy).
+- Re-sync upserts existing trades; OKX/Bitget passphrases supported; accurate entry/exit timestamps.
 
-### Dashboard & Analytics
-- P&L chart, win rate breakdown, equity curve
-- Trade heatmap, streak analysis, **day-of-week** performance
-- **Session analysis** using Israel timezone (Asia/Jerusalem) — Asian/London/NY/Overlap
-- Monthly performance table, strategy comparison
-- Sharpe Ratio, Sortino Ratio, Profit Factor, Calmar Ratio, Max Drawdown, Recovery Factor
-- Live crypto price ticker, Fear & Greed gauge
-- **Offline detection banner** — alerts user when internet is lost
+### Trading desk (`/terminal`)
+- Live open positions and open orders from the connected exchanges (read-only).
+- TradingView charts in a **resizable split screen** (1–4 panes, eight layouts, per-pane timeframe, symbol sync, chart style, fullscreen, "open in my TradingView"); phones show one chart with tabs.
 
-### Mentality Zone
-- Morning & evening psychological journals
-- Emotion tracking, readiness assessment
-- Psychological journey timeline
-- Mental stats with streaks and patterns
+### Dashboard
+- Portfolio value and equity curve, an AI "agent" read of your trades, win rate, win/loss ratio, profit factor, streaks, performance score, recent trades, per-journal cards, market snapshot and news.
+- Small samples are shown honestly: no score before 5 closed trades, no win/loss ratio until there is a loss.
 
-### Backtesting
-- Separate journals for strategy backtesting
-- Auto-detected trading sessions
-- Backtest-specific analytics
+### Analytics & backtesting
+- Equity, session (Israel time), day-of-week and duration analysis; Sharpe, Sortino, Calmar, drawdown and recovery.
+- Separate **backtest journals** with their own analytics and a shareable strategy view.
 
-### Portfolio (`/portfolio`)
-- **DCA tab** — dollar-cost averaging position tracker, per-coin analytics with average entry price
-- **Wallets tab** — read-only on-chain wallet balances (EVM, Solana, Bitcoin)
+### Portfolio, plans and tax
+- **Portfolio** (`/portfolio`): DCA plans and their performance, plus read-only on-chain wallet balances (EVM, Solana, Bitcoin).
+- **Trading plans** with entry/exit rules, checklists and chart links.
+- **Tax report**: realised gains in ILS using Bank of Israel exchange rates (linked from the profile).
 
-### Market Data
-- Real-time prices: market cap, BTC dominance, 24h volume
-- Fear & Greed Index with history
-- Altcoin Season Index (90-day)
-- Top gainers/losers, trending coins, interactive heatmap
-- Coin analysis, whale tracking and Polymarket (Premium) as tabs of the Market page
-- Crypto news feed + economic calendar
+### Mentality zone
+- Morning and evening journals (emotions, sleep, lessons). **They are private to the user — admins cannot read them.**
+- A **development map**: a stage assessment built from the user's own trades, plans and journals, with an animated journey path, strengths/blockers and an AI read.
 
-### Plans & Analysis
-- Trading plans with entry/exit rules and TradingView chart links
-- Analysis cards with coin filter (substring search) and category filter
-- Custom strategy management per context
+### Market, news and AI
+- **Market**: global stats, Fear & Greed, altcoin season, gainers/losers, heatmap, funding / open interest / long-short ratios, a live liquidation stream, coin analysis, whale tracking and Polymarket (Premium). Every panel shows an error state with retry when a source fails.
+- **News**: crypto and stocks feeds (machine-translated headlines) and an **economic calendar** with a switch for the "high-impact USD event in an hour" push.
+- **TradeAI**: chat, a chart analyzer and the AI coach. Numbers in AI answers stay left-to-right inside Hebrew text; all AI HTML is sanitized.
+- **Wyckoff setup scanner** (admin-only while being calibrated).
 
-### Additional
-- Personal trading notes
-- Global search across trades, plans, backtests
-- Dark/Light mode with persistent preference
-- Mobile responsive with bottom navigation and pull-to-refresh
-- Onboarding wizard for new users
+### Accounts, plans and accessibility
+- Google or email sign-in; password policy (8+ chars, an uppercase letter and a digit); an unverified-email reminder; profile photo; complete **account deletion** (see Security).
+- **Free / Premium** plans with coupons. Online payments are not live yet — Premium is granted manually or by coupon.
+- Light/dark theme, an accessibility menu and statement, installable PWA with silent updates.
 
 ---
 
-## Notifications (Web Push)
+## Notifications
 
-All notifications are delivered in-app via Web Push (VAPID), keyed by the user's uid — no external bot or third-party chat app required. Everything is configured from the app's notification settings.
+Everything is **Web Push** (VAPID, encrypted payloads) keyed by user id — no external bot. Users configure them in *Profile → Notifications*; the economic-calendar alert also has a switch on the *News → Economic calendar* tab.
 
-### Automated Notifications
-Configured per-user from the notification settings (a scheduled-push section + a "send test" button). The cron delivers them via Web Push:
-
-| Feature | Description |
+| Alert | When |
 |---|---|
-| Trade Events | Position opened / TP hit / SL hit (manual trades and exchange sync) |
-| Journal Reminder | Daily reminder at a configurable time (default 21:00) |
-| Daily Summary | End-of-day P&L, trade count, Win Rate (auto-pushed from the app) |
-| Economic Calendar | Alert 1 hour before High Impact USD events (CPI, FOMC, NFP) |
+| Trade events | position opened / TP hit / SL hit (from exchange sync) |
+| Journal reminder | daily, at a time the user picks |
+| Daily summary | end-of-day P&L, trade count, win rate |
+| Economic calendar | about an hour before a **high-impact USD** event — Hebrew event name, Israel time, forecast, previous value and a volatility warning; opens the calendar |
+| Unusual price move | only when price **and** volume break out together and corroborating coverage explains it |
+| Premium expiry | 3 days before and on the day |
+| Admin messages | one-off or bulk, sent by an admin |
 
-The cron matches a scheduled time to a **10-minute tick window**, so any chosen time fires (not only multiples of 10).
-
-### Worker Architecture
-- **Runtime:** Cloudflare Workers (serverless, edge)
-- **Delivery:** Web Push (VAPID, encrypted payloads) to every registered device
-- **Storage:** Workers KV (push subscriptions, alerts, schedules, stats — all uid-keyed)
-- **Market Data:** Binance Spot + Futures API
-- **Calendar:** ForexFactory API
-- **Cron:** Every 10 minutes (price alerts, reminders, summaries, calendar events)
-- **Exchange Sync:** HMAC-SHA256 signing proxy — API secrets never leave the server
-
----
-
-## Tech Stack
-
-### Web App
-| Technology | Version | Usage |
-|---|---|---|
-| React | 19 | UI framework |
-| Vite | 7 | Build tool |
-| Tailwind CSS | 4 | Styling |
-| Firebase Auth | 12 | Authentication (Google) |
-| Cloud Firestore | 12 | Database |
-| Firebase Hosting | — | Deployment |
-| Recharts | 3.8 | Charts & graphs |
-| Framer Motion | 12 | Animations |
-| Lucide React | — | Icons |
-| React Hot Toast | — | Notifications |
-| date-fns | — | Date handling |
-
-### Cloudflare Worker
-| Technology | Usage |
-|---|---|
-| Cloudflare Workers | Serverless runtime (Web Push notifications + Exchange sync proxy) |
-| Workers KV | Key-value storage for push subscriptions, alerts, schedules |
-| Web Push (VAPID) | Encrypted push delivery to registered devices |
-| Binance API | Spot + Futures market data |
-| MEXC / Bybit / OKX / Bitget API | Exchange trade sync (read-only, HMAC signed) |
+**Email** is limited to service emails (Premium receipts, coupon redemption) and an admin "come back" campaign that is **opt-in only**: an unticked box at signup / a switch in the profile, the subject starts with the Hebrew word for "advertisement", and every message has a one-click unsubscribe link. The Worker re-checks each recipient's consent server-side. (Real delivery needs a verified sending domain in Resend; until then it is in test mode.)
 
 ---
 
@@ -152,119 +92,127 @@ The cron matches a scheduled time to a **10-minute tick window**, so any chosen 
 
 ```mermaid
 flowchart TD
-    user["👤 User<br/>Browser · iOS PWA"] --> app
+    user["User — browser / installed PWA"] --> spa["React + Vite SPA<br/>Tailwind · Framer Motion · RTL"]
 
-    %% Web app
-    app["⚛️ React + Vite SPA<br/>Tailwind · Framer Motion · RTL"] --> auth & svc & worker
+    spa --> svc["Service layer (src/services)<br/>the only code that imports Firebase"]
+    svc --> fb["Firebase<br/>Auth · Firestore · Hosting · googleSignIn function"]
+    svc --> w["Cloudflare Worker — trade-os<br/>all HTTP routes"]
 
-    %% Firebase
-    auth["🔐 Firebase Auth<br/>Google OAuth · Email Link"] --> store
-    svc["🧩 Service Layer<br/>firestoreService · authService · exchangeService"] --> store & worker
-    store[("🔥 Firestore<br/>trades · journals · plans<br/>backtests · mentality · notes")]
-    hosting["🌐 Firebase Hosting<br/>SPA · SW · cache headers"] -.serves.-> app
+    cron{{"Cloudflare Worker — tradeos-alerts<br/>same code, cron every 10 min"}} --> kv
+    w --> kv[("Workers KV<br/>encrypted exchange keys · push subscriptions<br/>schedules · AI quotas · coupons · audit")]
+    w --> fb
+    cron --> push
+    w --> push["Web Push (VAPID)"]
 
-    %% Worker
-    worker["☁️ Cloudflare Worker<br/>(edge runtime)"] --> sync & push & cron
+    w --> ex["Exchanges (read-only)<br/>Bybit · MEXC · OKX · Bitget · Hyperliquid"]
+    w --> data["Market data<br/>Bybit · Yahoo · CoinGecko · Bank of Israel · ForexFactory"]
+    w --> ai["AI — Groq<br/>(Gemini wired but off)"]
+    w --> mail["Resend — email"]
 
-    %% Exchange pipeline
-    sync["🔄 Exchange Sync Proxy<br/>HMAC-SHA256 signing"] --> exchanges
-    exchanges["💱 Bybit · MEXC · OKX · Bitget<br/>(read-only API keys)"]
-
-    %% Web Push pipeline
-    push["🔔 Web Push<br/>VAPID · encrypted payloads"] --> kv & market
-    kv[("📦 Workers KV<br/>subscriptions · alerts · schedules · stats")]
-    market["📊 Binance Spot+Futures<br/>ForexFactory"]
-
-    %% Scheduled
-    cron{{"⏰ Cron · * * * * *"}} --> alerts & summary & calendar
-    alerts["💥 Price alerts"] --> push
-    summary["📈 Daily P&L summary"] --> push
-    calendar["🗓️ Economic calendar<br/>(High-Impact USD)"] --> push
-
-    classDef firebase fill:#FFA000,stroke:#E65100,color:#000,stroke-width:2px
-    classDef cloudflare fill:#F38020,stroke:#A04200,color:#000,stroke-width:2px
-    classDef react fill:#61DAFB,stroke:#0A6E89,color:#000,stroke-width:2px
-    classDef external fill:#2A2A2A,stroke:#666,color:#FFF
-    classDef cron fill:#8B5CF6,stroke:#5B21B6,color:#FFF,stroke-width:2px
-
-    class auth,store,hosting firebase
-    class worker,sync,push,kv cloudflare
-    class app,svc react
-    class exchanges,market external
-    class cron,alerts,summary,calendar cron
+    classDef firebase fill:#FFA000,stroke:#E65100,color:#000
+    classDef cloudflare fill:#F38020,stroke:#A04200,color:#000
+    classDef react fill:#61DAFB,stroke:#0A6E89,color:#000
+    class fb firebase
+    class w,cron,kv,push cloudflare
+    class spa,svc react
 ```
 
-All Firebase SDK calls are isolated in a **service layer** (`src/services/`). Hooks and components never import directly from `firebase/*` — they use service functions instead.
-
-```mermaid
-flowchart LR
-    A["Components<br/>Contexts · Hooks"] --> B["Service Layer<br/>firestoreService · authService · exchangeService"]
-    B --> C["Firebase SDK"] & D["Cloudflare Worker"]
-
-    classDef boundary fill:#1f2937,stroke:#F7A600,color:#fff,stroke-width:2px
-    class B boundary
-```
+- **Hosting** serves the SPA with security headers (`firebase.json`); all dynamic work happens in the Worker or directly against Firestore under security rules.
+- **Two Workers, one codebase** (`worker/`): `trade-os` serves HTTP; `tradeos-alerts` runs the cron. Merging to `dev` or `main` updates **both production Workers**.
+- Firestore is **shared** by staging and production (there is no separate staging database).
 
 ---
 
-## Project Structure
+## Security & privacy
+
+- **Tenant isolation** — Firestore rules give each user their own data only. On their own profile document users may write only an allowlist of fields (`plan`, `role`, `planExpires` and any privilege-looking field are server-only). The rules have emulator tests (`npm run test:rules`).
+- **Exchange API keys** are never stored in Firestore or the browser. They are sent once to the Worker and kept in KV encrypted with AES-GCM (`CREDS_ENCRYPTION_KEY`); Firestore holds only a "connected" marker. The Worker only calls **read** endpoints — it never places orders or withdraws. A scan on 2026-10-09 found 0 of 24 users with plaintext keys; `.github/workflows/scan-exchange-keys.yml` re-runs that check (read-only, counts only).
+- **Admins** can read most user data (trades, trading journals, plans, backtests) but **not** the mental journals, trade screenshots or settings.
+- **Account deletion is complete**: all data, the Auth account, encrypted keys, push subscriptions, the admin's private note, coupon markers, and the local browser cache; payment records are kept but anonymised and the audit entry keeps only an opaque id.
+- **Content-Security-Policy** is in report-only mode (see `firebase.json`); violations from real browsers are logged by the Worker route `POST /csp-report` (search "CSP report" in Cloudflare → trade-os → Observability). It will be enforced once a week of reports is clean.
+- Passwords: 8+ characters with an uppercase letter and a digit (also set in the Firebase console), email-enumeration protection on.
+- Reference documents: [`docs/legal/DATA_INVENTORY.md`](docs/legal/DATA_INVENTORY.md) (what data is collected and where — input for the privacy policy and terms, which still need legal text) and [`docs/qa/TRADEOS_QA_REPORT.md`](docs/qa/TRADEOS_QA_REPORT.md) (the audit and what fixed each finding).
+
+---
+
+## Tech stack
+
+| Layer | Technology |
+|---|---|
+| UI | React 19, Vite 7, Tailwind CSS 4, Framer Motion, Recharts, Lucide icons, React Router 7 |
+| Data | Cloud Firestore (security rules), Firebase Auth (Google + email), Firebase Hosting |
+| Server | Cloudflare Workers + KV (HTTP and cron), Web Push (VAPID), one Firebase Cloud Function (`googleSignIn`, `europe-west1`) |
+| Integrations | Exchange REST APIs (HMAC signed server-side), TradingView embeds, Groq (AI), Resend (email), Moralis (wallets), Bank of Israel (FX rates) |
+| Quality | Vitest (unit tests), `@firebase/rules-unit-testing` (rules, in the emulator), ESLint, GitHub Actions |
+| Documents | jsPDF, xlsx, html-to-image (exports and share cards) |
+
+---
+
+## Project structure
 
 ```
 TradeOS/
 ├── src/
-│   ├── components/
-│   │   ├── analytics/       # Equity curve, session, day-of-week, duration charts
-│   │   ├── auth/            # Login page
-│   │   ├── backtest/        # Backtesting tracker & analytics
-│   │   ├── dashboard/       # Dashboard, stat cards, charts, performance tables
-│   │   ├── dca/             # DCA position tracker & analytics
-│   │   ├── exchange/        # Exchange API settings & sync UI
-│   │   ├── journal/         # Trade journal, calendar, form, filters
-│   │   ├── layout/          # Header, sidebar, mobile nav
-│   │   ├── market/          # Market overview
-│   │   ├── mentality/       # Morning/evening journals, mental stats
-│   │   ├── news/            # News feed + economic calendar
-│   │   ├── onboarding/      # First-time user wizard
-│   │   ├── plans/           # Trading plans & analysis cards
-│   │   ├── profile/         # User profile, notification settings
-│   │   ├── portfolio/       # Portfolio page (DCA + wallets tabs)
-│   │   └── shared/          # Reusable UI components
-│   ├── contexts/            # React contexts (Auth, Journal, Backtest)
-│   ├── hooks/               # Custom hooks (trades, stats, DCA, alerts, etc.)
-│   ├── services/            # Firebase, Firestore, push, exchange APIs
-│   └── utils/               # Calculations, formatters, constants
-├── worker/
-│   └── index.js             # Cloudflare Worker (Web Push + exchange sync proxy)
-├── public/                  # Static assets & icons
-└── package.json
+│   ├── components/        # one folder per area: admin, analytics, auth, backtest, calculator,
+│   │                      #   dashboard, dca, exchange, journal, layout, legal, market, mentality,
+│   │                      #   news, onboarding, plans, polymarket, portfolio, premium, profile,
+│   │                      #   propfirm, shared, signals, stocks, tax, terminal, wallets, whales
+│   ├── contexts/          # Auth, Journal, Backtest
+│   ├── hooks/             # data and behaviour hooks
+│   ├── services/          # ALL Firebase access + Worker clients (firestoreService, authService, pushService…)
+│   └── utils/             # calculations, formatters, constants, pure helpers (+ their tests)
+├── worker/                # Cloudflare Worker: index.js (routes + cron) and pure, tested modules
+│                          #   (aiQuota, calendarAlert, adminEmail, unsubscribe, accountPurge, cspReport, …)
+├── functions/             # Firebase Cloud Function (Google sign-in for iOS PWAs)
+├── tests/rules/           # Firestore security-rules tests (emulator)
+├── scripts/               # version bump, key-scan, one-off tooling
+├── docs/                  # NEXT.md, VERSIONING.md, legal/, qa/, specs/
+├── public/                # static assets, service worker, robots.txt, sitemap.xml
+├── firebase.json          # hosting headers (incl. CSP), emulators
+├── firestore.rules
+└── wrangler.jsonc         # the trade-os Worker (worker/wrangler.toml is the cron Worker)
 ```
 
 ---
 
-## Getting Started
+## Accounts, ownership & credentials
 
-### Prerequisites
-- Node.js 18+
-- Firebase project (Auth + Firestore enabled)
-- Cloudflare account (for Worker)
+| Service | Account | What lives there |
+|---|---|---|
+| GitHub | `aviniazov7` (personal), private repo `aviniazov7/TradeOS` | code, CI, CI secrets |
+| Firebase / Google Cloud | project `tradeos-91a58` (number `80529278454`); **Owners: `aviniazov18@gmail.com` (personal) and `tradeos.app@gmail.com` (app)**; the local `firebase` CLI is logged in as `aviniazov18@gmail.com` | Auth, Firestore, Hosting, Cloud Function `googleSignIn` |
+| Cloudflare — **app account** | `tradeos.app@gmail.com` (workers.dev subdomain `tradeos`) | Workers `trade-os` (all HTTP), `tradeos-alerts` (cron, every 10 min), `trade-os-staging` (unused), KV namespace `ALERTS_KV` |
+| Cloudflare — personal | `aviniazov7@icloud.com` | **not** TradeOS: other workers (`safety-groq-proxy`, `workout-bot`, `pump-detector`) and `tradeos-google-auth`, which nothing in this repo references |
+| Resend, Groq, Moralis | API keys are stored as Worker secrets (below) | email sending, AI chat, wallet lookups |
 
-### Web App
+**Ownership policy (target):** every production asset has two Owners — the app account and the personal account — so losing one login (2FA, recovery) never locks the project out.
+- Firebase: **confirmed 2026-10-09** — both accounts are Owner under *Project settings → Users and permissions*.
+- Cloudflare: the personal account should be a member of the app account (*Manage account → Members*) with a Super Administrator role — **to be confirmed**; update this line when done.
+
+### Where credentials live
+
+- **Exchange API keys:** see [Security & privacy](#security--privacy).
+- **Worker secrets** (names only; values are never in the repo): `CREDS_ENCRYPTION_KEY`, `FIREBASE_SERVICE_ACCOUNT`, `GROQ_API_KEY`, `GEMINI_API_KEY`, `RESEND_API_KEY`, `MORALIS_API_KEY`, `VAPID_JWK`, `UNSUBSCRIBE_SECRET`, `MAIL_TO_ADMIN_OVERRIDE`, `CF_ACCOUNT_ID`, `CF_API_TOKEN`. CI re-applies the ones it knows from GitHub secrets on every deploy; the others (`CREDS_ENCRYPTION_KEY`, `UNSUBSCRIBE_SECRET`, …) were set once in the dashboard and survive deploys.
+- **GitHub Actions secrets:** `CLOUDFLARE_API_TOKEN` (a token for the **app** Cloudflare account; the account id is set in `deploy.yml`), `FIREBASE_SERVICE_ACCOUNT`, plus the Worker secret values listed above.
+
+### Running `wrangler` / `firebase` locally — read this first
+
+- This machine's `wrangler` is logged in to the **personal** Cloudflare account, which does **not** contain the TradeOS Workers, so `wrangler secret put …` from here would target the wrong account. Set secrets in the dashboard (*Workers & Pages → trade-os → Settings → Variables and Secrets*) or use the app account's API token with `CLOUDFLARE_ACCOUNT_ID`.
+- Deploys go through GitHub Actions (see below); Firestore rules are the only manual deploy.
+
+---
+
+## Getting started
+
+**Prerequisites:** Node.js 20+; for the rules tests also the Firebase CLI and Java (the Firestore emulator).
 
 ```bash
-# Install dependencies
 npm install
-
-# Create .env with Firebase config
-cp .env.example .env
-
-# Start dev server
-npm run dev
-
-# Build & deploy
-npm run deploy
+cp .env.example .env     # Firebase web config (public values)
+npm run dev              # http://localhost:5173
 ```
 
-### Environment Variables
+### Environment variables
 
 ```env
 VITE_FIREBASE_API_KEY=
@@ -273,131 +221,99 @@ VITE_FIREBASE_PROJECT_ID=
 VITE_FIREBASE_STORAGE_BUCKET=
 VITE_FIREBASE_MESSAGING_SENDER_ID=
 VITE_FIREBASE_APP_ID=
-VITE_WORKER_URL=https://your-worker.workers.dev
+VITE_WORKER_URL=https://trade-os.tradeos.workers.dev   # CI sets this per target
+# optional
+VITE_GOOGLE_CLIENT_ID=        # Google sign-in popup page (/auth-google)
+VITE_RECAPTCHA_SITE_KEY=      # enables Firebase App Check
+VITE_USE_EMULATORS=true       # dev server only: talk to the local Auth/Firestore emulators
 ```
 
-### Cloudflare Worker
+The Firebase web config is public by design; the security boundary is Firestore rules (and optionally App Check).
+
+### Testing
 
 ```bash
-# Login to Cloudflare
-npx wrangler login
-
-# Set the Web Push VAPID key as a secret
-npx wrangler secret put VAPID_JWK
-
-# Deploy
-npx wrangler deploy
+npm test             # Vitest unit tests (src/ and worker/)
+npm run test:rules   # Firestore rules in the emulator (needs Java + Firebase CLI)
+npm run lint         # ~160 known pre-existing errors; don't add new ones in files you touch
+npm run build        # must pass on every PR
 ```
+
+**Local end-to-end without touching production data:**
+`firebase emulators:start --only auth,firestore --project tradeos-91a58` in one terminal, then `VITE_USE_EMULATORS=true npm run dev` in another.
 
 ---
 
-## Supported Exchanges
+## Supported exchanges
 
-| Exchange | API Sync | CSV Import | Notes |
+| Exchange | API sync | CSV import | Notes |
 |---|---|---|---|
-| MEXC | ✅ | ✅ | Dual-API exit time matching |
-| Bybit | ✅ | ✅ | Closed PnL endpoint |
-| OKX | ✅ | ✅ | Requires Passphrase |
-| Bitget | ✅ | ✅ | Requires Passphrase |
-| Binance | ❌ | ✅ | IP whitelist limitation |
-
-API keys are **read-only** and signed server-side via the Cloudflare Worker — secrets never reach the browser.
+| Bybit | ✅ | ✅ | closed-PnL endpoint |
+| MEXC | ✅ | ✅ | dual-API exit-time matching |
+| OKX | ✅ | ✅ | needs passphrase |
+| Bitget | ✅ | ✅ | needs passphrase |
+| Hyperliquid | ✅ | — | public wallet address, no keys |
+| Binance | ❌ | ✅ | API requires a static IP |
 
 ---
 
-## Deployment & Release Workflow
+## Deployment & release workflow
 
-### How to ship any change
-
-```bash
-git pull origin main          # get the latest
-# ...make your changes...
-npm run deploy                # build + worker + hosting + Firestore rules
+```
+feature/* or fix/*  →  PR  →  dev  →  PR  →  main
 ```
 
-`npm run deploy` runs: `vite build` → `wrangler deploy` (Cloudflare Worker) →
-`firebase deploy --only hosting,firestore:rules`. Firestore security rules are
-published automatically, so rule changes never get left behind.
+`main` is production — **never push to it directly**. Everything below is automated by GitHub Actions (`.github/workflows/deploy.yml`):
 
-### Version bump — automatic on every release
+| Trigger | What happens |
+|---|---|
+| Push to `main` | auto-bumps the cache version, builds, deploys Hosting (live) + both production Workers |
+| Push to `dev` | builds, deploys Hosting (`dev` channel) + the Workers — **which are the production Workers**, so treat Worker changes on `dev` as production changes |
+| Push to `feature/*`, `fix/*`, `hotfix/*`, or a pull request | builds and deploys a Hosting **preview channel** (7 days) |
 
-Two values are bumped together so users reliably receive the update:
+The only manual deploy is **Firestore rules**: `firebase deploy --only firestore:rules --project tradeos-91a58` whenever `firestore.rules` changes (run it from the repository root — it needs `firebase.json`).
 
-| File | Constant | Why |
+Notes from experience:
+- Firebase caps the number of preview channels (~50). When it is reached, new previews fail with HTTP 429 **while CI still reports success** — delete old channels (`firebase hosting:channel:delete <id>`).
+- Merging a feature to `dev` and then `dev` to `main` back-to-back is safe: both share one deploy queue and never run at once.
+
+### Versions
+
+| What | Where | Who changes it |
 |---|---|---|
-| `src/utils/constants.js` | `APP_VERSION` | Shown in the sidebar; reported per-user to the admin panel |
-| `public/sw.js` | `CACHE_NAME` (`tradeos-vN`) | Forces the service worker to register a new version |
+| Marketing version `APP_VERSION` (currently `2.1.0`) | `src/utils/constants.js` | **by hand**, only for a user-visible milestone — see [`docs/VERSIONING.md`](docs/VERSIONING.md) |
+| Cache version `CACHE_NAME` (`tradeos-vN`) | `public/sw.js` | **automatically** on every push to `main` (`scripts/bump-version.mjs`) — never edit it |
 
-**You don't bump these manually.** The deploy workflow auto-bumps `APP_VERSION`
-(patch) and `CACHE_NAME` on every push to `main` (`scripts/bump-version.mjs`,
-which also syncs the og-image `?v=` cache-buster in `index.html`). The version
-line was reset to **2.0.0** for the release; bump manually only if the
-auto-bump script breaks.
+### Silent updates
 
-### Silent update (how users get updates)
+There is no update banner. The service worker `skipWaiting()`s and `clients.claim()`s, so a new build takes over immediately and the fresh assets are served the next time the app is opened or reloaded; the page is never reloaded mid-session.
 
-There is **no update banner or button** — updates are silent, applied on the
-user's next open:
+### Rollback
 
-1. You deploy a new version (new `CACHE_NAME`).
-2. The browser fetches the new `sw.js`; it `skipWaiting()`s on install and
-   `clients.claim()`s on activate, so it takes control and caches the new
-   shell immediately.
-3. The page is **never reloaded mid-session** — the fresh assets are served
-   the next time the app is opened/reloaded (`src/services/swUpdate.js` only
-   registers + checks for updates on focus; it never force-reloads).
-4. Result: users on old versions update automatically, with zero interaction,
-   on their next open. The old opt-in banner (`UpdatePrompt.jsx`) was removed.
+Firebase Hosting → *Release history* → pick the last good version → **Rollback** (seconds, no redeploy). For the Workers: `wrangler rollback` against the **app** Cloudflare account, or the dashboard's *Deployments* tab.
 
-### Rollback (bad deploy safety net)
+### Admin console (`/admin`)
 
-A bad release can be reverted in seconds without a redeploy:
-[Firebase Hosting → Release history](https://console.firebase.google.com/project/tradeos-91a58/hosting)
-→ pick the last good version → **Rollback**. End users cannot downgrade
-themselves; version control is centralized with the project owner.
-
-### Admin panel
-
-Route `/admin` (sidebar link "ניהול") is gated on the user's Firestore
-profile having `role: "admin"`. To grant the first admin (chicken-and-egg,
-since rules require `role` to read other users), set the `role` field to
-`admin` on your own document under `users/{uid}` in the
-[Firestore console](https://console.firebase.google.com/project/tradeos-91a58/firestore)
-once.
-
-It is a full operations console, not read-only:
-- **Customer analytics** — revenue/MRR over time, DAU/WAU/MAU + cohort
-  retention, onboarding funnel, AI usage & estimated cost, Firestore document
-  counts (with a link to the Firebase console for exact quotas).
-- **User drill-down** — per-user detail: counts, push-device status, connected
-  exchanges (ids only), reported app version, private admin note.
-- **Controls** — grant/revoke Premium, permanent user deletion (server-side,
-  including the Auth account), single/bulk push, coupon management, an audit
-  log (including who deleted their account and when).
-
-These actions run through admin-gated Worker endpoints backed by a Firebase
-service account; the Firestore rules keep admins read-only on other users'
-data client-side.
-
-### AI agent checklist (do this for every code change)
-
-See `CLAUDE.md` for the authoritative rules. In short:
-
-1. **Never push to `main`.** Branch off `dev` (`feature/*` / `fix/*`), open a
-   PR to `dev`. Commit with the owner's git identity
-   (`Avraham Niazov <aviniazov7@icloud.com>`), no third-party trailers.
-2. Make the change. Keep Firebase access inside `src/services/`.
-3. **Do not bump versions manually** — CI auto-bumps on the `main` release.
-4. `npm run build` must pass. Don't add new lint errors in files you change
-   (the repo has ~160 pre-existing ones that aren't deploy blockers).
-5. Push the branch → merge the PR to `dev`. **GitHub Actions deploys
-   automatically** (Hosting preview channel + the Worker) — no manual
-   `npm run deploy`. Promotion to `main` (production) is the owner's call.
-6. Firestore rules are the one thing CI can't deploy — run
-   `firebase deploy --only firestore:rules` manually when `firestore.rules`
-   changes.
+Gated on the Firestore field `role: "admin"` on the user's own document (set the first admin by hand in the Firestore console — rules require `role` to read other users). It covers customer analytics (revenue/MRR, DAU/WAU/MAU, cohorts, funnel, AI usage), a per-user drill-down (counts, push devices, connected exchange ids, app version, private note), and controls: grant/revoke Premium, permanent user deletion, single/bulk push, opt-in email campaigns, coupons and an audit log. Admin actions run through admin-gated Worker endpoints backed by a Firebase service account; client-side the rules keep admins read-only on other users' data.
 
 ---
+
+## Documentation map
+
+| File | What it is |
+|---|---|
+| [`CLAUDE.md`](CLAUDE.md) | rules for any AI agent or developer: git flow, identity, build/lint policy, environments, accounts |
+| [`docs/NEXT.md`](docs/NEXT.md) | hand-over note: current status and what is still open (Hebrew) |
+| [`docs/VERSIONING.md`](docs/VERSIONING.md) | when and how to bump the marketing version (Hebrew) |
+| [`docs/legal/DATA_INVENTORY.md`](docs/legal/DATA_INVENTORY.md) | data inventory for the privacy policy / terms (Hebrew, for the owner's lawyer) |
+| [`docs/qa/TRADEOS_QA_REPORT.md`](docs/qa/TRADEOS_QA_REPORT.md) | QA / security audit and how each finding was fixed |
+| [`docs/specs/`](docs/specs) | design specs (futures contracts, TradingView Charting Library) |
+
+---
+
+## Contributing (humans and AI agents)
+
+Follow [`CLAUDE.md`](CLAUDE.md): branch off `dev`, open a PR to `dev`, commit with the owner's identity and no third-party trailers, keep Firebase access inside `src/services/`, never bump versions by hand, make `npm run build` pass, add tests for logic you change, and deploy Firestore rules manually when they change. Promotion to `main` is the owner's call.
 
 ## License
 
