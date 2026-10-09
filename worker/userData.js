@@ -78,3 +78,19 @@ export function buildSettingsMap(keys, legacyAll = {}) {
   }
   return { map, needFetch };
 }
+
+// ---- Notification schedule: what POST /notify-settings stores -----------------
+// One place that decides which fields survive a save. It used to be inline in
+// the route and silently dropped `newsImpact`, so that toggle never persisted
+// and the cron never saw it enabled.
+const HHMM = /^([01]\d|2[0-3]):[0-5]\d$/;
+
+export function sanitizeNotifySettings(body) {
+  const hhmm = (v, dflt) => (typeof v === 'string' && HHMM.test(v) ? v : dflt);
+  return {
+    journal: { enabled: body?.journal?.enabled === true, time: hhmm(body?.journal?.time, '21:00') },
+    summary: { enabled: body?.summary?.enabled === true, time: hhmm(body?.summary?.time, '22:00') },
+    calendar: { enabled: body?.calendar?.enabled === true },
+    newsImpact: { enabled: body?.newsImpact?.enabled === true },
+  };
+}
