@@ -18,6 +18,7 @@ import {
 import { buildCampaignEmails, chunk, friendlyResendError, CAMPAIGN_MAX } from './adminEmail.js';
 import { unsubscribeUrl, verifyUnsubscribe, unsubscribePage, UID_RE } from './unsubscribe.js';
 import { purgeUserResidue } from './accountPurge.js';
+import { calendarAlertBody, CALENDAR_ALERT_TITLE } from './calendarAlert.js';
 import { emailShell, C as EMAIL_C, bg as emailBg, txt as emailTxt, esc as emailEsc, para as emailPara } from './emailTheme.js';
 import { buildDigestEmail } from './adminDigest.js';
 import { pickMarketFacts, HOOK_SYSTEM_PROMPT, buildHookUserMessage, validateHook, templateHook } from './marketHook.js';
@@ -25,7 +26,7 @@ import {
   planAiCharge, planAiRefund, quotaUsage, createWindowCounters, createStatBuffer, mergeStat,
 } from './aiQuota.js';
 import {
-  USER_SUBCOLLECTIONS, userSingleKvKeys, isLifetimePlan, samePushSubscription,
+  USER_SUBCOLLECTIONS, userSingleKvKeys, isLifetimePlan, samePushSubscription, sanitizeNotifySettings,
   USETTINGS_PREFIX, USETTINGS_LEGACY_ALL, buildSettingsMap, settingsAnyOn,
 } from './userData.js';
 import { trBucketKey, mergeTrBucket, lookupTr, TR_BUCKET_TTL } from './newsTranslateCache.js';
@@ -1800,24 +1801,15 @@ async function checkEconomicCalendar(env, settingsMap) {
   }
   if (!slots.size) return;
   for (const [bucket, slot] of slots) {
-    const eventTime = new Date(slot.date).toLocaleTimeString('he-IL', { timeZone: 'Asia/Jerusalem', hour: '2-digit', minute: '2-digit' });
-    const titles = [...new Set(slot.events.map((e) => e.title))];
-    let body;
-    if (titles.length === 1) {
-      const event = slot.events[0];
-      const forecastStr = event.forecast || event.previous
-        ? ` · ${event.forecast ? `תחזית: ${event.forecast}` : ''}${event.forecast && event.previous ? ' | ' : ''}${event.previous ? `קודם: ${event.previous}` : ''}` : '';
-      body = `${titles[0]} (USD) · ${eventTime} שעון ישראל${forecastStr} · צפי לתנודתיות ⚠️`;
-    } else {
-      body = `${titles.join(' + ')} (USD) · ${eventTime} שעון ישראל · צפי לתנודתיות ⚠️`;
-    }
+    // Hebrew event names, Israel time, forecast / previous, volatility warning.
+    const body = calendarAlertBody(slot.events, slot.date);
     for (const uid of users) {
       const sentKey = `sent:cal:${uid}:${bucket}`;
       if (await env.ALERTS_KV.get(sentKey)) continue;
       await sendPushToUser(env, uid, {
-        title: '📅 אירוע כלכלי בעוד שעה',
+        title: CALENDAR_ALERT_TITLE,
         body,
-        url: '/market',
+        url: '/news?tab=calendar',
       });
       await env.ALERTS_KV.put(sentKey, '1', { expirationTtl: 86400 });
     }
@@ -4151,12 +4143,7 @@ async function handleRequest(request, env) {
       return new Response(JSON.stringify({ ok: true, settings: s || DEFAULT_SETTINGS }), { headers: { ...cors, 'Content-Type': 'application/json' } });
     }
     const body = await request.json().catch(() => ({}));
-    const hhmm = (v, dflt) => (typeof v === 'string' && /^([01]\d|2[0-3]):[0-5]\d$/.test(v) ? v : dflt);
-    const s = {
-      journal: { enabled: body?.journal?.enabled === true, time: hhmm(body?.journal?.time, '21:00') },
-      summary: { enabled: body?.summary?.enabled === true, time: hhmm(body?.summary?.time, '22:00') },
-      calendar: { enabled: body?.calendar?.enabled === true },
-    };
+    const s = sanitizeNotifySettings(body);
     // ONE write: the schedule rides along as KV metadata, which the cron reads
     // straight from a list() (loadSettingsMap). The old shared usettings:ALL
     // blob was read-modify-written here and lost updates when two users saved
