@@ -12,7 +12,6 @@ import {
   persistentMultipleTabManager,
   connectFirestoreEmulator,
 } from 'firebase/firestore';
-import { getStorage } from 'firebase/storage';
 import { initializeAppCheck, ReCaptchaV3Provider } from 'firebase/app-check';
 
 // Firebase web client config is intentionally public — Google's docs are
@@ -81,7 +80,6 @@ export const db = initializeFirestore(app, {
     tabManager: persistentMultipleTabManager(),
   }),
 });
-export const storage = getStorage(app);
 
 // Local testing against the Firebase emulators (auth + firestore), never real
 // data: `firebase emulators:start --only auth,firestore` and run the dev server
