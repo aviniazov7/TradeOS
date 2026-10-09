@@ -1,7 +1,7 @@
 # TradeOS QA / Security / Performance Audit: fix status
 
 **Audit:** 2026-10-08, against https://tradeos-91a58.web.app (bundle `tradeos-v315`), test account only.
-**Fixes:** 2026-10-09, PRs #508–#522 into `dev`.
+**Fixes:** 2026-10-09, PRs #508–#524 into `dev`, then released to `main`.
 
 This file tracks each finding from the original report (`TRADEOS_QA_REPORT.md`, supplied by the owner) to the change that closed it. The original report holds the full repro steps and evidence.
 
@@ -26,6 +26,7 @@ Legend: `[x]` fixed · `[~]` partly fixed, or fixed in code with a manual step l
 - [x] **[Bugs] Market overview / ticker stuck on loading; 403/429 from exchange APIs; XAU twice, no BTC**
   - **Ticker (PR #508):** Each request times out after 8s. The ticker shows an error with retry when every feed fails, or a refresh button when some fail. A short list no longer loops, which is why XAU used to appear twice.
   - **Market page (PR #509):** Futures data comes from Bybit only, because `fapi.binance.com` is geo-blocked. Every empty panel shows "לא זמין כרגע" with "נסה שוב".
+  - **Home page (PR #524):** Found while testing the `dev` deploy. The "השוק עכשיו" card read only the CoinGecko proxy, which was answering 429, and sat on "loading" for minutes. It now tries CoinPaprika first and shows an error with retry when every source fails.
 - [x] **[Bugs] Signup error even though the account is created; displayName not saved**
   - **Cause:** `onAuthStateChanged` fired before `updateProfile`, so the first profile doc got the email prefix.
   - **Fix:** AuthContext keeps the name typed on the form. A failure after the account exists no longer counts as a failed signup. A full error map covers network errors on signup ("the account may already exist").
