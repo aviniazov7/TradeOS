@@ -47,8 +47,8 @@ Preview channels live 7 days then auto-delete.
 before releasing. Summary:
 
 - `CACHE_NAME` (`public/sw.js`) is **auto-bumped** on every push to `main` (via
-  `scripts/bump-version.mjs`) — this forces the service worker to update and
-  triggers the "גרסה חדשה זמינה" prompt. Never touch it manually.
+  `scripts/bump-version.mjs`) — this makes the service worker take over silently
+  on the user's next open (there is no update prompt). Never touch it manually.
 - `APP_VERSION` (`src/utils/constants.js`) is the **marketing version, set by
   hand**, currently pinned at `2.1.0`. A normal release does NOT require bumping
   it. Bump it (semver MAJOR/MINOR/PATCH — see the guide) only for a
