@@ -21,6 +21,7 @@ import { useUserMistakes } from '../../hooks/useUserMistakes';
 import { useTradingPlans } from '../../hooks/useTradingPlans';
 import { useJournalContext } from '../../contexts/JournalContext';
 import {
+  isSelectableTradeTime,
   aggregateFills, exitsClosedPercent, hasCommissionPreset, estimateCommission,
   buildChecklistRows, checklistAdherence, loadLastTradeChoices, saveLastTradeChoices,
   canMoveStopToBreakeven, breakevenStopValue,
@@ -1207,6 +1208,7 @@ export default function TradeForm({ isOpen, onClose, trade, onSave, riskSettings
                 <DatePicker id="tt-entry-date" selected={form.entryDate} onChange={(date) => update('entryDate', date)}
                   showTimeSelect timeFormat="HH:mm" timeIntervals={15} dateFormat="dd/MM/yy HH:mm"
                   maxDate={new Date()}
+                  filterTime={(t) => isSelectableTradeTime(t)}
                   locale="he" placeholderText="עכשיו" className={numInputClass} wrapperClassName="w-full"
                   popperPlacement="bottom-start" portalId="datepicker-portal" />
               </Field>
@@ -1215,6 +1217,7 @@ export default function TradeForm({ isOpen, onClose, trade, onSave, riskSettings
                   showTimeSelect timeFormat="HH:mm" timeIntervals={15} dateFormat="dd/MM/yy HH:mm"
                   maxDate={new Date()}
                   minDate={form.entryDate || undefined}
+                  filterTime={(t) => isSelectableTradeTime(t, { min: parseDate(form.entryDate) })}
                   locale="he" placeholderText="—" className={numInputClass} wrapperClassName="w-full"
                   popperPlacement="bottom-start" portalId="datepicker-portal" />
               </Field>
