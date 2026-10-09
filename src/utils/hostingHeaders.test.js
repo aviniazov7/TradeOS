@@ -1,0 +1,65 @@
+import { describe, it, expect } from 'vitest';
+import { readFileSync } from 'node:fs';
+import { fileURLToPath } from 'node:url';
+
+// Guards the Content-Security-Policy that Firebase Hosting sends (firebase.json).
+// public/_headers is NOT read by Firebase Hosting — only these headers ship.
+const config = JSON.parse(readFileSync(fileURLToPath(new URL('../../firebase.json', import.meta.url)), 'utf8'));
+const globalHeaders = config.hosting.headers.find((h) => h.source === '**').headers;
+const header = (key) => globalHeaders.find((h) => h.key === key)?.value;
+
+function directives(policy) {
+  const out = {};
+  for (const part of policy.split(';')) {
+    const [name, ...values] = part.trim().split(/\s+/);
+    if (name) out[name] = values;
+  }
+  return out;
+}
+
+describe('hosting CSP (report-only)', () => {
+  const policy = header('Content-Security-Policy-Report-Only');
+  const d = policy ? directives(policy) : {};
+
+  it('is present', () => {
+    expect(policy).toBeTruthy();
+  });
+
+  it('allows no inline or eval script', () => {
+    expect(d['script-src']).toBeDefined();
+    expect(d['script-src']).not.toContain("'unsafe-inline'");
+    expect(d['script-src']).not.toContain("'unsafe-eval'");
+  });
+
+  it('keeps the framing / plugin / base lockdown', () => {
+    expect(d['frame-ancestors']).toEqual(["'self'"]);
+    expect(d['object-src']).toEqual(["'none'"]);
+    expect(d['base-uri']).toEqual(["'self'"]);
+  });
+
+  it('lets the app reach its backends', () => {
+    for (const origin of [
+      'https://trade-os.tradeos.workers.dev', // the Worker (AI, exchanges, quotes)
+      'https://*.googleapis.com', // Firestore / Auth / Storage
+      'https://api.bybit.com', // market data + ticker fallback
+      'wss://stream.bybit.com', // liquidations stream
+      'wss://ws-live-data.polymarket.com',
+    ]) {
+      expect(d['connect-src']).toContain(origin);
+    }
+  });
+
+  it('lets the TradingView charts and Google sign-in frames load', () => {
+    for (const origin of ['https://www.tradingview.com', 'https://s.tradingview.com', 'https://accounts.google.com']) {
+      expect(d['frame-src']).toContain(origin);
+    }
+  });
+});
+
+describe('hosting CSP (enforced)', () => {
+  it('still enforces the framing lockdown while the full policy is report-only', () => {
+    const enforced = directives(header('Content-Security-Policy'));
+    expect(enforced['frame-ancestors']).toEqual(["'self'"]);
+    expect(enforced['object-src']).toEqual(["'none'"]);
+  });
+});
