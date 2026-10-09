@@ -4,9 +4,19 @@ import { authErrorHe } from '../../utils/authErrors';
 
 const GOOGLE_CLIENT_ID = import.meta.env.VITE_GOOGLE_CLIENT_ID;
 
+// Google Identity Services is only needed on this popup page, so it is loaded
+// here on demand rather than by index.html on every page of the app.
+const GIS_SRC = 'https://accounts.google.com/gsi/client';
+
 function waitForGIS(timeout = 8000) {
   return new Promise((resolve, reject) => {
     if (window.google?.accounts?.id) return resolve();
+    if (!document.querySelector(`script[src="${GIS_SRC}"]`)) {
+      const s = document.createElement('script');
+      s.src = GIS_SRC;
+      s.async = true;
+      document.head.appendChild(s);
+    }
     const start = Date.now();
     const t = setInterval(() => {
       if (window.google?.accounts?.id) { clearInterval(t); resolve(); }
