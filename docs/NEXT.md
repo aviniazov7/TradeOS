@@ -3,58 +3,39 @@
 > קובץ המשכיות. נוסע עם ה-repo (בניגוד לזיכרון המקומי של קלוד קוד). מי שפותח
 > חלון חדש / עובד ממחשב אחר — **קרא אותי קודם.** עדכן אותי כשמשהו נסגר.
 
-**עדכון אחרון:** 26.7.2026 — שחרור שני לפרודקשן (PR #304).
+**עדכון אחרון:** 9.10.2026 — כל מה שמופיע ב"שוחרר" נמצא בפרודקשן (גרסת cache v320).
 
 ---
 
-## סטטוס נוכחי
-שני שחרורים גדולים עלו לפרודקשן:
-- **PR #295** (25.7): צבע כחול, כרטיס עסקה + נקודה לבנה, סוכן AI בבית, כרטיס
-  ביצועים, תיקון מכסת KV, P&L נטו, אדמין קומפקטי + מכסות Cloudflare, נגישות,
-  ניקוי ~1,000 שורות, מדריך גרסאות.
-- **PR #304** (26.7, main = `d24b410`): תיקון עמלה כפולה Bybit (#297), refactor
-  #216 (#298), 5 כרטיסי אדמין קומפקטיים (#300), כרטיס מודלים ומכסות AI (#301),
-  ניתוח AI בטאב בקטסט + הסרת גרף TradingView (#302), כפתור נגישות ניטרלי (#303).
+## שוחרר השבוע
+- **דוח בדיקה (QA) מלא** — אבטחה, באגים, ביצועים, נגישות. כל ממצא וה-PR שתיקן אותו:
+  [`docs/qa/TRADEOS_QA_REPORT.md`](qa/TRADEOS_QA_REPORT.md).
+- **פרטיות:** יומן מנטלי נעול למנהלים; דיוור שיווקי רק בהסכמה (תיבה בהרשמה + מתג
+  בפרופיל, "פרסומת:" בנושא, קישור הסרה); מחיקת חשבון מלאה (כולל הערות מנהל, קישור
+  תשלומים, סימוני קופון ומטמון במכשיר).
+- **התראת אירוע USD חשוב שעה לפני** — מתג בדף חדשות ← יומן כלכלי, שם האירוע בעברית.
+- **עמדת מסחר** (מסך מפוצל של TradingView) ופיצ'רים נוספים — ראו ה-README.
+- **ביצועים:** דף ההתחברות 60→89 (Lighthouse), נגישות 100.
 
-APP_VERSION נשאר **2.0.0** (לפי [docs/VERSIONING.md](VERSIONING.md) — שחרור
-רגיל לא דורש bump).
+## פתוח
 
----
+| נושא | מה צריך | מי |
+|---|---|---|
+| **CSP — מעבר מדיווח לחסימה** | בעוד שבוע: Cloudflare ← trade-os ← Observability, חיפוש `CSP report`. אין תוצאות → להחליף ב-`firebase.json` את `Content-Security-Policy-Report-Only` ל-`Content-Security-Policy` | בעלים |
+| **תנאי שימוש ומדיניות פרטיות** | טקסט משפטי (עורך דין / מחולל). אחר כך: `/terms`, `/privacy` וקישור בהרשמה. הקלט המוכן: [`docs/legal/DATA_INVENTORY.md`](legal/DATA_INVENTORY.md) | בעלים |
+| **מיילים אמיתיים למשתמשים** | דומיין משלך מחובר ל-Resend (כרגע מצב בדיקה — שולח רק לבעלים) | בעלים |
+| **תשלומים אונליין** | חשבון Grow/Bit; נקודת החיבור היחידה: `src/services/paymentService.js` | בעלים |
+| **סנכרון Binance** | דורש IP קבוע | — |
+| **בדיקת עמדת המסחר עם מפתחות אמיתיים** | positions / open orders מול בורסה | בעלים |
+| **Cloudflare — בעלים שני** | להוסיף את החשבון האישי כ-Super Administrator בחשבון האפליקציה (*Manage account → Members*) ולעדכן את ה-README | בעלים |
+| **מיקום Firestore** | לבדוק ב-Console ← Firestore ← Settings (נדרש לעורך הדין) | בעלים |
+| **Worker `tradeos-google-auth`** | יושב בחשבון Cloudflare האישי, אף קובץ ברפו לא מפנה אליו — לבדוק בדשבורד אם יש בו תנועה ואז למחוק | בעלים |
+| **ספריית הגרפים של TradingView** | הגשת בקשה (ראו `docs/specs/tradingview-charting-library.md`) | בעלים |
 
-## מה נשאר לעשות (התחל מכאן)
-
-### 1. ✅ AI (TradeAI) — נפתר (27.7.2026)
-אובחן דרך כלי `/admin/ai-test` שנבנה: (א) `gemini-2.5-flash` החזיר 404
-"no longer available to new users" → הוחלף ל-`gemini-2.0-flash`. (ב) גם 2.0
-מחזיר 429 "quota exceeded — check billing" (מכסת חינם אפסית). הבעלים בחר
-להישאר **בחינם** → `GEMINI_ENABLED=false`, הכל רץ על **Groq** (עובד, חינמי).
-**להחזרת Gemini בעתיד:** להפעיל billing על פרויקט Google ואז `GEMINI_ENABLED=true`.
-
-### 2. ✅ עמלות Bybit — תוקן (26.7.2026)
-היה באג: `closedPnl` של Bybit כבר **נטו** (אחרי עמלות), אבל האפליקציה
-מתייחסת ל-`pnlFromExchange` כברוטו ומורידה עמלות שוב → הורדה כפולה
-(עסקה של +$10.02 נטו הוצגה כ-+$6.45). אומת מול חשבון אמיתי (LDOUSDT).
-**תיקון:** ה-Worker ממיר את הנטו לברוטו (`closedPnl + fees`) כדי לשמור על
-החוזה הכלל-אפליקטיבי `netPnl = pnl - fees`. עסקאות קיימות מתוקנות אוטומטית
-במשיכה מחדש (re-sync). PR שממתין למיזוג ל-dev.
-**להמשך:** למשוך מחדש עסקאות Bybit ישנות כדי לתקן את התצוגה שלהן.
-
-### 3. ❌ מיגרציה ל-Supabase — בוטלה סופית (4.8.2026)
-אבי החליט להישאר על Firebase (פאנל הניהול מכסה את הצרכים). כל שכבת ה-Supabase
-(services/facades/סקריפט/docs) הוסרה מהריפו. **לא להחיות בלי בקשה מפורשת.**
-
-### 4. 📦 נדחים (לא דחוף, post-release)
-- ~~מיגרציה מלאה ל-Supabase~~ → ראה סעיף 3 (בתהליך).
-  ראה [docs/redesign/00-master-plan.md](redesign/00-master-plan.md).
-- ~~#216 dedup refactor~~ — ✅ **הושלם ונסגר** (PR #298): formatters/hooks/
-  AICoachPanel אוחדו, אכיפת שכבת שירותים (אפס firebase/* מחוץ ל-services).
-- ממצאי אודיט נוספים: בידוד מצב liquidation ב-MarketOverview, הפחתת כתיבות
-  KV של ה-AI, blob של `usettings:ALL` בקנה מידה.
-
----
-
-## תזכורת כללי עבודה (ראה גם CLAUDE.md)
-- **מרג' רק ל-dev.** קידום ל-main = רק באישור מפורש של אבי.
-- Author: `Avraham Niazov <aviniazov7@icloud.com>` — **בלי** third-party trailers.
-- rules של Firestore נפרסים **ידנית**: `firebase deploy --only firestore:rules`.
-- מעבר ממחשב אחר: `git clone` → `git checkout dev` → `npm install`.
+## חוקי עבודה קצרים
+- ענף → PR ל-`dev` → PR ל-`main`. לא דוחפים ל-`main`. פירוט ב-[`CLAUDE.md`](../CLAUDE.md).
+- כללי Firestore נפרסים ידנית מתיקיית הפרויקט:
+  `firebase deploy --only firestore:rules --project tradeos-91a58`.
+- סודות ל-Worker מוסיפים דרך הדשבורד של חשבון **האפליקציה** ב-Cloudflare — לא
+  מ-`wrangler` על המחשב (הוא מחובר לחשבון האישי). ראו README, "Accounts, ownership & credentials".
+- בדיקות: `npm test`, `npm run test:rules`, `npm run build`.
