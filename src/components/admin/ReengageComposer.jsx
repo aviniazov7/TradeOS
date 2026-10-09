@@ -96,7 +96,9 @@ export default function ReengageComposer({ recipients, onSent }) {
     }
   };
 
-  const withEmail = recipients.filter((r) => r.email);
+  // Email is advertising, so it only reaches users who opted in to it (the
+  // Worker checks again). Push needs the device's own permission instead.
+  const withEmail = recipients.filter((r) => r.email && r.marketing);
   const ready = title.trim() && body.trim() && (usePush || useEmail);
 
   const applyTemplate = (t) => { setTitle(t.title); setBody(t.body); setCta(t.cta); setPath(t.path); setPushText(''); setHook(null); };
@@ -121,11 +123,11 @@ export default function ReengageComposer({ recipients, onSent }) {
             : single ? 'התראה לטלפון לא נשלחה — המשתמש לא אישר התראות' : 'התראה לטלפון לא נשלחה — אף אחד מהנמענים לא אישר התראות');
         } catch (e) { failed = true; lines.push(`ההתראה לא נשלחה: ${e.message}`); }
       }
-      const mailTargets = targets.filter((t) => t.email);
+      const mailTargets = targets.filter((t) => t.email && t.marketing);
       if (useEmail && mailTargets.length) {
         try {
           const r = await adminSendEmailCampaign({
-            recipients: mailTargets.map((t) => ({ email: t.email, name: t.name })),
+            uids: mailTargets.map((t) => t.id),
             subject: title.trim(), headline: title.trim(), message: body.trim(), ctaText: cta.trim(), ctaPath: path,
           });
           if (r.sent) anySent = true;
@@ -133,7 +135,7 @@ export default function ReengageComposer({ recipients, onSent }) {
           if (r.error) { failed = true; lines.push(`המייל לא נשלח: ${r.error}`); }
         } catch (e) { failed = true; lines.push(`המייל לא נשלח: ${e.message}`); }
       } else if (useEmail && !mailTargets.length) {
-        lines.push(single ? 'למשתמש אין כתובת מייל' : 'לאף נמען אין כתובת מייל');
+        lines.push(single ? 'המשתמש לא אישר קבלת עדכונים במייל' : 'אף נמען לא אישר קבלת עדכונים במייל');
       }
       const content = lines.length ? (
         <div className="space-y-1 text-right">{lines.map((l) => <div key={l}>{l}</div>)}</div>
@@ -147,7 +149,7 @@ export default function ReengageComposer({ recipients, onSent }) {
     }
   };
 
-  const sendTest = () => deliver([{ id: me?.uid, email: me?.email, name: me?.displayName || '' }], 'test');
+  const sendTest = () => deliver([{ id: me?.uid, email: me?.email, name: me?.displayName || '', marketing: true }], 'test');
   const sendAll = () => deliver(recipients, 'all');
 
   const fmtFact = (f) => `${f.coin} ${f.change > 0 ? '+' : ''}${f.change}%`;
@@ -187,7 +189,7 @@ export default function ReengageComposer({ recipients, onSent }) {
         <ChannelToggle checked={usePush} onChange={setUsePush} icon={Bell} label="התראה לטלפון"
           hint="רק למי שאישר התראות" />
         <ChannelToggle checked={useEmail} onChange={setUseEmail} icon={Mail} label="מייל"
-          hint={`${withEmail.length} עם כתובת מייל`} disabled={!withEmail.length} />
+          hint={`${withEmail.length} מתוך ${recipients.length} אישרו קבלת עדכונים במייל`} disabled={!withEmail.length} />
       </div>
 
       <input value={title} onChange={(e) => setTitle(e.target.value)} placeholder="כותרת (גם נושא המייל)" maxLength={120} className={field} />
@@ -209,7 +211,7 @@ export default function ReengageComposer({ recipients, onSent }) {
       {/* Live preview of the email, so what lands in the inbox is no surprise. */}
       {useEmail && (title || body) && (
         <div className="rounded-2xl border border-[#26262b] bg-[#0c0c0e] p-4 text-right">
-          <div className="text-[10px] text-text-muted mb-2">תצוגה מקדימה של המייל</div>
+          <div className="text-[10px] text-text-muted mb-2">תצוגה מקדימה של המייל · הנושא נשלח עם "פרסומת:" בתחילתו, ובתחתית המייל קישור הסרה מרשימת התפוצה</div>
           <div className="text-lg font-bold text-[#f0f0f0]">{(title || '—').replace(/\p{Extended_Pictographic}\uFE0F?/gu, '').trim() || '—'}</div>
           <div className="text-sm text-[#a0a0b0] mt-2">היי {recipients.length === 1 && recipients[0].name ? recipients[0].name : '{שם}'},</div>
           <div className="text-sm text-[#a0a0b0] mt-1 whitespace-pre-line leading-relaxed">{body}</div>

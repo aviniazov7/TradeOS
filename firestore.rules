@@ -25,19 +25,31 @@ service cloud.firestore {
     function ownerProfileKeys() {
       return ['displayName', 'email', 'photoURL', 'avatarDataUrl', 'settings',
               'onboardingCompleted', 'lastActive', 'appVersion',
-              'isPublicProfile', 'leaderboardName'];
+              'isPublicProfile', 'leaderboardName',
+              // Marketing-email consent (opt-in): the user's own explicit choice,
+              // set at signup or in the profile; unsubscribing sets it false.
+              'marketingEmails', 'marketingEmailsAt'];
+    }
+
+    // marketingEmails must be a bool and marketingEmailsAt a timestamp when
+    // present, so the field the campaign filter trusts can't hold junk.
+    function marketingFieldsOk(data) {
+      return (!('marketingEmails' in data) || data.marketingEmails is bool)
+        && (!('marketingEmailsAt' in data) || data.marketingEmailsAt is timestamp);
     }
 
     // createdAt is set once at signup and is immutable afterwards (the admin
     // weekly digest counts new signups by it), so it's allowed on create only.
     function ownerProfileCreateOk() {
-      return request.resource.data.keys().hasOnly(ownerProfileKeys().concat(['createdAt']));
+      return request.resource.data.keys().hasOnly(ownerProfileKeys().concat(['createdAt']))
+        && marketingFieldsOk(request.resource.data);
     }
 
     // Only the keys this write actually changes are checked, so fields an older
     // app version left on the doc never block a profile update.
     function ownerProfileUpdateOk() {
-      return request.resource.data.diff(resource.data).affectedKeys().hasOnly(ownerProfileKeys());
+      return request.resource.data.diff(resource.data).affectedKeys().hasOnly(ownerProfileKeys())
+        && marketingFieldsOk(request.resource.data);
     }
 
     match /users/{userId} {
@@ -117,13 +129,17 @@ service cloud.firestore {
         allow delete: if request.auth != null && request.auth.uid == userId;
       }
       match /morningJournals/{journalId} {
-        allow read: if request.auth != null && (request.auth.uid == userId || isAdmin());
+        // Owner-only: the mental journal (emotions, sleep, lessons) is the most
+        // personal data in the app — admins deliberately cannot read it.
+        allow read: if request.auth != null && request.auth.uid == userId;
         allow create, update: if request.auth != null && request.auth.uid == userId
           && isBoundedDoc(request.resource.data);
         allow delete: if request.auth != null && request.auth.uid == userId;
       }
       match /eveningJournals/{journalId} {
-        allow read: if request.auth != null && (request.auth.uid == userId || isAdmin());
+        // Owner-only: the mental journal (emotions, sleep, lessons) is the most
+        // personal data in the app — admins deliberately cannot read it.
+        allow read: if request.auth != null && request.auth.uid == userId;
         allow create, update: if request.auth != null && request.auth.uid == userId
           && isBoundedDoc(request.resource.data);
         allow delete: if request.auth != null && request.auth.uid == userId;

@@ -32,6 +32,7 @@ import {
   USER_SUBCOLLECTIONS,
 } from '../services/firestoreService';
 import { logAccountDeletion } from '../services/pushService';
+import { clearLocalAccountData } from '../services/localData';
 
 // Read a Firestore Timestamp / ISO / millis into epoch millis (0 if absent).
 function toMillis(v) {
@@ -52,6 +53,10 @@ export function AuthProvider({ children }) {
   // account is created — BEFORE updateProfile sets the Auth displayName — so
   // the first profile doc used to get the email prefix instead of the name.
   const pendingNameRef = useRef(null);
+  // The "send me updates by email" box ticked on the signup form (opt-in,
+  // unticked by default). Same timing as the name: captured when the account
+  // appears, written to the profile once it exists.
+  const pendingConsentRef = useRef(false);
 
   useEffect(() => {
     // Handle redirect result from PWA Google Sign-In
@@ -92,6 +97,7 @@ export function AuthProvider({ children }) {
 
         // Load the profile doc in the background (also creates it on first
         // sign-in). Used for the `role` field that gates the admin panel.
+        const signupConsent = pendingConsentRef.current === true;
         const defaultProfile = {
           displayName: pendingNameRef.current || firebaseUser.displayName || firebaseUser.email?.split('@')[0] || 'User',
           email: firebaseUser.email,
@@ -140,7 +146,13 @@ export function AuthProvider({ children }) {
               Promise.all([
                 setUserProfile(firebaseUser.uid, defaultProfile, false),
                 setUserSetting(firebaseUser.uid, 'notifications', { pushEnabled: true, tradeOpenAlerts: true }, true),
-              ]).catch(() => {});
+              ])
+                // Consent goes in its own write AFTER the profile exists, so a
+                // refusal of these two fields can never cost the user their profile.
+                .then(() => (signupConsent
+                  ? setUserProfile(firebaseUser.uid, { marketingEmails: true, marketingEmailsAt: timestamp() })
+                  : null))
+                .catch(() => {});
             }
           })
           .catch(() => {});
@@ -162,12 +174,14 @@ export function AuthProvider({ children }) {
 
   const loginWithGoogleIdToken = useCallback((idToken) => authLoginWithGoogleIdToken(idToken), []);
 
-  const registerWithEmail = useCallback(async (email, password, displayName) => {
+  const registerWithEmail = useCallback(async (email, password, displayName, { marketingEmails = false } = {}) => {
     pendingNameRef.current = displayName?.trim() || null;
+    pendingConsentRef.current = marketingEmails === true;
     try {
       return await authRegisterWithEmail(email, password, displayName);
     } finally {
       pendingNameRef.current = null;
+      pendingConsentRef.current = false;
     }
   }, []);
 
@@ -212,13 +226,17 @@ export function AuthProvider({ children }) {
     // Delete user doc
     await deleteUserProfile(currentUser.uid);
 
-    // Audit trail (admin panel shows who deleted their account and when) —
-    // must run while the ID token is still valid. Never throws.
-    await logAccountDeletion({ email: currentUser.email, displayName: currentUser.displayName });
+    // Server-side leftovers (encrypted exchange keys, push subscriptions, the
+    // admin's note, payment records, coupon markers) plus an audit entry that
+    // carries only the uid — no email or name. Must run while the ID token is
+    // still valid. Never throws.
+    await logAccountDeletion();
 
     // Delete auth account
-    localStorage.removeItem('tradeos_activeJournal');
     await deleteAuthUser();
+
+    // Nothing of the account stays on this device either.
+    await clearLocalAccountData();
   }, [user]);
 
   const isEmailUser = user?.providerData?.some((p) => p.providerId === 'password') || false;

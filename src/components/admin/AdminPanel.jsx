@@ -1,6 +1,6 @@
 import { useState, useEffect, useMemo } from 'react';
 import { Navigate, useSearchParams } from 'react-router-dom';
-import { UserPlus, ShieldCheck, CheckCircle2, RefreshCw, Calendar, Coins, BookOpen, FlaskConical, Activity, FileText, Brain, Crown, Send, X, Ticket, Plus, Minus, Trash2, Copy, ScrollText, Share2, Link2, AlertTriangle, Clock, DollarSign, Loader2, Ban, ChevronDown } from 'lucide-react';
+import { UserPlus, ShieldCheck, CheckCircle2, RefreshCw, Calendar, Coins, BookOpen, FlaskConical, Activity, FileText, Crown, Send, X, Ticket, Plus, Minus, Trash2, Copy, ScrollText, Share2, Link2, AlertTriangle, Clock, DollarSign, Loader2, Ban, ChevronDown } from 'lucide-react';
 import { motion } from 'framer-motion';
 import toast from 'react-hot-toast';
 import { useAuth } from '../../contexts/AuthContext';
@@ -506,8 +506,9 @@ function BulkNotifyModal({ isOpen, onClose, segments, initialSegment = 'all' }) 
 
   const targets = segments?.[seg] || [];
   const chosen = targets.filter((u) => !excluded.has(u.id));
-  const recipients = chosen.map((u) => ({ id: u.id, email: u.email || '', name: u.displayName || '' }));
-  const withEmail = chosen.filter((u) => u.email).length;
+  // `marketing`: the user opted in to email updates — the only ones a campaign reaches.
+  const recipients = chosen.map((u) => ({ id: u.id, email: u.email || '', name: u.displayName || '', marketing: u.marketingEmails === true }));
+  const withEmail = chosen.filter((u) => u.email && u.marketingEmails === true).length;
 
   return (
     <Modal isOpen={isOpen} onClose={close} title="שליחת תזכורת למשתמשים" maxWidth="max-w-xl">
@@ -550,7 +551,7 @@ function BulkNotifyModal({ isOpen, onClose, segments, initialSegment = 'all' }) 
               </span>
               <span className="block text-xs text-text-secondary truncate">
                 {chosen.slice(0, 3).map((u) => u.displayName || u.email).join(', ')}{chosen.length > 3 ? ` ועוד ${chosen.length - 3}` : ''}
-                {chosen.length > 0 && ` · ${withEmail} עם מייל`}
+                {chosen.length > 0 && ` · ${withEmail} אישרו דיוור במייל`}
               </span>
             </span>
             <span className="text-xs font-semibold text-accent-hover shrink-0">{listOpen ? 'סגירה' : 'הצגת הרשימה'}</span>
@@ -590,8 +591,8 @@ const COUNT_COLLECTIONS = [
   { key: 'backtestJournals', label: 'יומני בקטסט', icon: FlaskConical },
   { key: 'dca', label: 'תוכניות DCA', icon: Coins },
   { key: 'tradingPlans', label: 'תוכניות מסחר', icon: FileText },
-  { key: 'morningJournals', label: 'יומן בוקר', icon: Brain },
-  { key: 'eveningJournals', label: 'יומן ערב', icon: Brain },
+  // The mental journals (morning/evening) are owner-only in the rules — admins
+  // can't read them, not even to count them.
 ];
 
 function UserDetailModal({ user, onClose, onUserChanged, startWith = null }) {
@@ -964,7 +965,7 @@ function UserDetailModal({ user, onClose, onUserChanged, startWith = null }) {
               </button>
             </div>
             <ReengageComposer
-              recipients={[{ id: user.id, email: user.email || '', name: user.displayName || '' }]}
+              recipients={[{ id: user.id, email: user.email || '', name: user.displayName || '', marketing: user.marketingEmails === true }]}
               onSent={() => setNotifyOpen(false)}
             />
           </div>

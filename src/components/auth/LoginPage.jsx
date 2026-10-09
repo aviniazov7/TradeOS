@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { useAuth } from '../../contexts/AuthContext';
 import { Navigate, useSearchParams, Link } from 'react-router-dom';
 import { Mail, Eye, EyeOff, Lock, User, Link2, BarChart3, Sparkles, Check, ShieldCheck, Loader2, AlertCircle } from 'lucide-react';
@@ -63,12 +63,22 @@ function CurveArt() {
 export default function LoginPage() {
   const { user, loginWithGoogle, registerWithEmail, loginWithEmail, resetPassword } = useAuth();
   const [params] = useSearchParams();
+  // Landed here right after deleting the account (ProfilePage redirects with
+  // ?deleted=1): confirm once, then drop the flag so a refresh doesn't repeat it.
+  const deletedFlag = params.get('deleted') === '1';
+  useEffect(() => {
+    if (!deletedFlag) return;
+    toast.success('החשבון והנתונים נמחקו לצמיתות', { duration: 6000 });
+    window.history.replaceState(null, '', '/login');
+  }, [deletedFlag]);
   const [mode, setMode] = useState('login');
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [displayName, setDisplayName] = useState('');
   const [showPassword, setShowPassword] = useState(false);
   const [submitting, setSubmitting] = useState(false);
+  // Opt-in to marketing email — unticked by default, never required.
+  const [marketingEmails, setMarketingEmails] = useState(false);
   // Error for the last submit, shown inline under the form (role="alert") —
   // a toast alone was easy to miss, so a wrong password looked like nothing
   // happened. Cleared as soon as the user edits a field or switches tab.
@@ -110,7 +120,7 @@ export default function LoginPage() {
           setSubmitting(false);
           return;
         }
-        await registerWithEmail(email, password, displayName || email.split('@')[0]);
+        await registerWithEmail(email, password, displayName || email.split('@')[0], { marketingEmails });
         toast.success('החשבון נוצר בהצלחה');
       } else {
         await loginWithEmail(email, password);
@@ -267,6 +277,14 @@ export default function LoginPage() {
                 </ul>
               )}
             </div>
+
+            {!isLogin && (
+              <label className="flex items-start gap-2.5 text-xs text-text-secondary leading-relaxed cursor-pointer select-none">
+                <input type="checkbox" checked={marketingEmails} onChange={(e) => setMarketingEmails(e.target.checked)}
+                  className="mt-0.5 w-4 h-4 shrink-0 accent-[#3b82f6] cursor-pointer" />
+                <span>אשמח לקבל עדכונים והטבות במייל מ-TradeOS. אפשר להסיר בכל רגע.</span>
+              </label>
+            )}
 
             {formError && (
               <p role="alert" className="flex items-start gap-2 rounded-xl border border-loss/30 bg-loss/10 px-3 py-2.5 text-sm text-loss">

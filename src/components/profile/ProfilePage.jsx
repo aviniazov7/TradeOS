@@ -16,6 +16,7 @@ import ConfirmDialog from '../shared/ConfirmDialog';
 import { pageVariants, pageTransition } from '../../utils/animations';
 import { useTheme } from '../../hooks/useTheme';
 import NotificationSettings from './NotificationSettings';
+import MarketingEmailToggle from './MarketingEmailToggle';
 import ContactDeveloper from './ContactDeveloper';
 import { planExpiresMs } from '../../utils/premium';
 
@@ -198,8 +199,10 @@ export default function ProfilePage() {
   const handleDelete = async () => {
     try {
       await deleteAccount(isEmailUser ? deletePassword : null);
-      toast.success('החשבון נמחק');
-      navigate('/login');
+      // A full reload, not a route change: the local Firestore cache was just
+      // erased (and Firestore shut down), and the next visitor starts clean.
+      window.location.replace('/login?deleted=1');
+      return;
     } catch (err) {
       console.error('Delete account failed:', err);
       const msg = err.code === 'auth/wrong-password' || err.code === 'auth/invalid-credential'
@@ -389,6 +392,8 @@ export default function ProfilePage() {
       <div className={cardClass}>
         {/* Push notifications */}
         <NotificationSettings />
+        {/* Marketing email consent (opt-in) */}
+        <MarketingEmailToggle />
       </div>
 
       {/* ── Section: General ─────────────────────────────────────── */}
