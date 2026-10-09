@@ -46,9 +46,13 @@ export default function RollingNumber({ value, className = '' }) {
     // because the digits are separate elements, not one text run).
     <span
       dir="ltr"
-      className={`inline-flex items-baseline tabular-nums ${className}`}
+      className={`relative inline-flex items-baseline tabular-nums ${className}`}
       style={{ fontVariantNumeric: 'tabular-nums' }}
     >
+      {/* Screen readers get the final value once; the animated columns below
+          hold all ten digits each and would otherwise be read as noise. */}
+      <span className="sr-only">{str}</span>
+      <span aria-hidden="true" className="inline-flex items-baseline">
       {str.split('').map((ch, i) =>
         // Position-stable enough for prices/stats (format keeps digit count
         // steady between updates); a rare length change just re-seats a column.
@@ -56,6 +60,7 @@ export default function RollingNumber({ value, className = '' }) {
           ? <RollDigit key={i} d={Number(ch)} />
           : <span key={i} className="whitespace-pre">{ch}</span>
       )}
+      </span>
     </span>
   );
 }
