@@ -21,6 +21,7 @@ import { useUserMistakes } from '../../hooks/useUserMistakes';
 import { useTradingPlans } from '../../hooks/useTradingPlans';
 import { useJournalContext } from '../../contexts/JournalContext';
 import {
+  isSelectableTradeTime,
   aggregateFills, exitsClosedPercent, hasCommissionPreset, estimateCommission,
   buildChecklistRows, checklistAdherence, loadLastTradeChoices, saveLastTradeChoices,
   canMoveStopToBreakeven, breakevenStopValue,
@@ -940,6 +941,10 @@ export default function TradeForm({ isOpen, onClose, trade, onSave, riskSettings
   const isLong = form.direction === 'long';
   // Futures exits are recorded in contracts; crypto / stocks in percent.
   const exitField = isFutures ? 'contracts' : 'percent';
+  // Rows with a target price but nothing recorded as executed, while nothing
+  // has been closed yet — the case where users expect "save" to close it.
+  const plannedOnlyTargets = additionalExitsPercent <= 0
+    && form.additionalExits.some((e) => parseFloat(e.price) > 0 && !(parseFloat(e[exitField]) > 0));
 
   // Fees input — shared by the three asset classes. While it follows the
   // journal preset it shows the estimate; typing switches it to manual, and
@@ -1207,6 +1212,7 @@ export default function TradeForm({ isOpen, onClose, trade, onSave, riskSettings
                 <DatePicker id="tt-entry-date" selected={form.entryDate} onChange={(date) => update('entryDate', date)}
                   showTimeSelect timeFormat="HH:mm" timeIntervals={15} dateFormat="dd/MM/yy HH:mm"
                   maxDate={new Date()}
+                  filterTime={(t) => isSelectableTradeTime(t)}
                   locale="he" placeholderText="עכשיו" className={numInputClass} wrapperClassName="w-full"
                   popperPlacement="bottom-start" portalId="datepicker-portal" />
               </Field>
@@ -1215,6 +1221,7 @@ export default function TradeForm({ isOpen, onClose, trade, onSave, riskSettings
                   showTimeSelect timeFormat="HH:mm" timeIntervals={15} dateFormat="dd/MM/yy HH:mm"
                   maxDate={new Date()}
                   minDate={form.entryDate || undefined}
+                  filterTime={(t) => isSelectableTradeTime(t, { min: parseDate(form.entryDate) })}
                   locale="he" placeholderText="—" className={numInputClass} wrapperClassName="w-full"
                   popperPlacement="bottom-start" portalId="datepicker-portal" />
               </Field>
@@ -1346,7 +1353,7 @@ export default function TradeForm({ isOpen, onClose, trade, onSave, riskSettings
                       aria-pressed={isExecuted}
                       className={`h-8 w-full flex items-center justify-center gap-1 rounded-lg text-[11px] font-semibold transition-colors cursor-pointer border ${
                         isExecuted
-                          ? 'bg-accent-primary/15 text-accent-primary border-accent-primary/30 hover:bg-loss/10 hover:text-loss hover:border-loss/30'
+                          ? 'bg-accent-primary/15 text-accent-primary border-accent-primary/30 hover:bg-bg-tertiary hover:text-text-secondary hover:border-border-hover'
                           : 'bg-bg-tertiary text-text-muted border-border-primary hover:border-accent-primary/40 hover:text-accent-primary'
                       }`}
                     >
@@ -1364,6 +1371,14 @@ export default function TradeForm({ isOpen, onClose, trade, onSave, riskSettings
                 <Plus className="w-3.5 h-3.5" /> הוסף יעד (TP)
               </button>
             </div>
+            {/* A price alone is a planned target, not an exit — say how to
+                record the exit, so typing the exit price and saving doesn't
+                leave the trade open without a word. */}
+            {plannedOnlyTargets && (
+              <p className="mt-2 text-[11px] leading-relaxed text-text-muted">
+                יעד עם מחיר בלבד נשמר כיעד מתוכנן. כשהיעד בוצע, לחץ <b className="text-text-secondary">סמן</b> (או מלא {isFutures ? 'חוזים' : 'אחוז'}) והעסקה תיסגר.
+              </p>
+            )}
           </Section>
 
           {/* 04 — link the trade to a trading plan and tick its pre-entry

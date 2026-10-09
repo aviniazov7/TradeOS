@@ -9,13 +9,17 @@ import PremiumRoute from './components/auth/PremiumRoute';
 import AdminRoute from './components/auth/AdminRoute';
 import LoginPage from './components/auth/LoginPage';
 import AuthGooglePopup from './components/auth/AuthGooglePopup';
-import Layout from './components/layout/Layout';
 import LoadingSpinner from './components/shared/LoadingSpinner';
 import Toast from './components/shared/Toast';
 import AccessibilityWidget from './components/shared/AccessibilityWidget';
 import ErrorBoundary from './components/shared/ErrorBoundary';
+import NotFoundPage from './components/shared/NotFoundPage';
 
 // Lazy-loaded pages — factory refs kept so we can preload them at idle
+// The signed-in shell (sidebar, header, search, price ticker, calculator…) is
+// its own chunk, so the login page — the first paint for every new visitor —
+// doesn't download the whole app around it.
+const Layout = lazy(() => import('./components/layout/Layout'));
 const loadDashboard = () => import('./components/dashboard/Dashboard');
 const loadTradeJournal = () => import('./components/journal/TradeJournal');
 const loadBacktestTracker = () => import('./components/backtest/BacktestTracker');
@@ -164,8 +168,9 @@ function MainApp() {
                 <Route path="refund-policy" element={<RefundPolicyPage />} />
                 <Route path="admin" element={<AdminPanel />} />
                 <Route path="profile" element={<ProfilePage />} />
-                {/* Unknown URLs go home instead of rendering a blank page. */}
-                <Route path="*" element={<Navigate to="/" replace />} />
+                {/* Unknown URLs get a real "not found" page with a way home
+                    (they used to bounce to the dashboard without a word). */}
+                <Route path="*" element={<NotFoundPage />} />
               </Route>
             </Routes>
           </Suspense>

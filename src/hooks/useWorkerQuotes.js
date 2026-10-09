@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef } from 'react';
+import { useState, useEffect, useRef, useCallback } from 'react';
 import { fetchSpotQuotes } from '../services/bybitDirect';
 
 const WORKER_BASE = import.meta.env.VITE_WORKER_URL || 'https://trade-os.tradeos.workers.dev';
@@ -13,9 +13,14 @@ const WORKER_BASE = import.meta.env.VITE_WORKER_URL || 'https://trade-os.tradeos
  * @param {string[]} symbols   symbols to request
  * @param {object} opts        { enabled, intervalMs }
  */
-export function useWorkerQuotes(path, symbols = [], { enabled = true, intervalMs = 60_000 } = {}) {
+export function useWorkerQuotes(path, symbols = [], { enabled = true, intervalMs = 60_000, timeoutMs = 8_000 } = {}) {
   const [prices, setPrices] = useState({});
   const [loading, setLoading] = useState(true);
+  // True when the latest attempt (worker + direct fallback) returned nothing.
+  // Earlier prices stay on screen; callers decide whether to show an error.
+  const [failed, setFailed] = useState(false);
+  // Bumped by retry() to re-run the effect (fetch now + restart the interval).
+  const [attempt, setAttempt] = useState(0);
   const abortRef = useRef(null);
 
   const symbolsKey = symbols.join(',');
@@ -29,6 +34,9 @@ export function useWorkerQuotes(path, symbols = [], { enabled = true, intervalMs
       abortRef.current?.abort();
       const ctrl = new AbortController();
       abortRef.current = ctrl;
+      // A hung request must not leave the caller on "loading" forever.
+      let timedOut = false;
+      const timer = setTimeout(() => { timedOut = true; ctrl.abort(); }, timeoutMs);
       try {
         const res = await fetch(`${WORKER_BASE}${path}?symbols=${encodeURIComponent(symbolsKey)}`, { signal: ctrl.signal });
         if (res.ok) {
@@ -39,14 +47,20 @@ export function useWorkerQuotes(path, symbols = [], { enabled = true, intervalMs
           }
         }
       } catch {
-        // network/abort — fall through to the direct fallback
+        // network/abort/timeout — fall through to the direct fallback
+      } finally {
+        clearTimeout(timer);
       }
+      // Superseded by a newer request (not our own timeout) → let that one report.
+      if (cancelled || (ctrl.signal.aborted && !timedOut)) return;
       // Worker route down → crypto quotes can come straight from Bybit (CORS-enabled)
-      if (!gotData && !cancelled && !ctrl.signal.aborted && path === '/cx/quotes') {
-        const direct = await fetchSpotQuotes(symbolsKey.split(','));
-        if (direct && !cancelled) setPrices(direct);
+      if (!gotData && path === '/cx/quotes') {
+        const direct = await fetchSpotQuotes(symbolsKey.split(',')).catch(() => null);
+        if (cancelled) return;
+        if (direct) { setPrices(direct); gotData = true; }
       }
-      if (!cancelled) setLoading(false);
+      setFailed(!gotData);
+      setLoading(false);
     };
 
     fetchQuotes();
@@ -56,8 +70,16 @@ export function useWorkerQuotes(path, symbols = [], { enabled = true, intervalMs
       clearInterval(interval);
       abortRef.current?.abort();
     };
-  }, [path, symbolsKey, enabled, intervalMs]);
+  }, [path, symbolsKey, enabled, intervalMs, timeoutMs, attempt]);
+
+  // Manual "try again": show loading and fetch immediately.
+  const retry = useCallback(() => {
+    setLoading(true);
+    setFailed(false);
+    setAttempt((n) => n + 1);
+  }, []);
 
   // When the hook is idle (disabled / no symbols) there's nothing to load.
-  return { prices, loading: enabled && symbolsKey ? loading : false };
+  const active = Boolean(enabled && symbolsKey);
+  return { prices, loading: active ? loading : false, failed: active ? failed : false, retry };
 }

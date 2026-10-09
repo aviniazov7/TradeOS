@@ -1,8 +1,12 @@
 import { useState } from 'react';
 import { useAuth } from '../../contexts/AuthContext';
 import { Navigate, useSearchParams, Link } from 'react-router-dom';
-import { Mail, Eye, EyeOff, Lock, User, Link2, BarChart3, Sparkles, Check, ShieldCheck, Loader2 } from 'lucide-react';
+import { Mail, Eye, EyeOff, Lock, User, Link2, BarChart3, Sparkles, Check, ShieldCheck, Loader2, AlertCircle } from 'lucide-react';
 import toast from 'react-hot-toast';
+import { authErrorHe, authErrorMessage, isSilentAuthError } from '../../utils/authErrors';
+// Live checklist on sign-up, so the user sees what is missing before pressing
+// the button instead of after.
+import { PASSWORD_RULES, passwordProblem } from '../../utils/passwordPolicy';
 
 // What the product does, in three lines — shown beside the form on wide screens.
 const FEATURES = [
@@ -11,13 +15,6 @@ const FEATURES = [
   { icon: Sparkles, title: 'סוכן AI אישי', text: 'שואלים בעברית ומקבלים תשובה מבוססת על העסקאות שלך' },
 ];
 
-// Live password rules for sign-up, so the user sees what is missing before
-// pressing the button instead of after.
-const PASSWORD_RULES = [
-  { id: 'len', label: '8 תווים לפחות', test: (p) => p.length >= 8 },
-  { id: 'upper', label: 'אות גדולה באנגלית', test: (p) => /[A-Z]/.test(p) },
-  { id: 'digit', label: 'ספרה', test: (p) => /[0-9]/.test(p) },
-];
 
 function BrandMark({ size = 'md' }) {
   const box = size === 'lg' ? 'w-12 h-12 rounded-2xl' : 'w-10 h-10 rounded-xl';
@@ -72,6 +69,10 @@ export default function LoginPage() {
   const [displayName, setDisplayName] = useState('');
   const [showPassword, setShowPassword] = useState(false);
   const [submitting, setSubmitting] = useState(false);
+  // Error for the last submit, shown inline under the form (role="alert") —
+  // a toast alone was easy to miss, so a wrong password looked like nothing
+  // happened. Cleared as soon as the user edits a field or switches tab.
+  const [formError, setFormError] = useState('');
   const [googleLoading, setGoogleLoading] = useState(false);
 
   // After a successful login, honour ?redirect=… (used by the coupon share
@@ -89,25 +90,23 @@ export default function LoginPage() {
       // iOS standalone); getRedirectResult in AuthContext completes the flow.
       await loginWithGoogle();
     } catch (error) {
-      console.error('Google login failed:', error);
-      toast.error('שגיאה בהתחברות עם Google');
       setGoogleLoading(false);
+      if (isSilentAuthError(error)) return; // the user closed the popup
+      console.error('Google login failed:', error);
+      setFormError(authErrorHe(error, 'שגיאה בהתחברות עם Google'));
     }
   };
 
   const handleSubmit = async (e) => {
     e.preventDefault();
     if (!email || !password) return;
+    setFormError('');
     setSubmitting(true);
     try {
       if (mode === 'register') {
-        if (password.length < 8) {
-          toast.error('הסיסמה חייבת להכיל לפחות 8 תווים');
-          setSubmitting(false);
-          return;
-        }
-        if (!/[A-Z]/.test(password) || !/[0-9]/.test(password)) {
-          toast.error('הסיסמה חייבת להכיל אות גדולה ומספר');
+        const problem = passwordProblem(password);
+        if (problem) {
+          setFormError(problem);
           setSubmitting(false);
           return;
         }
@@ -118,12 +117,7 @@ export default function LoginPage() {
       }
     } catch (error) {
       console.error('Auth failed:', error);
-      const msg = error.code === 'auth/user-not-found' || error.code === 'auth/wrong-password' || error.code === 'auth/invalid-credential'
-        ? 'אימייל או סיסמה שגויים'
-        : error.code === 'auth/email-already-in-use'
-        ? 'האימייל כבר רשום במערכת'
-        : 'שגיאה בהתחברות';
-      toast.error(msg);
+      setFormError(authErrorMessage(error, mode));
     }
     setSubmitting(false);
   };
@@ -141,8 +135,9 @@ export default function LoginPage() {
   const input = 'w-full h-11 bg-bg-tertiary border border-border-primary rounded-xl px-3 text-sm text-text-primary placeholder-text-muted outline-none focus:border-accent-primary focus:ring-2 focus:ring-accent-primary/20 transition-colors';
 
   const forgot = async () => {
-    if (!email) { toast.error('הכנס אימייל קודם'); return; }
-    try { await resetPassword(email); toast.success('נשלח מייל לאיפוס סיסמה'); } catch { toast.error('שגיאה בשליחת מייל'); }
+    if (!email) { setFormError('הכנס את האימייל שלך ואז לחץ שוב על "שכחתי סיסמה"'); return; }
+    setFormError('');
+    try { await resetPassword(email); toast.success('נשלח מייל לאיפוס סיסמה'); } catch (error) { setFormError(authErrorHe(error, 'שליחת המייל נכשלה. נסה שוב')); }
   };
 
   return (
@@ -198,7 +193,7 @@ export default function LoginPage() {
           {/* Mode switch */}
           <div role="tablist" className="mt-6 grid grid-cols-2 p-1 rounded-xl bg-bg-secondary border border-border-primary">
             {[['login', 'התחברות'], ['register', 'הרשמה']].map(([id, label]) => (
-              <button key={id} role="tab" aria-selected={mode === id} type="button" onClick={() => setMode(id)}
+              <button key={id} role="tab" aria-selected={mode === id} type="button" onClick={() => { setMode(id); setFormError(''); }}
                 className={`h-9 rounded-lg text-sm font-bold transition-colors cursor-pointer ${mode === id ? 'bg-bg-tertiary text-text-primary shadow-sm' : 'text-text-muted hover:text-text-primary'}`}>
                 {label}
               </button>
@@ -225,7 +220,7 @@ export default function LoginPage() {
               <div>
                 <label htmlFor="lp-name" className="block text-xs font-semibold text-text-secondary mb-1.5">שם תצוגה</label>
                 <div className="relative">
-                  <input id="lp-name" type="text" value={displayName} onChange={(e) => setDisplayName(e.target.value)}
+                  <input id="lp-name" type="text" value={displayName} onChange={(e) => { setDisplayName(e.target.value); setFormError(''); }}
                     placeholder="איך לקרוא לך" autoComplete="nickname" className={`${input} pr-10`} />
                   <User className="absolute right-3 top-1/2 -translate-y-1/2 w-4 h-4 text-text-muted pointer-events-none" />
                 </div>
@@ -234,7 +229,7 @@ export default function LoginPage() {
             <div>
               <label htmlFor="lp-email" className="block text-xs font-semibold text-text-secondary mb-1.5">אימייל</label>
               <div className="relative">
-                <input id="lp-email" type="email" value={email} onChange={(e) => setEmail(e.target.value)}
+                <input id="lp-email" type="email" value={email} onChange={(e) => { setEmail(e.target.value); setFormError(''); }}
                   placeholder="name@example.com" required dir="ltr" autoComplete="email" className={`${input} pl-10 text-left`} />
                 <Mail className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-text-muted pointer-events-none" />
               </div>
@@ -249,7 +244,7 @@ export default function LoginPage() {
                 )}
               </div>
               <div className="relative">
-                <input id="lp-pass" type={showPassword ? 'text' : 'password'} value={password} onChange={(e) => setPassword(e.target.value)}
+                <input id="lp-pass" type={showPassword ? 'text' : 'password'} value={password} onChange={(e) => { setPassword(e.target.value); setFormError(''); }}
                   placeholder="••••••••" required dir="ltr" autoComplete={isLogin ? 'current-password' : 'new-password'}
                   className={`${input} pl-10 pr-10 text-left`} />
                 <Lock className="absolute right-3 top-1/2 -translate-y-1/2 w-4 h-4 text-text-muted pointer-events-none" />
@@ -272,6 +267,13 @@ export default function LoginPage() {
                 </ul>
               )}
             </div>
+
+            {formError && (
+              <p role="alert" className="flex items-start gap-2 rounded-xl border border-loss/30 bg-loss/10 px-3 py-2.5 text-sm text-loss">
+                <AlertCircle className="w-4 h-4 mt-0.5 shrink-0" aria-hidden />
+                <span className="min-w-0">{formError}</span>
+              </p>
+            )}
 
             <button type="submit" disabled={submitting}
               className="w-full h-11 inline-flex items-center justify-center gap-2 rounded-xl bg-accent-muted hover:bg-accent-primary text-white text-sm font-bold transition-colors cursor-pointer disabled:opacity-60">

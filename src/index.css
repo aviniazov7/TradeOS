@@ -33,6 +33,17 @@ input, select, textarea {
   min-width: 0;
   max-width: 100%;
 }
+/* Pinch-zoom is allowed (no maximum-scale in the viewport meta — blocking it
+   failed WCAG 1.4.4), so iOS Safari would again auto-zoom into any focused
+   field under 16px. Keep fields at 16px on iOS only (-webkit-touch-callout
+   exists only there); other platforms keep their design sizes. */
+@supports (-webkit-touch-callout: none) {
+  input:not([type="checkbox"]):not([type="radio"]):not([type="range"]),
+  select,
+  textarea {
+    font-size: max(16px, 1em) !important;
+  }
+}
 input[type="date"],
 input[type="datetime-local"],
 input[type="time"],
@@ -86,7 +97,9 @@ body {
   /* Text */
   --color-text-primary: #f0f0f0;
   --color-text-secondary: #a0a0b0;
-  --color-text-muted: #606070;
+  /* #80808f: ≥4.5:1 on the black page and the card surfaces (#606070 was
+     ~3.4:1 and failed WCAG AA for the small labels that use it). */
+  --color-text-muted: #80808f;
 
   /* Accent (Cyan/turquoise) — base accent for TEXT, icons, borders and tints.
      Buttons/fills keep the violet→cyan --accent-gradient overlay on top, so the
@@ -394,6 +407,15 @@ body {
   background-color: var(--color-accent-primary) !important;
   color: #000 !important;
   font-weight: 600 !important;
+}
+/* Slots blocked by filterTime (a later hour today, or an exit before the
+   entry) — dimmed so they don't look clickable. Placed after the light-theme
+   rules' specificity via the doubled class. */
+.react-datepicker__time-list-item.react-datepicker__time-list-item--disabled,
+.react-datepicker__time-list-item.react-datepicker__time-list-item--disabled:hover {
+  opacity: 0.3 !important;
+  background-color: transparent !important;
+  cursor: not-allowed !important;
 }
 .react-datepicker-popper {
   z-index: 9999 !important;

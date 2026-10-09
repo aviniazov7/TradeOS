@@ -1,4 +1,4 @@
-import { useState, useMemo, useEffect } from 'react';
+import { useState, useMemo, useEffect, useCallback } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { motion, AnimatePresence } from 'framer-motion';
 import { LineChart, Eye, EyeOff, Plus, ChevronDown } from 'lucide-react';
@@ -25,12 +25,13 @@ import Card from '../shared/Card';
 import FitText from '../shared/FitText';
 import Reveal from '../shared/Reveal';
 import { formatCurrency } from '../../utils/formatters';
-import { EXCHANGES } from '../../utils/constants';
+import { exchangeLabel } from '../../utils/constants';
+import { winLossRatio } from '../../utils/homeStats';
+import { fetchGlobalMarket } from '../../services/globalMarket';
 import { pageVariants, pageTransition } from '../../utils/animations';
 import { fetchPerpPrices } from '../../services/bybitDirect';
 import { fetchStockQuotes } from '../../services/stocksApi';
 
-const getExchangeLabel = (value) => EXCHANGES.find((e) => e.value === value)?.label || value;
 
 // "Good evening, Avi" + today's date, for the page header.
 function greetingFor(name) {
@@ -48,12 +49,13 @@ function JournalTile({ j, mask, onOpen }) {
   const pnlCls = j.pnl > 0 ? 'text-profit' : j.pnl < 0 ? 'text-loss' : 'text-text-secondary';
   let missingWhy = 'לא הוגדרה יתרה התחלתית ליומן';
   if (j.problem) missingWhy = `${KEY_PROBLEM_TEXT[j.problem]} — עדכן בחיבור בורסאות`;
-  else if (j.exchange) missingWhy = `אין כרגע שווי חי מ-${getExchangeLabel(j.exchange)}`;
+  else if (exchangeLabel(j.exchange)) missingWhy = `אין כרגע שווי חי מ-${exchangeLabel(j.exchange)}`;
+  else if (j.exchange) missingWhy = 'אין כרגע שווי חי מהבורסה';
   return (
     <Card as="button" type="button" hover spotlight onClick={onOpen} className="w-full text-right p-4 flex flex-col gap-3">
       <div className="relative flex items-center justify-between gap-2">
         <div className="flex items-center gap-2 min-w-0">
-          {j.exchange && <ExchangeLogo exchange={j.exchange} size="w-5 h-5" />}
+          {exchangeLabel(j.exchange) && <ExchangeLogo exchange={j.exchange} size="w-5 h-5" />}
           <span className="text-sm font-semibold text-text-primary truncate">{j.name}</span>
         </div>
         {j.balance !== null && (
@@ -166,30 +168,35 @@ export default function Dashboard() {
 
   // Global market data + latest news
   const [globalMarket, setGlobalMarket] = useState(null);
+  const [marketFailed, setMarketFailed] = useState(false);
+  // Bumped by the card's "נסה שוב" to run the load again from scratch.
+  const [marketAttempt, setMarketAttempt] = useState(0);
+  const retryMarket = useCallback(() => {
+    setMarketFailed(false);
+    setMarketAttempt((n) => n + 1);
+  }, []);
   const [latestNews, setLatestNews] = useState([]);
 
   useEffect(() => {
     const controller = new AbortController();
+    let retryTimer;
+    // CoinPaprika first, the worker's CoinGecko proxy as the fallback — see
+    // services/globalMarket. After the last failed attempt the card shows an
+    // error with a retry instead of "loading" forever.
     const fetchMarket = async (attempt = 0) => {
       try {
-        // Proxy CoinGecko through the worker (direct browser calls are
-        // CORS/geo-blocked). Match the hardcoded fallback used app-wide so it
-        // works even when VITE_WORKER_URL isn't set at build time.
-        const workerUrl = import.meta.env.VITE_WORKER_URL || 'https://trade-os.tradeos.workers.dev';
-        const cgBase = `${workerUrl}/cg`;
-        const res = await fetch(`${cgBase}/global`, { signal: controller.signal });
-        if (!res.ok) throw new Error(`HTTP ${res.status}`);
-        const json = await res.json();
-        if (!controller.signal.aborted) setGlobalMarket(json.data);
+        const data = await fetchGlobalMarket({ signal: controller.signal });
+        if (!controller.signal.aborted) { setGlobalMarket(data); setMarketFailed(false); }
       } catch (e) {
         if (e.name === 'AbortError') return;
-        if (attempt < 2) setTimeout(() => fetchMarket(attempt + 1), 3000 * (attempt + 1));
+        if (attempt < 2) retryTimer = setTimeout(() => fetchMarket(attempt + 1), 3000 * (attempt + 1));
+        else if (!controller.signal.aborted) setMarketFailed(true);
       }
     };
     fetchMarket();
     const interval = setInterval(() => fetchMarket(), 5 * 60 * 1000);
-    return () => { controller.abort(); clearInterval(interval); };
-  }, []);
+    return () => { controller.abort(); clearTimeout(retryTimer); clearInterval(interval); };
+  }, [marketAttempt]);
 
   useEffect(() => {
     const controller = new AbortController();
@@ -387,7 +394,9 @@ export default function Dashboard() {
     const negCount = closed.filter((t) => pnlOf(t) < 0).length;
     const avgWin = posCount ? grossProfit / posCount : 0;
     const avgLoss = negCount ? -(grossLoss / negCount) : 0;
-    const ratio = avgLoss !== 0 ? avgWin / Math.abs(avgLoss) : (avgWin > 0 ? avgWin : 0);
+    // null (shown as "—") until there is a loss — it used to fall back to the
+    // average win itself, so one $200 win read as a ratio of 200.
+    const ratio = winLossRatio(avgWin, avgLoss);
     const netPnl = closed.reduce((s, t) => s + pnlOf(t), 0);
 
     // Win/loss streaks — current run + longest winning run, for trades and days
@@ -490,7 +499,7 @@ export default function Dashboard() {
         <Reveal>
           <div className="grid grid-cols-1 lg:grid-cols-3 gap-4 items-start">
             <RecentTradesCard trades={recentClosed} hidden={hideBalances} className="lg:col-span-2" />
-            <ScoreCard metrics={perf.metrics} score={perf.score} />
+            <ScoreCard metrics={perf.metrics} score={perf.score} sampleSize={kpi.tradeCount} />
           </div>
         </Reveal>
 
@@ -545,7 +554,7 @@ export default function Dashboard() {
 
         <Reveal>
           <div className="grid grid-cols-1 lg:grid-cols-3 gap-4 items-start">
-            <MarketCard market={globalMarket} fng={fng} />
+            <MarketCard market={globalMarket} fng={fng} failed={marketFailed} onRetry={retryMarket} />
             <HomePanel title="חדשות" link="לכל החדשות" onLink={() => navigate('/news')} className="lg:col-span-2">
               <NewsList items={latestNews} max={3} />
             </HomePanel>

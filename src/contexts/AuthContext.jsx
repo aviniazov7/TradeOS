@@ -1,4 +1,4 @@
-import { createContext, useContext, useState, useEffect, useMemo, useCallback } from 'react';
+import { createContext, useContext, useState, useEffect, useMemo, useCallback, useRef } from 'react';
 import { planExpiresMs } from '../utils/premium';
 import { APP_VERSION } from '../utils/constants';
 // Firebase Auth operations (login/logout/register/reset…).
@@ -14,6 +14,8 @@ import {
   changePassword as authChangePassword,
   reauthenticate,
   deleteAuthUser,
+  sendVerificationEmail as authSendVerificationEmail,
+  refreshEmailVerified as authRefreshEmailVerified,
 } from '../services/authService';
 // Profile + settings, plus the account-deletion wipe (all subcollections +
 // leaderboard + user doc).
@@ -46,6 +48,10 @@ export function AuthProvider({ children }) {
   const [user, setUser] = useState(null);
   const [profile, setProfile] = useState(null);
   const [loading, setLoading] = useState(true);
+  // Name typed on the signup form. onAuthStateChanged fires as soon as the
+  // account is created — BEFORE updateProfile sets the Auth displayName — so
+  // the first profile doc used to get the email prefix instead of the name.
+  const pendingNameRef = useRef(null);
 
   useEffect(() => {
     // Handle redirect result from PWA Google Sign-In
@@ -87,7 +93,7 @@ export function AuthProvider({ children }) {
         // Load the profile doc in the background (also creates it on first
         // sign-in). Used for the `role` field that gates the admin panel.
         const defaultProfile = {
-          displayName: firebaseUser.displayName || firebaseUser.email?.split('@')[0] || 'User',
+          displayName: pendingNameRef.current || firebaseUser.displayName || firebaseUser.email?.split('@')[0] || 'User',
           email: firebaseUser.email,
           photoURL: firebaseUser.photoURL,
           createdAt: timestamp(),
@@ -156,8 +162,14 @@ export function AuthProvider({ children }) {
 
   const loginWithGoogleIdToken = useCallback((idToken) => authLoginWithGoogleIdToken(idToken), []);
 
-  const registerWithEmail = useCallback((email, password, displayName) =>
-    authRegisterWithEmail(email, password, displayName), []);
+  const registerWithEmail = useCallback(async (email, password, displayName) => {
+    pendingNameRef.current = displayName?.trim() || null;
+    try {
+      return await authRegisterWithEmail(email, password, displayName);
+    } finally {
+      pendingNameRef.current = null;
+    }
+  }, []);
 
   const loginWithEmail = useCallback((email, password) => authLoginWithEmail(email, password), []);
 
@@ -210,6 +222,18 @@ export function AuthProvider({ children }) {
   }, [user]);
 
   const isEmailUser = user?.providerData?.some((p) => p.providerId === 'password') || false;
+  // Email/password accounts that haven't clicked the verification link yet
+  // (Google accounts are verified by Google). Shown as a reminder, not a gate.
+  // uid confirmed verified in this session (user.reload() mutates the Firebase
+  // user in place, which React can't see) — keyed by uid so a user switch resets it.
+  const [verifiedUid, setVerifiedUid] = useState(null);
+  const needsEmailVerification = isEmailUser && !user?.emailVerified && verifiedUid !== user?.uid;
+  const resendVerification = useCallback(() => authSendVerificationEmail(), []);
+  const checkEmailVerified = useCallback(async () => {
+    const ok = await authRefreshEmailVerified();
+    if (ok) setVerifiedUid(user?.uid ?? null);
+    return ok;
+  }, [user?.uid]);
   const isAdmin = profile?.role === 'admin';
   // Premium gate. Admins are always premium. A plan with an expiry only counts
   // while it hasn't lapsed. planExpires may be a Firestore Timestamp / ISO
@@ -225,9 +249,11 @@ export function AuthProvider({ children }) {
     user, profile, isAdmin, isPremium, plan, loading,
     loginWithGoogle, loginWithGoogleIdToken, registerWithEmail, loginWithEmail,
     logout, changePassword, resetPassword, deleteAccount, isEmailUser,
+    needsEmailVerification, resendVerification, checkEmailVerified,
   }), [user, profile, isAdmin, isPremium, plan, loading, isEmailUser,
     loginWithGoogle, loginWithGoogleIdToken, registerWithEmail, loginWithEmail,
-    logout, changePassword, resetPassword, deleteAccount]);
+    logout, changePassword, resetPassword, deleteAccount,
+    needsEmailVerification, resendVerification, checkEmailVerified]);
 
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;
 }

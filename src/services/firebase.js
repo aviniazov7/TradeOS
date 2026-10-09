@@ -4,13 +4,14 @@ import {
   GoogleAuthProvider,
   browserLocalPersistence,
   browserPopupRedirectResolver,
+  connectAuthEmulator,
 } from 'firebase/auth';
 import {
   initializeFirestore,
   persistentLocalCache,
   persistentMultipleTabManager,
+  connectFirestoreEmulator,
 } from 'firebase/firestore';
-import { getStorage } from 'firebase/storage';
 import { initializeAppCheck, ReCaptchaV3Provider } from 'firebase/app-check';
 
 // Firebase web client config is intentionally public — Google's docs are
@@ -79,5 +80,14 @@ export const db = initializeFirestore(app, {
     tabManager: persistentMultipleTabManager(),
   }),
 });
-export const storage = getStorage(app);
+
+// Local testing against the Firebase emulators (auth + firestore), never real
+// data: `firebase emulators:start --only auth,firestore` and run the dev server
+// with VITE_USE_EMULATORS=true. Dev builds only — a production bundle can't
+// be pointed at localhost by a stray env var.
+if (import.meta.env.DEV && import.meta.env.VITE_USE_EMULATORS === 'true') {
+  connectAuthEmulator(auth, 'http://127.0.0.1:9099', { disableWarnings: true });
+  connectFirestoreEmulator(db, '127.0.0.1', 8080);
+}
+
 export default app;

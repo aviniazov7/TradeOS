@@ -16,6 +16,7 @@ import {
   reauthenticateWithPopup,
   signOut,
   sendPasswordResetEmail,
+  sendEmailVerification,
 } from 'firebase/auth';
 import { auth, googleProvider } from './firebase';
 
@@ -108,10 +109,40 @@ export function loginWithGoogle() {
 /** Register with email and password */
 export async function registerWithEmail(email, password, displayName) {
   const cred = await createUserWithEmailAndPassword(auth, email, password);
+  // From here the account exists and the user is signed in, so a failure
+  // below must not surface as a failed signup (it used to, as "שגיאה
+  // בהתחברות"). The name also lands on the Firestore profile via AuthContext.
   if (displayName) {
-    await updateProfile(cred.user, { displayName });
+    try {
+      await updateProfile(cred.user, { displayName });
+    } catch {
+      // non-fatal: the profile doc already carries the chosen name
+    }
+  }
+  // Ask the new user to confirm the address. Non-fatal — the in-app banner
+  // offers a resend if this one didn't go out.
+  try {
+    await sendVerificationEmail();
+  } catch {
+    // ignore
   }
   return cred;
+}
+
+/** Email the signed-in user a verification link (Firebase template, Hebrew). */
+export function sendVerificationEmail() {
+  const user = auth.currentUser;
+  if (!user) return Promise.reject(new Error('No user'));
+  auth.languageCode = 'he';
+  return sendEmailVerification(user);
+}
+
+/** Re-fetch the signed-in user so emailVerified reflects a click on the link. */
+export async function refreshEmailVerified() {
+  const user = auth.currentUser;
+  if (!user) return false;
+  await user.reload();
+  return Boolean(auth.currentUser?.emailVerified);
 }
 
 /** Sign in with email and password */

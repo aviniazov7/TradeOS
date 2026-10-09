@@ -5,7 +5,7 @@ import { motion, AnimatePresence } from 'framer-motion';
 import toast from 'react-hot-toast';
 import { useJournalContext } from '../../contexts/JournalContext';
 import { useAuth } from '../../contexts/AuthContext';
-import { EXCHANGES, FREE_LIMITS } from '../../utils/constants';
+import { exchangeLabel, FREE_LIMITS } from '../../utils/constants';
 import ExchangeLogo from '../shared/ExchangeLogo';
 import JournalFormModal from './JournalFormModal';
 import Modal from '../shared/Modal';
@@ -41,7 +41,6 @@ export default function JournalSwitcher({ compact }) {
     return () => document.removeEventListener('mousedown', handleClick);
   }, [open]);
 
-  const getExchangeLabel = (value) => EXCHANGES.find((e) => e.value === value)?.label || value;
 
   const handleSave = async (data) => {
     try {
@@ -175,7 +174,7 @@ export default function JournalSwitcher({ compact }) {
                   )}
                   <div className="flex-1 min-w-0">
                     <p className="text-sm font-medium text-text-primary truncate">{j.name}</p>
-                    {j.exchange && <p className="text-[10px] text-text-muted">{getExchangeLabel(j.exchange)}</p>}
+                    {exchangeLabel(j.exchange) && <p className="text-[10px] text-text-muted">{exchangeLabel(j.exchange)}</p>}
                   </div>
                   <div className="flex items-center gap-1 flex-shrink-0">
                     <button

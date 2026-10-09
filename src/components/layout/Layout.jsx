@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react';
-import { Outlet } from 'react-router-dom';
+import { Outlet, useLocation } from 'react-router-dom';
 import Sidebar from './Sidebar';
 import Header from './Header';
 import MobileNav from './MobileNav';
@@ -7,6 +7,7 @@ import BackgroundIcons from '../shared/BackgroundIcons';
 import PullToRefresh from '../shared/PullToRefresh';
 import OnboardingWizard from '../onboarding/OnboardingWizard';
 import PushNudge from '../shared/PushNudge';
+import EmailVerifyBanner from './EmailVerifyBanner';
 import { useTheme } from '../../hooks/useTheme';
 import { usePushAutoRegister } from '../../hooks/usePushAutoRegister';
 import { WifiOff } from 'lucide-react';
@@ -14,7 +15,16 @@ import { WifiOff } from 'lucide-react';
 export default function Layout() {
   const [sidebarOpen, setSidebarOpen] = useState(false);
   const [isOnline, setIsOnline] = useState(() => navigator.onLine);
+  const { pathname } = useLocation();
   useTheme();
+
+  // The page scrolls inside #app-scroll (not the window), so the browser's own
+  // scroll restoration never resets it: moving to another page kept the old
+  // scroll offset. Back to the top on every page change (tab/query changes
+  // within a page keep their position).
+  useEffect(() => {
+    document.getElementById('app-scroll')?.scrollTo({ top: 0 });
+  }, [pathname]);
 
   useEffect(() => {
     const on = () => setIsOnline(true);
@@ -53,6 +63,7 @@ export default function Layout() {
         style={{ WebkitOverflowScrolling: 'touch' }}
       >
         <main className="p-3 md:p-6 pb-[calc(env(safe-area-inset-bottom,0px)+96px)] lg:pb-6">
+          <EmailVerifyBanner />
           <PullToRefresh>
             <Outlet />
           </PullToRefresh>
