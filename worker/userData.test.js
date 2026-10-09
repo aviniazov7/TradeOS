@@ -4,8 +4,7 @@ import { fileURLToPath } from 'node:url';
 import { dirname, resolve } from 'node:path';
 import {
   USER_SUBCOLLECTIONS, userSingleKvKeys, isLifetimePlan, samePushSubscription,
-  buildSettingsMap, settingsAnyOn,
-} from './userData';
+  buildSettingsMap, settingsAnyOn, sanitizeNotifySettings } from './userData';
 
 const here = dirname(fileURLToPath(import.meta.url));
 
@@ -85,5 +84,31 @@ describe('buildSettingsMap', () => {
     expect(settingsAnyOn(on)).toBe(true);
     expect(settingsAnyOn(off)).toBe(false);
     expect(settingsAnyOn(null)).toBe(false);
+  });
+});
+
+describe('sanitizeNotifySettings', () => {
+  it('keeps every toggle the app offers, including the news-impact one', () => {
+    const s = sanitizeNotifySettings({
+      journal: { enabled: true, time: '20:30' }, summary: { enabled: false, time: '22:00' },
+      calendar: { enabled: true }, newsImpact: { enabled: true },
+    });
+    expect(s).toEqual({
+      journal: { enabled: true, time: '20:30' }, summary: { enabled: false, time: '22:00' },
+      calendar: { enabled: true }, newsImpact: { enabled: true },
+    });
+  });
+
+  it('is strict: only literal true enables, bad times fall back', () => {
+    const s = sanitizeNotifySettings({ journal: { enabled: 'yes', time: '25:99' }, calendar: { enabled: 1 }, newsImpact: {} });
+    expect(s.journal).toEqual({ enabled: false, time: '21:00' });
+    expect(s.calendar.enabled).toBe(false);
+    expect(s.newsImpact.enabled).toBe(false);
+  });
+
+  it('copes with a missing or junk body', () => {
+    expect(sanitizeNotifySettings(undefined).calendar.enabled).toBe(false);
+    expect(sanitizeNotifySettings(null).summary.time).toBe('22:00');
+    expect(sanitizeNotifySettings('x').newsImpact.enabled).toBe(false);
   });
 });

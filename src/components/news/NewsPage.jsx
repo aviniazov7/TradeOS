@@ -8,6 +8,7 @@ import { hebrewEventTitle } from '../../utils/econCalendarTerms';
 import { safeHttpUrl } from '../../utils/urls';
 import SelectDropdown from '../shared/SelectDropdown';
 import PageHeader from '../shared/PageHeader';
+import CalendarAlertToggle from './CalendarAlertToggle';
 
 // Feed text arrives with HTML entities (S&amp;P) and in either language.
 // plaintext bidi orders each line by its own first strong character, so an
@@ -412,6 +413,9 @@ function EconomicCalendar() {
 
   return (
     <>
+      {/* Push alert an hour before each high-impact USD event (same setting as in the profile). */}
+      <CalendarAlertToggle />
+
       {/* Time Period Tabs */}
       <div className="flex items-center gap-1 mb-4 overflow-x-auto pb-1">
         {timePeriods.map((tp) => (

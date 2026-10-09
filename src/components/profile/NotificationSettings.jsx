@@ -1,7 +1,7 @@
-import {
-  Activity, useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
-import { Bell, BellRing, BellOff, Send, NotebookPen, BarChart3, CalendarClock, ChevronDown, Zap, Radar } from 'lucide-react';
+import { Bell, BellRing, BellOff, Send, NotebookPen, BarChart3, CalendarClock, ChevronDown, Zap, Radar, Activity } from 'lucide-react';
+import { SCHEDULE_DEFAULTS, withScheduleDefaults } from '../../utils/notifySchedule';
 import toast from 'react-hot-toast';
 import { useAuth } from '../../contexts/AuthContext';
 import SelectDropdown from '../shared/SelectDropdown';
@@ -15,15 +15,6 @@ import {
 // wyckoffAlerts gates the setup-scanner pushes (enforced by the worker once the
 // scanner engine lands; the toggle is saved now so the preference is ready).
 const DEFAULTS = { pushEnabled: true, tradeOpenAlerts: true, wyckoffAlerts: true };
-
-// Journal reminder / daily summary / economic calendar defaults — mirrors the
-// worker's DEFAULT_SETTINGS (#219).
-const SCHEDULE_DEFAULTS = {
-  journal: { enabled: false, time: '21:00' },
-  summary: { enabled: false, time: '22:00' },
-  calendar: { enabled: false },
-  newsImpact: { enabled: false },
-};
 
 // Small right-aligned toggle, matching the main push toggle's look.
 function MiniToggle({ on }) {
@@ -66,7 +57,7 @@ function ScheduleSection({ user }) {
   useEffect(() => {
     let cancelled = false;
     getNotifySchedule()
-      .then((s) => { if (!cancelled) setSchedule({ ...SCHEDULE_DEFAULTS, ...s }); })
+      .then((s) => { if (!cancelled) setSchedule(withScheduleDefaults(s)); })
       .catch(() => { if (!cancelled) setSchedule(SCHEDULE_DEFAULTS); });
     return () => { cancelled = true; };
   }, []);
