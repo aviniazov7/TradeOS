@@ -101,6 +101,17 @@ changes.
 - **Cron triggers:** disabled in staging so admins don't receive duplicate
   weekly digest / churn / expiry pushes.
 
+## Accounts — read before touching secrets
+
+The TradeOS Workers live in the **app's** Cloudflare account. The local
+`wrangler` is logged in to the owner's **personal** Cloudflare account, which
+does not contain them — so never run `wrangler secret put` / `deploy` from the
+machine without an explicit `CLOUDFLARE_ACCOUNT_ID` + the app account's token.
+New Worker secrets are added in the dashboard (*Workers & Pages → trade-os →
+Settings → Variables and Secrets*) or via CI. Exchange API keys are stored only
+encrypted in KV (never Firestore) — see "Accounts, ownership & credentials" in
+`README.md` for the full map.
+
 ## Admin panel
 
 `/admin` (sidebar "ניהול") is gated on the Firestore profile field

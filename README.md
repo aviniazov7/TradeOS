@@ -241,6 +241,34 @@ TradeOS/
 
 ---
 
+## Accounts, ownership & credentials
+
+> **תקציר:** הקוד אצל החשבון האישי ב-GitHub; Firebase ו-Cloudflare הם שירותים נפרדים, וה-Workers של TradeOS יושבים בחשבון Cloudflare **של האפליקציה**, לא בחשבון האישי. את הפקודות `wrangler` שרצות מהמחשב לא להריץ בלי לבדוק איזה חשבון מחובר (ראו למטה).
+
+| Service | Account | What lives there |
+|---|---|---|
+| GitHub | `aviniazov7` (personal), private repo `aviniazov7/TradeOS` | code, CI, CI secrets |
+| Firebase / Google Cloud | project `tradeos-91a58` (number `80529278454`); the local `firebase` CLI is logged in as `aviniazov18@gmail.com` | Auth, Firestore, Hosting, Cloud Function `googleSignIn` (`europe-west1`) |
+| Cloudflare — **app account** | the account shown as `Tradeos.app@gmail…` (workers.dev subdomain `tradeos`) | Workers `trade-os` (all HTTP), `tradeos-alerts` (cron, every 10 min), `trade-os-staging` (unused), KV namespace `ALERTS_KV` |
+| Cloudflare — personal | `aviniazov7@icloud.com` | **not** TradeOS: other workers (`safety-groq-proxy`, `workout-bot`, `pump-detector`) and `tradeos-google-auth`, which nothing in this repo references |
+| Resend, Groq, Moralis | API keys are stored as Worker secrets (see below) | email sending, AI chat, wallet lookups |
+
+**Ownership policy (target):** every production asset has two Owners — the app account and the personal account — so losing one login (2FA, recovery) never locks the project out.
+- Firebase: *Project settings → Users and permissions* — both accounts with the **Owner** role.
+- Cloudflare: the personal account added as a member of the app account (*Manage account → Members*) with a Super Administrator role, so one login reaches both.
+- Status of both: **to be confirmed** by the owner; update this line when done.
+
+### Where credentials live
+
+- **Exchange API keys** are never stored in Firestore or in the browser. They are sent once to the Worker (`POST /exchange/credentials/store`) and kept in KV as `pushexch:{uid}:{exchange}`, encrypted with AES-GCM using the Worker secret `CREDS_ENCRYPTION_KEY`. Firestore (`users/{uid}/settings/exchanges`) holds only a `connected` marker. The Worker only calls **read** endpoints of the exchanges (trades, balances, open orders) — it never places orders or withdraws — and the app tells users to create **read-only** keys. A scan on 2026-10-09 found 0 of 24 users with plaintext keys (`.github/workflows/scan-exchange-keys.yml` re-runs it, read-only).
+- **Worker secrets** (names only — values are never in the repo): `CREDS_ENCRYPTION_KEY`, `FIREBASE_SERVICE_ACCOUNT`, `GROQ_API_KEY`, `GEMINI_API_KEY`, `RESEND_API_KEY`, `MORALIS_API_KEY`, `VAPID_JWK`, `UNSUBSCRIBE_SECRET`, `MAIL_TO_ADMIN_OVERRIDE`, `CF_ACCOUNT_ID`, `CF_API_TOKEN`. CI re-applies the ones it knows from GitHub secrets on every deploy; the others (`CREDS_ENCRYPTION_KEY`, `UNSUBSCRIBE_SECRET`, …) were set once in the dashboard and survive deploys.
+- **GitHub Actions secrets**: `CLOUDFLARE_API_TOKEN` (an API token for the **app** Cloudflare account; the account id is set in `deploy.yml`), `FIREBASE_SERVICE_ACCOUNT`, plus the Worker secret values listed above.
+
+### Running `wrangler` / `firebase` locally — read this first
+
+- This machine's `wrangler` is logged in to the **personal** Cloudflare account, which does **not** contain the TradeOS Workers. `wrangler secret put …` from here would target the wrong account. Set a secret in the dashboard instead (*Workers & Pages → trade-os → Settings → Variables and Secrets*), or use the app account's API token with `CLOUDFLARE_ACCOUNT_ID`.
+- Deploys go through GitHub Actions (see `CLAUDE.md`); Firestore rules are the only manual deploy (`firebase deploy --only firestore:rules --project tradeos-91a58`).
+
 ## Getting Started
 
 ### Prerequisites
@@ -277,6 +305,8 @@ VITE_WORKER_URL=https://your-worker.workers.dev
 ```
 
 ### Cloudflare Worker
+
+> ⚠️ Log in to the **app's** Cloudflare account (see *Accounts, ownership & credentials* above) — not the personal one.
 
 ```bash
 # Login to Cloudflare
