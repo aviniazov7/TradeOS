@@ -1,6 +1,6 @@
 import { useNavigate } from 'react-router-dom';
 import { scoreReady, streakDaysLabel, MIN_SCORE_TRADES } from '../../utils/homeStats';
-import { FlaskConical, ClipboardList, Coins, Sunrise, Moon, ChevronLeft } from 'lucide-react';
+import { FlaskConical, ClipboardList, Coins, Sunrise, Moon, ChevronLeft, RefreshCw } from 'lucide-react';
 import Card from '../shared/Card';
 import CoinIcon from '../shared/CoinIcon';
 import FitText from '../shared/FitText';
@@ -247,7 +247,7 @@ const FNG_HE = {
 };
 
 // Market in four numbers.
-export function MarketCard({ market, fng, className = '' }) {
+export function MarketCard({ market, fng, failed = false, onRetry, className = '' }) {
   const navigate = useNavigate();
   const chg = market?.market_cap_change_percentage_24h_usd;
   const fngVal = fng ? Number(fng.value) : null;
@@ -276,6 +276,16 @@ export function MarketCard({ market, fng, className = '' }) {
             <div className="text-xs text-text-secondary">נפח 24 שעות</div>
             <b className="num-mono text-base text-text-primary block" dir="ltr" style={{ textAlign: 'right' }}>{formatCompactUsd(market.total_volume?.usd)}</b>
           </div>
+        </div>
+      ) : failed ? (
+        <div className="flex items-center gap-2 flex-wrap" role="status">
+          <p className="text-sm text-text-secondary">נתוני השוק לא זמינים כרגע</p>
+          {onRetry && (
+            <button type="button" onClick={onRetry}
+              className="inline-flex items-center gap-1 px-2 h-7 rounded-lg text-xs text-text-secondary hover:text-text-primary hover:bg-white/5 transition-colors cursor-pointer">
+              <RefreshCw className="w-3 h-3" aria-hidden /> נסה שוב
+            </button>
+          )}
         </div>
       ) : (
         <p className="text-sm text-text-secondary">טוען נתוני שוק…</p>
