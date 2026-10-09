@@ -106,13 +106,13 @@ Legend: `[x]` fixed · `[~]` partly fixed, or fixed in code with a manual step l
   - **Left:** The HTTP status is still 200 (SPA). A real 404 status would need a server function, which isn't worth it for a login-gated app.
 - [x] **[Security] Admin UI chunk is downloadable**
   - **Status:** No change needed. Worker admin routes return 403 to non-admins, and the chunk holds UI only.
-- [~] **[Security] Exchange keys go through the Worker (good)**
+- [x] **[Security] Exchange keys go through the Worker (good)**
   - **Correction:** The report's 403 on `users/{uid}/exchanges` is expected. That collection doesn't exist; connection data lives in `settings/exchanges`, which only the owner can read.
   - **New finding:** Older accounts may still hold plaintext `apiKey`/`apiSecret` in `settings/exchanges`.
   - **Already handled by the app:** When a user opens the exchange tab (`ExchangeSettings.jsx`), legacy keys are re-stored in the encrypted Worker store and stripped from Firestore, but only if every re-store succeeded. Users who never open that tab keep theirs.
   - **Decision:** No bulk delete. Deleting keys that were never re-stored would silently disconnect users from their exchange.
   - **Tool added:** the manual, read-only workflow **Scan plaintext exchange keys** (Actions → Run workflow; `scripts/scan-plaintext-exchange-keys.mjs`) prints counts only: users scanned, how many still hold plaintext keys, and by exchange. No uids and no key values.
-  - **Owner:** Run the scan once. If the count is 0 or small, nothing more is needed; if it is large, decide between asking users to open the tab and a server-side migration.
+  - **Result (2026-10-09, run #1):** 24 users scanned, 1 with a `settings/exchanges` document, **0 holding plaintext keys**. Nothing to clean up.
 
 ---
 
