@@ -15,6 +15,8 @@ import {
   serverTimestamp,
   Timestamp,
   getCountFromServer,
+  terminate,
+  clearIndexedDbPersistence,
 } from 'firebase/firestore';
 import { db } from './firebase';
 import { APP_VERSION } from '../utils/constants';
@@ -403,3 +405,14 @@ export function dateToTimestamp(date) {
 // Re-exported so callers append to array fields without importing
 // `firebase/firestore` directly (service-layer convention, issue #216).
 export { arrayUnion } from 'firebase/firestore';
+
+/**
+ * Erase Firestore's offline cache (IndexedDB) on this device. Used after an
+ * account is deleted, so the deleted user's data doesn't linger in the browser.
+ * Firestore must be terminated first and is unusable afterwards — the caller
+ * has to reload the page.
+ */
+export async function clearLocalFirestoreCache() {
+  await terminate(db);
+  await clearIndexedDbPersistence(db);
+}

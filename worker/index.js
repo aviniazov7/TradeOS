@@ -17,6 +17,7 @@ import {
 } from './exchangeNormalize.js';
 import { buildCampaignEmails, chunk, friendlyResendError, CAMPAIGN_MAX } from './adminEmail.js';
 import { unsubscribeUrl, verifyUnsubscribe, unsubscribePage, UID_RE } from './unsubscribe.js';
+import { purgeUserResidue } from './accountPurge.js';
 import { emailShell, C as EMAIL_C, bg as emailBg, txt as emailTxt, esc as emailEsc, para as emailPara } from './emailTheme.js';
 import { buildDigestEmail } from './adminDigest.js';
 import { pickMarketFacts, HOOK_SYSTEM_PROMPT, buildHookUserMessage, validateHook, templateHook } from './marketHook.js';
@@ -4978,14 +4979,12 @@ async function handleRequest(request, env) {
     const base = `https://firestore.googleapis.com/v1/projects/${FIREBASE_PROJECT_ID}/databases/(default)`;
     const gh = { Authorization: `Bearer ${gtoken}`, 'Content-Type': 'application/json' };
 
-    // Identity snapshot for the audit entry + refuse to delete another admin.
+    // Refuse to delete another admin.
     const docRes = await fetch(`${base}/documents/users/${uid}`, { headers: gh });
     const fields = docRes.ok ? (await docRes.json())?.fields || {} : {};
     if (fields.role?.stringValue === 'admin') {
       return new Response(JSON.stringify({ error: 'cannot delete an admin' }), { status: 400, headers: { ...cors, 'Content-Type': 'application/json' } });
     }
-    const email = fields.email?.stringValue || null;
-    const displayName = fields.displayName?.stringValue || null;
 
     // Every subcollection the app writes — shared list (worker/userData.js),
     // test-enforced to match the client's USER_SUBCOLLECTIONS.
@@ -5023,10 +5022,13 @@ async function handleRequest(request, env) {
     // Per-user KV leftovers: encrypted exchange keys (so the cron stops
     // polling the exchange), push subscriptions, schedule, plan cache, …
     await purgeUserKv(env, uid).catch((e) => console.error('purgeUserKv failed', uid, e?.message || e));
+    const residue = await purgeUserResidue({ fetchFn: fetch, base, headers: gh, uid, kv: env.ALERTS_KV })
+      .catch((e) => ({ errors: [e?.message || String(e)] }));
+    if (residue.errors.length) console.error('admin delete residue', uid, residue.errors.join('; '));
 
     await appendAudit(env, {
       kind: 'account_deleted', source: 'admin', actor: adminUid, target: uid,
-      email, displayName, docs: deletedDocs, authDeleted: authRes.ok,
+      docs: deletedDocs, authDeleted: authRes.ok, residuePurged: residue.errors.length === 0,
     });
     return new Response(JSON.stringify({ ok: true, docs: deletedDocs, authDeleted: authRes.ok }), { headers: { ...cors, 'Content-Type': 'application/json' } });
   }
@@ -5042,20 +5044,33 @@ async function handleRequest(request, env) {
     const token = (request.headers.get('Authorization') || '').replace('Bearer ', '');
     const uid = await verifyFirebaseToken(token);
     if (!uid) return new Response(JSON.stringify({ error: 'forbidden' }), { status: 403, headers: { ...cors, 'Content-Type': 'application/json' } });
-    const { email, displayName } = await request.json().catch(() => ({}));
     let purged = null;
     try {
       purged = await purgeUserKv(env, uid);
     } catch (e) {
       console.error('account/deleted purge failed', uid, e?.message || e);
     }
+    // The rest of what the client cannot touch: the admin's private note,
+    // payment records (anonymised) and coupon-redemption markers.
+    let residue = null;
+    try {
+      residue = await purgeUserResidue({
+        fetchFn: fetch,
+        base: `https://firestore.googleapis.com/v1/projects/${FIREBASE_PROJECT_ID}/databases/(default)`,
+        headers: { Authorization: `Bearer ${await getFirebaseAdminToken(env)}`, 'Content-Type': 'application/json' },
+        uid, kv: env.ALERTS_KV,
+      });
+      if (residue.errors.length) console.error('account/deleted residue', uid, residue.errors.join('; '));
+    } catch (e) {
+      console.error('account/deleted residue failed', uid, e?.message || e);
+    }
+    // The audit entry keeps only the opaque uid — no email or name — so the
+    // log itself doesn't retain what the user asked to have erased.
     await appendAudit(env, {
       kind: 'account_deleted', source: 'self', actor: uid, target: uid,
-      email: typeof email === 'string' ? email.slice(0, 120) : null,
-      displayName: typeof displayName === 'string' ? displayName.slice(0, 80) : null,
-      kvPurged: !!purged,
+      kvPurged: !!purged, residuePurged: !!residue && residue.errors.length === 0,
     });
-    return new Response(JSON.stringify({ ok: true, purged: !!purged }), { headers: { ...cors, 'Content-Type': 'application/json' } });
+    return new Response(JSON.stringify({ ok: true, purged: !!purged, residue: !!residue && residue.errors.length === 0 }), { headers: { ...cors, 'Content-Type': 'application/json' } });
   }
 
   // Admin-only: list recent audit log entries (newest first). Optional ?limit

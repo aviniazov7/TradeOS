@@ -32,6 +32,7 @@ import {
   USER_SUBCOLLECTIONS,
 } from '../services/firestoreService';
 import { logAccountDeletion } from '../services/pushService';
+import { clearLocalAccountData } from '../services/localData';
 
 // Read a Firestore Timestamp / ISO / millis into epoch millis (0 if absent).
 function toMillis(v) {
@@ -225,13 +226,17 @@ export function AuthProvider({ children }) {
     // Delete user doc
     await deleteUserProfile(currentUser.uid);
 
-    // Audit trail (admin panel shows who deleted their account and when) —
-    // must run while the ID token is still valid. Never throws.
-    await logAccountDeletion({ email: currentUser.email, displayName: currentUser.displayName });
+    // Server-side leftovers (encrypted exchange keys, push subscriptions, the
+    // admin's note, payment records, coupon markers) plus an audit entry that
+    // carries only the uid — no email or name. Must run while the ID token is
+    // still valid. Never throws.
+    await logAccountDeletion();
 
     // Delete auth account
-    localStorage.removeItem('tradeos_activeJournal');
     await deleteAuthUser();
+
+    // Nothing of the account stays on this device either.
+    await clearLocalAccountData();
   }, [user]);
 
   const isEmailUser = user?.providerData?.some((p) => p.providerId === 'password') || false;
