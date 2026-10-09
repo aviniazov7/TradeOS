@@ -1,0 +1,30 @@
+name: Scan plaintext exchange keys
+
+# READ-ONLY, manual. Counts how many users still have exchange API keys stored
+# in plaintext in Firestore (the app strips them when a user opens the exchange
+# tab). Output is counts only — see scripts/scan-plaintext-exchange-keys.mjs.
+on:
+  workflow_dispatch: {}
+
+permissions:
+  contents: read
+
+jobs:
+  scan:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+      - name: Install Admin SDK (functions/)
+        run: npm ci --prefix functions
+      - name: Write Firebase service account
+        run: echo '${{ secrets.FIREBASE_SERVICE_ACCOUNT }}' > "$RUNNER_TEMP/firebase-sa.json"
+      - name: Scan
+        run: node scripts/scan-plaintext-exchange-keys.mjs
+        env:
+          GOOGLE_APPLICATION_CREDENTIALS: ${{ runner.temp }}/firebase-sa.json
+      - name: Remove service account file
+        if: always()
+        run: rm -f "$RUNNER_TEMP/firebase-sa.json"

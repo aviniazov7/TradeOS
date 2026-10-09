@@ -22,7 +22,7 @@ Legend: `[x]` fixed · `[~]` partly fixed, or fixed in code with a manual step l
   - **Fix:** The full policy had been in `public/_headers`, which Firebase Hosting never reads. `firebase.json` now also sends a full `Content-Security-Policy-Report-Only`: no inline or eval script, plus connect/frame/img/font allowlists.
   - **Verified:** Zero violations on the production build with the local Hosting emulator, including Firebase login.
   - **Shipped:** PR #510.
-  - **Left:** Switch to enforcing after a few days on `dev`/prod without issues. Not done yet.
+  - **Decision:** Stays report-only for now. Report-only has no reporting endpoint, so violations only show in each browser's console; switching to enforcing blind could break a page. Before enforcing, open `dev` with DevTools → Console, visit every page, and look for "Content Security Policy" messages. Zero messages means the policy can be enforced (rename `Content-Security-Policy-Report-Only` to `Content-Security-Policy` in `firebase.json`).
 - [x] **[Bugs] Market overview / ticker stuck on loading; 403/429 from exchange APIs; XAU twice, no BTC**
   - **Ticker (PR #508):** Each request times out after 8s. The ticker shows an error with retry when every feed fails, or a refresh button when some fail. A short list no longer loops, which is why XAU used to appear twice.
   - **Market page (PR #509):** Futures data comes from Bybit only, because `fapi.binance.com` is geo-blocked. Every empty panel shows "לא זמין כרגע" with "נסה שוב".
@@ -48,9 +48,8 @@ Legend: `[x]` fixed · `[~]` partly fixed, or fixed in code with a manual step l
 ## Medium
 
 - [ ] **[Security] Premium / free-plan limits are mostly client-side** (AI quota is already server-side)
-  - **Status:** Open. The journal/wallet/exchange count limits are still enforced only in the UI.
-  - **Recommendation:** Leave for now. No paid resource sits behind them, and the AI is already capped on the server.
-  - **Options for later:** a counter field checked in rules, or creating journals through the Worker.
+  - **Decision:** Leave as is. The journal/wallet/exchange count limits are enforced only in the UI, but no paid resource sits behind them, and the AI quota (the costly part) is already capped on the server.
+  - **If it ever matters:** a counter field checked in rules, or creating journals through the Worker.
 - [x] **[Security] `dangerouslySetInnerHTML` for AI output; raw markdown and RTL number glitches**
   - **Finding:** Every AI path already went through DOMPurify; that was verified.
   - **Fix:** `wrapLtrRuns()` isolates signed numbers, prices and unit-suffixed numbers in `<span dir="ltr">` for the AI chat, chart analyzer and coach bullets. The sanitizers allow only `dir`.
@@ -68,7 +67,7 @@ Legend: `[x]` fixed · `[~]` partly fixed, or fixed in code with a manual step l
   - **Shipped:** PR #520.
 - [ ] **[UX] No public landing / pricing page; no Terms/Privacy at signup**
   - **Status:** Open. There are no Terms or Privacy pages in the codebase.
-  - **Needs:** Legal text from the owner, plus a decision on a public landing page.
+  - **Decision:** No placeholder legal text was published, because made-up terms are worse than none. Needs legal text from the owner (then a `/terms` and `/privacy` page, linked at signup), plus a decision on a public landing page.
 - [x] **[Bugs] Journal stats misleading on tiny samples; leaked `other` key**
   - **Fix:**
     - The score waits for 5 closed trades.
@@ -107,10 +106,13 @@ Legend: `[x]` fixed · `[~]` partly fixed, or fixed in code with a manual step l
   - **Left:** The HTTP status is still 200 (SPA). A real 404 status would need a server function, which isn't worth it for a login-gated app.
 - [x] **[Security] Admin UI chunk is downloadable**
   - **Status:** No change needed. Worker admin routes return 403 to non-admins, and the chunk holds UI only.
-- [ ] **[Security] Exchange keys go through the Worker (good)**
+- [~] **[Security] Exchange keys go through the Worker (good)**
   - **Correction:** The report's 403 on `users/{uid}/exchanges` is expected. That collection doesn't exist; connection data lives in `settings/exchanges`, which only the owner can read.
-  - **New finding:** Older accounts may still hold plaintext `apiKey`/`apiSecret` in `settings/exchanges`. The client still checks for them in `useLinkedExchangeBalance`.
-  - **Needs:** The owner's approval for a one-time cleanup script that the owner runs (it touches real data).
+  - **New finding:** Older accounts may still hold plaintext `apiKey`/`apiSecret` in `settings/exchanges`.
+  - **Already handled by the app:** When a user opens the exchange tab (`ExchangeSettings.jsx`), legacy keys are re-stored in the encrypted Worker store and stripped from Firestore, but only if every re-store succeeded. Users who never open that tab keep theirs.
+  - **Decision:** No bulk delete. Deleting keys that were never re-stored would silently disconnect users from their exchange.
+  - **Tool added:** the manual, read-only workflow **Scan plaintext exchange keys** (Actions → Run workflow; `scripts/scan-plaintext-exchange-keys.mjs`) prints counts only: users scanned, how many still hold plaintext keys, and by exchange. No uids and no key values.
+  - **Owner:** Run the scan once. If the count is 0 or small, nothing more is needed; if it is large, decide between asking users to open the tab and a server-side migration.
 
 ---
 
