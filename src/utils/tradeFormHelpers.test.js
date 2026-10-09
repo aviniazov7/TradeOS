@@ -1,5 +1,6 @@
 import { describe, it, expect } from 'vitest';
 import {
+  isSelectableTradeTime,
   aggregateFills,
   exitsClosedPercent,
   normalizeCommissions,
@@ -254,5 +255,25 @@ describe('ticket summary', () => {
     expect(r.blended).toBeCloseTo(3.5, 10);
     expect(plannedRewardRisk({ ...base, targets: [] })).toEqual({ tp1: null, blended: null });
     expect(plannedRewardRisk({ ...base, stop: 0, targets: [{ price: 110 }] })).toEqual({ tp1: null, blended: null });
+  });
+});
+
+describe('isSelectableTradeTime', () => {
+  const now = new Date(2026, 9, 9, 14, 30);
+  it('blocks a later hour today', () => {
+    expect(isSelectableTradeTime(new Date(2026, 9, 9, 15, 0), { now })).toBe(false);
+  });
+  it('allows earlier hours today and past days', () => {
+    expect(isSelectableTradeTime(new Date(2026, 9, 9, 14, 15), { now })).toBe(true);
+    expect(isSelectableTradeTime(new Date(2026, 9, 8, 23, 45), { now })).toBe(true);
+  });
+  it('blocks an exit before the entry', () => {
+    const min = new Date(2026, 9, 9, 10, 0);
+    expect(isSelectableTradeTime(new Date(2026, 9, 9, 9, 45), { now, min })).toBe(false);
+    expect(isSelectableTradeTime(new Date(2026, 9, 9, 10, 0), { now, min })).toBe(true);
+  });
+  it('rejects invalid input', () => {
+    expect(isSelectableTradeTime(null, { now })).toBe(false);
+    expect(isSelectableTradeTime(new Date('x'), { now })).toBe(false);
   });
 });

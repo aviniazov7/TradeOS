@@ -395,6 +395,15 @@ body {
   color: #000 !important;
   font-weight: 600 !important;
 }
+/* Slots blocked by filterTime (a later hour today, or an exit before the
+   entry) — dimmed so they don't look clickable. Placed after the light-theme
+   rules' specificity via the doubled class. */
+.react-datepicker__time-list-item.react-datepicker__time-list-item--disabled,
+.react-datepicker__time-list-item.react-datepicker__time-list-item--disabled:hover {
+  opacity: 0.3 !important;
+  background-color: transparent !important;
+  cursor: not-allowed !important;
+}
 .react-datepicker-popper {
   z-index: 9999 !important;
 }

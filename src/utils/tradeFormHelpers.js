@@ -300,3 +300,19 @@ export function plannedRewardRisk({ direction, entry, stop, targets } = {}) {
   const price = total > 0 ? list.reduce((s, t, i) => s + t.price * weights[i], 0) / total : list[0].price;
   return { tp1, blended: rMultiple(direction, entry, stop, price) };
 }
+
+/**
+ * Time-slot filter for the entry/exit date pickers. The date pickers already
+ * stop at today (maxDate), but on TODAY every time slot stayed selectable, so a
+ * later hour could be picked and only failed on save. A slot is allowed when it
+ * isn't in the future and (for the exit) isn't before the entry.
+ * @param {Date} time  the candidate slot (date + time)
+ * @param {{ now?: Date, min?: Date|null }} [opts]
+ */
+export function isSelectableTradeTime(time, { now = new Date(), min = null } = {}) {
+  const t = time instanceof Date ? time.getTime() : NaN;
+  if (!Number.isFinite(t)) return false;
+  if (t > now.getTime()) return false;
+  if (min instanceof Date && Number.isFinite(min.getTime()) && t < min.getTime()) return false;
+  return true;
+}
