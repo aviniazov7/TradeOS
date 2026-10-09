@@ -7,6 +7,7 @@ import BackgroundIcons from '../shared/BackgroundIcons';
 import PullToRefresh from '../shared/PullToRefresh';
 import OnboardingWizard from '../onboarding/OnboardingWizard';
 import PushNudge from '../shared/PushNudge';
+import EmailVerifyBanner from './EmailVerifyBanner';
 import { useTheme } from '../../hooks/useTheme';
 import { usePushAutoRegister } from '../../hooks/usePushAutoRegister';
 import { WifiOff } from 'lucide-react';
@@ -62,6 +63,7 @@ export default function Layout() {
         style={{ WebkitOverflowScrolling: 'touch' }}
       >
         <main className="p-3 md:p-6 pb-[calc(env(safe-area-inset-bottom,0px)+96px)] lg:pb-6">
+          <EmailVerifyBanner />
           <PullToRefresh>
             <Outlet />
           </PullToRefresh>
