@@ -1,4 +1,5 @@
 import DOMPurify from 'dompurify';
+import { wrapLtrRuns } from './bidiNumbers';
 
 // Sanitize-last invariant: ALL HTML construction (markdown→tags) happens here,
 // then DOMPurify runs as the final step before dangerouslySetInnerHTML. Never
@@ -6,7 +7,7 @@ import DOMPurify from 'dompurify';
 // event handlers (onclick, onerror, etc.) and embedded scripts are stripped.
 const SANITIZE_CONFIG = {
   ALLOWED_TAGS: ['strong', 'code', 'em', 'span'],
-  ALLOWED_ATTR: ['class'],
+  ALLOWED_ATTR: ['class', 'dir'],
   FORBID_TAGS: ['script', 'style', 'iframe', 'object', 'embed', 'link'],
   ALLOW_DATA_ATTR: false,
 };
@@ -18,14 +19,18 @@ const SANITIZE_CONFIG = {
 const BULLISH = ['תמיכה', 'ביקוש', 'קנייה', 'לונג', 'פריצה', 'עלייה', 'שורי', 'Accumulation', 'Spring', 'SOS'];
 const BEARISH = ['התנגדות', 'היצע', 'מכירה', 'שורט', 'שבירה', 'ירידה', 'דובי', 'Distribution', 'UTAD', 'SOW'];
 
-// Price levels / ranges ($0.7400, 0.7500$, $0.74–$0.75). Highlighted as a
+// Price levels / ranges ($0.7400, 0.7500$, $0.74–$0.75) are highlighted as a
 // monospace accent chip so the actionable numbers stand out.
-const PRICE_RE = /(\$?\d[\d,]*(?:\.\d+)?\s*[-–]\s*\$?\d[\d,]*(?:\.\d+)?\$?|\$\s?\d[\d,]*(?:\.\d+)?\$?|\d[\d,]*(?:\.\d+)?\s?\$)/g;
+const isPriceRun = (run) => run.includes('$') || /\d\s*[-–]\s*\$?\d/.test(run);
 
 const escapeRe = (s) => s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
 
 function buildLineHtml(line) {
-  let s = line.replace(PRICE_RE, (m) => `<span class="font-mono text-accent-primary bg-accent-primary/10 px-1 rounded">${m}</span>`);
+  // Number runs first, on the plain text (so later steps never match inside
+  // attributes). Each is isolated LTR so "+200 USDT" doesn't flip in RTL.
+  let s = wrapLtrRuns(line, (m) => (isPriceRun(m)
+    ? `<span dir="ltr" class="font-mono text-accent-primary bg-accent-primary/10 px-1 rounded">${m}</span>`
+    : `<span dir="ltr">${m}</span>`));
   for (const w of BULLISH) s = s.replace(new RegExp(escapeRe(w), 'g'), (m) => `<span class="text-profit font-medium">${m}</span>`);
   for (const w of BEARISH) s = s.replace(new RegExp(escapeRe(w), 'g'), (m) => `<span class="text-loss font-medium">${m}</span>`);
   s = s.replace(/\*\*(.+?)\*\*/g, '<strong>$1</strong>');
