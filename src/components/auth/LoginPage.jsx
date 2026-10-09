@@ -3,6 +3,7 @@ import { useAuth } from '../../contexts/AuthContext';
 import { Navigate, useSearchParams, Link } from 'react-router-dom';
 import { Mail, Eye, EyeOff, Lock, User, Link2, BarChart3, Sparkles, Check, ShieldCheck, Loader2 } from 'lucide-react';
 import toast from 'react-hot-toast';
+import { authErrorHe, authErrorMessage, isSilentAuthError } from '../../utils/authErrors';
 
 // What the product does, in three lines — shown beside the form on wide screens.
 const FEATURES = [
@@ -89,9 +90,10 @@ export default function LoginPage() {
       // iOS standalone); getRedirectResult in AuthContext completes the flow.
       await loginWithGoogle();
     } catch (error) {
-      console.error('Google login failed:', error);
-      toast.error('שגיאה בהתחברות עם Google');
       setGoogleLoading(false);
+      if (isSilentAuthError(error)) return; // the user closed the popup
+      console.error('Google login failed:', error);
+      toast.error(authErrorHe(error, 'שגיאה בהתחברות עם Google'));
     }
   };
 
@@ -118,12 +120,7 @@ export default function LoginPage() {
       }
     } catch (error) {
       console.error('Auth failed:', error);
-      const msg = error.code === 'auth/user-not-found' || error.code === 'auth/wrong-password' || error.code === 'auth/invalid-credential'
-        ? 'אימייל או סיסמה שגויים'
-        : error.code === 'auth/email-already-in-use'
-        ? 'האימייל כבר רשום במערכת'
-        : 'שגיאה בהתחברות';
-      toast.error(msg);
+      toast.error(authErrorMessage(error, mode));
     }
     setSubmitting(false);
   };

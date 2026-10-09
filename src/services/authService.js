@@ -108,8 +108,15 @@ export function loginWithGoogle() {
 /** Register with email and password */
 export async function registerWithEmail(email, password, displayName) {
   const cred = await createUserWithEmailAndPassword(auth, email, password);
+  // From here the account exists and the user is signed in, so a failure
+  // below must not surface as a failed signup (it used to, as "שגיאה
+  // בהתחברות"). The name also lands on the Firestore profile via AuthContext.
   if (displayName) {
-    await updateProfile(cred.user, { displayName });
+    try {
+      await updateProfile(cred.user, { displayName });
+    } catch {
+      // non-fatal: the profile doc already carries the chosen name
+    }
   }
   return cred;
 }
