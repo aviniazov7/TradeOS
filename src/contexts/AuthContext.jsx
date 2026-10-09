@@ -1,4 +1,4 @@
-import { createContext, useContext, useState, useEffect, useMemo, useCallback } from 'react';
+import { createContext, useContext, useState, useEffect, useMemo, useCallback, useRef } from 'react';
 import { planExpiresMs } from '../utils/premium';
 import { APP_VERSION } from '../utils/constants';
 // Firebase Auth operations (login/logout/register/reset…).
@@ -46,6 +46,10 @@ export function AuthProvider({ children }) {
   const [user, setUser] = useState(null);
   const [profile, setProfile] = useState(null);
   const [loading, setLoading] = useState(true);
+  // Name typed on the signup form. onAuthStateChanged fires as soon as the
+  // account is created — BEFORE updateProfile sets the Auth displayName — so
+  // the first profile doc used to get the email prefix instead of the name.
+  const pendingNameRef = useRef(null);
 
   useEffect(() => {
     // Handle redirect result from PWA Google Sign-In
@@ -87,7 +91,7 @@ export function AuthProvider({ children }) {
         // Load the profile doc in the background (also creates it on first
         // sign-in). Used for the `role` field that gates the admin panel.
         const defaultProfile = {
-          displayName: firebaseUser.displayName || firebaseUser.email?.split('@')[0] || 'User',
+          displayName: pendingNameRef.current || firebaseUser.displayName || firebaseUser.email?.split('@')[0] || 'User',
           email: firebaseUser.email,
           photoURL: firebaseUser.photoURL,
           createdAt: timestamp(),
@@ -156,8 +160,14 @@ export function AuthProvider({ children }) {
 
   const loginWithGoogleIdToken = useCallback((idToken) => authLoginWithGoogleIdToken(idToken), []);
 
-  const registerWithEmail = useCallback((email, password, displayName) =>
-    authRegisterWithEmail(email, password, displayName), []);
+  const registerWithEmail = useCallback(async (email, password, displayName) => {
+    pendingNameRef.current = displayName?.trim() || null;
+    try {
+      return await authRegisterWithEmail(email, password, displayName);
+    } finally {
+      pendingNameRef.current = null;
+    }
+  }, []);
 
   const loginWithEmail = useCallback((email, password) => authLoginWithEmail(email, password), []);
 
