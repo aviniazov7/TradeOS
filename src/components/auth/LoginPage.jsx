@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { useAuth } from '../../contexts/AuthContext';
 import { Navigate, useSearchParams, Link } from 'react-router-dom';
 import { Mail, Eye, EyeOff, Lock, User, Link2, BarChart3, Sparkles, Check, ShieldCheck, Loader2, AlertCircle } from 'lucide-react';
@@ -63,6 +63,14 @@ function CurveArt() {
 export default function LoginPage() {
   const { user, loginWithGoogle, registerWithEmail, loginWithEmail, resetPassword } = useAuth();
   const [params] = useSearchParams();
+  // Landed here right after deleting the account (ProfilePage redirects with
+  // ?deleted=1): confirm once, then drop the flag so a refresh doesn't repeat it.
+  const deletedFlag = params.get('deleted') === '1';
+  useEffect(() => {
+    if (!deletedFlag) return;
+    toast.success('החשבון והנתונים נמחקו לצמיתות', { duration: 6000 });
+    window.history.replaceState(null, '', '/login');
+  }, [deletedFlag]);
   const [mode, setMode] = useState('login');
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');

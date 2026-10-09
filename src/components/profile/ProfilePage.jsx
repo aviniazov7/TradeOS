@@ -199,8 +199,10 @@ export default function ProfilePage() {
   const handleDelete = async () => {
     try {
       await deleteAccount(isEmailUser ? deletePassword : null);
-      toast.success('החשבון נמחק');
-      navigate('/login');
+      // A full reload, not a route change: the local Firestore cache was just
+      // erased (and Firestore shut down), and the next visitor starts clean.
+      window.location.replace('/login?deleted=1');
+      return;
     } catch (err) {
       console.error('Delete account failed:', err);
       const msg = err.code === 'auth/wrong-password' || err.code === 'auth/invalid-credential'
