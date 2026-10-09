@@ -4,10 +4,11 @@ import { COINS, FUTURES_CONTRACTS } from '../../utils/constants';
 import { useAuth } from '../../contexts/AuthContext';
 import { fetchPrices } from '../../services/coingeckoApi';
 import { formatPrice, formatPercent } from '../../utils/formatters';
-import { TrendingUp, TrendingDown, Droplet, Flame, Gem, Landmark, CandlestickChart } from 'lucide-react';
+import { TrendingUp, TrendingDown, Droplet, Flame, Gem, Landmark, CandlestickChart, RefreshCw } from 'lucide-react';
 import CoinIcon from '../shared/CoinIcon';
 import StockLogo from '../stocks/StockLogo';
 import { TICKER_STOCKS } from '../../utils/stocks';
+import { tickerView } from '../../utils/priceTicker';
 
 // Crypto symbols shown in the ticker (kept small to keep the API request light).
 const TICKER_SYMBOLS = ['BTC','ETH','SOL','AVAX','BNB','ADA','XRP','DOGE','TRX','SUI','NEAR','LINK','DOT','PEPE','WIF','ARB','UNI','ATOM'];
@@ -37,14 +38,18 @@ export default function PriceTicker() {
 
   // Crypto via Bybit (/cx) and futures via Yahoo (/fut) — both reachable from
   // the worker, where Binance + CoinGecko return 403.
-  const { prices: cryptoPrices, loading: cryptoLoading } = useWorkerQuotes('/cx/quotes', TICKER_SYMBOLS, { enabled: showCrypto });
-  const { prices: futuresPrices, loading: futuresLoading } = useWorkerQuotes('/fut/quotes', TICKER_FUTURES, { enabled: showFutures });
-  const { prices: stockPrices, loading: stocksLoading } = useWorkerQuotes('/stk/quotes', TICKER_STOCKS, { enabled: showStocks });
+  const crypto = useWorkerQuotes('/cx/quotes', TICKER_SYMBOLS, { enabled: showCrypto });
+  const futures = useWorkerQuotes('/fut/quotes', TICKER_FUTURES, { enabled: showFutures });
+  const stocks = useWorkerQuotes('/stk/quotes', TICKER_STOCKS, { enabled: showStocks });
+  const cryptoPrices = crypto.prices;
+  const futuresPrices = futures.prices;
+  const stockPrices = stocks.prices;
 
   // Gold (XAU) isn't on the crypto quote feed (Bybit), so pull it from CoinGecko
   // (pax-gold) via fetchPrices — geo-safe through the worker proxy. Refreshed
   // every 60s while the crypto ticker is shown.
   const [gold, setGold] = useState(null);
+  const [goldAttempt, setGoldAttempt] = useState(0);
   useEffect(() => {
     if (!showCrypto) return;
     let cancelled = false;
@@ -54,7 +59,7 @@ export default function PriceTicker() {
     load();
     const iv = setInterval(load, 60000);
     return () => { cancelled = true; clearInterval(iv); };
-  }, [showCrypto]);
+  }, [showCrypto, goldAttempt]);
 
   // Each source renders independently as soon as its data is in. We only show
   // the skeleton while NOTHING is available yet and something is still loading.
@@ -81,10 +86,30 @@ export default function PriceTicker() {
     : [];
   const items = [...stockItems, ...cryptoItems, ...goldItems, ...futuresItems];
 
-  const anyLoading = (showCrypto && cryptoLoading) || (showFutures && futuresLoading) || (showStocks && stocksLoading);
+  // Disabled feeds report loading/failed as false, so no per-class guard needed.
+  const feeds = [crypto, futures, stocks];
+  const view = tickerView({
+    itemCount: items.length,
+    loading: feeds.some((f) => f.loading),
+    failed: feeds.some((f) => f.failed),
+  });
+  const retryAll = () => {
+    feeds.forEach((f) => { if (f.failed) f.retry(); });
+    if (showCrypto && !gold) setGoldAttempt((n) => n + 1);
+  };
+  const retryButton = (label) => (
+    <button
+      type="button"
+      onClick={retryAll}
+      className="flex items-center gap-1 px-2 h-6 rounded-md text-xs text-text-secondary hover:text-text-primary hover:bg-white/5 transition-colors cursor-pointer shrink-0"
+    >
+      <RefreshCw className="w-3 h-3" aria-hidden />
+      {label}
+    </button>
+  );
 
-  if (!items.length) {
-    if (anyLoading) {
+  if (view.state !== 'ready') {
+    if (view.state === 'loading') {
       return (
         <div className="flex items-center gap-6" dir="ltr">
           {[1, 2, 3, 4].map((i) => (
@@ -96,9 +121,12 @@ export default function PriceTicker() {
         </div>
       );
     }
+    // Every feed came back empty — say so and offer a retry instead of an
+    // endless "loading" (the feeds keep polling on their own as well).
     return (
-      <div className="flex items-center justify-center h-full" dir="ltr">
-        <span className="text-xs text-text-muted">טוען מחירים...</span>
+      <div className="flex items-center justify-center gap-2 h-full" role="status">
+        <span className="text-xs text-text-muted">המחירים לא זמינים כרגע</span>
+        {retryButton('נסה שוב')}
       </div>
     );
   }
@@ -132,11 +160,21 @@ export default function PriceTicker() {
   };
 
   return (
-    <div className="overflow-hidden h-full flex items-center" dir="ltr">
-      <div className="ticker-scroll" style={{ animationDuration: `${scrollDuration}s` }}>
-        {items.map((item, i) => renderItem(item, i))}
-        {items.map((item, i) => renderItem(item, i + items.length))}
-      </div>
+    <div className="overflow-hidden h-full flex items-center gap-1" dir="ltr">
+      {/* Some feed failed (e.g. crypto down, only gold in) — let the user retry
+          it. Placed first so the marquee's max-content width can't push it out. */}
+      {view.showRetry && retryButton('רענן')}
+      {view.scroll ? (
+        <div className="ticker-scroll min-w-0" style={{ animationDuration: `${scrollDuration}s` }}>
+          {items.map((item, i) => renderItem(item, i))}
+          {items.map((item, i) => renderItem(item, i + items.length))}
+        </div>
+      ) : (
+        // Too few quotes to loop — show them once, without the marquee.
+        <div className="flex items-center min-w-0 overflow-hidden">
+          {items.map((item, i) => renderItem(item, i))}
+        </div>
+      )}
     </div>
   );
 }
