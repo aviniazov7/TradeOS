@@ -1,0 +1,10 @@
+# TradeOS — only the public pages are meant for search engines. Everything
+# else is the signed-in app (journals, trades, portfolio), which crawlers can't
+# see anyway; keeping them out avoids indexing login redirects.
+User-agent: *
+Allow: /$
+Allow: /login
+Allow: /accessibility
+Disallow: /
+
+Sitemap: https://tradeos-91a58.web.app/sitemap.xml
