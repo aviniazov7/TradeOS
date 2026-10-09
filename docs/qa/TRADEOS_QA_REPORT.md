@@ -67,7 +67,8 @@ Legend: `[x]` fixed · `[~]` partly fixed, or fixed in code with a manual step l
   - **Shipped:** PR #520.
 - [ ] **[UX] No public landing / pricing page; no Terms/Privacy at signup**
   - **Status:** Open. There are no Terms or Privacy pages in the codebase.
-  - **Decision:** No placeholder legal text was published, because made-up terms are worse than none. Needs legal text from the owner (then a `/terms` and `/privacy` page, linked at signup), plus a decision on a public landing page.
+  - **Decision:** No placeholder legal text was published, because made-up terms are worse than none. **Deferred by the owner (2026-10-09)** until a lawyer or document generator supplies the text; `docs/legal/DATA_INVENTORY.md` is ready to hand over. Then: `/terms` and `/privacy` pages linked at signup, plus a decision on a public landing page.
+  - **Done meanwhile, without a lawyer:** mental journals owner-only; marketing email is opt-in with 'פרסומת:' and a one-click unsubscribe; account deletion removes everything including leftovers (PRs #531–#533).
 - [x] **[Bugs] Journal stats misleading on tiny samples; leaked `other` key**
   - **Fix:**
     - The score waits for 5 closed trades.
