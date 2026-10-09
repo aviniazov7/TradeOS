@@ -19,6 +19,8 @@
 
 ## פתוח
 
+> 📋 **הפירוט המלא, צעד אחר צעד:** [`OWNER_CHECKLIST.md`](OWNER_CHECKLIST.md)
+
 | נושא | מה צריך | מי |
 |---|---|---|
 | **CSP — מעבר מדיווח לחסימה** | בעוד שבוע: Cloudflare ← trade-os ← Observability, חיפוש `CSP report`. אין תוצאות → להחליף ב-`firebase.json` את `Content-Security-Policy-Report-Only` ל-`Content-Security-Policy` | בעלים |
