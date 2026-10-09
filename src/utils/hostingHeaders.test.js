@@ -49,6 +49,16 @@ describe('hosting CSP (report-only)', () => {
     }
   });
 
+  it('allows blob: workers (the win-celebration confetti runs in one) but no other worker source', () => {
+    expect(d['worker-src']).toEqual(["'self'", 'blob:']);
+  });
+
+  it('reports violations to the Worker, in both the legacy and the Reporting API way', () => {
+    expect(d['report-uri']).toEqual(['https://trade-os.tradeos.workers.dev/csp-report']);
+    expect(d['report-to']).toEqual(['csp-endpoint']);
+    expect(header('Reporting-Endpoints')).toBe('csp-endpoint="https://trade-os.tradeos.workers.dev/csp-report"');
+  });
+
   it('lets the TradingView charts and Google sign-in frames load', () => {
     for (const origin of ['https://www.tradingview.com', 'https://s.tradingview.com', 'https://accounts.google.com']) {
       expect(d['frame-src']).toContain(origin);

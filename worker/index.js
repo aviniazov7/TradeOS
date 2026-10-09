@@ -18,6 +18,7 @@ import {
 import { buildCampaignEmails, chunk, friendlyResendError, CAMPAIGN_MAX } from './adminEmail.js';
 import { unsubscribeUrl, verifyUnsubscribe, unsubscribePage, UID_RE } from './unsubscribe.js';
 import { purgeUserResidue } from './accountPurge.js';
+import { parseCspReports, cspReportKey } from './cspReport.js';
 import { calendarAlertBody, CALENDAR_ALERT_TITLE } from './calendarAlert.js';
 import { emailShell, C as EMAIL_C, bg as emailBg, txt as emailTxt, esc as emailEsc, para as emailPara } from './emailTheme.js';
 import { buildDigestEmail } from './adminDigest.js';
@@ -4804,6 +4805,26 @@ async function handleRequest(request, env) {
     for (const r of results) { sent += r.sent || 0; if ((r.sent || 0) > 0) recipients++; }
     appendAudit(env, { kind: 'notify-bulk', actor: adminUid, targeted: capped.length, recipients, sent, title: payload.title });
     return new Response(JSON.stringify({ ok: true, sent, recipients, targeted: capped.length }), { headers: { ...cors, 'Content-Type': 'application/json' } });
+  }
+
+  // Content-Security-Policy violation reports sent by real browsers (the site's
+  // report-only policy points here). Public by nature, so it only ever LOGS:
+  // coarse fields (directive, blocked origin, page path), each distinct
+  // violation once an hour per colo, which keeps it cheap and un-spammable.
+  // Read them in Cloudflare → trade-os → Observability, search "CSP report".
+  if (request.method === 'POST' && path === '/csp-report') {
+    try {
+      const text = (await request.text()).slice(0, 8192);
+      const items = parseCspReports(JSON.parse(text));
+      const cache = caches.default;
+      for (const it of items) {
+        const key = new Request(`https://cache.tradeos.internal/csp/${encodeURIComponent(cspReportKey(it))}`);
+        if (await cache.match(key)) continue;
+        await cache.put(key, new Response('1', { headers: { 'Cache-Control': 'max-age=3600' } }));
+        console.warn('CSP report', JSON.stringify(it));
+      }
+    } catch { /* malformed report — nothing to do */ }
+    return new Response(null, { status: 204 });
   }
 
   // Public, token-signed opt-out from marketing email (the link in every
