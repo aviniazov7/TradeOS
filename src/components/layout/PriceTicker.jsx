@@ -165,7 +165,11 @@ export default function PriceTicker() {
           it. Placed first so the marquee's max-content width can't push it out. */}
       {view.showRetry && retryButton('רענן')}
       {view.scroll ? (
-        <div className="ticker-scroll min-w-0" style={{ animationDuration: `${scrollDuration}s` }}>
+        // shrink-0 is load-bearing: the animation moves the strip by 50% of ITS
+        // OWN width (one copy of the list). As a flex child it could otherwise
+        // shrink to the container width, and the strip would crawl half a
+        // screen per cycle instead of half the list.
+        <div className="ticker-scroll shrink-0" style={{ animationDuration: `${scrollDuration}s` }}>
           {items.map((item, i) => renderItem(item, i))}
           {items.map((item, i) => renderItem(item, i + items.length))}
         </div>
