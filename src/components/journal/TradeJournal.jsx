@@ -1,7 +1,7 @@
 import { useState, useMemo, useEffect, useRef, lazy, Suspense } from 'react';
 import { useSearchParams } from 'react-router-dom';
 import { motion } from 'framer-motion';
-import { Plus, BookOpen, Settings, Undo2, BrainCircuit, ListChecks, Trash2, AlertTriangle, Sparkles, Briefcase } from 'lucide-react';
+import { Plus, BookOpen, Settings, Undo2, BrainCircuit, ListChecks, Trash2, AlertTriangle, Sparkles, Briefcase, Loader2 } from 'lucide-react';
 import toast from 'react-hot-toast';
 import { useTrades } from '../../hooks/useTrades';
 import { useCryptoPrices } from '../../hooks/useCryptoPrices';
@@ -63,7 +63,10 @@ const entryDay = (t) => (t.entryDate ? localDayKey(t.entryDate) : '');
 const JournalAnalyticsTab = lazy(() => import('./JournalAnalyticsTab'));
 const MonthlyCalendar = lazy(() => import('./MonthlyCalendar'));
 const ExchangeSettings = lazy(() => import('../exchange/ExchangeSettings'));
-const TradeForm = lazy(() => import('./TradeForm'));
+// The trade form is the journal's main action — its chunk is preloaded once
+// the journal is up (see below) so the first "עסקה חדשה" opens instantly.
+const loadTradeForm = () => import('./TradeForm');
+const TradeForm = lazy(loadTradeForm);
 const AICoachPanel = lazy(() => import('./AICoachPanel'));
 const ImportTrades = lazy(() => import('./ImportTrades'));
 const JournalSettingsModal = lazy(() => import('./JournalSettingsModal'));
@@ -168,6 +171,18 @@ export default function TradeJournal() {
   };
   const [shareTarget, setShareTarget] = useState(null);
   const formMounted = useOpenedOnce(formOpen);
+  // Warm the trade form's chunk once the journal is idle, so the first
+  // "עסקה חדשה" doesn't wait on a network round-trip (it used to look like the
+  // click did nothing). A failed preload is harmless: lazy() fetches again.
+  useEffect(() => {
+    const warm = () => { loadTradeForm().catch(() => {}); };
+    if (typeof window.requestIdleCallback === 'function') {
+      const id = window.requestIdleCallback(warm, { timeout: 3000 });
+      return () => window.cancelIdleCallback?.(id);
+    }
+    const t = setTimeout(warm, 1500);
+    return () => clearTimeout(t);
+  }, []);
   const importMounted = useOpenedOnce(importOpen);
   const settingsMounted = useOpenedOnce(settingsOpen);
   const shareMounted = useOpenedOnce(!!shareTarget);
@@ -755,7 +770,13 @@ export default function TradeJournal() {
       {/* Lazy modals, each in its own boundary so one loading (e.g. import,
           opened from inside settings) never blanks another that is open.
           fallback={null}: the Modal draws its own backdrop once loaded. */}
-      <Suspense fallback={null}>
+      {/* While the form's chunk is still loading (first open on a slow
+          connection) show a spinner, so the click visibly did something. */}
+      <Suspense fallback={(
+        <div className="fixed inset-0 z-50 grid place-items-center bg-black/40" role="status" aria-label="פותח טופס עסקה">
+          <Loader2 className="w-7 h-7 animate-spin text-accent-primary" />
+        </div>
+      )}>
         {formMounted && (
           <TradeForm isOpen={formOpen} onClose={handleCloseForm} trade={editingTrade} onSave={handleSave}
             riskSettings={{ riskType: activeJournal?.riskType, riskValue: activeJournal?.riskValue, currentBalance: displayedCurrentBalance }}

@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react';
-import { Outlet } from 'react-router-dom';
+import { Outlet, useLocation } from 'react-router-dom';
 import Sidebar from './Sidebar';
 import Header from './Header';
 import MobileNav from './MobileNav';
@@ -14,7 +14,16 @@ import { WifiOff } from 'lucide-react';
 export default function Layout() {
   const [sidebarOpen, setSidebarOpen] = useState(false);
   const [isOnline, setIsOnline] = useState(() => navigator.onLine);
+  const { pathname } = useLocation();
   useTheme();
+
+  // The page scrolls inside #app-scroll (not the window), so the browser's own
+  // scroll restoration never resets it: moving to another page kept the old
+  // scroll offset. Back to the top on every page change (tab/query changes
+  // within a page keep their position).
+  useEffect(() => {
+    document.getElementById('app-scroll')?.scrollTo({ top: 0 });
+  }, [pathname]);
 
   useEffect(() => {
     const on = () => setIsOnline(true);
