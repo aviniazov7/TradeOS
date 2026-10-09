@@ -63,3 +63,21 @@ describe('hosting CSP (enforced)', () => {
     expect(enforced['object-src']).toEqual(["'none'"]);
   });
 });
+
+describe('robots.txt / sitemap.xml', () => {
+  const read = (p) => readFileSync(fileURLToPath(new URL(`../../public/${p}`, import.meta.url)), 'utf8');
+  const robots = read('robots.txt');
+  const sitemap = read('sitemap.xml');
+
+  it('keeps the signed-in app out of search and points at the sitemap', () => {
+    expect(robots).toMatch(/^Disallow: \/$/m);
+    expect(robots).toMatch(/^Sitemap: https:\/\/tradeos-91a58\.web\.app\/sitemap\.xml$/m);
+  });
+
+  it('lists only pages robots.txt allows', () => {
+    const allowed = [...robots.matchAll(/^Allow: (\S+)$/gm)].map((m) => m[1].replace(/\$$/, ''));
+    const locs = [...sitemap.matchAll(/<loc>https:\/\/tradeos-91a58\.web\.app(\/[^<]*)<\/loc>/g)].map((m) => m[1]);
+    expect(locs.length).toBeGreaterThan(0);
+    for (const loc of locs) expect(allowed).toContain(loc);
+  });
+});
