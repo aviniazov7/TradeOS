@@ -5,7 +5,7 @@ import { formatCompactUsd as formatNum, formatCoinPrice as formatPrice, LRM } fr
 import {
   Activity, TrendingUp, TrendingDown, Bitcoin, DollarSign,
   PieChart, Flame, ArrowUpRight, ArrowDownRight, Layers, Rocket, Grid3X3,
-  Percent, BarChart3, Zap, Sparkles, Bot,
+  Percent, BarChart3, Zap, Sparkles, Bot, RefreshCw,
 } from 'lucide-react';
 import { pageVariants, pageTransition, staggerContainer } from '../../utils/animations';
 import PageHeader from '../shared/PageHeader';
@@ -301,7 +301,26 @@ function CoinTag({ symbol, className = '' }) {
   );
 }
 
-function FundingRatesCard({ rates, loading }) {
+// Empty-panel line: "loading…" while the first fetch runs, then "unavailable"
+// with a retry — so a failed source is never a silent dead end.
+function PanelStatus({ loading, onRetry, compact = false }) {
+  return (
+    <div className={`flex items-center justify-center gap-2 ${compact ? 'py-4' : 'py-8'}`} role="status">
+      <span className="text-xs text-text-muted">{loading ? 'טוען...' : 'לא זמין כרגע'}</span>
+      {!loading && onRetry && (
+        <button
+          type="button"
+          onClick={onRetry}
+          className="inline-flex items-center gap-1 px-2 h-6 rounded-md text-xs text-text-secondary hover:text-text-primary hover:bg-white/5 transition-colors cursor-pointer"
+        >
+          <RefreshCw className="w-3 h-3" aria-hidden /> נסה שוב
+        </button>
+      )}
+    </div>
+  );
+}
+
+function FundingRatesCard({ rates, loading, onRetry }) {
   const maxAbs = rates.length ? Math.max(...rates.map(r => Math.abs(r.rate))) : 1;
   return (
     <motion.div
@@ -355,13 +374,13 @@ function FundingRatesCard({ rates, loading }) {
           </div>
         </div>
       ) : (
-        <p className="text-xs text-text-muted text-center py-8">{loading ? 'טוען...' : 'לא זמין'}</p>
+        <PanelStatus loading={loading} onRetry={onRetry} />
       )}
     </motion.div>
   );
 }
 
-function OpenInterestCard({ data, loading }) {
+function OpenInterestCard({ data, loading, onRetry }) {
   const maxOiUsd = data.length ? Math.max(...data.map(d => d.oiUsd)) : 1;
   const totalOi = data.reduce((sum, d) => sum + d.oiUsd, 0);
   return (
@@ -407,13 +426,13 @@ function OpenInterestCard({ data, loading }) {
           })}
         </div>
       ) : (
-        <p className="text-xs text-text-muted text-center py-8">{loading ? 'טוען...' : 'לא זמין'}</p>
+        <PanelStatus loading={loading} onRetry={onRetry} />
       )}
     </motion.div>
   );
 }
 
-function LongShortCard({ data, loading }) {
+function LongShortCard({ data, loading, onRetry }) {
   return (
     <motion.div
       initial={{ opacity: 0, y: 15 }}
@@ -470,7 +489,7 @@ function LongShortCard({ data, loading }) {
           </div>
         </div>
       ) : (
-        <p className="text-xs text-text-muted text-center py-8">{loading ? 'טוען...' : 'לא זמין'}</p>
+        <PanelStatus loading={loading} onRetry={onRetry} />
       )}
     </motion.div>
   );
@@ -617,7 +636,7 @@ function LiquidationsCard({ liquidations, connected = false }) {
   );
 }
 
-function CryptoHeatmap({ coins, loading }) {
+function CryptoHeatmap({ coins, loading, onRetry }) {
   if (!coins.length) {
     return (
       <motion.div initial={{ opacity: 0, y: 15 }} animate={{ opacity: 1, y: 0 }} className={cardClass}>
@@ -625,7 +644,7 @@ function CryptoHeatmap({ coins, loading }) {
           <Grid3X3 className="w-4 h-4 text-accent-primary" />
           מפת חום
         </h2>
-        <p className="text-xs text-text-muted text-center py-8">{loading ? 'טוען...' : 'לא זמין'}</p>
+        <PanelStatus loading={loading} onRetry={onRetry} />
       </motion.div>
     );
   }
@@ -711,6 +730,8 @@ export default function MarketOverview() {
   const [longShortRatio, setLongShortRatio] = useState([]);
   const [liquidations, setLiquidations] = useState([]);
   const [liqConnected, setLiqConnected] = useState(false);
+  // The futures cards load from their own source, so they track their own state.
+  const [derivLoading, setDerivLoading] = useState(true);
   const intervalRef = useRef(null);
 
   // Helper: fetch with timeout (AbortSignal.timeout may not exist in older Safari)
@@ -720,112 +741,52 @@ export default function MarketOverview() {
     return fetch(url, { signal: controller.signal }).finally(() => clearTimeout(timer));
   }, []);
 
-  // Binance futures data runs independently so it's never blocked by CoinGecko
-  const fetchBinance = useCallback(async () => {
+  // Futures data (funding, open interest, long/short) comes from Bybit's public
+  // API. It used to try fapi.binance.com first, but that is geo-blocked from
+  // Israeli browsers: every load cost 1+2N failed 403 requests and a 6s wait
+  // before the Bybit fallback. Runs independently of the spot fetch.
+  const fetchDerivatives = useCallback(async () => {
     try {
-      const [premiumRes, ...oiAndLsRes] = await Promise.allSettled([
-        fetchWithTimeout('https://fapi.binance.com/fapi/v1/premiumIndex', 6000),
-        ...FUTURES_SYMBOLS.map(s => fetchWithTimeout(`https://fapi.binance.com/fapi/v1/openInterest?symbol=${s}`, 6000)),
-        ...FUTURES_SYMBOLS.map(s => fetchWithTimeout(`https://fapi.binance.com/futures/data/globalLongShortAccountRatio?symbol=${s}&period=5m&limit=1`, 6000)),
+      const [list, ...ratios] = await Promise.all([
+        fetchLinearTickers(),
+        ...FUTURES_SYMBOLS.map((s) => fetchAccountRatio(s).catch(() => null)),
       ]);
-
-      if (premiumRes.status === 'fulfilled' && premiumRes.value.ok) {
-        const allPairs = await premiumRes.value.json();
-        const usdtPairs = allPairs
-          .filter(p => {
-            if (!p.symbol?.endsWith('USDT')) return false;
-            if (parseFloat(p.lastFundingRate) === 0) return false;
-            return MAJOR_COINS.has(p.symbol.replace('USDT', ''));
+      if (list) {
+        const rates = list
+          .filter((t) => {
+            if (!t.symbol?.endsWith('USDT')) return false;
+            if (!parseFloat(t.fundingRate)) return false;
+            return MAJOR_COINS.has(t.symbol.replace('USDT', ''));
           })
-          .map(p => ({
-            symbol: p.symbol.replace('USDT', ''),
-            rate: parseFloat(p.lastFundingRate),
-            markPrice: parseFloat(p.markPrice),
-            nextFundingTime: p.nextFundingTime,
+          .map((t) => ({
+            symbol: t.symbol.replace('USDT', ''),
+            rate: parseFloat(t.fundingRate),
+            markPrice: parseFloat(t.markPrice),
+            nextFundingTime: Number(t.nextFundingTime),
           }))
           .sort((a, b) => Math.abs(b.rate) - Math.abs(a.rate))
           .slice(0, 10);
-        setFundingRates(usdtPairs);
+        if (rates.length) setFundingRates(rates);
 
-        const oiData = [];
-        for (let i = 0; i < FUTURES_SYMBOLS.length; i++) {
-          const res = oiAndLsRes[i];
-          if (res.status === 'fulfilled' && res.value.ok) {
-            const d = await res.value.json();
-            const sym = FUTURES_SYMBOLS[i].replace('USDT', '');
-            const markP = allPairs.find(p => p.symbol === FUTURES_SYMBOLS[i]);
-            const oi = parseFloat(d.openInterest);
-            const price = markP ? parseFloat(markP.markPrice) : 0;
-            oiData.push({ symbol: sym, oi, oiUsd: oi * price });
-          }
-        }
-        setOpenInterest(oiData);
+        const oiData = FUTURES_SYMBOLS.map((s) => {
+          const t = list.find((x) => x.symbol === s);
+          if (!t) return null;
+          const oi = parseFloat(t.openInterest);
+          const oiUsd = parseFloat(t.openInterestValue) || oi * parseFloat(t.markPrice);
+          return Number.isFinite(oiUsd) && oiUsd > 0 ? { symbol: s.replace('USDT', ''), oi, oiUsd } : null;
+        }).filter(Boolean);
+        if (oiData.length) setOpenInterest(oiData);
       }
-
-      const lsData = [];
-      for (let i = 0; i < FUTURES_SYMBOLS.length; i++) {
-        const res = oiAndLsRes[FUTURES_SYMBOLS.length + i];
-        if (res.status === 'fulfilled' && res.value.ok) {
-          const d = await res.value.json();
-          if (d.length) {
-            lsData.push({
-              symbol: FUTURES_SYMBOLS[i].replace('USDT', ''),
-              longAccount: parseFloat(d[0].longAccount),
-              shortAccount: parseFloat(d[0].shortAccount),
-              ratio: parseFloat(d[0].longShortRatio),
-            });
-          }
-        }
-      }
+      const lsData = FUTURES_SYMBOLS
+        .map((s, i) => (ratios[i] ? { symbol: s.replace('USDT', ''), ...ratios[i] } : null))
+        .filter(Boolean);
       if (lsData.length) setLongShortRatio(lsData);
-
-      // ── Fallback: Bybit linear data when fapi.binance.com is unreachable
-      // (geo-blocked from Israeli ISPs in the browser) ──
-      const binanceFuturesOk = premiumRes.status === 'fulfilled' && premiumRes.value.ok;
-      if (!binanceFuturesOk) {
-        const list = await fetchLinearTickers();
-        if (list) {
-          const rates = list
-            .filter((t) => {
-              if (!t.symbol?.endsWith('USDT')) return false;
-              if (!parseFloat(t.fundingRate)) return false;
-              return MAJOR_COINS.has(t.symbol.replace('USDT', ''));
-            })
-            .map((t) => ({
-              symbol: t.symbol.replace('USDT', ''),
-              rate: parseFloat(t.fundingRate),
-              markPrice: parseFloat(t.markPrice),
-              nextFundingTime: Number(t.nextFundingTime),
-            }))
-            .sort((a, b) => Math.abs(b.rate) - Math.abs(a.rate))
-            .slice(0, 10);
-          if (rates.length) setFundingRates(rates);
-
-          const oiData = FUTURES_SYMBOLS.map((s) => {
-            const t = list.find((x) => x.symbol === s);
-            if (!t) return null;
-            const oi = parseFloat(t.openInterest);
-            const oiUsd = parseFloat(t.openInterestValue) || oi * parseFloat(t.markPrice);
-            return Number.isFinite(oiUsd) && oiUsd > 0 ? { symbol: s.replace('USDT', ''), oi, oiUsd } : null;
-          }).filter(Boolean);
-          if (oiData.length) setOpenInterest(oiData);
-        }
-      }
-      if (!lsData.length) {
-        const ratios = await Promise.allSettled(FUTURES_SYMBOLS.map((s) => fetchAccountRatio(s)));
-        const out = [];
-        for (let i = 0; i < FUTURES_SYMBOLS.length; i++) {
-          const r = ratios[i];
-          if (r.status === 'fulfilled' && r.value) {
-            out.push({ symbol: FUTURES_SYMBOLS[i].replace('USDT', ''), ...r.value });
-          }
-        }
-        if (out.length) setLongShortRatio(out);
-      }
     } catch {
-      // silent
+      // keep whatever was shown; the cards offer a retry when empty
+    } finally {
+      setDerivLoading(false);
     }
-  }, [fetchWithTimeout]);
+  }, []);
 
   const fetchAll = useCallback(async () => {
     try {
@@ -955,15 +916,23 @@ export default function MarketOverview() {
       clearInterval(intervalRef.current);
       return;
     }
-    // Run CoinGecko and Binance in parallel — Binance won't be blocked by CoinGecko timeouts
+    // Spot and futures load in parallel — neither waits on the other's timeouts.
     fetchAll();
-    fetchBinance();
+    fetchDerivatives();
     intervalRef.current = setInterval(() => {
       fetchAll();
-      fetchBinance();
+      fetchDerivatives();
     }, 60_000);
     return () => clearInterval(intervalRef.current);
-  }, [fetchAll, fetchBinance, activeTab]);
+  }, [fetchAll, fetchDerivatives, activeTab]);
+
+  // "Try again" on an empty panel: show loading and refetch everything now.
+  const refresh = useCallback(() => {
+    setLoading(true);
+    setDerivLoading(true);
+    fetchAll();
+    fetchDerivatives();
+  }, [fetchAll, fetchDerivatives]);
 
   // Liquidations: live stream via Bybit WebSocket. The old Binance pair is
   // dead for our users — fstream.binance.com is geo-blocked from Israeli
@@ -1202,7 +1171,7 @@ export default function MarketOverview() {
               ))}
             </div>
           ) : (
-            <p className="text-xs text-text-muted text-center py-8">{loading ? 'טוען...' : 'לא זמין'}</p>
+            <PanelStatus loading={loading} onRetry={refresh} />
           )}
         </motion.div>
 
@@ -1263,7 +1232,7 @@ export default function MarketOverview() {
               </div>
             </div>
           ) : (
-            <p className="text-xs text-text-muted text-center py-8">{loading ? 'טוען...' : 'לא זמין'}</p>
+            <PanelStatus loading={loading} onRetry={refresh} />
           )}
         </motion.div>
 
@@ -1306,7 +1275,7 @@ export default function MarketOverview() {
               })}
             </div>
           ) : (
-            <p className="text-xs text-text-muted text-center py-4">{loading ? 'טוען...' : 'לא זמין'}</p>
+            <PanelStatus loading={loading} onRetry={refresh} compact />
           )}
         </div>
 
@@ -1347,7 +1316,7 @@ export default function MarketOverview() {
               })}
             </div>
           ) : (
-            <p className="text-xs text-text-muted text-center py-4">{loading ? 'טוען...' : 'לא זמין'}</p>
+            <PanelStatus loading={loading} onRetry={refresh} compact />
           )}
         </div>
 
@@ -1360,16 +1329,16 @@ export default function MarketOverview() {
       {/* Futures Data */}
       <Reveal>
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-4 mb-4">
-        <FundingRatesCard rates={fundingRates} loading={loading} />
-        <OpenInterestCard data={openInterest} loading={loading} />
-        <LongShortCard data={longShortRatio} loading={loading} />
+        <FundingRatesCard rates={fundingRates} loading={derivLoading} onRetry={refresh} />
+        <OpenInterestCard data={openInterest} loading={derivLoading} onRetry={refresh} />
+        <LongShortCard data={longShortRatio} loading={derivLoading} onRetry={refresh} />
       </div>
 
       </Reveal>
 
       {/* Heatmap */}
       <Reveal>
-      <CryptoHeatmap coins={allCoins} loading={loading} />
+      <CryptoHeatmap coins={allCoins} loading={loading} onRetry={refresh} />
       </Reveal>
 
       </motion.div>
