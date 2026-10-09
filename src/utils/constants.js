@@ -276,6 +276,10 @@ export const EXCHANGES = [
   { value: 'breakoutprop', label: 'Breakout Prop', domain: 'breakoutprop.com', type: 'prop' },
 ];
 
+// Display name of a known exchange, or null for 'other' / unset / unknown —
+// so callers never print the raw value ("אין כרגע שווי חי מ-other").
+export const exchangeLabel = (value) => EXCHANGES.find((e) => e.value === value)?.label || null;
+
 export function getExchangeLogo(exchangeValue) {
   if (!exchangeValue) return null;
   const ex = EXCHANGES.find((e) => e.value === exchangeValue);

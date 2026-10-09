@@ -1,4 +1,5 @@
 import { useNavigate } from 'react-router-dom';
+import { scoreReady, streakDaysLabel, MIN_SCORE_TRADES } from '../../utils/homeStats';
 import { FlaskConical, ClipboardList, Coins, Sunrise, Moon, ChevronLeft } from 'lucide-react';
 import Card from '../shared/Card';
 import CoinIcon from '../shared/CoinIcon';
@@ -76,9 +77,11 @@ export function HomeKpis({ kpi, hidden }) {
       />
       <Kpi
         label="יחס רווח להפסד"
-        value={(Number.isFinite(avgWinLossRatio) ? avgWinLossRatio : 0).toFixed(2)}
+        value={Number.isFinite(avgWinLossRatio) ? avgWinLossRatio.toFixed(2) : '—'}
         bar={<Split a={sizeTotal ? (avgWin / sizeTotal) * 100 : 50} b={sizeTotal ? (absLoss / sizeTotal) * 100 : 50} />}
-        sub={<>ממוצע <span dir="ltr" className="text-profit">{m(formatCurrency(avgWin))}</span> מול <span dir="ltr" className="text-loss">{m(formatCurrency(avgLoss))}</span></>}
+        sub={losses === 0
+          ? 'אין עדיין הפסדים להשוואה'
+          : <>ממוצע <span dir="ltr" className="text-profit">{wins ? m(formatCurrency(avgWin)) : '—'}</span> מול <span dir="ltr" className="text-loss">{m(formatCurrency(avgLoss))}</span></>}
       />
       <Kpi
         label="פקטור רווח"
@@ -100,7 +103,7 @@ export function HomeKpis({ kpi, hidden }) {
             {lastResults.map((w, i) => <span key={i} className={`flex-1 h-1.5 rounded-full ${w ? 'bg-profit' : 'bg-loss'}`} />)}
           </div>
         )}
-        sub={`${streakDays.current || 0} ימים ברצף · שיא ${streakTrades.best || 0} רווחים ברצף`}
+        sub={`${streakDaysLabel(streakDays.current)} · שיא ${streakTrades.best || 0} רווחים ברצף`}
       />
     </section>
   );
@@ -153,11 +156,18 @@ export function RecentTradesCard({ trades, hidden, className = '' }) {
 
 // The performance score as one number + a bar per ingredient, with the
 // weakest one called out — easier to read than a radar.
-export function ScoreCard({ metrics, score, className = '' }) {
-  if (!metrics.length) {
+export function ScoreCard({ metrics, score, sampleSize = 0, className = '' }) {
+  // A grade on 1–4 trades is noise ("מצוין" after a single win), so hold it
+  // back and say how far the user is from a meaningful one.
+  if (!metrics.length || !scoreReady(sampleSize)) {
     return (
       <HomePanel title="ציון ביצועים" className={className}>
-        <p className="text-sm text-text-secondary py-6 text-center">הציון יופיע אחרי העסקאות הסגורות הראשונות</p>
+        <div className="py-6 text-center">
+          <p className="text-sm text-text-secondary">לא מספיק נתונים עדיין</p>
+          <p className="text-xs text-text-muted mt-1">
+            הציון יופיע אחרי {MIN_SCORE_TRADES} עסקאות סגורות (כרגע <span className="num-mono">{sampleSize}</span>)
+          </p>
+        </div>
       </HomePanel>
     );
   }
