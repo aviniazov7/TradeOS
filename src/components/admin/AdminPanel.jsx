@@ -1,6 +1,6 @@
 import { useState, useEffect, useMemo } from 'react';
 import { Navigate, useSearchParams } from 'react-router-dom';
-import { UserPlus, ShieldCheck, CheckCircle2, RefreshCw, Calendar, Coins, BookOpen, FlaskConical, Activity, FileText, Brain, Crown, Send, X, Ticket, Plus, Minus, Trash2, Copy, ScrollText, Share2, Link2, AlertTriangle, Clock, DollarSign, Loader2, Ban, ChevronDown } from 'lucide-react';
+import { UserPlus, ShieldCheck, CheckCircle2, RefreshCw, Calendar, Coins, BookOpen, FlaskConical, Activity, FileText, Crown, Send, X, Ticket, Plus, Minus, Trash2, Copy, ScrollText, Share2, Link2, AlertTriangle, Clock, DollarSign, Loader2, Ban, ChevronDown } from 'lucide-react';
 import { motion } from 'framer-motion';
 import toast from 'react-hot-toast';
 import { useAuth } from '../../contexts/AuthContext';
@@ -590,8 +590,8 @@ const COUNT_COLLECTIONS = [
   { key: 'backtestJournals', label: 'יומני בקטסט', icon: FlaskConical },
   { key: 'dca', label: 'תוכניות DCA', icon: Coins },
   { key: 'tradingPlans', label: 'תוכניות מסחר', icon: FileText },
-  { key: 'morningJournals', label: 'יומן בוקר', icon: Brain },
-  { key: 'eveningJournals', label: 'יומן ערב', icon: Brain },
+  // The mental journals (morning/evening) are owner-only in the rules — admins
+  // can't read them, not even to count them.
 ];
 
 function UserDetailModal({ user, onClose, onUserChanged, startWith = null }) {
