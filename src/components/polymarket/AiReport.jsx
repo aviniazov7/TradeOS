@@ -1,4 +1,4 @@
-import { motion } from 'framer-motion';
+import { m } from 'framer-motion';
 import { RefreshCw, TrendingUp, TrendingDown, Target, Lightbulb, Sparkles } from 'lucide-react';
 import { renderBulletHtml } from '../../utils/renderBulletHtml';
 import { parseSections } from '../../utils/aiReportSections';
@@ -31,7 +31,7 @@ export default function AiReport({ report, onRerun }) {
   }
 
   return (
-    <motion.div initial={{ opacity: 0, y: 6 }} animate={{ opacity: 1, y: 0 }} className="space-y-3">
+    <m.div initial={{ opacity: 0, y: 6 }} animate={{ opacity: 1, y: 0 }} className="space-y-3">
       {sections.map((s, idx) => {
         const meta = SECTION_META[s.title] || DEFAULT_META;
         const { Icon } = meta;
@@ -57,6 +57,6 @@ export default function AiReport({ report, onRerun }) {
           <RefreshCw className="w-3.5 h-3.5" /> נתח שוב
         </button>
       )}
-    </motion.div>
+    </m.div>
   );
 }

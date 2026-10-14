@@ -1,5 +1,5 @@
 import { useMemo, useState, useEffect } from 'react';
-import { motion } from 'framer-motion';
+import { m } from 'framer-motion';
 import { useParams, useLocation, useNavigate, Navigate } from 'react-router-dom';
 import { ArrowRight, ExternalLink, Gem, Star, CalendarClock, AlertCircle } from 'lucide-react';
 import { useAuth } from '../../contexts/AuthContext';
@@ -164,7 +164,7 @@ export default function MarketDetailPage() {
   const dl = daysLeft(m.endDate);
 
   return (
-    <motion.div variants={pageVariants} initial="initial" animate="animate" exit="exit" transition={pageTransition} className="max-w-3xl mx-auto">
+    <m.div variants={pageVariants} initial="initial" animate="animate" exit="exit" transition={pageTransition} className="max-w-3xl mx-auto">
       <button onClick={() => navigate(state?.from || '/market?tab=polymarket')} className="inline-flex items-center gap-1.5 text-sm text-text-muted hover:text-text-primary transition-colors mb-3 cursor-pointer">
         <ArrowRight className="w-4 h-4" /> חזרה לשווקים
       </button>
@@ -220,6 +220,6 @@ export default function MarketDetailPage() {
       </div>
 
       <SmartHolders conditionId={m.conditionId} outcomes={m.outcomes} prices={m.prices} />
-    </motion.div>
+    </m.div>
   );
 }

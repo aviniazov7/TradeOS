@@ -1,6 +1,6 @@
 import { lazy, Suspense } from 'react';
 import { useSearchParams } from 'react-router-dom';
-import { motion } from 'framer-motion';
+import { m } from 'framer-motion';
 import { Briefcase, Plus, Download } from 'lucide-react';
 import { headerIconBtn, headerPrimaryBtn } from '../shared/headerStyles';
 import PageHeader from '../shared/PageHeader';
@@ -37,7 +37,7 @@ export default function PortfolioPage() {
   }, { replace: true });
 
   return (
-    <motion.div variants={pageVariants} initial="initial" animate="animate" exit="exit" transition={pageTransition}>
+    <m.div variants={pageVariants} initial="initial" animate="animate" exit="exit" transition={pageTransition}>
       <PageHeader
         icon={Briefcase}
         title="תיק"
@@ -64,6 +64,6 @@ export default function PortfolioPage() {
           ? <WalletsPage key="wallets" embedded />
           : <DCATracker key="dca" embedded view={tab === 'dca-stats' ? 'summary' : 'plans'} />}
       </Suspense>
-    </motion.div>
+    </m.div>
   );
 }

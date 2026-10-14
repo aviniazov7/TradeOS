@@ -1,6 +1,6 @@
 import { useState, useMemo, useEffect, useRef, lazy, Suspense } from 'react';
 import { useSearchParams } from 'react-router-dom';
-import { motion } from 'framer-motion';
+import { m } from 'framer-motion';
 import { Plus, BookOpen, Settings, Undo2, BrainCircuit, ListChecks, Trash2, AlertTriangle, Sparkles, Briefcase, Loader2 } from 'lucide-react';
 import toast from 'react-hot-toast';
 import { useTrades } from '../../hooks/useTrades';
@@ -544,7 +544,7 @@ export default function TradeJournal() {
     // deleted every journal has NO way back in (new users can also land here
     // if the default-journal migration hasn't run yet).
     return (
-      <motion.div variants={pageVariants} initial="initial" animate="animate" exit="exit" transition={pageTransition}>
+      <m.div variants={pageVariants} initial="initial" animate="animate" exit="exit" transition={pageTransition}>
         <EmptyState
           icon={BookOpen}
           title="אין יומן פעיל"
@@ -562,12 +562,12 @@ export default function TradeJournal() {
           journalName={archiveTargetName}
           onComplete={() => setArchiveAnimating(false)}
         />
-      </motion.div>
+      </m.div>
     );
   }
 
   return (
-    <motion.div variants={pageVariants} initial="initial" animate="animate" exit="exit" transition={pageTransition}>
+    <m.div variants={pageVariants} initial="initial" animate="animate" exit="exit" transition={pageTransition}>
       {/* The shared page header: the journal's name (switcher) under the title,
           its views as tabs, and the two actions. */}
       <PageHeader
@@ -826,6 +826,6 @@ export default function TradeJournal() {
         journalName={archiveTargetName}
         onComplete={() => setArchiveAnimating(false)}
       />
-    </motion.div>
+    </m.div>
   );
 }

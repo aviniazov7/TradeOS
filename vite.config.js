@@ -19,16 +19,30 @@ export default defineConfig({
     __APP_BUILD_DATE__: JSON.stringify(new Date().toISOString()),
   },
   build: {
+    // Login's HTML must not preload chunks the logged-out page never runs.
+    // Lazy routes still fetch them when the user leaves /login.
+    modulePreload: {
+      resolveDependencies(_filename, deps) {
+        return deps.filter((dep) => !/\/(motion|firestore|charts|datepicker|html-to-image)-/.test(dep));
+      },
+    },
     rollupOptions: {
       output: {
-        manualChunks: {
-          firebase: ['firebase/app', 'firebase/auth', 'firebase/firestore'],
-          charts: ['recharts'],
-          motion: ['framer-motion'],
-          vendor: ['react', 'react-dom', 'react-router-dom'],
-          datepicker: ['react-datepicker'],
-          'html-to-image': ['html-to-image'],
-          'date-fns': ['date-fns'],
+        // Lucide icons were each their own script (dozens of requests). Fold
+        // anything under ~10KB into the chunk that imports it.
+        experimentalMinChunkSize: 10000,
+        manualChunks(id) {
+          if (!id.includes('node_modules')) return;
+          // Firestore before the rest of Firebase, so the auth chunk the
+          // login page loads does not pull the database SDK with it.
+          if (id.includes('firebase/firestore') || id.includes('@firebase/firestore')) return 'firestore';
+          if (id.includes('firebase/') || id.includes('@firebase/')) return 'firebase-auth';
+          if (id.includes('recharts') || id.includes('/d3-') || id.includes('victory-vendor')) return 'charts';
+          if (id.includes('react-datepicker')) return 'datepicker';
+          if (id.includes('html-to-image') || id.includes('html2canvas')) return 'html-to-image';
+          if (id.includes('react-dom') || id.includes('react-router') || /\/react\//.test(id)) return 'vendor';
+          // framer-motion is intentionally not named. A dedicated chunk was
+          // modulepreloaded from the login document.
         },
       },
     },

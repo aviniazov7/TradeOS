@@ -1,4 +1,4 @@
-import { motion, AnimatePresence } from 'framer-motion';
+import { m, AnimatePresence } from 'framer-motion';
 import { useState, useRef, useCallback, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { ChevronDown, Pencil, Check, X, ChevronRight, Plus, Minus, ShieldCheck } from 'lucide-react';
@@ -780,7 +780,7 @@ export default function PendingLimitOrders({ trades, livePrices }) {
   const hasPnl = totalMarginDollar > 0;
 
   return (
-    <motion.div
+    <m.div
       initial={{ opacity: 0, y: -10 }}
       animate={{ opacity: 1, y: 0 }}
       className="rounded-xl p-4 mb-4 relative overflow-hidden"
@@ -900,7 +900,7 @@ export default function PendingLimitOrders({ trades, livePrices }) {
             );
 
             return (
-              <motion.div
+              <m.div
                 key={trade.id}
                 initial={{ opacity: 0 }}
                 animate={{ opacity: 1 }}
@@ -949,7 +949,7 @@ export default function PendingLimitOrders({ trades, livePrices }) {
                   {/* ── Saved SL badge — 3s after save, track frozen, completely independent ── */}
                   <AnimatePresence>
                     {savedFlash[trade.id] > 0 && (
-                      <motion.div
+                      <m.div
                         key={`saved-${trade.id}`}
                         initial={{ opacity: 0, scale: 0.85, y: -4 }}
                         animate={{ opacity: 1, scale: 1, y: 0 }}
@@ -975,7 +975,7 @@ export default function PendingLimitOrders({ trades, livePrices }) {
                           <span style={{ fontSize: 10 }}>✓</span>
                           <span>SL · {fmt(savedFlash[trade.id])}</span>
                         </div>
-                      </motion.div>
+                      </m.div>
                     )}
                   </AnimatePresence>
 
@@ -1045,7 +1045,7 @@ export default function PendingLimitOrders({ trades, livePrices }) {
                   )}
 
                 </div>
-              </motion.div>
+              </m.div>
             );
           })}
         </AnimatePresence>
@@ -1060,6 +1060,6 @@ export default function PendingLimitOrders({ trades, livePrices }) {
           </button>
         )}
       </div>
-    </motion.div>
+    </m.div>
   );
 }

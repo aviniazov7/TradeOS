@@ -1,6 +1,5 @@
 import { useState, useEffect } from 'react';
 import { Navigate, useLocation } from 'react-router-dom';
-import { motion, AnimatePresence } from 'framer-motion';
 import { useAuth } from '../../contexts/AuthContext';
 import LoadingSpinner from '../shared/LoadingSpinner';
 import OfflineScreen from '../shared/OfflineScreen';
@@ -53,19 +52,11 @@ export default function ProtectedRoute({ children }) {
 
   return (
     <>
-      <AnimatePresence>
-        {(loading || showSplash) && (
-          <motion.div
-            key="splash"
-            initial={{ opacity: 1 }}
-            exit={{ opacity: 0, scale: 1.03 }}
-            transition={{ duration: 0.4, ease: 'easeInOut' }}
-            className="fixed inset-0 z-[9999]"
-          >
-            <LoadingSpinner fullScreen />
-          </motion.div>
-        )}
-      </AnimatePresence>
+      {(loading || showSplash) && (
+        <div className="fixed inset-0 z-[9999]">
+          <LoadingSpinner fullScreen />
+        </div>
+      )}
       {!loading && user && children}
     </>
   );

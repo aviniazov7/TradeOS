@@ -1,6 +1,6 @@
 import { useLayoutEffect, useRef, useState, useCallback } from 'react';
 import { Link, NavLink, useLocation } from 'react-router-dom';
-import { motion } from 'framer-motion';
+import { m } from 'framer-motion';
 import {
   LayoutDashboard,
   BookOpen,
@@ -112,7 +112,7 @@ export default function MobileNav() {
       >
         {/* Active highlight — a quiet NEUTRAL pill (X-style), not an accent
             tint. text-primary/10 flips with the theme automatically. */}
-        <motion.div
+        <m.div
           aria-hidden="true"
           className="absolute top-1.5 bottom-1.5 rounded-full bg-text-primary/10 pointer-events-none"
           initial={false}

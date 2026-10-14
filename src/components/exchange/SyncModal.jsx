@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { motion } from 'framer-motion';
+import { m } from 'framer-motion';
 import { Check, RefreshCw, Download, X } from 'lucide-react';
 import { tradeExternalIds } from '../../utils/tradeIds';
 import { LRM } from '../../utils/formatters';
@@ -41,11 +41,11 @@ export function SyncModal({ exchange, trades, onClose, onImport, existingExterna
   const updatesCount = trades.filter((t, i) => selected.has(i) && isUpdate(t)).length;
   const newCount = selected.size - updatesCount;
   return (
-    <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}
+    <m.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}
       className="fixed inset-0 bg-black/80 z-50 flex items-end sm:items-center justify-center p-0 sm:p-4 pb-[calc(env(safe-area-inset-bottom,0px)+84px)] sm:!pb-4"
       style={{ backdropFilter: 'blur(8px)' }}
       onClick={onClose}>
-      <motion.div initial={{ y: 60, opacity: 0 }} animate={{ y: 0, opacity: 1 }} exit={{ y: 60, opacity: 0 }}
+      <m.div initial={{ y: 60, opacity: 0 }} animate={{ y: 0, opacity: 1 }} exit={{ y: 60, opacity: 0 }}
         transition={{ type: 'spring', damping: 26, stiffness: 320 }}
         className="rounded-t-2xl sm:rounded-2xl w-full sm:max-w-lg max-h-[80vh] sm:max-h-[85vh] flex flex-col shadow-2xl"
         style={{
@@ -143,7 +143,7 @@ export function SyncModal({ exchange, trades, onClose, onImport, existingExterna
             )}
           </button>
         </div>
-      </motion.div>
-    </motion.div>
+      </m.div>
+    </m.div>
   );
 }

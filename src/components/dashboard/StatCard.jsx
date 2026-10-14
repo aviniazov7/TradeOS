@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { motion } from 'framer-motion';
+import { m } from 'framer-motion';
 import { Copy, Check } from 'lucide-react';
 import { staggerItem } from '../../utils/animations';
 import RollingNumber from '../shared/RollingNumber';
@@ -18,7 +18,7 @@ export default function StatCard({ label, value, subtitle, subtitleColor, icon: 
 
   return (
     <Card
-      as={motion.div}
+      as={m.div}
       variants={staggerItem}
       hover
       className="p-3 md:p-4 relative overflow-hidden group"
@@ -52,14 +52,14 @@ export default function StatCard({ label, value, subtitle, subtitleColor, icon: 
             {Icon && <Icon className={`w-3.5 h-3.5 md:w-4 md:h-4 ${color}`} />}
           </div>
         </div>
-        <motion.p
+        <m.p
           className={`text-base md:text-xl font-bold ${color}`}
           initial={{ opacity: 0, y: 10 }}
           animate={{ opacity: 1, y: 0 }}
           transition={{ duration: 0.5, delay: 0.2 }}
         >
           <RollingNumber value={value} />
-        </motion.p>
+        </m.p>
         {subtitle && (
           <p className={`text-[10px] md:text-xs mt-0.5 md:mt-1 ${subtitleColor || 'text-text-muted'}`}>{subtitle}</p>
         )}

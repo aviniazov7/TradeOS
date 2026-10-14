@@ -1,5 +1,5 @@
 import { useState, useEffect, useRef, useCallback } from 'react';
-import { motion, AnimatePresence } from 'framer-motion';
+import { m, AnimatePresence } from 'framer-motion';
 import { Star, Plus, Trash2, ExternalLink, Search, Pencil, Target, ChevronDown, TrendingUp, TrendingDown } from 'lucide-react';
 import { searchCoins, fetchPrices } from '../../services/coingeckoApi';
 import { useWatchlist } from '../../hooks/useWatchlist';
@@ -9,8 +9,8 @@ import RollingNumber from '../shared/RollingNumber';
 import toast from 'react-hot-toast';
 import { LRM } from '../../utils/formatters';
 
-// Aliased so the linter sees the import used (it does not track <motion.x> in JSX).
-const MotionDiv = motion.div;
+// Aliased so the linter sees the import used (it does not track <m.x> in JSX).
+const MotionDiv = m.div;
 
 function fmtPrice(p) {
   if (p == null || isNaN(p)) return '—';
@@ -253,7 +253,7 @@ export default function ScannerWatchlist() {
                 const thumbUrl = safeUrl(it.thumb);
                 const b = isTagged(it.bias) ? it.bias : null;
                 return (
-                  <MotionDiv key={it.id} layout
+                  <MotionDiv key={it.id}
                     initial={{ opacity: 0, y: 6 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, height: 0 }}
                     dir="ltr"
                     className="group relative flex items-center gap-2 px-3 py-2 border-b border-border-primary/50 last:border-b-0 hover:bg-bg-tertiary/60 transition-colors"

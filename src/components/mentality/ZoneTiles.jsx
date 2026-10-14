@@ -1,6 +1,6 @@
 import { useMemo } from 'react';
 import { Link } from 'react-router-dom';
-import { motion } from 'framer-motion';
+import { m } from 'framer-motion';
 import { Activity, BarChart3, Route, ArrowLeft } from 'lucide-react';
 import Card from '../shared/Card';
 import FitText from '../shared/FitText';
@@ -122,7 +122,7 @@ export function MoodWeekTile({ week, summary, loading }) {
                 className={`relative w-full h-14 rounded-md overflow-hidden ${day.logged ? 'bg-bg-tertiary' : 'border border-dashed border-border-primary'}`}
               >
                 {h > 0 && (
-                  <motion.div
+                  <m.div
                     className="absolute bottom-0 inset-x-0 rounded-md"
                     style={{ background: `linear-gradient(to top, ${tint(fill, 85)}, ${tint(fill, 45)})` }}
                     initial={{ height: 0 }}
@@ -188,7 +188,7 @@ export function MentalStatsTile({ stat, loading }) {
         <p className="text-xs text-text-muted mt-0.5 leading-relaxed">{sub}</p>
         {pct != null && (
           <div className="mt-3 h-1.5 rounded-full bg-bg-tertiary overflow-hidden" aria-hidden>
-            <motion.div
+            <m.div
               className="h-full rounded-full"
               style={{ background: color }}
               initial={{ width: 0 }}

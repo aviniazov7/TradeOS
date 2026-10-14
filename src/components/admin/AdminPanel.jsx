@@ -1,7 +1,7 @@
 import { useState, useEffect, useMemo } from 'react';
 import { Navigate, useSearchParams } from 'react-router-dom';
 import { UserPlus, ShieldCheck, CheckCircle2, RefreshCw, Calendar, Coins, BookOpen, FlaskConical, Activity, FileText, Crown, Send, X, Ticket, Plus, Minus, Trash2, Copy, ScrollText, Share2, Link2, AlertTriangle, Clock, DollarSign, Loader2, Ban, ChevronDown } from 'lucide-react';
-import { motion } from 'framer-motion';
+import { m } from 'framer-motion';
 import toast from 'react-hot-toast';
 import { useAuth } from '../../contexts/AuthContext';
 import ReengageComposer from './ReengageComposer';
@@ -384,7 +384,7 @@ export default function AdminPanel() {
         <div className="mb-4 bg-loss/10 border border-loss/30 text-loss rounded-xl p-3 text-sm">{error}</div>
       )}
 
-      <motion.div key={tab} initial={{ opacity: 0, y: 6 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.22, ease: 'easeOut' }}>
+      <m.div key={tab} initial={{ opacity: 0, y: 6 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.22, ease: 'easeOut' }}>
         {tab === 'overview' && (loading && !users.length ? <div className="py-16"><LoadingSpinner /></div> : (
           <AdminOverview
             users={users} now={loadedAt} stats={stats} analytics={analytics} growth={growth} segments={segments}
@@ -417,7 +417,7 @@ export default function AdminPanel() {
             fbUsage={fbUsage} fbLoading={fbLoading} refreshFbUsage={refreshFbUsage}
           />
         )}
-      </motion.div>
+      </m.div>
 
       <UserDetailModal
         user={detailUser}

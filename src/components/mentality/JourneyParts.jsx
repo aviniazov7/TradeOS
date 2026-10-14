@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { motion, AnimatePresence, useReducedMotion } from 'framer-motion';
+import { m, AnimatePresence, useReducedMotion } from 'framer-motion';
 import {
   ChevronDown, CheckCircle2, Circle, History, ShieldCheck, Activity, ClipboardCheck, Brain, TrendingUp,
   Target, ThumbsUp, AlertTriangle, BookOpen,
@@ -26,7 +26,7 @@ function Bar({ value, color, className = 'h-1.5' }) {
   const w = `${Math.min(100, Math.max(0, value || 0))}%`;
   return (
     <div className={`${className} rounded-full bg-bg-tertiary overflow-hidden`} aria-hidden>
-      <motion.div
+      <m.div
         className="h-full rounded-full"
         style={{ background: color }}
         initial={reduce ? false : { width: 0 }}
@@ -77,7 +77,7 @@ export function DimensionRadar({ dimensions }) {
         const [x, y] = pt(i, R);
         return <line key={d.id} x1={cx} y1={cy} x2={x} y2={y} stroke="var(--color-border-primary)" strokeWidth="1" />;
       })}
-      <motion.polygon
+      <m.polygon
         points={shape}
         fill="color-mix(in srgb, var(--color-accent-primary) 22%, transparent)"
         stroke="var(--color-accent-primary)"
@@ -244,7 +244,7 @@ export function StagesReference({ currentIndex }) {
       </button>
       <AnimatePresence initial={false}>
         {open && (
-          <motion.div
+          <m.div
             initial={{ height: 0, opacity: 0 }}
             animate={{ height: 'auto', opacity: 1 }}
             exit={{ height: 0, opacity: 0 }}
@@ -279,7 +279,7 @@ export function StagesReference({ currentIndex }) {
                 })}
               </ol>
             </div>
-          </motion.div>
+          </m.div>
         )}
       </AnimatePresence>
     </section>

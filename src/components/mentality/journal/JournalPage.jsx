@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from 'react';
 import { useNavigate, Link } from 'react-router-dom';
-import { motion } from 'framer-motion';
+import { m } from 'framer-motion';
 import { ArrowRight, ArrowLeft, Check, Pencil, Save, X, Loader2 } from 'lucide-react';
 import toast from 'react-hot-toast';
 import PageHeader from '../../shared/PageHeader';
@@ -192,7 +192,7 @@ export default function JournalPage({
   else if (view === 'form') meta = <ProgressMeta done={progress.done} total={progress.total} />;
 
   return (
-    <motion.div
+    <m.div
       initial={{ opacity: 0, y: 10 }}
       animate={{ opacity: 1, y: 0 }}
       transition={{ duration: 0.3 }}
@@ -325,6 +325,6 @@ export default function JournalPage({
           </div>
         </div>
       )}
-    </motion.div>
+    </m.div>
   );
 }

@@ -1,5 +1,5 @@
 import { useState, useEffect, useRef } from 'react';
-import { motion, AnimatePresence, useReducedMotion } from 'framer-motion';
+import { m, AnimatePresence, useReducedMotion } from 'framer-motion';
 import { Wind, Play, Pause, RotateCcw, Lightbulb } from 'lucide-react';
 import Modal from '../shared/Modal';
 import { ZoneTile } from './ZoneTiles';
@@ -86,7 +86,7 @@ export default function BreathingExercise() {
           {/* Calm preview: the ring breathes in the same 4-4-6 rhythm. */}
           <div className="relative w-16 h-16 shrink-0 grid place-items-center" aria-hidden>
             <span className="absolute inset-0 rounded-full border" style={{ borderColor: tint(color, 30) }} />
-            <motion.span
+            <m.span
               className="w-12 h-12 rounded-full"
               style={{ background: `radial-gradient(circle at 50% 40%, ${tint(color, 55)}, ${tint(color, 18)})`, boxShadow: `0 0 18px ${tint(color, 30)}` }}
               initial={{ scale: 0.62 }}
@@ -116,7 +116,7 @@ export default function BreathingExercise() {
 
           {/* Breathing Circle */}
           <div className="relative w-56 h-56 flex items-center justify-center">
-            <motion.div
+            <m.div
               className="absolute inset-0 rounded-full border-2"
               animate={{
                 borderColor: isRunning ? currentPhase.color : 'var(--color-border-primary)',
@@ -128,7 +128,7 @@ export default function BreathingExercise() {
               }}
             />
 
-            <motion.div
+            <m.div
               className="w-36 h-36 rounded-full flex items-center justify-center shadow-2xl"
               animate={{
                 scale: isRunning ? circleScale : 1,
@@ -143,7 +143,7 @@ export default function BreathingExercise() {
             >
               <div className="text-center">
                 <AnimatePresence mode="wait">
-                  <motion.div
+                  <m.div
                     key={currentPhase.key}
                     initial={{ opacity: 0, y: 10 }}
                     animate={{ opacity: 1, y: 0 }}
@@ -154,15 +154,15 @@ export default function BreathingExercise() {
                     <div className="text-4xl font-bold mt-1" style={{ color: currentPhase.color }}>
                       {secondsLeft}
                     </div>
-                  </motion.div>
+                  </m.div>
                 </AnimatePresence>
               </div>
-            </motion.div>
+            </m.div>
           </div>
 
           {/* Instruction */}
           <AnimatePresence mode="wait">
-            <motion.p
+            <m.p
               key={currentPhase.key}
               initial={{ opacity: 0, y: 5 }}
               animate={{ opacity: 1, y: 0 }}
@@ -171,7 +171,7 @@ export default function BreathingExercise() {
               className="text-sm text-text-secondary text-center min-h-[20px]"
             >
               {isRunning ? currentPhase.instruction : 'לחץ "התחל" כדי להתחיל'}
-            </motion.p>
+            </m.p>
           </AnimatePresence>
 
           {/* Phase Dots */}

@@ -1,6 +1,6 @@
 import { useState, useEffect, useMemo, useRef, lazy, Suspense } from 'react';
 import { createPortal } from 'react-dom';
-import { motion, AnimatePresence } from 'framer-motion';
+import { m, AnimatePresence } from 'framer-motion';
 import { Bot, Send, RotateCcw, Sparkles, BarChart3, History, Trash2, Crown, Image as ImageIcon, Copy, Check, TrendingDown, Target, Clock, AlertTriangle, ShieldCheck, ClipboardList } from 'lucide-react';
 import { sendMessageStream } from '../../services/groqApi';
 import { buildCoachStats } from '../../utils/coachStats';
@@ -73,7 +73,7 @@ function TypingIndicator() {
       <div className="bg-bg-tertiary rounded-2xl rounded-tl-md px-4 py-3">
         <div className="flex items-center gap-1">
           {[0, 1, 2].map((i) => (
-            <motion.div
+            <m.div
               key={i}
               animate={{ opacity: [0.3, 1, 0.3], y: [0, -3, 0] }}
               transition={{ duration: 0.8, repeat: Infinity, delay: i * 0.15 }}
@@ -480,7 +480,7 @@ export default function AIChat({ heightClass = 'h-[calc(100dvh-13.5rem)] md:h-[c
               {messages.filter((m) => m !== WELCOME_MESSAGE).map((msg) => {
                 const mine = msg.role === 'user';
                 return (
-                  <motion.div
+                  <m.div
                     key={msgKey(msg)}
                     initial={{ opacity: 0, y: 8 }}
                     animate={{ opacity: 1, y: 0 }}
@@ -523,7 +523,7 @@ export default function AIChat({ heightClass = 'h-[calc(100dvh-13.5rem)] md:h-[c
                         </button>
                       )}
                     </div>
-                  </motion.div>
+                  </m.div>
                 );
               })}
             </AnimatePresence>

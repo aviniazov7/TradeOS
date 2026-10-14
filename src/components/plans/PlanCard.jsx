@@ -1,4 +1,4 @@
-import { motion } from 'framer-motion';
+import { m } from 'framer-motion';
 import { Pencil, Trash2, Eye, Clock, Shield, CheckSquare } from 'lucide-react';
 import { staggerItem, cardHover } from '../../utils/animations';
 import { getSessionClasses } from '../../utils/constants';
@@ -8,7 +8,7 @@ export default function PlanCard({ plan, onView, onEdit, onDelete }) {
   const checklistCount = plan.checklist?.length || 0;
 
   return (
-    <motion.div
+    <m.div
       variants={staggerItem}
       whileHover={cardHover}
       className="bg-bg-secondary border border-border-primary rounded-xl p-5 transition-colors"
@@ -86,6 +86,6 @@ export default function PlanCard({ plan, onView, onEdit, onDelete }) {
           </button>
         </div>
       </div>
-    </motion.div>
+    </m.div>
   );
 }

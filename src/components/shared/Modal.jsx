@@ -1,7 +1,7 @@
 import { useEffect, useRef } from 'react';
 import { createPortal } from 'react-dom';
 import { X } from 'lucide-react';
-import { motion, AnimatePresence } from 'framer-motion';
+import { m, AnimatePresence } from 'framer-motion';
 
 let modalCount = 0;
 
@@ -64,7 +64,7 @@ export default function Modal({ isOpen, onClose, title, ariaLabel, children, max
           {/* Backdrop — lighter dim + heavier blur so the page frosts THROUGH
               the glass card behind it (that's what reads as glass, vs a flat
               black wall). */}
-          <motion.div
+          <m.div
             className="fixed inset-0 z-50 bg-black/55"
             style={{ backdropFilter: 'blur(16px)', WebkitBackdropFilter: 'blur(16px)' }}
             initial={{ opacity: 0 }}
@@ -79,7 +79,7 @@ export default function Modal({ isOpen, onClose, title, ariaLabel, children, max
             {/* Card — iOS-style black glass: translucent + heavy blur. The
                 entrance is opacity+slide only (no scale) so the backdrop-filter
                 doesn't flicker on Safari. */}
-            <motion.div
+            <m.div
               ref={cardRef}
               role="dialog"
               aria-modal="true"
@@ -149,7 +149,7 @@ export default function Modal({ isOpen, onClose, title, ariaLabel, children, max
                   </div>
                 )}
               </div>
-            </motion.div>
+            </m.div>
           </div>
         </>
       )}

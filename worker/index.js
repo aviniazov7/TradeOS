@@ -35,6 +35,7 @@ import { handleFxUsdIls } from './fxRates.js';
 import { handleHyperliquidRoute } from './hyperliquid.js';
 import { handleCandlesRoute } from './candles.js';
 import { handleOpenOrdersRoute } from './openOrders.js';
+import { handleCoinGecko } from './coingeckoProxy.js';
 
 // Binance's public market-data mirror — api.binance.com returns 403 to
 // Cloudflare Worker egress IPs in many regions, but data-api.binance.vision
@@ -4250,42 +4251,11 @@ async function handleRequest(request, env) {
     return handleNewsTranslate(request, env, cors);
   }
 
-  // CoinGecko proxy (avoids browser rate-limits). Cached in Cloudflare's edge
-  // cache (free, unlimited) — NOT in KV: the cache key is caller-controlled
-  // (subpath + querystring), so an unauthenticated loop with a varying
-  // parameter used to cost one KV write per request and exhaust the shared
-  // daily write quota (alerts, coupons, AI quotas, push registrations) in
-  // seconds. Subpaths are whitelisted to exactly what the app calls, so this
-  // can't be driven as an open proxy either.
+  // CoinGecko proxy. Edge-cached (not KV — caller-controlled keys exhausted
+  // the write quota). A 429/503 opens a backoff and serves the last good
+  // copy; see coingeckoProxy.js. Subpaths stay whitelisted.
   if (request.method === 'GET' && path.startsWith('/cg/')) {
-    const subPath = path.slice(4); // remove '/cg/'
-    // coins/markets, coins/{id}, coins/{id}/market_chart, search,
-    // simple/price, global — the full set the client uses (coingeckoApi,
-    // coinImageCache, MarketOverview, Dashboard).
-    const CG_ALLOWED = /^(coins\/[a-z0-9_-]{1,64}(\/market_chart)?|search|simple\/price|global)$/;
-    if (!CG_ALLOWED.test(subPath)) {
-      return new Response(JSON.stringify({ error: 'forbidden' }), { status: 403, headers: { ...cors, 'Content-Type': 'application/json' } });
-    }
-    const cgUrl = `https://api.coingecko.com/api/v3/${subPath}${url.search}`;
-    const ttl = subPath.startsWith('coins/markets') ? 3600 : 300; // 1h for markets, 5m for details/chart
-    const cache = caches.default;
-    const cacheKey = new Request(`https://cache.tradeos.internal/cg/${subPath}${url.search}`);
-    try {
-      const hit = await cache.match(cacheKey);
-      if (hit) return withCors(hit, cors, { 'X-Cache': 'HIT' });
-      // Browser-like UA — CoinGecko's free tier 403s bare server-side fetches
-      // from Cloudflare egress IPs but generally serves browser-looking ones.
-      const res = await fetch(cgUrl, { headers: { 'Accept': 'application/json', 'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36' } });
-      if (!res.ok) return new Response(JSON.stringify({ error: res.status }), { status: res.status, headers: { ...cors, 'Content-Type': 'application/json' } });
-      const text = await res.text();
-      // ACAO '*' — public non-credentialed data, so the edge-cached copy
-      // isn't pinned to a single requesting origin (news/digest pattern).
-      const headers = { ...cors, 'Access-Control-Allow-Origin': '*', 'Content-Type': 'application/json', 'Cache-Control': `public, max-age=${ttl}` };
-      await cache.put(cacheKey, new Response(text, { headers: { ...headers, 'X-Cache': 'HIT' } }));
-      return new Response(text, { headers: { ...headers, 'X-Cache': 'MISS' } });
-    } catch (err) {
-      return new Response(JSON.stringify({ error: err.message }), { status: 502, headers: { ...cors, 'Content-Type': 'application/json' } });
-    }
+    return handleCoinGecko(request.url, cors, { cache: caches.default });
   }
 
   // Binance proxy (avoids browser CORS/geo issues). Edge-cached, not KV —

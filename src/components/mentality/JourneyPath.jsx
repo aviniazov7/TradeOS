@@ -1,5 +1,5 @@
 import { useMemo, useState } from 'react';
-import { motion, AnimatePresence, useReducedMotion } from 'framer-motion';
+import { m, AnimatePresence, useReducedMotion } from 'framer-motion';
 import { Route } from 'lucide-react';
 import { STAGES } from '../../utils/traderStage';
 import {
@@ -76,14 +76,14 @@ function JourneyCanvas({ box, cur, progress, nextName, selected, onHover, onPick
       />
 
       {/* The classic landmark that is not a stage of its own. */}
-      <motion.span
+      <m.span
         aria-hidden
         className="absolute text-[10px] sm:text-[11px] text-text-muted whitespace-nowrap pointer-events-none"
         style={{ ...anchorStyle(peak.x, box.width), bottom: `calc(${pct(box.height - peak.y, box.height)} + 8px)` }}
         {...fade(peakFraction, 4)}
       >
         מזל המתחילים
-      </motion.span>
+      </m.span>
 
       {STAGES.map((s, i) => {
         const p = stagePoint(L, i);
@@ -107,7 +107,7 @@ function JourneyCanvas({ box, cur, progress, nextName, selected, onHover, onPick
         );
         return (
           <div key={s.id} className="absolute pointer-events-none" style={{ ...anchorStyle(p.x, box.width, compact ? NARROW_ANCHOR[i] : undefined), ...vert }}>
-            <motion.div {...fade(p.fraction, side === 'above' ? 4 : -4)}>
+            <m.div {...fade(p.fraction, side === 'above' ? 4 : -4)}>
               {st === 'current' ? (
                 <>
                   {side === 'below' && label}
@@ -122,7 +122,7 @@ function JourneyCanvas({ box, cur, progress, nextName, selected, onHover, onPick
                   {side === 'above' && label}
                 </>
               ) : label}
-            </motion.div>
+            </m.div>
           </div>
         );
       })}
@@ -161,7 +161,7 @@ const STATUS_TAG = {
 function ProgressBar({ value, reduce }) {
   return (
     <div className="h-2 mt-2 rounded-full bg-bg-secondary overflow-hidden" aria-hidden>
-      <motion.div
+      <m.div
         className="h-full rounded-full"
         style={{ background: ACCENT }}
         initial={reduce ? false : { width: 0 }}
@@ -202,7 +202,7 @@ export function JourneyMap({ assessment }) {
         {/* Caption: the stage under the pointer / last tapped, else the user's. */}
         <div className="min-w-0" aria-live="polite">
           <AnimatePresence mode="wait" initial={false}>
-            <motion.div
+            <m.div
               key={shown}
               initial={reduce ? false : { opacity: 0, y: 4 }}
               animate={{ opacity: 1, y: 0 }}
@@ -220,7 +220,7 @@ export function JourneyMap({ assessment }) {
                 {st === 'future' && <><span className="font-semibold text-text-secondary">דרישות כניסה: </span>{s.requirements.join(' · ')}</>}
                 {st === 'past' && <><span className="font-semibold text-text-secondary">עברת את השלב הזה. </span>מה שנבנה בו: {s.focus}</>}
               </p>
-            </motion.div>
+            </m.div>
           </AnimatePresence>
         </div>
         <div className="rounded-xl bg-bg-tertiary border border-border-primary p-3 min-w-0">

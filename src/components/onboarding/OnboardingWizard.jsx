@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { motion, AnimatePresence } from 'framer-motion';
+import { m, AnimatePresence } from 'framer-motion';
 import { ChevronLeft, ChevronRight, PlusCircle, Link2, Check } from 'lucide-react';
 import { getUserProfile, setUserProfile } from '../../services/firestoreService';
 import { useAuth } from '../../contexts/AuthContext';
@@ -55,13 +55,13 @@ export default function OnboardingWizard() {
   return (
     <AnimatePresence>
       {show && (
-        <motion.div
+        <m.div
           className="fixed inset-0 z-[100] flex items-center justify-center p-4 bg-black/80"
           style={{ backdropFilter: 'blur(8px)', WebkitBackdropFilter: 'blur(8px)' }}
           initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}
           transition={{ duration: 0.22 }}
         >
-          <motion.div
+          <m.div
             role="dialog"
             aria-modal="true"
             aria-label="הגדרה ראשונית"
@@ -85,7 +85,7 @@ export default function OnboardingWizard() {
             {/* Slide */}
             <div className="px-6 pt-6 pb-6 min-h-[360px] overflow-hidden relative">
               <AnimatePresence mode="wait" custom={direction}>
-                <motion.div
+                <m.div
                   key={step}
                   custom={direction}
                   variants={onboardingStep}
@@ -112,7 +112,7 @@ export default function OnboardingWizard() {
                       </li>
                     ))}
                   </ul>
-                </motion.div>
+                </m.div>
               </AnimatePresence>
             </div>
 
@@ -162,8 +162,8 @@ export default function OnboardingWizard() {
                 </>
               )}
             </div>
-          </motion.div>
-        </motion.div>
+          </m.div>
+        </m.div>
       )}
     </AnimatePresence>
   );

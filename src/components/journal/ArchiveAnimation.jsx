@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react';
 import { createPortal } from 'react-dom';
-import { motion, AnimatePresence } from 'framer-motion';
+import { m, AnimatePresence } from 'framer-motion';
 import { Archive } from 'lucide-react';
 
 export default function ArchiveAnimation({ isOpen, journalName, onComplete }) {
@@ -23,7 +23,7 @@ export default function ArchiveAnimation({ isOpen, journalName, onComplete }) {
   return createPortal(
     <AnimatePresence>
       {isOpen && (
-        <motion.div
+        <m.div
           className="fixed inset-0 z-[100] flex flex-col items-center justify-center"
           style={{ backgroundColor: 'rgba(0, 0, 0, 0.85)' }}
           initial={{ opacity: 0 }}
@@ -32,16 +32,16 @@ export default function ArchiveAnimation({ isOpen, journalName, onComplete }) {
           transition={{ duration: 0.3 }}
         >
           {/* Archive box */}
-          <motion.div
+          <m.div
             initial={{ scale: 0.3, opacity: 0, y: 20 }}
             animate={{ scale: 1, opacity: 1, y: 0 }}
             transition={{ type: 'spring', stiffness: 200, damping: 20 }}
           >
             <Archive className="w-20 h-20 text-amber-500" />
-          </motion.div>
+          </m.div>
 
           {/* Journal name floating into archive */}
-          <motion.p
+          <m.p
             className="text-lg font-semibold text-text-primary mt-6"
             initial={{ opacity: 1, y: 0 }}
             animate={phase === 'closing' || phase === 'done'
@@ -51,10 +51,10 @@ export default function ArchiveAnimation({ isOpen, journalName, onComplete }) {
             transition={{ duration: 0.5 }}
           >
             {journalName}
-          </motion.p>
+          </m.p>
 
           {/* "Archived" text */}
-          <motion.p
+          <m.p
             className="text-sm text-amber-500 mt-3 font-medium"
             initial={{ opacity: 0, y: 10 }}
             animate={phase === 'closing' || phase === 'done'
@@ -64,8 +64,8 @@ export default function ArchiveAnimation({ isOpen, journalName, onComplete }) {
             transition={{ duration: 0.4 }}
           >
             הועבר לארכיון
-          </motion.p>
-        </motion.div>
+          </m.p>
+        </m.div>
       )}
     </AnimatePresence>,
     document.body
