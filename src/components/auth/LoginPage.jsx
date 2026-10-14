@@ -6,7 +6,8 @@ import toast from 'react-hot-toast';
 import { authErrorHe, authErrorMessage, isSilentAuthError } from '../../utils/authErrors';
 // Live checklist on sign-up, so the user sees what is missing before pressing
 // the button instead of after.
-import { PASSWORD_RULES, passwordProblem } from '../../utils/passwordPolicy';
+import { PASSWORD_RULES } from '../../utils/passwordPolicy';
+import { loginFieldError } from '../../utils/loginValidation';
 import { preloadPopupResolver } from '../../services/authService';
 import { exchangeSyncBlurb } from '../exchange/exchangeConfig';
 
@@ -143,17 +144,15 @@ export default function LoginPage() {
 
   const handleSubmit = async (e) => {
     e.preventDefault();
-    if (!email || !password) return;
+    const problem = loginFieldError({ email, password, mode });
+    if (problem) {
+      setFormError(problem);
+      return;
+    }
     setFormError('');
     setSubmitting(true);
     try {
       if (mode === 'register') {
-        const problem = passwordProblem(password);
-        if (problem) {
-          setFormError(problem);
-          setSubmitting(false);
-          return;
-        }
         await registerWithEmail(email, password, displayName || email.split('@')[0], { marketingEmails });
         toast.success('החשבון נוצר בהצלחה');
       } else {
@@ -263,7 +262,7 @@ export default function LoginPage() {
             <div className="flex-1 h-px bg-border-primary" />
           </div>
 
-          <form onSubmit={handleSubmit} className="space-y-4 text-right">
+          <form noValidate onSubmit={handleSubmit} className="space-y-4 text-right">
             {!isLogin && (
               <div>
                 <label htmlFor="lp-name" className="block text-xs font-semibold text-text-secondary mb-1.5">שם תצוגה</label>
@@ -278,7 +277,8 @@ export default function LoginPage() {
               <label htmlFor="lp-email" className="block text-xs font-semibold text-text-secondary mb-1.5">אימייל</label>
               <div className="relative">
                 <input id="lp-email" type="email" value={email} onChange={(e) => { setEmail(e.target.value); setFormError(''); }}
-                  placeholder="name@example.com" required dir="ltr" autoComplete="email" className={`${input} pl-10 text-left`} />
+                  placeholder="name@example.com" dir="ltr" autoComplete="email" aria-invalid={formError ? 'true' : undefined}
+                  className={`${input} pl-10 text-left`} />
                 <Mail className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-text-muted pointer-events-none" />
               </div>
             </div>
@@ -293,7 +293,8 @@ export default function LoginPage() {
               </div>
               <div className="relative">
                 <input id="lp-pass" type={showPassword ? 'text' : 'password'} value={password} onChange={(e) => { setPassword(e.target.value); setFormError(''); }}
-                  placeholder="••••••••" required dir="ltr" autoComplete={isLogin ? 'current-password' : 'new-password'}
+                  placeholder="••••••••" dir="ltr" autoComplete={isLogin ? 'current-password' : 'new-password'}
+                  aria-invalid={formError ? 'true' : undefined}
                   className={`${input} pl-10 pr-10 text-left`} />
                 <Lock className="absolute right-3 top-1/2 -translate-y-1/2 w-4 h-4 text-text-muted pointer-events-none" />
                 <button type="button" onClick={() => setShowPassword(!showPassword)}

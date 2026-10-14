@@ -201,6 +201,9 @@ export default function GlobalSearch() {
               />
               <div className="fixed inset-0 z-[80] flex items-start justify-center pt-[12vh] px-4 pointer-events-none">
                 <m.div
+                  role="dialog"
+                  aria-modal="true"
+                  aria-label="חיפוש"
                   initial={{ opacity: 0, y: -14, scale: 0.98 }}
                   animate={{ opacity: 1, y: 0, scale: 1 }}
                   exit={{ opacity: 0, y: -14, scale: 0.98 }}

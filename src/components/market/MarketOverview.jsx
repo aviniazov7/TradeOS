@@ -2,6 +2,7 @@ import { useState, useEffect, useCallback, useRef, useMemo, lazy, Suspense } fro
 import { useSearchParams } from 'react-router-dom';
 import { m, AnimatePresence } from 'framer-motion';
 import { formatCompactUsd as formatNum, formatCoinPrice as formatPrice, LRM } from '../../utils/formatters';
+import { fetchGlobalMarket } from '../../services/globalMarket';
 import {
   Activity, TrendingUp, TrendingDown, Bitcoin, DollarSign,
   PieChart, Flame, ArrowUpRight, ArrowDownRight, Layers, Rocket, Grid3X3,
@@ -850,31 +851,28 @@ export default function MarketOverview() {
         if (binanceCats.length > 0) setCategories(binanceCats.slice(0, 6));
       }
 
-      // ── SECONDARY: CoinPaprika global (free, no key, CORS-enabled).
-      // /v1/global has no stablecoin dominance, so USDT.D is computed from
-      // Tether's own ticker (its market cap / total market cap). ──
+      // Same source as the home "השוק עכשיו" card (CoinPaprika, then the
+      // worker's CoinGecko proxy). A direct paprika fetch used to fail here
+      // and leave שווי שוק on "—" while home already showed $2.93T.
       try {
-        const [globalRes, tetherRes] = await Promise.allSettled([
-          fetchWithTimeout('https://api.coinpaprika.com/v1/global', 6000),
+        const [marketRes, tetherRes] = await Promise.allSettled([
+          fetchGlobalMarket(),
           fetchWithTimeout('https://api.coinpaprika.com/v1/tickers/usdt-tether', 6000),
         ]);
-        if (globalRes.status === 'fulfilled' && globalRes.value.ok) {
-          const d = await globalRes.value.json();
-          let usdtDominance = null;
-          if (tetherRes.status === 'fulfilled' && tetherRes.value.ok) {
+        if (marketRes.status === 'fulfilled' && marketRes.value?.total_market_cap?.usd) {
+          const base = marketRes.value;
+          let usdtDominance = base.market_cap_percentage?.usdt ?? null;
+          const cap = base.total_market_cap.usd;
+          if (usdtDominance == null && tetherRes.status === 'fulfilled' && tetherRes.value.ok) {
             try {
               const t = await tetherRes.value.json();
               const tetherCap = t?.quotes?.USD?.market_cap;
-              if (tetherCap && d.market_cap_usd) usdtDominance = (tetherCap / d.market_cap_usd) * 100;
-            } catch { /* silent — shows "—" */ }
+              if (tetherCap && cap) usdtDominance = (tetherCap / cap) * 100;
+            } catch { /* silent — USDT.D stays "—" */ }
           }
           setGlobal({
-            total_market_cap: { usd: d.market_cap_usd },
-            total_volume: { usd: d.volume_24h_usd },
-            market_cap_change_percentage_24h_usd: d.market_cap_change_24h,
-            market_cap_percentage: { btc: d.bitcoin_dominance_percentage, usdt: usdtDominance, eth: null },
-            active_cryptocurrencies: d.cryptocurrencies_number,
-            volume_24h_change_pct: d.volume_24h_change_24h,
+            ...base,
+            market_cap_percentage: { ...base.market_cap_percentage, usdt: usdtDominance, eth: base.market_cap_percentage?.eth ?? null },
           });
         }
       } catch { /* silent — shows "—" */ }

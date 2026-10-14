@@ -396,17 +396,25 @@ export function calculateMaxStreaks(sortedTrades) {
 }
 
 /**
- * Calculate average trade duration in milliseconds
+ * Milliseconds the trade was actually open, or null.
+ * Exchange imports often stamp exitDate === entryDate (duration 0). Counting
+ * those zeros used to halve the average next to a chart that skipped them
+ * (a 53-minute trade beside a zero-length import read as 26 minutes).
  */
+export function tradeDurationMs(trade) {
+  if (!trade?.entryDate || !trade?.exitDate) return null;
+  const entry = trade.entryDate?.toDate ? trade.entryDate.toDate() : new Date(trade.entryDate);
+  const exit = trade.exitDate?.toDate ? trade.exitDate.toDate() : new Date(trade.exitDate);
+  const a = entry?.getTime?.();
+  const b = exit?.getTime?.();
+  if (!Number.isFinite(a) || !Number.isFinite(b) || b <= a) return null;
+  return b - a;
+}
+
 export function calculateAvgDuration(trades) {
-  const withDates = trades.filter(t => t.entryDate && t.exitDate);
-  if (!withDates.length) return 0;
-  const total = withDates.reduce((s, t) => {
-    const entry = t.entryDate?.toDate ? t.entryDate.toDate() : new Date(t.entryDate);
-    const exit = t.exitDate?.toDate ? t.exitDate.toDate() : new Date(t.exitDate);
-    return s + (exit - entry);
-  }, 0);
-  return total / withDates.length;
+  const durations = (trades || []).map(tradeDurationMs).filter((ms) => ms != null);
+  if (!durations.length) return 0;
+  return durations.reduce((s, ms) => s + ms, 0) / durations.length;
 }
 
 /**

@@ -3,6 +3,7 @@ import { BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer, PieChart, Pi
 import { useBacktestStats } from '../../hooks/useBacktestStats';
 import { SESSION_COLORS } from '../../utils/constants';
 import { LRM } from '../../utils/formatters';
+import { chartTick } from '../../utils/chartTicks';
 
 const tooltipStyle = { background: 'var(--color-bg-overlay)', border: '1px solid var(--color-border-primary)', borderRadius: '8px', fontSize: '12px', color: 'var(--color-text-primary)' };
 const COLORS = ['#22c55e', '#ef4444', '#eab308'];
@@ -78,7 +79,7 @@ export default function BacktestAnalytics({ backtests, period = 'all' }) {
               <h3 className="text-sm font-semibold text-text-primary mb-4">R Results יומי</h3>
               <ResponsiveContainer width="100%" height={200}>
                 <BarChart data={stats.dailyR}>
-                  <XAxis dataKey="date" tick={{ fill: 'var(--color-text-muted)', fontSize: 10 }} axisLine={false} tickLine={false} reversed />
+                  <XAxis dataKey="date" tick={chartTick} axisLine={false} tickLine={false} reversed />
                   <YAxis tick={{ fill: 'var(--color-text-muted)', fontSize: 11 }} axisLine={false} tickLine={false} orientation="right" />
                   <Tooltip contentStyle={tooltipStyle} formatter={(val) => [`${LRM}${val >= 0 ? '+' : ''}${val.toFixed(2)}R`, 'R Result']} />
                   <Bar dataKey="r" radius={[4, 4, 0, 0]} animationDuration={800}>

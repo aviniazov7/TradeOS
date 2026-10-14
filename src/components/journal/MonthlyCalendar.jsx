@@ -4,7 +4,8 @@ import {
   format, addMonths, subMonths, isToday,
 } from 'date-fns';
 import { ChevronRight, ChevronLeft, DollarSign, Share2 } from 'lucide-react';
-import { formatCurrency, safeDate, LRM } from '../../utils/formatters';
+import { formatCurrency, safeDate } from '../../utils/formatters';
+import { chunkWeeks, weekTotals } from '../../utils/calendarWeeks';
 import { isClosedTrade } from '../../utils/calculations';
 import Modal from '../shared/Modal';
 import MonthlyShareModal from './MonthlyShareModal';
@@ -158,50 +159,67 @@ export default function MonthlyCalendar({ trades, journalName }) {
           </button>
         </div>
 
-        {/* Day Names */}
-        <div className="grid grid-cols-7 gap-1 mb-1">
+        {/* Day names + a weekly-total column. Sunday stays on the right (RTL). */}
+        <div className="grid grid-cols-[repeat(7,minmax(0,1fr))_auto] gap-1 mb-1">
           {HEBREW_DAYS.map((day) => (
-            <div key={day} className="text-center text-xs text-text-muted py-1 font-medium">
+            <div key={day} className="text-center text-xs text-text-secondary py-1 font-medium">
               {day}
             </div>
           ))}
+          <div className="text-center text-xs text-text-secondary py-1 font-medium px-1">שבוע</div>
         </div>
 
-        {/* Calendar Grid */}
-        <div className="grid grid-cols-7 gap-1">
-          {calendarDays.map((day, idx) => {
-            if (!day) return <div key={`empty-${idx}`} className="h-10 md:h-14" />;
-
-            const key = format(day, 'yyyy-MM-dd');
-            const data = dailyData[key];
-            const pnl = data?.pnl;
-            const dayNum = day.getDate();
-            const today = isToday(day);
-
+        <div className="space-y-1">
+          {chunkWeeks(calendarDays).map((week, wi) => {
+            const weekStat = weekTotals(week, dailyData);
             return (
-              <button
-                key={key}
-                onClick={() => data && setSelectedDay({ date: day, ...data })}
-                className={`h-12 md:h-14 rounded-lg border border-border-primary flex flex-col items-center justify-center gap-0.5 transition-all ${
-                  data ? 'cursor-pointer hover:brightness-125' : 'cursor-default opacity-40'
-                } ${getCellBg(pnl)} ${today ? 'ring-1 ring-accent-primary' : ''}`}
-              >
-                <span className={`text-xs font-medium ${today ? 'text-accent-primary' : 'text-text-primary'}`}>
-                  {dayNum}
-                </span>
-                {data && (
-                  <span className={`text-[8px] md:text-[10px] font-semibold ${pnl >= 0 ? 'text-profit' : 'text-loss'}`}>
-                    <span className="hidden md:inline">{formatCurrency(pnl)}</span>
-                    <span className="md:hidden">{LRM}{pnl >= 0 ? '+' : ''}{pnl.toFixed(0)}$</span>
+              <div key={wi} className="grid grid-cols-[repeat(7,minmax(0,1fr))_auto] gap-1">
+                {week.map((day, idx) => {
+                  if (!day) return <div key={`empty-${wi}-${idx}`} className="h-12 md:h-16" />;
+                  const key = format(day, 'yyyy-MM-dd');
+                  const data = dailyData[key];
+                  const pnl = data?.pnl;
+                  const dayNum = day.getDate();
+                  const today = isToday(day);
+                  const count = data?.trades.length || 0;
+                  return (
+                    <button
+                      key={key}
+                      type="button"
+                      onClick={() => data && setSelectedDay({ date: day, ...data })}
+                      aria-current={today ? 'date' : undefined}
+                      aria-label={`${dayNum}${today ? ', היום' : ''}${count ? `, ${count} עסקאות` : ''}`}
+                      className={`h-12 md:h-16 rounded-lg border flex flex-col items-center justify-center gap-0.5 transition-all ${
+                        data ? 'cursor-pointer hover:brightness-125 border-border-primary' : 'cursor-default opacity-50 border-border-primary'
+                      } ${getCellBg(pnl)} ${today ? 'ring-2 ring-accent-primary bg-accent-primary/10 opacity-100' : ''}`}
+                    >
+                      <span className={`text-xs font-semibold ${today ? 'text-accent-primary' : 'text-text-primary'}`}>
+                        {dayNum}
+                      </span>
+                      {count > 0 && (
+                        <span className="text-[11px] leading-none font-semibold text-text-secondary">{count}</span>
+                      )}
+                      {data && (
+                        <span className={`hidden md:inline text-xs font-semibold ${pnl >= 0 ? 'text-profit' : 'text-loss'}`}>
+                          {formatCurrency(pnl)}
+                        </span>
+                      )}
+                    </button>
+                  );
+                })}
+                <div className="min-w-[4.5rem] h-12 md:h-16 rounded-lg bg-bg-tertiary/70 border border-border-primary flex flex-col items-center justify-center px-1">
+                  <span className="text-[11px] text-text-secondary">{weekStat.count || '—'}</span>
+                  <span className={`text-[11px] md:text-xs font-semibold ${weekStat.count ? pnlColor(weekStat.pnl) : 'text-text-muted'}`} dir="ltr">
+                    {weekStat.count ? formatCurrency(weekStat.pnl) : ''}
                   </span>
-                )}
-              </button>
+                </div>
+              </div>
             );
           })}
         </div>
 
         {/* Legend */}
-        <div className="flex items-center justify-center gap-4 mt-2 text-[10px] text-text-muted">
+        <div className="flex items-center justify-center gap-4 mt-2 text-xs text-text-secondary">
           <div className="flex items-center gap-1">
             <div className="w-3 h-3 rounded-sm bg-profit/30" /> רווח
           </div>

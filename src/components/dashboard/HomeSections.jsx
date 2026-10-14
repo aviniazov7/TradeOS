@@ -1,5 +1,5 @@
 import { useNavigate } from 'react-router-dom';
-import { scoreReady, streakDaysLabel, MIN_SCORE_TRADES } from '../../utils/homeStats';
+import { scoreReady, streakDaysLabel, MIN_SCORE_TRADES, profitFactorText, winRateText } from '../../utils/homeStats';
 import { FlaskConical, ClipboardList, Coins, Sunrise, Moon, ChevronLeft, RefreshCw } from 'lucide-react';
 import Card from '../shared/Card';
 import CoinIcon from '../shared/CoinIcon';
@@ -47,6 +47,7 @@ const Split = ({ a, b }) => (
     <span className="bg-loss" style={{ width: `${b}%` }} />
   </div>
 );
+const NeutralBar = () => <div className="h-1.5 rounded-full bg-bg-tertiary" aria-hidden />;
 
 // Win rate · win/loss size · profit factor · current streak. Net P&L lives in
 // the portfolio card above, so it isn't repeated here.
@@ -57,6 +58,7 @@ export function HomeKpis({ kpi, hidden }) {
     profitFactor = 0, streakDays = { current: 0 }, streakTrades = { current: 0, best: 0, win: true }, lastResults = [],
   } = kpi || {};
   const decided = wins + losses;
+  const empty = decided === 0;
   const absLoss = Math.abs(avgLoss);
   const sizeTotal = avgWin + absLoss;
   const pf = Number.isFinite(profitFactor) ? profitFactor : null;
@@ -71,27 +73,27 @@ export function HomeKpis({ kpi, hidden }) {
     <section aria-label="מדדים" className="grid grid-cols-2 lg:grid-cols-4 gap-3">
       <Kpi
         label="אחוז הצלחה"
-        value={`${(Number.isFinite(winRate) ? winRate : 0).toFixed(1)}%`}
-        bar={<Split a={decided ? (wins / decided) * 100 : 50} b={decided ? (losses / decided) * 100 : 50} />}
+        value={winRateText(winRate, wins, losses)}
+        bar={empty ? <NeutralBar /> : <Split a={(wins / decided) * 100} b={(losses / decided) * 100} />}
         sub={`${wins} רווח · ${losses} הפסד${breakeven ? ` · ${breakeven} איזון` : ''}`}
       />
       <Kpi
         label="יחס רווח להפסד"
-        value={Number.isFinite(avgWinLossRatio) ? avgWinLossRatio.toFixed(2) : '—'}
-        bar={<Split a={sizeTotal ? (avgWin / sizeTotal) * 100 : 50} b={sizeTotal ? (absLoss / sizeTotal) * 100 : 50} />}
+        value={empty || !Number.isFinite(avgWinLossRatio) ? '—' : avgWinLossRatio.toFixed(2)}
+        bar={empty || !sizeTotal ? <NeutralBar /> : <Split a={(avgWin / sizeTotal) * 100} b={(absLoss / sizeTotal) * 100} />}
         sub={losses === 0
           ? 'אין עדיין הפסדים להשוואה'
           : <>ממוצע <span dir="ltr" className="text-profit">{wins ? m(formatCurrency(avgWin)) : '—'}</span> מול <span dir="ltr" className="text-loss">{m(formatCurrency(avgLoss))}</span></>}
       />
       <Kpi
         label="פקטור רווח"
-        value={pf == null ? '∞' : pf.toFixed(2)}
-        bar={(
+        value={profitFactorText(pf, wins, losses)}
+        bar={empty ? <NeutralBar /> : (
           <div className="h-1.5 rounded-full bg-bg-tertiary overflow-hidden">
             <div className={`h-full rounded-full ${pfColor}`} style={{ width: `${pf == null ? 100 : Math.min(100, (pf / 2) * 100)}%` }} />
           </div>
         )}
-        sub={pfNote}
+        sub={empty ? 'אין עסקאות סגורות' : pfNote}
       />
       <Kpi
         label="רצף נוכחי"

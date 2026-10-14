@@ -60,7 +60,7 @@ function Sparkline({ trade, candles, result }) {
   const level = (price, cls, label) => (
     <g className={cls} key={label}>
       <line x1={pad} x2={W - pad} y1={y(price)} y2={y(price)} stroke="currentColor" strokeWidth="1" strokeDasharray="4 3" />
-      <text x={W - pad} y={y(price) - 2} textAnchor="end" fontSize="8" fill="currentColor">{label}</text>
+      <text x={W - pad} y={y(price) - 3} textAnchor="end" fontSize="12" fill="currentColor">{label}</text>
     </g>
   );
   return (

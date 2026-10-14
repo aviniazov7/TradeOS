@@ -784,7 +784,7 @@ export default function TradeJournal() {
       {tab === 'exchange' && (
         <div className="mt-2">
           <Suspense fallback={<TabFallback />}>
-            <ExchangeSettings journalId={activeJournalId} />
+            <ExchangeSettings journalId={activeJournalId} embedded />
           </Suspense>
         </div>
       )}

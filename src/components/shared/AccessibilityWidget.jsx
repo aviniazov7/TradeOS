@@ -110,7 +110,7 @@ export default function AccessibilityWidget() {
         onClick={() => setOpen(true)}
         aria-label="פתיחת תפריט נגישות"
         title="נגישות"
-        className={`fixed left-3 ${hasBottomNav ? 'bottom-24' : 'bottom-3'} lg:left-4 lg:bottom-4 z-50 w-8 h-8 rounded-full flex items-center justify-center border border-border-primary bg-bg-secondary/60 backdrop-blur-sm text-text-muted shadow-sm hover:text-accent-primary hover:border-accent-primary/40 hover:bg-bg-secondary focus-visible:text-accent-primary focus-visible:border-accent-primary/40 hover:!opacity-100 focus-visible:!opacity-100 transition-all duration-300 cursor-pointer ${scrolling ? 'opacity-0' : 'opacity-40'}`}
+        className={`fixed left-3 ${hasBottomNav ? 'bottom-[calc(env(safe-area-inset-bottom,0px)+6.25rem)]' : 'bottom-[calc(env(safe-area-inset-bottom,0px)+0.75rem)]'} lg:left-4 lg:bottom-4 z-50 w-8 h-8 rounded-full flex items-center justify-center border border-border-primary bg-bg-secondary/80 backdrop-blur-sm text-text-secondary shadow-sm hover:text-accent-primary hover:border-accent-primary/40 hover:bg-bg-secondary focus-visible:text-accent-primary focus-visible:border-accent-primary/40 hover:!opacity-100 focus-visible:!opacity-100 transition-all duration-300 cursor-pointer ${scrolling ? 'opacity-20' : 'opacity-80'}`}
       >
         <Accessibility className="w-4 h-4" />
         {anyActive && <span className="absolute -top-0.5 -right-0.5 w-2 h-2 rounded-full bg-profit border border-bg-primary" />}

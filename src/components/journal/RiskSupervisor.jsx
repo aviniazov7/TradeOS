@@ -1,5 +1,5 @@
 import { ShieldAlert, ShieldCheck, AlertTriangle, Info } from 'lucide-react';
-import { LRM } from '../../utils/formatters';
+import { formatCurrency } from '../../utils/formatters';
 
 // Severity carries meaning here, so it gets form as well as colour — a chip and
 // a rule, not just a hue. Semantic tokens, never a raw palette colour.
@@ -9,7 +9,7 @@ const SEVERITY = {
   info: { label: 'לידיעה', Icon: Info, text: 'text-text-secondary', bg: 'bg-bg-tertiary', border: 'border-border-primary', rule: 'bg-border-hover' },
 };
 
-const fmt$ = (v) => `${LRM}${v >= 0 ? '+' : '-'}$${Math.abs(v).toFixed(2)}`;
+const fmt$ = (v) => (v == null || Number.isNaN(Number(v)) ? '—' : formatCurrency(v));
 
 // One compact figure inside the status card. dir defaults to ltr because the
 // values are numbers.

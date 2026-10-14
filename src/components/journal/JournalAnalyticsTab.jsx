@@ -12,6 +12,7 @@ import TradeHeatmap from '../dashboard/TradeHeatmap';
 import EmptyState from '../shared/EmptyState';
 import JournalRCard from './JournalRCard';
 import { formatCurrency, formatPercent, formatDuration, LRM } from '../../utils/formatters';
+import { profitFactorText } from '../../utils/homeStats';
 import { TAG_LABELS } from '../../utils/constants';
 import { staggerContainer } from '../../utils/animations';
 
@@ -98,7 +99,7 @@ export default function JournalAnalyticsTab({
             <div className="grid grid-cols-3 md:grid-cols-5 lg:grid-cols-10 gap-px">
               {[
                 { label: 'רצף נוכחי', value: streakText, color: streakColor },
-                { label: 'מקדם רווח', value: stats.profitFactor === Infinity ? '∞' : stats.profitFactor.toFixed(2), color: stats.profitFactor >= 1.5 ? 'text-profit' : 'text-loss' },
+                { label: 'מקדם רווח', value: profitFactorText(stats.profitFactor, stats.winCount, stats.lossCount), color: (stats.winCount + stats.lossCount) === 0 ? 'text-text-muted' : stats.profitFactor >= 1.5 ? 'text-profit' : 'text-loss' },
                 { label: 'תשואה/תנודתיות', value: stats.sharpeRatio.toFixed(2) },
                 // Calmar needs real capital — without a starting balance it is null.
                 { label: 'תשואה/נפילה', value: stats.calmarRatio == null ? '—' : stats.calmarRatio.toFixed(2) },

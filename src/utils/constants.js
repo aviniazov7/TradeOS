@@ -193,7 +193,8 @@ export const FREE_LIMITS = {
   aiImagesPremium: 10,
 };
 
-// Premium pricing (ILS). Yearly gives ~2 months free — tweak freely.
+// Premium pricing is billed in ILS. The journal stays in USD on purpose:
+// the charge is shekels, the trades are dollars. Do not convert one into the other.
 export const PREMIUM_PRICING = {
   monthly: { id: 'monthly', price: 29, label: 'חודשי', per: 'חודש', note: '' },
   yearly: { id: 'yearly', price: 290, label: 'שנתי', per: 'שנה', note: 'חודשיים חינם' },
@@ -284,8 +285,12 @@ export function getExchangeLogo(exchangeValue) {
   if (!exchangeValue) return null;
   const ex = EXCHANGES.find((e) => e.value === exchangeValue);
   if (ex?.domain) return `https://www.google.com/s2/favicons?domain=${ex.domain}&sz=32`;
-  // Custom exchange — guess domain
-  const guess = exchangeValue.toLowerCase().replace(/\s/g, '') + '.com';
+  // 'other' is the default broker id, not a website. Guessing other.com
+  // 404s on every trade row that never picked a real broker.
+  const id = String(exchangeValue).toLowerCase().replace(/\s/g, '');
+  if (!id || id === 'other') return null;
+  const guess = `${id}.com`;
+  if (guess === 'other.com') return null;
   return `https://www.google.com/s2/favicons?domain=${guess}&sz=32`;
 }
 

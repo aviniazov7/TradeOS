@@ -2,6 +2,7 @@ import { forwardRef } from 'react';
 import { getExchangeLogo } from '../../utils/constants';
 import { formatCurrency, formatPercent, formatPrice, formatSignedR, formatDate } from '../../utils/formatters';
 import { signedTradeR, tradeNetPercent } from '../../utils/calculations';
+import { tradeExitPrice } from '../../utils/excursion';
 import { getCoinIcon } from '../shared/CoinIcon';
 
 const TradeShareCard = forwardRef(function TradeShareCard({ trade, options = {} }, ref) {
@@ -181,12 +182,12 @@ const TradeShareCard = forwardRef(function TradeShareCard({ trade, options = {} 
           position: 'relative',
         }}>
           <div style={{ textAlign: 'center' }}>
-            <div style={{ fontSize: 10, color: '#707080', marginBottom: 3 }}>כניסה</div>
+            <div style={{ fontSize: 12, color: '#c8c8d4', marginBottom: 3 }}>כניסה</div>
             <div style={{ fontSize: 13, fontWeight: 600 }}>{formatPrice(trade.entryPrice)}</div>
           </div>
           <div style={{ textAlign: 'center' }}>
-            <div style={{ fontSize: 10, color: '#707080', marginBottom: 3 }}>SL</div>
-            <div style={{ fontSize: 13, fontWeight: 600 }}>{trade.stopLoss ? formatPrice(trade.stopLoss) : '—'}</div>
+            <div style={{ fontSize: 12, color: '#c8c8d4', marginBottom: 3 }}>יציאה</div>
+            <div style={{ fontSize: 13, fontWeight: 600 }}>{(() => { const exit = tradeExitPrice(trade); return exit ? formatPrice(exit) : '—'; })()}</div>
           </div>
         </div>
       )}
@@ -238,10 +239,10 @@ const TradeShareCard = forwardRef(function TradeShareCard({ trade, options = {} 
       }}>
         <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
           <img src="/favicon.png" alt="" style={{ width: 16, height: 16, borderRadius: 3 }} />
-          <span style={{ fontSize: 11, color: '#606070' }}>Tracked with TradeOS</span>
+          <span style={{ fontSize: 12, color: '#c8c8d4' }}>Tracked with TradeOS</span>
         </div>
         {showDates && (
-          <span style={{ fontSize: 10, color: '#505060' }}>
+          <span style={{ fontSize: 12, color: '#c8c8d4' }}>
             {formatDate(entryDate)} → {formatDate(exitDate)}
           </span>
         )}

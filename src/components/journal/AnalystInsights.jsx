@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from 'react';
 import { ShieldAlert, Wallet, ClipboardList, Brain, HelpCircle, TrendingUp, ChevronDown } from 'lucide-react';
-import { LRM } from '../../utils/formatters';
+import { formatCurrency } from '../../utils/formatters';
 import { useAuth } from '../../contexts/AuthContext';
 import { useJournalContext } from '../../contexts/JournalContext';
 import { useLinkedExchangeBalance } from '../../hooks/useLinkedExchangeBalance';
@@ -11,7 +11,7 @@ import { buildPsychologyStats } from '../../utils/coachPsychology';
 import { pickActivePlan } from '../../utils/pickActivePlan';
 import RiskSupervisor from './RiskSupervisor';
 
-const fmt$ = (v, gain) => `${LRM}${gain ? '+' : '-'}$${Math.abs(v).toLocaleString('en-US', { maximumFractionDigits: v >= 100 ? 0 : 2 })}`;
+const fmt$ = (v, gain) => formatCurrency(gain ? Math.abs(v) : -Math.abs(v));
 const PREVIEW = 3;
 
 // Where a finding came from, so two different measurements of "did I follow my
