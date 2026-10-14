@@ -1,5 +1,5 @@
 import { useMemo, useState } from 'react';
-import { motion } from 'framer-motion';
+import { m } from 'framer-motion';
 import { useParams, useLocation, useNavigate, Navigate } from 'react-router-dom';
 import { ArrowRight, ExternalLink, ShieldCheck, AlertCircle, Wallet, Clock, BrainCircuit } from 'lucide-react';
 import { useAuth } from '../../contexts/AuthContext';
@@ -162,7 +162,7 @@ export default function WalletDetailPage() {
   const link = profileUrl(address);
 
   return (
-    <motion.div variants={pageVariants} initial="initial" animate="animate" exit="exit" transition={pageTransition} className="max-w-3xl mx-auto">
+    <m.div variants={pageVariants} initial="initial" animate="animate" exit="exit" transition={pageTransition} className="max-w-3xl mx-auto">
       {/* Back */}
       <button onClick={() => navigate(state?.from || '/market?tab=polymarket')} className="inline-flex items-center gap-1.5 text-sm text-text-muted hover:text-text-primary transition-colors mb-3 cursor-pointer">
         <ArrowRight className="w-4 h-4" /> חזרה לדירוג
@@ -271,6 +271,6 @@ export default function WalletDetailPage() {
       )}
 
       <WalletAnalystModal isOpen={analystOpen} onClose={() => setAnalystOpen(false)} row={row} positions={positions} split={split} />
-    </motion.div>
+    </m.div>
   );
 }

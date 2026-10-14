@@ -290,21 +290,29 @@ async function fetchMarketsFromBase(base) {
     fetch(`${base}?${params}&page=2`),
   ]);
   let fetched = 0;
+  let rateLimited = false;
   for (const result of [res1, res2]) {
-    if (result.status === 'fulfilled' && result.value.ok) {
-      const coins = await result.value.json();
-      if (!Array.isArray(coins)) continue;
-      coins.forEach((c) => {
-        if (!c.symbol) return; // CoinGecko occasionally returns rows with no symbol — skip, don't crash the page
-        const img = c.image?.replace('/large/', '/small/');
-        if (img && !img.includes('missing_large')) {
-          memoryCache[c.symbol.toUpperCase()] = img;
-          fetched++;
-        }
-      });
+    if (result.status !== 'fulfilled') continue;
+    const res = result.value;
+    // A 429 from the worker means CoinGecko is already backing off. Hitting
+    // api.coingecko.com directly from the browser makes that worse.
+    if (res.status === 429 || res.status === 503) {
+      rateLimited = true;
+      continue;
     }
+    if (!res.ok) continue;
+    const coins = await res.json();
+    if (!Array.isArray(coins)) continue;
+    coins.forEach((c) => {
+      if (!c.symbol) return; // CoinGecko occasionally returns rows with no symbol — skip, don't crash the page
+      const img = c.image?.replace('/large/', '/small/');
+      if (img && !img.includes('missing_large')) {
+        memoryCache[c.symbol.toUpperCase()] = img;
+        fetched++;
+      }
+    });
   }
-  return fetched;
+  return { fetched, rateLimited };
 }
 
 export async function prefetchCoinImages() {
@@ -333,18 +341,23 @@ export async function prefetchCoinImages() {
     try {
       const workerUrl = import.meta.env.VITE_WORKER_URL || '';
       let fetched = 0;
+      let rateLimited = false;
 
       // 1. Try Cloudflare Worker proxy
       if (workerUrl) {
         try {
-          fetched = await fetchMarketsFromBase(`${workerUrl}/cg/coins/markets`);
+          const viaWorker = await fetchMarketsFromBase(`${workerUrl}/cg/coins/markets`);
+          fetched = viaWorker.fetched;
+          rateLimited = viaWorker.rateLimited;
         } catch { /* fall through */ }
       }
 
-      // 2. Direct CoinGecko fallback if worker failed or not configured
-      if (fetched === 0) {
+      // 2. Direct CoinGecko only when the worker isn't configured or failed
+      // for a reason other than a rate limit. A 429 must not be retried
+      // against the same free-tier IP from the browser.
+      if (fetched === 0 && !rateLimited) {
         try {
-          fetched = await fetchMarketsFromBase('https://api.coingecko.com/api/v3/coins/markets');
+          fetched = (await fetchMarketsFromBase('https://api.coingecko.com/api/v3/coins/markets')).fetched;
         } catch { /* silent */ }
       }
 

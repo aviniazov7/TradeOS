@@ -1,6 +1,6 @@
 import { useEffect, useMemo } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
-import { motion } from 'framer-motion';
+import { m } from 'framer-motion';
 import { Route, ArrowRight, Flag, Gauge, ListChecks, Radar, Info, Activity } from 'lucide-react';
 import PageHeader from '../shared/PageHeader';
 import StatTile from '../shared/StatTile';
@@ -93,7 +93,7 @@ export default function PsychologicalJourney() {
 
   const a = assessment;
   return (
-    <motion.div initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.3 }}>
+    <m.div initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.3 }}>
       <PageHeader
         icon={Route}
         title="מפת ההתפתחות שלך"
@@ -127,24 +127,24 @@ export default function PsychologicalJourney() {
       </PageHeader>
 
       {!a ? <JourneySkeleton /> : (
-        <motion.div variants={stagger} initial="hidden" animate="visible" className="space-y-4">
+        <m.div variants={stagger} initial="hidden" animate="visible" className="space-y-4">
           {a.insufficient && (
-            <motion.div variants={tileItem}><LowDataNotice assessment={a} /></motion.div>
+            <m.div variants={tileItem}><LowDataNotice assessment={a} /></m.div>
           )}
 
-          <motion.div variants={tileItem}><JourneyMap assessment={a} /></motion.div>
+          <m.div variants={tileItem}><JourneyMap assessment={a} /></m.div>
 
           {/* Two balanced columns: the radar on one side; goals plus the
               strengths/blockers snapshot stacked on the other, so neither
               column leaves an empty gap under it. */}
           <div className="grid gap-4 lg:grid-cols-2 items-stretch">
-            <motion.section variants={tileItem} className={`${panel} flex flex-col`} aria-label="פרופיל המדדים">
+            <m.section variants={tileItem} className={`${panel} flex flex-col`} aria-label="פרופיל המדדים">
               <PanelTitle icon={Radar} aside="0–100">פרופיל המדדים</PanelTitle>
               <div className="flex-1 grid place-items-center">
                 <DimensionRadar dimensions={a.dimensions} />
               </div>
-            </motion.section>
-            <motion.div variants={tileItem} className="min-w-0 flex flex-col gap-4">
+            </m.section>
+            <m.div variants={tileItem} className="min-w-0 flex flex-col gap-4">
               <Milestones assessment={a} />
               {(a.strengths.length > 0 || a.blockers.length > 0) && (
                 <section className={`${panel} flex-1`} aria-label="תמונת מצב">
@@ -152,22 +152,22 @@ export default function PsychologicalJourney() {
                   <SnapshotLists strengths={a.strengths} blockers={a.blockers} className="" />
                 </section>
               )}
-            </motion.div>
+            </m.div>
           </div>
 
           <section aria-label="המדדים בפירוט" className="grid gap-4 sm:grid-cols-2 xl:grid-cols-3">
             {a.dimensions.map((d) => (
-              <motion.div key={d.id} variants={tileItem} className="min-w-0 flex"><DimensionCard d={d} /></motion.div>
+              <m.div key={d.id} variants={tileItem} className="min-w-0 flex"><DimensionCard d={d} /></m.div>
             ))}
           </section>
 
-          <motion.div variants={tileItem}>
+          <m.div variants={tileItem}>
             <JourneyAiPanel key={user?.uid || 'anon'} assessment={a} uid={user?.uid} isPremium={isPremium} />
-          </motion.div>
+          </m.div>
 
-          <motion.div variants={tileItem}><StagesReference currentIndex={a.stage.index} /></motion.div>
-        </motion.div>
+          <m.div variants={tileItem}><StagesReference currentIndex={a.stage.index} /></m.div>
+        </m.div>
       )}
-    </motion.div>
+    </m.div>
   );
 }

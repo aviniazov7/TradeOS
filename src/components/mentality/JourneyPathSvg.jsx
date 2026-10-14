@@ -1,5 +1,5 @@
 import { useId, useMemo } from 'react';
-import { motion, useReducedMotion } from 'framer-motion';
+import { m, useReducedMotion } from 'framer-motion';
 import { STAGES } from '../../utils/traderStage';
 import {
   layoutJourney, stagePoint, travelPoint, pathBetween, drawEase, drawEaseInverse, stageStatus as statusOf,
@@ -46,7 +46,7 @@ export function JourneySvg({ box, cur, progress, color, selected, reduce, dot, s
         {/* The pen: one stroke drawn along the whole curve reveals both the
             travelled and the remaining part, so they draw as one line. */}
         <mask id={maskId} maskUnits="userSpaceOnUse" x="0" y="0" width={box.width} height={box.height}>
-          <motion.path
+          <m.path
             d={full}
             fill="none"
             stroke="white"
@@ -85,8 +85,8 @@ export function JourneySvg({ box, cur, progress, color, selected, reduce, dot, s
       {curPt && pulse && !reduce && (
         // The wrapper fades in when the pen arrives; the ring inside pulses
         // from the start (keyframes would show their first value during a delay).
-        <motion.g initial={{ opacity: 0 }} animate={{ opacity: 1 }} transition={{ delay: delayOf(curPt.fraction) + 0.2, duration: 0.3 }}>
-          <motion.circle
+        <m.g initial={{ opacity: 0 }} animate={{ opacity: 1 }} transition={{ delay: delayOf(curPt.fraction) + 0.2, duration: 0.3 }}>
+          <m.circle
             cx={curPt.x}
             cy={curPt.y}
             fill={color}
@@ -94,13 +94,13 @@ export function JourneySvg({ box, cur, progress, color, selected, reduce, dot, s
             animate={{ r: [dot * 1.4, dot * 3.4], opacity: [0.35, 0] }}
             transition={{ duration: 1.8, repeat: Infinity, ease: 'easeOut' }}
           />
-        </motion.g>
+        </m.g>
       )}
       {curPt && pulse && reduce && <circle cx={curPt.x} cy={curPt.y} r={dot * 2.4} fill={color} opacity="0.14" />}
 
       {/* The head of the travelled part, between this stage and the next. */}
       {showHead && (
-        <motion.circle
+        <m.circle
           cx={travel.x}
           cy={travel.y}
           r={dot * 0.55}
@@ -117,7 +117,7 @@ export function JourneySvg({ box, cur, progress, color, selected, reduce, dot, s
         const isSel = selected === i;
         const r = st === 'current' ? dot * 1.25 : dot;
         return (
-          <motion.g
+          <m.g
             key={s.id}
             style={{ transformOrigin: `${p.x}px ${p.y}px` }}
             initial={reduce ? false : { scale: 0, opacity: 0 }}
@@ -140,7 +140,7 @@ export function JourneySvg({ box, cur, progress, color, selected, reduce, dot, s
             {st === 'future' && (
               <circle cx={p.x} cy={p.y} r={r * 0.85} fill="var(--color-bg-primary)" stroke="var(--color-text-muted)" strokeWidth={dot * 0.28} />
             )}
-          </motion.g>
+          </m.g>
         );
       })}
     </svg>

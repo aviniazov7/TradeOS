@@ -1,5 +1,5 @@
 import { useState, useEffect, useMemo } from 'react';
-import { motion } from 'framer-motion';
+import { m } from 'framer-motion';
 import { Clock } from 'lucide-react';
 
 const SESSIONS = [
@@ -106,7 +106,7 @@ export default function MarketSessionsCard() {
   const nextOpen = useMemo(() => getNextOpenInfo(SESSIONS, now, day), [now, day]);
 
   return (
-    <motion.div
+    <m.div
       initial={{ opacity: 0, y: 10 }}
       animate={{ opacity: 1, y: 0 }}
       className="bento-card p-3 mb-4"
@@ -168,7 +168,7 @@ export default function MarketSessionsCard() {
 
               {open && (
                 <div className="mb-1.5 h-1 rounded-full bg-bg-tertiary overflow-hidden">
-                  <motion.div
+                  <m.div
                     className="h-full rounded-full"
                     style={{ backgroundColor: s.color }}
                     initial={{ width: 0 }}
@@ -190,6 +190,6 @@ export default function MarketSessionsCard() {
           );
         })}
       </div>
-    </motion.div>
+    </m.div>
   );
 }

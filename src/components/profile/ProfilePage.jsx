@@ -2,7 +2,7 @@ import { useState, useEffect, useRef } from 'react';
 import { passwordProblem } from '../../utils/passwordPolicy';
 import { authErrorHe } from '../../utils/authErrors';
 import { useNavigate } from 'react-router-dom';
-import { motion, AnimatePresence } from 'framer-motion';
+import { m, AnimatePresence } from 'framer-motion';
 import { LogOut, Trash2, Lock, Mail, Share2, Download, Eye, EyeOff, Sun, Moon, Trophy, Crown, ShieldCheck, Clock, ArrowLeft, ChevronRight, Check, Coins, LineChart, Briefcase, Receipt, ChevronLeft, Camera, Pencil } from 'lucide-react';
 import UserAvatar from '../shared/UserAvatar';
 import { makeAvatarDataUrl } from '../../utils/avatarImage';
@@ -313,7 +313,7 @@ export default function ProfilePage() {
   const inputClass = 'w-full bg-bg-tertiary border border-border-primary rounded-lg px-3 py-2.5 text-sm text-text-primary outline-none focus:border-accent-primary transition-colors';
 
   return (
-    <motion.div variants={pageVariants} initial="initial" animate="animate" exit="exit" transition={pageTransition}
+    <m.div variants={pageVariants} initial="initial" animate="animate" exit="exit" transition={pageTransition}
       className="px-4 py-6">
       <div className="max-w-lg mx-auto">
 
@@ -599,7 +599,7 @@ export default function ProfilePage() {
           </button>
           <AnimatePresence>
             {isPublicProfile && (
-              <motion.div
+              <m.div
                 initial={{ height: 0, opacity: 0 }}
                 animate={{ height: 'auto', opacity: 1 }}
                 exit={{ height: 0, opacity: 0 }}
@@ -627,7 +627,7 @@ export default function ProfilePage() {
                   </div>
                   <p className="text-[10px] text-text-muted text-center">הביצועים שלך יוצגו בלוח המובילים. נדרשות לפחות 10 עסקאות סגורות.</p>
                 </div>
-              </motion.div>
+              </m.div>
             )}
           </AnimatePresence>
         </div>
@@ -711,7 +711,7 @@ export default function ProfilePage() {
         </div>
       </Modal>
       </div>
-    </motion.div>
+    </m.div>
   );
 }
 

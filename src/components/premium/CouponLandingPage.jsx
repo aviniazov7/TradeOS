@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
-import { motion } from 'framer-motion';
+import { m } from 'framer-motion';
 import { Crown, Gift, Check, Loader2, AlertCircle, LogIn, Sparkles } from 'lucide-react';
 import toast from 'react-hot-toast';
 import { useAuth } from '../../contexts/AuthContext';
@@ -53,7 +53,7 @@ export default function CouponLandingPage() {
 
   return (
     <div className="min-h-screen flex items-center justify-center px-4 py-10 bg-bg-primary">
-      <motion.div
+      <m.div
         initial={{ opacity: 0, y: 12 }} animate={{ opacity: 1, y: 0 }}
         className="w-full max-w-md"
       >
@@ -142,7 +142,7 @@ export default function CouponLandingPage() {
         )}
 
         <p className="text-center text-[11px] text-text-muted mt-4">TradeOS — יומן מסחר חכם</p>
-      </motion.div>
+      </m.div>
     </div>
   );
 }

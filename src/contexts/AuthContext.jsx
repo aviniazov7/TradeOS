@@ -17,22 +17,15 @@ import {
   sendVerificationEmail as authSendVerificationEmail,
   refreshEmailVerified as authRefreshEmailVerified,
 } from '../services/authService';
-// Profile + settings, plus the account-deletion wipe (all subcollections +
-// leaderboard + user doc).
-import {
-  getUserProfile,
-  setUserProfile,
-  setUserSetting,
-  subscribeToUserProfile,
-  touchLastActive,
-  timestamp,
-  deleteUserProfile,
-  deleteUserSubcollection,
-  deleteLeaderboardEntry,
-  USER_SUBCOLLECTIONS,
-} from '../services/firestoreService';
-import { logAccountDeletion } from '../services/pushService';
-import { clearLocalAccountData } from '../services/localData';
+
+// Profile, the account wipe, and the local cache clear all touch Firestore.
+// Loaded on demand once a session exists — a logged-out /login must not
+// download the Firestore SDK.
+let accountDataPromise;
+function accountData() {
+  accountDataPromise ??= import('../services/accountData');
+  return accountDataPromise;
+}
 
 // Read a Firestore Timestamp / ISO / millis into epoch millis (0 if absent).
 function toMillis(v) {
@@ -83,79 +76,66 @@ export function AuthProvider({ children }) {
         setUser(firebaseUser);
         setLoading(false);
 
-        // Bind the live subscription IMMEDIATELY — binding it inside the
-        // getUserProfile .then() ran AFTER the next auth-change's cleanup,
-        // which is exactly how the listener leaked. The generation guard
-        // keeps a late snapshot from writing a stale user's profile, and the
-        // error callback swallows the expected permission-denied after
-        // sign-out.
-        profileUnsub = subscribeToUserProfile(
-          firebaseUser.uid,
-          (data) => { if (gen === generation) setProfile(data); },
-          () => { /* permission-denied after sign-out — expected, not an error */ }
-        );
-
-        // Load the profile doc in the background (also creates it on first
-        // sign-in). Used for the `role` field that gates the admin panel.
+        // Firestore arrives in its own chunk. Bind the listener as soon as
+        // that chunk loads — not after getUserProfile — or a logout in
+        // between leaks the previous user's snapshot. The generation guard
+        // drops a late callback after a user switch.
         const signupConsent = pendingConsentRef.current === true;
-        const defaultProfile = {
-          displayName: pendingNameRef.current || firebaseUser.displayName || firebaseUser.email?.split('@')[0] || 'User',
-          email: firebaseUser.email,
-          photoURL: firebaseUser.photoURL,
-          createdAt: timestamp(),
-          lastActive: timestamp(),
-          appVersion: APP_VERSION,
-          onboardingCompleted: false,
-          settings: {
-            defaultLeverage: 10,
-            defaultRiskPercent: 1,
-            baseCurrency: 'USDT',
-            assetClasses: ['crypto'],
-            strategies: [
-              'SOS (Sign of Strength)',
-              'SOW (Sign of Weakness)',
-              'Trendline Break',
-              'Supply & Demand',
-              'Wyckoff',
-              'AMD',
-              'Order Block',
-              'Heikin Ashi',
-            ],
-            favoriteCoins: ['BTC', 'ETH', 'SOL', 'AVAX', 'BNB', 'DOGE'],
-          },
-        };
-        getUserProfile(firebaseUser.uid)
-          .then(({ exists, data }) => {
-            // Superseded by a logout/user switch while the fetch was in
-            // flight — touching state here is exactly the race we're fixing.
-            if (gen !== generation) return;
-            if (exists) {
-              setProfile(data);
-              // Stamp activity at most once an hour so the admin panel can show
-              // who's active and flag churning Premium users. Throttled to
-              // avoid a Firestore write on every page refresh.
-              if (Date.now() - toMillis(data.lastActive) > 60 * 60 * 1000) {
-                touchLastActive(firebaseUser.uid).catch(() => {});
+        accountData().then((api) => {
+          if (gen !== generation) return;
+          profileUnsub = api.subscribeToUserProfile(
+            firebaseUser.uid,
+            (data) => { if (gen === generation) setProfile(data); },
+            () => { /* permission-denied after sign-out — expected, not an error */ }
+          );
+          const defaultProfile = {
+            displayName: pendingNameRef.current || firebaseUser.displayName || firebaseUser.email?.split('@')[0] || 'User',
+            email: firebaseUser.email,
+            photoURL: firebaseUser.photoURL,
+            createdAt: api.timestamp(),
+            lastActive: api.timestamp(),
+            appVersion: APP_VERSION,
+            onboardingCompleted: false,
+            settings: {
+              defaultLeverage: 10,
+              defaultRiskPercent: 1,
+              baseCurrency: 'USDT',
+              assetClasses: ['crypto'],
+              strategies: [
+                'SOS (Sign of Strength)',
+                'SOW (Sign of Weakness)',
+                'Trendline Break',
+                'Supply & Demand',
+                'Wyckoff',
+                'AMD',
+                'Order Block',
+                'Heikin Ashi',
+              ],
+              favoriteCoins: ['BTC', 'ETH', 'SOL', 'AVAX', 'BNB', 'DOGE'],
+            },
+          };
+          api.getUserProfile(firebaseUser.uid)
+            .then(({ exists, data }) => {
+              if (gen !== generation) return;
+              if (exists) {
+                setProfile(data);
+                if (Date.now() - toMillis(data.lastActive) > 60 * 60 * 1000) {
+                  api.touchLastActive(firebaseUser.uid).catch(() => {});
+                }
+              } else {
+                setProfile(defaultProfile);
+                Promise.all([
+                  api.setUserProfile(firebaseUser.uid, defaultProfile, false),
+                  api.setUserSetting(firebaseUser.uid, 'notifications', { pushEnabled: true, tradeOpenAlerts: true }, true),
+                ])
+                  .then(() => (signupConsent
+                    ? api.setUserProfile(firebaseUser.uid, { marketingEmails: true, marketingEmailsAt: api.timestamp() })
+                    : null))
+                  .catch(() => {});
               }
-            } else {
-              setProfile(defaultProfile);
-              // On first sign-in: also pre-create the notifications setting so
-              // the toggle defaults to ON (the user still has to grant browser
-              // permission before pushes actually deliver, but the intent is
-              // set).
-              Promise.all([
-                setUserProfile(firebaseUser.uid, defaultProfile, false),
-                setUserSetting(firebaseUser.uid, 'notifications', { pushEnabled: true, tradeOpenAlerts: true }, true),
-              ])
-                // Consent goes in its own write AFTER the profile exists, so a
-                // refusal of these two fields can never cost the user their profile.
-                .then(() => (signupConsent
-                  ? setUserProfile(firebaseUser.uid, { marketingEmails: true, marketingEmailsAt: timestamp() })
-                  : null))
-                .catch(() => {});
-            }
-          })
-          .catch(() => {});
+            })
+            .catch(() => {});
+        }).catch(() => {});
       } else {
         setUser(null);
         setProfile(null);
@@ -204,14 +184,15 @@ export function AuthProvider({ children }) {
     // Re-authenticate if needed
     await reauthenticate(currentPassword);
 
+    const api = await accountData();
     // Wipe ALL user data: the shared USER_SUBCOLLECTIONS list covers every
     // subcollection the app writes (a hard-coded copy here kept orphaning
     // backtestJournals/processes/signals/watchlist), plus the PUBLIC
     // leaderboard entry — displayName + photo readable by any signed-in user,
     // which must not survive an account deletion.
     const results = await Promise.allSettled([
-      ...USER_SUBCOLLECTIONS.map((sub) => deleteUserSubcollection(currentUser.uid, sub)),
-      deleteLeaderboardEntry(currentUser.uid),
+      ...api.USER_SUBCOLLECTIONS.map((sub) => api.deleteUserSubcollection(currentUser.uid, sub)),
+      api.deleteLeaderboardEntry(currentUser.uid),
     ]);
     // Abort BEFORE deleting the auth account if any wipe failed — once the
     // auth user is gone nobody can re-authenticate to finish the cleanup, so
@@ -224,19 +205,19 @@ export function AuthProvider({ children }) {
     }
 
     // Delete user doc
-    await deleteUserProfile(currentUser.uid);
+    await api.deleteUserProfile(currentUser.uid);
 
     // Server-side leftovers (encrypted exchange keys, push subscriptions, the
     // admin's note, payment records, coupon markers) plus an audit entry that
     // carries only the uid — no email or name. Must run while the ID token is
     // still valid. Never throws.
-    await logAccountDeletion();
+    await api.logAccountDeletion();
 
     // Delete auth account
     await deleteAuthUser();
 
     // Nothing of the account stays on this device either.
-    await clearLocalAccountData();
+    await api.clearLocalAccountData();
   }, [user]);
 
   const isEmailUser = user?.providerData?.some((p) => p.providerId === 'password') || false;

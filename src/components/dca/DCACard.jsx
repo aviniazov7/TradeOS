@@ -1,5 +1,5 @@
 import { useState, useMemo } from 'react';
-import { motion, AnimatePresence } from 'framer-motion';
+import { m, AnimatePresence } from 'framer-motion';
 import { Plus, Pencil, Trash2, ChevronDown } from 'lucide-react';
 import DatePicker from 'react-datepicker';
 import 'react-datepicker/dist/react-datepicker.css';
@@ -76,7 +76,7 @@ export default function DCACard({ plan, onAddEntry, onEdit, onDelete, currentPri
   const statusBgColor = plan.status === 'active' ? 'bg-profit' : plan.status === 'paused' ? 'bg-breakeven' : 'bg-text-muted';
 
   return (
-    <motion.div variants={staggerItem} whileHover={cardHover}
+    <m.div variants={staggerItem} whileHover={cardHover}
       className="bg-bg-secondary border border-border-primary rounded-xl p-5 transition-colors">
 
       {/* Header */}
@@ -186,7 +186,7 @@ export default function DCACard({ plan, onAddEntry, onEdit, onDelete, currentPri
       {/* Inline add entry form */}
       <AnimatePresence>
         {entryFormOpen && (
-          <motion.div initial={{ height: 0, opacity: 0 }} animate={{ height: 'auto', opacity: 1 }}
+          <m.div initial={{ height: 0, opacity: 0 }} animate={{ height: 'auto', opacity: 1 }}
             exit={{ height: 0, opacity: 0 }} transition={{ duration: 0.2 }} className="overflow-hidden">
             <form onSubmit={handleAddEntry} className="bg-bg-tertiary rounded-lg p-3 space-y-3 mt-4">
               <h4 className="text-xs font-semibold text-text-secondary">רכישה חדשה - {plan.coin}</h4>
@@ -247,14 +247,14 @@ export default function DCACard({ plan, onAddEntry, onEdit, onDelete, currentPri
                 </button>
               </div>
             </form>
-          </motion.div>
+          </m.div>
         )}
       </AnimatePresence>
 
       {/* Expanded entries list */}
       <AnimatePresence>
         {expanded && entryCount > 0 && (
-          <motion.div initial={{ height: 0, opacity: 0 }} animate={{ height: 'auto', opacity: 1 }}
+          <m.div initial={{ height: 0, opacity: 0 }} animate={{ height: 'auto', opacity: 1 }}
             exit={{ height: 0, opacity: 0 }} transition={{ duration: 0.2 }} className="overflow-hidden">
             <div className="space-y-2 mt-4">
               {[...entries].reverse().map((entry, i) => (
@@ -268,9 +268,9 @@ export default function DCACard({ plan, onAddEntry, onEdit, onDelete, currentPri
                 </div>
               ))}
             </div>
-          </motion.div>
+          </m.div>
         )}
       </AnimatePresence>
-    </motion.div>
+    </m.div>
   );
 }

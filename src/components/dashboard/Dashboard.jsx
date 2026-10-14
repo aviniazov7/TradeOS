@@ -1,6 +1,6 @@
 import { useState, useMemo, useEffect, useCallback } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { motion, AnimatePresence } from 'framer-motion';
+import { m, AnimatePresence } from 'framer-motion';
 import { LineChart, Eye, EyeOff, Plus, ChevronDown } from 'lucide-react';
 import { useTrades } from '../../hooks/useTrades';
 import { useJournalContext } from '../../contexts/JournalContext';
@@ -109,7 +109,7 @@ export default function Dashboard() {
       return !v;
     });
   };
-  const m = (val) => hideBalances ? '••••' : val;
+  const maskAmount = (val) => hideBalances ? '••••' : val;
   const { trades: allTrades, loading: tradesLoading } = useTrades(); // all trades, no journal filter
   const { backtests: allBacktests, loading: backtestsLoading } = useBacktests();
   const backtests = useMemo(() => allBacktests.filter((b) => b.backtestJournalId), [allBacktests]);
@@ -451,7 +451,7 @@ export default function Dashboard() {
   const synced = Object.keys(linkedBalances || {}).length > 0;
 
   return (
-    <motion.div variants={pageVariants} initial="initial" animate="animate" exit="exit" transition={pageTransition}>
+    <m.div variants={pageVariants} initial="initial" animate="animate" exit="exit" transition={pageTransition}>
       <PageHeader
         icon={LineChart}
         title={greetingFor(profile?.displayName || user?.displayName)}
@@ -509,12 +509,12 @@ export default function Dashboard() {
               <>
                 <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3">
                   {journalStats.slice(0, 3).map((j) => (
-                    <JournalTile key={j.id} j={j} mask={m} onOpen={() => openJournal(j)} />
+                    <JournalTile key={j.id} j={j} mask={maskAmount} onOpen={() => openJournal(j)} />
                   ))}
                 </div>
                 <AnimatePresence initial={false}>
                   {showAllJournals && journalStats.length > 3 && (
-                    <motion.div
+                    <m.div
                       initial={{ height: 0, opacity: 0 }}
                       animate={{ height: 'auto', opacity: 1 }}
                       exit={{ height: 0, opacity: 0 }}
@@ -523,10 +523,10 @@ export default function Dashboard() {
                     >
                       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3 mt-3">
                         {journalStats.slice(3).map((j) => (
-                          <JournalTile key={j.id} j={j} mask={m} onOpen={() => openJournal(j)} />
+                          <JournalTile key={j.id} j={j} mask={maskAmount} onOpen={() => openJournal(j)} />
                         ))}
                       </div>
-                    </motion.div>
+                    </m.div>
                   )}
                 </AnimatePresence>
                 {journalStats.length > 3 && (
@@ -561,6 +561,6 @@ export default function Dashboard() {
           </div>
         </Reveal>
       </div>
-    </motion.div>
+    </m.div>
   );
 }

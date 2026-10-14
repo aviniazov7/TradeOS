@@ -1,6 +1,6 @@
 import { useCallback, useMemo, useRef, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { motion } from 'framer-motion';
+import { m } from 'framer-motion';
 import {
   CandlestickChart, RefreshCw, Link2, TriangleAlert, Layers, ListOrdered,
 } from 'lucide-react';
@@ -24,7 +24,7 @@ import {
   fmtUsd, fmtPct, agoLabel, pnlTone,
 } from '../../utils/terminal';
 
-const MotionDiv = motion.div;
+const MotionDiv = m.div;
 
 const LS_SEL = 'tradeos_terminal_symbol';
 const lsGet = (k) => { try { return localStorage.getItem(k); } catch { return null; } };

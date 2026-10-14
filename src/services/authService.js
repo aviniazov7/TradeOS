@@ -17,9 +17,11 @@ import {
   signOut,
   sendPasswordResetEmail,
   sendEmailVerification,
+  browserPopupRedirectResolver,
 } from 'firebase/auth';
 import { auth, googleProvider } from './firebase';
 import { emailReauthMissingPassword, displayNameProblem } from '../utils/profileAccount';
+import { startGoogleSignIn } from '../utils/googleSignInFlow';
 
 /** Detect standalone PWA mode */
 export const isStandalone =
@@ -94,17 +96,71 @@ export function onAuthChange(callback) {
   return onAuthStateChanged(auth, callback);
 }
 
-/** Handle redirect result (call once on app init) */
-export function handleRedirectResult() {
-  return getRedirectResult(auth);
+// Set only when a Google redirect is about to start. getRedirectResult loads
+// the auth iframe, so a normal visit to /login must not call it.
+const GOOGLE_REDIRECT_FLAG = 'tradeos-google-redirect';
+
+// True only after the auth iframe was warmed on Firebase's cached instance of
+// browserPopupRedirectResolver. signInWithPopup's third argument is that
+// class — _getInstance() asserts `cls instanceof Function` and throws
+// "Expected a class definition" if it receives an instance, a module
+// namespace, or a Promise. Awaiting a dynamic import inside the tap is what
+// made Safari drop window.open, so the class is imported statically (it does
+// not load the iframe) and the iframe is warmed after first paint.
+let resolverReady = false;
+let warmPromise = null;
+
+export function preloadPopupResolver() {
+  if (!warmPromise) {
+    warmPromise = import('@firebase/auth/internal').then(async (mod) => {
+      try {
+        // Same class, same module cache as signInWithPopup, so this is the
+        // instance the tap will reuse. A separately `new`'d resolver is not.
+        const instance = mod._getInstance(browserPopupRedirectResolver);
+        if (typeof instance?._initialize === 'function') await instance._initialize(auth);
+        resolverReady = true;
+      } catch {
+        // Leave resolverReady false. The tap redirects instead of opening a
+        // popup after a warm-up that did not finish.
+      }
+      return browserPopupRedirectResolver;
+    }).catch(() => browserPopupRedirectResolver);
+  }
+  return warmPromise;
 }
 
-/** Sign in with Google — redirect in PWA, popup otherwise */
+function markGoogleRedirect() {
+  try { sessionStorage.setItem(GOOGLE_REDIRECT_FLAG, '1'); } catch { /* private mode */ }
+}
+
+function withPopupResolver(run) {
+  if (resolverReady) return run(browserPopupRedirectResolver);
+  return preloadPopupResolver().then(run);
+}
+
+/** Handle redirect result (call once on app init). No-ops unless this tab
+ *  just returned from a Google redirect, so the auth iframe stays unloaded. */
+export function handleRedirectResult() {
+  let pending = false;
+  try { pending = sessionStorage.getItem(GOOGLE_REDIRECT_FLAG) === '1'; } catch { /* private mode */ }
+  if (!pending) return Promise.resolve(null);
+  return withPopupResolver((resolver) => getRedirectResult(auth, resolver))
+    .finally(() => { try { sessionStorage.removeItem(GOOGLE_REDIRECT_FLAG); } catch { /* ignore */ } });
+}
+
+/** Sign in with Google — popup in a browser, redirect in a standalone PWA.
+ *  The popup runs in the tap's turn when the resolver was preloaded. If it
+ *  is not ready yet, this redirects instead of opening a popup after an
+ *  await (Safari blocks that and the UI showed "הדפדפן חסם את חלון ההתחברות"). */
 export function loginWithGoogle() {
-  if (isStandalone) {
-    return signInWithRedirect(auth, googleProvider);
-  }
-  return signInWithPopup(auth, googleProvider);
+  return startGoogleSignIn({
+    standalone: isStandalone,
+    resolver: resolverReady ? browserPopupRedirectResolver : null,
+    popup: (resolver) => signInWithPopup(auth, googleProvider, resolver),
+    redirect: (resolver) => signInWithRedirect(auth, googleProvider, resolver),
+    loadResolver: preloadPopupResolver,
+    markRedirect: markGoogleRedirect,
+  });
 }
 
 /** Register with email and password */
@@ -191,7 +247,8 @@ export async function reauthenticate(currentPassword) {
   }
   // Google accounts: Firebase's deleteUser() demands a RECENT sign-in
   // (~5 minutes) and throws auth/requires-recent-login otherwise.
-  await reauthenticateWithPopup(user, googleProvider);
+  // The popup resolver is loaded here, same as the login button — not at startup.
+  await withPopupResolver((resolver) => reauthenticateWithPopup(user, googleProvider, resolver));
 }
 
 /** Rename the signed-in user. Firestore profile is updated by the caller. */

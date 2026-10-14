@@ -1,5 +1,5 @@
 import { useRef, useState, useEffect } from 'react';
-import { motion, AnimatePresence } from 'framer-motion';
+import { m, AnimatePresence } from 'framer-motion';
 import { X, Circle, Shield, LogIn, LogOut, StickyNote, ListChecks, Share2, Target, Loader2, ImageIcon, CloudSun, AlertTriangle, CalendarClock, Settings2 } from 'lucide-react';
 import { toPng } from 'html-to-image';
 // jsPDF loaded dynamically on share
@@ -141,7 +141,7 @@ export default function StrategyView({ isOpen, onClose, journal }) {
       {isOpen && (
         <div className="fixed inset-0 z-[100] flex items-center justify-center p-4">
           {/* Backdrop */}
-          <motion.div
+          <m.div
             className="absolute inset-0 bg-black/75 backdrop-blur-sm"
             onClick={onClose}
             variants={modalBackdrop}
@@ -151,7 +151,7 @@ export default function StrategyView({ isOpen, onClose, journal }) {
           />
 
           {/* Card */}
-          <motion.div
+          <m.div
             variants={modalContent}
             initial="initial"
             animate="animate"
@@ -371,7 +371,7 @@ export default function StrategyView({ isOpen, onClose, journal }) {
                 );
               })()}
             </div>
-          </motion.div>
+          </m.div>
         </div>
       )}
     </AnimatePresence>

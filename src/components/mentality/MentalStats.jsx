@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { motion, AnimatePresence } from 'framer-motion';
+import { m, AnimatePresence } from 'framer-motion';
 import { ArrowRight, BarChart3, Brain, ListChecks, ClipboardCheck, TrendingUp, TrendingDown, Minus, ChevronDown } from 'lucide-react';
 import PageHeader from '../shared/PageHeader';
 import { headerIconBtn } from '../shared/headerStyles';
@@ -23,7 +23,7 @@ export default function MentalStats() {
   const noData = stats.totalCrossDays === 0;
 
   return (
-    <motion.div
+    <m.div
       initial={{ opacity: 0, y: 10 }}
       animate={{ opacity: 1, y: 0 }}
       transition={{ duration: 0.3 }}
@@ -82,7 +82,7 @@ export default function MentalStats() {
           </div>
         </div>
       )}
-    </motion.div>
+    </m.div>
   );
 }
 
@@ -253,7 +253,7 @@ function ChecklistTable({ data }) {
     <div className="space-y-2">
       <AnimatePresence initial={false}>
         {visible.map((item) => (
-          <motion.div
+          <m.div
             key={item.key}
             initial={{ opacity: 0, height: 0 }}
             animate={{ opacity: 1, height: 'auto' }}
@@ -280,7 +280,7 @@ function ChecklistTable({ data }) {
                 </div>
               </div>
             </div>
-          </motion.div>
+          </m.div>
         ))}
       </AnimatePresence>
       {hasMore && (
@@ -289,13 +289,13 @@ function ChecklistTable({ data }) {
           className="w-full flex items-center justify-center gap-1 py-2 text-xs text-text-muted hover:text-text-secondary transition-colors"
         >
           {expanded ? 'הצג פחות' : `הצג עוד (${filtered.length - INITIAL_COUNT})`}
-          <motion.span
+          <m.span
             animate={{ rotate: expanded ? 180 : 0 }}
             transition={{ duration: 0.25 }}
             className="inline-flex"
           >
             <ChevronDown size={14} />
-          </motion.span>
+          </m.span>
         </button>
       )}
     </div>

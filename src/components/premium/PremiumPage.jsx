@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { motion } from 'framer-motion';
+import { m } from 'framer-motion';
 import {
   Crown, Check, Bot, BookOpen, Wallet, Link2, Bell, BarChart3, Sparkles, Ticket, Loader2, Image, Layers, Trophy,
   ShieldCheck, CalendarClock, Minus,
@@ -86,7 +86,7 @@ export default function PremiumPage() {
   };
 
   return (
-    <motion.div variants={pageVariants} initial="initial" animate="animate" exit="exit" transition={pageTransition}
+    <m.div variants={pageVariants} initial="initial" animate="animate" exit="exit" transition={pageTransition}
       className="max-w-4xl mx-auto">
       <PageHeader
         icon={Crown}
@@ -239,6 +239,6 @@ export default function PremiumPage() {
         </div>
         )}
       </div>
-    </motion.div>
+    </m.div>
   );
 }

@@ -18,7 +18,7 @@ import {
   terminate,
   clearIndexedDbPersistence,
 } from 'firebase/firestore';
-import { db } from './firebase';
+import { db } from './firebaseDb';
 import { APP_VERSION } from '../utils/constants';
 
 // ─── Retry Helper ────────────────────────────────────────────────

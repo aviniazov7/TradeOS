@@ -1,5 +1,5 @@
 import { useMemo, useState } from 'react';
-import { motion } from 'framer-motion';
+import { m } from 'framer-motion';
 import { useNavigate, useSearchParams } from 'react-router-dom';
 import { Trophy, Crown, Lock, Search, ShieldCheck, Info, ArrowDownUp, AlertCircle, RefreshCw, Star, Users, Globe, Waves, Compass, UserRoundSearch, Gem, Download, GraduationCap } from 'lucide-react';
 import toast from 'react-hot-toast';
@@ -472,13 +472,13 @@ function PolymarketBoard() {
             </div>
           )}
           {/* The rest — painted in chunks, then more pulled from the API */}
-          <motion.div className="space-y-2" variants={staggerContainer} initial="initial" animate="animate">
+          <m.div className="space-y-2" variants={staggerContainer} initial="initial" animate="animate">
             {listRows.slice(0, visible).map((r, i) => (
-              <motion.div key={r.wallet} variants={staggerItem}>
+              <m.div key={r.wallet} variants={staggerItem}>
                 <WalletRow r={r} rank={podium.length + i + 1} isWatched={watchedSet.has(r.wallet)} onToggle={() => toggle(r)} onOpen={() => openWallet(r)} />
-              </motion.div>
+              </m.div>
             ))}
-          </motion.div>
+          </m.div>
 
           {(listRows.length > visible || hasMore) && (
             <button
@@ -519,7 +519,7 @@ function PolymarketBoard() {
 export default function PolymarketPage() {
   const { isPremium } = useAuth();
   return (
-    <motion.div variants={pageVariants} initial="initial" animate="animate" exit="exit" transition={pageTransition} className="max-w-4xl mx-auto">
+    <m.div variants={pageVariants} initial="initial" animate="animate" exit="exit" transition={pageTransition} className="max-w-4xl mx-auto">
       {isPremium ? (
         <PolymarketBoard />
       ) : (
@@ -528,6 +528,6 @@ export default function PolymarketPage() {
           <LockedTeaser />
         </>
       )}
-    </motion.div>
+    </m.div>
   );
 }

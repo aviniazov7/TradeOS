@@ -1,6 +1,6 @@
 import { useState, useEffect, useCallback, useRef, useMemo, lazy, Suspense } from 'react';
 import { useSearchParams } from 'react-router-dom';
-import { motion, AnimatePresence } from 'framer-motion';
+import { m, AnimatePresence } from 'framer-motion';
 import { formatCompactUsd as formatNum, formatCoinPrice as formatPrice, LRM } from '../../utils/formatters';
 import {
   Activity, TrendingUp, TrendingDown, Bitcoin, DollarSign,
@@ -101,7 +101,7 @@ const STAT_ACCENTS = {
 function MarketStatCard({ accentKey, Icon, label, children }) {
   const a = STAT_ACCENTS[accentKey] || STAT_ACCENTS.cap;
   return (
-    <motion.div
+    <m.div
       variants={cardVariants}
       whileHover={{ y: -2 }}
       className="relative overflow-hidden rounded-2xl p-4 min-h-[104px] bg-bg-secondary border border-border-primary"
@@ -119,7 +119,7 @@ function MarketStatCard({ accentKey, Icon, label, children }) {
         </div>
         {children}
       </div>
-    </motion.div>
+    </m.div>
   );
 }
 const FUTURES_SYMBOLS = [
@@ -161,13 +161,13 @@ function CategoryBubble({ name, change, index }) {
   const iconColor = isPositive ? '#22c55e' : '#ef4444';
 
   return (
-    <motion.div
+    <m.div
       initial={{ opacity: 0, scale: 0 }}
       animate={{ opacity: 1, scale: 1 }}
       transition={{ delay: 0.3 + index * 0.1, duration: 0.5, type: 'spring', stiffness: 200 }}
       className="relative"
     >
-      <motion.div
+      <m.div
         animate={{ y: [0, -6, 0, 4, 0], x: [0, 3, -2, 1, 0] }}
         transition={{ duration: 4 + index * 0.5, repeat: Infinity, ease: 'easeInOut', delay: floatDelay }}
         className="rounded-full flex flex-col items-center justify-center cursor-default"
@@ -185,8 +185,8 @@ function CategoryBubble({ name, change, index }) {
         <span className="text-[11px] font-bold mt-0.5" style={{ color: iconColor }}>
           {LRM}{isPositive ? '+' : ''}{change.toFixed(1)}%
         </span>
-      </motion.div>
-    </motion.div>
+      </m.div>
+    </m.div>
   );
 }
 
@@ -237,7 +237,7 @@ function openChart(symbol) {
 function HeatmapCell({ coin, index, sizeClass }) {
   const change = coin.price_change_percentage_24h;
   return (
-    <motion.div
+    <m.div
       key={coin.id}
       initial={{ opacity: 0, scale: 0.8 }}
       animate={{ opacity: 1, scale: 1 }}
@@ -254,7 +254,7 @@ function HeatmapCell({ coin, index, sizeClass }) {
       <span className={`text-[11px] font-semibold mt-0.5 ${change >= 0 ? 'text-green-300' : 'text-red-300'}`}>
         {change != null ? `${LRM}${change >= 0 ? '+' : ''}${change.toFixed(1)}%` : '—'}
       </span>
-    </motion.div>
+    </m.div>
   );
 }
 
@@ -323,7 +323,7 @@ function PanelStatus({ loading, onRetry, compact = false }) {
 function FundingRatesCard({ rates, loading, onRetry }) {
   const maxAbs = rates.length ? Math.max(...rates.map(r => Math.abs(r.rate))) : 1;
   return (
-    <motion.div
+    <m.div
       initial={{ opacity: 0, y: 15 }}
       animate={{ opacity: 1, y: 0 }}
       transition={{ duration: 0.5, delay: 0.1 }}
@@ -341,7 +341,7 @@ function FundingRatesCard({ rates, loading, onRetry }) {
             const barW = (Math.abs(r.rate) / maxAbs) * 50;
             const col = isNeg ? 'var(--color-profit)' : 'var(--color-loss)';
             return (
-              <motion.div
+              <m.div
                 key={r.symbol}
                 initial={{ opacity: 0, x: 16 }}
                 animate={{ opacity: 1, x: 0 }}
@@ -354,7 +354,7 @@ function FundingRatesCard({ rates, loading, onRetry }) {
                 </span>
                 <div className="flex-1 relative h-2 bg-bg-tertiary rounded-full overflow-hidden">
                   <div className="absolute left-1/2 top-0 bottom-0 w-px bg-border-primary z-10" />
-                  <motion.div
+                  <m.div
                     initial={{ width: 0 }}
                     animate={{ width: `${barW}%` }}
                     transition={{ delay: 0.03 * i + 0.2, duration: 0.6, ease: 'easeOut' }}
@@ -365,7 +365,7 @@ function FundingRatesCard({ rates, loading, onRetry }) {
                   />
                 </div>
                 <CoinTag symbol={r.symbol} className="w-16 shrink-0" />
-              </motion.div>
+              </m.div>
             );
           })}
           <div className="flex items-center justify-center gap-4 mt-3 pt-3 border-t border-border-primary/40">
@@ -376,7 +376,7 @@ function FundingRatesCard({ rates, loading, onRetry }) {
       ) : (
         <PanelStatus loading={loading} onRetry={onRetry} />
       )}
-    </motion.div>
+    </m.div>
   );
 }
 
@@ -384,7 +384,7 @@ function OpenInterestCard({ data, loading, onRetry }) {
   const maxOiUsd = data.length ? Math.max(...data.map(d => d.oiUsd)) : 1;
   const totalOi = data.reduce((sum, d) => sum + d.oiUsd, 0);
   return (
-    <motion.div
+    <m.div
       initial={{ opacity: 0, y: 15 }}
       animate={{ opacity: 1, y: 0 }}
       transition={{ duration: 0.5, delay: 0.2 }}
@@ -399,7 +399,7 @@ function OpenInterestCard({ data, loading, onRetry }) {
           {data.map((d, i) => {
             const barW = (d.oiUsd / maxOiUsd) * 100;
             return (
-              <motion.div
+              <m.div
                 key={d.symbol}
                 initial={{ opacity: 0, x: 16 }}
                 animate={{ opacity: 1, x: 0 }}
@@ -410,7 +410,7 @@ function OpenInterestCard({ data, loading, onRetry }) {
                 <span className="text-[10px] font-semibold text-text-muted/50 w-4 text-center shrink-0 num-mono">{i + 1}</span>
                 <CoinTag symbol={d.symbol} className="w-16 shrink-0" />
                 <div className="flex-1 h-2 bg-bg-tertiary rounded-full overflow-hidden">
-                  <motion.div
+                  <m.div
                     initial={{ width: 0 }}
                     animate={{ width: `${barW}%` }}
                     transition={{ delay: 0.03 * i + 0.2, duration: 0.8, ease: 'easeOut' }}
@@ -421,20 +421,20 @@ function OpenInterestCard({ data, loading, onRetry }) {
                 <span className="text-[10px] font-semibold text-text-secondary w-12 text-left shrink-0 num-mono">
                   {formatNum(d.oiUsd)}
                 </span>
-              </motion.div>
+              </m.div>
             );
           })}
         </div>
       ) : (
         <PanelStatus loading={loading} onRetry={onRetry} />
       )}
-    </motion.div>
+    </m.div>
   );
 }
 
 function LongShortCard({ data, loading, onRetry }) {
   return (
-    <motion.div
+    <m.div
       initial={{ opacity: 0, y: 15 }}
       animate={{ opacity: 1, y: 0 }}
       transition={{ duration: 0.5, delay: 0.3 }}
@@ -447,7 +447,7 @@ function LongShortCard({ data, loading, onRetry }) {
             const longPct = (d.longAccount * 100).toFixed(1);
             const shortPct = (d.shortAccount * 100).toFixed(1);
             return (
-              <motion.div
+              <m.div
                 key={d.symbol}
                 initial={{ opacity: 0, x: 16 }}
                 animate={{ opacity: 1, x: 0 }}
@@ -462,25 +462,25 @@ function LongShortCard({ data, loading, onRetry }) {
                     visible however narrow a side gets (phones). */}
                 <span className="w-10 shrink-0 text-[11px] font-bold num-mono text-profit text-right">{longPct}%</span>
                 <div className="flex flex-1 min-w-0 h-5 rounded-lg overflow-hidden bg-bg-primary border border-border-primary">
-                  <motion.div
+                  <m.div
                     initial={{ width: 0 }}
                     animate={{ width: `${longPct}%` }}
                     transition={{ delay: 0.03 * i + 0.2, duration: 0.8, ease: 'easeOut' }}
                     className="h-full flex items-center justify-center overflow-hidden"
                     style={{ backgroundColor: 'rgba(34, 197, 94, 0.3)' }}
                   >
-                  </motion.div>
-                  <motion.div
+                  </m.div>
+                  <m.div
                     initial={{ width: 0 }}
                     animate={{ width: `${shortPct}%` }}
                     transition={{ delay: 0.03 * i + 0.2, duration: 0.8, ease: 'easeOut' }}
                     className="h-full flex items-center justify-center overflow-hidden"
                     style={{ backgroundColor: 'rgba(239, 68, 68, 0.3)' }}
                   >
-                  </motion.div>
+                  </m.div>
                 </div>
                 <span className="w-10 shrink-0 text-[11px] font-bold num-mono text-loss">{shortPct}%</span>
-              </motion.div>
+              </m.div>
             );
           })}
           <div className="flex items-center justify-center gap-4 mt-3 pt-3 border-t border-border-primary/40">
@@ -491,7 +491,7 @@ function LongShortCard({ data, loading, onRetry }) {
       ) : (
         <PanelStatus loading={loading} onRetry={onRetry} />
       )}
-    </motion.div>
+    </m.div>
   );
 }
 
@@ -536,14 +536,14 @@ function LiquidationsCard({ liquidations, connected = false }) {
       <div className="mb-3 flex items-end justify-between" dir="ltr">
         <div>
           <p className="text-[9px] uppercase tracking-wider text-text-muted mb-0.5">Total Liquidated</p>
-          <motion.p
+          <m.p
             key={Math.round(total)}
             initial={{ opacity: 0.4 }} animate={{ opacity: 1 }}
             className="text-xl font-bold num-mono leading-none"
             style={{ color: 'var(--color-text-primary)' }}
           >
             {total > 0 ? `$${formatNum(total)}` : '—'}
-          </motion.p>
+          </m.p>
         </div>
         <span className="text-[10px] text-text-muted num-mono">{liquidations.length} events</span>
       </div>
@@ -555,8 +555,8 @@ function LiquidationsCard({ liquidations, connected = false }) {
           <span className="text-loss">{formatNum(totalShortUsd)} · {shorts.length} Short</span>
         </div>
         <div className="h-2 bg-bg-tertiary rounded-full overflow-hidden flex" dir="ltr">
-          <motion.div animate={{ width: `${longPct}%` }} transition={{ duration: 0.6, ease: 'easeOut' }} className="h-full" style={{ background: 'var(--color-profit)' }} />
-          <motion.div animate={{ width: `${100 - longPct}%` }} transition={{ duration: 0.6, ease: 'easeOut' }} className="h-full" style={{ background: 'var(--color-loss)' }} />
+          <m.div animate={{ width: `${longPct}%` }} transition={{ duration: 0.6, ease: 'easeOut' }} className="h-full" style={{ background: 'var(--color-profit)' }} />
+          <m.div animate={{ width: `${100 - longPct}%` }} transition={{ duration: 0.6, ease: 'easeOut' }} className="h-full" style={{ background: 'var(--color-loss)' }} />
         </div>
       </div>
 
@@ -572,7 +572,7 @@ function LiquidationsCard({ liquidations, connected = false }) {
               const col = isLong ? 'var(--color-loss)' : 'var(--color-profit)';
               const barW = Math.min(100, (liq.usdValue / 100000) * 100);
               return (
-                <motion.div
+                <m.div
                   key={liq.id}
                   initial={{ opacity: 0, y: -14, scale: 0.96 }}
                   animate={{
@@ -608,7 +608,7 @@ function LiquidationsCard({ liquidations, connected = false }) {
                     <span className="text-[11px] font-bold num-mono" style={{ color: col }}>{formatNum(liq.usdValue)}</span>
                     <span className="text-[9px] text-text-muted">{timeAgo(liq.time)}</span>
                   </div>
-                </motion.div>
+                </m.div>
               );
             })}
           </AnimatePresence>
@@ -619,7 +619,7 @@ function LiquidationsCard({ liquidations, connected = false }) {
           <div className="relative w-16 h-16 mb-3">
             <span className="absolute inset-0 rounded-full border border-yellow-500/20" />
             <span className="absolute inset-[22%] rounded-full border border-yellow-500/15" />
-            <motion.span
+            <m.span
               className="absolute inset-0 rounded-full"
               style={{ background: 'conic-gradient(from 0deg, rgba(234,179,8,0.0) 0deg, rgba(234,179,8,0.28) 50deg, rgba(234,179,8,0.0) 60deg)' }}
               animate={{ rotate: 360 }}
@@ -639,20 +639,20 @@ function LiquidationsCard({ liquidations, connected = false }) {
 function CryptoHeatmap({ coins, loading, onRetry }) {
   if (!coins.length) {
     return (
-      <motion.div initial={{ opacity: 0, y: 15 }} animate={{ opacity: 1, y: 0 }} className={cardClass}>
+      <m.div initial={{ opacity: 0, y: 15 }} animate={{ opacity: 1, y: 0 }} className={cardClass}>
         <h2 className="text-sm font-semibold text-text-primary mb-3 flex items-center gap-2 justify-center">
           <Grid3X3 className="w-4 h-4 text-accent-primary" />
           מפת חום
         </h2>
         <PanelStatus loading={loading} onRetry={onRetry} />
-      </motion.div>
+      </m.div>
     );
   }
 
   const top20 = coins.slice(0, 20);
 
   return (
-    <motion.div
+    <m.div
       initial={{ opacity: 0, y: 15 }}
       animate={{ opacity: 1, y: 0 }}
       transition={{ duration: 0.5, delay: 0.2 }}
@@ -689,7 +689,7 @@ function CryptoHeatmap({ coins, loading, onRetry }) {
           <span className="text-[10px] text-text-muted">עלייה</span>
         </div>
       </div>
-    </motion.div>
+    </m.div>
   );
 }
 
@@ -1043,7 +1043,7 @@ export default function MarketOverview() {
   }, [allCoins, realAltSeason]);
 
   return (
-    <motion.div variants={pageVariants} initial="initial" animate="animate" exit="exit" transition={pageTransition}>
+    <m.div variants={pageVariants} initial="initial" animate="animate" exit="exit" transition={pageTransition}>
       {/* Shared page header; the views switch with its tab strip. */}
       <PageHeader
         icon={Activity}
@@ -1054,11 +1054,11 @@ export default function MarketOverview() {
 
       <AnimatePresence mode="wait">
       {activeTab === 'overview' ? (
-      <motion.div key="overview" initial={{ opacity: 0, x: -20 }} animate={{ opacity: 1, x: 0 }} exit={{ opacity: 0, x: 20 }} transition={{ duration: 0.25 }}>
+      <m.div key="overview" initial={{ opacity: 0, x: -20 }} animate={{ opacity: 1, x: 0 }} exit={{ opacity: 0, x: 20 }} transition={{ duration: 0.25 }}>
 
       {/* Top row: global stats — borderless, free, divider-separated (no boxes).
           Uniform typography: 11px label, 2xl number, xs sub on every cell. */}
-      <motion.div
+      <m.div
         className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-3 mb-5"
         variants={staggerContainer} initial="initial" animate="animate"
       >
@@ -1135,7 +1135,7 @@ export default function MarketOverview() {
             <p className="text-2xl font-bold text-text-muted num-mono">—</p>
           )}
         </MarketStatCard>
-      </motion.div>
+      </m.div>
 
       {/* Market Sessions — full width */}
       <Reveal>
@@ -1149,7 +1149,7 @@ export default function MarketOverview() {
         <FearGreedGauge expanded />
 
         {/* Hot Categories - animated bubbles */}
-        <motion.div
+        <m.div
           initial={{ opacity: 0, y: 15 }}
           animate={{ opacity: 1, y: 0 }}
           transition={{ duration: 0.5, delay: 0.2 }}
@@ -1173,10 +1173,10 @@ export default function MarketOverview() {
           ) : (
             <PanelStatus loading={loading} onRetry={refresh} />
           )}
-        </motion.div>
+        </m.div>
 
         {/* Top Gainers & Losers */}
-        <motion.div
+        <m.div
           initial={{ opacity: 0, y: 15 }}
           animate={{ opacity: 1, y: 0 }}
           transition={{ duration: 0.5, delay: 0.3 }}
@@ -1234,7 +1234,7 @@ export default function MarketOverview() {
           ) : (
             <PanelStatus loading={loading} onRetry={refresh} />
           )}
-        </motion.div>
+        </m.div>
 
       </div>
 
@@ -1291,7 +1291,7 @@ export default function MarketOverview() {
                 const chg = coin.price_change_percentage_24h ?? 0;
                 const up = chg >= 0;
                 return (
-                  <motion.div
+                  <m.div
                     key={coin.id}
                     initial={{ opacity: 0 }}
                     animate={{ opacity: 1 }}
@@ -1311,7 +1311,7 @@ export default function MarketOverview() {
                       {up ? <ArrowUpRight className="w-3 h-3" /> : <ArrowDownRight className="w-3 h-3" />}
                       {LRM}{up ? '+' : ''}{chg.toFixed(1)}%
                     </span>
-                  </motion.div>
+                  </m.div>
                 );
               })}
             </div>
@@ -1341,29 +1341,29 @@ export default function MarketOverview() {
       <CryptoHeatmap coins={allCoins} loading={loading} onRetry={refresh} />
       </Reveal>
 
-      </motion.div>
+      </m.div>
       ) : activeTab === 'analysis' ? (
-      <motion.div key="analysis" initial={{ opacity: 0, x: 20 }} animate={{ opacity: 1, x: 0 }} exit={{ opacity: 0, x: -20 }} transition={{ duration: 0.25 }}>
+      <m.div key="analysis" initial={{ opacity: 0, x: 20 }} animate={{ opacity: 1, x: 0 }} exit={{ opacity: 0, x: -20 }} transition={{ duration: 0.25 }}>
         <CoinAnalysis />
-      </motion.div>
+      </m.div>
       ) : activeTab === 'polymarket' ? (
       // Own boundary: this tab streams live third-party data, so a throw here
       // should degrade the tab, not blank the whole page.
-      <motion.div key="polymarket" initial={{ opacity: 0, x: 20 }} animate={{ opacity: 1, x: 0 }} exit={{ opacity: 0, x: -20 }} transition={{ duration: 0.25 }}>
+      <m.div key="polymarket" initial={{ opacity: 0, x: 20 }} animate={{ opacity: 1, x: 0 }} exit={{ opacity: 0, x: -20 }} transition={{ duration: 0.25 }}>
         <ErrorBoundary>
           <Suspense fallback={<LoadingSpinner />}>
             <PolymarketPage />
           </Suspense>
         </ErrorBoundary>
-      </motion.div>
+      </m.div>
       ) : (
       // Whale tracking — live big trades & liquidations, its own tab next to
       // the coin analysis.
-      <motion.div key="whales" initial={{ opacity: 0, x: 20 }} animate={{ opacity: 1, x: 0 }} exit={{ opacity: 0, x: -20 }} transition={{ duration: 0.25 }}>
+      <m.div key="whales" initial={{ opacity: 0, x: 20 }} animate={{ opacity: 1, x: 0 }} exit={{ opacity: 0, x: -20 }} transition={{ duration: 0.25 }}>
         <WhalesPage embedded />
-      </motion.div>
+      </m.div>
       )}
       </AnimatePresence>
-    </motion.div>
+    </m.div>
   );
 }

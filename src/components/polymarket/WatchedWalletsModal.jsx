@@ -1,5 +1,5 @@
 import { useMemo, useState } from 'react';
-import { motion, AnimatePresence } from 'framer-motion';
+import { m, AnimatePresence } from 'framer-motion';
 import { Star, Search, X } from 'lucide-react';
 import Modal from '../shared/Modal';
 import ScoreRing from './ScoreRing';
@@ -32,7 +32,7 @@ function Summary({ label, value, tone }) {
 // One compact tracked row — dense enough that a long list stays scannable.
 function WatchRow({ r, onOpen, onRemove }) {
   return (
-    <motion.div layout initial={{ opacity: 0, y: -4 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, height: 0 }}
+    <m.div initial={{ opacity: 0, y: -4 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, height: 0 }}
       onClick={onOpen} role="button" tabIndex={0}
       onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); onOpen(); } }}
       className="flex items-center gap-2.5 px-2.5 py-2 rounded-lg bg-bg-secondary border border-border-primary cursor-pointer transition-colors hover:border-accent-primary/40 outline-none focus-visible:border-accent-primary/60">
@@ -52,7 +52,7 @@ function WatchRow({ r, onOpen, onRemove }) {
         className="p-1 rounded-md text-amber-400 hover:text-loss hover:bg-bg-tertiary transition-colors cursor-pointer shrink-0">
         <X className="w-3.5 h-3.5" />
       </button>
-    </motion.div>
+    </m.div>
   );
 }
 

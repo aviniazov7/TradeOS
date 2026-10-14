@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { motion } from 'framer-motion';
+import { m } from 'framer-motion';
 import { BrainCircuit, RefreshCw, AlertCircle, TrendingUp, TrendingDown, Target, Lightbulb, Sparkles } from 'lucide-react';
 import Modal from '../shared/Modal';
 import ThinkingIndicator from '../shared/ThinkingIndicator';
@@ -123,7 +123,7 @@ export default function WalletAnalystModal({ isOpen, onClose, row, positions, sp
         )}
 
         {sections.length > 0 && !loading && (
-          <motion.div initial={{ opacity: 0, y: 6 }} animate={{ opacity: 1, y: 0 }} className="space-y-3">
+          <m.div initial={{ opacity: 0, y: 6 }} animate={{ opacity: 1, y: 0 }} className="space-y-3">
             {sections.map((s, idx) => {
               const meta = SECTION_META[s.title] || DEFAULT_META;
               const { Icon } = meta;
@@ -148,7 +148,7 @@ export default function WalletAnalystModal({ isOpen, onClose, row, positions, sp
               className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-bg-tertiary text-xs font-semibold text-text-secondary hover:text-accent-primary transition-colors cursor-pointer">
               <RefreshCw className="w-3.5 h-3.5" /> נתח שוב
             </button>
-          </motion.div>
+          </m.div>
         )}
 
         {/* The model answered but broke the section contract — show the raw text

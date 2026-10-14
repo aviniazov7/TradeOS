@@ -1,5 +1,5 @@
 import { useRef, useState } from 'react';
-import { motion } from 'framer-motion';
+import { m } from 'framer-motion';
 import {
   BrainCircuit, Crown, RefreshCw, AlertCircle, Lock, Sparkles,
   TrendingUp, TrendingDown, Target, Lightbulb, HeartPulse, ClipboardCheck, ShieldAlert,
@@ -630,7 +630,7 @@ export default function AICoachPanel({ trades }) {
   return (
     <div className="space-y-4 mt-2 max-w-3xl mx-auto">
       {/* Header */}
-      <motion.div
+      <m.div
         initial={{ opacity: 0, y: 6 }} animate={{ opacity: 1, y: 0 }}
         className="flex flex-wrap items-center justify-between gap-3 rounded-2xl border border-border-primary bg-bg-secondary px-4 py-3.5"
       >
@@ -661,7 +661,7 @@ export default function AICoachPanel({ trades }) {
             ? <><RefreshCw className="w-4 h-4 animate-spin" /> מנתח...</>
             : <><Sparkles className="w-4 h-4" /> ניתוח מלא</>}
         </button>
-      </motion.div>
+      </m.div>
 
       {/* Deterministic analysis — correct on open, costs nothing, needs no model */}
       <AnalystInsights trades={trades} />
@@ -720,7 +720,7 @@ export default function AICoachPanel({ trades }) {
 
       {/* Structured chat-style report */}
       {sections.length > 0 && !loading && (
-        <motion.div initial={{ opacity: 0, y: 6 }} animate={{ opacity: 1, y: 0 }} className="space-y-3">
+        <m.div initial={{ opacity: 0, y: 6 }} animate={{ opacity: 1, y: 0 }} className="space-y-3">
           {/* Focused stats — only the charts that answer the question asked */}
           <StatsDashboard stats={stats} focus={activePrompt} />
 
@@ -729,7 +729,7 @@ export default function AICoachPanel({ trades }) {
             const meta = SECTION_META[s.title] || DEFAULT_META;
             const { Icon } = meta;
             return (
-              <motion.div
+              <m.div
                 key={`${s.title}-${idx}`}
                 initial={{ opacity: 0, y: 6 }}
                 animate={{ opacity: 1, y: 0 }}
@@ -748,10 +748,10 @@ export default function AICoachPanel({ trades }) {
                     </li>
                   ))}
                 </ul>
-              </motion.div>
+              </m.div>
             );
           })}
-        </motion.div>
+        </m.div>
       )}
 
       {/* Footer upsell for free users */}

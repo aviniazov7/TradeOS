@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useId } from 'react';
 import { useAuth } from '../../contexts/AuthContext';
 import { Navigate, useSearchParams, Link } from 'react-router-dom';
 import { Mail, Eye, EyeOff, Lock, User, Link2, BarChart3, Sparkles, Check, ShieldCheck, Loader2, AlertCircle } from 'lucide-react';
@@ -7,6 +7,7 @@ import { authErrorHe, authErrorMessage, isSilentAuthError } from '../../utils/au
 // Live checklist on sign-up, so the user sees what is missing before pressing
 // the button instead of after.
 import { PASSWORD_RULES, passwordProblem } from '../../utils/passwordPolicy';
+import { preloadPopupResolver } from '../../services/authService';
 
 // What the product does, in three lines — shown beside the form on wide screens.
 const FEATURES = [
@@ -17,17 +18,23 @@ const FEATURES = [
 
 
 function BrandMark({ size = 'md' }) {
+  // Two marks render on this page (the panel and the form). Shared gradient
+  // ids make the second copy paint with the first one's paint server, which
+  // React 19 reports as a hydration mismatch.
+  const uid = useId().replace(/:/g, '');
+  const bgId = `bm-bg-${uid}`;
+  const lineId = `bm-line-${uid}`;
   const box = size === 'lg' ? 'w-12 h-12 rounded-2xl' : 'w-10 h-10 rounded-xl';
   return (
     <div className="flex items-center gap-3">
       {/* The app icon, drawn inline so it is crisp and never waits on a file */}
       <svg viewBox="0 0 48 48" className={`${box} shrink-0`} style={{ boxShadow: '0 0 28px -8px rgba(56,189,248,0.6)' }} aria-hidden="true">
         <defs>
-          <linearGradient id="bm-bg" x1="0" y1="0" x2="0" y2="1"><stop offset="0%" stopColor="#1c1d22" /><stop offset="100%" stopColor="#0b0b0e" /></linearGradient>
-          <linearGradient id="bm-line" x1="0" y1="1" x2="1" y2="0"><stop offset="0%" stopColor="#8b5cf6" /><stop offset="55%" stopColor="#38bdf8" /><stop offset="100%" stopColor="#22d3ee" /></linearGradient>
+          <linearGradient id={bgId} x1="0" y1="0" x2="0" y2="1"><stop offset="0%" stopColor="#1c1d22" /><stop offset="100%" stopColor="#0b0b0e" /></linearGradient>
+          <linearGradient id={lineId} x1="0" y1="1" x2="1" y2="0"><stop offset="0%" stopColor="#8b5cf6" /><stop offset="55%" stopColor="#38bdf8" /><stop offset="100%" stopColor="#22d3ee" /></linearGradient>
         </defs>
-        <rect width="48" height="48" rx="12" fill="url(#bm-bg)" />
-        <path d="M12 34 L22 24 L26 28 L36 16" fill="none" stroke="url(#bm-line)" strokeWidth="4.5" strokeLinecap="round" strokeLinejoin="round" />
+        <rect width="48" height="48" rx="12" fill={`url(#${bgId})`} />
+        <path d="M12 34 L22 24 L26 28 L36 16" fill="none" stroke={`url(#${lineId})`} strokeWidth="4.5" strokeLinecap="round" strokeLinejoin="round" />
         <circle cx="36" cy="16" r="5.5" fill="none" stroke="#38bdf8" strokeOpacity="0.35" strokeWidth="1.5" />
       </svg>
       <div className="leading-tight">
@@ -40,21 +47,24 @@ function BrandMark({ size = 'md' }) {
 
 // Decorative equity curve for the brand panel — same gradient as the splash.
 function CurveArt() {
+  const uid = useId().replace(/:/g, '');
+  const lineId = `lg-line-${uid}`;
+  const areaId = `lg-area-${uid}`;
   return (
     <svg viewBox="0 0 400 140" className="w-full h-auto" fill="none" aria-hidden="true">
       <defs>
-        <linearGradient id="lg-line" x1="0" y1="0" x2="1" y2="0">
+        <linearGradient id={lineId} x1="0" y1="0" x2="1" y2="0">
           <stop offset="0%" stopColor="#2563eb" />
           <stop offset="100%" stopColor="#38bdf8" />
         </linearGradient>
-        <linearGradient id="lg-area" x1="0" y1="0" x2="0" y2="1">
+        <linearGradient id={areaId} x1="0" y1="0" x2="0" y2="1">
           <stop offset="0%" stopColor="#3b82f6" stopOpacity="0.28" />
           <stop offset="100%" stopColor="#3b82f6" stopOpacity="0" />
         </linearGradient>
       </defs>
       {[35, 70, 105].map((y) => <line key={y} x1="0" x2="400" y1={y} y2={y} stroke="rgba(255,255,255,0.05)" />)}
-      <path d="M0 118 L40 104 L80 110 L120 84 L160 92 L200 66 L240 72 L280 44 L320 52 L360 26 L400 16 L400 140 L0 140 Z" fill="url(#lg-area)" />
-      <path d="M0 118 L40 104 L80 110 L120 84 L160 92 L200 66 L240 72 L280 44 L320 52 L360 26 L400 16" stroke="url(#lg-line)" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round" />
+      <path d="M0 118 L40 104 L80 110 L120 84 L160 92 L200 66 L240 72 L280 44 L320 52 L360 26 L400 16 L400 140 L0 140 Z" fill={`url(#${areaId})`} />
+      <path d="M0 118 L40 104 L80 110 L120 84 L160 92 L200 66 L240 72 L280 44 L320 52 L360 26 L400 16" stroke={`url(#${lineId})`} strokeWidth="3" strokeLinecap="round" strokeLinejoin="round" />
       <circle cx="400" cy="16" r="5" fill="#60a5fa" />
     </svg>
   );
@@ -84,6 +94,28 @@ export default function LoginPage() {
   // happened. Cleared as soon as the user edits a field or switches tab.
   const [formError, setFormError] = useState('');
   const [googleLoading, setGoogleLoading] = useState(false);
+
+  // Warm the Google popup resolver after first paint, and again if the
+  // pointer reaches the button first. The tap itself must not await the
+  // import — Safari blocks window.open once the gesture has been awaited.
+  useEffect(() => {
+    let idleId = 0;
+    let timer = 0;
+    const start = () => { preloadPopupResolver(); };
+    const schedule = () => {
+      if (typeof requestIdleCallback === 'function') {
+        idleId = requestIdleCallback(start, { timeout: 1500 });
+      }
+      timer = window.setTimeout(start, 200);
+    };
+    if (document.readyState === 'complete') schedule();
+    else window.addEventListener('load', schedule, { once: true });
+    return () => {
+      window.removeEventListener('load', schedule);
+      if (idleId && typeof cancelIdleCallback === 'function') cancelIdleCallback(idleId);
+      window.clearTimeout(timer);
+    };
+  }, []);
 
   // After a successful login, honour ?redirect=… (used by the coupon share
   // link) but only allow same-app relative paths to avoid open-redirects.
@@ -211,7 +243,11 @@ export default function LoginPage() {
           </div>
 
           <button
+            type="button"
             onClick={handleGoogle}
+            onPointerEnter={() => preloadPopupResolver()}
+            onFocus={() => preloadPopupResolver()}
+            onTouchStart={() => preloadPopupResolver()}
             disabled={googleLoading}
             className="mt-5 w-full h-11 flex items-center justify-center gap-3 bg-white text-gray-900 text-sm font-bold rounded-xl hover:bg-gray-100 transition-colors cursor-pointer disabled:opacity-60"
           >
@@ -287,10 +323,10 @@ export default function LoginPage() {
             )}
 
             {formError && (
-              <p role="alert" className="flex items-start gap-2 rounded-xl border border-loss/30 bg-loss/10 px-3 py-2.5 text-sm text-loss">
+              <div role="alert" className="flex items-start gap-2 rounded-xl border border-loss/30 bg-loss/10 px-3 py-2.5 text-sm text-loss">
                 <AlertCircle className="w-4 h-4 mt-0.5 shrink-0" aria-hidden />
                 <span className="min-w-0">{formError}</span>
-              </p>
+              </div>
             )}
 
             <button type="submit" disabled={submitting}

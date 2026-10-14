@@ -1,5 +1,5 @@
 import { useState, useEffect, useRef, useMemo } from 'react';
-import { motion, AnimatePresence } from 'framer-motion';
+import { m, AnimatePresence } from 'framer-motion';
 import { Search, Sparkles, TrendingUp, TrendingDown, Minus, RotateCcw, Activity, BarChart3, Zap, Shield, ChevronDown, ChevronUp, Target, Gauge, BookOpen, Flame, FileText, Copy, Check, RefreshCw } from 'lucide-react';
 import { AreaChart, Area, XAxis, YAxis, Tooltip, ResponsiveContainer, ReferenceLine } from 'recharts';
 import DOMPurify from 'dompurify';
@@ -34,7 +34,7 @@ function AnimatedValue({ value, className }) {
     setDisplay(value);
   }, [value]);
   return (
-    <motion.span
+    <m.span
       key={value}
       initial={{ opacity: 0, y: 8 }}
       animate={{ opacity: 1, y: 0 }}
@@ -42,7 +42,7 @@ function AnimatedValue({ value, className }) {
       className={className}
     >
       {display}
-    </motion.span>
+    </m.span>
   );
 }
 
@@ -52,7 +52,7 @@ function AnimatedValue({ value, className }) {
 // so a gradient behind it would bleed through and wash out the text).
 function GlowCard({ children, className = '', delay = 0 }) {
   return (
-    <motion.div
+    <m.div
       initial={{ opacity: 0, y: 15, scale: 0.97 }}
       animate={{ opacity: 1, y: 0, scale: 1 }}
       transition={{ delay, duration: 0.5, type: 'spring', stiffness: 120 }}
@@ -67,7 +67,7 @@ function GlowCard({ children, className = '', delay = 0 }) {
           style={{ background: `radial-gradient(circle, ${AI_FROM}1f 0%, transparent 70%)` }} />
         {children}
       </div>
-    </motion.div>
+    </m.div>
   );
 }
 
@@ -75,7 +75,7 @@ function GlowCard({ children, className = '', delay = 0 }) {
 function PulseDot({ color = 'bg-accent-primary' }) {
   return (
     <span className="relative flex h-2 w-2">
-      <motion.span
+      <m.span
         animate={{ scale: [1, 1.8, 1], opacity: [0.6, 0, 0.6] }}
         transition={{ duration: 1.5, repeat: Infinity }}
         className={`absolute inset-0 rounded-full ${color}`}
@@ -198,7 +198,7 @@ function ProjectDescription({ coin, description, loading, error, expanded, onTog
         {loading && (
           <div className="space-y-2">
             {[0, 1, 2].map((i) => (
-              <motion.div
+              <m.div
                 key={i}
                 animate={{ opacity: [0.3, 0.7, 0.3] }}
                 transition={{ duration: 1.4, repeat: Infinity, delay: i * 0.15 }}
@@ -227,14 +227,14 @@ function ProjectDescription({ coin, description, loading, error, expanded, onTog
 
         {!loading && !error && description && (
           <>
-            <motion.div
+            <m.div
               initial={false}
               animate={{ height: 'auto' }}
               className="text-sm text-text-secondary leading-relaxed space-y-2.5"
               style={{ overflow: 'hidden' }}
             >
               <AnimatePresence initial={false} mode="wait">
-                <motion.div
+                <m.div
                   key={expanded ? 'full' : 'short'}
                   initial={{ opacity: 0 }}
                   animate={{ opacity: 1 }}
@@ -251,9 +251,9 @@ function ProjectDescription({ coin, description, loading, error, expanded, onTog
                   {!expanded && hasMore && (
                     <div className="relative -mt-6 h-6 pointer-events-none bg-gradient-to-t from-bg-secondary to-transparent" />
                   )}
-                </motion.div>
+                </m.div>
               </AnimatePresence>
-            </motion.div>
+            </m.div>
 
             {hasMore && (
               <button
@@ -549,7 +549,7 @@ export default function CoinAnalysis() {
             </div>
             <AnimatePresence>
               {showSuggestions && suggestions.length > 0 && (
-                <motion.div
+                <m.div
                   initial={{ opacity: 0, y: -5 }}
                   animate={{ opacity: 1, y: 0 }}
                   exit={{ opacity: 0, y: -5 }}
@@ -566,11 +566,11 @@ export default function CoinAnalysis() {
                       <span className="text-text-muted text-xs">{coin.symbol}</span>
                     </button>
                   ))}
-                </motion.div>
+                </m.div>
               )}
             </AnimatePresence>
           </div>
-          <motion.button
+          <m.button
             onClick={() => analyze()}
             disabled={!selectedCoin || analyzing}
             whileHover={{ scale: 1.03 }}
@@ -579,7 +579,7 @@ export default function CoinAnalysis() {
             style={{ background: AI_GRADIENT, boxShadow: `0 6px 22px -4px ${AI_FROM}80` }}
           >
             {/* sheen sweep */}
-            <motion.span
+            <m.span
               aria-hidden
               className="absolute inset-0 pointer-events-none"
               style={{ background: 'linear-gradient(110deg, transparent 30%, rgba(255,255,255,0.35) 50%, transparent 70%)' }}
@@ -588,7 +588,7 @@ export default function CoinAnalysis() {
             />
             <Sparkles className="w-4 h-4 relative" />
             <span className="relative">Analyze</span>
-          </motion.button>
+          </m.button>
           {coinData && (
             <button onClick={reset} className="p-3 rounded-xl text-text-muted hover:text-text-primary hover:bg-bg-tertiary transition-colors cursor-pointer shrink-0 border border-border-primary" title="ניתוח חדש">
               <RotateCcw className="w-4 h-4" />
@@ -601,7 +601,7 @@ export default function CoinAnalysis() {
       {!coinData && !analyzing && (
         <div className="flex items-center gap-1.5 justify-center">
           {QUICK_COINS.map((c, i) => (
-            <motion.button
+            <m.button
               key={c.symbol}
               initial={{ opacity: 0, y: 8 }}
               animate={{ opacity: 1, y: 0 }}
@@ -617,7 +617,7 @@ export default function CoinAnalysis() {
                 : undefined}
             >
               {c.symbol}
-            </motion.button>
+            </m.button>
           ))}
         </div>
       )}
@@ -625,7 +625,7 @@ export default function CoinAnalysis() {
       {/* Analysis Animation */}
       <AnimatePresence>
         {analyzing && (
-          <motion.div
+          <m.div
             initial={{ opacity: 0, scale: 0.95 }}
             animate={{ opacity: 1, scale: 1 }}
             exit={{ opacity: 0, scale: 0.95 }}
@@ -635,37 +635,37 @@ export default function CoinAnalysis() {
               backgroundImage: 'linear-gradient(rgba(99,102,241,0.5) 1px, transparent 1px), linear-gradient(90deg, rgba(99,102,241,0.5) 1px, transparent 1px)',
               backgroundSize: '20px 20px',
             }} />
-            <motion.div
+            <m.div
               className="absolute left-0 right-0 h-px bg-gradient-to-r from-transparent via-accent-primary/50 to-transparent"
               animate={{ top: ['0%', '100%'] }}
               transition={{ duration: 2, repeat: Infinity, ease: 'linear' }}
             />
             <div className="relative flex flex-col items-center gap-5">
               <div className="relative w-20 h-20">
-                <motion.div className="absolute inset-0 rounded-full border-2 border-accent-primary/20"
+                <m.div className="absolute inset-0 rounded-full border-2 border-accent-primary/20"
                   animate={{ scale: [1, 1.3, 1], opacity: [0.3, 0, 0.3] }}
                   transition={{ duration: 2, repeat: Infinity }}
                 />
-                <motion.div className="absolute inset-2 rounded-full border border-accent-primary/30"
+                <m.div className="absolute inset-2 rounded-full border border-accent-primary/30"
                   animate={{ scale: [1, 1.2, 1], opacity: [0.5, 0.1, 0.5] }}
                   transition={{ duration: 2, repeat: Infinity, delay: 0.3 }}
                 />
-                <motion.div
+                <m.div
                   animate={{ rotate: 360 }}
                   transition={{ duration: 3, repeat: Infinity, ease: 'linear' }}
                   className="absolute inset-3 rounded-full bg-accent-primary/10 border border-accent-primary/30 flex items-center justify-center"
                 >
                   <Sparkles className="w-7 h-7 text-accent-primary" />
-                </motion.div>
+                </m.div>
               </div>
-              <motion.p animate={{ opacity: [0.6, 1, 0.6] }} transition={{ duration: 1.5, repeat: Infinity }}
+              <m.p animate={{ opacity: [0.6, 1, 0.6] }} transition={{ duration: 1.5, repeat: Infinity }}
                 className="text-xs font-mono text-accent-primary tracking-widest uppercase"
               >
                 ANALYZING {selectedCoin?.symbol}
-              </motion.p>
+              </m.p>
               <div className="w-full max-w-sm">
                 <div className="w-full h-1.5 bg-bg-tertiary rounded-full overflow-hidden">
-                  <motion.div className="h-full bg-gradient-to-r from-accent-primary to-accent-primary/60 rounded-full"
+                  <m.div className="h-full bg-gradient-to-r from-accent-primary to-accent-primary/60 rounded-full"
                     style={{ width: `${scanProgress}%` }}
                   />
                 </div>
@@ -673,7 +673,7 @@ export default function CoinAnalysis() {
               </div>
               <div className="space-y-1.5 w-full max-w-sm">
                 {ANALYSIS_STEPS.map((step, i) => (
-                  <motion.div key={i}
+                  <m.div key={i}
                     initial={{ opacity: 0, x: 20 }}
                     animate={i <= activeStep ? { opacity: 1, x: 0 } : { opacity: 0, x: 20 }}
                     transition={{ duration: 0.3 }}
@@ -681,37 +681,37 @@ export default function CoinAnalysis() {
                   >
                     <div className={`w-5 h-5 rounded flex items-center justify-center shrink-0 ${i < activeStep ? 'bg-profit/15' : i === activeStep ? 'bg-accent-primary/15' : 'bg-bg-tertiary'}`}>
                       {i < activeStep ? (
-                        <motion.div initial={{ scale: 0 }} animate={{ scale: 1 }} className="w-2 h-2 rounded-sm bg-profit" />
+                        <m.div initial={{ scale: 0 }} animate={{ scale: 1 }} className="w-2 h-2 rounded-sm bg-profit" />
                       ) : i === activeStep ? (
-                        <motion.div animate={{ opacity: [0.3, 1, 0.3] }} transition={{ duration: 0.8, repeat: Infinity }}>
+                        <m.div animate={{ opacity: [0.3, 1, 0.3] }} transition={{ duration: 0.8, repeat: Infinity }}>
                           <step.icon className="w-3 h-3 text-accent-primary" />
-                        </motion.div>
+                        </m.div>
                       ) : null}
                     </div>
                     <span className={`text-xs font-medium ${i < activeStep ? 'text-profit' : i === activeStep ? 'text-text-primary' : 'text-text-muted/30'}`}>
                       {step.text}
                       {i < activeStep && <span className="text-profit mr-1 font-mono text-[10px]"> [OK]</span>}
                     </span>
-                  </motion.div>
+                  </m.div>
                 ))}
               </div>
             </div>
-          </motion.div>
+          </m.div>
         )}
       </AnimatePresence>
 
       {/* Error */}
       {error && (
-        <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} className="bg-loss/10 border border-loss/20 rounded-xl p-4 text-center">
+        <m.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} className="bg-loss/10 border border-loss/20 rounded-xl p-4 text-center">
           <p className="text-sm text-loss mb-2">{error}</p>
           <button onClick={() => analyze()} className="text-xs text-text-muted hover:text-text-primary transition-colors cursor-pointer underline">נסה שוב</button>
-        </motion.div>
+        </m.div>
       )}
 
       {/* Results */}
       <AnimatePresence>
         {coinData && md && (
-          <motion.div
+          <m.div
             initial={{ opacity: 0 }}
             animate={{ opacity: 1 }}
             transition={{ duration: 0.5 }}
@@ -738,7 +738,7 @@ export default function CoinAnalysis() {
                               <span className="text-profit font-semibold font-mono">{formatPrice(md.high_24h.usd)}</span>
                             </div>
                             <div className="relative h-3 bg-bg-tertiary rounded-full overflow-hidden">
-                              <motion.div
+                              <m.div
                                 initial={{ opacity: 0 }}
                                 animate={{ opacity: 1 }}
                                 transition={{ duration: 1 }}
@@ -749,7 +749,7 @@ export default function CoinAnalysis() {
                                 const range = md.high_24h.usd - md.low_24h.usd;
                                 const pos = range > 0 ? ((md.current_price.usd - md.low_24h.usd) / range) * 100 : 50;
                                 return (
-                                  <motion.div
+                                  <m.div
                                     initial={{ left: '50%' }}
                                     animate={{ left: `calc(${Math.min(100, Math.max(0, pos))}% - 7px)` }}
                                     transition={{ duration: 1.5, type: 'spring' }}
@@ -794,7 +794,7 @@ export default function CoinAnalysis() {
                     {sentiment && (
                       <GlowCard delay={0.15} glowColor={`${sentiment.rawColor}22`}>
                         <div className="p-4 flex flex-col items-center justify-center h-full relative">
-                          <motion.div
+                          <m.div
                             animate={{ scale: [1, 1.15, 1], opacity: [0.15, 0.3, 0.15] }}
                             transition={{ duration: 3, repeat: Infinity }}
                             className="absolute inset-0 rounded-2xl"
@@ -802,18 +802,18 @@ export default function CoinAnalysis() {
                           />
                           <div className="relative flex flex-col items-center gap-2">
                             <div className={`w-12 h-12 rounded-xl flex items-center justify-center ${sentiment.color === 'text-profit' ? 'bg-profit/10' : sentiment.color === 'text-loss' ? 'bg-loss/10' : 'bg-amber-500/10'}`}>
-                              <motion.div animate={{ rotate: [0, 5, -5, 0] }} transition={{ duration: 4, repeat: Infinity }}>
+                              <m.div animate={{ rotate: [0, 5, -5, 0] }} transition={{ duration: 4, repeat: Infinity }}>
                                 <sentiment.icon className={`w-6 h-6 ${sentiment.color}`} />
-                              </motion.div>
+                              </m.div>
                             </div>
                             <div className="text-center">
-                              <motion.p
+                              <m.p
                                 animate={{ opacity: [0.7, 1, 0.7] }}
                                 transition={{ duration: 2, repeat: Infinity }}
                                 className={`text-lg font-bold font-mono tracking-wider ${sentiment.color}`}
                               >
                                 {sentiment.label}
-                              </motion.p>
+                              </m.p>
                               <p className="text-[10px] text-text-muted mt-0.5">{sentiment.desc}</p>
                             </div>
                             <div className="flex items-center gap-1.5">
@@ -853,7 +853,7 @@ export default function CoinAnalysis() {
                   { label: 'נפח 24h', value: formatNum(md.total_volume?.usd), icon: Activity },
                   { label: 'ATH', value: formatPrice(md.ath?.usd), sub: md.ath_change_percentage?.usd != null ? `${md.ath_change_percentage.usd.toFixed(1)}%` : null, subColor: 'text-loss' },
                 ].filter(Boolean).map((item, i) => (
-                  <motion.div
+                  <m.div
                     key={item.label}
                     initial={{ opacity: 0, scale: 0.9, y: 10 }}
                     animate={{ opacity: 1, scale: 1, y: 0 }}
@@ -861,7 +861,7 @@ export default function CoinAnalysis() {
                     className="h-full"
                   >
                     <StatBox {...item} />
-                  </motion.div>
+                  </m.div>
                 ))}
               </div>
 
@@ -889,7 +889,7 @@ export default function CoinAnalysis() {
                     <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
                       {/* RSI */}
                       {technicals.rsi != null && (
-                        <motion.div className="text-center"
+                        <m.div className="text-center"
                           initial={{ opacity: 0, x: -10 }}
                           animate={{ opacity: 1, x: 0 }}
                           transition={{ delay: 0.45 }}
@@ -898,7 +898,7 @@ export default function CoinAnalysis() {
                           <div className="relative h-2.5 bg-bg-tertiary rounded-full overflow-hidden mb-1.5">
                             <div className="absolute left-0 top-0 bottom-0 w-[30%] bg-profit/20 rounded-l-full" />
                             <div className="absolute right-0 top-0 bottom-0 w-[30%] bg-loss/20 rounded-r-full" />
-                            <motion.div
+                            <m.div
                               initial={{ left: '50%' }}
                               animate={{ left: `calc(${Math.min(100, Math.max(0, technicals.rsi))}% - 5px)` }}
                               transition={{ duration: 1.5, type: 'spring' }}
@@ -908,12 +908,12 @@ export default function CoinAnalysis() {
                           </div>
                           <AnimatedValue value={technicals.rsi.toFixed(1)} className="text-sm font-bold text-text-primary" />
                           <p className={`text-[10px] font-semibold ${technicals.rsiSignal.color}`}>{technicals.rsiSignal.text}</p>
-                        </motion.div>
+                        </m.div>
                       )}
 
                       {/* MA Signal */}
                       {technicals.maSignal && (
-                        <motion.div className="text-center"
+                        <m.div className="text-center"
                           initial={{ opacity: 0, x: -10 }}
                           animate={{ opacity: 1, x: 0 }}
                           transition={{ delay: 0.5 }}
@@ -922,12 +922,12 @@ export default function CoinAnalysis() {
                           <p className="text-[10px] text-text-muted mt-1">MA7: <span className="text-text-primary font-semibold">{formatPrice(technicals.ma7)}</span></p>
                           <p className="text-[10px] text-text-muted">MA14: <span className="text-text-primary font-semibold">{formatPrice(technicals.ma14)}</span></p>
                           <p className={`text-[10px] font-semibold mt-1 ${technicals.maSignal.color}`}>{technicals.maSignal.text}</p>
-                        </motion.div>
+                        </m.div>
                       )}
 
                       {/* Volatility */}
                       {technicals.volatility != null && (
-                        <motion.div className="text-center"
+                        <m.div className="text-center"
                           initial={{ opacity: 0, x: -10 }}
                           animate={{ opacity: 1, x: 0 }}
                           transition={{ delay: 0.55 }}
@@ -937,23 +937,23 @@ export default function CoinAnalysis() {
                           <p className={`text-[10px] font-semibold ${technicals.volatility > 5 ? 'text-loss' : technicals.volatility > 2 ? 'text-amber-500' : 'text-profit'}`}>
                             {technicals.volatility > 5 ? 'גבוהה מאוד' : technicals.volatility > 2 ? 'בינונית' : 'נמוכה'}
                           </p>
-                        </motion.div>
+                        </m.div>
                       )}
 
                       {/* 30d Range */}
-                      <motion.div className="text-center"
+                      <m.div className="text-center"
                         initial={{ opacity: 0, x: -10 }}
                         animate={{ opacity: 1, x: 0 }}
                         transition={{ delay: 0.6 }}
                       >
                         <p className="text-[10px] text-text-muted mb-1 font-mono">30D Range</p>
                         <div className="relative h-2.5 bg-bg-tertiary rounded-full overflow-hidden mb-1.5">
-                          <motion.div className="absolute inset-0 rounded-full"
+                          <m.div className="absolute inset-0 rounded-full"
                             initial={{ opacity: 0 }}
                             animate={{ opacity: 1 }}
                             style={{ background: 'linear-gradient(to right, rgba(239,68,68,0.3), rgba(34,197,94,0.3))' }}
                           />
-                          <motion.div
+                          <m.div
                             initial={{ left: '50%' }}
                             animate={{ left: `calc(${Math.min(100, Math.max(0, technicals.pricePosition))}% - 5px)` }}
                             transition={{ duration: 1.5, type: 'spring' }}
@@ -964,7 +964,7 @@ export default function CoinAnalysis() {
                         <p className="text-[10px] text-text-muted">
                           {technicals.pricePosition > 80 ? 'קרוב לשיא' : technicals.pricePosition < 20 ? 'קרוב לשפל' : 'אמצע הטווח'}
                         </p>
-                      </motion.div>
+                      </m.div>
                     </div>
                   </div>
                 </GlowCard>
@@ -981,7 +981,7 @@ export default function CoinAnalysis() {
                       {Object.entries(technicals.fib).map(([level, price], i) => {
                         const isCurrent = Math.abs(price - technicals.currentPrice) / technicals.currentPrice < 0.02;
                         return (
-                          <motion.div
+                          <m.div
                             key={level}
                             initial={{ opacity: 0, x: 15 }}
                             animate={{ opacity: 1, x: 0 }}
@@ -995,7 +995,7 @@ export default function CoinAnalysis() {
                                 {formatPrice(price)}
                               </span>
                             </div>
-                          </motion.div>
+                          </m.div>
                         );
                       })}
                     </div>
@@ -1017,7 +1017,7 @@ export default function CoinAnalysis() {
                     </div>
                     {md.max_supply > 0 && (
                       <div className="w-full h-3 bg-bg-tertiary rounded-full overflow-hidden relative">
-                        <motion.div
+                        <m.div
                           initial={{ width: 0 }}
                           animate={{ width: `${Math.min(100, (md.circulating_supply / md.max_supply) * 100)}%` }}
                           transition={{ duration: 2, delay: 0.3, ease: 'easeOut' }}
@@ -1045,7 +1045,7 @@ export default function CoinAnalysis() {
                         </span>
                       )}
                     </h3>
-                    <motion.div
+                    <m.div
                       initial={{ opacity: 0, scaleY: 0.8 }}
                       animate={{ opacity: 1, scaleY: 1 }}
                       transition={{ delay: 0.8, duration: 0.6 }}
@@ -1071,7 +1071,7 @@ export default function CoinAnalysis() {
                           <Area type="monotone" dataKey="price" stroke={chartColor} strokeWidth={2} fill="url(#coinGrad)" dot={false} />
                         </AreaChart>
                       </ResponsiveContainer>
-                    </motion.div>
+                    </m.div>
                   </div>
                 </GlowCard>
               )}
@@ -1081,7 +1081,7 @@ export default function CoinAnalysis() {
 
               {/* Liquidity & Market Microstructure */}
               {liquidityData && (
-                <motion.div
+                <m.div
                   initial={{ opacity: 0, y: 10 }}
                   animate={{ opacity: 1, y: 0 }}
                   transition={{ delay: 0.1, duration: 0.5 }}
@@ -1214,13 +1214,13 @@ export default function CoinAnalysis() {
                               </span>
                             </h4>
                             <div className="h-1.5 rounded-full overflow-hidden flex mb-3">
-                              <motion.div
+                              <m.div
                                 initial={{ width: 0 }}
                                 animate={{ width: `${bidPct}%` }}
                                 transition={{ duration: 1, ease: 'easeOut' }}
                                 className="h-full bg-profit"
                               />
-                              <motion.div
+                              <m.div
                                 initial={{ width: 0 }}
                                 animate={{ width: `${100 - bidPct}%` }}
                                 transition={{ duration: 1, ease: 'easeOut' }}
@@ -1232,7 +1232,7 @@ export default function CoinAnalysis() {
                                 <p className="text-[9px] text-profit font-bold text-center mb-1 font-mono">BIDS</p>
                                 {bids.map((b, i) => (
                                   <div key={i} className="relative h-4 rounded overflow-hidden bg-bg-tertiary/30">
-                                    <motion.div
+                                    <m.div
                                       initial={{ width: 0 }}
                                       animate={{ width: `${(b.qty / maxQty) * 100}%` }}
                                       transition={{ duration: 0.7, delay: i * 0.04 }}
@@ -1249,7 +1249,7 @@ export default function CoinAnalysis() {
                                 <p className="text-[9px] text-loss font-bold text-center mb-1 font-mono">ASKS</p>
                                 {asks.map((a, i) => (
                                   <div key={i} className="relative h-4 rounded overflow-hidden bg-bg-tertiary/30">
-                                    <motion.div
+                                    <m.div
                                       initial={{ width: 0 }}
                                       animate={{ width: `${(a.qty / maxQty) * 100}%` }}
                                       transition={{ duration: 0.7, delay: i * 0.04 }}
@@ -1302,13 +1302,13 @@ export default function CoinAnalysis() {
                             ) : total > 0 ? (
                               <>
                                 <div className="h-1.5 rounded-full overflow-hidden flex mb-3">
-                                  <motion.div
+                                  <m.div
                                     initial={{ width: 0 }}
                                     animate={{ width: `${longPct}%` }}
                                     transition={{ duration: 1 }}
                                     className="h-full bg-loss"
                                   />
-                                  <motion.div
+                                  <m.div
                                     initial={{ width: 0 }}
                                     animate={{ width: `${100 - longPct}%` }}
                                     transition={{ duration: 1 }}
@@ -1363,11 +1363,11 @@ export default function CoinAnalysis() {
                       );
                     })()}
                   </div>
-                </motion.div>
+                </m.div>
               )}
 
               {/* Footer timestamp */}
-              <motion.div
+              <m.div
                 initial={{ opacity: 0 }}
                 animate={{ opacity: 1 }}
                 transition={{ delay: 0.9 }}
@@ -1377,9 +1377,9 @@ export default function CoinAnalysis() {
                 <span className="text-[10px] font-mono text-text-muted">
                   ANALYSIS COMPLETE — {new Date().toLocaleTimeString('he-IL')}
                 </span>
-              </motion.div>
+              </m.div>
             </div>
-          </motion.div>
+          </m.div>
         )}
       </AnimatePresence>
     </div>
@@ -1831,7 +1831,7 @@ function ChangeCard({ label, value }) {
   const isPositive = value >= 0;
   return (
     <div className={`rounded-xl p-3 text-center border relative overflow-hidden h-full ${isPositive ? 'bg-profit/5 border-profit/15' : 'bg-loss/5 border-loss/15'}`}>
-      <motion.div
+      <m.div
         animate={{ opacity: [0, 0.05, 0] }}
         transition={{ duration: 3, repeat: Infinity }}
         className={`absolute inset-0 ${isPositive ? 'bg-profit' : 'bg-loss'}`}
@@ -1848,7 +1848,7 @@ function ChangeCard({ label, value }) {
 function StatBox({ label, value, icon: Icon, sub, subColor, valueColor }) {
   return (
     <div className="bg-bg-secondary border border-border-primary rounded-xl p-3 text-center relative overflow-hidden group hover:border-accent-primary/20 transition-colors h-full">
-      <motion.div
+      <m.div
         className="absolute inset-0 opacity-0 group-hover:opacity-100 transition-opacity"
         style={{ background: 'radial-gradient(circle at center, rgba(99,102,241,0.05) 0%, transparent 70%)' }}
       />

@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react';
-import { motion, AnimatePresence } from 'framer-motion';
+import { m, AnimatePresence } from 'framer-motion';
 import {
   Shield, Eye, EyeOff, ExternalLink, RefreshCw, Zap, Pencil, Plus, Unplug, Wallet, Link2, Lock, AlertTriangle, Clock,
 } from 'lucide-react';
@@ -90,7 +90,7 @@ function ConnectedCard({ exchange, balance, syncing, onSync, onEdit, onDisconnec
 
   return (
     <Card
-      as={motion.div}
+      as={m.div}
       glow
       initial={{ opacity: 0, y: 16 }}
       animate={{ opacity: 1, y: 0 }}
@@ -110,7 +110,7 @@ function ConnectedCard({ exchange, balance, syncing, onSync, onEdit, onDisconnec
           <p className="text-[11px] text-text-muted truncate" dir="ltr" style={{ textAlign: 'right' }}>{tagline}</p>
         </div>
         <span className="flex items-center gap-1.5 text-[11px] font-semibold px-2.5 py-1 rounded-full shrink-0 bg-profit/10 text-profit border border-profit/25">
-          <motion.span animate={{ opacity: [1, 0.35, 1] }} transition={{ repeat: Infinity, duration: 2 }}
+          <m.span animate={{ opacity: [1, 0.35, 1] }} transition={{ repeat: Infinity, duration: 2 }}
             className="w-1.5 h-1.5 rounded-full bg-profit inline-block" />
           מחובר
         </span>
@@ -192,7 +192,7 @@ function AvailableTile({ exchange, locked, onConnect, index }) {
   const { id, name, tagline, accent, canSync } = exchange;
   return (
     <Card
-      as={motion.button}
+      as={m.button}
       type="button"
       hover
       spotlight
@@ -652,7 +652,7 @@ export default function ExchangeSettings({ journalId: propJournalId } = {}) {
 
   return (
     <>
-      <motion.div variants={pageVariants} initial="initial" animate="animate" exit="exit" transition={pageTransition}>
+      <m.div variants={pageVariants} initial="initial" animate="animate" exit="exit" transition={pageTransition}>
 
         {/* Header: title + at-a-glance numbers (shared page header). */}
         <PageHeader icon={Link2} title="חיבור בורסות"
@@ -721,7 +721,7 @@ export default function ExchangeSettings({ journalId: propJournalId } = {}) {
           <Shield className="w-3.5 h-3.5 text-profit shrink-0" />
           המפתחות נשמרים בשרת ולא נשארים בדפדפן. מומלץ מפתח API לקריאה בלבד — ללא הרשאות מסחר או משיכה.
         </div>
-      </motion.div>
+      </m.div>
 
       <ConnectDialog
         exchange={dialogExchange}

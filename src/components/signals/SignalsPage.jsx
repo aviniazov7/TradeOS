@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from 'react';
 import { useSearchParams } from 'react-router-dom';
-import { motion } from 'framer-motion';
+import { m } from 'framer-motion';
 import { Plus, Radar, Flag, Zap, Timer, HelpCircle, Activity, ChevronLeft } from 'lucide-react';
 import toast from 'react-hot-toast';
 import { useSignals } from '../../hooks/useSignals';
@@ -251,7 +251,7 @@ export default function SignalsPage() {
   const filterLabel = FILTERS.find((f) => f.key === tab)?.label;
 
   return (
-    <motion.div variants={pageVariants} initial="initial" animate="animate" exit="exit" transition={pageTransition}>
+    <m.div variants={pageVariants} initial="initial" animate="animate" exit="exit" transition={pageTransition}>
       <PageHeader
         icon={Radar}
         title="מנוע ויקוף"
@@ -354,7 +354,7 @@ export default function SignalsPage() {
                 </p>
               </div>
             ) : (
-              <motion.div
+              <m.div
                 className="grid grid-cols-1 md:grid-cols-2 2xl:grid-cols-3 gap-3 md:gap-4"
                 variants={staggerContainer}
                 initial="initial"
@@ -364,7 +364,7 @@ export default function SignalsPage() {
                   const coin = getCoinFromPair(signal.pair);
                   const currentPrice = prices[coin]?.price ?? null;
                   return (
-                    <motion.div key={signal.id} className="min-w-0">
+                    <m.div key={signal.id} className="min-w-0">
                       <SignalCard
                         signal={signal}
                         currentPrice={currentPrice}
@@ -373,10 +373,10 @@ export default function SignalsPage() {
                         onStatusChange={handleStatusChange}
                         onLabel={handleLabel}
                       />
-                    </motion.div>
+                    </m.div>
                   );
                 })}
-              </motion.div>
+              </m.div>
             )}
           </section>
         </div>
@@ -409,6 +409,6 @@ export default function SignalsPage() {
         title="מחיקת סטאפ"
         message="למחוק את הסטאפ? לא ניתן לבטל פעולה זו."
       />
-    </motion.div>
+    </m.div>
   );
 }
