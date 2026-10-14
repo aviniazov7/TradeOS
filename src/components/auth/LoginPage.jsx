@@ -7,10 +7,12 @@ import { authErrorHe, authErrorMessage, isSilentAuthError } from '../../utils/au
 // Live checklist on sign-up, so the user sees what is missing before pressing
 // the button instead of after.
 import { PASSWORD_RULES, passwordProblem } from '../../utils/passwordPolicy';
+import { exchangeSyncBlurb } from '../exchange/exchangeConfig';
 
 // What the product does, in three lines — shown beside the form on wide screens.
+// The exchange line is built from canSync, so Binance is never described as auto-sync.
 const FEATURES = [
-  { icon: Link2, title: 'חיבור לבורסה', text: 'העסקאות נמשכות אוטומטית מ-Bybit, Binance, MEXC ועוד' },
+  { icon: Link2, title: 'חיבור לבורסה', text: exchangeSyncBlurb() },
   { icon: BarChart3, title: 'יומן וניתוחים', text: 'רווח/הפסד, R:R, אחוז הצלחה ופילוח לפי מטבע וסשן' },
   { icon: Sparkles, title: 'סוכן AI אישי', text: 'שואלים בעברית ומקבלים תשובה מבוססת על העסקאות שלך' },
 ];

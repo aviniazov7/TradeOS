@@ -48,6 +48,126 @@ export function exitsClosedPercent(exits, { isFutures = false, totalContracts = 
   return list.reduce((s, e) => s + num(e?.percent), 0);
 }
 
+/** A positive number as a short string, or '' when there is nothing to show. */
+function trimQty(n) {
+  if (!(n > 0) || !Number.isFinite(n)) return '';
+  return String(+n.toPrecision(10));
+}
+
+/**
+ * Keep one exit's percent and quantity in step. Percent is what status and
+ * P&L read; quantity is that same slice in units. Typing either fills the
+ * other. A missing total leaves the other field blank instead of inventing one.
+ */
+export function syncExitSize(exit, field, value, totalUnits) {
+  const next = { ...(exit || {}), [field]: value };
+  const total = num(totalUnits);
+  if (field === 'percent') {
+    const p = num(value);
+    next.quantity = total > 0 && p > 0 ? trimQty((total * p) / 100) : '';
+  } else if (field === 'quantity') {
+    const q = num(value);
+    next.percent = total > 0 && q > 0 ? trimQty((q / total) * 100) : '';
+  }
+  return next;
+}
+
+/**
+ * Close whatever is still open, without a take-profit row. `stop` uses the
+ * stop price; `price` uses the typed exit price. Null when the price is
+ * missing or the position is already fully closed — a loss must not require
+ * a TP parked on the stop.
+ */
+export function remainderClose({
+  kind, price, stop, date = null, usedPercent = 0, totalUnits = 0,
+  isFutures = false, usedContracts = 0, totalContracts = 0,
+} = {}) {
+  if (kind !== 'stop' && kind !== 'price') return null;
+  const exitPrice = kind === 'stop' ? num(stop) : num(price);
+  if (!(exitPrice > 0)) return null;
+  if (isFutures) {
+    const total = num(totalContracts);
+    const left = total - num(usedContracts);
+    if (!(left > 0)) return null;
+    return {
+      price: exitPrice,
+      contracts: left,
+      percent: total > 0 ? (left / total) * 100 : 0,
+      quantity: trimQty(left),
+      date: date || null,
+      kind,
+    };
+  }
+  const remaining = 100 - num(usedPercent);
+  if (!(remaining > 0.049)) return null;
+  const units = num(totalUnits);
+  return {
+    price: exitPrice,
+    percent: remaining,
+    quantity: units > 0 ? trimQty((units * remaining) / 100) : '',
+    date: date || null,
+    kind,
+  };
+}
+
+/** An exit row ready to store. Null when it has no price or no size. */
+export function storedExit(exit, { isFutures = false, totalContracts = 0 } = {}) {
+  const price = num(exit?.price);
+  if (!(price > 0)) return null;
+  const date = exit?.date || null;
+  const kind = exit?.kind === 'stop' || exit?.kind === 'price' ? exit.kind : undefined;
+  const quantity = num(exit?.quantity);
+  if (isFutures) {
+    const contracts = num(exit?.contracts);
+    if (!(contracts > 0)) return null;
+    return {
+      price,
+      contracts,
+      percent: num(totalContracts) > 0 ? (contracts / num(totalContracts)) * 100 : 0,
+      ...(quantity > 0 ? { quantity } : {}),
+      ...(date ? { date } : {}),
+      ...(kind ? { kind } : {}),
+    };
+  }
+  const percent = num(exit?.percent);
+  if (!(percent > 0)) return null;
+  return {
+    price,
+    percent,
+    ...(quantity > 0 ? { quantity } : {}),
+    ...(date ? { date } : {}),
+    ...(kind ? { kind } : {}),
+  };
+}
+
+/** sessionStorage key for the calculator → new-trade handoff. */
+export const TRADE_PREFILL_KEY = 'tradeos-trade-prefill';
+
+/**
+ * Fields the position calculator can seed into a new trade. Quantity is the
+ * sized amount (the form treats it as a manual size, so a later risk edit
+ * does not rescale it). A target becomes a planned TP, not a close.
+ * Null when the calculator has no valid position.
+ */
+export function tradePrefillFromCalculator(form, results) {
+  if (!form || !results || results.error) return null;
+  const entry = num(form.entryPrice);
+  const stop = num(form.stopLoss);
+  if (!(entry > 0) || !(stop > 0)) return null;
+  const qty = num(results.quantity);
+  const risk = num(results.riskAmount);
+  const target = num(form.targetPrice);
+  return {
+    direction: form.direction === 'short' ? 'short' : 'long',
+    entryPrice: String(form.entryPrice),
+    stopLoss: String(form.stopLoss),
+    leverage: form.leverage != null && String(form.leverage) !== '' ? String(form.leverage) : '',
+    riskAmount: risk > 0 ? risk.toFixed(2) : '',
+    quantity: qty > 0 ? trimQty(qty) : '',
+    targetPrice: target > 0 ? String(form.targetPrice) : '',
+  };
+}
+
 // ── Commission presets ──────────────────────────────────────────────────────
 // Stored on the journal document as ONE map field (`commissions`) so it adds
 // a single key to the field-count-bounded journal doc:

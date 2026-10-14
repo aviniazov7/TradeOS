@@ -1,9 +1,11 @@
 import { useState, useEffect, useMemo } from 'react';
+import { useNavigate } from 'react-router-dom';
 import { Copy, Check, TrendingUp, TrendingDown } from 'lucide-react';
 import Modal from '../shared/Modal';
 import { useJournalContext } from '../../contexts/JournalContext';
 import { formatNumber, LRM } from '../../utils/formatters';
 import { calculatePosition } from '../../utils/positionMath';
+import { TRADE_PREFILL_KEY, tradePrefillFromCalculator } from '../../utils/tradeFormHelpers';
 import toast from 'react-hot-toast';
 
 const inputClass = 'w-full bg-bg-tertiary border border-border-primary rounded-lg px-3 py-2.5 text-sm text-text-primary outline-none focus:border-accent-primary transition-colors text-right';
@@ -11,6 +13,7 @@ const labelClass = 'block text-xs text-text-muted mb-1';
 
 export default function PositionCalculator({ isOpen, onClose }) {
   const { activeJournal } = useJournalContext();
+  const navigate = useNavigate();
   const [copiedKey, setCopiedKey] = useState(null);
 
   const [form, setForm] = useState({
@@ -46,6 +49,14 @@ export default function PositionCalculator({ isOpen, onClose }) {
     navigator.clipboard.writeText(String(val));
     setCopiedKey(key);
     setTimeout(() => setCopiedKey(null), 1500);
+  };
+
+  const useInNewTrade = () => {
+    const seed = tradePrefillFromCalculator(form, results);
+    if (!seed) return;
+    try { sessionStorage.setItem(TRADE_PREFILL_KEY, JSON.stringify(seed)); } catch { /* private mode */ }
+    onClose();
+    navigate('/journal?new=1');
   };
 
   const copyAll = () => {
@@ -181,6 +192,13 @@ export default function PositionCalculator({ isOpen, onClose }) {
               </div>
             ))}
           </div>
+        )}
+
+        {resultRows.length > 0 && !results?.error && (
+          <button type="button" onClick={useInNewTrade}
+            className="w-full h-10 rounded-xl bg-accent-primary text-black text-sm font-semibold hover:bg-accent-hover transition-colors cursor-pointer">
+            פתח עסקה חדשה עם המספרים האלה
+          </button>
         )}
       </div>
     </Modal>
