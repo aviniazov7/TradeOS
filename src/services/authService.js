@@ -19,6 +19,7 @@ import {
   sendEmailVerification,
 } from 'firebase/auth';
 import { auth, googleProvider } from './firebase';
+import { emailReauthMissingPassword, displayNameProblem } from '../utils/profileAccount';
 
 /** Detect standalone PWA mode */
 export const isStandalone =
@@ -169,21 +170,43 @@ export async function changePassword(currentPassword, newPassword) {
   await updatePassword(user, newPassword);
 }
 
-/** Reauthenticate user before destructive operations */
+/** Reauthenticate user before destructive operations.
+ *  Email accounts must pass the current password. Skipping that used to
+ *  no-op, wipe Firestore, and only then fail deleteUser with
+ *  auth/requires-recent-login — the data was already gone and the dialog
+ *  closed, so the failure looked silent. */
 export async function reauthenticate(currentPassword) {
   const user = auth.currentUser;
   if (!user) throw new Error('No user');
+  if (emailReauthMissingPassword(user, currentPassword)) {
+    const err = new Error('Recent login required');
+    err.code = 'auth/requires-recent-login';
+    throw err;
+  }
   const isEmailUser = user.providerData.some((p) => p.providerId === 'password');
-  if (isEmailUser && currentPassword) {
+  if (isEmailUser) {
     const credential = EmailAuthProvider.credential(user.email, currentPassword);
     await reauthenticateWithCredential(user, credential);
-  } else if (!isEmailUser) {
-    // Google accounts: Firebase's deleteUser() demands a RECENT sign-in
-    // (~5 minutes) and throws auth/requires-recent-login otherwise. Skipping
-    // reauth here meant a Google user signed in longer than that could NEVER
-    // delete their account — the wipe ran, then the auth deletion failed.
-    await reauthenticateWithPopup(user, googleProvider);
+    return;
   }
+  // Google accounts: Firebase's deleteUser() demands a RECENT sign-in
+  // (~5 minutes) and throws auth/requires-recent-login otherwise.
+  await reauthenticateWithPopup(user, googleProvider);
+}
+
+/** Rename the signed-in user. Firestore profile is updated by the caller. */
+export async function updateDisplayName(displayName) {
+  const user = auth.currentUser;
+  if (!user) throw new Error('No user');
+  const problem = displayNameProblem(displayName);
+  if (problem) {
+    const err = new Error(problem);
+    err.code = 'auth/invalid-display-name';
+    throw err;
+  }
+  const name = String(displayName).trim();
+  await updateProfile(user, { displayName: name });
+  return name;
 }
 
 /** Delete the authenticated user account */

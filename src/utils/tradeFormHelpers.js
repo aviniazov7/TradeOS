@@ -4,7 +4,7 @@
  * strategy/timeframe/trigger, and the SL→BE shortcut. The trade P&L/R math
  * itself stays in calculations.js — these only shape the INPUTS fed to it.
  */
-import { initialStopLoss } from './calculations';
+import { initialStopLoss, isStopOnRiskSide } from './calculations';
 
 const num = (v) => {
   const n = parseFloat(v);
@@ -214,13 +214,37 @@ export function breakevenStopValue(entryPrice) {
  * balance: only a fixed-$ limit can be checked. null when there is nothing
  * to report. limitLabel is the journal limit for display ("1%" / "$100").
  */
-export function riskBudgetCheck(risk, { riskType, riskValue, currentBalance } = {}) {
+export function riskBudgetCheck(risk, { riskType, riskValue, currentBalance, balanceKnown = null } = {}) {
   const r = num(risk);
   if (!(r > 0)) return null;
   const limit = num(riskValue);
   const limitLabel = limit > 0
     ? (riskType === 'percent' ? `${riskValue}%` : riskType === 'fixed' ? `$${riskValue}` : null)
     : null;
+  // A blank journal opening balance used to fall through to "current P&L" as
+  // the denominator, so "% of portfolio" was just this trade against itself.
+  // Callers pass balanceKnown:false in that case; we ask for a real balance
+  // instead of inventing a percent. A fixed-$ limit can still be checked.
+  if (balanceKnown === false && !(num(currentBalance) > 0)) {
+    if (riskType === 'fixed' && limit > 0 && r > limit) {
+      return {
+        percent: null,
+        exceeds: true,
+        missingBalance: true,
+        limitLabel,
+        severity: r > limit * 2 ? 'critical' : 'warning',
+        message: `סיכון $${r.toFixed(2)} — חורג מהמגבלה ($${riskValue})`,
+      };
+    }
+    return {
+      percent: null,
+      exceeds: false,
+      missingBalance: true,
+      limitLabel,
+      severity: 'info',
+      message: 'הגדר יתרה התחלתית בהגדרות היומן כדי לראות אחוז מהתיק',
+    };
+  }
   if (num(currentBalance) > 0) {
     const percent = (r / num(currentBalance)) * 100;
     const exceeds = riskType === 'percent' && limit > 0 && percent > limit;
@@ -245,6 +269,21 @@ export function riskBudgetCheck(risk, { riskType, riskValue, currentBalance } = 
     };
   }
   return null;
+}
+
+/**
+ * Notional sized from a dollar risk and a stop. null when the stop is missing
+ * or sits on the wrong side of the entry (long stop must be below, short
+ * above) — abs(entry − stop) would otherwise invent a position and a
+ * positive R from a stop that doesn't define risk.
+ */
+export function riskSizedNotional(direction, entry, stop, risk) {
+  const e = num(entry);
+  const s = num(stop);
+  const r = num(risk);
+  if (!(e > 0) || !(s > 0) || !(r > 0) || e === s) return null;
+  if (!isStopOnRiskSide(direction, e, s)) return null;
+  return (r * e) / Math.abs(e - s);
 }
 
 /** Dollar risk to the stop: size × |entry − stop| × point value (1 outside futures). */
@@ -301,18 +340,105 @@ export function plannedRewardRisk({ direction, entry, stop, targets } = {}) {
   return { tp1, blended: rMultiple(direction, entry, stop, price) };
 }
 
+function minuteMs(d) {
+  return Math.floor(d.getTime() / 60000);
+}
+
+function asDate(value) {
+  return value instanceof Date && Number.isFinite(value.getTime()) ? value : null;
+}
+
+/** Local midnight of `value`, for a date-only minDate (the time stays in filterTime). */
+export function startOfLocalDay(value) {
+  const d = asDate(value);
+  if (!d) return null;
+  const day = new Date(d);
+  day.setHours(0, 0, 0, 0);
+  return day;
+}
+
+/** True when `value`'s minute is strictly after `min`'s minute. */
+export function isAfterMinute(value, min) {
+  const a = asDate(value);
+  const b = asDate(min);
+  if (!a || !b) return false;
+  return minuteMs(a) > minuteMs(b);
+}
+
 /**
- * Time-slot filter for the entry/exit date pickers. The date pickers already
- * stop at today (maxDate), but on TODAY every time slot stayed selectable, so a
- * later hour could be picked and only failed on save. A slot is allowed when it
- * isn't in the future and (for the exit) isn't before the entry.
+ * True when `value` is missing or its clock minute is >= `min`'s minute.
+ * Same displayed minute counts as equal — an exit stamped a few seconds
+ * before the entry used to fail the save even though both read as 14:32.
+ */
+export function isOnOrAfterMinute(min, value) {
+  const a = asDate(min);
+  const b = asDate(value);
+  if (!a || !b) return true;
+  return minuteMs(b) >= minuteMs(a);
+}
+
+/**
+ * Entry-price message for the ticket. Empty, negative and zero each say
+ * what is actually wrong (they used to share "please enter an entry price").
+ */
+export function entryPriceProblem(raw) {
+  if (raw === '' || raw == null) return 'נא להזין מחיר כניסה';
+  const n = typeof raw === 'number' ? raw : parseFloat(raw);
+  if (!Number.isFinite(n)) return 'נא להזין מחיר כניסה';
+  if (n < 0) return 'מחיר הכניסה לא יכול להיות שלילי';
+  if (n === 0) return 'מחיר הכניסה חייב להיות גדול מ-0';
+  return null;
+}
+
+/**
+ * Time-slot filter for the entry/exit date pickers.
+ *
+ * Slots are compared by minute, and the minimum is applied per calendar day:
+ * on the entry's day a slot must be that minute or later; on a later day any
+ * non-future time is allowed. Comparing full timestamps (and passing the
+ * entry datetime as minDate) collapsed the list to the current minute,
+ * because the entry and "now" were the same minute and every 15-minute slot
+ * fell just before the entry or just after now.
+ *
  * @param {Date} time  the candidate slot (date + time)
  * @param {{ now?: Date, min?: Date|null }} [opts]
  */
 export function isSelectableTradeTime(time, { now = new Date(), min = null } = {}) {
-  const t = time instanceof Date ? time.getTime() : NaN;
-  if (!Number.isFinite(t)) return false;
-  if (t > now.getTime()) return false;
-  if (min instanceof Date && Number.isFinite(min.getTime()) && t < min.getTime()) return false;
+  const slot = asDate(time);
+  const clock = asDate(now);
+  if (!slot || !clock) return false;
+  if (minuteMs(slot) > minuteMs(clock)) return false;
+  const earliest = asDate(min);
+  if (!earliest) return true;
+  const slotDay = startOfLocalDay(slot).getTime();
+  const minDay = startOfLocalDay(earliest).getTime();
+  if (slotDay < minDay) return false;
+  if (slotDay === minDay && minuteMs(slot) < minuteMs(earliest)) return false;
   return true;
+}
+
+/**
+ * Extra clock times for the exit picker. 15-minute slots skip the current
+ * minute when it isn't on a quarter hour, so an exit opened in the same
+ * minute as the entry had no selectable time at all. Inject that minute
+ * (and the entry minute) — but only when they fall on `selected`'s day.
+ * react-datepicker keeps the injected Date's own calendar day on click, so
+ * a time from another day would jump the calendar.
+ */
+export function exitPickerInjectTimes(selected, entry, now = new Date()) {
+  const day = startOfLocalDay(selected || now);
+  if (!day) return [];
+  const dayMs = day.getTime();
+  const out = [];
+  const seen = new Set();
+  for (const candidate of [entry, now]) {
+    const d = asDate(candidate);
+    if (!d || startOfLocalDay(d).getTime() !== dayMs) continue;
+    const t = new Date(day);
+    t.setHours(d.getHours(), d.getMinutes(), 0, 0);
+    if (seen.has(t.getTime())) continue;
+    seen.add(t.getTime());
+    out.push(t);
+  }
+  return out;
 }

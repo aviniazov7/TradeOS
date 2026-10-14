@@ -1,5 +1,5 @@
 import { format } from 'date-fns';
-import { isClosedTrade, safePnl, calculatePnL, localDayKey, winRateOf, calculateMaxStreaks, tradeRMultiple } from './calculations';
+import { isClosedTrade, safePnl, calculatePnL, localDayKey, winRateOf, calculateMaxStreaks, signedTradeR } from './calculations';
 
 // Pure analytics for the journal's analytics tab. Extracted from TradeJournal
 // so the (heavy) computation only runs when that tab is open, and so it can be
@@ -136,18 +136,9 @@ export function computeJournalAnalytics(periodTrades) {
   return { avgWin, avgLoss, largestWin, largestLoss, pieData, dailyPnL, byPair, byTimeframe, byTag, byStrategy, maxWin, maxLoss, longWinRate, shortWinRate, longPnl, shortPnl, longCount: longTrades.length, shortCount: shortTrades.length, longWins, shortWins };
 }
 
-// Signed R of a closed trade: NET P&L / the dollars risked at entry (from the
-// ORIGINAL stop, so a stop trailed to breakeven keeps the trade's real R and
-// never makes it count as "no stop"). Legacy rows whose risk can't be priced
-// (no size on file) fall back to the stored rrRatio magnitude signed by the
-// P&L. null when the trade never had a defined risk.
-const signedR = (t) => {
-  const r = tradeRMultiple(t);
-  if (r !== null) return r;
-  const rr = Math.abs(Number(t.rrRatio));
-  if (!Number.isFinite(rr) || rr === 0) return null;
-  return safePnl(t) < 0 ? -rr : rr;
-};
+// Signed net R — the same number the trades table, the summary bar and the
+// analytics "סיכון/סיכוי" use. See signedTradeR.
+const signedR = signedTradeR;
 
 // Headline numbers for the trades tab's summary bar (follows the filters).
 export function summarizeTrades(trades) {

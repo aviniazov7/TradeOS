@@ -3,6 +3,7 @@ import { Copy, Check, TrendingUp, TrendingDown } from 'lucide-react';
 import Modal from '../shared/Modal';
 import { useJournalContext } from '../../contexts/JournalContext';
 import { formatNumber, LRM } from '../../utils/formatters';
+import { calculatePosition } from '../../utils/positionMath';
 import toast from 'react-hot-toast';
 
 const inputClass = 'w-full bg-bg-tertiary border border-border-primary rounded-lg px-3 py-2.5 text-sm text-text-primary outline-none focus:border-accent-primary transition-colors text-right';
@@ -37,56 +38,9 @@ export default function PositionCalculator({ isOpen, onClose }) {
 
   const update = (key, value) => setForm((f) => ({ ...f, [key]: value }));
 
-  // Real-time calculations
-  const results = useMemo(() => {
-    const balance = parseFloat(form.balance);
-    const entry = parseFloat(form.entryPrice);
-    const sl = parseFloat(form.stopLoss);
-    const lev = parseInt(form.leverage) || 1;
-    const target = parseFloat(form.targetPrice);
-    const riskVal = parseFloat(form.riskValue);
-
-    if (!entry || !sl || entry === sl) return null;
-
-    // Risk amount
-    let riskAmount;
-    if (form.riskType === 'percent' && balance > 0 && riskVal > 0) {
-      riskAmount = (riskVal / 100) * balance;
-    } else if (form.riskType === 'fixed' && riskVal > 0) {
-      riskAmount = riskVal;
-    } else {
-      return null;
-    }
-
-    const slDistance = Math.abs(entry - sl);
-    const slDistancePercent = (slDistance / entry) * 100;
-    const positionSize = (riskAmount * entry) / slDistance;
-    const quantity = positionSize / entry;
-    const margin = positionSize / lev;
-    const riskPercent = balance > 0 ? (riskAmount / balance) * 100 : null;
-
-    let rrRatio = null;
-    let potentialProfit = null;
-    if (target > 0 && target !== entry) {
-      const reward = Math.abs(target - entry);
-      rrRatio = reward / slDistance;
-      potentialProfit = form.direction === 'long'
-        ? (target - entry) * quantity
-        : (entry - target) * quantity;
-    }
-
-    return {
-      riskAmount,
-      positionSize,
-      quantity,
-      margin,
-      slDistancePercent,
-      riskPercent,
-      rrRatio,
-      potentialProfit,
-      potentialLoss: -riskAmount,
-    };
-  }, [form]);
+  // Real-time calculations. A stop on the wrong side is an error object,
+  // not a sized position — |entry − stop| used to print a positive R:R.
+  const results = useMemo(() => calculatePosition(form), [form]);
 
   const copyValue = (key, val) => {
     navigator.clipboard.writeText(String(val));
@@ -95,7 +49,7 @@ export default function PositionCalculator({ isOpen, onClose }) {
   };
 
   const copyAll = () => {
-    if (!results) return;
+    if (!results || results.error) return;
     const lines = [
       `גודל פוזיציה: $${formatNumber(results.positionSize)}`,
       `כמות: ${results.quantity.toFixed(6)}`,
@@ -110,7 +64,7 @@ export default function PositionCalculator({ isOpen, onClose }) {
     toast.success('הועתק!');
   };
 
-  const resultRows = results ? [
+  const resultRows = results && !results.error ? [
     { key: 'risk', label: 'סכום סיכון', value: `$${formatNumber(results.riskAmount)}`, color: 'text-loss', raw: results.riskAmount.toFixed(2) },
     { key: 'size', label: 'גודל פוזיציה', value: `$${formatNumber(results.positionSize)}`, color: 'text-accent-primary', raw: results.positionSize.toFixed(2) },
     { key: 'qty', label: 'כמות', value: results.quantity.toFixed(6), color: 'text-text-primary', raw: results.quantity.toFixed(6) },
@@ -183,9 +137,14 @@ export default function PositionCalculator({ isOpen, onClose }) {
           </div>
           <div>
             <label className={labelClass}>סטופ לוס</label>
-            <input type="number" step="any" value={form.stopLoss} onChange={(e) => update('stopLoss', e.target.value)} className={inputClass} placeholder="0.00" />
+            <input type="number" step="any" value={form.stopLoss} onChange={(e) => update('stopLoss', e.target.value)}
+              aria-invalid={results?.error ? true : undefined}
+              className={`${inputClass} ${results?.error ? 'border-loss' : ''}`} placeholder="0.00" />
           </div>
         </div>
+        {results?.error && (
+          <p role="alert" className="text-xs text-loss">{results.error}</p>
+        )}
 
         {/* Leverage + Target */}
         <div className="grid grid-cols-2 gap-2">
@@ -200,7 +159,7 @@ export default function PositionCalculator({ isOpen, onClose }) {
         </div>
 
         {/* Results */}
-        {resultRows.length > 0 && (
+        {resultRows.length > 0 && !results?.error && (
           <div className="bg-bg-tertiary rounded-xl p-3 space-y-0">
             <div className="flex items-center justify-between mb-2">
               <span className="text-xs font-semibold text-text-secondary">תוצאות</span>

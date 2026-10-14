@@ -89,7 +89,7 @@ export default function JournalAnalyticsTab({
               icon={DollarSign} color={stats.totalPnL >= 0 ? 'text-profit' : 'text-loss'} />
             <StatCard label="אחוז הצלחה" value={`${stats.winRate.toFixed(1)}%`} subtitle={`${stats.winCount}W ${stats.lossCount}L`}
               icon={Target} color="text-accent-primary" />
-            <StatCard label="תוחלת" value={formatCurrency(stats.expectancy)} subtitle={`ממוצע ${stats.avgRR.toFixed(2)}R`}
+            <StatCard label="תוחלת" value={formatCurrency(stats.expectancy)} subtitle={`R נטו ממוצע לרווחים ${stats.avgRR.toFixed(2)}`}
               icon={Zap} color={stats.expectancy >= 0 ? 'text-profit' : 'text-loss'} />
           </motion.div>
 
@@ -106,7 +106,7 @@ export default function JournalAnalyticsTab({
                 { label: 'התאוששות', value: stats.recoveryFactor.toFixed(2), color: stats.recoveryFactor >= 1 ? 'text-profit' : 'text-loss' },
                 // Percent only against real capital; otherwise the dollar drawdown.
                 { label: 'ירידה מקס׳', value: stats.maxDrawdown == null ? (stats.maxDrawdownAbsolute > 0 ? formatCurrency(-stats.maxDrawdownAbsolute) : '$0.00') : `${LRM}-${stats.maxDrawdown.toFixed(1)}%`, color: 'text-loss' },
-                { label: 'סיכון/סיכוי', value: `1:${stats.avgRR.toFixed(2)}` },
+                { label: 'סיכון/סיכוי נטו', value: `1:${stats.avgRR.toFixed(2)}` },
                 { label: 'ימי מסחר', value: stats.tradingDays },
                 { label: 'עסקאות/יום', value: stats.tradesPerDay.toFixed(1) },
                 { label: 'משך ממוצע', value: formatDuration(stats.avgDurationHours) },

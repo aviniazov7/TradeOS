@@ -1,6 +1,7 @@
 import { forwardRef } from 'react';
 import { getExchangeLogo } from '../../utils/constants';
-import { formatCurrency, formatPercent, formatPrice, formatRR, formatDate } from '../../utils/formatters';
+import { formatCurrency, formatPercent, formatPrice, formatSignedR, formatDate } from '../../utils/formatters';
+import { signedTradeR, tradeNetPercent } from '../../utils/calculations';
 import { getCoinIcon } from '../shared/CoinIcon';
 
 const TradeShareCard = forwardRef(function TradeShareCard({ trade, options = {} }, ref) {
@@ -13,6 +14,7 @@ const TradeShareCard = forwardRef(function TradeShareCard({ trade, options = {} 
   } = options;
 
   const pnl = trade.netPnl ?? trade.pnl ?? 0;
+  const netR = signedTradeR(trade);
   const isWin = pnl > 0;
   const isLong = trade.direction === 'long';
   const accentColor = isWin ? '#22c55e' : '#ef4444';
@@ -152,12 +154,12 @@ const TradeShareCard = forwardRef(function TradeShareCard({ trade, options = {} 
             <div style={{ display: 'flex', justifyContent: 'center', gap: 16, marginTop: showPnl ? 6 : 0 }}>
               {showPercent && (
                 <span style={{ fontSize: showPnl ? 15 : 32, color: accentColor, fontWeight: showPnl ? 600 : 800 }}>
-                  {formatPercent(trade.pnlPercent)}
+                  {formatPercent(tradeNetPercent(trade))}
                 </span>
               )}
-              {showRR && trade.rrRatio > 0 && (
+              {showRR && netR != null && (
                 <span style={{ fontSize: showPnl ? 15 : 32, color: accentColor, fontWeight: showPnl ? 600 : 800 }}>
-                  {formatRR(trade.rrRatio, pnl)}
+                  {formatSignedR(netR)}
                 </span>
               )}
             </div>

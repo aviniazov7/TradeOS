@@ -173,3 +173,11 @@ export function formatRR(value, pnl) {
   const isLoss = pnl !== undefined && pnl < 0;
   return `${LRM}${isLoss ? '-' : ''}${value.toFixed(2)}R`;
 }
+
+/** A signed net R (`+1.80R` is not used — wins omit the plus, matching formatRR). */
+export function formatSignedR(value) {
+  if (value == null || !Number.isFinite(Number(value))) return '–';
+  const n = Number(value);
+  const sign = n < 0 ? '-' : '';
+  return `${LRM}${sign}${Math.abs(n).toFixed(2)}R`;
+}

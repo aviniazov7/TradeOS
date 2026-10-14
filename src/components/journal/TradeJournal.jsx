@@ -292,6 +292,15 @@ export default function TradeJournal() {
   // only equals the wallet when period === 'all', so reading it directly would
   // make the headline swing whenever the user changes the period filter.
   const displayedCurrentBalance = balanceIsLive ? liveExchangeBalance : stats.currentBalance;
+  // "% of portfolio" on the trade ticket. The account is the journal's opening
+  // balance plus realized P&L (a linked exchange already reports that total).
+  // A blank opening balance must NOT fall through to "current P&L" — that
+  // made the percent a ratio of this trade to itself.
+  const openingBalance = Number(activeJournal?.initialBalance) || 0;
+  const formBalanceKnown = balanceIsLive || openingBalance > 0;
+  const formBalance = balanceIsLive
+    ? liveExchangeBalance
+    : (openingBalance > 0 ? openingBalance + totalClosedPnL : 0);
 
   // Import a single exchange-synced trade into the active journal. Shared by
   // the exchange tab (ExchangeSettings) and the trades-tab proposal banner
@@ -779,7 +788,7 @@ export default function TradeJournal() {
       )}>
         {formMounted && (
           <TradeForm isOpen={formOpen} onClose={handleCloseForm} trade={editingTrade} onSave={handleSave}
-            riskSettings={{ riskType: activeJournal?.riskType, riskValue: activeJournal?.riskValue, currentBalance: displayedCurrentBalance }}
+            riskSettings={{ riskType: activeJournal?.riskType, riskValue: activeJournal?.riskValue, currentBalance: formBalance, balanceKnown: formBalanceKnown }}
             journalAssetClass={activeJournal?.assetClass || 'crypto'}
             livePrices={prices} />
         )}
