@@ -1,4 +1,5 @@
 import { Rocket, BookOpen, Sparkles, Brain } from 'lucide-react';
+import { exchangeSyncBlurb } from '../exchange/exchangeConfig';
 
 // Four short slides, one brand colour. Each one says what the user gets, in
 // three concrete lines — the last slide hands off to a real first action.
@@ -8,7 +9,7 @@ export const ONBOARDING_STEPS = [
     title: 'ברוכים הבאים ל-TradeOS',
     description: 'כל המסחר שלך במקום אחד: מתעדים, מודדים ומשתפרים — עסקה אחרי עסקה.',
     highlights: [
-      'חיבור לבורסה ומשיכת עסקאות אוטומטית',
+      exchangeSyncBlurb(),
       'יומן מסחר מלא עם ניתוחים מקצועיים',
       'סוכן AI שמכיר כל עסקה שלך',
     ],

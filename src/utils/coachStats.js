@@ -3,6 +3,7 @@
 // history (and adds previous-month comparison + extended breakdowns).
 
 import { isClosedTrade, winRateOf } from './calculations';
+import { conclusionsReady, directionLabelHe } from './coachCopy';
 
 const tradeMs = (t) => {
   const d = t.exitDate || t.entryDate || t.createdAt;
@@ -92,7 +93,8 @@ export function buildCoachStats(allTrades, { premium = false } = {}) {
   const sortedByPnl = [...scope].sort((a, b) => pnlOf(b) - pnlOf(a));
   const compactTrade = (t) => ({
     pair: t.pair || t.symbol || '?',
-    direction: t.direction || null,
+    // Hebrew so the model doesn't echo "short" back into the report.
+    direction: directionLabelHe(t.direction) || null,
     pnl: Math.round(pnlOf(t) * 100) / 100,
     // rrRatio, not t.rr (which never existed — the coach always got null and
     // couldn't reason about R). Math.abs normalizes legacy signed imports.
@@ -101,9 +103,12 @@ export function buildCoachStats(allTrades, { premium = false } = {}) {
     session: t.session || null,
   });
 
+  const summary = summarize(scope);
   const out = {
     scope: premium ? 'all-time' : 'this-month',
-    summary: summarize(scope),
+    // Under 5 closed trades the coach may describe the numbers, not grade them.
+    sampleTooSmall: !conclusionsReady(summary?.total),
+    summary,
     byPair: topGroups(scope, (t) => t.pair || t.symbol, premium ? 8 : 5),
     byDirection: topGroups(scope, (t) => t.direction, 2),
     bestTrades: sortedByPnl.slice(0, 3).map(compactTrade),
