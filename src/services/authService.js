@@ -17,6 +17,7 @@ import {
   signOut,
   sendPasswordResetEmail,
   sendEmailVerification,
+  browserPopupRedirectResolver,
 } from 'firebase/auth';
 import { auth, googleProvider } from './firebase';
 import { emailReauthMissingPassword, displayNameProblem } from '../utils/profileAccount';
@@ -99,27 +100,33 @@ export function onAuthChange(callback) {
 // the auth iframe, so a normal visit to /login must not call it.
 const GOOGLE_REDIRECT_FLAG = 'tradeos-google-redirect';
 
-// The resolver class, plus its auth iframe, warmed after first paint on
-// /login. signInWithPopup must see this already set: awaiting the import
-// inside the tap makes Safari drop the user-gesture and block window.open.
-let resolverInstance = null;
-let resolverPromise = null;
+// True only after the auth iframe was warmed on Firebase's cached instance of
+// browserPopupRedirectResolver. signInWithPopup's third argument is that
+// class — _getInstance() asserts `cls instanceof Function` and throws
+// "Expected a class definition" if it receives an instance, a module
+// namespace, or a Promise. Awaiting a dynamic import inside the tap is what
+// made Safari drop window.open, so the class is imported statically (it does
+// not load the iframe) and the iframe is warmed after first paint.
+let resolverReady = false;
+let warmPromise = null;
 
 export function preloadPopupResolver() {
-  if (!resolverPromise) {
-    resolverPromise = import('firebase/auth').then(async (mod) => {
-      const instance = new mod.browserPopupRedirectResolver();
+  if (!warmPromise) {
+    warmPromise = import('@firebase/auth/internal').then(async (mod) => {
       try {
-        // Loads the /__/auth iframe now, so the tap only opens the popup.
-        if (typeof instance._initialize === 'function') await instance._initialize(auth);
+        // Same class, same module cache as signInWithPopup, so this is the
+        // instance the tap will reuse. A separately `new`'d resolver is not.
+        const instance = mod._getInstance(browserPopupRedirectResolver);
+        if (typeof instance?._initialize === 'function') await instance._initialize(auth);
+        resolverReady = true;
       } catch {
-        // signInWithPopup initializes again if this warm-up failed.
+        // Leave resolverReady false. The tap redirects instead of opening a
+        // popup after a warm-up that did not finish.
       }
-      resolverInstance = instance;
-      return instance;
-    });
+      return browserPopupRedirectResolver;
+    }).catch(() => browserPopupRedirectResolver);
   }
-  return resolverPromise;
+  return warmPromise;
 }
 
 function markGoogleRedirect() {
@@ -127,7 +134,7 @@ function markGoogleRedirect() {
 }
 
 function withPopupResolver(run) {
-  if (resolverInstance) return run(resolverInstance);
+  if (resolverReady) return run(browserPopupRedirectResolver);
   return preloadPopupResolver().then(run);
 }
 
@@ -148,7 +155,7 @@ export function handleRedirectResult() {
 export function loginWithGoogle() {
   return startGoogleSignIn({
     standalone: isStandalone,
-    resolver: resolverInstance,
+    resolver: resolverReady ? browserPopupRedirectResolver : null,
     popup: (resolver) => signInWithPopup(auth, googleProvider, resolver),
     redirect: (resolver) => signInWithRedirect(auth, googleProvider, resolver),
     loadResolver: preloadPopupResolver,

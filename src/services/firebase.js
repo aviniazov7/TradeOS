@@ -60,8 +60,9 @@ try {
 //
 // No popupRedirectResolver here. Passing it makes Firebase inject the
 // same-origin /__/auth iframe (and its gapi script) during the first paint
-// of /login. LoginPage preloads it after paint (authService.preloadPopupResolver)
-// so the Google tap can call signInWithPopup without awaiting the import.
+// of /login. LoginPage warms that iframe after paint. The tap still passes
+// the browserPopupRedirectResolver class into signInWithPopup — Firebase
+// rejects an instance ("Expected a class definition").
 export const auth = initializeAuth(app, {
   persistence: browserLocalPersistence,
 });
