@@ -169,9 +169,9 @@ export default function StrategyTab({ smartCountByMarket = {}, smartLoading = fa
             </div>
           ) : (
             <m.div className="space-y-2" variants={staggerContainer} initial="initial" animate="animate">
-              {matches.slice(0, 30).map((m) => (
-                <m.div key={m.market.conditionId} variants={staggerItem}>
-                  <MatchRow match={m} onOpen={() => navigate(`/polymarket/market/${m.market.conditionId}`, { state: { market: m.market } })} />
+              {matches.slice(0, 30).map((match) => (
+                <m.div key={match.market.conditionId} variants={staggerItem}>
+                  <MatchRow match={match} onOpen={() => navigate(`/polymarket/market/${match.market.conditionId}`, { state: { market: match.market } })} />
                 </m.div>
               ))}
             </m.div>

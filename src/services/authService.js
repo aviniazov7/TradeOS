@@ -20,6 +20,7 @@ import {
 } from 'firebase/auth';
 import { auth, googleProvider } from './firebase';
 import { emailReauthMissingPassword, displayNameProblem } from '../utils/profileAccount';
+import { startGoogleSignIn } from '../utils/googleSignInFlow';
 
 /** Detect standalone PWA mode */
 export const isStandalone =
@@ -98,9 +99,36 @@ export function onAuthChange(callback) {
 // the auth iframe, so a normal visit to /login must not call it.
 const GOOGLE_REDIRECT_FLAG = 'tradeos-google-redirect';
 
-async function withPopupResolver(run) {
-  const { browserPopupRedirectResolver } = await import('firebase/auth');
-  return run(browserPopupRedirectResolver);
+// The resolver class, plus its auth iframe, warmed after first paint on
+// /login. signInWithPopup must see this already set: awaiting the import
+// inside the tap makes Safari drop the user-gesture and block window.open.
+let resolverInstance = null;
+let resolverPromise = null;
+
+export function preloadPopupResolver() {
+  if (!resolverPromise) {
+    resolverPromise = import('firebase/auth').then(async (mod) => {
+      const instance = new mod.browserPopupRedirectResolver();
+      try {
+        // Loads the /__/auth iframe now, so the tap only opens the popup.
+        if (typeof instance._initialize === 'function') await instance._initialize(auth);
+      } catch {
+        // signInWithPopup initializes again if this warm-up failed.
+      }
+      resolverInstance = instance;
+      return instance;
+    });
+  }
+  return resolverPromise;
+}
+
+function markGoogleRedirect() {
+  try { sessionStorage.setItem(GOOGLE_REDIRECT_FLAG, '1'); } catch { /* private mode */ }
+}
+
+function withPopupResolver(run) {
+  if (resolverInstance) return run(resolverInstance);
+  return preloadPopupResolver().then(run);
 }
 
 /** Handle redirect result (call once on app init). No-ops unless this tab
@@ -113,15 +141,19 @@ export function handleRedirectResult() {
     .finally(() => { try { sessionStorage.removeItem(GOOGLE_REDIRECT_FLAG); } catch { /* ignore */ } });
 }
 
-/** Sign in with Google — redirect in PWA, popup otherwise.
- *  The popup/redirect resolver (and the gapi iframe it injects) loads here,
- *  on the tap, not when the login page first paints. */
+/** Sign in with Google — popup in a browser, redirect in a standalone PWA.
+ *  The popup runs in the tap's turn when the resolver was preloaded. If it
+ *  is not ready yet, this redirects instead of opening a popup after an
+ *  await (Safari blocks that and the UI showed "הדפדפן חסם את חלון ההתחברות"). */
 export function loginWithGoogle() {
-  if (isStandalone) {
-    try { sessionStorage.setItem(GOOGLE_REDIRECT_FLAG, '1'); } catch { /* private mode */ }
-    return withPopupResolver((resolver) => signInWithRedirect(auth, googleProvider, resolver));
-  }
-  return withPopupResolver((resolver) => signInWithPopup(auth, googleProvider, resolver));
+  return startGoogleSignIn({
+    standalone: isStandalone,
+    resolver: resolverInstance,
+    popup: (resolver) => signInWithPopup(auth, googleProvider, resolver),
+    redirect: (resolver) => signInWithRedirect(auth, googleProvider, resolver),
+    loadResolver: preloadPopupResolver,
+    markRedirect: markGoogleRedirect,
+  });
 }
 
 /** Register with email and password */

@@ -7,6 +7,7 @@ import { authErrorHe, authErrorMessage, isSilentAuthError } from '../../utils/au
 // Live checklist on sign-up, so the user sees what is missing before pressing
 // the button instead of after.
 import { PASSWORD_RULES, passwordProblem } from '../../utils/passwordPolicy';
+import { preloadPopupResolver } from '../../services/authService';
 
 // What the product does, in three lines — shown beside the form on wide screens.
 const FEATURES = [
@@ -93,6 +94,28 @@ export default function LoginPage() {
   // happened. Cleared as soon as the user edits a field or switches tab.
   const [formError, setFormError] = useState('');
   const [googleLoading, setGoogleLoading] = useState(false);
+
+  // Warm the Google popup resolver after first paint, and again if the
+  // pointer reaches the button first. The tap itself must not await the
+  // import — Safari blocks window.open once the gesture has been awaited.
+  useEffect(() => {
+    let idleId = 0;
+    let timer = 0;
+    const start = () => { preloadPopupResolver(); };
+    const schedule = () => {
+      if (typeof requestIdleCallback === 'function') {
+        idleId = requestIdleCallback(start, { timeout: 1500 });
+      }
+      timer = window.setTimeout(start, 200);
+    };
+    if (document.readyState === 'complete') schedule();
+    else window.addEventListener('load', schedule, { once: true });
+    return () => {
+      window.removeEventListener('load', schedule);
+      if (idleId && typeof cancelIdleCallback === 'function') cancelIdleCallback(idleId);
+      window.clearTimeout(timer);
+    };
+  }, []);
 
   // After a successful login, honour ?redirect=… (used by the coupon share
   // link) but only allow same-app relative paths to avoid open-redirects.
@@ -220,7 +243,11 @@ export default function LoginPage() {
           </div>
 
           <button
+            type="button"
             onClick={handleGoogle}
+            onPointerEnter={() => preloadPopupResolver()}
+            onFocus={() => preloadPopupResolver()}
+            onTouchStart={() => preloadPopupResolver()}
             disabled={googleLoading}
             className="mt-5 w-full h-11 flex items-center justify-center gap-3 bg-white text-gray-900 text-sm font-bold rounded-xl hover:bg-gray-100 transition-colors cursor-pointer disabled:opacity-60"
           >

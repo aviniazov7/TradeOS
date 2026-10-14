@@ -109,7 +109,7 @@ export default function Dashboard() {
       return !v;
     });
   };
-  const m = (val) => hideBalances ? '••••' : val;
+  const maskAmount = (val) => hideBalances ? '••••' : val;
   const { trades: allTrades, loading: tradesLoading } = useTrades(); // all trades, no journal filter
   const { backtests: allBacktests, loading: backtestsLoading } = useBacktests();
   const backtests = useMemo(() => allBacktests.filter((b) => b.backtestJournalId), [allBacktests]);
@@ -509,7 +509,7 @@ export default function Dashboard() {
               <>
                 <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3">
                   {journalStats.slice(0, 3).map((j) => (
-                    <JournalTile key={j.id} j={j} mask={m} onOpen={() => openJournal(j)} />
+                    <JournalTile key={j.id} j={j} mask={maskAmount} onOpen={() => openJournal(j)} />
                   ))}
                 </div>
                 <AnimatePresence initial={false}>
@@ -523,7 +523,7 @@ export default function Dashboard() {
                     >
                       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3 mt-3">
                         {journalStats.slice(3).map((j) => (
-                          <JournalTile key={j.id} j={j} mask={m} onOpen={() => openJournal(j)} />
+                          <JournalTile key={j.id} j={j} mask={maskAmount} onOpen={() => openJournal(j)} />
                         ))}
                       </div>
                     </m.div>

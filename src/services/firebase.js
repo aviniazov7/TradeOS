@@ -59,9 +59,9 @@ try {
 // to never resolve. Use only localStorage to avoid the hang.
 //
 // No popupRedirectResolver here. Passing it makes Firebase inject the
-// same-origin /__/auth iframe (and its gapi script) on every page, including
-// the logged-out login screen. The resolver is loaded only when the user
-// actually starts a Google sign-in — see authService.loginWithGoogle.
+// same-origin /__/auth iframe (and its gapi script) during the first paint
+// of /login. LoginPage preloads it after paint (authService.preloadPopupResolver)
+// so the Google tap can call signInWithPopup without awaiting the import.
 export const auth = initializeAuth(app, {
   persistence: browserLocalPersistence,
 });
