@@ -5,12 +5,12 @@ import {
   formatCurrency,
   formatPrice,
   formatPercent,
-  formatRR,
+  formatSignedR,
   formatDuration,
   formatDateTime,
 } from '../../utils/formatters';
 import { MISTAKE_LABELS } from '../../utils/constants';
-import { isClosedTrade } from '../../utils/calculations';
+import { isClosedTrade, signedTradeR, tradeNetPercent } from '../../utils/calculations';
 import { safeHttpUrl } from '../../utils/urls';
 import TradeExcursion from './TradeExcursion';
 import {
@@ -189,13 +189,13 @@ export default function TradeDetailModal({
       cls: `text-2xl sm:text-3xl font-bold ${pnlColor(pnl)}`,
     },
     {
-      label: 'תשואה',
-      value: status === 'open' ? '—' : formatPercent(trade.pnlPercent),
-      cls: `text-xl sm:text-2xl font-bold ${status === 'open' ? 'text-text-primary' : pnlColor(trade.pnlPercent)}`,
+      label: 'תשואה נטו',
+      value: status === 'open' ? '—' : formatPercent(tradeNetPercent(trade)),
+      cls: `text-xl sm:text-2xl font-bold ${status === 'open' ? 'text-text-primary' : pnlColor(tradeNetPercent(trade))}`,
     },
     {
-      label: 'R-Multiple',
-      value: formatRR(trade.rrRatio, pnl),
+      label: 'R נטו',
+      value: status === 'open' ? '—' : formatSignedR(signedTradeR(trade)),
       cls: 'text-xl sm:text-2xl font-bold text-text-primary',
     },
   ];

@@ -24,6 +24,8 @@ import {
   initialRiskUsd,
   tradeRMultiple,
   tradeRewardRisk,
+  signedTradeR,
+  tradeNetPercent,
   positionUnits,
   calculateAvgRR,
   computeDrawdown,
@@ -313,6 +315,20 @@ describe('R with a moved stop — measured against the ORIGINAL stop', () => {
     expect(calculateAvgRR([stale])).toBe(2);
     // Legacy rows without prices keep their stored value.
     expect(calculateAvgRR([{ result: 'win', rrRatio: 1.5 }])).toBe(1.5);
+  });
+
+  it('calculateAvgRR and the table R use NET P&L, so fees shrink the R', () => {
+    // Gross move 100 → 120 is 2R on a $100 risk, but $20 fees leave net +180 → 1.8R.
+    const win = { ...base, result: 'win', pnl: 200, netPnl: 180, fees: 20, rrRatio: 2 };
+    expect(signedTradeR(win)).toBeCloseTo(1.8, 9);
+    expect(calculateAvgRR([win])).toBeCloseTo(1.8, 9);
+    // Gross +10% on $1000 notional, $20 fees → net 180 / 1000 = 18%.
+    expect(tradeNetPercent(win)).toBeCloseTo(18, 9);
+  });
+
+  it('tradeNetPercent falls back to scaling the stored percent when size is missing', () => {
+    const t = { pnl: 10, netPnl: 8, pnlPercent: 10, fees: 2 };
+    expect(tradeNetPercent(t)).toBeCloseTo(8, 9);
   });
 
   it('tradeRewardRisk uses the weighted exit of partial exits', () => {

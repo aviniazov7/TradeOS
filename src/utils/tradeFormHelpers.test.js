@@ -1,6 +1,12 @@
 import { describe, it, expect } from 'vitest';
 import {
   isSelectableTradeTime,
+  isOnOrAfterMinute,
+  isAfterMinute,
+  startOfLocalDay,
+  exitPickerInjectTimes,
+  entryPriceProblem,
+  riskSizedNotional,
   aggregateFills,
   exitsClosedPercent,
   normalizeCommissions,
@@ -230,6 +236,24 @@ describe('ticket summary', () => {
     expect(riskBudgetCheck(0, { riskType: 'percent', riskValue: 1, currentBalance: 1000 })).toBeNull();
     expect(riskBudgetCheck('', undefined)).toBeNull();
   });
+  it('riskBudgetCheck: a blank opening balance is a hint, not a percent of P&L', () => {
+    const r = riskBudgetCheck(50, { riskType: 'percent', riskValue: 1, currentBalance: 0, balanceKnown: false });
+    expect(r.missingBalance).toBe(true);
+    expect(r.percent).toBeNull();
+    expect(r.message).toMatch(/יתרה התחלתית/);
+  });
+  it('riskSizedNotional ignores a stop on the wrong side', () => {
+    expect(riskSizedNotional('long', 100, 95, 50)).toBeCloseTo(1000, 6);
+    expect(riskSizedNotional('long', 100, 110, 50)).toBeNull();
+    expect(riskSizedNotional('short', 100, 90, 50)).toBeNull();
+    expect(riskSizedNotional('short', 100, 110, 50)).toBeCloseTo(500, 6);
+  });
+  it('entryPriceProblem distinguishes empty, negative and zero', () => {
+    expect(entryPriceProblem('')).toMatch(/להזין/);
+    expect(entryPriceProblem('-3')).toMatch(/שלילי/);
+    expect(entryPriceProblem('0')).toMatch(/גדול מ-0/);
+    expect(entryPriceProblem('100.5')).toBeNull();
+  });
   it('riskToStop and stopDistancePct', () => {
     expect(riskToStop({ entry: 100, stop: 95, units: 4 })).toBe(20);
     // ES: 10 points × $50 × 2 contracts
@@ -272,8 +296,35 @@ describe('isSelectableTradeTime', () => {
     expect(isSelectableTradeTime(new Date(2026, 9, 9, 9, 45), { now, min })).toBe(false);
     expect(isSelectableTradeTime(new Date(2026, 9, 9, 10, 0), { now, min })).toBe(true);
   });
+  it('treats the same minute as the entry as selectable', () => {
+    const min = new Date(2026, 9, 9, 10, 0, 40);
+    expect(isSelectableTradeTime(new Date(2026, 9, 9, 10, 0, 0), { now, min })).toBe(true);
+    expect(isOnOrAfterMinute(min, new Date(2026, 9, 9, 10, 0, 5))).toBe(true);
+    expect(isOnOrAfterMinute(min, new Date(2026, 9, 9, 9, 59, 50))).toBe(false);
+  });
+  it('allows any non-future time on a day after the entry', () => {
+    const min = new Date(2026, 9, 8, 18, 0);
+    expect(isSelectableTradeTime(new Date(2026, 9, 9, 9, 0), { now, min })).toBe(true);
+    expect(isSelectableTradeTime(new Date(2026, 9, 9, 15, 0), { now, min })).toBe(false);
+    expect(startOfLocalDay(min).getDate()).toBe(8);
+    expect(isAfterMinute(new Date(2026, 9, 9, 14, 31), now)).toBe(true);
+    expect(isAfterMinute(now, now)).toBe(false);
+  });
   it('rejects invalid input', () => {
     expect(isSelectableTradeTime(null, { now })).toBe(false);
     expect(isSelectableTradeTime(new Date('x'), { now })).toBe(false);
+  });
+  it('injects the off-grid minute so the same minute as entry stays pickable', () => {
+    const entry = new Date(2026, 9, 9, 14, 32, 40);
+    const clock = new Date(2026, 9, 9, 14, 32, 55);
+    const times = exitPickerInjectTimes(clock, entry, clock);
+    expect(times).toHaveLength(1);
+    expect(times[0].getHours()).toBe(14);
+    expect(times[0].getMinutes()).toBe(32);
+    expect(isSelectableTradeTime(times[0], { now: clock, min: entry })).toBe(true);
+    // 15-minute neighbours are the ones the picker used to leave as the only choices.
+    expect(isSelectableTradeTime(new Date(2026, 9, 9, 14, 30), { now: clock, min: entry })).toBe(false);
+    expect(isSelectableTradeTime(new Date(2026, 9, 9, 14, 45), { now: clock, min: entry })).toBe(false);
+    expect(exitPickerInjectTimes(new Date(2026, 9, 10, 9, 0), entry, clock)).toEqual([]);
   });
 });
