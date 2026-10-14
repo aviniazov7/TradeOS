@@ -1,6 +1,6 @@
 import UserAvatar from '../shared/UserAvatar';
 import { Link } from 'react-router-dom';
-import { motion } from 'framer-motion';
+import { m } from 'framer-motion';
 import { Menu, X } from 'lucide-react';
 import PriceTicker from './PriceTicker';
 import GlobalSearch from './GlobalSearch';
@@ -19,12 +19,12 @@ export default function Header({ onToggleSidebar, sidebarOpen }) {
         aria-expanded={sidebarOpen}
         className="p-1.5 rounded-lg text-text-muted hover:text-text-primary hover:bg-bg-tertiary transition-colors cursor-pointer shrink-0"
       >
-        <motion.div
+        <m.div
           animate={{ rotate: sidebarOpen ? 180 : 0 }}
           transition={{ duration: 0.3, ease: 'easeInOut' }}
         >
           {sidebarOpen ? <X className="w-5 h-5" /> : <Menu className="w-5 h-5" />}
-        </motion.div>
+        </m.div>
       </button>
 
       {/* Global Search */}

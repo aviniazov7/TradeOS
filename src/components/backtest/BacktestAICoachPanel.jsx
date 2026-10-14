@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { motion } from 'framer-motion';
+import { m } from 'framer-motion';
 import { Crown, RefreshCw, AlertCircle, Lock, Sparkles, TrendingUp, TrendingDown, Target, Lightbulb, MessageSquareText } from 'lucide-react';
 import { LRM } from '../../utils/formatters';
 import { winRateOf } from '../../utils/calculations';
@@ -206,12 +206,12 @@ export default function BacktestAICoachPanel({ backtests }) {
       )}
 
       {sections.length > 0 && !loading && (
-        <motion.div initial={{ opacity: 0, y: 6 }} animate={{ opacity: 1, y: 0 }} className="space-y-3">
+        <m.div initial={{ opacity: 0, y: 6 }} animate={{ opacity: 1, y: 0 }} className="space-y-3">
           {sections.map((s, idx) => {
             const meta = SECTION_META[s.title] || DEFAULT_META;
             const { Icon } = meta;
             return (
-              <motion.div key={`${s.title}-${idx}`} initial={{ opacity: 0, y: 6 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.05 * idx }}
+              <m.div key={`${s.title}-${idx}`} initial={{ opacity: 0, y: 6 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.05 * idx }}
                 className="rounded-2xl border border-border-primary bg-bg-secondary p-4">
                 <h3 className={`flex items-center gap-2 text-sm font-bold ${meta.color}`}>
                   <span className={`w-7 h-7 grid place-items-center rounded-lg ${meta.bg}`}>{Icon && <Icon className="w-4 h-4" />}</span>
@@ -225,10 +225,10 @@ export default function BacktestAICoachPanel({ backtests }) {
                     </li>
                   ))}
                 </ul>
-              </motion.div>
+              </m.div>
             );
           })}
-        </motion.div>
+        </m.div>
       )}
     </div>
   );

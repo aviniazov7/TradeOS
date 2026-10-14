@@ -1,5 +1,4 @@
 import { useState, useEffect, useCallback } from 'react';
-import { motion, AnimatePresence } from 'framer-motion';
 import {
   Accessibility, X, Plus, Minus, Contrast, Link2, Type, Pause, MousePointer2, RotateCcw,
 } from 'lucide-react';
@@ -117,17 +116,13 @@ export default function AccessibilityWidget() {
         {anyActive && <span className="absolute -top-0.5 -right-0.5 w-2 h-2 rounded-full bg-profit border border-bg-primary" />}
       </button>
 
-      <AnimatePresence>
-        {open && (
+      {open && (
           <>
-            <motion.div
-              initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}
+            <div
               onClick={() => setOpen(false)}
               className="fixed inset-0 z-[60] bg-black/40"
             />
-            <motion.div
-              initial={{ opacity: 0, y: 12, scale: 0.98 }} animate={{ opacity: 1, y: 0, scale: 1 }} exit={{ opacity: 0, y: 12, scale: 0.98 }}
-              transition={{ type: 'spring', damping: 26, stiffness: 320 }}
+            <div
               role="dialog" aria-label="תפריט נגישות"
               className="fixed left-3 bottom-24 lg:left-5 lg:bottom-5 z-[61] w-[min(92vw,340px)] max-h-[75vh] overflow-y-auto rounded-2xl border border-border-primary bg-bg-primary shadow-2xl shadow-black/50 p-4 space-y-3"
             >
@@ -165,10 +160,9 @@ export default function AccessibilityWidget() {
                   הצהרת נגישות
                 </button>
               </div>
-            </motion.div>
+            </div>
           </>
-        )}
-      </AnimatePresence>
+      )}
     </>
   );
 }

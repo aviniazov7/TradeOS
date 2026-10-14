@@ -1,6 +1,6 @@
 import { useState, useEffect, useCallback, useMemo } from 'react';
 import { useSearchParams } from 'react-router-dom';
-import { motion, AnimatePresence } from 'framer-motion';
+import { m, AnimatePresence } from 'framer-motion';
 import { Newspaper, ExternalLink, Clock, Filter, CalendarDays, Volume2, Globe, BrainCircuit, RefreshCw } from 'lucide-react';
 import { fetchNewsDigest, translateNews } from '../../services/newsService';
 import WhyItMoved from './WhyItMoved';
@@ -448,14 +448,14 @@ function EconomicCalendar() {
           <AnimatePresence>
             {showCountryPicker && (
               <>
-                <motion.div
+                <m.div
                   initial={{ opacity: 0 }}
                   animate={{ opacity: 1 }}
                   exit={{ opacity: 0 }}
                   className="fixed inset-0 z-40"
                   onClick={() => setShowCountryPicker(false)}
                 />
-                <motion.div
+                <m.div
                   initial={{ opacity: 0, y: -5, scale: 0.95 }}
                   animate={{ opacity: 1, y: 0, scale: 1 }}
                   exit={{ opacity: 0, y: -5, scale: 0.95 }}
@@ -502,7 +502,7 @@ function EconomicCalendar() {
                       </button>
                     ))}
                   </div>
-                </motion.div>
+                </m.div>
               </>
             )}
           </AnimatePresence>
@@ -521,11 +521,11 @@ function EconomicCalendar() {
           <AnimatePresence>
             {showImpactPicker && (
               <>
-                <motion.div
+                <m.div
                   initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}
                   className="fixed inset-0 z-40" onClick={() => setShowImpactPicker(false)}
                 />
-                <motion.div
+                <m.div
                   initial={{ opacity: 0, y: -5, scale: 0.95 }}
                   animate={{ opacity: 1, y: 0, scale: 1 }}
                   exit={{ opacity: 0, y: -5, scale: 0.95 }}
@@ -544,7 +544,7 @@ function EconomicCalendar() {
                       <span className="flex-1 text-right">{o.label}</span>
                     </button>
                   ))}
-                </motion.div>
+                </m.div>
               </>
             )}
           </AnimatePresence>
@@ -598,7 +598,7 @@ function EconomicCalendar() {
       {/* Calendar Events */}
       {!loading && !error && (
         <AnimatePresence mode="wait">
-          <motion.div
+          <m.div
             key={timePeriod + impactFilter + [...selectedCountries].join(',')}
             initial={{ opacity: 0, y: 10 }}
             animate={{ opacity: 1, y: 0 }}
@@ -612,7 +612,7 @@ function EconomicCalendar() {
               const isToday = sameDay(dayDate, today);
 
               return (
-                <motion.div
+                <m.div
                   key={day.date}
                   initial={{ opacity: 0, y: 15 }}
                   animate={{ opacity: 1, y: 0 }}
@@ -638,7 +638,7 @@ function EconomicCalendar() {
                       const hasP = event.previous != null && event.previous !== '';
 
                       return (
-                        <motion.div
+                        <m.div
                           key={`${event.date}-${event.title}-${i}`}
                           initial={{ opacity: 0, x: 10 }}
                           animate={{ opacity: 1, x: 0 }}
@@ -689,26 +689,26 @@ function EconomicCalendar() {
                               )}
                             </div>
                           </div>
-                        </motion.div>
+                        </m.div>
                       );
                     })}
                   </div>
-                </motion.div>
+                </m.div>
               );
             })}
-          </motion.div>
+          </m.div>
         </AnimatePresence>
       )}
 
       {!loading && !error && filtered.length === 0 && (
-        <motion.div
+        <m.div
           initial={{ opacity: 0 }}
           animate={{ opacity: 1 }}
           className="bg-bg-secondary border border-border-primary rounded-xl p-8 text-center"
         >
           <CalendarDays className="w-10 h-10 text-text-muted mx-auto mb-3" />
           <p className="text-text-muted">{'\u05D0\u05D9\u05DF \u05D0\u05D9\u05E8\u05D5\u05E2\u05D9\u05DD \u05DC\u05D4\u05E6\u05D2\u05D4'}</p>
-        </motion.div>
+        </m.div>
       )}
     </>
   );
@@ -1051,7 +1051,7 @@ function NewsFeed({ market }) {
                 </div>
                 <div className="space-y-2.5">
                   {group.items.map((article, i) => (
-                    <motion.a
+                    <m.a
                       key={`${article.link}-${i}`}
                       href={article.link}
                       target="_blank"
@@ -1093,7 +1093,7 @@ function NewsFeed({ market }) {
                           </div>
                         </div>
                       </div>
-                    </motion.a>
+                    </m.a>
                   ))}
                 </div>
               </div>
@@ -1139,7 +1139,7 @@ export default function NewsPage() {
       />
 
       <AnimatePresence mode="wait">
-        <motion.div
+        <m.div
           key={tab}
           initial={{ opacity: 0, y: 8 }}
           animate={{ opacity: 1, y: 0 }}
@@ -1155,7 +1155,7 @@ export default function NewsPage() {
               <NewsFeed market={tab} />
             </>
           )}
-        </motion.div>
+        </m.div>
       </AnimatePresence>
     </div>
   );

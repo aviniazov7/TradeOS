@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from 'react';
 import { useSearchParams } from 'react-router-dom';
-import { motion } from 'framer-motion';
+import { m } from 'framer-motion';
 import {
   Receipt, FileSpreadsheet, Printer, TriangleAlert, Info, RefreshCw, Check,
   TrendingUp, TrendingDown, Scale, Landmark, Coins, Hash, ChevronDown,
@@ -25,7 +25,7 @@ import { downloadCsv } from '../../utils/csv';
 import { pageVariants, pageTransition } from '../../utils/animations';
 import { formatIls, formatUsd, formatRate, formatDay, pnlTone, DIRECTION_LABELS } from './taxFormat';
 
-const MotionDiv = motion.div;
+const MotionDiv = m.div;
 const NO_RATES = {};
 const NO_DAYS = [];
 const FX_LOADING = { status: 'loading', rates: NO_RATES, fallback: NO_DAYS, source: null, error: null };

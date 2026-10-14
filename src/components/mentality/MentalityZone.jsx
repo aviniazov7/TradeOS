@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from 'react';
-import { motion } from 'framer-motion';
+import { m } from 'framer-motion';
 import { Brain, Sunrise, Moon, Flame, Activity } from 'lucide-react';
 import PageHeader from '../shared/PageHeader';
 import StatTile from '../shared/StatTile';
@@ -52,7 +52,7 @@ export default function MentalityZone() {
   const eveningTile = journalTile('evening', todayEvening, now, loading);
 
   return (
-    <motion.div
+    <m.div
       initial={{ opacity: 0, y: 10 }}
       animate={{ opacity: 1, y: 0 }}
       transition={{ duration: 0.3 }}
@@ -85,31 +85,31 @@ export default function MentalityZone() {
         </div>
       </PageHeader>
 
-      <motion.div variants={stagger} initial="hidden" animate="visible" className="space-y-4">
+      <m.div variants={stagger} initial="hidden" animate="visible" className="space-y-4">
         <section aria-label="היומנים של היום" className="grid grid-cols-1 md:grid-cols-2 gap-4">
-          <motion.div variants={tileItem} className="min-w-0">
+          <m.div variants={tileItem} className="min-w-0">
             <JournalTodayCard kind="morning" entry={todayMorning} now={now} loading={loading} />
-          </motion.div>
-          <motion.div variants={tileItem} className="min-w-0">
+          </m.div>
+          <m.div variants={tileItem} className="min-w-0">
             <JournalTodayCard kind="evening" entry={todayEvening} now={now} loading={loading} />
-          </motion.div>
+          </m.div>
         </section>
 
         <section aria-label="כלים ותובנות" className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-4 gap-4">
-          <motion.div variants={tileItem} className="min-w-0">
+          <m.div variants={tileItem} className="min-w-0">
             <MoodWeekTile week={week} summary={summary} loading={loading} />
-          </motion.div>
-          <motion.div variants={tileItem} className="min-w-0">
+          </m.div>
+          <m.div variants={tileItem} className="min-w-0">
             <MentalStatsTile stat={headline} loading={loading} />
-          </motion.div>
-          <motion.div variants={tileItem} className="min-w-0">
+          </m.div>
+          <m.div variants={tileItem} className="min-w-0">
             <JourneyTile />
-          </motion.div>
-          <motion.div variants={tileItem} className="min-w-0">
+          </m.div>
+          <m.div variants={tileItem} className="min-w-0">
             <BreathingExercise />
-          </motion.div>
+          </m.div>
         </section>
-      </motion.div>
-    </motion.div>
+      </m.div>
+    </m.div>
   );
 }

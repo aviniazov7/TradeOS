@@ -3,15 +3,8 @@ import {
   initializeAuth,
   GoogleAuthProvider,
   browserLocalPersistence,
-  browserPopupRedirectResolver,
   connectAuthEmulator,
 } from 'firebase/auth';
-import {
-  initializeFirestore,
-  persistentLocalCache,
-  persistentMultipleTabManager,
-  connectFirestoreEmulator,
-} from 'firebase/firestore';
 import { initializeAppCheck, ReCaptchaV3Provider } from 'firebase/app-check';
 
 // Firebase web client config is intentionally public — Google's docs are
@@ -64,30 +57,22 @@ try {
 
 // iOS standalone PWA: IndexedDB hangs silently, causing signInWithCustomToken
 // to never resolve. Use only localStorage to avoid the hang.
+//
+// No popupRedirectResolver here. Passing it makes Firebase inject the
+// same-origin /__/auth iframe (and its gapi script) on every page, including
+// the logged-out login screen. The resolver is loaded only when the user
+// actually starts a Google sign-in — see authService.loginWithGoogle.
 export const auth = initializeAuth(app, {
   persistence: browserLocalPersistence,
-  popupRedirectResolver: browserPopupRedirectResolver,
 });
 
 export const googleProvider = new GoogleAuthProvider();
 
-// Persistent local cache (IndexedDB): on reload, listeners emit the
-// last-known data instantly and the network syncs in the background,
-// instead of every refresh blocking on a cold network fetch. Falls back
-// to an in-memory cache automatically if IndexedDB is unavailable.
-export const db = initializeFirestore(app, {
-  localCache: persistentLocalCache({
-    tabManager: persistentMultipleTabManager(),
-  }),
-});
-
-// Local testing against the Firebase emulators (auth + firestore), never real
-// data: `firebase emulators:start --only auth,firestore` and run the dev server
-// with VITE_USE_EMULATORS=true. Dev builds only — a production bundle can't
-// be pointed at localhost by a stray env var.
+// Firestore lives in firebaseDb.js and is imported only after sign-in, so the
+// login route does not download it. The auth emulator is the only one this
+// module knows about.
 if (import.meta.env.DEV && import.meta.env.VITE_USE_EMULATORS === 'true') {
   connectAuthEmulator(auth, 'http://127.0.0.1:9099', { disableWarnings: true });
-  connectFirestoreEmulator(db, '127.0.0.1', 8080);
 }
 
 export default app;

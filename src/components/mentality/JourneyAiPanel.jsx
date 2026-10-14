@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { motion } from 'framer-motion';
+import { m } from 'framer-motion';
 import { BrainCircuit, Sparkles, RefreshCw, AlertCircle, Crown, MapPin, AlertTriangle, Footprints } from 'lucide-react';
 import ThinkingIndicator from '../shared/ThinkingIndicator';
 import { generateCoachReport } from '../../services/aiCoachService';
@@ -111,7 +111,7 @@ export default function JourneyAiPanel({ assessment, uid, isPremium }) {
       )}
 
       {result && !loading && (
-        <motion.div initial={{ opacity: 0, y: 6 }} animate={{ opacity: 1, y: 0 }} className="mt-4 space-y-3">
+        <m.div initial={{ opacity: 0, y: 6 }} animate={{ opacity: 1, y: 0 }} className="mt-4 space-y-3">
           <p className="text-[11px] text-text-muted">
             נוצר ב-<span className="num-mono" dir="ltr">{formatDateTime(new Date(result.at))}</span>
             {stale && <span className="text-breakeven"> · השלב שלך השתנה מאז ({result.stageName} ← {assessment.stage.name}), כדאי לנתח מחדש</span>}
@@ -145,7 +145,7 @@ export default function JourneyAiPanel({ assessment, uid, isPremium }) {
           ) : (
             <p className="text-sm text-text-secondary whitespace-pre-line leading-relaxed">{result.text}</p>
           )}
-        </motion.div>
+        </m.div>
       )}
     </section>
   );

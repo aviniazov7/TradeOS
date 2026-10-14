@@ -1,5 +1,5 @@
 import { useMemo, lazy, Suspense } from 'react';
-import { motion } from 'framer-motion';
+import { m } from 'framer-motion';
 import {
   Wallet, Target, Zap, BarChart3, DollarSign,
 } from 'lucide-react';
@@ -76,7 +76,7 @@ export default function JournalAnalyticsTab({
       {analytics !== null && (
         <>
           {/* Row 1: Main Stats */}
-          <motion.div className="grid grid-cols-2 md:grid-cols-4 gap-2.5 md:gap-3 mb-3 md:mb-4" variants={staggerContainer} initial="initial" animate="animate">
+          <m.div className="grid grid-cols-2 md:grid-cols-4 gap-2.5 md:gap-3 mb-3 md:mb-4" variants={staggerContainer} initial="initial" animate="animate">
             <StatCard label={balanceIsLive ? `יתרה נוכחית · ${activeJournal.exchange}` : 'יתרה נוכחית'}
               value={formatCurrency(displayedCurrentBalance).replace('+', '')}
               subtitle={balanceIsLive ? 'מסונכרן עם הבורסה' : (activeJournal?.initialBalance > 0 ? `${formatPercent(stats.balanceChangePercent)} מההתחלה` : `${stats.totalTrades} עסקאות`)}
@@ -91,7 +91,7 @@ export default function JournalAnalyticsTab({
               icon={Target} color="text-accent-primary" />
             <StatCard label="תוחלת" value={formatCurrency(stats.expectancy)} subtitle={`R נטו ממוצע לרווחים ${stats.avgRR.toFixed(2)}`}
               icon={Zap} color={stats.expectancy >= 0 ? 'text-profit' : 'text-loss'} />
-          </motion.div>
+          </m.div>
 
           {/* Combined Metrics Grid */}
           <div className="bg-bg-secondary border border-border-primary rounded-xl mb-4 md:mb-6 p-3">

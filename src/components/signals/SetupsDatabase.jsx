@@ -1,5 +1,5 @@
 import { useMemo, useState } from 'react';
-import { motion, AnimatePresence } from 'framer-motion';
+import { m, AnimatePresence } from 'framer-motion';
 import { GraduationCap, Plus, Pencil, Trash2, ExternalLink, TrendingUp, TrendingDown, Check, X, Target } from 'lucide-react';
 import CoinIcon from '../shared/CoinIcon';
 import ConfirmDialog from '../shared/ConfirmDialog';
@@ -57,8 +57,8 @@ function SetupRow({ s, onEdit, onDelete }) {
   const chart = safeHttpUrl(s.chartUrl);
   const date = fmtDate(s.at) || fmtDate(s.createdAt);
   return (
-    <motion.div
-      layout initial={{ opacity: 0, y: 6 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: -6 }}
+    <m.div
+      initial={{ opacity: 0, y: 6 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: -6 }}
       className="group flex items-center gap-2.5 px-3 py-2.5 rounded-xl bg-bg-secondary border border-border-primary hover:border-accent-primary/30 transition-colors"
     >
       <CoinIcon pair={s.pair} className="w-7 h-7 shrink-0" />
@@ -102,7 +102,7 @@ function SetupRow({ s, onEdit, onDelete }) {
           <Trash2 className="w-3.5 h-3.5" />
         </button>
       </div>
-    </motion.div>
+    </m.div>
   );
 }
 

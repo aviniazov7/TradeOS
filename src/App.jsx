@@ -1,9 +1,6 @@
 import { lazy, Suspense } from 'react';
-import { MotionConfig } from 'framer-motion';
 import { BrowserRouter, Routes, Route, Navigate, useSearchParams } from 'react-router-dom';
 import { AuthProvider } from './contexts/AuthContext';
-import { JournalProvider } from './contexts/JournalContext';
-import { BacktestProvider } from './contexts/BacktestContext';
 import ProtectedRoute from './components/auth/ProtectedRoute';
 import PremiumRoute from './components/auth/PremiumRoute';
 import AdminRoute from './components/auth/AdminRoute';
@@ -20,6 +17,8 @@ import NotFoundPage from './components/shared/NotFoundPage';
 // its own chunk, so the login page — the first paint for every new visitor —
 // doesn't download the whole app around it.
 const Layout = lazy(() => import('./components/layout/Layout'));
+const MotionShell = lazy(() => import('./components/shared/MotionShell'));
+const AuthedProviders = lazy(() => import('./components/layout/AuthedProviders'));
 const loadDashboard = () => import('./components/dashboard/Dashboard');
 const loadTradeJournal = () => import('./components/journal/TradeJournal');
 const loadBacktestTracker = () => import('./components/backtest/BacktestTracker');
@@ -101,16 +100,13 @@ function PolymarketRedirect() {
 
 function MainApp() {
   return (
-    // reducedMotion="user" makes every framer-motion animation respect the OS
-    // "reduce motion" setting (the CSS block in index.css can't reach JS-driven
-    // motion). Transforms/opacity are dropped; layout is preserved.
-    <MotionConfig reducedMotion="user">
     <AuthProvider>
-      <JournalProvider>
-        <BacktestProvider>
           <Suspense fallback={<LoadingSpinner />}>
             <Routes>
+              {/* Login stays outside MotionShell and the Firestore providers.
+                  Those chunks download when a visitor leaves this page. */}
               <Route path="/login" element={<LoginPage />} />
+              <Route element={<MotionShell />}>
               {/* Public coupon share landing — accessible without auth so a
                   shared link works for logged-out friends; redeeming itself
                   sends them through /login and back. */}
@@ -118,13 +114,8 @@ function MainApp() {
               {/* Accessibility statement — public (reachable without login, as
                   required for an Israeli-standard accessibility statement). */}
               <Route path="/accessibility" element={<AccessibilityStatement />} />
-              <Route
-                element={
-                  <ProtectedRoute>
-                    <Layout />
-                  </ProtectedRoute>
-                }
-              >
+              <Route element={<ProtectedRoute><AuthedProviders /></ProtectedRoute>}>
+              <Route element={<Layout />}>
                 <Route index element={<Dashboard />} />
                 <Route path="journal" element={<TradeJournal />} />
                 {/* Live trading terminal: positions, open orders and multi-timeframe
@@ -172,15 +163,15 @@ function MainApp() {
                     (they used to bounce to the dashboard without a word). */}
                 <Route path="*" element={<NotFoundPage />} />
               </Route>
+              </Route>
+              </Route>
             </Routes>
           </Suspense>
           <Toast />
-          {/* Site-wide accessibility menu — present on every route. */}
+          {/* Site-wide accessibility menu — present on every route, including
+              login, so it must not import framer-motion. */}
           <AccessibilityWidget />
-        </BacktestProvider>
-      </JournalProvider>
     </AuthProvider>
-    </MotionConfig>
   );
 }
 

@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { motion } from 'framer-motion';
+import { m } from 'framer-motion';
 import { Calendar, Eye, Trash2 } from 'lucide-react';
 import toast from 'react-hot-toast';
 import Modal from '../shared/Modal';
@@ -228,14 +228,14 @@ export default function JournalHistory({ entries, type, onDeleteEntry }) {
 
   return (
     <>
-      <motion.div
+      <m.div
         variants={staggerContainer}
         initial="hidden"
         animate="visible"
         className="space-y-2"
       >
         {entries.map((entry) => (
-          <motion.div
+          <m.div
             key={entry.id}
             variants={itemVariants}
             className="bg-bg-secondary border border-border-primary rounded-xl p-4 flex items-center justify-between hover:border-border-hover transition-colors"
@@ -279,9 +279,9 @@ export default function JournalHistory({ entries, type, onDeleteEntry }) {
                 <Trash2 className="w-3.5 h-3.5" />
               </button>
             </div>
-          </motion.div>
+          </m.div>
         ))}
-      </motion.div>
+      </m.div>
 
       {/* View Modal */}
       {type === 'morning' ? (

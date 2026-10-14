@@ -1,6 +1,6 @@
 import { useState, useMemo, useEffect, useCallback } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { motion, AnimatePresence } from 'framer-motion';
+import { m, AnimatePresence } from 'framer-motion';
 import { LineChart, Eye, EyeOff, Plus, ChevronDown } from 'lucide-react';
 import { useTrades } from '../../hooks/useTrades';
 import { useJournalContext } from '../../contexts/JournalContext';
@@ -451,7 +451,7 @@ export default function Dashboard() {
   const synced = Object.keys(linkedBalances || {}).length > 0;
 
   return (
-    <motion.div variants={pageVariants} initial="initial" animate="animate" exit="exit" transition={pageTransition}>
+    <m.div variants={pageVariants} initial="initial" animate="animate" exit="exit" transition={pageTransition}>
       <PageHeader
         icon={LineChart}
         title={greetingFor(profile?.displayName || user?.displayName)}
@@ -514,7 +514,7 @@ export default function Dashboard() {
                 </div>
                 <AnimatePresence initial={false}>
                   {showAllJournals && journalStats.length > 3 && (
-                    <motion.div
+                    <m.div
                       initial={{ height: 0, opacity: 0 }}
                       animate={{ height: 'auto', opacity: 1 }}
                       exit={{ height: 0, opacity: 0 }}
@@ -526,7 +526,7 @@ export default function Dashboard() {
                           <JournalTile key={j.id} j={j} mask={m} onOpen={() => openJournal(j)} />
                         ))}
                       </div>
-                    </motion.div>
+                    </m.div>
                   )}
                 </AnimatePresence>
                 {journalStats.length > 3 && (
@@ -561,6 +561,6 @@ export default function Dashboard() {
           </div>
         </Reveal>
       </div>
-    </motion.div>
+    </m.div>
   );
 }

@@ -23,7 +23,7 @@ import {
   writeBatch,
   serverTimestamp,
 } from 'firebase/firestore';
-import { db } from './firebase';
+import { db } from './firebaseDb';
 import {
   TRADE_IMAGE_KINDS,
   MAX_TRADE_IMAGES,

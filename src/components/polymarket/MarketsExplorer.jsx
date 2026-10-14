@@ -1,5 +1,5 @@
 import { useMemo, useState } from 'react';
-import { motion } from 'framer-motion';
+import { m } from 'framer-motion';
 import { useNavigate } from 'react-router-dom';
 import { Search, AlertCircle, RefreshCw, Zap, Droplets, CalendarClock, Sparkles } from 'lucide-react';
 import { usePolymarkets } from '../../hooks/usePolymarkets';
@@ -128,13 +128,13 @@ export default function MarketsExplorer() {
           <span className="text-sm font-medium">לא נמצאו שווקים</span>
         </div>
       ) : (
-        <motion.div className="space-y-2" variants={staggerContainer} initial="initial" animate="animate">
+        <m.div className="space-y-2" variants={staggerContainer} initial="initial" animate="animate">
           {view.map((m) => (
-            <motion.div key={m.conditionId} variants={staggerItem}>
+            <m.div key={m.conditionId} variants={staggerItem}>
               <MarketRow m={m} onOpen={() => navigate(`/polymarket/market/${m.conditionId}`, { state: { market: m, from: '/market?tab=polymarket&pm=markets' } })} />
-            </motion.div>
+            </m.div>
           ))}
-        </motion.div>
+        </m.div>
       )}
     </div>
   );

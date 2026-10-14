@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from 'react';
-import { motion } from 'framer-motion';
+import { m } from 'framer-motion';
 import { Sparkles } from 'lucide-react';
 import { pageVariants, pageTransition } from '../../utils/animations';
 import { useJournalContext } from '../../contexts/JournalContext';
@@ -76,7 +76,7 @@ export default function TradeAIPage() {
   const heightClass = 'h-[calc(100dvh-21.5rem-env(safe-area-inset-bottom))] min-h-[22rem] md:h-[calc(100dvh-15.5rem)] md:min-h-[26rem]';
 
   return (
-    <motion.div variants={pageVariants} initial="initial" animate="animate" exit="exit" transition={pageTransition} className="max-w-5xl mx-auto">
+    <m.div variants={pageVariants} initial="initial" animate="animate" exit="exit" transition={pageTransition} className="max-w-5xl mx-auto">
       <PageHeader
         icon={Sparkles}
         title="TradeAI"
@@ -93,6 +93,6 @@ export default function TradeAIPage() {
       {/* Mounted only while selected, so the two Firestore reads inside
           AnalystInsights cost nothing on the other tabs. */}
       {tab === 'analyst' && <AnalystTab heightClass={heightClass} trades={trades} />}
-    </motion.div>
+    </m.div>
   );
 }

@@ -1,5 +1,5 @@
 import { useState, useMemo } from 'react';
-import { motion } from 'framer-motion';
+import { m } from 'framer-motion';
 import { useNavigate } from 'react-router-dom';
 import { Gem, AlertCircle, RefreshCw, Users, Layers, TrendingUp, Download } from 'lucide-react';
 import toast from 'react-hot-toast';
@@ -149,13 +149,13 @@ export default function SmartConsensus() {
           <span className="text-[11px] max-w-sm leading-relaxed">זה קורה כשהמובילים מפוזרים על שווקים שונים — סימן שאין כרגע הימור משותף ברור.</span>
         </div>
       ) : (
-        <motion.div className="space-y-2" variants={staggerContainer} initial="initial" animate="animate">
+        <m.div className="space-y-2" variants={staggerContainer} initial="initial" animate="animate">
           {view.map((c, i) => (
-            <motion.div key={`${c.conditionId}-${c.outcome}`} variants={staggerItem}>
+            <m.div key={`${c.conditionId}-${c.outcome}`} variants={staggerItem}>
               <ConsensusRow c={c} rank={i + 1} onOpen={() => navigate(`/polymarket/market/${c.conditionId}`, { state: { from: '/market?tab=polymarket&pm=consensus' } })} />
-            </motion.div>
+            </m.div>
           ))}
-        </motion.div>
+        </m.div>
       )}
 
       <p className="text-[11px] text-text-muted leading-relaxed mt-4 px-1">

@@ -1,6 +1,6 @@
 import { useState, useEffect, useCallback, useMemo } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { motion, AnimatePresence } from 'framer-motion';
+import { m, AnimatePresence } from 'framer-motion';
 import { Wallet, Plus, RefreshCw, Trash2, Copy, X, ExternalLink, ShieldCheck, HelpCircle } from 'lucide-react';
 import toast from 'react-hot-toast';
 import { useAuth } from '../../contexts/AuthContext';
@@ -139,7 +139,7 @@ export default function WalletsPage({ embedded = false }) {
   const ALLOC_COLORS = ['#f7931a', '#627eea', '#14f195', '#26a17b', '#e84142', '#8b95a8'];
 
   return (
-    <motion.div variants={pageVariants} initial="initial" animate="animate" exit="exit" transition={pageTransition}
+    <m.div variants={pageVariants} initial="initial" animate="animate" exit="exit" transition={pageTransition}
       className={embedded ? '' : 'px-4 py-6'}>
       <div className="max-w-3xl mx-auto space-y-4">
 
@@ -155,14 +155,14 @@ export default function WalletsPage({ embedded = false }) {
                 <Wallet className="w-5 h-5 text-accent-primary" />
               </span>
               <TitleTag className="text-xl md:text-2xl font-bold">ארנקים</TitleTag>
-              <motion.button
+              <m.button
                 onClick={() => setShowInfo((v) => !v)}
                 whileTap={{ scale: 0.9 }}
                 aria-label="מה זה?"
                 className={`p-1.5 rounded-lg transition-colors cursor-pointer shrink-0 ${showInfo ? 'text-accent-primary bg-accent-primary/10' : 'text-text-muted hover:bg-bg-tertiary'}`}
               >
                 <HelpCircle className="w-4 h-4" />
-              </motion.button>
+              </m.button>
             </div>
             <div className="text-left shrink-0">
               <div className="text-[11px] text-text-muted">שווי כולל</div>
@@ -173,7 +173,7 @@ export default function WalletsPage({ embedded = false }) {
           {/* Explanation — revealed on tapping "?" */}
           <AnimatePresence initial={false}>
             {showInfo && (
-              <motion.div
+              <m.div
                 initial={{ height: 0, opacity: 0 }}
                 animate={{ height: 'auto', opacity: 1 }}
                 exit={{ height: 0, opacity: 0 }}
@@ -187,7 +187,7 @@ export default function WalletsPage({ embedded = false }) {
                   <ShieldCheck className="w-3.5 h-3.5 text-profit shrink-0" />
                   קריאה בלבד · בלי מפתחות פרטיים · הכתובת נשמרת רק אצלך
                 </div>
-              </motion.div>
+              </m.div>
             )}
           </AnimatePresence>
 
@@ -333,6 +333,6 @@ export default function WalletsPage({ embedded = false }) {
           <ExternalLink className="w-3 h-3" /> רשתות EVM + Solana + Bitcoin · Moralis & mempool.space
         </div>
       </div>
-    </motion.div>
+    </m.div>
   );
 }

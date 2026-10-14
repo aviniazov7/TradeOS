@@ -1,4 +1,4 @@
-import { motion } from 'framer-motion';
+import { m } from 'framer-motion';
 import { useNavigate } from 'react-router-dom';
 import {
   ShieldCheck, ChevronRight, Clock, RotateCcw, Ban, Gift,
@@ -57,7 +57,7 @@ export default function RefundPolicyPage() {
   ];
 
   return (
-    <motion.div variants={pageVariants} initial="initial" animate="animate" exit="exit" transition={pageTransition}
+    <m.div variants={pageVariants} initial="initial" animate="animate" exit="exit" transition={pageTransition}
       className="px-4 py-6">
       <div className="max-w-2xl mx-auto space-y-4">
 
@@ -162,6 +162,6 @@ export default function RefundPolicyPage() {
           יש שאלה על המדיניות? פנה אלינו דרך "צור קשר" בעמוד הפרופיל ונשמח לעזור.
         </div>
       </div>
-    </motion.div>
+    </m.div>
   );
 }

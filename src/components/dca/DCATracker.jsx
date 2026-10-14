@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react';
 import { useSearchParams } from 'react-router-dom';
-import { motion } from 'framer-motion';
+import { m } from 'framer-motion';
 import { Plus, Coins, Download, List, BarChart3 } from 'lucide-react';
 import toast from 'react-hot-toast';
 import { useDCA } from '../../hooks/useDCA';
@@ -120,7 +120,7 @@ export default function DCATracker({ embedded = false, view }) {
   );
 
   return (
-    <motion.div variants={pageVariants} initial="initial" animate="animate" exit="exit" transition={pageTransition}>
+    <m.div variants={pageVariants} initial="initial" animate="animate" exit="exit" transition={pageTransition}>
       {embedded ? null : (
         <PageHeader
           icon={Coins}
@@ -184,6 +184,6 @@ export default function DCATracker({ embedded = false, view }) {
         title="מחיקת תוכנית DCA"
         message={`למחוק את תוכנית ה-DCA של ${deleteTarget?.coin}? לא ניתן לבטל פעולה זו.`}
       />
-    </motion.div>
+    </m.div>
   );
 }

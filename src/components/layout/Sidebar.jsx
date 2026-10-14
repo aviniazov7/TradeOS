@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react';
 import { Link, useLocation } from 'react-router-dom';
-import { AnimatePresence, motion } from 'framer-motion';
+import { AnimatePresence, m } from 'framer-motion';
 import {
   LayoutDashboard,
   BookOpen,
@@ -112,7 +112,7 @@ export default function Sidebar({ mobileOpen, onClose }) {
     <AnimatePresence>
       {mobileOpen && (
         <>
-          <motion.div
+          <m.div
             initial={{ opacity: 0 }}
             animate={{ opacity: 1 }}
             exit={{ opacity: 0 }}
@@ -120,7 +120,7 @@ export default function Sidebar({ mobileOpen, onClose }) {
             className="fixed inset-0 bg-black/60 z-50"
             onClick={onClose}
           />
-          <motion.aside
+          <m.aside
             initial={{ x: '100%' }}
             animate={{ x: 0 }}
             exit={{ x: '100%' }}
@@ -154,7 +154,7 @@ export default function Sidebar({ mobileOpen, onClose }) {
               </button>
             </div>
 
-          </motion.aside>
+          </m.aside>
         </>
       )}
     </AnimatePresence>

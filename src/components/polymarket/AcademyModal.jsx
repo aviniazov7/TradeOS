@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { motion, AnimatePresence } from 'framer-motion';
+import { m, AnimatePresence } from 'framer-motion';
 import { GraduationCap, ChevronDown, Percent, Scale, Brain, Wallet, Trophy, ShieldAlert } from 'lucide-react';
 import Modal from '../shared/Modal';
 
@@ -57,7 +57,7 @@ function Card({ c, isOpen, onToggle }) {
       </button>
       <AnimatePresence initial={false}>
         {isOpen && (
-          <motion.div initial={{ height: 0, opacity: 0 }} animate={{ height: 'auto', opacity: 1 }} exit={{ height: 0, opacity: 0 }}
+          <m.div initial={{ height: 0, opacity: 0 }} animate={{ height: 'auto', opacity: 1 }} exit={{ height: 0, opacity: 0 }}
             className="overflow-hidden">
             <div className="px-3 pb-3 space-y-2">
               <p className="text-xs text-text-secondary leading-relaxed">{c.body}</p>
@@ -65,7 +65,7 @@ function Card({ c, isOpen, onToggle }) {
                 <span className="font-bold">בשורה התחתונה: </span>{c.takeaway}
               </p>
             </div>
-          </motion.div>
+          </m.div>
         )}
       </AnimatePresence>
     </div>

@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
-import { motion, AnimatePresence } from 'framer-motion';
+import { m, AnimatePresence } from 'framer-motion';
 import { useNavigate } from 'react-router-dom';
 import { Waves, Star, AlertCircle } from 'lucide-react';
 import { fetchTrades } from '../../services/polymarketService';
@@ -24,7 +24,7 @@ const KEEP_MIN_USD = 1_000;
 function TradeRow({ t, tracked, onOpenWallet }) {
   const isBuy = t.side === 'BUY';
   return (
-    <motion.div layout initial={{ opacity: 0, y: -6 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0 }}
+    <m.div initial={{ opacity: 0, y: -6 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0 }}
       className={`flex items-center gap-2.5 px-3 py-2.5 rounded-xl bg-bg-secondary border transition-colors ${tracked ? 'border-amber-400/40' : 'border-border-primary'}`}>
       {t.icon
         ? <img src={t.icon} alt="" className="w-8 h-8 rounded-lg object-cover shrink-0" loading="lazy" />
@@ -47,7 +47,7 @@ function TradeRow({ t, tracked, onOpenWallet }) {
         <div className={`text-sm font-extrabold num-mono ${isBuy ? 'text-profit' : 'text-loss'}`}>{fmtUsd(t.usd)}</div>
         <div className="text-[10px] num-mono text-text-muted">{Math.round(t.price * 100)}¢</div>
       </div>
-    </motion.div>
+    </m.div>
   );
 }
 

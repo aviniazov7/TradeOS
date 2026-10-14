@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { motion } from 'framer-motion';
+import { m } from 'framer-motion';
 import { Rocket, CheckCircle2, ChevronLeft, X, BookOpen, Link2, Wallet, Sunrise } from 'lucide-react';
 import Card from '../shared/Card';
 import { useAuth } from '../../contexts/AuthContext';
@@ -89,7 +89,7 @@ export default function GettingStartedCard({ trades, journals, morningCount }) {
   };
 
   return (
-    <motion.div initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.3 }}>
+    <m.div initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.3 }}>
       <Card className="mb-4 p-4">
         <div className="flex items-center justify-between mb-3">
           <div className="flex items-center gap-2.5">
@@ -112,7 +112,7 @@ export default function GettingStartedCard({ trades, journals, morningCount }) {
 
         {/* Progress bar */}
         <div className="h-1.5 bg-bg-tertiary rounded-full overflow-hidden mb-3">
-          <motion.div
+          <m.div
             className="h-full bg-accent-primary rounded-full"
             initial={{ width: 0 }}
             animate={{ width: `${(doneCount / steps.length) * 100}%` }}
@@ -148,6 +148,6 @@ export default function GettingStartedCard({ trades, journals, morningCount }) {
           ))}
         </div>
       </Card>
-    </motion.div>
+    </m.div>
   );
 }

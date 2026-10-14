@@ -1,7 +1,7 @@
 import { useState, useEffect, useRef, useMemo } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { createPortal } from 'react-dom';
-import { motion, AnimatePresence } from 'framer-motion';
+import { m, AnimatePresence } from 'framer-motion';
 import {
   Search, CornerDownLeft, LayoutDashboard, BookOpen, Brain, FlaskConical,
   Coins, Wallet, ClipboardList, Activity, Bot, Newspaper, Crown, User, Building2,
@@ -192,7 +192,7 @@ export default function GlobalSearch() {
         <AnimatePresence>
           {open && (
             <>
-              <motion.div
+              <m.div
                 className="fixed inset-0 z-[80] bg-black/60"
                 style={{ backdropFilter: 'blur(4px)', WebkitBackdropFilter: 'blur(4px)' }}
                 initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}
@@ -200,7 +200,7 @@ export default function GlobalSearch() {
                 onClick={close}
               />
               <div className="fixed inset-0 z-[80] flex items-start justify-center pt-[12vh] px-4 pointer-events-none">
-                <motion.div
+                <m.div
                   initial={{ opacity: 0, y: -14, scale: 0.98 }}
                   animate={{ opacity: 1, y: 0, scale: 1 }}
                   exit={{ opacity: 0, y: -14, scale: 0.98 }}
@@ -259,7 +259,7 @@ export default function GlobalSearch() {
                     <span>↑↓ ניווט</span>
                     <span className="mr-auto">⌘K</span>
                   </div>
-                </motion.div>
+                </m.div>
               </div>
             </>
           )}

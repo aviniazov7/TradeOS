@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { motion } from 'framer-motion';
+import { m } from 'framer-motion';
 import { Plus, ClipboardList, Pencil, Trash2, ExternalLink, FileImage, Search } from 'lucide-react';
 import CoinIcon from '../shared/CoinIcon';
 import PairSearch from '../journal/PairSearch';
@@ -149,7 +149,7 @@ export default function PlansPage() {
   const inputClass = 'w-full bg-bg-tertiary border border-border-primary rounded-lg px-3 py-2 text-sm text-text-primary outline-none focus:border-accent-primary transition-colors';
 
   return (
-    <motion.div variants={pageVariants} initial="initial" animate="animate" exit="exit" transition={pageTransition}>
+    <m.div variants={pageVariants} initial="initial" animate="animate" exit="exit" transition={pageTransition}>
       <>
           <PageHeader
             icon={ClipboardList}
@@ -179,11 +179,11 @@ export default function PlansPage() {
                 <EmptyState icon={ClipboardList} title="אין תוכניות מסחר עדיין" description="צור תוכנית מסחר לארגון האסטרטגיה והחוקים שלך"
                   action={<button onClick={() => setFormOpen(true)} className="mt-2 px-4 py-2 bg-accent-primary text-bg-primary font-semibold rounded-lg hover:bg-accent-hover transition-colors cursor-pointer">צור את התוכנית הראשונה</button>} />
               ) : (
-                <motion.div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-4" variants={staggerContainer} initial="initial" animate="animate">
+                <m.div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-4" variants={staggerContainer} initial="initial" animate="animate">
                   {plans.map((p) => (
                     <PlanCard key={p.id} plan={p} onView={setViewingPlan} onEdit={handleEdit} onDelete={setDeleteTarget} />
                   ))}
-                </motion.div>
+                </m.div>
               )}
             </>
           )}
@@ -343,6 +343,6 @@ export default function PlansPage() {
 
       <ConfirmDialog isOpen={!!deleteTarget} onClose={() => setDeleteTarget(null)} onConfirm={handleDelete} title="מחיקת תוכנית" message={`למחוק את "${deleteTarget?.name}"? לא ניתן לבטל פעולה זו.`} />
       <ConfirmDialog isOpen={!!processDelTarget} onClose={() => setProcessDelTarget(null)} onConfirm={handleDeleteProcess} title="מחיקת ניתוח" message="למחוק את הניתוח? לא ניתן לבטל פעולה זו." />
-    </motion.div>
+    </m.div>
   );
 }

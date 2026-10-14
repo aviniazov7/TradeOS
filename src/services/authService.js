@@ -94,17 +94,34 @@ export function onAuthChange(callback) {
   return onAuthStateChanged(auth, callback);
 }
 
-/** Handle redirect result (call once on app init) */
-export function handleRedirectResult() {
-  return getRedirectResult(auth);
+// Set only when a Google redirect is about to start. getRedirectResult loads
+// the auth iframe, so a normal visit to /login must not call it.
+const GOOGLE_REDIRECT_FLAG = 'tradeos-google-redirect';
+
+async function withPopupResolver(run) {
+  const { browserPopupRedirectResolver } = await import('firebase/auth');
+  return run(browserPopupRedirectResolver);
 }
 
-/** Sign in with Google — redirect in PWA, popup otherwise */
+/** Handle redirect result (call once on app init). No-ops unless this tab
+ *  just returned from a Google redirect, so the auth iframe stays unloaded. */
+export function handleRedirectResult() {
+  let pending = false;
+  try { pending = sessionStorage.getItem(GOOGLE_REDIRECT_FLAG) === '1'; } catch { /* private mode */ }
+  if (!pending) return Promise.resolve(null);
+  return withPopupResolver((resolver) => getRedirectResult(auth, resolver))
+    .finally(() => { try { sessionStorage.removeItem(GOOGLE_REDIRECT_FLAG); } catch { /* ignore */ } });
+}
+
+/** Sign in with Google — redirect in PWA, popup otherwise.
+ *  The popup/redirect resolver (and the gapi iframe it injects) loads here,
+ *  on the tap, not when the login page first paints. */
 export function loginWithGoogle() {
   if (isStandalone) {
-    return signInWithRedirect(auth, googleProvider);
+    try { sessionStorage.setItem(GOOGLE_REDIRECT_FLAG, '1'); } catch { /* private mode */ }
+    return withPopupResolver((resolver) => signInWithRedirect(auth, googleProvider, resolver));
   }
-  return signInWithPopup(auth, googleProvider);
+  return withPopupResolver((resolver) => signInWithPopup(auth, googleProvider, resolver));
 }
 
 /** Register with email and password */
@@ -191,7 +208,8 @@ export async function reauthenticate(currentPassword) {
   }
   // Google accounts: Firebase's deleteUser() demands a RECENT sign-in
   // (~5 minutes) and throws auth/requires-recent-login otherwise.
-  await reauthenticateWithPopup(user, googleProvider);
+  // The popup resolver is loaded here, same as the login button — not at startup.
+  await withPopupResolver((resolver) => reauthenticateWithPopup(user, googleProvider, resolver));
 }
 
 /** Rename the signed-in user. Firestore profile is updated by the caller. */

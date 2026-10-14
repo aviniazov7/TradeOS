@@ -1,5 +1,5 @@
 import { useState, useMemo } from 'react';
-import { motion } from 'framer-motion';
+import { m } from 'framer-motion';
 import { Plus, FlaskConical, Trash2, Pencil, ExternalLink, TrendingUp, TrendingDown, Settings, Download, ChevronRight, ChevronLeft, Eye, ArrowUp, ArrowDown, ArrowUpDown, X, BrainCircuit, Crown, Sparkles } from 'lucide-react';
 import DatePicker from 'react-datepicker';
 import 'react-datepicker/dist/react-datepicker.css';
@@ -236,7 +236,7 @@ export default function BacktestTracker() {
   const cardClass = 'bg-bg-secondary border border-border-primary rounded-xl p-4';
 
   return (
-    <motion.div variants={pageVariants} initial="initial" animate="animate" exit="exit" transition={pageTransition}>
+    <m.div variants={pageVariants} initial="initial" animate="animate" exit="exit" transition={pageTransition}>
       {/* The shared page header: the backtest journal (switcher) under the
           title, its views as tabs, and the actions. */}
       <PageHeader
@@ -686,6 +686,6 @@ export default function BacktestTracker() {
       <StrategyView isOpen={viewOpen} onClose={() => setViewOpen(false)} journal={activeJournal} />
 
       <BacktestTradeModal trade={detailTrade} isOpen={!!detailTrade} onClose={() => setDetailTrade(null)} onEdit={openEdit} onDelete={setDeleteTarget} />
-    </motion.div>
+    </m.div>
   );
 }
