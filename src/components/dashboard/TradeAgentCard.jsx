@@ -2,6 +2,7 @@ import { useMemo } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { Sparkles, ArrowLeft, ArrowUpRight, ArrowDownRight, CalendarDays, Target } from 'lucide-react';
 import { buildCoachStats } from '../../utils/coachStats';
+import { conclusionsReady, NOT_ENOUGH_DATA_NOTE } from '../../utils/coachCopy';
 import CoinIcon from '../shared/CoinIcon';
 import { LRM } from '../../utils/formatters';
 
@@ -28,7 +29,9 @@ function analyze(stats) {
   const bestPair = pairs.filter((p) => p.pnl > 0).sort((a, b) => b.pnl - a.pnl)[0];
 
   let headline;
-  if (s.avgWin > 0 && absLoss > s.avgWin * 1.25) {
+  if (!conclusionsReady(s.total)) {
+    headline = NOT_ENOUGH_DATA_NOTE;
+  } else if (s.avgWin > 0 && absLoss > s.avgWin * 1.25) {
     headline = `אתה מרוויח בקטן ומפסיד בגדול: רווח ממוצע $${s.avgWin} מול הפסד ממוצע $${absLoss}. הדק סטופים או תן לרווחים לרוץ יותר.`;
   } else if (s.profitFactor != null && s.profitFactor < 1) {
     headline = `פקטור הרווח שלך ${s.profitFactor}: אתה מאבד יותר ממה שאתה מרוויח. שווה לזהות אילו סטאפים מדממים ולהוריד אותם.`;

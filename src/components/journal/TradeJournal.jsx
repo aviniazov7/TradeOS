@@ -35,6 +35,7 @@ import { downloadCsv } from '../../utils/csv';
 import { JOURNAL_CSV_HEADERS, journalCsvRow } from '../../utils/tradeExport';
 import { TAG_LABELS } from '../../utils/constants';
 import { pageVariants, pageTransition } from '../../utils/animations';
+import { TRADE_PREFILL_KEY } from '../../utils/tradeFormHelpers';
 
 const JOURNAL_TABS = ['trades', 'analytics', 'calendar', 'exchange'];
 const TAB_LABELS = { trades: 'עסקאות', analytics: 'ניתוחים', calendar: 'יומן חודשי', exchange: 'חיבור בורסאות' };
@@ -113,6 +114,7 @@ export default function TradeJournal() {
   const [searchParams, setSearchParams] = useSearchParams();
   const [formOpen, setFormOpen] = useState(false);
   const [editingTrade, setEditingTrade] = useState(null);
+  const [tradePrefill, setTradePrefill] = useState(null);
   const [pendingDeletes, setPendingDeletes] = useState(new Set());
   const [filters, setFilters] = useState(() => {
     try {
@@ -317,7 +319,17 @@ export default function TradeJournal() {
     // Deep-link from the analyst page — it hands off to the full AI report.
     const isAi = searchParams.get('ai') === '1';
     if (!isNew && !isSettings && !isAi) return;
-    if (isNew) setFormOpen(true);
+    if (isNew) {
+      let seed = null;
+      try {
+        const raw = sessionStorage.getItem(TRADE_PREFILL_KEY);
+        if (raw) seed = JSON.parse(raw);
+      } catch { seed = null; }
+      try { sessionStorage.removeItem(TRADE_PREFILL_KEY); } catch { /* private mode */ }
+      setEditingTrade(null);
+      setTradePrefill(seed);
+      setFormOpen(true);
+    }
     if (isSettings) setSettingsOpen(true);
     if (isAi) setAiModalOpen(true);
     // One-shot flags: strip them so switching tabs (which also writes the URL)
@@ -513,6 +525,7 @@ export default function TradeJournal() {
   const handleCloseForm = () => {
     setFormOpen(false);
     setEditingTrade(null);
+    setTradePrefill(null);
   };
 
   const toggleSelected = (id) => setSelectedIds((prev) => {
@@ -788,6 +801,7 @@ export default function TradeJournal() {
       )}>
         {formMounted && (
           <TradeForm isOpen={formOpen} onClose={handleCloseForm} trade={editingTrade} onSave={handleSave}
+            prefill={tradePrefill}
             riskSettings={{ riskType: activeJournal?.riskType, riskValue: activeJournal?.riskValue, currentBalance: formBalance, balanceKnown: formBalanceKnown }}
             journalAssetClass={activeJournal?.assetClass || 'crypto'}
             livePrices={prices} />

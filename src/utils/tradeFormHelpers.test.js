@@ -9,6 +9,10 @@ import {
   riskSizedNotional,
   aggregateFills,
   exitsClosedPercent,
+  syncExitSize,
+  remainderClose,
+  storedExit,
+  tradePrefillFromCalculator,
   normalizeCommissions,
   hasCommissionPreset,
   estimateCommission,
@@ -73,6 +77,89 @@ describe('exitsClosedPercent', () => {
   it('uses contracts against the total for futures', () => {
     expect(exitsClosedPercent([{ contracts: 1 }, { contracts: '2' }], { isFutures: true, totalContracts: 3 })).toBe(100);
     expect(exitsClosedPercent([{ contracts: 1 }], { isFutures: true, totalContracts: 0 })).toBe(0);
+  });
+});
+
+describe('syncExitSize', () => {
+  it('derives quantity from a percent of the position', () => {
+    const next = syncExitSize({ price: '110', percent: '', quantity: '' }, 'percent', '25', 4);
+    expect(next.percent).toBe('25');
+    expect(next.quantity).toBe('1');
+  });
+  it('derives percent from a quantity', () => {
+    const next = syncExitSize({ price: '110' }, 'quantity', '0.5', 2);
+    expect(next.quantity).toBe('0.5');
+    expect(next.percent).toBe('25');
+  });
+  it('leaves the other field blank when the position size is unknown', () => {
+    expect(syncExitSize({}, 'quantity', '1', 0).percent).toBe('');
+    expect(syncExitSize({}, 'percent', '50', 0).quantity).toBe('');
+  });
+});
+
+describe('remainderClose', () => {
+  it('closes the whole position at the stop without a take-profit', () => {
+    expect(remainderClose({ kind: 'stop', stop: 95, usedPercent: 0, totalUnits: 10 })).toEqual({
+      price: 95, percent: 100, quantity: '10', date: null, kind: 'stop',
+    });
+  });
+  it('closes only the remainder after a partial take-profit', () => {
+    const row = remainderClose({ kind: 'price', price: '90', usedPercent: 40, totalUnits: 10 });
+    expect(row.price).toBe(90);
+    expect(row.percent).toBe(60);
+    expect(row.quantity).toBe('6');
+    expect(row.kind).toBe('price');
+  });
+  it('is null without a price or when the position is already closed', () => {
+    expect(remainderClose({ kind: 'stop', stop: '', usedPercent: 0, totalUnits: 1 })).toBeNull();
+    expect(remainderClose({ kind: 'price', price: 0, usedPercent: 0 })).toBeNull();
+    expect(remainderClose({ kind: 'stop', stop: 90, usedPercent: 100, totalUnits: 1 })).toBeNull();
+    expect(remainderClose({ kind: 'nope', stop: 90 })).toBeNull();
+  });
+  it('closes the remaining futures contracts', () => {
+    const row = remainderClose({
+      kind: 'stop', stop: 4000, isFutures: true, usedContracts: 1, totalContracts: 3,
+    });
+    expect(row.contracts).toBe(2);
+    expect(row.percent).toBeCloseTo(66.666666, 4);
+    expect(row.kind).toBe('stop');
+  });
+});
+
+describe('storedExit', () => {
+  it('keeps quantity, date and a stop-hit kind', () => {
+    const date = new Date('2026-01-02T00:00:00Z');
+    expect(storedExit({ price: '100', percent: '40', quantity: '0.4', date, kind: 'stop' })).toEqual({
+      price: 100, percent: 40, quantity: 0.4, date, kind: 'stop',
+    });
+  });
+  it('drops a price-only planned target', () => {
+    expect(storedExit({ price: '110', percent: '', quantity: '' })).toBeNull();
+  });
+});
+
+describe('tradePrefillFromCalculator', () => {
+  it('seeds a new trade from a valid calculator result', () => {
+    const seed = tradePrefillFromCalculator(
+      { direction: 'short', entryPrice: '100', stopLoss: '110', leverage: '5', targetPrice: '80' },
+      { quantity: 2.5, riskAmount: 25, error: null },
+    );
+    expect(seed).toEqual({
+      direction: 'short',
+      entryPrice: '100',
+      stopLoss: '110',
+      leverage: '5',
+      riskAmount: '25.00',
+      quantity: '2.5',
+      targetPrice: '80',
+    });
+  });
+  it('returns null when the calculator rejected the stop', () => {
+    expect(tradePrefillFromCalculator(
+      { direction: 'long', entryPrice: '100', stopLoss: '110' },
+      { error: 'בלונג הסטופ חייב להיות מתחת למחיר הכניסה' },
+    )).toBeNull();
+    expect(tradePrefillFromCalculator({ entryPrice: '', stopLoss: '' }, { quantity: 1 })).toBeNull();
   });
 });
 
