@@ -21,7 +21,7 @@ import { buildPsychologyStats } from '../../utils/coachPsychology';
 import { auditPlan } from '../../utils/planAudit';
 import { pickActivePlan } from '../../utils/pickActivePlan';
 import AnalystInsights from './AnalystInsights';
-import { LRM } from '../../utils/formatters';
+import { formatCurrency, formatCurrencyShort } from '../../utils/formatters';
 
 // Quick prompts the user can click to seed the report.
 const FREE_PROMPTS = [
@@ -125,13 +125,8 @@ const forModel = (obj) => {
   return copy;
 };
 
-const fmt$ = (v) => `${LRM}${v >= 0 ? '+' : '-'}$${Math.abs(v).toFixed(2)}`;
-const fmt$Compact = (v) => {
-  const sign = `${LRM}${v >= 0 ? '+' : '-'}`;
-  const a = Math.abs(v);
-  if (a >= 1000) return `${sign}$${(a / 1000).toFixed(1)}K`;
-  return `${sign}$${a.toFixed(0)}`;
-};
+const fmt$ = formatCurrency;
+const fmt$Compact = formatCurrencyShort;
 
 // dir defaults to ltr because almost every value here is a number, but a caller
 // passing free-form Hebrew (a plan name) must be able to opt out — forcing LTR

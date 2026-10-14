@@ -5,6 +5,7 @@ import { AreaChart, Area, XAxis, YAxis, Tooltip, ResponsiveContainer, ReferenceL
 import DOMPurify from 'dompurify';
 import { searchCoins, fetchCoinDetails, fetchCoinChart, fetchKlines } from '../../services/coingeckoApi';
 import { formatCompactUsd as formatNum, formatCoinPrice as formatPrice, LRM } from '../../utils/formatters';
+import { chartTick } from '../../utils/chartTicks';
 import { fetchAnalysisLiquidity } from '../../services/bybitDirect';
 import { fetchProjectDescription } from '../../services/groqApi';
 import { computeRSI, computeMA, computeVolatility } from '../../utils/technicals';
@@ -1059,8 +1060,8 @@ export default function CoinAnalysis() {
                               <stop offset="100%" stopColor={chartColor} stopOpacity={0} />
                             </linearGradient>
                           </defs>
-                          <XAxis dataKey="date" tick={{ fontSize: 10, fill: 'var(--color-text-muted)' }} tickLine={false} axisLine={false} interval="preserveStartEnd" />
-                          <YAxis domain={['auto', 'auto']} tick={{ fontSize: 10, fill: 'var(--color-text-muted)' }} tickLine={false} axisLine={false} tickFormatter={(v) => v >= 1 ? `$${v.toLocaleString()}` : `$${v.toFixed(4)}`} width={65} />
+                          <XAxis dataKey="date" tick={chartTick} tickLine={false} axisLine={false} interval="preserveStartEnd" />
+                          <YAxis domain={['auto', 'auto']} tick={chartTick} tickLine={false} axisLine={false} tickFormatter={(v) => v >= 1 ? `$${v.toLocaleString()}` : `$${v.toFixed(4)}`} width={72} />
                           <Tooltip
                             contentStyle={{ backgroundColor: 'var(--color-bg-overlay)', border: '1px solid rgba(99,102,241,0.3)', borderRadius: 12, fontSize: 12, color: 'var(--color-text-primary)' }}
                             labelStyle={{ color: 'var(--color-text-secondary)' }}

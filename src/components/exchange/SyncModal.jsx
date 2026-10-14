@@ -2,12 +2,12 @@ import { useState } from 'react';
 import { m } from 'framer-motion';
 import { Check, RefreshCw, Download, X } from 'lucide-react';
 import { tradeExternalIds } from '../../utils/tradeIds';
-import { LRM } from '../../utils/formatters';
+import { formatCurrency } from '../../utils/formatters';
 
 // ── Sync modal ────────────────────────────────────────────────────────────────
 function fmtPnl(v) {
-  if (v == null) return '—';
-  return `${LRM}${v >= 0 ? '+' : ''}$${Math.abs(v).toFixed(2)}`;
+  if (v == null || Number.isNaN(Number(v))) return '—';
+  return formatCurrency(v);
 }
 function fmtDate(iso) {
   if (!iso) return '—';
@@ -47,6 +47,9 @@ export function SyncModal({ exchange, trades, onClose, onImport, existingExterna
       onClick={onClose}>
       <m.div initial={{ y: 60, opacity: 0 }} animate={{ y: 0, opacity: 1 }} exit={{ y: 60, opacity: 0 }}
         transition={{ type: 'spring', damping: 26, stiffness: 320 }}
+        role="dialog"
+        aria-modal="true"
+        aria-label={`עסקאות מ-${exchange}`}
         className="rounded-t-2xl sm:rounded-2xl w-full sm:max-w-lg max-h-[80vh] sm:max-h-[85vh] flex flex-col shadow-2xl"
         style={{
           background: 'var(--color-bg-secondary)',
@@ -74,7 +77,7 @@ export function SyncModal({ exchange, trades, onClose, onImport, existingExterna
             <button onClick={toggleAll} className="text-xs text-accent-primary hover:underline cursor-pointer whitespace-nowrap">
               {allSelected ? 'בטל הכל' : 'בחר הכל'}
             </button>
-            <button onClick={onClose} className="p-1.5 rounded-lg hover:bg-bg-tertiary cursor-pointer">
+            <button onClick={onClose} aria-label="סגור" className="p-1.5 rounded-lg hover:bg-bg-tertiary cursor-pointer">
               <X className="w-4 h-4 text-text-muted" />
             </button>
           </div>

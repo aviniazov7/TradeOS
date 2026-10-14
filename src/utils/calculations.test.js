@@ -32,6 +32,8 @@ import {
   calculateMaxStreaks,
   calculateCurrentStreak,
   partialRealizedPnl,
+  tradeDurationMs,
+  calculateAvgDuration,
 } from './calculations';
 import { planExpiresMs } from './premium';
 
@@ -383,5 +385,20 @@ describe('partialRealizedPnl — realized legs of an open partial', () => {
   });
   it('isClosedTrade still excludes partials (not redefined globally)', () => {
     expect(isClosedTrade({ status: 'partial', exitPrice: 110 })).toBe(false);
+  });
+});
+
+describe('trade duration — zero-length imports do not halve the average', () => {
+  const entry = new Date('2026-01-01T10:00:00Z');
+  const exit = new Date('2026-01-01T10:53:00Z');
+  it('ignores an exit that is not after the entry', () => {
+    expect(tradeDurationMs({ entryDate: entry, exitDate: entry })).toBeNull();
+    expect(tradeDurationMs({ entryDate: entry })).toBeNull();
+  });
+  it('averages only trades that were actually open', () => {
+    const real = { entryDate: entry, exitDate: exit };
+    const zero = { entryDate: entry, exitDate: entry };
+    expect(calculateAvgDuration([zero, real])).toBe(53 * 60 * 1000);
+    expect(calculateAvgDuration([zero])).toBe(0);
   });
 });

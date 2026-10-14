@@ -164,6 +164,9 @@ export default function PremiumPage() {
                 <p className="text-xs text-text-muted mt-1 min-h-[1rem]">
                   {cycle === 'yearly' ? <>שווה ל-<bdi dir="ltr">₪{Math.round(plan.price / 12)}</bdi> לחודש · חודשיים חינם</> : 'חיוב חודשי, אפשר לבטל בכל עת'}
                 </p>
+                <p className="text-xs text-text-secondary mt-2 leading-relaxed">
+                  המחיר מחויב בשקלים (₪). רווח והפסד ביומן נשארים בדולרים.
+                </p>
 
                 <button
                   onClick={() => navigate(`/premium/checkout?cycle=${cycle}`)}

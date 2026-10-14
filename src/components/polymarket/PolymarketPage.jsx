@@ -111,7 +111,7 @@ function Hero({ stats, watchedCount = 0, strategyCount = 0, onOpenAnalyst, onOpe
           </div>
           <div className="min-w-0 flex-1">
             <div className="flex items-center gap-2 flex-wrap">
-              <h1 className="text-base sm:text-lg font-bold leading-tight" style={{ color: 'var(--pm-hero-fg)' }}>ארנקים מובילים · Polymarket</h1>
+              <h2 className="text-base sm:text-lg font-bold leading-tight" style={{ color: 'var(--pm-hero-fg)' }}>ארנקים מובילים · Polymarket</h2>
               <span className="inline-flex items-center gap-1 text-[10px] px-1.5 py-0.5 rounded-full bg-accent-primary text-bg-primary font-bold"><Crown className="w-2.5 h-2.5" /> Premium</span>
             </div>
             <p className="text-[11px] sm:text-xs leading-relaxed mt-1" style={{ color: 'var(--pm-hero-fg-soft)' }}>

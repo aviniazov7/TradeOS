@@ -25,7 +25,7 @@ function AnnoLine({ x1, yy, color, textColor, price }) {
     <g>
       <line x1={x1} y1={yy} x2={W - PAD_R} y2={yy} stroke={color} strokeWidth="1" strokeDasharray="4 3" />
       <rect x={W - PAD_R + 2} y={yy - 7} width={PAD_R - 5} height={14} rx={3} fill={color} />
-      <text x={W - (PAD_R - 2) / 2} y={yy + 3.4} fill={textColor} fontSize="8.5" fontWeight="700" textAnchor="middle">{fmtP(price)}</text>
+      <text x={W - (PAD_R - 2) / 2} y={yy + 3.4} fill={textColor} fontSize="11" fontWeight="700" textAnchor="middle">{fmtP(price)}</text>
     </g>
   );
 }
@@ -101,7 +101,7 @@ export default function SetupChart({ pair, entryPrice, stopLoss, interval = '30m
           return (
             <g key={`grid-${f}`}>
               <line x1={PAD_L} y1={gy} x2={W - PAD_R} y2={gy} stroke="#1b2434" strokeWidth="0.4" />
-              <text x={W - PAD_R + 3} y={gy + 2.4} fill="#57657e" fontSize="6.5">{fmtP(gp)}</text>
+              <text x={W - PAD_R + 3} y={gy + 3} fill="#c8c8d4" fontSize="11">{fmtP(gp)}</text>
             </g>
           );
         })}
@@ -143,13 +143,13 @@ export default function SetupChart({ pair, entryPrice, stopLoss, interval = '30m
             fill={b.c >= b.o ? 'rgba(230,237,246,0.5)' : 'rgba(230,237,246,0.26)'} />
         ))}
         {/* Position levels + label — entry timeframe only */}
-        {showPosition && label && sY != null && <text x={procL + 2} y={sY - 5} fill="#f43f5e" fontSize="9" fontWeight="800">{label}</text>}
+        {showPosition && label && sY != null && <text x={procL + 2} y={sY - 5} fill="#fb7185" fontSize="12" fontWeight="800">{label}</text>}
         {showPosition && tY != null && <AnnoLine x1={procL} yy={tY} color="#22c55e" textColor="#04140b" price={target} />}
         {showPosition && sY != null && <AnnoLine x1={procL} yy={sY} color="#f43f5e" textColor="#1a0209" price={stopLoss} />}
         {showPosition && eY != null && (
           <g>
             <rect x={W - PAD_R + 2} y={eY - 7} width={PAD_R - 5} height={14} rx={3} fill="#38bdf8" />
-            <text x={W - (PAD_R - 2) / 2} y={eY + 3.4} fill="#04141f" fontSize="8.5" fontWeight="700" textAnchor="middle">{fmtP(entryPrice)}</text>
+            <text x={W - (PAD_R - 2) / 2} y={eY + 3.4} fill="#04141f" fontSize="11" fontWeight="700" textAnchor="middle">{fmtP(entryPrice)}</text>
           </g>
         )}
       </svg>

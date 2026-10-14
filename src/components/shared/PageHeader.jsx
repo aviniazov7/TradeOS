@@ -13,7 +13,8 @@ import TabStrip from './TabStrip';
 //           tabs sideways when it shows up on one tab only
 //   tabs  — { tabs, value, onChange, layoutKey }: the page's views; beside the
 //           actions on wide screens, their own row at the bottom on phones
-export default function PageHeader({ icon: Icon, title, titleAside, subtitle, meta, tabs, tabsLead, actions, children, className = '' }) {
+export default function PageHeader({ icon: Icon, title, titleAside, subtitle, meta, tabs, tabsLead, actions, children, className = '', as = 'h1' }) {
+  const Title = as === 'h2' ? 'h2' : 'h1';
   const tabStrip = (variant) => tabs && (
     <TabStrip tabs={tabs.tabs} value={tabs.value} onChange={tabs.onChange} variant={variant} layoutKey={tabs.layoutKey || 'page-tab'} />
   );
@@ -38,11 +39,11 @@ export default function PageHeader({ icon: Icon, title, titleAside, subtitle, me
           <div className="min-w-0 flex-1">
             {titleAside ? (
               <div className="flex flex-wrap items-center gap-x-3 gap-y-2">
-                <h1 className="text-xl md:text-2xl font-bold text-text-primary leading-tight">{title}</h1>
+                <Title className="text-xl md:text-2xl font-bold text-text-primary leading-tight">{title}</Title>
                 <div className="min-w-0">{titleAside}</div>
               </div>
             ) : (
-              <h1 className="text-xl md:text-2xl font-bold text-text-primary leading-tight">{title}</h1>
+              <Title className="text-xl md:text-2xl font-bold text-text-primary leading-tight">{title}</Title>
             )}
             {subtitle && <p className="text-sm text-text-muted mt-1">{subtitle}</p>}
             {meta && <div className="mt-2">{meta}</div>}
@@ -57,7 +58,7 @@ export default function PageHeader({ icon: Icon, title, titleAside, subtitle, me
         </div>
         {children && <div className="min-w-0 lg:max-w-[60%]">{children}</div>}
       </div>
-      {tabs && <div className="relative md:hidden mt-3 rounded-xl bg-bg-tertiary border border-border-primary p-1">{tabStrip('mobile')}</div>}
+      {tabs && <div className="relative md:hidden mt-3 min-w-0 overflow-x-auto rounded-xl bg-bg-tertiary border border-border-primary p-1">{tabStrip('mobile')}</div>}
     </Card>
   );
 }

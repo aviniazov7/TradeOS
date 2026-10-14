@@ -6,17 +6,31 @@ import { he } from 'date-fns/locale';
 // direction of their own. Prefixing the mark keeps it "-$14.13" everywhere —
 // it renders as nothing and survives copy/paste harmlessly.
 export const LRM = '\u200E';
+// Directional isolates. A leading LRM keeps the sign next to the digits, but
+// it does not stop the surrounding Hebrew from pulling the "$" or the minus
+// to the other end of the run. LRI…PDI wraps the whole token so RTL layout
+// cannot reorder it. Both are invisible.
+export const LRI = '\u2066';
+export const PDI = '\u2069';
+
+/** Isolate an LTR token (money, a percent) inside Hebrew. Dashes stay as-is. */
+export function isolateLtr(text) {
+  const s = String(text ?? '');
+  if (!s || s === '—' || s === '–') return s;
+  if (s.startsWith(LRI) && s.endsWith(PDI)) return s;
+  return `${LRI}${s}${PDI}`;
+}
 
 /**
- * Format currency value: $1,234.56
+ * Format currency value: +$1,234.56 / -$1,234.56, isolated for RTL.
  */
 export function formatCurrency(value, decimals = 2) {
-  if (value == null || isNaN(value)) return '$0.00';
+  if (value == null || isNaN(value)) return isolateLtr('$0.00');
   const sign = value >= 0 ? '+' : '-';
-  return `${LRM}${sign}$${Math.abs(value).toLocaleString('en-US', {
+  return isolateLtr(`${LRM}${sign}$${Math.abs(value).toLocaleString('en-US', {
     minimumFractionDigits: decimals,
     maximumFractionDigits: decimals,
-  })}`;
+  })}`);
 }
 
 /**
@@ -24,12 +38,12 @@ export function formatCurrency(value, decimals = 2) {
  * $99,999.99, then $123.4K / $1.12M so it never has to be cut.
  */
 export function formatCurrencyShort(value) {
-  if (value == null || isNaN(value)) return '$0.00';
+  if (value == null || isNaN(value)) return isolateLtr('$0.00');
   const abs = Math.abs(value);
   if (abs < 1e5) return formatCurrency(value);
   const sign = value >= 0 ? '+' : '-';
   const body = abs >= 1e9 ? `${(abs / 1e9).toFixed(2)}B` : abs >= 1e6 ? `${(abs / 1e6).toFixed(2)}M` : `${(abs / 1e3).toFixed(1)}K`;
-  return `${LRM}${sign}$${body}`;
+  return isolateLtr(`${LRM}${sign}$${body}`);
 }
 
 /**
@@ -38,7 +52,7 @@ export function formatCurrencyShort(value) {
 export function formatPercent(value, decimals = 2) {
   if (value == null || isNaN(value)) return '0.00%';
   const sign = value >= 0 ? '+' : '-';
-  return `${LRM}${sign}${Math.abs(value).toFixed(decimals)}%`;
+  return isolateLtr(`${LRM}${sign}${Math.abs(value).toFixed(decimals)}%`);
 }
 
 /**
@@ -78,10 +92,12 @@ export function formatPrice(value) {
  */
 export function formatCompactUsd(n) {
   if (!n) return '—';
-  if (n >= 1e12) return `$${(n / 1e12).toFixed(2)}T`;
-  if (n >= 1e9) return `$${(n / 1e9).toFixed(1)}B`;
-  if (n >= 1e6) return `$${(n / 1e6).toFixed(1)}M`;
-  return `$${n.toLocaleString()}`;
+  let body;
+  if (n >= 1e12) body = `$${(n / 1e12).toFixed(2)}T`;
+  else if (n >= 1e9) body = `$${(n / 1e9).toFixed(1)}B`;
+  else if (n >= 1e6) body = `$${(n / 1e6).toFixed(1)}M`;
+  else body = `$${n.toLocaleString()}`;
+  return isolateLtr(body);
 }
 
 /**
@@ -171,7 +187,7 @@ export function formatDuration(hours) {
 export function formatRR(value, pnl) {
   if (!value || isNaN(value)) return '–';
   const isLoss = pnl !== undefined && pnl < 0;
-  return `${LRM}${isLoss ? '-' : ''}${value.toFixed(2)}R`;
+  return isolateLtr(`${LRM}${isLoss ? '-' : ''}${value.toFixed(2)}R`);
 }
 
 /** A signed net R (`+1.80R` is not used — wins omit the plus, matching formatRR). */
@@ -179,5 +195,5 @@ export function formatSignedR(value) {
   if (value == null || !Number.isFinite(Number(value))) return '–';
   const n = Number(value);
   const sign = n < 0 ? '-' : '';
-  return `${LRM}${sign}${Math.abs(n).toFixed(2)}R`;
+  return isolateLtr(`${LRM}${sign}${Math.abs(n).toFixed(2)}R`);
 }

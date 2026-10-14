@@ -378,7 +378,7 @@ function writeExchCache(uid, suffix, value) {
   try { if (uid) localStorage.setItem(`tradeos_exch_${uid}${suffix}`, JSON.stringify(value)); } catch { /* private mode */ }
 }
 
-export default function ExchangeSettings({ journalId: propJournalId } = {}) {
+export default function ExchangeSettings({ journalId: propJournalId, embedded = false } = {}) {
   const { user, isPremium } = useAuth();
   const navigate = useNavigate();
   const { activeJournalId: contextJournalId } = useJournalContext();
@@ -655,7 +655,7 @@ export default function ExchangeSettings({ journalId: propJournalId } = {}) {
       <m.div variants={pageVariants} initial="initial" animate="animate" exit="exit" transition={pageTransition}>
 
         {/* Header: title + at-a-glance numbers (shared page header). */}
-        <PageHeader icon={Link2} title="חיבור בורסות"
+        <PageHeader as={embedded ? 'h2' : 'h1'} icon={Link2} title="חיבור בורסות"
           subtitle="חבר את הבורסה שלך וייבא עסקאות ישירות ליומן — בלי להקליד אותן ידנית.">
           <div className="grid grid-cols-3 gap-2 md:gap-2.5 lg:w-[480px]">
             <StatTile inset icon={Link2} label="מחוברות" value={`${connectedCount}/${EXCHANGES.length}`}
@@ -664,7 +664,11 @@ export default function ExchangeSettings({ journalId: propJournalId } = {}) {
             <StatTile inset icon={Wallet} label="יתרה כוללת"
               value={knownBalances.length ? fmtUsd(totalBalance) : (balancesLoading ? '…' : '—')}
               sub={knownBalances.length ? `מ-${knownBalances.length} ${knownBalances.length === 1 ? 'בורסה' : 'בורסות'}` : null} />
-            <StatTile inset icon={Shield} label="אבטחה" value="מוגן" mono={false} tone="text-profit" sub="מפתח לקריאה בלבד" />
+            <StatTile inset icon={Shield} label="אבטחה"
+              value={connected.length ? 'מוגן' : '—'}
+              mono={!connected.length}
+              tone={connected.length ? 'text-profit' : 'text-text-muted'}
+              sub={connected.length ? 'מפתח לקריאה בלבד' : 'אין בורסה מחוברת'} />
           </div>
         </PageHeader>
 
