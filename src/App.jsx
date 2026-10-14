@@ -1,6 +1,6 @@
-import { lazy, Suspense } from 'react';
+import { lazy, Suspense, useEffect } from 'react';
 import { BrowserRouter, Routes, Route, Navigate, useSearchParams } from 'react-router-dom';
-import { AuthProvider } from './contexts/AuthContext';
+import { AuthProvider, useAuth } from './contexts/AuthContext';
 import ProtectedRoute from './components/auth/ProtectedRoute';
 import PremiumRoute from './components/auth/PremiumRoute';
 import AdminRoute from './components/auth/AdminRoute';
@@ -71,21 +71,28 @@ const AdminPanel = lazy(loadAdminPanel);
 const TaxReportPage = lazy(loadTaxReport);
 const TerminalPage = lazy(loadTerminal);
 
-// Preload only the two most-likely-next routes during idle — and skip entirely
-// on Save-Data / slow connections. This is an installable PWA, so eagerly
-// pulling all ~19 route chunks (incl. the 400KB charts + 130KB datepicker)
-// burned mobile data for pages a user might never open. Everything else still
-// lazy-loads on demand when its route is actually visited.
-if (typeof window !== 'undefined') {
-  const conn = navigator.connection;
-  const saveData = conn && (conn.saveData || /(^|-)2g$/.test(conn.effectiveType || ''));
-  if (!saveData) {
-    const idle = window.requestIdleCallback || ((cb) => setTimeout(cb, 1500));
-    idle(() => {
+// Preload the two most-likely-next routes during idle, and only once someone
+// is signed in. Doing this on /login downloaded Firestore, charts, and the
+// journal during Lighthouse (about 59 scripts) and competed with first paint.
+function IdleRoutePreload() {
+  const { user, loading } = useAuth();
+  useEffect(() => {
+    if (loading || !user) return undefined;
+    const conn = navigator.connection;
+    const saveData = conn && (conn.saveData || /(^|-)2g$/.test(conn.effectiveType || ''));
+    if (saveData) return undefined;
+    const run = () => {
       loadDashboard();
       loadTradeJournal();
-    });
-  }
+    };
+    if (window.requestIdleCallback) {
+      const id = window.requestIdleCallback(run);
+      return () => window.cancelIdleCallback(id);
+    }
+    const id = setTimeout(run, 1500);
+    return () => clearTimeout(id);
+  }, [user, loading]);
+  return null;
 }
 
 // Polymarket now lives as a tab of the Market page. Old links may carry the
@@ -167,6 +174,7 @@ function MainApp() {
               </Route>
             </Routes>
           </Suspense>
+          <IdleRoutePreload />
           <Toast />
           {/* Site-wide accessibility menu — present on every route, including
               login, so it must not import framer-motion. */}
