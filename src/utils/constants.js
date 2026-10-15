@@ -281,17 +281,36 @@ export const EXCHANGES = [
 // so callers never print the raw value ("אין כרגע שווי חי מ-other").
 export const exchangeLabel = (value) => EXCHANGES.find((e) => e.value === value)?.label || null;
 
+// Full marks, not the 16px Google favicon (Bybit's favicon reads as generic bars).
+const LOCAL_EXCHANGE_LOGOS = {
+  binance: '/logos/exchanges/binance.jpg',
+  bybit: '/logos/exchanges/bybit.png',
+  mexc: '/logos/exchanges/mexc.jpeg',
+  okx: '/logos/exchanges/okx.png',
+  bitget: '/logos/exchanges/bitget.jpg',
+  kucoin: '/logos/exchanges/kucoin.png',
+  gateio: '/logos/exchanges/gate.png',
+  htx: '/logos/exchanges/htx.png',
+  coinbase: '/logos/exchanges/coinbase.png',
+  kraken: '/logos/exchanges/kraken.jpg',
+  bingx: '/logos/exchanges/bingx.jpg',
+  phemex: '/logos/exchanges/phemex.png',
+  deribit: '/logos/exchanges/deribit.jpg',
+  hyperliquid: '/logos/exchanges/hyperliquid.png',
+};
+
 export function getExchangeLogo(exchangeValue) {
   if (!exchangeValue) return null;
-  const ex = EXCHANGES.find((e) => e.value === exchangeValue);
-  if (ex?.domain) return `https://www.google.com/s2/favicons?domain=${ex.domain}&sz=32`;
   // 'other' is the default broker id, not a website. Guessing other.com
   // 404s on every trade row that never picked a real broker.
   const id = String(exchangeValue).toLowerCase().replace(/\s/g, '');
   if (!id || id === 'other') return null;
+  if (LOCAL_EXCHANGE_LOGOS[id]) return LOCAL_EXCHANGE_LOGOS[id];
+  const ex = EXCHANGES.find((e) => e.value === id);
+  if (ex?.domain) return `https://www.google.com/s2/favicons?domain=${ex.domain}&sz=64`;
   const guess = `${id}.com`;
   if (guess === 'other.com') return null;
-  return `https://www.google.com/s2/favicons?domain=${guess}&sz=32`;
+  return `https://www.google.com/s2/favicons?domain=${guess}&sz=64`;
 }
 
 export const TIME_PERIODS = [

@@ -1,15 +1,42 @@
-import { useState, useRef, useEffect } from 'react';
+import { useState, useRef, useEffect, useLayoutEffect, useCallback } from 'react';
+import { createPortal } from 'react-dom';
 import { useNavigate } from 'react-router-dom';
-import { ChevronDown, Plus, BookOpen, Star, Archive, ArchiveRestore, Trash2, Briefcase } from 'lucide-react';
-import { m, AnimatePresence } from 'framer-motion';
+import { ChevronDown, Plus, Star, Archive, ArchiveRestore, Trash2, Briefcase } from 'lucide-react';
 import toast from 'react-hot-toast';
 import { useJournalContext } from '../../contexts/JournalContext';
 import { useAuth } from '../../contexts/AuthContext';
-import { exchangeLabel, FREE_LIMITS } from '../../utils/constants';
+import { exchangeLabel, FREE_LIMITS, getExchangeLogo } from '../../utils/constants';
+import { anchoredMenuBox } from '../../utils/menuPosition';
 import ExchangeLogo from '../shared/ExchangeLogo';
 import JournalFormModal from './JournalFormModal';
 import Modal from '../shared/Modal';
 import ConfirmDialog from '../shared/ConfirmDialog';
+
+function journalLetter(name) {
+  return Array.from(String(name || '').trim())[0] || '?';
+}
+
+// A real exchange mark when we have one. Stocks with no venue keep the
+// briefcase. "אחר" and anything without a logo get the journal name's first
+// letter, large enough to read — not a bars glyph and not the word "other".
+function JournalMark({ journal, size = 'w-5 h-5' }) {
+  const exchange = journal?.exchange;
+  if (exchange && getExchangeLogo(exchange)) {
+    return <ExchangeLogo exchange={exchange} size={size} badge={journal?.name} />;
+  }
+  if (!exchange && journal?.assetClass === 'stocks') {
+    return <Briefcase className={`${size} text-emerald-300 flex-shrink-0`} />;
+  }
+  return (
+    <span
+      data-testid="journal-letter"
+      className={`${size} rounded-full bg-accent-primary/20 text-accent-primary inline-flex items-center justify-center text-[13px] font-extrabold leading-none shrink-0`}
+      aria-hidden="true"
+    >
+      {journalLetter(journal?.name)}
+    </span>
+  );
+}
 
 export default function JournalSwitcher({ compact }) {
   const { journals, archivedJournals, activeJournal, activeJournalId, setActiveJournalId, addJournal, toggleStarJournal, unarchiveJournal, deleteJournal } = useJournalContext();
@@ -21,6 +48,15 @@ export default function JournalSwitcher({ compact }) {
   const [archiveOpen, setArchiveOpen] = useState(false);
   const [deleteTarget, setDeleteTarget] = useState(null);
   const dropdownRef = useRef(null);
+  const menuRef = useRef(null);
+  const btnRef = useRef(null);
+  const [menuBox, setMenuBox] = useState(null);
+
+  const placeMenu = useCallback(() => {
+    const rect = btnRef.current?.getBoundingClientRect();
+    if (!rect) return;
+    setMenuBox(anchoredMenuBox(rect, window.innerWidth));
+  }, []);
 
   // Free tier caps the number of journals; premium is unlimited.
   const openNewJournal = () => {
@@ -33,9 +69,24 @@ export default function JournalSwitcher({ compact }) {
     setFormOpen(true);
   };
 
+  useLayoutEffect(() => {
+    if (!open) return undefined;
+    const onKey = (e) => { if (e.key === 'Escape') setOpen(false); };
+    window.addEventListener('resize', placeMenu);
+    window.addEventListener('scroll', placeMenu, true);
+    window.addEventListener('keydown', onKey);
+    return () => {
+      window.removeEventListener('resize', placeMenu);
+      window.removeEventListener('scroll', placeMenu, true);
+      window.removeEventListener('keydown', onKey);
+    };
+  }, [open, placeMenu]);
+
   useEffect(() => {
     const handleClick = (e) => {
-      if (dropdownRef.current && !dropdownRef.current.contains(e.target)) setOpen(false);
+      const inTrigger = dropdownRef.current && dropdownRef.current.contains(e.target);
+      const inMenu = menuRef.current && menuRef.current.contains(e.target);
+      if (!inTrigger && !inMenu) setOpen(false);
     };
     if (open) document.addEventListener('mousedown', handleClick);
     return () => document.removeEventListener('mousedown', handleClick);
@@ -83,25 +134,31 @@ export default function JournalSwitcher({ compact }) {
   if (compact) {
     return (
       <>
-        <div className="relative" ref={dropdownRef}>
+        <div className="relative min-w-0 max-w-full" ref={dropdownRef}>
           <button
-            onClick={() => setOpen(!open)}
-            className="h-9 inline-flex items-center gap-1.5 px-3 rounded-lg text-sm font-medium bg-bg-tertiary border border-border-primary hover:border-border-hover transition-colors cursor-pointer"
+            ref={btnRef}
+            type="button"
+            onClick={() => { if (!open) placeMenu(); setOpen(!open); }}
+            aria-haspopup="listbox"
+            aria-expanded={open}
+            className="h-8 md:h-9 max-w-full min-w-0 inline-flex items-center gap-1.5 px-2 md:px-3 rounded-lg text-sm font-medium bg-bg-tertiary border border-border-primary hover:border-border-hover transition-colors cursor-pointer"
           >
-            {activeJournal?.exchange ? (
-              <ExchangeLogo exchange={activeJournal.exchange} size="w-3.5 h-3.5" />
-            ) : activeJournal?.assetClass === 'stocks' ? (
-              <Briefcase className="w-3.5 h-3.5 text-emerald-300 flex-shrink-0" />
-            ) : (
-              <BookOpen className="w-3.5 h-3.5 text-accent-primary flex-shrink-0" />
-            )}
-            <span className="truncate max-w-[220px] md:max-w-[360px] text-text-primary font-semibold">{activeJournal?.name || 'יומן'}</span>
+            <JournalMark journal={activeJournal} size="w-5 h-5" />
+            <span className="truncate min-w-0 md:max-w-[360px] text-text-primary font-semibold">{activeJournal?.name || 'יומן'}</span>
             <ChevronDown className={`w-3.5 h-3.5 text-text-muted transition-transform flex-shrink-0 ${open ? 'rotate-180' : ''}`} />
           </button>
 
-          {open && (
-            <div className="absolute top-full right-0 mt-1.5 w-72 max-w-[calc(100vw-2rem)] bg-bg-overlay border border-border-primary rounded-xl shadow-lg z-50 overflow-hidden">
-              <div className="max-h-60 overflow-y-auto">
+          {open && menuBox && createPortal(
+            <div
+              ref={menuRef}
+              role="listbox"
+              aria-label="יומנים"
+              dir="rtl"
+              data-testid="journal-switcher-menu"
+              className="fixed z-[80] bg-bg-overlay border border-border-primary rounded-xl shadow-lg overflow-hidden"
+              style={{ top: menuBox.top, left: menuBox.left, width: menuBox.width, maxWidth: 'calc(100vw - 16px)' }}
+            >
+              <div className="max-h-[min(60vh,20rem)] overflow-y-auto">
                 {journals.map((j) => (
                   <div
                     key={j.id}
@@ -113,13 +170,7 @@ export default function JournalSwitcher({ compact }) {
                       onClick={() => { setActiveJournalId(j.id); setOpen(false); }}
                       className="flex-1 flex items-center gap-2 cursor-pointer min-w-0"
                     >
-                      {j.exchange ? (
-                        <ExchangeLogo exchange={j.exchange} size="w-4 h-4" />
-                      ) : j.assetClass === 'stocks' ? (
-                        <Briefcase className="w-3.5 h-3.5 flex-shrink-0 text-emerald-300" />
-                      ) : (
-                        <BookOpen className="w-3.5 h-3.5 flex-shrink-0" />
-                      )}
+                      <JournalMark journal={j} size="w-5 h-5" />
                       <span className="truncate">{j.name}</span>
                     </button>
                     <button
@@ -151,7 +202,8 @@ export default function JournalSwitcher({ compact }) {
                   </button>
                 </div>
               )}
-            </div>
+            </div>,
+            document.body,
           )}
         </div>
 
@@ -167,11 +219,7 @@ export default function JournalSwitcher({ compact }) {
             <div className="space-y-2">
               {archivedJournals.map((j) => (
                 <div key={j.id} className="flex items-center gap-3 p-3 rounded-xl bg-bg-tertiary border border-border-primary">
-                  {j.exchange ? (
-                    <ExchangeLogo exchange={j.exchange} size="w-5 h-5" />
-                  ) : (
-                    <BookOpen className="w-5 h-5 text-text-muted flex-shrink-0" />
-                  )}
+                  <JournalMark journal={j} size="w-5 h-5" />
                   <div className="flex-1 min-w-0">
                     <p className="text-sm font-medium text-text-primary truncate">{j.name}</p>
                     {exchangeLabel(j.exchange) && <p className="text-[10px] text-text-muted">{exchangeLabel(j.exchange)}</p>}
@@ -228,11 +276,7 @@ export default function JournalSwitcher({ compact }) {
             }`}
           >
             {j.starred && <Star className="w-3 h-3 fill-amber-400 text-amber-400 flex-shrink-0" />}
-            {j.exchange ? (
-              <ExchangeLogo exchange={j.exchange} size="w-3.5 h-3.5" />
-            ) : (
-              <BookOpen className="w-3.5 h-3.5" />
-            )}
+            <JournalMark journal={j} size="w-4 h-4" />
             <span className="truncate max-w-[100px] md:max-w-[140px]">{j.name}</span>
           </button>
         ))}

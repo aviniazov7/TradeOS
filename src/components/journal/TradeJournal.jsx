@@ -18,7 +18,7 @@ import StockMarketPanel from '../stocks/StockMarketPanel';
 import PropFirmPanel from '../propfirm/PropFirmPanel';
 import { useStockQuotes } from '../../hooks/useStockQuotes';
 import { stockSymbol } from '../../utils/stocks';
-import { headerIconBtn, headerPrimaryBtn, headerAiBtn } from '../shared/headerStyles';
+import { headerPrimaryBtn, headerAiBtnDense, headerIconBtnDense, headerPlusBtnDense } from '../shared/headerStyles';
 import JournalSummaryBar from './JournalSummaryBar';
 import TradeTable from './TradeTable';
 import TradeFilters from './TradeFilters';
@@ -585,7 +585,7 @@ export default function TradeJournal() {
         icon={isStockJournal ? Briefcase : BookOpen}
         title={isStockJournal ? 'יומן מניות' : 'יומן המסחר'}
         titleAside={<JournalSwitcher compact />}
-        mobileTabsFirst
+        compactMobile
         tabs={{
           tabs: journalTabs.map((id) => ({ id, label: TAB_LABELS[id], count: id === 'trades' ? trades.length : 0 })),
           value: tab,
@@ -594,18 +594,22 @@ export default function TradeJournal() {
         }}
         tabsLead={tab === 'analytics' ? <TimePeriodFilter value={period} onChange={setPeriod} /> : null}
         actions={(
-          <div className="flex flex-wrap items-center gap-2 w-full sm:w-auto">
-            {/* The AI analysis — a compact header action instead of a full-width banner */}
-            <button onClick={() => setAiModalOpen(true)} className={headerAiBtn} title="ניתוח AI של המסחר שלך">
-              <Sparkles className="w-[18px] h-[18px]" />
-              <span className="hidden sm:inline">ניתוח AI</span>
+          <div className="flex items-center gap-1.5 md:gap-2">
+            <button onClick={() => setAiModalOpen(true)} className={headerAiBtnDense} title="ניתוח AI של המסחר שלך" aria-label="ניתוח AI">
+              <Sparkles className="w-4 h-4 md:w-[18px] md:h-[18px]" />
+              <span className="hidden md:inline">ניתוח AI</span>
             </button>
-            <button onClick={() => setSettingsOpen(true)} className={headerIconBtn} title="הגדרות יומן" aria-label="הגדרות יומן">
-              <Settings className="w-[18px] h-[18px]" />
+            <button onClick={() => setSettingsOpen(true)} className={headerIconBtnDense} title="הגדרות יומן" aria-label="הגדרות יומן">
+              <Settings className="w-4 h-4 md:w-[18px] md:h-[18px]" />
             </button>
-            <button onClick={() => setFormOpen(true)} className={`${headerPrimaryBtn} flex-1 sm:flex-none min-w-[8.5rem]`}>
-              <Plus className="w-4 h-4" /> עסקה חדשה
+            <button type="button" onClick={() => setFormOpen(true)} className={headerPlusBtnDense} aria-label="עסקה חדשה" title="עסקה חדשה">
+              <Plus className="w-4 h-4" />
             </button>
+            <span className="hidden md:inline-flex">
+              <button type="button" onClick={() => setFormOpen(true)} className={headerPrimaryBtn}>
+                <Plus className="w-4 h-4" /> עסקה חדשה
+              </button>
+            </span>
           </div>
         )}
       />

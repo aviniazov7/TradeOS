@@ -9,8 +9,16 @@ describe('getExchangeLogo', () => {
     expect(getExchangeLogo(null)).toBeNull();
   });
 
-  it('uses a known domain and still guesses a custom name', () => {
-    expect(getExchangeLogo('bybit')).toContain('domain=bybit.com');
+  it('uses a real local mark for the supported exchanges', () => {
+    expect(getExchangeLogo('bybit')).toBe('/logos/exchanges/bybit.png');
+    expect(getExchangeLogo('binance')).toBe('/logos/exchanges/binance.jpg');
+    expect(getExchangeLogo('mexc')).toBe('/logos/exchanges/mexc.jpeg');
+    expect(getExchangeLogo('okx')).toBe('/logos/exchanges/okx.png');
+    expect(getExchangeLogo('Bybit')).toBe('/logos/exchanges/bybit.png');
+  });
+
+  it('keeps a favicon for brokers that have no local mark, and guesses a custom name', () => {
+    expect(getExchangeLogo('vantage')).toContain('domain=vantagemarkets.com');
     expect(getExchangeLogo('mybroker')).toContain('domain=mybroker.com');
   });
 });

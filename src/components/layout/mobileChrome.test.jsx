@@ -111,21 +111,26 @@ describe('mobile chrome', () => {
     await view.cleanup();
   });
 
-  it('puts journal tabs in one RTL scroller above the title on phones', async () => {
+  it('puts journal tabs in an underline row under the title on phones', async () => {
     const view = await mount(
       <PageHeader
         icon={BookOpen}
         title="יומן המסחר"
-        mobileTabsFirst
+        compactMobile
         tabs={{ tabs: JOURNAL_TABS, value: 'analytics', onChange: () => {} }}
+        actions={<button type="button" aria-label="עסקה חדשה">+</button>}
       />,
     );
     const scroller = document.querySelector('[data-tab-scroller]');
     const title = document.querySelector('h1');
+    expect(document.querySelectorAll('h1')).toHaveLength(1);
     expect(scroller.getAttribute('dir')).toBe('rtl');
     expect(scroller.className).toContain('overflow-x-auto');
     expect(scroller.className).toContain('md:hidden');
-    expect(scroller.compareDocumentPosition(title) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+    expect(scroller.className).toContain('border-b');
+    expect(scroller.className).not.toContain('bg-bg-tertiary');
+    expect(scroller.className).not.toContain('rounded-xl');
+    expect(title.compareDocumentPosition(scroller) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
     const list = scroller.querySelector('[role="tablist"]');
     expect(list.className).toContain('flex-nowrap');
     expect(list.className).toContain('w-max');
@@ -134,10 +139,13 @@ describe('mobile chrome', () => {
     tabs.forEach((tab) => {
       expect(tab.className).toContain('whitespace-nowrap');
       expect(tab.className).toContain('shrink-0');
+      expect(tab.className).toContain('border-b-2');
     });
     const active = scroller.querySelector('[aria-selected="true"]');
     expect(active.textContent).toBe('ניתוחים');
     expect(active.className).toContain('text-accent-primary');
+    expect(active.className).toContain('border-accent-primary');
+    expect(active.className).not.toContain('bg-accent-primary/15');
     const desktop = document.querySelector('.hidden.md\\:block [role="tablist"]');
     expect(desktop).toBeTruthy();
     expect(scroller.contains(desktop)).toBe(false);

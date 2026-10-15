@@ -7,7 +7,7 @@ const CACHE_DURATION = 7 * 24 * 60 * 60 * 1000; // 7 days (image URLs are stable
 // as fake. Same CDN family the app already hotlinks for TV snapshot images;
 // if it ever fails, CoinIcon falls back to the gold-tinted "XA" letter badge.
 const MANUAL_ICONS = {
-  XAU: 'https://s3-symbol-logo.tradingview.com/metal/gold.svg',
+  XAU: '/logos/marks/gold.svg',
 };
 
 // Hardcoded CoinGecko CDN URLs for the most common trading coins.
