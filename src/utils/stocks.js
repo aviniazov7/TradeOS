@@ -30,13 +30,29 @@ export const TICKER_STOCKS = ['SPY', 'QQQ', 'AAPL', 'NVDA', 'TSLA', 'MSFT', 'AMZ
 // tolerant of a crypto-style suffix on older/hand-typed rows.
 export const stockSymbol = (pair) => String(pair || '').toUpperCase().replace(/USDT$/, '').trim();
 
-// Logo sources, best first. Both serve free PNGs by ticker with no key; a 404
-// moves to the next, and after the last the component draws a letter badge.
+// Official marks for the ticker names. Remote CDNs stay as a fallback for
+// every other symbol, and for these names only after the local file 404s.
+const LOCAL_STOCK_LOGOS = {
+  SPY: '/logos/stocks/spy.png',
+  QQQ: '/logos/stocks/qqq.svg',
+  AAPL: '/logos/stocks/aapl.svg',
+  NVDA: '/logos/stocks/nvda.svg',
+  TSLA: '/logos/stocks/tsla.svg',
+  MSFT: '/logos/stocks/msft.svg',
+  AMZN: '/logos/stocks/amzn.svg',
+  META: '/logos/stocks/meta.svg',
+};
+
+// Logo sources, best first. A local official file wins. Remote PNGs cover the
+// long tail; a 404 moves to the next, and after the last the component draws
+// a letter badge.
 export function stockLogoUrls(symbol) {
   const s = stockSymbol(symbol);
   if (!s) return [];
   const base = s.replace(/\.[A-Z]+$/, ''); // TEVA.TA → TEVA for the US-listed logo
+  const local = LOCAL_STOCK_LOGOS[s] || LOCAL_STOCK_LOGOS[base];
   return [
+    ...(local ? [local] : []),
     `https://financialmodelingprep.com/image-stock/${encodeURIComponent(s)}.png`,
     `https://assets.parqet.com/logos/symbol/${encodeURIComponent(s)}?format=png`,
     ...(base !== s ? [`https://financialmodelingprep.com/image-stock/${encodeURIComponent(base)}.png`] : []),

@@ -1,7 +1,7 @@
 import { useState, useRef, useEffect, useLayoutEffect, useCallback } from 'react';
 import { createPortal } from 'react-dom';
 import { useNavigate } from 'react-router-dom';
-import { ChevronDown, Plus, Star, Archive, ArchiveRestore, Trash2, Briefcase } from 'lucide-react';
+import { ChevronDown, Plus, Star, Archive, ArchiveRestore, Trash2 } from 'lucide-react';
 import toast from 'react-hot-toast';
 import { useJournalContext } from '../../contexts/JournalContext';
 import { useAuth } from '../../contexts/AuthContext';
@@ -16,16 +16,14 @@ function journalLetter(name) {
   return Array.from(String(name || '').trim())[0] || '?';
 }
 
-// A real exchange mark when we have one. Stocks with no venue keep the
-// briefcase. "אחר" and anything without a logo get the journal name's first
-// letter, large enough to read — not a bars glyph and not the word "other".
+// A real exchange mark only when getExchangeLogo resolves one. No venue,
+// "other", or an unknown id gets the journal name's first letter — never a
+// default Bybit / MEXC / Binance tile.
 function JournalMark({ journal, size = 'w-5 h-5' }) {
   const exchange = journal?.exchange;
-  if (exchange && getExchangeLogo(exchange)) {
+  const logo = exchange ? getExchangeLogo(exchange) : null;
+  if (logo) {
     return <ExchangeLogo exchange={exchange} size={size} badge={journal?.name} />;
-  }
-  if (!exchange && journal?.assetClass === 'stocks') {
-    return <Briefcase className={`${size} text-emerald-300 flex-shrink-0`} />;
   }
   return (
     <span

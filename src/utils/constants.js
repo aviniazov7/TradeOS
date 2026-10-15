@@ -299,17 +299,28 @@ const LOCAL_EXCHANGE_LOGOS = {
   hyperliquid: '/logos/exchanges/hyperliquid.png',
 };
 
+// Sentinels for "no venue". These must never resolve to a local exchange file
+// or a guessed favicon — including Hebrew "אחר" and the default journal id.
+const UNSET_EXCHANGE_IDS = new Set([
+  'other', 'none', 'unknown', 'unset', 'n/a', 'na', 'null', 'undefined',
+  'אחר', 'אחרת', 'ללא',
+]);
+
 export function getExchangeLogo(exchangeValue) {
-  if (!exchangeValue) return null;
-  // 'other' is the default broker id, not a website. Guessing other.com
-  // 404s on every trade row that never picked a real broker.
-  const id = String(exchangeValue).toLowerCase().replace(/\s/g, '');
-  if (!id || id === 'other') return null;
-  if (LOCAL_EXCHANGE_LOGOS[id]) return LOCAL_EXCHANGE_LOGOS[id];
+  if (exchangeValue == null) return null;
+  const id = String(exchangeValue).trim().toLowerCase().replace(/\s+/g, '');
+  if (!id || UNSET_EXCHANGE_IDS.has(id)) return null;
+  // Exact id only. A blank, "other", or partial name must never fall through
+  // to another venue's file (no default Bybit / MEXC / Binance).
+  if (Object.prototype.hasOwnProperty.call(LOCAL_EXCHANGE_LOGOS, id)) {
+    return LOCAL_EXCHANGE_LOGOS[id];
+  }
   const ex = EXCHANGES.find((e) => e.value === id);
   if (ex?.domain) return `https://www.google.com/s2/favicons?domain=${ex.domain}&sz=64`;
+  // A custom broker name can still try its own domain. Never invent one for
+  // the unset sentinels, and never point it at a bundled exchange mark.
   const guess = `${id}.com`;
-  if (guess === 'other.com') return null;
+  if (UNSET_EXCHANGE_IDS.has(guess.replace(/\.com$/, '')) || guess === 'other.com') return null;
   return `https://www.google.com/s2/favicons?domain=${guess}&sz=64`;
 }
 

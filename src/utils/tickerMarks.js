@@ -25,8 +25,9 @@ export function tickerMarkUrls(symbol) {
   return url ? [url] : [];
 }
 
-// Original coin marks, saved locally so the ticker does not depend on a
-// favicon or a CDN that answers 403. Coins outside this set use CoinIcon.
+// Official coin images (CoinGecko coin-images), saved locally so the ticker
+// does not depend on a favicon or a CDN that answers 403. Coins outside this
+// set use CoinIcon.
 const COINS = {
   BTC: '/logos/coins/btc.png',
   ETH: '/logos/coins/eth.png',

@@ -7,6 +7,22 @@ describe('getExchangeLogo', () => {
     expect(getExchangeLogo('Other')).toBeNull();
     expect(getExchangeLogo('')).toBeNull();
     expect(getExchangeLogo(null)).toBeNull();
+    expect(getExchangeLogo(undefined)).toBeNull();
+    expect(getExchangeLogo('   ')).toBeNull();
+  });
+
+  it('never maps a missing or unknown exchange onto a real exchange logo', () => {
+    const bundled = [
+      '/logos/exchanges/bybit.png',
+      '/logos/exchanges/binance.jpg',
+      '/logos/exchanges/mexc.jpeg',
+      '/logos/exchanges/okx.png',
+    ];
+    for (const value of ['other', 'OTHER', 'none', 'unknown', 'unset', 'אחר', 'אחרת', 'ללא', '', null, undefined, 'by', 'bin', 'mex']) {
+      const url = getExchangeLogo(value);
+      expect(url == null || !String(url).includes('/logos/exchanges/')).toBe(true);
+      expect(bundled).not.toContain(url);
+    }
   });
 
   it('uses a real local mark for the supported exchanges', () => {

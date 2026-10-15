@@ -7,6 +7,10 @@ import JournalSwitcher from './JournalSwitcher';
 const journals = [
   { id: 'j1', name: 'Bybit', exchange: 'bybit', assetClass: 'crypto' },
   { id: 'j2', name: 'Alpha', exchange: 'other', assetClass: 'crypto' },
+  { id: 'j3', name: 'ריק', exchange: '', assetClass: 'crypto' },
+  { id: 'j4', name: 'בלי', exchange: null, assetClass: 'stocks' },
+  { id: 'j5', name: 'אין', exchange: 'none', assetClass: 'crypto' },
+  { id: 'j6', name: 'אחר', exchange: 'אחר', assetClass: 'crypto' },
 ];
 
 vi.mock('react-router-dom', () => ({
@@ -58,10 +62,10 @@ describe('JournalSwitcher menu', () => {
     expect(left).toBeGreaterThanOrEqual(8);
     expect(left + width).toBeLessThanOrEqual(390 - 8);
     expect(menu.style.maxWidth).toBe('calc(100vw - 16px)');
-    const bybit = menu.querySelector('img');
-    expect(bybit.getAttribute('src')).toBe('/logos/exchanges/bybit.png');
+    const imgs = [...menu.querySelectorAll('img')].map((n) => n.getAttribute('src'));
+    expect(imgs).toEqual(['/logos/exchanges/bybit.png']);
     const letters = [...menu.querySelectorAll('[data-testid="journal-letter"]')].map((n) => n.textContent);
-    expect(letters).toContain('A');
+    expect(letters).toEqual(expect.arrayContaining(['A', 'ר', 'ב', 'א']));
     expect(letters).not.toContain('O');
     expect(menu.textContent).not.toContain('BookOpen');
     await act(async () => { root.unmount(); });
