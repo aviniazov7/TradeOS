@@ -4,7 +4,7 @@ import { stockLogoUrls } from './stocks';
 describe('stockLogoUrls', () => {
   it('prefers the local official mark for ticker names', () => {
     expect(stockLogoUrls('QQQ')[0]).toBe('/logos/stocks/qqq.svg');
-    expect(stockLogoUrls('spy')[0]).toBe('/logos/stocks/spy.png');
+    expect(stockLogoUrls('spy')[0]).toBe('/logos/stocks/spy.svg');
     expect(stockLogoUrls('AAPL')[0]).toBe('/logos/stocks/aapl.svg');
     expect(stockLogoUrls('NVDA')[0]).toBe('/logos/stocks/nvda.svg');
     expect(stockLogoUrls('TSLA')[0]).toBe('/logos/stocks/tsla.svg');

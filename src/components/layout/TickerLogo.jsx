@@ -1,12 +1,11 @@
 import { useState } from 'react';
 import CoinIcon from '../shared/CoinIcon';
-import StockLogo from '../stocks/StockLogo';
-import { tickerCoinUrls, tickerMarkUrls } from '../../utils/tickerMarks';
+import { tickerLogoFrame } from '../../utils/tickerLogo';
 
 function LetterBadge({ text, className }) {
   return (
     <span
-      className={`${className} rounded-full bg-bg-tertiary text-text-secondary grid place-items-center text-[8px] font-bold shrink-0 leading-none`}
+      className={`${className} rounded-full bg-bg-tertiary text-text-secondary grid place-items-center text-[9px] font-bold shrink-0 leading-none`}
       aria-hidden="true"
     >
       {String(text || '?').slice(0, 2)}
@@ -14,27 +13,32 @@ function LetterBadge({ text, className }) {
   );
 }
 
-function MarkImage({ urls, badge, className }) {
-  const [idx, setIdx] = useState(0);
-  const url = urls[idx];
-  if (!url) return <LetterBadge text={badge} className={className} />;
-  return (
-    <img
-      src={url}
-      alt=""
-      className={`${className} rounded-full object-cover shrink-0 bg-white`}
-      onError={() => setIdx((n) => n + 1)}
-    />
-  );
-}
-
-/** One ticker icon: a coin, a company, or a commodity/index mark. Never a broken image. */
-export default function TickerLogo({ kind, symbol, className = 'w-4 h-4' }) {
-  if (kind === 'stock') return <StockLogo symbol={symbol} className={className} rounded="rounded-full" />;
-  if (kind === 'crypto') {
-    const local = tickerCoinUrls(symbol);
-    if (local.length) return <MarkImage urls={local} badge={symbol} className={className} />;
-    return <CoinIcon pair={symbol} className={className} />;
+/** One ticker icon on a circular tile. Never cropped, never a broken image. */
+export default function TickerLogo({ kind, symbol, className = 'w-6 h-6' }) {
+  const [failed, setFailed] = useState(0);
+  const { background, inset, urls } = tickerLogoFrame(kind, symbol);
+  const src = urls[failed];
+  if (!src) {
+    if (kind === 'crypto') return <CoinIcon pair={symbol} className={className} />;
+    return <LetterBadge text={symbol} className={className} />;
   }
-  return <MarkImage urls={tickerMarkUrls(symbol)} badge={symbol} className={className} />;
+  return (
+    <span
+      data-testid="ticker-logo"
+      className={`${className} rounded-full overflow-hidden grid place-items-center shrink-0`}
+      style={{
+        background,
+        boxShadow: background === '#000000' ? 'inset 0 0 0 1px rgba(255,255,255,0.28)' : undefined,
+      }}
+    >
+      <img
+        src={src}
+        alt=""
+        draggable="false"
+        className="object-contain max-w-none"
+        style={{ width: inset, height: inset }}
+        onError={() => setFailed((n) => n + 1)}
+      />
+    </span>
+  );
 }

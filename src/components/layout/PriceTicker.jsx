@@ -141,7 +141,7 @@ export default function PriceTicker() {
     const isPositive = data.change24h >= 0;
     return (
       <div key={`${item.key}-${index}`} className="flex items-center gap-2 px-4 whitespace-nowrap">
-        <TickerLogo kind={item.kind} symbol={item.symbol} className="w-4 h-4" />
+        <TickerLogo kind={item.kind} symbol={item.symbol} className="w-6 h-6" />
         <span className="text-xs font-bold text-text-primary">{item.label}</span>
         <span className="text-xs text-text-secondary">${formatPrice(data.price)}</span>
         <span className={`flex items-center gap-0.5 text-xs font-medium ${isPositive ? 'text-profit' : 'text-loss'}`}>

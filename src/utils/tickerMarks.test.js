@@ -18,6 +18,9 @@ describe('ticker marks', () => {
   it('points the headline coins at local brand marks', () => {
     expect(tickerCoinUrls('btc')).toEqual(['/logos/coins/btc.png']);
     expect(tickerCoinUrls('ETH')).toEqual(['/logos/coins/eth.png']);
+    expect(tickerCoinUrls('SOL')).toEqual(['/logos/coins/sol.svg']);
+    expect(tickerCoinUrls('DOGE')).toEqual(['/logos/coins/doge.svg']);
+    expect(tickerCoinUrls('LTC')).toEqual(['/logos/coins/ltc.svg']);
     expect(tickerCoinUrls('PEPE')).toEqual([]);
   });
 });

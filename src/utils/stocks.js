@@ -33,7 +33,7 @@ export const stockSymbol = (pair) => String(pair || '').toUpperCase().replace(/U
 // Official marks for the ticker names. Remote CDNs stay as a fallback for
 // every other symbol, and for these names only after the local file 404s.
 const LOCAL_STOCK_LOGOS = {
-  SPY: '/logos/stocks/spy.png',
+  SPY: '/logos/stocks/spy.svg',
   QQQ: '/logos/stocks/qqq.svg',
   AAPL: '/logos/stocks/aapl.svg',
   NVDA: '/logos/stocks/nvda.svg',
