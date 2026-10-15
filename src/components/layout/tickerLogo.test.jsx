@@ -11,8 +11,8 @@ describe('tickerLogoFrame', () => {
       background: '#000AD2', inset: '100%',
     });
     expect(tickerLogoFrame('stock', 'QQQ').urls[0]).toBe('/logos/stocks/qqq.png');
-    expect(tickerLogoFrame('stock', 'SPY').urls[0]).toBe('/logos/stocks/spy.png');
-    expect(tickerLogoFrame('stock', 'SPY').background).toBe('#001AFF');
+    expect(tickerLogoFrame('stock', 'SPY').urls[0]).toBe('/logos/stocks/spy-173c9304.png');
+    expect(tickerLogoFrame('stock', 'SPY').background).toBe('#ffffff');
     expect(tickerLogoFrame('stock', 'AAPL').background).toBe('#ffffff');
     expect(tickerLogoFrame('stock', 'NVDA').background).toBe('#000000');
     expect(tickerLogoFrame('stock', 'NVDA').urls[0]).toBe('/logos/stocks/nvda.png');
