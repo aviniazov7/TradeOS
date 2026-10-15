@@ -40,13 +40,6 @@ const navItems = [
   { key: 'scanner', to: '/scanner', label: 'מנוע ויקוף', icon: Radar, admin: true },
 ];
 
-const JOURNAL_LINKS = [
-  { tab: '', label: 'עסקאות' },
-  { tab: 'analytics', label: 'ניתוחים' },
-  { tab: 'calendar', label: 'יומן חודשי' },
-  { tab: 'exchange', label: 'חיבור בורסאות' },
-];
-
 const pathIn = (pathname, to) => (to === '/' ? pathname === '/' : pathname === to || pathname.startsWith(`${to}/`));
 const itemActive = (item, pathname) => pathIn(pathname, item.to) || !!item.match?.some((p) => pathIn(pathname, p));
 
@@ -95,8 +88,7 @@ function NavRow({ item, active, onClose }) {
 
 export default function Sidebar({ mobileOpen, onClose }) {
   const { isAdmin } = useAuth();
-  const { pathname, search } = useLocation();
-  const journalTab = new URLSearchParams(search).get('tab') || '';
+  const { pathname } = useLocation();
   const [calcOpen, setCalcOpen] = useState(false);
 
   // Lock body scroll when sidebar is open
@@ -140,27 +132,7 @@ export default function Sidebar({ mobileOpen, onClose }) {
             {/* Navigation */}
             <nav aria-label="תפריט ראשי" className="flex-1 px-3 py-4 space-y-1 overflow-y-auto">
               {navItems.filter((item) => !item.admin || isAdmin).map((item) => (
-                <div key={item.key}>
-                  <NavRow item={item} active={itemActive(item, pathname)} onClose={onClose} />
-                  {item.key === 'journal' && pathIn(pathname, '/journal') && (
-                    <div className="ms-4 mb-1 mt-0.5 space-y-0.5 border-s border-border-primary ps-2">
-                      {JOURNAL_LINKS.map((link) => {
-                        const active = journalTab === link.tab;
-                        return (
-                          <Link
-                            key={link.tab || 'trades'}
-                            to={link.tab ? `/journal?tab=${link.tab}` : '/journal'}
-                            onClick={onClose}
-                            aria-current={active ? 'page' : undefined}
-                            className={`block rounded-lg px-2 py-1.5 text-xs font-medium ${active ? 'text-accent-primary bg-accent-primary/10' : 'text-text-secondary hover:text-text-primary hover:bg-bg-tertiary/60'}`}
-                          >
-                            {link.label}
-                          </Link>
-                        );
-                      })}
-                    </div>
-                  )}
-                </div>
+                <NavRow key={item.key} item={item} active={itemActive(item, pathname)} onClose={onClose} />
               ))}
             </nav>
 

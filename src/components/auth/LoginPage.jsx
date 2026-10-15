@@ -10,6 +10,7 @@ import { PASSWORD_RULES } from '../../utils/passwordPolicy';
 import { loginFieldError } from '../../utils/loginValidation';
 import { preloadPopupResolver } from '../../services/authService';
 import { exchangeSyncBlurb } from '../exchange/exchangeConfig';
+import BrandMark from '../shared/BrandMark';
 
 // What the product does, in three lines — shown beside the form on wide screens.
 // The exchange line is built from canSync, so Binance is never described as auto-sync.
@@ -18,35 +19,6 @@ const FEATURES = [
   { icon: BarChart3, title: 'יומן וניתוחים', text: 'רווח/הפסד, R:R, אחוז הצלחה ופילוח לפי מטבע וסשן' },
   { icon: Sparkles, title: 'סוכן AI אישי', text: 'שואלים בעברית ומקבלים תשובה מבוססת על העסקאות שלך' },
 ];
-
-
-function BrandMark({ size = 'md' }) {
-  // Two marks render on this page (the panel and the form). Shared gradient
-  // ids make the second copy paint with the first one's paint server, which
-  // React 19 reports as a hydration mismatch.
-  const uid = useId().replace(/:/g, '');
-  const bgId = `bm-bg-${uid}`;
-  const lineId = `bm-line-${uid}`;
-  const box = size === 'lg' ? 'w-12 h-12 rounded-2xl' : 'w-10 h-10 rounded-xl';
-  return (
-    <div className="flex items-center gap-3">
-      {/* The app icon, drawn inline so it is crisp and never waits on a file */}
-      <svg viewBox="0 0 48 48" className={`${box} shrink-0`} style={{ boxShadow: '0 0 28px -8px rgba(56,189,248,0.6)' }} aria-hidden="true">
-        <defs>
-          <linearGradient id={bgId} x1="0" y1="0" x2="0" y2="1"><stop offset="0%" stopColor="#1c1d22" /><stop offset="100%" stopColor="#0b0b0e" /></linearGradient>
-          <linearGradient id={lineId} x1="0" y1="1" x2="1" y2="0"><stop offset="0%" stopColor="#8b5cf6" /><stop offset="55%" stopColor="#38bdf8" /><stop offset="100%" stopColor="#22d3ee" /></linearGradient>
-        </defs>
-        <rect width="48" height="48" rx="12" fill={`url(#${bgId})`} />
-        <path d="M12 34 L22 24 L26 28 L36 16" fill="none" stroke={`url(#${lineId})`} strokeWidth="4.5" strokeLinecap="round" strokeLinejoin="round" />
-        <circle cx="36" cy="16" r="5.5" fill="none" stroke="#38bdf8" strokeOpacity="0.35" strokeWidth="1.5" />
-      </svg>
-      <div className="leading-tight">
-        <div className={`${size === 'lg' ? 'text-2xl' : 'text-xl'} font-extrabold text-text-primary`} dir="ltr">TradeOS</div>
-        <div className="text-xs text-text-muted">מערכת ההפעלה למסחר</div>
-      </div>
-    </div>
-  );
-}
 
 // Decorative equity curve for the brand panel — same gradient as the splash.
 function CurveArt() {

@@ -39,8 +39,6 @@ import { TRADE_PREFILL_KEY } from '../../utils/tradeFormHelpers';
 
 const JOURNAL_TABS = ['trades', 'analytics', 'calendar', 'exchange'];
 const TAB_LABELS = { trades: 'עסקאות', analytics: 'ניתוחים', calendar: 'יומן חודשי', exchange: 'חיבור בורסאות' };
-// Narrow screens: shorter label so all four fit without scrolling on most phones.
-const TAB_MOBILE_LABELS = { ...TAB_LABELS, exchange: 'בורסאות' };
 const defaultFilters = { search: '', direction: '', result: '', status: '', strategy: '', tag: '', timeframe: '', month: '', from: '', to: '' };
 const defaultSort = { key: 'date', dir: 'desc' };
 // Phone sort picker (desktop sorts by clicking column headers).
@@ -587,8 +585,9 @@ export default function TradeJournal() {
         icon={isStockJournal ? Briefcase : BookOpen}
         title={isStockJournal ? 'יומן מניות' : 'יומן המסחר'}
         titleAside={<JournalSwitcher compact />}
+        mobileTabsFirst
         tabs={{
-          tabs: journalTabs.map((id) => ({ id, label: TAB_LABELS[id], mobileLabel: TAB_MOBILE_LABELS[id], count: id === 'trades' ? trades.length : 0 })),
+          tabs: journalTabs.map((id) => ({ id, label: TAB_LABELS[id], count: id === 'trades' ? trades.length : 0 })),
           value: tab,
           onChange: setTab,
           layoutKey: 'journal-tab',

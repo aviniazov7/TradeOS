@@ -13,10 +13,18 @@ import TabStrip from './TabStrip';
 //           tabs sideways when it shows up on one tab only
 //   tabs  — { tabs, value, onChange, layoutKey }: the page's views; beside the
 //           actions on wide screens, their own row at the bottom on phones
-export default function PageHeader({ icon: Icon, title, titleAside, subtitle, meta, tabs, tabsLead, actions, children, className = '', as = 'h1' }) {
+//   mobileTabsFirst — on phones, that row is the first thing in the card
+//           (one RTL scroller, full labels). From md up the tabs stay beside
+//           the actions, same as every other page.
+export default function PageHeader({ icon: Icon, title, titleAside, subtitle, meta, tabs, tabsLead, actions, children, className = '', as = 'h1', mobileTabsFirst = false }) {
   const Title = as === 'h2' ? 'h2' : 'h1';
   const tabStrip = (variant) => tabs && (
     <TabStrip tabs={tabs.tabs} value={tabs.value} onChange={tabs.onChange} variant={variant} layoutKey={tabs.layoutKey || 'page-tab'} />
+  );
+  const mobileTabRow = tabs && (
+    <div data-tab-scroller dir="rtl" className={`md:hidden w-full min-w-0 overflow-x-auto no-scrollbar rounded-xl bg-bg-tertiary border border-border-primary p-1 ${mobileTabsFirst ? '' : 'relative mt-3'}`}>
+      {tabStrip('mobile')}
+    </div>
   );
   return (
     // No overflow clipping on the card itself, and a z-index above the page
@@ -28,6 +36,7 @@ export default function PageHeader({ icon: Icon, title, titleAside, subtitle, me
         <div className="absolute inset-0" style={{ background: 'radial-gradient(80% 140% at 100% 0%, rgba(37,99,235,0.14) 0%, transparent 60%)' }} />
       </div>
       <div className="relative flex flex-col lg:flex-row lg:items-center gap-4 lg:gap-6">
+        {mobileTabsFirst && mobileTabRow}
         {/* Phones: actions wrap onto their own row under the title instead of
             squeezing it (basis-full); from sm up they sit beside it. */}
         <div className={`flex flex-wrap ${subtitle || meta ? 'items-start' : 'items-center'} gap-3 flex-1 min-w-0`}>
@@ -58,7 +67,7 @@ export default function PageHeader({ icon: Icon, title, titleAside, subtitle, me
         </div>
         {children && <div className="min-w-0 lg:max-w-[60%]">{children}</div>}
       </div>
-      {tabs && <div className="relative md:hidden mt-3 min-w-0 overflow-x-auto rounded-xl bg-bg-tertiary border border-border-primary p-1">{tabStrip('mobile')}</div>}
+      {!mobileTabsFirst && mobileTabRow}
     </Card>
   );
 }
