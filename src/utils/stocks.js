@@ -30,11 +30,12 @@ export const TICKER_STOCKS = ['SPY', 'QQQ', 'AAPL', 'NVDA', 'TSLA', 'MSFT', 'AMZ
 // tolerant of a crypto-style suffix on older/hand-typed rows.
 export const stockSymbol = (pair) => String(pair || '').toUpperCase().replace(/USDT$/, '').trim();
 
-// Official marks for the ticker names. Remote CDNs stay as a fallback for
-// every other symbol, and for these names only after the local file 404s.
+// Official marks. A name in this map never falls through to a remote CDN:
+// a 404 becomes a letter badge. That is what kept painting SPY as the Parqet
+// "zest" mark (and, before that, the FMP State Street wordmark) whenever the
+// local file failed to decode.
 const LOCAL_STOCK_LOGOS = {
-  // Hashed so a phone that cached the old spy.png (or the State Street
-  // wordmark that URL fell through to) cannot keep serving it for 7 days.
+  // Hashed so a phone that cached the old spy.png cannot keep serving it.
   SPY: '/logos/stocks/spy-173c9304.png',
   QQQ: '/logos/stocks/qqq.png',
   AAPL: '/logos/stocks/aapl.svg',
@@ -45,16 +46,16 @@ const LOCAL_STOCK_LOGOS = {
   META: '/logos/stocks/meta.svg',
 };
 
-// Logo sources, best first. A local official file wins. Remote PNGs cover the
-// long tail; a 404 moves to the next, and after the last the component draws
-// a letter badge.
+// Logo sources, best first. A hosted official file is the only URL for that
+// symbol. Remote PNGs cover tickers we have not drawn ourselves; a 404 moves
+// to the next, and after the last the component draws a letter badge.
 export function stockLogoUrls(symbol) {
   const s = stockSymbol(symbol);
   if (!s) return [];
   const base = s.replace(/\.[A-Z]+$/, ''); // TEVA.TA → TEVA for the US-listed logo
   const local = LOCAL_STOCK_LOGOS[s] || LOCAL_STOCK_LOGOS[base];
+  if (local) return [local];
   return [
-    ...(local ? [local] : []),
     `https://financialmodelingprep.com/image-stock/${encodeURIComponent(s)}.png`,
     `https://assets.parqet.com/logos/symbol/${encodeURIComponent(s)}?format=png`,
     ...(base !== s ? [`https://financialmodelingprep.com/image-stock/${encodeURIComponent(base)}.png`] : []),

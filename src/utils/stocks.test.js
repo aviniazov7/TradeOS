@@ -13,14 +13,21 @@ describe('stockLogoUrls', () => {
     expect(stockLogoUrls('META')[0]).toBe('/logos/stocks/meta.svg');
   });
 
-  it('keeps a remote fallback after the local file', () => {
-    const urls = stockLogoUrls('QQQ');
-    expect(urls[1]).toContain('financialmodelingprep.com');
-    expect(urls.some((u) => u.includes('parqet.com'))).toBe(true);
+  it('never appends a third-party URL after a local official file', () => {
+    for (const sym of ['SPY', 'QQQ', 'AAPL', 'NVDA', 'TSLA', 'MSFT', 'AMZN', 'META']) {
+      const urls = stockLogoUrls(sym);
+      expect(urls).toHaveLength(1);
+      expect(urls[0].startsWith('/logos/stocks/')).toBe(true);
+      expect(urls.join(' ')).not.toMatch(/parqet|financialmodelingprep/);
+    }
+    expect(stockLogoUrls('spy')).toEqual(['/logos/stocks/spy-173c9304.png']);
+    expect(stockLogoUrls('SPY.TA')).toEqual(['/logos/stocks/spy-173c9304.png']);
   });
 
   it('does not invent a local file for an unlisted ticker', () => {
-    expect(stockLogoUrls('GOOGL')[0]).toContain('financialmodelingprep.com');
+    const urls = stockLogoUrls('GOOGL');
+    expect(urls[0]).toContain('financialmodelingprep.com');
+    expect(urls.some((u) => u.includes('parqet.com'))).toBe(true);
     expect(stockLogoUrls('')).toEqual([]);
   });
 });

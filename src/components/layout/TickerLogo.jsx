@@ -18,8 +18,12 @@ export default function TickerLogo({ kind, symbol, className = 'w-6 h-6' }) {
   const [failed, setFailed] = useState(0);
   const { background, inset, urls } = tickerLogoFrame(kind, symbol);
   const src = urls[failed];
+  // A hosted official file that fails stays a letter badge. Falling through
+  // to CoinIcon (or the next remote URL) is what replaced SPY with a
+  // third-party wordmark on phones where the PNG did not decode.
+  const hosted = urls.some((u) => u.startsWith('/'));
   if (!src) {
-    if (kind === 'crypto') return <CoinIcon pair={symbol} className={className} />;
+    if (kind === 'crypto' && !hosted) return <CoinIcon pair={symbol} className={className} />;
     return <LetterBadge text={symbol} className={className} />;
   }
   // Percentage width/height on a grid item collapses in WebKit, which is why

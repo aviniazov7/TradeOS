@@ -10,8 +10,9 @@ describe('tickerLogoFrame', () => {
     expect(tickerLogoFrame('stock', 'QQQ')).toMatchObject({
       background: '#000AD2', inset: '100%',
     });
-    expect(tickerLogoFrame('stock', 'QQQ').urls[0]).toBe('/logos/stocks/qqq.png');
-    expect(tickerLogoFrame('stock', 'SPY').urls[0]).toBe('/logos/stocks/spy-173c9304.png');
+    expect(tickerLogoFrame('stock', 'QQQ').urls).toEqual(['/logos/stocks/qqq.png']);
+    expect(tickerLogoFrame('stock', 'SPY').urls).toEqual(['/logos/stocks/spy-173c9304.png']);
+    expect(tickerLogoFrame('stock', 'SPY').urls.join(' ')).not.toMatch(/parqet|financialmodelingprep|https?:/);
     expect(tickerLogoFrame('stock', 'SPY').background).toBe('#ffffff');
     expect(tickerLogoFrame('stock', 'AAPL').background).toBe('#ffffff');
     expect(tickerLogoFrame('stock', 'NVDA').background).toBe('#000000');
@@ -44,6 +45,21 @@ describe('TickerLogo', () => {
     expect(img.getAttribute('height')).toBe('64');
     expect(img.getAttribute('src')).toBe('/logos/stocks/aapl.svg');
     expect(tile.style.background).toBe('#ffffff');
+    await act(async () => { root.unmount(); });
+    el.remove();
+  });
+
+  it('does not walk to a third-party image when the SPY file fails', async () => {
+    const el = document.createElement('div');
+    document.body.appendChild(el);
+    const root = createRoot(el);
+    await act(async () => { root.render(<TickerLogo kind="stock" symbol="SPY" />); });
+    const img = el.querySelector('img');
+    expect(img.getAttribute('src')).toBe('/logos/stocks/spy-173c9304.png');
+    await act(async () => { img.dispatchEvent(new Event('error')); });
+    expect(el.querySelector('img')).toBeNull();
+    expect(el.textContent).toContain('SP');
+    expect(el.innerHTML).not.toMatch(/parqet|financialmodelingprep|http/);
     await act(async () => { root.unmount(); });
     el.remove();
   });

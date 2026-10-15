@@ -24,13 +24,21 @@ const FRAMES = {
   LEO: { background: '#ffffff', inset: '86%' },
 };
 
+// A same-origin file always beats a CDN url. Quote payloads do not carry an
+// image, but stock search used to append FMP and Parqet after the local file
+// and TickerLogo walked that list on the first decode error.
+function localFirst(urls) {
+  const local = urls.filter((u) => typeof u === 'string' && u.startsWith('/'));
+  return local.length ? local : urls;
+}
+
 export function tickerLogoFrame(kind, symbol) {
   const s = kind === 'crypto' ? tickerCoinKey(symbol) : stockSymbol(symbol);
   const frame = FRAMES[s] || { background: 'transparent', inset: '100%' };
-  const urls = kind === 'stock'
+  const raw = kind === 'stock'
     ? stockLogoUrls(s)
     : kind === 'crypto'
       ? tickerCoinUrls(s)
       : tickerMarkUrls(s);
-  return { ...frame, urls };
+  return { ...frame, urls: localFirst(raw) };
 }
