@@ -10,13 +10,14 @@ describe('tickerLogoFrame', () => {
     expect(tickerLogoFrame('stock', 'QQQ')).toMatchObject({
       background: '#000AD2', inset: '100%',
     });
-    expect(tickerLogoFrame('stock', 'QQQ').urls[0]).toBe('/logos/stocks/qqq.svg');
-    expect(tickerLogoFrame('stock', 'SPY').urls[0]).toBe('/logos/stocks/spy.svg');
+    expect(tickerLogoFrame('stock', 'QQQ').urls[0]).toBe('/logos/stocks/qqq.png');
+    expect(tickerLogoFrame('stock', 'SPY').urls[0]).toBe('/logos/stocks/spy.png');
+    expect(tickerLogoFrame('stock', 'SPY').background).toBe('#001AFF');
     expect(tickerLogoFrame('stock', 'AAPL').background).toBe('#ffffff');
     expect(tickerLogoFrame('stock', 'NVDA').background).toBe('#000000');
-    expect(tickerLogoFrame('stock', 'NVDA').urls[0]).toBe('/logos/stocks/nvda.svg');
+    expect(tickerLogoFrame('stock', 'NVDA').urls[0]).toBe('/logos/stocks/nvda.png');
     expect(tickerLogoFrame('crypto', 'SOL')).toMatchObject({ background: '#000000' });
-    expect(tickerLogoFrame('crypto', 'SOL').urls).toEqual(['/logos/coins/sol.svg']);
+    expect(tickerLogoFrame('crypto', 'SOL').urls).toEqual(['/logos/coins/sol.png']);
     expect(tickerLogoFrame('crypto', 'DOGE').urls[0]).toBe('/logos/coins/doge.svg');
     expect(tickerLogoFrame('crypto', 'LTC').urls[0]).toBe('/logos/coins/ltc.svg');
     expect(tickerLogoFrame('crypto', 'other').urls).toEqual([]);
@@ -38,6 +39,8 @@ describe('TickerLogo', () => {
     expect(tile.className).not.toContain('object-cover');
     expect(img.className).toContain('object-contain');
     expect(img.className).not.toContain('object-cover');
+    expect(img.getAttribute('width')).toBe('64');
+    expect(img.getAttribute('height')).toBe('64');
     expect(img.getAttribute('src')).toBe('/logos/stocks/aapl.svg');
     expect(tile.style.background).toBe('#ffffff');
     await act(async () => { root.unmount(); });

@@ -12,7 +12,7 @@ const FRAMES = {
   AMZN: { background: '#ffffff', inset: '82%' },
   META: { background: '#f0f3fa', inset: '100%' },
   QQQ: { background: '#000AD2', inset: '100%' },
-  SPY: { background: '#ffffff', inset: '100%' },
+  SPY: { background: '#001AFF', inset: '100%' },
   SOL: { background: '#000000', inset: '92%' },
   DOGE: { background: '#ba9f33', inset: '100%' },
   LTC: { background: '#bfbbbb', inset: '100%' },

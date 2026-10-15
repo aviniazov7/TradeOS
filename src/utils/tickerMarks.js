@@ -33,7 +33,7 @@ const COINS = {
   ETH: '/logos/coins/eth.png',
   XRP: '/logos/coins/xrp.png',
   BNB: '/logos/coins/bnb.png',
-  SOL: '/logos/coins/sol.svg',
+  SOL: '/logos/coins/sol.png',
   DOGE: '/logos/coins/doge.svg',
   ADA: '/logos/coins/ada.png',
   TRX: '/logos/coins/trx.png',
