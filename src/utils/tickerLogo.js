@@ -1,4 +1,4 @@
-import { tickerCoinUrls, tickerMarkUrls } from './tickerMarks';
+import { tickerCoinKey, tickerCoinUrls, tickerMarkUrls } from './tickerMarks';
 import { stockLogoUrls, stockSymbol } from './stocks';
 
 // Tile behind the mark. Dark drawings sit on white; the green NVIDIA eye and
@@ -13,7 +13,9 @@ const FRAMES = {
   META: { background: '#f0f3fa', inset: '100%' },
   QQQ: { background: '#000AD2', inset: '100%' },
   SPY: { background: '#001AFF', inset: '100%' },
-  SOL: { background: '#000000', inset: '92%' },
+  // The PNG is already the black tile with padded bars, so the image fills
+  // the circle. A smaller inset painted a second ring around the mark.
+  SOL: { background: '#000000', inset: '100%' },
   DOGE: { background: '#ba9f33', inset: '100%' },
   LTC: { background: '#bfbbbb', inset: '100%' },
   XRP: { background: '#ffffff', inset: '100%' },
@@ -22,7 +24,7 @@ const FRAMES = {
 };
 
 export function tickerLogoFrame(kind, symbol) {
-  const s = stockSymbol(symbol);
+  const s = kind === 'crypto' ? tickerCoinKey(symbol) : stockSymbol(symbol);
   const frame = FRAMES[s] || { background: 'transparent', inset: '100%' };
   const urls = kind === 'stock'
     ? stockLogoUrls(s)

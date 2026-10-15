@@ -16,8 +16,9 @@ describe('tickerLogoFrame', () => {
     expect(tickerLogoFrame('stock', 'AAPL').background).toBe('#ffffff');
     expect(tickerLogoFrame('stock', 'NVDA').background).toBe('#000000');
     expect(tickerLogoFrame('stock', 'NVDA').urls[0]).toBe('/logos/stocks/nvda.png');
-    expect(tickerLogoFrame('crypto', 'SOL')).toMatchObject({ background: '#000000' });
-    expect(tickerLogoFrame('crypto', 'SOL').urls).toEqual(['/logos/coins/sol.png']);
+    expect(tickerLogoFrame('crypto', 'SOL')).toMatchObject({ background: '#000000', inset: '100%' });
+    expect(tickerLogoFrame('crypto', 'SOL').urls).toEqual(['/logos/coins/sol-15954313.png']);
+    expect(tickerLogoFrame('crypto', 'SOL/USDT').urls).toEqual(['/logos/coins/sol-15954313.png']);
     expect(tickerLogoFrame('crypto', 'DOGE').urls[0]).toBe('/logos/coins/doge.svg');
     expect(tickerLogoFrame('crypto', 'LTC').urls[0]).toBe('/logos/coins/ltc.svg');
     expect(tickerLogoFrame('crypto', 'other').urls).toEqual([]);

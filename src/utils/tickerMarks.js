@@ -33,7 +33,10 @@ const COINS = {
   ETH: '/logos/coins/eth.png',
   XRP: '/logos/coins/xrp.png',
   BNB: '/logos/coins/bnb.png',
-  SOL: '/logos/coins/sol.png',
+  // Hashed filename: Firebase caches /logos for 7 days, and the first
+  // sol.png at this path was CoinGecko's green circle. A new URL is the
+  // only way a phone drops that cached body.
+  SOL: '/logos/coins/sol-15954313.png',
   DOGE: '/logos/coins/doge.svg',
   ADA: '/logos/coins/ada.png',
   TRX: '/logos/coins/trx.png',
@@ -51,8 +54,17 @@ const COINS = {
   TAO: '/logos/coins/tao.jpg',
 };
 
+/** BTC, SOL/USDT, and SOLUSDT all name the same coin. */
+export function tickerCoinKey(symbol) {
+  return String(symbol || '')
+    .toUpperCase()
+    .replace(/[/-]?USDT$/, '')
+    .replace(/\//g, '')
+    .trim();
+}
+
 /** Local coin logo, or [] so the caller can fall through to CoinIcon. */
 export function tickerCoinUrls(symbol) {
-  const url = COINS[String(symbol || '').toUpperCase()];
+  const url = COINS[tickerCoinKey(symbol)];
   return url ? [url] : [];
 }
