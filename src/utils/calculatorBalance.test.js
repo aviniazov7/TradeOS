@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest';
 import {
   calculatorBalanceCaption,
   calculatorJournalLabel,
+  calculatorRiskValue,
   formatBalanceInput,
   journalAccountBalance,
 } from './calculatorBalance';
@@ -23,6 +24,22 @@ describe('journal account balance', () => {
   it('returns nothing when neither source is a positive balance', () => {
     expect(journalAccountBalance({ initialBalance: 0 }, null)).toBeNull();
     expect(journalAccountBalance(null, undefined)).toBeNull();
+  });
+});
+
+describe('calculator risk value', () => {
+  it('keeps a positive risk saved on the journal', () => {
+    expect(calculatorRiskValue({ riskType: 'percent', riskValue: 1 })).toBe('1');
+    expect(calculatorRiskValue({ riskType: 'fixed', riskValue: 25 })).toBe('25');
+  });
+
+  it('uses 1% when a percent risk was never set', () => {
+    expect(calculatorRiskValue({ riskType: 'percent', riskValue: 0 })).toBe('1');
+    expect(calculatorRiskValue(null)).toBe('1');
+  });
+
+  it('leaves a fixed-dollar risk blank when nothing was saved', () => {
+    expect(calculatorRiskValue({ riskType: 'fixed', riskValue: 0 })).toBe('');
   });
 });
 

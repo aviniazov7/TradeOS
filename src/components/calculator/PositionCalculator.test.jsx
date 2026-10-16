@@ -49,6 +49,13 @@ async function mount(open = true) {
       const option = [...document.querySelectorAll('[role="option"]')].find((el) => el.textContent === label);
       await act(async () => { option.click(); });
     },
+    setInput: async (el, value) => {
+      await act(async () => {
+        const setter = Object.getOwnPropertyDescriptor(window.HTMLInputElement.prototype, 'value').set;
+        setter.call(el, value);
+        el.dispatchEvent(new Event('input', { bubbles: true }));
+      });
+    },
     unmount: async () => {
       await act(async () => { root.unmount(); });
       el.remove();
@@ -117,6 +124,31 @@ describe('position calculator balance', () => {
     expect(view.balance().value).toBe('');
     expect(view.balance().getAttribute('placeholder')).toBe('הזן יתרה');
     await view.unmount();
+  });
+
+  it('shows rounded results after balance, entry, stop and target', async () => {
+    wallets = { mexc: null, bybit: null };
+    const journal = { ...mexc, initialBalance: 1000, riskValue: 0 };
+    ctx = { journals: [journal, bybit], activeJournal: journal };
+    const view = await mount();
+    try {
+      expect(view.journal().tagName).toBe('BUTTON');
+      expect(view.journal().getAttribute('aria-haspopup')).toBe('listbox');
+      expect(view.balance().value).toBe('1000.00');
+      expect(document.querySelector('input[placeholder="1"]').value).toBe('1');
+      const prices = [...document.querySelectorAll('input[type="number"]')].filter((el) => el.placeholder === '0.00');
+      await view.setInput(prices[0], '123.45');
+      await view.setInput(prices[1], '120');
+      await view.setInput(prices[2], '140');
+      const text = document.body.textContent;
+      expect(text).toContain('גודל פוזיציה');
+      expect(text).toContain('$357.83');
+      expect(text).toContain('$10.00');
+      expect(text).toContain('1:4.80');
+      expect(document.querySelector('select')).toBeNull();
+    } finally {
+      await view.unmount();
+    }
   });
 
   it('defaults again to the app journal the next time the calculator opens', async () => {

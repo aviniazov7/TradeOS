@@ -11,6 +11,7 @@ import { calculatePosition } from '../../utils/positionMath';
 import {
   calculatorBalanceCaption,
   calculatorJournalLabel,
+  calculatorRiskValue,
   formatBalanceInput,
   journalAccountBalance,
 } from '../../utils/calculatorBalance';
@@ -64,7 +65,7 @@ export default function PositionCalculator({ isOpen, onClose }) {
   const autoBalanceRef = useRef(true);
   const selectedId = selected?.id ?? null;
   const selectedRiskType = selected?.riskType || 'percent';
-  const selectedRiskValue = selected?.riskValue || '';
+  const selectedRiskValue = calculatorRiskValue(selected);
   useEffect(() => {
     if (!isOpen) {
       appliedIdRef.current = undefined;

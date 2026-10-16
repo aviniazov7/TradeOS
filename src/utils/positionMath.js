@@ -5,6 +5,15 @@
  * defined risk (long stop above entry, short stop below).
  */
 
+/** Half-up to cents, including values like 1.005 that binary floats skew. */
+function round2(n) {
+  if (n == null || !Number.isFinite(n)) return n;
+  const sign = n < 0 ? -1 : 1;
+  const shifted = Number(`${Math.abs(n)}e2`);
+  const rounded = Number.isFinite(shifted) ? Math.round(shifted) : Math.round(Math.abs(n) * 100);
+  return (sign * rounded) / 100;
+}
+
 export function stopSideProblem(direction, entry, stop) {
   const e = Number(entry);
   const s = Number(stop);
@@ -27,10 +36,14 @@ export function calculatePosition(form) {
   const side = stopSideProblem(form?.direction, entry, sl);
   if (side) return { error: side };
 
+  // Percent is the calculator default. A blank risk (journal saved 0) is 1%
+  // — otherwise balance + entry + stop + target render no results at all.
+  const riskType = form?.riskType || 'percent';
   let riskAmount;
-  if (form?.riskType === 'percent' && balance > 0 && riskVal > 0) {
-    riskAmount = (riskVal / 100) * balance;
-  } else if (form?.riskType === 'fixed' && riskVal > 0) {
+  if (riskType === 'percent' && balance > 0) {
+    const pct = riskVal > 0 ? riskVal : 1;
+    riskAmount = (pct / 100) * balance;
+  } else if (riskType === 'fixed' && riskVal > 0) {
     riskAmount = riskVal;
   } else {
     return null;
@@ -55,14 +68,14 @@ export function calculatePosition(form) {
 
   return {
     error: null,
-    riskAmount,
-    positionSize,
+    riskAmount: round2(riskAmount),
+    positionSize: round2(positionSize),
     quantity,
-    margin,
-    slDistancePercent,
-    riskPercent,
-    rrRatio,
-    potentialProfit,
-    potentialLoss: -riskAmount,
+    margin: round2(margin),
+    slDistancePercent: round2(slDistancePercent),
+    riskPercent: riskPercent == null ? null : round2(riskPercent),
+    rrRatio: rrRatio == null ? null : round2(rrRatio),
+    potentialProfit: potentialProfit == null ? null : round2(potentialProfit),
+    potentialLoss: round2(-riskAmount),
   };
 }

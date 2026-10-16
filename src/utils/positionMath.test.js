@@ -48,4 +48,30 @@ describe('position calculator stop side', () => {
     expect(r.rrRatio).toBeNull();
     expect(r.potentialProfit).toBeLessThan(0);
   });
+
+  it('sizes balance, entry, stop and target when risk was left blank, to 2 decimals', () => {
+    // Journals persist an empty risk as 0. That used to return null, so the
+    // modal showed no position size, risk or R:R.
+    const r = calculatePosition({
+      direction: 'long',
+      balance: '1000',
+      riskType: 'percent',
+      riskValue: '',
+      entryPrice: '123.45',
+      stopLoss: '120',
+      leverage: '10',
+      targetPrice: '140',
+    });
+    expect(r.error).toBeNull();
+    expect(r.riskAmount).toBe(10);
+    expect(r.positionSize).toBe(357.83);
+    expect(r.margin).toBe(35.78);
+    expect(r.slDistancePercent).toBe(2.79);
+    expect(r.riskPercent).toBe(1);
+    expect(r.rrRatio).toBe(4.8);
+    expect(r.potentialProfit).toBe(47.97);
+    expect(r.potentialLoss).toBe(-10);
+    expect(r.positionSize.toFixed(2)).toBe('357.83');
+    expect(r.rrRatio.toFixed(2)).toBe('4.80');
+  });
 });
