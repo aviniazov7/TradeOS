@@ -89,25 +89,27 @@ describe('open positions summary', () => {
     await view.unmount();
   });
 
-  it('shows a quiet empty line when the book is flat', async () => {
+  it('hides entirely when the book is flat', async () => {
     terminal.connected = ['mexc'];
     terminal.snapshots = { mexc: { positions: [], orders: [] } };
     terminal.loading = false;
     const view = await mount();
-    expect(view.html()).toContain('אין פוזיציות פתוחות כרגע.');
-    expect(view.html()).toContain('לכל הפוזיציות');
-    await view.click('לכל הפוזיציות');
-    expect(view.html()).toContain('arrived:positions');
+    expect(view.html()).not.toContain('פוזיציות פתוחות');
+    expect(view.html()).not.toContain('לכל הפוזיציות');
+    expect(view.html()).not.toContain('אין פוזיציות פתוחות כרגע.');
     await view.unmount();
   });
 
-  it('summarizes count, unrealized P&L, open risk, and the three largest positions', async () => {
+  it('summarizes count, unrealized P&L, open risk, and up to three chips', async () => {
     terminal.connected = ['mexc'];
     terminal.loading = false;
     terminal.snapshots = { mexc: { positions: BOOK, orders: [] } };
     const view = await mount();
     const html = view.html();
+    expect(html).toContain('md:h-16');
+    expect(html).not.toContain('grid-cols-3');
     expect(html).toContain('>4<');
+    expect(html).toContain('לא ממומש');
     expect(html).toContain('+$52.00');
     expect(html).toContain('+16.77%');
     expect(html).toContain('$65.00');
@@ -117,8 +119,9 @@ describe('open positions summary', () => {
     expect(html).not.toContain('XRPUSDT');
     expect(html).toContain('LONG');
     expect(html).toContain('SHORT');
-    expect(html).toContain('ועוד 1');
-    await view.click('BTCUSDT');
+    expect(html).toContain('>+1<');
+    expect(html).not.toContain('ועוד 1');
+    await view.click('BTC');
     expect(view.html()).toContain('arrived:positions');
     await view.unmount();
   });
