@@ -1,7 +1,7 @@
 import { describe, it, expect } from 'vitest';
 import {
   tvSymbol, tvChartUrl, stopForPosition, takeProfitForPosition, journalTradeForPosition, positionMetrics,
-  positionTotals, fmtPx, fmtUsd, fmtPct, fmtR, agoLabel, ordersForPosition, saneLiveMark,
+  positionTotals, fmtPx, fmtUsd, fmtPct, fmtR, agoLabel, ordersForPosition, saneLiveMark, readWallet,
 } from './terminal';
 
 const LONG = {
@@ -165,5 +165,12 @@ describe('formatting', () => {
     expect(agoLabel(1000, 3000)).toBe('עכשיו');
     expect(agoLabel(1000, 13000)).toBe('לפני 12 שנ׳');
     expect(agoLabel(0)).toBe('—');
+  });
+  it('readWallet keeps a real zero and drops a missing field', () => {
+    expect(readWallet({ balance: 369.75, available: 120.4 })).toEqual({ equity: 369.75, available: 120.4 });
+    expect(readWallet({ accountValue: '369.75' })).toEqual({ equity: 369.75, available: null });
+    expect(readWallet({ balance: 0, available: 0 })).toEqual({ equity: 0, available: 0 });
+    expect(readWallet({})).toEqual({ equity: null, available: null });
+    expect(readWallet(null)).toEqual({ equity: null, available: null });
   });
 });

@@ -498,10 +498,16 @@ export async function handleHyperliquidRoute(request, url, cors, deps, fetchImpl
         .filter((ap) => !flat(num(ap?.position?.szi)))
         .map((ap) => withSession(normalizeHlOpen(ap, open.get(ap.position.coin), stops)));
       const accountValue = num(state?.marginSummary?.accountValue);
+      // Free collateral is already on this clearinghouse snapshot.
+      const withdrawable = state?.withdrawable;
+      const available = withdrawable != null && withdrawable !== '' && Number.isFinite(parseFloat(withdrawable))
+        ? num(withdrawable) : null;
       // The open orders were fetched anyway (for SL/TP) — the terminal shows
       // them too, so it needs no second call for Hyperliquid.
       const orders = normalizeHlOpenOrders(Array.isArray(openOrders) ? openOrders : []);
-      return json({ ok: true, positions, count: positions.length, accountValue, orders });
+      const body = { ok: true, positions, count: positions.length, accountValue, orders };
+      if (available != null) body.available = available;
+      return json(body);
     }
 
     const since = Math.max(0, parseInt(url.searchParams.get('since') || '0', 10) || 0);

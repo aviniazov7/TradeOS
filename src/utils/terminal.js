@@ -277,6 +277,24 @@ export function fmtR(v) {
   return `${LRM}${n > 0 ? '+' : n < 0 ? '-' : ''}${Math.abs(n).toFixed(2)}R`;
 }
 
+function finiteWallet(v) {
+  if (v == null || v === '') return null;
+  const n = Number(v);
+  return Number.isFinite(n) ? n : null;
+}
+
+/**
+ * Account equity and free margin from a balance payload or a Hyperliquid
+ * positions payload. A missing field stays null — never a made-up 0.
+ */
+export function readWallet(data) {
+  if (!data || typeof data !== 'object') return { equity: null, available: null };
+  return {
+    equity: finiteWallet(data.balance ?? data.accountValue),
+    available: finiteWallet(data.available),
+  };
+}
+
 /** "לפני 12 שנ׳" / "לפני 3 דק׳" for the last-updated stamp. */
 export function agoLabel(ts, now = Date.now()) {
   if (!ts) return '—';
