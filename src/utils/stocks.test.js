@@ -4,7 +4,7 @@ import { stockLogoUrls } from './stocks';
 describe('stockLogoUrls', () => {
   it('prefers the local official mark for ticker names', () => {
     expect(stockLogoUrls('QQQ')[0]).toBe('/logos/stocks/qqq.png');
-    expect(stockLogoUrls('spy')[0]).toBe('/logos/stocks/spy-173c9304.png');
+    expect(stockLogoUrls('spy')[0]).toBe('/logos/stocks/spy-5eda66be.png');
     expect(stockLogoUrls('AAPL')[0]).toBe('/logos/stocks/aapl.svg');
     expect(stockLogoUrls('NVDA')[0]).toBe('/logos/stocks/nvda.png');
     expect(stockLogoUrls('TSLA')[0]).toBe('/logos/stocks/tsla.svg');
@@ -20,8 +20,11 @@ describe('stockLogoUrls', () => {
       expect(urls[0].startsWith('/logos/stocks/')).toBe(true);
       expect(urls.join(' ')).not.toMatch(/parqet|financialmodelingprep/);
     }
-    expect(stockLogoUrls('spy')).toEqual(['/logos/stocks/spy-173c9304.png']);
-    expect(stockLogoUrls('SPY.TA')).toEqual(['/logos/stocks/spy-173c9304.png']);
+    expect(stockLogoUrls('spy')).toEqual(['/logos/stocks/spy-5eda66be.png']);
+    expect(stockLogoUrls('SPY.TA')).toEqual(['/logos/stocks/spy-5eda66be.png']);
+    for (const sym of ['XLK', 'XLC', 'XLY', 'XLP', 'XLE', 'XLF', 'GLD', 'DIA']) {
+      expect(stockLogoUrls(sym)).toEqual(['/logos/stocks/spy-5eda66be.png']);
+    }
   });
 
   it('does not invent a local file for an unlisted ticker', () => {

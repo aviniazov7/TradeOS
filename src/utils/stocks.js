@@ -31,12 +31,25 @@ export const TICKER_STOCKS = ['SPY', 'QQQ', 'AAPL', 'NVDA', 'TSLA', 'MSFT', 'AMZ
 export const stockSymbol = (pair) => String(pair || '').toUpperCase().replace(/USDT$/, '').trim();
 
 // Official marks. A name in this map never falls through to a remote CDN:
-// a 404 becomes a letter badge. That is what kept painting SPY as the Parqet
-// "zest" mark (and, before that, the FMP State Street wordmark) whenever the
-// local file failed to decode.
+// a 404 becomes a letter badge. Parqet's SPY image is the orange/blue "zest"
+// wordmark, and FMP's is the State Street wordmark — neither may be requested
+// once a local file exists.
+const STATE_STREET_S = '/logos/stocks/spy-5eda66be.png';
 const LOCAL_STOCK_LOGOS = {
-  // Hashed so a phone that cached the old spy.png cannot keep serving it.
-  SPY: '/logos/stocks/spy-173c9304.png',
+  // TradingView's SPDR "S" (white on a black circle). A new filename so a
+  // phone that cached spy-173c9304.png — or the HTML the SPA returned for
+  // that URL — cannot keep it for 7 days. The old spider file stays on disk
+  // only so a stale bundle that still requests it gets an image, not HTML.
+  SPY: STATE_STREET_S,
+  // Same issuer mark TradingView uses for these State Street ETFs.
+  XLK: STATE_STREET_S,
+  XLC: STATE_STREET_S,
+  XLY: STATE_STREET_S,
+  XLP: STATE_STREET_S,
+  XLE: STATE_STREET_S,
+  XLF: STATE_STREET_S,
+  GLD: STATE_STREET_S,
+  DIA: STATE_STREET_S,
   QQQ: '/logos/stocks/qqq.png',
   AAPL: '/logos/stocks/aapl.svg',
   NVDA: '/logos/stocks/nvda.png',

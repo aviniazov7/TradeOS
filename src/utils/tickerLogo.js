@@ -12,8 +12,16 @@ const FRAMES = {
   AMZN: { background: '#ffffff', inset: '82%' },
   META: { background: '#f0f3fa', inset: '100%' },
   QQQ: { background: '#000AD2', inset: '100%' },
-  // The PNG is the official red SPDR spider already set in a white circle.
-  SPY: { background: '#ffffff', inset: '100%' },
+  // The PNG is the State Street "S" already set in a black circle.
+  SPY: { background: '#000000', inset: '100%' },
+  XLK: { background: '#000000', inset: '100%' },
+  XLC: { background: '#000000', inset: '100%' },
+  XLY: { background: '#000000', inset: '100%' },
+  XLP: { background: '#000000', inset: '100%' },
+  XLE: { background: '#000000', inset: '100%' },
+  XLF: { background: '#000000', inset: '100%' },
+  GLD: { background: '#000000', inset: '100%' },
+  DIA: { background: '#000000', inset: '100%' },
   // The PNG is already the black tile with padded bars, so the image fills
   // the circle. A smaller inset painted a second ring around the mark.
   SOL: { background: '#000000', inset: '100%' },
