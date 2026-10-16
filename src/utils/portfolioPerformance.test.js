@@ -65,6 +65,27 @@ describe('home portfolio return', () => {
     expect(s.percent).toBeNull();
   });
 
+  it('all-time percent is closed P&L over implied net capital, not the peak', () => {
+    // Home "הכל": value $369.75, closed P&L −$2,677.44, chart peak +$1,114.26.
+    // No saved opening balance, so the base is value − P&L = deposits − withdrawals
+    // (unrealized, if any, stays in the wallet). The peak is not the denominator.
+    const equity = 369.75;
+    const loss = -2677.44;
+    const peak = 1114.26;
+    const series = [
+      { t: 1, pnl: peak, value: peak },
+      { t: 2, pnl: loss - peak, value: loss },
+    ];
+    const s = summarizeSeries(series, 'all', { declaredStart: 0, equity });
+    expect(s.pnl).toBeCloseTo(loss, 2);
+    expect(s.capital).toBeCloseTo(equity - loss, 2);
+    expect(s.capital).toBeCloseTo(3047.19, 2);
+    expect(s.percent).toBeCloseTo((loss / (equity - loss)) * 100, 5);
+    expect(Number(s.percent.toFixed(1))).toBe(-87.9);
+    const vsPeak = ((equity - peak) / peak) * 100;
+    expect(Math.abs(s.percent - vsPeak)).toBeGreaterThan(15);
+  });
+
   it('sums only opening balances the user saved', () => {
     expect(declaredStartCapital([
       { initialBalance: 1000 },

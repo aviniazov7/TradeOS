@@ -1,7 +1,7 @@
 import { useState, useMemo, useEffect, useRef, lazy, Suspense } from 'react';
 import { useSearchParams } from 'react-router-dom';
 import { m } from 'framer-motion';
-import { Plus, BookOpen, Settings, Undo2, BrainCircuit, ListChecks, Trash2, AlertTriangle, Sparkles, Briefcase, Loader2 } from 'lucide-react';
+import { Plus, BookOpen, Settings, Undo2, BrainCircuit, ListChecks, Trash2, AlertTriangle, Sparkles, Briefcase, Loader2, Layers, BarChart3, CalendarDays, Link2 } from 'lucide-react';
 import toast from 'react-hot-toast';
 import { useTrades } from '../../hooks/useTrades';
 import { useCryptoPrices } from '../../hooks/useCryptoPrices';
@@ -39,6 +39,9 @@ import { TRADE_PREFILL_KEY } from '../../utils/tradeFormHelpers';
 
 const JOURNAL_TABS = ['trades', 'positions', 'analytics', 'calendar', 'exchange'];
 const TAB_LABELS = { trades: 'עסקאות', positions: 'פוזיציות פתוחות', analytics: 'אנליטיקה', calendar: 'יומן חודשי', exchange: 'חיבור בורסאות' };
+// Phone segmented control: the full labels do not fit 375px without a scroller.
+const TAB_MOBILE = { trades: 'עסקאות', positions: 'פוזיציות', analytics: 'אנליטיקה', calendar: 'יומן', exchange: 'בורסאות' };
+const TAB_ICONS = { trades: ListChecks, positions: Layers, analytics: BarChart3, calendar: CalendarDays, exchange: Link2 };
 const defaultFilters = { search: '', direction: '', result: '', status: '', strategy: '', tag: '', timeframe: '', month: '', from: '', to: '' };
 const defaultSort = { key: 'date', dir: 'desc' };
 // Phone sort picker (desktop sorts by clicking column headers).
@@ -573,7 +576,7 @@ export default function TradeJournal() {
         titleAside={<JournalSwitcher compact />}
         compactMobile
         tabs={{
-          tabs: journalTabs.map((id) => ({ id, label: TAB_LABELS[id], count: id === 'trades' ? trades.length : 0 })),
+          tabs: journalTabs.map((id) => ({ id, label: TAB_LABELS[id], mobileLabel: TAB_MOBILE[id], icon: TAB_ICONS[id], count: id === 'trades' ? trades.length : 0 })),
           value: tab,
           onChange: setTab,
           layoutKey: 'journal-tab',
