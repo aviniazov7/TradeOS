@@ -1,7 +1,6 @@
 import { useState, useEffect, useRef, lazy, Suspense } from 'react';
 import { createPortal } from 'react-dom';
 import {
-  ImagePlus,
   X,
   Trash2,
   ChevronLeft,
@@ -13,18 +12,14 @@ import {
 import { useAuth } from '../../contexts/AuthContext';
 import {
   listTradeImages,
-  addTradeImage,
   updateTradeImage,
   deleteTradeImage,
   MAX_CAPTION_LENGTH,
 } from '../../services/tradeImageService';
-import { compressImageFile, isImageDataUrl } from '../../utils/imageCompress';
+import { isImageDataUrl } from '../../utils/imageCompress';
 import {
-  MAX_TRADE_IMAGES,
   TRADE_IMAGE_KINDS,
   TRADE_IMAGE_KIND_LABELS,
-  freeTradeImageSlot,
-  defaultImageKind,
 } from '../../utils/tradeImageSlots';
 import Modal from '../shared/Modal';
 import ConfirmDialog from '../shared/ConfirmDialog';
@@ -38,13 +33,6 @@ const KIND_STYLES = {
   after: 'bg-profit/80 text-white',
   other: 'bg-black/60 text-text-secondary',
 };
-
-const isMac = typeof navigator !== 'undefined' && /Mac|iPhone|iPad/i.test(navigator.platform || navigator.userAgent || '');
-const PASTE_HINT = isMac ? '⌘+V' : 'Ctrl+V';
-
-// Firestore errors carry a `code`; our own compress/validation errors carry a
-// Hebrew message meant for the user.
-const uploadErrorText = (err) => (err?.code ? 'ההעלאה נכשלה — נסה שוב' : err?.message || 'ההעלאה נכשלה');
 
 // One thumbnail card: image, tag picker and caption. Caption is edited locally
 // and saved on blur so typing doesn't fire a write per keystroke.
@@ -238,25 +226,21 @@ function Lightbox({ images, index, pair, onIndex, onClose, onDelete, onAnalyze }
 }
 
 /**
- * Chart screenshots of one trade: drag & drop / file picker (camera roll on
- * phones) / paste from clipboard, up to MAX_TRADE_IMAGES, tagged before/after,
- * captioned, viewable full-screen and deletable. Render with key={trade.id}
- * so switching trades starts from a clean state.
+ * Existing chart screenshots for one trade. New uploads are no longer
+ * accepted (storage cost) — a TradingView link is the chart now. Images
+ * already saved stay viewable and deletable. Renders nothing when the
+ * trade has none.
  */
 export default function TradeScreenshots({ tradeId, pair = '' }) {
   const { user } = useAuth();
   const uid = user?.uid;
   const [images, setImages] = useState([]);
-  // loading | ready | error | unavailable (rules not deployed / no access)
   const [status, setStatus] = useState('loading');
   const [reloadKey, setReloadKey] = useState(0);
-  const [uploading, setUploading] = useState(0); // files still in this upload run
   const [error, setError] = useState(null);
-  const [dragOver, setDragOver] = useState(false);
   const [lightboxIndex, setLightboxIndex] = useState(null);
   const [pendingDelete, setPendingDelete] = useState(null);
   const [aiImage, setAiImage] = useState(null);
-  const fileInputRef = useRef(null);
 
   useEffect(() => {
     if (!uid || !tradeId) return undefined;
@@ -274,71 +258,6 @@ export default function TradeScreenshots({ tradeId, pair = '' }) {
       });
     return () => { cancelled = true; };
   }, [uid, tradeId, reloadKey]);
-
-  const full = images.length >= MAX_TRADE_IMAGES;
-  const canAdd = status === 'ready' && !full && uploading === 0;
-
-  // Upload one file at a time so each lands in its own free slot.
-  const addFiles = async (fileList) => {
-    if (!canAdd) {
-      if (full) setError(`ניתן לצרף עד ${MAX_TRADE_IMAGES} צילומים לעסקה`);
-      return;
-    }
-    const files = Array.from(fileList || []).filter((f) => f && f.type?.startsWith('image/'));
-    if (!files.length) {
-      setError('יש לבחור קובץ תמונה');
-      return;
-    }
-    const room = MAX_TRADE_IMAGES - images.length;
-    const batch = files.slice(0, room);
-    setError(files.length > room ? `ניתן לצרף עד ${MAX_TRADE_IMAGES} צילומים לעסקה — נוספו ${room} בלבד` : null);
-    setUploading(batch.length);
-    let working = images;
-    for (const file of batch) {
-      try {
-        const slot = freeTradeImageSlot(working, tradeId);
-        if (slot < 0) break;
-        const compressed = await compressImageFile(file);
-        const saved = await addTradeImage(uid, {
-          tradeId,
-          slot,
-          dataUrl: compressed.dataUrl,
-          kind: defaultImageKind(working),
-          width: compressed.width,
-          height: compressed.height,
-        });
-        working = [...working, saved];
-        setImages(working);
-      } catch (err) {
-        console.warn('Trade screenshot upload failed:', err);
-        setError(uploadErrorText(err));
-      } finally {
-        setUploading((n) => Math.max(0, n - 1));
-      }
-    }
-    setUploading(0);
-  };
-
-  // Paste a screenshot straight from the clipboard while the trade is open.
-  // Text pastes (e.g. into the caption field) pass through untouched.
-  const addFilesRef = useRef(addFiles);
-  useEffect(() => { addFilesRef.current = addFiles; });
-  // Paused while a dialog is on top (AI analyzer / delete confirm).
-  const pasteActive = status === 'ready' && !aiImage && !pendingDelete;
-  useEffect(() => {
-    if (!pasteActive) return undefined;
-    const onPaste = (e) => {
-      const files = Array.from(e.clipboardData?.items || [])
-        .filter((it) => it.kind === 'file' && it.type.startsWith('image/'))
-        .map((it) => it.getAsFile())
-        .filter(Boolean);
-      if (!files.length) return;
-      e.preventDefault();
-      addFilesRef.current(files);
-    };
-    document.addEventListener('paste', onPaste);
-    return () => document.removeEventListener('paste', onPaste);
-  }, [pasteActive]);
 
   const changeKind = async (image, kind) => {
     setImages((list) => list.map((img) => (img.id === image.id ? { ...img, kind } : img)));
@@ -371,12 +290,10 @@ export default function TradeScreenshots({ tradeId, pair = '' }) {
     } catch (err) {
       console.warn('Trade screenshot delete failed:', err);
       setError('מחיקת הצילום נכשלה');
-      throw err; // keep the dialog open
+      throw err;
     }
   };
 
-  // Delete/analyze from the lightbox: close it first so the dialog that opens
-  // next (a regular Modal, z-50) isn't hidden underneath it.
   const requestDelete = (image) => {
     setLightboxIndex(null);
     setPendingDelete(image);
@@ -387,67 +304,16 @@ export default function TradeScreenshots({ tradeId, pair = '' }) {
   };
 
   if (!uid || !tradeId || status === 'unavailable') return null;
+  if (status === 'ready' && images.length === 0) return null;
+  if (status === 'loading') return null;
 
-  const onDrop = (e) => {
-    e.preventDefault();
-    setDragOver(false);
-    addFiles(e.dataTransfer?.files);
-  };
-
-  // The lightbox and dialogs render as SIBLINGS of the section, not children:
-  // React events bubble through portals to their React parents, so a file
-  // dropped on the AI analyzer would otherwise also land in onDrop here.
   return (
     <>
-      <div
-        className={`rounded-2xl border bg-bg-tertiary mt-3 transition-colors ${
-          dragOver ? 'border-accent-primary bg-accent-primary/5' : 'border-border-primary'
-        }`}
-        onDragOver={(e) => {
-          if (!Array.from(e.dataTransfer?.types || []).includes('Files')) return;
-          e.preventDefault();
-          if (!dragOver) setDragOver(true);
-        }}
-        onDragLeave={(e) => {
-          if (!e.currentTarget.contains(e.relatedTarget)) setDragOver(false);
-        }}
-        onDrop={onDrop}
-      >
+      <div className="rounded-2xl border border-border-primary bg-bg-tertiary mt-3">
         <div className="flex items-center justify-between gap-2 px-4 py-2.5 border-b border-border-primary">
-          <span className="text-xs font-semibold text-text-secondary">
-            צילומי מסך
-            {status === 'ready' && images.length > 0 && (
-              <span className="text-text-muted font-normal" dir="ltr"> · {images.length}/{MAX_TRADE_IMAGES}</span>
-            )}
-          </span>
-          {status === 'ready' && !full && (
-            <span className="hidden sm:inline text-[11px] text-text-muted">
-              גרור לכאן או הדבק עם <span dir="ltr">{PASTE_HINT}</span>
-            </span>
-          )}
+          <span className="text-xs font-semibold text-text-secondary">צילומי מסך שמורים</span>
         </div>
-
         <div className="p-3">
-          <input
-            ref={fileInputRef}
-            type="file"
-            accept="image/*"
-            multiple
-            className="hidden"
-            onChange={(e) => {
-              const files = Array.from(e.target.files || []);
-              e.target.value = '';
-              addFiles(files);
-            }}
-          />
-
-          {status === 'loading' && (
-            <div className="h-24 flex items-center justify-center gap-2 text-text-muted text-xs">
-              <Loader2 className="w-4 h-4 animate-spin" />
-              טוען צילומים…
-            </div>
-          )}
-
           {status === 'error' && (
             <div className="h-24 flex flex-col items-center justify-center gap-2 text-xs">
               <span className="inline-flex items-center gap-1.5 text-loss">
@@ -465,7 +331,7 @@ export default function TradeScreenshots({ tradeId, pair = '' }) {
           )}
 
           {status === 'ready' && (
-            <div className={`grid gap-2 ${images.length ? 'grid-cols-2 sm:grid-cols-4' : 'grid-cols-1'}`}>
+            <div className="grid gap-2 grid-cols-2 sm:grid-cols-4">
               {images.map((img, i) => (
                 <ScreenshotTile
                   key={img.id}
@@ -478,33 +344,6 @@ export default function TradeScreenshots({ tradeId, pair = '' }) {
                   onDelete={setPendingDelete}
                 />
               ))}
-              {!full && (
-                <button
-                  type="button"
-                  onClick={() => fileInputRef.current?.click()}
-                  disabled={uploading > 0}
-                  className={`rounded-xl border-2 border-dashed border-border-hover hover:border-accent-primary/60 bg-bg-secondary/40 flex flex-col items-center justify-center gap-1.5 text-text-muted hover:text-text-secondary transition-colors cursor-pointer disabled:cursor-wait disabled:opacity-70 ${
-                    images.length ? 'min-h-[7.5rem]' : 'py-6 px-4'
-                  }`}
-                >
-                  {uploading > 0 ? (
-                    <>
-                      <Loader2 className="w-5 h-5 animate-spin" />
-                      <span className="text-xs">מעלה{uploading > 1 ? ` (${uploading})` : ''}…</span>
-                    </>
-                  ) : (
-                    <>
-                      <ImagePlus className="w-5 h-5" />
-                      <span className="text-xs font-medium">{images.length ? 'הוסף צילום' : 'הוסף צילומי גרף לעסקה'}</span>
-                      {!images.length && (
-                        <span className="text-[11px] text-text-muted text-center">
-                          לפני ואחרי · עד {MAX_TRADE_IMAGES} צילומים · בחירה מהגלריה, גרירה או הדבקה
-                        </span>
-                      )}
-                    </>
-                  )}
-                </button>
-              )}
             </div>
           )}
 

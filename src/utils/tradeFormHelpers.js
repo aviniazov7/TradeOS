@@ -140,6 +140,19 @@ export function storedExit(exit, { isFutures = false, totalContracts = 0 } = {})
   };
 }
 
+/**
+ * A close date with no exit price used to save silently and leave the trade
+ * open. Block that. Imported closes that already settled P&L without an exit
+ * price stay allowed — they have nothing new to price.
+ * @returns {string|null}
+ */
+export function closeDateWithoutExitPrice({ exitDate, pricedExit, keepsImportedClose } = {}) {
+  if (!exitDate) return null;
+  if (pricedExit) return null;
+  if (keepsImportedClose) return null;
+  return 'כדי לשמור תאריך סגירה צריך מחיר יציאה';
+}
+
 /** sessionStorage key for the calculator → new-trade handoff. */
 export const TRADE_PREFILL_KEY = 'tradeos-trade-prefill';
 

@@ -42,6 +42,7 @@ vi.mock('../../hooks/useMentalityJournals', () => ({
 
 vi.mock('../../hooks/useLinkedExchangeBalance', () => ({
   useLinkedJournals: () => ({ balances: {}, problems: {} }),
+  useLinkedExchangeBalance: () => null,
 }));
 
 vi.mock('../../services/firestoreService', () => ({
@@ -53,6 +54,9 @@ vi.mock('../../services/firestoreService', () => ({
   subscribeToUserProfile: vi.fn(() => () => {}),
   subscribeToUserSetting: vi.fn(() => () => {}),
   subscribeToUserCollection: vi.fn(() => () => {}),
+  peekUserCollection: vi.fn(() => undefined),
+  seedUserCollection: vi.fn(() => ({ data: [], loading: false })),
+  getOpenTrades: vi.fn(async () => []),
 }));
 
 vi.mock('../../services/exchangeService', async (importOriginal) => {
@@ -134,7 +138,7 @@ const LAZY_ROUTES = [
   ['MarketDetailPage', () => import('../../components/polymarket/MarketDetailPage')],
   ['AdminPanel', () => import('../../components/admin/AdminPanel')],
   ['TaxReportPage', () => import('../../components/tax/TaxReportPage')],
-  ['TerminalPage', () => import('../../components/terminal/TerminalPage')],
+  ['OpenPositionsTab', () => import('../../components/journal/OpenPositionsTab')],
   ['MarketsExplorer', () => import('../../components/polymarket/MarketsExplorer')],
   ['StrategyTab', () => import('../../components/polymarket/StrategyTab')],
 ];

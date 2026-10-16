@@ -28,6 +28,7 @@ import { formatCurrency } from '../../utils/formatters';
 import { exchangeLabel } from '../../utils/constants';
 import { winLossRatio } from '../../utils/homeStats';
 import { fetchGlobalMarket } from '../../services/globalMarket';
+import { readSessionCache, writeSessionCache } from '../../utils/sessionCache';
 import { pageVariants, pageTransition } from '../../utils/animations';
 import { fetchPerpPrices } from '../../services/bybitDirect';
 import { fetchStockQuotes } from '../../services/stocksApi';
@@ -99,7 +100,7 @@ function JournalTile({ j, mask, onOpen }) {
 export default function Dashboard() {
   const navigate = useNavigate();
   const { user, profile } = useAuth();
-  const { journals, setActiveJournalId } = useJournalContext();
+  const { journals, setActiveJournalId, loading: journalsLoading = false } = useJournalContext();
   const [showAllJournals, setShowAllJournals] = useState(false);
   const [hideBalances, setHideBalances] = useState(() => localStorage.getItem('tradeos_hideBalances') === 'true');
 
@@ -115,9 +116,12 @@ export default function Dashboard() {
   const backtests = useMemo(() => allBacktests.filter((b) => b.backtestJournalId), [allBacktests]);
   const { plans, loading: plansLoading } = useTradingPlans();
   const { dcaPlans, loading: dcaLoading } = useDCA();
-  const { todayMorning, todayEvening, morningEntries } = useMentalityJournals();
+  const { todayMorning, todayEvening, morningEntries, loading: mentalityLoading } = useMentalityJournals();
 
-  const loading = tradesLoading || backtestsLoading || plansLoading || dcaLoading;
+  // The hero waits on trades only. Backtests, plans, DCA and the mental
+  // journals fill their own row when they arrive instead of holding the page.
+  const loading = tradesLoading;
+  const linksLoading = backtestsLoading || plansLoading || dcaLoading || mentalityLoading;
 
   // Live wallet balance for every journal that's linked to a connected exchange.
   const { balances: linkedBalances, problems: linkedProblems } = useLinkedJournals(journals);
@@ -167,7 +171,7 @@ export default function Dashboard() {
   }, [allTrades, journals, linkedBalances]);
 
   // Global market data + latest news
-  const [globalMarket, setGlobalMarket] = useState(null);
+  const [globalMarket, setGlobalMarket] = useState(() => readSessionCache('globalMarket', 5 * 60 * 1000));
   const [marketFailed, setMarketFailed] = useState(false);
   // Bumped by the card's "נסה שוב" to run the load again from scratch.
   const [marketAttempt, setMarketAttempt] = useState(0);
@@ -175,7 +179,7 @@ export default function Dashboard() {
     setMarketFailed(false);
     setMarketAttempt((n) => n + 1);
   }, []);
-  const [latestNews, setLatestNews] = useState([]);
+  const [latestNews, setLatestNews] = useState(() => readSessionCache('latestNews', 15 * 60 * 1000) || []);
 
   useEffect(() => {
     const controller = new AbortController();
@@ -186,7 +190,11 @@ export default function Dashboard() {
     const fetchMarket = async (attempt = 0) => {
       try {
         const data = await fetchGlobalMarket({ signal: controller.signal });
-        if (!controller.signal.aborted) { setGlobalMarket(data); setMarketFailed(false); }
+        if (!controller.signal.aborted) {
+          setGlobalMarket(data);
+          setMarketFailed(false);
+          writeSessionCache('globalMarket', data);
+        }
       } catch (e) {
         if (e.name === 'AbortError') return;
         if (attempt < 2) retryTimer = setTimeout(() => fetchMarket(attempt + 1), 3000 * (attempt + 1));
@@ -205,7 +213,11 @@ export default function Dashboard() {
         const res = await fetch('https://api.rss2json.com/v1/api.json?rss_url=' + encodeURIComponent('https://cointelegraph.com/rss'), { signal: controller.signal });
         if (!res.ok) throw new Error(`HTTP ${res.status}`);
         const json = await res.json();
-        if (!controller.signal.aborted) setLatestNews((json.items || []).slice(0, 6));
+        if (!controller.signal.aborted) {
+          const items = (json.items || []).slice(0, 6);
+          setLatestNews(items);
+          writeSessionCache('latestNews', items);
+        }
       } catch (e) {
         if (e.name === 'AbortError') return;
         if (attempt < 2) setTimeout(() => fetchNews(attempt + 1), 3000 * (attempt + 1));
@@ -217,12 +229,17 @@ export default function Dashboard() {
   }, []);
 
   // Fear & Greed index (alternative.me, CORS-open, daily value).
-  const [fng, setFng] = useState(null);
+  const [fng, setFng] = useState(() => readSessionCache('fng', 60 * 60 * 1000));
   useEffect(() => {
     const controller = new AbortController();
     fetch('https://api.alternative.me/fng/?limit=1', { signal: controller.signal })
       .then((r) => (r.ok ? r.json() : null))
-      .then((j) => { if (j?.data?.[0]) setFng(j.data[0]); })
+      .then((j) => {
+        if (j?.data?.[0]) {
+          setFng(j.data[0]);
+          writeSessionCache('fng', j.data[0]);
+        }
+      })
       .catch(() => { /* optional widget */ });
     return () => controller.abort();
   }, []);
@@ -539,6 +556,10 @@ export default function Dashboard() {
                   </button>
                 )}
               </>
+            ) : journalsLoading ? (
+              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3">
+                {[0, 1].map((i) => <div key={i} className="h-24 rounded-xl bg-bg-tertiary animate-pulse" />)}
+              </div>
             ) : (
               <p className="text-sm text-text-secondary">אין יומנים עדיין</p>
             )}
@@ -549,6 +570,7 @@ export default function Dashboard() {
           <QuickLinks
             backtests={backtests} backtestStats={backtestStats} plans={plans} activePlans={activePlans}
             dcaPlans={dcaPlans} todayMorning={todayMorning} todayEvening={todayEvening}
+            loading={linksLoading}
           />
         </Reveal>
 

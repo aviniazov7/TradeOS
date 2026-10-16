@@ -204,7 +204,7 @@ export function ScoreCard({ metrics, score, sampleSize = 0, className = '' }) {
 }
 
 // Backtests, plans, DCA and the mental journals as one row of small links.
-export function QuickLinks({ backtests, backtestStats, plans, activePlans, dcaPlans, todayMorning, todayEvening }) {
+export function QuickLinks({ backtests, backtestStats, plans, activePlans, dcaPlans, todayMorning, todayEvening, loading = false }) {
   const navigate = useNavigate();
   const items = [
     {
@@ -236,7 +236,11 @@ export function QuickLinks({ backtests, backtestStats, plans, activePlans, dcaPl
           <span className={`w-10 h-10 rounded-xl grid place-items-center shrink-0 ${tile}`}>{Icon && <Icon className="w-[18px] h-[18px]" />}</span>
           <span className="flex flex-col gap-0.5 min-w-0">
             <span className="text-sm font-bold text-text-primary truncate">{name}</span>
-            <span className={`text-xs truncate ${warn ? 'text-amber-400' : 'text-text-secondary'}`}>{sub}</span>
+            {loading ? (
+              <span className="mt-1 h-3 w-16 rounded bg-bg-tertiary animate-pulse" />
+            ) : (
+              <span className={`text-xs truncate ${warn ? 'text-amber-400' : 'text-text-secondary'}`}>{sub}</span>
+            )}
           </span>
         </Card>
       ))}

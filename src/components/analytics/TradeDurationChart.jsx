@@ -70,7 +70,17 @@ export default function TradeDurationChart({ trades }) {
     };
   }, [trades]);
 
-  if (data.count === 0) return null;
+  if (data.count === 0) {
+    return (
+      <div className="bg-bg-secondary border border-border-primary rounded-xl p-5 h-full min-h-[260px] flex flex-col">
+        <div className="flex items-center gap-2 mb-2">
+          <Clock className="w-4 h-4 text-accent-primary shrink-0" />
+          <h3 className="text-sm font-semibold text-text-primary">משך עסקה ממוצע</h3>
+        </div>
+        <p className="text-sm text-text-muted m-auto text-center">אין עסקאות עם משך לחישוב</p>
+      </div>
+    );
+  }
 
   const insightColor = data.avgLoss > data.avgWin * 1.5 ? '#ef4444'
     : data.avgWin > data.avgLoss * 1.5 ? '#22c55e'
@@ -82,7 +92,7 @@ export default function TradeDurationChart({ trades }) {
     : 'משך רווחים והפסדים דומה';
 
   return (
-    <div className="bg-bg-secondary border border-border-primary rounded-xl p-5 flex flex-col gap-3">
+    <div className="bg-bg-secondary border border-border-primary rounded-xl p-5 h-full min-h-[260px] flex flex-col gap-3">
 
       {/* Header */}
       <div>
@@ -121,7 +131,8 @@ export default function TradeDurationChart({ trades }) {
       </div>
 
       {/* Chart */}
-      <ResponsiveContainer width="100%" height={130}>
+      <div className="flex-1 min-h-[140px]">
+      <ResponsiveContainer width="100%" height="100%">
         <BarChart data={data.chartData} barCategoryGap="28%" barGap={3}>
           <XAxis
             dataKey="label"
@@ -135,6 +146,7 @@ export default function TradeDurationChart({ trades }) {
           <Bar dataKey="losses" radius={[4, 4, 0, 0]} animationDuration={700} fill="#ef4444" fillOpacity={0.8} />
         </BarChart>
       </ResponsiveContainer>
+      </div>
 
       {/* Insight */}
       {data.avgWin > 0 && data.avgLoss > 0 && (

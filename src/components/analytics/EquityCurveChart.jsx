@@ -20,16 +20,17 @@ const compactUsd = (v) => {
 export default function EquityCurveChart({ data }) {
   if (!data || data.length < 2) {
     return (
-      <div className="bg-bg-secondary border border-border-primary rounded-xl p-5 h-full flex items-center justify-center">
+      <div className="bg-bg-secondary border border-border-primary rounded-xl p-5 h-full min-h-[220px] flex items-center justify-center">
         <p className="text-text-muted text-sm">נדרשות לפחות 2 עסקאות סגורות</p>
       </div>
     );
   }
 
   return (
-    <div className="bg-bg-secondary border border-border-primary rounded-xl p-5">
-      <h3 className="text-sm font-semibold text-text-primary mb-3">עקומת הון</h3>
-      <ResponsiveContainer width="100%" height={170}>
+    <div className="bg-bg-secondary border border-border-primary rounded-xl p-5 h-full min-h-[300px] flex flex-col">
+      <h3 className="text-sm font-semibold text-text-primary mb-3 shrink-0">עקומת הון</h3>
+      <div className="flex-1 min-h-[220px]">
+      <ResponsiveContainer width="100%" height="100%">
         <ComposedChart data={data} margin={{ top: 6, right: 4, bottom: 0, left: 8 }}>
           <defs>
             <linearGradient id="equityGradAdv" x1="0" y1="0" x2="0" y2="1">
@@ -51,6 +52,7 @@ export default function EquityCurveChart({ data }) {
           <Area type="monotone" dataKey="equity" stroke="var(--color-accent-primary)" strokeWidth={2} fill="url(#equityGradAdv)" animationDuration={800} />
         </ComposedChart>
       </ResponsiveContainer>
+      </div>
     </div>
   );
 }

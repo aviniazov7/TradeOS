@@ -1,8 +1,9 @@
-import { useState, useEffect, useMemo } from 'react';
+import { useState, useEffect, useMemo, useRef } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { Copy, Check, TrendingUp, TrendingDown } from 'lucide-react';
 import Modal from '../shared/Modal';
 import { useJournalContext } from '../../contexts/JournalContext';
+import { useLinkedExchangeBalance } from '../../hooks/useLinkedExchangeBalance';
 import { formatNumber, LRM } from '../../utils/formatters';
 import { calculatePosition } from '../../utils/positionMath';
 import { TRADE_PREFILL_KEY, tradePrefillFromCalculator } from '../../utils/tradeFormHelpers';
@@ -13,6 +14,7 @@ const labelClass = 'block text-xs text-text-muted mb-1';
 
 export default function PositionCalculator({ isOpen, onClose }) {
   const { activeJournal } = useJournalContext();
+  const liveBalance = useLinkedExchangeBalance(activeJournal?.exchange);
   const navigate = useNavigate();
   const [copiedKey, setCopiedKey] = useState(null);
 
@@ -27,17 +29,27 @@ export default function PositionCalculator({ isOpen, onClose }) {
     targetPrice: '',
   });
 
-  // Auto-fill from active journal on open
+  // Account balance from the linked wallet, otherwise the opening balance
+  // saved in the journal settings. A missing balance stays blank — the old
+  // "10,000" placeholder read as a real amount.
+  const accountBalance = (liveBalance > 0 ? liveBalance : null) ?? (Number(activeJournal?.initialBalance) > 0 ? Number(activeJournal.initialBalance) : null);
+  const openedRef = useRef(false);
   useEffect(() => {
-    if (isOpen && activeJournal) {
-      setForm((f) => ({
+    if (!isOpen) { openedRef.current = false; return; }
+    setForm((f) => {
+      const fresh = !openedRef.current;
+      openedRef.current = true;
+      const balance = fresh || f.balance === ''
+        ? (accountBalance != null ? String(accountBalance) : '')
+        : f.balance;
+      return {
         ...f,
-        balance: activeJournal.initialBalance || '',
-        riskType: activeJournal.riskType || 'percent',
-        riskValue: activeJournal.riskValue || '',
-      }));
-    }
-  }, [isOpen, activeJournal]);
+        balance,
+        riskType: fresh ? (activeJournal?.riskType || 'percent') : f.riskType,
+        riskValue: fresh ? (activeJournal?.riskValue || '') : f.riskValue,
+      };
+    });
+  }, [isOpen, activeJournal, accountBalance]);
 
   const update = (key, value) => setForm((f) => ({ ...f, [key]: value }));
 
@@ -112,7 +124,7 @@ export default function PositionCalculator({ isOpen, onClose }) {
         <div className="grid grid-cols-2 gap-2">
           <div>
             <label className={labelClass}>יתרת חשבון ($)</label>
-            <input type="number" step="any" value={form.balance} onChange={(e) => update('balance', e.target.value)} className={inputClass} placeholder="10,000" />
+            <input type="number" step="any" value={form.balance} onChange={(e) => update('balance', e.target.value)} className={inputClass} placeholder="הזן יתרה" />
           </div>
           <div>
             <label className={labelClass}>סוג סיכון</label>

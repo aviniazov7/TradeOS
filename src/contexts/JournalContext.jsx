@@ -1,6 +1,7 @@
 import { createContext, useContext, useState, useEffect, useCallback, useMemo, useRef } from 'react';
 import {
   subscribeToUserCollection,
+  seedUserCollection,
   addToUserCollection,
   updateUserDocument,
   deleteUserDocument,
@@ -17,26 +18,37 @@ import { FREE_LIMITS } from '../utils/constants';
 
 const JournalContext = createContext(null);
 
+const JOURNAL_QUERY = { orderDir: 'asc' };
+
 export function JournalProvider({ children }) {
   const { user, isPremium } = useAuth();
-  const [journals, setJournals] = useState([]);
+  const uid = user?.uid;
+  const [journals, setJournals] = useState(() => seedUserCollection(uid, 'journals', JOURNAL_QUERY).data);
   const [activeJournalId, setActiveJournalId] = useState(
     () => localStorage.getItem('tradeos_activeJournal') || null
   );
-  const [loading, setLoading] = useState(true);
+  const [loading, setLoading] = useState(() => seedUserCollection(uid, 'journals', JOURNAL_QUERY).loading);
 
   // Real-time listener for journals
   useEffect(() => {
-    if (!user) {
+    if (!uid) {
       setJournals([]);
       setLoading(false);
-      return;
+      return undefined;
+    }
+
+    const cached = seedUserCollection(uid, 'journals', JOURNAL_QUERY);
+    if (!cached.loading) {
+      setJournals(cached.data);
+      setLoading(false);
+    } else {
+      setLoading(true);
     }
 
     return subscribeToUserCollection(
-      user.uid,
+      uid,
       'journals',
-      { orderDir: 'asc' },
+      JOURNAL_QUERY,
       (data) => {
         setJournals(data);
         setLoading(false);
@@ -46,7 +58,7 @@ export function JournalProvider({ children }) {
         setLoading(false);
       }
     );
-  }, [user]);
+  }, [uid]);
 
   // Auto-migration for existing users
   const migratingRef = useRef(false);

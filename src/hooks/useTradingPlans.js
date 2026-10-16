@@ -1,6 +1,7 @@
 import { useState, useEffect } from 'react';
 import {
   subscribeToUserCollection,
+  seedUserCollection,
   addToUserCollection,
   updateUserDocument,
   deleteUserDocument,
@@ -10,18 +11,27 @@ import { useAuth } from '../contexts/AuthContext';
 
 export function useTradingPlans() {
   const { user } = useAuth();
-  const [plans, setPlans] = useState([]);
-  const [loading, setLoading] = useState(true);
+  const uid = user?.uid;
+  const [plans, setPlans] = useState(() => seedUserCollection(uid, 'tradingPlans').data);
+  const [loading, setLoading] = useState(() => seedUserCollection(uid, 'tradingPlans').loading);
 
   useEffect(() => {
-    if (!user) {
+    if (!uid) {
       setPlans([]);
       setLoading(false);
-      return;
+      return undefined;
+    }
+
+    const cached = seedUserCollection(uid, 'tradingPlans');
+    if (!cached.loading) {
+      setPlans(cached.data);
+      setLoading(false);
+    } else {
+      setLoading(true);
     }
 
     return subscribeToUserCollection(
-      user.uid,
+      uid,
       'tradingPlans',
       {},
       (data) => {
@@ -33,7 +43,7 @@ export function useTradingPlans() {
         setLoading(false);
       }
     );
-  }, [user]);
+  }, [uid]);
 
   const addPlan = async (data) => {
     if (!user) return;

@@ -15,7 +15,10 @@ export function useLinkedExchange(exchangeId) {
   const [state, setState] = useState({ balance: null, keyProblem: null });
 
   useEffect(() => {
-    if (!user || !exchangeId) { setState({ balance: null, keyProblem: null }); return; }
+    if (!user || !exchangeId) {
+      setState((s) => (s.balance == null && s.keyProblem == null ? s : { balance: null, keyProblem: null }));
+      return undefined;
+    }
     let cancelled = false;
     let timer = null;
 
@@ -69,7 +72,10 @@ export function useLinkedJournals(journals) {
   );
 
   useEffect(() => {
-    if (!user || !exchangeIdsKey) { setState({ balances: {}, problems: {} }); return; }
+    if (!user || !exchangeIdsKey) {
+      setState((s) => (Object.keys(s.balances).length === 0 && Object.keys(s.problems).length === 0 ? s : { balances: {}, problems: {} }));
+      return undefined;
+    }
     const exchangeIds = exchangeIdsKey.split(',').filter(Boolean);
     let cancelled = false;
     let timer = null;

@@ -36,9 +36,9 @@ A trading journal and analytics platform for crypto, stocks and futures traders:
 - Keys are stored **encrypted on the server** and the app tells users to create **read-only** keys. See [Security](#security--privacy).
 - Re-sync upserts existing trades; OKX/Bitget passphrases supported; accurate entry/exit timestamps.
 
-### Trading desk (`/terminal`)
-- Live open positions and open orders from the connected exchanges (read-only).
-- TradingView charts in a **resizable split screen** (1–4 panes, eight layouts, per-pane timeframe, symbol sync, chart style, fullscreen, "open in my TradingView"); phones show one chart with tabs.
+### Open positions (journal tab)
+- Live open positions and open orders from the connected exchanges (read-only), on the journal tab "פוזיציות פתוחות".
+- `/terminal` redirects there. Chart screenshots are not uploaded; a trade can carry a TradingView link with a snapshot or embed preview.
 
 ### Dashboard
 - Portfolio value and equity curve, an AI "agent" read of your trades, win rate, win/loss ratio, profit factor, streaks, performance score, recent trades, per-journal cards, market snapshot and news.

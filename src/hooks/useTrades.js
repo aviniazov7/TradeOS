@@ -1,6 +1,7 @@
 import { useState, useEffect, useMemo } from 'react';
 import {
   subscribeToUserCollection,
+  seedUserCollection,
   addToUserCollection,
   addToUserCollectionBulk,
   updateUserDocument,
@@ -14,21 +15,28 @@ import { computeTradeFields, calculateFuturesNotional } from '../utils/calculati
 
 export function useTrades(journalId = null) {
   const { user } = useAuth();
-  const [allTrades, setAllTrades] = useState([]);
-  const [loading, setLoading] = useState(true);
+  const uid = user?.uid;
+  const [allTrades, setAllTrades] = useState(() => seedUserCollection(uid, 'trades').data);
+  const [loading, setLoading] = useState(() => seedUserCollection(uid, 'trades').loading);
 
   // Subscribe to ALL trades once, filter client-side by journalId
   useEffect(() => {
-    if (!user) {
+    if (!uid) {
       setAllTrades([]);
       setLoading(false);
-      return;
+      return undefined;
     }
 
-    setLoading(true);
+    const cached = seedUserCollection(uid, 'trades');
+    if (!cached.loading) {
+      setAllTrades(cached.data);
+      setLoading(false);
+    } else {
+      setLoading(true);
+    }
 
     return subscribeToUserCollection(
-      user.uid,
+      uid,
       'trades',
       {},
       (data) => {
@@ -40,7 +48,7 @@ export function useTrades(journalId = null) {
         setLoading(false);
       }
     );
-  }, [user]);
+  }, [uid]);
 
   // Client-side filter by journalId — instant switching, no re-subscription
   const trades = useMemo(() => {

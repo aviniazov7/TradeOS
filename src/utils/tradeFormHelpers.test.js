@@ -26,6 +26,7 @@ import {
   stopDistancePct,
   rMultiple,
   plannedRewardRisk,
+  closeDateWithoutExitPrice,
 } from './tradeFormHelpers';
 import { computeTradeFields } from './calculations';
 
@@ -366,6 +367,19 @@ describe('ticket summary', () => {
     expect(r.blended).toBeCloseTo(3.5, 10);
     expect(plannedRewardRisk({ ...base, targets: [] })).toEqual({ tp1: null, blended: null });
     expect(plannedRewardRisk({ ...base, stop: 0, targets: [{ price: 110 }] })).toEqual({ tp1: null, blended: null });
+  });
+});
+
+describe('closeDateWithoutExitPrice', () => {
+  it('requires an exit price when a close date is set', () => {
+    expect(closeDateWithoutExitPrice({ exitDate: new Date(), pricedExit: false })).toBe('כדי לשמור תאריך סגירה צריך מחיר יציאה');
+  });
+  it('allows a close date that has an exit price', () => {
+    expect(closeDateWithoutExitPrice({ exitDate: new Date(), pricedExit: true })).toBeNull();
+  });
+  it('ignores an empty close date and imported closes that have no exit price', () => {
+    expect(closeDateWithoutExitPrice({ exitDate: null, pricedExit: false })).toBeNull();
+    expect(closeDateWithoutExitPrice({ exitDate: new Date(), pricedExit: false, keepsImportedClose: true })).toBeNull();
   });
 });
 

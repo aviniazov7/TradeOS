@@ -6,7 +6,7 @@ import toast from 'react-hot-toast';
 import { useTrades } from '../../hooks/useTrades';
 import { useCryptoPrices } from '../../hooks/useCryptoPrices';
 import { useJournalContext } from '../../contexts/JournalContext';
-import { calculatePnL, calculateFuturesPnL, isClosedTrade, safePnl, localDayKey } from '../../utils/calculations';
+import { isClosedTrade, safePnl, localDayKey } from '../../utils/calculations';
 import { computeUnrealized, sortJournalTrades } from '../../utils/journalAnalytics';
 import { useDashboardStats } from '../../hooks/useDashboardStats';
 import { useLinkedExchange } from '../../hooks/useLinkedExchangeBalance';
@@ -37,8 +37,8 @@ import { TAG_LABELS } from '../../utils/constants';
 import { pageVariants, pageTransition } from '../../utils/animations';
 import { TRADE_PREFILL_KEY } from '../../utils/tradeFormHelpers';
 
-const JOURNAL_TABS = ['trades', 'analytics', 'calendar', 'exchange'];
-const TAB_LABELS = { trades: 'עסקאות', analytics: 'ניתוחים', calendar: 'יומן חודשי', exchange: 'חיבור בורסאות' };
+const JOURNAL_TABS = ['trades', 'positions', 'analytics', 'calendar', 'exchange'];
+const TAB_LABELS = { trades: 'עסקאות', positions: 'פוזיציות פתוחות', analytics: 'ניתוחים', calendar: 'יומן חודשי', exchange: 'חיבור בורסאות' };
 const defaultFilters = { search: '', direction: '', result: '', status: '', strategy: '', tag: '', timeframe: '', month: '', from: '', to: '' };
 const defaultSort = { key: 'date', dir: 'desc' };
 // Phone sort picker (desktop sorts by clicking column headers).
@@ -59,6 +59,7 @@ const entryDay = (t) => (t.entryDate ? localDayKey(t.entryDate) : '');
 // Everything below is loaded on demand: the default trades view only needs the
 // table. The form alone pulls in react-datepicker (~130 kB), and the analytics
 // tab pulls in recharts (~414 kB).
+const OpenPositionsTab = lazy(() => import('./OpenPositionsTab'));
 const JournalAnalyticsTab = lazy(() => import('./JournalAnalyticsTab'));
 const MonthlyCalendar = lazy(() => import('./MonthlyCalendar'));
 const ExchangeSettings = lazy(() => import('../exchange/ExchangeSettings'));
@@ -420,21 +421,6 @@ export default function TradeJournal() {
         await addTrade(data);
         toast.success('העסקה נוספה');
       }
-      // Confetti on winning closed trade. Mirror how PnL is actually computed
-      // so the celebration is correct for exchange-imported and CME-futures
-      // trades too, not just plain crypto (price × qty).
-      if (data.exitPrice > 0) {
-        const pnl = data.pnlFromExchange != null
-          ? data.pnlFromExchange
-          : data.contract?.pointValue
-            ? calculateFuturesPnL(data.direction, data.entryPrice, data.exitPrice, data.contract.pointValue, data.contract.contracts)
-            : calculatePnL(data.direction, data.entryPrice, data.exitPrice, data.quantity);
-        if (pnl > 0) {
-          import('canvas-confetti').then(({ default: confetti }) => {
-            confetti({ particleCount: 120, spread: 80, origin: { y: 0.7 }, colors: ['#22c55e', '#4ade80', '#86efac', '#fbbf24', '#38bdf8'] });
-          }).catch(() => {});
-        }
-      }
     } catch (error) {
       console.error('Save trade failed:', error);
       const msg = error.code === 'permission-denied' ? 'אין הרשאה לשמור' : 'שגיאה בשמירת העסקה — נסה שוב';
@@ -744,6 +730,12 @@ export default function TradeJournal() {
             </>
           )}
         </>
+      )}
+
+      {tab === 'positions' && (
+        <Suspense fallback={<TabFallback />}>
+          <OpenPositionsTab />
+        </Suspense>
       )}
 
       {tab === 'analytics' && (

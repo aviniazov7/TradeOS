@@ -5,6 +5,7 @@ import { he } from 'date-fns/locale';
 import 'react-datepicker/dist/react-datepicker.css';
 import { X, Plus, AlertTriangle, ShieldAlert, TrendingUp, TrendingDown, Check, Target, ClipboardCheck, Gauge, ShieldCheck, Layers, Calculator, ChevronDown } from 'lucide-react';
 import Modal from '../shared/Modal';
+import TradingViewPreview from './TradingViewPreview';
 import PairSearch from './PairSearch';
 import StockSearch from '../stocks/StockSearch';
 import SelectDropdown from '../shared/SelectDropdown';
@@ -24,7 +25,7 @@ import {
   isSelectableTradeTime, isOnOrAfterMinute, isAfterMinute, startOfLocalDay, exitPickerInjectTimes, entryPriceProblem,
   aggregateFills, exitsClosedPercent, syncExitSize, remainderClose, storedExit, hasCommissionPreset, estimateCommission,
   buildChecklistRows, checklistAdherence, loadLastTradeChoices, saveLastTradeChoices,
-  canMoveStopToBreakeven, breakevenStopValue,
+  canMoveStopToBreakeven, breakevenStopValue, closeDateWithoutExitPrice,
   riskBudgetCheck, riskToStop, riskSizedNotional, stopDistancePct, rMultiple, plannedRewardRisk,
 } from '../../utils/tradeFormHelpers';
 import { calculatePnLPercent, calculateRR, calculateNetPnL, calculatePartialPnL, calculateWeightedExitPrice, calculateFuturesContractsPnL, calculateFuturesNotional, initialStopLoss, isStopOnRiskSide, isClosedTrade, safePnl } from '../../utils/calculations';
@@ -935,6 +936,16 @@ export default function TradeForm({ isOpen, onClose, trade, onSave, riskSettings
         break;
       }
     }
+    // A close date with no exit price used to save and leave the trade open.
+    const closeDateError = closeDateWithoutExitPrice({
+      exitDate: exitD,
+      pricedExit: validAdditional.some((row) => row.price > 0),
+      keepsImportedClose,
+    });
+    if (closeDateError) {
+      problem('exitDate', closeDateError);
+      problem('exits', closeDateError);
+    }
     if (problems.length) {
       showFieldErrors(problems);
       return;
@@ -1725,6 +1736,7 @@ export default function TradeForm({ isOpen, onClose, trade, onSave, riskSettings
               <Field label="קישור TradingView" htmlFor="tt-tv">
                 <input id="tt-tv" type="url" dir="ltr" value={form.tradingViewUrl} onChange={(e) => update('tradingViewUrl', e.target.value)}
                   className={`${ctlBase} px-3 text-sm text-text-primary text-left`} placeholder="https://www.tradingview.com/x/..." />
+                <TradingViewPreview key={form.tradingViewUrl} url={form.tradingViewUrl} pair={form.pair} />
               </Field>
             </div>
           </Section>

@@ -159,11 +159,11 @@ export default function TradeTable({
                 aria-pressed={selectMode ? selected : undefined}
                 className={`w-full text-right bg-bg-secondary border border-border-primary border-s-[3px] ${stripeClass(status, isPending, pnl)} rounded-xl px-3 py-2.5 cursor-pointer hover:border-border-hover active:scale-[0.99] transition ${isPending ? 'opacity-60' : ''} ${selected ? 'ring-2 ring-accent-primary/60' : ''}`}
               >
-                <div className="flex items-center justify-between gap-2">
-                  <div className="flex items-center gap-2 min-w-0 flex-1">
+                <div className="flex items-center justify-between gap-2 flex-wrap">
+                  <div className="flex items-center gap-2">
                     {selectMode && <SelectBox checked={selected} />}
                     <CoinIcon pair={trade.pair} assetClass={trade.assetClass} className="w-4 h-4 shrink-0" />
-                    <FitText className="text-text-primary font-semibold text-sm flex-initial" min={11} title={trade.pair}>{trade.pair}</FitText>
+                    <span dir="ltr" className="text-text-primary font-semibold text-sm whitespace-nowrap shrink-0" title={trade.pair}>{trade.pair}</span>
                     <span className={`shrink-0 inline-flex items-center gap-0.5 text-xs font-medium px-1.5 py-0.5 rounded ${trade.direction === 'long' ? 'bg-long/10 text-long' : 'bg-short/10 text-short'}`}>
                       {trade.direction === 'long' ? <TrendingUp className="w-3 h-3" /> : <TrendingDown className="w-3 h-3" />}
                       {trade.direction === 'long' ? 'Long' : 'Short'}
@@ -248,10 +248,10 @@ export default function TradeTable({
                     aria-selected={selectMode ? selected : undefined}
                   >
                     {selectMode && <td className="py-2.5 ps-2"><SelectBox checked={selected} /></td>}
-                    <td className="py-2.5 px-2 text-text-primary font-semibold max-w-[13rem]">
-                      <span className="inline-flex items-center gap-1.5 max-w-full">
+                    <td className="py-2.5 px-2 text-text-primary font-semibold">
+                      <span className="inline-flex items-center gap-1.5">
                         <CoinIcon pair={trade.pair} assetClass={trade.assetClass} className="w-4 h-4 shrink-0" />
-                        <span className="truncate" title={trade.pair}>{trade.pair}</span>
+                        <span dir="ltr" className="whitespace-nowrap" title={trade.pair}>{trade.pair}</span>
                         {trade.source && trade.source !== 'manual' && (
                           <ExchangeIcon source={trade.source} />
                         )}

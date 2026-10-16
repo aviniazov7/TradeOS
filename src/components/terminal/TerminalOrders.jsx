@@ -77,7 +77,7 @@ function OrdersTable({ rows, onSelect }) {
         </thead>
         <tbody>
           {rows.map(({ key, o, journalName }) => (
-            <tr key={key} onClick={() => onSelect(o)} className="border-b border-border-primary/60 last:border-0 cursor-pointer hover:bg-bg-tertiary transition-colors">
+            <tr key={key} onClick={onSelect ? () => onSelect(o) : undefined} className={`border-b border-border-primary/60 last:border-0 transition-colors ${onSelect ? 'cursor-pointer hover:bg-bg-tertiary' : ''}`}>
               <td className={TD}>
                 <span className="inline-flex items-center gap-2">
                   <CoinIcon pair={o.pair} className="w-5 h-5 shrink-0" />
@@ -113,8 +113,9 @@ function Stat({ label, children }) {
 
 function OrderCard({ row, onSelect }) {
   const { o, journalName } = row;
+  const Tag = onSelect ? 'button' : 'div';
   return (
-    <button type="button" onClick={() => onSelect(o)} className="w-full text-start rounded-2xl border border-border-primary bg-bg-tertiary hover:border-border-hover p-3 transition-colors cursor-pointer">
+    <Tag type={onSelect ? 'button' : undefined} onClick={onSelect ? () => onSelect(o) : undefined} className={`w-full text-start rounded-2xl border border-border-primary bg-bg-tertiary p-3 transition-colors ${onSelect ? 'cursor-pointer hover:border-border-hover' : ''}`}>
       <div className="flex items-start justify-between gap-2">
         <div className="min-w-0 space-y-1">
           <div className="flex items-center gap-1.5 flex-wrap">
@@ -135,7 +136,7 @@ function OrderCard({ row, onSelect }) {
         <Stat label="TP/SL מצורף"><Attached o={o} /></Stat>
         <Stat label="נוצרה"><Num className="text-text-secondary">{timeText(o.createdAt)}</Num></Stat>
       </div>
-    </button>
+    </Tag>
   );
 }
 

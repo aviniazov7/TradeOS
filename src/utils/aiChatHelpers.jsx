@@ -25,16 +25,35 @@ const isPriceRun = (run) => run.includes('$') || /\d\s*[-–]\s*\$?\d/.test(run)
 
 const escapeRe = (s) => s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
 
+function escapeHtml(s) {
+  return String(s)
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;');
+}
+
+// Markdown on already-escaped text, before any tag is inserted, so a model's
+// `**bold**` / `__bold__` / `*italic*` / `` `code` `` cannot be left as raw
+// markers and cannot smuggle HTML. Bold runs first so `**` isn't eaten as
+// two italics.
+function applyMarkdown(escaped) {
+  return escaped
+    .replace(/`([^`\n]+)`/g, '<code class="bg-bg-tertiary px-1 py-0.5 rounded text-accent-primary text-[11px]">$1</code>')
+    .replace(/\*\*([^*\n]+?)\*\*/g, '<strong>$1</strong>')
+    .replace(/__([^_\n]+?)__/g, '<strong>$1</strong>')
+    .replace(/(^|[^*])\*([^*\n]+?)\*(?!\*)/g, '$1<em>$2</em>');
+}
+
 function buildLineHtml(line) {
-  // Number runs first, on the plain text (so later steps never match inside
-  // attributes). Each is isolated LTR so "+200 USDT" doesn't flip in RTL.
-  let s = wrapLtrRuns(line, (m) => (isPriceRun(m)
+  // Escape, then markdown, then number/sentiment spans. Number runs are
+  // isolated LTR so "+200 USDT" doesn't flip in RTL.
+  let s = applyMarkdown(escapeHtml(line));
+  s = wrapLtrRuns(s, (m) => (isPriceRun(m)
     ? `<span dir="ltr" class="font-mono text-accent-primary bg-accent-primary/10 px-1 rounded">${m}</span>`
     : `<span dir="ltr">${m}</span>`));
   for (const w of BULLISH) s = s.replace(new RegExp(escapeRe(w), 'g'), (m) => `<span class="text-profit font-medium">${m}</span>`);
   for (const w of BEARISH) s = s.replace(new RegExp(escapeRe(w), 'g'), (m) => `<span class="text-loss font-medium">${m}</span>`);
-  s = s.replace(/\*\*(.+?)\*\*/g, '<strong>$1</strong>');
-  s = s.replace(/`(.+?)`/g, '<code class="bg-bg-tertiary px-1 py-0.5 rounded text-accent-primary text-[11px]">$1</code>');
   return s;
 }
 

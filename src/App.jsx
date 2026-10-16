@@ -43,8 +43,6 @@ const loadWalletDetailPage = () => import('./components/polymarket/WalletDetailP
 const loadMarketDetailPage = () => import('./components/polymarket/MarketDetailPage');
 const loadAdminPanel = () => import('./components/admin/AdminPanel');
 const loadTaxReport = () => import('./components/tax/TaxReportPage');
-const loadTerminal = () => import('./components/terminal/TerminalPage');
-
 const Dashboard = lazy(loadDashboard);
 const TradeJournal = lazy(loadTradeJournal);
 const BacktestTracker = lazy(loadBacktestTracker);
@@ -69,7 +67,6 @@ const WalletDetailPage = lazy(loadWalletDetailPage);
 const MarketDetailPage = lazy(loadMarketDetailPage);
 const AdminPanel = lazy(loadAdminPanel);
 const TaxReportPage = lazy(loadTaxReport);
-const TerminalPage = lazy(loadTerminal);
 
 // Preload the two most-likely-next routes during idle, and only once someone
 // is signed in. Doing this on /login downloaded Firestore, charts, and the
@@ -125,10 +122,9 @@ function MainApp() {
               <Route element={<Layout />}>
                 <Route index element={<Dashboard />} />
                 <Route path="journal" element={<TradeJournal />} />
-                {/* Live trading terminal: positions, open orders and multi-timeframe
-                    charts from the connected exchanges (read-only). Its own boundary:
-                    it embeds third-party chart iframes and polls exchanges. */}
-                <Route path="terminal" element={<ErrorBoundary><TerminalPage /></ErrorBoundary>} />
+                {/* The trading station page is gone. Positions and orders live
+                    on the journal tab; old links land there. */}
+                <Route path="terminal" element={<Navigate to="/journal?tab=positions" replace />} />
                 <Route path="backtest" element={<BacktestTracker />} />
                 {/* DCA + wallets are the two tabs of the Portfolio page; the old
                     paths stay as redirects so links/bookmarks land right. */}

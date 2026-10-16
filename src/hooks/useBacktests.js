@@ -1,6 +1,7 @@
 import { useState, useEffect, useMemo } from 'react';
 import {
   subscribeToUserCollection,
+  seedUserCollection,
   addToUserCollection,
   updateUserDocument,
   deleteUserDocument,
@@ -10,18 +11,27 @@ import { useAuth } from '../contexts/AuthContext';
 
 export function useBacktests(backtestJournalId) {
   const { user } = useAuth();
-  const [allBacktests, setAllBacktests] = useState([]);
-  const [loading, setLoading] = useState(true);
+  const uid = user?.uid;
+  const [allBacktests, setAllBacktests] = useState(() => seedUserCollection(uid, 'backtests').data);
+  const [loading, setLoading] = useState(() => seedUserCollection(uid, 'backtests').loading);
 
   useEffect(() => {
-    if (!user) {
+    if (!uid) {
       setAllBacktests([]);
       setLoading(false);
-      return;
+      return undefined;
+    }
+
+    const cached = seedUserCollection(uid, 'backtests');
+    if (!cached.loading) {
+      setAllBacktests(cached.data);
+      setLoading(false);
+    } else {
+      setLoading(true);
     }
 
     return subscribeToUserCollection(
-      user.uid,
+      uid,
       'backtests',
       {},
       (data) => {
@@ -33,7 +43,7 @@ export function useBacktests(backtestJournalId) {
         setLoading(false); // permission/network error must not leave an eternal skeleton
       }
     );
-  }, [user]);
+  }, [uid]);
 
   // Filter by journal client-side
   const backtests = useMemo(() => {

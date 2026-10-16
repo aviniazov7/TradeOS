@@ -1,6 +1,7 @@
 import { forwardRef } from 'react';
 import { getExchangeLogo } from '../../utils/constants';
 import { formatCurrency, formatPercent, formatPrice, formatSignedR, formatDate } from '../../utils/formatters';
+import { tradeEntryDate, tradeExitDate } from '../../utils/tradeDates';
 import { signedTradeR, tradeNetPercent } from '../../utils/calculations';
 import { tradeExitPrice } from '../../utils/excursion';
 import { getCoinIcon } from '../shared/CoinIcon';
@@ -24,8 +25,8 @@ const TradeShareCard = forwardRef(function TradeShareCard({ trade, options = {} 
   const dirLabel = isLong ? 'LONG' : 'SHORT';
   const exchangeLogo = trade.exchange ? getExchangeLogo(trade.exchange) : null;
 
-  const entryDate = trade.entryDate?.toDate ? trade.entryDate.toDate() : new Date(trade.entryDate);
-  const exitDate = trade.exitDate?.toDate ? trade.exitDate.toDate() : new Date(trade.exitDate);
+  const entryDate = tradeEntryDate(trade);
+  const exitDate = tradeExitDate(trade);
 
   return (
     <div

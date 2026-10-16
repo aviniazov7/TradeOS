@@ -136,7 +136,14 @@ export default function JournalAnalyticsTab({
           {analytics && (
             <>
 
-              <Suspense fallback={<div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4 mb-6">{[1, 2, 3, 4].map((i) => <div key={i} className={`${cardClass} p-5 h-48 animate-pulse`} />)}</div>}>
+              <Suspense fallback={(
+                <div className="space-y-4 mb-6">
+                  <div className={`${cardClass} h-72 animate-pulse`} />
+                  <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                    {[1, 2, 3].map((i) => <div key={i} className={`${cardClass} h-64 animate-pulse`} />)}
+                  </div>
+                </div>
+              )}>
                 <JournalCharts
                   analytics={analytics} stats={stats} periodTrades={periodTrades}
                   cardClass={cardClass} tooltipStyle={tooltipStyle} pieColors={PIE_COLORS}
