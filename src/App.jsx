@@ -71,6 +71,13 @@ const AdminPanel = lazy(loadAdminPanel);
 const TaxReportPage = lazy(loadTaxReport);
 const TerminalPage = lazy(loadTerminal);
 
+// Sample notifications page for local dev and a hosting preview built with
+// VITE_ADMIN_NOTIF_PREVIEW=1. Production builds tree-shake the route.
+const adminNotifPreview = import.meta.env.DEV || import.meta.env.VITE_ADMIN_NOTIF_PREVIEW === '1';
+const AdminNotificationsPreview = adminNotifPreview
+  ? lazy(() => import('./components/admin/AdminNotificationsPreview'))
+  : null;
+
 // Preload the two most-likely-next routes during idle, and only once someone
 // is signed in. Doing this on /login downloaded Firestore, charts, and the
 // journal during Lighthouse (about 59 scripts) and competed with first paint.
@@ -121,6 +128,13 @@ function MainApp() {
               {/* Accessibility statement — public (reachable without login, as
                   required for an Israeli-standard accessibility statement). */}
               <Route path="/accessibility" element={<AccessibilityStatement />} />
+              {AdminNotificationsPreview && (
+                <Route path="/admin-notifications-preview" element={(
+                  <Suspense fallback={<LoadingSpinner />}>
+                    <AdminNotificationsPreview />
+                  </Suspense>
+                )} />
+              )}
               <Route element={<ProtectedRoute><AuthedProviders /></ProtectedRoute>}>
               <Route element={<Layout />}>
                 <Route index element={<Dashboard />} />

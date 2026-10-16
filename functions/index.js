@@ -1,7 +1,14 @@
 const { onCall, onRequest, HttpsError } = require("firebase-functions/v2/https");
+const { onSchedule } = require("firebase-functions/v2/scheduler");
+const { onDocumentCreated, onDocumentUpdated, onDocumentWritten } = require("firebase-functions/v2/firestore");
 const { initializeApp } = require("firebase-admin/app");
 const { getAuth } = require("firebase-admin/auth");
 const { getFirestore } = require("firebase-admin/firestore");
+const {
+  runAdminNotificationScan,
+  handleUserNotificationEvent,
+  stampLastTradeAt,
+} = require("./adminNotificationRunner");
 const { OAuth2Client } = require("google-auth-library");
 const crypto = require("crypto");
 
@@ -338,4 +345,48 @@ exports.importTrades = onCall({
       ? `${imported} עסקאות יובאו בהצלחה`
       : "אין עסקאות חדשות לייבוא",
   };
+});
+
+// ──────────── Admin notification center ────────────
+// Event + scheduled generation of adminNotifications. Do NOT deploy until the
+// owner approves (`firebase deploy --only functions`): this writes to the
+// shared production Firestore. Hosting previews do not run it — review the
+// UI with /admin?tab=notifications&demo=1 or /admin-notifications-preview.
+const NOTIFY_REGION = "europe-west1";
+
+exports.scanAdminNotifications = onSchedule({
+  schedule: "0 */6 * * *",
+  timeZone: "Asia/Jerusalem",
+  region: NOTIFY_REGION,
+  timeoutSeconds: 300,
+  memory: "256MiB",
+}, async () => {
+  await runAdminNotificationScan(db);
+});
+
+exports.onUserCreatedAdminNotification = onDocumentCreated({
+  document: "users/{uid}",
+  region: NOTIFY_REGION,
+}, async (event) => {
+  const data = event.data?.data();
+  if (!data) return;
+  await handleUserNotificationEvent(db, event.params.uid, "create", data);
+});
+
+exports.onUserUpdatedAdminNotification = onDocumentUpdated({
+  document: "users/{uid}",
+  region: NOTIFY_REGION,
+}, async (event) => {
+  const data = event.data?.after?.data();
+  if (!data) return;
+  await handleUserNotificationEvent(db, event.params.uid, "update", data);
+});
+
+exports.stampLastTradeAt = onDocumentWritten({
+  document: "users/{uid}/trades/{tradeId}",
+  region: NOTIFY_REGION,
+}, async (event) => {
+  const after = event.data?.after;
+  if (!after?.exists) return;
+  await stampLastTradeAt(db, event.params.uid, after.data());
 });
