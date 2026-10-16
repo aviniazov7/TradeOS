@@ -70,6 +70,7 @@ const MarketDetailPage = lazy(loadMarketDetailPage);
 const AdminPanel = lazy(loadAdminPanel);
 const TaxReportPage = lazy(loadTaxReport);
 const TerminalPage = lazy(loadTerminal);
+const DesignPreview = lazy(() => import('./design-preview/DesignPreview'));
 
 // Preload the two most-likely-next routes during idle, and only once someone
 // is signed in. Doing this on /login downloaded Firestore, charts, and the
@@ -113,6 +114,8 @@ function MainApp() {
               {/* Login stays outside MotionShell and the Firestore providers.
                   Those chunks download when a visitor leaves this page. */}
               <Route path="/login" element={<LoginPage />} />
+              {/* Design exploration only — public, not linked from the nav. */}
+              <Route path="/design-preview" element={<DesignPreview />} />
               <Route element={<MotionShell />}>
               {/* Public coupon share landing — accessible without auth so a
                   shared link works for logged-out friends; redeeming itself
