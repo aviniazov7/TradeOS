@@ -2,10 +2,17 @@ import { useState, useEffect, useMemo, useRef } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { Copy, Check, TrendingUp, TrendingDown } from 'lucide-react';
 import Modal from '../shared/Modal';
+import ExchangeLogo from '../shared/ExchangeLogo';
 import { useJournalContext } from '../../contexts/JournalContext';
 import { useLinkedExchangeBalance } from '../../hooks/useLinkedExchangeBalance';
 import { formatNumber, LRM } from '../../utils/formatters';
 import { calculatePosition } from '../../utils/positionMath';
+import {
+  calculatorBalanceCaption,
+  calculatorJournalLabel,
+  formatBalanceInput,
+  journalAccountBalance,
+} from '../../utils/calculatorBalance';
 import { TRADE_PREFILL_KEY, tradePrefillFromCalculator } from '../../utils/tradeFormHelpers';
 import toast from 'react-hot-toast';
 
@@ -13,10 +20,25 @@ const inputClass = 'w-full bg-bg-tertiary border border-border-primary rounded-l
 const labelClass = 'block text-xs text-text-muted mb-1';
 
 export default function PositionCalculator({ isOpen, onClose }) {
-  const { activeJournal } = useJournalContext();
-  const liveBalance = useLinkedExchangeBalance(activeJournal?.exchange);
+  const { journals, activeJournal } = useJournalContext();
   const navigate = useNavigate();
   const [copiedKey, setCopiedKey] = useState(null);
+  // Local choice. Defaults to the journal selected in the app switcher each
+  // time the modal opens, and does not change that app-wide selection.
+  const [journalId, setJournalId] = useState(null);
+  const [openSnap, setOpenSnap] = useState(isOpen);
+  if (isOpen !== openSnap) {
+    setOpenSnap(isOpen);
+    setJournalId(isOpen ? (activeJournal?.id ?? null) : null);
+  }
+
+  const list = Array.isArray(journals) ? journals : [];
+  const selected = list.find((j) => j.id === journalId)
+    || list.find((j) => j.id === activeJournal?.id)
+    || null;
+  const liveBalance = useLinkedExchangeBalance(selected?.exchange);
+  const accountBalance = journalAccountBalance(selected, liveBalance);
+  const balanceCaption = calculatorBalanceCaption(selected, liveBalance);
 
   const [form, setForm] = useState({
     direction: 'long',
@@ -29,29 +51,40 @@ export default function PositionCalculator({ isOpen, onClose }) {
     targetPrice: '',
   });
 
-  // Account balance from the linked wallet, otherwise the opening balance
-  // saved in the journal settings. A missing balance stays blank — the old
-  // "10,000" placeholder read as a real amount.
-  const accountBalance = (liveBalance > 0 ? liveBalance : null) ?? (Number(activeJournal?.initialBalance) > 0 ? Number(activeJournal.initialBalance) : null);
-  const openedRef = useRef(false);
+  // A typed balance stays. Opening the modal, or picking another journal,
+  // refills from that journal (live wallet, else its opening balance) rounded
+  // to cents. A later wallet refresh updates the field only while it is still
+  // the auto value.
+  const appliedIdRef = useRef(undefined);
+  const autoBalanceRef = useRef(true);
+  const selectedId = selected?.id ?? null;
+  const selectedRiskType = selected?.riskType || 'percent';
+  const selectedRiskValue = selected?.riskValue || '';
   useEffect(() => {
-    if (!isOpen) { openedRef.current = false; return; }
+    if (!isOpen) {
+      appliedIdRef.current = undefined;
+      autoBalanceRef.current = true;
+      return;
+    }
+    const switched = appliedIdRef.current !== undefined && appliedIdRef.current !== selectedId;
+    const first = appliedIdRef.current === undefined;
+    if (first || switched) autoBalanceRef.current = true;
+    appliedIdRef.current = selectedId;
+    const balanceText = formatBalanceInput(accountBalance);
+    const riskValueNorm = selectedRiskValue === '' || selectedRiskValue == null ? '' : String(selectedRiskValue);
     setForm((f) => {
-      const fresh = !openedRef.current;
-      openedRef.current = true;
-      const balance = fresh || f.balance === ''
-        ? (accountBalance != null ? String(accountBalance) : '')
-        : f.balance;
-      return {
-        ...f,
-        balance,
-        riskType: fresh ? (activeJournal?.riskType || 'percent') : f.riskType,
-        riskValue: fresh ? (activeJournal?.riskValue || '') : f.riskValue,
-      };
+      const balance = autoBalanceRef.current ? balanceText : f.balance;
+      const riskType = (first || switched) ? selectedRiskType : f.riskType;
+      const riskValue = (first || switched) ? riskValueNorm : f.riskValue;
+      if (f.balance === balance && f.riskType === riskType && String(f.riskValue ?? '') === String(riskValue ?? '')) return f;
+      return { ...f, balance, riskType, riskValue };
     });
-  }, [isOpen, activeJournal, accountBalance]);
+  }, [isOpen, selectedId, selectedRiskType, selectedRiskValue, accountBalance]);
 
-  const update = (key, value) => setForm((f) => ({ ...f, [key]: value }));
+  const update = (key, value) => {
+    if (key === 'balance') autoBalanceRef.current = false;
+    setForm((f) => ({ ...f, [key]: value }));
+  };
 
   // Real-time calculations. A stop on the wrong side is an error object,
   // not a sized position — |entry − stop| used to print a positive R:R.
@@ -120,11 +153,39 @@ export default function PositionCalculator({ isOpen, onClose }) {
           </div>
         </div>
 
+        {/* Which journal's wallet this position is sized against. */}
+        {list.length > 1 ? (
+          <div>
+            <label htmlFor="calc-journal" className={labelClass}>יומן ליתרה</label>
+            <select
+              id="calc-journal"
+              aria-label="יומן ליתרה"
+              value={selected?.id || ''}
+              onChange={(e) => setJournalId(e.target.value)}
+              className={`${inputClass} theme-scheme`}
+            >
+              {list.map((j) => (
+                <option key={j.id} value={j.id}>{calculatorJournalLabel(j)}</option>
+              ))}
+            </select>
+            {balanceCaption ? <p className="mt-1 text-[10px] text-text-muted">{balanceCaption}</p> : null}
+          </div>
+        ) : selected ? (
+          <div>
+            <span className={labelClass}>יומן ליתרה</span>
+            <div data-testid="calculator-journal" className="flex items-center gap-2 rounded-lg border border-border-primary bg-bg-tertiary px-3 py-2 text-sm text-text-primary">
+              <ExchangeLogo exchange={selected.exchange} size="w-4 h-4" badge={selected.name} />
+              <span>{calculatorJournalLabel(selected)}</span>
+            </div>
+            {balanceCaption ? <p className="mt-1 text-[10px] text-text-muted">{balanceCaption}</p> : null}
+          </div>
+        ) : null}
+
         {/* Balance + Risk Type */}
         <div className="grid grid-cols-2 gap-2">
           <div>
-            <label className={labelClass}>יתרת חשבון ($)</label>
-            <input type="number" step="any" value={form.balance} onChange={(e) => update('balance', e.target.value)} className={inputClass} placeholder="הזן יתרה" />
+            <label className={labelClass} htmlFor="calc-balance">יתרת חשבון ($)</label>
+            <input id="calc-balance" type="number" step="any" value={form.balance} onChange={(e) => update('balance', e.target.value)} className={inputClass} placeholder="הזן יתרה" />
           </div>
           <div>
             <label className={labelClass}>סוג סיכון</label>

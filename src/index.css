@@ -575,8 +575,10 @@ input[type="range"]::-moz-range-thumb {
    provide our own NumberStepper (−/+) control instead. */
 /* Native date pickers (journal date-range filter): match the theme so the
    calendar popup and the picker icon aren't light-on-dark / dark-on-light. */
-input[type="date"] { color-scheme: dark; }
-.light input[type="date"] { color-scheme: light; }
+input[type="date"],
+select.theme-scheme { color-scheme: dark; }
+.light input[type="date"],
+.light select.theme-scheme { color-scheme: light; }
 
 input[type="number"]::-webkit-outer-spin-button,
 input[type="number"]::-webkit-inner-spin-button {

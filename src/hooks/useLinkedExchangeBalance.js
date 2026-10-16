@@ -12,11 +12,23 @@ const REFRESH_MS = 60_000; // refetch every minute
 // exchange isn't connected.
 export function useLinkedExchange(exchangeId) {
   const { user } = useAuth();
-  const [state, setState] = useState({ balance: null, keyProblem: null });
+  const wanted = exchangeId || null;
+  const [state, setState] = useState({ exchangeId: null, balance: null, keyProblem: null });
+
+  // Drop the previous venue's wallet in the same render that the journal
+  // switches. Otherwise one frame (and any effect that reads it) still shows
+  // MEXC's balance after the user picked Bybit.
+  if (state.exchangeId !== wanted) {
+    setState({ exchangeId: wanted, balance: null, keyProblem: null });
+  }
 
   useEffect(() => {
-    if (!user || !exchangeId) {
-      setState((s) => (s.balance == null && s.keyProblem == null ? s : { balance: null, keyProblem: null }));
+    if (!user || !wanted) {
+      setState((s) => (
+        s.exchangeId === wanted && s.balance == null && s.keyProblem == null
+          ? s
+          : { exchangeId: wanted, balance: null, keyProblem: null }
+      ));
       return undefined;
     }
     let cancelled = false;
@@ -25,23 +37,27 @@ export function useLinkedExchange(exchangeId) {
     const tick = async () => {
       try {
         const exchanges = await getUserSetting(user.uid, 'exchanges');
-        const conf = exchanges?.[exchangeId];
+        const conf = exchanges?.[wanted];
         // `connected` is the new non-secret marker; the apiKey check keeps
         // legacy (pre-migration) entries working until they migrate.
-        if (!conf?.connected && !(conf?.apiKey && conf?.apiSecret)) { if (!cancelled) setState({ balance: null, keyProblem: null }); return; }
-        const res = await fetchExchangeBalance(exchangeId);
-        if (!cancelled) setState({ balance: res.balance, keyProblem: null });
+        if (!conf?.connected && !(conf?.apiKey && conf?.apiSecret)) {
+          if (!cancelled) setState({ exchangeId: wanted, balance: null, keyProblem: null });
+          return;
+        }
+        const res = await fetchExchangeBalance(wanted);
+        if (!cancelled) setState({ exchangeId: wanted, balance: res.balance, keyProblem: null });
       } catch (err) {
-        if (!cancelled) setState({ balance: null, keyProblem: err?.reason || null });
+        if (!cancelled) setState({ exchangeId: wanted, balance: null, keyProblem: err?.reason || null });
       }
     };
 
     tick();
     timer = setInterval(tick, REFRESH_MS);
     return () => { cancelled = true; if (timer) clearInterval(timer); };
-  }, [user, exchangeId]);
+  }, [user, wanted]);
 
-  return state;
+  if (state.exchangeId !== wanted) return { balance: null, keyProblem: null };
+  return { balance: state.balance, keyProblem: state.keyProblem };
 }
 
 // Balance only — the shape most callers want.
