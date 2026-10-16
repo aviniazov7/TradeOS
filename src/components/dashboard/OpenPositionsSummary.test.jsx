@@ -1,6 +1,6 @@
 // @vitest-environment happy-dom
 import { act } from 'react';
-import { beforeAll, describe, expect, it, vi } from 'vitest';
+import { beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
 import { createRoot } from 'react-dom/client';
 import { MemoryRouter, Route, Routes, useSearchParams } from 'react-router-dom';
 import OpenPositionsSummary from './OpenPositionsSummary';
@@ -16,8 +16,14 @@ const terminal = {
   refresh: () => {},
 };
 
+const terminalCalls = vi.hoisted(() => []);
+
 vi.mock('../../hooks/useTerminalData', () => ({
-  useTerminalData: () => terminal,
+  HOME_POLL_MS: 60_000,
+  useTerminalData: (...args) => {
+    terminalCalls.push(args);
+    return terminal;
+  },
 }));
 
 vi.mock('../shared/CoinIcon', () => ({
@@ -79,11 +85,14 @@ describe('open positions summary', () => {
     globalThis.IS_REACT_ACT_ENVIRONMENT = true;
   });
 
+  beforeEach(() => { terminalCalls.length = 0; });
+
   it('hides when no exchange is connected', async () => {
     terminal.connected = [];
     terminal.snapshots = {};
     terminal.loading = false;
     const view = await mount();
+    expect(terminalCalls.at(-1)).toEqual([{ pollMs: 60_000 }]);
     expect(view.html()).not.toContain('לכל הפוזיציות');
     expect(view.html()).not.toContain('פוזיציות פתוחות');
     await view.unmount();

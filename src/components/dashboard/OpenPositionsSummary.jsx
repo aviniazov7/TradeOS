@@ -4,7 +4,7 @@ import { ChevronLeft } from 'lucide-react';
 import CoinIcon from '../shared/CoinIcon';
 import Card from '../shared/Card';
 import { DirBadge, Num } from '../terminal/terminalUi';
-import { useTerminalData } from '../../hooks/useTerminalData';
+import { HOME_POLL_MS, useTerminalData } from '../../hooks/useTerminalData';
 import {
   positionMetrics, positionTotals, journalTradeForPosition, saneLiveMark,
   fmtUsd, fmtPct, pnlTone,
@@ -22,7 +22,7 @@ const Sep = () => <span className="text-text-muted" aria-hidden>·</span>;
 // One row on desktop (~64px), two lines on a phone. Absent when the book is empty.
 export default function OpenPositionsSummary({ hidden = false }) {
   const navigate = useNavigate();
-  const { connected, snapshots, marks, openTrades } = useTerminalData();
+  const { connected, snapshots, marks, openTrades } = useTerminalData({ pollMs: HOME_POLL_MS });
   const openAll = () => navigate('/journal?tab=positions');
 
   const exchanges = connected ?? NONE;

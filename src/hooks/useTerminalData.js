@@ -5,8 +5,10 @@ import { fetchPerpMarks } from '../services/bybitDirect';
 import { getOpenTrades } from '../services/firestoreService';
 import { TERMINAL_EXCHANGES } from '../utils/terminal';
 
-const POLL_MS = 15_000; // positions + orders from the exchanges
-const MARK_MS = 5_000; // public mark prices between polls
+/** Private positions + orders. The journal tab stays live; the home strip is slower. */
+export const JOURNAL_POLL_MS = 15_000;
+export const HOME_POLL_MS = 60_000;
+const MARK_MS = 5_000; // public mark prices, only while a position is open
 
 const visible = () => typeof document === 'undefined' || document.visibilityState === 'visible';
 
@@ -16,11 +18,15 @@ const visible = () => typeof document === 'undefined' || document.visibilityStat
  * background tab, refreshed on return), live mark prices between polls, and
  * the journal's open trades (for each position's original stop).
  *
+ * pollMs — private snapshot interval. Home passes HOME_POLL_MS (60s); the
+ * open-positions tab passes JOURNAL_POLL_MS (15s). Marks stay at 5s, and only
+ * run once a snapshot actually contains a pair.
+ *
  * → { connected: string[] | null (null = loading), snapshots: { [ex]: { positions,
  *     orders, ordersPartial, positionsError, ordersError, error, at } },
  *     marks: { PAIR: price }, openTrades, loading, refreshing, lastUpdated, refresh }
  */
-export function useTerminalData() {
+export function useTerminalData({ pollMs = JOURNAL_POLL_MS } = {}) {
   const { user } = useAuth();
   const uid = user?.uid || null;
   const [connected, setConnected] = useState(null);
@@ -77,11 +83,11 @@ export function useTerminalData() {
   useEffect(() => {
     if (!exchangesKey) return undefined;
     poll();
-    const timer = setInterval(() => { if (visible()) poll(); }, POLL_MS);
-    const onVis = () => { if (visible() && Date.now() - lastPoll.current > POLL_MS) poll(); };
+    const timer = setInterval(() => { if (visible()) poll(); }, pollMs);
+    const onVis = () => { if (visible() && Date.now() - lastPoll.current > pollMs) poll(); };
     document.addEventListener('visibilitychange', onVis);
     return () => { clearInterval(timer); document.removeEventListener('visibilitychange', onVis); };
-  }, [exchangesKey, poll]);
+  }, [exchangesKey, poll, pollMs]);
 
   // Live marks for the open positions' pairs.
   const pairsKey = useMemo(() => {

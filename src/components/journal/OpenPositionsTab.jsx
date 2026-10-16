@@ -9,7 +9,7 @@ import TerminalPositions from '../terminal/TerminalPositions';
 import TerminalOrders from '../terminal/TerminalOrders';
 import { Num } from '../terminal/terminalUi';
 import { useNow, useMedia } from '../terminal/terminalHooks';
-import { useTerminalData } from '../../hooks/useTerminalData';
+import { JOURNAL_POLL_MS, useTerminalData } from '../../hooks/useTerminalData';
 import { useJournalContext } from '../../contexts/JournalContext';
 import {
   EXCHANGE_LABELS, positionMetrics, positionTotals, journalTradeForPosition, saneLiveMark,
@@ -89,7 +89,7 @@ function SectionTitle({ children }) {
 export default function OpenPositionsTab() {
   const navigate = useNavigate();
   const { journals } = useJournalContext();
-  const { connected, snapshots, marks, openTrades, loading, refreshing, lastUpdated, refresh } = useTerminalData();
+  const { connected, snapshots, marks, openTrades, loading, refreshing, lastUpdated, refresh } = useTerminalData({ pollMs: JOURNAL_POLL_MS });
   const mobile = useMedia('(max-width: 767px)');
   const [exFilter, setExFilter] = useState('all');
 
