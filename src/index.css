@@ -100,6 +100,9 @@ body {
   /* #80808f: ≥4.5:1 on the black page and the card surfaces (#606070 was
      ~3.4:1 and failed WCAG AA for the small labels that use it). */
   --color-text-muted: #80808f;
+  /* Chart axis labels. #c8c8d4 is about 10:1 on black — the old 8–10px
+     #606070 ticks failed both size and contrast. */
+  --color-chart-tick: #c8c8d4;
 
   /* Accent (Cyan/turquoise) — base accent for TEXT, icons, borders and tints.
      Buttons/fills keep the violet→cyan --accent-gradient overlay on top, so the
@@ -171,6 +174,7 @@ body {
   --color-text-primary: #0f0f0f;
   --color-text-secondary: #333340;
   --color-text-muted: #5c5c66;
+  --color-chart-tick: #3a3a46;
   --color-accent-primary: #1d4ed8;
   --color-accent-hover: #1e40af;
   --color-accent-muted: #1e3a8a;

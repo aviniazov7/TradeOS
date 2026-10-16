@@ -10,7 +10,7 @@ import {
   formatDateTime,
 } from '../../utils/formatters';
 import { MISTAKE_LABELS } from '../../utils/constants';
-import { isClosedTrade, signedTradeR, tradeNetPercent } from '../../utils/calculations';
+import { isClosedTrade, signedTradeR, tradeNetPercent, tradeDurationMs } from '../../utils/calculations';
 import { safeHttpUrl } from '../../utils/urls';
 import TradeExcursion from './TradeExcursion';
 import {
@@ -37,10 +37,10 @@ const toDate = (d) => (d?.toDate ? d.toDate() : d ? new Date(d) : null);
 const RATING_LABELS = { 1: 'נמוך', 2: 'בינוני-', 3: 'בינוני', 4: 'טוב', 5: 'מעולה' };
 const STRESS_LABELS = { 1: 'רגוע', 2: 'נמוך', 3: 'בינוני', 4: 'גבוה', 5: 'גבוה מאוד' };
 const MENTAL_FIELDS = [
-  { key: 'focusRating', label: 'ריכוז' },
-  { key: 'confidenceRating', label: 'ביטחון' },
-  { key: 'stressRating', label: 'לחץ', invert: true },
-  { key: 'planAdherenceRating', label: 'עקביות' },
+  { key: 'focusRating', label: 'ריכוז וחדות' },
+  { key: 'confidenceRating', label: 'ביטחון בעסקה' },
+  { key: 'stressRating', label: 'לחץ / סטרס', invert: true },
+  { key: 'planAdherenceRating', label: 'הצמדות לתוכנית' },
 ];
 
 // Resolve a TradingView link to its snapshot image so the modal can preview
@@ -114,25 +114,17 @@ export default function TradeDetailModal({
 
   const isFutures = trade.assetClass === 'futures_cme';
 
-  // ── Duration ──────────────────────────────────────────────────────
-  const entryDt = toDate(trade.entryDate);
-  const exitDt = toDate(trade.exitDate || trade.createdAt);
-  let durationHours = null;
-  if (entryDt && exitDt && !isNaN(entryDt) && !isNaN(exitDt)) {
-    const h = (exitDt.getTime() - entryDt.getTime()) / 3_600_000;
-    if (h > 0) durationHours = h;
-  }
+  // Same clock as the analytics KPI and the duration chart: exit − entry,
+  // and only when the exit is actually later. createdAt is not a close time.
+  const durationMs = tradeDurationMs(trade);
+  const durationHours = durationMs == null ? null : durationMs / 3_600_000;
 
-  // Compact money formatter; returns null for non-numbers so the Strip board
-  // simply drops the row (it used to be called moneyOrDash — it never dashed).
+  // Unsigned dollars (size, risk, fees) still use the shared formatter so the
+  // digits and the "$" stay isolated in RTL. The leading "+" is for P&L only.
   const formatMoney = (v) => {
     const n = num(v);
     if (n === null) return null;
-    const a = Math.abs(n);
-    if (a >= 1e9) return `$${(n / 1e9).toFixed(2)}B`;
-    if (a >= 1e6) return `$${(n / 1e6).toFixed(2)}M`;
-    if (a >= 1e3) return `$${(n / 1e3).toFixed(1)}K`;
-    return `$${n.toLocaleString(undefined, { maximumFractionDigits: 2 })}`;
+    return formatCurrency(Math.abs(n)).replace('+', '');
   };
 
   // ── TradingView snapshot preview ──────────────────────────────────
@@ -184,7 +176,7 @@ export default function TradeDetailModal({
 
   const kpis = [
     {
-      label: 'Net P&L',
+      label: 'רווח/הפסד נטו',
       value: formatCurrency(pnl),
       cls: `text-2xl sm:text-3xl font-bold ${pnlColor(pnl)}`,
     },
@@ -194,7 +186,7 @@ export default function TradeDetailModal({
       cls: `text-xl sm:text-2xl font-bold ${status === 'open' ? 'text-text-primary' : pnlColor(tradeNetPercent(trade))}`,
     },
     {
-      label: 'R נטו',
+      label: 'מכפיל R נטו',
       value: status === 'open' ? '—' : formatSignedR(signedTradeR(trade)),
       cls: 'text-xl sm:text-2xl font-bold text-text-primary',
     },
@@ -212,12 +204,12 @@ export default function TradeDetailModal({
         {trade.direction === 'short' ? (
           <span className="inline-flex items-center gap-1 rounded-full bg-short/15 text-short px-2.5 py-1 text-xs font-semibold">
             <TrendingDown className="w-3.5 h-3.5" />
-            Short
+            שורט
           </span>
         ) : (
           <span className="inline-flex items-center gap-1 rounded-full bg-long/15 text-long px-2.5 py-1 text-xs font-semibold">
             <TrendingUp className="w-3.5 h-3.5" />
-            Long
+            לונג
           </span>
         )}
         <span
@@ -238,6 +230,7 @@ export default function TradeDetailModal({
               type="button"
               onClick={handleShare}
               title="שיתוף"
+              aria-label="שיתוף"
               className="p-2 rounded-lg text-text-muted hover:text-text-primary hover:bg-bg-tertiary transition-colors cursor-pointer"
             >
               <Share2 className="w-4 h-4" />
@@ -248,6 +241,7 @@ export default function TradeDetailModal({
               type="button"
               onClick={handleEdit}
               title="עריכה"
+              aria-label="עריכה"
               className="p-2 rounded-lg text-text-muted hover:text-text-primary hover:bg-bg-tertiary transition-colors cursor-pointer"
             >
               <Pencil className="w-4 h-4" />
@@ -258,6 +252,7 @@ export default function TradeDetailModal({
               type="button"
               onClick={handleDelete}
               title="מחיקה"
+              aria-label="מחיקה"
               className="p-2 rounded-lg text-text-muted hover:text-loss hover:bg-loss/10 transition-colors cursor-pointer"
             >
               <Trash2 className="w-4 h-4" />

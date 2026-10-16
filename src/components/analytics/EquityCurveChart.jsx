@@ -1,5 +1,6 @@
 import { ComposedChart, Area, XAxis, YAxis, Tooltip, ResponsiveContainer } from 'recharts';
 import { formatCurrency } from '../../utils/formatters';
+import { chartTick } from '../../utils/chartTicks';
 
 const tooltipStyle = {
   background: 'var(--color-bg-overlay)',
@@ -38,11 +39,11 @@ export default function EquityCurveChart({ data }) {
           </defs>
           {/* minTickGap keeps the date labels from crowding; the YAxis width
               reserves the right strip so the axes don't collide in the corner. */}
-          <XAxis dataKey="date" tick={{ fill: 'var(--color-text-muted)', fontSize: 9 }} axisLine={false} tickLine={false} minTickGap={28} />
-          <YAxis tick={{ fill: 'var(--color-text-muted)', fontSize: 10 }} axisLine={false} tickLine={false} orientation="right" width={48} tickFormatter={compactUsd} />
+          <XAxis dataKey="date" tick={chartTick} axisLine={false} tickLine={false} minTickGap={28} />
+          <YAxis tick={chartTick} axisLine={false} tickLine={false} orientation="right" width={56} tickFormatter={compactUsd} />
           <Tooltip
             contentStyle={tooltipStyle}
-            labelStyle={{ color: 'var(--color-text-secondary)', fontSize: '11px' }}
+            labelStyle={{ color: 'var(--color-text-secondary)', fontSize: '12px' }}
             itemStyle={{ color: 'var(--color-text-primary)' }}
             cursor={{ stroke: 'var(--color-border-primary)', strokeWidth: 1 }}
             formatter={(val) => [formatCurrency(val), 'הון']}

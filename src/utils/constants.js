@@ -193,7 +193,8 @@ export const FREE_LIMITS = {
   aiImagesPremium: 10,
 };
 
-// Premium pricing (ILS). Yearly gives ~2 months free — tweak freely.
+// Premium pricing is billed in ILS. The journal stays in USD on purpose:
+// the charge is shekels, the trades are dollars. Do not convert one into the other.
 export const PREMIUM_PRICING = {
   monthly: { id: 'monthly', price: 29, label: 'חודשי', per: 'חודש', note: '' },
   yearly: { id: 'yearly', price: 290, label: 'שנתי', per: 'שנה', note: 'חודשיים חינם' },
@@ -280,13 +281,47 @@ export const EXCHANGES = [
 // so callers never print the raw value ("אין כרגע שווי חי מ-other").
 export const exchangeLabel = (value) => EXCHANGES.find((e) => e.value === value)?.label || null;
 
+// Full marks, not the 16px Google favicon (Bybit's favicon reads as generic bars).
+const LOCAL_EXCHANGE_LOGOS = {
+  binance: '/logos/exchanges/binance.jpg',
+  bybit: '/logos/exchanges/bybit.png',
+  mexc: '/logos/exchanges/mexc.jpeg',
+  okx: '/logos/exchanges/okx.png',
+  bitget: '/logos/exchanges/bitget.jpg',
+  kucoin: '/logos/exchanges/kucoin.png',
+  gateio: '/logos/exchanges/gate.png',
+  htx: '/logos/exchanges/htx.png',
+  coinbase: '/logos/exchanges/coinbase.png',
+  kraken: '/logos/exchanges/kraken.jpg',
+  bingx: '/logos/exchanges/bingx.jpg',
+  phemex: '/logos/exchanges/phemex.png',
+  deribit: '/logos/exchanges/deribit.jpg',
+  hyperliquid: '/logos/exchanges/hyperliquid.png',
+};
+
+// Sentinels for "no venue". These must never resolve to a local exchange file
+// or a guessed favicon — including Hebrew "אחר" and the default journal id.
+const UNSET_EXCHANGE_IDS = new Set([
+  'other', 'none', 'unknown', 'unset', 'n/a', 'na', 'null', 'undefined',
+  'אחר', 'אחרת', 'ללא',
+]);
+
 export function getExchangeLogo(exchangeValue) {
-  if (!exchangeValue) return null;
-  const ex = EXCHANGES.find((e) => e.value === exchangeValue);
-  if (ex?.domain) return `https://www.google.com/s2/favicons?domain=${ex.domain}&sz=32`;
-  // Custom exchange — guess domain
-  const guess = exchangeValue.toLowerCase().replace(/\s/g, '') + '.com';
-  return `https://www.google.com/s2/favicons?domain=${guess}&sz=32`;
+  if (exchangeValue == null) return null;
+  const id = String(exchangeValue).trim().toLowerCase().replace(/\s+/g, '');
+  if (!id || UNSET_EXCHANGE_IDS.has(id)) return null;
+  // Exact id only. A blank, "other", or partial name must never fall through
+  // to another venue's file (no default Bybit / MEXC / Binance).
+  if (Object.prototype.hasOwnProperty.call(LOCAL_EXCHANGE_LOGOS, id)) {
+    return LOCAL_EXCHANGE_LOGOS[id];
+  }
+  const ex = EXCHANGES.find((e) => e.value === id);
+  if (ex?.domain) return `https://www.google.com/s2/favicons?domain=${ex.domain}&sz=64`;
+  // A custom broker name can still try its own domain. Never invent one for
+  // the unset sentinels, and never point it at a bundled exchange mark.
+  const guess = `${id}.com`;
+  if (UNSET_EXCHANGE_IDS.has(guess.replace(/\.com$/, '')) || guess === 'other.com') return null;
+  return `https://www.google.com/s2/favicons?domain=${guess}&sz=64`;
 }
 
 export const TIME_PERIODS = [

@@ -1,5 +1,6 @@
 import { BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer, Cell } from 'recharts';
 import { formatCurrency } from '../../utils/formatters';
+import { chartTick } from '../../utils/chartTicks';
 import { SESSION_COLORS } from '../../utils/constants';
 
 const tooltipStyle = {
@@ -18,11 +19,11 @@ export default function SessionAnalysisChart({ data }) {
       <h3 className="text-sm font-semibold text-text-primary mb-4">ביצועים לפי סשן</h3>
       <ResponsiveContainer width="100%" height={220}>
         <BarChart data={data}>
-          <XAxis dataKey="name" tick={{ fill: 'var(--color-text-muted)', fontSize: 11 }} axisLine={false} tickLine={false} reversed />
-          <YAxis tick={{ fill: 'var(--color-text-muted)', fontSize: 11 }} axisLine={false} tickLine={false} orientation="right" />
+          <XAxis dataKey="name" tick={chartTick} axisLine={false} tickLine={false} reversed />
+          <YAxis tick={chartTick} axisLine={false} tickLine={false} orientation="right" />
           <Tooltip
             contentStyle={tooltipStyle}
-            labelStyle={{ color: 'var(--color-text-secondary)', fontSize: '11px' }}
+            labelStyle={{ color: 'var(--color-text-secondary)', fontSize: '12px' }}
             itemStyle={{ color: 'var(--color-text-primary)' }}
             cursor={{ fill: 'var(--color-bg-tertiary)' }}
             formatter={(val, name) => [formatCurrency(val), 'רווח/הפסד']}
@@ -37,7 +38,7 @@ export default function SessionAnalysisChart({ data }) {
       </ResponsiveContainer>
       <div className="grid grid-cols-2 md:grid-cols-4 gap-2 mt-3">
         {data.map((s) => (
-          <div key={s.name} className="text-center text-[10px] text-text-muted">
+          <div key={s.name} className="text-center text-xs text-text-secondary">
             <span className="block font-medium" style={{ color: SESSION_COLORS[s.name]?.hex || '#a0a0b0' }}>{s.name}</span>
             <span>{s.count} עסקאות · {s.winRate.toFixed(0)}%</span>
           </div>

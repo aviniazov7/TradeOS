@@ -1,5 +1,6 @@
 import { BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer, Cell } from 'recharts';
 import { formatCurrency } from '../../utils/formatters';
+import { chartTick } from '../../utils/chartTicks';
 
 const tooltipStyle = {
   background: 'var(--color-bg-overlay)',
@@ -17,11 +18,11 @@ export default function DayOfWeekChart({ data }) {
       <h3 className="text-sm font-semibold text-text-primary mb-4">ביצועים לפי יום בשבוע</h3>
       <ResponsiveContainer width="100%" height={220}>
         <BarChart data={data}>
-          <XAxis dataKey="name" tick={{ fill: 'var(--color-text-muted)', fontSize: 11 }} axisLine={false} tickLine={false} reversed />
-          <YAxis tick={{ fill: 'var(--color-text-muted)', fontSize: 11 }} axisLine={false} tickLine={false} orientation="right" />
+          <XAxis dataKey="name" tick={chartTick} axisLine={false} tickLine={false} reversed />
+          <YAxis tick={chartTick} axisLine={false} tickLine={false} orientation="right" />
           <Tooltip
             contentStyle={tooltipStyle}
-            labelStyle={{ color: 'var(--color-text-secondary)', fontSize: '11px' }}
+            labelStyle={{ color: 'var(--color-text-secondary)', fontSize: '12px' }}
             itemStyle={{ color: 'var(--color-text-primary)' }}
             cursor={{ fill: 'var(--color-bg-tertiary)' }}
             formatter={(val) => [formatCurrency(val), 'רווח/הפסד']}
@@ -34,7 +35,7 @@ export default function DayOfWeekChart({ data }) {
           </Bar>
         </BarChart>
       </ResponsiveContainer>
-      <div className="flex justify-center gap-4 mt-3 text-[10px] text-text-muted">
+      <div className="flex justify-center gap-4 mt-3 text-xs text-text-secondary">
         {data.map((d) => (
           <div key={d.name} className="text-center">
             <span className="block font-medium text-text-secondary">{d.name}</span>

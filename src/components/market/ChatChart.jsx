@@ -2,6 +2,7 @@ import { useMemo } from 'react';
 import { AreaChart, Area, XAxis, YAxis, Tooltip, ResponsiveContainer, ReferenceLine } from 'recharts';
 import { computeMA, computeFibonacci, computeSupportResistance } from '../../utils/technicals';
 import { formatCoinPrice as formatPrice } from '../../utils/formatters';
+import { chartTick } from '../../utils/chartTicks';
 
 export default function ChatChart({ prices, coinSymbol }) {
   const { chartData, ma7, ma14, fib, support, resistance, chartColor } = useMemo(() => {
@@ -43,8 +44,8 @@ export default function ChatChart({ prices, coinSymbol }) {
                 <stop offset="100%" stopColor={chartColor} stopOpacity={0} />
               </linearGradient>
             </defs>
-            <XAxis dataKey="date" tick={{ fontSize: 9, fill: 'var(--color-text-muted)' }} tickLine={false} axisLine={false} interval="preserveStartEnd" />
-            <YAxis domain={['auto', 'auto']} tick={{ fontSize: 9, fill: 'var(--color-text-muted)' }} tickLine={false} axisLine={false} tickFormatter={(v) => v >= 1 ? `$${v.toLocaleString()}` : `$${v.toFixed(4)}`} width={55} />
+            <XAxis dataKey="date" tick={chartTick} tickLine={false} axisLine={false} interval="preserveStartEnd" />
+            <YAxis domain={['auto', 'auto']} tick={chartTick} tickLine={false} axisLine={false} tickFormatter={(v) => v >= 1 ? `$${v.toLocaleString()}` : `$${v.toFixed(4)}`} width={64} />
             <Tooltip
               contentStyle={{ backgroundColor: 'var(--color-bg-overlay)', border: '1px solid rgba(99,102,241,0.3)', borderRadius: 8, fontSize: 11, padding: '6px 10px', color: 'var(--color-text-primary)' }}
               labelStyle={{ color: 'var(--color-text-secondary)' }}
@@ -52,12 +53,12 @@ export default function ChatChart({ prices, coinSymbol }) {
             />
 
             {/* Support & Resistance */}
-            {support && <ReferenceLine y={support} stroke="#22c55e" strokeDasharray="6 3" strokeWidth={1.5} label={{ value: 'S', position: 'left', fill: '#22c55e', fontSize: 9, fontWeight: 700 }} />}
-            {resistance && <ReferenceLine y={resistance} stroke="#ef4444" strokeDasharray="6 3" strokeWidth={1.5} label={{ value: 'R', position: 'left', fill: '#ef4444', fontSize: 9, fontWeight: 700 }} />}
+            {support && <ReferenceLine y={support} stroke="#22c55e" strokeDasharray="6 3" strokeWidth={1.5} label={{ value: 'S', position: 'left', fill: '#22c55e', fontSize: 12, fontWeight: 700 }} />}
+            {resistance && <ReferenceLine y={resistance} stroke="#ef4444" strokeDasharray="6 3" strokeWidth={1.5} label={{ value: 'R', position: 'left', fill: '#ef4444', fontSize: 12, fontWeight: 700 }} />}
 
             {/* Fibonacci Levels */}
             {fib && Object.entries(fib.levels).map(([level, price]) => (
-              <ReferenceLine key={level} y={price} stroke="#a78bfa" strokeDasharray="3 4" strokeWidth={0.8} strokeOpacity={0.6} label={{ value: level, position: 'right', fill: '#a78bfa', fontSize: 8 }} />
+              <ReferenceLine key={level} y={price} stroke="#a78bfa" strokeDasharray="3 4" strokeWidth={0.8} strokeOpacity={0.6} label={{ value: level, position: 'right', fill: '#c4b5fd', fontSize: 12 }} />
             ))}
 
             {/* Moving Averages */}

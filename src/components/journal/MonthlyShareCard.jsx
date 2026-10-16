@@ -183,7 +183,7 @@ const MonthlyShareCard = forwardRef(function MonthlyShareCard({ trades, currentM
         {showPnl && (
           <>
             <div style={{ textAlign: 'center', whiteSpace: 'nowrap', flexShrink: 0 }}>
-              <div style={{ fontSize: 10, color: '#707080', marginBottom: 2 }}>רווח חודשי</div>
+              <div style={{ fontSize: 12, color: '#c8c8d4', marginBottom: 2 }}>רווח חודשי</div>
               <div style={{ fontSize: 18, fontWeight: 800, color: pnlColor(monthStats.totalPnl) }}>
                 {formatCurrency(monthStats.totalPnl)}
               </div>
@@ -196,7 +196,7 @@ const MonthlyShareCard = forwardRef(function MonthlyShareCard({ trades, currentM
         {showPercent && (
           <>
             <div style={{ textAlign: 'center', whiteSpace: 'nowrap', flexShrink: 0 }}>
-              <div style={{ fontSize: 10, color: '#707080', marginBottom: 2 }}>אחוז שינוי</div>
+              <div style={{ fontSize: 12, color: '#c8c8d4', marginBottom: 2 }}>אחוז שינוי</div>
               <div style={{ fontSize: showPnl ? 14 : 20, fontWeight: 700, color: pnlColor(monthStats.totalPnl) }}>
                 {LRM}{monthStats.totalPnl >= 0 ? '+' : ''}{((monthStats.totalPnl / (Math.abs(monthStats.totalPnl) + 1000)) * 100).toFixed(1)}%
               </div>
@@ -207,19 +207,19 @@ const MonthlyShareCard = forwardRef(function MonthlyShareCard({ trades, currentM
 
         {/* Win/Loss Days */}
         <div style={{ textAlign: 'center' }}>
-          <div style={{ fontSize: 10, color: '#707080', marginBottom: 2 }}>ימי רווח</div>
+          <div style={{ fontSize: 12, color: '#c8c8d4', marginBottom: 2 }}>ימי רווח</div>
           <div style={{ fontSize: 16, fontWeight: 700, color: '#22c55e' }}>{monthStats.winDays}</div>
         </div>
         <div style={{ width: 1, height: 30, background: 'rgba(255,255,255,0.08)' }} />
         <div style={{ textAlign: 'center' }}>
-          <div style={{ fontSize: 10, color: '#707080', marginBottom: 2 }}>ימי הפסד</div>
+          <div style={{ fontSize: 12, color: '#c8c8d4', marginBottom: 2 }}>ימי הפסד</div>
           <div style={{ fontSize: 16, fontWeight: 700, color: '#ef4444' }}>{monthStats.lossDays}</div>
         </div>
         {showTrades && (
           <>
             <div style={{ width: 1, height: 30, background: 'rgba(255,255,255,0.08)' }} />
             <div style={{ textAlign: 'center', whiteSpace: 'nowrap', flexShrink: 0 }}>
-              <div style={{ fontSize: 10, color: '#707080', marginBottom: 2 }}>עסקאות</div>
+              <div style={{ fontSize: 12, color: '#c8c8d4', marginBottom: 2 }}>עסקאות</div>
               <div style={{ fontSize: 16, fontWeight: 700, color: '#a0a0b0' }}>{monthStats.totalTrades}</div>
             </div>
           </>
@@ -231,7 +231,7 @@ const MonthlyShareCard = forwardRef(function MonthlyShareCard({ trades, currentM
         {/* Day headers */}
         <div style={{ display: 'grid', gridTemplateColumns: 'repeat(7, 1fr)', gap: 3, marginBottom: 3 }}>
           {HEBREW_DAYS.map((day) => (
-            <div key={day} style={{ textAlign: 'center', fontSize: 10, color: '#606070', padding: '2px 0', fontWeight: 600 }}>
+            <div key={day} style={{ textAlign: 'center', fontSize: 12, color: '#c8c8d4', padding: '2px 0', fontWeight: 600 }}>
               {day}
             </div>
           ))}
@@ -266,7 +266,7 @@ const MonthlyShareCard = forwardRef(function MonthlyShareCard({ trades, currentM
                   {day.getDate()}
                 </span>
                 {data && showPnl && (
-                  <span style={{ fontSize: 8, fontWeight: 700, color: pnlColor(pnl) }}>
+                  <span style={{ fontSize: 12, fontWeight: 700, color: pnlColor(pnl) }}>
                     {LRM}{pnl >= 0 ? '+' : ''}{pnl.toFixed(0)}$
                   </span>
                 )}
@@ -280,15 +280,15 @@ const MonthlyShareCard = forwardRef(function MonthlyShareCard({ trades, currentM
       <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 16, marginTop: 10 }}>
         <div style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
           <div style={{ width: 10, height: 10, borderRadius: 3, background: 'rgba(34, 197, 94, 0.3)' }} />
-          <span style={{ fontSize: 9, color: '#606070' }}>רווח</span>
+          <span style={{ fontSize: 12, color: '#c8c8d4' }}>רווח</span>
         </div>
         <div style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
           <div style={{ width: 10, height: 10, borderRadius: 3, background: 'rgba(239, 68, 68, 0.3)' }} />
-          <span style={{ fontSize: 9, color: '#606070' }}>הפסד</span>
+          <span style={{ fontSize: 12, color: '#c8c8d4' }}>הפסד</span>
         </div>
         <div style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
           <div style={{ width: 10, height: 10, borderRadius: 3, background: 'rgba(255,255,255,0.05)', border: '1px solid rgba(255,255,255,0.08)' }} />
-          <span style={{ fontSize: 9, color: '#606070' }}>ללא עסקאות</span>
+          <span style={{ fontSize: 12, color: '#c8c8d4' }}>ללא עסקאות</span>
         </div>
       </div>
 
@@ -304,7 +304,7 @@ const MonthlyShareCard = forwardRef(function MonthlyShareCard({ trades, currentM
         position: 'relative',
       }}>
         <img src="/favicon.png" alt="" style={{ width: 14, height: 14, borderRadius: 3 }} />
-        <span style={{ fontSize: 11, color: '#505060' }}>Tracked with TradeOS</span>
+        <span style={{ fontSize: 12, color: '#c8c8d4' }}>Tracked with TradeOS</span>
       </div>
     </div>
   );

@@ -152,6 +152,9 @@ export default function StrategyView({ isOpen, onClose, journal }) {
 
           {/* Card */}
           <m.div
+            role="dialog"
+            aria-modal="true"
+            aria-labelledby="strategy-journal-title"
             variants={modalContent}
             initial="initial"
             animate="animate"
@@ -169,6 +172,7 @@ export default function StrategyView({ isOpen, onClose, journal }) {
                 disabled={exporting}
                 className={`p-1.5 rounded-lg ${btnBg} transition-colors cursor-pointer disabled:opacity-50 flex items-center gap-1.5`}
                 title="ייצוא PDF"
+                aria-label="ייצוא PDF"
               >
                 {exporting ? (
                   <>
@@ -181,6 +185,7 @@ export default function StrategyView({ isOpen, onClose, journal }) {
               </button>
               <button
                 onClick={onClose}
+                aria-label="סגור"
                 className={`p-1.5 rounded-lg ${btnBg} transition-colors cursor-pointer`}
               >
                 <X className="w-4 h-4" />
@@ -199,13 +204,13 @@ export default function StrategyView({ isOpen, onClose, journal }) {
                 Strategy Journal
               </p>
 
-              <h1 className="text-2xl font-bold mb-2">
+              <h2 id="strategy-journal-title" className="text-2xl font-bold mb-2">
                 <span style={{ color }}>{journal.name.split(' ').slice(0, -1).join(' ')}</span>
                 {journal.name.includes(' ') && (
                   <span className={textSub}> {journal.name.split(' ').slice(-1)}</span>
                 )}
                 {!journal.name.includes(' ') && <span style={{ color }}>{journal.name}</span>}
-              </h1>
+              </h2>
 
               {journal.description && (
                 <p className={`text-sm ${textSub} max-w-xs mx-auto`}>{journal.description}</p>

@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { scoreReady, winLossRatio, streakDaysLabel, MIN_SCORE_TRADES } from './homeStats';
+import { scoreReady, winLossRatio, streakDaysLabel, profitFactorText, winRateText, MIN_SCORE_TRADES } from './homeStats';
 
 describe('homeStats', () => {
   it('holds the score back until enough trades are closed', () => {
@@ -19,5 +19,13 @@ describe('homeStats', () => {
     expect(streakDaysLabel(1)).toBe('יום אחד ברצף');
     expect(streakDaysLabel(2)).toBe('יומיים ברצף');
     expect(streakDaysLabel(7)).toBe('7 ימים ברצף');
+  });
+
+  it('shows a dash for profit factor and win rate when nothing has been decided', () => {
+    expect(profitFactorText(0, 0, 0)).toBe('—');
+    expect(winRateText(0, 0, 0)).toBe('—');
+    expect(profitFactorText(1.5, 3, 2)).toBe('1.50');
+    expect(profitFactorText(Infinity, 2, 0)).toBe('∞');
+    expect(winRateText(66.666, 2, 1)).toBe('66.7%');
   });
 });

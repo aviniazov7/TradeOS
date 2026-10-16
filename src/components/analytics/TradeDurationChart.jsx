@@ -1,7 +1,9 @@
 import { useMemo } from 'react';
 import { Clock } from 'lucide-react';
 import { BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer, Cell, LabelList } from 'recharts';
-import { isClosedTrade } from '../../utils/calculations';
+import { isClosedTrade, tradeDurationMs } from '../../utils/calculations';
+import { formatDuration } from '../../utils/formatters';
+import { chartTick } from '../../utils/chartTicks';
 
 const BUCKETS = [
   { label: '<1h',   minMs: 0,           maxMs: 3_600_000 },
@@ -12,27 +14,14 @@ const BUCKETS = [
 ];
 
 function fmtDuration(ms) {
-  if (!ms || ms <= 0) return '—';
-  const mins  = ms / 60_000;
-  const hours = ms / 3_600_000;
-  const days  = ms / 86_400_000;
-  if (mins  < 60)  return `${Math.round(mins)}m`;
-  if (hours < 24)  return `${hours.toFixed(1)}h`;
-  if (days  < 14)  return `${days.toFixed(1)}d`;
-  return `${(days / 7).toFixed(1)}w`;
-}
-
-function toMs(t) {
-  if (!t) return null;
-  const d = t?.toDate ? t.toDate() : new Date(t);
-  return isNaN(d.getTime()) ? null : d.getTime();
+  return formatDuration(ms / 3_600_000);
 }
 
 const tooltipStyle = {
   background: 'var(--color-bg-overlay)',
   border: '1px solid var(--color-border-primary)',
   borderRadius: '10px',
-  fontSize: '11px',
+  fontSize: '12px',
   color: 'var(--color-text-primary)',
   padding: '8px 12px',
 };
@@ -60,10 +49,8 @@ export default function TradeDurationChart({ trades }) {
     const buckets = BUCKETS.map(b => ({ ...b, wins: 0, losses: 0 }));
 
     closed.forEach(t => {
-      const entry = toMs(t.entryDate);
-      const exit  = toMs(t.exitDate);
-      if (!entry || !exit || exit <= entry) return;
-      const dur = exit - entry;
+      const dur = tradeDurationMs(t);
+      if (dur == null) return;
       totalMs += dur; count++;
       if (t.result === 'win')  { winMs  += dur; winCount++; }
       if (t.result === 'loss') { lossMs += dur; lossCount++; }
@@ -87,7 +74,7 @@ export default function TradeDurationChart({ trades }) {
 
   const insightColor = data.avgLoss > data.avgWin * 1.5 ? '#ef4444'
     : data.avgWin > data.avgLoss * 1.5 ? '#22c55e'
-    : '#606070';
+    : 'var(--color-text-secondary)';
   const insightText = data.avgLoss > data.avgWin * 1.5
     ? '⚠ הפסדים נמשכים זמן ארוך יותר'
     : data.avgWin > data.avgLoss * 1.5
@@ -107,20 +94,20 @@ export default function TradeDurationChart({ trades }) {
         {/* Stats row */}
         <div className="flex items-center gap-3">
           <div className="flex flex-col">
-            <span className="text-[10px] text-text-muted">ממוצע כללי</span>
+            <span className="text-xs text-text-secondary">ממוצע כללי</span>
             <span className="text-sm font-bold text-text-primary">{fmtDuration(data.avgAll)}</span>
           </div>
           <div className="w-px h-6 bg-border-primary" />
           <div className="flex flex-col">
-            <span className="text-[10px] text-text-muted">רווחים</span>
+            <span className="text-xs text-text-secondary">רווחים</span>
             <span className="text-sm font-bold text-profit">{fmtDuration(data.avgWin)}</span>
           </div>
           <div className="w-px h-6 bg-border-primary" />
           <div className="flex flex-col">
-            <span className="text-[10px] text-text-muted">הפסדים</span>
+            <span className="text-xs text-text-secondary">הפסדים</span>
             <span className="text-sm font-bold text-loss">{fmtDuration(data.avgLoss)}</span>
           </div>
-          <div className="mr-auto flex items-center gap-2 text-[10px] text-text-muted">
+          <div className="mr-auto flex items-center gap-2 text-xs text-text-secondary">
             <span className="flex items-center gap-1">
               <span className="w-2 h-2 rounded-sm inline-block" style={{ background: '#22c55e' }} />
               רווח
@@ -138,7 +125,7 @@ export default function TradeDurationChart({ trades }) {
         <BarChart data={data.chartData} barCategoryGap="28%" barGap={3}>
           <XAxis
             dataKey="label"
-            tick={{ fill: 'var(--color-text-muted)', fontSize: 10 }}
+            tick={chartTick}
             axisLine={false}
             tickLine={false}
           />
@@ -151,7 +138,7 @@ export default function TradeDurationChart({ trades }) {
 
       {/* Insight */}
       {data.avgWin > 0 && data.avgLoss > 0 && (
-        <p className="text-[10px] pt-2 border-t border-border-primary/40" style={{ color: insightColor }}>
+        <p className="text-xs pt-2 border-t border-border-primary/40" style={{ color: insightColor }}>
           {insightText}
         </p>
       )}

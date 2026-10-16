@@ -1,15 +1,29 @@
 // Silent service-worker update flow ("update on next open", #220).
 //
 // No prompt, no button: sw.js skipWaiting()s on install and clients.claim()s on
-// activate, so a freshly deployed worker takes control and caches the new shell
-// as soon as the browser fetches sw.js. We deliberately do NOT reload the page
-// mid-session — that would interrupt a user typing a trade. The new assets are
-// served the next time the app is opened/reloaded, which is exactly the
-// behavior the owner chose: users on old versions update automatically on their
-// next open, with zero interaction.
+// activate. A page that was already controlled reloads once when the new worker
+// takes over, so the document that just refreshed cannot keep executing the
+// previous bundle (that is what left the ticker on Parqet's zest mark). A first
+// visit has no previous controller and does not reload.
+
+// A page that already had a worker keeps its old scripts until the next
+// document load. controllerchange fires when the new worker claims the page
+// (including the one that arrives just after a refresh). Reload once so that
+// visit cannot keep painting a ticker logo from the previous bundle.
+export function shouldReloadOnControllerChange({ hadController, refreshing }) {
+  return !!hadController && !refreshing;
+}
 
 export function registerSW() {
   if (!('serviceWorker' in navigator)) return;
+
+  const hadController = !!navigator.serviceWorker.controller;
+  let refreshing = false;
+  navigator.serviceWorker.addEventListener('controllerchange', () => {
+    if (!shouldReloadOnControllerChange({ hadController, refreshing })) return;
+    refreshing = true;
+    window.location.reload();
+  });
 
   window.addEventListener('load', () => {
     navigator.serviceWorker
@@ -25,8 +39,7 @@ export function registerSW() {
       .catch(() => {});
 
     // Poll for a new deploy when the app regains focus (PWA resume / tab
-    // switch). This only downloads + installs the new worker in the background;
-    // it never reloads the page. The fresh assets appear on the next open.
+    // switch). Installing it claims the page, and controllerchange reloads once.
     document.addEventListener('visibilitychange', () => {
       if (document.visibilityState !== 'visible') return;
       navigator.serviceWorker

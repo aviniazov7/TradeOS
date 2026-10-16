@@ -22,6 +22,6 @@ createRoot(document.getElementById('root')).render(
   </StrictMode>
 );
 
-// Register the service worker with a controlled update flow: a new version
-// never reloads the app on its own — the user is prompted and chooses when.
+// A new service worker claims the page and reloads once, so the open document
+// cannot keep running the previous bundle.
 registerSW();

@@ -109,6 +109,9 @@ export default function CheckoutPage() {
             <span className="text-sm font-bold text-text-primary">סה&quot;כ לתשלום</span>
             <span className="num-mono text-xl font-extrabold text-text-primary" dir="ltr">₪{plan.price}</span>
           </div>
+          <p className="text-xs text-text-secondary leading-relaxed">
+            החיוב הוא בשקלים (₪) — זה מטבע התשלום, לא מטבע היומן. רווח והפסד בעסקאות נשארים בדולרים.
+          </p>
           <details className="group border-t border-border-primary pt-3">
             <summary className="text-xs font-semibold text-accent-hover cursor-pointer list-none flex items-center gap-1">
               מה כלול במנוי <ChevronRight className="w-3.5 h-3.5 rotate-90 group-open:-rotate-90 transition-transform" />
