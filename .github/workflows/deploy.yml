@@ -100,10 +100,13 @@ jobs:
           git push origin HEAD:main
 
       # Build with the worker URL appropriate for this target so the client
-      # bundle talks to the right backend.
+      # bundle talks to the right backend. Preview channels also include the
+      # unauthenticated admin-notification sample route; production and the
+      # dev channel do not.
       - name: Build
         env:
           VITE_WORKER_URL: ${{ steps.target.outputs.worker_url }}
+          VITE_ADMIN_NOTIF_PREVIEW: ${{ steps.target.outputs.kind == 'preview' && '1' || '' }}
         run: npm run build
 
       - name: Write Firebase service account
