@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { useSearchParams } from 'react-router-dom';
-import { AlertTriangle, Clock, UserPlus, Crown, Ban, CheckCheck, ChevronDown, Settings2 } from 'lucide-react';
+import { AlertTriangle, Clock, UserPlus, Crown, Ban, CheckCheck, ChevronDown, Settings2, BellOff } from 'lucide-react';
 import toast from 'react-hot-toast';
 import { useAuth } from '../../contexts/AuthContext';
 import { Panel, softBtn } from './AdminUi';
@@ -162,10 +162,6 @@ export default function AdminNotifications({ demo = false, onUnreadChange, setti
   };
 
   const toggleGlobal = () => persist({ ...settings, enabled: !settings.enabled });
-  const toggleType = (id) => persist({
-    ...settings,
-    types: { ...settings.types, [id]: settings.types[id] === false },
-  });
 
   const churnDraft = draftDays?.churnDays ?? settings.thresholds.churnDays;
   const inactiveDraft = draftDays?.inactiveDays ?? settings.thresholds.inactiveDays;
@@ -218,12 +214,46 @@ export default function AdminNotifications({ demo = false, onUnreadChange, setti
   };
 
   const typeLabel = (id) => types.find((t) => t.id === id)?.label || id;
+  const listBadge = !settings.enabled
+    ? <span className="text-[10px] font-bold rounded-full px-2 py-0.5 bg-bg-tertiary text-text-muted border border-border-primary">מושתק</span>
+    : (visible.some((item) => !item.read)
+      ? <span className="text-[10px] font-bold rounded-full px-2 py-0.5 bg-accent-primary/15 text-accent-hover">חדש</span>
+      : null);
 
   return (
     <div dir="rtl" className="space-y-3" data-testid="admin-notif-panel">
       {demo && (
         <div className="rounded-xl border border-amber-500/30 bg-amber-500/10 px-3 py-2 text-xs text-amber-400 leading-relaxed">
           תצוגת דמו — נתונים לדוגמה, בלי כתיבה ל-Firestore. ההתראות האמיתיות נוצרות בפונקציה המתוזמנת אחרי שהיא תפורס.
+        </div>
+      )}
+
+      <Panel title="התראות אדמין">
+        <div data-testid="admin-notif-master">
+          <Toggle
+            on={settings.enabled}
+            label="התראות אדמין"
+            description={settings.enabled
+              ? 'פועל — התראות חדשות נוצרות ומגיעות לרשימה.'
+              : 'כבוי — לא נוצרות התראות חדשות. הרשימה למטה נשארת כהיסטוריה.'}
+            disabled={saving}
+            onClick={toggleGlobal}
+          />
+        </div>
+      </Panel>
+
+      {!settings.enabled && (
+        <div
+          data-testid="admin-notif-muted"
+          className="rounded-xl border border-border-primary bg-bg-tertiary px-4 py-3 flex gap-3 items-start"
+        >
+          <BellOff className="w-5 h-5 text-text-muted shrink-0 mt-0.5" />
+          <div className="min-w-0">
+            <p className="text-sm font-semibold text-text-secondary">התראות אדמין כבויות</p>
+            <p className="text-xs text-text-muted mt-1 leading-relaxed">
+              לא נוצרות התראות חדשות. הרשימה למטה מוצגת כמושתקת, ורק כדי לעיין במה שכבר נשמר.
+            </p>
+          </div>
         </div>
       )}
 
@@ -244,29 +274,7 @@ export default function AdminNotifications({ demo = false, onUnreadChange, setti
       >
         {settingsOpen && (
           <div data-testid="admin-notif-settings" className="space-y-3">
-            <Toggle
-              on={settings.enabled}
-              label="התראות פעילות"
-              description="כבוי — לא נוצרות התראות חדשות. ההיסטוריה נשארת."
-              disabled={saving}
-              onClick={toggleGlobal}
-            />
-            {!settings.enabled && (
-              <p className="text-xs text-amber-400">יצירת התראות חדשות כבויה. אפשר עדיין לעיין במה שכבר נשמר.</p>
-            )}
-            <div className="border-t border-border-primary pt-1">
-              {types.map((t) => (
-                <Toggle
-                  key={t.id}
-                  on={settings.types[t.id] !== false}
-                  label={t.label}
-                  description={t.description}
-                  disabled={saving}
-                  onClick={() => toggleType(t.id)}
-                />
-              ))}
-            </div>
-            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 border-t border-border-primary pt-3">
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
               <label className="block text-xs text-text-secondary">
                 ימי שקט לסיכון נטישה
                 <input
@@ -306,8 +314,6 @@ export default function AdminNotifications({ demo = false, onUnreadChange, setti
         )}
         {!settingsOpen && (
           <p className="text-xs text-text-muted">
-            {settings.enabled ? 'יצירה פעילה' : 'יצירה כבויה'}
-            {' · '}
             נטישה {settings.thresholds.churnDays} ימים
             {' · '}
             לא פעיל {settings.thresholds.inactiveDays} ימים
@@ -317,15 +323,18 @@ export default function AdminNotifications({ demo = false, onUnreadChange, setti
 
       <Panel
         title="התראות"
-        badge={visible.some((item) => !item.read) ? (
-          <span className="text-[10px] font-bold rounded-full px-2 py-0.5 bg-accent-primary/15 text-accent-hover">חדש</span>
-        ) : null}
+        badge={listBadge}
         action={(
           <button type="button" onClick={markAll} className={`${softBtn} h-9 px-3`} data-testid="admin-notif-mark-all">
             <CheckCheck className="w-4 h-4" /> סמן הכל כנקרא
           </button>
         )}
       >
+        <div
+          data-testid="admin-notif-history"
+          data-muted={settings.enabled ? '0' : '1'}
+          className={settings.enabled ? '' : 'opacity-60 saturate-50'}
+        >
         <div className="flex gap-1.5 overflow-x-auto no-scrollbar pb-3 -mt-1" data-testid="admin-notif-filters">
           <FilterChip active={type === 'all'} onClick={() => changeType('all')}>הכל</FilterChip>
           {types.map((t) => (
@@ -410,6 +419,7 @@ export default function AdminNotifications({ demo = false, onUnreadChange, setti
             </button>
           </div>
         )}
+        </div>
       </Panel>
     </div>
   );
