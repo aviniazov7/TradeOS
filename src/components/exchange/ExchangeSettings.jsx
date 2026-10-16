@@ -1,7 +1,7 @@
 import { useState, useEffect } from 'react';
 import { m, AnimatePresence } from 'framer-motion';
 import {
-  Shield, Eye, EyeOff, ExternalLink, RefreshCw, Zap, Pencil, Plus, Unplug, Wallet, Link2, Lock, AlertTriangle, Clock,
+  Shield, Eye, EyeOff, ExternalLink, RefreshCw, Zap, Pencil, Plus, Unplug, Link2, Lock, AlertTriangle, Clock,
 } from 'lucide-react';
 import toast from 'react-hot-toast';
 import { useNavigate } from 'react-router-dom';
@@ -643,9 +643,6 @@ export default function ExchangeSettings({ journalId: propJournalId, embedded = 
 
   const connected = EXCHANGES.filter(e => savedExchanges[e.id]?.connected);
   const available = EXCHANGES.filter(e => !savedExchanges[e.id]?.connected);
-  const knownBalances = connected.map((e) => balances[e.id]).filter((b) => typeof b === 'number');
-  const balancesLoading = connected.some((e) => e.canSync && balances[e.id] === undefined);
-  const totalBalance = knownBalances.reduce((s, b) => s + b, 0);
   const problemCount = connected.filter((e) => balances[e.id]?.problem).length;
   const dialogExchange = dialog ? EXCHANGES.find((e) => e.id === dialog.id) : null;
   const disconnectExchange = confirmDisconnect ? EXCHANGES.find((e) => e.id === confirmDisconnect) : null;
@@ -659,13 +656,10 @@ export default function ExchangeSettings({ journalId: propJournalId, embedded = 
         {!bare && (
           <PageHeader as={embedded ? 'h2' : 'h1'} icon={Link2} title="חיבור בורסות"
             subtitle="חבר את הבורסה שלך וייבא עסקאות ישירות ליומן — בלי להקליד אותן ידנית.">
-            <div className="grid grid-cols-3 gap-2 md:gap-2.5 lg:w-[480px]">
+            <div className="grid grid-cols-2 gap-2 md:gap-2.5 lg:w-[320px]">
               <StatTile inset icon={Link2} label="מחוברות" value={`${connectedCount}/${EXCHANGES.length}`}
                 sub={problemCount ? `${problemCount} ${problemCount === 1 ? 'דורשת' : 'דורשות'} טיפול` : (!isPremium ? `חינמי: עד ${FREE_LIMITS.exchanges}` : 'ללא הגבלה')}
                 tone={problemCount ? 'text-loss' : 'text-text-primary'} />
-              <StatTile inset icon={Wallet} label="יתרה כוללת"
-                value={knownBalances.length ? fmtUsd(totalBalance) : (balancesLoading ? '…' : '—')}
-                sub={knownBalances.length ? `מ-${knownBalances.length} ${knownBalances.length === 1 ? 'בורסה' : 'בורסות'}` : null} />
               <StatTile inset icon={Shield} label="אבטחה"
                 value={connected.length ? 'מוגן' : '—'}
                 mono={!connected.length}

@@ -13,6 +13,20 @@ export function journalAccountBalance(journal, liveBalance) {
   return null;
 }
 
+/**
+ * Risk the calculator should start from.
+ * A positive value saved on the journal wins. An unset percent risk (stored
+ * as 0 when the journal form was left blank) falls back to 1 — the same
+ * default the profile uses — so entry, stop and target can produce a size.
+ * A fixed-dollar risk with nothing saved stays blank.
+ */
+export function calculatorRiskValue(journal) {
+  const n = Number(journal?.riskValue);
+  if (Number.isFinite(n) && n > 0) return String(n);
+  if ((journal?.riskType || 'percent') === 'fixed') return '';
+  return '1';
+}
+
 /** Two-decimal string for the balance input. Empty when there is no balance. */
 export function formatBalanceInput(amount) {
   const n = Number(amount);
