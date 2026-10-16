@@ -608,7 +608,7 @@ function buildPremiumEmail({ kind = 'payment', name, amount, methodLabel, days, 
       ${featureLi('TradeAI ללא הגבלה — שאלות, ניתוחי גרפים ותובנות')}
       ${featureLi('ניתוח AI מלא של יומן המסחר')}
       ${featureLi('יומני מסחר, ארנקים והתראות ללא הגבלה')}
-      ${featureLi('חיבורי בורסה וניתוחים מתקדמים')}
+      ${featureLi('חיבורי בורסה ואנליטיקה מתקדמת')}
     </ul>
     ${kind === 'payment' ? emailPara('אישור זה נשלח לנוחותך ואינו מהווה חשבונית מס/קבלה.', { size: 12, color: EMAIL_C.muted, margin: '14px 0 0' }) : ''}`;
 

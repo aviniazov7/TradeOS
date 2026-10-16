@@ -10,7 +10,7 @@ const TEMPLATES = [
   {
     label: 'מזמן לא ראינו אותך',
     title: 'מתגעגעים אליך ב-TradeOS 👋',
-    body: 'עבר זמן מאז הביקור האחרון שלך. היומן, הניתוחים והסנכרון מהבורסה מחכים — כמה דקות ביום עושות את ההבדל במסחר.',
+    body: 'עבר זמן מאז הביקור האחרון שלך. היומן, האנליטיקה והסנכרון מהבורסה מחכים — כמה דקות ביום עושות את ההבדל במסחר.',
     cta: 'חזרה ל-TradeOS',
     path: '/',
   },
@@ -36,7 +36,7 @@ const DESTINATIONS = [
   { path: '/market', label: 'סקירת שוק' },
   { path: '/news', label: 'חדשות' },
   { path: '/journal', label: 'יומן מסחר' },
-  { path: '/journal?tab=analytics', label: 'ניתוחים' },
+  { path: '/journal?tab=analytics', label: 'אנליטיקה' },
   { path: '/mentality', label: 'האזור המנטלי' },
   { path: '/premium', label: 'Premium' },
 ];

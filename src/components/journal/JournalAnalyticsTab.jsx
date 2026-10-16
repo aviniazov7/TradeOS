@@ -31,7 +31,7 @@ const PIE_COLORS = { 'רווח': '#22c55e', 'הפסד': '#ef4444', 'אפס': '#f
 const cardClass = 'bg-bg-secondary border border-border-primary rounded-xl p-4';
 const pnlColor = (v) => v >= 0 ? 'text-profit' : 'text-loss';
 
-// The journal's "ניתוחים" tab. Lazy-loaded by TradeJournal so neither this
+// The journal's "אנליטיקה" tab. Lazy-loaded by TradeJournal so neither this
 // code nor the analytics computation runs while the user is on the trades tab.
 export default function JournalAnalyticsTab({
   trades, period, onPeriodChange, stats,
@@ -66,8 +66,8 @@ export default function JournalAnalyticsTab({
         ) : (
           <EmptyState
             icon={BarChart3}
-            title="אין עדיין נתונים לניתוח"
-            description="הניתוחים נבנים מהעסקאות הסגורות שלך — ברגע שתסגור את העסקה הראשונה, הגרפים והמדדים יתעוררו כאן."
+            title="אין עדיין נתונים לאנליטיקה"
+            description="האנליטיקה נבנית מהעסקאות הסגורות שלך — ברגע שתסגור את העסקה הראשונה, הגרפים והמדדים יתעוררו כאן."
             actionLabel="הוסף עסקה ראשונה"
             onAction={onAddFirstTrade}
           />

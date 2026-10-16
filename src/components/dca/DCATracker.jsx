@@ -105,7 +105,7 @@ export default function DCATracker({ embedded = false, view }) {
 
   if (loading) return <DCASkeleton />;
 
-  const dcaTabs = [{ id: 'plans', label: 'תוכניות', count: dcaPlans.length }, { id: 'summary', label: 'ניתוחים' }];
+  const dcaTabs = [{ id: 'plans', label: 'תוכניות', count: dcaPlans.length }, { id: 'summary', label: 'אנליטיקה' }];
   const dcaActions = (
     <div className="flex items-center gap-2 w-full sm:w-auto">
       {dcaPlans.length > 0 && (
@@ -166,7 +166,7 @@ export default function DCATracker({ embedded = false, view }) {
       {/* Tab: Analytics */}
       {tab === 'summary' && (
         dcaPlans.length === 0 ? (
-          <EmptyState icon={Coins} title="אין נתונים לניתוח" description="צור תוכניות DCA כדי לראות ניתוחים מפורטים"
+          <EmptyState icon={Coins} title="אין נתונים לאנליטיקה" description="צור תוכניות DCA כדי לראות אנליטיקה מפורטת"
             actionLabel="צור תוכנית DCA" onAction={() => { setTab('plans'); setEditingPlan(null); setFormOpen(true); }} />
         ) : (
           <DCAAnalytics plans={dcaPlans} prices={prices} />

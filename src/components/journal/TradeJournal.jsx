@@ -38,7 +38,7 @@ import { pageVariants, pageTransition } from '../../utils/animations';
 import { TRADE_PREFILL_KEY } from '../../utils/tradeFormHelpers';
 
 const JOURNAL_TABS = ['trades', 'positions', 'analytics', 'calendar', 'exchange'];
-const TAB_LABELS = { trades: 'עסקאות', positions: 'פוזיציות פתוחות', analytics: 'ניתוחים', calendar: 'יומן חודשי', exchange: 'חיבור בורסאות' };
+const TAB_LABELS = { trades: 'עסקאות', positions: 'פוזיציות פתוחות', analytics: 'אנליטיקה', calendar: 'יומן חודשי', exchange: 'חיבור בורסאות' };
 const defaultFilters = { search: '', direction: '', result: '', status: '', strategy: '', tag: '', timeframe: '', month: '', from: '', to: '' };
 const defaultSort = { key: 'date', dir: 'desc' };
 // Phone sort picker (desktop sorts by clicking column headers).

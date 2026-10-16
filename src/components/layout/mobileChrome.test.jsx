@@ -31,7 +31,7 @@ vi.mock('../../services/coingeckoApi', () => ({
 
 const JOURNAL_TABS = [
   { id: 'trades', label: 'עסקאות' },
-  { id: 'analytics', label: 'ניתוחים' },
+  { id: 'analytics', label: 'אנליטיקה' },
   { id: 'calendar', label: 'יומן חודשי' },
   { id: 'exchange', label: 'חיבור בורסאות' },
 ];
@@ -135,14 +135,14 @@ describe('mobile chrome', () => {
     expect(list.className).toContain('flex-nowrap');
     expect(list.className).toContain('w-max');
     const tabs = [...scroller.querySelectorAll('[role="tab"]')];
-    expect(tabs.map((t) => t.textContent)).toEqual(['עסקאות', 'ניתוחים', 'יומן חודשי', 'חיבור בורסאות']);
+    expect(tabs.map((t) => t.textContent)).toEqual(['עסקאות', 'אנליטיקה', 'יומן חודשי', 'חיבור בורסאות']);
     tabs.forEach((tab) => {
       expect(tab.className).toContain('whitespace-nowrap');
       expect(tab.className).toContain('shrink-0');
       expect(tab.className).toContain('border-b-2');
     });
     const active = scroller.querySelector('[aria-selected="true"]');
-    expect(active.textContent).toBe('ניתוחים');
+    expect(active.textContent).toBe('אנליטיקה');
     expect(active.className).toContain('text-accent-primary');
     expect(active.className).toContain('border-accent-primary');
     expect(active.className).not.toContain('bg-accent-primary/15');

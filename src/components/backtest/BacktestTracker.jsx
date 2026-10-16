@@ -243,7 +243,7 @@ export default function BacktestTracker() {
         icon={FlaskConical}
         title="בקטסט"
         titleAside={<BacktestSwitcher compact />}
-        tabs={{ tabs: [{ id: 'records', label: 'עסקאות', count: backtests.length }, { id: 'analytics', label: 'ניתוחים' }], value: tab, onChange: setTab, layoutKey: 'backtest-tab' }}
+        tabs={{ tabs: [{ id: 'records', label: 'עסקאות', count: backtests.length }, { id: 'analytics', label: 'אנליטיקה' }], value: tab, onChange: setTab, layoutKey: 'backtest-tab' }}
         tabsLead={tab === 'analytics' ? <TimePeriodFilter value={period} onChange={setPeriod} /> : null}
         actions={(
           <div className="flex flex-wrap items-center gap-2 w-full sm:w-auto">
@@ -456,7 +456,7 @@ export default function BacktestTracker() {
       {/* Tab: Analytics — AI coach leads, then the detailed charts + tables. */}
       {tab === 'analytics' && (
         backtests.length === 0 ? (
-          <EmptyState icon={FlaskConical} title="אין נתונים לניתוח" description="הוסף עסקאות בקטסט כדי לראות ניתוחים מתקדמים"
+          <EmptyState icon={FlaskConical} title="אין נתונים לאנליטיקה" description="הוסף עסקאות בקטסט כדי לראות אנליטיקה מתקדמת"
             actionLabel="עבור לרשומות" onAction={() => setTab('records')} />
         ) : (
           <div className="space-y-4">

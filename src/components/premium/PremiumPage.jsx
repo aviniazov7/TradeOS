@@ -20,7 +20,7 @@ const HIGHLIGHTS = [
   'סוכן AI עד 200 שאלות ביום',
   'ניתוח גרפים מקצועי מצילום מסך',
   'יומנים, ארנקים וחיבורי בורסה ללא הגבלה',
-  'ניתוחים מתקדמים ו-Polymarket',
+  'אנליטיקה מתקדמת ו-Polymarket',
 ];
 
 const yearlySavePct = Math.round((1 - PREMIUM_PRICING.yearly.price / (PREMIUM_PRICING.monthly.price * 12)) * 100);
