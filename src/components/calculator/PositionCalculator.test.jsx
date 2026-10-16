@@ -44,6 +44,11 @@ async function mount(open = true) {
     },
     balance: () => document.getElementById('calc-balance'),
     journal: () => document.getElementById('calc-journal'),
+    pickJournal: async (label) => {
+      await act(async () => { document.getElementById('calc-journal').click(); });
+      const option = [...document.querySelectorAll('[role="option"]')].find((el) => el.textContent === label);
+      await act(async () => { option.click(); });
+    },
     unmount: async () => {
       await act(async () => { root.unmount(); });
       el.remove();
@@ -61,10 +66,13 @@ describe('position calculator balance', () => {
     ctx = { journals: [mexc, bybit], activeJournal: mexc };
     const view = await mount();
     const select = view.journal();
-    expect(select.tagName).toBe('SELECT');
-    expect(select.value).toBe('j-mexc');
-    expect(select.options[0].textContent).toBe('MEXC');
-    expect(select.options[1].textContent).toBe('סקלפינג · Bybit');
+    expect(select.tagName).toBe('BUTTON');
+    expect(select.getAttribute('aria-haspopup')).toBe('listbox');
+    expect(select.textContent).toContain('MEXC');
+    expect(document.querySelector('select')).toBeNull();
+    await act(async () => { select.click(); });
+    const options = [...document.querySelectorAll('[role="option"]')].map((el) => el.textContent);
+    expect(options).toEqual(['MEXC', 'סקלפינג · Bybit']);
     expect(view.balance().value).toBe('394.14');
     expect(document.body.textContent).toContain('ארנק MEXC');
     await view.unmount();
@@ -74,12 +82,8 @@ describe('position calculator balance', () => {
     wallets = { mexc: 394.14223635, bybit: null };
     ctx = { journals: [mexc, bybit], activeJournal: mexc };
     const view = await mount();
-    const select = view.journal();
-    await act(async () => {
-      select.value = 'j-bybit';
-      select.dispatchEvent(new Event('change', { bubbles: true }));
-    });
-    expect(view.journal().value).toBe('j-bybit');
+    await view.pickJournal('סקלפינג · Bybit');
+    expect(view.journal().textContent).toContain('סקלפינג');
     expect(view.balance().value).toBe('80.46');
     expect(document.body.textContent).toContain('יתרה התחלתית · סקלפינג · Bybit');
     const risk = document.querySelector('input[placeholder="50"]');
@@ -119,15 +123,11 @@ describe('position calculator balance', () => {
     wallets = { mexc: 394.14223635, bybit: 1000.2 };
     ctx = { journals: [mexc, bybit], activeJournal: mexc };
     const view = await mount();
-    const select = view.journal();
-    await act(async () => {
-      select.value = 'j-bybit';
-      select.dispatchEvent(new Event('change', { bubbles: true }));
-    });
+    await view.pickJournal('סקלפינג · Bybit');
     expect(view.balance().value).toBe('1000.20');
     await view.rerender(false);
     await view.rerender(true);
-    expect(view.journal().value).toBe('j-mexc');
+    expect(view.journal().textContent).toContain('MEXC');
     expect(view.balance().value).toBe('394.14');
     await view.unmount();
   });

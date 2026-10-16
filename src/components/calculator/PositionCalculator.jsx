@@ -2,6 +2,7 @@ import { useState, useEffect, useMemo, useRef } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { Copy, Check, TrendingUp, TrendingDown } from 'lucide-react';
 import Modal from '../shared/Modal';
+import SelectDropdown from '../shared/SelectDropdown';
 import ExchangeLogo from '../shared/ExchangeLogo';
 import { useJournalContext } from '../../contexts/JournalContext';
 import { useLinkedExchangeBalance } from '../../hooks/useLinkedExchangeBalance';
@@ -32,7 +33,11 @@ export default function PositionCalculator({ isOpen, onClose }) {
     setJournalId(isOpen ? (activeJournal?.id ?? null) : null);
   }
 
-  const list = Array.isArray(journals) ? journals : [];
+  const list = useMemo(() => (Array.isArray(journals) ? journals : []), [journals]);
+  const journalOptions = useMemo(
+    () => list.map((j) => ({ value: j.id, label: calculatorJournalLabel(j) })),
+    [list],
+  );
   const selected = list.find((j) => j.id === journalId)
     || list.find((j) => j.id === activeJournal?.id)
     || null;
@@ -157,17 +162,12 @@ export default function PositionCalculator({ isOpen, onClose }) {
         {list.length > 1 ? (
           <div>
             <label htmlFor="calc-journal" className={labelClass}>יומן ליתרה</label>
-            <select
+            <SelectDropdown
               id="calc-journal"
-              aria-label="יומן ליתרה"
               value={selected?.id || ''}
-              onChange={(e) => setJournalId(e.target.value)}
-              className={`${inputClass} theme-scheme`}
-            >
-              {list.map((j) => (
-                <option key={j.id} value={j.id}>{calculatorJournalLabel(j)}</option>
-              ))}
-            </select>
+              onChange={(id) => { if (id) setJournalId(id); }}
+              options={journalOptions}
+            />
             {balanceCaption ? <p className="mt-1 text-[10px] text-text-muted">{balanceCaption}</p> : null}
           </div>
         ) : selected ? (
