@@ -1,10 +1,9 @@
-import { useMemo, useState } from 'react';
-import { useNavigate } from 'react-router-dom';
-import { Link2, ListOrdered, Layers, RefreshCw, TriangleAlert } from 'lucide-react';
+import { lazy, Suspense, useMemo, useState } from 'react';
+import { ListOrdered, Layers, RefreshCw, TriangleAlert } from 'lucide-react';
 import Card from '../shared/Card';
 import Skeleton from '../shared/Skeleton';
 import EmptyState from '../shared/EmptyState';
-import { headerIconBtn } from '../shared/headerStyles';
+import ExchangeLogo from '../shared/ExchangeLogo';
 import TerminalPositions from '../terminal/TerminalPositions';
 import TerminalOrders from '../terminal/TerminalOrders';
 import { Num } from '../terminal/terminalUi';
@@ -16,15 +15,46 @@ import {
   fmtUsd, fmtPct, agoLabel, pnlTone,
 } from '../../utils/terminal';
 
+const ExchangeSettings = lazy(() => import('../exchange/ExchangeSettings'));
+
 const posKey = (p) => `${p.source}|${p.externalId || ''}|${p.pair}|${p.direction}`;
 
 function UpdatedLabel({ at, refreshing }) {
   const now = useNow(1000);
   return (
-    <span className="inline-flex items-center gap-1.5 text-[11px] text-text-muted whitespace-nowrap" aria-live="polite">
-      <span className={`w-1.5 h-1.5 rounded-full ${at ? 'bg-profit' : 'bg-text-muted'} ${refreshing ? 'animate-pulse' : ''}`} />
-      {at ? `עודכן ${agoLabel(at, now)}` : 'טוען…'}
+    <span className="text-[11px] text-text-muted whitespace-nowrap" aria-live="polite">
+      {refreshing ? 'מרענן…' : (at ? `עודכן ${agoLabel(at, now)}` : 'טוען…')}
     </span>
+  );
+}
+
+export function ConnectionHeader({ exchanges, healthy, lastUpdated, refreshing, onRefresh, manage, onManage }) {
+  const names = exchanges.map((ex) => EXCHANGE_LABELS[ex] || ex).join(' · ');
+  return (
+    <Card data-testid="exchange-connection" className="rounded-2xl px-3 py-2.5">
+      <div className="flex items-center gap-2 min-w-0">
+        <div className="flex items-center -space-x-1.5 rtl:space-x-reverse shrink-0">
+          {exchanges.slice(0, 3).map((ex) => (
+            <ExchangeLogo key={ex} exchange={ex} size="w-7 h-7" />
+          ))}
+        </div>
+        <div className="min-w-0 flex-1">
+          <div className="flex items-center gap-1.5 min-w-0">
+            <span className="text-sm font-bold text-text-primary truncate">{names}</span>
+            <span className={`w-1.5 h-1.5 rounded-full shrink-0 ${healthy ? 'bg-profit' : 'bg-breakeven'}`} title={healthy ? 'מחובר' : 'דורש טיפול'} />
+            <span className="hidden sm:inline text-[11px] font-semibold text-profit shrink-0">מחובר</span>
+          </div>
+          <UpdatedLabel at={lastUpdated} refreshing={refreshing} />
+        </div>
+        <button type="button" onClick={onRefresh} disabled={refreshing} className="w-8 h-8 shrink-0 rounded-lg border border-border-primary bg-bg-tertiary text-text-secondary hover:text-text-primary grid place-items-center cursor-pointer disabled:opacity-50" title="רענון" aria-label="רענון">
+          <RefreshCw className={`w-3.5 h-3.5 ${refreshing ? 'animate-spin' : ''}`} />
+        </button>
+        <button type="button" data-testid="manage-connection" aria-expanded={manage} onClick={onManage}
+          className={`h-8 shrink-0 px-2.5 rounded-lg text-xs font-semibold border cursor-pointer transition-colors ${manage ? 'border-accent-primary/40 bg-accent-primary/15 text-accent-primary' : 'border-border-primary bg-bg-tertiary text-text-secondary hover:text-text-primary'}`}>
+          ניהול חיבור
+        </button>
+      </div>
+    </Card>
   );
 }
 
@@ -84,12 +114,13 @@ function SectionTitle({ children }) {
   return <h3 className="text-sm font-bold text-text-primary mb-2">{children}</h3>;
 }
 
-// Open positions and resting orders from the connected exchanges. Read-only.
-// The old trading-station charts stay out of the journal.
+// The journal's בורסה tab: connection status, then open positions, then
+// resting orders. Read-only. Polls every 15s while this tab is mounted.
+// With no exchange connected, the connect UI is the whole tab.
 export default function OpenPositionsTab() {
-  const navigate = useNavigate();
-  const { journals } = useJournalContext();
+  const { journals, activeJournalId } = useJournalContext();
   const { connected, snapshots, marks, openTrades, loading, refreshing, lastUpdated, refresh } = useTerminalData({ pollMs: JOURNAL_POLL_MS });
+  const [manage, setManage] = useState(false);
   const mobile = useMedia('(max-width: 767px)');
   const [exFilter, setExFilter] = useState('all');
 
@@ -142,16 +173,33 @@ export default function OpenPositionsTab() {
     .filter(({ s }) => s && (s.error || s.positionsError || s.ordersError || s.ordersPartial));
   const noExchanges = connected !== null && exchanges.length === 0;
 
+  if (connected === null) return <ListSkeleton />;
+
+  if (noExchanges) {
+    return (
+      <Suspense fallback={<ListSkeleton />}>
+        <ExchangeSettings journalId={activeJournalId} embedded />
+      </Suspense>
+    );
+  }
+
   return (
     <div className="space-y-3">
-      <div className="flex items-center justify-end gap-2">
-        {!noExchanges && <UpdatedLabel at={lastUpdated} refreshing={refreshing} />}
-        {!noExchanges && (
-          <button type="button" onClick={refresh} disabled={refreshing || connected === null} className={headerIconBtn} title="רענון" aria-label="רענון">
-            <RefreshCw className={`w-5 h-5 ${refreshing ? 'animate-spin' : ''}`} />
-          </button>
-        )}
-      </div>
+      <ConnectionHeader
+        exchanges={exchanges}
+        healthy={problems.length === 0}
+        lastUpdated={lastUpdated}
+        refreshing={refreshing}
+        onRefresh={refresh}
+        manage={manage}
+        onManage={() => setManage((v) => !v)}
+      />
+
+      {manage && (
+        <Suspense fallback={<ListSkeleton />}>
+          <ExchangeSettings journalId={activeJournalId} embedded bare />
+        </Suspense>
+      )}
 
       {exchanges.length > 1 && <ExchangeChips exchanges={exchanges} value={exFilter} onChange={setExFilter} counts={counts} />}
 
@@ -165,26 +213,18 @@ export default function OpenPositionsTab() {
                 <span className="text-text-muted">—</span>
                 <span>{s.error || s.positionsError || s.ordersError || 'חלק מסוגי הפקודות (TP/SL / טריגר) לא נטענו'}</span>
                 {(s.reason || /מפתח|חבר מחדש/.test(s.error || s.positionsError || s.ordersError || '')) && (
-                  <button type="button" onClick={() => navigate('/journal?tab=exchange')} className="text-accent-primary hover:underline cursor-pointer">עדכון מפתחות</button>
+                  <button type="button" onClick={() => setManage(true)} className="text-accent-primary hover:underline cursor-pointer">עדכון מפתחות</button>
                 )}
               </div>
             ))}
           </div>
         )}
 
-        {noExchanges ? (
-          <EmptyState
-            icon={Link2}
-            title="עוד לא חיברת בורסה"
-            description="חבר בורסה במפתח קריאה בלבד, והפוזיציות והפקודות הפתוחות יופיעו כאן."
-            actionLabel="חיבור בורסאות"
-            onAction={() => navigate('/journal?tab=exchange')}
-          />
-        ) : loading ? (
+        {loading ? (
           <ListSkeleton />
         ) : (
           <>
-            <section>
+            <section data-testid="open-positions-section">
               <SectionTitle>פוזיציות פתוחות</SectionTitle>
               {posRows.length ? (
                 <div className="space-y-3">
@@ -195,7 +235,7 @@ export default function OpenPositionsTab() {
                 <EmptyState icon={Layers} title="אין פוזיציות פתוחות" description="כשתפתח פוזיציה באחת הבורסות המחוברות היא תופיע כאן." />
               )}
             </section>
-            <section>
+            <section data-testid="open-orders-section">
               <SectionTitle>פקודות פתוחות</SectionTitle>
               {orderRows.length ? (
                 <TerminalOrders rows={orderRows} mobile={mobile} />

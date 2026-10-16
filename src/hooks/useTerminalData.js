@@ -19,7 +19,7 @@ const visible = () => typeof document === 'undefined' || document.visibilityStat
  * the journal's open trades (for each position's original stop).
  *
  * pollMs — private snapshot interval. Home passes HOME_POLL_MS (60s); the
- * open-positions tab passes JOURNAL_POLL_MS (15s). Marks stay at 5s, and only
+ * journal's בורסה tab passes JOURNAL_POLL_MS (15s). Marks stay at 5s, and only
  * run once a snapshot actually contains a pair.
  *
  * → { connected: string[] | null (null = loading), snapshots: { [ex]: { positions,

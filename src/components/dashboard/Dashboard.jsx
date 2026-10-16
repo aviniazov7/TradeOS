@@ -48,7 +48,7 @@ const todayLabel = () => new Date().toLocaleDateString('he-IL', { weekday: 'long
 function JournalTile({ j, mask, onOpen }) {
   const pnlCls = j.pnl > 0 ? 'text-profit' : j.pnl < 0 ? 'text-loss' : 'text-text-secondary';
   let missingWhy = 'לא הוגדרה יתרה התחלתית ליומן';
-  if (j.problem) missingWhy = `${KEY_PROBLEM_TEXT[j.problem]} — עדכן בחיבור בורסאות`;
+  if (j.problem) missingWhy = `${KEY_PROBLEM_TEXT[j.problem]} — עדכן בטאב בורסה`;
   else if (exchangeLabel(j.exchange)) missingWhy = `אין כרגע שווי חי מ-${exchangeLabel(j.exchange)}`;
   else if (j.exchange) missingWhy = 'אין כרגע שווי חי מהבורסה';
   return (

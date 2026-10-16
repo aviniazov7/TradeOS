@@ -4,8 +4,8 @@ import { useEffect, useRef } from 'react';
 // The active pill is a CSS background. A shared layoutId animation needed
 // framer-motion's layout engine (domMax), which the login page must not load.
 //   tabs: [{ id, label, mobileLabel?, icon?, count? }]
-//   wrap — phone journal: every tab is on screen (two rows when there are
-//   five). No horizontal scroller. Short labels via mobileLabel.
+//   wrap — phone journal: every tab is on screen in one row (four or fewer).
+//   No horizontal scroller. Short labels via mobileLabel.
 export default function TabStrip({ tabs, value, onChange, variant = 'desktop' }) {
   const mobile = variant === 'mobile';
   const underline = variant === 'underline';
@@ -19,9 +19,9 @@ export default function TabStrip({ tabs, value, onChange, variant = 'desktop' })
     el.scrollIntoView({ inline: 'nearest', block: 'nearest' });
   }, [pans, value]);
   const n = tabs.length;
-  // Five journal tabs: 3 + 2, both rows full width (a 6-column grid).
-  // Four (stocks, no exchange tab): a 2×2 grid. Fewer: one row.
-  const gridCols = wrap ? (n >= 5 ? 'grid-cols-6' : n === 4 ? 'grid-cols-2' : n === 3 ? 'grid-cols-3' : n === 2 ? 'grid-cols-2' : 'grid-cols-1') : '';
+  // One row when the journal has four tabs or fewer. Five or more still wrap
+  // (3 + 2 on a 6-column grid) so nothing is clipped off the side.
+  const gridCols = wrap ? (n >= 5 ? 'grid-cols-6' : n === 4 ? 'grid-cols-4' : n === 3 ? 'grid-cols-3' : n === 2 ? 'grid-cols-2' : 'grid-cols-1') : '';
   return (
     // Mobile (non-wrap) is one row as wide as its labels. The parent scroller
     // pans it; shrinking or wrapping there is what clipped "חיבור בורסות".
@@ -44,7 +44,7 @@ export default function TabStrip({ tabs, value, onChange, variant = 'desktop' })
             aria-selected={active}
             onClick={() => onChange(t.id)}
             ref={active ? activeRef : undefined}
-            className={`relative inline-flex items-center gap-1 font-medium cursor-pointer transition-colors ${underline ? '' : 'rounded-lg'} ${wrap ? '' : 'whitespace-nowrap'} ${look}`}
+            className={`relative inline-flex items-center gap-1 font-medium whitespace-nowrap cursor-pointer transition-colors ${underline ? '' : 'rounded-lg'} ${look}`}
           >
             {wrap && Icon ? <Icon className="w-3.5 h-3.5 shrink-0" aria-hidden /> : null}
             <span className="relative">{short}</span>

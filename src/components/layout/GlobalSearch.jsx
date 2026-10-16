@@ -4,7 +4,7 @@ import { createPortal } from 'react-dom';
 import { m, AnimatePresence } from 'framer-motion';
 import {
   Search, CornerDownLeft, LayoutDashboard, BookOpen, Brain, FlaskConical,
-  Coins, Wallet, ClipboardList, Activity, Bot, Newspaper, Crown, User, Building2,
+  Coins, Wallet, ClipboardList, Activity, Bot, Newspaper, Crown, User,
   Briefcase, Trophy, Fish, LineChart, Receipt, CandlestickChart,
 } from 'lucide-react';
 import { getUserCollectionDocs } from '../../services/firestoreService';
@@ -14,7 +14,7 @@ import { useAuth } from '../../contexts/AuthContext';
 const PAGES = [
   { label: 'דשבורד', path: '/', icon: LayoutDashboard, kw: 'בית home dashboard ראשי' },
   { label: 'יומן מסחר', path: '/journal', icon: BookOpen, kw: 'עסקאות trades journal' },
-  { label: 'פוזיציות פתוחות', path: '/journal?tab=positions', icon: CandlestickChart, kw: 'terminal טרמינל עמדת מסחר trading desk פוזיציות פקודות פתוחות positions orders בורסה live' },
+  { label: 'בורסה', path: '/journal?tab=exchange', icon: CandlestickChart, kw: 'terminal טרמינל עמדת מסחר trading desk פוזיציות פקודות פתוחות positions orders בורסה live exchange חיבור api מפתח בורסות' },
   { label: 'האזור המנטלי', path: '/mentality', icon: Brain, kw: 'מנטל פסיכולוגיה mentality mindset' },
   { label: 'בקטסט', path: '/backtest', icon: FlaskConical, kw: 'backtest' },
   { label: 'תיק', path: '/portfolio', icon: Briefcase, kw: 'portfolio תיק השקעות' },
@@ -28,7 +28,6 @@ const PAGES = [
   { label: 'Polymarket', path: '/market?tab=polymarket', icon: Trophy, kw: 'polymarket פולימרקט הימורים שוק' },
   { label: 'TradeAI', path: '/trade-ai', icon: Bot, kw: 'ai בינה מלאכותית' },
   { label: 'חדשות', path: '/news', icon: Newspaper, kw: 'news' },
-  { label: 'בורסות', path: '/journal?tab=exchange', icon: Building2, kw: 'exchange חיבור api מפתח' },
   { label: 'שדרוג Premium', path: '/premium', icon: Crown, kw: 'premium פרימיום שדרוג' },
   { label: 'פרופיל', path: '/profile', icon: User, kw: 'profile הגדרות settings חשבון' },
 ];

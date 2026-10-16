@@ -122,9 +122,9 @@ function MainApp() {
               <Route element={<Layout />}>
                 <Route index element={<Dashboard />} />
                 <Route path="journal" element={<TradeJournal />} />
-                {/* The trading station page is gone. Positions and orders live
-                    on the journal tab; old links land there. */}
-                <Route path="terminal" element={<Navigate to="/journal?tab=positions" replace />} />
+                {/* The trading station page is gone. Positions, orders and the
+                    exchange connection live on the journal's בורסה tab. */}
+                <Route path="terminal" element={<Navigate to="/journal?tab=exchange" replace />} />
                 <Route path="backtest" element={<BacktestTracker />} />
                 {/* DCA + wallets are the two tabs of the Portfolio page; the old
                     paths stay as redirects so links/bookmarks land right. */}

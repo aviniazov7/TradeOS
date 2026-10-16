@@ -1,7 +1,7 @@
 import { useState, useMemo, useEffect, useRef, lazy, Suspense } from 'react';
 import { useSearchParams } from 'react-router-dom';
 import { m } from 'framer-motion';
-import { Plus, BookOpen, Settings, Undo2, BrainCircuit, ListChecks, Trash2, AlertTriangle, Sparkles, Briefcase, Loader2, Layers, BarChart3, CalendarDays, Link2 } from 'lucide-react';
+import { Plus, BookOpen, Settings, Undo2, BrainCircuit, ListChecks, Trash2, AlertTriangle, Sparkles, Briefcase, Loader2 } from 'lucide-react';
 import toast from 'react-hot-toast';
 import { useTrades } from '../../hooks/useTrades';
 import { useCryptoPrices } from '../../hooks/useCryptoPrices';
@@ -36,12 +36,11 @@ import { JOURNAL_CSV_HEADERS, journalCsvRow } from '../../utils/tradeExport';
 import { TAG_LABELS } from '../../utils/constants';
 import { pageVariants, pageTransition } from '../../utils/animations';
 import { TRADE_PREFILL_KEY } from '../../utils/tradeFormHelpers';
+import { CRYPTO_JOURNAL_TABS, OTHER_JOURNAL_TABS, resolveJournalTab } from '../../utils/journalTabs';
 
-const JOURNAL_TABS = ['trades', 'positions', 'analytics', 'calendar', 'exchange'];
-const TAB_LABELS = { trades: 'עסקאות', positions: 'פוזיציות פתוחות', analytics: 'אנליטיקה', calendar: 'יומן חודשי', exchange: 'חיבור בורסאות' };
-// Phone segmented control: the full labels do not fit 375px without a scroller.
-const TAB_MOBILE = { trades: 'עסקאות', positions: 'פוזיציות', analytics: 'אנליטיקה', calendar: 'יומן', exchange: 'בורסאות' };
-const TAB_ICONS = { trades: ListChecks, positions: Layers, analytics: BarChart3, calendar: CalendarDays, exchange: Link2 };
+const TAB_LABELS = { trades: 'עסקאות', exchange: 'בורסה', analytics: 'אנליטיקה', calendar: 'יומן חודשי' };
+// Phone row: "יומן חודשי" is the only label that needs a shorter form.
+const TAB_MOBILE = { trades: 'עסקאות', exchange: 'בורסה', analytics: 'אנליטיקה', calendar: 'יומן' };
 const defaultFilters = { search: '', direction: '', result: '', status: '', strategy: '', tag: '', timeframe: '', month: '', from: '', to: '' };
 const defaultSort = { key: 'date', dir: 'desc' };
 // Phone sort picker (desktop sorts by clicking column headers).
@@ -65,7 +64,6 @@ const entryDay = (t) => (t.entryDate ? localDayKey(t.entryDate) : '');
 const OpenPositionsTab = lazy(() => import('./OpenPositionsTab'));
 const JournalAnalyticsTab = lazy(() => import('./JournalAnalyticsTab'));
 const MonthlyCalendar = lazy(() => import('./MonthlyCalendar'));
-const ExchangeSettings = lazy(() => import('../exchange/ExchangeSettings'));
 // The trade form is the journal's main action — its chunk is preloaded once
 // the journal is up (see below) so the first "עסקה חדשה" opens instantly.
 const loadTradeForm = () => import('./TradeForm');
@@ -141,11 +139,11 @@ export default function TradeJournal() {
   // The active tab lives in the URL (?tab=analytics) so a refresh keeps it and
   // the browser's back button steps between tabs. 'trades' is the bare URL.
   const tabParam = searchParams.get('tab');
-  // Exchange connections are crypto-only (stock and futures journals have no
-  // exchange sync), so their tab exists only in crypto journals.
+  // The בורסה hub (connection + positions + orders) is crypto-only. Stock and
+  // futures journals have no exchange sync. Old ?tab=positions links land here.
   const isCryptoJournal = (activeJournal?.assetClass || 'crypto') === 'crypto';
-  const journalTabs = isCryptoJournal ? JOURNAL_TABS : JOURNAL_TABS.filter((t) => t !== 'exchange');
-  const tab = journalTabs.includes(tabParam) ? tabParam : 'trades';
+  const journalTabs = isCryptoJournal ? CRYPTO_JOURNAL_TABS : OTHER_JOURNAL_TABS;
+  const tab = resolveJournalTab(tabParam, { crypto: isCryptoJournal });
   const setTab = (next) => {
     if (next === tab) return;
     setSearchParams((prev) => {
@@ -307,9 +305,9 @@ export default function TradeJournal() {
     : (openingBalance > 0 ? openingBalance + totalClosedPnL : 0);
 
   // Import a single exchange-synced trade into the active journal. Shared by
-  // the exchange tab (ExchangeSettings) and the trades-tab proposal banner
-  // (ExchangeProposals) so both add trades identically, upserting when any of
-  // the row's close-order ids is already in the journal.
+  // the בורסה tab and the trades-tab proposal banner so both add trades
+  // identically, upserting when any of the row's close-order ids is already
+  // in the journal.
   const { importTrade: importExchangeTrade } = useExchangeImport(activeJournalId);
 
   useEffect(() => {
@@ -576,7 +574,7 @@ export default function TradeJournal() {
         titleAside={<JournalSwitcher compact />}
         compactMobile
         tabs={{
-          tabs: journalTabs.map((id) => ({ id, label: TAB_LABELS[id], mobileLabel: TAB_MOBILE[id], icon: TAB_ICONS[id], count: id === 'trades' ? trades.length : 0 })),
+          tabs: journalTabs.map((id) => ({ id, label: TAB_LABELS[id], mobileLabel: TAB_MOBILE[id], count: id === 'trades' ? trades.length : 0 })),
           value: tab,
           onChange: setTab,
           layoutKey: 'journal-tab',
@@ -735,7 +733,7 @@ export default function TradeJournal() {
         </>
       )}
 
-      {tab === 'positions' && (
+      {tab === 'exchange' && (
         <Suspense fallback={<TabFallback />}>
           <OpenPositionsTab />
         </Suspense>
@@ -778,14 +776,6 @@ export default function TradeJournal() {
           <AICoachPanel trades={trades} />
         </Suspense>
       </Modal>
-
-      {tab === 'exchange' && (
-        <div className="mt-2">
-          <Suspense fallback={<TabFallback />}>
-            <ExchangeSettings journalId={activeJournalId} embedded />
-          </Suspense>
-        </div>
-      )}
 
       {/* Lazy modals, each in its own boundary so one loading (e.g. import,
           opened from inside settings) never blanks another that is open.

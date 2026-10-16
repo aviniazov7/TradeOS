@@ -27,12 +27,12 @@ function gapPx(el) {
 
 const Sep = () => <span className="text-text-muted" aria-hidden>·</span>;
 
-// Slim home strip for the same book as the journal's "פוזיציות פתוחות" tab.
+// Slim home strip for the same book as the journal's בורסה tab.
 // One row on desktop (~64px), two lines on a phone. Absent when the book is empty.
 export default function OpenPositionsSummary({ hidden = false }) {
   const navigate = useNavigate();
   const { connected, snapshots, marks, openTrades } = useTerminalData({ pollMs: HOME_POLL_MS });
-  const openAll = () => navigate('/journal?tab=positions');
+  const openAll = () => navigate('/journal?tab=exchange');
 
   const exchanges = connected ?? NONE;
   const allPositions = useMemo(() => (

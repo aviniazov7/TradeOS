@@ -31,10 +31,9 @@ vi.mock('../../services/coingeckoApi', () => ({
 
 const JOURNAL_TABS = [
   { id: 'trades', label: 'עסקאות', mobileLabel: 'עסקאות', count: 113 },
-  { id: 'positions', label: 'פוזיציות פתוחות', mobileLabel: 'פוזיציות' },
+  { id: 'exchange', label: 'בורסה', mobileLabel: 'בורסה' },
   { id: 'analytics', label: 'אנליטיקה', mobileLabel: 'אנליטיקה' },
   { id: 'calendar', label: 'יומן חודשי', mobileLabel: 'יומן' },
-  { id: 'exchange', label: 'חיבור בורסאות', mobileLabel: 'בורסאות' },
 ];
 
 function shell(node) {
@@ -118,7 +117,7 @@ describe('mobile chrome', () => {
         icon={BookOpen}
         title="יומן המסחר"
         compactMobile
-        tabs={{ tabs: JOURNAL_TABS, value: 'positions', onChange: () => {} }}
+        tabs={{ tabs: JOURNAL_TABS, value: 'exchange', onChange: () => {} }}
         actions={<button type="button" aria-label="עסקה חדשה">+</button>}
       />,
     );
@@ -132,25 +131,23 @@ describe('mobile chrome', () => {
     expect(title.compareDocumentPosition(phone) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
     const list = phone.querySelector('[role="tablist"]');
     expect(list.className).toContain('grid');
-    expect(list.className).toContain('grid-cols-6');
+    expect(list.className).toContain('grid-cols-4');
     expect(list.className).not.toContain('flex-nowrap');
+    expect(list.className).not.toContain('grid-cols-6');
     const tabs = [...phone.querySelectorAll('[role="tab"]')];
-    expect(tabs.map((t) => t.textContent.replace(/\s+/g, ''))).toEqual(['עסקאות113', 'פוזיציות', 'אנליטיקה', 'יומן', 'בורסאות']);
+    expect(tabs.map((t) => t.textContent.replace(/\s+/g, ''))).toEqual(['עסקאות113', 'בורסה', 'אנליטיקה', 'יומן']);
     tabs.forEach((tab) => {
-      expect(tab.className).not.toContain('whitespace-nowrap');
-      expect(tab.className).not.toContain('shrink-0');
+      expect(tab.className).not.toContain('col-span-');
     });
-    expect(tabs[0].className).toContain('col-span-2');
-    expect(tabs[3].className).toContain('col-span-3');
     const active = phone.querySelector('[aria-selected="true"]');
-    expect(active.textContent).toBe('פוזיציות');
+    expect(active.textContent).toBe('בורסה');
     expect(active.className).toContain('text-accent-primary');
     expect(active.className).toContain('bg-accent-primary/15');
     const desktop = document.querySelector('.hidden.md\\:block [role="tablist"]');
     expect(desktop).toBeTruthy();
     expect(phone.contains(desktop)).toBe(false);
     expect([...desktop.querySelectorAll('[role="tab"]')].map((t) => t.textContent.replace(/\s+/g, ' ').trim())).toEqual([
-      'עסקאות113', 'פוזיציות פתוחות', 'אנליטיקה', 'יומן חודשי', 'חיבור בורסאות',
+      'עסקאות113', 'בורסה', 'אנליטיקה', 'יומן חודשי',
     ]);
     await view.cleanup();
   });

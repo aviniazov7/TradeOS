@@ -138,7 +138,17 @@ describe('open positions summary', () => {
     const overflow = html.match(/data-testid="open-positions-overflow"/g) || [];
     expect(overflow).toHaveLength(1);
     await view.clickTestId('open-positions-overflow');
-    expect(view.html()).toContain('arrived:positions');
+    expect(view.html()).toContain('arrived:exchange');
+    await view.unmount();
+  });
+
+  it('opens the exchange tab from לכל הפוזיציות', async () => {
+    terminal.connected = ['mexc'];
+    terminal.loading = false;
+    terminal.snapshots = { mexc: { positions: BOOK, orders: [] } };
+    const view = await mount();
+    await view.click('לכל הפוזיציות');
+    expect(view.html()).toContain('arrived:exchange');
     await view.unmount();
   });
 
