@@ -17,16 +17,17 @@ import TabStrip from './TabStrip';
 //           (one RTL scroller, full labels). From md up the tabs stay beside
 //           the actions, same as every other page.
 //   compactMobile — journal phone header: one title row (icon, title, aside,
-//           icon actions) and an underline tab row under it. From md up the
-//           header matches the other pages.
+//           icon actions) and a wrapping segmented tab control under it (every
+//           tab on screen, no horizontal scroll). From md up the header matches
+//           the other pages.
 export default function PageHeader({ icon: Icon, title, titleAside, subtitle, meta, tabs, tabsLead, actions, children, className = '', as = 'h1', mobileTabsFirst = false, compactMobile = false }) {
   const Title = as === 'h2' ? 'h2' : 'h1';
   const tabStrip = (variant) => tabs && (
     <TabStrip tabs={tabs.tabs} value={tabs.value} onChange={tabs.onChange} variant={variant} layoutKey={tabs.layoutKey || 'page-tab'} />
   );
   const mobileTabRow = tabs && (compactMobile ? (
-    <div data-tab-scroller dir="rtl" className="md:hidden mt-2 w-full min-w-0 overflow-x-auto no-scrollbar border-b border-border-primary">
-      {tabStrip('underline')}
+    <div data-testid="mobile-tabs" dir="rtl" className="md:hidden mt-2 w-full min-w-0 overflow-x-hidden rounded-xl bg-bg-tertiary border border-border-primary p-1">
+      {tabStrip('wrap')}
     </div>
   ) : (
     <div data-tab-scroller dir="rtl" className={`md:hidden w-full min-w-0 overflow-x-auto no-scrollbar rounded-xl bg-bg-tertiary border border-border-primary p-1 ${mobileTabsFirst ? '' : 'relative mt-3'}`}>

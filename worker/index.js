@@ -608,7 +608,7 @@ function buildPremiumEmail({ kind = 'payment', name, amount, methodLabel, days, 
       ${featureLi('TradeAI ללא הגבלה — שאלות, ניתוחי גרפים ותובנות')}
       ${featureLi('ניתוח AI מלא של יומן המסחר')}
       ${featureLi('יומני מסחר, ארנקים והתראות ללא הגבלה')}
-      ${featureLi('חיבורי בורסה וניתוחים מתקדמים')}
+      ${featureLi('חיבורי בורסה ואנליטיקה מתקדמת')}
     </ul>
     ${kind === 'payment' ? emailPara('אישור זה נשלח לנוחותך ואינו מהווה חשבונית מס/קבלה.', { size: 12, color: EMAIL_C.muted, margin: '14px 0 0' }) : ''}`;
 
@@ -2408,18 +2408,22 @@ async function geminiStreamToOpenAI(geminiBody) {
   });
 }
 
-// Budget for the journal snapshot carried on every chat turn. Deliberately far
-// below the coach's (2500) because this rides along with the conversation
-// history and the Wyckoff system prompt on an endpoint that already hits Groq's
-// per-minute cap.
-const CHAT_CONTEXT_BUDGET = 900;
+// Budget for the journal snapshot carried on every chat turn. The aggregate
+// coach block is a few hundred tokens; recentTrades adds the newest ~40
+// closed rows (~30 tokens each). 2200 keeps those rows intact on top of the
+// Wyckoff prompt and the trimmed history. Still under the coach's short
+// budget (2500) and far under the model's context window — the constraint
+// is Groq's per-minute bucket, not the row count.
+const CHAT_CONTEXT_BUDGET = 2200;
 
 const CHAT_CONTEXT_PROMPT = `
 ## יומן המסחר של הסוחר (JSON):
-זהו הספר האמיתי שלו. כשהוא שואל על עצמו — "איפה אני מפסיד", "מה עובד לי" — ענה מהנתונים האלה ולא בעצה כללית.
-- אסור להמציא מספר שלא מופיע כאן.
-- אם הנתונים לא מכילים את מה שנשאלת עליו, אמור זאת במפורש והצע מה להוסיף ליומן.
-- "_truncated" מציין שקוצץ חלק מרשימה — זה לא אומר שהיא ריקה.
+זהו הספר האמיתי שלו, מיומן אחד בלבד (היומן שנבחר). כשהוא שואל על עצמו — "איפה אני מפסיד", "מה 5 העסקאות האחרונות שלי" — ענה מהנתונים האלה ולא בעצה כללית.
+- recentTrades: שורות עסקאות סגורות. בלי recentQuery הסדר הוא החדש ביותר ראשון. שדות: d תאריך מקומי YYYY-MM-DD, sym, side (הערך המלא Long או Short — העתק אותו כמו שהוא, בלי לקצר ל-L או S), entry, exit, pnl בדולרים, R (מכפיל R; שם השדה והכותרת הם R באות גדולה, לא r). closedTotal הוא מספר כל העסקאות הסגורות ביומן, גם אם הרשימה קוצרה.
+- recentQuery (אם קיים): symbol / date / symbol+date / symbol-or-date. אז recentTrades מתחיל בשורות שתואמות לסינון, ואחריהן עסקאות אחרות. זו לא "הרשימה הריקה".
+- כשהמשתמש מבקש טבלה, עסקאות אחרונות, או פירוט לפי תאריך או מטבע — ענה בטבלת Markdown: שורת כותרות, שורה | --- |, ואז שורות הנתונים. כלל התבליטים (•) לא חל על תשובה כזו. אל תגיד שאין תאריכים או פרטי עסקאות אם recentTrades לא ריק.
+- אסור להמציא שורה, תאריך, מחיר או רווח שלא מופיעים ב-JSON. אם השאלה דורשת עסקה ישנה יותר ממה שנשלח, אמור שהמדגם חלקי ואל תמלא מהזיכרון.
+- "_truncated" מציין שקוצץ זנב של רשימה (עסקאות ישנות יותר, או פריטים אחרונים) — זה לא אומר שהרשימה ריקה.
 \`\`\`json
 `;
 

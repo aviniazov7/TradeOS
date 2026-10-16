@@ -1,6 +1,6 @@
-import { useState } from 'react';
 import Modal from '../shared/Modal';
 import TradeScreenshots from './TradeScreenshots';
+import TradingViewPreview from './TradingViewPreview';
 import {
   formatCurrency,
   formatPrice,
@@ -19,8 +19,6 @@ import {
   Pencil,
   Trash2,
   Share2,
-  ExternalLink,
-  ImageOff,
 } from 'lucide-react';
 
 // Safe numeric coercion — returns null when not a finite number.
@@ -42,17 +40,6 @@ const MENTAL_FIELDS = [
   { key: 'stressRating', label: 'לחץ / סטרס', invert: true },
   { key: 'planAdherenceRating', label: 'הצמדות לתוכנית' },
 ];
-
-// Resolve a TradingView link to its snapshot image so the modal can preview
-// it inline. Direct image URLs pass through; a tradingview.com/x/<id> share
-// page maps to its s3 snapshot (first letter of the id = the shard folder).
-const tvImageUrl = (url) => {
-  if (!url) return null;
-  if (/\.(png|jpe?g|gif|webp)(\?.*)?$/i.test(url)) return url;
-  const m = url.match(/tradingview\.com\/x\/([A-Za-z0-9]+)/i);
-  if (m) return `https://s3.tradingview.com/snapshots/${m[1][0].toLowerCase()}/${m[1]}.png`;
-  return null;
-};
 
 // Compact key-value board — thin card, title line, then an aligned grid of
 // label→value pairs: two columns on phones, four from sm up. Labels sit at
@@ -93,10 +80,6 @@ export default function TradeDetailModal({
   onDelete,
   onShare,
 }) {
-  // Track WHICH trade's image failed (not a boolean) so switching to another
-  // trade naturally resets the fallback without an effect.
-  const [imgFailedKey, setImgFailedKey] = useState(null);
-
   if (!trade) return null;
 
   const pair = trade.pair || trade.symbol || '';
@@ -130,11 +113,6 @@ export default function TradeDetailModal({
   // ── TradingView snapshot preview ──────────────────────────────────
   // User-typed URL — sanitize once here; every href/img below derives from it.
   const tvUrl = safeHttpUrl(trade.tradingViewUrl) || '';
-  const tvImg = tvImageUrl(tvUrl);
-  // Latch failures by URL (not trade.id): editing the trade with a fixed link
-  // retries immediately instead of showing "אין תצוגה מקדימה" until page leave.
-  const imgKey = tvUrl;
-  const imgFailed = imgFailedKey === imgKey;
 
   // ── Details ───────────────────────────────────────────────────────
   const partialExits =
@@ -389,44 +367,7 @@ export default function TradeDetailModal({
         )}
       </div>
 
-      {/* 6) TradingView snapshot — at the very bottom, when the trade has a link */}
-      {tvUrl && (
-        <div className="rounded-2xl border border-border-primary bg-bg-tertiary overflow-hidden mt-3">
-          <div className="flex items-center justify-between px-4 py-2.5 border-b border-border-primary">
-            <span className="text-xs font-semibold text-text-secondary">צילום גרף</span>
-            <a
-              href={tvUrl}
-              target="_blank"
-              rel="noopener noreferrer"
-              className="inline-flex items-center gap-1 text-accent-primary text-xs hover:underline"
-            >
-              <ExternalLink className="w-3.5 h-3.5" />
-              פתח ב-TradingView
-            </a>
-          </div>
-          {tvImg && !imgFailed ? (
-            <a href={tvUrl} target="_blank" rel="noopener noreferrer" className="block">
-              <img
-                src={tvImg}
-                alt={`צילום גרף — ${pair}`}
-                loading="lazy"
-                onError={() => setImgFailedKey(imgKey)}
-                className="w-full max-h-[280px] object-contain bg-black/30"
-              />
-            </a>
-          ) : (
-            <a
-              href={tvUrl}
-              target="_blank"
-              rel="noopener noreferrer"
-              className="h-28 flex flex-col items-center justify-center gap-1.5 text-text-muted text-xs hover:text-text-secondary transition-colors"
-            >
-              <ImageOff className="w-5 h-5" />
-              אין תצוגה מקדימה — לחץ לפתיחת הקישור
-            </a>
-          )}
-        </div>
-      )}
+      {tvUrl && <TradingViewPreview key={tvUrl} url={tvUrl} pair={pair} />}
 
       {/* 7) Uploaded chart screenshots (own component + subcollection) */}
       {trade.id && <TradeScreenshots key={trade.id} tradeId={trade.id} pair={pair} />}

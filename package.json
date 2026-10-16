@@ -15,7 +15,6 @@
   "dependencies": {
     "@fontsource/heebo": "^5.3.0",
     "@fontsource/inter": "^5.3.0",
-    "canvas-confetti": "^1.9.4",
     "date-fns": "^4.1.0",
     "dompurify": "^3.3.3",
     "firebase": "^12.10.0",

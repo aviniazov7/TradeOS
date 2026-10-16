@@ -16,7 +16,7 @@ import BrandMark from '../shared/BrandMark';
 // The exchange line is built from canSync, so Binance is never described as auto-sync.
 const FEATURES = [
   { icon: Link2, title: 'חיבור לבורסה', text: exchangeSyncBlurb() },
-  { icon: BarChart3, title: 'יומן וניתוחים', text: 'רווח/הפסד, R:R, אחוז הצלחה ופילוח לפי מטבע וסשן' },
+  { icon: BarChart3, title: 'יומן ואנליטיקה', text: 'רווח/הפסד, R:R, אחוז הצלחה ופילוח לפי מטבע וסשן' },
   { icon: Sparkles, title: 'סוכן AI אישי', text: 'שואלים בעברית ומקבלים תשובה מבוססת על העסקאות שלך' },
 ];
 

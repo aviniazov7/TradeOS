@@ -49,7 +49,7 @@ describe('hosting CSP (report-only)', () => {
     }
   });
 
-  it('allows blob: workers (the win-celebration confetti runs in one) but no other worker source', () => {
+  it('allows blob: workers (share-card image export runs in one) but no other worker source', () => {
     expect(d['worker-src']).toEqual(["'self'", 'blob:']);
   });
 

@@ -1,6 +1,7 @@
 import { memo, useEffect, useMemo, useRef, useState } from 'react';
 import { Link2, Link2Off, PenLine, PanelTop, Moon, Expand, Shrink, Maximize2, Minimize2, X, ExternalLink } from 'lucide-react';
 import ResizableGrid from './ResizableGrid';
+import SelectDropdown from '../shared/SelectDropdown';
 import { useStoredJson, useFullscreen } from './terminalHooks';
 import { TIMEFRAMES, CHART_STYLES, tfById, tvChartUrl } from '../../utils/terminal';
 import {
@@ -32,6 +33,7 @@ const TZ = (() => {
 })();
 
 const STYLE_IDS = CHART_STYLES.map((s) => s.id);
+const TF_OPTIONS = TIMEFRAMES.map((t) => ({ value: t.id, label: t.label }));
 const TF_IDS = TIMEFRAMES.map((t) => t.id);
 const obj = (v) => (v && typeof v === 'object' && !Array.isArray(v) ? v : {});
 
@@ -312,14 +314,15 @@ function ChartPane({ index, pane, symbol, sync, exchange, chartOpts, surface, ma
             </button>
           ))}
         </div>
-        <select
+        <SelectDropdown
+          compact
+          ariaLabel="טיימפריים"
           value={pane.tf}
-          onChange={(e) => onPane(index, { tf: e.target.value })}
-          aria-label="טיימפריים"
-          className={`@[30rem]:hidden num-mono h-6 px-1 rounded-md bg-white/5 border border-border-primary text-xs font-semibold text-accent-primary outline-none cursor-pointer ${dark ? '[color-scheme:dark]' : ''}`}
-        >
-          {TIMEFRAMES.map((t) => <option key={t.id} value={t.id}>{t.label}</option>)}
-        </select>
+          onChange={(tf) => { if (tf) onPane(index, { tf }); }}
+          options={TF_OPTIONS}
+          className="@[30rem]:hidden w-[4.5rem] shrink-0"
+          triggerClassName="!h-6 !py-0 !px-1.5 num-mono font-semibold"
+        />
 
         <span className="flex-1" />
         {/* The embed can't sign in, so hand off to the user's own TradingView

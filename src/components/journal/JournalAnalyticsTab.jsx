@@ -31,7 +31,7 @@ const PIE_COLORS = { 'רווח': '#22c55e', 'הפסד': '#ef4444', 'אפס': '#f
 const cardClass = 'bg-bg-secondary border border-border-primary rounded-xl p-4';
 const pnlColor = (v) => v >= 0 ? 'text-profit' : 'text-loss';
 
-// The journal's "ניתוחים" tab. Lazy-loaded by TradeJournal so neither this
+// The journal's "אנליטיקה" tab. Lazy-loaded by TradeJournal so neither this
 // code nor the analytics computation runs while the user is on the trades tab.
 export default function JournalAnalyticsTab({
   trades, period, onPeriodChange, stats,
@@ -66,8 +66,8 @@ export default function JournalAnalyticsTab({
         ) : (
           <EmptyState
             icon={BarChart3}
-            title="אין עדיין נתונים לניתוח"
-            description="הניתוחים נבנים מהעסקאות הסגורות שלך — ברגע שתסגור את העסקה הראשונה, הגרפים והמדדים יתעוררו כאן."
+            title="אין עדיין נתונים לאנליטיקה"
+            description="האנליטיקה נבנית מהעסקאות הסגורות שלך — ברגע שתסגור את העסקה הראשונה, הגרפים והמדדים יתעוררו כאן."
             actionLabel="הוסף עסקה ראשונה"
             onAction={onAddFirstTrade}
           />
@@ -136,7 +136,14 @@ export default function JournalAnalyticsTab({
           {analytics && (
             <>
 
-              <Suspense fallback={<div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4 mb-6">{[1, 2, 3, 4].map((i) => <div key={i} className={`${cardClass} p-5 h-48 animate-pulse`} />)}</div>}>
+              <Suspense fallback={(
+                <div className="space-y-4 mb-6">
+                  <div className={`${cardClass} h-72 animate-pulse`} />
+                  <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                    {[1, 2, 3].map((i) => <div key={i} className={`${cardClass} h-64 animate-pulse`} />)}
+                  </div>
+                </div>
+              )}>
                 <JournalCharts
                   analytics={analytics} stats={stats} periodTrades={periodTrades}
                   cardClass={cardClass} tooltipStyle={tooltipStyle} pieColors={PIE_COLORS}

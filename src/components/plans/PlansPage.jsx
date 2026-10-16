@@ -154,8 +154,8 @@ export default function PlansPage() {
           <PageHeader
             icon={ClipboardList}
             title="תוכניות מסחר"
-            subtitle="החוקים והאסטרטגיות שלך, וניתוחים לפני עסקה"
-            tabs={{ tabs: [{ id: 'plans', label: 'תוכניות', count: plans.length }, { id: 'processes', label: 'ניתוחים', count: processes.length }], value: tab, onChange: setTab, layoutKey: 'plans-tab' }}
+            subtitle="החוקים והאסטרטגיות שלך, ואנליטיקה לפני עסקה"
+            tabs={{ tabs: [{ id: 'plans', label: 'תוכניות', count: plans.length }, { id: 'processes', label: 'אנליטיקה', count: processes.length }], value: tab, onChange: setTab, layoutKey: 'plans-tab' }}
             actions={(
               <div className="flex items-center gap-2 w-full sm:w-auto">
                 {tab === 'plans' && (
@@ -248,7 +248,7 @@ export default function PlansPage() {
               </Modal>
 
               {processes.length === 0 && !processFormOpen ? (
-                <EmptyState icon={FileImage} title="אין ניתוחים עדיין" description="הוסף ניתוחים, דוגמאות כניסה, ניהול עסקה ועוד — עם תמונות TradingView"
+                <EmptyState icon={FileImage} title="אין אנליטיקה עדיין" description="הוסף אנליטיקה, דוגמאות כניסה, ניהול עסקה ועוד — עם תמונות TradingView"
                   action={<button onClick={() => { setProcessForm(defaultProcessForm); setEditingProcessId(null); setProcessFormOpen(true); }} className="mt-2 px-4 py-2 bg-accent-primary text-bg-primary font-semibold rounded-lg hover:bg-accent-hover transition-colors cursor-pointer">הוסף ניתוח ראשון</button>} />
               ) : (
                 <>
@@ -282,7 +282,7 @@ export default function PlansPage() {
                   )}
 
                   {filteredProcesses.length === 0 ? (
-                    <EmptyState icon={FileImage} title="אין ניתוחים בקטגוריה זו" description="בחר קטגוריה אחרת או הוסף ניתוח חדש" />
+                    <EmptyState icon={FileImage} title="אין אנליטיקה בקטגוריה זו" description="בחר קטגוריה אחרת או הוסף ניתוח חדש" />
                   ) : (
                 <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4">
                   {filteredProcesses.map((proc) => (

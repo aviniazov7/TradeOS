@@ -1,6 +1,7 @@
 import { useState, useEffect } from 'react';
 import {
   subscribeToUserCollection,
+  seedUserCollection,
   addToUserCollection,
   updateUserDocument,
   deleteUserDocument,
@@ -11,18 +12,27 @@ import { useAuth } from '../contexts/AuthContext';
 
 export function useDCA() {
   const { user } = useAuth();
-  const [dcaPlans, setDcaPlans] = useState([]);
-  const [loading, setLoading] = useState(true);
+  const uid = user?.uid;
+  const [dcaPlans, setDcaPlans] = useState(() => seedUserCollection(uid, 'dca').data);
+  const [loading, setLoading] = useState(() => seedUserCollection(uid, 'dca').loading);
 
   useEffect(() => {
-    if (!user) {
+    if (!uid) {
       setDcaPlans([]);
       setLoading(false);
-      return;
+      return undefined;
+    }
+
+    const cached = seedUserCollection(uid, 'dca');
+    if (!cached.loading) {
+      setDcaPlans(cached.data);
+      setLoading(false);
+    } else {
+      setLoading(true);
     }
 
     return subscribeToUserCollection(
-      user.uid,
+      uid,
       'dca',
       {},
       (data) => {
@@ -36,7 +46,7 @@ export function useDCA() {
         setLoading(false);
       }
     );
-  }, [user]);
+  }, [uid]);
 
   const addPlan = async (data) => {
     if (!user) return;
