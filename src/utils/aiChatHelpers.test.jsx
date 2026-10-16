@@ -29,7 +29,41 @@ describe('TradeAI markdown', () => {
     const out = html('### מבנה\n- נקודה **חשובה**');
     expect(out).toContain('מבנה');
     expect(out).toContain('<strong>חשובה</strong>');
+    expect(out).toContain('<ul');
     expect(out).toContain('<li');
     expect(out).not.toContain('**');
+  });
+
+  it('renders a GFM table and keeps inline markdown inside cells', () => {
+    const out = html([
+      'נקודות החוזקה',
+      '',
+      '| קטגוריה | מדד | תוצאה |',
+      '| :--- | ---: | :---: |',
+      '| סוגי תנועה | 55 | **Short** |',
+      '| סוגים | 32 | `Price action` |',
+      '',
+      'שורה אחרי | לא טבלה',
+    ].join('\n'));
+    expect(out).toContain('<table');
+    expect(out).toContain('overflow-x-auto');
+    expect(out).toContain('<th');
+    expect(out).toContain('קטגוריה');
+    expect(out).toContain('<td');
+    expect(out).toContain('<strong>Short</strong>');
+    expect(out).toContain('<code');
+    expect(out).toContain('Price action');
+    expect(out).toContain('text-left');
+    expect(out).toContain('text-center');
+    expect(out).not.toContain('|---|');
+    expect(out).not.toContain(':---');
+    expect(out).toContain('שורה אחרי | לא טבלה');
+  });
+
+  it('escapes HTML inside a table cell', () => {
+    const out = html('| עמודה |\n| --- |\n| <img src=x onerror=alert(1)> |');
+    expect(out).toContain('<table');
+    expect(out).not.toContain('<img');
+    expect(out).toContain('&lt;img');
   });
 });
