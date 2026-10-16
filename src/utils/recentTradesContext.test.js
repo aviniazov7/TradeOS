@@ -47,13 +47,14 @@ describe('selectRecentClosed', () => {
     expect(rows[0]).toMatchObject({
       d: '2026-10-16',
       sym: 'BTC',
-      side: 'L',
+      side: 'Long',
       entry: 65000,
       exit: 66000,
       pnl: 12,
     });
-    expect(rows[0].r).toEqual(expect.any(Number));
-    expect(rows[1]).toMatchObject({ d: '2026-10-10', sym: 'ETH', side: 'S', pnl: -4 });
+    expect(rows[0].R).toEqual(expect.any(Number));
+    expect(rows[0].r).toBeUndefined();
+    expect(rows[1]).toMatchObject({ d: '2026-10-10', sym: 'ETH', side: 'Short', pnl: -4 });
   });
 
   it('prices a partial close from the weighted exits', () => {
@@ -93,7 +94,7 @@ describe('selectRecentClosed', () => {
     }));
     const book = selectRecentClosed(trades, 'תן לי את עסקאות SOL');
     expect(book.recentQuery).toBe('symbol');
-    expect(book.rows[0]).toMatchObject({ sym: 'SOL', side: 'S', d: '2024-01-02', pnl: -3 });
+    expect(book.rows[0]).toMatchObject({ sym: 'SOL', side: 'Short', d: '2024-01-02', pnl: -3 });
     expect(book.rows.filter((r) => r.sym === 'SOL')).toHaveLength(1);
     expect(book.rows.length).toBeLessThanOrEqual(RECENT_TRADES_CAP);
     expect(book.closedTotal).toBe(46);
@@ -122,7 +123,7 @@ describe('selectRecentClosed', () => {
     expect(ctx.recentTrades).toHaveLength(1);
     expect(ctx.recentTrades[0].sym).toBe('BTC');
     expect(ctx.journal).toBe('יומן ראשי');
-    expect(ctx.sideKey).toContain('לונג');
+    expect(ctx.sideKey).toBe('Long|Short');
     expect(JSON.stringify(ctx)).not.toContain('SOL');
   });
 
@@ -153,7 +154,11 @@ describe('selectRecentClosed', () => {
 
 describe('chatRowHint', () => {
   it('rides along only when the question asks for trades or a table', () => {
-    expect(chatRowHint('תן לי טבלה של 5 העסקאות האחרונות שלי')).toContain('recentTrades');
+    const hint = chatRowHint('תן לי טבלה של 5 העסקאות האחרונות שלי');
+    expect(hint).toContain('recentTrades');
+    expect(hint).toContain('"Long" or "Short"');
+    expect(hint).toContain('column header is R');
+    expect(hint).not.toContain('L=לונג');
     expect(chatRowHint('show my last trades')).toContain('Markdown');
     expect(chatRowHint('מה זה Spring?')).toBe('');
   });
@@ -165,6 +170,9 @@ describe('chat worker prompt', () => {
     expect(src).toMatch(/const CHAT_CONTEXT_BUDGET = 2200;/);
     expect(src).toContain('recentTrades');
     expect(src).toContain('טבלת Markdown');
+    expect(src).toContain('Long או Short');
+    expect(src).toContain('לא r');
+    expect(src).not.toContain('L=לונג');
     expect(src).not.toMatch(/const CHAT_CONTEXT_BUDGET = 900;/);
   });
 });

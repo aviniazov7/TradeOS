@@ -90,8 +90,9 @@ describe('TradeAI markdown', () => {
     expect(out).toContain('BTC');
     expect(out).toContain('NEAR');
     expect(out).not.toContain('>XRP<');
-    expect(out).toContain('לונג');
-    expect(out).toContain('שורט');
+    expect(out).toContain('Long');
+    expect(out).toContain('Short');
+    expect(out).toContain('>R<');
     expect(out.match(/<tr/g).length).toBe(6);
   });
 

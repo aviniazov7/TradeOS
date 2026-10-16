@@ -79,8 +79,8 @@ function exitOf(t) {
 function sideOf(direction) {
   const raw = String(direction || '').trim();
   const key = raw.toLowerCase();
-  if (key === 'long' || raw === 'לונג') return 'L';
-  if (key === 'short' || raw === 'שורט') return 'S';
+  if (key === 'long' || raw === 'לונג') return 'Long';
+  if (key === 'short' || raw === 'שורט') return 'Short';
   return null;
 }
 
@@ -103,7 +103,7 @@ export function compactClosedTrade(t) {
   if (exit != null) row.exit = exit;
   row.pnl = round2(safePnl(t)) ?? 0;
   const r = round2(signedTradeR(t));
-  if (r != null) row.r = r;
+  if (r != null) row.R = r;
   return row;
 }
 
@@ -205,7 +205,7 @@ export function buildChatJournalContext(trades, question = '', { journalId = nul
   const out = {
     ...stats,
     closedTotal: book.closedTotal,
-    sideKey: 'L=לונג,S=שורט',
+    sideKey: 'Long|Short',
     recentTrades: book.rows,
   };
   const name = String(journalName || '').trim();
@@ -224,20 +224,17 @@ const ROW_QUESTION = /טבל|עסקא|טרייד|\btrades?\b|\btable\b/i;
  */
 export function chatRowHint(question) {
   if (!ROW_QUESTION.test(String(question || ''))) return '';
-  return '\n\n[recentTrades holds the closed rows (d, sym, side L=לונג S=שורט, entry, exit, pnl, r), newest first. Answer a table request with a GitHub-flavored Markdown table. Do not invent rows, and do not say the dates are missing.]';
+  return '\n\n[recentTrades holds the closed rows (d, sym, side, entry, exit, pnl, R), newest first. side is already "Long" or "Short" — write those words, never L or S. The R-multiple column header is R, the uppercase field name, not r. Answer a table request with a GitHub-flavored Markdown table. Do not invent rows, and do not say the dates are missing.]';
 }
-
-const SIDE_HE = { L: 'לונג', S: 'שורט' };
 
 /** The GFM table the chat is asked to answer with. `take` is the row count. */
 export function recentTradesMarkdown(rows, take = 5) {
   const slice = (rows || []).slice(0, take);
   const header = '| תאריך | מטבע | כיוון | כניסה | יציאה | רווח/הפסד | R |';
   const sep = '| --- | --- | --- | ---: | ---: | ---: | ---: |';
-  const body = slice.map((r) => {
-    const pnl = typeof r.pnl === 'number' ? (r.pnl > 0 ? `+${r.pnl}` : String(r.pnl)) : '';
-    const side = SIDE_HE[r.side] || r.side || '';
-    return `| ${r.d || ''} | ${r.sym || ''} | ${side} | ${r.entry ?? ''} | ${r.exit ?? ''} | ${pnl} | ${r.r ?? ''} |`;
+  const body = slice.map((row) => {
+    const pnl = typeof row.pnl === 'number' ? (row.pnl > 0 ? `+${row.pnl}` : String(row.pnl)) : '';
+    return `| ${row.d || ''} | ${row.sym || ''} | ${row.side || ''} | ${row.entry ?? ''} | ${row.exit ?? ''} | ${pnl} | ${row.R ?? ''} |`;
   });
   return [header, sep, ...body].join('\n');
 }
