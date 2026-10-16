@@ -27,6 +27,7 @@ import Reveal from '../shared/Reveal';
 import { formatCurrency } from '../../utils/formatters';
 import { exchangeLabel } from '../../utils/constants';
 import { winLossRatio } from '../../utils/homeStats';
+import { declaredStartCapital } from '../../utils/portfolioPerformance';
 import { fetchGlobalMarket } from '../../services/globalMarket';
 import { readSessionCache, writeSessionCache } from '../../utils/sessionCache';
 import { pageVariants, pageTransition } from '../../utils/animations';
@@ -133,9 +134,10 @@ export default function Dashboard() {
     const totalPnL = closed.reduce((s, t) => s + safePnl(t), 0);
     // The ONE win-rate definition (breakevens excluded) — same as the journal.
     const winRate = calculateWinRate(closed);
-    // Per-journal: prefer live wallet when linked. Derive a synthetic
-    // initialBalance for linked journals so percentages stay consistent with
-    // the wallet (effInit = live − that journal's closed PnL).
+    // Portfolio VALUE, plus a capital base for the performance score's drawdown.
+    // The hero's % is not this gap: a linked wallet minus closed P&L still
+    // holds deposits and withdrawals, and (wallet − that base) / base treated
+    // money moved out as a trading loss.
     let totalInitial = 0;
     let totalBalance = 0;
     for (const j of journals) {
@@ -154,9 +156,6 @@ export default function Dashboard() {
       }
       // else: unlinked journal with no starting balance → not part of the total value.
     }
-    // Balance-based %: value vs its own initial, so it stays consistent with the
-    // counted journals and isn't skewed by PnL from journals excluded above.
-    const pnlPercent = totalInitial > 0 ? ((totalBalance - totalInitial) / totalInitial) * 100 : 0;
 
     // Average signed R — net P&L over the risk taken at ENTRY (original stop),
     // the same R the journal shows. Measuring against the current stop made a
@@ -164,7 +163,7 @@ export default function Dashboard() {
     const rs = closed.map(tradeRMultiple).filter((r) => r !== null);
     const avgRR = rs.length > 0 ? rs.reduce((s, r) => s + r, 0) / rs.length : null;
 
-    return { totalPnL, totalTrades: closed.length, winRate, totalBalance, totalInitial, pnlPercent, avgRR };
+    return { totalPnL, totalTrades: closed.length, winRate, totalBalance, totalInitial, avgRR };
   }, [allTrades, journals, linkedBalances]);
 
   // Global market data + latest news
@@ -472,7 +471,7 @@ export default function Dashboard() {
         {/* The account (value + cumulative P&L) beside the AI read of it. */}
         <div className="grid grid-cols-1 lg:grid-cols-3 gap-4 items-stretch">
           <div className="lg:col-span-2 min-w-0">
-            <PortfolioHero balance={globalStats.totalBalance} pnlPercent={globalStats.pnlPercent} series={equitySeries} hidden={hideBalances} />
+            <PortfolioHero balance={globalStats.totalBalance} declaredStart={declaredStartCapital(journals)} series={equitySeries} hidden={hideBalances} />
           </div>
           <div className="min-w-0"><TradeAgentCard trades={allTrades} /></div>
         </div>
