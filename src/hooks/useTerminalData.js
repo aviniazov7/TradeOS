@@ -23,8 +23,7 @@ const visible = () => typeof document === 'undefined' || document.visibilityStat
  * run once a snapshot actually contains a pair.
  *
  * → { connected: string[] | null (null = loading), snapshots: { [ex]: { positions,
- *     orders, ordersPartial, positionsError, ordersError, equity, available,
- *     error, at } },
+ *     orders, ordersPartial, positionsError, ordersError, error, at } },
  *     marks: { PAIR: price }, openTrades, loading, refreshing, lastUpdated, refresh }
  */
 export function useTerminalData({ pollMs = JOURNAL_POLL_MS } = {}) {
@@ -67,23 +66,7 @@ export function useTerminalData({ pollMs = JOURNAL_POLL_MS } = {}) {
       await Promise.all(list.map(async (ex) => {
         try {
           const snap = await fetchTerminalSnapshot(ex);
-          setSnapshots((s) => {
-            const prev = s[ex] || {};
-            // A failed balance leaves equity null. Keep the last figure so the
-            // header doesn't blink blank. A successful payload that simply has
-            // no free-margin field must not keep a stale "פנוי".
-            const keep = snap.balanceOk === false;
-            return {
-              ...s,
-              [ex]: {
-                ...snap,
-                equity: keep ? (prev.equity ?? null) : (snap.equity ?? null),
-                available: keep ? (prev.available ?? null) : (snap.available ?? null),
-                error: null,
-                at: Date.now(),
-              },
-            };
-          });
+          setSnapshots((s) => ({ ...s, [ex]: { ...snap, error: null, at: Date.now() } }));
         } catch (e) {
           // Keep the last good rows; just flag the problem.
           setSnapshots((s) => ({ ...s, [ex]: { ...(s[ex] || { positions: [], orders: [] }), error: e?.message || 'שגיאה', reason: e?.reason || null, at: s[ex]?.at || 0 } }));

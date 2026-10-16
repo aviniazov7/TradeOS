@@ -1,6 +1,6 @@
 import { describe, it, expect } from 'vitest';
 import {
-  withRisk, bybitWalletEquity, bybitWalletAvailable, mexcStableAvailable, okxAvailableEquity, bitgetAvailable, classifyExchangeAuthError, mexcCronOpen, mexcCronClosed, buildExits, enrichWithOrders, okxOrderRow, okxStopRow, bitgetOrderRow, bitgetStopRow, mexcExitsByPosition, mexcTradeFee, mexcStopsByPosition, mexcOrderKind, mexcEntryTypeByPosition, normalizeMexcClosed, normalizeOkxClosed, normalizeOkxOpen, normalizeBitgetClosed,
+  withRisk, bybitWalletEquity, classifyExchangeAuthError, mexcCronOpen, mexcCronClosed, buildExits, enrichWithOrders, okxOrderRow, okxStopRow, bitgetOrderRow, bitgetStopRow, mexcExitsByPosition, mexcTradeFee, mexcStopsByPosition, mexcOrderKind, mexcEntryTypeByPosition, normalizeMexcClosed, normalizeOkxClosed, normalizeOkxOpen, normalizeBitgetClosed,
   normalizeBybitOpen, normalizeMexcOpen, normalizeBitgetOpen,
 } from './exchangeNormalize';
 
@@ -369,30 +369,6 @@ describe('bybitWalletEquity', () => {
   it('returns null when the account type has nothing, 0 for an empty wallet', () => {
     expect(bybitWalletEquity([])).toBeNull();
     expect(bybitWalletEquity([{ accountType: 'UNIFIED', totalEquity: '0', coin: [] }])).toBe(0);
-  });
-});
-
-describe('available margin from the same wallet payload', () => {
-  it('reads Bybit totalAvailableBalance, else stablecoin availableToWithdraw', () => {
-    expect(bybitWalletAvailable([{ totalAvailableBalance: '120.4', coin: [] }])).toBeCloseTo(120.4, 6);
-    expect(bybitWalletAvailable([{ coin: [
-      { coin: 'USDT', availableToWithdraw: '80' },
-      { coin: 'BTC', availableToWithdraw: '1' },
-    ] }])).toBe(80);
-    expect(bybitWalletAvailable([{ coin: [] }])).toBeNull();
-  });
-  it('reads MEXC availableBalance and does not reuse the equity fallback', () => {
-    expect(mexcStableAvailable([
-      { currency: 'USDT', equity: '369.75', availableBalance: '200.5' },
-      { currency: 'BTC', equity: '1', availableBalance: '1' },
-    ])).toBeCloseTo(200.5, 6);
-    expect(mexcStableAvailable([{ currency: 'USDT', available: '369.75' }])).toBeNull();
-  });
-  it('reads OKX availEq and Bitget available', () => {
-    expect(okxAvailableEquity({ totalEq: '100', availEq: '40.25' })).toBeCloseTo(40.25, 6);
-    expect(okxAvailableEquity({ totalEq: '100' })).toBeNull();
-    expect(bitgetAvailable([{ usdtEquity: '50', available: '12.5' }])).toBeCloseTo(12.5, 6);
-    expect(bitgetAvailable([{ usdtEquity: '50' }])).toBeNull();
   });
 });
 

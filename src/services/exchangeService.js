@@ -1,6 +1,5 @@
 import { auth } from './firebase';
 import { getUserSetting } from './firestoreService';
-import { readWallet } from '../utils/terminal';
 
 const WORKER_URL =
   import.meta.env.VITE_WORKER_URL || 'https://trade-os.tradeos.workers.dev';
@@ -156,53 +155,35 @@ export async function fetchOpenOrders(exchange) {
 
 /**
  * Everything the trading terminal shows for one venue, in one go:
- * { positions, orders, ordersPartial, positionsError, ordersError, equity, available }.
- * Hyperliquid answers positions, orders, and account equity from one call
- * (/hl/positions already returns accountValue). Other venues have no equity
- * on the positions payload, so the futures-wallet balance rides this same
- * request — one extra call per poll, not a second timer. A balance failure
- * leaves equity/available null and does not fail the snapshot.
- * Throws only when nothing could be read.
+ * { positions, orders, ordersPartial, positionsError, ordersError }.
+ * Hyperliquid answers both from one call (/hl/positions returns its open
+ * orders too). Throws only when nothing could be read.
  */
 export async function fetchTerminalSnapshot(exchange) {
   if (exchange === 'hyperliquid') {
     const data = await hlGet('/hl/positions', {});
-    const wallet = readWallet({ balance: data.accountValue, available: data.available });
-    return {
-      positions: data.positions || [], orders: data.orders || [], ordersPartial: false,
-      positionsError: null, ordersError: null, equity: wallet.equity, available: wallet.available, balanceOk: true,
-    };
+    return { positions: data.positions || [], orders: data.orders || [], ordersPartial: false, positionsError: null, ordersError: null };
   }
-  const [pos, ord, bal] = await Promise.allSettled([
-    syncOpenPositions(exchange),
-    fetchOpenOrders(exchange),
-    fetchExchangeBalance(exchange),
-  ]);
+  const [pos, ord] = await Promise.allSettled([syncOpenPositions(exchange), fetchOpenOrders(exchange)]);
   if (pos.status === 'rejected' && ord.status === 'rejected') throw pos.reason;
-  const wallet = bal.status === 'fulfilled' ? readWallet(bal.value) : { equity: null, available: null };
   return {
     positions: pos.status === 'fulfilled' ? pos.value : [],
     orders: ord.status === 'fulfilled' ? ord.value.orders : [],
     ordersPartial: ord.status === 'fulfilled' ? ord.value.partial : false,
     positionsError: pos.status === 'rejected' ? (pos.reason?.message || 'שגיאה') : null,
     ordersError: ord.status === 'rejected' ? (ord.reason?.message || 'שגיאה') : null,
-    equity: wallet.equity,
-    available: wallet.available,
-    balanceOk: bal.status === 'fulfilled',
   };
 }
 
 export async function fetchExchangeBalance(exchange) {
   if (exchange === 'hyperliquid') {
     const data = await hlGet('/hl/positions', {});
-    const wallet = readWallet({ balance: data.accountValue, available: data.available });
-    return { balance: wallet.equity || 0, currency: 'USD', available: wallet.available };
+    return { balance: data.accountValue || 0, currency: 'USD' };
   }
   const res = await authedFetch('/exchange/balance', { exchange });
   const data = await res.json();
   if (!data.ok) throw exchangeError(data.error || 'שגיאה בטעינת היתרה', data.reason);
-  const wallet = readWallet(data);
-  return { balance: wallet.equity || 0, currency: data.currency || 'USD', available: wallet.available };
+  return { balance: data.balance || 0, currency: data.currency || 'USD' };
 }
 
 // ── Price candles (MAE/MFE) ─────────────────────────────────────────────────

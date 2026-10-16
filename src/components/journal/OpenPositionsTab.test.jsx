@@ -100,18 +100,12 @@ describe('בורסה tab', () => {
       mexc: {
         positions: [{ pair: 'BTCUSDT', direction: 'long', entryPrice: 100, quantity: 1, leverage: 1, stopLoss: 90, source: 'mexc', externalId: 'a', markPrice: 110, unrealizedPnl: 10, margin: 50 }],
         orders: [{ id: 'o1', exchange: 'mexc', pair: 'ETHUSDT', createdAt: 1 }],
-        equity: 369.75,
-        available: 120.4,
       },
     };
     const view = await mount();
     const html = view.html();
     expect(html).toContain('data-testid="exchange-logo"');
     expect(html).toContain('MEXC');
-    expect(html).toContain('מחובר');
-    expect(html).toContain('$369.75');
-    expect(html).toContain('פנוי');
-    expect(html).toContain('$120.40');
     expect(html).toContain('ניהול חיבור');
     expect(html).toContain('aria-label="רענון"');
     const positionsAt = html.indexOf('data-testid="open-positions-section"');
@@ -130,25 +124,6 @@ describe('בורסה tab', () => {
     expect(view.html()).toContain('aria-expanded="true"');
     await view.click('רענון');
     expect(terminal.refresh).toHaveBeenCalled();
-    await view.unmount();
-  });
-
-  it('shows one equity per connected exchange and skips a missing balance', async () => {
-    terminal.connected = ['mexc', 'bybit'];
-    terminal.loading = false;
-    terminal.snapshots = {
-      mexc: { positions: [], orders: [], equity: 369.75, available: null },
-      bybit: { positions: [], orders: [] },
-    };
-    const view = await mount();
-    const html = view.html();
-    const rows = html.match(/data-testid="exchange-balance-row"/g) || [];
-    expect(rows).toHaveLength(2);
-    expect(html).toContain('MEXC');
-    expect(html).toContain('Bybit');
-    expect(html).toContain('$369.75');
-    expect(html).not.toContain('$0.00');
-    expect(html).not.toContain('פנוי');
     await view.unmount();
   });
 

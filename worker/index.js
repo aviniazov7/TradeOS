@@ -10,7 +10,7 @@ import {
   buildMentionIndex, attributeMoves, describeFinding, ATTRIBUTION_WINDOW_MIN,
 } from './newsImpact.js';
 import {
-  bybitWalletEquity, bybitWalletAvailable, mexcStableAvailable, okxAvailableEquity, bitgetAvailable, classifyExchangeAuthError, mexcStopsByPosition, mexcEntryTypeByPosition, mexcOrderKind, mexcExitsByPosition,
+  bybitWalletEquity, classifyExchangeAuthError, mexcStopsByPosition, mexcEntryTypeByPosition, mexcOrderKind, mexcExitsByPosition,
   enrichWithOrders, okxOrderRow, okxStopRow, bitgetOrderRow, bitgetStopRow, mexcCronOpen, mexcCronClosed,
   normalizeMexcClosed, normalizeOkxClosed, normalizeOkxOpen, normalizeBitgetClosed,
   normalizeBybitOpen, normalizeMexcOpen, normalizeBitgetOpen,
@@ -5957,7 +5957,6 @@ async function handleRequest(request, env) {
       };
 
       let balance = 0;
-      let available = null;
 
       if (exchange === 'bybit') {
         const recvWindow = '5000';
@@ -5980,17 +5979,12 @@ async function handleRequest(request, env) {
         const uniEquity = uni.retCode === 0 ? bybitWalletEquity(uni.result?.list) : null;
         if (uniEquity) {
           balance = uniEquity;
-          available = bybitWalletAvailable(uni.result?.list);
         } else {
           const classic = await wallet('CONTRACT').catch(() => null);
           const classicEquity = classic?.retCode === 0 ? bybitWalletEquity(classic.result?.list) : null;
-          if (classicEquity !== null) {
-            balance = classicEquity;
-            available = bybitWalletAvailable(classic.result?.list);
-          } else if (uniEquity !== null) {
-            balance = uniEquity;
-            available = bybitWalletAvailable(uni.result?.list);
-          } else throw new Error(`Bybit ${uni.retCode}: ${uni.retMsg || 'no wallet data'}`);
+          if (classicEquity !== null) balance = classicEquity;
+          else if (uniEquity !== null) balance = uniEquity;
+          else throw new Error(`Bybit ${uni.retCode}: ${uni.retMsg || 'no wallet data'}`);
         }
       }
 
@@ -6010,7 +6004,6 @@ async function handleRequest(request, env) {
             balance += parseFloat(a.equity || a.available || 0) || 0;
           }
         }
-        available = mexcStableAvailable(rawList);
       }
 
       else if (exchange === 'okx') {
@@ -6023,7 +6016,6 @@ async function handleRequest(request, env) {
         const data = await res.json();
         if (data.code !== '0') throw new Error(`OKX ${data.code}: ${data.msg || 'error'}`);
         balance = parseFloat(data.data?.[0]?.totalEq) || 0;
-        available = okxAvailableEquity(data.data?.[0]);
       }
 
       else if (exchange === 'bitget') {
@@ -6039,16 +6031,13 @@ async function handleRequest(request, env) {
         for (const a of list) {
           balance += parseFloat(a.usdtEquity || a.equity || 0) || 0;
         }
-        available = bitgetAvailable(list);
       }
 
       else {
         return new Response(JSON.stringify({ ok: false, error: 'Exchange not supported' }), { status: 400, headers: { ...cors, 'Content-Type': 'application/json' } });
       }
 
-      const body = { ok: true, balance, currency: 'USD' };
-      if (available != null) body.available = available;
-      return new Response(JSON.stringify(body), { headers: { ...cors, 'Content-Type': 'application/json' } });
+      return new Response(JSON.stringify({ ok: true, balance, currency: 'USD' }), { headers: { ...cors, 'Content-Type': 'application/json' } });
     } catch (err) {
       // `reason` (key_expired / key_invalid / ip_blocked / no_permission) lets
       // the app say "your key expired — update it" instead of a dead balance.

@@ -28,45 +28,31 @@ function UpdatedLabel({ at, refreshing }) {
   );
 }
 
-export function ConnectionHeader({ accounts, lastUpdated, refreshing, onRefresh, manage, onManage }) {
+export function ConnectionHeader({ exchanges, healthy, lastUpdated, refreshing, onRefresh, manage, onManage }) {
+  const names = exchanges.map((ex) => EXCHANGE_LABELS[ex] || ex).join(' · ');
   return (
     <Card data-testid="exchange-connection" className="rounded-2xl px-3 py-2.5">
-      <div className="space-y-2 min-w-0">
-        <div className="space-y-1.5">
-          {accounts.map((row) => (
-            <div key={row.id} data-testid="exchange-balance-row" className="flex items-center gap-2 min-w-0">
-              <ExchangeLogo exchange={row.id} size="w-7 h-7" />
-              <div className="min-w-0 flex items-center gap-1.5">
-                <span className="text-sm font-bold text-text-primary truncate">{EXCHANGE_LABELS[row.id] || row.id}</span>
-                <span className="text-text-muted text-xs shrink-0" aria-hidden>·</span>
-                <span className={`w-1.5 h-1.5 rounded-full shrink-0 ${row.ok ? 'bg-profit' : 'bg-breakeven'}`} title={row.ok ? 'מחובר' : 'דורש טיפול'} />
-                <span className="text-[11px] font-semibold text-profit shrink-0">מחובר</span>
-              </div>
-              {row.equity != null && (
-                <div className="ms-auto shrink-0 text-end leading-tight">
-                  <Num data-testid="exchange-equity" className="text-sm font-bold text-text-primary">{fmtUsd(row.equity)}</Num>
-                  {row.available != null && (
-                    <div data-testid="exchange-available" className="text-[10px] text-text-muted whitespace-nowrap">
-                      פנוי <Num>{fmtUsd(row.available)}</Num>
-                    </div>
-                  )}
-                </div>
-              )}
-            </div>
+      <div className="flex items-center gap-2 min-w-0">
+        <div className="flex items-center -space-x-1.5 rtl:space-x-reverse shrink-0">
+          {exchanges.slice(0, 3).map((ex) => (
+            <ExchangeLogo key={ex} exchange={ex} size="w-7 h-7" />
           ))}
         </div>
-        <div className="flex items-center gap-2 min-w-0">
-          <div className="min-w-0 flex-1">
-            <UpdatedLabel at={lastUpdated} refreshing={refreshing} />
+        <div className="min-w-0 flex-1">
+          <div className="flex items-center gap-1.5 min-w-0">
+            <span className="text-sm font-bold text-text-primary truncate">{names}</span>
+            <span className={`w-1.5 h-1.5 rounded-full shrink-0 ${healthy ? 'bg-profit' : 'bg-breakeven'}`} title={healthy ? 'מחובר' : 'דורש טיפול'} />
+            <span className="hidden sm:inline text-[11px] font-semibold text-profit shrink-0">מחובר</span>
           </div>
-          <button type="button" onClick={onRefresh} disabled={refreshing} className="w-8 h-8 shrink-0 rounded-lg border border-border-primary bg-bg-tertiary text-text-secondary hover:text-text-primary grid place-items-center cursor-pointer disabled:opacity-50" title="רענון" aria-label="רענון">
-            <RefreshCw className={`w-3.5 h-3.5 ${refreshing ? 'animate-spin' : ''}`} />
-          </button>
-          <button type="button" data-testid="manage-connection" aria-expanded={manage} onClick={onManage}
-            className={`h-8 shrink-0 px-2.5 rounded-lg text-xs font-semibold border cursor-pointer transition-colors ${manage ? 'border-accent-primary/40 bg-accent-primary/15 text-accent-primary' : 'border-border-primary bg-bg-tertiary text-text-secondary hover:text-text-primary'}`}>
-            ניהול חיבור
-          </button>
+          <UpdatedLabel at={lastUpdated} refreshing={refreshing} />
         </div>
+        <button type="button" onClick={onRefresh} disabled={refreshing} className="w-8 h-8 shrink-0 rounded-lg border border-border-primary bg-bg-tertiary text-text-secondary hover:text-text-primary grid place-items-center cursor-pointer disabled:opacity-50" title="רענון" aria-label="רענון">
+          <RefreshCw className={`w-3.5 h-3.5 ${refreshing ? 'animate-spin' : ''}`} />
+        </button>
+        <button type="button" data-testid="manage-connection" aria-expanded={manage} onClick={onManage}
+          className={`h-8 shrink-0 px-2.5 rounded-lg text-xs font-semibold border cursor-pointer transition-colors ${manage ? 'border-accent-primary/40 bg-accent-primary/15 text-accent-primary' : 'border-border-primary bg-bg-tertiary text-text-secondary hover:text-text-primary'}`}>
+          ניהול חיבור
+        </button>
       </div>
     </Card>
   );
@@ -185,15 +171,6 @@ export default function OpenPositionsTab() {
   const problems = exchanges
     .map((ex) => ({ ex, s: snapshots[ex] }))
     .filter(({ s }) => s && (s.error || s.positionsError || s.ordersError || s.ordersPartial));
-  const accounts = useMemo(() => exchanges.map((ex) => {
-    const s = snapshots[ex];
-    return {
-      id: ex,
-      equity: Number.isFinite(s?.equity) ? s.equity : null,
-      available: Number.isFinite(s?.available) ? s.available : null,
-      ok: !(s && (s.error || s.positionsError)),
-    };
-  }), [exchanges, snapshots]);
   const noExchanges = connected !== null && exchanges.length === 0;
 
   if (connected === null) return <ListSkeleton />;
@@ -209,7 +186,8 @@ export default function OpenPositionsTab() {
   return (
     <div className="space-y-3">
       <ConnectionHeader
-        accounts={accounts}
+        exchanges={exchanges}
+        healthy={problems.length === 0}
         lastUpdated={lastUpdated}
         refreshing={refreshing}
         onRefresh={refresh}
