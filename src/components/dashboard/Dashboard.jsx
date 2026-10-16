@@ -13,7 +13,7 @@ import { useLinkedJournals } from '../../hooks/useLinkedExchangeBalance';
 import { KEY_PROBLEM_TEXT } from '../../services/exchangeService';
 import { isClosedTrade, safePnl, calculateWinRate, winRateOf, tradeRMultiple } from '../../utils/calculations';
 import DashboardSkeleton from './DashboardSkeleton';
-import PendingLimitOrders from './PendingLimitOrders';
+import OpenPositionsSummary from './OpenPositionsSummary';
 import TradeAgentCard from './TradeAgentCard';
 import GettingStartedCard from './GettingStartedCard';
 import PortfolioHero from './PortfolioHero';
@@ -30,8 +30,6 @@ import { winLossRatio } from '../../utils/homeStats';
 import { fetchGlobalMarket } from '../../services/globalMarket';
 import { readSessionCache, writeSessionCache } from '../../utils/sessionCache';
 import { pageVariants, pageTransition } from '../../utils/animations';
-import { fetchPerpPrices } from '../../services/bybitDirect';
-import { fetchStockQuotes } from '../../services/stocksApi';
 
 
 // "Good evening, Avi" + today's date, for the page header.
@@ -132,7 +130,6 @@ export default function Dashboard() {
     // Include trades with no journalId (legacy/imported before journal assignment) + trades belonging to current journals
     const relevantTrades = allTrades.filter((t) => !t.journalId || journalIds.has(t.journalId));
     const closed = relevantTrades.filter(isClosedTrade);
-    const openTrades = relevantTrades.filter((t) => !isClosedTrade(t));
     const totalPnL = closed.reduce((s, t) => s + safePnl(t), 0);
     // The ONE win-rate definition (breakevens excluded) — same as the journal.
     const winRate = calculateWinRate(closed);
@@ -167,7 +164,7 @@ export default function Dashboard() {
     const rs = closed.map(tradeRMultiple).filter((r) => r !== null);
     const avgRR = rs.length > 0 ? rs.reduce((s, r) => s + r, 0) / rs.length : null;
 
-    return { totalPnL, totalTrades: closed.length, winRate, totalBalance, totalInitial, pnlPercent, openTrades, avgRR };
+    return { totalPnL, totalTrades: closed.length, winRate, totalBalance, totalInitial, pnlPercent, avgRR };
   }, [allTrades, journals, linkedBalances]);
 
   // Global market data + latest news
@@ -243,37 +240,6 @@ export default function Dashboard() {
       .catch(() => { /* optional widget */ });
     return () => controller.abort();
   }, []);
-
-  // Live prices for open trades
-  const [livePrices, setLivePrices] = useState({});
-
-  useEffect(() => {
-    if (globalStats.openTrades.length === 0) return;
-    let cancelled = false;
-
-    // Bybit, not Binance — fapi.binance.com is geo-blocked from Israeli
-    // browsers, which left every open position without a live price.
-    // Stock positions are priced from the stock feed (keyed by ticker, the
-    // same key the position cards look up), crypto from the perp feed.
-    const fetchLivePrices = async () => {
-      const isStock = (t) => t.assetClass === 'stocks';
-      const pairs = [...new Set(globalStats.openTrades.filter((t) => !isStock(t)).map((t) => t.pair || t.symbol).filter(Boolean))];
-      const tickers = [...new Set(globalStats.openTrades.filter(isStock).map((t) => t.pair || t.symbol).filter(Boolean))];
-      try {
-        const [perp, stocks] = await Promise.all([
-          pairs.length ? fetchPerpPrices(pairs) : {},
-          fetchStockQuotes(tickers),
-        ]);
-        const merged = { ...(perp || {}) };
-        Object.entries(stocks).forEach(([sym, q]) => { if (q?.price > 0) merged[sym] = q.price; });
-        if (!cancelled && Object.keys(merged).length) setLivePrices(merged);
-      } catch (e) { console.error(e); }
-    };
-
-    fetchLivePrices();
-    const interval = setInterval(fetchLivePrices, 30000);
-    return () => { cancelled = true; clearInterval(interval); };
-  }, [globalStats.openTrades]);
 
   // Per-journal stats
   const journalStats = useMemo(() => {
@@ -497,7 +463,7 @@ export default function Dashboard() {
         )}
       />
 
-      <PendingLimitOrders trades={globalStats.openTrades} livePrices={livePrices} />
+      <OpenPositionsSummary hidden={hideBalances} />
 
       {/* First-steps checklist — renders only for fresh accounts. */}
       <GettingStartedCard trades={allTrades} journals={journals} morningCount={morningEntries.length} />
