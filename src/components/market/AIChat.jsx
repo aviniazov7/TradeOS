@@ -1,9 +1,9 @@
-import { useState, useEffect, useMemo, useRef, lazy, Suspense } from 'react';
+import { useState, useEffect, useRef, lazy, Suspense } from 'react';
 import { createPortal } from 'react-dom';
 import { m, AnimatePresence } from 'framer-motion';
 import { Bot, Send, RotateCcw, Sparkles, BarChart3, History, Trash2, Crown, Image as ImageIcon, Copy, Check, TrendingDown, Target, Clock, AlertTriangle, ShieldCheck, ClipboardList } from 'lucide-react';
 import { sendMessageStream } from '../../services/groqApi';
-import { buildCoachStats } from '../../utils/coachStats';
+import { buildChatJournalContext, chatRowHint } from '../../utils/recentTradesContext';
 import { formatAIText } from '../../utils/aiChatHelpers';
 import { detectCoinFromText } from '../../utils/technicals';
 import { fetchCoinChart } from '../../services/coingeckoApi';
@@ -95,16 +95,9 @@ function BotMark() {
   );
 }
 
-export default function AIChat({ heightClass = 'h-[calc(100dvh-13.5rem)] md:h-[calc(100vh-220px)]', seedQuestion = null, trades = null, hint = '' }) {
+export default function AIChat({ heightClass = 'h-[calc(100dvh-13.5rem)] md:h-[calc(100vh-220px)]', seedQuestion = null, trades = null, journalId = null, journalName = '', hint = '' }) {
   const [messages, setMessages] = useState([]);
   const [input, setInput] = useState('');
-  // The trader's own book, in the same compact shape the AI coach uses. Built
-  // once per trades change and sent with every turn, so a question about "my"
-  // trades is answered from them rather than from general advice.
-  const journalContext = useMemo(
-    () => (trades?.length ? buildCoachStats(trades, { premium: true }) : null),
-    [trades],
-  );
   // A question picked from the hub lands in the box, it is never auto-sent —
   // the user still gets to edit it, and an accidental chip tap must not spend
   // one of their AI questions.
@@ -251,8 +244,22 @@ export default function AIChat({ heightClass = 'h-[calc(100dvh-13.5rem)] md:h-[c
       chartPromiseRef.current = null;
     }
 
+    // Rebuilt per question: a symbol or a date in the text pulls those closed
+    // rows ahead of the newest-40 window. Scoped to the selected journal.
+    const journalContext = trades?.length
+      ? buildChatJournalContext(trades, text, { journalId, journalName })
+      : null;
+
+    // The hint is not written into the saved conversation. It only tells the
+    // model, on this turn, to read recentTrades and answer a table in GFM.
+    const outbound = newMessages.map((msg, i) => (
+      i === newMessages.length - 1 && msg.role === 'user' && journalContext
+        ? { ...msg, text: `${msg.text}${chatRowHint(text)}` }
+        : msg
+    ));
+
     try {
-      await sendMessageStream(newMessages, (chunk) => {
+      await sendMessageStream(outbound, (chunk) => {
         streamingTextRef.current += chunk;
         if (!batchTimeoutRef.current) {
           batchTimeoutRef.current = setTimeout(() => {

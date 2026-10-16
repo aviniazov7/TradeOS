@@ -2,6 +2,7 @@
 import { describe, expect, it } from 'vitest';
 import { renderToStaticMarkup } from 'react-dom/server';
 import { formatAIText } from './aiChatHelpers';
+import { recentTradesMarkdown, selectRecentClosed } from './recentTradesContext';
 
 function html(text) {
   return renderToStaticMarkup(<div>{formatAIText(text)}</div>);
@@ -58,6 +59,40 @@ describe('TradeAI markdown', () => {
     expect(out).not.toContain('|---|');
     expect(out).not.toContain(':---');
     expect(out).toContain('שורה אחרי | לא טבלה');
+  });
+
+  it('renders a recent-trades GFM table with five rows', () => {
+    const trade = (overrides) => ({
+      status: 'closed',
+      pair: 'BTCUSDT',
+      direction: 'long',
+      entryPrice: 100,
+      exitPrice: 110,
+      stopLoss: 90,
+      quantity: 1,
+      netPnl: 8,
+      exitDate: new Date(2026, 9, 16),
+      ...overrides,
+    });
+    const book = selectRecentClosed([
+      trade({ pair: 'BTCUSDT', exitDate: new Date(2026, 9, 16), netPnl: 12, entryPrice: 65000, exitPrice: 66000, stopLoss: 64000 }),
+      trade({ pair: 'ETHUSDT', direction: 'short', exitDate: new Date(2026, 9, 15), netPnl: -4, entryPrice: 2000, exitPrice: 2050, stopLoss: 1900 }),
+      trade({ pair: 'SOLUSDT', exitDate: new Date(2026, 9, 14), netPnl: 3.5, entryPrice: 140, exitPrice: 150, stopLoss: 130 }),
+      trade({ pair: 'ADAUSDT', exitDate: new Date(2026, 9, 13), netPnl: 1, entryPrice: 0.4, exitPrice: 0.45, stopLoss: 0.35 }),
+      trade({ pair: 'NEARUSDT', direction: 'short', exitDate: new Date(2026, 9, 12), netPnl: -2, entryPrice: 5, exitPrice: 5.4, stopLoss: 4.5 }),
+      trade({ pair: 'XRPUSDT', exitDate: new Date(2026, 9, 1), netPnl: 9 }),
+    ]);
+    const out = html(recentTradesMarkdown(book.rows, 5));
+    expect(out).toContain('<table');
+    expect(out).toContain('overflow-x-auto');
+    expect(out).toContain('תאריך');
+    expect(out).toContain('רווח/הפסד');
+    expect(out).toContain('BTC');
+    expect(out).toContain('NEAR');
+    expect(out).not.toContain('>XRP<');
+    expect(out).toContain('לונג');
+    expect(out).toContain('שורט');
+    expect(out.match(/<tr/g).length).toBe(6);
   });
 
   it('escapes HTML inside a table cell', () => {
