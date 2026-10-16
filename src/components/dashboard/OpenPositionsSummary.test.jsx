@@ -4,6 +4,7 @@ import { beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
 import { createRoot } from 'react-dom/client';
 import { MemoryRouter, Route, Routes, useSearchParams } from 'react-router-dom';
 import OpenPositionsSummary from './OpenPositionsSummary';
+import { chipsThatFit } from '../../utils/chipsThatFit';
 
 const terminal = {
   connected: ['mexc'],
@@ -73,6 +74,9 @@ async function mount(props) {
       const btn = [...el.querySelectorAll('button')].find((b) => b.textContent.includes(label));
       await act(async () => { btn.click(); });
     },
+    clickTestId: async (id) => {
+      await act(async () => { el.querySelector(`[data-testid="${id}"]`).click(); });
+    },
     unmount: async () => {
       await act(async () => { root.unmount(); });
       el.remove();
@@ -129,8 +133,11 @@ describe('open positions summary', () => {
     expect(html).toContain('LONG');
     expect(html).toContain('SHORT');
     expect(html).toContain('>+1<');
+    expect(html).toContain('text-text-secondary');
     expect(html).not.toContain('ועוד 1');
-    await view.click('BTC');
+    const overflow = html.match(/data-testid="open-positions-overflow"/g) || [];
+    expect(overflow).toHaveLength(1);
+    await view.clickTestId('open-positions-overflow');
     expect(view.html()).toContain('arrived:positions');
     await view.unmount();
   });
@@ -146,5 +153,33 @@ describe('open positions summary', () => {
     expect(html).not.toContain('$65.00');
     expect(html).toContain('BTCUSDT');
     await view.unmount();
+  });
+});
+
+describe('chipsThatFit', () => {
+  const widths = [100, 100, 100];
+  const gap = 6;
+  const overflow = 32;
+
+  it('keeps every chip when the row is wide enough', () => {
+    expect(chipsThatFit({ chipWidths: widths.slice(0, 2), overflowWidth: overflow, gap, available: 400, total: 2 })).toBe(2);
+  });
+
+  it('reserves a +N chip once another position would be clipped', () => {
+    expect(chipsThatFit({ chipWidths: widths, overflowWidth: overflow, gap, available: 150, total: 4 })).toBe(1);
+    expect(chipsThatFit({ chipWidths: widths, overflowWidth: overflow, gap, available: 250, total: 4 })).toBe(2);
+    expect(chipsThatFit({ chipWidths: widths, overflowWidth: overflow, gap, available: 400, total: 4 })).toBe(3);
+  });
+
+  it('drops to the overflow chip alone when even one position chip cannot sit beside it', () => {
+    expect(chipsThatFit({ chipWidths: widths, overflowWidth: overflow, gap, available: 40, total: 4 })).toBe(0);
+  });
+
+  it('keeps one squeezed chip when the slot is only a little shorter than the full chip plus +N', () => {
+    expect(chipsThatFit({ chipWidths: [144, 150, 141], overflowWidth: 28, gap: 6, available: 158, total: 4 })).toBe(1);
+  });
+
+  it('falls back to the cap when the row has not been measured', () => {
+    expect(chipsThatFit({ chipWidths: [0, 0, 0], overflowWidth: 0, gap: 0, available: 0, total: 4 })).toBe(3);
   });
 });
