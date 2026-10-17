@@ -1,4 +1,4 @@
-import { motion } from 'framer-motion';
+import { m } from 'framer-motion';
 import { useNavigate } from 'react-router-dom';
 import {
   Accessibility, ChevronRight, CheckCircle2, AlertTriangle,
@@ -39,7 +39,7 @@ export default function AccessibilityStatement() {
   const navigate = useNavigate();
 
   return (
-    <motion.div
+    <m.div
       variants={pageVariants} initial="initial" animate="animate" exit="exit" transition={pageTransition}
       className="max-w-3xl mx-auto px-4 py-6 space-y-4"
     >
@@ -124,6 +124,6 @@ export default function AccessibilityStatement() {
         <Calendar className="w-3.5 h-3.5" />
         הצהרת הנגישות עודכנה לאחרונה בתאריך: {LAST_UPDATED}
       </div>
-    </motion.div>
+    </m.div>
   );
 }

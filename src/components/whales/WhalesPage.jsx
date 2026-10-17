@@ -1,5 +1,5 @@
 import { useState, useEffect, useRef, useMemo } from 'react';
-import { motion, AnimatePresence } from 'framer-motion';
+import { m, AnimatePresence } from 'framer-motion';
 import {
   HelpCircle, Zap, TrendingUp, TrendingDown,
   Radio, Scale, CircleDollarSign,
@@ -106,7 +106,7 @@ function LiveDot({ status }) {
 // naturally, while the badges stay Hebrew. $1M+ prints are highlighted.
 function FeedRow({ whale, sym, badge, badgeClass, usd, usdClass, price, t, highlight }) {
   return (
-    <motion.div
+    <m.div
       initial={{ opacity: 0, x: -8 }}
       animate={{ opacity: 1, x: 0 }}
       dir="ltr"
@@ -119,7 +119,7 @@ function FeedRow({ whale, sym, badge, badgeClass, usd, usdClass, price, t, highl
       <span className={`num-mono text-sm font-bold ml-auto ${usdClass}`}>{fmtUsd(usd)}</span>
       <span className="num-mono text-xs text-text-secondary hidden sm:inline w-20 text-right">@{fmtPrice(price)}</span>
       <span className="num-mono text-xs text-text-secondary w-11 text-right">{fmtWhen(t)}</span>
-    </motion.div>
+    </m.div>
   );
 }
 
@@ -270,7 +270,7 @@ export default function WhalesPage({ embedded = false }) {
     : 'בעיקר שורטים — דלק לעליות';
 
   return (
-    <motion.div
+    <m.div
       {...(embedded ? {} : { variants: pageVariants, initial: 'initial', animate: 'animate', exit: 'exit', transition: pageTransition })}
       className={embedded ? 'space-y-4' : 'px-4 py-6 max-w-6xl mx-auto space-y-4'}>
 
@@ -292,7 +292,7 @@ export default function WhalesPage({ embedded = false }) {
       {/* Explanations — collapsed behind the button */}
       <AnimatePresence>
         {showInfo && (
-          <motion.div initial={{ opacity: 0, height: 0 }} animate={{ opacity: 1, height: 'auto' }} exit={{ opacity: 0, height: 0 }} className="overflow-hidden">
+          <m.div initial={{ opacity: 0, height: 0 }} animate={{ opacity: 1, height: 'auto' }} exit={{ opacity: 0, height: 0 }} className="overflow-hidden">
             <div className={`${panel} grid grid-cols-1 md:grid-cols-3 gap-4 text-sm text-text-secondary leading-relaxed`}>
               <div>
                 <div className="font-bold text-text-primary mb-1">עסקאות ענק</div>
@@ -307,7 +307,7 @@ export default function WhalesPage({ embedded = false }) {
                 פוזיציות ממונפות שנסגרו בכוח. גל חיסולי לונגים = לחץ מכירה שנשרף, לפעמים תחתית מקומית; חיסולי שורטים = דלק לעליות.
               </div>
             </div>
-          </motion.div>
+          </m.div>
         )}
       </AnimatePresence>
 
@@ -448,6 +448,6 @@ export default function WhalesPage({ embedded = false }) {
         <Radio className="w-3.5 h-3.5" />
         נתונים חיים מה-API הציבורי של Bybit · אינו ייעוץ השקעות
       </div>
-    </motion.div>
+    </m.div>
   );
 }

@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
-import { motion } from 'framer-motion';
+import { m } from 'framer-motion';
 import { Crown, Check, ShieldCheck, ChevronRight, Lock } from 'lucide-react';
 import toast from 'react-hot-toast';
 import { useAuth } from '../../contexts/AuthContext';
@@ -51,7 +51,7 @@ export default function CheckoutPage() {
   // is live the pay button captures the intent as a lead (see pay()).
 
   return (
-    <motion.div variants={pageVariants} initial="initial" animate="animate" exit="exit" transition={pageTransition}
+    <m.div variants={pageVariants} initial="initial" animate="animate" exit="exit" transition={pageTransition}
       className="px-1 py-2 md:py-6">
       <div className="max-w-lg mx-auto space-y-4">
 
@@ -109,6 +109,9 @@ export default function CheckoutPage() {
             <span className="text-sm font-bold text-text-primary">סה&quot;כ לתשלום</span>
             <span className="num-mono text-xl font-extrabold text-text-primary" dir="ltr">₪{plan.price}</span>
           </div>
+          <p className="text-xs text-text-secondary leading-relaxed">
+            החיוב הוא בשקלים (₪) — זה מטבע התשלום, לא מטבע היומן. רווח והפסד בעסקאות נשארים בדולרים.
+          </p>
           <details className="group border-t border-border-primary pt-3">
             <summary className="text-xs font-semibold text-accent-hover cursor-pointer list-none flex items-center gap-1">
               מה כלול במנוי <ChevronRight className="w-3.5 h-3.5 rotate-90 group-open:-rotate-90 transition-transform" />
@@ -152,6 +155,6 @@ export default function CheckoutPage() {
           <ShieldCheck className="w-3.5 h-3.5 text-profit" /> תשלום מאובטח · ביטול בכל עת
         </p>
       </div>
-    </motion.div>
+    </m.div>
   );
 }

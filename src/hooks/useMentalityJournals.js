@@ -3,6 +3,7 @@ import { localDayKey } from '../utils/calculations';
 import { findEntryForDay } from '../utils/mentalityJournalForm';
 import {
   subscribeToUserCollection,
+  seedUserCollection,
   addToUserCollection,
   updateUserDocument,
   deleteUserDocument,
@@ -12,28 +13,35 @@ import { useAuth } from '../contexts/AuthContext';
 
 export function useMentalityJournals() {
   const { user } = useAuth();
-  const [morningEntries, setMorningEntries] = useState([]);
-  const [eveningEntries, setEveningEntries] = useState([]);
-  const [loading, setLoading] = useState(true);
+  const uid = user?.uid;
+  const [morningEntries, setMorningEntries] = useState(() => seedUserCollection(uid, 'morningJournals').data);
+  const [eveningEntries, setEveningEntries] = useState(() => seedUserCollection(uid, 'eveningJournals').data);
+  const [loading, setLoading] = useState(() => (
+    seedUserCollection(uid, 'morningJournals').loading || seedUserCollection(uid, 'eveningJournals').loading
+  ));
 
   useEffect(() => {
-    if (!user) {
+    if (!uid) {
       setMorningEntries([]);
       setEveningEntries([]);
       setLoading(false);
-      return;
+      return undefined;
     }
 
-    setLoading(true);
-    let morningDone = false;
-    let eveningDone = false;
+    const morningSeed = seedUserCollection(uid, 'morningJournals');
+    const eveningSeed = seedUserCollection(uid, 'eveningJournals');
+    if (!morningSeed.loading) setMorningEntries(morningSeed.data);
+    if (!eveningSeed.loading) setEveningEntries(eveningSeed.data);
+    let morningDone = !morningSeed.loading;
+    let eveningDone = !eveningSeed.loading;
+    setLoading(!(morningDone && eveningDone));
 
     const checkDone = () => {
       if (morningDone && eveningDone) setLoading(false);
     };
 
     const unsubMorning = subscribeToUserCollection(
-      user.uid,
+      uid,
       'morningJournals',
       {},
       (data) => {
@@ -49,7 +57,7 @@ export function useMentalityJournals() {
     );
 
     const unsubEvening = subscribeToUserCollection(
-      user.uid,
+      uid,
       'eveningJournals',
       {},
       (data) => {
@@ -68,7 +76,7 @@ export function useMentalityJournals() {
       unsubMorning();
       unsubEvening();
     };
-  }, [user]);
+  }, [uid]);
 
   const [todayStr, setTodayStr] = useState(() => localDayKey());
 

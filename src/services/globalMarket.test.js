@@ -14,6 +14,7 @@ describe('fromPaprika', () => {
       total_volume: { usd: 2.1e11 },
       market_cap_change_percentage_24h_usd: -1.2,
       market_cap_percentage: { btc: 56.8 },
+      active_cryptocurrencies: null,
     });
   });
   it('rejects empty / zero payloads', () => {

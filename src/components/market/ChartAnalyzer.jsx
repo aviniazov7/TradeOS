@@ -1,6 +1,6 @@
 import { useState, useRef, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { motion, AnimatePresence } from 'framer-motion';
+import { m, AnimatePresence } from 'framer-motion';
 import {
   Sparkles, Brain, TrendingUp, Target, ImagePlus, RefreshCw, X,
   Copy, Check, Crown, Eye, Activity, Layers, Lightbulb, BarChart3, GitBranch,
@@ -43,20 +43,20 @@ function ThinkingTimeline() {
   }, []);
 
   return (
-    <motion.div
+    <m.div
       initial={{ opacity: 0, y: 10 }}
       animate={{ opacity: 1, y: 0 }}
       exit={{ opacity: 0 }}
       className="rounded-2xl border border-border-primary bg-bg-secondary p-4"
     >
       <div className="flex items-center gap-2.5 mb-4">
-        <motion.div
+        <m.div
           animate={{ scale: [1, 1.12, 1] }}
           transition={{ duration: 1.6, repeat: Infinity }}
           className="w-8 h-8 rounded-xl bg-accent-primary/15 flex items-center justify-center"
         >
           <Brain className="w-4.5 h-4.5 text-accent-primary" />
-        </motion.div>
+        </m.div>
         <div>
           <p className="text-sm font-bold text-text-primary">TradeAI מנתח...</p>
           <p className="text-[10px] text-text-muted">מעבד את הגרף שלב אחר שלב</p>
@@ -68,7 +68,7 @@ function ThinkingTimeline() {
           const done = i < step;
           const active = i === step;
           return (
-            <motion.div
+            <m.div
               key={s.label}
               initial={{ opacity: 0, x: 8 }}
               animate={{ opacity: done || active ? 1 : 0.35, x: 0 }}
@@ -82,9 +82,9 @@ function ThinkingTimeline() {
                   ? <Check className="w-3.5 h-3.5 text-profit" />
                   : active
                     ? (
-                      <motion.div animate={{ rotate: 360 }} transition={{ duration: 2, repeat: Infinity, ease: 'linear' }}>
+                      <m.div animate={{ rotate: 360 }} transition={{ duration: 2, repeat: Infinity, ease: 'linear' }}>
                         <s.icon className="w-3.5 h-3.5 text-accent-primary" />
-                      </motion.div>
+                      </m.div>
                     )
                     : <s.icon className="w-3.5 h-3.5 text-text-muted" />
                 }
@@ -94,20 +94,20 @@ function ThinkingTimeline() {
               }`}>
                 {s.label}
               </span>
-            </motion.div>
+            </m.div>
           );
         })}
       </div>
 
       <div className="mt-4 h-1 bg-bg-tertiary rounded-full overflow-hidden">
-        <motion.div
+        <m.div
           className="h-full rounded-full"
           style={{ background: 'linear-gradient(90deg, #2563eb, #38bdf8)' }}
           animate={{ width: `${((step + 1) / THINK_STEPS.length) * 92}%` }}
           transition={{ duration: 0.6 }}
         />
       </div>
-    </motion.div>
+    </m.div>
   );
 }
 
@@ -305,7 +305,7 @@ export default function ChartAnalyzer({ heightClass = '', initialImage = null })
                 <div className={`relative rounded-2xl border overflow-hidden bg-black/40 ${analyzing ? 'border-accent-primary/60' : 'border-border-primary'}`}>
                   <img src={image.dataUrl} alt="הגרף שהועלה" className="w-full max-h-[22rem] object-contain" />
                   {analyzing && (
-                    <motion.div
+                    <m.div
                       initial={{ left: '-12%' }}
                       animate={{ left: ['-12%', '104%'] }}
                       transition={{ duration: 2.2, repeat: Infinity, ease: 'easeInOut' }}
@@ -340,7 +340,7 @@ export default function ChartAnalyzer({ heightClass = '', initialImage = null })
                 </AnimatePresence>
 
                 {resultText ? (
-                  <motion.div initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }} className="rounded-2xl border border-border-primary bg-bg-tertiary overflow-hidden">
+                  <m.div initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }} className="rounded-2xl border border-border-primary bg-bg-tertiary overflow-hidden">
                     <div className="flex items-center justify-between gap-2 px-4 py-3 border-b border-border-primary">
                       <span className="flex items-center gap-2 text-sm font-bold text-text-primary">
                         <Sparkles className="w-4 h-4 text-accent-hover" /> הניתוח
@@ -359,7 +359,7 @@ export default function ChartAnalyzer({ heightClass = '', initialImage = null })
                     <div className="px-4 py-4 text-[15px] leading-relaxed text-text-primary/90">
                       {formatAIText(resultText)}
                     </div>
-                  </motion.div>
+                  </m.div>
                 ) : !analyzing && (
                   <div className="hidden lg:flex h-full min-h-[14rem] flex-col items-center justify-center text-center gap-2 rounded-2xl border border-dashed border-border-primary px-6">
                     <Sparkles className="w-6 h-6 text-accent-hover" />

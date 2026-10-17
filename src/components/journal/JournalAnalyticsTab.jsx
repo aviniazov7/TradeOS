@@ -1,5 +1,5 @@
 import { useMemo, lazy, Suspense } from 'react';
-import { motion } from 'framer-motion';
+import { m } from 'framer-motion';
 import {
   Wallet, Target, Zap, BarChart3, DollarSign,
 } from 'lucide-react';
@@ -12,6 +12,7 @@ import TradeHeatmap from '../dashboard/TradeHeatmap';
 import EmptyState from '../shared/EmptyState';
 import JournalRCard from './JournalRCard';
 import { formatCurrency, formatPercent, formatDuration, LRM } from '../../utils/formatters';
+import { profitFactorText } from '../../utils/homeStats';
 import { TAG_LABELS } from '../../utils/constants';
 import { staggerContainer } from '../../utils/animations';
 
@@ -30,7 +31,7 @@ const PIE_COLORS = { 'רווח': '#22c55e', 'הפסד': '#ef4444', 'אפס': '#f
 const cardClass = 'bg-bg-secondary border border-border-primary rounded-xl p-4';
 const pnlColor = (v) => v >= 0 ? 'text-profit' : 'text-loss';
 
-// The journal's "ניתוחים" tab. Lazy-loaded by TradeJournal so neither this
+// The journal's "אנליטיקה" tab. Lazy-loaded by TradeJournal so neither this
 // code nor the analytics computation runs while the user is on the trades tab.
 export default function JournalAnalyticsTab({
   trades, period, onPeriodChange, stats,
@@ -65,8 +66,8 @@ export default function JournalAnalyticsTab({
         ) : (
           <EmptyState
             icon={BarChart3}
-            title="אין עדיין נתונים לניתוח"
-            description="הניתוחים נבנים מהעסקאות הסגורות שלך — ברגע שתסגור את העסקה הראשונה, הגרפים והמדדים יתעוררו כאן."
+            title="אין עדיין נתונים לאנליטיקה"
+            description="האנליטיקה נבנית מהעסקאות הסגורות שלך — ברגע שתסגור את העסקה הראשונה, הגרפים והמדדים יתעוררו כאן."
             actionLabel="הוסף עסקה ראשונה"
             onAction={onAddFirstTrade}
           />
@@ -76,7 +77,7 @@ export default function JournalAnalyticsTab({
       {analytics !== null && (
         <>
           {/* Row 1: Main Stats */}
-          <motion.div className="grid grid-cols-2 md:grid-cols-4 gap-2.5 md:gap-3 mb-3 md:mb-4" variants={staggerContainer} initial="initial" animate="animate">
+          <m.div className="grid grid-cols-2 md:grid-cols-4 gap-2.5 md:gap-3 mb-3 md:mb-4" variants={staggerContainer} initial="initial" animate="animate">
             <StatCard label={balanceIsLive ? `יתרה נוכחית · ${activeJournal.exchange}` : 'יתרה נוכחית'}
               value={formatCurrency(displayedCurrentBalance).replace('+', '')}
               subtitle={balanceIsLive ? 'מסונכרן עם הבורסה' : (activeJournal?.initialBalance > 0 ? `${formatPercent(stats.balanceChangePercent)} מההתחלה` : `${stats.totalTrades} עסקאות`)}
@@ -89,16 +90,16 @@ export default function JournalAnalyticsTab({
               icon={DollarSign} color={stats.totalPnL >= 0 ? 'text-profit' : 'text-loss'} />
             <StatCard label="אחוז הצלחה" value={`${stats.winRate.toFixed(1)}%`} subtitle={`${stats.winCount}W ${stats.lossCount}L`}
               icon={Target} color="text-accent-primary" />
-            <StatCard label="תוחלת" value={formatCurrency(stats.expectancy)} subtitle={`ממוצע ${stats.avgRR.toFixed(2)}R`}
+            <StatCard label="תוחלת" value={formatCurrency(stats.expectancy)} subtitle={`R נטו ממוצע לרווחים ${stats.avgRR.toFixed(2)}`}
               icon={Zap} color={stats.expectancy >= 0 ? 'text-profit' : 'text-loss'} />
-          </motion.div>
+          </m.div>
 
           {/* Combined Metrics Grid */}
           <div className="bg-bg-secondary border border-border-primary rounded-xl mb-4 md:mb-6 p-3">
             <div className="grid grid-cols-3 md:grid-cols-5 lg:grid-cols-10 gap-px">
               {[
                 { label: 'רצף נוכחי', value: streakText, color: streakColor },
-                { label: 'מקדם רווח', value: stats.profitFactor === Infinity ? '∞' : stats.profitFactor.toFixed(2), color: stats.profitFactor >= 1.5 ? 'text-profit' : 'text-loss' },
+                { label: 'מקדם רווח', value: profitFactorText(stats.profitFactor, stats.winCount, stats.lossCount), color: (stats.winCount + stats.lossCount) === 0 ? 'text-text-muted' : stats.profitFactor >= 1.5 ? 'text-profit' : 'text-loss' },
                 { label: 'תשואה/תנודתיות', value: stats.sharpeRatio.toFixed(2) },
                 // Calmar needs real capital — without a starting balance it is null.
                 { label: 'תשואה/נפילה', value: stats.calmarRatio == null ? '—' : stats.calmarRatio.toFixed(2) },
@@ -106,7 +107,7 @@ export default function JournalAnalyticsTab({
                 { label: 'התאוששות', value: stats.recoveryFactor.toFixed(2), color: stats.recoveryFactor >= 1 ? 'text-profit' : 'text-loss' },
                 // Percent only against real capital; otherwise the dollar drawdown.
                 { label: 'ירידה מקס׳', value: stats.maxDrawdown == null ? (stats.maxDrawdownAbsolute > 0 ? formatCurrency(-stats.maxDrawdownAbsolute) : '$0.00') : `${LRM}-${stats.maxDrawdown.toFixed(1)}%`, color: 'text-loss' },
-                { label: 'סיכון/סיכוי', value: `1:${stats.avgRR.toFixed(2)}` },
+                { label: 'סיכון/סיכוי נטו', value: `1:${stats.avgRR.toFixed(2)}` },
                 { label: 'ימי מסחר', value: stats.tradingDays },
                 { label: 'עסקאות/יום', value: stats.tradesPerDay.toFixed(1) },
                 { label: 'משך ממוצע', value: formatDuration(stats.avgDurationHours) },
@@ -135,7 +136,14 @@ export default function JournalAnalyticsTab({
           {analytics && (
             <>
 
-              <Suspense fallback={<div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4 mb-6">{[1, 2, 3, 4].map((i) => <div key={i} className={`${cardClass} p-5 h-48 animate-pulse`} />)}</div>}>
+              <Suspense fallback={(
+                <div className="space-y-4 mb-6">
+                  <div className={`${cardClass} h-72 animate-pulse`} />
+                  <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                    {[1, 2, 3].map((i) => <div key={i} className={`${cardClass} h-64 animate-pulse`} />)}
+                  </div>
+                </div>
+              )}>
                 <JournalCharts
                   analytics={analytics} stats={stats} periodTrades={periodTrades}
                   cardClass={cardClass} tooltipStyle={tooltipStyle} pieColors={PIE_COLORS}

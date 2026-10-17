@@ -30,12 +30,44 @@ export const TICKER_STOCKS = ['SPY', 'QQQ', 'AAPL', 'NVDA', 'TSLA', 'MSFT', 'AMZ
 // tolerant of a crypto-style suffix on older/hand-typed rows.
 export const stockSymbol = (pair) => String(pair || '').toUpperCase().replace(/USDT$/, '').trim();
 
-// Logo sources, best first. Both serve free PNGs by ticker with no key; a 404
-// moves to the next, and after the last the component draws a letter badge.
+// Official marks. A name in this map never falls through to a remote CDN:
+// a 404 becomes a letter badge. Parqet's SPY image is the orange/blue "zest"
+// wordmark, and FMP's is the State Street wordmark — neither may be requested
+// once a local file exists.
+const STATE_STREET_S = '/logos/stocks/spy-5eda66be.png';
+const LOCAL_STOCK_LOGOS = {
+  // TradingView's SPDR "S" (white on a black circle). A new filename so a
+  // phone that cached spy-173c9304.png — or the HTML the SPA returned for
+  // that URL — cannot keep it for 7 days. The old spider file stays on disk
+  // only so a stale bundle that still requests it gets an image, not HTML.
+  SPY: STATE_STREET_S,
+  // Same issuer mark TradingView uses for these State Street ETFs.
+  XLK: STATE_STREET_S,
+  XLC: STATE_STREET_S,
+  XLY: STATE_STREET_S,
+  XLP: STATE_STREET_S,
+  XLE: STATE_STREET_S,
+  XLF: STATE_STREET_S,
+  GLD: STATE_STREET_S,
+  DIA: STATE_STREET_S,
+  QQQ: '/logos/stocks/qqq.png',
+  AAPL: '/logos/stocks/aapl.svg',
+  NVDA: '/logos/stocks/nvda.png',
+  TSLA: '/logos/stocks/tsla.svg',
+  MSFT: '/logos/stocks/msft.svg',
+  AMZN: '/logos/stocks/amzn.svg',
+  META: '/logos/stocks/meta.svg',
+};
+
+// Logo sources, best first. A hosted official file is the only URL for that
+// symbol. Remote PNGs cover tickers we have not drawn ourselves; a 404 moves
+// to the next, and after the last the component draws a letter badge.
 export function stockLogoUrls(symbol) {
   const s = stockSymbol(symbol);
   if (!s) return [];
   const base = s.replace(/\.[A-Z]+$/, ''); // TEVA.TA → TEVA for the US-listed logo
+  const local = LOCAL_STOCK_LOGOS[s] || LOCAL_STOCK_LOGOS[base];
+  if (local) return [local];
   return [
     `https://financialmodelingprep.com/image-stock/${encodeURIComponent(s)}.png`,
     `https://assets.parqet.com/logos/symbol/${encodeURIComponent(s)}?format=png`,

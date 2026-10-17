@@ -1,7 +1,7 @@
 import { useState, useEffect } from 'react';
-import { motion, AnimatePresence } from 'framer-motion';
+import { m, AnimatePresence } from 'framer-motion';
 import {
-  Shield, Eye, EyeOff, ExternalLink, RefreshCw, Zap, Pencil, Plus, Unplug, Wallet, Link2, Lock, AlertTriangle, Clock,
+  Shield, Eye, EyeOff, ExternalLink, RefreshCw, Zap, Pencil, Plus, Unplug, Link2, Lock, AlertTriangle, Clock,
 } from 'lucide-react';
 import toast from 'react-hot-toast';
 import { useNavigate } from 'react-router-dom';
@@ -90,7 +90,7 @@ function ConnectedCard({ exchange, balance, syncing, onSync, onEdit, onDisconnec
 
   return (
     <Card
-      as={motion.div}
+      as={m.div}
       glow
       initial={{ opacity: 0, y: 16 }}
       animate={{ opacity: 1, y: 0 }}
@@ -110,7 +110,7 @@ function ConnectedCard({ exchange, balance, syncing, onSync, onEdit, onDisconnec
           <p className="text-[11px] text-text-muted truncate" dir="ltr" style={{ textAlign: 'right' }}>{tagline}</p>
         </div>
         <span className="flex items-center gap-1.5 text-[11px] font-semibold px-2.5 py-1 rounded-full shrink-0 bg-profit/10 text-profit border border-profit/25">
-          <motion.span animate={{ opacity: [1, 0.35, 1] }} transition={{ repeat: Infinity, duration: 2 }}
+          <m.span animate={{ opacity: [1, 0.35, 1] }} transition={{ repeat: Infinity, duration: 2 }}
             className="w-1.5 h-1.5 rounded-full bg-profit inline-block" />
           מחובר
         </span>
@@ -192,7 +192,7 @@ function AvailableTile({ exchange, locked, onConnect, index }) {
   const { id, name, tagline, accent, canSync } = exchange;
   return (
     <Card
-      as={motion.button}
+      as={m.button}
       type="button"
       hover
       spotlight
@@ -378,7 +378,7 @@ function writeExchCache(uid, suffix, value) {
   try { if (uid) localStorage.setItem(`tradeos_exch_${uid}${suffix}`, JSON.stringify(value)); } catch { /* private mode */ }
 }
 
-export default function ExchangeSettings({ journalId: propJournalId } = {}) {
+export default function ExchangeSettings({ journalId: propJournalId, embedded = false, bare = false } = {}) {
   const { user, isPremium } = useAuth();
   const navigate = useNavigate();
   const { activeJournalId: contextJournalId } = useJournalContext();
@@ -643,30 +643,31 @@ export default function ExchangeSettings({ journalId: propJournalId } = {}) {
 
   const connected = EXCHANGES.filter(e => savedExchanges[e.id]?.connected);
   const available = EXCHANGES.filter(e => !savedExchanges[e.id]?.connected);
-  const knownBalances = connected.map((e) => balances[e.id]).filter((b) => typeof b === 'number');
-  const balancesLoading = connected.some((e) => e.canSync && balances[e.id] === undefined);
-  const totalBalance = knownBalances.reduce((s, b) => s + b, 0);
   const problemCount = connected.filter((e) => balances[e.id]?.problem).length;
   const dialogExchange = dialog ? EXCHANGES.find((e) => e.id === dialog.id) : null;
   const disconnectExchange = confirmDisconnect ? EXCHANGES.find((e) => e.id === confirmDisconnect) : null;
 
   return (
     <>
-      <motion.div variants={pageVariants} initial="initial" animate="animate" exit="exit" transition={pageTransition}>
+      <m.div variants={pageVariants} initial="initial" animate="animate" exit="exit" transition={pageTransition}>
 
-        {/* Header: title + at-a-glance numbers (shared page header). */}
-        <PageHeader icon={Link2} title="חיבור בורסות"
-          subtitle="חבר את הבורסה שלך וייבא עסקאות ישירות ליומן — בלי להקליד אותן ידנית.">
-          <div className="grid grid-cols-3 gap-2 md:gap-2.5 lg:w-[480px]">
-            <StatTile inset icon={Link2} label="מחוברות" value={`${connectedCount}/${EXCHANGES.length}`}
-              sub={problemCount ? `${problemCount} ${problemCount === 1 ? 'דורשת' : 'דורשות'} טיפול` : (!isPremium ? `חינמי: עד ${FREE_LIMITS.exchanges}` : 'ללא הגבלה')}
-              tone={problemCount ? 'text-loss' : 'text-text-primary'} />
-            <StatTile inset icon={Wallet} label="יתרה כוללת"
-              value={knownBalances.length ? fmtUsd(totalBalance) : (balancesLoading ? '…' : '—')}
-              sub={knownBalances.length ? `מ-${knownBalances.length} ${knownBalances.length === 1 ? 'בורסה' : 'בורסות'}` : null} />
-            <StatTile inset icon={Shield} label="אבטחה" value="מוגן" mono={false} tone="text-profit" sub="מפתח לקריאה בלבד" />
-          </div>
-        </PageHeader>
+        {/* Header: title + at-a-glance numbers. The journal hub hides this
+            when the compact connection bar is already on screen. */}
+        {!bare && (
+          <PageHeader as={embedded ? 'h2' : 'h1'} icon={Link2} title="חיבור בורסות"
+            subtitle="חבר את הבורסה שלך וייבא עסקאות ישירות ליומן — בלי להקליד אותן ידנית.">
+            <div className="grid grid-cols-2 gap-2 md:gap-2.5 lg:w-[320px]">
+              <StatTile inset icon={Link2} label="מחוברות" value={`${connectedCount}/${EXCHANGES.length}`}
+                sub={problemCount ? `${problemCount} ${problemCount === 1 ? 'דורשת' : 'דורשות'} טיפול` : (!isPremium ? `חינמי: עד ${FREE_LIMITS.exchanges}` : 'ללא הגבלה')}
+                tone={problemCount ? 'text-loss' : 'text-text-primary'} />
+              <StatTile inset icon={Shield} label="אבטחה"
+                value={connected.length ? 'מוגן' : '—'}
+                mono={!connected.length}
+                tone={connected.length ? 'text-profit' : 'text-text-muted'}
+                sub={connected.length ? 'מפתח לקריאה בלבד' : 'אין בורסה מחוברת'} />
+            </div>
+          </PageHeader>
+        )}
 
         {/* Connected */}
         <section className="mb-7">
@@ -721,7 +722,7 @@ export default function ExchangeSettings({ journalId: propJournalId } = {}) {
           <Shield className="w-3.5 h-3.5 text-profit shrink-0" />
           המפתחות נשמרים בשרת ולא נשארים בדפדפן. מומלץ מפתח API לקריאה בלבד — ללא הרשאות מסחר או משיכה.
         </div>
-      </motion.div>
+      </m.div>
 
       <ConnectDialog
         exchange={dialogExchange}

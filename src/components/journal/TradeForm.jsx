@@ -5,6 +5,7 @@ import { he } from 'date-fns/locale';
 import 'react-datepicker/dist/react-datepicker.css';
 import { X, Plus, AlertTriangle, ShieldAlert, TrendingUp, TrendingDown, Check, Target, ClipboardCheck, Gauge, ShieldCheck, Layers, Calculator, ChevronDown } from 'lucide-react';
 import Modal from '../shared/Modal';
+import TradingViewPreview from './TradingViewPreview';
 import PairSearch from './PairSearch';
 import StockSearch from '../stocks/StockSearch';
 import SelectDropdown from '../shared/SelectDropdown';
@@ -21,15 +22,15 @@ import { useUserMistakes } from '../../hooks/useUserMistakes';
 import { useTradingPlans } from '../../hooks/useTradingPlans';
 import { useJournalContext } from '../../contexts/JournalContext';
 import {
-  isSelectableTradeTime,
-  aggregateFills, exitsClosedPercent, hasCommissionPreset, estimateCommission,
+  isSelectableTradeTime, isOnOrAfterMinute, isAfterMinute, startOfLocalDay, exitPickerInjectTimes, entryPriceProblem,
+  aggregateFills, exitsClosedPercent, syncExitSize, remainderClose, storedExit, hasCommissionPreset, estimateCommission,
   buildChecklistRows, checklistAdherence, loadLastTradeChoices, saveLastTradeChoices,
-  canMoveStopToBreakeven, breakevenStopValue,
-  riskBudgetCheck, riskToStop, stopDistancePct, rMultiple, plannedRewardRisk,
+  canMoveStopToBreakeven, breakevenStopValue, closeDateWithoutExitPrice,
+  riskBudgetCheck, riskToStop, riskSizedNotional, stopDistancePct, rMultiple, plannedRewardRisk,
 } from '../../utils/tradeFormHelpers';
-import { calculatePnLPercent, calculateRR, calculateNetPnL, calculatePartialPnL, calculateWeightedExitPrice, calculateFuturesContractsPnL, calculateFuturesNotional, initialStopLoss, isClosedTrade, safePnl } from '../../utils/calculations';
+import { calculatePnLPercent, calculateRR, calculateNetPnL, calculatePartialPnL, calculateWeightedExitPrice, calculateFuturesContractsPnL, calculateFuturesNotional, initialStopLoss, isStopOnRiskSide, isClosedTrade, safePnl } from '../../utils/calculations';
 import { getSessionFromDate } from '../../utils/sessions';
-import { formatCurrency, formatPercent, formatRR } from '../../utils/formatters';
+import { formatCurrency, formatPercent } from '../../utils/formatters';
 
 registerLocale('he', he);
 
@@ -138,9 +139,9 @@ function Section({ n, title, aside, collapsible = false, open = true, onToggle, 
 }
 
 /** Label + control. `pick` sizes a shared picker to the ticket's controls. */
-function Field({ label, htmlFor, aside, hint, hintTone = 'text-text-muted', hintDir, pick = false, className = '', children }) {
+function Field({ label, htmlFor, aside, hint, hintTone = 'text-text-muted', hintDir, pick = false, className = '', error, anchor, children }) {
   return (
-    <div className={`min-w-0 ${className}`}>
+    <div id={anchor} className={`min-w-0 ${className}`}>
       <div className="flex items-center justify-between gap-1 mb-1 min-h-[18px]">
         {htmlFor
           ? <label htmlFor={htmlFor} className="text-[11px] text-text-muted truncate">{label}</label>
@@ -148,7 +149,9 @@ function Field({ label, htmlFor, aside, hint, hintTone = 'text-text-muted', hint
         {aside}
       </div>
       {pick ? <div className="tt-pick">{children}</div> : children}
-      {hint && <p dir={hintDir} className={`text-[10px] mt-1 truncate text-right ${hintDir === 'ltr' ? 'num-mono ' : ''}${hintTone}`}>{hint}</p>}
+      {error
+        ? <p role="alert" className="text-[10px] mt-1 text-loss text-right">{error}</p>
+        : hint && <p dir={hintDir} className={`text-[10px] mt-1 truncate text-right ${hintDir === 'ltr' ? 'num-mono ' : ''}${hintTone}`}>{hint}</p>}
     </div>
   );
 }
@@ -192,7 +195,7 @@ function RailBlock({ title, children }) {
   );
 }
 
-export default function TradeForm({ isOpen, onClose, trade, onSave, riskSettings, livePrices = {}, journalAssetClass = 'crypto' }) {
+export default function TradeForm({ isOpen, onClose, trade, onSave, riskSettings, livePrices = {}, journalAssetClass = 'crypto', prefill = null }) {
   // Asset class is owned by the JOURNAL — every trade inherits it, no per-trade
   // toggle. Editing a trade keeps that trade's own stored class.
   const newTradeAssetClass = ['futures_cme', 'stocks'].includes(journalAssetClass) ? journalAssetClass : 'crypto';
@@ -215,12 +218,20 @@ export default function TradeForm({ isOpen, onClose, trade, onSave, riskSettings
   // silently rescaled the position and rewrote its P&L (risk $100, entry 100:
   // stop 90 -> 10 units, move the stop to 95 -> 20 units).
   const [lockedQty, setLockedQty] = useState(0);
+  // Empty = follow the risk-sized quantity. A typed value wins and is not
+  // cleared when the risk field changes; clearing it returns to auto.
+  const [manualQty, setManualQty] = useState('');
+  // Close the remainder without a take-profit row: 'stop' | 'price' | ''.
+  const [closeKind, setCloseKind] = useState('');
+  const [closePrice, setClosePrice] = useState('');
+  const [closeDate, setCloseDate] = useState(null);
   const sessionManuallySet = useRef(false);
   // Collapsible sections: null = automatic (see planOpen / journalOpen below),
   // true/false once the user toggles. Reset whenever the ticket opens.
   const [planOpenState, setPlanOpenState] = useState(null);
   const [journalOpenState, setJournalOpenState] = useState(null);
   const [scaleOpenState, setScaleOpenState] = useState(null);
+  const [fieldErrors, setFieldErrors] = useState({});
   const submitRef = useRef(null);
   const livePricesRef = useRef(livePrices);
   useEffect(() => { livePricesRef.current = livePrices; });
@@ -251,23 +262,42 @@ export default function TradeForm({ isOpen, onClose, trade, onSave, riskSettings
           ? parseFloat(trade.quantity)
           : (parseFloat(ps) > 0 && parseFloat(trade.entryPrice) > 0 ? parseFloat(ps) / parseFloat(trade.entryPrice) : 0);
       // Futures size in contracts and stocks in shares (both loaded below), so
-      // only the risk-sized crypto path needs the lock.
-      setLockedQty(['futures_cme', 'stocks'].includes(trade.assetClass) ? 0 : storedQty);
+      // only the risk-sized crypto path keeps a manual quantity. The cleaned
+      // string is what the field shows; the lock matches it so a risk edit
+      // does not rescale the stored size.
+      const qtyText = ['futures_cme', 'stocks'].includes(trade.assetClass) || !(storedQty > 0)
+        ? ''
+        : String(+Number(storedQty).toPrecision(10));
+      setManualQty(qtyText);
+      setLockedQty(parseFloat(qtyText) > 0 ? parseFloat(qtyText) : 0);
 
       // Combine exits (with %/contracts) + tps (price only). Futures exits also
       // carry a contract count so the editor shows contracts, not percent.
       const isFuturesTrade = trade.assetClass === 'futures_cme';
+      const totalQty = parseFloat(trade.quantity) > 0 ? parseFloat(trade.quantity) : storedQty;
       const fromExits = (trade.exits || []).map(e => ({
         price: String(e.price),
-        percent: String(e.percent),
+        percent: e.percent != null ? String(e.percent) : '',
         contracts: e.contracts != null ? String(e.contracts) : '',
+        quantity: e.quantity != null && e.quantity !== ''
+          ? String(e.quantity)
+          : (parseFloat(e.percent) > 0 && totalQty > 0
+            ? String(+((parseFloat(e.percent) / 100) * totalQty).toPrecision(10))
+            : ''),
+        date: parseDate(e.date),
+        kind: e.kind === 'stop' || e.kind === 'price' ? e.kind : '',
       }));
-      const fromTps = (trade.tps || []).map(p => ({ price: String(p), percent: '', contracts: '' }));
+      const fromTps = (trade.tps || []).map(p => ({ price: String(p), percent: '', contracts: '', quantity: '', date: null, kind: '' }));
       let loadedAdditionalExits = fromExits.length || fromTps.length
         ? [...fromExits, ...fromTps]
         : parseFloat(trade.exitPrice) > 0
-          ? [{ price: String(trade.exitPrice), percent: '100', contracts: isFuturesTrade ? String(trade.contract?.contracts ?? '') : '' }]
+          ? [{ price: String(trade.exitPrice), percent: '100', contracts: isFuturesTrade ? String(trade.contract?.contracts ?? '') : '', quantity: totalQty ? String(+Number(totalQty).toPrecision(10)) : '', date: parseDate(trade.exitDate), kind: '' }]
           : [];
+      const closeRow = [...loadedAdditionalExits].reverse().find((e) => e.kind === 'stop' || e.kind === 'price');
+      loadedAdditionalExits = loadedAdditionalExits.filter((e) => e.kind !== 'stop' && e.kind !== 'price');
+      setCloseKind(closeRow?.kind || '');
+      setClosePrice(closeRow?.kind === 'price' ? closeRow.price : '');
+      setCloseDate(closeRow?.date || null);
 
       // Auto-detect reached TPs from live price (use ref to avoid stale closure without re-running on every tick).
       // Only for non-closed trades — editing a historical closed trade should never overwrite its exit data
@@ -290,7 +320,7 @@ export default function TradeForm({ isOpen, onClose, trade, onSave, riskSettings
             ? remainingPct
             : Math.min(remainingPct, Math.round(remainingPct / unexecuted));
           remainingPct -= suggested;
-          return { ...exit, percent: String(suggested) };
+          return syncExitSize(exit, 'percent', String(suggested), totalQty);
         });
       }
 
@@ -337,10 +367,17 @@ export default function TradeForm({ isOpen, onClose, trade, onSave, riskSettings
       });
       setFeesAuto(false);
     } else {
-      setLockedQty(0);
+      const seed = prefill && typeof prefill === 'object' ? prefill : null;
+      const seededQty = parseFloat(seed?.quantity);
+      setLockedQty(seededQty > 0 ? seededQty : 0);
+      setManualQty(seededQty > 0 ? String(seed.quantity) : '');
+      setCloseKind('');
+      setClosePrice('');
+      setCloseDate(null);
       // New trade: seed the asset class from the user's profile preference and
       // pick a sensible default symbol for it. Strategy / timeframe / trigger
-      // start from the last ones used in THIS journal.
+      // start from the last ones used in THIS journal. A calculator handoff
+      // fills direction, prices, risk and a planned target on top of that.
       const last = loadLastTradeChoices(activeJournalId);
       setForm({
         ...defaultForm,
@@ -349,14 +386,23 @@ export default function TradeForm({ isOpen, onClose, trade, onSave, riskSettings
         strategy: last?.strategy || '',
         timeframe: last?.timeframe || defaultForm.timeframe,
         trigger: last?.trigger || '',
+        direction: seed?.direction === 'short' ? 'short' : (seed?.direction === 'long' ? 'long' : defaultForm.direction),
+        entryPrice: seed?.entryPrice || '',
+        stopLoss: seed?.stopLoss || '',
+        leverage: seed?.leverage || defaultForm.leverage,
+        riskAmount: seed?.riskAmount || '',
+        additionalExits: seed?.targetPrice
+          ? [{ price: String(seed.targetPrice), percent: '', contracts: '', quantity: '', date: null, kind: '' }]
+          : [],
       });
       setFeesAuto(true);
     }
     setPlanOpenState(null);
     setJournalOpenState(null);
     setScaleOpenState(null);
+    setFieldErrors({});
     sessionManuallySet.current = false;
-  }, [trade, isOpen]); // allStrategies intentionally excluded — it only affects dropdown options, not form state; including it caused form resets mid-edit
+  }, [trade, isOpen, prefill]); // allStrategies intentionally excluded — it only affects dropdown options, not form state; including it caused form resets mid-edit
 
   // Auto-detect session from entry date (only if user hasn't manually selected)
   useEffect(() => {
@@ -368,7 +414,23 @@ export default function TradeForm({ isOpen, onClose, trade, onSave, riskSettings
     }
   }, [form.entryDate]);
 
-  const update = (field, value) => setForm((f) => ({ ...f, [field]: value }));
+  const update = (field, value) => {
+    setForm((f) => ({ ...f, [field]: value }));
+    setFieldErrors((prev) => (prev[field] ? { ...prev, [field]: undefined } : prev));
+  };
+  // One toast id so a double-submit can't stack the same message four times.
+  const formToast = (message) => toast.error(message, { id: 'trade-ticket' });
+  const showFieldErrors = (list) => {
+    const map = {};
+    for (const item of list) if (!map[item.field]) map[item.field] = item.message;
+    setFieldErrors(map);
+    formToast(list[0].message);
+    requestAnimationFrame(() => {
+      const el = document.getElementById(`tt-field-${list[0].field}`);
+      el?.scrollIntoView({ behavior: 'smooth', block: 'center' });
+      el?.querySelector('input, textarea, button')?.focus?.();
+    });
+  };
 
   // CME futures mode (epic #32). Crypto stays the default path. contractSpec
   // (pointValue/tickSize) drives dollar P&L; contractsNum replaces leverage.
@@ -398,7 +460,7 @@ export default function TradeForm({ isOpen, onClose, trade, onSave, riskSettings
   };
 
   const addAdditionalExit = () => {
-    setExits((exits) => [...exits, { price: '', percent: '', contracts: '' }]);
+    setExits((exits) => [...exits, { price: '', percent: '', contracts: '', quantity: '', date: null, kind: '' }]);
   };
 
   const removeAdditionalExit = (index) => {
@@ -407,6 +469,12 @@ export default function TradeForm({ isOpen, onClose, trade, onSave, riskSettings
 
   const updateAdditionalExit = (index, field, value) => {
     setExits((exits) => exits.map((e, i) => (i === index ? { ...e, [field]: value } : e)));
+  };
+
+  // Percent and quantity describe the same slice. Typing one fills the other
+  // from the current position size (first fill + scale-ins).
+  const updateExitSize = (index, field, value) => {
+    setExits((exits) => exits.map((e, i) => (i === index ? syncExitSize(e, field, value, totalUnits) : e)));
   };
 
   // Scale-in rows (fills after the first entry).
@@ -429,14 +497,9 @@ export default function TradeForm({ isOpen, onClose, trade, onSave, riskSettings
   }, [trade, form.direction, form.entryPrice, form.stopLoss]);
 
   // Auto-calculate position size from risk amount (create, or explicit risk edit)
-  const autoPositionSize = useMemo(() => {
-    const entry = parseFloat(form.entryPrice);
-    const sl = riskStopLoss;
-    const risk = parseFloat(form.riskAmount);
-    if (!entry || !sl || !risk || entry === sl) return null;
-    const distance = Math.abs(entry - sl);
-    return (risk * entry) / distance;
-  }, [form.entryPrice, riskStopLoss, form.riskAmount]);
+  const autoPositionSize = useMemo(() => (
+    riskSizedNotional(form.direction, form.entryPrice, riskStopLoss, form.riskAmount)
+  ), [form.direction, form.entryPrice, riskStopLoss, form.riskAmount]);
 
   // Use the stored size (edit), the share count (stocks), or the risk-derived
   // size — in that order. This is the FIRST fill only.
@@ -494,10 +557,59 @@ export default function TradeForm({ isOpen, onClose, trade, onSave, riskSettings
 
   // Futures aggregate from contracts so a full close lands on exactly 100%
   // (summing per-exit rounded percents would drift, e.g. 3×33.33 = 99.99).
-  const additionalExitsPercent = useMemo(
+  const recordedExitPercent = useMemo(
     () => exitsClosedPercent(form.additionalExits, { isFutures, totalContracts }),
     [form.additionalExits, isFutures, totalContracts],
   );
+  const usedExitContracts = useMemo(
+    () => (form.additionalExits || []).reduce((s, e) => s + (parseFloat(e.contracts) || 0), 0),
+    [form.additionalExits],
+  );
+  // Stop-hit / exit-price closes the slice the take-profits didn't. It is a
+  // real exit for status, fees and P&L, not a planned target.
+  const closePreview = useMemo(() => remainderClose({
+    kind: closeKind,
+    price: closePrice,
+    stop: form.stopLoss,
+    date: closeDate,
+    usedPercent: recordedExitPercent,
+    totalUnits,
+    isFutures,
+    usedContracts: usedExitContracts,
+    totalContracts,
+  }), [closeKind, closePrice, form.stopLoss, closeDate, recordedExitPercent, totalUnits, isFutures, usedExitContracts, totalContracts]);
+  const additionalExitsPercent = recordedExitPercent + (closePreview ? closePreview.percent : 0);
+
+  const toggleClose = (kind) => {
+    const next = closeKind === kind ? '' : kind;
+    setCloseKind(next);
+    if (!next) return;
+    const preview = remainderClose({
+      kind: next,
+      price: closePrice,
+      stop: form.stopLoss,
+      date: closeDate,
+      usedPercent: recordedExitPercent,
+      totalUnits,
+      isFutures,
+      usedContracts: usedExitContracts,
+      totalContracts,
+    });
+    if (preview && recordedExitPercent + preview.percent >= 99.95 && !form.exitDate) {
+      update('exitDate', closeDate || new Date());
+    }
+  };
+  const liveExits = useMemo(() => {
+    if (!closePreview) return form.additionalExits;
+    return [...form.additionalExits, {
+      price: String(closePreview.price),
+      percent: String(closePreview.percent),
+      contracts: closePreview.contracts != null ? String(closePreview.contracts) : '',
+      quantity: closePreview.quantity || '',
+      date: closePreview.date,
+      kind: closePreview.kind,
+    }];
+  }, [form.additionalExits, closePreview]);
 
   // A closed broker/exchange import often has a settled P&L but NO exit rows
   // (and no exit price), so the editor loads with zero exits. Saving it
@@ -521,7 +633,7 @@ export default function TradeForm({ isOpen, onClose, trade, onSave, riskSettings
   const hasPreset = hasCommissionPreset(form.assetClass, commissionPreset);
   const presetFees = useMemo(() => {
     if (!hasPreset) return null;
-    const exits = form.additionalExits
+    const exits = liveExits
       .map((e) => ({
         price: parseFloat(e.price),
         quantity: isFutures ? (parseFloat(e.contracts) || 0) : ((parseFloat(e.percent) || 0) / 100) * totalUnits,
@@ -534,7 +646,7 @@ export default function TradeForm({ isOpen, onClose, trade, onSave, riskSettings
       fills: [{ price: entryNum, quantity: baseUnits }, ...validScaleIns],
       exits,
     });
-  }, [hasPreset, commissionPreset, form.assetClass, form.orderType, form.additionalExits, isFutures,
+  }, [hasPreset, commissionPreset, form.assetClass, form.orderType, liveExits, isFutures,
       totalUnits, entryNum, baseUnits, validScaleIns]);
   const feesFromPreset = feesAuto && presetFees != null;
   const feesValue = feesFromPreset ? String(presetFees) : form.fees;
@@ -546,7 +658,7 @@ export default function TradeForm({ isOpen, onClose, trade, onSave, riskSettings
     // Futures: dollar P&L = points × pointValue × contracts, summed exactly
     // from per-exit contract counts. Percent is on notional (no leverage).
     if (isFutures) {
-      const futExits = form.additionalExits
+      const futExits = liveExits
         .filter(e => parseFloat(e.price) > 0 && parseFloat(e.contracts) > 0)
         .map(e => ({ price: parseFloat(e.price), contracts: parseFloat(e.contracts) }));
       if (!entry || !contractSpec || !totalContracts || !futExits.length) return null;
@@ -559,7 +671,7 @@ export default function TradeForm({ isOpen, onClose, trade, onSave, riskSettings
       return { pnl, pnlPercent, rrRatio, netPnl };
     }
 
-    const allExits = form.additionalExits
+    const allExits = liveExits
       .filter(e => parseFloat(e.price) > 0 && parseFloat(e.percent) > 0)
       .map(e => ({ price: parseFloat(e.price), percent: parseFloat(e.percent) }));
 
@@ -580,7 +692,7 @@ export default function TradeForm({ isOpen, onClose, trade, onSave, riskSettings
     const netPnl = calculateNetPnL(pnl, fees);
 
     return { pnl, pnlPercent, rrRatio, netPnl };
-  }, [form.direction, avgEntry, form.additionalExits, riskStopLoss, totalUnits, feesValue,
+  }, [form.direction, avgEntry, liveExits, riskStopLoss, totalUnits, feesValue,
       form.leverage, form.pnlFromExchange, form.pnlPercent, isFutures, contractSpec, totalContracts, isStocks]);
 
   // Trading plans: the active ones, plus the plan this trade is already
@@ -620,25 +732,35 @@ export default function TradeForm({ isOpen, onClose, trade, onSave, riskSettings
   // original stop. Futures have no risk input, so theirs is always the stop
   // risk (points × point value × contracts).
   const pointValue = isFutures ? (contractSpec?.pointValue || 0) : 1;
-  const stopRisk = riskToStop({ entry: avgEntry, stop: riskStopLoss, units: totalUnits, pointValue });
+  // A stop on the wrong side does not define risk. Sizing and R from
+  // |entry − stop| would show a real-looking position and a positive R.
+  const stopDefinesRisk = isStopOnRiskSide(form.direction, avgEntry, riskStopLoss);
+  const stopRisk = stopDefinesRisk
+    ? riskToStop({ entry: avgEntry, stop: riskStopLoss, units: totalUnits, pointValue })
+    : 0;
   const typedRisk = parseFloat(form.riskAmount) || 0;
   const riskDollars = !isFutures && typedRisk > 0 ? typedRisk : stopRisk;
   const riskInfo = useMemo(() => riskBudgetCheck(riskDollars, riskSettings || {}), [riskDollars, riskSettings]);
-  const stopDistance = stopDistancePct(avgEntry, riskStopLoss);
+  const stopDistance = stopDefinesRisk ? stopDistancePct(avgEntry, riskStopLoss) : null;
+  const wrongStopMessage = !stopDefinesRisk && (parseFloat(form.stopLoss) || 0) > 0 && avgEntry > 0
+    ? (form.direction === 'short'
+      ? 'סטופ לוס חייב להיות מעל מחיר הכניסה בשורט'
+      : 'סטופ לוס חייב להיות מתחת למחיר הכניסה בלונג')
+    : null;
 
   // Planned R:R — every target with a price; futures weights are contracts,
-  // turned into % of the position.
+  // turned into % of the position. No plan when the stop isn't on the risk side.
   const planned = useMemo(() => plannedRewardRisk({
     direction: form.direction,
     entry: avgEntry,
-    stop: riskStopLoss,
+    stop: stopDefinesRisk ? riskStopLoss : 0,
     targets: form.additionalExits.map((e) => ({
       price: e.price,
       weight: isFutures
         ? (totalContracts > 0 ? ((parseFloat(e.contracts) || 0) / totalContracts) * 100 : 0)
         : parseFloat(e.percent) || 0,
     })),
-  }), [form.direction, avgEntry, riskStopLoss, form.additionalExits, isFutures, totalContracts]);
+  }), [form.direction, avgEntry, riskStopLoss, stopDefinesRisk, form.additionalExits, isFutures, totalContracts]);
 
   // Realized result: the live calc, or — for a closed import with no exit
   // rows — the stored P&L.
@@ -646,6 +768,13 @@ export default function TradeForm({ isOpen, onClose, trade, onSave, riskSettings
     ? { netPnl: safePnl(trade), pnlPercent: Number(trade.pnlPercent) || 0, rrRatio: Number(trade.rrRatio) || 0, pnl: null }
     : null);
   const feesNum = parseFloat(feesValue) || 0;
+  // Net R and net % — the same definition as the journal table (after fees).
+  // Gross price R used to sit next to a net P&L and disagree with "R ממוצע".
+  const resultLev = (isFutures || isStocks) ? 1 : (parseInt(form.leverage, 10) || 1);
+  const shownNetPercent = shown && totalNotional > 0
+    ? (shown.netPnl / totalNotional) * 100 * resultLev
+    : (shown?.pnlPercent ?? 0);
+  const realizedNetR = shown && stopRisk > 0 ? shown.netPnl / stopRisk : null;
 
   // Collapsible sections. Plan: open while there is a plan to pick or one
   // is linked. Journal: closed on a new trade, open on edit when anything in
@@ -694,49 +823,42 @@ export default function TradeForm({ isOpen, onClose, trade, onSave, riskSettings
       ? calculateFuturesNotional(entryPrice, contractSpec?.pointValue, totalContracts)
       : totalNotional;
 
-    if (!firstEntry || firstEntry <= 0) {
-      toast.error('נא להזין מחיר כניסה');
-      return;
-    }
+    // Every problem is collected, highlighted, and announced once. A second
+    // submit used to stack the same toast (up to four copies).
+    const problems = [];
+    const problem = (field, message) => {
+      if (!problems.some((p) => p.field === field)) problems.push({ field, message });
+    };
+    const priceMsg = entryPriceProblem(form.entryPrice);
+    if (priceMsg) problem('entryPrice', priceMsg);
     if (!isFutures && !(effectivePositionSize > 0) && hasScaleIns) {
-      toast.error('נא להזין את גודל הכניסה הראשונה לפני הוספה לפוזיציה');
-      return;
+      problem('positionSize', 'נא להזין את גודל הכניסה הראשונה לפני הוספה לפוזיציה');
     }
     // Scale-in rows: a half-filled row would silently drop out of the
     // average, and a fill can't happen before the entry or in the future.
     const halfFilled = form.scaleIns.some((a) => (parseFloat(a.price) > 0) !== (parseFloat(a.size) > 0));
-    if (halfFilled) {
-      toast.error('בהוספה לפוזיציה יש למלא מחיר וגודל בכל שורה');
-      return;
-    }
+    if (halfFilled) problem('scaleIns', 'בהוספה לפוזיציה יש למלא מחיר וגודל בכל שורה');
     if (isFutures && form.scaleIns.some((a) => parseFloat(a.size) > 0 && !Number.isInteger(parseFloat(a.size)))) {
-      toast.error('בחוזים עתידיים ההוספה לפוזיציה היא במספר חוזים שלם');
-      return;
+      problem('scaleIns', 'בחוזים עתידיים ההוספה לפוזיציה היא במספר חוזים שלם');
     }
     const firstFillDate = parseDate(form.entryDate);
+    const nowForDates = new Date();
     for (const a of validScaleIns) {
       const d = parseDate(a.date);
-      if (d && d > new Date()) {
-        toast.error('תאריך ההוספה לפוזיציה לא יכול להיות בעתיד');
-        return;
+      if (d && isAfterMinute(d, nowForDates)) {
+        problem('scaleIns', 'תאריך ההוספה לפוזיציה לא יכול להיות בעתיד');
+        break;
       }
-      if (d && firstFillDate && d < firstFillDate) {
-        toast.error('תאריך ההוספה לפוזיציה לא יכול להיות לפני הכניסה');
-        return;
+      if (d && firstFillDate && !isOnOrAfterMinute(firstFillDate, d)) {
+        problem('scaleIns', 'תאריך ההוספה לפוזיציה לא יכול להיות לפני הכניסה');
+        break;
       }
     }
     if (isFutures) {
-      if (!contractSpec) {
-        toast.error('נא לבחור חוזה');
-        return;
-      }
-      if (!contractsNum || contractsNum <= 0) {
-        toast.error('נא להזין מספר חוזים');
-        return;
-      }
+      if (!contractSpec) problem('pair', 'נא לבחור חוזה');
+      if (!contractsNum || contractsNum <= 0) problem('contracts', 'נא להזין מספר חוזים');
     } else if (!ps || ps <= 0) {
-      toast.error(isStocks ? 'נא להזין מספר מניות או סכום סיכון' : 'נא להזין סיכון או גודל עסקה');
-      return;
+      problem(isStocks ? 'shares' : 'positionSize', isStocks ? 'נא להזין מספר מניות או סכום סיכון' : 'נא להזין סיכון או כמות');
     }
 
     // SL validation based on direction. On an EXISTING trade a stop at/through
@@ -752,12 +874,10 @@ export default function TradeForm({ isOpen, onClose, trade, onSave, riskSettings
     );
     if (sl && entryPrice && !isTrailedStop) {
       if (form.direction === 'long' && sl >= entryPrice) {
-        toast.error('סטופ לוס חייב להיות מתחת למחיר הכניסה בלונג');
-        return;
+        problem('stopLoss', 'סטופ לוס חייב להיות מתחת למחיר הכניסה בלונג');
       }
       if (form.direction === 'short' && sl <= entryPrice) {
-        toast.error('סטופ לוס חייב להיות מעל מחיר הכניסה בשורט');
-        return;
+        problem('stopLoss', 'סטופ לוס חייב להיות מעל מחיר הכניסה בשורט');
       }
     }
 
@@ -765,50 +885,72 @@ export default function TradeForm({ isOpen, onClose, trade, onSave, riskSettings
     // Futures exits carry an exact contract count AND a derived percent (so
     // status/weighted-price code that reads `percent` keeps working); crypto
     // exits carry just a percent.
+    if (closeKind === 'stop' && !(sl > 0)) {
+      problem('stopLoss', 'כדי לרשום פגיעת סטופ צריך מחיר סטופ');
+    } else if (closeKind === 'price' && !(parseFloat(closePrice) > 0)) {
+      problem('exits', 'נא להזין מחיר יציאה');
+    }
+
     let validAdditional;
     if (isFutures) {
-      validAdditional = form.additionalExits
-        .filter(e => parseFloat(e.price) > 0 && parseFloat(e.contracts) > 0)
-        .map(e => {
-          const c = parseFloat(e.contracts);
-          return { price: parseFloat(e.price), contracts: c, percent: totalContracts > 0 ? (c / totalContracts) * 100 : 0 };
-        });
+      validAdditional = liveExits
+        .map((e) => storedExit(e, { isFutures: true, totalContracts }))
+        .filter(Boolean);
       const sumContracts = validAdditional.reduce((s, e) => s + e.contracts, 0);
       if (sumContracts > totalContracts) {
-        toast.error('סך החוזים ביציאות חורג ממספר החוזים בעסקה');
-        return;
+        problem('exits', 'סך החוזים ביציאות חורג ממספר החוזים בעסקה');
       }
     } else {
-      validAdditional = form.additionalExits
-        .filter(e => parseFloat(e.price) > 0 && parseFloat(e.percent) > 0)
-        .map(e => ({ price: parseFloat(e.price), percent: parseFloat(e.percent) }));
+      validAdditional = liveExits
+        .map((e) => storedExit(e))
+        .filter(Boolean);
       const additionalPercent = validAdditional.reduce((s, e) => s + e.percent, 0);
       // Small tolerance: exchange-synced Multi-TP slices are rounded to two
       // decimals, so a legitimate full close can sum to 100.01 — blocking on
       // a strict >100 made those trades impossible to save after editing.
       if (additionalPercent > 100.05) {
-        toast.error('סך אחוזי היציאות חורג מ-100%');
-        return;
+        problem('exits', 'סך אחוזי היציאות חורג מ-100%');
       }
     }
 
     // Future-date guard — prevents the equity curve and drawdown stats from
-    // including events that haven't happened yet
+    // including events that haven't happened yet. Compared by minute: an exit
+    // in the same minute as the entry is a valid close (equal is allowed).
     const now = new Date();
     const entryD = parseDate(form.entryDate);
     const exitD = parseDate(form.exitDate);
-    if (entryD && entryD > now) {
-      toast.error('תאריך הכניסה לא יכול להיות בעתיד');
+    if (entryD && isAfterMinute(entryD, now)) problem('entryDate', 'תאריך הכניסה לא יכול להיות בעתיד');
+    if (exitD && isAfterMinute(exitD, now)) problem('exitDate', 'תאריך היציאה לא יכול להיות בעתיד');
+    if (entryD && exitD && !isOnOrAfterMinute(entryD, exitD)) {
+      problem('exitDate', 'תאריך היציאה לא יכול להיות לפני תאריך הכניסה');
+    }
+    for (const row of [...form.additionalExits, { date: closeDate }]) {
+      const d = parseDate(row.date);
+      if (!d) continue;
+      if (isAfterMinute(d, now)) {
+        problem('exits', 'תאריך היציאה לא יכול להיות בעתיד');
+        break;
+      }
+      if (entryD && !isOnOrAfterMinute(entryD, d)) {
+        problem('exits', 'תאריך היציאה לא יכול להיות לפני תאריך הכניסה');
+        break;
+      }
+    }
+    // A close date with no exit price used to save and leave the trade open.
+    const closeDateError = closeDateWithoutExitPrice({
+      exitDate: exitD,
+      pricedExit: validAdditional.some((row) => row.price > 0),
+      keepsImportedClose,
+    });
+    if (closeDateError) {
+      problem('exitDate', closeDateError);
+      problem('exits', closeDateError);
+    }
+    if (problems.length) {
+      showFieldErrors(problems);
       return;
     }
-    if (exitD && exitD > now) {
-      toast.error('תאריך היציאה לא יכול להיות בעתיד');
-      return;
-    }
-    if (entryD && exitD && exitD < entryD) {
-      toast.error('תאריך היציאה חייב להיות אחרי תאריך הכניסה');
-      return;
-    }
+    setFieldErrors({});
 
     setSaving(true);
     try {
@@ -930,7 +1072,7 @@ export default function TradeForm({ isOpen, onClose, trade, onSave, riskSettings
     } catch (err) {
       console.error('Save failed:', err);
       const msg = err.code === 'permission-denied' ? 'אין הרשאה לשמור' : 'שגיאה בשמירת העסקה — נסה שוב';
-      toast.error(msg);
+      formToast(msg);
     } finally {
       setSaving(false);
     }
@@ -943,7 +1085,7 @@ export default function TradeForm({ isOpen, onClose, trade, onSave, riskSettings
   const exitField = isFutures ? 'contracts' : 'percent';
   // Rows with a target price but nothing recorded as executed, while nothing
   // has been closed yet — the case where users expect "save" to close it.
-  const plannedOnlyTargets = additionalExitsPercent <= 0
+  const plannedOnlyTargets = !closeKind && recordedExitPercent <= 0
     && form.additionalExits.some((e) => parseFloat(e.price) > 0 && !(parseFloat(e[exitField]) > 0));
 
   // Fees input — shared by the three asset classes. While it follows the
@@ -970,7 +1112,7 @@ export default function TradeForm({ isOpen, onClose, trade, onSave, riskSettings
   // Size inputs per asset class (two cells of the entry grid).
   const sizeFields = isFutures ? (
     <>
-      <Field label={hasScaleIns ? 'חוזים · כניסה 1' : 'מספר חוזים'}>
+      <Field label={hasScaleIns ? 'חוזים · כניסה 1' : 'מספר חוזים'} anchor="tt-field-contracts" error={fieldErrors.contracts}>
         <NumberStepper value={form.contracts} onChange={(v) => update('contracts', v)} min={1} placeholder="1" className="h-10 rounded-xl" />
       </Field>
       <Field label="ערך נקודה">
@@ -979,8 +1121,10 @@ export default function TradeForm({ isOpen, onClose, trade, onSave, riskSettings
     </>
   ) : isStocks ? (
     <>
-      <Field label={hasScaleIns ? 'מניות · כניסה 1' : 'מספר מניות'} htmlFor="tt-shares">
-        <input id="tt-shares" type="number" step="any" min="0" value={form.shares} onChange={(e) => update('shares', e.target.value)} className={numInputClass} placeholder="10" inputMode="decimal" />
+      <Field label={hasScaleIns ? 'מניות · כניסה 1' : 'מספר מניות'} htmlFor="tt-shares" anchor="tt-field-shares" error={fieldErrors.shares}>
+        <input id="tt-shares" type="number" step="any" min="0" value={form.shares} onChange={(e) => update('shares', e.target.value)}
+          aria-invalid={fieldErrors.shares ? true : undefined}
+          className={`${numInputClass} ${fieldErrors.shares ? 'border-loss' : ''}`} placeholder="10" inputMode="decimal" />
       </Field>
       <Field label={sharesNum > 0 ? 'סיכון ($) · לתיעוד' : 'או לפי סיכון ($)'} htmlFor="tt-risk">
         <input id="tt-risk" type="number" step="any" value={form.riskAmount} onChange={(e) => { update('riskAmount', e.target.value); setLockedQty(0); }} className={numInputClass} placeholder="100" inputMode="decimal" />
@@ -988,11 +1132,33 @@ export default function TradeForm({ isOpen, onClose, trade, onSave, riskSettings
     </>
   ) : (
     <>
-      <Field label={hasScaleIns ? 'סיכון · כניסה 1' : 'סיכון ($)'} htmlFor="tt-risk">
-        <input id="tt-risk" type="number" step="any" value={form.riskAmount} onChange={(e) => { update('riskAmount', e.target.value); setLockedQty(0); }} className={numInputClass} placeholder="50" inputMode="decimal" />
+      <Field label={hasScaleIns ? 'סיכון · כניסה 1' : 'סיכון ($)'} htmlFor="tt-risk" anchor="tt-field-positionSize" error={fieldErrors.positionSize}>
+        <input id="tt-risk" type="number" step="any" value={form.riskAmount} onChange={(e) => update('riskAmount', e.target.value)}
+          aria-invalid={fieldErrors.positionSize ? true : undefined}
+          className={`${numInputClass} ${fieldErrors.positionSize ? 'border-loss' : ''}`} placeholder="50" inputMode="decimal" />
       </Field>
       <Field label="מינוף" htmlFor="tt-leverage">
         <input id="tt-leverage" type="number" value={form.leverage} onChange={(e) => update('leverage', e.target.value)} className={numInputClass} inputMode="numeric" />
+      </Field>
+      <Field label={hasScaleIns ? 'כמות · כניסה 1' : 'כמות'} htmlFor="tt-qty"
+        aside={manualQty
+          ? (
+            <button type="button" onClick={() => { setManualQty(''); setLockedQty(0); }}
+              className="text-[10px] font-semibold text-accent-primary shrink-0 cursor-pointer">
+              לפי סיכון
+            </button>
+          )
+          : <span className="text-[10px] font-semibold text-text-muted shrink-0">אוטומטי</span>}
+        hint={manualQty ? 'כמות ידנית — גוברת על החישוב מהסיכון' : 'ריק = מחושב מהסיכון. הקלדה עוברת לכמות ידנית'}>
+        <input id="tt-qty" type="number" step="any" min="0" value={manualQty}
+          onChange={(e) => {
+            const v = e.target.value;
+            setManualQty(v);
+            const n = parseFloat(v);
+            setLockedQty(n > 0 ? n : 0);
+          }}
+          placeholder={!(lockedQty > 0) && calculatedQty > 0 ? String(+calculatedQty.toPrecision(8)) : 'לפי סיכון'}
+          className={numInputClass} inputMode="decimal" />
       </Field>
     </>
   );
@@ -1035,10 +1201,10 @@ export default function TradeForm({ isOpen, onClose, trade, onSave, riskSettings
           <RailBlock title="תוצאה">
             <div className="flex items-baseline justify-between gap-2 py-1">
               <span className={`num-mono text-xl font-bold ${pnlColor(shown.netPnl)}`} dir="ltr">{formatCurrency(shown.netPnl)}</span>
-              <span className={`num-mono text-xs font-semibold ${pnlColor(shown.pnlPercent)}`} dir="ltr">{formatPercent(shown.pnlPercent)}</span>
+              <span className={`num-mono text-xs font-semibold ${pnlColor(shownNetPercent)}`} dir="ltr">{formatPercent(shownNetPercent)}</span>
             </div>
             {shown.pnl != null && <Row label="ברוטו" value={formatCurrency(shown.pnl)} tone="text-text-secondary" />}
-            <Row label="R בפועל" value={formatRR(shown.rrRatio, shown.netPnl)} tone={pnlColor(shown.netPnl)} />
+            <Row label="R בפועל" value={fmtR(realizedNetR)} tone={pnlColor(shown.netPnl)} />
           </RailBlock>
         )}
 
@@ -1054,8 +1220,14 @@ export default function TradeForm({ isOpen, onClose, trade, onSave, riskSettings
         <RailBlock title="סיכון">
           <Row label={riskLabel} value={riskDollars > 0 ? fmtUsd(riskDollars) : '—'} tone={riskTone} strong />
           <Row label="מהתיק" value={riskInfo?.percent != null ? `${riskInfo.percent.toFixed(2)}%` : '—'} tone={riskTone} />
+          {riskInfo?.missingBalance && (
+            <p className="mt-1 text-[11px] leading-snug text-breakeven">{riskInfo.message}</p>
+          )}
           {riskInfo?.limitLabel && <Row label="מגבלה" value={riskInfo.limitLabel} tone="text-text-secondary" />}
           <Row label="מרחק לסטופ" value={stopDistance != null ? `${stopDistance.toFixed(2)}%` : '—'} tone="text-text-secondary" />
+          {wrongStopMessage && (
+            <p role="alert" className="mt-2 text-[11px] leading-snug text-loss">{wrongStopMessage} — אין חישוב פוזיציה</p>
+          )}
           {riskInfo && riskInfo.severity !== 'info' && (
             <p role="alert" className={`mt-2 flex items-start gap-1.5 text-[11px] leading-snug ${riskInfo.severity === 'critical' ? 'text-loss' : 'text-breakeven'}`}>
               {riskInfo.severity === 'critical' ? <ShieldAlert className="w-3.5 h-3.5 shrink-0 mt-px" /> : <AlertTriangle className="w-3.5 h-3.5 shrink-0 mt-px" />}
@@ -1082,7 +1254,7 @@ export default function TradeForm({ isOpen, onClose, trade, onSave, riskSettings
       {/* Phones: the key numbers stay in view above the buttons. */}
       <div className="lg:hidden grid grid-cols-3 gap-2 mb-2.5">
         <MiniStat label="סיכון" value={riskDollars > 0 ? fmtUsd(riskDollars) : '—'} tone={riskTone} />
-        <MiniStat label={shown ? 'R בפועל' : 'R:R מתוכנן'} value={shown ? formatRR(shown.rrRatio, shown.netPnl) : fmtR(planned.blended)} />
+        <MiniStat label={shown ? 'R בפועל' : 'R:R מתוכנן'} value={shown ? fmtR(realizedNetR) : fmtR(planned.blended)} />
         <MiniStat label="P&L נטו" value={shown ? formatCurrency(shown.netPnl) : '—'} tone={shown ? pnlColor(shown.netPnl) : 'text-text-primary'} />
       </div>
       <div className="flex items-center gap-2.5">
@@ -1112,7 +1284,7 @@ export default function TradeForm({ isOpen, onClose, trade, onSave, riskSettings
               journal — no per-trade toggle. */}
           <Section n={1} title="מכשיר וכיוון">
             <div className="grid grid-cols-2 md:grid-cols-12 gap-3">
-              <Field label={isFutures ? 'חוזה' : isStocks ? 'מניה' : 'זוג'} pick className="col-span-2 md:col-span-6"
+              <Field label={isFutures ? 'חוזה' : isStocks ? 'מניה' : 'זוג'} pick className="col-span-2 md:col-span-6" anchor="tt-field-pair" error={fieldErrors.pair}
                 hint={isFutures && contractSpec ? `${contractSpec.name} · $${contractSpec.pointValue}/pt · tick ${contractSpec.tickSize}` : undefined} hintDir="ltr">
                 {isFutures ? (
                   <SelectDropdown
@@ -1191,11 +1363,13 @@ export default function TradeForm({ isOpen, onClose, trade, onSave, riskSettings
               fills itself in when the exits reach 100% (see setExits). */}
           <Section n={2} title="כניסה וסיכון">
             <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
-              <Field label={hasScaleIns ? 'כניסה ראשונה' : 'מחיר כניסה'} htmlFor="tt-entry"
+              <Field label={hasScaleIns ? 'כניסה ראשונה' : 'מחיר כניסה'} htmlFor="tt-entry" anchor="tt-field-entryPrice" error={fieldErrors.entryPrice}
                 hint={hasScaleIns && avgEntry > 0 ? <>ממוצע <span className="num-mono">{fmtNum(avgEntry)}</span></> : undefined} hintTone="text-accent-primary">
-                <input id="tt-entry" type="number" step="any" value={form.entryPrice} onChange={(e) => update('entryPrice', e.target.value)} className={numInputClass} placeholder="0.00" inputMode="decimal" />
+                <input id="tt-entry" type="number" step="any" value={form.entryPrice} onChange={(e) => update('entryPrice', e.target.value)}
+                  aria-invalid={fieldErrors.entryPrice ? true : undefined}
+                  className={`${numInputClass} ${fieldErrors.entryPrice ? 'border-loss' : ''}`} placeholder="0.00" inputMode="decimal" />
               </Field>
-              <Field label="סטופ לוס" htmlFor="tt-stop"
+              <Field label="סטופ לוס" htmlFor="tt-stop" anchor="tt-field-stopLoss" error={fieldErrors.stopLoss || wrongStopMessage}
                 aside={showBreakeven ? (
                   <button type="button" onClick={() => update('stopLoss', breakevenStopValue(avgEntry))}
                     title="הזזת הסטופ למחיר הכניסה (הסטופ המקורי נשמר לחישוב ה-R)"
@@ -1205,24 +1379,27 @@ export default function TradeForm({ isOpen, onClose, trade, onSave, riskSettings
                 ) : null}
                 hint={trade?.liquidationPrice > 0 ? <>ליקווידציה <span className="num-mono">{parseFloat(trade.liquidationPrice).toLocaleString('en-US', { maximumFractionDigits: 8 })}</span></> : undefined}
                 hintTone="text-loss/80">
-                <input id="tt-stop" type="number" step="any" value={form.stopLoss} onChange={(e) => update('stopLoss', e.target.value)} className={numInputClass} placeholder="0.00" inputMode="decimal" />
+                <input id="tt-stop" type="number" step="any" value={form.stopLoss} onChange={(e) => update('stopLoss', e.target.value)}
+                  aria-invalid={fieldErrors.stopLoss || wrongStopMessage ? true : undefined}
+                  className={`${numInputClass} ${fieldErrors.stopLoss || wrongStopMessage ? 'border-loss' : ''}`} placeholder="0.00" inputMode="decimal" />
               </Field>
               {sizeFields}
-              <Field label="תאריך כניסה" htmlFor="tt-entry-date">
+              <Field label="תאריך כניסה" htmlFor="tt-entry-date" anchor="tt-field-entryDate" error={fieldErrors.entryDate}>
                 <DatePicker id="tt-entry-date" selected={form.entryDate} onChange={(date) => update('entryDate', date)}
                   showTimeSelect timeFormat="HH:mm" timeIntervals={15} dateFormat="dd/MM/yy HH:mm"
                   maxDate={new Date()}
                   filterTime={(t) => isSelectableTradeTime(t)}
-                  locale="he" placeholderText="עכשיו" className={numInputClass} wrapperClassName="w-full"
+                  locale="he" placeholderText="עכשיו" className={`${numInputClass} ${fieldErrors.entryDate ? 'border-loss' : ''}`} wrapperClassName="w-full"
                   popperPlacement="bottom-start" portalId="datepicker-portal" />
               </Field>
-              <Field label="תאריך סגירה" htmlFor="tt-exit-date">
+              <Field label="תאריך סגירה" htmlFor="tt-exit-date" anchor="tt-field-exitDate" error={fieldErrors.exitDate}>
                 <DatePicker id="tt-exit-date" selected={form.exitDate} onChange={(date) => update('exitDate', date)}
                   showTimeSelect timeFormat="HH:mm" timeIntervals={15} dateFormat="dd/MM/yy HH:mm"
                   maxDate={new Date()}
-                  minDate={form.entryDate || undefined}
+                  minDate={form.entryDate ? startOfLocalDay(form.entryDate) : undefined}
+                  injectTimes={exitPickerInjectTimes(form.exitDate, form.entryDate)}
                   filterTime={(t) => isSelectableTradeTime(t, { min: parseDate(form.entryDate) })}
-                  locale="he" placeholderText="—" className={numInputClass} wrapperClassName="w-full"
+                  locale="he" placeholderText="—" className={`${numInputClass} ${fieldErrors.exitDate ? 'border-loss' : ''}`} wrapperClassName="w-full"
                   popperPlacement="bottom-start" portalId="datepicker-portal" />
               </Field>
               {feesField}
@@ -1234,7 +1411,7 @@ export default function TradeForm({ isOpen, onClose, trade, onSave, riskSettings
             {/* Scale-in / add to position. The first fill is the entry + size
                 above; each row here is a further fill. Entry price and size
                 are stored as the size-weighted aggregate. */}
-            <div className={`mt-3 rounded-xl border ${form.scaleIns.length ? 'border-border-primary' : 'border-dashed border-border-primary'}`}>
+            <div id="tt-field-scaleIns" className={`mt-3 rounded-xl border ${fieldErrors.scaleIns ? 'border-loss' : form.scaleIns.length ? 'border-border-primary' : 'border-dashed border-border-primary'}`}>
               <button type="button" aria-expanded={form.scaleIns.length ? scaleOpen : undefined}
                 onClick={() => {
                   if (!form.scaleIns.length) { addScaleIn(); setScaleOpenState(true); } else setScaleOpenState(!scaleOpen);
@@ -1278,6 +1455,7 @@ export default function TradeForm({ isOpen, onClose, trade, onSave, riskSettings
                       </button>
                     </div>
                   ))}
+                  {fieldErrors.scaleIns && <p role="alert" className="text-[10px] text-loss px-1">{fieldErrors.scaleIns}</p>}
                   <button type="button" onClick={addScaleIn}
                     className="w-full h-8 flex items-center justify-center gap-1.5 rounded-lg text-xs text-text-muted hover:text-accent-primary hover:bg-accent-primary/5 transition-colors cursor-pointer">
                     <Plus className="w-3 h-3" /> הוסף כניסה
@@ -1297,7 +1475,8 @@ export default function TradeForm({ isOpen, onClose, trade, onSave, riskSettings
                   : `${additionalExitsPercent.toFixed(0)}% נסגר`}
               </span>
             ) : null}>
-            <div className="rounded-xl border border-border-primary">
+            <div id="tt-field-exits" className={`rounded-xl border ${fieldErrors.exits ? 'border-loss' : 'border-border-primary'}`}>
+              {fieldErrors.exits && <p role="alert" className="text-[10px] text-loss px-3 pt-2">{fieldErrors.exits}</p>}
               {form.additionalExits.length > 0 && (
                 <div className={`${exitGrid} px-2.5 h-8 text-[10px] text-text-muted border-b border-border-primary`}>
                   <span>#</span>
@@ -1316,67 +1495,139 @@ export default function TradeForm({ isOpen, onClose, trade, onSave, riskSettings
                   ? Math.max(0, totalContracts - otherUsed)
                   : Math.max(0, 100 - otherUsed);
                 const r = rMultiple(form.direction, avgEntry, riskStopLoss, exit.price);
+                const markExit = () => {
+                  if (isFutures) {
+                    updateAdditionalExit(i, 'contracts', isExecuted ? '' : String(suggested));
+                    return;
+                  }
+                  if (isExecuted) {
+                    setExits((rows) => rows.map((row, idx) => (idx === i ? { ...row, percent: '', quantity: '' } : row)));
+                    return;
+                  }
+                  updateExitSize(i, 'percent', String(suggested));
+                };
                 return (
-                  <div key={i} className={`${exitGrid} px-2.5 py-1.5 border-b border-border-primary/60 last:border-b-0 ${isExecuted ? 'bg-accent-primary/[0.04]' : ''}`}>
-                    <span className={`num-mono text-[11px] font-semibold ${isExecuted ? 'text-accent-primary' : 'text-text-muted'}`}>TP{i + 1}</span>
-                    <input
-                      type="number" step="any"
-                      value={exit.price}
-                      onChange={(e) => updateAdditionalExit(i, 'price', e.target.value)}
-                      className={`${ctlBase} px-2.5 text-sm text-text-primary text-right num-mono`}
-                      placeholder="מחיר"
-                      inputMode="decimal"
-                      aria-label={`מחיר יעד ${i + 1}`}
-                    />
-                    <div className="relative">
+                  <div key={i} className={`px-2.5 py-1.5 border-b border-border-primary/60 last:border-b-0 ${isExecuted ? 'bg-accent-primary/[0.04]' : ''}`}>
+                    <div className={exitGrid}>
+                      <span className={`num-mono text-[11px] font-semibold ${isExecuted ? 'text-accent-primary' : 'text-text-muted'}`}>TP{i + 1}</span>
                       <input
-                        // Percent must allow decimals (exchange-synced trades
-                        // arrive with e.g. 12.5%) — the number input's default
-                        // step=1 makes the browser reject them and silently
-                        // block form submit. Futures stay whole contracts.
-                        type="number" step={isFutures ? '1' : 'any'}
-                        min={isFutures ? '1' : '0.01'} max={isFutures ? totalContracts || undefined : 100}
-                        value={exit[exitField] ?? ''}
-                        onChange={(e) => updateAdditionalExit(i, exitField, e.target.value)}
-                        className={`${ctlBase} pr-2 pl-6 text-sm text-right num-mono ${isExecuted ? 'text-accent-primary font-semibold' : 'text-text-primary'}`}
-                        placeholder="—"
-                        inputMode={isFutures ? 'numeric' : 'decimal'}
-                        aria-label={isFutures ? `חוזים ביעד ${i + 1}` : `אחוז ביעד ${i + 1}`}
+                        type="number" step="any"
+                        value={exit.price}
+                        onChange={(e) => updateAdditionalExit(i, 'price', e.target.value)}
+                        className={`${ctlBase} px-2.5 text-sm text-text-primary text-right num-mono`}
+                        placeholder="מחיר"
+                        inputMode="decimal"
+                        aria-label={`מחיר יעד ${i + 1}`}
                       />
-                      <span className="pointer-events-none absolute left-2 top-1/2 -translate-y-1/2 text-[10px] text-text-muted">{isFutures ? 'ח׳' : '%'}</span>
+                      <div className="relative">
+                        <input
+                          // Percent must allow decimals (exchange-synced trades
+                          // arrive with e.g. 12.5%) — the number input's default
+                          // step=1 makes the browser reject them and silently
+                          // block form submit. Futures stay whole contracts.
+                          type="number" step={isFutures ? '1' : 'any'}
+                          min={isFutures ? '1' : '0.01'} max={isFutures ? totalContracts || undefined : 100}
+                          value={exit[exitField] ?? ''}
+                          onChange={(e) => (isFutures
+                            ? updateAdditionalExit(i, 'contracts', e.target.value)
+                            : updateExitSize(i, 'percent', e.target.value))}
+                          className={`${ctlBase} pr-2 pl-6 text-sm text-right num-mono ${isExecuted ? 'text-accent-primary font-semibold' : 'text-text-primary'}`}
+                          placeholder="—"
+                          inputMode={isFutures ? 'numeric' : 'decimal'}
+                          aria-label={isFutures ? `חוזים ביעד ${i + 1}` : `אחוז ביעד ${i + 1}`}
+                        />
+                        <span className="pointer-events-none absolute left-2 top-1/2 -translate-y-1/2 text-[10px] text-text-muted">{isFutures ? 'ח׳' : '%'}</span>
+                      </div>
+                      <span className="hidden sm:block num-mono text-[11px] text-text-secondary" dir="ltr" style={{ textAlign: 'right' }}>{fmtR(r)}</span>
+                      <button
+                        type="button"
+                        onClick={markExit}
+                        aria-pressed={isExecuted}
+                        className={`h-8 w-full flex items-center justify-center gap-1 rounded-lg text-[11px] font-semibold transition-colors cursor-pointer border ${
+                          isExecuted
+                            ? 'bg-accent-primary/15 text-accent-primary border-accent-primary/30 hover:bg-bg-tertiary hover:text-text-secondary hover:border-border-hover'
+                            : 'bg-bg-tertiary text-text-muted border-border-primary hover:border-accent-primary/40 hover:text-accent-primary'
+                        }`}
+                      >
+                        {isExecuted ? <><Check className="w-3 h-3" />בוצע</> : 'סמן'}
+                      </button>
+                      <button type="button" onClick={() => removeAdditionalExit(i)} aria-label={`הסרת יעד ${i + 1}`}
+                        className="h-8 flex items-center justify-center text-text-muted hover:text-loss transition-colors cursor-pointer">
+                        <X className="w-3.5 h-3.5" />
+                      </button>
                     </div>
-                    <span className="hidden sm:block num-mono text-[11px] text-text-secondary" dir="ltr" style={{ textAlign: 'right' }}>{fmtR(r)}</span>
-                    {/* Mark as executed */}
-                    <button
-                      type="button"
-                      onClick={() => updateAdditionalExit(i, exitField, isExecuted ? '' : String(suggested))}
-                      aria-pressed={isExecuted}
-                      className={`h-8 w-full flex items-center justify-center gap-1 rounded-lg text-[11px] font-semibold transition-colors cursor-pointer border ${
-                        isExecuted
-                          ? 'bg-accent-primary/15 text-accent-primary border-accent-primary/30 hover:bg-bg-tertiary hover:text-text-secondary hover:border-border-hover'
-                          : 'bg-bg-tertiary text-text-muted border-border-primary hover:border-accent-primary/40 hover:text-accent-primary'
-                      }`}
-                    >
-                      {isExecuted ? <><Check className="w-3 h-3" />בוצע</> : 'סמן'}
-                    </button>
-                    <button type="button" onClick={() => removeAdditionalExit(i)} aria-label={`הסרת יעד ${i + 1}`}
-                      className="h-8 flex items-center justify-center text-text-muted hover:text-loss transition-colors cursor-pointer">
-                      <X className="w-3.5 h-3.5" />
-                    </button>
+                    <div className={`mt-1.5 grid gap-1.5 ${isFutures ? 'grid-cols-1' : 'grid-cols-2'}`}>
+                      {!isFutures && (
+                        <input
+                          type="number" step="any" min="0"
+                          value={exit.quantity ?? ''}
+                          onChange={(e) => updateExitSize(i, 'quantity', e.target.value)}
+                          className={compactNumClass}
+                          placeholder={`כמות (${sizeUnitLabel})`}
+                          inputMode="decimal"
+                          aria-label={`כמות יציאה ${i + 1}`}
+                        />
+                      )}
+                      <DatePicker selected={exit.date || null} onChange={(date) => updateAdditionalExit(i, 'date', date)}
+                        showTimeSelect timeFormat="HH:mm" timeIntervals={15} dateFormat="dd/MM/yy HH:mm"
+                        maxDate={new Date()}
+                        minDate={form.entryDate ? startOfLocalDay(form.entryDate) : undefined}
+                        filterTime={(t) => isSelectableTradeTime(t, { min: parseDate(form.entryDate) })}
+                        locale="he" placeholderText="תאריך יציאה"
+                        className={compactNumClass} wrapperClassName="w-full min-w-0"
+                        popperPlacement="bottom-start" portalId="datepicker-portal" />
+                    </div>
                   </div>
                 );
               })}
               <button type="button" onClick={addAdditionalExit}
-                className={`w-full h-10 flex items-center justify-center gap-1.5 text-xs text-text-muted hover:text-accent-primary hover:bg-accent-primary/5 transition-colors cursor-pointer rounded-b-xl ${form.additionalExits.length ? 'border-t border-border-primary' : 'rounded-t-xl'}`}>
+                className={`w-full h-10 flex items-center justify-center gap-1.5 text-xs text-text-muted hover:text-accent-primary hover:bg-accent-primary/5 transition-colors cursor-pointer ${form.additionalExits.length ? 'border-t border-border-primary' : 'rounded-t-xl'}`}>
                 <Plus className="w-3.5 h-3.5" /> הוסף יעד (TP)
               </button>
+              <div className="border-t border-border-primary px-2.5 py-2.5 space-y-2">
+                <p className="text-[11px] text-text-muted">סגירת היתרה בלי יעד — הפסד בסטופ לא דורש TP</p>
+                <div className="grid grid-cols-2 gap-1.5" role="group" aria-label="סוג סגירה">
+                  {[{ id: 'stop', label: 'פגיעת סטופ' }, { id: 'price', label: 'מחיר יציאה' }].map((opt) => {
+                    const on = closeKind === opt.id;
+                    return (
+                      <button key={opt.id} type="button" aria-pressed={on} onClick={() => toggleClose(opt.id)}
+                        className={`h-9 rounded-lg text-xs font-semibold border transition-colors cursor-pointer ${
+                          on
+                            ? 'bg-accent-primary/15 text-accent-primary border-accent-primary/30'
+                            : 'bg-bg-tertiary text-text-muted border-border-primary hover:text-text-primary'
+                        }`}>
+                        {opt.label}
+                      </button>
+                    );
+                  })}
+                </div>
+                {closeKind === 'stop' && (
+                  <p className="text-[11px] text-text-secondary">
+                    נסגר {closePreview ? `${closePreview.percent.toFixed(0)}%` : 'היתרה'} במחיר הסטופ{' '}
+                    <span className="num-mono" dir="ltr">{parseFloat(form.stopLoss) > 0 ? form.stopLoss : '—'}</span>
+                  </p>
+                )}
+                {closeKind === 'price' && (
+                  <input
+                    type="number" step="any" value={closePrice} onChange={(e) => setClosePrice(e.target.value)}
+                    className={compactNumClass} placeholder="מחיר יציאה" inputMode="decimal" aria-label="מחיר יציאה"
+                  />
+                )}
+                {closeKind && (
+                  <DatePicker selected={closeDate} onChange={(date) => setCloseDate(date)}
+                    showTimeSelect timeFormat="HH:mm" timeIntervals={15} dateFormat="dd/MM/yy HH:mm"
+                    maxDate={new Date()}
+                    minDate={form.entryDate ? startOfLocalDay(form.entryDate) : undefined}
+                    filterTime={(t) => isSelectableTradeTime(t, { min: parseDate(form.entryDate) })}
+                    locale="he" placeholderText="תאריך היציאה"
+                    className={compactNumClass} wrapperClassName="w-full min-w-0"
+                    popperPlacement="bottom-start" portalId="datepicker-portal" />
+                )}
+              </div>
             </div>
-            {/* A price alone is a planned target, not an exit — say how to
-                record the exit, so typing the exit price and saving doesn't
-                leave the trade open without a word. */}
             {plannedOnlyTargets && (
               <p className="mt-2 text-[11px] leading-relaxed text-text-muted">
-                יעד עם מחיר בלבד נשמר כיעד מתוכנן. כשהיעד בוצע, לחץ <b className="text-text-secondary">סמן</b> (או מלא {isFutures ? 'חוזים' : 'אחוז'}) והעסקה תיסגר.
+                יעד עם מחיר בלבד נשמר כיעד מתוכנן. כשהיעד בוצע, לחץ <b className="text-text-secondary">סמן</b> (או מלא {isFutures ? 'חוזים' : 'אחוז וכמות'}). הפסד בסטופ נרשם עם <b className="text-text-secondary">פגיעת סטופ</b>.
               </p>
             )}
           </Section>
@@ -1485,6 +1736,7 @@ export default function TradeForm({ isOpen, onClose, trade, onSave, riskSettings
               <Field label="קישור TradingView" htmlFor="tt-tv">
                 <input id="tt-tv" type="url" dir="ltr" value={form.tradingViewUrl} onChange={(e) => update('tradingViewUrl', e.target.value)}
                   className={`${ctlBase} px-3 text-sm text-text-primary text-left`} placeholder="https://www.tradingview.com/x/..." />
+                <TradingViewPreview key={form.tradingViewUrl} url={form.tradingViewUrl} pair={form.pair} />
               </Field>
             </div>
           </Section>

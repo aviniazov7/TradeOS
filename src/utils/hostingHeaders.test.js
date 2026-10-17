@@ -49,7 +49,7 @@ describe('hosting CSP (report-only)', () => {
     }
   });
 
-  it('allows blob: workers (the win-celebration confetti runs in one) but no other worker source', () => {
+  it('allows blob: workers (share-card image export runs in one) but no other worker source', () => {
     expect(d['worker-src']).toEqual(["'self'", 'blob:']);
   });
 
@@ -71,6 +71,43 @@ describe('hosting CSP (enforced)', () => {
     const enforced = directives(header('Content-Security-Policy'));
     expect(enforced['frame-ancestors']).toEqual(["'self'"]);
     expect(enforced['object-src']).toEqual(["'none'"]);
+  });
+});
+
+describe('hosting cache headers', () => {
+  const sources = config.hosting.headers.map((h) => h.source);
+  const cacheOf = (source) => config.hosting.headers
+    .find((h) => h.source === source)?.headers.find((h) => h.key === 'Cache-Control')?.value;
+
+  it('caches images and self-hosted fonts for a week', () => {
+    expect(cacheOf('**/*.@(png|jpg|jpeg|gif|svg|ico|webp|woff2)')).toBe('public, max-age=604800');
+  });
+
+  it('keeps hashed build assets immutable and the HTML document uncached', () => {
+    const week = sources.indexOf('**/*.@(png|jpg|jpeg|gif|svg|ico|webp|woff2)');
+    const assets = sources.indexOf('/assets/**');
+    const index = sources.indexOf('/index.html');
+    expect(week).toBeGreaterThan(-1);
+    expect(assets).toBeGreaterThan(week);
+    expect(index).toBeGreaterThan(assets);
+    expect(cacheOf('**')).toBe('no-cache');
+    expect(cacheOf('/assets/**')).toBe('public, max-age=31536000, immutable');
+    expect(cacheOf('/index.html')).toBe('no-cache');
+  });
+});
+
+describe('login document', () => {
+  const html = readFileSync(fileURLToPath(new URL('../../index.html', import.meta.url)), 'utf8');
+
+  it('does not load a render-blocking Google Fonts stylesheet', () => {
+    expect(html).not.toMatch(/fonts\.googleapis\.com/);
+    expect(html).not.toMatch(/fonts\.gstatic\.com/);
+  });
+
+  it('self-hosts Heebo with font-display: swap', () => {
+    const css = readFileSync(fileURLToPath(new URL('../../node_modules/@fontsource/heebo/hebrew-400.css', import.meta.url)), 'utf8');
+    expect(css).toMatch(/font-display:\s*swap/);
+    expect(css).toMatch(/\.woff2/);
   });
 });
 

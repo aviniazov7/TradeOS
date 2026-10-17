@@ -1,4 +1,4 @@
-import { useState, useRef, useEffect, useLayoutEffect } from 'react';
+import { useState, useRef, useEffect, useLayoutEffect, useId } from 'react';
 import { createPortal } from 'react-dom';
 
 /**
@@ -20,11 +20,23 @@ import { createPortal } from 'react-dom';
  *   className        - optional extra classes for the root wrapper
  *   triggerClassName - optional extra classes for the trigger button (e.g. h-full
  *                      to match sibling buttons when inlined in an action row)
+ *   id               - optional id for the trigger (label htmlFor)
+ *   ariaLabel        - accessible name when there is no visible `label`
  */
-export default function SelectDropdown({ value, onChange, options = [], placeholder = 'בחר...', label, allowClear = false, compact = false, className = '', triggerClassName = '' }) {
+export default function SelectDropdown({ value, onChange, options = [], placeholder = 'בחר...', label, allowClear = false, compact = false, className = '', triggerClassName = '', id, ariaLabel }) {
   const [open, setOpen] = useState(false);
   const [pos, setPos] = useState(null);
+  const [active, setActive] = useState(0);
   const btnRef = useRef(null);
+  const activeRef = useRef(0);
+  const optionsRef = useRef(options);
+  const onChangeRef = useRef(onChange);
+  useEffect(() => { optionsRef.current = options; }, [options]);
+  useEffect(() => { onChangeRef.current = onChange; }, [onChange]);
+  const reactId = useId();
+  const buttonId = id || reactId;
+  const listId = `${buttonId}-list`;
+  const labelId = `${buttonId}-label`;
 
   const updatePos = () => {
     const el = btnRef.current;
@@ -64,6 +76,71 @@ export default function SelectDropdown({ value, onChange, options = [], placehol
   const handleSelect = (val) => {
     onChange(val);
     setOpen(false);
+    btnRef.current?.focus();
+  };
+
+  const openMenu = () => {
+    const idx = optionsRef.current.findIndex((o) => o.value === value);
+    const next = idx >= 0 ? idx : 0;
+    activeRef.current = next;
+    setActive(next);
+    setOpen(true);
+  };
+
+  // Arrows, Home/End and Enter work while the menu is open even if focus sits
+  // on an option. Escape stops here so a dropdown inside a dialog does not
+  // close the dialog.
+  useEffect(() => {
+    if (!open) return undefined;
+    const onKey = (e) => {
+      const opts = optionsRef.current;
+      if (e.key === 'Escape') {
+        e.preventDefault();
+        e.stopPropagation();
+        setOpen(false);
+        btnRef.current?.focus();
+        return;
+      }
+      if (e.key === 'ArrowDown' || e.key === 'ArrowUp' || e.key === 'Home' || e.key === 'End') {
+        e.preventDefault();
+        setActive((i) => {
+          const n = e.key === 'Home' ? 0
+            : e.key === 'End' ? Math.max(0, opts.length - 1)
+            : e.key === 'ArrowDown' ? Math.min(opts.length - 1, i + 1)
+            : Math.max(0, i - 1);
+          activeRef.current = n;
+          return n;
+        });
+        return;
+      }
+      if (e.key === 'Enter') {
+        e.preventDefault();
+        e.stopPropagation();
+        const opt = opts[activeRef.current];
+        if (opt) {
+          onChangeRef.current?.(opt.value);
+          setOpen(false);
+          btnRef.current?.focus();
+        }
+      }
+    };
+    document.addEventListener('keydown', onKey, true);
+    return () => document.removeEventListener('keydown', onKey, true);
+  }, [open]);
+
+  useEffect(() => {
+    if (!open) return undefined;
+    const el = document.getElementById(`${listId}-opt-${active}`);
+    try { el?.scrollIntoView({ block: 'nearest' }); } catch { /* happy-dom */ }
+    return undefined;
+  }, [open, active, listId]);
+
+  const onTriggerKey = (e) => {
+    if (open) return;
+    if (e.key === 'ArrowDown' || e.key === 'ArrowUp') {
+      e.preventDefault();
+      openMenu();
+    }
   };
 
   const btnClass = compact
@@ -74,11 +151,19 @@ export default function SelectDropdown({ value, onChange, options = [], placehol
 
   return (
     <div className={`relative ${className}`}>
-      {label && <label className="block text-xs text-text-muted mb-1">{label}</label>}
+      {label && <label id={labelId} htmlFor={buttonId} className="block text-xs text-text-muted mb-1">{label}</label>}
       <button
         ref={btnRef}
+        id={buttonId}
         type="button"
-        onClick={() => setOpen(!open)}
+        aria-haspopup="listbox"
+        aria-expanded={open}
+        aria-controls={open ? listId : undefined}
+        aria-activedescendant={open ? `${listId}-opt-${active}` : undefined}
+        aria-label={label ? undefined : ariaLabel}
+        aria-labelledby={label ? labelId : undefined}
+        onClick={() => (open ? setOpen(false) : openMenu())}
+        onKeyDown={onTriggerKey}
         className={`${btnClass} ${triggerClassName}`}
       >
         <span className={`truncate ${hasValue ? 'text-text-primary' : 'text-text-muted'}`}>{displayText}</span>
@@ -92,7 +177,7 @@ export default function SelectDropdown({ value, onChange, options = [], placehol
             style={{ left: pos.left, width: pos.width, top: pos.top ?? undefined, bottom: pos.bottom ?? undefined }}
             onClick={(e) => e.stopPropagation()}
           >
-            <div className="overflow-y-auto" style={{ maxHeight: pos.maxHeight }}>
+            <div id={listId} role="listbox" aria-label={ariaLabel || label || placeholder} className="overflow-y-auto" style={{ maxHeight: pos.maxHeight }}>
               {allowClear && hasValue && (
                 <button
                   type="button"
@@ -102,18 +187,28 @@ export default function SelectDropdown({ value, onChange, options = [], placehol
                   {placeholder}
                 </button>
               )}
-              {options.map((o) => (
-                <button
-                  key={o.value}
-                  type="button"
-                  onClick={() => handleSelect(o.value)}
-                  className={`w-full flex items-center px-3 py-2 ${itemClass} transition-colors cursor-pointer text-right ${
-                    value === o.value ? 'bg-accent-primary/10 text-accent-primary font-medium' : 'text-text-primary hover:bg-bg-tertiary'
-                  }`}
-                >
-                  {o.label}
-                </button>
-              ))}
+              {options.map((o, i) => {
+                const selected = value === o.value;
+                const highlighted = i === active;
+                return (
+                  <button
+                    key={o.value}
+                    id={`${listId}-opt-${i}`}
+                    type="button"
+                    role="option"
+                    aria-selected={selected}
+                    onMouseEnter={() => { activeRef.current = i; setActive(i); }}
+                    onClick={() => handleSelect(o.value)}
+                    className={`w-full flex items-center px-3 py-2 ${itemClass} transition-colors cursor-pointer text-right ${
+                      selected ? 'bg-accent-primary/10 text-accent-primary font-medium'
+                        : highlighted ? 'bg-bg-tertiary text-text-primary'
+                        : 'text-text-primary hover:bg-bg-tertiary'
+                    }`}
+                  >
+                    {o.label}
+                  </button>
+                );
+              })}
             </div>
           </div>
         </div>,

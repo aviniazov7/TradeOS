@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react';
-import { AnimatePresence, motion } from 'framer-motion';
+import { AnimatePresence, m } from 'framer-motion';
 import { Bot } from 'lucide-react';
 
 // "TradeAI is thinking" indicator that cycles through `steps` while a report
@@ -27,7 +27,7 @@ export default function ThinkingIndicator({ steps }) {
           </span>
         </div>
         <AnimatePresence mode="wait">
-          <motion.div
+          <m.div
             key={i}
             initial={{ opacity: 0, y: 4 }}
             animate={{ opacity: 1, y: 0 }}
@@ -36,7 +36,7 @@ export default function ThinkingIndicator({ steps }) {
             className="text-xs text-text-secondary mt-1"
           >
             {steps[i]}…
-          </motion.div>
+          </m.div>
         </AnimatePresence>
       </div>
     </div>

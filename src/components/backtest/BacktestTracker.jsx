@@ -1,5 +1,5 @@
 import { useState, useMemo } from 'react';
-import { motion } from 'framer-motion';
+import { m } from 'framer-motion';
 import { Plus, FlaskConical, Trash2, Pencil, ExternalLink, TrendingUp, TrendingDown, Settings, Download, ChevronRight, ChevronLeft, Eye, ArrowUp, ArrowDown, ArrowUpDown, X, BrainCircuit, Crown, Sparkles } from 'lucide-react';
 import DatePicker from 'react-datepicker';
 import 'react-datepicker/dist/react-datepicker.css';
@@ -236,14 +236,14 @@ export default function BacktestTracker() {
   const cardClass = 'bg-bg-secondary border border-border-primary rounded-xl p-4';
 
   return (
-    <motion.div variants={pageVariants} initial="initial" animate="animate" exit="exit" transition={pageTransition}>
+    <m.div variants={pageVariants} initial="initial" animate="animate" exit="exit" transition={pageTransition}>
       {/* The shared page header: the backtest journal (switcher) under the
           title, its views as tabs, and the actions. */}
       <PageHeader
         icon={FlaskConical}
         title="בקטסט"
         titleAside={<BacktestSwitcher compact />}
-        tabs={{ tabs: [{ id: 'records', label: 'עסקאות', count: backtests.length }, { id: 'analytics', label: 'ניתוחים' }], value: tab, onChange: setTab, layoutKey: 'backtest-tab' }}
+        tabs={{ tabs: [{ id: 'records', label: 'עסקאות', count: backtests.length }, { id: 'analytics', label: 'אנליטיקה' }], value: tab, onChange: setTab, layoutKey: 'backtest-tab' }}
         tabsLead={tab === 'analytics' ? <TimePeriodFilter value={period} onChange={setPeriod} /> : null}
         actions={(
           <div className="flex flex-wrap items-center gap-2 w-full sm:w-auto">
@@ -456,7 +456,7 @@ export default function BacktestTracker() {
       {/* Tab: Analytics — AI coach leads, then the detailed charts + tables. */}
       {tab === 'analytics' && (
         backtests.length === 0 ? (
-          <EmptyState icon={FlaskConical} title="אין נתונים לניתוח" description="הוסף עסקאות בקטסט כדי לראות ניתוחים מתקדמים"
+          <EmptyState icon={FlaskConical} title="אין נתונים לאנליטיקה" description="הוסף עסקאות בקטסט כדי לראות אנליטיקה מתקדמת"
             actionLabel="עבור לרשומות" onAction={() => setTab('records')} />
         ) : (
           <div className="space-y-4">
@@ -686,6 +686,6 @@ export default function BacktestTracker() {
       <StrategyView isOpen={viewOpen} onClose={() => setViewOpen(false)} journal={activeJournal} />
 
       <BacktestTradeModal trade={detailTrade} isOpen={!!detailTrade} onClose={() => setDetailTrade(null)} onEdit={openEdit} onDelete={setDeleteTarget} />
-    </motion.div>
+    </m.div>
   );
 }

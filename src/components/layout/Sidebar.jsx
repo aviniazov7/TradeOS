@@ -1,10 +1,9 @@
 import { useState, useEffect } from 'react';
 import { Link, useLocation } from 'react-router-dom';
-import { AnimatePresence, motion } from 'framer-motion';
+import { AnimatePresence, m } from 'framer-motion';
 import {
   LayoutDashboard,
   BookOpen,
-  CandlestickChart,
   FlaskConical,
   ClipboardList,
   Activity,
@@ -28,8 +27,7 @@ import { useAuth } from '../../contexts/AuthContext';
 //   admin — shown to admins only
 const navItems = [
   { key: 'home', to: '/', label: 'בית', icon: LayoutDashboard },
-  { key: 'journal', to: '/journal', label: 'יומן מסחר', icon: BookOpen },
-  { key: 'terminal', to: '/terminal', label: 'עמדת מסחר', icon: CandlestickChart },
+  { key: 'journal', to: '/journal', label: 'יומן מסחר', icon: BookOpen, match: ['/terminal'] },
   { key: 'backtest', to: '/backtest', label: 'בקטסט', icon: FlaskConical },
   { key: 'plans', to: '/plans', label: 'תוכניות מסחר', icon: ClipboardList },
   { key: 'mentality', to: '/mentality', label: 'האזור המנטלי', icon: Brain },
@@ -112,7 +110,7 @@ export default function Sidebar({ mobileOpen, onClose }) {
     <AnimatePresence>
       {mobileOpen && (
         <>
-          <motion.div
+          <m.div
             initial={{ opacity: 0 }}
             animate={{ opacity: 1 }}
             exit={{ opacity: 0 }}
@@ -120,12 +118,12 @@ export default function Sidebar({ mobileOpen, onClose }) {
             className="fixed inset-0 bg-black/60 z-50"
             onClick={onClose}
           />
-          <motion.aside
+          <m.aside
             initial={{ x: '100%' }}
             animate={{ x: 0 }}
             exit={{ x: '100%' }}
             transition={{ type: 'tween', duration: 0.25 }}
-            className="fixed right-0 top-14 md:top-16 h-[calc(100dvh-3.5rem)] md:h-[calc(100dvh-4rem)] w-64 border-l border-border-primary z-50 flex flex-col"
+            className="fixed right-0 top-[5.5rem] md:top-16 h-[calc(100dvh-5.5rem)] md:h-[calc(100dvh-4rem)] w-64 border-l border-border-primary z-50 flex flex-col"
             style={{ background: 'var(--color-bg-solid)', backdropFilter: 'blur(24px)', WebkitBackdropFilter: 'blur(24px)' }}
           >
 
@@ -154,7 +152,7 @@ export default function Sidebar({ mobileOpen, onClose }) {
               </button>
             </div>
 
-          </motion.aside>
+          </m.aside>
         </>
       )}
     </AnimatePresence>

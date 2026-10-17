@@ -1,5 +1,5 @@
 import { useRef, useState } from 'react';
-import { motion } from 'framer-motion';
+import { m } from 'framer-motion';
 import {
   BrainCircuit, Crown, RefreshCw, AlertCircle, Lock, Sparkles,
   TrendingUp, TrendingDown, Target, Lightbulb, HeartPulse, ClipboardCheck, ShieldAlert,
@@ -13,11 +13,15 @@ import { useLinkedExchangeBalance } from '../../hooks/useLinkedExchangeBalance';
 import { generateCoachReport } from '../../services/aiCoachService';
 import { getUserCollectionDocs } from '../../services/firestoreService';
 import { buildCoachStats, coachScopeTrades } from '../../utils/coachStats';
+import {
+  conclusionsReady, directionLabelHe, hebrewDirections, NOT_ENOUGH_DATA_NOTE,
+  profitFactorLabel, softenCoachReport,
+} from '../../utils/coachCopy';
 import { buildPsychologyStats } from '../../utils/coachPsychology';
 import { auditPlan } from '../../utils/planAudit';
 import { pickActivePlan } from '../../utils/pickActivePlan';
 import AnalystInsights from './AnalystInsights';
-import { LRM } from '../../utils/formatters';
+import { formatCurrency, formatCurrencyShort } from '../../utils/formatters';
 
 // Quick prompts the user can click to seed the report.
 const FREE_PROMPTS = [
@@ -121,13 +125,8 @@ const forModel = (obj) => {
   return copy;
 };
 
-const fmt$ = (v) => `${LRM}${v >= 0 ? '+' : '-'}$${Math.abs(v).toFixed(2)}`;
-const fmt$Compact = (v) => {
-  const sign = `${LRM}${v >= 0 ? '+' : '-'}`;
-  const a = Math.abs(v);
-  if (a >= 1000) return `${sign}$${(a / 1000).toFixed(1)}K`;
-  return `${sign}$${a.toFixed(0)}`;
-};
+const fmt$ = formatCurrency;
+const fmt$Compact = formatCurrencyShort;
 
 // dir defaults to ltr because almost every value here is a number, but a caller
 // passing free-form Hebrew (a plan name) must be able to opt out — forcing LTR
@@ -164,7 +163,7 @@ function PnlBars({ title, rows, Icon }) {
           return (
             <div key={r.key}>
               <div className="flex items-center justify-between text-xs mb-1">
-                <span className="text-text-secondary">{r.key} <span className="text-text-muted">· {r.trades}</span></span>
+                <span className="text-text-secondary">{directionLabelHe(r.key) || r.key} <span className="text-text-muted">· {r.trades}</span></span>
                 <span className={positive ? 'text-profit font-semibold' : 'text-loss font-semibold'} dir="ltr">{fmt$(r.pnl)}</span>
               </div>
               <div className="h-1.5 rounded-full bg-bg-tertiary overflow-hidden">
@@ -219,7 +218,7 @@ function TradeRows({ title, rows, Icon }) {
           <div key={i} className="flex items-center justify-between gap-2 text-xs py-1.5 border-b border-border-primary/50 last:border-0">
             <span className="text-text-secondary min-w-0 truncate">
               {t.pair}
-              {t.direction && <span className="text-text-muted"> · {t.direction === 'long' ? 'לונג' : t.direction === 'short' ? 'שורט' : t.direction}</span>}
+              {t.direction && <span className="text-text-muted"> · {directionLabelHe(t.direction)}</span>}
               {t.strategy && <span className="text-text-muted"> · {t.strategy}</span>}
             </span>
             <span className={`${t.pnl >= 0 ? 'text-profit' : 'text-loss'} font-semibold shrink-0`} dir="ltr">{fmt$(t.pnl)}</span>
@@ -508,8 +507,8 @@ function StatsDashboard({ stats, focus }) {
         <StatCard
           label="Profit Factor"
           value={s.profitFactor != null ? s.profitFactor : '—'}
-          sub={s.profitFactor >= 1.5 ? 'מצוין' : s.profitFactor >= 1 ? 'תקין' : 'לשיפור'}
-          tone={s.profitFactor >= 1 ? 'profit' : 'loss'}
+          sub={profitFactorLabel(s.profitFactor, s.total)}
+          tone={!conclusionsReady(s.total) ? 'neutral' : s.profitFactor >= 1 ? 'profit' : 'loss'}
           Icon={Sparkles}
         />
         <StatCard
@@ -625,12 +624,14 @@ export default function AICoachPanel({ trades }) {
     }
   };
 
-  const sections = report ? parseSections(report) : [];
+  const sampleTotal = stats?.summary?.total ?? 0;
+  const thinSample = !!stats && !conclusionsReady(sampleTotal);
+  const sections = report ? parseSections(softenCoachReport(hebrewDirections(report), sampleTotal)) : [];
 
   return (
     <div className="space-y-4 mt-2 max-w-3xl mx-auto">
       {/* Header */}
-      <motion.div
+      <m.div
         initial={{ opacity: 0, y: 6 }} animate={{ opacity: 1, y: 0 }}
         className="flex flex-wrap items-center justify-between gap-3 rounded-2xl border border-border-primary bg-bg-secondary px-4 py-3.5"
       >
@@ -661,7 +662,7 @@ export default function AICoachPanel({ trades }) {
             ? <><RefreshCw className="w-4 h-4 animate-spin" /> מנתח...</>
             : <><Sparkles className="w-4 h-4" /> ניתוח מלא</>}
         </button>
-      </motion.div>
+      </m.div>
 
       {/* Deterministic analysis — correct on open, costs nothing, needs no model */}
       <AnalystInsights trades={trades} />
@@ -719,8 +720,13 @@ export default function AICoachPanel({ trades }) {
       )}
 
       {/* Structured chat-style report */}
-      {sections.length > 0 && !loading && (
-        <motion.div initial={{ opacity: 0, y: 6 }} animate={{ opacity: 1, y: 0 }} className="space-y-3">
+      {(sections.length > 0 || thinSample) && !loading && (
+        <m.div initial={{ opacity: 0, y: 6 }} animate={{ opacity: 1, y: 0 }} className="space-y-3">
+          {thinSample && (
+            <p role="note" className="rounded-xl border border-border-primary bg-bg-secondary px-4 py-3 text-sm text-text-secondary">
+              {NOT_ENOUGH_DATA_NOTE}
+            </p>
+          )}
           {/* Focused stats — only the charts that answer the question asked */}
           <StatsDashboard stats={stats} focus={activePrompt} />
 
@@ -729,7 +735,7 @@ export default function AICoachPanel({ trades }) {
             const meta = SECTION_META[s.title] || DEFAULT_META;
             const { Icon } = meta;
             return (
-              <motion.div
+              <m.div
                 key={`${s.title}-${idx}`}
                 initial={{ opacity: 0, y: 6 }}
                 animate={{ opacity: 1, y: 0 }}
@@ -748,10 +754,10 @@ export default function AICoachPanel({ trades }) {
                     </li>
                   ))}
                 </ul>
-              </motion.div>
+              </m.div>
             );
           })}
-        </motion.div>
+        </m.div>
       )}
 
       {/* Footer upsell for free users */}

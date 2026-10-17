@@ -27,6 +27,22 @@ function shouldBypass(url) {
   return BYPASS_HOST_PATTERNS.some((p) => url.includes(p));
 }
 
+// Hashed build output is immutable. Everything else (the shell, sw.js, and
+// /logos) must skip the HTTP cache: Firebase keeps images for 7 days, and a
+// logo URL that once 200'd as index.html stayed that way until the filename
+// changed. The ticker then treated the HTML as a broken image and walked on
+// to Parqet's "zest" mark.
+function isImmutableAsset(url) {
+  try { return new URL(url).pathname.startsWith('/assets/'); } catch { return false; }
+}
+
+function responseIsHtmlForImage(request, response) {
+  const path = (() => { try { return new URL(request.url).pathname; } catch { return ''; } })();
+  if (!/\.(png|jpe?g|gif|svg|webp|ico)$/i.test(path)) return false;
+  const type = (response.headers.get('content-type') || '').toLowerCase();
+  return type.includes('text/html');
+}
+
 // Install — cache static assets (NOT index.html).
 // skipWaiting() so a freshly deployed worker activates immediately instead of
 // getting stuck "waiting" behind an old worker until the user taps a prompt.
@@ -101,9 +117,15 @@ self.addEventListener('fetch', (event) => {
     return;
   }
 
+  const cacheMode = isImmutableAsset(url) ? 'default' : 'no-store';
   event.respondWith(
-    fetch(event.request)
+    fetch(event.request, { cache: cacheMode })
       .then((response) => {
+        // Never store the SPA shell under an image URL. An <img> would fail
+        // to decode it and the old ticker walked that failure to a CDN logo.
+        if (response && responseIsHtmlForImage(event.request, response)) {
+          return new Response('', { status: 404, statusText: 'Not an image' });
+        }
         if (response && response.ok) {
           const clone = response.clone();
           caches.open(CACHE_NAME).then((cache) => cache.put(event.request, clone));

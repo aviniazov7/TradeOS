@@ -1,5 +1,5 @@
 import { useMemo, useState } from 'react';
-import { motion } from 'framer-motion';
+import { m } from 'framer-motion';
 import { useNavigate } from 'react-router-dom';
 import { Plus, Target, Pencil, Trash2, Play, Gem, AlertCircle, Compass } from 'lucide-react';
 import toast from 'react-hot-toast';
@@ -168,13 +168,13 @@ export default function StrategyTab({ smartCountByMarket = {}, smartLoading = fa
               <span className="text-[11px] max-w-sm leading-relaxed">זה תקין — אסטרטגיה טובה מסננת הרבה. נסה להרחיב את טווח ההסתברות, להוריד את רצפת הנזילות, או להאריך את חלון הזמן.</span>
             </div>
           ) : (
-            <motion.div className="space-y-2" variants={staggerContainer} initial="initial" animate="animate">
-              {matches.slice(0, 30).map((m) => (
-                <motion.div key={m.market.conditionId} variants={staggerItem}>
-                  <MatchRow match={m} onOpen={() => navigate(`/polymarket/market/${m.market.conditionId}`, { state: { market: m.market } })} />
-                </motion.div>
+            <m.div className="space-y-2" variants={staggerContainer} initial="initial" animate="animate">
+              {matches.slice(0, 30).map((match) => (
+                <m.div key={match.market.conditionId} variants={staggerItem}>
+                  <MatchRow match={match} onOpen={() => navigate(`/polymarket/market/${match.market.conditionId}`, { state: { market: match.market } })} />
+                </m.div>
               ))}
-            </motion.div>
+            </m.div>
           )}
         </section>
       )}

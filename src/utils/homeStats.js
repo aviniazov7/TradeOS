@@ -18,6 +18,21 @@ export function winLossRatio(avgWin, avgLoss) {
 }
 
 /** "N ימים ברצף" with Hebrew singular / zero forms. */
+/** "—" until there is at least one win or loss. 0.00 on an empty journal is not a factor. */
+export function profitFactorText(profitFactor, wins = 0, losses = 0) {
+  if ((Number(wins) || 0) + (Number(losses) || 0) === 0) return '—';
+  if (profitFactor == null || profitFactor === Infinity) return '∞';
+  const n = Number(profitFactor);
+  return Number.isFinite(n) ? n.toFixed(2) : '—';
+}
+
+/** Win rate label. An empty sample is a dash, not "0.0%". */
+export function winRateText(winRate, wins = 0, losses = 0) {
+  if ((Number(wins) || 0) + (Number(losses) || 0) === 0) return '—';
+  const n = Number(winRate);
+  return Number.isFinite(n) ? `${n.toFixed(1)}%` : '—';
+}
+
 export function streakDaysLabel(n) {
   const d = Number(n) || 0;
   if (d <= 0) return 'אין רצף ימים';

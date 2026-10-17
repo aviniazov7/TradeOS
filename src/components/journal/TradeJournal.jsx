@@ -1,12 +1,12 @@
 import { useState, useMemo, useEffect, useRef, lazy, Suspense } from 'react';
 import { useSearchParams } from 'react-router-dom';
-import { motion } from 'framer-motion';
+import { m } from 'framer-motion';
 import { Plus, BookOpen, Settings, Undo2, BrainCircuit, ListChecks, Trash2, AlertTriangle, Sparkles, Briefcase, Loader2 } from 'lucide-react';
 import toast from 'react-hot-toast';
 import { useTrades } from '../../hooks/useTrades';
 import { useCryptoPrices } from '../../hooks/useCryptoPrices';
 import { useJournalContext } from '../../contexts/JournalContext';
-import { calculatePnL, calculateFuturesPnL, isClosedTrade, safePnl, localDayKey } from '../../utils/calculations';
+import { isClosedTrade, safePnl, localDayKey } from '../../utils/calculations';
 import { computeUnrealized, sortJournalTrades } from '../../utils/journalAnalytics';
 import { useDashboardStats } from '../../hooks/useDashboardStats';
 import { useLinkedExchange } from '../../hooks/useLinkedExchangeBalance';
@@ -18,7 +18,7 @@ import StockMarketPanel from '../stocks/StockMarketPanel';
 import PropFirmPanel from '../propfirm/PropFirmPanel';
 import { useStockQuotes } from '../../hooks/useStockQuotes';
 import { stockSymbol } from '../../utils/stocks';
-import { headerIconBtn, headerPrimaryBtn, headerAiBtn } from '../shared/headerStyles';
+import { headerPrimaryBtn, headerAiBtnDense, headerIconBtnDense, headerPlusBtnDense } from '../shared/headerStyles';
 import JournalSummaryBar from './JournalSummaryBar';
 import TradeTable from './TradeTable';
 import TradeFilters from './TradeFilters';
@@ -35,11 +35,12 @@ import { downloadCsv } from '../../utils/csv';
 import { JOURNAL_CSV_HEADERS, journalCsvRow } from '../../utils/tradeExport';
 import { TAG_LABELS } from '../../utils/constants';
 import { pageVariants, pageTransition } from '../../utils/animations';
+import { TRADE_PREFILL_KEY } from '../../utils/tradeFormHelpers';
+import { CRYPTO_JOURNAL_TABS, OTHER_JOURNAL_TABS, resolveJournalTab } from '../../utils/journalTabs';
 
-const JOURNAL_TABS = ['trades', 'analytics', 'calendar', 'exchange'];
-const TAB_LABELS = { trades: 'עסקאות', analytics: 'ניתוחים', calendar: 'יומן חודשי', exchange: 'חיבור בורסאות' };
-// Narrow screens: shorter label so all four fit without scrolling on most phones.
-const TAB_MOBILE_LABELS = { ...TAB_LABELS, exchange: 'בורסאות' };
+const TAB_LABELS = { trades: 'עסקאות', exchange: 'בורסה', analytics: 'אנליטיקה', calendar: 'יומן חודשי' };
+// Phone row: "יומן חודשי" is the only label that needs a shorter form.
+const TAB_MOBILE = { trades: 'עסקאות', exchange: 'בורסה', analytics: 'אנליטיקה', calendar: 'יומן' };
 const defaultFilters = { search: '', direction: '', result: '', status: '', strategy: '', tag: '', timeframe: '', month: '', from: '', to: '' };
 const defaultSort = { key: 'date', dir: 'desc' };
 // Phone sort picker (desktop sorts by clicking column headers).
@@ -60,9 +61,9 @@ const entryDay = (t) => (t.entryDate ? localDayKey(t.entryDate) : '');
 // Everything below is loaded on demand: the default trades view only needs the
 // table. The form alone pulls in react-datepicker (~130 kB), and the analytics
 // tab pulls in recharts (~414 kB).
+const OpenPositionsTab = lazy(() => import('./OpenPositionsTab'));
 const JournalAnalyticsTab = lazy(() => import('./JournalAnalyticsTab'));
 const MonthlyCalendar = lazy(() => import('./MonthlyCalendar'));
-const ExchangeSettings = lazy(() => import('../exchange/ExchangeSettings'));
 // The trade form is the journal's main action — its chunk is preloaded once
 // the journal is up (see below) so the first "עסקה חדשה" opens instantly.
 const loadTradeForm = () => import('./TradeForm');
@@ -113,6 +114,7 @@ export default function TradeJournal() {
   const [searchParams, setSearchParams] = useSearchParams();
   const [formOpen, setFormOpen] = useState(false);
   const [editingTrade, setEditingTrade] = useState(null);
+  const [tradePrefill, setTradePrefill] = useState(null);
   const [pendingDeletes, setPendingDeletes] = useState(new Set());
   const [filters, setFilters] = useState(() => {
     try {
@@ -137,11 +139,11 @@ export default function TradeJournal() {
   // The active tab lives in the URL (?tab=analytics) so a refresh keeps it and
   // the browser's back button steps between tabs. 'trades' is the bare URL.
   const tabParam = searchParams.get('tab');
-  // Exchange connections are crypto-only (stock and futures journals have no
-  // exchange sync), so their tab exists only in crypto journals.
+  // The בורסה hub (connection + positions + orders) is crypto-only. Stock and
+  // futures journals have no exchange sync. Old ?tab=positions links land here.
   const isCryptoJournal = (activeJournal?.assetClass || 'crypto') === 'crypto';
-  const journalTabs = isCryptoJournal ? JOURNAL_TABS : JOURNAL_TABS.filter((t) => t !== 'exchange');
-  const tab = journalTabs.includes(tabParam) ? tabParam : 'trades';
+  const journalTabs = isCryptoJournal ? CRYPTO_JOURNAL_TABS : OTHER_JOURNAL_TABS;
+  const tab = resolveJournalTab(tabParam, { crypto: isCryptoJournal });
   const setTab = (next) => {
     if (next === tab) return;
     setSearchParams((prev) => {
@@ -292,11 +294,20 @@ export default function TradeJournal() {
   // only equals the wallet when period === 'all', so reading it directly would
   // make the headline swing whenever the user changes the period filter.
   const displayedCurrentBalance = balanceIsLive ? liveExchangeBalance : stats.currentBalance;
+  // "% of portfolio" on the trade ticket. The account is the journal's opening
+  // balance plus realized P&L (a linked exchange already reports that total).
+  // A blank opening balance must NOT fall through to "current P&L" — that
+  // made the percent a ratio of this trade to itself.
+  const openingBalance = Number(activeJournal?.initialBalance) || 0;
+  const formBalanceKnown = balanceIsLive || openingBalance > 0;
+  const formBalance = balanceIsLive
+    ? liveExchangeBalance
+    : (openingBalance > 0 ? openingBalance + totalClosedPnL : 0);
 
   // Import a single exchange-synced trade into the active journal. Shared by
-  // the exchange tab (ExchangeSettings) and the trades-tab proposal banner
-  // (ExchangeProposals) so both add trades identically, upserting when any of
-  // the row's close-order ids is already in the journal.
+  // the בורסה tab and the trades-tab proposal banner so both add trades
+  // identically, upserting when any of the row's close-order ids is already
+  // in the journal.
   const { importTrade: importExchangeTrade } = useExchangeImport(activeJournalId);
 
   useEffect(() => {
@@ -308,7 +319,17 @@ export default function TradeJournal() {
     // Deep-link from the analyst page — it hands off to the full AI report.
     const isAi = searchParams.get('ai') === '1';
     if (!isNew && !isSettings && !isAi) return;
-    if (isNew) setFormOpen(true);
+    if (isNew) {
+      let seed = null;
+      try {
+        const raw = sessionStorage.getItem(TRADE_PREFILL_KEY);
+        if (raw) seed = JSON.parse(raw);
+      } catch { seed = null; }
+      try { sessionStorage.removeItem(TRADE_PREFILL_KEY); } catch { /* private mode */ }
+      setEditingTrade(null);
+      setTradePrefill(seed);
+      setFormOpen(true);
+    }
     if (isSettings) setSettingsOpen(true);
     if (isAi) setAiModalOpen(true);
     // One-shot flags: strip them so switching tabs (which also writes the URL)
@@ -401,21 +422,6 @@ export default function TradeJournal() {
         await addTrade(data);
         toast.success('העסקה נוספה');
       }
-      // Confetti on winning closed trade. Mirror how PnL is actually computed
-      // so the celebration is correct for exchange-imported and CME-futures
-      // trades too, not just plain crypto (price × qty).
-      if (data.exitPrice > 0) {
-        const pnl = data.pnlFromExchange != null
-          ? data.pnlFromExchange
-          : data.contract?.pointValue
-            ? calculateFuturesPnL(data.direction, data.entryPrice, data.exitPrice, data.contract.pointValue, data.contract.contracts)
-            : calculatePnL(data.direction, data.entryPrice, data.exitPrice, data.quantity);
-        if (pnl > 0) {
-          import('canvas-confetti').then(({ default: confetti }) => {
-            confetti({ particleCount: 120, spread: 80, origin: { y: 0.7 }, colors: ['#22c55e', '#4ade80', '#86efac', '#fbbf24', '#38bdf8'] });
-          }).catch(() => {});
-        }
-      }
     } catch (error) {
       console.error('Save trade failed:', error);
       const msg = error.code === 'permission-denied' ? 'אין הרשאה לשמור' : 'שגיאה בשמירת העסקה — נסה שוב';
@@ -504,6 +510,7 @@ export default function TradeJournal() {
   const handleCloseForm = () => {
     setFormOpen(false);
     setEditingTrade(null);
+    setTradePrefill(null);
   };
 
   const toggleSelected = (id) => setSelectedIds((prev) => {
@@ -535,7 +542,7 @@ export default function TradeJournal() {
     // deleted every journal has NO way back in (new users can also land here
     // if the default-journal migration hasn't run yet).
     return (
-      <motion.div variants={pageVariants} initial="initial" animate="animate" exit="exit" transition={pageTransition}>
+      <m.div variants={pageVariants} initial="initial" animate="animate" exit="exit" transition={pageTransition}>
         <EmptyState
           icon={BookOpen}
           title="אין יומן פעיל"
@@ -553,38 +560,43 @@ export default function TradeJournal() {
           journalName={archiveTargetName}
           onComplete={() => setArchiveAnimating(false)}
         />
-      </motion.div>
+      </m.div>
     );
   }
 
   return (
-    <motion.div variants={pageVariants} initial="initial" animate="animate" exit="exit" transition={pageTransition}>
+    <m.div variants={pageVariants} initial="initial" animate="animate" exit="exit" transition={pageTransition}>
       {/* The shared page header: the journal's name (switcher) under the title,
           its views as tabs, and the two actions. */}
       <PageHeader
         icon={isStockJournal ? Briefcase : BookOpen}
         title={isStockJournal ? 'יומן מניות' : 'יומן המסחר'}
         titleAside={<JournalSwitcher compact />}
+        compactMobile
         tabs={{
-          tabs: journalTabs.map((id) => ({ id, label: TAB_LABELS[id], mobileLabel: TAB_MOBILE_LABELS[id], count: id === 'trades' ? trades.length : 0 })),
+          tabs: journalTabs.map((id) => ({ id, label: TAB_LABELS[id], mobileLabel: TAB_MOBILE[id], count: id === 'trades' ? trades.length : 0 })),
           value: tab,
           onChange: setTab,
           layoutKey: 'journal-tab',
         }}
         tabsLead={tab === 'analytics' ? <TimePeriodFilter value={period} onChange={setPeriod} /> : null}
         actions={(
-          <div className="flex flex-wrap items-center gap-2 w-full sm:w-auto">
-            {/* The AI analysis — a compact header action instead of a full-width banner */}
-            <button onClick={() => setAiModalOpen(true)} className={headerAiBtn} title="ניתוח AI של המסחר שלך">
-              <Sparkles className="w-[18px] h-[18px]" />
-              <span className="hidden sm:inline">ניתוח AI</span>
+          <div className="flex items-center gap-1.5 md:gap-2">
+            <button onClick={() => setAiModalOpen(true)} className={headerAiBtnDense} title="ניתוח AI של המסחר שלך" aria-label="ניתוח AI">
+              <Sparkles className="w-4 h-4 md:w-[18px] md:h-[18px]" />
+              <span className="hidden md:inline">ניתוח AI</span>
             </button>
-            <button onClick={() => setSettingsOpen(true)} className={headerIconBtn} title="הגדרות יומן" aria-label="הגדרות יומן">
-              <Settings className="w-[18px] h-[18px]" />
+            <button onClick={() => setSettingsOpen(true)} className={headerIconBtnDense} title="הגדרות יומן" aria-label="הגדרות יומן">
+              <Settings className="w-4 h-4 md:w-[18px] md:h-[18px]" />
             </button>
-            <button onClick={() => setFormOpen(true)} className={`${headerPrimaryBtn} flex-1 sm:flex-none min-w-[8.5rem]`}>
-              <Plus className="w-4 h-4" /> עסקה חדשה
+            <button type="button" onClick={() => setFormOpen(true)} className={headerPlusBtnDense} aria-label="עסקה חדשה" title="עסקה חדשה">
+              <Plus className="w-4 h-4" />
             </button>
+            <span className="hidden md:inline-flex">
+              <button type="button" onClick={() => setFormOpen(true)} className={headerPrimaryBtn}>
+                <Plus className="w-4 h-4" /> עסקה חדשה
+              </button>
+            </span>
           </div>
         )}
       />
@@ -721,6 +733,12 @@ export default function TradeJournal() {
         </>
       )}
 
+      {tab === 'exchange' && (
+        <Suspense fallback={<TabFallback />}>
+          <OpenPositionsTab />
+        </Suspense>
+      )}
+
       {tab === 'analytics' && (
         <Suspense fallback={<TabFallback />}>
           <JournalAnalyticsTab
@@ -759,14 +777,6 @@ export default function TradeJournal() {
         </Suspense>
       </Modal>
 
-      {tab === 'exchange' && (
-        <div className="mt-2">
-          <Suspense fallback={<TabFallback />}>
-            <ExchangeSettings journalId={activeJournalId} />
-          </Suspense>
-        </div>
-      )}
-
       {/* Lazy modals, each in its own boundary so one loading (e.g. import,
           opened from inside settings) never blanks another that is open.
           fallback={null}: the Modal draws its own backdrop once loaded. */}
@@ -779,7 +789,8 @@ export default function TradeJournal() {
       )}>
         {formMounted && (
           <TradeForm isOpen={formOpen} onClose={handleCloseForm} trade={editingTrade} onSave={handleSave}
-            riskSettings={{ riskType: activeJournal?.riskType, riskValue: activeJournal?.riskValue, currentBalance: displayedCurrentBalance }}
+            prefill={tradePrefill}
+            riskSettings={{ riskType: activeJournal?.riskType, riskValue: activeJournal?.riskValue, currentBalance: formBalance, balanceKnown: formBalanceKnown }}
             journalAssetClass={activeJournal?.assetClass || 'crypto'}
             livePrices={prices} />
         )}
@@ -817,6 +828,6 @@ export default function TradeJournal() {
         journalName={archiveTargetName}
         onComplete={() => setArchiveAnimating(false)}
       />
-    </motion.div>
+    </m.div>
   );
 }

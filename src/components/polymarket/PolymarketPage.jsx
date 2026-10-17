@@ -1,5 +1,5 @@
 import { useMemo, useState } from 'react';
-import { motion } from 'framer-motion';
+import { m } from 'framer-motion';
 import { useNavigate, useSearchParams } from 'react-router-dom';
 import { Trophy, Crown, Lock, Search, ShieldCheck, Info, ArrowDownUp, AlertCircle, RefreshCw, Star, Users, Globe, Waves, Compass, UserRoundSearch, Gem, Download, GraduationCap } from 'lucide-react';
 import toast from 'react-hot-toast';
@@ -111,7 +111,7 @@ function Hero({ stats, watchedCount = 0, strategyCount = 0, onOpenAnalyst, onOpe
           </div>
           <div className="min-w-0 flex-1">
             <div className="flex items-center gap-2 flex-wrap">
-              <h1 className="text-base sm:text-lg font-bold leading-tight" style={{ color: 'var(--pm-hero-fg)' }}>ארנקים מובילים · Polymarket</h1>
+              <h2 className="text-base sm:text-lg font-bold leading-tight" style={{ color: 'var(--pm-hero-fg)' }}>ארנקים מובילים · Polymarket</h2>
               <span className="inline-flex items-center gap-1 text-[10px] px-1.5 py-0.5 rounded-full bg-accent-primary text-bg-primary font-bold"><Crown className="w-2.5 h-2.5" /> Premium</span>
             </div>
             <p className="text-[11px] sm:text-xs leading-relaxed mt-1" style={{ color: 'var(--pm-hero-fg-soft)' }}>
@@ -472,13 +472,13 @@ function PolymarketBoard() {
             </div>
           )}
           {/* The rest — painted in chunks, then more pulled from the API */}
-          <motion.div className="space-y-2" variants={staggerContainer} initial="initial" animate="animate">
+          <m.div className="space-y-2" variants={staggerContainer} initial="initial" animate="animate">
             {listRows.slice(0, visible).map((r, i) => (
-              <motion.div key={r.wallet} variants={staggerItem}>
+              <m.div key={r.wallet} variants={staggerItem}>
                 <WalletRow r={r} rank={podium.length + i + 1} isWatched={watchedSet.has(r.wallet)} onToggle={() => toggle(r)} onOpen={() => openWallet(r)} />
-              </motion.div>
+              </m.div>
             ))}
-          </motion.div>
+          </m.div>
 
           {(listRows.length > visible || hasMore) && (
             <button
@@ -519,7 +519,7 @@ function PolymarketBoard() {
 export default function PolymarketPage() {
   const { isPremium } = useAuth();
   return (
-    <motion.div variants={pageVariants} initial="initial" animate="animate" exit="exit" transition={pageTransition} className="max-w-4xl mx-auto">
+    <m.div variants={pageVariants} initial="initial" animate="animate" exit="exit" transition={pageTransition} className="max-w-4xl mx-auto">
       {isPremium ? (
         <PolymarketBoard />
       ) : (
@@ -528,6 +528,6 @@ export default function PolymarketPage() {
           <LockedTeaser />
         </>
       )}
-    </motion.div>
+    </m.div>
   );
 }

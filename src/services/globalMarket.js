@@ -15,6 +15,7 @@ export function fromPaprika(d) {
     total_volume: { usd: d.volume_24h_usd },
     market_cap_change_percentage_24h_usd: d.market_cap_change_24h,
     market_cap_percentage: { btc: d.bitcoin_dominance_percentage },
+    active_cryptocurrencies: d.cryptocurrencies_number ?? null,
   };
 }
 

@@ -1,6 +1,6 @@
 import { useState, useMemo, useEffect, useCallback } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { motion, AnimatePresence } from 'framer-motion';
+import { m, AnimatePresence } from 'framer-motion';
 import { LineChart, Eye, EyeOff, Plus, ChevronDown } from 'lucide-react';
 import { useTrades } from '../../hooks/useTrades';
 import { useJournalContext } from '../../contexts/JournalContext';
@@ -13,7 +13,7 @@ import { useLinkedJournals } from '../../hooks/useLinkedExchangeBalance';
 import { KEY_PROBLEM_TEXT } from '../../services/exchangeService';
 import { isClosedTrade, safePnl, calculateWinRate, winRateOf, tradeRMultiple } from '../../utils/calculations';
 import DashboardSkeleton from './DashboardSkeleton';
-import PendingLimitOrders from './PendingLimitOrders';
+import OpenPositionsSummary from './OpenPositionsSummary';
 import TradeAgentCard from './TradeAgentCard';
 import GettingStartedCard from './GettingStartedCard';
 import PortfolioHero from './PortfolioHero';
@@ -27,10 +27,10 @@ import Reveal from '../shared/Reveal';
 import { formatCurrency } from '../../utils/formatters';
 import { exchangeLabel } from '../../utils/constants';
 import { winLossRatio } from '../../utils/homeStats';
+import { declaredStartCapital } from '../../utils/portfolioPerformance';
 import { fetchGlobalMarket } from '../../services/globalMarket';
+import { readSessionCache, writeSessionCache } from '../../utils/sessionCache';
 import { pageVariants, pageTransition } from '../../utils/animations';
-import { fetchPerpPrices } from '../../services/bybitDirect';
-import { fetchStockQuotes } from '../../services/stocksApi';
 
 
 // "Good evening, Avi" + today's date, for the page header.
@@ -48,7 +48,7 @@ const todayLabel = () => new Date().toLocaleDateString('he-IL', { weekday: 'long
 function JournalTile({ j, mask, onOpen }) {
   const pnlCls = j.pnl > 0 ? 'text-profit' : j.pnl < 0 ? 'text-loss' : 'text-text-secondary';
   let missingWhy = 'לא הוגדרה יתרה התחלתית ליומן';
-  if (j.problem) missingWhy = `${KEY_PROBLEM_TEXT[j.problem]} — עדכן בחיבור בורסאות`;
+  if (j.problem) missingWhy = `${KEY_PROBLEM_TEXT[j.problem]} — עדכן בטאב בורסה`;
   else if (exchangeLabel(j.exchange)) missingWhy = `אין כרגע שווי חי מ-${exchangeLabel(j.exchange)}`;
   else if (j.exchange) missingWhy = 'אין כרגע שווי חי מהבורסה';
   return (
@@ -99,7 +99,7 @@ function JournalTile({ j, mask, onOpen }) {
 export default function Dashboard() {
   const navigate = useNavigate();
   const { user, profile } = useAuth();
-  const { journals, setActiveJournalId } = useJournalContext();
+  const { journals, setActiveJournalId, loading: journalsLoading = false } = useJournalContext();
   const [showAllJournals, setShowAllJournals] = useState(false);
   const [hideBalances, setHideBalances] = useState(() => localStorage.getItem('tradeos_hideBalances') === 'true');
 
@@ -109,15 +109,18 @@ export default function Dashboard() {
       return !v;
     });
   };
-  const m = (val) => hideBalances ? '••••' : val;
+  const maskAmount = (val) => hideBalances ? '••••' : val;
   const { trades: allTrades, loading: tradesLoading } = useTrades(); // all trades, no journal filter
   const { backtests: allBacktests, loading: backtestsLoading } = useBacktests();
   const backtests = useMemo(() => allBacktests.filter((b) => b.backtestJournalId), [allBacktests]);
   const { plans, loading: plansLoading } = useTradingPlans();
   const { dcaPlans, loading: dcaLoading } = useDCA();
-  const { todayMorning, todayEvening, morningEntries } = useMentalityJournals();
+  const { todayMorning, todayEvening, morningEntries, loading: mentalityLoading } = useMentalityJournals();
 
-  const loading = tradesLoading || backtestsLoading || plansLoading || dcaLoading;
+  // The hero waits on trades only. Backtests, plans, DCA and the mental
+  // journals fill their own row when they arrive instead of holding the page.
+  const loading = tradesLoading;
+  const linksLoading = backtestsLoading || plansLoading || dcaLoading || mentalityLoading;
 
   // Live wallet balance for every journal that's linked to a connected exchange.
   const { balances: linkedBalances, problems: linkedProblems } = useLinkedJournals(journals);
@@ -128,13 +131,13 @@ export default function Dashboard() {
     // Include trades with no journalId (legacy/imported before journal assignment) + trades belonging to current journals
     const relevantTrades = allTrades.filter((t) => !t.journalId || journalIds.has(t.journalId));
     const closed = relevantTrades.filter(isClosedTrade);
-    const openTrades = relevantTrades.filter((t) => !isClosedTrade(t));
     const totalPnL = closed.reduce((s, t) => s + safePnl(t), 0);
     // The ONE win-rate definition (breakevens excluded) — same as the journal.
     const winRate = calculateWinRate(closed);
-    // Per-journal: prefer live wallet when linked. Derive a synthetic
-    // initialBalance for linked journals so percentages stay consistent with
-    // the wallet (effInit = live − that journal's closed PnL).
+    // Portfolio VALUE, plus a capital base for the performance score's drawdown.
+    // The hero's % is not this gap: a linked wallet minus closed P&L still
+    // holds deposits and withdrawals, and (wallet − that base) / base treated
+    // money moved out as a trading loss.
     let totalInitial = 0;
     let totalBalance = 0;
     for (const j of journals) {
@@ -153,9 +156,6 @@ export default function Dashboard() {
       }
       // else: unlinked journal with no starting balance → not part of the total value.
     }
-    // Balance-based %: value vs its own initial, so it stays consistent with the
-    // counted journals and isn't skewed by PnL from journals excluded above.
-    const pnlPercent = totalInitial > 0 ? ((totalBalance - totalInitial) / totalInitial) * 100 : 0;
 
     // Average signed R — net P&L over the risk taken at ENTRY (original stop),
     // the same R the journal shows. Measuring against the current stop made a
@@ -163,11 +163,11 @@ export default function Dashboard() {
     const rs = closed.map(tradeRMultiple).filter((r) => r !== null);
     const avgRR = rs.length > 0 ? rs.reduce((s, r) => s + r, 0) / rs.length : null;
 
-    return { totalPnL, totalTrades: closed.length, winRate, totalBalance, totalInitial, pnlPercent, openTrades, avgRR };
+    return { totalPnL, totalTrades: closed.length, winRate, totalBalance, totalInitial, avgRR };
   }, [allTrades, journals, linkedBalances]);
 
   // Global market data + latest news
-  const [globalMarket, setGlobalMarket] = useState(null);
+  const [globalMarket, setGlobalMarket] = useState(() => readSessionCache('globalMarket', 5 * 60 * 1000));
   const [marketFailed, setMarketFailed] = useState(false);
   // Bumped by the card's "נסה שוב" to run the load again from scratch.
   const [marketAttempt, setMarketAttempt] = useState(0);
@@ -175,7 +175,7 @@ export default function Dashboard() {
     setMarketFailed(false);
     setMarketAttempt((n) => n + 1);
   }, []);
-  const [latestNews, setLatestNews] = useState([]);
+  const [latestNews, setLatestNews] = useState(() => readSessionCache('latestNews', 15 * 60 * 1000) || []);
 
   useEffect(() => {
     const controller = new AbortController();
@@ -186,7 +186,11 @@ export default function Dashboard() {
     const fetchMarket = async (attempt = 0) => {
       try {
         const data = await fetchGlobalMarket({ signal: controller.signal });
-        if (!controller.signal.aborted) { setGlobalMarket(data); setMarketFailed(false); }
+        if (!controller.signal.aborted) {
+          setGlobalMarket(data);
+          setMarketFailed(false);
+          writeSessionCache('globalMarket', data);
+        }
       } catch (e) {
         if (e.name === 'AbortError') return;
         if (attempt < 2) retryTimer = setTimeout(() => fetchMarket(attempt + 1), 3000 * (attempt + 1));
@@ -205,7 +209,11 @@ export default function Dashboard() {
         const res = await fetch('https://api.rss2json.com/v1/api.json?rss_url=' + encodeURIComponent('https://cointelegraph.com/rss'), { signal: controller.signal });
         if (!res.ok) throw new Error(`HTTP ${res.status}`);
         const json = await res.json();
-        if (!controller.signal.aborted) setLatestNews((json.items || []).slice(0, 6));
+        if (!controller.signal.aborted) {
+          const items = (json.items || []).slice(0, 6);
+          setLatestNews(items);
+          writeSessionCache('latestNews', items);
+        }
       } catch (e) {
         if (e.name === 'AbortError') return;
         if (attempt < 2) setTimeout(() => fetchNews(attempt + 1), 3000 * (attempt + 1));
@@ -217,46 +225,20 @@ export default function Dashboard() {
   }, []);
 
   // Fear & Greed index (alternative.me, CORS-open, daily value).
-  const [fng, setFng] = useState(null);
+  const [fng, setFng] = useState(() => readSessionCache('fng', 60 * 60 * 1000));
   useEffect(() => {
     const controller = new AbortController();
     fetch('https://api.alternative.me/fng/?limit=1', { signal: controller.signal })
       .then((r) => (r.ok ? r.json() : null))
-      .then((j) => { if (j?.data?.[0]) setFng(j.data[0]); })
+      .then((j) => {
+        if (j?.data?.[0]) {
+          setFng(j.data[0]);
+          writeSessionCache('fng', j.data[0]);
+        }
+      })
       .catch(() => { /* optional widget */ });
     return () => controller.abort();
   }, []);
-
-  // Live prices for open trades
-  const [livePrices, setLivePrices] = useState({});
-
-  useEffect(() => {
-    if (globalStats.openTrades.length === 0) return;
-    let cancelled = false;
-
-    // Bybit, not Binance — fapi.binance.com is geo-blocked from Israeli
-    // browsers, which left every open position without a live price.
-    // Stock positions are priced from the stock feed (keyed by ticker, the
-    // same key the position cards look up), crypto from the perp feed.
-    const fetchLivePrices = async () => {
-      const isStock = (t) => t.assetClass === 'stocks';
-      const pairs = [...new Set(globalStats.openTrades.filter((t) => !isStock(t)).map((t) => t.pair || t.symbol).filter(Boolean))];
-      const tickers = [...new Set(globalStats.openTrades.filter(isStock).map((t) => t.pair || t.symbol).filter(Boolean))];
-      try {
-        const [perp, stocks] = await Promise.all([
-          pairs.length ? fetchPerpPrices(pairs) : {},
-          fetchStockQuotes(tickers),
-        ]);
-        const merged = { ...(perp || {}) };
-        Object.entries(stocks).forEach(([sym, q]) => { if (q?.price > 0) merged[sym] = q.price; });
-        if (!cancelled && Object.keys(merged).length) setLivePrices(merged);
-      } catch (e) { console.error(e); }
-    };
-
-    fetchLivePrices();
-    const interval = setInterval(fetchLivePrices, 30000);
-    return () => { cancelled = true; clearInterval(interval); };
-  }, [globalStats.openTrades]);
 
   // Per-journal stats
   const journalStats = useMemo(() => {
@@ -451,7 +433,7 @@ export default function Dashboard() {
   const synced = Object.keys(linkedBalances || {}).length > 0;
 
   return (
-    <motion.div variants={pageVariants} initial="initial" animate="animate" exit="exit" transition={pageTransition}>
+    <m.div variants={pageVariants} initial="initial" animate="animate" exit="exit" transition={pageTransition}>
       <PageHeader
         icon={LineChart}
         title={greetingFor(profile?.displayName || user?.displayName)}
@@ -480,7 +462,7 @@ export default function Dashboard() {
         )}
       />
 
-      <PendingLimitOrders trades={globalStats.openTrades} livePrices={livePrices} />
+      <OpenPositionsSummary hidden={hideBalances} />
 
       {/* First-steps checklist — renders only for fresh accounts. */}
       <GettingStartedCard trades={allTrades} journals={journals} morningCount={morningEntries.length} />
@@ -489,7 +471,7 @@ export default function Dashboard() {
         {/* The account (value + cumulative P&L) beside the AI read of it. */}
         <div className="grid grid-cols-1 lg:grid-cols-3 gap-4 items-stretch">
           <div className="lg:col-span-2 min-w-0">
-            <PortfolioHero balance={globalStats.totalBalance} pnlPercent={globalStats.pnlPercent} series={equitySeries} hidden={hideBalances} />
+            <PortfolioHero balance={globalStats.totalBalance} declaredStart={declaredStartCapital(journals)} series={equitySeries} hidden={hideBalances} />
           </div>
           <div className="min-w-0"><TradeAgentCard trades={allTrades} /></div>
         </div>
@@ -509,12 +491,12 @@ export default function Dashboard() {
               <>
                 <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3">
                   {journalStats.slice(0, 3).map((j) => (
-                    <JournalTile key={j.id} j={j} mask={m} onOpen={() => openJournal(j)} />
+                    <JournalTile key={j.id} j={j} mask={maskAmount} onOpen={() => openJournal(j)} />
                   ))}
                 </div>
                 <AnimatePresence initial={false}>
                   {showAllJournals && journalStats.length > 3 && (
-                    <motion.div
+                    <m.div
                       initial={{ height: 0, opacity: 0 }}
                       animate={{ height: 'auto', opacity: 1 }}
                       exit={{ height: 0, opacity: 0 }}
@@ -523,10 +505,10 @@ export default function Dashboard() {
                     >
                       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3 mt-3">
                         {journalStats.slice(3).map((j) => (
-                          <JournalTile key={j.id} j={j} mask={m} onOpen={() => openJournal(j)} />
+                          <JournalTile key={j.id} j={j} mask={maskAmount} onOpen={() => openJournal(j)} />
                         ))}
                       </div>
-                    </motion.div>
+                    </m.div>
                   )}
                 </AnimatePresence>
                 {journalStats.length > 3 && (
@@ -539,6 +521,10 @@ export default function Dashboard() {
                   </button>
                 )}
               </>
+            ) : journalsLoading ? (
+              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3">
+                {[0, 1].map((i) => <div key={i} className="h-24 rounded-xl bg-bg-tertiary animate-pulse" />)}
+              </div>
             ) : (
               <p className="text-sm text-text-secondary">אין יומנים עדיין</p>
             )}
@@ -549,6 +535,7 @@ export default function Dashboard() {
           <QuickLinks
             backtests={backtests} backtestStats={backtestStats} plans={plans} activePlans={activePlans}
             dcaPlans={dcaPlans} todayMorning={todayMorning} todayEvening={todayEvening}
+            loading={linksLoading}
           />
         </Reveal>
 
@@ -561,6 +548,6 @@ export default function Dashboard() {
           </div>
         </Reveal>
       </div>
-    </motion.div>
+    </m.div>
   );
 }

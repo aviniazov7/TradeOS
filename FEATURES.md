@@ -13,7 +13,7 @@
 - cron ב-Worker שמזהה פוזיציות חדשות ושולח פוש — עובד היום ל-Bybit בלבד
 - כתיבת אדמין ל-Firestore מה-Worker (`FIREBASE_SERVICE_ACCOUNT` + `firebaseAdminPatchUser`)
 - מושכי פוזיציות פתוחות ל-Bybit ול-MEXC (endpoint `/exchange/open-positions`)
-- UI של מסלול לייב (`PendingLimitOrders`) שמציג עסקאות פתוחות עם מחיר חי
+- פוזיציות חיות מהבורסה בטאב "פוזיציות פתוחות" ביומן, וכרטיס סיכום קומפקטי בדשבורד
 
 **מה חסר:**
 - `firebaseAdminCreateTrade()` ב-Worker (יצירת מסמך, אותו דפוס כמו ה-PATCH הקיים)
@@ -61,7 +61,7 @@
 - נשאר: "Risk Score" לכל עסקה לפני כניסה
 
 ## 6. מצב Live Trading — 🔶 חלקי
-- ~~dashboard לעסקאות פתוחות~~ ✅ קיים (`PendingLimitOrders` — פס מעקב חי, TP/SL, לימיט)
+- ~~dashboard לעסקאות פתוחות~~ ✅ קיים (כרטיס סיכום בדשבורד + טאב "פוזיציות פתוחות" ביומן, מהבורסה)
 - נשאר: P&L חי בדולרים/אחוזים, טיימר רץ, מרחק מ-SL/TP, סיכום חשיפה כולל
 - נשאר: תזכורת "בדוק את העסקה" כל X דקות
 - משתלב עם פיצ'ר ה-Auto-Live (למעלה)

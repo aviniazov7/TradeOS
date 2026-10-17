@@ -24,12 +24,16 @@ import {
   initialRiskUsd,
   tradeRMultiple,
   tradeRewardRisk,
+  signedTradeR,
+  tradeNetPercent,
   positionUnits,
   calculateAvgRR,
   computeDrawdown,
   calculateMaxStreaks,
   calculateCurrentStreak,
   partialRealizedPnl,
+  tradeDurationMs,
+  calculateAvgDuration,
 } from './calculations';
 import { planExpiresMs } from './premium';
 
@@ -315,6 +319,20 @@ describe('R with a moved stop — measured against the ORIGINAL stop', () => {
     expect(calculateAvgRR([{ result: 'win', rrRatio: 1.5 }])).toBe(1.5);
   });
 
+  it('calculateAvgRR and the table R use NET P&L, so fees shrink the R', () => {
+    // Gross move 100 → 120 is 2R on a $100 risk, but $20 fees leave net +180 → 1.8R.
+    const win = { ...base, result: 'win', pnl: 200, netPnl: 180, fees: 20, rrRatio: 2 };
+    expect(signedTradeR(win)).toBeCloseTo(1.8, 9);
+    expect(calculateAvgRR([win])).toBeCloseTo(1.8, 9);
+    // Gross +10% on $1000 notional, $20 fees → net 180 / 1000 = 18%.
+    expect(tradeNetPercent(win)).toBeCloseTo(18, 9);
+  });
+
+  it('tradeNetPercent falls back to scaling the stored percent when size is missing', () => {
+    const t = { pnl: 10, netPnl: 8, pnlPercent: 10, fees: 2 };
+    expect(tradeNetPercent(t)).toBeCloseTo(8, 9);
+  });
+
   it('tradeRewardRisk uses the weighted exit of partial exits', () => {
     const t = { ...base, exitPrice: 130, exits: [{ price: 110, percent: 50 }, { price: 130, percent: 50 }] };
     expect(tradeRewardRisk(t)).toBe(2); // weighted exit 120
@@ -367,5 +385,20 @@ describe('partialRealizedPnl — realized legs of an open partial', () => {
   });
   it('isClosedTrade still excludes partials (not redefined globally)', () => {
     expect(isClosedTrade({ status: 'partial', exitPrice: 110 })).toBe(false);
+  });
+});
+
+describe('trade duration — zero-length imports do not halve the average', () => {
+  const entry = new Date('2026-01-01T10:00:00Z');
+  const exit = new Date('2026-01-01T10:53:00Z');
+  it('ignores an exit that is not after the entry', () => {
+    expect(tradeDurationMs({ entryDate: entry, exitDate: entry })).toBeNull();
+    expect(tradeDurationMs({ entryDate: entry })).toBeNull();
+  });
+  it('averages only trades that were actually open', () => {
+    const real = { entryDate: entry, exitDate: exit };
+    const zero = { entryDate: entry, exitDate: entry };
+    expect(calculateAvgDuration([zero, real])).toBe(53 * 60 * 1000);
+    expect(calculateAvgDuration([zero])).toBe(0);
   });
 });

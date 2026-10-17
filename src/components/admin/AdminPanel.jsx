@@ -1,7 +1,7 @@
 import { useState, useEffect, useMemo } from 'react';
 import { Navigate, useSearchParams } from 'react-router-dom';
-import { UserPlus, ShieldCheck, CheckCircle2, RefreshCw, Calendar, Coins, BookOpen, FlaskConical, Activity, FileText, Crown, Send, X, Ticket, Plus, Minus, Trash2, Copy, ScrollText, Share2, Link2, AlertTriangle, Clock, DollarSign, Loader2, Ban, ChevronDown } from 'lucide-react';
-import { motion } from 'framer-motion';
+import { UserPlus, ShieldCheck, CheckCircle2, RefreshCw, Calendar, Coins, BookOpen, FlaskConical, Activity, FileText, Crown, Send, X, Ticket, Plus, Minus, Trash2, Copy, ScrollText, Share2, Link2, AlertTriangle, Clock, DollarSign, Loader2, Ban, ChevronDown, Bell } from 'lucide-react';
+import { m } from 'framer-motion';
 import toast from 'react-hot-toast';
 import { useAuth } from '../../contexts/AuthContext';
 import ReengageComposer from './ReengageComposer';
@@ -9,6 +9,7 @@ import AdminOverview from './AdminOverview';
 import AdminUsers from './AdminUsers';
 import AdminGrowth from './AdminGrowth';
 import AdminSystem from './AdminSystem';
+import AdminNotifications from './AdminNotifications';
 import { primaryBtn, softBtn, Pill, Meter, Avatar } from './AdminUi';
 import {
   DAY_MS, RISK_DAYS, ILS, EXCHANGE_NAMES, KIND_META, toDate, formatDate, isUserPremium, lastActiveMs, createdMs,
@@ -19,6 +20,7 @@ import { APP_VERSION } from '../../utils/constants';
 import { fetchUserAiUsage, fetchGlobalAiUsage, fetchAiStats, fetchSystemHealth, testAiProviders } from '../../hooks/useAiUsage';
 import { adminSendNotification, adminScheduleExpiryReminders, adminCancelExpiryReminders, adminRefreshPlanCache, adminListAuditEvents, adminSendPaymentEmail, adminDeleteUser, adminGetPushStatus, adminGetExchangesStatus, adminGetFirebaseUsage } from '../../services/pushService';
 import { adminListCoupons, adminCreateCoupon, adminDeleteCoupon, couponShareUrl } from '../../services/couponService';
+import { subscribeUnreadAdminNotificationCount } from '../../services/adminNotificationService';
 import LoadingSpinner from '../shared/LoadingSpinner';
 import SelectDropdown from '../shared/SelectDropdown';
 import Modal from '../shared/Modal';
@@ -30,7 +32,7 @@ import TabStrip from '../shared/TabStrip';
 const AI_TEXT_LIMIT = { free: 20, premium: 200 };
 const AI_IMAGE_LIMIT = 10; // premium only
 
-const TAB_IDS = ['overview', 'users', 'growth', 'system'];
+const TAB_IDS = ['overview', 'users', 'growth', 'system', 'notifications'];
 const LEVEL_DOT = {
   ok: 'bg-profit shadow-[0_0_8px_rgba(34,197,94,0.7)]',
   warn: 'bg-amber-500 shadow-[0_0_8px_rgba(245,158,11,0.7)]',
@@ -44,6 +46,7 @@ export default function AdminPanel() {
   const { isAdmin, profile } = useAuth();
   const [searchParams, setSearchParams] = useSearchParams();
   const tab = TAB_IDS.includes(searchParams.get('tab')) ? searchParams.get('tab') : 'overview';
+  const demoNotifs = searchParams.get('demo') === '1';
   const setTab = (id) => setSearchParams((prev) => {
     const next = new URLSearchParams(prev);
     if (id === 'overview') next.delete('tab'); else next.set('tab', id);
@@ -85,6 +88,9 @@ export default function AdminPanel() {
   // Firebase document counts — { counts } or { error: true }.
   const [fbUsage, setFbUsage] = useState(null);
   const [fbLoading, setFbLoading] = useState(false);
+  const [liveUnread, setLiveUnread] = useState(0);
+  const [demoUnread, setDemoUnread] = useState(0);
+  const unread = demoNotifs ? demoUnread : liveUnread;
 
   const load = () => {
     setLoading(true);
@@ -107,6 +113,11 @@ export default function AdminPanel() {
   useEffect(() => {
     if (isAdmin) Promise.resolve().then(load);
   }, [isAdmin]);
+
+  useEffect(() => {
+    if (!isAdmin || demoNotifs) return undefined;
+    return subscribeUnreadAdminNotificationCount(setLiveUnread, () => {});
+  }, [isAdmin, demoNotifs]);
 
   useEffect(() => {
     if (!isAdmin) return;
@@ -352,6 +363,7 @@ export default function AdminPanel() {
         </span>
       ),
     },
+    { id: 'notifications', label: 'התראות', mobileLabel: 'התראות', count: unread },
   ];
 
   return (
@@ -365,6 +377,21 @@ export default function AdminPanel() {
             <div className="hidden md:block rounded-xl bg-bg-tertiary border border-border-primary p-1">
               <TabStrip tabs={tabs} value={tab} onChange={setTab} layoutKey="admin-tab" />
             </div>
+            <button
+              type="button"
+              onClick={() => setTab('notifications')}
+              aria-label={unread > 0 ? `התראות, ${unread} שלא נקראו` : 'התראות'}
+              title="התראות"
+              data-testid="admin-notif-bell"
+              className="relative w-11 h-11 shrink-0 rounded-xl border border-border-primary bg-bg-tertiary text-text-secondary hover:text-text-primary grid place-items-center cursor-pointer"
+            >
+              <Bell className="w-[18px] h-[18px]" />
+              {unread > 0 && (
+                <span className="absolute -top-1 -left-1 min-w-[18px] h-[18px] px-1 rounded-full bg-loss text-white text-[10px] font-bold grid place-items-center num-mono">
+                  {unread > 99 ? '99+' : unread}
+                </span>
+              )}
+            </button>
             <button type="button" onClick={load} disabled={loading} aria-label="רענון נתונים" title="רענון נתונים"
               className="w-11 h-11 shrink-0 rounded-xl border border-border-primary bg-bg-tertiary text-text-secondary hover:text-text-primary grid place-items-center cursor-pointer disabled:opacity-50">
               <RefreshCw className={`w-[18px] h-[18px] ${loading ? 'animate-spin' : ''}`} />
@@ -384,7 +411,7 @@ export default function AdminPanel() {
         <div className="mb-4 bg-loss/10 border border-loss/30 text-loss rounded-xl p-3 text-sm">{error}</div>
       )}
 
-      <motion.div key={tab} initial={{ opacity: 0, y: 6 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.22, ease: 'easeOut' }}>
+      <m.div key={tab} initial={{ opacity: 0, y: 6 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.22, ease: 'easeOut' }}>
         {tab === 'overview' && (loading && !users.length ? <div className="py-16"><LoadingSpinner /></div> : (
           <AdminOverview
             users={users} now={loadedAt} stats={stats} analytics={analytics} growth={growth} segments={segments}
@@ -417,7 +444,10 @@ export default function AdminPanel() {
             fbUsage={fbUsage} fbLoading={fbLoading} refreshFbUsage={refreshFbUsage}
           />
         )}
-      </motion.div>
+        {tab === 'notifications' && (
+          <AdminNotifications demo={demoNotifs} onUnreadChange={demoNotifs ? setDemoUnread : undefined} />
+        )}
+      </m.div>
 
       <UserDetailModal
         user={detailUser}

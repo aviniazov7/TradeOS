@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useId } from 'react';
 import { useAuth } from '../../contexts/AuthContext';
 import { Navigate, useSearchParams, Link } from 'react-router-dom';
 import { Mail, Eye, EyeOff, Lock, User, Link2, BarChart3, Sparkles, Check, ShieldCheck, Loader2, AlertCircle } from 'lucide-react';
@@ -6,55 +6,40 @@ import toast from 'react-hot-toast';
 import { authErrorHe, authErrorMessage, isSilentAuthError } from '../../utils/authErrors';
 // Live checklist on sign-up, so the user sees what is missing before pressing
 // the button instead of after.
-import { PASSWORD_RULES, passwordProblem } from '../../utils/passwordPolicy';
+import { PASSWORD_RULES } from '../../utils/passwordPolicy';
+import { loginFieldError } from '../../utils/loginValidation';
+import { preloadPopupResolver } from '../../services/authService';
+import { exchangeSyncBlurb } from '../exchange/exchangeConfig';
+import BrandMark from '../shared/BrandMark';
 
 // What the product does, in three lines — shown beside the form on wide screens.
+// The exchange line is built from canSync, so Binance is never described as auto-sync.
 const FEATURES = [
-  { icon: Link2, title: 'חיבור לבורסה', text: 'העסקאות נמשכות אוטומטית מ-Bybit, Binance, MEXC ועוד' },
-  { icon: BarChart3, title: 'יומן וניתוחים', text: 'רווח/הפסד, R:R, אחוז הצלחה ופילוח לפי מטבע וסשן' },
+  { icon: Link2, title: 'חיבור לבורסה', text: exchangeSyncBlurb() },
+  { icon: BarChart3, title: 'יומן ואנליטיקה', text: 'רווח/הפסד, R:R, אחוז הצלחה ופילוח לפי מטבע וסשן' },
   { icon: Sparkles, title: 'סוכן AI אישי', text: 'שואלים בעברית ומקבלים תשובה מבוססת על העסקאות שלך' },
 ];
 
-
-function BrandMark({ size = 'md' }) {
-  const box = size === 'lg' ? 'w-12 h-12 rounded-2xl' : 'w-10 h-10 rounded-xl';
-  return (
-    <div className="flex items-center gap-3">
-      {/* The app icon, drawn inline so it is crisp and never waits on a file */}
-      <svg viewBox="0 0 48 48" className={`${box} shrink-0`} style={{ boxShadow: '0 0 28px -8px rgba(56,189,248,0.6)' }} aria-hidden="true">
-        <defs>
-          <linearGradient id="bm-bg" x1="0" y1="0" x2="0" y2="1"><stop offset="0%" stopColor="#1c1d22" /><stop offset="100%" stopColor="#0b0b0e" /></linearGradient>
-          <linearGradient id="bm-line" x1="0" y1="1" x2="1" y2="0"><stop offset="0%" stopColor="#8b5cf6" /><stop offset="55%" stopColor="#38bdf8" /><stop offset="100%" stopColor="#22d3ee" /></linearGradient>
-        </defs>
-        <rect width="48" height="48" rx="12" fill="url(#bm-bg)" />
-        <path d="M12 34 L22 24 L26 28 L36 16" fill="none" stroke="url(#bm-line)" strokeWidth="4.5" strokeLinecap="round" strokeLinejoin="round" />
-        <circle cx="36" cy="16" r="5.5" fill="none" stroke="#38bdf8" strokeOpacity="0.35" strokeWidth="1.5" />
-      </svg>
-      <div className="leading-tight">
-        <div className={`${size === 'lg' ? 'text-2xl' : 'text-xl'} font-extrabold text-text-primary`} dir="ltr">TradeOS</div>
-        <div className="text-xs text-text-muted">מערכת ההפעלה למסחר</div>
-      </div>
-    </div>
-  );
-}
-
 // Decorative equity curve for the brand panel — same gradient as the splash.
 function CurveArt() {
+  const uid = useId().replace(/:/g, '');
+  const lineId = `lg-line-${uid}`;
+  const areaId = `lg-area-${uid}`;
   return (
     <svg viewBox="0 0 400 140" className="w-full h-auto" fill="none" aria-hidden="true">
       <defs>
-        <linearGradient id="lg-line" x1="0" y1="0" x2="1" y2="0">
+        <linearGradient id={lineId} x1="0" y1="0" x2="1" y2="0">
           <stop offset="0%" stopColor="#2563eb" />
           <stop offset="100%" stopColor="#38bdf8" />
         </linearGradient>
-        <linearGradient id="lg-area" x1="0" y1="0" x2="0" y2="1">
+        <linearGradient id={areaId} x1="0" y1="0" x2="0" y2="1">
           <stop offset="0%" stopColor="#3b82f6" stopOpacity="0.28" />
           <stop offset="100%" stopColor="#3b82f6" stopOpacity="0" />
         </linearGradient>
       </defs>
       {[35, 70, 105].map((y) => <line key={y} x1="0" x2="400" y1={y} y2={y} stroke="rgba(255,255,255,0.05)" />)}
-      <path d="M0 118 L40 104 L80 110 L120 84 L160 92 L200 66 L240 72 L280 44 L320 52 L360 26 L400 16 L400 140 L0 140 Z" fill="url(#lg-area)" />
-      <path d="M0 118 L40 104 L80 110 L120 84 L160 92 L200 66 L240 72 L280 44 L320 52 L360 26 L400 16" stroke="url(#lg-line)" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round" />
+      <path d="M0 118 L40 104 L80 110 L120 84 L160 92 L200 66 L240 72 L280 44 L320 52 L360 26 L400 16 L400 140 L0 140 Z" fill={`url(#${areaId})`} />
+      <path d="M0 118 L40 104 L80 110 L120 84 L160 92 L200 66 L240 72 L280 44 L320 52 L360 26 L400 16" stroke={`url(#${lineId})`} strokeWidth="3" strokeLinecap="round" strokeLinejoin="round" />
       <circle cx="400" cy="16" r="5" fill="#60a5fa" />
     </svg>
   );
@@ -85,6 +70,28 @@ export default function LoginPage() {
   const [formError, setFormError] = useState('');
   const [googleLoading, setGoogleLoading] = useState(false);
 
+  // Warm the Google popup resolver after first paint, and again if the
+  // pointer reaches the button first. The tap itself must not await the
+  // import — Safari blocks window.open once the gesture has been awaited.
+  useEffect(() => {
+    let idleId = 0;
+    let timer = 0;
+    const start = () => { preloadPopupResolver(); };
+    const schedule = () => {
+      if (typeof requestIdleCallback === 'function') {
+        idleId = requestIdleCallback(start, { timeout: 1500 });
+      }
+      timer = window.setTimeout(start, 200);
+    };
+    if (document.readyState === 'complete') schedule();
+    else window.addEventListener('load', schedule, { once: true });
+    return () => {
+      window.removeEventListener('load', schedule);
+      if (idleId && typeof cancelIdleCallback === 'function') cancelIdleCallback(idleId);
+      window.clearTimeout(timer);
+    };
+  }, []);
+
   // After a successful login, honour ?redirect=… (used by the coupon share
   // link) but only allow same-app relative paths to avoid open-redirects.
   if (user) {
@@ -109,17 +116,15 @@ export default function LoginPage() {
 
   const handleSubmit = async (e) => {
     e.preventDefault();
-    if (!email || !password) return;
+    const problem = loginFieldError({ email, password, mode });
+    if (problem) {
+      setFormError(problem);
+      return;
+    }
     setFormError('');
     setSubmitting(true);
     try {
       if (mode === 'register') {
-        const problem = passwordProblem(password);
-        if (problem) {
-          setFormError(problem);
-          setSubmitting(false);
-          return;
-        }
         await registerWithEmail(email, password, displayName || email.split('@')[0], { marketingEmails });
         toast.success('החשבון נוצר בהצלחה');
       } else {
@@ -211,7 +216,11 @@ export default function LoginPage() {
           </div>
 
           <button
+            type="button"
             onClick={handleGoogle}
+            onPointerEnter={() => preloadPopupResolver()}
+            onFocus={() => preloadPopupResolver()}
+            onTouchStart={() => preloadPopupResolver()}
             disabled={googleLoading}
             className="mt-5 w-full h-11 flex items-center justify-center gap-3 bg-white text-gray-900 text-sm font-bold rounded-xl hover:bg-gray-100 transition-colors cursor-pointer disabled:opacity-60"
           >
@@ -225,7 +234,7 @@ export default function LoginPage() {
             <div className="flex-1 h-px bg-border-primary" />
           </div>
 
-          <form onSubmit={handleSubmit} className="space-y-4 text-right">
+          <form noValidate onSubmit={handleSubmit} className="space-y-4 text-right">
             {!isLogin && (
               <div>
                 <label htmlFor="lp-name" className="block text-xs font-semibold text-text-secondary mb-1.5">שם תצוגה</label>
@@ -240,7 +249,8 @@ export default function LoginPage() {
               <label htmlFor="lp-email" className="block text-xs font-semibold text-text-secondary mb-1.5">אימייל</label>
               <div className="relative">
                 <input id="lp-email" type="email" value={email} onChange={(e) => { setEmail(e.target.value); setFormError(''); }}
-                  placeholder="name@example.com" required dir="ltr" autoComplete="email" className={`${input} pl-10 text-left`} />
+                  placeholder="name@example.com" dir="ltr" autoComplete="email" aria-invalid={formError ? 'true' : undefined}
+                  className={`${input} pl-10 text-left`} />
                 <Mail className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-text-muted pointer-events-none" />
               </div>
             </div>
@@ -255,7 +265,8 @@ export default function LoginPage() {
               </div>
               <div className="relative">
                 <input id="lp-pass" type={showPassword ? 'text' : 'password'} value={password} onChange={(e) => { setPassword(e.target.value); setFormError(''); }}
-                  placeholder="••••••••" required dir="ltr" autoComplete={isLogin ? 'current-password' : 'new-password'}
+                  placeholder="••••••••" dir="ltr" autoComplete={isLogin ? 'current-password' : 'new-password'}
+                  aria-invalid={formError ? 'true' : undefined}
                   className={`${input} pl-10 pr-10 text-left`} />
                 <Lock className="absolute right-3 top-1/2 -translate-y-1/2 w-4 h-4 text-text-muted pointer-events-none" />
                 <button type="button" onClick={() => setShowPassword(!showPassword)}
@@ -287,10 +298,10 @@ export default function LoginPage() {
             )}
 
             {formError && (
-              <p role="alert" className="flex items-start gap-2 rounded-xl border border-loss/30 bg-loss/10 px-3 py-2.5 text-sm text-loss">
+              <div role="alert" className="flex items-start gap-2 rounded-xl border border-loss/30 bg-loss/10 px-3 py-2.5 text-sm text-loss">
                 <AlertCircle className="w-4 h-4 mt-0.5 shrink-0" aria-hidden />
                 <span className="min-w-0">{formError}</span>
-              </p>
+              </div>
             )}
 
             <button type="submit" disabled={submitting}

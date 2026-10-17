@@ -1,10 +1,11 @@
 import { useState, useEffect, useCallback, useMemo } from 'react';
 import { useSearchParams } from 'react-router-dom';
-import { motion, AnimatePresence } from 'framer-motion';
+import { m, AnimatePresence } from 'framer-motion';
 import { Newspaper, ExternalLink, Clock, Filter, CalendarDays, Volume2, Globe, BrainCircuit, RefreshCw } from 'lucide-react';
 import { fetchNewsDigest, translateNews } from '../../services/newsService';
 import WhyItMoved from './WhyItMoved';
 import { hebrewEventTitle } from '../../utils/econCalendarTerms';
+import { headlineNeedsTranslation } from '../../utils/newsHeadline';
 import { safeHttpUrl } from '../../utils/urls';
 import SelectDropdown from '../shared/SelectDropdown';
 import PageHeader from '../shared/PageHeader';
@@ -448,14 +449,14 @@ function EconomicCalendar() {
           <AnimatePresence>
             {showCountryPicker && (
               <>
-                <motion.div
+                <m.div
                   initial={{ opacity: 0 }}
                   animate={{ opacity: 1 }}
                   exit={{ opacity: 0 }}
                   className="fixed inset-0 z-40"
                   onClick={() => setShowCountryPicker(false)}
                 />
-                <motion.div
+                <m.div
                   initial={{ opacity: 0, y: -5, scale: 0.95 }}
                   animate={{ opacity: 1, y: 0, scale: 1 }}
                   exit={{ opacity: 0, y: -5, scale: 0.95 }}
@@ -502,7 +503,7 @@ function EconomicCalendar() {
                       </button>
                     ))}
                   </div>
-                </motion.div>
+                </m.div>
               </>
             )}
           </AnimatePresence>
@@ -521,11 +522,11 @@ function EconomicCalendar() {
           <AnimatePresence>
             {showImpactPicker && (
               <>
-                <motion.div
+                <m.div
                   initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}
                   className="fixed inset-0 z-40" onClick={() => setShowImpactPicker(false)}
                 />
-                <motion.div
+                <m.div
                   initial={{ opacity: 0, y: -5, scale: 0.95 }}
                   animate={{ opacity: 1, y: 0, scale: 1 }}
                   exit={{ opacity: 0, y: -5, scale: 0.95 }}
@@ -544,7 +545,7 @@ function EconomicCalendar() {
                       <span className="flex-1 text-right">{o.label}</span>
                     </button>
                   ))}
-                </motion.div>
+                </m.div>
               </>
             )}
           </AnimatePresence>
@@ -598,7 +599,7 @@ function EconomicCalendar() {
       {/* Calendar Events */}
       {!loading && !error && (
         <AnimatePresence mode="wait">
-          <motion.div
+          <m.div
             key={timePeriod + impactFilter + [...selectedCountries].join(',')}
             initial={{ opacity: 0, y: 10 }}
             animate={{ opacity: 1, y: 0 }}
@@ -612,7 +613,7 @@ function EconomicCalendar() {
               const isToday = sameDay(dayDate, today);
 
               return (
-                <motion.div
+                <m.div
                   key={day.date}
                   initial={{ opacity: 0, y: 15 }}
                   animate={{ opacity: 1, y: 0 }}
@@ -638,7 +639,7 @@ function EconomicCalendar() {
                       const hasP = event.previous != null && event.previous !== '';
 
                       return (
-                        <motion.div
+                        <m.div
                           key={`${event.date}-${event.title}-${i}`}
                           initial={{ opacity: 0, x: 10 }}
                           animate={{ opacity: 1, x: 0 }}
@@ -689,26 +690,26 @@ function EconomicCalendar() {
                               )}
                             </div>
                           </div>
-                        </motion.div>
+                        </m.div>
                       );
                     })}
                   </div>
-                </motion.div>
+                </m.div>
               );
             })}
-          </motion.div>
+          </m.div>
         </AnimatePresence>
       )}
 
       {!loading && !error && filtered.length === 0 && (
-        <motion.div
+        <m.div
           initial={{ opacity: 0 }}
           animate={{ opacity: 1 }}
           className="bg-bg-secondary border border-border-primary rounded-xl p-8 text-center"
         >
           <CalendarDays className="w-10 h-10 text-text-muted mx-auto mb-3" />
           <p className="text-text-muted">{'\u05D0\u05D9\u05DF \u05D0\u05D9\u05E8\u05D5\u05E2\u05D9\u05DD \u05DC\u05D4\u05E6\u05D2\u05D4'}</p>
-        </motion.div>
+        </m.div>
       )}
     </>
   );
@@ -726,6 +727,7 @@ function AiBrief({ market }) {
   const [digest, setDigest] = useState(null);
   const [loading, setLoading] = useState(true);
   const [showAll, setShowAll] = useState(false);
+  const [heHeadlines, setHeHeadlines] = useState({});
 
   // No reset-on-market-change needed: the page remounts this component when
   // the market tab changes (keyed motion.div), so initial state covers it.
@@ -737,6 +739,33 @@ function AiBrief({ market }) {
       .finally(() => { if (!cancelled) setLoading(false); });
     return () => { cancelled = true; };
   }, [market]);
+
+  // The digest prompt asks for Hebrew, but a model slip leaves the headline
+  // in English. The feed already translates through /news/translate — run the
+  // same call for any brief line that has no Hebrew letters. Returning the
+  // previous state when nothing changed avoids a request loop.
+  useEffect(() => {
+    const stories = digest?.stories || [];
+    const pending = stories.filter((s) => headlineNeedsTranslation(s.headline));
+    if (!pending.length) return undefined;
+    let cancelled = false;
+    translateNews(pending.map((s) => ({ title: s.headline, desc: '' }))).then((res) => {
+      if (cancelled || !res) return;
+      setHeHeadlines((prev) => {
+        let changed = false;
+        const next = { ...prev };
+        pending.forEach((s, i) => {
+          const title = res[i]?.title;
+          if (title && !headlineNeedsTranslation(title) && next[s.headline] !== title) {
+            next[s.headline] = title;
+            changed = true;
+          }
+        });
+        return changed ? next : prev;
+      });
+    });
+    return () => { cancelled = true; };
+  }, [digest]);
 
   if (loading) {
     return (
@@ -776,7 +805,7 @@ function AiBrief({ market }) {
               >
                 <span className="num-mono w-6 h-6 shrink-0 grid place-items-center rounded-lg bg-bg-tertiary text-[11px] font-bold text-text-secondary mt-0.5">{i + 1}</span>
                 <span className="min-w-0 flex-1">
-                  <span className="block text-sm font-semibold text-text-primary group-hover:text-accent-hover transition-colors leading-snug" style={bidiText}>{decodeEntities(story.headline)}</span>
+                  <span className="block text-sm font-semibold text-text-primary group-hover:text-accent-hover transition-colors leading-snug" style={bidiText}>{decodeEntities(heHeadlines[story.headline] || story.headline)}</span>
                   {story.why && <span className="block text-xs text-text-muted mt-1 line-clamp-2">{story.why}</span>}
                   <span className="flex flex-wrap items-center gap-1.5 mt-1.5">
                     <span className={`px-1.5 py-px rounded-md text-[10px] font-bold border ${impact.cls}`}>{impact.label}</span>
@@ -1051,7 +1080,7 @@ function NewsFeed({ market }) {
                 </div>
                 <div className="space-y-2.5">
                   {group.items.map((article, i) => (
-                    <motion.a
+                    <m.a
                       key={`${article.link}-${i}`}
                       href={article.link}
                       target="_blank"
@@ -1093,7 +1122,7 @@ function NewsFeed({ market }) {
                           </div>
                         </div>
                       </div>
-                    </motion.a>
+                    </m.a>
                   ))}
                 </div>
               </div>
@@ -1139,7 +1168,7 @@ export default function NewsPage() {
       />
 
       <AnimatePresence mode="wait">
-        <motion.div
+        <m.div
           key={tab}
           initial={{ opacity: 0, y: 8 }}
           animate={{ opacity: 1, y: 0 }}
@@ -1155,7 +1184,7 @@ export default function NewsPage() {
               <NewsFeed market={tab} />
             </>
           )}
-        </motion.div>
+        </m.div>
       </AnimatePresence>
     </div>
   );

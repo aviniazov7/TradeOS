@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { motion } from 'framer-motion';
+import { m } from 'framer-motion';
 import {
   Crown, Check, Bot, BookOpen, Wallet, Link2, Bell, BarChart3, Sparkles, Ticket, Loader2, Image, Layers, Trophy,
   ShieldCheck, CalendarClock, Minus,
@@ -20,7 +20,7 @@ const HIGHLIGHTS = [
   'סוכן AI עד 200 שאלות ביום',
   'ניתוח גרפים מקצועי מצילום מסך',
   'יומנים, ארנקים וחיבורי בורסה ללא הגבלה',
-  'ניתוחים מתקדמים ו-Polymarket',
+  'אנליטיקה מתקדמת ו-Polymarket',
 ];
 
 const yearlySavePct = Math.round((1 - PREMIUM_PRICING.yearly.price / (PREMIUM_PRICING.monthly.price * 12)) * 100);
@@ -86,7 +86,7 @@ export default function PremiumPage() {
   };
 
   return (
-    <motion.div variants={pageVariants} initial="initial" animate="animate" exit="exit" transition={pageTransition}
+    <m.div variants={pageVariants} initial="initial" animate="animate" exit="exit" transition={pageTransition}
       className="max-w-4xl mx-auto">
       <PageHeader
         icon={Crown}
@@ -164,6 +164,9 @@ export default function PremiumPage() {
                 <p className="text-xs text-text-muted mt-1 min-h-[1rem]">
                   {cycle === 'yearly' ? <>שווה ל-<bdi dir="ltr">₪{Math.round(plan.price / 12)}</bdi> לחודש · חודשיים חינם</> : 'חיוב חודשי, אפשר לבטל בכל עת'}
                 </p>
+                <p className="text-xs text-text-secondary mt-2 leading-relaxed">
+                  המחיר מחויב בשקלים (₪). רווח והפסד ביומן נשארים בדולרים.
+                </p>
 
                 <button
                   onClick={() => navigate(`/premium/checkout?cycle=${cycle}`)}
@@ -239,6 +242,6 @@ export default function PremiumPage() {
         </div>
         )}
       </div>
-    </motion.div>
+    </m.div>
   );
 }

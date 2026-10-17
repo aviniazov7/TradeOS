@@ -2,17 +2,24 @@ import { useState, useEffect, useRef } from 'react';
 import { passwordProblem } from '../../utils/passwordPolicy';
 import { authErrorHe } from '../../utils/authErrors';
 import { useNavigate } from 'react-router-dom';
-import { motion, AnimatePresence } from 'framer-motion';
-import { LogOut, Trash2, Lock, Mail, Share2, Download, Eye, EyeOff, Sun, Moon, Trophy, Crown, ShieldCheck, Clock, ArrowLeft, ChevronRight, Check, Coins, LineChart, Briefcase, Receipt, ChevronLeft, Camera } from 'lucide-react';
+import { m, AnimatePresence } from 'framer-motion';
+import { LogOut, Trash2, Lock, Mail, Share2, Download, Eye, EyeOff, Sun, Moon, Trophy, Crown, ShieldCheck, Clock, ArrowLeft, ChevronRight, Check, Coins, LineChart, Briefcase, Receipt, ChevronLeft, Camera, Pencil } from 'lucide-react';
 import UserAvatar from '../shared/UserAvatar';
 import { makeAvatarDataUrl } from '../../utils/avatarImage';
 import { headerIconBtn } from '../shared/headerStyles';
 import toast from 'react-hot-toast';
 import { getUserProfile, setUserProfile, deleteLeaderboardEntry } from '../../services/firestoreService';
+import { updateDisplayName } from '../../services/authService';
+import {
+  DELETE_CONFIRM_WORD,
+  displayNameProblem,
+  canConfirmAccountDeletion,
+  accountDeletionErrorText,
+} from '../../utils/profileAccount';
 import { useAuth } from '../../contexts/AuthContext';
 import { formatDate } from '../../utils/formatters';
 import { APP_VERSION } from '../../utils/constants';
-import ConfirmDialog from '../shared/ConfirmDialog';
+import Modal from '../shared/Modal';
 import { pageVariants, pageTransition } from '../../utils/animations';
 import { useTheme } from '../../hooks/useTheme';
 import NotificationSettings from './NotificationSettings';
@@ -89,9 +96,18 @@ export default function ProfilePage() {
   const [currentPassword, setCurrentPassword] = useState('');
   const [newPassword, setNewPassword] = useState('');
   const [showPasswords, setShowPasswords] = useState(false);
+  const [showDeletePassword, setShowDeletePassword] = useState(false);
   const [saving, setSaving] = useState(false);
   const [deleteOpen, setDeleteOpen] = useState(false);
   const [deletePassword, setDeletePassword] = useState('');
+  const [deleteConfirmText, setDeleteConfirmText] = useState('');
+  const [deleteError, setDeleteError] = useState('');
+  const [deleteBusy, setDeleteBusy] = useState(false);
+  const [reauthStep, setReauthStep] = useState(false);
+  const [editingName, setEditingName] = useState(false);
+  const [nameDraft, setNameDraft] = useState('');
+  const [nameError, setNameError] = useState('');
+  const [nameSaving, setNameSaving] = useState(false);
   const [isPublicProfile, setIsPublicProfile] = useState(false);
   const [leaderboardName, setLeaderboardName] = useState('');
   const [leaderboardLoading, setLeaderboardLoading] = useState(true);
@@ -196,26 +212,67 @@ export default function ProfilePage() {
     }
   };
 
+  const shownName = profile?.displayName || user?.displayName || '';
+  const startEditName = () => {
+    setNameDraft(shownName);
+    setNameError('');
+    setEditingName(true);
+  };
+  const saveName = async (e) => {
+    e.preventDefault();
+    const nameErrorText = displayNameProblem(nameDraft);
+    if (nameErrorText) { setNameError(nameErrorText); return; }
+    const next = nameDraft.trim();
+    if (!user) return;
+    setNameSaving(true);
+    setNameError('');
+    try {
+      await updateDisplayName(next);
+      await setUserProfile(user.uid, { displayName: next });
+      toast.success('השם עודכן');
+      setEditingName(false);
+    } catch (err) {
+      console.error('Rename failed:', err);
+      setNameError(err?.code === 'auth/requires-recent-login'
+        ? 'נדרש אימות מחדש — התנתק, התחבר שוב ונסה'
+        : 'עדכון השם נכשל');
+    } finally {
+      setNameSaving(false);
+    }
+  };
+
+  const closeDelete = () => {
+    if (deleteBusy) return;
+    setDeleteOpen(false);
+    setDeletePassword('');
+    setDeleteConfirmText('');
+    setDeleteError('');
+    setReauthStep(false);
+  };
+  // Email: the password IS the confirmation and the re-auth credential.
+  // Google: a typed word, then the Google popup re-authenticates.
+  const canDelete = canConfirmAccountDeletion({
+    isEmailUser,
+    password: deletePassword,
+    confirmText: deleteConfirmText,
+  });
   const handleDelete = async () => {
+    if (!canDelete || deleteBusy) return;
+    setDeleteBusy(true);
+    setDeleteError('');
     try {
       await deleteAccount(isEmailUser ? deletePassword : null);
       // A full reload, not a route change: the local Firestore cache was just
       // erased (and Firestore shut down), and the next visitor starts clean.
       window.location.replace('/login?deleted=1');
-      return;
     } catch (err) {
       console.error('Delete account failed:', err);
-      const msg = err.code === 'auth/wrong-password' || err.code === 'auth/invalid-credential'
-        ? 'סיסמה שגויה'
-        : err.code === 'auth/requires-recent-login'
-        ? 'נדרש אימות מחדש — התנתק, התחבר שוב ונסה מיד'
-        : err.code === 'auth/popup-closed-by-user' || err.code === 'auth/cancelled-popup-request'
-        ? 'האימות בוטל — כדי למחוק את החשבון יש לאשר את חלון ההתחברות'
-        : 'שגיאה במחיקת החשבון';
-      toast.error(msg);
+      if (err?.code === 'auth/requires-recent-login') setReauthStep(true);
+      // Stay on the dialog. Closing it (and only toasting) made the first
+      // failure look like nothing happened.
+      setDeleteError(accountDeletionErrorText(err));
+      setDeleteBusy(false);
     }
-    setDeleteOpen(false);
-    setDeletePassword('');
   };
 
   const handleShare = async () => {
@@ -256,7 +313,7 @@ export default function ProfilePage() {
   const inputClass = 'w-full bg-bg-tertiary border border-border-primary rounded-lg px-3 py-2.5 text-sm text-text-primary outline-none focus:border-accent-primary transition-colors';
 
   return (
-    <motion.div variants={pageVariants} initial="initial" animate="animate" exit="exit" transition={pageTransition}
+    <m.div variants={pageVariants} initial="initial" animate="animate" exit="exit" transition={pageTransition}
       className="px-4 py-6">
       <div className="max-w-lg mx-auto">
 
@@ -277,7 +334,38 @@ export default function ProfilePage() {
             <input ref={avatarInputRef} type="file" accept="image/*" className="hidden" onChange={onAvatarFile} />
           </div>
           <div className="min-w-0 flex-1">
-            <h1 className="text-xl font-bold text-text-primary truncate">{profile?.displayName || user?.displayName || 'הפרופיל שלי'}</h1>
+            {editingName ? (
+              <form onSubmit={saveName} className="flex items-start gap-1.5">
+                <div className="min-w-0 flex-1">
+                  <input
+                    autoFocus
+                    value={nameDraft}
+                    onChange={(e) => { setNameDraft(e.target.value); setNameError(''); }}
+                    maxLength={50}
+                    aria-label="שם תצוגה"
+                    aria-invalid={nameError ? true : undefined}
+                    className={`w-full bg-bg-tertiary border rounded-lg px-2.5 py-1.5 text-sm text-text-primary outline-none focus:border-accent-primary ${nameError ? 'border-loss' : 'border-border-primary'}`}
+                  />
+                  {nameError && <p role="alert" className="text-[10px] text-loss mt-1">{nameError}</p>}
+                </div>
+                <button type="submit" disabled={nameSaving}
+                  className="h-8 px-2.5 rounded-lg bg-accent-primary text-bg-primary text-xs font-semibold disabled:opacity-50 cursor-pointer">
+                  {nameSaving ? '...' : 'שמור'}
+                </button>
+                <button type="button" onClick={() => setEditingName(false)} disabled={nameSaving}
+                  className="h-8 px-2 rounded-lg text-xs text-text-muted hover:text-text-primary cursor-pointer">
+                  ביטול
+                </button>
+              </form>
+            ) : (
+              <div className="flex items-center gap-1.5 min-w-0">
+                <h1 className="text-xl font-bold text-text-primary truncate">{shownName || 'הפרופיל שלי'}</h1>
+                <button type="button" onClick={startEditName} aria-label="עריכת שם תצוגה" title="עריכת שם"
+                  className="shrink-0 p-1 rounded-md text-text-muted hover:text-accent-primary hover:bg-bg-tertiary cursor-pointer">
+                  <Pencil className="w-3.5 h-3.5" />
+                </button>
+              </div>
+            )}
             <p className="text-sm text-text-muted truncate" dir="ltr" style={{ textAlign: 'right' }}>{user?.email}</p>
             <div className="flex flex-wrap items-center gap-1.5 mt-2">
               <span className={`inline-flex items-center gap-1 h-6 px-2 rounded-md text-[11px] font-bold border ${
@@ -511,7 +599,7 @@ export default function ProfilePage() {
           </button>
           <AnimatePresence>
             {isPublicProfile && (
-              <motion.div
+              <m.div
                 initial={{ height: 0, opacity: 0 }}
                 animate={{ height: 'auto', opacity: 1 }}
                 exit={{ height: 0, opacity: 0 }}
@@ -539,7 +627,7 @@ export default function ProfilePage() {
                   </div>
                   <p className="text-[10px] text-text-muted text-center">הביצועים שלך יוצגו בלוח המובילים. נדרשות לפחות 10 עסקאות סגורות.</p>
                 </div>
-              </motion.div>
+              </m.div>
             )}
           </AnimatePresence>
         </div>
@@ -573,16 +661,57 @@ export default function ProfilePage() {
         TradeOS v{APP_VERSION}{BUILD_LABEL}
       </div>
 
-      {/* Delete Confirmation */}
-      <ConfirmDialog
-        isOpen={deleteOpen}
-        onClose={() => { setDeleteOpen(false); setDeletePassword(''); }}
-        onConfirm={handleDelete}
-        title="מחיקת חשבון"
-        message="פעולה זו תמחק את כל הנתונים שלך לצמיתות ולא ניתן לשחזר אותם. האם אתה בטוח?"
-      />
+      <Modal isOpen={deleteOpen} onClose={closeDelete} title={reauthStep ? 'אימות לפני מחיקה' : 'מחיקת חשבון'} maxWidth="max-w-sm">
+        <p className="text-sm text-text-secondary mb-3">
+          {reauthStep
+            ? (isEmailUser
+              ? 'Firebase דורש התחברות טרייה לפני מחיקת חשבון. הזן את הסיסמה — המחיקה תמשיך מיד אחרי האימות.'
+              : 'Firebase דורש התחברות טרייה לפני מחיקת חשבון. אשר את חלון Google — המחיקה תמשיך מיד אחרי האימות.')
+            : 'פעולה זו תמחק את כל הנתונים שלך לצמיתות ולא ניתן לשחזר אותם.'}
+        </p>
+        {isEmailUser ? (
+          <div className="mb-3">
+            <label htmlFor="delete-password" className="block text-xs text-text-muted mb-1">סיסמה נוכחית</label>
+            <div className="relative">
+              <input id="delete-password" type={showDeletePassword ? 'text' : 'password'} value={deletePassword}
+                onChange={(e) => { setDeletePassword(e.target.value); setDeleteError(''); }}
+                autoComplete="current-password"
+                className="w-full bg-bg-tertiary border border-border-primary rounded-lg px-3 py-2.5 text-sm text-text-primary outline-none focus:border-accent-primary"
+              />
+              <button type="button" onClick={() => setShowDeletePassword((v) => !v)} aria-label={showDeletePassword ? 'הסתר סיסמה' : 'הצג סיסמה'}
+                className="absolute left-2 top-1/2 -translate-y-1/2 text-text-muted cursor-pointer">
+                {showDeletePassword ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
+              </button>
+            </div>
+          </div>
+        ) : (
+          <div className="mb-3">
+            <label htmlFor="delete-confirm" className="block text-xs text-text-muted mb-1">
+              הקלד <span className="font-semibold text-text-primary">{DELETE_CONFIRM_WORD}</span> לאישור
+            </label>
+            <input id="delete-confirm" value={deleteConfirmText}
+              onChange={(e) => { setDeleteConfirmText(e.target.value); setDeleteError(''); }}
+              autoComplete="off"
+              className="w-full bg-bg-tertiary border border-border-primary rounded-lg px-3 py-2.5 text-sm text-text-primary outline-none focus:border-accent-primary"
+            />
+          </div>
+        )}
+        {deleteError && (
+          <p role="alert" className="text-xs text-loss mb-3">{deleteError}</p>
+        )}
+        <div className="flex gap-3">
+          <button type="button" onClick={handleDelete} disabled={!canDelete || deleteBusy}
+            className="flex-1 py-2.5 rounded-lg text-sm font-medium bg-loss text-white hover:bg-red-600 transition-colors cursor-pointer disabled:opacity-50">
+            {deleteBusy ? '...' : reauthStep ? (isEmailUser ? 'אמת ומחק' : 'אמת עם Google ומחק') : 'מחק חשבון'}
+          </button>
+          <button type="button" onClick={closeDelete} disabled={deleteBusy}
+            className="flex-1 py-2.5 rounded-lg bg-bg-tertiary text-text-secondary text-sm font-medium hover:text-text-primary transition-colors cursor-pointer disabled:opacity-50">
+            ביטול
+          </button>
+        </div>
+      </Modal>
       </div>
-    </motion.div>
+    </m.div>
   );
 }
 

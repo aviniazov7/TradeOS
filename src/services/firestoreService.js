@@ -18,7 +18,7 @@ import {
   terminate,
   clearIndexedDbPersistence,
 } from 'firebase/firestore';
-import { db } from './firebase';
+import { db } from './firebaseDb';
 import { APP_VERSION } from '../utils/constants';
 
 // ─── Retry Helper ────────────────────────────────────────────────
@@ -37,6 +37,34 @@ async function withRetry(fn, maxRetries = 3) {
 
 // ─── User Subcollection Operations ──────────────────────────────
 
+// Last snapshot per query, shared by every subscriber in this tab. A second
+// mount (home → journal → home) paints from this immediately; the live
+// listener still refreshes it. Firestore's IndexedDB cache covers reloads,
+// but opening that cache is slower than a Map hit, which is what made the
+// dashboard sit on a skeleton after login.
+const collectionCache = new Map();
+
+function collectionCacheKey(uid, collectionName, { orderField, orderDir, whereFilters }) {
+  return `${uid}|${collectionName}|${orderField}|${orderDir}|${JSON.stringify(whereFilters)}`;
+}
+
+/** The last snapshot for this query, or undefined if this tab hasn't seen it. */
+export function peekUserCollection(uid, collectionName, opts = {}) {
+  if (!uid) return undefined;
+  const orderField = opts.orderField || 'createdAt';
+  const orderDir = opts.orderDir || 'desc';
+  const whereFilters = opts.whereFilters || [];
+  return collectionCache.get(collectionCacheKey(uid, collectionName, { orderField, orderDir, whereFilters }));
+}
+
+/** Seed for a collection hook: cached rows paint immediately. */
+export function seedUserCollection(uid, collectionName, opts) {
+  if (!uid) return { data: [], loading: false };
+  const cached = peekUserCollection(uid, collectionName, opts);
+  if (cached === undefined) return { data: [], loading: true };
+  return { data: cached, loading: false };
+}
+
 /** Subscribe to a user's subcollection with real-time updates */
 export function subscribeToUserCollection(
   uid,
@@ -50,11 +78,21 @@ export function subscribeToUserCollection(
     constraints.push(where(f.field, f.op, f.value));
   }
   const q = query(collection(db, 'users', uid, collectionName), ...constraints);
-  return onSnapshot(
+  const key = collectionCacheKey(uid, collectionName, { orderField, orderDir, whereFilters });
+  const cached = collectionCache.get(key);
+  const unsub = onSnapshot(
     q,
-    (snapshot) => onData(snapshot.docs.map((d) => ({ id: d.id, ...d.data() }))),
+    (snapshot) => {
+      const data = snapshot.docs.map((d) => ({ id: d.id, ...d.data() }));
+      collectionCache.set(key, data);
+      onData(data);
+    },
     onError || ((error) => console.error(`Firestore listener error (${collectionName}):`, error))
   );
+  // Paint the cached rows now. The listener above replaces them when the
+  // server (or IndexedDB) answers, so a stale cache never sticks.
+  if (cached) onData(cached);
+  return unsub;
 }
 
 /** Add a document to a user's subcollection */

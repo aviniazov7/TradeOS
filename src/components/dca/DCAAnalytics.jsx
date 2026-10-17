@@ -3,6 +3,7 @@ import { BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer, PieChart, Pi
 import { format } from 'date-fns';
 import { DollarSign, TrendingUp, TrendingDown, Wallet, BarChart3, PieChart as PieChartIcon, Layers } from 'lucide-react';
 import { formatNumber, formatCurrency, formatPercent, formatPrice } from '../../utils/formatters';
+import { chartTick } from '../../utils/chartTicks';
 
 const tooltipStyle = { background: 'var(--color-bg-overlay)', border: '1px solid var(--color-border-primary)', borderRadius: '8px', fontSize: '12px', color: 'var(--color-text-primary)' };
 const PIE_COLORS = ['#22c55e', '#3b82f6', '#f59e0b', '#ef4444', '#8b5cf6', '#ec4899', '#14b8a6', '#f97316'];
@@ -153,8 +154,8 @@ export default function DCAAnalytics({ plans, prices }) {
             </div>
             <ResponsiveContainer width="100%" height={200}>
               <BarChart data={analytics.monthlyData}>
-                <XAxis dataKey="month" tick={{ fill: 'var(--color-text-muted)', fontSize: 10 }} axisLine={false} tickLine={false} />
-                <YAxis tick={{ fill: 'var(--color-text-muted)', fontSize: 10 }} axisLine={false} tickLine={false} width={45} tickFormatter={(v) => `$${v}`} />
+                <XAxis dataKey="month" tick={chartTick} axisLine={false} tickLine={false} />
+                <YAxis tick={chartTick} axisLine={false} tickLine={false} width={52} tickFormatter={(v) => `$${v}`} />
                 <Tooltip contentStyle={tooltipStyle} cursor={{ fill: 'var(--color-bg-tertiary)' }} formatter={(v) => [`$${formatNumber(v)}`, 'סכום']} />
                 <Bar dataKey="amount" fill="#8b5cf6" radius={[4, 4, 0, 0]} />
               </BarChart>

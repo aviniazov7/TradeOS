@@ -248,15 +248,72 @@ export function computeDrawdown(pnls, startBalance = 0) {
 }
 
 /**
- * Calculate average R:R (winning trades only — unsigned reward/risk).
- * Computed at read time from the INITIAL stop (originalStopLoss), so a stop
- * trailed to breakeven or into profit doesn't rewrite the R the trade was
- * taken at. Falls back to the stored rrRatio when the prices aren't there.
+ * Signed net R for display and averages: NET P&L / initial risk (fees are
+ * inside the number). Same definition as the journal header "R ממוצע".
+ * Legacy rows whose risk can't be priced fall back to the stored rrRatio
+ * magnitude, signed by the net P&L. null when the trade never had a risk.
+ */
+export function signedTradeR(t) {
+  const r = tradeRMultiple(t);
+  if (r !== null && (t?.netPnl != null || t?.pnl != null || toNum(t?.fees) > 0)) return r;
+  if (r !== null && t?.netPnl == null && t?.pnl == null) {
+    // No dollars on file (older fixtures): the price ratio is the only R,
+    // and with no fees it equals the net R. Sign it by the price move.
+    const gross = tradeRewardRisk(t);
+    if (gross > 0) {
+      const entry = toNum(t?.entryPrice);
+      const exits = Array.isArray(t?.exits)
+        ? t.exits.map((e) => ({ price: toNum(e?.price), percent: toNum(e?.percent) })).filter((e) => e.price > 0 && e.percent > 0)
+        : [];
+      const exit = exits.length ? calculateWeightedExitPrice(exits) : toNum(t?.exitPrice);
+      if (entry > 0 && exit > 0) {
+        const favorable = t?.direction === 'short' ? entry - exit : exit - entry;
+        return favorable < 0 ? -gross : gross;
+      }
+    }
+  }
+  if (r !== null) return r;
+  const rr = Math.abs(toNum(t?.rrRatio));
+  if (!rr) return null;
+  return safePnl(t) < 0 ? -rr : rr;
+}
+
+/**
+ * Percent return AFTER fees. The stored pnlPercent is gross (fees never
+ * entered that formula), so the table's % column and the net P&L column
+ * disagreed whenever a trade had commission. Scales the stored percent by
+ * net/gross when the size can't be repriced.
+ */
+export function tradeNetPercent(t) {
+  const net = safePnl(t);
+  const entry = toNum(t?.entryPrice);
+  const units = positionUnits(t);
+  if (entry > 0 && units > 0) {
+    const lev = t?.assetClass === 'futures_cme' ? 1 : (parseFloat(t?.leverage) || 1);
+    return (net / (entry * units)) * 100 * lev;
+  }
+  const gross = Number(t?.pnl);
+  const stored = Number(t?.pnlPercent);
+  if (Number.isFinite(stored) && Number.isFinite(gross) && gross !== 0) return stored * (net / gross);
+  return Number.isFinite(stored) ? stored : 0;
+}
+
+/**
+ * Average reward:risk of winning trades, NET of fees.
+ * A winner's R is net P&L / initial risk (the same R the table and the
+ * "R ממוצע" header show). Rows with no stored P&L keep the price ratio —
+ * with no fees the two are equal. 0 when there is no winning R.
  */
 export function calculateAvgRR(trades) {
   const rrs = trades
     .filter((t) => t.result === 'win')
-    .map(tradeRewardRisk)
+    .map((t) => {
+      if (t?.netPnl != null || t?.pnl != null) {
+        const r = tradeRMultiple(t);
+        if (r != null) return r;
+      }
+      return tradeRewardRisk(t);
+    })
     .filter((rr) => rr > 0);
   if (!rrs.length) return 0;
   return rrs.reduce((s, rr) => s + rr, 0) / rrs.length;
@@ -339,17 +396,25 @@ export function calculateMaxStreaks(sortedTrades) {
 }
 
 /**
- * Calculate average trade duration in milliseconds
+ * Milliseconds the trade was actually open, or null.
+ * Exchange imports often stamp exitDate === entryDate (duration 0). Counting
+ * those zeros used to halve the average next to a chart that skipped them
+ * (a 53-minute trade beside a zero-length import read as 26 minutes).
  */
+export function tradeDurationMs(trade) {
+  if (!trade?.entryDate || !trade?.exitDate) return null;
+  const entry = trade.entryDate?.toDate ? trade.entryDate.toDate() : new Date(trade.entryDate);
+  const exit = trade.exitDate?.toDate ? trade.exitDate.toDate() : new Date(trade.exitDate);
+  const a = entry?.getTime?.();
+  const b = exit?.getTime?.();
+  if (!Number.isFinite(a) || !Number.isFinite(b) || b <= a) return null;
+  return b - a;
+}
+
 export function calculateAvgDuration(trades) {
-  const withDates = trades.filter(t => t.entryDate && t.exitDate);
-  if (!withDates.length) return 0;
-  const total = withDates.reduce((s, t) => {
-    const entry = t.entryDate?.toDate ? t.entryDate.toDate() : new Date(t.entryDate);
-    const exit = t.exitDate?.toDate ? t.exitDate.toDate() : new Date(t.exitDate);
-    return s + (exit - entry);
-  }, 0);
-  return total / withDates.length;
+  const durations = (trades || []).map(tradeDurationMs).filter((ms) => ms != null);
+  if (!durations.length) return 0;
+  return durations.reduce((s, ms) => s + ms, 0) / durations.length;
 }
 
 /**

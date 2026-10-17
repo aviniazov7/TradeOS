@@ -1,5 +1,7 @@
+import { tickerCoinKey, tickerCoinUrls } from '../utils/tickerMarks';
+
 const CACHE_KEY = 'tradeos_coin_images';
-const CACHE_VERSION = 7; // bump to invalidate stale localStorage with wrong URLs
+const CACHE_VERSION = 8; // bump to invalidate stale localStorage with wrong URLs
 const CACHE_DURATION = 7 * 24 * 60 * 60 * 1000; // 7 days (image URLs are stable)
 
 // Non-crypto assets. XAU uses TradingView's official commodity logo (the gold
@@ -7,7 +9,10 @@ const CACHE_DURATION = 7 * 24 * 60 * 60 * 1000; // 7 days (image URLs are stable
 // as fake. Same CDN family the app already hotlinks for TV snapshot images;
 // if it ever fails, CoinIcon falls back to the gold-tinted "XA" letter badge.
 const MANUAL_ICONS = {
-  XAU: 'https://s3-symbol-logo.tradingview.com/metal/gold.svg',
+  XAU: '/logos/marks/gold.svg',
+  // Official Solana bars, same file as the ticker. Checked before the
+  // CoinGecko map, so a cached 4128/small/solana.png cannot replace it.
+  SOL: tickerCoinUrls('SOL')[0],
 };
 
 // Hardcoded CoinGecko CDN URLs for the most common trading coins.
@@ -16,7 +21,6 @@ const MANUAL_ICONS = {
 const STATIC_ICONS = {
   BTC:    'https://assets.coingecko.com/coins/images/1/small/bitcoin.png',
   ETH:    'https://assets.coingecko.com/coins/images/279/small/ethereum.png',
-  SOL:    'https://assets.coingecko.com/coins/images/4128/small/solana.png',
   BNB:    'https://assets.coingecko.com/coins/images/825/small/bnb-icon2_2x.png',
   XRP:    'https://assets.coingecko.com/coins/images/44/small/xrp-symbol-white-128.png',
   DOGE:   'https://assets.coingecko.com/coins/images/5/small/dogecoin.png',
@@ -250,12 +254,12 @@ function saveToStorage() {
 }
 
 export function hasKnownIcon(symbol) {
-  const key = (symbol || '').toUpperCase();
+  const key = tickerCoinKey(symbol);
   return !!(MANUAL_ICONS[key] || STATIC_ICONS[key]);
 }
 
 export function getCachedImage(symbol) {
-  const key = symbol.toUpperCase();
+  const key = tickerCoinKey(symbol);
   // 1. Manual overrides (local files, always correct)
   if (MANUAL_ICONS[key]) return MANUAL_ICONS[key];
   // 2. localStorage/memoryCache — API-fetched URLs take priority (more accurate than hardcoded)
@@ -270,7 +274,7 @@ export function cacheImage(symbol, url) {
     loadFromStorage();
     if (!memoryCache) memoryCache = {};
   }
-  memoryCache[symbol.toUpperCase()] = url;
+  memoryCache[tickerCoinKey(symbol)] = url;
   saveToStorage();
 }
 
@@ -279,7 +283,7 @@ export function clearCachedImage(symbol) {
     loadFromStorage();
     if (!memoryCache) return;
   }
-  delete memoryCache[symbol.toUpperCase()];
+  delete memoryCache[tickerCoinKey(symbol)];
   saveToStorage();
 }
 
@@ -290,21 +294,33 @@ async function fetchMarketsFromBase(base) {
     fetch(`${base}?${params}&page=2`),
   ]);
   let fetched = 0;
+  let rateLimited = false;
   for (const result of [res1, res2]) {
-    if (result.status === 'fulfilled' && result.value.ok) {
-      const coins = await result.value.json();
-      if (!Array.isArray(coins)) continue;
-      coins.forEach((c) => {
-        if (!c.symbol) return; // CoinGecko occasionally returns rows with no symbol — skip, don't crash the page
-        const img = c.image?.replace('/large/', '/small/');
-        if (img && !img.includes('missing_large')) {
-          memoryCache[c.symbol.toUpperCase()] = img;
-          fetched++;
-        }
-      });
+    if (result.status !== 'fulfilled') continue;
+    const res = result.value;
+    // A 429 from the worker means CoinGecko is already backing off. Hitting
+    // api.coingecko.com directly from the browser makes that worse.
+    if (res.status === 429 || res.status === 503) {
+      rateLimited = true;
+      continue;
     }
+    if (!res.ok) continue;
+    const coins = await res.json();
+    if (!Array.isArray(coins)) continue;
+    coins.forEach((c) => {
+      if (!c.symbol) return; // CoinGecko occasionally returns rows with no symbol — skip, don't crash the page
+      const sym = c.symbol.toUpperCase();
+      // A manual file is the mark we ship. The markets feed must not put
+      // CoinGecko's green Solana circle back on top of it.
+      if (MANUAL_ICONS[sym]) return;
+      const img = c.image?.replace('/large/', '/small/');
+      if (img && !img.includes('missing_large')) {
+        memoryCache[sym] = img;
+        fetched++;
+      }
+    });
   }
-  return fetched;
+  return { fetched, rateLimited };
 }
 
 export async function prefetchCoinImages() {
@@ -333,18 +349,23 @@ export async function prefetchCoinImages() {
     try {
       const workerUrl = import.meta.env.VITE_WORKER_URL || '';
       let fetched = 0;
+      let rateLimited = false;
 
       // 1. Try Cloudflare Worker proxy
       if (workerUrl) {
         try {
-          fetched = await fetchMarketsFromBase(`${workerUrl}/cg/coins/markets`);
+          const viaWorker = await fetchMarketsFromBase(`${workerUrl}/cg/coins/markets`);
+          fetched = viaWorker.fetched;
+          rateLimited = viaWorker.rateLimited;
         } catch { /* fall through */ }
       }
 
-      // 2. Direct CoinGecko fallback if worker failed or not configured
-      if (fetched === 0) {
+      // 2. Direct CoinGecko only when the worker isn't configured or failed
+      // for a reason other than a rate limit. A 429 must not be retried
+      // against the same free-tier IP from the browser.
+      if (fetched === 0 && !rateLimited) {
         try {
-          fetched = await fetchMarketsFromBase('https://api.coingecko.com/api/v3/coins/markets');
+          fetched = (await fetchMarketsFromBase('https://api.coingecko.com/api/v3/coins/markets')).fetched;
         } catch { /* silent */ }
       }
 

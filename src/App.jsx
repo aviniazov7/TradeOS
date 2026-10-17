@@ -1,9 +1,6 @@
-import { lazy, Suspense } from 'react';
-import { MotionConfig } from 'framer-motion';
+import { lazy, Suspense, useEffect } from 'react';
 import { BrowserRouter, Routes, Route, Navigate, useSearchParams } from 'react-router-dom';
-import { AuthProvider } from './contexts/AuthContext';
-import { JournalProvider } from './contexts/JournalContext';
-import { BacktestProvider } from './contexts/BacktestContext';
+import { AuthProvider, useAuth } from './contexts/AuthContext';
 import ProtectedRoute from './components/auth/ProtectedRoute';
 import PremiumRoute from './components/auth/PremiumRoute';
 import AdminRoute from './components/auth/AdminRoute';
@@ -20,6 +17,8 @@ import NotFoundPage from './components/shared/NotFoundPage';
 // its own chunk, so the login page — the first paint for every new visitor —
 // doesn't download the whole app around it.
 const Layout = lazy(() => import('./components/layout/Layout'));
+const MotionShell = lazy(() => import('./components/shared/MotionShell'));
+const AuthedProviders = lazy(() => import('./components/layout/AuthedProviders'));
 const loadDashboard = () => import('./components/dashboard/Dashboard');
 const loadTradeJournal = () => import('./components/journal/TradeJournal');
 const loadBacktestTracker = () => import('./components/backtest/BacktestTracker');
@@ -44,8 +43,6 @@ const loadWalletDetailPage = () => import('./components/polymarket/WalletDetailP
 const loadMarketDetailPage = () => import('./components/polymarket/MarketDetailPage');
 const loadAdminPanel = () => import('./components/admin/AdminPanel');
 const loadTaxReport = () => import('./components/tax/TaxReportPage');
-const loadTerminal = () => import('./components/terminal/TerminalPage');
-
 const Dashboard = lazy(loadDashboard);
 const TradeJournal = lazy(loadTradeJournal);
 const BacktestTracker = lazy(loadBacktestTracker);
@@ -70,23 +67,36 @@ const WalletDetailPage = lazy(loadWalletDetailPage);
 const MarketDetailPage = lazy(loadMarketDetailPage);
 const AdminPanel = lazy(loadAdminPanel);
 const TaxReportPage = lazy(loadTaxReport);
-const TerminalPage = lazy(loadTerminal);
 
-// Preload only the two most-likely-next routes during idle — and skip entirely
-// on Save-Data / slow connections. This is an installable PWA, so eagerly
-// pulling all ~19 route chunks (incl. the 400KB charts + 130KB datepicker)
-// burned mobile data for pages a user might never open. Everything else still
-// lazy-loads on demand when its route is actually visited.
-if (typeof window !== 'undefined') {
-  const conn = navigator.connection;
-  const saveData = conn && (conn.saveData || /(^|-)2g$/.test(conn.effectiveType || ''));
-  if (!saveData) {
-    const idle = window.requestIdleCallback || ((cb) => setTimeout(cb, 1500));
-    idle(() => {
+// Sample notifications page for local dev and a hosting preview built with
+// VITE_ADMIN_NOTIF_PREVIEW=1. Production builds tree-shake the route.
+const adminNotifPreview = import.meta.env.DEV || import.meta.env.VITE_ADMIN_NOTIF_PREVIEW === '1';
+const AdminNotificationsPreview = adminNotifPreview
+  ? lazy(() => import('./components/admin/AdminNotificationsPreview'))
+  : null;
+
+// Preload the two most-likely-next routes during idle, and only once someone
+// is signed in. Doing this on /login downloaded Firestore, charts, and the
+// journal during Lighthouse (about 59 scripts) and competed with first paint.
+function IdleRoutePreload() {
+  const { user, loading } = useAuth();
+  useEffect(() => {
+    if (loading || !user) return undefined;
+    const conn = navigator.connection;
+    const saveData = conn && (conn.saveData || /(^|-)2g$/.test(conn.effectiveType || ''));
+    if (saveData) return undefined;
+    const run = () => {
       loadDashboard();
       loadTradeJournal();
-    });
-  }
+    };
+    if (window.requestIdleCallback) {
+      const id = window.requestIdleCallback(run);
+      return () => window.cancelIdleCallback(id);
+    }
+    const id = setTimeout(run, 1500);
+    return () => clearTimeout(id);
+  }, [user, loading]);
+  return null;
 }
 
 // Polymarket now lives as a tab of the Market page. Old links may carry the
@@ -101,16 +111,13 @@ function PolymarketRedirect() {
 
 function MainApp() {
   return (
-    // reducedMotion="user" makes every framer-motion animation respect the OS
-    // "reduce motion" setting (the CSS block in index.css can't reach JS-driven
-    // motion). Transforms/opacity are dropped; layout is preserved.
-    <MotionConfig reducedMotion="user">
     <AuthProvider>
-      <JournalProvider>
-        <BacktestProvider>
           <Suspense fallback={<LoadingSpinner />}>
             <Routes>
+              {/* Login stays outside MotionShell and the Firestore providers.
+                  Those chunks download when a visitor leaves this page. */}
               <Route path="/login" element={<LoginPage />} />
+              <Route element={<MotionShell />}>
               {/* Public coupon share landing — accessible without auth so a
                   shared link works for logged-out friends; redeeming itself
                   sends them through /login and back. */}
@@ -118,19 +125,20 @@ function MainApp() {
               {/* Accessibility statement — public (reachable without login, as
                   required for an Israeli-standard accessibility statement). */}
               <Route path="/accessibility" element={<AccessibilityStatement />} />
-              <Route
-                element={
-                  <ProtectedRoute>
-                    <Layout />
-                  </ProtectedRoute>
-                }
-              >
+              {AdminNotificationsPreview && (
+                <Route path="/admin-notifications-preview" element={(
+                  <Suspense fallback={<LoadingSpinner />}>
+                    <AdminNotificationsPreview />
+                  </Suspense>
+                )} />
+              )}
+              <Route element={<ProtectedRoute><AuthedProviders /></ProtectedRoute>}>
+              <Route element={<Layout />}>
                 <Route index element={<Dashboard />} />
                 <Route path="journal" element={<TradeJournal />} />
-                {/* Live trading terminal: positions, open orders and multi-timeframe
-                    charts from the connected exchanges (read-only). Its own boundary:
-                    it embeds third-party chart iframes and polls exchanges. */}
-                <Route path="terminal" element={<ErrorBoundary><TerminalPage /></ErrorBoundary>} />
+                {/* The trading station page is gone. Positions, orders and the
+                    exchange connection live on the journal's בורסה tab. */}
+                <Route path="terminal" element={<Navigate to="/journal?tab=exchange" replace />} />
                 <Route path="backtest" element={<BacktestTracker />} />
                 {/* DCA + wallets are the two tabs of the Portfolio page; the old
                     paths stay as redirects so links/bookmarks land right. */}
@@ -172,15 +180,16 @@ function MainApp() {
                     (they used to bounce to the dashboard without a word). */}
                 <Route path="*" element={<NotFoundPage />} />
               </Route>
+              </Route>
+              </Route>
             </Routes>
           </Suspense>
+          <IdleRoutePreload />
           <Toast />
-          {/* Site-wide accessibility menu — present on every route. */}
+          {/* Site-wide accessibility menu — present on every route, including
+              login, so it must not import framer-motion. */}
           <AccessibilityWidget />
-        </BacktestProvider>
-      </JournalProvider>
     </AuthProvider>
-    </MotionConfig>
   );
 }
 

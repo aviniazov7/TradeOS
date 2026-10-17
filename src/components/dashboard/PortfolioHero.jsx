@@ -3,12 +3,11 @@ import Card from '../shared/Card';
 import AnimatedValue from '../shared/AnimatedValue';
 import FitText from '../shared/FitText';
 import { formatCurrency, formatCurrencyShort, LRM } from '../../utils/formatters';
-import { winRateOf } from '../../utils/calculations';
+import { summarizeSeries } from '../../utils/portfolioPerformance';
 
 const W = 600;
 const H = 170;
 const PADY = 12;
-const DAY = 86400000;
 
 const PERIODS = [
   { id: 'week', label: 'השבוע', days: 7 },
@@ -36,39 +35,13 @@ function buildChart(points) {
   return { pts, line, area: `${line} L${W},${H} L0,${H} Z`, zeroY: y(0), peak: max };
 }
 
-// Pure (module scope) so the render stays free of Date.now().
-function summarize(series, period) {
-  const now = Date.now();
-  const def = PERIODS.find((p) => p.id === period) || PERIODS[2];
-  const from = def.days ? now - def.days * DAY : 0;
-  const inRange = series.filter((p) => p.t >= from);
-  let points;
-  if (def.days) {
-    let acc = 0;
-    points = [{ t: from, value: 0 }, ...inRange.map((p) => ({ t: p.t, value: (acc += p.pnl) }))];
-  } else {
-    points = series.length ? [{ t: series[0].t, value: 0 }, ...series.map((p) => ({ t: p.t, value: p.value }))] : [];
-  }
-  const pnl = inRange.reduce((s, p) => s + p.pnl, 0);
-  // Same definition as everywhere: wins / (wins + losses), breakevens out.
-  const wins = inRange.filter((p) => p.pnl > 0).length;
-  const losses = inRange.filter((p) => p.pnl < 0).length;
-  const dayStart = new Date(); dayStart.setHours(0, 0, 0, 0);
-  const today = series.filter((p) => p.t >= dayStart.getTime()).reduce((s, p) => s + p.pnl, 0);
-  return {
-    def,
-    pnl,
-    count: inRange.length,
-    winRate: inRange.length ? Math.round(winRateOf(wins, losses)) : null,
-    today,
-    chart: buildChart(points),
-  };
-}
-
 // The home page's first card: what the account is worth, how it got here
 // (cumulative P&L for the chosen period) and the period's key numbers.
 //   series: [{ t, pnl, value }] — closed trades oldest → newest, value = running total
-export default function PortfolioHero({ balance, pnlPercent, series, hidden }) {
+//   declaredStart: sum of journal opening balances. The % is that period's
+//   closed-trade P&L on this capital — the same dollars as רווח/הפסד.
+//   A withdrawal changes `balance` and is not part of the %.
+export default function PortfolioHero({ balance, declaredStart = 0, series, hidden }) {
   const [period, setPeriod] = useState(() => {
     try { return localStorage.getItem(PERIOD_KEY) || 'all'; } catch { return 'all'; }
   });
@@ -76,7 +49,11 @@ export default function PortfolioHero({ balance, pnlPercent, series, hidden }) {
     setPeriod(id);
     try { localStorage.setItem(PERIOD_KEY, id); } catch { /* private mode */ }
   };
-  const s = useMemo(() => summarize(series, period), [series, period]);
+  const s = useMemo(() => {
+    const summary = summarizeSeries(series, period, { declaredStart, equity: balance });
+    const def = PERIODS.find((p) => p.id === period) || PERIODS[2];
+    return { ...summary, def, chart: buildChart(summary.points) };
+  }, [series, period, declaredStart, balance]);
   const m = (v) => (hidden ? '••••' : v);
 
   const wrapRef = useRef(null);
@@ -107,9 +84,9 @@ export default function PortfolioHero({ balance, pnlPercent, series, hidden }) {
             <FitText dir="ltr" min={18} className="num-mono text-3xl md:text-[40px] font-extrabold text-text-primary leading-none flex-initial">
               <AnimatedValue value={m(formatCurrency(balance).replace('+', ''))} />
             </FitText>
-            {pnlPercent !== 0 && (
-              <span dir="ltr" className={`shrink-0 text-[13px] font-bold px-2 py-0.5 rounded-lg ${pnlPercent >= 0 ? 'bg-profit/15 text-profit' : 'bg-loss/15 text-loss'}`}>
-                {m(`${LRM}${pnlPercent > 0 ? '+' : ''}${pnlPercent.toFixed(1)}%`)}
+            {s.percent != null && s.percent !== 0 && (
+              <span dir="ltr" data-testid="portfolio-return" className={`shrink-0 text-[13px] font-bold px-2 py-0.5 rounded-lg ${s.percent >= 0 ? 'bg-profit/15 text-profit' : 'bg-loss/15 text-loss'}`}>
+                {m(`${LRM}${s.percent > 0 ? '+' : ''}${s.percent.toFixed(1)}%`)}
               </span>
             )}
           </div>

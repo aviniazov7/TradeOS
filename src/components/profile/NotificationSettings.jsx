@@ -1,5 +1,5 @@
 import { useState, useEffect, useCallback } from 'react';
-import { motion, AnimatePresence } from 'framer-motion';
+import { m, AnimatePresence } from 'framer-motion';
 import { Bell, BellRing, BellOff, Send, NotebookPen, BarChart3, CalendarClock, ChevronDown, Zap, Radar, Activity } from 'lucide-react';
 import { SCHEDULE_DEFAULTS, withScheduleDefaults } from '../../utils/notifySchedule';
 import toast from 'react-hot-toast';
@@ -263,7 +263,7 @@ export default function NotificationSettings() {
 
       <AnimatePresence>
         {(isActive || permission === 'denied') && (
-          <motion.div
+          <m.div
             initial={{ height: 0, opacity: 0 }}
             animate={{ height: 'auto', opacity: 1 }}
             exit={{ height: 0, opacity: 0 }}
@@ -300,7 +300,7 @@ export default function NotificationSettings() {
                     </button>
                     <AnimatePresence initial={false}>
                       {allOpen && (
-                        <motion.div
+                        <m.div
                           initial={{ height: 0, opacity: 0 }}
                           animate={{ height: 'auto', opacity: 1 }}
                           exit={{ height: 0, opacity: 0 }}
@@ -340,14 +340,14 @@ export default function NotificationSettings() {
                             )}
                             <ScheduleSection user={user} />
                           </div>
-                        </motion.div>
+                        </m.div>
                       )}
                     </AnimatePresence>
                   </div>
                 </>
               )}
             </div>
-          </motion.div>
+          </m.div>
         )}
       </AnimatePresence>
     </div>

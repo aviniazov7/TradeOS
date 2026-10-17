@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react';
-import { motion } from 'framer-motion';
+import { m } from 'framer-motion';
 import { Gauge } from 'lucide-react';
 
 const CLASSIFICATIONS = {
@@ -82,7 +82,7 @@ export default function FearGreedGauge({ expanded = false }) {
   // Compact mode (top row card)
   if (!expanded) {
     return (
-      <motion.div
+      <m.div
         initial={{ opacity: 0, y: 10 }}
         animate={{ opacity: 1, y: 0 }}
         className="bento-card p-3 flex flex-col items-center"
@@ -107,7 +107,7 @@ export default function FearGreedGauge({ expanded = false }) {
                 <path key={i} d={`M ${cx + r * Math.cos(s)} ${cy - r * Math.sin(s)} A ${r} ${r} 0 0 0 ${cx + r * Math.cos(e)} ${cy - r * Math.sin(e)}`} fill="none" stroke={seg.color} strokeWidth="14" strokeLinecap="butt" opacity="0.3" />
               );
             })}
-            <motion.line x1={cx} y1={cy} initial={{ x2: cx, y2: cy }} animate={{ x2: needleX, y2: needleY }} transition={{ duration: 1, ease: 'easeOut', delay: 0.3 }} stroke={needleColor} strokeWidth="2.5" strokeLinecap="round" />
+            <m.line x1={cx} y1={cy} initial={{ x2: cx, y2: cy }} animate={{ x2: needleX, y2: needleY }} transition={{ duration: 1, ease: 'easeOut', delay: 0.3 }} stroke={needleColor} strokeWidth="2.5" strokeLinecap="round" />
             <circle cx={cx} cy={cy} r="4" fill={needleColor} />
           </svg>
         </div>
@@ -115,13 +115,13 @@ export default function FearGreedGauge({ expanded = false }) {
           <span className="text-base font-bold num-mono" style={{ color: needleColor }}>{value}</span>
           <span className="text-[11px] font-semibold mr-1.5" style={{ color: needleColor }}>{classification.label}</span>
         </div>
-      </motion.div>
+      </m.div>
     );
   }
 
   // Expanded mode (dedicated card with history)
   return (
-    <motion.div
+    <m.div
       initial={{ opacity: 0, y: 15 }}
       animate={{ opacity: 1, y: 0 }}
       transition={{ duration: 0.5 }}
@@ -135,7 +135,7 @@ export default function FearGreedGauge({ expanded = false }) {
       <div className="flex items-center gap-6 justify-center">
         {/* History */}
         {history && (
-          <motion.div
+          <m.div
             initial={{ opacity: 0, x: -20 }}
             animate={{ opacity: 1, x: 0 }}
             transition={{ delay: 0.5, duration: 0.4 }}
@@ -161,7 +161,7 @@ export default function FearGreedGauge({ expanded = false }) {
                 </div>
               );
             })}
-          </motion.div>
+          </m.div>
         )}
 
         {/* Gauge */}
@@ -182,13 +182,13 @@ export default function FearGreedGauge({ expanded = false }) {
                   <path key={i} d={`M ${cx + r * Math.cos(s)} ${cy - r * Math.sin(s)} A ${r} ${r} 0 0 0 ${cx + r * Math.cos(e)} ${cy - r * Math.sin(e)}`} fill="none" stroke={seg.color} strokeWidth="16" strokeLinecap="round" opacity="0.4" />
                 );
               })}
-              <motion.line x1={cx} y1={cy} initial={{ x2: cx, y2: cy }} animate={{ x2: needleX, y2: needleY }} transition={{ duration: 1.2, ease: 'easeOut', delay: 0.3 }} stroke={needleColor} strokeWidth="3" strokeLinecap="round" />
+              <m.line x1={cx} y1={cy} initial={{ x2: cx, y2: cy }} animate={{ x2: needleX, y2: needleY }} transition={{ duration: 1.2, ease: 'easeOut', delay: 0.3 }} stroke={needleColor} strokeWidth="3" strokeLinecap="round" />
               <circle cx={cx} cy={cy} r="5" fill={needleColor} />
               <circle cx={cx} cy={cy} r="2.5" fill="#fff" />
             </svg>
           </div>
           <div className="text-center mt-1">
-            <motion.span
+            <m.span
               initial={{ opacity: 0, scale: 0.5 }}
               animate={{ opacity: 1, scale: 1 }}
               transition={{ delay: 0.8, duration: 0.4 }}
@@ -196,8 +196,8 @@ export default function FearGreedGauge({ expanded = false }) {
               style={{ color: needleColor }}
             >
               {value}
-            </motion.span>
-            <motion.span
+            </m.span>
+            <m.span
               initial={{ opacity: 0 }}
               animate={{ opacity: 1 }}
               transition={{ delay: 1 }}
@@ -205,10 +205,10 @@ export default function FearGreedGauge({ expanded = false }) {
               style={{ color: needleColor }}
             >
               {classification.label}
-            </motion.span>
+            </m.span>
           </div>
         </div>
       </div>
-    </motion.div>
+    </m.div>
   );
 }

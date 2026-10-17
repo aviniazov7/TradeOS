@@ -1,5 +1,5 @@
 import { useMemo, useState, useEffect } from 'react';
-import { motion } from 'framer-motion';
+import { m } from 'framer-motion';
 import { useParams, useLocation, useNavigate, Navigate } from 'react-router-dom';
 import { ArrowRight, ExternalLink, Gem, Star, CalendarClock, AlertCircle } from 'lucide-react';
 import { useAuth } from '../../contexts/AuthContext';
@@ -133,11 +133,11 @@ export default function MarketDetailPage() {
     return () => controller.abort();
   }, [conditionId, passed]);
 
-  const m = passed || fetched;
+  const market = passed || fetched;
 
   if (!isPremium) return <Navigate to="/market?tab=polymarket" replace />;
 
-  if (!m) {
+  if (!market) {
     return (
       <div className="max-w-3xl mx-auto">
         <button onClick={() => navigate(state?.from || '/market?tab=polymarket')} className="inline-flex items-center gap-1.5 text-sm text-text-muted hover:text-text-primary transition-colors mb-3 cursor-pointer">
@@ -160,11 +160,11 @@ export default function MarketDetailPage() {
     );
   }
 
-  const link = marketUrl(m.eventSlug, m.slug);
-  const dl = daysLeft(m.endDate);
+  const link = marketUrl(market.eventSlug, market.slug);
+  const dl = daysLeft(market.endDate);
 
   return (
-    <motion.div variants={pageVariants} initial="initial" animate="animate" exit="exit" transition={pageTransition} className="max-w-3xl mx-auto">
+    <m.div variants={pageVariants} initial="initial" animate="animate" exit="exit" transition={pageTransition} className="max-w-3xl mx-auto">
       <button onClick={() => navigate(state?.from || '/market?tab=polymarket')} className="inline-flex items-center gap-1.5 text-sm text-text-muted hover:text-text-primary transition-colors mb-3 cursor-pointer">
         <ArrowRight className="w-4 h-4" /> חזרה לשווקים
       </button>
@@ -173,11 +173,11 @@ export default function MarketDetailPage() {
       <div className="relative overflow-hidden rounded-2xl border border-accent-primary/20 p-4 mb-4" style={{ background: 'var(--pm-hero-bg)' }}>
         <div className="absolute -top-16 -left-16 w-56 h-56 rounded-full bg-accent-primary/10 blur-3xl pointer-events-none" />
         <div className="relative flex items-center gap-3">
-          {m.icon
-            ? <img src={m.icon} alt="" className="w-12 h-12 rounded-xl object-cover" loading="lazy" />
+          {market.icon
+            ? <img src={market.icon} alt="" className="w-12 h-12 rounded-xl object-cover" loading="lazy" />
             : <div className="w-12 h-12 rounded-xl bg-white/10" />}
           <div className="min-w-0 flex-1">
-            <h1 className="text-base font-bold leading-snug" dir="auto" style={{ color: 'var(--pm-hero-fg)' }}>{m.question}</h1>
+            <h1 className="text-base font-bold leading-snug" dir="auto" style={{ color: 'var(--pm-hero-fg)' }}>{market.question}</h1>
             {dl != null && (
               <span className="inline-flex items-center gap-1 text-[11px] mt-1" style={{ color: 'var(--pm-hero-fg-faint)' }}>
                 <CalendarClock className="w-3 h-3" /> {dl <= 0 ? 'נסגר היום' : `נסגר בעוד ${dl} ימים`}
@@ -195,8 +195,8 @@ export default function MarketDetailPage() {
 
       {/* Probabilities */}
       <div className="space-y-2 mb-4">
-        {m.outcomes.map((o, i) => {
-          const p = m.prices[i] ?? 0;
+        {market.outcomes.map((o, i) => {
+          const p = market.prices[i] ?? 0;
           const lead = p >= 0.5;
           return (
             <div key={o} className="rounded-xl bg-bg-secondary border border-border-primary p-3">
@@ -214,12 +214,12 @@ export default function MarketDetailPage() {
 
       {/* Stats */}
       <div className="grid grid-cols-3 gap-2">
-        <Stat label="נפח 24ש׳" value={fmtUsd(m.volume24hr)} tone="accent" />
-        <Stat label="נזילות" value={fmtUsd(m.liquidity)} />
-        <Stat label="ספרד" value={`${Math.round((m.spread || 0) * 100)}¢`} />
+        <Stat label="נפח 24ש׳" value={fmtUsd(market.volume24hr)} tone="accent" />
+        <Stat label="נזילות" value={fmtUsd(market.liquidity)} />
+        <Stat label="ספרד" value={`${Math.round((market.spread || 0) * 100)}¢`} />
       </div>
 
-      <SmartHolders conditionId={m.conditionId} outcomes={m.outcomes} prices={m.prices} />
-    </motion.div>
+      <SmartHolders conditionId={market.conditionId} outcomes={market.outcomes} prices={market.prices} />
+    </m.div>
   );
 }

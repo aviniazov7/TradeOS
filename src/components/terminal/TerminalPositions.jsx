@@ -91,9 +91,9 @@ function PositionsTable({ rows, selectedKey, onSelect }) {
             return (
               <tr
                 key={key}
-                onClick={() => onSelect(p)}
-                className={`border-b border-border-primary/60 last:border-0 cursor-pointer transition-colors ${active ? 'bg-accent-primary/[0.07]' : 'hover:bg-bg-tertiary'}`}
-                aria-selected={active}
+                onClick={onSelect ? () => onSelect(p) : undefined}
+                className={`border-b border-border-primary/60 last:border-0 transition-colors ${onSelect ? 'cursor-pointer' : ''} ${active ? 'bg-accent-primary/[0.07]' : onSelect ? 'hover:bg-bg-tertiary' : ''}`}
+                aria-selected={onSelect ? active : undefined}
               >
                 <td className={`${TD} relative`}>
                   {active && <span className="absolute right-0 top-2 bottom-2 w-0.5 rounded-full bg-accent-primary" />}
@@ -142,11 +142,12 @@ function Stat({ label, children }) {
 
 function PositionCard({ row, active, onSelect }) {
   const { p, m, journalName, inJournal } = row;
+  const Tag = onSelect ? 'button' : 'div';
   return (
-    <button
-      type="button"
-      onClick={() => onSelect(p)}
-      className={`w-full text-start rounded-2xl border p-3 transition-colors cursor-pointer ${
+    <Tag
+      type={onSelect ? 'button' : undefined}
+      onClick={onSelect ? () => onSelect(p) : undefined}
+      className={`w-full text-start rounded-2xl border p-3 transition-colors ${onSelect ? 'cursor-pointer' : ''} ${
         active ? 'border-accent-primary/40 bg-accent-primary/[0.06]' : 'border-border-primary bg-bg-tertiary hover:border-border-hover'
       }`}
     >
@@ -182,7 +183,7 @@ function PositionCard({ row, active, onSelect }) {
           {p.funding != null && p.funding !== 0 && <span>מימון <Num>{fmtUsd(p.funding, { signed: true })}</Num></span>}
         </div>
       )}
-    </button>
+    </Tag>
   );
 }
 

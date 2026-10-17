@@ -1,5 +1,5 @@
 import { useMemo, useState } from 'react';
-import { motion, AnimatePresence } from 'framer-motion';
+import { m, AnimatePresence } from 'framer-motion';
 import { Zap, RefreshCw, X, Sparkles, ChevronLeft, CheckCircle2, AlertTriangle } from 'lucide-react';
 import toast from 'react-hot-toast';
 import { EXCHANGES } from '../exchange/exchangeConfig';
@@ -131,13 +131,13 @@ export default function ExchangeProposals({ exchange, trades, onImportTrade, ena
     <>
       <AnimatePresence mode="wait">
         {loading && proposals.length === 0 ? (
-          <motion.div key="loading" initial={{ opacity: 0, y: -6 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0 }}
+          <m.div key="loading" initial={{ opacity: 0, y: -6 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0 }}
             className="mb-3 flex items-center gap-2.5 px-4 py-2.5 rounded-xl border border-border-primary bg-bg-secondary/60 text-text-muted text-xs">
             <RefreshCw className="w-3.5 h-3.5 animate-spin" style={{ color: accent }} />
             בודק עסקאות חדשות ב-{name}…
-          </motion.div>
+          </m.div>
         ) : error && proposals.length === 0 ? (
-          <motion.div key="error" initial={{ opacity: 0, y: -6 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0 }}
+          <m.div key="error" initial={{ opacity: 0, y: -6 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0 }}
             className="mb-3 flex items-center justify-between gap-2 px-4 py-2.5 rounded-xl border border-border-primary bg-bg-secondary/60 text-xs">
             <span className="flex items-center gap-2 text-text-muted">
               <AlertTriangle className="w-3.5 h-3.5 text-loss" />
@@ -146,10 +146,10 @@ export default function ExchangeProposals({ exchange, trades, onImportTrade, ena
             <button onClick={refresh} className="text-accent-primary hover:underline cursor-pointer whitespace-nowrap">
               נסה שוב
             </button>
-          </motion.div>
+          </m.div>
         ) : nothingNew ? (
           lastSyncedAt ? (
-            <motion.div key="synced" initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}
+            <m.div key="synced" initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}
               className="mb-3 flex items-center justify-between gap-2 px-4 py-2 rounded-xl border border-border-primary/60 bg-bg-secondary/40 text-[11px] text-text-muted">
               <span className="flex items-center gap-2">
                 <CheckCircle2 className="w-3.5 h-3.5 text-profit" />
@@ -160,10 +160,10 @@ export default function ExchangeProposals({ exchange, trades, onImportTrade, ena
                 <RefreshCw className={`w-3.5 h-3.5 ${loading ? 'animate-spin' : ''}`} />
                 בדוק שוב
               </button>
-            </motion.div>
+            </m.div>
           ) : null
         ) : (
-          <motion.div key="proposals" initial={{ opacity: 0, y: -8 }}
+          <m.div key="proposals" initial={{ opacity: 0, y: -8 }}
             animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: -8 }}
             transition={{ type: 'spring', damping: 26, stiffness: 320 }}
             className="mb-3 relative rounded-xl overflow-hidden"
@@ -183,23 +183,23 @@ export default function ExchangeProposals({ exchange, trades, onImportTrade, ena
               <p className="text-[13px] font-bold text-text-primary flex items-center gap-1.5 min-w-0">
                 <Sparkles className="w-4 h-4 shrink-0" style={{ color: accent }} />
                 <span className="truncate">עסקאות חדשות מ-{name}</span>
-                <motion.span
+                <m.span
                   animate={{ scale: [1, 1.1, 1] }} transition={{ repeat: Infinity, duration: 2.2 }}
                   className="text-[10px] font-black px-1.5 py-px rounded-full shrink-0"
                   style={{ background: `${accent}22`, color: accent, border: `1px solid ${accent}45` }}>
                   {proposals.length}
-                </motion.span>
+                </m.span>
               </p>
 
               <div className="ms-auto flex items-center gap-1 shrink-0">
-                <motion.button whileHover={{ scale: 1.04 }} whileTap={{ scale: 0.96 }}
+                <m.button whileHover={{ scale: 1.04 }} whileTap={{ scale: 0.96 }}
                   onClick={openReview}
                   className="flex items-center gap-1 px-3 py-1.5 rounded-lg text-xs font-bold cursor-pointer transition-colors"
                   style={{ background: accent, color: '#000' }}>
                   <Zap className="w-3.5 h-3.5" />
                   סקירה והוספה
                   <ChevronLeft className="w-3.5 h-3.5 -ms-0.5" />
-                </motion.button>
+                </m.button>
                 <button onClick={refresh} disabled={loading} title="רענן"
                   className="p-1.5 rounded-lg text-text-muted hover:text-text-primary hover:bg-bg-tertiary cursor-pointer transition-colors disabled:opacity-50">
                   <RefreshCw className={`w-3.5 h-3.5 ${loading ? 'animate-spin' : ''}`} />
@@ -210,7 +210,7 @@ export default function ExchangeProposals({ exchange, trades, onImportTrade, ena
                 </button>
               </div>
             </div>
-          </motion.div>
+          </m.div>
         )}
       </AnimatePresence>
 

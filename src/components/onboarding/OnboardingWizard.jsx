@@ -1,32 +1,48 @@
 import { useState, useEffect } from 'react';
-import { useNavigate } from 'react-router-dom';
-import { motion, AnimatePresence } from 'framer-motion';
+import { useLocation, useNavigate } from 'react-router-dom';
+import { m, AnimatePresence } from 'framer-motion';
 import { ChevronLeft, ChevronRight, PlusCircle, Link2, Check } from 'lucide-react';
 import { getUserProfile, setUserProfile } from '../../services/firestoreService';
 import { useAuth } from '../../contexts/AuthContext';
 import { onboardingStep } from '../../utils/animations';
+import { ONBOARDING_DISMISS_KEY, shouldShowOnboarding } from '../../utils/onboardingGate';
 import { ONBOARDING_STEPS } from './onboardingSteps';
+
+function readDismissed() {
+  try { return sessionStorage.getItem(ONBOARDING_DISMISS_KEY) === '1'; } catch { return false; }
+}
 
 export default function OnboardingWizard() {
   const { user } = useAuth();
   const navigate = useNavigate();
-  const [show, setShow] = useState(false);
+  const { pathname } = useLocation();
+  const [needsOnboarding, setNeedsOnboarding] = useState(false);
+  const [dismissed, setDismissed] = useState(readDismissed);
   const [step, setStep] = useState(0);
   const [direction, setDirection] = useState(1);
 
   useEffect(() => {
-    if (!user) return;
-    const check = async () => {
-      const { exists, data } = await getUserProfile(user.uid);
-      if (exists && data.onboardingCompleted === false) {
-        setShow(true);
-      }
-    };
-    check();
+    if (!user) return undefined;
+    let cancelled = false;
+    getUserProfile(user.uid).then(({ exists, data }) => {
+      if (!cancelled) setNeedsOnboarding(exists && data.onboardingCompleted === false);
+    }).catch(() => {});
+    return () => { cancelled = true; };
   }, [user]);
 
+  // Derived, not stored: a route change or a dismissal hides the dialog on
+  // the same render, including a remount on /journal before the profile write
+  // has landed.
+  const show = shouldShowOnboarding({
+    onboardingCompleted: needsOnboarding ? false : true,
+    pathname,
+    dismissed,
+  });
+
   const complete = async () => {
-    setShow(false);
+    try { sessionStorage.setItem(ONBOARDING_DISMISS_KEY, '1'); } catch { /* private mode */ }
+    setDismissed(true);
+    setNeedsOnboarding(false);
     await setUserProfile(user.uid, { onboardingCompleted: true });
   };
 
@@ -55,16 +71,16 @@ export default function OnboardingWizard() {
   return (
     <AnimatePresence>
       {show && (
-        <motion.div
+        <m.div
           className="fixed inset-0 z-[100] flex items-center justify-center p-4 bg-black/80"
           style={{ backdropFilter: 'blur(8px)', WebkitBackdropFilter: 'blur(8px)' }}
           initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}
           transition={{ duration: 0.22 }}
         >
-          <motion.div
+          <m.div
             role="dialog"
             aria-modal="true"
-            aria-label="הגדרה ראשונית"
+            aria-labelledby="onboarding-title"
             className="relative max-w-md w-full rounded-2xl overflow-hidden border border-border-primary bg-bg-secondary"
             style={{ boxShadow: '0 32px 80px rgba(0,0,0,0.55)' }}
             initial={{ scale: 0.94, opacity: 0, y: 16 }}
@@ -85,7 +101,7 @@ export default function OnboardingWizard() {
             {/* Slide */}
             <div className="px-6 pt-6 pb-6 min-h-[360px] overflow-hidden relative">
               <AnimatePresence mode="wait" custom={direction}>
-                <motion.div
+                <m.div
                   key={step}
                   custom={direction}
                   variants={onboardingStep}
@@ -99,7 +115,7 @@ export default function OnboardingWizard() {
                   >
                     {Icon && <Icon className="w-7 h-7" style={{ color: '#06060a' }} />}
                   </span>
-                  <h2 className="text-[22px] font-extrabold text-text-primary leading-tight">{current.title}</h2>
+                  <h2 id="onboarding-title" className="text-[22px] font-extrabold text-text-primary leading-tight">{current.title}</h2>
                   <p className="text-sm text-text-secondary leading-relaxed mt-2">{current.description}</p>
 
                   <ul className="mt-5 rounded-xl border border-border-primary bg-bg-tertiary divide-y divide-border-primary">
@@ -112,7 +128,7 @@ export default function OnboardingWizard() {
                       </li>
                     ))}
                   </ul>
-                </motion.div>
+                </m.div>
               </AnimatePresence>
             </div>
 
@@ -162,8 +178,8 @@ export default function OnboardingWizard() {
                 </>
               )}
             </div>
-          </motion.div>
-        </motion.div>
+          </m.div>
+        </m.div>
       )}
     </AnimatePresence>
   );

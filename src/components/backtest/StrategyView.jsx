@@ -1,5 +1,5 @@
 import { useRef, useState, useEffect } from 'react';
-import { motion, AnimatePresence } from 'framer-motion';
+import { m, AnimatePresence } from 'framer-motion';
 import { X, Circle, Shield, LogIn, LogOut, StickyNote, ListChecks, Share2, Target, Loader2, ImageIcon, CloudSun, AlertTriangle, CalendarClock, Settings2 } from 'lucide-react';
 import { toPng } from 'html-to-image';
 // jsPDF loaded dynamically on share
@@ -141,7 +141,7 @@ export default function StrategyView({ isOpen, onClose, journal }) {
       {isOpen && (
         <div className="fixed inset-0 z-[100] flex items-center justify-center p-4">
           {/* Backdrop */}
-          <motion.div
+          <m.div
             className="absolute inset-0 bg-black/75 backdrop-blur-sm"
             onClick={onClose}
             variants={modalBackdrop}
@@ -151,7 +151,10 @@ export default function StrategyView({ isOpen, onClose, journal }) {
           />
 
           {/* Card */}
-          <motion.div
+          <m.div
+            role="dialog"
+            aria-modal="true"
+            aria-labelledby="strategy-journal-title"
             variants={modalContent}
             initial="initial"
             animate="animate"
@@ -169,6 +172,7 @@ export default function StrategyView({ isOpen, onClose, journal }) {
                 disabled={exporting}
                 className={`p-1.5 rounded-lg ${btnBg} transition-colors cursor-pointer disabled:opacity-50 flex items-center gap-1.5`}
                 title="ייצוא PDF"
+                aria-label="ייצוא PDF"
               >
                 {exporting ? (
                   <>
@@ -181,6 +185,7 @@ export default function StrategyView({ isOpen, onClose, journal }) {
               </button>
               <button
                 onClick={onClose}
+                aria-label="סגור"
                 className={`p-1.5 rounded-lg ${btnBg} transition-colors cursor-pointer`}
               >
                 <X className="w-4 h-4" />
@@ -199,13 +204,13 @@ export default function StrategyView({ isOpen, onClose, journal }) {
                 Strategy Journal
               </p>
 
-              <h1 className="text-2xl font-bold mb-2">
+              <h2 id="strategy-journal-title" className="text-2xl font-bold mb-2">
                 <span style={{ color }}>{journal.name.split(' ').slice(0, -1).join(' ')}</span>
                 {journal.name.includes(' ') && (
                   <span className={textSub}> {journal.name.split(' ').slice(-1)}</span>
                 )}
                 {!journal.name.includes(' ') && <span style={{ color }}>{journal.name}</span>}
-              </h1>
+              </h2>
 
               {journal.description && (
                 <p className={`text-sm ${textSub} max-w-xs mx-auto`}>{journal.description}</p>
@@ -371,7 +376,7 @@ export default function StrategyView({ isOpen, onClose, journal }) {
                 );
               })()}
             </div>
-          </motion.div>
+          </m.div>
         </div>
       )}
     </AnimatePresence>

@@ -1,31 +1,17 @@
 import { useState, useEffect } from 'react';
 import { useWorkerQuotes } from '../../hooks/useWorkerQuotes';
-import { COINS, FUTURES_CONTRACTS } from '../../utils/constants';
+import { FUTURES_CONTRACTS } from '../../utils/constants';
 import { useAuth } from '../../contexts/AuthContext';
 import { fetchPrices } from '../../services/coingeckoApi';
 import { formatPrice, formatPercent } from '../../utils/formatters';
-import { TrendingUp, TrendingDown, Droplet, Flame, Gem, Landmark, CandlestickChart, RefreshCw } from 'lucide-react';
-import CoinIcon from '../shared/CoinIcon';
-import StockLogo from '../stocks/StockLogo';
+import { TrendingUp, TrendingDown, RefreshCw } from 'lucide-react';
+import TickerLogo from './TickerLogo';
 import { TICKER_STOCKS } from '../../utils/stocks';
 import { tickerView } from '../../utils/priceTicker';
+import { TICKER_CRYPTO_FALLBACK, loadTopCryptoSymbols } from '../../utils/tickerSymbols';
 
-// Crypto symbols shown in the ticker (kept small to keep the API request light).
-const TICKER_SYMBOLS = ['BTC','ETH','SOL','AVAX','BNB','ADA','XRP','DOGE','TRX','SUI','NEAR','LINK','DOT','PEPE','WIF','ARB','UNI','ATOM'];
 // Headline futures contracts for the ticker.
 const TICKER_FUTURES = ['ES','NQ','YM','RTY','CL','GC','SI','NG'];
-
-// A fitting, colour-coded icon per futures contract so they read like distinct
-// instruments (gold = amber, silver = slate, oil = orange, gas = blue flame,
-// indices = a candlestick) rather than one generic glyph.
-function futuresIcon(symbol) {
-  if (symbol === 'GC' || symbol === 'MGC') return { Icon: Gem, className: 'text-amber-400' };     // gold
-  if (symbol === 'SI') return { Icon: Gem, className: 'text-slate-300' };                         // silver
-  if (symbol === 'CL' || symbol === 'MCL') return { Icon: Droplet, className: 'text-orange-500' };// crude oil
-  if (symbol === 'NG') return { Icon: Flame, className: 'text-sky-400' };                         // natural gas
-  if (symbol === 'ZB' || symbol === 'ZN') return { Icon: Landmark, className: 'text-emerald-400' };// rates
-  return { Icon: CandlestickChart, className: 'text-indigo-400' };                                // equity indices
-}
 
 export default function PriceTicker() {
   const { profile } = useAuth();
@@ -36,9 +22,23 @@ export default function PriceTicker() {
   const showFutures = assetClasses.includes('futures_cme');
   const showStocks = assetClasses.includes('stocks');
 
+  // Starts on the static majors, then swaps in the live top-by-cap list.
+  const [cryptoSymbols, setCryptoSymbols] = useState(TICKER_CRYPTO_FALLBACK);
+  useEffect(() => {
+    if (!showCrypto) return undefined;
+    let cancelled = false;
+    loadTopCryptoSymbols().then((syms) => {
+      if (cancelled) return;
+      setCryptoSymbols((prev) => (
+        prev.length === syms.length && prev.every((s, i) => s === syms[i]) ? prev : syms
+      ));
+    });
+    return () => { cancelled = true; };
+  }, [showCrypto]);
+
   // Crypto via Bybit (/cx) and futures via Yahoo (/fut) — both reachable from
   // the worker, where Binance + CoinGecko return 403.
-  const crypto = useWorkerQuotes('/cx/quotes', TICKER_SYMBOLS, { enabled: showCrypto });
+  const crypto = useWorkerQuotes('/cx/quotes', cryptoSymbols, { enabled: showCrypto });
   const futures = useWorkerQuotes('/fut/quotes', TICKER_FUTURES, { enabled: showFutures });
   const stocks = useWorkerQuotes('/stk/quotes', TICKER_STOCKS, { enabled: showStocks });
   const cryptoPrices = crypto.prices;
@@ -64,9 +64,9 @@ export default function PriceTicker() {
   // Each source renders independently as soon as its data is in. We only show
   // the skeleton while NOTHING is available yet and something is still loading.
   const cryptoItems = showCrypto
-    ? COINS.filter((c) => cryptoPrices[c.symbol]).map((c) => ({
-        key: `c-${c.symbol}`, kind: 'crypto', symbol: c.symbol,
-        label: `${c.symbol}/USDT`, data: cryptoPrices[c.symbol],
+    ? cryptoSymbols.filter((sym) => cryptoPrices[sym]).map((sym) => ({
+        key: `c-${sym}`, kind: 'crypto', symbol: sym,
+        label: `${sym}/USDT`, data: cryptoPrices[sym],
       }))
     : [];
   // Gold (XAU) — sourced from CoinGecko (pax-gold), shown with a gold icon.
@@ -139,16 +139,9 @@ export default function PriceTicker() {
   const renderItem = (item, index) => {
     const { data } = item;
     const isPositive = data.change24h >= 0;
-    const fut = item.kind === 'futures' ? futuresIcon(item.symbol) : null;
     return (
       <div key={`${item.key}-${index}`} className="flex items-center gap-2 px-4 whitespace-nowrap">
-        {item.kind === 'stock'
-          ? <StockLogo symbol={item.symbol} className="w-4 h-4" rounded="rounded" />
-          : item.kind === 'crypto'
-          ? <CoinIcon pair={`${item.symbol}USDT`} className="w-3.5 h-3.5" />
-          : item.kind === 'gold'
-            ? <Gem className="w-3.5 h-3.5 text-amber-400" />
-            : <fut.Icon className={`w-3.5 h-3.5 ${fut.className}`} />}
+        <TickerLogo kind={item.kind} symbol={item.symbol} className="w-6 h-6" />
         <span className="text-xs font-bold text-text-primary">{item.label}</span>
         <span className="text-xs text-text-secondary">${formatPrice(data.price)}</span>
         <span className={`flex items-center gap-0.5 text-xs font-medium ${isPositive ? 'text-profit' : 'text-loss'}`}>

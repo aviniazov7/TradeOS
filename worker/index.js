@@ -35,6 +35,7 @@ import { handleFxUsdIls } from './fxRates.js';
 import { handleHyperliquidRoute } from './hyperliquid.js';
 import { handleCandlesRoute } from './candles.js';
 import { handleOpenOrdersRoute } from './openOrders.js';
+import { handleCoinGecko } from './coingeckoProxy.js';
 
 // Binance's public market-data mirror — api.binance.com returns 403 to
 // Cloudflare Worker egress IPs in many regions, but data-api.binance.vision
@@ -607,7 +608,7 @@ function buildPremiumEmail({ kind = 'payment', name, amount, methodLabel, days, 
       ${featureLi('TradeAI ללא הגבלה — שאלות, ניתוחי גרפים ותובנות')}
       ${featureLi('ניתוח AI מלא של יומן המסחר')}
       ${featureLi('יומני מסחר, ארנקים והתראות ללא הגבלה')}
-      ${featureLi('חיבורי בורסה וניתוחים מתקדמים')}
+      ${featureLi('חיבורי בורסה ואנליטיקה מתקדמת')}
     </ul>
     ${kind === 'payment' ? emailPara('אישור זה נשלח לנוחותך ואינו מהווה חשבונית מס/קבלה.', { size: 12, color: EMAIL_C.muted, margin: '14px 0 0' }) : ''}`;
 
@@ -2407,18 +2408,22 @@ async function geminiStreamToOpenAI(geminiBody) {
   });
 }
 
-// Budget for the journal snapshot carried on every chat turn. Deliberately far
-// below the coach's (2500) because this rides along with the conversation
-// history and the Wyckoff system prompt on an endpoint that already hits Groq's
-// per-minute cap.
-const CHAT_CONTEXT_BUDGET = 900;
+// Budget for the journal snapshot carried on every chat turn. The aggregate
+// coach block is a few hundred tokens; recentTrades adds the newest ~40
+// closed rows (~30 tokens each). 2200 keeps those rows intact on top of the
+// Wyckoff prompt and the trimmed history. Still under the coach's short
+// budget (2500) and far under the model's context window — the constraint
+// is Groq's per-minute bucket, not the row count.
+const CHAT_CONTEXT_BUDGET = 2200;
 
 const CHAT_CONTEXT_PROMPT = `
 ## יומן המסחר של הסוחר (JSON):
-זהו הספר האמיתי שלו. כשהוא שואל על עצמו — "איפה אני מפסיד", "מה עובד לי" — ענה מהנתונים האלה ולא בעצה כללית.
-- אסור להמציא מספר שלא מופיע כאן.
-- אם הנתונים לא מכילים את מה שנשאלת עליו, אמור זאת במפורש והצע מה להוסיף ליומן.
-- "_truncated" מציין שקוצץ חלק מרשימה — זה לא אומר שהיא ריקה.
+זהו הספר האמיתי שלו, מיומן אחד בלבד (היומן שנבחר). כשהוא שואל על עצמו — "איפה אני מפסיד", "מה 5 העסקאות האחרונות שלי" — ענה מהנתונים האלה ולא בעצה כללית.
+- recentTrades: שורות עסקאות סגורות. בלי recentQuery הסדר הוא החדש ביותר ראשון. שדות: d תאריך מקומי YYYY-MM-DD, sym, side (הערך המלא Long או Short — העתק אותו כמו שהוא, בלי לקצר ל-L או S), entry, exit, pnl בדולרים, R (מכפיל R; שם השדה והכותרת הם R באות גדולה, לא r). closedTotal הוא מספר כל העסקאות הסגורות ביומן, גם אם הרשימה קוצרה.
+- recentQuery (אם קיים): symbol / date / symbol+date / symbol-or-date. אז recentTrades מתחיל בשורות שתואמות לסינון, ואחריהן עסקאות אחרות. זו לא "הרשימה הריקה".
+- כשהמשתמש מבקש טבלה, עסקאות אחרונות, או פירוט לפי תאריך או מטבע — ענה בטבלת Markdown: שורת כותרות, שורה | --- |, ואז שורות הנתונים. כלל התבליטים (•) לא חל על תשובה כזו. אל תגיד שאין תאריכים או פרטי עסקאות אם recentTrades לא ריק.
+- אסור להמציא שורה, תאריך, מחיר או רווח שלא מופיעים ב-JSON. אם השאלה דורשת עסקה ישנה יותר ממה שנשלח, אמור שהמדגם חלקי ואל תמלא מהזיכרון.
+- "_truncated" מציין שקוצץ זנב של רשימה (עסקאות ישנות יותר, או פריטים אחרונים) — זה לא אומר שהרשימה ריקה.
 \`\`\`json
 `;
 
@@ -2741,8 +2746,14 @@ const COACH_SYSTEM_PROMPT = `אתה מנטור מסחר אישי שמנתח את
 
 ## איכות התוכן:
 - כל בולט קצר, ענייני, מסתמך על מספר אחד לפחות מה-stats.
-- המלצות = פעולה ספציפית למסחר ("הפסק לסחור [מטבע] עד שתבקטסט [תנאי]"), לא טיפים גנריים ("התנהל בזהירות").
+- המלצות = פעולה ספציפית למסחר ("הפסק לסחור [מטבע] עד שתבקטסט [תנאי]"), לא טיפים גנריים ("התנהל בזהירות"). החריג הוא מדגם קטן — ראה למטה.
 - אל תחזור על נתון שכבר הצגת בסעיף קודם.
+- כיוון נכתב "לונג" או "שורט". אסור לכתוב long / short.
+
+## מדגם קטן (summary.total קטן מ-5, או sampleTooSmall: true)
+- אין מספיק עסקאות סגורות כדי להסיק מסקנות. הבולט הראשון תחת "המלצות לפעולה" חייב לומר שאין מספיק נתונים ושתובנות חזקות דורשות לפחות 5 עסקאות סגורות.
+- אסור: "הפסק לסחור", "stop trading", "מצוין", "excellent", או כל המלצה להפסיק לסחור במטבע, כיוון או אסטרטגיה.
+- אסור לתייג ביצוע כמצוין או ככישלון. מותר רק לתאר את המספרים שמופיעים ב-stats.
 
 ## המפתח "psychology" (רק אם הוא קיים ב-stats):
 הצלבה בין יומן הבוקר/ערב של הסוחר לבין העסקאות שנסגרו באותם ימים. כל המספרים שם כבר חושבו — אסור לחשב מחדש, לסכם או להסיק מספר שלא כתוב שם במפורש.
@@ -4250,42 +4261,11 @@ async function handleRequest(request, env) {
     return handleNewsTranslate(request, env, cors);
   }
 
-  // CoinGecko proxy (avoids browser rate-limits). Cached in Cloudflare's edge
-  // cache (free, unlimited) — NOT in KV: the cache key is caller-controlled
-  // (subpath + querystring), so an unauthenticated loop with a varying
-  // parameter used to cost one KV write per request and exhaust the shared
-  // daily write quota (alerts, coupons, AI quotas, push registrations) in
-  // seconds. Subpaths are whitelisted to exactly what the app calls, so this
-  // can't be driven as an open proxy either.
+  // CoinGecko proxy. Edge-cached (not KV — caller-controlled keys exhausted
+  // the write quota). A 429/503 opens a backoff and serves the last good
+  // copy; see coingeckoProxy.js. Subpaths stay whitelisted.
   if (request.method === 'GET' && path.startsWith('/cg/')) {
-    const subPath = path.slice(4); // remove '/cg/'
-    // coins/markets, coins/{id}, coins/{id}/market_chart, search,
-    // simple/price, global — the full set the client uses (coingeckoApi,
-    // coinImageCache, MarketOverview, Dashboard).
-    const CG_ALLOWED = /^(coins\/[a-z0-9_-]{1,64}(\/market_chart)?|search|simple\/price|global)$/;
-    if (!CG_ALLOWED.test(subPath)) {
-      return new Response(JSON.stringify({ error: 'forbidden' }), { status: 403, headers: { ...cors, 'Content-Type': 'application/json' } });
-    }
-    const cgUrl = `https://api.coingecko.com/api/v3/${subPath}${url.search}`;
-    const ttl = subPath.startsWith('coins/markets') ? 3600 : 300; // 1h for markets, 5m for details/chart
-    const cache = caches.default;
-    const cacheKey = new Request(`https://cache.tradeos.internal/cg/${subPath}${url.search}`);
-    try {
-      const hit = await cache.match(cacheKey);
-      if (hit) return withCors(hit, cors, { 'X-Cache': 'HIT' });
-      // Browser-like UA — CoinGecko's free tier 403s bare server-side fetches
-      // from Cloudflare egress IPs but generally serves browser-looking ones.
-      const res = await fetch(cgUrl, { headers: { 'Accept': 'application/json', 'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36' } });
-      if (!res.ok) return new Response(JSON.stringify({ error: res.status }), { status: res.status, headers: { ...cors, 'Content-Type': 'application/json' } });
-      const text = await res.text();
-      // ACAO '*' — public non-credentialed data, so the edge-cached copy
-      // isn't pinned to a single requesting origin (news/digest pattern).
-      const headers = { ...cors, 'Access-Control-Allow-Origin': '*', 'Content-Type': 'application/json', 'Cache-Control': `public, max-age=${ttl}` };
-      await cache.put(cacheKey, new Response(text, { headers: { ...headers, 'X-Cache': 'HIT' } }));
-      return new Response(text, { headers: { ...headers, 'X-Cache': 'MISS' } });
-    } catch (err) {
-      return new Response(JSON.stringify({ error: err.message }), { status: 502, headers: { ...cors, 'Content-Type': 'application/json' } });
-    }
+    return handleCoinGecko(request.url, cors, { cache: caches.default });
   }
 
   // Binance proxy (avoids browser CORS/geo issues). Edge-cached, not KV —

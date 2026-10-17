@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react';
 import { useSearchParams } from 'react-router-dom';
-import { motion } from 'framer-motion';
+import { m } from 'framer-motion';
 import { Plus, Coins, Download, List, BarChart3 } from 'lucide-react';
 import toast from 'react-hot-toast';
 import { useDCA } from '../../hooks/useDCA';
@@ -105,7 +105,7 @@ export default function DCATracker({ embedded = false, view }) {
 
   if (loading) return <DCASkeleton />;
 
-  const dcaTabs = [{ id: 'plans', label: 'תוכניות', count: dcaPlans.length }, { id: 'summary', label: 'ניתוחים' }];
+  const dcaTabs = [{ id: 'plans', label: 'תוכניות', count: dcaPlans.length }, { id: 'summary', label: 'אנליטיקה' }];
   const dcaActions = (
     <div className="flex items-center gap-2 w-full sm:w-auto">
       {dcaPlans.length > 0 && (
@@ -120,7 +120,7 @@ export default function DCATracker({ embedded = false, view }) {
   );
 
   return (
-    <motion.div variants={pageVariants} initial="initial" animate="animate" exit="exit" transition={pageTransition}>
+    <m.div variants={pageVariants} initial="initial" animate="animate" exit="exit" transition={pageTransition}>
       {embedded ? null : (
         <PageHeader
           icon={Coins}
@@ -166,7 +166,7 @@ export default function DCATracker({ embedded = false, view }) {
       {/* Tab: Analytics */}
       {tab === 'summary' && (
         dcaPlans.length === 0 ? (
-          <EmptyState icon={Coins} title="אין נתונים לניתוח" description="צור תוכניות DCA כדי לראות ניתוחים מפורטים"
+          <EmptyState icon={Coins} title="אין נתונים לאנליטיקה" description="צור תוכניות DCA כדי לראות אנליטיקה מפורטת"
             actionLabel="צור תוכנית DCA" onAction={() => { setTab('plans'); setEditingPlan(null); setFormOpen(true); }} />
         ) : (
           <DCAAnalytics plans={dcaPlans} prices={prices} />
@@ -184,6 +184,6 @@ export default function DCATracker({ embedded = false, view }) {
         title="מחיקת תוכנית DCA"
         message={`למחוק את תוכנית ה-DCA של ${deleteTarget?.coin}? לא ניתן לבטל פעולה זו.`}
       />
-    </motion.div>
+    </m.div>
   );
 }

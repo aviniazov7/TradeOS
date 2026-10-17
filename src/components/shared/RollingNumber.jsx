@@ -1,5 +1,5 @@
-// eslint-disable-next-line no-unused-vars -- motion is used as <motion.span> (JSX-uses-vars false positive)
-import { motion } from 'framer-motion';
+// eslint-disable-next-line no-unused-vars -- motion is used as <m.span> (JSX-uses-vars false positive)
+import { m } from 'framer-motion';
 
 // Odometer-style number ticker (21st.dev / Magic-UI look): each digit is a
 // vertical 0-9 strip that springs to its target, so a changing value rolls
@@ -20,7 +20,7 @@ function RollDigit({ d }) {
       {/* Strip is 10em tall; y as % of the strip moves it by d digit-heights.
           Starts at 0 so the number visibly rolls up on mount (count-up), then
           animates digit-to-digit on every subsequent value change. */}
-      <motion.span
+      <m.span
         className="flex flex-col"
         initial={{ y: '0%' }}
         animate={{ y: `-${d * 10}%` }}
@@ -31,7 +31,7 @@ function RollDigit({ d }) {
             {n}
           </span>
         ))}
-      </motion.span>
+      </m.span>
     </span>
   );
 }
