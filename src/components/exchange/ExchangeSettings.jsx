@@ -22,6 +22,9 @@ import StatTile from '../shared/StatTile';
 import SectionTitle from '../shared/SectionTitle';
 import { EXCHANGES } from './exchangeConfig';
 import { SyncModal } from './SyncModal';
+import { resolveSyncOutcome } from './syncOutcome';
+import { securityBadge } from './securityBadge';
+import { entryHasPlaintextSecret, migratePlaintextExchangeKeys } from '../../services/exchangeCredentialMigration';
 
 // Import-window options for the exchange sync (value in days; '0' = last 50).
 const SYNC_PERIODS = [
@@ -414,42 +417,32 @@ export default function ExchangeSettings({ journalId: propJournalId, embedded = 
     if (!user) return;
     (async () => {
       try {
+        // Same migration as sign-in (deduped). Runs here too so a user who
+        // already has the screen open still gets secrets moved before we
+        // read the marker. A failed store leaves the Firestore copy intact.
+        await migratePlaintextExchangeKeys(user.uid).catch(() => {});
         const [legacy, connected] = await Promise.all([
           getUserSetting(user.uid, 'exchanges').catch(() => null),
           getConnectedExchanges().catch(() => []),
         ]);
         const markers = {};
-        // Keep when each key was saved (drives the expiry reminder).
+        // Keep when each key was saved (drives the expiry reminder) and
+        // whether the worker confirmed the key cannot trade.
         const markerFor = (eid) => ({
           connected: true,
           ...(legacy?.[eid]?.connectedAt ? { connectedAt: legacy[eid].connectedAt, connectedAtEstimated: !!legacy[eid].connectedAtEstimated } : {}),
           // Hyperliquid: the public wallet address IS the connection (no keys).
           ...(legacy?.[eid]?.address ? { address: legacy[eid].address } : {}),
+          ...(legacy?.[eid]?.readOnlyVerified === true ? { readOnlyVerified: true } : {}),
         });
         for (const eid of connected) markers[eid] = markerFor(eid);
-
-        // One-time migration of any legacy PLAINTEXT credentials still in
-        // Firestore: push them to the encrypted server-side store, then strip
-        // the secrets out of Firestore. Only strip if every migration succeeds
-        // (e.g. the server encryption key is configured) so we never delete a
-        // user's keys before they're safely re-stored.
-        let hadPlaintext = false, anyFailed = false;
         if (legacy && typeof legacy === 'object') {
           for (const [eid, conf] of Object.entries(legacy)) {
-            if (conf?.connected) markers[eid] = markerFor(eid);
-            if (conf?.apiKey && conf?.apiSecret) {
-              hadPlaintext = true;
-              // Always re-store (idempotent) so the encrypted KV blob is written
-              // even for users who were already "connected" via push — otherwise
-              // their KV creds would stay plaintext while Firestore got stripped.
-              try {
-                const extraKey = EXCHANGES.find(e => e.id === eid)?.extraField?.key;
-                await storeExchangeCredentials(eid, { apiKey: conf.apiKey, apiSecret: conf.apiSecret, passphrase: extraKey ? conf[extraKey] : undefined });
-                markers[eid] = markerFor(eid);
-              } catch { anyFailed = true; }
-            }
+            if (conf?.connected || conf?.address) markers[eid] = markerFor(eid);
           }
         }
+        const stillHasSecrets = legacy && typeof legacy === 'object'
+          && Object.values(legacy).some((conf) => entryHasPlaintextSecret(conf));
         // Keys with a fixed lifetime connected before this was tracked get
         // "today" as an estimated start — a real expiry is still caught by the
         // balance check, which reports key_expired.
@@ -463,10 +456,9 @@ export default function ExchangeSettings({ journalId: propJournalId, embedded = 
         setHyperliquidAddressCache(markers.hyperliquid?.address || null);
         setSavedExchanges(markers);
         writeExchCache(user.uid, '', markers);
-        // merge:false replaces the doc — never write while legacy plaintext
-        // keys are still there and failed to migrate (that would delete them).
-        // Fire-and-forget: the page doesn't wait on this write to appear.
-        if ((hadPlaintext && !anyFailed) || (stamped && !hadPlaintext)) {
+        // merge:false replaces the doc. Never write while plaintext secrets
+        // are still there — that would delete the only copy.
+        if (stamped && !stillHasSecrets) {
           setUserSetting(user.uid, 'exchanges', markers, false).catch(() => { /* ignore */ });
         }
       } finally {
@@ -552,10 +544,14 @@ export default function ExchangeSettings({ journalId: propJournalId, embedded = 
     try {
       // Send the secret to the encrypted server-side store exactly once.
       // (Address-based venues have no secret: nothing goes to the server.)
-      if (!byAddress) await storeExchangeCredentials(id, { apiKey: conf.apiKey, apiSecret: conf.apiSecret, passphrase: extraKey ? conf[extraKey] : undefined });
+      let readOnlyVerified = byAddress;
+      if (!byAddress) {
+        const stored = await storeExchangeCredentials(id, { apiKey: conf.apiKey, apiSecret: conf.apiSecret, passphrase: extraKey ? conf[extraKey] : undefined });
+        readOnlyVerified = stored?.readOnly === true;
+      }
       // Persist only a non-secret marker (plus the public wallet address for
       // Hyperliquid); merge:false replaces the doc so no plaintext key can linger.
-      const newMarkers = { ...savedExchanges, [id]: { connected: true, connectedAt: Date.now(), ...(byAddress ? { address } : {}) } };
+      const newMarkers = { ...savedExchanges, [id]: { connected: true, connectedAt: Date.now(), readOnlyVerified, ...(byAddress ? { address } : {}) } };
       await setUserSetting(user.uid, 'exchanges', newMarkers, false);
       if (byAddress) setHyperliquidAddressCache(address);
       setSavedExchanges(newMarkers);
@@ -604,12 +600,19 @@ export default function ExchangeSettings({ journalId: propJournalId, embedded = 
         syncExchangeTrades(id, { days, debug }),
         syncOpenPositions(id),
       ]);
-      const closedTrades = tradesResult.status === 'fulfilled' ? tradesResult.value : [];
-      const openPos = openResult.status === 'fulfilled' ? openResult.value : [];
-      const taggedOpen = openPos.map(p => ({ ...p, _isOpen: true, pnlFromExchange: null }));
-      const merged = [...taggedOpen, ...closedTrades];
-      if (!merged.length) { toast('לא נמצאו עסקאות', { icon: 'ℹ️' }); return; }
-      setSyncModal({ exchange: EXCHANGES.find(e => e.id === id)?.name || id, trades: merged });
+      const outcome = resolveSyncOutcome(tradesResult, openResult);
+      if (outcome.type === 'error') throw outcome.error;
+      if (outcome.type === 'empty') { toast('לא נמצאו עסקאות', { icon: 'ℹ️' }); return; }
+      if (outcome.partialError) {
+        const partial = outcome.partialError;
+        if (partial.reason) {
+          setBalances((b) => ({ ...b, [id]: { problem: partial.reason } }));
+          toast.error(`${partial.message} — לחץ "עדכון מפתחות"`);
+        } else {
+          toast.error(`שגיאת סנכרון: ${partial.message}`);
+        }
+      }
+      setSyncModal({ exchange: EXCHANGES.find(e => e.id === id)?.name || id, trades: outcome.trades });
     } catch (err) {
       if (err.reason) {
         // Show the key problem on the card too, so the fix is one click away.
@@ -643,6 +646,10 @@ export default function ExchangeSettings({ journalId: propJournalId, embedded = 
 
   const connected = EXCHANGES.filter(e => savedExchanges[e.id]?.connected);
   const available = EXCHANGES.filter(e => !savedExchanges[e.id]?.connected);
+  const badge = securityBadge(connected.map((e) => ({
+    authType: e.authType,
+    readOnlyVerified: savedExchanges[e.id]?.readOnlyVerified,
+  })));
   const problemCount = connected.filter((e) => balances[e.id]?.problem).length;
   const dialogExchange = dialog ? EXCHANGES.find((e) => e.id === dialog.id) : null;
   const disconnectExchange = confirmDisconnect ? EXCHANGES.find((e) => e.id === confirmDisconnect) : null;
@@ -661,10 +668,10 @@ export default function ExchangeSettings({ journalId: propJournalId, embedded = 
                 sub={problemCount ? `${problemCount} ${problemCount === 1 ? 'דורשת' : 'דורשות'} טיפול` : (!isPremium ? `חינמי: עד ${FREE_LIMITS.exchanges}` : 'ללא הגבלה')}
                 tone={problemCount ? 'text-loss' : 'text-text-primary'} />
               <StatTile inset icon={Shield} label="אבטחה"
-                value={connected.length ? 'מוגן' : '—'}
-                mono={!connected.length}
-                tone={connected.length ? 'text-profit' : 'text-text-muted'}
-                sub={connected.length ? 'מפתח לקריאה בלבד' : 'אין בורסה מחוברת'} />
+                value={badge.value}
+                mono={badge.value === '—'}
+                tone={badge.tone}
+                sub={badge.sub} />
             </div>
           </PageHeader>
         )}
