@@ -17,13 +17,13 @@ import { usePushAutoRegister } from '../../hooks/usePushAutoRegister';
 import { WifiOff } from 'lucide-react';
 
 function DemoChrome() {
-  const demo = useDemoMode();
+  const { active, exit } = useDemoMode();
   const { trades, loading } = useTrades();
   useEffect(() => {
-    if (!loading && demo.active && trades.some((t) => !isDemoTrade(t))) demo.exit();
-  }, [loading, demo.active, demo.exit, trades]);
-  if (!demo.active) return null;
-  return <DemoBanner onExit={demo.exit} />;
+    if (!loading && active && trades.some((t) => !isDemoTrade(t))) exit();
+  }, [loading, active, exit, trades]);
+  if (!active) return null;
+  return <DemoBanner onExit={exit} />;
 }
 
 export default function Layout() {

@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { shouldShowMobileConnectShortcut } from './connectShortcut';
-import { gettingStartedModel } from '../components/dashboard/GettingStartedCard';
+import { gettingStartedModel } from './gettingStarted';
 
 describe('shouldShowMobileConnectShortcut', () => {
   it('shows only when the account has zero connections', () => {

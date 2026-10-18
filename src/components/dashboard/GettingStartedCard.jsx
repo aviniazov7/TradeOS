@@ -7,17 +7,7 @@ import { useAuth } from '../../contexts/AuthContext';
 import { useDemoMode } from '../../hooks/useDemoMode';
 import { getConnectedExchanges } from '../../services/exchangeService';
 import { reopenOnboarding } from '../../utils/onboardingGate';
-
-// Exchange first. The card used to lead with "add a trade", which sent new
-// users into an empty form before they had a connection.
-export function gettingStartedModel({ tradeCount = 0, exchangeConnected = false, hasOpeningBalance = false, morningCount = 0 } = {}) {
-  return [
-    { key: 'exchange', done: !!exchangeConnected },
-    { key: 'trade', done: tradeCount > 0 },
-    { key: 'balance', done: !!exchangeConnected || !!hasOpeningBalance },
-    { key: 'mind', done: morningCount > 0 },
-  ];
-}
+import { gettingStartedModel } from '../../utils/gettingStarted';
 
 // First-steps checklist for brand-new accounts. Every item is DERIVED from
 // data the dashboard already loads (plus one exchange-status call) — no new

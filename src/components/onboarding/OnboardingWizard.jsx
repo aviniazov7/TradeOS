@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef } from 'react';
+import { useState, useEffect } from 'react';
 import { useLocation, useNavigate } from 'react-router-dom';
 import { m, AnimatePresence } from 'framer-motion';
 import { ChevronLeft, ChevronRight, PlusCircle, Link2, Check, FlaskConical } from 'lucide-react';
@@ -25,6 +25,13 @@ export default function OnboardingWizard() {
   const [dismissed, setDismissed] = useState(readDismissed);
   const [step, setStep] = useState(0);
   const [direction, setDirection] = useState(1);
+  // Apply the saved step when the user id arrives. Doing it in render (not an
+  // effect) avoids writing step 0 before the read and wiping the resume point.
+  const [stepUid, setStepUid] = useState(null);
+  if (user?.uid && user.uid !== stepUid) {
+    setStepUid(user.uid);
+    setStep(readOnboardingStep(user.uid, localStorage, ONBOARDING_STEPS.length - 1));
+  }
 
   useEffect(() => {
     if (!user) return undefined;
@@ -34,15 +41,6 @@ export default function OnboardingWizard() {
     }).catch(() => {});
     return () => { cancelled = true; };
   }, [user]);
-
-  // Apply the saved step once per user. Writing on every render used to
-  // store 0 before this read landed and wipe the resume point.
-  const stepUid = useRef(null);
-  useEffect(() => {
-    if (!user?.uid || stepUid.current === user.uid) return;
-    stepUid.current = user.uid;
-    setStep(readOnboardingStep(user.uid, localStorage, ONBOARDING_STEPS.length - 1));
-  }, [user?.uid]);
 
   const rememberStep = (next) => {
     setStep(next);

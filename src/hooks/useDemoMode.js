@@ -6,9 +6,13 @@ export function useDemoMode() {
   const { user } = useAuth();
   const uid = user?.uid;
   const [active, setActive] = useState(() => readDemoMode(uid));
+  const [activeUid, setActiveUid] = useState(uid);
+  if (uid !== activeUid) {
+    setActiveUid(uid);
+    setActive(readDemoMode(uid));
+  }
 
   useEffect(() => {
-    setActive(readDemoMode(uid));
     const sync = () => setActive(readDemoMode(uid));
     window.addEventListener(DEMO_CHANGE_EVENT, sync);
     window.addEventListener('storage', sync);
