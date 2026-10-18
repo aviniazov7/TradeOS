@@ -1,11 +1,15 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { useLocation, useNavigate } from 'react-router-dom';
 import { m, AnimatePresence } from 'framer-motion';
-import { ChevronLeft, ChevronRight, PlusCircle, Link2, Check } from 'lucide-react';
+import { ChevronLeft, ChevronRight, PlusCircle, Link2, Check, FlaskConical } from 'lucide-react';
 import { getUserProfile, setUserProfile } from '../../services/firestoreService';
 import { useAuth } from '../../contexts/AuthContext';
+import { useDemoMode } from '../../hooks/useDemoMode';
 import { onboardingStep } from '../../utils/animations';
-import { ONBOARDING_DISMISS_KEY, shouldShowOnboarding } from '../../utils/onboardingGate';
+import {
+  ONBOARDING_DISMISS_KEY, ONBOARDING_REOPEN_EVENT, shouldShowOnboarding,
+  dismissOnboardingSession, readOnboardingStep, writeOnboardingStep, clearOnboardingStep,
+} from '../../utils/onboardingGate';
 import { ONBOARDING_STEPS } from './onboardingSteps';
 
 function readDismissed() {
@@ -14,6 +18,7 @@ function readDismissed() {
 
 export default function OnboardingWizard() {
   const { user } = useAuth();
+  const demo = useDemoMode();
   const navigate = useNavigate();
   const { pathname } = useLocation();
   const [needsOnboarding, setNeedsOnboarding] = useState(false);
@@ -30,6 +35,26 @@ export default function OnboardingWizard() {
     return () => { cancelled = true; };
   }, [user]);
 
+  // Apply the saved step once per user. Writing on every render used to
+  // store 0 before this read landed and wipe the resume point.
+  const stepUid = useRef(null);
+  useEffect(() => {
+    if (!user?.uid || stepUid.current === user.uid) return;
+    stepUid.current = user.uid;
+    setStep(readOnboardingStep(user.uid, localStorage, ONBOARDING_STEPS.length - 1));
+  }, [user?.uid]);
+
+  const rememberStep = (next) => {
+    setStep(next);
+    if (user?.uid) writeOnboardingStep(user.uid, next);
+  };
+
+  useEffect(() => {
+    const onReopen = () => setDismissed(false);
+    window.addEventListener(ONBOARDING_REOPEN_EVENT, onReopen);
+    return () => window.removeEventListener(ONBOARDING_REOPEN_EVENT, onReopen);
+  }, []);
+
   // Derived, not stored: a route change or a dismissal hides the dialog on
   // the same render, including a remount on /journal before the profile write
   // has landed.
@@ -40,10 +65,18 @@ export default function OnboardingWizard() {
   });
 
   const complete = async () => {
-    try { sessionStorage.setItem(ONBOARDING_DISMISS_KEY, '1'); } catch { /* private mode */ }
+    dismissOnboardingSession();
     setDismissed(true);
     setNeedsOnboarding(false);
+    if (user?.uid) clearOnboardingStep(user.uid);
     await setUserProfile(user.uid, { onboardingCompleted: true });
+  };
+
+  // Hide for this visit only. The profile stays unfinished, so the checklist
+  // (or the next session) can open the wizard again on the same step.
+  const skip = () => {
+    dismissOnboardingSession();
+    setDismissed(true);
   };
 
   // Finish the wizard AND land the user on a concrete first action — the
@@ -54,14 +87,20 @@ export default function OnboardingWizard() {
     navigate(path);
   };
 
+  const exploreDemo = () => {
+    demo.enter();
+    skip();
+    navigate('/');
+  };
+
   const next = () => {
     setDirection(1);
-    setStep((s) => Math.min(s + 1, ONBOARDING_STEPS.length - 1));
+    rememberStep(Math.min(step + 1, ONBOARDING_STEPS.length - 1));
   };
 
   const back = () => {
     setDirection(-1);
-    setStep((s) => Math.max(s - 1, 0));
+    rememberStep(Math.max(step - 1, 0));
   };
 
   const isLast = step === ONBOARDING_STEPS.length - 1;
@@ -136,26 +175,34 @@ export default function OnboardingWizard() {
                 width, so they never squeeze on a phone. */}
             <div className="px-5 py-4 border-t border-border-primary flex items-center justify-between gap-2 flex-wrap">
               {isLast ? (
-                <div className="w-full grid grid-cols-2 gap-2">
+                <div className="w-full flex flex-col gap-2">
                   <button
                     onClick={() => completeAnd('/exchange')}
-                    className="h-11 inline-flex items-center justify-center gap-1.5 rounded-xl border border-border-hover text-text-primary text-sm font-bold hover:bg-bg-tertiary transition-colors cursor-pointer whitespace-nowrap"
+                    className="h-11 inline-flex items-center justify-center gap-1.5 rounded-xl bg-accent-muted hover:bg-accent-primary text-white text-sm font-bold transition-colors cursor-pointer"
                   >
                     <Link2 className="w-4 h-4" /> חיבור בורסה
                   </button>
-                  <button
-                    onClick={() => completeAnd('/journal?new=1')}
-                    className="h-11 inline-flex items-center justify-center gap-1.5 rounded-xl bg-accent-muted hover:bg-accent-primary text-white text-sm font-bold transition-colors cursor-pointer whitespace-nowrap"
-                  >
-                    <PlusCircle className="w-4 h-4" /> עסקה ראשונה
-                  </button>
-                  <button onClick={complete} className="col-span-2 h-8 text-xs text-text-muted hover:text-text-primary transition-colors cursor-pointer">
+                  <div className="grid grid-cols-2 gap-2">
+                    <button
+                      onClick={() => completeAnd('/journal?new=1')}
+                      className="h-11 inline-flex items-center justify-center gap-1.5 rounded-xl border border-border-hover text-text-primary text-sm font-bold hover:bg-bg-tertiary transition-colors cursor-pointer"
+                    >
+                      <PlusCircle className="w-4 h-4" /> עסקה ראשונה
+                    </button>
+                    <button
+                      onClick={exploreDemo}
+                      className="h-11 inline-flex items-center justify-center gap-1.5 rounded-xl border border-border-hover text-text-primary text-sm font-bold hover:bg-bg-tertiary transition-colors cursor-pointer"
+                    >
+                      <FlaskConical className="w-4 h-4" /> נתוני דמו
+                    </button>
+                  </div>
+                  <button onClick={skip} className="h-8 text-xs text-text-muted hover:text-text-primary transition-colors cursor-pointer">
                     אעשה את זה אחר כך
                   </button>
                 </div>
               ) : (
                 <>
-                  <button onClick={complete} className="h-10 px-2 text-sm text-text-muted hover:text-text-primary transition-colors cursor-pointer">
+                  <button onClick={skip} className="h-10 px-2 text-sm text-text-muted hover:text-text-primary transition-colors cursor-pointer">
                     דלג
                   </button>
                   <div className="flex gap-2">

@@ -5,7 +5,7 @@ import Modal from '../shared/Modal';
 import ConfirmDialog from '../shared/ConfirmDialog';
 import ExchangeSearch from '../shared/ExchangeSearch';
 import { useJournalContext } from '../../contexts/JournalContext';
-import { EXCHANGES } from '../../utils/constants';
+import { isUnsetExchange } from '../../utils/constants';
 import PropFirmSettings from '../propfirm/PropFirmSettings';
 import { propFirmToForm, formToPropFirm } from '../propfirm/propFirmForm';
 import { normalizeCommissions } from '../../utils/tradeFormHelpers';
@@ -49,7 +49,7 @@ export default function JournalSettingsModal({ isOpen, onClose, onArchive, onImp
     try {
       await updateJournal(activeJournalId, {
         name: form.name.trim(),
-        exchange: form.exchange || '',
+        exchange: isUnsetExchange(form.exchange) ? '' : form.exchange,
         initialBalance: parseFloat(form.initialBalance) || 0,
         currency: form.currency,
         description: form.description.trim(),

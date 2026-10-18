@@ -3,6 +3,38 @@
 // proposal banner (ExchangeProposals) — kept in its own module so the banner
 // doesn't pull the whole settings page into the journal chunk.
 
+// How the connect dialog should collect credentials. Binance has no working
+// trade sync, so it never shows an API-key form.
+export function connectMode(exchange) {
+  if (exchange?.authType === 'address') return 'address';
+  if (exchange?.canSync === false) return 'csv';
+  return 'keys';
+}
+
+// Shown above the key fields (and above the CSV action). Read-only and no IP
+// restriction apply to every API key; MEXC's 90-day lifetime is called out
+// on its own row.
+export function connectionGuideNotes(exchange) {
+  if (!exchange) return [];
+  if (exchange.authType === 'address') {
+    return ['הדבק כתובת ארנק ציבורית בלבד — לעולם לא מפתח פרטי או Seed.'];
+  }
+  if (exchange.canSync === false) {
+    return [
+      'Binance לא מסנכרן עסקאות דרך API.',
+      'מייבאים קובץ CSV מהיסטוריית החוזים — בלי מפתח.',
+    ];
+  }
+  const notes = [
+    'צור מפתח Read-Only בלבד — בלי הרשאות מסחר או משיכה.',
+    'בלי הגבלת IP. TradeOS מתחבר מכתובות משתנות.',
+  ];
+  if (exchange.keyLifetimeDays) {
+    notes.push(`מפתח של ${exchange.name} בלי IP פג אחרי ${exchange.keyLifetimeDays} יום.`);
+  }
+  return notes;
+}
+
 /**
  * One sentence for marketing surfaces. Names only follow `canSync`: an
  * exchange with auto-sync off (Binance) must not be listed as if trades
@@ -98,13 +130,12 @@ export const EXCHANGES = [
   {
     id: 'binance', name: 'Binance', tagline: "World's Largest Exchange",
     accent: '#F0B90B', glow: 'rgba(240,185,11,0.35)',
-    apiUrl: 'https://www.binance.com/en/my/settings/api-management', canSync: false,
+    apiUrl: 'https://www.binance.com/en/my/orders/futures/history', canSync: false,
     steps: [
-      { text: 'Profile → API Management → Create API', n: '1' },
-      { text: 'בחר "System Generated" → שם: "TradeOS"', n: '2' },
-      { text: 'Restrictions → Enable Reading בלבד ✓', n: '3', ok: true },
-      { text: 'אל תסמן Spot Trading / Futures / Withdrawals', n: '!', warn: true },
-      { text: 'שמור API Key + Secret Key', n: '4' },
+      { text: 'Binance → Futures → Order History', n: '1' },
+      { text: 'Export → הורד את קובץ ה-CSV', n: '2' },
+      { text: 'ייבא את הקובץ כאן — העסקאות נכנסות ליומן', n: '3', ok: true },
+      { text: 'אין סנכרון API. מפתח קריאה לא מושך עסקאות', n: '!', warn: true },
     ],
   },
 ];

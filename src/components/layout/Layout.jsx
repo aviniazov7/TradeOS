@@ -8,9 +8,23 @@ import PullToRefresh from '../shared/PullToRefresh';
 import OnboardingWizard from '../onboarding/OnboardingWizard';
 import PushNudge from '../shared/PushNudge';
 import EmailVerifyBanner from './EmailVerifyBanner';
+import DemoBanner from '../demo/DemoBanner';
+import { useDemoMode } from '../../hooks/useDemoMode';
+import { useTrades } from '../../hooks/useTrades';
+import { isDemoTrade } from '../../utils/demoData';
 import { useTheme } from '../../hooks/useTheme';
 import { usePushAutoRegister } from '../../hooks/usePushAutoRegister';
 import { WifiOff } from 'lucide-react';
+
+function DemoChrome() {
+  const demo = useDemoMode();
+  const { trades, loading } = useTrades();
+  useEffect(() => {
+    if (!loading && demo.active && trades.some((t) => !isDemoTrade(t))) demo.exit();
+  }, [loading, demo.active, demo.exit, trades]);
+  if (!demo.active) return null;
+  return <DemoBanner onExit={demo.exit} />;
+}
 
 export default function Layout() {
   const [sidebarOpen, setSidebarOpen] = useState(false);
@@ -64,6 +78,7 @@ export default function Layout() {
       >
         <main className="p-3 md:p-6 pb-[calc(env(safe-area-inset-bottom,0px)+10.5rem)] lg:pb-6">
           <EmailVerifyBanner />
+          <DemoChrome />
           <PullToRefresh>
             <Outlet />
           </PullToRefresh>

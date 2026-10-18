@@ -12,6 +12,10 @@ import { preloadPopupResolver } from '../../services/authService';
 import { exchangeSyncBlurb } from '../exchange/exchangeConfig';
 import BrandMark from '../shared/BrandMark';
 
+// One line under the sign-up title on a phone. The desktop panel already
+// carries the longer pitch; this is the only value line a 390px screen sees.
+export const SIGNUP_VALUE_LINE = 'יומן מסחר בעברית — חבר בורסה, עקוב אחרי כל עסקה, וקבל סוכן AI אישי.';
+
 // What the product does, in three lines — shown beside the form on wide screens.
 // The exchange line is built from canSync, so Binance is never described as auto-sync.
 const FEATURES = [
@@ -204,6 +208,11 @@ export default function LoginPage() {
           <p className="text-sm text-text-secondary mt-1.5">
             {isLogin ? 'התחבר כדי להמשיך ליומן המסחר שלך' : 'חינם, בלי כרטיס אשראי. לוקח פחות מדקה.'}
           </p>
+          {!isLogin && (
+            <p data-testid="signup-value" className="lg:hidden text-sm text-text-secondary mt-2 leading-relaxed">
+              {SIGNUP_VALUE_LINE}
+            </p>
+          )}
 
           {/* Mode switch */}
           <div role="tablist" className="mt-6 grid grid-cols-2 p-1 rounded-xl bg-bg-secondary border border-border-primary">

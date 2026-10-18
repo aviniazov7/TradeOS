@@ -91,7 +91,9 @@ export function JournalProvider({ children }) {
         // Create default journal
         const journalRef = await addToUserCollection(user.uid, 'journals', {
           name: 'היומן שלי',
-          exchange: 'other',
+          // Blank until a real venue is connected. `other` is not an exchange
+          // and used to make the dashboard say there was no live value.
+          exchange: '',
           initialBalance: 0,
           currency: 'USDT',
           assetClass: 'crypto',
