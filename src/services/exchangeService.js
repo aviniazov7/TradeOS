@@ -24,8 +24,12 @@ export async function storeExchangeCredentials(exchange, { apiKey, apiSecret, pa
     exchange, apiKey, apiSecret, passphrase: passphrase || '',
   });
   const data = await res.json().catch(() => ({}));
-  if (!res.ok || data.error) throw new Error(data.error || 'שמירת המפתחות נכשלה');
-  return true;
+  if (!res.ok || data.error) {
+    const err = new Error(data.message || data.error || 'שמירת המפתחות נכשלה');
+    if (data.error) err.code = data.error;
+    throw err;
+  }
+  return { readOnly: data.readOnly === true };
 }
 
 export async function deleteExchangeCredentials(exchange) {

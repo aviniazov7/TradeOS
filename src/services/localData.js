@@ -1,4 +1,5 @@
 import { clearLocalFirestoreCache } from './firestoreService';
+import { clearResponseCaches } from './responseCache';
 
 /**
  * Remove everything the app keeps on this device for the signed-in account:
@@ -8,6 +9,7 @@ import { clearLocalFirestoreCache } from './firestoreService';
  */
 export async function clearLocalAccountData() {
   try { await clearLocalFirestoreCache(); } catch { /* blocked / unsupported */ }
+  try { await clearResponseCaches(); } catch { /* private mode / unsupported */ }
   try { localStorage.clear(); } catch { /* private mode */ }
   try { sessionStorage.clear(); } catch { /* private mode */ }
 }

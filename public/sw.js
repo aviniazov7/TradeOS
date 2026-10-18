@@ -27,6 +27,26 @@ function shouldBypass(url) {
   return BYPASS_HOST_PATTERNS.some((p) => url.includes(p));
 }
 
+// Authenticated Worker responses are per account. Cache Storage is keyed by
+// URL only, so caching them would replay one user's orders, fills, or
+// positions for the next account on this device. Keep this in step with
+// src/services/workerCachePolicy.js.
+function isPrivateWorkerRequest(request) {
+  let parsed;
+  try { parsed = new URL(request.url); } catch { return false; }
+  const host = parsed.hostname;
+  const onWorker = host === 'trade-os.tradeos.workers.dev'
+    || host === 'trade-os-staging.tradeos.workers.dev'
+    || host.endsWith('.workers.dev');
+  if (!onWorker) return false;
+  const hasAuthorization = !!(request.headers && typeof request.headers.has === 'function' && request.headers.has('Authorization'));
+  if (hasAuthorization) return true;
+  const path = parsed.pathname;
+  if (path === '/notify-settings' || path === '/ai-usage' || path === '/candles' || path === '/wallet') return true;
+  return path.startsWith('/exchange/') || path.startsWith('/hl/') || path.startsWith('/admin/') || path.startsWith('/push/') || path.startsWith('/coupons/');
+}
+// END isPrivateWorkerRequest
+
 // Hashed build output is immutable. Everything else (the shell, sw.js, and
 // /logos) must skip the HTTP cache: Firebase keeps images for 7 days, and a
 // logo URL that once 200'd as index.html stayed that way until the filename
@@ -96,6 +116,9 @@ self.addEventListener('fetch', (event) => {
   if (event.request.method !== 'GET') return;
   if (url.startsWith('chrome-extension')) return;
   if (shouldBypass(url)) return; // Let the browser handle auth/Firebase traffic directly
+  // Do not respondWith: the browser performs the request and the worker
+  // never cache.put's an authenticated body.
+  if (isPrivateWorkerRequest(event.request)) return;
 
   // Navigations are network-first: cache: 'no-store' bypasses the browser's
   // HTTP disk cache, so a deploy is picked up immediately (stale HTML would

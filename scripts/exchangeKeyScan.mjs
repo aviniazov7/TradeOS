@@ -2,9 +2,9 @@
 //
 // Before API keys moved to the encrypted Worker store, they sat in Firestore at
 // users/{uid}/settings/exchanges as { <exchangeId>: { apiKey, apiSecret, … } }.
-// The app migrates and strips them when a user opens the exchange tab; this
-// finds the users who never did. The scan only COUNTS — it never returns,
-// prints or stores a key value.
+// The app migrates and strips them on sign-in (and again when the exchange
+// screen opens); this finds users who still have a copy. The scan only COUNTS
+// — it never returns, prints, or stores a key value, and it never writes.
 
 const filled = (v) => typeof v === 'string' && v.trim().length > 0;
 
