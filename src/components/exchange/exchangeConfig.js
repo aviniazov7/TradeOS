@@ -36,21 +36,14 @@ export function connectionGuideNotes(exchange) {
 }
 
 /**
- * One sentence for marketing surfaces. Names only follow `canSync`: an
- * exchange with auto-sync off (Binance) must not be listed as if trades
- * pull in by themselves.
+ * One sentence for marketing surfaces (login panel, onboarding). Positive
+ * on both paths: auto-sync where it works, a file import for Binance.
+ * Binance must not be described as if trades pull in by themselves.
  */
 export function exchangeSyncBlurb(exchanges = EXCHANGES) {
   const list = exchanges || [];
-  const auto = list.filter((e) => e?.canSync).map((e) => e.name);
-  const manual = list.filter((e) => e && e.canSync === false).map((e) => e.name);
-  const autoPart = auto.length
-    ? `סנכרון אוטומטי מ-${auto.slice(0, 2).join(', ')}${auto.length > 2 ? ' ועוד' : ''}`
-    : '';
-  const manualPart = manual.length
-    ? `${manual.join(', ')} בלי סנכרון אוטומטי (ייבוא ידני)`
-    : '';
-  return [autoPart, manualPart].filter(Boolean).join(' — ');
+  const name = (id, fallback) => list.find((e) => e?.id === id)?.name || fallback;
+  return `סנכרון אוטומטי מ-${name('mexc', 'MEXC')} ו-${name('bybit', 'Bybit')} · ייבוא קובץ מ-${name('binance', 'Binance')}`;
 }
 
 export const EXCHANGES = [
