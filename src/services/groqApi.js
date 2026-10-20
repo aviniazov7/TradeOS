@@ -58,6 +58,15 @@ export async function fetchProjectDescription(coinName, symbol, retries = 2) {
 // Generous enough to cover a slow vision model's first token (reset per chunk).
 const STREAM_IDLE_TIMEOUT_MS = 45000;
 
+// iOS WebKit rejects an aborted fetch with TypeError "Load failed", not
+// AbortError. The chart screen maps every non-abort rejection to "check your
+// connection", so a timeout while a vision model is slow looked like a dead
+// network. The signal is the reliable signal that we cancelled the request.
+export function aiFetchFailureMessage(error, aborted) {
+  if (aborted || error?.name === 'AbortError') return 'השרת לא הגיב בזמן. נסה שוב.';
+  return 'בעיית תקשורת עם השרת. בדוק את החיבור ונסה שוב.';
+}
+
 export async function sendMessageStream(messages, onChunk, retries = 2, context = null) {
   const auth = getAuth();
   const user = auth.currentUser;
@@ -95,6 +104,7 @@ export async function sendMessageStream(messages, onChunk, retries = 2, context 
     };
     armIdle();
 
+    let headersReceived = false;
     try {
       let response;
       try {
@@ -104,9 +114,9 @@ export async function sendMessageStream(messages, onChunk, retries = 2, context 
           body: payload,
           signal: controller.signal,
         });
+        headersReceived = true;
       } catch (e) {
-        if (e.name === 'AbortError') throw new Error('השרת לא הגיב בזמן. נסה שוב.');
-        throw new Error('בעיית תקשורת עם השרת. בדוק את החיבור ונסה שוב.');
+        throw new Error(aiFetchFailureMessage(e, controller.signal.aborted));
       }
 
       if (response.ok) {
@@ -183,7 +193,11 @@ export async function sendMessageStream(messages, onChunk, retries = 2, context 
       console.error('AI worker error:', response.status, err?.error || '(no body)');
       throw new Error('שירות ה-AI אינו זמין כרגע. נסה שוב בעוד רגע 🙏');
     } catch (e) {
-      if (e.name === 'AbortError') throw new Error('התשובה נקטעה (timeout). נסה שוב.');
+      // Headers already arrived: the idle timer cut the stream. Before that,
+      // the inner catch already mapped an iOS "Load failed" abort.
+      if (headersReceived && (e.name === 'AbortError' || controller.signal.aborted)) {
+        throw new Error('התשובה נקטעה (timeout). נסה שוב.');
+      }
       throw e;
     } finally {
       clearTimeout(idleTimer);
