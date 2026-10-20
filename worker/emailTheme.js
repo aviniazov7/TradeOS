@@ -11,7 +11,7 @@
 // The blend undo is exact for white/grey only, so colour never sits on text:
 // it lives on backgrounds (pills, dots, the button) and text stays neutral.
 
-export const APP_URL = 'https://tradeos-91a58.web.app';
+export const APP_URL = 'https://tradeoslive.web.app';
 
 // Mirrors the app's tokens (src/index.css).
 export const C = {

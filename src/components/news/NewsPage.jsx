@@ -6,6 +6,7 @@ import { fetchNewsDigest, translateNews } from '../../services/newsService';
 import WhyItMoved from './WhyItMoved';
 import { hebrewEventTitle } from '../../utils/econCalendarTerms';
 import { headlineNeedsTranslation } from '../../utils/newsHeadline';
+import { dropInvalidTranslations, isHebrewSafeText, isHebrewSafeTranslation, preferredHeadline, safeHebrew } from '../../utils/newsScript';
 import { safeHttpUrl } from '../../utils/urls';
 import SelectDropdown from '../shared/SelectDropdown';
 import PageHeader from '../shared/PageHeader';
@@ -88,7 +89,13 @@ function loadHeCache(key = HE_CACHE_KEY) {
   try {
     const raw = JSON.parse(localStorage.getItem(key) || 'null');
     if (raw && typeof raw.savedAt === 'number' && Date.now() - raw.savedAt < HE_CACHE_TTL && raw.map) {
-      return raw.map;
+      const map = dropInvalidTranslations(raw.map);
+      // A foreign script in a stored headline must not stick — drop it so the
+      // next pass translates that article again.
+      if (map !== raw.map) {
+        localStorage.setItem(key, JSON.stringify({ savedAt: raw.savedAt, map }));
+      }
+      return map;
     }
   } catch { /* corrupt/absent — start fresh */ }
   return {};
@@ -335,7 +342,10 @@ function EconomicCalendar() {
         if (res) {
           setHeMap((m) => {
             const next = { ...m };
-            chunk.forEach((t, j) => { if (res[j]?.title) next[t] = res[j].title; });
+            chunk.forEach((t, j) => {
+              const title = res[j]?.title;
+              if (typeof title === 'string' && title.trim() && isHebrewSafeText(title)) next[t] = title;
+            });
             return next;
           });
         }
@@ -633,7 +643,7 @@ function EconomicCalendar() {
                       const country = COUNTRY_MAP[event.country];
                       const flag = country?.flag || '';
                       const speech = isSpeech(event.title);
-                      const he = hebrewEventTitle(event.title) || heMap[event.title];
+                      const he = hebrewEventTitle(event.title) || safeHebrew(heMap[event.title]);
                       const hasA = event.actual != null && event.actual !== '';
                       const hasF = event.forecast != null && event.forecast !== '';
                       const hasP = event.previous != null && event.previous !== '';
@@ -756,7 +766,7 @@ function AiBrief({ market }) {
         const next = { ...prev };
         pending.forEach((s, i) => {
           const title = res[i]?.title;
-          if (title && !headlineNeedsTranslation(title) && next[s.headline] !== title) {
+          if (title && isHebrewSafeText(title) && !headlineNeedsTranslation(title) && next[s.headline] !== title) {
             next[s.headline] = title;
             changed = true;
           }
@@ -805,8 +815,8 @@ function AiBrief({ market }) {
               >
                 <span className="num-mono w-6 h-6 shrink-0 grid place-items-center rounded-lg bg-bg-tertiary text-[11px] font-bold text-text-secondary mt-0.5">{i + 1}</span>
                 <span className="min-w-0 flex-1">
-                  <span className="block text-sm font-semibold text-text-primary group-hover:text-accent-hover transition-colors leading-snug" style={bidiText}>{decodeEntities(heHeadlines[story.headline] || story.headline)}</span>
-                  {story.why && <span className="block text-xs text-text-muted mt-1 line-clamp-2">{story.why}</span>}
+                  <span className="block text-sm font-semibold text-text-primary group-hover:text-accent-hover transition-colors leading-snug" style={bidiText}>{decodeEntities(preferredHeadline(heHeadlines[story.headline], story.headline, story.sources?.[0]?.title))}</span>
+                  {safeHebrew(story.why) && <span className="block text-xs text-text-muted mt-1 line-clamp-2">{story.why}</span>}
                   <span className="flex flex-wrap items-center gap-1.5 mt-1.5">
                     <span className={`px-1.5 py-px rounded-md text-[10px] font-bold border ${impact.cls}`}>{impact.label}</span>
                     {story.category && <span className="px-1.5 py-px rounded-md text-[10px] font-medium bg-bg-tertiary text-text-secondary">{story.category}</span>}
@@ -938,7 +948,7 @@ function NewsFeed({ market }) {
         if (res) {
           setHeMap((m) => {
             const next = { ...m };
-            chunk.forEach((a, j) => { if (res[j]?.title) next[a.link] = res[j]; });
+            chunk.forEach((a, j) => { if (isHebrewSafeTranslation(res[j])) next[a.link] = res[j]; });
             return next;
           });
         }
@@ -1104,11 +1114,11 @@ function NewsFeed({ market }) {
                           </div>
                         )}
                         <div className="flex-1 min-w-0">
-                          <h3 className="text-sm md:text-[15px] font-bold text-text-primary mb-1 line-clamp-2 leading-snug group-hover:text-accent-hover transition-colors" title={heMap[article.link] ? decodeEntities(article.title) : undefined} style={bidiText}>
-                            {decodeEntities(heMap[article.link]?.title || article.title)}
+                          <h3 className="text-sm md:text-[15px] font-bold text-text-primary mb-1 line-clamp-2 leading-snug group-hover:text-accent-hover transition-colors" title={safeHebrew(heMap[article.link]?.title) ? decodeEntities(article.title) : undefined} style={bidiText}>
+                            {decodeEntities(safeHebrew(heMap[article.link]?.title) || article.title)}
                           </h3>
                           <p className="text-xs md:text-sm text-text-muted line-clamp-2 mb-2 hidden sm:block" style={bidiText}>
-                            {decodeEntities(heMap[article.link]?.desc || article.description)}
+                            {decodeEntities(safeHebrew(heMap[article.link]?.desc) || article.description)}
                           </p>
                           <div className="flex items-center gap-2.5 text-[11px] text-text-muted">
                             <span className="px-1.5 py-px bg-bg-tertiary border border-border-primary rounded-md font-semibold text-text-secondary">

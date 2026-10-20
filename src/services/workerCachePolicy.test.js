@@ -21,7 +21,7 @@ describe('worker cache policy', () => {
     ['https://trade-os.tradeos.workers.dev/notify-settings', false, true],
     ['https://trade-os.tradeos.workers.dev/cg/simple/price?ids=bitcoin', false, false],
     ['https://trade-os.tradeos.workers.dev/cx/quotes?symbols=BTC', false, false],
-    ['https://tradeos-91a58.web.app/assets/index.js', true, false],
+    ['https://tradeoslive.web.app/assets/index.js', true, false],
   ];
 
   it('flags authenticated and per-user Worker GETs, not public market data', () => {

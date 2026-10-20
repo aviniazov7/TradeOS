@@ -1,0 +1,13 @@
+{
+  "projects": {
+    "default": "tradeos-91a58"
+  },
+  "targets": {
+    "tradeos-91a58": {
+      "hosting": {
+        "app": ["tradeoslive"],
+        "legacy": ["tradeos-91a58"]
+      }
+    }
+  }
+}

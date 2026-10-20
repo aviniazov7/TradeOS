@@ -18,7 +18,7 @@ const DEFAULTS = {
   // /__/auth/handler here too, making Google OAuth same-origin so iOS Safari
   // (incl. installed PWA) doesn't block it. Requires the matching redirect
   // URI to be registered in the Google Cloud OAuth client.
-  authDomain: 'tradeos-91a58.web.app',
+  authDomain: 'tradeoslive.web.app',
   projectId: 'tradeos-91a58',
   storageBucket: 'tradeos-91a58.firebasestorage.app',
   messagingSenderId: '80529278454',
