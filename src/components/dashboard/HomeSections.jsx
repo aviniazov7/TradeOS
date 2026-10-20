@@ -4,7 +4,7 @@ import { FlaskConical, ClipboardList, Coins, Sunrise, Moon, ChevronLeft, Refresh
 import Card from '../shared/Card';
 import CoinIcon from '../shared/CoinIcon';
 import FitText from '../shared/FitText';
-import { formatCurrency, formatCompactUsd, formatRelativeTime, LRM } from '../../utils/formatters';
+import { formatCurrency, formatCurrencyShort, formatCompactUsd, formatRelativeTime, LRM } from '../../utils/formatters';
 import { safePnl, tradeRMultiple } from '../../utils/calculations';
 
 // The home page's sections, all on the same surface: rounded-2xl cards, a
@@ -30,14 +30,14 @@ export function HomePanel({ title, link, onLink, className = '', children }) {
 
 function Kpi({ label, value, valueCls = 'text-text-primary', mono = true, bar, sub }) {
   return (
-    <Card spotlight className="rounded-2xl p-4 flex flex-col gap-2.5 min-w-0">
+    <div className="p-3.5 md:p-4 flex flex-col gap-2 min-w-0">
       <span className="text-[13px] text-text-secondary">{label}</span>
-      <FitText as="b" min={14} className={`${mono ? 'num-mono text-[28px] md:text-[30px]' : 'text-2xl'} font-extrabold leading-tight ${valueCls}`} dir={mono ? 'ltr' : undefined} style={mono ? { textAlign: 'right' } : undefined}>
+      <FitText as="b" min={14} className={`${mono ? 'num-mono text-[26px] md:text-[30px]' : 'text-[22px] md:text-2xl'} font-extrabold leading-tight ${valueCls}`} dir={mono ? 'ltr' : undefined} style={mono ? { textAlign: 'right' } : undefined}>
         {value}
       </FitText>
       {bar}
       {sub && <span className="text-xs text-text-secondary leading-snug">{sub}</span>}
-    </Card>
+    </div>
   );
 }
 
@@ -49,18 +49,18 @@ const Split = ({ a, b }) => (
 );
 const NeutralBar = () => <div className="h-1.5 rounded-full bg-bg-tertiary" aria-hidden />;
 
-// Win rate · win/loss size · profit factor · current streak. Net P&L lives in
-// the portfolio card above, so it isn't repeated here.
+// One surface, four numbers: net P&L, win rate, profit factor, streak.
+// The win/loss size ratio stays under the win rate — it is "—" until a loss
+// exists, same rule as before, just not its own card.
 export function HomeKpis({ kpi, hidden }) {
   const m = (v) => (hidden ? '••••' : v);
   const {
+    netPnl = 0, tradeCount = 0,
     winRate = 0, wins = 0, losses = 0, breakeven = 0, avgWin = 0, avgLoss = 0, avgWinLossRatio = 0,
     profitFactor = 0, streakDays = { current: 0 }, streakTrades = { current: 0, best: 0, win: true }, lastResults = [],
   } = kpi || {};
   const decided = wins + losses;
   const empty = decided === 0;
-  const absLoss = Math.abs(avgLoss);
-  const sizeTotal = avgWin + absLoss;
   const pf = Number.isFinite(profitFactor) ? profitFactor : null;
   const pfNote = pf == null ? 'ללא הפסדים עדיין'
     : pf < 1 ? 'מתחת ל-1: ההפסדים גדולים מהרווחים'
@@ -68,45 +68,52 @@ export function HomeKpis({ kpi, hidden }) {
   const pfColor = pf == null || pf >= 1.5 ? 'bg-profit' : pf >= 1 ? 'bg-accent-primary' : 'bg-amber-500';
   const streakWin = streakTrades.win;
   const n = streakTrades.current;
+  const pnlCls = netPnl > 0 ? 'text-profit' : netPnl < 0 ? 'text-loss' : 'text-text-primary';
+  const ratio = Number.isFinite(avgWinLossRatio) ? avgWinLossRatio : null;
 
   return (
-    <section aria-label="מדדים" className="grid grid-cols-2 lg:grid-cols-4 gap-3">
-      <Kpi
-        label="אחוז הצלחה"
-        value={winRateText(winRate, wins, losses)}
-        bar={empty ? <NeutralBar /> : <Split a={(wins / decided) * 100} b={(losses / decided) * 100} />}
-        sub={`${wins} רווח · ${losses} הפסד${breakeven ? ` · ${breakeven} איזון` : ''}`}
-      />
-      <Kpi
-        label="יחס רווח להפסד"
-        value={empty || !Number.isFinite(avgWinLossRatio) ? '—' : avgWinLossRatio.toFixed(2)}
-        bar={empty || !sizeTotal ? <NeutralBar /> : <Split a={(avgWin / sizeTotal) * 100} b={(absLoss / sizeTotal) * 100} />}
-        sub={losses === 0
-          ? 'אין עדיין הפסדים להשוואה'
-          : <>ממוצע <span dir="ltr" className="text-profit">{wins ? m(formatCurrency(avgWin)) : '—'}</span> מול <span dir="ltr" className="text-loss">{m(formatCurrency(avgLoss))}</span></>}
-      />
-      <Kpi
-        label="פקטור רווח"
-        value={profitFactorText(pf, wins, losses)}
-        bar={empty ? <NeutralBar /> : (
-          <div className="h-1.5 rounded-full bg-bg-tertiary overflow-hidden">
-            <div className={`h-full rounded-full ${pfColor}`} style={{ width: `${pf == null ? 100 : Math.min(100, (pf / 2) * 100)}%` }} />
-          </div>
-        )}
-        sub={empty ? 'אין עסקאות סגורות' : pfNote}
-      />
-      <Kpi
-        label="רצף נוכחי"
-        mono={false}
-        valueCls={n === 0 ? 'text-text-secondary' : streakWin ? 'text-profit' : 'text-loss'}
-        value={n === 0 ? 'אין עדיין' : n === 1 ? (streakWin ? 'רווח אחד' : 'הפסד אחד') : `${n} ${streakWin ? 'רווחים' : 'הפסדים'}`}
-        bar={lastResults.length > 0 && (
-          <div dir="ltr" className="flex gap-1" title="5 העסקאות האחרונות">
-            {lastResults.map((w, i) => <span key={i} className={`flex-1 h-1.5 rounded-full ${w ? 'bg-profit' : 'bg-loss'}`} />)}
-          </div>
-        )}
-        sub={`${streakDaysLabel(streakDays.current)} · שיא ${streakTrades.best || 0} רווחים ברצף`}
-      />
+    <section aria-label="מדדים" data-testid="home-glance" className="rounded-2xl border border-border-primary bg-bg-secondary overflow-hidden">
+      <div className="grid grid-cols-2 lg:grid-cols-4 [&>*]:border-border-primary max-lg:[&>*:nth-child(odd)]:border-e max-lg:[&>*:nth-child(-n+2)]:border-b lg:[&>*:not(:first-child)]:border-s">
+        <Kpi
+          label="רווח/הפסד"
+          value={m(formatCurrencyShort(netPnl))}
+          valueCls={pnlCls}
+          sub={`${tradeCount} עסקאות סגורות`}
+        />
+        <Kpi
+          label="אחוז הצלחה"
+          value={winRateText(winRate, wins, losses)}
+          bar={empty ? <NeutralBar /> : <Split a={(wins / decided) * 100} b={(losses / decided) * 100} />}
+          sub={<>
+            {wins} רווח · {losses} הפסד{breakeven ? ` · ${breakeven} איזון` : ''}
+            {ratio != null && <> · יחס <span dir="ltr">{ratio.toFixed(2)}</span></>}
+          </>}
+        />
+        <Kpi
+          label="פקטור רווח"
+          value={profitFactorText(pf, wins, losses)}
+          bar={empty ? <NeutralBar /> : (
+            <div className="h-1.5 rounded-full bg-bg-tertiary overflow-hidden">
+              <div className={`h-full rounded-full ${pfColor}`} style={{ width: `${pf == null ? 100 : Math.min(100, (pf / 2) * 100)}%` }} />
+            </div>
+          )}
+          sub={empty ? 'אין עסקאות סגורות' : losses === 0
+            ? 'ללא הפסדים עדיין'
+            : <>{pfNote} · ממוצע <span dir="ltr" className="text-profit">{m(formatCurrency(avgWin))}</span> מול <span dir="ltr" className="text-loss">{m(formatCurrency(avgLoss))}</span></>}
+        />
+        <Kpi
+          label="רצף נוכחי"
+          mono={false}
+          valueCls={n === 0 ? 'text-text-secondary' : streakWin ? 'text-profit' : 'text-loss'}
+          value={n === 0 ? 'אין עדיין' : n === 1 ? (streakWin ? 'רווח אחד' : 'הפסד אחד') : `${n} ${streakWin ? 'רווחים' : 'הפסדים'}`}
+          bar={lastResults.length > 0 && (
+            <div dir="ltr" className="flex gap-1" title="5 העסקאות האחרונות">
+              {lastResults.map((w, i) => <span key={i} className={`flex-1 h-1.5 rounded-full ${w ? 'bg-profit' : 'bg-loss'}`} />)}
+            </div>
+          )}
+          sub={`${streakDaysLabel(streakDays.current)} · שיא ${streakTrades.best || 0} רווחים ברצף`}
+        />
+      </div>
     </section>
   );
 }
@@ -123,7 +130,12 @@ export function RecentTradesCard({ trades, hidden, className = '' }) {
   return (
     <HomePanel title="עסקאות אחרונות" link="ליומן המסחר" onLink={() => navigate('/journal')} className={className}>
       {trades.length === 0 ? (
-        <p className="text-sm text-text-secondary py-6 text-center">אין עסקאות סגורות עדיין</p>
+        <div className="py-6 text-center">
+          <p className="text-sm text-text-secondary">אין עסקאות סגורות עדיין</p>
+          <button type="button" onClick={() => navigate('/journal?new=1')} className="mt-3 h-9 px-3 rounded-lg text-sm font-bold text-accent-hover hover:bg-accent-primary/10 cursor-pointer">
+            רשום עסקה
+          </button>
+        </div>
       ) : (
         <div className="-mt-1">
           {trades.map((t) => {

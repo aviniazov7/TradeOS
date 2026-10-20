@@ -23,6 +23,16 @@ export function tradeImageIds(tradeId) {
   return Array.from({ length: MAX_TRADE_IMAGES }, (_, i) => tradeImageId(tradeId, i));
 }
 
+/**
+ * Storage object path for one screenshot slot. The uid is the first segment
+ * so storage.rules can allow only the owner. The object name is the Firestore
+ * slot id, which lets a trade delete remove the files without listing them.
+ */
+export function chartObjectPath(uid, imageId) {
+  if (!uid || !imageId) throw new Error('missing uid/imageId');
+  return `users/${uid}/charts/${imageId}`;
+}
+
 /** Slot number encoded in an image doc id, or -1 when it isn't one of ours. */
 export function slotOfImageId(imageId, tradeId) {
   const prefix = `${tradeId}_`;

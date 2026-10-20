@@ -152,4 +152,33 @@ describe('mobile chrome', () => {
     ]);
     await view.cleanup();
   });
+
+  it('wraps a five-tab journal onto two phone rows', async () => {
+    const tabs = [
+      JOURNAL_TABS[0],
+      JOURNAL_TABS[1],
+      JOURNAL_TABS[2],
+      { id: 'week', label: 'שבוע', mobileLabel: 'שבוע' },
+      JOURNAL_TABS[3],
+    ];
+    const view = await mount(
+      <PageHeader
+        icon={BookOpen}
+        title="יומן המסחר"
+        compactMobile
+        tabs={{ tabs, value: 'week', onChange: () => {} }}
+      />,
+    );
+    const list = document.querySelector('[data-testid="mobile-tabs"] [role="tablist"]');
+    expect(list.className).toContain('grid-cols-6');
+    const buttons = [...list.querySelectorAll('[role="tab"]')];
+    expect(buttons.map((t) => t.textContent.replace(/\s+/g, ''))).toEqual([
+      'עסקאות113', 'בורסה', 'אנליטיקה', 'שבוע', 'יומן',
+    ]);
+    expect(buttons[0].className).toContain('col-span-2');
+    expect(buttons[3].className).toContain('col-span-3');
+    expect(buttons[4].className).toContain('col-span-3');
+    expect(list.querySelector('[aria-selected="true"]').textContent).toBe('שבוע');
+    await view.cleanup();
+  });
 });

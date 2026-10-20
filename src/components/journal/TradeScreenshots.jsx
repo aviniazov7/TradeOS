@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef, lazy, Suspense } from 'react';
+import { useState, useEffect, useRef, useCallback, lazy, Suspense } from 'react';
 import { createPortal } from 'react-dom';
 import {
   X,
@@ -8,18 +8,25 @@ import {
   Sparkles,
   Loader2,
   AlertTriangle,
+  ImagePlus,
 } from 'lucide-react';
 import { useAuth } from '../../contexts/AuthContext';
 import {
   listTradeImages,
+  loadTradeImageUrl,
+  addTradeImage,
   updateTradeImage,
   deleteTradeImage,
   MAX_CAPTION_LENGTH,
 } from '../../services/tradeImageService';
-import { isImageDataUrl } from '../../utils/imageCompress';
+import { compressImageFile, isImageDataUrl } from '../../utils/imageCompress';
+import { dataUrlToBlob, imageFileFromClipboard, imageRejectReason } from '../../utils/chartImages';
 import {
   TRADE_IMAGE_KINDS,
   TRADE_IMAGE_KIND_LABELS,
+  MAX_TRADE_IMAGES,
+  freeTradeImageSlot,
+  defaultImageKind,
 } from '../../utils/tradeImageSlots';
 import Modal from '../shared/Modal';
 import ConfirmDialog from '../shared/ConfirmDialog';
@@ -33,6 +40,14 @@ const KIND_STYLES = {
   after: 'bg-profit/80 text-white',
   other: 'bg-black/60 text-text-secondary',
 };
+
+function uploadErrorMessage(err) {
+  // Firebase and browser errors are English. Our own checks throw Hebrew.
+  if (typeof err?.message === 'string' && /[\u0590-\u05FF]/.test(err.message) && err.message.length < 140) {
+    return err.message;
+  }
+  return 'העלאת הצילום נכשלה';
+}
 
 // One thumbnail card: image, tag picker and caption. Caption is edited locally
 // and saved on blur so typing doesn't fire a write per keystroke.
@@ -51,7 +66,7 @@ function ScreenshotTile({ image, index, pair, onOpen, onKind, onCaption, onDelet
           aria-label={`הגדל צילום ${index + 1}`}
         >
           <img
-            src={image.dataUrl}
+            src={image.src}
             alt={image.caption || `צילום גרף ${index + 1} — ${pair}`}
             loading="lazy"
             className="w-full aspect-video object-cover bg-black/40"
@@ -193,7 +208,7 @@ function Lightbox({ images, index, pair, onIndex, onClose, onDelete, onAnalyze }
 
       <div className="relative flex-1 min-h-0 flex items-center justify-center px-2 pb-4">
         <img
-          src={image.dataUrl}
+          src={image.src}
           alt={image.caption || `צילום גרף — ${pair}`}
           className="max-w-full max-h-full object-contain select-none"
           onClick={(e) => e.stopPropagation()}
@@ -225,11 +240,19 @@ function Lightbox({ images, index, pair, onIndex, onClose, onDelete, onAnalyze }
   );
 }
 
+async function blobToDataUrl(blob) {
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onload = () => resolve(reader.result);
+    reader.onerror = () => reject(new Error('קריאת התמונה נכשלה'));
+    reader.readAsDataURL(blob);
+  });
+}
+
 /**
- * Existing chart screenshots for one trade. New uploads are no longer
- * accepted (storage cost) — a TradingView link is the chart now. Images
- * already saved stay viewable and deletable. Renders nothing when the
- * trade has none.
+ * Chart screenshots for one trade: upload or paste, thumbnails, full-size
+ * viewer. New files go to Storage; screenshots saved earlier as data URLs
+ * still show.
  */
 export default function TradeScreenshots({ tradeId, pair = '' }) {
   const { user } = useAuth();
@@ -238,17 +261,44 @@ export default function TradeScreenshots({ tradeId, pair = '' }) {
   const [status, setStatus] = useState('loading');
   const [reloadKey, setReloadKey] = useState(0);
   const [error, setError] = useState(null);
+  const [uploading, setUploading] = useState(false);
   const [lightboxIndex, setLightboxIndex] = useState(null);
   const [pendingDelete, setPendingDelete] = useState(null);
   const [aiImage, setAiImage] = useState(null);
+  const fileRef = useRef(null);
+  const imagesRef = useRef([]);
+  imagesRef.current = images;
+  const ownedUrls = useRef([]);
 
   useEffect(() => {
     if (!uid || !tradeId) return undefined;
     let cancelled = false;
+    ownedUrls.current.forEach((url) => URL.revokeObjectURL(url));
+    ownedUrls.current = [];
     listTradeImages(uid, tradeId)
-      .then((list) => {
+      .then(async (list) => {
+        const ready = [];
+        for (const img of list) {
+          if (cancelled) return;
+          if (isImageDataUrl(img.dataUrl)) {
+            ready.push({ ...img, src: img.dataUrl });
+            continue;
+          }
+          if (!img.storagePath) continue;
+          try {
+            const src = await loadTradeImageUrl(img.storagePath);
+            if (cancelled) {
+              URL.revokeObjectURL(src);
+              return;
+            }
+            ownedUrls.current.push(src);
+            ready.push({ ...img, src });
+          } catch (err) {
+            console.warn('Trade screenshot file load failed:', err);
+          }
+        }
         if (cancelled) return;
-        setImages(list.filter((img) => isImageDataUrl(img.dataUrl)));
+        setImages(ready);
         setStatus('ready');
       })
       .catch((err) => {
@@ -256,8 +306,68 @@ export default function TradeScreenshots({ tradeId, pair = '' }) {
         console.warn('Trade screenshots load failed:', err);
         setStatus(err?.code === 'permission-denied' ? 'unavailable' : 'error');
       });
-    return () => { cancelled = true; };
+    return () => {
+      cancelled = true;
+      ownedUrls.current.forEach((url) => URL.revokeObjectURL(url));
+      ownedUrls.current = [];
+    };
   }, [uid, tradeId, reloadKey]);
+
+  const addFiles = useCallback(async (fileList) => {
+    const files = [...(fileList || [])].filter(Boolean);
+    if (!files.length || !uid || !tradeId) return;
+    setError(null);
+    setUploading(true);
+    let current = imagesRef.current;
+    try {
+      for (const file of files) {
+        const reason = imageRejectReason(file);
+        if (reason) {
+          setError(reason);
+          break;
+        }
+        const slot = freeTradeImageSlot(current, tradeId);
+        if (slot < 0) {
+          setError(`ניתן לצרף עד ${MAX_TRADE_IMAGES} צילומים לעסקה`);
+          break;
+        }
+        const compressed = await compressImageFile(file);
+        const blob = dataUrlToBlob(compressed.dataUrl);
+        const saved = await addTradeImage(uid, {
+          tradeId,
+          slot,
+          blob,
+          contentType: blob.type,
+          kind: defaultImageKind(current),
+          width: compressed.width,
+          height: compressed.height,
+        });
+        const next = { ...saved, src: compressed.dataUrl, dataUrl: compressed.dataUrl };
+        current = [...current, next];
+        setImages(current);
+      }
+    } catch (err) {
+      console.warn('Trade screenshot upload failed:', err);
+      setError(uploadErrorMessage(err));
+    } finally {
+      setUploading(false);
+    }
+  }, [uid, tradeId]);
+
+  useEffect(() => {
+    if (!uid || !tradeId || status !== 'ready') return undefined;
+    const onPaste = (e) => {
+      const target = e.target;
+      const tag = target?.tagName;
+      if (tag === 'INPUT' || tag === 'TEXTAREA' || target?.isContentEditable) return;
+      const file = imageFileFromClipboard(e.clipboardData);
+      if (!file) return;
+      e.preventDefault();
+      addFiles([file]);
+    };
+    window.addEventListener('paste', onPaste);
+    return () => window.removeEventListener('paste', onPaste);
+  }, [uid, tradeId, status, addFiles]);
 
   const changeKind = async (image, kind) => {
     setImages((list) => list.map((img) => (img.id === image.id ? { ...img, kind } : img)));
@@ -285,7 +395,7 @@ export default function TradeScreenshots({ tradeId, pair = '' }) {
     const target = pendingDelete;
     if (!target) return;
     try {
-      await deleteTradeImage(uid, target.id);
+      await deleteTradeImage(uid, target.id, target.storagePath);
       setImages((list) => list.filter((img) => img.id !== target.id));
     } catch (err) {
       console.warn('Trade screenshot delete failed:', err);
@@ -298,22 +408,43 @@ export default function TradeScreenshots({ tradeId, pair = '' }) {
     setLightboxIndex(null);
     setPendingDelete(image);
   };
-  const requestAnalyze = (image) => {
+
+  const requestAnalyze = async (image) => {
     setLightboxIndex(null);
-    setAiImage({ dataUrl: image.dataUrl, name: image.caption || `${pair || 'trade'}-screenshot` });
+    try {
+      let dataUrl = isImageDataUrl(image.dataUrl) ? image.dataUrl : null;
+      if (!dataUrl && image.src) {
+        const blob = await (await fetch(image.src)).blob();
+        if (blob.type && !blob.type.startsWith('image/')) throw new Error('סוג הקובץ אינו תמונה');
+        dataUrl = await blobToDataUrl(blob);
+      }
+      if (!isImageDataUrl(dataUrl)) throw new Error('אין תמונה');
+      setAiImage({ dataUrl, name: image.caption || `${pair || 'trade'}-screenshot` });
+    } catch (err) {
+      console.warn('Trade screenshot analyze failed:', err);
+      setError('לא ניתן לפתוח את הצילום לניתוח');
+    }
   };
 
   if (!uid || !tradeId || status === 'unavailable') return null;
-  if (status === 'ready' && images.length === 0) return null;
-  if (status === 'loading') return null;
+
+  const full = images.length >= MAX_TRADE_IMAGES;
 
   return (
     <>
       <div className="rounded-2xl border border-border-primary bg-bg-tertiary mt-3">
         <div className="flex items-center justify-between gap-2 px-4 py-2.5 border-b border-border-primary">
-          <span className="text-xs font-semibold text-text-secondary">צילומי מסך שמורים</span>
+          <span className="text-xs font-semibold text-text-secondary">צילומי גרף</span>
+          <span className="text-[10px] text-text-muted">{images.length}/{MAX_TRADE_IMAGES}</span>
         </div>
         <div className="p-3">
+          {status === 'loading' && (
+            <div className="h-16 flex items-center justify-center gap-2 text-xs text-text-muted">
+              <Loader2 className="w-4 h-4 animate-spin" />
+              טוען צילומים…
+            </div>
+          )}
+
           {status === 'error' && (
             <div className="h-24 flex flex-col items-center justify-center gap-2 text-xs">
               <span className="inline-flex items-center gap-1.5 text-loss">
@@ -331,20 +462,51 @@ export default function TradeScreenshots({ tradeId, pair = '' }) {
           )}
 
           {status === 'ready' && (
-            <div className="grid gap-2 grid-cols-2 sm:grid-cols-4">
-              {images.map((img, i) => (
-                <ScreenshotTile
-                  key={img.id}
-                  image={img}
-                  index={i}
-                  pair={pair}
-                  onOpen={setLightboxIndex}
-                  onKind={changeKind}
-                  onCaption={changeCaption}
-                  onDelete={setPendingDelete}
-                />
-              ))}
-            </div>
+            <>
+              {images.length > 0 && (
+                <div className="grid gap-2 grid-cols-2 sm:grid-cols-4 mb-2">
+                  {images.map((img, i) => (
+                    <ScreenshotTile
+                      key={img.id}
+                      image={img}
+                      index={i}
+                      pair={pair}
+                      onOpen={setLightboxIndex}
+                      onKind={changeKind}
+                      onCaption={changeCaption}
+                      onDelete={setPendingDelete}
+                    />
+                  ))}
+                </div>
+              )}
+
+              <input
+                ref={fileRef}
+                type="file"
+                accept="image/png,image/jpeg,image/webp,image/gif"
+                multiple
+                className="hidden"
+                onChange={(e) => {
+                  const list = e.target.files;
+                  e.target.value = '';
+                  addFiles(list);
+                }}
+              />
+              <button
+                type="button"
+                disabled={uploading || full}
+                onClick={() => fileRef.current?.click()}
+                className="w-full min-h-11 rounded-xl border border-dashed border-border-primary bg-bg-secondary/60 px-3 py-2.5 text-xs text-text-secondary hover:border-accent-primary/40 hover:text-text-primary transition-colors cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed inline-flex items-center justify-center gap-2"
+              >
+                {uploading ? <Loader2 className="w-4 h-4 animate-spin" /> : <ImagePlus className="w-4 h-4" />}
+                <span>{full ? `עד ${MAX_TRADE_IMAGES} צילומים לעסקה` : 'הוסף צילום או הדבק'}</span>
+              </button>
+              {!full && (
+                <p className="mt-1.5 text-[10px] text-text-muted text-center">
+                  PNG, JPEG, WebP או GIF · אפשר להדביק צילום מסך
+                </p>
+              )}
+            </>
           )}
 
           {error && (

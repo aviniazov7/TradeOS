@@ -2,6 +2,7 @@ import { useState, useMemo, Fragment } from 'react';
 import { Pencil, Trash2, Share2, Eye, TrendingUp, TrendingDown, Check, ArrowUp, ArrowDown, ArrowUpDown } from 'lucide-react';
 import { formatDate, formatPrice, formatCurrency, formatPercent, formatSignedR } from '../../utils/formatters';
 import { signedTradeR, tradeNetPercent } from '../../utils/calculations';
+import { setupLabel, tradeSetups } from '../../utils/setupStats';
 import { isClosedTrade, safePnl } from '../../utils/calculations';
 import { getExchangeLogo } from '../../utils/constants';
 import TradeDetailModal from './TradeDetailModal';
@@ -184,6 +185,7 @@ export default function TradeTable({
                     {/* The date always shows in full; only a long strategy name is cut. */}
                     <span className="text-text-muted shrink-0 num-mono">{formatDate(trade.entryDate)}</span>
                     {trade.strategy && <span className="text-text-muted truncate min-w-0">· {trade.strategy}</span>}
+                    {tradeSetups(trade)[0] && <span className="text-text-muted truncate min-w-0">· {setupLabel(tradeSetups(trade)[0])}</span>}
                   </span>
                   {done && (
                     <span className="num-mono shrink-0 inline-flex items-center gap-1.5" dir="ltr">
@@ -266,9 +268,12 @@ export default function TradeTable({
                     <td className="py-2.5 px-2">
                       {statusBadge(status, isPending)}
                     </td>
-                    <td className="py-2.5 px-2 text-text-secondary max-w-[120px] truncate"
-                      title={Number.isFinite(trade.checklistAdherence) ? `הצמדות לצ׳קליסט התוכנית: ${trade.checklistAdherence}%${trade.planName ? ` · ${trade.planName}` : ''}` : undefined}>
-                      {trade.strategy || '—'}
+                    <td className="py-2.5 px-2 text-text-secondary max-w-[140px] truncate"
+                      title={[
+                        Number.isFinite(trade.checklistAdherence) ? `הצמדות לצ׳קליסט התוכנית: ${trade.checklistAdherence}%${trade.planName ? ` · ${trade.planName}` : ''}` : '',
+                        tradeSetups(trade).map(setupLabel).join(' · '),
+                      ].filter(Boolean).join(' · ') || undefined}>
+                      {[trade.strategy, tradeSetups(trade)[0] && setupLabel(tradeSetups(trade)[0])].filter(Boolean).join(' · ') || '—'}
                     </td>
                     <td className="py-2.5 px-2 text-text-muted whitespace-nowrap">{formatDate(trade.entryDate)}</td>
                     <td className="py-2.5 px-2 text-text-primary whitespace-nowrap num-mono">{formatPrice(trade.entryPrice)}</td>

@@ -5,6 +5,8 @@ import {
 } from 'lucide-react';
 import { isClosedTrade } from '../../utils/calculations';
 import { filterTradesByPeriod, computeJournalAnalytics } from '../../utils/journalAnalytics';
+import { computeSetupStats } from '../../utils/setupStats';
+import SetupStatsTable from './SetupStatsTable';
 import StatCard from '../dashboard/StatCard';
 import StrategyPerformanceTable from '../dashboard/StrategyPerformanceTable';
 import MonthlyPerformanceTable from '../dashboard/MonthlyPerformanceTable';
@@ -40,6 +42,7 @@ export default function JournalAnalyticsTab({
 }) {
   const periodTrades = useMemo(() => filterTradesByPeriod(trades, period), [trades, period]);
   const analytics = useMemo(() => computeJournalAnalytics(periodTrades), [periodTrades]);
+  const setupStats = useMemo(() => computeSetupStats(periodTrades), [periodTrades]);
 
   const streakText = stats.currentStreak.count > 0
     ? `${stats.currentStreak.count} ${stats.currentStreak.type === 'win' ? 'רווחים' : 'הפסדים'}`
@@ -230,6 +233,8 @@ export default function JournalAnalyticsTab({
               </div>
             )}
           </div>
+
+          <SetupStatsTable stats={setupStats} onSetupClick={(name) => onFilterJump({ setup: name })} />
 
           <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-6">
             <StrategyPerformanceTable

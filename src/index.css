@@ -751,6 +751,35 @@ input[type="number"] {
     inset 0 0 0 1px rgba(15, 23, 42, 0.06);
 }
 
+/* ─── Phone floating chrome ───
+   The push banner (PushNudge) is a near full-width bar just above the tab bar.
+   RTL puts its dismiss control on the physical left, which is also where the
+   accessibility button lives, so the button was covering the X. While the
+   banner is mounted it sets data-push-nudge and --push-nudge-clearance (its
+   height + a gap) on <html>. Lift the corner controls clear of that bar.
+   80px is the banner's own bottom offset below the lg breakpoint. */
+@media (max-width: 1023px) {
+  html[data-push-nudge='open'] .a11y-fab,
+  html[data-push-nudge='open'] .a11y-panel {
+    bottom: calc(env(safe-area-inset-bottom, 0px) + 80px + var(--push-nudge-clearance, 4.75rem));
+  }
+
+  /* The "connect exchange" chip hangs off the tab bar and shares the banner's
+     band. -2.75rem is its resting -top-11; the extra 0.5rem is air. */
+  html[data-push-nudge='open'] .mobile-connect-chip {
+    top: calc(-2.75rem - var(--push-nudge-clearance, 4.75rem) - 0.5rem);
+  }
+
+  /* react-hot-toast sets an inline bottom on its container, so toasts landed
+     on the tab bar (and on the banner while it is open). */
+  .toast-clear-nav {
+    bottom: calc(env(safe-area-inset-bottom, 0px) + 5.75rem) !important;
+  }
+  html[data-push-nudge='open'] .toast-clear-nav {
+    bottom: calc(env(safe-area-inset-bottom, 0px) + 80px + var(--push-nudge-clearance, 4.75rem)) !important;
+  }
+}
+
 /* ─── Accessibility widget effects (toggled on <html> by AccessibilityWidget) ─── */
 /* High contrast — boost contrast/saturation of the whole app shell. */
 html.a11y-contrast body { filter: contrast(1.35) saturate(1.12); }
