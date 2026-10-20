@@ -200,7 +200,7 @@ export default function MonthlyCalendar({ trades, journalName }) {
                         <span className="text-[11px] leading-none font-semibold text-text-secondary">{count}</span>
                       )}
                       {data && (
-                        <span className={`hidden md:inline text-xs font-semibold ${pnl >= 0 ? 'text-profit' : 'text-loss'}`}>
+                        <span dir="ltr" className={`num-ltr hidden md:inline text-xs font-semibold ${pnl >= 0 ? 'text-profit' : 'text-loss'}`}>
                           {formatCurrency(pnl)}
                         </span>
                       )}

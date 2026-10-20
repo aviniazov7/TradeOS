@@ -31,7 +31,7 @@ const THINK_STEPS = [
 // One complete, professional read (the server-side Wyckoff prompt owns the
 // structure and forbids entry/exit advice). Tight sections keep the request
 // well under the vision model's per-minute token cap.
-const ANALYSIS_PROMPT = 'נתח את הגרף שבתמונה ניתוח מקצועי ומלא לפי המבנה הקבוע (הטיה טכנית + 6 הסעיפים הממוספרים): מגמה ומבנה שוק, שלב במחזור ויקוף ואירועים (Spring/UTAD/LPS/LPSY), תבניות מחיר, אזורי תמיכה והתנגדות מרכזיים, נפח מול תנועת מחיר, ושני תרחישים (שורי ודובי) עם הרמה שמאשרת כל אחד והרמה שמבטלת אותו. כל סעיף 2–4 שורות, חד, בלי חזרות ובלי מילוי.';
+const ANALYSIS_PROMPT = 'נתח את הגרף שבתמונה ניתוח מקצועי ומלא לפי המבנה הקבוע (הטיה טכנית + 6 הסעיפים הממוספרים): מגמה ומבנה שוק, שלב במחזור ויקוף ואירועים (Spring/UTAD/LPS/LPSY), תבניות מחיר, אזורי תמיכה והתנגדות מרכזיים, נפח מול תנועת מחיר, ושני תרחישים (שורי ודובי) עם הרמה שמאשרת כל אחד והרמה שמבטלת אותו. כל סעיף 2–4 שורות, חד, בלי חזרות ובלי מילוי. כותרות נקיות בלי כוכביות, למשל "1. מבנה כללי".';
 
 function ThinkingTimeline() {
   const [step, setStep] = useState(0);

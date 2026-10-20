@@ -1,11 +1,12 @@
 import { useMemo } from 'react';
 import { Target, ShieldAlert } from 'lucide-react';
 import { computeRStats } from '../../utils/journalAnalytics';
-import { formatCurrency, LRM } from '../../utils/formatters';
+import { formatCurrency } from '../../utils/formatters';
+import { formatRText } from '../../utils/signedNumbers';
 import Card from '../shared/Card';
 import StatTile from '../shared/StatTile';
 
-const fmtR = (v, digits = 2) => (v === null || v === undefined ? '—' : `${LRM}${v > 0 ? '+' : ''}${v.toFixed(digits)}R`);
+const fmtR = (v, digits = 2) => (v === null || v === undefined ? '—' : (formatRText(v, digits) || '—'));
 const rTone = (v) => (v === null || v === undefined ? 'text-text-muted' : v > 0 ? 'text-profit' : v < 0 ? 'text-loss' : 'text-text-primary');
 
 // Performance measured in R (multiples of the risk taken). Only trades with a
