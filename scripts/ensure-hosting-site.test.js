@@ -24,6 +24,7 @@ describe('hosting site selection', () => {
   it('treats a global name collision as taken and a permission error as not', () => {
     expect(nameTaken(409, {})).toBe(true);
     expect(nameTaken(400, { error: { message: 'site already exists' } })).toBe(true);
+    expect(nameTaken(400, { error: { message: 'Invalid name: `tradeos-app` is reserved by another project' } })).toBe(true);
     expect(nameTaken(403, { error: { status: 'PERMISSION_DENIED', message: 'forbidden' } })).toBe(false);
   });
 });

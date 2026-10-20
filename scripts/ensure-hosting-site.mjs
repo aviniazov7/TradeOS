@@ -33,7 +33,10 @@ export function preferredOwnedSite(ownedIds, candidates = SITE_CANDIDATES) {
 export function nameTaken(status, body) {
   if (status === 409) return true;
   const msg = `${body?.error?.status || ''} ${body?.error?.message || ''}`.toLowerCase();
-  return msg.includes('already exists') || msg.includes('already in use');
+  return msg.includes('already exists')
+    || msg.includes('already in use')
+    || msg.includes('reserved')
+    || msg.includes('not available');
 }
 
 export function domainsForSite(siteId) {
@@ -223,8 +226,14 @@ async function main() {
     process.exit(1);
   }
   console.log(`HOSTING_SITE=${siteId}`);
-  syncFirebaserc(siteId);
   await ensureAuthorizedDomains(token, siteId);
+  const rc = JSON.parse(readFileSync(RC_PATH, 'utf8'));
+  const configured = rc.targets?.[PROJECT_ID]?.hosting?.app?.[0] || '';
+  if (configured !== siteId) {
+    console.error(`::error::Hosting site is ${siteId}, but .firebaserc targets "${configured}". Update the repo to ${siteId} and re-run.`);
+    process.exit(2);
+  }
+  syncFirebaserc(siteId);
   console.log('OAUTH_REDIRECT_MANUAL=Google Cloud Console → APIs & Services → Credentials → the Web client. '
     + `Add Authorized JavaScript origin https://${siteId}.web.app and redirect URI `
     + `https://${siteId}.web.app/__/auth/handler. Keep the tradeos-91a58.web.app entries. `
