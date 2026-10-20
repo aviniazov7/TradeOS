@@ -16,6 +16,7 @@ import DashboardSkeleton from './DashboardSkeleton';
 import OpenPositionsSummary from './OpenPositionsSummary';
 import TradeAgentCard from './TradeAgentCard';
 import GettingStartedCard from './GettingStartedCard';
+import HomeNextStep, { HomeConnectNudge } from './HomeNextStep';
 import PortfolioHero from './PortfolioHero';
 import { HomePanel, HomeKpis, RecentTradesCard, ScoreCard, QuickLinks, MarketCard } from './HomeSections';
 import { NewsList } from './NewsList';
@@ -29,6 +30,9 @@ import { exchangeLabel, isUnsetExchange } from '../../utils/constants';
 import { useDemoMode } from '../../hooks/useDemoMode';
 import { overlayDemo } from '../../utils/demoData';
 import { winLossRatio } from '../../utils/homeStats';
+import { homeStage } from '../../utils/homeStage';
+import { useExchangeConnected } from '../../hooks/useExchangeConnected';
+import { reopenOnboarding } from '../../utils/onboardingGate';
 import { declaredStartCapital } from '../../utils/portfolioPerformance';
 import { fetchGlobalMarket } from '../../services/globalMarket';
 import { readSessionCache, writeSessionCache } from '../../utils/sessionCache';
@@ -107,6 +111,7 @@ export default function Dashboard() {
   const { user, profile } = useAuth();
   const { journals, activeJournalId, setActiveJournalId, loading: journalsLoading = false } = useJournalContext();
   const demo = useDemoMode();
+  const exchangeConnected = useExchangeConnected();
   const [showAllJournals, setShowAllJournals] = useState(false);
   const [hideBalances, setHideBalances] = useState(() => localStorage.getItem('tradeos_hideBalances') === 'true');
 
@@ -448,6 +453,11 @@ export default function Dashboard() {
 
   const openJournal = (j) => { setActiveJournalId(j.id); navigate('/journal'); };
   const synced = Object.keys(linkedBalances || {}).length > 0;
+  // Unknown is not "disconnected": an empty book waits instead of flashing
+  // the connect hero at someone whose exchange is already linked.
+  const exchangePending = exchangeConnected === null && kpi.tradeCount === 0;
+  const stage = homeStage({ closedTrades: kpi.tradeCount, exchangeConnected: exchangeConnected === true });
+  const showBook = !exchangePending && (stage === 'active' || stage === 'manual');
 
   return (
     <m.div variants={pageVariants} initial="initial" animate="animate" exit="exit" transition={pageTransition}>
@@ -479,29 +489,49 @@ export default function Dashboard() {
         )}
       />
 
-      <OpenPositionsSummary hidden={hideBalances} />
+      {exchangePending && (
+        <div className="h-64 md:h-72 rounded-2xl bg-bg-secondary border border-border-primary animate-pulse mb-4" />
+      )}
 
-      {/* First-steps checklist — renders only for fresh accounts. */}
-      <GettingStartedCard trades={realTrades} journals={journals} morningCount={morningEntries.length} />
+      {stage === 'awaiting' && <OpenPositionsSummary hidden={hideBalances} />}
+
+      {!exchangePending && (stage === 'fresh' || stage === 'awaiting') && (
+        <HomeNextStep
+          stage={stage}
+          showDemo={!demo.active && stage === 'fresh'}
+          onDemo={demo.enter}
+          showResume={profile?.onboardingCompleted === false}
+          onResume={() => reopenOnboarding()}
+        />
+      )}
+
+      {stage === 'manual' && exchangeConnected === false && <HomeConnectNudge />}
+
+      {showBook && <OpenPositionsSummary hidden={hideBalances} />}
 
       <div className="space-y-4 mb-6">
-        {/* The account (value + cumulative P&L) beside the AI read of it. */}
-        <div className="grid grid-cols-1 lg:grid-cols-3 gap-4 items-stretch">
-          <div className="lg:col-span-2 min-w-0">
-            <PortfolioHero balance={globalStats.totalBalance} declaredStart={declaredStartCapital(statJournals)} series={equitySeries} hidden={hideBalances} />
-          </div>
-          <div className="min-w-0"><TradeAgentCard trades={allTrades} /></div>
-        </div>
+        {showBook && (
+          <>
+            <HomeKpis kpi={kpi} hidden={hideBalances} />
 
-        <HomeKpis kpi={kpi} hidden={hideBalances} />
+            {/* Portfolio beside the latest trades. On a phone the trades
+                come first so the book is on screen before the chart. */}
+            <div className="grid grid-cols-1 lg:grid-cols-3 gap-4 items-start">
+              <div className="lg:col-span-2 min-w-0 order-2 lg:order-1">
+                <PortfolioHero balance={globalStats.totalBalance} declaredStart={declaredStartCapital(statJournals)} series={equitySeries} hidden={hideBalances} />
+              </div>
+              <RecentTradesCard trades={recentClosed} hidden={hideBalances} className="order-1 lg:order-2" />
+              <div className="lg:col-span-2 min-w-0 order-3">
+                <TradeAgentCard trades={allTrades} />
+              </div>
+              <div className="order-4">
+                <ScoreCard metrics={perf.metrics} score={perf.score} sampleSize={kpi.tradeCount} />
+              </div>
+            </div>
+          </>
+        )}
 
-        <Reveal>
-          <div className="grid grid-cols-1 lg:grid-cols-3 gap-4 items-start">
-            <RecentTradesCard trades={recentClosed} hidden={hideBalances} className="lg:col-span-2" />
-            <ScoreCard metrics={perf.metrics} score={perf.score} sampleSize={kpi.tradeCount} />
-          </div>
-        </Reveal>
-
+        {showBook && (
         <Reveal>
           <HomePanel title={`היומנים שלך (${statJournals.length})`} link="לכל היומנים" onLink={() => navigate('/journal')}>
             {journalStats.length > 0 ? (
@@ -543,11 +573,18 @@ export default function Dashboard() {
                 {[0, 1].map((i) => <div key={i} className="h-24 rounded-xl bg-bg-tertiary animate-pulse" />)}
               </div>
             ) : (
-              <p className="text-sm text-text-secondary">אין יומנים עדיין</p>
+              <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
+                <p className="text-sm text-text-secondary">אין יומנים עדיין. יומן אחד מספיק כדי להתחיל לתעד.</p>
+                <button type="button" onClick={() => navigate('/journal')} className="h-9 px-3 rounded-lg text-sm font-bold text-accent-hover hover:bg-accent-primary/10 cursor-pointer self-start">
+                  פתח יומן
+                </button>
+              </div>
             )}
           </HomePanel>
         </Reveal>
+        )}
 
+        {showBook && (
         <Reveal>
           <QuickLinks
             backtests={backtests} backtestStats={backtestStats} plans={plans} activePlans={activePlans}
@@ -555,10 +592,15 @@ export default function Dashboard() {
             loading={linksLoading}
           />
         </Reveal>
+        )}
+
+        {/* First-steps checklist stays for accounts that already have a book
+            and have not finished the smaller setup items. */}
+        {showBook && <GettingStartedCard trades={realTrades} journals={journals} morningCount={morningEntries.length} />}
 
         <Reveal>
           <div className="grid grid-cols-1 lg:grid-cols-3 gap-4 items-start">
-            <MarketCard market={globalMarket} fng={fng} failed={marketFailed} onRetry={retryMarket} />
+            <MarketCard market={globalMarket} fng={fng} failed={marketFailed} onRetry={retryMarket} className={!showBook ? 'lg:col-span-1' : ''} />
             <HomePanel title="חדשות" link="לכל החדשות" onLink={() => navigate('/news')} className="lg:col-span-2">
               <NewsList items={latestNews} max={3} />
             </HomePanel>
