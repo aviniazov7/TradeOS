@@ -7,5 +7,6 @@ describe('headlineNeedsTranslation', () => {
     expect(headlineNeedsTranslation('ביטקוין בשיא חדש')).toBe(false);
     expect(headlineNeedsTranslation('Bitcoin · ביטקוין')).toBe(false);
     expect(headlineNeedsTranslation('')).toBe(false);
+    expect(headlineNeedsTranslation('જેપીמארגן מצפה שביטקוין יעלה')).toBe(true);
   });
 });

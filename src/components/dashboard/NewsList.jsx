@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useState } from 'react';
 import { translateNews } from '../../services/newsService';
+import { dropInvalidTranslations, isHebrewSafeTranslation, safeHebrew } from '../../utils/newsScript';
 
 // The latest headlines for the home page, translated to Hebrew via the same AI
 // service (and the SAME localStorage cache key) the full news page uses, so a
@@ -13,7 +14,11 @@ function loadHe() {
   try {
     const raw = JSON.parse(localStorage.getItem(HE_CACHE_KEY) || 'null');
     if (raw && typeof raw.savedAt === 'number' && Date.now() - raw.savedAt < HE_CACHE_TTL && raw.map) {
-      return raw.map;
+      const map = dropInvalidTranslations(raw.map);
+      if (map !== raw.map) {
+        localStorage.setItem(HE_CACHE_KEY, JSON.stringify({ savedAt: raw.savedAt, map }));
+      }
+      return map;
     }
   } catch { /* corrupt/absent — start fresh */ }
   return {};
@@ -25,7 +30,7 @@ function loadHe() {
 function mergeSaveHe(additions) {
   try {
     const current = loadHe();
-    const map = { ...current, ...additions };
+    const map = dropInvalidTranslations({ ...current, ...additions });
     localStorage.setItem(HE_CACHE_KEY, JSON.stringify({ savedAt: Date.now(), map }));
   } catch { /* quota/private mode — non-fatal */ }
 }
@@ -57,7 +62,7 @@ function useHeTitles(list) {
       const res = await translateNews(missing.map((a) => ({ title: a.title, desc: '' })));
       if (cancelled || !res) return;
       const additions = {};
-      missing.forEach((a, j) => { if (res[j]?.title) additions[a.link] = res[j]; });
+      missing.forEach((a, j) => { if (isHebrewSafeTranslation(res[j])) additions[a.link] = res[j]; });
       if (Object.keys(additions).length) {
         setHeMap((m) => ({ ...m, ...additions }));
         mergeSaveHe(additions);
@@ -81,7 +86,7 @@ export function NewsList({ items = [], max = 3 }) {
           className="group flex items-center gap-3 py-3 border-t border-border-primary/70 first:border-t-0">
           <span className={`w-2 h-2 rounded-sm shrink-0 ${i === 0 ? 'bg-accent-primary' : 'bg-text-muted'}`} />
           <span className="flex-1 min-w-0 text-sm text-text-primary leading-snug line-clamp-2 group-hover:text-accent-hover transition-colors">
-            {heMap[a.link]?.title || a.title}
+            {safeHebrew(heMap[a.link]?.title) || a.title}
           </span>
           <span className="text-xs text-text-secondary whitespace-nowrap">{heRelative(a.pubDate)}</span>
         </a>
