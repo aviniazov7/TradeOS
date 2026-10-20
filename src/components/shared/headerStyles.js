@@ -2,6 +2,7 @@
 // (home, journal, backtest, DCA, plans…).
 export const headerIconBtn = 'w-11 h-11 shrink-0 rounded-xl border border-border-primary bg-bg-tertiary text-text-secondary hover:text-text-primary hover:border-border-hover grid place-items-center transition-colors cursor-pointer disabled:opacity-50';
 export const headerPrimaryBtn = 'h-11 px-4 inline-flex items-center justify-center gap-2 rounded-xl bg-accent-muted hover:bg-accent-primary text-white text-sm font-bold transition-colors cursor-pointer disabled:opacity-50';
+export const headerSecondaryBtn = 'h-11 px-3 sm:px-3.5 inline-flex items-center justify-center gap-1.5 sm:gap-2 rounded-xl border border-border-primary bg-bg-tertiary text-text-secondary hover:text-text-primary hover:border-border-hover text-[13px] sm:text-sm font-bold whitespace-nowrap transition-colors cursor-pointer disabled:opacity-50';
 // The AI action: accent-tinted so it reads as special, without a full banner.
 export const headerAiBtn = 'h-11 min-w-11 shrink-0 px-3 sm:px-3.5 inline-flex items-center justify-center gap-2 rounded-xl border border-accent-primary/35 bg-accent-primary/10 text-accent-hover text-sm font-bold hover:bg-accent-primary/18 hover:border-accent-primary/60 transition-colors cursor-pointer';
 // Journal header on a phone: icon-sized, growing back to the shared size from md up.

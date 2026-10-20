@@ -140,8 +140,10 @@ function MainApp() {
                     exchange connection live on the journal's בורסה tab. */}
                 <Route path="terminal" element={<Navigate to="/journal?tab=exchange" replace />} />
                 <Route path="backtest" element={<BacktestTracker />} />
-                {/* DCA + wallets are the two tabs of the Portfolio page; the old
-                    paths stay as redirects so links/bookmarks land right. */}
+                {/* Holdings (החזקות). The path stays /portfolio — bookmarks and
+                    in-app links keep working, so no extra redirect is required.
+                    DCA + wallets are tabs of this page; the old paths stay as
+                    redirects so links/bookmarks land on the right tab. */}
                 <Route path="portfolio" element={<PortfolioPage />} />
                 <Route path="dca" element={<Navigate to="/portfolio?tab=dca" replace />} />
                 <Route path="wallets" element={<Navigate to="/portfolio?tab=wallets" replace />} />

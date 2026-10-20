@@ -11,6 +11,7 @@ import {
   windowMove, rankScanSymbols, MOVE_WINDOW_BARS, MOVE_BASELINE_BARS, SCAN_MIN_QUOTE_VOL,
 } from './newsImpact.js';
 import { decodeHtmlEntities } from '../src/utils/htmlEntities.js';
+import { wyckoffEngineState } from '../src/utils/wyckoff.js';
 import {
   bybitWalletEquity, classifyExchangeAuthError, mexcStopsByPosition, mexcEntryTypeByPosition, mexcOrderKind, mexcExitsByPosition,
   enrichWithOrders, okxOrderRow, okxStopRow, bitgetOrderRow, bitgetStopRow, mexcCronOpen, mexcCronClosed,
@@ -1866,6 +1867,8 @@ async function handleCron(env) {
 //
 // Gated by env.SCANNER_ENABLED — fails closed (only the exact string 'true'
 // activates it). Currently ENABLED on the prod cron worker (worker/wrangler.toml).
+// Per user, settings/scanner.enabled === false skips that user before any
+// watchlist or market request. An empty tagged watchlist is skipped too.
 const FS_BASE = `https://firestore.googleapis.com/v1/projects/${FIREBASE_PROJECT_ID}/databases/(default)`;
 // Default alert threshold — users/{uid}/settings/scanner.minConfidence overrides
 // it (per user, no redeploy). Post-HTF scores can only be 75/85/95 (base 55 +
@@ -2034,11 +2037,12 @@ async function scanReadWatchlist(env, token, uid) {
 
 // Per-user engine calibration (users/{uid}/settings/scanner) — the owner tunes
 // the alert threshold and stop buffer from the scanner page and the next cron
-// tick picks them up, no redeploy. Missing/unreadable doc → code defaults.
-// Values are clamped so a raw-SDK write can't disable the engine or explode
-// the stop distance.
+// tick picks them up, no redeploy. `enabled` is the pause toggle (true/false);
+// a missing field stays null so the caller can apply the empty-watchlist
+// default. Missing/unreadable doc → code defaults. Numeric values are clamped
+// so a raw-SDK write can't explode the stop distance.
 async function scanReadSettings(env, token, uid) {
-  const cfg = { minConfidence: SCAN_MIN_CONFIDENCE, stopBufferPct: 0 };
+  const cfg = { minConfidence: SCAN_MIN_CONFIDENCE, stopBufferPct: 0, enabled: null };
   try {
     const res = await fetch(`${FS_BASE}/documents/users/${encodeURIComponent(uid)}/settings/scanner`, {
       headers: { Authorization: `Bearer ${token}` },
@@ -2049,6 +2053,7 @@ async function scanReadSettings(env, token, uid) {
     const mc = num(f.minConfidence), sb = num(f.stopBufferPct);
     if (Number.isFinite(mc)) cfg.minConfidence = Math.min(100, Math.max(0, mc));
     if (Number.isFinite(sb)) cfg.stopBufferPct = Math.min(SCAN_MAX_STOP_BUFFER_PCT, Math.max(0, sb));
+    if (typeof f.enabled?.booleanValue === 'boolean') cfg.enabled = f.enabled.booleanValue;
   } catch { /* keep defaults */ }
   return cfg;
 }
@@ -2089,7 +2094,7 @@ async function scanWriteSignal(env, token, uid, item, setup) {
   });
 }
 
-async function scanWyckoffSetups(env) {
+export async function scanWyckoffSetups(env) {
   if (env.SCANNER_ENABLED !== 'true') return;          // FLAG OFF → inert, no work at all
   if (!env.FIREBASE_SERVICE_ACCOUNT) return;
   let users;
@@ -2105,11 +2110,16 @@ async function scanWyckoffSetups(env) {
   for (const u of users) {
     if (!canScan(u)) continue;                          // owner-only while calibrating
     if (scans >= SCAN_MAX_PER_TICK) break;
+    // Pause is read BEFORE the watchlist. An explicit "off" skips this user
+    // entirely: no watchlist list, no Bybit klines, no signal write.
+    const cfg = await scanReadSettings(env, token, u.uid);
+    if (cfg.enabled === false) continue;
     let watch;
     try { watch = await scanReadWatchlist(env, token, u.uid); } catch { continue; }
-    if (!watch.length) continue;
+    // Empty watchlist (and the unset-toggle default that goes with it) does
+    // not scan. wyckoffEngineState is the same rule the scanner page renders.
+    if (!wyckoffEngineState(cfg.enabled, watch.length).scan) continue;
     let alertsOn = null;                                // read the toggle lazily, only if a setup fires
-    let cfg = null;                                     // per-user calibration, same lazy pattern
 
     for (const item of watch) {
       if (scans >= SCAN_MAX_PER_TICK) break;
@@ -2131,10 +2141,8 @@ async function scanWyckoffSetups(env) {
       if (!detectHTFStructure(d1, item.bias) || !detectHTFStructure(h4, item.bias)) continue;
       setup.confidence = Math.min(setup.confidence + 20, 95);   // both higher timeframes confirm
 
-      // Calibration gate + stop buffer — the user-tuned values (settings/scanner),
-      // fetched only now that a setup actually fired (one extra subrequest per
-      // user per firing tick, nothing on quiet ticks).
-      if (cfg === null) cfg = await scanReadSettings(env, token, u.uid);
+      // Calibration gate + stop buffer — the user-tuned values already read
+      // for the pause check (settings/scanner).
       if (setup.confidence < cfg.minConfidence) continue;
       if (cfg.stopBufferPct > 0) {
         // Push the stop BEYOND the pivot (short: above the high, long: below
