@@ -14,18 +14,30 @@ export default function TradingViewPreview({ url, pair = '' }) {
   const [failed, setFailed] = useState(false);
   if (!safe) return null;
 
+  const short = safe.replace(/^https?:\/\//, '');
+
   return (
     <div className="rounded-xl border border-border-primary bg-bg-tertiary overflow-hidden mt-2">
-      <div className="flex items-center justify-between gap-2 px-3 py-2 border-b border-border-primary">
-        <span className="text-xs font-semibold text-text-secondary">תצוגת גרף</span>
+      <div className="flex items-center justify-between gap-2 px-3 py-1.5 border-b border-border-primary">
         <a
           href={safe}
           target="_blank"
           rel="noopener noreferrer"
-          className="inline-flex items-center gap-1 text-accent-primary text-xs hover:underline"
+          dir="ltr"
+          title={safe}
+          className="min-h-11 min-w-0 flex-1 inline-flex items-center text-xs text-accent-primary hover:underline truncate text-left"
+        >
+          {short}
+        </a>
+        <a
+          href={safe}
+          target="_blank"
+          rel="noopener noreferrer"
+          className="min-h-11 shrink-0 inline-flex items-center gap-1 text-accent-primary text-xs hover:underline"
         >
           <ExternalLink className="w-3.5 h-3.5" />
-          פתח ב-TradingView
+          <span className="hidden sm:inline">פתח ב-TradingView</span>
+          <span className="sm:hidden">פתח</span>
         </a>
       </div>
       {image && !failed ? (
@@ -34,6 +46,7 @@ export default function TradingViewPreview({ url, pair = '' }) {
             src={image}
             alt={pair ? `צילום גרף — ${pair}` : 'צילום גרף'}
             loading="lazy"
+            referrerPolicy="no-referrer"
             onError={() => setFailed(true)}
             className="w-full max-h-72 object-contain"
           />

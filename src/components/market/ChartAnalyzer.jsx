@@ -112,8 +112,7 @@ function ThinkingTimeline() {
 }
 
 export default function ChartAnalyzer({ heightClass = '', initialImage = null }) {
-  // initialImage ({ dataUrl, name }) pre-loads a chart, e.g. a trade screenshot
-  // handed over from the journal (TradeScreenshots).
+  // initialImage ({ dataUrl, name }) pre-loads a chart the trader picked here.
   const [image, setImage] = useState(initialImage); // { dataUrl, name }
   const [analyzing, setAnalyzing] = useState(false);
   const [resultText, setResultText] = useState('');
