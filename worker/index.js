@@ -3732,7 +3732,7 @@ async function handleContact(request, env, cors) {
 
 const ALLOWED_ORIGINS = [
   APP_URL,
-  'https://tradeos.firebaseapp.com',
+  'https://tradeoslive.firebaseapp.com',
   // The previous default site stays allowed: it 301s here, and any tab still
   // open on it (or an unexpired preview channel) must keep calling the Worker.
   'https://tradeos-91a58.web.app',
@@ -3741,9 +3741,9 @@ const ALLOWED_ORIGINS = [
   'https://trade-os-staging.tradeos.workers.dev',
 ];
 // Preview channels are https://SITE--CHANNEL-HASH.web.app. New channels are
-// created on the tradeos site; channels that already exist on the old default
-// site keep working until they expire.
-const PREVIEW_ORIGIN_RE = /^https:\/\/(?:tradeos-91a58|tradeos)--[a-z0-9-]+\.web\.app$/i;
+// created on the tradeoslive site; channels that already exist on the old
+// default site keep working until they expire.
+const PREVIEW_ORIGIN_RE = /^https:\/\/(?:tradeos-91a58|tradeoslive)--[a-z0-9-]+\.web\.app$/i;
 function isAllowedOrigin(origin) {
   if (!origin) return false;
   return ALLOWED_ORIGINS.includes(origin) || PREVIEW_ORIGIN_RE.test(origin);
@@ -5201,7 +5201,7 @@ async function handleRequest(request, env) {
     // Humans → plain 200 HTML page that shows a visible coupon teaser + button
     // immediately, then auto-redirects via JS/meta-refresh. We deliberately
     // do NOT return a 302 here: when the Location target is a different-origin
-    // SPA (tradeos.web.app), some Chrome and iOS Safari builds follow
+    // SPA (tradeoslive.web.app), some Chrome and iOS Safari builds follow
     // the redirect, render NOTHING during the bootstrap, and the user ends up
     // staring at a blank page. With 200+HTML the page is always visible from
     // millisecond zero and the redirect happens on top of that.

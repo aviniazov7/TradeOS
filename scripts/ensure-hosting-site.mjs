@@ -14,7 +14,10 @@ import { appendFileSync, readFileSync } from 'node:fs';
 import { pathToFileURL } from 'node:url';
 
 export const PROJECT_ID = 'tradeos-91a58';
-export const SITE_CANDIDATES = ['tradeos', 'tradeosapp', 'tradeos-app'];
+// Requested ids, in order. tradeos, tradeosapp, and tradeos-app are reserved
+// by other Firebase projects (Hosting returned "reserved by another project"
+// on 2026-10-20). tradeoslive and tradeos-live are the next clean ids.
+export const SITE_CANDIDATES = ['tradeos', 'tradeosapp', 'tradeos-app', 'tradeoslive', 'tradeos-live'];
 
 const HOSTING_API = 'https://firebasehosting.googleapis.com/v1beta1';
 const IDENTITY_API = 'https://identitytoolkit.googleapis.com/admin/v2';
@@ -169,7 +172,7 @@ async function ensureOneSite(token, siteId) {
   }
   const again = await api(token, `${HOSTING_API}/projects/${PROJECT_ID}/sites/${siteId}`);
   if (again.status === 200) return { result: 'ours', detail: '' };
-  return { result: 'taken', detail: '' };
+  return { result: 'taken', detail: message.replace(/\s+/g, ' ').trim().slice(0, 180) };
 }
 
 async function ensureAuthDomains(token, siteId) {
@@ -207,7 +210,7 @@ async function main() {
   for (const id of SITE_CANDIDATES) {
     const attempt = await ensureOneSite(token, id);
     resultsById[id] = attempt.result;
-    console.log(`site ${id}: ${attempt.result}`);
+    console.log(`site ${id}: ${attempt.result}${attempt.detail ? ` — ${attempt.detail}` : ''}`);
     if (attempt.result === 'error') {
       failure = attempt.detail;
       break;

@@ -11,8 +11,8 @@ import {
 } from './ensure-hosting-site.mjs';
 
 describe('hosting site selection', () => {
-  it('tries tradeos, then tradeosapp, then tradeos-app', () => {
-    expect(SITE_CANDIDATES).toEqual(['tradeos', 'tradeosapp', 'tradeos-app']);
+  it('tries the requested ids, then the next clean ids', () => {
+    expect(SITE_CANDIDATES).toEqual(['tradeos', 'tradeosapp', 'tradeos-app', 'tradeoslive', 'tradeos-live']);
   });
 
   it('treats a site already in this project as ours, and a 409 elsewhere as taken', () => {
@@ -35,6 +35,9 @@ describe('hosting site selection', () => {
     expect(firstUsableSite(SITE_CANDIDATES, { tradeos: 'taken', tradeosapp: 'taken', 'tradeos-app': 'ours' })).toBe('tradeos-app');
     expect(firstUsableSite(SITE_CANDIDATES, { tradeos: 'taken', tradeosapp: 'error' })).toBe(null);
     expect(firstUsableSite(SITE_CANDIDATES, { tradeos: 'taken', tradeosapp: 'taken', 'tradeos-app': 'taken' })).toBe(null);
+    expect(firstUsableSite(SITE_CANDIDATES, {
+      tradeos: 'taken', tradeosapp: 'taken', 'tradeos-app': 'taken', tradeoslive: 'created',
+    })).toBe('tradeoslive');
   });
 
   it('reads the app target from .firebaserc', () => {

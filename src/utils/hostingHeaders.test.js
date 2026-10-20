@@ -72,8 +72,8 @@ describe('hosting CSP (report-only)', () => {
 
   it('allows the auth handler on the new site and the previous one', () => {
     for (const origin of [
-      'https://tradeos.web.app',
-      'https://tradeos.firebaseapp.com',
+      'https://tradeoslive.web.app',
+      'https://tradeoslive.firebaseapp.com',
       'https://tradeos-91a58.web.app',
       'https://tradeos-91a58.firebaseapp.com',
     ]) {
@@ -128,8 +128,8 @@ describe('login document', () => {
 });
 
 describe('hosting targets', () => {
-  it('deploys the app to tradeos and the 301 to the previous default site', () => {
-    expect(firebaserc.targets['tradeos-91a58'].hosting.app).toEqual(['tradeos']);
+  it('deploys the app to tradeoslive and the 301 to the previous default site', () => {
+    expect(firebaserc.targets['tradeos-91a58'].hosting.app).toEqual(['tradeoslive']);
     expect(firebaserc.targets['tradeos-91a58'].hosting.legacy).toEqual(['tradeos-91a58']);
     expect(appHosting.public).toBe('dist/client');
     expect(appHosting.rewrites).toEqual([{ source: '**', destination: '/index.html' }]);
@@ -138,10 +138,10 @@ describe('hosting targets', () => {
   });
 
   it('301s every path on the old site to the new one, keeping the path', () => {
-    expect(APP_URL).toBe('https://tradeos.web.app');
+    expect(APP_URL).toBe('https://tradeoslive.web.app');
     expect(legacyHosting.redirects).toEqual([
-      { source: '/', destination: 'https://tradeos.web.app/', type: 301 },
-      { source: '/**', destination: 'https://tradeos.web.app/:splat', type: 301 },
+      { source: '/', destination: 'https://tradeoslive.web.app/', type: 301 },
+      { source: '/**', destination: 'https://tradeoslive.web.app/:splat', type: 301 },
     ]);
   });
 });
@@ -153,12 +153,12 @@ describe('robots.txt / sitemap.xml', () => {
 
   it('keeps the signed-in app out of search and points at the sitemap', () => {
     expect(robots).toMatch(/^Disallow: \/$/m);
-    expect(robots).toMatch(/^Sitemap: https:\/\/tradeos\.web\.app\/sitemap\.xml$/m);
+    expect(robots).toMatch(/^Sitemap: https:\/\/tradeoslive\.web\.app\/sitemap\.xml$/m);
   });
 
   it('lists only pages robots.txt allows', () => {
     const allowed = [...robots.matchAll(/^Allow: (\S+)$/gm)].map((m) => m[1].replace(/\$$/, ''));
-    const locs = [...sitemap.matchAll(/<loc>https:\/\/tradeos\.web\.app(\/[^<]*)<\/loc>/g)].map((m) => m[1]);
+    const locs = [...sitemap.matchAll(/<loc>https:\/\/tradeoslive\.web\.app(\/[^<]*)<\/loc>/g)].map((m) => m[1]);
     expect(locs.length).toBeGreaterThan(0);
     for (const loc of locs) expect(allowed).toContain(loc);
   });

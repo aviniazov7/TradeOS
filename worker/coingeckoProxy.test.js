@@ -1,7 +1,7 @@
 import { describe, it, expect, beforeEach, vi } from 'vitest';
 import { handleCoinGecko, resetCoinGeckoGate } from './coingeckoProxy.js';
 
-const cors = { 'Access-Control-Allow-Origin': 'https://tradeos.web.app' };
+const cors = { 'Access-Control-Allow-Origin': 'https://tradeoslive.web.app' };
 const URL_OK = 'https://trade-os.example/cg/simple/price?ids=bitcoin&vs_currencies=usd';
 
 function memoryCache() {

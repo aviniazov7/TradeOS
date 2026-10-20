@@ -16,7 +16,7 @@
 
 A trading journal and analytics platform for crypto, stocks and futures traders: trade journal with R-multiples, live exchange sync, a live trading desk, backtesting, a psychology journal, market data, an AI coach and Web Push alerts. The product UI is **Hebrew, right-to-left** (this repository's documentation is in English, except the internal hand-over notes in `docs/NEXT.md` and `docs/VERSIONING.md`).
 
-**Live:** [tradeos.web.app](https://tradeos.web.app) · **Working from another machine?** Read [`docs/NEXT.md`](docs/NEXT.md) first (what is open, what shipped) and [`CLAUDE.md`](CLAUDE.md) (the rules for any AI agent or developer). The previous address [tradeos-91a58.web.app](https://tradeos-91a58.web.app) 301-redirects to the new one (path and query string kept) once this is on `main`.
+**Live:** [tradeoslive.web.app](https://tradeoslive.web.app) · **Working from another machine?** Read [`docs/NEXT.md`](docs/NEXT.md) first (what is open, what shipped) and [`CLAUDE.md`](CLAUDE.md) (the rules for any AI agent or developer). The previous address [tradeos-91a58.web.app](https://tradeos-91a58.web.app) 301-redirects to the new one (path and query string kept) once this is on `main`. Site ids `tradeos`, `tradeosapp`, and `tradeos-app` are reserved by other Firebase projects, so production uses site `tradeoslive`.
 
 ---
 
@@ -267,17 +267,17 @@ feature/* or fix/*  →  PR  →  dev  →  PR  →  main
 
 | Trigger | What happens |
 |---|---|
-| Push to `main` | auto-bumps the cache version, builds, deploys Hosting live to site `tradeos` (`https://tradeos.web.app`) and the 301 on site `tradeos-91a58`, plus both production Workers |
-| Push to `dev` | builds, deploys Hosting (`dev` channel on site `tradeos`) + the Workers — **which are the production Workers**, so treat Worker changes on `dev` as production changes |
-| Push to `feature/*`, `fix/*`, `hotfix/*`, or a pull request | builds and deploys a Hosting **preview channel** on site `tradeos` (7 days). URLs look like `https://tradeos--CHANNEL-HASH.web.app` |
+| Push to `main` | auto-bumps the cache version, builds, deploys Hosting live to site `tradeoslive` (`https://tradeoslive.web.app`) and the 301 on site `tradeos-91a58`, plus both production Workers |
+| Push to `dev` | builds, deploys Hosting (`dev` channel on site `tradeoslive`) + the Workers — **which are the production Workers**, so treat Worker changes on `dev` as production changes |
+| Push to `feature/*`, `fix/*`, `hotfix/*`, or a pull request | builds and deploys a Hosting **preview channel** on site `tradeoslive` (7 days). URLs look like `https://tradeoslive--CHANNEL-HASH.web.app` |
 
 The only manual deploy is **Firestore rules**: `firebase deploy --only firestore:rules --project tradeos-91a58` whenever `firestore.rules` changes (run it from the repository root — it needs `firebase.json`). `firebase deploy --only hosting` publishes both Hosting targets (the app and the legacy redirect).
 
 Notes from experience:
-- Firebase caps the number of preview channels (~50). When it is reached, new previews fail with HTTP 429 **while CI still reports success** — delete old channels on the app site (`firebase hosting:channel:delete <id> --site tradeos`).
+- Firebase caps the number of preview channels (~50). When it is reached, new previews fail with HTTP 429 **while CI still reports success** — delete old channels on the app site (`firebase hosting:channel:delete <id> --site tradeoslive`).
 - Merging a feature to `dev` and then `dev` to `main` back-to-back is safe: both share one deploy queue and never run at once.
-- `authDomain` is `tradeos.web.app` (same origin as the site, so Google sign-in can use `/__/auth/handler`). CI adds `tradeos.web.app` and `tradeos.firebaseapp.com` to Firebase Auth authorized domains on every deploy. Password-reset and email-verification links continue on that host. If the log says authorized domains are pending, add them under [Authentication → Settings](https://console.firebase.google.com/project/tradeos-91a58/authentication/settings). If Google sign-in then returns `redirect_uri_mismatch`, add origin `https://tradeos.web.app` and redirect URI `https://tradeos.web.app/__/auth/handler` on the Google web client ([Credentials](https://console.cloud.google.com/apis/credentials?project=tradeos-91a58)).
-- Merging to `dev` updates the production Worker before `main` updates live Hosting. Email and share links in that Worker point at `https://tradeos.web.app`, which serves the app only after the `main` deploy. Promote to `main` once the `dev` preview looks right.
+- `authDomain` is `tradeoslive.web.app` (same origin as the site, so Google sign-in can use `/__/auth/handler`). CI adds `tradeoslive.web.app` and `tradeoslive.firebaseapp.com` to Firebase Auth authorized domains on every deploy. Password-reset and email-verification links continue on that host. If the log says authorized domains are pending, add them under [Authentication → Settings](https://console.firebase.google.com/project/tradeos-91a58/authentication/settings). If Google sign-in then returns `redirect_uri_mismatch`, add origin `https://tradeoslive.web.app` and redirect URI `https://tradeoslive.web.app/__/auth/handler` on the Google web client ([Credentials](https://console.cloud.google.com/apis/credentials?project=tradeos-91a58)).
+- Merging to `dev` updates the production Worker before `main` updates live Hosting. Email and share links in that Worker point at `https://tradeoslive.web.app`, which serves the app only after the `main` deploy. Promote to `main` once the `dev` preview looks right.
 
 ### Versions
 

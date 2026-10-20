@@ -161,7 +161,7 @@ export default {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           postBody: `id_token=${idToken}&providerId=google.com`,
-          requestUri: 'https://tradeos.web.app',
+          requestUri: 'https://tradeoslive.web.app',
           returnSecureToken: true,
           returnIdpCredential: true,
         }),
