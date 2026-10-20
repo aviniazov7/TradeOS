@@ -1,5 +1,5 @@
 import { useState, useEffect, useCallback, useMemo } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { useNavigate, useSearchParams } from 'react-router-dom';
 import { m, AnimatePresence } from 'framer-motion';
 import { Wallet, Plus, RefreshCw, Trash2, Copy, X, ExternalLink, ShieldCheck, HelpCircle } from 'lucide-react';
 import toast from 'react-hot-toast';
@@ -54,11 +54,14 @@ const isValidAddress = (a) => EVM_RE.test(a) || BTC_RE.test(a) || SOL_RE.test(a)
 export default function WalletsPage({ embedded = false }) {
   const { user, isPremium } = useAuth();
   const navigate = useNavigate();
+  const [searchParams, setSearchParams] = useSearchParams();
   const TitleTag = embedded ? 'h2' : 'h1';
   const [wallets, setWallets] = useState([]);      // [{ id, address, label }]
   const [data, setData] = useState({});            // address -> { totalUsd, chains, tokens } | { error }
   const [loadingAddr, setLoadingAddr] = useState({});
-  const [adding, setAdding] = useState(false);
+  // The holdings header's "הוסף ארנק" sets ?add=1. The in-page button uses
+  // the same flag so both open one form and closing it clears the URL.
+  const adding = searchParams.get('add') === '1';
   const [address, setAddress] = useState('');
   const [label, setLabel] = useState('');
   const [loaded, setLoaded] = useState(false);
@@ -91,6 +94,16 @@ export default function WalletsPage({ embedded = false }) {
     await setUserSetting(user.uid, 'wallets', { list }, true);
   };
 
+  const setAdding = (open) => {
+    setSearchParams((prev) => {
+      const next = new URLSearchParams(prev);
+      if (open) next.set('add', '1');
+      else next.delete('add');
+      return next;
+    }, { replace: true });
+    if (!open) { setAddress(''); setLabel(''); }
+  };
+
   const addWallet = async () => {
     const addr = address.trim();
     if (!isValidAddress(addr)) {
@@ -108,7 +121,7 @@ export default function WalletsPage({ embedded = false }) {
     }
     const w = { id: Date.now().toString(36), address: addr, label: label.trim() };
     await persist([...wallets, w]);
-    setAddress(''); setLabel(''); setAdding(false);
+    setAdding(false);
     load(addr);
   };
 
@@ -221,7 +234,7 @@ export default function WalletsPage({ embedded = false }) {
           <div className="bg-bg-secondary border border-border-primary rounded-2xl p-4 space-y-3">
             <div className="flex items-center justify-between">
               <span className="text-sm font-semibold text-text-primary">הוספת ארנק</span>
-              <button onClick={() => { setAdding(false); setAddress(''); setLabel(''); }} className="text-text-muted hover:text-text-primary cursor-pointer">
+              <button type="button" onClick={() => setAdding(false)} className="text-text-muted hover:text-text-primary cursor-pointer" aria-label="סגור">
                 <X className="w-4 h-4" />
               </button>
             </div>
@@ -235,7 +248,7 @@ export default function WalletsPage({ embedded = false }) {
             </button>
           </div>
         ) : (
-          <button onClick={() => setAdding(true)}
+          <button type="button" onClick={() => setAdding(true)}
             className="w-full py-3 rounded-2xl border border-dashed border-border-primary text-sm text-text-secondary hover:text-text-primary hover:border-accent-primary transition-colors cursor-pointer flex items-center justify-center gap-2">
             <Plus className="w-4 h-4" /> הוסף ארנק
           </button>
