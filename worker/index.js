@@ -31,6 +31,8 @@ import {
   USETTINGS_PREFIX, USETTINGS_LEGACY_ALL, buildSettingsMap, settingsAnyOn,
 } from './userData.js';
 import { trBucketKey, mergeTrBucket, lookupTr, TR_BUCKET_TTL } from './newsTranslateCache.js';
+import { NEWS_TRANSLATE_PROMPT, NEWS_TRANSLATE_RETRY_PROMPT } from './newsTranslate.js';
+import { dropInvalidTranslations, partitionTranslations, sanitizeDigest } from '../src/utils/newsScript.js';
 import { handleFxUsdIls } from './fxRates.js';
 import { handleHyperliquidRoute } from './hyperliquid.js';
 import { handleCandlesRoute } from './candles.js';
@@ -3331,6 +3333,7 @@ const NEWS_EDITOR_BASE = `אתה עורך חדשות בכיר בדסק שוקי 
 - קבץ כותרות שמסקרות את אותו סיפור (אותו אירוע = סיפור אחד). סיקור על ידי כמה מקורות הוא אות לחשיבות.
 - דלג על ספאם, פרסומות, ניתוחי מחיר גנריים, וכתבות דעה שוליות.
 - headline: כותרת חדה בעברית (עד 12 מילים). why: שורה אחת בעברית — למה זה חשוב לסוחר עכשיו.
+- עברית בלבד. שמות חברות, טיקרים וראשי תיבות (JPMorgan, BlackRock, ETF, XRP) באותיות לטיניות או בתעתיק עברי. בלי גוג'ראטי, דוונאגרי, קירילית, סינית או ערבית.
 - ids: מזהי הכותרות המקוריות ששייכות לסיפור (לפחות אחת).
 
 החזר JSON בלבד, במבנה:
@@ -3433,7 +3436,9 @@ async function buildNewsDigest(env, market) {
     }).filter((s) => s && s.headline);
     if (!stories.length) return null;
 
-    const digest = { market, updatedAt: Date.now(), stories };
+    // A headline that arrived in the wrong script is stored as the English
+    // source instead, so the client translates it again under the stricter prompt.
+    const { digest } = sanitizeDigest({ market, updatedAt: Date.now(), stories });
     await env.ALERTS_KV.put(`news:digest:${market}`, JSON.stringify(digest), { expirationTtl: 60 * 60 * 24 * 2 });
     await env.ALERTS_KV.put(`news:digest:${market}:ts`, String(digest.updatedAt), { expirationTtl: 60 * 60 * 24 * 2 });
     return digest;
@@ -3460,12 +3465,6 @@ async function newsHash(s) {
   return [...new Uint8Array(buf)].map((b) => b.toString(16).padStart(2, '0')).join('').slice(0, 40);
 }
 
-const NEWS_TRANSLATE_PROMPT = `אתה מתרגם חדשות פיננסיות מאנגלית לעברית.
-תקבל JSON: רשימת פריטים עם id, title, desc.
-תרגם לעברית טבעית וזורמת (לא מילולית). שמות חברות, מטבעות, מדדים וטיקרים נשארים באנגלית.
-אל תוסיף מידע שלא קיים במקור. אם desc ריק — החזר desc ריק.
-החזר JSON בלבד: {"items":[{"id":0,"title":"...","desc":"..."}]}`;
-
 // Translation is high-volume/low-difficulty — run it on Groq's small instant
 // model, which has a much higher tokens-per-minute allowance than the main
 // model (whose budget is reserved for chat/coach/digest). Falls back to the
@@ -3474,14 +3473,14 @@ const NEWS_TRANSLATE_PROMPT = `אתה מתרגם חדשות פיננסיות מ�
 // recommended replacement).
 const NEWS_TRANSLATE_MODEL = 'openai/gpt-oss-20b';
 
-async function groqTranslateCall(env, missing, model) {
+async function groqTranslateCall(env, missing, model, prompt = NEWS_TRANSLATE_PROMPT) {
   return fetch(GROQ_URL, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${env.GROQ_API_KEY}` },
     body: JSON.stringify({
       model,
       messages: [
-        { role: 'system', content: NEWS_TRANSLATE_PROMPT },
+        { role: 'system', content: prompt },
         { role: 'user', content: JSON.stringify(missing) },
       ],
       temperature: 0.2,
@@ -3503,10 +3502,22 @@ async function loadTrBucket(env, date, { fresh = false } = {}) {
   if (TR_BUCKET_MEMO.size > 4) TR_BUCKET_MEMO.delete(TR_BUCKET_MEMO.keys().next().value);
   return bucket;
 }
+// Drop cached translations that contain a foreign script and rewrite the
+// bucket so the next lookup misses and the headline is translated again.
+async function loadCleanTrBucket(env, date) {
+  const bucket = await loadTrBucket(env, date);
+  const cleaned = dropInvalidTranslations(bucket);
+  if (cleaned !== bucket) {
+    TR_BUCKET_MEMO.set(date, { at: Date.now(), bucket: cleaned });
+    await kvPutSafe(env, trBucketKey(date), JSON.stringify(cleaned), { expirationTtl: TR_BUCKET_TTL });
+  }
+  return cleaned;
+}
 async function saveTrBucket(env, date, additions) {
   // Re-read right before the write to keep the lost-update window small (a
   // lost entry is only a cache miss — it gets translated again next time).
-  const merged = mergeTrBucket(await loadTrBucket(env, date, { fresh: true }), additions);
+  // Strip again so a dirty bucket read in the same window is not written back.
+  const merged = dropInvalidTranslations(mergeTrBucket(await loadTrBucket(env, date, { fresh: true }), additions));
   TR_BUCKET_MEMO.set(date, { at: Date.now(), bucket: merged });
   await kvPutSafe(env, trBucketKey(date), JSON.stringify(merged), { expirationTtl: TR_BUCKET_TTL });
 }
@@ -3544,7 +3555,7 @@ async function handleNewsTranslate(request, env, cors) {
     const today = getIsraelDateStr();
     const yesterdayD = new Date(getIsraelTime().getTime() - 86400000);
     const yesterday = `${yesterdayD.getFullYear()}-${String(yesterdayD.getMonth() + 1).padStart(2, '0')}-${String(yesterdayD.getDate()).padStart(2, '0')}`;
-    const buckets = await Promise.all([loadTrBucket(env, today), loadTrBucket(env, yesterday)]);
+    const buckets = await Promise.all([loadCleanTrBucket(env, today), loadCleanTrBucket(env, yesterday)]);
     const out = keys.map((k) => (k ? lookupTr(buckets, k) : null));
 
     const missing = [];
@@ -3563,30 +3574,51 @@ async function handleNewsTranslate(request, env, cors) {
         return new Response(JSON.stringify({ items: out }), { headers: jsonHeaders });
       }
 
-      let groqRes = await groqTranslateCall(env, missing, NEWS_TRANSLATE_MODEL);
-      if (!groqRes.ok && groqRes.status >= 400 && groqRes.status < 500 && groqRes.status !== 429) {
-        // Model gone/renamed — one retry on the main model.
-        groqRes = await groqTranslateCall(env, missing, GROQ_MODEL);
-      }
-      if (groqRes.ok) {
+      const translateBatch = async (batch, prompt) => {
+        let groqRes = await groqTranslateCall(env, batch, NEWS_TRANSLATE_MODEL, prompt);
+        if (!groqRes.ok && groqRes.status >= 400 && groqRes.status < 500 && groqRes.status !== 429) {
+          // Model gone/renamed — one retry on the main model.
+          groqRes = await groqTranslateCall(env, batch, GROQ_MODEL, prompt);
+        }
+        if (!groqRes.ok) {
+          console.error('news translate groq error:', groqRes.status);
+          return null;
+        }
         // Count this provider call against both ceilings.
         await edgeCounterBump(aiGlobalKey(), AI_WINDOWS_SEC.day);
         await edgeCounterBump(dayKey, AI_WINDOWS_SEC.day);
         const data = await groqRes.json();
         let parsed;
         try { parsed = JSON.parse(data.choices?.[0]?.message?.content || ''); } catch { parsed = null; }
+        return Array.isArray(parsed?.items) ? parsed.items : [];
+      };
+      // Keep only script-safe rows. A foreign script is not cached: the client
+      // treats null as "show the original English".
+      const commitSafe = (modelItems) => {
+        const part = partitionTranslations(items, modelItems);
         const additions = {};
-        for (const tr of (Array.isArray(parsed?.items) ? parsed.items : [])) {
-          const i = Number(tr?.id);
-          if (!Number.isInteger(i) || i < 0 || i >= items.length || out[i] || !tr?.title || !keys[i]) continue;
-          const entry = { title: String(tr.title).slice(0, 300), desc: String(tr.desc || '').slice(0, 400) };
+        part.accepted.forEach((entry, i) => {
+          if (!entry || out[i] || !keys[i]) return;
           out[i] = entry;
           additions[keys[i]] = entry;
+        });
+        return {
+          additions,
+          rejected: part.rejected.filter((row) => !out[row.id] && keys[row.id]),
+        };
+      };
+
+      const modelItems = await translateBatch(missing, NEWS_TRANSLATE_PROMPT);
+      if (modelItems) {
+        const first = commitSafe(modelItems);
+        const additions = { ...first.additions };
+        if (first.rejected.length) {
+          // One more attempt. Still foreign → leave the slot null (English).
+          const retryItems = await translateBatch(first.rejected, NEWS_TRANSLATE_RETRY_PROMPT);
+          if (retryItems) Object.assign(additions, commitSafe(retryItems).additions);
         }
         // ONE write for the whole batch (was one per headline).
         if (Object.keys(additions).length) await saveTrBucket(env, today, additions);
-      } else {
-        console.error('news translate groq error:', groqRes.status);
       }
     }
 
@@ -4225,7 +4257,8 @@ async function handleRequest(request, env) {
     // otherwise cost 1 KV read each). ACAO '*' avoids caching a per-origin
     // header. Keyed by market via a normalized cache-key URL.
     const cache = caches.default;
-    const cacheKey = new Request(`https://cache.tradeos.internal/news/digest?market=${market}`);
+    // script=he busts edge entries stored before foreign-script headlines were stripped.
+    const cacheKey = new Request(`https://cache.tradeos.internal/news/digest?market=${market}&script=he`);
     const hit = await cache.match(cacheKey);
     if (hit) return hit;
 
@@ -4243,6 +4276,13 @@ async function handleRequest(request, env) {
           const locked = await env.ALERTS_KV.get(`news:digest:lock:${market}`);
           if (!locked) await env.ALERTS_KV.put(`news:digest:${market}:fail`, '1', { expirationTtl: 300 });
         }
+      }
+    }
+    if (digest) {
+      const cleaned = sanitizeDigest(digest);
+      if (cleaned.changed) {
+        digest = cleaned.digest;
+        await kvPutSafe(env, `news:digest:${market}`, JSON.stringify(digest), { expirationTtl: 60 * 60 * 24 * 2 });
       }
     }
 
