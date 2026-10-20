@@ -178,6 +178,7 @@ describe('signed-in home renders', () => {
       </MemoryRouter>,
     );
     expect(html).toContain('עסקה חדשה');
+    expect(html).toContain('חבר בורסה');
     expect(html).toMatch(/בוקר טוב|צהריים טובים|ערב טוב|לילה טוב/);
   });
 
