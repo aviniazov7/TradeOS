@@ -144,8 +144,8 @@ jobs:
             --only app --project tradeos-91a58 --expires 7d --non-interactive 2>&1 | tee deploy.log
           # Pluck the preview URL out of the CLI output for the PR comment.
           # The site id is the app target in .firebaserc.
-          SITE=$(node -e "const rc=require('./.firebaserc'); process.stdout.write(rc.targets['tradeos-91a58'].hosting.app[0])")
-          URL=$(grep -oE "https://${SITE}--[^[:space:]]+\\.web\\.app" deploy.log | head -1)
+          SITE=$(node -e "process.stdout.write(JSON.parse(require('fs').readFileSync('.firebaserc','utf8')).targets['tradeos-91a58'].hosting.app[0])")
+          URL=$(grep -oE "https://${SITE}--[^[:space:]]+\.web\.app" deploy.log | head -1)
           echo "url=$URL" >> $GITHUB_OUTPUT
 
       # ─── Cloudflare Worker ───────────────────────────────────────────────
