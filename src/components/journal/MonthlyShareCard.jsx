@@ -3,6 +3,7 @@ import {
   startOfMonth, endOfMonth, eachDayOfInterval, getDay, format,
 } from 'date-fns';
 import { formatCurrency, safeDate, LRM } from '../../utils/formatters';
+import { formatPnlText } from '../../utils/signedNumbers';
 import { isClosedTrade } from '../../utils/calculations';
 
 const HEBREW_MONTHS = {
@@ -184,7 +185,7 @@ const MonthlyShareCard = forwardRef(function MonthlyShareCard({ trades, currentM
           <>
             <div style={{ textAlign: 'center', whiteSpace: 'nowrap', flexShrink: 0 }}>
               <div style={{ fontSize: 12, color: '#c8c8d4', marginBottom: 2 }}>רווח חודשי</div>
-              <div style={{ fontSize: 18, fontWeight: 800, color: pnlColor(monthStats.totalPnl) }}>
+              <div dir="ltr" style={{ fontSize: 18, fontWeight: 800, color: pnlColor(monthStats.totalPnl), direction: 'ltr', unicodeBidi: 'isolate' }}>
                 {formatCurrency(monthStats.totalPnl)}
               </div>
             </div>
@@ -197,7 +198,7 @@ const MonthlyShareCard = forwardRef(function MonthlyShareCard({ trades, currentM
           <>
             <div style={{ textAlign: 'center', whiteSpace: 'nowrap', flexShrink: 0 }}>
               <div style={{ fontSize: 12, color: '#c8c8d4', marginBottom: 2 }}>אחוז שינוי</div>
-              <div style={{ fontSize: showPnl ? 14 : 20, fontWeight: 700, color: pnlColor(monthStats.totalPnl) }}>
+              <div dir="ltr" style={{ fontSize: showPnl ? 14 : 20, fontWeight: 700, color: pnlColor(monthStats.totalPnl), direction: 'ltr', unicodeBidi: 'isolate' }}>
                 {LRM}{monthStats.totalPnl >= 0 ? '+' : ''}{((monthStats.totalPnl / (Math.abs(monthStats.totalPnl) + 1000)) * 100).toFixed(1)}%
               </div>
             </div>
@@ -266,8 +267,8 @@ const MonthlyShareCard = forwardRef(function MonthlyShareCard({ trades, currentM
                   {day.getDate()}
                 </span>
                 {data && showPnl && (
-                  <span style={{ fontSize: 12, fontWeight: 700, color: pnlColor(pnl) }}>
-                    {LRM}{pnl >= 0 ? '+' : ''}{pnl.toFixed(0)}$
+                  <span dir="ltr" style={{ fontSize: 12, fontWeight: 700, color: pnlColor(pnl), direction: 'ltr', unicodeBidi: 'isolate' }}>
+                    {formatPnlText(pnl, { decimals: 0 })}
                   </span>
                 )}
               </div>

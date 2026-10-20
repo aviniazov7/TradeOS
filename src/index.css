@@ -718,6 +718,17 @@ input[type="number"] {
   letter-spacing: -0.02em;
   font-variant-numeric: tabular-nums;
 }
+/* Signed numbers in the Hebrew (RTL) UI. dir="ltr" plus an isolate keeps the
+   minus in front of the digits ("-$11.24", "-1.06R"), not after them.
+   unicode-bidi:plaintext is the wrong tool for a sign+digits token: "-" is
+   not a strong character, so plaintext would inherit the RTL paragraph and
+   the minus would land on the end again. */
+.num-ltr {
+  direction: ltr;
+  unicode-bidi: isolate;
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
 
 /* Trade ticket: the shared pickers (pair/stock search, strategy, timeframe,
    select) keep their own py-2.5 trigger, ~42px. Inside .tt-pick their trigger

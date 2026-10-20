@@ -24,7 +24,8 @@ import PairSearch from '../journal/PairSearch';
 import TimeframeSelector from '../shared/TimeframeSelector';
 import StrategySelector from '../shared/StrategySelector';
 import { PAIRS, SESSIONS, getSessionClasses } from '../../utils/constants';
-import { formatDate, formatDateShort, formatTime, LRM } from '../../utils/formatters';
+import { formatDate, formatDateShort, formatTime } from '../../utils/formatters';
+import { formatRText } from '../../utils/signedNumbers';
 import { safeHttpUrl } from '../../utils/urls';
 import { useUserStrategies } from '../../hooks/useUserStrategies';
 import { useUserTimeframes } from '../../hooks/useUserTimeframes';
@@ -288,11 +289,11 @@ export default function BacktestTracker() {
               </span>
               <span className="inline-flex items-baseline gap-1.5">
                 <span className="text-xs text-text-muted">ממוצע R</span>
-                <span className={`text-sm font-bold ${recordStats.avgR >= 0 ? 'text-profit' : 'text-loss'}`} dir="ltr">{LRM}{recordStats.avgR >= 0 ? '+' : ''}{recordStats.avgR.toFixed(2)}R</span>
+                <span className={`num-ltr text-sm font-bold ${recordStats.avgR >= 0 ? 'text-profit' : 'text-loss'}`} dir="ltr">{formatRText(recordStats.avgR)}</span>
               </span>
               <span className="inline-flex items-baseline gap-1.5">
                 <span className="text-xs text-text-muted">סה״כ R</span>
-                <span className={`text-sm font-bold ${recordStats.totalR >= 0 ? 'text-profit' : 'text-loss'}`} dir="ltr">{LRM}{recordStats.totalR >= 0 ? '+' : ''}{recordStats.totalR.toFixed(2)}R</span>
+                <span className={`num-ltr text-sm font-bold ${recordStats.totalR >= 0 ? 'text-profit' : 'text-loss'}`} dir="ltr">{formatRText(recordStats.totalR)}</span>
               </span>
               <span className="inline-flex items-baseline gap-1.5">
                 <span className="text-xs text-text-muted">PF</span>
@@ -349,8 +350,8 @@ export default function BacktestTracker() {
                         {bt.strategy && <span className="text-[11px] text-text-secondary truncate">{bt.strategy}</span>}
                         <span className="text-[11px] text-text-muted">{formatDateShort(bt.date)}</span>
                       </div>
-                      <span className={`text-sm font-bold flex-shrink-0 ${(bt.rResult || 0) >= 0 ? 'text-profit' : 'text-loss'}`}>
-                        {bt.rResult != null ? `${LRM}${bt.rResult >= 0 ? '+' : ''}${bt.rResult.toFixed(2)}R` : '–'}
+                      <span dir="ltr" className={`num-ltr text-sm font-bold flex-shrink-0 ${(bt.rResult || 0) >= 0 ? 'text-profit' : 'text-loss'}`}>
+                        {bt.rResult != null ? formatRText(bt.rResult) : '–'}
                       </span>
                     </div>
                   </div>
@@ -403,10 +404,10 @@ export default function BacktestTracker() {
                             </span>
                           ) : <span className="text-text-muted text-xs">–</span>}
                         </td>
-                        <td className="py-2.5 text-text-primary text-xs">{bt.maxR ? `${bt.maxR.toFixed(1)}` : '–'}</td>
-                        <td className="py-2.5 text-text-primary text-xs">{bt.stopDistancePct ? `${bt.stopDistancePct.toFixed(2)}%` : '–'}</td>
-                        <td className={`py-2.5 text-xs font-medium ${(bt.rResult || 0) >= 0 ? 'text-profit' : 'text-loss'}`}>
-                          {bt.rResult != null ? `${LRM}${bt.rResult >= 0 ? '+' : ''}${bt.rResult.toFixed(2)}R` : '–'}
+                        <td dir="ltr" className="num-ltr py-2.5 text-text-primary text-xs text-right">{bt.maxR ? `${bt.maxR.toFixed(1)}` : '–'}</td>
+                        <td dir="ltr" className="num-ltr py-2.5 text-text-primary text-xs text-right">{bt.stopDistancePct ? `${bt.stopDistancePct.toFixed(2)}%` : '–'}</td>
+                        <td dir="ltr" className={`num-ltr py-2.5 text-xs font-medium text-right ${(bt.rResult || 0) >= 0 ? 'text-profit' : 'text-loss'}`}>
+                          {bt.rResult != null ? formatRText(bt.rResult) : '–'}
                         </td>
                         <td className="py-2.5">
                           <span className={`text-xs font-medium px-2 py-0.5 rounded ${

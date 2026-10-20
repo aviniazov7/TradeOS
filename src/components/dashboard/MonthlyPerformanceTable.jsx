@@ -38,10 +38,10 @@ export default function MonthlyPerformanceTable({ data }) {
             {data.map((m) => (
               <tr key={m.month} className="border-b border-border-primary/50 align-middle">
                 <td className="py-2 ps-3 text-text-primary font-medium whitespace-nowrap">{formatMonth(m.month)}</td>
-                <td className="py-2 ps-3 text-text-secondary whitespace-nowrap">{m.count}</td>
-                <td className="py-2 ps-3 text-text-secondary whitespace-nowrap"><span dir="ltr" className="inline-block">{m.winRate.toFixed(1)}%</span></td>
-                <td className={`py-2 ps-3 font-medium whitespace-nowrap ${pnlColor(m.pnl)}`}><span dir="ltr" className="inline-block">{formatCurrency(m.pnl)}</span></td>
-                <td className={`py-2 font-medium whitespace-nowrap ${pnlColor(m.cumulativePnl)}`}><span dir="ltr" className="inline-block">{formatCurrency(m.cumulativePnl)}</span></td>
+                <td dir="ltr" className="py-2 ps-3 text-text-secondary whitespace-nowrap num-ltr text-right">{m.count}</td>
+                <td dir="ltr" className="py-2 ps-3 text-text-secondary whitespace-nowrap num-ltr text-right">{m.winRate.toFixed(1)}%</td>
+                <td dir="ltr" className={`py-2 ps-3 font-medium whitespace-nowrap num-ltr text-right ${pnlColor(m.pnl)}`}>{formatCurrency(m.pnl)}</td>
+                <td dir="ltr" className={`py-2 font-medium whitespace-nowrap num-ltr text-right ${pnlColor(m.cumulativePnl)}`}>{formatCurrency(m.cumulativePnl)}</td>
               </tr>
             ))}
           </tbody>

@@ -33,7 +33,12 @@ describe('wrapLtrRuns', () => {
     expect(mark('5 Bitcoin')).toBe('5 Bitcoin');
   });
 
-  it('wraps with an LTR span by default', () => {
-    expect(wrapLtrRuns('+5%')).toBe('<span dir="ltr">+5%</span>');
+  it('moves a trailing minus in front of the isolated run', () => {
+    expect(mark('הפסד 11.24- בעסקה')).toBe('הפסד [-11.24] בעסקה');
+    expect(mark('R של 1.06-')).toBe('R של [-1.06]');
+  });
+
+  it('wraps with an LTR isolate span by default', () => {
+    expect(wrapLtrRuns('+5%')).toBe('<span dir="ltr" class="num-ltr">+5%</span>');
   });
 });

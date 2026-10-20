@@ -9,7 +9,7 @@ export default function StrategyPerformanceTable({ data, onStrategyClick }) {
     <div className="bg-bg-secondary border border-border-primary rounded-xl p-5">
       <h3 className="text-sm font-semibold text-text-primary mb-3">ביצועים לפי אסטרטגיה</h3>
       <div className="overflow-x-auto">
-        <table className="w-full text-xs sm:text-sm">
+        <table className="w-full text-xs sm:text-sm tabular-nums">
           <thead>
             <tr className="text-xs text-text-muted border-b border-border-primary">
               <th className="text-right pb-2 font-medium">אסטרטגיה</th>
@@ -32,11 +32,11 @@ export default function StrategyPerformanceTable({ data, onStrategyClick }) {
                   {s.name}
                   {onStrategyClick && <span className="text-text-muted text-[10px] mr-1 opacity-50">↗</span>}
                 </td>
-                <td className="py-2 text-text-secondary">{s.count}</td>
-                <td className="py-2 text-profit">{s.wins}</td>
-                <td className="py-2 text-loss">{s.losses}</td>
-                <td className="py-2 text-text-secondary">{s.winRate.toFixed(1)}%</td>
-                <td className={`py-2 font-medium ${pnlColor(s.pnl)}`}>{formatCurrency(s.pnl)}</td>
+                <td dir="ltr" className="py-2 text-text-secondary num-ltr text-right">{s.count}</td>
+                <td dir="ltr" className="py-2 text-profit num-ltr text-right">{s.wins}</td>
+                <td dir="ltr" className="py-2 text-loss num-ltr text-right">{s.losses}</td>
+                <td dir="ltr" className="py-2 text-text-secondary num-ltr text-right">{s.winRate.toFixed(1)}%</td>
+                <td dir="ltr" className={`py-2 font-medium num-ltr text-right ${pnlColor(s.pnl)}`}>{formatCurrency(s.pnl)}</td>
               </tr>
             ))}
           </tbody>

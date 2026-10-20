@@ -37,5 +37,5 @@ export function ExchangeTag({ exchange, journal, compact = false }) {
 
 /** A number: tabular, LTR so signs and $ stay in place inside RTL. */
 export function Num({ children, className = '', title }) {
-  return <span dir="ltr" title={title} className={`num-mono whitespace-nowrap ${className}`}>{children}</span>;
+  return <span dir="ltr" title={title} className={`num-mono num-ltr whitespace-nowrap ${className}`}>{children}</span>;
 }

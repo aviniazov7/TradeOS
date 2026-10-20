@@ -14,6 +14,7 @@ import {
 import { tradeExitDate, tradeEntryDate } from './tradeDates';
 import { tickerCoinKey } from './tickerMarks';
 import { buildCoachStats } from './coachStats';
+import { formatPnlText, formatRText } from './signedNumbers';
 
 // Newest closed trades sent on every turn. A symbol/date question may pull
 // older matches in front, up to the cap.
@@ -224,7 +225,7 @@ const ROW_QUESTION = /טבל|עסקא|טרייד|\btrades?\b|\btable\b/i;
  */
 export function chatRowHint(question) {
   if (!ROW_QUESTION.test(String(question || ''))) return '';
-  return '\n\n[recentTrades holds the closed rows (d, sym, side, entry, exit, pnl, R), newest first. side is already "Long" or "Short" — write those words, never L or S. The R-multiple column header is R, the uppercase field name, not r. Answer a table request with a GitHub-flavored Markdown table. Do not invent rows, and do not say the dates are missing.]';
+  return '\n\n[recentTrades holds the closed rows (d, sym, side, entry, exit, pnl, R), newest first. side is already "Long" or "Short" — write those words, never L or S. The R-multiple column header is R, the uppercase field name, not r. Answer a table request with a GitHub-flavored Markdown table. Do not invent rows, and do not say the dates are missing. Signed numbers keep the sign before the digits, never after (not 11.24-). P&L is currency with a thousands separator: +$8.50 or -$1,234.56. R is two decimals plus an R suffix: +1.20R or -1.06R.]';
 }
 
 /** The GFM table the chat is asked to answer with. `take` is the row count. */
@@ -233,8 +234,9 @@ export function recentTradesMarkdown(rows, take = 5) {
   const header = '| תאריך | מטבע | כיוון | כניסה | יציאה | רווח/הפסד | R |';
   const sep = '| --- | --- | --- | ---: | ---: | ---: | ---: |';
   const body = slice.map((row) => {
-    const pnl = typeof row.pnl === 'number' ? (row.pnl > 0 ? `+${row.pnl}` : String(row.pnl)) : '';
-    return `| ${row.d || ''} | ${row.sym || ''} | ${row.side || ''} | ${row.entry ?? ''} | ${row.exit ?? ''} | ${pnl} | ${row.R ?? ''} |`;
+    const pnl = typeof row.pnl === 'number' ? (formatPnlText(row.pnl) || '') : '';
+    const r = typeof row.R === 'number' ? (formatRText(row.R) || '') : (row.R ?? '');
+    return `| ${row.d || ''} | ${row.sym || ''} | ${row.side || ''} | ${row.entry ?? ''} | ${row.exit ?? ''} | ${pnl} | ${r} |`;
   });
   return [header, sep, ...body].join('\n');
 }
