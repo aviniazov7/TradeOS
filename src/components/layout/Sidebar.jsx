@@ -16,7 +16,6 @@ import {
   Newspaper,
   Radar,
   User,
-  Link2,
 } from 'lucide-react';
 import PositionCalculator from '../calculator/PositionCalculator';
 import { useAuth } from '../../contexts/AuthContext';
@@ -29,7 +28,6 @@ import { useAuth } from '../../contexts/AuthContext';
 const navItems = [
   { key: 'home', to: '/', label: 'בית', icon: LayoutDashboard },
   { key: 'journal', to: '/journal', label: 'יומן מסחר', icon: BookOpen, match: ['/terminal'] },
-  { key: 'connect', to: '/journal?tab=exchange', label: 'חיבור בורסה', icon: Link2 },
   { key: 'backtest', to: '/backtest', label: 'בקטסט', icon: FlaskConical },
   { key: 'plans', to: '/plans', label: 'תוכניות מסחר', icon: ClipboardList },
   { key: 'mentality', to: '/mentality', label: 'האזור המנטלי', icon: Brain },
