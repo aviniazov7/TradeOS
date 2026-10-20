@@ -216,7 +216,7 @@ npm run dev              # http://localhost:5173
 
 ```env
 VITE_FIREBASE_API_KEY=
-VITE_FIREBASE_AUTH_DOMAIN=tradeos-91a58.firebaseapp.com
+VITE_FIREBASE_AUTH_DOMAIN=tradeoslive.web.app
 VITE_FIREBASE_PROJECT_ID=
 VITE_FIREBASE_STORAGE_BUCKET=
 VITE_FIREBASE_MESSAGING_SENDER_ID=
@@ -276,7 +276,7 @@ The only manual deploy is **Firestore rules**: `firebase deploy --only firestore
 Notes from experience:
 - Firebase caps the number of preview channels (~50). When it is reached, new previews fail with HTTP 429 **while CI still reports success** — delete old channels on the app site (`firebase hosting:channel:delete <id> --site tradeoslive`).
 - Merging a feature to `dev` and then `dev` to `main` back-to-back is safe: both share one deploy queue and never run at once.
-- `authDomain` is `tradeos-91a58.firebaseapp.com`. The app is served from [https://tradeoslive.web.app](https://tradeoslive.web.app), so Google popup and redirect are cross-origin and use `browserPopupRedirectResolver` to load `https://tradeos-91a58.firebaseapp.com/__/auth/handler` (already on the Google OAuth client). CI adds `tradeoslive.web.app` and `tradeoslive.firebaseapp.com` to Firebase Auth authorized domains on every deploy; those are not `authDomain`. Password-reset and email-verification links continue on `tradeos-91a58.firebaseapp.com`. If the log says authorized domains are pending, add `tradeoslive.web.app` and `tradeoslive.firebaseapp.com` under [Authentication → Settings](https://console.firebase.google.com/project/tradeos-91a58/authentication/settings).
+- `authDomain` is `tradeoslive.web.app`, same origin as the site, so the Google sign-in screen shows tradeoslive. Hosting serves `/__/auth/*` (reserved `/__/` paths). The app rewrite is `!/__/auth{,/**}` → `/index.html`, so it does not swallow the handler. The Google OAuth web client allows origin `https://tradeoslive.web.app` and redirect URI `https://tradeoslive.web.app/__/auth/handler`. CI adds `tradeoslive.web.app` and `tradeoslive.firebaseapp.com` to Firebase Auth authorized domains on every deploy. Password-reset and email-verification links continue on `tradeoslive.web.app`. If the log says authorized domains are pending, add them under [Authentication → Settings](https://console.firebase.google.com/project/tradeos-91a58/authentication/settings).
 - Merging to `dev` updates the production Worker before `main` updates live Hosting. Email and share links in that Worker point at `https://tradeoslive.web.app`, which serves the app only after the `main` deploy. Promote to `main` once the `dev` preview looks right.
 
 ### Versions

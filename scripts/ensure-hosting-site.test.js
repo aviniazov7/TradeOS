@@ -73,11 +73,10 @@ describe('authorized domains', () => {
 
   it('tells the owner to authorize the hosting site and keep the default auth handler', () => {
     const text = manualAuthSteps('tradeoslive', '403 permission denied');
-    expect(AUTH_DOMAIN).toBe('tradeos-91a58.firebaseapp.com');
+    expect(AUTH_DOMAIN).toBe('tradeoslive.web.app');
     expect(text).toContain('tradeoslive.web.app');
     expect(text).toContain('tradeoslive.firebaseapp.com');
-    expect(text).toContain('https://tradeos-91a58.firebaseapp.com/__/auth/handler');
-    expect(text).not.toContain('https://tradeoslive.web.app/__/auth/handler');
+    expect(text).toContain('https://tradeoslive.web.app/__/auth/handler');
     expect(text).toContain('403 permission denied');
     expect(text).toContain('/__/auth/action');
   });
