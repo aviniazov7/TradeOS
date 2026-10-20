@@ -19,6 +19,7 @@ import {
 import { useAuth } from '../../contexts/AuthContext';
 import { formatDate } from '../../utils/formatters';
 import { APP_VERSION } from '../../utils/constants';
+import { APP_ORIGIN as APP_URL } from '../../utils/appOrigin';
 import Modal from '../shared/Modal';
 import { pageVariants, pageTransition } from '../../utils/animations';
 import { useTheme } from '../../hooks/useTheme';
@@ -38,8 +39,6 @@ const BUILD_LABEL = (() => {
   if (date && !Number.isNaN(date.getTime())) parts.push(date.toLocaleDateString('he-IL'));
   return parts.length ? ` · ${parts.join(' · ')}` : '';
 })();
-
-const APP_URL = 'https://tradeos-91a58.web.app';
 
 // What the user trades. Drives the new-trade form's default + which symbol
 // catalog it shows. Multi-select (Premium): crypto, futures, stocks.

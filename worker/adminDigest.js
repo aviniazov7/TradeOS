@@ -1,6 +1,6 @@
 // The weekly admin report (Sunday push + email, and the "send me now" button
 // in the panel). Pure: users in → numbers, push text and email out.
-import { C, esc, bg, txt, pill, dot, para, emailShell } from './emailTheme.js';
+import { APP_URL, C, esc, bg, txt, pill, dot, para, emailShell } from './emailTheme.js';
 
 const DAY = 86400000;
 const WEEK = 7 * DAY;
@@ -128,7 +128,7 @@ export function buildDigestEmail(users, { now = Date.now(), test = false } = {})
     aside: d.range,
     body: digestEmailBody(d),
     ctaText: 'לפאנל הניהול',
-    ctaUrl: 'https://tradeos-91a58.web.app/admin',
+    ctaUrl: `${APP_URL}/admin`,
     footer: test
       ? 'שליחת בדיקה מהפאנל. הדוח נשלח אוטומטית בכל יום ראשון ב-09:00.'
       : 'נשלח אוטומטית בכל יום ראשון ב-09:00 · אפשר לשלוח שוב מהפאנל, בלשונית צמיחה.',

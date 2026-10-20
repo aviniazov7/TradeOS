@@ -30,6 +30,9 @@ dist-ssr
 # Firebase
 .firebase/
 firebase-debug.log
+# Copied from public/sw.js at production deploy so the old site can update
+# installed workers. Not a second source of truth.
+hosting/legacy/sw.js
 
 # Claude Code
 .claude/*

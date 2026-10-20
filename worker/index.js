@@ -20,7 +20,7 @@ import { unsubscribeUrl, verifyUnsubscribe, unsubscribePage, UID_RE } from './un
 import { purgeUserResidue } from './accountPurge.js';
 import { parseCspReports, cspReportKey } from './cspReport.js';
 import { calendarAlertBody, CALENDAR_ALERT_TITLE } from './calendarAlert.js';
-import { emailShell, C as EMAIL_C, bg as emailBg, txt as emailTxt, esc as emailEsc, para as emailPara } from './emailTheme.js';
+import { APP_URL, emailShell, C as EMAIL_C, bg as emailBg, txt as emailTxt, esc as emailEsc, para as emailPara } from './emailTheme.js';
 import { buildDigestEmail } from './adminDigest.js';
 import { pickMarketFacts, HOOK_SYSTEM_PROMPT, buildHookUserMessage, validateHook, templateHook } from './marketHook.js';
 import {
@@ -622,7 +622,7 @@ function buildPremiumEmail({ kind = 'payment', name, amount, methodLabel, days, 
   }[kind] || {};
   return {
     subject: meta.subject,
-    html: emailShell({ headline: meta.headline, intro: meta.intro, body, ctaText: 'פתח את TradeOS', ctaUrl: 'https://tradeos-91a58.web.app' }),
+    html: emailShell({ headline: meta.headline, intro: meta.intro, body, ctaText: 'פתח את TradeOS', ctaUrl: APP_URL }),
   };
 }
 
@@ -3703,7 +3703,7 @@ async function handleContact(request, env, cors) {
           emailPara(`UID: ${emailEsc(uid)}`, { size: 12, color: EMAIL_C.muted, margin: '0 0 12px' }) +
           `<div style="${emailBg(EMAIL_C.tile)}border:1px solid ${EMAIL_C.line};border-radius:14px;padding:16px 18px;font-size:14px;line-height:1.7;color:${EMAIL_C.text};white-space:pre-wrap;text-align:right">${emailTxt(emailEsc(message))}</div>`,
         ctaText: 'פתח את פאנל הניהול',
-        ctaUrl: 'https://tradeos-91a58.web.app/admin',
+        ctaUrl: `${APP_URL}/admin`,
       });
       for (const to of recipients) {
         const r = await sendEmail(env, {
@@ -3731,16 +3731,19 @@ async function handleContact(request, env, cors) {
 // ==================== HTTP Handler ====================
 
 const ALLOWED_ORIGINS = [
+  APP_URL,
+  'https://tradeos-app.firebaseapp.com',
+  // Previous production origin. It 301s to APP_URL, and installed clients
+  // still call the Worker from it until they follow the redirect.
   'https://tradeos-91a58.web.app',
   'https://tradeos-91a58.firebaseapp.com',
   'https://trade-os.tradeos.workers.dev',
   'https://trade-os-staging.tradeos.workers.dev',
 ];
-// Firebase Hosting preview channels have URLs like
-// https://tradeos-91a58--CHANNEL-HASH.web.app and are created automatically
-// by GitHub Actions for every develop/feature branch and PR — they need to be
-// able to call the Worker so we can test changes end-to-end before merging.
-const PREVIEW_ORIGIN_RE = /^https:\/\/tradeos-91a58--[a-z0-9-]+\.web\.app$/i;
+// Preview channels are https://SITE--CHANNEL-HASH.web.app. New channels are
+// created on tradeos-app; channels already issued on the default site stay
+// valid until they expire.
+const PREVIEW_ORIGIN_RE = /^https:\/\/(?:tradeos-app|tradeos-91a58)--[a-z0-9-]+\.web\.app$/i;
 function isAllowedOrigin(origin) {
   if (!origin) return false;
   return ALLOWED_ORIGINS.includes(origin) || PREVIEW_ORIGIN_RE.test(origin);
@@ -5185,7 +5188,7 @@ async function handleRequest(request, env) {
   // Reachable as /r/:code (short) or /share/redeem/:code.
   if (request.method === 'GET' && (path.startsWith('/r/') || path.startsWith('/share/redeem/'))) {
     const code = normalizeCouponCode(decodeURIComponent(path.split('/').pop() || ''));
-    const appUrl = `https://tradeos-91a58.web.app/redeem/${encodeURIComponent(code)}`;
+    const appUrl = `${APP_URL}/redeem/${encodeURIComponent(code)}`;
     const ua = request.headers.get('User-Agent') || '';
     // Preview crawlers / social bots that need OG tags. We're strict here:
     // real in-app browsers (e.g. WhatsApp's WKWebView) also include 'WhatsApp'
@@ -5198,7 +5201,7 @@ async function handleRequest(request, env) {
     // Humans → plain 200 HTML page that shows a visible coupon teaser + button
     // immediately, then auto-redirects via JS/meta-refresh. We deliberately
     // do NOT return a 302 here: when the Location target is a different-origin
-    // SPA (tradeos-91a58.web.app), some Chrome and iOS Safari builds follow
+    // SPA (tradeos-app.web.app), some Chrome and iOS Safari builds follow
     // the redirect, render NOTHING during the bootstrap, and the user ends up
     // staring at a blank page. With 200+HTML the page is always visible from
     // millisecond zero and the redirect happens on top of that.
@@ -5244,7 +5247,7 @@ async function handleRequest(request, env) {
     const esc = (s) => String(s || '').replace(/[&<>"']/g, (c) => (
       { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]
     ));
-    const ogImage = 'https://tradeos-91a58.web.app/og-image.png?v=coupon';
+    const ogImage = `${APP_URL}/og-image.png?v=coupon`;
 
     let title = '🎁 קוד מתנה ל-TradeOS Premium';
     let desc = 'מימשו את הקוד וקבלו גישה מלאה: מנטור AI בעברית, סנכרון בורסות, מעקב ארנקים והתראות חכמות.';

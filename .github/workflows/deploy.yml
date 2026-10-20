@@ -113,12 +113,24 @@ jobs:
         run: echo '${{ secrets.FIREBASE_SERVICE_ACCOUNT }}' > "$RUNNER_TEMP/firebase-sa.json"
 
       # ─── Hosting ─────────────────────────────────────────────────────────
+      # Two sites: `app` (tradeos-app, the live app) and `legacy`
+      # (tradeos-91a58, a 301 of every path to the app). Preview channels
+      # deploy the app only, so the dev/PR URL keeps serving the app.
+
+      - name: Ensure Hosting site and Auth domains
+        env:
+          GOOGLE_APPLICATION_CREDENTIALS: ${{ runner.temp }}/firebase-sa.json
+        run: node scripts/ensure-hosting-site.mjs
 
       - name: Deploy Hosting (production)
         if: steps.target.outputs.kind == 'production'
         env:
           GOOGLE_APPLICATION_CREDENTIALS: ${{ runner.temp }}/firebase-sa.json
-        run: npx firebase-tools deploy --only hosting --project tradeos-91a58 --non-interactive
+        run: |
+          # The old site serves this one file (every other path 301s) so an
+          # installed service worker can update and move the tab to the new origin.
+          cp public/sw.js hosting/legacy/sw.js
+          npx firebase-tools deploy --only hosting:app,hosting:legacy --project tradeos-91a58 --non-interactive
 
       - name: Deploy Hosting (preview channel)
         if: steps.target.outputs.kind != 'production'
@@ -129,9 +141,12 @@ jobs:
         run: |
           echo "Deploying to preview channel: $CHANNEL"
           npx firebase-tools hosting:channel:deploy "$CHANNEL" \
-            --project tradeos-91a58 --expires 7d --non-interactive 2>&1 | tee deploy.log
+            --only app --project tradeos-91a58 --expires 7d --non-interactive 2>&1 | tee deploy.log
           # Pluck the preview URL out of the CLI output for the PR comment.
-          URL=$(grep -oE 'https://tradeos-91a58--[^[:space:]]+web\.app' deploy.log | head -1)
+          # The site id comes from .firebaserc (the ensure step may have
+          # switched it if tradeos-app was already taken).
+          SITE=$(node -e "const rc=require('./.firebaserc'); process.stdout.write(rc.targets['tradeos-91a58'].hosting.app[0])")
+          URL=$(grep -oE "https://${SITE}--[^[:space:]]+\\.web\\.app" deploy.log | head -1)
           echo "url=$URL" >> $GITHUB_OUTPUT
 
       # ─── Cloudflare Worker ───────────────────────────────────────────────

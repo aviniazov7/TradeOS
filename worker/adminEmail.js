@@ -1,10 +1,10 @@
 // Admin "come back to TradeOS" emails: one message to one user or a whole
 // segment, personalised per recipient. Pure (no fetch / env) so it is
 // unit-tested; index.js sends the result through Resend's batch API.
-import { C, txt } from './emailTheme.js';
+import { APP_URL, C, txt } from './emailTheme.js';
 
 const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
-export const APP_URL = 'https://tradeos-91a58.web.app';
+export { APP_URL };
 // Hard cap per campaign — a typo in the panel must not mail everyone twice.
 export const CAMPAIGN_MAX = 300;
 

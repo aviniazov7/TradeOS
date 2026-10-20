@@ -4,7 +4,7 @@ import { parseCspReports, cspReportKey, MAX_REPORT_ITEMS } from './cspReport';
 describe('parseCspReports', () => {
   it('reads the legacy report-uri format and keeps only the origin and the path', () => {
     const [r] = parseCspReports({ 'csp-report': {
-      'document-uri': 'https://tradeos-91a58.web.app/journal?token=secret#x',
+      'document-uri': 'https://tradeos-app.web.app/journal?token=secret#x',
       'effective-directive': 'img-src',
       'blocked-uri': 'https://cdn.example.com/a/b/logo.png?user=123',
       disposition: 'report',

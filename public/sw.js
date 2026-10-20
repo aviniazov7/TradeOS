@@ -24,8 +24,30 @@ const BYPASS_HOST_PATTERNS = [
 ];
 
 function shouldBypass(url) {
+  // authDomain is this site, so /__/auth and /__/firebase are same-origin.
+  // Caching them would replace the app shell with the auth handler.
+  if (url.includes('/__/auth') || url.includes('/__/firebase')) return true;
   return BYPASS_HOST_PATTERNS.some((p) => url.includes(p));
 }
+
+// Installed PWAs on the previous Hosting site keep this worker after the
+// server starts 301ing. fetch() would follow that redirect and leave the
+// address bar on the old origin. Hand back a real 301 instead, preserving
+// path and query, so the browser moves to the new origin.
+function legacyRedirectUrl(raw) {
+  const LEGACY_HOSTS = ['tradeos-91a58.web.app', 'tradeos-91a58.firebaseapp.com'];
+  const APP_HOST = 'tradeos-app.web.app';
+  try {
+    const url = new URL(raw);
+    if (!LEGACY_HOSTS.includes(url.hostname)) return null;
+    url.hostname = APP_HOST;
+    url.protocol = 'https:';
+    return url.toString();
+  } catch {
+    return null;
+  }
+}
+// END legacyRedirectUrl
 
 // Authenticated Worker responses are per account. Cache Storage is keyed by
 // URL only, so caching them would replay one user's orders, fills, or
@@ -105,7 +127,12 @@ self.addEventListener('activate', (event) => {
   event.waitUntil(
     caches.keys().then((keys) =>
       Promise.all(keys.filter((k) => k !== CACHE_NAME).map((k) => caches.delete(k)))
-    )
+    ).then(() => self.clients.matchAll({ type: 'window', includeUncontrolled: true }))
+      .then((windows) => Promise.all(windows.map((client) => {
+        const dest = legacyRedirectUrl(client.url);
+        if (!dest || typeof client.navigate !== 'function') return null;
+        return client.navigate(dest);
+      })))
   );
   self.clients.claim();
 });
@@ -113,6 +140,11 @@ self.addEventListener('activate', (event) => {
 // Fetch — network first, fallback to cache
 self.addEventListener('fetch', (event) => {
   const url = event.request.url;
+  const moved = legacyRedirectUrl(url);
+  if (moved) {
+    event.respondWith(Response.redirect(moved, 301));
+    return;
+  }
   if (event.request.method !== 'GET') return;
   if (url.startsWith('chrome-extension')) return;
   if (shouldBypass(url)) return; // Let the browser handle auth/Firebase traffic directly

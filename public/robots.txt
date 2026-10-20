@@ -7,4 +7,4 @@ Allow: /login
 Allow: /accessibility
 Disallow: /
 
-Sitemap: https://tradeos-91a58.web.app/sitemap.xml
+Sitemap: https://tradeos-app.web.app/sitemap.xml

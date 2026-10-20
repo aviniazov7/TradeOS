@@ -6,6 +6,7 @@ import {
   connectAuthEmulator,
 } from 'firebase/auth';
 import { initializeAppCheck, ReCaptchaV3Provider } from 'firebase/app-check';
+import { APP_ORIGIN } from '../utils/appOrigin';
 
 // Firebase web client config is intentionally public — Google's docs are
 // explicit about this. The actual security boundary is Firestore Rules
@@ -14,11 +15,11 @@ import { initializeAppCheck, ReCaptchaV3Provider } from 'firebase/app-check';
 // and still allow override via VITE_FIREBASE_* if needed.
 const DEFAULTS = {
   apiKey: 'AIzaSyAL7ni8lEqSmd5i6BfA9P3cvlBWEtOgcQ8',
-  // Same domain as the site (not firebaseapp.com): Firebase Hosting serves
-  // /__/auth/handler here too, making Google OAuth same-origin so iOS Safari
-  // (incl. installed PWA) doesn't block it. Requires the matching redirect
-  // URI to be registered in the Google Cloud OAuth client.
-  authDomain: 'tradeos-91a58.web.app',
+  // Same domain as the site (not the project firebaseapp.com host): Hosting
+  // serves /__/auth/handler here too, so Google OAuth is same-origin and iOS
+  // Safari (including the installed PWA) does not block it. The matching
+  // redirect URI must be registered on the Google Cloud OAuth client.
+  authDomain: new URL(APP_ORIGIN).host,
   projectId: 'tradeos-91a58',
   storageBucket: 'tradeos-91a58.firebasestorage.app',
   messagingSenderId: '80529278454',

@@ -5,7 +5,10 @@ import { fileURLToPath } from 'node:url';
 // Guards the Content-Security-Policy that Firebase Hosting sends (firebase.json).
 // public/_headers is NOT read by Firebase Hosting — only these headers ship.
 const config = JSON.parse(readFileSync(fileURLToPath(new URL('../../firebase.json', import.meta.url)), 'utf8'));
-const globalHeaders = config.hosting.headers.find((h) => h.source === '**').headers;
+const sites = Array.isArray(config.hosting) ? config.hosting : [config.hosting];
+const appHosting = sites.find((site) => site.target === 'app');
+const legacyHosting = sites.find((site) => site.target === 'legacy');
+const globalHeaders = appHosting.headers.find((h) => h.source === '**').headers;
 const header = (key) => globalHeaders.find((h) => h.key === key)?.value;
 
 function directives(policy) {
@@ -60,9 +63,45 @@ describe('hosting CSP (report-only)', () => {
   });
 
   it('lets the TradingView charts and Google sign-in frames load', () => {
-    for (const origin of ['https://www.tradingview.com', 'https://s.tradingview.com', 'https://accounts.google.com']) {
+    for (const origin of [
+      'https://www.tradingview.com',
+      'https://s.tradingview.com',
+      'https://accounts.google.com',
+      'https://tradeos-app.web.app',
+      'https://tradeos-app.firebaseapp.com',
+      'https://tradeos-91a58.web.app',
+      'https://tradeos-91a58.firebaseapp.com',
+    ]) {
       expect(d['frame-src']).toContain(origin);
     }
+  });
+});
+
+describe('hosting sites', () => {
+  it('deploys the app to tradeos-app and 301s the old site, keeping path and query', () => {
+    expect(appHosting.public).toBe('dist/client');
+    expect(appHosting.rewrites).toEqual([{ source: '**', destination: '/index.html' }]);
+    expect(legacyHosting.public).toBe('hosting/legacy');
+    expect(legacyHosting.redirects[0]).toEqual({
+      source: '/',
+      destination: 'https://tradeos-app.web.app/',
+      type: 301,
+    });
+    const rest = legacyHosting.redirects[1];
+    expect(rest.type).toBe(301);
+    expect(rest.destination).toBe('https://tradeos-app.web.app/:1');
+    const redirect = new RegExp(rest.regex);
+    // /sw.js is served as a file so an already-installed worker can update
+    // and then 301 the browser. Every other path redirects, query appended
+    // by Hosting itself.
+    expect(redirect.test('/sw.js')).toBe(false);
+    expect(redirect.exec('/redeem/AB')[1]).toBe('redeem/AB');
+    expect(redirect.exec('/login')[1]).toBe('login');
+    expect(redirect.exec('/sitemap.xml')[1]).toBe('sitemap.xml');
+    expect('/sw.js').not.toMatch(redirect);
+    const rc = JSON.parse(readFileSync(fileURLToPath(new URL('../../.firebaserc', import.meta.url)), 'utf8'));
+    expect(rc.targets['tradeos-91a58'].hosting.app).toEqual(['tradeos-app']);
+    expect(rc.targets['tradeos-91a58'].hosting.legacy).toEqual(['tradeos-91a58']);
   });
 });
 
@@ -75,8 +114,8 @@ describe('hosting CSP (enforced)', () => {
 });
 
 describe('hosting cache headers', () => {
-  const sources = config.hosting.headers.map((h) => h.source);
-  const cacheOf = (source) => config.hosting.headers
+  const sources = appHosting.headers.map((h) => h.source);
+  const cacheOf = (source) => appHosting.headers
     .find((h) => h.source === source)?.headers.find((h) => h.key === 'Cache-Control')?.value;
 
   it('caches images and self-hosted fonts for a week', () => {
@@ -118,12 +157,12 @@ describe('robots.txt / sitemap.xml', () => {
 
   it('keeps the signed-in app out of search and points at the sitemap', () => {
     expect(robots).toMatch(/^Disallow: \/$/m);
-    expect(robots).toMatch(/^Sitemap: https:\/\/tradeos-91a58\.web\.app\/sitemap\.xml$/m);
+    expect(robots).toMatch(/^Sitemap: https:\/\/tradeos-app\.web\.app\/sitemap\.xml$/m);
   });
 
   it('lists only pages robots.txt allows', () => {
     const allowed = [...robots.matchAll(/^Allow: (\S+)$/gm)].map((m) => m[1].replace(/\$$/, ''));
-    const locs = [...sitemap.matchAll(/<loc>https:\/\/tradeos-91a58\.web\.app(\/[^<]*)<\/loc>/g)].map((m) => m[1]);
+    const locs = [...sitemap.matchAll(/<loc>https:\/\/tradeos-app\.web\.app(\/[^<]*)<\/loc>/g)].map((m) => m[1]);
     expect(locs.length).toBeGreaterThan(0);
     for (const loc of locs) expect(allowed).toContain(loc);
   });

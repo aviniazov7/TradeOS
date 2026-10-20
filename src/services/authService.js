@@ -20,6 +20,7 @@ import {
   browserPopupRedirectResolver,
 } from 'firebase/auth';
 import { auth, googleProvider } from './firebase';
+import { authActionCodeSettings } from '../utils/appOrigin';
 import { emailReauthMissingPassword, displayNameProblem } from '../utils/profileAccount';
 import { startGoogleSignIn } from '../utils/googleSignInFlow';
 
@@ -191,7 +192,7 @@ export function sendVerificationEmail() {
   const user = auth.currentUser;
   if (!user) return Promise.reject(new Error('No user'));
   auth.languageCode = 'he';
-  return sendEmailVerification(user);
+  return sendEmailVerification(user, authActionCodeSettings);
 }
 
 /** Re-fetch the signed-in user so emailVerified reflects a click on the link. */
@@ -214,7 +215,7 @@ export function logout() {
 
 /** Send password reset email */
 export function resetPassword(email) {
-  return sendPasswordResetEmail(auth, email);
+  return sendPasswordResetEmail(auth, email, authActionCodeSettings);
 }
 
 /** Change password (requires reauthentication) */
