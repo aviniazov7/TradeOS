@@ -115,7 +115,7 @@ export default function MobileNav() {
         <Link
           to="/journal?tab=exchange"
           data-testid="mobile-connect-exchange"
-          className="pointer-events-auto absolute -top-11 left-1/2 -translate-x-1/2 inline-flex items-center gap-1.5 h-9 px-3 rounded-full text-xs font-bold text-white bg-accent-muted shadow-[0_8px_24px_rgba(37,99,235,0.4)]"
+          className="mobile-connect-chip pointer-events-auto absolute -top-11 left-1/2 -translate-x-1/2 inline-flex items-center gap-1.5 h-9 px-3 rounded-full text-xs font-bold text-white bg-accent-muted shadow-[0_8px_24px_rgba(37,99,235,0.4)]"
         >
           <Link2 className="w-3.5 h-3.5" /> חיבור בורסה
         </Link>

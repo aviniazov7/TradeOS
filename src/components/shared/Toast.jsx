@@ -4,6 +4,7 @@ export default function Toast() {
   return (
     <Toaster
       position="bottom-right"
+      containerClassName="toast-clear-nav"
       toastOptions={{
         duration: 3000,
         style: {
