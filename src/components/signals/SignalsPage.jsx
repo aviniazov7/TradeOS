@@ -1,24 +1,26 @@
 import { useEffect, useMemo, useState } from 'react';
 import { useSearchParams } from 'react-router-dom';
 import { m } from 'framer-motion';
-import { Plus, Radar, Flag, Zap, Timer, HelpCircle, Activity, ChevronLeft } from 'lucide-react';
+import { Pause, Play, Plus, Radar, Flag, Zap, Timer, HelpCircle, Activity, ChevronLeft } from 'lucide-react';
 import toast from 'react-hot-toast';
+import { useAuth } from '../../contexts/AuthContext';
 import { useSignals } from '../../hooks/useSignals';
 import { useWyckoffSetups } from '../../hooks/useWyckoffSetups';
 import { useWatchlist } from '../../hooks/useWatchlist';
 import { useCryptoPrices } from '../../hooks/useCryptoPrices';
+import { getUserSetting, setUserSetting } from '../../services/firestoreService';
 import PageHeader from '../shared/PageHeader';
 import StatTile from '../shared/StatTile';
 import TabStrip from '../shared/TabStrip';
 import ConfirmDialog from '../shared/ConfirmDialog';
-import { headerIconBtn, headerPrimaryBtn } from '../shared/headerStyles';
+import { headerIconBtn, headerPrimaryBtn, headerSecondaryBtn } from '../shared/headerStyles';
 import ScannerWatchlist from './ScannerWatchlist';
 import ScannerHowItWorks from './ScannerHowItWorks';
 import ScannerCalibration from './ScannerCalibration';
 import SetupsDatabase from './SetupsDatabase';
 import SignalCard from './SignalCard';
 import SignalForm from './SignalForm';
-import { signalToSetup, MAX_SCAN_TAGS } from '../../utils/wyckoff';
+import { signalToSetup, MAX_SCAN_TAGS, wyckoffEngineState } from '../../utils/wyckoff';
 import { safeDate, formatRelativeTime, formatDateTime } from '../../utils/formatters';
 import { pageVariants, pageTransition, staggerContainer } from '../../utils/animations';
 
@@ -65,7 +67,15 @@ function useNow(intervalMs) {
   return now;
 }
 
-function LiveBadge() {
+function EngineBadge({ running }) {
+  if (!running) {
+    return (
+      <span className="inline-flex items-center gap-1.5 text-[11px] font-semibold px-2 py-0.5 rounded-full border border-border-primary bg-bg-tertiary text-text-muted" title="המנוע מושהה ולא סורק">
+        <span className="inline-flex h-2 w-2 rounded-full bg-text-muted" />
+        מושהה
+      </span>
+    );
+  }
   return (
     <span className="inline-flex items-center gap-1.5 text-[11px] font-semibold px-2 py-0.5 rounded-full border border-profit/30 bg-profit/10 text-profit" title="המנוע רץ בצד השרת כל 10 דקות">
       <span className="relative flex h-2 w-2">
@@ -87,17 +97,19 @@ function StatusRow({ label, children }) {
 }
 
 // Side panel: what the engine does and how well it has done so far.
-function EngineStatus({ nextScanMin, precision, judged, onOpenTraining }) {
+function EngineStatus({ running, scanning, nextScanMin, precision, judged, onOpenTraining }) {
   return (
     <section className="rounded-2xl border border-border-primary bg-bg-secondary">
       <div className="flex items-center gap-2.5 px-4 py-3 border-b border-border-primary">
         <Activity className="w-4 h-4 text-accent-primary shrink-0" />
         <h2 className="text-sm font-bold text-text-primary flex-1">מצב המנוע</h2>
-        <LiveBadge />
+        <EngineBadge running={running} />
       </div>
       <dl className="px-4 py-1">
         <StatusRow label="מחזור סריקה">כל {SCAN_CYCLE_MIN} דק׳ · בצד השרת</StatusRow>
-        <StatusRow label="סריקה הבאה">בעוד <span className="num-mono">{nextScanMin}</span> דק׳</StatusRow>
+        <StatusRow label="סריקה הבאה">
+          {scanning ? <>בעוד <span className="num-mono">{nextScanMin}</span> דק׳</> : '—'}
+        </StatusRow>
         <StatusRow label="טיימפריימים">
           <span className="inline-flex gap-1" dir="ltr">
             {['30m', '4h', '1D'].map((tf) => (
@@ -127,11 +139,16 @@ function EngineStatus({ nextScanMin, precision, judged, onOpenTraining }) {
 // the scan universe (tagged coins) and the engine's status sit beside it.
 // Calibration and the training DB are their own view.
 export default function SignalsPage() {
+  const { user } = useAuth();
   const { signals, loading, addSignal, updateSignal, deleteSignal } = useSignals();
   const { setups, loading: setupsLoading, addSetup, updateSetup, deleteSetup } = useWyckoffSetups();
-  const { items: watchItems } = useWatchlist();
+  const { items: watchItems, loading: watchLoading } = useWatchlist();
   const { prices } = useCryptoPrices();
   const taggedCount = watchItems.filter((i) => i.bias === 'long' || i.bias === 'short').length;
+  // null = the owner has not saved a choice. false/true = the persisted toggle.
+  const [engineEnabled, setEngineEnabled] = useState(null);
+  const [engineLoaded, setEngineLoaded] = useState(false);
+  const [engineSaving, setEngineSaving] = useState(false);
 
   const [searchParams, setSearchParams] = useSearchParams();
   const view = VIEWS.includes(searchParams.get('tab')) ? searchParams.get('tab') : 'setups';
@@ -147,6 +164,28 @@ export default function SignalsPage() {
   const [deleteTarget, setDeleteTarget] = useState(null);
   const [howToOpen, setHowToOpen] = useState(() => !readHowToDismissed());
   const now = useNow(15_000);
+
+  useEffect(() => {
+    if (!user?.uid) return undefined;
+    let alive = true;
+    setEngineLoaded(false);
+    getUserSetting(user.uid, 'scanner')
+      .then((data) => {
+        if (!alive) return;
+        setEngineEnabled(typeof data?.enabled === 'boolean' ? data.enabled : null);
+      })
+      .catch(() => { if (alive) setEngineEnabled(null); })
+      .finally(() => { if (alive) setEngineLoaded(true); });
+    return () => { alive = false; };
+  }, [user?.uid]);
+
+  // Until both the saved toggle and the watchlist have arrived, don't claim
+  // the engine is running — an empty list defaults to paused.
+  const engine = (engineLoaded && !watchLoading)
+    ? wyckoffEngineState(engineEnabled, taggedCount)
+    : (engineLoaded && engineEnabled === true
+      ? { running: true, scan: false }
+      : { running: false, scan: false });
 
   const filtered = tab === 'all' ? signals : signals.filter((s) => s.status === tab);
   const counts = {
@@ -177,6 +216,25 @@ export default function SignalsPage() {
   }, [setups]);
 
   const nextScanMin = minutesToNextScan(now);
+
+  const toggleEngine = async () => {
+    if (!user?.uid || engineSaving || !engineLoaded || watchLoading) return;
+    const next = !engine.running;
+    const prev = engineEnabled;
+    setEngineEnabled(next);
+    setEngineSaving(true);
+    try {
+      await setUserSetting(user.uid, 'scanner', { enabled: next, updatedAt: new Date().toISOString() }, true);
+      toast.success(next
+        ? (taggedCount > 0 ? 'המנוע הופעל — הסריקה הבאה עד 10 דק׳' : 'המנוע הופעל. תייג מטבע כדי שיתחיל לסרוק')
+        : 'המנוע הושהה');
+    } catch {
+      setEngineEnabled(prev);
+      toast.error('שגיאה בעדכון המנוע');
+    } finally {
+      setEngineSaving(false);
+    }
+  };
 
   const openNew = () => { setEditingSignal(null); setFormOpen(true); };
   const dismissHowTo = () => { setHowToOpen(false); writeHowToDismissed(); };
@@ -255,7 +313,7 @@ export default function SignalsPage() {
       <PageHeader
         icon={Radar}
         title="מנוע ויקוף"
-        titleAside={<LiveBadge />}
+        titleAside={<EngineBadge running={engine.running} />}
         subtitle="זיהוי אוטומטי של LPS / LPSY על שלושה טיימפריימים"
         tabs={{
           tabs: [
@@ -278,6 +336,17 @@ export default function SignalsPage() {
             >
               <HelpCircle className="w-[18px] h-[18px]" />
             </button>
+            <button
+              type="button"
+              onClick={toggleEngine}
+              disabled={!engineLoaded || watchLoading || engineSaving}
+              className={`${headerSecondaryBtn} flex-1 sm:flex-none`}
+              aria-pressed={engine.running}
+              title={engine.running ? 'עצור את הסריקה בשרת' : 'החזר את הסריקה במחזור הבא'}
+            >
+              {engine.running ? <Pause className="w-4 h-4" /> : <Play className="w-4 h-4" />}
+              {engine.running ? 'השהה מנוע' : 'הפעל מנוע'}
+            </button>
             <button type="button" onClick={openNew} className={`${headerPrimaryBtn} flex-1 sm:flex-none`} title="הוסף סטאפ שהמנוע פספס — למעקב חי">
               <Plus className="w-4 h-4" /> הוסף סטאפ
             </button>
@@ -297,7 +366,13 @@ export default function SignalsPage() {
           title={lastFound ? formatDateTime(lastFound) : undefined}
           sub={lastFound ? formatDateTime(lastFound) : 'עדיין לא אותר סטאפ'}
         />
-        <StatTile icon={Timer} label="סריקה הבאה" value={`${nextScanMin} דק׳`} mono={false} sub={`מחזור של ${SCAN_CYCLE_MIN} דק׳`} />
+        <StatTile
+          icon={Timer}
+          label="סריקה הבאה"
+          value={engine.scan ? `${nextScanMin} דק׳` : '—'}
+          mono={false}
+          sub={engine.scan ? `מחזור של ${SCAN_CYCLE_MIN} דק׳` : (engine.running ? 'אין מטבעות מתויגים' : 'המנוע מושהה')}
+        />
       </div>
 
       {/* ── Setups view: console ── */}
@@ -311,6 +386,8 @@ export default function SignalsPage() {
             <ScannerWatchlist />
             <div className="hidden xl:block">
               <EngineStatus
+                running={engine.running}
+                scanning={engine.scan}
                 nextScanMin={nextScanMin}
                 precision={precision.pct}
                 judged={precision.judged}
@@ -348,9 +425,11 @@ export default function SignalsPage() {
                 <p className="text-[12px] text-text-muted mt-1 max-w-xs mx-auto leading-relaxed">
                   {tab !== 'all'
                     ? 'בחר סינון אחר כדי לראות סטאפים נוספים.'
-                    : taggedCount === 0
-                      ? 'תייג מטבע לונג או שורט ברשימת המעקב כדי להתחיל לסרוק.'
-                      : `המנוע סורק ${taggedCount} מטבעות. סטאפ יופיע כאן כשיושלם מבנה ויקוף.`}
+                    : !engine.running && taggedCount > 0
+                      ? 'המנוע מושהה. הפעל אותו כדי לסרוק את המטבעות המתויגים.'
+                      : taggedCount === 0
+                        ? 'תייג מטבע לונג או שורט ברשימת המעקב כדי להתחיל לסרוק.'
+                        : `המנוע סורק ${taggedCount} מטבעות. סטאפ יופיע כאן כשיושלם מבנה ויקוף.`}
                 </p>
               </div>
             ) : (
