@@ -2194,16 +2194,16 @@ const GROQ_URL = 'https://api.groq.com/openai/v1/chat/completions';
 // 2026-08-16 (both returned 404 model_not_found). gpt-oss-120b is Groq's
 // recommended replacement for the 70B.
 const GROQ_MODEL = 'openai/gpt-oss-120b';
-// Chart-image requests go to a vision model. Groq DECOMMISSIONED BOTH Llama 4
-// vision models — Scout (2026-07-17) and Maverick (2026-03-09) — each began
-// returning 404. Qwen 3.6 27B is Groq's current (and only) documented vision
-// model, so it serves as BOTH primary and fallback (no other Groq vision id
-// exists; a Gemini-vision fallback is the future resilience). Qwen is a REASONING
-// model that emits a <think>…</think> monologue by default, so its calls pass
-// reasoning_effort:'none' (see reasoningOpt) to return ONLY the clean final
-// answer — otherwise the chart read shows the model's English thinking.
-const GROQ_VISION_MODEL = 'qwen/qwen3.6-27b';
-const GROQ_VISION_FALLBACK_MODEL = 'qwen/qwen3.6-27b';
+// Chart-image requests go to a vision model. Groq decommissioned Llama 4
+// Scout (2026-07-17) and Maverick (2026-03-09), then shut down qwen/qwen3.6-27b
+// on 2026-09-14 for free/developer keys. A request to that id fails before any
+// chart text is produced. qwen/qwen3.8-27b is the documented successor and the
+// only current Groq vision model, so it is both primary and fallback. It is a
+// reasoning model: reasoning_effort:'none' (see reasoningOpt) is instruct mode
+// and suppresses the <think> monologue, otherwise the chart read shows English
+// thinking instead of the Hebrew analysis.
+const GROQ_VISION_MODEL = 'qwen/qwen3.8-27b';
+const GROQ_VISION_FALLBACK_MODEL = 'qwen/qwen3.8-27b';
 // Reasoning control per model family:
 // - Qwen vision: 'none' suppresses the <think> monologue entirely.
 // - gpt-oss: reasoning tokens count against max_tokens, so 'low' keeps short
@@ -2230,8 +2230,9 @@ const reasoningOpt = (model) => {
 const GROQ_FALLBACK_MODEL = GROQ_VISION_MODEL;
 // Text models tried in order when the primary is rate-limited (each has its
 // own per-model quota on Groq), retired (404) or not answering in time. Ids
-// that no longer exist just 404 and the chain moves on.
-const GROQ_TEXT_FALLBACKS = ['openai/gpt-oss-20b', 'qwen/qwen3-32b'];
+// that no longer exist just 404 and the chain moves on. qwen/qwen3-32b was
+// shut down 2026-07-17; the Qwen successor above is the second bucket.
+const GROQ_TEXT_FALLBACKS = ['openai/gpt-oss-20b', GROQ_VISION_MODEL];
 // Statuses that mean "try the next provider/model".
 const AI_RETRYABLE = new Set([404, 408, 413, 429, 500, 502, 503, 504]);
 async function groqFetchWithRetry(env, payload) {
