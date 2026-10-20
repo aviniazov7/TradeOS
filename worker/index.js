@@ -8,7 +8,9 @@
 
 import {
   buildMentionIndex, attributeMoves, describeFinding, ATTRIBUTION_WINDOW_MIN,
+  windowMove, rankScanSymbols, MOVE_WINDOW_BARS, MOVE_BASELINE_BARS, SCAN_MIN_QUOTE_VOL,
 } from './newsImpact.js';
+import { decodeHtmlEntities } from '../src/utils/htmlEntities.js';
 import { wyckoffEngineState } from '../src/utils/wyckoff.js';
 import {
   bybitWalletEquity, classifyExchangeAuthError, mexcStopsByPosition, mexcEntryTypeByPosition, mexcOrderKind, mexcExitsByPosition,
@@ -3295,12 +3297,10 @@ const NEWS_MAX_AGE_HOURS = 24;   // ignore older items
 function rssTag(block, tag) {
   const m = block.match(new RegExp(`<${tag}[^>]*>([\\s\\S]*?)</${tag}>`, 'i'));
   if (!m) return '';
-  return m[1]
+  const text = m[1]
     .replace(/<!\[CDATA\[([\s\S]*?)\]\]>/g, '$1')
-    .replace(/<[^>]+>/g, '')
-    .replace(/&amp;/g, '&').replace(/&lt;/g, '<').replace(/&gt;/g, '>')
-    .replace(/&quot;/g, '"').replace(/&#0?39;/g, "'").replace(/&nbsp;/g, ' ')
-    .trim();
+    .replace(/<[^>]+>/g, '');
+  return decodeHtmlEntities(text).trim();
 }
 
 // Feed links end up as <a href> for every user, so a compromised feed must
@@ -3798,11 +3798,10 @@ function isAllowedOrigin(origin) {
 // explanation. The scoring itself lives in ./newsImpact.js so it can be unit
 // tested outside the Worker runtime.
 //
-// Subrequest budget per run: 1 news + 1 ticker list + IMPACT_SCAN_TOP klines.
-const IMPACT_SCAN_TOP = 8;        // candidates promoted to a kline read
-const IMPACT_WINDOW_BARS = 3;     // 3 x 5m = the 15-minute move window
-const IMPACT_BASELINE_BARS = 24;  // 2h of 5m bars as the volume baseline
-const IMPACT_MIN_QUOTE_VOL = 5_000_000; // ignore illiquid pairs entirely
+// Subrequest budget per run: RSS (up to 6) or 1 fast-news + 1 ticker list
+// + at most SCAN_CAP kline reads. The window itself (4h vs the prior 4h)
+// lives in newsImpact.js — a 15-minute / 2.5% gate never fired on a real
+// major-asset news move.
 // The attribution window has to scale with how fast the source can deliver.
 // Measured on the live feeds: the fast source's newest item is ~2 minutes old,
 // so 90 minutes is generous. RSS cannot do better than ~10-50 minutes, and a
@@ -3831,7 +3830,7 @@ async function fetchFastNews() {
     if (!Array.isArray(raw)) return { items: [], error: 'fast-news shape' };
     const items = raw.map((x) => ({
       id: x._id || x.url || '',
-      title: String(x.title || '').slice(0, 300),
+      title: decodeHtmlEntities(String(x.title || '')).slice(0, 300),
       url: typeof x.url === 'string' ? x.url : '',
       // sourceName is the outlet ("WSJ"); source is the channel ("Blogs").
       // Corroboration must count outlets, so the outlet wins when present.
@@ -3871,47 +3870,23 @@ async function fetchRssNewsForImpact() {
     .filter((n) => n.title && n.ms);
 }
 
-// The short-window move for one symbol, measured against its own recent volume
-// rather than a global constant — a 3x volume spike means something different
-// on BTC than on a microcap.
+// One symbol's move over the news window, against its own prior volume.
 async function symbolWindowMove(symbol) {
   const raw = await bybitAsBinance('klines', new URLSearchParams({
-    symbol, interval: '5m', limit: String(IMPACT_BASELINE_BARS + IMPACT_WINDOW_BARS),
+    symbol, interval: '5m', limit: String(MOVE_BASELINE_BARS + MOVE_WINDOW_BARS),
   }));
   if (!raw) return null;
   let rows;
   try { rows = JSON.parse(raw); } catch { return null; }
-  if (!Array.isArray(rows) || rows.length < IMPACT_BASELINE_BARS + IMPACT_WINDOW_BARS) return null;
-
-  const window = rows.slice(-IMPACT_WINDOW_BARS);
-  const baseline = rows.slice(0, rows.length - IMPACT_WINDOW_BARS);
-  const openPrice = Number(window[0][1]);
-  const closePrice = Number(window[window.length - 1][4]);
-  if (!(openPrice > 0) || !(closePrice > 0)) return null;
-
-  const windowVol = window.reduce((sum, k) => sum + (Number(k[5]) || 0), 0) / window.length;
-  const baseVol = baseline.reduce((sum, k) => sum + (Number(k[5]) || 0), 0) / baseline.length;
-  if (!(baseVol > 0)) return null;
-
-  return {
-    symbol,
-    changePct: ((closePrice - openPrice) / openPrice) * 100,
-    volumeX: windowVol / baseVol,
-    windowMin: IMPACT_WINDOW_BARS * 5,
-  };
+  return windowMove(symbol, rows);
 }
 
-// One ticker call prices every listed pair; only the few moving RIGHT NOW are
-// worth a kline read, so the expensive step stays bounded however many pairs
-// the exchange lists.
-//
-// Candidates are ranked against a price snapshot from the previous run, not by
-// 24h change. That distinction was found by running this live: TRUMPUSDT ranked
-// first on 24h change while its actual 15-minute move was +0.04%, so a 24h
-// ranking spends the whole kline budget on coins that moved hours ago and never
-// looks at the one spiking this minute. The snapshot costs one KV read and one
-// write, and yields a real short-window mover list across every symbol.
-async function scanCandidateMoves(env) {
+// One ticker call prices every listed pair. Kline reads stay capped: majors
+// always, then assets the headlines named, then the few largest short-window
+// spikes. A snapshot of every liquid pair is what those spikes are measured
+// against. Written before the kline reads so a later failure still advances
+// the baseline — a stuck snapshot would inflate every subsequent delta.
+async function scanCandidateMoves(env, mentioned = []) {
   const rawTickers = await bybitAsBinance('ticker/24hr', new URLSearchParams());
   if (!rawTickers) return [];
   let tickers;
@@ -3919,38 +3894,22 @@ async function scanCandidateMoves(env) {
   if (!Array.isArray(tickers)) return [];
 
   const liquid = tickers.filter((t) => String(t.symbol || '').endsWith('USDT')
-    && (Number(t.quoteVolume) || 0) >= IMPACT_MIN_QUOTE_VOL
+    && (Number(t.quoteVolume) || 0) >= SCAN_MIN_QUOTE_VOL
     && Number(t.lastPrice) > 0);
 
   const prev = (await env.ALERTS_KV.get('news:impact:prices', 'json')) || {};
   const snapshot = {};
   for (const t of liquid) snapshot[t.symbol] = Number(t.lastPrice);
-  // Written before the kline reads so a later failure still advances the
-  // baseline — a stuck snapshot would inflate every subsequent delta.
   await env.ALERTS_KV.put('news:impact:prices', JSON.stringify(snapshot), { expirationTtl: 60 * 60 * 3 });
 
-  const ranked = liquid
-    .map((t) => {
-      const before = Number(prev[t.symbol]) || 0;
-      const nowPrice = Number(t.lastPrice);
-      // No baseline yet (first run, or a newly listed pair) — fall back to the
-      // 24h figure so the very first run still produces something.
-      const delta = before > 0
-        ? ((nowPrice - before) / before) * 100
-        : (Number(t.priceChangePercent) || 0);
-      return { symbol: t.symbol, delta };
-    })
-    .sort((a, b) => Math.abs(b.delta) - Math.abs(a.delta))
-    .slice(0, IMPACT_SCAN_TOP)
-    .map((t) => t.symbol);
-
-  const settled = await Promise.allSettled(ranked.map(symbolWindowMove));
+  const symbols = rankScanSymbols(liquid, prev, mentioned);
+  const settled = await Promise.allSettled(symbols.map(symbolWindowMove));
   return settled.filter((r) => r.status === 'fulfilled' && r.value).map((r) => r.value);
 }
 
 async function buildNewsImpact(env) {
   const now = Date.now();
-  const [fast, moves] = await Promise.all([fetchFastNews(), scanCandidateMoves(env)]);
+  const fast = await fetchFastNews();
   let news = fast.items;
   let newsSource = 'fast';
   let windowMin = ATTRIBUTION_WINDOW_MIN;
@@ -3964,6 +3923,13 @@ async function buildNewsImpact(env) {
     windowMin = IMPACT_RSS_WINDOW_MIN;
   }
   const index = buildMentionIndex(news, { now, windowMin });
+  // Headlines first, then prices: a coin the coverage is naming (Zcash, BTC)
+  // gets a kline read even when its last 10 minutes were quiet.
+  const mentioned = [...index.values()]
+    .filter((m) => m.kind === 'ticker')
+    .sort((a, b) => b.sources.length - a.sources.length)
+    .map((m) => m.entity);
+  const moves = await scanCandidateMoves(env, mentioned);
   const findings = attributeMoves(moves, index, { now }).map((f) => ({ ...f, text: describeFinding(f) }));
 
   // What the market is loudest about right now, whether or not price moved.

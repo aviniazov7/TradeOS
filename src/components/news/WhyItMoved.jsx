@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react';
 import { Activity, ExternalLink, Radio, TrendingUp, TrendingDown } from 'lucide-react';
 import { fetchNewsImpact } from '../../services/newsService';
 import { LRM } from '../../utils/formatters';
+import { decodeHtmlEntities } from '../../utils/htmlEntities';
 
 const AGE = (min) => (min < 60 ? `לפני ${min} דק׳` : `לפני ${Math.round(min / 60)} שע׳`);
 
@@ -47,7 +48,7 @@ function MoveCard({ f }) {
               {meta.label}
             </span>
           </div>
-          <p className="text-xs text-text-secondary leading-relaxed mt-1.5">{f.text}</p>
+          <p className="text-xs text-text-secondary leading-relaxed mt-1.5">{decodeHtmlEntities(f.text)}</p>
           {f.story?.url && (
             <a
               href={f.story.url}
@@ -126,7 +127,7 @@ export default function WhyItMoved() {
                   {m.sourceCount}
                 </span>
                 <span className="min-w-0 flex-1 text-text-secondary" dir="auto">
-                  {m.title}
+                  {decodeHtmlEntities(m.title)}
                   <span className="text-text-muted"> · {AGE(m.ageMin)}</span>
                 </span>
               </li>
