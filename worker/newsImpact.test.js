@@ -1,7 +1,8 @@
 import { describe, it, expect } from 'vitest';
 import {
   baseTicker, extractEntities, buildMentionIndex, isAnomalous, attributeMoves,
-  describeFinding, MOVE_MIN_PCT, MOVE_MIN_VOL_X, MIN_SOURCES_ASSET, MIN_SOURCES_MACRO,
+  describeFinding, windowMove, rankScanSymbols, MOVE_MIN_PCT, MOVE_MIN_VOL_X,
+  MOVE_WINDOW_BARS, MOVE_BASELINE_BARS, MIN_SOURCES_ASSET, MIN_SOURCES_MACRO,
 } from './newsImpact';
 
 // The whole point of this module is that it does NOT cry wolf and does NOT
@@ -46,6 +47,14 @@ describe('extractEntities', () => {
     const e = extractEntities({ title: 'Fed holds rates steady as CPI cools' });
     expect(e.macro).toContain('fed');
     expect(e.tickers).toEqual([]);
+  });
+
+  it('reads a Trump/Iran headline and a Zcash name', () => {
+    const iran = extractEntities({ title: 'Trump says a deal with Iran is close, Bitcoin rises' });
+    expect(iran.macro).toEqual(expect.arrayContaining(['trump', 'iran']));
+    expect(iran.tickers).toContain('btc');
+    const zec = extractEntities({ title: 'Zcash leads the crypto bounce, surging 8.5%' });
+    expect(zec.tickers).toContain('zec');
   });
 
   it('rejects a ticker that is an ordinary English word unless the title names it', () => {
@@ -241,5 +250,112 @@ describe('describeFinding', () => {
     const s = describeFinding({ ...base, changePct: -3.2, cause: 'unexplained', theme: null, story: null });
     expect(s).toContain('ירד 3.2%');
     expect(s).not.toContain('עלה');
+  });
+
+  it('phrases a four-hour window in hours', () => {
+    const s = describeFinding({ ...base, windowMin: 240, cause: 'unexplained', theme: null, story: null });
+    expect(s).toContain('ב-4 השעות האחרונות');
+    expect(s).not.toContain('240 דקות');
+  });
+});
+
+// Oldest-first Binance-shaped 5m candles. The last `windowBars` are the move;
+// the bars before them are the volume baseline. Prices match the 2026-10-20
+// session: BTC went from about 81,500 to 82,805 (+1.60%) over four hours.
+function candles({
+  bars = MOVE_BASELINE_BARS + MOVE_WINDOW_BARS,
+  windowBars = MOVE_WINDOW_BARS,
+  price0 = 81500,
+  price1 = 81500,
+  baseVol = 10,
+  windowVol = 10,
+}) {
+  const rows = [];
+  const start = bars - windowBars;
+  for (let i = 0; i < bars; i++) {
+    const inWindow = i >= start;
+    const t = inWindow ? (i - start) / (windowBars - 1) : 0;
+    const price = inWindow ? price0 + (price1 - price0) * t : price0;
+    const vol = inWindow ? windowVol : baseVol;
+    rows.push([i * 300000, price, price, price, price, vol]);
+  }
+  return rows;
+}
+
+describe('windowMove with a real session', () => {
+  it('detects the 2026-10-20 BTC rally and attributes it to the Trump/Iran headlines', () => {
+    // +1.60% over 4h, volume 3.1× the prior 4h. The old gate (2.5% inside 15
+    // minutes) rejected this: the biggest 15-minute slice that day was +1.33%.
+    const move = windowMove('BTCUSDT', candles({ price0: 81500, price1: 82805, baseVol: 10, windowVol: 31 }));
+    expect(move.windowMin).toBe(240);
+    expect(move.changePct).toBeGreaterThan(1.5);
+    expect(move.changePct).toBeLessThan(2.5);
+    expect(move.volumeX).toBeGreaterThan(MOVE_MIN_VOL_X);
+    expect(isAnomalous(move)).toBe(true);
+
+    const idx = buildMentionIndex([
+      { title: 'Trump says Iran deal is close as Bitcoin reclaims $83,000', source: 'WSJ', ms: minsAgo(40) },
+      { title: 'Bitcoin rises after Trump remarks on an Iran agreement', source: 'CoinDesk', ms: minsAgo(25) },
+      { title: 'Crypto jumps as Trump talks up a deal with Iran', source: 'CNBC', ms: minsAgo(12) },
+    ], { now: NOW });
+    const [f] = attributeMoves([move], idx, { now: NOW });
+    expect(f.ticker).toBe('BTC');
+    expect(f.cause).toBe('direct');
+    expect(f.story.title).toMatch(/Iran|Trump|Bitcoin/);
+    expect(f.story.sourceCount).toBeGreaterThanOrEqual(MIN_SOURCES_ASSET);
+    const sentence = describeFinding({ ...f, theme: f.theme });
+    expect(sentence).toContain('BTC');
+    expect(sentence).toContain('עלה');
+    expect(sentence).toMatch(/Iran|Trump|Bitcoin/);
+  });
+
+  it('stays quiet when price and volume never leave the ordinary range', () => {
+    // +0.17% and 1.2× volume — a flat afternoon. Both gates miss, so the
+    // panel keeps the "nothing crossed the threshold" message.
+    const move = windowMove('BTCUSDT', candles({ price0: 82000, price1: 82140, baseVol: 10, windowVol: 12 }));
+    expect(Math.abs(move.changePct)).toBeLessThan(MOVE_MIN_PCT);
+    expect(move.volumeX).toBeLessThan(MOVE_MIN_VOL_X);
+    expect(isAnomalous(move)).toBe(false);
+    const idx = buildMentionIndex([
+      { title: 'Bitcoin holds steady as traders wait', source: 'WSJ', ms: minsAgo(20) },
+      { title: 'Bitcoin little changed on the day', source: 'CoinDesk', ms: minsAgo(10) },
+    ], { now: NOW });
+    expect(attributeMoves([move], idx, { now: NOW })).toEqual([]);
+  });
+
+  it('rejects a drift that is large in price but ordinary in volume', () => {
+    const move = windowMove('ETHUSDT', candles({ price0: 3000, price1: 3090, baseVol: 10, windowVol: 12 }));
+    expect(move.changePct).toBeGreaterThan(MOVE_MIN_PCT);
+    expect(isAnomalous(move)).toBe(false);
+  });
+});
+
+describe('rankScanSymbols', () => {
+  const tickers = [
+    { symbol: 'BTCUSDT', lastPrice: '82800', quoteVolume: '1100000000', priceChangePercent: '1.6' },
+    { symbol: 'ETHUSDT', lastPrice: '3200', quoteVolume: '500000000', priceChangePercent: '2.2' },
+    { symbol: 'SOLUSDT', lastPrice: '180', quoteVolume: '200000000', priceChangePercent: '2.0' },
+    { symbol: 'XRPUSDT', lastPrice: '0.5', quoteVolume: '100000000', priceChangePercent: '2.0' },
+    { symbol: 'BNBUSDT', lastPrice: '600', quoteVolume: '60000000', priceChangePercent: '1.4' },
+    { symbol: 'ZECUSDT', lastPrice: '1210', quoteVolume: '165000000', priceChangePercent: '6.8' },
+    { symbol: 'DUSTUSDT', lastPrice: '0.01', quoteVolume: '1000', priceChangePercent: '40' },
+    ...['AAA', 'BBB', 'CCC', 'DDD'].map((s, i) => ({
+      symbol: `${s}USDT`, lastPrice: '1', quoteVolume: '20000000', priceChangePercent: String(3 + i),
+    })),
+  ];
+  // BTC barely moved since the last snapshot. Four alts twitched harder.
+  const prev = Object.fromEntries(tickers.map((t) => [t.symbol, Number(t.lastPrice)]));
+  prev.AAAUSDT = 0.9;
+  prev.BBBUSDT = 0.9;
+  prev.CCCUSDT = 0.9;
+  prev.DDDUSDT = 0.9;
+  prev.BTCUSDT = 82790;
+
+  it('still reads BTC and a headline-named coin when the short-window ranking ignores them', () => {
+    const symbols = rankScanSymbols(tickers, prev, ['zec', 'btc']);
+    expect(symbols.slice(0, 5)).toEqual(['BTCUSDT', 'ETHUSDT', 'SOLUSDT', 'XRPUSDT', 'BNBUSDT']);
+    expect(symbols).toContain('ZECUSDT');
+    expect(symbols).not.toContain('DUSTUSDT');
+    expect(symbols.length).toBeLessThanOrEqual(10);
   });
 });

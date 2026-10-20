@@ -8,17 +8,15 @@ import { hebrewEventTitle } from '../../utils/econCalendarTerms';
 import { headlineNeedsTranslation } from '../../utils/newsHeadline';
 import { dropInvalidTranslations, isHebrewSafeText, isHebrewSafeTranslation, preferredHeadline, safeHebrew } from '../../utils/newsScript';
 import { safeHttpUrl } from '../../utils/urls';
+import { decodeHtmlEntities } from '../../utils/htmlEntities';
 import SelectDropdown from '../shared/SelectDropdown';
 import PageHeader from '../shared/PageHeader';
 import CalendarAlertToggle from './CalendarAlertToggle';
 
-// Feed text arrives with HTML entities (S&amp;P) and in either language.
-// plaintext bidi orders each line by its own first strong character, so an
-// English headline keeps its "?" and "." at the end while still sitting
+// Feed text arrives with HTML entities (S&amp;P, Bitcoin&#8217;s) and in either
+// language. plaintext bidi orders each line by its own first strong character,
+// so an English headline keeps its "?" and "." at the end while still sitting
 // right-aligned in the RTL page.
-const decodeEntities = (t) => String(t || '')
-  .replace(/&amp;/g, '&').replace(/&quot;/g, '"').replace(/&#0?39;|&apos;/g, "'")
-  .replace(/&lt;/g, '<').replace(/&gt;/g, '>').replace(/&nbsp;/g, ' ');
 const bidiText = { unicodeBidi: 'plaintext', textAlign: 'right' };
 
 // ─── News Sources (per market) ───
@@ -165,7 +163,7 @@ function timeAgo(dateStr) {
 
 function cleanHtml(html) {
   if (!html) return '';
-  const text = html.replace(/<[^>]*>/g, '').replace(/&[a-z]+;/gi, ' ').trim();
+  const text = decodeHtmlEntities(String(html).replace(/<[^>]*>/g, '')).replace(/\s+/g, ' ').trim();
   return text.length > 200 ? text.substring(0, 200) + '...' : text;
 }
 
@@ -815,8 +813,8 @@ function AiBrief({ market }) {
               >
                 <span className="num-mono w-6 h-6 shrink-0 grid place-items-center rounded-lg bg-bg-tertiary text-[11px] font-bold text-text-secondary mt-0.5">{i + 1}</span>
                 <span className="min-w-0 flex-1">
-                  <span className="block text-sm font-semibold text-text-primary group-hover:text-accent-hover transition-colors leading-snug" style={bidiText}>{decodeEntities(preferredHeadline(heHeadlines[story.headline], story.headline, story.sources?.[0]?.title))}</span>
-                  {safeHebrew(story.why) && <span className="block text-xs text-text-muted mt-1 line-clamp-2">{story.why}</span>}
+                  <span className="block text-sm font-semibold text-text-primary group-hover:text-accent-hover transition-colors leading-snug" style={bidiText}>{decodeHtmlEntities(preferredHeadline(heHeadlines[story.headline], story.headline, story.sources?.[0]?.title))}</span>
+                  {safeHebrew(story.why) && <span className="block text-xs text-text-muted mt-1 line-clamp-2">{decodeHtmlEntities(story.why)}</span>}
                   <span className="flex flex-wrap items-center gap-1.5 mt-1.5">
                     <span className={`px-1.5 py-px rounded-md text-[10px] font-bold border ${impact.cls}`}>{impact.label}</span>
                     {story.category && <span className="px-1.5 py-px rounded-md text-[10px] font-medium bg-bg-tertiary text-text-secondary">{story.category}</span>}
@@ -880,7 +878,7 @@ function NewsFeed({ market }) {
           const data = await res.json();
           if (data.status !== 'ok') throw new Error(`${source.key} status error`);
           return (data.items || []).map((item) => ({
-            title: item.title,
+            title: decodeHtmlEntities(item.title),
             // Strip WordPress-feed boilerplate ("The post X appeared first on Y")
             description: cleanHtml(item.description || item.content).replace(/The post .*$/i, '').trim(),
             thumbnail: safeHttpUrl(item.thumbnail || item.enclosure?.link),
@@ -1114,11 +1112,11 @@ function NewsFeed({ market }) {
                           </div>
                         )}
                         <div className="flex-1 min-w-0">
-                          <h3 className="text-sm md:text-[15px] font-bold text-text-primary mb-1 line-clamp-2 leading-snug group-hover:text-accent-hover transition-colors" title={safeHebrew(heMap[article.link]?.title) ? decodeEntities(article.title) : undefined} style={bidiText}>
-                            {decodeEntities(safeHebrew(heMap[article.link]?.title) || article.title)}
+                          <h3 className="text-sm md:text-[15px] font-bold text-text-primary mb-1 line-clamp-2 leading-snug group-hover:text-accent-hover transition-colors" title={safeHebrew(heMap[article.link]?.title) ? decodeHtmlEntities(article.title) : undefined} style={bidiText}>
+                            {decodeHtmlEntities(safeHebrew(heMap[article.link]?.title) || article.title)}
                           </h3>
                           <p className="text-xs md:text-sm text-text-muted line-clamp-2 mb-2 hidden sm:block" style={bidiText}>
-                            {decodeEntities(safeHebrew(heMap[article.link]?.desc) || article.description)}
+                            {decodeHtmlEntities(safeHebrew(heMap[article.link]?.desc) || article.description)}
                           </p>
                           <div className="flex items-center gap-2.5 text-[11px] text-text-muted">
                             <span className="px-1.5 py-px bg-bg-tertiary border border-border-primary rounded-md font-semibold text-text-secondary">
