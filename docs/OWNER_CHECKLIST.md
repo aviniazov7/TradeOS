@@ -1,7 +1,21 @@
 # רשימת משימות לבעלים — TradeOS
 
 > מה נשאר לך לעשות (לא קוד). לכל סעיף: מתי, איפה, ומה בדיוק ללחוץ.
-> עודכן: 9.10.2026. כשמשהו נסגר — סמן V, ובקש מ-Claude לעדכן את `docs/NEXT.md` וה-README אם צריך.
+> עודכן: 20.10.2026. כשמשהו נסגר — סמן V, ובקש מ-Claude לעדכן את `docs/NEXT.md` וה-README אם צריך.
+
+---
+
+## 0. אחרי המיזוג ל-main — הכתובת החדשה  ☐
+
+**מה זה:** האתר החי עובר ל-[tradeos.web.app](https://tradeos.web.app). [tradeos-91a58.web.app](https://tradeos-91a58.web.app) מפנה אליו (301, שומר נתיב ופרמטרים). זה קורה רק במיזוג ל-`main`, לא במיזוג ל-`dev`.
+
+**מה לוודא אחרי שהדיפלוי ל-main ירוק:**
+1. `https://tradeos.web.app` נפתח, וההתחברות עם Google עובדת (כולל ב-PWA).
+2. `https://tradeos-91a58.web.app/login?x=1` מגיע ל-`https://tradeos.web.app/login?x=1` (301).
+3. אם בלוג של GitHub Actions כתוב `AUTHORIZED_DOMAINS=pending`: [Authentication → Settings → Authorized domains](https://console.firebase.google.com/project/tradeos-91a58/authentication/settings) ← להוסיף `tradeos.web.app` ו-`tradeos.firebaseapp.com`.
+4. אם Google מחזיר `redirect_uri_mismatch`: ב-[Credentials](https://console.cloud.google.com/apis/credentials?project=tradeos-91a58) על ה-Web client של ההתחברות, להוסיף origin `https://tradeos.web.app` ו-redirect URI `https://tradeos.web.app/__/auth/handler`.
+
+קישורי איפוס סיסמה ואימות אימייל נמשכים אוטומטית אל `tradeos.web.app` (`authDomain`). אין כתובת continue קבועה בקוד.
 
 ---
 

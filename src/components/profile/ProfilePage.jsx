@@ -39,7 +39,7 @@ const BUILD_LABEL = (() => {
   return parts.length ? ` · ${parts.join(' · ')}` : '';
 })();
 
-const APP_URL = 'https://tradeos-91a58.web.app';
+const APP_URL = 'https://tradeos.web.app';
 
 // What the user trades. Drives the new-trade form's default + which symbol
 // catalog it shows. Multi-select (Premium): crypto, futures, stocks.

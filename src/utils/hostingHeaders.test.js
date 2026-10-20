@@ -1,11 +1,16 @@
 import { describe, it, expect } from 'vitest';
 import { readFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
+import { APP_URL } from '../../worker/emailTheme.js';
 
 // Guards the Content-Security-Policy that Firebase Hosting sends (firebase.json).
 // public/_headers is NOT read by Firebase Hosting — only these headers ship.
 const config = JSON.parse(readFileSync(fileURLToPath(new URL('../../firebase.json', import.meta.url)), 'utf8'));
-const globalHeaders = config.hosting.headers.find((h) => h.source === '**').headers;
+const firebaserc = JSON.parse(readFileSync(fileURLToPath(new URL('../../.firebaserc', import.meta.url)), 'utf8'));
+const sites = Array.isArray(config.hosting) ? config.hosting : [config.hosting];
+const appHosting = sites.find((h) => h.target === 'app');
+const legacyHosting = sites.find((h) => h.target === 'legacy');
+const globalHeaders = appHosting.headers.find((h) => h.source === '**').headers;
 const header = (key) => globalHeaders.find((h) => h.key === key)?.value;
 
 function directives(policy) {
@@ -64,6 +69,17 @@ describe('hosting CSP (report-only)', () => {
       expect(d['frame-src']).toContain(origin);
     }
   });
+
+  it('allows the auth handler on the new site and the previous one', () => {
+    for (const origin of [
+      'https://tradeos.web.app',
+      'https://tradeos.firebaseapp.com',
+      'https://tradeos-91a58.web.app',
+      'https://tradeos-91a58.firebaseapp.com',
+    ]) {
+      expect(d['frame-src']).toContain(origin);
+    }
+  });
 });
 
 describe('hosting CSP (enforced)', () => {
@@ -75,8 +91,8 @@ describe('hosting CSP (enforced)', () => {
 });
 
 describe('hosting cache headers', () => {
-  const sources = config.hosting.headers.map((h) => h.source);
-  const cacheOf = (source) => config.hosting.headers
+  const sources = appHosting.headers.map((h) => h.source);
+  const cacheOf = (source) => appHosting.headers
     .find((h) => h.source === source)?.headers.find((h) => h.key === 'Cache-Control')?.value;
 
   it('caches images and self-hosted fonts for a week', () => {
@@ -111,6 +127,25 @@ describe('login document', () => {
   });
 });
 
+describe('hosting targets', () => {
+  it('deploys the app to tradeos and the 301 to the previous default site', () => {
+    expect(firebaserc.targets['tradeos-91a58'].hosting.app).toEqual(['tradeos']);
+    expect(firebaserc.targets['tradeos-91a58'].hosting.legacy).toEqual(['tradeos-91a58']);
+    expect(appHosting.public).toBe('dist/client');
+    expect(appHosting.rewrites).toEqual([{ source: '**', destination: '/index.html' }]);
+    expect(legacyHosting.public).toBe('hosting/legacy');
+    expect(legacyHosting.rewrites).toBeUndefined();
+  });
+
+  it('301s every path on the old site to the new one, keeping the path', () => {
+    expect(APP_URL).toBe('https://tradeos.web.app');
+    expect(legacyHosting.redirects).toEqual([
+      { source: '/', destination: 'https://tradeos.web.app/', type: 301 },
+      { source: '/**', destination: 'https://tradeos.web.app/:splat', type: 301 },
+    ]);
+  });
+});
+
 describe('robots.txt / sitemap.xml', () => {
   const read = (p) => readFileSync(fileURLToPath(new URL(`../../public/${p}`, import.meta.url)), 'utf8');
   const robots = read('robots.txt');
@@ -118,12 +153,12 @@ describe('robots.txt / sitemap.xml', () => {
 
   it('keeps the signed-in app out of search and points at the sitemap', () => {
     expect(robots).toMatch(/^Disallow: \/$/m);
-    expect(robots).toMatch(/^Sitemap: https:\/\/tradeos-91a58\.web\.app\/sitemap\.xml$/m);
+    expect(robots).toMatch(/^Sitemap: https:\/\/tradeos\.web\.app\/sitemap\.xml$/m);
   });
 
   it('lists only pages robots.txt allows', () => {
     const allowed = [...robots.matchAll(/^Allow: (\S+)$/gm)].map((m) => m[1].replace(/\$$/, ''));
-    const locs = [...sitemap.matchAll(/<loc>https:\/\/tradeos-91a58\.web\.app(\/[^<]*)<\/loc>/g)].map((m) => m[1]);
+    const locs = [...sitemap.matchAll(/<loc>https:\/\/tradeos\.web\.app(\/[^<]*)<\/loc>/g)].map((m) => m[1]);
     expect(locs.length).toBeGreaterThan(0);
     for (const loc of locs) expect(allowed).toContain(loc);
   });
