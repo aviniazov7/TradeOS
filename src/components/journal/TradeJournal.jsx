@@ -41,9 +41,9 @@ import { pageVariants, pageTransition } from '../../utils/animations';
 import { TRADE_PREFILL_KEY } from '../../utils/tradeFormHelpers';
 import { CRYPTO_JOURNAL_TABS, OTHER_JOURNAL_TABS, resolveJournalTab } from '../../utils/journalTabs';
 
-const TAB_LABELS = { trades: 'עסקאות', exchange: 'בורסה', analytics: 'אנליטיקה', week: 'שבוע', calendar: 'יומן חודשי' };
-// Phone row: short labels. Five tabs wrap (see TabStrip).
-const TAB_MOBILE = { trades: 'עסקאות', exchange: 'בורסה', analytics: 'אנליטיקה', week: 'שבוע', calendar: 'יומן' };
+const TAB_LABELS = { trades: 'עסקאות', exchange: 'בורסה', analytics: 'אנליטיקה', calendar: 'יומן חודשי' };
+// Phone row: short labels. Four tabs (crypto) or three (stocks/futures) sit on one row.
+const TAB_MOBILE = { trades: 'עסקאות', exchange: 'בורסה', analytics: 'אנליטיקה', calendar: 'יומן' };
 const defaultFilters = { search: '', direction: '', result: '', status: '', strategy: '', setup: '', tag: '', timeframe: '', month: '', from: '', to: '' };
 const defaultSort = { key: 'date', dir: 'desc' };
 // Phone sort picker (desktop sorts by clicking column headers).
@@ -66,7 +66,6 @@ const entryDay = (t) => (t.entryDate ? localDayKey(t.entryDate) : '');
 // tab pulls in recharts (~414 kB).
 const OpenPositionsTab = lazy(() => import('./OpenPositionsTab'));
 const JournalAnalyticsTab = lazy(() => import('./JournalAnalyticsTab'));
-const WeeklySummary = lazy(() => import('./WeeklySummary'));
 const MonthlyCalendar = lazy(() => import('./MonthlyCalendar'));
 // The trade form is the journal's main action — its chunk is preloaded once
 // the journal is up (see below) so the first "עסקה חדשה" opens instantly.
@@ -806,12 +805,6 @@ export default function TradeJournal() {
             onFilterJump={filterAndJump}
             onAddFirstTrade={() => { setTab('trades'); setFormOpen(true); }}
           />
-        </Suspense>
-      )}
-
-      {tab === 'week' && (
-        <Suspense fallback={<TabFallback />}>
-          <WeeklySummary trades={trades} onFilterJump={filterAndJump} />
         </Suspense>
       )}
 

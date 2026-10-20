@@ -1,6 +1,7 @@
 import Modal from '../shared/Modal';
 import TradeScreenshots from './TradeScreenshots';
 import TradingViewPreview from './TradingViewPreview';
+import { tradeChartLinks } from '../../utils/tradingViewLink';
 import {
   formatCurrency,
   formatPrice,
@@ -12,7 +13,6 @@ import {
 import { MISTAKE_LABELS } from '../../utils/constants';
 import { setupLabel, tradeSetups } from '../../utils/setupStats';
 import { isClosedTrade, signedTradeR, tradeNetPercent, tradeDurationMs } from '../../utils/calculations';
-import { safeHttpUrl } from '../../utils/urls';
 import TradeExcursion from './TradeExcursion';
 import {
   TrendingUp,
@@ -111,9 +111,8 @@ export default function TradeDetailModal({
     return formatCurrency(Math.abs(n)).replace('+', '');
   };
 
-  // ── TradingView snapshot preview ──────────────────────────────────
-  // User-typed URL — sanitize once here; every href/img below derives from it.
-  const tvUrl = safeHttpUrl(trade.tradingViewUrl) || '';
+  // TradingView links on the trade (up to four). Legacy single URL included.
+  const chartLinks = tradeChartLinks(trade);
 
   // ── Details ───────────────────────────────────────────────────────
   const partialExits =
@@ -370,9 +369,11 @@ export default function TradeDetailModal({
         )}
       </div>
 
-      {tvUrl && <TradingViewPreview key={tvUrl} url={tvUrl} pair={pair} />}
+      {chartLinks.map((url) => (
+        <TradingViewPreview key={url} url={url} pair={pair} />
+      ))}
 
-      {/* 7) Uploaded chart screenshots (own component + subcollection) */}
+      {/* Legacy data-URL screenshots, read-only. Hidden when the trade has none. */}
       {trade.id && <TradeScreenshots key={trade.id} tradeId={trade.id} pair={pair} />}
     </Modal>
   );

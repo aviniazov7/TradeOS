@@ -155,7 +155,7 @@ export function useTrades(journalId = null) {
     if (!user) throw new Error('No user');
     try {
       await deleteUserDocument(user.uid, 'trades', tradeId);
-      // Best-effort: drop the trade's chart screenshots too (separate
+      // Best-effort: drop legacy chart-screenshot docs too (separate
       // subcollection). Not awaited — a failure must not fail the delete.
       deleteTradeImages(user.uid, tradeId).catch((e) => console.warn('Trade screenshot cleanup failed:', e));
     } catch (error) {
