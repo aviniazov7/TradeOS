@@ -48,3 +48,29 @@ export function confidenceBucket(conf) {
  * purpose. The worker enforces the same cap server-side.
  */
 export const MAX_SCAN_TAGS = 15;
+
+/**
+ * Whether this user's Wyckoff engine is running, and whether the cron should
+ * actually fetch candles.
+ *
+ * `enabled` is the persisted toggle on `users/{uid}/settings/scanner.enabled`:
+ * - `true` / `false` — the owner's explicit choice
+ * - `null` / `undefined` — nothing saved yet. Default is paused when no coin
+ *   is tagged long/short, and running when at least one coin is tagged
+ *   (that was the engine's behavior before the toggle existed).
+ *
+ * An empty watchlist never scans, even if the toggle is on: there is nothing
+ * to request candles for.
+ *
+ * @param {boolean|null|undefined} enabled
+ * @param {number} taggedCount long/short-tagged coins
+ * @returns {{ running: boolean, scan: boolean }}
+ */
+export function wyckoffEngineState(enabled, taggedCount) {
+  const tagged = Number(taggedCount) > 0;
+  let running;
+  if (enabled === true) running = true;
+  else if (enabled === false) running = false;
+  else running = tagged;
+  return { running, scan: running && tagged };
+}
