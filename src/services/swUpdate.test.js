@@ -20,4 +20,16 @@ describe('service worker takeover', () => {
     expect(sw).toContain('responseIsHtmlForImage');
     expect(sw).toContain("statusText: 'Not an image'");
   });
+
+  it('leaves Firebase /__/auth responses to Hosting instead of the app shell', () => {
+    const sw = readFileSync(new URL('../../public/sw.js', import.meta.url), 'utf8');
+    const start = sw.indexOf('const BYPASS_HOST_PATTERNS');
+    const end = sw.indexOf('function isPrivateWorkerRequest');
+    const shouldBypass = new Function(`${sw.slice(start, end)}\nreturn shouldBypass;`)();
+    expect(shouldBypass('https://tradeoslive.web.app/__/auth/handler')).toBe(true);
+    expect(shouldBypass('https://tradeoslive.web.app/__/auth/iframe')).toBe(true);
+    expect(shouldBypass('https://tradeoslive.web.app/__/auth/action?mode=resetPassword')).toBe(true);
+    expect(shouldBypass('https://tradeoslive.web.app/dashboard')).toBe(false);
+    expect(shouldBypass('https://tradeoslive.web.app/login')).toBe(false);
+  });
 });

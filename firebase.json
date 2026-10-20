@@ -39,7 +39,7 @@
     ],
     "rewrites": [
       {
-        "source": "**",
+        "source": "!/__/auth{,/**}",
         "destination": "/index.html"
       }
     ]

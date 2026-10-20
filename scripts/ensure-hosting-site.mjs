@@ -14,10 +14,9 @@ import { appendFileSync, readFileSync } from 'node:fs';
 import { pathToFileURL } from 'node:url';
 
 export const PROJECT_ID = 'tradeos-91a58';
-// Google OAuth redirect URI is already registered for this host. The app is
-// served from another origin (tradeoslive.web.app), which is an authorized
-// domain, not authDomain.
-export const AUTH_DOMAIN = 'tradeos-91a58.firebaseapp.com';
+// Same origin as the live site. The Google OAuth web client allows this host
+// and https://tradeoslive.web.app/__/auth/handler.
+export const AUTH_DOMAIN = 'tradeoslive.web.app';
 // Requested ids, in order. tradeos, tradeosapp, and tradeos-app are reserved
 // by other Firebase projects (Hosting returned "reserved by another project"
 // on 2026-10-20). tradeoslive and tradeos-live are the next clean ids.
@@ -81,10 +80,10 @@ export function manualAuthSteps(siteId, detail) {
     'Add these in Firebase Console → Authentication → Settings → Authorized domains:',
     ...domains.map((d) => `- ${d}`),
     '',
-    `Google sign-in uses authDomain ${AUTH_DOMAIN}, which is cross-origin from https://${siteId}.web.app.`,
-    `Popup and redirect load https://${AUTH_DOMAIN}/__/auth/handler. That URI is already on the Google OAuth client; do not add a handler on the hosting domain.`,
+    `Google sign-in uses authDomain ${AUTH_DOMAIN}. Popup and redirect load https://${AUTH_DOMAIN}/__/auth/handler.`,
+    'That origin and redirect URI are on the Google OAuth web client, so the consent screen shows tradeoslive.',
     `Password-reset and email-verification links continue on ${AUTH_DOMAIN} (/__/auth/action).`,
-    `Keep https://${siteId}.web.app in Firebase Auth authorized domains so the cross-origin flow is allowed.`,
+    `Keep https://${siteId}.web.app in Firebase Auth authorized domains.`,
     '',
     `Authorized domains: https://console.firebase.google.com/project/${PROJECT_ID}/authentication/settings`,
     'The iOS PWA function verifies tokens for client 80529278454-eirltbaukcv1ftquu6uth5bbk3srnl7d.apps.googleusercontent.com.',

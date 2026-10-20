@@ -14,11 +14,11 @@ import { initializeAppCheck, ReCaptchaV3Provider } from 'firebase/app-check';
 // and still allow override via VITE_FIREBASE_* if needed.
 const DEFAULTS = {
   apiKey: 'AIzaSyAL7ni8lEqSmd5i6BfA9P3cvlBWEtOgcQ8',
-  // The Google OAuth client already allows this handler. The app is served
-  // from tradeoslive.web.app, so popup and redirect are cross-origin and go
-  // through browserPopupRedirectResolver (see authService.js). That hosting
-  // origin stays in Firebase Auth authorized domains; it is not authDomain.
-  authDomain: 'tradeos-91a58.firebaseapp.com',
+  // Same origin as the site. The Google OAuth web client allows
+  // https://tradeoslive.web.app and .../__/auth/handler, so the consent
+  // screen shows tradeoslive. Hosting serves /__/auth/* itself (reserved
+  // namespace); the SPA rewrite does not claim those paths.
+  authDomain: 'tradeoslive.web.app',
   projectId: 'tradeos-91a58',
   storageBucket: 'tradeos-91a58.firebasestorage.app',
   messagingSenderId: '80529278454',
@@ -59,12 +59,11 @@ try {
 // to never resolve. Use only localStorage to avoid the hang.
 //
 // No popupRedirectResolver here. Passing it makes Firebase inject the
-// authDomain /__/auth iframe (tradeos-91a58.firebaseapp.com, cross-origin
-// from the site) and its gapi script during the first paint of /login.
-// LoginPage warms that iframe after paint. The tap still passes the
-// browserPopupRedirectResolver class into signInWithPopup and
+// same-origin /__/auth iframe (and its gapi script) during the first paint
+// of /login. LoginPage warms that iframe after paint. The tap still passes
+// the browserPopupRedirectResolver class into signInWithPopup and
 // signInWithRedirect — Firebase rejects an instance ("Expected a class
-// definition"). That resolver is what makes the cross-origin handler work.
+// definition").
 export const auth = initializeAuth(app, {
   persistence: browserLocalPersistence,
 });
