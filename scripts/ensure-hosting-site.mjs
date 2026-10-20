@@ -128,7 +128,10 @@ async function api(token, url, { method = 'GET', body } = {}) {
     method,
     headers: {
       Authorization: `Bearer ${token}`,
-      'x-goog-user-project': PROJECT_ID,
+      // Do not send x-goog-user-project. It makes Google require
+      // serviceusage.services.use, which this CI service account does not
+      // have (the same gap that blocks a rules deploy). The Hosting CLI
+      // does not send the header, and Hosting deploy with this account works.
       ...(body ? { 'Content-Type': 'application/json' } : {}),
     },
     body: body ? JSON.stringify(body) : undefined,
