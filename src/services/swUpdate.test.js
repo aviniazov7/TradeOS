@@ -11,7 +11,11 @@ describe('service worker takeover', () => {
 
   it('bumps the cache and does not let the HTTP cache satisfy logos or the shell', () => {
     const sw = readFileSync(new URL('../../public/sw.js', import.meta.url), 'utf8');
-    expect(sw).toContain("const CACHE_NAME = 'tradeos-v308'");
+    const cache = sw.match(/const CACHE_NAME = 'tradeos-v(\d+)'/);
+    // Live production is already tradeos-v322. Keep that generation or newer.
+    // Pushing to main auto-bumps the number, so the test cannot pin one value.
+    expect(cache).not.toBeNull();
+    expect(Number(cache[1])).toBeGreaterThanOrEqual(322);
     expect(sw).toContain("const cacheMode = isImmutableAsset(url) ? 'default' : 'no-store'");
     expect(sw).toContain('responseIsHtmlForImage');
     expect(sw).toContain("statusText: 'Not an image'");

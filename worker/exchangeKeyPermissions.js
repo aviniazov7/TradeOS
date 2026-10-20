@@ -1,0 +1,171 @@
+// On connect, ask the exchange whether this API key can trade or withdraw.
+// Checked venues: Bybit (readOnly flag), OKX (account config `perm`),
+// Bitget (authorities / permType), Binance (apiRestrictions).
+// MEXC has no endpoint a normal key can call to read its own permissions, so
+// the key is stored but reported as unverified (readOnly: null).
+// This module never places an order and never logs the secret.
+
+const enc = new TextEncoder();
+
+async function hmac(secret, msg, out = 'hex') {
+  const key = await crypto.subtle.importKey(
+    'raw', enc.encode(secret), { name: 'HMAC', hash: 'SHA-256' }, false, ['sign'],
+  );
+  const bytes = new Uint8Array(await crypto.subtle.sign('HMAC', key, enc.encode(msg)));
+  if (out === 'base64') {
+    let s = '';
+    for (const b of bytes) s += String.fromCharCode(b);
+    return btoa(s);
+  }
+  return Array.from(bytes).map((b) => b.toString(16).padStart(2, '0')).join('');
+}
+
+async function getJson(fetchImpl, url, headers) {
+  const r = await fetchImpl(url, { headers });
+  const data = await r.json().catch(() => ({}));
+  return data && typeof data === 'object' ? data : {};
+}
+
+export class KeyPermissionError extends Error {
+  constructor(code, message) {
+    super(message);
+    this.name = 'KeyPermissionError';
+    this.code = code;
+  }
+}
+
+const NOT_READONLY = 'המפתח כולל הרשאות מסחר או משיכה. צור מפתח לקריאה בלבד (בלי Trade / Withdraw) ונסה שוב.';
+const CHECK_FAILED = 'לא הצלחנו לאמת שהמפתח הוא לקריאה בלבד. נסה שוב בעוד רגע.';
+const KEY_BAD = 'המפתח לא תקין, חסרות הרשאות קריאה, או שהבורסה דחתה את החיבור.';
+
+export function classifyBybitKey(result) {
+  if (!result || result.readOnly === undefined || result.readOnly === null) return { ok: false, reason: 'unknown' };
+  if (Number(result.readOnly) !== 1) return { ok: false, reason: 'write' };
+  const wallet = Array.isArray(result.permissions?.Wallet) ? result.permissions.Wallet : [];
+  if (wallet.some((p) => /withdraw|transfer/i.test(String(p)))) return { ok: false, reason: 'write' };
+  return { ok: true };
+}
+
+// `perm` is a comma list: read_only, trade, withdraw. Anything besides
+// read_only is a write-capable key.
+export function classifyOkxPerm(perm) {
+  const parts = String(perm || '').split(',').map((s) => s.trim()).filter(Boolean);
+  if (!parts.length) return { ok: false, reason: 'unknown' };
+  if (parts.some((p) => p !== 'read_only')) return { ok: false, reason: 'write' };
+  return { ok: true };
+}
+
+// Bitget v2 short codes. The trailing "r" set is read; "w" / wwow is write
+// or withdraw. Unknown codes fail closed.
+const BITGET_READ = new Set(['coor', 'cpor', 'stor', 'smor', 'ttor', 'wtor', 'taxr', 'chor', 'p2pr', 'pllr']);
+
+export function classifyBitgetAuthorities(authorities) {
+  if (!Array.isArray(authorities) || authorities.length === 0) return { ok: false, reason: 'unknown' };
+  for (const a of authorities) {
+    if (!BITGET_READ.has(String(a).toLowerCase())) return { ok: false, reason: 'write' };
+  }
+  return { ok: true };
+}
+
+export function classifyBitgetV3(data) {
+  if (!data || typeof data !== 'object') return { ok: false, reason: 'unknown' };
+  if (data.permType !== 'read-only') return { ok: false, reason: data.permType ? 'write' : 'unknown' };
+  const perms = Array.isArray(data.permissions) ? data.permissions : [];
+  if (perms.some((p) => /trade|withdraw|mgt|order/i.test(String(p)))) return { ok: false, reason: 'write' };
+  return { ok: true };
+}
+
+const BINANCE_WRITE_FLAGS = [
+  'enableWithdrawals',
+  'enableInternalTransfer',
+  'permitsUniversalTransfer',
+  'enableSpotAndMarginTrading',
+  'enableMargin',
+  'enableFutures',
+  'enableVanillaOptions',
+  'enableFixApiTrade',
+  'enablePortfolioMarginTrading',
+];
+
+export function classifyBinanceRestrictions(data) {
+  if (!data || typeof data !== 'object' || data.code) return { ok: false, reason: 'unknown' };
+  if (data.enableReading !== true) return { ok: false, reason: 'unknown' };
+  if (BINANCE_WRITE_FLAGS.some((k) => data[k] === true)) return { ok: false, reason: 'write' };
+  return { ok: true };
+}
+
+function judgement(j) {
+  if (j.ok) return { verified: true, supported: true };
+  if (j.reason === 'write') throw new KeyPermissionError('key_not_readonly', NOT_READONLY);
+  throw new KeyPermissionError('permission_check_failed', CHECK_FAILED);
+}
+
+export const PERMISSION_CHECKED_EXCHANGES = new Set(['bybit', 'okx', 'bitget', 'binance']);
+
+export async function verifyExchangeKeyReadOnly(exchange, creds, fetchImpl = fetch) {
+  if (!PERMISSION_CHECKED_EXCHANGES.has(exchange)) return { verified: false, supported: false };
+  const { apiKey, apiSecret, passphrase } = creds || {};
+  try {
+    if (exchange === 'bybit') {
+      const ts = Date.now().toString();
+      const recvWindow = '5000';
+      const sign = await hmac(apiSecret, `${ts}${apiKey}${recvWindow}`);
+      const data = await getJson(fetchImpl, 'https://api.bybit.com/v5/user/query-api', {
+        'X-BAPI-API-KEY': apiKey,
+        'X-BAPI-TIMESTAMP': ts,
+        'X-BAPI-SIGN': sign,
+        'X-BAPI-RECV-WINDOW': recvWindow,
+      });
+      if (data.retCode !== 0) throw new KeyPermissionError('key_invalid', KEY_BAD);
+      return judgement(classifyBybitKey(data.result));
+    }
+    if (exchange === 'okx') {
+      const path = '/api/v5/account/config';
+      const ts = new Date().toISOString();
+      const sign = await hmac(apiSecret, `${ts}GET${path}`, 'base64');
+      const data = await getJson(fetchImpl, `https://www.okx.com${path}`, {
+        'OK-ACCESS-KEY': apiKey,
+        'OK-ACCESS-SIGN': sign,
+        'OK-ACCESS-TIMESTAMP': ts,
+        'OK-ACCESS-PASSPHRASE': passphrase || '',
+        'Content-Type': 'application/json',
+      });
+      if (data.code !== '0') throw new KeyPermissionError('key_invalid', KEY_BAD);
+      return judgement(classifyOkxPerm(data.data?.[0]?.perm));
+    }
+    if (exchange === 'bitget') {
+      const headersFor = async (path, ts) => ({
+        'ACCESS-KEY': apiKey,
+        'ACCESS-SIGN': await hmac(apiSecret, `${ts}GET${path}`, 'base64'),
+        'ACCESS-TIMESTAMP': ts,
+        'ACCESS-PASSPHRASE': passphrase || '',
+        'Content-Type': 'application/json',
+        locale: 'en-US',
+      });
+      const v2 = '/api/v2/spot/account/info';
+      const first = await getJson(fetchImpl, `https://api.bitget.com${v2}`, await headersFor(v2, String(Date.now())));
+      if (first.code === '00000' && Array.isArray(first.data?.authorities)) {
+        return judgement(classifyBitgetAuthorities(first.data.authorities));
+      }
+      const v3 = '/api/v3/account/info';
+      const second = await getJson(fetchImpl, `https://api.bitget.com${v3}`, await headersFor(v3, String(Date.now())));
+      if (second.code !== '00000') throw new KeyPermissionError('key_invalid', KEY_BAD);
+      return judgement(classifyBitgetV3(second.data));
+    }
+    if (exchange === 'binance') {
+      const qs = `recvWindow=5000&timestamp=${Date.now()}`;
+      const sign = await hmac(apiSecret, qs);
+      const data = await getJson(
+        fetchImpl,
+        `https://api.binance.com/sapi/v1/account/apiRestrictions?${qs}&signature=${sign}`,
+        { 'X-MBX-APIKEY': apiKey },
+      );
+      if (data.code && data.msg) throw new KeyPermissionError('key_invalid', KEY_BAD);
+      return judgement(classifyBinanceRestrictions(data));
+    }
+  } catch (err) {
+    if (err instanceof KeyPermissionError) throw err;
+    throw new KeyPermissionError('permission_check_failed', CHECK_FAILED);
+  }
+  return { verified: false, supported: false };
+}

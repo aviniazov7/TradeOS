@@ -52,6 +52,34 @@ service cloud.firestore {
         && marketingFieldsOk(request.resource.data);
     }
 
+    // Secret field names are forbidden anywhere in settings. The encrypted
+    // copy lives in Worker KV; Firestore keeps a connection marker only.
+    function noSecretFieldNames(data) {
+      return data is map
+        && !data.keys().hasAny(['apiKey', 'apiSecret', 'secret', 'apiPassphrase', 'passphrase']);
+    }
+
+    function exchangeMarkerOk(m) {
+      return m is map
+        && m.keys().hasOnly(['connected', 'connectedAt', 'connectedAtEstimated', 'address', 'readOnlyVerified'])
+        && (!('connected' in m) || m.connected is bool)
+        && (!('connectedAt' in m) || m.connectedAt is number)
+        && (!('connectedAtEstimated' in m) || m.connectedAtEstimated is bool)
+        && (!('address' in m) || (m.address is string && m.address.size() <= 80))
+        && (!('readOnlyVerified' in m) || m.readOnlyVerified is bool);
+    }
+
+    function exchangesSettingsOk(data) {
+      return data is map
+        && data.keys().hasOnly(['bybit', 'mexc', 'okx', 'bitget', 'binance', 'hyperliquid'])
+        && (!('bybit' in data) || exchangeMarkerOk(data.bybit))
+        && (!('mexc' in data) || exchangeMarkerOk(data.mexc))
+        && (!('okx' in data) || exchangeMarkerOk(data.okx))
+        && (!('bitget' in data) || exchangeMarkerOk(data.bitget))
+        && (!('binance' in data) || exchangeMarkerOk(data.binance))
+        && (!('hyperliquid' in data) || exchangeMarkerOk(data.hyperliquid));
+    }
+
     match /users/{userId} {
       // Owners read their own doc; admins may read any user doc
       // (read-only — admins cannot write to other users' data).
@@ -113,14 +141,20 @@ service cloud.firestore {
       }
       match /settings/{settingId} {
         // Owner-only — admins must NOT be able to read this subcollection.
-        // It holds exchange API keys/secrets (settings/exchanges) in
-        // plaintext; granting isAdmin() read here would expose every user's
-        // exchange credentials (potentially trade/withdraw-capable) to any
-        // admin account, so a single admin compromise would leak them all.
+        // Exchange API secrets belong in the encrypted Worker KV store, never
+        // in this document. settings/exchanges accepts only a non-secret
+        // connection marker. Other settings docs reject the same field names
+        // at the top level so a secret cannot be parked next to notifications.
         // The admin panel reads only the `settings` MAP field on the root
         // users/{uid} doc (baseCurrency / defaultLeverage / …), never this
         // subcollection, so owner-only read does not break the panel.
-        allow read, write: if request.auth != null && request.auth.uid == userId;
+        allow read: if request.auth != null && request.auth.uid == userId;
+        allow delete: if request.auth != null && request.auth.uid == userId;
+        allow create, update: if request.auth != null && request.auth.uid == userId
+          && (
+            (settingId == 'exchanges' && exchangesSettingsOk(request.resource.data))
+            || (settingId != 'exchanges' && noSecretFieldNames(request.resource.data))
+          );
       }
       match /journals/{journalId} {
         allow read: if request.auth != null && (request.auth.uid == userId || isAdmin());
