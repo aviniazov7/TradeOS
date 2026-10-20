@@ -5,6 +5,7 @@ import {
   domainsForSite,
   expectedAppSite,
   firstUsableSite,
+  isSiteIdTaken,
   manualAuthSteps,
   mergeAuthorizedDomains,
 } from './ensure-hosting-site.mjs';
@@ -20,6 +21,12 @@ describe('hosting site selection', () => {
     expect(classifySiteAttempt({ getStatus: 404, createStatus: 409, getAfterStatus: 200 })).toBe('ours');
     expect(classifySiteAttempt({ getStatus: 404, createStatus: 409, getAfterStatus: 404 })).toBe('taken');
     expect(classifySiteAttempt({ getStatus: 404, createStatus: 403 })).toBe('error');
+  });
+
+  it('treats a reserved site id as taken and keeps searching', () => {
+    expect(isSiteIdTaken(400, 'Invalid name: `tradeos` is reserved by another project; try something like `tradeos-1290b` instead')).toBe(true);
+    expect(isSiteIdTaken(409, 'already exists')).toBe(true);
+    expect(isSiteIdTaken(403, 'Caller does not have required permission')).toBe(false);
   });
 
   it('stops at the first site this project can use', () => {

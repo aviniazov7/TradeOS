@@ -52,6 +52,11 @@ export function classifySiteAttempt({ getStatus, createStatus, getAfterStatus })
   return 'error';
 }
 
+export function isSiteIdTaken(status, message) {
+  const text = String(message || '');
+  return status === 409 || /already exists|reserved by another project|already in use/i.test(text);
+}
+
 export function firstUsableSite(candidates, resultsById) {
   for (const id of candidates) {
     const result = resultsById[id];
@@ -159,8 +164,9 @@ async function ensureOneSite(token, siteId) {
   });
   if (create.status === 200 || create.status === 201) return { result: 'created', detail: '' };
   const message = `${create.json?.error?.message || ''} ${create.text || ''}`;
-  const takenStatus = create.status === 409 || /already exists/i.test(message);
-  if (!takenStatus) return { result: 'error', detail: `create ${siteId}: ${errorDetail(create)}` };
+  if (!isSiteIdTaken(create.status, message)) {
+    return { result: 'error', detail: `create ${siteId}: ${errorDetail(create)}` };
+  }
   const again = await api(token, `${HOSTING_API}/projects/${PROJECT_ID}/sites/${siteId}`);
   if (again.status === 200) return { result: 'ours', detail: '' };
   return { result: 'taken', detail: '' };
