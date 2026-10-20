@@ -36,14 +36,15 @@ import JournalFormModal from './JournalFormModal';
 import { downloadCsv } from '../../utils/csv';
 import { JOURNAL_CSV_HEADERS, journalCsvRow } from '../../utils/tradeExport';
 import { TAG_LABELS } from '../../utils/constants';
+import { setupLabel, tradeSetups } from '../../utils/setupStats';
 import { pageVariants, pageTransition } from '../../utils/animations';
 import { TRADE_PREFILL_KEY } from '../../utils/tradeFormHelpers';
 import { CRYPTO_JOURNAL_TABS, OTHER_JOURNAL_TABS, resolveJournalTab } from '../../utils/journalTabs';
 
-const TAB_LABELS = { trades: 'עסקאות', exchange: 'בורסה', analytics: 'אנליטיקה', calendar: 'יומן חודשי' };
-// Phone row: "יומן חודשי" is the only label that needs a shorter form.
-const TAB_MOBILE = { trades: 'עסקאות', exchange: 'בורסה', analytics: 'אנליטיקה', calendar: 'יומן' };
-const defaultFilters = { search: '', direction: '', result: '', status: '', strategy: '', tag: '', timeframe: '', month: '', from: '', to: '' };
+const TAB_LABELS = { trades: 'עסקאות', exchange: 'בורסה', analytics: 'אנליטיקה', week: 'שבוע', calendar: 'יומן חודשי' };
+// Phone row: short labels. Five tabs wrap (see TabStrip).
+const TAB_MOBILE = { trades: 'עסקאות', exchange: 'בורסה', analytics: 'אנליטיקה', week: 'שבוע', calendar: 'יומן' };
+const defaultFilters = { search: '', direction: '', result: '', status: '', strategy: '', setup: '', tag: '', timeframe: '', month: '', from: '', to: '' };
 const defaultSort = { key: 'date', dir: 'desc' };
 // Phone sort picker (desktop sorts by clicking column headers).
 const SORT_OPTIONS = [
@@ -65,6 +66,7 @@ const entryDay = (t) => (t.entryDate ? localDayKey(t.entryDate) : '');
 // tab pulls in recharts (~414 kB).
 const OpenPositionsTab = lazy(() => import('./OpenPositionsTab'));
 const JournalAnalyticsTab = lazy(() => import('./JournalAnalyticsTab'));
+const WeeklySummary = lazy(() => import('./WeeklySummary'));
 const MonthlyCalendar = lazy(() => import('./MonthlyCalendar'));
 // The trade form is the journal's main action — its chunk is preloaded once
 // the journal is up (see below) so the first "עסקה חדשה" opens instantly.
@@ -371,8 +373,11 @@ export default function TradeJournal() {
     const q = filters.search.trim().toLowerCase();
     // Search looks at the pair and at the trade's own words (strategy, notes,
     // entry reason, tags) — "breakout" finds every trade tagged or noted so.
-    const matchesSearch = (t) => [t.pair, t.strategy, t.notes, t.entryReason, ...(Array.isArray(t.tags) ? t.tags.map((tag) => `${tag} ${TAG_LABELS[tag] || ''}`) : [])]
-      .some((v) => typeof v === 'string' && v.toLowerCase().includes(q));
+    const matchesSearch = (t) => [
+      t.pair, t.strategy, t.notes, t.entryReason,
+      ...(Array.isArray(t.tags) ? t.tags.map((tag) => `${tag} ${TAG_LABELS[tag] || ''}`) : []),
+      ...tradeSetups(t).map((name) => `${name} ${setupLabel(name)}`),
+    ].some((v) => typeof v === 'string' && v.toLowerCase().includes(q));
     return trades.filter((t) => {
       if (pendingDeletes.has(t.id)) return false;
       if (q && !matchesSearch(t)) return false;
@@ -386,6 +391,7 @@ export default function TradeJournal() {
         if (!day || (filters.from && day < filters.from) || (filters.to && day > filters.to)) return false;
       }
       if (filters.strategy && t.strategy !== filters.strategy) return false;
+      if (filters.setup && !tradeSetups(t).includes(filters.setup)) return false;
       if (filters.timeframe && (filters.timeframe === 'N/A' ? !!t.timeframe : t.timeframe !== filters.timeframe)) return false;
       if (filters.tag && !(Array.isArray(t.tags) ? t.tags : []).includes(filters.tag)) return false;
       if (filters.month && monthKey(t) !== filters.month) return false;
@@ -800,6 +806,12 @@ export default function TradeJournal() {
             onFilterJump={filterAndJump}
             onAddFirstTrade={() => { setTab('trades'); setFormOpen(true); }}
           />
+        </Suspense>
+      )}
+
+      {tab === 'week' && (
+        <Suspense fallback={<TabFallback />}>
+          <WeeklySummary trades={trades} onFilterJump={filterAndJump} />
         </Suspense>
       )}
 

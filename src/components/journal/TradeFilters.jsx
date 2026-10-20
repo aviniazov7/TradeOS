@@ -2,6 +2,7 @@ import { useState, useMemo } from 'react';
 import { Search, X, SlidersHorizontal } from 'lucide-react';
 import { useUserStrategies } from '../../hooks/useUserStrategies';
 import { TAG_LABELS } from '../../utils/constants';
+import { setupLabel, tradeSetups } from '../../utils/setupStats';
 import SelectDropdown from '../shared/SelectDropdown';
 
 const btnClass = (active) =>
@@ -13,7 +14,7 @@ const btnClass = (active) =>
 
 const HEBREW_MONTHS = ['ינואר', 'פברואר', 'מרץ', 'אפריל', 'מאי', 'יוני', 'יולי', 'אוגוסט', 'ספטמבר', 'אוקטובר', 'נובמבר', 'דצמבר'];
 
-const EMPTY_FILTERS = { search: '', direction: '', result: '', status: '', strategy: '', tag: '', timeframe: '', month: '', from: '', to: '' };
+const EMPTY_FILTERS = { search: '', direction: '', result: '', status: '', strategy: '', setup: '', tag: '', timeframe: '', month: '', from: '', to: '' };
 
 // One native date input. An EMPTY date input isn't blank everywhere — Safari
 // paints today's date and Chrome paints "dd/mm/yyyy" — which read as an
@@ -54,7 +55,14 @@ export default function TradeFilters({ filters, onChange, trades = [] }) {
   const toggle = (key, value) => set(key, filters[key] === value ? '' : value);
   const hasFilters = Object.values(filters).some(Boolean);
   // Search shows in its own box; a date range counts once.
-  const activeCount = [filters.direction, filters.result, filters.status, filters.strategy, filters.tag, filters.timeframe, filters.month, filters.from || filters.to].filter(Boolean).length;
+  const activeCount = [filters.direction, filters.result, filters.status, filters.strategy, filters.setup, filters.tag, filters.timeframe, filters.month, filters.from || filters.to].filter(Boolean).length;
+
+  const allSetups = useMemo(() => {
+    const names = new Set();
+    trades.forEach((t) => tradeSetups(t).forEach((name) => names.add(name)));
+    if (filters.setup) names.add(filters.setup);
+    return [...names].sort((a, b) => setupLabel(a).localeCompare(setupLabel(b), 'he'));
+  }, [trades, filters.setup]);
 
   const allTags = useMemo(() => {
     const tagSet = new Set();
@@ -85,6 +93,7 @@ export default function TradeFilters({ filters, onChange, trades = [] }) {
   }, [trades]);
 
   const strategyOptions = allStrategies.map((s) => ({ value: s, label: s }));
+  const setupOptions = allSetups.map((name) => ({ value: name, label: setupLabel(name) }));
   const tagOptions = allTags.map((tag) => ({ value: tag, label: TAG_LABELS[tag] || tag }));
 
   return (
@@ -130,7 +139,7 @@ export default function TradeFilters({ filters, onChange, trades = [] }) {
                 type="text"
                 value={filters.search}
                 onChange={(e) => set('search', e.target.value)}
-                placeholder="חיפוש: זוג, אסטרטגיה, הערה…"
+                placeholder="חיפוש: זוג, סטאפ, אסטרטגיה, הערה…"
                 className="bg-transparent text-xs text-text-primary placeholder-text-muted outline-none w-full"
               />
             </div>
@@ -166,6 +175,19 @@ export default function TradeFilters({ filters, onChange, trades = [] }) {
                   compact
                 />
               </div>
+
+              {setupOptions.length > 0 && (
+                <div className="flex-1 min-w-0">
+                  <SelectDropdown
+                    value={filters.setup}
+                    onChange={(val) => set('setup', val)}
+                    options={setupOptions}
+                    placeholder="כל הסטאפים"
+                    allowClear
+                    compact
+                  />
+                </div>
+              )}
 
               {allTags.length > 0 && (
                 <div className="flex-1 min-w-0">
@@ -205,7 +227,7 @@ export default function TradeFilters({ filters, onChange, trades = [] }) {
             type="text"
             value={filters.search}
             onChange={(e) => set('search', e.target.value)}
-            placeholder="חיפוש: זוג, אסטרטגיה, הערה…"
+            placeholder="חיפוש: זוג, סטאפ, אסטרטגיה, הערה…"
             className="bg-transparent text-xs text-text-primary placeholder-text-muted outline-none w-full"
           />
         </div>
@@ -229,6 +251,17 @@ export default function TradeFilters({ filters, onChange, trades = [] }) {
           allowClear
           compact
         />
+
+        {setupOptions.length > 0 && (
+          <SelectDropdown
+            value={filters.setup}
+            onChange={(val) => set('setup', val)}
+            options={setupOptions}
+            placeholder="כל הסטאפים"
+            allowClear
+            compact
+          />
+        )}
 
         {allTags.length > 0 && (
           <SelectDropdown

@@ -10,6 +10,7 @@ import {
   formatDateTime,
 } from '../../utils/formatters';
 import { MISTAKE_LABELS } from '../../utils/constants';
+import { setupLabel, tradeSetups } from '../../utils/setupStats';
 import { isClosedTrade, signedTradeR, tradeNetPercent, tradeDurationMs } from '../../utils/calculations';
 import { safeHttpUrl } from '../../utils/urls';
 import TradeExcursion from './TradeExcursion';
@@ -129,6 +130,7 @@ export default function TradeDetailModal({
   // Boolean() — a bare `tags && tags.length` evaluates to the NUMBER 0 for an
   // empty array, and React renders that 0 as literal text at the bottom.
   const hasTags = Boolean(tags && tags.length);
+  const setups = tradeSetups(trade);
 
   // ── Handlers ──────────────────────────────────────────────────────
   const handleShare = () => {
@@ -288,6 +290,7 @@ export default function TradeDetailModal({
             },
             { label: 'עמלות', value: formatMoney(trade.fees) },
             { label: 'אסטרטגיה', value: trade.strategy || null },
+            { label: 'סטאפ', value: setups.length ? setups.map(setupLabel).join(' · ') : null },
             { label: 'טריגר', value: trade.trigger || null },
             { label: 'טווח זמן', value: trade.timeframe || null },
             { label: 'סשן', value: trade.session || null },
