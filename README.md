@@ -24,7 +24,7 @@ A trading journal and analytics platform for crypto, stocks and futures traders:
 
 ### Trading journal
 - Three asset classes — crypto, stocks and CME futures — with their own forms, fees and risk maths. Several journals per user (free plan: 2).
-- Single-screen **trade ticket**: entry, stop, targets, scale-in fills, exits with per-target percentages, trade plan checklist and adherence, screenshots (up to 4 per trade, compressed), notes, tags, strategy and timeframe memory.
+- Single-screen **trade ticket**: entry, stop, targets, scale-in fills, exits with per-target percentages, trade plan checklist and adherence, up to four TradingView chart links (snapshot preview when the link is a `tradingview.com/x/` share), notes, tags, strategy and timeframe memory. Older chart screenshots saved as Firestore data URLs still display, read-only.
 - Automatic P&L, ROI, **R-multiple** (against the *original* stop), fees from per-journal **commission presets**, **MAE / MFE** excursion, partial exits and break-even moves.
 - Filters (pair, strategy, result, tag, dates) that persist across reloads; monthly calendar with daily P&L; CSV import/export; duplicate detection; 5-second undo for deletes.
 - **Prop-firm tracker** (profit target, daily/overall drawdown rules) per journal.
@@ -271,7 +271,7 @@ feature/* or fix/*  →  PR  →  dev  →  PR  →  main
 | Push to `dev` | builds, deploys Hosting (`dev` channel on site `tradeoslive`) + the Workers — **which are the production Workers**, so treat Worker changes on `dev` as production changes |
 | Push to `feature/*`, `fix/*`, `hotfix/*`, or a pull request | builds and deploys a Hosting **preview channel** on site `tradeoslive` (7 days). URLs look like `https://tradeoslive--CHANNEL-HASH.web.app` |
 
-The only manual deploys are **Firestore rules** and **Storage rules** (chart screenshots): `firebase deploy --only firestore:rules,storage --project tradeos-91a58` whenever `firestore.rules` or `storage.rules` changes (run it from the repository root — it needs `firebase.json`). New chart uploads stay blocked until the Storage rules are live; screenshots already saved in Firestore keep displaying. `firebase deploy --only hosting:app,hosting:legacy` publishes both Hosting targets (the app on `tradeoslive`, and the legacy site as redirects only).
+The only manual deploy is **Firestore rules**: `firebase deploy --only firestore:rules --project tradeos-91a58` whenever `firestore.rules` changes (run it from the repository root — it needs `firebase.json`). Firebase Storage is not part of the project config. `firebase deploy --only hosting:app,hosting:legacy` publishes both Hosting targets (the app on `tradeoslive`, and the legacy site as redirects only).
 
 Notes from experience:
 - Firebase caps the number of preview channels (~50). When it is reached, new previews fail with HTTP 429 **while CI still reports success** — delete old channels on the app site (`firebase hosting:channel:delete <id> --site tradeoslive`).

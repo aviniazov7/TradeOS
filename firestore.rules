@@ -223,11 +223,12 @@ service cloud.firestore {
           && isValidWatchlistItem(request.resource.data);
         allow delete: if request.auth != null && request.auth.uid == userId;
       }
-      // Chart screenshots attached to a trade (TradeScreenshots.jsx). Kept out
+      // Legacy chart screenshots (data URLs) attached to a trade. Kept out
       // of the trade doc itself — trades are subscribed live everywhere, so
       // image payloads there would slow every screen. Owner-only (no admin
       // read either): a screenshot can show balances/positions, and the admin
-      // panel never needs it.
+      // panel never needs it. New charts are TradingView links on the trade;
+      // the client no longer creates these docs.
       // Doc ids are the fixed slots `${tradeId}_0..3`, which caps a trade at
       // 4 screenshots server-side and lets trade deletion clean up without
       // reading. A slot can only be CREATED (a setDoc over a taken slot is an
@@ -236,7 +237,7 @@ service cloud.firestore {
       match /tradeImages/{imageId} {
         allow read: if request.auth != null && request.auth.uid == userId;
         allow create: if request.auth != null && request.auth.uid == userId
-          && isValidTradeImage(request.resource.data, imageId)
+          && isValidTradeImage(request.resource.data)
           && imageId in [
             request.resource.data.tradeId + '_0',
             request.resource.data.tradeId + '_1',
@@ -244,7 +245,7 @@ service cloud.firestore {
             request.resource.data.tradeId + '_3'
           ];
         allow update: if request.auth != null && request.auth.uid == userId
-          && isValidTradeImage(request.resource.data, imageId)
+          && isValidTradeImage(request.resource.data)
           && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['kind', 'caption', 'updatedAt']);
         allow delete: if request.auth != null && request.auth.uid == userId;
       }
@@ -310,7 +311,9 @@ service cloud.firestore {
             && data.contract.tickSize is number && data.contract.tickSize > 0)
           : (data.leverage is number && data.leverage >= 1 && data.leverage <= 200))
         // setups is optional. Trades written before the field existed omit it.
-        && (!('setups' in data) || setupsFieldOk(data.setups));
+        && (!('setups' in data) || setupsFieldOk(data.setups))
+        // Chart links are optional. Trades written before the field omit it.
+        && (!('tradingViewUrls' in data) || tradingViewUrlsOk(data.tradingViewUrls));
     }
 
     // Setup tags: a short list of short strings. Checked one index at a time
@@ -328,6 +331,20 @@ service cloud.firestore {
         && (setups.size() < 6 || setupItemOk(setups[5]))
         && (setups.size() < 7 || setupItemOk(setups[6]))
         && (setups.size() < 8 || setupItemOk(setups[7]));
+    }
+
+    // TradingView links on a trade: at most four https tradingview.com URLs.
+    // Same pattern as normalizeTradingViewUrl() in src/utils/tradingViewLink.js.
+    function tvLinkOk(item) {
+      return item is string && item.size() > 0 && item.size() <= 2000
+        && item.matches('^https://([A-Za-z0-9-]+\\.)*tradingview\\.com(/.*)?$');
+    }
+    function tradingViewUrlsOk(urls) {
+      return urls is list && urls.size() <= 4
+        && (urls.size() < 1 || tvLinkOk(urls[0]))
+        && (urls.size() < 2 || tvLinkOk(urls[1]))
+        && (urls.size() < 3 || tvLinkOk(urls[2]))
+        && (urls.size() < 4 || tvLinkOk(urls[3]));
     }
 
     // Trade UPDATE validation. updateDoc() merges, so `data` here is the FULL
@@ -368,7 +385,8 @@ service cloud.firestore {
             : (data.leverage is number && data.leverage >= 1 && data.leverage <= 200)))
         // Only when this update touches setups. Legacy trades that never had
         // the field keep updating every other field exactly as before.
-        && (!changed.hasAny(['setups']) || !('setups' in data) || setupsFieldOk(data.setups));
+        && (!changed.hasAny(['setups']) || !('setups' in data) || setupsFieldOk(data.setups))
+        && (!changed.hasAny(['tradingViewUrls']) || !('tradingViewUrls' in data) || tradingViewUrlsOk(data.tradingViewUrls));
     }
 
     // Minimal shape backstop for the free-form subcollections (journals,
@@ -427,38 +445,22 @@ service cloud.firestore {
         && (!('addedPrice' in data) || data.addedPrice == null || data.addedPrice is number);
     }
 
-    // Trade screenshot metadata. Two shapes share the caption/kind fields:
-    //   • legacy — dataUrl inline (screenshots saved before Storage). Still
-    //     readable and still editable (caption/kind only). New uploads from
-    //     the current client do not write this shape.
-    //   • stored — storagePath points at the owner's Storage object. The path
-    //     is pinned to this doc id so a write can't reference another file.
-    function tradeImageCommon(data) {
-      return data.tradeId is string && data.tradeId.size() > 0 && data.tradeId.size() <= 128
+    // Legacy trade screenshot. dataUrl is a client-compressed WebP/JPEG/PNG.
+    // The 350,000 char cap keeps every doc far below Firestore's 1 MiB limit,
+    // and the prefix check means only raster image data URLs are ever rendered
+    // as <img src>. New charts are TradingView links on the trade, not files.
+    function isValidTradeImage(data) {
+      return data.keys().hasAll(['tradeId', 'dataUrl', 'kind', 'createdAt'])
+        && data.keys().hasOnly(['tradeId', 'dataUrl', 'kind', 'caption', 'width', 'height', 'createdAt', 'updatedAt'])
+        && data.tradeId is string && data.tradeId.size() > 0 && data.tradeId.size() <= 128
+        && data.dataUrl is string && data.dataUrl.size() <= 350000
+        && data.dataUrl.matches('data:image/(webp|jpeg|png);base64,.+')
         && data.kind in ['before', 'after', 'other']
         && (!('caption' in data) || (data.caption is string && data.caption.size() <= 200))
         && (!('width' in data) || (data.width is int && data.width > 0 && data.width <= 10000))
         && (!('height' in data) || (data.height is int && data.height > 0 && data.height <= 10000))
         && data.createdAt is timestamp
         && (!('updatedAt' in data) || data.updatedAt is timestamp);
-    }
-    function isLegacyTradeImage(data) {
-      return data.keys().hasAll(['tradeId', 'dataUrl', 'kind', 'createdAt'])
-        && data.keys().hasOnly(['tradeId', 'dataUrl', 'kind', 'caption', 'width', 'height', 'createdAt', 'updatedAt'])
-        && data.dataUrl is string && data.dataUrl.size() <= 350000
-        && data.dataUrl.matches('data:image/(webp|jpeg|png);base64,.+')
-        && tradeImageCommon(data);
-    }
-    function isStoredTradeImage(data, imageId) {
-      return data.keys().hasAll(['tradeId', 'storagePath', 'contentType', 'kind', 'createdAt'])
-        && data.keys().hasOnly(['tradeId', 'storagePath', 'contentType', 'kind', 'caption', 'width', 'height', 'createdAt', 'updatedAt'])
-        && data.storagePath is string
-        && data.storagePath == 'users/' + request.auth.uid + '/charts/' + imageId
-        && data.contentType in ['image/jpeg', 'image/png', 'image/webp']
-        && tradeImageCommon(data);
-    }
-    function isValidTradeImage(data, imageId) {
-      return isLegacyTradeImage(data) || isStoredTradeImage(data, imageId);
     }
   }
 }

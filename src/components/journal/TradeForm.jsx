@@ -5,7 +5,7 @@ import { he } from 'date-fns/locale';
 import 'react-datepicker/dist/react-datepicker.css';
 import { X, Plus, AlertTriangle, ShieldAlert, TrendingUp, TrendingDown, Check, Target, ClipboardCheck, Gauge, ShieldCheck, Layers, Calculator, ChevronDown } from 'lucide-react';
 import Modal from '../shared/Modal';
-import TradingViewPreview from './TradingViewPreview';
+import TradeChartLinksField from './TradeChartLinksField';
 import PairSearch from './PairSearch';
 import StockSearch from '../stocks/StockSearch';
 import SelectDropdown from '../shared/SelectDropdown';
@@ -15,6 +15,7 @@ import StrategySelector from '../shared/StrategySelector';
 import MultiSelector from '../shared/MultiSelector';
 import { PAIRS, MISTAKE_LABELS, TAG_LABELS, SESSIONS, FUTURES_CONTRACTS, getContractSpec, DEFAULT_LEVERAGE } from '../../utils/constants';
 import { SETUP_LABELS, tradeSetups } from '../../utils/setupStats';
+import { MAX_TRADE_CHART_LINKS, chartLinksForEditor, chartLinksToSave } from '../../utils/tradingViewLink';
 import { useUserStrategies } from '../../hooks/useUserStrategies';
 import { useUserTimeframes } from '../../hooks/useUserTimeframes';
 import { useUserTriggers } from '../../hooks/useUserTriggers';
@@ -73,7 +74,7 @@ const defaultForm = {
   emotionAfter: '',
   mistakes: [],
   session: '',
-  tradingViewUrl: '',
+  chartLinks: [''],
   source: 'manual',
   focusRating: 3,
   planAdherenceRating: 3,
@@ -362,7 +363,7 @@ export default function TradeForm({ isOpen, onClose, trade, onSave, riskSettings
         tags: trade.tags ?? [],
         setups: tradeSetups(trade),
         mistakes: trade.mistakes ?? [],
-        tradingViewUrl: trade.tradingViewUrl ?? '',
+        chartLinks: chartLinksForEditor(trade),
         entryDate: parseDate(trade.entryDate),
         exitDate: parseDate(trade.exitDate),
         focusRating: trade.focusRating ?? 3,
@@ -785,8 +786,9 @@ export default function TradeForm({ isOpen, onClose, trade, onSave, riskSettings
   // is linked. Journal: closed on a new trade, open on edit when anything in
   // it was filled. Scale-ins: open once there are rows.
   const planOpen = planOpenState ?? (!!form.planId || planOptions.length > 0);
+  const filledChartLinks = (form.chartLinks || []).map((link) => String(link || '').trim()).filter(Boolean).length;
   const journalHasContent = !!(form.entryReason?.trim() || form.notes?.trim() || form.tags?.length || form.mistakes?.length
-    || form.tradingViewUrl?.trim() || MENTAL_RATINGS.some((r) => form[r.key] !== 3));
+    || filledChartLinks || MENTAL_RATINGS.some((r) => form[r.key] !== 3));
   const journalOpen = journalOpenState ?? (!!trade && journalHasContent);
   const scaleOpen = scaleOpenState ?? form.scaleIns.length > 0;
 
@@ -951,6 +953,11 @@ export default function TradeForm({ isOpen, onClose, trade, onSave, riskSettings
       problem('exitDate', closeDateError);
       problem('exits', closeDateError);
     }
+    const savedLinks = chartLinksToSave(trade, form.chartLinks);
+    if (!savedLinks.ok) {
+      problem('chartLinks', savedLinks.error);
+      setJournalOpenState(true);
+    }
     if (problems.length) {
       showFieldErrors(problems);
       return;
@@ -1049,7 +1056,7 @@ export default function TradeForm({ isOpen, onClose, trade, onSave, riskSettings
         emotionAfter: form.emotionAfter,
         mistakes: form.mistakes,
         session: form.session || '',
-        tradingViewUrl: form.tradingViewUrl?.trim() || '',
+        ...savedLinks.fields,
         // Preserve original source — don't overwrite exchange trades with 'manual'
         source: trade?.source || 'manual',
         focusRating: form.focusRating,
@@ -1176,6 +1183,7 @@ export default function TradeForm({ isOpen, onClose, trade, onSave, riskSettings
   const journalSummary = [
     form.tags?.length ? `${form.tags.length} תגיות` : null,
     form.mistakes?.length ? `${form.mistakes.length} טעויות` : null,
+    filledChartLinks ? `${filledChartLinks} קישורי גרף` : null,
     (form.entryReason?.trim() || form.notes?.trim()) ? 'הערות' : null,
   ].filter(Boolean).join(' · ');
   const riskLabel = !isFutures && typedRisk > 0 ? 'סכום בסיכון' : 'סיכון עד הסטופ';
@@ -1753,10 +1761,14 @@ export default function TradeForm({ isOpen, onClose, trade, onSave, riskSettings
                   );
                 })}
               </div>
-              <Field label="קישור TradingView" htmlFor="tt-tv">
-                <input id="tt-tv" type="url" dir="ltr" value={form.tradingViewUrl} onChange={(e) => update('tradingViewUrl', e.target.value)}
-                  className={`${ctlBase} px-3 text-sm text-text-primary text-left`} placeholder="https://www.tradingview.com/x/..." />
-                <TradingViewPreview key={form.tradingViewUrl} url={form.tradingViewUrl} pair={form.pair} />
+              <Field
+                label="קישורי TradingView"
+                htmlFor="tt-tv"
+                anchor="tt-field-chartLinks"
+                error={fieldErrors.chartLinks}
+                aside={<span className="text-[10px] text-text-muted">{filledChartLinks}/{MAX_TRADE_CHART_LINKS}</span>}
+              >
+                <TradeChartLinksField links={form.chartLinks} onChange={(next) => update('chartLinks', next)} />
               </Field>
             </div>
           </Section>

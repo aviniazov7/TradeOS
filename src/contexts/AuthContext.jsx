@@ -204,11 +204,6 @@ export function AuthProvider({ children }) {
     const results = await Promise.allSettled([
       ...api.USER_SUBCOLLECTIONS.map((sub) => api.deleteUserSubcollection(currentUser.uid, sub)),
       api.deleteLeaderboardEntry(currentUser.uid),
-      // Chart files live in Storage, outside the Firestore subcollections.
-      // Best-effort: a missing bucket must not block deleting the account.
-      import('../services/tradeImageService')
-        .then((m) => m.deleteUserChartFiles(currentUser.uid))
-        .catch((e) => { console.warn('Chart file cleanup failed:', e); }),
     ]);
     // Abort BEFORE deleting the auth account if any wipe failed — once the
     // auth user is gone nobody can re-authenticate to finish the cleanup, so
