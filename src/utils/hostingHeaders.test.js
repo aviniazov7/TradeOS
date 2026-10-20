@@ -132,7 +132,8 @@ describe('hosting targets', () => {
     expect(firebaserc.targets['tradeos-91a58'].hosting.app).toEqual(['tradeoslive']);
     expect(firebaserc.targets['tradeos-91a58'].hosting.legacy).toEqual(['tradeos-91a58']);
     expect(appHosting.public).toBe('dist/client');
-    expect(appHosting.rewrites).toEqual([{ source: '**', destination: '/index.html' }]);
+    expect(appHosting.rewrites).toEqual([{ source: '!/__/auth{,/**}', destination: '/index.html' }]);
+    expect(appHosting.rewrites.some((rule) => rule.source === '**' || rule.source === '/__/auth/**')).toBe(false);
     expect(legacyHosting.public).toBe('hosting/legacy');
     expect(legacyHosting.rewrites).toBeUndefined();
   });
@@ -176,14 +177,16 @@ describe('legacy redirect site has nothing to serve', () => {
 describe('auth domain and public site URL', () => {
   const read = (p) => readFileSync(fileURLToPath(new URL(`../../${p}`, import.meta.url)), 'utf8');
 
-  it('keeps authDomain on the default Firebase host, not the hosting site', () => {
+  it('uses tradeoslive as authDomain so the Google screen matches the site', () => {
     const firebase = read('src/services/firebase.js');
     const envExample = read('.env.example');
+    const spec = read('TradeOS-Full-Spec.md');
     const deploy = read('.github/workflows/deploy.yml');
-    expect(firebase).toMatch(/authDomain:\s*'tradeos-91a58\.firebaseapp\.com'/);
-    expect(firebase).not.toMatch(/authDomain:\s*'tradeoslive\.web\.app'/);
-    expect(envExample).toMatch(/^VITE_FIREBASE_AUTH_DOMAIN=tradeos-91a58\.firebaseapp\.com$/m);
-    expect(deploy).toMatch(/VITE_FIREBASE_AUTH_DOMAIN:\s*tradeos-91a58\.firebaseapp\.com/);
+    expect(firebase).toMatch(/authDomain:\s*'tradeoslive\.web\.app'/);
+    expect(firebase).not.toMatch(/authDomain:\s*'tradeos-91a58\.firebaseapp\.com'/);
+    expect(envExample).toMatch(/^VITE_FIREBASE_AUTH_DOMAIN=tradeoslive\.web\.app$/m);
+    expect(spec).toMatch(/^VITE_FIREBASE_AUTH_DOMAIN=tradeoslive\.web\.app$/m);
+    expect(deploy).toMatch(/VITE_FIREBASE_AUTH_DOMAIN:\s*tradeoslive\.web\.app/);
     expect(deploy).toMatch(/firebase-tools deploy --only hosting:app,hosting:legacy /);
     expect(deploy).toMatch(/hosting:channel:deploy "\$CHANNEL" \\\s*\n\s*--only app /);
   });

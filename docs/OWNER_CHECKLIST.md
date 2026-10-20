@@ -12,10 +12,10 @@
 **מה לוודא אחרי שהדיפלוי ל-main ירוק:**
 1. `https://tradeoslive.web.app` נפתח, וההתחברות עם Google עובדת (כולל ב-PWA).
 2. `https://tradeos-91a58.web.app/login?x=1` מגיע ל-`https://tradeoslive.web.app/login?x=1` (301).
-3. אם בלוג של GitHub Actions כתוב `AUTHORIZED_DOMAINS=pending`: [Authentication → Settings → Authorized domains](https://console.firebase.google.com/project/tradeos-91a58/authentication/settings) ← להוסיף `tradeoslive.web.app` ו-`tradeoslive.firebaseapp.com`. אלה דומיינים מורשים, לא `authDomain`.
-4. ההתחברות עם Google רצה מול `authDomain` `tradeos-91a58.firebaseapp.com` (`https://tradeos-91a58.firebaseapp.com/__/auth/handler`), גם כשהאתר נפתח ב-[https://tradeoslive.web.app](https://tradeoslive.web.app). אין לשנות את לקוח ה-OAuth ב-Google Cloud.
+3. אם בלוג של GitHub Actions כתוב `AUTHORIZED_DOMAINS=pending`: [Authentication → Settings → Authorized domains](https://console.firebase.google.com/project/tradeos-91a58/authentication/settings) ← להוסיף `tradeoslive.web.app` ו-`tradeoslive.firebaseapp.com`.
+4. ההתחברות עם Google רצה על `authDomain` `tradeoslive.web.app` (`https://tradeoslive.web.app/__/auth/handler`). המסך של Google מציג את tradeoslive. Hosting מגיש את `/__/auth/*` בעצמו; ה-rewrite של האפליקציה לא תופס את הנתיב הזה.
 
-קישורי איפוס סיסמה ואימות אימייל נמשכים אוטומטית אל `tradeos-91a58.firebaseapp.com` (`authDomain`). אין כתובת continue קבועה בקוד.
+קישורי איפוס סיסמה ואימות אימייל נמשכים אוטומטית אל `tradeoslive.web.app` (`authDomain`). אין כתובת continue קבועה בקוד.
 
 ---
 

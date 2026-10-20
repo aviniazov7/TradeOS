@@ -24,7 +24,15 @@ const BYPASS_HOST_PATTERNS = [
 ];
 
 function shouldBypass(url) {
-  return BYPASS_HOST_PATTERNS.some((p) => url.includes(p));
+  if (BYPASS_HOST_PATTERNS.some((p) => url.includes(p))) return true;
+  // Firebase serves /__/auth/* and the rest of /__/ on the hosting site.
+  // Do not let the app shell answer those navigations.
+  try {
+    const path = new URL(url).pathname;
+    return path === '/__' || path.startsWith('/__/');
+  } catch {
+    return false;
+  }
 }
 
 // Authenticated Worker responses are per account. Cache Storage is keyed by
