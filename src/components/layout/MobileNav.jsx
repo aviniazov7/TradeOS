@@ -1,4 +1,4 @@
-import { useLayoutEffect, useRef, useState, useCallback } from 'react';
+import { useLayoutEffect, useRef, useState, useCallback, useEffect } from 'react';
 import { Link, NavLink, useLocation } from 'react-router-dom';
 import { m } from 'framer-motion';
 import {
@@ -7,7 +7,10 @@ import {
   Activity,
   Bot,
   Plus,
+  Link2,
 } from 'lucide-react';
+import { getConnectedExchanges } from '../../services/exchangeService';
+import { shouldShowMobileConnectShortcut } from '../../utils/connectShortcut';
 
 // The bottom bar holds the DAILY quick-access screens (Hebrew labels, matching
 // the sidebar), split around a centre "+" that opens the new-trade form.
@@ -24,6 +27,15 @@ const SPLIT_AT = 2;
 
 export default function MobileNav() {
   const { pathname } = useLocation();
+  const [connectedCount, setConnectedCount] = useState(null);
+
+  useEffect(() => {
+    let cancelled = false;
+    getConnectedExchanges()
+      .then((list) => { if (!cancelled) setConnectedCount(Array.isArray(list) ? list.length : 0); })
+      .catch(() => { if (!cancelled) setConnectedCount(0); });
+    return () => { cancelled = true; };
+  }, [pathname]);
   const containerRef = useRef(null);
   const itemRefs = useRef([]);
   const [pill, setPill] = useState({ left: 0, width: 0, ready: false });
@@ -99,6 +111,15 @@ export default function MobileNav() {
       style={{ bottom: 'calc(env(safe-area-inset-bottom, 0px) + 12px)' }}
       aria-label="ניווט ראשי"
     >
+      {shouldShowMobileConnectShortcut(connectedCount) && (
+        <Link
+          to="/journal?tab=exchange"
+          data-testid="mobile-connect-exchange"
+          className="pointer-events-auto absolute -top-11 left-1/2 -translate-x-1/2 inline-flex items-center gap-1.5 h-9 px-3 rounded-full text-xs font-bold text-white bg-accent-muted shadow-[0_8px_24px_rgba(37,99,235,0.4)]"
+        >
+          <Link2 className="w-3.5 h-3.5" /> חיבור בורסה
+        </Link>
+      )}
       <div
         ref={containerRef}
         className="pointer-events-auto relative mx-auto flex items-center gap-0.5 px-2 py-1.5 rounded-full"

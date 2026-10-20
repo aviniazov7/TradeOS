@@ -1,10 +1,13 @@
 import { useEffect, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { m } from 'framer-motion';
-import { Rocket, CheckCircle2, ChevronLeft, X, BookOpen, Link2, Wallet, Sunrise } from 'lucide-react';
+import { Rocket, CheckCircle2, ChevronLeft, X, BookOpen, Link2, Wallet, Sunrise, FlaskConical } from 'lucide-react';
 import Card from '../shared/Card';
 import { useAuth } from '../../contexts/AuthContext';
+import { useDemoMode } from '../../hooks/useDemoMode';
 import { getConnectedExchanges } from '../../services/exchangeService';
+import { reopenOnboarding } from '../../utils/onboardingGate';
+import { gettingStartedModel } from '../../utils/gettingStarted';
 
 // First-steps checklist for brand-new accounts. Every item is DERIVED from
 // data the dashboard already loads (plus one exchange-status call) — no new
@@ -17,7 +20,8 @@ const VETERAN_TRADES = 5;
 
 export default function GettingStartedCard({ trades, journals, morningCount }) {
   const navigate = useNavigate();
-  const { user } = useAuth();
+  const { user, profile } = useAuth();
+  const demo = useDemoMode();
   // Per-uid dismissal (matches the tradeos_theme_${uid} convention) — a shared
   // key would let one account's dismissal hide the card for a genuinely new
   // user signing up on the same browser.
@@ -43,42 +47,39 @@ export default function GettingStartedCard({ trades, journals, morningCount }) {
 
   if (dismissed || veteran || exchangeConnected === null) return null;
 
-  const steps = [
-    {
-      key: 'trade',
+  const copy = {
+    exchange: {
+      icon: Link2,
+      label: 'חבר בורסה',
+      desc: 'העסקאות והיתרה נכנסות לבד',
+      go: () => navigate('/exchange'),
+      primary: true,
+    },
+    trade: {
       icon: BookOpen,
-      done: trades.length > 0,
       label: 'הוסף את העסקה הראשונה',
-      desc: 'ידנית, מקובץ CSV או מסנכרון בורסה',
+      desc: 'אחרי החיבור, או ידנית',
       go: () => navigate('/journal?new=1'),
     },
-    {
-      key: 'exchange',
-      icon: Link2,
-      done: exchangeConnected,
-      label: 'חבר בורסה',
-      desc: 'עסקאות ויתרה מתעדכנות לבד',
-      go: () => navigate('/exchange'),
-    },
-    {
-      key: 'balance',
+    balance: {
       icon: Wallet,
-      // A linked exchange supplies a live wallet balance, so a manual initial
-      // balance becomes unnecessary — count either as done.
-      done: exchangeConnected || journals.some((j) => (j.initialBalance || 0) > 0),
       label: 'הגדר יתרת פתיחה',
       desc: 'בהגדרות היומן — כך האחוזים והדראודאון מדויקים',
       go: () => navigate('/journal?settings=1'),
     },
-    {
-      key: 'mind',
+    mind: {
       icon: Sunrise,
-      done: morningCount > 0,
       label: 'מלא יומן בוקר ראשון',
       desc: 'המעקב המנטלי משלים את תמונת הביצועים',
       go: () => navigate('/mentality'),
     },
-  ];
+  };
+  const steps = gettingStartedModel({
+    tradeCount: trades.length,
+    exchangeConnected,
+    hasOpeningBalance: journals.some((j) => (j.initialBalance || 0) > 0),
+    morningCount,
+  }).map((s) => ({ ...s, ...copy[s.key] }));
 
   const doneCount = steps.filter((s) => s.done).length;
   if (doneCount === steps.length) return null;
@@ -129,7 +130,9 @@ export default function GettingStartedCard({ trades, journals, morningCount }) {
               className={`flex items-center gap-2.5 p-2.5 rounded-lg border text-right transition-colors ${
                 s.done
                   ? 'border-profit/20 bg-profit/5 opacity-70'
-                  : 'border-border-primary bg-bg-tertiary/40 hover:border-accent-primary/40 hover:bg-accent-primary/5 cursor-pointer'
+                  : s.primary
+                    ? 'border-accent-primary bg-accent-primary/10 hover:bg-accent-primary/15 cursor-pointer'
+                    : 'border-border-primary bg-bg-tertiary/40 hover:border-accent-primary/40 hover:bg-accent-primary/5 cursor-pointer'
               }`}
             >
               {s.done ? (
@@ -140,12 +143,28 @@ export default function GettingStartedCard({ trades, journals, morningCount }) {
               <span className="min-w-0 flex-1">
                 <span className={`block text-xs font-semibold ${s.done ? 'text-text-muted line-through' : 'text-text-primary'}`}>
                   {s.label}
+                  {s.primary && !s.done && <span className="ms-1.5 text-[10px] font-bold text-accent-primary">הצעד הראשון</span>}
                 </span>
                 <span className="block text-[10px] text-text-muted truncate">{s.desc}</span>
               </span>
               {!s.done && <ChevronLeft className="w-4 h-4 text-text-muted shrink-0" />}
             </button>
           ))}
+        </div>
+
+        <div className="mt-3 flex flex-wrap items-center gap-x-4 gap-y-1">
+          {profile?.onboardingCompleted === false && (
+            <button type="button" onClick={() => reopenOnboarding()}
+              className="text-xs font-semibold text-accent-primary hover:underline cursor-pointer">
+              המשך את ההדרכה
+            </button>
+          )}
+          {!demo.active && !exchangeConnected && trades.length === 0 && (
+            <button type="button" onClick={demo.enter}
+              className="inline-flex items-center gap-1 text-xs font-semibold text-text-secondary hover:text-text-primary cursor-pointer">
+              <FlaskConical className="w-3.5 h-3.5" /> סייר עם נתוני דמו
+            </button>
+          )}
         </div>
       </Card>
     </m.div>

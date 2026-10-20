@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, lazy, Suspense } from 'react';
 import { m, AnimatePresence } from 'framer-motion';
 import {
   Shield, Eye, EyeOff, ExternalLink, RefreshCw, Zap, Pencil, Plus, Unplug, Link2, Lock, AlertTriangle, Clock,
@@ -20,11 +20,16 @@ import ConfirmDialog from '../shared/ConfirmDialog';
 import PageHeader from '../shared/PageHeader';
 import StatTile from '../shared/StatTile';
 import SectionTitle from '../shared/SectionTitle';
-import { EXCHANGES } from './exchangeConfig';
+import { EXCHANGES, connectMode, connectionGuideNotes } from './exchangeConfig';
 import { SyncModal } from './SyncModal';
+import { planJournalExchangeBind } from '../../utils/exchangeBinding';
+import { writeDemoMode } from '../../utils/demoData';
+import { useTrades } from '../../hooks/useTrades';
 import { resolveSyncOutcome } from './syncOutcome';
 import { securityBadge } from './securityBadge';
 import { entryHasPlaintextSecret, migratePlaintextExchangeKeys } from '../../services/exchangeCredentialMigration';
+
+const ImportTrades = lazy(() => import('../journal/ImportTrades'));
 
 // Import-window options for the exchange sync (value in days; '0' = last 50).
 const SYNC_PERIODS = [
@@ -129,7 +134,7 @@ function ConnectedCard({ exchange, balance, syncing, onSync, onEdit, onDisconnec
           <p className="text-[11px] text-text-secondary mt-1 leading-relaxed">{PROBLEM_HELP[problem](exchange)}</p>
           <button type="button" onClick={onEdit}
             className="mt-2 h-8 inline-flex items-center gap-1.5 px-3 rounded-lg text-xs font-semibold bg-loss/15 text-loss border border-loss/30 hover:bg-loss/25 transition-colors cursor-pointer">
-            <Pencil className="w-3.5 h-3.5" />עדכון מפתחות
+            <Pencil className="w-3.5 h-3.5" />{exchange.canSync === false ? 'ייבוא CSV' : 'עדכון מפתחות'}
           </button>
         </div>
       ) : (
@@ -174,7 +179,7 @@ function ConnectedCard({ exchange, balance, syncing, onSync, onEdit, onDisconnec
       <div className="relative flex items-center justify-between gap-2 pt-3 border-t border-border-primary">
         <button onClick={onEdit}
           className="inline-flex items-center gap-1.5 text-xs text-text-muted hover:text-text-primary transition-colors cursor-pointer">
-          <Pencil className="w-3.5 h-3.5" />{exchange.authType === 'address' ? 'עדכון כתובת' : 'עדכון מפתחות'}
+          <Pencil className="w-3.5 h-3.5" />{exchange.authType === 'address' ? 'עדכון כתובת' : exchange.canSync === false ? 'ייבוא CSV' : 'עדכון מפתחות'}
         </button>
         {daysLeft !== null && !expiringSoon && !problem && (
           <span className="text-[11px] text-text-muted" title="מפתח MEXC בלי IP מוגבל ל-90 יום">
@@ -214,7 +219,7 @@ function AvailableTile({ exchange, locked, onConnect, index }) {
         {!canSync && <p className="text-[10px] text-text-muted mt-0.5">ללא סנכרון אוטומטי</p>}
       </div>
       <span className="relative inline-flex items-center gap-1 shrink-0 h-8 px-3 rounded-lg text-xs font-semibold text-accent-primary border border-accent-primary/40 group-hover:bg-accent-primary/10 transition-colors">
-        {locked ? <><Lock className="w-3.5 h-3.5" />Premium</> : <><Plus className="w-3.5 h-3.5" />חבר</>}
+        {locked ? <><Lock className="w-3.5 h-3.5" />Premium</> : canSync === false ? 'ייבוא CSV' : <><Plus className="w-3.5 h-3.5" />חבר</>}
       </span>
     </Card>
   );
@@ -247,7 +252,7 @@ function SecretInput({ value, onChange, placeholder, accent, secret = false }) {
   );
 }
 
-function ConnectDialog({ exchange, editing, data, saving, onUpdate, onSave, onClose }) {
+export function ConnectDialog({ exchange, editing, data, saving, onUpdate, onSave, onClose, onOpenCsv }) {
   const isOpen = !!exchange;
   // Keep the last exchange while the close animation plays.
   const [shown, setShown] = useState(exchange);
@@ -256,7 +261,10 @@ function ConnectDialog({ exchange, editing, data, saving, onUpdate, onSave, onCl
   if (!ex) return null;
 
   const { name, tagline, accent, glow, apiUrl, steps, extraField, addressField } = ex;
-  const byAddress = ex.authType === 'address';
+  const mode = connectMode(ex);
+  const byAddress = mode === 'address';
+  const csvOnly = mode === 'csv';
+  const notes = connectionGuideNotes(ex);
   const address = (data?.address || '').trim();
   const addressInvalid = byAddress && address.length > 0 && !isHyperliquidAddress(address);
   // Saving requires both fields freshly entered (we can't prefill the secret),
@@ -269,85 +277,32 @@ function ConnectDialog({ exchange, editing, data, saving, onUpdate, onSave, onCl
   const canSave = hasKeys && !missingExtra && !saving;
 
   return (
-    <Modal isOpen={isOpen} onClose={onClose} maxWidth="max-w-3xl"
-      title={editing ? (byAddress ? `עדכון כתובת · ${name}` : `עדכון מפתחות · ${name}`) : `חיבור ${name}`}>
-      <div className="grid md:grid-cols-5 gap-5">
-        {/* Form */}
-        <form className="md:col-span-3 space-y-3"
-          onSubmit={(e) => { e.preventDefault(); if (canSave) onSave(); }}>
-          <div className="flex items-center gap-3 pb-1">
-            <ExLogo id={ex.id} size={40} accent={accent} />
-            <div className="min-w-0">
-              <p className="text-sm font-bold text-text-primary">{name}</p>
-              <p className="text-[11px] text-text-muted" dir="ltr" style={{ textAlign: 'right' }}>{tagline}</p>
-            </div>
-          </div>
-          {editing && !byAddress && <p className="text-xs text-text-muted">מטעמי אבטחה המפתחות הקיימים לא מוצגים — הזן מפתחות חדשים כדי להחליף אותם.</p>}
-
-          {byAddress ? (
-            <label className="block">
-              <span className="block text-[11px] text-text-muted mb-1">{addressField?.label || 'כתובת ארנק'}</span>
-              <SecretInput value={data?.address || ''} onChange={(v) => onUpdate('address', v)} placeholder={addressField?.placeholder || '0x…'} accent={accent} />
-              {addressInvalid && <span className="block text-xs text-loss mt-1">כתובת לא תקינה — 0x ואחריו 40 תווים (0-9, a-f)</span>}
-            </label>
-          ) : (
-            <>
-              <label className="block">
-                <span className="block text-[11px] text-text-muted mb-1">API Key</span>
-                <SecretInput value={data?.apiKey || ''} onChange={(v) => onUpdate('apiKey', v)} placeholder="API Key" accent={accent} />
-              </label>
-              <label className="block">
-                <span className="block text-[11px] text-text-muted mb-1">API Secret</span>
-                <SecretInput value={data?.apiSecret || ''} onChange={(v) => onUpdate('apiSecret', v)} placeholder="API Secret" accent={accent} secret />
-              </label>
-            </>
-          )}
-          {extraField && (
-            <label className="block">
-              <span className="block text-[11px] text-text-muted mb-1">{extraField.label}{extraField.required ? ' (חובה)' : ''}</span>
-              <SecretInput value={data?.[extraField.key] || ''} onChange={(v) => onUpdate(extraField.key, v)}
-                placeholder={extraField.placeholder || extraField.label} accent={accent} secret />
-            </label>
-          )}
-
-          <div className="flex items-start gap-2 rounded-xl px-3 py-2.5 bg-profit/5 border border-profit/20 text-[11px] text-text-secondary leading-relaxed">
-            <Shield className="w-3.5 h-3.5 text-profit shrink-0 mt-0.5" />
-            <span>
-              {byAddress
-                ? 'כתובת הארנק היא מידע ציבורי (לא סוד) ומאפשרת קריאה בלבד של העסקאות — אי אפשר לסחור או למשוך בעזרתה. היא נשמרת בהגדרות החשבון שלך.'
-                : 'מומלץ ליצור מפתח לקריאה בלבד — ללא הרשאות מסחר או משיכה. המפתחות נשמרים בשרת ולא נשארים בדפדפן.'}
-            </span>
-          </div>
-
-          {missingExtra && (
-            <p className="text-xs text-breakeven">הזן {extraField.label} כדי לחבר את {name}</p>
-          )}
-
-          <div className="flex gap-2 pt-1">
-            <button type="button" onClick={onClose}
-              className="h-11 px-5 rounded-xl border border-border-primary text-sm text-text-secondary hover:bg-bg-tertiary transition-colors cursor-pointer">
-              ביטול
-            </button>
-            <button type="submit" disabled={!canSave}
-              className="flex-1 h-11 rounded-xl text-sm font-bold transition-all cursor-pointer disabled:opacity-40 disabled:cursor-not-allowed flex items-center justify-center gap-2"
-              style={{ background: `linear-gradient(135deg, ${accent}, ${accent}cc)`, color: '#000', boxShadow: canSave ? `0 6px 22px -6px ${glow}` : 'none' }}>
-              {saving ? <RefreshCw className="w-4 h-4 animate-spin" /> : (editing ? (byAddress ? 'שמור כתובת' : 'שמור מפתחות חדשים') : `חבר את ${name}`)}
-            </button>
-          </div>
-        </form>
-
-        {/* Guide */}
-        <aside className="md:col-span-2 rounded-xl bg-bg-tertiary/60 border border-border-primary p-4 h-fit">
+    <Modal isOpen={isOpen} onClose={onClose} maxWidth="max-w-lg"
+      title={csvOnly ? `ייבוא מ-${name}` : editing ? (byAddress ? `עדכון כתובת · ${name}` : `עדכון מפתחות · ${name}`) : `חיבור ${name}`}>
+      {/* Guide first on every width — on a phone it used to sit under the
+          fields, so the Read-Only / no-IP notes were easy to miss. */}
+      <div className="flex flex-col gap-5">
+        <aside data-testid="connection-guide" className="rounded-xl bg-bg-tertiary/60 border border-border-primary p-4">
           <div className="flex items-center justify-between gap-2 mb-3">
-            <p className="text-xs font-semibold text-text-primary">{byAddress ? 'איפה מוצאים את הכתובת' : 'איך יוצרים מפתח API'}</p>
+            <p className="text-xs font-semibold text-text-primary">{csvOnly ? 'איך מייצאים את הקובץ' : byAddress ? 'איפה מוצאים את הכתובת' : 'איך יוצרים מפתח API'}</p>
             {apiUrl && (
               <a href={apiUrl} target="_blank" rel="noopener noreferrer"
                 className="text-[11px] inline-flex items-center gap-1 hover:opacity-80 transition-opacity shrink-0"
                 style={{ color: accent }}>
-                לדף ה-API <ExternalLink className="w-3 h-3" />
+                {csvOnly ? 'להיסטוריה' : 'לדף ה-API'} <ExternalLink className="w-3 h-3" />
               </a>
             )}
           </div>
+          {notes.length > 0 && (
+            <ul className="mb-3 space-y-1.5">
+              {notes.map((note) => (
+                <li key={note} className="flex items-start gap-2 rounded-lg px-2 py-1.5 bg-profit/10 text-[12px] text-text-primary leading-snug">
+                  <Shield className="w-3.5 h-3.5 text-profit shrink-0 mt-0.5" />
+                  <span>{note}</span>
+                </li>
+              ))}
+            </ul>
+          )}
           <ol className="space-y-1.5">
             {steps.map((step, i) => (
               <li key={i} className="flex items-start gap-2.5 rounded-lg px-2 py-1.5"
@@ -366,6 +321,83 @@ function ConnectDialog({ exchange, editing, data, saving, onUpdate, onSave, onCl
             ))}
           </ol>
         </aside>
+
+        <form data-testid="connection-fields" className="space-y-3"
+          onSubmit={(e) => { e.preventDefault(); if (csvOnly) onOpenCsv?.(); else if (canSave) onSave(); }}>
+          <div className="flex items-center gap-3 pb-1">
+            <ExLogo id={ex.id} size={40} accent={accent} />
+            <div className="min-w-0">
+              <p className="text-sm font-bold text-text-primary">{name}</p>
+              <p className="text-[11px] text-text-muted" dir="ltr" style={{ textAlign: 'right' }}>{tagline}</p>
+            </div>
+          </div>
+          {csvOnly ? (
+            <p className="text-xs text-text-secondary leading-relaxed">בלי מפתח API. אחרי הייבוא היומן יסומן כ-{name} והעסקאות ייכנסו אליו.</p>
+          ) : (
+            <>
+              {editing && !byAddress && <p className="text-xs text-text-muted">מטעמי אבטחה המפתחות הקיימים לא מוצגים — הזן מפתחות חדשים כדי להחליף אותם.</p>}
+
+              {byAddress ? (
+                <label className="block">
+                  <span className="block text-[11px] text-text-muted mb-1">{addressField?.label || 'כתובת ארנק'}</span>
+                  <SecretInput value={data?.address || ''} onChange={(v) => onUpdate('address', v)} placeholder={addressField?.placeholder || '0x…'} accent={accent} />
+                  {addressInvalid && <span className="block text-xs text-loss mt-1">כתובת לא תקינה — 0x ואחריו 40 תווים (0-9, a-f)</span>}
+                </label>
+              ) : (
+                <>
+                  <label className="block">
+                    <span className="block text-[11px] text-text-muted mb-1">API Key</span>
+                    <SecretInput value={data?.apiKey || ''} onChange={(v) => onUpdate('apiKey', v)} placeholder="API Key" accent={accent} />
+                  </label>
+                  <label className="block">
+                    <span className="block text-[11px] text-text-muted mb-1">API Secret</span>
+                    <SecretInput value={data?.apiSecret || ''} onChange={(v) => onUpdate('apiSecret', v)} placeholder="API Secret" accent={accent} secret />
+                  </label>
+                </>
+              )}
+              {extraField && (
+                <label className="block">
+                  <span className="block text-[11px] text-text-muted mb-1">{extraField.label}{extraField.required ? ' (חובה)' : ''}</span>
+                  <SecretInput value={data?.[extraField.key] || ''} onChange={(v) => onUpdate(extraField.key, v)}
+                    placeholder={extraField.placeholder || extraField.label} accent={accent} secret />
+                </label>
+              )}
+
+              <div className="flex items-start gap-2 rounded-xl px-3 py-2.5 bg-profit/5 border border-profit/20 text-[11px] text-text-secondary leading-relaxed">
+                <Shield className="w-3.5 h-3.5 text-profit shrink-0 mt-0.5" />
+                <span>
+                  {byAddress
+                    ? 'כתובת הארנק היא מידע ציבורי (לא סוד) ומאפשרת קריאה בלבד של העסקאות — אי אפשר לסחור או למשוך בעזרתה. היא נשמרת בהגדרות החשבון שלך.'
+                    : 'המפתחות נשמרים בשרת ולא נשארים בדפדפן. Read-Only בלבד, בלי הגבלת IP.'}
+                </span>
+              </div>
+
+              {missingExtra && (
+                <p className="text-xs text-breakeven">הזן {extraField.label} כדי לחבר את {name}</p>
+              )}
+            </>
+          )}
+
+          <div className="flex gap-2 pt-1">
+            <button type="button" onClick={onClose}
+              className="h-11 px-5 rounded-xl border border-border-primary text-sm text-text-secondary hover:bg-bg-tertiary transition-colors cursor-pointer">
+              ביטול
+            </button>
+            {csvOnly ? (
+              <button type="submit"
+                className="flex-1 h-11 rounded-xl text-sm font-bold cursor-pointer flex items-center justify-center gap-2"
+                style={{ background: `linear-gradient(135deg, ${accent}, ${accent}cc)`, color: '#000', boxShadow: `0 6px 22px -6px ${glow}` }}>
+                ייבוא CSV
+              </button>
+            ) : (
+              <button type="submit" disabled={!canSave}
+                className="flex-1 h-11 rounded-xl text-sm font-bold transition-all cursor-pointer disabled:opacity-40 disabled:cursor-not-allowed flex items-center justify-center gap-2"
+                style={{ background: `linear-gradient(135deg, ${accent}, ${accent}cc)`, color: '#000', boxShadow: canSave ? `0 6px 22px -6px ${glow}` : 'none' }}>
+                {saving ? <RefreshCw className="w-4 h-4 animate-spin" /> : (editing ? (byAddress ? 'שמור כתובת' : 'שמור מפתחות חדשים') : `חבר את ${name}`)}
+              </button>
+            )}
+          </div>
+        </form>
       </div>
     </Modal>
   );
@@ -384,8 +416,11 @@ function writeExchCache(uid, suffix, value) {
 export default function ExchangeSettings({ journalId: propJournalId, embedded = false, bare = false } = {}) {
   const { user, isPremium } = useAuth();
   const navigate = useNavigate();
-  const { activeJournalId: contextJournalId } = useJournalContext();
+  const {
+    journals, activeJournalId: contextJournalId, updateJournal, addJournal, setActiveJournalId,
+  } = useJournalContext();
   const activeJournalId = propJournalId ?? contextJournalId;
+  const { trades: journalTrades, addTradesBulk } = useTrades(activeJournalId);
   // Shared import logic (upsert on close-order-id overlap) — the standalone
   // /exchange route used to blind-add every synced row as a NEW trade, so a
   // TP1 already imported from the journal's proposal banner got counted twice.
@@ -402,6 +437,7 @@ export default function ExchangeSettings({ journalId: propJournalId, embedded = 
   const [syncModal, setSyncModal] = useState(null);
   // Connect / edit-keys dialog: { id, editing } | null
   const [dialog, setDialog] = useState(null);
+  const [csvExchangeId, setCsvExchangeId] = useState(null);
   const [confirmDisconnect, setConfirmDisconnect] = useState(null);
   // Futures wallet balance per connected exchange: undefined = loading,
   // number = ok, false = failed.
@@ -502,15 +538,85 @@ export default function ExchangeSettings({ journalId: propJournalId, embedded = 
   };
 
   const openConnect = (id) => {
-    if (atFreeLimit && !savedExchanges[id]?.connected) { goPremium(); return; }
+    const ex = EXCHANGES.find((e) => e.id === id);
+    // CSV import is not an API connection, so it does not spend the free slot.
+    if (connectMode(ex) !== 'csv' && atFreeLimit && !savedExchanges[id]?.connected) { goPremium(); return; }
     setExchanges(p => ({ ...p, [id]: {} }));
     setDialog({ id, editing: false });
   };
   // The secret is not held client-side, so editing starts from empty inputs.
+  const openCsv = (id) => {
+    setDialog(null);
+    setCsvExchangeId(id);
+  };
   const openEdit = (id) => {
+    const ex = EXCHANGES.find((e) => e.id === id);
+    if (connectMode(ex) === 'csv') { openCsv(id); return; }
     // A wallet address isn't a secret — prefill it; API keys start empty.
     setExchanges(p => ({ ...p, [id]: savedExchanges[id]?.address ? { address: savedExchanges[id].address } : {} }));
     setDialog({ id, editing: true });
+  };
+
+  // Point the blank/`other` journal at the venue that was just connected.
+  // A journal that already names a real exchange is not retagged.
+  const applyExchangeToJournal = async (exchangeId) => {
+    const plan = planJournalExchangeBind({ journals, activeJournalId, exchangeId });
+    if (plan.action === 'create') {
+      const ex = EXCHANGES.find((e) => e.id === exchangeId);
+      return addJournal({
+        name: ex?.name || 'יומן',
+        exchange: exchangeId,
+        initialBalance: 0,
+        currency: 'USDT',
+        assetClass: 'crypto',
+      });
+    }
+    if (plan.action === 'patch') {
+      await updateJournal(plan.journalId, { exchange: plan.exchange });
+      return plan.journalId;
+    }
+    if (plan.action === 'select' && plan.journalId !== activeJournalId) setActiveJournalId(plan.journalId);
+    return plan.journalId || activeJournalId;
+  };
+
+  const autoImportAfterConnect = async (id, journalForImport) => {
+    if (!journalForImport) {
+      toast.error('הבורסה חוברה, אבל אין יומן לייבוא. צור יומן ואז לחץ סנכרן.');
+      return;
+    }
+    setSyncing(id);
+    toast('מייבא עסקאות מהבורסה…', { icon: '⏳' });
+    try {
+      const [tradesResult, openResult] = await Promise.allSettled([
+        syncExchangeTrades(id, { days: 90 }),
+        syncOpenPositions(id),
+      ]);
+      if (tradesResult.status === 'rejected' && openResult.status === 'rejected') throw tradesResult.reason;
+      const closedTrades = tradesResult.status === 'fulfilled' ? tradesResult.value : [];
+      const openPos = openResult.status === 'fulfilled' ? openResult.value : [];
+      const merged = [
+        ...openPos.map((p) => ({ ...p, _isOpen: true, pnlFromExchange: null })),
+        ...closedTrades,
+      ];
+      if (!merged.length) {
+        toast('הבורסה חוברה. לא נמצאו עסקאות לייבוא כרגע.', { icon: 'ℹ️' });
+        return;
+      }
+      const results = await Promise.allSettled(merged.map((t) => importTrade(t, journalForImport)));
+      const imported = results.filter((r) => r.status === 'fulfilled').length;
+      const failed = results.length - imported;
+      if (imported) toast.success(`יובאו ${imported} עסקאות ליומן`);
+      if (failed) toast.error(`לא יובאו ${failed} עסקאות — אפשר לסנכרן שוב מהכרטיס`);
+    } catch (err) {
+      if (err?.reason) {
+        setBalances((b) => ({ ...b, [id]: { problem: err.reason } }));
+        toast.error(`${err.message} — לחץ "עדכון מפתחות"`);
+      } else {
+        toast.error(`הבורסה חוברה, אבל הייבוא נכשל: ${err?.message || 'נסה לסנכרן מהכרטיס'}`);
+      }
+    } finally {
+      setSyncing(null);
+    }
   };
   const closeDialog = () => {
     // Drop anything typed — secrets never linger in state after the dialog.
@@ -562,7 +668,24 @@ export default function ExchangeSettings({ journalId: propJournalId, embedded = 
       setBalanceNonce((n) => n + 1);
       setDialog(null);
       toast.success(alreadyConnected ? (byAddress ? 'הכתובת עודכנה ✓' : 'המפתחות עודכנו ✓') : `${exDef?.name || id} חוברה ✓`);
+      // First connect of a syncing venue: tag the journal and pull trades
+      // now. Updating an existing key keeps the manual "סנכרן" button.
+      if (!alreadyConnected && exDef?.canSync) {
+        writeDemoMode(user.uid, false);
+        try {
+          const journalForImport = await applyExchangeToJournal(id);
+          await autoImportAfterConnect(id, journalForImport);
+        } catch {
+          toast.error('הבורסה חוברה, אבל ייבוא העסקאות נכשל. אפשר לסנכרן מהכרטיס.');
+        }
+      }
     } catch (e) { toast.error(e.message || 'שגיאה בשמירה'); } finally { setSaving(null); }
+  };
+
+  const importCsvAndBind = async (rows, onProgress) => {
+    writeDemoMode(user.uid, false);
+    if (csvExchangeId) await applyExchangeToJournal(csvExchangeId);
+    return addTradesBulk(rows, onProgress);
   };
 
   const handleDisconnect = async (id) => {
@@ -717,7 +840,7 @@ export default function ExchangeSettings({ journalId: propJournalId, embedded = 
             <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-3 gap-3">
               {available.map((exchange, i) => (
                 <AvailableTile key={exchange.id} exchange={exchange} index={i}
-                  locked={atFreeLimit}
+                  locked={atFreeLimit && exchange.canSync !== false}
                   onConnect={() => openConnect(exchange.id)} />
               ))}
             </div>
@@ -738,8 +861,21 @@ export default function ExchangeSettings({ journalId: propJournalId, embedded = 
         saving={!!dialog && saving === dialog.id}
         onUpdate={(field, val) => dialog && updateField(dialog.id, field, val)}
         onSave={() => dialog && handleSave(dialog.id)}
+        onOpenCsv={() => dialog && openCsv(dialog.id)}
         onClose={closeDialog}
       />
+
+      {csvExchangeId && (
+        <Suspense fallback={null}>
+          <ImportTrades
+            isOpen
+            onClose={() => setCsvExchangeId(null)}
+            onImportBulk={importCsvAndBind}
+            assetClass="crypto"
+            existingTrades={journalTrades}
+          />
+        </Suspense>
+      )}
 
       <ConfirmDialog
         isOpen={!!confirmDisconnect}

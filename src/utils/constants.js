@@ -306,6 +306,15 @@ const UNSET_EXCHANGE_IDS = new Set([
   'אחר', 'אחרת', 'ללא',
 ]);
 
+// "other" / blank / Hebrew "אחר" are not venues. The journal used to be
+// created with exchange:'other', and the dashboard then said there was no
+// live value from an exchange the user never picked.
+export function isUnsetExchange(value) {
+  if (value == null) return true;
+  const id = String(value).trim().toLowerCase().replace(/\s+/g, '');
+  return !id || UNSET_EXCHANGE_IDS.has(id);
+}
+
 export function getExchangeLogo(exchangeValue) {
   if (exchangeValue == null) return null;
   const id = String(exchangeValue).trim().toLowerCase().replace(/\s+/g, '');

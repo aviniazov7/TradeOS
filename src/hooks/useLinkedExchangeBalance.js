@@ -2,6 +2,7 @@ import { useEffect, useMemo, useState } from 'react';
 import { useAuth } from '../contexts/AuthContext';
 import { getUserSetting } from '../services/firestoreService';
 import { fetchExchangeBalance } from '../services/exchangeService';
+import { isUnsetExchange } from '../utils/constants';
 
 const REFRESH_MS = 60_000; // refetch every minute
 
@@ -12,7 +13,7 @@ const REFRESH_MS = 60_000; // refetch every minute
 // exchange isn't connected.
 export function useLinkedExchange(exchangeId) {
   const { user } = useAuth();
-  const wanted = exchangeId || null;
+  const wanted = !isUnsetExchange(exchangeId) ? exchangeId : null;
   const [state, setState] = useState({ exchangeId: null, balance: null, keyProblem: null });
 
   // Drop the previous venue's wallet in the same render that the journal
@@ -77,13 +78,13 @@ export function useLinkedJournals(journals) {
   // Distinct exchange ids referenced by the journals (string for stable key).
   const exchangeIdsKey = useMemo(() => {
     const ids = new Set();
-    for (const j of journals || []) if (j.exchange) ids.add(j.exchange);
+    for (const j of journals || []) if (!isUnsetExchange(j.exchange)) ids.add(j.exchange);
     return [...ids].sort().join(',');
   }, [journals]);
 
   // Journal-id → exchange-id, also stable-keyed for the effect.
   const journalsKey = useMemo(() =>
-    (journals || []).filter((j) => j.exchange).map((j) => `${j.id}:${j.exchange}`).sort().join('|'),
+    (journals || []).filter((j) => !isUnsetExchange(j.exchange)).map((j) => `${j.id}:${j.exchange}`).sort().join('|'),
     [journals]
   );
 

@@ -6,6 +6,7 @@ import { useLinkedExchangeBalance } from './useLinkedExchangeBalance';
 
 const user = { uid: 'u1' };
 const pending = {};
+const balanceCalls = [];
 
 vi.mock('../contexts/AuthContext', () => ({
   useAuth: () => ({ user }),
@@ -19,7 +20,7 @@ vi.mock('../services/firestoreService', () => ({
 }));
 
 vi.mock('../services/exchangeService', () => ({
-  fetchExchangeBalance: (id) => pending[id],
+  fetchExchangeBalance: (id) => { balanceCalls.push(id); return pending[id]; },
 }));
 
 function Probe({ exchange }) {
@@ -53,6 +54,18 @@ describe('useLinkedExchangeBalance', () => {
     await act(async () => { resolveBybit({ balance: 1000.2 }); });
     expect(el.textContent).toBe('1000.2');
 
+    await act(async () => { root.unmount(); });
+    el.remove();
+  });
+
+  it('does not ask the worker for a balance when the journal exchange is other', async () => {
+    balanceCalls.length = 0;
+    const el = document.createElement('div');
+    document.body.appendChild(el);
+    const root = createRoot(el);
+    await act(async () => { root.render(<Probe exchange="other" />); });
+    expect(el.textContent).toBe('empty');
+    expect(balanceCalls).not.toContain('other');
     await act(async () => { root.unmount(); });
     el.remove();
   });
