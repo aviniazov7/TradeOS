@@ -26,6 +26,27 @@ describe('TradeAI markdown', () => {
     expect(out).toContain('&lt;script&gt;');
   });
 
+  it('renders numbered chart headings without literal asterisks', () => {
+    const out = html([
+      '**הטיה טכנית:** שורי — ודאות בינונית',
+      '1. **מבנה כללי**',
+      '2. **אזורי מפתח** — תמיכה ב-$0.74 ופריצה',
+      '3. *אירועים* בולטים עם **כוכב** לא סגור **',
+      'שורה עם `a*b` בקוד',
+    ].join('\n'));
+    expect(out).toContain('הטיה טכנית');
+    expect(out).toContain('<strong>הטיה טכנית:</strong>');
+    expect(out).toContain('<strong>מבנה כללי</strong>');
+    expect(out).toContain('1. <strong>מבנה כללי</strong>');
+    expect(out).toContain('2. אזורי מפתח');
+    expect(out).toContain('תמיכה');
+    expect(out).toContain('<em>אירועים</em>');
+    expect(out).toContain('<strong>כוכב</strong>');
+    expect(out).toContain('a*b');
+    expect(out).not.toContain('**');
+    expect(out.replace(/<code\b[^>]*>[\s\S]*?<\/code>/g, '')).not.toContain('*');
+  });
+
   it('renders a markdown heading and a bullet', () => {
     const out = html('### מבנה\n- נקודה **חשובה**');
     expect(out).toContain('מבנה');

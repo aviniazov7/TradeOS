@@ -41,15 +41,34 @@ function escapeHtml(s) {
 function applyMarkdown(escaped) {
   return escaped
     .replace(/`([^`\n]+)`/g, '<code class="bg-bg-tertiary px-1 py-0.5 rounded text-accent-primary text-[11px]">$1</code>')
+    .replace(/\*\*\*([^*\n]+?)\*\*\*/g, '<strong><em>$1</em></strong>')
     .replace(/\*\*([^*\n]+?)\*\*/g, '<strong>$1</strong>')
     .replace(/__([^_\n]+?)__/g, '<strong>$1</strong>')
     .replace(/(^|[^*])\*([^*\n]+?)\*(?!\*)/g, '$1<em>$2</em>');
 }
 
+// Emphasis that never closed (a numbered heading used to eat the closing **
+// before this ran) must not reach the screen as literal asterisks. Code spans
+// keep their contents, including a deliberate *.
+function stripStrayMarkers(html) {
+  const parts = String(html).split(/(<code\b[^>]*>[\s\S]*?<\/code>)/gi);
+  return parts.map((part) => (
+    /^<code\b/i.test(part)
+      ? part
+      : part.replace(/\*\*/g, '').replace(/__/g, '').replace(/\*/g, '')
+  )).join('');
+}
+
+// Numbered section titles are already painted bold. Drop emphasis markers so
+// "1. **מבנה כללי**" cannot show the asterisks.
+function stripInlineMarkers(text) {
+  return String(text).replace(/[*_`]/g, '').replace(/\s{2,}/g, ' ').trim();
+}
+
 function buildLineHtml(line) {
   // Escape, then markdown, then number/sentiment spans. Number runs are
   // isolated LTR so "+200 USDT" doesn't flip in RTL.
-  let s = applyMarkdown(escapeHtml(line));
+  let s = stripStrayMarkers(applyMarkdown(escapeHtml(line)));
   s = wrapLtrRuns(s, (m) => (isPriceRun(m)
     ? `<span dir="ltr" class="num-ltr font-mono text-accent-primary bg-accent-primary/10 px-1 rounded">${m}</span>`
     : `<span dir="ltr" class="num-ltr">${m}</span>`));
@@ -207,26 +226,27 @@ function renderLine(line, i) {
   }
 
   // Numbered section. The model usually writes the whole section on ONE line
-  // ("1. מבנה כללי — <content>"), so accent ONLY the title and render the body
-  // in normal text — otherwise the entire paragraph turned accent-blue.
-  const numMatch = line.match(/^(\s*\*{0,2}\s*\d+\.\s+.+?)\s+[—–]\s+([\s\S]+)$/);
-  if (numMatch) {
-    const title = numMatch[1].replace(/^\s*\*{2}/, '').replace(/\*{2}\s*$/, '');
-    return (
-      <p key={i} className="mt-3 mb-1 text-[13px] leading-relaxed border-r-2 border-accent-primary/40 pr-2">
-        <span className="font-bold text-accent-primary">{title} — </span>
-        <span className="text-text-secondary" dangerouslySetInnerHTML={{ __html: safeHtml(buildLineHtml(numMatch[2])) }} />
-      </p>
-    );
-  }
-  // A bare numbered title with no inline body → short header, full accent.
-  if (/^\s*\*{0,2}\s*\d+\.\s+\S/.test(line)) {
-    const stripped = line.replace(/^\s*\*{2}/, '').replace(/\*{2}\s*$/, '');
+  // ("1. מבנה כללי — <content>", sometimes wrapped as "1. **מבנה כללי**").
+  // Accent ONLY the title and render the body in normal text — otherwise the
+  // entire paragraph turned accent-blue. Markers are stripped from the title
+  // because it is already bold; the body still runs through markdown.
+  const numbered = line.match(/^\s*(\d+)\.\s+([\s\S]+)$/);
+  if (numbered) {
+    const bodySplit = numbered[2].match(/^(.+?)\s+[—–]\s+([\s\S]+)$/);
+    if (bodySplit) {
+      const title = stripInlineMarkers(`${numbered[1]}. ${bodySplit[1]}`);
+      return (
+        <p key={i} className="mt-3 mb-1 text-[13px] leading-relaxed border-r-2 border-accent-primary/40 pr-2">
+          <span className="font-bold text-accent-primary">{title} — </span>
+          <span className="text-text-secondary" dangerouslySetInnerHTML={{ __html: safeHtml(buildLineHtml(bodySplit[2])) }} />
+        </p>
+      );
+    }
     return (
       <p
         key={i}
         className="font-bold text-accent-primary mt-3 mb-1.5 text-[13px] border-r-2 border-accent-primary/40 pr-2"
-        dangerouslySetInnerHTML={{ __html: safeHtml(buildLineHtml(stripped)) }}
+        dangerouslySetInnerHTML={{ __html: safeHtml(buildLineHtml(line)) }}
       />
     );
   }

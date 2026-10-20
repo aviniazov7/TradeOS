@@ -6,6 +6,10 @@ import { wrapLtrRuns } from './bidiNumbers';
 // identical copies (issue #216). Only <b>/<i> and the LTR number spans
 // (<span dir="ltr">, so "+200 USDT" doesn't flip in RTL) survive sanitization.
 export function renderBulletHtml(text) {
-  const html = wrapLtrRuns(text).replace(/\*\*(.+?)\*\*/g, '<b>$1</b>');
+  const html = wrapLtrRuns(text)
+    .replace(/\*\*(.+?)\*\*/g, '<b>$1</b>')
+    .replace(/\*(.+?)\*/g, '<i>$1</i>')
+    .replace(/\*\*/g, '')
+    .replace(/\*/g, '');
   return DOMPurify.sanitize(html, { ALLOWED_TAGS: ['b', 'i', 'span'], ALLOWED_ATTR: ['dir'] });
 }
