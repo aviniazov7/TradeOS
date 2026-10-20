@@ -1,5 +1,6 @@
 import DOMPurify from 'dompurify';
 import { wrapLtrRuns } from './bidiNumbers';
+import { classifyNumericHeader, columnLooksNumeric, presentNumericCell } from './signedNumbers';
 
 // Sanitize-last invariant: ALL HTML construction (markdown→tags) happens here,
 // then DOMPurify runs as the final step before dangerouslySetInnerHTML. Never
@@ -50,8 +51,8 @@ function buildLineHtml(line) {
   // isolated LTR so "+200 USDT" doesn't flip in RTL.
   let s = applyMarkdown(escapeHtml(line));
   s = wrapLtrRuns(s, (m) => (isPriceRun(m)
-    ? `<span dir="ltr" class="font-mono text-accent-primary bg-accent-primary/10 px-1 rounded">${m}</span>`
-    : `<span dir="ltr">${m}</span>`));
+    ? `<span dir="ltr" class="num-ltr font-mono text-accent-primary bg-accent-primary/10 px-1 rounded">${m}</span>`
+    : `<span dir="ltr" class="num-ltr">${m}</span>`));
   for (const w of BULLISH) s = s.replace(new RegExp(escapeRe(w), 'g'), (m) => `<span class="text-profit font-medium">${m}</span>`);
   for (const w of BEARISH) s = s.replace(new RegExp(escapeRe(w), 'g'), (m) => `<span class="text-loss font-medium">${m}</span>`);
   return s;
@@ -91,6 +92,15 @@ function columnAlign(sepCell) {
   return 'text-right';
 }
 
+// English money/R headers ("P&L (USD)", "R") are themselves LTR tokens.
+// Hebrew headers stay with the table direction.
+function headerIsLtr(cell, kind) {
+  if (kind !== 'pnl' && kind !== 'r') return false;
+  return !/[\u0590-\u05FF]/.test(String(cell || ''));
+}
+
+const TONE_CLASS = { profit: 'text-profit font-medium', loss: 'text-loss font-medium' };
+
 function cellHtml(raw) {
   return safeHtml(buildLineHtml(raw));
 }
@@ -108,25 +118,69 @@ function takeTable(lines, start) {
     body.push(header.map((_, col) => cells[col] || ''));
     i += 1;
   }
-  const th = 'border border-border-primary px-2.5 py-1.5 font-semibold text-text-primary whitespace-nowrap bg-white/[0.06]';
-  const td = 'border border-border-primary px-2.5 py-1.5 text-text-secondary align-top';
+  const kinds = header.map((cell, col) => {
+    const fromHeader = classifyNumericHeader(cell);
+    if (fromHeader !== 'text') return fromHeader;
+    return columnLooksNumeric(body.map((row) => row[col])) ? 'number' : 'text';
+  });
+  const th = 'px-3 py-2 text-[11px] font-semibold tracking-wide text-text-muted whitespace-nowrap bg-bg-tertiary border-b border-border-primary';
+  const td = 'px-3 py-2 text-text-secondary align-middle border-b border-border-primary/40';
   const node = (
-    <div key={`table-${start}`} className="my-2 max-w-full overflow-x-auto rounded-lg">
-      <table dir="rtl" className="w-max min-w-full border-collapse text-[12px] leading-snug text-right">
+    <div key={`table-${start}`} className="my-2 max-w-full overflow-x-auto overscroll-x-contain rounded-xl border border-border-primary">
+      <table dir="rtl" className="w-max min-w-full border-collapse text-[12px] leading-snug text-right tabular-nums">
         <thead>
           <tr>
-            {header.map((cell, col) => (
-              <th key={col} className={`${th} ${align[col] || 'text-right'}`} dangerouslySetInnerHTML={{ __html: cellHtml(cell) }} />
-            ))}
+            {header.map((cell, col) => {
+              const numeric = kinds[col] !== 'text';
+              const ltr = headerIsLtr(cell, kinds[col]);
+              return (
+                <th
+                  key={col}
+                  dir={ltr ? 'ltr' : undefined}
+                  className={`${th} ${numeric ? 'text-right' : (align[col] || 'text-right')}`}
+                  dangerouslySetInnerHTML={{ __html: cellHtml(cell) }}
+                />
+              );
+            })}
           </tr>
         </thead>
         {body.length > 0 && (
           <tbody>
             {body.map((row, r) => (
-              <tr key={r} className={r % 2 === 1 ? 'bg-white/[0.03]' : undefined}>
-                {row.map((cell, col) => (
-                  <td key={col} className={`${td} ${align[col] || 'text-right'}`} dangerouslySetInnerHTML={{ __html: cellHtml(cell) }} />
-                ))}
+              <tr key={r} className={r % 2 === 1 ? 'bg-bg-tertiary/40' : undefined}>
+                {row.map((cell, col) => {
+                  const alignClass = kinds[col] !== 'text' ? 'text-right' : (align[col] || 'text-right');
+                  // ISO dates are not numbers, but a hyphen in the middle is a
+                  // bidi dash. Keep the whole token LTR so "2026-10-16" stays put.
+                  if (/^\d{4}-\d{2}-\d{2}$/.test(String(cell).trim())) {
+                    return (
+                      <td
+                        key={col}
+                        dir="ltr"
+                        style={{ direction: 'ltr', unicodeBidi: 'isolate' }}
+                        className={`${td} ${alignClass} num-ltr whitespace-nowrap tabular-nums`}
+                      >
+                        {String(cell).trim()}
+                      </td>
+                    );
+                  }
+                  const presented = presentNumericCell(cell, kinds[col]);
+                  if (presented) {
+                    return (
+                      <td
+                        key={col}
+                        dir="ltr"
+                        style={{ direction: 'ltr', unicodeBidi: 'isolate' }}
+                        className={`${td} ${alignClass} num-ltr whitespace-nowrap tabular-nums ${TONE_CLASS[presented.tone] || ''}`}
+                      >
+                        {presented.text}
+                      </td>
+                    );
+                  }
+                  return (
+                    <td key={col} className={`${td} ${alignClass}`} dangerouslySetInnerHTML={{ __html: cellHtml(cell) }} />
+                  );
+                })}
               </tr>
             ))}
           </tbody>

@@ -158,6 +158,9 @@ describe('chatRowHint', () => {
     expect(hint).toContain('recentTrades');
     expect(hint).toContain('"Long" or "Short"');
     expect(hint).toContain('column header is R');
+    expect(hint).toContain('sign before the digits');
+    expect(hint).toContain('-$1,234.56');
+    expect(hint).toContain('-1.06R');
     expect(hint).not.toContain('L=לונג');
     expect(chatRowHint('show my last trades')).toContain('Markdown');
     expect(chatRowHint('מה זה Spring?')).toBe('');
@@ -172,6 +175,9 @@ describe('chat worker prompt', () => {
     expect(src).toContain('טבלת Markdown');
     expect(src).toContain('Long או Short');
     expect(src).toContain('לא r');
+    expect(src).toContain('לפני הספרות');
+    expect(src).toContain('-$1,234.56');
+    expect(src).toContain('-1.06R');
     expect(src).not.toContain('L=לונג');
     expect(src).not.toMatch(/const CHAT_CONTEXT_BUDGET = 900;/);
   });

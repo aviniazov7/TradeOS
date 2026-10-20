@@ -96,6 +96,44 @@ describe('TradeAI markdown', () => {
     expect(out.match(/<tr/g).length).toBe(6);
   });
 
+  it('puts the sign first on P&L and R cells and colors only those columns', () => {
+    const out = html([
+      '| תאריך | כניסה | P&L (USD) | R |',
+      '| --- | ---: | ---: | ---: |',
+      '| 2026-10-16 | 65000 | 11.24- | 1.06- |',
+      '| 2026-10-15 | 0.45 | +8.5 | 1.2 |',
+      '| 2026-10-14 | 5 | +$1,234.50 | 0 |',
+    ].join('\n'));
+    expect(out).toContain('dir="ltr"');
+    expect(out).toContain('unicode-bidi:isolate');
+    expect(out).toContain('num-ltr');
+    expect(out).toContain('tabular-nums');
+    expect(out).toContain('overflow-x-auto');
+    expect(out).toContain('-$11.24');
+    expect(out).toContain('-1.06R');
+    expect(out).toContain('+$8.50');
+    expect(out).toContain('+1.20R');
+    expect(out).toContain('+$1,234.50');
+    expect(out).toContain('0.00R');
+    expect(out).toContain('65000');
+    expect(out).toContain('text-loss');
+    expect(out).toContain('text-profit');
+    expect(out).not.toContain('11.24-');
+    expect(out).not.toContain('1.06-');
+    // Entry prices are LTR but not painted as P&L.
+    const entry = out.split('65000')[0];
+    expect(entry.slice(entry.lastIndexOf('<td'))).not.toContain('text-profit');
+    expect(entry.slice(entry.lastIndexOf('<td'))).not.toContain('text-loss');
+  });
+
+  it('isolates a trailing minus inside a prose line', () => {
+    const out = html('הפסד של 11.24- ביומן');
+    expect(out).toContain('dir="ltr"');
+    expect(out).toContain('class="num-ltr"');
+    expect(out).toContain('-11.24');
+    expect(out).not.toContain('11.24-');
+  });
+
   it('escapes HTML inside a table cell', () => {
     const out = html('| עמודה |\n| --- |\n| <img src=x onerror=alert(1)> |');
     expect(out).toContain('<table');
