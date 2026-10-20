@@ -29,6 +29,8 @@ describe('journal CSV export', () => {
     expect(col(row, 'R')).toBe(2);
     expect(col(row, 'סטופ מקורי')).toBe(49000);
     expect(col(row, 'תאריך')).toBe('02/01/2024 10:30');
+    expect(col(row, 'סטאפ')).toBe('');
+    expect(col(journalCsvRow({ ...crypto, setups: ['LPS', 'breakout'] }), 'סטאפ')).toBe('LPS | breakout');
   });
 
   it('uses contracts for futures and shares for stocks', () => {

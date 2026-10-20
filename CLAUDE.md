@@ -69,15 +69,17 @@ before releasing. Summary:
 Deploys are **fully automated**. Push your branch, GitHub Actions deploys it.
 No manual `npm run deploy` needed for hosting or the Worker.
 
-The only thing that still needs manual deployment is **Firestore rules**:
+The only things that still need manual deployment are **Firestore rules** and
+**Storage rules** (chart screenshots). The CI Firebase service account lacks
+the `serviceusage.serviceUsageViewer` permission, so rules deploys 403.
 
 ```bash
-firebase deploy --only firestore:rules
+firebase deploy --only firestore:rules,storage --project tradeos-91a58
 ```
 
-The CI Firebase service account lacks the `serviceusage.serviceUsageViewer`
-permission, so rules deploys 403. Run it manually whenever `firestore.rules`
-changes.
+Run it from the repository root whenever `firestore.rules` or `storage.rules`
+changes. Storage rules must be deployed before new chart uploads work; older
+screenshots stored in Firestore keep displaying either way.
 
 ## Environments — what's separated, what's shared
 

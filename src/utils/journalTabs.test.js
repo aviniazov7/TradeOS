@@ -13,5 +13,7 @@ describe('resolveJournalTab', () => {
     expect(resolveJournalTab('exchange', { crypto: false })).toBe('trades');
     expect(resolveJournalTab('positions', { crypto: false })).toBe('trades');
     expect(resolveJournalTab('calendar', { crypto: false })).toBe('calendar');
+    expect(resolveJournalTab('week', { crypto: false })).toBe('week');
+    expect(resolveJournalTab('week')).toBe('week');
   });
 });

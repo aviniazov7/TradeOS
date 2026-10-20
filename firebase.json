@@ -66,6 +66,9 @@
     "rules": "firestore.rules",
     "indexes": "firestore.indexes.json"
   },
+  "storage": {
+    "rules": "storage.rules"
+  },
   "functions": {
     "source": "functions",
     "runtime": "nodejs20"
@@ -73,6 +76,7 @@
   "emulators": {
     "auth": { "port": 9099 },
     "firestore": { "port": 8080 },
+    "storage": { "port": 9199 },
     "hosting": { "port": 5002 },
     "ui": { "enabled": false },
     "singleProjectMode": true

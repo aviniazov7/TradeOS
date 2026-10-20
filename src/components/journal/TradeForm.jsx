@@ -14,10 +14,12 @@ import TimeframeSelector from '../shared/TimeframeSelector';
 import StrategySelector from '../shared/StrategySelector';
 import MultiSelector from '../shared/MultiSelector';
 import { PAIRS, MISTAKE_LABELS, TAG_LABELS, SESSIONS, FUTURES_CONTRACTS, getContractSpec, DEFAULT_LEVERAGE } from '../../utils/constants';
+import { SETUP_LABELS, tradeSetups } from '../../utils/setupStats';
 import { useUserStrategies } from '../../hooks/useUserStrategies';
 import { useUserTimeframes } from '../../hooks/useUserTimeframes';
 import { useUserTriggers } from '../../hooks/useUserTriggers';
 import { useUserTags } from '../../hooks/useUserTags';
+import { useUserSetups } from '../../hooks/useUserSetups';
 import { useUserMistakes } from '../../hooks/useUserMistakes';
 import { useTradingPlans } from '../../hooks/useTradingPlans';
 import { useJournalContext } from '../../contexts/JournalContext';
@@ -66,6 +68,7 @@ const defaultForm = {
   entryReason: '',
   notes: '',
   tags: [],
+  setups: [],
   emotionBefore: '',
   emotionAfter: '',
   mistakes: [],
@@ -203,6 +206,7 @@ export default function TradeForm({ isOpen, onClose, trade, onSave, riskSettings
   const { allTimeframes, addTimeframe, removeTimeframe } = useUserTimeframes();
   const { allTriggers, addTrigger, removeTrigger } = useUserTriggers();
   const { allTags, addTag, removeTag } = useUserTags();
+  const { allSetups, addSetup, removeSetup } = useUserSetups();
   const { allMistakes, addMistake, removeMistake } = useUserMistakes();
   const { plans } = useTradingPlans();
   const { activeJournal, activeJournalId } = useJournalContext();
@@ -356,6 +360,7 @@ export default function TradeForm({ isOpen, onClose, trade, onSave, riskSettings
         // input shows a clean 5.079 instead of a 12-digit number.
         fees: Number.isFinite(+trade.fees) && trade.fees !== '' ? +(+trade.fees).toPrecision(10) : '',
         tags: trade.tags ?? [],
+        setups: tradeSetups(trade),
         mistakes: trade.mistakes ?? [],
         tradingViewUrl: trade.tradingViewUrl ?? '',
         entryDate: parseDate(trade.entryDate),
@@ -1035,6 +1040,7 @@ export default function TradeForm({ isOpen, onClose, trade, onSave, riskSettings
           checklistAdherence: form.planId ? adherencePct : null,
         } : {}),
         tags: form.tags || [],
+        setups: tradeSetups({ setups: form.setups }),
         entryDate: form.entryDate || new Date(),
         exitDate: form.exitDate || null,
         entryReason: form.entryReason,
@@ -1340,6 +1346,20 @@ export default function TradeForm({ isOpen, onClose, trade, onSave, riskSettings
                   inputPlaceholder="שם טריגר..."
                   emptyText="אין טריגרים"
                   placeholder="בחר טריגר..."
+                />
+              </Field>
+              <Field label="סטאפ" pick className="col-span-2 md:col-span-12">
+                <MultiSelector
+                  values={form.setups || []}
+                  onChange={(arr) => update('setups', tradeSetups({ setups: arr }))}
+                  options={allSetups}
+                  labels={SETUP_LABELS}
+                  onAdd={addSetup}
+                  onRemove={removeSetup}
+                  addLabel="סטאפ מותאם"
+                  inputPlaceholder="שם סטאפ..."
+                  emptyText="אין סטאפים"
+                  placeholder="LPS, Spring, פריצה…"
                 />
               </Field>
               <Field label="סשן" className="col-span-2 md:col-span-12"

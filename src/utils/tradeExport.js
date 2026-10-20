@@ -3,6 +3,7 @@
 // (asset class, units, exits, gross vs net P&L, signed R, original stop).
 
 import { isClosedTrade } from './calculations';
+import { tradeSetups } from './setupStats';
 import { formatDateTime } from './formatters';
 
 export const ASSET_CLASS_LABELS = { crypto: 'קריפטו', futures_cme: 'חוזים עתידיים', stocks: 'מניות' };
@@ -63,7 +64,7 @@ export const JOURNAL_CSV_HEADERS = [
   'תאריך', 'תאריך סגירה', 'זוג', 'סוג נכס', 'כיוון', 'כניסה', 'סגירה', 'סטופ לוס', 'סטופ מקורי',
   'כמות', 'יחידת כמות', 'גודל עסקה', 'מינוף', 'יציאות', 'רווח ברוטו', 'עמלות', 'רווח/הפסד נטו',
   '%', 'R', 'אסטרטגיה', 'טווח זמן', 'סטטוס', 'מקור', 'סיבת כניסה', 'הערות', 'תגיות',
-  'רגש לפני', 'רגש אחרי', 'טעויות', 'ביטחון',
+  'רגש לפני', 'רגש אחרי', 'טעויות', 'ביטחון', 'סטאפ',
 ];
 
 /**
@@ -92,5 +93,6 @@ export function journalCsvRow(t) {
     round(Number.isFinite(pnlPct) ? pnlPct : 0), round(signedR(t)), t.strategy || '',
     t.timeframe || '', statusLabel(t), t.source || 'manual', t.entryReason || '', t.notes || '',
     list(t.tags), t.emotionBefore || '', t.emotionAfter || '', list(t.mistakes), t.confidenceRating ?? '',
+    tradeSetups(t).join(' | '),
   ];
 }
