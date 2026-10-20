@@ -34,7 +34,7 @@ const navItems = [
   { key: 'ai', to: '/trade-ai', label: 'TradeAI', icon: Bot },
   { key: 'market', to: '/market', label: 'שוק', icon: Activity, match: ['/polymarket', '/whales'] },
   { key: 'news', to: '/news', label: 'חדשות', icon: Newspaper },
-  { key: 'portfolio', to: '/portfolio', label: 'תיק', icon: Briefcase, match: ['/dca', '/wallets'] },
+  { key: 'portfolio', to: '/portfolio', label: 'החזקות', icon: Briefcase, match: ['/dca', '/wallets'] },
   { key: 'scanner', to: '/scanner', label: 'מנוע ויקוף', icon: Radar, admin: true },
 ];
 

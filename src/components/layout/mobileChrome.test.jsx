@@ -84,6 +84,10 @@ describe('mobile chrome', () => {
     const journal = [...nav.querySelectorAll('a')].filter((a) => a.getAttribute('href') === '/journal');
     expect(journal).toHaveLength(1);
     expect(journal[0].textContent).toContain('יומן מסחר');
+    const holdings = nav.querySelector('a[href="/portfolio"]');
+    expect(holdings.textContent).toContain('החזקות');
+    expect(holdings.textContent).not.toContain('תיק');
+    expect(nav.textContent).not.toContain('תיק');
     expect(nav.querySelector('a[href="/journal?tab=analytics"]')).toBeNull();
     expect(nav.querySelector('a[href="/journal?tab=calendar"]')).toBeNull();
     expect(nav.querySelector('a[href="/journal?tab=exchange"]')).toBeNull();
