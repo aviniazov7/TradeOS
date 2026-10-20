@@ -1,6 +1,6 @@
-// Production origin: Firebase Hosting site `tradeos-app` in project
+// Production origin: Firebase Hosting site `tradeos-journal` in project
 // tradeos-91a58. https://tradeos-91a58.web.app 301-redirects here.
-export const APP_ORIGIN = 'https://tradeos-app.web.app';
+export const APP_ORIGIN = 'https://tradeos-journal.web.app';
 
 // Continue URL on password-reset and email-verification messages. Firebase
 // hosts the action page on the auth domain, then sends the browser here.

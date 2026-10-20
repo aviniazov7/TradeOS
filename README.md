@@ -16,7 +16,7 @@
 
 A trading journal and analytics platform for crypto, stocks and futures traders: trade journal with R-multiples, live exchange sync, a live trading desk, backtesting, a psychology journal, market data, an AI coach and Web Push alerts. The product UI is **Hebrew, right-to-left** (this repository's documentation is in English, except the internal hand-over notes in `docs/NEXT.md` and `docs/VERSIONING.md`).
 
-**Live:** [tradeos-app.web.app](https://tradeos-app.web.app) · the previous address [tradeos-91a58.web.app](https://tradeos-91a58.web.app) 301-redirects there (path and query kept). **Working from another machine?** Read [`docs/NEXT.md`](docs/NEXT.md) first (what is open, what shipped) and [`CLAUDE.md`](CLAUDE.md) (the rules for any AI agent or developer).
+**Live:** [tradeos-journal.web.app](https://tradeos-journal.web.app) · the previous address [tradeos-91a58.web.app](https://tradeos-91a58.web.app) 301-redirects there (path and query kept). **Working from another machine?** Read [`docs/NEXT.md`](docs/NEXT.md) first (what is open, what shipped) and [`CLAUDE.md`](CLAUDE.md) (the rules for any AI agent or developer).
 
 ---
 
@@ -267,11 +267,11 @@ feature/* or fix/*  →  PR  →  dev  →  PR  →  main
 
 | Trigger | What happens |
 |---|---|
-| Push to `main` | auto-bumps the cache version, builds, deploys Hosting live (app on `tradeos-app`, 301 redirect on `tradeos-91a58`) + both production Workers |
+| Push to `main` | auto-bumps the cache version, builds, deploys Hosting live (app on `tradeos-journal`, 301 redirect on `tradeos-91a58`) + both production Workers |
 | Push to `dev` | builds, deploys Hosting (`dev` channel) + the Workers — **which are the production Workers**, so treat Worker changes on `dev` as production changes |
 | Push to `feature/*`, `fix/*`, `hotfix/*`, or a pull request | builds and deploys a Hosting **preview channel** of the app site only (7 days) |
 
-Hosting is two sites in the same project (`firebase.json` + `.firebaserc`): target `app` is the live app on `tradeos-app`, target `legacy` 301s every path on `tradeos-91a58` to that app (Hosting appends the query string). `/sw.js` on the old site is the one file that is not redirected, so an installed PWA can update its worker and follow the move. Preview channels deploy `app` only (`tradeos-app--CHANNEL.web.app`). CI creates the site if it is missing (`scripts/ensure-hosting-site.mjs`) and adds `tradeos-app.web.app` / `tradeos-app.firebaseapp.com` to Auth authorized domains. Google sign-in also needs `https://tradeos-app.web.app/__/auth/handler` on the Cloud OAuth client's redirect URIs (Console → APIs & Services → Credentials); the service account cannot edit that client.
+Hosting is two sites in the same project (`firebase.json` + `.firebaserc`): target `app` is the live app on `tradeos-journal` (`tradeos-app` and `tradeosapp` were already reserved on other projects), target `legacy` 301s every path on `tradeos-91a58` to that app (Hosting appends the query string). `/sw.js` on the old site is the one file that is not redirected, so an installed PWA can update its worker and follow the move. Preview channels deploy `app` only (`tradeos-journal--CHANNEL.web.app`). CI creates the site if it is missing (`scripts/ensure-hosting-site.mjs`) and adds `tradeos-journal.web.app` / `tradeos-journal.firebaseapp.com` to Auth authorized domains. Google sign-in also needs `https://tradeos-journal.web.app/__/auth/handler` on the Cloud OAuth client's redirect URIs (Console → APIs & Services → Credentials); the service account cannot edit that client.
 
 The only manual deploy is **Firestore rules**: `firebase deploy --only firestore:rules --project tradeos-91a58` whenever `firestore.rules` changes (run it from the repository root — it needs `firebase.json`).
 

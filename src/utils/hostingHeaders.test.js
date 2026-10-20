@@ -67,8 +67,8 @@ describe('hosting CSP (report-only)', () => {
       'https://www.tradingview.com',
       'https://s.tradingview.com',
       'https://accounts.google.com',
-      'https://tradeos-app.web.app',
-      'https://tradeos-app.firebaseapp.com',
+      'https://tradeos-journal.web.app',
+      'https://tradeos-journal.firebaseapp.com',
       'https://tradeos-91a58.web.app',
       'https://tradeos-91a58.firebaseapp.com',
     ]) {
@@ -78,18 +78,18 @@ describe('hosting CSP (report-only)', () => {
 });
 
 describe('hosting sites', () => {
-  it('deploys the app to tradeos-app and 301s the old site, keeping path and query', () => {
+  it('deploys the app to tradeos-journal and 301s the old site, keeping path and query', () => {
     expect(appHosting.public).toBe('dist/client');
     expect(appHosting.rewrites).toEqual([{ source: '**', destination: '/index.html' }]);
     expect(legacyHosting.public).toBe('hosting/legacy');
     expect(legacyHosting.redirects[0]).toEqual({
       source: '/',
-      destination: 'https://tradeos-app.web.app/',
+      destination: 'https://tradeos-journal.web.app/',
       type: 301,
     });
     const rest = legacyHosting.redirects[1];
     expect(rest.type).toBe(301);
-    expect(rest.destination).toBe('https://tradeos-app.web.app/:1');
+    expect(rest.destination).toBe('https://tradeos-journal.web.app/:1');
     const redirect = new RegExp(rest.regex);
     // /sw.js is served as a file so an already-installed worker can update
     // and then 301 the browser. Every other path redirects, query appended
@@ -100,7 +100,7 @@ describe('hosting sites', () => {
     expect(redirect.exec('/sitemap.xml')[1]).toBe('sitemap.xml');
     expect('/sw.js').not.toMatch(redirect);
     const rc = JSON.parse(readFileSync(fileURLToPath(new URL('../../.firebaserc', import.meta.url)), 'utf8'));
-    expect(rc.targets['tradeos-91a58'].hosting.app).toEqual(['tradeos-app']);
+    expect(rc.targets['tradeos-91a58'].hosting.app).toEqual(['tradeos-journal']);
     expect(rc.targets['tradeos-91a58'].hosting.legacy).toEqual(['tradeos-91a58']);
   });
 });
@@ -157,12 +157,12 @@ describe('robots.txt / sitemap.xml', () => {
 
   it('keeps the signed-in app out of search and points at the sitemap', () => {
     expect(robots).toMatch(/^Disallow: \/$/m);
-    expect(robots).toMatch(/^Sitemap: https:\/\/tradeos-app\.web\.app\/sitemap\.xml$/m);
+    expect(robots).toMatch(/^Sitemap: https:\/\/tradeos-journal\.web\.app\/sitemap\.xml$/m);
   });
 
   it('lists only pages robots.txt allows', () => {
     const allowed = [...robots.matchAll(/^Allow: (\S+)$/gm)].map((m) => m[1].replace(/\$$/, ''));
-    const locs = [...sitemap.matchAll(/<loc>https:\/\/tradeos-app\.web\.app(\/[^<]*)<\/loc>/g)].map((m) => m[1]);
+    const locs = [...sitemap.matchAll(/<loc>https:\/\/tradeos-journal\.web\.app(\/[^<]*)<\/loc>/g)].map((m) => m[1]);
     expect(locs.length).toBeGreaterThan(0);
     for (const loc of locs) expect(allowed).toContain(loc);
   });

@@ -21,7 +21,7 @@ describe('worker cache policy', () => {
     ['https://trade-os.tradeos.workers.dev/notify-settings', false, true],
     ['https://trade-os.tradeos.workers.dev/cg/simple/price?ids=bitcoin', false, false],
     ['https://trade-os.tradeos.workers.dev/cx/quotes?symbols=BTC', false, false],
-    ['https://tradeos-app.web.app/assets/index.js', true, false],
+    ['https://tradeos-journal.web.app/assets/index.js', true, false],
   ];
 
   it('flags authenticated and per-user Worker GETs, not public market data', () => {
@@ -43,9 +43,9 @@ describe('worker cache policy', () => {
     const start = sw.indexOf('function legacyRedirectUrl');
     const end = sw.indexOf('// END legacyRedirectUrl');
     const legacyRedirectUrl = new Function(`${sw.slice(start, end)}\nreturn legacyRedirectUrl;`)();
-    expect(legacyRedirectUrl('https://tradeos-91a58.web.app/redeem/AB?x=1')).toBe('https://tradeos-app.web.app/redeem/AB?x=1');
-    expect(legacyRedirectUrl('https://tradeos-91a58.firebaseapp.com/login')).toBe('https://tradeos-app.web.app/login');
-    expect(legacyRedirectUrl('https://tradeos-app.web.app/journal?y=2')).toBeNull();
+    expect(legacyRedirectUrl('https://tradeos-91a58.web.app/redeem/AB?x=1')).toBe('https://tradeos-journal.web.app/redeem/AB?x=1');
+    expect(legacyRedirectUrl('https://tradeos-91a58.firebaseapp.com/login')).toBe('https://tradeos-journal.web.app/login');
+    expect(legacyRedirectUrl('https://tradeos-journal.web.app/journal?y=2')).toBeNull();
     expect(sw).toContain("url.includes('/__/auth')");
     expect(sw).toContain("url.includes('/__/firebase')");
     expect(sw).toContain('Response.redirect(moved, 301)');

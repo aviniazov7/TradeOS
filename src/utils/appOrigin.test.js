@@ -4,10 +4,10 @@ import { APP_URL } from '../../worker/emailTheme.js';
 
 describe('app origin', () => {
   it('is the new Hosting site, shared with the worker and auth continue URL', () => {
-    expect(APP_ORIGIN).toBe('https://tradeos-app.web.app');
+    expect(APP_ORIGIN).toBe('https://tradeos-journal.web.app');
     expect(APP_URL).toBe(APP_ORIGIN);
     expect(authActionCodeSettings).toEqual({
-      url: 'https://tradeos-app.web.app/',
+      url: 'https://tradeos-journal.web.app/',
       handleCodeInApp: false,
     });
   });

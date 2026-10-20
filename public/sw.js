@@ -36,7 +36,7 @@ function shouldBypass(url) {
 // path and query, so the browser moves to the new origin.
 function legacyRedirectUrl(raw) {
   const LEGACY_HOSTS = ['tradeos-91a58.web.app', 'tradeos-91a58.firebaseapp.com'];
-  const APP_HOST = 'tradeos-app.web.app';
+  const APP_HOST = 'tradeos-journal.web.app';
   try {
     const url = new URL(raw);
     if (!LEGACY_HOSTS.includes(url.hostname)) return null;
