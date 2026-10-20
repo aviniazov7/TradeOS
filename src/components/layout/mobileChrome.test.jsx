@@ -86,7 +86,9 @@ describe('mobile chrome', () => {
     expect(journal[0].textContent).toContain('יומן מסחר');
     expect(nav.querySelector('a[href="/journal?tab=analytics"]')).toBeNull();
     expect(nav.querySelector('a[href="/journal?tab=calendar"]')).toBeNull();
-    expect(nav.querySelector('a[href="/journal?tab=exchange"]')).toBeNull();
+    const connect = nav.querySelector('a[href="/journal?tab=exchange"]');
+    expect(connect).toBeTruthy();
+    expect(connect.textContent).toContain('חיבור בורסה');
     expect(nav.textContent).not.toContain('חיבור בורסאות');
     await view.cleanup();
   });

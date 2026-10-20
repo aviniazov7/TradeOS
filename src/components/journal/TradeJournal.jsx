@@ -1,9 +1,11 @@
 import { useState, useMemo, useEffect, useRef, lazy, Suspense } from 'react';
 import { useSearchParams } from 'react-router-dom';
 import { m } from 'framer-motion';
-import { Plus, BookOpen, Settings, Undo2, BrainCircuit, ListChecks, Trash2, AlertTriangle, Sparkles, Briefcase, Loader2 } from 'lucide-react';
+import { Plus, BookOpen, Settings, Undo2, BrainCircuit, ListChecks, Trash2, AlertTriangle, Sparkles, Briefcase, Loader2, Link2, FlaskConical } from 'lucide-react';
 import toast from 'react-hot-toast';
 import { useTrades } from '../../hooks/useTrades';
+import { useDemoMode } from '../../hooks/useDemoMode';
+import { overlayDemo, isDemoTrade } from '../../utils/demoData';
 import { useCryptoPrices } from '../../hooks/useCryptoPrices';
 import { useJournalContext } from '../../contexts/JournalContext';
 import { isClosedTrade, safePnl, localDayKey } from '../../utils/calculations';
@@ -91,7 +93,18 @@ function TabFallback() {
 
 export default function TradeJournal() {
   const { activeJournal, activeJournalId, journals, addJournal } = useJournalContext();
-  const { trades, loading, addTrade, addTradesBulk, updateTrade, deleteTrade } = useTrades(activeJournalId);
+  const demoMode = useDemoMode();
+  const {
+    trades: realTrades, loading, addTrade, addTradesBulk, updateTrade, deleteTrade,
+  } = useTrades(activeJournalId);
+  const demoOverlay = useMemo(() => overlayDemo({
+    active: demoMode.active && !loading,
+    trades: realTrades,
+    journals,
+    activeJournalId,
+  }), [demoMode.active, loading, realTrades, journals, activeJournalId]);
+  const trades = demoOverlay.trades;
+  const showingDemo = demoOverlay.active;
   const { prices } = useCryptoPrices();
   // Stock journals: live quotes for the tickers that are still open.
   const isStockJournal = activeJournal?.assetClass === 'stocks';
@@ -398,7 +411,19 @@ export default function TradeJournal() {
     cur.key === key ? { key, dir: cur.dir === 'desc' ? 'asc' : 'desc' } : { key, dir: key === 'pair' ? 'asc' : 'desc' }
   ));
 
+  const refuseDemoWrite = () => {
+    toast('אלה נתוני דמו. צא ממצב הדמו כדי לערוך את היומן שלך.');
+  };
+
+  const openNewTrade = () => {
+    if (showingDemo) demoMode.exit();
+    setEditingTrade(null);
+    setTradePrefill(null);
+    setFormOpen(true);
+  };
+
   const handleSave = async (data) => {
+    if (showingDemo || isDemoTrade(editingTrade)) { refuseDemoWrite(); return; }
     try {
       if (editingTrade) {
         await updateTrade(editingTrade.id, data);
@@ -430,6 +455,7 @@ export default function TradeJournal() {
   };
 
   const handleEdit = (trade) => {
+    if (showingDemo || isDemoTrade(trade)) { refuseDemoWrite(); return; }
     setEditingTrade(trade);
     setFormOpen(true);
   };
@@ -438,6 +464,7 @@ export default function TradeJournal() {
   const handleDeleteWithUndo = (tradeOrTrades) => {
     const list = Array.isArray(tradeOrTrades) ? tradeOrTrades : [tradeOrTrades];
     if (!list.length) return;
+    if (showingDemo || list.some(isDemoTrade)) { refuseDemoWrite(); return; }
     setPendingDeletes((prev) => {
       const next = new Set(prev);
       list.forEach((t) => next.add(t.id));
@@ -525,6 +552,7 @@ export default function TradeJournal() {
   };
 
   const exportCSV = () => {
+    if (showingDemo) { refuseDemoWrite(); return; }
     if (!sortedTrades.length) return;
     // Columns/values live in utils/tradeExport (shared with the Excel export):
     // units per asset class, exits, gross + net P&L, fees, signed R, original
@@ -582,18 +610,18 @@ export default function TradeJournal() {
         tabsLead={tab === 'analytics' ? <TimePeriodFilter value={period} onChange={setPeriod} /> : null}
         actions={(
           <div className="flex items-center gap-1.5 md:gap-2">
-            <button onClick={() => setAiModalOpen(true)} className={headerAiBtnDense} title="ניתוח AI של המסחר שלך" aria-label="ניתוח AI">
+            <button onClick={() => { if (showingDemo) toast('הניתוח הוא על נתוני הדמו, לא על החשבון שלך'); setAiModalOpen(true); }} className={headerAiBtnDense} title="ניתוח AI של המסחר שלך" aria-label="ניתוח AI">
               <Sparkles className="w-4 h-4 md:w-[18px] md:h-[18px]" />
               <span className="hidden md:inline">ניתוח AI</span>
             </button>
             <button onClick={() => setSettingsOpen(true)} className={headerIconBtnDense} title="הגדרות יומן" aria-label="הגדרות יומן">
               <Settings className="w-4 h-4 md:w-[18px] md:h-[18px]" />
             </button>
-            <button type="button" onClick={() => setFormOpen(true)} className={headerPlusBtnDense} aria-label="עסקה חדשה" title="עסקה חדשה">
+            <button type="button" onClick={openNewTrade} className={headerPlusBtnDense} aria-label="עסקה חדשה" title="עסקה חדשה">
               <Plus className="w-4 h-4" />
             </button>
             <span className="hidden md:inline-flex">
-              <button type="button" onClick={() => setFormOpen(true)} className={headerPrimaryBtn}>
+              <button type="button" onClick={openNewTrade} className={headerPrimaryBtn}>
                 <Plus className="w-4 h-4" /> עסקה חדשה
               </button>
             </span>
@@ -635,11 +663,31 @@ export default function TradeJournal() {
           {filteredTrades.length === 0 && !loading ? (
             trades.length === 0 ? (
               <EmptyState
-                icon={BookOpen}
+                icon={isCryptoJournal ? Link2 : BookOpen}
                 title="אין עסקאות עדיין"
-                description="התחל לתעד את העסקאות שלך למעקב ביצועים"
-                actionLabel="הוסף את העסקה הראשונה"
-                onAction={() => setFormOpen(true)}
+                description={isCryptoJournal
+                  ? 'חבר בורסה והעסקאות ייכנסו לבד — או תעד ידנית, או סייר עם נתוני דמו.'
+                  : 'התחל לתעד את העסקאות שלך למעקב ביצועים'}
+                action={isCryptoJournal ? (
+                  <div className="flex flex-col items-center gap-2 w-full max-w-xs">
+                    <button type="button" onClick={() => setTab('exchange')}
+                      className="w-full h-11 inline-flex items-center justify-center gap-1.5 rounded-xl bg-accent-muted hover:bg-accent-primary text-white text-sm font-bold cursor-pointer">
+                      <Link2 className="w-4 h-4" /> חיבור בורסה
+                    </button>
+                    <button type="button" onClick={openNewTrade}
+                      className="w-full h-11 inline-flex items-center justify-center gap-1.5 rounded-xl border border-border-hover text-text-primary text-sm font-bold hover:bg-bg-tertiary cursor-pointer">
+                      <Plus className="w-4 h-4" /> עסקה ראשונה
+                    </button>
+                    {!demoMode.active && (
+                      <button type="button" onClick={() => { demoMode.enter(); }}
+                        className="h-8 inline-flex items-center gap-1 text-xs text-text-muted hover:text-text-primary cursor-pointer">
+                        <FlaskConical className="w-3.5 h-3.5" /> סייר עם נתוני דמו
+                      </button>
+                    )}
+                  </div>
+                ) : undefined}
+                actionLabel={isCryptoJournal ? undefined : 'הוסף את העסקה הראשונה'}
+                onAction={isCryptoJournal ? undefined : openNewTrade}
               />
             ) : (
               <EmptyState

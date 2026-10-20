@@ -2,7 +2,7 @@ import { useState, useEffect } from 'react';
 import { Coins, LineChart, Briefcase } from 'lucide-react';
 import Modal from '../shared/Modal';
 import ExchangeSearch from '../shared/ExchangeSearch';
-import { EXCHANGES } from '../../utils/constants';
+import { isUnsetExchange } from '../../utils/constants';
 
 const defaultForm = { name: '', exchange: '', initialBalance: '', currency: 'USDT', description: '', riskType: 'percent', riskValue: '', assetClass: 'crypto' };
 
@@ -40,7 +40,7 @@ export default function JournalFormModal({ isOpen, onClose, journal = null, onSa
     try {
       await onSave({
         name: form.name.trim(),
-        exchange: form.exchange || '',
+        exchange: isUnsetExchange(form.exchange) ? '' : form.exchange,
         initialBalance: parseFloat(form.initialBalance) || 0,
         currency: form.currency,
         description: form.description.trim(),

@@ -28,7 +28,10 @@ export function useExchangeImport(journalId) {
     return s;
   }, [trades]);
 
-  const importTrade = useCallback(async (t) => {
+  const importTrade = useCallback(async (t, targetJournalId) => {
+    // Callers that just created or switched journals pass the id explicitly.
+    // The hook's journalId is still the previous render's value until then.
+    const destJournalId = targetJournalId || journalId || null;
     if (!user) throw new Error('No user');
     const safeTs = (raw) => {
       if (!raw) return null;
@@ -60,7 +63,7 @@ export function useExchangeImport(journalId) {
         margin: ep * qty / lev,
         ...(t.session ? { session: t.session } : {}),
         ...(t.liquidationPrice ? { liquidationPrice: t.liquidationPrice } : {}),
-        journalId: journalId || null,
+        journalId: destJournalId,
         createdAt: timestamp(),
         updatedAt: timestamp(),
       });
@@ -163,7 +166,7 @@ export function useExchangeImport(journalId) {
       rrRatio: parseFloat(t.rrRatio) || 0,
       result,
       positionSize: ep * qty, margin: (ep * qty) / lev,
-      journalId: journalId || null,
+      journalId: destJournalId,
       createdAt: dateToTimestamp(entryD), updatedAt: timestamp(),
     });
   }, [user, trades, updateTrade, journalId]);

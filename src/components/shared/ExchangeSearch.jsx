@@ -1,6 +1,6 @@
 import { useState, useEffect, useRef } from 'react';
 import { Search, X } from 'lucide-react';
-import { EXCHANGES } from '../../utils/constants';
+import { EXCHANGES, isUnsetExchange } from '../../utils/constants';
 import { EXCHANGES as CONNECTABLE_EXCHANGES } from '../exchange/exchangeConfig';
 import ExchangeLogo from './ExchangeLogo';
 
@@ -46,9 +46,13 @@ export default function ExchangeSearch({ value, onChange, label = 'בורסה / 
     return () => document.removeEventListener('mousedown', handler);
   }, []);
 
-  const displayLabel = EXCHANGES.find((e) => e.value === value)?.label || value;
+  // `other` is not a choice. An existing journal that still has it shows the
+  // empty search instead of a fake venue named "other".
+  const selectedValue = isUnsetExchange(value) ? '' : value;
+  const choices = EXCHANGES.filter((ex) => !isUnsetExchange(ex.value));
+  const displayLabel = choices.find((e) => e.value === selectedValue)?.label || selectedValue;
 
-  const filtered = EXCHANGES.filter((ex) => {
+  const filtered = choices.filter((ex) => {
     if (!query.trim()) return true;
     const q = query.trim().toLowerCase();
     return ex.label.toLowerCase().includes(q) || ex.value.toLowerCase().includes(q);
@@ -62,8 +66,8 @@ export default function ExchangeSearch({ value, onChange, label = 'בורסה / 
 
   const handleCustomSubmit = () => {
     const trimmed = query.trim();
-    if (trimmed) {
-      const match = EXCHANGES.find((e) => e.label.toLowerCase() === trimmed.toLowerCase());
+    if (trimmed && !isUnsetExchange(trimmed)) {
+      const match = choices.find((e) => e.label.toLowerCase() === trimmed.toLowerCase());
       onChange(match ? match.value : trimmed);
     }
     setQuery('');
@@ -86,10 +90,10 @@ export default function ExchangeSearch({ value, onChange, label = 'בורסה / 
     <div ref={containerRef} className={`relative ${className}`}>
       {label && <label className="block text-xs text-text-muted mb-1.5">{label}</label>}
 
-      {value && !isOpen ? (
+      {selectedValue && !isOpen ? (
         <div className={`${inputClass} flex items-center justify-between cursor-pointer`} onClick={() => setIsOpen(true)}>
           <div className="flex items-center gap-2">
-            <ExchangeLogo exchange={value} size="w-4 h-4" />
+            <ExchangeLogo exchange={selectedValue} size="w-4 h-4" />
             <span className="truncate">{displayLabel}</span>
           </div>
           <button type="button" onClick={(e) => { e.stopPropagation(); handleClear(); setIsOpen(true); }}
@@ -121,19 +125,19 @@ export default function ExchangeSearch({ value, onChange, label = 'בורסה / 
             {exchanges.length > 0 && (
               <>
                 <div className="px-3 py-1.5 text-[10px] font-semibold text-text-muted uppercase tracking-wider bg-bg-tertiary/50 sticky top-0">בורסות</div>
-                {exchanges.map((ex) => <Option key={ex.value} ex={ex} selected={value === ex.value} onSelect={handleSelect} />)}
+                {exchanges.map((ex) => <Option key={ex.value} ex={ex} selected={selectedValue === ex.value} onSelect={handleSelect} />)}
               </>
             )}
             {brokers.length > 0 && (
               <>
                 <div className="px-3 py-1.5 text-[10px] font-semibold text-text-muted uppercase tracking-wider bg-bg-tertiary/50 sticky top-0">ברוקרים</div>
-                {brokers.map((ex) => <Option key={ex.value} ex={ex} selected={value === ex.value} onSelect={handleSelect} />)}
+                {brokers.map((ex) => <Option key={ex.value} ex={ex} selected={selectedValue === ex.value} onSelect={handleSelect} />)}
               </>
             )}
             {props.length > 0 && (
               <>
                 <div className="px-3 py-1.5 text-[10px] font-semibold text-text-muted uppercase tracking-wider bg-bg-tertiary/50 sticky top-0">תיקים ממומנים</div>
-                {props.map((ex) => <Option key={ex.value} ex={ex} selected={value === ex.value} onSelect={handleSelect} />)}
+                {props.map((ex) => <Option key={ex.value} ex={ex} selected={selectedValue === ex.value} onSelect={handleSelect} />)}
               </>
             )}
             {query.trim() && !filtered.some((e) => e.label.toLowerCase() === query.trim().toLowerCase()) && (

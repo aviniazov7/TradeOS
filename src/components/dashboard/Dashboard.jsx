@@ -25,7 +25,9 @@ import Card from '../shared/Card';
 import FitText from '../shared/FitText';
 import Reveal from '../shared/Reveal';
 import { formatCurrency } from '../../utils/formatters';
-import { exchangeLabel } from '../../utils/constants';
+import { exchangeLabel, isUnsetExchange } from '../../utils/constants';
+import { useDemoMode } from '../../hooks/useDemoMode';
+import { overlayDemo } from '../../utils/demoData';
 import { winLossRatio } from '../../utils/homeStats';
 import { declaredStartCapital } from '../../utils/portfolioPerformance';
 import { fetchGlobalMarket } from '../../services/globalMarket';
@@ -48,15 +50,19 @@ const todayLabel = () => new Date().toLocaleDateString('he-IL', { weekday: 'long
 function JournalTile({ j, mask, onOpen }) {
   const pnlCls = j.pnl > 0 ? 'text-profit' : j.pnl < 0 ? 'text-loss' : 'text-text-secondary';
   let missingWhy = 'לא הוגדרה יתרה התחלתית ליומן';
+  const venue = !isUnsetExchange(j.exchange);
   if (j.problem) missingWhy = `${KEY_PROBLEM_TEXT[j.problem]} — עדכן בטאב בורסה`;
-  else if (exchangeLabel(j.exchange)) missingWhy = `אין כרגע שווי חי מ-${exchangeLabel(j.exchange)}`;
-  else if (j.exchange) missingWhy = 'אין כרגע שווי חי מהבורסה';
+  else if (venue && exchangeLabel(j.exchange)) missingWhy = `אין כרגע שווי חי מ-${exchangeLabel(j.exchange)}`;
+  else if (venue) missingWhy = 'אין כרגע שווי חי מהבורסה';
   return (
     <Card as="button" type="button" hover spotlight onClick={onOpen} className="w-full text-right p-4 flex flex-col gap-3">
       <div className="relative flex items-center justify-between gap-2">
         <div className="flex items-center gap-2 min-w-0">
           {exchangeLabel(j.exchange) && <ExchangeLogo exchange={j.exchange} size="w-5 h-5" />}
           <span className="text-sm font-semibold text-text-primary truncate">{j.name}</span>
+          {j.demo && (
+            <span className="text-[10px] font-bold px-1.5 py-0.5 rounded-full bg-breakeven/15 text-breakeven border border-breakeven/30 shrink-0">דמו</span>
+          )}
         </div>
         {j.balance !== null && (
           j.live ? (
@@ -99,7 +105,8 @@ function JournalTile({ j, mask, onOpen }) {
 export default function Dashboard() {
   const navigate = useNavigate();
   const { user, profile } = useAuth();
-  const { journals, setActiveJournalId, loading: journalsLoading = false } = useJournalContext();
+  const { journals, activeJournalId, setActiveJournalId, loading: journalsLoading = false } = useJournalContext();
+  const demo = useDemoMode();
   const [showAllJournals, setShowAllJournals] = useState(false);
   const [hideBalances, setHideBalances] = useState(() => localStorage.getItem('tradeos_hideBalances') === 'true');
 
@@ -110,7 +117,17 @@ export default function Dashboard() {
     });
   };
   const maskAmount = (val) => hideBalances ? '••••' : val;
-  const { trades: allTrades, loading: tradesLoading } = useTrades(); // all trades, no journal filter
+  const { trades: realTrades, loading: tradesLoading } = useTrades(); // all trades, no journal filter
+  const demoView = useMemo(() => overlayDemo({
+    active: demo.active && !tradesLoading,
+    trades: realTrades,
+    journals,
+    activeJournalId,
+  }), [demo.active, tradesLoading, realTrades, journals, activeJournalId]);
+  // Stats and the hero read the overlay while demo mode is on. The checklist
+  // and the live-balance lookup stay on the real account.
+  const allTrades = demoView.trades;
+  const statJournals = demoView.journals;
   const { backtests: allBacktests, loading: backtestsLoading } = useBacktests();
   const backtests = useMemo(() => allBacktests.filter((b) => b.backtestJournalId), [allBacktests]);
   const { plans, loading: plansLoading } = useTradingPlans();
@@ -127,7 +144,7 @@ export default function Dashboard() {
 
   // Cross-journal trade stats (only trades belonging to existing journals)
   const globalStats = useMemo(() => {
-    const journalIds = new Set(journals.map((j) => j.id));
+    const journalIds = new Set(statJournals.map((j) => j.id));
     // Include trades with no journalId (legacy/imported before journal assignment) + trades belonging to current journals
     const relevantTrades = allTrades.filter((t) => !t.journalId || journalIds.has(t.journalId));
     const closed = relevantTrades.filter(isClosedTrade);
@@ -140,7 +157,7 @@ export default function Dashboard() {
     // money moved out as a trading loss.
     let totalInitial = 0;
     let totalBalance = 0;
-    for (const j of journals) {
+    for (const j of statJournals) {
       const jPnL = closed
         .filter((t) => t.journalId === j.id)
         .reduce((acc, t) => acc + safePnl(t), 0);
@@ -164,7 +181,7 @@ export default function Dashboard() {
     const avgRR = rs.length > 0 ? rs.reduce((s, r) => s + r, 0) / rs.length : null;
 
     return { totalPnL, totalTrades: closed.length, winRate, totalBalance, totalInitial, avgRR };
-  }, [allTrades, journals, linkedBalances]);
+  }, [allTrades, statJournals, linkedBalances]);
 
   // Global market data + latest news
   const [globalMarket, setGlobalMarket] = useState(() => readSessionCache('globalMarket', 5 * 60 * 1000));
@@ -242,7 +259,7 @@ export default function Dashboard() {
 
   // Per-journal stats
   const journalStats = useMemo(() => {
-    return journals.map((j) => {
+    return statJournals.map((j) => {
       const jTrades = allTrades.filter((t) => t.journalId === j.id);
       const closed = jTrades.filter(isClosedTrade);
       const pnl = closed.reduce((s, t) => s + safePnl(t), 0);
@@ -259,7 +276,7 @@ export default function Dashboard() {
         problem: linkedProblems[j.id] || null,
       };
     });
-  }, [journals, allTrades, linkedBalances, linkedProblems]);
+  }, [statJournals, allTrades, linkedBalances, linkedProblems]);
 
   // Active plans
   const activePlans = useMemo(() => plans.filter((p) => p.isActive), [plans]);
@@ -282,7 +299,7 @@ export default function Dashboard() {
 
   // Equity series (oldest → newest, running total) and the latest closed trades.
   const { equitySeries, recentClosed } = useMemo(() => {
-    const journalIds = new Set(journals.map((j) => j.id));
+    const journalIds = new Set(statJournals.map((j) => j.id));
     const closed = allTrades
       .filter((t) => !t.journalId || journalIds.has(t.journalId))
       .filter(isClosedTrade);
@@ -301,11 +318,11 @@ export default function Dashboard() {
       equitySeries: sorted.map((t) => { cum += pnlOf(t); return { t: tradeMs(t), pnl: pnlOf(t), value: cum }; }),
       recentClosed: sorted.slice(-5).reverse(),
     };
-  }, [allTrades, journals]);
+  }, [allTrades, statJournals]);
 
   // Win/loss split, per-session P&L, + performance score/radar.
   const { perf, kpi } = useMemo(() => {
-    const journalIds = new Set(journals.map((j) => j.id));
+    const journalIds = new Set(statJournals.map((j) => j.id));
     const closed = allTrades
       .filter((t) => !t.journalId || journalIds.has(t.journalId))
       .filter(isClosedTrade);
@@ -425,7 +442,7 @@ export default function Dashboard() {
       sessionBars: sessions,
       kpi,
     };
-  }, [allTrades, journals, globalStats.winRate, globalStats.avgRR, globalStats.totalInitial]);
+  }, [allTrades, statJournals, globalStats.winRate, globalStats.avgRR, globalStats.totalInitial]);
 
   if (loading) return <DashboardSkeleton />;
 
@@ -465,13 +482,13 @@ export default function Dashboard() {
       <OpenPositionsSummary hidden={hideBalances} />
 
       {/* First-steps checklist — renders only for fresh accounts. */}
-      <GettingStartedCard trades={allTrades} journals={journals} morningCount={morningEntries.length} />
+      <GettingStartedCard trades={realTrades} journals={journals} morningCount={morningEntries.length} />
 
       <div className="space-y-4 mb-6">
         {/* The account (value + cumulative P&L) beside the AI read of it. */}
         <div className="grid grid-cols-1 lg:grid-cols-3 gap-4 items-stretch">
           <div className="lg:col-span-2 min-w-0">
-            <PortfolioHero balance={globalStats.totalBalance} declaredStart={declaredStartCapital(journals)} series={equitySeries} hidden={hideBalances} />
+            <PortfolioHero balance={globalStats.totalBalance} declaredStart={declaredStartCapital(statJournals)} series={equitySeries} hidden={hideBalances} />
           </div>
           <div className="min-w-0"><TradeAgentCard trades={allTrades} /></div>
         </div>
@@ -486,7 +503,7 @@ export default function Dashboard() {
         </Reveal>
 
         <Reveal>
-          <HomePanel title={`היומנים שלך (${journals.length})`} link="לכל היומנים" onLink={() => navigate('/journal')}>
+          <HomePanel title={`היומנים שלך (${statJournals.length})`} link="לכל היומנים" onLink={() => navigate('/journal')}>
             {journalStats.length > 0 ? (
               <>
                 <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3">
