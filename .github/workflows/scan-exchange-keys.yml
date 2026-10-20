@@ -1,8 +1,9 @@
 name: Scan plaintext exchange keys
 
 # READ-ONLY, manual. Counts how many users still have exchange API keys stored
-# in plaintext in Firestore (the app strips them when a user opens the exchange
-# tab). Output is counts only — see scripts/scan-plaintext-exchange-keys.mjs.
+# in plaintext in Firestore (the app moves them to encrypted KV on sign-in and
+# again on the exchange screen). Output is counts only — it never prints keys
+# and never writes. See scripts/scan-plaintext-exchange-keys.mjs.
 on:
   workflow_dispatch: {}
 

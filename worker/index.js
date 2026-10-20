@@ -36,6 +36,7 @@ import { handleHyperliquidRoute } from './hyperliquid.js';
 import { handleCandlesRoute } from './candles.js';
 import { handleOpenOrdersRoute } from './openOrders.js';
 import { handleCoinGecko } from './coingeckoProxy.js';
+import { verifyExchangeKeyReadOnly, KeyPermissionError } from './exchangeKeyPermissions.js';
 
 // Binance's public market-data mirror — api.binance.com returns 403 to
 // Cloudflare Worker egress IPs in many regions, but data-api.binance.vision
@@ -4621,12 +4622,22 @@ async function handleRequest(request, env) {
     const { exchange, apiKey, apiSecret, passphrase } = await request.json().catch(() => ({}));
     if (!exchange || !apiKey || !apiSecret) return new Response(JSON.stringify({ error: 'missing fields' }), { status: 400, headers: { ...cors, 'Content-Type': 'application/json' } });
     if (!validExchangeId(exchange)) return new Response(JSON.stringify({ error: 'invalid exchange' }), { status: 400, headers: { ...cors, 'Content-Type': 'application/json' } });
+    let check;
+    try {
+      check = await verifyExchangeKeyReadOnly(exchange, { apiKey, apiSecret, passphrase });
+    } catch (err) {
+      if (err instanceof KeyPermissionError) {
+        const status = err.code === 'key_not_readonly' ? 403 : err.code === 'key_invalid' ? 400 : 502;
+        return new Response(JSON.stringify({ error: err.code, message: err.message }), { status, headers: { ...cors, 'Content-Type': 'application/json' } });
+      }
+      return new Response(JSON.stringify({ error: 'permission_check_failed', message: 'לא הצלחנו לאמת שהמפתח הוא לקריאה בלבד. נסה שוב בעוד רגע.' }), { status: 502, headers: { ...cors, 'Content-Type': 'application/json' } });
+    }
     try {
       await storeExchangeCreds(env, uid, exchange, { apiKey, apiSecret, passphrase });
     } catch {
       return new Response(JSON.stringify({ error: 'failed to store credentials' }), { status: 500, headers: { ...cors, 'Content-Type': 'application/json' } });
     }
-    return new Response(JSON.stringify({ ok: true }), { headers: { ...cors, 'Content-Type': 'application/json' } });
+    return new Response(JSON.stringify({ ok: true, readOnly: check.verified ? true : null }), { headers: { ...cors, 'Content-Type': 'application/json' } });
   }
 
   // Which exchanges the caller has connected (names only — never the secrets).

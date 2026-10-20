@@ -17,6 +17,7 @@ import {
   sendVerificationEmail as authSendVerificationEmail,
   refreshEmailVerified as authRefreshEmailVerified,
 } from '../services/authService';
+import { clearResponseCaches } from '../services/responseCache';
 
 // Profile, the account wipe, and the local cache clear all touch Firestore.
 // Loaded on demand once a session exists — a logged-out /login must not
@@ -83,6 +84,15 @@ export function AuthProvider({ children }) {
         const signupConsent = pendingConsentRef.current === true;
         accountData().then((api) => {
           if (gen !== generation) return;
+          // Move leftover plaintext exchange secrets to encrypted KV without
+          // waiting on the exchange screen. Best-effort; a failed store keeps
+          // the Firestore copy. The dynamic import stays off the logged-out path.
+          import('../services/exchangeCredentialMigration')
+            .then((m) => {
+              if (gen !== generation) return null;
+              return m.migratePlaintextExchangeKeys(firebaseUser.uid);
+            })
+            .catch(() => {});
           profileUnsub = api.subscribeToUserProfile(
             firebaseUser.uid,
             (data) => { if (gen === generation) setProfile(data); },
@@ -167,8 +177,9 @@ export function AuthProvider({ children }) {
 
   const loginWithEmail = useCallback((email, password) => authLoginWithEmail(email, password), []);
 
-  const logout = useCallback(() => {
+  const logout = useCallback(async () => {
     localStorage.removeItem('tradeos_activeJournal');
+    await clearResponseCaches();
     return authLogout();
   }, []);
 
