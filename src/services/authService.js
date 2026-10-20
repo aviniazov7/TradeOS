@@ -149,6 +149,10 @@ export function handleRedirectResult() {
 }
 
 /** Sign in with Google — popup in a browser, redirect in a standalone PWA.
+ *  authDomain is tradeos-91a58.firebaseapp.com, a different origin from the
+ *  site, so both paths pass browserPopupRedirectResolver. That loads
+ *  /__/auth/handler on authDomain (the redirect URI the Google client
+ *  already allows) and posts the result back to this origin.
  *  The popup runs in the tap's turn when the resolver was preloaded. If it
  *  is not ready yet, this redirects instead of opening a popup after an
  *  await (Safari blocks that and the UI showed "הדפדפן חסם את חלון ההתחברות"). */

@@ -1,6 +1,6 @@
 # TradeOS QA / Security / Performance Audit: fix status
 
-**Audit:** 2026-10-08, against https://tradeos-91a58.web.app (bundle `tradeos-v315`), test account only.
+**Audit:** 2026-10-08, against the previous host (live site is https://tradeoslive.web.app), bundle `tradeos-v315`, test account only.
 **Fixes:** 2026-10-09, PRs #508–#524 into `dev`, then released to `main`.
 
 This file tracks each finding from the original report (`TRADEOS_QA_REPORT.md`, supplied by the owner) to the change that closed it. The original report holds the full repro steps and evidence.

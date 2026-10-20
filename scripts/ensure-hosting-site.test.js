@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import {
+  AUTH_DOMAIN,
   SITE_CANDIDATES,
   classifySiteAttempt,
   domainsForSite,
@@ -70,11 +71,13 @@ describe('authorized domains', () => {
     expect(merged).toEqual(['tradeos.web.app', 'TRADEOS.firebaseapp.com']);
   });
 
-  it('tells the owner which domains and redirect URI to add by hand', () => {
-    const text = manualAuthSteps('tradeos', '403 permission denied');
-    expect(text).toContain('tradeos.web.app');
-    expect(text).toContain('tradeos.firebaseapp.com');
-    expect(text).toContain('https://tradeos.web.app/__/auth/handler');
+  it('tells the owner to authorize the hosting site and keep the default auth handler', () => {
+    const text = manualAuthSteps('tradeoslive', '403 permission denied');
+    expect(AUTH_DOMAIN).toBe('tradeos-91a58.firebaseapp.com');
+    expect(text).toContain('tradeoslive.web.app');
+    expect(text).toContain('tradeoslive.firebaseapp.com');
+    expect(text).toContain('https://tradeos-91a58.firebaseapp.com/__/auth/handler');
+    expect(text).not.toContain('https://tradeoslive.web.app/__/auth/handler');
     expect(text).toContain('403 permission denied');
     expect(text).toContain('/__/auth/action');
   });
