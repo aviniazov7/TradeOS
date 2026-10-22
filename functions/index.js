@@ -348,14 +348,15 @@ exports.importTrades = onCall({
 });
 
 // ──────────── Admin notification center ────────────
-// Event + scheduled generation of adminNotifications. Do NOT deploy until the
-// owner approves (`firebase deploy --only functions`): this writes to the
-// shared production Firestore. Hosting previews do not run it — review the
-// UI with /admin?tab=notifications&demo=1 or /admin-notifications-preview.
+// Signup and premium upgrade/cancel are emitted by the document triggers
+// below, as the user document is written. Churn and inactive users produce
+// no write, so they are reconciled once a week: Sunday 09:00 Asia/Jerusalem.
+// That scan also backfills a missed signup from the last 2 days and a premium
+// expiry that never wrote a user document.
 const NOTIFY_REGION = "europe-west1";
 
 exports.scanAdminNotifications = onSchedule({
-  schedule: "0 */6 * * *",
+  schedule: "0 9 * * 0",
   timeZone: "Asia/Jerusalem",
   region: NOTIFY_REGION,
   timeoutSeconds: 300,
