@@ -1,5 +1,6 @@
 import { Trophy, AlertTriangle } from 'lucide-react';
 import SelectDropdown from '../shared/SelectDropdown';
+import DateField from '../shared/DateField';
 import { PROP_FIRM_PRESETS, PROP_FIRM_DD_TYPE_LABELS } from '../../utils/constants';
 import { getPropFirmPreset } from '../../utils/propFirm';
 import { presetFields } from './propFirmForm';
@@ -123,8 +124,8 @@ export default function PropFirmSettings({ value: f, onChange }) {
 
           <div>
             <label className={labelClass}>תאריך תחילת האתגר</label>
-            <input type="date" value={f.startDate} onChange={(e) => set({ startDate: e.target.value })}
-              className={textInputClass} />
+            <DateField size="field" label="תאריך תחילת האתגר" value={f.startDate}
+              onChange={(v) => set({ startDate: v })} />
             <p className="text-[11px] text-text-muted mt-1">רק עסקאות שנסגרו מתאריך זה נספרות.</p>
           </div>
 

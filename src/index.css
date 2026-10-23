@@ -573,12 +573,15 @@ input[type="range"]::-moz-range-thumb {
 /* Hide native number-input spinner arrows app-wide. They render inconsistently
    across browsers and clash with the dark UI; where stepping is useful we
    provide our own NumberStepper (−/+) control instead. */
-/* Native date pickers (journal date-range filter): match the theme so the
-   calendar popup and the picker icon aren't light-on-dark / dark-on-light. */
-input[type="date"],
 select.theme-scheme { color-scheme: dark; }
-.light input[type="date"],
 .light select.theme-scheme { color-scheme: light; }
+
+/* Day hover inside DateField. The dark tint matches the react-datepicker
+   theme; white-on-white would disappear in the light theme. */
+.light button.date-field-day:hover:not(:disabled):not([aria-selected="true"]) {
+  background-color: rgba(15, 23, 42, 0.06);
+  color: var(--color-text-primary);
+}
 
 input[type="number"]::-webkit-outer-spin-button,
 input[type="number"]::-webkit-inner-spin-button {
