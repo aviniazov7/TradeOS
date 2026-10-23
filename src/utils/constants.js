@@ -282,12 +282,12 @@ export const EXCHANGES = [
 export const exchangeLabel = (value) => EXCHANGES.find((e) => e.value === value)?.label || null;
 
 // Transparent brand marks, not the 16px Google favicon (Bybit's favicon reads
-// as generic bars) and not a JPEG plate. OKX and Bybit are light marks so
-// they stay visible on the dark UI; the light theme uses the dark variant.
+// as generic bars) and not a JPEG plate. Default files are the dark-UI
+// versions. OKX, Bybit, MEXC, and Phemex also have a light-theme file.
 const LOCAL_EXCHANGE_LOGOS = {
   binance: '/logos/exchanges/binance.svg',
   bybit: '/logos/exchanges/bybit.png',
-  mexc: '/logos/exchanges/mexc.png',
+  mexc: '/logos/exchanges/mexc.svg',
   okx: '/logos/exchanges/okx.svg',
   bitget: '/logos/exchanges/bitget.png',
   kucoin: '/logos/exchanges/kucoin.png',
@@ -296,7 +296,7 @@ const LOCAL_EXCHANGE_LOGOS = {
   coinbase: '/logos/exchanges/coinbase.png',
   kraken: '/logos/exchanges/kraken.png',
   bingx: '/logos/exchanges/bingx.png',
-  phemex: '/logos/exchanges/phemex.png',
+  phemex: '/logos/exchanges/phemex.svg',
   deribit: '/logos/exchanges/deribit.svg',
   hyperliquid: '/logos/exchanges/hyperliquid.png',
 };
@@ -304,6 +304,8 @@ const LOCAL_EXCHANGE_LOGOS = {
 const LOCAL_EXCHANGE_LOGOS_ON_LIGHT = {
   okx: '/logos/exchanges/okx-on-light.svg',
   bybit: '/logos/exchanges/bybit-on-light.png',
+  mexc: '/logos/exchanges/mexc-on-light.svg',
+  phemex: '/logos/exchanges/phemex-on-light.svg',
 };
 
 // Sentinels for "no venue". These must never resolve to a local exchange file
