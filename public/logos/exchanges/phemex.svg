@@ -1,0 +1,9 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 27.4 69.6" fill="none">
+  <path d="M11.8076 57.1842C11.8076 59.0126 10.9772 60.7439 9.55273 61.8903L0 69.5817V38.5592C0 36.738 0.832321 35.0138 2.25684 33.8795L11.8076 26.2848V57.1842ZM27.3828 31.3199C27.3828 33.1484 26.5524 34.8806 25.1279 36.027L15.5752 43.7155V12.693C15.5752 10.8694 16.4051 9.14662 17.832 8.01233L27.3828 0.418579V31.3199Z" fill="url(#phemex-candles)"/>
+  <defs>
+    <linearGradient id="phemex-candles" x1="0.144093" y1="69.5817" x2="27.2327" y2="0.706484" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#7DE95B"/>
+      <stop offset="1" stop-color="#6EDEDD"/>
+    </linearGradient>
+  </defs>
+</svg>
