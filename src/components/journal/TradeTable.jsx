@@ -7,12 +7,12 @@ import { isClosedTrade, safePnl } from '../../utils/calculations';
 import { getExchangeLogo } from '../../utils/constants';
 import TradeDetailModal from './TradeDetailModal';
 import CoinIcon from '../shared/CoinIcon';
+import ExchangeLogo from '../shared/ExchangeLogo';
 import FitText from '../shared/FitText';
 
 function ExchangeIcon({ source }) {
-  const url = getExchangeLogo(source);
-  if (!url) return null;
-  return <img src={url} alt={source} className="w-3.5 h-3.5 rounded-sm opacity-80" />;
+  if (!getExchangeLogo(source)) return null;
+  return <ExchangeLogo exchange={source} size="w-3.5 h-3.5" />;
 }
 
 // Render the stop loss. If it was moved mid-trade, show the new stop with a
