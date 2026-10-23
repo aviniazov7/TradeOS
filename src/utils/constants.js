@@ -281,22 +281,29 @@ export const EXCHANGES = [
 // so callers never print the raw value ("אין כרגע שווי חי מ-other").
 export const exchangeLabel = (value) => EXCHANGES.find((e) => e.value === value)?.label || null;
 
-// Full marks, not the 16px Google favicon (Bybit's favicon reads as generic bars).
+// Transparent brand marks, not the 16px Google favicon (Bybit's favicon reads
+// as generic bars) and not a JPEG plate. OKX and Bybit are light marks so
+// they stay visible on the dark UI; the light theme uses the dark variant.
 const LOCAL_EXCHANGE_LOGOS = {
-  binance: '/logos/exchanges/binance.jpg',
+  binance: '/logos/exchanges/binance.svg',
   bybit: '/logos/exchanges/bybit.png',
-  mexc: '/logos/exchanges/mexc.jpeg',
-  okx: '/logos/exchanges/okx.png',
-  bitget: '/logos/exchanges/bitget.jpg',
+  mexc: '/logos/exchanges/mexc.png',
+  okx: '/logos/exchanges/okx.svg',
+  bitget: '/logos/exchanges/bitget.png',
   kucoin: '/logos/exchanges/kucoin.png',
   gateio: '/logos/exchanges/gate.png',
   htx: '/logos/exchanges/htx.png',
   coinbase: '/logos/exchanges/coinbase.png',
-  kraken: '/logos/exchanges/kraken.jpg',
-  bingx: '/logos/exchanges/bingx.jpg',
+  kraken: '/logos/exchanges/kraken.png',
+  bingx: '/logos/exchanges/bingx.png',
   phemex: '/logos/exchanges/phemex.png',
-  deribit: '/logos/exchanges/deribit.jpg',
+  deribit: '/logos/exchanges/deribit.svg',
   hyperliquid: '/logos/exchanges/hyperliquid.png',
+};
+
+const LOCAL_EXCHANGE_LOGOS_ON_LIGHT = {
+  okx: '/logos/exchanges/okx-on-light.svg',
+  bybit: '/logos/exchanges/bybit-on-light.png',
 };
 
 // Sentinels for "no venue". These must never resolve to a local exchange file
@@ -315,12 +322,16 @@ export function isUnsetExchange(value) {
   return !id || UNSET_EXCHANGE_IDS.has(id);
 }
 
-export function getExchangeLogo(exchangeValue) {
+export function getExchangeLogo(exchangeValue, options) {
   if (exchangeValue == null) return null;
   const id = String(exchangeValue).trim().toLowerCase().replace(/\s+/g, '');
   if (!id || UNSET_EXCHANGE_IDS.has(id)) return null;
   // Exact id only. A blank, "other", or partial name must never fall through
   // to another venue's file (no default Bybit / MEXC / Binance).
+  const onLight = options?.theme === 'light';
+  if (onLight && Object.prototype.hasOwnProperty.call(LOCAL_EXCHANGE_LOGOS_ON_LIGHT, id)) {
+    return LOCAL_EXCHANGE_LOGOS_ON_LIGHT[id];
+  }
   if (Object.prototype.hasOwnProperty.call(LOCAL_EXCHANGE_LOGOS, id)) {
     return LOCAL_EXCHANGE_LOGOS[id];
   }
