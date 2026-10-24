@@ -773,8 +773,7 @@ function UserDetailModal({ user, onClose, onUserChanged, startWith = null }) {
       adminRefreshPlanCache(user.id);
 
       // Branded confirmation email — 'payment' when an amount was recorded,
-      // 'gift' otherwise. Failure gets its own toast (Resend without a
-      // verified domain only delivers to the account owner's address).
+      // 'gift' otherwise. Failure gets its own toast.
       if (sendReceipt && user.email) {
         adminSendPaymentEmail({
           email: user.email,
