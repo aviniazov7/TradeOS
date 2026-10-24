@@ -82,17 +82,50 @@
 
 ---
 
-## 6. דומיין ושליחת מיילים אמיתיים  ☐
+## 6. שליחת מיילים דרך Gmail  ☐
 
-**המצב:** שירות המיילים (Resend) במצב בדיקה — הוא שולח **רק לבעלים**. כלומר גם **קבלות Premium ומיילי קופון** לא מגיעים לאף משתמש אחר, והקמפיין השיווקי לא יוצא.
+**המצב:** המיילים (תזכורת מהפאנל, קבלה על Premium, קופון, פנייה, דוח שבועי) יוצאים מ-`TradeOS <tradeos.app@gmail.com>` דרך Gmail SMTP. בלי הסוד `GMAIL_APP_PASSWORD` על שני ה-Workers הם לא יוצאים. התראות לטלפון לא תלויות בזה.
 
-**איך מתקנים:**
-1. קנה דומיין (בערך 10$ לשנה).
-2. [Resend](https://resend.com/domains) ← **Domains ← Add Domain** ← הוסף את רשומות ה-DNS שהם נותנים אצל חברת הדומיין ← המתן לאימות.
-3. ב-GitHub: **Settings ← Secrets and variables ← Actions** — הגדר `MAIL_FROM_ADDRESS` (למשל `hello@הדומיין`) ו-`MAIL_FROM_NAME` (`TradeOS`). הפריסה הבאה תעדכן את ה-Worker.
-4. בפאנל הניהול: בדוק עם **"בדיקה אליי"**. אחרי זה גם קמפיינים יצאו — אבל **רק למי שאישר דיוור** (מתג בפרופיל / תיבה בהרשמה).
+**סיסמת אפליקציה** (פעם אחת, בחשבון `tradeos.app@gmail.com`):
 
-(מפתח `UNSUBSCRIBE_SECRET` כבר הוגדר ב-Cloudflare.)
+1. [אימות דו-שלבי](https://myaccount.google.com/signinoptions/two-step-verification) חייב להיות דלוק.
+2. [סיסמאות אפליקציה](https://myaccount.google.com/apppasswords) ← יצירת סיסמה בשם `TradeOS` ← להעתיק את 16 התווים. לא לשמור אותה בקוד או ב-Git.
+
+**להגדיר את הסוד** (לפני המיזוג ל-`dev`). המייל רץ ב-Cloudflare Worker, לא ב-Firebase Functions — `firebase functions:secrets:set` לא משפיע כאן.
+
+הדרך הבטוחה: GitHub ← **Settings ← Secrets and variables ← Actions ← New repository secret**
+
+- Name: `GMAIL_APP_PASSWORD`
+- Value: סיסמת האפליקציה (רווחים לא משנים)
+
+בפריסה הבאה ל-`dev` או ל-`main` ה-CI מעלה את הסוד לשני ה-Workers (`trade-os` ו-`tradeos-alerts`). אם הסוד ב-GitHub ריק, ה-CI מדלג ולא מוחק ערך שכבר הוגדר בדשבורד.
+
+פקודות ידניות, רק עם טוקן של **חשבון Cloudflare של האפליקציה** (לא החשבון האישי שה-`wrangler` המקומי מחובר אליו). מתוך שורש הריפו:
+
+```bash
+export CLOUDFLARE_API_TOKEN="<app account API token>"
+export CLOUDFLARE_ACCOUNT_ID="ba3af41d3a78e629471174633c957cc9"
+export GMAIL_APP_PASSWORD="<16-character app password>"
+
+printf '%s' "$GMAIL_APP_PASSWORD" | npx wrangler secret put GMAIL_APP_PASSWORD
+printf '%s' "$GMAIL_APP_PASSWORD" | npx wrangler secret put GMAIL_APP_PASSWORD --config worker/wrangler.toml
+```
+
+**פריסה:** לא מריצים דיפלוי ידני לפרודקשן. אחרי שהסוד קיים ב-GitHub, מיזוג ה-PR אל `dev` הוא מה שמפרס את הקוד (ומעלה את הסוד). אותו מיזוג מעדכן את **שני** ה-Workers של הפרודקשן (`trade-os` ו-`tradeos-alerts`) — ככה `dev` עובד היום. לא למזג את הענף הזה ישר ל-`main`.
+
+אם צריך לפרוס את ה-Workers ביד (אותו טוקן ואותו חשבון):
+
+```bash
+export CLOUDFLARE_API_TOKEN="<app account API token>"
+export CLOUDFLARE_ACCOUNT_ID="ba3af41d3a78e629471174633c957cc9"
+
+npx wrangler deploy
+npx wrangler deploy --config worker/wrangler.toml
+```
+
+אחר כך בפאנל הניהול: **"בדיקה אליי"** בחלון "שליחת תזכורת למשתמשים". קמפיין יוצא רק למי שאישר דיוור. מכסת Gmail היא בערך 500 מיילים ביום; המערכת עוצרת ב-450 ומציגה כמה נשלחו, כמה נכשלו וכמה לא נשלחו.
+
+(`UNSUBSCRIBE_SECRET` כבר הוגדר ב-Cloudflare.)
 
 ---
 

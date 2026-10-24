@@ -18,7 +18,8 @@ import {
   normalizeMexcClosed, normalizeOkxClosed, normalizeOkxOpen, normalizeBitgetClosed,
   normalizeBybitOpen, normalizeMexcOpen, normalizeBitgetOpen,
 } from './exchangeNormalize.js';
-import { buildCampaignEmails, chunk, friendlyResendError, CAMPAIGN_MAX } from './adminEmail.js';
+import { buildCampaignEmails, CAMPAIGN_MAX } from './adminEmail.js';
+import { deliverWithGmail, hasGmailPassword, MISSING_SECRET_MESSAGE } from './gmailMail.js';
 import { unsubscribeUrl, verifyUnsubscribe, unsubscribePage, UID_RE } from './unsubscribe.js';
 import { purgeUserResidue } from './accountPurge.js';
 import { parseCspReports, cspReportKey } from './cspReport.js';
@@ -520,69 +521,18 @@ async function checkChurnedPremium(env) {
   }
 }
 
-// ---- Email sending (Resend) -----------------------------------------------
-// Thin wrapper around Resend's REST API. Returns {ok, status} so callers can
-// log without blowing up the cron. Skips silently if RESEND_API_KEY isn't set
-// — the rest of the cron (push) keeps working.
-async function sendEmail(env, { to, subject, html, replyTo }) {
-  if (!env.RESEND_API_KEY) return { ok: false, status: 0, skipped: 'no-api-key' };
-  if (!to) return { ok: false, status: 0, skipped: 'no-recipient' };
-  const from = env.MAIL_FROM_ADDRESS
-    ? `${env.MAIL_FROM_NAME || 'TradeOS'} <${env.MAIL_FROM_ADDRESS}>`
-    : 'TradeOS <onboarding@resend.dev>';
-  try {
-    const res = await fetch('https://api.resend.com/emails', {
-      method: 'POST',
-      headers: {
-        Authorization: `Bearer ${env.RESEND_API_KEY}`,
-        'Content-Type': 'application/json',
-      },
-      body: JSON.stringify({
-        from,
-        to: Array.isArray(to) ? to : [to],
-        subject,
-        html,
-        ...(replyTo ? { reply_to: replyTo } : {}),
-      }),
-    });
-    if (!res.ok) {
-      const detail = await res.text().catch(() => '');
-      console.error('Resend send failed:', res.status, detail);
-      // Try to extract Resend's human-readable error message.
-      let message = '';
-      try { message = JSON.parse(detail).message || ''; } catch { /* not JSON */ }
-      return { ok: false, status: res.status, message: message || detail.slice(0, 200) };
-    }
-    return { ok: true, status: res.status };
-  } catch (e) {
-    console.error('Resend send threw:', e);
-    return { ok: false, status: 0, error: e.message };
-  }
-}
-
-// Many emails in few requests: Resend's batch endpoint takes up to 100
-// messages per call (one Worker subrequest per 100 recipients).
-async function sendEmailBatch(env, messages) {
-  if (!env.RESEND_API_KEY) return { ok: false, status: 0, message: 'no-api-key' };
-  const from = env.MAIL_FROM_ADDRESS
-    ? `${env.MAIL_FROM_NAME || 'TradeOS'} <${env.MAIL_FROM_ADDRESS}>`
-    : 'TradeOS <onboarding@resend.dev>';
-  try {
-    const res = await fetch('https://api.resend.com/emails/batch', {
-      method: 'POST',
-      headers: { Authorization: `Bearer ${env.RESEND_API_KEY}`, 'Content-Type': 'application/json' },
-      body: JSON.stringify(messages.map((m) => ({ from, to: [m.to], subject: m.subject, html: m.html, ...(m.headers ? { headers: m.headers } : {}) }))),
-    });
-    if (!res.ok) {
-      const detail = await res.text().catch(() => '');
-      let message = '';
-      try { message = JSON.parse(detail).message || ''; } catch { /* not JSON */ }
-      return { ok: false, status: res.status, message: message || detail.slice(0, 200) };
-    }
-    return { ok: true, status: res.status };
-  } catch (e) {
-    return { ok: false, status: 0, message: e.message };
-  }
+// ---- Email sending (Gmail SMTP) --------------------------------------------
+// One recipient per message, through nodemailer (smtp.gmail.com:465). The
+// app password is the Worker secret GMAIL_APP_PASSWORD. Returns {ok, status,
+// message} and never throws — cron push keeps running when mail is down.
+// `message` is already a Hebrew sentence safe to show in the admin UI.
+async function sendEmail(env, { to, subject, html, replyTo, headers }) {
+  const list = (Array.isArray(to) ? to : [to]).map((x) => String(x || '').trim()).filter(Boolean);
+  if (!list.length) return { ok: false, status: 0, skipped: 'no-recipient', message: 'אין נמען' };
+  const r = await deliverWithGmail(env, list.map((addr) => ({ to: addr, subject, html, replyTo, headers })));
+  const ok = r.sent === list.length && !r.failed && !r.deferred;
+  const status = r.skipped === 'no-app-password' ? 0 : (ok || r.sent > 0 ? 200 : (r.deferred && !r.failed ? 429 : 502));
+  return { ok, status, message: r.firstError || '', sent: r.sent, failed: r.failed, deferred: r.deferred, skipped: r.skipped };
 }
 
 // Branded confirmation email for a Premium grant — payment, gift, or coupon
@@ -665,8 +615,8 @@ async function checkWeeklyDigest(env) {
     });
   }
 
-  // Email — same numbers, full report. MAIL_TO_ADMIN_OVERRIDE pins the
-  // recipient to a fixed address (see /admin/test-digest for why).
+  // Email — same numbers, full report. One message per admin so they don't
+  // see each other's addresses. MAIL_TO_ADMIN_OVERRIDE pins a single recipient.
   const adminUsers = users.filter((u) => u.role === 'admin' && u.email);
   if (adminUsers.length === 0 && !env.MAIL_TO_ADMIN_OVERRIDE) return;
   const recipients = env.MAIL_TO_ADMIN_OVERRIDE
@@ -3759,7 +3709,7 @@ async function handleContact(request, env, cors) {
     }
 
     if (!pushSent && !emailOk) {
-      console.error('Contact: no delivery channel succeeded (set DEV_UID with a push subscription, or MAIL_TO_ADMIN_OVERRIDE / RESEND_API_KEY)');
+      console.error('Contact: no delivery channel succeeded (set DEV_UID with a push subscription, or MAIL_TO_ADMIN_OVERRIDE / GMAIL_APP_PASSWORD)');
       return new Response(JSON.stringify({ error: 'שגיאה בשליחת ההודעה' }), { status: 502, headers: jsonHeaders });
     }
 
@@ -4722,28 +4672,21 @@ async function handleRequest(request, env) {
     const token = (request.headers.get('Authorization') || '').replace('Bearer ', '');
     const adminUid = await verifyAdminFromToken(token);
     if (!adminUid) return new Response(JSON.stringify({ error: 'forbidden' }), { status: 403, headers: { ...cors, 'Content-Type': 'application/json' } });
-    if (!env.RESEND_API_KEY) return new Response(JSON.stringify({ error: 'RESEND_API_KEY חסר ב-Worker — לא ניתן לשלוח מיילים' }), { status: 503, headers: { ...cors, 'Content-Type': 'application/json' } });
+    if (!hasGmailPassword(env)) return new Response(JSON.stringify({ error: MISSING_SECRET_MESSAGE }), { status: 503, headers: { ...cors, 'Content-Type': 'application/json' } });
 
     let users;
     try { users = await listAllUsersAdmin(env); }
     catch { return new Response(JSON.stringify({ error: 'failed to list users' }), { status: 500, headers: { ...cors, 'Content-Type': 'application/json' } }); }
 
     const me = users.find((u) => u.uid === adminUid);
-    // Where to send admin emails. On Resend's free default sender, the only
-    // allowed recipient is the email the Resend account itself was registered
-    // with — which is often DIFFERENT from the admin's TradeOS profile email
-    // (Firebase Auth email vs. Resend sign-up email). MAIL_TO_ADMIN_OVERRIDE
-    // lets the owner pin the destination to their Resend-account email so the
-    // 403 'can only send to your own address' error doesn't fire.
+    // Optional pin for admin-facing mail. Otherwise the admin's profile email.
     const adminTo = env.MAIL_TO_ADMIN_OVERRIDE || me?.email;
     if (!adminTo) return new Response(JSON.stringify({ error: 'admin email not found on profile' }), { status: 400, headers: { ...cors, 'Content-Type': 'application/json' } });
 
     const report = buildDigestEmail(users, { test: true });
     const r = await sendEmail(env, { to: adminTo, subject: report.subject, html: report.html });
     if (!r.ok) {
-      // Pass the actual Resend message back so the admin sees the real reason
-      // (e.g. "you can only send testing emails to your own email address").
-      return new Response(JSON.stringify({ error: friendlyResendError(r.status, r.message), sentTo: adminTo }), { status: 502, headers: { ...cors, 'Content-Type': 'application/json' } });
+      return new Response(JSON.stringify({ error: r.message || 'שליחת המייל נכשלה', sentTo: adminTo }), { status: r.status === 429 ? 429 : 502, headers: { ...cors, 'Content-Type': 'application/json' } });
     }
     return new Response(JSON.stringify({ ok: true, sentTo: adminTo, stats: { newUsers: report.digest.newWeek, upgrades: report.digest.upgrades, expiringSoon: report.digest.expiring.length, churn: report.digest.churn.length } }), { headers: { ...cors, 'Content-Type': 'application/json' } });
   }
@@ -4755,7 +4698,7 @@ async function handleRequest(request, env) {
     const token = (request.headers.get('Authorization') || '').replace('Bearer ', '');
     const adminUid = await verifyAdminFromToken(token);
     if (!adminUid) return new Response(JSON.stringify({ error: 'forbidden' }), { status: 403, headers: { ...cors, 'Content-Type': 'application/json' } });
-    if (!env.RESEND_API_KEY) return new Response(JSON.stringify({ error: 'RESEND_API_KEY חסר ב-Worker — לא ניתן לשלוח מיילים' }), { status: 503, headers: { ...cors, 'Content-Type': 'application/json' } });
+    if (!hasGmailPassword(env)) return new Response(JSON.stringify({ error: MISSING_SECRET_MESSAGE }), { status: 503, headers: { ...cors, 'Content-Type': 'application/json' } });
     const { email, name, kind, amount, method, days, expires } = await request.json().catch(() => ({}));
     if (!email || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(String(email))) {
       return new Response(JSON.stringify({ error: 'missing/invalid email' }), { status: 400, headers: { ...cors, 'Content-Type': 'application/json' } });
@@ -4772,9 +4715,7 @@ async function handleRequest(request, env) {
     });
     const r = await sendEmail(env, { to: String(email), subject, html });
     if (!r.ok) {
-      // Pass Resend's real message through — e.g. the test-mode "can only send
-      // to your own address" error — so the admin sees exactly why.
-      return new Response(JSON.stringify({ error: friendlyResendError(r.status, r.message || r.error), sentTo: email }), { status: 502, headers: { ...cors, 'Content-Type': 'application/json' } });
+      return new Response(JSON.stringify({ error: r.message || 'שליחת המייל נכשלה', sentTo: email }), { status: r.status === 429 ? 429 : 502, headers: { ...cors, 'Content-Type': 'application/json' } });
     }
     appendAudit(env, { kind: 'payment_email', actor: adminUid, target: email, amount: amt, days: Number(days) || null });
     return new Response(JSON.stringify({ ok: true, sentTo: email }), { headers: { ...cors, 'Content-Type': 'application/json' } });
@@ -4872,7 +4813,7 @@ async function handleRequest(request, env) {
     const token = (request.headers.get('Authorization') || '').replace('Bearer ', '');
     const adminUid = await verifyAdminFromToken(token);
     if (!adminUid) return new Response(JSON.stringify({ error: 'forbidden' }), { status: 403, headers: { ...cors, 'Content-Type': 'application/json' } });
-    if (!env.RESEND_API_KEY) return new Response(JSON.stringify({ error: 'RESEND_API_KEY חסר ב-Worker — לא ניתן לשלוח מיילים' }), { status: 503, headers: { ...cors, 'Content-Type': 'application/json' } });
+    if (!hasGmailPassword(env)) return new Response(JSON.stringify({ error: MISSING_SECRET_MESSAGE }), { status: 503, headers: { ...cors, 'Content-Type': 'application/json' } });
     if (!env.UNSUBSCRIBE_SECRET) return new Response(JSON.stringify({ error: 'UNSUBSCRIBE_SECRET חסר ב-Worker — לא שולחים דיוור בלי קישור הסרה' }), { status: 503, headers: { ...cors, 'Content-Type': 'application/json' } });
     const { uids, subject, headline, message, ctaText, ctaPath } = await request.json().catch(() => ({}));
     const wanted = [...new Set(Array.isArray(uids) ? uids.filter((x) => typeof x === 'string' && UID_RE.test(x)) : [])].slice(0, CAMPAIGN_MAX);
@@ -4904,15 +4845,19 @@ async function handleRequest(request, env) {
     if (!emails.length) {
       return new Response(JSON.stringify({ error: 'אף אחד מהנמענים לא אישר קבלת עדכונים במייל', skippedNoConsent }), { status: 400, headers: { ...cors, 'Content-Type': 'application/json' } });
     }
-    let sent = 0, failed = 0, firstError = '';
-    for (const batch of chunk(emails, 100)) {
-      const r = await sendEmailBatch(env, batch);
-      if (r.ok) sent += batch.length;
-      else { failed += batch.length; if (!firstError) firstError = friendlyResendError(r.status, r.message); }
-    }
-    appendAudit(env, { kind: 'email-campaign', actor: adminUid, targeted: emails.length, skippedNoConsent, sent, failed, subject: String(subject || headline).slice(0, 120) });
-    return new Response(JSON.stringify({ ok: sent > 0, sent, failed, targeted: emails.length, skippedNoConsent, ...(firstError ? { error: firstError } : {}) }), {
-      status: sent > 0 || !failed ? 200 : 502, headers: { ...cors, 'Content-Type': 'application/json' },
+    // One SMTP message per recipient (they never share a To/Cc list), throttled
+    // inside deliverWithGmail for Gmail's daily cap.
+    const delivery = await deliverWithGmail(env, emails);
+    const { sent, failed, deferred } = delivery;
+    const firstError = delivery.firstError || '';
+    appendAudit(env, { kind: 'email-campaign', actor: adminUid, targeted: emails.length, skippedNoConsent, sent, failed, deferred, subject: String(subject || headline).slice(0, 120) });
+    const httpStatus = sent > 0 ? 200 : (deferred && !failed ? 429 : 502);
+    return new Response(JSON.stringify({
+      ok: sent > 0 && failed === 0 && deferred === 0,
+      sent, failed, deferred, targeted: emails.length, skippedNoConsent,
+      ...(firstError ? { error: firstError } : {}),
+    }), {
+      status: httpStatus, headers: { ...cors, 'Content-Type': 'application/json' },
     });
   }
 
@@ -5416,8 +5361,7 @@ async function handleRequest(request, env) {
       tag: `coupon-${code}-${uid}`,
     }).catch(() => {});
 
-    // Best-effort: branded confirmation email to the redeemer (delivery to
-    // arbitrary inboxes requires a verified sender domain on Resend).
+    // Best-effort: branded confirmation email to the redeemer.
     (async () => {
       const me = await fetch(`https://firestore.googleapis.com/v1/projects/${FIREBASE_PROJECT_ID}/databases/(default)/documents/users/${uid}`, {
         headers: { Authorization: `Bearer ${token}` },

@@ -64,6 +64,19 @@ function ChannelToggle({ checked, onChange, icon: Icon, label, hint, disabled })
   );
 }
 
+// Per-recipient counts from /admin/email-campaign. `deferred` is mail that
+// was not attempted (daily Gmail cap, or the request ran out of time).
+function mailCountLine(r) {
+  const sent = r?.sent || 0;
+  const failedN = r?.failed || 0;
+  const deferred = r?.deferred || 0;
+  const bits = [];
+  if (sent) bits.push(sent === 1 ? 'מייל אחד נשלח' : `${sent} מיילים נשלחו`);
+  if (failedN) bits.push(failedN === 1 ? 'מייל אחד נכשל' : `${failedN} מיילים נכשלו`);
+  if (deferred) bits.push(deferred === 1 ? 'מייל אחד לא נשלח' : `${deferred} מיילים לא נשלחו`);
+  return bits.join(' · ');
+}
+
 // Compose and send a reminder to one user or many, by push and/or email.
 //   recipients: [{ id, email, name }]
 // Push reaches only devices that allowed notifications; email reaches
@@ -131,9 +144,15 @@ export default function ReengageComposer({ recipients, onSent }) {
             subject: title.trim(), headline: title.trim(), message: body.trim(), ctaText: cta.trim(), ctaPath: path,
           });
           if (r.sent) anySent = true;
-          if (r.sent) lines.push(`מייל נשלח ל-${r.sent === 1 ? 'נמען אחד' : `${r.sent} נמענים`}${r.failed ? ` (${r.failed} נכשלו)` : ''}`);
-          if (r.error) { failed = true; lines.push(`המייל לא נשלח: ${r.error}`); }
-        } catch (e) { failed = true; lines.push(`המייל לא נשלח: ${e.message}`); }
+          const summary = mailCountLine(r);
+          if (summary) lines.push(summary);
+          if (r.error) { failed = true; lines.push(r.error); }
+          if (!summary && !r.error) lines.push('המייל לא נשלח');
+        } catch (e) {
+          failed = true;
+          const summary = mailCountLine(e);
+          lines.push(summary ? `המייל לא נשלח: ${e.message} (${summary})` : `המייל לא נשלח: ${e.message}`);
+        }
       } else if (useEmail && !mailTargets.length) {
         lines.push(single ? 'המשתמש לא אישר קבלת עדכונים במייל' : 'אף נמען לא אישר קבלת עדכונים במייל');
       }

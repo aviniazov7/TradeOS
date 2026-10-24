@@ -26,7 +26,7 @@
 | **כתובת Hosting** | אחרי מיזוג ל-`main`: לוודא ש-`tradeoslive.web.app` חי, שהכתובת הישנה מפנה 301, וש-Google sign-in עובד. אם CI לא עדכן דומיינים מורשים — הצעדים ב-[`OWNER_CHECKLIST.md`](OWNER_CHECKLIST.md) סעיף 0 | בעלים |
 | **CSP — מעבר מדיווח לחסימה** | בעוד שבוע: Cloudflare ← trade-os ← Observability, חיפוש `CSP report`. אין תוצאות → להחליף ב-`firebase.json` את `Content-Security-Policy-Report-Only` ל-`Content-Security-Policy` | בעלים |
 | **תנאי שימוש ומדיניות פרטיות** | טקסט משפטי (עורך דין / מחולל). אחר כך: `/terms`, `/privacy` וקישור בהרשמה. הקלט המוכן: [`docs/legal/DATA_INVENTORY.md`](legal/DATA_INVENTORY.md) | בעלים |
-| **מיילים אמיתיים למשתמשים** | דומיין משלך מחובר ל-Resend (כרגע מצב בדיקה — שולח רק לבעלים) | בעלים |
+| **מיילים אמיתיים למשתמשים** | להגדיר את סוד ה-Worker `GMAIL_APP_PASSWORD` (סיסמת אפליקציה של `tradeos.app@gmail.com`) על `trade-os` ועל `tradeos-alerts`, ואז למזג ל-`dev`. הפקודות ב-[`OWNER_CHECKLIST.md`](OWNER_CHECKLIST.md) סעיף 6 | בעלים |
 | **תשלומים אונליין** | חשבון Grow/Bit; נקודת החיבור היחידה: `src/services/paymentService.js` | בעלים |
 | **סנכרון Binance** | דורש IP קבוע | — |
 | **בדיקת עמדת המסחר עם מפתחות אמיתיים** | positions / open orders מול בורסה | בעלים |

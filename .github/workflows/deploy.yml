@@ -182,6 +182,9 @@ jobs:
           MAIL_FROM_ADDRESS: ${{ secrets.MAIL_FROM_ADDRESS }}
           MAIL_FROM_NAME: ${{ secrets.MAIL_FROM_NAME }}
           MAIL_TO_ADMIN_OVERRIDE: ${{ secrets.MAIL_TO_ADMIN_OVERRIDE }}
+          # Gmail app password for tradeos.app@gmail.com. Empty → skip, so a
+          # value already set in the Cloudflare dashboard is left as-is.
+          GMAIL_APP_PASSWORD: ${{ secrets.GMAIL_APP_PASSWORD }}
           # Cloudflare Analytics (read-only) — powers the admin "תשתית" quota card.
           CF_API_TOKEN: ${{ secrets.CF_API_TOKEN }}
           CF_ACCOUNT_ID: ${{ secrets.CF_ACCOUNT_ID }}
@@ -214,6 +217,7 @@ jobs:
           put_secret MAIL_FROM_ADDRESS
           put_secret MAIL_FROM_NAME
           put_secret MAIL_TO_ADMIN_OVERRIDE
+          put_secret GMAIL_APP_PASSWORD
           put_secret CF_API_TOKEN
           put_secret CF_ACCOUNT_ID
 
@@ -242,6 +246,9 @@ jobs:
           MAIL_FROM_ADDRESS: ${{ secrets.MAIL_FROM_ADDRESS }}
           MAIL_FROM_NAME: ${{ secrets.MAIL_FROM_NAME }}
           MAIL_TO_ADMIN_OVERRIDE: ${{ secrets.MAIL_TO_ADMIN_OVERRIDE }}
+          # Gmail app password for tradeos.app@gmail.com. Empty → skip, so a
+          # value already set in the Cloudflare dashboard is left as-is.
+          GMAIL_APP_PASSWORD: ${{ secrets.GMAIL_APP_PASSWORD }}
           # Cloudflare Analytics (read-only) — powers the admin "תשתית" quota card.
           CF_API_TOKEN: ${{ secrets.CF_API_TOKEN }}
           CF_ACCOUNT_ID: ${{ secrets.CF_ACCOUNT_ID }}
@@ -279,6 +286,7 @@ jobs:
           put_secret MAIL_FROM_ADDRESS
           put_secret MAIL_FROM_NAME
           put_secret MAIL_TO_ADMIN_OVERRIDE
+          put_secret GMAIL_APP_PASSWORD
           put_secret CF_API_TOKEN
           put_secret CF_ACCOUNT_ID
 

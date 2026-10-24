@@ -1,6 +1,11 @@
 name = "tradeos-alerts"
 main = "index.js"
-compatibility_date = "2024-01-01"
+# Same Node.js surface as the HTTP worker (wrangler.jsonc). Gmail SMTP uses
+# nodemailer, which needs node:net / node:tls / node:dns. Those APIs are on
+# for this date only when nodejs_compat is set (it becomes the default on
+# 2026-08-04).
+compatibility_date = "2025-09-27"
+compatibility_flags = ["nodejs_compat"]
 
 # Cron trigger - runs every 10 minutes (optimized for KV free tier)
 [triggers]
