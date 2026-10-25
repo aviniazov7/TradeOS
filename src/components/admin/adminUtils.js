@@ -5,9 +5,9 @@ import { Crown, X, Send, Plus, Trash2, Ticket, Mail, Users } from 'lucide-react'
 export const KIND_META = {
   premium_grant: { label: 'הענקת Premium', color: 'text-amber-400', tile: 'bg-amber-500/12 text-amber-400', Icon: Crown },
   premium_revoke: { label: 'ביטול Premium', color: 'text-loss', tile: 'bg-loss/12 text-loss', Icon: X },
-  notify: { label: 'שליחת Push', color: 'text-accent-primary', tile: 'bg-accent-primary/14 text-accent-hover', Icon: Send },
-  'notify-bulk': { label: 'תזכורת לקבוצה', color: 'text-accent-primary', tile: 'bg-accent-primary/14 text-accent-hover', Icon: Users },
-  'email-campaign': { label: 'מייל לקבוצה', color: 'text-accent-primary', tile: 'bg-accent-primary/14 text-accent-hover', Icon: Mail },
+  notify: { label: 'שליחת Push', color: 'text-accent-primary', tile: 'bg-accent-primary/14 text-sky-300', Icon: Send },
+  'notify-bulk': { label: 'תזכורת לקבוצה', color: 'text-accent-primary', tile: 'bg-accent-primary/14 text-sky-300', Icon: Users },
+  'email-campaign': { label: 'מייל לקבוצה', color: 'text-accent-primary', tile: 'bg-accent-primary/14 text-sky-300', Icon: Mail },
   payment_email: { label: 'מייל אישור תשלום', color: 'text-profit', tile: 'bg-profit/12 text-profit', Icon: Mail },
   coupon_create: { label: 'יצירת קופון', color: 'text-amber-400', tile: 'bg-amber-500/12 text-amber-400', Icon: Plus },
   coupon_delete: { label: 'מחיקת קופון', color: 'text-loss', tile: 'bg-loss/12 text-loss', Icon: Trash2 },
@@ -123,7 +123,7 @@ const STATUS = {
   premium: { label: 'Premium',  cls: 'text-violet-300 bg-violet-500/15' },
   never:   { label: 'לא נכנס',  cls: 'text-text-secondary bg-bg-tertiary' },
   risk:    { label: 'בסיכון',   cls: 'text-amber-400 bg-amber-500/12' },
-  new:     { label: 'חדש',      cls: 'text-accent-hover bg-accent-primary/12' },
+  new:     { label: 'חדש',      cls: 'text-sky-300 bg-sky-500/12' },
   active:  { label: 'פעיל',     cls: 'text-profit bg-profit/12' },
   idle:    { label: 'רדום',     cls: 'text-text-secondary bg-bg-tertiary' },
 };

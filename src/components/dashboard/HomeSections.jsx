@@ -220,7 +220,7 @@ export function QuickLinks({ backtests, backtestStats, plans, activePlans, dcaPl
   const navigate = useNavigate();
   const items = [
     {
-      to: '/backtest', name: 'בקטסטים', Icon: FlaskConical, tile: 'bg-accent-primary/14 text-accent-hover',
+      to: '/backtest', name: 'בקטסטים', Icon: FlaskConical, tile: 'bg-accent-primary/14 text-sky-300',
       sub: backtests.length ? `${backtests.length}${backtestStats ? ` · ${backtestStats.winRate.toFixed(0)}% הצלחה` : ''}` : 'עוד לא התחלת',
     },
     {

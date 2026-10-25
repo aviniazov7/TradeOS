@@ -100,7 +100,7 @@ export default function PremiumPage() {
           <div className="rounded-2xl border border-accent-primary/30 bg-bg-secondary p-5 md:p-6 flex flex-col md:flex-row md:items-center gap-5">
             <div className="flex items-center gap-4 flex-1 min-w-0">
               <span className="w-12 h-12 shrink-0 rounded-2xl grid place-items-center" style={{ background: 'var(--accent-gradient)' }}>
-                <Crown className="w-6 h-6" style={{ color: '#ffffff' }} />
+                <Crown className="w-6 h-6" style={{ color: '#06060a' }} />
               </span>
               <div className="min-w-0">
                 <p className="text-lg font-bold text-text-primary">המנוי שלך פעיל</p>
@@ -127,7 +127,7 @@ export default function PremiumPage() {
           // Price + what you get
           <div className="relative overflow-hidden rounded-2xl border border-accent-primary/30 bg-bg-secondary">
             <div aria-hidden className="absolute inset-0 pointer-events-none"
-              style={{ background: 'radial-gradient(60% 90% at 0% 0%, rgba(0,123,167,0.16) 0%, transparent 65%)' }} />
+              style={{ background: 'radial-gradient(60% 90% at 0% 0%, rgba(37,99,235,0.16) 0%, transparent 65%)' }} />
             <div className="relative grid md:grid-cols-[1.1fr_1fr]">
               <div className="p-5 md:p-7">
                 <h2 className="text-xl md:text-2xl font-extrabold text-text-primary leading-snug">

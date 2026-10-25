@@ -111,7 +111,7 @@ export default function PersonalAnalyst({ smartCountByMarket = {}, smartLoading 
         <div className="absolute -top-16 -left-16 w-56 h-56 rounded-full bg-accent-primary/10 blur-3xl pointer-events-none" />
         <div className="relative flex items-start gap-3">
           <div className="w-11 h-11 rounded-2xl flex items-center justify-center shrink-0 text-accent-primary bg-accent-primary/15 border border-accent-primary/40"
-            style={{ boxShadow: '0 0 24px -6px rgba(0,123,167,0.6)' }}>
+            style={{ boxShadow: '0 0 24px -6px rgba(59,130,246,0.6)' }}>
             <UserRoundSearch className="w-6 h-6" />
           </div>
           <div className="min-w-0 flex-1">

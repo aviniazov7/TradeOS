@@ -89,8 +89,8 @@ function TypingIndicator() {
 // The assistant's small mark beside its messages.
 function BotMark() {
   return (
-    <div className="w-8 h-8 rounded-xl shrink-0 grid place-items-center" style={{ background: 'linear-gradient(135deg, #005e80 0%, #007ba7 100%)' }}>
-      <Sparkles className="w-4 h-4" style={{ color: '#ffffff' }} />
+    <div className="w-8 h-8 rounded-xl shrink-0 grid place-items-center" style={{ background: 'linear-gradient(135deg, #2563eb 0%, #38bdf8 100%)' }}>
+      <Sparkles className="w-4 h-4" style={{ color: '#06060a' }} />
     </div>
   );
 }
@@ -458,8 +458,8 @@ export default function AIChat({ heightClass = 'h-[calc(100dvh-13.5rem)] md:h-[c
         <div className={`flex-1 overflow-y-auto overscroll-contain px-3 sm:px-5 py-5 space-y-5 relative ${isEmpty ? 'flex flex-col' : ''}`} onScroll={onMessagesScroll}>
           {isEmpty ? (
             <div className="flex-1 flex flex-col items-center justify-center text-center gap-5">
-              <div className="w-14 h-14 rounded-2xl grid place-items-center" style={{ background: 'linear-gradient(135deg, #005e80 0%, #007ba7 100%)', boxShadow: '0 0 28px -6px rgba(0,123,167,0.7)' }}>
-                <Sparkles className="w-7 h-7" style={{ color: '#ffffff' }} />
+              <div className="w-14 h-14 rounded-2xl grid place-items-center" style={{ background: 'linear-gradient(135deg, #2563eb 0%, #38bdf8 100%)', boxShadow: '0 0 28px -6px rgba(59,130,246,0.7)' }}>
+                <Sparkles className="w-7 h-7" style={{ color: '#06060a' }} />
               </div>
               <div className="space-y-1.5">
                 <h2 className="text-xl md:text-2xl font-bold text-text-primary">הסוכן מכיר כל עסקה שלך</h2>

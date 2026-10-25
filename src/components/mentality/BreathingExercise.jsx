@@ -9,7 +9,7 @@ import { ZONE_COLORS, tint } from './zoneStyle';
 const PHASES = [
   { key: 'inhale', label: 'שאיפה', duration: 4, instruction: 'שאף דרך האף', color: '#22c55e' },
   { key: 'hold', label: 'החזקה', duration: 4, instruction: 'החזק בעדינות', color: '#eab308' },
-  { key: 'exhale', label: 'נשיפה', duration: 6, instruction: 'נשוף דרך הפה', color: '#007ba7' },
+  { key: 'exhale', label: 'נשיפה', duration: 6, instruction: 'נשוף דרך הפה', color: '#3b82f6' },
 ];
 
 // Preview ring keyframes: grow over the inhale, hold, shrink over the exhale.

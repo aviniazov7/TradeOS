@@ -89,12 +89,12 @@ const statAccent = (r, g, b, color) => ({
   chipBg: `rgba(${r},${g},${b},0.12)`,
 });
 const STAT_ACCENTS = {
-  cap:  statAccent(139, 92, 246, '#8b5cf6'),  // market cap  — violet
+  cap:  statAccent(139, 92, 246, '#8b5cf6'),  // market cap  — violet (app accent)
   usdt: statAccent(38, 212, 175, '#2dd4bf'),   // USDT.D      — teal
   btc:  statAccent(251, 146, 60, '#fb923c'),   // BTC.D       — bitcoin orange
   vol:  statAccent(192, 132, 252, '#c084fc'),  // 24h volume  — violet
   alt:  statAccent(129, 140, 248, '#818cf8'),  // alt season  — indigo
-  volch: statAccent(0, 123, 167, '#007ba7'),  // 24h vol change — cerulean
+  volch: statAccent(14, 165, 233, '#0ea5e9'),  // 24h vol change — sky
 };
 
 // 21st-style global-stat card: glass surface + a soft accent corner glow + a
@@ -416,7 +416,7 @@ function OpenInterestCard({ data, loading, onRetry }) {
                     animate={{ width: `${barW}%` }}
                     transition={{ delay: 0.03 * i + 0.2, duration: 0.8, ease: 'easeOut' }}
                     className="h-full rounded-full"
-                    style={{ background: 'linear-gradient(to right, #6366f1, #007ba7)' }}
+                    style={{ background: 'linear-gradient(to right, #6366f1, #06b6d4)' }}
                   />
                 </div>
                 <span className="text-[10px] font-semibold text-text-secondary w-12 text-left shrink-0 num-mono">

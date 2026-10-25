@@ -82,7 +82,7 @@ const MonthlyShareCard = forwardRef(function MonthlyShareCard({ trades, currentM
         width: 480,
         flexShrink: 0,
         padding: 24,
-        background: '#0a0a0a',
+        background: '#09090f',
         borderRadius: 16,
         border: `1px solid ${accentGlow}0.3)`,
         fontFamily: "'Heebo', 'Inter', sans-serif",

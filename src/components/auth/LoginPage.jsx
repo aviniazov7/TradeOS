@@ -35,18 +35,18 @@ function CurveArt() {
     <svg viewBox="0 0 400 140" className="w-full h-auto" fill="none" aria-hidden="true">
       <defs>
         <linearGradient id={lineId} x1="0" y1="0" x2="1" y2="0">
-          <stop offset="0%" stopColor="#007ba7" />
-          <stop offset="100%" stopColor="#007ba7" />
+          <stop offset="0%" stopColor="#2563eb" />
+          <stop offset="100%" stopColor="#38bdf8" />
         </linearGradient>
         <linearGradient id={areaId} x1="0" y1="0" x2="0" y2="1">
-          <stop offset="0%" stopColor="#007ba7" stopOpacity="0.28" />
-          <stop offset="100%" stopColor="#007ba7" stopOpacity="0" />
+          <stop offset="0%" stopColor="#3b82f6" stopOpacity="0.28" />
+          <stop offset="100%" stopColor="#3b82f6" stopOpacity="0" />
         </linearGradient>
       </defs>
       {[35, 70, 105].map((y) => <line key={y} x1="0" x2="400" y1={y} y2={y} stroke="rgba(255,255,255,0.05)" />)}
       <path d="M0 118 L40 104 L80 110 L120 84 L160 92 L200 66 L240 72 L280 44 L320 52 L360 26 L400 16 L400 140 L0 140 Z" fill={`url(#${areaId})`} />
       <path d="M0 118 L40 104 L80 110 L120 84 L160 92 L200 66 L240 72 L280 44 L320 52 L360 26 L400 16" stroke={`url(#${lineId})`} strokeWidth="3" strokeLinecap="round" strokeLinejoin="round" />
-      <circle cx="400" cy="16" r="5" fill="#1496c4" />
+      <circle cx="400" cy="16" r="5" fill="#60a5fa" />
     </svg>
   );
 }
@@ -169,7 +169,7 @@ export default function LoginPage() {
       {/* Brand panel — wide screens only */}
       <aside className="hidden lg:flex relative overflow-hidden flex-col items-center justify-between p-12 border-l border-border-primary bg-bg-secondary">
         <div aria-hidden className="absolute inset-0 pointer-events-none"
-          style={{ background: 'radial-gradient(70% 60% at 100% 0%, rgba(0,123,167,0.18) 0%, transparent 60%), radial-gradient(60% 50% at 0% 100%, rgba(0,123,167,0.08) 0%, transparent 60%)' }} />
+          style={{ background: 'radial-gradient(70% 60% at 100% 0%, rgba(37,99,235,0.18) 0%, transparent 60%), radial-gradient(60% 50% at 0% 100%, rgba(56,189,248,0.08) 0%, transparent 60%)' }} />
         <div className="relative"><BrandMark size="lg" /></div>
 
         {/* Centred in the half, so the pitch sits in the middle of the panel
@@ -232,7 +232,7 @@ export default function LoginPage() {
           {!isLogin && (
             <label data-testid="signup-email-consent" className="mt-4 flex items-start gap-2.5 text-sm text-text-secondary leading-relaxed cursor-pointer select-none">
               <input type="checkbox" checked={marketingEmails} onChange={(e) => setMarketingEmails(e.target.checked)}
-                className="mt-0.5 w-4 h-4 shrink-0 accent-[#007ba7] cursor-pointer" />
+                className="mt-0.5 w-4 h-4 shrink-0 accent-[#3b82f6] cursor-pointer" />
               <span>אני מעוניין/ת לקבל עדכונים ותזכורות במייל</span>
             </label>
           )}

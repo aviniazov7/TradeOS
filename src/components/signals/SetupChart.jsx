@@ -100,7 +100,7 @@ export default function SetupChart({ pair, entryPrice, stopLoss, interval = '30m
           const gy = y(gp);
           return (
             <g key={`grid-${f}`}>
-              <line x1={PAD_L} y1={gy} x2={W - PAD_R} y2={gy} stroke="#2a2a2a" strokeWidth="0.4" />
+              <line x1={PAD_L} y1={gy} x2={W - PAD_R} y2={gy} stroke="#1b2434" strokeWidth="0.4" />
               <text x={W - PAD_R + 3} y={gy + 3} fill="#c8c8d4" fontSize="11">{fmtP(gp)}</text>
             </g>
           );
@@ -116,7 +116,7 @@ export default function SetupChart({ pair, entryPrice, stopLoss, interval = '30m
             fill="rgba(34,197,94,0.16)" stroke="rgba(34,197,94,0.55)" strokeWidth="0.5" />
         )}
         {showPosition && eY != null && (
-          <line x1={procL} y1={eY} x2={W - PAD_R} y2={eY} stroke="#007ba7" strokeWidth="1.2" />
+          <line x1={procL} y1={eY} x2={W - PAD_R} y2={eY} stroke="#38bdf8" strokeWidth="1.2" />
         )}
         {/* Range support / resistance — the structure/context, from where each formed */}
         {rng && (
@@ -137,7 +137,7 @@ export default function SetupChart({ pair, entryPrice, stopLoss, interval = '30m
           );
         })}
         {/* Volume panel — WHITE bars */}
-        <line x1={PAD_L} y1={volTop - 3} x2={W - PAD_R} y2={volTop - 3} stroke="#333333" strokeWidth="0.5" />
+        <line x1={PAD_L} y1={volTop - 3} x2={W - PAD_R} y2={volTop - 3} stroke="#232f45" strokeWidth="0.5" />
         {bars.map((b, i) => (
           <rect key={`v${i}`} x={cx(i) - bw * 0.3} y={vy(b.v)} width={Math.max(0.6, bw * 0.6)} height={Math.max(0, volBottom - vy(b.v))}
             fill={b.c >= b.o ? 'rgba(230,237,246,0.5)' : 'rgba(230,237,246,0.26)'} />
@@ -148,8 +148,8 @@ export default function SetupChart({ pair, entryPrice, stopLoss, interval = '30m
         {showPosition && sY != null && <AnnoLine x1={procL} yy={sY} color="#f43f5e" textColor="#1a0209" price={stopLoss} />}
         {showPosition && eY != null && (
           <g>
-            <rect x={W - PAD_R + 2} y={eY - 7} width={PAD_R - 5} height={14} rx={3} fill="#007ba7" />
-            <text x={W - (PAD_R - 2) / 2} y={eY + 3.4} fill="#ffffff" fontSize="11" fontWeight="700" textAnchor="middle">{fmtP(entryPrice)}</text>
+            <rect x={W - PAD_R + 2} y={eY - 7} width={PAD_R - 5} height={14} rx={3} fill="#38bdf8" />
+            <text x={W - (PAD_R - 2) / 2} y={eY + 3.4} fill="#04141f" fontSize="11" fontWeight="700" textAnchor="middle">{fmtP(entryPrice)}</text>
           </g>
         )}
       </svg>

@@ -100,7 +100,7 @@ export default function PropFirmPanel({ propFirm, trades, onEdit }) {
 
   return (
     <section aria-label="מעקב אתגר פרופ" className={`mb-4 rounded-2xl border ${st.ring} bg-bg-secondary overflow-hidden`}>
-      <div aria-hidden className="h-px w-full" style={{ background: 'linear-gradient(90deg, transparent, rgba(0,123,167,0.55), rgba(250,204,21,0.45), transparent)' }} />
+      <div aria-hidden className="h-px w-full" style={{ background: 'linear-gradient(90deg, transparent, rgba(59,130,246,0.55), rgba(250,204,21,0.45), transparent)' }} />
 
       {/* Header — firm, phase, size, status */}
       <div className="flex items-center justify-between gap-2 px-3 sm:px-4 pt-3">

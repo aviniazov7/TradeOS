@@ -24,7 +24,7 @@ export default function UserAvatar({ className = 'w-8 h-8', textClass = 'text-sm
   }
   return (
     <span className={`${className} ${textClass} rounded-full shrink-0 grid place-items-center font-bold text-white`}
-      style={{ background: 'linear-gradient(135deg, #005e80 0%, #007ba7 100%)' }} aria-label={name}>
+      style={{ background: 'linear-gradient(135deg, #2563eb 0%, #38bdf8 100%)' }} aria-label={name}>
       {initials}
     </span>
   );

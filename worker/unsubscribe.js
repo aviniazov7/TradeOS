@@ -50,6 +50,6 @@ export function unsubscribePage(ok) {
     ? 'לא נשלח אליך יותר דיוור שיווקי מ-TradeOS. הודעות שירות (למשל אישור Premium) ימשיכו להישלח. אפשר לחזור ולהירשם בכל עת בפרופיל.'
     : 'לא הצלחנו להסיר אותך. אפשר לבטל את הדיוור בכל עת בפרופיל, בהגדרות "עדכונים והטבות במייל".';
   return `<!doctype html><html lang="he" dir="rtl"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>${title}</title>
-<style>body{margin:0;min-height:100vh;display:grid;place-items:center;background:#0a0a0a;color:#f0f0f0;font-family:system-ui,Arial,sans-serif;padding:24px}main{max-width:420px;text-align:center}h1{font-size:22px;margin:0 0 12px}p{color:#a0a0b0;line-height:1.7;margin:0 0 20px}a{display:inline-block;padding:10px 20px;border-radius:12px;background:#007ba7;color:#fff;text-decoration:none;font-weight:700}</style></head>
+<style>body{margin:0;min-height:100vh;display:grid;place-items:center;background:#000;color:#f0f0f0;font-family:system-ui,Arial,sans-serif;padding:24px}main{max-width:420px;text-align:center}h1{font-size:22px;margin:0 0 12px}p{color:#a0a0b0;line-height:1.7;margin:0 0 20px}a{display:inline-block;padding:10px 20px;border-radius:12px;background:#2563eb;color:#fff;text-decoration:none;font-weight:700}</style></head>
 <body><main><h1>${title}</h1><p>${text}</p><a href="${APP_URL}/">חזרה ל-TradeOS</a></main></body></html>`;
 }

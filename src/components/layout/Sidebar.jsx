@@ -43,13 +43,13 @@ const itemActive = (item, pathname) => pathIn(pathname, item.to) || !!item.match
 
 const rowBase = 'group relative flex items-center gap-3 px-3 py-2.5 rounded-xl text-sm font-medium transition-all duration-200 w-full cursor-pointer';
 const rowIdle = 'border border-transparent text-text-secondary hover:text-text-primary hover:bg-bg-tertiary/60';
-const activeBg = { background: 'linear-gradient(90deg, rgba(0,123,167,0.18) 0%, transparent 100%)' };
+const activeBg = { background: 'linear-gradient(90deg, rgba(34,211,238,0.14) 0%, rgba(139,92,246,0.07) 100%)' };
 
 function ActiveBar() {
   return (
     <span
       className="absolute right-0 top-1/2 -translate-y-1/2 h-7 w-1 rounded-full"
-      style={{ background: 'linear-gradient(180deg,#007ba7,#005e80)', boxShadow: '0 0 10px 0 rgba(0,123,167,0.6)' }}
+      style={{ background: 'linear-gradient(180deg,#60a5fa,#2563eb)', boxShadow: '0 0 10px 0 rgba(34,211,238,0.6)' }}
     />
   );
 }

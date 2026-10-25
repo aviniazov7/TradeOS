@@ -127,7 +127,7 @@ export default function BacktestAICoachPanel({ backtests }) {
     return (
       <div className="max-w-md mx-auto text-center py-8">
         <span className="inline-grid place-items-center w-14 h-14 rounded-2xl mb-4" style={{ background: 'var(--accent-gradient)' }}>
-          <Lock className="w-6 h-6" style={{ color: '#ffffff' }} />
+          <Lock className="w-6 h-6" style={{ color: '#06060a' }} />
         </span>
         <h2 className="text-lg font-bold text-text-primary">ניתוח AI לבקטסט הוא חלק מ-Premium</h2>
         <p className="text-sm text-text-secondary leading-relaxed mt-2 mb-5">

@@ -20,7 +20,7 @@ export default function JournalRCard({ trades }) {
   return (
     <Card className="relative overflow-hidden p-4 md:p-5 mb-4 md:mb-6">
       <div className="absolute inset-0 pointer-events-none"
-        style={{ background: 'radial-gradient(70% 120% at 100% 0%, rgba(0,123,167,0.10) 0%, transparent 60%)' }} />
+        style={{ background: 'radial-gradient(70% 120% at 100% 0%, rgba(37,99,235,0.10) 0%, transparent 60%)' }} />
 
       <div className="relative flex flex-wrap items-start justify-between gap-2 mb-4">
         <div>

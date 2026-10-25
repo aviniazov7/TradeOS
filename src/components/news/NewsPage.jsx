@@ -132,7 +132,7 @@ const COUNTRY_MAP = Object.fromEntries(COUNTRIES.map((c) => [c.code, c]));
 const IMPACT_STYLES = {
   High: { bg: 'bg-red-500/20', text: 'text-red-400', border: 'border-red-500/30', label: '\u05D2\u05D1\u05D5\u05D4', dots: 3 },
   Medium: { bg: 'bg-yellow-500/20', text: 'text-yellow-400', border: 'border-yellow-500/30', label: '\u05D1\u05D9\u05E0\u05D5\u05E0\u05D9', dots: 2 },
-  Low: { bg: 'bg-accent-primary/20', text: 'text-accent-primary', border: 'border-accent-primary/30', label: '\u05E0\u05DE\u05D5\u05DA', dots: 1 },
+  Low: { bg: 'bg-blue-500/20', text: 'text-blue-400', border: 'border-blue-500/30', label: '\u05E0\u05DE\u05D5\u05DA', dots: 1 },
 };
 
 // Impact filter options (dropdown). Colored dot mirrors the row impact bars.
@@ -140,7 +140,7 @@ const IMPACT_OPTIONS = [
   { key: 'all', label: '\u05D4\u05DB\u05DC', dot: '' },
   { key: 'High', label: '\u05D2\u05D1\u05D5\u05D4', dot: 'bg-red-400' },
   { key: 'Medium', label: '\u05D1\u05D9\u05E0\u05D5\u05E0\u05D9', dot: 'bg-yellow-400' },
-  { key: 'Low', label: '\u05E0\u05DE\u05D5\u05DA', dot: 'bg-accent-primary' },
+  { key: 'Low', label: '\u05E0\u05DE\u05D5\u05DA', dot: 'bg-blue-400' },
 ];
 
 const DAY_NAMES = ['\u05D9\u05D5\u05DD \u05E8\u05D0\u05E9\u05D5\u05DF', '\u05D9\u05D5\u05DD \u05E9\u05E0\u05D9', '\u05D9\u05D5\u05DD \u05E9\u05DC\u05D9\u05E9\u05D9', '\u05D9\u05D5\u05DD \u05E8\u05D1\u05D9\u05E2\u05D9', '\u05D9\u05D5\u05DD \u05D7\u05DE\u05D9\u05E9\u05D9', '\u05D9\u05D5\u05DD \u05E9\u05D9\u05E9\u05D9', '\u05E9\u05D1\u05EA'];
@@ -220,7 +220,7 @@ function ImpactBars({ impact }) {
     return <span className="text-[10px] font-medium text-text-muted whitespace-nowrap">חופשה</span>;
   }
   const level = impact === 'High' ? 3 : impact === 'Medium' ? 2 : 1;
-  const color = impact === 'High' ? 'bg-red-400' : impact === 'Medium' ? 'bg-yellow-400' : 'bg-accent-primary';
+  const color = impact === 'High' ? 'bg-red-400' : impact === 'Medium' ? 'bg-yellow-400' : 'bg-blue-400';
   return (
     <span className="inline-flex items-end gap-0.5" dir="ltr" title={impact}>
       {[1, 2, 3].map((i) => (

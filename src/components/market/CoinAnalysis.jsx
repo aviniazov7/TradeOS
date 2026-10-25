@@ -15,7 +15,7 @@ import { computeRSI, computeMA, computeVolatility } from '../../utils/technicals
 // are the endpoints. The whole page also overrides --color-accent-primary to
 // AI_FROM (see the root wrapper) so every text/icon accent shifts to violet.
 const AI_FROM = '#8b5cf6';
-const AI_TO = '#007ba7';
+const AI_TO = '#06b6d4';
 const AI_GRADIENT = `linear-gradient(135deg, ${AI_FROM} 0%, ${AI_TO} 100%)`;
 
 function formatSupply(n) {
@@ -1068,7 +1068,7 @@ export default function CoinAnalysis() {
                             formatter={(v) => [formatPrice(v), 'מחיר']}
                           />
                           {technicals?.ma7 && <ReferenceLine y={technicals.ma7} stroke="#f59e0b" strokeDasharray="4 4" strokeWidth={1} />}
-                          {technicals?.ma14 && <ReferenceLine y={technicals.ma14} stroke="#007ba7" strokeDasharray="4 4" strokeWidth={1} />}
+                          {technicals?.ma14 && <ReferenceLine y={technicals.ma14} stroke="#06b6d4" strokeDasharray="4 4" strokeWidth={1} />}
                           <Area type="monotone" dataKey="price" stroke={chartColor} strokeWidth={2} fill="url(#coinGrad)" dot={false} />
                         </AreaChart>
                       </ResponsiveContainer>
@@ -1567,7 +1567,7 @@ function LiquidityHeatmap({ pair, klines }) {
       const toY = (price) => PT + (1 - (price - priceMin) / priceRange) * plotH;
 
       // Background
-      ctx.fillStyle = '#0a0a0a';
+      ctx.fillStyle = '#000000';
       ctx.fillRect(0, 0, W, H);
 
       // Heat cells — persisting levels render as horizontal liquidity bands.
@@ -1668,7 +1668,7 @@ function LiquidityHeatmap({ pair, klines }) {
       // Current price pill (over axis)
       ctx.fillStyle = 'rgba(255,255,255,0.95)';
       ctx.fillRect(W - PR + 2, ly - 8, PR - 4, 15);
-      ctx.fillStyle = '#0a0a0a';
+      ctx.fillStyle = '#0a0d16';
       ctx.font = 'bold 9px monospace';
       ctx.textAlign = 'center';
       ctx.fillText(formatHeatPrice(lastPrice), W - PR / 2, ly + 3.5);
@@ -1803,7 +1803,7 @@ function LiquidityHeatmap({ pair, klines }) {
         <canvas
           ref={canvasRef}
           className="w-full rounded-lg"
-          style={{ height: '460px', background: '#0a0a0a', display: 'block', cursor: 'crosshair' }}
+          style={{ height: '460px', background: '#000000', display: 'block', cursor: 'crosshair' }}
         />
 
         {/* Legend */}

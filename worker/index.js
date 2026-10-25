@@ -5278,13 +5278,13 @@ async function handleRequest(request, env) {
 <meta http-equiv="refresh" content="1; url=${escUrl}">
 <style>
   *{box-sizing:border-box}
-  html,body{margin:0;padding:0;background:#0a0a0a;color:#e5e7eb;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Arial,sans-serif;min-height:100vh}
+  html,body{margin:0;padding:0;background:#0a0e16;color:#e5e7eb;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Arial,sans-serif;min-height:100vh}
   .wrap{min-height:100vh;display:flex;align-items:center;justify-content:center;padding:24px}
-  .card{max-width:380px;width:100%;background:#141414;border:1px solid rgba(245,158,11,0.3);border-radius:20px;padding:32px 24px;text-align:center}
+  .card{max-width:380px;width:100%;background:#0f1521;border:1px solid rgba(245,158,11,0.3);border-radius:20px;padding:32px 24px;text-align:center}
   .gift{font-size:48px;margin-bottom:12px}
   h1{margin:0 0 8px;font-size:22px;color:#f59e0b}
   p{margin:0 0 24px;font-size:14px;color:#9ca3af}
-  a.btn{display:block;background:#f59e0b;color:#0a0a0a;padding:16px 24px;border-radius:12px;text-decoration:none;font-weight:bold;font-size:16px}
+  a.btn{display:block;background:#f59e0b;color:#0a0e16;padding:16px 24px;border-radius:12px;text-decoration:none;font-weight:bold;font-size:16px}
   a.btn:active{background:#d97706}
 </style>
 </head>

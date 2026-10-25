@@ -43,12 +43,12 @@ export function Meter({ pct, className = '', color }) {
 }
 
 const GRADIENTS = [
-  'from-[#007ba7] to-violet-500',
-  'from-[#1496c4] to-emerald-500',
+  'from-blue-500 to-violet-500',
+  'from-sky-500 to-emerald-500',
   'from-amber-500 to-rose-500',
   'from-violet-500 to-pink-500',
-  'from-teal-500 to-[#007ba7]',
-  'from-indigo-500 to-[#1496c4]',
+  'from-teal-500 to-blue-500',
+  'from-indigo-500 to-sky-500',
 ];
 
 // Photo when we have one, otherwise initials on a gradient picked from the id

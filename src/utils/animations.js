@@ -44,7 +44,7 @@ export const modalContent = {
 // Card hover
 export const cardHover = {
   scale: 1.02,
-  boxShadow: '0 0 20px rgba(0, 123, 167, 0.08)',
+  boxShadow: '0 0 20px rgba(56, 189, 248, 0.08)',
 };
 
 // Fade in

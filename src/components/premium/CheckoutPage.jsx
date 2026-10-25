@@ -61,7 +61,7 @@ export default function CheckoutPage() {
 
         <div className="flex items-center gap-3">
           <span className="w-11 h-11 shrink-0 rounded-xl grid place-items-center" style={{ background: 'var(--accent-gradient)' }}>
-            <Crown className="w-5 h-5" style={{ color: '#ffffff' }} />
+            <Crown className="w-5 h-5" style={{ color: '#06060a' }} />
           </span>
           <div>
             <h1 className="text-xl font-extrabold text-text-primary">{isPremium ? 'הארכת המנוי' : 'השלמת ההזמנה'}</h1>

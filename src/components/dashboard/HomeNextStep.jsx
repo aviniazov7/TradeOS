@@ -80,7 +80,7 @@ export default function HomeNextStep({ stage = 'fresh', showDemo = false, onDemo
 
   return (
     <Card data-testid="home-next-step" className="relative overflow-hidden rounded-2xl p-4 md:p-6 mb-4">
-      <div aria-hidden className="absolute inset-0 pointer-events-none" style={{ background: 'radial-gradient(70% 120% at 100% 0%, rgba(0,123,167,0.18) 0%, transparent 58%)' }} />
+      <div aria-hidden className="absolute inset-0 pointer-events-none" style={{ background: 'radial-gradient(70% 120% at 100% 0%, rgba(37,99,235,0.18) 0%, transparent 58%)' }} />
       <div className="relative grid grid-cols-1 lg:grid-cols-5 gap-5 lg:gap-8">
         <div className="lg:col-span-3 min-w-0 flex flex-col">
           {fresh ? (

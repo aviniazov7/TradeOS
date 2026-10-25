@@ -22,9 +22,9 @@ export default function LoadingSpinner({ fullScreen = false, size = 'md' }) {
               style={{ overflow: 'visible' }}
             >
               {/* Grid lines */}
-              <line x1="10" y1="20" x2="130" y2="20" stroke="#2a2a2a" strokeWidth="0.5" />
-              <line x1="10" y1="40" x2="130" y2="40" stroke="#2a2a2a" strokeWidth="0.5" />
-              <line x1="10" y1="60" x2="130" y2="60" stroke="#2a2a2a" strokeWidth="0.5" />
+              <line x1="10" y1="20" x2="130" y2="20" stroke="#1a1a2e" strokeWidth="0.5" />
+              <line x1="10" y1="40" x2="130" y2="40" stroke="#1a1a2e" strokeWidth="0.5" />
+              <line x1="10" y1="60" x2="130" y2="60" stroke="#1a1a2e" strokeWidth="0.5" />
 
               {/* Area fill under chart */}
               <path
@@ -36,14 +36,14 @@ export default function LoadingSpinner({ fullScreen = false, size = 'md' }) {
                 }}
               />
               <defs>
-                {/* Cerulean, matching the app accent gradient */}
+                {/* Violet → cyan, matching the app accent gradient */}
                 <linearGradient id="splashLine" x1="0" y1="0" x2="1" y2="0">
-                  <stop offset="0%" stopColor="#005e80" />
-                  <stop offset="100%" stopColor="#007ba7" />
+                  <stop offset="0%" stopColor="#2563eb" />
+                  <stop offset="100%" stopColor="#38bdf8" />
                 </linearGradient>
                 <linearGradient id="splashArea" x1="0" y1="0" x2="1" y2="1">
-                  <stop offset="0%" stopColor="#007ba7" stopOpacity="0.28" />
-                  <stop offset="100%" stopColor="#007ba7" stopOpacity="0" />
+                  <stop offset="0%" stopColor="#2563eb" stopOpacity="0.28" />
+                  <stop offset="100%" stopColor="#38bdf8" stopOpacity="0" />
                 </linearGradient>
               </defs>
 
@@ -67,7 +67,7 @@ export default function LoadingSpinner({ fullScreen = false, size = 'md' }) {
                 cx="130"
                 cy="8"
                 r="4"
-                fill="#1496c4"
+                fill="#60a5fa"
                 style={{
                   opacity: 0,
                   animation: 'chartDot 2s ease-in-out infinite',
@@ -78,7 +78,7 @@ export default function LoadingSpinner({ fullScreen = false, size = 'md' }) {
                 cy="8"
                 r="8"
                 fill="none"
-                stroke="#1496c4"
+                stroke="#60a5fa"
                 strokeWidth="1.5"
                 style={{
                   opacity: 0,

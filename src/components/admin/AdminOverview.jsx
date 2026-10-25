@@ -20,7 +20,7 @@ function Kpi({ icon: Icon, label, value, sub, subTone = 'text-text-secondary' })
 const TONES = {
   amber: 'bg-amber-500/12 text-amber-400',
   violet: 'bg-violet-500/14 text-violet-300',
-  blue: 'bg-accent-primary/14 text-accent-hover',
+  blue: 'bg-accent-primary/14 text-sky-300',
   red: 'bg-loss/12 text-loss',
 };
 

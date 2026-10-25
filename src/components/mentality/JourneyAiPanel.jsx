@@ -56,8 +56,8 @@ export default function JourneyAiPanel({ assessment, uid, isPremium }) {
     <section className={panel} aria-label="ניתוח AI אישי">
       <div className="flex flex-wrap items-center justify-between gap-3">
         <div className="flex items-center gap-3 min-w-0">
-          <span className="shrink-0 w-10 h-10 rounded-xl grid place-items-center" style={{ background: 'linear-gradient(135deg, #005e80 0%, #007ba7 100%)' }} aria-hidden>
-            <BrainCircuit className="w-5 h-5" style={{ color: '#ffffff' }} />
+          <span className="shrink-0 w-10 h-10 rounded-xl grid place-items-center" style={{ background: 'linear-gradient(135deg, #2563eb 0%, #38bdf8 100%)' }} aria-hidden>
+            <BrainCircuit className="w-5 h-5" style={{ color: '#06060a' }} />
           </span>
           <div className="min-w-0">
             <div className="flex items-center gap-2">

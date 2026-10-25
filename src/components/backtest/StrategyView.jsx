@@ -64,7 +64,7 @@ export default function StrategyView({ isOpen, onClose, journal }) {
   }, [isOpen]);
 
   if (!journal) return null;
-  const color = journal.color || '#007ba7';
+  const color = journal.color || '#06b6d4';
   const rgb = hexToRgb(color);
 
   const handleShare = async () => {
@@ -80,7 +80,7 @@ export default function StrategyView({ isOpen, onClose, journal }) {
       el.style.maxHeight = 'none';
       el.style.overflow = 'visible';
 
-      const bgColor = isDark ? '#0a0a0a' : '#e8ecf4';
+      const bgColor = isDark ? '#0a0a0f' : '#e8ecf4';
       const dataUrl = await toPng(el, {
         pixelRatio: 2,
         backgroundColor: bgColor,
@@ -127,7 +127,7 @@ export default function StrategyView({ isOpen, onClose, journal }) {
 
   // Dark: color → dark bg | Light: color → light bg
   const cardBg = isDark
-    ? `linear-gradient(135deg, rgba(${rgb}, 0.25) 0%, #0a0a0a 60%)`
+    ? `linear-gradient(135deg, rgba(${rgb}, 0.25) 0%, #0a0a0f 60%)`
     : `linear-gradient(135deg, rgba(${rgb}, 0.18) 0%, #e8ecf4 60%)`;
   const textMain = isDark ? 'text-white' : 'text-gray-900';
   const textSub = isDark ? 'text-white/60' : 'text-gray-600';

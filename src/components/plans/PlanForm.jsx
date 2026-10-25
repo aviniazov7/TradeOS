@@ -98,7 +98,7 @@ const defaultForm = {
   maxPositions: '',
   checklist: [],
   isActive: true,
-  color: '#007ba7',
+  color: '#06b6d4',
   tradeExamples: [],
   marketConditions: '',
   mistakesToAvoid: [],

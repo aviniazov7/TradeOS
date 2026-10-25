@@ -48,10 +48,10 @@ describe('buildCampaignEmails', () => {
     const [m] = buildCampaignEmails({ ...base, recipients: [{ email: 'a@x.com', name: 'דנה', unsubscribeUrl: un(1) }] });
     expect(m.html).toContain('dir="rtl"');
     expect(m.html).toContain('lang="he"');
-    expect(m.html).toContain('#0a0a0a');
-    expect(m.html).toContain('#141414');
+    expect(m.html).toContain('#000000');
+    expect(m.html).toContain('#0d0d0d');
     expect(m.html).toContain('#222222');
-    expect(m.html).toContain('#007ba7');
+    expect(m.html).toContain('#2563eb');
     expect(m.html).not.toContain('#070b12');
     expect(m.html).toContain('TradeOS');
     expect(m.html).toContain('role="presentation"');

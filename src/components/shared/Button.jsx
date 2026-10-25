@@ -2,9 +2,9 @@
 //   primary → gradient (the main call-to-action), soft → accent tint,
 //   ghost → outline, danger → destructive. Pass `icon` for a leading icon.
 const VARIANTS = {
-  primary: 'text-white bg-accent-primary shadow-[0_8px_24px_-10px_rgba(0,123,167,0.7)] hover:-translate-y-0.5 hover:shadow-[0_12px_30px_-8px_rgba(0,123,167,0.85)]',
+  primary: 'text-[#03121f] bg-[linear-gradient(135deg,#38bdf8,#2563eb)] shadow-[0_8px_24px_-10px_rgba(56,189,248,0.9)] hover:-translate-y-0.5 hover:shadow-[0_12px_30px_-8px_rgba(56,189,248,1)]',
   soft:    'text-accent-primary bg-accent-primary/10 hover:bg-accent-primary/20',
-  ghost:   'text-text-primary shadow-[inset_0_0_0_1px_var(--color-border-primary)] hover:text-accent-primary hover:shadow-[inset_0_0_0_1px_rgba(0,123,167,0.5)]',
+  ghost:   'text-text-primary shadow-[inset_0_0_0_1px_var(--color-border-primary)] hover:text-accent-primary hover:shadow-[inset_0_0_0_1px_rgba(56,189,248,0.5)]',
   danger:  'text-loss bg-loss/10 hover:bg-loss/20',
 };
 const SIZES = {

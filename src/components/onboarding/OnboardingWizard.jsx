@@ -169,9 +169,9 @@ export default function OnboardingWizard() {
                 >
                   <span
                     className="w-14 h-14 rounded-2xl grid place-items-center mb-5"
-                    style={{ background: 'linear-gradient(135deg, #005e80 0%, #007ba7 100%)', boxShadow: '0 0 32px -8px rgba(0,123,167,0.75)' }}
+                    style={{ background: 'linear-gradient(135deg, #2563eb 0%, #38bdf8 100%)', boxShadow: '0 0 32px -8px rgba(59,130,246,0.75)' }}
                   >
-                    {Icon && <Icon className="w-7 h-7" style={{ color: '#ffffff' }} />}
+                    {Icon && <Icon className="w-7 h-7" style={{ color: '#06060a' }} />}
                   </span>
                   <h2 id="onboarding-title" className="text-[22px] font-extrabold text-text-primary leading-tight">{current.title}</h2>
                   <p className="text-sm text-text-secondary leading-relaxed mt-2">{current.description}</p>
@@ -199,7 +199,7 @@ export default function OnboardingWizard() {
                   checked={emailOn}
                   disabled={emailBusy}
                   onChange={toggleEmailUpdates}
-                  className="mt-0.5 w-4 h-4 shrink-0 accent-[#007ba7] cursor-pointer"
+                  className="mt-0.5 w-4 h-4 shrink-0 accent-[#3b82f6] cursor-pointer"
                 />
                 <span>אני מעוניין/ת לקבל עדכונים ותזכורות במייל</span>
               </label>

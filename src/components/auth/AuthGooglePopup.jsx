@@ -97,7 +97,7 @@ export default function AuthGooglePopup() {
           <style>{`@keyframes spin { to { transform: rotate(360deg); } }`}</style>
           <div style={{
             width: 36, height: 36,
-            border: '3px solid #007ba7', borderTopColor: 'transparent',
+            border: '3px solid #2563eb', borderTopColor: 'transparent',
             borderRadius: '50%', animation: 'spin 0.9s linear infinite',
           }} />
           <p style={{ margin: 0, fontSize: 14 }}>מתחבר...</p>

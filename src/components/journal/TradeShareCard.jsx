@@ -34,7 +34,7 @@ const TradeShareCard = forwardRef(function TradeShareCard({ trade, options = {} 
       style={{
         width: 480,
         padding: 28,
-        background: '#0a0a0a',
+        background: '#09090f',
         borderRadius: 16,
         border: `1px solid ${accentGlow}0.3)`,
         fontFamily: "'Heebo', 'Inter', sans-serif",
@@ -205,9 +205,9 @@ const TradeShareCard = forwardRef(function TradeShareCard({ trade, options = {} 
           {trade.strategy && (
             <span style={{
               fontSize: 11,
-              color: '#007ba7',
-              background: 'rgba(0, 123, 167, 0.1)',
-              border: '1px solid rgba(0, 123, 167, 0.2)',
+              color: '#38bdf8',
+              background: 'rgba(56, 189, 248, 0.1)',
+              border: '1px solid rgba(56, 189, 248, 0.2)',
               borderRadius: 6,
               padding: '3px 10px',
             }}>
