@@ -2,30 +2,31 @@ import { useState } from 'react';
 import { Send, Loader2, Mail, Bell, FlaskConical, Sparkles, RefreshCw } from 'lucide-react';
 import toast from 'react-hot-toast';
 import { useAuth } from '../../contexts/AuthContext';
-import { adminSendBulkNotification, adminSendEmailCampaign, adminGenerateMarketHook } from '../../services/pushService';
+import { adminSendBulkNotification, adminSendEmailCampaign, adminGenerateReminder } from '../../services/pushService';
 import SelectDropdown from '../shared/SelectDropdown';
 
-// Ready-made "come back" messages — a click fills the form, then edit freely.
+// Ready-made calm updates — a click fills the form, then edit freely.
+// No counts here: the send adds each recipient's own numbers.
 const TEMPLATES = [
   {
-    label: 'מזמן לא ראינו אותך',
-    title: 'מתגעגעים אליך ב-TradeOS 👋',
-    body: 'עבר זמן מאז הביקור האחרון שלך. היומן, האנליטיקה והסנכרון מהבורסה מחכים — כמה דקות ביום עושות את ההבדל במסחר.',
-    cta: 'חזרה ל-TradeOS',
-    path: '/',
+    label: 'עדכון מהיומן',
+    title: 'עדכון קצר מהיומן',
+    body: 'אפשר לפתוח את היומן ולראות את מה שכבר תיעדת.',
+    cta: 'ליומן',
+    path: '/journal',
   },
   {
-    label: 'מה חדש',
-    title: 'חדש ב-TradeOS ✨',
-    body: 'הוספנו ניתוח לפי R, רווח/הפסד חי לעסקאות פתוחות, ומיון וסינונים חדשים ביומן. כנסו לראות מה השתנה.',
-    cta: 'לראות מה חדש',
-    path: '/journal?tab=analytics',
+    label: 'רישום יומי',
+    title: 'עדכון קצר מהיומן',
+    body: 'אפשר לרשום איך עבר היום, בקצב שלך.',
+    cta: 'ליומן היומי',
+    path: '/mentality',
   },
   {
-    label: 'תזכורת לתעד',
-    title: 'תיעדת את העסקאות של השבוע?',
-    body: 'סוחרים שמתעדים כל עסקה משתפרים מהר יותר. סנכרן מהבורסה או הוסף עסקה ידנית — זה לוקח דקה.',
-    cta: 'ליומן המסחר',
+    label: 'היומן שלך',
+    title: 'עדכון קצר מהיומן',
+    body: 'היומן מרכז את העסקאות ואת הרישומים שלך. אפשר להיכנס כשנוח.',
+    cta: 'ליומן',
     path: '/journal',
   },
 ];
@@ -92,16 +93,17 @@ export default function ReengageComposer({ recipients, onSent }) {
   const [sending, setSending] = useState(null); // 'all' | 'test' | null
   // Short phone-notification text (the AI writes one); empty = the message's start.
   const [pushText, setPushText] = useState('');
-  // The real market numbers the AI copy was built from — shown for review.
-  const [hook, setHook] = useState(null); // { facts, source }
+  // The recipient stats the draft was built from — shown for review.
+  const [hook, setHook] = useState(null); // { stats, source }
   const [generating, setGenerating] = useState(false);
 
   const generate = async () => {
     setGenerating(true);
     try {
-      const h = await adminGenerateMarketHook();
+      const uid = recipients.length === 1 ? recipients[0].id : undefined;
+      const h = await adminGenerateReminder(uid);
       setTitle(h.title); setBody(h.email); setPushText(h.push); setCta(h.cta); setPath(h.path);
-      setHook({ facts: h.facts, source: h.source });
+      setHook({ stats: h.stats, source: h.source });
     } catch (e) {
       toast.error(e.message || 'יצירת ההודעה נכשלה');
     } finally {
@@ -175,27 +177,33 @@ export default function ReengageComposer({ recipients, onSent }) {
   const sendTest = () => deliver([{ id: me?.uid, email: me?.email, name: me?.displayName || '', marketing: true }], 'test');
   const sendAll = () => deliver(recipients, 'all');
 
-  const fmtFact = (f) => `${f.coin} ${f.change > 0 ? '+' : ''}${f.change}%`;
-  const factLine = hook?.facts
-    ? [hook.facts.btc, hook.facts.eth, ...hook.facts.gainers, ...hook.facts.losers].filter(Boolean).map(fmtFact).join(' · ')
-    : '';
+  const statsBits = [];
+  const st = hook?.stats;
+  if (st?.weekTrades > 0) statsBits.push(st.weekTrades === 1 ? 'השבוע עסקה אחת' : `השבוע ${st.weekTrades} עסקאות`);
+  if (st?.openTrades > 0) statsBits.push(st.openTrades === 1 ? 'עסקה פתוחה אחת' : `${st.openTrades} עסקאות פתוחות`);
+  if (st?.journalDays > 0) statsBits.push(st.journalDays === 1 ? 'יום אחד ביומן' : `${st.journalDays} ימים ביומן`);
+  if (Number.isInteger(st?.daysSinceLogin)) {
+    statsBits.push(st.daysSinceLogin === 0 ? 'נכנס היום' : st.daysSinceLogin === 1 ? 'כניסה אתמול' : `כניסה לפני ${st.daysSinceLogin} ימים`);
+  }
+  const statsLine = statsBits.join(' · ');
 
   return (
     <div className="space-y-3">
-      {/* The strongest hook: what's actually moving right now, written by AI
-          from live market data (numbers are checked on the server). */}
+      {/* A calm personal update. One recipient: their own counts. A segment:
+          a general draft, and each email is filled in at send time. */}
       <button type="button" onClick={generate} disabled={generating}
         className="w-full h-11 inline-flex items-center justify-center gap-2 rounded-xl bg-accent-primary text-sm font-bold cursor-pointer disabled:opacity-60">
         {generating ? <Loader2 className="w-4 h-4 animate-spin" /> : (hook ? <RefreshCw className="w-4 h-4" /> : <Sparkles className="w-4 h-4" />)}
-        {generating ? 'בודק מה חם בשוק…' : hook ? 'נסח מחדש עם AI' : 'AI: מה חם עכשיו בשוק'}
+        {generating ? 'מנסח עדכון אישי…' : hook ? 'נסח מחדש' : 'AI: עדכון אישי'}
       </button>
       {hook && (
         <div className="rounded-xl border border-border-primary bg-bg-tertiary px-3 py-2 text-[11px] text-text-secondary leading-relaxed">
           <span className={`inline-block me-1.5 px-1.5 py-0.5 rounded font-bold ${hook.source === 'ai' ? 'bg-accent-primary/15 text-accent-primary' : 'bg-bg-secondary text-text-muted'}`}>
             {hook.source === 'ai' ? 'AI' : 'תבנית'}
           </span>
-          על בסיס נתוני שוק אמיתיים מהרגע: <span className="num-mono" dir="ltr">{factLine}</span>
-          {hook.facts.headlines?.[0] && <span className="block text-text-muted mt-0.5">כותרת: {hook.facts.headlines[0]}</span>}
+          {statsLine
+            ? <>על בסיס הנתונים של הנמען: {statsLine}</>
+            : 'נוסח כללי. בשליחה, לכל נמען יתווסף עדכון לפי הנתונים שלו, אם הם קיימים.'}
         </div>
       )}
 
@@ -237,7 +245,7 @@ export default function ReengageComposer({ recipients, onSent }) {
           <div className="text-[10px] text-text-muted mb-3">תצוגה מקדימה · הנושא נפתח ב"פרסומת:", הכפתור פותח את האפליקציה, ובתחתית יש "להסרה מרשימת התפוצה"</div>
           <div className="rounded-2xl border border-[#222] bg-[#0d0d0d] p-4">
             <div className="flex items-center gap-2.5 mb-4">
-              <span className="w-8 h-8 rounded-lg bg-[#2563eb] text-white text-sm font-bold grid place-items-center">T</span>
+              <span className="w-8 h-8 rounded-lg bg-[#111111] border border-[#333] text-white text-sm font-bold grid place-items-center">T</span>
               <span>
                 <span className="block text-sm font-bold text-[#f0f0f0]" dir="ltr">TradeOS</span>
                 <span className="block text-[10px] text-[#a0a0a0]">מערכת ההפעלה למסחר</span>

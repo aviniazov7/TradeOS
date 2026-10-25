@@ -28,7 +28,11 @@ import { parseCspReports, cspReportKey } from './cspReport.js';
 import { calendarAlertBody, CALENDAR_ALERT_TITLE } from './calendarAlert.js';
 import { emailShell, APP_URL, C as EMAIL_C, bg as emailBg, txt as emailTxt, esc as emailEsc, para as emailPara } from './emailTheme.js';
 import { buildDigestEmail } from './adminDigest.js';
-import { pickMarketFacts, HOOK_SYSTEM_PROMPT, buildHookUserMessage, validateHook, templateHook } from './marketHook.js';
+import {
+  REMINDER_SYSTEM_PROMPT, buildReminderUserMessage, validateReminder, templateReminder,
+  reminderTradeCountQuery, weekTradesWhere, statusWhere, journalDatesQuery,
+  countFromAggregation, datesFromQuery, combineCounts, combineDates, summarizeReminderStats,
+} from './reminderCopy.js';
 import {
   planAiCharge, planAiRefund, quotaUsage, createWindowCounters, createStatBuffer, mergeStat,
 } from './aiQuota.js';
@@ -1775,6 +1779,55 @@ async function summaryFetchTodayTrades(token, uid) {
     if (!worstTrade || t.pnl < worstTrade.pnl) worstTrade = { pair: t.pair, pnl: t.pnl };
   }
   return { tradeCount: closed.length, pnl, wins, losses: closed.length - wins, bestTrade, worstTrade };
+}
+
+// One recipient's journal stats for the admin reminder. A failed read becomes
+// null so the sentence is omitted rather than invented. Open includes partial
+// positions, which are still open in the journal.
+async function reminderFs(token, uid, rpc, body) {
+  const res = await fetch(`${FS_BASE}/documents/users/${encodeURIComponent(uid)}:${rpc}`, {
+    method: 'POST',
+    headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
+    body: JSON.stringify(body),
+  });
+  if (!res.ok) return null;
+  const rows = await res.json().catch(() => null);
+  return Array.isArray(rows) ? rows : null;
+}
+
+async function fetchReminderStats(token, uid, lastActive, now = new Date()) {
+  const [weekRows, openRows, partialRows, morningRows, eveningRows] = await Promise.all([
+    reminderFs(token, uid, 'runAggregationQuery', reminderTradeCountQuery(weekTradesWhere(now))),
+    reminderFs(token, uid, 'runAggregationQuery', reminderTradeCountQuery(statusWhere('open'))),
+    reminderFs(token, uid, 'runAggregationQuery', reminderTradeCountQuery(statusWhere('partial'))),
+    reminderFs(token, uid, 'runQuery', journalDatesQuery('morningJournals', now)),
+    reminderFs(token, uid, 'runQuery', journalDatesQuery('eveningJournals', now)),
+  ]);
+  return summarizeReminderStats({
+    weekCount: countFromAggregation(weekRows),
+    openCount: combineCounts(countFromAggregation(openRows), countFromAggregation(partialRows)),
+    journalDates: combineDates(datesFromQuery(morningRows), datesFromQuery(eveningRows)),
+    lastActive,
+    now,
+  });
+}
+
+async function attachReminderStats(token, recipients) {
+  const queue = (recipients || []).filter((r) => r.uid);
+  if (!queue.length || !token) return;
+  let cursor = 0;
+  const run = async () => {
+    while (cursor < queue.length) {
+      const r = queue[cursor++];
+      try {
+        r.stats = await fetchReminderStats(token, r.uid, r.lastActive);
+      } catch (e) {
+        console.error('reminder stats', e?.message || e);
+        r.stats = null;
+      }
+    }
+  };
+  await Promise.all(Array.from({ length: Math.min(6, queue.length) }, () => run()));
 }
 
 async function checkDailySummaries(env, settingsMap) {
@@ -4922,7 +4975,7 @@ async function handleRequest(request, env) {
     const bg = await fetch(`https://firestore.googleapis.com/v1/${docBase}:batchGet`, {
       method: 'POST',
       headers: { Authorization: `Bearer ${gtoken}`, 'Content-Type': 'application/json' },
-      body: JSON.stringify({ documents: wanted.map((id) => `${docBase}/users/${id}`), mask: { fieldPaths: ['email', 'displayName', 'marketingEmails'] } }),
+      body: JSON.stringify({ documents: wanted.map((id) => `${docBase}/users/${id}`), mask: { fieldPaths: ['email', 'displayName', 'marketingEmails', 'lastActive'] } }),
     });
     if (!bg.ok) return new Response(JSON.stringify({ error: 'לא ניתן לאמת הסכמות דיוור כרגע' }), { status: 502, headers: { ...cors, 'Content-Type': 'application/json' } });
     const rows = await bg.json().catch(() => []);
@@ -4938,12 +4991,21 @@ async function handleRequest(request, env) {
       const decision = recipientConsent({ marketingEmails: f.marketingEmails, uid, adminUid, allowBackfill });
       if (!email || !decision.send) { skippedNoConsent++; continue; }
       if (decision.backfill) patchUids.push(uid);
-      recipients.push({ email, name: f.displayName?.stringValue || '', unsubscribeUrl: await unsubscribeUrl(workerBase, env.UNSUBSCRIBE_SECRET, uid) });
+      const lastActive = f.lastActive?.timestampValue || f.lastActive?.stringValue || null;
+      recipients.push({
+        uid,
+        email,
+        name: f.displayName?.stringValue || '',
+        unsubscribeUrl: await unsubscribeUrl(workerBase, env.UNSUBSCRIBE_SECRET, uid),
+        lastActive,
+      });
     }
     if (patchUids.length) {
       try { await commitMarketingSubscribe(env, patchUids); }
       catch (e) { console.error('marketing backfill recipients', e?.message || e); }
     }
+    try { await attachReminderStats(gtoken, recipients); }
+    catch (e) { console.error('reminder stats', e?.message || e); }
     const emails = buildCampaignEmails({ recipients, subject, headline, message, ctaText, ctaPath });
     if (!emails.length) {
       return new Response(JSON.stringify({ error: 'אף אחד מהנמענים לא מקבל עדכונים במייל', skippedNoConsent }), { status: 400, headers: { ...cors, 'Content-Type': 'application/json' } });
@@ -4964,47 +5026,61 @@ async function handleRequest(request, env) {
     });
   }
 
-  // Admin-only: "what's hot right now" reminder copy. Real market facts
-  // (Bybit spot tickers + the cached news digest) → the model writes the
-  // hook → every % it mentions is checked against the facts (marketHook.js).
-  // A failed/invented answer falls back to a template built from the facts,
-  // so the admin always gets something true. Facts are returned for review.
+  // Admin-only: calm personal reminder copy. With a uid, the draft uses that
+  // person's trade count, open trades, journal days and last login. Without
+  // one (a whole segment), the draft stays general and each send fills the
+  // numbers in. The model may only use numbers we hand it (reminderCopy.js).
+  // A failed or hyped answer falls back to the same template.
   if (request.method === 'POST' && path === '/admin/ai-hook') {
     const token = (request.headers.get('Authorization') || '').replace('Bearer ', '');
     const adminUid = await verifyAdminFromToken(token);
     if (!adminUid) return new Response(JSON.stringify({ error: 'forbidden' }), { status: 403, headers: { ...cors, 'Content-Type': 'application/json' } });
     try {
-      const [tickRes, digest] = await Promise.all([
-        fetch('https://api.bybit.com/v5/market/tickers?category=spot', { headers: { Accept: 'application/json' } })
-          .then((r) => r.json()).catch(() => null),
-        env.ALERTS_KV.get('news:digest:crypto', 'json').catch(() => null),
-      ]);
-      const facts = pickMarketFacts(tickRes?.result?.list || [], digest);
-      if (!facts.btc && !facts.gainers.length) {
-        return new Response(JSON.stringify({ error: 'אין כרגע נתוני שוק — נסה שוב בעוד רגע' }), { status: 503, headers: { ...cors, 'Content-Type': 'application/json' } });
+      const body = await request.json().catch(() => ({}));
+      const uid = typeof body?.uid === 'string' && UID_RE.test(body.uid) ? body.uid : '';
+      let stats = summarizeReminderStats({});
+      if (uid) {
+        try {
+          const gtoken = await getFirebaseAdminToken(env);
+          const docBase = `projects/${FIREBASE_PROJECT_ID}/databases/(default)/documents`;
+          const bg = await fetch(`https://firestore.googleapis.com/v1/${docBase}:batchGet`, {
+            method: 'POST',
+            headers: { Authorization: `Bearer ${gtoken}`, 'Content-Type': 'application/json' },
+            body: JSON.stringify({ documents: [`${docBase}/users/${uid}`], mask: { fieldPaths: ['lastActive'] } }),
+          });
+          let lastActive = null;
+          if (bg.ok) {
+            const rows = await bg.json().catch(() => []);
+            const f = (Array.isArray(rows) ? rows[0] : null)?.found?.fields;
+            lastActive = f?.lastActive?.timestampValue || f?.lastActive?.stringValue || null;
+          }
+          stats = await fetchReminderStats(gtoken, uid, lastActive);
+        } catch (e) {
+          console.error('reminder stats', e?.message || e);
+        }
       }
       let hook = null;
       if (env.GROQ_API_KEY) {
         const res = await groqFetchWithRetry(env, {
           model: GROQ_MODEL,
           messages: [
-            { role: 'system', content: HOOK_SYSTEM_PROMPT },
-            { role: 'user', content: buildHookUserMessage(facts) },
+            { role: 'system', content: REMINDER_SYSTEM_PROMPT },
+            { role: 'user', content: buildReminderUserMessage(stats) },
           ],
-          temperature: 0.8,
-          max_tokens: 700,
+          temperature: 0.4,
+          max_tokens: 500,
           response_format: { type: 'json_object' },
         });
         if (res.ok) {
           const data = await res.json().catch(() => null);
           let parsed = null;
           try { parsed = JSON.parse(data?.choices?.[0]?.message?.content || ''); } catch { /* not JSON */ }
-          hook = validateHook(parsed, facts);
+          hook = validateReminder(parsed, stats);
         }
       }
       const source = hook ? 'ai' : 'template';
-      hook = hook || templateHook(facts);
-      return new Response(JSON.stringify({ ok: true, source, ...hook, facts }), { headers: { ...cors, 'Content-Type': 'application/json' } });
+      hook = hook || templateReminder(stats);
+      return new Response(JSON.stringify({ ok: true, source, ...hook, stats }), { headers: { ...cors, 'Content-Type': 'application/json' } });
     } catch (e) {
       return new Response(JSON.stringify({ error: e.message || 'שגיאה' }), { status: 500, headers: { ...cors, 'Content-Type': 'application/json' } });
     }

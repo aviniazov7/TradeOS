@@ -1,7 +1,6 @@
-// "What's hot right now" reminder copy for the admin panel: real market facts
-// in, an enticing Hebrew push + email out. Pure (no fetch / env) so the fact
-// picking, the prompt and the anti-hallucination check are unit-tested;
-// index.js fetches the data and calls the model.
+// Market-fact helpers, kept so the fact-picking tests still cover the parser.
+// Admin reminder emails do not use this module. Their copy is reminderCopy.js:
+// a calm personal update, not a market alert.
 
 // Liquid USDT pairs only (24h turnover) — a +40% micro-cap isn't a story.
 const MIN_TURNOVER_USD = 20_000_000;

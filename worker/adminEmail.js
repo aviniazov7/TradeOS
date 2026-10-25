@@ -6,13 +6,14 @@
 // Gmail mobile apps: inline CSS, bgcolor fallbacks, and the theme's
 // background-image / blend-mode tricks so Gmail's forced inversion stays dark.
 import { txt, APP_URL, bg } from './emailTheme.js';
+import { personalizeReminder } from './reminderCopy.js';
 
 const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 export { APP_URL };
 // Hard cap per campaign — a typo in the panel must not mail everyone twice.
 export const CAMPAIGN_MAX = 300;
 
-// True black page, near-black card. Blue is only the button and the small brand mark.
+// True black page, near-black card. Blue is only the button.
 const PAGE = '#000000';
 const CARD = '#0d0d0d';
 const TILE = '#111111';
@@ -103,10 +104,9 @@ u + .body .gm-d{background:#000;mix-blend-mode:difference}
   <table role="presentation" width="100%" cellspacing="0" cellpadding="0" border="0" dir="rtl" bgcolor="${PAGE}" style="${bg(PAGE)}">
     <tr><td align="center" style="padding:28px 12px">
       <table role="presentation" width="600" cellspacing="0" cellpadding="0" border="0" dir="rtl" bgcolor="${CARD}" style="width:100%;max-width:600px;${bg(CARD)}border:1px solid ${LINE};border-radius:20px">
-        <tr><td height="4" bgcolor="${BTN}" style="${bg(BTN)};font-size:0;line-height:0">&nbsp;</td></tr>
         <tr><td style="padding:22px 28px;border-bottom:1px solid ${LINE}">
           <table role="presentation" cellspacing="0" cellpadding="0" border="0" dir="rtl"><tr>
-            <td width="40" height="40" align="center" valign="middle" bgcolor="${BTN}" style="${bg(BTN)}width:40px;height:40px;border-radius:12px;text-align:center;vertical-align:middle">
+            <td width="40" height="40" align="center" valign="middle" bgcolor="${TILE}" style="${bg(TILE)}width:40px;height:40px;border-radius:12px;text-align:center;vertical-align:middle">
               ${txt('<span style="font-size:18px;font-weight:bold;color:#ffffff;line-height:40px">T</span>')}
             </td>
             <td style="padding-right:12px;text-align:right;vertical-align:middle">
@@ -142,10 +142,8 @@ u + .body .gm-d{background:#000;mix-blend-mode:difference}
 export function buildCampaignEmails({ recipients, subject, headline, message, ctaText, ctaPath }) {
   const seen = new Set();
   const out = [];
-  const bodyHtml = messageToHtml(message);
   const ctaUrl = ctaUrlFor(ctaPath);
   const buttonText = String(ctaText || 'כניסה ל-TradeOS').slice(0, 40);
-  const title = String(headline || subject || '').slice(0, 150);
   for (const r of recipients || []) {
     const to = String(r?.email || '').trim().toLowerCase();
     const unsubscribeUrl = String(r?.unsubscribeUrl || '');
@@ -153,9 +151,13 @@ export function buildCampaignEmails({ recipients, subject, headline, message, ct
     seen.add(to);
     const name = String(r?.name || '').trim().slice(0, 60);
     const intro = name ? `היי ${name},` : 'היי,';
+    // Stats, when the send loaded them, replace the shared draft with this
+    // person's own counts. The ad prefix below is unchanged.
+    const copy = personalizeReminder({ subject, headline, message, stats: r?.stats });
+    const title = String(copy.headline || copy.subject || '').slice(0, 150);
     out.push({
       to,
-      subject: AD_PREFIX + String(subject || headline || 'TradeOS').slice(0, 150 - AD_PREFIX.length),
+      subject: AD_PREFIX + String(copy.subject || 'TradeOS').slice(0, 150 - AD_PREFIX.length),
       headers: {
         'List-Unsubscribe': `<${unsubscribeUrl}>`,
         'List-Unsubscribe-Post': 'List-Unsubscribe=One-Click',
@@ -163,7 +165,7 @@ export function buildCampaignEmails({ recipients, subject, headline, message, ct
       html: campaignEmailHtml({
         headline: title,
         intro,
-        bodyHtml,
+        bodyHtml: messageToHtml(copy.message),
         ctaText: buttonText,
         ctaUrl,
         unsubscribeUrl,
@@ -171,7 +173,7 @@ export function buildCampaignEmails({ recipients, subject, headline, message, ct
       text: campaignPlainText({
         headline: title,
         name,
-        message,
+        message: copy.message,
         ctaText: buttonText,
         ctaUrl,
         unsubscribeUrl,
