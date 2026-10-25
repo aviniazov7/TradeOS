@@ -60,6 +60,29 @@ export function exchangeSyncBlurb(exchanges = EXCHANGES) {
   return `סנכרון אוטומטי מ-${name('mexc', 'MEXC')} ו-${name('bybit', 'Bybit')} · ייבוא קובץ מ-${name('binance', 'Binance')}`;
 }
 
+function hexRgb(hex) {
+  const h = String(hex || '').replace('#', '');
+  const full = h.length === 3 ? h.split('').map((c) => c + c).join('') : h;
+  const n = Number.parseInt(full, 16);
+  if (!Number.isFinite(n) || full.length !== 6) return { r: 56, g: 189, b: 248 };
+  return { r: (n >> 16) & 255, g: (n >> 8) & 255, b: n & 255 };
+}
+
+/**
+ * Hover glow for an exchange card. `accent` in EXCHANGES is the only brand
+ * color; the beam and the cursor bubble both read these variables.
+ * Spot alpha matches the old cyan bubble (0.10) so it stays faint.
+ */
+export function exchangeGlowStyle(exchange) {
+  const accent = exchange?.accent || '#38bdf8';
+  const { r, g, b } = hexRgb(accent);
+  return {
+    '--beam-from': accent,
+    '--beam-to': `rgba(${r}, ${g}, ${b}, 0.6)`,
+    '--spot': `rgba(${r}, ${g}, ${b}, 0.10)`,
+  };
+}
+
 export const EXCHANGES = [
   {
     id: 'bybit',   name: 'Bybit',   tagline: 'Derivatives Exchange',
@@ -76,7 +99,7 @@ export const EXCHANGES = [
   },
   {
     id: 'mexc',    name: 'MEXC',    tagline: 'Global Crypto Exchange',
-    accent: '#2B78FF', glow: 'rgba(43,120,255,0.35)',
+    accent: '#1972F5', glow: 'rgba(25,114,245,0.35)',
     apiUrl: 'https://www.mexc.com/user/openapi', canSync: true,
     // A MEXC key without a linked IP (TradeOS connects from changing
     // Cloudflare IPs, so no IP can be linked) expires after 90 days.
@@ -105,7 +128,7 @@ export const EXCHANGES = [
   },
   {
     id: 'okx',     name: 'OKX',     tagline: 'Advanced Trading Platform',
-    accent: '#0AC18E', glow: 'rgba(10,193,142,0.35)',
+    accent: '#F5F5F5', glow: 'rgba(245,245,245,0.28)',
     apiUrl: 'https://www.okx.com/account/my-api', canSync: true,
     steps: [
       { text: 'Profile → API → Create API', n: '1' },
@@ -118,7 +141,7 @@ export const EXCHANGES = [
   },
   {
     id: 'bitget',  name: 'Bitget',  tagline: 'Copy Trading & Futures',
-    accent: '#00C580', glow: 'rgba(0,197,128,0.35)',
+    accent: '#00F0FF', glow: 'rgba(0,240,255,0.35)',
     apiUrl: 'https://www.bitget.com/account/newapi', canSync: true,
     steps: [
       { text: 'Account → API Management → Create API', n: '1' },
@@ -134,7 +157,7 @@ export const EXCHANGES = [
     // wallet address — no API key/secret exists or is stored (see
     // exchangeService.js). `authType: 'address'` switches the connect dialog.
     id: 'hyperliquid', name: 'Hyperliquid', tagline: 'Perp DEX · On-chain',
-    accent: '#50D2C1', glow: 'rgba(80,210,193,0.35)',
+    accent: '#97FCE4', glow: 'rgba(151,252,228,0.35)',
     apiUrl: 'https://app.hyperliquid.xyz/portfolio', canSync: true,
     authType: 'address',
     steps: [
