@@ -80,6 +80,48 @@ describe('Mt5ImportDialog', () => {
     await view.cleanup();
   });
 
+  it('does not filter the picker, and a dropped file with no extension still previews', async () => {
+    const view = await mount();
+    const input = document.querySelector('[data-testid="mt5-file"]');
+    expect(input.hasAttribute('accept')).toBe(false);
+    const zone = document.querySelector('[data-testid="mt5-drop"]');
+    const file = new File([html], '26714435/ Live Standard STP Report', { type: '' });
+    const ev = new Event('drop', { bubbles: true });
+    Object.defineProperty(ev, 'dataTransfer', { value: { files: [file] } });
+    await act(async () => { zone.dispatchEvent(ev); });
+    expect(document.querySelector('[data-testid="mt5-preview"]').textContent).toContain('EURUSD');
+    await view.cleanup();
+  });
+
+  it('previews a UTF-16 report chosen as an HTML file', async () => {
+    const view = await mount();
+    const utf16 = new Uint8Array(2 + html.length * 2);
+    utf16[0] = 0xFF;
+    utf16[1] = 0xFE;
+    for (let i = 0; i < html.length; i += 1) {
+      const c = html.charCodeAt(i);
+      utf16[2 + i * 2] = c & 0xFF;
+      utf16[3 + i * 2] = (c >> 8) & 0xFF;
+    }
+    await chooseFile(utf16, '26714435/ Live Standard STP Report.html');
+    expect(document.querySelector('[data-testid="mt5-preview"]').textContent).toContain('EURUSD');
+    expect(document.querySelector('[data-testid="mt5-import-error"]')).toBeNull();
+    await view.cleanup();
+  });
+
+  it('previews a report whose cells are not closed', async () => {
+    const view = await mount();
+    const broken = `<table><tr><td>Positions</td></tr>
+      <tr><td>Time<td>Position<td>Symbol<td>Type<td>Volume<td>Price<td>S / L<td>T / P<td>Time<td>Price<td>Commission<td>Swap<td>Profit</tr>
+      <tr><td>2024.03.12 09:15:22<td>123456789<td>EURUSD<td>buy<td>0.10<td>1.09234<td>1.09000<td>1.09800<td>2024.03.12 11:42:08<td>1.09450<td>-0.70<td>0.12<td>21.60</tr>
+    </table>`;
+    await chooseFile(broken, 'open-cells.html');
+    const preview = document.querySelector('[data-testid="mt5-preview"]');
+    expect(preview).toBeTruthy();
+    expect(preview.textContent).toContain('EURUSD');
+    await view.cleanup();
+  });
+
   it('shows a Hebrew error for a file that is not an MT5 report', async () => {
     const view = await mount();
     await chooseFile('<html><body><p>hello</p></body></html>', 'notes.html');

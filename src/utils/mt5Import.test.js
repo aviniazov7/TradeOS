@@ -249,6 +249,48 @@ describe('parseMt5Text — Vantage desktop report', () => {
   });
 });
 
+function utf16le(text) {
+  const utf16 = new Uint8Array(2 + text.length * 2);
+  utf16[0] = 0xFF;
+  utf16[1] = 0xFE;
+  for (let i = 0; i < text.length; i += 1) {
+    const c = text.charCodeAt(i);
+    utf16[2 + i * 2] = c & 0xFF;
+    utf16[3 + i * 2] = (c >> 8) & 0xFF;
+  }
+  return utf16;
+}
+
+describe('readMt5ArrayBuffer — file name and UTF-16 misread as UTF-8', () => {
+  it('reads the report when the name has no extension and contains a slash', async () => {
+    const parsed = await readMt5ArrayBuffer(utf16le(html), '26714435/ Live Standard STP Report');
+    expect(parsed.ok).toBe(true);
+    expect(parsed.trades.map((t) => t.externalId)).toEqual([
+      'mt5-123456789', 'mt5-123456800', 'mt5-123456810',
+    ]);
+  });
+
+  it('reads a UTF-16 report whose bytes were decoded as UTF-8 (a NUL between letters)', async () => {
+    const misread = new TextDecoder('utf-8').decode(utf16le(html));
+    expect(misread.includes('\u0000')).toBe(true);
+    expect(/<tr\b/i.test(misread)).toBe(false);
+    const fromText = parseMt5Text(misread);
+    expect(fromText.ok).toBe(true);
+    expect(fromText.trades).toHaveLength(3);
+    const reencoded = new TextEncoder().encode(misread);
+    const parsed = await readMt5ArrayBuffer(reencoded, 'report.html');
+    expect(parsed.ok).toBe(true);
+    expect(parsed.trades.map((t) => t.externalId)).toEqual(fromText.trades.map((t) => t.externalId));
+  });
+
+  it('sniffs HTML bytes even when the file name ends in .xlsx', async () => {
+    const parsed = await readMt5ArrayBuffer(utf16le(html), 'Report.xlsx');
+    expect(parsed.ok).toBe(true);
+    expect(parsed.sourceSection).toBe('positions');
+    expect(parsed.trades).toHaveLength(3);
+  });
+});
+
 describe('readMt5ArrayBuffer — xlsx fixture', () => {
   it('parses the Excel report the same way as the HTML Positions table', async () => {
     const buf = readFileSync(fixture('mt5-report.xlsx'));

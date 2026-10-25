@@ -593,65 +593,164 @@ function csvToGrid(text) {
     .filter((r) => r.some((c) => c !== ''));
 }
 
+function looksLikeHtml(src) {
+  return /<tr\b|<table\b/i.test(src || '');
+}
+
+// file.text() / readAsText() decode bytes as UTF-8. A UTF-16 report then looks
+// like "<\0t\0r\0" and the tag scan misses every row.
+function withoutNuls(src) {
+  return String(src ?? '').replace(/^\uFEFF/, '').split('\u0000').join('');
+}
+
+function toUint8(input) {
+  if (input instanceof Uint8Array) return input;
+  if (ArrayBuffer.isView(input)) return new Uint8Array(input.buffer, input.byteOffset, input.byteLength);
+  return new Uint8Array(input);
+}
+
+function isZip(bytes) {
+  return bytes.length > 3 && bytes[0] === 0x50 && bytes[1] === 0x4B
+    && (bytes[2] === 0x03 || bytes[2] === 0x05 || bytes[2] === 0x07);
+}
+
+function isOle(bytes) {
+  return bytes.length > 4 && bytes[0] === 0xD0 && bytes[1] === 0xCF && bytes[2] === 0x11 && bytes[3] === 0xE0;
+}
+
+// Browser DOM, used when the regex grid never sees a header (unclosed cells,
+// or a report the terminal's own markup confuses the scanner). Hidden cells
+// stay out: MT5 marks them class="hidden", and colspan is not expanded.
+function htmlToGridDom(html) {
+  if (typeof DOMParser === 'undefined') return null;
+  let doc;
+  try {
+    doc = new DOMParser().parseFromString(html, 'text/html');
+  } catch {
+    return null;
+  }
+  const rows = [];
+  for (const tr of doc.querySelectorAll('tr')) {
+    const cells = [];
+    for (const cell of tr.children) {
+      const tag = cell.tagName;
+      if (tag !== 'TD' && tag !== 'TH') continue;
+      const attrs = `${cell.getAttribute('class') || ''} ${cell.getAttribute('hidden') != null ? 'hidden' : ''}`;
+      if (cellIsHidden(attrs)) continue;
+      cells.push(String(cell.textContent || '').replace(/\s+/g, ' ').trim());
+    }
+    if (cells.some(Boolean)) rows.push(cells);
+  }
+  return rows;
+}
+
+function parseHtml(src) {
+  const regexParsed = parseMt5Grid(htmlToGrid(src));
+  if (regexParsed.ok || regexParsed.code === 'noTrades') return regexParsed;
+  const dom = htmlToGridDom(src);
+  if (dom && dom.length) {
+    const domParsed = parseMt5Grid(dom);
+    if (domParsed.ok || domParsed.code === 'noTrades') return domParsed;
+  }
+  return regexParsed;
+}
+
 /** HTML or CSV text → import result. */
 export function parseMt5Text(text) {
-  const src = String(text ?? '').replace(/^\uFEFF/, '').trim();
+  const src = withoutNuls(text).trim();
   if (!src) return fail('empty');
-  const grid = /<tr\b|<table\b/i.test(src) ? htmlToGrid(src) : csvToGrid(src);
-  return parseMt5Grid(grid);
+  if (!looksLikeHtml(src)) return parseMt5Grid(csvToGrid(src));
+  return parseHtml(src);
+}
+
+function decodeUtf16(bytes, encoding) {
+  return new TextDecoder(encoding).decode(bytes).replace(/^\uFEFF/, '');
 }
 
 /** UTF-16 LE/BE (what the MT5 terminal writes) or UTF-8. */
 export function decodeMt5Bytes(input) {
-  const bytes = input instanceof Uint8Array ? input : new Uint8Array(input);
-  if (bytes.length >= 2 && bytes[0] === 0xFF && bytes[1] === 0xFE) {
-    return new TextDecoder('utf-16le').decode(bytes).replace(/^\uFEFF/, '');
+  const bytes = toUint8(input);
+  if (bytes.length >= 2 && bytes[0] === 0xFF && bytes[1] === 0xFE) return decodeUtf16(bytes, 'utf-16le');
+  if (bytes.length >= 2 && bytes[0] === 0xFE && bytes[1] === 0xFF) return decodeUtf16(bytes, 'utf-16be');
+  const utf8 = new TextDecoder('utf-8').decode(bytes).replace(/^\uFEFF/, '');
+  if (utf8.includes('\u0000')) {
+    const stripped = withoutNuls(utf8);
+    if (looksLikeHtml(stripped)) return stripped;
   }
-  if (bytes.length >= 2 && bytes[0] === 0xFE && bytes[1] === 0xFF) {
-    return new TextDecoder('utf-16be').decode(bytes).replace(/^\uFEFF/, '');
-  }
-  if (bytes.length > 16) {
+  if (!looksLikeHtml(utf8) && bytes.length > 16) {
     let zeros = 0;
     const sample = Math.min(bytes.length, 80);
     for (let i = 1; i < sample; i += 2) if (bytes[i] === 0) zeros += 1;
-    if (zeros > 20) return new TextDecoder('utf-16le').decode(bytes).replace(/^\uFEFF/, '');
-  }
-  return new TextDecoder('utf-8').decode(bytes).replace(/^\uFEFF/, '');
-}
-
-/** ArrayBuffer from an uploaded HTML / CSV / xlsx file. */
-export async function readMt5ArrayBuffer(buffer, name = '') {
-  const bytes = buffer instanceof ArrayBuffer
-    ? new Uint8Array(buffer)
-    : new Uint8Array(buffer.buffer, buffer.byteOffset, buffer.byteLength);
-  if (!bytes.length) return fail('empty');
-  const zip = bytes.length > 3 && bytes[0] === 0x50 && bytes[1] === 0x4B;
-  const lower = String(name || '').toLowerCase();
-  const text = () => decodeMt5Bytes(bytes);
-  if (!zip && (lower.endsWith('.xls') || lower.endsWith('.xlsx'))) {
-    const decoded = text();
-    if (/<tr\b|<table\b/i.test(decoded)) return parseMt5Text(decoded);
-  }
-  if (zip || lower.endsWith('.xlsx') || lower.endsWith('.xls')) {
-    try {
-      const XLSX = await import('xlsx');
-      const wb = XLSX.read(bytes, { type: 'array', cellDates: true });
-      const grid = [];
-      for (const sheet of wb.SheetNames) {
-        if (sectionKind(sheet)) grid.push([sheet]);
-        const rows = XLSX.utils.sheet_to_json(wb.Sheets[sheet], { header: 1, raw: true, defval: '', blankrows: false });
-        for (const row of rows) grid.push(row);
-      }
-      const parsed = parseMt5Grid(grid);
-      if (parsed.ok) return parsed;
-      const decoded = text();
-      if (/<tr\b|<table\b/i.test(decoded)) return parseMt5Text(decoded);
-      return parsed.code === 'empty' ? fail('unrecognized') : parsed;
-    } catch {
-      return fail('readFailed');
+    if (zeros > 20) {
+      const utf16 = decodeUtf16(bytes, 'utf-16le');
+      if (looksLikeHtml(utf16) || /Positions|Deals/i.test(utf16)) return utf16;
     }
   }
-  return parseMt5Text(text());
+  return utf8;
+}
+
+// Every way a browser might hand the same report back: raw UTF-16, UTF-16
+// with the BOM dropped, or UTF-8 text that still has a NUL between letters.
+function textCandidates(bytes) {
+  const out = [];
+  const push = (s) => {
+    const src = withoutNuls(s).trim();
+    if (src && !out.includes(src)) out.push(src);
+  };
+  try { push(decodeMt5Bytes(bytes)); } catch { /* try the others */ }
+  try { push(decodeUtf16(bytes, 'utf-16le')); } catch { /* encoding unsupported */ }
+  try { push(new TextDecoder('utf-8').decode(bytes)); } catch { /* ignore */ }
+  return out;
+}
+
+async function parseSpreadsheet(bytes) {
+  const XLSX = await import('xlsx');
+  const wb = XLSX.read(bytes, { type: 'array', cellDates: true });
+  const grid = [];
+  for (const sheet of wb.SheetNames) {
+    if (sectionKind(sheet)) grid.push([sheet]);
+    const rows = XLSX.utils.sheet_to_json(wb.Sheets[sheet], { header: 1, raw: true, defval: '', blankrows: false });
+    for (const row of rows) grid.push(row);
+  }
+  return parseMt5Grid(grid);
+}
+
+function pickTextResult(bytes) {
+  let fallback = null;
+  for (const src of textCandidates(bytes)) {
+    const parsed = looksLikeHtml(src) ? parseHtml(src) : parseMt5Grid(csvToGrid(src));
+    if (parsed.ok) return parsed;
+    if (!fallback || (parsed.code === 'noTrades' && fallback.code === 'unrecognized')) fallback = parsed;
+  }
+  return fallback || fail('unrecognized');
+}
+
+/**
+ * Bytes from an uploaded report. The file name is ignored: Wine saves the
+ * MT5 report with no extension, and the name can contain a slash.
+ * HTML (UTF-16 or UTF-8), CSV, and xlsx/xls are told apart by the bytes.
+ */
+export async function readMt5ArrayBuffer(buffer, name = '') {
+  void name;
+  let bytes;
+  try {
+    bytes = toUint8(buffer);
+  } catch {
+    return fail('readFailed');
+  }
+  if (!bytes.length) return fail('empty');
+  if (!isZip(bytes) && !isOle(bytes)) return pickTextResult(bytes);
+  try {
+    const parsed = await parseSpreadsheet(bytes);
+    if (parsed.ok) return parsed;
+    const asText = pickTextResult(bytes);
+    if (asText.ok || asText.code === 'noTrades') return asText;
+    return parsed.code === 'empty' ? fail('unrecognized') : parsed;
+  } catch {
+    const asText = pickTextResult(bytes);
+    if (asText.ok || asText.code === 'noTrades') return asText;
+    return fail('readFailed');
+  }
 }
 
 /**

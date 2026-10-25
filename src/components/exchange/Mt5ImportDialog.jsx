@@ -7,7 +7,23 @@ import {
   formatLots, partitionMt5Import, readMt5ArrayBuffer,
 } from '../../utils/mt5Import';
 
-const ACCEPT = '.html,.htm,.xlsx,.xls,.csv,text/html,text/csv';
+function readFileBytes(file) {
+  // Always the raw bytes. file.text() is UTF-8 and turns an MT5 UTF-16
+  // report into "<\0t\0r", which is not a table the parser can see.
+  if (typeof file.arrayBuffer === 'function') {
+    return file.arrayBuffer().catch(() => readViaReader(file));
+  }
+  return readViaReader(file);
+}
+
+function readViaReader(file) {
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onload = () => resolve(reader.result);
+    reader.onerror = () => reject(reader.error || new Error('read'));
+    reader.readAsArrayBuffer(file);
+  });
+}
 
 function fmtPx(p) {
   const n = Number(p);
@@ -30,10 +46,8 @@ function netOf(t) {
 }
 
 const STEPS = [
-  'בטרמינל MT5: Toolbox → לשונית History.',
-  'לחיצה ימנית על ההיסטוריה → Report.',
-  'שמירה כ-HTML או Excel ‏(.xlsx). גם CSV מתקבל.',
-  'העלאה לכאן — מוצגת תצוגה מקדימה, והעסקאות נשמרות רק אחרי אישור.',
+  'בטרמינל: History → קליק ימני → Report.',
+  'שומרים את הקובץ ומעלים אותו לכאן. גם קובץ בלי סיומת מתקבל.',
 ];
 
 export default function Mt5ImportDialog({ isOpen, onClose, existingTrades = [], onImport }) {
@@ -77,7 +91,7 @@ export default function Mt5ImportDialog({ isOpen, onClose, existingTrades = [], 
     }
     setParsing(true);
     try {
-      const buf = await file.arrayBuffer();
+      const buf = await readFileBytes(file);
       const result = await readMt5ArrayBuffer(buf, file.name);
       if (!result.ok) {
         setError(result.error);
@@ -151,25 +165,27 @@ export default function Mt5ImportDialog({ isOpen, onClose, existingTrades = [], 
             </li>
           ))}
           <li className="text-[12px] text-text-muted pt-1">
-            ל-Vantage אין API לחשבונות מסחר. ייבוא חוזר מזהה פוזיציה לפי מספר הטיקט ולא משכפל אותה.
+            קודם מופיעה תצוגה מקדימה. ייבוא חוזר מזהה עסקה לפי הטיקט ולא משכפל אותה.
           </li>
         </ol>
 
         {!parsed?.ok && (
           <div
+            data-testid="mt5-drop"
             onClick={() => fileRef.current?.click()}
-            onDragOver={(e) => e.preventDefault()}
-            onDrop={(e) => { e.preventDefault(); loadFile(e.dataTransfer.files?.[0]); }}
+            onDragEnter={(e) => e.preventDefault()}
+            onDragOver={(e) => { e.preventDefault(); if (e.dataTransfer) e.dataTransfer.dropEffect = 'copy'; }}
+            onDrop={(e) => { e.preventDefault(); loadFile(e.dataTransfer?.files?.[0]); }}
             className="border-2 border-dashed border-border-primary rounded-xl p-8 text-center cursor-pointer hover:border-accent-primary/50 transition-colors"
           >
             <Upload className="w-10 h-10 text-text-muted mx-auto mb-3" />
             <p className="text-sm text-text-primary font-medium">
               {parsing ? 'קורא את הדוח…' : 'גרור דוח MT5 או לחץ לבחירה'}
             </p>
-            <p className="text-xs text-text-muted mt-1">HTML, Excel ‏(.xlsx) או CSV</p>
+            <p className="text-xs text-text-muted mt-1">HTML, Excel או CSV — גם בלי סיומת</p>
           </div>
         )}
-        <input ref={fileRef} type="file" accept={ACCEPT} onChange={onPick} className="hidden" data-testid="mt5-file" />
+        <input ref={fileRef} type="file" onChange={onPick} className="hidden" data-testid="mt5-file" />
 
         {error && (
           <div role="alert" data-testid="mt5-import-error" className="bg-loss/10 border border-loss/30 rounded-lg p-3 flex items-start gap-2 text-xs text-loss">
