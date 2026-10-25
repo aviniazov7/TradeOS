@@ -235,7 +235,6 @@ export const EXCHANGES = [
   { value: 'deribit', label: 'Deribit', domain: 'deribit.com', type: 'exchange' },
   { value: 'hyperliquid', label: 'Hyperliquid', domain: 'hyperliquid.xyz', type: 'exchange' },
   // ברוקרים
-  { value: 'vantage', label: 'Vantage', domain: 'vantagemarkets.com', type: 'broker' },
   { value: 'icmarkets', label: 'IC Markets', domain: 'icmarkets.com', type: 'broker' },
   { value: 'pepperstone', label: 'Pepperstone', domain: 'pepperstone.com', type: 'broker' },
   { value: 'exness', label: 'Exness', domain: 'exness.com', type: 'broker' },
