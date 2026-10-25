@@ -8,7 +8,7 @@ import { tradeExternalIds } from './tradeIds';
 export const TERMINAL_EXCHANGES = ['bybit', 'mexc', 'okx', 'bitget', 'hyperliquid'];
 
 export const EXCHANGE_LABELS = {
-  bybit: 'Bybit', mexc: 'MEXC', okx: 'OKX', bitget: 'Bitget', hyperliquid: 'Hyperliquid', binance: 'Binance', vantage: 'Vantage',
+  bybit: 'Bybit', mexc: 'MEXC', okx: 'OKX', bitget: 'Bitget', hyperliquid: 'Hyperliquid', binance: 'Binance',
 };
 
 // ── Charts ───────────────────────────────────────────────────────────────────

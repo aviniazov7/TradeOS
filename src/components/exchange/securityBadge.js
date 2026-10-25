@@ -6,11 +6,7 @@ export function securityBadge(connections) {
   if (!connections?.length) {
     return { value: '—', sub: 'אין בורסה מחוברת', tone: 'text-text-muted', secure: false };
   }
-  const fileOnly = connections.every((c) => c?.authType === 'file');
-  if (fileOnly) {
-    return { value: 'מוגן', sub: 'ייבוא מקובץ, בלי מפתח', tone: 'text-profit', secure: true };
-  }
-  const unverified = connections.some((c) => c?.authType !== 'address' && c?.authType !== 'file' && c?.readOnlyVerified !== true);
+  const unverified = connections.some((c) => c?.authType !== 'address' && c?.readOnlyVerified !== true);
   if (unverified) {
     return { value: 'חלקי', sub: 'קריאה בלבד לא אומתה', tone: 'text-breakeven', secure: false };
   }

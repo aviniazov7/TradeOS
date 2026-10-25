@@ -32,7 +32,7 @@ A trading journal and analytics platform for crypto, stocks and futures traders:
 - Entry and exit times can't be set in the future, nor an exit before the entry.
 
 ### Exchange sync (read-only)
-- Direct API sync from **Bybit, MEXC, OKX, Bitget** and **Hyperliquid** (wallet address only, public data); **Binance** is CSV-only (its API needs a static IP); **Vantage** is an MT5 history-report import (HTML / Excel / CSV — no retail API).
+- Direct API sync from **Bybit, MEXC, OKX, Bitget** and **Hyperliquid** (wallet address only, public data); **Binance** is CSV-only (its API needs a static IP).
 - Keys are stored **encrypted on the server** and the app tells users to create **read-only** keys. See [Security](#security--privacy).
 - Re-sync upserts existing trades; OKX/Bitget passphrases supported; accurate entry/exit timestamps.
 
@@ -254,7 +254,6 @@ npm run build        # must pass on every PR
 | Bitget | ✅ | ✅ | needs passphrase |
 | Hyperliquid | ✅ | — | public wallet address, no keys |
 | Binance | ❌ | ✅ | API requires a static IP |
-| Vantage | ❌ | ✅ (MT5 report) | No retail API. History → Report → HTML or Excel; deduped by position ticket |
 
 ---
 

@@ -73,15 +73,13 @@ service cloud.firestore {
 
     function exchangesSettingsOk(data) {
       return data is map
-        && data.keys().hasOnly(['bybit', 'mexc', 'okx', 'bitget', 'binance', 'hyperliquid', 'vantage'])
+        && data.keys().hasOnly(['bybit', 'mexc', 'okx', 'bitget', 'binance', 'hyperliquid'])
         && (!('bybit' in data) || exchangeMarkerOk(data.bybit))
         && (!('mexc' in data) || exchangeMarkerOk(data.mexc))
         && (!('okx' in data) || exchangeMarkerOk(data.okx))
         && (!('bitget' in data) || exchangeMarkerOk(data.bitget))
         && (!('binance' in data) || exchangeMarkerOk(data.binance))
-        && (!('hyperliquid' in data) || exchangeMarkerOk(data.hyperliquid))
-        // Vantage is a file import (MT5 report). The marker has no secrets.
-        && (!('vantage' in data) || exchangeMarkerOk(data.vantage));
+        && (!('hyperliquid' in data) || exchangeMarkerOk(data.hyperliquid));
     }
 
     match /users/{userId} {

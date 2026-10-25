@@ -7,16 +7,8 @@
 // trade sync, so it never shows an API-key form.
 export function connectMode(exchange) {
   if (exchange?.authType === 'address') return 'address';
-  if (exchange?.importKind === 'mt5') return 'mt5';
   if (exchange?.canSync === false) return 'csv';
   return 'keys';
-}
-
-// Label for a file-import venue (Binance CSV, Vantage MT5). Null for API keys.
-export function fileImportLabel(exchange, { short = false } = {}) {
-  if (exchange?.importKind === 'mt5') return short ? 'ייבוא MT5' : 'ייבוא דוח MT5';
-  if (exchange?.canSync === false) return 'ייבוא CSV';
-  return null;
 }
 
 // Shown above the key fields (and above the CSV action). Read-only and no IP
@@ -26,12 +18,6 @@ export function connectionGuideNotes(exchange) {
   if (!exchange) return [];
   if (exchange.authType === 'address') {
     return ['הדבק כתובת ארנק ציבורית בלבד — לעולם לא מפתח פרטי או Seed.'];
-  }
-  if (exchange.importKind === 'mt5') {
-    return [
-      'ל-Vantage אין API לחשבונות מסחר — מייבאים דוח היסטוריה מ-MT5.',
-      'הקובץ נקרא אצלך בדפדפן. שום מפתח לא נשמר.',
-    ];
   }
   if (exchange.canSync === false) {
     return [
@@ -112,18 +98,6 @@ export const EXCHANGES = [
       { text: 'Futures → Trade: View Order Details ✓', n: '4', ok: true },
       { text: 'אל תסמן Order Placing / Withdraw / Trade', n: '!', warn: true },
       { text: 'Create → 2FA → העתק מפתחות', n: '5' },
-    ],
-  },
-  {
-    id: 'vantage', name: 'Vantage', tagline: 'MetaTrader 5',
-    accent: '#E10600', glow: 'rgba(225,6,0,0.35)',
-    canSync: false,
-    importKind: 'mt5',
-    steps: [
-      { text: 'בטרמינל MT5: Toolbox → לשונית History', n: '1' },
-      { text: 'לחיצה ימנית על ההיסטוריה → Report', n: '2' },
-      { text: 'שמור כ-HTML או Excel (.xlsx). גם CSV מתקבל', n: '3', ok: true },
-      { text: 'אין API לחשבונות מסחר — הייבוא הוא מקובץ בלבד', n: '!', warn: true },
     ],
   },
   {

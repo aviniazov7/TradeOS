@@ -33,15 +33,6 @@ afterAll(async () => { await env?.cleanup(); });
 describe('settings/exchanges secrets', () => {
   const path = 'users/alice/settings/exchanges';
 
-  it('lets the owner save a Vantage file-import marker with no secrets', async () => {
-    await assertSucceeds(setDoc(doc(asUser('alice'), path), {
-      vantage: { connected: true, connectedAt: Date.now(), readOnlyVerified: true },
-    }));
-    await assertFails(setDoc(doc(asUser('alice'), path), {
-      vantage: { connected: true, apiKey: 'k', apiSecret: 's' },
-    }));
-  });
-
   it('lets the owner save a non-secret connection marker', async () => {
     await assertSucceeds(setDoc(doc(asUser('alice'), path), {
       bybit: { connected: true, connectedAt: Date.now(), readOnlyVerified: true },

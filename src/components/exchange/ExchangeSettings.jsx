@@ -20,7 +20,7 @@ import ConfirmDialog from '../shared/ConfirmDialog';
 import PageHeader from '../shared/PageHeader';
 import StatTile from '../shared/StatTile';
 import SectionTitle from '../shared/SectionTitle';
-import { EXCHANGES, connectMode, connectionGuideNotes, exchangeGlowStyle, fileImportLabel } from './exchangeConfig';
+import { EXCHANGES, connectMode, connectionGuideNotes, exchangeGlowStyle } from './exchangeConfig';
 import { SyncModal } from './SyncModal';
 import { planJournalExchangeBind } from '../../utils/exchangeBinding';
 import { writeDemoMode } from '../../utils/demoData';
@@ -30,7 +30,6 @@ import { securityBadge } from './securityBadge';
 import { entryHasPlaintextSecret, migratePlaintextExchangeKeys } from '../../services/exchangeCredentialMigration';
 
 const ImportTrades = lazy(() => import('../journal/ImportTrades'));
-const Mt5ImportDialog = lazy(() => import('./Mt5ImportDialog'));
 
 // Import-window options for the exchange sync (value in days; '0' = last 50).
 const SYNC_PERIODS = [
@@ -92,7 +91,7 @@ function ConnectedCard({ exchange, balance, syncing, onSync, onEdit, onDisconnec
   const expiringSoon = !problem && daysLeft !== null && daysLeft <= EXPIRY_WARN_DAYS;
 
   let balanceView;
-  if (!canSync) balanceView = <span className="text-sm text-text-muted">{exchange.importKind === 'mt5' ? 'ייבוא מדוח MT5' : 'סנכרון אוטומטי לא נתמך'}</span>;
+  if (!canSync) balanceView = <span className="text-sm text-text-muted">סנכרון אוטומטי לא נתמך</span>;
   else if (balance === undefined || balance === null) balanceView = <span className="block h-8 w-36 rounded-lg bg-bg-tertiary animate-pulse" />;
   else if (typeof balance === 'number') balanceView = <span className="num-mono text-2xl md:text-[28px] font-bold text-text-primary" dir="ltr">{fmtUsd(balance)}</span>;
   else balanceView = <span className="text-sm text-text-muted">היתרה לא זמינה כרגע</span>;
@@ -134,7 +133,7 @@ function ConnectedCard({ exchange, balance, syncing, onSync, onEdit, onDisconnec
           <p className="text-[11px] text-text-secondary mt-1 leading-relaxed">{PROBLEM_HELP[problem](exchange)}</p>
           <button type="button" onClick={onEdit}
             className="mt-2 h-8 inline-flex items-center gap-1.5 px-3 rounded-lg text-xs font-semibold bg-loss/15 text-loss border border-loss/30 hover:bg-loss/25 transition-colors cursor-pointer">
-            <Pencil className="w-3.5 h-3.5" />{fileImportLabel(exchange) || 'עדכון מפתחות'}
+            <Pencil className="w-3.5 h-3.5" />{exchange.canSync === false ? 'ייבוא CSV' : 'עדכון מפתחות'}
           </button>
         </div>
       ) : (
@@ -172,15 +171,14 @@ function ConnectedCard({ exchange, balance, syncing, onSync, onEdit, onDisconnec
         </div>
       ) : (
         <div className="relative h-11 rounded-xl text-xs text-text-muted border border-dashed border-border-primary flex items-center justify-center gap-1.5">
-          <Link2 className="w-3.5 h-3.5" />
-          {exchange.importKind === 'mt5' ? 'ייבוא עסקאות מדוח MT5' : 'ייבוא עסקאות דרך קובץ CSV בלבד'}
+          <Link2 className="w-3.5 h-3.5" />ייבוא עסקאות דרך קובץ CSV בלבד
         </div>
       )}
 
       <div className="relative flex items-center justify-between gap-2 pt-3 border-t border-border-primary">
         <button onClick={onEdit}
           className="inline-flex items-center gap-1.5 text-xs text-text-muted hover:text-text-primary transition-colors cursor-pointer">
-          <Pencil className="w-3.5 h-3.5" />{exchange.authType === 'address' ? 'עדכון כתובת' : (fileImportLabel(exchange) || 'עדכון מפתחות')}
+          <Pencil className="w-3.5 h-3.5" />{exchange.authType === 'address' ? 'עדכון כתובת' : exchange.canSync === false ? 'ייבוא CSV' : 'עדכון מפתחות'}
         </button>
         {daysLeft !== null && !expiringSoon && !problem && (
           <span className="text-[11px] text-text-muted" title="מפתח MEXC בלי IP מוגבל ל-90 יום">
@@ -217,14 +215,10 @@ function AvailableTile({ exchange, locked, onConnect, index }) {
       <div className="relative flex-1 min-w-0">
         <p className="text-sm font-semibold text-text-primary truncate">{name}</p>
         <p className="text-[11px] text-text-muted truncate" dir="ltr" style={{ textAlign: 'right' }}>{tagline}</p>
-        {!canSync && (
-          <p className="text-[10px] text-text-muted mt-0.5">
-            {exchange.importKind === 'mt5' ? 'ייבוא דוח MT5' : 'ללא סנכרון אוטומטי'}
-          </p>
-        )}
+        {!canSync && <p className="text-[10px] text-text-muted mt-0.5">ללא סנכרון אוטומטי</p>}
       </div>
       <span className="relative inline-flex items-center gap-1 shrink-0 h-8 px-3 rounded-lg text-xs font-semibold text-accent-primary border border-accent-primary/40 group-hover:bg-accent-primary/10 transition-colors">
-        {locked ? <><Lock className="w-3.5 h-3.5" />Premium</> : (fileImportLabel(exchange, { short: true }) || <><Plus className="w-3.5 h-3.5" />חבר</>)}
+        {locked ? <><Lock className="w-3.5 h-3.5" />Premium</> : canSync === false ? 'ייבוא CSV' : <><Plus className="w-3.5 h-3.5" />חבר</>}
       </span>
     </Card>
   );
@@ -269,8 +263,6 @@ export function ConnectDialog({ exchange, editing, data, saving, onUpdate, onSav
   const mode = connectMode(ex);
   const byAddress = mode === 'address';
   const csvOnly = mode === 'csv';
-  const mt5 = mode === 'mt5';
-  const fileOnly = csvOnly || mt5;
   const notes = connectionGuideNotes(ex);
   const address = (data?.address || '').trim();
   const addressInvalid = byAddress && address.length > 0 && !isHyperliquidAddress(address);
@@ -285,18 +277,18 @@ export function ConnectDialog({ exchange, editing, data, saving, onUpdate, onSav
 
   return (
     <Modal isOpen={isOpen} onClose={onClose} maxWidth="max-w-lg"
-      title={fileOnly ? `ייבוא מ-${name}` : editing ? (byAddress ? `עדכון כתובת · ${name}` : `עדכון מפתחות · ${name}`) : `חיבור ${name}`}>
+      title={csvOnly ? `ייבוא מ-${name}` : editing ? (byAddress ? `עדכון כתובת · ${name}` : `עדכון מפתחות · ${name}`) : `חיבור ${name}`}>
       {/* Guide first on every width — on a phone it used to sit under the
           fields, so the Read-Only / no-IP notes were easy to miss. */}
       <div className="flex flex-col gap-5">
         <aside data-testid="connection-guide" className="rounded-xl bg-bg-tertiary/60 border border-border-primary p-4">
           <div className="flex items-center justify-between gap-2 mb-3">
-            <p className="text-xs font-semibold text-text-primary">{fileOnly ? 'איך מייצאים את הקובץ' : byAddress ? 'איפה מוצאים את הכתובת' : 'איך יוצרים מפתח API'}</p>
+            <p className="text-xs font-semibold text-text-primary">{csvOnly ? 'איך מייצאים את הקובץ' : byAddress ? 'איפה מוצאים את הכתובת' : 'איך יוצרים מפתח API'}</p>
             {apiUrl && (
               <a href={apiUrl} target="_blank" rel="noopener noreferrer"
                 className="text-[11px] inline-flex items-center gap-1 hover:opacity-80 transition-opacity shrink-0"
                 style={{ color: accent }}>
-                {fileOnly ? 'להיסטוריה' : 'לדף ה-API'} <ExternalLink className="w-3 h-3" />
+                {csvOnly ? 'להיסטוריה' : 'לדף ה-API'} <ExternalLink className="w-3 h-3" />
               </a>
             )}
           </div>
@@ -330,7 +322,7 @@ export function ConnectDialog({ exchange, editing, data, saving, onUpdate, onSav
         </aside>
 
         <form data-testid="connection-fields" className="space-y-3"
-          onSubmit={(e) => { e.preventDefault(); if (fileOnly) onOpenCsv?.(); else if (canSave) onSave(); }}>
+          onSubmit={(e) => { e.preventDefault(); if (csvOnly) onOpenCsv?.(); else if (canSave) onSave(); }}>
           <div className="flex items-center gap-3 pb-1">
             <ExLogo id={ex.id} size={40} accent={accent} />
             <div className="min-w-0">
@@ -338,12 +330,8 @@ export function ConnectDialog({ exchange, editing, data, saving, onUpdate, onSav
               <p className="text-[11px] text-text-muted" dir="ltr" style={{ textAlign: 'right' }}>{tagline}</p>
             </div>
           </div>
-          {fileOnly ? (
-            <p className="text-xs text-text-secondary leading-relaxed">
-              {mt5
-                ? 'בלי מפתח API. אחרי הייבוא היומן יסומן כ-Vantage והעסקאות ייכנסו עם המקור Vantage (MT5).'
-                : `בלי מפתח API. אחרי הייבוא היומן יסומן כ-${name} והעסקאות ייכנסו אליו.`}
-            </p>
+          {csvOnly ? (
+            <p className="text-xs text-text-secondary leading-relaxed">בלי מפתח API. אחרי הייבוא היומן יסומן כ-{name} והעסקאות ייכנסו אליו.</p>
           ) : (
             <>
               {editing && !byAddress && <p className="text-xs text-text-muted">מטעמי אבטחה המפתחות הקיימים לא מוצגים — הזן מפתחות חדשים כדי להחליף אותם.</p>}
@@ -394,11 +382,11 @@ export function ConnectDialog({ exchange, editing, data, saving, onUpdate, onSav
               className="h-11 px-5 rounded-xl border border-border-primary text-sm text-text-secondary hover:bg-bg-tertiary transition-colors cursor-pointer">
               ביטול
             </button>
-            {fileOnly ? (
+            {csvOnly ? (
               <button type="submit"
                 className="flex-1 h-11 rounded-xl text-sm font-bold cursor-pointer flex items-center justify-center gap-2"
                 style={{ background: `linear-gradient(135deg, ${accent}, ${accent}cc)`, color: '#000', boxShadow: `0 6px 22px -6px ${glow}` }}>
-                {fileImportLabel(ex) || 'ייבוא CSV'}
+                ייבוא CSV
               </button>
             ) : (
               <button type="submit" disabled={!canSave}
@@ -449,7 +437,6 @@ export default function ExchangeSettings({ journalId: propJournalId, embedded = 
   // Connect / edit-keys dialog: { id, editing } | null
   const [dialog, setDialog] = useState(null);
   const [csvExchangeId, setCsvExchangeId] = useState(null);
-  const [mt5Open, setMt5Open] = useState(false);
   const [confirmDisconnect, setConfirmDisconnect] = useState(null);
   // Futures wallet balance per connected exchange: undefined = loading,
   // number = ok, false = failed.
@@ -551,23 +538,19 @@ export default function ExchangeSettings({ journalId: propJournalId, embedded = 
 
   const openConnect = (id) => {
     const ex = EXCHANGES.find((e) => e.id === id);
-    // File import (Binance CSV, Vantage MT5) is not an API connection, so it
-    // does not spend the free slot.
-    const mode = connectMode(ex);
-    if (mode !== 'csv' && mode !== 'mt5' && atFreeLimit && !savedExchanges[id]?.connected) { goPremium(); return; }
+    // CSV import is not an API connection, so it does not spend the free slot.
+    if (connectMode(ex) !== 'csv' && atFreeLimit && !savedExchanges[id]?.connected) { goPremium(); return; }
     setExchanges(p => ({ ...p, [id]: {} }));
     setDialog({ id, editing: false });
   };
   // The secret is not held client-side, so editing starts from empty inputs.
   const openCsv = (id) => {
     setDialog(null);
-    const ex = EXCHANGES.find((e) => e.id === id);
-    if (ex?.importKind === 'mt5') setMt5Open(true);
-    else setCsvExchangeId(id);
+    setCsvExchangeId(id);
   };
   const openEdit = (id) => {
     const ex = EXCHANGES.find((e) => e.id === id);
-    if (connectMode(ex) === 'csv' || connectMode(ex) === 'mt5') { openCsv(id); return; }
+    if (connectMode(ex) === 'csv') { openCsv(id); return; }
     // A wallet address isn't a secret — prefill it; API keys start empty.
     setExchanges(p => ({ ...p, [id]: savedExchanges[id]?.address ? { address: savedExchanges[id].address } : {} }));
     setDialog({ id, editing: true });
@@ -704,37 +687,11 @@ export default function ExchangeSettings({ journalId: propJournalId, embedded = 
     return addTradesBulk(rows, onProgress);
   };
 
-  const handleMt5Import = async (rows) => {
-    writeDemoMode(user.uid, false);
-    const journalForImport = await applyExchangeToJournal('vantage');
-    const results = await Promise.allSettled(rows.map((t) => importTrade(t, journalForImport)));
-    const imported = results.filter((r) => r.status === 'fulfilled').length;
-    const failed = results.length - imported;
-    if (imported) {
-      const marker = {
-        connected: true,
-        connectedAt: savedExchanges.vantage?.connectedAt || Date.now(),
-        readOnlyVerified: true,
-      };
-      const newMarkers = { ...savedExchanges, vantage: marker };
-      try {
-        await setUserSetting(user.uid, 'exchanges', newMarkers, false);
-        setSavedExchanges(newMarkers);
-        writeExchCache(user.uid, '', newMarkers);
-      } catch { /* Firestore rules for the vantage marker deploy separately. */ }
-    }
-    if (failed && !imported) {
-      const msg = results.find((r) => r.status === 'rejected')?.reason?.message || 'שגיאה בייבוא';
-      throw new Error(msg);
-    }
-    return { imported, failed };
-  };
-
   const handleDisconnect = async (id) => {
     const newMarkers = { ...savedExchanges };
     delete newMarkers[id];
     try {
-      if (id !== 'hyperliquid' && id !== 'vantage') await deleteExchangeCredentials(id);
+      if (id !== 'hyperliquid') await deleteExchangeCredentials(id);
       await setUserSetting(user.uid, 'exchanges', newMarkers, false);
       if (id === 'hyperliquid') setHyperliquidAddressCache(null);
       setSavedExchanges(newMarkers);
@@ -812,7 +769,7 @@ export default function ExchangeSettings({ journalId: propJournalId, embedded = 
   const connected = EXCHANGES.filter(e => savedExchanges[e.id]?.connected);
   const available = EXCHANGES.filter(e => !savedExchanges[e.id]?.connected);
   const badge = securityBadge(connected.map((e) => ({
-    authType: e.authType === 'address' ? 'address' : (e.canSync === false ? 'file' : e.authType),
+    authType: e.authType,
     readOnlyVerified: savedExchanges[e.id]?.readOnlyVerified,
   })));
   const problemCount = connected.filter((e) => balances[e.id]?.problem).length;
@@ -919,27 +876,12 @@ export default function ExchangeSettings({ journalId: propJournalId, embedded = 
         </Suspense>
       )}
 
-      {mt5Open && (
-        <Suspense fallback={null}>
-          <Mt5ImportDialog
-            isOpen
-            onClose={() => setMt5Open(false)}
-            existingTrades={journalTrades}
-            onImport={handleMt5Import}
-          />
-        </Suspense>
-      )}
-
       <ConfirmDialog
         isOpen={!!confirmDisconnect}
         onClose={() => setConfirmDisconnect(null)}
         onConfirm={() => handleDisconnect(confirmDisconnect)}
         title={`לנתק את ${disconnectExchange?.name || ''}?`}
-        message={disconnectExchange?.importKind === 'mt5'
-          ? 'החיבור יוסר מהרשימה. עסקאות שכבר יובאו נשארות ביומן.'
-          : disconnectExchange?.authType === 'address'
-            ? 'כתובת הארנק תימחק מהחשבון שלך. עסקאות שכבר יובאו נשארות ביומן.'
-            : 'המפתחות יימחקו מהשרת. עסקאות שכבר יובאו נשארות ביומן.'}
+        message={disconnectExchange?.authType === 'address' ? 'כתובת הארנק תימחק מהחשבון שלך. עסקאות שכבר יובאו נשארות ביומן.' : 'המפתחות יימחקו מהשרת. עסקאות שכבר יובאו נשארות ביומן.'}
         confirmText="נתק"
       />
 
