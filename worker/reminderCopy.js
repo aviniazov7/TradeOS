@@ -278,3 +278,21 @@ export function personalizeReminder({ subject, headline, message, stats }) {
   const body = extra ? `${facts.join('\n\n')}\n\n${extra}` : `${facts.join('\n\n')}\n\n${CLOSING}`;
   return { subject: facts[0], headline: facts[0], message: body };
 }
+
+// Shape the already-shipped admin panel reads without checking that `facts`
+// exists: `hook.facts.btc`, spread of `gainers`/`losers`, and
+// `hook.facts.headlines?.[0]`. Missing or partial input still yields arrays
+// and nulls, never undefined, so that read does not throw.
+export function clientSafeFacts(facts) {
+  const f = facts && typeof facts === 'object' ? facts : {};
+  const list = (v) => (Array.isArray(v) ? v.filter((row) => row && typeof row === 'object') : []);
+  const headlines = Array.isArray(f.headlines) ? f.headlines.filter((h) => typeof h === 'string' && h) : [];
+  const coin = (row) => (row && typeof row === 'object' && row.coin != null ? row : null);
+  return {
+    btc: coin(f.btc),
+    eth: coin(f.eth),
+    gainers: list(f.gainers),
+    losers: list(f.losers),
+    headlines,
+  };
+}
