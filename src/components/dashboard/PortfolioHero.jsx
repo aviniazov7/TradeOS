@@ -121,14 +121,14 @@ export default function PortfolioHero({ balance, declaredStart = 0, series, hidd
           <svg viewBox={`0 0 ${W} ${H}`} preserveAspectRatio="none" className="w-full h-full" role="img" aria-label="עקומת רווח מצטבר">
             <defs>
               <linearGradient id="hero-fill" x1="0" y1="0" x2="0" y2="1">
-                <stop offset="0%" style={{ stopColor: 'var(--color-accent-primary)', stopOpacity: 0.3 }} />
-                <stop offset="100%" style={{ stopColor: 'var(--color-accent-primary)', stopOpacity: 0 }} />
+                <stop offset="0%" stopColor="var(--chart-area-top)" />
+                <stop offset="100%" stopColor="var(--chart-area-bot)" />
               </linearGradient>
             </defs>
             <line x1="0" x2={W} y1={s.chart.zeroY} y2={s.chart.zeroY} stroke="var(--color-border-hover)" strokeDasharray="4 5" vectorEffect="non-scaling-stroke" />
             <g key={period}>
               <path d={s.chart.area} fill="url(#hero-fill)" className="chart-draw-fill" />
-              <path d={s.chart.line} pathLength="1" className="chart-draw" fill="none" stroke="var(--color-accent-primary)" strokeWidth="2.4" strokeLinejoin="round" vectorEffect="non-scaling-stroke" />
+              <path d={s.chart.line} pathLength="1" className="chart-draw" fill="none" stroke="var(--chart-line)" strokeWidth="2.75" strokeLinejoin="round" strokeLinecap="round" vectorEffect="non-scaling-stroke" />
             </g>
             {hp && <line x1={hp.x} x2={hp.x} y1="0" y2={H} stroke="var(--color-border-hover)" vectorEffect="non-scaling-stroke" />}
           </svg>
