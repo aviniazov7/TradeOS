@@ -3,7 +3,7 @@ import {
   personalFacts, templateReminder, validateReminder, isCalm, summarizeReminderStats,
   countFromAggregation, datesFromQuery, combineCounts, combineDates, daysSinceLogin,
   journalDatesQuery, weekTradesWhere, reminderTradeCountQuery, statusWhere,
-  personalizeReminder, buildReminderUserMessage,
+  personalizeReminder, buildReminderUserMessage, clientSafeFacts,
 } from './reminderCopy';
 
 const NOW = new Date('2026-10-25T12:00:00Z');
@@ -106,6 +106,19 @@ describe('personalizeReminder', () => {
     });
     expect(out.subject).toBe('עדכון קצר מהיומן');
     expect(out.message).toBe('אפשר לפתוח את היומן.');
+  });
+});
+
+describe('clientSafeFacts', () => {
+  it('lets the old panel read facts.headlines when facts was omitted', () => {
+    for (const input of [undefined, null, {}, { headlines: undefined, gainers: null, losers: null, btc: null }]) {
+      const facts = clientSafeFacts(input);
+      const hook = { facts };
+      expect(hook.facts.headlines?.[0]).toBeUndefined();
+      expect([...hook.facts.gainers, ...hook.facts.losers]).toEqual([]);
+      expect(hook.facts.btc).toBeNull();
+      expect(hook.facts.eth).toBeNull();
+    }
   });
 });
 

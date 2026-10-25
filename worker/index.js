@@ -32,6 +32,7 @@ import {
   REMINDER_SYSTEM_PROMPT, buildReminderUserMessage, validateReminder, templateReminder,
   reminderTradeCountQuery, weekTradesWhere, statusWhere, journalDatesQuery,
   countFromAggregation, datesFromQuery, combineCounts, combineDates, summarizeReminderStats,
+  clientSafeFacts,
 } from './reminderCopy.js';
 import {
   planAiCharge, planAiRefund, quotaUsage, createWindowCounters, createStatBuffer, mergeStat,
@@ -5080,7 +5081,10 @@ async function handleRequest(request, env) {
       }
       const source = hook ? 'ai' : 'template';
       hook = hook || templateReminder(stats);
-      return new Response(JSON.stringify({ ok: true, source, ...hook, stats }), { headers: { ...cors, 'Content-Type': 'application/json' } });
+      // `facts` stays in the payload for the admin panel that is still open in
+      // production: it reads hook.facts.headlines / gainers without a null
+      // check. An empty safe object does not throw; a missing one does.
+      return new Response(JSON.stringify({ ok: true, source, ...hook, stats, facts: clientSafeFacts(null) }), { headers: { ...cors, 'Content-Type': 'application/json' } });
     } catch (e) {
       return new Response(JSON.stringify({ error: e.message || 'שגיאה' }), { status: 500, headers: { ...cors, 'Content-Type': 'application/json' } });
     }

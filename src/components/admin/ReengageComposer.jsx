@@ -3,6 +3,7 @@ import { Send, Loader2, Mail, Bell, FlaskConical, Sparkles, RefreshCw } from 'lu
 import toast from 'react-hot-toast';
 import { useAuth } from '../../contexts/AuthContext';
 import { adminSendBulkNotification, adminSendEmailCampaign, adminGenerateReminder } from '../../services/pushService';
+import { reminderHookReview } from '../../utils/reminderHookReview';
 import SelectDropdown from '../shared/SelectDropdown';
 
 // Ready-made calm updates — a click fills the form, then edit freely.
@@ -102,8 +103,15 @@ export default function ReengageComposer({ recipients, onSent }) {
     try {
       const uid = recipients.length === 1 ? recipients[0].id : undefined;
       const h = await adminGenerateReminder(uid);
-      setTitle(h.title); setBody(h.email); setPushText(h.push); setCta(h.cta); setPath(h.path);
-      setHook({ stats: h.stats, source: h.source });
+      if (!h || typeof h !== 'object') throw new Error('יצירת ההודעה נכשלה');
+      setTitle(typeof h.title === 'string' ? h.title : '');
+      setBody(typeof h.email === 'string' ? h.email : '');
+      setPushText(typeof h.push === 'string' ? h.push : '');
+      if (typeof h.cta === 'string' && h.cta) setCta(h.cta);
+      if (typeof h.path === 'string' && h.path) setPath(h.path);
+      // Keep a missing `facts` as null. The review line reads it only through
+      // reminderHookReview, which tolerates the old market shape and no shape.
+      setHook({ stats: h.stats ?? null, facts: h.facts ?? null, source: h.source });
     } catch (e) {
       toast.error(e.message || 'יצירת ההודעה נכשלה');
     } finally {
@@ -177,15 +185,7 @@ export default function ReengageComposer({ recipients, onSent }) {
   const sendTest = () => deliver([{ id: me?.uid, email: me?.email, name: me?.displayName || '', marketing: true }], 'test');
   const sendAll = () => deliver(recipients, 'all');
 
-  const statsBits = [];
-  const st = hook?.stats;
-  if (st?.weekTrades > 0) statsBits.push(st.weekTrades === 1 ? 'השבוע עסקה אחת' : `השבוע ${st.weekTrades} עסקאות`);
-  if (st?.openTrades > 0) statsBits.push(st.openTrades === 1 ? 'עסקה פתוחה אחת' : `${st.openTrades} עסקאות פתוחות`);
-  if (st?.journalDays > 0) statsBits.push(st.journalDays === 1 ? 'יום אחד ביומן' : `${st.journalDays} ימים ביומן`);
-  if (Number.isInteger(st?.daysSinceLogin)) {
-    statsBits.push(st.daysSinceLogin === 0 ? 'נכנס היום' : st.daysSinceLogin === 1 ? 'כניסה אתמול' : `כניסה לפני ${st.daysSinceLogin} ימים`);
-  }
-  const statsLine = statsBits.join(' · ');
+  const review = reminderHookReview(hook);
 
   return (
     <div className="space-y-3">
@@ -201,9 +201,10 @@ export default function ReengageComposer({ recipients, onSent }) {
           <span className={`inline-block me-1.5 px-1.5 py-0.5 rounded font-bold ${hook.source === 'ai' ? 'bg-accent-primary/15 text-accent-primary' : 'bg-bg-secondary text-text-muted'}`}>
             {hook.source === 'ai' ? 'AI' : 'תבנית'}
           </span>
-          {statsLine
-            ? <>על בסיס הנתונים של הנמען: {statsLine}</>
+          {review.line
+            ? <>על בסיס הנתונים של הנמען: {review.line}</>
             : 'נוסח כללי. בשליחה, לכל נמען יתווסף עדכון לפי הנתונים שלו, אם הם קיימים.'}
+          {review.headline ? <span className="block text-text-muted mt-0.5">כותרת: {review.headline}</span> : null}
         </div>
       )}
 
