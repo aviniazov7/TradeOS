@@ -20,7 +20,7 @@ import {
 } from './exchangeNormalize.js';
 import { buildCampaignEmails, CAMPAIGN_MAX } from './adminEmail.js';
 import { recipientConsent } from './marketingConsent.js';
-import { runMarketingEmailBackfill, marketingSubscribeWrites, BACKFILL_KV_KEY } from './marketingBackfill.js';
+import { runMarketingEmailBackfill, marketingSubscribeWrites, uidsStillMissingChoice, BACKFILL_KV_KEY } from './marketingBackfill.js';
 import { deliverWithGmail, hasGmailPassword, MISSING_SECRET_MESSAGE } from './gmailMail.js';
 import { unsubscribeUrl, verifyUnsubscribe, unsubscribePage, UID_RE } from './unsubscribe.js';
 import { purgeUserResidue } from './accountPurge.js';
@@ -481,15 +481,15 @@ async function listAllUsersAdmin(env) {
   return out;
 }
 
-// Existing accounts with no email preference are subscribed once. Explicit
-// true/false is left alone (see marketingConsent.js). Safe to call from cron
-// and from a campaign; the KV flag makes the full scan a one-shot.
+// Profiles that exist at this run and have no email preference are subscribed
+// once. Explicit true/false is left alone (see marketingConsent.js). Safe to
+// call from cron and from a campaign; the KV flag makes the full scan a one-shot.
 async function listUserDocsForMarketingBackfill(env) {
   const token = await getFirebaseAdminToken(env);
   const docs = [];
   let pageToken = '';
   for (let page = 0; page < 20; page++) {
-    const url = `https://firestore.googleapis.com/v1/projects/${FIREBASE_PROJECT_ID}/databases/(default)/documents/users?pageSize=300&mask.fieldPaths=marketingEmails&mask.fieldPaths=createdAt${pageToken ? `&pageToken=${encodeURIComponent(pageToken)}` : ''}`;
+    const url = `https://firestore.googleapis.com/v1/projects/${FIREBASE_PROJECT_ID}/databases/(default)/documents/users?pageSize=300&mask.fieldPaths=marketingEmails${pageToken ? `&pageToken=${encodeURIComponent(pageToken)}` : ''}`;
     const res = await fetch(url, { headers: { Authorization: `Bearer ${token}` } });
     if (!res.ok) throw new Error(`marketing backfill list ${res.status}`);
     const data = await res.json();
@@ -500,10 +500,38 @@ async function listUserDocsForMarketingBackfill(env) {
   throw new Error('marketing backfill list truncated');
 }
 
+// Re-read before writing. A choice saved after the scan (signup or the
+// settings toggle) must not be replaced with true.
+async function docsForMarketingChoice(env, uids) {
+  const token = await getFirebaseAdminToken(env);
+  const docBase = `projects/${FIREBASE_PROJECT_ID}/databases/(default)/documents`;
+  const docs = [];
+  for (let i = 0; i < uids.length; i += 300) {
+    const slice = uids.slice(i, i + 300);
+    const res = await fetch(`https://firestore.googleapis.com/v1/${docBase}:batchGet`, {
+      method: 'POST',
+      headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        documents: slice.map((id) => `${docBase}/users/${id}`),
+        mask: { fieldPaths: ['marketingEmails'] },
+      }),
+    });
+    if (!res.ok) throw new Error(`marketing backfill reread ${res.status}`);
+    const rows = await res.json().catch(() => []);
+    for (const row of Array.isArray(rows) ? rows : []) {
+      if (!row?.found?.name) continue;
+      docs.push({ name: row.found.name, fields: row.found.fields || {} });
+    }
+  }
+  return docs;
+}
+
 async function commitMarketingSubscribe(env, uids) {
   if (!uids?.length) return;
+  const still = uidsStillMissingChoice(await docsForMarketingChoice(env, uids));
+  if (!still.length) return;
   const token = await getFirebaseAdminToken(env);
-  const writes = marketingSubscribeWrites(uids, { projectId: FIREBASE_PROJECT_ID, nowIso: new Date().toISOString() });
+  const writes = marketingSubscribeWrites(still, { projectId: FIREBASE_PROJECT_ID, nowIso: new Date().toISOString() });
   for (let i = 0; i < writes.length; i += 400) {
     const slice = writes.slice(i, i + 400);
     const res = await fetch(`https://firestore.googleapis.com/v1/projects/${FIREBASE_PROJECT_ID}/databases/(default)/documents:batchWrite`, {
@@ -4861,8 +4889,8 @@ async function handleRequest(request, env) {
   // Admin-only marketing campaign by email. Consent is enforced HERE, not in the
   // panel: the request carries uids only, and each recipient's address and
   // marketingEmails flag are read from their own profile — an address the
-  // browser supplied is never mailed. Missing/null on an account created
-  // before the cutoff is backfilled to subscribed; explicit false is skipped.
+  // browser supplied is never mailed. Profiles that exist when the one-shot
+  // scan runs and have no choice are subscribed; explicit false is skipped.
   // Sending itself requires the stored value to be true (after that backfill).
   // Every message gets the "פרסומת" subject prefix and a signed one-click
   // unsubscribe link; without UNSUBSCRIBE_SECRET nothing is sent. The admin's
@@ -4878,17 +4906,23 @@ async function handleRequest(request, env) {
     if (!wanted.length || !(subject || headline) || !message) {
       return new Response(JSON.stringify({ error: 'missing fields' }), { status: 400, headers: { ...cors, 'Content-Type': 'application/json' } });
     }
-    // Legacy profiles (no choice, registered before the cutoff) become
-    // subscribed before the true-only filter below. A failure here is not
-    // fatal: the per-recipient pass still patches anyone this send will mail.
-    try { await migrateMarketingEmailConsent(env); }
-    catch (e) { console.error('marketing backfill', e?.message || e); }
+    // Whoever already has a profile and no choice is subscribed once. After
+    // that scan, a missing value is not legacy: new signups always store a
+    // bool. If the scan throws, this send still patches the people it mails.
+    let allowBackfill = false;
+    try {
+      const migration = await migrateMarketingEmailConsent(env);
+      allowBackfill = !migration?.ok;
+    } catch (e) {
+      console.error('marketing backfill', e?.message || e);
+      allowBackfill = true;
+    }
     const gtoken = await getFirebaseAdminToken(env);
     const docBase = `projects/${FIREBASE_PROJECT_ID}/databases/(default)/documents`;
     const bg = await fetch(`https://firestore.googleapis.com/v1/${docBase}:batchGet`, {
       method: 'POST',
       headers: { Authorization: `Bearer ${gtoken}`, 'Content-Type': 'application/json' },
-      body: JSON.stringify({ documents: wanted.map((id) => `${docBase}/users/${id}`), mask: { fieldPaths: ['email', 'displayName', 'marketingEmails', 'createdAt'] } }),
+      body: JSON.stringify({ documents: wanted.map((id) => `${docBase}/users/${id}`), mask: { fieldPaths: ['email', 'displayName', 'marketingEmails'] } }),
     });
     if (!bg.ok) return new Response(JSON.stringify({ error: 'לא ניתן לאמת הסכמות דיוור כרגע' }), { status: 502, headers: { ...cors, 'Content-Type': 'application/json' } });
     const rows = await bg.json().catch(() => []);
@@ -4901,7 +4935,7 @@ async function handleRequest(request, env) {
       if (!f) { skippedNoConsent++; continue; }
       const uid = row.found.name.split('/').pop();
       const email = f.email?.stringValue;
-      const decision = recipientConsent({ marketingEmails: f.marketingEmails, createdAt: f.createdAt, uid, adminUid });
+      const decision = recipientConsent({ marketingEmails: f.marketingEmails, uid, adminUid, allowBackfill });
       if (!email || !decision.send) { skippedNoConsent++; continue; }
       if (decision.backfill) patchUids.push(uid);
       recipients.push({ email, name: f.displayName?.stringValue || '', unsubscribeUrl: await unsubscribeUrl(workerBase, env.UNSUBSCRIBE_SECRET, uid) });

@@ -1,24 +1,31 @@
 import { describe, it, expect } from 'vitest';
-import { planMarketingBackfill, marketingSubscribeWrites, runMarketingEmailBackfill } from './marketingBackfill';
-import { MARKETING_CONSENT_CUTOFF_MS } from './marketingConsent';
-
-const BEFORE = new Date(MARKETING_CONSENT_CUTOFF_MS - 86_400_000).toISOString();
-const AFTER = new Date(MARKETING_CONSENT_CUTOFF_MS + 86_400_000).toISOString();
+import { planMarketingBackfill, marketingSubscribeWrites, runMarketingEmailBackfill, uidsStillMissingChoice } from './marketingBackfill';
 
 const doc = (uid, fields) => ({ name: `projects/p/databases/(default)/documents/users/${uid}`, fields });
 
 describe('planMarketingBackfill', () => {
-  it('subscribes only existing users with no choice', () => {
+  it('subscribes every profile in the snapshot that has no choice', () => {
     const plan = planMarketingBackfill([
-      doc('old-missing', { createdAt: { timestampValue: BEFORE } }),
-      doc('old-null', { marketingEmails: { nullValue: null }, createdAt: { timestampValue: BEFORE } }),
-      doc('old-off', { marketingEmails: { booleanValue: false }, createdAt: { timestampValue: BEFORE } }),
-      doc('old-on', { marketingEmails: { booleanValue: true }, createdAt: { timestampValue: BEFORE } }),
-      doc('new-missing', { createdAt: { timestampValue: AFTER } }),
+      doc('old-missing', { createdAt: { timestampValue: '2020-01-01T00:00:00.000Z' } }),
+      doc('old-null', { marketingEmails: { nullValue: null }, createdAt: { timestampValue: '2026-10-26T00:00:00.000Z' } }),
+      doc('old-off', { marketingEmails: { booleanValue: false }, createdAt: { timestampValue: '2020-01-01T00:00:00.000Z' } }),
+      doc('old-on', { marketingEmails: { booleanValue: true }, createdAt: { timestampValue: '2020-01-01T00:00:00.000Z' } }),
+      doc('signed-up-today', { createdAt: { timestampValue: '2026-10-25T12:00:00.000Z' } }),
+      doc('explicit-off-new', { marketingEmails: { booleanValue: false }, createdAt: { timestampValue: '2026-10-25T12:00:00.000Z' } }),
       doc('legacy-no-date', {}),
     ]);
-    expect(plan.subscribe.sort()).toEqual(['legacy-no-date', 'old-missing', 'old-null']);
-    expect(plan.counts).toMatchObject({ keptOptOut: 1, keptOn: 1, keptUnset: 1, subscribe: 3 });
+    expect(plan.subscribe.sort()).toEqual(['legacy-no-date', 'old-missing', 'old-null', 'signed-up-today']);
+    expect(plan.counts).toMatchObject({ scanned: 7, keptOptOut: 2, keptOn: 1, subscribe: 4 });
+  });
+});
+
+describe('uidsStillMissingChoice', () => {
+  it('drops anyone who stored a bool after the scan', () => {
+    expect(uidsStillMissingChoice([
+      doc('still', {}),
+      doc('just-off', { marketingEmails: { booleanValue: false } }),
+      doc('just-on', { marketingEmails: { booleanValue: true } }),
+    ]).sort()).toEqual(['still']);
   });
 });
 
@@ -35,7 +42,7 @@ describe('runMarketingEmailBackfill', () => {
   it('writes once and then skips', async () => {
     const committed = [];
     let done = false;
-    const listAll = async () => [doc('old', { createdAt: { timestampValue: BEFORE } }), doc('off', { marketingEmails: { booleanValue: false }, createdAt: { timestampValue: BEFORE } })];
+    const listAll = async () => [doc('old', {}), doc('off', { marketingEmails: { booleanValue: false } })];
     const first = await runMarketingEmailBackfill({
       alreadyDone: async () => done,
       markDone: async () => { done = true; },
@@ -59,7 +66,7 @@ describe('runMarketingEmailBackfill', () => {
     await expect(runMarketingEmailBackfill({
       alreadyDone: async () => false,
       markDone: async () => { done = true; },
-      listAll: async () => [doc('old', { createdAt: { timestampValue: BEFORE } })],
+      listAll: async () => [doc('old', {})],
       commit: async () => { throw new Error('firestore down'); },
     })).rejects.toThrow('firestore down');
     expect(done).toBe(false);

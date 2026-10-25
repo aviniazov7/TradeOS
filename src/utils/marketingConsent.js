@@ -1,10 +1,7 @@
 // Client-side view of the same rules the Worker uses, plus the signup stash
 // that survives a Google redirect (the in-memory ref does not).
 export {
-  MARKETING_CONSENT_CUTOFF_ISO,
-  MARKETING_CONSENT_CUTOFF_MS,
   normalizeMarketingEmails,
-  createdAtMillis,
   shouldBackfillMarketingEmail,
   receivesMarketingEmail,
 } from '../../worker/marketingConsent.js';

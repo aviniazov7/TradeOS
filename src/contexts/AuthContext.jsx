@@ -105,6 +105,9 @@ export function AuthProvider({ children }) {
             (data) => { if (gen === generation) setProfile(data); },
             () => { /* permission-denied after sign-out — expected, not an error */ }
           );
+          // Always a bool. The backfill only fills a missing field on profiles
+          // that already exist, so a signup after that scan stays opted out
+          // unless this checkbox was checked.
           const marketingEmails = marketingChoiceForNewProfile(capturedConsent, peekSignupMarketingChoice());
           const defaultProfile = {
             displayName: pendingNameRef.current || firebaseUser.displayName || firebaseUser.email?.split('@')[0] || 'User',

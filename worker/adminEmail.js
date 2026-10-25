@@ -5,19 +5,22 @@
 // The HTML is a dark, RTL, table-based message aimed at Gmail web and the
 // Gmail mobile apps: inline CSS, bgcolor fallbacks, and the theme's
 // background-image / blend-mode tricks so Gmail's forced inversion stays dark.
-import { C, txt, APP_URL, bg } from './emailTheme.js';
+import { txt, APP_URL, bg } from './emailTheme.js';
 
 const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 export { APP_URL };
 // Hard cap per campaign — a typo in the panel must not mail everyone twice.
 export const CAMPAIGN_MAX = 300;
 
-// Page is a dark navy, a step from pure black, matching the app's glass surfaces.
-const PAGE = '#070b12';
-const CARD = '#10131a';
-const TILE = '#161b26';
-const LINE = '#2a3142';
+// True black page, near-black card. Blue is only the button and the small brand mark.
+const PAGE = '#000000';
+const CARD = '#0d0d0d';
+const TILE = '#111111';
+const LINE = '#222222';
 const BTN = '#2563eb';
+const TEXT = '#f5f5f5';
+const SUB = '#c8c8c8';
+const MUTED = '#8a8a8a';
 
 const esc = (s) => String(s ?? '').replace(/[&<>"']/g, (c) => (
   { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]
@@ -32,7 +35,7 @@ export function messageToHtml(message) {
     .trim()
     .split(/\n\s*\n/)
     .filter((p) => p.trim())
-    .map((p) => `<p style="margin:0 0 14px;font-size:16px;color:${C.sub};line-height:1.75;text-align:right">${txt(esc(p.trim()).replace(/\n/g, '<br>'))}</p>`)
+    .map((p) => `<p style="margin:0 0 14px;font-size:16px;color:${SUB};line-height:1.75;text-align:right">${txt(esc(p.trim()).replace(/\n/g, '<br>'))}</p>`)
     .join('');
 }
 
@@ -50,8 +53,8 @@ export const AD_PREFIX = 'פרסומת: ';
 
 export function footerHtml(unsubscribeUrl) {
   const href = esc(unsubscribeUrl);
-  return `<p style="margin:0 0 10px;font-size:14px;line-height:1.7;color:${C.text};text-align:right">${txt(`<a href="${href}" style="color:${C.text};text-decoration:underline;font-weight:bold">להסרה מרשימת התפוצה</a>`)}</p>`
-    + `<p style="margin:0;font-size:12px;line-height:1.65;color:${C.muted};text-align:right">${txt('קיבלת הודעה זו מ-TradeOS (tradeos.app@gmail.com). אפשר להפסיק עדכונים ותזכורות בכל רגע, גם מההגדרות באפליקציה.')}</p>`;
+  return `<p style="margin:0 0 10px;font-size:14px;line-height:1.7;color:${TEXT};text-align:right">${txt(`<a href="${href}" style="color:${TEXT};text-decoration:underline;font-weight:bold">להסרה מרשימת התפוצה</a>`)}</p>`
+    + `<p style="margin:0;font-size:12px;line-height:1.65;color:${MUTED};text-align:right">${txt('קיבלת הודעה זו מ-TradeOS (tradeos.app@gmail.com). אפשר להפסיק עדכונים ותזכורות בכל רגע, גם מההגדרות באפליקציה.')}</p>`;
 }
 
 export function campaignPlainText({ headline, name, message, ctaText, ctaUrl, unsubscribeUrl }) {
@@ -107,15 +110,15 @@ u + .body .gm-d{background:#000;mix-blend-mode:difference}
               ${txt('<span style="font-size:18px;font-weight:bold;color:#ffffff;line-height:40px">T</span>')}
             </td>
             <td style="padding-right:12px;text-align:right;vertical-align:middle">
-              <div style="font-size:18px;font-weight:bold;color:${C.text};line-height:1.2" dir="ltr">${txt('TradeOS')}</div>
-              <div style="font-size:12px;color:${C.muted};line-height:1.4;margin-top:2px">${txt('מערכת ההפעלה למסחר')}</div>
+              <div style="font-size:18px;font-weight:bold;color:${TEXT};line-height:1.2" dir="ltr">${txt('TradeOS')}</div>
+              <div style="font-size:12px;color:${MUTED};line-height:1.4;margin-top:2px">${txt('מערכת ההפעלה למסחר')}</div>
             </td>
           </tr></table>
         </td></tr>
         <tr><td class="card-pad" style="padding:32px 28px 28px;text-align:right" dir="rtl">
-          <p style="margin:0 0 12px;font-size:11px;font-weight:bold;letter-spacing:0.4px;color:${C.muted};text-align:right">${txt('תזכורת · פרסומת')}</p>
-          <h1 class="h1" style="margin:0 0 14px;font-size:26px;line-height:1.35;color:${C.text};font-weight:bold;text-align:right">${txt(esc(title))}</h1>
-          ${intro ? `<p style="margin:0 0 16px;font-size:16px;line-height:1.7;color:${C.sub};text-align:right">${txt(esc(intro))}</p>` : ''}
+          <p style="margin:0 0 12px;font-size:11px;font-weight:bold;letter-spacing:0.4px;color:${MUTED};text-align:right">${txt('תזכורת · פרסומת')}</p>
+          <h1 class="h1" style="margin:0 0 14px;font-size:26px;line-height:1.35;color:${TEXT};font-weight:bold;text-align:right">${txt(esc(title))}</h1>
+          ${intro ? `<p style="margin:0 0 16px;font-size:16px;line-height:1.7;color:${SUB};text-align:right">${txt(esc(intro))}</p>` : ''}
           <table role="presentation" width="100%" cellspacing="0" cellpadding="0" border="0" dir="rtl" bgcolor="${TILE}" style="${bg(TILE)}border:1px solid ${LINE};border-radius:14px">
             <tr><td style="padding:18px 18px 4px;text-align:right" dir="rtl">
               ${bodyHtml || ''}
@@ -127,7 +130,7 @@ u + .body .gm-d{background:#000;mix-blend-mode:difference}
           ${footerHtml(unsubscribeUrl)}
         </td></tr>
       </table>
-      <p style="margin:16px 0 0;font-size:11px;color:${C.muted};text-align:center">${txt(`TradeOS &copy; ${new Date().getFullYear()}`)}</p>
+      <p style="margin:16px 0 0;font-size:11px;color:${MUTED};text-align:center">${txt(`TradeOS &copy; ${new Date().getFullYear()}`)}</p>
     </td></tr>
   </table>
 </body></html>`;

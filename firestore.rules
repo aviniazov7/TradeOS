@@ -27,8 +27,9 @@ service cloud.firestore {
               'onboardingCompleted', 'lastActive', 'appVersion',
               'isPublicProfile', 'leaderboardName',
               // Marketing-email choice: explicit bool from signup or the profile
-              // toggle. Missing means "not chosen yet" (legacy accounts are
-              // backfilled server-side). Unsubscribing sets it false.
+              // toggle. A missing field is only for profiles that predate the
+              // checkbox; the Worker backfill subscribes those once.
+              // Unsubscribing sets it false.
               'marketingEmails', 'marketingEmailsAt'];
     }
 

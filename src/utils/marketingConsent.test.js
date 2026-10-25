@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { marketingChoiceForNewProfile, receivesMarketingEmail, MARKETING_CONSENT_CUTOFF_MS } from './marketingConsent';
+import { marketingChoiceForNewProfile, receivesMarketingEmail } from './marketingConsent';
 
 describe('marketingChoiceForNewProfile', () => {
   it('prefers the in-memory choice, then the stash, and otherwise stays off', () => {
@@ -12,12 +12,9 @@ describe('marketingChoiceForNewProfile', () => {
 });
 
 describe('receivesMarketingEmail from the client helper', () => {
-  it('matches the worker rule for legacy and new accounts', () => {
-    const before = MARKETING_CONSENT_CUTOFF_MS - 1000;
-    const after = MARKETING_CONSENT_CUTOFF_MS + 1000;
-    expect(receivesMarketingEmail({ marketingEmails: false, createdAt: before })).toBe(false);
-    expect(receivesMarketingEmail({ createdAt: before })).toBe(true);
-    expect(receivesMarketingEmail({ createdAt: after })).toBe(false);
-    expect(receivesMarketingEmail({ marketingEmails: true, createdAt: after })).toBe(true);
+  it('shows a missing choice as on and an explicit opt-out as off', () => {
+    expect(receivesMarketingEmail({ marketingEmails: false })).toBe(false);
+    expect(receivesMarketingEmail({})).toBe(true);
+    expect(receivesMarketingEmail({ marketingEmails: true })).toBe(true);
   });
 });

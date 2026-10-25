@@ -1,18 +1,15 @@
 // Marketing-email preference.
 //
-// Existing accounts (created before MARKETING_CONSENT_CUTOFF_ISO) with no
-// stored choice are treated as subscribed and backfilled to true. An explicit
-// true/false is never overwritten. Accounts created at or after the cutoff
-// must store the signup checkbox (unchecked by default). Sending is true-only
-// after that backfill — a missing value on a new account is not subscribed.
+// The one-shot backfill subscribes profiles that already exist when it runs
+// and have no stored choice. An explicit true or false is never overwritten.
+// There is no cutoff date: an account created after that scan is not existing.
+// Signup writes marketingEmails on the first profile create (checkbox,
+// default false), so the scan cannot subscribe someone who registers later.
 //
-// The cutoff is the release window for this change, not a per-user opt-in.
-// New code writes the bool on the first profile create, so a later backfill
-// cannot flip a real choice. Bump the cutoff only if this ships later and
-// legacy profiles created after it still have no field.
-
-export const MARKETING_CONSENT_CUTOFF_ISO = '2026-10-28T00:00:00.000Z';
-export const MARKETING_CONSENT_CUTOFF_MS = Date.parse(MARKETING_CONSENT_CUTOFF_ISO);
+// Until the scan lands, a missing value still counts as subscribed in the
+// admin dialog and the settings toggle, so a legacy user can turn it off
+// before the first email. After the scan, sending is true-only. A campaign
+// patches a missing value only when that scan did not finish.
 
 /** true | false | null (missing, null, or junk). Accepts a JS bool or a Firestore REST field. */
 export function normalizeMarketingEmails(value) {
@@ -23,59 +20,31 @@ export function normalizeMarketingEmails(value) {
   return null;
 }
 
-/** Epoch ms from a JS date, ISO string, Firestore Timestamp, or REST timestamp field. */
-export function createdAtMillis(value) {
-  if (value == null || value === '') return null;
-  if (typeof value === 'number') return Number.isFinite(value) ? value : null;
-  if (typeof value === 'string') {
-    const t = Date.parse(value);
-    return Number.isFinite(t) ? t : null;
-  }
-  if (typeof value.toDate === 'function') {
-    const t = value.toDate().getTime();
-    return Number.isFinite(t) ? t : null;
-  }
-  if (typeof value === 'object') {
-    if (typeof value.timestampValue === 'string') return createdAtMillis(value.timestampValue);
-    if (typeof value.stringValue === 'string') return createdAtMillis(value.stringValue);
-    const seconds = value.seconds ?? value._seconds;
-    if (typeof seconds === 'number' && Number.isFinite(seconds)) return seconds * 1000;
-  }
-  return null;
+/** True only when nothing is stored. Explicit true and explicit false both stay put. */
+export function shouldBackfillMarketingEmail({ marketingEmails } = {}) {
+  return normalizeMarketingEmails(marketingEmails) === null;
 }
 
 /**
- * True only when the stored preference is missing AND the account is existing.
- * Explicit true and explicit false both return false (leave them alone).
+ * Admin dialog and the profile toggle. Missing still shows as on, so a legacy
+ * user (no choice yet) can opt out before the backfill writes true. New
+ * profiles always carry a bool, so they are not treated as legacy here.
  */
-export function shouldBackfillMarketingEmail({ marketingEmails, createdAtMs, createdAt } = {}, cutoffMs = MARKETING_CONSENT_CUTOFF_MS) {
-  if (normalizeMarketingEmails(marketingEmails) !== null) return false;
-  const created = createdAtMillis(createdAtMs ?? createdAt);
-  if (created == null) return true;
-  return created < cutoffMs;
-}
-
-/** Who the admin dialog and the Worker may mail. Explicit false always loses. */
-export function receivesMarketingEmail(profile, cutoffMs = MARKETING_CONSENT_CUTOFF_MS) {
+export function receivesMarketingEmail(profile) {
   if (!profile) return false;
-  const value = normalizeMarketingEmails(profile.marketingEmails);
-  if (value === true) return true;
-  if (value === false) return false;
-  return shouldBackfillMarketingEmail({
-    marketingEmails: null,
-    createdAtMs: profile.createdAtMs != null ? profile.createdAtMs : profile.createdAt,
-  }, cutoffMs);
+  return normalizeMarketingEmails(profile.marketingEmails) !== false;
 }
 
 /**
  * Per-recipient decision inside /admin/email-campaign.
- * `backfill` means "write true before sending". The admin's own uid is the
- * "בדיקה אליי" test and is delivered even when that admin turned email off;
- * an explicit opt-out is still not rewritten.
+ * `allowBackfill` is set only when the one-shot scan did not finish; then a
+ * missing value on someone we're already mailing is written true. The admin's
+ * own uid is the "בדיקה אליי" test and is delivered even when that admin
+ * turned email off; an explicit opt-out is still not rewritten.
  */
-export function recipientConsent({ marketingEmails, createdAt, uid, adminUid } = {}, cutoffMs = MARKETING_CONSENT_CUTOFF_MS) {
+export function recipientConsent({ marketingEmails, uid, adminUid, allowBackfill = false } = {}) {
   const value = normalizeMarketingEmails(marketingEmails);
-  const backfill = shouldBackfillMarketingEmail({ marketingEmails: value, createdAtMs: createdAt }, cutoffMs);
+  const backfill = !!allowBackfill && value === null;
   const send = value === true || backfill || (!!uid && uid === adminUid);
   return { value, backfill, send };
 }
