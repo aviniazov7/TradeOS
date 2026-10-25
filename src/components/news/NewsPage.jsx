@@ -2,7 +2,7 @@ import { useState, useEffect, useCallback, useMemo } from 'react';
 import { useSearchParams } from 'react-router-dom';
 import { m, AnimatePresence } from 'framer-motion';
 import { Newspaper, ExternalLink, Clock, Filter, CalendarDays, Volume2, Globe, BrainCircuit, RefreshCw } from 'lucide-react';
-import { fetchNewsDigest, translateNews } from '../../services/newsService';
+import { fetchNewsDigest, fetchNewsFeed, translateNews } from '../../services/newsService';
 import WhyItMoved from './WhyItMoved';
 import { hebrewEventTitle } from '../../utils/econCalendarTerms';
 import { headlineNeedsTranslation } from '../../utils/newsHeadline';
@@ -18,27 +18,6 @@ import CalendarAlertToggle from './CalendarAlertToggle';
 // so an English headline keeps its "?" and "." at the end while still sitting
 // right-aligned in the RTL page.
 const bidiText = { unicodeBidi: 'plaintext', textAlign: 'right' };
-
-// ─── News Sources (per market) ───
-const FEED_SOURCES = {
-  crypto: [
-    { key: 'cointelegraph', label: 'CoinTelegraph', rss: 'https://cointelegraph.com/rss' },
-    { key: 'coindesk', label: 'CoinDesk', rss: 'https://www.coindesk.com/arc/outboundfeeds/rss/' },
-    { key: 'decrypt', label: 'Decrypt', rss: 'https://decrypt.co/feed' },
-    { key: 'bitcoinmagazine', label: 'Bitcoin Magazine', rss: 'https://bitcoinmagazine.com/.rss/full/' },
-    { key: 'theblock', label: 'The Block', rss: 'https://www.theblock.co/rss.xml' },
-    { key: 'beincrypto', label: 'BeInCrypto', rss: 'https://beincrypto.com/feed/' },
-    { key: 'cryptoslate', label: 'CryptoSlate', rss: 'https://cryptoslate.com/feed/' },
-    { key: 'utoday', label: 'U.Today', rss: 'https://u.today/rss' },
-  ],
-  stocks: [
-    { key: 'yahoofinance', label: 'Yahoo Finance', rss: 'https://finance.yahoo.com/news/rssindex' },
-    { key: 'marketwatch', label: 'MarketWatch', rss: 'https://feeds.marketwatch.com/marketwatch/topstories/' },
-    { key: 'cnbc', label: 'CNBC', rss: 'https://www.cnbc.com/id/100003114/device/rss/rss.html' },
-    { key: 'investing', label: 'Investing.com', rss: 'https://www.investing.com/rss/news_25.rss' },
-    { key: 'nasdaq', label: 'Nasdaq', rss: 'https://www.nasdaq.com/feed/rssoutbound?category=Markets' },
-  ],
-};
 
 // Topic chips — deterministic keyword classification on title+description.
 // The feeds are English; the chips are Hebrew.
@@ -71,8 +50,6 @@ const RECENT_WINDOW_MS = 24 * 60 * 60 * 1000;
 // Quiet-time fallback: if nothing landed in the last 24h, show the newest N
 // articles instead so the feed is never awkwardly empty.
 const FEED_FALLBACK_COUNT = 20;
-
-const RSS2JSON_BASE = 'https://api.rss2json.com/v1/api.json?rss_url=';
 
 // Persist Hebrew translations (link -> {title,desc}) in localStorage so a
 // component remount (market/tab toggle, reload) does NOT re-hit the worker's
@@ -871,35 +848,25 @@ function NewsFeed({ market }) {
     setError(null);
 
     try {
-      const results = await Promise.allSettled(
-        FEED_SOURCES[market].map(async (source) => {
-          const res = await fetch(`${RSS2JSON_BASE}${encodeURIComponent(source.rss)}`);
-          if (!res.ok) throw new Error(`${source.key} failed`);
-          const data = await res.json();
-          if (data.status !== 'ok') throw new Error(`${source.key} status error`);
-          return (data.items || []).map((item) => ({
-            title: decodeHtmlEntities(item.title),
-            // Strip WordPress-feed boilerplate ("The post X appeared first on Y")
-            description: cleanHtml(item.description || item.content).replace(/The post .*$/i, '').trim(),
-            thumbnail: safeHttpUrl(item.thumbnail || item.enclosure?.link),
-            link: safeHttpUrl(item.link) || '#',
-            pubDate: item.pubDate,
-            author: item.author || source.label,
-            sourceKey: source.key,
-            sourceLabel: source.label,
-          }));
-        })
-      );
-
+      const items = await fetchNewsFeed(market);
       // Sort newest-first; items with an unparseable date sort to the end
       // (as -Infinity) so they stay contiguous and don't split day-groups.
       const ts = (d) => { const t = new Date(d).getTime(); return Number.isFinite(t) ? t : -Infinity; };
       // De-dupe syndicated articles that share a URL (keep first); '#'
       // (scheme-rejected) links are never treated as duplicates of each other.
       const seenLinks = new Set();
-      const allArticles = results
-        .filter((r) => r.status === 'fulfilled')
-        .flatMap((r) => r.value)
+      const allArticles = items
+        .map((item) => ({
+          title: decodeHtmlEntities(item.title),
+          // Strip WordPress-feed boilerplate ("The post X appeared first on Y")
+          description: cleanHtml(item.description || item.content).replace(/The post .*$/i, '').trim(),
+          thumbnail: safeHttpUrl(item.thumbnail),
+          link: safeHttpUrl(item.link) || '#',
+          pubDate: item.pubDate,
+          author: item.author || item.sourceLabel || '',
+          sourceKey: item.sourceKey,
+          sourceLabel: item.sourceLabel,
+        }))
         .filter((a) => {
           if (a.link === '#') return true;
           if (seenLinks.has(a.link)) return false;
@@ -913,7 +880,8 @@ function NewsFeed({ market }) {
       }
       setArticles(allArticles);
     } catch {
-      setError('\u05E9\u05D2\u05D9\u05D0\u05D4 \u05D1\u05D8\u05E2\u05D9\u05E0\u05EA \u05D4\u05D7\u05D3\u05E9\u05D5\u05EA');
+      setArticles([]);
+      setError('\u05DC\u05D0 \u05D4\u05E6\u05DC\u05D7\u05E0\u05D5 \u05DC\u05D8\u05E2\u05D5\u05DF \u05D7\u05D3\u05E9\u05D5\u05EA. \u05E0\u05E1\u05D4 \u05E9\u05D5\u05D1 \u05DE\u05D0\u05D5\u05D7\u05E8 \u05D9\u05D5\u05EA\u05E8.');
     } finally {
       setLoading(false);
     }

@@ -50,6 +50,7 @@ import { handleCandlesRoute } from './candles.js';
 import { handleOpenOrdersRoute } from './openOrders.js';
 import { handleCoinGecko } from './coingeckoProxy.js';
 import { verifyExchangeKeyReadOnly, KeyPermissionError } from './exchangeKeyPermissions.js';
+import { NEWS_FEEDS, parseRssItems, handleNewsFeed } from './newsFeed.js';
 
 // Binance's public market-data mirror — api.binance.com returns 403 to
 // Cloudflare Worker egress IPs in many regions, but data-api.binance.vision
@@ -3356,72 +3357,13 @@ async function handleAIProjectDescription(request, env, cors) {
 // One digest for ALL users: cron pulls the RSS feeds server-side, a single
 // Groq call clusters duplicate stories and ranks what actually matters, and
 // the result sits in KV (news:digest:{market}). Clients read the prepared
-// blob — zero AI cost per user, no client-side CORS/rss2json dependency.
-
-const NEWS_FEEDS = {
-  crypto: [
-    { key: 'cointelegraph', label: 'CoinTelegraph', rss: 'https://cointelegraph.com/rss' },
-    { key: 'coindesk', label: 'CoinDesk', rss: 'https://www.coindesk.com/arc/outboundfeeds/rss/' },
-    { key: 'decrypt', label: 'Decrypt', rss: 'https://decrypt.co/feed' },
-    { key: 'theblock', label: 'The Block', rss: 'https://www.theblock.co/rss.xml' },
-    { key: 'beincrypto', label: 'BeInCrypto', rss: 'https://beincrypto.com/feed/' },
-    { key: 'cryptoslate', label: 'CryptoSlate', rss: 'https://cryptoslate.com/feed/' },
-  ],
-  stocks: [
-    { key: 'yahoofinance', label: 'Yahoo Finance', rss: 'https://finance.yahoo.com/news/rssindex' },
-    { key: 'marketwatch', label: 'MarketWatch', rss: 'https://feeds.marketwatch.com/marketwatch/topstories/' },
-    { key: 'cnbc', label: 'CNBC', rss: 'https://www.cnbc.com/id/100003114/device/rss/rss.html' },
-    { key: 'investing', label: 'Investing.com', rss: 'https://www.investing.com/rss/news_25.rss' },
-    { key: 'nasdaq', label: 'Nasdaq', rss: 'https://www.nasdaq.com/feed/rssoutbound?category=Markets' },
-  ],
-};
+// blob — zero AI cost per user. The full article list is the same idea:
+// GET /news/feed reads those RSS feeds here (worker/newsFeed.js) instead of
+// the browser calling rss2json.
 
 const NEWS_DIGEST_REFRESH_MIN = 30;
 const NEWS_MAX_HEADLINES = 60;   // cap what we send to the model
 const NEWS_MAX_AGE_HOURS = 24;   // ignore older items
-
-// Minimal RSS <item> extraction. Workers have no DOMParser; the feeds above
-// are standard RSS 2.0 so tag-level regex extraction is sufficient and avoids
-// shipping an XML parser.
-function rssTag(block, tag) {
-  const m = block.match(new RegExp(`<${tag}[^>]*>([\\s\\S]*?)</${tag}>`, 'i'));
-  if (!m) return '';
-  const text = m[1]
-    .replace(/<!\[CDATA\[([\s\S]*?)\]\]>/g, '$1')
-    .replace(/<[^>]+>/g, '');
-  return decodeHtmlEntities(text).trim();
-}
-
-// Feed links end up as <a href> for every user, so a compromised feed must
-// not be able to smuggle a javascript:/data: URL through the digest.
-const NEWS_LINK_RE = /^https?:\/\//i;
-
-function parseRssItems(xml, source) {
-  const items = [];
-  const rssBlocks = xml.match(/<item[\s\S]*?<\/item>/gi) || [];
-  for (const block of rssBlocks.slice(0, 20)) {
-    const title = rssTag(block, 'title');
-    const link = rssTag(block, 'link');
-    const pubDate = rssTag(block, 'pubDate') || rssTag(block, 'dc:date');
-    if (title && NEWS_LINK_RE.test(link)) {
-      items.push({ title, link, pubDate, sourceKey: source.key, sourceLabel: source.label });
-    }
-  }
-  if (items.length) return items;
-  // Atom fallback (<entry> + <link href="..."/>) so a feed that switches
-  // format degrades gracefully instead of vanishing from the digest.
-  const atomBlocks = xml.match(/<entry[\s\S]*?<\/entry>/gi) || [];
-  for (const block of atomBlocks.slice(0, 20)) {
-    const title = rssTag(block, 'title');
-    const linkM = block.match(/<link[^>]*href="([^"]+)"/i);
-    const link = linkM ? linkM[1].replace(/&amp;/g, '&') : ''; // XML-escaped attr
-    const pubDate = rssTag(block, 'published') || rssTag(block, 'updated');
-    if (title && NEWS_LINK_RE.test(link)) {
-      items.push({ title, link, pubDate, sourceKey: source.key, sourceLabel: source.label });
-    }
-  }
-  return items;
-}
 
 const NEWS_EDITOR_BASE = `אתה עורך חדשות בכיר בדסק שוקי הון. תקבל רשימת כותרות (JSON) שנאספו ממספר אתרי חדשות ב-24 השעות האחרונות.
 
@@ -4311,6 +4253,15 @@ async function handleRequest(request, env) {
     return new Response(body, {
       headers: { ...cors, 'Content-Type': 'application/json', 'Cache-Control': 'public, max-age=120' },
     });
+  }
+
+  // Full article list. Public RSS, fetched here so the browser never talks to
+  // rss2json (that API now returns a Cloudflare challenge, so every source
+  // failed and the list stayed on the error state). Edge-cached; a failed
+  // refresh serves the last good copy.
+  if (request.method === 'GET' && path === '/news/feed') {
+    const cache = typeof caches !== 'undefined' ? caches.default : undefined;
+    return handleNewsFeed(request.url, cors, { cache });
   }
 
   // AI news digest — public read of the cron-prepared KV blob (news is public

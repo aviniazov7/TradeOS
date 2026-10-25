@@ -11,6 +11,19 @@ export async function fetchNewsDigest(market = 'crypto') {
   return res.json();
 }
 
+// The article list. rss2json sits behind a Cloudflare challenge and answers
+// 403 HTML to the browser, which made every source fail together. The Worker
+// fetches the RSS feeds itself (same path as the digest) and returns items.
+export async function fetchNewsFeed(market = 'crypto', { signal } = {}) {
+  const key = market === 'stocks' ? 'stocks' : 'crypto';
+  const res = await fetch(`${WORKER_BASE}/news/feed?market=${encodeURIComponent(key)}`, { signal });
+  if (!res.ok) throw new Error('טעינת החדשות נכשלה');
+  const data = await res.json().catch(() => null);
+  const items = Array.isArray(data?.items) ? data.items : [];
+  if (!items.length) throw new Error('טעינת החדשות נכשלה');
+  return items;
+}
+
 // News -> price attribution, prepared on the cron. Returns
 // { updatedAt, findings[], loudest[] }; findings carry a ready Hebrew sentence.
 export async function fetchNewsImpact() {
