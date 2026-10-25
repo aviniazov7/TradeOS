@@ -51,12 +51,20 @@ describe('ExchangeLogo', () => {
 
   it('puts a favicon on a neutral chip instead of a white tile', async () => {
     document.documentElement.classList.remove('light');
-    const view = await render({ exchange: 'vantage' });
+    const view = await render({ exchange: 'icmarkets' });
     const frame = view.el.querySelector('span');
     const img = view.el.querySelector('img');
-    expect(img.getAttribute('src')).toContain('domain=vantagemarkets.com');
+    expect(img.getAttribute('src')).toContain('domain=icmarkets.com');
     expect(frame.className).toContain('bg-white/10');
     expect(frame.className).not.toMatch(/(?:^|\s)bg-white(?:\s|$)/);
+    await view.unmount();
+  });
+
+  it('renders a stored Vantage value without throwing', async () => {
+    const view = await render({ exchange: 'Vantage', badge: 'יומן' });
+    expect(view.el.querySelector('img, span')).toBeTruthy();
+    const src = view.el.querySelector('img')?.getAttribute('src') || '';
+    expect(src).not.toContain('/logos/exchanges/');
     await view.unmount();
   });
 });

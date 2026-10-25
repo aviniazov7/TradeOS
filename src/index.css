@@ -664,11 +664,17 @@ input[type="number"] {
   pointer-events: none;
   opacity: 0;
   transition: opacity 0.3s;
-  background: radial-gradient(240px circle at var(--spot-x, 50%) var(--spot-y, 50%), rgba(56, 189, 248, 0.10), transparent 65%);
+  background: radial-gradient(240px circle at var(--spot-x, 50%) var(--spot-y, 50%), var(--spot, rgba(56, 189, 248, 0.10)), transparent 65%);
 }
 @media (hover: hover) { .spotlight-card:hover::before { opacity: 1; } }
 .light .spotlight-card::before {
-  background: radial-gradient(240px circle at var(--spot-x, 50%) var(--spot-y, 50%), rgba(37, 99, 235, 0.08), transparent 65%);
+  background: radial-gradient(240px circle at var(--spot-x, 50%) var(--spot-y, 50%), var(--spot, rgba(37, 99, 235, 0.08)), transparent 65%);
+}
+/* Exchange tiles set --beam-from from their own accent. Without this, hover
+   falls back to the app's cyan border. */
+.exchange-card { transition: border-color 0.2s ease; }
+.exchange-card:hover {
+  border-color: color-mix(in srgb, var(--beam-from, #38bdf8) 40%, transparent);
 }
 /* Faint scan-line highlight along the top edge */
 .bento-card::before {
