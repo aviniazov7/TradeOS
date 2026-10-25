@@ -80,7 +80,7 @@ export default function MobileNav() {
         {/* Active label sits on the blue pill, so it stays white in both themes. */}
         <span
           className={`flex flex-col items-center gap-1 transition-colors duration-200 ${
-            isActive ? 'text-white' : 'text-text-muted'
+            isActive ? 'top-nav-on' : 'text-text-muted'
           }`}
         >
           <item.icon
@@ -122,7 +122,7 @@ export default function MobileNav() {
         {/* Same sliding blue pill as the top bar. */}
         <m.div
           aria-hidden="true"
-          className="absolute top-1.5 bottom-1.5 rounded-full bg-accent-primary shadow-[0_8px_24px_-8px_rgba(37,99,235,0.9)] pointer-events-none"
+          className="top-nav-pill absolute top-1.5 bottom-1.5 pointer-events-none"
           initial={false}
           animate={
             pill.ready

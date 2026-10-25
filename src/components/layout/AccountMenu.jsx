@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from 'react';
 import { Link, useLocation } from 'react-router-dom';
-import { Calculator, Radar, Shield } from 'lucide-react';
+import { Calculator, ChevronDown, Radar, Shield } from 'lucide-react';
 import UserAvatar from '../shared/UserAvatar';
 import PositionCalculator from '../calculator/PositionCalculator';
 import { useAuth } from '../../contexts/AuthContext';
@@ -8,7 +8,8 @@ import { MORE_LINKS } from './primaryNav';
 
 // The old hamburger list. The four top tabs are not repeated here.
 export default function AccountMenu() {
-  const { isAdmin } = useAuth();
+  const { isAdmin, user, profile } = useAuth();
+  const name = String(profile?.displayName || user?.displayName || '').trim().split(/\s+/)[0];
   const { pathname } = useLocation();
   const [open, setOpen] = useState(false);
   const [calcOpen, setCalcOpen] = useState(false);
@@ -49,9 +50,11 @@ export default function AccountMenu() {
           aria-expanded={open}
           aria-haspopup="true"
           onClick={() => setOpen((v) => !v)}
-          className="block rounded-full border border-border-primary hover:border-accent-primary transition-colors cursor-pointer"
+          className="account-chip flex items-center gap-2 rounded-full py-1 ps-1 pe-2 md:pe-2.5 transition-colors cursor-pointer"
         >
           <UserAvatar className="w-8 h-8" />
+          {name ? <span className="hidden md:inline max-w-[7.5rem] truncate text-sm font-semibold text-text-primary">{name}</span> : null}
+          <ChevronDown className="hidden md:block w-3.5 h-3.5 text-text-muted" />
         </button>
         {open && (
           <nav

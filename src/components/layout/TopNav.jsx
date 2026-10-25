@@ -1,9 +1,18 @@
 import { useCallback, useLayoutEffect, useRef, useState } from 'react';
 import { Link, useLocation } from 'react-router-dom';
+import { BookOpen, LayoutDashboard, Link2, Newspaper } from 'lucide-react';
 import { PRIMARY_TABS, primaryTabId } from './primaryNav';
 
-// Four destinations. The blue pill is measured in viewport pixels and placed
-// with a physical translate, so RTL does not send it the wrong way.
+const ICONS = {
+  home: LayoutDashboard,
+  journal: BookOpen,
+  news: Newspaper,
+  exchange: Link2,
+};
+
+// Four destinations inside one rounded track. The active tab is a solid white
+// pill with dark text. Position is measured in viewport pixels so RTL does
+// not slide it the wrong way.
 export default function TopNav() {
   const { pathname, search } = useLocation();
   const active = primaryTabId(pathname, search);
@@ -51,13 +60,13 @@ export default function TopNav() {
     <nav aria-label="ניווט עליון" className="min-w-0">
       <div
         ref={listRef}
-        className="relative flex w-max min-w-full md:min-w-0 md:w-auto items-center gap-1 p-1"
+        className="top-nav-track relative flex w-max min-w-full md:min-w-0 md:w-auto items-center gap-0.5 rounded-full p-1"
       >
         {box && box.w > 0 && (
           <span
             aria-hidden="true"
             data-nav-pill=""
-            className="absolute z-0 rounded-lg bg-accent-primary shadow-[0_8px_24px_-6px_rgba(37,99,235,0.9)] pointer-events-none transition-[transform,width,height] duration-500 ease-[cubic-bezier(0.22,1,0.36,1)]"
+            className="top-nav-pill absolute z-0 pointer-events-none transition-[transform,width,height] duration-500 ease-[cubic-bezier(0.22,1,0.36,1)]"
             style={{
               left: 0,
               top: 0,
@@ -69,14 +78,16 @@ export default function TopNav() {
         )}
         {PRIMARY_TABS.map((tab) => {
           const on = tab.id === active;
+          const Icon = ICONS[tab.id];
           return (
             <Link
               key={tab.id}
               to={tab.to}
               data-tab-id={tab.id}
               aria-current={on ? 'page' : undefined}
-              className={`relative z-[1] inline-flex h-9 shrink-0 items-center justify-center rounded-lg px-3 text-sm font-semibold whitespace-nowrap transition-colors ${on ? 'text-white' : 'text-text-secondary hover:text-text-primary hover:bg-bg-tertiary'}`}
+              className="top-nav-link relative z-[1] inline-flex h-9 shrink-0 items-center justify-center gap-1.5 rounded-full px-3 text-sm font-semibold whitespace-nowrap"
             >
+              {Icon ? <Icon className="w-3.5 h-3.5 shrink-0" strokeWidth={2.2} /> : null}
               {tab.label}
             </Link>
           );

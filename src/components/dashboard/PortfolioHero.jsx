@@ -41,12 +41,15 @@ function buildChart(points) {
 //   declaredStart: sum of journal opening balances. The % is that period's
 //   closed-trade P&L on this capital — the same dollars as רווח/הפסד.
 //   A withdrawal changes `balance` and is not part of the %.
-export default function PortfolioHero({ balance, declaredStart = 0, series, hidden }) {
-  const [period, setPeriod] = useState(() => {
+export default function PortfolioHero({ balance, declaredStart = 0, series, hidden, period: periodProp, onPeriod }) {
+  const controlled = periodProp != null && typeof onPeriod === 'function';
+  const [periodState, setPeriodState] = useState(() => {
     try { return localStorage.getItem(PERIOD_KEY) || 'all'; } catch { return 'all'; }
   });
+  const period = controlled ? periodProp : periodState;
   const pick = (id) => {
-    setPeriod(id);
+    if (controlled) onPeriod(id);
+    else setPeriodState(id);
     try { localStorage.setItem(PERIOD_KEY, id); } catch { /* private mode */ }
   };
   const s = useMemo(() => {
@@ -76,7 +79,7 @@ export default function PortfolioHero({ balance, declaredStart = 0, series, hidd
       : { label: 'אחוז הצלחה', value: s.winRate == null ? '—' : `${s.winRate}%`, cls: 'text-text-primary' };
 
   return (
-    <Card className="rounded-2xl p-4 md:p-5 flex flex-col gap-4 h-full">
+    <Card className="dash-card rounded-2xl p-4 md:p-5 flex flex-col gap-4 h-full">
       <div className="flex flex-wrap items-start justify-between gap-3">
         <div className="flex flex-col gap-1.5 min-w-0 flex-1 basis-48">
           <span className="text-[13px] font-medium text-text-secondary">שווי תיקים כולל</span>
@@ -91,14 +94,14 @@ export default function PortfolioHero({ balance, declaredStart = 0, series, hidd
             )}
           </div>
         </div>
-        <div role="group" aria-label="תקופה" className="flex gap-0.5 p-[3px] rounded-xl bg-bg-tertiary border border-border-primary">
+        {!controlled && <div role="group" aria-label="תקופה" className="flex gap-0.5 p-[3px] rounded-xl bg-bg-tertiary border border-border-primary">
           {PERIODS.map((p) => (
             <button key={p.id} type="button" onClick={() => pick(p.id)} aria-pressed={period === p.id}
               className={`h-9 px-3.5 rounded-[9px] text-[13px] font-bold transition-colors cursor-pointer ${period === p.id ? 'bg-accent-primary/15 text-accent-primary' : 'text-text-secondary hover:text-text-primary'}`}>
               {p.label}
             </button>
           ))}
-        </div>
+        </div>}
       </div>
 
       <div className="grid grid-cols-3 gap-2.5">
@@ -133,9 +136,9 @@ export default function PortfolioHero({ balance, declaredStart = 0, series, hidd
             {hp && <line x1={hp.x} x2={hp.x} y1="0" y2={H} stroke="var(--color-border-hover)" vectorEffect="non-scaling-stroke" />}
           </svg>
           {hp && (
-            <div className="absolute top-1 -translate-x-1/2 px-2 py-1 rounded-lg bg-bg-overlay border border-border-primary text-[11px] whitespace-nowrap pointer-events-none"
-              style={{ left: `${hpLeft}%` }}>
-              <span className={`num-mono font-bold ${tone(hp.value)}`}>{m(money(hp.value))}</span>
+            <div className="absolute top-1 -translate-x-1/2 px-2.5 py-1 rounded-full text-[11px] font-bold text-white whitespace-nowrap pointer-events-none"
+              style={{ left: `${hpLeft}%`, background: '#111218' }}>
+              <span className="num-mono">{m(money(hp.value))}</span>
               {hp.t ? <span className="text-text-secondary"> · {fmtDate(hp.t)}</span> : null}
             </div>
           )}
