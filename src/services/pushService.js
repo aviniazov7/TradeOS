@@ -257,11 +257,13 @@ export async function adminSendBulkNotification({ uids, title, body, url }) {
 }
 
 // Admin-only: a "come back to TradeOS" email to one user or a segment.
-// uids: the users to mail. The Worker reads each one's address and marketing
-// opt-in from their profile and mails ONLY those who opted in (plus the admin
-// themself, for the test button). Returns { ok, sent, failed, deferred,
-// targeted, skippedNoConsent, error? }. On a non-2xx response the thrown
-// error still carries sent/failed/deferred so the toast can show counts.
+// uids: the users to mail. The Worker reads each one's address and
+// marketingEmails flag from their profile and mails ONLY where that flag is
+// true (legacy accounts with no choice are backfilled to true first). The
+// admin's own uid is always delivered, for the test button. Returns { ok,
+// sent, failed, deferred, targeted, skippedNoConsent, error? }. On a non-2xx
+// response the thrown error still carries sent/failed/deferred so the toast
+// can show counts.
 export async function adminSendEmailCampaign({ uids, subject, headline, message, ctaText, ctaPath }) {
   const res = await fetch(`${WORKER_BASE}/admin/email-campaign`, {
     method: 'POST',

@@ -93,7 +93,7 @@ describe('deliverWithGmail', () => {
     const cap = captureTransport();
     const kv = memoryKv();
     const r = await deliverWithGmail(env(), [
-      { to: 'a@x.com', subject: 'פרסומת: היי', html: '<p>א</p>', headers: { 'List-Unsubscribe': '<https://w.example/u>' } },
+      { to: 'a@x.com', subject: 'פרסומת: היי', html: '<p>א</p>', text: 'א', headers: { 'List-Unsubscribe': '<https://w.example/u>' } },
       { to: 'b@x.com', subject: 'פרסומת: היי', html: '<p>ב</p>', replyTo: 'admin@x.com' },
     ], { createTransport: cap.createTransport, kv, dateStr, gapMs: 200, sleep: async (ms) => { cap.sleeps = (cap.sleeps || []).concat(ms); } });
 
@@ -102,6 +102,8 @@ describe('deliverWithGmail', () => {
     expect(cap.calls.every((m) => typeof m.to === 'string' && !m.to.includes(','))).toBe(true);
     expect(cap.calls.every((m) => m.from === GMAIL_FROM)).toBe(true);
     expect(cap.calls[0].headers['List-Unsubscribe']).toBe('<https://w.example/u>');
+    expect(cap.calls[0].text).toBe('א');
+    expect(cap.calls[1].text).toBeUndefined();
     expect(cap.calls[1].replyTo).toBe('admin@x.com');
     expect(cap.sleeps).toEqual([200]);
     expect(cap.calls.options.auth.pass).toBe('abcdefghijklmnop');

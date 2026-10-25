@@ -3,13 +3,16 @@ import toast from 'react-hot-toast';
 import { Mail } from 'lucide-react';
 import { useAuth } from '../../contexts/AuthContext';
 import { setUserProfile, timestamp } from '../../services/firestoreService';
+import { receivesMarketingEmail } from '../../utils/marketingConsent';
 
-// Opt-in for marketing email (updates and offers). Off unless the user turns it
-// on, here or with the box on the signup form; every campaign email also has a
-// one-click unsubscribe. Service emails (Premium receipts…) don't depend on it.
+// Email updates and reminders. On when the profile says so; a legacy account
+// with no stored choice counts as on (the Worker backfills those to true).
+// Turning it off writes an explicit false, which the backfill will not undo.
+// Every campaign email also has a one-click unsubscribe. Service emails
+// (Premium receipts…) don't depend on it.
 export default function MarketingEmailToggle() {
   const { user, profile } = useAuth();
-  const on = profile?.marketingEmails === true;
+  const on = receivesMarketingEmail(profile);
   const [busy, setBusy] = useState(false);
 
   const toggle = async () => {
@@ -17,7 +20,7 @@ export default function MarketingEmailToggle() {
     setBusy(true);
     try {
       await setUserProfile(user.uid, { marketingEmails: !on, marketingEmailsAt: timestamp() });
-      toast.success(on ? 'הוסרת מרשימת התפוצה' : 'נרשמת לעדכונים והטבות במייל');
+      toast.success(on ? 'הוסרת מרשימת התפוצה' : 'נרשמת לעדכונים ותזכורות במייל');
     } catch {
       toast.error('העדכון נכשל. נסה שוב');
     } finally {
@@ -31,8 +34,8 @@ export default function MarketingEmailToggle() {
       <span className="flex items-center gap-3 min-w-0">
         <Mail className="w-5 h-5 text-text-muted shrink-0" />
         <span className="min-w-0">
-          <span className="block text-sm text-text-primary">עדכונים והטבות במייל</span>
-          <span className="block text-xs text-text-muted leading-relaxed">נשלח רק אם אישרת, ואפשר לבטל בכל רגע. הודעות שירות (כמו אישור Premium) לא תלויות בזה.</span>
+          <span className="block text-sm text-text-primary">עדכונים ותזכורות במייל</span>
+          <span className="block text-xs text-text-muted leading-relaxed">אפשר לכבות בכל רגע. הודעות שירות (כמו אישור Premium) לא תלויות בזה.</span>
         </span>
       </span>
       <span aria-hidden className={`w-10 h-5 rounded-full shrink-0 transition-colors ${on ? 'bg-accent-primary' : 'bg-border-primary'} relative`}>
