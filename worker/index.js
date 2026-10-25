@@ -605,7 +605,7 @@ async function checkChurnedPremium(env) {
 }
 
 // ---- Email sending (Gmail SMTP) --------------------------------------------
-// One recipient per message, through nodemailer (smtp.gmail.com:465). The
+// One recipient per message, through worker-mailer (smtp.gmail.com:465). The
 // app password is the Worker secret GMAIL_APP_PASSWORD. Returns {ok, status,
 // message} and never throws — cron push keeps running when mail is down.
 // `message` is already a Hebrew sentence safe to show in the admin UI.

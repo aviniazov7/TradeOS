@@ -1,11 +1,16 @@
 import { describe, it, expect, vi } from 'vitest';
-import nodemailer from 'nodemailer';
 import {
   GMAIL_USER, GMAIL_FROM, GMAIL_DAILY_CAP,
   normalizeAppPassword, gmailTransportOptions, gmailQuotaKey, israelDateStr,
   assertSingleRecipient, friendlyMailError, deliverWithGmail, takeGmailSlot,
-  MISSING_SECRET_MESSAGE, DAILY_CAP_MESSAGE,
+  openGmailTransport, MISSING_SECRET_MESSAGE, DAILY_CAP_MESSAGE,
 } from './gmailMail';
+
+const { workerMailerConnect } = vi.hoisted(() => ({ workerMailerConnect: vi.fn() }));
+vi.mock('worker-mailer', () => ({
+  WorkerMailer: { connect: workerMailerConnect },
+  LogLevel: { DEBUG: 0, INFO: 1, WARN: 2, ERROR: 3, NONE: 4 },
+}));
 
 function memoryKv() {
   const store = new Map();
@@ -21,23 +26,19 @@ function env(extra = {}) {
 }
 
 describe('gmail transport', () => {
-  it('uses nodemailer against smtp.gmail.com:465 with the TradeOS mailbox', () => {
+  it('uses worker-mailer against smtp.gmail.com:465 with implicit TLS', () => {
     const options = gmailTransportOptions('abcd efgh ijkl mnop');
     expect(options).toMatchObject({
       host: 'smtp.gmail.com',
       port: 465,
       secure: true,
-      auth: { user: GMAIL_USER, pass: 'abcdefghijklmnop' },
-      pool: true,
-      maxConnections: 1,
+      startTls: false,
+      name: 'tradeos.app',
+      credentials: { username: GMAIL_USER, password: 'abcdefghijklmnop' },
+      authType: ['plain', 'login'],
     });
-    const transport = nodemailer.createTransport(options);
-    expect(transport.options.host).toBe('smtp.gmail.com');
-    expect(transport.options.port).toBe(465);
-    expect(transport.options.secure).toBe(true);
-    expect(transport.options.auth.user).toBe('tradeos.app@gmail.com');
-    expect(transport.options.auth.pass).toBe('abcdefghijklmnop');
-    transport.close();
+    // DEBUG (0) would write the AUTH command, which is the password.
+    expect(options.logLevel).toBeGreaterThan(0);
   });
 
   it('strips spaces from the app password and never treats an empty secret as set', () => {
@@ -66,6 +67,28 @@ describe('friendlyMailError', () => {
     const bad = Object.assign(new Error('invalid-recipient'), { responseCode: 422 });
     expect(friendlyMailError(bad)).toMatch(/לא תקינה/);
     expect(friendlyMailError(Object.assign(new Error('nope'), { responseCode: 500 }))).toBe('שליחת המייל נכשלה · קוד 500');
+  });
+
+  it('reads worker-mailer SMTP text when there is no responseCode', () => {
+    const auth = new Error('Failed to plain authentication: 535-5.7.8 Username and Password not accepted');
+    expect(friendlyMailError(auth)).toMatch(/סיסמת אפליקציה/);
+    expect(friendlyMailError(auth)).toContain('קוד 535');
+    const daily = new Error('Invalid MAIL FROM: <tradeos.app@gmail.com> 550 5.4.5 Daily user sending quota exceeded');
+    expect(friendlyMailError(daily)).toMatch(/מכסת השליחה היומית/);
+    expect(friendlyMailError(daily)).toContain('קוד 550');
+    const rcpt = new Error('Invalid RCPT TO: <nope@x.com> 550-5.1.1 The email account that you tried to reach does not exist');
+    expect(friendlyMailError(rcpt)).toMatch(/לא תקינה/);
+    expect(friendlyMailError(rcpt)).toContain('קוד 550');
+    const slow = new Error('Failed to EHLO. 421 4.7.0 try again later');
+    expect(friendlyMailError(slow)).toMatch(/להאט/);
+    expect(friendlyMailError(slow)).toContain('קוד 421');
+  });
+
+  it('keeps a short reason when the socket dies before Gmail replies', () => {
+    const err = Object.assign(new Error('proxy request failed, cannot connect to the specified address'), { code: 'ECONNECTION' });
+    expect(friendlyMailError(err)).toBe('שליחת המייל נכשלה · ECONNECTION · proxy request failed, cannot connect to the specified address');
+    expect(friendlyMailError(new Error('proxy request failed on port 465'))).toBe('שליחת המייל נכשלה · proxy request failed on port 465');
+    expect(friendlyMailError(new Error('Socket timeout!'))).toBe('שליחת המייל נכשלה · Socket timeout!');
   });
 });
 
@@ -106,7 +129,8 @@ describe('deliverWithGmail', () => {
     expect(cap.calls[1].text).toBeUndefined();
     expect(cap.calls[1].replyTo).toBe('admin@x.com');
     expect(cap.sleeps).toEqual([200]);
-    expect(cap.calls.options.auth.pass).toBe('abcdefghijklmnop');
+    expect(cap.calls.options.credentials).toEqual({ username: GMAIL_USER, password: 'abcdefghijklmnop' });
+    expect(cap.calls.options).toMatchObject({ host: 'smtp.gmail.com', port: 465, secure: true, startTls: false });
     expect(kv.store.get(gmailQuotaKey(dateStr))).toBe('2');
   });
 
@@ -229,6 +253,130 @@ describe('deliverWithGmail', () => {
     expect(seen).toEqual(['a@x.com']);
     expect(r).toMatchObject({ sent: 1, failed: 0, deferred: 2 });
     expect(r.firstError).toMatch(/נעצרה באמצע/);
+  });
+
+  it('stops the batch when worker-mailer reports a rejected app password', async () => {
+    const seen = [];
+    const createTransport = () => ({
+      sendMail: async (mail) => {
+        seen.push(mail.to);
+        throw new Error('Failed to plain authentication: 535-5.7.8 Username and Password not accepted');
+      },
+      close() {},
+    });
+    const r = await deliverWithGmail(env(), [
+      { to: 'a@x.com', subject: 's', html: 'h' },
+      { to: 'b@x.com', subject: 's', html: 'h' },
+    ], { createTransport, dateStr, gapMs: 0, kv: memoryKv() });
+    expect(seen).toEqual(['a@x.com']);
+    expect(r).toMatchObject({ sent: 0, failed: 1, deferred: 1 });
+    expect(r.firstError).toMatch(/דחה את ההתחברות/);
+    expect(r.firstError).toContain('קוד 535');
+  });
+
+  it('retries once when worker-mailer only has the SMTP text for a slow-down', async () => {
+    let n = 0;
+    const createTransport = () => ({
+      sendMail: async () => {
+        n++;
+        if (n === 1) throw new Error('421 4.7.0 try again later');
+        return {};
+      },
+      close() {},
+    });
+    const slept = [];
+    const r = await deliverWithGmail(env(), [
+      { to: 'a@x.com', subject: 's', html: 'h' },
+    ], { createTransport, dateStr, gapMs: 0, retryGapMs: 50, kv: memoryKv(), sleep: async (ms) => { slept.push(ms); } });
+    expect(n).toBe(2);
+    expect(slept).toEqual([50]);
+    expect(r).toMatchObject({ ok: true, sent: 1, failed: 0 });
+  });
+
+  it('logs message and code without the app password when the connection fails', async () => {
+    const spy = vi.spyOn(console, 'error').mockImplementation(() => {});
+    const err = new Error('Socket timeout! abcdefghijklmnop');
+    err.code = 'ETIMEDOUT';
+    const createTransport = () => { throw err; };
+    const r = await deliverWithGmail(env(), [
+      { to: 'a@x.com', subject: 's', html: 'h' },
+    ], { createTransport, dateStr, gapMs: 0, kv: memoryKv() });
+    expect(r).toMatchObject({ ok: false, sent: 0, failed: 1, deferred: 0 });
+    expect(r.firstError).toBe('שליחת המייל נכשלה · ETIMEDOUT · Socket timeout! [redacted]');
+    expect(r.firstError).not.toContain('abcdefghijklmnop');
+    const flat = spy.mock.calls.map((call) => call.map((part) => String(part)).join(' ')).join('\n');
+    expect(flat).toContain('gmail delivery failed');
+    expect(flat).toContain('Socket timeout!');
+    expect(flat).toContain('ETIMEDOUT');
+    expect(flat).not.toContain('abcdefghijklmnop');
+    expect(flat).not.toContain('abcd efgh');
+    spy.mockRestore();
+  });
+
+  it('opens worker-mailer and forwards html, text, reply-to, and List-Unsubscribe', async () => {
+    workerMailerConnect.mockReset();
+    const send = vi.fn(async () => {});
+    const close = vi.fn(async () => {});
+    workerMailerConnect.mockResolvedValue({ send, close });
+    const r = await deliverWithGmail(env(), [
+      {
+        to: 'a@x.com',
+        subject: 'שלום',
+        html: '<p>א</p>',
+        text: 'א',
+        replyTo: 'admin@x.com',
+        headers: { 'List-Unsubscribe': '<https://w.example/u>' },
+      },
+    ], { kv: memoryKv(), dateStr, gapMs: 0 });
+    expect(r).toMatchObject({ ok: true, sent: 1, failed: 0 });
+    expect(workerMailerConnect).toHaveBeenCalledTimes(1);
+    expect(workerMailerConnect.mock.calls[0][0]).toMatchObject({
+      host: 'smtp.gmail.com',
+      port: 465,
+      secure: true,
+      startTls: false,
+      credentials: { username: GMAIL_USER, password: 'abcdefghijklmnop' },
+      authType: ['plain', 'login'],
+    });
+    expect(send).toHaveBeenCalledWith({
+      from: { name: 'TradeOS', email: GMAIL_USER },
+      to: 'a@x.com',
+      subject: 'שלום',
+      html: '<p>א</p>',
+      text: 'א',
+      reply: 'admin@x.com',
+      headers: { 'List-Unsubscribe': '<https://w.example/u>' },
+    });
+    expect(close).toHaveBeenCalledTimes(1);
+  });
+
+  it('maps a mocked worker-mailer session onto one recipient per message', async () => {
+    const sent = [];
+    const close = vi.fn(async () => {});
+    const connect = vi.fn(async () => ({
+      send: async (message) => { sent.push(message); },
+      close,
+    }));
+    const r = await deliverWithGmail(env(), [
+      { to: 'a@x.com', subject: 's', html: '<p>a</p>', text: 'a', headers: { 'List-Unsubscribe': '<https://w.example/u>' } },
+      { to: 'b@x.com', subject: 's', html: '<p>b</p>' },
+    ], {
+      createTransport: (options) => openGmailTransport(options, { connect }),
+      kv: memoryKv(),
+      dateStr,
+      gapMs: 0,
+    });
+    expect(r).toMatchObject({ ok: true, sent: 2, failed: 0 });
+    expect(connect).toHaveBeenCalledTimes(1);
+    expect(sent.map((message) => message.to)).toEqual(['a@x.com', 'b@x.com']);
+    expect(sent[0].headers['List-Unsubscribe']).toBe('<https://w.example/u>');
+    expect(sent[0].text).toBe('a');
+    expect(sent[1].text).toBeUndefined();
+    expect(sent.map((message) => message.from)).toEqual([
+      { name: 'TradeOS', email: GMAIL_USER },
+      { name: 'TradeOS', email: GMAIL_USER },
+    ]);
+    expect(close).toHaveBeenCalledTimes(1);
   });
 });
 
