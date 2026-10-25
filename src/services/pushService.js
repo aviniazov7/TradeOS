@@ -281,10 +281,16 @@ export async function adminSendEmailCampaign({ uids, subject, headline, message,
   return data;
 }
 
-// Admin-only: reminder copy from what's actually moving in the market now.
-// Returns { source: 'ai'|'template', title, push, email, cta, path, facts }.
-export async function adminGenerateMarketHook() {
-  const res = await fetch(`${WORKER_BASE}/admin/ai-hook`, { method: 'POST', headers: await authHeader(), body: '{}' });
+// Admin-only: a calm personal reminder draft. Pass a uid when there is one
+// recipient so the draft uses that person's trade count, open trades, journal
+// days and last login. A segment gets a general draft; the send fills each
+// person's numbers. Returns { source: 'ai'|'template', title, push, email, cta, path, stats }.
+export async function adminGenerateReminder(uid) {
+  const res = await fetch(`${WORKER_BASE}/admin/ai-hook`, {
+    method: 'POST',
+    headers: await authHeader(),
+    body: JSON.stringify(uid ? { uid } : {}),
+  });
   const data = await res.json().catch(() => ({}));
   if (!res.ok) throw new Error(data.error || 'יצירת ההודעה נכשלה');
   return data;

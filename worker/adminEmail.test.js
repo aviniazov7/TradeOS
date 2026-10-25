@@ -52,6 +52,8 @@ describe('buildCampaignEmails', () => {
     expect(m.html).toContain('#0d0d0d');
     expect(m.html).toContain('#222222');
     expect(m.html).toContain('#2563eb');
+    expect(m.html.match(/bgcolor="#2563eb"/g)).toHaveLength(1);
+    expect(m.html).not.toContain('height="4"');
     expect(m.html).not.toContain('#070b12');
     expect(m.html).toContain('TradeOS');
     expect(m.html).toContain('role="presentation"');
@@ -60,6 +62,28 @@ describe('buildCampaignEmails', () => {
     expect(m.html).toContain('u + .body .gm-d');
     expect(m.text).toContain(`${APP_URL}/journal`);
     expect(m.text).not.toContain('<p');
+  });
+
+  it('uses the recipient stats as a personal update and still prefixes פרסומת', () => {
+    const [m] = buildCampaignEmails({
+      ...base,
+      recipients: [{
+        email: 'a@x.com',
+        name: 'דנה',
+        unsubscribeUrl: un(1),
+        stats: { weekTrades: 3, openTrades: 2, journalDays: 4, daysSinceLogin: 5 },
+      }],
+    });
+    expect(m.subject).toBe(`${AD_PREFIX}השבוע תיעדת 3 עסקאות`);
+    expect(m.subject.startsWith('פרסומת')).toBe(true);
+    expect(m.html).toContain('יש לך 2 עסקאות פתוחות');
+    expect(m.html).toContain('השבוע כתבת ביומן 4 ימים');
+    expect(m.html).toContain('לפני 5 ימים');
+    expect(m.html).toContain('תזכורת · פרסומת');
+    expect(m.html).toContain('להסרה מרשימת התפוצה');
+    expect(m.headers['List-Unsubscribe']).toBe(`<${un(1)}>`);
+    expect(m.text).toContain('השבוע תיעדת 3 עסקאות');
+    expect(m.html).not.toContain('מתגעגעים');
   });
 
   it('marks the subject as an advertisement ("פרסומת")', () => {
