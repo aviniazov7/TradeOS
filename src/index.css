@@ -55,11 +55,10 @@ input[type="month"] {
 
 body {
   overscroll-behavior: none;
-  /* True black (iOS-style) — a single whisper-faint neutral glow for depth,
-     no blue tint. */
+  /* Jet black — a single whisper-faint neutral glow for depth, no blue tint. */
   background:
     radial-gradient(ellipse 1100px 700px at 50% -8%, rgba(255, 255, 255, 0.022) 0%, transparent 60%),
-    #000000;
+    #0a0a0a;
   /* dvh = the screen height you actually see. 100vh on phones includes the
      area behind the browser bar, which made the whole app scroll up and down a
      little even when there was nothing to scroll. */
@@ -79,20 +78,17 @@ body {
 @theme {
   --font-sans: 'Heebo', 'Inter', sans-serif;
 
-  /* Background — pure-black base with translucent "glass" surfaces on top
-     (Apple-style frost). Over true black a blur has nothing to show, so the
-     glass has to read from a slightly-lighter NEUTRAL-GREY fill + a bright
-     hairline edge — that's what makes the frost visible. Grey (not blue): the
-     blue was saturate() amplifying the cyan accent, which is now gone. */
-  --color-bg-primary: #000000;
-  --color-bg-secondary: rgba(255, 255, 255, 0.05);
-  --color-bg-tertiary: rgba(255, 255, 255, 0.03);
-  --color-bg-overlay: rgba(12, 12, 14, 0.8);
-  --color-bg-solid: rgba(14, 14, 16, 0.82);
+  /* Background — jet black page, near-black cards. The hairline border is
+     what separates a #141414 surface from the #0a0a0a page. */
+  --color-bg-primary: #0a0a0a;
+  --color-bg-secondary: #141414;
+  --color-bg-tertiary: #1a1a1a;
+  --color-bg-overlay: rgba(10, 10, 10, 0.86);
+  --color-bg-solid: #141414;
 
-  /* Borders */
-  --color-border-primary: rgba(255, 255, 255, 0.08);
-  --color-border-hover: rgba(255, 255, 255, 0.18);
+  /* Borders — a touch stronger so cards read against jet black. */
+  --color-border-primary: rgba(255, 255, 255, 0.12);
+  --color-border-hover: rgba(255, 255, 255, 0.22);
 
   /* Text */
   --color-text-primary: #f0f0f0;
@@ -104,12 +100,11 @@ body {
      #606070 ticks failed both size and contrast. */
   --color-chart-tick: #c8c8d4;
 
-  /* Accent (Cyan/turquoise) — base accent for TEXT, icons, borders and tints.
-     Buttons/fills keep the violet→cyan --accent-gradient overlay on top, so the
-     "Analyze" gradient look stays while plain accent text reads cyan, not violet. */
-  --color-accent-primary: #3b82f6;
-  --color-accent-hover: #60a5fa;
-  --color-accent-muted: #2563eb;
+  /* Accent — Cerulean #007ba7. Hover is lighter for text and icons.
+     Muted is darker so white labels on filled buttons stay readable. */
+  --color-accent-primary: #007ba7;
+  --color-accent-hover: #3aadc8;
+  --color-accent-muted: #005e80;
 
   /* Status */
   --color-profit: #22c55e;
@@ -126,20 +121,19 @@ body {
 /* iOS-style glass surface tokens (modals / command palette). Theme-aware so
    day mode renders a bright frosted glass instead of the dark one. */
 :root {
-  /* Signature accent gradient (the "Analyze" button look) — electric blue. */
-  --accent-gradient: linear-gradient(135deg, #2563eb 0%, #38bdf8 100%);
-  /* Black glass (21st.dev vibe): the SURFACE stays dark/near-black — the
-     "glass" reads from the bright hairline edge + top specular highlight +
-     the backdrop frost, NOT from a lighter grey fill. */
-  --glass-bg: rgba(10, 10, 12, 0.66);
+  /* Signature accent gradient (the "Analyze" button look) — cerulean. */
+  --accent-gradient: linear-gradient(135deg, #005e80 0%, #007ba7 100%);
+  /* Near-black glass. The frost still reads from the hairline edge; the fill
+     itself matches the card surface so modals don't look bluer than the page. */
+  --glass-bg: rgba(20, 20, 20, 0.92);
   --glass-border: rgba(255, 255, 255, 0.12);
-  --glass-header: rgba(16, 16, 18, 0.6);
+  --glass-header: rgba(20, 20, 20, 0.85);
   /* Fully opaque sticky-header fill: a translucent one let scrolled modal
      content read through and collide with the title. */
-  --modal-header-solid: #101012;
+  --modal-header-solid: #141414;
   /* Polymarket banner cards. They were hardcoded near-black with white text,
      which read as a black blot on the light theme — these resolve per theme. */
-  --pm-hero-bg: #070b12;
+  --pm-hero-bg: #141414;
   --pm-hero-fg: #ffffff;
   --pm-hero-fg-soft: rgba(255, 255, 255, 0.62);
   --pm-hero-fg-faint: rgba(255, 255, 255, 0.5);
@@ -175,9 +169,9 @@ body {
   --color-text-secondary: #333340;
   --color-text-muted: #5c5c66;
   --color-chart-tick: #3a3a46;
-  --color-accent-primary: #1d4ed8;
-  --color-accent-hover: #1e40af;
-  --color-accent-muted: #1e3a8a;
+  --color-accent-primary: #007ba7;
+  --color-accent-hover: #005a7a;
+  --color-accent-muted: #004e6b;
   --color-bg-overlay: rgba(248, 250, 253, 0.98);
   --color-bg-solid: rgba(245, 247, 251, 0.98);
   /* Darker profit/loss/breakeven for foreground TEXT so the headline P/L
@@ -217,7 +211,7 @@ body {
   box-shadow: 0 8px 32px rgba(0, 0, 0, 0.35);
 }
 
-/* Make every SOLID accent fill render as the signature violet→cyan gradient —
+/* Make every SOLID accent fill render as the cerulean gradient —
    the "Analyze" button look — across the whole app. The ~= selector matches
    ONLY the full `bg-accent-primary` token, never the translucent tints
    (bg-accent-primary/10|15|20) used for subtle chips/active highlights, which
@@ -242,10 +236,8 @@ body {
    fill would blank an inherited-colour icon). Icons get the gradient instead via
    stroke="url(#ai-grad)". */
 .text-gradient {
-  /* Cyan-dominant (more turquoise than violet) per request — violet only as a
-     hint at the very end, so short labels read mostly cyan. Buttons keep the
-     balanced --accent-gradient; this is the TEXT-only variant. */
-  background: linear-gradient(120deg, #2563eb 0%, #38bdf8 45%, #60a5fa 115%);
+  /* Cerulean text fill. Buttons keep --accent-gradient; this is the TEXT-only variant. */
+  background: linear-gradient(120deg, #005e80 0%, #007ba7 45%, #1496c4 115%);
   -webkit-background-clip: text;
   background-clip: text;
   -webkit-text-fill-color: transparent;
@@ -301,7 +293,7 @@ body {
 
 /* react-datepicker dark theme */
 .react-datepicker {
-  background-color: rgba(20, 20, 22, 0.9) !important;
+  background-color: #141414 !important;
   backdrop-filter: blur(24px) !important;
   -webkit-backdrop-filter: blur(24px) !important;
   border: 1px solid rgba(255, 255, 255, 0.1) !important;
@@ -353,7 +345,7 @@ body {
 .react-datepicker__day--selected,
 .react-datepicker__day--keyboard-selected {
   background-color: var(--color-accent-primary) !important;
-  color: #000 !important;
+  color: #fff !important;
   font-weight: 600 !important;
 }
 .react-datepicker__day--today {
@@ -381,7 +373,7 @@ body {
   width: 95px !important;
 }
 .react-datepicker__time {
-  background-color: rgba(10, 12, 18, 0.95) !important;
+  background-color: #0a0a0a !important;
   border-radius: 0 0 16px 0 !important;
 }
 .react-datepicker-time__header {
@@ -409,7 +401,7 @@ body {
 }
 .react-datepicker__time-list-item--selected {
   background-color: var(--color-accent-primary) !important;
-  color: #000 !important;
+  color: #fff !important;
   font-weight: 600 !important;
 }
 /* Slots blocked by filterTime (a later hour today, or an exit before the
@@ -434,11 +426,11 @@ body {
 /* Datepicker light overrides */
 .light .react-datepicker {
   background-color: rgba(255, 255, 255, 0.85) !important;
-  border-color: rgba(2, 132, 199, 0.15) !important;
+  border-color: rgba(0, 123, 167, 0.15) !important;
 }
 .light .react-datepicker__header {
-  background-color: rgba(2, 132, 199, 0.05) !important;
-  border-bottom-color: rgba(2, 132, 199, 0.1) !important;
+  background-color: rgba(0, 123, 167, 0.05) !important;
+  border-bottom-color: rgba(0, 123, 167, 0.1) !important;
 }
 .light .react-datepicker__current-month,
 .light .react-datepicker__day-name,
@@ -449,20 +441,20 @@ body {
   color: #4a4a5a !important;
 }
 .light .react-datepicker__day:hover {
-  background-color: rgba(2, 132, 199, 0.1) !important;
+  background-color: rgba(0, 123, 167, 0.1) !important;
   color: #1a1a1a !important;
 }
 .light .react-datepicker__time {
   background-color: rgba(255, 255, 255, 0.85) !important;
 }
 .light .react-datepicker__time-container {
-  border-right-color: rgba(2, 132, 199, 0.1) !important;
+  border-right-color: rgba(0, 123, 167, 0.1) !important;
 }
 .light .react-datepicker__time-list-item {
   color: #4a4a5a !important;
 }
 .light .react-datepicker__time-list-item:hover {
-  background-color: rgba(2, 132, 199, 0.1) !important;
+  background-color: rgba(0, 123, 167, 0.1) !important;
   color: #1a1a1a !important;
 }
 
@@ -519,7 +511,7 @@ body {
 
 /* Slider light */
 .light input[type="range"] {
-  background: rgba(2, 132, 199, 0.15);
+  background: rgba(0, 123, 167, 0.15);
 }
 
 /* Rating slider custom style */
@@ -624,7 +616,7 @@ input[type="number"] {
   inset: 0;
   border-radius: inherit;
   padding: 1.5px;
-  background: conic-gradient(from var(--beam-angle), transparent 0 62%, var(--beam-from, #2563eb) 78%, var(--beam-to, #38bdf8) 92%, transparent 100%);
+  background: conic-gradient(from var(--beam-angle), transparent 0 62%, var(--beam-from, #005e80) 78%, var(--beam-to, #007ba7) 92%, transparent 100%);
   -webkit-mask: linear-gradient(#000 0 0) content-box, linear-gradient(#000 0 0);
   -webkit-mask-composite: xor;
   mask: linear-gradient(#000 0 0) content-box, linear-gradient(#000 0 0);
@@ -635,7 +627,7 @@ input[type="number"] {
 @keyframes beamSpin { to { --beam-angle: 360deg; } }
 /* Hover-only border beam — calm at rest, the light travels on hover. For KPI /
    stat cards. Apply to a position:relative, rounded element (Card glow prop).
-   Both beams default to the brand blue; set --beam-from / --beam-to on the
+   Both beams default to cerulean; set --beam-from / --beam-to on the
    element to tint it (e.g. an exchange card in that exchange's colour). */
 .border-beam-hover::after {
   content: '';
@@ -643,7 +635,7 @@ input[type="number"] {
   inset: 0;
   border-radius: inherit;
   padding: 1.5px;
-  background: conic-gradient(from var(--beam-angle), transparent 0 62%, var(--beam-from, #2563eb) 78%, var(--beam-to, #38bdf8) 92%, transparent 100%);
+  background: conic-gradient(from var(--beam-angle), transparent 0 62%, var(--beam-from, #005e80) 78%, var(--beam-to, #007ba7) 92%, transparent 100%);
   -webkit-mask: linear-gradient(#000 0 0) content-box, linear-gradient(#000 0 0);
   -webkit-mask-composite: xor;
   mask: linear-gradient(#000 0 0) content-box, linear-gradient(#000 0 0);
@@ -664,11 +656,11 @@ input[type="number"] {
   pointer-events: none;
   opacity: 0;
   transition: opacity 0.3s;
-  background: radial-gradient(240px circle at var(--spot-x, 50%) var(--spot-y, 50%), rgba(56, 189, 248, 0.10), transparent 65%);
+  background: radial-gradient(240px circle at var(--spot-x, 50%) var(--spot-y, 50%), rgba(0, 123, 167, 0.14), transparent 65%);
 }
 @media (hover: hover) { .spotlight-card:hover::before { opacity: 1; } }
 .light .spotlight-card::before {
-  background: radial-gradient(240px circle at var(--spot-x, 50%) var(--spot-y, 50%), rgba(37, 99, 235, 0.08), transparent 65%);
+  background: radial-gradient(240px circle at var(--spot-x, 50%) var(--spot-y, 50%), rgba(0, 123, 167, 0.10), transparent 65%);
 }
 /* Faint scan-line highlight along the top edge */
 .bento-card::before {

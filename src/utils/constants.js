@@ -156,7 +156,7 @@ export const TAG_LABELS = {
 export const SESSIONS = ['London', 'New York', 'Asia', 'London/NY Overlap'];
 
 export const SESSION_COLORS = {
-  London: { bg: 'bg-blue-500/20', text: 'text-blue-400', border: 'border-blue-500/30', hex: '#3b82f6' },
+  London: { bg: 'bg-accent-primary/20', text: 'text-accent-primary', border: 'border-accent-primary/30', hex: '#007ba7' },
   'New York': { bg: 'bg-purple-500/20', text: 'text-purple-400', border: 'border-purple-500/30', hex: '#a855f7' },
   Asia: { bg: 'bg-yellow-500/20', text: 'text-yellow-400', border: 'border-yellow-500/30', hex: '#eab308' },
   'London/NY Overlap': { bg: 'bg-orange-500/20', text: 'text-orange-400', border: 'border-orange-500/30', hex: '#f97316' },

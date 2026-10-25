@@ -106,7 +106,7 @@ function Hero({ stats, watchedCount = 0, strategyCount = 0, onOpenAnalyst, onOpe
       <div className="relative flex flex-col sm:flex-row sm:items-start gap-3">
         <div className="flex items-start gap-3 min-w-0 flex-1">
           <div className="w-11 h-11 rounded-2xl flex items-center justify-center shrink-0 text-accent-primary bg-accent-primary/15 border border-accent-primary/40"
-            style={{ boxShadow: '0 0 24px -6px rgba(59,130,246,0.6)' }}>
+            style={{ boxShadow: '0 0 24px -6px rgba(0,123,167,0.6)' }}>
             <Trophy className="w-6 h-6" />
           </div>
           <div className="min-w-0 flex-1">
@@ -391,7 +391,7 @@ function PolymarketBoard() {
         {MAIN_TABS.map((t) => (
           <button key={t.key} onClick={() => setMainTab(t.key)} title={t.label}
             className={`min-w-0 inline-flex items-center justify-center gap-1 sm:gap-1.5 px-1.5 sm:px-3 py-1.5 text-[11px] sm:text-sm font-semibold rounded-lg transition-all cursor-pointer ${
-              mainTab === t.key ? 'bg-accent-primary/15 text-accent-primary shadow-[0_0_18px_-6px_rgba(59,130,246,0.6)]' : 'text-text-muted hover:text-text-primary'
+              mainTab === t.key ? 'bg-accent-primary/15 text-accent-primary shadow-[0_0_18px_-6px_rgba(0,123,167,0.6)]' : 'text-text-muted hover:text-text-primary'
             }`}>
             <t.icon className="w-4 h-4 shrink-0" />
             <span className="truncate">{t.label}</span>

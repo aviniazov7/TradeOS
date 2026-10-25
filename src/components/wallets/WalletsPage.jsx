@@ -159,7 +159,7 @@ export default function WalletsPage({ embedded = false }) {
         {/* Header — compact on mobile; the explanation lives behind a "?" */}
         <Card className="relative overflow-hidden p-4 md:p-6">
           <div aria-hidden className="absolute inset-0 pointer-events-none"
-            style={{ background: 'radial-gradient(80% 140% at 100% 0%, rgba(37,99,235,0.14) 0%, transparent 60%)' }} />
+            style={{ background: 'radial-gradient(80% 140% at 100% 0%, rgba(0,123,167,0.14) 0%, transparent 60%)' }} />
           {/* Same title treatment as the shared PageHeader (icon medallion +
               title); this header keeps its own "?" explainer and animation. */}
           <div className="relative flex items-center justify-between gap-3">

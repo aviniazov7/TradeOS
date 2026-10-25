@@ -41,7 +41,7 @@ export default function PageHeader({ icon: Icon, title, titleAside, subtitle, me
     // Only the decorative glow is clipped to the rounded corners.
     <Card className={`relative z-20 ${compactMobile ? 'p-3 mb-3 md:p-6 md:mb-6' : 'p-4 md:p-6 mb-4 md:mb-6'} ${className}`}>
       <div aria-hidden className="absolute inset-0 rounded-[inherit] overflow-hidden pointer-events-none">
-        <div className="absolute inset-0" style={{ background: 'radial-gradient(80% 140% at 100% 0%, rgba(37,99,235,0.14) 0%, transparent 60%)' }} />
+        <div className="absolute inset-0" style={{ background: 'radial-gradient(80% 140% at 100% 0%, rgba(0,123,167,0.14) 0%, transparent 60%)' }} />
       </div>
       <div className={`relative flex flex-col lg:flex-row lg:items-center ${compactMobile ? 'gap-2 md:gap-4 lg:gap-6' : 'gap-4 lg:gap-6'}`}>
         {mobileTabsFirst && mobileTabRow}

@@ -88,7 +88,7 @@ export default function SignalCard({ signal, currentPrice, onEdit, onDelete, onS
               <span className="num-mono font-bold text-accent-primary">{conf}</span>
             </div>
             <div className="h-1.5 rounded-full bg-bg-tertiary overflow-hidden">
-              <div className="h-full rounded-full transition-all duration-700" style={{ width: `${conf}%`, background: 'linear-gradient(90deg,#2563eb,#38bdf8)' }} />
+              <div className="h-full rounded-full transition-all duration-700" style={{ width: `${conf}%`, background: 'linear-gradient(90deg,#005e80,#007ba7)' }} />
             </div>
           </div>
         )}

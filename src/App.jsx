@@ -205,9 +205,9 @@ export default function App() {
           {/* Electric-blue brand gradient — deep blue → sky, matching the
               redesign accent (--accent-gradient). */}
           <linearGradient id="ai-grad" x1="0%" y1="0%" x2="100%" y2="100%">
-            <stop offset="0%" stopColor="#2563eb" />
-            <stop offset="55%" stopColor="#38bdf8" />
-            <stop offset="100%" stopColor="#60a5fa" />
+            <stop offset="0%" stopColor="#007ba7" />
+            <stop offset="55%" stopColor="#007ba7" />
+            <stop offset="100%" stopColor="#1496c4" />
           </linearGradient>
         </defs>
       </svg>

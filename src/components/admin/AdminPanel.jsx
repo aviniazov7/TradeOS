@@ -557,7 +557,7 @@ function BulkNotifyModal({ isOpen, onClose, segments, initialSegment = 'all' }) 
                   key={k}
                   type="button"
                   onClick={() => pick(k)}
-                  className={`h-8 px-3 rounded-full text-xs font-semibold border transition-colors cursor-pointer ${active ? 'bg-accent-primary/15 border-accent-primary/50 text-sky-200' : 'bg-bg-tertiary border-border-primary text-text-secondary hover:text-text-primary'}`}
+                  className={`h-8 px-3 rounded-full text-xs font-semibold border transition-colors cursor-pointer ${active ? 'bg-accent-primary/15 border-accent-primary/50 text-accent-hover' : 'bg-bg-tertiary border-border-primary text-text-secondary hover:text-text-primary'}`}
                 >
                   {SEGMENT_LABELS[k]} <span className="num-mono opacity-75">{count}</span>
                 </button>
@@ -595,7 +595,7 @@ function BulkNotifyModal({ isOpen, onClose, segments, initialSegment = 'all' }) 
                 const on = !excluded.has(u.id);
                 return (
                   <label key={u.id} className={`flex items-center gap-3 px-2 py-2 rounded-lg cursor-pointer hover:bg-bg-tertiary transition-opacity ${on ? '' : 'opacity-45'}`}>
-                    <input type="checkbox" checked={on} onChange={() => toggle(u.id)} className="w-4 h-4 accent-blue-500 cursor-pointer shrink-0" />
+                    <input type="checkbox" checked={on} onChange={() => toggle(u.id)} className="w-4 h-4 accent-[#007ba7] cursor-pointer shrink-0" />
                     <Avatar user={u} size="w-7 h-7 text-[10px]" />
                     <span className="flex-1 min-w-0">
                       <span className="block text-sm text-text-primary truncate">{u.displayName || u.email || '—'}</span>
@@ -942,7 +942,7 @@ function UserDetailModal({ user, onClose, onUserChanged, startWith = null }) {
                       onClick={() => setPayMethod(m.id)}
                       className={`h-8 text-xs px-3 rounded-full border transition-colors cursor-pointer ${
                         payMethod === m.id
-                          ? 'bg-accent-primary/15 border-accent-primary/50 text-sky-200 font-semibold'
+                          ? 'bg-accent-primary/15 border-accent-primary/50 text-accent-hover font-semibold'
                           : 'bg-bg-tertiary border-border-primary text-text-secondary hover:text-text-primary'
                       }`}
                     >
@@ -959,7 +959,7 @@ function UserDetailModal({ user, onClose, onUserChanged, startWith = null }) {
                 checked={sendReceipt}
                 onChange={(e) => setSendReceipt(e.target.checked)}
                 disabled={!user.email}
-                className="w-3.5 h-3.5 accent-blue-500 cursor-pointer"
+                className="w-3.5 h-3.5 accent-[#007ba7] cursor-pointer"
               />
               שליחת מייל אישור {user.email ? `ל-${user.email}` : '(אין מייל בפרופיל)'}
             </label>

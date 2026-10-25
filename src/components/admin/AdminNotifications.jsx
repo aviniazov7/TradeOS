@@ -21,7 +21,7 @@ import LoadingSpinner from '../shared/LoadingSpinner';
 const ICONS = {
   churn_risk: { Icon: AlertTriangle, tile: 'bg-amber-500/12 text-amber-400' },
   inactive_user: { Icon: Clock, tile: 'bg-bg-tertiary text-text-secondary' },
-  signup: { Icon: UserPlus, tile: 'bg-accent-primary/14 text-sky-300' },
+  signup: { Icon: UserPlus, tile: 'bg-accent-primary/14 text-accent-hover' },
   premium_upgrade: { Icon: Crown, tile: 'bg-amber-500/12 text-amber-400' },
   premium_cancel: { Icon: Ban, tile: 'bg-loss/12 text-loss' },
 };
@@ -431,7 +431,7 @@ function FilterChip({ active, onClick, children }) {
       type="button"
       onClick={onClick}
       aria-pressed={active}
-      className={`h-8 px-3 rounded-full text-xs font-semibold border whitespace-nowrap cursor-pointer shrink-0 ${active ? 'bg-accent-primary/15 border-accent-primary/50 text-sky-200' : 'bg-bg-tertiary border-border-primary text-text-secondary hover:text-text-primary'}`}
+      className={`h-8 px-3 rounded-full text-xs font-semibold border whitespace-nowrap cursor-pointer shrink-0 ${active ? 'bg-accent-primary/15 border-accent-primary/50 text-accent-hover' : 'bg-bg-tertiary border-border-primary text-text-secondary hover:text-text-primary'}`}
     >
       {children}
     </button>

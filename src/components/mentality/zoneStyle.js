@@ -9,7 +9,7 @@ export const ZONE_COLORS = {
   mood: '#14b8a6',
   stats: 'var(--color-accent-primary)',
   journey: 'var(--color-chart-purple)',
-  breathing: '#06b6d4',
+  breathing: '#007ba7',
 };
 
 export const tint = (color, pct) => `color-mix(in srgb, ${color} ${pct}%, transparent)`;

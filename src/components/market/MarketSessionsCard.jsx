@@ -6,7 +6,7 @@ const SESSIONS = [
   { key: 'sydney',    label: 'Sydney',    flag: '🇦🇺', open: 22, close: 7,    color: '#14b8a6', bg: 'rgba(20,184,166,' },
   { key: 'tokyo',     label: 'Tokyo',     flag: '🇯🇵', open: 0,  close: 9,    color: '#eab308', bg: 'rgba(234,179,8,' },
   { key: 'frankfurt', label: 'Frankfurt', flag: '🇩🇪', open: 7,  close: 15.5, color: '#f59e0b', bg: 'rgba(245,158,11,' },
-  { key: 'london',    label: 'London',    flag: '🇬🇧', open: 8,  close: 17,   color: '#3b82f6', bg: 'rgba(59,130,246,' },
+  { key: 'london',    label: 'London',    flag: '🇬🇧', open: 8,  close: 17,   color: '#007ba7', bg: 'rgba(0,123,167,' },
   { key: 'newyork',   label: 'New York',  flag: '🇺🇸', open: 13, close: 22,   color: '#a855f7', bg: 'rgba(168,85,247,' },
 ];
 

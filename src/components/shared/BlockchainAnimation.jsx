@@ -6,7 +6,7 @@ import { useRef, useEffect } from 'react';
 // respects reduced-motion. 21st.dev aesthetic: violet→cyan, soft glow.
 const SPEED = 16;       // px/sec — deliberately slow
 const RIGHT_PAD = 30;
-const V = '#2563eb', I = '#6366f1', C = '#38bdf8', CY = '#60a5fa';
+const V = '#007ba7', I = '#6366f1', C = '#007ba7', CY = '#1496c4';
 
 function rr(ctx, x, y, w, h, r) {
   ctx.beginPath();

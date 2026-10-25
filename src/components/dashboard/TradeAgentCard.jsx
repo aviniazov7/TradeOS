@@ -89,14 +89,14 @@ export default function TradeAgentCard({ trades }) {
       <div
         className="relative overflow-hidden rounded-2xl p-4 md:p-5 border bg-bg-secondary h-full flex flex-col gap-4"
         style={{
-          borderColor: 'rgba(59,130,246,0.3)',
-          backgroundImage: 'radial-gradient(120% 90% at 100% 0%, rgba(59,130,246,0.14) 0%, transparent 60%)',
+          borderColor: 'rgba(0,123,167,0.3)',
+          backgroundImage: 'radial-gradient(120% 90% at 100% 0%, rgba(0,123,167,0.14) 0%, transparent 60%)',
         }}
       >
         <div className="flex items-center gap-3">
           <div className="w-10 h-10 rounded-xl shrink-0 grid place-items-center"
-            style={{ background: 'linear-gradient(135deg, #2563eb 0%, #38bdf8 100%)', boxShadow: '0 0 18px -4px rgba(59,130,246,0.6)' }}>
-            <Sparkles className="w-5 h-5" style={{ color: '#06060a' }} />
+            style={{ background: 'linear-gradient(135deg, #005e80 0%, #007ba7 100%)', boxShadow: '0 0 18px -4px rgba(0,123,167,0.6)' }}>
+            <Sparkles className="w-5 h-5" style={{ color: '#ffffff' }} />
           </div>
           <div className="min-w-0">
             <div className="flex items-center gap-2">
@@ -123,14 +123,14 @@ export default function TradeAgentCard({ trades }) {
     <div
       className="relative overflow-hidden rounded-2xl p-4 md:p-5 border bg-bg-secondary h-full flex flex-col gap-4"
       style={{
-        borderColor: 'rgba(59,130,246,0.3)',
-        backgroundImage: 'radial-gradient(120% 90% at 100% 0%, rgba(59,130,246,0.14) 0%, transparent 60%)',
+        borderColor: 'rgba(0,123,167,0.3)',
+        backgroundImage: 'radial-gradient(120% 90% at 100% 0%, rgba(0,123,167,0.14) 0%, transparent 60%)',
       }}
     >
       <div className="flex items-center gap-3">
         <div className="w-10 h-10 rounded-xl shrink-0 grid place-items-center"
-          style={{ background: 'linear-gradient(135deg, #2563eb 0%, #38bdf8 100%)', boxShadow: '0 0 18px -4px rgba(59,130,246,0.6)' }}>
-          <Sparkles className="w-5 h-5" style={{ color: '#06060a' }} />
+          style={{ background: 'linear-gradient(135deg, #005e80 0%, #007ba7 100%)', boxShadow: '0 0 18px -4px rgba(0,123,167,0.6)' }}>
+          <Sparkles className="w-5 h-5" style={{ color: '#ffffff' }} />
         </div>
         <div className="min-w-0">
           <div className="flex items-center gap-2">

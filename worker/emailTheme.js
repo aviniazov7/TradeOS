@@ -1,4 +1,4 @@
-// The look of every TradeOS email: black, the app's blue accent, white text.
+// The look of every TradeOS email: jet black, cerulean accent, white text.
 // Pure string building (no fetch / env) so it's shared and unit-tested.
 //
 // Gmail's iPhone app force-inverts dark emails into a light theme. Two tricks
@@ -15,26 +15,26 @@ export const APP_URL = 'https://tradeoslive.web.app';
 
 // Mirrors the app's tokens (src/index.css).
 export const C = {
-  page: '#000000',
-  card: '#0c0c0e',
-  tile: '#151518',
-  line: '#26262b',
+  page: '#0a0a0a',
+  card: '#141414',
+  tile: '#1a1a1a',
+  line: '#2a2a2a',
   text: '#f0f0f0',
   sub: '#a0a0b0',
   muted: '#70707f',
-  accent: '#3b82f6',
+  accent: '#007ba7',
   // Dark tints for pills — readable white text on each.
   green: '#14532d',
   red: '#7f1d1d',
   amber: '#78350f',
   violet: '#4c1d95',
-  blue: '#1e3a8a',
+  blue: '#0c4a63',
   // Bright dots / bars.
   dotGreen: '#22c55e',
   dotRed: '#ef4444',
   dotAmber: '#f59e0b',
   dotViolet: '#8b5cf6',
-  dotBlue: '#3b82f6',
+  dotBlue: '#007ba7',
 };
 
 export const esc = (s) => String(s ?? '').replace(/[&<>"']/g, (c) => (

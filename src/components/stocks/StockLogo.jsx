@@ -14,7 +14,7 @@ export default function StockLogo({ symbol, className = 'w-6 h-6', rounded = 'ro
 
   if (!url) {
     return (
-      <span className={`${className} ${rounded} shrink-0 grid place-items-center bg-gradient-to-br from-emerald-500/25 to-sky-500/25 border border-emerald-400/25 text-[10px] font-extrabold text-emerald-300`}
+      <span className={`${className} ${rounded} shrink-0 grid place-items-center bg-gradient-to-br from-emerald-500/25 to-[#1496c4]/25 border border-emerald-400/25 text-[10px] font-extrabold text-emerald-300`}
         aria-hidden="true">
         {s.slice(0, 2) || '?'}
       </span>

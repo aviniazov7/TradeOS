@@ -67,7 +67,7 @@ export default function StockMarketPanel({ trades, quotes, hidden = false }) {
 
   return (
     <div className="mb-4 rounded-2xl border border-emerald-400/20 bg-bg-secondary overflow-hidden">
-      <div aria-hidden className="h-px w-full" style={{ background: 'linear-gradient(90deg, transparent, rgba(16,185,129,0.55), rgba(56,189,248,0.55), transparent)' }} />
+      <div aria-hidden className="h-px w-full" style={{ background: 'linear-gradient(90deg, transparent, rgba(16,185,129,0.55), rgba(0,123,167,0.55), transparent)' }} />
       <div className="flex flex-wrap items-center justify-between gap-3 px-4 py-3">
         <div className="flex items-center gap-2.5 min-w-0">
           <span className="w-9 h-9 shrink-0 grid place-items-center rounded-xl bg-emerald-500/12 border border-emerald-400/25">

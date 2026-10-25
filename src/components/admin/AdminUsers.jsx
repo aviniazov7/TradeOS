@@ -247,7 +247,7 @@ export default function AdminUsers({ users, loading, selectedId, onSelect, onOpe
             return (
               <button key={f.id} type="button" onClick={() => { setFilter(f.id); setLimit(PAGE); }} aria-pressed={on}
                 className={`h-9 px-3.5 rounded-full border text-[13px] font-semibold inline-flex items-center gap-1.5 transition-colors cursor-pointer ${
-                  on ? 'bg-accent-primary/15 border-accent-primary/50 text-sky-200' : 'bg-bg-tertiary border-border-primary text-text-secondary hover:text-text-primary'
+                  on ? 'bg-accent-primary/15 border-accent-primary/50 text-accent-hover' : 'bg-bg-tertiary border-border-primary text-text-secondary hover:text-text-primary'
                 }`}>
                 {f.label}
                 <span className="num-mono text-xs opacity-75">{counts[f.id]}</span>

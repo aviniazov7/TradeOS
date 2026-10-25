@@ -78,7 +78,7 @@ function CoinIcon({ sym, className = 'w-5 h-5' }) {
     return (
       <span
         className={`${className} rounded-full grid place-items-center text-[8px] font-black text-white shrink-0`}
-        style={{ background: 'linear-gradient(135deg,#8b5cf6,#06b6d4)' }}
+        style={{ background: 'linear-gradient(135deg,#8b5cf6,#007ba7)' }}
       >
         {sym.slice(0, 1)}
       </span>

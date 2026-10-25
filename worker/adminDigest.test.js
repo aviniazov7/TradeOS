@@ -43,7 +43,7 @@ describe('buildDigestEmail', () => {
   it('renders a black report with every section', () => {
     const r = buildDigestEmail(users, { now: NOW, test: true });
     expect(r.subject).toMatch(/^\[בדיקה\] TradeOS · הדוח השבועי · /);
-    expect(r.html).toContain('background-image:linear-gradient(#000000,#000000)');
+    expect(r.html).toContain('background-image:linear-gradient(#0a0a0a,#0a0a0a)');
     for (const s of ['חדשים השבוע', 'פעילים השבוע', 'לקוחות Premium', 'בסיכון נטישה', 'דורש טיפול', 'הצטרפו השבוע', 'המנוי של אבי מסתיים בעוד 3 ימים', '+1 משבוע שעבר']) {
       expect(r.html).toContain(s);
     }

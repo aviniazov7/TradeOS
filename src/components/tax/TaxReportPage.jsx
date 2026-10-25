@@ -411,7 +411,7 @@ export default function TaxReportPage() {
                 </div>
               </Card>
               <Card className="p-4 md:p-5 min-w-0 relative overflow-hidden">
-                <div aria-hidden className="absolute inset-0 pointer-events-none" style={{ background: 'radial-gradient(90% 120% at 0% 0%, rgba(37,99,235,0.12) 0%, transparent 60%)' }} />
+                <div aria-hidden className="absolute inset-0 pointer-events-none" style={{ background: 'radial-gradient(90% 120% at 0% 0%, rgba(0,123,167,0.12) 0%, transparent 60%)' }} />
                 <div className="relative flex items-center justify-between text-xs text-text-muted">
                   <span>מס משוער ({TAX_RATE * 100}%)</span><Landmark className="w-4 h-4" />
                 </div>

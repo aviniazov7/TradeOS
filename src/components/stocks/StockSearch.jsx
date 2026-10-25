@@ -91,7 +91,7 @@ export default function StockSearch({ value, onChange, label = 'מניה', class
               <span className="min-w-0 flex-1">
                 <span className="flex items-center gap-1.5">
                   <span className="text-sm font-bold text-text-primary" dir="ltr">{r.symbol}</span>
-                  {r.type === 'ETF' && <span className="text-[9px] font-bold px-1 py-px rounded bg-sky-500/15 text-sky-300">ETF</span>}
+                  {r.type === 'ETF' && <span className="text-[9px] font-bold px-1 py-px rounded bg-accent-primary/15 text-accent-hover">ETF</span>}
                 </span>
                 <span className="block text-[11px] text-text-muted truncate" dir="ltr" style={{ textAlign: 'right' }}>
                   {r.name}{r.exchange ? ` · ${r.exchange}` : ''}

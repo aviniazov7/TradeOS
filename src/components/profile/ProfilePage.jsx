@@ -320,7 +320,7 @@ export default function ProfilePage() {
       {/* Profile hero: the picture (tap to change), name, email, plan. */}
       <div className="relative overflow-hidden bg-bg-secondary border border-border-primary rounded-2xl p-5 mb-2">
         <div aria-hidden className="absolute inset-0 pointer-events-none"
-          style={{ background: 'radial-gradient(80% 140% at 100% 0%, rgba(37,99,235,0.14) 0%, transparent 60%)' }} />
+          style={{ background: 'radial-gradient(80% 140% at 100% 0%, rgba(0,123,167,0.14) 0%, transparent 60%)' }} />
         <div className="relative flex items-center gap-4">
           <div className="relative shrink-0">
             <button type="button" onClick={() => avatarInputRef.current?.click()} disabled={avatarBusy}

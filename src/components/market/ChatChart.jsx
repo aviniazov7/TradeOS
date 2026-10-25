@@ -63,7 +63,7 @@ export default function ChatChart({ prices, coinSymbol }) {
 
             {/* Moving Averages */}
             {ma7 && <ReferenceLine y={ma7} stroke="#f59e0b" strokeDasharray="4 4" strokeWidth={1} />}
-            {ma14 && <ReferenceLine y={ma14} stroke="#06b6d4" strokeDasharray="4 4" strokeWidth={1} />}
+            {ma14 && <ReferenceLine y={ma14} stroke="#007ba7" strokeDasharray="4 4" strokeWidth={1} />}
 
             <Area type="monotone" dataKey="price" stroke={chartColor} strokeWidth={2} fill={`url(#chatGrad-${coinSymbol})`} dot={false} />
           </AreaChart>

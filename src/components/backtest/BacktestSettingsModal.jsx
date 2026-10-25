@@ -14,7 +14,7 @@ const SECTOR_ICONS = { Bitcoin, Layers, Dog, Landmark };
 
 const defaultForm = {
   name: '', description: '', entryRules: '', exitRules: '',
-  riskManagement: '', notes: '', color: '#06b6d4',
+  riskManagement: '', notes: '', color: '#007ba7',
   pairs: [], timeframes: [], sessions: [],
   checklist: [],
   tradeExamples: [],
@@ -51,7 +51,7 @@ export default function BacktestSettingsModal({ isOpen, onClose }) {
         exitRules: activeJournal.exitRules || '',
         riskManagement: activeJournal.riskManagement || '',
         notes: activeJournal.notes || '',
-        color: activeJournal.color || '#06b6d4',
+        color: activeJournal.color || '#007ba7',
         pairs: activeJournal.pairs || [],
         timeframes: activeJournal.timeframes || [],
         sessions: activeJournal.sessions || [],

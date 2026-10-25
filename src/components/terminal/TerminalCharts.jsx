@@ -373,7 +373,7 @@ export default function TerminalCharts({ symbol, exchange, theme, mobile, toolba
   const panes = useMemo(() => panesForLayout(layout, panesAll), [layout, panesAll]);
   const maximized = maxState && maxState.layoutId === layout.id && !mobile ? maxState.index : null;
   const dark = theme !== 'light';
-  const surface = !dark ? 'bg-white' : prefs.black ? 'bg-black' : 'bg-[#0a0a0c]';
+  const surface = !dark ? 'bg-white' : prefs.black ? 'bg-black' : 'bg-[#141414]';
 
   const chartOpts = useMemo(
     () => ({ theme, style: prefs.style, black: prefs.black, drawTools: prefs.drawTools, topBar: prefs.topBar }),

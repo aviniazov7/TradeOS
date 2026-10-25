@@ -80,7 +80,7 @@ function AiDetails({ health, globalAi, aiStats, statsDays, setStatsDays, aiTest,
           <div className="inline-flex rounded-lg border border-border-primary p-0.5">
             {[7, 30].map((d) => (
               <button key={d} type="button" onClick={() => setStatsDays(d)}
-                className={`px-2.5 py-1 rounded-md text-[11px] font-semibold cursor-pointer transition-colors ${statsDays === d ? 'bg-accent-primary/20 text-sky-200' : 'text-text-secondary hover:text-text-primary'}`}>
+                className={`px-2.5 py-1 rounded-md text-[11px] font-semibold cursor-pointer transition-colors ${statsDays === d ? 'bg-accent-primary/20 text-accent-hover' : 'text-text-secondary hover:text-text-primary'}`}>
                 {d} ימים
               </button>
             ))}

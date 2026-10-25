@@ -102,7 +102,7 @@ function ThinkingTimeline() {
       <div className="mt-4 h-1 bg-bg-tertiary rounded-full overflow-hidden">
         <m.div
           className="h-full rounded-full"
-          style={{ background: 'linear-gradient(90deg, #2563eb, #38bdf8)' }}
+          style={{ background: 'linear-gradient(90deg, #005e80, #007ba7)' }}
           animate={{ width: `${((step + 1) / THINK_STEPS.length) * 92}%` }}
           transition={{ duration: 0.6 }}
         />
@@ -270,8 +270,8 @@ export default function ChartAnalyzer({ heightClass = '', initialImage = null })
                   dragOver ? 'border-accent-primary bg-accent-primary/10' : 'border-border-hover bg-bg-tertiary hover:border-accent-primary/50'
                 }`}
               >
-                <span className="w-14 h-14 rounded-2xl grid place-items-center" style={{ background: 'linear-gradient(135deg, #2563eb 0%, #38bdf8 100%)', boxShadow: '0 0 28px -6px rgba(59,130,246,0.7)' }}>
-                  {premiumLocked ? <Crown className="w-7 h-7" style={{ color: '#06060a' }} /> : <ImagePlus className="w-7 h-7" style={{ color: '#06060a' }} />}
+                <span className="w-14 h-14 rounded-2xl grid place-items-center" style={{ background: 'linear-gradient(135deg, #005e80 0%, #007ba7 100%)', boxShadow: '0 0 28px -6px rgba(0,123,167,0.7)' }}>
+                  {premiumLocked ? <Crown className="w-7 h-7" style={{ color: '#ffffff' }} /> : <ImagePlus className="w-7 h-7" style={{ color: '#ffffff' }} />}
                 </span>
                 {premiumLocked ? (
                   <div className="text-center">
@@ -309,7 +309,7 @@ export default function ChartAnalyzer({ heightClass = '', initialImage = null })
                       animate={{ left: ['-12%', '104%'] }}
                       transition={{ duration: 2.2, repeat: Infinity, ease: 'easeInOut' }}
                       className="pointer-events-none absolute inset-y-0 w-12"
-                      style={{ background: 'linear-gradient(90deg, transparent, rgba(56,189,248,0.35), transparent)' }}
+                      style={{ background: 'linear-gradient(90deg, transparent, rgba(0,123,167,0.35), transparent)' }}
                     />
                   )}
                   <div className="absolute top-2 left-2 flex gap-1.5">

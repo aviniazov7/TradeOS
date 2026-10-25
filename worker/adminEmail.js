@@ -12,12 +12,12 @@ export { APP_URL };
 // Hard cap per campaign — a typo in the panel must not mail everyone twice.
 export const CAMPAIGN_MAX = 300;
 
-// True black page, near-black card. Blue is only the button and the small brand mark.
-const PAGE = '#000000';
-const CARD = '#0d0d0d';
-const TILE = '#111111';
+// Jet black page, near-black card. Cerulean is only the button and the small brand mark.
+const PAGE = '#0a0a0a';
+const CARD = '#141414';
+const TILE = '#1a1a1a';
 const LINE = '#222222';
-const BTN = '#2563eb';
+const BTN = '#007ba7';
 const TEXT = '#f5f5f5';
 const SUB = '#c8c8c8';
 const MUTED = '#8a8a8a';
