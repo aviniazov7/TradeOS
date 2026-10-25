@@ -8,7 +8,7 @@ import {
   PieChart, Flame, ArrowUpRight, ArrowDownRight, Layers, Rocket, Grid3X3,
   Percent, BarChart3, Zap, Sparkles, Bot, RefreshCw,
 } from 'lucide-react';
-import { pageVariants, pageTransition, staggerContainer } from '../../utils/animations';
+import { pageVariants, pageTransition, staggerContainer, tabSlide, tabTransition } from '../../utils/animations';
 import PageHeader from '../shared/PageHeader';
 import FearGreedGauge from '../dashboard/FearGreedGauge';
 import CoinAnalysis from './CoinAnalysis';
@@ -1050,9 +1050,9 @@ export default function MarketOverview() {
         tabs={{ tabs: MARKET_TABS, value: activeTab, onChange: setActiveTab, layoutKey: 'market-tab' }}
       />
 
-      <AnimatePresence mode="wait">
+      <AnimatePresence mode="wait" initial={false}>
       {activeTab === 'overview' ? (
-      <m.div key="overview" initial={{ opacity: 0, x: -20 }} animate={{ opacity: 1, x: 0 }} exit={{ opacity: 0, x: 20 }} transition={{ duration: 0.25 }}>
+      <m.div key="overview" variants={tabSlide} initial="initial" animate="animate" exit="exit" transition={tabTransition}>
 
       {/* Top row: global stats — borderless, free, divider-separated (no boxes).
           Uniform typography: 11px label, 2xl number, xs sub on every cell. */}
@@ -1341,13 +1341,13 @@ export default function MarketOverview() {
 
       </m.div>
       ) : activeTab === 'analysis' ? (
-      <m.div key="analysis" initial={{ opacity: 0, x: 20 }} animate={{ opacity: 1, x: 0 }} exit={{ opacity: 0, x: -20 }} transition={{ duration: 0.25 }}>
+      <m.div key="analysis" variants={tabSlide} initial="initial" animate="animate" exit="exit" transition={tabTransition}>
         <CoinAnalysis />
       </m.div>
       ) : activeTab === 'polymarket' ? (
       // Own boundary: this tab streams live third-party data, so a throw here
       // should degrade the tab, not blank the whole page.
-      <m.div key="polymarket" initial={{ opacity: 0, x: 20 }} animate={{ opacity: 1, x: 0 }} exit={{ opacity: 0, x: -20 }} transition={{ duration: 0.25 }}>
+      <m.div key="polymarket" variants={tabSlide} initial="initial" animate="animate" exit="exit" transition={tabTransition}>
         <ErrorBoundary>
           <Suspense fallback={<LoadingSpinner />}>
             <PolymarketPage />
@@ -1357,7 +1357,7 @@ export default function MarketOverview() {
       ) : (
       // Whale tracking — live big trades & liquidations, its own tab next to
       // the coin analysis.
-      <m.div key="whales" initial={{ opacity: 0, x: 20 }} animate={{ opacity: 1, x: 0 }} exit={{ opacity: 0, x: -20 }} transition={{ duration: 0.25 }}>
+      <m.div key="whales" variants={tabSlide} initial="initial" animate="animate" exit="exit" transition={tabTransition}>
         <WhalesPage embedded />
       </m.div>
       )}

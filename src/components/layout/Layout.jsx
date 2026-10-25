@@ -1,5 +1,6 @@
 import { useState, useEffect } from 'react';
-import { Outlet, useLocation } from 'react-router-dom';
+import { useLocation } from 'react-router-dom';
+import PageRise from '../shared/PageRise';
 import Sidebar from './Sidebar';
 import Header from './Header';
 import MobileNav from './MobileNav';
@@ -80,7 +81,7 @@ export default function Layout() {
           <EmailVerifyBanner />
           <DemoChrome />
           <PullToRefresh>
-            <Outlet />
+            <PageRise />
           </PullToRefresh>
         </main>
       </div>

@@ -38,6 +38,7 @@ import { JOURNAL_CSV_HEADERS, journalCsvRow } from '../../utils/tradeExport';
 import { TAG_LABELS } from '../../utils/constants';
 import { setupLabel, tradeSetups } from '../../utils/setupStats';
 import { pageVariants, pageTransition } from '../../utils/animations';
+import TabPanel from '../shared/TabPanel';
 import { TRADE_PREFILL_KEY } from '../../utils/tradeFormHelpers';
 import { CRYPTO_JOURNAL_TABS, OTHER_JOURNAL_TABS, resolveJournalTab } from '../../utils/journalTabs';
 
@@ -634,6 +635,7 @@ export default function TradeJournal() {
         )}
       />
 
+      <TabPanel tabKey={tab}>
       {tab === 'trades' && (
         <>
           {isStockJournal && <StockMarketPanel trades={trades} quotes={stockQuotes} />}
@@ -813,6 +815,7 @@ export default function TradeJournal() {
           <MonthlyCalendar trades={trades} journalName={activeJournal?.name} />
         </Suspense>
       )}
+      </TabPanel>
 
       <Modal
         isOpen={aiModalOpen}

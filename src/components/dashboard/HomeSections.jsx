@@ -4,6 +4,7 @@ import { FlaskConical, ClipboardList, Coins, Sunrise, Moon, ChevronLeft, Refresh
 import Card from '../shared/Card';
 import CoinIcon from '../shared/CoinIcon';
 import FitText from '../shared/FitText';
+import RollingNumber from '../shared/RollingNumber';
 import { formatCurrency, formatCurrencyShort, formatCompactUsd, formatRelativeTime, LRM } from '../../utils/formatters';
 import { safePnl, tradeRMultiple } from '../../utils/calculations';
 
@@ -28,9 +29,9 @@ export function HomePanel({ title, link, onLink, className = '', children }) {
   );
 }
 
-function Kpi({ label, value, valueCls = 'text-text-primary', mono = true, bar, sub }) {
+function Kpi({ label, value, valueCls = 'text-text-primary', mono = true, bar, sub, delay = 0 }) {
   return (
-    <div className="p-3.5 md:p-4 flex flex-col gap-2 min-w-0">
+    <div className="rise-in p-3.5 md:p-4 flex flex-col gap-2 min-w-0" style={{ animationDelay: `${delay}s` }}>
       <span className="text-[13px] text-text-secondary">{label}</span>
       <FitText as="b" min={14} className={`${mono ? 'num-mono text-[26px] md:text-[30px]' : 'text-[22px] md:text-2xl'} font-extrabold leading-tight ${valueCls}`} dir={mono ? 'ltr' : undefined} style={mono ? { textAlign: 'right' } : undefined}>
         {value}
@@ -76,13 +77,14 @@ export function HomeKpis({ kpi, hidden }) {
       <div className="grid grid-cols-2 lg:grid-cols-4 [&>*]:border-border-primary max-lg:[&>*:nth-child(odd)]:border-e max-lg:[&>*:nth-child(-n+2)]:border-b lg:[&>*:not(:first-child)]:border-s">
         <Kpi
           label="רווח/הפסד"
-          value={m(formatCurrencyShort(netPnl))}
+          value={<RollingNumber value={m(formatCurrencyShort(netPnl))} />}
           valueCls={pnlCls}
           sub={`${tradeCount} עסקאות סגורות`}
         />
         <Kpi
+          delay={0.05}
           label="אחוז הצלחה"
-          value={winRateText(winRate, wins, losses)}
+          value={<RollingNumber value={winRateText(winRate, wins, losses)} />}
           bar={empty ? <NeutralBar /> : <Split a={(wins / decided) * 100} b={(losses / decided) * 100} />}
           sub={<>
             {wins} רווח · {losses} הפסד{breakeven ? ` · ${breakeven} איזון` : ''}
@@ -90,8 +92,9 @@ export function HomeKpis({ kpi, hidden }) {
           </>}
         />
         <Kpi
+          delay={0.1}
           label="פקטור רווח"
-          value={profitFactorText(pf, wins, losses)}
+          value={<RollingNumber value={profitFactorText(pf, wins, losses)} />}
           bar={empty ? <NeutralBar /> : (
             <div className="h-1.5 rounded-full bg-bg-tertiary overflow-hidden">
               <div className={`h-full rounded-full ${pfColor}`} style={{ width: `${pf == null ? 100 : Math.min(100, (pf / 2) * 100)}%` }} />
@@ -102,6 +105,7 @@ export function HomeKpis({ kpi, hidden }) {
             : <>{pfNote} · ממוצע <span dir="ltr" className="text-profit">{m(formatCurrency(avgWin))}</span> מול <span dir="ltr" className="text-loss">{m(formatCurrency(avgLoss))}</span></>}
         />
         <Kpi
+          delay={0.15}
           label="רצף נוכחי"
           mono={false}
           valueCls={n === 0 ? 'text-text-secondary' : streakWin ? 'text-profit' : 'text-loss'}
@@ -158,7 +162,9 @@ export function RecentTradesCard({ trades, hidden, className = '' }) {
                     {r != null && <> · <span dir="ltr">{LRM}{r > 0 ? '+' : ''}{r.toFixed(1)}R</span></>}
                   </span>
                 </span>
-                <FitText as="b" className={`num-mono text-[15px] shrink-0 max-w-[45%] ${p > 0 ? 'text-profit' : p < 0 ? 'text-loss' : 'text-text-secondary'}`} dir="ltr" style={{ width: 'auto' }}>{m(formatCurrency(p))}</FitText>
+                <FitText as="b" className={`num-mono text-[15px] shrink-0 max-w-[45%] ${p > 0 ? 'text-profit' : p < 0 ? 'text-loss' : 'text-text-secondary'}`} dir="ltr" style={{ width: 'auto' }}>
+                  <RollingNumber value={m(formatCurrency(p))} />
+                </FitText>
               </button>
             );
           })}
@@ -192,7 +198,7 @@ export function ScoreCard({ metrics, score, sampleSize = 0, className = '' }) {
   return (
     <HomePanel title="ציון ביצועים" className={className}>
       <div className="flex items-baseline gap-2.5 mb-4">
-        <b className={`num-mono text-[44px] font-extrabold leading-none ${verdict.cls}`}>{s}</b>
+        <b className={`num-mono text-[44px] font-extrabold leading-none ${verdict.cls}`}><RollingNumber value={String(s)} /></b>
         <span className="text-sm text-text-secondary">/ 100 · {verdict.text}</span>
       </div>
       <div className="flex flex-col gap-3">

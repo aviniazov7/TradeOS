@@ -21,6 +21,7 @@ import PlansSkeleton from './PlansSkeleton';
 import PageHeader from '../shared/PageHeader';
 import { headerPrimaryBtn } from '../shared/headerStyles';
 import { pageVariants, pageTransition, staggerContainer } from '../../utils/animations';
+import TabPanel from '../shared/TabPanel';
 
 function toImageUrl(url) {
   if (!url) return null;
@@ -172,6 +173,7 @@ export default function PlansPage() {
             )}
           />
 
+          <TabPanel tabKey={tab}>
           {/* Tab: Plans */}
           {tab === 'plans' && (
             <>
@@ -336,6 +338,7 @@ export default function PlansPage() {
               )}
             </>
           )}
+          </TabPanel>
         </>
 
       <PlanForm isOpen={formOpen} onClose={handleCloseForm} plan={editingPlan} onSave={handleSave} />

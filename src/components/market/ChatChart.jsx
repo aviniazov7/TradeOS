@@ -3,8 +3,11 @@ import { AreaChart, Area, XAxis, YAxis, Tooltip, ResponsiveContainer, ReferenceL
 import { computeMA, computeFibonacci, computeSupportResistance } from '../../utils/technicals';
 import { formatCoinPrice as formatPrice } from '../../utils/formatters';
 import { chartTick } from '../../utils/chartTicks';
+import { chartDrawProps } from '../../utils/chartMotion';
+import { usePrefersReducedMotion } from '../../hooks/usePrefersReducedMotion';
 
 export default function ChatChart({ prices, coinSymbol }) {
+  const reduce = usePrefersReducedMotion();
   const { chartData, ma7, ma14, fib, support, resistance, chartColor } = useMemo(() => {
     if (!prices?.length) return {};
 
@@ -65,7 +68,7 @@ export default function ChatChart({ prices, coinSymbol }) {
             {ma7 && <ReferenceLine y={ma7} stroke="#f59e0b" strokeDasharray="4 4" strokeWidth={1} />}
             {ma14 && <ReferenceLine y={ma14} stroke="#06b6d4" strokeDasharray="4 4" strokeWidth={1} />}
 
-            <Area type="monotone" dataKey="price" stroke={chartColor} strokeWidth={2} fill={`url(#chatGrad-${coinSymbol})`} dot={false} />
+            <Area type="monotone" dataKey="price" stroke={chartColor} strokeWidth={2} fill={`url(#chatGrad-${coinSymbol})`} dot={false} {...chartDrawProps(reduce)} />
           </AreaChart>
         </ResponsiveContainer>
       </div>

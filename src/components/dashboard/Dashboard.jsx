@@ -25,6 +25,7 @@ import ExchangeLogo from '../shared/ExchangeLogo';
 import Card from '../shared/Card';
 import FitText from '../shared/FitText';
 import Reveal from '../shared/Reveal';
+import RollingNumber from '../shared/RollingNumber';
 import { formatCurrency } from '../../utils/formatters';
 import { exchangeLabel, isUnsetExchange } from '../../utils/constants';
 import { useDemoMode } from '../../hooks/useDemoMode';
@@ -87,7 +88,7 @@ function JournalTile({ j, mask, onOpen }) {
         <div className="text-[11px] text-text-muted mb-0.5">שווי התיק</div>
         {j.balance !== null ? (
           <FitText as="div" className="num-mono text-xl font-bold text-text-primary" dir="ltr" style={{ textAlign: 'right' }}>
-            {mask(formatCurrency(j.balance).replace('+', ''))}
+            <RollingNumber value={mask(formatCurrency(j.balance).replace('+', ''))} />
           </FitText>
         ) : (
           <>
@@ -98,7 +99,7 @@ function JournalTile({ j, mask, onOpen }) {
       </div>
 
       <div className="relative flex items-center gap-3 text-xs pt-3 border-t border-border-primary">
-        <span className={`num-mono font-semibold ${pnlCls}`} dir="ltr">{mask(formatCurrency(j.pnl))}</span>
+        <span className={`num-mono font-semibold ${pnlCls}`} dir="ltr"><RollingNumber value={mask(formatCurrency(j.pnl))} /></span>
         <span className="text-text-muted">{j.tradesCount} עסקאות</span>
         <span className="text-text-muted">{j.winRate.toFixed(0)}% הצלחה</span>
       </div>
@@ -517,14 +518,14 @@ export default function Dashboard() {
             {/* Portfolio beside the latest trades. On a phone the trades
                 come first so the book is on screen before the chart. */}
             <div className="grid grid-cols-1 lg:grid-cols-3 gap-4 items-start">
-              <div className="lg:col-span-2 min-w-0 order-2 lg:order-1">
+              <div className="rise-in lg:col-span-2 min-w-0 order-2 lg:order-1" style={{ animationDelay: '0.04s' }}>
                 <PortfolioHero balance={globalStats.totalBalance} declaredStart={declaredStartCapital(statJournals)} series={equitySeries} hidden={hideBalances} />
               </div>
-              <RecentTradesCard trades={recentClosed} hidden={hideBalances} className="order-1 lg:order-2" />
-              <div className="lg:col-span-2 min-w-0 order-3">
+              <RecentTradesCard trades={recentClosed} hidden={hideBalances} className="rise-in order-1 lg:order-2" />
+              <div className="rise-in lg:col-span-2 min-w-0 order-3" style={{ animationDelay: '0.12s' }}>
                 <TradeAgentCard trades={allTrades} />
               </div>
-              <div className="order-4">
+              <div className="rise-in order-4" style={{ animationDelay: '0.18s' }}>
                 <ScoreCard metrics={perf.metrics} score={perf.score} sampleSize={kpi.tradeCount} />
               </div>
             </div>
@@ -537,8 +538,10 @@ export default function Dashboard() {
             {journalStats.length > 0 ? (
               <>
                 <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3">
-                  {journalStats.slice(0, 3).map((j) => (
-                    <JournalTile key={j.id} j={j} mask={maskAmount} onOpen={() => openJournal(j)} />
+                  {journalStats.slice(0, 3).map((j, i) => (
+                    <div key={j.id} className="rise-in" style={{ animationDelay: `${i * 0.06}s` }}>
+                      <JournalTile j={j} mask={maskAmount} onOpen={() => openJournal(j)} />
+                    </div>
                   ))}
                 </div>
                 <AnimatePresence initial={false}>

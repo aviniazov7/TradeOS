@@ -1,8 +1,8 @@
 import { useState, useEffect, useMemo } from 'react';
 import { Navigate, useSearchParams } from 'react-router-dom';
 import { UserPlus, ShieldCheck, CheckCircle2, RefreshCw, Calendar, Coins, BookOpen, FlaskConical, Activity, FileText, Crown, Send, X, Ticket, Plus, Minus, Trash2, Copy, ScrollText, Share2, Link2, AlertTriangle, Clock, DollarSign, Loader2, Ban, ChevronDown, Bell } from 'lucide-react';
-import { m } from 'framer-motion';
 import toast from 'react-hot-toast';
+import TabPanel from '../shared/TabPanel';
 import { useAuth } from '../../contexts/AuthContext';
 import ReengageComposer from './ReengageComposer';
 import AdminOverview from './AdminOverview';
@@ -412,7 +412,7 @@ export default function AdminPanel() {
         <div className="mb-4 bg-loss/10 border border-loss/30 text-loss rounded-xl p-3 text-sm">{error}</div>
       )}
 
-      <m.div key={tab} initial={{ opacity: 0, y: 6 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.22, ease: 'easeOut' }}>
+      <TabPanel tabKey={tab}>
         {tab === 'overview' && (loading && !users.length ? <div className="py-16"><LoadingSpinner /></div> : (
           <AdminOverview
             users={users} now={loadedAt} stats={stats} analytics={analytics} growth={growth} segments={segments}
@@ -448,7 +448,7 @@ export default function AdminPanel() {
         {tab === 'notifications' && (
           <AdminNotifications demo={demoNotifs} onUnreadChange={demoNotifs ? setDemoUnread : undefined} />
         )}
-      </m.div>
+      </TabPanel>
 
       <UserDetailModal
         user={detailUser}

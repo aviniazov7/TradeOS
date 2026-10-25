@@ -1,6 +1,7 @@
 import { useState, useEffect, useCallback, useMemo } from 'react';
 import { useSearchParams } from 'react-router-dom';
 import { m, AnimatePresence } from 'framer-motion';
+import { tabSlide, tabTransition } from '../../utils/animations';
 import { Newspaper, ExternalLink, Clock, Filter, CalendarDays, Volume2, Globe, BrainCircuit, RefreshCw } from 'lucide-react';
 import { fetchNewsDigest, translateNews } from '../../services/newsService';
 import WhyItMoved from './WhyItMoved';
@@ -1175,13 +1176,14 @@ export default function NewsPage() {
         tabs={{ tabs: NEWS_TABS, value: tab, onChange: setTab, layoutKey: 'news-tab' }}
       />
 
-      <AnimatePresence mode="wait">
+      <AnimatePresence mode="wait" initial={false}>
         <m.div
           key={tab}
-          initial={{ opacity: 0, y: 8 }}
-          animate={{ opacity: 1, y: 0 }}
-          exit={{ opacity: 0, y: -6 }}
-          transition={{ duration: 0.2 }}
+          variants={tabSlide}
+          initial="initial"
+          animate="animate"
+          exit="exit"
+          transition={tabTransition}
         >
           {isCalendar ? <EconomicCalendar /> : (
             <>

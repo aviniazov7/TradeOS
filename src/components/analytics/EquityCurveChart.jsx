@@ -1,6 +1,8 @@
 import { ComposedChart, Area, XAxis, YAxis, Tooltip, ResponsiveContainer } from 'recharts';
 import { formatCurrency } from '../../utils/formatters';
 import { chartTick } from '../../utils/chartTicks';
+import { chartDrawProps } from '../../utils/chartMotion';
+import { usePrefersReducedMotion } from '../../hooks/usePrefersReducedMotion';
 
 // Desktop Safari resolves `height: 100%` inside a flex child that only has
 // min-height as 0, so ResponsiveContainer skips the plot. A pixel height
@@ -23,6 +25,7 @@ const compactUsd = (v) => {
 };
 
 export default function EquityCurveChart({ data }) {
+  const reduce = usePrefersReducedMotion();
   if (!data || data.length < 2) {
     return (
       <div className="bg-bg-secondary border border-border-primary rounded-xl p-5 h-full min-h-[220px] flex items-center justify-center">
@@ -54,7 +57,7 @@ export default function EquityCurveChart({ data }) {
               cursor={{ stroke: 'var(--color-border-primary)', strokeWidth: 1 }}
               formatter={(val) => [formatCurrency(val), 'הון']}
             />
-            <Area type="monotone" dataKey="equity" stroke="var(--color-accent-primary)" strokeWidth={2} fill="url(#equityGradAdv)" animationDuration={800} />
+            <Area type="monotone" dataKey="equity" stroke="var(--color-accent-primary)" strokeWidth={2} fill="url(#equityGradAdv)" {...chartDrawProps(reduce)} />
           </ComposedChart>
         </ResponsiveContainer>
       </div>

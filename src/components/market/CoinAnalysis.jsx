@@ -9,6 +9,8 @@ import { chartTick } from '../../utils/chartTicks';
 import { fetchAnalysisLiquidity } from '../../services/bybitDirect';
 import { fetchProjectDescription } from '../../services/groqApi';
 import { computeRSI, computeMA, computeVolatility } from '../../utils/technicals';
+import { chartDrawProps } from '../../utils/chartMotion';
+import { usePrefersReducedMotion } from '../../hooks/usePrefersReducedMotion';
 
 // ── Modern "AI" accent: violet → cyan. Replaces the old flat blue across this
 // page. AI_GRADIENT is used for hero CTAs / hairlines / progress; AI_FROM/AI_TO
@@ -289,6 +291,7 @@ function ProjectDescription({ coin, description, loading, error, expanded, onTog
 }
 
 export default function CoinAnalysis() {
+  const reduceMotion = usePrefersReducedMotion();
   const [query, setQuery] = useState('');
   const [suggestions, setSuggestions] = useState([]);
   const [showSuggestions, setShowSuggestions] = useState(false);
@@ -1069,7 +1072,7 @@ export default function CoinAnalysis() {
                           />
                           {technicals?.ma7 && <ReferenceLine y={technicals.ma7} stroke="#f59e0b" strokeDasharray="4 4" strokeWidth={1} />}
                           {technicals?.ma14 && <ReferenceLine y={technicals.ma14} stroke="#06b6d4" strokeDasharray="4 4" strokeWidth={1} />}
-                          <Area type="monotone" dataKey="price" stroke={chartColor} strokeWidth={2} fill="url(#coinGrad)" dot={false} />
+                          <Area type="monotone" dataKey="price" stroke={chartColor} strokeWidth={2} fill="url(#coinGrad)" dot={false} {...chartDrawProps(reduceMotion)} />
                         </AreaChart>
                       </ResponsiveContainer>
                     </m.div>

@@ -672,9 +672,35 @@ input[type="number"] {
 }
 /* Exchange tiles set --beam-from from their own accent. Without this, hover
    falls back to the app's cyan border. */
-.exchange-card { transition: border-color 0.2s ease; }
+.exchange-card { transition: border-color 0.2s ease, transform 0.25s cubic-bezier(0.22, 1, 0.36, 1); }
 .exchange-card:hover {
   border-color: color-mix(in srgb, var(--beam-from, #38bdf8) 40%, transparent);
+}
+/* Lift sits with the brand beam. Motion cards drive the same 4px via
+   whileHover; this covers a plain .exchange-card. Reduced motion below
+   drops the transform. */
+@media (hover: hover) and (prefers-reduced-motion: no-preference) {
+  .exchange-card:hover { transform: translateY(-4px); }
+}
+@keyframes riseIn {
+  from { opacity: 0; transform: translate3d(0, 16px, 0); }
+  to { opacity: 1; transform: translate3d(0, 0, 0); }
+}
+.rise-in {
+  animation: riseIn 0.48s cubic-bezier(0.22, 1, 0.36, 1) both;
+}
+/* SVG line draw-in. pathLength="1" makes the dash one unit long, so the
+   stroke grows from the start of the series regardless of its pixel length. */
+@keyframes chartDraw { to { stroke-dashoffset: 0; } }
+@keyframes chartDrawFill { to { opacity: 1; } }
+.chart-draw {
+  stroke-dasharray: 1;
+  stroke-dashoffset: 1;
+  animation: chartDraw 0.9s cubic-bezier(0.22, 1, 0.36, 1) forwards;
+}
+.chart-draw-fill {
+  opacity: 0;
+  animation: chartDrawFill 0.55s ease-out 0.28s forwards;
 }
 /* Faint scan-line highlight along the top edge */
 .bento-card::before {
@@ -826,6 +852,10 @@ html.a11y-stop-motion *::after {
   transition-duration: 0.001ms !important;
   scroll-behavior: auto !important;
 }
+html.a11y-stop-motion .rise-in { opacity: 1; transform: none; }
+html.a11y-stop-motion .chart-draw { stroke-dashoffset: 0; }
+html.a11y-stop-motion .chart-draw-fill { opacity: 1; }
+html.a11y-stop-motion .exchange-card:hover { transform: none; }
 
 /* Big cursor — a larger arrow pointer for easier tracking. */
 html.a11y-big-cursor,
@@ -846,4 +876,10 @@ html.a11y-big-cursor * {
     transition-duration: 0.001ms !important;
     scroll-behavior: auto !important;
   }
+  /* A near-zero animation can still finish on the "from" keyframe. Pin the
+     resting state so a chart line or a rising card is never left invisible. */
+  .rise-in { opacity: 1; transform: none; }
+  .chart-draw { stroke-dashoffset: 0; }
+  .chart-draw-fill { opacity: 1; }
+  .exchange-card:hover { transform: none; }
 }

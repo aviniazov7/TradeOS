@@ -1,7 +1,7 @@
 import { useMemo, useRef, useState } from 'react';
 import Card from '../shared/Card';
-import AnimatedValue from '../shared/AnimatedValue';
 import FitText from '../shared/FitText';
+import RollingNumber from '../shared/RollingNumber';
 import { formatCurrency, formatCurrencyShort, LRM } from '../../utils/formatters';
 import { summarizeSeries } from '../../utils/portfolioPerformance';
 
@@ -82,7 +82,7 @@ export default function PortfolioHero({ balance, declaredStart = 0, series, hidd
           <span className="text-[13px] font-medium text-text-secondary">שווי תיקים כולל</span>
           <div className="flex items-center gap-2.5 min-w-0">
             <FitText dir="ltr" min={18} className="num-mono text-3xl md:text-[40px] font-extrabold text-text-primary leading-none flex-initial">
-              <AnimatedValue value={m(formatCurrency(balance).replace('+', ''))} />
+              <RollingNumber value={m(formatCurrency(balance).replace('+', ''))} />
             </FitText>
             {s.percent != null && s.percent !== 0 && (
               <span dir="ltr" data-testid="portfolio-return" className={`shrink-0 text-[13px] font-bold px-2 py-0.5 rounded-lg ${s.percent >= 0 ? 'bg-profit/15 text-profit' : 'bg-loss/15 text-loss'}`}>
@@ -104,15 +104,15 @@ export default function PortfolioHero({ balance, declaredStart = 0, series, hidd
       <div className="grid grid-cols-3 gap-2.5">
         <div className={tile}>
           <span className="text-xs text-text-secondary truncate" title={s.def.id === 'all' ? 'רווח/הפסד נקי מתחילת התיק' : `רווח/הפסד נקי ${s.def.label}`}>רווח/הפסד</span>
-          <FitText as="b" className={`num-mono text-base md:text-xl ${tone(s.pnl)}`} dir="ltr" style={{ textAlign: 'right' }}>{m(money(s.pnl))}</FitText>
+          <FitText as="b" className={`num-mono text-base md:text-xl ${tone(s.pnl)}`} dir="ltr" style={{ textAlign: 'right' }}><RollingNumber value={m(money(s.pnl))} /></FitText>
         </div>
         <div className={tile}>
           <span className="text-xs text-text-secondary">עסקאות</span>
-          <FitText as="b" className="num-mono text-base md:text-xl text-text-primary">{s.count}</FitText>
+          <FitText as="b" className="num-mono text-base md:text-xl text-text-primary"><RollingNumber value={String(s.count)} /></FitText>
         </div>
         <div className={tile}>
           <span className="text-xs text-text-secondary truncate">{third.label}</span>
-          <FitText as="b" className={`num-mono text-base md:text-xl ${third.cls}`} dir="ltr" style={{ textAlign: 'right' }}>{third.value}</FitText>
+          <FitText as="b" className={`num-mono text-base md:text-xl ${third.cls}`} dir="ltr" style={{ textAlign: 'right' }}><RollingNumber value={third.value} /></FitText>
         </div>
       </div>
 
@@ -126,8 +126,10 @@ export default function PortfolioHero({ balance, declaredStart = 0, series, hidd
               </linearGradient>
             </defs>
             <line x1="0" x2={W} y1={s.chart.zeroY} y2={s.chart.zeroY} stroke="var(--color-border-hover)" strokeDasharray="4 5" vectorEffect="non-scaling-stroke" />
-            <path d={s.chart.area} fill="url(#hero-fill)" />
-            <path d={s.chart.line} fill="none" stroke="var(--color-accent-primary)" strokeWidth="2.4" strokeLinejoin="round" vectorEffect="non-scaling-stroke" />
+            <g key={period}>
+              <path d={s.chart.area} fill="url(#hero-fill)" className="chart-draw-fill" />
+              <path d={s.chart.line} pathLength="1" className="chart-draw" fill="none" stroke="var(--color-accent-primary)" strokeWidth="2.4" strokeLinejoin="round" vectorEffect="non-scaling-stroke" />
+            </g>
             {hp && <line x1={hp.x} x2={hp.x} y1="0" y2={H} stroke="var(--color-border-hover)" vectorEffect="non-scaling-stroke" />}
           </svg>
           {hp && (

@@ -20,7 +20,7 @@ import AcademyModal from './AcademyModal';
 import SelectDropdown from '../shared/SelectDropdown';
 import { fmtUsd, fmtPct, shortWallet, roiPct } from '../../utils/polymarketScore';
 import { downloadCsv, stampedName } from '../../utils/csv';
-import { pageVariants, pageTransition, staggerContainer, staggerItem } from '../../utils/animations';
+import { staggerContainer, staggerItem } from '../../utils/animations';
 
 const SORTS = [
   { key: 'score', label: 'ציון' },
@@ -519,7 +519,7 @@ function PolymarketBoard() {
 export default function PolymarketPage() {
   const { isPremium } = useAuth();
   return (
-    <m.div variants={pageVariants} initial="initial" animate="animate" exit="exit" transition={pageTransition} className="max-w-4xl mx-auto">
+    <div className="max-w-4xl mx-auto">
       {isPremium ? (
         <PolymarketBoard />
       ) : (
@@ -528,6 +528,6 @@ export default function PolymarketPage() {
           <LockedTeaser />
         </>
       )}
-    </m.div>
+    </div>
   );
 }
