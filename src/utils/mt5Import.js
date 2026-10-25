@@ -528,6 +528,15 @@ function decodeEntities(s) {
     .replace(/&#(\d+);/g, (_, n) => String.fromCharCode(Number(n)));
 }
 
+// MT5's desktop HTML report inserts cells the terminal's own CSS hides
+// (`.hidden { display: none }`), including a colspan spacer between Type and
+// Volume on every Positions row and a Cost column on Deals. Counting those
+// cells shifts Volume onto the spacer and drops the whole table. Profit is
+// colspan="2" on both the header and the row, so colspan stays one cell.
+function cellIsHidden(attrs) {
+  return /\bhidden\b/i.test(attrs || '');
+}
+
 function htmlToGrid(html) {
   const src = String(html)
     .replace(/<script[\s\S]*?<\/script>/gi, '')
@@ -537,12 +546,13 @@ function htmlToGrid(html) {
   const parts = src.split(/<tr\b[^>]*>/i).slice(1);
   for (const part of parts) {
     const body = part.split(/<\/tr>/i)[0];
-    const bits = body.split(/<t[dh]\b[^>]*>/i).slice(1);
+    const bits = [...body.matchAll(/<t[dh]\b([^>]*)>([\s\S]*?)<\/t[dh]>/gi)];
     if (!bits.length) continue;
-    const cells = bits.map((bit) => {
-      const inner = bit.split(/<\/t[dh]>/i)[0];
-      return decodeEntities(inner.replace(/<[^>]+>/g, ' ')).replace(/\s+/g, ' ').trim();
-    });
+    const cells = [];
+    for (const bit of bits) {
+      if (cellIsHidden(bit[1])) continue;
+      cells.push(decodeEntities(bit[2].replace(/<[^>]+>/g, ' ')).replace(/\s+/g, ' ').trim());
+    }
     if (cells.some(Boolean)) rows.push(cells);
   }
   return rows;

@@ -144,6 +144,21 @@ describe('parseMt5Text — CSV and errors', () => {
     expect(passesRules(t)).toBe(true);
   });
 
+  it('does not import deposit, withdraw, or credit rows even when credit has a volume', () => {
+    const deals = `<table>
+      <tr><td>Deals</td></tr>
+      <tr><td>Time</td><td>Deal</td><td>Symbol</td><td>Type</td><td>Direction</td><td>Volume</td><td>Price</td><td>Order</td><td>Commission</td><td>Fee</td><td>Swap</td><td>Profit</td><td>Comment</td></tr>
+      <tr><td>2024.05.01 00:00:00</td><td>900</td><td></td><td>balance</td><td></td><td></td><td></td><td></td><td>0</td><td>0</td><td>0</td><td>1000</td><td>Deposit</td></tr>
+      <tr><td>2024.05.01 00:01:00</td><td>901</td><td></td><td>balance</td><td></td><td></td><td></td><td></td><td>0</td><td>0</td><td>0</td><td>-200</td><td>Withdraw</td></tr>
+      <tr><td>2024.05.01 00:02:00</td><td>902</td><td></td><td>credit</td><td>in</td><td>1.00</td><td>1.00</td><td></td><td>0</td><td>0</td><td>0</td><td>50</td><td>Credit</td></tr>
+      <tr><td>2024.05.02 09:00:00</td><td>1001</td><td>EURUSD</td><td>buy</td><td>in</td><td>0.10</td><td>1.10000</td><td>1</td><td>0</td><td>0</td><td>0</td><td>0</td><td></td></tr>
+      <tr><td>2024.05.02 10:00:00</td><td>1002</td><td>EURUSD</td><td>sell</td><td>out</td><td>0.10</td><td>1.10100</td><td>2</td><td>0</td><td>0</td><td>0</td><td>10</td><td></td></tr>
+    </table>`;
+    const { ok, trades } = parseMt5Text(deals);
+    expect(ok).toBe(true);
+    expect(trades.map((t) => t.externalId)).toEqual(['mt5-1001']);
+  });
+
   it('returns a Hebrew error for an empty file, an unrecognized file, and a report with no trades', () => {
     expect(parseMt5Text('')).toMatchObject({ ok: false, error: MT5_IMPORT_ERRORS.empty });
     expect(parseMt5Text('<html><body><p>not a report</p></body></html>')).toMatchObject({
@@ -157,6 +172,80 @@ describe('parseMt5Text — CSV and errors', () => {
     for (const msg of Object.values(MT5_IMPORT_ERRORS)) {
       expect(msg).toMatch(/[\u0590-\u05FF]/);
     }
+  });
+});
+
+describe('parseMt5Text — Vantage desktop report', () => {
+  // Sanitized from a real History → Report → HTML export. The account
+  // number and name are replaced. Positions rows keep the terminal's hidden
+  // colspan spacer, and Deals still contain Deposit / Withdraw / credit.
+  const report = readFileSync(fixture('mt5-vantage-report.html'), 'utf8');
+  const parsed = parseMt5Text(report);
+
+  it('reads every position and skips balance, credit, and canceled orders', () => {
+    expect(parsed.ok).toBe(true);
+    expect(parsed.sourceSection).toBe('positions');
+    expect(parsed.trades.map((t) => t.externalId)).toEqual([
+      'mt5-58780545', 'mt5-59139952', 'mt5-59149648', 'mt5-61749331',
+      'mt5-82487915', 'mt5-86793364', 'mt5-89811596', 'mt5-89815098',
+      'mt5-102552716',
+    ]);
+    expect(parsed.trades.every(passesRules)).toBe(true);
+  });
+
+  it('maps XAUUSD buy and sell with open/close time, stop, and target', () => {
+    const sell = byTicket(parsed.trades, '59149648');
+    expect(sell).toMatchObject({
+      pair: 'XAUUSD', direction: 'short', lots: 0.01, quantity: 1,
+      entryPrice: 4684.6, exitPrice: 4692.71, stopLoss: 4692.44,
+      status: 'closed', fees: 0,
+    });
+    expect(sell.tps).toEqual([4666.2]);
+    expect(sell.pnlFromExchange).toBeCloseTo(-8.11, 8);
+    expect(sell.entryDate).toBe(parseMt5Date('2026.04.06 11:09:50').toISOString());
+    expect(sell.exitDate).toBe(parseMt5Date('2026.04.06 11:15:30').toISOString());
+    const open = byTicket(parsed.trades, '58780545');
+    expect(open.stopLoss).toBe(0);
+    expect(open.tps).toEqual([]);
+    expect(open.pnlFromExchange).toBeCloseTo(-0.92, 8);
+    expect(byTicket(parsed.trades, '61749331')).toMatchObject({
+      pair: 'XAUUSD', direction: 'long', lots: 0.01, pnlFromExchange: 0.89,
+    });
+  });
+
+  it('folds a positive swap into gross P&L and strips the broker suffix', () => {
+    const btc = byTicket(parsed.trades, '82487915');
+    expect(btc).toMatchObject({
+      pair: 'BTCUSD', direction: 'short', lots: 0.1, fees: 0,
+      entryPrice: 65858.92, exitPrice: 65298.36, stopLoss: 65291.2,
+    });
+    expect(btc.tps).toEqual([60653]);
+    // Profit 56.05 plus swap +0.91. Commission is 0, so nothing is a fee.
+    expect(btc.pnlFromExchange).toBeCloseTo(56.96, 8);
+    expect(byTicket(parsed.trades, '89811596')).toMatchObject({
+      pair: 'NAS100', direction: 'long', lots: 0.1, stopLoss: 28804.28,
+    });
+    expect(byTicket(parsed.trades, '89811596').tps).toEqual([28992.2]);
+    expect(byTicket(parsed.trades, '102552716')).toMatchObject({
+      pair: 'USOUSD', direction: 'long', lots: 0.1, quantity: 100, entryPrice: 75.676,
+    });
+    expect(byTicket(parsed.trades, '86793364')).toMatchObject({
+      pair: 'ETHUSD', direction: 'short', lots: 3.01,
+    });
+  });
+
+  it('reads the same report when MT5 saved it as UTF-16 LE', async () => {
+    const utf16 = new Uint8Array(2 + report.length * 2);
+    utf16[0] = 0xFF;
+    utf16[1] = 0xFE;
+    for (let i = 0; i < report.length; i += 1) {
+      const c = report.charCodeAt(i);
+      utf16[2 + i * 2] = c & 0xFF;
+      utf16[3 + i * 2] = (c >> 8) & 0xFF;
+    }
+    const again = await readMt5ArrayBuffer(utf16, 'Report.html');
+    expect(again.ok).toBe(true);
+    expect(again.trades.map((t) => t.externalId)).toEqual(parsed.trades.map((t) => t.externalId));
   });
 });
 
