@@ -82,7 +82,9 @@ describe('buildCampaignEmails', () => {
     expect(m.html).toContain('תזכורת · פרסומת');
     expect(m.html).toContain('להסרה מרשימת התפוצה');
     expect(m.headers['List-Unsubscribe']).toBe(`<${un(1)}>`);
-    expect(m.text).toContain('השבוע תיעדת 3 עסקאות');
+    expect(m.text.match(/השבוע תיעדת 3 עסקאות/g)).toHaveLength(1);
+    expect(m.text.split('היי דנה,')[1]).not.toContain('השבוע תיעדת 3 עסקאות');
+    expect(m.html).toContain('אפשר לפתוח את היומן כשנוח.');
     expect(m.html).not.toContain('מתגעגעים');
   });
 

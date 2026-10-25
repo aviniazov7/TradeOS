@@ -170,15 +170,15 @@ function loginLine(n) {
   return `הכניסה האחרונה שלך הייתה לפני ${n} ימים`;
 }
 
-// Sentences the recipient can verify. Zero counts are skipped (nothing to
-// report). A known last-login day is always included, including "today".
+// Sentences the recipient can verify. Zero counts are skipped. A login from
+// today is skipped too: "נכנסת היום" reads oddly in a mail they just opened.
 export function personalFacts(stats) {
   const lines = [];
   const s = stats || {};
   if (Number.isInteger(s.weekTrades) && s.weekTrades > 0) lines.push(weekLine(s.weekTrades));
   if (Number.isInteger(s.openTrades) && s.openTrades > 0) lines.push(openLine(s.openTrades));
   if (Number.isInteger(s.journalDays) && s.journalDays > 0) lines.push(journalLine(s.journalDays));
-  if (Number.isInteger(s.daysSinceLogin) && s.daysSinceLogin >= 0) lines.push(loginLine(s.daysSinceLogin));
+  if (Number.isInteger(s.daysSinceLogin) && s.daysSinceLogin > 0) lines.push(loginLine(s.daysSinceLogin));
   return lines;
 }
 
@@ -210,6 +210,7 @@ export const REMINDER_SYSTEM_PROMPT = `אתה כותב עדכון אישי קצ�
 טון: רגוע, קצר, ידידותי.
 אסור: אמוג'י, סימן קריאה, מילים באותיות גדולות באנגלית, ומילות לחץ או התלהבות כמו בדוק, אל תפספס, צפה בתנועה, מדהים, זינק, דחוף, הזדמנות.
 בלי המלצת קנייה או מכירה.
+הכותרת היא העובדה הראשונה בלבד. בגוף אל תחזור על העובדות מהקלט, לא כלשונן ולא בניסוח אחר. אם הנמען נכנס היום, אל תזכיר את הכניסה.
 החזר JSON בלבד:
 {"title": "נושא עד 70 תווים", "push": "משפט אחד להתראה, עד 140 תווים", "email": "גוף: משפט אחד עד שלושה, מופרדים בשורה ריקה", "cta": "טקסט כפתור עד 22 תווים", "path": "/journal"}`;
 
@@ -224,8 +225,9 @@ const CLOSING = 'אפשר לפתוח את היומן כשנוח.';
 export function templateReminder(stats) {
   const lines = personalFacts(stats);
   const title = (lines[0] || 'עדכון קצר מהיומן').slice(0, 80);
+  // The title already states the first fact. The body is the rest, once.
   const email = lines.length
-    ? `${lines.join('\n\n')}\n\n${CLOSING}`
+    ? [...lines.slice(1), CLOSING].join('\n\n')
     : 'היומן שלך מחכה כשתרצה להוסיף עסקה או לרשום איך עבר היום.';
   const push = (lines[0] || 'עדכון קצר מהיומן שלך.').slice(0, 180);
   return { title, push, email, cta: 'ליומן', path: '/journal' };
@@ -252,31 +254,90 @@ export function validateReminder(raw, stats) {
   };
 }
 
+const HEBREW_COUNT = {
+  1: ['אחת', 'אחד'],
+  2: ['שתיים', 'שניים', 'שתי', 'שני'],
+  3: ['שלוש', 'שלושה'],
+  4: ['ארבע', 'ארבעה'],
+  5: ['חמש', 'חמישה'],
+  6: ['שש', 'שישה'],
+  7: ['שבע', 'שבעה'],
+  8: ['שמונה'],
+  9: ['תשע', 'תשעה'],
+  10: ['עשר', 'עשרה'],
+};
+
+function mentionsNumber(text, n) {
+  const tokens = [String(n), ...(HEBREW_COUNT[n] || [])];
+  return tokens.some((token) => {
+    if (/^\d+$/.test(token)) return new RegExp(`(?:^|\\D)${token}(?:\\D|$)`).test(text);
+    return new RegExp(`(?:^|[^\\p{L}])${token}(?:[^\\p{L}]|$)`, 'u').test(text);
+  });
+}
+
+// A sentence that says the same thing as a canonical fact, including a
+// paraphrase ("שלוש" for 3, or the words in another order).
+function restatesAnyFact(text, stats) {
+  const s = String(text || '');
+  const st = stats || {};
+  if (Number.isInteger(st.weekTrades) && st.weekTrades > 0
+    && /שבוע/.test(s) && /עסק/.test(s) && mentionsNumber(s, st.weekTrades)) return true;
+  if (Number.isInteger(st.openTrades) && st.openTrades > 0
+    && /פתוח/.test(s) && mentionsNumber(s, st.openTrades)) return true;
+  if (Number.isInteger(st.journalDays) && st.journalDays > 0
+    && /יומן/.test(s) && mentionsNumber(s, st.journalDays)) return true;
+  if (st.daysSinceLogin === 0 && /נכנס/.test(s) && /היום/.test(s)) return true;
+  if (Number.isInteger(st.daysSinceLogin) && st.daysSinceLogin > 0 && /(?:נכנס|כניסה)/.test(s)) {
+    if (st.daysSinceLogin === 1 && /אתמול/.test(s)) return true;
+    if (st.daysSinceLogin > 1 && mentionsNumber(s, st.daysSinceLogin)) return true;
+  }
+  return false;
+}
+
+const bare = (s) => String(s || '').trim().replace(/[.。]+$/u, '').trim();
+
+function sentencesOf(message) {
+  return String(message || '')
+    .split(/\n+/)
+    .flatMap((part) => part.split(/(?<=\.)\s+/))
+    .map((s) => s.trim())
+    .filter(Boolean);
+}
+
+// Admin/AI sentences that are not a restatement of the recipient's facts.
+function calmExtra(message, stats, facts) {
+  const factSet = new Set(facts.map(bare));
+  const kept = [];
+  for (const raw of sentencesOf(message)) {
+    const s = bare(raw);
+    if (!s || factSet.has(s) || s === bare(CLOSING)) continue;
+    if (restatesAnyFact(s, stats) || /\d/.test(s) || !isCalm(s)) continue;
+    kept.push(raw.trim());
+  }
+  return kept.join('\n\n');
+}
+
 // Admin draft + this recipient's stats → the subject/headline/body to send.
-// With stats, the subject is the first personal sentence. The admin's own
-// calm sentences stay after them, except paragraphs that carry a number
-// (another recipient's counts, or a market figure) or a hype phrase.
-// With no stats, the admin draft is sent unchanged.
+// The subject is the first fact. The card is the other facts, once, then the
+// calm closing. A draft sentence that already says one of those facts
+// (even in other words) is dropped. With no stats, the draft is kept, aside
+// from a "logged in today" line.
 export function personalizeReminder({ subject, headline, message, stats }) {
   const facts = personalFacts(stats);
   if (!facts.length) {
+    const kept = sentencesOf(message).filter((s) => !restatesAnyFact(s, stats));
+    const cleaned = kept.join('\n\n');
     return {
       subject: String(subject || headline || 'TradeOS'),
       headline: String(headline || subject || ''),
-      message: String(message || ''),
+      message: cleaned || 'היומן שלך מחכה כשתרצה להוסיף עסקה או לרשום איך עבר היום.',
     };
   }
-  const factSet = new Set(facts);
-  const extra = String(message || '')
-    .split(/\n\s*\n/)
-    .map((p) => p.trim())
-    .filter(Boolean)
-    .filter((p) => !/\d/.test(p))
-    .filter((p) => isCalm(p))
-    .filter((p) => !factSet.has(p))
-    .join('\n\n');
-  const body = extra ? `${facts.join('\n\n')}\n\n${extra}` : `${facts.join('\n\n')}\n\n${CLOSING}`;
-  return { subject: facts[0], headline: facts[0], message: body };
+  const extra = calmExtra(message, stats, facts);
+  const parts = [...facts.slice(1)];
+  if (extra) parts.push(extra);
+  parts.push(CLOSING);
+  return { subject: facts[0], headline: facts[0], message: parts.join('\n\n') };
 }
 
 // Shape the already-shipped admin panel reads without checking that `facts`

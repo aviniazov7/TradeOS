@@ -19,11 +19,10 @@ describe('personalFacts', () => {
     ]);
   });
 
-  it('uses the singular and skips zeros', () => {
+  it('uses the singular and skips zeros and a login from today', () => {
     expect(personalFacts({ weekTrades: 1, openTrades: 0, journalDays: 1, daysSinceLogin: 0 })).toEqual([
       'השבוע תיעדת עסקה אחת',
       'השבוע כתבת ביומן יום אחד',
-      'נכנסת היום',
     ]);
     expect(personalFacts({ weekTrades: 0, openTrades: null, journalDays: null, daysSinceLogin: null })).toEqual([]);
   });
@@ -38,8 +37,10 @@ describe('templateReminder', () => {
     const stats = { weekTrades: 3, openTrades: 2, journalDays: null, daysSinceLogin: 1 };
     const h = templateReminder(stats);
     expect(h.title).toBe('השבוע תיעדת 3 עסקאות');
+    expect(h.email).not.toContain('השבוע תיעדת 3 עסקאות');
     expect(h.email).toContain('יש לך 2 עסקאות פתוחות');
     expect(h.email).toContain('הכניסה האחרונה שלך הייתה אתמול');
+    expect(h.email).toContain('אפשר לפתוח את היומן כשנוח.');
     expect(h.path).toBe('/journal');
     expect(isCalm(`${h.title}\n${h.push}\n${h.email}`)).toBe(true);
     expect(validateReminder(h, stats)).toMatchObject({ title: h.title, path: '/journal' });
@@ -91,10 +92,33 @@ describe('personalizeReminder', () => {
     });
     expect(out.subject).toBe('השבוע תיעדת 3 עסקאות');
     expect(out.headline).toBe(out.subject);
+    expect(out.message).not.toContain('השבוע תיעדת 3 עסקאות');
     expect(out.message).toContain('יש לך 2 עסקאות פתוחות');
     expect(out.message).toContain('אפשר לרשום ביומן כשנוח.');
+    expect(out.message).toContain('אפשר לפתוח את היומן כשנוח.');
     expect(out.message).not.toContain('9');
     expect(out.message).not.toContain('אל תפספס');
+  });
+
+  it('states each fact once and drops a login from today', () => {
+    const out = personalizeReminder({
+      subject: 'השבוע תיעדת עסקה אחת',
+      headline: 'השבוע תיעדת עסקה אחת',
+      message: [
+        'השבוע תיעדת עסקה אחת',
+        'יש לך 3 עסקאות פתוחות',
+        'נכנסת היום',
+        'תיעדת עסקה אחת השבוע. יש לך שלוש עסקאות פתוחות ונכנסת היום.',
+      ].join('\n\n'),
+      stats: { weekTrades: 1, openTrades: 3, journalDays: null, daysSinceLogin: 0 },
+    });
+    expect(out.subject).toBe('השבוע תיעדת עסקה אחת');
+    expect(out.headline).toBe('השבוע תיעדת עסקה אחת');
+    expect(out.message).toBe('יש לך 3 עסקאות פתוחות\n\nאפשר לפתוח את היומן כשנוח.');
+    expect(out.message.match(/יש לך 3 עסקאות פתוחות/g)).toHaveLength(1);
+    expect(out.message).not.toContain('נכנסת היום');
+    expect(out.message).not.toContain('שלוש');
+    expect(out.message).not.toContain('השבוע תיעדת עסקה אחת');
   });
 
   it('leaves a draft alone when the recipient has no stats', () => {
