@@ -10,8 +10,7 @@ import { syncExchangeTrades, syncOpenPositions, fetchExchangeBalance, storeExcha
 import { useAuth } from '../../contexts/AuthContext';
 import { useJournalContext } from '../../contexts/JournalContext';
 import { useExchangeImport } from '../../hooks/useExchangeImport';
-import { pageVariants, pageTransition, exchangeHover } from '../../utils/animations';
-import RollingNumber from '../shared/RollingNumber';
+import { pageVariants, pageTransition } from '../../utils/animations';
 import { getExchangeLogo, FREE_LIMITS } from '../../utils/constants';
 import LoadingSpinner from '../shared/LoadingSpinner';
 import SelectDropdown from '../shared/SelectDropdown';
@@ -94,7 +93,7 @@ function ConnectedCard({ exchange, balance, syncing, onSync, onEdit, onDisconnec
   let balanceView;
   if (!canSync) balanceView = <span className="text-sm text-text-muted">סנכרון אוטומטי לא נתמך</span>;
   else if (balance === undefined || balance === null) balanceView = <span className="block h-8 w-36 rounded-lg bg-bg-tertiary animate-pulse" />;
-  else if (typeof balance === 'number') balanceView = <span className="num-mono text-2xl md:text-[28px] font-bold text-text-primary" dir="ltr"><RollingNumber value={fmtUsd(balance)} /></span>;
+  else if (typeof balance === 'number') balanceView = <span className="num-mono text-2xl md:text-[28px] font-bold text-text-primary" dir="ltr">{fmtUsd(balance)}</span>;
   else balanceView = <span className="text-sm text-text-muted">היתרה לא זמינה כרגע</span>;
 
   return (
@@ -103,9 +102,8 @@ function ConnectedCard({ exchange, balance, syncing, onSync, onEdit, onDisconnec
       glow
       initial={{ opacity: 0, y: 16 }}
       animate={{ opacity: 1, y: 0 }}
-      whileHover={exchangeHover}
       transition={{ delay: index * 0.06, type: 'spring', damping: 24, stiffness: 260 }}
-      className="exchange-card relative overflow-hidden p-5 flex flex-col gap-4"
+      className="relative overflow-hidden p-5 flex flex-col gap-4"
       style={{ borderColor: `${accent}40`, ...exchangeGlowStyle(exchange) }}
     >
       {/* Brand wash from the logo corner + a hairline of the exchange colour */}
@@ -207,7 +205,6 @@ function AvailableTile({ exchange, locked, onConnect, index }) {
       onClick={onConnect}
       initial={{ opacity: 0, y: 12 }}
       animate={{ opacity: 1, y: 0 }}
-      whileHover={exchangeHover}
       transition={{ delay: 0.1 + index * 0.05 }}
       style={exchangeGlowStyle(exchange)}
       className="exchange-card group relative overflow-hidden w-full text-right p-4 flex items-center gap-3 cursor-pointer"

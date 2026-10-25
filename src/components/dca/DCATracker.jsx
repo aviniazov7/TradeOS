@@ -13,7 +13,6 @@ import EmptyState from '../shared/EmptyState';
 import DCASkeleton from './DCASkeleton';
 import { pageVariants, pageTransition } from '../../utils/animations';
 import PageHeader from '../shared/PageHeader';
-import TabPanel from '../shared/TabPanel';
 import { headerIconBtn, headerPrimaryBtn } from '../shared/headerStyles';
 import { COINS, DCA_FREQUENCY_LABELS, DCA_STATUS_LABELS } from '../../utils/constants';
 import { downloadCsv } from '../../utils/csv';
@@ -121,7 +120,7 @@ export default function DCATracker({ embedded = false, view }) {
   );
 
   return (
-    <m.div {...(embedded ? {} : { variants: pageVariants, initial: 'initial', animate: 'animate', exit: 'exit', transition: pageTransition })}>
+    <m.div variants={pageVariants} initial="initial" animate="animate" exit="exit" transition={pageTransition}>
       {embedded ? null : (
         <PageHeader
           icon={Coins}
@@ -132,7 +131,6 @@ export default function DCATracker({ embedded = false, view }) {
         />
       )}
 
-      <TabPanel tabKey={tab}>
       {/* Tab: Plans */}
       {tab === 'plans' && (
         <>
@@ -174,7 +172,6 @@ export default function DCATracker({ embedded = false, view }) {
           <DCAAnalytics plans={dcaPlans} prices={prices} />
         )
       )}
-      </TabPanel>
 
       {/* Create/Edit form modal */}
       <DCAForm isOpen={formShown} onClose={() => { if (wantsNew) clearFlag('new'); handleCloseForm(); }} plan={editingPlan} onSave={handleSave} />

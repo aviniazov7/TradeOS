@@ -1,41 +1,21 @@
-// Vertical only. A sideways slide fights RTL (the page would enter from the
-// wrong side). The same curve is used for pages and for tab bodies.
-const riseEase = [0.22, 1, 0.36, 1];
-
 // Page transition
 export const pageVariants = {
-  initial: { opacity: 0, y: 72 },
+  initial: { opacity: 0, y: 20 },
   animate: { opacity: 1, y: 0 },
-  exit: { opacity: 0, y: -36 },
+  exit: { opacity: 0, y: -10 },
 };
-export const pageTransition = { duration: 0.65, ease: riseEase };
-
-// Tab body. Same direction as the page, shorter, so a tab change reads as a
-// smaller version of the page change and stays RTL-safe.
-export const tabSlide = {
-  initial: { opacity: 0, y: 48 },
-  animate: { opacity: 1, y: 0 },
-  exit: { opacity: 0, y: -28 },
-};
-export const tabTransition = { duration: 0.5, ease: riseEase };
-
-// Exchange cards: a clear lift on top of the brand-colored beam / spotlight.
-// `delay: 0` so the entrance delay on the same element doesn't lag the hover.
-export const exchangeHover = {
-  y: -16,
-  transition: { type: 'spring', stiffness: 380, damping: 22, delay: 0 },
-};
+export const pageTransition = { duration: 0.3, ease: 'easeOut' };
 
 // Stagger container (for card grids)
 export const staggerContainer = {
   initial: {},
-  animate: { transition: { staggerChildren: 0.14 } },
+  animate: { transition: { staggerChildren: 0.06 } },
 };
 
 // Individual card in stagger
 export const staggerItem = {
-  initial: { opacity: 0, y: 48 },
-  animate: { opacity: 1, y: 0, transition: { duration: 0.55 } },
+  initial: { opacity: 0, y: 20 },
+  animate: { opacity: 1, y: 0, transition: { duration: 0.3 } },
 };
 
 // Modal

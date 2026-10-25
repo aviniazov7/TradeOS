@@ -62,9 +62,6 @@ describe('portfolio hero return', () => {
       ],
     });
     expect(plain(view.badge())).toBe('-19.0%');
-    const line = document.querySelector('.chart-draw');
-    expect(line).toBeTruthy();
-    expect(line.getAttribute('pathLength')).toBe('1');
     await view.click('השבוע');
     // +$10 on 1000 + (−200) already booked → +1.25% → +1.3%
     expect(plain(view.badge())).toBe('+1.3%');

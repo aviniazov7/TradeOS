@@ -1,4 +1,4 @@
-import { useState, useEffect, useId, useLayoutEffect, useRef, useCallback } from 'react';
+import { useState, useEffect, useId } from 'react';
 import { useAuth } from '../../contexts/AuthContext';
 import { Navigate, useSearchParams, Link } from 'react-router-dom';
 import { Mail, Eye, EyeOff, Lock, User, Link2, BarChart3, Sparkles, Check, ShieldCheck, Loader2, AlertCircle } from 'lucide-react';
@@ -11,7 +11,6 @@ import { loginFieldError } from '../../utils/loginValidation';
 import { preloadPopupResolver } from '../../services/authService';
 import { exchangeSyncBlurb } from '../exchange/exchangeConfig';
 import BrandMark from '../shared/BrandMark';
-import CssTicker from '../shared/CssTicker';
 import { rememberSignupMarketingChoice, clearSignupMarketingChoice } from '../../utils/marketingConsent';
 
 // One line under the sign-up title on a phone. The desktop panel already
@@ -21,101 +20,6 @@ export const SIGNUP_VALUE_LINE = 'יומן מסחר בעברית — חבר בו
 // What the product does, in three lines — shown beside the form on wide screens.
 // The exchange line names auto-sync (MEXC, Bybit) and Binance file import.
 // Binance is never described as if trades pull in by themselves.
-// Sample figures, labeled as a preview — the login screen has no account
-// numbers, and RollingNumber would pull framer-motion into this chunk.
-const DEMO_STATS = [
-  { label: 'רווח', value: '+12.4%' },
-  { label: 'הצלחה', value: '62%' },
-  { label: 'יחס', value: '1.8' },
-];
-
-function DemoStrip({ className = '' }) {
-  return (
-    <div className={className} data-testid="login-demo">
-      <div className="rounded-2xl border border-border-primary bg-bg-primary/60 p-3">
-        <CurveArt />
-      </div>
-      <p className="mt-3 text-[11px] text-text-muted">תצוגה — המספרים מתגלגלים והגרף נמתח</p>
-      <div className="mt-2 grid grid-cols-3 gap-2">
-        {DEMO_STATS.map((s, i) => (
-          <div
-            key={s.label}
-            className="rise-in rounded-xl border border-border-primary bg-bg-secondary/80 px-2 py-2 text-center"
-            style={{ animationDelay: `${0.2 + i * 0.18}s` }}
-          >
-            <CssTicker value={s.value} className="justify-center text-lg font-extrabold text-accent-primary" />
-            <div className="text-[11px] text-text-muted mt-0.5">{s.label}</div>
-          </div>
-        ))}
-      </div>
-    </div>
-  );
-}
-
-// Two-mode switch. The blue pill is placed with physical pixels, same as
-// TabStrip, so it follows the button in RTL instead of sliding the wrong way.
-function ModeSwitch({ mode, onChange }) {
-  const listRef = useRef(null);
-  const [box, setBox] = useState(null);
-  const measure = useCallback(() => {
-    const list = listRef.current;
-    if (!list) return;
-    const el = list.querySelector('[aria-selected="true"]');
-    if (!el) return;
-    const lr = list.getBoundingClientRect();
-    const er = el.getBoundingClientRect();
-    const next = {
-      x: Math.round((er.left - lr.left) * 10) / 10,
-      y: Math.round((er.top - lr.top) * 10) / 10,
-      w: Math.round(er.width * 10) / 10,
-      h: Math.round(er.height * 10) / 10,
-    };
-    setBox((prev) => (
-      prev && prev.x === next.x && prev.y === next.y && prev.w === next.w && prev.h === next.h ? prev : next
-    ));
-  }, []);
-  useLayoutEffect(() => { measure(); }, [mode, measure]);
-  useLayoutEffect(() => {
-    const list = listRef.current;
-    if (!list || typeof ResizeObserver === 'undefined') return undefined;
-    const ro = new ResizeObserver(() => measure());
-    ro.observe(list);
-    return () => ro.disconnect();
-  }, [measure]);
-
-  return (
-    <div ref={listRef} role="tablist" className="relative mt-6 grid grid-cols-2 p-1 rounded-xl bg-bg-secondary border border-border-primary">
-      {box && box.w > 0 && (
-        <span
-          aria-hidden="true"
-          data-login-pill=""
-          className="absolute z-0 rounded-lg bg-accent-primary shadow-[0_8px_24px_-6px_rgba(37,99,235,0.95)] pointer-events-none transition-[transform,width,height] duration-500 ease-[cubic-bezier(0.22,1,0.36,1)]"
-          style={{
-            left: 0,
-            top: 0,
-            width: box.w,
-            height: box.h,
-            transform: `translate3d(${box.x}px, ${box.y}px, 0)`,
-          }}
-        />
-      )}
-      {[['login', 'התחברות'], ['register', 'הרשמה']].map(([id, label]) => (
-        <button
-          key={id}
-          role="tab"
-          data-tab-id={id}
-          aria-selected={mode === id}
-          type="button"
-          onClick={() => onChange(id)}
-          className={`relative z-[1] h-9 rounded-lg text-sm font-bold cursor-pointer transition-colors ${mode === id ? 'text-white' : 'text-text-muted hover:text-text-primary'}`}
-        >
-          {label}
-        </button>
-      ))}
-    </div>
-  );
-}
-
 const FEATURES = [
   { icon: Link2, title: 'חיבור לבורסה', text: exchangeSyncBlurb() },
   { icon: BarChart3, title: 'יומן ואנליטיקה', text: 'רווח/הפסד, R:R, אחוז הצלחה ופילוח לפי מטבע וסשן' },
@@ -139,9 +43,9 @@ function CurveArt() {
           <stop offset="100%" stopColor="#3b82f6" stopOpacity="0" />
         </linearGradient>
       </defs>
-      {[35, 70, 105].map((y) => <line key={y} x1="0" x2="400" y1={y} y2={y} stroke="var(--color-border-primary)" />)}
-      <path d="M0 118 L40 104 L80 110 L120 84 L160 92 L200 66 L240 72 L280 44 L320 52 L360 26 L400 16 L400 140 L0 140 Z" fill={`url(#${areaId})`} className="chart-draw-fill" />
-      <path d="M0 118 L40 104 L80 110 L120 84 L160 92 L200 66 L240 72 L280 44 L320 52 L360 26 L400 16" pathLength="1" className="chart-draw" stroke={`url(#${lineId})`} strokeWidth="3" strokeLinecap="round" strokeLinejoin="round" />
+      {[35, 70, 105].map((y) => <line key={y} x1="0" x2="400" y1={y} y2={y} stroke="rgba(255,255,255,0.05)" />)}
+      <path d="M0 118 L40 104 L80 110 L120 84 L160 92 L200 66 L240 72 L280 44 L320 52 L360 26 L400 16 L400 140 L0 140 Z" fill={`url(#${areaId})`} />
+      <path d="M0 118 L40 104 L80 110 L120 84 L160 92 L200 66 L240 72 L280 44 L320 52 L360 26 L400 16" stroke={`url(#${lineId})`} strokeWidth="3" strokeLinecap="round" strokeLinejoin="round" />
       <circle cx="400" cy="16" r="5" fill="#60a5fa" />
     </svg>
   );
@@ -279,10 +183,12 @@ export default function LoginPage() {
           <p className="text-base text-text-secondary mt-4 leading-relaxed">
             מתעדים, מודדים ומשתפרים — הכל במקום אחד, בעברית, מותאם לפיוצ׳רס.
           </p>
-          <DemoStrip className="mt-8 text-right" />
+          <div className="mt-8 rounded-2xl border border-border-primary bg-bg-primary/60 p-4">
+            <CurveArt />
+          </div>
           <ul className="mt-8 space-y-5 text-right">
-            {FEATURES.map((f, i) => (
-              <li key={f.title} className="rise-in flex items-start gap-3.5" style={{ animationDelay: `${0.35 + i * 0.18}s` }}>
+            {FEATURES.map((f) => (
+              <li key={f.title} className="flex items-start gap-3.5">
                 <span className="w-10 h-10 shrink-0 rounded-xl bg-accent-primary/12 border border-accent-primary/20 grid place-items-center">
                   {f.icon && <f.icon className="w-5 h-5 text-accent-hover" />}
                 </span>
@@ -300,14 +206,10 @@ export default function LoginPage() {
 
       {/* Form */}
       <main className="flex flex-col items-center justify-center px-4 py-10 sm:px-8">
-        <div className="w-full max-w-[400px] rise-in">
-          <div className="lg:hidden flex justify-center mb-6"><BrandMark size="lg" /></div>
-          <DemoStrip className="lg:hidden mb-6" />
+        <div className="w-full max-w-[400px]">
+          <div className="lg:hidden flex justify-center mb-8"><BrandMark size="lg" /></div>
 
-          <ModeSwitch mode={mode} onChange={(id) => { setMode(id); setFormError(''); }} />
-
-          <div key={mode} className="rise-in">
-          <h1 className="text-2xl font-extrabold text-text-primary mt-6">{isLogin ? 'ברוך שובך' : 'פתיחת חשבון'}</h1>
+          <h1 className="text-2xl font-extrabold text-text-primary">{isLogin ? 'ברוך שובך' : 'פתיחת חשבון'}</h1>
           <p className="text-sm text-text-secondary mt-1.5">
             {isLogin ? 'התחבר כדי להמשיך ליומן המסחר שלך' : 'חינם, בלי כרטיס אשראי. לוקח פחות מדקה.'}
           </p>
@@ -316,6 +218,16 @@ export default function LoginPage() {
               {SIGNUP_VALUE_LINE}
             </p>
           )}
+
+          {/* Mode switch */}
+          <div role="tablist" className="mt-6 grid grid-cols-2 p-1 rounded-xl bg-bg-secondary border border-border-primary">
+            {[['login', 'התחברות'], ['register', 'הרשמה']].map(([id, label]) => (
+              <button key={id} role="tab" aria-selected={mode === id} type="button" onClick={() => { setMode(id); setFormError(''); }}
+                className={`h-9 rounded-lg text-sm font-bold transition-colors cursor-pointer ${mode === id ? 'bg-bg-tertiary text-text-primary shadow-sm' : 'text-text-muted hover:text-text-primary'}`}>
+                {label}
+              </button>
+            ))}
+          </div>
 
           {!isLogin && (
             <label data-testid="signup-email-consent" className="mt-4 flex items-start gap-2.5 text-sm text-text-secondary leading-relaxed cursor-pointer select-none">
@@ -412,7 +324,6 @@ export default function LoginPage() {
               {isLogin ? 'התחברות' : 'יצירת חשבון'}
             </button>
           </form>
-          </div>
 
           <div className="mt-8 flex items-center justify-center gap-1.5 text-xs text-text-muted">
             <ShieldCheck className="w-3.5 h-3.5 text-profit" />

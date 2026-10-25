@@ -6,6 +6,7 @@ import { LazyMotion, domAnimation } from 'framer-motion';
 import { BookOpen } from 'lucide-react';
 import { MemoryRouter } from 'react-router-dom';
 import Header from './Header';
+import Sidebar from './Sidebar';
 import PageHeader from '../shared/PageHeader';
 
 vi.mock('../../contexts/JournalContext', () => ({
@@ -77,21 +78,12 @@ describe('mobile chrome', () => {
     });
   });
 
-  it('keeps holdings in the account menu and the journal as one top tab', async () => {
-    const view = await mount(<Header />);
-    const top = document.querySelector('nav[aria-label="ניווט עליון"]');
-    const journal = [...top.querySelectorAll('a')].filter((a) => a.getAttribute('href') === '/journal');
-    expect(journal).toHaveLength(1);
-    expect(journal[0].textContent).toContain('יומן');
-    expect(top.textContent).toContain('בורסה');
-    expect(top.textContent).toContain('חדשות');
-    expect(top.textContent).toContain('בית');
-    expect(document.querySelector('[aria-label="פתיחת התפריט"]')).toBeNull();
-    expect(document.querySelector('nav[aria-label="תפריט ראשי"]')).toBeNull();
-    await act(async () => {
-      document.querySelector('[aria-label="חשבון ותפריט"]').click();
-    });
+  it('keeps the side menu to one journal row', async () => {
+    const view = await mount(<Sidebar mobileOpen onClose={() => {}} />);
     const nav = document.querySelector('nav[aria-label="תפריט ראשי"]');
+    const journal = [...nav.querySelectorAll('a')].filter((a) => a.getAttribute('href') === '/journal');
+    expect(journal).toHaveLength(1);
+    expect(journal[0].textContent).toContain('יומן מסחר');
     const holdings = nav.querySelector('a[href="/portfolio"]');
     expect(holdings.textContent).toContain('החזקות');
     expect(holdings.textContent).not.toContain('תיק');
@@ -105,7 +97,7 @@ describe('mobile chrome', () => {
   });
 
   it('centers the TradeOS mark on the phone header and keeps the ticker row', async () => {
-    const view = await mount(<Header />);
+    const view = await mount(<Header onToggleSidebar={() => {}} sidebarOpen={false} />);
     const brand = document.querySelector('[data-testid="header-brand"]');
     expect(brand).toBeTruthy();
     expect(brand.className).toContain('md:hidden');
@@ -154,12 +146,8 @@ describe('mobile chrome', () => {
     });
     const active = phone.querySelector('[aria-selected="true"]');
     expect(active.textContent).toBe('בורסה');
-    expect(active.className).toContain('text-white');
-    expect(active.className).not.toContain('bg-accent-primary/15');
-    const pill = phone.querySelector('[data-tab-pill]');
-    expect(pill).toBeTruthy();
-    expect(pill.className).toContain('bg-accent-primary');
-    expect(pill.className).not.toContain('bg-accent-primary/15');
+    expect(active.className).toContain('text-accent-primary');
+    expect(active.className).toContain('bg-accent-primary/15');
     const desktop = document.querySelector('.hidden.md\\:block [role="tablist"]');
     expect(desktop).toBeTruthy();
     expect(phone.contains(desktop)).toBe(false);

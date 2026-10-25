@@ -58,8 +58,8 @@ body {
   /* True black (iOS-style) — a single whisper-faint neutral glow for depth,
      no blue tint. */
   background:
-    radial-gradient(ellipse 900px 480px at 100% -10%, rgba(59, 91, 253, 0.16) 0%, transparent 55%),
-    #07070b;
+    radial-gradient(ellipse 1100px 700px at 50% -8%, rgba(255, 255, 255, 0.022) 0%, transparent 60%),
+    #000000;
   /* dvh = the screen height you actually see. 100vh on phones includes the
      area behind the browser bar, which made the whole app scroll up and down a
      little even when there was nothing to scroll. */
@@ -69,8 +69,11 @@ body {
 
 .light body {
   background:
-    radial-gradient(ellipse 720px 420px at 100% -8%, rgba(37, 99, 235, 0.07) 0%, transparent 60%),
-    #f6f7f9;
+    radial-gradient(ellipse 900px 900px at 5% 15%, rgba(139, 92, 246, 0.16) 0%, transparent 55%),
+    radial-gradient(ellipse 700px 700px at 95% 5%, rgba(99, 102, 241, 0.12) 0%, transparent 55%),
+    radial-gradient(ellipse 800px 800px at 40% 95%, rgba(139, 92, 246, 0.10) 0%, transparent 55%),
+    radial-gradient(ellipse 600px 600px at 80% 55%, rgba(168, 85, 247, 0.08) 0%, transparent 55%),
+    #e8ecf4;
 }
 
 @theme {
@@ -81,7 +84,7 @@ body {
      glass has to read from a slightly-lighter NEUTRAL-GREY fill + a bright
      hairline edge — that's what makes the frost visible. Grey (not blue): the
      blue was saturate() amplifying the cyan accent, which is now gone. */
-  --color-bg-primary: #07070b;
+  --color-bg-primary: #000000;
   --color-bg-secondary: rgba(255, 255, 255, 0.05);
   --color-bg-tertiary: rgba(255, 255, 255, 0.03);
   --color-bg-overlay: rgba(12, 12, 14, 0.8);
@@ -118,9 +121,6 @@ body {
   /* Chart palette — one canonical accent blue (= accent), one profit green,
      one categorical purple. Charts must consume these, not ad-hoc hexes. */
   --color-chart-purple: #8b5cf6;
-  --chart-line: #60a5fa;
-  --chart-area-top: rgba(56, 189, 248, 0.38);
-  --chart-area-bot: rgba(37, 99, 235, 0);
 }
 
 /* iOS-style glass surface tokens (modals / command palette). Theme-aware so
@@ -163,17 +163,14 @@ body {
   --pm-hero-line: rgba(15, 23, 42, 0.10);
   --glass-shadow: 0 32px 80px rgba(31, 41, 79, 0.18), 0 0 0 1px rgba(255, 255, 255, 0.5) inset;
   --glass-shadow-sm: 0 28px 70px rgba(31, 41, 79, 0.16);
-  --color-bg-primary: #f6f7f9;
-  --color-bg-secondary: #ffffff;
-  --color-bg-tertiary: #f3f4f6;
+  --color-bg-primary: #e8ecf4;
+  --color-bg-secondary: rgba(255, 255, 255, 0.35);
+  --color-bg-tertiary: rgba(255, 255, 255, 0.2);
   /* Slate-tinted borders so card edges, table separators, dropdown outlines and
      chart gridlines are actually visible on the light background (white-on-light
      was near-invisible). */
   --color-border-primary: rgba(15, 23, 42, 0.10);
-  --color-border-hover: rgba(15, 23, 42, 0.20);
-  --chart-line: #1d4ed8;
-  --chart-area-top: rgba(37, 99, 235, 0.22);
-  --chart-area-bot: rgba(37, 99, 235, 0);
+  --color-border-hover: rgba(15, 23, 42, 0.22);
   --color-text-primary: #0f0f0f;
   --color-text-secondary: #333340;
   --color-text-muted: #5c5c66;
@@ -181,8 +178,8 @@ body {
   --color-accent-primary: #1d4ed8;
   --color-accent-hover: #1e40af;
   --color-accent-muted: #1e3a8a;
-  --color-bg-overlay: #ffffff;
-  --color-bg-solid: rgba(255, 255, 255, 0.92);
+  --color-bg-overlay: rgba(248, 250, 253, 0.98);
+  --color-bg-solid: rgba(245, 247, 251, 0.98);
   /* Darker profit/loss/breakeven for foreground TEXT so the headline P/L
      numbers pass WCAG AA on the light glass cards. Still vivid enough for
      fills/badges. Same rule for all three: keep the dark hue family, drop the
@@ -257,117 +254,13 @@ body {
 
 /* Glassmorphism — light mode overrides */
 .light :where([class~="bg-bg-secondary"], [class^="bg-bg-secondary/"], [class*=" bg-bg-secondary/"]) {
-  background-color: #ffffff;
   box-shadow:
-    0 1px 2px rgba(15, 23, 42, 0.04),
-    0 10px 28px rgba(15, 23, 42, 0.06);
+    0 8px 32px rgba(0, 0, 0, 0.06),
+    inset 0 1px 0 rgba(255, 255, 255, 0.6);
 }
 
-/* Exact tertiary surfaces only. A substring match also hits hover:bg-bg-tertiary
-   and would paint idle tabs and buttons solid gray. */
-.light [class~="bg-bg-tertiary"] {
-  background-image: none;
-  background-color: #f3f4f6;
-}
-
-.light .chart-draw {
-  stroke: var(--chart-line);
-  filter: drop-shadow(0 8px 14px rgba(29, 78, 216, 0.28));
-}
-
-/* Reference shell: near-black page, white active pill, solid gray cards.
-   The pill is not bg-accent-primary — that class forces a blue gradient and
-   white text on the element itself. */
-.top-nav-track {
-  background: #141418;
-  border: 1px solid rgba(255, 255, 255, 0.08);
-}
-.light .top-nav-track {
-  background: #e7e9ee;
-  border-color: rgba(15, 23, 42, 0.08);
-}
-.top-nav-pill {
-  background: #ffffff;
-  border-radius: 999px;
-  box-shadow: 0 8px 22px rgba(0, 0, 0, 0.38);
-}
-.light .top-nav-pill {
-  box-shadow: 0 6px 16px rgba(15, 23, 42, 0.12);
-}
-.top-nav-link { color: #a1a1ad; }
-.top-nav-link[aria-current="page"],
-.top-nav-on { color: #12121a; }
-.light .top-nav-link { color: #5c6573; }
-.light .top-nav-link[aria-current="page"],
-.light .top-nav-on { color: #12121a; }
-.account-chip {
-  background: #141418;
-  border: 1px solid rgba(255, 255, 255, 0.1);
-}
-.light .account-chip {
-  background: #ffffff;
-  border-color: rgba(15, 23, 42, 0.1);
-  box-shadow: 0 1px 2px rgba(15, 23, 42, 0.05);
-}
-.header-icon-btn {
-  width: 2.25rem;
-  height: 2.25rem;
-  border-radius: 999px;
-  place-items: center;
-  background: #141418;
-  border: 1px solid rgba(255, 255, 255, 0.08);
-  color: #e4e4ea;
-  cursor: pointer;
-}
-.header-icon-btn:hover { border-color: rgba(255, 255, 255, 0.2); color: #fff; }
-.light .header-icon-btn {
-  background: #ffffff;
-  border-color: rgba(15, 23, 42, 0.1);
-  color: #1c2430;
-  box-shadow: 0 1px 2px rgba(15, 23, 42, 0.05);
-}
-.light .header-icon-btn:hover { border-color: rgba(15, 23, 42, 0.2); }
-.dash-card {
-  background-color: #1a1a1f;
-  border-color: rgba(255, 255, 255, 0.06);
-  box-shadow: none;
-}
-.light .dash-card {
-  background-color: #ffffff;
-  border-color: rgba(15, 23, 42, 0.08);
-  box-shadow: 0 1px 2px rgba(15, 23, 42, 0.04), 0 10px 28px rgba(15, 23, 42, 0.06);
-}
-.kpi-hero {
-  background: linear-gradient(155deg, #5d78ff 0%, #3b5bfd 48%, #2a43e6 100%);
-  box-shadow: 0 18px 40px -20px rgba(59, 91, 253, 0.9);
-  color: #fff;
-}
-.dash-select {
-  height: 2.5rem;
-  border-radius: 999px;
-  background: #141418;
-  color: #f4f4f5;
-  border: 1px solid rgba(255, 255, 255, 0.08);
-  padding: 0 0.9rem;
-  font-size: 0.8125rem;
-  font-weight: 700;
-}
-.light .dash-select {
-  background: #ffffff;
-  color: #12121a;
-  border-color: rgba(15, 23, 42, 0.1);
-}
-.home-ref {
-  --chart-line: #6d8bff;
-  --chart-area-top: rgba(59, 91, 253, 0.42);
-  --chart-area-bot: rgba(59, 91, 253, 0);
-  --pace-target: rgba(255, 255, 255, 0.9);
-}
-.light .home-ref {
-  --chart-line: #3b5bfd;
-  --chart-area-top: rgba(59, 91, 253, 0.24);
-  --chart-area-bot: rgba(59, 91, 253, 0);
-  --pace-target: #1a1d27;
+.light [class*="bg-bg-tertiary"] {
+  background-image: linear-gradient(135deg, rgba(255, 255, 255, 0.4) 0%, rgba(255, 255, 255, 0.05) 100%);
 }
 
 /* Smooth theme transition */
@@ -779,60 +672,9 @@ input[type="number"] {
 }
 /* Exchange tiles set --beam-from from their own accent. Without this, hover
    falls back to the app's cyan border. */
-.exchange-card { transition: border-color 0.2s ease, transform 0.25s cubic-bezier(0.22, 1, 0.36, 1); }
+.exchange-card { transition: border-color 0.2s ease; }
 .exchange-card:hover {
   border-color: color-mix(in srgb, var(--beam-from, #38bdf8) 40%, transparent);
-}
-/* Lift sits with the brand beam. Motion cards drive the same 16px via
-   whileHover; this covers a plain .exchange-card. Reduced motion below
-   drops the transform. */
-@media (hover: hover) and (prefers-reduced-motion: no-preference) {
-  .exchange-card:hover { transform: translateY(-16px); }
-}
-@keyframes riseIn {
-  from { opacity: 0; transform: translate3d(0, 72px, 0); }
-  to { opacity: 1; transform: translate3d(0, 0, 0); }
-}
-.rise-in {
-  animation: riseIn 0.95s cubic-bezier(0.22, 1, 0.36, 1) both;
-}
-/* SVG line draw-in. pathLength="1" makes the dash one unit long, so the
-   stroke grows from the start of the series regardless of its pixel length. */
-@keyframes chartDraw { to { stroke-dashoffset: 0; } }
-@keyframes chartDrawFill { to { opacity: 1; } }
-.chart-draw {
-  stroke-dasharray: 1;
-  stroke-dashoffset: 1;
-  animation: chartDraw 1.8s cubic-bezier(0.22, 1, 0.36, 1) forwards;
-}
-.chart-draw-fill {
-  opacity: 0;
-  animation: chartDrawFill 0.9s ease-out 0.45s forwards;
-}
-/* CSS odometer for the login screen, which must not load framer-motion.
-   --d is the target digit (0-9). The strip starts on 0 and rolls up. */
-.css-ticker-digit {
-  display: inline-block;
-  height: 1em;
-  overflow: hidden;
-  line-height: 1em;
-  vertical-align: bottom;
-}
-.css-ticker-strip {
-  display: flex;
-  flex-direction: column;
-  transform: translateY(calc(var(--d) * -1em));
-  animation: cssTicker 1.25s cubic-bezier(0.22, 1, 0.36, 1) both;
-}
-.css-ticker-strip > span {
-  display: block;
-  height: 1em;
-  line-height: 1em;
-  text-align: center;
-}
-@keyframes cssTicker {
-  from { transform: translateY(0); }
-  to { transform: translateY(calc(var(--d) * -1em)); }
 }
 /* Faint scan-line highlight along the top edge */
 .bento-card::before {
@@ -912,11 +754,9 @@ input[type="number"] {
 /* Light theme: solid card */
 :root.light .bento-card,
 [data-theme='light'] .bento-card {
-  background: #ffffff;
-  border-color: rgba(15, 23, 42, 0.08);
-  box-shadow:
-    0 1px 2px rgba(15, 23, 42, 0.04),
-    0 10px 28px rgba(15, 23, 42, 0.06);
+  background: rgba(255, 255, 255, 0.82);
+  border-color: rgba(0, 0, 0, 0.08);
+  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.06);
 }
 :root.light .bento-card::before,
 [data-theme='light'] .bento-card::before {
@@ -927,9 +767,8 @@ input[type="number"] {
    inset, since the dark-theme white inset is invisible on a white card. */
 :root.light .bento-card:hover,
 [data-theme='light'] .bento-card:hover {
-  box-shadow:
-    0 1px 2px rgba(15, 23, 42, 0.05),
-    0 14px 32px rgba(15, 23, 42, 0.08);
+  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.06),
+    inset 0 0 0 1px rgba(15, 23, 42, 0.06);
 }
 
 /* ─── Phone floating chrome ───
@@ -987,14 +826,6 @@ html.a11y-stop-motion *::after {
   transition-duration: 0.001ms !important;
   scroll-behavior: auto !important;
 }
-html.a11y-stop-motion .rise-in { opacity: 1; transform: none; }
-html.a11y-stop-motion .chart-draw { stroke-dashoffset: 0; }
-html.a11y-stop-motion .chart-draw-fill { opacity: 1; }
-html.a11y-stop-motion .exchange-card:hover { transform: none; }
-html.a11y-stop-motion .css-ticker-strip {
-  animation: none !important;
-  transform: translateY(calc(var(--d) * -1em));
-}
 
 /* Big cursor — a larger arrow pointer for easier tracking. */
 html.a11y-big-cursor,
@@ -1014,15 +845,5 @@ html.a11y-big-cursor * {
     animation-iteration-count: 1 !important;
     transition-duration: 0.001ms !important;
     scroll-behavior: auto !important;
-  }
-  /* A near-zero animation can still finish on the "from" keyframe. Pin the
-     resting state so a chart line or a rising card is never left invisible. */
-  .rise-in { opacity: 1; transform: none; }
-  .chart-draw { stroke-dashoffset: 0; }
-  .chart-draw-fill { opacity: 1; }
-  .exchange-card:hover { transform: none; }
-  .css-ticker-strip {
-    animation: none !important;
-    transform: translateY(calc(var(--d) * -1em));
   }
 }

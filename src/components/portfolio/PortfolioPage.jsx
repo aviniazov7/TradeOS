@@ -6,7 +6,6 @@ import { headerIconBtn, headerPrimaryBtn } from '../shared/headerStyles';
 import PageHeader from '../shared/PageHeader';
 import LoadingSpinner from '../shared/LoadingSpinner';
 import { pageVariants, pageTransition } from '../../utils/animations';
-import TabPanel from '../shared/TabPanel';
 
 // Each tab body keeps its own chunk, so opening the DCA tab doesn't pull the
 // wallets page (and vice versa).
@@ -119,13 +118,11 @@ export default function PortfolioPage() {
           />
         )}
       />
-      <TabPanel tabKey={tab}>
-        <Suspense fallback={<LoadingSpinner />}>
-          {tab === 'wallets'
-            ? <WalletsPage key="wallets" embedded />
-            : <DCATracker key="dca" embedded view={tab === 'dca-stats' ? 'summary' : 'plans'} />}
-        </Suspense>
-      </TabPanel>
+      <Suspense fallback={<LoadingSpinner />}>
+        {tab === 'wallets'
+          ? <WalletsPage key="wallets" embedded />
+          : <DCATracker key="dca" embedded view={tab === 'dca-stats' ? 'summary' : 'plans'} />}
+      </Suspense>
     </m.div>
   );
 }

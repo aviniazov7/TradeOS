@@ -1,11 +1,9 @@
-import { useMemo } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { scoreReady, streakDaysLabel, MIN_SCORE_TRADES, profitFactorText, winRateText } from '../../utils/homeStats';
-import { FlaskConical, ClipboardList, Coins, Sunrise, Moon, ChevronLeft, RefreshCw, Percent, Scale, Flame } from 'lucide-react';
+import { FlaskConical, ClipboardList, Coins, Sunrise, Moon, ChevronLeft, RefreshCw } from 'lucide-react';
 import Card from '../shared/Card';
 import CoinIcon from '../shared/CoinIcon';
 import FitText from '../shared/FitText';
-import RollingNumber from '../shared/RollingNumber';
 import { formatCurrency, formatCurrencyShort, formatCompactUsd, formatRelativeTime, LRM } from '../../utils/formatters';
 import { safePnl, tradeRMultiple } from '../../utils/calculations';
 
@@ -30,83 +28,116 @@ export function HomePanel({ title, link, onLink, className = '', children }) {
   );
 }
 
-function Badge({ children, down = false }) {
+function Kpi({ label, value, valueCls = 'text-text-primary', mono = true, bar, sub }) {
   return (
-    <span className={`shrink-0 text-[11px] font-bold px-2 py-0.5 rounded-full ${down ? 'bg-[#3a1d24] text-[#ff8d8d]' : 'bg-[#c6f36b] text-[#17210c]'}`}>
+    <div className="p-3.5 md:p-4 flex flex-col gap-2 min-w-0">
+      <span className="text-[13px] text-text-secondary">{label}</span>
+      <FitText as="b" min={14} className={`${mono ? 'num-mono text-[26px] md:text-[30px]' : 'text-[22px] md:text-2xl'} font-extrabold leading-tight ${valueCls}`} dir={mono ? 'ltr' : undefined} style={mono ? { textAlign: 'right' } : undefined}>
+        {value}
+      </FitText>
+      {bar}
+      {sub && <span className="text-xs text-text-secondary leading-snug">{sub}</span>}
+    </div>
+  );
+}
+
+const Split = ({ a, b }) => (
+  <div dir="ltr" className="flex h-1.5 rounded-full overflow-hidden bg-bg-tertiary">
+    <span className="bg-profit" style={{ width: `${a}%` }} />
+    <span className="bg-loss" style={{ width: `${b}%` }} />
+  </div>
+);
+const NeutralBar = () => <div className="h-1.5 rounded-full bg-bg-tertiary" aria-hidden />;
+
+function PnlBadge({ children, down = false }) {
+  return (
+    <span dir="ltr" className={`shrink-0 text-[11px] font-bold px-2 py-0.5 rounded-full ${down ? 'bg-[#3a1d24] text-[#ff8d8d]' : 'bg-[#c6f36b] text-[#17210c]'}`}>
       {children}
     </span>
   );
 }
 
-function DarkKpi({ icon: Icon, label, value, badge, delay = 0, mono = true }) {
-  return (
-    <article className="dash-card rise-in relative overflow-hidden rounded-2xl border p-4 md:p-5 min-h-[148px] flex flex-col" style={{ animationDelay: `${delay}s` }}>
-      <div className="flex items-start justify-between gap-2">
-        <span className="w-8 h-8 rounded-full grid place-items-center text-white" style={{ background: '#3b5bfd' }}>
-          <Icon className="w-4 h-4" />
-        </span>
-        {badge}
-      </div>
-      <FitText as="b" min={16} className={`${mono ? 'num-mono' : ''} mt-auto pt-4 text-[28px] md:text-[32px] font-extrabold leading-none text-text-primary`} dir={mono ? 'ltr' : undefined} style={mono ? { textAlign: 'right' } : undefined}>
-        {value}
-      </FitText>
-      <span className="mt-2 text-[13px] text-text-secondary">{label}</span>
-    </article>
-  );
-}
-
-// Four separate cards: a blue headline for net P&L, then three dark tiles.
+// Blue P&L hero, then the original three-up strip (win rate, profit factor,
+// streak). The dollar amount lives only on the hero so it is not shown twice.
+// The win/loss size ratio stays under the win rate — it is "—" until a loss
+// exists, same rule as before, just not its own card.
 export function HomeKpis({ kpi, hidden, returnPct = null }) {
   const m = (v) => (hidden ? '••••' : v);
   const {
     netPnl = 0, tradeCount = 0,
-    winRate = 0, wins = 0, losses = 0,
-    profitFactor = 0, streakDays = { current: 0 }, streakTrades = { current: 0, best: 0, win: true },
+    winRate = 0, wins = 0, losses = 0, breakeven = 0, avgWin = 0, avgLoss = 0, avgWinLossRatio = 0,
+    profitFactor = 0, streakDays = { current: 0 }, streakTrades = { current: 0, best: 0, win: true }, lastResults = [],
   } = kpi || {};
   const decided = wins + losses;
   const empty = decided === 0;
   const pf = Number.isFinite(profitFactor) ? profitFactor : null;
-  const pfBadge = pf == null ? 'בלי הפסד' : pf < 1 ? 'חלש' : pf < 1.5 ? 'בסדר' : 'חזק';
+  const pfNote = pf == null ? 'ללא הפסדים עדיין'
+    : pf < 1 ? 'מתחת ל-1: ההפסדים גדולים מהרווחים'
+      : pf < 1.5 ? 'רווחי, יש מקום לשיפור' : 'חזק — ממשיכים כך';
+  const pfColor = pf == null || pf >= 1.5 ? 'bg-profit' : pf >= 1 ? 'bg-accent-primary' : 'bg-amber-500';
   const streakWin = streakTrades.win;
   const n = streakTrades.current;
-
+  const ratio = Number.isFinite(avgWinLossRatio) ? avgWinLossRatio : null;
   const retDown = returnPct != null && returnPct < 0;
-  const retLabel = returnPct == null ? null : `${returnPct > 0 ? '+' : ''}${returnPct.toFixed(1)}%`;
+  const retLabel = returnPct == null
+    ? null
+    : `${returnPct > 0 ? '+' : ''}${returnPct.toFixed(1)}%`;
+
   return (
-    <section aria-label="מדדים" data-testid="home-glance" className="grid grid-cols-2 xl:grid-cols-4 gap-3">
-      <article className="kpi-hero rise-in relative overflow-hidden rounded-2xl p-4 md:p-5 min-h-[148px] flex flex-col col-span-2 xl:col-span-1">
+    <section aria-label="מדדים" data-testid="home-glance" className="flex flex-col gap-3">
+      <article
+        className="relative overflow-hidden rounded-2xl p-4 md:p-5 min-h-[132px] flex flex-col text-white"
+        style={{ background: 'linear-gradient(155deg, #5d78ff 0%, #3b5bfd 48%, #2a43e6 100%)', boxShadow: '0 18px 40px -20px rgba(59, 91, 253, 0.9)' }}
+      >
         <span aria-hidden className="absolute -left-6 -bottom-8 w-28 h-28 rounded-full bg-white/10" />
         <span aria-hidden className="absolute left-8 -bottom-10 w-16 h-16 rounded-full bg-white/10" />
         <div className="relative flex justify-end">
-          {retLabel ? <Badge down={retDown}>{m(retLabel)}</Badge> : <Badge>{tradeCount} עסקאות</Badge>}
+          {retLabel
+            ? <PnlBadge down={retDown}>{m(retLabel)}</PnlBadge>
+            : <PnlBadge>{tradeCount} עסקאות</PnlBadge>}
         </div>
         <FitText as="b" min={18} className="relative num-mono mt-auto pt-6 text-[34px] md:text-[40px] font-extrabold leading-none text-white" dir="ltr" style={{ textAlign: 'right' }}>
-          <RollingNumber value={m(formatCurrencyShort(netPnl))} />
+          {m(formatCurrencyShort(netPnl))}
         </FitText>
         <span className="relative mt-2 text-sm font-medium text-white/80">רווח/הפסד · {tradeCount} עסקאות סגורות</span>
       </article>
-      <DarkKpi
-        delay={0.12}
-        icon={Percent}
-        label="אחוז הצלחה"
-        value={<RollingNumber value={winRateText(winRate, wins, losses)} />}
-        badge={<Badge down={decided > 0 && winRate < 50}>{empty ? '—' : `${wins}/${decided}`}</Badge>}
-      />
-      <DarkKpi
-        delay={0.24}
-        icon={Scale}
-        label="פקטור רווח"
-        value={<RollingNumber value={profitFactorText(pf, wins, losses)} />}
-        badge={<Badge down={pf != null && pf < 1}>{empty ? '—' : pfBadge}</Badge>}
-      />
-      <DarkKpi
-        delay={0.36}
-        icon={Flame}
-        label="רצף נוכחי"
-        mono={false}
-        value={n === 0 ? 'אין עדיין' : n === 1 ? (streakWin ? 'רווח אחד' : 'הפסד אחד') : `${n} ${streakWin ? 'רווחים' : 'הפסדים'}`}
-        badge={<Badge down={!streakWin && n > 0}>{streakDaysLabel(streakDays.current)}</Badge>}
-      />
+      <div className="rounded-2xl border border-border-primary bg-bg-secondary overflow-hidden">
+      <div className="grid grid-cols-1 sm:grid-cols-3 [&>*]:border-border-primary max-sm:[&>*:not(:first-child)]:border-t sm:[&>*:not(:first-child)]:border-s">
+        <Kpi
+          label="אחוז הצלחה"
+          value={winRateText(winRate, wins, losses)}
+          bar={empty ? <NeutralBar /> : <Split a={(wins / decided) * 100} b={(losses / decided) * 100} />}
+          sub={<>
+            {wins} רווח · {losses} הפסד{breakeven ? ` · ${breakeven} איזון` : ''}
+            {ratio != null && <> · יחס <span dir="ltr">{ratio.toFixed(2)}</span></>}
+          </>}
+        />
+        <Kpi
+          label="פקטור רווח"
+          value={profitFactorText(pf, wins, losses)}
+          bar={empty ? <NeutralBar /> : (
+            <div className="h-1.5 rounded-full bg-bg-tertiary overflow-hidden">
+              <div className={`h-full rounded-full ${pfColor}`} style={{ width: `${pf == null ? 100 : Math.min(100, (pf / 2) * 100)}%` }} />
+            </div>
+          )}
+          sub={empty ? 'אין עסקאות סגורות' : losses === 0
+            ? 'ללא הפסדים עדיין'
+            : <>{pfNote} · ממוצע <span dir="ltr" className="text-profit">{m(formatCurrency(avgWin))}</span> מול <span dir="ltr" className="text-loss">{m(formatCurrency(avgLoss))}</span></>}
+        />
+        <Kpi
+          label="רצף נוכחי"
+          mono={false}
+          valueCls={n === 0 ? 'text-text-secondary' : streakWin ? 'text-profit' : 'text-loss'}
+          value={n === 0 ? 'אין עדיין' : n === 1 ? (streakWin ? 'רווח אחד' : 'הפסד אחד') : `${n} ${streakWin ? 'רווחים' : 'הפסדים'}`}
+          bar={lastResults.length > 0 && (
+            <div dir="ltr" className="flex gap-1" title="5 העסקאות האחרונות">
+              {lastResults.map((w, i) => <span key={i} className={`flex-1 h-1.5 rounded-full ${w ? 'bg-profit' : 'bg-loss'}`} />)}
+            </div>
+          )}
+          sub={`${streakDaysLabel(streakDays.current)} · שיא ${streakTrades.best || 0} רווחים ברצף`}
+        />
+      </div>
+      </div>
     </section>
   );
 }
@@ -120,7 +151,6 @@ const rMultiple = tradeRMultiple;
 export function RecentTradesCard({ trades, hidden, className = '' }) {
   const navigate = useNavigate();
   const m = (v) => (hidden ? '••••' : v);
-  const maxAbs = Math.max(1, ...trades.map((t) => Math.abs(pnlOf(t))));
   return (
     <HomePanel title="עסקאות אחרונות" link="ליומן המסחר" onLink={() => navigate('/journal')} className={className}>
       {trades.length === 0 ? (
@@ -151,13 +181,8 @@ export function RecentTradesCard({ trades, hidden, className = '' }) {
                     {formatRelativeTime(t.exitDate || t.entryDate)}
                     {r != null && <> · <span dir="ltr">{LRM}{r > 0 ? '+' : ''}{r.toFixed(1)}R</span></>}
                   </span>
-                  <span className="mt-1.5 block h-1.5 rounded-full overflow-hidden" style={{ background: 'rgba(127,127,140,0.28)' }}>
-                    <span className="block h-full rounded-full" style={{ width: `${(Math.abs(p) / maxAbs) * 100}%`, background: '#3b5bfd' }} />
-                  </span>
                 </span>
-                <FitText as="b" className={`num-mono text-[15px] shrink-0 max-w-[45%] ${p > 0 ? 'text-profit' : p < 0 ? 'text-loss' : 'text-text-secondary'}`} dir="ltr" style={{ width: 'auto' }}>
-                  <RollingNumber value={m(formatCurrency(p))} />
-                </FitText>
+                <FitText as="b" className={`num-mono text-[15px] shrink-0 max-w-[45%] ${p > 0 ? 'text-profit' : p < 0 ? 'text-loss' : 'text-text-secondary'}`} dir="ltr" style={{ width: 'auto' }}>{m(formatCurrency(p))}</FitText>
               </button>
             );
           })}
@@ -191,7 +216,7 @@ export function ScoreCard({ metrics, score, sampleSize = 0, className = '' }) {
   return (
     <HomePanel title="ציון ביצועים" className={className}>
       <div className="flex items-baseline gap-2.5 mb-4">
-        <b className={`num-mono text-[44px] font-extrabold leading-none ${verdict.cls}`}><RollingNumber value={String(s)} /></b>
+        <b className={`num-mono text-[44px] font-extrabold leading-none ${verdict.cls}`}>{s}</b>
         <span className="text-sm text-text-secondary">/ 100 · {verdict.text}</span>
       </div>
       <div className="flex flex-col gap-3">
@@ -306,114 +331,6 @@ export function MarketCard({ market, fng, failed = false, onRetry, className = '
         </div>
       ) : (
         <p className="text-sm text-text-secondary">טוען נתוני שוק…</p>
-      )}
-    </HomePanel>
-  );
-}
-
-// Actual cumulative P&L (blue) against a straight pace line (light) from the
-// first point to the last. The pill sits on the latest point.
-export function PaceChart({ series, hidden, className = '' }) {
-  const m = (v) => (hidden ? '••••' : v);
-  const chart = useMemo(() => {
-    const pts = (series || []).filter((p) => Number.isFinite(p.value));
-    if (pts.length < 2) return null;
-    const W = 600;
-    const H = 180;
-    const pad = 16;
-    const target = pts.map((p, i) => {
-      const t = i / (pts.length - 1);
-      return pts[0].value + (pts[pts.length - 1].value - pts[0].value) * t;
-    });
-    const vals = [...pts.map((p) => p.value), ...target];
-    const min = Math.min(...vals);
-    const max = Math.max(...vals);
-    const span = max - min || 1;
-    const x = (i) => pad + (i / (pts.length - 1)) * (W - pad * 2);
-    const y = (v) => pad + (H - pad * 2) * (1 - (v - min) / span);
-    const path = (ys) => ys.map((v, i) => `${i ? 'L' : 'M'}${x(i).toFixed(1)},${y(v).toFixed(1)}`).join(' ');
-    const last = pts.length - 1;
-    return {
-      blue: path(pts.map((p) => p.value)),
-      white: path(target),
-      tipX: (x(last) / W) * 100,
-      tipY: (y(pts[last].value) / H) * 100,
-      last: pts[last].value,
-    };
-  }, [series]);
-
-  return (
-    <HomePanel title="ביצוע מול יעד" className={`dash-card ${className}`}>
-      <p className="text-xs text-text-secondary -mt-1 mb-3">הקו הכחול הוא הרווח המצטבר. הקו הבהיר הוא הקצב הישר מאותה נקודת פתיחה.</p>
-      {chart ? (
-        <div dir="ltr" className="relative h-[180px]">
-          <svg viewBox="0 0 600 180" className="w-full h-full" role="img" aria-label="ביצוע מול קצב יעד">
-            <path d={chart.white} fill="none" stroke="var(--pace-target)" strokeWidth="2" strokeDasharray="5 5" vectorEffect="non-scaling-stroke" />
-            <path d={chart.blue} fill="none" stroke="#3b5bfd" strokeWidth="2.75" strokeLinecap="round" vectorEffect="non-scaling-stroke" />
-          </svg>
-          <div
-            className="absolute -translate-x-1/2 -translate-y-full px-2.5 py-1 rounded-full text-[11px] font-bold text-white pointer-events-none"
-            style={{ left: `${chart.tipX}%`, top: `${chart.tipY}%`, background: '#111218' }}
-          >
-            <span className="num-mono" dir="ltr">{m(formatCurrencyShort(chart.last))}</span>
-          </div>
-        </div>
-      ) : (
-        <div className="h-[140px] grid place-items-center text-sm text-text-secondary">צריך לפחות שתי עסקאות סגורות</div>
-      )}
-    </HomePanel>
-  );
-}
-
-export function WinDonut({ wins = 0, losses = 0, className = '' }) {
-  const total = wins + losses;
-  const rate = total ? Math.round((wins / total) * 100) : 0;
-  const r = 42;
-  const c = 2 * Math.PI * r;
-  const winLen = total ? (wins / total) * c : 0;
-  return (
-    <HomePanel title="הצלחה מול הפסד" className={`dash-card ${className}`}>
-      <div className="flex items-center gap-4">
-        <svg viewBox="0 0 120 120" className="w-28 h-28 shrink-0" role="img" aria-label={`${rate}% הצלחה`}>
-          <circle cx="60" cy="60" r={r} fill="none" stroke="rgba(127,127,140,0.25)" strokeWidth="14" />
-          {total > 0 && (
-            <>
-              <circle cx="60" cy="60" r={r} fill="none" stroke="#3b5bfd" strokeWidth="14"
-                strokeDasharray={`${Math.max(0, c - winLen)} ${c}`} strokeDashoffset={-winLen} transform="rotate(-90 60 60)" />
-              <circle cx="60" cy="60" r={r} fill="none" stroke="#c6f36b" strokeWidth="14"
-                strokeDasharray={`${winLen} ${c}`} transform="rotate(-90 60 60)" />
-            </>
-          )}
-          <text x="60" y="64" textAnchor="middle" fontSize="18" fontWeight="800" fill="currentColor">{total ? `${rate}%` : '—'}</text>
-        </svg>
-        <div className="flex flex-col gap-2 text-sm">
-          <span className="inline-flex items-center gap-2"><i className="w-2.5 h-2.5 rounded-full" style={{ background: '#c6f36b' }} /> {wins} רווח</span>
-          <span className="inline-flex items-center gap-2"><i className="w-2.5 h-2.5 rounded-full" style={{ background: '#3b5bfd' }} /> {losses} הפסד</span>
-        </div>
-      </div>
-    </HomePanel>
-  );
-}
-
-export function MetricFunnel({ metrics = [], className = '' }) {
-  const rows = [...metrics].sort((a, b) => b.value - a.value);
-  const max = Math.max(1, ...rows.map((r) => r.value));
-  return (
-    <HomePanel title="משפך ביצועים" className={`dash-card ${className}`}>
-      {rows.length === 0 ? (
-        <p className="text-sm text-text-secondary py-6 text-center">הציון יופיע אחרי כמה עסקאות סגורות</p>
-      ) : (
-        <div className="flex flex-col gap-2.5">
-          {rows.map((row) => (
-            <div key={row.label} className="flex items-center gap-2">
-              <span className="w-24 shrink-0 text-xs text-text-secondary truncate">{row.label}</span>
-              <span className="flex-1 h-2.5 rounded-full overflow-hidden" style={{ background: 'rgba(127,127,140,0.22)' }}>
-                <span className="block h-full rounded-full" style={{ width: `${Math.max(8, (row.value / max) * 100)}%`, background: '#3b5bfd' }} />
-              </span>
-              <b className="num-mono text-xs w-8 text-left">{Math.round(row.value)}</b>
-            </div>
-          ))}
-        </div>
       )}
     </HomePanel>
   );

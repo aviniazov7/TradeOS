@@ -10,7 +10,6 @@ import { isClosedTrade } from '../../utils/calculations';
 import { LRM } from '../../utils/formatters';
 import PageHeader from '../shared/PageHeader';
 import TabStrip from '../shared/TabStrip';
-import TabPanel from '../shared/TabPanel';
 import AIChat from './AIChat';
 import ChartAnalyzer from './ChartAnalyzer';
 import AnalystTab from './AnalystTab';
@@ -89,20 +88,18 @@ export default function TradeAIPage() {
         )}
       />
 
-      <TabPanel tabKey={tab}>
-        {tab === 'chat' && (
-          <AIChat
-            heightClass={heightClass}
-            trades={trades}
-            journalId={activeJournalId}
-            journalName={activeJournal?.name || ''}
-          />
-        )}
-        {tab === 'analyze' && <ChartAnalyzer heightClass={heightClass} />}
-        {/* Mounted only while selected, so the two Firestore reads inside
-            AnalystInsights cost nothing on the other tabs. */}
-        {tab === 'analyst' && <AnalystTab heightClass={heightClass} trades={trades} />}
-      </TabPanel>
+      {tab === 'chat' && (
+        <AIChat
+          heightClass={heightClass}
+          trades={trades}
+          journalId={activeJournalId}
+          journalName={activeJournal?.name || ''}
+        />
+      )}
+      {tab === 'analyze' && <ChartAnalyzer heightClass={heightClass} />}
+      {/* Mounted only while selected, so the two Firestore reads inside
+          AnalystInsights cost nothing on the other tabs. */}
+      {tab === 'analyst' && <AnalystTab heightClass={heightClass} trades={trades} />}
     </m.div>
   );
 }

@@ -1,8 +1,6 @@
 import { ComposedChart, Area, XAxis, YAxis, Tooltip, ResponsiveContainer } from 'recharts';
 import { formatCurrency } from '../../utils/formatters';
 import { chartTick } from '../../utils/chartTicks';
-import { chartDrawProps } from '../../utils/chartMotion';
-import { usePrefersReducedMotion } from '../../hooks/usePrefersReducedMotion';
 
 // Desktop Safari resolves `height: 100%` inside a flex child that only has
 // min-height as 0, so ResponsiveContainer skips the plot. A pixel height
@@ -25,7 +23,6 @@ const compactUsd = (v) => {
 };
 
 export default function EquityCurveChart({ data }) {
-  const reduce = usePrefersReducedMotion();
   if (!data || data.length < 2) {
     return (
       <div className="bg-bg-secondary border border-border-primary rounded-xl p-5 h-full min-h-[220px] flex items-center justify-center">
@@ -42,8 +39,8 @@ export default function EquityCurveChart({ data }) {
           <ComposedChart data={data} margin={{ top: 6, right: 4, bottom: 0, left: 8 }}>
             <defs>
               <linearGradient id="equityGradAdv" x1="0" y1="0" x2="0" y2="1">
-                <stop offset="5%" stopColor="var(--chart-area-top)" />
-                <stop offset="95%" stopColor="var(--chart-area-bot)" />
+                <stop offset="5%" stopColor="var(--color-accent-primary)" stopOpacity={0.3} />
+                <stop offset="95%" stopColor="var(--color-accent-primary)" stopOpacity={0} />
               </linearGradient>
             </defs>
             {/* minTickGap keeps the date labels from crowding; the YAxis width
@@ -57,7 +54,7 @@ export default function EquityCurveChart({ data }) {
               cursor={{ stroke: 'var(--color-border-primary)', strokeWidth: 1 }}
               formatter={(val) => [formatCurrency(val), 'הון']}
             />
-            <Area type="monotone" dataKey="equity" stroke="var(--chart-line)" strokeWidth={2.75} fill="url(#equityGradAdv)" {...chartDrawProps(reduce)} />
+            <Area type="monotone" dataKey="equity" stroke="var(--color-accent-primary)" strokeWidth={2} fill="url(#equityGradAdv)" animationDuration={800} />
           </ComposedChart>
         </ResponsiveContainer>
       </div>

@@ -152,7 +152,7 @@ export default function WalletsPage({ embedded = false }) {
   const ALLOC_COLORS = ['#f7931a', '#627eea', '#14f195', '#26a17b', '#e84142', '#8b95a8'];
 
   return (
-    <m.div {...(embedded ? {} : { variants: pageVariants, initial: 'initial', animate: 'animate', exit: 'exit', transition: pageTransition })}
+    <m.div variants={pageVariants} initial="initial" animate="animate" exit="exit" transition={pageTransition}
       className={embedded ? '' : 'px-4 py-6'}>
       <div className="max-w-3xl mx-auto space-y-4">
 

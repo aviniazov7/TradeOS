@@ -1,7 +1,7 @@
 import { useMemo, useRef, useState } from 'react';
 import Card from '../shared/Card';
+import AnimatedValue from '../shared/AnimatedValue';
 import FitText from '../shared/FitText';
-import RollingNumber from '../shared/RollingNumber';
 import { formatCurrency, formatCurrencyShort, LRM } from '../../utils/formatters';
 import { summarizeSeries } from '../../utils/portfolioPerformance';
 
@@ -41,15 +41,12 @@ function buildChart(points) {
 //   declaredStart: sum of journal opening balances. The % is that period's
 //   closed-trade P&L on this capital — the same dollars as רווח/הפסד.
 //   A withdrawal changes `balance` and is not part of the %.
-export default function PortfolioHero({ balance, declaredStart = 0, series, hidden, period: periodProp, onPeriod }) {
-  const controlled = periodProp != null && typeof onPeriod === 'function';
-  const [periodState, setPeriodState] = useState(() => {
+export default function PortfolioHero({ balance, declaredStart = 0, series, hidden }) {
+  const [period, setPeriod] = useState(() => {
     try { return localStorage.getItem(PERIOD_KEY) || 'all'; } catch { return 'all'; }
   });
-  const period = controlled ? periodProp : periodState;
   const pick = (id) => {
-    if (controlled) onPeriod(id);
-    else setPeriodState(id);
+    setPeriod(id);
     try { localStorage.setItem(PERIOD_KEY, id); } catch { /* private mode */ }
   };
   const s = useMemo(() => {
@@ -79,13 +76,13 @@ export default function PortfolioHero({ balance, declaredStart = 0, series, hidd
       : { label: 'אחוז הצלחה', value: s.winRate == null ? '—' : `${s.winRate}%`, cls: 'text-text-primary' };
 
   return (
-    <Card className="dash-card rounded-2xl p-4 md:p-5 flex flex-col gap-4 h-full">
+    <Card className="rounded-2xl p-4 md:p-5 flex flex-col gap-4 h-full">
       <div className="flex flex-wrap items-start justify-between gap-3">
         <div className="flex flex-col gap-1.5 min-w-0 flex-1 basis-48">
           <span className="text-[13px] font-medium text-text-secondary">שווי תיקים כולל</span>
           <div className="flex items-center gap-2.5 min-w-0">
             <FitText dir="ltr" min={18} className="num-mono text-3xl md:text-[40px] font-extrabold text-text-primary leading-none flex-initial">
-              <RollingNumber value={m(formatCurrency(balance).replace('+', ''))} />
+              <AnimatedValue value={m(formatCurrency(balance).replace('+', ''))} />
             </FitText>
             {s.percent != null && s.percent !== 0 && (
               <span dir="ltr" data-testid="portfolio-return" className={`shrink-0 text-[13px] font-bold px-2 py-0.5 rounded-lg ${s.percent >= 0 ? 'bg-profit/15 text-profit' : 'bg-loss/15 text-loss'}`}>
@@ -94,28 +91,28 @@ export default function PortfolioHero({ balance, declaredStart = 0, series, hidd
             )}
           </div>
         </div>
-        {!controlled && <div role="group" aria-label="תקופה" className="flex gap-0.5 p-[3px] rounded-xl bg-bg-tertiary border border-border-primary">
+        <div role="group" aria-label="תקופה" className="flex gap-0.5 p-[3px] rounded-xl bg-bg-tertiary border border-border-primary">
           {PERIODS.map((p) => (
             <button key={p.id} type="button" onClick={() => pick(p.id)} aria-pressed={period === p.id}
               className={`h-9 px-3.5 rounded-[9px] text-[13px] font-bold transition-colors cursor-pointer ${period === p.id ? 'bg-accent-primary/15 text-accent-primary' : 'text-text-secondary hover:text-text-primary'}`}>
               {p.label}
             </button>
           ))}
-        </div>}
+        </div>
       </div>
 
       <div className="grid grid-cols-3 gap-2.5">
         <div className={tile}>
           <span className="text-xs text-text-secondary truncate" title={s.def.id === 'all' ? 'רווח/הפסד נקי מתחילת התיק' : `רווח/הפסד נקי ${s.def.label}`}>רווח/הפסד</span>
-          <FitText as="b" className={`num-mono text-base md:text-xl ${tone(s.pnl)}`} dir="ltr" style={{ textAlign: 'right' }}><RollingNumber value={m(money(s.pnl))} /></FitText>
+          <FitText as="b" className={`num-mono text-base md:text-xl ${tone(s.pnl)}`} dir="ltr" style={{ textAlign: 'right' }}>{m(money(s.pnl))}</FitText>
         </div>
         <div className={tile}>
           <span className="text-xs text-text-secondary">עסקאות</span>
-          <FitText as="b" className="num-mono text-base md:text-xl text-text-primary"><RollingNumber value={String(s.count)} /></FitText>
+          <FitText as="b" className="num-mono text-base md:text-xl text-text-primary">{s.count}</FitText>
         </div>
         <div className={tile}>
           <span className="text-xs text-text-secondary truncate">{third.label}</span>
-          <FitText as="b" className={`num-mono text-base md:text-xl ${third.cls}`} dir="ltr" style={{ textAlign: 'right' }}><RollingNumber value={third.value} /></FitText>
+          <FitText as="b" className={`num-mono text-base md:text-xl ${third.cls}`} dir="ltr" style={{ textAlign: 'right' }}>{third.value}</FitText>
         </div>
       </div>
 
@@ -124,21 +121,19 @@ export default function PortfolioHero({ balance, declaredStart = 0, series, hidd
           <svg viewBox={`0 0 ${W} ${H}`} preserveAspectRatio="none" className="w-full h-full" role="img" aria-label="עקומת רווח מצטבר">
             <defs>
               <linearGradient id="hero-fill" x1="0" y1="0" x2="0" y2="1">
-                <stop offset="0%" stopColor="var(--chart-area-top)" />
-                <stop offset="100%" stopColor="var(--chart-area-bot)" />
+                <stop offset="0%" style={{ stopColor: 'var(--color-accent-primary)', stopOpacity: 0.3 }} />
+                <stop offset="100%" style={{ stopColor: 'var(--color-accent-primary)', stopOpacity: 0 }} />
               </linearGradient>
             </defs>
             <line x1="0" x2={W} y1={s.chart.zeroY} y2={s.chart.zeroY} stroke="var(--color-border-hover)" strokeDasharray="4 5" vectorEffect="non-scaling-stroke" />
-            <g key={period}>
-              <path d={s.chart.area} fill="url(#hero-fill)" className="chart-draw-fill" />
-              <path d={s.chart.line} pathLength="1" className="chart-draw" fill="none" stroke="var(--chart-line)" strokeWidth="2.75" strokeLinejoin="round" strokeLinecap="round" vectorEffect="non-scaling-stroke" />
-            </g>
+            <path d={s.chart.area} fill="url(#hero-fill)" />
+            <path d={s.chart.line} fill="none" stroke="var(--color-accent-primary)" strokeWidth="2.4" strokeLinejoin="round" vectorEffect="non-scaling-stroke" />
             {hp && <line x1={hp.x} x2={hp.x} y1="0" y2={H} stroke="var(--color-border-hover)" vectorEffect="non-scaling-stroke" />}
           </svg>
           {hp && (
-            <div className="absolute top-1 -translate-x-1/2 px-2.5 py-1 rounded-full text-[11px] font-bold text-white whitespace-nowrap pointer-events-none"
-              style={{ left: `${hpLeft}%`, background: '#111218' }}>
-              <span className="num-mono">{m(money(hp.value))}</span>
+            <div className="absolute top-1 -translate-x-1/2 px-2 py-1 rounded-lg bg-bg-overlay border border-border-primary text-[11px] whitespace-nowrap pointer-events-none"
+              style={{ left: `${hpLeft}%` }}>
+              <span className={`num-mono font-bold ${tone(hp.value)}`}>{m(money(hp.value))}</span>
               {hp.t ? <span className="text-text-secondary"> · {fmtDate(hp.t)}</span> : null}
             </div>
           )}

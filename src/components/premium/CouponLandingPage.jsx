@@ -6,7 +6,6 @@ import toast from 'react-hot-toast';
 import { useAuth } from '../../contexts/AuthContext';
 import { getCouponInfo, redeemCoupon } from '../../services/couponService';
 import { PREMIUM_FEATURES } from '../../utils/constants';
-import RollingNumber from '../shared/RollingNumber';
 
 // Public-facing landing page for a shared coupon link: /redeem/:code
 // A friend opens it, sees a designed offer card, and redeems in one tap.
@@ -55,9 +54,7 @@ export default function CouponLandingPage() {
   return (
     <div className="min-h-screen flex items-center justify-center px-4 py-10 bg-bg-primary">
       <m.div
-        initial={{ opacity: 0, y: 72 }}
-        animate={{ opacity: 1, y: 0 }}
-        transition={{ duration: 0.7, ease: [0.22, 1, 0.36, 1] }}
+        initial={{ opacity: 0, y: 12 }} animate={{ opacity: 1, y: 0 }}
         className="w-full max-w-md"
       >
         {/* Card */}
@@ -99,7 +96,7 @@ export default function CouponLandingPage() {
               <>
                 <div className="text-[11px] uppercase tracking-wider text-amber-400/80 font-semibold">קוד מתנה</div>
                 <h1 className="text-2xl font-extrabold text-text-primary mt-1">
-                  <RollingNumber value={info.days} /> ימי <span className="text-amber-400">Premium</span> חינם
+                  {info.days} ימי <span className="text-amber-400">Premium</span> חינם
                 </h1>
                 {info.label && <p className="text-xs text-text-muted mt-1">{info.label}</p>}
 
@@ -135,8 +132,8 @@ export default function CouponLandingPage() {
               <Sparkles className="w-3.5 h-3.5 text-amber-400" /> מה נפתח עם Premium
             </div>
             <div className="grid grid-cols-2 gap-x-4 gap-y-1.5">
-              {PREMIUM_FEATURES.map((f, i) => (
-                <div key={f.title} className="rise-in flex items-center gap-1.5 text-xs text-text-primary" style={{ animationDelay: `${0.15 + i * 0.08}s` }}>
+              {PREMIUM_FEATURES.map((f) => (
+                <div key={f.title} className="flex items-center gap-1.5 text-xs text-text-primary">
                   <Check className="w-3.5 h-3.5 text-profit shrink-0" /> {f.title}
                 </div>
               ))}

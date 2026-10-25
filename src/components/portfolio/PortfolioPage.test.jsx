@@ -5,7 +5,7 @@ import { createRoot } from 'react-dom/client';
 import { LazyMotion, domAnimation } from 'framer-motion';
 import { MemoryRouter, Navigate, Route, Routes, useLocation } from 'react-router-dom';
 import PortfolioPage from './PortfolioPage';
-import AccountMenu from '../layout/AccountMenu';
+import Sidebar from '../layout/Sidebar';
 import GlobalSearch from '../layout/GlobalSearch';
 
 vi.mock('../dca/DCATracker', () => ({ default: () => null }));
@@ -157,12 +157,9 @@ describe('holdings screen', () => {
   it('shows החזקות in the menu and in search, including the old name', async () => {
     const menu = await mount(
       <MemoryRouter initialEntries={['/portfolio']}>
-        <AccountMenu />
+        <Sidebar mobileOpen onClose={() => {}} />
       </MemoryRouter>,
     );
-    await act(async () => {
-      document.querySelector('[aria-label="חשבון ותפריט"]').click();
-    });
     const link = document.querySelector('nav[aria-label="תפריט ראשי"] a[href="/portfolio"]');
     expect(link.textContent).toContain('החזקות');
     expect(link.getAttribute('href')).toBe('/portfolio');

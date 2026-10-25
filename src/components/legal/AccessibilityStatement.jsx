@@ -22,10 +22,10 @@ const COORDINATOR = {
 };
 const LAST_UPDATED = '19 ביולי 2026';
 
-function Section({ Icon, title, children, tone = 'default', delay = 0 }) {
+function Section({ Icon, title, children, tone = 'default' }) {
   const toneBorder = tone === 'good' ? 'border-profit/30' : tone === 'warn' ? 'border-amber-500/30' : 'border-border-primary';
   return (
-    <div className={`rise-in bg-bg-secondary border ${toneBorder} rounded-2xl p-4 md:p-5`} style={{ animationDelay: `${delay}s` }}>
+    <div className={`bg-bg-secondary border ${toneBorder} rounded-2xl p-4 md:p-5`}>
       <div className="flex items-center gap-2 mb-2">
         <Icon className="w-4.5 h-4.5 text-accent-primary shrink-0" />
         <h2 className="text-sm md:text-base font-bold text-text-primary">{title}</h2>
@@ -65,7 +65,7 @@ export default function AccessibilityStatement() {
         שירות שוויוני, מכובד ועצמאי.
       </p>
 
-      <Section Icon={Scale} title="התקן והחקיקה" delay={0.08}>
+      <Section Icon={Scale} title="התקן והחקיקה">
         <p>
           הנגשת האתר בוצעה בהתאם לדרישות תקנות שוויון זכויות לאנשים עם מוגבלות
           (התאמות נגישות לשירות), התשע״ג-2013, ובהתאם להמלצות התקן הישראלי
@@ -74,7 +74,7 @@ export default function AccessibilityStatement() {
         </p>
       </Section>
 
-      <Section Icon={CheckCircle2} title="התאמות הנגישות שבוצעו" tone="good" delay={0.24}>
+      <Section Icon={CheckCircle2} title="התאמות הנגישות שבוצעו" tone="good">
         <ul className="list-disc pr-5 space-y-1">
           <li>ממשק בעברית מלא בכיוון ימין-לשמאל (RTL), עם שפת תוכן מוגדרת לקוראי מסך.</li>
           <li>ניווט מלא באמצעות מקלדת ומיקוד נראה על רכיבים אינטראקטיביים.</li>
@@ -85,7 +85,7 @@ export default function AccessibilityStatement() {
         </ul>
       </Section>
 
-      <Section Icon={AlertTriangle} title="מגבלות ידועות" tone="warn" delay={0.4}>
+      <Section Icon={AlertTriangle} title="מגבלות ידועות" tone="warn">
         <p>
           חרף מאמצינו, ייתכן שחלקים מסוימים באתר — ובפרט גרפים אינטראקטיביים,
           תרשימים וטבלאות נתונים מורכבות — אינם נגישים במלואם בשלב זה. הנגשת
@@ -94,7 +94,7 @@ export default function AccessibilityStatement() {
         </p>
       </Section>
 
-      <Section Icon={UserCog} title="רכז הנגישות ופנייה בנושא" delay={0.56}>
+      <Section Icon={UserCog} title="רכז הנגישות ופנייה בנושא">
         <p>
           נתקלת בבעיה, יש לך הצעה לשיפור או שאתה זקוק לסיוע בנושא נגישות? נשמח
           לשמוע ולסייע. ניתן לפנות לרכז הנגישות שלנו:

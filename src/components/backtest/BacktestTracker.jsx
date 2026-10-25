@@ -31,7 +31,6 @@ import { useUserStrategies } from '../../hooks/useUserStrategies';
 import { useUserTimeframes } from '../../hooks/useUserTimeframes';
 import { useUserTriggers } from '../../hooks/useUserTriggers';
 import { pageVariants, pageTransition } from '../../utils/animations';
-import TabPanel from '../shared/TabPanel';
 import PageHeader from '../shared/PageHeader';
 import { headerIconBtn, headerPrimaryBtn, headerAiBtn } from '../shared/headerStyles';
 
@@ -274,7 +273,6 @@ export default function BacktestTracker() {
         )}
       />
 
-      <TabPanel tabKey={tab}>
       {/* Tab: Records */}
       {tab === 'records' && (
         <>
@@ -467,7 +465,6 @@ export default function BacktestTracker() {
           </div>
         )
       )}
-      </TabPanel>
 
       {/* AI analysis modal — same pattern as the journal's coach */}
       <Modal
