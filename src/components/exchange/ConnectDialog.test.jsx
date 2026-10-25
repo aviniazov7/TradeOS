@@ -77,4 +77,17 @@ describe('ConnectDialog', () => {
     expect(document.querySelector('[data-testid="connection-guide"]').textContent).toContain('CSV');
     await view.cleanup();
   });
+
+  it('offers an MT5 report import for Vantage instead of an API key form', async () => {
+    const view = await mount(byId('vantage'));
+    expect(document.querySelector('input[placeholder="API Key"]')).toBeNull();
+    expect(document.querySelector('input[placeholder="API Secret"]')).toBeNull();
+    const button = [...document.querySelectorAll('button')].find((b) => b.textContent.includes('ייבוא דוח MT5'));
+    expect(button).toBeTruthy();
+    const guide = document.querySelector('[data-testid="connection-guide"]').textContent;
+    expect(guide).toContain('History');
+    expect(guide).toContain('Report');
+    expect(guide).not.toContain('Read-Only');
+    await view.cleanup();
+  });
 });

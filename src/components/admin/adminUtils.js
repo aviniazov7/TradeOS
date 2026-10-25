@@ -109,7 +109,7 @@ export const ILS = (n) => '₪' + Math.round(Number(n) || 0).toLocaleString('he-
 // Display names for connected-exchange ids (the worker returns ids only —
 // mirrors the list in exchange/exchangeConfig.js).
 export const EXCHANGE_NAMES = {
-  bybit: 'Bybit', mexc: 'MEXC', okx: 'OKX', bitget: 'Bitget', binance: 'Binance', hyperliquid: 'Hyperliquid',
+  bybit: 'Bybit', mexc: 'MEXC', okx: 'OKX', bitget: 'Bitget', binance: 'Binance', hyperliquid: 'Hyperliquid', vantage: 'Vantage',
 };
 
 export function csvCell(v) {

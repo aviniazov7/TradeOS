@@ -61,6 +61,8 @@ export function useExchangeImport(journalId) {
         source: t.source, externalId: t.externalId,
         positionSize: t.positionSize || ep * qty,
         margin: ep * qty / lev,
+        ...(t.lots > 0 ? { lots: t.lots } : {}),
+        ...(t.notes ? { notes: String(t.notes).slice(0, 500) } : {}),
         ...(t.session ? { session: t.session } : {}),
         ...(t.liquidationPrice ? { liquidationPrice: t.liquidationPrice } : {}),
         journalId: destJournalId,
@@ -107,6 +109,7 @@ export function useExchangeImport(journalId) {
         // The exchange knows limit vs market — a re-sync corrects rows that
         // were imported before a venue reported it (they defaulted to market).
         ...(t.orderType ? { orderType: t.orderType } : {}),
+        ...(t.lots > 0 ? { lots: t.lots } : {}),
         pnlFromExchange: t.pnlFromExchange ?? existing.pnlFromExchange,
         // Funding paid/received (Hyperliquid) — already inside pnlFromExchange,
         // kept as its own field for reference.
@@ -154,6 +157,8 @@ export function useExchangeImport(journalId) {
       fees, status: 'closed',
       entryDate: entryD, exitDate: exitD,
       source: t.source, externalId: t.externalId,
+      ...(t.lots > 0 ? { lots: t.lots } : {}),
+      ...(t.notes ? { notes: String(t.notes).slice(0, 500) } : {}),
       // All the position's close-order ids — the next sync's merged row is
       // matched to this document by id overlap (see the upsert above).
       ...(rowIds.length > 1 ? { externalIds: rowIds } : {}),
