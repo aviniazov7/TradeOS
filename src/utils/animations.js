@@ -4,38 +4,38 @@ const riseEase = [0.22, 1, 0.36, 1];
 
 // Page transition
 export const pageVariants = {
-  initial: { opacity: 0, y: 18 },
+  initial: { opacity: 0, y: 72 },
   animate: { opacity: 1, y: 0 },
-  exit: { opacity: 0, y: -10 },
+  exit: { opacity: 0, y: -36 },
 };
-export const pageTransition = { duration: 0.32, ease: riseEase };
+export const pageTransition = { duration: 0.65, ease: riseEase };
 
 // Tab body. Same direction as the page, shorter, so a tab change reads as a
 // smaller version of the page change and stays RTL-safe.
 export const tabSlide = {
-  initial: { opacity: 0, y: 12 },
+  initial: { opacity: 0, y: 48 },
   animate: { opacity: 1, y: 0 },
-  exit: { opacity: 0, y: -8 },
+  exit: { opacity: 0, y: -28 },
 };
-export const tabTransition = { duration: 0.26, ease: riseEase };
+export const tabTransition = { duration: 0.5, ease: riseEase };
 
-// Exchange cards: a short lift on top of the brand-colored beam / spotlight.
+// Exchange cards: a clear lift on top of the brand-colored beam / spotlight.
 // `delay: 0` so the entrance delay on the same element doesn't lag the hover.
 export const exchangeHover = {
-  y: -4,
-  transition: { type: 'spring', stiffness: 420, damping: 30, delay: 0 },
+  y: -16,
+  transition: { type: 'spring', stiffness: 380, damping: 22, delay: 0 },
 };
 
 // Stagger container (for card grids)
 export const staggerContainer = {
   initial: {},
-  animate: { transition: { staggerChildren: 0.06 } },
+  animate: { transition: { staggerChildren: 0.14 } },
 };
 
 // Individual card in stagger
 export const staggerItem = {
-  initial: { opacity: 0, y: 20 },
-  animate: { opacity: 1, y: 0, transition: { duration: 0.3 } },
+  initial: { opacity: 0, y: 48 },
+  animate: { opacity: 1, y: 0, transition: { duration: 0.55 } },
 };
 
 // Modal

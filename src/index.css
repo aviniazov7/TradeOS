@@ -676,18 +676,18 @@ input[type="number"] {
 .exchange-card:hover {
   border-color: color-mix(in srgb, var(--beam-from, #38bdf8) 40%, transparent);
 }
-/* Lift sits with the brand beam. Motion cards drive the same 4px via
+/* Lift sits with the brand beam. Motion cards drive the same 16px via
    whileHover; this covers a plain .exchange-card. Reduced motion below
    drops the transform. */
 @media (hover: hover) and (prefers-reduced-motion: no-preference) {
-  .exchange-card:hover { transform: translateY(-4px); }
+  .exchange-card:hover { transform: translateY(-16px); }
 }
 @keyframes riseIn {
-  from { opacity: 0; transform: translate3d(0, 16px, 0); }
+  from { opacity: 0; transform: translate3d(0, 72px, 0); }
   to { opacity: 1; transform: translate3d(0, 0, 0); }
 }
 .rise-in {
-  animation: riseIn 0.48s cubic-bezier(0.22, 1, 0.36, 1) both;
+  animation: riseIn 0.95s cubic-bezier(0.22, 1, 0.36, 1) both;
 }
 /* SVG line draw-in. pathLength="1" makes the dash one unit long, so the
    stroke grows from the start of the series regardless of its pixel length. */
@@ -696,11 +696,36 @@ input[type="number"] {
 .chart-draw {
   stroke-dasharray: 1;
   stroke-dashoffset: 1;
-  animation: chartDraw 0.9s cubic-bezier(0.22, 1, 0.36, 1) forwards;
+  animation: chartDraw 1.8s cubic-bezier(0.22, 1, 0.36, 1) forwards;
 }
 .chart-draw-fill {
   opacity: 0;
-  animation: chartDrawFill 0.55s ease-out 0.28s forwards;
+  animation: chartDrawFill 0.9s ease-out 0.45s forwards;
+}
+/* CSS odometer for the login screen, which must not load framer-motion.
+   --d is the target digit (0-9). The strip starts on 0 and rolls up. */
+.css-ticker-digit {
+  display: inline-block;
+  height: 1em;
+  overflow: hidden;
+  line-height: 1em;
+  vertical-align: bottom;
+}
+.css-ticker-strip {
+  display: flex;
+  flex-direction: column;
+  transform: translateY(calc(var(--d) * -1em));
+  animation: cssTicker 1.25s cubic-bezier(0.22, 1, 0.36, 1) both;
+}
+.css-ticker-strip > span {
+  display: block;
+  height: 1em;
+  line-height: 1em;
+  text-align: center;
+}
+@keyframes cssTicker {
+  from { transform: translateY(0); }
+  to { transform: translateY(calc(var(--d) * -1em)); }
 }
 /* Faint scan-line highlight along the top edge */
 .bento-card::before {
@@ -856,6 +881,10 @@ html.a11y-stop-motion .rise-in { opacity: 1; transform: none; }
 html.a11y-stop-motion .chart-draw { stroke-dashoffset: 0; }
 html.a11y-stop-motion .chart-draw-fill { opacity: 1; }
 html.a11y-stop-motion .exchange-card:hover { transform: none; }
+html.a11y-stop-motion .css-ticker-strip {
+  animation: none !important;
+  transform: translateY(calc(var(--d) * -1em));
+}
 
 /* Big cursor — a larger arrow pointer for easier tracking. */
 html.a11y-big-cursor,
@@ -882,4 +911,8 @@ html.a11y-big-cursor * {
   .chart-draw { stroke-dashoffset: 0; }
   .chart-draw-fill { opacity: 1; }
   .exchange-card:hover { transform: none; }
+  .css-ticker-strip {
+    animation: none !important;
+    transform: translateY(calc(var(--d) * -1em));
+  }
 }

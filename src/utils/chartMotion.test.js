@@ -4,7 +4,7 @@ import { isTickerValue } from './tickerValue';
 
 describe('chart draw-in', () => {
   it('draws the line unless motion is reduced', () => {
-    expect(chartDrawProps(false)).toMatchObject({ isAnimationActive: true, animationDuration: 900 });
+    expect(chartDrawProps(false)).toMatchObject({ isAnimationActive: true, animationDuration: 1600 });
     expect(chartDrawProps(true)).toEqual({ isAnimationActive: false });
   });
 });

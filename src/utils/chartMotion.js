@@ -5,7 +5,7 @@ export function chartDrawProps(reduce) {
   if (reduce) return { isAnimationActive: false };
   return {
     isAnimationActive: true,
-    animationDuration: 900,
+    animationDuration: 1600,
     animationEasing: 'ease-out',
   };
 }

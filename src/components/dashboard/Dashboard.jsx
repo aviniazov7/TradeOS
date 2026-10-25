@@ -518,14 +518,16 @@ export default function Dashboard() {
             {/* Portfolio beside the latest trades. On a phone the trades
                 come first so the book is on screen before the chart. */}
             <div className="grid grid-cols-1 lg:grid-cols-3 gap-4 items-start">
-              <div className="rise-in lg:col-span-2 min-w-0 order-2 lg:order-1" style={{ animationDelay: '0.04s' }}>
+              <div className="rise-in lg:col-span-2 min-w-0 order-2 lg:order-1" style={{ animationDelay: '0.12s' }}>
                 <PortfolioHero balance={globalStats.totalBalance} declaredStart={declaredStartCapital(statJournals)} series={equitySeries} hidden={hideBalances} />
               </div>
-              <RecentTradesCard trades={recentClosed} hidden={hideBalances} className="rise-in order-1 lg:order-2" />
-              <div className="rise-in lg:col-span-2 min-w-0 order-3" style={{ animationDelay: '0.12s' }}>
+              <div className="rise-in order-1 lg:order-2" style={{ animationDelay: '0.28s' }}>
+                <RecentTradesCard trades={recentClosed} hidden={hideBalances} />
+              </div>
+              <div className="rise-in lg:col-span-2 min-w-0 order-3" style={{ animationDelay: '0.44s' }}>
                 <TradeAgentCard trades={allTrades} />
               </div>
-              <div className="rise-in order-4" style={{ animationDelay: '0.18s' }}>
+              <div className="rise-in order-4" style={{ animationDelay: '0.6s' }}>
                 <ScoreCard metrics={perf.metrics} score={perf.score} sampleSize={kpi.tradeCount} />
               </div>
             </div>
@@ -539,7 +541,7 @@ export default function Dashboard() {
               <>
                 <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3">
                   {journalStats.slice(0, 3).map((j, i) => (
-                    <div key={j.id} className="rise-in" style={{ animationDelay: `${i * 0.06}s` }}>
+                    <div key={j.id} className="rise-in" style={{ animationDelay: `${0.2 + i * 0.16}s` }}>
                       <JournalTile j={j} mask={maskAmount} onOpen={() => openJournal(j)} />
                     </div>
                   ))}

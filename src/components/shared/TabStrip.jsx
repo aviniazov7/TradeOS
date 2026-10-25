@@ -87,7 +87,7 @@ export default function TabStrip({ tabs, value, onChange, variant = 'desktop', l
           aria-hidden="true"
           data-tab-pill=""
           data-ready={ready ? 'true' : 'false'}
-          className={`tab-pill absolute z-0 rounded-lg bg-accent-primary/15 pointer-events-none ${ready ? 'transition-[transform,width,height] duration-300 ease-[cubic-bezier(0.22,1,0.36,1)]' : ''}`}
+          className={`tab-pill absolute z-0 rounded-lg bg-accent-primary shadow-[0_8px_24px_-6px_rgba(37,99,235,0.95)] pointer-events-none ${ready ? 'transition-[transform,width,height] duration-500 ease-[cubic-bezier(0.22,1,0.36,1)]' : ''}`}
           style={{
             left: 0,
             top: 0,
@@ -102,10 +102,10 @@ export default function TabStrip({ tabs, value, onChange, variant = 'desktop', l
         const Icon = t.icon;
         const span = wrap && n >= 5 ? (i < 3 ? 'col-span-2' : 'col-span-3') : '';
         const look = wrap
-          ? `w-full min-h-9 min-w-0 px-1 py-1.5 text-[11px] leading-none justify-center text-center ${span} ${active ? 'text-accent-primary font-semibold' : 'text-text-muted hover:text-text-primary hover:bg-bg-primary/40'}`
+          ? `w-full min-h-9 min-w-0 px-1 py-1.5 text-[11px] leading-none justify-center text-center ${span} ${active ? 'text-white font-semibold' : 'text-text-muted hover:text-text-primary hover:bg-bg-primary/40'}`
           : underline
             ? `px-3 py-2 text-sm shrink-0 rounded-none border-b-2 -mb-px ${active ? 'border-accent-primary text-accent-primary font-semibold' : 'border-transparent text-text-muted hover:text-text-primary'}`
-            : `${mobile ? 'px-2.5 py-1.5 text-xs shrink-0' : 'h-9 px-3.5 text-sm'} ${active ? 'text-accent-primary font-semibold' : 'text-text-muted hover:text-text-primary hover:bg-bg-tertiary'}`;
+            : `${mobile ? 'px-2.5 py-1.5 text-xs shrink-0' : 'h-9 px-3.5 text-sm'} ${active ? 'text-white font-semibold' : 'text-text-muted hover:text-text-primary hover:bg-bg-tertiary'}`;
         const short = (mobile || wrap) && t.mobileLabel ? t.mobileLabel : t.label;
         return (
           <button
@@ -121,7 +121,7 @@ export default function TabStrip({ tabs, value, onChange, variant = 'desktop', l
             {wrap && Icon ? <Icon className="w-3.5 h-3.5 shrink-0" aria-hidden /> : null}
             <span className="relative">{short}</span>
             {t.count > 0 && (
-              <span className={`relative num-mono text-[10px] px-1.5 py-px rounded-full shrink-0 ${active ? 'bg-accent-primary/20' : 'bg-bg-tertiary'}`}>
+              <span className={`relative num-mono text-[10px] px-1.5 py-px rounded-full shrink-0 ${active ? 'bg-white/20' : 'bg-bg-tertiary'}`}>
                 {t.count}
               </span>
             )}

@@ -59,7 +59,9 @@ describe('sliding tab pill', () => {
     await render();
     const pill = () => view.el.querySelector('[data-tab-pill]');
     expect(pill()).toBeTruthy();
-    expect(pill().className).toContain('bg-accent-primary/15');
+    expect(pill().className).toContain('bg-accent-primary');
+    expect(pill().className).not.toContain('bg-accent-primary/15');
+    expect(view.el.querySelector('[aria-selected="true"]').className).toContain('text-white');
     expect(pill().style.transform).toBe('translate3d(200px, 4px, 0)');
     expect(view.el.querySelector('[aria-selected="true"]').textContent).toBe('עסקאות');
 

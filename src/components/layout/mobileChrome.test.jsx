@@ -146,11 +146,12 @@ describe('mobile chrome', () => {
     });
     const active = phone.querySelector('[aria-selected="true"]');
     expect(active.textContent).toBe('בורסה');
-    expect(active.className).toContain('text-accent-primary');
+    expect(active.className).toContain('text-white');
     expect(active.className).not.toContain('bg-accent-primary/15');
     const pill = phone.querySelector('[data-tab-pill]');
     expect(pill).toBeTruthy();
-    expect(pill.className).toContain('bg-accent-primary/15');
+    expect(pill.className).toContain('bg-accent-primary');
+    expect(pill.className).not.toContain('bg-accent-primary/15');
     const desktop = document.querySelector('.hidden.md\\:block [role="tablist"]');
     expect(desktop).toBeTruthy();
     expect(phone.contains(desktop)).toBe(false);

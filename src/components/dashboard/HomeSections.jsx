@@ -82,7 +82,7 @@ export function HomeKpis({ kpi, hidden }) {
           sub={`${tradeCount} עסקאות סגורות`}
         />
         <Kpi
-          delay={0.05}
+          delay={0.18}
           label="אחוז הצלחה"
           value={<RollingNumber value={winRateText(winRate, wins, losses)} />}
           bar={empty ? <NeutralBar /> : <Split a={(wins / decided) * 100} b={(losses / decided) * 100} />}
@@ -92,7 +92,7 @@ export function HomeKpis({ kpi, hidden }) {
           </>}
         />
         <Kpi
-          delay={0.1}
+          delay={0.36}
           label="פקטור רווח"
           value={<RollingNumber value={profitFactorText(pf, wins, losses)} />}
           bar={empty ? <NeutralBar /> : (
@@ -105,7 +105,7 @@ export function HomeKpis({ kpi, hidden }) {
             : <>{pfNote} · ממוצע <span dir="ltr" className="text-profit">{m(formatCurrency(avgWin))}</span> מול <span dir="ltr" className="text-loss">{m(formatCurrency(avgLoss))}</span></>}
         />
         <Kpi
-          delay={0.15}
+          delay={0.54}
           label="רצף נוכחי"
           mono={false}
           valueCls={n === 0 ? 'text-text-secondary' : streakWin ? 'text-profit' : 'text-loss'}
