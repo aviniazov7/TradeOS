@@ -1,9 +1,9 @@
 name = "tradeos-alerts"
 main = "index.js"
 # Same Node.js surface as the HTTP worker (wrangler.jsonc). Gmail SMTP uses
-# nodemailer, which needs node:net / node:tls / node:dns. Those APIs are on
-# for this date only when nodejs_compat is set (it becomes the default on
-# 2026-08-04).
+# worker-mailer, which opens the socket through cloudflare:sockets rather
+# than node:net. nodejs_compat stays on because that library's docs ask for
+# it, and the flag is not the default until compatibility date 2026-08-04.
 compatibility_date = "2025-09-27"
 compatibility_flags = ["nodejs_compat"]
 
