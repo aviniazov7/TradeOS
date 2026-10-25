@@ -11,6 +11,7 @@ const setUserProfile = vi.fn(async () => {});
 vi.mock('../../services/firestoreService', () => ({
   getUserProfile: vi.fn(async () => ({ exists: true, data: { onboardingCompleted: false } })),
   setUserProfile: (...args) => setUserProfile(...args),
+  timestamp: () => ({ seconds: 1 }),
 }));
 
 vi.mock('../../contexts/AuthContext', () => ({
@@ -78,9 +79,17 @@ describe('OnboardingWizard', () => {
     const firstTrade = buttons.find((b) => b.textContent.includes('עסקה ראשונה'));
     expect(connect.className).toContain('bg-accent-muted');
     expect(firstTrade.className).not.toContain('bg-accent-muted');
+    const consent = document.querySelector('[data-testid="onboarding-email-consent"] input');
+    expect(consent).toBeTruthy();
+    expect(consent.checked).toBe(false);
+    expect(document.body.textContent).toContain('אני מעוניין/ת לקבל עדכונים ותזכורות במייל');
+    setUserProfile.mockClear();
+    await act(async () => { consent.click(); });
+    expect(setUserProfile).toHaveBeenCalledWith('new-user', expect.objectContaining({ marketingEmails: true }));
     expect(connect.compareDocumentPosition(firstTrade) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
 
     const later = buttons.find((b) => b.textContent.includes('אעשה את זה אחר כך'));
+    setUserProfile.mockClear();
     await act(async () => { later.click(); });
     expect(setUserProfile).not.toHaveBeenCalled();
     await view.cleanup();

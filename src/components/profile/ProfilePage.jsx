@@ -480,7 +480,7 @@ export default function ProfilePage() {
       <div className={cardClass}>
         {/* Push notifications */}
         <NotificationSettings />
-        {/* Marketing email consent (opt-in) */}
+        {/* Marketing email — on unless the user turned it off */}
         <MarketingEmailToggle />
       </div>
 

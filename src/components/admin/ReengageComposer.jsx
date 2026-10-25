@@ -109,8 +109,9 @@ export default function ReengageComposer({ recipients, onSent }) {
     }
   };
 
-  // Email is advertising, so it only reaches users who opted in to it (the
-  // Worker checks again). Push needs the device's own permission instead.
+  // Email reaches users whose profile allows updates (the Worker checks again
+  // and backfills legacy accounts that never chose). Push needs the device's
+  // own permission instead.
   const withEmail = recipients.filter((r) => r.email && r.marketing);
   const ready = title.trim() && body.trim() && (usePush || useEmail);
 
@@ -154,7 +155,10 @@ export default function ReengageComposer({ recipients, onSent }) {
           lines.push(summary ? `המייל לא נשלח: ${e.message} (${summary})` : `המייל לא נשלח: ${e.message}`);
         }
       } else if (useEmail && !mailTargets.length) {
-        lines.push(single ? 'המשתמש לא אישר קבלת עדכונים במייל' : 'אף נמען לא אישר קבלת עדכונים במייל');
+        const hasAddress = targets.some((t) => t.email);
+        lines.push(!hasAddress
+          ? (single ? 'אין כתובת מייל למשתמש' : 'אין כתובות מייל לנמענים')
+          : (single ? 'המשתמש כיבה עדכונים במייל' : 'אף נמען לא מקבל עדכונים במייל'));
       }
       const content = lines.length ? (
         <div className="space-y-1 text-right">{lines.map((l) => <div key={l}>{l}</div>)}</div>
@@ -208,7 +212,7 @@ export default function ReengageComposer({ recipients, onSent }) {
         <ChannelToggle checked={usePush} onChange={setUsePush} icon={Bell} label="התראה לטלפון"
           hint="רק למי שאישר התראות" />
         <ChannelToggle checked={useEmail} onChange={setUseEmail} icon={Mail} label="מייל"
-          hint={`${withEmail.length} מתוך ${recipients.length} אישרו קבלת עדכונים במייל`} disabled={!withEmail.length} />
+          hint={`${withEmail.length} מתוך ${recipients.length} מקבלים עדכונים במייל`} disabled={!withEmail.length} />
       </div>
 
       <input value={title} onChange={(e) => setTitle(e.target.value)} placeholder="כותרת (גם נושא המייל)" maxLength={120} className={field} />
@@ -230,13 +234,21 @@ export default function ReengageComposer({ recipients, onSent }) {
       {/* Live preview of the email, so what lands in the inbox is no surprise. */}
       {useEmail && (title || body) && (
         <div className="rounded-2xl border border-[#26262b] bg-[#0c0c0e] p-4 text-right">
-          <div className="text-[10px] text-text-muted mb-2">תצוגה מקדימה של המייל · הנושא נשלח עם "פרסומת:" בתחילתו, ובתחתית המייל קישור הסרה מרשימת התפוצה</div>
+          <div className="text-[10px] text-text-muted mb-3">תצוגה מקדימה · הנושא נפתח ב"פרסומת:", הכפתור פותח את האפליקציה, ובתחתית יש "להסרה מרשימת התפוצה"</div>
+          <div className="flex items-center gap-2.5 mb-4">
+            <span className="w-8 h-8 rounded-lg bg-[#2563eb] text-white text-sm font-bold grid place-items-center">T</span>
+            <span>
+              <span className="block text-sm font-bold text-[#f0f0f0]" dir="ltr">TradeOS</span>
+              <span className="block text-[10px] text-[#80808f]">מערכת ההפעלה למסחר</span>
+            </span>
+          </div>
           <div className="text-lg font-bold text-[#f0f0f0]">{(title || '—').replace(/\p{Extended_Pictographic}\uFE0F?/gu, '').trim() || '—'}</div>
           <div className="text-sm text-[#a0a0b0] mt-2">היי {recipients.length === 1 && recipients[0].name ? recipients[0].name : '{שם}'},</div>
-          <div className="text-sm text-[#a0a0b0] mt-1 whitespace-pre-line leading-relaxed">{body}</div>
+          <div className="text-sm text-[#a0a0b0] mt-3 whitespace-pre-line leading-relaxed rounded-xl bg-[#161b26] border border-[#2a3142] px-3 py-3">{body}</div>
           <div className="mt-4 flex justify-center">
-            <span className="inline-block px-6 py-2.5 rounded-xl bg-[#3b82f6] text-white text-sm font-bold">{cta || 'כניסה ל-TradeOS'}</span>
+            <span className="inline-block px-6 py-2.5 rounded-xl bg-[#2563eb] text-white text-sm font-bold">{cta || 'כניסה ל-TradeOS'}</span>
           </div>
+          <div className="mt-4 pt-3 border-t border-[#2a3142] text-[11px] text-[#a0a0b0] underline">להסרה מרשימת התפוצה</div>
         </div>
       )}
 

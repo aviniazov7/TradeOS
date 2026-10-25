@@ -26,8 +26,9 @@ service cloud.firestore {
       return ['displayName', 'email', 'photoURL', 'avatarDataUrl', 'settings',
               'onboardingCompleted', 'lastActive', 'appVersion',
               'isPublicProfile', 'leaderboardName',
-              // Marketing-email consent (opt-in): the user's own explicit choice,
-              // set at signup or in the profile; unsubscribing sets it false.
+              // Marketing-email choice: explicit bool from signup or the profile
+              // toggle. Missing means "not chosen yet" (legacy accounts are
+              // backfilled server-side). Unsubscribing sets it false.
               'marketingEmails', 'marketingEmailsAt'];
     }
 

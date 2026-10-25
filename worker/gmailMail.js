@@ -129,7 +129,7 @@ export function assertSingleRecipient(to) {
   return recipient;
 }
 
-export async function sendOneMessage(transport, { to, subject, html, replyTo, headers, from = GMAIL_FROM }) {
+export async function sendOneMessage(transport, { to, subject, html, text, replyTo, headers, from = GMAIL_FROM }) {
   const recipient = assertSingleRecipient(to);
   const mail = {
     from,
@@ -137,6 +137,9 @@ export async function sendOneMessage(transport, { to, subject, html, replyTo, he
     subject: String(subject || ''),
     html: String(html || ''),
   };
+  // Plain-text alternative. Nodemailer sends it as multipart/alternative so
+  // clients that prefer text (and screen readers) don't get a blank body.
+  if (text) mail.text = String(text);
   if (replyTo) mail.replyTo = String(replyTo);
   if (headers && typeof headers === 'object') mail.headers = headers;
   return transport.sendMail(mail);

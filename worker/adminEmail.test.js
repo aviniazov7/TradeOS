@@ -1,8 +1,7 @@
 import { describe, it, expect } from 'vitest';
-import { messageToHtml, ctaUrlFor, buildCampaignEmails, chunk, CAMPAIGN_MAX, APP_URL, AD_PREFIX, footerHtml } from './adminEmail';
-
-// A stand-in for index.js's emailShell that exposes what it was given.
-const shell = (o) => JSON.stringify(o);
+import {
+  messageToHtml, ctaUrlFor, buildCampaignEmails, chunk, CAMPAIGN_MAX, APP_URL, AD_PREFIX, footerHtml, campaignPlainText,
+} from './adminEmail';
 
 describe('messageToHtml', () => {
   it('splits paragraphs, keeps line breaks and escapes HTML', () => {
@@ -36,26 +35,44 @@ describe('buildCampaignEmails', () => {
         { email: 'not-an-email', name: 'x', unsubscribeUrl: un(3) },
         { email: 'avi@example.com', unsubscribeUrl: un(4) },
       ],
-    }, shell);
+    });
     expect(out.map((e) => e.to)).toEqual(['dana@example.com', 'avi@example.com']);
-    expect(JSON.parse(out[0].html).intro).toBe('היי דנה,');
-    expect(JSON.parse(out[1].html).intro).toBe('היי,');
-    expect(JSON.parse(out[0].html).ctaUrl).toBe(`${APP_URL}/journal`);
+    expect(out[0].html).toContain('היי דנה,');
+    expect(out[1].html).toContain('היי,');
+    expect(out[0].html).toContain(`${APP_URL}/journal`);
+    expect(out[0].text).toContain('היי דנה,');
+    expect(out[0].text).toContain('בוא לבדוק');
+  });
+
+  it('renders a dark RTL email with a TradeOS header, a button, and a plain-text twin', () => {
+    const [m] = buildCampaignEmails({ ...base, recipients: [{ email: 'a@x.com', name: 'דנה', unsubscribeUrl: un(1) }] });
+    expect(m.html).toContain('dir="rtl"');
+    expect(m.html).toContain('lang="he"');
+    expect(m.html).toContain('#070b12');
+    expect(m.html).toContain('#2563eb');
+    expect(m.html).toContain('TradeOS');
+    expect(m.html).toContain('role="presentation"');
+    expect(m.html).toContain('מערכת ההפעלה למסחר');
+    expect(m.html).toContain('>כניסה<');
+    expect(m.html).toContain('u + .body .gm-d');
+    expect(m.text).toContain(`${APP_URL}/journal`);
+    expect(m.text).not.toContain('<p');
   });
 
   it('marks the subject as an advertisement ("פרסומת")', () => {
-    const [m] = buildCampaignEmails({ ...base, recipients: [{ email: 'a@x.com', unsubscribeUrl: un(1) }] }, shell);
+    const [m] = buildCampaignEmails({ ...base, recipients: [{ email: 'a@x.com', unsubscribeUrl: un(1) }] });
     expect(m.subject).toBe(`${AD_PREFIX}מתגעגעים`);
     expect(m.subject.startsWith('פרסומת')).toBe(true);
-    const long = buildCampaignEmails({ ...base, subject: 'x'.repeat(300), recipients: [{ email: 'a@x.com', unsubscribeUrl: un(1) }] }, shell);
+    const long = buildCampaignEmails({ ...base, subject: 'x'.repeat(300), recipients: [{ email: 'a@x.com', unsubscribeUrl: un(1) }] });
     expect(long[0].subject.length).toBeLessThanOrEqual(150);
     expect(long[0].subject.startsWith(AD_PREFIX)).toBe(true);
   });
 
   it('puts a visible opt-out link in the body and one-click headers on the message', () => {
-    const [m] = buildCampaignEmails({ ...base, recipients: [{ email: 'a@x.com', unsubscribeUrl: un(7) }] }, shell);
-    expect(JSON.parse(m.html).body).toContain('להסרה מרשימת התפוצה');
-    expect(JSON.parse(m.html).body).toContain(un(7).replace(/&/g, '&amp;'));
+    const [m] = buildCampaignEmails({ ...base, recipients: [{ email: 'a@x.com', unsubscribeUrl: un(7) }] });
+    expect(m.html).toContain('להסרה מרשימת התפוצה');
+    expect(m.html).toContain(un(7).replace(/&/g, '&amp;'));
+    expect(m.text).toContain(`להסרה מרשימת התפוצה: ${un(7)}`);
     expect(m.headers['List-Unsubscribe']).toBe(`<${un(7)}>`);
     expect(m.headers['List-Unsubscribe-Post']).toBe('List-Unsubscribe=One-Click');
   });
@@ -70,19 +87,33 @@ describe('buildCampaignEmails', () => {
         { email: 'd@x.com', unsubscribeUrl: 'http://insecure.example/u' },
         { email: 'ok@x.com', unsubscribeUrl: un(9) },
       ],
-    }, shell);
+    });
     expect(out.map((e) => e.to)).toEqual(['ok@x.com']);
   });
 
   it('caps a campaign', () => {
     const many = Array.from({ length: CAMPAIGN_MAX + 50 }, (_, i) => ({ email: `u${i}@x.com`, unsubscribeUrl: un(i) }));
-    expect(buildCampaignEmails({ ...base, recipients: many }, shell)).toHaveLength(CAMPAIGN_MAX);
+    expect(buildCampaignEmails({ ...base, recipients: many })).toHaveLength(CAMPAIGN_MAX);
   });
 });
 
 describe('footerHtml', () => {
   it('escapes the link', () => {
     expect(footerHtml('https://w.example/u?a=1&b="x"')).toContain('a=1&amp;b=&quot;x&quot;');
+    expect(footerHtml('https://w.example/u')).toContain('להסרה מרשימת התפוצה');
+  });
+});
+
+describe('campaignPlainText', () => {
+  it('includes the greeting, message, button url and unsubscribe url', () => {
+    const text = campaignPlainText({
+      headline: 'היי 👋', name: 'דנה', message: 'חזרו ליומן', ctaText: 'פתיחה', ctaUrl: 'https://tradeoslive.web.app/journal', unsubscribeUrl: 'https://w.example/u',
+    });
+    expect(text).toContain('היי דנה,');
+    expect(text).toContain('חזרו ליומן');
+    expect(text).toContain('פתיחה: https://tradeoslive.web.app/journal');
+    expect(text).toContain('להסרה מרשימת התפוצה: https://w.example/u');
+    expect(text).not.toContain('👋');
   });
 });
 
@@ -91,4 +122,3 @@ describe('chunk', () => {
     expect(chunk([1, 2, 3, 4, 5], 2)).toEqual([[1, 2], [3, 4], [5]]);
   });
 });
-

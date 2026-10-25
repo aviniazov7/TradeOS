@@ -19,6 +19,8 @@ import {
   normalizeBybitOpen, normalizeMexcOpen, normalizeBitgetOpen,
 } from './exchangeNormalize.js';
 import { buildCampaignEmails, CAMPAIGN_MAX } from './adminEmail.js';
+import { recipientConsent } from './marketingConsent.js';
+import { runMarketingEmailBackfill, marketingSubscribeWrites, BACKFILL_KV_KEY } from './marketingBackfill.js';
 import { deliverWithGmail, hasGmailPassword, MISSING_SECRET_MESSAGE } from './gmailMail.js';
 import { unsubscribeUrl, verifyUnsubscribe, unsubscribePage, UID_RE } from './unsubscribe.js';
 import { purgeUserResidue } from './accountPurge.js';
@@ -477,6 +479,59 @@ async function listAllUsersAdmin(env) {
     pageToken = data.nextPageToken;
   }
   return out;
+}
+
+// Existing accounts with no email preference are subscribed once. Explicit
+// true/false is left alone (see marketingConsent.js). Safe to call from cron
+// and from a campaign; the KV flag makes the full scan a one-shot.
+async function listUserDocsForMarketingBackfill(env) {
+  const token = await getFirebaseAdminToken(env);
+  const docs = [];
+  let pageToken = '';
+  for (let page = 0; page < 20; page++) {
+    const url = `https://firestore.googleapis.com/v1/projects/${FIREBASE_PROJECT_ID}/databases/(default)/documents/users?pageSize=300&mask.fieldPaths=marketingEmails&mask.fieldPaths=createdAt${pageToken ? `&pageToken=${encodeURIComponent(pageToken)}` : ''}`;
+    const res = await fetch(url, { headers: { Authorization: `Bearer ${token}` } });
+    if (!res.ok) throw new Error(`marketing backfill list ${res.status}`);
+    const data = await res.json();
+    docs.push(...(data.documents || []));
+    if (!data.nextPageToken) return docs;
+    pageToken = data.nextPageToken;
+  }
+  throw new Error('marketing backfill list truncated');
+}
+
+async function commitMarketingSubscribe(env, uids) {
+  if (!uids?.length) return;
+  const token = await getFirebaseAdminToken(env);
+  const writes = marketingSubscribeWrites(uids, { projectId: FIREBASE_PROJECT_ID, nowIso: new Date().toISOString() });
+  for (let i = 0; i < writes.length; i += 400) {
+    const slice = writes.slice(i, i + 400);
+    const res = await fetch(`https://firestore.googleapis.com/v1/projects/${FIREBASE_PROJECT_ID}/databases/(default)/documents:batchWrite`, {
+      method: 'POST',
+      headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
+      body: JSON.stringify({ writes: slice }),
+    });
+    if (!res.ok) {
+      const detail = await res.text().catch(() => '');
+      throw new Error(`marketing backfill write ${res.status} ${detail.slice(0, 180)}`);
+    }
+  }
+}
+
+async function migrateMarketingEmailConsent(env) {
+  if (!env?.FIREBASE_SERVICE_ACCOUNT) return { ok: false, skipped: 'no-admin' };
+  return runMarketingEmailBackfill({
+    alreadyDone: async () => {
+      try { return !!(await env.ALERTS_KV?.get(BACKFILL_KV_KEY)); }
+      catch { return false; }
+    },
+    markDone: async () => {
+      try { await env.ALERTS_KV?.put(BACKFILL_KV_KEY, new Date().toISOString()); }
+      catch { /* next tick retries */ }
+    },
+    listAll: () => listUserDocsForMarketingBackfill(env),
+    commit: (uids) => commitMarketingSubscribe(env, uids),
+  });
 }
 
 async function checkChurnedPremium(env) {
@@ -1802,6 +1857,7 @@ async function handleCron(env) {
     checkExchangeClosedTrades(env),
     checkPlanExpiryReminders(env),
     checkChurnedPremium(env),
+    migrateMarketingEmailConsent(env).catch((e) => console.error('marketing backfill', e?.message || e)),
     checkWeeklyDigest(env),
     refreshNewsDigest(env),
     refreshNewsImpact(env),
@@ -4804,11 +4860,13 @@ async function handleRequest(request, env) {
 
   // Admin-only marketing campaign by email. Consent is enforced HERE, not in the
   // panel: the request carries uids only, and each recipient's address and
-  // `marketingEmails === true` opt-in are read from their own profile — an
-  // address the browser supplied is never mailed. Every message gets the
-  // "פרסומת" subject prefix and a signed one-click unsubscribe link; without
-  // UNSUBSCRIBE_SECRET nothing is sent. The admin's own uid (the "test to me"
-  // button) skips the consent check — it only mails the admin.
+  // marketingEmails flag are read from their own profile — an address the
+  // browser supplied is never mailed. Missing/null on an account created
+  // before the cutoff is backfilled to subscribed; explicit false is skipped.
+  // Sending itself requires the stored value to be true (after that backfill).
+  // Every message gets the "פרסומת" subject prefix and a signed one-click
+  // unsubscribe link; without UNSUBSCRIBE_SECRET nothing is sent. The admin's
+  // own uid (the "בדיקה אליי" button) skips the consent check.
   if (request.method === 'POST' && path === '/admin/email-campaign') {
     const token = (request.headers.get('Authorization') || '').replace('Bearer ', '');
     const adminUid = await verifyAdminFromToken(token);
@@ -4820,30 +4878,41 @@ async function handleRequest(request, env) {
     if (!wanted.length || !(subject || headline) || !message) {
       return new Response(JSON.stringify({ error: 'missing fields' }), { status: 400, headers: { ...cors, 'Content-Type': 'application/json' } });
     }
+    // Legacy profiles (no choice, registered before the cutoff) become
+    // subscribed before the true-only filter below. A failure here is not
+    // fatal: the per-recipient pass still patches anyone this send will mail.
+    try { await migrateMarketingEmailConsent(env); }
+    catch (e) { console.error('marketing backfill', e?.message || e); }
     const gtoken = await getFirebaseAdminToken(env);
     const docBase = `projects/${FIREBASE_PROJECT_ID}/databases/(default)/documents`;
     const bg = await fetch(`https://firestore.googleapis.com/v1/${docBase}:batchGet`, {
       method: 'POST',
       headers: { Authorization: `Bearer ${gtoken}`, 'Content-Type': 'application/json' },
-      body: JSON.stringify({ documents: wanted.map((id) => `${docBase}/users/${id}`), mask: { fieldPaths: ['email', 'displayName', 'marketingEmails'] } }),
+      body: JSON.stringify({ documents: wanted.map((id) => `${docBase}/users/${id}`), mask: { fieldPaths: ['email', 'displayName', 'marketingEmails', 'createdAt'] } }),
     });
     if (!bg.ok) return new Response(JSON.stringify({ error: 'לא ניתן לאמת הסכמות דיוור כרגע' }), { status: 502, headers: { ...cors, 'Content-Type': 'application/json' } });
     const rows = await bg.json().catch(() => []);
     const workerBase = new URL(request.url).origin;
     const recipients = [];
+    const patchUids = [];
     let skippedNoConsent = 0;
     for (const row of Array.isArray(rows) ? rows : []) {
       const f = row?.found?.fields;
       if (!f) { skippedNoConsent++; continue; }
       const uid = row.found.name.split('/').pop();
       const email = f.email?.stringValue;
-      const consented = f.marketingEmails?.booleanValue === true || uid === adminUid;
-      if (!email || !consented) { skippedNoConsent++; continue; }
+      const decision = recipientConsent({ marketingEmails: f.marketingEmails, createdAt: f.createdAt, uid, adminUid });
+      if (!email || !decision.send) { skippedNoConsent++; continue; }
+      if (decision.backfill) patchUids.push(uid);
       recipients.push({ email, name: f.displayName?.stringValue || '', unsubscribeUrl: await unsubscribeUrl(workerBase, env.UNSUBSCRIBE_SECRET, uid) });
     }
-    const emails = buildCampaignEmails({ recipients, subject, headline, message, ctaText, ctaPath }, emailShell);
+    if (patchUids.length) {
+      try { await commitMarketingSubscribe(env, patchUids); }
+      catch (e) { console.error('marketing backfill recipients', e?.message || e); }
+    }
+    const emails = buildCampaignEmails({ recipients, subject, headline, message, ctaText, ctaPath });
     if (!emails.length) {
-      return new Response(JSON.stringify({ error: 'אף אחד מהנמענים לא אישר קבלת עדכונים במייל', skippedNoConsent }), { status: 400, headers: { ...cors, 'Content-Type': 'application/json' } });
+      return new Response(JSON.stringify({ error: 'אף אחד מהנמענים לא מקבל עדכונים במייל', skippedNoConsent }), { status: 400, headers: { ...cors, 'Content-Type': 'application/json' } });
     }
     // One SMTP message per recipient (they never share a To/Cc list), throttled
     // inside deliverWithGmail for Gmail's daily cap.

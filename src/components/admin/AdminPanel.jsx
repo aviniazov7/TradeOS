@@ -26,6 +26,7 @@ import SelectDropdown from '../shared/SelectDropdown';
 import Modal from '../shared/Modal';
 import PageHeader from '../shared/PageHeader';
 import TabStrip from '../shared/TabStrip';
+import { receivesMarketingEmail } from '../../utils/marketingConsent';
 
 // Mirrors the worker's AI caps (FREE_LIMITS.aiPerDay / AI_PREMIUM_LIMITS.day /
 // AI_IMAGE_DAILY_LIMIT) — used only for the "close to the AI quota" to-do.
@@ -536,9 +537,10 @@ function BulkNotifyModal({ isOpen, onClose, segments, initialSegment = 'all' }) 
 
   const targets = segments?.[seg] || [];
   const chosen = targets.filter((u) => !excluded.has(u.id));
-  // `marketing`: the user opted in to email updates — the only ones a campaign reaches.
-  const recipients = chosen.map((u) => ({ id: u.id, email: u.email || '', name: u.displayName || '', marketing: u.marketingEmails === true }));
-  const withEmail = chosen.filter((u) => u.email && u.marketingEmails === true).length;
+  // `marketing`: profile says email updates are on. Legacy accounts with no
+  // choice yet count as on — the Worker backfills them before it sends.
+  const recipients = chosen.map((u) => ({ id: u.id, email: u.email || '', name: u.displayName || '', marketing: receivesMarketingEmail(u) }));
+  const withEmail = chosen.filter((u) => u.email && receivesMarketingEmail(u)).length;
 
   return (
     <Modal isOpen={isOpen} onClose={close} title="שליחת תזכורת למשתמשים" maxWidth="max-w-xl">
@@ -994,7 +996,7 @@ function UserDetailModal({ user, onClose, onUserChanged, startWith = null }) {
               </button>
             </div>
             <ReengageComposer
-              recipients={[{ id: user.id, email: user.email || '', name: user.displayName || '', marketing: user.marketingEmails === true }]}
+              recipients={[{ id: user.id, email: user.email || '', name: user.displayName || '', marketing: receivesMarketingEmail(user) }]}
               onSent={() => setNotifyOpen(false)}
             />
           </div>

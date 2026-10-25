@@ -18,6 +18,12 @@ import {
   refreshEmailVerified as authRefreshEmailVerified,
 } from '../services/authService';
 import { clearResponseCaches } from '../services/responseCache';
+import {
+  marketingChoiceForNewProfile,
+  peekSignupMarketingChoice,
+  clearSignupMarketingChoice,
+  rememberSignupMarketingChoice,
+} from '../utils/marketingConsent';
 
 // Profile, the account wipe, and the local cache clear all touch Firestore.
 // Loaded on demand once a session exists — a logged-out /login must not
@@ -47,10 +53,11 @@ export function AuthProvider({ children }) {
   // account is created — BEFORE updateProfile sets the Auth displayName — so
   // the first profile doc used to get the email prefix instead of the name.
   const pendingNameRef = useRef(null);
-  // The "send me updates by email" box ticked on the signup form (opt-in,
-  // unticked by default). Same timing as the name: captured when the account
-  // appears, written to the profile once it exists.
-  const pendingConsentRef = useRef(false);
+  // The signup checkbox (unchecked by default). Captured when the account
+  // appears — onAuthStateChanged fires before register() returns — and written
+  // onto a brand-new profile as an explicit bool. null means this auth change
+  // is not a signup (a Google redirect reads sessionStorage instead).
+  const pendingConsentRef = useRef(null);
 
   useEffect(() => {
     // Handle redirect result from PWA Google Sign-In
@@ -81,7 +88,7 @@ export function AuthProvider({ children }) {
         // that chunk loads — not after getUserProfile — or a logout in
         // between leaks the previous user's snapshot. The generation guard
         // drops a late callback after a user switch.
-        const signupConsent = pendingConsentRef.current === true;
+        const capturedConsent = pendingConsentRef.current;
         accountData().then((api) => {
           if (gen !== generation) return;
           // Move leftover plaintext exchange secrets to encrypted KV without
@@ -98,6 +105,7 @@ export function AuthProvider({ children }) {
             (data) => { if (gen === generation) setProfile(data); },
             () => { /* permission-denied after sign-out — expected, not an error */ }
           );
+          const marketingEmails = marketingChoiceForNewProfile(capturedConsent, peekSignupMarketingChoice());
           const defaultProfile = {
             displayName: pendingNameRef.current || firebaseUser.displayName || firebaseUser.email?.split('@')[0] || 'User',
             email: firebaseUser.email,
@@ -106,6 +114,8 @@ export function AuthProvider({ children }) {
             lastActive: api.timestamp(),
             appVersion: APP_VERSION,
             onboardingCompleted: false,
+            marketingEmails,
+            marketingEmailsAt: api.timestamp(),
             settings: {
               defaultLeverage: 10,
               defaultRiskPercent: 1,
@@ -129,6 +139,7 @@ export function AuthProvider({ children }) {
               if (gen !== generation) return;
               if (exists) {
                 setProfile(data);
+                clearSignupMarketingChoice();
                 if (Date.now() - toMillis(data.lastActive) > 60 * 60 * 1000) {
                   api.touchLastActive(firebaseUser.uid).catch(() => {});
                 }
@@ -138,9 +149,7 @@ export function AuthProvider({ children }) {
                   api.setUserProfile(firebaseUser.uid, defaultProfile, false),
                   api.setUserSetting(firebaseUser.uid, 'notifications', { pushEnabled: true, tradeOpenAlerts: true }, true),
                 ])
-                  .then(() => (signupConsent
-                    ? api.setUserProfile(firebaseUser.uid, { marketingEmails: true, marketingEmailsAt: api.timestamp() })
-                    : null))
+                  .then(() => clearSignupMarketingChoice())
                   .catch(() => {});
               }
             })
@@ -167,11 +176,12 @@ export function AuthProvider({ children }) {
   const registerWithEmail = useCallback(async (email, password, displayName, { marketingEmails = false } = {}) => {
     pendingNameRef.current = displayName?.trim() || null;
     pendingConsentRef.current = marketingEmails === true;
+    rememberSignupMarketingChoice(marketingEmails === true);
     try {
       return await authRegisterWithEmail(email, password, displayName);
     } finally {
       pendingNameRef.current = null;
-      pendingConsentRef.current = false;
+      pendingConsentRef.current = null;
     }
   }, []);
 

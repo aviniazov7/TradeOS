@@ -2,7 +2,9 @@ import { useState, useEffect } from 'react';
 import { useLocation, useNavigate } from 'react-router-dom';
 import { m, AnimatePresence } from 'framer-motion';
 import { ChevronLeft, ChevronRight, PlusCircle, Link2, Check, FlaskConical } from 'lucide-react';
-import { getUserProfile, setUserProfile } from '../../services/firestoreService';
+import toast from 'react-hot-toast';
+import { getUserProfile, setUserProfile, timestamp } from '../../services/firestoreService';
+import { receivesMarketingEmail } from '../../utils/marketingConsent';
 import { useAuth } from '../../contexts/AuthContext';
 import { useDemoMode } from '../../hooks/useDemoMode';
 import { onboardingStep } from '../../utils/animations';
@@ -17,7 +19,7 @@ function readDismissed() {
 }
 
 export default function OnboardingWizard() {
-  const { user } = useAuth();
+  const { user, profile } = useAuth();
   const demo = useDemoMode();
   const navigate = useNavigate();
   const { pathname } = useLocation();
@@ -25,6 +27,10 @@ export default function OnboardingWizard() {
   const [dismissed, setDismissed] = useState(readDismissed);
   const [step, setStep] = useState(0);
   const [direction, setDirection] = useState(1);
+  // null until the user touches the box, so a late profile snapshot still wins.
+  const [emailChoice, setEmailChoice] = useState(null);
+  const [emailBusy, setEmailBusy] = useState(false);
+  const emailOn = emailChoice ?? (profile ? receivesMarketingEmail(profile) : false);
   // Apply the saved step when the user id arrives. Doing it in render (not an
   // effect) avoids writing step 0 before the read and wiping the resume point.
   const [stepUid, setStepUid] = useState(null);
@@ -83,6 +89,21 @@ export default function OnboardingWizard() {
   const completeAnd = (path) => {
     complete();
     navigate(path);
+  };
+
+  const toggleEmailUpdates = async () => {
+    if (!user?.uid || emailBusy) return;
+    const next = !emailOn;
+    setEmailChoice(next);
+    setEmailBusy(true);
+    try {
+      await setUserProfile(user.uid, { marketingEmails: next, marketingEmailsAt: timestamp() });
+    } catch {
+      setEmailChoice(!next);
+      toast.error('שמירת הבחירה נכשלה. נסה שוב');
+    } finally {
+      setEmailBusy(false);
+    }
   };
 
   const exploreDemo = () => {
@@ -171,7 +192,18 @@ export default function OnboardingWizard() {
 
             {/* Footer — on the last slide the two first actions take the full
                 width, so they never squeeze on a phone. */}
-            <div className="px-5 py-4 border-t border-border-primary flex items-center justify-between gap-2 flex-wrap">
+            <div className="px-5 py-4 border-t border-border-primary flex flex-col gap-3">
+              <label data-testid="onboarding-email-consent" className="flex items-start gap-2.5 text-sm text-text-secondary leading-relaxed cursor-pointer select-none">
+                <input
+                  type="checkbox"
+                  checked={emailOn}
+                  disabled={emailBusy}
+                  onChange={toggleEmailUpdates}
+                  className="mt-0.5 w-4 h-4 shrink-0 accent-[#3b82f6] cursor-pointer"
+                />
+                <span>אני מעוניין/ת לקבל עדכונים ותזכורות במייל</span>
+              </label>
+              <div className="flex items-center justify-between gap-2 flex-wrap">
               {isLast ? (
                 <div className="w-full flex flex-col gap-2">
                   <button
@@ -222,6 +254,7 @@ export default function OnboardingWizard() {
                   </div>
                 </>
               )}
+              </div>
             </div>
           </m.div>
         </m.div>
