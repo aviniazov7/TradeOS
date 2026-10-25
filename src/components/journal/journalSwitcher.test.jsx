@@ -11,6 +11,7 @@ const journals = [
   { id: 'j4', name: 'בלי', exchange: null, assetClass: 'stocks' },
   { id: 'j5', name: 'אין', exchange: 'none', assetClass: 'crypto' },
   { id: 'j6', name: 'אחר', exchange: 'אחר', assetClass: 'crypto' },
+  { id: 'j7', name: 'ישן', exchange: 'Vantage', assetClass: 'crypto' },
 ];
 
 vi.mock('react-router-dom', () => ({
@@ -63,7 +64,8 @@ describe('JournalSwitcher menu', () => {
     expect(left + width).toBeLessThanOrEqual(390 - 8);
     expect(menu.style.maxWidth).toBe('calc(100vw - 16px)');
     const imgs = [...menu.querySelectorAll('img')].map((n) => n.getAttribute('src'));
-    expect(imgs).toEqual(['/logos/exchanges/bybit.png']);
+    expect(imgs.filter((src) => src?.includes('/logos/exchanges/'))).toEqual(['/logos/exchanges/bybit.png']);
+    expect(menu.textContent).toContain('ישן');
     const letters = [...menu.querySelectorAll('[data-testid="journal-letter"]')].map((n) => n.textContent);
     expect(letters).toEqual(expect.arrayContaining(['A', 'ר', 'ב', 'א']));
     expect(letters).not.toContain('O');

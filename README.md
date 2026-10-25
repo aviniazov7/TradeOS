@@ -84,7 +84,7 @@ Everything is **Web Push** (VAPID, encrypted payloads) keyed by user id — no e
 | Premium expiry | 3 days before and on the day |
 | Admin messages | one-off or bulk, sent by an admin |
 
-**Email** is limited to service emails (Premium receipts, coupon redemption) and an admin "come back" campaign that is **opt-in only**: an unticked box at signup / a switch in the profile, the subject starts with the Hebrew word for "advertisement", and every message has a one-click unsubscribe link. The Worker re-checks each recipient's consent server-side. (Real delivery needs a verified sending domain in Resend; until then it is in test mode.)
+**Email** is limited to service emails (Premium receipts, coupon redemption) and an admin "come back" campaign. A one-time scan subscribes accounts that already exist and never stored a choice (explicit opt-outs are kept). New signups get an unchecked checkbox and the choice is saved either way, so they are not part of that scan; the Worker mails only profiles where `marketingEmails` is true. The subject starts with the Hebrew word for "advertisement", and every message has a one-click unsubscribe link plus `List-Unsubscribe`. The Worker re-checks each recipient server-side. Delivery is Gmail SMTP from `TradeOS <tradeos.app@gmail.com>` (worker-mailer on `cloudflare:sockets`, `smtp.gmail.com:465`). The app password is the Worker secret `GMAIL_APP_PASSWORD` — never in the repo. Each recipient gets their own message. Gmail's consumer cap is about 500/day; the Worker stops at 450 and reports per-recipient sent / failed / not-sent counts.
 
 ---
 
@@ -107,7 +107,7 @@ flowchart TD
     w --> ex["Exchanges (read-only)<br/>Bybit · MEXC · OKX · Bitget · Hyperliquid"]
     w --> data["Market data<br/>Bybit · Yahoo · CoinGecko · Bank of Israel · ForexFactory"]
     w --> ai["AI — Groq<br/>(Gemini wired but off)"]
-    w --> mail["Resend — email"]
+    w --> mail["Gmail SMTP — email"]
 
     classDef firebase fill:#FFA000,stroke:#E65100,color:#000
     classDef cloudflare fill:#F38020,stroke:#A04200,color:#000
@@ -142,7 +142,7 @@ flowchart TD
 | UI | React 19, Vite 7, Tailwind CSS 4, Framer Motion, Recharts, Lucide icons, React Router 7 |
 | Data | Cloud Firestore (security rules), Firebase Auth (Google + email), Firebase Hosting |
 | Server | Cloudflare Workers + KV (HTTP and cron), Web Push (VAPID), one Firebase Cloud Function (`googleSignIn`, `europe-west1`) |
-| Integrations | Exchange REST APIs (HMAC signed server-side), TradingView embeds, Groq (AI), Resend (email), Moralis (wallets), Bank of Israel (FX rates) |
+| Integrations | Exchange REST APIs (HMAC signed server-side), TradingView embeds, Groq (AI), Gmail SMTP (email), Moralis (wallets), Bank of Israel (FX rates) |
 | Quality | Vitest (unit tests), `@firebase/rules-unit-testing` (rules, in the emulator), ESLint, GitHub Actions |
 | Documents | jsPDF, xlsx, html-to-image (exports and share cards) |
 
@@ -183,7 +183,7 @@ TradeOS/
 | Firebase / Google Cloud | project `tradeos-91a58` (number `80529278454`); **Owners: `aviniazov18@gmail.com` (personal) and `tradeos.app@gmail.com` (app)**; the local `firebase` CLI is logged in as `aviniazov18@gmail.com` | Auth, Firestore, Hosting, Cloud Function `googleSignIn` |
 | Cloudflare — **app account** | `tradeos.app@gmail.com` (workers.dev subdomain `tradeos`) | Workers `trade-os` (all HTTP), `tradeos-alerts` (cron, every 10 min), `trade-os-staging` (unused), KV namespace `ALERTS_KV` |
 | Cloudflare — personal | `aviniazov7@icloud.com` | **not** TradeOS: other workers (`safety-groq-proxy`, `workout-bot`, `pump-detector`) and `tradeos-google-auth`, which nothing in this repo references |
-| Resend, Groq, Moralis | API keys are stored as Worker secrets (below) | email sending, AI chat, wallet lookups |
+| Gmail, Groq, Moralis | `GMAIL_APP_PASSWORD` (app password for `tradeos.app@gmail.com`), plus the other API keys, are stored as Worker secrets (below) | email sending, AI chat, wallet lookups |
 
 **Ownership policy (target):** every production asset has two Owners — the app account and the personal account — so losing one login (2FA, recovery) never locks the project out.
 - Firebase: **confirmed 2026-10-09** — both accounts are Owner under *Project settings → Users and permissions*.
@@ -192,7 +192,7 @@ TradeOS/
 ### Where credentials live
 
 - **Exchange API keys:** see [Security & privacy](#security--privacy).
-- **Worker secrets** (names only; values are never in the repo): `CREDS_ENCRYPTION_KEY`, `FIREBASE_SERVICE_ACCOUNT`, `GROQ_API_KEY`, `GEMINI_API_KEY`, `RESEND_API_KEY`, `MORALIS_API_KEY`, `VAPID_JWK`, `UNSUBSCRIBE_SECRET`, `MAIL_TO_ADMIN_OVERRIDE`, `CF_ACCOUNT_ID`, `CF_API_TOKEN`. CI re-applies the ones it knows from GitHub secrets on every deploy; the others (`CREDS_ENCRYPTION_KEY`, `UNSUBSCRIBE_SECRET`, …) were set once in the dashboard and survive deploys.
+- **Worker secrets** (names only; values are never in the repo): `CREDS_ENCRYPTION_KEY`, `FIREBASE_SERVICE_ACCOUNT`, `GROQ_API_KEY`, `GEMINI_API_KEY`, `GMAIL_APP_PASSWORD`, `MORALIS_API_KEY`, `VAPID_JWK`, `UNSUBSCRIBE_SECRET`, `MAIL_TO_ADMIN_OVERRIDE`, `CF_ACCOUNT_ID`, `CF_API_TOKEN`. `RESEND_API_KEY` / `MAIL_FROM_*` are no longer read. CI re-applies the ones it knows from GitHub secrets on every deploy (including `GMAIL_APP_PASSWORD` once that GitHub secret exists); the others (`CREDS_ENCRYPTION_KEY`, `UNSUBSCRIBE_SECRET`, …) were set once in the dashboard and survive deploys. Set `GMAIL_APP_PASSWORD` on **both** Workers (`trade-os` and `tradeos-alerts`). See `docs/OWNER_CHECKLIST.md` §6 for the exact commands.
 - **GitHub Actions secrets:** `CLOUDFLARE_API_TOKEN` (a token for the **app** Cloudflare account; the account id is set in `deploy.yml`), `FIREBASE_SERVICE_ACCOUNT`, plus the Worker secret values listed above.
 
 ### Running `wrangler` / `firebase` locally — read this first

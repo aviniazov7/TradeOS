@@ -2,30 +2,32 @@ import { useState } from 'react';
 import { Send, Loader2, Mail, Bell, FlaskConical, Sparkles, RefreshCw } from 'lucide-react';
 import toast from 'react-hot-toast';
 import { useAuth } from '../../contexts/AuthContext';
-import { adminSendBulkNotification, adminSendEmailCampaign, adminGenerateMarketHook } from '../../services/pushService';
+import { adminSendBulkNotification, adminSendEmailCampaign, adminGenerateReminder } from '../../services/pushService';
+import { reminderHookReview } from '../../utils/reminderHookReview';
 import SelectDropdown from '../shared/SelectDropdown';
 
-// Ready-made "come back" messages — a click fills the form, then edit freely.
+// Ready-made calm updates — a click fills the form, then edit freely.
+// No counts here: the send adds each recipient's own numbers.
 const TEMPLATES = [
   {
-    label: 'מזמן לא ראינו אותך',
-    title: 'מתגעגעים אליך ב-TradeOS 👋',
-    body: 'עבר זמן מאז הביקור האחרון שלך. היומן, האנליטיקה והסנכרון מהבורסה מחכים — כמה דקות ביום עושות את ההבדל במסחר.',
-    cta: 'חזרה ל-TradeOS',
-    path: '/',
+    label: 'עדכון מהיומן',
+    title: 'עדכון קצר מהיומן',
+    body: 'אפשר לפתוח את היומן ולראות את מה שכבר תיעדת.',
+    cta: 'ליומן',
+    path: '/journal',
   },
   {
-    label: 'מה חדש',
-    title: 'חדש ב-TradeOS ✨',
-    body: 'הוספנו ניתוח לפי R, רווח/הפסד חי לעסקאות פתוחות, ומיון וסינונים חדשים ביומן. כנסו לראות מה השתנה.',
-    cta: 'לראות מה חדש',
-    path: '/journal?tab=analytics',
+    label: 'רישום יומי',
+    title: 'עדכון קצר מהיומן',
+    body: 'אפשר לרשום איך עבר היום, בקצב שלך.',
+    cta: 'ליומן היומי',
+    path: '/mentality',
   },
   {
-    label: 'תזכורת לתעד',
-    title: 'תיעדת את העסקאות של השבוע?',
-    body: 'סוחרים שמתעדים כל עסקה משתפרים מהר יותר. סנכרן מהבורסה או הוסף עסקה ידנית — זה לוקח דקה.',
-    cta: 'ליומן המסחר',
+    label: 'היומן שלך',
+    title: 'עדכון קצר מהיומן',
+    body: 'היומן מרכז את העסקאות ואת הרישומים שלך. אפשר להיכנס כשנוח.',
+    cta: 'ליומן',
     path: '/journal',
   },
 ];
@@ -64,6 +66,19 @@ function ChannelToggle({ checked, onChange, icon: Icon, label, hint, disabled })
   );
 }
 
+// Per-recipient counts from /admin/email-campaign. `deferred` is mail that
+// was not attempted (daily Gmail cap, or the request ran out of time).
+function mailCountLine(r) {
+  const sent = r?.sent || 0;
+  const failedN = r?.failed || 0;
+  const deferred = r?.deferred || 0;
+  const bits = [];
+  if (sent) bits.push(sent === 1 ? 'מייל אחד נשלח' : `${sent} מיילים נשלחו`);
+  if (failedN) bits.push(failedN === 1 ? 'מייל אחד נכשל' : `${failedN} מיילים נכשלו`);
+  if (deferred) bits.push(deferred === 1 ? 'מייל אחד לא נשלח' : `${deferred} מיילים לא נשלחו`);
+  return bits.join(' · ');
+}
+
 // Compose and send a reminder to one user or many, by push and/or email.
 //   recipients: [{ id, email, name }]
 // Push reaches only devices that allowed notifications; email reaches
@@ -79,16 +94,24 @@ export default function ReengageComposer({ recipients, onSent }) {
   const [sending, setSending] = useState(null); // 'all' | 'test' | null
   // Short phone-notification text (the AI writes one); empty = the message's start.
   const [pushText, setPushText] = useState('');
-  // The real market numbers the AI copy was built from — shown for review.
-  const [hook, setHook] = useState(null); // { facts, source }
+  // The recipient stats the draft was built from — shown for review.
+  const [hook, setHook] = useState(null); // { stats, source }
   const [generating, setGenerating] = useState(false);
 
   const generate = async () => {
     setGenerating(true);
     try {
-      const h = await adminGenerateMarketHook();
-      setTitle(h.title); setBody(h.email); setPushText(h.push); setCta(h.cta); setPath(h.path);
-      setHook({ facts: h.facts, source: h.source });
+      const uid = recipients.length === 1 ? recipients[0].id : undefined;
+      const h = await adminGenerateReminder(uid);
+      if (!h || typeof h !== 'object') throw new Error('יצירת ההודעה נכשלה');
+      setTitle(typeof h.title === 'string' ? h.title : '');
+      setBody(typeof h.email === 'string' ? h.email : '');
+      setPushText(typeof h.push === 'string' ? h.push : '');
+      if (typeof h.cta === 'string' && h.cta) setCta(h.cta);
+      if (typeof h.path === 'string' && h.path) setPath(h.path);
+      // Keep a missing `facts` as null. The review line reads it only through
+      // reminderHookReview, which tolerates the old market shape and no shape.
+      setHook({ stats: h.stats ?? null, facts: h.facts ?? null, source: h.source });
     } catch (e) {
       toast.error(e.message || 'יצירת ההודעה נכשלה');
     } finally {
@@ -96,8 +119,9 @@ export default function ReengageComposer({ recipients, onSent }) {
     }
   };
 
-  // Email is advertising, so it only reaches users who opted in to it (the
-  // Worker checks again). Push needs the device's own permission instead.
+  // Email reaches users whose profile allows updates (the Worker checks again
+  // and backfills legacy accounts that never chose). Push needs the device's
+  // own permission instead.
   const withEmail = recipients.filter((r) => r.email && r.marketing);
   const ready = title.trim() && body.trim() && (usePush || useEmail);
 
@@ -131,11 +155,20 @@ export default function ReengageComposer({ recipients, onSent }) {
             subject: title.trim(), headline: title.trim(), message: body.trim(), ctaText: cta.trim(), ctaPath: path,
           });
           if (r.sent) anySent = true;
-          if (r.sent) lines.push(`מייל נשלח ל-${r.sent === 1 ? 'נמען אחד' : `${r.sent} נמענים`}${r.failed ? ` (${r.failed} נכשלו)` : ''}`);
-          if (r.error) { failed = true; lines.push(`המייל לא נשלח: ${r.error}`); }
-        } catch (e) { failed = true; lines.push(`המייל לא נשלח: ${e.message}`); }
+          const summary = mailCountLine(r);
+          if (summary) lines.push(summary);
+          if (r.error) { failed = true; lines.push(r.error); }
+          if (!summary && !r.error) lines.push('המייל לא נשלח');
+        } catch (e) {
+          failed = true;
+          const summary = mailCountLine(e);
+          lines.push(summary ? `המייל לא נשלח: ${e.message} (${summary})` : `המייל לא נשלח: ${e.message}`);
+        }
       } else if (useEmail && !mailTargets.length) {
-        lines.push(single ? 'המשתמש לא אישר קבלת עדכונים במייל' : 'אף נמען לא אישר קבלת עדכונים במייל');
+        const hasAddress = targets.some((t) => t.email);
+        lines.push(!hasAddress
+          ? (single ? 'אין כתובת מייל למשתמש' : 'אין כתובות מייל לנמענים')
+          : (single ? 'המשתמש כיבה עדכונים במייל' : 'אף נמען לא מקבל עדכונים במייל'));
       }
       const content = lines.length ? (
         <div className="space-y-1 text-right">{lines.map((l) => <div key={l}>{l}</div>)}</div>
@@ -152,27 +185,26 @@ export default function ReengageComposer({ recipients, onSent }) {
   const sendTest = () => deliver([{ id: me?.uid, email: me?.email, name: me?.displayName || '', marketing: true }], 'test');
   const sendAll = () => deliver(recipients, 'all');
 
-  const fmtFact = (f) => `${f.coin} ${f.change > 0 ? '+' : ''}${f.change}%`;
-  const factLine = hook?.facts
-    ? [hook.facts.btc, hook.facts.eth, ...hook.facts.gainers, ...hook.facts.losers].filter(Boolean).map(fmtFact).join(' · ')
-    : '';
+  const review = reminderHookReview(hook);
 
   return (
     <div className="space-y-3">
-      {/* The strongest hook: what's actually moving right now, written by AI
-          from live market data (numbers are checked on the server). */}
+      {/* A calm personal update. One recipient: their own counts. A segment:
+          a general draft, and each email is filled in at send time. */}
       <button type="button" onClick={generate} disabled={generating}
         className="w-full h-11 inline-flex items-center justify-center gap-2 rounded-xl bg-accent-primary text-sm font-bold cursor-pointer disabled:opacity-60">
         {generating ? <Loader2 className="w-4 h-4 animate-spin" /> : (hook ? <RefreshCw className="w-4 h-4" /> : <Sparkles className="w-4 h-4" />)}
-        {generating ? 'בודק מה חם בשוק…' : hook ? 'נסח מחדש עם AI' : 'AI: מה חם עכשיו בשוק'}
+        {generating ? 'מנסח עדכון אישי…' : hook ? 'נסח מחדש' : 'AI: עדכון אישי'}
       </button>
       {hook && (
         <div className="rounded-xl border border-border-primary bg-bg-tertiary px-3 py-2 text-[11px] text-text-secondary leading-relaxed">
           <span className={`inline-block me-1.5 px-1.5 py-0.5 rounded font-bold ${hook.source === 'ai' ? 'bg-accent-primary/15 text-accent-primary' : 'bg-bg-secondary text-text-muted'}`}>
             {hook.source === 'ai' ? 'AI' : 'תבנית'}
           </span>
-          על בסיס נתוני שוק אמיתיים מהרגע: <span className="num-mono" dir="ltr">{factLine}</span>
-          {hook.facts.headlines?.[0] && <span className="block text-text-muted mt-0.5">כותרת: {hook.facts.headlines[0]}</span>}
+          {review.line
+            ? <>על בסיס הנתונים של הנמען: {review.line}</>
+            : 'נוסח כללי. בשליחה, לכל נמען יתווסף עדכון לפי הנתונים שלו, אם הם קיימים.'}
+          {review.headline ? <span className="block text-text-muted mt-0.5">כותרת: {review.headline}</span> : null}
         </div>
       )}
 
@@ -189,7 +221,7 @@ export default function ReengageComposer({ recipients, onSent }) {
         <ChannelToggle checked={usePush} onChange={setUsePush} icon={Bell} label="התראה לטלפון"
           hint="רק למי שאישר התראות" />
         <ChannelToggle checked={useEmail} onChange={setUseEmail} icon={Mail} label="מייל"
-          hint={`${withEmail.length} מתוך ${recipients.length} אישרו קבלת עדכונים במייל`} disabled={!withEmail.length} />
+          hint={`${withEmail.length} מתוך ${recipients.length} מקבלים עדכונים במייל`} disabled={!withEmail.length} />
       </div>
 
       <input value={title} onChange={(e) => setTitle(e.target.value)} placeholder="כותרת (גם נושא המייל)" maxLength={120} className={field} />
@@ -210,13 +242,23 @@ export default function ReengageComposer({ recipients, onSent }) {
 
       {/* Live preview of the email, so what lands in the inbox is no surprise. */}
       {useEmail && (title || body) && (
-        <div className="rounded-2xl border border-[#26262b] bg-[#0c0c0e] p-4 text-right">
-          <div className="text-[10px] text-text-muted mb-2">תצוגה מקדימה של המייל · הנושא נשלח עם "פרסומת:" בתחילתו, ובתחתית המייל קישור הסרה מרשימת התפוצה</div>
-          <div className="text-lg font-bold text-[#f0f0f0]">{(title || '—').replace(/\p{Extended_Pictographic}\uFE0F?/gu, '').trim() || '—'}</div>
-          <div className="text-sm text-[#a0a0b0] mt-2">היי {recipients.length === 1 && recipients[0].name ? recipients[0].name : '{שם}'},</div>
-          <div className="text-sm text-[#a0a0b0] mt-1 whitespace-pre-line leading-relaxed">{body}</div>
-          <div className="mt-4 flex justify-center">
-            <span className="inline-block px-6 py-2.5 rounded-xl bg-[#3b82f6] text-white text-sm font-bold">{cta || 'כניסה ל-TradeOS'}</span>
+        <div className="rounded-2xl border border-[#222] bg-black p-4 text-right">
+          <div className="text-[10px] text-text-muted mb-3">תצוגה מקדימה · הנושא נפתח ב"פרסומת:", הכפתור פותח את האפליקציה, ובתחתית יש "להסרה מרשימת התפוצה"</div>
+          <div className="rounded-2xl border border-[#222] bg-[#0d0d0d] p-4">
+            <div className="flex items-center gap-2.5 mb-4">
+              <span className="w-8 h-8 rounded-lg bg-[#111111] border border-[#333] text-white text-sm font-bold grid place-items-center">T</span>
+              <span>
+                <span className="block text-sm font-bold text-[#f0f0f0]" dir="ltr">TradeOS</span>
+                <span className="block text-[10px] text-[#a0a0a0]">מערכת ההפעלה למסחר</span>
+              </span>
+            </div>
+            <div className="text-lg font-bold text-[#f0f0f0]">{(title || '—').replace(/\p{Extended_Pictographic}\uFE0F?/gu, '').trim() || '—'}</div>
+            <div className="text-sm text-[#c8c8c8] mt-2">היי {recipients.length === 1 && recipients[0].name ? recipients[0].name : '{שם}'},</div>
+            <div className="text-sm text-[#c8c8c8] mt-3 whitespace-pre-line leading-relaxed rounded-xl bg-[#111] border border-[#222] px-3 py-3">{body}</div>
+            <div className="mt-4 flex justify-center">
+              <span className="inline-block px-6 py-2.5 rounded-xl bg-[#2563eb] text-white text-sm font-bold">{cta || 'כניסה ל-TradeOS'}</span>
+            </div>
+            <div className="mt-4 pt-3 border-t border-[#222] text-[11px] text-[#f0f0f0] underline">להסרה מרשימת התפוצה</div>
           </div>
         </div>
       )}

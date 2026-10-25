@@ -257,10 +257,13 @@ export async function adminSendBulkNotification({ uids, title, body, url }) {
 }
 
 // Admin-only: a "come back to TradeOS" email to one user or a segment.
-// uids: the users to mail. The Worker reads each one's address and marketing
-// opt-in from their profile and mails ONLY those who opted in (plus the admin
-// themself, for the test button). Returns { ok, sent, failed, targeted,
-// skippedNoConsent, error? }.
+// uids: the users to mail. The Worker reads each one's address and
+// marketingEmails flag from their profile and mails ONLY where that flag is
+// true (legacy accounts with no choice are backfilled to true first). The
+// admin's own uid is always delivered, for the test button. Returns { ok,
+// sent, failed, deferred, targeted, skippedNoConsent, error? }. On a non-2xx
+// response the thrown error still carries sent/failed/deferred so the toast
+// can show counts.
 export async function adminSendEmailCampaign({ uids, subject, headline, message, ctaText, ctaPath }) {
   const res = await fetch(`${WORKER_BASE}/admin/email-campaign`, {
     method: 'POST',
@@ -268,14 +271,26 @@ export async function adminSendEmailCampaign({ uids, subject, headline, message,
     body: JSON.stringify({ uids, subject, headline, message, ctaText, ctaPath }),
   });
   const data = await res.json().catch(() => ({}));
-  if (!res.ok) throw new Error(data.error || 'שליחת המיילים נכשלה');
+  if (!res.ok) {
+    const err = new Error(data.error || 'שליחת המיילים נכשלה');
+    err.sent = data.sent || 0;
+    err.failed = data.failed || 0;
+    err.deferred = data.deferred || 0;
+    throw err;
+  }
   return data;
 }
 
-// Admin-only: reminder copy from what's actually moving in the market now.
-// Returns { source: 'ai'|'template', title, push, email, cta, path, facts }.
-export async function adminGenerateMarketHook() {
-  const res = await fetch(`${WORKER_BASE}/admin/ai-hook`, { method: 'POST', headers: await authHeader(), body: '{}' });
+// Admin-only: a calm personal reminder draft. Pass a uid when there is one
+// recipient so the draft uses that person's trade count, open trades, journal
+// days and last login. A segment gets a general draft; the send fills each
+// person's numbers. Returns { source: 'ai'|'template', title, push, email, cta, path, stats }.
+export async function adminGenerateReminder(uid) {
+  const res = await fetch(`${WORKER_BASE}/admin/ai-hook`, {
+    method: 'POST',
+    headers: await authHeader(),
+    body: JSON.stringify(uid ? { uid } : {}),
+  });
   const data = await res.json().catch(() => ({}));
   if (!res.ok) throw new Error(data.error || 'יצירת ההודעה נכשלה');
   return data;

@@ -20,7 +20,7 @@ import ConfirmDialog from '../shared/ConfirmDialog';
 import PageHeader from '../shared/PageHeader';
 import StatTile from '../shared/StatTile';
 import SectionTitle from '../shared/SectionTitle';
-import { EXCHANGES, connectMode, connectionGuideNotes } from './exchangeConfig';
+import { EXCHANGES, connectMode, connectionGuideNotes, exchangeGlowStyle } from './exchangeConfig';
 import { SyncModal } from './SyncModal';
 import { planJournalExchangeBind } from '../../utils/exchangeBinding';
 import { writeDemoMode } from '../../utils/demoData';
@@ -104,8 +104,7 @@ function ConnectedCard({ exchange, balance, syncing, onSync, onEdit, onDisconnec
       animate={{ opacity: 1, y: 0 }}
       transition={{ delay: index * 0.06, type: 'spring', damping: 24, stiffness: 260 }}
       className="relative overflow-hidden p-5 flex flex-col gap-4"
-      // Hover beam in the exchange's own colour, not the default brand blue.
-      style={{ borderColor: `${accent}40`, '--beam-from': accent, '--beam-to': `${accent}99` }}
+      style={{ borderColor: `${accent}40`, ...exchangeGlowStyle(exchange) }}
     >
       {/* Brand wash from the logo corner + a hairline of the exchange colour */}
       <div className="absolute inset-0 pointer-events-none" style={{ background: `radial-gradient(120% 90% at 100% 0%, ${accent}1f 0%, transparent 55%)` }} />
@@ -202,13 +201,13 @@ function AvailableTile({ exchange, locked, onConnect, index }) {
     <Card
       as={m.button}
       type="button"
-      hover
       spotlight
       onClick={onConnect}
       initial={{ opacity: 0, y: 12 }}
       animate={{ opacity: 1, y: 0 }}
       transition={{ delay: 0.1 + index * 0.05 }}
-      className="group relative overflow-hidden w-full text-right p-4 flex items-center gap-3"
+      style={exchangeGlowStyle(exchange)}
+      className="exchange-card group relative overflow-hidden w-full text-right p-4 flex items-center gap-3 cursor-pointer"
     >
       <div className="absolute inset-0 pointer-events-none opacity-0 group-hover:opacity-100 transition-opacity duration-300"
         style={{ background: `radial-gradient(90% 120% at 100% 50%, ${accent}17 0%, transparent 60%)` }} />

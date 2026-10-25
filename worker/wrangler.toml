@@ -1,6 +1,11 @@
 name = "tradeos-alerts"
 main = "index.js"
-compatibility_date = "2024-01-01"
+# Same Node.js surface as the HTTP worker (wrangler.jsonc). Gmail SMTP uses
+# worker-mailer, which opens the socket through cloudflare:sockets rather
+# than node:net. nodejs_compat stays on because that library's docs ask for
+# it, and the flag is not the default until compatibility date 2026-08-04.
+compatibility_date = "2025-09-27"
+compatibility_flags = ["nodejs_compat"]
 
 # Cron trigger - runs every 10 minutes (optimized for KV free tier)
 [triggers]

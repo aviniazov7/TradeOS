@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { getExchangeLogo } from './constants';
+import { EXCHANGES, exchangeLabel, getExchangeLogo } from './constants';
 
 describe('getExchangeLogo', () => {
   it('does not request a favicon for the default broker id', () => {
@@ -53,7 +53,16 @@ describe('getExchangeLogo', () => {
   });
 
   it('keeps a favicon for brokers that have no local mark, and guesses a custom name', () => {
-    expect(getExchangeLogo('vantage')).toContain('domain=vantagemarkets.com');
+    expect(getExchangeLogo('icmarkets')).toContain('domain=icmarkets.com');
     expect(getExchangeLogo('mybroker')).toContain('domain=mybroker.com');
+  });
+
+  it('keeps a stored Vantage journal renderable after the option is removed', () => {
+    expect(EXCHANGES.some((e) => e.value === 'vantage' || /vantage/i.test(e.label || ''))).toBe(false);
+    for (const value of ['vantage', 'Vantage']) {
+      expect(exchangeLabel(value)).toBeNull();
+      const url = getExchangeLogo(value);
+      expect(url == null || !String(url).includes('/logos/exchanges/')).toBe(true);
+    }
   });
 });

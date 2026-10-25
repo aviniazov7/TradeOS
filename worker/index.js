@@ -18,14 +18,22 @@ import {
   normalizeMexcClosed, normalizeOkxClosed, normalizeOkxOpen, normalizeBitgetClosed,
   normalizeBybitOpen, normalizeMexcOpen, normalizeBitgetOpen,
 } from './exchangeNormalize.js';
-import { buildCampaignEmails, chunk, friendlyResendError, CAMPAIGN_MAX } from './adminEmail.js';
+import { buildCampaignEmails, CAMPAIGN_MAX } from './adminEmail.js';
+import { recipientConsent } from './marketingConsent.js';
+import { runMarketingEmailBackfill, marketingSubscribeWrites, uidsStillMissingChoice, BACKFILL_KV_KEY } from './marketingBackfill.js';
+import { deliverWithGmail, hasGmailPassword, MISSING_SECRET_MESSAGE } from './gmailMail.js';
 import { unsubscribeUrl, verifyUnsubscribe, unsubscribePage, UID_RE } from './unsubscribe.js';
 import { purgeUserResidue } from './accountPurge.js';
 import { parseCspReports, cspReportKey } from './cspReport.js';
 import { calendarAlertBody, CALENDAR_ALERT_TITLE } from './calendarAlert.js';
 import { emailShell, APP_URL, C as EMAIL_C, bg as emailBg, txt as emailTxt, esc as emailEsc, para as emailPara } from './emailTheme.js';
 import { buildDigestEmail } from './adminDigest.js';
-import { pickMarketFacts, HOOK_SYSTEM_PROMPT, buildHookUserMessage, validateHook, templateHook } from './marketHook.js';
+import {
+  REMINDER_SYSTEM_PROMPT, buildReminderUserMessage, validateReminder, templateReminder,
+  reminderTradeCountQuery, weekTradesWhere, statusWhere, journalDatesQuery,
+  countFromAggregation, datesFromQuery, combineCounts, combineDates, summarizeReminderStats,
+  clientSafeFacts,
+} from './reminderCopy.js';
 import {
   planAiCharge, planAiRefund, quotaUsage, createWindowCounters, createStatBuffer, mergeStat,
 } from './aiQuota.js';
@@ -478,6 +486,87 @@ async function listAllUsersAdmin(env) {
   return out;
 }
 
+// Profiles that exist at this run and have no email preference are subscribed
+// once. Explicit true/false is left alone (see marketingConsent.js). Safe to
+// call from cron and from a campaign; the KV flag makes the full scan a one-shot.
+async function listUserDocsForMarketingBackfill(env) {
+  const token = await getFirebaseAdminToken(env);
+  const docs = [];
+  let pageToken = '';
+  for (let page = 0; page < 20; page++) {
+    const url = `https://firestore.googleapis.com/v1/projects/${FIREBASE_PROJECT_ID}/databases/(default)/documents/users?pageSize=300&mask.fieldPaths=marketingEmails${pageToken ? `&pageToken=${encodeURIComponent(pageToken)}` : ''}`;
+    const res = await fetch(url, { headers: { Authorization: `Bearer ${token}` } });
+    if (!res.ok) throw new Error(`marketing backfill list ${res.status}`);
+    const data = await res.json();
+    docs.push(...(data.documents || []));
+    if (!data.nextPageToken) return docs;
+    pageToken = data.nextPageToken;
+  }
+  throw new Error('marketing backfill list truncated');
+}
+
+// Re-read before writing. A choice saved after the scan (signup or the
+// settings toggle) must not be replaced with true.
+async function docsForMarketingChoice(env, uids) {
+  const token = await getFirebaseAdminToken(env);
+  const docBase = `projects/${FIREBASE_PROJECT_ID}/databases/(default)/documents`;
+  const docs = [];
+  for (let i = 0; i < uids.length; i += 300) {
+    const slice = uids.slice(i, i + 300);
+    const res = await fetch(`https://firestore.googleapis.com/v1/${docBase}:batchGet`, {
+      method: 'POST',
+      headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        documents: slice.map((id) => `${docBase}/users/${id}`),
+        mask: { fieldPaths: ['marketingEmails'] },
+      }),
+    });
+    if (!res.ok) throw new Error(`marketing backfill reread ${res.status}`);
+    const rows = await res.json().catch(() => []);
+    for (const row of Array.isArray(rows) ? rows : []) {
+      if (!row?.found?.name) continue;
+      docs.push({ name: row.found.name, fields: row.found.fields || {} });
+    }
+  }
+  return docs;
+}
+
+async function commitMarketingSubscribe(env, uids) {
+  if (!uids?.length) return;
+  const still = uidsStillMissingChoice(await docsForMarketingChoice(env, uids));
+  if (!still.length) return;
+  const token = await getFirebaseAdminToken(env);
+  const writes = marketingSubscribeWrites(still, { projectId: FIREBASE_PROJECT_ID, nowIso: new Date().toISOString() });
+  for (let i = 0; i < writes.length; i += 400) {
+    const slice = writes.slice(i, i + 400);
+    const res = await fetch(`https://firestore.googleapis.com/v1/projects/${FIREBASE_PROJECT_ID}/databases/(default)/documents:batchWrite`, {
+      method: 'POST',
+      headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
+      body: JSON.stringify({ writes: slice }),
+    });
+    if (!res.ok) {
+      const detail = await res.text().catch(() => '');
+      throw new Error(`marketing backfill write ${res.status} ${detail.slice(0, 180)}`);
+    }
+  }
+}
+
+async function migrateMarketingEmailConsent(env) {
+  if (!env?.FIREBASE_SERVICE_ACCOUNT) return { ok: false, skipped: 'no-admin' };
+  return runMarketingEmailBackfill({
+    alreadyDone: async () => {
+      try { return !!(await env.ALERTS_KV?.get(BACKFILL_KV_KEY)); }
+      catch { return false; }
+    },
+    markDone: async () => {
+      try { await env.ALERTS_KV?.put(BACKFILL_KV_KEY, new Date().toISOString()); }
+      catch { /* next tick retries */ }
+    },
+    listAll: () => listUserDocsForMarketingBackfill(env),
+    commit: (uids) => commitMarketingSubscribe(env, uids),
+  });
+}
+
 async function checkChurnedPremium(env) {
   const hhmm = getIsraelHHMM();
   if (hhmm < '10:00' || hhmm >= '10:10') return; // run once per day
@@ -520,69 +609,18 @@ async function checkChurnedPremium(env) {
   }
 }
 
-// ---- Email sending (Resend) -----------------------------------------------
-// Thin wrapper around Resend's REST API. Returns {ok, status} so callers can
-// log without blowing up the cron. Skips silently if RESEND_API_KEY isn't set
-// — the rest of the cron (push) keeps working.
-async function sendEmail(env, { to, subject, html, replyTo }) {
-  if (!env.RESEND_API_KEY) return { ok: false, status: 0, skipped: 'no-api-key' };
-  if (!to) return { ok: false, status: 0, skipped: 'no-recipient' };
-  const from = env.MAIL_FROM_ADDRESS
-    ? `${env.MAIL_FROM_NAME || 'TradeOS'} <${env.MAIL_FROM_ADDRESS}>`
-    : 'TradeOS <onboarding@resend.dev>';
-  try {
-    const res = await fetch('https://api.resend.com/emails', {
-      method: 'POST',
-      headers: {
-        Authorization: `Bearer ${env.RESEND_API_KEY}`,
-        'Content-Type': 'application/json',
-      },
-      body: JSON.stringify({
-        from,
-        to: Array.isArray(to) ? to : [to],
-        subject,
-        html,
-        ...(replyTo ? { reply_to: replyTo } : {}),
-      }),
-    });
-    if (!res.ok) {
-      const detail = await res.text().catch(() => '');
-      console.error('Resend send failed:', res.status, detail);
-      // Try to extract Resend's human-readable error message.
-      let message = '';
-      try { message = JSON.parse(detail).message || ''; } catch { /* not JSON */ }
-      return { ok: false, status: res.status, message: message || detail.slice(0, 200) };
-    }
-    return { ok: true, status: res.status };
-  } catch (e) {
-    console.error('Resend send threw:', e);
-    return { ok: false, status: 0, error: e.message };
-  }
-}
-
-// Many emails in few requests: Resend's batch endpoint takes up to 100
-// messages per call (one Worker subrequest per 100 recipients).
-async function sendEmailBatch(env, messages) {
-  if (!env.RESEND_API_KEY) return { ok: false, status: 0, message: 'no-api-key' };
-  const from = env.MAIL_FROM_ADDRESS
-    ? `${env.MAIL_FROM_NAME || 'TradeOS'} <${env.MAIL_FROM_ADDRESS}>`
-    : 'TradeOS <onboarding@resend.dev>';
-  try {
-    const res = await fetch('https://api.resend.com/emails/batch', {
-      method: 'POST',
-      headers: { Authorization: `Bearer ${env.RESEND_API_KEY}`, 'Content-Type': 'application/json' },
-      body: JSON.stringify(messages.map((m) => ({ from, to: [m.to], subject: m.subject, html: m.html, ...(m.headers ? { headers: m.headers } : {}) }))),
-    });
-    if (!res.ok) {
-      const detail = await res.text().catch(() => '');
-      let message = '';
-      try { message = JSON.parse(detail).message || ''; } catch { /* not JSON */ }
-      return { ok: false, status: res.status, message: message || detail.slice(0, 200) };
-    }
-    return { ok: true, status: res.status };
-  } catch (e) {
-    return { ok: false, status: 0, message: e.message };
-  }
+// ---- Email sending (Gmail SMTP) --------------------------------------------
+// One recipient per message, through worker-mailer (smtp.gmail.com:465). The
+// app password is the Worker secret GMAIL_APP_PASSWORD. Returns {ok, status,
+// message} and never throws — cron push keeps running when mail is down.
+// `message` is already a Hebrew sentence safe to show in the admin UI.
+async function sendEmail(env, { to, subject, html, replyTo, headers }) {
+  const list = (Array.isArray(to) ? to : [to]).map((x) => String(x || '').trim()).filter(Boolean);
+  if (!list.length) return { ok: false, status: 0, skipped: 'no-recipient', message: 'אין נמען' };
+  const r = await deliverWithGmail(env, list.map((addr) => ({ to: addr, subject, html, replyTo, headers })));
+  const ok = r.sent === list.length && !r.failed && !r.deferred;
+  const status = r.skipped === 'no-app-password' ? 0 : (ok || r.sent > 0 ? 200 : (r.deferred && !r.failed ? 429 : 502));
+  return { ok, status, message: r.firstError || '', sent: r.sent, failed: r.failed, deferred: r.deferred, skipped: r.skipped };
 }
 
 // Branded confirmation email for a Premium grant — payment, gift, or coupon
@@ -665,8 +703,8 @@ async function checkWeeklyDigest(env) {
     });
   }
 
-  // Email — same numbers, full report. MAIL_TO_ADMIN_OVERRIDE pins the
-  // recipient to a fixed address (see /admin/test-digest for why).
+  // Email — same numbers, full report. One message per admin so they don't
+  // see each other's addresses. MAIL_TO_ADMIN_OVERRIDE pins a single recipient.
   const adminUsers = users.filter((u) => u.role === 'admin' && u.email);
   if (adminUsers.length === 0 && !env.MAIL_TO_ADMIN_OVERRIDE) return;
   const recipients = env.MAIL_TO_ADMIN_OVERRIDE
@@ -1744,6 +1782,55 @@ async function summaryFetchTodayTrades(token, uid) {
   return { tradeCount: closed.length, pnl, wins, losses: closed.length - wins, bestTrade, worstTrade };
 }
 
+// One recipient's journal stats for the admin reminder. A failed read becomes
+// null so the sentence is omitted rather than invented. Open includes partial
+// positions, which are still open in the journal.
+async function reminderFs(token, uid, rpc, body) {
+  const res = await fetch(`${FS_BASE}/documents/users/${encodeURIComponent(uid)}:${rpc}`, {
+    method: 'POST',
+    headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
+    body: JSON.stringify(body),
+  });
+  if (!res.ok) return null;
+  const rows = await res.json().catch(() => null);
+  return Array.isArray(rows) ? rows : null;
+}
+
+async function fetchReminderStats(token, uid, lastActive, now = new Date()) {
+  const [weekRows, openRows, partialRows, morningRows, eveningRows] = await Promise.all([
+    reminderFs(token, uid, 'runAggregationQuery', reminderTradeCountQuery(weekTradesWhere(now))),
+    reminderFs(token, uid, 'runAggregationQuery', reminderTradeCountQuery(statusWhere('open'))),
+    reminderFs(token, uid, 'runAggregationQuery', reminderTradeCountQuery(statusWhere('partial'))),
+    reminderFs(token, uid, 'runQuery', journalDatesQuery('morningJournals', now)),
+    reminderFs(token, uid, 'runQuery', journalDatesQuery('eveningJournals', now)),
+  ]);
+  return summarizeReminderStats({
+    weekCount: countFromAggregation(weekRows),
+    openCount: combineCounts(countFromAggregation(openRows), countFromAggregation(partialRows)),
+    journalDates: combineDates(datesFromQuery(morningRows), datesFromQuery(eveningRows)),
+    lastActive,
+    now,
+  });
+}
+
+async function attachReminderStats(token, recipients) {
+  const queue = (recipients || []).filter((r) => r.uid);
+  if (!queue.length || !token) return;
+  let cursor = 0;
+  const run = async () => {
+    while (cursor < queue.length) {
+      const r = queue[cursor++];
+      try {
+        r.stats = await fetchReminderStats(token, r.uid, r.lastActive);
+      } catch (e) {
+        console.error('reminder stats', e?.message || e);
+        r.stats = null;
+      }
+    }
+  };
+  await Promise.all(Array.from({ length: Math.min(6, queue.length) }, () => run()));
+}
+
 async function checkDailySummaries(env, settingsMap) {
   const currentTime = getIsraelHHMM();
   const today = getIsraelDateStr();
@@ -1852,6 +1939,7 @@ async function handleCron(env) {
     checkExchangeClosedTrades(env),
     checkPlanExpiryReminders(env),
     checkChurnedPremium(env),
+    migrateMarketingEmailConsent(env).catch((e) => console.error('marketing backfill', e?.message || e)),
     checkWeeklyDigest(env),
     refreshNewsDigest(env),
     refreshNewsImpact(env),
@@ -3759,7 +3847,7 @@ async function handleContact(request, env, cors) {
     }
 
     if (!pushSent && !emailOk) {
-      console.error('Contact: no delivery channel succeeded (set DEV_UID with a push subscription, or MAIL_TO_ADMIN_OVERRIDE / RESEND_API_KEY)');
+      console.error('Contact: no delivery channel succeeded (set DEV_UID with a push subscription, or MAIL_TO_ADMIN_OVERRIDE / GMAIL_APP_PASSWORD)');
       return new Response(JSON.stringify({ error: 'שגיאה בשליחת ההודעה' }), { status: 502, headers: jsonHeaders });
     }
 
@@ -4722,28 +4810,21 @@ async function handleRequest(request, env) {
     const token = (request.headers.get('Authorization') || '').replace('Bearer ', '');
     const adminUid = await verifyAdminFromToken(token);
     if (!adminUid) return new Response(JSON.stringify({ error: 'forbidden' }), { status: 403, headers: { ...cors, 'Content-Type': 'application/json' } });
-    if (!env.RESEND_API_KEY) return new Response(JSON.stringify({ error: 'RESEND_API_KEY חסר ב-Worker — לא ניתן לשלוח מיילים' }), { status: 503, headers: { ...cors, 'Content-Type': 'application/json' } });
+    if (!hasGmailPassword(env)) return new Response(JSON.stringify({ error: MISSING_SECRET_MESSAGE }), { status: 503, headers: { ...cors, 'Content-Type': 'application/json' } });
 
     let users;
     try { users = await listAllUsersAdmin(env); }
     catch { return new Response(JSON.stringify({ error: 'failed to list users' }), { status: 500, headers: { ...cors, 'Content-Type': 'application/json' } }); }
 
     const me = users.find((u) => u.uid === adminUid);
-    // Where to send admin emails. On Resend's free default sender, the only
-    // allowed recipient is the email the Resend account itself was registered
-    // with — which is often DIFFERENT from the admin's TradeOS profile email
-    // (Firebase Auth email vs. Resend sign-up email). MAIL_TO_ADMIN_OVERRIDE
-    // lets the owner pin the destination to their Resend-account email so the
-    // 403 'can only send to your own address' error doesn't fire.
+    // Optional pin for admin-facing mail. Otherwise the admin's profile email.
     const adminTo = env.MAIL_TO_ADMIN_OVERRIDE || me?.email;
     if (!adminTo) return new Response(JSON.stringify({ error: 'admin email not found on profile' }), { status: 400, headers: { ...cors, 'Content-Type': 'application/json' } });
 
     const report = buildDigestEmail(users, { test: true });
     const r = await sendEmail(env, { to: adminTo, subject: report.subject, html: report.html });
     if (!r.ok) {
-      // Pass the actual Resend message back so the admin sees the real reason
-      // (e.g. "you can only send testing emails to your own email address").
-      return new Response(JSON.stringify({ error: friendlyResendError(r.status, r.message), sentTo: adminTo }), { status: 502, headers: { ...cors, 'Content-Type': 'application/json' } });
+      return new Response(JSON.stringify({ error: r.message || 'שליחת המייל נכשלה', sentTo: adminTo }), { status: r.status === 429 ? 429 : 502, headers: { ...cors, 'Content-Type': 'application/json' } });
     }
     return new Response(JSON.stringify({ ok: true, sentTo: adminTo, stats: { newUsers: report.digest.newWeek, upgrades: report.digest.upgrades, expiringSoon: report.digest.expiring.length, churn: report.digest.churn.length } }), { headers: { ...cors, 'Content-Type': 'application/json' } });
   }
@@ -4755,7 +4836,7 @@ async function handleRequest(request, env) {
     const token = (request.headers.get('Authorization') || '').replace('Bearer ', '');
     const adminUid = await verifyAdminFromToken(token);
     if (!adminUid) return new Response(JSON.stringify({ error: 'forbidden' }), { status: 403, headers: { ...cors, 'Content-Type': 'application/json' } });
-    if (!env.RESEND_API_KEY) return new Response(JSON.stringify({ error: 'RESEND_API_KEY חסר ב-Worker — לא ניתן לשלוח מיילים' }), { status: 503, headers: { ...cors, 'Content-Type': 'application/json' } });
+    if (!hasGmailPassword(env)) return new Response(JSON.stringify({ error: MISSING_SECRET_MESSAGE }), { status: 503, headers: { ...cors, 'Content-Type': 'application/json' } });
     const { email, name, kind, amount, method, days, expires } = await request.json().catch(() => ({}));
     if (!email || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(String(email))) {
       return new Response(JSON.stringify({ error: 'missing/invalid email' }), { status: 400, headers: { ...cors, 'Content-Type': 'application/json' } });
@@ -4772,9 +4853,7 @@ async function handleRequest(request, env) {
     });
     const r = await sendEmail(env, { to: String(email), subject, html });
     if (!r.ok) {
-      // Pass Resend's real message through — e.g. the test-mode "can only send
-      // to your own address" error — so the admin sees exactly why.
-      return new Response(JSON.stringify({ error: friendlyResendError(r.status, r.message || r.error), sentTo: email }), { status: 502, headers: { ...cors, 'Content-Type': 'application/json' } });
+      return new Response(JSON.stringify({ error: r.message || 'שליחת המייל נכשלה', sentTo: email }), { status: r.status === 429 ? 429 : 502, headers: { ...cors, 'Content-Type': 'application/json' } });
     }
     appendAudit(env, { kind: 'payment_email', actor: adminUid, target: email, amount: amt, days: Number(days) || null });
     return new Response(JSON.stringify({ ok: true, sentTo: email }), { headers: { ...cors, 'Content-Type': 'application/json' } });
@@ -4863,100 +4942,149 @@ async function handleRequest(request, env) {
 
   // Admin-only marketing campaign by email. Consent is enforced HERE, not in the
   // panel: the request carries uids only, and each recipient's address and
-  // `marketingEmails === true` opt-in are read from their own profile — an
-  // address the browser supplied is never mailed. Every message gets the
-  // "פרסומת" subject prefix and a signed one-click unsubscribe link; without
-  // UNSUBSCRIBE_SECRET nothing is sent. The admin's own uid (the "test to me"
-  // button) skips the consent check — it only mails the admin.
+  // marketingEmails flag are read from their own profile — an address the
+  // browser supplied is never mailed. Profiles that exist when the one-shot
+  // scan runs and have no choice are subscribed; explicit false is skipped.
+  // Sending itself requires the stored value to be true (after that backfill).
+  // Every message gets the "פרסומת" subject prefix and a signed one-click
+  // unsubscribe link; without UNSUBSCRIBE_SECRET nothing is sent. The admin's
+  // own uid (the "בדיקה אליי" button) skips the consent check.
   if (request.method === 'POST' && path === '/admin/email-campaign') {
     const token = (request.headers.get('Authorization') || '').replace('Bearer ', '');
     const adminUid = await verifyAdminFromToken(token);
     if (!adminUid) return new Response(JSON.stringify({ error: 'forbidden' }), { status: 403, headers: { ...cors, 'Content-Type': 'application/json' } });
-    if (!env.RESEND_API_KEY) return new Response(JSON.stringify({ error: 'RESEND_API_KEY חסר ב-Worker — לא ניתן לשלוח מיילים' }), { status: 503, headers: { ...cors, 'Content-Type': 'application/json' } });
+    if (!hasGmailPassword(env)) return new Response(JSON.stringify({ error: MISSING_SECRET_MESSAGE }), { status: 503, headers: { ...cors, 'Content-Type': 'application/json' } });
     if (!env.UNSUBSCRIBE_SECRET) return new Response(JSON.stringify({ error: 'UNSUBSCRIBE_SECRET חסר ב-Worker — לא שולחים דיוור בלי קישור הסרה' }), { status: 503, headers: { ...cors, 'Content-Type': 'application/json' } });
     const { uids, subject, headline, message, ctaText, ctaPath } = await request.json().catch(() => ({}));
     const wanted = [...new Set(Array.isArray(uids) ? uids.filter((x) => typeof x === 'string' && UID_RE.test(x)) : [])].slice(0, CAMPAIGN_MAX);
     if (!wanted.length || !(subject || headline) || !message) {
       return new Response(JSON.stringify({ error: 'missing fields' }), { status: 400, headers: { ...cors, 'Content-Type': 'application/json' } });
     }
+    // Whoever already has a profile and no choice is subscribed once. After
+    // that scan, a missing value is not legacy: new signups always store a
+    // bool. If the scan throws, this send still patches the people it mails.
+    let allowBackfill = false;
+    try {
+      const migration = await migrateMarketingEmailConsent(env);
+      allowBackfill = !migration?.ok;
+    } catch (e) {
+      console.error('marketing backfill', e?.message || e);
+      allowBackfill = true;
+    }
     const gtoken = await getFirebaseAdminToken(env);
     const docBase = `projects/${FIREBASE_PROJECT_ID}/databases/(default)/documents`;
     const bg = await fetch(`https://firestore.googleapis.com/v1/${docBase}:batchGet`, {
       method: 'POST',
       headers: { Authorization: `Bearer ${gtoken}`, 'Content-Type': 'application/json' },
-      body: JSON.stringify({ documents: wanted.map((id) => `${docBase}/users/${id}`), mask: { fieldPaths: ['email', 'displayName', 'marketingEmails'] } }),
+      body: JSON.stringify({ documents: wanted.map((id) => `${docBase}/users/${id}`), mask: { fieldPaths: ['email', 'displayName', 'marketingEmails', 'lastActive'] } }),
     });
     if (!bg.ok) return new Response(JSON.stringify({ error: 'לא ניתן לאמת הסכמות דיוור כרגע' }), { status: 502, headers: { ...cors, 'Content-Type': 'application/json' } });
     const rows = await bg.json().catch(() => []);
     const workerBase = new URL(request.url).origin;
     const recipients = [];
+    const patchUids = [];
     let skippedNoConsent = 0;
     for (const row of Array.isArray(rows) ? rows : []) {
       const f = row?.found?.fields;
       if (!f) { skippedNoConsent++; continue; }
       const uid = row.found.name.split('/').pop();
       const email = f.email?.stringValue;
-      const consented = f.marketingEmails?.booleanValue === true || uid === adminUid;
-      if (!email || !consented) { skippedNoConsent++; continue; }
-      recipients.push({ email, name: f.displayName?.stringValue || '', unsubscribeUrl: await unsubscribeUrl(workerBase, env.UNSUBSCRIBE_SECRET, uid) });
+      const decision = recipientConsent({ marketingEmails: f.marketingEmails, uid, adminUid, allowBackfill });
+      if (!email || !decision.send) { skippedNoConsent++; continue; }
+      if (decision.backfill) patchUids.push(uid);
+      const lastActive = f.lastActive?.timestampValue || f.lastActive?.stringValue || null;
+      recipients.push({
+        uid,
+        email,
+        name: f.displayName?.stringValue || '',
+        unsubscribeUrl: await unsubscribeUrl(workerBase, env.UNSUBSCRIBE_SECRET, uid),
+        lastActive,
+      });
     }
-    const emails = buildCampaignEmails({ recipients, subject, headline, message, ctaText, ctaPath }, emailShell);
+    if (patchUids.length) {
+      try { await commitMarketingSubscribe(env, patchUids); }
+      catch (e) { console.error('marketing backfill recipients', e?.message || e); }
+    }
+    try { await attachReminderStats(gtoken, recipients); }
+    catch (e) { console.error('reminder stats', e?.message || e); }
+    const emails = buildCampaignEmails({ recipients, subject, headline, message, ctaText, ctaPath });
     if (!emails.length) {
-      return new Response(JSON.stringify({ error: 'אף אחד מהנמענים לא אישר קבלת עדכונים במייל', skippedNoConsent }), { status: 400, headers: { ...cors, 'Content-Type': 'application/json' } });
+      return new Response(JSON.stringify({ error: 'אף אחד מהנמענים לא מקבל עדכונים במייל', skippedNoConsent }), { status: 400, headers: { ...cors, 'Content-Type': 'application/json' } });
     }
-    let sent = 0, failed = 0, firstError = '';
-    for (const batch of chunk(emails, 100)) {
-      const r = await sendEmailBatch(env, batch);
-      if (r.ok) sent += batch.length;
-      else { failed += batch.length; if (!firstError) firstError = friendlyResendError(r.status, r.message); }
-    }
-    appendAudit(env, { kind: 'email-campaign', actor: adminUid, targeted: emails.length, skippedNoConsent, sent, failed, subject: String(subject || headline).slice(0, 120) });
-    return new Response(JSON.stringify({ ok: sent > 0, sent, failed, targeted: emails.length, skippedNoConsent, ...(firstError ? { error: firstError } : {}) }), {
-      status: sent > 0 || !failed ? 200 : 502, headers: { ...cors, 'Content-Type': 'application/json' },
+    // One SMTP message per recipient (they never share a To/Cc list), throttled
+    // inside deliverWithGmail for Gmail's daily cap.
+    const delivery = await deliverWithGmail(env, emails);
+    const { sent, failed, deferred } = delivery;
+    const firstError = delivery.firstError || '';
+    appendAudit(env, { kind: 'email-campaign', actor: adminUid, targeted: emails.length, skippedNoConsent, sent, failed, deferred, subject: String(subject || headline).slice(0, 120) });
+    const httpStatus = sent > 0 ? 200 : (deferred && !failed ? 429 : 502);
+    return new Response(JSON.stringify({
+      ok: sent > 0 && failed === 0 && deferred === 0,
+      sent, failed, deferred, targeted: emails.length, skippedNoConsent,
+      ...(firstError ? { error: firstError } : {}),
+    }), {
+      status: httpStatus, headers: { ...cors, 'Content-Type': 'application/json' },
     });
   }
 
-  // Admin-only: "what's hot right now" reminder copy. Real market facts
-  // (Bybit spot tickers + the cached news digest) → the model writes the
-  // hook → every % it mentions is checked against the facts (marketHook.js).
-  // A failed/invented answer falls back to a template built from the facts,
-  // so the admin always gets something true. Facts are returned for review.
+  // Admin-only: calm personal reminder copy. With a uid, the draft uses that
+  // person's trade count, open trades, journal days and last login. Without
+  // one (a whole segment), the draft stays general and each send fills the
+  // numbers in. The model may only use numbers we hand it (reminderCopy.js).
+  // A failed or hyped answer falls back to the same template.
   if (request.method === 'POST' && path === '/admin/ai-hook') {
     const token = (request.headers.get('Authorization') || '').replace('Bearer ', '');
     const adminUid = await verifyAdminFromToken(token);
     if (!adminUid) return new Response(JSON.stringify({ error: 'forbidden' }), { status: 403, headers: { ...cors, 'Content-Type': 'application/json' } });
     try {
-      const [tickRes, digest] = await Promise.all([
-        fetch('https://api.bybit.com/v5/market/tickers?category=spot', { headers: { Accept: 'application/json' } })
-          .then((r) => r.json()).catch(() => null),
-        env.ALERTS_KV.get('news:digest:crypto', 'json').catch(() => null),
-      ]);
-      const facts = pickMarketFacts(tickRes?.result?.list || [], digest);
-      if (!facts.btc && !facts.gainers.length) {
-        return new Response(JSON.stringify({ error: 'אין כרגע נתוני שוק — נסה שוב בעוד רגע' }), { status: 503, headers: { ...cors, 'Content-Type': 'application/json' } });
+      const body = await request.json().catch(() => ({}));
+      const uid = typeof body?.uid === 'string' && UID_RE.test(body.uid) ? body.uid : '';
+      let stats = summarizeReminderStats({});
+      if (uid) {
+        try {
+          const gtoken = await getFirebaseAdminToken(env);
+          const docBase = `projects/${FIREBASE_PROJECT_ID}/databases/(default)/documents`;
+          const bg = await fetch(`https://firestore.googleapis.com/v1/${docBase}:batchGet`, {
+            method: 'POST',
+            headers: { Authorization: `Bearer ${gtoken}`, 'Content-Type': 'application/json' },
+            body: JSON.stringify({ documents: [`${docBase}/users/${uid}`], mask: { fieldPaths: ['lastActive'] } }),
+          });
+          let lastActive = null;
+          if (bg.ok) {
+            const rows = await bg.json().catch(() => []);
+            const f = (Array.isArray(rows) ? rows[0] : null)?.found?.fields;
+            lastActive = f?.lastActive?.timestampValue || f?.lastActive?.stringValue || null;
+          }
+          stats = await fetchReminderStats(gtoken, uid, lastActive);
+        } catch (e) {
+          console.error('reminder stats', e?.message || e);
+        }
       }
       let hook = null;
       if (env.GROQ_API_KEY) {
         const res = await groqFetchWithRetry(env, {
           model: GROQ_MODEL,
           messages: [
-            { role: 'system', content: HOOK_SYSTEM_PROMPT },
-            { role: 'user', content: buildHookUserMessage(facts) },
+            { role: 'system', content: REMINDER_SYSTEM_PROMPT },
+            { role: 'user', content: buildReminderUserMessage(stats) },
           ],
-          temperature: 0.8,
-          max_tokens: 700,
+          temperature: 0.4,
+          max_tokens: 500,
           response_format: { type: 'json_object' },
         });
         if (res.ok) {
           const data = await res.json().catch(() => null);
           let parsed = null;
           try { parsed = JSON.parse(data?.choices?.[0]?.message?.content || ''); } catch { /* not JSON */ }
-          hook = validateHook(parsed, facts);
+          hook = validateReminder(parsed, stats);
         }
       }
       const source = hook ? 'ai' : 'template';
-      hook = hook || templateHook(facts);
-      return new Response(JSON.stringify({ ok: true, source, ...hook, facts }), { headers: { ...cors, 'Content-Type': 'application/json' } });
+      hook = hook || templateReminder(stats);
+      // `facts` stays in the payload for the admin panel that is still open in
+      // production: it reads hook.facts.headlines / gainers without a null
+      // check. An empty safe object does not throw; a missing one does.
+      return new Response(JSON.stringify({ ok: true, source, ...hook, stats, facts: clientSafeFacts(null) }), { headers: { ...cors, 'Content-Type': 'application/json' } });
     } catch (e) {
       return new Response(JSON.stringify({ error: e.message || 'שגיאה' }), { status: 500, headers: { ...cors, 'Content-Type': 'application/json' } });
     }
@@ -5416,8 +5544,7 @@ async function handleRequest(request, env) {
       tag: `coupon-${code}-${uid}`,
     }).catch(() => {});
 
-    // Best-effort: branded confirmation email to the redeemer (delivery to
-    // arbitrary inboxes requires a verified sender domain on Resend).
+    // Best-effort: branded confirmation email to the redeemer.
     (async () => {
       const me = await fetch(`https://firestore.googleapis.com/v1/projects/${FIREBASE_PROJECT_ID}/databases/(default)/documents/users/${uid}`, {
         headers: { Authorization: `Bearer ${token}` },
