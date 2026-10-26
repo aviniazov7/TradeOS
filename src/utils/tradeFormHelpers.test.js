@@ -290,12 +290,25 @@ describe('CFD size and Vantage defaults', () => {
     expect(getContractSpec('XAUUSD')).toMatchObject({ pointValue: 100, kind: 'cfd' });
     expect(getContractSpec('XAU/USD')?.symbol).toBe('XAUUSD');
     expect(getContractSpec('XAGUSD').pointValue).toBe(5000);
-    expect(getContractSpec('NAS100')).toMatchObject({ pointValue: 1, note: '1 יחידה לנקודה ללוט' });
+    expect(getContractSpec('NAS100')).toMatchObject({ pointValue: 1, note: '$1/pt' });
     expect(getContractSpec('US100').pointValue).toBe(1);
     expect(getContractSpec('GC').kind).toBeUndefined();
     const menu = instrumentMenuOptions();
     const headers = menu.filter((row) => row.header).map((row) => row.header);
     expect(headers).toEqual(['חוזים עתידיים', 'CFD / פורקס']);
+    expect(menu.find((row) => row.value === 'XAUUSD').label).toBe('XAUUSD · Gold · 100 oz/lot');
+    expect(menu.find((row) => row.value === 'XAGUSD').label).toBe('XAGUSD · Silver · 5000 oz/lot');
+    expect(menu.find((row) => row.value === 'NAS100').label).toBe('NAS100 · Nasdaq · $1/pt');
+    expect(menu.find((row) => row.value === 'US100').label).toBe('US100 · Nasdaq · $1/pt');
+    expect(menu.find((row) => row.value === 'ES').label).toBe('ES · S&P · $50/pt');
+    expect(menu.find((row) => row.value === 'MES').label).toBe('MES · Micro S&P · $5/pt');
+    expect(menu.find((row) => row.value === 'GC').label).toBe('GC · Gold · $100/pt');
+    expect(menu.find((row) => row.value === 'MYM').label).toBe('MYM · Micro Dow · $0.5/pt');
+    for (const row of menu) {
+      if (row.header) continue;
+      expect(row.dir).toBe('ltr');
+      expect(row.label).not.toMatch(/[\u0590-\u05FF]/);
+    }
     const xau = menu.findIndex((row) => row.value === 'XAUUSD');
     const gc = menu.findIndex((row) => row.value === 'GC');
     const cfdHeader = menu.findIndex((row) => row.header === 'CFD / פורקס');

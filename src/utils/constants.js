@@ -115,10 +115,10 @@ export const FUTURES_CONTRACTS = [
 // the same Nasdaq-100 CFD under the two symbols brokers use; 1 lot pays
 // $1 per index point.
 export const CFD_INSTRUMENTS = [
-  { symbol: 'XAUUSD', name: 'Gold spot CFD',     exchange: 'CFD', pointValue: 100,  tickSize: 0.01,  currency: 'USD', kind: 'cfd', note: 'לוט סטנדרטי = 100 oz' },
-  { symbol: 'XAGUSD', name: 'Silver spot CFD',   exchange: 'CFD', pointValue: 5000, tickSize: 0.001, currency: 'USD', kind: 'cfd', note: 'לוט סטנדרטי = 5000 oz' },
-  { symbol: 'NAS100', name: 'Nasdaq-100 CFD',    exchange: 'CFD', pointValue: 1,    tickSize: 0.1,   currency: 'USD', kind: 'cfd', note: '1 יחידה לנקודה ללוט' },
-  { symbol: 'US100',  name: 'Nasdaq-100 CFD',    exchange: 'CFD', pointValue: 1,    tickSize: 0.1,   currency: 'USD', kind: 'cfd', note: '1 יחידה לנקודה ללוט' },
+  { symbol: 'XAUUSD', name: 'Gold spot CFD',     exchange: 'CFD', pointValue: 100,  tickSize: 0.01,  currency: 'USD', kind: 'cfd', note: '100 oz/lot' },
+  { symbol: 'XAGUSD', name: 'Silver spot CFD',   exchange: 'CFD', pointValue: 5000, tickSize: 0.001, currency: 'USD', kind: 'cfd', note: '5000 oz/lot' },
+  { symbol: 'NAS100', name: 'Nasdaq-100 CFD',    exchange: 'CFD', pointValue: 1,    tickSize: 0.1,   currency: 'USD', kind: 'cfd', note: '$1/pt' },
+  { symbol: 'US100',  name: 'Nasdaq-100 CFD',    exchange: 'CFD', pointValue: 1,    tickSize: 0.1,   currency: 'USD', kind: 'cfd', note: '$1/pt' },
 ];
 
 const INSTRUMENTS = [...FUTURES_CONTRACTS, ...CFD_INSTRUMENTS];
@@ -135,17 +135,47 @@ export function isCfdSpec(spec) {
   return spec?.kind === 'cfd';
 }
 
+// One-line English names for the picker. The official `name` is longer
+// ("Micro E-mini S&P 500") and wraps inside the RTL menu.
+const FUTURES_SHORT = {
+  ES: 'S&P',
+  MES: 'Micro S&P',
+  NQ: 'Nasdaq',
+  MNQ: 'Micro Nasdaq',
+  YM: 'Dow',
+  MYM: 'Micro Dow',
+  RTY: 'Russell',
+  M2K: 'Micro Russell',
+  CL: 'Crude',
+  MCL: 'Micro Crude',
+  NG: 'Nat Gas',
+  GC: 'Gold',
+  MGC: 'Micro Gold',
+  SI: 'Silver',
+  ZB: '30Y Bond',
+  ZN: '10Y Note',
+};
+
+const CFD_MENU_LABEL = {
+  XAUUSD: 'XAUUSD · Gold · 100 oz/lot',
+  XAGUSD: 'XAGUSD · Silver · 5000 oz/lot',
+  NAS100: 'NAS100 · Nasdaq · $1/pt',
+  US100: 'US100 · Nasdaq · $1/pt',
+};
+
+function instrumentMenuLabel(c) {
+  if (c.kind === 'cfd') return CFD_MENU_LABEL[c.symbol] || `${c.symbol} · ${c.note}`;
+  const pv = Number.isInteger(c.pointValue) ? String(c.pointValue) : String(c.pointValue);
+  return `${c.symbol} · ${FUTURES_SHORT[c.symbol] || c.name} · $${pv}/pt`;
+}
+
 /**
  * Instrument picker rows for a futures journal: a Futures section, then
  * CFD / Forex. Header rows have `header` and are not selectable.
+ * Labels are short English, marked ltr so they stay one line in the RTL menu.
  */
 export function instrumentMenuOptions() {
-  const row = (c) => ({
-    value: c.symbol,
-    label: c.kind === 'cfd'
-      ? `${c.symbol} — ${c.name} · ${c.note}`
-      : `${c.symbol} — ${c.name}`,
-  });
+  const row = (c) => ({ value: c.symbol, label: instrumentMenuLabel(c), dir: 'ltr' });
   return [
     { header: 'חוזים עתידיים' },
     ...FUTURES_CONTRACTS.map(row),

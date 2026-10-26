@@ -179,7 +179,10 @@ export default function SelectDropdown({ value, onChange, options = [], placehol
         onKeyDown={onTriggerKey}
         className={`${btnClass} ${triggerClassName}`}
       >
-        <span className={`truncate ${hasValue ? 'text-text-primary' : 'text-text-muted'}`}>{displayText}</span>
+        <span
+          dir={selectedOption?.dir === 'ltr' ? 'ltr' : undefined}
+          className={`min-w-0 truncate whitespace-nowrap text-right ${hasValue ? 'text-text-primary' : 'text-text-muted'}`}
+        >{displayText}</span>
         <svg className={`w-3 h-3 text-text-muted flex-shrink-0 transition-transform mr-1 ${open ? 'rotate-180' : ''}`} fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" /></svg>
       </button>
 
@@ -225,7 +228,10 @@ export default function SelectDropdown({ value, onChange, options = [], placehol
                         : 'text-text-primary hover:bg-bg-tertiary'
                     }`}
                   >
-                    {o.label}
+                    <span
+                      dir={o.dir === 'ltr' ? 'ltr' : undefined}
+                      className="min-w-0 flex-1 truncate whitespace-nowrap text-right"
+                    >{o.label}</span>
                   </button>
                 );
               })}

@@ -1216,7 +1216,7 @@ export default function TradeForm({ isOpen, onClose, trade, onSave, riskSettings
   const sizeFields = isFutures ? (
     <>
       <Field label={isCfd ? (hasScaleIns ? 'לוטים · כניסה 1' : 'לוטים') : (hasScaleIns ? 'חוזים · כניסה 1' : 'מספר חוזים')} anchor="tt-field-contracts" error={fieldErrors.contracts}
-        hint={isCfd && contractSpec ? contractSpec.note : undefined}>
+        hint={isCfd && contractSpec ? contractSpec.note : undefined} hintDir="ltr">
         <NumberStepper value={form.contracts} onChange={(v) => update('contracts', v)} min={isCfd ? 0.01 : 1} step={isCfd ? 0.01 : 1} placeholder={isCfd ? '0.1' : '1'} className="h-10 rounded-xl" />
       </Field>
       <Field label={isCfd ? '$ לנקודה ללוט' : 'ערך נקודה'}>
@@ -1390,7 +1390,7 @@ export default function TradeForm({ isOpen, onClose, trade, onSave, riskSettings
           <Section n={1} title="מכשיר וכיוון">
             <div className="grid grid-cols-2 md:grid-cols-12 gap-3">
               <Field label={isCfd ? 'מכשיר' : isFutures ? 'חוזה' : isStocks ? 'מניה' : 'זוג'} pick className="col-span-2 md:col-span-6" anchor="tt-field-pair" error={fieldErrors.pair}
-                hint={isFutures && contractSpec ? (isCfd ? `${contractSpec.note} · $${contractSpec.pointValue} לנקודה ללוט` : `${contractSpec.name} · $${contractSpec.pointValue}/pt · tick ${contractSpec.tickSize}`) : undefined} hintDir="ltr">
+                hint={isFutures && contractSpec ? (isCfd ? `${contractSpec.note} · $${contractSpec.pointValue}/pt` : `$${contractSpec.pointValue}/pt · tick ${contractSpec.tickSize}`) : undefined} hintDir="ltr">
                 {isFutures ? (
                   <SelectDropdown
                     value={form.pair}
