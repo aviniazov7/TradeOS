@@ -313,6 +313,10 @@ export default function TradeJournal() {
   // A blank opening balance must NOT fall through to "current P&L" — that
   // made the percent a ratio of this trade to itself.
   const openingBalance = Number(activeJournal?.initialBalance) || 0;
+  // One balance for every "return on the account" figure: the opening balance
+  // when the journal has one, otherwise the live wallet. A blank opening
+  // balance must not fall through to current P&L.
+  const returnBalance = openingBalance > 0 ? openingBalance : (balanceIsLive ? liveExchangeBalance : 0);
   const formBalanceKnown = balanceIsLive || openingBalance > 0;
   const formBalance = balanceIsLive
     ? liveExchangeBalance
@@ -606,7 +610,7 @@ export default function TradeJournal() {
         title={isStockJournal ? 'יומן מניות' : 'יומן המסחר'}
         titleAside={<JournalSwitcher compact />}
         center={tab === 'trades' && filteredTrades.length > 0
-          ? <JournalSummaryBar trades={filteredTrades} filtered={hasActiveFilters} liveById={liveById} />
+          ? <JournalSummaryBar trades={filteredTrades} filtered={hasActiveFilters} liveById={liveById} accountBalance={returnBalance} />
           : null}
         compactMobile
         tabs={{
@@ -742,7 +746,7 @@ export default function TradeJournal() {
                 onDelete={handleDeleteWithUndo}
                 onShare={setShareTarget}
                 isLimitPending={isLimitPending}
-                accountBalance={openingBalance > 0 ? openingBalance : (balanceIsLive ? liveExchangeBalance : 0)}
+                accountBalance={returnBalance}
               />
               {sortedTrades.length > visibleCount && (
                 <button
@@ -846,6 +850,7 @@ export default function TradeJournal() {
           <TradeForm isOpen={formOpen} onClose={handleCloseForm} trade={editingTrade} onSave={handleSave}
             prefill={tradePrefill}
             riskSettings={{ riskType: activeJournal?.riskType, riskValue: activeJournal?.riskValue, currentBalance: formBalance, balanceKnown: formBalanceKnown }}
+            accountBalance={returnBalance}
             journalAssetClass={activeJournal?.assetClass || 'crypto'}
             livePrices={prices} />
         )}
@@ -874,6 +879,7 @@ export default function TradeJournal() {
             isOpen={!!shareTarget}
             onClose={() => setShareTarget(null)}
             trade={shareTarget}
+            accountBalance={returnBalance}
           />
         )}
       </Suspense>
