@@ -606,13 +606,14 @@ export function isSelectableTradeTime(time, { now = new Date(), min = null } = {
  * react-datepicker keeps the injected Date's own calendar day on click, so
  * a time from another day would jump the calendar.
  */
-export function exitPickerInjectTimes(selected, entry, now = new Date()) {
+export function exitPickerInjectTimes(selected, entry, now = new Date(), extras) {
   const day = startOfLocalDay(selected || now);
   if (!day) return [];
   const dayMs = day.getTime();
   const out = [];
   const seen = new Set();
-  for (const candidate of [entry, now]) {
+  const extraList = Array.isArray(extras) ? extras : extras ? [extras] : [];
+  for (const candidate of [entry, now, ...extraList]) {
     const d = asDate(candidate);
     if (!d || startOfLocalDay(d).getTime() !== dayMs) continue;
     const t = new Date(day);
@@ -622,4 +623,37 @@ export function exitPickerInjectTimes(selected, entry, now = new Date()) {
     out.push(t);
   }
   return out;
+}
+
+/**
+ * Datetime a partial exit should show before the user picks one.
+ * The trade close, or the entry when the trade is still open. A copy —
+ * the row must not share the close/entry Date object.
+ */
+export function partialExitDefaultDate(close, entry) {
+  const chosen = asDate(close) || asDate(entry);
+  return chosen ? new Date(chosen.getTime()) : null;
+}
+
+/**
+ * Keep partial-exit times aligned with the close (or the entry).
+ * A row the user changed (`dateEdited`) keeps its time, including a time
+ * loaded from a saved trade. Untouched rows follow the default, so a close
+ * edited after the row was added does not leave the exit at midnight —
+ * midnight of the entry day is before the entry and blocks the save.
+ * Returns the same array when nothing moved.
+ */
+export function syncPartialExitDates(rows, close, entry) {
+  const list = rows || [];
+  const next = partialExitDefaultDate(close, entry);
+  if (!next) return list;
+  let changed = false;
+  const out = list.map((row) => {
+    if (!row || row.dateEdited) return row;
+    const current = asDate(row.date);
+    if (current && current.getTime() === next.getTime()) return row;
+    changed = true;
+    return { ...row, date: new Date(next.getTime()) };
+  });
+  return changed ? out : list;
 }

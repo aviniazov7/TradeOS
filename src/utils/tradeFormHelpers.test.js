@@ -5,6 +5,8 @@ import {
   isAfterMinute,
   startOfLocalDay,
   exitPickerInjectTimes,
+  partialExitDefaultDate,
+  syncPartialExitDates,
   entryPriceProblem,
   riskSizedNotional,
   aggregateFills,
@@ -516,5 +518,54 @@ describe('isSelectableTradeTime', () => {
     expect(isSelectableTradeTime(new Date(2026, 9, 9, 14, 30), { now: clock, min: entry })).toBe(false);
     expect(isSelectableTradeTime(new Date(2026, 9, 9, 14, 45), { now: clock, min: entry })).toBe(false);
     expect(exitPickerInjectTimes(new Date(2026, 9, 10, 9, 0), entry, clock)).toEqual([]);
+  });
+});
+
+describe('partial exit default datetime', () => {
+  const entry = new Date(2026, 9, 26, 22, 7);
+  const close = new Date(2026, 9, 26, 22, 9);
+
+  it('uses the close, and the entry when there is no close', () => {
+    const fromClose = partialExitDefaultDate(close, entry);
+    expect(fromClose.getTime()).toBe(close.getTime());
+    expect(fromClose).not.toBe(close);
+    expect(partialExitDefaultDate(null, entry).getTime()).toBe(entry.getTime());
+    expect(partialExitDefaultDate(null, null)).toBeNull();
+  });
+
+  it('seeds an empty row on the close and follows a later close', () => {
+    const seeded = syncPartialExitDates([{ date: null, dateEdited: false }], close, entry);
+    expect(seeded[0].date.getTime()).toBe(close.getTime());
+    expect(seeded[0].dateEdited).toBeFalsy();
+    expect(isOnOrAfterMinute(entry, seeded[0].date)).toBe(true);
+    const later = new Date(2026, 9, 26, 22, 20);
+    const moved = syncPartialExitDates(seeded, later, entry);
+    expect(moved[0].date.getTime()).toBe(later.getTime());
+    expect(moved[0].date).not.toBe(later);
+  });
+
+  it('does not move a time the user edited, or a row already on the default', () => {
+    const custom = new Date(2026, 9, 26, 22, 15);
+    const edited = [{ date: custom, dateEdited: true }];
+    expect(syncPartialExitDates(edited, close, entry)).toBe(edited);
+    const aligned = [{ date: close, dateEdited: false }];
+    expect(syncPartialExitDates(aligned, close, entry)).toBe(aligned);
+  });
+
+  it('falls back to the entry when the close is cleared', () => {
+    const rows = [{ date: new Date(close.getTime()), dateEdited: false }];
+    const next = syncPartialExitDates(rows, null, entry);
+    expect(next[0].date.getTime()).toBe(entry.getTime());
+  });
+
+  it('treats midnight of the entry day as before the entry', () => {
+    const midnight = new Date(2026, 9, 26, 0, 0);
+    expect(isOnOrAfterMinute(entry, midnight)).toBe(false);
+    expect(isOnOrAfterMinute(entry, partialExitDefaultDate(close, entry))).toBe(true);
+  });
+
+  it('injects the close minute so the partial-exit list is not stuck at 00:00', () => {
+    const times = exitPickerInjectTimes(close, entry, close, close);
+    expect(times.map((t) => `${t.getHours()}:${t.getMinutes()}`)).toEqual(['22:7', '22:9']);
   });
 });

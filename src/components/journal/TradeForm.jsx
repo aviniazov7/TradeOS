@@ -25,7 +25,8 @@ import { useUserMistakes } from '../../hooks/useUserMistakes';
 import { useTradingPlans } from '../../hooks/useTradingPlans';
 import { useJournalContext } from '../../contexts/JournalContext';
 import {
-  isSelectableTradeTime, isOnOrAfterMinute, isAfterMinute, startOfLocalDay, exitPickerInjectTimes, entryPriceProblem,
+  isSelectableTradeTime, isOnOrAfterMinute, isAfterMinute, startOfLocalDay, exitPickerInjectTimes,
+  partialExitDefaultDate, syncPartialExitDates, entryPriceProblem,
   aggregateFills, exitsClosedPercent, syncExitSize, remainderClose, storedExit, hasCommissionPreset, estimateCommission,
   buildChecklistRows, checklistAdherence, loadLastTradeChoices, saveLastTradeChoices,
   parseInstrumentSize, defaultInstrumentChoice,
@@ -286,23 +287,28 @@ export default function TradeForm({ isOpen, onClose, trade, onSave, riskSettings
       // carry a contract count so the editor shows contracts, not percent.
       const isFuturesTrade = trade.assetClass === 'futures_cme';
       const totalQty = parseFloat(trade.quantity) > 0 ? parseFloat(trade.quantity) : storedQty;
-      const fromExits = (trade.exits || []).map(e => ({
-        price: String(e.price),
-        percent: e.percent != null ? String(e.percent) : '',
-        contracts: e.contracts != null ? String(e.contracts) : '',
-        quantity: e.quantity != null && e.quantity !== ''
-          ? String(e.quantity)
-          : (parseFloat(e.percent) > 0 && totalQty > 0
-            ? String(+((parseFloat(e.percent) / 100) * totalQty).toPrecision(10))
-            : ''),
-        date: parseDate(e.date),
-        kind: e.kind === 'stop' || e.kind === 'price' ? e.kind : '',
-      }));
-      const fromTps = (trade.tps || []).map(p => ({ price: String(p), percent: '', contracts: '', quantity: '', date: null, kind: '' }));
+      const fromExits = (trade.exits || []).map(e => {
+        const date = parseDate(e.date);
+        return {
+          price: String(e.price),
+          percent: e.percent != null ? String(e.percent) : '',
+          contracts: e.contracts != null ? String(e.contracts) : '',
+          quantity: e.quantity != null && e.quantity !== ''
+            ? String(e.quantity)
+            : (parseFloat(e.percent) > 0 && totalQty > 0
+              ? String(+((parseFloat(e.percent) / 100) * totalQty).toPrecision(10))
+              : ''),
+          // A stored time is the user's. Don't slide it when the close changes.
+          date,
+          dateEdited: !!date,
+          kind: e.kind === 'stop' || e.kind === 'price' ? e.kind : '',
+        };
+      });
+      const fromTps = (trade.tps || []).map(p => ({ price: String(p), percent: '', contracts: '', quantity: '', date: null, dateEdited: false, kind: '' }));
       let loadedAdditionalExits = fromExits.length || fromTps.length
         ? [...fromExits, ...fromTps]
         : parseFloat(trade.exitPrice) > 0
-          ? [{ price: String(trade.exitPrice), percent: '100', contracts: isFuturesTrade ? String(trade.contract?.contracts ?? '') : '', quantity: totalQty ? String(+Number(totalQty).toPrecision(10)) : '', date: parseDate(trade.exitDate), kind: '' }]
+          ? [{ price: String(trade.exitPrice), percent: '100', contracts: isFuturesTrade ? String(trade.contract?.contracts ?? '') : '', quantity: totalQty ? String(+Number(totalQty).toPrecision(10)) : '', date: parseDate(trade.exitDate), dateEdited: !!parseDate(trade.exitDate), kind: '' }]
           : [];
       const closeRow = [...loadedAdditionalExits].reverse().find((e) => e.kind === 'stop' || e.kind === 'price');
       loadedAdditionalExits = loadedAdditionalExits.filter((e) => e.kind !== 'stop' && e.kind !== 'price');
@@ -334,6 +340,11 @@ export default function TradeForm({ isOpen, onClose, trade, onSave, riskSettings
           return syncExitSize(exit, 'percent', String(suggested), totalQty);
         });
       }
+      loadedAdditionalExits = syncPartialExitDates(
+        loadedAdditionalExits,
+        parseDate(trade.exitDate),
+        parseDate(trade.entryDate),
+      );
 
       setForm({
         ...defaultForm,
@@ -404,6 +415,7 @@ export default function TradeForm({ isOpen, onClose, trade, onSave, riskSettings
         broker: journalRef.current?.exchange,
         last,
       });
+      const entryDate = newTradeAssetClass === 'futures_cme' ? new Date() : null;
       setForm({
         ...defaultForm,
         assetClass: newTradeAssetClass,
@@ -415,14 +427,18 @@ export default function TradeForm({ isOpen, onClose, trade, onSave, riskSettings
         direction: seed?.direction === 'short' || seed?.direction === 'long'
           ? seed.direction
           : (choice.direction || defaultForm.direction),
-        entryDate: newTradeAssetClass === 'futures_cme' ? new Date() : null,
+        entryDate,
         entryPrice: seed?.entryPrice || '',
         stopLoss: seed?.stopLoss || '',
         leverage: seed?.leverage || defaultForm.leverage,
         riskAmount: seed?.riskAmount || '',
-        additionalExits: seed?.targetPrice
-          ? [{ price: String(seed.targetPrice), percent: '', contracts: '', quantity: '', date: null, kind: '' }]
-          : [],
+        additionalExits: syncPartialExitDates(
+          seed?.targetPrice
+            ? [{ price: String(seed.targetPrice), percent: '', contracts: '', quantity: '', date: null, dateEdited: false, kind: '' }]
+            : [],
+          null,
+          entryDate,
+        ),
       });
       setFeesAuto(true);
     }
@@ -447,7 +463,16 @@ export default function TradeForm({ isOpen, onClose, trade, onSave, riskSettings
   }, [form.entryDate]);
 
   const update = (field, value) => {
-    setForm((f) => ({ ...f, [field]: value }));
+    setForm((f) => {
+      if (field !== 'exitDate' && field !== 'entryDate') return { ...f, [field]: value };
+      const exitDate = field === 'exitDate' ? value : f.exitDate;
+      const entryDate = field === 'entryDate' ? value : f.entryDate;
+      return {
+        ...f,
+        [field]: value,
+        additionalExits: syncPartialExitDates(f.additionalExits, exitDate, entryDate),
+      };
+    });
     setFieldErrors((prev) => (prev[field] ? { ...prev, [field]: undefined } : prev));
   };
   // One toast id so a double-submit can't stack the same message four times.
@@ -488,16 +513,26 @@ export default function TradeForm({ isOpen, onClose, trade, onSave, riskSettings
   // closed counts — loading an already-closed trade never rewrites its date.
   const setExits = (mutate) => {
     setForm((f) => {
-      const additionalExits = mutate(f.additionalExits);
+      const additionalExits = mutate(f.additionalExits, f);
       const opts = { isFutures: f.assetClass === 'futures_cme', totalContracts: totalContractsOf(f) };
       const closesNow = exitsClosedPercent(f.additionalExits, opts) < 99.95
         && exitsClosedPercent(additionalExits, opts) >= 99.95;
-      return { ...f, additionalExits, ...(closesNow && !f.exitDate ? { exitDate: new Date() } : {}) };
+      const exitDate = closesNow && !f.exitDate ? new Date() : f.exitDate;
+      return {
+        ...f,
+        exitDate,
+        additionalExits: syncPartialExitDates(additionalExits, exitDate, f.entryDate),
+      };
     });
   };
 
   const addAdditionalExit = () => {
-    setExits((exits) => [...exits, { price: '', percent: '', contracts: '', quantity: '', date: null, kind: '' }]);
+    setExits((exits, f) => [...exits, {
+      price: '', percent: '', contracts: '', quantity: '',
+      date: partialExitDefaultDate(f.exitDate, f.entryDate),
+      dateEdited: false,
+      kind: '',
+    }]);
   };
 
   const removeAdditionalExit = (index) => {
@@ -505,7 +540,11 @@ export default function TradeForm({ isOpen, onClose, trade, onSave, riskSettings
   };
 
   const updateAdditionalExit = (index, field, value) => {
-    setExits((exits) => exits.map((e, i) => (i === index ? { ...e, [field]: value } : e)));
+    setExits((exits) => exits.map((e, i) => (
+      i === index
+        ? { ...e, [field]: value, ...(field === 'date' ? { dateEdited: true } : {}) }
+        : e
+    )));
   };
 
   // Percent and quantity describe the same slice. Typing one fills the other
@@ -873,7 +912,15 @@ export default function TradeForm({ isOpen, onClose, trade, onSave, riskSettings
     const n = parseFloat(value);
     if (n > 0) {
       setCloseKind('price');
-      setForm((f) => (f.exitDate ? f : { ...f, exitDate: new Date() }));
+      setForm((f) => {
+        if (f.exitDate) return f;
+        const exitDate = new Date();
+        return {
+          ...f,
+          exitDate,
+          additionalExits: syncPartialExitDates(f.additionalExits, exitDate, f.entryDate),
+        };
+      });
     } else if (closeKind === 'price') {
       setCloseKind('');
     }
@@ -1766,6 +1813,8 @@ export default function TradeForm({ isOpen, onClose, trade, onSave, riskSettings
                         showTimeSelect timeFormat="HH:mm" timeIntervals={15} dateFormat="dd/MM/yy HH:mm"
                         maxDate={new Date()}
                         minDate={form.entryDate ? startOfLocalDay(form.entryDate) : undefined}
+                        openToDate={exit.date || partialExitDefaultDate(form.exitDate, form.entryDate) || undefined}
+                        injectTimes={exitPickerInjectTimes(exit.date || form.exitDate || form.entryDate, form.entryDate, undefined, form.exitDate)}
                         filterTime={(t) => isSelectableTradeTime(t, { min: parseDate(form.entryDate) })}
                         locale="he" placeholderText="תאריך יציאה"
                         className={compactNumClass} wrapperClassName="w-full min-w-0"
