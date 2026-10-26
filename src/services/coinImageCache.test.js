@@ -12,4 +12,14 @@ describe('SOL icon cache', () => {
     expect(getCachedImage('SOL')).toBe(official);
     expect(getCachedImage('solusdt')).toBe(official);
   });
+
+  it('uses the futures marks for CFD symbols in the trade table', () => {
+    expect(getCachedImage('XAUUSD')).toBe('/logos/marks/gold.svg');
+    expect(getCachedImage('GC')).toBe('/logos/marks/gold.svg');
+    expect(getCachedImage('XAGUSD')).toBe('/logos/marks/silver.svg');
+    expect(getCachedImage('SI')).toBe('/logos/marks/silver.svg');
+    expect(getCachedImage('NAS100')).toBe('/logos/marks/nasdaq.svg');
+    expect(getCachedImage('US100')).toBe('/logos/marks/nasdaq.svg');
+    expect(getCachedImage('NQ')).toBe('/logos/marks/nasdaq.svg');
+  });
 });

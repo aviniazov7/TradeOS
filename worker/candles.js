@@ -28,6 +28,17 @@ export const YAHOO_FUT = {
   GC: 'GC=F', MGC: 'MGC=F', SI: 'SI=F', ZB: 'ZB=F', ZN: 'ZN=F',
 };
 
+// Spot/index CFDs. Yahoo has no XAUUSD spot series; GC=F is the same $/oz
+// quote. SI=F is silver in $/oz. NAS100/US100 follow the Nasdaq-100 future
+// (NQ=F) — the cash index ^NDX is rejected by the symbol check (leading ^).
+// The client rebases these bars onto the fill so a stable basis is not MAE.
+export const CFD_YAHOO = {
+  XAUUSD: 'GC=F',
+  XAGUSD: 'SI=F',
+  NAS100: 'NQ=F',
+  US100: 'NQ=F',
+};
+
 // Bybit kline intervals (minutes → API code).
 const BYBIT_INTERVALS = [
   [1, '1'], [3, '3'], [5, '5'], [15, '15'], [30, '30'], [60, '60'], [120, '120'],
@@ -80,8 +91,10 @@ export function bybitCandidates(symbol) {
   return out;
 }
 
-/** Yahoo ticker for a futures symbol: ES, ESZ5, ESZ25, ES1!, ES=F → ES=F. */
+/** Yahoo ticker for a futures or CFD symbol: ES, ESZ5, XAUUSD, NQ=F → ES=F / GC=F. */
 export function futuresTicker(symbol) {
+  const compact = String(symbol).toUpperCase().replace(/[^A-Z0-9]/g, '');
+  if (CFD_YAHOO[compact]) return CFD_YAHOO[compact];
   const s = String(symbol).toUpperCase().replace(/=F$|1!$/, '');
   if (YAHOO_FUT[s]) return YAHOO_FUT[s];
   const m = s.match(/^([A-Z0-9]{1,3}?)[FGHJKMNQUVXZ]\d{1,2}$/);

@@ -3,7 +3,8 @@ import toast from 'react-hot-toast';
 import { Activity, RefreshCw, Save } from 'lucide-react';
 import { fetchCandles } from '../../services/exchangeService';
 import { useTrades } from '../../hooks/useTrades';
-import { canComputeExcursion, computeExcursion, excursionFields, tradeExitPrice } from '../../utils/excursion';
+import { canComputeExcursion, computeExcursion, excursionFields, rebaseCandlesToFill, tradeExitPrice } from '../../utils/excursion';
+import { cfdCandleRequest } from '../../utils/cfdCandles';
 import { formatCurrency, formatPrice } from '../../utils/formatters';
 import { isClosedTrade } from '../../utils/calculations';
 import { stockSymbol } from '../../utils/stocks';
@@ -16,9 +17,10 @@ const toMs = (d) => {
 
 // Which candle feed + symbol a trade's price history lives on.
 function candleTarget(trade) {
-  if (trade.assetClass === 'futures_cme') {
-    return { asset: 'futures', symbol: String(trade.contract?.symbol || trade.pair || '').toUpperCase() };
-  }
+  const symbol = String(trade.contract?.symbol || trade.pair || '').toUpperCase();
+  const cfd = cfdCandleRequest(symbol);
+  if (cfd) return cfd;
+  if (trade.assetClass === 'futures_cme') return { asset: 'futures', symbol };
   if (trade.assetClass === 'stocks') return { asset: 'stocks', symbol: stockSymbol(trade.pair) };
   return { asset: 'crypto', symbol: String(trade.pair || '').toUpperCase() };
 }
@@ -134,11 +136,14 @@ export default function TradeExcursion({ trade }) {
     setSaved(false);
     try {
       const target = candleTarget(trade);
-      const res = await fetchCandles({ ...target, from: toMs(trade.entryDate), to: toMs(trade.exitDate) });
+      const res = await fetchCandles({ asset: target.asset, symbol: target.symbol, from: toMs(trade.entryDate), to: toMs(trade.exitDate) });
       const stepMs = (res.interval || 0) * 60000;
-      const result = computeExcursion(trade, res.candles, { stepMs });
+      const candles = target.rebase
+        ? rebaseCandlesToFill(res.candles, Number(trade.entryPrice), toMs(trade.entryDate), stepMs)
+        : res.candles;
+      const result = computeExcursion(trade, candles, { stepMs });
       if (!result) throw new Error('לא נמצאו נרות לטווח העסקה');
-      setData({ result, candles: res.candles, source: res.source });
+      setData({ result, candles, source: res.source });
     } catch (e) {
       setData(null);
       setError(e?.message || 'החישוב נכשל');

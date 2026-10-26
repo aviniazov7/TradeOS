@@ -5,7 +5,7 @@
 // (csvImport.test.js) — one invalid row used to reject a whole 499-row batch
 // with a misleading "no permission" error.
 
-import { DEFAULT_LEVERAGE, FUTURES_CONTRACTS } from './constants';
+import { CFD_INSTRUMENTS, DEFAULT_LEVERAGE, FUTURES_CONTRACTS } from './constants';
 
 // Header aliases per field, in PRIORITY order: when a file has two columns
 // that both fit a field, the earlier alias wins (e.g. gross P&L over net).
@@ -203,7 +203,7 @@ const MONTH_CODE_REST = /^(?:[FGHJKMNQUVXZ]\d{1,4}|\d{0,4})$/;
 export function futuresSpecFor(raw) {
   const s = String(raw || '').toUpperCase().replace(/^\//, '').replace(/[\s\-./]/g, '');
   if (!s) return null;
-  const roots = [...FUTURES_CONTRACTS].sort((a, b) => b.symbol.length - a.symbol.length);
+  const roots = [...FUTURES_CONTRACTS, ...CFD_INSTRUMENTS].sort((a, b) => b.symbol.length - a.symbol.length);
   for (const c of roots) {
     if (s.startsWith(c.symbol) && MONTH_CODE_REST.test(s.slice(c.symbol.length))) return c;
   }
@@ -334,7 +334,11 @@ export function buildImportTrades(rows = [], mapping = {}, opts = {}) {
     if (unitsNum > 0) {
       quantity = unitsNum;
     } else if (usdNum > 0) {
-      quantity = spec ? Math.round(usdNum / (entryPrice * spec.pointValue)) : usdNum / entryPrice;
+      quantity = spec
+        ? (spec.kind === 'cfd'
+          ? usdNum / (entryPrice * spec.pointValue)
+          : Math.round(usdNum / (entryPrice * spec.pointValue)))
+        : usdNum / entryPrice;
     }
     let sizeEstimated = false;
     if (!(quantity > 0) || !Number.isFinite(quantity)) {
