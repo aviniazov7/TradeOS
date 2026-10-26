@@ -313,6 +313,30 @@ export function tradeAccountPercent(t, accountBalance) {
 }
 
 /**
+ * The percent a journal surface should show for a trade.
+ * Net P&L over the account when a balance is known; otherwise the position
+ * return. Pass `net` for a live unrealized P&L that is not stored on the
+ * trade, and `positionPercent` as the fallback when that row has no balance.
+ * `percent` is null only when a live row has neither.
+ */
+export function tradeShownPercent(t, accountBalance, { net, positionPercent } = {}) {
+  if (net === undefined) {
+    const onAccount = tradeAccountPercent(t, accountBalance);
+    if (onAccount != null) return { percent: onAccount, onAccount: true };
+    return { percent: tradeNetPercent(t), onAccount: false };
+  }
+  const balance = Number(accountBalance);
+  const dollars = Number(net);
+  if (balance > 0 && Number.isFinite(dollars)) {
+    return { percent: (dollars / balance) * 100, onAccount: true };
+  }
+  if (positionPercent != null && Number.isFinite(Number(positionPercent))) {
+    return { percent: Number(positionPercent), onAccount: false };
+  }
+  return { percent: null, onAccount: false };
+}
+
+/**
  * Average reward:risk of winning trades, NET of fees.
  * A winner's R is net P&L / initial risk (the same R the table and the
  * "R ממוצע" header show). Rows with no stored P&L keep the price ratio —

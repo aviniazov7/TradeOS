@@ -12,7 +12,7 @@ import {
 } from '../../utils/formatters';
 import { MISTAKE_LABELS, getContractSpec, isCfdSpec } from '../../utils/constants';
 import { setupLabel, tradeSetups } from '../../utils/setupStats';
-import { initialRiskUsd, isClosedTrade, signedTradeR, tradeAccountPercent, tradeNetPercent, tradeDurationMs } from '../../utils/calculations';
+import { initialRiskUsd, isClosedTrade, signedTradeR, tradeShownPercent, tradeDurationMs } from '../../utils/calculations';
 import TradeExcursion from './TradeExcursion';
 import {
   TrendingUp,
@@ -162,9 +162,9 @@ export default function TradeDetailModal({
         ? { cls: 'bg-breakeven/15 text-breakeven', text: 'חלקית' }
         : { cls: 'bg-bg-tertiary text-text-muted', text: 'נסגרה' };
 
-  const accountPct = status === 'open' ? null : tradeAccountPercent(trade, accountBalance);
-  const onAccount = accountPct != null;
-  const returnPct = onAccount ? accountPct : tradeNetPercent(trade);
+  const shownReturn = status === 'open' ? null : tradeShownPercent(trade, accountBalance);
+  const onAccount = shownReturn?.onAccount === true;
+  const returnPct = shownReturn?.percent ?? 0;
   const kpis = [
     {
       label: 'רווח/הפסד נטו',

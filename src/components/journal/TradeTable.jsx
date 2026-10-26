@@ -1,7 +1,7 @@
 import { useState, useMemo, Fragment } from 'react';
 import { Pencil, Trash2, Share2, Eye, TrendingUp, TrendingDown, Check, ArrowUp, ArrowDown, ArrowUpDown } from 'lucide-react';
 import { formatDate, formatPrice, formatCurrency, formatPercent, formatSignedR } from '../../utils/formatters';
-import { signedTradeR, tradeNetPercent } from '../../utils/calculations';
+import { signedTradeR, tradeShownPercent } from '../../utils/calculations';
 import { setupLabel, tradeSetups } from '../../utils/setupStats';
 import { isClosedTrade, safePnl } from '../../utils/calculations';
 import { getExchangeLogo } from '../../utils/constants';
@@ -33,6 +33,20 @@ function StopValue({ trade }) {
 }
 
 const pnlColor = (val) => (val > 0 ? 'text-profit' : val < 0 ? 'text-loss' : 'text-breakeven');
+
+// Closed rows use net P&L over the account when a balance is set, and the
+// position return otherwise. Open rows do the same with the live P&L.
+function rowPercent(trade, { done, live, accountBalance }) {
+  if (done) return tradeShownPercent(trade, accountBalance);
+  if (live) return tradeShownPercent(trade, accountBalance, { net: live.pnl, positionPercent: live.percent });
+  return null;
+}
+
+function percentTitle(shown, done) {
+  if (!shown || shown.percent == null) return undefined;
+  if (shown.onAccount) return done ? 'תשואה על היתרה, אחרי עמלות' : 'תשואה חיה על היתרה';
+  return done ? 'תשואה על הפוזיציה, אחרי עמלות' : 'תשואה על הפוזיציה';
+}
 // Honor the saved status — broker CSV imports are status:'closed' with
 // pnlFromExchange but NO exit price, and deriving from exitPrice alone showed
 // them as eternally "open" with a — in the P&L column.
@@ -123,6 +137,7 @@ export default function TradeTable({
   const [detailTrade, setDetailTrade] = useState(null);
   const monthTotals = useMemo(() => buildMonthTotals(allTrades || trades), [allTrades, trades]);
   const pending = (t) => isLimitPending?.(t) ?? false;
+  const onAccount = Number(accountBalance) > 0;
 
   const statusBadge = (status, isPending) => {
     if (isPending) return <span className="text-xs font-semibold px-2 py-0.5 rounded bg-text-muted/15 text-text-muted">Limit ממתין</span>;
@@ -141,10 +156,10 @@ export default function TradeTable({
           const pnl = trade.netPnl ?? trade.pnl;
           const showMonthSep = showMonths && (idx === 0 || getMonthKey(trade) !== getMonthKey(trades[idx - 1]));
           const done = status !== 'open' && !isPending;
-          const netR = done ? signedTradeR(trade) : null;
-          const netPct = done ? tradeNetPercent(trade) : null;
-          const rr = formatSignedR(netR);
           const live = status === 'open' && !isPending ? liveById[trade.id] : null;
+          const netR = done ? signedTradeR(trade) : null;
+          const shownPct = rowPercent(trade, { done, live, accountBalance });
+          const rr = formatSignedR(netR);
           const selected = selectMode && selectedIds?.has(trade.id);
 
           return (
@@ -187,14 +202,14 @@ export default function TradeTable({
                     {trade.strategy && <span className="text-text-muted truncate min-w-0">· {trade.strategy}</span>}
                     {tradeSetups(trade)[0] && <span className="text-text-muted truncate min-w-0">· {setupLabel(tradeSetups(trade)[0])}</span>}
                   </span>
-                  {done && (
+                  {done && shownPct?.percent != null && (
                     <span className="num-mono shrink-0 inline-flex items-center gap-1.5" dir="ltr">
-                      <span className={pnlColor(netPct)} title="אחרי עמלות">{formatPercent(netPct)}</span>
+                      <span className={pnlColor(shownPct.percent)} title={percentTitle(shownPct, true)}>{formatPercent(shownPct.percent)}</span>
                       {rr !== '–' && <span className={pnl < 0 ? 'text-loss' : 'text-text-secondary'}>{rr}</span>}
                     </span>
                   )}
-                  {live && (
-                    <span className={`num-mono shrink-0 ${pnlColor(live.percent)}`} dir="ltr">{formatPercent(live.percent)}</span>
+                  {live && shownPct?.percent != null && (
+                    <span className={`num-mono shrink-0 ${pnlColor(shownPct.percent)}`} dir="ltr" title={percentTitle(shownPct, false)}>{formatPercent(shownPct.percent)}</span>
                   )}
                 </div>
               </button>
@@ -220,7 +235,7 @@ export default function TradeTable({
               <th className="py-2 px-2 text-right font-medium">כניסה</th>
               <th className="py-2 px-2 text-right font-medium">סגירה</th>
               <th className="py-2 px-2 text-right font-medium">SL</th>
-              <th className="py-2 px-2 text-right font-medium" title="אחוז נטו, אחרי עמלות">% נטו</th>
+              <th className="py-2 px-2 text-right font-medium" title={onAccount ? 'תשואה נטו על יתרת החשבון' : 'אחוז נטו על הפוזיציה, אחרי עמלות'}>{onAccount ? 'על היתרה' : '% נטו'}</th>
               <SortTh label="R נטו" sortKey="r" sort={sort} onSortChange={onSortChange} />
               <SortTh label="P&L" sortKey="pnl" sort={sort} onSortChange={onSortChange} />
               <th className="py-2 px-2 text-right font-medium">פעולות</th>
@@ -233,6 +248,7 @@ export default function TradeTable({
               const isPending = pending(trade);
               const showMonthSep = showMonths && (idx === 0 || getMonthKey(trade) !== getMonthKey(trades[idx - 1]));
               const live = status === 'open' && !isPending ? liveById[trade.id] : null;
+              const shownPct = rowPercent(trade, { done: status !== 'open' && !isPending, live, accountBalance });
               const selected = selectMode && selectedIds?.has(trade.id);
 
               return (
@@ -283,8 +299,8 @@ export default function TradeTable({
                       )}
                     </td>
                     <td className="py-2.5 px-2 text-text-primary whitespace-nowrap num-mono"><StopValue trade={trade} /></td>
-                    <td className={`py-2.5 px-2 whitespace-nowrap num-mono ${status === 'open' ? (live ? pnlColor(live.percent) : 'text-text-muted') : pnlColor(tradeNetPercent(trade))}`} title={status === 'open' ? undefined : 'אחרי עמלות'}>
-                      <span dir="ltr">{status === 'open' ? (live ? formatPercent(live.percent) : '—') : formatPercent(tradeNetPercent(trade))}</span>
+                    <td className={`py-2.5 px-2 whitespace-nowrap num-mono ${shownPct?.percent == null ? 'text-text-muted' : pnlColor(shownPct.percent)}`} title={percentTitle(shownPct, status !== 'open')}>
+                      <span dir="ltr">{shownPct?.percent == null ? '—' : formatPercent(shownPct.percent)}</span>
                     </td>
                     <td className={`py-2.5 px-2 whitespace-nowrap num-mono ${pnl < 0 ? 'text-loss' : 'text-text-secondary'}`} title="R נטו, אחרי עמלות"><span dir="ltr">{status === 'open' ? '–' : formatSignedR(signedTradeR(trade))}</span></td>
                     <td className={`py-2.5 px-2 font-bold whitespace-nowrap num-mono ${status === 'open' ? (live ? pnlColor(live.pnl) : 'text-text-muted') : pnlColor(pnl)}`}>
