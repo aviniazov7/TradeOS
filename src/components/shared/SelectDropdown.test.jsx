@@ -66,4 +66,23 @@ describe('SelectDropdown', () => {
     document.removeEventListener('keydown', onDoc);
     view.unmount();
   });
+
+  it('skips section headers when moving with the arrow keys', () => {
+    const onChange = vi.fn();
+    const grouped = [
+      { header: 'חוזים עתידיים' },
+      { value: 'ES', label: 'ES' },
+      { header: 'CFD / פורקס' },
+      { value: 'XAUUSD', label: 'XAUUSD' },
+    ];
+    const view = render(
+      <SelectDropdown id="pick" ariaLabel="מכשיר" value="ES" onChange={onChange} options={grouped} />,
+    );
+    act(() => { document.getElementById('pick').click(); });
+    expect(document.querySelector('[role="listbox"]').textContent).toContain('CFD / פורקס');
+    key(document, 'ArrowDown');
+    key(document, 'Enter');
+    expect(onChange).toHaveBeenCalledWith('XAUUSD');
+    view.unmount();
+  });
 });

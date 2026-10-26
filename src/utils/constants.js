@@ -79,11 +79,12 @@ export const COINS = [
 
 export const PAIRS = COINS.map((c) => `${c.symbol}USDT`);
 
-// ─── CME Futures Contracts (epic #32) ─────────────────────────────
-// pointValue is the dollar value of ONE full index/price point per contract —
-// it drives dollar P&L: (exit − entry) × pointValue × contracts. tickSize is
-// the minimum price increment (one tick = tickSize × pointValue dollars).
-// Source: CME contract specs. Keep in sync with docs/specs/futures-contracts.md.
+// ─── CME futures + spot CFDs (epic #32) ───────────────────────────
+// pointValue is the dollar value of ONE full price point per contract (futures)
+// or per standard lot (CFD). Dollar P&L is (exit − entry) × pointValue × size.
+// Futures size is whole contracts. CFD size is lots, including fractions
+// (0.01, 0.1, 1). tickSize is the minimum price increment.
+// CME rows: keep in sync with docs/specs/futures-contracts.md.
 export const FUTURES_CONTRACTS = [
   // Equity indices
   { symbol: 'ES',  name: 'E-mini S&P 500',        exchange: 'CME',   pointValue: 50,    tickSize: 0.25,  currency: 'USD' },
@@ -107,11 +108,50 @@ export const FUTURES_CONTRACTS = [
   { symbol: 'ZN',  name: '10-Year T-Note',        exchange: 'CBOT',  pointValue: 1000,  tickSize: 0.015625, currency: 'USD' },
 ];
 
+// Spot / index CFDs (Vantage and other forex brokers). kind:'cfd' means the
+// size is lots, not integer contracts. XAUUSD standard lot = 100 oz, so one
+// point on one lot is $100 — the same multiplier as a full GC, but 0.1 lot
+// is a tenth of that. XAGUSD standard lot = 5,000 oz. NAS100 and US100 are
+// the same Nasdaq-100 CFD under the two symbols brokers use; 1 lot pays
+// $1 per index point.
+export const CFD_INSTRUMENTS = [
+  { symbol: 'XAUUSD', name: 'Gold spot CFD',     exchange: 'CFD', pointValue: 100,  tickSize: 0.01,  currency: 'USD', kind: 'cfd', note: 'לוט סטנדרטי = 100 oz' },
+  { symbol: 'XAGUSD', name: 'Silver spot CFD',   exchange: 'CFD', pointValue: 5000, tickSize: 0.001, currency: 'USD', kind: 'cfd', note: 'לוט סטנדרטי = 5000 oz' },
+  { symbol: 'NAS100', name: 'Nasdaq-100 CFD',    exchange: 'CFD', pointValue: 1,    tickSize: 0.1,   currency: 'USD', kind: 'cfd', note: '1 יחידה לנקודה ללוט' },
+  { symbol: 'US100',  name: 'Nasdaq-100 CFD',    exchange: 'CFD', pointValue: 1,    tickSize: 0.1,   currency: 'USD', kind: 'cfd', note: '1 יחידה לנקודה ללוט' },
+];
+
+const INSTRUMENTS = [...FUTURES_CONTRACTS, ...CFD_INSTRUMENTS];
+
 /** Contract spec lookup by symbol (case-insensitive). Returns null when unknown. */
 export function getContractSpec(symbol) {
   if (!symbol) return null;
-  const s = String(symbol).toUpperCase();
-  return FUTURES_CONTRACTS.find((c) => c.symbol === s) || null;
+  const s = String(symbol).toUpperCase().replace(/[^A-Z0-9]/g, '');
+  return INSTRUMENTS.find((c) => c.symbol === s) || null;
+}
+
+/** True for spot/index CFDs sized in fractional lots. */
+export function isCfdSpec(spec) {
+  return spec?.kind === 'cfd';
+}
+
+/**
+ * Instrument picker rows for a futures journal: a Futures section, then
+ * CFD / Forex. Header rows have `header` and are not selectable.
+ */
+export function instrumentMenuOptions() {
+  const row = (c) => ({
+    value: c.symbol,
+    label: c.kind === 'cfd'
+      ? `${c.symbol} — ${c.name} · ${c.note}`
+      : `${c.symbol} — ${c.name}`,
+  });
+  return [
+    { header: 'חוזים עתידיים' },
+    ...FUTURES_CONTRACTS.map(row),
+    { header: 'CFD / פורקס' },
+    ...CFD_INSTRUMENTS.map(row),
+  ];
 }
 
 export const STRATEGIES = [

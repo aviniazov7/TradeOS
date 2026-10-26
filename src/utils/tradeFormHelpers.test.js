@@ -20,6 +20,8 @@ import {
   checklistAdherence,
   loadLastTradeChoices,
   saveLastTradeChoices,
+  parseInstrumentSize,
+  defaultInstrumentChoice,
   canMoveStopToBreakeven,
   riskBudgetCheck,
   riskToStop,
@@ -29,6 +31,7 @@ import {
   closeDateWithoutExitPrice,
 } from './tradeFormHelpers';
 import { computeTradeFields } from './calculations';
+import { getContractSpec, instrumentMenuOptions } from './constants';
 
 describe('aggregateFills', () => {
   it('returns the size-weighted average entry and total size', () => {
@@ -242,6 +245,63 @@ describe('commission presets', () => {
         exits: [{ price: 5020, quantity: 3 }],
       })).toBe(13.5);
     });
+    it('scales a fractional CFD lot', () => {
+      // 0.1 lot × $3 per side × 2 = $0.60
+      expect(estimateCommission({
+        assetClass: 'futures_cme', preset: { futuresPerContractSide: 3 },
+        fills: [{ price: 4020, quantity: 0.1 }],
+        exits: [{ price: 3991.8, quantity: 0.1 }],
+      })).toBeCloseTo(0.6, 5);
+    });
+  });
+});
+
+describe('CFD size and Vantage defaults', () => {
+  it('keeps fractional lots and whole futures contracts', () => {
+    expect(parseInstrumentSize('0.1', { kind: 'cfd' })).toBeCloseTo(0.1, 8);
+    expect(parseInstrumentSize('0.01', { kind: 'cfd' })).toBeCloseTo(0.01, 8);
+    expect(parseInstrumentSize('1.9', { kind: 'cfd' })).toBeCloseTo(1.9, 8);
+    expect(parseInstrumentSize('0.1', { symbol: 'ES' })).toBe(0);
+    expect(parseInstrumentSize('2', null)).toBe(2);
+  });
+
+  it('opens a Vantage journal on XAUUSD in lots, then remembers the last instrument', () => {
+    expect(defaultInstrumentChoice({ assetClass: 'futures_cme', broker: 'Vantage' })).toEqual({
+      pair: 'XAUUSD', direction: '', contracts: '0.1', fractional: true,
+    });
+    expect(defaultInstrumentChoice({ assetClass: 'futures_cme', broker: 'tradovate' })).toMatchObject({
+      pair: 'ES', contracts: '1', fractional: false,
+    });
+    const again = defaultInstrumentChoice({
+      assetClass: 'futures_cme',
+      broker: 'vantage',
+      last: { instrument: 'NAS100', direction: 'short', broker: 'vantage' },
+    });
+    expect(again).toEqual({ pair: 'NAS100', direction: 'short', contracts: '0.1', fractional: true });
+    // A different broker does not inherit the Vantage instrument.
+    expect(defaultInstrumentChoice({
+      assetClass: 'futures_cme',
+      broker: 'tradovate',
+      last: { instrument: 'XAUUSD', direction: 'short', broker: 'vantage' },
+    }).pair).toBe('ES');
+  });
+
+  it('lists gold, silver and the nasdaq CFD with the right point values, grouped after futures', () => {
+    expect(getContractSpec('XAUUSD')).toMatchObject({ pointValue: 100, kind: 'cfd' });
+    expect(getContractSpec('XAU/USD')?.symbol).toBe('XAUUSD');
+    expect(getContractSpec('XAGUSD').pointValue).toBe(5000);
+    expect(getContractSpec('NAS100')).toMatchObject({ pointValue: 1, note: '1 יחידה לנקודה ללוט' });
+    expect(getContractSpec('US100').pointValue).toBe(1);
+    expect(getContractSpec('GC').kind).toBeUndefined();
+    const menu = instrumentMenuOptions();
+    const headers = menu.filter((row) => row.header).map((row) => row.header);
+    expect(headers).toEqual(['חוזים עתידיים', 'CFD / פורקס']);
+    const xau = menu.findIndex((row) => row.value === 'XAUUSD');
+    const gc = menu.findIndex((row) => row.value === 'GC');
+    const cfdHeader = menu.findIndex((row) => row.header === 'CFD / פורקס');
+    expect(gc).toBeGreaterThan(-1);
+    expect(xau).toBeGreaterThan(cfdHeader);
+    expect(cfdHeader).toBeGreaterThan(gc);
   });
 });
 
@@ -278,9 +338,23 @@ describe('remembered choices', () => {
     const s = memStorage();
     saveLastTradeChoices('j1', { strategy: 'SMC', timeframe: '1H', trigger: 'BOS' }, s);
     saveLastTradeChoices('j2', { strategy: 'Wyckoff', timeframe: '1D', trigger: '' }, s);
-    expect(loadLastTradeChoices('j1', s)).toEqual({ strategy: 'SMC', timeframe: '1H', trigger: 'BOS' });
-    expect(loadLastTradeChoices('j2', s)).toEqual({ strategy: 'Wyckoff', timeframe: '1D', trigger: '' });
+    expect(loadLastTradeChoices('j1', s)).toEqual({
+      strategy: 'SMC', timeframe: '1H', trigger: 'BOS', instrument: '', direction: '', broker: '',
+    });
+    expect(loadLastTradeChoices('j2', s)).toEqual({
+      strategy: 'Wyckoff', timeframe: '1D', trigger: '', instrument: '', direction: '', broker: '',
+    });
     expect(loadLastTradeChoices('j3', s)).toBeNull();
+  });
+
+  it('remembers broker, instrument and direction without dropping the setup', () => {
+    const s = memStorage();
+    saveLastTradeChoices('j1', { strategy: 'Wyckoff', timeframe: '15m', trigger: 'Spring' }, s);
+    saveLastTradeChoices('j1', { instrument: 'XAUUSD', direction: 'short', broker: 'vantage' }, s);
+    expect(loadLastTradeChoices('j1', s)).toEqual({
+      strategy: 'Wyckoff', timeframe: '15m', trigger: 'Spring',
+      instrument: 'XAUUSD', direction: 'short', broker: 'vantage',
+    });
   });
 
   it('survives broken or missing storage', () => {
@@ -346,6 +420,8 @@ describe('ticket summary', () => {
     expect(riskToStop({ entry: 100, stop: 95, units: 4 })).toBe(20);
     // ES: 10 points × $50 × 2 contracts
     expect(riskToStop({ entry: 5000, stop: 4990, units: 2, pointValue: 50 })).toBe(1000);
+    // XAUUSD: 10 points × $100 × 0.1 lot
+    expect(riskToStop({ entry: 4020, stop: 4030, units: 0.1, pointValue: 100 })).toBeCloseTo(100, 6);
     expect(riskToStop({ entry: 100, stop: 0, units: 4 })).toBe(0);
     expect(stopDistancePct(100, 95)).toBeCloseTo(5, 10);
     expect(stopDistancePct(100, '')).toBeNull();

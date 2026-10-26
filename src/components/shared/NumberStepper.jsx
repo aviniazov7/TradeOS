@@ -13,10 +13,12 @@ import { Minus, Plus } from 'lucide-react';
  *   suffix    - optional small text shown inside the field (e.g. unit)
  */
 export default function NumberStepper({ value, onChange, min = 1, max, step = 1, placeholder = '', suffix, className = '' }) {
+  const places = (String(step).split('.')[1] || '').length;
   const clamp = (v) => {
     if (Number.isNaN(v)) return min ?? 0;
     if (max != null) v = Math.min(max, v);
     if (min != null) v = Math.max(min, v);
+    if (places) v = Number(v.toFixed(places));
     return v;
   };
   const current = parseFloat(value);
@@ -31,7 +33,9 @@ export default function NumberStepper({ value, onChange, min = 1, max, step = 1,
       <div className="flex-1 min-w-0 flex items-center justify-center gap-1">
         <input
           type="number"
-          inputMode="numeric"
+          inputMode={places ? 'decimal' : 'numeric'}
+          step={places ? 'any' : step}
+          min={min}
           value={value}
           onChange={(e) => onChange(e.target.value)}
           placeholder={placeholder}

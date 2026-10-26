@@ -1,6 +1,19 @@
 import { useState, useRef, useEffect, useLayoutEffect, useId } from 'react';
 import { createPortal } from 'react-dom';
 
+const isOptionRow = (o) => !!o && !o.header && o.value != null;
+
+function stepSelectable(opts, from, dir) {
+  const idxs = [];
+  opts.forEach((o, i) => { if (isOptionRow(o)) idxs.push(i); });
+  if (!idxs.length) return 0;
+  if (dir === 'home') return idxs[0];
+  if (dir === 'end') return idxs[idxs.length - 1];
+  const pos = idxs.indexOf(from);
+  const base = pos < 0 ? (dir < 0 ? idxs.length : -1) : pos;
+  return idxs[Math.min(idxs.length - 1, Math.max(0, base + dir))];
+}
+
 /**
  * SelectDropdown - custom dropdown replacement for native <select>.
  *
@@ -12,7 +25,8 @@ import { createPortal } from 'react-dom';
  * Props:
  *   value       - string, current selected value
  *   onChange     - (value: string) => void
- *   options      - Array<{ value: string, label: string }>
+ *   options      - Array<{ value: string, label: string } | { header: string }>
+ *                  Header rows are section labels (not selectable).
  *   placeholder  - string, shown when no value selected
  *   label        - optional label text
  *   allowClear   - boolean, show clear option (default false)
@@ -69,7 +83,7 @@ export default function SelectDropdown({ value, onChange, options = [], placehol
     };
   }, [open]);
 
-  const selectedOption = options.find((o) => o.value === value);
+  const selectedOption = options.find((o) => isOptionRow(o) && o.value === value);
   const displayText = selectedOption?.label || placeholder;
   const hasValue = !!value;
 
@@ -80,8 +94,9 @@ export default function SelectDropdown({ value, onChange, options = [], placehol
   };
 
   const openMenu = () => {
-    const idx = optionsRef.current.findIndex((o) => o.value === value);
-    const next = idx >= 0 ? idx : 0;
+    const opts = optionsRef.current;
+    const idx = opts.findIndex((o) => isOptionRow(o) && o.value === value);
+    const next = idx >= 0 ? idx : stepSelectable(opts, -1, 1);
     activeRef.current = next;
     setActive(next);
     setOpen(true);
@@ -104,10 +119,8 @@ export default function SelectDropdown({ value, onChange, options = [], placehol
       if (e.key === 'ArrowDown' || e.key === 'ArrowUp' || e.key === 'Home' || e.key === 'End') {
         e.preventDefault();
         setActive((i) => {
-          const n = e.key === 'Home' ? 0
-            : e.key === 'End' ? Math.max(0, opts.length - 1)
-            : e.key === 'ArrowDown' ? Math.min(opts.length - 1, i + 1)
-            : Math.max(0, i - 1);
+          const dir = e.key === 'Home' ? 'home' : e.key === 'End' ? 'end' : e.key === 'ArrowDown' ? 1 : -1;
+          const n = stepSelectable(opts, i, dir);
           activeRef.current = n;
           return n;
         });
@@ -117,7 +130,7 @@ export default function SelectDropdown({ value, onChange, options = [], placehol
         e.preventDefault();
         e.stopPropagation();
         const opt = opts[activeRef.current];
-        if (opt) {
+        if (isOptionRow(opt)) {
           onChangeRef.current?.(opt.value);
           setOpen(false);
           btnRef.current?.focus();
@@ -188,6 +201,13 @@ export default function SelectDropdown({ value, onChange, options = [], placehol
                 </button>
               )}
               {options.map((o, i) => {
+                if (o.header) {
+                  return (
+                    <div key={`hdr-${i}`} role="presentation" className={`px-3 pt-2 pb-1 text-[10px] font-semibold tracking-wide text-text-muted sticky top-0 bg-bg-overlay ${i === 0 ? '' : 'border-t border-border-primary mt-1'}`}>
+                      {o.header}
+                    </div>
+                  );
+                }
                 const selected = value === o.value;
                 const highlighted = i === active;
                 return (

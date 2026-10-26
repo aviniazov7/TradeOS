@@ -5,6 +5,7 @@
  * itself stays in calculations.js — these only shape the INPUTS fed to it.
  */
 import { initialStopLoss, isStopOnRiskSide } from './calculations';
+import { getContractSpec } from './constants';
 
 const num = (v) => {
   const n = parseFloat(v);
@@ -216,7 +217,8 @@ export function hasCommissionPreset(assetClass, preset) {
  * Crypto: entry notional × (maker for a limit order, taker for market) +
  *         exit notional × taker (exits are treated as taker — conservative).
  * Stocks: every fill and every exit is an order: max(min, perShare × shares).
- * Futures: $ per contract per side × total contracts × 2.
+ * Futures and CFDs: $ per contract (or per lot) per side × size × 2.
+ * Fractional lots scale the same way (0.1 lot is a tenth of one lot).
  * Returns null when no preset applies or there is no size yet.
  */
 export function estimateCommission({ assetClass = 'crypto', preset, orderType = 'market', fills = [], exits = [] } = {}) {
@@ -295,24 +297,70 @@ export function checklistAdherence(rows) {
 
 const lastChoicesKey = (journalId) => `tradeos_tradeForm_last_${journalId || 'default'}`;
 
-/** Last strategy / timeframe / trigger used in this journal, or null. */
+const LAST_CHOICE_KEYS = ['strategy', 'timeframe', 'trigger', 'instrument', 'direction', 'broker'];
+
+function blankChoices() {
+  return { strategy: '', timeframe: '', trigger: '', instrument: '', direction: '', broker: '' };
+}
+
+/** Last strategy / timeframe / trigger / instrument / direction / broker in this journal, or null. */
 export function loadLastTradeChoices(journalId, storage = globalThis.localStorage) {
   try {
     const raw = storage?.getItem(lastChoicesKey(journalId));
     if (!raw) return null;
     const v = JSON.parse(raw);
     if (!v || typeof v !== 'object') return null;
-    const pick = (k) => (typeof v[k] === 'string' ? v[k] : '');
-    return { strategy: pick('strategy'), timeframe: pick('timeframe'), trigger: pick('trigger') };
+    const out = blankChoices();
+    for (const k of LAST_CHOICE_KEYS) out[k] = typeof v[k] === 'string' ? v[k] : '';
+    if (out.direction !== 'long' && out.direction !== 'short') out.direction = '';
+    return out;
   } catch {
     return null;
   }
 }
 
-export function saveLastTradeChoices(journalId, { strategy = '', timeframe = '', trigger = '' } = {}, storage = globalThis.localStorage) {
+export function saveLastTradeChoices(journalId, choices = {}, storage = globalThis.localStorage) {
   try {
-    storage?.setItem(lastChoicesKey(journalId), JSON.stringify({ strategy, timeframe, trigger }));
+    const prev = loadLastTradeChoices(journalId, storage) || blankChoices();
+    const next = blankChoices();
+    for (const k of LAST_CHOICE_KEYS) next[k] = typeof choices[k] === 'string' ? choices[k] : (prev[k] || '');
+    if (next.direction !== 'long' && next.direction !== 'short') next.direction = '';
+    storage?.setItem(lastChoicesKey(journalId), JSON.stringify(next));
   } catch { /* storage unavailable — remembering is a convenience only */ }
+}
+
+/**
+ * Positive size in the instrument's unit. CFDs keep fractional lots;
+ * CME futures stay whole contracts (0.1 is not one micro).
+ */
+export function parseInstrumentSize(raw, spec) {
+  const n = spec?.kind === 'cfd' ? parseFloat(raw) : parseInt(raw, 10);
+  return Number.isFinite(n) && n > 0 ? n : 0;
+}
+
+/**
+ * Defaults for a new trade. A Vantage journal opens on XAUUSD in lots.
+ * A remembered instrument/direction applies only when it was saved for the
+ * same broker (or before a broker was remembered).
+ */
+export function defaultInstrumentChoice({ assetClass = 'crypto', broker = '', last = null } = {}) {
+  const journalBroker = String(broker || '').trim().toLowerCase();
+  const rememberedBroker = String(last?.broker || '').trim().toLowerCase();
+  const brokerMatches = !rememberedBroker || rememberedBroker === journalBroker;
+  const direction = brokerMatches && (last?.direction === 'long' || last?.direction === 'short')
+    ? last.direction
+    : '';
+  if (assetClass === 'stocks') return { pair: 'AAPL', direction, contracts: '1', fractional: false };
+  if (assetClass !== 'futures_cme') return { pair: 'BTCUSDT', direction, contracts: '1', fractional: false };
+  const remembered = brokerMatches ? getContractSpec(last?.instrument) : null;
+  const spec = remembered || getContractSpec(journalBroker === 'vantage' ? 'XAUUSD' : 'ES');
+  const fractional = spec?.kind === 'cfd';
+  return {
+    pair: spec?.symbol || 'ES',
+    direction,
+    contracts: fractional ? '0.1' : '1',
+    fractional: !!fractional,
+  };
 }
 
 // ── Stop to breakeven ───────────────────────────────────────────────────────
