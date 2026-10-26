@@ -61,7 +61,6 @@ A trading journal and analytics platform for crypto, stocks and futures traders:
 - **Market**: global stats, Fear & Greed, altcoin season, gainers/losers, heatmap, funding / open interest / long-short ratios, a live liquidation stream, coin analysis, whale tracking and Polymarket (Premium). Every panel shows an error state with retry when a source fails.
 - **News**: crypto and stocks feeds (machine-translated headlines) and an **economic calendar** with a switch for the "high-impact USD event in an hour" push.
 - **TradeAI**: chat, a chart analyzer and the AI coach. Numbers in AI answers stay left-to-right inside Hebrew text; all AI HTML is sanitized.
-- **Wyckoff setup scanner** (admin-only while being calibrated).
 
 ### Accounts, plans and accessibility
 - Google or email sign-in; password policy (8+ chars, an uppercase letter and a digit); an unverified-email reminder; profile photo; complete **account deletion** (see Security).
@@ -156,7 +155,7 @@ TradeOS/
 │   ├── components/        # one folder per area: admin, analytics, auth, backtest, calculator,
 │   │                      #   dashboard, dca, exchange, journal, layout, legal, market, mentality,
 │   │                      #   news, onboarding, plans, polymarket, portfolio, premium, profile,
-│   │                      #   propfirm, shared, signals, stocks, tax, terminal, wallets, whales
+│   │                      #   propfirm, shared, stocks, tax, terminal, wallets, whales
 │   ├── contexts/          # Auth, Journal, Backtest
 │   ├── hooks/             # data and behaviour hooks
 │   ├── services/          # ALL Firebase access + Worker clients (firestoreService, authService, pushService…)

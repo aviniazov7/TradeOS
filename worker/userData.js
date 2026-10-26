@@ -7,7 +7,7 @@
 export const USER_SUBCOLLECTIONS = [
   'trades', 'journals', 'backtests', 'backtestJournals', 'dca',
   'tradingPlans', 'notes', 'strategies', 'morningJournals', 'eveningJournals',
-  'processes', 'signals', 'watchlist', 'wyckoffSetups', 'polymarketWatch', 'polymarketStrategies', 'settings',
+  'processes', 'polymarketWatch', 'polymarketStrategies', 'settings',
   'tradeImages',
 ];
 

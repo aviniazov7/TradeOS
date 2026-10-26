@@ -20,7 +20,7 @@ const mobileItems = [
   { to: '/', label: 'בית', icon: LayoutDashboard },
   { to: '/journal', label: 'יומן', icon: BookOpen },
   { to: '/trade-ai', label: 'TradeAI', icon: Bot },
-  { to: '/market', label: 'שוק', icon: Activity, match: ['/news', '/polymarket', '/scanner'] },
+  { to: '/market', label: 'שוק', icon: Activity, match: ['/news', '/polymarket'] },
 ];
 // The "+" sits between these two halves of mobileItems.
 const SPLIT_AT = 2;

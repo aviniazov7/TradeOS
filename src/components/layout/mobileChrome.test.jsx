@@ -93,6 +93,8 @@ describe('mobile chrome', () => {
     expect(nav.querySelector('a[href="/journal?tab=exchange"]')).toBeNull();
     expect(nav.textContent).not.toContain('חיבור בורסה');
     expect(nav.textContent).not.toContain('חיבור בורסאות');
+    expect(nav.textContent).not.toContain('מנוע ויקוף');
+    expect(nav.querySelector('a[href="/scanner"]')).toBeNull();
     await view.cleanup();
   });
 
