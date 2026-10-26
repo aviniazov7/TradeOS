@@ -26,6 +26,7 @@ import {
   tradeRewardRisk,
   signedTradeR,
   tradeNetPercent,
+  tradeAccountPercent,
   positionUnits,
   calculateAvgRR,
   computeDrawdown,
@@ -366,6 +367,27 @@ describe('R with a moved stop — measured against the ORIGINAL stop', () => {
   it('tradeNetPercent falls back to scaling the stored percent when size is missing', () => {
     const t = { pnl: 10, netPnl: 8, pnlPercent: 10, fees: 2 };
     expect(tradeNetPercent(t)).toBeCloseTo(8, 9);
+  });
+
+  it('tradeAccountPercent is net P&L over the journal balance', () => {
+    const gold = {
+      direction: 'short', entryPrice: 4019.2, exitPrice: 3991.8, netPnl: 27.4,
+      assetClass: 'futures_cme', positionSize: 4019.2,
+      contract: { symbol: 'XAUUSD', pointValue: 100, contracts: 0.01 },
+    };
+    expect(tradeAccountPercent(gold, 369.57)).toBeCloseTo((27.4 / 369.57) * 100, 6);
+    expect(tradeAccountPercent(gold, 0)).toBeNull();
+    expect(tradeAccountPercent(gold, null)).toBeNull();
+  });
+
+  it('CFD risk is |entry − stop| × lots × point value, not the saved riskAmount', () => {
+    const gold = {
+      direction: 'short', entryPrice: 4019.2, stopLoss: 4021.94, riskAmount: 0,
+      assetClass: 'futures_cme', positionSize: 4019.2 * 100 * 0.01,
+      contract: { symbol: 'XAUUSD', pointValue: 100, contracts: 0.01 },
+    };
+    expect(initialRiskUsd(gold)).toBeCloseTo(2.74, 2);
+    expect(tradeRMultiple({ ...gold, netPnl: 27.4 })).toBeCloseTo(10, 2);
   });
 
   it('tradeRewardRisk uses the weighted exit of partial exits', () => {

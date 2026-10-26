@@ -72,6 +72,10 @@ describe('symbol mapping', () => {
     expect(futuresTicker('NQZ5')).toBe('NQ=F');
     expect(futuresTicker('es1!')).toBe('ES=F');
     expect(futuresTicker('FOO')).toBeNull();
+    expect(futuresTicker('XAUUSD')).toBe('GC=F');
+    expect(futuresTicker('XAGUSD')).toBe('SI=F');
+    expect(futuresTicker('NAS100')).toBe('NQ=F');
+    expect(futuresTicker('US100')).toBe('NQ=F');
   });
 });
 
@@ -145,6 +149,14 @@ describe('handleCandlesRoute', () => {
     expect(res.status).toBe(200);
     expect(j.source).toBe('yahoo');
     expect(j.candles.length).toBe(2);
+  });
+
+  it('maps an XAUUSD CFD onto gold futures candles', async () => {
+    let called;
+    const fetchImpl = async (u) => { called = u; return new Response(JSON.stringify({ chart: { result: [YAHOO_REAL] } })); };
+    const res = await call({ symbol: 'XAUUSD', asset: 'futures', from: 1789999200000, to: 1790006400000 }, { fetchImpl, cache: null, now: 1790010000000 });
+    expect(res.status).toBe(200);
+    expect(called).toContain('/chart/GC%3DF?');
   });
 
   it('400s on invalid input without touching upstream', async () => {

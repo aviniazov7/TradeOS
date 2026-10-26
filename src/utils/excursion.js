@@ -25,6 +25,30 @@ const toMs = (d) => {
   return Number.isFinite(ms) ? ms : 0;
 };
 
+/**
+ * Shift a proxy series (GC=F for XAUUSD, NQ=F for NAS100) so the bar at the
+ * fill matches the fill. A stable futures-versus-spot basis then does not
+ * show up as MAE/MFE. The shape of the path is unchanged.
+ */
+export function rebaseCandlesToFill(candles, entryPrice, entryMs, stepMs = 0) {
+  if (!Array.isArray(candles) || !candles.length || !(Number(entryPrice) > 0)) return candles;
+  const step = stepMs > 0 ? stepMs : 1;
+  let bar = candles.find((c) => c && c.t <= entryMs && c.t + step > entryMs);
+  if (!bar) {
+    let bestDist = Infinity;
+    for (const c of candles) {
+      if (!c || !Number.isFinite(c.t)) continue;
+      const dist = Math.abs(c.t - entryMs);
+      if (dist < bestDist) { bar = c; bestDist = dist; }
+    }
+  }
+  const anchor = Number(bar?.c);
+  if (!Number.isFinite(anchor)) return candles;
+  const delta = Number(entryPrice) - anchor;
+  if (Math.abs(delta) < 1e-8) return candles;
+  return candles.map((c) => ({ ...c, o: c.o + delta, h: c.h + delta, l: c.l + delta, c: c.c + delta }));
+}
+
 /** Candle spacing in ms (the smallest gap — weekends/halts make bigger ones). */
 export function candleStepMs(candles = []) {
   let step = Infinity;

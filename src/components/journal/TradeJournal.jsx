@@ -742,6 +742,7 @@ export default function TradeJournal() {
                 onDelete={handleDeleteWithUndo}
                 onShare={setShareTarget}
                 isLimitPending={isLimitPending}
+                accountBalance={openingBalance > 0 ? openingBalance : (balanceIsLive ? liveExchangeBalance : 0)}
               />
               {sortedTrades.length > visibleCount && (
                 <button
