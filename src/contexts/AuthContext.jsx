@@ -211,7 +211,7 @@ export function AuthProvider({ children }) {
     const api = await accountData();
     // Wipe ALL user data: the shared USER_SUBCOLLECTIONS list covers every
     // subcollection the app writes (a hard-coded copy here kept orphaning
-    // backtestJournals/processes/signals/watchlist), plus the PUBLIC
+    // backtestJournals/processes), plus the PUBLIC
     // leaderboard entry — displayName + photo readable by any signed-in user,
     // which must not survive an account deletion.
     const results = await Promise.allSettled([
