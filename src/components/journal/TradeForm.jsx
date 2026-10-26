@@ -33,7 +33,7 @@ import {
   canMoveStopToBreakeven, breakevenStopValue, closeDateWithoutExitPrice,
   riskBudgetCheck, riskToStop, riskSizedNotional, stopDistancePct, rMultiple, plannedRewardRisk,
 } from '../../utils/tradeFormHelpers';
-import { calculatePnLPercent, calculateRR, calculateNetPnL, calculatePartialPnL, calculateWeightedExitPrice, calculateFuturesContractsPnL, calculateFuturesNotional, initialStopLoss, isStopOnRiskSide, isClosedTrade, safePnl } from '../../utils/calculations';
+import { calculatePnLPercent, calculateRR, calculateNetPnL, calculatePartialPnL, calculateWeightedExitPrice, calculateFuturesContractsPnL, calculateFuturesNotional, initialStopLoss, isStopOnRiskSide, isClosedTrade, safePnl, tradeShownPercent } from '../../utils/calculations';
 import { getSessionFromDate } from '../../utils/sessions';
 import { formatCurrency, formatPercent } from '../../utils/formatters';
 
@@ -204,7 +204,7 @@ function RailBlock({ title, children }) {
   );
 }
 
-export default function TradeForm({ isOpen, onClose, trade, onSave, riskSettings, livePrices = {}, journalAssetClass = 'crypto', prefill = null }) {
+export default function TradeForm({ isOpen, onClose, trade, onSave, riskSettings, livePrices = {}, journalAssetClass = 'crypto', prefill = null, accountBalance = 0 }) {
   // Asset class is owned by the JOURNAL — every trade inherits it, no per-trade
   // toggle. Editing a trade keeps that trade's own stored class.
   const newTradeAssetClass = ['futures_cme', 'stocks'].includes(journalAssetClass) ? journalAssetClass : 'crypto';
@@ -872,6 +872,10 @@ export default function TradeForm({ isOpen, onClose, trade, onSave, riskSettings
   const shownNetPercent = shown && totalNotional > 0
     ? (shown.netPnl / totalNotional) * 100 * resultLev
     : (shown?.pnlPercent ?? 0);
+  // Same number as the journal list: net P&L over the account when a balance
+  // is set, otherwise the position return computed above.
+  const shownReturn = shown ? tradeShownPercent({ netPnl: shown.netPnl }, accountBalance) : null;
+  const resultPercent = shownReturn?.onAccount ? shownReturn.percent : shownNetPercent;
   const realizedNetR = shown && stopRisk > 0 ? shown.netPnl / stopRisk : null;
 
   // Collapsible sections. Plan: open while there is a plan to pick or one
@@ -1370,7 +1374,7 @@ export default function TradeForm({ isOpen, onClose, trade, onSave, riskSettings
           <RailBlock title="תוצאה">
             <div className="flex items-baseline justify-between gap-2 py-1">
               <span className={`num-mono text-xl font-bold ${pnlColor(shown.netPnl)}`} dir="ltr">{formatCurrency(shown.netPnl)}</span>
-              <span className={`num-mono text-xs font-semibold ${pnlColor(shownNetPercent)}`} dir="ltr">{formatPercent(shownNetPercent)}</span>
+              <span className={`num-mono text-xs font-semibold ${pnlColor(resultPercent)}`} dir="ltr" title={shownReturn?.onAccount ? 'תשואה על היתרה' : 'תשואה על הפוזיציה'}>{formatPercent(resultPercent)}</span>
             </div>
             {shown.pnl != null && <Row label="ברוטו" value={formatCurrency(shown.pnl)} tone="text-text-secondary" />}
             <Row label="R בפועל" value={fmtR(realizedNetR)} tone={pnlColor(shown.netPnl)} />

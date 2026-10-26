@@ -27,6 +27,7 @@ import {
   signedTradeR,
   tradeNetPercent,
   tradeAccountPercent,
+  tradeShownPercent,
   positionUnits,
   calculateAvgRR,
   computeDrawdown,
@@ -378,6 +379,16 @@ describe('R with a moved stop — measured against the ORIGINAL stop', () => {
     expect(tradeAccountPercent(gold, 369.57)).toBeCloseTo((27.4 / 369.57) * 100, 6);
     expect(tradeAccountPercent(gold, 0)).toBeNull();
     expect(tradeAccountPercent(gold, null)).toBeNull();
+  });
+
+  it('tradeShownPercent prefers the account and falls back to the position', () => {
+    const win = { ...base, result: 'win', pnl: 200, netPnl: 180, fees: 20, rrRatio: 2 };
+    expect(tradeShownPercent(win, 1000)).toEqual({ percent: 18, onAccount: true });
+    expect(tradeShownPercent(win, 0).onAccount).toBe(false);
+    expect(tradeShownPercent(win, 0).percent).toBeCloseTo(18, 9);
+    expect(tradeShownPercent(win, 500, { net: 25, positionPercent: 40 })).toEqual({ percent: 5, onAccount: true });
+    expect(tradeShownPercent(win, 0, { net: 25, positionPercent: 40 })).toEqual({ percent: 40, onAccount: false });
+    expect(tradeShownPercent(win, 0, { net: 25, positionPercent: null })).toEqual({ percent: null, onAccount: false });
   });
 
   it('CFD risk is |entry − stop| × lots × point value, not the saved riskAmount', () => {
