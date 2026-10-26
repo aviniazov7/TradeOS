@@ -234,7 +234,10 @@ export const EXCHANGES = [
   { value: 'phemex', label: 'Phemex', domain: 'phemex.com', type: 'exchange' },
   { value: 'deribit', label: 'Deribit', domain: 'deribit.com', type: 'exchange' },
   { value: 'hyperliquid', label: 'Hyperliquid', domain: 'hyperliquid.xyz', type: 'exchange' },
-  // ברוקרים
+  // ברוקרים — one shared list for every journal asset class (crypto and
+  // non-crypto). Vantage is a CFD/forex/gold broker, so it stays in this
+  // list rather than the crypto exchange group.
+  { value: 'vantage', label: 'Vantage', domain: 'vantagemarkets.com', type: 'broker' },
   { value: 'icmarkets', label: 'IC Markets', domain: 'icmarkets.com', type: 'broker' },
   { value: 'pepperstone', label: 'Pepperstone', domain: 'pepperstone.com', type: 'broker' },
   { value: 'exness', label: 'Exness', domain: 'exness.com', type: 'broker' },
@@ -282,7 +285,7 @@ export const exchangeLabel = (value) => EXCHANGES.find((e) => e.value === value)
 
 // Transparent brand marks, not the 16px Google favicon (Bybit's favicon reads
 // as generic bars) and not a JPEG plate. Default files are the dark-UI
-// versions. OKX, Bybit, MEXC, and Phemex also have a light-theme file.
+// versions. OKX, Bybit, MEXC, Phemex, and Vantage also have a light-theme file.
 const LOCAL_EXCHANGE_LOGOS = {
   binance: '/logos/exchanges/binance.svg',
   bybit: '/logos/exchanges/bybit.png',
@@ -298,6 +301,9 @@ const LOCAL_EXCHANGE_LOGOS = {
   phemex: '/logos/exchanges/phemex.svg',
   deribit: '/logos/exchanges/deribit.svg',
   hyperliquid: '/logos/exchanges/hyperliquid.png',
+  // Symbol from the official Vantage header logo. Teal is lifted to white
+  // so the mark reads on the black UI; orange stays #e35728.
+  vantage: '/logos/exchanges/vantage.svg',
 };
 
 const LOCAL_EXCHANGE_LOGOS_ON_LIGHT = {
@@ -305,6 +311,8 @@ const LOCAL_EXCHANGE_LOGOS_ON_LIGHT = {
   bybit: '/logos/exchanges/bybit-on-light.png',
   mexc: '/logos/exchanges/mexc-on-light.svg',
   phemex: '/logos/exchanges/phemex-on-light.svg',
+  // Official two-color mark (teal #034854 + orange #e35728).
+  vantage: '/logos/exchanges/vantage-on-light.svg',
 };
 
 // Sentinels for "no venue". These must never resolve to a local exchange file

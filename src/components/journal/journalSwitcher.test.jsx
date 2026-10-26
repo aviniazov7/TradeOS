@@ -64,7 +64,10 @@ describe('JournalSwitcher menu', () => {
     expect(left + width).toBeLessThanOrEqual(390 - 8);
     expect(menu.style.maxWidth).toBe('calc(100vw - 16px)');
     const imgs = [...menu.querySelectorAll('img')].map((n) => n.getAttribute('src'));
-    expect(imgs.filter((src) => src?.includes('/logos/exchanges/'))).toEqual(['/logos/exchanges/bybit.png']);
+    expect(imgs.filter((src) => src?.includes('/logos/exchanges/'))).toEqual([
+      '/logos/exchanges/bybit.png',
+      '/logos/exchanges/vantage.svg',
+    ]);
     expect(menu.textContent).toContain('ישן');
     const letters = [...menu.querySelectorAll('[data-testid="journal-letter"]')].map((n) => n.textContent);
     expect(letters).toEqual(expect.arrayContaining(['A', 'ר', 'ב', 'א']));

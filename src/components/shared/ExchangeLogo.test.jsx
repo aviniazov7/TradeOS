@@ -60,11 +60,22 @@ describe('ExchangeLogo', () => {
     await view.unmount();
   });
 
-  it('renders a stored Vantage value without throwing', async () => {
-    const view = await render({ exchange: 'Vantage', badge: 'יומן' });
-    expect(view.el.querySelector('img, span')).toBeTruthy();
-    const src = view.el.querySelector('img')?.getAttribute('src') || '';
-    expect(src).not.toContain('/logos/exchanges/');
-    await view.unmount();
+  it('draws the bundled Vantage mark with no favicon chip', async () => {
+    document.documentElement.classList.remove('light');
+    const dark = await render({ exchange: 'vantage', size: 'w-5 h-5' });
+    const frame = dark.el.querySelector('span');
+    const img = dark.el.querySelector('img');
+    expect(img.getAttribute('src')).toBe('/logos/exchanges/vantage.svg');
+    expect(frame.className).not.toContain('bg-white');
+    expect(img.className).toContain('w-full');
+    expect(img.className).toContain('object-contain');
+    await dark.unmount();
+
+    document.documentElement.classList.add('light');
+    const light = await render({ exchange: 'Vantage' });
+    expect(light.el.querySelector('img').getAttribute('src')).toBe('/logos/exchanges/vantage-on-light.svg');
+    expect(light.el.querySelector('span').className).not.toContain('bg-white');
+    await light.unmount();
+    document.documentElement.classList.remove('light');
   });
 });
