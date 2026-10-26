@@ -50,8 +50,22 @@ async function typeInput(input, value) {
   });
 }
 
+function closePickers() {
+  act(() => {
+    document.body.dispatchEvent(new MouseEvent('mousedown', { bubbles: true }));
+  });
+}
+
+function openPicker(input) {
+  closePickers();
+  click(input);
+}
+
 function enabledTime(label) {
-  return [...document.querySelectorAll('.react-datepicker__time-list-item')].find((li) => (
+  const calendars = [...document.querySelectorAll('.react-datepicker')];
+  const calendar = calendars[calendars.length - 1];
+  if (!calendar) return null;
+  return [...calendar.querySelectorAll('.react-datepicker__time-list-item')].find((li) => (
     li.textContent.trim() === label && !li.className.includes('disabled')
   ));
 }
@@ -108,19 +122,52 @@ describe('partial exit datetime', () => {
     expect(close.value).toBe('26/10/26 22:09');
     expect(tp.value).toBe('26/10/26 22:09');
 
-    click(tp);
+    openPicker(tp);
     const picked = enabledTime('22:07');
     expect(picked).toBeTruthy();
     click(picked);
     expect(tp.value).toBe('26/10/26 22:07');
-    click(tp);
+    closePickers();
 
     vi.setSystemTime(new Date(2026, 9, 26, 22, 20, 0));
-    click(close);
+    openPicker(close);
     const later = enabledTime('22:15');
     expect(later).toBeTruthy();
     click(later);
     expect(close.value).toBe('26/10/26 22:15');
     expect(tp.value).toBe('26/10/26 22:07');
+  });
+
+  it('allows a close time before the entry, and moves an untouched close with the entry', async () => {
+    const entry = document.getElementById('tt-entry-date');
+    const close = document.getElementById('tt-exit-date');
+    openPicker(close);
+    const earlier = enabledTime('21:00');
+    const future = enabledTime('23:00');
+    expect(earlier).toBeTruthy();
+    expect(earlier.className).not.toContain('disabled');
+    expect(future).toBeTruthy();
+    expect(future.className).not.toContain('disabled');
+    closePickers();
+
+    vi.setSystemTime(new Date(2026, 9, 26, 22, 9, 0));
+    await typeInput(document.getElementById('tt-exit'), '3991.8');
+    expect(close.value).toBe('26/10/26 22:09');
+
+    openPicker(entry);
+    click(enabledTime('21:00'));
+    expect(entry.value).toBe('26/10/26 21:00');
+    expect(close.value).toBe('26/10/26 21:00');
+    closePickers();
+
+    openPicker(close);
+    click(enabledTime('21:30'));
+    expect(close.value).toBe('26/10/26 21:30');
+    closePickers();
+
+    openPicker(entry);
+    click(enabledTime('20:00'));
+    expect(entry.value).toBe('26/10/26 20:00');
+    expect(close.value).toBe('26/10/26 21:30');
   });
 });

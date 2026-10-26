@@ -25,7 +25,7 @@ import { useUserMistakes } from '../../hooks/useUserMistakes';
 import { useTradingPlans } from '../../hooks/useTradingPlans';
 import { useJournalContext } from '../../contexts/JournalContext';
 import {
-  isSelectableTradeTime, isOnOrAfterMinute, isAfterMinute, startOfLocalDay, exitPickerInjectTimes,
+  isOnOrAfterMinute, isAfterMinute, exitPickerInjectTimes,
   partialExitDefaultDate, syncPartialExitDates, entryPriceProblem,
   aggregateFills, exitsClosedPercent, syncExitSize, remainderClose, storedExit, hasCommissionPreset, estimateCommission,
   buildChecklistRows, checklistAdherence, loadLastTradeChoices, saveLastTradeChoices,
@@ -68,6 +68,9 @@ const defaultForm = {
   fees: '',
   entryDate: null,
   exitDate: null,
+  // False while the close time is still the one the form filled in. Changing
+  // the entry then moves that close with it. A picker edit sets this true.
+  exitDateEdited: false,
   entryReason: '',
   notes: '',
   tags: [],
@@ -391,6 +394,7 @@ export default function TradeForm({ isOpen, onClose, trade, onSave, riskSettings
         chartLinks: chartLinksForEditor(trade),
         entryDate: parseDate(trade.entryDate),
         exitDate: parseDate(trade.exitDate),
+        exitDateEdited: !!parseDate(trade.exitDate),
         focusRating: trade.focusRating ?? 3,
         planAdherenceRating: trade.planAdherenceRating ?? 3,
         stressRating: trade.stressRating ?? 3,
@@ -464,14 +468,27 @@ export default function TradeForm({ isOpen, onClose, trade, onSave, riskSettings
 
   const update = (field, value) => {
     setForm((f) => {
-      if (field !== 'exitDate' && field !== 'entryDate') return { ...f, [field]: value };
-      const exitDate = field === 'exitDate' ? value : f.exitDate;
-      const entryDate = field === 'entryDate' ? value : f.entryDate;
-      return {
-        ...f,
-        [field]: value,
-        additionalExits: syncPartialExitDates(f.additionalExits, exitDate, entryDate),
-      };
+      if (field === 'exitDate') {
+        return {
+          ...f,
+          exitDate: value,
+          exitDateEdited: true,
+          additionalExits: syncPartialExitDates(f.additionalExits, value, f.entryDate),
+        };
+      }
+      if (field === 'entryDate') {
+        // An untouched close is the form's own default. Keep it on the entry
+        // so logging an earlier trade does not leave the close at "now".
+        const follow = !f.exitDateEdited && f.exitDate && value instanceof Date;
+        const exitDate = follow ? new Date(value.getTime()) : f.exitDate;
+        return {
+          ...f,
+          entryDate: value,
+          exitDate,
+          additionalExits: syncPartialExitDates(f.additionalExits, exitDate, value),
+        };
+      }
+      return { ...f, [field]: value };
     });
     setFieldErrors((prev) => (prev[field] ? { ...prev, [field]: undefined } : prev));
   };
@@ -1579,18 +1596,14 @@ export default function TradeForm({ isOpen, onClose, trade, onSave, riskSettings
               <Field label="תאריך כניסה" htmlFor="tt-entry-date" anchor="tt-field-entryDate" error={fieldErrors.entryDate}>
                 <DatePicker id="tt-entry-date" selected={form.entryDate} onChange={(date) => update('entryDate', date)}
                   showTimeSelect timeFormat="HH:mm" timeIntervals={15} dateFormat="dd/MM/yy HH:mm"
-                  maxDate={new Date()}
-                  filterTime={(t) => isSelectableTradeTime(t)}
+                  injectTimes={exitPickerInjectTimes(form.entryDate, form.entryDate)}
                   locale="he" placeholderText="עכשיו" className={`${numInputClass} ${fieldErrors.entryDate ? 'border-loss' : ''}`} wrapperClassName="w-full"
                   popperPlacement="bottom-start" portalId="datepicker-portal" />
               </Field>
               <Field label="תאריך סגירה" htmlFor="tt-exit-date" anchor="tt-field-exitDate" error={fieldErrors.exitDate}>
                 <DatePicker id="tt-exit-date" selected={form.exitDate} onChange={(date) => update('exitDate', date)}
                   showTimeSelect timeFormat="HH:mm" timeIntervals={15} dateFormat="dd/MM/yy HH:mm"
-                  maxDate={new Date()}
-                  minDate={form.entryDate ? startOfLocalDay(form.entryDate) : undefined}
-                  injectTimes={exitPickerInjectTimes(form.exitDate, form.entryDate)}
-                  filterTime={(t) => isSelectableTradeTime(t, { min: parseDate(form.entryDate) })}
+                  injectTimes={exitPickerInjectTimes(form.exitDate, form.entryDate, undefined, form.exitDate)}
                   locale="he" placeholderText="—" className={`${numInputClass} ${fieldErrors.exitDate ? 'border-loss' : ''}`} wrapperClassName="w-full"
                   popperPlacement="bottom-start" portalId="datepicker-portal" />
               </Field>
@@ -1811,11 +1824,8 @@ export default function TradeForm({ isOpen, onClose, trade, onSave, riskSettings
                       )}
                       <DatePicker selected={exit.date || null} onChange={(date) => updateAdditionalExit(i, 'date', date)}
                         showTimeSelect timeFormat="HH:mm" timeIntervals={15} dateFormat="dd/MM/yy HH:mm"
-                        maxDate={new Date()}
-                        minDate={form.entryDate ? startOfLocalDay(form.entryDate) : undefined}
                         openToDate={exit.date || partialExitDefaultDate(form.exitDate, form.entryDate) || undefined}
                         injectTimes={exitPickerInjectTimes(exit.date || form.exitDate || form.entryDate, form.entryDate, undefined, form.exitDate)}
-                        filterTime={(t) => isSelectableTradeTime(t, { min: parseDate(form.entryDate) })}
                         locale="he" placeholderText="תאריך יציאה"
                         className={compactNumClass} wrapperClassName="w-full min-w-0"
                         popperPlacement="bottom-start" portalId="datepicker-portal" />
@@ -1859,9 +1869,7 @@ export default function TradeForm({ isOpen, onClose, trade, onSave, riskSettings
                 {closeKind && (
                   <DatePicker selected={closeDate} onChange={(date) => setCloseDate(date)}
                     showTimeSelect timeFormat="HH:mm" timeIntervals={15} dateFormat="dd/MM/yy HH:mm"
-                    maxDate={new Date()}
-                    minDate={form.entryDate ? startOfLocalDay(form.entryDate) : undefined}
-                    filterTime={(t) => isSelectableTradeTime(t, { min: parseDate(form.entryDate) })}
+                    injectTimes={exitPickerInjectTimes(closeDate, form.entryDate, undefined, form.exitDate)}
                     locale="he" placeholderText="תאריך היציאה"
                     className={compactNumClass} wrapperClassName="w-full min-w-0"
                     popperPlacement="bottom-start" portalId="datepicker-portal" />

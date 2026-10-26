@@ -605,6 +605,9 @@ export default function TradeJournal() {
         icon={isStockJournal ? Briefcase : BookOpen}
         title={isStockJournal ? 'יומן מניות' : 'יומן המסחר'}
         titleAside={<JournalSwitcher compact />}
+        center={tab === 'trades' && filteredTrades.length > 0
+          ? <JournalSummaryBar trades={filteredTrades} filtered={hasActiveFilters} liveById={liveById} />
+          : null}
         compactMobile
         tabs={{
           tabs: journalTabs.map((id) => ({ id, label: TAB_LABELS[id], mobileLabel: TAB_MOBILE[id], count: id === 'trades' ? trades.length : 0 })),
@@ -705,8 +708,6 @@ export default function TradeJournal() {
             )
           ) : (
             <>
-              <JournalSummaryBar trades={filteredTrades} filtered={hasActiveFilters} liveById={liveById} />
-
               {/* List toolbar: sort (phones — desktop sorts by clicking a column
                   header) and the bulk-selection toggle. */}
               <div className="flex items-center justify-between gap-2 mb-2">
