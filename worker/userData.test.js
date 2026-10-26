@@ -16,8 +16,11 @@ describe('USER_SUBCOLLECTIONS', () => {
     const client = [...m[1].matchAll(/'([^']+)'/g)].map((x) => x[1]);
     expect([...USER_SUBCOLLECTIONS].sort()).toEqual([...client].sort());
   });
-  it('includes the collections the admin delete used to miss', () => {
-    expect(USER_SUBCOLLECTIONS).toEqual(expect.arrayContaining(['wyckoffSetups', 'polymarketWatch', 'polymarketStrategies']));
+  it('includes polymarket collections and not the retired Wyckoff engine', () => {
+    expect(USER_SUBCOLLECTIONS).toEqual(expect.arrayContaining(['polymarketWatch', 'polymarketStrategies']));
+    for (const retired of ['wyckoffSetups', 'signals', 'watchlist']) {
+      expect(USER_SUBCOLLECTIONS).not.toContain(retired);
+    }
   });
 });
 

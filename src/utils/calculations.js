@@ -299,6 +299,20 @@ export function tradeNetPercent(t) {
 }
 
 /**
+ * Net P&L as a percent of the journal account. `accountBalance` is the
+ * starting balance from journal settings, or the live wallet when that is
+ * the only figure. null when no balance is set — callers then show
+ * tradeNetPercent and label it as a return on the position, not the account.
+ */
+export function tradeAccountPercent(t, accountBalance) {
+  const balance = Number(accountBalance);
+  if (!(balance > 0)) return null;
+  const net = safePnl(t);
+  if (!Number.isFinite(net)) return null;
+  return (net / balance) * 100;
+}
+
+/**
  * Average reward:risk of winning trades, NET of fees.
  * A winner's R is net P&L / initial risk (the same R the table and the
  * "R ממוצע" header show). Rows with no stored P&L keep the price ratio —

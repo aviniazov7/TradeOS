@@ -14,7 +14,6 @@ import {
   Briefcase,
   Brain,
   Newspaper,
-  Radar,
   User,
 } from 'lucide-react';
 import PositionCalculator from '../calculator/PositionCalculator';
@@ -24,7 +23,6 @@ import { useAuth } from '../../contexts/AuthContext';
 // Portfolio) keep them as tabs inside the page, not as menu sub-rows.
 //   match — extra path prefixes that count as "inside" the item (redirects,
 //           detail pages)
-//   admin — shown to admins only
 const navItems = [
   { key: 'home', to: '/', label: 'בית', icon: LayoutDashboard },
   { key: 'journal', to: '/journal', label: 'יומן מסחר', icon: BookOpen, match: ['/terminal'] },
@@ -35,7 +33,6 @@ const navItems = [
   { key: 'market', to: '/market', label: 'שוק', icon: Activity, match: ['/polymarket', '/whales'] },
   { key: 'news', to: '/news', label: 'חדשות', icon: Newspaper },
   { key: 'portfolio', to: '/portfolio', label: 'החזקות', icon: Briefcase, match: ['/dca', '/wallets'] },
-  { key: 'scanner', to: '/scanner', label: 'מנוע ויקוף', icon: Radar, admin: true },
 ];
 
 const pathIn = (pathname, to) => (to === '/' ? pathname === '/' : pathname === to || pathname.startsWith(`${to}/`));
@@ -129,7 +126,7 @@ export default function Sidebar({ mobileOpen, onClose }) {
 
             {/* Navigation */}
             <nav aria-label="תפריט ראשי" className="flex-1 px-3 py-4 space-y-1 overflow-y-auto">
-              {navItems.filter((item) => !item.admin || isAdmin).map((item) => (
+              {navItems.map((item) => (
                 <NavRow key={item.key} item={item} active={itemActive(item, pathname)} onClose={onClose} />
               ))}
             </nav>

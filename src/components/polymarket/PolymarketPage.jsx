@@ -94,8 +94,8 @@ function HeroAction({ icon, label, badge, onClick }) {
   );
 }
 
-// App-native identity: a dark card with the app accent (no radar — that's the
-// scanner's language; the distinction here is the podium + wallet page).
+// App-native identity: a dark card with the app accent. The distinction from
+// the whale tape is the podium + wallet page.
 function Hero({ stats, watchedCount = 0, strategyCount = 0, onOpenAnalyst, onOpenStrategy, onOpenWatched, onOpenAcademy }) {
   const count = useCountUp(stats?.count ?? 0);
   return (
@@ -163,7 +163,7 @@ function Avatar({ src, className }) {
     : <div className={`rounded-full bg-bg-tertiary shrink-0 ${className}`} />;
 }
 
-// Top-3 as a podium of cards with rank medals — the visual break from the scanner.
+// Top-3 as a podium of cards with rank medals.
 function PodiumCard({ r, rank, isWatched, onToggle, onOpen }) {
   const name = r.name || shortWallet(r.wallet);
   const m = MEDAL[rank] || MEDAL[3];

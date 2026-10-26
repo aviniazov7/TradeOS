@@ -11,12 +11,12 @@ import {
   calculatePartialPnL,
   calculateNetPnL,
   getTradeResult,
+  computeTradeFields,
   isClosedTrade,
   localDayKey,
   calculateWinRate,
   calculateProfitFactor,
   calculateMaxDrawdown,
-  computeTradeFields,
   winRateOf,
   calculateSortinoRatio,
   initialStopLoss,
@@ -26,6 +26,7 @@ import {
   tradeRewardRisk,
   signedTradeR,
   tradeNetPercent,
+  tradeAccountPercent,
   positionUnits,
   calculateAvgRR,
   computeDrawdown,
@@ -76,6 +77,41 @@ describe('futures P&L', () => {
   });
   it('notional = price × pointValue × contracts', () => {
     expect(calculateFuturesNotional(5000, 50, 2)).toBe(500000);
+  });
+  it('XAUUSD short 0.1 lot from 4020 to 3991.8 is +$282', () => {
+    // (4020 − 3991.8) × $100/oz-point × 0.1 lot. 28.2 is not binary-exact.
+    const pnl = calculateFuturesPnL('short', 4020, 3991.8, 100, 0.1);
+    expect(Math.round(pnl * 100) / 100).toBe(282);
+  });
+  it('the same gold move long is −$282', () => {
+    const pnl = calculateFuturesPnL('long', 4020, 3991.8, 100, 0.1);
+    expect(Math.round(pnl * 100) / 100).toBe(-282);
+  });
+  it('XAGUSD and NAS100 use their lot point values', () => {
+    // 0.1 point × $5,000 × 0.01 lot = $5
+    expect(Math.round(calculateFuturesPnL('long', 30, 30.1, 5000, 0.01) * 100) / 100).toBe(5);
+    // 10 points × $1 × 1 lot
+    expect(calculateFuturesPnL('long', 20000, 20010, 1, 1)).toBe(10);
+    expect(calculateFuturesPnL('short', 20000, 20010, 1, 0.5)).toBe(-5);
+  });
+  it('fractional lots flow through a stored CFD trade, including fees', () => {
+    const fields = computeTradeFields({
+      assetClass: 'futures_cme',
+      direction: 'short',
+      entryPrice: 4020,
+      exitPrice: 3991.8,
+      stopLoss: 4030,
+      fees: 0.6,
+      status: 'closed',
+      contract: { symbol: 'XAUUSD', pointValue: 100, tickSize: 0.01, contracts: 0.1 },
+    });
+    expect(Math.round(fields.pnl * 100) / 100).toBe(282);
+    expect(Math.round(fields.netPnl * 100) / 100).toBe(281.4);
+    expect(fields.result).toBe('win');
+    // Price R ignores fees: 28.2 / 10 = 2.82. Net R uses dollar risk of the
+    // fractional lot (10 × $100 × 0.1 = $100) after the $0.60 commission.
+    expect(fields.rrRatio).toBeCloseTo(2.82, 2);
+    expect(fields.netPnl / (10 * 100 * 0.1)).toBeCloseTo(2.814, 2);
   });
 });
 
@@ -331,6 +367,27 @@ describe('R with a moved stop — measured against the ORIGINAL stop', () => {
   it('tradeNetPercent falls back to scaling the stored percent when size is missing', () => {
     const t = { pnl: 10, netPnl: 8, pnlPercent: 10, fees: 2 };
     expect(tradeNetPercent(t)).toBeCloseTo(8, 9);
+  });
+
+  it('tradeAccountPercent is net P&L over the journal balance', () => {
+    const gold = {
+      direction: 'short', entryPrice: 4019.2, exitPrice: 3991.8, netPnl: 27.4,
+      assetClass: 'futures_cme', positionSize: 4019.2,
+      contract: { symbol: 'XAUUSD', pointValue: 100, contracts: 0.01 },
+    };
+    expect(tradeAccountPercent(gold, 369.57)).toBeCloseTo((27.4 / 369.57) * 100, 6);
+    expect(tradeAccountPercent(gold, 0)).toBeNull();
+    expect(tradeAccountPercent(gold, null)).toBeNull();
+  });
+
+  it('CFD risk is |entry − stop| × lots × point value, not the saved riskAmount', () => {
+    const gold = {
+      direction: 'short', entryPrice: 4019.2, stopLoss: 4021.94, riskAmount: 0,
+      assetClass: 'futures_cme', positionSize: 4019.2 * 100 * 0.01,
+      contract: { symbol: 'XAUUSD', pointValue: 100, contracts: 0.01 },
+    };
+    expect(initialRiskUsd(gold)).toBeCloseTo(2.74, 2);
+    expect(tradeRMultiple({ ...gold, netPnl: 27.4 })).toBeCloseTo(10, 2);
   });
 
   it('tradeRewardRisk uses the weighted exit of partial exits', () => {

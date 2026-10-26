@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { computeExcursion, canComputeExcursion, candleStepMs, excursionFields, tradeExitPrice } from './excursion';
+import { computeExcursion, canComputeExcursion, candleStepMs, excursionFields, rebaseCandlesToFill, tradeExitPrice } from './excursion';
 
 const H = 3600 * 1000;
 const T0 = Date.UTC(2026, 9, 1, 10, 0, 0);
@@ -105,6 +105,22 @@ describe('computeExcursion — short & edge cases', () => {
     expect(ex.maeR).toBe(0.6);
   });
 
+  it('CFD gold: $ = points × oz per lot × lots', () => {
+    const gold = {
+      direction: 'short', entryPrice: 4020, exitPrice: 3991.8, stopLoss: 4030, originalStopLoss: 4030,
+      assetClass: 'futures_cme',
+      contract: { symbol: 'XAUUSD', pointValue: 100, contracts: 0.1 },
+      quantity: 0.1, positionSize: 4020 * 100 * 0.1,
+      entryDate: new Date(T0), exitDate: new Date(T0 + 2 * H),
+    };
+    const ex = computeExcursion(gold, [
+      { t: T0, o: 4020, h: 4030, l: 4000, c: 4010 },
+      { t: T0 + H, o: 4010, h: 4015, l: 3980, c: 3991.8 },
+    ]);
+    expect(ex.maeUsd).toBe(100);
+    expect(ex.mfeUsd).toBe(400);
+  });
+
   it('returns null when it cannot compute', () => {
     expect(computeExcursion(long, [])).toBeNull();
     expect(computeExcursion({ ...long, exitPrice: 0 }, candles)).toBeNull();
@@ -123,6 +139,15 @@ describe('computeExcursion — short & edge cases', () => {
 });
 
 describe('helpers', () => {
+  it('rebaseCandlesToFill removes a constant futures basis', () => {
+    const shifted = rebaseCandlesToFill(
+      [{ t: T0, o: 4028, h: 4036, l: 4024, c: 4027 }],
+      4019.2, T0, H,
+    );
+    expect(shifted[0].c).toBeCloseTo(4019.2, 6);
+    expect(shifted[0].h - shifted[0].l).toBeCloseTo(12, 6);
+  });
+
   it('candleStepMs uses the smallest gap', () => {
     expect(candleStepMs([{ t: 0 }, { t: 60 }, { t: 120 }, { t: 5000 }])).toBe(60);
     expect(candleStepMs([{ t: 0 }])).toBe(0);

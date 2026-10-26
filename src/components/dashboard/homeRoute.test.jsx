@@ -133,7 +133,6 @@ const LAZY_ROUTES = [
   ['CouponLandingPage', () => import('../../components/premium/CouponLandingPage')],
   ['RefundPolicyPage', () => import('../../components/legal/RefundPolicyPage')],
   ['AccessibilityStatement', () => import('../../components/legal/AccessibilityStatement')],
-  ['SignalsPage', () => import('../../components/signals/SignalsPage')],
   ['WalletDetailPage', () => import('../../components/polymarket/WalletDetailPage')],
   ['MarketDetailPage', () => import('../../components/polymarket/MarketDetailPage')],
   ['AdminPanel', () => import('../../components/admin/AdminPanel')],

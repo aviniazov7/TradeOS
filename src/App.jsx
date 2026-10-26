@@ -3,7 +3,6 @@ import { BrowserRouter, Routes, Route, Navigate, useSearchParams } from 'react-r
 import { AuthProvider, useAuth } from './contexts/AuthContext';
 import ProtectedRoute from './components/auth/ProtectedRoute';
 import PremiumRoute from './components/auth/PremiumRoute';
-import AdminRoute from './components/auth/AdminRoute';
 import LoginPage from './components/auth/LoginPage';
 import AuthGooglePopup from './components/auth/AuthGooglePopup';
 import LoadingSpinner from './components/shared/LoadingSpinner';
@@ -38,7 +37,6 @@ const loadCheckoutPage = () => import('./components/premium/CheckoutPage');
 const loadCouponLanding = () => import('./components/premium/CouponLandingPage');
 const loadRefundPolicy = () => import('./components/legal/RefundPolicyPage');
 const loadAccessibility = () => import('./components/legal/AccessibilityStatement');
-const loadScannerPage = () => import('./components/signals/SignalsPage');
 const loadWalletDetailPage = () => import('./components/polymarket/WalletDetailPage');
 const loadMarketDetailPage = () => import('./components/polymarket/MarketDetailPage');
 const loadAdminPanel = () => import('./components/admin/AdminPanel');
@@ -62,7 +60,6 @@ const CheckoutPage = lazy(loadCheckoutPage);
 const CouponLandingPage = lazy(loadCouponLanding);
 const RefundPolicyPage = lazy(loadRefundPolicy);
 const AccessibilityStatement = lazy(loadAccessibility);
-const ScannerPage = lazy(loadScannerPage);
 const WalletDetailPage = lazy(loadWalletDetailPage);
 const MarketDetailPage = lazy(loadMarketDetailPage);
 const AdminPanel = lazy(loadAdminPanel);
@@ -158,8 +155,6 @@ function MainApp() {
                 {/* Whales live in their own tab of Market Overview; keep the old
                     path so links/bookmarks land on that tab. */}
                 <Route path="whales" element={<Navigate to="/market?tab=whales" replace />} />
-                {/* Wyckoff setup scanner — owner-only while it's being calibrated. */}
-                <Route path="scanner" element={<AdminRoute><ScannerPage /></AdminRoute>} />
                 {/* Polymarket is a tab of the Market page (locked teaser for
                     non-premium there); its detail pages keep their own routes
                     with their own boundary, since they stream live third-party data. */}
@@ -170,9 +165,10 @@ function MainApp() {
                 <Route path="news" element={<NewsPage />} />
                 {/* Exchange connections live in the journal's "exchange" tab. */}
                 <Route path="exchange" element={<Navigate to="/journal?tab=exchange" replace />} />
-                {/* Watchlist is now folded into the scanner page (tag coins there);
-                    keep the path as a redirect so old links still land right. */}
-                <Route path="watchlist" element={<Navigate to="/scanner" replace />} />
+                {/* Retired Wyckoff engine (/scanner) and the watchlist that fed it.
+                    Old bookmarks and push notifications land on the dashboard. */}
+                <Route path="scanner" element={<Navigate to="/" replace />} />
+                <Route path="watchlist" element={<Navigate to="/" replace />} />
                 <Route path="premium" element={<PremiumPage />} />
                 <Route path="premium/checkout" element={<CheckoutPage />} />
                 <Route path="refund-policy" element={<RefundPolicyPage />} />

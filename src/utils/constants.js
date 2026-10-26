@@ -79,11 +79,12 @@ export const COINS = [
 
 export const PAIRS = COINS.map((c) => `${c.symbol}USDT`);
 
-// ─── CME Futures Contracts (epic #32) ─────────────────────────────
-// pointValue is the dollar value of ONE full index/price point per contract —
-// it drives dollar P&L: (exit − entry) × pointValue × contracts. tickSize is
-// the minimum price increment (one tick = tickSize × pointValue dollars).
-// Source: CME contract specs. Keep in sync with docs/specs/futures-contracts.md.
+// ─── CME futures + spot CFDs (epic #32) ───────────────────────────
+// pointValue is the dollar value of ONE full price point per contract (futures)
+// or per standard lot (CFD). Dollar P&L is (exit − entry) × pointValue × size.
+// Futures size is whole contracts. CFD size is lots, including fractions
+// (0.01, 0.1, 1). tickSize is the minimum price increment.
+// CME rows: keep in sync with docs/specs/futures-contracts.md.
 export const FUTURES_CONTRACTS = [
   // Equity indices
   { symbol: 'ES',  name: 'E-mini S&P 500',        exchange: 'CME',   pointValue: 50,    tickSize: 0.25,  currency: 'USD' },
@@ -107,11 +108,80 @@ export const FUTURES_CONTRACTS = [
   { symbol: 'ZN',  name: '10-Year T-Note',        exchange: 'CBOT',  pointValue: 1000,  tickSize: 0.015625, currency: 'USD' },
 ];
 
+// Spot / index CFDs (Vantage and other forex brokers). kind:'cfd' means the
+// size is lots, not integer contracts. XAUUSD standard lot = 100 oz, so one
+// point on one lot is $100 — the same multiplier as a full GC, but 0.1 lot
+// is a tenth of that. XAGUSD standard lot = 5,000 oz. NAS100 and US100 are
+// the same Nasdaq-100 CFD under the two symbols brokers use; 1 lot pays
+// $1 per index point.
+export const CFD_INSTRUMENTS = [
+  { symbol: 'XAUUSD', name: 'Gold spot CFD',     exchange: 'CFD', pointValue: 100,  tickSize: 0.01,  currency: 'USD', kind: 'cfd', note: '100 oz/lot' },
+  { symbol: 'XAGUSD', name: 'Silver spot CFD',   exchange: 'CFD', pointValue: 5000, tickSize: 0.001, currency: 'USD', kind: 'cfd', note: '5000 oz/lot' },
+  { symbol: 'NAS100', name: 'Nasdaq-100 CFD',    exchange: 'CFD', pointValue: 1,    tickSize: 0.1,   currency: 'USD', kind: 'cfd', note: '$1/pt' },
+  { symbol: 'US100',  name: 'Nasdaq-100 CFD',    exchange: 'CFD', pointValue: 1,    tickSize: 0.1,   currency: 'USD', kind: 'cfd', note: '$1/pt' },
+];
+
+const INSTRUMENTS = [...FUTURES_CONTRACTS, ...CFD_INSTRUMENTS];
+
 /** Contract spec lookup by symbol (case-insensitive). Returns null when unknown. */
 export function getContractSpec(symbol) {
   if (!symbol) return null;
-  const s = String(symbol).toUpperCase();
-  return FUTURES_CONTRACTS.find((c) => c.symbol === s) || null;
+  const s = String(symbol).toUpperCase().replace(/[^A-Z0-9]/g, '');
+  return INSTRUMENTS.find((c) => c.symbol === s) || null;
+}
+
+/** True for spot/index CFDs sized in fractional lots. */
+export function isCfdSpec(spec) {
+  return spec?.kind === 'cfd';
+}
+
+// One-line English names for the picker. The official `name` is longer
+// ("Micro E-mini S&P 500") and wraps inside the RTL menu.
+const FUTURES_SHORT = {
+  ES: 'S&P',
+  MES: 'Micro S&P',
+  NQ: 'Nasdaq',
+  MNQ: 'Micro Nasdaq',
+  YM: 'Dow',
+  MYM: 'Micro Dow',
+  RTY: 'Russell',
+  M2K: 'Micro Russell',
+  CL: 'Crude',
+  MCL: 'Micro Crude',
+  NG: 'Nat Gas',
+  GC: 'Gold',
+  MGC: 'Micro Gold',
+  SI: 'Silver',
+  ZB: '30Y Bond',
+  ZN: '10Y Note',
+};
+
+const CFD_MENU_LABEL = {
+  XAUUSD: 'XAUUSD · Gold · 100 oz/lot',
+  XAGUSD: 'XAGUSD · Silver · 5000 oz/lot',
+  NAS100: 'NAS100 · Nasdaq · $1/pt',
+  US100: 'US100 · Nasdaq · $1/pt',
+};
+
+function instrumentMenuLabel(c) {
+  if (c.kind === 'cfd') return CFD_MENU_LABEL[c.symbol] || `${c.symbol} · ${c.note}`;
+  const pv = Number.isInteger(c.pointValue) ? String(c.pointValue) : String(c.pointValue);
+  return `${c.symbol} · ${FUTURES_SHORT[c.symbol] || c.name} · $${pv}/pt`;
+}
+
+/**
+ * Instrument picker rows for a futures journal: a Futures section, then
+ * CFD / Forex. Header rows have `header` and are not selectable.
+ * Labels are short English, marked ltr so they stay one line in the RTL menu.
+ */
+export function instrumentMenuOptions() {
+  const row = (c) => ({ value: c.symbol, label: instrumentMenuLabel(c), dir: 'ltr' });
+  return [
+    { header: 'חוזים עתידיים' },
+    ...FUTURES_CONTRACTS.map(row),
+    { header: 'CFD / פורקס' },
+    ...CFD_INSTRUMENTS.map(row),
+  ];
 }
 
 export const STRATEGIES = [
@@ -234,7 +304,10 @@ export const EXCHANGES = [
   { value: 'phemex', label: 'Phemex', domain: 'phemex.com', type: 'exchange' },
   { value: 'deribit', label: 'Deribit', domain: 'deribit.com', type: 'exchange' },
   { value: 'hyperliquid', label: 'Hyperliquid', domain: 'hyperliquid.xyz', type: 'exchange' },
-  // ברוקרים
+  // ברוקרים — one shared list for every journal asset class (crypto and
+  // non-crypto). Vantage is a CFD/forex/gold broker, so it stays in this
+  // list rather than the crypto exchange group.
+  { value: 'vantage', label: 'Vantage', domain: 'vantagemarkets.com', type: 'broker' },
   { value: 'icmarkets', label: 'IC Markets', domain: 'icmarkets.com', type: 'broker' },
   { value: 'pepperstone', label: 'Pepperstone', domain: 'pepperstone.com', type: 'broker' },
   { value: 'exness', label: 'Exness', domain: 'exness.com', type: 'broker' },
@@ -282,7 +355,7 @@ export const exchangeLabel = (value) => EXCHANGES.find((e) => e.value === value)
 
 // Transparent brand marks, not the 16px Google favicon (Bybit's favicon reads
 // as generic bars) and not a JPEG plate. Default files are the dark-UI
-// versions. OKX, Bybit, MEXC, and Phemex also have a light-theme file.
+// versions. OKX, Bybit, MEXC, Phemex, and Vantage also have a light-theme file.
 const LOCAL_EXCHANGE_LOGOS = {
   binance: '/logos/exchanges/binance.svg',
   bybit: '/logos/exchanges/bybit.png',
@@ -298,6 +371,9 @@ const LOCAL_EXCHANGE_LOGOS = {
   phemex: '/logos/exchanges/phemex.svg',
   deribit: '/logos/exchanges/deribit.svg',
   hyperliquid: '/logos/exchanges/hyperliquid.png',
+  // Symbol from the official Vantage header logo. Teal is lifted to white
+  // so the mark reads on the black UI; orange stays #e35728.
+  vantage: '/logos/exchanges/vantage.svg',
 };
 
 const LOCAL_EXCHANGE_LOGOS_ON_LIGHT = {
@@ -305,6 +381,8 @@ const LOCAL_EXCHANGE_LOGOS_ON_LIGHT = {
   bybit: '/logos/exchanges/bybit-on-light.png',
   mexc: '/logos/exchanges/mexc-on-light.svg',
   phemex: '/logos/exchanges/phemex-on-light.svg',
+  // Official two-color mark (teal #034854 + orange #e35728).
+  vantage: '/logos/exchanges/vantage-on-light.svg',
 };
 
 // Sentinels for "no venue". These must never resolve to a local exchange file

@@ -1,4 +1,4 @@
-import { tickerCoinKey, tickerCoinUrls } from '../utils/tickerMarks';
+import { tickerCoinKey, tickerCoinUrls, tickerMarkUrls } from '../utils/tickerMarks';
 
 const CACHE_KEY = 'tradeos_coin_images';
 const CACHE_VERSION = 8; // bump to invalidate stale localStorage with wrong URLs
@@ -262,6 +262,9 @@ export function getCachedImage(symbol) {
   const key = tickerCoinKey(symbol);
   // 1. Manual overrides (local files, always correct)
   if (MANUAL_ICONS[key]) return MANUAL_ICONS[key];
+  // Futures and CFD marks (gold, silver, nasdaq) — the same files the ticker uses.
+  const mark = tickerMarkUrls(key)[0];
+  if (mark) return mark;
   // 2. localStorage/memoryCache — API-fetched URLs take priority (more accurate than hardcoded)
   if (!memoryCache) loadFromStorage();
   if (memoryCache?.[key]) return memoryCache[key];

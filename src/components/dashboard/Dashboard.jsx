@@ -35,6 +35,7 @@ import { useExchangeConnected } from '../../hooks/useExchangeConnected';
 import { reopenOnboarding } from '../../utils/onboardingGate';
 import { declaredStartCapital } from '../../utils/portfolioPerformance';
 import { fetchGlobalMarket } from '../../services/globalMarket';
+import { fetchNewsFeed } from '../../services/newsService';
 import { readSessionCache, writeSessionCache } from '../../utils/sessionCache';
 import { pageVariants, pageTransition } from '../../utils/animations';
 
@@ -228,11 +229,9 @@ export default function Dashboard() {
     const controller = new AbortController();
     const fetchNews = async (attempt = 0) => {
       try {
-        const res = await fetch('https://api.rss2json.com/v1/api.json?rss_url=' + encodeURIComponent('https://cointelegraph.com/rss'), { signal: controller.signal });
-        if (!res.ok) throw new Error(`HTTP ${res.status}`);
-        const json = await res.json();
+        const feed = await fetchNewsFeed('crypto', { signal: controller.signal });
         if (!controller.signal.aborted) {
-          const items = (json.items || []).slice(0, 6);
+          const items = feed.slice(0, 6);
           setLatestNews(items);
           writeSessionCache('latestNews', items);
         }

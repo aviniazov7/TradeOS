@@ -157,6 +157,17 @@ describe('buildImportTrades — futures journal', () => {
     expect(passesRules(trades[0])).toBe(true);
   });
 
+  it('keeps a fractional XAUUSD lot instead of rounding it to a whole contract', () => {
+    const { trades } = fromCsv(
+      'symbol,contracts,entry,exit,date\nXAUUSD,0.1,4020,3991.8,2024-12-02 15:00',
+      { assetClass: 'futures_cme' },
+    );
+    expect(trades[0].pair).toBe('XAUUSD');
+    expect(trades[0].contract).toMatchObject({ symbol: 'XAUUSD', pointValue: 100, contracts: 0.1 });
+    expect(trades[0].quantity).toBeCloseTo(0.1, 8);
+    expect(passesRules(trades[0])).toBe(true);
+  });
+
   it('skips unknown contracts', () => {
     const { trades, counts } = fromCsv('symbol,contracts,entry,date\nXYZ,1,100,2024-01-02', { assetClass: 'futures_cme' });
     expect(trades).toHaveLength(0);

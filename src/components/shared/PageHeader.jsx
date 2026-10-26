@@ -20,7 +20,7 @@ import TabStrip from './TabStrip';
 //           icon actions) and a wrapping segmented tab control under it (every
 //           tab on screen, no horizontal scroll). From md up the header matches
 //           the other pages.
-export default function PageHeader({ icon: Icon, title, titleAside, subtitle, meta, tabs, tabsLead, actions, children, className = '', as = 'h1', mobileTabsFirst = false, compactMobile = false }) {
+export default function PageHeader({ icon: Icon, title, titleAside, subtitle, meta, tabs, tabsLead, actions, center, children, className = '', as = 'h1', mobileTabsFirst = false, compactMobile = false }) {
   const Title = as === 'h2' ? 'h2' : 'h1';
   const tabStrip = (variant) => tabs && (
     <TabStrip tabs={tabs.tabs} value={tabs.value} onChange={tabs.onChange} variant={variant} layoutKey={tabs.layoutKey || 'page-tab'} />
@@ -56,9 +56,14 @@ export default function PageHeader({ icon: Icon, title, titleAside, subtitle, me
           )}
           <div className="min-w-0 flex-1">
             {titleAside ? (
-              <div className={`flex items-center min-w-0 ${compactMobile ? 'flex-nowrap gap-2' : 'flex-wrap gap-x-3 gap-y-2'}`}>
+              <div className={`flex items-center min-w-0 w-full ${compactMobile ? 'flex-nowrap gap-2' : 'flex-wrap gap-x-3 gap-y-2'}`}>
                 <Title className={`${compactMobile ? 'text-lg md:text-2xl shrink-0' : 'text-xl md:text-2xl'} font-bold text-text-primary leading-tight`}>{title}</Title>
                 <div className="min-w-0 flex-1 md:flex-none">{titleAside}</div>
+                {center && (
+                  <div className="hidden md:flex flex-1 min-w-0 items-center justify-center px-2">
+                    {center}
+                  </div>
+                )}
               </div>
             ) : (
               <Title className={`${compactMobile ? 'text-lg md:text-2xl' : 'text-xl md:text-2xl'} font-bold text-text-primary leading-tight`}>{title}</Title>
@@ -78,6 +83,7 @@ export default function PageHeader({ icon: Icon, title, titleAside, subtitle, me
         {children && <div className="min-w-0 lg:max-w-[60%]">{children}</div>}
       </div>
       {!mobileTabsFirst && mobileTabRow}
+      {center && <div className="md:hidden mt-2 w-full min-w-0">{center}</div>}
     </Card>
   );
 }

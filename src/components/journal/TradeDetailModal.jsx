@@ -10,9 +10,9 @@ import {
   formatDuration,
   formatDateTime,
 } from '../../utils/formatters';
-import { MISTAKE_LABELS } from '../../utils/constants';
+import { MISTAKE_LABELS, getContractSpec, isCfdSpec } from '../../utils/constants';
 import { setupLabel, tradeSetups } from '../../utils/setupStats';
-import { isClosedTrade, signedTradeR, tradeNetPercent, tradeDurationMs } from '../../utils/calculations';
+import { initialRiskUsd, isClosedTrade, signedTradeR, tradeAccountPercent, tradeNetPercent, tradeDurationMs } from '../../utils/calculations';
 import TradeExcursion from './TradeExcursion';
 import {
   TrendingUp,
@@ -80,6 +80,7 @@ export default function TradeDetailModal({
   onEdit,
   onDelete,
   onShare,
+  accountBalance = 0,
 }) {
   if (!trade) return null;
 
@@ -97,6 +98,14 @@ export default function TradeDetailModal({
     v > 0 ? 'text-profit' : v < 0 ? 'text-loss' : 'text-breakeven';
 
   const isFutures = trade.assetClass === 'futures_cme';
+  const isCfd = isCfdSpec(getContractSpec(trade.contract?.symbol || trade.pair || trade.symbol));
+  const sizeCount = trade.contract?.contracts ?? trade.quantity ?? null;
+  const formatLots = (v) => {
+    const n = num(v);
+    if (n === null) return null;
+    const rounded = Math.round(n * 10000) / 10000;
+    return String(rounded);
+  };
 
   // Same clock as the analytics KPI and the duration chart: exit − entry,
   // and only when the exit is actually later. createdAt is not a close time.
@@ -153,6 +162,9 @@ export default function TradeDetailModal({
         ? { cls: 'bg-breakeven/15 text-breakeven', text: 'חלקית' }
         : { cls: 'bg-bg-tertiary text-text-muted', text: 'נסגרה' };
 
+  const accountPct = status === 'open' ? null : tradeAccountPercent(trade, accountBalance);
+  const onAccount = accountPct != null;
+  const returnPct = onAccount ? accountPct : tradeNetPercent(trade);
   const kpis = [
     {
       label: 'רווח/הפסד נטו',
@@ -160,9 +172,9 @@ export default function TradeDetailModal({
       cls: `text-2xl sm:text-3xl font-bold ${pnlColor(pnl)}`,
     },
     {
-      label: 'תשואה נטו',
-      value: status === 'open' ? '—' : formatPercent(tradeNetPercent(trade)),
-      cls: `text-xl sm:text-2xl font-bold ${status === 'open' ? 'text-text-primary' : pnlColor(tradeNetPercent(trade))}`,
+      label: status === 'open' ? 'תשואה נטו' : onAccount ? 'תשואה על היתרה' : 'תשואה על הפוזיציה',
+      value: status === 'open' ? '—' : formatPercent(returnPct),
+      cls: `text-xl sm:text-2xl font-bold ${status === 'open' ? 'text-text-primary' : pnlColor(returnPct)}`,
     },
     {
       label: 'מכפיל R נטו',
@@ -280,11 +292,11 @@ export default function TradeDetailModal({
           title="פרטי עסקה"
           items={[
             { label: 'גודל פוזיציה', value: formatMoney(trade.positionSize) },
-            { label: 'סיכון', value: formatMoney(trade.riskAmount) },
+            { label: 'סיכון', value: initialRiskUsd(trade) > 0 ? formatMoney(initialRiskUsd(trade)) : null },
             {
-              label: isFutures ? 'חוזים' : 'מינוף',
-              value: isFutures
-                ? (trade.contract?.contracts ?? trade.quantity ?? null)
+              label: isCfd ? 'לוטים' : isFutures ? 'חוזים' : 'מינוף',
+              value: isCfd || isFutures
+                ? formatLots(sizeCount)
                 : trade.leverage ? `x${trade.leverage}` : null,
             },
             { label: 'עמלות', value: formatMoney(trade.fees) },

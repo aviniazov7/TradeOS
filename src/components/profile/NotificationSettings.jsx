@@ -1,6 +1,6 @@
 import { useState, useEffect, useCallback } from 'react';
 import { m, AnimatePresence } from 'framer-motion';
-import { Bell, BellRing, BellOff, Send, NotebookPen, BarChart3, CalendarClock, ChevronDown, Zap, Radar, Activity } from 'lucide-react';
+import { Bell, BellRing, BellOff, Send, NotebookPen, BarChart3, CalendarClock, ChevronDown, Zap, Activity } from 'lucide-react';
 import { SCHEDULE_DEFAULTS, withScheduleDefaults } from '../../utils/notifySchedule';
 import toast from 'react-hot-toast';
 import { useAuth } from '../../contexts/AuthContext';
@@ -12,9 +12,7 @@ import {
 } from '../../services/pushService';
 
 // Push notifications are ON by default; the user can turn them off here.
-// wyckoffAlerts gates the setup-scanner pushes (enforced by the worker once the
-// scanner engine lands; the toggle is saved now so the preference is ready).
-const DEFAULTS = { pushEnabled: true, tradeOpenAlerts: true, wyckoffAlerts: true };
+const DEFAULTS = { pushEnabled: true, tradeOpenAlerts: true };
 
 // Small right-aligned toggle, matching the main push toggle's look.
 function MiniToggle({ on }) {
@@ -140,7 +138,7 @@ function ScheduleSection({ user }) {
 }
 
 export default function NotificationSettings() {
-  const { user, isAdmin } = useAuth();
+  const { user } = useAuth();
   const [settings, setSettings] = useState(DEFAULTS);
   const [permission, setPermission] = useState(
     typeof Notification !== 'undefined' ? Notification.permission : 'denied'
@@ -319,25 +317,6 @@ export default function NotificationSettings() {
                                 <MiniToggle on={settings.tradeOpenAlerts !== false} />
                               </button>
                             </div>
-                            {/* Owner-only, matching the page itself and the
-                                worker's scan gate. Showing this row to everyone
-                                advertised a feature nobody else can reach, and
-                                let them toggle a setting that does nothing. */}
-                            {isAdmin && (
-                              <div className="flex items-center justify-between gap-2 min-h-9">
-                                <button onClick={() => save({ wyckoffAlerts: settings.wyckoffAlerts === false })}
-                                  className="flex items-center gap-2.5 text-sm text-text-primary cursor-pointer text-right">
-                                  <Radar className={`w-4 h-4 shrink-0 ${settings.wyckoffAlerts !== false ? 'text-accent-primary' : 'text-text-muted'}`} />
-                                  <span>
-                                    מנוע ויקוף
-                                    <span className="block text-[10px] text-text-muted font-normal">LPS / LPSY על המטבעות שתייגת · גלוי רק לך</span>
-                                  </span>
-                                </button>
-                                <button onClick={() => save({ wyckoffAlerts: settings.wyckoffAlerts === false })} className="cursor-pointer shrink-0" aria-label="מנוע ויקוף">
-                                  <MiniToggle on={settings.wyckoffAlerts !== false} />
-                                </button>
-                              </div>
-                            )}
                             <ScheduleSection user={user} />
                           </div>
                         </m.div>

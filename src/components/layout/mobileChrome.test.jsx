@@ -93,6 +93,8 @@ describe('mobile chrome', () => {
     expect(nav.querySelector('a[href="/journal?tab=exchange"]')).toBeNull();
     expect(nav.textContent).not.toContain('חיבור בורסה');
     expect(nav.textContent).not.toContain('חיבור בורסאות');
+    expect(nav.textContent).not.toContain('מנוע ויקוף');
+    expect(nav.querySelector('a[href="/scanner"]')).toBeNull();
     await view.cleanup();
   });
 
@@ -178,6 +180,38 @@ describe('mobile chrome', () => {
       expect(tab.className).not.toContain('col-span-');
     });
     expect(list.querySelector('[aria-selected="true"]').textContent).toBe('יומן');
+    await view.cleanup();
+  });
+
+  it('puts header stats in the gap beside the title and under the phone tabs', async () => {
+    const tabs = [JOURNAL_TABS[0], JOURNAL_TABS[2], JOURNAL_TABS[3]];
+    const view = await mount(
+      <PageHeader
+        icon={BookOpen}
+        title="יומן המסחר"
+        titleAside={<span data-testid="switcher">Vantage</span>}
+        compactMobile
+        center={<div data-testid="stats">עסקאות</div>}
+        tabs={{ tabs, value: 'trades', onChange: () => {} }}
+      />,
+    );
+    const copies = [...document.querySelectorAll('[data-testid="stats"]')];
+    expect(copies).toHaveLength(2);
+    const desktop = copies.map((el) => el.parentElement).find((el) => el.classList.contains('hidden') && el.classList.contains('md:flex'));
+    const phone = copies.map((el) => el.parentElement).find((el) => el.classList.contains('md:hidden') && !el.classList.contains('hidden'));
+    const title = document.querySelector('h1');
+    const switcher = document.querySelector('[data-testid="switcher"]');
+    const desktopTabs = document.querySelector('.hidden.md\\:block [role="tablist"]');
+    const phoneTabs = document.querySelector('[data-testid="mobile-tabs"]');
+    const following = Node.DOCUMENT_POSITION_FOLLOWING;
+    expect(desktop).toBeTruthy();
+    expect(phone).toBeTruthy();
+    expect(title.compareDocumentPosition(switcher) & following).toBeTruthy();
+    expect(switcher.compareDocumentPosition(desktop) & following).toBeTruthy();
+    expect(desktop.compareDocumentPosition(desktopTabs) & following).toBeTruthy();
+    expect(desktopTabs.contains(desktop)).toBe(false);
+    expect(phoneTabs.compareDocumentPosition(phone) & following).toBeTruthy();
+    expect(phoneTabs.contains(phone)).toBe(false);
     await view.cleanup();
   });
 });

@@ -5,6 +5,8 @@ import {
   isAfterMinute,
   startOfLocalDay,
   exitPickerInjectTimes,
+  partialExitDefaultDate,
+  syncPartialExitDates,
   entryPriceProblem,
   riskSizedNotional,
   aggregateFills,
@@ -20,6 +22,8 @@ import {
   checklistAdherence,
   loadLastTradeChoices,
   saveLastTradeChoices,
+  parseInstrumentSize,
+  defaultInstrumentChoice,
   canMoveStopToBreakeven,
   riskBudgetCheck,
   riskToStop,
@@ -29,6 +33,7 @@ import {
   closeDateWithoutExitPrice,
 } from './tradeFormHelpers';
 import { computeTradeFields } from './calculations';
+import { getContractSpec, instrumentMenuOptions } from './constants';
 
 describe('aggregateFills', () => {
   it('returns the size-weighted average entry and total size', () => {
@@ -242,6 +247,76 @@ describe('commission presets', () => {
         exits: [{ price: 5020, quantity: 3 }],
       })).toBe(13.5);
     });
+    it('scales a fractional CFD lot', () => {
+      // 0.1 lot × $3 per side × 2 = $0.60
+      expect(estimateCommission({
+        assetClass: 'futures_cme', preset: { futuresPerContractSide: 3 },
+        fills: [{ price: 4020, quantity: 0.1 }],
+        exits: [{ price: 3991.8, quantity: 0.1 }],
+      })).toBeCloseTo(0.6, 5);
+    });
+  });
+});
+
+describe('CFD size and Vantage defaults', () => {
+  it('keeps fractional lots and whole futures contracts', () => {
+    expect(parseInstrumentSize('0.1', { kind: 'cfd' })).toBeCloseTo(0.1, 8);
+    expect(parseInstrumentSize('0.01', { kind: 'cfd' })).toBeCloseTo(0.01, 8);
+    expect(parseInstrumentSize('1.9', { kind: 'cfd' })).toBeCloseTo(1.9, 8);
+    expect(parseInstrumentSize('0.1', { symbol: 'ES' })).toBe(0);
+    expect(parseInstrumentSize('2', null)).toBe(2);
+  });
+
+  it('opens a Vantage journal on XAUUSD in lots, then remembers the last instrument', () => {
+    expect(defaultInstrumentChoice({ assetClass: 'futures_cme', broker: 'Vantage' })).toEqual({
+      pair: 'XAUUSD', direction: '', contracts: '0.1', fractional: true,
+    });
+    expect(defaultInstrumentChoice({ assetClass: 'futures_cme', broker: 'tradovate' })).toMatchObject({
+      pair: 'ES', contracts: '1', fractional: false,
+    });
+    const again = defaultInstrumentChoice({
+      assetClass: 'futures_cme',
+      broker: 'vantage',
+      last: { instrument: 'NAS100', direction: 'short', broker: 'vantage' },
+    });
+    expect(again).toEqual({ pair: 'NAS100', direction: 'short', contracts: '0.1', fractional: true });
+    // A different broker does not inherit the Vantage instrument.
+    expect(defaultInstrumentChoice({
+      assetClass: 'futures_cme',
+      broker: 'tradovate',
+      last: { instrument: 'XAUUSD', direction: 'short', broker: 'vantage' },
+    }).pair).toBe('ES');
+  });
+
+  it('lists gold, silver and the nasdaq CFD with the right point values, grouped after futures', () => {
+    expect(getContractSpec('XAUUSD')).toMatchObject({ pointValue: 100, kind: 'cfd' });
+    expect(getContractSpec('XAU/USD')?.symbol).toBe('XAUUSD');
+    expect(getContractSpec('XAGUSD').pointValue).toBe(5000);
+    expect(getContractSpec('NAS100')).toMatchObject({ pointValue: 1, note: '$1/pt' });
+    expect(getContractSpec('US100').pointValue).toBe(1);
+    expect(getContractSpec('GC').kind).toBeUndefined();
+    const menu = instrumentMenuOptions();
+    const headers = menu.filter((row) => row.header).map((row) => row.header);
+    expect(headers).toEqual(['חוזים עתידיים', 'CFD / פורקס']);
+    expect(menu.find((row) => row.value === 'XAUUSD').label).toBe('XAUUSD · Gold · 100 oz/lot');
+    expect(menu.find((row) => row.value === 'XAGUSD').label).toBe('XAGUSD · Silver · 5000 oz/lot');
+    expect(menu.find((row) => row.value === 'NAS100').label).toBe('NAS100 · Nasdaq · $1/pt');
+    expect(menu.find((row) => row.value === 'US100').label).toBe('US100 · Nasdaq · $1/pt');
+    expect(menu.find((row) => row.value === 'ES').label).toBe('ES · S&P · $50/pt');
+    expect(menu.find((row) => row.value === 'MES').label).toBe('MES · Micro S&P · $5/pt');
+    expect(menu.find((row) => row.value === 'GC').label).toBe('GC · Gold · $100/pt');
+    expect(menu.find((row) => row.value === 'MYM').label).toBe('MYM · Micro Dow · $0.5/pt');
+    for (const row of menu) {
+      if (row.header) continue;
+      expect(row.dir).toBe('ltr');
+      expect(row.label).not.toMatch(/[\u0590-\u05FF]/);
+    }
+    const xau = menu.findIndex((row) => row.value === 'XAUUSD');
+    const gc = menu.findIndex((row) => row.value === 'GC');
+    const cfdHeader = menu.findIndex((row) => row.header === 'CFD / פורקס');
+    expect(gc).toBeGreaterThan(-1);
+    expect(xau).toBeGreaterThan(cfdHeader);
+    expect(cfdHeader).toBeGreaterThan(gc);
   });
 });
 
@@ -278,9 +353,23 @@ describe('remembered choices', () => {
     const s = memStorage();
     saveLastTradeChoices('j1', { strategy: 'SMC', timeframe: '1H', trigger: 'BOS' }, s);
     saveLastTradeChoices('j2', { strategy: 'Wyckoff', timeframe: '1D', trigger: '' }, s);
-    expect(loadLastTradeChoices('j1', s)).toEqual({ strategy: 'SMC', timeframe: '1H', trigger: 'BOS' });
-    expect(loadLastTradeChoices('j2', s)).toEqual({ strategy: 'Wyckoff', timeframe: '1D', trigger: '' });
+    expect(loadLastTradeChoices('j1', s)).toEqual({
+      strategy: 'SMC', timeframe: '1H', trigger: 'BOS', instrument: '', direction: '', broker: '',
+    });
+    expect(loadLastTradeChoices('j2', s)).toEqual({
+      strategy: 'Wyckoff', timeframe: '1D', trigger: '', instrument: '', direction: '', broker: '',
+    });
     expect(loadLastTradeChoices('j3', s)).toBeNull();
+  });
+
+  it('remembers broker, instrument and direction without dropping the setup', () => {
+    const s = memStorage();
+    saveLastTradeChoices('j1', { strategy: 'Wyckoff', timeframe: '15m', trigger: 'Spring' }, s);
+    saveLastTradeChoices('j1', { instrument: 'XAUUSD', direction: 'short', broker: 'vantage' }, s);
+    expect(loadLastTradeChoices('j1', s)).toEqual({
+      strategy: 'Wyckoff', timeframe: '15m', trigger: 'Spring',
+      instrument: 'XAUUSD', direction: 'short', broker: 'vantage',
+    });
   });
 
   it('survives broken or missing storage', () => {
@@ -346,6 +435,8 @@ describe('ticket summary', () => {
     expect(riskToStop({ entry: 100, stop: 95, units: 4 })).toBe(20);
     // ES: 10 points × $50 × 2 contracts
     expect(riskToStop({ entry: 5000, stop: 4990, units: 2, pointValue: 50 })).toBe(1000);
+    // XAUUSD: 10 points × $100 × 0.1 lot
+    expect(riskToStop({ entry: 4020, stop: 4030, units: 0.1, pointValue: 100 })).toBeCloseTo(100, 6);
     expect(riskToStop({ entry: 100, stop: 0, units: 4 })).toBe(0);
     expect(stopDistancePct(100, 95)).toBeCloseTo(5, 10);
     expect(stopDistancePct(100, '')).toBeNull();
@@ -427,5 +518,54 @@ describe('isSelectableTradeTime', () => {
     expect(isSelectableTradeTime(new Date(2026, 9, 9, 14, 30), { now: clock, min: entry })).toBe(false);
     expect(isSelectableTradeTime(new Date(2026, 9, 9, 14, 45), { now: clock, min: entry })).toBe(false);
     expect(exitPickerInjectTimes(new Date(2026, 9, 10, 9, 0), entry, clock)).toEqual([]);
+  });
+});
+
+describe('partial exit default datetime', () => {
+  const entry = new Date(2026, 9, 26, 22, 7);
+  const close = new Date(2026, 9, 26, 22, 9);
+
+  it('uses the close, and the entry when there is no close', () => {
+    const fromClose = partialExitDefaultDate(close, entry);
+    expect(fromClose.getTime()).toBe(close.getTime());
+    expect(fromClose).not.toBe(close);
+    expect(partialExitDefaultDate(null, entry).getTime()).toBe(entry.getTime());
+    expect(partialExitDefaultDate(null, null)).toBeNull();
+  });
+
+  it('seeds an empty row on the close and follows a later close', () => {
+    const seeded = syncPartialExitDates([{ date: null, dateEdited: false }], close, entry);
+    expect(seeded[0].date.getTime()).toBe(close.getTime());
+    expect(seeded[0].dateEdited).toBeFalsy();
+    expect(isOnOrAfterMinute(entry, seeded[0].date)).toBe(true);
+    const later = new Date(2026, 9, 26, 22, 20);
+    const moved = syncPartialExitDates(seeded, later, entry);
+    expect(moved[0].date.getTime()).toBe(later.getTime());
+    expect(moved[0].date).not.toBe(later);
+  });
+
+  it('does not move a time the user edited, or a row already on the default', () => {
+    const custom = new Date(2026, 9, 26, 22, 15);
+    const edited = [{ date: custom, dateEdited: true }];
+    expect(syncPartialExitDates(edited, close, entry)).toBe(edited);
+    const aligned = [{ date: close, dateEdited: false }];
+    expect(syncPartialExitDates(aligned, close, entry)).toBe(aligned);
+  });
+
+  it('falls back to the entry when the close is cleared', () => {
+    const rows = [{ date: new Date(close.getTime()), dateEdited: false }];
+    const next = syncPartialExitDates(rows, null, entry);
+    expect(next[0].date.getTime()).toBe(entry.getTime());
+  });
+
+  it('treats midnight of the entry day as before the entry', () => {
+    const midnight = new Date(2026, 9, 26, 0, 0);
+    expect(isOnOrAfterMinute(entry, midnight)).toBe(false);
+    expect(isOnOrAfterMinute(entry, partialExitDefaultDate(close, entry))).toBe(true);
+  });
+
+  it('injects the close minute so the partial-exit list is not stuck at 00:00', () => {
+    const times = exitPickerInjectTimes(close, entry, close, close);
+    expect(times.map((t) => `${t.getHours()}:${t.getMinutes()}`)).toEqual(['22:7', '22:9']);
   });
 });
