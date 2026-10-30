@@ -299,14 +299,31 @@ export function tradeNetPercent(t) {
 }
 
 /**
+ * Smallest balance that may be a return denominator. MEXC still reports a
+ * positive dust equity (~1e-8 USDT) after the wallet is emptied; `> 0` treats
+ * that residue as an account and the percent explodes. Sub-cent equity is not
+ * an account. One cent and above still counts, including a small live wallet.
+ */
+export const MIN_SANE_ACCOUNT_BALANCE = 0.01;
+
+/** Finite balance of at least one cent, or null. */
+export function saneBalance(value) {
+  const n = typeof value === 'number' ? value : Number(value);
+  if (!Number.isFinite(n) || n < MIN_SANE_ACCOUNT_BALANCE) return null;
+  return n;
+}
+
+/**
  * Net P&L as a percent of the journal account. `accountBalance` is the
- * starting balance from journal settings, or the live wallet when that is
- * the only figure. null when no balance is set — callers then show
- * tradeNetPercent and label it as a return on the position, not the account.
+ * balance before this trade when the caller has one, otherwise a sane
+ * account balance. null when the balance is missing, zero, negative, or
+ * dust — callers show "—" and leave the trade out of averages. A usable
+ * zero is not a 0% return and must not fall through to the position percent
+ * while the column is still labeled as a return on the account.
  */
 export function tradeAccountPercent(t, accountBalance) {
-  const balance = Number(accountBalance);
-  if (!(balance > 0)) return null;
+  const balance = saneBalance(accountBalance);
+  if (balance == null) return null;
   const net = safePnl(t);
   if (!Number.isFinite(net)) return null;
   return (net / balance) * 100;
@@ -314,22 +331,26 @@ export function tradeAccountPercent(t, accountBalance) {
 
 /**
  * The percent a journal surface should show for a trade.
- * Net P&L over the account when a balance is known; otherwise the position
- * return. Pass `net` for a live unrealized P&L that is not stored on the
- * trade, and `positionPercent` as the fallback when that row has no balance.
- * `percent` is null only when a live row has neither.
+ * Net P&L over the account when a sane balance is known. An explicit balance
+ * that is negative or dust does not fall back to the position return — the
+ * percent is null and `onAccount` stays true so the UI can show "—".
+ * Pass `strictAccount` when the journal is measuring account return but this
+ * row has no balance (null / 0): same "—" result. Without it, 0 still means
+ * "no account balance was set" and the position return is shown.
+ * Pass `net` for a live unrealized P&L that is not stored on the trade, and
+ * `positionPercent` as the fallback when that row has no balance.
  */
-export function tradeShownPercent(t, accountBalance, { net, positionPercent } = {}) {
-  if (net === undefined) {
-    const onAccount = tradeAccountPercent(t, accountBalance);
-    if (onAccount != null) return { percent: onAccount, onAccount: true };
-    return { percent: tradeNetPercent(t), onAccount: false };
-  }
-  const balance = Number(accountBalance);
-  const dollars = Number(net);
-  if (balance > 0 && Number.isFinite(dollars)) {
+export function tradeShownPercent(t, accountBalance, { net, positionPercent, strictAccount = false } = {}) {
+  const balance = saneBalance(accountBalance);
+  const numeric = Number(accountBalance);
+  const given = accountBalance != null && accountBalance !== '' && Number.isFinite(numeric) && numeric !== 0;
+  const unusable = given && balance == null;
+  const dollars = net === undefined ? safePnl(t) : Number(net);
+  if (balance != null && Number.isFinite(dollars)) {
     return { percent: (dollars / balance) * 100, onAccount: true };
   }
+  if (unusable || strictAccount) return { percent: null, onAccount: true };
+  if (net === undefined) return { percent: tradeNetPercent(t), onAccount: false };
   if (positionPercent != null && Number.isFinite(Number(positionPercent))) {
     return { percent: Number(positionPercent), onAccount: false };
   }

@@ -6,7 +6,7 @@ import { signedTradeR, tradeShownPercent } from '../../utils/calculations';
 import { tradeExitPrice } from '../../utils/excursion';
 import { getCoinIcon } from '../shared/CoinIcon';
 
-const TradeShareCard = forwardRef(function TradeShareCard({ trade, options = {}, accountBalance = 0 }, ref) {
+const TradeShareCard = forwardRef(function TradeShareCard({ trade, options = {}, accountBalance = 0, strictAccount = false }, ref) {
   const {
     showPnl = true,
     showPercent = true,
@@ -16,7 +16,7 @@ const TradeShareCard = forwardRef(function TradeShareCard({ trade, options = {},
   } = options;
 
   const pnl = trade.netPnl ?? trade.pnl ?? 0;
-  const shownPct = tradeShownPercent(trade, accountBalance);
+  const shownPct = tradeShownPercent(trade, accountBalance, { strictAccount });
   const netR = signedTradeR(trade);
   const isWin = pnl > 0;
   const isLong = trade.direction === 'long';
@@ -156,8 +156,8 @@ const TradeShareCard = forwardRef(function TradeShareCard({ trade, options = {},
           {(showPercent || showRR) && (
             <div style={{ display: 'flex', justifyContent: 'center', gap: 16, marginTop: showPnl ? 6 : 0 }}>
               {showPercent && (
-                <span style={{ fontSize: showPnl ? 15 : 32, color: accentColor, fontWeight: showPnl ? 600 : 800 }}>
-                  {formatPercent(shownPct.percent)}
+                <span style={{ fontSize: showPnl ? 15 : 32, color: shownPct.percent == null ? '#a0a0b0' : accentColor, fontWeight: showPnl ? 600 : 800 }}>
+                  {shownPct.percent == null ? '—' : formatPercent(shownPct.percent)}
                 </span>
               )}
               {showRR && netR != null && (

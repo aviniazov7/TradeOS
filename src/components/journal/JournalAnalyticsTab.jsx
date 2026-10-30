@@ -4,7 +4,7 @@ import { m } from 'framer-motion';
 import {
   Wallet, Target, Zap, BarChart3, DollarSign,
 } from 'lucide-react';
-import { isClosedTrade } from '../../utils/calculations';
+import { isClosedTrade, saneBalance } from '../../utils/calculations';
 import { filterTradesByPeriod, computeJournalAnalytics } from '../../utils/journalAnalytics';
 import { computeSetupStats } from '../../utils/setupStats';
 import SetupStatsTable from './SetupStatsTable';
@@ -84,8 +84,8 @@ export default function JournalAnalyticsTab({
           <m.div className="grid grid-cols-2 md:grid-cols-4 gap-2.5 md:gap-3 mb-3 md:mb-4" variants={staggerContainer} initial="initial" animate="animate">
             <StatCard label={balanceIsLive ? `יתרה נוכחית · ${activeJournal.exchange}` : 'יתרה נוכחית'}
               value={formatCurrency(displayedCurrentBalance).replace('+', '')}
-              subtitle={balanceIsLive ? 'מסונכרן עם הבורסה' : (activeJournal?.initialBalance > 0 ? `${formatPercent(stats.balanceChangePercent)} מההתחלה` : `${stats.totalTrades} עסקאות`)}
-              subtitleColor={balanceIsLive ? 'text-accent-primary' : (stats.balanceChangePercent >= 0 ? 'text-profit' : 'text-loss')} icon={Wallet} color="text-accent-primary"
+              subtitle={balanceIsLive ? 'מסונכרן עם הבורסה' : (saneBalance(activeJournal?.initialBalance) != null ? (stats.balanceChangePercent == null ? '—' : `${formatPercent(stats.balanceChangePercent)} מההתחלה`) : `${stats.totalTrades} עסקאות`)}
+              subtitleColor={balanceIsLive ? 'text-accent-primary' : (stats.balanceChangePercent == null ? 'text-text-muted' : (stats.balanceChangePercent >= 0 ? 'text-profit' : 'text-loss'))} icon={Wallet} color="text-accent-primary"
               gradient={stats.totalPnL >= 0 ? 'profit' : 'loss'} />
             {/* Realized legs of still-open partial positions are shown beside
                 the closed-trade total, not inside it (see partialRealizedPnl). */}

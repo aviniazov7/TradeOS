@@ -196,6 +196,27 @@ describe('public API v1', () => {
     expect(stats.maxDrawdown).toBeGreaterThan(0);
   });
 
+  it('does not report a return percent for a dust opening balance', async () => {
+    const db = memoryDb();
+    db.put('users/user1/journals/j1', { initialBalance: { doubleValue: 1e-8 } });
+    db.put('users/user1/trades/a', {
+      journalId: { stringValue: 'j1' },
+      pair: { stringValue: 'DOGEUSDT' },
+      direction: { stringValue: 'long' },
+      status: { stringValue: 'closed' },
+      result: { stringValue: 'loss' },
+      netPnl: { doubleValue: -11.2239 },
+      pnl: { doubleValue: -11.2239 },
+      entryDate: { timestampValue: '2026-10-16T00:00:00.000Z' },
+      exitDate: { timestampValue: '2026-10-16T01:00:00.000Z' },
+    });
+    const res = await call('/api/v1/stats?journalId=j1', { db });
+    expect(res.status).toBe(200);
+    const stats = await res.json();
+    expect(stats.totalPnl).toBeCloseTo(-11.2239, 4);
+    expect(stats.returnPercent).toBeNull();
+  });
+
   it('mints a key once, accepts it on the API, and rejects it after revoke', async () => {
     const db = memoryDb();
     db.put('users/user1/journals/j1', { initialBalance: { doubleValue: 1000 } });

@@ -3,6 +3,7 @@ import { Download, Share2, Check } from 'lucide-react';
 import toast from 'react-hot-toast';
 import Modal from '../shared/Modal';
 import TradeShareCard from './TradeShareCard';
+import { saneBalance } from '../../utils/calculations';
 
 const SHARE_OPTIONS = [
   { key: 'showPnl', label: 'סכום רווח/הפסד' },
@@ -20,7 +21,7 @@ const defaultOptions = {
   showDates: true,
 };
 
-export default function TradeShareModal({ isOpen, onClose, trade, accountBalance = 0 }) {
+export default function TradeShareModal({ isOpen, onClose, trade, accountBalance = 0, strictAccount = false }) {
   const cardRef = useRef(null);
   const [generating, setGenerating] = useState(false);
   const [options, setOptions] = useState(defaultOptions);
@@ -80,7 +81,7 @@ export default function TradeShareModal({ isOpen, onClose, trade, accountBalance
       <div className="flex flex-col items-center gap-4">
         {/* Card preview */}
         <div className="overflow-x-auto w-full flex justify-center">
-          <TradeShareCard ref={cardRef} trade={trade} options={options} accountBalance={accountBalance} />
+          <TradeShareCard ref={cardRef} trade={trade} options={options} accountBalance={accountBalance} strictAccount={strictAccount} />
         </div>
 
         {/* Content Share Settings */}
@@ -102,7 +103,7 @@ export default function TradeShareModal({ isOpen, onClose, trade, accountBalance
                 }`}>
                   {options[opt.key] && <Check className="w-2.5 h-2.5 text-black" />}
                 </div>
-                {opt.key === 'showPercent' && Number(accountBalance) > 0 ? 'תשואה על היתרה' : opt.label}
+                {opt.key === 'showPercent' && (strictAccount || saneBalance(accountBalance) != null) ? 'תשואה על היתרה' : opt.label}
               </button>
             ))}
           </div>
