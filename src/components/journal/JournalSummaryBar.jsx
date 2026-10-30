@@ -1,6 +1,6 @@
 import { useMemo } from 'react';
 import { summarizeTrades } from '../../utils/journalAnalytics';
-import { tradeShownPercent } from '../../utils/calculations';
+import { buildAccountReturnBook, summaryAccountReturn } from '../../utils/accountReturn';
 import { formatCurrency, formatPercent } from '../../utils/formatters';
 import { formatRText } from '../../utils/signedNumbers';
 
@@ -17,17 +17,25 @@ function Cell({ label, value, sub, valueClass = 'text-text-primary', className =
 // Compact numbers for whatever the trades tab is currently showing — they
 // follow the active filters, so "filter by BTC" immediately answers "how am I
 // doing on BTC?" without switching to the analytics tab.
-export default function JournalSummaryBar({ trades, filtered, liveById = {}, accountBalance = 0 }) {
+export default function JournalSummaryBar({ trades, filtered, liveById = {}, accountBalance = 0, returnBook = null }) {
   const s = useMemo(() => summarizeTrades(trades), [trades]);
   // Live P&L of the open positions in view (only those with a price feed).
   const live = useMemo(() => {
     const vals = trades.map((t) => liveById[t.id]?.pnl).filter((v) => typeof v === 'number');
     return vals.length ? vals.reduce((a, b) => a + b, 0) : null;
   }, [trades, liveById]);
+  const book = useMemo(
+    () => returnBook || buildAccountReturnBook(trades, { openingBalance: accountBalance }),
+    [returnBook, trades, accountBalance],
+  );
   const pnlClass = s.net > 0 ? 'text-profit' : s.net < 0 ? 'text-loss' : 'text-text-primary';
   const rClass = s.avgR == null ? 'text-text-muted' : s.avgR >= 0 ? 'text-profit' : 'text-loss';
-  const onBalance = s.closed ? tradeShownPercent({ netPnl: s.net }, accountBalance) : null;
-  const balancePct = onBalance?.onAccount ? onBalance.percent : null;
+  // Measurable closed P&L over the balance those trades were taken against.
+  // Trades with no usable balance are left out. Dust / empty wallets show "—".
+  const balancePct = s.closed ? summaryAccountReturn(trades, book) : null;
+  // Same gate as before: the cell exists only once a trade has closed. An
+  // unusable balance then shows "—" instead of hiding a garbage percent.
+  const showAccount = book.mode !== 'position' && s.closed > 0;
   const balanceClass = balancePct == null ? 'text-text-muted' : balancePct > 0 ? 'text-profit' : balancePct < 0 ? 'text-loss' : 'text-text-primary';
 
   const rule = 'md:border-s md:border-border-primary md:ps-4';
@@ -50,12 +58,12 @@ export default function JournalSummaryBar({ trades, filtered, liveById = {}, acc
           <span>פתוחות: <span className={`num-mono font-semibold ${live >= 0 ? 'text-profit' : 'text-loss'}`} dir="ltr">{formatCurrency(live)}</span></span>
         )}
       />
-      {balancePct != null && (
+      {showAccount && (
         <Cell
           className={rule}
           label="על היתרה"
           title="תשואה על היתרה"
-          value={formatPercent(balancePct)}
+          value={balancePct == null ? '—' : formatPercent(balancePct)}
           valueClass={balanceClass}
         />
       )}

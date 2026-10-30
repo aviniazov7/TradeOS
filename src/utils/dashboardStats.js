@@ -14,6 +14,7 @@ import {
   isClosedTrade,
   localDayKey,
   safePnl,
+  saneBalance,
   winRateOf,
   computeDrawdown,
   partialRealizedPnl,
@@ -116,7 +117,13 @@ export function computeDashboardStats(trades, initialBalance = 0, period = 'all'
   // period='all' → prePeriodPnl is 0, so the all-time view is unchanged.
   const startBalance = (initialBalance || 0) + prePeriodPnl;
   const currentBalance = startBalance + totalPnL;
-  const balanceChangePercent = startBalance > 0 ? (totalPnL / startBalance) * 100 : 0;
+  // Dust and non-positive equity are not a denominator. null, not 0%: a zero
+  // result would read as "flat" and a dust wallet (1e-8) as trillions of percent.
+  const saneInitial = saneBalance(initialBalance);
+  const saneStart = saneBalance(startBalance);
+  const balanceChangePercent = saneInitial != null && saneStart != null
+    ? (totalPnL / saneStart) * 100
+    : null;
   const winRate = calculateWinRate(closed);
   const expectancy = calculateExpectancy(closed);
   const avgRR = calculateAvgRR(closed);
@@ -271,10 +278,12 @@ export function computeDashboardStats(trades, initialBalance = 0, period = 'all'
   // −9 = "90%"), so maxDrawdown / calmarRatio are null and the UI shows the
   // dollar drawdown instead. Capital means a real starting balance (or a
   // live wallet) — pre-period P&L on a zero balance is still just P&L.
-  const hasCapital = (initialBalance || 0) > 0 && startBalance > 0;
+  const hasCapital = saneInitial != null && saneStart != null;
   const { maxDrawdownPct, maxDrawdownAbs: maxDrawdownAbsolute } = computeDrawdown(sorted.map(safePnl), hasCapital ? startBalance : 0);
   const maxDrawdown = maxDrawdownPct;
-  const calmarRatio = hasCapital ? clampRatio(calculateCalmarRatio(coreStats.balanceChangePercent, maxDrawdown)) : null;
+  const calmarRatio = hasCapital && coreStats.balanceChangePercent != null
+    ? clampRatio(calculateCalmarRatio(coreStats.balanceChangePercent, maxDrawdown))
+    : null;
   const recoveryFactor = calculateRecoveryFactor(coreStats.totalPnL, maxDrawdownAbsolute);
 
   // Chart shares the same period-start baseline as the drawdown KPI above.

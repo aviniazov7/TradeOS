@@ -9,6 +9,7 @@ import { overlayDemo, isDemoTrade } from '../../utils/demoData';
 import { useCryptoPrices } from '../../hooks/useCryptoPrices';
 import { useJournalContext } from '../../contexts/JournalContext';
 import { isClosedTrade, safePnl, localDayKey } from '../../utils/calculations';
+import { balanceForTrade, buildAccountReturnBook } from '../../utils/accountReturn';
 import { computeUnrealized, sortJournalTrades } from '../../utils/journalAnalytics';
 import { useDashboardStats } from '../../hooks/useDashboardStats';
 import { useLinkedExchange } from '../../hooks/useLinkedExchangeBalance';
@@ -313,10 +314,20 @@ export default function TradeJournal() {
   // A blank opening balance must NOT fall through to "current P&L" — that
   // made the percent a ratio of this trade to itself.
   const openingBalance = Number(activeJournal?.initialBalance) || 0;
-  // One balance for every "return on the account" figure: the opening balance
-  // when the journal has one, otherwise the live wallet. A blank opening
-  // balance must not fall through to current P&L.
-  const returnBalance = openingBalance > 0 ? openingBalance : (balanceIsLive ? liveExchangeBalance : 0);
+  // Return on the account is the balance BEFORE each trade: the saved opening
+  // balance walked forward, or — when that was never set — a sane live wallet
+  // minus closed P&L. A missing, zero, negative, or dust wallet (MEXC reports
+  // ~1e-8 after a full withdrawal) is not a denominator. Those rows show "—"
+  // and stay out of the header return. Today's wallet is not reused as the
+  // denominator for every historical trade.
+  const returnBook = useMemo(
+    () => buildAccountReturnBook(trades, {
+      openingBalance,
+      fallbackBalance: balanceIsLive ? liveExchangeBalance : null,
+    }),
+    [trades, openingBalance, balanceIsLive, liveExchangeBalance],
+  );
+  const accountReturnMode = returnBook.mode !== 'position';
   const formBalanceKnown = balanceIsLive || openingBalance > 0;
   const formBalance = balanceIsLive
     ? liveExchangeBalance
@@ -610,7 +621,7 @@ export default function TradeJournal() {
         title={isStockJournal ? 'יומן מניות' : 'יומן המסחר'}
         titleAside={<JournalSwitcher compact />}
         center={tab === 'trades' && filteredTrades.length > 0
-          ? <JournalSummaryBar trades={filteredTrades} filtered={hasActiveFilters} liveById={liveById} accountBalance={returnBalance} />
+          ? <JournalSummaryBar trades={filteredTrades} filtered={hasActiveFilters} liveById={liveById} returnBook={returnBook} />
           : null}
         compactMobile
         tabs={{
@@ -746,7 +757,7 @@ export default function TradeJournal() {
                 onDelete={handleDeleteWithUndo}
                 onShare={setShareTarget}
                 isLimitPending={isLimitPending}
-                accountBalance={returnBalance}
+                returnBook={returnBook}
               />
               {sortedTrades.length > visibleCount && (
                 <button
@@ -850,7 +861,8 @@ export default function TradeJournal() {
           <TradeForm isOpen={formOpen} onClose={handleCloseForm} trade={editingTrade} onSave={handleSave}
             prefill={tradePrefill}
             riskSettings={{ riskType: activeJournal?.riskType, riskValue: activeJournal?.riskValue, currentBalance: formBalance, balanceKnown: formBalanceKnown }}
-            accountBalance={returnBalance}
+            accountBalance={editingTrade ? balanceForTrade(returnBook, editingTrade) : (accountReturnMode ? returnBook.current : 0)}
+            strictAccount={accountReturnMode}
             journalAssetClass={activeJournal?.assetClass || 'crypto'}
             livePrices={prices} />
         )}
@@ -879,7 +891,8 @@ export default function TradeJournal() {
             isOpen={!!shareTarget}
             onClose={() => setShareTarget(null)}
             trade={shareTarget}
-            accountBalance={returnBalance}
+            accountBalance={balanceForTrade(returnBook, shareTarget)}
+            strictAccount={accountReturnMode}
           />
         )}
       </Suspense>

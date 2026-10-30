@@ -78,6 +78,19 @@ describe('computeApiStats', () => {
     expect(stats.riskAmount).toBe(70);
   });
 
+  it('returns a null account return for a dust or negative balance', () => {
+    // The withdrawn MEXC wallet: equity is still > 0, so a `> 0` check divides.
+    const dust = computeApiStats(trades, 1e-8, { now: NOW });
+    expect(dust.returnPercent).toBeNull();
+    expect(dust.totalPnl).toBe(-30);
+    expect(dust.returnPercent).not.toBeCloseTo((-30 / 1e-8) * 100);
+    expect(computeApiStats(trades, -10, { now: NOW }).returnPercent).toBeNull();
+    const dash = computeDashboardStats(trades, 1e-8, 'all', { now: NOW });
+    expect(dash.balanceChangePercent).toBeNull();
+    expect(dash.maxDrawdown).toBeNull();
+    expect(dash.calmarRatio).toBeNull();
+  });
+
   it('counts a breakeven and keeps an open trade out of the P&L', () => {
     const be = { ...winner, id: 'b', result: 'breakeven', netPnl: 0, pnl: 0, exitPrice: 100 };
     const open = { ...winner, id: 'o', status: 'open', result: 'win', netPnl: 999, exitPrice: 0, exitDate: null };
