@@ -18,20 +18,24 @@ it('turns an unhandled route error into JSON 500 with the request CORS headers',
   spy.mockRestore();
 });
 
-it('allows the new hosting origin, the legacy origin, and both preview-channel hosts', async () => {
+it('allows the live hosting origin and its preview channels', async () => {
   const allowed = [
     'https://tradeoslive.web.app',
     'https://tradeoslive.firebaseapp.com',
-    'https://tradeos-91a58.web.app',
-    'https://tradeos-91a58.firebaseapp.com',
     'https://tradeoslive--dev-abc123.web.app',
-    'https://tradeos-91a58--pr-12-abc.web.app',
   ];
   for (const origin of allowed) {
     const res = await worker.fetch(new Request('https://x/health', { headers: { Origin: origin } }), {});
     expect(res.headers.get('Access-Control-Allow-Origin'), origin).toBe(origin);
   }
-  for (const origin of ['https://evil.example', 'https://tradeoslive.web.app.evil.example', 'https://nottradeoslive--x.web.app']) {
+  for (const origin of [
+    'https://evil.example',
+    'https://tradeoslive.web.app.evil.example',
+    'https://nottradeoslive--x.web.app',
+    'https://tradeos-91a58.web.app',
+    'https://tradeos-91a58.firebaseapp.com',
+    'https://tradeos-91a58--pr-12-abc.web.app',
+  ]) {
     const res = await worker.fetch(new Request('https://x/health', { headers: { Origin: origin } }), {});
     expect(res.headers.get('Access-Control-Allow-Origin'), origin).toBe('https://tradeoslive.web.app');
   }

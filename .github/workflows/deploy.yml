@@ -2,7 +2,7 @@ name: Deploy TradeOS
 
 # Three-stage deploy pipeline:
 #
-#   push → main             → 🚀 production (Hosting live on tradeoslive.web.app, 301 on the old site, production Worker)
+#   push → main             → 🚀 production (Hosting live on tradeoslive.web.app, production Worker)
 #   push → dev          → 🧪 staging (Hosting "dev" channel + staging Worker)
 #   push → feature/fix/hotfix → 🔍 preview channel (Hosting only, uses staging Worker)
 #   pull_request → main|dev → 🔍 preview channel + comment URL on the PR
@@ -126,9 +126,9 @@ jobs:
         if: steps.target.outputs.kind == 'production'
         env:
           GOOGLE_APPLICATION_CREDENTIALS: ${{ runner.temp }}/firebase-sa.json
-        # App on site tradeoslive. Legacy site tradeos-91a58 is redirects only
-        # (hosting/legacy is ignored, so no static file can beat the 301).
-        run: npx firebase-tools deploy --only hosting:app,hosting:legacy --project tradeos-91a58 --non-interactive
+        # App on site tradeoslive only. The default site tradeos-91a58 is not
+        # a deploy target; the owner disables it with hosting:disable.
+        run: npx firebase-tools deploy --only hosting:app --project tradeos-91a58 --non-interactive
 
       - name: Deploy Hosting (preview channel)
         if: steps.target.outputs.kind != 'production'
