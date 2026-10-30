@@ -85,4 +85,28 @@ describe('portfolio hero return', () => {
     expect(view.badge()).toBeNull();
     await view.unmount();
   });
+
+  it('hides the badge for a zero or dust wallet', async () => {
+    const series = [{ t: Date.now() - 40 * DAY, pnl: -20, value: -20 }];
+    const zero = await mount({ balance: 0, declaredStart: 0, series });
+    expect(zero.badge()).toBeNull();
+    await zero.unmount();
+    const dust = await mount({ balance: 1e-8, declaredStart: 0, series });
+    expect(dust.badge()).toBeNull();
+    await dust.unmount();
+  });
+
+  it('drops P&L booked after the account is wiped out', async () => {
+    const view = await mount({
+      balance: 0,
+      declaredStart: 1000,
+      series: [
+        { t: Date.parse('2026-01-01T00:00:00Z'), pnl: -1500, value: -1500 },
+        { t: Date.parse('2026-01-02T00:00:00Z'), pnl: 50, value: -1450 },
+      ],
+    });
+    expect(plain(view.badge())).toBe('-150.0%');
+    expect(plain(view.badge())).not.toContain('145');
+    await view.unmount();
+  });
 });

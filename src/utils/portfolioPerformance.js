@@ -1,15 +1,20 @@
-import { winRateOf } from './calculations';
+import { saneBalance, winRateOf } from './calculations';
+import { getPeriodStart } from './period';
+import { measureAccountReturn } from './accountReturn';
 
-const DAY = 86400000;
+// Home week/month use the journal's windows (local midnight), not a raw
+// 7×24h / 30×24h slice, so the same period is the same set of trades.
+const WINDOWED = new Set(['week', 'month']);
 
-// Same windows as the home portfolio card: rolling 7 / 30 days, or everything.
-const PERIOD_DAYS = { week: 7, month: 30, all: null };
-
-/** Closed-trade return on capital. Null when there is no positive base. */
+/**
+ * P&L over a sane balance. Null when the base is missing, zero, negative,
+ * or dust. The home card does not call this: its percent is
+ * `measureAccountReturn`, which also drops P&L booked after a wipe.
+ */
 export function tradingReturnPercent(pnl, capital) {
-  const base = Number(capital);
-  const p = Number(pnl) || 0;
-  if (!Number.isFinite(base) || !(base > 0) || !Number.isFinite(p)) return null;
+  const base = saneBalance(capital);
+  const p = pnl == null || pnl === '' ? 0 : Number(pnl);
+  if (base == null || !Number.isFinite(p)) return null;
   return (p / base) * 100;
 }
 
@@ -21,42 +26,54 @@ export function declaredStartCapital(journals) {
   }, 0);
 }
 
+function seriesTrades(series) {
+  return (series || []).map((p, i) => ({
+    id: p.id != null ? String(p.id) : `series-${i}`,
+    status: 'closed',
+    netPnl: Number(p.pnl) || 0,
+    pnl: Number(p.pnl) || 0,
+    exitDate: p.t,
+    balanceBefore: p.balanceBefore,
+    accountBalance: p.accountBalance,
+    equityBefore: p.equityBefore,
+  }));
+}
+
 /**
  * P&L and % for the home portfolio card.
  *
- * The % is trading performance for that window, not the change in the wallet.
- * Deposits and withdrawals move `equity` and are left out:
- *   • a saved opening balance is the capital base (plus P&L already booked
- *     before a week/month window);
- *   • with no opening balance, the base is the wallet minus closed-trade P&L,
- *     so cashflows sit in the base instead of the return.
- * `pnl` is the same sum the card prints as רווח/הפסד.
+ * The % is `measureAccountReturn` on this book — the same helper as the
+ * journal header and the analytics tab. Deposits and withdrawals move
+ * `equity` and stay out of the percent when an opening balance was saved.
+ * With no opening balance, the base is the wallet minus closed-trade P&L.
+ * A zero, negative, or dust wallet is not a denominator.
+ * `pnl` is the same sum the card prints as רווח/הפסד (every closed trade
+ * in the window, including P&L the percent leaves out after a wipe).
+ *
+ * `trades`, when passed, are the closed trades behind `series` (snapshots
+ * included). Otherwise each point is treated as one closed trade.
  *
  * series: [{ t, pnl, value }] oldest → newest, value = running closed P&L.
  */
-export function summarizeSeries(series, period, { declaredStart = 0, equity = null, now = Date.now() } = {}) {
+export function summarizeSeries(series, period, { declaredStart = 0, equity = null, now = Date.now(), trades = null } = {}) {
   const list = series || [];
-  const days = PERIOD_DAYS[period] === undefined ? PERIOD_DAYS.all : PERIOD_DAYS[period];
-  const from = days ? now - days * DAY : 0;
+  const clock = now instanceof Date ? now : new Date(now);
+  const periodKey = WINDOWED.has(period) ? period : 'all';
+  const periodStart = getPeriodStart(periodKey, Number.isNaN(clock.getTime()) ? new Date() : clock);
+  const from = periodStart ? periodStart.getTime() : 0;
   const inRange = list.filter((p) => p.t >= from);
   const pnl = inRange.reduce((s, p) => s + (Number(p.pnl) || 0), 0);
-  const all = list.reduce((s, p) => s + (Number(p.pnl) || 0), 0);
-  const pre = all - pnl;
-
-  const declared = Number(declaredStart);
-  // null / undefined means "no wallet figure", not a $0 account.
-  const equityNow = equity == null || equity === '' ? NaN : Number(equity);
-  let capital = 0;
-  if (Number.isFinite(declared) && declared > 0) {
-    capital = declared + (days ? pre : 0);
-  } else if (Number.isFinite(equityNow)) {
-    // equity = (opening + net deposits/withdrawals + unrealized) + all closed P&L.
-    // Subtracting closed P&L leaves the cashflows in the base.
-    capital = (equityNow - all) + (days ? pre : 0);
-  }
+  const returnTrades = Array.isArray(trades) ? trades : seriesTrades(list);
+  const measured = measureAccountReturn(returnTrades, {
+    openingBalance: declaredStart,
+    fallbackBalance: equity,
+    period: periodKey,
+    now: clock,
+  });
+  const capital = measured.capital ?? 0;
 
   let points;
-  if (days) {
+  if (periodStart) {
     let acc = 0;
     points = [{ t: from, value: 0 }, ...inRange.map((p) => ({ t: p.t, value: (acc += Number(p.pnl) || 0) }))];
   } else {
@@ -65,13 +82,13 @@ export function summarizeSeries(series, period, { declaredStart = 0, equity = nu
 
   const wins = inRange.filter((p) => p.pnl > 0).length;
   const losses = inRange.filter((p) => p.pnl < 0).length;
-  const dayStart = new Date(now);
+  const dayStart = new Date(clock.getTime());
   dayStart.setHours(0, 0, 0, 0);
   const today = list.filter((p) => p.t >= dayStart.getTime()).reduce((s, p) => s + (Number(p.pnl) || 0), 0);
 
   return {
     pnl,
-    percent: tradingReturnPercent(pnl, capital),
+    percent: measured.percent,
     capital,
     count: inRange.length,
     winRate: inRange.length ? Math.round(winRateOf(wins, losses)) : null,

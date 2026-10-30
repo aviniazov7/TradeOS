@@ -170,7 +170,7 @@ curl -s "https://trade-os.tradeos.workers.dev/api/v1/stats?journalId=JOURNAL_ID&
 }
 ```
 
-- `returnPercent` is net P&L divided by the account equity the period opened at (`journal.initialBalance`, plus P&L booked before the window). It is not P&L divided by position size. It is `null` when that equity is missing, zero, negative, or dust (under one cent, including a withdrawn wallet that still reports ~1e-8). That is not a 0% return and not a position return.
+- `returnPercent` is the same account return the journal shows: measurable closed P&L divided by the balance the period opened at (`journal.initialBalance`, plus P&L booked before the window). Trades taken after that balance was wiped out are left out. It is not P&L divided by position size. It is `null` when that balance is missing, zero, negative, or dust (under one cent, including a withdrawn wallet that still reports ~1e-8). That is not a 0% return and not a position return.
 - `riskAmount` is the sum of each closed trade's real dollar risk: `|entry − stop| × size`, using a declared `riskAmount` only when the stop cannot price it. A stored `riskAmount` of 0 does not zero this figure.
 - `avgR` is the journal header average: mean signed net R (net P&L / initial risk) of closed trades that had a defined risk. `null` when none did.
 - `winRate` excludes breakevens, matching the dashboard.

@@ -1,7 +1,9 @@
 import { describe, expect, it } from 'vitest';
 import {
+  accountPeriodReturn,
   averageAccountReturn,
   buildAccountReturnBook,
+  measureAccountReturn,
   portfolioReturnPercent,
   summaryAccountReturn,
 } from './accountReturn';
@@ -80,6 +82,38 @@ describe('account return book', () => {
     expect(averageAccountReturn(trades, book)).toBeCloseTo(-150, 6);
     // The wiped trade's +50 is not in the percent. Including it would be -145%.
     expect(summaryAccountReturn(trades, book)).not.toBeCloseTo(-145, 1);
+  });
+
+  it('measures a week against the balance the week opened at', () => {
+    const now = new Date(2026, 9, 16, 15, 0, 0, 0);
+    const weekStart = new Date(now);
+    weekStart.setDate(weekStart.getDate() - 7);
+    weekStart.setHours(0, 0, 0, 0);
+    const prior = new Date(weekStart.getTime() - 86400000).toISOString();
+    const inside = new Date(weekStart.getTime() + 60 * 1000).toISOString();
+    const trades = [
+      closed('old', -200, prior),
+      closed('new', 10, inside),
+    ];
+    const week = measureAccountReturn(trades, { openingBalance: 1000, period: 'week', now });
+    expect(week.capital).toBe(800);
+    expect(week.percent).toBeCloseTo((10 / 800) * 100, 6);
+    expect(accountPeriodReturn(trades, { openingBalance: 1000, period: 'all', now }))
+      .toBeCloseTo(summaryAccountReturn(trades, buildAccountReturnBook(trades, { openingBalance: 1000 })), 6);
+  });
+
+  it('keeps a deposit recorded before the window in that window\'s base', () => {
+    const now = new Date(2026, 9, 16, 15, 0, 0, 0);
+    const weekStart = new Date(now);
+    weekStart.setDate(weekStart.getDate() - 7);
+    weekStart.setHours(0, 0, 0, 0);
+    const trades = [
+      closed('old', 100, new Date(weekStart.getTime() - 86400000).toISOString(), { balanceBefore: 5000 }),
+      closed('new', 50, new Date(weekStart.getTime() + 60 * 1000).toISOString()),
+    ];
+    const week = measureAccountReturn(trades, { openingBalance: 1000, period: 'week', now });
+    expect(week.capital).toBe(5100);
+    expect(week.percent).toBeCloseTo((50 / 5100) * 100, 6);
   });
 
   it('keeps position mode when no balance was ever set', () => {

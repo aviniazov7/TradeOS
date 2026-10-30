@@ -1,4 +1,5 @@
 import { coerceTradeDate } from './tradeDates';
+import { getPeriodStart } from './period';
 import { isClosedTrade, safePnl, saneBalance, tradeAccountPercent } from './calculations';
 
 // A stored balance from before this trade wins over a reconstructed one.
@@ -17,6 +18,19 @@ function timeOf(trade) {
   return coerceTradeDate(trade?.exitDate)?.getTime()
     || coerceTradeDate(trade?.entryDate)?.getTime()
     || 0;
+}
+
+/** Close time used to order the book and to cut a week/month/year window. */
+export function accountTradeTime(trade) {
+  return timeOf(trade);
+}
+
+function orderedClosed(trades) {
+  return (Array.isArray(trades) ? trades : []).filter(isClosedTrade).sort((a, b) => {
+    const delta = timeOf(a) - timeOf(b);
+    if (delta) return delta;
+    return String(a?.id ?? '').localeCompare(String(b?.id ?? ''));
+  });
 }
 
 /** Sane balance stored on the trade itself, or null. */
@@ -52,8 +66,8 @@ export function buildAccountReturnBook(trades, { openingBalance = 0, fallbackBal
   const list = Array.isArray(trades) ? trades : [];
   const openingClass = providedClass(openingBalance, { zeroIsMissing: true });
   const liveClass = providedClass(fallbackBalance, { zeroIsMissing: false });
-  const closed = list.filter(isClosedTrade);
-  const totalPnl = closed.reduce((sum, t) => sum + safePnl(t), 0);
+  const ordered = orderedClosed(list);
+  const totalPnl = ordered.reduce((sum, t) => sum + safePnl(t), 0);
 
   let start = openingClass === 'sane' ? saneBalance(openingBalance) : null;
   let flat = null;
@@ -63,12 +77,6 @@ export function buildAccountReturnBook(trades, { openingBalance = 0, fallbackBal
     if (implied != null) start = implied;
     else flat = live;
   }
-
-  const ordered = [...closed].sort((a, b) => {
-    const delta = timeOf(a) - timeOf(b);
-    if (delta) return delta;
-    return String(a?.id ?? '').localeCompare(String(b?.id ?? ''));
-  });
 
   const byId = new Map();
   let running = start;
@@ -100,6 +108,9 @@ export function buildAccountReturnBook(trades, { openingBalance = 0, fallbackBal
   return {
     byId,
     basis: start ?? flat ?? null,
+    // A real start walks forward. A flat live wallet is the denominator of
+    // every row and does not move when earlier P&L is added back.
+    anchored: start != null,
     current: current ?? null,
     mode,
   };
@@ -144,6 +155,93 @@ export function summaryAccountReturn(trades, book) {
   const portfolio = portfolioReturnPercent(trades, book);
   if (portfolio != null) return portfolio;
   return averageAccountReturn(trades, book);
+}
+
+function asDate(value) {
+  if (value == null || value === '') return null;
+  const d = value instanceof Date ? value : new Date(value);
+  return Number.isNaN(d.getTime()) ? null : d;
+}
+
+/**
+ * The window the journal's period control uses (midnight local, rolling
+ * 7 days / 1 month / 1 year). A caller that already resolved `from` / `to`
+ * passes `window` and that wins over the named period.
+ */
+function resolveBounds({ period = 'all', now = new Date(), window = null } = {}, useWindow) {
+  if (useWindow) {
+    return { start: asDate(window?.start), end: asDate(window?.end) };
+  }
+  const clock = asDate(now) || new Date();
+  return { start: getPeriodStart(period, clock), end: null };
+}
+
+function inBounds(trade, start, end) {
+  const ts = timeOf(trade);
+  if (start && ts < start.getTime()) return false;
+  if (end && ts > end.getTime()) return false;
+  return true;
+}
+
+/**
+ * Return % for one account over a period, plus the denominator.
+ *
+ * All-time is `summaryAccountReturn`: measurable closed P&L over the book's
+ * starting balance (or the mean of per-trade returns when only snapshots
+ * exist). A week/month/year uses that same book, but the denominator is the
+ * balance the window opened at — the start walked forward by measurable
+ * P&L booked before the window. A saved opening is that start, so deposits
+ * and withdrawals are not part of the percent. With no opening, the start
+ * is the live wallet minus closed P&L and cashflows stay in the base.
+ * P&L taken after the balance was wiped out is left out. The percent is
+ * null when the denominator is missing, zero, negative, or dust.
+ */
+export function measureAccountReturn(trades, options = {}) {
+  const list = Array.isArray(trades) ? trades : [];
+  const built = options.book || buildAccountReturnBook(list, {
+    openingBalance: options.openingBalance ?? 0,
+    fallbackBalance: options.fallbackBalance ?? null,
+  });
+  const useWindow = options.window !== undefined;
+  const bounds = resolveBounds(options, useWindow);
+  if (!bounds.start && !bounds.end) {
+    return { percent: summaryAccountReturn(list, built), capital: saneBalance(built?.basis) };
+  }
+  if (!built || built.mode === 'position') return { percent: null, capital: null };
+
+  const ordered = orderedClosed(list);
+  const periodTrades = ordered.filter((t) => inBounds(t, bounds.start, bounds.end));
+  const basis = saneBalance(built.basis);
+  if (basis == null) {
+    return { percent: averageAccountReturn(periodTrades, built), capital: null };
+  }
+
+  let capital = basis;
+  if (built.anchored && bounds.start) {
+    let running = basis;
+    for (const t of ordered) {
+      if (timeOf(t) >= bounds.start.getTime()) break;
+      const before = saneBalance(built.byId.get(t.id));
+      running = before == null ? null : saneBalance(before + safePnl(t));
+    }
+    capital = running;
+  }
+  if (saneBalance(capital) == null) return { percent: null, capital: null };
+
+  let pnl = 0;
+  let count = 0;
+  for (const t of periodTrades) {
+    if (saneBalance(built.byId.get(t.id)) == null) continue;
+    pnl += safePnl(t);
+    count += 1;
+  }
+  if (!count) return { percent: null, capital };
+  return { percent: (pnl / capital) * 100, capital };
+}
+
+/** The percent `measureAccountReturn` would show. Null when it cannot. */
+export function accountPeriodReturn(trades, options = {}) {
+  return measureAccountReturn(trades, options).percent;
 }
 
 /** Balance to pass into tradeShownPercent for one row. 0 keeps position mode. */

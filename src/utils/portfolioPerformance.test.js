@@ -61,8 +61,27 @@ describe('home portfolio return', () => {
   it('hides the percent when there is no positive capital', () => {
     expect(tradingReturnPercent(-20, 0)).toBeNull();
     expect(tradingReturnPercent(-20, -5)).toBeNull();
+    expect(tradingReturnPercent(-20, 1e-8)).toBeNull();
     const s = summarizeSeries([point(-20, 1)], 'all', { declaredStart: 0, equity: null });
     expect(s.percent).toBeNull();
+  });
+
+  it('does not invent a return from a zero or dust wallet', () => {
+    const series = [point(-20, Date.parse('2026-06-01T00:00:00Z'))];
+    expect(summarizeSeries(series, 'all', { declaredStart: 0, equity: 0 }).percent).toBeNull();
+    expect(summarizeSeries(series, 'all', { declaredStart: 0, equity: 1e-8 }).percent).toBeNull();
+    expect(summarizeSeries(series, 'all', { declaredStart: 0, equity: -4 }).percent).toBeNull();
+  });
+
+  it('leaves P&L booked after the account is wiped out of the percent', () => {
+    const series = [
+      point(-1500, Date.parse('2026-01-01T00:00:00Z')),
+      point(50, Date.parse('2026-01-02T00:00:00Z')),
+    ];
+    const s = summarizeSeries(series, 'all', { declaredStart: 1000, equity: 0 });
+    expect(s.pnl).toBe(-1450);
+    expect(s.percent).toBeCloseTo(-150, 6);
+    expect(s.percent).not.toBeCloseTo(-145, 1);
   });
 
   it('all-time percent is closed P&L over implied net capital, not the peak', () => {
