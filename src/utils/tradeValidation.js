@@ -23,12 +23,12 @@ const ALLOWED_FIELDS = [
   'entryReason', 'notes', 'emotionBefore', 'emotionAfter', 'mistakes',
   'session', 'tradingViewUrls', 'source', 'focusRating', 'planAdherenceRating',
   'stressRating', 'confidenceRating', 'assetClass', 'contract',
-  'pnlFromExchange', 'externalId',
+  'externalId',
 ];
 
 const NUMERIC = [
   'entryPrice', 'exitPrice', 'stopLoss', 'originalStopLoss', 'takeProfit',
-  'quantity', 'riskAmount', 'leverage', 'fees', 'pnlFromExchange',
+  'quantity', 'riskAmount', 'leverage', 'fees',
   'focusRating', 'planAdherenceRating', 'stressRating', 'confidenceRating',
   'checklistAdherence',
 ];
@@ -235,9 +235,11 @@ export function prepareApiTrade(body) {
   if (!src.source) src.source = 'manual';
   src.journalId = journalId;
 
-  if (src.pnlFromExchange != null && !isNum(src.pnlFromExchange)) {
-    return { ok: false, error: 'pnlFromExchange must be a number' };
-  }
+  // Exchange imports set pnlFromExchange before computeTradeFields on the
+  // in-app path and do not call prepareApiTrade. A public API or MCP client
+  // must not override the price-based P&L, so the field is dropped even if
+  // a caller sends it.
+  delete src.pnlFromExchange;
 
   return { ok: true, trade: src };
 }

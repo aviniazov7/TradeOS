@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { handlePublicApi } from './publicApi.js';
-import { decodeFields } from './firestoreValues.js';
+import { decodeFields, sha256Hex } from './firestoreValues.js';
 import { memoryFirestore } from './memoryFirestore.js';
 
 const PROJECT = 'p';
@@ -97,6 +97,127 @@ describe('public API v1', () => {
     expect(b.id).toBe(a.id);
     expect(b.trade.pair).toBe('BTCUSDT');
     expect([...db.docs.keys()].filter((key) => key.startsWith('users/user1/trades/'))).toHaveLength(1);
+  });
+
+  it('returns the original trade when marking the idempotency key done fails, including after 60s', async () => {
+    const db = memoryDb();
+    db.put('users/user1/journals/j1', { initialBalance: { doubleValue: 1000 } });
+    const inner = db.fetchFn;
+    const fetchFn = async (url, init = {}) => {
+      if ((init.method || 'GET') === 'PATCH' && String(url).includes('/apiIdempotency/')) {
+        return { status: 500, ok: false, json: async () => ({}), text: async () => '' };
+      }
+      return inner(url, init);
+    };
+    let clock = new Date('2026-06-15T12:00:00.000Z');
+    const extra = { now: () => clock, fetchFn };
+    const headers = { 'Idempotency-Key': 'agent-retry-patch' };
+    const trades = () => [...db.docs.keys()].filter((key) => key.startsWith('users/user1/trades/'));
+
+    const first = await call('/api/v1/trades', { method: 'POST', db, body: tradeBody, headers, extra });
+    expect(first.status).toBe(201);
+    const created = await first.json();
+    expect(trades()).toEqual([`users/user1/trades/${created.id}`]);
+    const idemKey = [...db.docs.keys()].find((key) => key.startsWith('users/user1/apiIdempotency/'));
+    expect(decodeFields(db.docs.get(idemKey))).toMatchObject({ status: 'pending', tradeId: created.id });
+
+    const retry = await call('/api/v1/trades', {
+      method: 'POST', db, body: { ...tradeBody, pair: 'ETHUSDT' }, headers, extra,
+    });
+    expect(retry.status).toBe(200);
+    const replay = await retry.json();
+    expect(replay.idempotentReplay).toBe(true);
+    expect(replay.id).toBe(created.id);
+    expect(replay.trade.pair).toBe('BTCUSDT');
+    expect(trades()).toHaveLength(1);
+
+    clock = new Date(clock.getTime() + 61_000);
+    const later = await call('/api/v1/trades', {
+      method: 'POST', db, body: { ...tradeBody, pair: 'SOLUSDT' }, headers, extra,
+    });
+    expect(later.status).toBe(200);
+    const again = await later.json();
+    expect(again.id).toBe(created.id);
+    expect(again.idempotentReplay).toBe(true);
+    expect(again.trade.pair).toBe('BTCUSDT');
+    expect(trades()).toEqual([`users/user1/trades/${created.id}`]);
+    expect([...db.docs.keys()].find((key) => key.startsWith('users/user1/apiIdempotency/'))).toBe(idemKey);
+    expect(decodeFields(db.docs.get(idemKey)).tradeId).toBe(created.id);
+  });
+
+  it('reuses a stale pending trade id instead of allocating a second trade', async () => {
+    const db = memoryDb();
+    db.put('users/user1/journals/j1', { initialBalance: { doubleValue: 1000 } });
+    const idemId = await sha256Hex('user1:agent-stale-1');
+    const tradeId = 'reserved-trade-1';
+    db.put(`users/user1/apiIdempotency/${idemId}`, {
+      status: { stringValue: 'pending' },
+      createdAt: { timestampValue: '2026-06-15T11:00:00.000Z' },
+      tradeId: { stringValue: tradeId },
+    });
+    let clock = new Date('2026-06-15T12:00:00.000Z');
+    const extra = { now: () => clock };
+    const headers = { 'Idempotency-Key': 'agent-stale-1' };
+    const first = await call('/api/v1/trades', { method: 'POST', db, body: tradeBody, headers, extra });
+    expect(first.status).toBe(201);
+    expect((await first.json()).id).toBe(tradeId);
+    clock = new Date(clock.getTime() + 61_000);
+    const second = await call('/api/v1/trades', {
+      method: 'POST', db, body: { ...tradeBody, pair: 'ETHUSDT' }, headers, extra,
+    });
+    expect(second.status).toBe(200);
+    expect((await second.json()).id).toBe(tradeId);
+    expect([...db.docs.keys()].filter((key) => key.startsWith('users/user1/trades/'))).toEqual([
+      `users/user1/trades/${tradeId}`,
+    ]);
+  });
+
+  it('does not replace a pending key that has no reserved trade id', async () => {
+    const db = memoryDb();
+    db.put('users/user1/journals/j1', { initialBalance: { doubleValue: 1000 } });
+    const idemId = await sha256Hex('user1:agent-legacy-1');
+    db.put(`users/user1/apiIdempotency/${idemId}`, {
+      status: { stringValue: 'pending' },
+      createdAt: { timestampValue: '2026-06-15T11:00:00.000Z' },
+    });
+    db.put('users/user1/trades/already-written', {
+      journalId: { stringValue: 'j1' }, pair: { stringValue: 'BTCUSDT' },
+    });
+    const res = await call('/api/v1/trades', {
+      method: 'POST',
+      db,
+      body: tradeBody,
+      headers: { 'Idempotency-Key': 'agent-legacy-1' },
+      extra: { now: () => new Date('2026-06-15T12:05:00.000Z') },
+    });
+    expect(res.status).toBe(409);
+    expect([...db.docs.keys()].filter((key) => key.startsWith('users/user1/trades/'))).toEqual([
+      'users/user1/trades/already-written',
+    ]);
+    expect(db.docs.has(`users/user1/apiIdempotency/${idemId}`)).toBe(true);
+  });
+
+  it('ignores pnlFromExchange and computes pnl from prices', async () => {
+    const db = memoryDb();
+    db.put('users/user1/journals/j1', { initialBalance: { doubleValue: 1000 } });
+    const res = await call('/api/v1/trades', {
+      method: 'POST', db, body: { ...tradeBody, pnlFromExchange: -999 },
+    });
+    expect(res.status).toBe(201);
+    const payload = await res.json();
+    expect(payload.trade.pnl).toBe(20);
+    expect(payload.trade.netPnl).toBe(19);
+    expect(payload.trade.pnlFromExchange).toBeUndefined();
+    const storedKey = [...db.docs.keys()].find((key) => key.startsWith('users/user1/trades/'));
+    const stored = decodeFields(db.docs.get(storedKey));
+    expect(stored.pnl).toBe(20);
+    expect(stored.pnlFromExchange).toBeUndefined();
+
+    const invalid = await call('/api/v1/trades', {
+      method: 'POST', db, body: { ...tradeBody, pair: 'ETHUSDT', pnlFromExchange: 'nope' },
+    });
+    expect(invalid.status).toBe(201);
+    expect((await invalid.json()).trade.pnl).toBe(20);
   });
 
   it('lists trades newest first, with a stable cursor and an ascending option', async () => {
