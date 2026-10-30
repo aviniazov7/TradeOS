@@ -5,7 +5,7 @@ import {
   updateUserDocument,
   deleteUserDocument,
   getUserProfile,
-  setUserProfile,
+  patchUserSettings,
   getRawCollectionSnapshot,
   batchUpdateFromSnapshot,
   timestamp,
@@ -68,7 +68,7 @@ export function BacktestProvider({ children }) {
         const journalsSnap = await getRawCollectionSnapshot(user.uid, 'backtestJournals');
         if (cancelledRef.current) return;
         if (!journalsSnap.empty) {
-          await setUserProfile(user.uid, { settings: { backtestMigrated: true } });
+          await patchUserSettings(user.uid, { backtestMigrated: true });
           return;
         }
 
@@ -95,8 +95,8 @@ export function BacktestProvider({ children }) {
           if (cancelledRef.current) return;
         }
 
-        // Mark migration complete
-        await setUserProfile(user.uid, { settings: { backtestMigrated: true } });
+        // Mark migration complete. Dotted path — does not replace the settings map.
+        await patchUserSettings(user.uid, { backtestMigrated: true });
         if (cancelledRef.current) return;
 
         // Auto-select the created journal

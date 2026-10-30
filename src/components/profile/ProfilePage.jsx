@@ -8,7 +8,7 @@ import UserAvatar from '../shared/UserAvatar';
 import { makeAvatarDataUrl } from '../../utils/avatarImage';
 import { headerIconBtn } from '../shared/headerStyles';
 import toast from 'react-hot-toast';
-import { getUserProfile, setUserProfile, deleteLeaderboardEntry } from '../../services/firestoreService';
+import { getUserProfile, setUserProfile, patchUserSettings, deleteLeaderboardEntry } from '../../services/firestoreService';
 import { updateDisplayName } from '../../services/authService';
 import {
   DELETE_CONFIRM_WORD,
@@ -130,8 +130,8 @@ export default function ProfilePage() {
     const prev = assetClasses;
     setAssetClasses(next);
     try {
-      // setDoc merge deep-merges the settings map, so other settings survive.
-      await setUserProfile(user.uid, { settings: { assetClasses: next } });
+      // Dotted path so favoriteCoins and the other settings keys survive.
+      await patchUserSettings(user.uid, { assetClasses: next });
     } catch {
       setAssetClasses(prev);
       toast.error('שגיאה בשמירה');

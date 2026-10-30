@@ -3,7 +3,7 @@ name: Deploy TradeOS
 # Three-stage deploy pipeline:
 #
 #   push → main             → 🚀 production (Hosting live on tradeoslive.web.app, production Worker)
-#   push → dev          → 🧪 staging (Hosting "dev" channel + staging Worker)
+#   push → dev          → 🧪 staging hosting channel only (does NOT deploy Workers)
 #   push → feature/fix/hotfix → 🔍 preview channel (Hosting only, uses staging Worker)
 #   pull_request → main|dev → 🔍 preview channel + comment URL on the PR
 #
@@ -20,15 +20,13 @@ on:
     branches: [main, dev]
   workflow_dispatch: {}
 
-# main and dev both deploy the SAME two Workers (trade-os + tradeos-alerts),
-# so they share one queue and never run at once — a release merged right
-# after its dev merge used to race, and the second `wrangler secret put` on
-# tradeos-alerts failed with "latest version isn't currently deployed".
-# Those two are never cancelled mid-deploy. Every other ref keeps its own
+# Only main deploys the Workers. dev used to deploy them too, which wrote
+# production KV (exchange keys, coupons, push) from unreleased code.
+# main deploys are not cancelled mid-run. Every other ref keeps its own
 # group, where a newer push cancels the in-flight run.
 concurrency:
-  group: ${{ (github.event_name == 'push' && (github.ref == 'refs/heads/main' || github.ref == 'refs/heads/dev')) && 'deploy-workers' || format('deploy-{0}', github.ref) }}
-  cancel-in-progress: ${{ !(github.event_name == 'push' && (github.ref == 'refs/heads/main' || github.ref == 'refs/heads/dev')) }}
+  group: ${{ (github.event_name == 'push' && github.ref == 'refs/heads/main') && 'deploy-workers' || format('deploy-{0}', github.ref) }}
+  cancel-in-progress: ${{ !(github.event_name == 'push' && github.ref == 'refs/heads/main') }}
 
 permissions:
   contents: write       # for the auto-version-bump push back to main
@@ -153,16 +151,17 @@ jobs:
         working-directory: worker
         run: npx wrangler deploy
 
-      - name: Deploy Worker (staging)
-        if: steps.target.outputs.kind == 'staging' && env.CLOUDFLARE_API_TOKEN != ''
-        working-directory: worker
-        run: npx wrangler deploy --env staging
+      # dev used to run `wrangler deploy --env staging`, which the Vite plugin
+      # redirect applied to the production trade-os Worker and production KV.
+      # There is no separate staging namespace yet. Do not re-enable this
+      # until one exists in the app Cloudflare account and clients point at it.
+      - name: Skip Worker deploy on dev
+        if: steps.target.outputs.kind == 'staging'
+        run: echo "dev deploys hosting only. Worker code ships from main."
 
-      # Push all secrets to whichever Worker just deployed. Skipped for
-      # preview-only runs (no Worker deploy happens then; preview reuses the
-      # last staging deploy).
+      # Push secrets only after the production Worker deploy.
       - name: Set Worker secrets
-        if: (steps.target.outputs.kind == 'production' || steps.target.outputs.kind == 'staging') && env.CLOUDFLARE_API_TOKEN != ''
+        if: steps.target.outputs.kind == 'production' && env.CLOUDFLARE_API_TOKEN != ''
         working-directory: worker
         env:
           # ALWAYS target the production `trade-os` Worker (no --env flag):
@@ -229,12 +228,11 @@ jobs:
       # The vite plugin's deploy-config redirect hijacks any wrangler call in
       # this repo to trade-os, so the redirect file is removed first (the steps
       # that need it have already run) and wrangler.toml applies. There is only
-      # ONE production cron (staging cron is disabled), so this deploys the
-      # production alerts worker from dev too — same reality as trade-os.
+      # ONE production cron. Only main runs this step; dev does not redeploy it.
       # Manually-set secrets (GROQ_API_KEY, CREDS_ENCRYPTION_KEY…)
       # persist across deploys; the CI-managed set is re-pushed here.
       - name: Deploy Worker (alerts cron) + secrets
-        if: (steps.target.outputs.kind == 'production' || steps.target.outputs.kind == 'staging') && env.CLOUDFLARE_API_TOKEN != ''
+        if: steps.target.outputs.kind == 'production' && env.CLOUDFLARE_API_TOKEN != ''
         working-directory: worker
         env:
           VAPID_JWK: ${{ secrets.VAPID_JWK }}

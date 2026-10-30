@@ -10,3 +10,12 @@
 export function safeHttpUrl(url) {
   return typeof url === 'string' && /^https?:\/\//i.test(url.trim()) ? url.trim() : null;
 }
+
+// https only. Impact links are copied from a third-party JSON feed into a
+// blob every signed-in user can open, so http and javascript: are dropped
+// before they are stored.
+export function httpsUrl(url) {
+  if (typeof url !== 'string') return '';
+  const t = url.trim();
+  return /^https:\/\//i.test(t) ? t : '';
+}

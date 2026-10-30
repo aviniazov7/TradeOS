@@ -94,10 +94,11 @@ export const EXCHANGES = [
     steps: [
       { text: 'Profile → API Management → Create API Key', n: '1' },
       { text: 'שם: "TradeOS"', n: '2' },
-      { text: 'Futures → Account: View Account Details ✓', n: '3', ok: true },
-      { text: 'Futures → Trade: View Order Details ✓', n: '4', ok: true },
+      { text: 'Spot → Account Read ✓ (בלי זה אי אפשר לאמת שהמפתח לקריאה בלבד)', n: '3', ok: true },
+      { text: 'Futures → Account: View Account Details ✓', n: '4', ok: true },
+      { text: 'Futures → Trade: View Order Details ✓', n: '5', ok: true },
       { text: 'אל תסמן Order Placing / Withdraw / Trade', n: '!', warn: true },
-      { text: 'Create → 2FA → העתק מפתחות', n: '5' },
+      { text: 'Create → 2FA → העתק מפתחות', n: '6' },
     ],
   },
   {

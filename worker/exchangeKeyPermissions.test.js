@@ -4,6 +4,7 @@ import {
   classifyBitgetAuthorities,
   classifyBitgetV3,
   classifyBybitKey,
+  classifyMexcKeyInfo,
   classifyOkxPerm,
   verifyExchangeKeyReadOnly,
 } from './exchangeKeyPermissions';
@@ -60,10 +61,34 @@ describe('verifyExchangeKeyReadOnly', () => {
     await expect(verifyExchangeKeyReadOnly('okx', creds, fetchImpl)).rejects.toMatchObject({ code: 'key_not_readonly' });
   });
 
-  it('does not pretend MEXC was verified', async () => {
+  it('accepts a MEXC key whose permissions are read-only', () => {
+    expect(classifyMexcKeyInfo({
+      status: 'VALID',
+      permissions: 'SPOT_ACCOUNT_READ,CONTRACT_ACCOUNT_READ,CONTRACT_DEAL_READ',
+    }).ok).toBe(true);
+  });
+
+  it('rejects a MEXC key that can trade or withdraw', () => {
+    expect(classifyMexcKeyInfo({ status: 'VALID', permissions: 'SPOT_ACCOUNT_READ,CONTRACT_DEAL_WRITE' }).reason).toBe('write');
+    expect(classifyMexcKeyInfo({ status: 'VALID', permissions: 'SPOT_WITHDRAW_WRITE' }).reason).toBe('write');
+    expect(classifyMexcKeyInfo({ status: 'VALID', permissions: '' }).reason).toBe('unknown');
+  });
+
+  it('asks MEXC for key info and stores nothing it cannot prove', async () => {
+    let url = '';
+    const fetchImpl = async (u) => {
+      url = u;
+      return { json: async () => ({ status: 'VALID', permissions: 'SPOT_ACCOUNT_READ,CONTRACT_DEAL_READ' }) };
+    };
+    await expect(verifyExchangeKeyReadOnly('mexc', creds, fetchImpl)).resolves.toEqual({ verified: true, supported: true });
+    expect(url).toContain('https://api.mexc.com/api/v3/apiKeyInfo?');
+    expect(url).not.toMatch(/order|withdraw/i);
+  });
+
+  it('does not call an unknown exchange', async () => {
     let called = false;
     const fetchImpl = async () => { called = true; return { json: async () => ({}) }; };
-    await expect(verifyExchangeKeyReadOnly('mexc', creds, fetchImpl)).resolves.toEqual({ verified: false, supported: false });
+    await expect(verifyExchangeKeyReadOnly('foo', creds, fetchImpl)).resolves.toEqual({ verified: false, supported: false });
     expect(called).toBe(false);
   });
 

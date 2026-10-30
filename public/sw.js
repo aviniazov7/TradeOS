@@ -191,18 +191,32 @@ self.addEventListener('push', (event) => {
   );
 });
 
+// Only a same-origin path. A notification url of https://evil.example used to
+// navigate the open PWA there. Backslashes and "//" are rejected too: the URL
+// parser turns them into a different host.
+function notificationTarget(raw) {
+  const fallback = new URL('/', self.registration.scope).href;
+  if (typeof raw !== 'string') return fallback;
+  const path = raw.trim();
+  if (!path.startsWith('/') || path.startsWith('//') || path.includes('\\') || path.includes(':')) return fallback;
+  let url;
+  try { url = new URL(path, self.registration.scope); } catch { return fallback; }
+  if (url.origin !== self.location.origin) return fallback;
+  return url.href;
+}
+
 // Handle notification clicks
 self.addEventListener('notificationclick', (event) => {
   event.notification.close();
-  const urlPath = event.notification.data?.url || '/mentality';
+  const target = notificationTarget(event.notification.data?.url || '/mentality');
   event.waitUntil(
     self.clients.matchAll({ type: 'window', includeUncontrolled: true }).then((clients) => {
       const client = clients.find((c) => c.visibilityState === 'visible');
       if (client) {
-        client.navigate(urlPath);
+        client.navigate(target);
         client.focus();
       } else {
-        self.clients.openWindow(urlPath);
+        self.clients.openWindow(target);
       }
     })
   );

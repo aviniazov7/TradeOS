@@ -1,7 +1,9 @@
 // Public REST API (v1). Agents authenticate with a per-user key (tos_…) or a
 // Firebase ID token. Writes go through the Admin SDK, so validation here is
-// the same check firestore.rules would apply. Rate limits use the in-isolate
-// edge counter (bumpWindow) — a request never writes KV just to be counted.
+// the same check firestore.rules would apply. Rate limits go through
+// deps.rateLimit (bumpWindow). Uid-keyed windows increment on the user's
+// Durable Object. The pre-auth key-hash window stays on the edge counter
+// because the uid is not known yet. A request never writes KV just to be counted.
 
 import { buildStoredTrade, withDerivedRiskAmount } from '../src/utils/tradeDoc.js';
 import { prepareApiTrade } from '../src/utils/tradeValidation.js';

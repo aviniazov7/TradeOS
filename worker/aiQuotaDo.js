@@ -5,6 +5,7 @@
 
 import { DurableObject } from 'cloudflare:workers';
 import { createQuotaGate } from './aiQuotaActor.js';
+import { advanceWindow } from './windowCounter.js';
 
 export class AiQuotaDO extends DurableObject {
   #seeded = false;
@@ -22,7 +23,36 @@ export class AiQuotaDO extends DurableObject {
         id INTEGER PRIMARY KEY CHECK (id = 1),
         doc TEXT NOT NULL
       )`);
+      this.ctx.storage.sql.exec(`CREATE TABLE IF NOT EXISTS windows (
+        k TEXT PRIMARY KEY,
+        start_ms INTEGER NOT NULL,
+        count INTEGER NOT NULL
+      )`);
     });
+  }
+
+  // Exchange, wallet, candle, translate, and credential-store windows.
+  // Synchronous SQLite so two requests cannot share a stale count.
+  bump(input) {
+    const key = String(input?.key || '').slice(0, 200);
+    const windowMs = Number(input?.windowMs);
+    if (!key || !Number.isFinite(windowMs) || windowMs < 1000 || windowMs > 86_400_000) {
+      return { error: true };
+    }
+    const rows = this.ctx.storage.sql.exec(
+      'SELECT start_ms, count FROM windows WHERE k = ?',
+      key,
+    ).toArray();
+    const prev = rows.length
+      ? { start: Number(rows[0].start_ms), count: Number(rows[0].count) }
+      : null;
+    const next = advanceWindow(prev, Date.now(), windowMs);
+    this.ctx.storage.sql.exec(
+      `INSERT INTO windows (k, start_ms, count) VALUES (?, ?, ?)
+       ON CONFLICT(k) DO UPDATE SET start_ms = excluded.start_ms, count = excluded.count`,
+      key, next.start, next.count,
+    );
+    return { count: next.count };
   }
 
   charge(input) { return this.gate.charge(input); }

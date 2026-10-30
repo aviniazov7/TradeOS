@@ -56,7 +56,7 @@
 | **Gmail (Google)** | שליחת מיילים (SMTP מ-`tradeos.app@gmail.com`) | כתובת, שם ותוכן המייל | |
 | **בורסות** (Bybit, Binance, MEXC, OKX, Bitget, Hyperliquid) | סנכרון עסקאות ויתרות | המפתחות של המשתמש, מה-Worker | |
 | **נתוני שוק** (Bybit, CoinGecko, CoinPaprika, Binance, alternative.me, Yahoo Finance, Polymarket, Moralis, mempool.space) | מחירים, חדשות, ארנקים | **חלק נקרא ישירות מהדפדפן, והספק רואה את כתובת ה-IP של המשתמש.** כתובות ארנק שהמשתמש מזין עוברות ל-Moralis ול-Polymarket | |
-| **שירותי עזר** (allorigins, codetabs) | גיבוי ללוח הכלכלי, מדד עונת האלטים | כתובת ה-IP | רשימת החדשות נמשכת ב-Worker מ-RSS ישירות, לא מהדפדפן |
+| **לוח כלכלי ומדד עונת האלטים** (Forex Factory, Blockchain Center) | לוח אירועים ומדד altcoin season | כתובת ה-IP של Cloudflare, לא של המשתמש | נמשכים ב-Worker. הדפדפן לא קורא לפרוקסי פתוח |
 | **TradingView** | גרפים מוטמעים | כתובת ה-IP והסימבול שנבחר. TradingView רשאית לקבוע עוגיות משלה | |
 | **Google Fonts** | גופנים | כתובת ה-IP | |
 | **לוגואים** (CoinGecko, FMP, Parqet, llama.fi) | תמונות | כתובת ה-IP | |

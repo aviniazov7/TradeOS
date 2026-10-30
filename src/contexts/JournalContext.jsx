@@ -6,7 +6,7 @@ import {
   updateUserDocument,
   deleteUserDocument,
   getUserProfile,
-  setUserProfile,
+  patchUserSettings,
   getRawCollectionSnapshot,
   batchUpdateFromSnapshot,
   batchDeleteByFilter,
@@ -84,7 +84,7 @@ export function JournalProvider({ children }) {
         if (cancelledRef.current) return;
         if (!journalsSnap.empty) {
           // Journals already exist, just mark as migrated
-          await setUserProfile(user.uid, { settings: { journalMigrated: true } });
+          await patchUserSettings(user.uid, { journalMigrated: true });
           return;
         }
 
@@ -116,8 +116,8 @@ export function JournalProvider({ children }) {
           if (cancelledRef.current) return;
         }
 
-        // Mark migration complete
-        await setUserProfile(user.uid, { settings: { journalMigrated: true } });
+        // Mark migration complete. Dotted path — does not replace the settings map.
+        await patchUserSettings(user.uid, { journalMigrated: true });
         if (cancelledRef.current) return;
 
         // Auto-select the created journal

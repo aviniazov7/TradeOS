@@ -41,6 +41,12 @@ describe('hosting CSP (report-only)', () => {
     expect(d['base-uri']).toEqual(["'self'"]);
   });
 
+  it('does not allow the open proxies the browser used to call', () => {
+    expect(d['connect-src']).not.toContain('https://api.allorigins.win');
+    expect(d['connect-src']).not.toContain('https://api.codetabs.com');
+    expect(d['connect-src']).not.toContain('https://nfs.faireconomy.media');
+  });
+
   it('lets the app reach its backends', () => {
     for (const origin of [
       'https://trade-os.tradeos.workers.dev', // the Worker (AI, exchanges, quotes)
@@ -84,9 +90,19 @@ describe('hosting CSP (report-only)', () => {
 
 describe('hosting CSP (enforced)', () => {
   it('still enforces the framing lockdown while the full policy is report-only', () => {
+    // The full script/connect policy stays report-only until a week of
+    // /csp-report logs is clean. Enforcing it in the same change as dropping
+    // the proxies would blank production if any origin is still missing.
     const enforced = directives(header('Content-Security-Policy'));
     expect(enforced['frame-ancestors']).toEqual(["'self'"]);
     expect(enforced['object-src']).toEqual(["'none'"]);
+    expect(enforced['script-src']).toBeUndefined();
+  });
+});
+
+describe('hosting transport', () => {
+  it('sends HSTS for a year, including subdomains', () => {
+    expect(header('Strict-Transport-Security')).toBe('max-age=31536000; includeSubDomains');
   });
 });
 
