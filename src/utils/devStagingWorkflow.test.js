@@ -29,6 +29,7 @@ describe('dev staging workflow', () => {
   it('builds the site against the staging Worker and deploys the fixed dev channel', () => {
     expect(staging).toMatch(/VITE_WORKER_URL:\s*https:\/\/trade-os-staging\.tradeos\.workers\.dev/);
     expect(staging).toMatch(/VITE_FIREBASE_AUTH_DOMAIN:\s*tradeoslive\.web\.app/);
+    expect(staging).toMatch(/VITE_STAGING_BANNER:\s*'1'/);
     expect(staging).not.toMatch(/VITE_ADMIN_NOTIF_PREVIEW:\s*'1'/);
     expect(staging).toMatch(/secrets\.FIREBASE_SERVICE_ACCOUNT/);
     expect(staging).toMatch(/project tradeos-91a58/);
@@ -66,6 +67,7 @@ describe('production deploy stays on main', () => {
     expect(deploy).toMatch(/github\.ref != 'refs\/heads\/dev'/);
     expect(deploy).toMatch(/kind=production/);
     expect(deploy).toMatch(/worker_url=https:\/\/trade-os\.tradeos\.workers\.dev/);
+    expect(deploy).not.toMatch(/VITE_STAGING_BANNER/);
     expect(deploy).toMatch(/firebase-tools deploy --only hosting:app --project tradeos-91a58/);
     expect(deploy).toMatch(/steps\.target\.outputs\.kind == 'production' && env\.CLOUDFLARE_API_TOKEN != ''/);
     expect(deploy).toMatch(/working-directory: worker\n\s+run: npx wrangler deploy\n/);
