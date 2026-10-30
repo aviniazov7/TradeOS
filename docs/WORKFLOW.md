@@ -12,7 +12,7 @@ feature/* or fix/*  →  PR  →  dev  →  PR  →  main
 | Push to `dev` | `.github/workflows/deploy-dev.yml` | Hosting preview channel `dev` on site `tradeoslive`, and Worker `trade-os-staging` |
 | Push to `feature/*`, `fix/*`, `hotfix/*` | `deploy.yml` | Hosting preview channel only (7 days). The build calls the production Worker |
 | Pull request into `dev` | `deploy.yml` | Hosting preview channel `pr-<number>` (7 days) and a comment on the PR. Does not deploy Workers |
-| Pull request into `main` | `deploy.yml` today. After [PR #616](https://github.com/aviniazov7/TradeOS/pull/616) merges, `.github/workflows/preview-hosting.yml` | Hosting preview channel `pr-<number>` (7 days). Does not deploy Workers |
+| Pull request into `main` | `.github/workflows/preview-hosting.yml` | Hosting preview channel `pr-<number>` (7 days) on target `app`. Does not deploy Workers. Same file as [PR #616](https://github.com/aviniazov7/TradeOS/pull/616), so the two do not open a second channel |
 
 Channel `dev` and channel `pr-<number>` are different Firebase channels, so a pull request into `dev` does not replace staging.
 

@@ -268,7 +268,8 @@ feature/* or fix/*  →  PR  →  dev  →  PR  →  main
 |---|---|
 | Push to `main` | auto-bumps the cache version, builds, deploys Hosting live to site `tradeoslive` (`https://tradeoslive.web.app`), plus both production Workers |
 | Push to `dev` | `.github/workflows/deploy-dev.yml` builds against `https://trade-os-staging.tradeos.workers.dev`, deploys that Worker (`wrangler.jsonc` env `staging`), and deploys Hosting channel `dev` on site `tradeoslive` (30 days, renewed each push). Does not deploy `trade-os` or `tradeos-alerts`. |
-| Push to `feature/*`, `fix/*`, `hotfix/*`, or a pull request | builds and deploys a Hosting **preview channel** on site `tradeoslive` (7 days). URLs look like `https://tradeoslive--CHANNEL-HASH.web.app` |
+| Push to `feature/*`, `fix/*`, `hotfix/*`, or a pull request to `dev` | builds and deploys a Hosting **preview channel** on site `tradeoslive` (7 days). URLs look like `https://tradeoslive--CHANNEL-HASH.web.app` |
+| Pull request to `main` (branch in this repo) | `.github/workflows/preview-hosting.yml` builds with the same preview env and deploys Hosting only to a 7-day preview channel on target `app` (site `tradeoslive`, project `tradeos-91a58`). The action comments the URL on the PR. No Workers, rules, or functions |
 
 The only manual deploy is **Firestore rules**: `firebase deploy --only firestore:rules --project tradeos-91a58` whenever `firestore.rules` changes (run it from the repository root — it needs `firebase.json`). Firebase Storage is not part of the project config. Hosting production is `firebase deploy --only hosting:app --project tradeos-91a58` (site `tradeoslive` only).
 

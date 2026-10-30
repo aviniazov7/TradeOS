@@ -61,7 +61,8 @@ describe('production deploy stays on main', () => {
     const on = workflowOnBlock(deploy);
     expect(pushBranches(on)).toMatch(/-\s*main\b/);
     expect(pushBranches(on)).not.toMatch(/-\s*dev\b/);
-    expect(on).toMatch(/pull_request:[\s\S]*branches:\s*\[main,\s*dev\]/);
+    expect(on).toMatch(/pull_request:[\s\S]*branches:\s*\[dev\]/);
+    expect(on).not.toMatch(/branches:\s*\[main,\s*dev\]/);
     expect(deploy).toMatch(/github\.ref != 'refs\/heads\/dev'/);
     expect(deploy).toMatch(/kind=production/);
     expect(deploy).toMatch(/worker_url=https:\/\/trade-os\.tradeos\.workers\.dev/);

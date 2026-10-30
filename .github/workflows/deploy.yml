@@ -5,7 +5,8 @@ name: Deploy TradeOS
 #   push → main             → 🚀 production (Hosting live on tradeoslive.web.app, production Worker)
 #   push → dev              → deploy-dev.yml (channel `dev` + Worker trade-os-staging)
 #   push → feature/fix/hotfix → 🔍 preview channel (Hosting only, calls the production Worker)
-#   pull_request → main|dev → 🔍 preview channel + comment URL on the PR
+#   pull_request → dev      → 🔍 preview channel + comment URL on the PR
+#   pull_request → main     → preview-hosting.yml (Hosting preview only; not this file)
 #
 # Production is the only target that auto-bumps the cache version.
 on:
@@ -16,7 +17,9 @@ on:
       - 'fix/**'
       - 'hotfix/**'
   pull_request:
-    branches: [main, dev]
+    # PRs into main are previewed by preview-hosting.yml so this file does not
+    # deploy a second channel or comment a second URL. Production is push to main.
+    branches: [dev]
   workflow_dispatch: {}
 
 # Only main deploys the Workers. dev used to deploy them too, which wrote

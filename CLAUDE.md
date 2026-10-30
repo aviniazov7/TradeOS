@@ -29,7 +29,8 @@ Never push directly to `main`. Always work on a feature branch and open a PR.
 | Push to `main` | Auto-bumps version → builds → deploys Hosting (live) + Worker (production) |
 | Push to `dev` | `.github/workflows/deploy-dev.yml` builds against `trade-os-staging`, deploys that Worker, and deploys Hosting channel `dev` (30-day expiry, renewed on each push). Does not deploy production. |
 | Push to `feature/*`, `fix/*`, `hotfix/*` | Builds → deploys Hosting preview channel (uses staging Worker) |
-| Pull request to `main` or `dev` | Same as feature push + posts the preview URL as a PR comment |
+| Pull request to `dev` | Same as feature push + posts the preview URL as a PR comment |
+| Pull request to `main` (same repo, opened/synchronize/reopened) | `.github/workflows/preview-hosting.yml` builds and deploys a Hosting preview channel on target `app` (site `tradeoslive`) for 7 days, and comments the URL. No Workers, rules, or functions |
 
 Feature and pull-request preview channels live 7 days then auto-delete. The `dev` channel is renewed to 30 days on every push to `dev` (Firebase's maximum for a preview channel).
 
