@@ -6,21 +6,27 @@
 // No session id and no SSE stream. GET and DELETE are 405. POST is one
 // JSON-RPC message. Notifications get 202. Tool failures are isError results.
 
-import { authorizeApi, createTrade, journalStats, listTrades } from './publicApi.js';
+import { authorizeApi, createTrade, deleteTrade, journalStats, listJournals, listTrades } from './publicApi.js';
 
 const PROTOCOL_VERSIONS = ['2025-03-26', '2025-06-18', '2025-11-25'];
 const PREFERRED_PROTOCOL = '2025-11-25';
 
 const TOOLS = [
   {
+    name: 'list_journals',
+    description: 'List the journals (accounts) owned by the API key. Each row has id, name, and exchange (the broker, for example MEXC or Bybit), plus assetClass, currency, initialBalance, archived, starred, and isDefault. Use id or name with add_trade, list_trades, get_stats, and delete_trade. Omitting a journal elsewhere does not pick one of these for you.',
+    inputSchema: { type: 'object', additionalProperties: false, properties: {} },
+  },
+  {
     name: 'add_trade',
-    description: 'Add one trade to a journal owned by the API key. Validation and stored fields match POST /api/v1/trades: pnl, netPnl, pnlPercent, result, position size, margin, and a derived risk amount when entry, stop, and size can price it. Required: journalId, pair, direction (long or short), entryPrice, quantity. status may be omitted — an exit price closes the trade, partial exits become partial, otherwise the trade stays open. fees default to 0 and leverage to 1 (crypto and stocks). Futures (assetClass futures_cme) need contract.contracts, contract.pointValue, and contract.tickSize. Pass idempotencyKey (8–128 printable characters) to make a retry return the original trade instead of writing another one.',
+    description: 'Add one trade to a journal owned by the API key. Validation and stored fields match POST /api/v1/trades: pnl, netPnl, pnlPercent, result, position size, margin, and a derived risk amount when entry, stop, and size can price it. Pass journalId or journal (the journal name, or its id). One of them is required — omitting both is rejected and does not guess a journal. Also required: pair, direction (long or short), entryPrice, quantity. status may be omitted — an exit price closes the trade, partial exits become partial, otherwise the trade stays open. fees default to 0 and leverage to 1 (crypto and stocks). Futures (assetClass futures_cme) need contract.contracts, contract.pointValue, and contract.tickSize. Pass idempotencyKey (8–128 printable characters) to make a retry return the original trade instead of writing another one.',
     inputSchema: {
       type: 'object',
       additionalProperties: true,
-      required: ['journalId', 'pair', 'direction', 'entryPrice', 'quantity'],
+      required: ['pair', 'direction', 'entryPrice', 'quantity'],
       properties: {
         journalId: { type: 'string', description: 'Id of a journal the key owner owns.' },
+        journal: { type: 'string', description: 'Journal name (case-insensitive) or journal id. Must belong to the key owner. Ambiguous names are rejected.' },
         pair: { type: 'string', description: 'Symbol, 1–30 characters. Example: BTCUSDT.' },
         direction: { type: 'string', enum: ['long', 'short'] },
         entryPrice: { type: 'number', exclusiveMinimum: 0 },
@@ -44,12 +50,13 @@ const TOOLS = [
   },
   {
     name: 'list_trades',
-    description: 'List the caller\'s trades, newest entryDate first. The same entryDate ties break by document id in that same direction. Set order to "asc" for oldest first (id ascending on a tie). Optional filters: journalId, status (open, closed, or partial), pair, direction (long or short), from, and to. from and to filter the entry date (ISO-8601 or YYYY-MM-DD). limit is 1–100 and defaults to 50. Pass the previous nextCursor as cursor to read the next page; the cursor is only valid for the same filters and order. Trades with no entryDate are omitted.',
+    description: 'List the caller\'s trades, newest entryDate first. The same entryDate ties break by document id in that same direction. Set order to "asc" for oldest first (id ascending on a tie). Optional filters: journalId or journal (name or id of a journal the key owner owns), status (open, closed, or partial), pair, direction (long or short), from, and to. Omitting the journal filter lists every journal, same as before. from and to filter the entry date (ISO-8601 or YYYY-MM-DD). limit is 1–100 and defaults to 50. Pass the previous nextCursor as cursor to read the next page; the cursor is only valid for the same filters and order. Trades with no entryDate are omitted.',
     inputSchema: {
       type: 'object',
       additionalProperties: false,
       properties: {
         journalId: { type: 'string' },
+        journal: { type: 'string', description: 'Journal name or id. Limits the list to that account. Omit to list every journal.' },
         status: { type: 'string', enum: ['open', 'closed', 'partial'] },
         pair: { type: 'string' },
         direction: { type: 'string', enum: ['long', 'short'] },
@@ -62,14 +69,26 @@ const TOOLS = [
     },
   },
   {
-    name: 'get_stats',
-    description: 'Journal performance for one journal, matching GET /api/v1/stats and the dashboard. journalId is required. period is all (default), week, month, or year. from and to, when set, replace period. Returns counts, win rate (breakevens excluded), net P&L, opening and current balance, return percent on the equity the period opened at (null when the journal has no opening balance), summed dollar risk, profit factor, expectancy, average R, and max drawdown. truncated is true when the journal has more than 5000 trades.',
+    name: 'delete_trade',
+    description: 'Delete one trade owned by the API key. id is the trade id from add_trade or list_trades. The trade must live under that user — another user\'s id is not found. Screenshot docs for the trade are removed too. Stats and balances are computed from the trades that remain, the same way the journal screen updates after a delete. There is no separate aggregate to patch.',
     inputSchema: {
       type: 'object',
       additionalProperties: false,
-      required: ['journalId'],
+      required: ['id'],
+      properties: {
+        id: { type: 'string', description: 'Trade id.' },
+      },
+    },
+  },
+  {
+    name: 'get_stats',
+    description: 'Journal performance for one journal, matching GET /api/v1/stats and the dashboard. Pass journalId or journal (name or id). One of them is required — omitting both is rejected and does not combine journals. period is all (default), week, month, or year. from and to, when set, replace period. Returns counts, win rate (breakevens excluded), net P&L, opening and current balance, return percent on the equity the period opened at (null when the journal has no opening balance), summed dollar risk, profit factor, expectancy, average R, and max drawdown. truncated is true when the journal has more than 5000 trades. Deleting a trade changes the next result, because stats are summed from the remaining trades.',
+    inputSchema: {
+      type: 'object',
+      additionalProperties: false,
       properties: {
         journalId: { type: 'string' },
+        journal: { type: 'string', description: 'Journal name or id. Required when journalId is omitted.' },
         period: { type: 'string', enum: ['all', 'week', 'month', 'year'] },
         from: { type: 'string', description: 'ISO-8601 or YYYY-MM-DD. Replaces period when set.' },
         to: { type: 'string', description: 'ISO-8601 or YYYY-MM-DD. Replaces period when set.' },
@@ -157,13 +176,15 @@ async function callTool(params, ctx) {
   }
   if (typeof args !== 'object' || Array.isArray(args)) return toolError('arguments must be an object');
   if (name === 'add_trade') return asTool(await createTrade(tradeRequest(args), ctx));
+  if (name === 'list_journals') return asTool(await listJournals(ctx));
   if (name === 'list_trades') {
     return asTool(await listTrades(queryUrl('/api/v1/trades', args, [
-      'journalId', 'status', 'pair', 'direction', 'from', 'to', 'limit', 'cursor', 'order',
+      'journalId', 'journal', 'status', 'pair', 'direction', 'from', 'to', 'limit', 'cursor', 'order',
     ]), ctx));
   }
+  if (name === 'delete_trade') return asTool(await deleteTrade(typeof args.id === 'string' ? args.id : '', ctx));
   if (name === 'get_stats') {
-    return asTool(await journalStats(queryUrl('/api/v1/stats', args, ['journalId', 'period', 'from', 'to']), ctx));
+    return asTool(await journalStats(queryUrl('/api/v1/stats', args, ['journalId', 'journal', 'period', 'from', 'to']), ctx));
   }
   return toolError(`unknown tool: ${name}`);
 }
@@ -174,7 +195,7 @@ function initializeResult(params) {
     protocolVersion: PROTOCOL_VERSIONS.includes(requested) ? requested : PREFERRED_PROTOCOL,
     capabilities: { tools: { listChanged: false } },
     serverInfo: { name: 'tradeos', title: 'TradeOS', version: '1.0.0' },
-    instructions: 'TradeOS journal tools for the signed-in API key. add_trade writes one trade (optional idempotencyKey). list_trades returns newest entryDate first unless order is asc. get_stats is the journal dashboard for one journalId. Dates are ISO-8601.',
+    instructions: 'TradeOS journal tools for the signed-in API key. list_journals returns id, name, and exchange. add_trade writes one trade to journalId or journal (optional idempotencyKey); omitting both is rejected. list_trades returns newest entryDate first unless order is asc, and lists every journal when no journal filter is passed. delete_trade removes one trade by id. get_stats is one journal, by journalId or journal. Dates are ISO-8601.',
   };
 }
 

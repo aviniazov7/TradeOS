@@ -53,11 +53,13 @@ Local Worker (`npx wrangler dev`, see [API.md](./API.md)): `http://localhost:878
 
 | Tool | What it does |
 |---|---|
-| `add_trade` | Same body as `POST /api/v1/trades`. Optional `idempotencyKey` (8–128 printable characters) maps to the `Idempotency-Key` header. A retry returns the original trade and does not write a second one. |
-| `list_trades` | Same filters as `GET /api/v1/trades`: `journalId`, `status`, `pair`, `direction`, `from`, `to`, `limit` (1–100, default 50), `cursor`. Newest `entryDate` first. `order` is `desc` (default) or `asc`. Pass `nextCursor` back as `cursor` with the same filters and order. |
-| `get_stats` | Same as `GET /api/v1/stats`. `journalId` is required. `period` is `all` (default), `week`, `month`, or `year`. `from` and `to` replace `period`. |
+| `list_journals` | Same as `GET /api/v1/journals`. Each journal has `id`, `name`, and `exchange` (the broker, for example MEXC). |
+| `add_trade` | Same body as `POST /api/v1/trades`. Pass `journalId` or `journal` (name or id). Omitting both is rejected. Optional `idempotencyKey` (8–128 printable characters) maps to the `Idempotency-Key` header. A retry returns the original trade and does not write a second one. |
+| `list_trades` | Same filters as `GET /api/v1/trades`: `journalId`, `journal` (name or id), `status`, `pair`, `direction`, `from`, `to`, `limit` (1–100, default 50), `cursor`. Newest `entryDate` first. `order` is `desc` (default) or `asc`. Omit the journal filter to list every account. Pass `nextCursor` back as `cursor` with the same filters and order. |
+| `delete_trade` | Same as `DELETE /api/v1/trades/{id}`. Argument `id`. The trade must belong to the key's user. Stats on the next `get_stats` are computed from the trades that remain. |
+| `get_stats` | Same as `GET /api/v1/stats`. Pass `journalId` or `journal`. One of them is required. `period` is `all` (default), `week`, `month`, or `year`. `from` and `to` replace `period`. |
 
-`add_trade` requires `journalId`, `pair`, `direction` (`long` or `short`), `entryPrice`, and `quantity`. The result text is the JSON body the REST endpoint would return (`id`, `trade`, and `idempotentReplay` on a replay). `list_trades` returns `{ trades, nextCursor }`. `get_stats` returns the stats object.
+`add_trade` requires `pair`, `direction` (`long` or `short`), `entryPrice`, `quantity`, and either `journalId` or `journal`. The result text is the JSON body the REST endpoint would return (`id`, `trade`, and `idempotentReplay` on a replay). `list_journals` returns `{ journals }`. `list_trades` returns `{ trades, nextCursor }`. `delete_trade` returns `{ id, deleted: true }`. `get_stats` returns the stats object.
 
 ## What has to be deployed first
 
@@ -69,4 +71,4 @@ Filtered trade lists (`journalId`, `status`, `pair`, `direction`), including `li
 firebase deploy --only firestore:indexes --project tradeos-91a58
 ```
 
-Wait until the new `trades` indexes are Enabled. `get_stats` and an unfiltered `list_trades` work before that. Details are in [API.md](./API.md).
+Wait until the new `trades` indexes are Enabled. `get_stats`, an unfiltered `list_trades`, `list_journals`, and `delete_trade` work before that. A `journal` name is resolved to an id in the Worker, then the existing `journalId` query runs. Details are in [API.md](./API.md).

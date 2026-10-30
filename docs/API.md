@@ -2,7 +2,7 @@
 
 Base URL: `https://trade-os.tradeos.workers.dev`
 
-The three trade endpoints accept either credential:
+Trade, journal, and stats endpoints accept either credential:
 
 - `Authorization: Bearer tos_…` — a per-user API key (for agents)
 - `Authorization: Bearer <Firebase ID token>` — the signed-in user
@@ -46,9 +46,28 @@ curl -s -X DELETE https://trade-os.tradeos.workers.dev/api/v1/keys/$KEY_ID \
   -H "Authorization: Bearer $ID_TOKEN"
 ```
 
+## GET /api/v1/journals
+
+Lists the journals (accounts) owned by the caller. Each row has `id`, `name`, and `exchange` — the broker, such as `MEXC`, `bybit`, or `Vantage` — plus `assetClass`, `currency`, `initialBalance`, `archived`, `starred`, and `isDefault`. Starred journals come first, then name. An empty account list is `{ "journals": [] }`.
+
+Journals are read with a collection list under `users/{uid}/journals`. No composite index is required. Another user's journals are not included.
+
+```bash
+curl -s https://trade-os.tradeos.workers.dev/api/v1/journals \
+  -H "Authorization: Bearer $API_KEY"
+```
+
+```json
+{ "journals": [ { "id": "JOURNAL_ID", "name": "MEXC", "exchange": "MEXC", "initialBalance": 1000, "starred": true } ] }
+```
+
 ## POST /api/v1/trades
 
-Adds a trade to a journal you own. `journalId` is required. The Worker validates the payload the same way `firestore.rules` validates a client create (service-account writes bypass rules), then stores the same derived fields the journal writes: `pnl`, `netPnl`, `pnlPercent`, `rrRatio`, `result`, `positionSize`, `margin`, `createdAt`, `updatedAt`.
+Adds a trade to a journal you own. Pass `journalId`, or `journal` (the journal's name, or its id). One of them is required. Omitting both is `400` with `journalId is required` — the same rejection as before. The Worker does not pick a default journal.
+
+`journal` is trimmed and matched without case sensitivity. An exact id wins when the string equals a journal id. Two journals with the same name are `409` (`journal name is ambiguous: id1, id2`). A name or id that is not one of your journals is `404`. When both fields are sent, they must refer to the same journal.
+
+The Worker validates the payload the same way `firestore.rules` validates a client create (service-account writes bypass rules), then stores the same derived fields the journal writes: `pnl`, `netPnl`, `pnlPercent`, `rrRatio`, `result`, `positionSize`, `margin`, `createdAt`, `updatedAt`.
 
 If `riskAmount` is omitted or 0, and the entry, stop, and size can price the risk, that dollar amount is stored. The UI then shows the real risk instead of $0.00.
 
@@ -80,7 +99,9 @@ curl -s -X POST https://trade-os.tradeos.workers.dev/api/v1/trades \
 
 ## GET /api/v1/trades
 
-Query parameters (all optional): `journalId`, `status` (`open` | `closed` | `partial`), `pair`, `direction` (`long` | `short`), `from`, `to`, `limit` (1–100, default 50), `cursor`, `order`.
+Query parameters (all optional): `journalId`, `journal` (name or id), `status` (`open` | `closed` | `partial`), `pair`, `direction` (`long` | `short`), `from`, `to`, `limit` (1–100, default 50), `cursor`, `order`.
+
+Omitting `journalId` and `journal` lists every journal, as before. Passing either one limits the page to that account and `404`s when it is not yours. A cursor stays tied to the resolved journal id, so repeat the same filter on the next page.
 
 Results are ordered by **entryDate descending** (newest first). The same entry date ties break by document id, also descending. `order=asc` reverses both: oldest entry date first, and a lower document id first when the dates match. Any other `order` value is `400`.
 
@@ -101,9 +122,24 @@ Pass `cursor` from the previous response to read the next page. A list with no e
 
 Agents can call the same operations over MCP. See [MCP.md](./MCP.md).
 
+## DELETE /api/v1/trades/{id}
+
+Deletes one trade. The id is read under `users/{uid}/trades/{id}`, so another user's trade is `404`, not deleted. A second delete of the same id is `404`. `..` and a slash in the id are `400`.
+
+This is the same write the journal screen makes. The trade document is removed, then the legacy screenshot docs `users/{uid}/tradeImages/{id}_0` … `{id}_3` are removed (a missing slot is a no-op, and a screenshot failure does not bring the trade back). Stats, balance, and return are not stored on the journal. `GET /api/v1/stats` and the dashboard both sum the trades that remain, and `journal.initialBalance` is left as it is.
+
+```bash
+curl -s -X DELETE https://trade-os.tradeos.workers.dev/api/v1/trades/TRADE_ID \
+  -H "Authorization: Bearer $API_KEY"
+```
+
+```json
+{ "id": "TRADE_ID", "deleted": true }
+```
+
 ## GET /api/v1/stats
 
-`journalId` is required. `period` is `all` (default), `week`, `month`, or `year` — the same windows as the dashboard. `from` and `to`, when set, replace `period`.
+Pass `journalId` or `journal` (name or id). One of them is required. Omitting both is `400` with `journalId is required` — stats are not combined across journals. `period` is `all` (default), `week`, `month`, or `year` — the same windows as the dashboard. `from` and `to`, when set, replace `period`.
 
 ```bash
 curl -s "https://trade-os.tradeos.workers.dev/api/v1/stats?journalId=JOURNAL_ID&period=month" \
@@ -171,6 +207,6 @@ This PR does not deploy.
 
    Wait until each new `trades` index shows Enabled in the Firebase console. Until then, `GET /api/v1/trades` with `journalId`, `status`, `pair`, or `direction` fails (the Worker logs a Firestore `FAILED_PRECONDITION`). An unfiltered list and `GET /api/v1/stats` work without these indexes. If a combined filter still asks for an index, create the exact composite from that error. The eight `trades` indexes in `firestore.indexes.json` are the ones index merging needs (each equality field with `entryDate`, ascending and descending).
 
-3. The Worker and hosting deploy from GitHub Actions when the commit reaches `main`. Only `main` deploys the Workers. No new secret is required. The MCP route is the same Worker: `https://trade-os.tradeos.workers.dev/mcp`.
+3. The Worker and hosting deploy from GitHub Actions when the commit reaches `main`. Only `main` deploys the Workers. No new secret is required. The MCP route is the same Worker: `https://trade-os.tradeos.workers.dev/mcp`. Listing journals, matching a journal by name, and deleting a trade do not add a Firestore index: journals are a collection list, the name is matched in the Worker, and delete is a single document.
 
 4. No `wrangler deploy` from a laptop. The local Wrangler login is the personal Cloudflare account, which does not own `trade-os`.
