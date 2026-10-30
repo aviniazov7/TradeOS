@@ -44,8 +44,9 @@
   // .wrangler/deploy/config.json) still targets the top-level name `trade-os`.
   // Bindings are not inherited, so they are repeated here. There is no cron:
   // tradeos-alerts stays the only scheduled Worker and deploys from main.
-  // ALERTS_KV is still the production namespace. Staging HTTP reads and writes
-  // that data until a staging namespace id replaces this one. See docs/WORKFLOW.md.
+  // ALERTS_KV is the staging namespace, not production. Exchange connections
+  // in production KV are not visible here and must be reconnected on the dev
+  // channel (staging also has its own CREDS_ENCRYPTION_KEY). See docs/WORKFLOW.md.
   "env": {
     "staging": {
       "name": "trade-os-staging",
@@ -54,7 +55,7 @@
         "not_found_handling": "single-page-application"
       },
       "kv_namespaces": [
-        { "binding": "ALERTS_KV", "id": "5c66041d98aa4229a52afeb2f5b1f652" }
+        { "binding": "ALERTS_KV", "id": "ac57c9487d5044eda008e06100a05758" }
       ],
       "durable_objects": {
         "bindings": [

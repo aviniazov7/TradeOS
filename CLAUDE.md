@@ -90,16 +90,18 @@ changes. Firebase Storage is not used.
     to `dev` deploys it with `wrangler deploy --config wrangler.jsonc --env staging`
     after `scripts/staging-worker-target.mjs` checks the name. The dev Hosting
     channel is built with `VITE_WORKER_URL=https://trade-os-staging.tradeos.workers.dev`.
-    Its KV binding is still the production `ALERTS_KV` id until that id is replaced.
+    Its KV binding is the staging namespace `ac57c9487d5044eda008e06100a05758`
+    (not the production id). `CREDS_ENCRYPTION_KEY` on this Worker is
+    staging-only; reconnect exchanges on the dev channel.
   - `tradeos-alerts` — the CRON runner (`worker/wrangler.toml`, `*/10` cron,
     same ALERTS_KV). Deployed by the CI step "Deploy Worker (alerts cron)",
     which first removes `.wrangler/deploy/config.json` to escape the redirect.
     Cron-path changes are DEAD until this worker is deployed too.
   Only a push to `main` deploys `trade-os` and `tradeos-alerts`. A push to `dev`
   deploys `trade-os-staging` only.
-  `worker/wrangler.toml` `[env.staging]` still points at the production KV
-  id and is not deployed. Do not deploy the alerts cron for staging until that
-  id is a new namespace. Feature and PR preview channels still call the
+  `worker/wrangler.toml` `[env.staging]` uses that same staging KV id and is
+  not deployed. Do not deploy the alerts cron for staging until a staging
+  cron is intentional. Feature and PR preview channels still call the
   production Worker URL. The fixed `dev` channel calls the staging Worker.
 - **Firestore:** **shared between production and staging.** No separation yet.
   This is fine for solo dev / low data volume, but be aware: test writes from
