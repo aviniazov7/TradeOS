@@ -2831,6 +2831,10 @@ function packCoachStats(stats, budget) {
 }
 
 async function handleAICoach(request, env, cors) {
+  // Set once the shared daily question counter is charged, so a provider
+  // failure (non-ok response or a thrown fetch) refunds it. Same contract as
+  // /ai-chat: failed calls don't burn a question.
+  let refundDaily = null;
   try {
     const body = await request.json().catch(() => ({}));
     const { stats, depth = 'short', mode = 'journal' } = body || {};
@@ -2873,13 +2877,11 @@ async function handleAICoach(request, env, cors) {
     }
     const premium = await isUserPremium(env, token, uid);
 
-    // Free users get 5 coach runs/month tracked separately from the daily AI
-    // quota — Premium is unmetered (covered by the soft caps in aiCharge).
-    // Checked BEFORE the rate gate so a user who is out of monthly runs is
-    // turned away without spending a KV write on the rate windows.
-    // NOTE: the slot is charged only AFTER a successful provider response
-    // (below), mirroring /ai-coin-description — a Groq 429 must not burn one
-    // of the user's 5 monthly analyses.
+    // Free users ALSO get 5 coach runs/month, on top of the shared daily
+    // question counter. Checked BEFORE the rate gate so a user who is out of
+    // monthly runs is turned away without spending a KV write. The monthly
+    // slot is charged only AFTER a successful provider response — a Groq 429
+    // must not burn one of the 5.
     let chargeCoachQuota = null;
     if (!premium) {
       const monthKey = `coach:${uid}:${getIsraelDateStr().slice(0, 7)}`;
@@ -2897,9 +2899,15 @@ async function handleAICoach(request, env, cors) {
       chargeCoachQuota = () => kvPutSafe(env, monthKey, String(used + 1), { expirationTtl: 60 * 60 * 24 * 60 });
     }
 
-    // Shared rate gate + circuit breaker (same windows as /ai-chat).
-    const gate = await aiCharge(env, uid, premium);
+    // Same daily question counter /ai-chat increments (the TradeAI
+    // "נשארו X מתוך Y" bar), for every coach mode: journal analyst ("האנליסט
+    // שלך"), backtest, Polymarket wallet analysis and the personal brief.
+    // Charged up front so parallel clicks can't slip past the cap; refunded
+    // below if every provider fails. Premium's hard cap stays the rolling
+    // 200 inside aiCharge; free users are also capped at AI_DAILY_LIMIT.
+    const gate = await aiCharge(env, uid, premium, { chargeDaily: true });
     if (gate) return new Response(JSON.stringify(gate.body), { status: gate.status, headers: { ...cors, 'Content-Type': 'application/json' } });
+    refundDaily = () => refundAiCharge(env, uid, { daily: true });
 
     // Turn the clicked quick-prompt (stats.focus) into an explicit, prominent
     // directive so each button yields a genuinely different, focused report.
@@ -2939,17 +2947,22 @@ async function handleAICoach(request, env, cors) {
       // mid-evening must not kill the feature).
       const gemText = await geminiGenerateFallback(env, systemPrompt, userPrompt, premium && depth === 'deep' ? 1400 : 700);
       if (gemText) {
+        refundDaily = null;
         if (chargeCoachQuota) await chargeCoachQuota();
         return new Response(JSON.stringify({ ok: true, text: gemText, premium }), { headers: { ...cors, 'Content-Type': 'application/json' } });
       }
+      if (refundDaily) await refundDaily();
+      refundDaily = null;
       return new Response(JSON.stringify({ error: groqRes.status === 429 ? 'ה-AI עמוס כרגע, נסה שוב בעוד רגע' : `שגיאת AI: ${groqRes.status}` }), { status: 502, headers: { ...cors, 'Content-Type': 'application/json' } });
     }
     const data = await groqRes.json();
     const text = data.choices?.[0]?.message?.content?.trim() || '';
+    refundDaily = null;
     if (chargeCoachQuota) await chargeCoachQuota();
     return new Response(JSON.stringify({ ok: true, text, premium }), { headers: { ...cors, 'Content-Type': 'application/json' } });
   } catch (err) {
     console.error('AI coach error:', err);
+    if (refundDaily) await refundDaily();
     return new Response(JSON.stringify({ error: 'שגיאה פנימית' }), { status: 500, headers: { ...cors, 'Content-Type': 'application/json' } });
   }
 }
@@ -4292,8 +4305,9 @@ async function handleRequest(request, env) {
     return handleAIProjectDescription(request, env, cors);
   }
 
-  // AI Coach — analyze the user's trade journal stats and return a structured
-  // strengths/weaknesses/actions report. Free tier: 3 reports/month, short.
+  // AI Coach — journal, backtest, or a Polymarket wallet / personal brief.
+  // Counts against the same daily AI quota as /ai-chat. Free tier also has
+  // 5 coach runs/month.
   if (request.method === 'POST' && path === '/ai-coach') {
     return handleAICoach(request, env, cors);
   }

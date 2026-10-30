@@ -11,6 +11,8 @@ import { useAuth } from '../../contexts/AuthContext';
 import { useJournalContext } from '../../contexts/JournalContext';
 import { useLinkedExchangeBalance } from '../../hooks/useLinkedExchangeBalance';
 import { generateCoachReport } from '../../services/aiCoachService';
+import { useAiUsage } from '../../hooks/useAiUsage';
+import { dailyAiQuotaMessage, isDailyAiQuotaExhausted } from '../../utils/aiQuotaGate';
 import { getUserCollectionDocs } from '../../services/firestoreService';
 import { buildCoachStats, coachScopeTrades } from '../../utils/coachStats';
 import {
@@ -549,6 +551,8 @@ export default function AICoachPanel({ trades }) {
   const [stats, setStats] = useState(null); // computed snapshot used by the dashboard
   const [error, setError] = useState('');
   const [activePrompt, setActivePrompt] = useState(null);
+  const aiUsage = useAiUsage();
+  const quotaMessage = isDailyAiQuotaExhausted(aiUsage) ? dailyAiQuotaMessage(aiUsage) : '';
   // The mentality journals are fetched once, on the first analysis, instead of
   // held on a live subscription — the journal page already carries two of those
   // and this data only matters at the moment the coach runs.
@@ -578,9 +582,14 @@ export default function AICoachPanel({ trades }) {
   };
 
   const run = async (promptKey = null) => {
+    if (quotaMessage) {
+      setError(quotaMessage);
+      return;
+    }
     setActivePrompt(promptKey);
     setLoading(true);
     setError('');
+    let called = false;
     try {
       const built = buildCoachStats(trades, { premium: isPremium });
       if (built.empty) {
@@ -614,6 +623,7 @@ export default function AICoachPanel({ trades }) {
         plansRef.current = undefined;
       }
       setStats(built);
+      called = true;
       const text = await generateCoachReport(promptKey ? { ...built, focus: promptKey } : built, isPremium ? 'deep' : 'short');
       setReport(text);
     } catch (e) {
@@ -621,6 +631,7 @@ export default function AICoachPanel({ trades }) {
       setReport('');
     } finally {
       setLoading(false);
+      if (called) aiUsage.refresh();
     }
   };
 
@@ -655,7 +666,7 @@ export default function AICoachPanel({ trades }) {
         </div>
         <button
           onClick={() => run(null)}
-          disabled={loading}
+          disabled={loading || !!quotaMessage}
           className="shrink-0 inline-flex items-center gap-1.5 h-10 px-4 rounded-xl bg-accent-muted hover:bg-accent-primary text-white text-sm font-bold transition-colors cursor-pointer disabled:opacity-50"
         >
           {loading
@@ -677,7 +688,7 @@ export default function AICoachPanel({ trades }) {
             <button
               key={p.id}
               onClick={() => run(p.id)}
-              disabled={loading}
+              disabled={loading || !!quotaMessage}
               className={`text-[13px] h-9 px-3.5 rounded-xl border transition-colors cursor-pointer disabled:opacity-50 ${
                 activePrompt === p.id
                   ? 'bg-accent-primary/15 border-accent-primary/60 text-accent-hover font-semibold'
@@ -704,13 +715,14 @@ export default function AICoachPanel({ trades }) {
       {/* Thinking indicator while the model is working */}
       {loading && <ThinkingIndicator steps={COACH_STEPS} />}
 
-      {/* Error */}
-      {error && !loading && (
+      {/* Error — quota exhaustion is shown even before a click so the
+          disabled "ניתוח מלא" button has a reason. */}
+      {(error || quotaMessage) && !loading && (
         <div className="flex items-start gap-2 p-3 rounded-xl border border-loss/30 bg-loss/10 text-sm text-loss">
           <AlertCircle className="w-4 h-4 shrink-0 mt-0.5" />
           <div className="flex-1">
-            <p>{error}</p>
-            {error.includes('שדרג ל-Premium') && (
+            <p>{error || quotaMessage}</p>
+            {(error || quotaMessage).includes('שדרג ל-Premium') && (
               <button onClick={() => navigate('/premium')} className="mt-1 text-xs underline text-accent-primary cursor-pointer">
                 לשדרוג Premium
               </button>

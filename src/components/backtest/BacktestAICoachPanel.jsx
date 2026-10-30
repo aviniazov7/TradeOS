@@ -9,6 +9,8 @@ import { renderBulletHtml } from '../../utils/renderBulletHtml';
 import { useAuth } from '../../contexts/AuthContext';
 import { useBacktestStats } from '../../hooks/useBacktestStats';
 import { generateCoachReport } from '../../services/aiCoachService';
+import { useAiUsage } from '../../hooks/useAiUsage';
+import { dailyAiQuotaMessage, isDailyAiQuotaExhausted } from '../../utils/aiQuotaGate';
 
 // AI backtest analyst — premium only. Sends a compact R-based stats summary to
 // the worker's /ai-coach (mode:'backtest', which swaps in a strategy-validation
@@ -100,11 +102,18 @@ export default function BacktestAICoachPanel({ backtests }) {
   const [report, setReport] = useState('');
   const [error, setError] = useState('');
   const [activePrompt, setActivePrompt] = useState(null);
+  const aiUsage = useAiUsage();
+  const quotaMessage = isDailyAiQuotaExhausted(aiUsage) ? dailyAiQuotaMessage(aiUsage) : '';
 
   const run = async (promptKey = null) => {
+    if (quotaMessage) {
+      setError(quotaMessage);
+      return;
+    }
     setActivePrompt(promptKey);
     setLoading(true);
     setError('');
+    let called = false;
     try {
       if (!stats.total) {
         setError('אין עדיין עסקאות בקטסט לניתוח. הוסף עסקאות כדי לקבל ניתוח.');
@@ -112,6 +121,7 @@ export default function BacktestAICoachPanel({ backtests }) {
         return;
       }
       const payload = buildPayload(stats, backtests, promptKey || 'overview');
+      called = true;
       const text = await generateCoachReport(payload, 'deep', 'backtest');
       setReport(text);
     } catch (e) {
@@ -119,6 +129,7 @@ export default function BacktestAICoachPanel({ backtests }) {
       setReport('');
     } finally {
       setLoading(false);
+      if (called) aiUsage.refresh();
     }
   };
 
@@ -172,7 +183,7 @@ export default function BacktestAICoachPanel({ backtests }) {
             </h3>
             <p className="text-xs text-text-secondary mt-1">ה-edge לפי אסטרטגיה, סשן וטיימפריים — והאם התוכנית מוכנה למסחר חי</p>
           </div>
-          <button onClick={() => run(null)} disabled={loading}
+          <button onClick={() => run(null)} disabled={loading || !!quotaMessage}
             className="shrink-0 h-10 px-4 inline-flex items-center gap-1.5 rounded-xl bg-accent-muted hover:bg-accent-primary text-white text-sm font-bold transition-colors cursor-pointer disabled:opacity-50">
             {loading ? <><RefreshCw className="w-4 h-4 animate-spin" /> מנתח...</> : <><Sparkles className="w-4 h-4" /> ניתוח מלא</>}
           </button>
@@ -183,7 +194,7 @@ export default function BacktestAICoachPanel({ backtests }) {
           </p>
           <div className="flex flex-wrap gap-2">
             {PROMPTS.map((p) => (
-              <button key={p.id} onClick={() => run(p.id)} disabled={loading}
+              <button key={p.id} onClick={() => run(p.id)} disabled={loading || !!quotaMessage}
                 className={`text-[13px] h-9 px-3.5 rounded-xl border transition-colors cursor-pointer disabled:opacity-50 ${
                   activePrompt === p.id
                     ? 'bg-accent-primary/15 border-accent-primary/60 text-accent-hover font-semibold'
@@ -198,10 +209,10 @@ export default function BacktestAICoachPanel({ backtests }) {
 
       {loading && <ThinkingIndicator steps={COACH_STEPS} />}
 
-      {error && !loading && (
+      {(error || quotaMessage) && !loading && (
         <div className="flex items-start gap-2 p-3 rounded-xl border border-loss/30 bg-loss/10 text-sm text-loss">
           <AlertCircle className="w-4 h-4 shrink-0 mt-0.5" />
-          <p>{error}</p>
+          <p>{error || quotaMessage}</p>
         </div>
       )}
 

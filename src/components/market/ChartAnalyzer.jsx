@@ -9,6 +9,7 @@ import { sendMessageStream } from '../../services/groqApi';
 import { useAiUsage } from '../../hooks/useAiUsage';
 import { useAuth } from '../../contexts/AuthContext';
 import { fileToCompressedDataUrl, formatAIText } from '../../utils/aiChatHelpers';
+import { chartQuotaBlock } from '../../utils/aiQuotaGate';
 
 // What one analysis covers — shown before upload so it's clear what you get.
 const COVERS = [
@@ -180,6 +181,11 @@ export default function ChartAnalyzer({ heightClass = '', initialImage = null })
       setError('צירוף וניתוח גרפים פתוח למנויי Premium בלבד 👑');
       return;
     }
+    const blocked = chartQuotaBlock(aiUsage);
+    if (blocked) {
+      setError(blocked);
+      return;
+    }
     inFlightRef.current = true;
     setAnalyzing(true);
     setResultText('');
@@ -238,6 +244,7 @@ export default function ChartAnalyzer({ heightClass = '', initialImage = null })
   };
 
   const imgRemaining = Math.max(0, aiUsage.imageLimit - aiUsage.imageUsed);
+  const chartBlock = chartQuotaBlock(aiUsage);
 
   return (
     <div className="w-full">
@@ -324,9 +331,13 @@ export default function ChartAnalyzer({ heightClass = '', initialImage = null })
                   </div>
                 </div>
                 {!resultText && !analyzing && (
-                  <button onClick={analyze} className="w-full h-12 inline-flex items-center justify-center gap-2 rounded-xl bg-accent-muted hover:bg-accent-primary text-white text-sm font-bold transition-colors cursor-pointer">
-                    <Sparkles className="w-4 h-4" /> נתח את הגרף
-                  </button>
+                  chartBlock ? (
+                    <p className="text-sm font-semibold text-loss text-center">{chartBlock}</p>
+                  ) : (
+                    <button onClick={analyze} className="w-full h-12 inline-flex items-center justify-center gap-2 rounded-xl bg-accent-muted hover:bg-accent-primary text-white text-sm font-bold transition-colors cursor-pointer">
+                      <Sparkles className="w-4 h-4" /> נתח את הגרף
+                    </button>
+                  )
                 )}
                 {error && (
                   <div className="bg-loss/10 border border-loss/25 rounded-xl px-4 py-3 text-sm text-loss text-center">{error}</div>

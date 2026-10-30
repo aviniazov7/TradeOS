@@ -1,4 +1,6 @@
 import { useMemo, useState } from 'react';
+import { useAiUsage } from '../../hooks/useAiUsage';
+import { dailyAiQuotaMessage, isDailyAiQuotaExhausted } from '../../utils/aiQuotaGate';
 import { UserRoundSearch, AlertCircle, Star, Target, Activity } from 'lucide-react';
 import { usePolymarketWatch } from '../../hooks/usePolymarketWatch';
 import { usePolymarketStrategies } from '../../hooks/usePolymarketStrategies';
@@ -35,6 +37,8 @@ export default function PersonalAnalyst({ smartCountByMarket = {}, smartLoading 
   const [loading, setLoading] = useState(false);
   const [report, setReport] = useState('');
   const [error, setError] = useState('');
+  const aiUsage = useAiUsage();
+  const quotaMessage = isDailyAiQuotaExhausted(aiUsage) ? dailyAiQuotaMessage(aiUsage) : '';
 
   // Matches per strategy — also the headline count on the tiles.
   const strategyMatches = useMemo(
@@ -44,8 +48,13 @@ export default function PersonalAnalyst({ smartCountByMarket = {}, smartLoading 
   const totalMatches = strategyMatches.reduce((n, x) => n + x.matches.length, 0);
 
   const run = async () => {
+    if (quotaMessage) {
+      setError(quotaMessage);
+      return;
+    }
     setLoading(true);
     setError('');
+    let called = false;
     try {
       // Recent moves of the tracked wallets (bounded fan-out).
       const wallets = watched.slice(0, MAX_WALLETS_SCANNED);
@@ -86,6 +95,7 @@ export default function PersonalAnalyst({ smartCountByMarket = {}, smartLoading 
         })),
         marketsScanned: markets.length,
       };
+      called = true;
       const text = await generateCoachReport(payload, 'deep', 'polymarket-brief');
       setReport(text);
     } catch (e) {
@@ -93,6 +103,7 @@ export default function PersonalAnalyst({ smartCountByMarket = {}, smartLoading 
       setReport('');
     } finally {
       setLoading(false);
+      if (called) aiUsage.refresh();
     }
   };
 
@@ -141,11 +152,15 @@ export default function PersonalAnalyst({ smartCountByMarket = {}, smartLoading 
               <p className="text-sm text-text-secondary max-w-md mx-auto leading-relaxed mb-4 px-6">
                 ה-AI יקרא {watched.length} ארנקים במעקב, {strategies.length} אסטרטגיות ו-{totalMatches} התאמות פתוחות — ויכתוב לך מה חשוב עכשיו.
               </p>
-              <button onClick={run} disabled={smartLoading}
-                title={smartLoading ? 'ממתין לנתוני הכסף החכם' : undefined}
-                className="inline-flex items-center gap-1.5 px-5 py-2.5 rounded-xl bg-accent-primary text-bg-primary text-sm font-semibold hover:bg-accent-hover transition-colors cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed">
-                <UserRoundSearch className="w-4 h-4" /> {smartLoading ? 'טוען נתונים…' : 'תן לי תדרוך'}
-              </button>
+              {quotaMessage ? (
+                <p className="text-sm font-semibold text-loss px-6">{quotaMessage}</p>
+              ) : (
+                <button onClick={run} disabled={smartLoading}
+                  title={smartLoading ? 'ממתין לנתוני הכסף החכם' : undefined}
+                  className="inline-flex items-center gap-1.5 px-5 py-2.5 rounded-xl bg-accent-primary text-bg-primary text-sm font-semibold hover:bg-accent-hover transition-colors cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed">
+                  <UserRoundSearch className="w-4 h-4" /> {smartLoading ? 'טוען נתונים…' : 'תן לי תדרוך'}
+                </button>
+              )}
             </>
           )}
         </div>
