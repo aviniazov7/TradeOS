@@ -48,19 +48,21 @@ export default function PageHeader({ icon: Icon, title, titleAside, subtitle, me
         {/* Phones: actions wrap onto their own row under the title instead of
             squeezing it (basis-full); from sm up they sit beside it.
             compactMobile keeps them on the title row as icon buttons. */}
-        <div className={`flex flex-1 min-w-0 ${compactMobile ? 'flex-nowrap items-center gap-2' : `flex-wrap ${subtitle || meta ? 'items-start' : 'items-center'} gap-3`}`}>
+        <div className={`flex flex-1 ${compactMobile && center ? '' : 'min-w-0'} ${compactMobile ? 'flex-nowrap items-center gap-2' : `flex-wrap ${subtitle || meta ? 'items-start' : 'items-center'} gap-3`}`}>
           {Icon && (
             <span className={`${compactMobile ? 'w-8 h-8 md:w-11 md:h-11' : 'w-10 h-10 md:w-11 md:h-11'} rounded-xl bg-accent-primary/12 border border-accent-primary/20 grid place-items-center shrink-0`}>
               <Icon className={`${compactMobile ? 'w-4 h-4 md:w-5 md:h-5' : 'w-5 h-5'} text-accent-primary`} />
             </span>
           )}
-          <div className="min-w-0 flex-1">
+          <div className={compactMobile && center ? 'flex-1' : 'min-w-0 flex-1'}>
             {titleAside ? (
               <div className={`flex items-center min-w-0 w-full ${compactMobile ? 'flex-nowrap gap-2' : 'flex-wrap gap-x-3 gap-y-2'}`}>
                 <Title className={`${compactMobile ? 'text-lg md:text-2xl shrink-0' : 'text-xl md:text-2xl'} font-bold text-text-primary leading-tight`}>{title}</Title>
-                <div className="min-w-0 flex-1 md:flex-none">{titleAside}</div>
+                {/* Shrink the journal name before the stats, so a long name
+                    truncates instead of pushing "R ממוצע" onto a second line. */}
+                <div className="min-w-0 shrink overflow-hidden">{titleAside}</div>
                 {center && (
-                  <div className="hidden md:flex flex-1 min-w-0 items-center justify-center px-2">
+                  <div className="hidden md:flex shrink-0 items-center justify-center px-1">
                     {center}
                   </div>
                 )}
@@ -83,7 +85,7 @@ export default function PageHeader({ icon: Icon, title, titleAside, subtitle, me
         {children && <div className="min-w-0 lg:max-w-[60%]">{children}</div>}
       </div>
       {!mobileTabsFirst && mobileTabRow}
-      {center && <div className="md:hidden mt-2 w-full min-w-0">{center}</div>}
+      {center && <div className="md:hidden mt-2 w-full min-w-0 overflow-x-auto no-scrollbar">{center}</div>}
     </Card>
   );
 }

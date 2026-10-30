@@ -379,6 +379,13 @@ describe('R with a moved stop — measured against the ORIGINAL stop', () => {
     expect(tradeAccountPercent(gold, 369.57)).toBeCloseTo((27.4 / 369.57) * 100, 6);
     expect(tradeAccountPercent(gold, 0)).toBeNull();
     expect(tradeAccountPercent(gold, null)).toBeNull();
+    expect(tradeAccountPercent(gold, -10)).toBeNull();
+    // MEXC reports ~1e-8 after a full withdrawal. That must not be a denominator:
+    // -11.2239 / 1e-8 * 100 is the -112,239,000,000% the journal was showing.
+    expect(tradeAccountPercent({ netPnl: -11.2239 }, 1e-8)).toBeNull();
+    expect((-11.2239 / 1e-8) * 100).toBeCloseTo(-112239000000, 0);
+    expect(tradeAccountPercent(gold, 0.009)).toBeNull();
+    expect(tradeAccountPercent(gold, 0.01)).toBeCloseTo((27.4 / 0.01) * 100, 4);
   });
 
   it('tradeShownPercent prefers the account and falls back to the position', () => {
@@ -389,6 +396,10 @@ describe('R with a moved stop — measured against the ORIGINAL stop', () => {
     expect(tradeShownPercent(win, 500, { net: 25, positionPercent: 40 })).toEqual({ percent: 5, onAccount: true });
     expect(tradeShownPercent(win, 0, { net: 25, positionPercent: 40 })).toEqual({ percent: 40, onAccount: false });
     expect(tradeShownPercent(win, 0, { net: 25, positionPercent: null })).toEqual({ percent: null, onAccount: false });
+    expect(tradeShownPercent(win, 1e-8)).toEqual({ percent: null, onAccount: true });
+    expect(tradeShownPercent(win, -4)).toEqual({ percent: null, onAccount: true });
+    expect(tradeShownPercent(win, 0, { strictAccount: true })).toEqual({ percent: null, onAccount: true });
+    expect(tradeShownPercent(win, 1e-8, { net: 25, positionPercent: 40 })).toEqual({ percent: null, onAccount: true });
   });
 
   it('CFD risk is |entry − stop| × lots × point value, not the saved riskAmount', () => {

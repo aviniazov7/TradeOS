@@ -2,6 +2,7 @@ import { useState, useMemo, Fragment } from 'react';
 import { Pencil, Trash2, Share2, Eye, TrendingUp, TrendingDown, Check, ArrowUp, ArrowDown, ArrowUpDown } from 'lucide-react';
 import { formatDate, formatPrice, formatCurrency, formatPercent, formatSignedR } from '../../utils/formatters';
 import { signedTradeR, tradeShownPercent } from '../../utils/calculations';
+import { buildAccountReturnBook } from '../../utils/accountReturn';
 import { setupLabel, tradeSetups } from '../../utils/setupStats';
 import { isClosedTrade, safePnl } from '../../utils/calculations';
 import { getExchangeLogo } from '../../utils/constants';
@@ -34,11 +35,12 @@ function StopValue({ trade }) {
 
 const pnlColor = (val) => (val > 0 ? 'text-profit' : val < 0 ? 'text-loss' : 'text-breakeven');
 
-// Closed rows use net P&L over the account when a balance is set, and the
-// position return otherwise. Open rows do the same with the live P&L.
-function rowPercent(trade, { done, live, accountBalance }) {
-  if (done) return tradeShownPercent(trade, accountBalance);
-  if (live) return tradeShownPercent(trade, accountBalance, { net: live.pnl, positionPercent: live.percent });
+// Closed rows use net P&L over the balance before that trade. Open rows do
+// the same with the live P&L. A reported balance that is missing, zero, or
+// dust shows "—" instead of a position percent.
+function rowPercent(trade, { done, live, accountBalance, strictAccount }) {
+  if (done) return tradeShownPercent(trade, accountBalance, { strictAccount });
+  if (live) return tradeShownPercent(trade, accountBalance, { net: live.pnl, positionPercent: live.percent, strictAccount });
   return null;
 }
 
@@ -132,12 +134,21 @@ function SortTh({ label, sortKey, sort, onSortChange }) {
 export default function TradeTable({
   trades, allTrades, liveById = {}, sort, onSortChange, showMonths = true,
   selectMode = false, selectedIds, onToggleSelect,
-  onEdit, onDelete, onShare, isLimitPending, accountBalance = 0,
+  onEdit, onDelete, onShare, isLimitPending, accountBalance = 0, returnBook = null,
 }) {
   const [detailTrade, setDetailTrade] = useState(null);
   const monthTotals = useMemo(() => buildMonthTotals(allTrades || trades), [allTrades, trades]);
+  const book = useMemo(
+    () => returnBook || buildAccountReturnBook(allTrades || trades, { openingBalance: accountBalance }),
+    [returnBook, allTrades, trades, accountBalance],
+  );
   const pending = (t) => isLimitPending?.(t) ?? false;
-  const onAccount = Number(accountBalance) > 0;
+  const onAccount = book.mode !== 'position';
+  const balanceFor = (trade) => {
+    if (!onAccount) return 0;
+    const balance = book.byId.get(trade?.id);
+    return balance == null ? null : balance;
+  };
 
   const statusBadge = (status, isPending) => {
     if (isPending) return <span className="text-xs font-semibold px-2 py-0.5 rounded bg-text-muted/15 text-text-muted">Limit ממתין</span>;
@@ -158,7 +169,7 @@ export default function TradeTable({
           const done = status !== 'open' && !isPending;
           const live = status === 'open' && !isPending ? liveById[trade.id] : null;
           const netR = done ? signedTradeR(trade) : null;
-          const shownPct = rowPercent(trade, { done, live, accountBalance });
+          const shownPct = rowPercent(trade, { done, live, accountBalance: balanceFor(trade), strictAccount: onAccount });
           const rr = formatSignedR(netR);
           const selected = selectMode && selectedIds?.has(trade.id);
 
@@ -202,14 +213,18 @@ export default function TradeTable({
                     {trade.strategy && <span className="text-text-muted truncate min-w-0">· {trade.strategy}</span>}
                     {tradeSetups(trade)[0] && <span className="text-text-muted truncate min-w-0">· {setupLabel(tradeSetups(trade)[0])}</span>}
                   </span>
-                  {done && shownPct?.percent != null && (
+                  {done && (onAccount || shownPct?.percent != null) && (
                     <span className="num-mono shrink-0 inline-flex items-center gap-1.5" dir="ltr">
-                      <span className={pnlColor(shownPct.percent)} title={percentTitle(shownPct, true)}>{formatPercent(shownPct.percent)}</span>
+                      <span className={shownPct?.percent == null ? 'text-text-muted' : pnlColor(shownPct.percent)} title={percentTitle(shownPct, true)}>
+                        {shownPct?.percent == null ? '—' : formatPercent(shownPct.percent)}
+                      </span>
                       {rr !== '–' && <span className={pnl < 0 ? 'text-loss' : 'text-text-secondary'}>{rr}</span>}
                     </span>
                   )}
-                  {live && shownPct?.percent != null && (
-                    <span className={`num-mono shrink-0 ${pnlColor(shownPct.percent)}`} dir="ltr" title={percentTitle(shownPct, false)}>{formatPercent(shownPct.percent)}</span>
+                  {live && (onAccount || shownPct?.percent != null) && (
+                    <span className={`num-mono shrink-0 ${shownPct?.percent == null ? 'text-text-muted' : pnlColor(shownPct.percent)}`} dir="ltr" title={percentTitle(shownPct, false)}>
+                      {shownPct?.percent == null ? '—' : formatPercent(shownPct.percent)}
+                    </span>
                   )}
                 </div>
               </button>
@@ -248,7 +263,7 @@ export default function TradeTable({
               const isPending = pending(trade);
               const showMonthSep = showMonths && (idx === 0 || getMonthKey(trade) !== getMonthKey(trades[idx - 1]));
               const live = status === 'open' && !isPending ? liveById[trade.id] : null;
-              const shownPct = rowPercent(trade, { done: status !== 'open' && !isPending, live, accountBalance });
+              const shownPct = rowPercent(trade, { done: status !== 'open' && !isPending, live, accountBalance: balanceFor(trade), strictAccount: onAccount });
               const selected = selectMode && selectedIds?.has(trade.id);
 
               return (
@@ -334,7 +349,7 @@ export default function TradeTable({
           </tbody>
         </table>
       </div>
-      <TradeDetailModal trade={detailTrade} isOpen={!!detailTrade} onClose={() => setDetailTrade(null)} onEdit={onEdit} onDelete={onDelete} onShare={onShare} accountBalance={accountBalance} />
+      <TradeDetailModal trade={detailTrade} isOpen={!!detailTrade} onClose={() => setDetailTrade(null)} onEdit={onEdit} onDelete={onDelete} onShare={onShare} accountBalance={balanceFor(detailTrade)} strictAccount={onAccount} />
     </>
   );
 }

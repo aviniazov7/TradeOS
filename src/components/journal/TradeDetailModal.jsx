@@ -81,6 +81,7 @@ export default function TradeDetailModal({
   onDelete,
   onShare,
   accountBalance = 0,
+  strictAccount = false,
 }) {
   if (!trade) return null;
 
@@ -162,9 +163,9 @@ export default function TradeDetailModal({
         ? { cls: 'bg-breakeven/15 text-breakeven', text: 'חלקית' }
         : { cls: 'bg-bg-tertiary text-text-muted', text: 'נסגרה' };
 
-  const shownReturn = status === 'open' ? null : tradeShownPercent(trade, accountBalance);
+  const shownReturn = status === 'open' ? null : tradeShownPercent(trade, accountBalance, { strictAccount });
   const onAccount = shownReturn?.onAccount === true;
-  const returnPct = shownReturn?.percent ?? 0;
+  const returnPct = shownReturn?.percent;
   const kpis = [
     {
       label: 'רווח/הפסד נטו',
@@ -173,8 +174,8 @@ export default function TradeDetailModal({
     },
     {
       label: status === 'open' ? 'תשואה נטו' : onAccount ? 'תשואה על היתרה' : 'תשואה על הפוזיציה',
-      value: status === 'open' ? '—' : formatPercent(returnPct),
-      cls: `text-xl sm:text-2xl font-bold ${status === 'open' ? 'text-text-primary' : pnlColor(returnPct)}`,
+      value: status === 'open' || returnPct == null ? '—' : formatPercent(returnPct),
+      cls: `text-xl sm:text-2xl font-bold ${status === 'open' || returnPct == null ? 'text-text-primary' : pnlColor(returnPct)}`,
     },
     {
       label: 'מכפיל R נטו',

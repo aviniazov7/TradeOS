@@ -139,7 +139,7 @@ export default function JournalSwitcher({ compact }) {
             onClick={() => { if (!open) placeMenu(); setOpen(!open); }}
             aria-haspopup="listbox"
             aria-expanded={open}
-            className="h-8 md:h-9 max-w-full min-w-0 inline-flex items-center gap-1.5 px-2 md:px-3 rounded-lg text-sm font-medium bg-bg-tertiary border border-border-primary hover:border-border-hover transition-colors cursor-pointer"
+            className="h-8 md:h-9 max-w-full min-w-0 overflow-hidden inline-flex items-center gap-1.5 px-2 md:px-3 rounded-lg text-sm font-medium bg-bg-tertiary border border-border-primary hover:border-border-hover transition-colors cursor-pointer"
           >
             <JournalMark journal={activeJournal} size="w-5 h-5" />
             <span className="truncate min-w-0 md:max-w-[360px] text-text-primary font-semibold">{activeJournal?.name || 'יומן'}</span>
