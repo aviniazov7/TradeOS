@@ -50,6 +50,7 @@ import { handleOpenOrdersRoute } from './openOrders.js';
 import { handleCoinGecko } from './coingeckoProxy.js';
 import { verifyExchangeKeyReadOnly, KeyPermissionError } from './exchangeKeyPermissions.js';
 import { NEWS_FEEDS, parseRssItems, handleNewsFeed } from './newsFeed.js';
+import { handlePublicApi } from './publicApi.js';
 
 // Binance's public market-data mirror — api.binance.com returns 403 to
 // Cloudflare Worker egress IPs in many regions, but data-api.binance.vision
@@ -3822,7 +3823,7 @@ function corsHeadersFor(request) {
   return {
     'Access-Control-Allow-Origin': allowedOrigin,
     'Access-Control-Allow-Methods': 'GET, POST, DELETE, OPTIONS',
-    'Access-Control-Allow-Headers': 'Content-Type, Authorization',
+    'Access-Control-Allow-Headers': 'Content-Type, Authorization, Idempotency-Key',
     'Vary': 'Origin',
   };
 }
@@ -3851,6 +3852,18 @@ async function handleRequest(request, env) {
 
   const url = new URL(request.url);
   const path = url.pathname;
+
+  // Public REST API for agents. Auth is a per-user API key or a Firebase ID
+  // token. Handled before the app routes so /api/v1 never falls through.
+  if (path === '/api/v1' || path.startsWith('/api/v1/')) {
+    return handlePublicApi(request, env, {
+      verifyFirebaseToken,
+      getAdminToken: () => getFirebaseAdminToken(env),
+      rateLimit: (key, sec) => bumpWindow(env, key, sec),
+      projectId: FIREBASE_PROJECT_ID,
+      cors,
+    });
+  }
 
   if (request.method === 'POST' && path === '/daily-stats') {
     try {

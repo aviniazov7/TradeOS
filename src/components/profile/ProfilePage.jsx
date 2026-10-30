@@ -25,6 +25,7 @@ import { useTheme } from '../../hooks/useTheme';
 import NotificationSettings from './NotificationSettings';
 import MarketingEmailToggle from './MarketingEmailToggle';
 import ContactDeveloper from './ContactDeveloper';
+import ApiKeysSection from './ApiKeysSection';
 import { planExpiresMs } from '../../utils/premium';
 
 /* global __APP_BUILD__, __APP_BUILD_DATE__ */
@@ -483,6 +484,8 @@ export default function ProfilePage() {
         {/* Marketing email — on unless the user turned it off */}
         <MarketingEmailToggle />
       </div>
+
+      <ApiKeysSection />
 
       {/* ── Section: General ─────────────────────────────────────── */}
       <SectionTitle>כללי</SectionTitle>

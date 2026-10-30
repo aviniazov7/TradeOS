@@ -3,10 +3,9 @@
 // (issue #216 — dedup). Behaviour is unchanged.
 
 // Start-of-period Date for 'week' | 'month' | 'year', or null for 'all'.
-// Uses `new Date()` (now) — call only inside a useMemo/effect, never in a
-// render body, to keep render pure.
-export function getPeriodStart(period) {
-  const now = new Date();
+// `now` defaults to the current time — call only inside a useMemo/effect
+// (or pass a fixed Date from a test), never in a render body.
+export function getPeriodStart(period, now = new Date()) {
   switch (period) {
     case 'week': {
       const d = new Date(now);

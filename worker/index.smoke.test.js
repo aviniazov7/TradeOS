@@ -1,6 +1,12 @@
 import { it, expect, vi } from 'vitest';
 import worker from './index.js';
 
+it('rejects an unauthenticated call to the public API', async () => {
+  const res = await worker.fetch(new Request('https://x/api/v1/trades'), {});
+  expect(res.status).toBe(401);
+  expect(await res.json()).toEqual({ error: 'unauthorized' });
+});
+
 it('loads the worker module and serves /health', async () => {
   const res = await worker.fetch(new Request('https://x/health'), {});
   expect(res.status).toBe(200);
