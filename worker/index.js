@@ -54,6 +54,7 @@ import { NEWS_FEEDS, parseRssItems, handleNewsFeed } from './newsFeed.js';
 import { safeNotificationPath } from './pushNavigate.js';
 import { parseAltcoinSeasonIndex } from './altcoinSeason.js';
 import { handlePublicApi } from './publicApi.js';
+import { handleMcp } from './mcp.js';
 
 // Binance's public market-data mirror — api.binance.com returns 403 to
 // Cloudflare Worker egress IPs in many regions, but data-api.binance.vision
@@ -4013,7 +4014,7 @@ function corsHeadersFor(request) {
   return {
     'Access-Control-Allow-Origin': allowedOrigin,
     'Access-Control-Allow-Methods': 'GET, POST, DELETE, OPTIONS',
-    'Access-Control-Allow-Headers': 'Content-Type, Authorization, Idempotency-Key',
+    'Access-Control-Allow-Headers': 'Content-Type, Authorization, Idempotency-Key, MCP-Protocol-Version, Mcp-Session-Id',
     'Vary': 'Origin',
   };
 }
@@ -4052,6 +4053,19 @@ async function handleRequest(request, env) {
       rateLimit: (key, sec) => bumpWindow(env, key, sec),
       projectId: FIREBASE_PROJECT_ID,
       cors,
+    });
+  }
+
+  // Remote MCP (Streamable HTTP) for the same API key. Stateless: no session,
+  // no SSE. Tool calls run the public API functions in this isolate.
+  if (path === '/mcp' || path === '/mcp/') {
+    return handleMcp(request, {
+      verifyFirebaseToken,
+      getAdminToken: () => getFirebaseAdminToken(env),
+      rateLimit: (key, sec) => bumpWindow(env, key, sec),
+      projectId: FIREBASE_PROJECT_ID,
+      cors,
+      allowOrigin: isAllowedOrigin,
     });
   }
 

@@ -59,8 +59,25 @@ export function docIdFromName(name) {
   return parts[parts.length - 1] || '';
 }
 
-/** Equality filters plus document-id order. No composite index required. */
-export function buildTradesQuery({ journalId, status, pair, direction, limit, startAfterName }) {
+/**
+ * Equality filters plus a stable order.
+ *
+ * `sort: 'entryDate'` (the public list) is entryDate, then document id, both
+ * in `order` (`desc` newest first, `asc` oldest first). A missing entryDate
+ * is not in that index, so those trades are omitted. Each equality field
+ * needs a composite index with entryDate (see firestore.indexes.json);
+ * Firestore merges those indexes when several equalities are combined. A
+ * list with no equality filter uses the automatic single-field entryDate index.
+ * `__name__` is the same direction as entryDate, so it does not need its own
+ * index field.
+ *
+ * `sort: 'name'` (the stats scan) is document id only, so every trade is
+ * included and no composite index is required.
+ */
+export function buildTradesQuery({
+  journalId, status, pair, direction, limit,
+  sort = 'entryDate', order = 'desc', startAfterName, startAfter,
+}) {
   const eq = (field, value) => ({
     fieldFilter: { field: { fieldPath: field }, op: 'EQUAL', value: { stringValue: value } },
   });
@@ -69,14 +86,31 @@ export function buildTradesQuery({ journalId, status, pair, direction, limit, st
   if (status) filters.push(eq('status', status));
   if (pair) filters.push(eq('pair', pair));
   if (direction) filters.push(eq('direction', direction));
-  const q = {
-    from: [{ collectionId: 'trades' }],
-    orderBy: [{ field: { fieldPath: '__name__' }, direction: 'ASCENDING' }],
-    limit,
-  };
+  const q = { from: [{ collectionId: 'trades' }], limit };
   if (filters.length === 1) q.where = filters[0];
   else if (filters.length > 1) q.where = { compositeFilter: { op: 'AND', filters } };
-  if (startAfterName) q.startAt = { values: [{ referenceValue: startAfterName }], before: false };
+
+  if (sort === 'name') {
+    q.orderBy = [{ field: { fieldPath: '__name__' }, direction: 'ASCENDING' }];
+    if (startAfterName) q.startAt = { values: [{ referenceValue: startAfterName }], before: false };
+    return q;
+  }
+
+  const dir = order === 'asc' ? 'ASCENDING' : 'DESCENDING';
+  q.orderBy = [
+    { field: { fieldPath: 'entryDate' }, direction: dir },
+    { field: { fieldPath: '__name__' }, direction: dir },
+  ];
+  if (startAfter?.name) {
+    const stamp = startAfter.entryDate ? String(startAfter.entryDate) : '';
+    q.startAt = {
+      values: [
+        stamp ? { timestampValue: stamp } : { nullValue: null },
+        { referenceValue: startAfter.name },
+      ],
+      before: false,
+    };
+  }
   return q;
 }
 

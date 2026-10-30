@@ -80,9 +80,13 @@ curl -s -X POST https://trade-os.tradeos.workers.dev/api/v1/trades \
 
 ## GET /api/v1/trades
 
-Query parameters (all optional): `journalId`, `status` (`open` | `closed` | `partial`), `pair`, `direction` (`long` | `short`), `from`, `to`, `limit` (1–100, default 50), `cursor`.
+Query parameters (all optional): `journalId`, `status` (`open` | `closed` | `partial`), `pair`, `direction` (`long` | `short`), `from`, `to`, `limit` (1–100, default 50), `cursor`, `order`.
 
-`from` / `to` filter on **entry** date. `nextCursor` is null when there is nothing left.
+Results are ordered by **entryDate descending** (newest first). The same entry date ties break by document id, also descending. `order=asc` reverses both: oldest entry date first, and a lower document id first when the dates match. Any other `order` value is `400`.
+
+`from` / `to` filter on **entry** date while the ordered scan runs (at most 500 documents per call). `nextCursor` is null when there is nothing left. The cursor is opaque and only valid with the same filters and the same `order`; a cursor from a different query is `400`.
+
+Trades with no `entryDate` are omitted. Firestore's `orderBy` skips documents that do not have the field. Trades written by the app and by this API always store `entryDate`.
 
 ```bash
 curl -s "https://trade-os.tradeos.workers.dev/api/v1/trades?journalId=JOURNAL_ID&status=closed&from=2026-06-01&to=2026-06-30&limit=50" \
@@ -93,7 +97,9 @@ curl -s "https://trade-os.tradeos.workers.dev/api/v1/trades?journalId=JOURNAL_ID
 { "trades": [ { "id": "…", "pair": "BTCUSDT", "netPnl": 4.5 } ], "nextCursor": null }
 ```
 
-Pass `cursor` from the previous response to read the next page. No composite Firestore index is required: equality filters are queried, and the date window is applied while scanning (at most 500 documents per call).
+Pass `cursor` from the previous response to read the next page. A list with no equality filter uses the automatic single-field index on `entryDate`. Filtering by `journalId`, `status`, `pair`, or `direction` needs the composite indexes in `firestore.indexes.json` (one per filter field, both directions). Firestore merges those indexes when a query uses more than one equality. The document-id tie-break is the same direction as `entryDate`, so `__name__` is not an extra index field. `GET /api/v1/stats` still walks trades by document id and does not need these indexes.
+
+Agents can call the same operations over MCP. See [MCP.md](./MCP.md).
 
 ## GET /api/v1/stats
 
@@ -157,6 +163,14 @@ This PR does not deploy.
 
    Until this runs, the Profile key list cannot read `users/{uid}/apiKeys`, and clients still cannot read `apiKeyIndex`.
 
-2. The Worker and hosting deploy from GitHub Actions when the commit reaches `main` (production) or `dev` (Worker staging flag, but the HTTP Worker `trade-os` is the production worker — treat a Worker change on `dev` as production). No new secret and no composite index are required.
+2. Composite indexes for the ordered trade list (this does not deploy from CI):
 
-3. No `wrangler deploy` from a laptop. The local Wrangler login is the personal Cloudflare account, which does not own `trade-os`.
+   ```bash
+   firebase deploy --only firestore:indexes --project tradeos-91a58
+   ```
+
+   Wait until each new `trades` index shows Enabled in the Firebase console. Until then, `GET /api/v1/trades` with `journalId`, `status`, `pair`, or `direction` fails (the Worker logs a Firestore `FAILED_PRECONDITION`). An unfiltered list and `GET /api/v1/stats` work without these indexes. If a combined filter still asks for an index, create the exact composite from that error. The eight `trades` indexes in `firestore.indexes.json` are the ones index merging needs (each equality field with `entryDate`, ascending and descending).
+
+3. The Worker and hosting deploy from GitHub Actions when the commit reaches `main`. Only `main` deploys the Workers. No new secret is required. The MCP route is the same Worker: `https://trade-os.tradeos.workers.dev/mcp`.
+
+4. No `wrangler deploy` from a laptop. The local Wrangler login is the personal Cloudflare account, which does not own `trade-os`.

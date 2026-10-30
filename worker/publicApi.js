@@ -91,17 +91,44 @@ function randomKey() {
   return `tos_${body}`;
 }
 
-function encodeCursor(name) {
-  return btoa(name).replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, '');
+function bytesToB64url(bytes) {
+  let bin = '';
+  for (const b of bytes) bin += String.fromCharCode(b);
+  return btoa(bin).replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, '');
+}
+
+function b64urlToBytes(text) {
+  const pad = text.length % 4 === 0 ? '' : '='.repeat(4 - (text.length % 4));
+  const bin = atob(text.replace(/-/g, '+').replace(/_/g, '/') + pad);
+  const bytes = new Uint8Array(bin.length);
+  for (let i = 0; i < bin.length; i++) bytes[i] = bin.charCodeAt(i);
+  return bytes;
+}
+
+// Opaque page token: order, the filters that produced the page, and the
+// last scanned trade's entryDate + document name. A cursor from another
+// order or another filter set is rejected so the next page cannot skip.
+function encodeCursor(payload) {
+  return bytesToB64url(new TextEncoder().encode(JSON.stringify(payload)));
 }
 
 function decodeCursor(cursor) {
   try {
-    const pad = cursor.length % 4 === 0 ? '' : '='.repeat(4 - (cursor.length % 4));
-    return atob(cursor.replace(/-/g, '+').replace(/_/g, '/') + pad);
+    const payload = JSON.parse(new TextDecoder().decode(b64urlToBytes(cursor)));
+    if (!payload || payload.v !== 2) return null;
+    if (payload.o !== 'asc' && payload.o !== 'desc') return null;
+    if (typeof payload.n !== 'string' || !payload.n) return null;
+    if (payload.t != null && typeof payload.t !== 'string') return null;
+    if (!Array.isArray(payload.q) || payload.q.length !== 6) return null;
+    if (!payload.q.every((part) => typeof part === 'string')) return null;
+    return payload;
   } catch {
-    return '';
+    return null;
   }
+}
+
+function listFilterKey(journalId, status, pair, direction, from, to) {
+  return [journalId, status, pair, direction, from || '', to || ''];
 }
 
 function entryMillis(trade) {
@@ -148,12 +175,10 @@ function limited(count, max) {
   return count > max;
 }
 
-export async function handlePublicApi(request, env, deps) {
+export async function authorizeApi(request, deps) {
   const cors = deps.cors || {};
   const fetchFn = deps.fetchFn || fetch;
   const projectId = deps.projectId;
-  const url = new URL(request.url);
-  const path = url.pathname.replace(/\/+$/, '');
   const fail = (status, error) => json(cors, status, { error });
 
   let auth;
@@ -161,15 +186,28 @@ export async function handlePublicApi(request, env, deps) {
     auth = await authenticate(request, { ...deps, fetchFn, projectId });
   } catch (err) {
     console.error('api auth failed', err?.message || err);
-    return fail(err?.message === 'FIREBASE_SERVICE_ACCOUNT missing' ? 503 : 502, 'authentication backend unavailable');
+    return {
+      ok: false,
+      response: fail(err?.message === 'FIREBASE_SERVICE_ACCOUNT missing' ? 503 : 502, 'authentication backend unavailable'),
+    };
   }
-  if (auth.error) return fail(auth.status, auth.error);
+  if (auth.error) return { ok: false, response: fail(auth.status, auth.error) };
 
   const userGate = await deps.rateLimit(`rl:api:${auth.uid}`, 60);
-  if (limited(userGate.count, USER_RATE)) return fail(429, 'rate limit');
+  if (limited(userGate.count, USER_RATE)) return { ok: false, response: fail(429, 'rate limit') };
 
   const base = fsBase(projectId);
-  const ctx = { ...deps, fetchFn, projectId, base, cors, auth };
+  return { ok: true, ctx: { ...deps, fetchFn, projectId, base, cors, auth } };
+}
+
+export async function handlePublicApi(request, env, deps) {
+  const opened = await authorizeApi(request, deps);
+  if (!opened.ok) return opened.response;
+  const ctx = opened.ctx;
+  const { cors } = ctx;
+  const url = new URL(request.url);
+  const path = url.pathname.replace(/\/+$/, '');
+  const fail = (status, error) => json(cors, status, { error });
 
   try {
     if (path === '/api/v1/trades' && request.method === 'POST') return await createTrade(request, ctx);
@@ -187,7 +225,7 @@ export async function handlePublicApi(request, env, deps) {
   }
 }
 
-async function createTrade(request, ctx) {
+export async function createTrade(request, ctx) {
   const { cors, auth, base, fetchFn } = ctx;
   let body;
   try { body = await request.json(); } catch { return json(cors, 400, { error: 'invalid JSON' }); }
@@ -264,7 +302,7 @@ async function beginIdempotency(ctx, idemId) {
   return null;
 }
 
-async function listTrades(url, ctx) {
+export async function listTrades(url, ctx) {
   const { cors, auth, base, fetchFn } = ctx;
   const journalId = url.searchParams.get('journalId') || '';
   const status = url.searchParams.get('status') || '';
@@ -272,6 +310,8 @@ async function listTrades(url, ctx) {
   const direction = url.searchParams.get('direction') || '';
   const from = url.searchParams.get('from');
   const to = url.searchParams.get('to');
+  const order = url.searchParams.get('order') || 'desc';
+  if (order !== 'asc' && order !== 'desc') return json(cors, 400, { error: 'order must be asc or desc' });
   if (status && !['open', 'closed', 'partial'].includes(status)) return json(cors, 400, { error: 'invalid status' });
   if (direction && !['long', 'short'].includes(direction)) return json(cors, 400, { error: 'invalid direction' });
   if (pair.length > 30) return json(cors, 400, { error: 'invalid pair' });
@@ -283,25 +323,31 @@ async function listTrades(url, ctx) {
   const limit = limitRaw == null ? LIST_DEFAULT : Number(limitRaw);
   if (!Number.isInteger(limit) || limit < 1 || limit > LIST_MAX) return json(cors, 400, { error: `limit must be 1–${LIST_MAX}` });
 
-  let startAfterName = '';
+  const filterKey = listFilterKey(journalId, status, pair, direction, from, to);
+  let startAfter;
   const cursor = url.searchParams.get('cursor');
   if (cursor) {
-    startAfterName = decodeCursor(cursor);
+    const decoded = decodeCursor(cursor);
     const prefix = `projects/${ctx.projectId}/databases/(default)/documents/users/${auth.uid}/trades/`;
-    if (!startAfterName.startsWith(prefix)) return json(cors, 400, { error: 'invalid cursor' });
+    const rest = decoded ? decoded.n.slice(prefix.length) : '';
+    const sameFilters = decoded && decoded.q.every((part, i) => part === filterKey[i]);
+    if (!decoded || decoded.o !== order || !decoded.n.startsWith(prefix) || !rest || rest.includes('/') || !sameFilters) {
+      return json(cors, 400, { error: 'invalid cursor' });
+    }
+    startAfter = { name: decoded.n, entryDate: decoded.t || null };
   }
 
   const matches = [];
   let scanned = 0;
   let exhausted = false;
-  let lastName = startAfterName;
+  let last = startAfter || null;
   while (matches.length < limit && scanned < SCAN_CAP && !exhausted) {
     const page = Math.min(PAGE, SCAN_CAP - scanned);
     const rows = await runQuery(
       fetchFn, auth.admin,
       `${base}/documents/users/${auth.uid}:runQuery`,
       buildTradesQuery({
-        journalId, status, pair, direction, limit: page, startAfterName: lastName || undefined,
+        journalId, status, pair, direction, order, limit: page, startAfter: last || undefined,
       }),
     );
     if (!rows.length) { exhausted = true; break; }
@@ -309,7 +355,8 @@ async function listTrades(url, ctx) {
     for (const row of rows) {
       scanned += 1;
       seen += 1;
-      lastName = row.name;
+      const stamp = typeof row.data.entryDate === 'string' && row.data.entryDate ? row.data.entryDate : null;
+      last = { name: row.name, entryDate: stamp };
       if (inEntryRange(row.data, from, to)) matches.push({ id: row.id, ...row.data });
       if (matches.length >= limit) break;
     }
@@ -317,11 +364,13 @@ async function listTrades(url, ctx) {
     // in the middle of a page still needs a cursor: the unread rows follow.
     if (rows.length < page && seen === rows.length) exhausted = true;
   }
-  const nextCursor = exhausted ? null : (lastName ? encodeCursor(lastName) : null);
+  const nextCursor = exhausted || !last?.name ? null : encodeCursor({
+    v: 2, o: order, t: last.entryDate, n: last.name, q: filterKey,
+  });
   return json(cors, 200, { trades: matches, nextCursor });
 }
 
-async function journalStats(url, ctx) {
+export async function journalStats(url, ctx) {
   const { cors, auth, base, fetchFn } = ctx;
   const journalId = url.searchParams.get('journalId') || '';
   if (!journalId) return json(cors, 400, { error: 'journalId is required' });
@@ -343,7 +392,7 @@ async function journalStats(url, ctx) {
     const rows = await runQuery(
       fetchFn, auth.admin,
       `${base}/documents/users/${auth.uid}:runQuery`,
-      buildTradesQuery({ journalId, limit: PAGE, startAfterName: startAfterName || undefined }),
+      buildTradesQuery({ journalId, limit: PAGE, sort: 'name', startAfterName: startAfterName || undefined }),
     );
     if (!rows.length) break;
     for (const row of rows) trades.push({ id: row.id, ...row.data });

@@ -7,6 +7,18 @@ it('rejects an unauthenticated call to the public API', async () => {
   expect(await res.json()).toEqual({ error: 'unauthorized' });
 });
 
+it('rejects an unauthenticated MCP call and does not open an SSE stream', async () => {
+  const res = await worker.fetch(new Request('https://x/mcp', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', Accept: 'application/json, text/event-stream' },
+    body: JSON.stringify({ jsonrpc: '2.0', id: 1, method: 'initialize', params: { protocolVersion: '2025-11-25' } }),
+  }), {});
+  expect(res.status).toBe(401);
+  expect(await res.json()).toEqual({ error: 'unauthorized' });
+  const stream = await worker.fetch(new Request('https://x/mcp', { method: 'GET', headers: { Accept: 'text/event-stream' } }), {});
+  expect(stream.status).toBe(405);
+});
+
 it('loads the worker module and serves /health', async () => {
   const res = await worker.fetch(new Request('https://x/health'), {});
   expect(res.status).toBe(200);

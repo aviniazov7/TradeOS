@@ -1,88 +1,13 @@
-import { describe, expect, it, vi } from 'vitest';
+import { describe, expect, it } from 'vitest';
 import { handlePublicApi } from './publicApi.js';
 import { decodeFields } from './firestoreValues.js';
+import { memoryFirestore } from './memoryFirestore.js';
 
 const PROJECT = 'p';
 const UID = 'user1';
 
-function response(status, body) {
-  return {
-    status,
-    ok: status >= 200 && status < 300,
-    json: async () => body,
-    text: async () => (typeof body === 'string' ? body : JSON.stringify(body ?? {})),
-  };
-}
-
 function memoryDb() {
-  const docs = new Map();
-  let seq = 0;
-  const rel = (url) => {
-    const path = new URL(url).pathname;
-    const marker = '/documents/';
-    const at = path.indexOf(marker);
-    if (at === -1) return '';
-    return decodeURIComponent(path.slice(at + marker.length)).replace(/:runQuery$/, '');
-  };
-  const nameOf = (path) => `projects/${PROJECT}/databases/(default)/documents/${path}`;
-
-  function matches(data, where) {
-    if (!where) return true;
-    if (where.compositeFilter) return where.compositeFilter.filters.every((f) => matches(data, f));
-    const field = where.fieldFilter.field.fieldPath;
-    return data[field] === where.fieldFilter.value.stringValue;
-  }
-
-  const fetchFn = vi.fn(async (url, init = {}) => {
-    const method = init.method || 'GET';
-    const u = new URL(url);
-    const path = rel(url);
-    if (u.pathname.endsWith(':runQuery')) {
-      const q = JSON.parse(init.body).structuredQuery;
-      const collectionId = q.from[0].collectionId;
-      const prefix = path ? `${path}/${collectionId}/` : `${collectionId}/`;
-      let rows = [...docs.entries()]
-        .filter(([key]) => key.startsWith(prefix) && !key.slice(prefix.length).includes('/'))
-        .map(([key, fields]) => ({ key, fields }))
-        .filter((row) => matches(decodeFields(row.fields), q.where))
-        .sort((a, b) => (a.key < b.key ? -1 : 1));
-      const after = q.startAt?.values?.[0]?.referenceValue;
-      if (after) rows = rows.filter((row) => nameOf(row.key) > after);
-      rows = rows.slice(0, q.limit || rows.length);
-      return response(200, rows.map((row) => ({ document: { name: nameOf(row.key), fields: row.fields } })));
-    }
-    if (method === 'GET' && !docs.has(path)) {
-      const children = [...docs.entries()].filter(([key]) => key.startsWith(`${path}/`) && !key.slice(path.length + 1).includes('/'));
-      if (children.length || path.split('/').length % 2 === 1) {
-        return response(200, { documents: children.map(([key, fields]) => ({ name: nameOf(key), fields })) });
-      }
-      return response(404, {});
-    }
-    if (method === 'GET') return response(200, { name: nameOf(path), fields: docs.get(path) });
-    if (method === 'DELETE') {
-      docs.delete(path);
-      return response(200, {});
-    }
-    if (method === 'PATCH') {
-      const prev = docs.get(path) || {};
-      docs.set(path, { ...prev, ...JSON.parse(init.body).fields });
-      return response(200, {});
-    }
-    if (method === 'POST') {
-      const id = u.searchParams.get('documentId') || `t${++seq}`;
-      const docPath = `${path}/${id}`;
-      if (docs.has(docPath)) return response(409, { error: { status: 'ALREADY_EXISTS' } });
-      docs.set(docPath, JSON.parse(init.body).fields);
-      return response(200, { name: nameOf(docPath) });
-    }
-    return response(500, {});
-  });
-
-  return {
-    fetchFn,
-    docs,
-    put(path, data) { docs.set(path, data); },
-  };
+  return memoryFirestore(PROJECT);
 }
 
 function deps(db, extra = {}) {
@@ -174,27 +99,58 @@ describe('public API v1', () => {
     expect([...db.docs.keys()].filter((key) => key.startsWith('users/user1/trades/'))).toHaveLength(1);
   });
 
-  it('lists trades with filters and a cursor', async () => {
+  it('lists trades newest first, with a stable cursor and an ascending option', async () => {
     const db = memoryDb();
-    db.put('users/user1/trades/a', {
+    const row = (id, entryDate, extra = {}) => db.put(`users/user1/trades/${id}`, {
       journalId: { stringValue: 'j1' }, pair: { stringValue: 'BTCUSDT' }, direction: { stringValue: 'long' },
-      status: { stringValue: 'closed' }, entryDate: { timestampValue: '2026-06-01T00:00:00.000Z' },
+      status: { stringValue: 'closed' }, entryDate: { timestampValue: entryDate },
+      ...extra,
     });
-    db.put('users/user1/trades/b', {
-      journalId: { stringValue: 'j1' }, pair: { stringValue: 'ETHUSDT' }, direction: { stringValue: 'short' },
-      status: { stringValue: 'closed' }, entryDate: { timestampValue: '2026-06-02T00:00:00.000Z' },
-    });
+    row('a', '2026-06-02T00:00:00.000Z');
+    row('m', '2026-06-02T00:00:00.000Z');
+    row('b', '2026-06-01T00:00:00.000Z', { pair: { stringValue: 'ETHUSDT' }, direction: { stringValue: 'short' } });
     db.put('users/user1/trades/c', {
       journalId: { stringValue: 'other' }, pair: { stringValue: 'BTCUSDT' }, direction: { stringValue: 'long' },
       status: { stringValue: 'closed' }, entryDate: { timestampValue: '2026-06-03T00:00:00.000Z' },
     });
+    db.put('users/user1/trades/nodate', {
+      journalId: { stringValue: 'j1' }, pair: { stringValue: 'BTCUSDT' }, direction: { stringValue: 'long' },
+      status: { stringValue: 'closed' },
+    });
+
     const res = await call('/api/v1/trades?journalId=j1&status=closed&limit=1', { db });
     expect(res.status).toBe(200);
     const page = await res.json();
-    expect(page.trades.map((t) => t.id)).toEqual(['a']);
+    expect(page.trades.map((t) => t.id)).toEqual(['m']);
     expect(page.nextCursor).toBeTruthy();
-    const next = await call(`/api/v1/trades?journalId=j1&status=closed&limit=10&cursor=${encodeURIComponent(page.nextCursor)}`, { db });
-    expect((await next.json()).trades.map((t) => t.id)).toEqual(['b']);
+    const firstQuery = JSON.parse(db.fetchFn.mock.calls.find((c) => String(c[0]).includes(':runQuery'))[1].body).structuredQuery;
+    expect(firstQuery.orderBy).toEqual([
+      { field: { fieldPath: 'entryDate' }, direction: 'DESCENDING' },
+      { field: { fieldPath: '__name__' }, direction: 'DESCENDING' },
+    ]);
+
+    const next = await call(`/api/v1/trades?journalId=j1&status=closed&limit=1&cursor=${encodeURIComponent(page.nextCursor)}`, { db });
+    const second = await next.json();
+    expect(second.trades.map((t) => t.id)).toEqual(['a']);
+    const resume = JSON.parse(db.fetchFn.mock.calls.filter((c) => String(c[0]).includes(':runQuery')).at(-1)[1].body).structuredQuery;
+    expect(resume.startAt).toEqual({
+      values: [
+        { timestampValue: '2026-06-02T00:00:00.000Z' },
+        { referenceValue: 'projects/p/databases/(default)/documents/users/user1/trades/m' },
+      ],
+      before: false,
+    });
+    const last = await call(`/api/v1/trades?journalId=j1&status=closed&limit=10&cursor=${encodeURIComponent(second.nextCursor)}`, { db });
+    const tail = await last.json();
+    expect(tail.trades.map((t) => t.id)).toEqual(['b']);
+    expect(tail.nextCursor).toBeNull();
+
+    const asc = await call('/api/v1/trades?journalId=j1&status=closed&order=asc&limit=10', { db });
+    expect((await asc.json()).trades.map((t) => t.id)).toEqual(['b', 'a', 'm']);
+    const flipped = await call(`/api/v1/trades?journalId=j1&status=closed&order=asc&cursor=${encodeURIComponent(page.nextCursor)}`, { db });
+    expect(flipped.status).toBe(400);
+    const badOrder = await call('/api/v1/trades?order=newest', { db });
+    expect(badOrder.status).toBe(400);
   });
 
   it('computes stats from the account balance and derived risk', async () => {
@@ -224,6 +180,8 @@ describe('public API v1', () => {
     closed('l', 'ETHUSDT', -50, 500);
     const res = await call('/api/v1/stats?journalId=j1', { db });
     expect(res.status).toBe(200);
+    const statsQuery = JSON.parse(db.fetchFn.mock.calls.find((c) => String(c[0]).includes(':runQuery'))[1].body).structuredQuery;
+    expect(statsQuery.orderBy).toEqual([{ field: { fieldPath: '__name__' }, direction: 'ASCENDING' }]);
     const stats = await res.json();
     expect(stats.totalPnl).toBe(-30);
     expect(stats.startBalance).toBe(1000);
