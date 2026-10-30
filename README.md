@@ -94,7 +94,7 @@ flowchart TD
     user["User — browser / installed PWA"] --> spa["React + Vite SPA<br/>Tailwind · Framer Motion · RTL"]
 
     spa --> svc["Service layer (src/services)<br/>the only code that imports Firebase"]
-    svc --> fb["Firebase<br/>Auth · Firestore · Hosting · googleSignIn function"]
+    svc --> fb["Firebase<br/>Auth · Firestore · Hosting"]
     svc --> w["Cloudflare Worker — trade-os<br/>all HTTP routes"]
 
     cron{{"Cloudflare Worker — tradeos-alerts<br/>same code, cron every 10 min"}} --> kv
@@ -140,7 +140,7 @@ flowchart TD
 |---|---|
 | UI | React 19, Vite 7, Tailwind CSS 4, Framer Motion, Recharts, Lucide icons, React Router 7 |
 | Data | Cloud Firestore (security rules), Firebase Auth (Google + email), Firebase Hosting |
-| Server | Cloudflare Workers + KV (HTTP and cron), Web Push (VAPID), one Firebase Cloud Function (`googleSignIn`, `europe-west1`) |
+| Server | Cloudflare Workers + KV (HTTP and cron), Web Push (VAPID), Firebase Cloud Functions (trade import and admin notifications, `europe-west1`) |
 | Integrations | Exchange REST APIs (HMAC signed server-side), TradingView embeds, Groq (AI), Gmail SMTP (email), Moralis (wallets), Bank of Israel (FX rates) |
 | Quality | Vitest (unit tests), `@firebase/rules-unit-testing` (rules, in the emulator), ESLint, GitHub Actions |
 | Documents | jsPDF, xlsx, html-to-image (exports and share cards) |
@@ -162,7 +162,7 @@ TradeOS/
 │   └── utils/             # calculations, formatters, constants, pure helpers (+ their tests)
 ├── worker/                # Cloudflare Worker: index.js (routes + cron) and pure, tested modules
 │                          #   (aiQuota, calendarAlert, adminEmail, unsubscribe, accountPurge, cspReport, …)
-├── functions/             # Firebase Cloud Function (Google sign-in for iOS PWAs)
+├── functions/             # Firebase Cloud Functions (trade import, admin notifications)
 ├── tests/rules/           # Firestore security-rules tests (emulator)
 ├── scripts/               # version bump, key-scan, one-off tooling
 ├── docs/                  # NEXT.md, VERSIONING.md, legal/, qa/, specs/
@@ -179,7 +179,7 @@ TradeOS/
 | Service | Account | What lives there |
 |---|---|---|
 | GitHub | `aviniazov7` (personal), private repo `aviniazov7/TradeOS` | code, CI, CI secrets |
-| Firebase / Google Cloud | project `tradeos-91a58` (number `80529278454`); **Owners: `aviniazov18@gmail.com` (personal) and `tradeos.app@gmail.com` (app)**; the local `firebase` CLI is logged in as `aviniazov18@gmail.com` | Auth, Firestore, Hosting, Cloud Function `googleSignIn` |
+| Firebase / Google Cloud | project `tradeos-91a58` (number `80529278454`); **Owners: `aviniazov18@gmail.com` (personal) and `tradeos.app@gmail.com` (app)**; the local `firebase` CLI is logged in as `aviniazov18@gmail.com` | Auth, Firestore, Hosting, Cloud Functions |
 | Cloudflare — **app account** | `tradeos.app@gmail.com` (workers.dev subdomain `tradeos`) | Workers `trade-os` (all HTTP), `tradeos-alerts` (cron, every 10 min), `trade-os-staging` (unused), KV namespace `ALERTS_KV` |
 | Cloudflare — personal | `aviniazov7@icloud.com` | **not** TradeOS: other workers (`safety-groq-proxy`, `workout-bot`, `pump-detector`) and `tradeos-google-auth`, which nothing in this repo references |
 | Gmail, Groq, Moralis | `GMAIL_APP_PASSWORD` (app password for `tradeos.app@gmail.com`), plus the other API keys, are stored as Worker secrets (below) | email sending, AI chat, wallet lookups |

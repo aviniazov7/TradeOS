@@ -1,91 +1,17 @@
-const { onCall, onRequest, HttpsError } = require("firebase-functions/v2/https");
+const { onCall, HttpsError } = require("firebase-functions/v2/https");
 const { onSchedule } = require("firebase-functions/v2/scheduler");
 const { onDocumentCreated, onDocumentUpdated, onDocumentWritten } = require("firebase-functions/v2/firestore");
 const { initializeApp } = require("firebase-admin/app");
-const { getAuth } = require("firebase-admin/auth");
 const { getFirestore } = require("firebase-admin/firestore");
 const {
   runAdminNotificationScan,
   handleUserNotificationEvent,
   stampLastTradeAt,
 } = require("./adminNotificationRunner");
-const { OAuth2Client } = require("google-auth-library");
 const crypto = require("crypto");
 
 initializeApp();
 const db = getFirestore();
-
-// ──────────── Google Sign-In for iOS PWA ────────────
-// Bypasses Firebase's signInWithIdp endpoint which fails with auth/network-request-failed
-// in iOS standalone PWAs. Exchanges a Google ID token (from GIS) for a Firebase custom token.
-const GOOGLE_CLIENT_ID = "80529278454-eirltbaukcv1ftquu6uth5bbk3srnl7d.apps.googleusercontent.com";
-
-exports.googleSignIn = onRequest({
-  region: "europe-west1",
-  cors: true,
-  maxInstances: 10,
-}, async (req, res) => {
-  if (req.method === "OPTIONS") {
-    res.set("Access-Control-Allow-Methods", "POST, OPTIONS");
-    res.set("Access-Control-Allow-Headers", "Content-Type");
-    res.status(204).send("");
-    return;
-  }
-  if (req.method !== "POST") {
-    res.status(405).json({ error: "Method not allowed" });
-    return;
-  }
-
-  const { idToken } = req.body || {};
-  if (!idToken || typeof idToken !== "string") {
-    res.status(400).json({ error: "Missing idToken" });
-    return;
-  }
-
-  try {
-    // Verify the Google ID token
-    const client = new OAuth2Client(GOOGLE_CLIENT_ID);
-    const ticket = await client.verifyIdToken({
-      idToken,
-      audience: GOOGLE_CLIENT_ID,
-    });
-    const payload = ticket.getPayload();
-    if (!payload?.sub || !payload?.email) {
-      res.status(401).json({ error: "Invalid Google token" });
-      return;
-    }
-
-    // Get or create a matching Firebase Auth user (keyed by email)
-    const email = payload.email;
-    let firebaseUid;
-    try {
-      const existing = await getAuth().getUserByEmail(email);
-      firebaseUid = existing.uid;
-    } catch (err) {
-      if (err.code === "auth/user-not-found") {
-        const created = await getAuth().createUser({
-          email,
-          emailVerified: !!payload.email_verified,
-          displayName: payload.name,
-          photoURL: payload.picture,
-        });
-        firebaseUid = created.uid;
-      } else {
-        throw err;
-      }
-    }
-
-    const customToken = await getAuth().createCustomToken(firebaseUid, {
-      provider: "google.com",
-      googleSub: payload.sub,
-    });
-
-    res.json({ customToken });
-  } catch (err) {
-    console.error("googleSignIn failed:", err);
-    res.status(500).json({ error: err.message || "Sign-in failed" });
-  }
-});
 
 // ──────────── MEXC Futures API ────────────
 async function fetchMexcTrades(apiKey, apiSecret) {

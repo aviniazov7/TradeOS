@@ -33,4 +33,17 @@ export default defineConfig([
       sourceType: 'commonjs',
     },
   },
+  {
+    // Regression test is ESM (vitest). The functions override above would
+    // otherwise parse it as CommonJS.
+    files: ['functions/**/*.test.js'],
+    languageOptions: {
+      sourceType: 'module',
+      globals: {
+        describe: 'readonly',
+        it: 'readonly',
+        expect: 'readonly',
+      },
+    },
+  },
 ])
