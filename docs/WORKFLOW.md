@@ -21,9 +21,9 @@ Channel `dev` and channel `pr-<number>` are different Firebase channels, so a pu
 | Surface | URL |
 |---|---|
 | Worker | `https://trade-os-staging.tradeos.workers.dev` |
-| Hosting | `https://tradeoslive--dev-<hash>.web.app` |
+| Hosting | `https://tradeoslive--dev-0qe24kd4.web.app` |
 
-The hash is chosen by Firebase the first time channel `dev` is deployed and stays with that channel id. The GitHub Actions job summary for `Deploy TradeOS staging` prints the full host. The site on that channel is built with `VITE_WORKER_URL=https://trade-os-staging.tradeos.workers.dev`.
+That host is the Firebase channel `dev` on site `tradeoslive` (the same URL the last push to `dev` printed, 2026-10-26). Redeploying channel id `dev` keeps it. The site on that channel is built with `VITE_WORKER_URL=https://trade-os-staging.tradeos.workers.dev` once this workflow is on `dev`.
 
 Firebase preview channels expire in at most 30 days. Every push to `dev` sets the expiry to 30 days again. A quiet `dev` branch (no push for 30 days) drops the channel; the next push creates it again under the same channel id.
 
