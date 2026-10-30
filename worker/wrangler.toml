@@ -20,18 +20,19 @@ binding = "ALERTS_KV"
 id = "5c66041d98aa4229a52afeb2f5b1f652"
 
 # ─── Staging environment ────────────────────────────────────────────────
-# NOT deployed by CI. `dev` used to deploy this, and it binds the production
-# KV id below, so a staging cron would read production exchange keys.
-# Do not run `wrangler deploy --env staging` until this id is a namespace
-# created for staging in the app Cloudflare account (Workers & Pages → KV).
+# NOT deployed by CI. `dev` deploys the HTTP worker from ../wrangler.jsonc,
+# not this file. ALERTS_KV below is the staging namespace (same id as
+# wrangler.jsonc env.staging), not the production namespace.
 # Cron stays empty so a future staging worker cannot double-send digests.
-# Secrets for that worker are dashboard/CI secrets, not this file.
+# Do not `wrangler deploy --env staging` from this directory until a staging
+# alerts cron is intentional. Secrets for that worker are dashboard/CI
+# secrets, not this file.
 [env.staging]
 name = "tradeos-alerts-staging"
 
 [[env.staging.kv_namespaces]]
 binding = "ALERTS_KV"
-id = "5c66041d98aa4229a52afeb2f5b1f652"
+id = "ac57c9487d5044eda008e06100a05758"
 
 [env.staging.triggers]
 crons = []
