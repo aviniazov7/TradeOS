@@ -44,7 +44,7 @@ describe('computeDashboardStats', () => {
 
   it('is the only implementation the dashboard hook calls', () => {
     const src = readFileSync(new URL('../hooks/useDashboardStats.js', import.meta.url), 'utf8');
-    expect(src).toContain('computeDashboardStats(trades, initialBalance, period)');
+    expect(src).toContain('computeDashboardStats(trades, initialBalance, period, options)');
     expect(src).not.toContain('calculateWinRate');
   });
 });

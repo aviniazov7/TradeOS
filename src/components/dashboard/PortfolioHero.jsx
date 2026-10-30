@@ -38,10 +38,11 @@ function buildChart(points) {
 // The home page's first card: what the account is worth, how it got here
 // (cumulative P&L for the chosen period) and the period's key numbers.
 //   series: [{ t, pnl, value }] — closed trades oldest → newest, value = running total
-//   declaredStart: sum of journal opening balances. The % is that period's
-//   closed-trade P&L on this capital — the same dollars as רווח/הפסד.
-//   A withdrawal changes `balance` and is not part of the %.
-export default function PortfolioHero({ balance, declaredStart = 0, series, hidden }) {
+//   declaredStart: sum of journal opening balances. The % is accountPeriodReturn
+//   for this period — the same helper as the journal. A withdrawal changes
+//   `balance` and is not part of the %. `trades` are the closed trades behind
+//   `series` so a per-trade balance snapshot is part of that book.
+export default function PortfolioHero({ balance, declaredStart = 0, series, trades = null, hidden }) {
   const [period, setPeriod] = useState(() => {
     try { return localStorage.getItem(PERIOD_KEY) || 'all'; } catch { return 'all'; }
   });
@@ -50,10 +51,10 @@ export default function PortfolioHero({ balance, declaredStart = 0, series, hidd
     try { localStorage.setItem(PERIOD_KEY, id); } catch { /* private mode */ }
   };
   const s = useMemo(() => {
-    const summary = summarizeSeries(series, period, { declaredStart, equity: balance });
+    const summary = summarizeSeries(series, period, { declaredStart, equity: balance, trades });
     const def = PERIODS.find((p) => p.id === period) || PERIODS[2];
     return { ...summary, def, chart: buildChart(summary.points) };
-  }, [series, period, declaredStart, balance]);
+  }, [series, period, declaredStart, balance, trades]);
   const m = (v) => (hidden ? '••••' : v);
 
   const wrapRef = useRef(null);

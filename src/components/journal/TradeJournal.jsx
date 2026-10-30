@@ -287,10 +287,11 @@ export default function TradeJournal() {
   }, [filters, activeJournalId, tab]);
 
   // When the journal is linked to a connected exchange, derive the starting
-  // balance so currentBalance + every percentage-based stat (drawdown,
-  // Recovery, Sortino, Calmar, Sharpe…) is calibrated to the real wallet:
+  // balance so the headline balance and the drawdown curve match the wallet:
   //   effectiveInitial = liveBalance − totalPnL(closed)
   // so stats.currentBalance = effectiveInitial + totalPnL = liveBalance.
+  // Return % is not this number. It uses the saved opening balance, and the
+  // live wallet only when that opening was never set.
   const { balance: liveExchangeBalance, keyProblem } = useLinkedExchange(activeJournal?.exchange);
   const balanceIsLive = liveExchangeBalance != null;
   // Must use the SAME closed-trade predicate as useDashboardStats (which counts
@@ -304,7 +305,15 @@ export default function TradeJournal() {
   const effectiveInitial = balanceIsLive
     ? Math.max(0, liveExchangeBalance - totalClosedPnL)
     : (activeJournal?.initialBalance || 0);
-  const stats = useDashboardStats(trades, effectiveInitial, period);
+  // Return % does not use effectiveInitial. A saved opening wins; the live
+  // wallet is only the fallback when that opening was never set. effectiveInitial
+  // still calibrates the headline balance and the drawdown curve to the wallet.
+  const openingBalance = Number(activeJournal?.initialBalance) || 0;
+  const statsOptions = useMemo(() => ({
+    openingBalance,
+    fallbackBalance: balanceIsLive ? liveExchangeBalance : null,
+  }), [openingBalance, balanceIsLive, liveExchangeBalance]);
+  const stats = useDashboardStats(trades, effectiveInitial, period, statsOptions);
   // The headline balance always shows the true wallet when a live exchange is
   // linked — stats.currentBalance is period-scoped (initial + period PnL) and
   // only equals the wallet when period === 'all', so reading it directly would
@@ -314,7 +323,6 @@ export default function TradeJournal() {
   // balance plus realized P&L (a linked exchange already reports that total).
   // A blank opening balance must NOT fall through to "current P&L" — that
   // made the percent a ratio of this trade to itself.
-  const openingBalance = Number(activeJournal?.initialBalance) || 0;
   // Return on the account is the balance BEFORE each trade: the saved opening
   // balance walked forward, or — when that was never set — a sane live wallet
   // minus closed P&L. A missing, zero, negative, or dust wallet (MEXC reports

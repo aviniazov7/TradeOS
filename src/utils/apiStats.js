@@ -1,15 +1,15 @@
-import { initialRiskUsd, saneBalance, signedTradeR } from './calculations';
+import { initialRiskUsd, signedTradeR } from './calculations';
 import { computeDashboardStats, sliceTradesForStats } from './dashboardStats';
 
 /**
  * Public-API stats for one journal and period.
  *
- * Return % is the dashboard's balance change: net P&L ÷ the account equity
- * the period opened at (journal initialBalance, plus P&L booked before the
- * window). It is never P&L ÷ position notional. The percent is null when
- * that equity is missing, zero, negative, or dust (a withdrawn MEXC wallet
- * can still report ~1e-8). That is not a 0% return and not a return on the
- * position.
+ * Return % is the journal's account return (`accountPeriodReturn`): measurable
+ * closed P&L over the balance the period opened at. Trades taken after that
+ * balance was wiped out are left out. It is never P&L ÷ position notional.
+ * The percent is null when that balance is missing, zero, negative, or dust
+ * (a withdrawn MEXC wallet can still report ~1e-8). That is not a 0% return
+ * and not a return on the position.
  *
  * riskAmount is the sum of each closed trade's real dollar risk
  * (initialRiskUsd): |entry − stop| × size, falling back to a declared
@@ -29,9 +29,7 @@ export function computeApiStats(trades, initialBalance = 0, { period = 'all', fr
   const riskAmount = closed.reduce((sum, t) => sum + initialRiskUsd(t), 0);
   const rs = closed.map((t) => signedTradeR(t)).filter((r) => r != null);
   const pf = dash.profitFactor;
-  const returnPercent = saneBalance(opening) != null && saneBalance(startBalance) != null
-    ? (dash.totalPnL / startBalance) * 100
-    : null;
+  const returnPercent = dash.balanceChangePercent;
 
   return {
     period: from != null || to != null ? 'custom' : (period || 'all'),
