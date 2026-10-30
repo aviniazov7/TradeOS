@@ -55,6 +55,7 @@ describe('journal return on balance', () => {
     const bar = document.querySelector('[data-testid="journal-header-stats"]');
     expect(bar.className).toContain('flex');
     expect(bar.className).toContain('flex-nowrap');
+    expect(bar.className).not.toContain('flex-wrap');
     expect(bar.className).not.toContain('grid-cols-2');
     expect(bar.textContent).toContain('על היתרה');
     expect(bar.textContent).toContain('+1.00%');

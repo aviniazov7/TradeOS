@@ -6,7 +6,7 @@ import { formatRText } from '../../utils/signedNumbers';
 
 function Cell({ label, value, sub, valueClass = 'text-text-primary', className = '', title }) {
   return (
-    <div className={`shrink-0 md:shrink ${className}`} title={title || label}>
+    <div className={`shrink-0 ${className}`} title={title || label}>
       <div className="text-[10px] text-text-muted leading-tight whitespace-nowrap">{label}</div>
       <div className={`num-mono text-[11px] md:text-sm font-bold whitespace-nowrap leading-tight ${valueClass}`} dir="ltr" style={{ textAlign: 'right' }}>{value}</div>
       {sub && <div className="text-[10px] text-text-muted leading-tight whitespace-nowrap">{sub}</div>}
@@ -38,12 +38,13 @@ export default function JournalSummaryBar({ trades, filtered, liveById = {}, acc
   const showAccount = book.mode !== 'position' && s.closed > 0;
   const balanceClass = balancePct == null ? 'text-text-muted' : balancePct > 0 ? 'text-profit' : balancePct < 0 ? 'text-loss' : 'text-text-primary';
 
-  const rule = 'md:border-s md:border-border-primary md:ps-4';
+  // ps-4 between five figures pushed "R ממוצע" onto a second line around
+  // 1024–1440px. Keep one row; the wider gap comes back only on a large screen.
+  const rule = 'md:border-s md:border-border-primary md:ps-2 2xl:ps-4';
   return (
-    // One compact strip, including on a phone: every figure stays on a single
-    // row under the tabs. From md up it sits in the gap between the title
-    // and the tabs, and may wrap only if the window is still narrow.
-    <div data-testid="journal-header-stats" className="flex flex-nowrap items-start justify-between gap-2 w-full min-w-0 overflow-x-auto no-scrollbar md:w-auto md:overflow-visible md:flex-wrap md:items-center md:justify-center md:gap-x-4 md:gap-y-1">
+    // One strip at every width. The phone copy scrolls sideways if it must;
+    // the desktop copy sits in the title row and does not wrap.
+    <div data-testid="journal-header-stats" className="flex flex-nowrap items-center justify-between gap-x-2 w-max min-w-0 md:justify-center 2xl:gap-x-4">
       <Cell
         label={filtered ? 'עסקאות (לפי הסינון)' : 'עסקאות'}
         value={s.closed}
