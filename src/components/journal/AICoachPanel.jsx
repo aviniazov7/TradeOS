@@ -775,9 +775,9 @@ export default function AICoachPanel({ trades }) {
       {/* Footer upsell for free users */}
       {!isPremium && (
         <div className="text-center text-xs text-text-muted pt-1">
-          {`במסלול החינמי: 5 ניתוחים בחודש.`}
+          {`כל ניתוח נספר במכסת TradeAI היומית.`}
           <button onClick={() => navigate('/premium')} className="text-accent-primary mr-1 cursor-pointer">
-            שדרג ל-Premium לניתוחים ללא הגבלה
+            שדרג ל-Premium ל-200 בקשות ביום
           </button>
         </div>
       )}

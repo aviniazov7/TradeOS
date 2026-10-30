@@ -1,10 +1,12 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
 
-vi.mock('firebase/auth', () => ({ getAuth: () => ({ currentUser: null }) }));
+const authState = { currentUser: null };
+vi.mock('firebase/auth', () => ({ getAuth: () => authState }));
 
-import { fetchNewsFeed } from './newsService';
+import { fetchNewsFeed, translateNews, unpackNewsTranslations } from './newsService';
 
 afterEach(() => {
+  authState.currentUser = null;
   vi.unstubAllGlobals();
 });
 
@@ -25,5 +27,33 @@ describe('fetchNewsFeed', () => {
     await expect(fetchNewsFeed('stocks')).rejects.toThrow(/חדשות/);
     vi.stubGlobal('fetch', vi.fn(async () => new Response(JSON.stringify({ items: [] }), { status: 200 })));
     await expect(fetchNewsFeed('crypto')).rejects.toThrow(/חדשות/);
+  });
+});
+
+describe('translateNews quota', () => {
+  it('unpacks a spent quota as a quiet stop, including any cached rows', () => {
+    expect(unpackNewsTranslations(null)).toEqual({ items: null, quotaExceeded: false });
+    expect(unpackNewsTranslations([{ title: 'ביטקוין', desc: '' }])).toEqual({
+      items: [{ title: 'ביטקוין', desc: '' }],
+      quotaExceeded: false,
+    });
+    expect(unpackNewsTranslations({
+      quotaExceeded: true,
+      items: [null, { title: 'שמור', desc: '' }],
+    })).toEqual({
+      items: [null, { title: 'שמור', desc: '' }],
+      quotaExceeded: true,
+    });
+  });
+
+  it('returns the quota flag instead of throwing when the worker refuses the model call', async () => {
+    authState.currentUser = { getIdToken: async () => 'token' };
+    vi.stubGlobal('fetch', vi.fn(async () => new Response(JSON.stringify({
+      error: 'הגעת למכסה היומית (20 בקשות).',
+      quotaExceeded: true,
+      items: [null],
+    }), { status: 429, headers: { 'Content-Type': 'application/json' } })));
+    const res = await translateNews([{ title: 'Bitcoin rises', desc: '' }]);
+    expect(unpackNewsTranslations(res)).toEqual({ items: [null], quotaExceeded: true });
   });
 });

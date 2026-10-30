@@ -36,7 +36,9 @@ export async function fetchProjectDescription(coinName, symbol, retries = 2) {
     const err = response.ok ? null : await response.json().catch(() => ({}));
     if (response.status === 429) {
       if (err?.quotaExceeded) {
-        throw new Error(err.error || 'הגעת למכסה היומית. תוכל להמשיך מחר.');
+        const error = new Error(err.error || 'הגעת למכסה היומית. תוכל להמשיך מחר.');
+        error.quotaExceeded = true;
+        throw error;
       }
       if (attempt < retries) {
         await new Promise((r) => setTimeout(r, (attempt + 1) * 3000));

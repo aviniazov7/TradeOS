@@ -59,8 +59,8 @@ A trading journal and analytics platform for crypto, stocks and futures traders:
 
 ### Market, news and AI
 - **Market**: global stats, Fear & Greed, altcoin season, gainers/losers, heatmap, funding / open interest / long-short ratios, a live liquidation stream, coin analysis, whale tracking and Polymarket (Premium). Every panel shows an error state with retry when a source fails.
-- **News**: crypto and stocks feeds (machine-translated headlines) and an **economic calendar** with a switch for the "high-impact USD event in an hour" push.
-- **TradeAI**: chat, a chart analyzer and the AI coach. Numbers in AI answers stay left-to-right inside Hebrew text; all AI HTML is sanitized.
+- **News**: crypto and stocks feeds and an **economic calendar** with a switch for the "high-impact USD event in an hour" push. Headlines are translated to Hebrew through the shared TradeAI quota. When that quota is spent the feed stays in the original English, with no error.
+- **TradeAI**: chat, a chart analyzer and the AI coach, plus news translation and the coin-page project description. Every one of those model calls draws from one daily quota (the `AI_QUOTA` Durable Object): 20/day on the free plan, 200/day on Premium. The quota is checked before the provider is called, and a failed call is refunded. A spent quota hides the coin-page AI description. The separate free coach allowance of 5 runs/month is gone — coach uses this same quota. Numbers in AI answers stay left-to-right inside Hebrew text; all AI HTML is sanitized.
 
 ### Accounts, plans and accessibility
 - Google or email sign-in; password policy (8+ chars, an uppercase letter and a digit); an unverified-email reminder; profile photo; complete **account deletion** (see Security).
