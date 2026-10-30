@@ -1,0 +1,64 @@
+name: Preview Hosting
+
+# Pull requests into main, from a branch in this repository, build the app and
+# publish it to a Firebase Hosting preview channel on the live site:
+#   target app → site tradeoslive, project tradeos-91a58
+# The channel expires 7 days after the last deploy. The URL looks like
+# https://tradeoslive--pr-NUMBER-HASH.web.app. FirebaseExtended/action-hosting-deploy
+# comments that URL on the PR.
+#
+# Hosting only. This file does not deploy Workers, Firestore rules, or Cloud
+# Functions. Production Hosting and both Workers still ship from a push to
+# main in deploy.yml. channelId must never be "live".
+#
+# Firebase Auth authorized domains do not accept a wildcard (tradeoslive--*).
+# Add the full preview host from the PR comment if sign-in on that preview
+# matters. Google sign-in also needs that origin on the OAuth web client, so
+# it may not work. Email/password works once the exact host is listed.
+
+on:
+  pull_request:
+    types: [opened, synchronize, reopened]
+    branches: [main]
+
+permissions:
+  contents: read
+  pull-requests: write
+  checks: write
+
+concurrency:
+  group: preview-hosting-${{ github.event.pull_request.number }}
+  cancel-in-progress: true
+
+jobs:
+  preview:
+    if: github.event.pull_request.head.repo.full_name == github.repository
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+
+      - run: npm ci
+
+      # Same build env as a preview in deploy.yml: production Worker URL,
+      # admin-notification sample route, authDomain of the live site.
+      - name: Build
+        env:
+          VITE_WORKER_URL: https://trade-os.tradeos.workers.dev
+          VITE_ADMIN_NOTIF_PREVIEW: '1'
+          VITE_FIREBASE_AUTH_DOMAIN: tradeoslive.web.app
+        run: npm run build
+
+      - name: Deploy Hosting preview
+        uses: FirebaseExtended/action-hosting-deploy@v0
+        with:
+          repoToken: ${{ secrets.GITHUB_TOKEN }}
+          firebaseServiceAccount: ${{ secrets.FIREBASE_SERVICE_ACCOUNT }}
+          projectId: tradeos-91a58
+          target: app
+          expires: 7d
+          channelId: pr-${{ github.event.number }}

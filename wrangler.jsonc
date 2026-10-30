@@ -37,5 +37,37 @@
     // Flip to "true" ONLY once billing is enabled on the Gemini project.
     // Defined here (not in the dashboard) so wrangler deploys don't wipe it.
     "GEMINI_ENABLED": "false"
+  },
+  // Staging is a separate Worker script (legacy env naming: trade-os-staging).
+  // Deploy it only with `wrangler deploy --config wrangler.jsonc --env staging`
+  // from repo root. A bare `wrangler deploy` (and the Vite plugin redirect at
+  // .wrangler/deploy/config.json) still targets the top-level name `trade-os`.
+  // Bindings are not inherited, so they are repeated here. There is no cron:
+  // tradeos-alerts stays the only scheduled Worker and deploys from main.
+  // ALERTS_KV is still the production namespace. Staging HTTP reads and writes
+  // that data until a staging namespace id replaces this one. See docs/WORKFLOW.md.
+  "env": {
+    "staging": {
+      "name": "trade-os-staging",
+      "assets": {
+        "directory": "dist/client",
+        "not_found_handling": "single-page-application"
+      },
+      "kv_namespaces": [
+        { "binding": "ALERTS_KV", "id": "5c66041d98aa4229a52afeb2f5b1f652" }
+      ],
+      "durable_objects": {
+        "bindings": [
+          { "name": "AI_QUOTA", "class_name": "AiQuotaDO" }
+        ]
+      },
+      "migrations": [
+        { "tag": "v1-ai-quota", "new_sqlite_classes": ["AiQuotaDO"] }
+      ],
+      "vars": {
+        "DEV_UID": "3eVK7Ej3F1Y2L2ziHJpmzFP7Q0u1",
+        "GEMINI_ENABLED": "false"
+      }
+    }
   }
 }

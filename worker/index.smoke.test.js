@@ -58,3 +58,13 @@ it('allows the live hosting origin and its preview channels', async () => {
     expect(res.headers.get('Access-Control-Allow-Origin'), origin).toBe('https://tradeoslive.web.app');
   }
 });
+
+it('allows the dev channel origin and the staging worker origin', async () => {
+  for (const origin of [
+    'https://tradeoslive--dev-abc123.web.app',
+    'https://trade-os-staging.tradeos.workers.dev',
+  ]) {
+    const res = await worker.fetch(new Request('https://x/health', { headers: { Origin: origin } }), {});
+    expect(res.headers.get('Access-Control-Allow-Origin'), origin).toBe(origin);
+  }
+});
