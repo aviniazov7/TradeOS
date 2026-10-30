@@ -49,7 +49,9 @@ describe('hosting site selection', () => {
 });
 
 describe('authorized domains', () => {
-  it('appends the new site domains and keeps every domain already there', () => {
+  it('appends the new site domains and keeps the project default Auth domains', () => {
+    // These two hosts belong to Firebase Auth for project tradeos-91a58.
+    // The script only adds domains; it must not drop them.
     const merged = mergeAuthorizedDomains(
       ['localhost', 'tradeos-91a58.web.app', 'tradeos-91a58.firebaseapp.com'],
       domainsForSite('tradeos'),
@@ -77,6 +79,8 @@ describe('authorized domains', () => {
     expect(text).toContain('tradeoslive.web.app');
     expect(text).toContain('tradeoslive.firebaseapp.com');
     expect(text).toContain('https://tradeoslive.web.app/__/auth/handler');
+    expect(text).toContain('https://tradeos-91a58.firebaseapp.com/__/auth/handler');
+    expect(text).toContain('Do not remove tradeos-91a58.firebaseapp.com');
     expect(text).toContain('403 permission denied');
     expect(text).toContain('/__/auth/action');
   });

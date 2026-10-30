@@ -20,6 +20,7 @@ describe('worker cache policy', () => {
     ['https://trade-os.tradeos.workers.dev/exchange/credentials/status', true, true],
     ['https://trade-os.tradeos.workers.dev/notify-settings', false, true],
     ['https://trade-os.tradeos.workers.dev/cg/simple/price?ids=bitcoin', false, false],
+    ['https://trade-os.tradeos.workers.dev/api/v1/trades', false, true],
     ['https://trade-os.tradeos.workers.dev/cx/quotes?symbols=BTC', false, false],
     ['https://tradeoslive.web.app/assets/index.js', true, false],
   ];

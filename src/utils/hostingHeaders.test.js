@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { readdirSync, readFileSync } from 'node:fs';
+import { readFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import { APP_URL } from '../../worker/emailTheme.js';
 
@@ -9,7 +9,6 @@ const config = JSON.parse(readFileSync(fileURLToPath(new URL('../../firebase.jso
 const firebaserc = JSON.parse(readFileSync(fileURLToPath(new URL('../../.firebaserc', import.meta.url)), 'utf8'));
 const sites = Array.isArray(config.hosting) ? config.hosting : [config.hosting];
 const appHosting = sites.find((h) => h.target === 'app');
-const legacyHosting = sites.find((h) => h.target === 'legacy');
 const globalHeaders = appHosting.headers.find((h) => h.source === '**').headers;
 const header = (key) => globalHeaders.find((h) => h.key === key)?.value;
 
@@ -76,15 +75,16 @@ describe('hosting CSP (report-only)', () => {
     }
   });
 
-  it('allows the auth handler on the new site and the previous one', () => {
+  it('allows the auth handler on the live site', () => {
     for (const origin of [
       'https://tradeoslive.web.app',
       'https://tradeoslive.firebaseapp.com',
-      'https://tradeos-91a58.web.app',
-      'https://tradeos-91a58.firebaseapp.com',
     ]) {
       expect(d['frame-src']).toContain(origin);
     }
+    expect(d['frame-src'].join(' ')).not.toMatch(/tradeos-91a58\.(web|firebaseapp)\.com/);
+    // The Auth SDK can still call the project's default firebaseapp.com host.
+    expect(d['connect-src']).toContain('https://*.firebaseapp.com');
   });
 });
 
@@ -144,24 +144,15 @@ describe('login document', () => {
 });
 
 describe('hosting targets', () => {
-  it('deploys the app to tradeoslive and the 301 to the previous default site', () => {
+  it('deploys the app to tradeoslive and has no legacy site', () => {
+    expect(firebaserc.projects.default).toBe('tradeos-91a58');
     expect(firebaserc.targets['tradeos-91a58'].hosting.app).toEqual(['tradeoslive']);
-    expect(firebaserc.targets['tradeos-91a58'].hosting.legacy).toEqual(['tradeos-91a58']);
+    expect(firebaserc.targets['tradeos-91a58'].hosting.legacy).toBeUndefined();
+    expect(sites.map((h) => h.target)).toEqual(['app']);
     expect(appHosting.public).toBe('dist/client');
     expect(appHosting.rewrites).toEqual([{ source: '!/__/auth{,/**}', destination: '/index.html' }]);
     expect(appHosting.rewrites.some((rule) => rule.source === '**' || rule.source === '/__/auth/**')).toBe(false);
-    expect(legacyHosting.public).toBe('hosting/legacy');
-    expect(legacyHosting.rewrites).toBeUndefined();
-  });
-
-  it('301s every path on the old site to the new one, keeping the path', () => {
     expect(APP_URL).toBe('https://tradeoslive.web.app');
-    expect(legacyHosting.ignore).toEqual(['**']);
-    expect(legacyHosting.headers).toBeUndefined();
-    expect(legacyHosting.redirects).toEqual([
-      { source: '/', destination: 'https://tradeoslive.web.app/', type: 301 },
-      { source: '/:path*', destination: 'https://tradeoslive.web.app/:path', type: 301 },
-    ]);
   });
 });
 
@@ -183,13 +174,6 @@ describe('robots.txt / sitemap.xml', () => {
   });
 });
 
-describe('legacy redirect site has nothing to serve', () => {
-  it('keeps the public directory empty of deployable files', () => {
-    const names = readdirSync(fileURLToPath(new URL('../../hosting/legacy', import.meta.url)));
-    expect(names.filter((name) => !name.startsWith('.'))).toEqual([]);
-  });
-});
-
 describe('auth domain and public site URL', () => {
   const read = (p) => readFileSync(fileURLToPath(new URL(`../../${p}`, import.meta.url)), 'utf8');
 
@@ -203,7 +187,8 @@ describe('auth domain and public site URL', () => {
     expect(envExample).toMatch(/^VITE_FIREBASE_AUTH_DOMAIN=tradeoslive\.web\.app$/m);
     expect(spec).toMatch(/^VITE_FIREBASE_AUTH_DOMAIN=tradeoslive\.web\.app$/m);
     expect(deploy).toMatch(/VITE_FIREBASE_AUTH_DOMAIN:\s*tradeoslive\.web\.app/);
-    expect(deploy).toMatch(/firebase-tools deploy --only hosting:app,hosting:legacy /);
+    expect(deploy).toMatch(/firebase-tools deploy --only hosting:app --project /);
+    expect(deploy).not.toMatch(/hosting:legacy/);
     expect(deploy).toMatch(/hosting:channel:deploy "\$CHANNEL" \\\s*\n\s*--only app /);
   });
 
@@ -224,6 +209,7 @@ describe('auth domain and public site URL', () => {
       expect(text, file).not.toMatch(/href="https:\/\/tradeos-91a58\.web\.app/);
     }
     expect(read('index.html')).toMatch(/property="og:url" content="https:\/\/tradeoslive\.web\.app"/);
-    expect(read('docs/OWNER_CHECKLIST.md')).toMatch(/https:\/\/tradeos-91a58\.web\.app\/login\?x=1/);
+    expect(read('docs/OWNER_CHECKLIST.md')).toMatch(/firebase hosting:disable --project tradeos-91a58 --site tradeos-91a58/);
+    expect(read('docs/OWNER_CHECKLIST.md')).not.toMatch(/tradeos-91a58\.web\.app/);
   });
 });

@@ -53,6 +53,7 @@ import { verifyExchangeKeyReadOnly, KeyPermissionError, STORABLE_EXCHANGES } fro
 import { NEWS_FEEDS, parseRssItems, handleNewsFeed } from './newsFeed.js';
 import { safeNotificationPath } from './pushNavigate.js';
 import { parseAltcoinSeasonIndex } from './altcoinSeason.js';
+import { handlePublicApi } from './publicApi.js';
 
 // Binance's public market-data mirror — api.binance.com returns 403 to
 // Cloudflare Worker egress IPs in many regions, but data-api.binance.vision
@@ -1450,9 +1451,9 @@ async function edgeCounterBump(key, windowSec) {
   return w.c;
 }
 
-// Per-user anti-abuse throttles (exchange sync, wallet lookups, news
-// translate). Same { count } shape the KV version returned — but it no longer
-// writes KV: each call used to cost one KV write just to count.
+// Per-user windows: exchange sync, wallet, news translate, and the public
+// API (rl:api:{uid}, rl:apikey:{uid}). The pre-auth API-key hash has no uid
+// and stays on the edge counter. Same { count } shape as before.
 function uidFromRateKey(key) {
   const tail = String(key || '').split(':').pop();
   return /^[A-Za-z0-9]{20,128}$/.test(tail || '') ? tail : null;
@@ -3684,17 +3685,11 @@ async function handleContact(request, env, cors) {
 const ALLOWED_ORIGINS = [
   APP_URL,
   'https://tradeoslive.firebaseapp.com',
-  // The previous default site stays allowed: it 301s here, and any tab still
-  // open on it (or an unexpired preview channel) must keep calling the Worker.
-  'https://tradeos-91a58.web.app',
-  'https://tradeos-91a58.firebaseapp.com',
   'https://trade-os.tradeos.workers.dev',
   'https://trade-os-staging.tradeos.workers.dev',
 ];
-// Preview channels are https://SITE--CHANNEL-HASH.web.app. New channels are
-// created on the tradeoslive site; channels that already exist on the old
-// default site keep working until they expire.
-const PREVIEW_ORIGIN_RE = /^https:\/\/(?:tradeos-91a58|tradeoslive)--[a-z0-9-]+\.web\.app$/i;
+// Preview channels are https://tradeoslive--CHANNEL-HASH.web.app (site tradeoslive only).
+const PREVIEW_ORIGIN_RE = /^https:\/\/tradeoslive--[a-z0-9-]+\.web\.app$/i;
 function isAllowedOrigin(origin) {
   if (!origin) return false;
   return ALLOWED_ORIGINS.includes(origin) || PREVIEW_ORIGIN_RE.test(origin);
@@ -4018,7 +4013,7 @@ function corsHeadersFor(request) {
   return {
     'Access-Control-Allow-Origin': allowedOrigin,
     'Access-Control-Allow-Methods': 'GET, POST, DELETE, OPTIONS',
-    'Access-Control-Allow-Headers': 'Content-Type, Authorization',
+    'Access-Control-Allow-Headers': 'Content-Type, Authorization, Idempotency-Key',
     'Vary': 'Origin',
   };
 }
@@ -4047,6 +4042,18 @@ async function handleRequest(request, env) {
 
   const url = new URL(request.url);
   const path = url.pathname;
+
+  // Public REST API for agents. Auth is a per-user API key or a Firebase ID
+  // token. Handled before the app routes so /api/v1 never falls through.
+  if (path === '/api/v1' || path.startsWith('/api/v1/')) {
+    return handlePublicApi(request, env, {
+      verifyFirebaseToken,
+      getAdminToken: () => getFirebaseAdminToken(env),
+      rateLimit: (key, sec) => bumpWindow(env, key, sec),
+      projectId: FIREBASE_PROJECT_ID,
+      cors,
+    });
+  }
 
   if (request.method === 'POST' && path === '/daily-stats') {
     try {

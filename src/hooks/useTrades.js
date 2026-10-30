@@ -12,6 +12,7 @@ import {
 import { deleteTradeImages } from '../services/tradeImageService';
 import { useAuth } from '../contexts/AuthContext';
 import { computeTradeFields, calculateFuturesNotional } from '../utils/calculations';
+import { buildStoredTrade } from '../utils/tradeDoc';
 
 export function useTrades(journalId = null) {
   const { user } = useAuth();
@@ -59,39 +60,13 @@ export function useTrades(journalId = null) {
   // Full document for a new trade: computed P&L fields + safe dates + journal
   // binding. Shared by the single-add and bulk-import paths so both write
   // identical documents.
+  // Same document the public API writes (src/utils/tradeDoc.js). Dates are
+  // turned into Firestore timestamps here; the Worker encodes the Dates itself.
   const buildTradeDoc = (tradeData) => {
-    const { pnl, pnlPercent, rrRatio, netPnl, result } = computeTradeFields(tradeData);
-
-    const rawDate = tradeData.entryDate instanceof Date
-      ? tradeData.entryDate
-      : tradeData.entryDate ? new Date(tradeData.entryDate) : new Date();
-    const safeEntryDate = isNaN(rawDate.getTime()) ? new Date() : rawDate;
-
-    // Futures positionSize/margin are notional-based (price × pointValue ×
-    // contracts); the crypto formula (price × quantity / leverage) is wrong
-    // for contracts and leverage doesn't apply.
-    const isFutures = tradeData.assetClass === 'futures_cme' && tradeData.contract;
-    const notional = isFutures
-      ? calculateFuturesNotional(tradeData.entryPrice, tradeData.contract.pointValue, tradeData.contract.contracts)
-      : tradeData.entryPrice * tradeData.quantity;
-
+    const stored = buildStoredTrade(tradeData, { journalId, now: new Date() });
     return {
-      ...tradeData,
-      // Asset class is persisted explicitly so Firestore rules and analytics
-      // can branch on it. Missing/absent means crypto — every pre-existing
-      // trade was written before this field existed and must keep behaving
-      // exactly as before (see docs/specs/futures-contracts.md).
-      assetClass: tradeData.assetClass || 'crypto',
-      entryDate: safeEntryDate,
-      journalId: journalId || null,
-      pnl,
-      pnlPercent,
-      rrRatio,
-      netPnl,
-      result,
-      positionSize: notional,
-      margin: isFutures ? notional : notional / (tradeData.leverage || 1),
-      createdAt: dateToTimestamp(safeEntryDate),
+      ...stored,
+      createdAt: dateToTimestamp(stored.createdAt),
       updatedAt: timestamp(),
     };
   };

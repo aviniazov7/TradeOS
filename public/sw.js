@@ -1,4 +1,4 @@
-const CACHE_NAME = 'tradeos-v340';
+const CACHE_NAME = 'tradeos-v342';
 const STATIC_ASSETS = [
   '/icon-192.png',
   '/icon-512.png',
@@ -51,7 +51,7 @@ function isPrivateWorkerRequest(request) {
   if (hasAuthorization) return true;
   const path = parsed.pathname;
   if (path === '/notify-settings' || path === '/ai-usage' || path === '/candles' || path === '/wallet') return true;
-  return path.startsWith('/exchange/') || path.startsWith('/hl/') || path.startsWith('/admin/') || path.startsWith('/push/') || path.startsWith('/coupons/');
+  return path.startsWith('/exchange/') || path.startsWith('/hl/') || path.startsWith('/admin/') || path.startsWith('/push/') || path.startsWith('/coupons/') || path.startsWith('/api/');
 }
 // END isPrivateWorkerRequest
 

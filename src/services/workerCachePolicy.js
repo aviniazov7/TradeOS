@@ -15,7 +15,7 @@ function onWorkerHost(hostname) {
 
 // Paths that return per-user data. Listed as well as the Authorization header
 // so a request is still treated as private if the header is not visible.
-const PRIVATE_PREFIXES = ['/exchange/', '/hl/', '/admin/', '/push/', '/coupons/'];
+const PRIVATE_PREFIXES = ['/exchange/', '/hl/', '/admin/', '/push/', '/coupons/', '/api/'];
 const PRIVATE_EXACT = new Set(['/notify-settings', '/ai-usage', '/candles', '/wallet']);
 
 export function isPrivateWorkerRequest(url, hasAuthorization = false) {

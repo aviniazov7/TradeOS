@@ -11,7 +11,7 @@
     "test:rules": "firebase emulators:exec --only firestore --project demo-tradeos-rules \"vitest run --config vitest.rules.config.js\"",
     "lint": "eslint .",
     "preview": "npm run build && wrangler dev",
-    "deploy": "npm run build && wrangler deploy && firebase deploy --only hosting:app,hosting:legacy,firestore:rules --project tradeos-91a58"
+    "deploy": "npm run build && wrangler deploy && firebase deploy --only hosting:app,firestore:rules --project tradeos-91a58"
   },
   "dependencies": {
     "@fontsource/heebo": "^5.3.0",
