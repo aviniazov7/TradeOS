@@ -8,6 +8,8 @@ import { formatCompactUsd as formatNum, formatCoinPrice as formatPrice, LRM } fr
 import { chartTick } from '../../utils/chartTicks';
 import { fetchAnalysisLiquidity } from '../../services/bybitDirect';
 import { fetchProjectDescription } from '../../services/groqApi';
+import { useAiUsage } from '../../hooks/useAiUsage';
+import { isDailyAiQuotaExhausted } from '../../utils/aiQuotaGate';
 import { computeRSI, computeMA, computeVolatility } from '../../utils/technicals';
 
 // ── Modern "AI" accent: violet → cyan. Replaces the old flat blue across this
@@ -309,6 +311,7 @@ export default function CoinAnalysis() {
   const [projectDescLoading, setProjectDescLoading] = useState(false);
   const [projectDescError, setProjectDescError] = useState(null);
   const [projectDescExpanded, setProjectDescExpanded] = useState(false);
+  const aiUsage = useAiUsage();
   const searchRef = useRef(null);
   const debounceRef = useRef(null);
   const descCacheRef = useRef(new Map());
@@ -343,6 +346,14 @@ export default function CoinAnalysis() {
       setProjectDescError(null);
       return;
     }
+    // Spent TradeAI quota: do not call the model, and do not render the
+    // description block (no error, no skeleton).
+    if (isDailyAiQuotaExhausted(aiUsage)) {
+      setProjectDesc('');
+      setProjectDescError(null);
+      setProjectDescLoading(false);
+      return;
+    }
     setProjectDescLoading(true);
     setProjectDescError(null);
     setProjectDesc('');
@@ -356,9 +367,15 @@ export default function CoinAnalysis() {
         setProjectDescError('לא הצלחנו לייצר תיאור כרגע.');
       }
     } catch (e) {
+      if (e?.quotaExceeded) {
+        setProjectDesc('');
+        setProjectDescError(null);
+        return;
+      }
       setProjectDescError(e?.message || 'שגיאה ביצירת התיאור.');
     } finally {
       setProjectDescLoading(false);
+      aiUsage.refresh();
     }
   };
 

@@ -96,7 +96,7 @@ export default function JourneyAiPanel({ assessment, uid, isPremium }) {
 
       <p className="text-[11px] text-text-muted mt-3 leading-relaxed">
         נשלח ל-AI רק סיכום של המפה (שלב, ציונים, ראיות ויעדים), בלי רשימת העסקאות.
-        {!isPremium && ' במסלול החינמי כל ניתוח נספר מתוך 5 ניתוחי ה-AI החודשיים.'}
+        {!isPremium && ' כל ניתוח נספר במכסת TradeAI היומית.'}
       </p>
 
       {blocked && !result && (

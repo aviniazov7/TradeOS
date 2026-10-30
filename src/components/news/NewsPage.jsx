@@ -2,7 +2,7 @@ import { useState, useEffect, useCallback, useMemo } from 'react';
 import { useSearchParams } from 'react-router-dom';
 import { m, AnimatePresence } from 'framer-motion';
 import { Newspaper, ExternalLink, Clock, Filter, CalendarDays, Volume2, Globe, BrainCircuit, RefreshCw } from 'lucide-react';
-import { fetchNewsDigest, fetchNewsFeed, translateNews } from '../../services/newsService';
+import { fetchNewsDigest, fetchNewsFeed, translateNews, unpackNewsTranslations } from '../../services/newsService';
 import WhyItMoved from './WhyItMoved';
 import { hebrewEventTitle } from '../../utils/econCalendarTerms';
 import { headlineNeedsTranslation } from '../../utils/newsHeadline';
@@ -291,16 +291,19 @@ function EconomicCalendar() {
         const chunk = titles.slice(i, i + 12);
         const res = await translateNews(chunk.map((t) => ({ title: t, desc: '' })));
         if (cancelled) return;
-        if (res) {
+        const { items, quotaExceeded } = unpackNewsTranslations(res);
+        if (items) {
           setHeMap((m) => {
             const next = { ...m };
             chunk.forEach((t, j) => {
-              const title = res[j]?.title;
+              const title = items[j]?.title;
               if (typeof title === 'string' && title.trim() && isHebrewSafeText(title)) next[t] = title;
             });
             return next;
           });
         }
+        // Spent quota: leave the rest in English. Do not keep asking.
+        if (quotaExceeded) return;
         if (i + 12 < titles.length) await new Promise((r) => setTimeout(r, 1500));
       }
     })();
@@ -712,12 +715,14 @@ function AiBrief({ market }) {
     if (!pending.length) return undefined;
     let cancelled = false;
     translateNews(pending.map((s) => ({ title: s.headline, desc: '' }))).then((res) => {
-      if (cancelled || !res) return;
+      if (cancelled) return;
+      const { items } = unpackNewsTranslations(res);
+      if (!items) return;
       setHeHeadlines((prev) => {
         let changed = false;
         const next = { ...prev };
         pending.forEach((s, i) => {
-          const title = res[i]?.title;
+          const title = items[i]?.title;
           if (title && isHebrewSafeText(title) && !headlineNeedsTranslation(title) && next[s.headline] !== title) {
             next[s.headline] = title;
             changed = true;
@@ -874,7 +879,8 @@ function NewsFeed({ market }) {
   // caches per-article in KV, so repeat loads (and other users) are free.
   // A failed batch (usually a provider per-minute token limit) skips ahead
   // instead of aborting — whatever was cached still lands, and the 5-minute
-  // feed refresh naturally retries the rest.
+  // feed refresh naturally retries the rest. A spent TradeAI quota stops the
+  // loop: the remaining headlines stay in English and nothing is shown as an error.
   useEffect(() => {
     if (!articles.length) return undefined;
     let cancelled = false;
@@ -888,13 +894,16 @@ function NewsFeed({ market }) {
           desc: (a.description || '').slice(0, 200),
         })));
         if (cancelled) return;
-        if (res) {
+        const { items, quotaExceeded } = unpackNewsTranslations(res);
+        if (items) {
           setHeMap((m) => {
             const next = { ...m };
-            chunk.forEach((a, j) => { if (isHebrewSafeTranslation(res[j])) next[a.link] = res[j]; });
+            chunk.forEach((a, j) => { if (isHebrewSafeTranslation(items[j])) next[a.link] = items[j]; });
             return next;
           });
         }
+        // Spent quota: the rest of the feed stays in English, with no error.
+        if (quotaExceeded) return;
         // Spread batches out so we stay under the provider's per-minute budget.
         if (i + 12 < top.length) await new Promise((r) => setTimeout(r, 1500));
       }
