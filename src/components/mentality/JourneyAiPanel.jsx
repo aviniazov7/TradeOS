@@ -1,4 +1,6 @@
 import { useState } from 'react';
+import { useAiUsage } from '../../hooks/useAiUsage';
+import { dailyAiQuotaMessage, isDailyAiQuotaExhausted } from '../../utils/aiQuotaGate';
 import { useNavigate } from 'react-router-dom';
 import { m } from 'framer-motion';
 import { BrainCircuit, Sparkles, RefreshCw, AlertCircle, Crown, MapPin, AlertTriangle, Footprints } from 'lucide-react';
@@ -27,16 +29,24 @@ export default function JourneyAiPanel({ assessment, uid, isPremium }) {
   const [result, setResult] = useState(() => readAiAnalysis(uid));
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
+  const aiUsage = useAiUsage();
+  const quotaMessage = isDailyAiQuotaExhausted(aiUsage) ? dailyAiQuotaMessage(aiUsage) : '';
 
   const blocked = assessment.insufficient;
 
   const run = async () => {
     if (loading || blocked) return;
+    if (quotaMessage) {
+      setError(quotaMessage);
+      return;
+    }
     setLoading(true);
     setError('');
+    let called = false;
     try {
       // Short report on purpose: the narrative is three short answers, and a
       // short run costs the least of the user's coach quota.
+      called = true;
       const text = await generateCoachReport(buildAiSummary(assessment), 'short', 'journal');
       if (!text.trim()) throw new Error('ה-AI החזיר תשובה ריקה. נסה שוב בעוד רגע.');
       const next = { text, at: Date.now(), stageIndex: assessment.stage.index, stageName: assessment.stage.name };
@@ -46,6 +56,7 @@ export default function JourneyAiPanel({ assessment, uid, isPremium }) {
       setError(e?.message || 'הניתוח נכשל. נסה שוב בעוד רגע.');
     } finally {
       setLoading(false);
+      if (called) aiUsage.refresh();
     }
   };
 
@@ -74,7 +85,7 @@ export default function JourneyAiPanel({ assessment, uid, isPremium }) {
         <button
           type="button"
           onClick={run}
-          disabled={loading || blocked}
+          disabled={loading || blocked || !!quotaMessage}
           className="shrink-0 inline-flex items-center gap-1.5 h-10 px-4 rounded-xl bg-accent-muted hover:bg-accent-primary text-white text-sm font-bold transition-colors cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed"
         >
           {loading
@@ -96,12 +107,12 @@ export default function JourneyAiPanel({ assessment, uid, isPremium }) {
 
       {loading && <div className="mt-4"><ThinkingIndicator steps={STEPS} /></div>}
 
-      {error && !loading && (
+      {(error || quotaMessage) && !loading && (
         <div className="mt-4 flex items-start gap-2 p-3 rounded-xl border border-loss/30 bg-loss/10 text-sm text-loss" role="alert">
           <AlertCircle className="w-4 h-4 shrink-0 mt-0.5" aria-hidden />
           <div className="flex-1 min-w-0">
-            <p>{error}</p>
-            {error.includes('Premium') && (
+            <p>{error || quotaMessage}</p>
+            {(error || quotaMessage).includes('Premium') && (
               <button type="button" onClick={() => navigate('/premium')} className="mt-1 text-xs underline text-accent-primary cursor-pointer">
                 לשדרוג Premium
               </button>

@@ -60,7 +60,7 @@ describe('planAiCharge — free tier', () => {
   it('refuses images for free users before touching any quota', () => {
     expect(planAiCharge(null, { ...base, premium: false, chargeDaily: true, image: true })).toEqual({ deny: 'imagePremium' });
   });
-  it('rate-gate-only charge (coach) does not touch the daily counter', () => {
+  it('omitted chargeDaily (rate gate only) does not touch the daily counter', () => {
     const doc = chargeN(3, { premium: false });
     expect(doc.u).toBe(0);
     expect(doc.m.c).toBe(3);

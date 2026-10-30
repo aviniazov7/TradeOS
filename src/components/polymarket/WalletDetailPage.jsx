@@ -11,6 +11,8 @@ import { pnlSplit, fmtUsd, fmtPct, shortWallet } from '../../utils/polymarketSco
 import { profileUrl, marketUrl } from '../../services/polymarketService';
 import { timeAgoEn, sideLabelEn } from '../../utils/polymarketLabels';
 import { pageVariants, pageTransition } from '../../utils/animations';
+import { useAiUsage } from '../../hooks/useAiUsage';
+import { dailyAiQuotaMessage, isDailyAiQuotaExhausted } from '../../utils/aiQuotaGate';
 
 const SORTS = [
   { key: 'value', label: 'שווי', val: (p) => p.currentValue },
@@ -143,6 +145,8 @@ export default function WalletDetailPage() {
   const [sort, setSort] = useState('value');
   const [tab, setTab] = useState('positions');
   const [analystOpen, setAnalystOpen] = useState(false);
+  const aiUsage = useAiUsage();
+  const quotaOut = isDailyAiQuotaExhausted(aiUsage);
 
   const row = state?.row || null;
   const { positions, loading, error } = useWalletPositions(address, 500);
@@ -191,11 +195,18 @@ export default function WalletDetailPage() {
               פרופיל מלא ב-Polymarket <ExternalLink className="w-3 h-3" />
             </a>
           )}
-          {/* "האנליסט הפרטי" — AI read of this wallet's public book */}
-          <button onClick={() => setAnalystOpen(true)}
-            className="inline-flex items-center gap-1.5 px-3.5 py-1.5 rounded-lg bg-accent-primary text-bg-primary text-xs font-bold hover:bg-accent-hover transition-colors cursor-pointer">
+          {/* "האנליסט הפרטי" — AI read of this wallet's public book.
+              Spent daily quota: show the message and do not open the analyst
+              (the modal's own button is the call; the server rejects too). */}
+          <button
+            onClick={() => { if (!quotaOut) setAnalystOpen(true); }}
+            disabled={quotaOut}
+            className="inline-flex items-center gap-1.5 px-3.5 py-1.5 rounded-lg bg-accent-primary text-bg-primary text-xs font-bold hover:bg-accent-hover transition-colors cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed">
             <BrainCircuit className="w-3.5 h-3.5" /> נתח ארנק (AI)
           </button>
+          {quotaOut && (
+            <p className="basis-full text-xs font-semibold text-loss">{dailyAiQuotaMessage(aiUsage)}</p>
+          )}
         </div>
       </div>
 
@@ -270,7 +281,7 @@ export default function WalletDetailPage() {
         )
       )}
 
-      <WalletAnalystModal isOpen={analystOpen} onClose={() => setAnalystOpen(false)} row={row} positions={positions} split={split} />
+      <WalletAnalystModal isOpen={analystOpen} onClose={() => setAnalystOpen(false)} row={row} positions={positions} split={split} aiUsage={aiUsage} />
     </m.div>
   );
 }

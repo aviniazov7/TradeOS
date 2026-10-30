@@ -34,7 +34,7 @@ import {
   clientSafeFacts,
 } from './reminderCopy.js';
 import {
-  planAiCharge, planAiRefund, quotaUsage, createWindowCounters, createStatBuffer, mergeStat,
+  quotaUsage, createWindowCounters, createStatBuffer, mergeStat,
 } from './aiQuota.js';
 import {
   USER_SUBCOLLECTIONS, userSingleKvKeys, isLifetimePlan, samePushSubscription, sanitizeNotifySettings,
@@ -984,19 +984,49 @@ async function verifyFirebaseToken(token) {
 }
 
 
-// Per-user AI quota document (aiq:{uid}) — see worker/aiQuota.js for the
-// layout. ONE KV write per allowed AI request, none for a rejected one.
+// Per-user AI quota. The source of truth is AiQuotaDO (atomic check+increment).
+// aiq:{uid} in KV is a best-effort mirror for the admin "all users" scan and
+// the one-time seed when a user's object is first created. TTL covers the
+// rolling 24h window plus the Israel-midnight reset.
 const aiQuotaKey = (uid) => `aiq:${uid}`;
-const AI_QUOTA_TTL = 60 * 60 * 48; // survives midnight + the 24h rolling window
+const AI_QUOTA_TTL = 60 * 60 * 48;
 
 async function readAiQuotaDoc(env, uid) {
   return env.ALERTS_KV.get(aiQuotaKey(uid), 'json').catch(() => null);
 }
 
-async function getAiUsage(env, uid) {
+function aiQuotaStub(env, uid) {
+  const ns = env.AI_QUOTA;
+  if (!ns || typeof ns.getByName !== 'function') return null;
+  return ns.getByName(uid);
+}
+
+async function mirrorAiQuota(env, uid, doc) {
+  if (!doc) return;
+  await kvPutSafe(env, aiQuotaKey(uid), JSON.stringify(doc), { expirationTtl: AI_QUOTA_TTL });
+}
+
+// Live counters from the Durable Object. Falls back to the KV mirror only if
+// the object can't be read (admin views keep working during a blip). Charging
+// never uses this fallback — a missed object fails closed.
+async function readQuotaSnapshot(env, uid) {
   const date = getIsraelDateStr();
-  const { used } = quotaUsage(await readAiQuotaDoc(env, uid), date);
-  return { used, limit: AI_DAILY_LIMIT, date };
+  const stub = aiQuotaStub(env, uid);
+  if (stub) {
+    try {
+      const snap = await stub.usage({ date, uid });
+      if (snap && typeof snap.used === 'number') return { ...snap, date };
+    } catch (e) {
+      console.error('ai quota read', e?.message || e);
+    }
+  }
+  const fallback = quotaUsage(await readAiQuotaDoc(env, uid), date);
+  return { ...fallback, date };
+}
+
+async function getAiUsage(env, uid) {
+  const snap = await readQuotaSnapshot(env, uid);
+  return { used: snap.used, limit: AI_DAILY_LIMIT, date: snap.date };
 }
 
 // A KV write that never throws. KV's free tier allows 1,000 writes a day; once
@@ -1023,19 +1053,23 @@ async function recordAiFailure(env, fails) {
 // Chart-image analyses get their own (much smaller) daily budget on top of the
 // regular request counter — vision calls burn far more tokens than text.
 async function getAiImageUsage(env, uid) {
-  const date = getIsraelDateStr();
-  const { imageUsed } = quotaUsage(await readAiQuotaDoc(env, uid), date);
-  return { used: imageUsed, limit: AI_IMAGE_DAILY_LIMIT, date };
+  const snap = await readQuotaSnapshot(env, uid);
+  return { used: snap.imageUsed, limit: AI_IMAGE_DAILY_LIMIT, date: snap.date };
 }
 
-// Refund a prepaid quota charge (#202): quotas are charged BEFORE the provider
-// call (check-then-serve raced under parallel bursts and let a free user blow
-// past the daily cap), so a provider failure refunds the charge to preserve
-// the "failed calls don't burn quota" behavior. Costs a write only on failure.
+// Refund a prepaid quota charge (#202). The charge is committed in the
+// Durable Object before the provider call, so a provider failure refunds
+// there (not via a second KV read-modify-write). The KV mirror follows.
 async function refundAiCharge(env, uid, { daily = true, image = false } = {}) {
+  const stub = aiQuotaStub(env, uid);
+  if (!stub) return;
   const date = getIsraelDateStr();
-  const next = planAiRefund(await readAiQuotaDoc(env, uid), { date, daily, image });
-  if (next) await kvPutSafe(env, aiQuotaKey(uid), JSON.stringify(next), { expirationTtl: AI_QUOTA_TTL });
+  try {
+    const result = await stub.refund({ date, daily, image, uid });
+    if (result?.next) await mirrorAiQuota(env, uid, result.next);
+  } catch (e) {
+    console.error('ai quota refund', e?.message || e);
+  }
 }
 
 // Persistent daily AI stats (request counts + real token usage) for the admin
@@ -1394,38 +1428,49 @@ const AI_DENY = {
     quotaExceeded: true, used: AI_DAILY_LIMIT, limit: AI_DAILY_LIMIT,
   } },
   ceiling: { status: 503, body: { error: 'המערכת בעומס שיא היום. נסה מאוחר יותר.' } },
-  // The counter write failed (KV quota spent). Free users are DENIED rather
-  // than silently unlimited; premium keeps working on its soft caps.
+  // The per-user quota object is missing or threw. Fail closed for every
+  // tier — falling back to a KV read-modify-write is the race this replaced.
   unavailable: { status: 503, body: { error: 'שירות ה-AI אינו זמין זמנית. נסה שוב מאוחר יותר.' } },
 };
 
-// Gate + charge one AI request: global circuit breaker, per-user rate windows
-// (premium soft caps / free burst cap), the premium-only image gate + image
-// quota, and the daily quota — all from ONE KV document, persisted with ONE
-// write only when the request is allowed. Returns null when allowed, or a
-// { status, body } to short-circuit with. `overrides` replaces a deny body by
-// reason (routes word the daily-quota message differently).
+// Gate + charge one AI request. The per-user Durable Object applies
+// planAiCharge and persists the next document under one lock, so parallel
+// requests cannot all pass the same daily / minute / image check. Returns
+// null when allowed, or a { status, body } to short-circuit with. `overrides`
+// replaces a deny body by reason (routes word the daily-quota message
+// differently). Hebrew 429 copy lives in AI_DENY and is unchanged.
 async function aiCharge(env, uid, premium, { chargeDaily = false, image = false, overrides = {} } = {}) {
   const deny = (reason) => {
     const base = AI_DENY[reason];
+    if (!base) return AI_DENY.unavailable;
     return { status: base.status, body: overrides[reason] || base.body };
   };
   if (await aiGlobalCeilingHit()) return deny('ceiling');
 
-  const date = getIsraelDateStr();
-  const plan = planAiCharge(await readAiQuotaDoc(env, uid), {
-    now: Date.now(), date, premium, chargeDaily, image,
-    limits: {
-      premium: AI_PREMIUM_LIMITS,
-      freeBurstPerMin: AI_FREE_BURST_PER_MIN,
-      freeDaily: AI_DAILY_LIMIT,
-      imageDaily: AI_IMAGE_DAILY_LIMIT,
-    },
-  });
-  if (plan.deny) return deny(plan.deny);
+  const stub = aiQuotaStub(env, uid);
+  if (!stub) return deny('unavailable');
 
-  const wrote = await kvPutSafe(env, aiQuotaKey(uid), JSON.stringify(plan.next), { expirationTtl: AI_QUOTA_TTL });
-  if (!wrote && !premium) return deny('unavailable');
+  const date = getIsraelDateStr();
+  let plan;
+  try {
+    plan = await stub.charge({
+      now: Date.now(), date, premium, chargeDaily: !!chargeDaily, image: !!image, uid,
+      limits: {
+        premium: AI_PREMIUM_LIMITS,
+        freeBurstPerMin: AI_FREE_BURST_PER_MIN,
+        freeDaily: AI_DAILY_LIMIT,
+        imageDaily: AI_IMAGE_DAILY_LIMIT,
+      },
+    });
+  } catch (e) {
+    console.error('ai quota charge', e?.message || e);
+    return deny('unavailable');
+  }
+  if (!plan || plan.deny) return deny(plan?.deny || 'unavailable');
+
+  // Mirror after the commit. A failed mirror does not undo the charge and
+  // does not deny the request — the object is already the source of truth.
+  if (plan.next) await mirrorAiQuota(env, uid, plan.next);
 
   await edgeCounterBump(aiGlobalKey(), AI_WINDOWS_SEC.day);
   return null;
@@ -1564,6 +1609,11 @@ async function purgeUserKv(env, uid) {
   const pushKeys = await listAll(`push:${uid}:`).catch(() => []);
   for (const k of pushKeys) await del(k);
 
+  // Clear the quota object before dropping the KV mirror, and mark it seeded
+  // so a late request cannot re-import the document we're about to delete.
+  if (env.AI_QUOTA?.getByName) {
+    await env.AI_QUOTA.getByName(uid).wipe().catch((e) => console.error('ai quota wipe', e?.message || e));
+  }
   for (const k of userSingleKvKeys(uid)) await del(k);
 
   // Legacy rolled-up schedule blob — only rewritten when the uid is in it.
@@ -2831,6 +2881,10 @@ function packCoachStats(stats, budget) {
 }
 
 async function handleAICoach(request, env, cors) {
+  // Set once the shared daily question counter is charged, so a provider
+  // failure (non-ok response or a thrown fetch) refunds it. Same contract as
+  // /ai-chat: failed calls don't burn a question.
+  let refundDaily = null;
   try {
     const body = await request.json().catch(() => ({}));
     const { stats, depth = 'short', mode = 'journal' } = body || {};
@@ -2873,13 +2927,11 @@ async function handleAICoach(request, env, cors) {
     }
     const premium = await isUserPremium(env, token, uid);
 
-    // Free users get 5 coach runs/month tracked separately from the daily AI
-    // quota — Premium is unmetered (covered by the soft caps in aiCharge).
-    // Checked BEFORE the rate gate so a user who is out of monthly runs is
-    // turned away without spending a KV write on the rate windows.
-    // NOTE: the slot is charged only AFTER a successful provider response
-    // (below), mirroring /ai-coin-description — a Groq 429 must not burn one
-    // of the user's 5 monthly analyses.
+    // Free users ALSO get 5 coach runs/month, on top of the shared daily
+    // question counter. Checked BEFORE the rate gate so a user who is out of
+    // monthly runs is turned away without spending a KV write. The monthly
+    // slot is charged only AFTER a successful provider response — a Groq 429
+    // must not burn one of the 5.
     let chargeCoachQuota = null;
     if (!premium) {
       const monthKey = `coach:${uid}:${getIsraelDateStr().slice(0, 7)}`;
@@ -2897,9 +2949,15 @@ async function handleAICoach(request, env, cors) {
       chargeCoachQuota = () => kvPutSafe(env, monthKey, String(used + 1), { expirationTtl: 60 * 60 * 24 * 60 });
     }
 
-    // Shared rate gate + circuit breaker (same windows as /ai-chat).
-    const gate = await aiCharge(env, uid, premium);
+    // Same daily question counter /ai-chat increments (the TradeAI
+    // "נשארו X מתוך Y" bar), for every coach mode: journal analyst ("האנליסט
+    // שלך"), backtest, Polymarket wallet analysis and the personal brief.
+    // Charged up front so parallel clicks can't slip past the cap; refunded
+    // below if every provider fails. Premium's hard cap stays the rolling
+    // 200 inside aiCharge; free users are also capped at AI_DAILY_LIMIT.
+    const gate = await aiCharge(env, uid, premium, { chargeDaily: true });
     if (gate) return new Response(JSON.stringify(gate.body), { status: gate.status, headers: { ...cors, 'Content-Type': 'application/json' } });
+    refundDaily = () => refundAiCharge(env, uid, { daily: true });
 
     // Turn the clicked quick-prompt (stats.focus) into an explicit, prominent
     // directive so each button yields a genuinely different, focused report.
@@ -2939,17 +2997,22 @@ async function handleAICoach(request, env, cors) {
       // mid-evening must not kill the feature).
       const gemText = await geminiGenerateFallback(env, systemPrompt, userPrompt, premium && depth === 'deep' ? 1400 : 700);
       if (gemText) {
+        refundDaily = null;
         if (chargeCoachQuota) await chargeCoachQuota();
         return new Response(JSON.stringify({ ok: true, text: gemText, premium }), { headers: { ...cors, 'Content-Type': 'application/json' } });
       }
+      if (refundDaily) await refundDaily();
+      refundDaily = null;
       return new Response(JSON.stringify({ error: groqRes.status === 429 ? 'ה-AI עמוס כרגע, נסה שוב בעוד רגע' : `שגיאת AI: ${groqRes.status}` }), { status: 502, headers: { ...cors, 'Content-Type': 'application/json' } });
     }
     const data = await groqRes.json();
     const text = data.choices?.[0]?.message?.content?.trim() || '';
+    refundDaily = null;
     if (chargeCoachQuota) await chargeCoachQuota();
     return new Response(JSON.stringify({ ok: true, text, premium }), { headers: { ...cors, 'Content-Type': 'application/json' } });
   } catch (err) {
     console.error('AI coach error:', err);
+    if (refundDaily) await refundDaily();
     return new Response(JSON.stringify({ error: 'שגיאה פנימית' }), { status: 500, headers: { ...cors, 'Content-Type': 'application/json' } });
   }
 }
@@ -4292,8 +4355,9 @@ async function handleRequest(request, env) {
     return handleAIProjectDescription(request, env, cors);
   }
 
-  // AI Coach — analyze the user's trade journal stats and return a structured
-  // strengths/weaknesses/actions report. Free tier: 3 reports/month, short.
+  // AI Coach — journal, backtest, or a Polymarket wallet / personal brief.
+  // Counts against the same daily AI quota as /ai-chat. Free tier also has
+  // 5 coach runs/month.
   if (request.method === 'POST' && path === '/ai-coach') {
     return handleAICoach(request, env, cors);
   }
@@ -6657,6 +6721,8 @@ async function handleRequest(request, env) {
 
   return new Response('TradeOS Worker', { headers: cors });
 }
+
+export { AiQuotaDO } from './aiQuotaDo.js';
 
 export default {
   fetch: safeHandleRequest,

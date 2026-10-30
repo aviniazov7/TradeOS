@@ -6,6 +6,7 @@ import ThinkingIndicator from '../shared/ThinkingIndicator';
 import { renderBulletHtml } from '../../utils/renderBulletHtml';
 import { generateCoachReport } from '../../services/aiCoachService';
 import { fmtUsd, shortWallet } from '../../utils/polymarketScore';
+import { dailyAiQuotaMessage, isDailyAiQuotaExhausted } from '../../utils/aiQuotaGate';
 
 const SECTION_META = {
   'חוזקות': { Icon: TrendingUp, color: 'text-profit', bg: 'bg-profit/10', border: 'border-profit/30' },
@@ -67,12 +68,18 @@ const STEPS = ['קורא את פוזיציות הארנק', 'מודד ריכוז
 
 // "האנליסט הפרטי" — one click turns a smart-money wallet's public book into a
 // structured Hebrew read (strengths / weaknesses / what to watch).
-export default function WalletAnalystModal({ isOpen, onClose, row, positions, split }) {
+export default function WalletAnalystModal({ isOpen, onClose, row, positions, split, aiUsage = null }) {
   const [loading, setLoading] = useState(false);
   const [report, setReport] = useState('');
   const [error, setError] = useState('');
+  const quotaOut = isDailyAiQuotaExhausted(aiUsage);
+  const quotaMessage = dailyAiQuotaMessage(aiUsage || {});
 
   const run = async () => {
+    if (quotaOut) {
+      setError(quotaMessage);
+      return;
+    }
     setLoading(true);
     setError('');
     try {
@@ -84,6 +91,7 @@ export default function WalletAnalystModal({ isOpen, onClose, row, positions, sp
       setReport('');
     } finally {
       setLoading(false);
+      aiUsage?.refresh?.();
     }
   };
 
@@ -106,10 +114,14 @@ export default function WalletAnalystModal({ isOpen, onClose, row, positions, sp
               ה-AI יקרא את התיק הציבורי של הארנק — {positions.length} פוזיציות בשווי {fmtUsd(positions.reduce((s, p) => s + (p.currentValue || 0), 0))} —
               ויחזיר ניתוח: איפה הוא חזק, איפה הסיכון, ומה שווה מעקב.
             </p>
-            <button onClick={run}
-              className="inline-flex items-center gap-1.5 px-5 py-2.5 rounded-xl bg-accent-primary text-bg-primary text-sm font-semibold hover:bg-accent-hover transition-colors cursor-pointer">
-              <BrainCircuit className="w-4 h-4" /> נתח את הארנק
-            </button>
+            {quotaOut ? (
+              <p className="text-sm font-semibold text-loss">{quotaMessage}</p>
+            ) : (
+              <button onClick={run}
+                className="inline-flex items-center gap-1.5 px-5 py-2.5 rounded-xl bg-accent-primary text-bg-primary text-sm font-semibold hover:bg-accent-hover transition-colors cursor-pointer">
+                <BrainCircuit className="w-4 h-4" /> נתח את הארנק
+              </button>
+            )}
           </div>
         )}
 
@@ -144,10 +156,14 @@ export default function WalletAnalystModal({ isOpen, onClose, row, positions, sp
                 </div>
               );
             })}
-            <button onClick={run} disabled={loading}
-              className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-bg-tertiary text-xs font-semibold text-text-secondary hover:text-accent-primary transition-colors cursor-pointer">
-              <RefreshCw className="w-3.5 h-3.5" /> נתח שוב
-            </button>
+            {quotaOut ? (
+              <p className="text-xs font-semibold text-loss">{quotaMessage}</p>
+            ) : (
+              <button onClick={run} disabled={loading}
+                className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-bg-tertiary text-xs font-semibold text-text-secondary hover:text-accent-primary transition-colors cursor-pointer">
+                <RefreshCw className="w-3.5 h-3.5" /> נתח שוב
+              </button>
+            )}
           </m.div>
         )}
 
@@ -156,10 +172,14 @@ export default function WalletAnalystModal({ isOpen, onClose, row, positions, sp
         {report && sections.length === 0 && !loading && (
           <div className="space-y-3">
             <div className="rounded-2xl border border-border-primary bg-bg-tertiary/40 p-4 text-sm text-text-primary leading-relaxed whitespace-pre-wrap">{report}</div>
-            <button onClick={run}
-              className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-bg-tertiary text-xs font-semibold text-text-secondary hover:text-accent-primary transition-colors cursor-pointer">
-              <RefreshCw className="w-3.5 h-3.5" /> נתח שוב
-            </button>
+            {quotaOut ? (
+              <p className="text-xs font-semibold text-loss">{quotaMessage}</p>
+            ) : (
+              <button onClick={run}
+                className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-bg-tertiary text-xs font-semibold text-text-secondary hover:text-accent-primary transition-colors cursor-pointer">
+                <RefreshCw className="w-3.5 h-3.5" /> נתח שוב
+              </button>
+            )}
           </div>
         )}
       </div>
