@@ -34,7 +34,7 @@ import {
   clientSafeFacts,
 } from './reminderCopy.js';
 import {
-  planAiCharge, planAiRefund, quotaUsage, createWindowCounters, createStatBuffer, mergeStat,
+  quotaUsage, createWindowCounters, createStatBuffer, mergeStat,
 } from './aiQuota.js';
 import {
   USER_SUBCOLLECTIONS, userSingleKvKeys, isLifetimePlan, samePushSubscription, sanitizeNotifySettings,
@@ -984,19 +984,49 @@ async function verifyFirebaseToken(token) {
 }
 
 
-// Per-user AI quota document (aiq:{uid}) — see worker/aiQuota.js for the
-// layout. ONE KV write per allowed AI request, none for a rejected one.
+// Per-user AI quota. The source of truth is AiQuotaDO (atomic check+increment).
+// aiq:{uid} in KV is a best-effort mirror for the admin "all users" scan and
+// the one-time seed when a user's object is first created. TTL covers the
+// rolling 24h window plus the Israel-midnight reset.
 const aiQuotaKey = (uid) => `aiq:${uid}`;
-const AI_QUOTA_TTL = 60 * 60 * 48; // survives midnight + the 24h rolling window
+const AI_QUOTA_TTL = 60 * 60 * 48;
 
 async function readAiQuotaDoc(env, uid) {
   return env.ALERTS_KV.get(aiQuotaKey(uid), 'json').catch(() => null);
 }
 
-async function getAiUsage(env, uid) {
+function aiQuotaStub(env, uid) {
+  const ns = env.AI_QUOTA;
+  if (!ns || typeof ns.getByName !== 'function') return null;
+  return ns.getByName(uid);
+}
+
+async function mirrorAiQuota(env, uid, doc) {
+  if (!doc) return;
+  await kvPutSafe(env, aiQuotaKey(uid), JSON.stringify(doc), { expirationTtl: AI_QUOTA_TTL });
+}
+
+// Live counters from the Durable Object. Falls back to the KV mirror only if
+// the object can't be read (admin views keep working during a blip). Charging
+// never uses this fallback — a missed object fails closed.
+async function readQuotaSnapshot(env, uid) {
   const date = getIsraelDateStr();
-  const { used } = quotaUsage(await readAiQuotaDoc(env, uid), date);
-  return { used, limit: AI_DAILY_LIMIT, date };
+  const stub = aiQuotaStub(env, uid);
+  if (stub) {
+    try {
+      const snap = await stub.usage({ date, uid });
+      if (snap && typeof snap.used === 'number') return { ...snap, date };
+    } catch (e) {
+      console.error('ai quota read', e?.message || e);
+    }
+  }
+  const fallback = quotaUsage(await readAiQuotaDoc(env, uid), date);
+  return { ...fallback, date };
+}
+
+async function getAiUsage(env, uid) {
+  const snap = await readQuotaSnapshot(env, uid);
+  return { used: snap.used, limit: AI_DAILY_LIMIT, date: snap.date };
 }
 
 // A KV write that never throws. KV's free tier allows 1,000 writes a day; once
@@ -1023,19 +1053,23 @@ async function recordAiFailure(env, fails) {
 // Chart-image analyses get their own (much smaller) daily budget on top of the
 // regular request counter — vision calls burn far more tokens than text.
 async function getAiImageUsage(env, uid) {
-  const date = getIsraelDateStr();
-  const { imageUsed } = quotaUsage(await readAiQuotaDoc(env, uid), date);
-  return { used: imageUsed, limit: AI_IMAGE_DAILY_LIMIT, date };
+  const snap = await readQuotaSnapshot(env, uid);
+  return { used: snap.imageUsed, limit: AI_IMAGE_DAILY_LIMIT, date: snap.date };
 }
 
-// Refund a prepaid quota charge (#202): quotas are charged BEFORE the provider
-// call (check-then-serve raced under parallel bursts and let a free user blow
-// past the daily cap), so a provider failure refunds the charge to preserve
-// the "failed calls don't burn quota" behavior. Costs a write only on failure.
+// Refund a prepaid quota charge (#202). The charge is committed in the
+// Durable Object before the provider call, so a provider failure refunds
+// there (not via a second KV read-modify-write). The KV mirror follows.
 async function refundAiCharge(env, uid, { daily = true, image = false } = {}) {
+  const stub = aiQuotaStub(env, uid);
+  if (!stub) return;
   const date = getIsraelDateStr();
-  const next = planAiRefund(await readAiQuotaDoc(env, uid), { date, daily, image });
-  if (next) await kvPutSafe(env, aiQuotaKey(uid), JSON.stringify(next), { expirationTtl: AI_QUOTA_TTL });
+  try {
+    const result = await stub.refund({ date, daily, image, uid });
+    if (result?.next) await mirrorAiQuota(env, uid, result.next);
+  } catch (e) {
+    console.error('ai quota refund', e?.message || e);
+  }
 }
 
 // Persistent daily AI stats (request counts + real token usage) for the admin
@@ -1394,38 +1428,49 @@ const AI_DENY = {
     quotaExceeded: true, used: AI_DAILY_LIMIT, limit: AI_DAILY_LIMIT,
   } },
   ceiling: { status: 503, body: { error: 'המערכת בעומס שיא היום. נסה מאוחר יותר.' } },
-  // The counter write failed (KV quota spent). Free users are DENIED rather
-  // than silently unlimited; premium keeps working on its soft caps.
+  // The per-user quota object is missing or threw. Fail closed for every
+  // tier — falling back to a KV read-modify-write is the race this replaced.
   unavailable: { status: 503, body: { error: 'שירות ה-AI אינו זמין זמנית. נסה שוב מאוחר יותר.' } },
 };
 
-// Gate + charge one AI request: global circuit breaker, per-user rate windows
-// (premium soft caps / free burst cap), the premium-only image gate + image
-// quota, and the daily quota — all from ONE KV document, persisted with ONE
-// write only when the request is allowed. Returns null when allowed, or a
-// { status, body } to short-circuit with. `overrides` replaces a deny body by
-// reason (routes word the daily-quota message differently).
+// Gate + charge one AI request. The per-user Durable Object applies
+// planAiCharge and persists the next document under one lock, so parallel
+// requests cannot all pass the same daily / minute / image check. Returns
+// null when allowed, or a { status, body } to short-circuit with. `overrides`
+// replaces a deny body by reason (routes word the daily-quota message
+// differently). Hebrew 429 copy lives in AI_DENY and is unchanged.
 async function aiCharge(env, uid, premium, { chargeDaily = false, image = false, overrides = {} } = {}) {
   const deny = (reason) => {
     const base = AI_DENY[reason];
+    if (!base) return AI_DENY.unavailable;
     return { status: base.status, body: overrides[reason] || base.body };
   };
   if (await aiGlobalCeilingHit()) return deny('ceiling');
 
-  const date = getIsraelDateStr();
-  const plan = planAiCharge(await readAiQuotaDoc(env, uid), {
-    now: Date.now(), date, premium, chargeDaily, image,
-    limits: {
-      premium: AI_PREMIUM_LIMITS,
-      freeBurstPerMin: AI_FREE_BURST_PER_MIN,
-      freeDaily: AI_DAILY_LIMIT,
-      imageDaily: AI_IMAGE_DAILY_LIMIT,
-    },
-  });
-  if (plan.deny) return deny(plan.deny);
+  const stub = aiQuotaStub(env, uid);
+  if (!stub) return deny('unavailable');
 
-  const wrote = await kvPutSafe(env, aiQuotaKey(uid), JSON.stringify(plan.next), { expirationTtl: AI_QUOTA_TTL });
-  if (!wrote && !premium) return deny('unavailable');
+  const date = getIsraelDateStr();
+  let plan;
+  try {
+    plan = await stub.charge({
+      now: Date.now(), date, premium, chargeDaily: !!chargeDaily, image: !!image, uid,
+      limits: {
+        premium: AI_PREMIUM_LIMITS,
+        freeBurstPerMin: AI_FREE_BURST_PER_MIN,
+        freeDaily: AI_DAILY_LIMIT,
+        imageDaily: AI_IMAGE_DAILY_LIMIT,
+      },
+    });
+  } catch (e) {
+    console.error('ai quota charge', e?.message || e);
+    return deny('unavailable');
+  }
+  if (!plan || plan.deny) return deny(plan?.deny || 'unavailable');
+
+  // Mirror after the commit. A failed mirror does not undo the charge and
+  // does not deny the request — the object is already the source of truth.
+  if (plan.next) await mirrorAiQuota(env, uid, plan.next);
 
   await edgeCounterBump(aiGlobalKey(), AI_WINDOWS_SEC.day);
   return null;
@@ -1564,6 +1609,11 @@ async function purgeUserKv(env, uid) {
   const pushKeys = await listAll(`push:${uid}:`).catch(() => []);
   for (const k of pushKeys) await del(k);
 
+  // Clear the quota object before dropping the KV mirror, and mark it seeded
+  // so a late request cannot re-import the document we're about to delete.
+  if (env.AI_QUOTA?.getByName) {
+    await env.AI_QUOTA.getByName(uid).wipe().catch((e) => console.error('ai quota wipe', e?.message || e));
+  }
   for (const k of userSingleKvKeys(uid)) await del(k);
 
   // Legacy rolled-up schedule blob — only rewritten when the uid is in it.
@@ -6671,6 +6721,8 @@ async function handleRequest(request, env) {
 
   return new Response('TradeOS Worker', { headers: cors });
 }
+
+export { AiQuotaDO } from './aiQuotaDo.js';
 
 export default {
   fetch: safeHandleRequest,

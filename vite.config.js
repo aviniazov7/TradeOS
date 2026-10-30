@@ -4,6 +4,7 @@ import tailwindcss from '@tailwindcss/vite'
 
 import { cloudflare } from "@cloudflare/vite-plugin";
 import { readFileSync } from 'node:fs';
+import { fileURLToPath } from 'node:url';
 
 // Build stamp shown next to the marketing version in the profile footer:
 // the service-worker cache number (auto-bumped on every production release)
@@ -17,6 +18,11 @@ export default defineConfig({
   define: {
     __APP_BUILD__: JSON.stringify(swBuild),
     __APP_BUILD_DATE__: JSON.stringify(new Date().toISOString()),
+  },
+  test: {
+    alias: {
+      'cloudflare:workers': fileURLToPath(new URL('./worker/cloudflareWorkersStub.js', import.meta.url)),
+    },
   },
   build: {
     // Login's HTML must not preload chunks the logged-out page never runs.

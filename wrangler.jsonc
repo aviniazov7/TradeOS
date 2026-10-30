@@ -16,6 +16,18 @@
   "kv_namespaces": [
     { "binding": "ALERTS_KV", "id": "5c66041d98aa4229a52afeb2f5b1f652" }
   ],
+  // Per-user AI quota. SQLite-backed (new_sqlite_classes) so it runs on the
+  // Workers Free plan — KV-backed Durable Objects are paid-only. One object
+  // per uid via getByName. The migration tag runs on the next `wrangler deploy`
+  // of this worker; do not edit the tag once it has been applied.
+  "durable_objects": {
+    "bindings": [
+      { "name": "AI_QUOTA", "class_name": "AiQuotaDO" }
+    ]
+  },
+  "migrations": [
+    { "tag": "v1-ai-quota", "new_sqlite_classes": ["AiQuotaDO"] }
+  ],
   "vars": {
     "DEV_UID": "3eVK7Ej3F1Y2L2ziHJpmzFP7Q0u1",
     // Gemini routing for Premium chat. Kept OFF because the free Gemini tier

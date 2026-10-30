@@ -1,5 +1,8 @@
 name = "tradeos-alerts"
 main = "index.js"
+# AI quota (AiQuotaDO / AI_QUOTA) is bound only on the HTTP worker
+# (../wrangler.jsonc). This cron script does not charge it. Do not add a
+# second namespace here — the two scripts would not share objects.
 # Same Node.js surface as the HTTP worker (wrangler.jsonc). Gmail SMTP uses
 # worker-mailer, which opens the socket through cloudflare:sockets rather
 # than node:net. nodejs_compat stays on because that library's docs ask for

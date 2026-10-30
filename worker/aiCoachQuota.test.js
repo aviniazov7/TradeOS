@@ -1,5 +1,6 @@
 import { afterEach, beforeAll, describe, expect, it, vi } from 'vitest';
 import worker from './index.js';
+import { createMemoryQuotaNamespace } from './aiQuotaActor.js';
 
 // Wallet analysis (and the other /ai-coach modes) must spend the same daily
 // question counter /ai-chat does, and must not call the provider once it is
@@ -58,8 +59,12 @@ function memoryKv(seed = {}) {
   };
 }
 
-function envFor(kv) {
-  return { ALERTS_KV: kv, GROQ_API_KEY: 'test-key' };
+function envFor(kv, { delayMs = 0 } = {}) {
+  return {
+    ALERTS_KV: kv,
+    GROQ_API_KEY: 'test-key',
+    AI_QUOTA: createMemoryQuotaNamespace({ kv, delayMs }),
+  };
 }
 
 function planFlag(premium) {
@@ -203,5 +208,42 @@ describe('POST /ai-coach daily quota', () => {
     expect(groq.calls).toBeGreaterThan(0);
     expect(kv.aiqWrites).toContain(1);
     expect(JSON.parse(kv.store.get(`aiq:${uid}`)).u).toBe(0);
+  });
+
+  it('fails closed (no provider call) when the quota binding is missing', async () => {
+    groq.calls = 0;
+    groq.status = 200;
+    installFetch();
+    vi.spyOn(console, 'error').mockImplementation(() => {});
+    const uid = 'wallet-no-do';
+    const kv = memoryKv({ [`planflag:${uid}`]: planFlag(true) });
+    const res = await postCoach({ ALERTS_KV: kv, GROQ_API_KEY: 'test-key' }, uid, 'polymarket');
+    expect(res.status).toBe(503);
+    expect((await res.json()).error).toContain('אינו זמין');
+    expect(groq.calls).toBe(0);
+  });
+
+  it('does not let 40 parallel analyses past the premium per-minute cap', async () => {
+    groq.calls = 0;
+    groq.status = 200;
+    installFetch();
+    vi.spyOn(console, 'error').mockImplementation(() => {});
+    const uid = 'wallet-parallel';
+    const kv = memoryKv({ [`planflag:${uid}`]: planFlag(true) });
+    // delayMs widens the storage gap. Without the lock every request would
+    // read the empty counter and all 40 would reach Groq.
+    const env = envFor(kv, { delayMs: 2 });
+    const responses = await Promise.all(
+      Array.from({ length: 40 }, () => postCoach(env, uid, 'polymarket')),
+    );
+    const statuses = responses.map((r) => r.status);
+    expect(statuses.filter((s) => s === 200)).toHaveLength(5);
+    expect(statuses.filter((s) => s === 429)).toHaveLength(35);
+    expect(groq.calls).toBe(5);
+    const token = await firebaseToken(uid);
+    const usage = await worker.fetch(new Request('https://tradeos.test/ai-usage', {
+      headers: { Authorization: `Bearer ${token}` },
+    }), env);
+    expect(await usage.json()).toMatchObject({ used: 5, limit: 200, premium: true });
   });
 });

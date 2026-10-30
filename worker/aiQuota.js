@@ -17,7 +17,9 @@
 //
 // planAiCharge() decides — from the document alone — whether a request may
 // proceed and what the document looks like after charging it. Nothing is
-// written for a rejected request; an allowed one costs exactly one put.
+// written for a rejected request. The check and the write are committed
+// together by the per-user AiQuotaDO (worker/aiQuotaDo.js); aiq:{uid} in KV
+// is only a mirror for the admin scan and the one-time seed of that object.
 
 export const AI_WINDOW_MS = { minute: 60_000, hour: 3_600_000, day: 86_400_000 };
 
