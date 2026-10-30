@@ -5,6 +5,7 @@ import {
   Wallet, Target, Zap, BarChart3, DollarSign,
 } from 'lucide-react';
 import { isClosedTrade, saneBalance } from '../../utils/calculations';
+import { accountPeriodReturn } from '../../utils/accountReturn';
 import { filterTradesByPeriod, computeJournalAnalytics } from '../../utils/journalAnalytics';
 import { computeSetupStats } from '../../utils/setupStats';
 import SetupStatsTable from './SetupStatsTable';
@@ -44,6 +45,14 @@ export default function JournalAnalyticsTab({
   const periodTrades = useMemo(() => filterTradesByPeriod(trades, period), [trades, period]);
   const analytics = useMemo(() => computeJournalAnalytics(periodTrades), [periodTrades]);
   const setupStats = useMemo(() => computeSetupStats(periodTrades), [periodTrades]);
+  // Same percent as the trades-tab header and the home card for this account
+  // and period. A saved opening wins over the live wallet. Dust and a wiped
+  // balance stay null ("—"), they are not a 0% return.
+  const accountReturnPct = useMemo(() => accountPeriodReturn(trades, {
+    openingBalance: Number(activeJournal?.initialBalance) || 0,
+    fallbackBalance: balanceIsLive ? displayedCurrentBalance : null,
+    period,
+  }), [trades, activeJournal?.initialBalance, balanceIsLive, displayedCurrentBalance, period]);
 
   const streakText = stats.currentStreak.count > 0
     ? `${stats.currentStreak.count} ${stats.currentStreak.type === 'win' ? 'רווחים' : 'הפסדים'}`
@@ -84,8 +93,8 @@ export default function JournalAnalyticsTab({
           <m.div className="grid grid-cols-2 md:grid-cols-4 gap-2.5 md:gap-3 mb-3 md:mb-4" variants={staggerContainer} initial="initial" animate="animate">
             <StatCard label={balanceIsLive ? `יתרה נוכחית · ${activeJournal.exchange}` : 'יתרה נוכחית'}
               value={formatCurrency(displayedCurrentBalance).replace('+', '')}
-              subtitle={balanceIsLive ? 'מסונכרן עם הבורסה' : (saneBalance(activeJournal?.initialBalance) != null ? (stats.balanceChangePercent == null ? '—' : `${formatPercent(stats.balanceChangePercent)} מההתחלה`) : `${stats.totalTrades} עסקאות`)}
-              subtitleColor={balanceIsLive ? 'text-accent-primary' : (stats.balanceChangePercent == null ? 'text-text-muted' : (stats.balanceChangePercent >= 0 ? 'text-profit' : 'text-loss'))} icon={Wallet} color="text-accent-primary"
+              subtitle={balanceIsLive ? 'מסונכרן עם הבורסה' : (saneBalance(activeJournal?.initialBalance) != null ? (accountReturnPct == null ? '—' : `${formatPercent(accountReturnPct)} מההתחלה`) : `${stats.totalTrades} עסקאות`)}
+              subtitleColor={balanceIsLive ? 'text-accent-primary' : (accountReturnPct == null ? 'text-text-muted' : (accountReturnPct >= 0 ? 'text-profit' : 'text-loss'))} icon={Wallet} color="text-accent-primary"
               gradient={stats.totalPnL >= 0 ? 'profit' : 'loss'} />
             {/* Realized legs of still-open partial positions are shown beside
                 the closed-trade total, not inside it (see partialRealizedPnl). */}

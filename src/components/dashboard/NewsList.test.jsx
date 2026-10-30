@@ -4,9 +4,13 @@ import { afterEach, beforeAll, describe, expect, it, vi } from 'vitest';
 import { createRoot } from 'react-dom/client';
 import { NewsList } from './NewsList';
 
-vi.mock('../../services/newsService', () => ({
-  translateNews: vi.fn(async () => null),
-}));
+vi.mock('../../services/newsService', async (importOriginal) => {
+  const actual = await importOriginal();
+  return {
+    ...actual,
+    translateNews: vi.fn(async () => null),
+  };
+});
 
 const HE_CACHE_KEY = 'tradeos_news_he_v1';
 const BUG = 'જેપીמארגן מצפה שביטקוין יעלה';

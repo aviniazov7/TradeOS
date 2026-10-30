@@ -33,6 +33,7 @@ import { winLossRatio } from '../../utils/homeStats';
 import { homeStage } from '../../utils/homeStage';
 import { useExchangeConnected } from '../../hooks/useExchangeConnected';
 import { reopenOnboarding } from '../../utils/onboardingGate';
+import { accountTradeTime } from '../../utils/accountReturn';
 import { declaredStartCapital } from '../../utils/portfolioPerformance';
 import { fetchGlobalMarket } from '../../services/globalMarket';
 import { fetchNewsFeed } from '../../services/newsService';
@@ -302,25 +303,25 @@ export default function Dashboard() {
   }, [backtests]);
 
   // Equity series (oldest → newest, running total) and the latest closed trades.
-  const { equitySeries, recentClosed } = useMemo(() => {
+  const { equitySeries, recentClosed, heroTrades } = useMemo(() => {
     const journalIds = new Set(statJournals.map((j) => j.id));
     const closed = allTrades
       .filter((t) => !t.journalId || journalIds.has(t.journalId))
       .filter(isClosedTrade);
     const pnlOf = safePnl;
-    const tradeMs = (t) => {
-      const d = t.exitDate || t.entryDate || t.createdAt;
-      if (!d) return 0;
-      if (typeof d?.toDate === 'function') return d.toDate().getTime();
-      if (typeof d === 'number') return d;
-      const ms = new Date(d).getTime();
-      return Number.isNaN(ms) ? 0 : ms;
-    };
-    const sorted = [...closed].sort((a, b) => tradeMs(a) - tradeMs(b));
-    let cum = 0;
+    const sorted = [...closed].sort((a, b) => accountTradeTime(a) - accountTradeTime(b)
+      || String(a?.id ?? '').localeCompare(String(b?.id ?? '')));
+    const equitySeries = [];
+    let running = 0;
+    for (const trade of sorted) {
+      const pnl = pnlOf(trade);
+      running += pnl;
+      equitySeries.push({ t: accountTradeTime(trade), pnl, value: running, id: trade.id });
+    }
     return {
-      equitySeries: sorted.map((t) => { cum += pnlOf(t); return { t: tradeMs(t), pnl: pnlOf(t), value: cum }; }),
+      equitySeries,
       recentClosed: sorted.slice(-5).reverse(),
+      heroTrades: sorted,
     };
   }, [allTrades, statJournals]);
 
@@ -517,7 +518,7 @@ export default function Dashboard() {
                 come first so the book is on screen before the chart. */}
             <div className="grid grid-cols-1 lg:grid-cols-3 gap-4 items-start">
               <div className="lg:col-span-2 min-w-0 order-2 lg:order-1">
-                <PortfolioHero balance={globalStats.totalBalance} declaredStart={declaredStartCapital(statJournals)} series={equitySeries} hidden={hideBalances} />
+                <PortfolioHero balance={globalStats.totalBalance} declaredStart={declaredStartCapital(statJournals)} series={equitySeries} trades={heroTrades} hidden={hideBalances} />
               </div>
               <RecentTradesCard trades={recentClosed} hidden={hideBalances} className="order-1 lg:order-2" />
               <div className="lg:col-span-2 min-w-0 order-3">

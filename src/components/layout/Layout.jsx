@@ -8,6 +8,7 @@ import PullToRefresh from '../shared/PullToRefresh';
 import OnboardingWizard from '../onboarding/OnboardingWizard';
 import PushNudge from '../shared/PushNudge';
 import EmailVerifyBanner from './EmailVerifyBanner';
+import StagingBanner from './StagingBanner';
 import DemoBanner from '../demo/DemoBanner';
 import { useDemoMode } from '../../hooks/useDemoMode';
 import { useTrades } from '../../hooks/useTrades';
@@ -77,6 +78,7 @@ export default function Layout() {
         style={{ WebkitOverflowScrolling: 'touch' }}
       >
         <main className="p-3 md:p-6 pb-[calc(env(safe-area-inset-bottom,0px)+10.5rem)] lg:pb-6">
+          <StagingBanner className="mb-3 -mx-3 md:-mx-6 -mt-3 md:-mt-6" />
           <EmailVerifyBanner />
           <DemoChrome />
           <PullToRefresh>

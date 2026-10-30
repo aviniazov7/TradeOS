@@ -21,6 +21,7 @@ import {
 } from './calculations';
 import { getSessionFromDate, SESSION_UNKNOWN } from './sessions';
 import { getPeriodStart, toDate } from './period';
+import { accountPeriodReturn } from './accountReturn';
 
 // A closed trade's effective date. Broker-CSV imports (a profit column but no
 // exit-date column) and live SL/TP auto-closes can lack `exitDate`; without the
@@ -106,6 +107,7 @@ export function sliceTradesForStats(trades, period = 'all', options = {}) {
 export function computeDashboardStats(trades, initialBalance = 0, period = 'all', options = {}) {
   const {
     closed, sorted, openCount, prePeriodPnl, partialRealizedPnL, partialCount, now,
+    periodStart, periodEnd,
   } = sliceTradesForStats(trades, period, options);
 
   const wins = closed.filter((t) => t.result === 'win');
@@ -117,13 +119,20 @@ export function computeDashboardStats(trades, initialBalance = 0, period = 'all'
   // period='all' → prePeriodPnl is 0, so the all-time view is unchanged.
   const startBalance = (initialBalance || 0) + prePeriodPnl;
   const currentBalance = startBalance + totalPnL;
-  // Dust and non-positive equity are not a denominator. null, not 0%: a zero
-  // result would read as "flat" and a dust wallet (1e-8) as trillions of percent.
+  // Dust and non-positive equity are not capital for the drawdown percent.
+  // The return percent is accountPeriodReturn, not totalPnL / startBalance.
   const saneInitial = saneBalance(initialBalance);
   const saneStart = saneBalance(startBalance);
-  const balanceChangePercent = saneInitial != null && saneStart != null
-    ? (totalPnL / saneStart) * 100
-    : null;
+  // Same percent as the journal header and the home card. `openingBalance`
+  // wins over `initialBalance` when the caller has both a saved opening and
+  // a live wallet (the wallet still calibrates currentBalance below).
+  const balanceChangePercent = accountPeriodReturn(trades, {
+    openingBalance: options.openingBalance !== undefined ? options.openingBalance : initialBalance,
+    fallbackBalance: options.fallbackBalance !== undefined ? options.fallbackBalance : null,
+    period,
+    now,
+    window: { start: periodStart, end: periodEnd },
+  });
   const winRate = calculateWinRate(closed);
   const expectancy = calculateExpectancy(closed);
   const avgRR = calculateAvgRR(closed);

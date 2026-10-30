@@ -6,6 +6,8 @@ feature/* or fix/*  →  PR  →  dev  →  PR  →  main
 
 `main` is production. Do not push to it directly. Do not merge this document's change until the checks on the pull request are green. Merging to `main` deploys production.
 
+GitHub's **Automatically delete head branches** deletes the head branch of a merged pull request. A release pull request uses `dev` as that head, so the setting removes `dev` and staging deploys stop. Do not let it delete `dev`. Add a branch protection rule on `dev` (Settings → Branches → Add branch protection rule, name pattern `dev`). GitHub does not auto-delete a protected branch. If `dev` is missing, recreate it from current `main` with no extra commits and push it. Do not force-push it.
+
 | Trigger | Workflow | What deploys |
 |---|---|---|
 | Push to `main` | `.github/workflows/deploy.yml` | Cache version bump, live Hosting on site `tradeoslive` (`https://tradeoslive.web.app`, project `tradeos-91a58`), Worker `trade-os`, cron Worker `tradeos-alerts` |
@@ -43,8 +45,12 @@ The script reads `env.staging` and exits unless the Worker name is `trade-os-sta
 ## What staging shares with production
 
 - **Firestore** is one database. Writes from the dev channel are production data.
-- **KV** `ALERTS_KV` on `env.staging` is still namespace `5c66041d98aa4229a52afeb2f5b1f652` (the production namespace). Exchange keys, coupons, and push state are shared until that id is replaced. See the manual step below.
 - **Durable Object** `AiQuotaDO` is created for the staging script on its first deploy. It does not attach to the production script's objects.
+
+## What staging keeps separate
+
+- **KV** `ALERTS_KV` on `env.staging` is namespace `ac57c9487d5044eda008e06100a05758`. Production stays on `5c66041d98aa4229a52afeb2f5b1f652`. The same staging id is set in `wrangler.jsonc` and in `worker/wrangler.toml` `[[env.staging.kv_namespaces]]`. Exchange keys, coupons, push subscriptions, and other KV state are not shared.
+- **`CREDS_ENCRYPTION_KEY`** on `trade-os-staging` is a staging-only value, already set on that Worker. Deploy does not copy the production key. Data encrypted with the production key cannot be decrypted in staging, and the production KV rows are not in this namespace. Reconnect each exchange on the dev channel so the connection is written into staging KV with the staging key.
 
 ## Manual steps
 
@@ -68,7 +74,7 @@ Google sign-in also needs the channel origin and `https://<channel-host>/__/auth
 
 ### 3. Cloudflare secrets on `trade-os-staging`
 
-The first successful push to `dev` creates the Worker and copies GitHub Actions secrets onto it when they are set:
+A push to `dev` copies these GitHub Actions secrets onto `trade-os-staging` when they are set:
 
 - `VAPID_JWK`
 - `MORALIS_API_KEY`
@@ -79,19 +85,23 @@ The first successful push to `dev` creates the Worker and copies GitHub Actions 
 - `MAIL_FROM_ADDRESS`
 - `MAIL_FROM_NAME`
 - `MAIL_TO_ADMIN_OVERRIDE`
-- `GMAIL_APP_PASSWORD`
-- `CF_API_TOKEN`
-- `CF_ACCOUNT_ID`
-- `CREDS_ENCRYPTION_KEY` (copied only if the GitHub secret exists)
-- `UNSUBSCRIBE_SECRET` (copied only if the GitHub secret exists)
 
-`CREDS_ENCRYPTION_KEY` and `UNSUBSCRIBE_SECRET` are set on production `trade-os` from the dashboard and are not in the production deploy's secret list. If the staging log says they were skipped, copy the same values to **Workers & Pages → trade-os-staging → Settings → Variables and Secrets**. Without `CREDS_ENCRYPTION_KEY`, exchange connect returns 503. Without `UNSUBSCRIBE_SECRET`, marketing mail returns 503.
+These are not uploaded from GitHub Actions. A value already on `trade-os-staging` stays there. Writing the matching production GitHub secret would overwrite it:
 
-Secrets are per script. Copying them does not change `trade-os`.
+- `CREDS_ENCRYPTION_KEY` — staging-only encryption key. Reconnect exchanges on the dev channel (see above). Without this secret, exchange connect returns 503.
+- `UNSUBSCRIBE_SECRET` — staging-only. Without it, marketing mail returns 503.
+- `CF_ACCOUNT_ID` — staging-only, already set on the Worker.
+- `GMAIL_APP_PASSWORD` — left as already stored on the Worker. The production GitHub secret is not copied.
 
-### 4. Optional: a staging KV namespace
+`CF_API_TOKEN` is uploaded only from the GitHub secret `STAGING_CF_API_TOKEN`, and only when that secret is non-empty. A missing or empty `STAGING_CF_API_TOKEN` skips the upload and leaves the token already on `trade-os-staging`. The job never writes `secrets.CF_API_TOKEN` (the production token).
 
-Create a KV namespace in the app Cloudflare account and replace the `ALERTS_KV` id under `env.staging` in `wrangler.jsonc`. Until that change, staging HTTP uses production KV. Do not deploy `worker/wrangler.toml` `[env.staging]` (alerts cron) until the cron Worker has its own namespace. That env has an empty cron list and is not in CI.
+Secrets are per script. Leaving a name off this job does not change `trade-os`.
+
+### 4. Staging KV namespace
+
+The staging namespace id is `ac57c9487d5044eda008e06100a05758`, bound as `ALERTS_KV` under `env.staging` in `wrangler.jsonc` and `worker/wrangler.toml`. Do not point either binding back at the production id `5c66041d98aa4229a52afeb2f5b1f652`.
+
+`worker/wrangler.toml` `[env.staging]` is still not deployed by CI. Its cron list is empty. Do not deploy the alerts cron for staging until a staging cron is intentional. Production cron stays `tradeos-alerts`, deployed from `main`.
 
 ## CORS and CSP
 

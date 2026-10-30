@@ -69,11 +69,13 @@ Adds a trade to a journal you own. Pass `journalId`, or `journal` (the journal's
 
 The Worker validates the payload the same way `firestore.rules` validates a client create (service-account writes bypass rules), then stores the same derived fields the journal writes: `pnl`, `netPnl`, `pnlPercent`, `rrRatio`, `result`, `positionSize`, `margin`, `createdAt`, `updatedAt`.
 
+`pnl`, `netPnl`, `pnlPercent`, and `result` are computed from the entry, the exit, the size, and fees. A `pnlFromExchange` field on the request is ignored and is not stored. Trades imported from an exchange inside the app still keep that exchange's settled P&L. This API does not take that path.
+
 If `riskAmount` is omitted or 0, and the entry, stop, and size can price the risk, that dollar amount is stored. The UI then shows the real risk instead of $0.00.
 
 `status` may be omitted: an exit price (or exits that close the position) becomes `closed`, partial exits become `partial`, otherwise `open`. `fees` defaults to 0, `leverage` to 1 (crypto and stocks). Futures (`assetClass: "futures_cme"`) require `contract.contracts`, `contract.pointValue`, and `contract.tickSize`.
 
-Optional header `Idempotency-Key` (8–128 printable characters). A repeat of the same key returns the original trade and does not write another one. The first response is `201`; a replay is `200` with `idempotentReplay: true`.
+Optional header `Idempotency-Key` (8–128 printable characters). The handler reserves one trade id on that key before it writes the trade. A repeat returns that same trade and does not write another one, including when the first attempt saved the trade but could not mark the key complete. The first response is `201`. A replay is `200` with `idempotentReplay: true`. A second request that arrives while the first is still in progress, before a trade has been stored, is `409` for 60 seconds. After that the same reserved id is used again, so a late retry still cannot create a second trade.
 
 ```bash
 curl -s -X POST https://trade-os.tradeos.workers.dev/api/v1/trades \
@@ -168,7 +170,7 @@ curl -s "https://trade-os.tradeos.workers.dev/api/v1/stats?journalId=JOURNAL_ID&
 }
 ```
 
-- `returnPercent` is net P&L divided by the account equity the period opened at (`journal.initialBalance`, plus P&L booked before the window). It is not P&L divided by position size. It is `null` when that equity is missing, zero, negative, or dust (under one cent, including a withdrawn wallet that still reports ~1e-8). That is not a 0% return and not a position return.
+- `returnPercent` is the same account return the journal shows: measurable closed P&L divided by the balance the period opened at (`journal.initialBalance`, plus P&L booked before the window). Trades taken after that balance was wiped out are left out. It is not P&L divided by position size. It is `null` when that balance is missing, zero, negative, or dust (under one cent, including a withdrawn wallet that still reports ~1e-8). That is not a 0% return and not a position return.
 - `riskAmount` is the sum of each closed trade's real dollar risk: `|entry − stop| × size`, using a declared `riskAmount` only when the stop cannot price it. A stored `riskAmount` of 0 does not zero this figure.
 - `avgR` is the journal header average: mean signed net R (net P&L / initial risk) of closed trades that had a defined risk. `null` when none did.
 - `winRate` excludes breakevens, matching the dashboard.

@@ -32,9 +32,26 @@ export async function fetchNewsImpact() {
   return res.json();
 }
 
+// Normalize a translateNews result. `items` is index-aligned with the request
+// (null = keep the English original). `quotaExceeded` means stop: the TradeAI
+// quota is spent, the worker did not call the model, and the caller must not
+// show an error or fire more batches.
+export function unpackNewsTranslations(result) {
+  if (Array.isArray(result)) return { items: result, quotaExceeded: false };
+  if (result && typeof result === 'object' && result.quotaExceeded) {
+    return {
+      items: Array.isArray(result.items) ? result.items : null,
+      quotaExceeded: true,
+    };
+  }
+  return { items: null, quotaExceeded: false };
+}
+
 // Batch-translate feed items to Hebrew. Returns an array aligned to the input
-// (null entries = no translation, caller falls back to English), or null when
-// the call as a whole failed — callers should treat both as "keep original".
+// (null entries = no translation, caller falls back to English), null when the
+// call failed for a reason other than quota, or `{ quotaExceeded, items }` when
+// the TradeAI quota is spent. Callers keep the original English and stay quiet
+// in every non-success case — a spent quota is not an error banner.
 export async function translateNews(items) {
   const user = getAuth().currentUser;
   if (!user || !items?.length) return null;
@@ -45,8 +62,11 @@ export async function translateNews(items) {
       headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
       body: JSON.stringify({ items }),
     });
-    if (!res.ok) return null;
     const data = await res.json().catch(() => null);
+    if (data?.quotaExceeded) {
+      return { quotaExceeded: true, items: Array.isArray(data.items) ? data.items : null };
+    }
+    if (!res.ok) return null;
     return Array.isArray(data?.items) ? data.items : null;
   } catch {
     return null;

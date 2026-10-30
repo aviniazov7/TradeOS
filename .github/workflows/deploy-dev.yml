@@ -53,6 +53,10 @@ jobs:
         env:
           VITE_WORKER_URL: https://trade-os-staging.tradeos.workers.dev
           VITE_FIREBASE_AUTH_DOMAIN: tradeoslive.web.app
+          # In-app staging banner. Preview channels also show it from the
+          # tradeoslive--*.web.app hostname. Production builds leave this unset,
+          # and tradeoslive.web.app never renders the banner.
+          VITE_STAGING_BANNER: '1'
         run: npm run build
 
       - name: Deploy Worker (staging)
@@ -69,6 +73,12 @@ jobs:
             exit 1
           fi
 
+      # Do not upload CF_ACCOUNT_ID, CREDS_ENCRYPTION_KEY, UNSUBSCRIBE_SECRET,
+      # or GMAIL_APP_PASSWORD. Those already live on trade-os-staging with
+      # staging-only values and must survive this job. Binding the production
+      # GitHub secrets here would overwrite them.
+      # CF_API_TOKEN is the exception: only STAGING_CF_API_TOKEN may be
+      # written, and only when that secret is non-empty. Never secrets.CF_API_TOKEN.
       - name: Set staging Worker secrets
         env:
           VAPID_JWK: ${{ secrets.VAPID_JWK }}
@@ -80,11 +90,7 @@ jobs:
           MAIL_FROM_ADDRESS: ${{ secrets.MAIL_FROM_ADDRESS }}
           MAIL_FROM_NAME: ${{ secrets.MAIL_FROM_NAME }}
           MAIL_TO_ADMIN_OVERRIDE: ${{ secrets.MAIL_TO_ADMIN_OVERRIDE }}
-          GMAIL_APP_PASSWORD: ${{ secrets.GMAIL_APP_PASSWORD }}
-          CF_API_TOKEN: ${{ secrets.CF_API_TOKEN }}
-          CF_ACCOUNT_ID: ${{ secrets.CF_ACCOUNT_ID }}
-          CREDS_ENCRYPTION_KEY: ${{ secrets.CREDS_ENCRYPTION_KEY }}
-          UNSUBSCRIBE_SECRET: ${{ secrets.UNSUBSCRIBE_SECRET }}
+          CF_API_TOKEN: ${{ secrets.STAGING_CF_API_TOKEN }}
         run: |
           set -euo pipefail
           node scripts/staging-worker-target.mjs
@@ -114,11 +120,11 @@ jobs:
           put_secret MAIL_FROM_ADDRESS
           put_secret MAIL_FROM_NAME
           put_secret MAIL_TO_ADMIN_OVERRIDE
-          put_secret GMAIL_APP_PASSWORD
-          put_secret CF_API_TOKEN
-          put_secret CF_ACCOUNT_ID
-          put_secret CREDS_ENCRYPTION_KEY
-          put_secret UNSUBSCRIBE_SECRET
+          if [ -n "${CF_API_TOKEN}" ]; then
+            put_secret CF_API_TOKEN
+          else
+            echo "STAGING_CF_API_TOKEN not set — skipping CF_API_TOKEN. Existing value on trade-os-staging is left as-is."
+          fi
 
       - name: Write Firebase service account
         run: echo '${{ secrets.FIREBASE_SERVICE_ACCOUNT }}' > "$RUNNER_TEMP/firebase-sa.json"

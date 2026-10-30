@@ -64,4 +64,11 @@ describe('prepareApiTrade', () => {
     expect(out.trade.pnl).toBeUndefined();
     expect(out.trade.role).toBeUndefined();
   });
+
+  it('ignores pnlFromExchange from a public API client', () => {
+    const out = prepareApiTrade({ ...base, exitPrice: 110, pnlFromExchange: -999 });
+    expect(out.ok).toBe(true);
+    expect(out.trade.pnlFromExchange).toBeUndefined();
+    expect(prepareApiTrade({ ...base, pnlFromExchange: 'nope' }).ok).toBe(true);
+  });
 });

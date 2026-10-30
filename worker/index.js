@@ -1409,10 +1409,11 @@ const AI_GLOBAL_DAILY_CEILING = 50_000; // circuit breaker across ALL users
 const AI_WINDOWS_SEC = { minute: 60, hour: 3600, day: 86400 };
 
 // ---- Edge counters (zero KV writes) -----------------------------------------
-// Approximate limits — the global AI circuit breaker and the news-translate
-// throttles — live in isolate memory, mirrored best-effort into the Cache API
-// (free, data-center local) so isolates in the same colo share a count. They
-// used to be KV read-modify-writes: one KV write per AI request just to count.
+// Approximate limits — the global AI circuit breaker — live in isolate memory,
+// mirrored best-effort into the Cache API (free, data-center local) so isolates
+// in the same colo share a count. They used to be KV read-modify-writes: one
+// KV write per AI request just to count. Per-user AI usage, including news
+// translation, is the TradeAI quota in AiQuotaDO, not an edge counter.
 const EDGE_COUNTERS = createWindowCounters();
 const edgeCounterUrl = (key) => `https://internal.tradeos/edge-counter/${encodeURIComponent(key)}`;
 
@@ -3011,34 +3012,12 @@ async function handleAICoach(request, env, cors) {
     }
     const premium = await isUserPremium(env, token, uid);
 
-    // Free users ALSO get 5 coach runs/month, on top of the shared daily
-    // question counter. Checked BEFORE the rate gate so a user who is out of
-    // monthly runs is turned away without spending a KV write. The monthly
-    // slot is charged only AFTER a successful provider response — a Groq 429
-    // must not burn one of the 5.
-    let chargeCoachQuota = null;
-    if (!premium) {
-      const monthKey = `coach:${uid}:${getIsraelDateStr().slice(0, 7)}`;
-      const used = parseInt((await env.ALERTS_KV.get(monthKey)) || '0', 10) || 0;
-      const FREE_COACH_PER_MONTH = 5;
-      if (used >= FREE_COACH_PER_MONTH) {
-        return new Response(JSON.stringify({
-          error: `הגעת למכסה החודשית של ניתוחי AI (${FREE_COACH_PER_MONTH}). שדרג ל-Premium לניתוחים ללא הגבלה.`,
-          quotaExceeded: true, used, limit: FREE_COACH_PER_MONTH,
-        }), { status: 429, headers: { ...cors, 'Content-Type': 'application/json' } });
-      }
-      // 60-day TTL so the entry survives the month it covers.
-      // kvPutSafe: a spent KV quota must not turn an already-generated report
-      // into a 500.
-      chargeCoachQuota = () => kvPutSafe(env, monthKey, String(used + 1), { expirationTtl: 60 * 60 * 24 * 60 });
-    }
-
-    // Same daily question counter /ai-chat increments (the TradeAI
-    // "נשארו X מתוך Y" bar), for every coach mode: journal analyst ("האנליסט
-    // שלך"), backtest, Polymarket wallet analysis and the personal brief.
+    // Same TradeAI quota /ai-chat increments (the "נשארו X מתוך Y" bar), for
+    // every coach mode: journal analyst, backtest, Polymarket wallet analysis
+    // and the personal brief. There is no separate monthly coach allowance.
     // Charged up front so parallel clicks can't slip past the cap; refunded
-    // below if every provider fails. Premium's hard cap stays the rolling
-    // 200 inside aiCharge; free users are also capped at AI_DAILY_LIMIT.
+    // below if every provider fails. Premium's hard cap is the rolling 200
+    // inside aiCharge; free users are capped at AI_DAILY_LIMIT.
     const gate = await aiCharge(env, uid, premium, { chargeDaily: true });
     if (gate) return new Response(JSON.stringify(gate.body), { status: gate.status, headers: { ...cors, 'Content-Type': 'application/json' } });
     refundDaily = () => refundAiCharge(env, uid, { daily: true });
@@ -3082,7 +3061,6 @@ async function handleAICoach(request, env, cors) {
       const gemText = await geminiGenerateFallback(env, systemPrompt, userPrompt, premium && depth === 'deep' ? 1400 : 700);
       if (gemText) {
         refundDaily = null;
-        if (chargeCoachQuota) await chargeCoachQuota();
         return new Response(JSON.stringify({ ok: true, text: gemText, premium }), { headers: { ...cors, 'Content-Type': 'application/json' } });
       }
       if (refundDaily) await refundDaily();
@@ -3092,7 +3070,6 @@ async function handleAICoach(request, env, cors) {
     const data = await groqRes.json();
     const text = data.choices?.[0]?.message?.content?.trim() || '';
     refundDaily = null;
-    if (chargeCoachQuota) await chargeCoachQuota();
     return new Response(JSON.stringify({ ok: true, text, premium }), { headers: { ...cors, 'Content-Type': 'application/json' } });
   } catch (err) {
     console.error('AI coach error:', err);
@@ -3119,6 +3096,9 @@ const PROJECT_DESC_SYSTEM_PROMPT = `אתה כתב קריפטו מקצועי. ת�
 - אל תזכיר מחיר נוכחי, market cap, או נתונים שמשתנים`;
 
 async function handleAIProjectDescription(request, env, cors) {
+  // Set once the shared TradeAI quota is charged, so a provider failure
+  // (non-ok response or a thrown fetch) refunds it for every plan.
+  let refundDaily = null;
   try {
     const { coinName, symbol } = await request.json();
     if (!coinName || String(coinName).length > 80 || (symbol && String(symbol).length > 20)) {
@@ -3135,20 +3115,12 @@ async function handleAIProjectDescription(request, env, cors) {
 
     const premium = await isUserPremium(env, token, uid);
 
-    // Multi-window rate limiting + global circuit breaker (shared with
-    // /ai-chat), plus the free-tier daily quota — charged UPFRONT in the same
-    // single write (#202, mirrors /ai-chat): the old read→check→serve→increment
-    // raced under parallel requests. A failed provider call refunds below.
-    const gate = await aiCharge(env, uid, premium, {
-      chargeDaily: !premium,
-      overrides: {
-        daily: {
-          error: `הגעת למכסה היומית (${AI_DAILY_LIMIT} בקשות). שדרג ל-Premium לשימוש ללא הגבלה.`,
-          quotaExceeded: true, used: AI_DAILY_LIMIT, limit: AI_DAILY_LIMIT,
-        },
-      },
-    });
+    // Same TradeAI quota as /ai-chat, for free and Premium. Premium's higher
+    // cap is the rolling 200/day inside aiCharge. Charged before the provider
+    // call so a spent quota never reaches the model; refunded if that call fails.
+    const gate = await aiCharge(env, uid, premium, { chargeDaily: true });
     if (gate) return new Response(JSON.stringify(gate.body), { status: gate.status, headers: { ...cors, 'Content-Type': 'application/json' } });
+    refundDaily = () => refundAiCharge(env, uid, { daily: true });
 
     const userPrompt = `כתוב מאמרון על הפרויקט שמאחורי המטבע ${coinName}${symbol ? ` (${String(symbol).toUpperCase()})` : ''}.`;
 
@@ -3166,19 +3138,26 @@ async function handleAIProjectDescription(request, env, cors) {
     if (!groqResponse.ok) {
       const errText = await groqResponse.text();
       console.error('Groq API error:', groqResponse.status, errText);
-      // Refund the prepaid charge — a failed call must not burn the quota.
-      if (!premium) await refundAiCharge(env, uid, { daily: true });
+      await refundDaily();
+      refundDaily = null;
       return new Response(JSON.stringify({ error: groqResponse.status === 429 ? 'ספק ה-AI עמוס כרגע, נסה שוב בעוד רגע' : `שגיאת AI: ${groqResponse.status}` }), { status: 502, headers: { ...cors, 'Content-Type': 'application/json' } });
     }
 
     const data = await groqResponse.json();
-    const text = data.choices?.[0]?.message?.content || '';
+    const text = String(data.choices?.[0]?.message?.content || '').trim();
+    if (!text) {
+      await refundDaily();
+      refundDaily = null;
+      return new Response(JSON.stringify({ error: 'שירות ה-AI לא החזיר תיאור. נסה שוב בעוד רגע.' }), { status: 502, headers: { ...cors, 'Content-Type': 'application/json' } });
+    }
+    refundDaily = null;
 
     return new Response(JSON.stringify({ text }), {
       headers: { ...cors, 'Content-Type': 'application/json' },
     });
   } catch (err) {
     console.error('AI Project Description error:', err);
+    if (refundDaily) await refundDaily();
     return new Response(JSON.stringify({ error: 'שגיאה פנימית' }), { status: 500, headers: { ...cors, 'Content-Type': 'application/json' } });
   }
 }
@@ -3439,6 +3418,8 @@ async function loadTrustedTranslationSources(env) {
 
 async function handleNewsTranslate(request, env, cors) {
   const jsonHeaders = { ...cors, 'Content-Type': 'application/json' };
+  // Set once a TradeAI quota slot is charged, so a thrown provider call refunds it.
+  let refundCharge = null;
   try {
     const token = (request.headers.get('Authorization') || '').replace('Bearer ', '');
     const uid = await verifyFirebaseToken(token);
@@ -3481,18 +3462,21 @@ async function handleNewsTranslate(request, env, cors) {
     items.forEach((it, i) => { if (it.title && !out[i]) missing.push({ id: i, title: it.title, desc: it.desc }); });
 
     if (missing.length && env.GROQ_API_KEY) {
-      // Respect + contribute to the same global daily AI ceiling as chat/coach,
-      // plus a per-user daily cap — the translate route must not be an
-      // unmetered path to drain the shared Groq budget. Both are edge
-      // counters (no KV writes).
-      const dayKey = `newstr:day:${uid}`;
-      const overCeiling = (await aiGlobalCeilingHit())
-        || (await edgeCounterRead(dayKey, AI_WINDOWS_SEC.day)) >= 60;
-      if (overCeiling) {
-        // Serve whatever is already cached; skip new provider work.
-        return new Response(JSON.stringify({ items: out }), { headers: jsonHeaders });
+      // Same TradeAI quota as chat, coach and project descriptions, for every
+      // plan. Checked and charged before the provider is called. Cached rows
+      // already in `out` are still returned — they did not need a model.
+      // aiCharge also enforces the global daily ceiling.
+      const premium = await isUserPremium(env, token, uid);
+      const gate = await aiCharge(env, uid, premium, { chargeDaily: true });
+      if (gate) {
+        return new Response(JSON.stringify({ ...gate.body, items: out }), {
+          status: gate.status,
+          headers: jsonHeaders,
+        });
       }
+      refundCharge = () => refundAiCharge(env, uid, { daily: true });
 
+      let providerOk = false;
       const translateBatch = async (batch, prompt) => {
         let groqRes = await groqTranslateCall(env, batch, NEWS_TRANSLATE_MODEL, prompt);
         if (!groqRes.ok && groqRes.status >= 400 && groqRes.status < 500 && groqRes.status !== 429) {
@@ -3503,9 +3487,7 @@ async function handleNewsTranslate(request, env, cors) {
           console.error('news translate groq error:', groqRes.status);
           return null;
         }
-        // Count this provider call against both ceilings.
-        await edgeCounterBump(aiGlobalKey(), AI_WINDOWS_SEC.day);
-        await edgeCounterBump(dayKey, AI_WINDOWS_SEC.day);
+        providerOk = true;
         const data = await groqRes.json();
         let parsed;
         try { parsed = JSON.parse(data.choices?.[0]?.message?.content || ''); } catch { parsed = null; }
@@ -3539,6 +3521,11 @@ async function handleNewsTranslate(request, env, cors) {
         // ONE write for the whole batch (was one per headline).
         if (Object.keys(additions).length) await saveTrBucket(env, today, additions);
       }
+      // A provider error (or a thrown fetch, via the catch below) must not
+      // burn the slot. A 200 that produced unusable text still spent tokens,
+      // so that charge stays.
+      if (!providerOk) await refundCharge();
+      refundCharge = null;
     }
 
     // Aligned array; null where no translation is available (client falls back
@@ -3546,6 +3533,7 @@ async function handleNewsTranslate(request, env, cors) {
     return new Response(JSON.stringify({ items: out }), { headers: jsonHeaders });
   } catch (err) {
     console.error('news translate error:', err);
+    if (refundCharge) await refundCharge();
     return new Response(JSON.stringify({ error: 'internal' }), { status: 500, headers: jsonHeaders });
   }
 }
@@ -4220,6 +4208,9 @@ async function handleRequest(request, env) {
     return resp;
   }
 
+  // Hebrew headlines. A cache hit is free. A batch that still needs the model
+  // is charged to the shared TradeAI quota first; a spent quota does not call
+  // the provider (the client keeps the English original).
   if (request.method === 'POST' && path === '/news/translate') {
     return handleNewsTranslate(request, env, cors);
   }
@@ -4539,14 +4530,14 @@ async function handleRequest(request, env) {
     return handleAIChat(request, env, cors);
   }
 
-  // AI Project Description — short article about a coin's project (non-streaming)
+  // AI Project Description — short article about a coin's project (non-streaming).
+  // Counts against the shared TradeAI quota for every plan.
   if (request.method === 'POST' && path === '/ai-project-desc') {
     return handleAIProjectDescription(request, env, cors);
   }
 
   // AI Coach — journal, backtest, or a Polymarket wallet / personal brief.
-  // Counts against the same daily AI quota as /ai-chat. Free tier also has
-  // 5 coach runs/month.
+  // Same TradeAI quota as /ai-chat (free 20/day, Premium 200/day).
   if (request.method === 'POST' && path === '/ai-coach') {
     return handleAICoach(request, env, cors);
   }

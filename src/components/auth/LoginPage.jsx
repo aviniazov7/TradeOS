@@ -11,6 +11,7 @@ import { loginFieldError } from '../../utils/loginValidation';
 import { preloadPopupResolver } from '../../services/authService';
 import { exchangeSyncBlurb } from '../exchange/exchangeConfig';
 import BrandMark from '../shared/BrandMark';
+import StagingBanner from '../layout/StagingBanner';
 import { rememberSignupMarketingChoice, clearSignupMarketingChoice } from '../../utils/marketingConsent';
 
 // One line under the sign-up title on a phone. The desktop panel already
@@ -166,6 +167,7 @@ export default function LoginPage() {
 
   return (
     <div className="min-h-dvh bg-bg-primary grid lg:grid-cols-2">
+      <StagingBanner className="lg:col-span-2" />
       {/* Brand panel — wide screens only */}
       <aside className="hidden lg:flex relative overflow-hidden flex-col items-center justify-between p-12 border-l border-border-primary bg-bg-secondary">
         <div aria-hidden className="absolute inset-0 pointer-events-none"

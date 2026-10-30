@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from 'react';
-import { translateNews } from '../../services/newsService';
+import { translateNews, unpackNewsTranslations } from '../../services/newsService';
 import { dropInvalidTranslations, isHebrewSafeTranslation, safeHebrew } from '../../utils/newsScript';
 
 // The latest headlines for the home page, translated to Hebrew via the same AI
@@ -59,10 +59,11 @@ function useHeTitles(list) {
     (async () => {
       const missing = list.filter((a) => a.link && !heMap[a.link]);
       if (!missing.length) return;
-      const res = await translateNews(missing.map((a) => ({ title: a.title, desc: '' })));
-      if (cancelled || !res) return;
+      const { items } = unpackNewsTranslations(await translateNews(missing.map((a) => ({ title: a.title, desc: '' }))));
+      // A spent quota (or any other miss) leaves the English headline. No error.
+      if (cancelled || !items) return;
       const additions = {};
-      missing.forEach((a, j) => { if (isHebrewSafeTranslation(res[j])) additions[a.link] = res[j]; });
+      missing.forEach((a, j) => { if (isHebrewSafeTranslation(items[j])) additions[a.link] = items[j]; });
       if (Object.keys(additions).length) {
         setHeMap((m) => ({ ...m, ...additions }));
         mergeSaveHe(additions);
