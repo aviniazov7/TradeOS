@@ -81,7 +81,9 @@ describe('MCP streamable HTTP', () => {
       headers: { 'MCP-Protocol-Version': '2025-11-25' },
     });
     const tools = await rpc(listed);
-    expect(tools.result.tools.map((tool) => tool.name)).toEqual(['add_trade', 'list_trades', 'get_stats']);
+    expect(tools.result.tools.map((tool) => tool.name)).toEqual([
+      'list_journals', 'add_trade', 'list_trades', 'delete_trade', 'get_stats',
+    ]);
     for (const tool of tools.result.tools) {
       expect(tool.description.length).toBeGreaterThan(40);
       expect(tool.inputSchema.type).toBe('object');
@@ -182,9 +184,70 @@ describe('MCP streamable HTTP', () => {
     const missing = await rpc(await mcp(db, { method: 'tools/call', params: { name: 'get_stats', arguments: {} } }));
     expect(missing.result.isError).toBe(true);
     expect(missing.result.content[0].text).toMatch(/journalId/);
-    const unknown = await rpc(await mcp(db, { method: 'tools/call', params: { name: 'delete_trade', arguments: {} } }));
+    const unknown = await rpc(await mcp(db, { method: 'tools/call', params: { name: 'rename_journal', arguments: {} } }));
     expect(unknown.result.isError).toBe(true);
     expect(unknown.result.content[0].text).toMatch(/unknown tool/);
+  });
+
+  it('lists journals, writes by name, and deletes so stats follow the UI', async () => {
+    const db = memoryDb();
+    db.put('users/user1/journals/mexc', {
+      name: { stringValue: 'MEXC' }, exchange: { stringValue: 'MEXC' }, initialBalance: { doubleValue: 1000 },
+    });
+    db.put('users/user1/journals/bybit', {
+      name: { stringValue: 'Bybit' }, exchange: { stringValue: 'bybit' }, initialBalance: { doubleValue: 250 },
+    });
+    db.put('users/user2/journals/mexc', {
+      name: { stringValue: 'MEXC' }, exchange: { stringValue: 'MEXC' },
+    });
+
+    const listed = await rpc(await mcp(db, { method: 'tools/call', params: { name: 'list_journals', arguments: {} } }));
+    expect(listed.result.isError).toBe(false);
+    expect(listed.result.structuredContent.journals.map((j) => [j.id, j.name, j.exchange])).toEqual([
+      ['bybit', 'Bybit', 'bybit'],
+      ['mexc', 'MEXC', 'MEXC'],
+    ]);
+
+    const rest = { ...tradeArgs };
+    delete rest.journalId;
+    const created = await rpc(await mcp(db, {
+      method: 'tools/call',
+      params: { name: 'add_trade', arguments: { ...rest, journal: 'mexc' } },
+    }));
+    expect(created.result.isError).toBe(false);
+    expect(created.result.structuredContent.trade.journalId).toBe('mexc');
+    const id = created.result.structuredContent.id;
+    db.put(`users/user1/tradeImages/${id}_0`, { tradeId: { stringValue: id } });
+
+    const before = await rpc(await mcp(db, {
+      method: 'tools/call',
+      params: { name: 'get_stats', arguments: { journal: 'MEXC' } },
+    }));
+    expect(before.result.structuredContent.totalPnl).toBe(19);
+
+    const removed = await rpc(await mcp(db, {
+      method: 'tools/call',
+      params: { name: 'delete_trade', arguments: { id } },
+    }));
+    expect(removed.result.isError).toBe(false);
+    expect(removed.result.structuredContent).toEqual({ id, deleted: true });
+    expect(db.docs.has(`users/user1/trades/${id}`)).toBe(false);
+    expect(db.docs.has(`users/user1/tradeImages/${id}_0`)).toBe(false);
+    expect(db.docs.has('users/user2/journals/mexc')).toBe(true);
+
+    const after = await rpc(await mcp(db, {
+      method: 'tools/call',
+      params: { name: 'get_stats', arguments: { journalId: 'mexc' } },
+    }));
+    expect(after.result.structuredContent.totalPnl).toBe(0);
+    expect(after.result.structuredContent.counts.total).toBe(0);
+
+    const missing = await rpc(await mcp(db, { method: 'tools/call', params: { name: 'delete_trade', arguments: {} } }));
+    expect(missing.result.isError).toBe(true);
+    expect(missing.result.content[0].text).toMatch(/trade id/);
+    const traversal = await rpc(await mcp(db, { method: 'tools/call', params: { name: 'delete_trade', arguments: { id: '../journals/mexc' } } }));
+    expect(traversal.result.isError).toBe(true);
+    expect(db.docs.has('users/user1/journals/mexc')).toBe(true);
   });
 
   it('rejects a bad key, a disallowed origin, and a rate limit before running a tool', async () => {

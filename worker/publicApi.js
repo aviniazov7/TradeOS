@@ -9,6 +9,7 @@ import { buildStoredTrade, withDerivedRiskAmount } from '../src/utils/tradeDoc.j
 import { prepareApiTrade } from '../src/utils/tradeValidation.js';
 import { computeApiStats } from '../src/utils/apiStats.js';
 import { windowBounds } from '../src/utils/dashboardStats.js';
+import { tradeImageIds } from '../src/utils/tradeImageSlots.js';
 import {
   buildTradesQuery, decodeFields, docIdFromName, encodeFields, fsBase, sha256Hex, toPublicTrade,
 } from './firestoreValues.js';
@@ -24,6 +25,8 @@ const PAGE = 100;
 
 const KEY_RE = /^tos_[A-Za-z0-9_-]{20,100}$/;
 const IDEM_RE = /^[\x21-\x7e]{8,128}$/;
+const JOURNAL_NAME_MAX = 200;
+const JOURNAL_PAGE_CAP = 20;
 
 function json(cors, status, body, extra = {}) {
   return new Response(JSON.stringify(body), {
@@ -210,8 +213,11 @@ export async function handlePublicApi(request, env, deps) {
   const fail = (status, error) => json(cors, status, { error });
 
   try {
+    if (path === '/api/v1/journals' && request.method === 'GET') return await listJournals(ctx);
     if (path === '/api/v1/trades' && request.method === 'POST') return await createTrade(request, ctx);
     if (path === '/api/v1/trades' && request.method === 'GET') return await listTrades(url, ctx);
+    const tradeItem = path.match(/^\/api\/v1\/trades\/([^/]+)$/);
+    if (tradeItem && request.method === 'DELETE') return await deleteTrade(tradeItem[1], ctx);
     if (path === '/api/v1/stats' && request.method === 'GET') return await journalStats(url, ctx);
     if (path === '/api/v1/keys' && request.method === 'POST') return await createKey(request, ctx);
     if (path === '/api/v1/keys' && request.method === 'GET') return await listKeys(ctx);
@@ -229,6 +235,11 @@ export async function createTrade(request, ctx) {
   const { cors, auth, base, fetchFn } = ctx;
   let body;
   try { body = await request.json(); } catch { return json(cors, 400, { error: 'invalid JSON' }); }
+  if (body && typeof body === 'object' && !Array.isArray(body) && hasText(body.journal)) {
+    const resolved = await resolveJournal(ctx, { journalId: body.journalId, journal: body.journal });
+    if (!resolved.ok) return json(cors, resolved.status, { error: resolved.error });
+    body = { ...body, journalId: resolved.journalId };
+  }
   const prepared = prepareApiTrade(body);
   if (!prepared.ok) return json(cors, 400, { error: prepared.error });
 
@@ -304,7 +315,13 @@ async function beginIdempotency(ctx, idemId) {
 
 export async function listTrades(url, ctx) {
   const { cors, auth, base, fetchFn } = ctx;
-  const journalId = url.searchParams.get('journalId') || '';
+  let journalId = url.searchParams.get('journalId') || '';
+  const journalName = url.searchParams.get('journal') || '';
+  if (hasText(journalId) || hasText(journalName)) {
+    const resolved = await resolveJournal(ctx, { journalId, journal: journalName });
+    if (!resolved.ok) return json(cors, resolved.status, { error: resolved.error });
+    journalId = resolved.journalId;
+  }
   const status = url.searchParams.get('status') || '';
   const pair = url.searchParams.get('pair') || '';
   const direction = url.searchParams.get('direction') || '';
@@ -372,8 +389,14 @@ export async function listTrades(url, ctx) {
 
 export async function journalStats(url, ctx) {
   const { cors, auth, base, fetchFn } = ctx;
-  const journalId = url.searchParams.get('journalId') || '';
-  if (!journalId) return json(cors, 400, { error: 'journalId is required' });
+  const resolved = await resolveJournal(ctx, {
+    journalId: url.searchParams.get('journalId') || '',
+    journal: url.searchParams.get('journal') || '',
+    required: true,
+  });
+  if (!resolved.ok) return json(cors, resolved.status, { error: resolved.error });
+  const journalId = resolved.journalId;
+  const journal = resolved.journal;
   const period = url.searchParams.get('period') || 'all';
   if (!['all', 'week', 'month', 'year'].includes(period)) return json(cors, 400, { error: 'invalid period' });
   const from = url.searchParams.get('from');
@@ -381,9 +404,6 @@ export async function journalStats(url, ctx) {
   if ((from && !windowBounds('all', { from }).periodStart) || (to && !windowBounds('all', { to }).periodEnd)) {
     return json(cors, 400, { error: 'invalid from/to date' });
   }
-
-  const journal = await readDoc(fetchFn, auth.admin, `${base}/documents/users/${auth.uid}/journals/${journalId}`);
-  if (!journal) return json(cors, 404, { error: 'journal not found' });
 
   const trades = [];
   let startAfterName = '';
@@ -405,6 +425,148 @@ export async function journalStats(url, ctx) {
     period, from: from || null, to: to || null, now,
   });
   return json(cors, 200, { journalId, ...stats, truncated });
+}
+
+function hasText(value) {
+  return typeof value === 'string' && value.trim() !== '';
+}
+
+function selector(raw, error) {
+  if (raw == null || raw === '') return { ok: true, value: '' };
+  if (typeof raw !== 'string') return { ok: false, status: 400, error };
+  return { ok: true, value: raw.trim() };
+}
+
+function foldName(name) {
+  return typeof name === 'string' ? name.trim().toLocaleLowerCase() : '';
+}
+
+function validDocId(id) {
+  return id.length >= 1 && id.length <= 128 && !id.includes('/') && !id.includes('\\') && id !== '.' && id !== '..';
+}
+
+function journalUrl(ctx, id) {
+  return `${ctx.base}/documents/users/${ctx.auth.uid}/journals/${encodeURIComponent(id)}`;
+}
+
+async function listJournalDocs(ctx) {
+  const out = [];
+  let pageToken = '';
+  for (let page = 0; page < JOURNAL_PAGE_CAP; page += 1) {
+    const qs = new URLSearchParams({ pageSize: '100' });
+    if (pageToken) qs.set('pageToken', pageToken);
+    const res = await fsFetch(
+      ctx.fetchFn, ctx.auth.admin,
+      `${ctx.base}/documents/users/${ctx.auth.uid}/journals?${qs}`,
+    );
+    if (res.status === 404) return out;
+    if (!res.ok) throw new Error(`firestore ${res.status}`);
+    const body = await res.json();
+    for (const doc of body.documents || []) {
+      out.push({ id: docIdFromName(doc.name), name: doc.name, data: decodeFields(doc.fields) });
+    }
+    pageToken = body.nextPageToken || '';
+    if (!pageToken) break;
+  }
+  return out;
+}
+
+function publicJournal(row) {
+  const data = row.data || {};
+  return {
+    id: row.id,
+    name: typeof data.name === 'string' ? data.name : '',
+    exchange: typeof data.exchange === 'string' ? data.exchange : '',
+    assetClass: typeof data.assetClass === 'string' && data.assetClass ? data.assetClass : 'crypto',
+    currency: typeof data.currency === 'string' ? data.currency : '',
+    initialBalance: Number(data.initialBalance) || 0,
+    archived: data.archived === true,
+    starred: data.starred === true,
+    isDefault: data.isDefault === true,
+  };
+}
+
+/**
+ * journalId is an exact document id. journal is a name (trim, case-insensitive)
+ * or, when it equals a journal id, that id. Lookups stay under users/{uid}.
+ * An omitted selector is journalId '' unless required, which keeps the old 400.
+ */
+async function resolveJournal(ctx, { journalId = '', journal = '', required = false } = {}) {
+  const idParsed = selector(journalId, 'invalid journalId');
+  if (!idParsed.ok) return idParsed;
+  const nameParsed = selector(journal, 'invalid journal');
+  if (!nameParsed.ok) return nameParsed;
+  const id = idParsed.value;
+  const name = nameParsed.value;
+  if (id && !validDocId(id)) return { ok: false, status: 400, error: 'invalid journalId' };
+  if (name && name.length > JOURNAL_NAME_MAX) return { ok: false, status: 400, error: 'invalid journal' };
+  if (!id && !name) {
+    return required
+      ? { ok: false, status: 400, error: 'journalId is required' }
+      : { ok: true, journalId: '', journal: null };
+  }
+
+  if (id && !name) {
+    const doc = await readDoc(ctx.fetchFn, ctx.auth.admin, journalUrl(ctx, id));
+    if (!doc) return { ok: false, status: 404, error: 'journal not found' };
+    return { ok: true, journalId: id, journal: doc };
+  }
+
+  if (!id) {
+    const rows = await listJournalDocs(ctx);
+    const byId = rows.find((row) => row.id === name);
+    if (byId) return { ok: true, journalId: byId.id, journal: byId };
+    const folded = foldName(name);
+    const named = rows.filter((row) => foldName(row.data.name) === folded);
+    if (named.length === 1) return { ok: true, journalId: named[0].id, journal: named[0] };
+    if (!named.length) return { ok: false, status: 404, error: 'journal not found' };
+    return { ok: false, status: 409, error: `journal name is ambiguous: ${named.map((row) => row.id).join(', ')}` };
+  }
+
+  const doc = await readDoc(ctx.fetchFn, ctx.auth.admin, journalUrl(ctx, id));
+  if (!doc) return { ok: false, status: 404, error: 'journal not found' };
+  const sameName = foldName(doc.data.name) === foldName(name);
+  if (name !== id && !sameName) return { ok: false, status: 400, error: 'journalId does not match journal' };
+  return { ok: true, journalId: id, journal: doc };
+}
+
+export async function listJournals(ctx) {
+  const rows = await listJournalDocs(ctx);
+  rows.sort((a, b) => {
+    const starred = (b.data.starred === true) - (a.data.starred === true);
+    if (starred) return starred;
+    const byName = publicJournal(a).name.localeCompare(publicJournal(b).name);
+    if (byName) return byName;
+    return a.id < b.id ? -1 : a.id > b.id ? 1 : 0;
+  });
+  return json(ctx.cors, 200, { journals: rows.map(publicJournal) });
+}
+
+export async function deleteTrade(tradeId, ctx) {
+  const { cors, auth, base, fetchFn } = ctx;
+  if (typeof tradeId !== 'string') return json(cors, 400, { error: 'invalid trade id' });
+  let id;
+  try { id = decodeURIComponent(tradeId); } catch { return json(cors, 400, { error: 'invalid trade id' }); }
+  if (!validDocId(id)) return json(cors, 400, { error: 'invalid trade id' });
+
+  const tradeUrl = `${base}/documents/users/${auth.uid}/trades/${encodeURIComponent(id)}`;
+  const trade = await readDoc(fetchFn, auth.admin, tradeUrl);
+  if (!trade) return json(cors, 404, { error: 'trade not found' });
+
+  const removed = await fsFetch(fetchFn, auth.admin, tradeUrl, { method: 'DELETE' });
+  if (removed.status === 404) return json(cors, 404, { error: 'trade not found' });
+  if (!removed.ok) return json(cors, 502, { error: 'failed to delete trade' });
+
+  // Same cleanup as the journal screen: screenshot docs live at fixed slot
+  // ids and are not part of the trade. A miss is a no-op. Stats are computed
+  // from the remaining trades, so removing this document is the whole update.
+  await Promise.all(tradeImageIds(id).map((imageId) => fsFetch(
+    fetchFn, auth.admin,
+    `${base}/documents/users/${auth.uid}/tradeImages/${encodeURIComponent(imageId)}`,
+    { method: 'DELETE' },
+  ).catch(() => {})));
+
+  return json(cors, 200, { id, deleted: true });
 }
 
 function requireFirebase(ctx) {
