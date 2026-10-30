@@ -69,11 +69,13 @@ Adds a trade to a journal you own. Pass `journalId`, or `journal` (the journal's
 
 The Worker validates the payload the same way `firestore.rules` validates a client create (service-account writes bypass rules), then stores the same derived fields the journal writes: `pnl`, `netPnl`, `pnlPercent`, `rrRatio`, `result`, `positionSize`, `margin`, `createdAt`, `updatedAt`.
 
+`pnl`, `netPnl`, `pnlPercent`, and `result` are computed from the entry, the exit, the size, and fees. A `pnlFromExchange` field on the request is ignored and is not stored. Trades imported from an exchange inside the app still keep that exchange's settled P&L. This API does not take that path.
+
 If `riskAmount` is omitted or 0, and the entry, stop, and size can price the risk, that dollar amount is stored. The UI then shows the real risk instead of $0.00.
 
 `status` may be omitted: an exit price (or exits that close the position) becomes `closed`, partial exits become `partial`, otherwise `open`. `fees` defaults to 0, `leverage` to 1 (crypto and stocks). Futures (`assetClass: "futures_cme"`) require `contract.contracts`, `contract.pointValue`, and `contract.tickSize`.
 
-Optional header `Idempotency-Key` (8–128 printable characters). A repeat of the same key returns the original trade and does not write another one. The first response is `201`; a replay is `200` with `idempotentReplay: true`.
+Optional header `Idempotency-Key` (8–128 printable characters). The handler reserves one trade id on that key before it writes the trade. A repeat returns that same trade and does not write another one, including when the first attempt saved the trade but could not mark the key complete. The first response is `201`. A replay is `200` with `idempotentReplay: true`. A second request that arrives while the first is still in progress, before a trade has been stored, is `409` for 60 seconds. After that the same reserved id is used again, so a late retry still cannot create a second trade.
 
 ```bash
 curl -s -X POST https://trade-os.tradeos.workers.dev/api/v1/trades \

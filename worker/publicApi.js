@@ -25,6 +25,7 @@ const PAGE = 100;
 
 const KEY_RE = /^tos_[A-Za-z0-9_-]{20,100}$/;
 const IDEM_RE = /^[\x21-\x7e]{8,128}$/;
+const IDEM_PENDING_MS = 60_000;
 const JOURNAL_NAME_MAX = 200;
 const JOURNAL_PAGE_CAP = 20;
 
@@ -245,16 +246,18 @@ export async function createTrade(request, ctx) {
 
   const idem = request.headers.get('Idempotency-Key');
   let idemId = '';
+  let reservedTradeId = '';
   if (idem != null && idem !== '') {
     if (!IDEM_RE.test(idem)) return json(cors, 400, { error: 'Idempotency-Key must be 8–128 printable characters' });
     idemId = await sha256Hex(`${auth.uid}:${idem}`);
-    const replay = await beginIdempotency(ctx, idemId);
-    if (replay) return replay;
+    const opened = await beginIdempotency(ctx, idemId);
+    if (opened.response) return opened.response;
+    reservedTradeId = opened.tradeId;
   }
 
   const journal = await readDoc(fetchFn, auth.admin, `${base}/documents/users/${auth.uid}/journals/${prepared.trade.journalId}`);
   if (!journal) {
-    if (idemId) await deleteDoc(ctx, `${base}/documents/users/${auth.uid}/apiIdempotency/${idemId}`);
+    if (idemId) await releaseIdempotencyIfUnused(ctx, idemId, reservedTradeId);
     return json(cors, 404, { error: 'journal not found' });
   }
 
@@ -263,54 +266,129 @@ export async function createTrade(request, ctx) {
     journalId: prepared.trade.journalId,
     now,
   }));
-  const created = await fsFetch(fetchFn, auth.admin, `${base}/documents/users/${auth.uid}/trades`, {
+  const tradeCollection = `${base}/documents/users/${auth.uid}/trades`;
+  const createUrl = reservedTradeId
+    ? `${tradeCollection}?documentId=${encodeURIComponent(reservedTradeId)}`
+    : tradeCollection;
+  const created = await fsFetch(fetchFn, auth.admin, createUrl, {
     method: 'POST',
     body: JSON.stringify({ fields: encodeFields(stored) }),
   });
   if (!created.ok) {
-    if (idemId) await deleteDoc(ctx, `${base}/documents/users/${auth.uid}/apiIdempotency/${idemId}`);
+    if (reservedTradeId) {
+      const trade = await readReservedTrade(ctx, reservedTradeId);
+      if (trade) {
+        await markIdempotencyDone(ctx, idemId, reservedTradeId);
+        return json(cors, 200, replayBody(reservedTradeId, trade));
+      }
+      // The write did not land. Keep the reservation and age it out so the
+      // next call reuses this trade id. Deleting it would mint a second id.
+      if (created.status !== 409) {
+        try {
+          await patchDoc(ctx, idemDocUrl(ctx, idemId), {
+            createdAt: new Date(nowDate(ctx).getTime() - IDEM_PENDING_MS - 1),
+          });
+        } catch (err) {
+          console.error('idempotency reservation refresh failed', err?.message || err);
+        }
+      }
+    }
     return json(cors, 502, { error: 'failed to write trade' });
   }
   const doc = await created.json();
-  const id = docIdFromName(doc.name);
-  if (idemId) {
-    await patchDoc(ctx, `${base}/documents/users/${auth.uid}/apiIdempotency/${idemId}`, {
-      status: 'done', tradeId: id,
-    });
-  }
+  const id = docIdFromName(doc.name) || reservedTradeId;
+  if (idemId) await markIdempotencyDone(ctx, idemId, id);
   return json(cors, 201, { id, trade: { id, ...toPublicTrade(stored) } });
 }
 
+function nowDate(ctx) {
+  const now = ctx.now ? ctx.now() : new Date();
+  return now instanceof Date && !Number.isNaN(now.getTime()) ? now : new Date();
+}
+
+function idemDocUrl(ctx, idemId) {
+  return `${ctx.base}/documents/users/${ctx.auth.uid}/apiIdempotency/${idemId}`;
+}
+
+function replayBody(tradeId, trade) {
+  return {
+    id: tradeId,
+    trade: trade ? { id: trade.id, ...trade.data } : null,
+    idempotentReplay: true,
+  };
+}
+
+async function readReservedTrade(ctx, tradeId) {
+  if (typeof tradeId !== 'string' || !tradeId || tradeId.includes('/')) return null;
+  return readDoc(ctx.fetchFn, ctx.auth.admin, `${ctx.base}/documents/users/${ctx.auth.uid}/trades/${tradeId}`);
+}
+
+// The trade id is stored on the pending record in the same create that
+// reserves the key, and the trade document uses that id. A later failure to
+// mark the key `done` must not delete or replace the record: the retry reads
+// the reserved id, returns the trade when it exists, and otherwise writes
+// that same document again. Two creates of one id cannot both succeed.
 async function beginIdempotency(ctx, idemId) {
   const { cors, auth, base, fetchFn } = ctx;
   const url = `${base}/documents/users/${auth.uid}/apiIdempotency?documentId=${idemId}`;
-  const now = ctx.now ? ctx.now() : new Date();
+  const now = nowDate(ctx);
+  const tradeId = crypto.randomUUID();
   const res = await fsFetch(fetchFn, auth.admin, url, {
     method: 'POST',
-    body: JSON.stringify({ fields: encodeFields({ status: 'pending', createdAt: now }) }),
+    body: JSON.stringify({ fields: encodeFields({ status: 'pending', createdAt: now, tradeId }) }),
   });
-  if (res.ok) return null;
-  if (res.status !== 409) return json(cors, 502, { error: 'failed to reserve idempotency key' });
-  const existing = await readDoc(fetchFn, auth.admin, `${base}/documents/users/${auth.uid}/apiIdempotency/${idemId}`);
-  if (existing?.data?.status === 'done' && existing.data.tradeId) {
-    const trade = await readDoc(fetchFn, auth.admin, `${base}/documents/users/${auth.uid}/trades/${existing.data.tradeId}`);
-    return json(cors, 200, {
-      id: existing.data.tradeId,
-      trade: trade ? { id: trade.id, ...trade.data } : null,
-      idempotentReplay: true,
+  if (res.ok) return { tradeId };
+  if (res.status !== 409) return { response: json(cors, 502, { error: 'failed to reserve idempotency key' }) };
+
+  const existing = await readDoc(fetchFn, auth.admin, idemDocUrl(ctx, idemId));
+  if (!existing) {
+    const againId = crypto.randomUUID();
+    const again = await fsFetch(fetchFn, auth.admin, url, {
+      method: 'POST',
+      body: JSON.stringify({ fields: encodeFields({ status: 'pending', createdAt: now, tradeId: againId }) }),
     });
+    if (again.ok) return { tradeId: againId };
+    return { response: json(cors, again.status === 409 ? 409 : 502, {
+      error: again.status === 409
+        ? 'a request with this Idempotency-Key is in progress'
+        : 'failed to reserve idempotency key',
+    }) };
   }
-  const age = Date.now() - new Date(existing?.data?.createdAt || 0).getTime();
-  if (existing?.data?.status === 'pending' && age < 60_000) {
-    return json(cors, 409, { error: 'a request with this Idempotency-Key is in progress' });
+
+  const reserved = typeof existing.data?.tradeId === 'string' ? existing.data.tradeId : '';
+  const trade = await readReservedTrade(ctx, reserved);
+  if (trade) {
+    await markIdempotencyDone(ctx, idemId, reserved);
+    return { response: json(cors, 200, replayBody(reserved, trade)) };
   }
-  await deleteDoc(ctx, `${base}/documents/users/${auth.uid}/apiIdempotency/${idemId}`);
-  const retry = await fsFetch(fetchFn, auth.admin, url, {
-    method: 'POST',
-    body: JSON.stringify({ fields: encodeFields({ status: 'pending', createdAt: now }) }),
-  });
-  if (!retry.ok) return json(cors, 409, { error: 'a request with this Idempotency-Key is in progress' });
-  return null;
+  if (existing.data?.status === 'done' && reserved) {
+    return { response: json(cors, 200, replayBody(reserved, null)) };
+  }
+  // No reserved id means we cannot point at a single trade document. Do not
+  // delete the key and do not allocate another one: an earlier write may
+  // already exist and would be orphaned by a second create.
+  const age = now.getTime() - new Date(existing.data?.createdAt || 0).getTime();
+  const stillPending = existing.data?.status === 'pending' && age < IDEM_PENDING_MS;
+  if (!reserved || stillPending) {
+    return { response: json(cors, 409, { error: 'a request with this Idempotency-Key is in progress' }) };
+  }
+  return { tradeId: reserved };
+}
+
+async function markIdempotencyDone(ctx, idemId, tradeId) {
+  try {
+    await patchDoc(ctx, idemDocUrl(ctx, idemId), { status: 'done', tradeId });
+  } catch (err) {
+    // The reserved trade id is already on the record. The retry returns that
+    // trade; losing this completion update must not surface as a second write.
+    console.error('idempotency mark done failed', err?.message || err);
+  }
+}
+
+async function releaseIdempotencyIfUnused(ctx, idemId, tradeId) {
+  const trade = await readReservedTrade(ctx, tradeId);
+  if (trade) return;
+  await deleteDoc(ctx, idemDocUrl(ctx, idemId));
 }
 
 export async function listTrades(url, ctx) {
@@ -676,8 +754,14 @@ async function deleteDoc(ctx, url) {
 
 async function patchDoc(ctx, url, fields) {
   const mask = Object.keys(fields).map((name) => `updateMask.fieldPaths=${encodeURIComponent(name)}`).join('&');
-  await fsFetch(ctx.fetchFn, ctx.auth.admin, `${url}?${mask}`, {
+  const res = await fsFetch(ctx.fetchFn, ctx.auth.admin, `${url}?${mask}`, {
     method: 'PATCH',
     body: JSON.stringify({ fields: encodeFields(fields) }),
   });
+  if (!res.ok) {
+    const err = new Error(`firestore ${res.status}`);
+    err.status = res.status;
+    throw err;
+  }
+  return res;
 }

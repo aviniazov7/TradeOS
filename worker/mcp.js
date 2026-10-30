@@ -19,10 +19,10 @@ const TOOLS = [
   },
   {
     name: 'add_trade',
-    description: 'Add one trade to a journal owned by the API key. Validation and stored fields match POST /api/v1/trades: pnl, netPnl, pnlPercent, result, position size, margin, and a derived risk amount when entry, stop, and size can price it. Pass journalId or journal (the journal name, or its id). One of them is required — omitting both is rejected and does not guess a journal. Also required: pair, direction (long or short), entryPrice, quantity. status may be omitted — an exit price closes the trade, partial exits become partial, otherwise the trade stays open. fees default to 0 and leverage to 1 (crypto and stocks). Futures (assetClass futures_cme) need contract.contracts, contract.pointValue, and contract.tickSize. Pass idempotencyKey (8–128 printable characters) to make a retry return the original trade instead of writing another one.',
+    description: 'Add one trade to a journal owned by the API key. Validation and stored fields match POST /api/v1/trades: pnl, netPnl, pnlPercent, result, position size, margin, and a derived risk amount when entry, stop, and size can price it. P&L is computed from prices and fees. pnlFromExchange is not accepted. Only the properties listed in this schema are accepted. Pass journalId or journal (the journal name, or its id). One of them is required — omitting both is rejected and does not guess a journal. Also required: pair, direction (long or short), entryPrice, quantity. status may be omitted — an exit price closes the trade, partial exits become partial, otherwise the trade stays open. fees default to 0 and leverage to 1 (crypto and stocks). Futures (assetClass futures_cme) need contract.contracts, contract.pointValue, and contract.tickSize. Pass idempotencyKey (8–128 printable characters) to make a retry return the original trade instead of writing another one.',
     inputSchema: {
       type: 'object',
-      additionalProperties: true,
+      additionalProperties: false,
       required: ['pair', 'direction', 'entryPrice', 'quantity'],
       properties: {
         journalId: { type: 'string', description: 'Id of a journal the key owner owns.' },
@@ -44,6 +44,17 @@ const TOOLS = [
         notes: { type: 'string' },
         entryReason: { type: 'string' },
         tags: { type: 'array', items: { type: 'string' } },
+        contract: {
+          type: 'object',
+          description: 'Required when assetClass is futures_cme.',
+          additionalProperties: false,
+          properties: {
+            symbol: { type: 'string' },
+            contracts: { type: 'number', exclusiveMinimum: 0 },
+            pointValue: { type: 'number', exclusiveMinimum: 0 },
+            tickSize: { type: 'number', exclusiveMinimum: 0 },
+          },
+        },
         idempotencyKey: { type: 'string', description: '8–128 printable characters. A repeat returns the original trade.' },
       },
     },
