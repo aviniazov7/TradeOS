@@ -14,8 +14,15 @@ const CHUNK_MESSAGE_SNIPPETS = [
   'error loading dynamically imported module',
   'Loading chunk',
   'Loading CSS chunk',
-  'MIME type',
 ];
+
+function messageIsChunkFailure(message) {
+  if (!message) return false;
+  if (CHUNK_MESSAGE_SNIPPETS.some((snippet) => message.includes(snippet))) return true;
+  // HTML served in place of a hashed module (hosting rewrite of a deleted chunk).
+  // A bare "MIME type" mention is not a chunk failure.
+  return /MIME type/i.test(message) && /text\/html/i.test(message);
+}
 
 let reloadingNow = false;
 const installedTargets = new WeakSet();
@@ -30,12 +37,31 @@ export function isChunkReloadInFlight() {
 
 export function isChunkLoadError(error) {
   if (!error) return false;
-  if (typeof error === 'string') {
-    return CHUNK_MESSAGE_SNIPPETS.some((snippet) => error.includes(snippet));
-  }
+  if (typeof error === 'string') return messageIsChunkFailure(error);
   if (error.name === 'ChunkLoadError') return true;
-  const message = `${error.message || ''}`;
-  return CHUNK_MESSAGE_SNIPPETS.some((snippet) => message.includes(snippet));
+  return messageIsChunkFailure(`${error.message || ''}`);
+}
+
+// Vite dispatches vite:preloadError for a failed dynamic import AND for a
+// stylesheet preload ("Unable to preload CSS") and for an empty prefetch.
+// Only a real missing module may reload the document.
+export function shouldReloadForPreloadError(event) {
+  if (!event || event.payload == null || event.payload === '') return false;
+  const payload = event.payload;
+  const message = typeof payload === 'string' ? payload : `${payload.message || ''}`;
+  if (message.includes('Unable to preload CSS')) return false;
+  return isChunkLoadError(payload);
+}
+
+// window "error" also fires for <link rel="modulepreload"> and other
+// subresources. Those are prefetches, not a stale dynamic import. The target
+// of a runtime exception is the object the listener is attached to.
+export function shouldReloadForWindowError(event, listeningTarget) {
+  if (!event) return false;
+  const node = event.target;
+  if (node && listeningTarget && node !== listeningTarget && typeof node.tagName === 'string') return false;
+  const candidate = event.error || event.message || '';
+  return isChunkLoadError(candidate);
 }
 
 function storageOf(options) {
@@ -79,6 +105,39 @@ export function hardReload(location = window.location) {
   location.href = url.toString();
 }
 
+export function urlHasChunkReload(location) {
+  if (!location) return false;
+  try {
+    return new URL(location.href, pageOrigin()).searchParams.has(CHUNK_RELOAD_QUERY);
+  } catch {
+    return false;
+  }
+}
+
+// The reload navigation can drop sessionStorage (Safari has done this around
+// location.replace). The query is the proof this document is already the
+// one-shot reload, so put the guard back BEFORE the query is stripped.
+export function noteChunkReloadQuery(location, storage) {
+  if (!urlHasChunkReload(location)) return false;
+  const store = storage || storageOf();
+  if (!store) return false;
+  try {
+    store.setItem(CHUNK_RELOAD_KEY, '1');
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+function locationOf(options) {
+  if (options && Object.prototype.hasOwnProperty.call(options, 'location')) return options.location;
+  try {
+    return window.location;
+  } catch {
+    return null;
+  }
+}
+
 export function stripChunkReloadQuery(location = window.location, history = window.history) {
   let url;
   try {
@@ -99,6 +158,13 @@ export function reloadOnceForChunkError(options = {}) {
   const store = storageOf(options);
   const go = options.reload || (() => hardReload(options.location));
   if (!store) return false;
+  const location = locationOf(options);
+  // Already on the reloaded document. Restore the guard (the query may be
+  // the only copy left) and do not navigate again.
+  if (urlHasChunkReload(location)) {
+    try { store.setItem(CHUNK_RELOAD_KEY, '1'); } catch { /* private mode */ }
+    return false;
+  }
   try {
     if (store.getItem(CHUNK_RELOAD_KEY) === '1') return false;
     store.setItem(CHUNK_RELOAD_KEY, '1');
@@ -150,9 +216,13 @@ export function installChunkLoadRecovery(options = {}) {
   if (!target || installedTargets.has(target)) return () => {};
   installedTargets.add(target);
 
+  // Arm the guard from ?__reload= before replaceState removes it. Stripping
+  // must not clear the sessionStorage flag.
+  noteChunkReloadQuery(options.location, options.storage);
   stripChunkReloadQuery(options.location, options.history);
 
   const onPreloadError = (event) => {
+    if (!shouldReloadForPreloadError(event)) return;
     if (reloadOnceForChunkError(options)) event.preventDefault();
   };
   const onRejection = (event) => {
@@ -160,8 +230,7 @@ export function installChunkLoadRecovery(options = {}) {
     if (reloadOnceForChunkError(options)) event.preventDefault();
   };
   const onError = (event) => {
-    const candidate = (event && (event.error || event.message)) || '';
-    if (!isChunkLoadError(candidate)) return;
+    if (!shouldReloadForWindowError(event, target)) return;
     if (reloadOnceForChunkError(options)) event.preventDefault();
   };
 

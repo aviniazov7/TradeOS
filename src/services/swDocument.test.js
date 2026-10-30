@@ -3,17 +3,18 @@ import { describe, expect, it, vi } from 'vitest';
 
 const sw = readFileSync(new URL('../../public/sw.js', import.meta.url), 'utf8');
 
-function extract(signature, endMark, argNames = []) {
+function extract(signature, endMark, argNames = [], returnName) {
   const start = sw.indexOf(signature);
   const end = sw.indexOf(endMark);
   expect(start).toBeGreaterThan(-1);
   expect(end).toBeGreaterThan(start);
-  const name = signature.replace(/^async function /, '').replace(/^function /, '').split('(')[0];
+  const name = returnName || signature.replace(/^async function /, '').replace(/^function /, '').split('(')[0];
   const factory = new Function(...argNames, `${sw.slice(start, end)}\nreturn ${name};`);
   return argNames.length ? factory : factory();
 }
 
-const isDocumentRequest = extract('function isDocumentRequest', '// END isDocumentRequest');
+const isShellRefetch = extract('function isShellRefetch', '// END isShellRefetch');
+const isDocumentRequest = extract('function isShellRefetch', '// END isDocumentRequest', [], 'isDocumentRequest');
 const shouldRejectHtmlAsModule = extract('function shouldRejectHtmlAsModule', '// END shouldRejectHtmlAsModule');
 
 function headers(accept = '') {
@@ -34,8 +35,14 @@ describe('service worker document policy', () => {
     expect(sw).toContain("self.addEventListener('push'");
     expect(sw).toContain('showNotification');
     expect(sw).toContain("self.addEventListener('notificationclick'");
+    expect(sw).toContain('if (isShellRefetch(event.request)) return;');
+    expect(sw.indexOf('if (isShellRefetch(event.request)) return;')).toBeLessThan(
+      sw.indexOf('if (isDocumentRequest(event.request))'),
+    );
     expect(sw).toContain('if (isDocumentRequest(event.request))');
     expect(sw).toContain('event.respondWith(networkFirstDocument(event.request))');
+    expect(sw).toContain('?__tos_net=1');
+    expect(sw).toContain('X-TradeOS-Shell-Refetch');
     expect(sw.indexOf('if (isDocumentRequest(event.request))')).toBeLessThan(
       sw.indexOf('shouldRejectHtmlAsModule(event.request, response)'),
     );
@@ -79,6 +86,26 @@ describe('service worker document policy', () => {
       destination: 'image',
       headers: headers('image/png'),
     })).toBe(false);
+    // The worker's own refetch of the shell must not be handled as a document,
+    // or the navigation recurses and every open is served the cached shell.
+    const refetch = {
+      url: 'https://tradeoslive.web.app/?__tos_net=1',
+      mode: 'cors',
+      destination: '',
+      headers: headers('*/*'),
+    };
+    expect(isShellRefetch(refetch)).toBe(true);
+    expect(isDocumentRequest(refetch)).toBe(false);
+    expect(isDocumentRequest({
+      url: 'https://tradeoslive.web.app/index.html?__tos_net=1',
+      mode: 'cors',
+      destination: '',
+      headers: { get: () => '1' },
+    })).toBe(false);
+    expect(isShellRefetch({
+      url: 'https://tradeoslive.web.app/dashboard',
+      headers: headers(),
+    })).toBe(false);
   });
 
   it('rejects an HTML body standing in for a removed chunk and keeps real scripts', () => {
@@ -110,10 +137,11 @@ describe('service worker document policy', () => {
 
     const fresh = await networkFirstDocument({ url: 'https://tradeoslive.web.app/dashboard?x=1' });
     expect(await fresh.text()).toBe('fresh-html');
-    expect(fetchMock).toHaveBeenCalledWith('https://tradeoslive.web.app/dashboard?x=1', {
+    expect(fetchMock).toHaveBeenCalledWith('https://tradeoslive.web.app/dashboard?x=1&__tos_net=1', {
       cache: 'no-store',
       credentials: 'same-origin',
       redirect: 'follow',
+      headers: { 'X-TradeOS-Shell-Refetch': '1' },
     });
     await vi.waitFor(() => expect(put).toHaveBeenCalledTimes(1));
     expect(put.mock.calls[0][0]).toBe('/index.html');

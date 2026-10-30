@@ -3,10 +3,24 @@ import { readFileSync } from 'node:fs';
 import { shouldReloadOnControllerChange } from './swUpdate';
 
 describe('service worker takeover', () => {
-  it('reloads only a page that was already controlled, and only once', () => {
-    expect(shouldReloadOnControllerChange({ hadController: true, refreshing: false })).toBe(true);
-    expect(shouldReloadOnControllerChange({ hadController: false, refreshing: false })).toBe(false);
-    expect(shouldReloadOnControllerChange({ hadController: true, refreshing: true })).toBe(false);
+  it('does not reload when a worker activates, on the first open or a later one', () => {
+    const visits = [
+      { hadController: false, refreshing: false, scriptChanged: false },
+      { hadController: true, refreshing: false, scriptChanged: false },
+      { hadController: true, refreshing: false, scriptChanged: true },
+      { hadController: true, refreshing: true, scriptChanged: true },
+    ];
+    for (const visit of visits) {
+      expect(shouldReloadOnControllerChange(visit)).toBe(false);
+    }
+  });
+
+  it('registers a stable sw.js url and does not reload the page from the update flow', () => {
+    const src = readFileSync(new URL('./swUpdate.js', import.meta.url), 'utf8');
+    expect(src).toContain("register('/sw.js', { updateViaCache: 'none' })");
+    expect(src).not.toMatch(/register\(\s*['"`]\/sw\.js\?/);
+    expect(src).not.toMatch(/location\.reload\s*\(/);
+    expect(src).not.toContain('controllerchange');
   });
 
   it('bumps the cache and does not let the HTTP cache satisfy logos or the shell', () => {

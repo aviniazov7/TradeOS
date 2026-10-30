@@ -1,37 +1,40 @@
 // Silent service-worker update flow ("update on next open", #220).
 //
-// No prompt, no button: sw.js skipWaiting()s on install and clients.claim()s on
-// activate. A page that was already controlled reloads once when the new worker
-// takes over, so the document that just refreshed cannot keep executing the
-// previous bundle (that is what left the ticker on Parqet's zest mark). A first
-// visit has no previous controller and does not reload.
+// sw.js calls skipWaiting() on install and clients.claim() on activate, so a
+// freshly deployed worker takes over without a prompt. That takeover must not
+// reload the page. Safari reports a controller change for an already-controlled
+// document whenever the worker activates — including when sw.js did not
+// change — and an in-memory "already refreshing" flag dies with the document,
+// so reloading from this module ran on every visit.
+//
+// A missing hashed chunk reloads once through chunkReload. A normal open,
+// a repeated open, and a worker activation do not.
 
-// A page that already had a worker keeps its old scripts until the next
-// document load. controllerchange fires when the new worker claims the page
-// (including the one that arrives just after a refresh). Reload once so that
-// visit cannot keep painting a ticker logo from the previous bundle.
-export function shouldReloadOnControllerChange({ hadController, refreshing }) {
-  return !!hadController && !refreshing;
+// Activation is not a stale chunk. `hadController`, `refreshing`, and
+// `scriptChanged` describe the visit; none of them is allowed to reload.
+export function shouldReloadOnControllerChange({
+  hadController = false,
+  refreshing = false,
+  scriptChanged = false,
+} = {}) {
+  void hadController;
+  void refreshing;
+  void scriptChanged;
+  return false;
 }
 
 export function registerSW() {
   if (!('serviceWorker' in navigator)) return;
 
-  const hadController = !!navigator.serviceWorker.controller;
-  let refreshing = false;
-  navigator.serviceWorker.addEventListener('controllerchange', () => {
-    if (!shouldReloadOnControllerChange({ hadController, refreshing })) return;
-    refreshing = true;
-    window.location.reload();
-  });
-
   window.addEventListener('load', () => {
+    // Stable URL. A cache-busting query would be a different script every
+    // load, so skipWaiting() would activate a new worker on every visit.
     navigator.serviceWorker
       .register('/sw.js', { updateViaCache: 'none' })
       .then((reg) => {
         // A worker that installed during a PREVIOUS visit but never took over
         // (rare, since sw.js skipWaiting()s on install). Nudge it to activate
-        // so this open lands on the new version rather than the one after.
+        // so this open is controlled by the new version. Do not reload.
         if (reg.waiting && navigator.serviceWorker.controller) {
           reg.waiting.postMessage({ type: 'SKIP_WAITING' });
         }
@@ -39,7 +42,7 @@ export function registerSW() {
       .catch(() => {});
 
     // Poll for a new deploy when the app regains focus (PWA resume / tab
-    // switch). Installing it claims the page, and controllerchange reloads once.
+    // switch). Installing it claims the page and does not reload.
     document.addEventListener('visibilitychange', () => {
       if (document.visibilityState !== 'visible') return;
       navigator.serviceWorker
