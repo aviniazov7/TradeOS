@@ -1,4 +1,5 @@
-import { useState, useEffect, lazy, Suspense } from 'react';
+import { useState, useEffect, Suspense } from 'react';
+import { lazyWithChunkReload as lazy } from '../../utils/chunkReload';
 import { m, AnimatePresence } from 'framer-motion';
 import {
   Shield, Eye, EyeOff, ExternalLink, RefreshCw, Zap, Pencil, Plus, Unplug, Link2, Lock, AlertTriangle, Clock,

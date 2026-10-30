@@ -1,4 +1,5 @@
-import { useMemo, lazy, Suspense } from 'react';
+import { useMemo, Suspense } from 'react';
+import { lazyWithChunkReload as lazy } from '../../utils/chunkReload';
 import { m } from 'framer-motion';
 import {
   Wallet, Target, Zap, BarChart3, DollarSign,

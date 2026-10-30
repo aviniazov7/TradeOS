@@ -1,4 +1,5 @@
-import { lazy, Suspense, useMemo, useState } from 'react';
+import { Suspense, useMemo, useState } from 'react';
+import { lazyWithChunkReload as lazy } from '../../utils/chunkReload';
 import { ListOrdered, Layers, RefreshCw, TriangleAlert } from 'lucide-react';
 import Card from '../shared/Card';
 import Skeleton from '../shared/Skeleton';

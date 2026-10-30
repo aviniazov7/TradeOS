@@ -115,16 +115,19 @@ describe('hosting cache headers', () => {
     expect(cacheOf('**/*.@(png|jpg|jpeg|gif|svg|ico|webp|woff2)')).toBe('public, max-age=604800');
   });
 
-  it('keeps hashed build assets immutable and the HTML document uncached', () => {
+  it('keeps hashed build assets immutable and the HTML document and service worker uncached', () => {
     const week = sources.indexOf('**/*.@(png|jpg|jpeg|gif|svg|ico|webp|woff2)');
     const assets = sources.indexOf('/assets/**');
     const index = sources.indexOf('/index.html');
+    const sw = sources.indexOf('/sw.js');
     expect(week).toBeGreaterThan(-1);
     expect(assets).toBeGreaterThan(week);
     expect(index).toBeGreaterThan(assets);
+    expect(sw).toBeGreaterThan(index);
     expect(cacheOf('**')).toBe('no-cache');
     expect(cacheOf('/assets/**')).toBe('public, max-age=31536000, immutable');
     expect(cacheOf('/index.html')).toBe('no-cache');
+    expect(cacheOf('/sw.js')).toBe('no-cache');
   });
 });
 

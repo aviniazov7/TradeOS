@@ -1,4 +1,5 @@
-import { lazy, Suspense, useEffect } from 'react';
+import { Suspense, useEffect } from 'react';
+import { lazyWithChunkReload as lazy } from '../../utils/chunkReload';
 import { useSearchParams } from 'react-router-dom';
 import { m } from 'framer-motion';
 import { Briefcase, Plus, Download } from 'lucide-react';

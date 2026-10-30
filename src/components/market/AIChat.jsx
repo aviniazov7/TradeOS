@@ -1,4 +1,5 @@
-import { useState, useEffect, useRef, lazy, Suspense } from 'react';
+import { useState, useEffect, useRef, Suspense } from 'react';
+import { lazyWithChunkReload as lazy } from '../../utils/chunkReload';
 import { createPortal } from 'react-dom';
 import { m, AnimatePresence } from 'framer-motion';
 import { Bot, Send, RotateCcw, Sparkles, BarChart3, History, Trash2, Crown, Image as ImageIcon, Copy, Check, TrendingDown, Target, Clock, AlertTriangle, ShieldCheck, ClipboardList } from 'lucide-react';

@@ -1,30 +1,46 @@
 import { Component } from 'react';
 import { AlertTriangle, RefreshCw } from 'lucide-react';
+import {
+  hardReload,
+  hasChunkReloadGuard,
+  isChunkLoadError,
+  isChunkReloadInFlight,
+  reloadOnceForChunkError,
+} from '../../utils/chunkReload';
 
 export default class ErrorBoundary extends Component {
   constructor(props) {
     super(props);
-    this.state = { hasError: false, error: null };
+    this.state = { hasError: false, error: null, chunkReload: false };
   }
 
   static getDerivedStateFromError(error) {
-    return { hasError: true, error };
+    // Hide the error screen while a one-time reload is taking the user onto
+    // the new build. If this session already reloaded and the chunk is still
+    // missing, leave the screen up so we don't loop.
+    const chunkReload = isChunkReloadInFlight()
+      || (isChunkLoadError(error) && !hasChunkReloadGuard());
+    return { hasError: true, error, chunkReload };
   }
 
   componentDidCatch(error, errorInfo) {
     console.error('ErrorBoundary caught:', error, errorInfo);
-    // Auto-reload on chunk/MIME errors (stale deploy cache)
-    const msg = error?.message || '';
-    if (msg.includes('MIME type') || msg.includes('Failed to fetch dynamically imported module') || msg.includes('Loading chunk')) {
-      window.location.reload();
+    if (isChunkReloadInFlight()) return;
+    if (!isChunkLoadError(error)) return;
+    if (!reloadOnceForChunkError()) {
+      this.setState({ chunkReload: false });
     }
   }
 
   handleReload = () => {
-    window.location.reload();
+    hardReload();
   };
 
   render() {
+    if (this.state.hasError && this.state.chunkReload) {
+      return null;
+    }
+
     if (this.state.hasError) {
       const err = this.state.error;
       const isConfigError =

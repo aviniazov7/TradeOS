@@ -71,6 +71,58 @@ function responseIsHtmlForImage(request, response) {
   return type.includes('text/html');
 }
 
+// Navigations, the app shell, and any HTML document. Safari PWAs sometimes
+// deliver the document without mode "navigate"; treating only that mode as
+// the shell left /index.html on the generic cache path.
+function isDocumentRequest(request) {
+  if (!request) return false;
+  if (request.mode === 'navigate' || request.destination === 'document') return true;
+  let path = '';
+  try { path = new URL(request.url).pathname; } catch { return false; }
+  if (path === '/' || path === '/index.html') return true;
+  const dest = request.destination || '';
+  if (dest && dest !== 'document') return false;
+  const accept = (request.headers && typeof request.headers.get === 'function' && request.headers.get('accept')) || '';
+  return accept.includes('text/html');
+}
+// END isDocumentRequest
+
+// A deleted hashed chunk is rewritten to index.html (200 text/html). Caching
+// that body under the chunk URL pins the old shell's import to HTML.
+function shouldRejectHtmlAsModule(request, response) {
+  if (!response || !response.headers || typeof response.headers.get !== 'function') return false;
+  const type = (response.headers.get('content-type') || '').toLowerCase();
+  if (!type.includes('text/html')) return false;
+  let path = '';
+  try { path = new URL(request.url).pathname; } catch { return false; }
+  if (path.startsWith('/assets/')) return true;
+  return /\.(js|mjs|css)$/i.test(path);
+}
+// END shouldRejectHtmlAsModule
+
+// Network-first document fetch. Pass the URL string, not the navigation
+// Request: Safari throws on fetch(navigateRequest) and the catch then served
+// the cached index.html that still points at removed chunks.
+async function networkFirstDocument(request) {
+  try {
+    const response = await fetch(request.url, {
+      cache: 'no-store',
+      credentials: 'same-origin',
+      redirect: 'follow',
+    });
+    if (response && response.ok) {
+      const copy = response.clone();
+      caches.open(CACHE_NAME).then((cache) => cache.put(SHELL_URL, copy));
+    }
+    return response;
+  } catch {
+    const cached = await caches.match(SHELL_URL);
+    if (cached) return cached;
+    return new Response('Offline', { status: 503, headers: { 'Content-Type': 'text/plain; charset=utf-8' } });
+  }
+}
+// END networkFirstDocument
+
 // Install — cache static assets (NOT index.html).
 // skipWaiting() so a freshly deployed worker activates immediately instead of
 // getting stuck "waiting" behind an old worker until the user taps a prompt.
@@ -108,14 +160,16 @@ self.addEventListener('message', (event) => {
   }
 });
 
-// Activate — clean old caches
+// Activate — drop caches from previous builds, then take control of open
+// clients so the next navigation is handled by this worker (skipWaiting
+// already ran on install). Push and notification handlers live on this
+// worker too; claiming does not unsubscribe them.
 self.addEventListener('activate', (event) => {
   event.waitUntil(
-    caches.keys().then((keys) =>
-      Promise.all(keys.filter((k) => k !== CACHE_NAME).map((k) => caches.delete(k)))
-    )
+    caches.keys()
+      .then((keys) => Promise.all(keys.filter((k) => k !== CACHE_NAME).map((k) => caches.delete(k))))
+      .then(() => self.clients.claim())
   );
-  self.clients.claim();
 });
 
 // Fetch — network first, fallback to cache
@@ -128,23 +182,12 @@ self.addEventListener('fetch', (event) => {
   // never cache.put's an authenticated body.
   if (isPrivateWorkerRequest(event.request)) return;
 
-  // Navigations are network-first: cache: 'no-store' bypasses the browser's
-  // HTTP disk cache, so a deploy is picked up immediately (stale HTML would
-  // also pin stale asset hashes). Every successful response refreshes the
-  // cached shell copy in the background; offline falls back to that copy —
-  // the app then boots and shows its own OfflineScreen banner.
-  if (event.request.mode === 'navigate') {
-    event.respondWith(
-      fetch(event.request, { cache: 'no-store' })
-        .then((response) => {
-          if (response && response.ok) {
-            const clone = response.clone();
-            caches.open(CACHE_NAME).then((cache) => cache.put(SHELL_URL, clone));
-          }
-          return response;
-        })
-        .catch(() => caches.match(SHELL_URL))
-    );
+  // Documents are network-first (no-store), including / and /index.html.
+  // The cached shell is only the offline fallback — serving it while online
+  // is what pins Safari/PWA to a removed hashed chunk. Offline still falls
+  // back to that copy so the app can boot and show OfflineScreen.
+  if (isDocumentRequest(event.request)) {
+    event.respondWith(networkFirstDocument(event.request));
     return;
   }
 
@@ -152,6 +195,9 @@ self.addEventListener('fetch', (event) => {
   event.respondWith(
     fetch(event.request, { cache: cacheMode })
       .then((response) => {
+        if (response && shouldRejectHtmlAsModule(event.request, response)) {
+          return new Response('', { status: 404, statusText: 'Missing chunk' });
+        }
         // Never store the SPA shell under an image URL. An <img> would fail
         // to decode it and the old ticker walked that failure to a CDN logo.
         if (response && responseIsHtmlForImage(event.request, response)) {
