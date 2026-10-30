@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { computeDigest, digestPush, buildDigestEmail } from './adminDigest';
+import { computeDigest, digestPush, digestInboxText, buildDigestEmail } from './adminDigest';
 import { emailShell, txt } from './emailTheme';
 
 const NOW = Date.parse('2026-10-06T09:00:00Z');
@@ -36,6 +36,13 @@ describe('computeDigest', () => {
   });
   it('builds a one-line push', () => {
     expect(digestPush(d)).toBe('2 חדשים · 3 פעילים · 2 Premium · 1 בסיכון');
+  });
+  it('builds the mailbox summary', () => {
+    const text = digestInboxText(d);
+    expect(text).toContain('2 חדשים · 3 פעילים · 2 Premium · 1 בסיכון');
+    expect(text).toContain('הרשמות השבוע: 2');
+    expect(text).toContain('מיכל');
+    expect(text).toContain('אבי');
   });
 });
 

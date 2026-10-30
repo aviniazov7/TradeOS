@@ -1,5 +1,6 @@
-// The weekly admin report (Sunday push + email, and the "send me now" button
-// in the panel). Pure: users in → numbers, push text and email out.
+// The weekly admin report (Sunday email + mailbox row, and the "send me now"
+// button in the panel). Pure: users in → numbers, summary text and email out.
+// `digestPush` is the one-line summary; it is no longer sent as a Web Push.
 import { APP_URL, C, esc, bg, txt, pill, dot, para, emailShell } from './emailTheme.js';
 
 const DAY = 86400000;
@@ -50,6 +51,23 @@ export function computeDigest(users, now = Date.now()) {
 
 export function digestPush(d) {
   return `${d.newWeek} חדשים · ${d.activeWeek} פעילים · ${d.premium} Premium · ${d.inactive.length} בסיכון`;
+}
+
+// Plain-text copy stored in the admin mailbox. The Sunday cron no longer
+// pushes this summary; the email and the inbox row carry it.
+export function digestInboxText(d) {
+  const lines = [
+    digestPush(d),
+    `טווח: ${d.range}`,
+    `הרשמות השבוע: ${d.newWeek} (שבוע קודם: ${d.newPrevWeek})`,
+    `פעילים: ${d.activeWeek} מתוך ${d.total}`,
+    `Premium: ${d.premium} · שדרוגים השבוע: ${d.upgrades}`,
+  ];
+  if (d.joined?.length) lines.push(`הצטרפו: ${d.joined.map((j) => j.name).join(', ')}`);
+  if (d.expiring?.length) lines.push(`מנוי עומד לפוג: ${d.expiring.map((e) => `${e.name} (${e.days} ימים)`).join(', ')}`);
+  if (d.churn?.length) lines.push(`Premium בלי כניסה שבוע+: ${d.churn.join(', ')}`);
+  if (d.inactive?.length) lines.push(`לא נכנסו ${RISK_DAYS}+ ימים: ${d.inactive.join(', ')}`);
+  return lines.join('\n');
 }
 
 const names = (list, max = 3) => list.slice(0, max).join(', ') + (list.length > max ? ` ועוד ${list.length - max}` : '');

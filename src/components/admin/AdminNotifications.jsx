@@ -131,9 +131,10 @@ export default function AdminNotifications({ demo = false, onUnreadChange, setti
     return [...list].sort((a, b) => createdMs(b) - createdMs(a));
   }, [demoItems, type]);
 
-  const visible = demo
+  const visible = (demo
     ? filteredDemo.slice(page * NOTIFICATION_PAGE_SIZE, (page + 1) * NOTIFICATION_PAGE_SIZE)
-    : items;
+    : items
+  ).filter((item) => item.archived !== true);
   const demoHasMore = demo && (page + 1) * NOTIFICATION_PAGE_SIZE < filteredDemo.length;
   const more = demo ? demoHasMore : hasMore;
 

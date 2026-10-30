@@ -27,7 +27,8 @@ import { purgeUserResidue } from './accountPurge.js';
 import { parseCspReports, cspReportKey } from './cspReport.js';
 import { calendarAlertBody, CALENDAR_ALERT_TITLE } from './calendarAlert.js';
 import { emailShell, APP_URL, C as EMAIL_C, bg as emailBg, txt as emailTxt, esc as emailEsc, para as emailPara } from './emailTheme.js';
-import { buildDigestEmail } from './adminDigest.js';
+import { buildDigestEmail, digestInboxText } from './adminDigest.js';
+import { classifyContact, contactDelivered, createAdminInboxDocument } from './adminInbox.js';
 import {
   REMINDER_SYSTEM_PROMPT, buildReminderUserMessage, validateReminder, templateReminder,
   reminderTradeCountQuery, weekTradesWhere, statusWhere, journalDatesQuery,
@@ -462,9 +463,9 @@ async function checkPlanExpiryReminders(env) {
 
 // ---- Churn detection -------------------------------------------------------
 // Once a day, list all users (as admin), find Premium customers who haven't
-// opened the app in 7+ days, and push the admin(s) a heads-up so they can
-// reach out before the customer drifts away. De-duped per customer for 7 days
-// so the same churned user isn't re-reported every morning.
+// opened the app in 7+ days, and file a system message in the admin mailbox
+// so the owner can reach out. De-duped per customer for 7 days. This used to
+// Web Push the admin on the same channel as trade alerts.
 async function listAllUsersAdmin(env) {
   const token = await getFirebaseAdminToken(env);
   const out = [];
@@ -588,9 +589,6 @@ async function checkChurnedPremium(env) {
 
   const now = Date.now();
   const SEVEN_DAYS = 7 * 86400000;
-  const admins = users.filter((u) => u.role === 'admin').map((u) => u.uid);
-  if (!admins.length) return;
-
   const isPrem = (u) => u.role === 'admin'
     || (u.plan === 'premium' && (!u.planExpires || new Date(u.planExpires).getTime() > now));
 
@@ -601,20 +599,23 @@ async function checkChurnedPremium(env) {
     const gone = now - la;
     if (gone < SEVEN_DAYS) continue;
 
-    // De-dupe: only report each churned customer once per 7 days.
+    // De-dupe: only report each churned customer once per 7 days, and only
+    // after the mailbox write lands so a failed write can retry tomorrow.
     const dedupeKey = `churn:${u.uid}`;
     if (await env.ALERTS_KV.get(dedupeKey)) continue;
-    await env.ALERTS_KV.put(dedupeKey, '1', { expirationTtl: 60 * 60 * 24 * 7 });
 
     const days = Math.floor(gone / 86400000);
-    for (const adminUid of admins) {
-      await sendPushToUser(env, adminUid, {
-        title: '⚠️ לקוח בסיכון נטישה',
-        body: `${u.displayName} לא נכנס ${days} ימים — אולי כדאי לשלוח הודעה.`,
-        url: '/admin',
-        tag: `churn-${u.uid}`,
-      });
-    }
+    const wrote = await recordAdminInbox(env, {
+      kind: 'system',
+      type: 'churn',
+      title: 'לקוח בסיכון נטישה',
+      body: `${u.displayName} לא נכנס ${days} ימים — אולי כדאי לשלוח הודעה.`,
+      userId: u.uid,
+      userName: u.displayName,
+      userEmail: u.email,
+      source: 'churn',
+    });
+    if (wrote?.ok) await env.ALERTS_KV.put(dedupeKey, '1', { expirationTtl: 60 * 60 * 24 * 7 });
   }
 }
 
@@ -679,9 +680,10 @@ function buildPremiumEmail({ kind = 'payment', name, amount, methodLabel, days, 
 }
 
 // ---- Weekly admin digest ---------------------------------------------------
-// Every Sunday morning, push the admin(s) a one-line summary of the week:
-// new signups, upgrades, customers about to expire, and churn risk. Lets the
-// owner stay on top of the business without opening the panel.
+// Every Sunday morning, file a summary of the week in the admin mailbox and
+// email it: new signups, upgrades, customers about to expire, and churn risk.
+// The summary is not pushed — that channel is reserved for the admin's own
+// trade alerts.
 async function checkWeeklyDigest(env) {
   const il = getIsraelTime();
   if (il.getDay() !== 0) return;                 // Sunday only
@@ -699,18 +701,14 @@ async function checkWeeklyDigest(env) {
   catch (e) { console.error('digest: list users failed', e); return; }
   if (!users.length) return;
 
-  const admins = users.filter((u) => u.role === 'admin').map((u) => u.uid);
-  if (!admins.length) return;
-
   const report = buildDigestEmail(users);
-  for (const adminUid of admins) {
-    await sendPushToUser(env, adminUid, {
-      title: 'הדוח השבועי — TradeOS',
-      body: report.push,
-      url: '/admin',
-      tag: 'weekly-digest',
-    });
-  }
+  await recordAdminInbox(env, {
+    kind: 'system',
+    type: 'digest',
+    title: 'הדוח השבועי',
+    body: digestInboxText(report.digest),
+    source: 'digest',
+  });
 
   // Email — same numbers, full report. One message per admin so they don't
   // see each other's addresses. MAIL_TO_ADMIN_OVERRIDE pins a single recipient.
@@ -3569,6 +3567,20 @@ async function refreshNewsDigest(env) {
 
 // ==================== Contact Developer ====================
 
+// File a message in the admin mailbox. Service-account write, so Firestore
+// rules can keep create closed to clients. Best-effort: callers still have
+// email as a second channel.
+async function recordAdminInbox(env, message) {
+  if (!env?.FIREBASE_SERVICE_ACCOUNT) return { ok: false, skipped: 'no-admin' };
+  try {
+    const token = await getFirebaseAdminToken(env);
+    return await createAdminInboxDocument({ fetchFn: fetch, base: FS_BASE, token, message });
+  } catch (e) {
+    console.error('admin inbox write', e?.message || e);
+    return { ok: false, error: e?.message || String(e) };
+  }
+}
+
 async function handleContact(request, env, cors) {
   const jsonHeaders = { ...cors, 'Content-Type': 'application/json' };
   try {
@@ -3623,19 +3635,21 @@ async function handleContact(request, env, cors) {
     const clientName = typeof body.displayName === 'string' ? body.displayName : null;
     const name = clientName || tokenName || 'משתמש ללא שם';
 
-    // Deliver to the developer — Web Push (uid-keyed, best-effort) + an email
-    // copy with the full message (#219: the app has no external bot anymore).
-    let pushSent = 0;
-    if (env.DEV_UID) {
-      try {
-        const r = await sendPushToUser(env, env.DEV_UID, {
-          title: `📨 הודעה חדשה מ-${name}`,
-          body: message.length > 180 ? `${message.slice(0, 177)}…` : message,
-          url: '/admin',
-        });
-        pushSent = r.sent || 0;
-      } catch { /* best-effort — email below is the reliable channel */ }
-    }
+    // Deliver to the admin mailbox (and an email copy). Not Web Push: that
+    // channel is the owner's trade alerts, and a feedback ping there was
+    // indistinguishable from a fill. (#219: the app has no external bot.)
+    const classified = classifyContact(message);
+    const wrote = await recordAdminInbox(env, {
+      kind: classified.kind,
+      type: classified.type,
+      title: classified.type === 'payment' ? `בקשת רכישה מ-${name}` : `משוב מ-${name}`,
+      body: message,
+      userId: uid,
+      userName: name,
+      userEmail: tokenEmail,
+      source: 'contact',
+    });
+    const inboxOk = !!wrote?.ok;
 
     // Recipients: pinned override if set, otherwise every admin with an email
     // (same resolution as the weekly digest).
@@ -3669,8 +3683,8 @@ async function handleContact(request, env, cors) {
       }
     }
 
-    if (!pushSent && !emailOk) {
-      console.error('Contact: no delivery channel succeeded (set DEV_UID with a push subscription, or MAIL_TO_ADMIN_OVERRIDE / GMAIL_APP_PASSWORD)');
+    if (!contactDelivered({ inboxOk, emailOk })) {
+      console.error('Contact: no delivery channel succeeded (FIREBASE_SERVICE_ACCOUNT for the admin mailbox, or MAIL_TO_ADMIN_OVERRIDE / GMAIL_APP_PASSWORD)');
       return new Response(JSON.stringify({ error: 'שגיאה בשליחת ההודעה' }), { status: 502, headers: jsonHeaders });
     }
 
@@ -4537,7 +4551,7 @@ async function handleRequest(request, env) {
     return handleAICoach(request, env, cors);
   }
 
-  // Contact Developer — delivered to the admins via Web Push + email
+  // Contact Developer — admin mailbox + email. Never a trade-style push.
   if (request.method === 'POST' && path === '/contact') {
     return handleContact(request, env, cors);
   }
@@ -5469,29 +5483,31 @@ async function handleRequest(request, env) {
       await sendEmail(env, { to: email, subject, html });
     })().catch(() => {});
 
-    // Notify the admin who created the coupon that someone just redeemed it.
-    if (coupon.createdBy) {
-      (async () => {
-        let who = 'משתמש';
-        try {
-          const me = await fetch(`https://firestore.googleapis.com/v1/projects/${FIREBASE_PROJECT_ID}/databases/(default)/documents/users/${uid}`, {
-            headers: { Authorization: `Bearer ${token}` },
-          });
-          if (me.ok) {
-            const f = (await me.json()).fields || {};
-            who = f.displayName?.stringValue || f.email?.stringValue || who;
-          }
-        } catch { /* keep default */ }
-        const used = fresh ? fresh.used : coupon.used + 1;
-        const cap = coupon.maxUses ? `${used}/${coupon.maxUses}` : `${used}`;
-        await sendPushToUser(env, coupon.createdBy, {
-          title: `🎫 הקופון ${code} מומש`,
-          body: `${who} מימש את הקוד (${cap} שימושים). ${coupon.days} ימי Premium ניתנו.`,
-          url: '/admin',
-          tag: `coupon-redeem-${code}-${uid}`,
+    // File the redemption in the admin mailbox. The buyer still gets their
+    // own confirmation push above; the owner does not.
+    (async () => {
+      let who = 'משתמש';
+      try {
+        const me = await fetch(`https://firestore.googleapis.com/v1/projects/${FIREBASE_PROJECT_ID}/databases/(default)/documents/users/${uid}`, {
+          headers: { Authorization: `Bearer ${token}` },
         });
-      })().catch(() => {});
-    }
+        if (me.ok) {
+          const f = (await me.json()).fields || {};
+          who = f.displayName?.stringValue || f.email?.stringValue || who;
+        }
+      } catch { /* keep default */ }
+      const used = fresh ? fresh.used : coupon.used + 1;
+      const cap = coupon.maxUses ? `${used}/${coupon.maxUses}` : `${used}`;
+      await recordAdminInbox(env, {
+        kind: 'system',
+        type: 'coupon',
+        title: `הקופון ${code} מומש`,
+        body: `${who} מימש את הקוד (${cap} שימושים). ${coupon.days} ימי Premium ניתנו.`,
+        userId: uid,
+        userName: who,
+        source: 'coupon',
+      });
+    })().catch(() => {});
 
     return new Response(JSON.stringify({
       ok: true,

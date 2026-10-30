@@ -356,6 +356,21 @@ service cloud.firestore {
       allow read, write: if isAdmin();
     }
 
+    // Admin mailbox (feedback + system notices). The Worker writes documents
+    // with the Firebase Admin SDK, which bypasses these rules. The admin UI
+    // may only flip read / archive — not rewrite the message.
+    match /adminInbox/{messageId} {
+      allow read: if isAdmin();
+      allow update: if isAdmin()
+        && request.resource.data.diff(resource.data).affectedKeys()
+            .hasOnly(['read', 'readAt', 'archived', 'archivedAt'])
+        && request.resource.data.read is bool
+        && request.resource.data.archived is bool
+        && (request.resource.data.readAt == null || request.resource.data.readAt is timestamp)
+        && (request.resource.data.archivedAt == null || request.resource.data.archivedAt is timestamp);
+      allow create, delete: if false;
+    }
+
     // Leaderboard — public read, write only own entry with validated fields
     match /leaderboard/{entryId} {
       allow read: if request.auth != null;
