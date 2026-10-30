@@ -39,6 +39,7 @@ describe('ErrorBoundary chunk recovery', () => {
   beforeEach(() => {
     sessionStorage.clear();
     resetChunkReloadForTests();
+    window.history.replaceState(null, '', '/');
     vi.spyOn(console, 'error').mockImplementation(() => {});
   });
 
@@ -73,6 +74,7 @@ describe('ErrorBoundary chunk recovery', () => {
 
     sessionStorage.clear();
     resetChunkReloadForTests();
+    window.history.replaceState(null, '', '/');
     const chunk = mount(Object.assign(new Error('network'), { name: 'ChunkLoadError' }));
     await chunk.render();
     expect(chunk.el.textContent).not.toContain('משהו השתבש');

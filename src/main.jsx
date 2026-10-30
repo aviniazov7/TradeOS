@@ -27,6 +27,6 @@ createRoot(document.getElementById('root')).render(
   </StrictMode>
 );
 
-// A new service worker claims the page and reloads once, so the open document
-// cannot keep running the previous bundle.
+// Register the service worker. Activation must not reload this document;
+// a missing hashed chunk reloads once from installChunkLoadRecovery.
 registerSW();

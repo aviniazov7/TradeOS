@@ -7,8 +7,11 @@ import {
   isChunkLoadError,
   isChunkReloadInFlight,
   loadWithChunkReload,
+  noteChunkReloadQuery,
   reloadOnceForChunkError,
   resetChunkReloadForTests,
+  shouldReloadForPreloadError,
+  shouldReloadForWindowError,
   stripChunkReloadQuery,
 } from './chunkReload';
 
@@ -34,8 +37,10 @@ describe('chunk load errors', () => {
     expect(isChunkLoadError(Object.assign(new Error('network'), { name: 'ChunkLoadError' }))).toBe(true);
     expect(isChunkLoadError(new Error('Loading chunk 12 failed.'))).toBe(true);
     expect(isChunkLoadError(new Error('Expected a JavaScript module script but the server responded with a MIME type of "text/html".'))).toBe(true);
+    expect(isChunkLoadError(new Error('unsupported MIME type'))).toBe(false);
     expect(isChunkLoadError(new Error('Cannot read properties of undefined'))).toBe(false);
     expect(isChunkLoadError(null)).toBe(false);
+    expect(isChunkLoadError(new Error('Unable to preload CSS for /assets/index.css'))).toBe(false);
   });
 });
 
@@ -86,13 +91,26 @@ describe('one-time hard reload', () => {
     expect(isChunkReloadInFlight()).toBe(false);
   });
 
-  it('strips the cache-buster without another navigation', () => {
+  it('strips the cache-buster without another navigation or clearing the guard', () => {
+    const storage = memoryStorage({ [CHUNK_RELOAD_KEY]: '1' });
     const location = { href: 'https://tradeoslive.web.app/journal?tab=1&__reload=99#h' };
     const history = { state: { k: 1 }, replaceState: vi.fn() };
+    expect(noteChunkReloadQuery(location, storage)).toBe(true);
     expect(stripChunkReloadQuery(location, history)).toBe(true);
     expect(history.replaceState).toHaveBeenCalledWith({ k: 1 }, '', '/journal?tab=1#h');
+    expect(storage.getItem(CHUNK_RELOAD_KEY)).toBe('1');
     expect(stripChunkReloadQuery({ href: 'https://tradeoslive.web.app/journal?tab=1' }, history)).toBe(false);
     expect(history.replaceState).toHaveBeenCalledTimes(1);
+    expect(storage.getItem(CHUNK_RELOAD_KEY)).toBe('1');
+  });
+
+  it('treats a document that still has the cache-buster as already reloaded', () => {
+    const storage = memoryStorage();
+    const reload = vi.fn();
+    const location = { href: 'https://tradeoslive.web.app/?__reload=5' };
+    expect(reloadOnceForChunkError({ storage, reload, location })).toBe(false);
+    expect(reload).not.toHaveBeenCalled();
+    expect(storage.getItem(CHUNK_RELOAD_KEY)).toBe('1');
   });
 });
 
@@ -160,18 +178,41 @@ describe('vite:preloadError and window errors', () => {
     return { target, reload, storage, history };
   }
 
-  it('reloads once on vite:preloadError and then lets the error surface', () => {
+  it('reloads once on a real vite:preloadError and then lets the error surface', () => {
     const { target, reload } = listen();
     const first = new Event('vite:preloadError', { cancelable: true });
+    first.payload = new Error('Failed to fetch dynamically imported module: /assets/app-old.js');
     target.dispatchEvent(first);
     expect(first.defaultPrevented).toBe(true);
     expect(reload).toHaveBeenCalledTimes(1);
 
     resetChunkReloadForTests();
     const second = new Event('vite:preloadError', { cancelable: true });
+    second.payload = new Error('Importing a module script failed.');
     target.dispatchEvent(second);
     expect(second.defaultPrevented).toBe(false);
     expect(reload).toHaveBeenCalledTimes(1);
+  });
+
+  it('ignores stylesheet preloads, empty prefetches, and modulepreload link errors', () => {
+    const { target, reload } = listen();
+    const css = new Event('vite:preloadError', { cancelable: true });
+    css.payload = new Error('Unable to preload CSS for /assets/index.css');
+    const empty = new Event('vite:preloadError', { cancelable: true });
+    const linkError = {
+      target: { tagName: 'LINK' },
+      message: 'Importing a module script failed.',
+      error: null,
+      preventDefault: vi.fn(),
+    };
+    target.dispatchEvent(css);
+    target.dispatchEvent(empty);
+    expect(shouldReloadForPreloadError(css)).toBe(false);
+    expect(shouldReloadForPreloadError(empty)).toBe(false);
+    expect(shouldReloadForPreloadError({ payload: new Error('Failed to fetch dynamically imported module') })).toBe(true);
+    expect(shouldReloadForWindowError(linkError, target)).toBe(false);
+    expect(reload).not.toHaveBeenCalled();
+    expect(css.defaultPrevented).toBe(false);
   });
 
   it('reloads on an unhandled chunk rejection and a Safari module error', () => {
@@ -216,7 +257,12 @@ describe('vite:preloadError and window errors', () => {
     expect(reload).not.toHaveBeenCalled();
     expect(noise.defaultPrevented).toBe(false);
 
+    const prefetch = new Event('vite:preloadError', { cancelable: true });
+    target.dispatchEvent(prefetch);
+    expect(reload).not.toHaveBeenCalled();
+
     const hit = new Event('vite:preloadError', { cancelable: true });
+    hit.payload = new Error('Loading chunk 3 failed.');
     target.dispatchEvent(hit);
     expect(reload).toHaveBeenCalledTimes(1);
   });

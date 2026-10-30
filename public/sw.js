@@ -71,11 +71,30 @@ function responseIsHtmlForImage(request, response) {
   return type.includes('text/html');
 }
 
+// The network refetch of a document. fetch() from this worker can be
+// intercepted again; path "/" and "/index.html" would otherwise look like
+// another document, recurse, and the navigation would fall back to the cached
+// shell on every open (stale hashes, then a chunk reload).
+function isShellRefetch(request) {
+  if (!request) return false;
+  try {
+    if (new URL(request.url).searchParams.get('__tos_net') === '1') return true;
+  } catch { /* ignore */ }
+  try {
+    const headers = request.headers;
+    if (headers && typeof headers.get === 'function' && headers.get('X-TradeOS-Shell-Refetch') === '1') return true;
+  } catch { /* ignore */ }
+  return false;
+}
+// END isShellRefetch
+
 // Navigations, the app shell, and any HTML document. Safari PWAs sometimes
 // deliver the document without mode "navigate"; treating only that mode as
-// the shell left /index.html on the generic cache path.
+// the shell left /index.html on the generic cache path. The shell refetch is
+// not a document — the browser must hit the network for it.
 function isDocumentRequest(request) {
   if (!request) return false;
+  if (isShellRefetch(request)) return false;
   if (request.mode === 'navigate' || request.destination === 'document') return true;
   let path = '';
   try { path = new URL(request.url).pathname; } catch { return false; }
@@ -102,13 +121,21 @@ function shouldRejectHtmlAsModule(request, response) {
 
 // Network-first document fetch. Pass the URL string, not the navigation
 // Request: Safari throws on fetch(navigateRequest) and the catch then served
-// the cached index.html that still points at removed chunks.
+// the cached index.html that still points at removed chunks. Mark the refetch
+// so this worker does not treat it as another navigation.
 async function networkFirstDocument(request) {
+  let requestUrl = request && request.url;
   try {
-    const response = await fetch(request.url, {
+    const parsed = new URL(requestUrl);
+    parsed.searchParams.set('__tos_net', '1');
+    requestUrl = parsed.toString();
+  } catch { /* keep the raw url */ }
+  try {
+    const response = await fetch(requestUrl, {
       cache: 'no-store',
       credentials: 'same-origin',
       redirect: 'follow',
+      headers: { 'X-TradeOS-Shell-Refetch': '1' },
     });
     if (response && response.ok) {
       const copy = response.clone();
@@ -139,7 +166,10 @@ self.addEventListener('install', (event) => {
       // with the HTML it shipped with. Non-fatal: if this fails the shell is
       // (re)cached by the next successful navigation below.
       try {
-        const res = await fetch(SHELL_URL, { cache: 'no-store' });
+        const res = await fetch(`${SHELL_URL}?__tos_net=1`, {
+          cache: 'no-store',
+          headers: { 'X-TradeOS-Shell-Refetch': '1' },
+        });
         if (res.ok) await cache.put(SHELL_URL, res);
       } catch { /* offline during install */ }
     })
@@ -181,6 +211,9 @@ self.addEventListener('fetch', (event) => {
   // Do not respondWith: the browser performs the request and the worker
   // never cache.put's an authenticated body.
   if (isPrivateWorkerRequest(event.request)) return;
+  // Shell refetch: do not respondWith. Handling it as a document recurses
+  // back into this worker and pins the visit to the cached shell.
+  if (isShellRefetch(event.request)) return;
 
   // Documents are network-first (no-store), including / and /index.html.
   // The cached shell is only the offline fallback — serving it while online
