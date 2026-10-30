@@ -1,4 +1,5 @@
-import { useState, useMemo, useEffect, useRef, lazy, Suspense } from 'react';
+import { useState, useMemo, useEffect, useRef, Suspense } from 'react';
+import { lazyWithChunkReload as lazy } from '../../utils/chunkReload';
 import { useSearchParams } from 'react-router-dom';
 import { m } from 'framer-motion';
 import { Plus, BookOpen, Settings, Undo2, BrainCircuit, ListChecks, Trash2, AlertTriangle, Sparkles, Briefcase, Loader2, Link2, FlaskConical } from 'lucide-react';
