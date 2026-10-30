@@ -198,6 +198,33 @@ export async function setUserProfile(uid, data, merge = true) {
   return withRetry(() => setDoc(doc(db, 'users', uid), data, merge ? { merge: true } : undefined));
 }
 
+// Keys the profile settings map is allowed to hold. Kept in sync with
+// profileSettingsKeys() in firestore.rules.
+export const PROFILE_SETTINGS_KEYS = [
+  'defaultLeverage', 'defaultRiskPercent', 'baseCurrency', 'assetClasses',
+  'strategies', 'favoriteCoins', 'journalMigrated', 'backtestMigrated',
+];
+
+/**
+ * Dotted-path update of users/{uid}.settings. setDoc({ merge: true }) replaces
+ * a map field entirely, so `{ settings: { journalMigrated: true } }` used to
+ * wipe favoriteCoins and the rest. Only allowlisted keys are written.
+ */
+export function settingsPatchFields(patch) {
+  const fields = {};
+  for (const [key, value] of Object.entries(patch || {})) {
+    if (!PROFILE_SETTINGS_KEYS.includes(key)) continue;
+    fields[`settings.${key}`] = value;
+  }
+  return fields;
+}
+
+export async function patchUserSettings(uid, patch) {
+  const fields = settingsPatchFields(patch);
+  if (!Object.keys(fields).length) return;
+  return withRetry(() => updateDoc(doc(db, 'users', uid), fields));
+}
+
 /**
  * Admin-only: grant a user a Premium plan for `days` (Infinity for lifetime).
  * Bypasses noPrivilegeEscalation via the admin-write Firestore rule.

@@ -3,6 +3,7 @@ import { Activity, ExternalLink, Radio, TrendingUp, TrendingDown } from 'lucide-
 import { fetchNewsImpact } from '../../services/newsService';
 import { LRM } from '../../utils/formatters';
 import { decodeHtmlEntities } from '../../utils/htmlEntities';
+import { safeHttpUrl } from '../../utils/urls';
 
 const AGE = (min) => (min < 60 ? `לפני ${min} דק׳` : `לפני ${Math.round(min / 60)} שע׳`);
 
@@ -49,9 +50,9 @@ function MoveCard({ f }) {
             </span>
           </div>
           <p className="text-xs text-text-secondary leading-relaxed mt-1.5">{decodeHtmlEntities(f.text)}</p>
-          {f.story?.url && (
+          {safeHttpUrl(f.story?.url) && (
             <a
-              href={f.story.url}
+              href={safeHttpUrl(f.story.url)}
               target="_blank"
               rel="noopener noreferrer"
               className="inline-flex items-center gap-1 text-[11px] text-accent-primary hover:text-accent-hover mt-1.5"

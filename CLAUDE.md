@@ -16,9 +16,8 @@ Never push directly to `main`. Always work on a feature branch and open a PR.
 - `main` — production. **No direct pushes.** Only reached via merge from `dev`
   (releases) or `hotfix/*` (emergency fixes).
 - `dev` — staging. Code is auto-deployed to the `dev` Firebase preview
-  channel + the Worker. **Merge here first**, validate in staging, then
-  promote to `main`. ⚠️ Note: the Worker deploy from `dev` actually updates
-  the production `trade-os` Worker (see Environments below).
+  channel. **Merge here first**, validate hosting in staging, then promote
+  to `main`. Worker deploys happen only from `main` (see Environments).
 - `feature/<short-name>` — new functionality. PR → `dev`.
 - `fix/<short-name>` — bug fix. PR → `dev` (or `main` if production-critical).
 - `hotfix/<short-name>` — production emergency. PR straight to `main`.
@@ -28,7 +27,7 @@ Never push directly to `main`. Always work on a feature branch and open a PR.
 | Trigger | What happens |
 |---|---|
 | Push to `main` | Auto-bumps version → builds → deploys Hosting (live) + Worker (production) |
-| Push to `dev` | Builds → deploys Hosting (`dev` channel) + Worker (`--env staging`) |
+| Push to `dev` | Builds → deploys Hosting (`dev` channel) only. Does not deploy Workers. |
 | Push to `feature/*`, `fix/*`, `hotfix/*` | Builds → deploys Hosting preview channel (uses staging Worker) |
 | Pull request to `main` or `dev` | Same as feature push + posts the preview URL as a PR comment |
 
@@ -92,13 +91,16 @@ changes. Firebase Storage is not used.
     same ALERTS_KV). Deployed by the CI step "Deploy Worker (alerts cron)",
     which first removes `.wrangler/deploy/config.json` to escape the redirect.
     Cron-path changes are DEAD until this worker is deployed too.
-  Merging to `dev` updates BOTH production Workers immediately, so treat
-  Worker changes on `dev` as production changes.
+  Only a push to `main` deploys either Worker. `dev` deploys hosting only.
+  `worker/wrangler.toml` `[env.staging]` still points at the production KV
+  id. Do not `wrangler deploy --env staging` until that id is a new
+  namespace created in the app Cloudflare account. Preview and the `dev`
+  channel keep calling the production Worker URL.
 - **Firestore:** **shared between production and staging.** No separation yet.
   This is fine for solo dev / low data volume, but be aware: test writes from
   staging modify real production data. Don't run destructive bulk operations.
-- **Cron triggers:** disabled in staging so admins don't receive duplicate
-  weekly digest / churn / expiry pushes.
+- **Cron triggers:** the alerts worker's `[env.staging]` has an empty cron
+  list. That env is not deployed. Production cron is `*/10` on `tradeos-alerts`.
 
 ## Accounts — read before touching secrets
 

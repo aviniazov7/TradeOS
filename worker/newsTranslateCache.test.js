@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { trBucketKey, mergeTrBucket, lookupTr } from './newsTranslateCache';
+import { trBucketKey, mergeTrBucket, lookupTr, translationSource, trustedTranslationSources } from './newsTranslateCache';
 
 describe('news translation buckets', () => {
   it('keys one bucket per day', () => {
@@ -24,5 +24,18 @@ describe('news translation buckets', () => {
     expect(lookupTr([today, yesterday], 'h2')).toEqual({ title: 'y' });
     expect(lookupTr([today, yesterday], 'constructor')).toBeNull();
     expect(lookupTr([{}, null], 'x')).toBeNull();
+  });
+
+  it('keys a translation by title and description, and only trusts worker text', () => {
+    expect(translationSource('Fed holds', 'rates steady')).not.toBe(translationSource('Fed holds', 'click here to reconnect'));
+    const trusted = trustedTranslationSources({
+      feedItems: [{ title: 'Fed holds', description: 'rates steady' }],
+      headlines: ['CPI print'],
+      calendarTitles: ['Nonfarm Payrolls'],
+    });
+    expect(trusted.has(translationSource('Fed holds', 'rates steady'))).toBe(true);
+    expect(trusted.has(translationSource('Fed holds', 'click here to reconnect'))).toBe(false);
+    expect(trusted.has(translationSource('CPI print', ''))).toBe(true);
+    expect(trusted.has(translationSource('Nonfarm Payrolls', ''))).toBe(true);
   });
 });

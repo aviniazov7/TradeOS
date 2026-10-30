@@ -879,26 +879,14 @@ export default function MarketOverview() {
 
       // (categories now computed from Binance data above — no CoinGecko needed)
 
-      // ── Altcoin Season Index ──────────────────────────────────────────────
+      // ── Altcoin Season Index (Worker fetches the fixed host) ─────────────
       try {
-        const proxyUrl = 'https://api.codetabs.com/v1/proxy/?quest=' + encodeURIComponent('https://www.blockchaincenter.net/en/altcoin-season-index/');
-        const proxyRes = await fetchWithTimeout(proxyUrl, 5000);
-        if (proxyRes.ok) {
-          const html = await proxyRes.text();
-          const idx90 = html.indexOf('\\"90\\":{');
-          if (idx90 !== -1) {
-            const chunk = html.substring(idx90, idx90 + 100000);
-            const closePattern = '},\\"';
-            const closeBrace = chunk.indexOf(closePattern);
-            if (closeBrace > 0) {
-              const section = chunk.substring(0, closeBrace);
-              const allDates = [...section.matchAll(/\\"(\d{4}-\d{2}-\d{2})\\":\\"(\d+)\\"/g)];
-              if (allDates.length) {
-                const lastVal = parseInt(allDates[allDates.length - 1][2], 10);
-                if (lastVal >= 0 && lastVal <= 100) setRealAltSeason(lastVal);
-              }
-            }
-          }
+        const workerBase = import.meta.env.VITE_WORKER_URL || 'https://trade-os.tradeos.workers.dev';
+        const seasonRes = await fetchWithTimeout(`${workerBase}/market/altcoin-season`, 5000);
+        if (seasonRes.ok) {
+          const data = await seasonRes.json();
+          const lastVal = Number(data?.value);
+          if (lastVal >= 0 && lastVal <= 100) setRealAltSeason(lastVal);
         }
       } catch { /* silent */ }
 

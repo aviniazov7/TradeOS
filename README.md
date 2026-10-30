@@ -140,10 +140,10 @@ flowchart TD
 |---|---|
 | UI | React 19, Vite 7, Tailwind CSS 4, Framer Motion, Recharts, Lucide icons, React Router 7 |
 | Data | Cloud Firestore (security rules), Firebase Auth (Google + email), Firebase Hosting |
-| Server | Cloudflare Workers + KV (HTTP and cron), Web Push (VAPID), Firebase Cloud Functions (trade import and admin notifications, `europe-west1`) |
+| Server | Cloudflare Workers + KV (HTTP and cron), Web Push (VAPID), Firebase Cloud Functions (admin notifications, `europe-west1`) |
 | Integrations | Exchange REST APIs (HMAC signed server-side), TradingView embeds, Groq (AI), Gmail SMTP (email), Moralis (wallets), Bank of Israel (FX rates) |
 | Quality | Vitest (unit tests), `@firebase/rules-unit-testing` (rules, in the emulator), ESLint, GitHub Actions |
-| Documents | jsPDF, xlsx, html-to-image (exports and share cards) |
+| Documents | jsPDF, a small formula-safe xlsx writer, html-to-image (exports and share cards) |
 
 ---
 
@@ -162,7 +162,7 @@ TradeOS/
 │   └── utils/             # calculations, formatters, constants, pure helpers (+ their tests)
 ├── worker/                # Cloudflare Worker: index.js (routes + cron) and pure, tested modules
 │                          #   (aiQuota, calendarAlert, adminEmail, unsubscribe, accountPurge, cspReport, …)
-├── functions/             # Firebase Cloud Functions (trade import, admin notifications)
+├── functions/             # Firebase Cloud Functions (admin notifications)
 ├── tests/rules/           # Firestore security-rules tests (emulator)
 ├── scripts/               # version bump, key-scan, one-off tooling
 ├── docs/                  # NEXT.md, VERSIONING.md, legal/, qa/, specs/

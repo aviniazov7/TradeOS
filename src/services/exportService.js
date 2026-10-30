@@ -1,7 +1,9 @@
 // Build a proper multi-sheet Excel workbook out of the user's Firestore data.
-// Loaded lazily by ProfilePage so the xlsx bundle doesn't ship to every user.
+// The writer emits inline strings and numbers only — a note that starts with
+// "=" cannot become a formula. SheetJS is not in the client graph.
 
 import { getUserCollectionDocs, getUserProfile } from './firestoreService';
+import { buildXlsx } from './xlsxSafe';
 import {
   ASSET_CLASS_LABELS, tradeAssetClass, tradeUnits, exitsSummary, grossPnl, signedR, statusLabel,
 } from '../utils/tradeExport';
@@ -143,69 +145,45 @@ const SHEETS = {
   },
 };
 
-function rowsFromDocs(docs, columns) {
-  return (docs || []).map((doc) => {
-    const row = {};
-    for (const col of columns) {
-      row[col.header] = col.get(doc) ?? '';
-    }
-    return row;
-  });
-}
-
-// Auto-fit each column to the longest cell (capped) so the output looks like a
-// real Excel file the moment you open it.
-function autoFitColumns(rows, columns) {
-  return columns.map((col) => {
-    let max = String(col.header).length;
-    for (const row of rows) {
-      const v = row[col.header];
-      const len = v == null ? 0 : String(v).length;
-      if (len > max) max = len;
-    }
-    return { wch: Math.min(50, Math.max(10, max + 2)) };
-  });
+function sheetRows(objects, columns) {
+  return [
+    columns.map((col) => col.header),
+    ...objects.map((doc) => columns.map((col) => col.get(doc) ?? '')),
+  ];
 }
 
 export async function exportToExcel(user) {
-  // Dynamic import so the ~600KB xlsx bundle only loads when the user actually
-  // clicks "Export Data" — keeps the cold start lean for everyone else.
-  const XLSX = await import('xlsx');
-
   const profile = await getUserProfile(user.uid).catch(() => null);
-  const wb = XLSX.utils.book_new();
+  const sheets = [{
+    name: 'סיכום',
+    rows: [
+      ['שדה', 'ערך'],
+      ['שם המשתמש', user.displayName || profile?.data?.displayName || ''],
+      ['אימייל', user.email || ''],
+      ['תאריך הצטרפות', fmtDate(user.metadata?.creationTime)],
+      ['תאריך הייצוא', fmtDate(new Date())],
+      ['מסלול', profile?.data?.plan === 'premium' ? 'Premium' : 'חינמי'],
+    ],
+  }];
 
-  // ── Summary sheet ──────────────────────────────────────────────────────────
-  const summaryRows = [
-    { 'שדה': 'שם המשתמש', 'ערך': user.displayName || profile?.data?.displayName || '' },
-    { 'שדה': 'אימייל', 'ערך': user.email || '' },
-    { 'שדה': 'תאריך הצטרפות', 'ערך': fmtDate(user.metadata?.creationTime) },
-    { 'שדה': 'תאריך הייצוא', 'ערך': fmtDate(new Date()) },
-    { 'שדה': 'מסלול', 'ערך': profile?.data?.plan === 'premium' ? 'Premium' : 'חינמי' },
-  ];
-  const summarySheet = XLSX.utils.json_to_sheet(summaryRows);
-  summarySheet['!cols'] = [{ wch: 20 }, { wch: 40 }];
-  XLSX.utils.book_append_sheet(wb, summarySheet, 'סיכום');
-
-  // ── One sheet per collection ───────────────────────────────────────────────
   let total = 0;
   for (const [colKey, def] of Object.entries(SHEETS)) {
     const docs = await getUserCollectionDocs(user.uid, colKey).catch(() => []);
     if (!docs.length) continue;
-    const rows = rowsFromDocs(docs, def.columns);
-    const sheet = XLSX.utils.json_to_sheet(rows);
-    sheet['!cols'] = autoFitColumns(rows, def.columns);
-    // Bold the header row — workbook viewers render it as a sticky-looking title.
-    const range = XLSX.utils.decode_range(sheet['!ref']);
-    for (let c = range.s.c; c <= range.e.c; c++) {
-      const addr = XLSX.utils.encode_cell({ r: 0, c });
-      if (sheet[addr]) sheet[addr].s = { font: { bold: true } };
-    }
-    XLSX.utils.book_append_sheet(wb, sheet, def.title);
-    total += rows.length;
+    sheets.push({ name: def.title, rows: sheetRows(docs, def.columns) });
+    total += docs.length;
   }
 
   const filename = `TradeOS-Export-${new Date().toISOString().slice(0, 10)}.xlsx`;
-  XLSX.writeFile(wb, filename);
+  const bytes = buildXlsx(sheets);
+  const blob = new Blob([bytes], { type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url;
+  a.download = filename;
+  document.body.appendChild(a);
+  a.click();
+  a.remove();
+  URL.revokeObjectURL(url);
   return { filename, total };
 }

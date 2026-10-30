@@ -1,9 +1,13 @@
 // On connect, ask the exchange whether this API key can trade or withdraw.
 // Checked venues: Bybit (readOnly flag), OKX (account config `perm`),
-// Bitget (authorities / permType), Binance (apiRestrictions).
-// MEXC has no endpoint a normal key can call to read its own permissions, so
-// the key is stored but reported as unverified (readOnly: null).
-// This module never places an order and never logs the secret.
+// Bitget (authorities / permType), Binance (apiRestrictions), MEXC
+// (GET /api/v3/apiKeyInfo — read permissions only). Anything else is
+// unsupported and must not be stored. This module never places an order
+// and never logs the secret.
+//
+// MEXC's query requires SPOT_ACCOUNT_READ. A futures-only key cannot prove
+// it is read-only, so it is rejected. The connect dialog asks for that
+// read permission. No write-shaped probe is sent.
 
 const enc = new TextEncoder();
 
@@ -100,7 +104,33 @@ function judgement(j) {
   throw new KeyPermissionError('permission_check_failed', CHECK_FAILED);
 }
 
-export const PERMISSION_CHECKED_EXCHANGES = new Set(['bybit', 'okx', 'bitget', 'binance']);
+const MEXC_READ = new Set([
+  'SPOT_ACCOUNT_READ',
+  'SPOT_DEAL_READ',
+  'CONTRACT_ACCOUNT_READ',
+  'CONTRACT_DEAL_READ',
+  'SPOT_TRANSFER_READ',
+  'SPOT_WITHDRAW_READ',
+]);
+
+// Anything outside this set (including SPOT_WITHDRAW_WRITE and every *_WRITE)
+// can move funds or place orders. Empty or unknown payloads fail closed.
+export function classifyMexcKeyInfo(data) {
+  if (!data || typeof data !== 'object' || Array.isArray(data) || data.code) return { ok: false, reason: 'unknown' };
+  if (data.status != null && String(data.status) !== 'VALID') return { ok: false, reason: 'unknown' };
+  const raw = data.permissions;
+  const parts = (Array.isArray(raw) ? raw : String(raw || '').split(','))
+    .map((s) => String(s).trim())
+    .filter(Boolean);
+  if (!parts.length) return { ok: false, reason: 'unknown' };
+  if (parts.some((p) => !MEXC_READ.has(p))) return { ok: false, reason: 'write' };
+  return { ok: true };
+}
+
+export const PERMISSION_CHECKED_EXCHANGES = new Set(['bybit', 'okx', 'bitget', 'binance', 'mexc']);
+
+// Ids the store route will even attempt. Unknown ids are not written to KV.
+export const STORABLE_EXCHANGES = PERMISSION_CHECKED_EXCHANGES;
 
 export async function verifyExchangeKeyReadOnly(exchange, creds, fetchImpl = fetch) {
   if (!PERMISSION_CHECKED_EXCHANGES.has(exchange)) return { verified: false, supported: false };
@@ -151,6 +181,21 @@ export async function verifyExchangeKeyReadOnly(exchange, creds, fetchImpl = fet
       const second = await getJson(fetchImpl, `https://api.bitget.com${v3}`, await headersFor(v3, String(Date.now())));
       if (second.code !== '00000') throw new KeyPermissionError('key_invalid', KEY_BAD);
       return judgement(classifyBitgetV3(second.data));
+    }
+    if (exchange === 'mexc') {
+      // Spot keys are alphanumeric. Reject anything else before it is placed
+      // on a query string. GET only — this is not an order or a withdraw.
+      if (!/^[A-Za-z0-9]+$/.test(String(apiKey || ''))) throw new KeyPermissionError('key_invalid', KEY_BAD);
+      const timestamp = Date.now().toString();
+      const qs = `accessKey=${apiKey}&recvWindow=5000&timestamp=${timestamp}`;
+      const signature = await hmac(apiSecret, qs);
+      const data = await getJson(
+        fetchImpl,
+        `https://api.mexc.com/api/v3/apiKeyInfo?${qs}&signature=${signature}`,
+        { 'X-MEXC-APIKEY': apiKey },
+      );
+      if (data.code || data.msg) throw new KeyPermissionError('key_invalid', KEY_BAD);
+      return judgement(classifyMexcKeyInfo(data));
     }
     if (exchange === 'binance') {
       const qs = `recvWindow=5000&timestamp=${Date.now()}`;

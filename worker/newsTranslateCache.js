@@ -12,6 +12,31 @@ export const TR_BUCKET_TTL = 60 * 60 * 24 * 3;
 
 export const trBucketKey = (date) => `news:trb:${date}`;
 
+// Cache identity is the exact title AND description the model saw. A title-only
+// key let the first writer of a headline replace the Hebrew line everyone else
+// reads. Slices match the translate route's caps.
+export function translationSource(title, desc) {
+  return `${String(title || '').slice(0, 300)}\n${String(desc || '').slice(0, 200)}`;
+}
+
+// Sources the Worker fetched itself (RSS feed, digest headlines, calendar
+// titles). A translation of anything else is returned to the caller and not
+// written into the shared bucket.
+export function trustedTranslationSources({ feedItems = [], headlines = [], calendarTitles = [] } = {}) {
+  const out = new Set();
+  for (const item of feedItems) {
+    if (!item?.title) continue;
+    out.add(translationSource(item.title, item.description || item.desc || ''));
+  }
+  for (const title of headlines) {
+    if (title) out.add(translationSource(title, ''));
+  }
+  for (const title of calendarTitles) {
+    if (title) out.add(translationSource(title, ''));
+  }
+  return out;
+}
+
 // Merge new translations into a bucket, keeping at most `max` entries (the
 // oldest insertions are dropped first). Returns a new object.
 export function mergeTrBucket(bucket, additions, max = TR_BUCKET_MAX) {

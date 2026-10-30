@@ -5,6 +5,7 @@
 // observed the same counter.
 
 import { planAiCharge, planAiRefund, quotaUsage } from './aiQuota.js';
+import { advanceWindow } from './windowCounter.js';
 
 export function createQuotaGate({ read, write, seed, clear }) {
   let tail = Promise.resolve();
@@ -115,11 +116,20 @@ export function createMemoryQuotaNamespace({ kv = null, delayMs = 0 } = {}) {
         seeded = true;
       },
     });
+    const windows = new Map();
     const api = {
       charge: (input) => gate.charge({ ...input, uid: input?.uid || uid }),
       refund: (input) => gate.refund({ ...input, uid: input?.uid || uid }),
       usage: (input) => gate.usage(typeof input === 'string' ? { date: input, uid } : { ...input, uid: input?.uid || uid }),
       wipe: () => gate.wipe(),
+      bump(input) {
+        const key = String(input?.key || '');
+        const windowMs = Number(input?.windowMs);
+        if (!key || !Number.isFinite(windowMs)) return { error: true };
+        const next = advanceWindow(windows.get(key), Date.now(), windowMs);
+        windows.set(key, next);
+        return { count: next.count };
+      },
     };
     gates.set(uid, api);
     return api;

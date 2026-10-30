@@ -33,6 +33,81 @@ service cloud.firestore {
               'marketingEmails', 'marketingEmailsAt'];
     }
 
+    // Keys the client may keep inside users/{uid}.settings. A setDoc merge
+    // replaces the whole map, so writers must patch with a dotted path
+    // (settings.journalMigrated) — see patchUserSettings. Unknown keys cannot
+    // be added. Secret names are rejected anywhere in the map, including keys
+    // that were already there, so a parked apiKey blocks further settings
+    // writes until the map is replaced without it.
+    function profileSettingsKeys() {
+      return ['defaultLeverage', 'defaultRiskPercent', 'baseCurrency', 'assetClasses',
+              'strategies', 'favoriteCoins', 'journalMigrated', 'backtestMigrated'];
+    }
+
+    function secretFieldNames() {
+      return ['apiKey', 'apiSecret', 'secret', 'apiPassphrase', 'passphrase', 'privateKey', 'seed'];
+    }
+
+    function settingsValuesOk(s) {
+      return s is map
+        && !s.keys().hasAny(secretFieldNames())
+        && (!('defaultLeverage' in s) || (s.defaultLeverage is number && s.defaultLeverage >= 1 && s.defaultLeverage <= 200))
+        && (!('defaultRiskPercent' in s) || (s.defaultRiskPercent is number && s.defaultRiskPercent >= 0 && s.defaultRiskPercent <= 100))
+        && (!('baseCurrency' in s) || (s.baseCurrency is string && s.baseCurrency.size() > 0 && s.baseCurrency.size() <= 12))
+        && (!('assetClasses' in s) || (
+             s.assetClasses is list
+             && s.assetClasses.size() >= 1
+             && s.assetClasses.size() <= 3
+             && s.assetClasses.hasOnly(['crypto', 'stocks', 'futures_cme'])
+           ))
+        && (!('strategies' in s) || (s.strategies is list && s.strategies.size() <= 40))
+        && (!('favoriteCoins' in s) || (s.favoriteCoins is list && s.favoriteCoins.size() <= 60))
+        && (!('journalMigrated' in s) || s.journalMigrated is bool)
+        && (!('backtestMigrated' in s) || s.backtestMigrated is bool);
+    }
+
+    function settingsOnCreateOk() {
+      return !('settings' in request.resource.data)
+        || (
+          request.resource.data.settings is map
+          && request.resource.data.settings.keys().hasOnly(profileSettingsKeys())
+          && settingsValuesOk(request.resource.data.settings)
+        );
+    }
+
+    // Nested diff: an older extra key that is not a secret does not block a
+    // patch of journalMigrated. Adding apiKey, or leaving one in the map, does.
+    function settingsOnUpdateOk() {
+      return !request.resource.data.diff(resource.data).affectedKeys().hasAny(['settings'])
+        || (
+          request.resource.data.settings is map
+          && settingsValuesOk(request.resource.data.settings)
+          && (
+            !(resource.data.settings is map)
+            || request.resource.data.settings.diff(resource.data.settings).affectedKeys().hasOnly(profileSettingsKeys())
+          )
+          && (
+            resource.data.settings is map
+            || request.resource.data.settings.keys().hasOnly(profileSettingsKeys())
+          )
+        );
+    }
+
+    // Profile email is the Auth email. A user cannot point coupon or campaign
+    // mail at a third party by editing this field. Absent on both sides is fine.
+    function emailMatchesAuth(value) {
+      return value == request.auth.token.email;
+    }
+
+    function emailOnCreateOk() {
+      return !('email' in request.resource.data) || emailMatchesAuth(request.resource.data.email);
+    }
+
+    function emailOnUpdateOk() {
+      return !request.resource.data.diff(resource.data).affectedKeys().hasAny(['email'])
+        || emailMatchesAuth(request.resource.data.email);
+    }
+
     // marketingEmails must be a bool and marketingEmailsAt a timestamp when
     // present, so the field the campaign filter trusts can't hold junk.
     function marketingFieldsOk(data) {
@@ -44,14 +119,18 @@ service cloud.firestore {
     // weekly digest counts new signups by it), so it's allowed on create only.
     function ownerProfileCreateOk() {
       return request.resource.data.keys().hasOnly(ownerProfileKeys().concat(['createdAt']))
-        && marketingFieldsOk(request.resource.data);
+        && marketingFieldsOk(request.resource.data)
+        && emailOnCreateOk()
+        && settingsOnCreateOk();
     }
 
     // Only the keys this write actually changes are checked, so fields an older
     // app version left on the doc never block a profile update.
     function ownerProfileUpdateOk() {
       return request.resource.data.diff(resource.data).affectedKeys().hasOnly(ownerProfileKeys())
-        && marketingFieldsOk(request.resource.data);
+        && marketingFieldsOk(request.resource.data)
+        && emailOnUpdateOk()
+        && settingsOnUpdateOk();
     }
 
     // Secret field names are forbidden anywhere in settings. The encrypted

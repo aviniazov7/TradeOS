@@ -2,7 +2,7 @@
 // Run against the local emulator only: `npm run test:rules`.
 import { readFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
-import { describe, it, beforeAll, beforeEach, afterAll } from 'vitest';
+import { describe, it, expect, beforeAll, beforeEach, afterAll } from 'vitest';
 import {
   initializeTestEnvironment,
   assertSucceeds,
@@ -42,7 +42,9 @@ const PRIVILEGED = {
 };
 
 let env;
-const asUser = (uid) => env.authenticatedContext(uid).firestore();
+// Token email matches OWNER_FIELDS.email so the bind-to-auth rule allows the
+// writes these tests already make. A different address is covered below.
+const asUser = (uid, claims) => env.authenticatedContext(uid, { email: 'avi@example.com', ...claims }).firestore();
 const asGuest = () => env.unauthenticatedContext().firestore();
 
 async function seed(path, data) {
@@ -120,6 +122,26 @@ describe('users/{uid} — owner update', () => {
 
   it("rejects writing someone else's profile", async () => {
     await assertFails(updateDoc(doc(asUser('alice'), 'users/bob'), { displayName: 'pwned' }));
+  });
+
+  it('rejects an email that is not the Auth token email', async () => {
+    await assertFails(updateDoc(doc(asUser('alice'), 'users/alice'), { email: 'other@example.com' }));
+  });
+
+  it('keeps the rest of settings when one key is patched', async () => {
+    const db = asUser('alice');
+    await assertSucceeds(updateDoc(doc(db, 'users/alice'), { 'settings.journalMigrated': true }));
+    const snap = await getDoc(doc(db, 'users/alice'));
+    expect(snap.data().settings.baseCurrency).toBe('USDT');
+    expect(snap.data().settings.assetClasses).toEqual(['crypto']);
+    expect(snap.data().settings.journalMigrated).toBe(true);
+  });
+
+  it('rejects apiKey inside settings', async () => {
+    await assertFails(updateDoc(doc(asUser('alice'), 'users/alice'), { 'settings.apiKey': 'leaked' }));
+    await assertFails(setDoc(doc(asUser('alice'), 'users/alice'), {
+      settings: { apiKey: 'leaked', baseCurrency: 'USDT', assetClasses: ['crypto'] },
+    }, { merge: true }));
   });
 });
 

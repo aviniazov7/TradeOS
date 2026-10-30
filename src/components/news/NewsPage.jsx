@@ -86,9 +86,8 @@ function saveHeCache(map, key = HE_CACHE_KEY) {
   } catch { /* quota/full/private mode — non-fatal */ }
 }
 
-// ─── Economic Calendar (Forex Factory via allorigins proxy) ───
+// ─── Economic Calendar (Forex Factory, fetched by the Worker) ───
 const WORKER_URL = import.meta.env.VITE_WORKER_URL || 'https://trade-os.tradeos.workers.dev';
-const CALENDAR_URL = 'https://nfs.faireconomy.media/ff_calendar_thisweek.json';
 const CALENDAR_CACHE_KEY = 'tradeos_econ_calendar_v3';
 const CALENDAR_CACHE_TTL = 60 * 60 * 1000; // 1 hour
 
@@ -251,46 +250,24 @@ function EconomicCalendar() {
     else setLoading(true);
     setError(null);
 
-    // Try our own worker first (reliable, server-side fetch), then fall back
-    // to the public allorigins proxy if the worker is unavailable.
-    const strategies = [
-      {
-        url: `${WORKER_URL}/calendar`,
-        parse: (res) => res.json(),
-      },
-      {
-        url: `https://api.allorigins.win/raw?url=${encodeURIComponent(CALENDAR_URL)}`,
-        parse: (res) => res.json(),
-      },
-      {
-        url: `https://api.allorigins.win/get?url=${encodeURIComponent(CALENDAR_URL)}`,
-        parse: async (res) => {
-          const json = await res.json();
-          if (!json.contents) throw new Error('no contents');
-          const parsed = JSON.parse(json.contents);
-          return parsed;
-        },
-      },
-    ];
-
-    for (const strategy of strategies) {
-      try {
-        const controller = new AbortController();
-        const timer = setTimeout(() => controller.abort(), 12000);
-        const res = await fetch(strategy.url, { signal: controller.signal });
-        clearTimeout(timer);
-        if (!res.ok) continue;
-        const data = await strategy.parse(res);
-        if (!Array.isArray(data) || data.length === 0) continue;
-
-        setEvents(data);
-        try {
-          localStorage.setItem(CALENDAR_CACHE_KEY, JSON.stringify({ data, ts: Date.now() }));
-        } catch { /* ignore */ }
-        setLoading(false);
-        return;
-      } catch { /* try next */ }
-    }
+    // The Worker fetches Forex Factory. The browser does not call an open proxy.
+    try {
+      const controller = new AbortController();
+      const timer = setTimeout(() => controller.abort(), 12000);
+      const res = await fetch(`${WORKER_URL}/calendar`, { signal: controller.signal });
+      clearTimeout(timer);
+      if (res.ok) {
+        const data = await res.json();
+        if (Array.isArray(data) && data.length > 0) {
+          setEvents(data);
+          try {
+            localStorage.setItem(CALENDAR_CACHE_KEY, JSON.stringify({ data, ts: Date.now() }));
+          } catch { /* ignore */ }
+          setLoading(false);
+          return;
+        }
+      }
+    } catch { /* show the error below */ }
 
     if (events.length === 0) {
       setError('\u05DC\u05D0 \u05D4\u05E6\u05DC\u05D7\u05E0\u05D5 \u05DC\u05D8\u05E2\u05D5\u05DF \u05D0\u05EA \u05D4\u05D9\u05D5\u05DE\u05DF \u05D4\u05DB\u05DC\u05DB\u05DC\u05D9. \u05E0\u05E1\u05D4 \u05E9\u05D5\u05D1 \u05D1\u05E2\u05D5\u05D3 \u05DE\u05E1\u05E4\u05E8 \u05D3\u05E7\u05D5\u05EA.');
