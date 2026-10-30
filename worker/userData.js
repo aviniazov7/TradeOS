@@ -8,7 +8,7 @@ export const USER_SUBCOLLECTIONS = [
   'trades', 'journals', 'backtests', 'backtestJournals', 'dca',
   'tradingPlans', 'notes', 'strategies', 'morningJournals', 'eveningJournals',
   'processes', 'polymarketWatch', 'polymarketStrategies', 'settings',
-  'tradeImages',
+  'tradeImages', 'apiKeys', 'apiIdempotency',
 ];
 
 // Single per-user KV keys (prefix-listed families — push:{uid}:*,

@@ -82,6 +82,13 @@ service cloud.firestore {
         && (!('hyperliquid' in data) || exchangeMarkerOk(data.hyperliquid));
     }
 
+    // API key lookup. The document id is the SHA-256 of the secret (tos_…).
+    // Only the Worker (Admin SDK, which bypasses rules) writes it. Clients
+    // cannot read or list the hash index.
+    match /apiKeyIndex/{hash} {
+      allow read, write: if false;
+    }
+
     match /users/{userId} {
       // Owners read their own doc; admins may read any user doc
       // (read-only — admins cannot write to other users' data).
@@ -157,6 +164,20 @@ service cloud.firestore {
             (settingId == 'exchanges' && exchangesSettingsOk(request.resource.data))
             || (settingId != 'exchanges' && noSecretFieldNames(request.resource.data))
           );
+      }
+      // Public-API keys. Metadata only (name, prefix, timestamps) — the hash
+      // lives in apiKeyIndex, which clients cannot read. The Worker creates
+      // keys; the owner can read and delete them (account wipe). Revoke from
+      // the app goes through the Worker so the hash index is removed too.
+      match /apiKeys/{keyId} {
+        allow read, delete: if request.auth != null && request.auth.uid == userId;
+        allow create, update: if false;
+      }
+      // Idempotency records for POST /api/v1/trades. No secret material.
+      // Owner read/delete so account deletion can list and wipe them.
+      match /apiIdempotency/{idemId} {
+        allow read, delete: if request.auth != null && request.auth.uid == userId;
+        allow create, update: if false;
       }
       match /journals/{journalId} {
         allow read: if request.auth != null && (request.auth.uid == userId || isAdmin());
