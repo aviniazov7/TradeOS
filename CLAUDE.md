@@ -29,7 +29,8 @@ Never push directly to `main`. Always work on a feature branch and open a PR.
 | Push to `main` | Auto-bumps version → builds → deploys Hosting (live) + Worker (production) |
 | Push to `dev` | Builds → deploys Hosting (`dev` channel) only. Does not deploy Workers. |
 | Push to `feature/*`, `fix/*`, `hotfix/*` | Builds → deploys Hosting preview channel (uses staging Worker) |
-| Pull request to `main` or `dev` | Same as feature push + posts the preview URL as a PR comment |
+| Pull request to `dev` | Same as feature push + posts the preview URL as a PR comment |
+| Pull request to `main` (same repo, opened/synchronize/reopened) | `.github/workflows/preview-hosting.yml` builds and deploys a Hosting preview channel on target `app` (site `tradeoslive`) for 7 days, and comments the URL. No Workers, rules, or functions |
 
 Preview channels live 7 days then auto-delete.
 

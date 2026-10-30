@@ -41,6 +41,8 @@ it('allows the live hosting origin and its preview channels', async () => {
     'https://tradeoslive.web.app',
     'https://tradeoslive.firebaseapp.com',
     'https://tradeoslive--dev-abc123.web.app',
+    'https://tradeoslive--pr-42-a1b2c3d4.web.app',
+    'https://tradeoslive--pr42-feature_branch-abc.web.app',
   ];
   for (const origin of allowed) {
     const res = await worker.fetch(new Request('https://x/health', { headers: { Origin: origin } }), {});
@@ -53,6 +55,8 @@ it('allows the live hosting origin and its preview channels', async () => {
     'https://tradeos-91a58.web.app',
     'https://tradeos-91a58.firebaseapp.com',
     'https://tradeos-91a58--pr-12-abc.web.app',
+    'https://tradeoslive--evil.com.web.app',
+    'https://tradeoslive.web.app.evil.example',
   ]) {
     const res = await worker.fetch(new Request('https://x/health', { headers: { Origin: origin } }), {});
     expect(res.headers.get('Access-Control-Allow-Origin'), origin).toBe('https://tradeoslive.web.app');

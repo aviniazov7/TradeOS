@@ -3704,7 +3704,9 @@ const ALLOWED_ORIGINS = [
   'https://trade-os-staging.tradeos.workers.dev',
 ];
 // Preview channels are https://tradeoslive--CHANNEL-HASH.web.app (site tradeoslive only).
-const PREVIEW_ORIGIN_RE = /^https:\/\/tradeoslive--[a-z0-9-]+\.web\.app$/i;
+// Channel ids are letters, digits, hyphens, and underscores. A dot would be
+// another DNS label, so it is not part of this host.
+const PREVIEW_ORIGIN_RE = /^https:\/\/tradeoslive--[a-z0-9_-]+\.web\.app$/i;
 function isAllowedOrigin(origin) {
   if (!origin) return false;
   return ALLOWED_ORIGINS.includes(origin) || PREVIEW_ORIGIN_RE.test(origin);

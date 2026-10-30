@@ -21,6 +21,21 @@ function directives(policy) {
   return out;
 }
 
+// https://*.web.app matches one or more labels under web.app. A literal host
+// matches only that host. Non-https sources are ignored.
+function httpsHostAllowed(sources, url) {
+  const host = new URL(url).hostname;
+  return sources.some((source) => {
+    if (!source.startsWith('https://')) return false;
+    const pattern = source.slice('https://'.length).replace(/\/$/, '');
+    if (pattern.startsWith('*.')) {
+      const suffix = pattern.slice(1);
+      return host.endsWith(suffix) && host.length > suffix.length;
+    }
+    return host === pattern;
+  });
+}
+
 describe('hosting CSP (report-only)', () => {
   const policy = header('Content-Security-Policy-Report-Only');
   const d = policy ? directives(policy) : {};
@@ -85,6 +100,19 @@ describe('hosting CSP (report-only)', () => {
     expect(d['frame-src'].join(' ')).not.toMatch(/tradeos-91a58\.(web|firebaseapp)\.com/);
     // The Auth SDK can still call the project's default firebaseapp.com host.
     expect(d['connect-src']).toContain('https://*.firebaseapp.com');
+  });
+
+  // CSP host-sources only wildcard a full leftmost label (https://*.web.app).
+  // tradeoslive--*.web.app is not a valid host-source, so preview channels
+  // (https://tradeoslive--CHANNEL-HASH.web.app) are covered by *.web.app.
+  it('allows Hosting preview channels in frame-src and connect-src', () => {
+    for (const directive of ['frame-src', 'connect-src']) {
+      expect(d[directive]).toContain('https://*.web.app');
+      expect(httpsHostAllowed(d[directive], 'https://tradeoslive--pr-12-abc123.web.app')).toBe(true);
+      expect(httpsHostAllowed(d[directive], 'https://tradeoslive--pr42-feature_branch-abc.web.app')).toBe(true);
+      expect(httpsHostAllowed(d[directive], 'https://evil.example')).toBe(false);
+      expect(httpsHostAllowed(d[directive], 'https://tradeoslive.web.app.evil.example')).toBe(false);
+    }
   });
 });
 
