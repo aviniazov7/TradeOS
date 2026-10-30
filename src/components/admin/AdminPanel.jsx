@@ -10,6 +10,7 @@ import AdminUsers from './AdminUsers';
 import AdminGrowth from './AdminGrowth';
 import AdminSystem from './AdminSystem';
 import AdminNotifications from './AdminNotifications';
+import AdminInbox from './AdminInbox';
 import { primaryBtn, softBtn, Pill, Meter, Avatar } from './AdminUi';
 import {
   DAY_MS, RISK_DAYS, ILS, EXCHANGE_NAMES, KIND_META, toDate, formatDate, isUserPremium, lastActiveMs, createdMs,
@@ -21,6 +22,7 @@ import { fetchUserAiUsage, fetchGlobalAiUsage, fetchAiStats, fetchSystemHealth, 
 import { adminSendNotification, adminScheduleExpiryReminders, adminCancelExpiryReminders, adminRefreshPlanCache, adminListAuditEvents, adminSendPaymentEmail, adminDeleteUser, adminGetPushStatus, adminGetExchangesStatus, adminGetFirebaseUsage } from '../../services/pushService';
 import { adminListCoupons, adminCreateCoupon, adminDeleteCoupon, couponShareUrl } from '../../services/couponService';
 import { subscribeUnreadAdminNotificationCount } from '../../services/adminNotificationService';
+import { subscribeAdminMailboxUnread } from '../../services/adminInboxService';
 import LoadingSpinner from '../shared/LoadingSpinner';
 import SelectDropdown from '../shared/SelectDropdown';
 import Modal from '../shared/Modal';
@@ -33,7 +35,7 @@ import { receivesMarketingEmail } from '../../utils/marketingConsent';
 const AI_TEXT_LIMIT = { free: 20, premium: 200 };
 const AI_IMAGE_LIMIT = 10; // premium only
 
-const TAB_IDS = ['overview', 'users', 'growth', 'system', 'notifications'];
+const TAB_IDS = ['overview', 'users', 'growth', 'system', 'inbox', 'notifications'];
 const LEVEL_DOT = {
   ok: 'bg-profit shadow-[0_0_8px_rgba(34,197,94,0.7)]',
   warn: 'bg-amber-500 shadow-[0_0_8px_rgba(245,158,11,0.7)]',
@@ -92,6 +94,7 @@ export default function AdminPanel() {
   const [liveUnread, setLiveUnread] = useState(0);
   const [demoUnread, setDemoUnread] = useState(0);
   const unread = demoNotifs ? demoUnread : liveUnread;
+  const [inboxUnread, setInboxUnread] = useState(0);
 
   const load = () => {
     setLoading(true);
@@ -119,6 +122,11 @@ export default function AdminPanel() {
     if (!isAdmin || demoNotifs) return undefined;
     return subscribeUnreadAdminNotificationCount(setLiveUnread, () => {});
   }, [isAdmin, demoNotifs]);
+
+  useEffect(() => {
+    if (!isAdmin) return undefined;
+    return subscribeAdminMailboxUnread(setInboxUnread, () => {});
+  }, [isAdmin]);
 
   useEffect(() => {
     if (!isAdmin) return;
@@ -364,6 +372,7 @@ export default function AdminPanel() {
         </span>
       ),
     },
+    { id: 'inbox', label: 'תיבה', mobileLabel: 'תיבה', count: inboxUnread },
     { id: 'notifications', label: 'התראות', mobileLabel: 'התראות', count: unread },
   ];
 
@@ -444,6 +453,12 @@ export default function AdminPanel() {
             aiTest={aiTest} aiTesting={aiTesting} runAiTest={runAiTest}
             fbUsage={fbUsage} fbLoading={fbLoading} refreshFbUsage={refreshFbUsage}
           />
+        )}
+        {tab === 'inbox' && (
+          <AdminInbox onOpenUser={(uid) => {
+            const u = users.find((row) => row.id === uid);
+            if (u) openUser(u);
+          }} />
         )}
         {tab === 'notifications' && (
           <AdminNotifications demo={demoNotifs} onUnreadChange={demoNotifs ? setDemoUnread : undefined} />

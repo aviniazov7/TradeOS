@@ -68,6 +68,7 @@ function RowContent({ icon, label, active, highlight }) {
 }
 
 function NavRow({ item, active, onClose }) {
+  const badge = Number(item.badge) || 0;
   return (
     <Link
       to={item.to}
@@ -77,14 +78,42 @@ function NavRow({ item, active, onClose }) {
       style={active ? activeBg : undefined}
     >
       <RowContent icon={item.icon} label={item.label} active={active} highlight={item.highlight} />
+      {badge > 0 && (
+        <span
+          data-testid="admin-nav-unread"
+          className="ms-auto min-w-[18px] h-[18px] px-1 rounded-full bg-loss text-white text-[10px] font-bold grid place-items-center num-mono"
+          aria-label={`${badge} הודעות שלא נקראו`}
+        >
+          {badge > 99 ? '99+' : badge}
+        </span>
+      )}
     </Link>
   );
+}
+
+function useMailboxBadge(isAdmin) {
+  const [count, setCount] = useState(0);
+  useEffect(() => {
+    if (!isAdmin) return undefined;
+    let unsub = () => {};
+    let cancelled = false;
+    import('../../services/adminInboxService').then((mod) => {
+      if (cancelled) return;
+      unsub = mod.subscribeAdminMailboxUnread((n) => setCount(n || 0), () => {});
+    }).catch(() => {});
+    return () => {
+      cancelled = true;
+      unsub();
+    };
+  }, [isAdmin]);
+  return isAdmin ? count : 0;
 }
 
 export default function Sidebar({ mobileOpen, onClose }) {
   const { isAdmin } = useAuth();
   const { pathname } = useLocation();
   const [calcOpen, setCalcOpen] = useState(false);
+  const mailboxUnread = useMailboxBadge(isAdmin);
 
   // Lock body scroll when sidebar is open
   useEffect(() => {
@@ -99,7 +128,7 @@ export default function Sidebar({ mobileOpen, onClose }) {
   const footerItems = [
     { to: '/premium', label: 'שדרוג Premium', icon: Crown, highlight: true },
     { to: '/profile', label: 'פרופיל', icon: User },
-    ...(isAdmin ? [{ to: '/admin', label: 'ניהול', icon: Shield }] : []),
+    ...(isAdmin ? [{ to: '/admin', label: 'ניהול', icon: Shield, badge: mailboxUnread }] : []),
   ];
 
   return (

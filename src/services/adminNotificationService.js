@@ -18,7 +18,9 @@ function mapDoc(d) {
 
 export function subscribeUnreadAdminNotificationCount(onCount, onError) {
   const q = query(collection(db, FEED), where('read', '==', false), limit(100));
-  return onSnapshot(q, (snap) => onCount(snap.size), onError);
+  return onSnapshot(q, (snap) => {
+    onCount(snap.docs.filter((d) => d.data().archived !== true).length);
+  }, onError);
 }
 
 export function subscribeAdminNotificationSettings(onData, onError) {
