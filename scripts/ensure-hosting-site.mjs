@@ -84,6 +84,7 @@ export function manualAuthSteps(siteId, detail) {
     'That origin and redirect URI are on the Google OAuth web client, so the consent screen shows tradeoslive.',
     `Password-reset and email-verification links continue on ${AUTH_DOMAIN} (/__/auth/action).`,
     `Keep https://${siteId}.web.app in Firebase Auth authorized domains.`,
+    `Do not remove ${PROJECT_ID}.firebaseapp.com from authorized domains, and do not remove https://${PROJECT_ID}.firebaseapp.com/__/auth/handler from the Google OAuth client. That host is the project's default Auth domain. It is not the Hosting site.`,
     '',
     `Authorized domains: https://console.firebase.google.com/project/${PROJECT_ID}/authentication/settings`,
     'The iOS PWA function verifies tokens for client 80529278454-eirltbaukcv1ftquu6uth5bbk3srnl7d.apps.googleusercontent.com.',

@@ -8,7 +8,7 @@
 ## 1. השירות
 
 - **מה זה:** יומן מסחר בעברית (אפליקציית רשת, PWA) לסוחרי קריפטו, מניות ופיוצ'רס: רישום עסקאות, סטטיסטיקות, יומן מנטלי, תוכניות מסחר, חיבור לבורסות, ועוזר AI.
-- **הכתובת:** [https://tradeoslive.web.app](https://tradeoslive.web.app) (אתר Hosting `tradeoslive` באותו פרויקט Firebase). `tradeos`, `tradeosapp` ו-`tradeos-app` תפוסים על ידי פרויקטים אחרים. המארח הישן `tradeos-91a58.web.app` מפנה אליה בהפניה 301, כולל הנתיב ומחרוזת השאילתה. אין דומיין משלו.
+- **הכתובת:** [https://tradeoslive.web.app](https://tradeoslive.web.app) (אתר Hosting `tradeoslive` באותו פרויקט Firebase). `tradeos`, `tradeosapp` ו-`tradeos-app` תפוסים על ידי פרויקטים אחרים. אתר ברירת המחדל `tradeos-91a58` אינו יעד פרסום; מכבים אותו ידנית (`firebase hosting:disable --project tradeos-91a58 --site tradeos-91a58`). אין דומיין משלו.
 - **מי המפעיל:** אדם פרטי (אבי ניאזוב). לא נמצאה בקוד חברה או עוסק רשום.
 - **תשלומים:** **לא פעילים** (`PAYMENTS_ENABLED = false`). Premium ניתן ידנית על ידי מנהל, או בקופון. אין סליקת כרטיסי אשראי באפליקציה.
 - **דף קיים:** מדיניות החזרים (`/refund-policy`) והצהרת נגישות (`/accessibility`). **אין** תנאי שימוש ומדיניות פרטיות, ואין קישור אליהם בהרשמה.

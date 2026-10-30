@@ -1,19 +1,28 @@
 # רשימת משימות לבעלים — TradeOS
 
 > מה נשאר לך לעשות (לא קוד). לכל סעיף: מתי, איפה, ומה בדיוק ללחוץ.
-> עודכן: 20.10.2026. כשמשהו נסגר — סמן V, ובקש מ-Claude לעדכן את `docs/NEXT.md` וה-README אם צריך.
+> עודכן: 30.10.2026. כשמשהו נסגר — סמן V, ובקש מ-Claude לעדכן את `docs/NEXT.md` וה-README אם צריך.
 
 ---
 
-## 0. אחרי המיזוג ל-main — הכתובת החדשה  ☐
+## 0. אחרי המיזוג ל-main — כיבוי אתר Hosting הישן  ☐
 
-**מה זה:** האתר החי הוא [https://tradeoslive.web.app](https://tradeoslive.web.app). המארח הישן `tradeos-91a58.web.app` מפנה אליו (301, שומר נתיב ופרמטרים). זה קורה רק במיזוג ל-`main`, לא במיזוג ל-`dev`.
+**מה זה:** האתר החי הוא [https://tradeoslive.web.app](https://tradeoslive.web.app) (יעד `app` → אתר `tradeoslive`). הקוד כבר לא מפרסם יעד `legacy`. אתר ברירת המחדל של הפרויקט (`tradeos-91a58`) אי אפשר למחוק — רק לכבות. הכיבוי לא נוגע ב-Firestore, ב-Auth, או ב-`authDomain`.
 
-**מה לוודא אחרי שהדיפלוי ל-main ירוק:**
-1. `https://tradeoslive.web.app` נפתח, וההתחברות עם Google עובדת (כולל ב-PWA).
-2. `https://tradeos-91a58.web.app/login?x=1` מגיע ל-`https://tradeoslive.web.app/login?x=1` (301).
+**אחרי שהדיפלוי ל-main ירוק, משורש הריפו:**
+
+```bash
+firebase hosting:disable --project tradeos-91a58 --site tradeos-91a58
+```
+
+הפקודה שואלת אישור. היא מכבה את אתר Hosting בשם `tradeos-91a58` (שתי הכתובות של האתר הזה). מזהה הפרויקט נשאר `tradeos-91a58`.
+
+**מה לוודא:**
+1. `https://tradeoslive.web.app` נפתח, וההתחברות עם Google עובדת (כולל ב-PWA) — לפני הכיבוי ושוב אחריו.
+2. אחרי הכיבוי, האתר הישן לא מגיש יותר את האפליקציה ולא מפנה 301.
 3. אם בלוג של GitHub Actions כתוב `AUTHORIZED_DOMAINS=pending`: [Authentication → Settings → Authorized domains](https://console.firebase.google.com/project/tradeos-91a58/authentication/settings) ← להוסיף `tradeoslive.web.app` ו-`tradeoslive.firebaseapp.com`.
-4. ההתחברות עם Google רצה על `authDomain` `tradeoslive.web.app` (`https://tradeoslive.web.app/__/auth/handler`). המסך של Google מציג את tradeoslive. Hosting מגיש את `/__/auth/*` בעצמו; ה-rewrite של האפליקציה לא תופס את הנתיב הזה.
+4. **לא למחוק** את `tradeos-91a58.firebaseapp.com` מרשימת הדומיינים המורשים. זה דומיין ה-Auth של הפרויקט, לא אתר ה-Hosting. `authDomain` באפליקציה נשאר `tradeoslive.web.app` (`https://tradeoslive.web.app/__/auth/handler`).
+5. ב-[Google Cloud Console → Credentials](https://console.cloud.google.com/apis/credentials?project=tradeos-91a58), בלקוח ה-OAuth של האינטרנט: להשאיר את המקור `https://tradeoslive.web.app` ואת `https://tradeoslive.web.app/__/auth/handler`. להשאיר גם את `https://tradeos-91a58.firebaseapp.com/__/auth/handler` אם הוא רשום שם. מקור של האתר הישן (`web.app` של אתר ברירת המחדל) אפשר להסיר רק אחרי שההתחברות על tradeoslive אומתה.
 
 קישורי איפוס סיסמה ואימות אימייל נמשכים אוטומטית אל `tradeoslive.web.app` (`authDomain`). אין כתובת continue קבועה בקוד.
 

@@ -3551,17 +3551,11 @@ async function handleContact(request, env, cors) {
 const ALLOWED_ORIGINS = [
   APP_URL,
   'https://tradeoslive.firebaseapp.com',
-  // The previous default site stays allowed: it 301s here, and any tab still
-  // open on it (or an unexpired preview channel) must keep calling the Worker.
-  'https://tradeos-91a58.web.app',
-  'https://tradeos-91a58.firebaseapp.com',
   'https://trade-os.tradeos.workers.dev',
   'https://trade-os-staging.tradeos.workers.dev',
 ];
-// Preview channels are https://SITE--CHANNEL-HASH.web.app. New channels are
-// created on the tradeoslive site; channels that already exist on the old
-// default site keep working until they expire.
-const PREVIEW_ORIGIN_RE = /^https:\/\/(?:tradeos-91a58|tradeoslive)--[a-z0-9-]+\.web\.app$/i;
+// Preview channels are https://tradeoslive--CHANNEL-HASH.web.app (site tradeoslive only).
+const PREVIEW_ORIGIN_RE = /^https:\/\/tradeoslive--[a-z0-9-]+\.web\.app$/i;
 function isAllowedOrigin(origin) {
   if (!origin) return false;
   return ALLOWED_ORIGINS.includes(origin) || PREVIEW_ORIGIN_RE.test(origin);
