@@ -1,0 +1,148 @@
+name: Deploy TradeOS staging
+
+# Push to dev only. Fixed staging environment:
+#   Hosting preview channel `dev` on site tradeoslive (project tradeos-91a58)
+#   Worker `trade-os-staging` (wrangler env `staging`)
+# Production Hosting and both production Workers stay in deploy.yml and run
+# only on a push to main. Pull-request preview channels stay there too
+# (and in preview-hosting.yml for PRs into main, when that workflow is present).
+# Channel `dev` is not a PR channel (`pr-<number>`), so the two do not collide.
+#
+# Firebase preview channels expire in at most 30 days. Each push to dev renews
+# that lifetime. The channel id stays `dev`, so the host stays the same.
+# The dev channel build calls https://trade-os-staging.tradeos.workers.dev.
+
+on:
+  push:
+    branches:
+      - dev
+
+permissions:
+  contents: read
+
+# Separate from deploy.yml's production group so a dev push cannot cancel a
+# main deploy, and a main deploy cannot cancel staging.
+concurrency:
+  group: deploy-dev
+  cancel-in-progress: true
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    env:
+      CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+      CLOUDFLARE_ACCOUNT_ID: ba3af41d3a78e629471174633c957cc9
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+
+      - run: npm ci
+
+      - name: Require Cloudflare token
+        run: |
+          if [ -z "$CLOUDFLARE_API_TOKEN" ]; then
+            echo "::error::CLOUDFLARE_API_TOKEN is required so dev does not publish a site with no staging Worker"
+            exit 1
+          fi
+
+      - name: Build
+        env:
+          VITE_WORKER_URL: https://trade-os-staging.tradeos.workers.dev
+          VITE_FIREBASE_AUTH_DOMAIN: tradeoslive.web.app
+        run: npm run build
+
+      - name: Deploy Worker (staging)
+        run: |
+          set -euo pipefail
+          node scripts/staging-worker-target.mjs
+          npx wrangler deploy --config wrangler.jsonc --env staging 2>&1 | tee "$RUNNER_TEMP/staging-worker.log"
+          if grep -F 'https://trade-os.tradeos.workers.dev' "$RUNNER_TEMP/staging-worker.log"; then
+            echo "::error::production worker was targeted"
+            exit 1
+          fi
+          if ! grep -F 'https://trade-os-staging.tradeos.workers.dev' "$RUNNER_TEMP/staging-worker.log"; then
+            echo "::error::staging worker URL missing from wrangler output"
+            exit 1
+          fi
+
+      - name: Set staging Worker secrets
+        env:
+          VAPID_JWK: ${{ secrets.VAPID_JWK }}
+          MORALIS_API_KEY: ${{ secrets.MORALIS_API_KEY }}
+          GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
+          GROQ_API_KEY: ${{ secrets.GROQ_API_KEY }}
+          FIREBASE_SERVICE_ACCOUNT: ${{ secrets.FIREBASE_SERVICE_ACCOUNT }}
+          RESEND_API_KEY: ${{ secrets.RESEND_API_KEY }}
+          MAIL_FROM_ADDRESS: ${{ secrets.MAIL_FROM_ADDRESS }}
+          MAIL_FROM_NAME: ${{ secrets.MAIL_FROM_NAME }}
+          MAIL_TO_ADMIN_OVERRIDE: ${{ secrets.MAIL_TO_ADMIN_OVERRIDE }}
+          GMAIL_APP_PASSWORD: ${{ secrets.GMAIL_APP_PASSWORD }}
+          CF_API_TOKEN: ${{ secrets.CF_API_TOKEN }}
+          CF_ACCOUNT_ID: ${{ secrets.CF_ACCOUNT_ID }}
+          CREDS_ENCRYPTION_KEY: ${{ secrets.CREDS_ENCRYPTION_KEY }}
+          UNSUBSCRIBE_SECRET: ${{ secrets.UNSUBSCRIBE_SECRET }}
+        run: |
+          set -euo pipefail
+          node scripts/staging-worker-target.mjs
+          put_secret() {
+            local name="$1"
+            local value="${!name}"
+            if [ -z "$value" ]; then
+              echo "$name not set — skipping. Copy it onto trade-os-staging if the production Worker has it."
+              return 0
+            fi
+            for attempt in 1 2 3; do
+              if printf '%s' "$value" | npx wrangler secret put "$name" --config wrangler.jsonc --env staging; then
+                return 0
+              fi
+              echo "secret put $name failed (attempt $attempt), retrying in $((attempt * 5))s..."
+              sleep $((attempt * 5))
+            done
+            echo "::error::Failed to upload secret $name after 3 attempts"
+            return 1
+          }
+          put_secret VAPID_JWK
+          put_secret MORALIS_API_KEY
+          put_secret GEMINI_API_KEY
+          put_secret GROQ_API_KEY
+          put_secret FIREBASE_SERVICE_ACCOUNT
+          put_secret RESEND_API_KEY
+          put_secret MAIL_FROM_ADDRESS
+          put_secret MAIL_FROM_NAME
+          put_secret MAIL_TO_ADMIN_OVERRIDE
+          put_secret GMAIL_APP_PASSWORD
+          put_secret CF_API_TOKEN
+          put_secret CF_ACCOUNT_ID
+          put_secret CREDS_ENCRYPTION_KEY
+          put_secret UNSUBSCRIBE_SECRET
+
+      - name: Write Firebase service account
+        run: echo '${{ secrets.FIREBASE_SERVICE_ACCOUNT }}' > "$RUNNER_TEMP/firebase-sa.json"
+
+      - name: Ensure Hosting site and authorized domains
+        env:
+          GOOGLE_APPLICATION_CREDENTIALS: ${{ runner.temp }}/firebase-sa.json
+        run: node scripts/ensure-hosting-site.mjs
+
+      - name: Deploy Hosting (dev channel)
+        env:
+          GOOGLE_APPLICATION_CREDENTIALS: ${{ runner.temp }}/firebase-sa.json
+        run: |
+          set -euo pipefail
+          npx firebase-tools hosting:channel:deploy dev \
+            --only app \
+            --project tradeos-91a58 --expires 30d --non-interactive 2>&1 | tee "$RUNNER_TEMP/hosting.log"
+          URL=$(grep -oE 'https://tradeoslive--[^[:space:]]+\.web\.app' "$RUNNER_TEMP/hosting.log" | head -1)
+          if [ -z "$URL" ]; then
+            echo "::error::dev channel URL missing from Firebase output"
+            exit 1
+          fi
+          {
+            echo "## Staging"
+            echo "- Hosting: $URL"
+            echo "- Worker: https://trade-os-staging.tradeos.workers.dev"
+          } >> "$GITHUB_STEP_SUMMARY"

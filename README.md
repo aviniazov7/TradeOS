@@ -262,21 +262,21 @@ npm run build        # must pass on every PR
 feature/* or fix/*  →  PR  →  dev  →  PR  →  main
 ```
 
-`main` is production — **never push to it directly**. Everything below is automated by GitHub Actions (`.github/workflows/deploy.yml`):
+`main` is production — **never push to it directly**. Production and preview deploys are `.github/workflows/deploy.yml`. A push to `dev` is `.github/workflows/deploy-dev.yml`. Details: [`docs/WORKFLOW.md`](docs/WORKFLOW.md).
 
 | Trigger | What happens |
 |---|---|
 | Push to `main` | auto-bumps the cache version, builds, deploys Hosting live to site `tradeoslive` (`https://tradeoslive.web.app`), plus both production Workers |
-| Push to `dev` | builds, deploys Hosting (`dev` channel on site `tradeoslive`) + the Workers — **which are the production Workers**, so treat Worker changes on `dev` as production changes |
+| Push to `dev` | `.github/workflows/deploy-dev.yml` builds against `https://trade-os-staging.tradeos.workers.dev`, deploys that Worker (`wrangler.jsonc` env `staging`), and deploys Hosting channel `dev` on site `tradeoslive` (30 days, renewed each push). Does not deploy `trade-os` or `tradeos-alerts`. |
 | Push to `feature/*`, `fix/*`, `hotfix/*`, or a pull request | builds and deploys a Hosting **preview channel** on site `tradeoslive` (7 days). URLs look like `https://tradeoslive--CHANNEL-HASH.web.app` |
 
 The only manual deploy is **Firestore rules**: `firebase deploy --only firestore:rules --project tradeos-91a58` whenever `firestore.rules` changes (run it from the repository root — it needs `firebase.json`). Firebase Storage is not part of the project config. Hosting production is `firebase deploy --only hosting:app --project tradeos-91a58` (site `tradeoslive` only).
 
 Notes from experience:
 - Firebase caps the number of preview channels (~50). When it is reached, new previews fail with HTTP 429 **while CI still reports success** — delete old channels on the app site (`firebase hosting:channel:delete <id> --site tradeoslive`).
-- Merging a feature to `dev` and then `dev` to `main` back-to-back is safe: both share one deploy queue and never run at once.
+- Merging a feature to `dev` and then `dev` to `main` back-to-back is safe: staging and production deploy different Workers and different Hosting targets, and the two workflows do not cancel each other.
 - `authDomain` is `tradeoslive.web.app`, same origin as the site, so the Google sign-in screen shows tradeoslive. Hosting serves `/__/auth/*` (reserved `/__/` paths). The app rewrite is `!/__/auth{,/**}` → `/index.html`, so it does not swallow the handler. The Google OAuth web client allows origin `https://tradeoslive.web.app` and redirect URI `https://tradeoslive.web.app/__/auth/handler`. CI adds `tradeoslive.web.app` and `tradeoslive.firebaseapp.com` to Firebase Auth authorized domains on every deploy. Password-reset and email-verification links continue on `tradeoslive.web.app`. If the log says authorized domains are pending, add them under [Authentication → Settings](https://console.firebase.google.com/project/tradeos-91a58/authentication/settings). Do not change `authDomain` away from `tradeoslive.web.app`. Do not remove `tradeos-91a58.firebaseapp.com` from that authorized-domain list, and do not remove `https://tradeos-91a58.firebaseapp.com/__/auth/handler` from the Google OAuth client: that host is the Firebase project's default Auth domain, not the Hosting site.
-- Merging to `dev` updates the production Worker before `main` updates live Hosting. Email and share links in that Worker point at `https://tradeoslive.web.app`, which serves the app only after the `main` deploy. Promote to `main` once the `dev` preview looks right.
+- Merging to `dev` updates the staging Worker `trade-os-staging` and the Hosting channel `dev`. It does not update `trade-os` or live Hosting. Promote to `main` once staging looks right. Full steps: [`docs/WORKFLOW.md`](docs/WORKFLOW.md).
 
 ### Versions
 

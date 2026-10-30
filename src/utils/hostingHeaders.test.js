@@ -50,6 +50,7 @@ describe('hosting CSP (report-only)', () => {
   it('lets the app reach its backends', () => {
     for (const origin of [
       'https://trade-os.tradeos.workers.dev', // the Worker (AI, exchanges, quotes)
+      'https://trade-os-staging.tradeos.workers.dev', // dev channel calls this Worker
       'https://*.googleapis.com', // Firestore / Auth / Storage
       'https://api.bybit.com', // market data + ticker fallback
       'wss://stream.bybit.com', // liquidations stream
@@ -214,5 +215,31 @@ describe('auth domain and public site URL', () => {
     expect(read('index.html')).toMatch(/property="og:url" content="https:\/\/tradeoslive\.web\.app"/);
     expect(read('docs/OWNER_CHECKLIST.md')).toMatch(/firebase hosting:disable --project tradeos-91a58 --site tradeos-91a58/);
     expect(read('docs/OWNER_CHECKLIST.md')).not.toMatch(/tradeos-91a58\.web\.app/);
+  });
+});
+
+describe('dev channel origin in CSP', () => {
+  const d = directives(header('Content-Security-Policy-Report-Only'));
+
+  function httpsHostAllowed(sources, url) {
+    const host = new URL(url).hostname;
+    return sources.some((source) => {
+      if (!source.startsWith('https://')) return false;
+      const pattern = source.slice('https://'.length).replace(/\/$/, '');
+      if (pattern.startsWith('*.')) {
+        const suffix = pattern.slice(1);
+        return host.endsWith(suffix) && host.length > suffix.length;
+      }
+      return host === pattern;
+    });
+  }
+
+  it('allows the fixed dev channel host in connect-src and frame-src', () => {
+    for (const directive of ['connect-src', 'frame-src']) {
+      expect(d[directive]).toContain('https://*.web.app');
+      expect(httpsHostAllowed(d[directive], 'https://tradeoslive--dev-abc123.web.app')).toBe(true);
+      expect(httpsHostAllowed(d[directive], 'https://tradeoslive--pr-616-abc123.web.app')).toBe(true);
+      expect(httpsHostAllowed(d[directive], 'https://evil.example')).toBe(false);
+    }
   });
 });
