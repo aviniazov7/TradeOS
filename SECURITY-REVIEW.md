@@ -57,8 +57,10 @@ can't read production data (incl. the `pushexch:` exchange keys).
 **Good practices observed:** all HTML rendering goes through DOMPurify with
 restrictive allowlists (no XSS found); Firestore rules include a
 privilege-escalation guard on `users/{uid}`; the main worker properly verifies
-Firebase ID tokens (signature + `aud`/`iss`/`exp`); the Firebase Function
-`googleSignIn` correctly verifies Google ID tokens via `OAuth2Client`.
+Firebase ID tokens (signature + `aud`/`iss`/`exp`). The unused Cloud Function
+`googleSignIn` was removed: verifying the token signature was not enough,
+because it linked any Google email to an existing account without requiring
+`email_verified`.
 
 ---
 
