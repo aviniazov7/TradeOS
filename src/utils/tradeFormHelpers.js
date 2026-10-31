@@ -5,7 +5,7 @@
  * itself stays in calculations.js — these only shape the INPUTS fed to it.
  */
 import { initialStopLoss, isStopOnRiskSide } from './calculations';
-import { getContractSpec } from './constants';
+import { getContractSpec, TRIGGERS } from './constants';
 
 const num = (v) => {
   const n = parseFloat(v);
@@ -303,7 +303,9 @@ function blankChoices() {
   return { strategy: '', timeframe: '', trigger: '', instrument: '', direction: '', broker: '' };
 }
 
-/** Last strategy / timeframe / trigger / instrument / direction / broker in this journal, or null. */
+/** Last strategy / timeframe / trigger / instrument / direction / broker in this journal, or null.
+ *  A new ticket only reuses the timeframe (and, for futures, the instrument).
+ *  Strategy, trigger and direction are per trade. */
 export function loadLastTradeChoices(journalId, storage = globalThis.localStorage) {
   try {
     const raw = storage?.getItem(lastChoicesKey(journalId));
@@ -317,6 +319,48 @@ export function loadLastTradeChoices(journalId, storage = globalThis.localStorag
   } catch {
     return null;
   }
+}
+
+const WYCKOFF_TRIGGERS = new Set(TRIGGERS);
+
+function isWyckoffStrategy(strategy) {
+  const name = String(strategy || '').trim().toLowerCase();
+  return name === 'wyckoff' || name === 'ויקוף' || name === 'וויקוף';
+}
+
+/**
+ * Wyckoff events (Spring, LPSY, SOS, …) only fit a Wyckoff strategy.
+ * A trigger the user added themselves is allowed on any strategy.
+ * An empty trigger always fits.
+ */
+export function triggerFitsStrategy(strategy, trigger) {
+  const name = String(trigger || '').trim();
+  if (!name || !WYCKOFF_TRIGGERS.has(name)) return true;
+  return isWyckoffStrategy(strategy);
+}
+
+/** Triggers to show for this strategy. A saved value stays visible while
+ *  editing, even if it no longer fits, until the strategy field changes. */
+export function triggersForStrategy(strategy, triggers, current = '') {
+  const list = [];
+  const seen = new Set();
+  const push = (raw) => {
+    const name = String(raw || '').trim();
+    if (!name || seen.has(name)) return;
+    seen.add(name);
+    list.push(name);
+  };
+  for (const item of triggers || []) {
+    if (triggerFitsStrategy(strategy, item)) push(item);
+  }
+  if (current) push(current);
+  return list;
+}
+
+/** Defaults for a brand-new ticket. Timeframe is the one preference kept. */
+export function freshTradeChoices(last) {
+  const timeframe = String(last?.timeframe || '').trim();
+  return { strategy: '', trigger: '', direction: '', timeframe: timeframe || '4H' };
 }
 
 export function saveLastTradeChoices(journalId, choices = {}, storage = globalThis.localStorage) {
@@ -339,9 +383,11 @@ export function parseInstrumentSize(raw, spec) {
 }
 
 /**
- * Defaults for a new trade. A Vantage journal opens on XAUUSD in lots.
- * A remembered instrument/direction applies only when it was saved for the
- * same broker (or before a broker was remembered).
+ * Defaults for a new trade's instrument. A Vantage journal opens on XAUUSD
+ * in lots. A remembered instrument applies only when it was saved for the
+ * same broker (or before a broker was remembered). `direction` is still
+ * returned for callers that want it; the live ticket ignores it and starts
+ * long unless a calculator handoff set a direction.
  */
 export function defaultInstrumentChoice({ assetClass = 'crypto', broker = '', last = null } = {}) {
   const journalBroker = String(broker || '').trim().toLowerCase();

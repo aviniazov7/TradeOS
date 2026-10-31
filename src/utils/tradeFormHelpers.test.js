@@ -22,6 +22,9 @@ import {
   checklistAdherence,
   loadLastTradeChoices,
   saveLastTradeChoices,
+  triggerFitsStrategy,
+  triggersForStrategy,
+  freshTradeChoices,
   parseInstrumentSize,
   defaultInstrumentChoice,
   canMoveStopToBreakeven,
@@ -378,6 +381,32 @@ describe('remembered choices', () => {
     expect(() => saveLastTradeChoices('j1', {}, throwing)).not.toThrow();
     const bad = { getItem: () => '{not json', setItem: () => {} };
     expect(loadLastTradeChoices('j1', bad)).toBeNull();
+  });
+});
+
+describe('fresh trade choices', () => {
+  it('keeps only the timeframe', () => {
+    expect(freshTradeChoices({
+      strategy: 'Order Block', trigger: 'Spring', direction: 'short', timeframe: '15m',
+    })).toEqual({ strategy: '', trigger: '', direction: '', timeframe: '15m' });
+    expect(freshTradeChoices(null).timeframe).toBe('4H');
+  });
+
+  it('rejects a Wyckoff trigger on another strategy and keeps a custom one', () => {
+    expect(triggerFitsStrategy('Order Block', 'Spring')).toBe(false);
+    expect(triggerFitsStrategy('AMD', 'LPSY')).toBe(false);
+    expect(triggerFitsStrategy('', 'Spring')).toBe(false);
+    expect(triggerFitsStrategy('Wyckoff', 'Spring')).toBe(true);
+    expect(triggerFitsStrategy('ויקוף', 'SOS')).toBe(true);
+    expect(triggerFitsStrategy('Order Block', 'BOS')).toBe(true);
+    expect(triggerFitsStrategy('Order Block', '')).toBe(true);
+  });
+
+  it('hides Wyckoff events until the strategy is Wyckoff, but keeps a saved value', () => {
+    const all = ['Spring', 'LPSY', 'BOS'];
+    expect(triggersForStrategy('Order Block', all)).toEqual(['BOS']);
+    expect(triggersForStrategy('Wyckoff', all)).toEqual(['Spring', 'LPSY', 'BOS']);
+    expect(triggersForStrategy('Order Block', all, 'Spring')).toEqual(['BOS', 'Spring']);
   });
 });
 
