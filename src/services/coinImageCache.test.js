@@ -20,6 +20,8 @@ describe('SOL icon cache', () => {
     expect(getCachedImage('SI')).toBe('/logos/marks/silver.svg');
     expect(getCachedImage('NAS100')).toBe('/logos/marks/nasdaq.svg');
     expect(getCachedImage('US100')).toBe('/logos/marks/nasdaq.svg');
+    expect(getCachedImage('US500')).toBe('/logos/marks/sp500.svg');
+    expect(getCachedImage('US30')).toBe('/logos/marks/dow.svg');
     expect(getCachedImage('NQ')).toBe('/logos/marks/nasdaq.svg');
   });
 });

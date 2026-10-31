@@ -14,6 +14,8 @@ describe('ticker marks', () => {
     expect(tickerMarkUrls('NQ')).toEqual(['/logos/marks/nasdaq.svg']);
     expect(tickerMarkUrls('NAS100')).toEqual(['/logos/marks/nasdaq.svg']);
     expect(tickerMarkUrls('US100')).toEqual(['/logos/marks/nasdaq.svg']);
+    expect(tickerMarkUrls('US500')).toEqual(['/logos/marks/sp500.svg']);
+    expect(tickerMarkUrls('US30')).toEqual(['/logos/marks/dow.svg']);
     expect(tickerMarkUrls('YM')).toEqual(['/logos/marks/dow.svg']);
     expect(tickerMarkUrls('RTY')).toEqual(['/logos/marks/russell.svg']);
     expect(tickerMarkUrls('NVDA')).toEqual([]);

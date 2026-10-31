@@ -17,8 +17,10 @@ const MARKS = {
   MNQ: '/logos/marks/nasdaq.svg',
   NAS100: '/logos/marks/nasdaq.svg',
   US100: '/logos/marks/nasdaq.svg',
+  US500: '/logos/marks/sp500.svg',
   YM: '/logos/marks/dow.svg',
   MYM: '/logos/marks/dow.svg',
+  US30: '/logos/marks/dow.svg',
   RTY: '/logos/marks/russell.svg',
   M2K: '/logos/marks/russell.svg',
 };
