@@ -1393,8 +1393,11 @@ async function isUserPremium(env, token, uid) {
   // read, skip the cache so the next request re-reads. Grants still bust this key
   // explicitly (/admin/refresh-plan).
   if (read) {
-    // kvPutSafe: a spent KV write quota must not break every AI request.
-    await kvPutSafe(env, cacheKey, JSON.stringify({ p: premium ? 1 : 0, exp: premium ? expMs : null }), { expirationTtl: 600 });
+    // TTL 3600 s (1 h) instead of 600 s: the expiry timestamp is already
+    // checked at read time so a lapsed plan is detected immediately regardless
+    // of how long the cached entry lives. The admin /refresh-plan endpoint
+    // deletes this key for instant upgrades. Longer TTL = ~6× fewer KV writes.
+    await kvPutSafe(env, cacheKey, JSON.stringify({ p: premium ? 1 : 0, exp: premium ? expMs : null }), { expirationTtl: 3600 });
   }
   return premium;
 }
@@ -1736,8 +1739,11 @@ async function resolveExchangeCreds(env, uid, exchange) {
 }
 
 async function fetchEconomicCalendar(env) {
-  const cached = await env.ALERTS_KV.get('calendarCache', 'json');
-  if (cached) return cached;
+  // Cache API replaces the KV-backed cache (saves ~24 KV writes/day). Cron
+  // always runs from one DC, so the per-colo cache is stable across ticks.
+  const calCacheKey = new Request('https://internal.tradeos/kv-cache/calendar');
+  const calCached = await caches.default.match(calCacheKey).catch(() => null);
+  if (calCached) return calCached.json().catch(() => []);
   try {
     const res = await fetch(CALENDAR_API);
     if (!res.ok) return [];
@@ -1745,7 +1751,9 @@ async function fetchEconomicCalendar(env) {
     const filtered = (Array.isArray(events) ? events : [])
       .filter((e) => e.impact === 'High' && e.country === 'USD')
       .map((e) => ({ title: e.title, date: e.date, forecast: e.forecast || '', previous: e.previous || '' }));
-    await env.ALERTS_KV.put('calendarCache', JSON.stringify(filtered), { expirationTtl: 3600 });
+    caches.default.put(calCacheKey, new Response(JSON.stringify(filtered), {
+      headers: { 'Content-Type': 'application/json', 'Cache-Control': 'public, max-age=3600' },
+    })).catch(() => {});
     return filtered;
   } catch { return []; }
 }
@@ -3206,11 +3214,15 @@ async function buildNewsDigest(env, market) {
   if (!feeds.length || !env.GROQ_API_KEY) return null;
 
   // Cheap per-market lock so a cron tick and an on-demand request can't both
-  // burn a provider call. KV get→put isn't atomic; the worst case is one
-  // duplicate build, which is harmless.
-  const lockKey = `news:digest:lock:${market}`;
-  if (await env.ALERTS_KV.get(lockKey)) return null;
-  await env.ALERTS_KV.put(lockKey, '1', { expirationTtl: 120 });
+  // burn a provider call. Not atomic; the worst case is one duplicate build,
+  // which is harmless. Cache API (per-colo) saves ~96 KV writes + 96 KV
+  // deletes per day vs. the old KV-based lock.
+  const lockCacheKey = new Request(`https://internal.tradeos/kv-cache/news-digest-lock/${market}`);
+  if (await caches.default.match(lockCacheKey).catch(() => null)) return null;
+  // Fire-and-forget; a failed put means no lock and a harmless duplicate build.
+  caches.default.put(lockCacheKey, new Response('1', {
+    headers: { 'Cache-Control': 'public, max-age=120' },
+  })).catch(() => {});
 
   try {
     const results = await Promise.allSettled(feeds.map(async (source) => {
@@ -3295,7 +3307,9 @@ async function buildNewsDigest(env, market) {
     console.error('news digest build failed:', err);
     return null;
   } finally {
-    await env.ALERTS_KV.delete(lockKey).catch(() => {});
+    // Release the Cache API lock so on-demand requests can build immediately
+    // after the cron finishes, rather than waiting for the 120 s TTL to lapse.
+    caches.default.delete(lockCacheKey).catch(() => {});
   }
 }
 
@@ -3606,17 +3620,24 @@ async function handleContact(request, env, cors) {
       return new Response(JSON.stringify({ error: 'ההודעה חורגת מ-2000 תווים' }), { status: 400, headers: jsonHeaders });
     }
 
-    // Rate limiting — 3 messages per hour per user
-    const rlKey = `ratelimit:contact:${uid}`;
-    const rlData = await env.ALERTS_KV.get(rlKey, 'json');
+    // Rate limiting — 3 messages per hour per user.
+    // Cache API replaces KV here: the limit is per-user-session (same DC as
+    // the request) and approximate correctness is fine. Saves ~5 KV writes/day.
+    const rlCacheKey = new Request(`https://internal.tradeos/kv-cache/ratelimit-contact/${uid}`);
+    const rlCached = await caches.default.match(rlCacheKey).catch(() => null);
+    const rlData = rlCached ? await rlCached.json().catch(() => null) : null;
     const now = Date.now();
     if (rlData && now - rlData.start < 3600000) {
       if (rlData.count >= 3) {
         return new Response(JSON.stringify({ error: 'נשלחו יותר מדי הודעות. נסה שוב בעוד שעה.' }), { status: 429, headers: jsonHeaders });
       }
-      await env.ALERTS_KV.put(rlKey, JSON.stringify({ start: rlData.start, count: rlData.count + 1 }), { expirationTtl: 3700 });
+      caches.default.put(rlCacheKey, new Response(JSON.stringify({ start: rlData.start, count: rlData.count + 1 }), {
+        headers: { 'Content-Type': 'application/json', 'Cache-Control': 'public, max-age=3700' },
+      })).catch(() => {});
     } else {
-      await env.ALERTS_KV.put(rlKey, JSON.stringify({ start: now, count: 1 }), { expirationTtl: 3700 });
+      caches.default.put(rlCacheKey, new Response(JSON.stringify({ start: now, count: 1 }), {
+        headers: { 'Content-Type': 'application/json', 'Cache-Control': 'public, max-age=3700' },
+      })).catch(() => {});
     }
 
     // Optional display info from client (not trusted for security, just UI)
@@ -3805,10 +3826,18 @@ async function scanCandidateMoves(env, mentioned = []) {
     && (Number(t.quoteVolume) || 0) >= SCAN_MIN_QUOTE_VOL
     && Number(t.lastPrice) > 0);
 
-  const prev = (await env.ALERTS_KV.get('news:impact:prices', 'json')) || {};
+  // Tick-to-tick price baseline: Cache API (cron always runs from the same
+  // DC, so the per-colo cache is consistent across ticks). Saves one KV
+  // write per cron tick (~144/day) while keeping the delta logic intact.
+  const pricesCacheKey = new Request('https://internal.tradeos/kv-cache/news-impact-prices');
+  const pricesCached = await caches.default.match(pricesCacheKey).catch(() => null);
+  const prev = pricesCached ? await pricesCached.json().catch(() => ({})) : {};
   const snapshot = {};
   for (const t of liquid) snapshot[t.symbol] = Number(t.lastPrice);
-  await env.ALERTS_KV.put('news:impact:prices', JSON.stringify(snapshot), { expirationTtl: 60 * 60 * 3 });
+  // 15-min TTL: covers the 10-min cron interval plus a safety buffer.
+  caches.default.put(pricesCacheKey, new Response(JSON.stringify(snapshot), {
+    headers: { 'Content-Type': 'application/json', 'Cache-Control': 'public, max-age=900' },
+  })).catch(() => {}); // fire-and-forget; a failed write falls back to empty prev next tick
 
   const symbols = rankScanSymbols(liquid, prev, mentioned);
   const settled = await Promise.allSettled(symbols.map(symbolWindowMove));
@@ -4088,8 +4117,9 @@ async function handleRequest(request, env) {
       if (!uid) return new Response(JSON.stringify({ error: 'unauthorized' }), { status: 401, headers: { ...cors, 'Content-Type': 'application/json' } });
       const { stats } = await request.json();
       if (!stats) return new Response(JSON.stringify({ error: 'Missing fields' }), { status: 400, headers: { ...cors, 'Content-Type': 'application/json' } });
-      // uid-keyed for the Web Push daily summary (#219).
-      await env.ALERTS_KV.put(`dailystats:u:${uid}:${getIsraelDateStr()}`, JSON.stringify(stats), { expirationTtl: 172800 });
+      // dailystats:u:{uid}:{date} was written here but never read — the daily
+      // summary cron reads Firestore directly instead. Dropping the KV write
+      // removes wasted ops without changing any user-visible behaviour.
       return new Response(JSON.stringify({ ok: true }), { headers: { ...cors, 'Content-Type': 'application/json' } });
     } catch { return new Response(JSON.stringify({ error: 'Invalid' }), { status: 400, headers: { ...cors, 'Content-Type': 'application/json' } }); }
   }
@@ -5721,8 +5751,13 @@ async function handleRequest(request, env) {
     const adminUid = await verifyAdminFromToken(token);
     if (!adminUid) return new Response(JSON.stringify({ error: 'forbidden' }), { status: 403, headers: { ...cors, 'Content-Type': 'application/json' } });
 
-    const cached = await env.ALERTS_KV.get('fbusage:cache');
-    if (cached) return new Response(cached, { headers: { ...cors, 'Content-Type': 'application/json' } });
+    // Cache API: admin-only endpoint, same DC per session; saves ~5-10 KV writes/day.
+    const fbUsageCacheKey = new Request('https://internal.tradeos/kv-cache/fbusage');
+    const fbUsageCached = await caches.default.match(fbUsageCacheKey).catch(() => null);
+    if (fbUsageCached) {
+      const body = await fbUsageCached.text();
+      return new Response(body, { headers: { ...cors, 'Content-Type': 'application/json' } });
+    }
 
     const counts = { users: null, trades: null, payments: null, leaderboard: null };
 
@@ -5761,7 +5796,9 @@ async function handleRequest(request, env) {
     } catch { /* admin token / aggregation failed — return null counts, never break the panel */ }
 
     const body = JSON.stringify({ ok: true, at: Date.now(), counts });
-    await env.ALERTS_KV.put('fbusage:cache', body, { expirationTtl: 300 });
+    caches.default.put(fbUsageCacheKey, new Response(body, {
+      headers: { 'Content-Type': 'application/json', 'Cache-Control': 'public, max-age=300' },
+    })).catch(() => {});
     return new Response(body, { headers: { ...cors, 'Content-Type': 'application/json' } });
   }
 
