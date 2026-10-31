@@ -52,3 +52,67 @@ export function parseCspReports(payload) {
 
 /** Same violation → same key, so a report is logged once per hour, not per page view. */
 export const cspReportKey = (r) => `${r.directive}|${r.blocked}|${r.page}`;
+
+// Browsers send one of these. Anything else is ignored so a random POST cannot
+// fill the log. The body itself is never logged: it can carry the full page URL.
+const CSP_REPORT_TYPES = new Set(['application/csp-report', 'application/reports+json']);
+
+export function cspReportCorsHeaders() {
+  // Public collector, no cookies. `*` is what Chrome's Reporting API accepts on
+  // the preflight (alongside the page origin). A reflected allow-list misses
+  // `Origin: null`, and Chrome then never sends the POST.
+  return {
+    'Access-Control-Allow-Origin': '*',
+    'Access-Control-Allow-Methods': 'POST, OPTIONS',
+    'Access-Control-Allow-Headers': 'Content-Type',
+  };
+}
+
+function reportContentType(request) {
+  return (request.headers.get('Content-Type') || '').split(';')[0].trim().toLowerCase();
+}
+
+/**
+ * POST /csp-report. Always answers 204 with CORS headers.
+ * A recognised report is logged once per hour (`CSP report …`) unless the
+ * cache says it was already logged. A cache failure still logs: the empty
+ * catch used to swallow the only line Workers Logs can search for.
+ * A recognised content type that does not parse logs `CSP report unparsed`
+ * (type and size only, never the body).
+ */
+export async function handleCspReport(request, { cache = null, log = console.warn } = {}) {
+  const headers = cspReportCorsHeaders();
+  if (request.method === 'OPTIONS') return new Response(null, { status: 204, headers });
+  if (request.method !== 'POST') return new Response(null, { status: 405, headers });
+
+  const contentType = reportContentType(request);
+  let raw = '';
+  let items = [];
+  try {
+    raw = (await request.text()).slice(0, 8192);
+    items = parseCspReports(raw ? JSON.parse(raw) : null);
+  } catch {
+    items = [];
+  }
+
+  if (!items.length && CSP_REPORT_TYPES.has(contentType)) {
+    log(`CSP report unparsed ${JSON.stringify({ contentType, bytes: raw.length })}`);
+  }
+
+  for (const it of items) {
+    const key = new Request(`https://cache.tradeos.internal/csp/${encodeURIComponent(cspReportKey(it))}`);
+    let seen = false;
+    if (cache) {
+      try { seen = !!(await cache.match(key)); } catch { seen = false; }
+    }
+    if (seen) continue;
+    // One string, so the Workers Logs message field contains "CSP report".
+    log(`CSP report ${JSON.stringify(it)}`);
+    if (!cache) continue;
+    try {
+      await cache.put(key, new Response('1', { headers: { 'Cache-Control': 'max-age=3600' } }));
+    } catch { /* already logged */ }
+  }
+
+  return new Response(null, { status: 204, headers });
+}
