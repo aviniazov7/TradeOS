@@ -24,7 +24,7 @@ import { runMarketingEmailBackfill, marketingSubscribeWrites, uidsStillMissingCh
 import { deliverWithGmail, hasGmailPassword, MISSING_SECRET_MESSAGE } from './gmailMail.js';
 import { unsubscribeUrl, verifyUnsubscribe, unsubscribePage, UID_RE } from './unsubscribe.js';
 import { purgeUserResidue } from './accountPurge.js';
-import { parseCspReports, cspReportKey } from './cspReport.js';
+import { handleCspReport } from './cspReport.js';
 import { calendarAlertBody, CALENDAR_ALERT_TITLE } from './calendarAlert.js';
 import { emailShell, APP_URL, C as EMAIL_C, bg as emailBg, txt as emailTxt, esc as emailEsc, para as emailPara } from './emailTheme.js';
 import { buildDigestEmail, digestInboxText } from './adminDigest.js';
@@ -4040,11 +4040,19 @@ async function safeHandleRequest(request, env, ctx) {
 }
 
 async function handleRequest(request, env) {
-  const cors = corsHeadersFor(request);
-  if (request.method === 'OPTIONS') return new Response(null, { headers: cors });
-
   const url = new URL(request.url);
   const path = url.pathname;
+
+  // Before the app CORS allow-list. Chrome's Reporting API sends OPTIONS and
+  // only POSTs the report if that preflight allows this origin (or *) and
+  // Content-Type. The log line is `CSP report` — search that in Workers Logs.
+  if (path === '/csp-report') {
+    const cache = typeof caches !== 'undefined' ? caches.default : null;
+    return handleCspReport(request, { cache });
+  }
+
+  const cors = corsHeadersFor(request);
+  if (request.method === 'OPTIONS') return new Response(null, { headers: cors });
 
   // Public REST API for agents. Auth is a per-user API key or a Firebase ID
   // token. Handled before the app routes so /api/v1 never falls through.
@@ -4795,26 +4803,6 @@ async function handleRequest(request, env) {
     for (const r of results) { sent += r.sent || 0; if ((r.sent || 0) > 0) recipients++; }
     appendAudit(env, { kind: 'notify-bulk', actor: adminUid, targeted: capped.length, recipients, sent, title: payload.title });
     return new Response(JSON.stringify({ ok: true, sent, recipients, targeted: capped.length }), { headers: { ...cors, 'Content-Type': 'application/json' } });
-  }
-
-  // Content-Security-Policy violation reports sent by real browsers (the site's
-  // report-only policy points here). Public by nature, so it only ever LOGS:
-  // coarse fields (directive, blocked origin, page path), each distinct
-  // violation once an hour per colo, which keeps it cheap and un-spammable.
-  // Read them in Cloudflare → trade-os → Observability, search "CSP report".
-  if (request.method === 'POST' && path === '/csp-report') {
-    try {
-      const text = (await request.text()).slice(0, 8192);
-      const items = parseCspReports(JSON.parse(text));
-      const cache = caches.default;
-      for (const it of items) {
-        const key = new Request(`https://cache.tradeos.internal/csp/${encodeURIComponent(cspReportKey(it))}`);
-        if (await cache.match(key)) continue;
-        await cache.put(key, new Response('1', { headers: { 'Cache-Control': 'max-age=3600' } }));
-        console.warn('CSP report', JSON.stringify(it));
-      }
-    } catch { /* malformed report — nothing to do */ }
-    return new Response(null, { status: 204 });
   }
 
   // Public, token-signed opt-out from marketing email (the link in every

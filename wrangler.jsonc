@@ -4,7 +4,10 @@
   "main": "worker/index.js",
   "compatibility_date": "2025-09-27",
   "observability": {
-    "enabled": true
+    "enabled": true,
+    // 1 = every request. CSP reports are rare; sampling them away looks like
+    // a week with no violations. Workers Logs keeps console lines for 7 days.
+    "head_sampling_rate": 1
   },
   "assets": {
     "directory": "dist",
@@ -50,6 +53,11 @@
   "env": {
     "staging": {
       "name": "trade-os-staging",
+      // Not inherited from the top-level block. This Worker is what `dev` deploys.
+      "observability": {
+        "enabled": true,
+        "head_sampling_rate": 1
+      },
       "assets": {
         "directory": "dist/client",
         "not_found_handling": "single-page-application"

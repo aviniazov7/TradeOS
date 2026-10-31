@@ -59,6 +59,26 @@ it('allows the live hosting origin and its preview channels', async () => {
   }
 });
 
+it('accepts a CSP report on /csp-report and logs one searchable line', async () => {
+  const spy = vi.spyOn(console, 'warn').mockImplementation(() => {});
+  const res = await worker.fetch(new Request('https://trade-os.tradeos.workers.dev/csp-report', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/csp-report', Origin: 'https://tradeoslive.web.app' },
+    body: JSON.stringify({ 'csp-report': {
+      'document-uri': 'https://tradeoslive.web.app/journal?token=secret',
+      'effective-directive': 'connect-src',
+      'blocked-uri': 'https://cdn.example/a.js?user=1',
+      disposition: 'report',
+    } }),
+  }), {});
+  expect(res.status).toBe(204);
+  expect(res.headers.get('Access-Control-Allow-Origin')).toBe('*');
+  const line = spy.mock.calls.map((args) => args.join(' ')).find((s) => s.includes('CSP report'));
+  expect(line).toContain('connect-src');
+  expect(line).not.toMatch(/secret|user=1/);
+  spy.mockRestore();
+});
+
 it('allows the dev channel origin and the staging worker origin', async () => {
   for (const origin of [
     'https://tradeoslive--dev-abc123.web.app',
