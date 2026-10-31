@@ -518,7 +518,7 @@ export default function Dashboard() {
                 come first so the book is on screen before the chart. */}
             <div className="grid grid-cols-1 lg:grid-cols-3 gap-4 items-start">
               <div className="lg:col-span-2 min-w-0 order-2 lg:order-1">
-                <PortfolioHero balance={globalStats.totalBalance} declaredStart={declaredStartCapital(statJournals)} series={equitySeries} trades={heroTrades} hidden={hideBalances} />
+                <PortfolioHero balance={globalStats.totalBalance} declaredStart={declaredStartCapital(statJournals)} series={equitySeries} trades={heroTrades} hidden={hideBalances} onSetBalance={() => navigate('/journal?settings=1')} />
               </div>
               <RecentTradesCard trades={recentClosed} hidden={hideBalances} className="order-1 lg:order-2" />
               <div className="lg:col-span-2 min-w-0 order-3">

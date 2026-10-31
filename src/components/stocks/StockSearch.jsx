@@ -1,4 +1,5 @@
 import { useState, useEffect, useRef } from 'react';
+import { useCloseOnEscape } from '../../hooks/useCloseOnEscape';
 import { Search, X, Plus, Loader2 } from 'lucide-react';
 import { searchStocks } from '../../services/stocksApi';
 import { stockSymbol } from '../../utils/stocks';
@@ -14,6 +15,8 @@ export default function StockSearch({ value, onChange, label = 'מניה', class
   const [isOpen, setIsOpen] = useState(false);
   const [loading, setLoading] = useState(false);
   const containerRef = useRef(null);
+
+  useCloseOnEscape(isOpen, () => setIsOpen(false));
 
   useEffect(() => {
     const handler = (e) => {
@@ -75,7 +78,7 @@ export default function StockSearch({ value, onChange, label = 'מניה', class
       )}
 
       {isOpen && (
-        <div className="absolute z-50 top-full mt-1 w-full min-w-[16rem] bg-bg-overlay border border-border-primary rounded-xl shadow-xl max-h-64 overflow-y-auto">
+        <div data-popover="" className="absolute z-50 top-full mt-1 w-full min-w-[16rem] bg-bg-overlay border border-border-primary rounded-xl shadow-xl max-h-64 overflow-y-auto">
           {showCustom && (
             <button type="button" onClick={() => pick(typed)}
               className="w-full flex items-center gap-2.5 px-3 py-2.5 text-right hover:bg-bg-tertiary transition-colors cursor-pointer border-b border-border-primary bg-accent-primary/5">
