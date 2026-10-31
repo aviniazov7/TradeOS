@@ -18,6 +18,10 @@ vi.mock('react-router-dom', () => ({
   useNavigate: () => () => {},
 }));
 
+vi.mock('../../hooks/useExchangeConnected', () => ({
+  useExchangeConnected: () => true,
+}));
+
 vi.mock('../../contexts/AuthContext', () => ({
   useAuth: () => ({ isPremium: true, profile: { settings: { assetClasses: ['crypto'] } } }),
 }));
