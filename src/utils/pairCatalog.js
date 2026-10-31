@@ -17,18 +17,18 @@ const CUSTOM_SYMBOL_RE = /^[A-Z0-9./-]{1,15}$/;
 
 // Short English names — one line in the RTL menu, same tone as "Gold".
 export const CFD_FOREX_PAIRS = [
-  { symbol: 'XAUUSD', name: 'Gold', decimals: 2 },
-  { symbol: 'XAGUSD', name: 'Silver', decimals: 3 },
-  { symbol: 'EURUSD', name: 'Euro', decimals: 5 },
-  { symbol: 'GBPUSD', name: 'Pound', decimals: 5 },
-  { symbol: 'USDJPY', name: 'Yen', decimals: 3 },
-  { symbol: 'AUDUSD', name: 'Aussie', decimals: 5 },
-  { symbol: 'USDCAD', name: 'Canada', decimals: 5 },
-  { symbol: 'USDCHF', name: 'Swiss', decimals: 5 },
-  { symbol: 'NZDUSD', name: 'Kiwi', decimals: 5 },
-  { symbol: 'US30', name: 'Dow', decimals: 1 },
-  { symbol: 'NAS100', name: 'Nasdaq', decimals: 1 },
-  { symbol: 'US500', name: 'S&P', decimals: 1 },
+  { symbol: 'XAUUSD', name: 'Gold', decimals: 2, category: 'Metals' },
+  { symbol: 'XAGUSD', name: 'Silver', decimals: 3, category: 'Metals' },
+  { symbol: 'EURUSD', name: 'Euro', decimals: 5, category: 'Forex' },
+  { symbol: 'GBPUSD', name: 'Pound', decimals: 5, category: 'Forex' },
+  { symbol: 'USDJPY', name: 'Yen', decimals: 3, category: 'Forex' },
+  { symbol: 'AUDUSD', name: 'Aussie', decimals: 5, category: 'Forex' },
+  { symbol: 'USDCAD', name: 'Canada', decimals: 5, category: 'Forex' },
+  { symbol: 'USDCHF', name: 'Swiss', decimals: 5, category: 'Forex' },
+  { symbol: 'NZDUSD', name: 'Kiwi', decimals: 5, category: 'Forex' },
+  { symbol: 'US30', name: 'Dow', decimals: 1, category: 'Indices' },
+  { symbol: 'NAS100', name: 'Nasdaq', decimals: 1, category: 'Indices' },
+  { symbol: 'US500', name: 'S&P', decimals: 1, category: 'Indices' },
 ];
 
 const CFD_BY_SYMBOL = new Map(CFD_FOREX_PAIRS.map((p) => [p.symbol, p]));
@@ -82,6 +82,11 @@ export function uniqueSymbols(list) {
   return out;
 }
 
+/** Metals / Forex / Indices for a listed CFD symbol. Empty for coins and free text. */
+export function categoryForSymbol(symbol) {
+  return CFD_BY_SYMBOL.get(compactSymbol(symbol))?.category || '';
+}
+
 export function nameForSymbol(symbol) {
   const compact = compactSymbol(symbol);
   const cfd = CFD_BY_SYMBOL.get(compact);
@@ -123,6 +128,22 @@ export function cryptoQuantityPnl(symbol) {
   const compact = compactSymbol(symbol);
   if (!compact) return true;
   return compact.endsWith('USDT') || compact.endsWith('USDC') || compact.endsWith('BUSD');
+}
+
+/**
+ * Amount text when the quote is not dollars. Null means the caller should
+ * keep the normal $ formatter (USDT coins and USD-quoted CFDs).
+ */
+export function formatQuoteAmount(value, currency, { signed = false, digits = 2 } = {}) {
+  if (!currency || currency === 'USD') return null;
+  const n = Number(value);
+  if (!Number.isFinite(n)) return '—';
+  const sign = n < 0 ? '−' : (signed && n > 0 ? '+' : '');
+  const body = Math.abs(n).toLocaleString('en-US', {
+    minimumFractionDigits: Math.min(2, digits),
+    maximumFractionDigits: digits,
+  });
+  return `${sign}${body} ${currency}`;
 }
 
 /** Price text for a known symbol. Crypto pairs keep formatPrice. */
@@ -167,29 +188,30 @@ export function buildPairResults({
   const rows = [];
   const seen = new Set();
 
-  const push = (pair, name) => {
+  const push = (pair, name, category = '') => {
     const key = String(pair || '').toUpperCase();
     if (!key || seen.has(key) || selectedSet.has(key)) return;
     if (!matchesQuery(key, name, q)) return;
     seen.add(key);
-    rows.push({ pair: key, symbol: key.replace(/USDT$/, ''), name: name || '' });
+    rows.push({ pair: key, symbol: key.replace(/USDT$/, ''), name: name || '', category });
   };
 
   if (includeMarkets) {
-    for (const p of CFD_FOREX_PAIRS) push(p.symbol, p.name);
+    for (const p of CFD_FOREX_PAIRS) push(p.symbol, p.name, p.category);
     for (const raw of saved) {
       const symbol = resolveTypedSymbol(raw);
-      if (symbol) push(symbol, nameForSymbol(symbol));
+      if (symbol) push(symbol, nameForSymbol(symbol), categoryForSymbol(symbol));
     }
   }
 
   const includeCoins = !(marketsOnly && (includeMarkets || emptyIsMarketsOnly));
   if (includeCoins) {
-    for (const c of COINS) push(`${c.symbol}USDT`, c.name);
+    const coinCategory = includeMarkets ? 'Crypto' : '';
+    for (const c of COINS) push(`${c.symbol}USDT`, c.name, coinCategory);
     for (const r of remote) {
       const sym = String(r?.symbol || '').toUpperCase().replace(/[^A-Z0-9]/g, '');
       if (!sym || COIN_BY_SYMBOL.has(sym)) continue;
-      push(`${sym}USDT`, r.name || sym);
+      push(`${sym}USDT`, r.name || sym, coinCategory);
     }
   }
 

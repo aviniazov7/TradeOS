@@ -1,5 +1,6 @@
 import { format } from 'date-fns';
-import { isClosedTrade, safePnl, calculatePnL, localDayKey, winRateOf, calculateMaxStreaks, signedTradeR } from './calculations';
+import { isClosedTrade, safePnl, calculatePnL, localDayKey, winRateOf, calculateMaxStreaks, signedTradeR, usesContractMath } from './calculations';
+import { cryptoQuantityPnl } from './pairCatalog';
 
 // Pure analytics for the journal's analytics tab. Extracted from TradeJournal
 // so the (heavy) computation only runs when that tab is open, and so it can be
@@ -165,7 +166,7 @@ export function summarizeTrades(trades) {
 // null when it can't be computed: closed trade, CME futures (no live feed),
 // or no price / size.
 export function computeUnrealized(trade, livePrice) {
-  if (!(livePrice > 0) || isClosedTrade(trade) || trade.assetClass === 'futures_cme') return null;
+  if (!(livePrice > 0) || isClosedTrade(trade) || trade.assetClass === 'futures_cme' || usesContractMath(trade) || !cryptoQuantityPnl(trade.pair || trade.symbol)) return null;
   const entry = parseFloat(trade.entryPrice);
   if (!(entry > 0)) return null;
   let qty = parseFloat(trade.quantity);

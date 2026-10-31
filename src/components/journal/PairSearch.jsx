@@ -1,4 +1,5 @@
-import { useState, useEffect, useRef } from 'react';
+import { Fragment, useState, useEffect, useRef } from 'react';
+import { useCloseOnEscape } from '../../hooks/useCloseOnEscape';
 import { Search, X, Plus } from 'lucide-react';
 import { COINS } from '../../utils/constants';
 import { buildPairResults } from '../../utils/pairCatalog';
@@ -22,6 +23,8 @@ export default function PairSearch({
   const debounceRef = useRef(null);
   const containerRef = useRef(null);
   const hint = placeholder || (includeMarkets ? 'חפש זוג... (BTC, XAUUSD...)' : 'חפש זוג... (BTC, SOL...)');
+
+  useCloseOnEscape(isOpen, () => setIsOpen(false));
 
   // Close dropdown on outside click
   useEffect(() => {
@@ -91,8 +94,11 @@ export default function PairSearch({
 
       {/* Selected pair or search input */}
       {value && !isOpen ? (
-        <div className={`${inputClass} flex items-center justify-between cursor-pointer`} onClick={() => setIsOpen(true)}>
-          <span className="truncate" dir="ltr">{value}</span>
+        <div className={`${inputClass} flex items-center justify-between gap-2 cursor-pointer`} onClick={() => setIsOpen(true)}>
+          <span className="flex items-center gap-2 min-w-0">
+            <CoinIcon pair={value} className="w-5 h-5" />
+            <span className="truncate" dir="ltr">{value}</span>
+          </span>
           <button type="button" onClick={(e) => { e.stopPropagation(); handleClear(); setIsOpen(true); }}
             className="p-0.5 rounded text-text-muted hover:text-loss cursor-pointer">
             <X className="w-3.5 h-3.5" />
@@ -124,7 +130,7 @@ export default function PairSearch({
 
       {/* Dropdown */}
       {isOpen && (
-        <div className="absolute z-50 top-full mt-1 w-full bg-bg-overlay border border-border-primary rounded-lg shadow-xl max-h-48 overflow-y-auto">
+        <div data-popover="" className="absolute z-50 top-full mt-1 w-full bg-bg-overlay border border-border-primary rounded-lg shadow-xl max-h-48 overflow-y-auto">
           {custom && (
             <button
               type="button"
@@ -140,20 +146,29 @@ export default function PairSearch({
           {loading && results.length === 0 && !custom && (
             <div className="px-3 py-2 text-xs text-text-muted text-center">מחפש...</div>
           )}
-          {results.map((item) => (
-            <button
-              key={item.pair}
-              type="button"
-              data-testid="pair-option"
-              data-pair={item.pair}
-              onClick={() => handleSelect(item)}
-              className="w-full flex items-center gap-2.5 px-3 py-2 text-right hover:bg-bg-tertiary transition-colors cursor-pointer"
-            >
-              <CoinIcon pair={item.pair} className="w-5 h-5" />
-              <span className="text-sm font-medium text-text-primary" dir="ltr">{item.pair}</span>
-              <span className="text-xs text-text-muted truncate">{item.name}</span>
-            </button>
-          ))}
+          {results.map((item, i) => {
+            const header = item.category && item.category !== results[i - 1]?.category;
+            return (
+              <Fragment key={item.pair}>
+                {header && (
+                  <div role="presentation" className="px-3 pt-2 pb-1 text-[10px] font-semibold tracking-wide text-text-muted sticky top-0 bg-bg-overlay">
+                    {item.category}
+                  </div>
+                )}
+                <button
+                  type="button"
+                  data-testid="pair-option"
+                  data-pair={item.pair}
+                  onClick={() => handleSelect(item)}
+                  className="w-full flex items-center gap-2.5 px-3 py-2 text-right hover:bg-bg-tertiary transition-colors cursor-pointer"
+                >
+                  <CoinIcon pair={item.pair} className="w-5 h-5" />
+                  <span className="text-sm font-medium text-text-primary" dir="ltr">{item.pair}</span>
+                  <span className="text-xs text-text-muted truncate">{item.name}</span>
+                </button>
+              </Fragment>
+            );
+          })}
           {loading && results.length > 0 && (
             <div className="px-3 py-1.5 text-[10px] text-text-muted text-center border-t border-border-primary">מחפש עוד...</div>
           )}

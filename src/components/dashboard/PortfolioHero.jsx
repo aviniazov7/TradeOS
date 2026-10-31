@@ -42,7 +42,7 @@ function buildChart(points) {
 //   for this period — the same helper as the journal. A withdrawal changes
 //   `balance` and is not part of the %. `trades` are the closed trades behind
 //   `series` so a per-trade balance snapshot is part of that book.
-export default function PortfolioHero({ balance, declaredStart = 0, series, trades = null, hidden }) {
+export default function PortfolioHero({ balance, declaredStart = 0, series, trades = null, hidden, onSetBalance = null }) {
   const [period, setPeriod] = useState(() => {
     try { return localStorage.getItem(PERIOD_KEY) || 'all'; } catch { return 'all'; }
   });
@@ -68,6 +68,12 @@ export default function PortfolioHero({ balance, declaredStart = 0, series, trad
   const hp = hi != null && s.chart ? s.chart.pts[hi] : null;
   const hpLeft = hp ? Math.max(8, Math.min(92, (hi / (s.chart.pts.length - 1)) * 100)) : 0;
 
+  // $0.00 with no opening balance is not a portfolio. P&L can still exist;
+  // ask for the starting balance instead of printing a fake zero.
+  const balanceKnown = Number(declaredStart) > 0 || (Number.isFinite(Number(balance)) && Math.abs(Number(balance)) >= 1);
+  const hasPnl = (series || []).some((p) => Number(p?.pnl));
+  const askForStart = !balanceKnown && hasPnl;
+
   const tile = 'rounded-xl bg-bg-tertiary border border-border-primary px-3.5 py-3 flex flex-col gap-1 min-w-0';
   const tone = (v) => (v > 0 ? 'text-profit' : v < 0 ? 'text-loss' : 'text-text-primary');
   const third = s.def.id === 'all'
@@ -82,10 +88,23 @@ export default function PortfolioHero({ balance, declaredStart = 0, series, trad
         <div className="flex flex-col gap-1.5 min-w-0 flex-1 basis-48">
           <span className="text-[13px] font-medium text-text-secondary">שווי תיקים כולל</span>
           <div className="flex items-center gap-2.5 min-w-0">
-            <FitText dir="ltr" min={18} className="num-mono text-3xl md:text-[40px] font-extrabold text-text-primary leading-none flex-initial">
-              <AnimatedValue value={m(formatCurrency(balance).replace('+', ''))} />
-            </FitText>
-            {s.percent != null && s.percent !== 0 && (
+            {askForStart ? (
+              onSetBalance ? (
+                <button type="button" onClick={onSetBalance} data-testid="set-opening-balance"
+                  className="text-lg md:text-2xl font-extrabold text-accent-primary leading-tight text-right hover:underline cursor-pointer">
+                  הגדר יתרה התחלתית
+                </button>
+              ) : (
+                <p data-testid="set-opening-balance" className="text-lg md:text-2xl font-extrabold text-accent-primary leading-tight">
+                  הגדר יתרה התחלתית
+                </p>
+              )
+            ) : (
+              <FitText dir="ltr" min={18} className="num-mono text-3xl md:text-[40px] font-extrabold text-text-primary leading-none flex-initial">
+                <AnimatedValue value={m(formatCurrency(balance).replace('+', ''))} />
+              </FitText>
+            )}
+            {!askForStart && s.percent != null && s.percent !== 0 && (
               <span dir="ltr" data-testid="portfolio-return" className={`shrink-0 text-[13px] font-bold px-2 py-0.5 rounded-lg ${s.percent >= 0 ? 'bg-profit/15 text-profit' : 'bg-loss/15 text-loss'}`}>
                 {m(`${LRM}${s.percent > 0 ? '+' : ''}${s.percent.toFixed(1)}%`)}
               </span>

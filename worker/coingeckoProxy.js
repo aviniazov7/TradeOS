@@ -1,18 +1,26 @@
-// CoinGecko proxy. The free tier allows roughly 30 calls a minute, and every
-// Worker isolate shares one egress IP, so a burst of uncached /cg/ requests
-// (the market page asks for icons, prices, and charts together) comes back
-// as HTTP 429. The previous handler forwarded that status and cached nothing,
-// so the next request tried CoinGecko again immediately.
-//
-// Fresh responses live in caches.default (not KV — the key is caller-controlled).
-// A 429 or 503 opens a short backoff and, when we already stored a copy, that
-// copy is served instead of another upstream call. Identical in-flight URLs
-// share one fetch.
+// CoinGecko proxy. The free demo tier allows roughly 30 calls a minute, and
+// every Worker isolate shares one egress IP, so uncached /cg/ requests show
+// up as HTTP 429. Fresh JSON lives in caches.default (not KV — the key is
+// caller-controlled and KV writes are what exhausted the free quota). Keys
+// use a normalized query, so `ids=eth,btc` and `ids=btc,eth` share one entry.
+// Identical in-flight URLs share one fetch per isolate. A 429/503 is stored
+// as a short-lived 200 marker (the Cache API is reliable for 200s) and the
+// last good body is served with a stale marker instead of an error.
 
 export const CG_ALLOWED = /^(coins\/[a-z0-9_-]{1,64}(\/market_chart)?|search|simple\/price|global)$/;
 
+// Polled prices stay fresh enough to trade off of, and still collapse a
+// 10s client loop into one upstream call a minute. Markets / charts are
+// large and barely change, so they keep a longer TTL — a 60s TTL there
+// would burn the same 30 calls/minute budget on icon refreshes.
+export const CG_PRICE_TTL_SEC = 60;
+const CG_DEFAULT_TTL_SEC = 300;
+const CG_MARKETS_TTL_SEC = 3600;
+const CG_STALE_TTL_SEC = 86400;
+
 const UPSTREAM = 'https://api.coingecko.com/api/v3/';
 const UA = 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36';
+const LIST_PARAMS = new Set(['ids', 'names', 'symbols', 'vs_currencies']);
 
 let backoffUntil = 0;
 const inflight = new Map();
@@ -20,6 +28,35 @@ const inflight = new Map();
 export function resetCoinGeckoGate() {
   backoffUntil = 0;
   inflight.clear();
+}
+
+/** Stable query string. List params are split, lowercased, and sorted. */
+export function normalizeCgSearch(search) {
+  const src = new URLSearchParams(typeof search === 'string' ? search : '');
+  const grouped = new Map();
+  for (const [rawKey, rawValue] of src.entries()) {
+    const key = rawKey.trim().toLowerCase();
+    if (!key) continue;
+    if (!grouped.has(key)) grouped.set(key, []);
+    grouped.get(key).push(rawValue);
+  }
+  const out = new URLSearchParams();
+  for (const key of [...grouped.keys()].sort()) {
+    const rawParts = grouped.get(key).flatMap((value) => String(value).split(','));
+    const parts = rawParts.map((value) => value.trim()).filter(Boolean);
+    if (!parts.length) continue;
+    let value;
+    if (LIST_PARAMS.has(key)) {
+      value = [...new Set(parts.map((part) => part.toLowerCase()))].sort().join(',');
+    } else if (key.startsWith('include_')) {
+      value = parts.some((part) => /^(1|true|yes)$/i.test(part)) ? 'true' : 'false';
+    } else {
+      value = parts.join(',');
+    }
+    if (value) out.set(key, value);
+  }
+  const serialized = out.toString();
+  return serialized ? `?${serialized}` : '';
 }
 
 function freshKey(subPath, search) {
@@ -30,7 +67,9 @@ function staleKey(subPath, search) {
 }
 
 function ttlFor(subPath) {
-  return subPath.startsWith('coins/markets') ? 3600 : 300;
+  if (subPath === 'simple/price') return CG_PRICE_TTL_SEC;
+  if (subPath.startsWith('coins/markets')) return CG_MARKETS_TTL_SEC;
+  return CG_DEFAULT_TTL_SEC;
 }
 
 function retryAfterSeconds(header, nowMs) {
@@ -58,18 +97,70 @@ async function readCached(cache, key) {
   return (await cache.match(key)) || null;
 }
 
-async function stalePayload(cache, key, cors) {
+async function safePut(cache, key, response) {
+  if (!cache) return;
+  try {
+    await cache.put(key, response);
+  } catch {
+    // caches.default rejects a few status codes and oversized bodies. Losing
+    // the write must not turn into a 500 or skip the stale body we already
+    // have in memory.
+  }
+}
+
+function negativeMarker(status, waitSec) {
+  return new Response(JSON.stringify({ error: status }), {
+    status: 200,
+    headers: {
+      'Content-Type': 'application/json',
+      'Cache-Control': `public, max-age=${waitSec}`,
+      'Retry-After': String(waitSec),
+      'X-Cg-Negative': String(status),
+    },
+  });
+}
+
+function markerFrom(hit, body) {
+  if (!hit) return '';
+  const header = hit.headers.get('X-Cg-Negative');
+  if (header) return header;
+  if (hit.status === 429 || hit.status === 503) return String(hit.status);
+  try {
+    const parsed = JSON.parse(body);
+    if (parsed && (parsed.error === 429 || parsed.error === 503) && Object.keys(parsed).length === 1) {
+      return String(parsed.error);
+    }
+  } catch { /* a price body is not a marker */ }
+  return '';
+}
+
+async function stalePayload(cache, key, upstreamStatus) {
   const stale = await readCached(cache, key);
   if (!stale) return null;
+  const body = await stale.text();
+  if (!body || markerFrom(stale, body)) return null;
   return {
     status: 200,
-    body: await stale.text(),
+    body,
     headers: {
-      ...cors,
       'Access-Control-Allow-Origin': '*',
       'Content-Type': 'application/json',
-      'Cache-Control': 'public, max-age=60',
+      'Cache-Control': 'public, max-age=30',
       'X-Cache': 'STALE',
+      'Warning': '110 - "Response is stale"',
+      'X-Upstream-Status': String(upstreamStatus),
+    },
+  };
+}
+
+function rateLimited(retry, cacheState) {
+  return {
+    status: 429,
+    body: JSON.stringify({ error: 429 }),
+    headers: {
+      'Cache-Control': `public, max-age=${retry}`,
+      'Retry-After': String(retry),
+      'X-Cache': cacheState,
     },
   };
 }
@@ -90,14 +181,14 @@ export async function handleCoinGecko(requestUrl, cors, opts = {}) {
     return jsonResponse(JSON.stringify({ error: 'forbidden' }), 403, cors);
   }
 
-  const search = url.search;
+  const search = normalizeCgSearch(url.search);
   const flightKey = `${subPath}${search}`;
   // Reserve the slot before any await. Otherwise two requests that arrive
   // together both see an empty map, both miss the cache, and both call
-  // CoinGecko.
+  // CoinGecko. The key is the normalized query, so reordered ids coalesce.
   let pending = inflight.get(flightKey);
   if (!pending) {
-    pending = resolveCoinGecko(subPath, search, cors, fetchImpl, cache, now)
+    pending = resolveCoinGecko(subPath, search, fetchImpl, cache, now)
       .finally(() => inflight.delete(flightKey));
     inflight.set(flightKey, pending);
   }
@@ -105,44 +196,38 @@ export async function handleCoinGecko(requestUrl, cors, opts = {}) {
   return jsonResponse(payload.body, payload.status, cors, payload.headers);
 }
 
-async function resolveCoinGecko(subPath, search, cors, fetchImpl, cache, now) {
+async function resolveCoinGecko(subPath, search, fetchImpl, cache, now) {
   const fresh = freshKey(subPath, search);
   const stale = staleKey(subPath, search);
   const nowMs = now();
+  const cached = await readCached(cache, fresh);
+  const cachedBody = cached ? await cached.text() : '';
+  const negative = markerFrom(cached, cachedBody);
 
-  const hit = await readCached(cache, fresh);
-  if (hit && hit.status !== 429 && hit.status !== 503) {
+  if (cached && !negative) {
     return {
-      status: hit.status || 200,
-      body: await hit.text(),
+      status: cached.status || 200,
+      body: cachedBody,
       headers: {
         'Access-Control-Allow-Origin': '*',
-        'Cache-Control': hit.headers.get('Cache-Control') || `public, max-age=${ttlFor(subPath)}`,
+        'Cache-Control': cached.headers.get('Cache-Control') || `public, max-age=${ttlFor(subPath)}`,
         'X-Cache': 'HIT',
       },
     };
   }
 
-  if (hit?.status === 429 || hit?.status === 503 || nowMs < backoffUntil) {
-    const fallback = await stalePayload(cache, stale, cors);
+  if (negative || nowMs < backoffUntil) {
+    const fallback = await stalePayload(cache, stale, negative || '429');
     if (fallback) return fallback;
-    const retry = hit?.headers.get('Retry-After')
+    const retry = cached?.headers.get('Retry-After')
       || String(Math.max(1, Math.ceil((backoffUntil - nowMs) / 1000) || 60));
-    return {
-      status: 429,
-      body: JSON.stringify({ error: 429 }),
-      headers: {
-        'Cache-Control': `public, max-age=${retry}`,
-        'Retry-After': retry,
-        'X-Cache': hit ? 'HIT' : 'BACKOFF',
-      },
-    };
+    return rateLimited(retry, cached ? 'HIT' : 'BACKOFF');
   }
 
-  return load(subPath, search, fresh, stale, cors, fetchImpl, cache, now);
+  return load(subPath, search, fresh, stale, fetchImpl, cache, now);
 }
 
-async function load(subPath, search, fresh, stale, cors, fetchImpl, cache, now) {
+async function load(subPath, search, fresh, stale, fetchImpl, cache, now) {
   const cgUrl = `${UPSTREAM}${subPath}${search}`;
   let res;
   try {
@@ -150,7 +235,7 @@ async function load(subPath, search, fresh, stale, cors, fetchImpl, cache, now) 
       headers: { Accept: 'application/json', 'User-Agent': UA },
     });
   } catch {
-    const fallback = await stalePayload(cache, stale, cors);
+    const fallback = await stalePayload(cache, stale, 502);
     if (fallback) return fallback;
     return {
       status: 502,
@@ -162,27 +247,12 @@ async function load(subPath, search, fresh, stale, cors, fetchImpl, cache, now) 
   if (res.status === 429 || res.status === 503) {
     const waitSec = retryAfterSeconds(res.headers.get('retry-after'), now());
     backoffUntil = Math.max(backoffUntil, now() + waitSec * 1000);
-    if (cache) {
-      await cache.put(fresh, new Response(JSON.stringify({ error: res.status }), {
-        status: 429,
-        headers: {
-          'Content-Type': 'application/json',
-          'Cache-Control': `public, max-age=${waitSec}`,
-          'Retry-After': String(waitSec),
-        },
-      }));
-    }
-    const fallback = await stalePayload(cache, stale, cors);
+    // Read the last good body before the cache write. A rejected put must
+    // not skip the stale response.
+    const fallback = await stalePayload(cache, stale, res.status);
+    await safePut(cache, fresh, negativeMarker(res.status, waitSec));
     if (fallback) return fallback;
-    return {
-      status: 429,
-      body: JSON.stringify({ error: res.status }),
-      headers: {
-        'Cache-Control': `public, max-age=${waitSec}`,
-        'Retry-After': String(waitSec),
-        'X-Cache': 'MISS',
-      },
-    };
+    return rateLimited(String(waitSec), 'MISS');
   }
 
   if (!res.ok) {
@@ -200,13 +270,12 @@ async function load(subPath, search, fresh, stale, cors, fetchImpl, cache, now) 
     'Cache-Control': `public, max-age=${ttl}`,
     'X-Cache': 'MISS',
   };
-  if (cache) {
-    await cache.put(fresh, new Response(text, {
-      headers: { 'Content-Type': 'application/json', 'Cache-Control': `public, max-age=${ttl}`, 'X-Cache': 'HIT' },
-    }));
-    await cache.put(stale, new Response(text, {
-      headers: { 'Content-Type': 'application/json', 'Cache-Control': 'public, max-age=86400' },
-    }));
-  }
+  const stored = {
+    headers: { 'Content-Type': 'application/json', 'Cache-Control': `public, max-age=${ttl}`, 'X-Cache': 'HIT' },
+  };
+  await safePut(cache, fresh, new Response(text, stored));
+  await safePut(cache, stale, new Response(text, {
+    headers: { 'Content-Type': 'application/json', 'Cache-Control': `public, max-age=${CG_STALE_TTL_SEC}` },
+  }));
   return { status: 200, body: text, headers };
 }

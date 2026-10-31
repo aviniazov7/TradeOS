@@ -8,7 +8,9 @@ vi.mock('../../services/coinImageCache', () => ({
   cacheImage: vi.fn(),
   clearCachedImage: vi.fn(),
 }));
-vi.mock('../shared/CoinIcon', () => ({ default: () => null }));
+vi.mock('../shared/CoinIcon', () => ({
+  default: ({ pair }) => <span data-symbol-icon={pair} />,
+}));
 
 import PairSearch from './PairSearch';
 
@@ -53,6 +55,10 @@ describe('PairSearch markets', () => {
     expect(pairs).toContain('EURUSD.R');
     expect(view.el.textContent).toContain('Gold');
     expect(view.el.textContent).toContain('Yen');
+    expect(view.el.textContent).toContain('Metals');
+    expect(view.el.textContent).toContain('Forex');
+    expect(view.el.textContent).toContain('Indices');
+    expect(view.el.textContent).toContain('Crypto');
 
     typeInto(input, 'xauusd.r');
     const custom = view.el.querySelector('[data-testid="pair-custom"]');
@@ -60,6 +66,18 @@ describe('PairSearch markets', () => {
     expect(custom.textContent).not.toContain('XAUUSD.RUSDT');
     act(() => { custom.click(); });
     expect(onChange).toHaveBeenCalledWith('XAUUSD.R');
+    view.unmount();
+  });
+
+  it('shows the symbol icon on the closed field, same as the menu', () => {
+    const view = render(<PairSearch value="EURUSD" onChange={() => {}} includeMarkets />);
+    const closed = view.el.querySelector('[data-symbol-icon="EURUSD"]');
+    expect(closed).toBeTruthy();
+    expect(view.el.textContent).toContain('EURUSD');
+    expect(view.el.querySelector('[data-pair]')).toBeNull();
+    act(() => { closed.parentElement.parentElement.click(); });
+    const option = view.el.querySelector('[data-pair="EURUSD"] [data-symbol-icon="EURUSD"]');
+    expect(option).toBeTruthy();
     view.unmount();
   });
 

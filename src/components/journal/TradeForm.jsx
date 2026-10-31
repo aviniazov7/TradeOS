@@ -1,10 +1,11 @@
-import { useState, useEffect, useMemo, useRef } from 'react';
+import { useState, useEffect, useLayoutEffect, useMemo, useRef, memo } from 'react';
 import toast from 'react-hot-toast';
 import DatePicker, { registerLocale } from 'react-datepicker';
 import { he } from 'date-fns/locale';
 import 'react-datepicker/dist/react-datepicker.css';
 import { X, Plus, AlertTriangle, ShieldAlert, TrendingUp, TrendingDown, Check, Target, ClipboardCheck, Gauge, ShieldCheck, Layers, Calculator, ChevronDown } from 'lucide-react';
 import Modal from '../shared/Modal';
+import ConfirmDialog from '../shared/ConfirmDialog';
 import TradeChartLinksField from './TradeChartLinksField';
 import PairSearch from './PairSearch';
 import StockSearch from '../stocks/StockSearch';
@@ -29,11 +30,13 @@ import {
   partialExitDefaultDate, syncPartialExitDates, entryPriceProblem,
   aggregateFills, exitsClosedPercent, syncExitSize, remainderClose, storedExit, hasCommissionPreset, estimateCommission,
   buildChecklistRows, checklistAdherence, loadLastTradeChoices, saveLastTradeChoices,
+  triggerFitsStrategy, triggersForStrategy, freshTradeChoices,
   parseInstrumentSize, defaultInstrumentChoice,
   canMoveStopToBreakeven, breakevenStopValue, closeDateWithoutExitPrice,
   riskBudgetCheck, riskToStop, riskSizedNotional, stopDistancePct, rMultiple, plannedRewardRisk,
 } from '../../utils/tradeFormHelpers';
 import { calculatePnLPercent, calculateRR, calculateNetPnL, calculatePartialPnL, calculateWeightedExitPrice, calculateFuturesContractsPnL, calculateFuturesNotional, initialStopLoss, isStopOnRiskSide, isClosedTrade, safePnl, tradeShownPercent } from '../../utils/calculations';
+import { categoryForSymbol, cryptoQuantityPnl, formatQuoteAmount } from '../../utils/pairCatalog';
 import { getSessionFromDate } from '../../utils/sessions';
 import { formatCurrency, formatPercent } from '../../utils/formatters';
 
@@ -86,6 +89,36 @@ const defaultForm = {
   stressRating: 3,
   confidenceRating: 3,
 };
+
+function prefillSessionKey(prefill) {
+  if (!prefill || typeof prefill !== 'object') return '';
+  try { return JSON.stringify(prefill); } catch { return ''; }
+}
+
+function fingerprintValue(value) {
+  if (value instanceof Date) {
+    const t = value.getTime();
+    return Number.isNaN(t) ? null : t;
+  }
+  if (Array.isArray(value)) return value.map(fingerprintValue);
+  if (value && typeof value === 'object') {
+    const out = {};
+    for (const key of Object.keys(value).sort()) out[key] = fingerprintValue(value[key]);
+    return out;
+  }
+  return value === undefined ? null : value;
+}
+
+function tradeFormFingerprint(form, extra) {
+  return JSON.stringify(fingerprintValue({
+    form,
+    manualQty: extra.manualQty ?? '',
+    closeKind: extra.closeKind ?? '',
+    closePrice: extra.closePrice ?? '',
+    closeDate: extra.closeDate ?? null,
+    feesAuto: !!extra.feesAuto,
+  }));
+}
 
 function parseDate(val) {
   if (!val) return null;
@@ -204,7 +237,7 @@ function RailBlock({ title, children }) {
   );
 }
 
-export default function TradeForm({ isOpen, onClose, trade, onSave, riskSettings, livePrices = {}, journalAssetClass = 'crypto', prefill = null, accountBalance = 0, strictAccount = false }) {
+function TradeForm({ isOpen, onClose, trade, onSave, riskSettings, livePrices = {}, journalAssetClass = 'crypto', prefill = null, accountBalance = 0, strictAccount = false }) {
   // Asset class is owned by the JOURNAL — every trade inherits it, no per-trade
   // toggle. Editing a trade keeps that trade's own stored class.
   const newTradeAssetClass = ['futures_cme', 'stocks'].includes(journalAssetClass) ? journalAssetClass : 'crypto';
@@ -245,12 +278,32 @@ export default function TradeForm({ isOpen, onClose, trade, onSave, riskSettings
   const [riskOpenState, setRiskOpenState] = useState(null);
   const [exitsOpenState, setExitsOpenState] = useState(null);
   const [fieldErrors, setFieldErrors] = useState({});
+  const [discardOpen, setDiscardOpen] = useState(false);
   const submitRef = useRef(null);
+  // Identity of the ticket currently on screen. A later effect run for the
+  // same ticket (parent re-render, new prefill object, refreshed trade) must
+  // not reset the fields the user is typing.
+  const openSessionRef = useRef('');
+  const baselineRef = useRef(null);
+  const armBaselineRef = useRef(false);
   const livePricesRef = useRef(livePrices);
   const journalRef = useRef(activeJournal);
   journalRef.current = activeJournal;
   useEffect(() => { livePricesRef.current = livePrices; });
   useEffect(() => {
+    if (!isOpen) {
+      openSessionRef.current = '';
+      baselineRef.current = null;
+      armBaselineRef.current = false;
+      setDiscardOpen(false);
+      return;
+    }
+    const openKey = trade
+      ? `edit:${trade.id || trade.externalId || 'current'}`
+      : `new:${prefillSessionKey(prefill)}`;
+    if (openSessionRef.current === openKey) return;
+    openSessionRef.current = openKey;
+
     if (trade) {
       // Scale-in trades store every fill in `entries` while entryPrice /
       // quantity hold the aggregate. The editor shows the FIRST fill in the
@@ -393,6 +446,9 @@ export default function TradeForm({ isOpen, onClose, trade, onSave, riskSettings
         mistakes: trade.mistakes ?? [],
         chartLinks: chartLinksForEditor(trade),
         entryDate: parseDate(trade.entryDate),
+        // A saved session stays. An empty one is filled the same way the
+        // auto-detect effect would, so that fill is part of the clean baseline.
+        session: trade.session || (parseDate(trade.entryDate) ? (getSessionFromDate(trade.entryDate) || '') : ''),
         exitDate: parseDate(trade.exitDate),
         exitDateEdited: !!parseDate(trade.exitDate),
         focusRating: trade.focusRating ?? 3,
@@ -409,11 +465,13 @@ export default function TradeForm({ isOpen, onClose, trade, onSave, riskSettings
       setCloseKind('');
       setClosePrice('');
       setCloseDate(null);
-      // New trade: seed the asset class from the user's profile preference and
-      // pick a sensible default symbol for it. Strategy / timeframe / trigger
-      // start from the last ones used in THIS journal. A calculator handoff
-      // fills direction, prices, risk and a planned target on top of that.
+      // New trade: asset class and symbol come from the journal (a remembered
+      // futures instrument is kept). Timeframe is the one setup preference
+      // carried over. Strategy, trigger and direction start clean — the last
+      // trade's Order Block + Spring must not come back together. A calculator
+      // handoff may still set direction, prices, risk and a planned target.
       const last = loadLastTradeChoices(activeJournalId);
+      const fresh = freshTradeChoices(last);
       const choice = defaultInstrumentChoice({
         assetClass: newTradeAssetClass,
         broker: journalRef.current?.exchange,
@@ -425,12 +483,13 @@ export default function TradeForm({ isOpen, onClose, trade, onSave, riskSettings
         assetClass: newTradeAssetClass,
         pair: choice.pair,
         contracts: choice.contracts,
-        strategy: last?.strategy || '',
-        timeframe: last?.timeframe || defaultForm.timeframe,
-        trigger: last?.trigger || '',
+        strategy: fresh.strategy,
+        timeframe: fresh.timeframe || defaultForm.timeframe,
+        trigger: fresh.trigger,
         direction: seed?.direction === 'short' || seed?.direction === 'long'
           ? seed.direction
-          : (choice.direction || defaultForm.direction),
+          : defaultForm.direction,
+        session: entryDate ? (getSessionFromDate(entryDate) || '') : '',
         entryDate,
         entryPrice: seed?.entryPrice || '',
         stopLoss: seed?.stopLoss || '',
@@ -453,8 +512,31 @@ export default function TradeForm({ isOpen, onClose, trade, onSave, riskSettings
     setRiskOpenState(null);
     setExitsOpenState(null);
     setFieldErrors({});
-    sessionManuallySet.current = false;
+    // A session loaded from the trade is the user's. Don't let the auto-detect
+    // effect overwrite it and look like an edit.
+    sessionManuallySet.current = !!(trade && trade.session);
+    // Snapshot on the next layout, once these setStates have committed.
+    armBaselineRef.current = true;
   }, [trade, isOpen, prefill]); // allStrategies intentionally excluded — it only affects dropdown options, not form state; including it caused form resets mid-edit
+
+  // Baseline is the form AFTER the open-reset commits, before the user types.
+  // Captured in layout (before paint) so a fast click can't land in between.
+  useLayoutEffect(() => {
+    if (!isOpen || !armBaselineRef.current) return;
+    armBaselineRef.current = false;
+    baselineRef.current = tradeFormFingerprint(form, {
+      manualQty, closeKind, closePrice, closeDate, feesAuto,
+    });
+  }, [isOpen, form, manualQty, closeKind, closePrice, closeDate, feesAuto]);
+
+  const dirty = baselineRef.current != null && tradeFormFingerprint(form, {
+    manualQty, closeKind, closePrice, closeDate, feesAuto,
+  }) !== baselineRef.current;
+  const requestClose = () => {
+    if (saving) return;
+    if (dirty) setDiscardOpen(true);
+    else onClose();
+  };
 
   // Auto-detect session from entry date (only if user hasn't manually selected)
   useEffect(() => {
@@ -508,8 +590,13 @@ export default function TradeForm({ isOpen, onClose, trade, onSave, riskSettings
 
   // CME futures mode (epic #32). Crypto stays the default path. contractSpec
   // (pointValue/tickSize) drives dollar P&L; contractsNum replaces leverage.
-  const isFutures = form.assetClass === 'futures_cme';
-  const contractSpec = isFutures ? getContractSpec(form.pair) : null;
+  // A listed CFD (XAUUSD, EURUSD, NAS100, …) uses lot × point value even when
+  // the journal itself is crypto. A USDT gold token stays a coin.
+  const marketSpec = getContractSpec(form.pair);
+  const isFutures = form.assetClass === 'futures_cme' || marketSpec?.kind === 'cfd';
+  const contractSpec = isFutures ? marketSpec : null;
+  const quoteCurrency = contractSpec?.currency || (cryptoQuantityPnl(form.pair) ? 'USD' : '');
+  const marketCategory = categoryForSymbol(form.pair);
   const isCfd = contractSpec?.kind === 'cfd';
   const contractsNum = isFutures ? parseInstrumentSize(form.contracts, contractSpec) : 0;
   // Stocks: plain cash equity — size in shares, no leverage, dollar fees.
@@ -775,6 +862,9 @@ export default function TradeForm({ isOpen, onClose, trade, onSave, riskSettings
 
     if (!totalUnits) return null;
     if (!allExits.length) return null;
+    // Forex, gold CFDs and indices are not a USDT coin. Without a lot spec
+    // there is no honest dollar P&L — don't multiply the price gap by size.
+    if (!cryptoQuantityPnl(form.pair)) return null;
 
     // For exchange-imported trades, trust the exchange-reported P&L (quantity may be in contracts, not base asset)
     const isImported = form.pnlFromExchange != null;
@@ -790,7 +880,7 @@ export default function TradeForm({ isOpen, onClose, trade, onSave, riskSettings
     const netPnl = calculateNetPnL(pnl, fees);
 
     return { pnl, pnlPercent, rrRatio, netPnl };
-  }, [form.direction, avgEntry, liveExits, riskStopLoss, totalUnits, feesValue,
+  }, [form.direction, form.pair, avgEntry, liveExits, riskStopLoss, totalUnits, feesValue,
       form.leverage, form.pnlFromExchange, form.pnlPercent, isFutures, contractSpec, totalContracts, isStocks]);
 
   // Trading plans: the active ones, plus the plan this trade is already
@@ -1221,21 +1311,27 @@ export default function TradeForm({ isOpen, onClose, trade, onSave, riskSettings
             pointValue: contractSpec.pointValue,
             tickSize: contractSpec.tickSize,
             contracts: totalContracts,
+            ...(contractSpec.kind ? { kind: contractSpec.kind } : {}),
+            ...(contractSpec.currency ? { currency: contractSpec.currency } : {}),
           },
         } : {}),
         // Preserve exchange-specific fields so PnL stays accurate after editing
         ...(trade?.pnlFromExchange != null ? { pnlFromExchange: trade.pnlFromExchange } : {}),
         ...(trade?.externalId ? { externalId: trade.externalId } : {}),
       };
-      await onSave(data);
-      // New trades seed the next one in this journal with the same setup.
+      const saved = await onSave(data);
+      // A handler that reports its own failure (or a demo refusal) returns
+      // false. Anything else — including undefined — saved.
+      if (saved === false) return;
+      // Remember timeframe and the futures instrument only. Strategy, trigger
+      // and direction are chosen per trade.
       if (!trade) {
         saveLastTradeChoices(activeJournalId, {
-          strategy: finalStrategy || '',
+          strategy: '',
           timeframe: finalTimeframe || '',
-          trigger: finalTrigger || '',
+          trigger: '',
           instrument: isFutures ? (contractSpec?.symbol || finalPair || '') : '',
-          direction: form.direction === 'short' ? 'short' : 'long',
+          direction: '',
           broker: activeJournal?.exchange || '',
         });
       }
@@ -1250,6 +1346,8 @@ export default function TradeForm({ isOpen, onClose, trade, onSave, riskSettings
   };
 
   const pnlColor = (val) => (val > 0 ? 'text-profit' : val < 0 ? 'text-loss' : 'text-breakeven');
+  const showSigned = (v) => formatQuoteAmount(v, quoteCurrency, { signed: true }) || formatCurrency(v);
+  const showPlain = (v, max = 2) => formatQuoteAmount(v, quoteCurrency, { digits: max }) || fmtUsd(v, max);
   const textareaClass = 'w-full min-w-0 h-24 bg-bg-tertiary border border-border-primary rounded-xl px-3 py-2 text-sm text-text-primary outline-none focus:border-accent-primary transition-colors text-right resize-none placeholder:text-text-muted/60';
   const isLong = form.direction === 'long';
   // Futures exits are recorded in contracts; crypto / stocks in percent.
@@ -1263,7 +1361,7 @@ export default function TradeForm({ isOpen, onClose, trade, onSave, riskSettings
   // journal preset it shows the estimate; typing switches it to manual, and
   // the calculator button re-applies the preset.
   const feesField = (
-    <Field label={isFutures || isStocks ? 'עמלות ($)' : 'עמלות (USDT)'} htmlFor="tt-fees"
+    <Field label={isFutures || isStocks ? `עמלות (${quoteCurrency && quoteCurrency !== 'USD' ? quoteCurrency : '$'})` : 'עמלות (USDT)'} htmlFor="tt-fees"
       aside={feesFromPreset
         ? <span className="text-[10px] font-semibold text-accent-primary shrink-0">פריסט</span>
         : (hasPreset && presetFees != null) ? (
@@ -1362,7 +1460,7 @@ export default function TradeForm({ isOpen, onClose, trade, onSave, riskSettings
             </span>
           </div>
           <p className="mt-1 text-[11px] text-text-muted truncate">
-            {isCfd ? 'CFD' : (ASSET_LABELS[form.assetClass] || 'קריפטו')} · {form.orderType === 'limit' ? 'Limit' : 'Market'}{form.timeframe ? ` · ${form.timeframe}` : ''}
+            {marketCategory || (isCfd ? 'CFD' : (!cryptoQuantityPnl(form.pair) ? 'CFD' : (ASSET_LABELS[form.assetClass] || 'קריפטו')))} · {form.orderType === 'limit' ? 'Limit' : 'Market'}{form.timeframe ? ` · ${form.timeframe}` : ''}
           </p>
           <div className="mt-3 flex items-center gap-2">
             <span className={`w-2 h-2 rounded-full shrink-0 ${statusCfg.dot}`} />
@@ -1373,17 +1471,17 @@ export default function TradeForm({ isOpen, onClose, trade, onSave, riskSettings
         {shown && (
           <RailBlock title="תוצאה">
             <div className="flex items-baseline justify-between gap-2 py-1">
-              <span className={`num-mono text-xl font-bold ${pnlColor(shown.netPnl)}`} dir="ltr">{formatCurrency(shown.netPnl)}</span>
+              <span className={`num-mono text-xl font-bold ${pnlColor(shown.netPnl)}`} dir="ltr">{showSigned(shown.netPnl)}</span>
               <span className={`num-mono text-xs font-semibold ${resultPercent == null ? 'text-text-muted' : pnlColor(resultPercent)}`} dir="ltr" title={shownReturn?.onAccount ? 'תשואה על היתרה' : 'תשואה על הפוזיציה'}>{resultPercent == null ? '—' : formatPercent(resultPercent)}</span>
             </div>
-            {shown.pnl != null && <Row label="ברוטו" value={formatCurrency(shown.pnl)} tone="text-text-secondary" />}
+            {shown.pnl != null && <Row label="ברוטו" value={showSigned(shown.pnl)} tone="text-text-secondary" />}
             <Row label="R בפועל" value={fmtR(realizedNetR)} tone={pnlColor(shown.netPnl)} />
           </RailBlock>
         )}
 
         <RailBlock title="פוזיציה">
-          <Row label={isFutures ? 'נומינלי' : isStocks ? 'שווי פוזיציה' : 'גודל פוזיציה'} value={totalNotional > 0 ? fmtUsd(totalNotional) : '—'} />
-          {!isFutures && !isStocks && <Row label="מרג׳ין" value={calculatedMargin != null ? fmtUsd(calculatedMargin) : '—'} />}
+          <Row label={isFutures ? 'נומינלי' : isStocks ? 'שווי פוזיציה' : 'גודל פוזיציה'} value={totalNotional > 0 ? showPlain(totalNotional) : '—'} />
+          {!isFutures && !isStocks && <Row label="מרג׳ין" value={calculatedMargin != null ? showPlain(calculatedMargin) : '—'} />}
           <Row label={isFutures ? sizeUnitLabel : isStocks ? 'מניות' : 'כמות'} value={totalUnits > 0 ? fmtNum(totalUnits, sizeDigits) : '—'} />
           {hasScaleIns && avgEntry > 0 && <Row label="כניסה ממוצעת" value={fmtNum(avgEntry)} />}
           {isFutures && contractSpec && <Row label="ערך נקודה" value={`$${contractSpec.pointValue}`} />}
@@ -1391,7 +1489,7 @@ export default function TradeForm({ isOpen, onClose, trade, onSave, riskSettings
         </RailBlock>
 
         <RailBlock title="סיכון">
-          <Row label={riskLabel} value={riskDollars > 0 ? fmtUsd(riskDollars) : '—'} tone={riskTone} strong />
+          <Row label={riskLabel} value={riskDollars > 0 ? showPlain(riskDollars) : '—'} tone={riskTone} strong />
           <Row label="מהתיק" value={riskInfo?.percent != null ? `${riskInfo.percent.toFixed(2)}%` : '—'} tone={riskTone} />
           {riskInfo?.missingBalance && (
             <p className="mt-1 text-[11px] leading-snug text-breakeven">{riskInfo.message}</p>
@@ -1415,7 +1513,7 @@ export default function TradeForm({ isOpen, onClose, trade, onSave, riskSettings
         </RailBlock>
 
         <RailBlock title="עלויות ומשמעת">
-          <Row label="עמלות" value={feesNum > 0 ? fmtUsd(feesNum, 4) : '—'} />
+          <Row label="עמלות" value={feesNum > 0 ? showPlain(feesNum, 4) : '—'} />
           <Row label="עמידה בתוכנית" value={adherencePct != null ? `${adherencePct}%` : '—'} />
         </RailBlock>
       </div>
@@ -1426,15 +1524,15 @@ export default function TradeForm({ isOpen, onClose, trade, onSave, riskSettings
     <>
       {/* Phones: the key numbers stay in view above the buttons. */}
       <div className="lg:hidden grid grid-cols-3 gap-2 mb-2.5">
-        <MiniStat label="סיכון" value={riskDollars > 0 ? fmtUsd(riskDollars) : '—'} tone={riskTone} />
+        <MiniStat label="סיכון" value={riskDollars > 0 ? showPlain(riskDollars) : '—'} tone={riskTone} />
         <MiniStat label={shown ? 'R בפועל' : 'R:R מתוכנן'} value={shown ? fmtR(realizedNetR) : fmtR(planned.blended)} />
-        <MiniStat label="P&L נטו" value={shown ? formatCurrency(shown.netPnl) : '—'} tone={shown ? pnlColor(shown.netPnl) : 'text-text-primary'} />
+        <MiniStat label="P&L נטו" value={shown ? showSigned(shown.netPnl) : '—'} tone={shown ? pnlColor(shown.netPnl) : 'text-text-primary'} />
       </div>
       <div className="flex items-center gap-2.5">
         <p className="hidden lg:block flex-1 text-[11px] text-text-muted">
           <span className="num-mono" dir="ltr">Enter</span> לשמירה · <span className="num-mono">Esc</span> לסגירה
         </p>
-        <button type="button" onClick={onClose}
+        <button type="button" onClick={requestClose}
           className="flex-1 lg:flex-none lg:w-32 h-10 rounded-xl border border-border-primary bg-bg-tertiary text-sm text-text-primary hover:border-border-hover transition-colors cursor-pointer">
           ביטול
         </button>
@@ -1448,7 +1546,8 @@ export default function TradeForm({ isOpen, onClose, trade, onSave, riskSettings
   );
 
   return (
-    <Modal isOpen={isOpen} onClose={onClose} title={trade ? 'עריכת עסקה' : 'עסקה חדשה'} maxWidth="max-w-5xl" footer={footer}>
+    <>
+    <Modal isOpen={isOpen} onClose={requestClose} title={trade ? 'עריכת עסקה' : 'עסקה חדשה'} maxWidth="max-w-5xl" footer={footer}>
       <form id="trade-ticket-form" onSubmit={handleSubmit} onKeyDown={handleFormKeyDown}
         className="lg:grid lg:grid-cols-[minmax(0,1fr)_288px] lg:gap-6 lg:items-start">
         <div className="min-w-0">
@@ -1469,7 +1568,19 @@ export default function TradeForm({ isOpen, onClose, trade, onSave, riskSettings
                 ) : isStocks ? (
                   <StockSearch label="" value={form.pair} onChange={(sym) => update('pair', sym)} />
                 ) : (
-                  <PairSearch label="" value={form.pair} onChange={(pair) => update('pair', pair || 'BTCUSDT')} />
+                  <PairSearch label="" value={form.pair} includeMarkets onChange={(pair) => {
+                    const next = pair || 'BTCUSDT';
+                    const nextSpec = getContractSpec(next);
+                    setForm((f) => {
+                      const wasCfd = getContractSpec(f.pair)?.kind === 'cfd';
+                      const nowCfd = nextSpec?.kind === 'cfd';
+                      let contracts = f.contracts;
+                      if (!wasCfd && nowCfd) contracts = '0.1';
+                      if (wasCfd && !nowCfd && f.assetClass !== 'futures_cme') contracts = '1';
+                      return { ...f, pair: next, contracts };
+                    });
+                    setFieldErrors((prev) => (prev.pair ? { ...prev, pair: undefined } : prev));
+                  }} />
                 )}
               </Field>
               <Field label="כיוון" className={isFutures ? 'col-span-2 md:col-span-6' : 'md:col-span-3'}>
@@ -1500,7 +1611,16 @@ export default function TradeForm({ isOpen, onClose, trade, onSave, riskSettings
               <Field label="אסטרטגיה" pick className="col-span-2 md:col-span-4">
                 <StrategySelector
                   value={form.strategy}
-                  onChange={(s) => update('strategy', s)}
+                  onChange={(s) => {
+                    setForm((f) => ({
+                      ...f,
+                      strategy: s,
+                      trigger: triggerFitsStrategy(s, f.trigger) ? f.trigger : '',
+                    }));
+                    setFieldErrors((prev) => (
+                      prev.strategy || prev.trigger ? { ...prev, strategy: undefined, trigger: undefined } : prev
+                    ));
+                  }}
                   strategies={allStrategies}
                   onAdd={addStrategy}
                   onRemove={removeStrategy}
@@ -1519,7 +1639,7 @@ export default function TradeForm({ isOpen, onClose, trade, onSave, riskSettings
                 <StrategySelector
                   value={form.trigger}
                   onChange={(t) => update('trigger', t)}
-                  strategies={allTriggers}
+                  strategies={triggersForStrategy(form.strategy, allTriggers, form.trigger)}
                   onAdd={addTrigger}
                   onRemove={removeTrigger}
                   addLabel="טריגר מותאם"
@@ -1627,7 +1747,7 @@ export default function TradeForm({ isOpen, onClose, trade, onSave, riskSettings
                     <span className={`num-mono text-xs font-semibold ${shown ? pnlColor(shown.netPnl) : 'text-text-muted'}`} dir="ltr">{fmtR(realizedNetR)}</span>
                   )}
                   <span className={`num-mono text-base font-bold ${shown ? pnlColor(shown.netPnl) : 'text-text-muted'}`} dir="ltr">
-                    {shown ? formatCurrency(shown.netPnl) : '—'}
+                    {shown ? showSigned(shown.netPnl) : '—'}
                   </span>
                 </span>
               </div>
@@ -2004,8 +2124,34 @@ export default function TradeForm({ isOpen, onClose, trade, onSave, riskSettings
         {rail}
       </form>
     </Modal>
+    <ConfirmDialog
+      isOpen={discardOpen && isOpen}
+      onClose={() => setDiscardOpen(false)}
+      onConfirm={() => onClose()}
+      title="לסגור בלי לשמור?"
+      message="הנתונים שהקלדת בעסקה הזו יימחקו."
+      confirmText="סגור בלי לשמור"
+      cancelText="המשך עריכה"
+      confirmColor="amber"
+    />
+    </>
   );
 }
+
+// Price ticks replace `livePrices` every few seconds. The form only reads
+// them from a ref when a ticket opens, so those ticks must not rebuild this
+// tree — that made clicks inside the dialog feel late.
+function sameTicketProps(prev, next) {
+  const keys = Object.keys(prev);
+  if (keys.length !== Object.keys(next).length) return false;
+  for (const key of keys) {
+    if (key === 'livePrices') continue;
+    if (!Object.is(prev[key], next[key])) return false;
+  }
+  return true;
+}
+
+export default memo(TradeForm, sameTicketProps);
 
 /** One cell of the phone summary bar. */
 function MiniStat({ label, value, tone = 'text-text-primary' }) {

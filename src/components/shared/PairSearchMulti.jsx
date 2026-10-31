@@ -1,4 +1,5 @@
 import { useState, useEffect, useRef } from 'react';
+import { useCloseOnEscape } from '../../hooks/useCloseOnEscape';
 import { Plus, Search } from 'lucide-react';
 import { COINS } from '../../utils/constants';
 import { buildPairResults } from '../../utils/pairCatalog';
@@ -21,16 +22,20 @@ export default function PairSearchMulti({
   const containerRef = useRef(null);
   const hint = placeholder || (includeMarkets ? 'חפש זוג... (XAUUSD, EUR...)' : 'חפש מטבע...');
 
-  // Close dropdown on outside click
+  // Escape closes this menu only. The trade/settings dialog stays open.
+  useCloseOnEscape(isOpen, () => setIsOpen(false));
+
+  // A click outside the search box closes the menu. The full-screen layer
+  // below catches presses on fields the list is covering.
   useEffect(() => {
+    if (!isOpen) return undefined;
     const handler = (e) => {
-      if (containerRef.current && !containerRef.current.contains(e.target)) {
-        setIsOpen(false);
-      }
+      if (containerRef.current && containerRef.current.contains(e.target)) return;
+      setIsOpen(false);
     };
     document.addEventListener('mousedown', handler);
     return () => document.removeEventListener('mousedown', handler);
-  }, []);
+  }, [isOpen]);
 
   // Filter local COINS + search CoinGecko API.
   // With markets on, an empty query lists the CFD/forex symbols (not every coin).
@@ -96,7 +101,14 @@ export default function PairSearchMulti({
 
   return (
     <div ref={containerRef} className="relative">
-      <div className="relative">
+      {isOpen && (
+        <div
+          data-popover=""
+          className="fixed inset-0 z-[60]"
+          onMouseDown={() => setIsOpen(false)}
+        />
+      )}
+      <div className="relative z-[61]">
         <Search className="absolute right-2 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-text-muted pointer-events-none" />
         <input
           value={query}
@@ -119,7 +131,11 @@ export default function PairSearchMulti({
 
       {/* Dropdown opens UPWARD to avoid being clipped by modal overflow */}
       {showList && (
-        <div className="absolute z-[60] bottom-full mb-1 w-full bg-bg-overlay border border-border-primary rounded-lg shadow-xl max-h-44 overflow-y-auto">
+        <div
+          data-popover=""
+          className="absolute z-[62] bottom-full mb-1 w-full bg-bg-overlay border border-border-primary rounded-lg shadow-xl max-h-44 overflow-y-auto"
+          onMouseDown={(e) => e.stopPropagation()}
+        >
           {custom && (
             <button
               type="button"
@@ -152,7 +168,7 @@ export default function PairSearchMulti({
         </div>
       )}
       {showEmpty && (
-        <div className="absolute z-[60] bottom-full mb-1 w-full bg-bg-overlay border border-border-primary rounded-lg shadow-xl">
+        <div data-popover="" className="absolute z-[62] bottom-full mb-1 w-full bg-bg-overlay border border-border-primary rounded-lg shadow-xl" onMouseDown={(e) => e.stopPropagation()}>
           <div className="px-2.5 py-1.5 text-[10px] text-text-muted text-center">לא נמצאו תוצאות</div>
         </div>
       )}

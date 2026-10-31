@@ -1,4 +1,4 @@
-import { useState, useMemo } from 'react';
+import { useState, useMemo, useRef, useEffect } from 'react';
 import { m } from 'framer-motion';
 import { Plus, FlaskConical, Trash2, Pencil, ExternalLink, TrendingUp, TrendingDown, Settings, Download, ChevronRight, ChevronLeft, Eye, ArrowUp, ArrowDown, ArrowUpDown, X, BrainCircuit, Crown, Sparkles } from 'lucide-react';
 import DatePicker from 'react-datepicker';
@@ -25,6 +25,7 @@ import TimeframeSelector from '../shared/TimeframeSelector';
 import StrategySelector from '../shared/StrategySelector';
 import { SESSIONS, getSessionClasses } from '../../utils/constants';
 import { resolveTypedSymbol } from '../../utils/pairCatalog';
+import { defaultBacktestPair, backtestTradeSnapshot } from '../../utils/backtestForm';
 import { formatDate, formatDateShort, formatTime } from '../../utils/formatters';
 import { formatRText } from '../../utils/signedNumbers';
 import { safeHttpUrl } from '../../utils/urls';
@@ -49,8 +50,8 @@ function getSessionFromDate(date) {
 // A function, not a module-level object: the default date must be "now" at the
 // moment the form opens, not frozen at app load (a tab left open for two days
 // was silently stamping backtests with a stale date + wrong auto-session).
-const makeDefaultForm = () => ({
-  pair: 'BTCUSDT', direction: 'long', strategy: '', trigger: '',
+const makeDefaultForm = (pair = 'BTCUSDT') => ({
+  pair, direction: 'long', strategy: '', trigger: '',
   timeframe: '4H', session: '', date: new Date().toISOString(),
   maxR: '', stopDistancePct: '', rResult: '', result: 'win',
   entryChartUrl: '', managementChartUrl: '', notes: '',
@@ -89,6 +90,8 @@ export default function BacktestTracker() {
   const [editingId, setEditingId] = useState(null);
   const [form, setForm] = useState(makeDefaultForm);
   const [saving, setSaving] = useState(false);
+  const [discardOpen, setDiscardOpen] = useState(false);
+  const baselineRef = useRef(null);
   const [deleteTarget, setDeleteTarget] = useState(null);
   const [filters, setFilters] = useState(defaultFilters);
   const [sort, setSort] = useState({ key: 'date', dir: 'desc' });
@@ -99,6 +102,8 @@ export default function BacktestTracker() {
   const [aiModalOpen, setAiModalOpen] = useState(false);
   const [detailTrade, setDetailTrade] = useState(null);
   const [mobileStep, setMobileStep] = useState(0);
+  // Pair saved in this session, per journal, before the trade list refreshes.
+  const lastPairRef = useRef({});
 
   const savedPairs = useMemo(() => {
     const seen = new Set();
@@ -117,6 +122,27 @@ export default function BacktestTracker() {
     }
     return out;
   }, [activeJournal?.pairs, backtests]);
+
+  // Capture baseline once per open so we can detect whether the user has
+  // changed anything. Reset on close so a re-open gets a fresh baseline.
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  useEffect(() => {
+    if (!formOpen) { baselineRef.current = null; setDiscardOpen(false); return; }
+    baselineRef.current = backtestTradeSnapshot(form);
+  // form intentionally omitted: we want only the snapshot at open time
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [formOpen]);
+
+  const requestClose = () => {
+    if (saving) return;
+    const current = backtestTradeSnapshot(form);
+    if (baselineRef.current != null && current !== baselineRef.current) {
+      setDiscardOpen(true);
+    } else {
+      setFormOpen(false);
+      setEditingId(null);
+    }
+  };
 
   const update = (field, value) => setForm((f) => {
     const next = { ...f, [field]: value };
@@ -151,7 +177,11 @@ export default function BacktestTracker() {
 
   const openNew = () => {
     setEditingId(null);
-    setForm(makeDefaultForm());
+    setForm(makeDefaultForm(defaultBacktestPair({
+      pairs: activeJournal?.pairs,
+      trades: backtests,
+      lastUsed: lastPairRef.current[activeJournalId],
+    })));
     setFormOpen(true);
     setMobileStep(0);
   };
@@ -187,6 +217,7 @@ export default function BacktestTracker() {
         await addBacktest(data);
         toast.success('העסקה נוספה');
       }
+      if (activeJournalId) lastPairRef.current[activeJournalId] = pair;
       setForm({ ...makeDefaultForm(), pair, strategy: form.strategy, timeframe: form.timeframe, session: form.session });
       setEditingId(null);
       setFormOpen(false);
@@ -503,7 +534,7 @@ export default function BacktestTracker() {
       </Modal>
 
       {/* Add/Edit Entry Modal */}
-      <Modal isOpen={formOpen} onClose={() => { setFormOpen(false); setEditingId(null); }} title={editingId ? 'עריכת עסקה' : 'עסקת בקטסט חדשה'} maxWidth="max-w-5xl">
+      <Modal isOpen={formOpen} onClose={requestClose} title={editingId ? 'עריכת עסקה' : 'עסקת בקטסט חדשה'} maxWidth="max-w-5xl">
         <form onSubmit={handleSubmit}>
           <div className="md:grid md:grid-cols-2 md:gap-5 space-y-3 md:space-y-0">
             {/* Right Column */}
@@ -518,6 +549,7 @@ export default function BacktestTracker() {
                 />
                 <StrategySelector
                   label="אסטרטגיה"
+                  required
                   value={form.strategy}
                   onChange={(s) => update('strategy', s)}
                   strategies={allStrategies}
@@ -598,6 +630,8 @@ export default function BacktestTracker() {
               <div className="grid grid-cols-2 gap-2">
                 <StrategySelector
                   label="טריגר כניסה"
+                  required
+                  hint="חובה טריגר או אסטרטגיה"
                   value={form.trigger}
                   onChange={(t) => update('trigger', t)}
                   strategies={allTriggers}
@@ -701,7 +735,7 @@ export default function BacktestTracker() {
 
           {/* Desktop actions */}
           <div className="hidden md:flex gap-3 pt-3">
-            <button type="button" onClick={() => { setFormOpen(false); setEditingId(null); }} className="flex-1 py-2.5 rounded-lg bg-bg-tertiary text-text-primary hover:bg-border-hover transition-colors cursor-pointer">ביטול</button>
+            <button type="button" onClick={requestClose} className="flex-1 py-2.5 rounded-lg bg-bg-tertiary text-text-primary hover:bg-border-hover transition-colors cursor-pointer">ביטול</button>
             <button type="submit" disabled={saving} className="flex-1 py-2.5 rounded-lg bg-accent-primary text-black font-semibold hover:bg-accent-hover transition-colors cursor-pointer disabled:opacity-50">{saving ? 'שומר...' : editingId ? 'עדכן עסקה' : 'הוסף עסקה'}</button>
           </div>
         </form>
@@ -710,6 +744,17 @@ export default function BacktestTracker() {
       <BacktestSettingsModal isOpen={settingsOpen} onClose={() => setSettingsOpen(false)} />
 
       <ConfirmDialog isOpen={!!deleteTarget} onClose={() => setDeleteTarget(null)} onConfirm={handleDelete} title="מחיקת עסקה" message="למחוק את העסקה? לא ניתן לבטל פעולה זו." />
+
+      <ConfirmDialog
+        isOpen={discardOpen && formOpen}
+        onClose={() => setDiscardOpen(false)}
+        onConfirm={() => { setFormOpen(false); setEditingId(null); }}
+        title="לסגור בלי לשמור?"
+        message="השינויים שהקלדת בעסקה יימחקו."
+        confirmText="סגור בלי לשמור"
+        cancelText="המשך עריכה"
+        confirmColor="amber"
+      />
 
       <StrategyView isOpen={viewOpen} onClose={() => setViewOpen(false)} journal={activeJournal} />
 

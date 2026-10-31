@@ -11,7 +11,7 @@ import {
 } from '../services/firestoreService';
 import { deleteTradeImages } from '../services/tradeImageService';
 import { useAuth } from '../contexts/AuthContext';
-import { computeTradeFields, calculateFuturesNotional } from '../utils/calculations';
+import { computeTradeFields, calculateFuturesNotional, usesContractMath } from '../utils/calculations';
 import { buildStoredTrade } from '../utils/tradeDoc';
 
 export function useTrades(journalId = null) {
@@ -104,7 +104,7 @@ export function useTrades(journalId = null) {
     try {
       const { pnl, pnlPercent, rrRatio, netPnl, result } = computeTradeFields(tradeData);
 
-      const isFutures = tradeData.assetClass === 'futures_cme' && tradeData.contract;
+      const isFutures = usesContractMath(tradeData);
       const notional = isFutures
         ? calculateFuturesNotional(tradeData.entryPrice, tradeData.contract.pointValue, tradeData.contract.contracts)
         : tradeData.entryPrice * tradeData.quantity;

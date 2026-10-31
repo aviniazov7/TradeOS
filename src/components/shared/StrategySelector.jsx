@@ -1,4 +1,5 @@
 import { useState, useRef, useEffect, useCallback } from 'react';
+import { useCloseOnEscape } from '../../hooks/useCloseOnEscape';
 import { createPortal } from 'react-dom';
 import { X, Plus, Settings2 } from 'lucide-react';
 
@@ -23,9 +24,11 @@ const MENU_HEIGHT = 150; // approx natural menu height (list + footer)
  *   label            - optional label text
  *   addLabel         - text for the "add custom" button (default: "מותאם אישית")
  *   inputPlaceholder - placeholder for add input (default: "שם אסטרטגיה...")
- *   emptyText        - text when no items (default: "אין אסטרטגיות")
- *   placeholder      - text when no selection (default: "בחר...")
- */
+   *   emptyText        - text when no items (default: "אין אסטרטגיות")
+   *   placeholder      - text when no selection (default: "בחר...")
+   *   required         - asterisk on the label
+   *   hint             - one line under the control
+   */
 export default function StrategySelector({
   value,
   onChange,
@@ -37,6 +40,8 @@ export default function StrategySelector({
   inputPlaceholder = 'שם אסטרטגיה...',
   emptyText = 'אין אסטרטגיות',
   placeholder = 'בחר...',
+  required = false,
+  hint = '',
 }) {
   const [open, setOpen] = useState(false);
   const [adding, setAdding] = useState(false);
@@ -96,6 +101,8 @@ export default function StrategySelector({
     return () => document.removeEventListener('mousedown', handler);
   }, [open]);
 
+  useCloseOnEscape(open, () => setOpen(false));
+
   useEffect(() => {
     if (adding && inputRef.current) inputRef.current.focus();
   }, [adding]);
@@ -131,6 +138,7 @@ export default function StrategySelector({
         bottom: coords.bottom,
         zIndex: 70,
       }}
+      data-popover=""
       className="bg-bg-overlay border border-border-primary rounded-xl shadow-xl overflow-hidden"
     >
       {managing ? (
@@ -228,7 +236,10 @@ export default function StrategySelector({
   return (
     <div className="relative">
       {label && (
-        <label className="block text-xs text-text-muted mb-1">{label}</label>
+        <label className="block text-xs text-text-muted mb-1">
+          {label}
+          {required && <span className="text-loss" aria-hidden="true"> *</span>}
+        </label>
       )}
       <button
         ref={btnRef}
@@ -240,6 +251,7 @@ export default function StrategySelector({
         <svg className={`w-3.5 h-3.5 text-text-muted flex-shrink-0 transition-transform ${open ? 'rotate-180' : ''}`} fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" /></svg>
       </button>
       {menu}
+      {hint ? <p className="mt-1 text-[10px] text-text-muted">{hint}</p> : null}
     </div>
   );
 }

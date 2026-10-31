@@ -1,4 +1,4 @@
-import { useState, useMemo, useEffect, useRef, Suspense } from 'react';
+import { useState, useMemo, useEffect, useRef, useCallback, Suspense } from 'react';
 import { lazyWithChunkReload as lazy } from '../../utils/chunkReload';
 import { useSearchParams } from 'react-router-dom';
 import { m } from 'framer-motion';
@@ -451,8 +451,16 @@ export default function TradeJournal() {
     setFormOpen(true);
   };
 
-  const handleSave = async (data) => {
-    if (showingDemo || isDemoTrade(editingTrade)) { refuseDemoWrite(); return; }
+  const handleCloseForm = useCallback(() => {
+    setFormOpen(false);
+    setEditingTrade(null);
+    setTradePrefill(null);
+  }, []);
+
+  const handleSave = useCallback(async (data) => {
+    // false keeps the ticket open. A resolved promise used to close it even
+    // when the write failed or the demo refused the edit, dropping what was typed.
+    if (showingDemo || isDemoTrade(editingTrade)) { refuseDemoWrite(); return false; }
     try {
       if (editingTrade) {
         await updateTrade(editingTrade.id, data);
@@ -480,8 +488,10 @@ export default function TradeJournal() {
       console.error('Save trade failed:', error);
       const msg = error.code === 'permission-denied' ? 'אין הרשאה לשמור' : 'שגיאה בשמירת העסקה — נסה שוב';
       toast.error(msg);
+      return false;
     }
-  };
+    return true;
+  }, [showingDemo, editingTrade, trades, updateTrade, addTrade]);
 
   const handleEdit = (trade) => {
     if (showingDemo || isDemoTrade(trade)) { refuseDemoWrite(); return; }
@@ -561,12 +571,6 @@ export default function TradeJournal() {
       });
     }, 5200);
     deleteBatchTimerRef.current = myTimer;
-  };
-
-  const handleCloseForm = () => {
-    setFormOpen(false);
-    setEditingTrade(null);
-    setTradePrefill(null);
   };
 
   const toggleSelected = (id) => setSelectedIds((prev) => {

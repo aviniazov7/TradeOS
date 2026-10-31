@@ -1,4 +1,6 @@
-import { useState, useRef, useEffect } from 'react';
+import { useState, useRef, useEffect, useLayoutEffect } from 'react';
+import { createPortal } from 'react-dom';
+import { useCloseOnEscape } from '../../hooks/useCloseOnEscape';
 import { X, Plus, Check, Settings2 } from 'lucide-react';
 
 const inputClass = 'w-full bg-bg-tertiary border border-border-primary rounded-lg px-3 py-2 text-sm text-text-primary outline-none focus:border-accent-primary transition-colors text-right';
@@ -39,7 +41,9 @@ export default function MultiSelector({
   const [managing, setManaging] = useState(false);
   const [custom, setCustom] = useState('');
   const ref = useRef(null);
+  const btnRef = useRef(null);
   const inputRef = useRef(null);
+  const [box, setBox] = useState(null);
 
   // All options = built-in options + any custom selected values not in built-in
   const allOptions = [
@@ -51,14 +55,34 @@ export default function MultiSelector({
     if (!open) { setAdding(false); setManaging(false); setCustom(''); }
   }, [open]);
 
-  useEffect(() => {
-    if (!open) return;
-    const handler = (e) => {
-      if (ref.current && !ref.current.contains(e.target)) setOpen(false);
+  const place = () => {
+    const r = btnRef.current?.getBoundingClientRect();
+    if (!r) return;
+    const spaceBelow = window.innerHeight - r.bottom;
+    const openUp = spaceBelow < 220 && r.top > spaceBelow;
+    setBox({
+      left: r.left,
+      width: r.width,
+      top: openUp ? null : r.bottom + 4,
+      bottom: openUp ? window.innerHeight - r.top + 4 : null,
+      maxHeight: Math.max(140, Math.min(240, (openUp ? r.top : spaceBelow) - 12)),
+    });
+  };
+
+  useLayoutEffect(() => {
+    if (!open) return undefined;
+    place();
+    const onReflow = () => place();
+    window.addEventListener('resize', onReflow);
+    window.addEventListener('scroll', onReflow, true);
+    return () => {
+      window.removeEventListener('resize', onReflow);
+      window.removeEventListener('scroll', onReflow, true);
     };
-    document.addEventListener('mousedown', handler);
-    return () => document.removeEventListener('mousedown', handler);
   }, [open]);
+
+  // Shared helper: Escape closes this menu only, not the trade dialog.
+  useCloseOnEscape(open, () => setOpen(false));
 
   useEffect(() => {
     if (adding && inputRef.current) inputRef.current.focus();
@@ -96,6 +120,7 @@ export default function MultiSelector({
         <label className="block text-xs text-text-muted mb-1">{label}</label>
       )}
       <button
+        ref={btnRef}
         type="button"
         onClick={() => setOpen(!open)}
         className={`${inputClass} flex items-center justify-between gap-2 cursor-pointer min-h-[40px]`}
@@ -130,11 +155,16 @@ export default function MultiSelector({
         </svg>
       </button>
 
-      {open && (
-        <div className="absolute z-50 top-full mt-1 right-0 left-0 bg-bg-overlay border border-border-primary rounded-xl shadow-xl overflow-hidden">
+      {open && box && createPortal(
+        <div className="fixed inset-0 z-[80]" data-popover="" onMouseDown={() => setOpen(false)}>
+        <div
+          className="bg-bg-overlay border border-border-primary rounded-xl shadow-xl overflow-hidden"
+          style={{ position: 'fixed', left: box.left, width: box.width, top: box.top ?? undefined, bottom: box.bottom ?? undefined, maxHeight: box.maxHeight }}
+          onMouseDown={(e) => e.stopPropagation()}
+        >
           {managing ? (
             <>
-              <div className="max-h-56 overflow-y-auto p-2 space-y-1">
+              <div className="overflow-y-auto p-2 space-y-1" style={{ maxHeight: Math.max(80, box.maxHeight - 44) }}>
                 {allOptions.map((opt) => (
                   <div key={opt} className="flex items-center justify-between py-1.5 px-2 rounded hover:bg-bg-tertiary transition-colors">
                     <span className="text-xs text-text-primary">{labelOf(opt)}</span>
@@ -159,7 +189,7 @@ export default function MultiSelector({
             </>
           ) : (
             <>
-              <div className="max-h-56 overflow-y-auto">
+              <div className="overflow-y-auto" style={{ maxHeight: Math.max(80, box.maxHeight - 44) }}>
                 {allOptions.length === 0 && (
                   <p className="text-xs text-text-muted text-center py-3">{emptyText}</p>
                 )}
@@ -227,6 +257,8 @@ export default function MultiSelector({
             </>
           )}
         </div>
+        </div>,
+        document.body,
       )}
     </div>
   );
