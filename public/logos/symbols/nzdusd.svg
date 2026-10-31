@@ -1,0 +1,21 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 32 32" width="32" height="32" fill="none">
+    <clipPath id="quote"><circle cx="21.8" cy="16" r="9.15"/></clipPath>
+    <g clip-path="url(#quote)">
+      <g transform="translate(12.650 6.850) scale(0.76250)"><rect y="0.000" width="24" height="3.579" fill="#BF0A30"/><rect y="3.429" width="24" height="3.579" fill="#FFFFFF"/><rect y="6.857" width="24" height="3.579" fill="#BF0A30"/><rect y="10.286" width="24" height="3.579" fill="#FFFFFF"/><rect y="13.714" width="24" height="3.579" fill="#BF0A30"/><rect y="17.143" width="24" height="3.579" fill="#FFFFFF"/><rect y="20.571" width="24" height="3.579" fill="#BF0A30"/><rect width="10.6" height="13.714" fill="#3C3B6E"/><circle cx="2.6" cy="2.3" r="0.72" fill="#ffffff"/><circle cx="5.4" cy="2.3" r="0.72" fill="#ffffff"/><circle cx="8.1" cy="2.3" r="0.72" fill="#ffffff"/><circle cx="4.0" cy="4.6" r="0.72" fill="#ffffff"/><circle cx="6.8" cy="4.6" r="0.72" fill="#ffffff"/><circle cx="2.6" cy="6.9" r="0.72" fill="#ffffff"/><circle cx="5.4" cy="6.9" r="0.72" fill="#ffffff"/><circle cx="8.1" cy="6.9" r="0.72" fill="#ffffff"/></g>
+    </g>
+    <circle cx="21.8" cy="16" r="9.15" fill="none" stroke="#0c0c0e" stroke-width="1.7"/><circle cx="21.8" cy="16" r="8.3" fill="none" stroke="#f4f5f7" stroke-width="0.7"/>
+    <clipPath id="base"><circle cx="10.2" cy="16" r="9.15"/></clipPath>
+    <g clip-path="url(#base)">
+      <g transform="translate(1.050 6.850) scale(0.76250)"><rect width="24" height="24" fill="#012169"/><g transform="scale(0.5)">
+    <rect width="24" height="24" fill="#012169"/>
+    <line x1="0" y1="0" x2="24" y2="24" stroke="#ffffff" stroke-width="6"/>
+    <line x1="24" y1="0" x2="0" y2="24" stroke="#ffffff" stroke-width="6"/>
+    <line x1="0" y1="0" x2="24" y2="24" stroke="#C8102E" stroke-width="2.6"/>
+    <line x1="24" y1="0" x2="0" y2="24" stroke="#C8102E" stroke-width="2.6"/>
+    <rect x="9" width="6" height="24" fill="#ffffff"/>
+    <rect y="9" width="24" height="6" fill="#ffffff"/>
+    <rect x="10.5" width="3" height="24" fill="#C8102E"/>
+    <rect y="10.5" width="24" height="3" fill="#C8102E"/>
+    </g><polygon points="16.40,5.75 16.96,7.24 18.54,7.30 17.30,8.29 17.72,9.82 16.40,8.95 15.08,9.82 15.50,8.29 14.26,7.30 15.84,7.24" fill="#ffffff"/><polygon points="16.40,6.30 16.82,7.42 18.02,7.47 17.08,8.22 17.40,9.38 16.40,8.71 15.40,9.38 15.72,8.22 14.78,7.47 15.98,7.42" fill="#CC1424"/><polygon points="20.40,11.10 20.92,12.49 22.40,12.55 21.24,13.47 21.63,14.90 20.40,14.08 19.17,14.90 19.56,13.47 18.40,12.55 19.88,12.49" fill="#ffffff"/><polygon points="20.40,11.65 20.78,12.67 21.87,12.72 21.02,13.40 21.31,14.45 20.40,13.85 19.49,14.45 19.78,13.40 18.93,12.72 20.02,12.67" fill="#CC1424"/><polygon points="17.20,16.40 17.69,17.72 19.10,17.78 18.00,18.66 18.38,20.02 17.20,19.24 16.02,20.02 16.40,18.66 15.30,17.78 16.71,17.72" fill="#ffffff"/><polygon points="17.20,16.95 17.56,17.91 18.58,17.95 17.78,18.59 18.05,19.57 17.20,19.01 16.35,19.57 16.62,18.59 15.82,17.95 16.84,17.91" fill="#CC1424"/><polygon points="13.40,11.90 13.82,13.02 15.02,13.07 14.08,13.82 14.40,14.98 13.40,14.31 12.40,14.98 12.72,13.82 11.78,13.07 12.98,13.02" fill="#ffffff"/><polygon points="13.40,12.45 13.68,13.21 14.49,13.24 13.86,13.75 14.08,14.53 13.40,14.08 12.72,14.53 12.94,13.75 12.31,13.24 13.12,13.21" fill="#CC1424"/></g>
+    </g>
+    <circle cx="10.2" cy="16" r="9.15" fill="none" stroke="#0c0c0e" stroke-width="1.7"/><circle cx="10.2" cy="16" r="8.3" fill="none" stroke="#f4f5f7" stroke-width="0.7"/></svg>
