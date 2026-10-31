@@ -1,13 +1,19 @@
 // Self-hosted marks for instruments that are not a coin and not a listed stock.
-// TradingView's commodity and index marks, saved under public/logos so a CDN
-// hiccup cannot turn the ticker into a broken image or a generic glyph.
+// Futures keep TradingView's square marks: the price ticker draws them with
+// object-fit contain. Backtest CFD symbols use a coin, two overlapping flags,
+// or a US flag, because CoinIcon crops every image to a circle and a letter
+// tile there reads as an empty placeholder.
+const GOLD_COIN = '/logos/symbols/gold-coin.svg';
+const SILVER_COIN = '/logos/symbols/silver-coin.svg';
+const US_FLAG = '/logos/symbols/us-flag.svg';
+
 const MARKS = {
   GC: '/logos/marks/gold.svg',
   MGC: '/logos/marks/gold.svg',
   XAU: '/logos/marks/gold.svg',
-  XAUUSD: '/logos/marks/gold.svg',
+  XAUUSD: GOLD_COIN,
   SI: '/logos/marks/silver.svg',
-  XAGUSD: '/logos/marks/silver.svg',
+  XAGUSD: SILVER_COIN,
   CL: '/logos/marks/oil.svg',
   MCL: '/logos/marks/oil.svg',
   NG: '/logos/marks/gas.svg',
@@ -15,14 +21,23 @@ const MARKS = {
   MES: '/logos/marks/sp500.svg',
   NQ: '/logos/marks/nasdaq.svg',
   MNQ: '/logos/marks/nasdaq.svg',
-  NAS100: '/logos/marks/nasdaq.svg',
-  US100: '/logos/marks/nasdaq.svg',
-  US500: '/logos/marks/sp500.svg',
+  NAS100: US_FLAG,
+  US100: US_FLAG,
+  US500: US_FLAG,
   YM: '/logos/marks/dow.svg',
   MYM: '/logos/marks/dow.svg',
-  US30: '/logos/marks/dow.svg',
+  US30: US_FLAG,
   RTY: '/logos/marks/russell.svg',
   M2K: '/logos/marks/russell.svg',
+  // Base currency in front, quote behind. A typed broker suffix (EURUSD.R)
+  // is not listed here, so it keeps the neutral letter fallback.
+  EURUSD: '/logos/symbols/eurusd.svg',
+  GBPUSD: '/logos/symbols/gbpusd.svg',
+  USDJPY: '/logos/symbols/usdjpy.svg',
+  AUDUSD: '/logos/symbols/audusd.svg',
+  USDCAD: '/logos/symbols/usdcad.svg',
+  USDCHF: '/logos/symbols/usdchf.svg',
+  NZDUSD: '/logos/symbols/nzdusd.svg',
 };
 
 /** Local logo URLs for a futures/commodity symbol, or [] when it has no mark. */
