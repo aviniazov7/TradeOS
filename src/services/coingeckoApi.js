@@ -11,6 +11,134 @@ const BINANCE_BASE = WORKER_URL ? `${WORKER_URL}/bnb` : 'https://api.binance.com
 const cache = new Map();
 const CACHE_TTL = 5 * 60 * 1000; // 5 minutes
 
+// simple/price is the CoinGecko call that 429s. Several mounts (the journal
+// hook polls every 10s, the ticker polls gold, a second hook may be mounted)
+// used to each fire their own request. One batch per turn, then a short
+// per-id TTL, so they share a single worker call. On 429 we keep the last
+// price and wait out Retry-After instead of hammering the shared IP.
+export const SIMPLE_PRICE_TTL_MS = 45_000;
+const priceById = new Map();
+const activeWait = new Map();
+let priceBackoffUntil = 0;
+let openPriceBatch = null;
+
+export function resetSimplePriceCache() {
+  priceById.clear();
+  activeWait.clear();
+  priceBackoffUntil = 0;
+  openPriceBatch = null;
+}
+
+function normalizePriceIds(ids) {
+  return [...new Set(
+    (ids || []).map((id) => String(id || '').trim().toLowerCase()).filter(Boolean),
+  )];
+}
+
+function freshPrice(id, now) {
+  const row = priceById.get(id);
+  if (!row || now - row.ts > SIMPLE_PRICE_TTL_MS) return null;
+  return row.data;
+}
+
+function rememberPrices(json, ts) {
+  const out = {};
+  for (const [id, v] of Object.entries(json || {})) {
+    if (v && typeof v.usd === 'number') {
+      const data = { usd: v.usd, usd_24h_change: v.usd_24h_change ?? 0 };
+      priceById.set(id, { data, ts });
+      out[id] = data;
+    }
+  }
+  return out;
+}
+
+function stalePrices(ids) {
+  const out = {};
+  for (const id of ids) {
+    const row = priceById.get(id);
+    if (row) out[id] = row.data;
+  }
+  return out;
+}
+
+async function fetchPriceBatch(slot) {
+  if (openPriceBatch === slot) openPriceBatch = null;
+  const ids = [...slot.ids].sort();
+  try {
+    const now = slot.nowFn();
+    if (now < priceBackoffUntil) return stalePrices(ids);
+    const params = new URLSearchParams({
+      ids: ids.join(','),
+      vs_currencies: 'usd',
+      include_24hr_change: 'true',
+    });
+    const res = await slot.fetchImpl(`${BASE_URL}/simple/price?${params}`, {
+      headers: { Accept: 'application/json' },
+    });
+    if (res.status === 429 || res.status === 503) {
+      const retry = Number(res.headers?.get?.('retry-after'));
+      const waitMs = Number.isFinite(retry) && retry > 0 ? Math.min(retry, 300) * 1000 : 60_000;
+      priceBackoffUntil = Math.max(priceBackoffUntil, slot.nowFn() + waitMs);
+      return stalePrices(ids);
+    }
+    if (!res.ok) return {};
+    return rememberPrices(await res.json(), slot.nowFn());
+  } catch {
+    return stalePrices(ids);
+  } finally {
+    for (const id of ids) {
+      if (activeWait.get(id) === slot.done) activeWait.delete(id);
+    }
+  }
+}
+
+/**
+ * CoinGecko simple/price, deduped across callers.
+ * Ids already in a fresh batch or an in-flight batch are not requested again.
+ * @param {string[]} ids
+ * @param {{ fetchImpl?: typeof fetch, now?: () => number }} [opts]
+ * @returns {Promise<Record<string, { usd: number, usd_24h_change: number }>>}
+ */
+export function fetchSimplePrices(ids, opts = {}) {
+  const fetchImpl = opts.fetchImpl || fetch;
+  const nowFn = opts.now || Date.now;
+  const now = nowFn();
+  const ready = {};
+  const pending = [];
+  const need = [];
+  for (const id of normalizePriceIds(ids)) {
+    const hit = freshPrice(id, now);
+    if (hit) ready[id] = hit;
+    else if (activeWait.has(id)) pending.push(id);
+    else need.push(id);
+  }
+  if (need.length) {
+    if (!openPriceBatch) {
+      const slot = { ids: new Set(), fetchImpl, nowFn };
+      slot.done = Promise.resolve().then(() => fetchPriceBatch(slot));
+      openPriceBatch = slot;
+    }
+    for (const id of need) {
+      openPriceBatch.ids.add(id);
+      activeWait.set(id, openPriceBatch.done);
+    }
+  }
+  if (!need.length && !pending.length) return Promise.resolve(ready);
+  const waits = new Set();
+  for (const id of need) waits.add(activeWait.get(id));
+  for (const id of pending) waits.add(activeWait.get(id));
+  return Promise.all([...waits]).then((maps) => {
+    const merged = Object.assign({}, ...maps);
+    const out = { ...ready };
+    for (const id of [...need, ...pending]) {
+      if (merged[id]) out[id] = merged[id];
+      else if (priceById.get(id)) out[id] = priceById.get(id).data;
+    }
+    return out;
+  });
+}
+
 function getCached(key) {
   const entry = cache.get(key);
   if (!entry) return null;
@@ -72,24 +200,18 @@ export async function fetchPrices(coinsOrIds, signal) {
 
   // CoinGecko fallback for any coin still missing a price — covers XAU (no
   // Binance pair) and the case where Binance is geo-blocked (HTTP 451) at a
-  // Cloudflare colo and returns nothing. CoinGecko isn't geo-blocked and is
-  // KV-cached. Same return shape: { coingeckoId: { usd, … } }.
+  // Cloudflare colo and returns nothing. The worker edge-caches the proxy
+  // and this module coalesces callers. Same return shape: { coingeckoId: { usd, … } }.
   if (!signal?.aborted) {
     const missingIds = [...new Set(
       coins.map(c => c.coingeckoId).filter(id => id && !result[id])
     )];
     if (missingIds.length) {
       try {
-        const cgUrl = `${BASE_URL}/simple/price?ids=${encodeURIComponent(missingIds.join(','))}&vs_currencies=usd&include_24hr_change=true`;
-        const r = await fetch(cgUrl, { signal });
-        if (r.ok) {
-          const cg = await r.json();
-          for (const [id, v] of Object.entries(cg)) {
-            if (v && typeof v.usd === 'number') {
-              result[id] = { usd: v.usd, usd_24h_change: v.usd_24h_change ?? 0 };
-            }
-          }
-        }
+        // signal is intentionally not forwarded: this fetch is shared with
+        // every other mounted caller, and one unmount must not cancel it.
+        const cg = await fetchSimplePrices(missingIds);
+        if (!signal?.aborted) Object.assign(result, cg);
       } catch { /* keep whatever we have (possibly empty) */ }
     }
   }
