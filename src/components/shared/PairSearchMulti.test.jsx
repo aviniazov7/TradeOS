@@ -10,6 +10,7 @@ vi.mock('../../services/coinImageCache', () => ({
 }));
 vi.mock('./CoinIcon', () => ({ default: () => null }));
 
+import Modal from './Modal';
 import PairSearchMulti from './PairSearchMulti';
 
 function render(ui) {
@@ -59,6 +60,35 @@ describe('PairSearchMulti markets', () => {
 
     typeInto(input, 'bad symbol');
     expect(view.el.querySelector('[data-testid="pair-custom"]')).toBeNull();
+    view.unmount();
+  });
+
+  it('closes on an outside press and on Escape without closing the dialog', () => {
+    const onClose = vi.fn();
+    const view = render(
+      <Modal isOpen onClose={onClose} title="הגדרות">
+        <PairSearchMulti selectedPairs={[]} onAdd={() => {}} includeMarkets />
+      </Modal>,
+    );
+    const input = document.querySelector('input');
+    act(() => { input.focus(); });
+    expect(document.querySelector('[data-pair="EURUSD"]')).toBeTruthy();
+
+    const overlay = document.querySelector('[data-popover]');
+    act(() => {
+      overlay.dispatchEvent(new MouseEvent('mousedown', { bubbles: true }));
+    });
+    expect(document.querySelector('[data-pair]')).toBeNull();
+    expect(onClose).not.toHaveBeenCalled();
+
+    act(() => { input.blur(); input.focus(); });
+    expect(document.querySelector('[data-pair="EURUSD"]')).toBeTruthy();
+    act(() => {
+      document.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true, cancelable: true }));
+    });
+    expect(document.querySelector('[data-pair]')).toBeNull();
+    expect(onClose).not.toHaveBeenCalled();
+    expect(document.querySelector('[role="dialog"]')).toBeTruthy();
     view.unmount();
   });
 

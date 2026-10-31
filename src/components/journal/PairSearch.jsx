@@ -94,8 +94,11 @@ export default function PairSearch({
 
       {/* Selected pair or search input */}
       {value && !isOpen ? (
-        <div className={`${inputClass} flex items-center justify-between cursor-pointer`} onClick={() => setIsOpen(true)}>
-          <span className="truncate" dir="ltr">{value}</span>
+        <div className={`${inputClass} flex items-center justify-between gap-2 cursor-pointer`} onClick={() => setIsOpen(true)}>
+          <span className="flex items-center gap-2 min-w-0">
+            <CoinIcon pair={value} className="w-5 h-5" />
+            <span className="truncate" dir="ltr">{value}</span>
+          </span>
           <button type="button" onClick={(e) => { e.stopPropagation(); handleClear(); setIsOpen(true); }}
             className="p-0.5 rounded text-text-muted hover:text-loss cursor-pointer">
             <X className="w-3.5 h-3.5" />

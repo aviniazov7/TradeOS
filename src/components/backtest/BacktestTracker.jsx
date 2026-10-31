@@ -1,4 +1,4 @@
-import { useState, useMemo } from 'react';
+import { useState, useMemo, useRef } from 'react';
 import { m } from 'framer-motion';
 import { Plus, FlaskConical, Trash2, Pencil, ExternalLink, TrendingUp, TrendingDown, Settings, Download, ChevronRight, ChevronLeft, Eye, ArrowUp, ArrowDown, ArrowUpDown, X, BrainCircuit, Crown, Sparkles } from 'lucide-react';
 import DatePicker from 'react-datepicker';
@@ -25,6 +25,7 @@ import TimeframeSelector from '../shared/TimeframeSelector';
 import StrategySelector from '../shared/StrategySelector';
 import { SESSIONS, getSessionClasses } from '../../utils/constants';
 import { resolveTypedSymbol } from '../../utils/pairCatalog';
+import { defaultBacktestPair } from '../../utils/backtestForm';
 import { formatDate, formatDateShort, formatTime } from '../../utils/formatters';
 import { formatRText } from '../../utils/signedNumbers';
 import { safeHttpUrl } from '../../utils/urls';
@@ -49,8 +50,8 @@ function getSessionFromDate(date) {
 // A function, not a module-level object: the default date must be "now" at the
 // moment the form opens, not frozen at app load (a tab left open for two days
 // was silently stamping backtests with a stale date + wrong auto-session).
-const makeDefaultForm = () => ({
-  pair: 'BTCUSDT', direction: 'long', strategy: '', trigger: '',
+const makeDefaultForm = (pair = 'BTCUSDT') => ({
+  pair, direction: 'long', strategy: '', trigger: '',
   timeframe: '4H', session: '', date: new Date().toISOString(),
   maxR: '', stopDistancePct: '', rResult: '', result: 'win',
   entryChartUrl: '', managementChartUrl: '', notes: '',
@@ -99,6 +100,8 @@ export default function BacktestTracker() {
   const [aiModalOpen, setAiModalOpen] = useState(false);
   const [detailTrade, setDetailTrade] = useState(null);
   const [mobileStep, setMobileStep] = useState(0);
+  // Pair saved in this session, per journal, before the trade list refreshes.
+  const lastPairRef = useRef({});
 
   const savedPairs = useMemo(() => {
     const seen = new Set();
@@ -151,7 +154,11 @@ export default function BacktestTracker() {
 
   const openNew = () => {
     setEditingId(null);
-    setForm(makeDefaultForm());
+    setForm(makeDefaultForm(defaultBacktestPair({
+      pairs: activeJournal?.pairs,
+      trades: backtests,
+      lastUsed: lastPairRef.current[activeJournalId],
+    })));
     setFormOpen(true);
     setMobileStep(0);
   };
@@ -187,6 +194,7 @@ export default function BacktestTracker() {
         await addBacktest(data);
         toast.success('העסקה נוספה');
       }
+      if (activeJournalId) lastPairRef.current[activeJournalId] = pair;
       setForm({ ...makeDefaultForm(), pair, strategy: form.strategy, timeframe: form.timeframe, session: form.session });
       setEditingId(null);
       setFormOpen(false);
@@ -518,6 +526,7 @@ export default function BacktestTracker() {
                 />
                 <StrategySelector
                   label="אסטרטגיה"
+                  required
                   value={form.strategy}
                   onChange={(s) => update('strategy', s)}
                   strategies={allStrategies}
@@ -598,6 +607,8 @@ export default function BacktestTracker() {
               <div className="grid grid-cols-2 gap-2">
                 <StrategySelector
                   label="טריגר כניסה"
+                  required
+                  hint="חובה טריגר או אסטרטגיה"
                   value={form.trigger}
                   onChange={(t) => update('trigger', t)}
                   strategies={allTriggers}

@@ -3,6 +3,7 @@ import { act } from 'react';
 import { beforeAll, describe, expect, it, vi } from 'vitest';
 import { createRoot } from 'react-dom/client';
 import CoinIcon from './CoinIcon';
+import { inlineFlagSrc } from '../../utils/inlineFlags';
 
 describe('CoinIcon CFD marks', () => {
   beforeAll(() => {
@@ -25,19 +26,22 @@ describe('CoinIcon CFD marks', () => {
   }
 
   it('draws a bundled coin, flag pair, or US flag instead of a letter badge', async () => {
-    const cases = [
-      ['XAUUSD', '/logos/symbols/gold-coin.svg'],
-      ['EUR/USD', '/logos/symbols/eurusd.svg'],
-      ['GBPUSD', '/logos/symbols/gbpusd.svg'],
-      ['USDJPY', '/logos/symbols/usdjpy.svg'],
-      ['US30', '/logos/symbols/us-flag.svg'],
-      ['NAS100', '/logos/symbols/us-flag.svg'],
-      ['US500', '/logos/symbols/us-flag.svg'],
-    ];
-    for (const [pair, src] of cases) {
+    const files = [['XAUUSD', '/logos/symbols/gold-coin.svg']];
+    const flags = ['EUR/USD', 'GBPUSD', 'USDJPY', 'US30', 'NAS100', 'US500'];
+    for (const [pair, src] of files) {
       const view = await render(pair);
       const img = view.el.querySelector('img');
       expect(img?.getAttribute('src')).toBe(src);
+      expect(img.className).toContain('rounded-full');
+      expect(view.el.textContent).toBe('');
+      await view.unmount();
+    }
+    for (const pair of flags) {
+      const view = await render(pair);
+      const img = view.el.querySelector('img');
+      const src = img?.getAttribute('src') || '';
+      expect(src).toBe(inlineFlagSrc(pair));
+      expect(src.startsWith('data:image/svg+xml,')).toBe(true);
       expect(img.className).toContain('rounded-full');
       expect(view.el.textContent).toBe('');
       await view.unmount();

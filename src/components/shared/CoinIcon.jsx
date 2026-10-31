@@ -1,5 +1,6 @@
 import { useState, useEffect } from 'react';
 import { getCachedImage, prefetchCoinImages } from '../../services/coinImageCache';
+import { inlineFlagSrc } from '../../utils/inlineFlags';
 import { tickerCoinKey } from '../../utils/tickerMarks';
 import StockLogo from '../stocks/StockLogo';
 
@@ -28,6 +29,7 @@ export default function CoinIcon({ pair, className = 'w-4 h-4', assetClass }) {
 
 function CryptoIcon({ pair, className = 'w-4 h-4' }) {
   const symbol = tickerCoinKey(pair);
+  const flagSrc = inlineFlagSrc(symbol);
   const [imageUrl, setImageUrl] = useState(() => getCachedImage(symbol));
   const [failed, setFailed] = useState(false);
 
@@ -71,6 +73,19 @@ function CryptoIcon({ pair, className = 'w-4 h-4' }) {
   };
 
   if (!symbol) return null;
+
+  // Flags are bundled. Rendering the file URL waits on a fetch and the icon
+  // pops in after the menu is already open.
+  if (flagSrc) {
+    return (
+      <img
+        src={flagSrc}
+        alt=""
+        decoding="sync"
+        className={`${className} flex-shrink-0 rounded-full`}
+      />
+    );
+  }
 
   if (imageUrl && !failed) {
     return (
