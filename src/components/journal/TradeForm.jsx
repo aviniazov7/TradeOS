@@ -29,6 +29,7 @@ import {
   partialExitDefaultDate, syncPartialExitDates, entryPriceProblem,
   aggregateFills, exitsClosedPercent, syncExitSize, remainderClose, storedExit, hasCommissionPreset, estimateCommission,
   buildChecklistRows, checklistAdherence, loadLastTradeChoices, saveLastTradeChoices,
+  triggerFitsStrategy, triggersForStrategy, freshTradeChoices,
   parseInstrumentSize, defaultInstrumentChoice,
   canMoveStopToBreakeven, breakevenStopValue, closeDateWithoutExitPrice,
   riskBudgetCheck, riskToStop, riskSizedNotional, stopDistancePct, rMultiple, plannedRewardRisk,
@@ -409,11 +410,13 @@ export default function TradeForm({ isOpen, onClose, trade, onSave, riskSettings
       setCloseKind('');
       setClosePrice('');
       setCloseDate(null);
-      // New trade: seed the asset class from the user's profile preference and
-      // pick a sensible default symbol for it. Strategy / timeframe / trigger
-      // start from the last ones used in THIS journal. A calculator handoff
-      // fills direction, prices, risk and a planned target on top of that.
+      // New trade: asset class and symbol come from the journal (a remembered
+      // futures instrument is kept). Timeframe is the one setup preference
+      // carried over. Strategy, trigger and direction start clean — the last
+      // trade's Order Block + Spring must not come back together. A calculator
+      // handoff may still set direction, prices, risk and a planned target.
       const last = loadLastTradeChoices(activeJournalId);
+      const fresh = freshTradeChoices(last);
       const choice = defaultInstrumentChoice({
         assetClass: newTradeAssetClass,
         broker: journalRef.current?.exchange,
@@ -425,12 +428,12 @@ export default function TradeForm({ isOpen, onClose, trade, onSave, riskSettings
         assetClass: newTradeAssetClass,
         pair: choice.pair,
         contracts: choice.contracts,
-        strategy: last?.strategy || '',
-        timeframe: last?.timeframe || defaultForm.timeframe,
-        trigger: last?.trigger || '',
+        strategy: fresh.strategy,
+        timeframe: fresh.timeframe || defaultForm.timeframe,
+        trigger: fresh.trigger,
         direction: seed?.direction === 'short' || seed?.direction === 'long'
           ? seed.direction
-          : (choice.direction || defaultForm.direction),
+          : defaultForm.direction,
         entryDate,
         entryPrice: seed?.entryPrice || '',
         stopLoss: seed?.stopLoss || '',
@@ -1228,14 +1231,15 @@ export default function TradeForm({ isOpen, onClose, trade, onSave, riskSettings
         ...(trade?.externalId ? { externalId: trade.externalId } : {}),
       };
       await onSave(data);
-      // New trades seed the next one in this journal with the same setup.
+      // Remember timeframe and the futures instrument only. Strategy, trigger
+      // and direction are chosen per trade.
       if (!trade) {
         saveLastTradeChoices(activeJournalId, {
-          strategy: finalStrategy || '',
+          strategy: '',
           timeframe: finalTimeframe || '',
-          trigger: finalTrigger || '',
+          trigger: '',
           instrument: isFutures ? (contractSpec?.symbol || finalPair || '') : '',
-          direction: form.direction === 'short' ? 'short' : 'long',
+          direction: '',
           broker: activeJournal?.exchange || '',
         });
       }
@@ -1500,7 +1504,16 @@ export default function TradeForm({ isOpen, onClose, trade, onSave, riskSettings
               <Field label="אסטרטגיה" pick className="col-span-2 md:col-span-4">
                 <StrategySelector
                   value={form.strategy}
-                  onChange={(s) => update('strategy', s)}
+                  onChange={(s) => {
+                    setForm((f) => ({
+                      ...f,
+                      strategy: s,
+                      trigger: triggerFitsStrategy(s, f.trigger) ? f.trigger : '',
+                    }));
+                    setFieldErrors((prev) => (
+                      prev.strategy || prev.trigger ? { ...prev, strategy: undefined, trigger: undefined } : prev
+                    ));
+                  }}
                   strategies={allStrategies}
                   onAdd={addStrategy}
                   onRemove={removeStrategy}
@@ -1519,7 +1532,7 @@ export default function TradeForm({ isOpen, onClose, trade, onSave, riskSettings
                 <StrategySelector
                   value={form.trigger}
                   onChange={(t) => update('trigger', t)}
-                  strategies={allTriggers}
+                  strategies={triggersForStrategy(form.strategy, allTriggers, form.trigger)}
                   onAdd={addTrigger}
                   onRemove={removeTrigger}
                   addLabel="טריגר מותאם"
