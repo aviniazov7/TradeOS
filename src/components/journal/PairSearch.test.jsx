@@ -53,6 +53,10 @@ describe('PairSearch markets', () => {
     expect(pairs).toContain('EURUSD.R');
     expect(view.el.textContent).toContain('Gold');
     expect(view.el.textContent).toContain('Yen');
+    expect(view.el.textContent).toContain('Metals');
+    expect(view.el.textContent).toContain('Forex');
+    expect(view.el.textContent).toContain('Indices');
+    expect(view.el.textContent).toContain('Crypto');
 
     typeInto(input, 'xauusd.r');
     const custom = view.el.querySelector('[data-testid="pair-custom"]');

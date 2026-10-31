@@ -36,6 +36,7 @@ import {
   riskBudgetCheck, riskToStop, riskSizedNotional, stopDistancePct, rMultiple, plannedRewardRisk,
 } from '../../utils/tradeFormHelpers';
 import { calculatePnLPercent, calculateRR, calculateNetPnL, calculatePartialPnL, calculateWeightedExitPrice, calculateFuturesContractsPnL, calculateFuturesNotional, initialStopLoss, isStopOnRiskSide, isClosedTrade, safePnl, tradeShownPercent } from '../../utils/calculations';
+import { categoryForSymbol, cryptoQuantityPnl, formatQuoteAmount } from '../../utils/pairCatalog';
 import { getSessionFromDate } from '../../utils/sessions';
 import { formatCurrency, formatPercent } from '../../utils/formatters';
 
@@ -589,8 +590,13 @@ export default function TradeForm({ isOpen, onClose, trade, onSave, riskSettings
 
   // CME futures mode (epic #32). Crypto stays the default path. contractSpec
   // (pointValue/tickSize) drives dollar P&L; contractsNum replaces leverage.
-  const isFutures = form.assetClass === 'futures_cme';
-  const contractSpec = isFutures ? getContractSpec(form.pair) : null;
+  // A listed CFD (XAUUSD, EURUSD, NAS100, …) uses lot × point value even when
+  // the journal itself is crypto. A USDT gold token stays a coin.
+  const marketSpec = getContractSpec(form.pair);
+  const isFutures = form.assetClass === 'futures_cme' || marketSpec?.kind === 'cfd';
+  const contractSpec = isFutures ? marketSpec : null;
+  const quoteCurrency = contractSpec?.currency || (cryptoQuantityPnl(form.pair) ? 'USD' : '');
+  const marketCategory = categoryForSymbol(form.pair);
   const isCfd = contractSpec?.kind === 'cfd';
   const contractsNum = isFutures ? parseInstrumentSize(form.contracts, contractSpec) : 0;
   // Stocks: plain cash equity — size in shares, no leverage, dollar fees.
@@ -856,6 +862,9 @@ export default function TradeForm({ isOpen, onClose, trade, onSave, riskSettings
 
     if (!totalUnits) return null;
     if (!allExits.length) return null;
+    // Forex, gold CFDs and indices are not a USDT coin. Without a lot spec
+    // there is no honest dollar P&L — don't multiply the price gap by size.
+    if (!cryptoQuantityPnl(form.pair)) return null;
 
     // For exchange-imported trades, trust the exchange-reported P&L (quantity may be in contracts, not base asset)
     const isImported = form.pnlFromExchange != null;
@@ -871,7 +880,7 @@ export default function TradeForm({ isOpen, onClose, trade, onSave, riskSettings
     const netPnl = calculateNetPnL(pnl, fees);
 
     return { pnl, pnlPercent, rrRatio, netPnl };
-  }, [form.direction, avgEntry, liveExits, riskStopLoss, totalUnits, feesValue,
+  }, [form.direction, form.pair, avgEntry, liveExits, riskStopLoss, totalUnits, feesValue,
       form.leverage, form.pnlFromExchange, form.pnlPercent, isFutures, contractSpec, totalContracts, isStocks]);
 
   // Trading plans: the active ones, plus the plan this trade is already
@@ -1302,6 +1311,8 @@ export default function TradeForm({ isOpen, onClose, trade, onSave, riskSettings
             pointValue: contractSpec.pointValue,
             tickSize: contractSpec.tickSize,
             contracts: totalContracts,
+            ...(contractSpec.kind ? { kind: contractSpec.kind } : {}),
+            ...(contractSpec.currency ? { currency: contractSpec.currency } : {}),
           },
         } : {}),
         // Preserve exchange-specific fields so PnL stays accurate after editing
@@ -1335,6 +1346,8 @@ export default function TradeForm({ isOpen, onClose, trade, onSave, riskSettings
   };
 
   const pnlColor = (val) => (val > 0 ? 'text-profit' : val < 0 ? 'text-loss' : 'text-breakeven');
+  const showSigned = (v) => formatQuoteAmount(v, quoteCurrency, { signed: true }) || formatCurrency(v);
+  const showPlain = (v, max = 2) => formatQuoteAmount(v, quoteCurrency, { digits: max }) || fmtUsd(v, max);
   const textareaClass = 'w-full min-w-0 h-24 bg-bg-tertiary border border-border-primary rounded-xl px-3 py-2 text-sm text-text-primary outline-none focus:border-accent-primary transition-colors text-right resize-none placeholder:text-text-muted/60';
   const isLong = form.direction === 'long';
   // Futures exits are recorded in contracts; crypto / stocks in percent.
@@ -1348,7 +1361,7 @@ export default function TradeForm({ isOpen, onClose, trade, onSave, riskSettings
   // journal preset it shows the estimate; typing switches it to manual, and
   // the calculator button re-applies the preset.
   const feesField = (
-    <Field label={isFutures || isStocks ? 'עמלות ($)' : 'עמלות (USDT)'} htmlFor="tt-fees"
+    <Field label={isFutures || isStocks ? `עמלות (${quoteCurrency && quoteCurrency !== 'USD' ? quoteCurrency : '$'})` : 'עמלות (USDT)'} htmlFor="tt-fees"
       aside={feesFromPreset
         ? <span className="text-[10px] font-semibold text-accent-primary shrink-0">פריסט</span>
         : (hasPreset && presetFees != null) ? (
@@ -1447,7 +1460,7 @@ export default function TradeForm({ isOpen, onClose, trade, onSave, riskSettings
             </span>
           </div>
           <p className="mt-1 text-[11px] text-text-muted truncate">
-            {isCfd ? 'CFD' : (ASSET_LABELS[form.assetClass] || 'קריפטו')} · {form.orderType === 'limit' ? 'Limit' : 'Market'}{form.timeframe ? ` · ${form.timeframe}` : ''}
+            {marketCategory || (isCfd ? 'CFD' : (!cryptoQuantityPnl(form.pair) ? 'CFD' : (ASSET_LABELS[form.assetClass] || 'קריפטו')))} · {form.orderType === 'limit' ? 'Limit' : 'Market'}{form.timeframe ? ` · ${form.timeframe}` : ''}
           </p>
           <div className="mt-3 flex items-center gap-2">
             <span className={`w-2 h-2 rounded-full shrink-0 ${statusCfg.dot}`} />
@@ -1458,17 +1471,17 @@ export default function TradeForm({ isOpen, onClose, trade, onSave, riskSettings
         {shown && (
           <RailBlock title="תוצאה">
             <div className="flex items-baseline justify-between gap-2 py-1">
-              <span className={`num-mono text-xl font-bold ${pnlColor(shown.netPnl)}`} dir="ltr">{formatCurrency(shown.netPnl)}</span>
+              <span className={`num-mono text-xl font-bold ${pnlColor(shown.netPnl)}`} dir="ltr">{showSigned(shown.netPnl)}</span>
               <span className={`num-mono text-xs font-semibold ${resultPercent == null ? 'text-text-muted' : pnlColor(resultPercent)}`} dir="ltr" title={shownReturn?.onAccount ? 'תשואה על היתרה' : 'תשואה על הפוזיציה'}>{resultPercent == null ? '—' : formatPercent(resultPercent)}</span>
             </div>
-            {shown.pnl != null && <Row label="ברוטו" value={formatCurrency(shown.pnl)} tone="text-text-secondary" />}
+            {shown.pnl != null && <Row label="ברוטו" value={showSigned(shown.pnl)} tone="text-text-secondary" />}
             <Row label="R בפועל" value={fmtR(realizedNetR)} tone={pnlColor(shown.netPnl)} />
           </RailBlock>
         )}
 
         <RailBlock title="פוזיציה">
-          <Row label={isFutures ? 'נומינלי' : isStocks ? 'שווי פוזיציה' : 'גודל פוזיציה'} value={totalNotional > 0 ? fmtUsd(totalNotional) : '—'} />
-          {!isFutures && !isStocks && <Row label="מרג׳ין" value={calculatedMargin != null ? fmtUsd(calculatedMargin) : '—'} />}
+          <Row label={isFutures ? 'נומינלי' : isStocks ? 'שווי פוזיציה' : 'גודל פוזיציה'} value={totalNotional > 0 ? showPlain(totalNotional) : '—'} />
+          {!isFutures && !isStocks && <Row label="מרג׳ין" value={calculatedMargin != null ? showPlain(calculatedMargin) : '—'} />}
           <Row label={isFutures ? sizeUnitLabel : isStocks ? 'מניות' : 'כמות'} value={totalUnits > 0 ? fmtNum(totalUnits, sizeDigits) : '—'} />
           {hasScaleIns && avgEntry > 0 && <Row label="כניסה ממוצעת" value={fmtNum(avgEntry)} />}
           {isFutures && contractSpec && <Row label="ערך נקודה" value={`$${contractSpec.pointValue}`} />}
@@ -1476,7 +1489,7 @@ export default function TradeForm({ isOpen, onClose, trade, onSave, riskSettings
         </RailBlock>
 
         <RailBlock title="סיכון">
-          <Row label={riskLabel} value={riskDollars > 0 ? fmtUsd(riskDollars) : '—'} tone={riskTone} strong />
+          <Row label={riskLabel} value={riskDollars > 0 ? showPlain(riskDollars) : '—'} tone={riskTone} strong />
           <Row label="מהתיק" value={riskInfo?.percent != null ? `${riskInfo.percent.toFixed(2)}%` : '—'} tone={riskTone} />
           {riskInfo?.missingBalance && (
             <p className="mt-1 text-[11px] leading-snug text-breakeven">{riskInfo.message}</p>
@@ -1500,7 +1513,7 @@ export default function TradeForm({ isOpen, onClose, trade, onSave, riskSettings
         </RailBlock>
 
         <RailBlock title="עלויות ומשמעת">
-          <Row label="עמלות" value={feesNum > 0 ? fmtUsd(feesNum, 4) : '—'} />
+          <Row label="עמלות" value={feesNum > 0 ? showPlain(feesNum, 4) : '—'} />
           <Row label="עמידה בתוכנית" value={adherencePct != null ? `${adherencePct}%` : '—'} />
         </RailBlock>
       </div>
@@ -1511,9 +1524,9 @@ export default function TradeForm({ isOpen, onClose, trade, onSave, riskSettings
     <>
       {/* Phones: the key numbers stay in view above the buttons. */}
       <div className="lg:hidden grid grid-cols-3 gap-2 mb-2.5">
-        <MiniStat label="סיכון" value={riskDollars > 0 ? fmtUsd(riskDollars) : '—'} tone={riskTone} />
+        <MiniStat label="סיכון" value={riskDollars > 0 ? showPlain(riskDollars) : '—'} tone={riskTone} />
         <MiniStat label={shown ? 'R בפועל' : 'R:R מתוכנן'} value={shown ? fmtR(realizedNetR) : fmtR(planned.blended)} />
-        <MiniStat label="P&L נטו" value={shown ? formatCurrency(shown.netPnl) : '—'} tone={shown ? pnlColor(shown.netPnl) : 'text-text-primary'} />
+        <MiniStat label="P&L נטו" value={shown ? showSigned(shown.netPnl) : '—'} tone={shown ? pnlColor(shown.netPnl) : 'text-text-primary'} />
       </div>
       <div className="flex items-center gap-2.5">
         <p className="hidden lg:block flex-1 text-[11px] text-text-muted">
@@ -1555,7 +1568,19 @@ export default function TradeForm({ isOpen, onClose, trade, onSave, riskSettings
                 ) : isStocks ? (
                   <StockSearch label="" value={form.pair} onChange={(sym) => update('pair', sym)} />
                 ) : (
-                  <PairSearch label="" value={form.pair} onChange={(pair) => update('pair', pair || 'BTCUSDT')} />
+                  <PairSearch label="" value={form.pair} includeMarkets onChange={(pair) => {
+                    const next = pair || 'BTCUSDT';
+                    const nextSpec = getContractSpec(next);
+                    setForm((f) => {
+                      const wasCfd = getContractSpec(f.pair)?.kind === 'cfd';
+                      const nowCfd = nextSpec?.kind === 'cfd';
+                      let contracts = f.contracts;
+                      if (!wasCfd && nowCfd) contracts = '0.1';
+                      if (wasCfd && !nowCfd && f.assetClass !== 'futures_cme') contracts = '1';
+                      return { ...f, pair: next, contracts };
+                    });
+                    setFieldErrors((prev) => (prev.pair ? { ...prev, pair: undefined } : prev));
+                  }} />
                 )}
               </Field>
               <Field label="כיוון" className={isFutures ? 'col-span-2 md:col-span-6' : 'md:col-span-3'}>
@@ -1722,7 +1747,7 @@ export default function TradeForm({ isOpen, onClose, trade, onSave, riskSettings
                     <span className={`num-mono text-xs font-semibold ${shown ? pnlColor(shown.netPnl) : 'text-text-muted'}`} dir="ltr">{fmtR(realizedNetR)}</span>
                   )}
                   <span className={`num-mono text-base font-bold ${shown ? pnlColor(shown.netPnl) : 'text-text-muted'}`} dir="ltr">
-                    {shown ? formatCurrency(shown.netPnl) : '—'}
+                    {shown ? showSigned(shown.netPnl) : '—'}
                   </span>
                 </span>
               </div>

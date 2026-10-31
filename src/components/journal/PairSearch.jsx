@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef } from 'react';
+import { Fragment, useState, useEffect, useRef } from 'react';
 import { useCloseOnEscape } from '../../hooks/useCloseOnEscape';
 import { Search, X, Plus } from 'lucide-react';
 import { COINS } from '../../utils/constants';
@@ -143,20 +143,29 @@ export default function PairSearch({
           {loading && results.length === 0 && !custom && (
             <div className="px-3 py-2 text-xs text-text-muted text-center">מחפש...</div>
           )}
-          {results.map((item) => (
-            <button
-              key={item.pair}
-              type="button"
-              data-testid="pair-option"
-              data-pair={item.pair}
-              onClick={() => handleSelect(item)}
-              className="w-full flex items-center gap-2.5 px-3 py-2 text-right hover:bg-bg-tertiary transition-colors cursor-pointer"
-            >
-              <CoinIcon pair={item.pair} className="w-5 h-5" />
-              <span className="text-sm font-medium text-text-primary" dir="ltr">{item.pair}</span>
-              <span className="text-xs text-text-muted truncate">{item.name}</span>
-            </button>
-          ))}
+          {results.map((item, i) => {
+            const header = item.category && item.category !== results[i - 1]?.category;
+            return (
+              <Fragment key={item.pair}>
+                {header && (
+                  <div role="presentation" className="px-3 pt-2 pb-1 text-[10px] font-semibold tracking-wide text-text-muted sticky top-0 bg-bg-overlay">
+                    {item.category}
+                  </div>
+                )}
+                <button
+                  type="button"
+                  data-testid="pair-option"
+                  data-pair={item.pair}
+                  onClick={() => handleSelect(item)}
+                  className="w-full flex items-center gap-2.5 px-3 py-2 text-right hover:bg-bg-tertiary transition-colors cursor-pointer"
+                >
+                  <CoinIcon pair={item.pair} className="w-5 h-5" />
+                  <span className="text-sm font-medium text-text-primary" dir="ltr">{item.pair}</span>
+                  <span className="text-xs text-text-muted truncate">{item.name}</span>
+                </button>
+              </Fragment>
+            );
+          })}
           {loading && results.length > 0 && (
             <div className="px-3 py-1.5 text-[10px] text-text-muted text-center border-t border-border-primary">מחפש עוד...</div>
           )}

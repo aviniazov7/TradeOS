@@ -1,4 +1,4 @@
-import { calculateFuturesNotional, computeTradeFields, initialRiskUsd } from './calculations';
+import { calculateFuturesNotional, computeTradeFields, initialRiskUsd, usesContractMath } from './calculations';
 
 /**
  * The document the journal writes for a new trade. Shared by the client
@@ -24,7 +24,7 @@ export function buildStoredTrade(tradeData, { journalId = null, now = new Date()
   // Futures positionSize/margin are notional-based (price × pointValue ×
   // contracts); the crypto formula (price × quantity / leverage) is wrong
   // for contracts and leverage doesn't apply.
-  const isFutures = tradeData.assetClass === 'futures_cme' && tradeData.contract;
+  const isFutures = usesContractMath(tradeData);
   const notional = isFutures
     ? calculateFuturesNotional(tradeData.entryPrice, tradeData.contract.pointValue, tradeData.contract.contracts)
     : tradeData.entryPrice * tradeData.quantity;

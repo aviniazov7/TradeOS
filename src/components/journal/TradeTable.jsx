@@ -1,15 +1,22 @@
 import { useState, useMemo, Fragment } from 'react';
 import { Pencil, Trash2, Share2, Eye, TrendingUp, TrendingDown, Check, ArrowUp, ArrowDown, ArrowUpDown } from 'lucide-react';
 import { formatDate, formatPrice, formatCurrency, formatPercent, formatSignedR } from '../../utils/formatters';
-import { signedTradeR, tradeShownPercent } from '../../utils/calculations';
+import { cryptoQuantityPnl, formatQuoteAmount, formatSymbolPrice } from '../../utils/pairCatalog';
+import { isClosedTrade, safePnl, signedTradeR, tradeShownPercent, usesContractMath } from '../../utils/calculations';
 import { buildAccountReturnBook } from '../../utils/accountReturn';
 import { setupLabel, tradeSetups } from '../../utils/setupStats';
-import { isClosedTrade, safePnl } from '../../utils/calculations';
 import { getExchangeLogo } from '../../utils/constants';
 import TradeDetailModal from './TradeDetailModal';
 import CoinIcon from '../shared/CoinIcon';
 import ExchangeLogo from '../shared/ExchangeLogo';
 import FitText from '../shared/FitText';
+
+function showPnl(trade, value) {
+  const quote = formatQuoteAmount(value, trade?.contract?.currency, { signed: true });
+  if (quote) return quote;
+  if (trade && !cryptoQuantityPnl(trade.pair) && !usesContractMath(trade)) return '—';
+  return formatCurrency(value);
+}
 
 function ExchangeIcon({ source }) {
   if (!getExchangeLogo(source)) return null;
@@ -197,7 +204,7 @@ export default function TradeTable({
                     </span>
                   </div>
                   {done
-                    ? <FitText className={`num-mono text-sm font-bold shrink-0 max-w-[42%] ${pnlColor(pnl)}`} min={11} dir="ltr">{formatCurrency(pnl)}</FitText>
+                    ? <FitText className={`num-mono text-sm font-bold shrink-0 max-w-[42%] ${pnlColor(pnl)}`} min={11} dir="ltr">{showPnl(trade, pnl)}</FitText>
                     : live
                       ? <span className="shrink-0 inline-flex items-center gap-1.5"><LiveTag /><span className={`num-mono text-sm font-bold ${pnlColor(live.pnl)}`} dir="ltr">{formatCurrency(live.pnl)}</span></span>
                       : <span className="text-xs text-text-muted shrink-0">—</span>}
@@ -307,10 +314,10 @@ export default function TradeTable({
                       {[trade.strategy, tradeSetups(trade)[0] && setupLabel(tradeSetups(trade)[0])].filter(Boolean).join(' · ') || '—'}
                     </td>
                     <td className="py-2.5 px-2 text-text-muted whitespace-nowrap">{formatDate(trade.entryDate)}</td>
-                    <td className="py-2.5 px-2 text-text-primary whitespace-nowrap num-mono">{formatPrice(trade.entryPrice)}</td>
+                    <td className="py-2.5 px-2 text-text-primary whitespace-nowrap num-mono">{formatSymbolPrice(trade.entryPrice, trade.pair)}</td>
                     <td className="py-2.5 px-2 text-text-primary whitespace-nowrap num-mono">
                       {status === 'open' ? '—' : (
-                        <span>{formatPrice(trade.exitPrice)}{trade.exits?.length > 1 && <span className="text-[10px] text-text-muted mr-1">({trade.exits.length})</span>}</span>
+                        <span>{formatSymbolPrice(trade.exitPrice, trade.pair)}{trade.exits?.length > 1 && <span className="text-[10px] text-text-muted mr-1">({trade.exits.length})</span>}</span>
                       )}
                     </td>
                     <td className="py-2.5 px-2 text-text-primary whitespace-nowrap num-mono"><StopValue trade={trade} /></td>
@@ -319,7 +326,7 @@ export default function TradeTable({
                     </td>
                     <td className={`py-2.5 px-2 whitespace-nowrap num-mono ${pnl < 0 ? 'text-loss' : 'text-text-secondary'}`} title="R נטו, אחרי עמלות"><span dir="ltr">{status === 'open' ? '–' : formatSignedR(signedTradeR(trade))}</span></td>
                     <td className={`py-2.5 px-2 font-bold whitespace-nowrap num-mono ${status === 'open' ? (live ? pnlColor(live.pnl) : 'text-text-muted') : pnlColor(pnl)}`}>
-                      {status !== 'open' ? <span dir="ltr">{formatCurrency(pnl)}</span> : live ? (
+                      {status !== 'open' ? <span dir="ltr">{showPnl(trade, pnl)}</span> : live ? (
                         <span className="inline-flex items-center gap-1.5" title="רווח/הפסד חי לפי המחיר הנוכחי (לפני עמלות)">
                           <LiveTag /><span dir="ltr">{formatCurrency(live.pnl)}</span>
                         </span>
