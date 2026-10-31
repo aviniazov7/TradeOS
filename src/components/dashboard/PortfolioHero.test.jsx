@@ -86,6 +86,18 @@ describe('portfolio hero return', () => {
     await view.unmount();
   });
 
+  it('asks for a starting balance instead of $0 when P&L exists without one', async () => {
+    const view = await mount({
+      balance: 0,
+      declaredStart: 0,
+      series: [{ t: Date.now() - 40 * DAY, pnl: 120, value: 120 }],
+    });
+    const prompt = document.querySelector('[data-testid="set-opening-balance"]');
+    expect(plain(prompt)).toBe('הגדר יתרה התחלתית');
+    expect(plain(document.body)).not.toContain('$0.00');
+    await view.unmount();
+  });
+
   it('hides the badge for a zero or dust wallet', async () => {
     const series = [{ t: Date.now() - 40 * DAY, pnl: -20, value: -20 }];
     const zero = await mount({ balance: 0, declaredStart: 0, series });
