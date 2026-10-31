@@ -1,5 +1,6 @@
 import { useState, useRef, useEffect, useLayoutEffect } from 'react';
 import { createPortal } from 'react-dom';
+import { useCloseOnEscape } from '../../hooks/useCloseOnEscape';
 import { X, Plus, Check, Settings2 } from 'lucide-react';
 
 const inputClass = 'w-full bg-bg-tertiary border border-border-primary rounded-lg px-3 py-2 text-sm text-text-primary outline-none focus:border-accent-primary transition-colors text-right';
@@ -80,19 +81,8 @@ export default function MultiSelector({
     };
   }, [open]);
 
-  // Escape closes this menu only. Capture + stopPropagation so a dialog
-  // behind it (the trade ticket) stays open.
-  useEffect(() => {
-    if (!open) return undefined;
-    const onKey = (e) => {
-      if (e.key !== 'Escape') return;
-      e.preventDefault();
-      e.stopPropagation();
-      setOpen(false);
-    };
-    document.addEventListener('keydown', onKey, true);
-    return () => document.removeEventListener('keydown', onKey, true);
-  }, [open]);
+  // Shared helper: Escape closes this menu only, not the trade dialog.
+  useCloseOnEscape(open, () => setOpen(false));
 
   useEffect(() => {
     if (adding && inputRef.current) inputRef.current.focus();

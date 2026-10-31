@@ -187,7 +187,7 @@ export default function SelectDropdown({ value, onChange, options = [], placehol
       </button>
 
       {open && pos && createPortal(
-        <div className="fixed inset-0 z-[100] bg-black/40" onClick={() => setOpen(false)}>
+        <div data-popover="" className="fixed inset-0 z-[100] bg-black/40" onClick={() => setOpen(false)}>
           <div
             className="absolute bg-bg-overlay border border-border-primary rounded-xl shadow-xl overflow-hidden"
             style={{ left: pos.left, width: pos.width, top: pos.top ?? undefined, bottom: pos.bottom ?? undefined }}

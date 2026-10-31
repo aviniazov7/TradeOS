@@ -1,4 +1,5 @@
 import { useState, useRef, useEffect } from 'react';
+import { useCloseOnEscape } from '../../hooks/useCloseOnEscape';
 import { X, Plus, Check, Settings2 } from 'lucide-react';
 
 const inputClass = 'w-full bg-bg-tertiary border border-border-primary rounded-lg px-3 py-2.5 text-sm text-text-primary outline-none focus:border-accent-primary transition-colors text-right';
@@ -45,6 +46,8 @@ export default function TimeframeSelector({ value, onChange, timeframes, onAdd, 
     return () => document.removeEventListener('mousedown', handler);
   }, [open]);
 
+  useCloseOnEscape(open, () => setOpen(false));
+
   useEffect(() => {
     if (adding && inputRef.current) inputRef.current.focus();
   }, [adding]);
@@ -87,7 +90,7 @@ export default function TimeframeSelector({ value, onChange, timeframes, onAdd, 
       </button>
 
       {open && (
-        <div className="absolute z-50 top-full mt-1 right-0 left-0 bg-bg-overlay border border-border-primary rounded-xl shadow-xl overflow-hidden">
+        <div data-popover="" className="absolute z-50 top-full mt-1 right-0 left-0 bg-bg-overlay border border-border-primary rounded-xl shadow-xl overflow-hidden">
           {managing ? (
             <>
               <div className="max-h-48 overflow-y-auto p-2 space-y-1">

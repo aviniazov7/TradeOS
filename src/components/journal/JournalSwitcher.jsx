@@ -1,11 +1,12 @@
 import { useState, useRef, useEffect, useLayoutEffect, useCallback } from 'react';
 import { createPortal } from 'react-dom';
 import { useNavigate } from 'react-router-dom';
-import { ChevronDown, Plus, Star, Archive, ArchiveRestore, Trash2 } from 'lucide-react';
+import { BookOpen, ChevronDown, Plus, Star, Archive, ArchiveRestore, Trash2 } from 'lucide-react';
 import toast from 'react-hot-toast';
 import { useJournalContext } from '../../contexts/JournalContext';
+import { useExchangeConnected } from '../../hooks/useExchangeConnected';
 import { useAuth } from '../../contexts/AuthContext';
-import { exchangeLabel, FREE_LIMITS, getExchangeLogo } from '../../utils/constants';
+import { exchangeLabel, FREE_LIMITS, getExchangeLogo, isUnsetExchange } from '../../utils/constants';
 import { anchoredMenuBox } from '../../utils/menuPosition';
 import ExchangeLogo from '../shared/ExchangeLogo';
 import JournalFormModal from './JournalFormModal';
@@ -16,12 +17,34 @@ function journalLetter(name) {
   return Array.from(String(name || '').trim())[0] || '?';
 }
 
-// A real exchange mark only when getExchangeLogo resolves one. No venue,
-// "other", or an unknown id gets the journal name's first letter — never a
-// default Bybit / MEXC / Binance tile.
-function JournalMark({ journal, size = 'w-5 h-5' }) {
-  const exchange = journal?.exchange;
+// Manual books (no venue, or nothing connected yet) must not wear an exchange
+// brand. "היומן שלי" next to a Binance mark read as "Binance היומן שלי".
+export function journalDisplayName(journal, { connected } = {}) {
+  const name = String(journal?.name || '').trim();
+  const manual = isUnsetExchange(journal?.exchange) || connected === false;
+  if (!manual) return name || exchangeLabel(journal?.exchange) || 'יומן';
+  if (!name || name === 'היומן שלי') return 'יומן ידני';
+  const stripped = name.replace(/^(binance|bybit|mexc|okx|bitget|kucoin)\s+/i, '').trim();
+  if (!stripped || stripped === 'היומן שלי') return 'יומן ידני';
+  return stripped;
+}
+
+// A real exchange mark only when one is connected. Otherwise a neutral book.
+function JournalMark({ journal, size = 'w-5 h-5', connected }) {
+  const manual = isUnsetExchange(journal?.exchange) || connected === false;
+  const exchange = manual ? '' : journal?.exchange;
   const logo = exchange ? getExchangeLogo(exchange) : null;
+  if (manual && (!journal?.name || journal.name === 'היומן שלי' || journalDisplayName(journal, { connected }) === 'יומן ידני')) {
+    return (
+      <span
+        data-testid="journal-manual"
+        className={`${size} rounded-full bg-bg-tertiary text-text-secondary inline-flex items-center justify-center shrink-0 border border-border-primary`}
+        aria-hidden="true"
+      >
+        <BookOpen className="w-3 h-3" />
+      </span>
+    );
+  }
   if (logo) {
     return <ExchangeLogo exchange={exchange} size={size} badge={journal?.name} />;
   }
@@ -38,6 +61,7 @@ function JournalMark({ journal, size = 'w-5 h-5' }) {
 
 export default function JournalSwitcher({ compact }) {
   const { journals, archivedJournals, activeJournal, activeJournalId, setActiveJournalId, addJournal, toggleStarJournal, unarchiveJournal, deleteJournal } = useJournalContext();
+  const connected = useExchangeConnected();
   const { isPremium, profile } = useAuth();
   const defaultAssetClass = profile?.settings?.assetClasses?.[0] || 'crypto';
   const navigate = useNavigate();
@@ -141,8 +165,8 @@ export default function JournalSwitcher({ compact }) {
             aria-expanded={open}
             className="h-8 md:h-9 max-w-full min-w-0 overflow-hidden inline-flex items-center gap-1.5 px-2 md:px-3 rounded-lg text-sm font-medium bg-bg-tertiary border border-border-primary hover:border-border-hover transition-colors cursor-pointer"
           >
-            <JournalMark journal={activeJournal} size="w-5 h-5" />
-            <span className="truncate min-w-0 md:max-w-[360px] text-text-primary font-semibold">{activeJournal?.name || 'יומן'}</span>
+            <JournalMark journal={activeJournal} size="w-5 h-5" connected={connected} />
+            <span className="truncate min-w-0 md:max-w-[360px] text-text-primary font-semibold">{journalDisplayName(activeJournal, { connected })}</span>
             <ChevronDown className={`w-3.5 h-3.5 text-text-muted transition-transform flex-shrink-0 ${open ? 'rotate-180' : ''}`} />
           </button>
 
@@ -168,8 +192,8 @@ export default function JournalSwitcher({ compact }) {
                       onClick={() => { setActiveJournalId(j.id); setOpen(false); }}
                       className="flex-1 flex items-center gap-2 cursor-pointer min-w-0"
                     >
-                      <JournalMark journal={j} size="w-5 h-5" />
-                      <span className="truncate">{j.name}</span>
+                      <JournalMark journal={j} size="w-5 h-5" connected={connected} />
+                      <span className="truncate">{journalDisplayName(j, { connected })}</span>
                     </button>
                     <button
                       onClick={(e) => { e.stopPropagation(); toggleStarJournal(j.id); }}
@@ -217,7 +241,7 @@ export default function JournalSwitcher({ compact }) {
             <div className="space-y-2">
               {archivedJournals.map((j) => (
                 <div key={j.id} className="flex items-center gap-3 p-3 rounded-xl bg-bg-tertiary border border-border-primary">
-                  <JournalMark journal={j} size="w-5 h-5" />
+                  <JournalMark journal={j} size="w-5 h-5" connected={connected} />
                   <div className="flex-1 min-w-0">
                     <p className="text-sm font-medium text-text-primary truncate">{j.name}</p>
                     {exchangeLabel(j.exchange) && <p className="text-[10px] text-text-muted">{exchangeLabel(j.exchange)}</p>}
@@ -274,8 +298,8 @@ export default function JournalSwitcher({ compact }) {
             }`}
           >
             {j.starred && <Star className="w-3 h-3 fill-amber-400 text-amber-400 flex-shrink-0" />}
-            <JournalMark journal={j} size="w-4 h-4" />
-            <span className="truncate max-w-[100px] md:max-w-[140px]">{j.name}</span>
+            <JournalMark journal={j} size="w-4 h-4" connected={connected} />
+            <span className="truncate max-w-[100px] md:max-w-[140px]">{journalDisplayName(j, { connected })}</span>
           </button>
         ))}
         <button

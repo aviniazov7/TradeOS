@@ -458,7 +458,9 @@ export default function TradeJournal() {
   }, []);
 
   const handleSave = useCallback(async (data) => {
-    if (showingDemo || isDemoTrade(editingTrade)) { refuseDemoWrite(); return; }
+    // false keeps the ticket open. A resolved promise used to close it even
+    // when the write failed or the demo refused the edit, dropping what was typed.
+    if (showingDemo || isDemoTrade(editingTrade)) { refuseDemoWrite(); return false; }
     try {
       if (editingTrade) {
         await updateTrade(editingTrade.id, data);
@@ -486,7 +488,9 @@ export default function TradeJournal() {
       console.error('Save trade failed:', error);
       const msg = error.code === 'permission-denied' ? 'אין הרשאה לשמור' : 'שגיאה בשמירת העסקה — נסה שוב';
       toast.error(msg);
+      return false;
     }
+    return true;
   }, [showingDemo, editingTrade, trades, updateTrade, addTrade]);
 
   const handleEdit = (trade) => {

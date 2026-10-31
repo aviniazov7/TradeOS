@@ -13,15 +13,30 @@ describe('SOL icon cache', () => {
     expect(getCachedImage('solusdt')).toBe(official);
   });
 
-  it('uses the futures marks for CFD symbols in the trade table', () => {
-    expect(getCachedImage('XAUUSD')).toBe('/logos/marks/gold.svg');
+  it('uses coins, flags, and the US flag for CFD symbols in the trade table', () => {
+    expect(getCachedImage('XAUUSD')).toBe('/logos/symbols/gold-coin.svg');
+    expect(getCachedImage('xau/usd')).toBe('/logos/symbols/gold-coin.svg');
     expect(getCachedImage('GC')).toBe('/logos/marks/gold.svg');
-    expect(getCachedImage('XAGUSD')).toBe('/logos/marks/silver.svg');
+    expect(getCachedImage('XAGUSD')).toBe('/logos/symbols/silver-coin.svg');
     expect(getCachedImage('SI')).toBe('/logos/marks/silver.svg');
-    expect(getCachedImage('NAS100')).toBe('/logos/marks/nasdaq.svg');
-    expect(getCachedImage('US100')).toBe('/logos/marks/nasdaq.svg');
-    expect(getCachedImage('US500')).toBe('/logos/marks/sp500.svg');
-    expect(getCachedImage('US30')).toBe('/logos/marks/dow.svg');
+    expect(getCachedImage('EURUSD')).toBe('/logos/symbols/eurusd.svg');
+    expect(getCachedImage('eur/usd')).toBe('/logos/symbols/eurusd.svg');
+    expect(getCachedImage('GBPUSD')).toBe('/logos/symbols/gbpusd.svg');
+    expect(getCachedImage('USDJPY')).toBe('/logos/symbols/usdjpy.svg');
+    expect(getCachedImage('AUDUSD')).toBe('/logos/symbols/audusd.svg');
+    expect(getCachedImage('USDCAD')).toBe('/logos/symbols/usdcad.svg');
+    expect(getCachedImage('USDCHF')).toBe('/logos/symbols/usdchf.svg');
+    expect(getCachedImage('NZDUSD')).toBe('/logos/symbols/nzdusd.svg');
+    expect(getCachedImage('NAS100')).toBe('/logos/symbols/us-flag.svg');
+    expect(getCachedImage('US100')).toBe('/logos/symbols/us-flag.svg');
+    expect(getCachedImage('US500')).toBe('/logos/symbols/us-flag.svg');
+    expect(getCachedImage('US30')).toBe('/logos/symbols/us-flag.svg');
     expect(getCachedImage('NQ')).toBe('/logos/marks/nasdaq.svg');
+    // A cached remote URL must not replace the bundled file.
+    cacheImage('EURUSD', 'https://cdn.example/eu.png');
+    expect(getCachedImage('EURUSD')).toBe('/logos/symbols/eurusd.svg');
+    // Free-text symbols stay unresolved so the letter badge can stay neutral.
+    expect(getCachedImage('EURUSD.R')).toBeNull();
+    expect(getCachedImage('MYBOOK')).toBeNull();
   });
 });
