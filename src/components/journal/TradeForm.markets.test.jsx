@@ -3,6 +3,7 @@ import { act } from 'react';
 import { afterEach, beforeAll, describe, expect, it, vi } from 'vitest';
 import { createRoot } from 'react-dom/client';
 import TradeForm from './TradeForm';
+import { inlineFlagSrc } from '../../utils/inlineFlags';
 
 vi.mock('../../hooks/useUserStrategies', () => ({
   useUserStrategies: () => ({ allStrategies: [], addStrategy: () => {}, removeStrategy: () => {} }),
@@ -62,9 +63,9 @@ describe('live journal pair picker', () => {
     const gold = document.querySelector('[data-pair="XAUUSD"] img');
     expect(gold?.getAttribute('src')).toBe('/logos/symbols/gold-coin.svg');
     const euro = document.querySelector('[data-pair="EURUSD"] img');
-    expect(euro?.getAttribute('src')).toBe('/logos/symbols/eurusd.svg');
+    expect(euro?.getAttribute('src')).toBe(inlineFlagSrc('EURUSD'));
     const nasdaq = document.querySelector('[data-pair="NAS100"] img');
-    expect(nasdaq?.getAttribute('src')).toBe('/logos/symbols/us-flag.svg');
+    expect(nasdaq?.getAttribute('src')).toBe(inlineFlagSrc('NAS100'));
 
     act(() => { document.querySelector('[data-pair="XAUUSD"]').click(); });
     expect(document.body.textContent).toContain('Metals');

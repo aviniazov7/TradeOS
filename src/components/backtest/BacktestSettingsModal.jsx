@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { Trash2, Plus, X, ChevronRight, ChevronLeft, ChevronDown, ChevronUp, Bitcoin, Layers, Dog, Landmark } from 'lucide-react';
 import toast from 'react-hot-toast';
 import Modal from '../shared/Modal';
@@ -9,6 +9,7 @@ import CoinIcon from '../shared/CoinIcon';
 import { useBacktestContext } from '../../contexts/BacktestContext';
 import { SESSIONS, SECTORS, getSessionClasses } from '../../utils/constants';
 import { resolveTypedSymbol, uniqueSymbols } from '../../utils/pairCatalog';
+import { backtestSettingsSnapshot } from '../../utils/backtestForm';
 import { useUserTimeframes } from '../../hooks/useUserTimeframes';
 
 const SECTOR_ICONS = { Bitcoin, Layers, Dog, Landmark };
@@ -29,7 +30,10 @@ export default function BacktestSettingsModal({ isOpen, onClose }) {
   const [form, setForm] = useState(defaultForm);
   const [saving, setSaving] = useState(false);
   const [deleteOpen, setDeleteOpen] = useState(false);
+  const [discardOpen, setDiscardOpen] = useState(false);
   const [newItem, setNewItem] = useState('');
+  const baselineRef = useRef(null);
+  const syncedIdRef = useRef('');
   const [mobileStep, setMobileStep] = useState(0);
   const [pairsExpanded, setPairsExpanded] = useState(false);
   const MOBILE_STEP_COUNT = 5;
@@ -44,27 +48,50 @@ export default function BacktestSettingsModal({ isOpen, onClose }) {
 
   // Sync form data when journal or modal state changes
   useEffect(() => {
-    if (activeJournal && isOpen) {
-      setForm({
-        name: activeJournal.name || '',
-        description: activeJournal.description || '',
-        entryRules: activeJournal.entryRules || '',
-        exitRules: activeJournal.exitRules || '',
-        riskManagement: activeJournal.riskManagement || '',
-        notes: activeJournal.notes || '',
-        color: activeJournal.color || '#06b6d4',
-        pairs: activeJournal.pairs || [],
-        timeframes: activeJournal.timeframes || [],
-        sessions: activeJournal.sessions || [],
-        checklist: activeJournal.checklist || [],
-        // _key gives each example a stable React identity for the session, so
-        // deleting a row never lets the next row inherit its DOM (stripped on save)
-        tradeExamples: (activeJournal.tradeExamples || []).map((ex, i) => ({ ...ex, _key: `ex-${i}` })),
-        marketConditions: activeJournal.marketConditions || '',
-        tradeManagement: activeJournal.tradeManagement || '',
-      });
+    if (!isOpen) {
+      baselineRef.current = null;
+      syncedIdRef.current = '';
+      setDiscardOpen(false);
+      return;
     }
+    if (!activeJournal) return;
+    // Sync once per open. A later snapshot of the same journal must not wipe
+    // what the user is typing.
+    const journalId = String(activeJournal.id || 'open');
+    if (syncedIdRef.current === journalId) return;
+    syncedIdRef.current = journalId;
+    const next = {
+      name: activeJournal.name || '',
+      description: activeJournal.description || '',
+      entryRules: activeJournal.entryRules || '',
+      exitRules: activeJournal.exitRules || '',
+      riskManagement: activeJournal.riskManagement || '',
+      notes: activeJournal.notes || '',
+      color: activeJournal.color || '#06b6d4',
+      pairs: activeJournal.pairs || [],
+      timeframes: activeJournal.timeframes || [],
+      sessions: activeJournal.sessions || [],
+      checklist: activeJournal.checklist || [],
+      // _key gives each example a stable React identity for the session, so
+      // deleting a row never lets the next row inherit its DOM (stripped on save)
+      tradeExamples: (activeJournal.tradeExamples || []).map((ex, i) => ({ ...ex, _key: `ex-${i}` })),
+      marketConditions: activeJournal.marketConditions || '',
+      tradeManagement: activeJournal.tradeManagement || '',
+    };
+    setForm(next);
+    setNewItem('');
+    baselineRef.current = backtestSettingsSnapshot(next, '');
   }, [activeJournal, isOpen]);
+
+  const requestClose = () => {
+    if (saving) return;
+    const current = backtestSettingsSnapshot(form, newItem);
+    if (baselineRef.current != null && current !== baselineRef.current) {
+      setDiscardOpen(true);
+      return;
+    }
+    onClose();
+  };
 
   const update = (field, value) => setForm((f) => ({ ...f, [field]: value }));
 
@@ -242,7 +269,7 @@ export default function BacktestSettingsModal({ isOpen, onClose }) {
 
   return (
     <>
-      <Modal isOpen={isOpen} onClose={onClose} title="הגדרות יומן בקטסט" maxWidth="max-w-5xl">
+      <Modal isOpen={isOpen} onClose={requestClose} title="הגדרות יומן בקטסט" maxWidth="max-w-5xl">
         <form onSubmit={handleSave} onKeyDown={(e) => { if (e.key === 'Enter' && e.target.tagName !== 'TEXTAREA') e.preventDefault(); }}>
           {/* ── Desktop: 3-column grid ── */}
           <div className="hidden md:grid md:grid-cols-3 md:gap-6">
@@ -355,7 +382,7 @@ export default function BacktestSettingsModal({ isOpen, onClose }) {
 
           {/* Desktop actions */}
           <div className="hidden md:flex gap-3 pt-4 mt-4 border-t border-border-primary">
-            <button type="button" onClick={onClose}
+            <button type="button" onClick={requestClose}
               className="flex-1 py-2.5 rounded-lg bg-bg-tertiary text-text-primary hover:bg-border-hover transition-colors cursor-pointer">
               ביטול
             </button>
@@ -511,6 +538,17 @@ export default function BacktestSettingsModal({ isOpen, onClose }) {
         onConfirm={handleDelete}
         title="מחיקת יומן בקטסט"
         message={`למחוק את היומן "${activeJournal?.name}"? העסקאות שבו לא יימחקו.`}
+      />
+
+      <ConfirmDialog
+        isOpen={discardOpen && isOpen}
+        onClose={() => setDiscardOpen(false)}
+        onConfirm={() => onClose()}
+        title="לסגור בלי לשמור?"
+        message="השינויים שהקלדת ביומן יימחקו."
+        confirmText="סגור בלי לשמור"
+        cancelText="המשך עריכה"
+        confirmColor="amber"
       />
 
     </>
