@@ -27,6 +27,26 @@ export function defaultBacktestPair({ pairs, trades, lastUsed } = {}) {
   return FALLBACK_PAIR;
 }
 
+/** Stable text of the new/edit trade dialog, used for dirty detection. */
+export function backtestTradeSnapshot(form) {
+  return JSON.stringify({
+    pair: form?.pair || '',
+    direction: form?.direction || '',
+    strategy: form?.strategy || '',
+    trigger: form?.trigger || '',
+    timeframe: form?.timeframe || '',
+    session: form?.session || '',
+    date: form?.date || '',
+    maxR: form?.maxR ?? '',
+    stopDistancePct: form?.stopDistancePct ?? '',
+    rResult: form?.rResult ?? '',
+    result: form?.result || '',
+    entryChartUrl: form?.entryChartUrl || '',
+    managementChartUrl: form?.managementChartUrl || '',
+    notes: form?.notes || '',
+  });
+}
+
 /** Stable text of the settings dialog, ignoring row keys and UI-only state. */
 export function backtestSettingsSnapshot(form, draft = '') {
   const examples = (form?.tradeExamples || []).map((ex) => ({
