@@ -1,19 +1,27 @@
 import { useState, useEffect, useRef } from 'react';
 import { Search, X, Plus } from 'lucide-react';
-import { COINS, PAIRS } from '../../utils/constants';
+import { COINS } from '../../utils/constants';
+import { buildPairResults } from '../../utils/pairCatalog';
 import { searchCoins } from '../../services/coingeckoApi';
 import { cacheImage, clearCachedImage } from '../../services/coinImageCache';
 import CoinIcon from '../shared/CoinIcon';
 
+const EMPTY_SAVED = [];
 const inputClass = 'w-full bg-bg-tertiary border border-border-primary rounded-lg px-3 py-2.5 text-sm text-text-primary outline-none focus:border-accent-primary transition-colors';
 
-export default function PairSearch({ value, onChange, label = 'זוג', className = '' }) {
+export default function PairSearch({
+  value, onChange, label = 'זוג', className = '',
+  includeMarkets = false, savedPairs = undefined, placeholder,
+}) {
+  const saved = savedPairs || EMPTY_SAVED;
   const [query, setQuery] = useState('');
   const [results, setResults] = useState([]);
+  const [custom, setCustom] = useState(null);
   const [isOpen, setIsOpen] = useState(false);
   const [loading, setLoading] = useState(false);
   const debounceRef = useRef(null);
   const containerRef = useRef(null);
+  const hint = placeholder || (includeMarkets ? 'חפש זוג... (BTC, XAUUSD...)' : 'חפש זוג... (BTC, SOL...)');
 
   // Close dropdown on outside click
   useEffect(() => {
@@ -26,19 +34,18 @@ export default function PairSearch({ value, onChange, label = 'זוג', classNam
     return () => document.removeEventListener('mousedown', handler);
   }, []);
 
-  // Filter local PAIRS + search CoinGecko API
+  // Filter local pairs + search CoinGecko API
   useEffect(() => {
     if (!isOpen) return;
 
     const q = query.trim().toUpperCase();
+    const apply = (remote) => {
+      const next = buildPairResults({ query, includeMarkets, saved, remote });
+      setResults(next.rows);
+      setCustom(next.custom);
+    };
+    apply([]);
 
-    // Local pairs matching
-    const localMatches = COINS
-      .filter((c) => !q || c.symbol.includes(q) || c.name.toUpperCase().includes(q) || `${c.symbol}USDT`.includes(q))
-      .map((c) => ({ pair: `${c.symbol}USDT`, symbol: c.symbol, name: c.name, coingeckoId: c.coingeckoId }));
-    setResults(localMatches);
-
-    // Search CoinGecko for additional coins
     if (q.length >= 1) {
       if (debounceRef.current) clearTimeout(debounceRef.current);
       debounceRef.current = setTimeout(async () => {
@@ -47,13 +54,13 @@ export default function PairSearch({ value, onChange, label = 'זוג', classNam
           const searchQuery = q.replace(/USDT$/i, '');
           const apiResults = await searchCoins(searchQuery);
           const localSymbols = new Set(COINS.map((c) => c.symbol));
-          const extra = apiResults
-            .filter((r) => !localSymbols.has(r.symbol))
+          const remote = apiResults
+            .filter((r) => r.symbol && !localSymbols.has(r.symbol))
             .map((r) => {
               if (r.thumb) cacheImage(r.symbol, r.thumb);
-              return { pair: `${r.symbol}USDT`, symbol: r.symbol, name: r.name, coingeckoId: r.coingeckoId, thumb: r.thumb };
+              return r;
             });
-          setResults([...localMatches, ...extra]);
+          apply(remote);
         } catch {
           // Keep local results on error
         } finally {
@@ -65,7 +72,7 @@ export default function PairSearch({ value, onChange, label = 'זוג', classNam
     return () => {
       if (debounceRef.current) clearTimeout(debounceRef.current);
     };
-  }, [query, isOpen]);
+  }, [query, isOpen, includeMarkets, saved]);
 
   const handleSelect = (item) => {
     onChange(item.pair);
@@ -85,7 +92,7 @@ export default function PairSearch({ value, onChange, label = 'זוג', classNam
       {/* Selected pair or search input */}
       {value && !isOpen ? (
         <div className={`${inputClass} flex items-center justify-between cursor-pointer`} onClick={() => setIsOpen(true)}>
-          <span className="truncate">{value}</span>
+          <span className="truncate" dir="ltr">{value}</span>
           <button type="button" onClick={(e) => { e.stopPropagation(); handleClear(); setIsOpen(true); }}
             className="p-0.5 rounded text-text-muted hover:text-loss cursor-pointer">
             <X className="w-3.5 h-3.5" />
@@ -98,9 +105,19 @@ export default function PairSearch({ value, onChange, label = 'זוג', classNam
             value={query}
             onChange={(e) => setQuery(e.target.value)}
             onFocus={() => setIsOpen(true)}
+            onKeyDown={(e) => {
+              if (e.key !== 'Enter') return;
+              if (custom) {
+                e.preventDefault();
+                handleSelect(custom);
+              } else if (results[0]) {
+                e.preventDefault();
+                handleSelect(results[0]);
+              }
+            }}
             className={`${inputClass} pr-8`}
-            placeholder="חפש זוג... (BTC, SOL...)"
-            autoFocus={isOpen}
+            placeholder={hint}
+            autoFocus={isOpen && !!value}
           />
         </div>
       )}
@@ -108,38 +125,32 @@ export default function PairSearch({ value, onChange, label = 'זוג', classNam
       {/* Dropdown */}
       {isOpen && (
         <div className="absolute z-50 top-full mt-1 w-full bg-bg-overlay border border-border-primary rounded-lg shadow-xl max-h-48 overflow-y-auto">
-          {/* Custom pair option */}
-          {query.trim() && (() => {
-            const symbol = query.trim().toUpperCase().replace(/USDT$/i, '');
-            const customPair = `${symbol}USDT`;
-            const alreadyExists = results.some((r) => r.pair === customPair);
-            if (symbol && !alreadyExists) {
-              return (
-                <button
-                  type="button"
-                  onClick={() => { clearCachedImage(symbol); handleSelect({ pair: customPair, symbol, name: symbol }); }}
-                  className="w-full flex items-center gap-2.5 px-3 py-2 text-right hover:bg-bg-tertiary transition-colors cursor-pointer border-b border-border-primary bg-accent-primary/5"
-                >
-                  <Plus className="w-4 h-4 text-accent-primary" />
-                  <span className="text-sm font-medium text-accent-primary">{customPair}</span>
-                  <span className="text-xs text-text-muted">השתמש בזוג מותאם</span>
-                </button>
-              );
-            }
-            return null;
-          })()}
-          {loading && results.length === 0 && (
+          {custom && (
+            <button
+              type="button"
+              data-testid="pair-custom"
+              onClick={() => { if (!includeMarkets) clearCachedImage(custom.symbol); handleSelect(custom); }}
+              className="w-full flex items-center gap-2.5 px-3 py-2 text-right hover:bg-bg-tertiary transition-colors cursor-pointer border-b border-border-primary bg-accent-primary/5"
+            >
+              <Plus className="w-4 h-4 text-accent-primary" />
+              <span className="text-sm font-medium text-accent-primary" dir="ltr">{custom.pair}</span>
+              <span className="text-xs text-text-muted">השתמש בזוג מותאם</span>
+            </button>
+          )}
+          {loading && results.length === 0 && !custom && (
             <div className="px-3 py-2 text-xs text-text-muted text-center">מחפש...</div>
           )}
           {results.map((item) => (
             <button
               key={item.pair}
               type="button"
+              data-testid="pair-option"
+              data-pair={item.pair}
               onClick={() => handleSelect(item)}
               className="w-full flex items-center gap-2.5 px-3 py-2 text-right hover:bg-bg-tertiary transition-colors cursor-pointer"
             >
               <CoinIcon pair={item.pair} className="w-5 h-5" />
-              <span className="text-sm font-medium text-text-primary">{item.pair}</span>
+              <span className="text-sm font-medium text-text-primary" dir="ltr">{item.pair}</span>
               <span className="text-xs text-text-muted truncate">{item.name}</span>
             </button>
           ))}
