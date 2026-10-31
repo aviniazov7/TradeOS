@@ -1,4 +1,4 @@
-import { useState, useEffect, useMemo, useRef } from 'react';
+import { useState, useEffect, useMemo, useRef, memo } from 'react';
 import toast from 'react-hot-toast';
 import DatePicker, { registerLocale } from 'react-datepicker';
 import { he } from 'date-fns/locale';
@@ -204,7 +204,7 @@ function RailBlock({ title, children }) {
   );
 }
 
-export default function TradeForm({ isOpen, onClose, trade, onSave, riskSettings, livePrices = {}, journalAssetClass = 'crypto', prefill = null, accountBalance = 0, strictAccount = false }) {
+function TradeForm({ isOpen, onClose, trade, onSave, riskSettings, livePrices = {}, journalAssetClass = 'crypto', prefill = null, accountBalance = 0, strictAccount = false }) {
   // Asset class is owned by the JOURNAL — every trade inherits it, no per-trade
   // toggle. Editing a trade keeps that trade's own stored class.
   const newTradeAssetClass = ['futures_cme', 'stocks'].includes(journalAssetClass) ? journalAssetClass : 'crypto';
@@ -2006,6 +2006,21 @@ export default function TradeForm({ isOpen, onClose, trade, onSave, riskSettings
     </Modal>
   );
 }
+
+// Price ticks replace `livePrices` every few seconds. The form only reads
+// them from a ref when a ticket opens, so those ticks must not rebuild this
+// tree — that made clicks inside the dialog feel late.
+function sameTicketProps(prev, next) {
+  const keys = Object.keys(prev);
+  if (keys.length !== Object.keys(next).length) return false;
+  for (const key of keys) {
+    if (key === 'livePrices') continue;
+    if (!Object.is(prev[key], next[key])) return false;
+  }
+  return true;
+}
+
+export default memo(TradeForm, sameTicketProps);
 
 /** One cell of the phone summary bar. */
 function MiniStat({ label, value, tone = 'text-text-primary' }) {

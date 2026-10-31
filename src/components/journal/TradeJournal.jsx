@@ -1,4 +1,4 @@
-import { useState, useMemo, useEffect, useRef, Suspense } from 'react';
+import { useState, useMemo, useEffect, useRef, useCallback, Suspense } from 'react';
 import { lazyWithChunkReload as lazy } from '../../utils/chunkReload';
 import { useSearchParams } from 'react-router-dom';
 import { m } from 'framer-motion';
@@ -451,7 +451,13 @@ export default function TradeJournal() {
     setFormOpen(true);
   };
 
-  const handleSave = async (data) => {
+  const handleCloseForm = useCallback(() => {
+    setFormOpen(false);
+    setEditingTrade(null);
+    setTradePrefill(null);
+  }, []);
+
+  const handleSave = useCallback(async (data) => {
     if (showingDemo || isDemoTrade(editingTrade)) { refuseDemoWrite(); return; }
     try {
       if (editingTrade) {
@@ -481,7 +487,7 @@ export default function TradeJournal() {
       const msg = error.code === 'permission-denied' ? 'אין הרשאה לשמור' : 'שגיאה בשמירת העסקה — נסה שוב';
       toast.error(msg);
     }
-  };
+  }, [showingDemo, editingTrade, trades, updateTrade, addTrade]);
 
   const handleEdit = (trade) => {
     if (showingDemo || isDemoTrade(trade)) { refuseDemoWrite(); return; }
@@ -561,12 +567,6 @@ export default function TradeJournal() {
       });
     }, 5200);
     deleteBatchTimerRef.current = myTimer;
-  };
-
-  const handleCloseForm = () => {
-    setFormOpen(false);
-    setEditingTrade(null);
-    setTradePrefill(null);
   };
 
   const toggleSelected = (id) => setSelectedIds((prev) => {
