@@ -1,4 +1,5 @@
 import { Fragment, useState, useEffect, useRef } from 'react';
+import { useCloseOnEscape } from '../../hooks/useCloseOnEscape';
 import { Search, X, Plus } from 'lucide-react';
 import { COINS } from '../../utils/constants';
 import { buildPairResults } from '../../utils/pairCatalog';
@@ -22,6 +23,8 @@ export default function PairSearch({
   const debounceRef = useRef(null);
   const containerRef = useRef(null);
   const hint = placeholder || (includeMarkets ? 'חפש זוג... (BTC, XAUUSD...)' : 'חפש זוג... (BTC, SOL...)');
+
+  useCloseOnEscape(isOpen, () => setIsOpen(false));
 
   // Close dropdown on outside click
   useEffect(() => {
@@ -124,7 +127,7 @@ export default function PairSearch({
 
       {/* Dropdown */}
       {isOpen && (
-        <div className="absolute z-50 top-full mt-1 w-full bg-bg-overlay border border-border-primary rounded-lg shadow-xl max-h-48 overflow-y-auto">
+        <div data-popover="" className="absolute z-50 top-full mt-1 w-full bg-bg-overlay border border-border-primary rounded-lg shadow-xl max-h-48 overflow-y-auto">
           {custom && (
             <button
               type="button"

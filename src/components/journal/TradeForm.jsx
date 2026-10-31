@@ -1,10 +1,11 @@
-import { useState, useEffect, useMemo, useRef } from 'react';
+import { useState, useEffect, useLayoutEffect, useMemo, useRef } from 'react';
 import toast from 'react-hot-toast';
 import DatePicker, { registerLocale } from 'react-datepicker';
 import { he } from 'date-fns/locale';
 import 'react-datepicker/dist/react-datepicker.css';
 import { X, Plus, AlertTriangle, ShieldAlert, TrendingUp, TrendingDown, Check, Target, ClipboardCheck, Gauge, ShieldCheck, Layers, Calculator, ChevronDown } from 'lucide-react';
 import Modal from '../shared/Modal';
+import ConfirmDialog from '../shared/ConfirmDialog';
 import TradeChartLinksField from './TradeChartLinksField';
 import PairSearch from './PairSearch';
 import StockSearch from '../stocks/StockSearch';
@@ -87,6 +88,36 @@ const defaultForm = {
   stressRating: 3,
   confidenceRating: 3,
 };
+
+function prefillSessionKey(prefill) {
+  if (!prefill || typeof prefill !== 'object') return '';
+  try { return JSON.stringify(prefill); } catch { return ''; }
+}
+
+function fingerprintValue(value) {
+  if (value instanceof Date) {
+    const t = value.getTime();
+    return Number.isNaN(t) ? null : t;
+  }
+  if (Array.isArray(value)) return value.map(fingerprintValue);
+  if (value && typeof value === 'object') {
+    const out = {};
+    for (const key of Object.keys(value).sort()) out[key] = fingerprintValue(value[key]);
+    return out;
+  }
+  return value === undefined ? null : value;
+}
+
+function tradeFormFingerprint(form, extra) {
+  return JSON.stringify(fingerprintValue({
+    form,
+    manualQty: extra.manualQty ?? '',
+    closeKind: extra.closeKind ?? '',
+    closePrice: extra.closePrice ?? '',
+    closeDate: extra.closeDate ?? null,
+    feesAuto: !!extra.feesAuto,
+  }));
+}
 
 function parseDate(val) {
   if (!val) return null;
@@ -246,12 +277,32 @@ export default function TradeForm({ isOpen, onClose, trade, onSave, riskSettings
   const [riskOpenState, setRiskOpenState] = useState(null);
   const [exitsOpenState, setExitsOpenState] = useState(null);
   const [fieldErrors, setFieldErrors] = useState({});
+  const [discardOpen, setDiscardOpen] = useState(false);
   const submitRef = useRef(null);
+  // Identity of the ticket currently on screen. A later effect run for the
+  // same ticket (parent re-render, new prefill object, refreshed trade) must
+  // not reset the fields the user is typing.
+  const openSessionRef = useRef('');
+  const baselineRef = useRef(null);
+  const armBaselineRef = useRef(false);
   const livePricesRef = useRef(livePrices);
   const journalRef = useRef(activeJournal);
   journalRef.current = activeJournal;
   useEffect(() => { livePricesRef.current = livePrices; });
   useEffect(() => {
+    if (!isOpen) {
+      openSessionRef.current = '';
+      baselineRef.current = null;
+      armBaselineRef.current = false;
+      setDiscardOpen(false);
+      return;
+    }
+    const openKey = trade
+      ? `edit:${trade.id || trade.externalId || 'current'}`
+      : `new:${prefillSessionKey(prefill)}`;
+    if (openSessionRef.current === openKey) return;
+    openSessionRef.current = openKey;
+
     if (trade) {
       // Scale-in trades store every fill in `entries` while entryPrice /
       // quantity hold the aggregate. The editor shows the FIRST fill in the
@@ -394,6 +445,9 @@ export default function TradeForm({ isOpen, onClose, trade, onSave, riskSettings
         mistakes: trade.mistakes ?? [],
         chartLinks: chartLinksForEditor(trade),
         entryDate: parseDate(trade.entryDate),
+        // A saved session stays. An empty one is filled the same way the
+        // auto-detect effect would, so that fill is part of the clean baseline.
+        session: trade.session || (parseDate(trade.entryDate) ? (getSessionFromDate(trade.entryDate) || '') : ''),
         exitDate: parseDate(trade.exitDate),
         exitDateEdited: !!parseDate(trade.exitDate),
         focusRating: trade.focusRating ?? 3,
@@ -432,6 +486,7 @@ export default function TradeForm({ isOpen, onClose, trade, onSave, riskSettings
         direction: seed?.direction === 'short' || seed?.direction === 'long'
           ? seed.direction
           : (choice.direction || defaultForm.direction),
+        session: entryDate ? (getSessionFromDate(entryDate) || '') : '',
         entryDate,
         entryPrice: seed?.entryPrice || '',
         stopLoss: seed?.stopLoss || '',
@@ -454,8 +509,31 @@ export default function TradeForm({ isOpen, onClose, trade, onSave, riskSettings
     setRiskOpenState(null);
     setExitsOpenState(null);
     setFieldErrors({});
-    sessionManuallySet.current = false;
+    // A session loaded from the trade is the user's. Don't let the auto-detect
+    // effect overwrite it and look like an edit.
+    sessionManuallySet.current = !!(trade && trade.session);
+    // Snapshot on the next layout, once these setStates have committed.
+    armBaselineRef.current = true;
   }, [trade, isOpen, prefill]); // allStrategies intentionally excluded — it only affects dropdown options, not form state; including it caused form resets mid-edit
+
+  // Baseline is the form AFTER the open-reset commits, before the user types.
+  // Captured in layout (before paint) so a fast click can't land in between.
+  useLayoutEffect(() => {
+    if (!isOpen || !armBaselineRef.current) return;
+    armBaselineRef.current = false;
+    baselineRef.current = tradeFormFingerprint(form, {
+      manualQty, closeKind, closePrice, closeDate, feesAuto,
+    });
+  }, [isOpen, form, manualQty, closeKind, closePrice, closeDate, feesAuto]);
+
+  const dirty = baselineRef.current != null && tradeFormFingerprint(form, {
+    manualQty, closeKind, closePrice, closeDate, feesAuto,
+  }) !== baselineRef.current;
+  const requestClose = () => {
+    if (saving) return;
+    if (dirty) setDiscardOpen(true);
+    else onClose();
+  };
 
   // Auto-detect session from entry date (only if user hasn't manually selected)
   useEffect(() => {
@@ -1238,7 +1316,10 @@ export default function TradeForm({ isOpen, onClose, trade, onSave, riskSettings
         ...(trade?.pnlFromExchange != null ? { pnlFromExchange: trade.pnlFromExchange } : {}),
         ...(trade?.externalId ? { externalId: trade.externalId } : {}),
       };
-      await onSave(data);
+      const saved = await onSave(data);
+      // A handler that reports its own failure (or a demo refusal) returns
+      // false. Anything else — including undefined — saved.
+      if (saved === false) return;
       // New trades seed the next one in this journal with the same setup.
       if (!trade) {
         saveLastTradeChoices(activeJournalId, {
@@ -1447,7 +1528,7 @@ export default function TradeForm({ isOpen, onClose, trade, onSave, riskSettings
         <p className="hidden lg:block flex-1 text-[11px] text-text-muted">
           <span className="num-mono" dir="ltr">Enter</span> לשמירה · <span className="num-mono">Esc</span> לסגירה
         </p>
-        <button type="button" onClick={onClose}
+        <button type="button" onClick={requestClose}
           className="flex-1 lg:flex-none lg:w-32 h-10 rounded-xl border border-border-primary bg-bg-tertiary text-sm text-text-primary hover:border-border-hover transition-colors cursor-pointer">
           ביטול
         </button>
@@ -1461,7 +1542,8 @@ export default function TradeForm({ isOpen, onClose, trade, onSave, riskSettings
   );
 
   return (
-    <Modal isOpen={isOpen} onClose={onClose} title={trade ? 'עריכת עסקה' : 'עסקה חדשה'} maxWidth="max-w-5xl" footer={footer}>
+    <>
+    <Modal isOpen={isOpen} onClose={requestClose} title={trade ? 'עריכת עסקה' : 'עסקה חדשה'} maxWidth="max-w-5xl" footer={footer}>
       <form id="trade-ticket-form" onSubmit={handleSubmit} onKeyDown={handleFormKeyDown}
         className="lg:grid lg:grid-cols-[minmax(0,1fr)_288px] lg:gap-6 lg:items-start">
         <div className="min-w-0">
@@ -2029,6 +2111,17 @@ export default function TradeForm({ isOpen, onClose, trade, onSave, riskSettings
         {rail}
       </form>
     </Modal>
+    <ConfirmDialog
+      isOpen={discardOpen && isOpen}
+      onClose={() => setDiscardOpen(false)}
+      onConfirm={() => onClose()}
+      title="לסגור בלי לשמור?"
+      message="הנתונים שהקלדת בעסקה הזו יימחקו."
+      confirmText="סגור בלי לשמור"
+      cancelText="המשך עריכה"
+      confirmColor="amber"
+    />
+    </>
   );
 }
 

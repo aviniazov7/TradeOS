@@ -1,4 +1,5 @@
 import { useState, useRef, useEffect, useCallback } from 'react';
+import { useCloseOnEscape } from '../../hooks/useCloseOnEscape';
 import { createPortal } from 'react-dom';
 import { X, Plus, Settings2 } from 'lucide-react';
 
@@ -96,6 +97,8 @@ export default function StrategySelector({
     return () => document.removeEventListener('mousedown', handler);
   }, [open]);
 
+  useCloseOnEscape(open, () => setOpen(false));
+
   useEffect(() => {
     if (adding && inputRef.current) inputRef.current.focus();
   }, [adding]);
@@ -131,6 +134,7 @@ export default function StrategySelector({
         bottom: coords.bottom,
         zIndex: 70,
       }}
+      data-popover=""
       className="bg-bg-overlay border border-border-primary rounded-xl shadow-xl overflow-hidden"
     >
       {managing ? (
