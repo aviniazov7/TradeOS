@@ -1,3 +1,5 @@
+import { cryptoQuantityPnl } from './pairCatalog';
+
 /**
  * Calculate P&L for a trade
  */
@@ -541,6 +543,10 @@ export function calculateDCAAvgPrice(entries) {
  * 0 so a single dirty row can't poison a sum, chart or ratio.
  */
 export function safePnl(t) {
+  // A yen or CAD quote is not a dollar. Leave it out of $ totals; the row
+  // still shows the quote amount from netPnl.
+  const quote = t?.contract?.currency;
+  if (quote && quote !== 'USD') return 0;
   const v = Number(t?.netPnl ?? t?.pnl ?? 0);
   return Number.isFinite(v) ? v : 0;
 }
@@ -584,11 +590,18 @@ export function initialStopLoss(t) {
  * every asset class. trade.quantity on futures is the bare contract count, so
  * it is only used directly for non-futures trades.
  */
+/** CME futures, and a CFD lot (gold, forex, index) even inside a crypto journal. */
+export function usesContractMath(t) {
+  const pointValue = toNum(t?.contract?.pointValue);
+  if (!(pointValue > 0)) return false;
+  return t?.assetClass === 'futures_cme' || t?.contract?.kind === 'cfd';
+}
+
 export function positionUnits(t) {
   const entry = toNum(t?.entryPrice);
   const notional = toNum(t?.positionSize);
   if (entry > 0 && notional > 0) return notional / entry;
-  if (t?.assetClass === 'futures_cme') {
+  if (usesContractMath(t)) {
     const pv = toNum(t?.contract?.pointValue);
     const c = toNum(t?.contract?.contracts);
     return pv > 0 && c > 0 ? pv * c : 0;
@@ -665,7 +678,7 @@ export function partialRealizedPnl(t) {
  */
 export function computeTradeFields(tradeData) {
   let pnl, rrRatio, pnlPercent;
-  const isFutures = tradeData.assetClass === 'futures_cme' && tradeData.contract;
+  const isFutures = usesContractMath(tradeData);
   const hasExchangePnl = typeof tradeData.pnlFromExchange === 'number';
   const isClosed = (tradeData.exitPrice > 0) || tradeData.status === 'closed';
   // R is measured against the stop the trade was OPENED with — trailing the
@@ -689,6 +702,18 @@ export function computeTradeFields(tradeData) {
       pnl = calculateFuturesPnL(tradeData.direction, tradeData.entryPrice, tradeData.exitPrice, pointValue, contracts);
       rrRatio = calculateRR(tradeData.entryPrice, tradeData.exitPrice, riskStop);
     }
+  } else if (!cryptoQuantityPnl(tradeData.pair || tradeData.symbol)) {
+    // No lot spec and the quote is not USDT. A price gap times size is not dollars.
+    const exitForRR = tradeData.exits?.length
+      ? calculateWeightedExitPrice(tradeData.exits)
+      : (tradeData.exitPrice || 0);
+    return {
+      pnl: null,
+      pnlPercent: null,
+      rrRatio: calculateRR(tradeData.entryPrice, exitForRR, riskStop),
+      netPnl: null,
+      result: null,
+    };
   } else if (tradeData.exits?.length) {
     pnl = calculatePartialPnL(tradeData.direction, tradeData.entryPrice, tradeData.exits, tradeData.quantity);
     rrRatio = calculateRR(tradeData.entryPrice, calculateWeightedExitPrice(tradeData.exits), riskStop);

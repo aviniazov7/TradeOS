@@ -12,6 +12,7 @@ import {
   calculateNetPnL,
   getTradeResult,
   computeTradeFields,
+  safePnl,
   isClosedTrade,
   localDayKey,
   calculateWinRate,
@@ -87,6 +88,51 @@ describe('futures P&L', () => {
   it('the same gold move long is −$282', () => {
     const pnl = calculateFuturesPnL('long', 4020, 3991.8, 100, 0.1);
     expect(Math.round(pnl * 100) / 100).toBe(-282);
+  });
+  it('a crypto-journal XAUUSD lot is not a coin-quantity dollar P&L', () => {
+    const fields = computeTradeFields({
+      assetClass: 'crypto',
+      pair: 'XAUUSD',
+      direction: 'long',
+      entryPrice: 2000,
+      exitPrice: 2010,
+      quantity: 0.1,
+      fees: 0,
+      status: 'closed',
+      contract: { symbol: 'XAUUSD', pointValue: 100, contracts: 0.1, kind: 'cfd', currency: 'USD' },
+    });
+    // 10 points × $100 × 0.1 lot = $100. Coin math would have been $1.
+    expect(fields.pnl).toBe(100);
+    expect(safePnl({ netPnl: fields.netPnl, contract: { currency: 'USD' } })).toBe(100);
+  });
+  it('keeps a yen quote out of the dollar total', () => {
+    const fields = computeTradeFields({
+      assetClass: 'crypto',
+      pair: 'USDJPY',
+      direction: 'long',
+      entryPrice: 150,
+      exitPrice: 151,
+      quantity: 1,
+      fees: 0,
+      status: 'closed',
+      contract: { symbol: 'USDJPY', pointValue: 100000, contracts: 1, kind: 'cfd', currency: 'JPY' },
+    });
+    expect(fields.pnl).toBe(100000);
+    expect(safePnl({ netPnl: fields.netPnl, contract: { currency: 'JPY' } })).toBe(0);
+  });
+  it('does not invent dollars for a free-text symbol with no lot spec', () => {
+    const fields = computeTradeFields({
+      assetClass: 'crypto',
+      pair: 'EURUSD.R',
+      direction: 'long',
+      entryPrice: 1.08,
+      exitPrice: 1.09,
+      quantity: 1,
+      fees: 0,
+      status: 'closed',
+    });
+    expect(fields.netPnl).toBeNull();
+    expect(fields.result).toBeNull();
   });
   it('XAGUSD and NAS100 use their lot point values', () => {
     // 0.1 point × $5,000 × 0.01 lot = $5

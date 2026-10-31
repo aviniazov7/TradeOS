@@ -37,6 +37,25 @@ describe('buildStoredTrade', () => {
     expect(stored.result).toBe('win');
   });
 
+  it('stores a crypto-journal gold CFD at the lot point value', () => {
+    const stored = buildStoredTrade({
+      assetClass: 'crypto',
+      pair: 'XAUUSD',
+      direction: 'long',
+      status: 'closed',
+      entryPrice: 2000,
+      exitPrice: 2010,
+      quantity: 0.1,
+      fees: 0,
+      leverage: 1,
+      contract: { symbol: 'XAUUSD', pointValue: 100, tickSize: 0.01, contracts: 0.1, kind: 'cfd', currency: 'USD' },
+    }, { journalId: 'j1', now: NOW });
+    expect(stored.pnl).toBe(100);
+    expect(stored.netPnl).toBe(100);
+    expect(stored.positionSize).toBe(20000);
+    expect(stored.result).toBe('win');
+  });
+
   it('binds the hook journal and ignores a journal id on the payload', () => {
     const stored = buildStoredTrade(
       { pair: 'ETHUSDT', direction: 'short', entryPrice: 10, exitPrice: 0, quantity: 1, leverage: 1, journalId: 'other' },

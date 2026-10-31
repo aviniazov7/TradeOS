@@ -4,7 +4,9 @@ import { formatPrice } from './formatters';
 import {
   CFD_FOREX_PAIRS,
   buildPairResults,
+  categoryForSymbol,
   cryptoQuantityPnl,
+  formatQuoteAmount,
   formatSymbolPrice,
   normalizeCustomSymbol,
   priceDecimalsForSymbol,
@@ -32,6 +34,14 @@ describe('backtest CFD/forex catalog', () => {
     expect(buildPairResults({ query: 'gold', includeMarkets: true }).rows.map((r) => r.pair)).toEqual(
       expect.arrayContaining(['XAUUSD', 'XAUUSDT']),
     );
+    const xauRows = buildPairResults({ query: 'xau', includeMarkets: true }).rows;
+    expect(xauRows.find((r) => r.pair === 'XAUUSD').category).toBe('Metals');
+    expect(xauRows.find((r) => r.pair === 'XAUUSDT').category).toBe('Crypto');
+    expect(categoryForSymbol('EURUSD')).toBe('Forex');
+    expect(categoryForSymbol('NAS100')).toBe('Indices');
+    expect(categoryForSymbol('BTCUSDT')).toBe('');
+    expect(formatQuoteAmount(1000, 'JPY', { signed: true })).toBe('+1,000.00 JPY');
+    expect(formatQuoteAmount(1000, 'USD', { signed: true })).toBeNull();
   });
 
   it('shows the CFD list on an empty multi-picker query and hides a symbol already chosen', () => {

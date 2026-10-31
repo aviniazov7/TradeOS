@@ -117,8 +117,19 @@ export const FUTURES_CONTRACTS = [
 export const CFD_INSTRUMENTS = [
   { symbol: 'XAUUSD', name: 'Gold spot CFD',     exchange: 'CFD', pointValue: 100,  tickSize: 0.01,  currency: 'USD', kind: 'cfd', note: '100 oz/lot' },
   { symbol: 'XAGUSD', name: 'Silver spot CFD',   exchange: 'CFD', pointValue: 5000, tickSize: 0.001, currency: 'USD', kind: 'cfd', note: '5000 oz/lot' },
-  { symbol: 'NAS100', name: 'Nasdaq-100 CFD',    exchange: 'CFD', pointValue: 1,    tickSize: 0.1,   currency: 'USD', kind: 'cfd', note: '$1/pt' },
-  { symbol: 'US100',  name: 'Nasdaq-100 CFD',    exchange: 'CFD', pointValue: 1,    tickSize: 0.1,   currency: 'USD', kind: 'cfd', note: '$1/pt' },
+  { symbol: 'NAS100', name: 'Nasdaq-100 CFD',    exchange: 'CFD', pointValue: 1,      tickSize: 0.1,     currency: 'USD', kind: 'cfd', note: '$1/pt' },
+  { symbol: 'US100',  name: 'Nasdaq-100 CFD',    exchange: 'CFD', pointValue: 1,      tickSize: 0.1,     currency: 'USD', kind: 'cfd', note: '$1/pt' },
+  { symbol: 'US30',   name: 'Dow Jones CFD',     exchange: 'CFD', pointValue: 1,      tickSize: 1,       currency: 'USD', kind: 'cfd', note: '$1/pt' },
+  { symbol: 'US500',  name: 'S&P 500 CFD',       exchange: 'CFD', pointValue: 1,      tickSize: 0.1,     currency: 'USD', kind: 'cfd', note: '$1/pt' },
+  // Quote is USD, so a price move × 100,000 × lots is already dollars.
+  { symbol: 'EURUSD', name: 'Euro / US dollar',  exchange: 'CFD', pointValue: 100000, tickSize: 0.00001, currency: 'USD', kind: 'cfd', note: '100k' },
+  { symbol: 'GBPUSD', name: 'Pound / US dollar', exchange: 'CFD', pointValue: 100000, tickSize: 0.00001, currency: 'USD', kind: 'cfd', note: '100k' },
+  { symbol: 'AUDUSD', name: 'Aussie / US dollar', exchange: 'CFD', pointValue: 100000, tickSize: 0.00001, currency: 'USD', kind: 'cfd', note: '100k' },
+  { symbol: 'NZDUSD', name: 'Kiwi / US dollar',  exchange: 'CFD', pointValue: 100000, tickSize: 0.00001, currency: 'USD', kind: 'cfd', note: '100k' },
+  // Quote is not USD. pointValue × points × lots is in that currency, not dollars.
+  { symbol: 'USDJPY', name: 'US dollar / Yen',   exchange: 'CFD', pointValue: 100000, tickSize: 0.001,   currency: 'JPY', kind: 'cfd', note: '100k' },
+  { symbol: 'USDCAD', name: 'US dollar / Canada', exchange: 'CFD', pointValue: 100000, tickSize: 0.00001, currency: 'CAD', kind: 'cfd', note: '100k' },
+  { symbol: 'USDCHF', name: 'US dollar / Swiss', exchange: 'CFD', pointValue: 100000, tickSize: 0.00001, currency: 'CHF', kind: 'cfd', note: '100k' },
 ];
 
 const INSTRUMENTS = [...FUTURES_CONTRACTS, ...CFD_INSTRUMENTS];
@@ -161,6 +172,15 @@ const CFD_MENU_LABEL = {
   XAGUSD: 'XAGUSD · Silver · 5000 oz/lot',
   NAS100: 'NAS100 · Nasdaq · $1/pt',
   US100: 'US100 · Nasdaq · $1/pt',
+  US30: 'US30 · Dow · $1/pt',
+  US500: 'US500 · S&P · $1/pt',
+  EURUSD: 'EURUSD · Euro',
+  GBPUSD: 'GBPUSD · Pound',
+  AUDUSD: 'AUDUSD · Aussie',
+  NZDUSD: 'NZDUSD · Kiwi',
+  USDJPY: 'USDJPY · Yen',
+  USDCAD: 'USDCAD · Canada',
+  USDCHF: 'USDCHF · Swiss',
 };
 
 function instrumentMenuLabel(c) {
