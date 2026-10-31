@@ -10,7 +10,13 @@ let modalCount = 0;
 // `form` attribute. The safe-area inset moves from the body to the footer.
 export default function Modal({ isOpen, onClose, title, ariaLabel, children, maxWidth = 'max-w-xl', footer = null }) {
   const cardRef = useRef(null);
+  const backdropRef = useRef(null);
   const prevFocusRef = useRef(null);
+  // A backdrop press only counts when it starts AND ends on the backdrop.
+  // Portaled menus close on mousedown; the click then lands on the backdrop
+  // and used to dismiss the dialog mid-edit. A press that starts inside the
+  // card (or on a popover) must not.
+  const dismissArmedRef = useRef(false);
   // Depth at which this modal opened. With nested modals (a form inside a
   // workspace) only the topmost may act on Escape — otherwise one keypress
   // closes the child AND its parent, discarding the form.
@@ -47,12 +53,36 @@ export default function Modal({ isOpen, onClose, title, ariaLabel, children, max
     const onKey = (e) => {
       if (e.key !== 'Escape') return;
       if (depthRef.current !== modalCount) return; // not the topmost modal
+      // An open menu or calendar consumes Escape. The popover is still in
+      // the DOM here (its own handler closes it with setState).
+      if (document.querySelector('[data-popover], .react-datepicker')) return;
+      onCloseRef.current?.();
+    };
+    // Capture runs before a menu's own outside-mousedown handler unmounts it,
+    // so we can see that this gesture belongs to the popover, not the dialog.
+    const onPointerDown = (e) => {
+      if (document.querySelector('[data-popover], .react-datepicker')) {
+        dismissArmedRef.current = false;
+        return;
+      }
+      dismissArmedRef.current = e.target === backdropRef.current;
+    };
+    const onPointerUp = (e) => {
+      const armed = dismissArmedRef.current;
+      dismissArmedRef.current = false;
+      if (!armed || e.target !== backdropRef.current) return;
+      if (document.querySelector('[data-popover], .react-datepicker')) return;
       onCloseRef.current?.();
     };
     document.addEventListener('keydown', onKey);
+    document.addEventListener('pointerdown', onPointerDown, true);
+    document.addEventListener('pointerup', onPointerUp, true);
     return () => {
       clearTimeout(t);
+      dismissArmedRef.current = false;
       document.removeEventListener('keydown', onKey);
+      document.removeEventListener('pointerdown', onPointerDown, true);
+      document.removeEventListener('pointerup', onPointerUp, true);
       if (prevFocusRef.current instanceof HTMLElement) prevFocusRef.current.focus();
     };
   }, [isOpen]);
@@ -65,13 +95,13 @@ export default function Modal({ isOpen, onClose, title, ariaLabel, children, max
               the glass card behind it (that's what reads as glass, vs a flat
               black wall). */}
           <m.div
+            ref={backdropRef}
             className="fixed inset-0 z-50 bg-black/55"
             style={{ backdropFilter: 'blur(16px)', WebkitBackdropFilter: 'blur(16px)' }}
             initial={{ opacity: 0 }}
             animate={{ opacity: 1 }}
             exit={{ opacity: 0 }}
             transition={{ duration: 0.2 }}
-            onClick={onClose}
           />
 
           {/* Centering wrapper */}
