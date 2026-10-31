@@ -8,6 +8,7 @@ import TimeframeSelector from '../shared/TimeframeSelector';
 import CoinIcon from '../shared/CoinIcon';
 import { useBacktestContext } from '../../contexts/BacktestContext';
 import { SESSIONS, SECTORS, getSessionClasses } from '../../utils/constants';
+import { resolveTypedSymbol, uniqueSymbols } from '../../utils/pairCatalog';
 import { useUserTimeframes } from '../../hooks/useUserTimeframes';
 
 const SECTOR_ICONS = { Bitcoin, Layers, Dog, Landmark };
@@ -76,7 +77,9 @@ export default function BacktestSettingsModal({ isOpen, onClose }) {
   const removePair = (pair) => update('pairs', form.pairs.filter((p) => p !== pair));
 
   const addPair = (pair) => {
-    if (!form.pairs.includes(pair)) update('pairs', [...form.pairs, pair]);
+    const symbol = resolveTypedSymbol(pair);
+    if (!symbol || form.pairs.some((p) => String(p).toUpperCase() === symbol)) return;
+    update('pairs', [...form.pairs, symbol]);
   };
 
   const toggleSector = (sector) => {
@@ -135,6 +138,7 @@ export default function BacktestSettingsModal({ isOpen, onClose }) {
         ...form,
         name: form.name.trim(),
         description: form.description.trim(),
+        pairs: uniqueSymbols(form.pairs),
         tradeExamples: form.tradeExamples.map((ex) => { const clean = { ...ex }; delete clean._key; return clean; }),
       });
       toast.success('היומן עודכן');
@@ -186,7 +190,7 @@ export default function BacktestSettingsModal({ isOpen, onClose }) {
             {visiblePairs.map((p) => (
               <span key={p} className="flex items-center gap-1 px-2 py-1 rounded-lg text-[11px] font-medium bg-accent-primary/20 text-accent-primary border border-accent-primary/30">
                 <CoinIcon pair={p} className="w-3.5 h-3.5" />
-                {p}
+                <span dir="ltr">{p}</span>
                 <button type="button" onClick={() => removePair(p)} className="hover:text-loss transition-colors cursor-pointer">
                   <X className="w-3 h-3" />
                 </button>
@@ -202,7 +206,7 @@ export default function BacktestSettingsModal({ isOpen, onClose }) {
         </>
       )}
       {/* Search input */}
-      <PairSearchMulti selectedPairs={form.pairs} onAdd={addPair} />
+      <PairSearchMulti selectedPairs={form.pairs} onAdd={addPair} includeMarkets />
     </div>
   );
 

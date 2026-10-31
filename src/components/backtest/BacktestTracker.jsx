@@ -23,7 +23,8 @@ import BacktestTradeModal from './BacktestTradeModal';
 import PairSearch from '../journal/PairSearch';
 import TimeframeSelector from '../shared/TimeframeSelector';
 import StrategySelector from '../shared/StrategySelector';
-import { PAIRS, SESSIONS, getSessionClasses } from '../../utils/constants';
+import { SESSIONS, getSessionClasses } from '../../utils/constants';
+import { resolveTypedSymbol } from '../../utils/pairCatalog';
 import { formatDate, formatDateShort, formatTime } from '../../utils/formatters';
 import { formatRText } from '../../utils/signedNumbers';
 import { safeHttpUrl } from '../../utils/urls';
@@ -99,6 +100,24 @@ export default function BacktestTracker() {
   const [detailTrade, setDetailTrade] = useState(null);
   const [mobileStep, setMobileStep] = useState(0);
 
+  const savedPairs = useMemo(() => {
+    const seen = new Set();
+    const out = [];
+    for (const p of activeJournal?.pairs || []) {
+      const symbol = resolveTypedSymbol(p);
+      if (!symbol || seen.has(symbol)) continue;
+      seen.add(symbol);
+      out.push(symbol);
+    }
+    for (const b of backtests) {
+      const symbol = resolveTypedSymbol(b?.pair);
+      if (!symbol || seen.has(symbol)) continue;
+      seen.add(symbol);
+      out.push(symbol);
+    }
+    return out;
+  }, [activeJournal?.pairs, backtests]);
+
   const update = (field, value) => setForm((f) => {
     const next = { ...f, [field]: value };
     if (field === 'rResult') {
@@ -139,11 +158,13 @@ export default function BacktestTracker() {
 
   const handleSubmit = async (e) => {
     e.preventDefault();
+    const pair = resolveTypedSymbol(form.pair);
+    if (!pair) { toast.error('נא לבחור זוג תקין'); return; }
     if (!form.strategy && !form.trigger) { toast.error('נא להזין טריגר או אסטרטגיה'); return; }
 
     setSaving(true);
     const data = {
-      pair: form.pair,
+      pair,
       direction: form.direction,
       strategy: form.strategy,
       trigger: form.trigger,
@@ -166,7 +187,7 @@ export default function BacktestTracker() {
         await addBacktest(data);
         toast.success('העסקה נוספה');
       }
-      setForm({ ...makeDefaultForm(), pair: form.pair, strategy: form.strategy, timeframe: form.timeframe, session: form.session });
+      setForm({ ...makeDefaultForm(), pair, strategy: form.strategy, timeframe: form.timeframe, session: form.session });
       setEditingId(null);
       setFormOpen(false);
     } catch { toast.error('שגיאה בשמירה'); }
@@ -488,7 +509,13 @@ export default function BacktestTracker() {
             {/* Right Column */}
             <div className={`space-y-2 ${mobileStep !== 0 ? 'hidden' : ''} md:!block`}>
               <div className="grid grid-cols-2 gap-2">
-                <PairSearch value={form.pair} onChange={(v) => update('pair', v)} label="זוג" />
+                <PairSearch
+                  value={form.pair}
+                  onChange={(v) => update('pair', v)}
+                  label="זוג"
+                  includeMarkets
+                  savedPairs={savedPairs}
+                />
                 <StrategySelector
                   label="אסטרטגיה"
                   value={form.strategy}
