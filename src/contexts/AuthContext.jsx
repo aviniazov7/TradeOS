@@ -78,9 +78,9 @@ export function AuthProvider({ children }) {
       // Drop any prior profile listener before opening a new one.
       if (profileUnsub) { profileUnsub(); profileUnsub = null; }
       if (firebaseUser) {
-        // Show the app immediately. Firebase already restored the session
-        // from local persistence, so don't block the whole UI on a Firestore
-        // round-trip — that's what made every refresh feel slow.
+        // Show the app immediately. Firebase already restored this tab's
+        // session, so don't block the whole UI on a Firestore round-trip —
+        // that's what made every refresh feel slow.
         setUser(firebaseUser);
         setLoading(false);
 

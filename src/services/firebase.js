@@ -2,10 +2,11 @@ import { initializeApp } from 'firebase/app';
 import {
   initializeAuth,
   GoogleAuthProvider,
-  browserLocalPersistence,
+  browserSessionPersistence,
   connectAuthEmulator,
 } from 'firebase/auth';
 import { initializeAppCheck, ReCaptchaV3Provider } from 'firebase/app-check';
+import { clearSharedAuthUsers } from '../utils/authTabIsolation';
 
 // Firebase web client config is intentionally public — Google's docs are
 // explicit about this. The actual security boundary is Firestore Rules
@@ -55,8 +56,20 @@ try {
   console.warn('App Check initialization failed:', e);
 }
 
-// iOS standalone PWA: IndexedDB hangs silently, causing signInWithCustomToken
-// to never resolve. Use only localStorage to avoid the hang.
+// One tab, one account. browserLocalPersistence writes the user to
+// localStorage and applies other tabs' storage events, so a sign-in in tab B
+// replaced tab A. browserSessionPersistence uses this tab's sessionStorage:
+// a reload of this tab stays signed in, and another tab does not see the user.
+// It does not use IndexedDB (that store hangs signInWithCustomToken in an
+// iOS standalone PWA). Do not add browserLocalPersistence as a fallback —
+// Firebase would migrate the shared user back and the tabs would sync again.
+//
+// Closing the tab ends the session. A new tab or a restarted browser starts
+// signed out. That is the stay-signed-in change required for two accounts.
+//
+// Google popup and same-tab redirect are unchanged. The popup resolver
+// already keeps redirect state in sessionStorage, and authDomain is this
+// origin, so the redirect returns to the same tab.
 //
 // No popupRedirectResolver here. Passing it makes Firebase inject the
 // same-origin /__/auth iframe (and its gapi script) during the first paint
@@ -64,8 +77,10 @@ try {
 // the browserPopupRedirectResolver class into signInWithPopup and
 // signInWithRedirect — Firebase rejects an instance ("Expected a class
 // definition").
+clearSharedAuthUsers(typeof localStorage !== 'undefined' ? localStorage : null);
+
 export const auth = initializeAuth(app, {
-  persistence: browserLocalPersistence,
+  persistence: browserSessionPersistence,
 });
 
 export const googleProvider = new GoogleAuthProvider();
