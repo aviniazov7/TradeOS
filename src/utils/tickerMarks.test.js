@@ -2,8 +2,10 @@ import { readFileSync } from 'node:fs';
 import { describe, expect, it } from 'vitest';
 import { tickerCoinUrls, tickerMarkUrls } from './tickerMarks';
 
+const GOLD_MARK = '/logos/marks/gold.svg';
+
 const CFD_ICONS = {
-  XAUUSD: '/logos/symbols/gold-coin.svg',
+  XAUUSD: GOLD_MARK,
   XAGUSD: '/logos/symbols/silver-coin.svg',
   EURUSD: '/logos/symbols/eurusd.svg',
   GBPUSD: '/logos/symbols/gbpusd.svg',
@@ -19,9 +21,15 @@ const CFD_ICONS = {
 
 describe('ticker marks', () => {
   it('points commodities and indices at local files', () => {
-    expect(tickerMarkUrls('GC')).toEqual(['/logos/marks/gold.svg']);
-    expect(tickerMarkUrls('XAU')).toEqual(['/logos/marks/gold.svg']);
-    expect(tickerMarkUrls('XAUUSD')).toEqual(['/logos/symbols/gold-coin.svg']);
+    expect(tickerMarkUrls('GC')).toEqual([GOLD_MARK]);
+    expect(tickerMarkUrls('MGC')).toEqual([GOLD_MARK]);
+    expect(tickerMarkUrls('XAU')).toEqual([GOLD_MARK]);
+    expect(tickerMarkUrls('XAUUSD')).toEqual([GOLD_MARK]);
+    expect(tickerMarkUrls('xau/usd')).toEqual([GOLD_MARK]);
+    expect(tickerMarkUrls('XAUUSD.R')).toEqual([GOLD_MARK]);
+    expect(tickerMarkUrls('XAUUSD+')).toEqual([GOLD_MARK]);
+    expect(tickerMarkUrls('XAUUSDT')).toEqual([]);
+    expect(tickerMarkUrls('XAU/USDT')).toEqual([]);
     expect(tickerMarkUrls('SI')).toEqual(['/logos/marks/silver.svg']);
     expect(tickerMarkUrls('XAGUSD')).toEqual(['/logos/symbols/silver-coin.svg']);
     expect(tickerMarkUrls('CL')).toEqual(['/logos/marks/oil.svg']);
@@ -48,7 +56,7 @@ describe('ticker marks', () => {
     expect(tickerCoinUrls('PEPE')).toEqual([]);
   });
 
-  it('points the backtest CFD catalog at local coins, flags, and a US flag', () => {
+  it('points the backtest CFD catalog at the gold mark, a silver coin, flags, and a US flag', () => {
     for (const [symbol, url] of Object.entries(CFD_ICONS)) {
       expect(tickerMarkUrls(symbol)).toEqual([url]);
       expect(tickerMarkUrls(symbol.toLowerCase())).toEqual([url]);
@@ -61,15 +69,20 @@ describe('ticker marks', () => {
       if (seen.has(url)) continue;
       seen.add(url);
       const svg = readFileSync(`public${url}`, 'utf8');
-      expect(svg).toContain('viewBox="0 0 32 32"');
       const local = svg.replace('http://www.w3.org/2000/svg', '');
       expect(local).not.toMatch(/https?:/i);
       expect(svg).not.toMatch(/<image|href=/i);
+      if (url === GOLD_MARK) {
+        expect(svg).toContain('by TradingView');
+        expect(svg).toContain('fill="#D69A00"');
+        expect(svg).not.toContain('goldFace');
+        continue;
+      }
+      expect(svg).toContain('viewBox="0 0 32 32"');
     }
     const eur = readFileSync('public/logos/symbols/eurusd.svg', 'utf8');
     expect(eur).toContain('id="base"');
     expect(eur).toContain('id="quote"');
-    expect(readFileSync('public/logos/symbols/gold-coin.svg', 'utf8')).toContain('goldFace');
     expect(readFileSync('public/logos/symbols/silver-coin.svg', 'utf8')).toContain('silverFace');
   });
 });

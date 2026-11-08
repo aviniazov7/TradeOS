@@ -61,7 +61,7 @@ describe('live journal pair picker', () => {
     expect(document.body.textContent).toContain('Forex');
     expect(document.body.textContent).toContain('Indices');
     const gold = document.querySelector('[data-pair="XAUUSD"] img');
-    expect(gold?.getAttribute('src')).toBe('/logos/symbols/gold-coin.svg');
+    expect(gold?.getAttribute('src')).toBe('/logos/marks/gold.svg');
     const euro = document.querySelector('[data-pair="EURUSD"] img');
     expect(euro?.getAttribute('src')).toBe(inlineFlagSrc('EURUSD'));
     const nasdaq = document.querySelector('[data-pair="NAS100"] img');

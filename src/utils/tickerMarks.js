@@ -1,17 +1,25 @@
 // Self-hosted marks for instruments that are not a coin and not a listed stock.
 // Futures keep TradingView's square marks: the price ticker draws them with
-// object-fit contain. Backtest CFD symbols use a coin, two overlapping flags,
-// or a US flag, because CoinIcon crops every image to a circle and a letter
-// tile there reads as an empty placeholder.
-const GOLD_COIN = '/logos/symbols/gold-coin.svg';
+// object-fit contain. Spot gold uses that same official commodity mark
+// (the file saved from s3-symbol-logo.tradingview.com/metal/gold.svg).
+// The hand-drawn gold coin was a stand-in and is not the chart icon.
+// Other backtest CFD symbols use a silver coin, two overlapping flags, or a
+// US flag, because CoinIcon crops every image to a circle and a letter tile
+// there reads as an empty placeholder.
+const GOLD_MARK = '/logos/marks/gold.svg';
 const SILVER_COIN = '/logos/symbols/silver-coin.svg';
 const US_FLAG = '/logos/symbols/us-flag.svg';
 
+// Broker tail after a separator (XAUUSD.R, XAUUSD+). XAUUSDT is a quote
+// pair, not a suffix — tickerCoinKey reduces that one to XAU.
+const GOLD_WITH_SUFFIX = /^XAUUSD[A-Z0-9]{1,4}$/;
+const GOLD_QUOTE = /^(?:XAUUSDT|XAUUSDC|XAUUSDBUSD)$/;
+
 const MARKS = {
-  GC: '/logos/marks/gold.svg',
-  MGC: '/logos/marks/gold.svg',
-  XAU: '/logos/marks/gold.svg',
-  XAUUSD: GOLD_COIN,
+  GC: GOLD_MARK,
+  MGC: GOLD_MARK,
+  XAU: GOLD_MARK,
+  XAUUSD: GOLD_MARK,
   SI: '/logos/marks/silver.svg',
   XAGUSD: SILVER_COIN,
   CL: '/logos/marks/oil.svg',
@@ -42,8 +50,16 @@ const MARKS = {
 
 /** Local logo URLs for a futures/commodity symbol, or [] when it has no mark. */
 export function tickerMarkUrls(symbol) {
-  const url = MARKS[String(symbol || '').toUpperCase()];
-  return url ? [url] : [];
+  const raw = String(symbol || '').toUpperCase().trim();
+  if (MARKS[raw]) return [MARKS[raw]];
+  // "XAU/USD" and "XAUUSD.R" are the same gold mark. Other suffixed symbols
+  // (EURUSD.R) stay unresolved so they keep the letter badge.
+  const compact = raw.replace(/[^A-Z0-9]/g, '');
+  if (MARKS[compact]) return [MARKS[compact]];
+  if (!GOLD_QUOTE.test(compact) && /[^A-Z0-9]/.test(raw) && GOLD_WITH_SUFFIX.test(compact)) {
+    return [GOLD_MARK];
+  }
+  return [];
 }
 
 // Official coin images (CoinGecko coin-images), saved locally so the ticker
