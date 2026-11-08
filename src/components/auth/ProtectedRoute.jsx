@@ -30,9 +30,9 @@ export default function ProtectedRoute({ children }) {
     }
   }, [loading]);
 
-  // Don't get stuck on the offline screen: Firebase auth restores the session
-  // from local persistence and Firestore serves cached data offline, so after a
-  // short grace period fall through to the cached app instead of blocking.
+  // Don't get stuck on the offline screen: Firebase auth restores this tab's
+  // session and Firestore serves cached data offline, so after a short grace
+  // period fall through to the cached app instead of blocking.
   useEffect(() => {
     if (isOffline && loading) {
       const t = setTimeout(() => setOfflineTimedOut(true), 2500);
