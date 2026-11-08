@@ -9,9 +9,9 @@ import toast from 'react-hot-toast';
 import { useTradingPlans } from '../../hooks/useTradingPlans';
 import { useProcesses } from '../../hooks/useProcesses';
 import { useProcessCategories } from '../../hooks/useProcessCategories';
-import PlanCard from './PlanCard';
+import PlanSummary from './PlanSummary';
+import PlanReader from './PlanReader';
 import PlanForm from './PlanForm';
-import StrategyView from '../backtest/StrategyView';
 import ConfirmDialog from '../shared/ConfirmDialog';
 import Modal from '../shared/Modal';
 import EmptyState from '../shared/EmptyState';
@@ -20,7 +20,7 @@ import SelectDropdown from '../shared/SelectDropdown';
 import PlansSkeleton from './PlansSkeleton';
 import PageHeader from '../shared/PageHeader';
 import { headerPrimaryBtn } from '../shared/headerStyles';
-import { pageVariants, pageTransition, staggerContainer } from '../../utils/animations';
+import { pageVariants, pageTransition } from '../../utils/animations';
 
 function toImageUrl(url) {
   if (!url) return null;
@@ -144,6 +144,8 @@ export default function PlansPage() {
     }
   };
 
+  const openPlan = plans.find((p) => p.id === viewingPlan?.id) || null;
+
   if (loading) return <PlansSkeleton />;
 
   const inputClass = 'w-full bg-bg-tertiary border border-border-primary rounded-lg px-3 py-2 text-sm text-text-primary outline-none focus:border-accent-primary transition-colors';
@@ -176,21 +178,28 @@ export default function PlansPage() {
           {/* Tab: Plans */}
           {tab === 'plans' && (
             <>
-              {plans.length === 0 ? (
+              {openPlan ? (
+                <PlanReader
+                  plan={openPlan}
+                  onBack={() => setViewingPlan(null)}
+                  onEdit={handleEdit}
+                  onDelete={setDeleteTarget}
+                />
+              ) : plans.length === 0 ? (
                 <EmptyState icon={ClipboardList} title="אין תוכניות מסחר עדיין" description="צור תוכנית מסחר לארגון האסטרטגיה והחוקים שלך"
                   action={<button type="button" onClick={() => setFormOpen(true)} className="mt-2 px-4 py-2 bg-accent-primary text-bg-primary font-semibold rounded-lg hover:bg-accent-hover transition-colors cursor-pointer">צור את התוכנית הראשונה</button>} />
               ) : (
                 <>
-                  <p data-testid="plans-summary" className="mb-3 text-sm text-text-secondary md:mb-4">
+                  <p data-testid="plans-summary" className="text-sm text-text-secondary">
                     <span className="num-mono font-semibold text-text-primary">{plans.filter((p) => p.isActive).length}</span>
                     {' פעילות מתוך '}
                     <span className="num-mono font-semibold text-text-primary">{plans.length}</span>
                   </p>
-                  <m.div className="grid grid-cols-1 items-stretch gap-3 md:grid-cols-2 md:gap-4 xl:grid-cols-3" variants={staggerContainer} initial="initial" animate="animate">
+                  <ul data-testid="plans-list" className="m-0 mt-4 list-none border-t border-border-primary p-0">
                     {plans.map((p) => (
-                      <PlanCard key={p.id} plan={p} onView={setViewingPlan} onEdit={handleEdit} onDelete={setDeleteTarget} />
+                      <PlanSummary key={p.id} plan={p} onView={setViewingPlan} onEdit={handleEdit} onDelete={setDeleteTarget} />
                     ))}
-                  </m.div>
+                  </ul>
                 </>
               )}
             </>
@@ -347,7 +356,6 @@ export default function PlansPage() {
         </>
 
       <PlanForm isOpen={formOpen} onClose={handleCloseForm} plan={editingPlan} onSave={handleSave} />
-      <StrategyView isOpen={!!viewingPlan} onClose={() => setViewingPlan(null)} journal={viewingPlan} variant="plan" />
 
       <ConfirmDialog isOpen={!!deleteTarget} onClose={() => setDeleteTarget(null)} onConfirm={handleDelete} title="מחיקת תוכנית" message={`למחוק את "${deleteTarget?.name}"? לא ניתן לבטל פעולה זו.`} />
       <ConfirmDialog isOpen={!!processDelTarget} onClose={() => setProcessDelTarget(null)} onConfirm={handleDeleteProcess} title="מחיקת ניתוח" message="למחוק את הניתוח? לא ניתן לבטל פעולה זו." />

@@ -35,12 +35,12 @@ function Section({ number, title, icon: Icon, children, color }) {
   return (
     <div className="border-t border-white/10 py-6">
       <div className="flex items-start gap-3">
-        <span className="text-3xl font-bold leading-none" style={{ color: `rgba(${hexToRgb(color)}, 0.3)` }} aria-hidden>
+        <span className="text-3xl font-bold leading-none" style={{ color: `rgba(${hexToRgb(color)}, 0.3)` }}>
           {number}
         </span>
         <div className="flex-1 min-w-0">
-          <h3 className="text-base font-bold text-text-primary flex items-center gap-2 mb-3">
-            <Icon className="w-4 h-4" style={{ color }} aria-hidden />
+          <h3 className="text-base font-bold text-white flex items-center gap-2 mb-3">
+            <Icon className="w-4 h-4" style={{ color }} />
             {title}
           </h3>
           {children}
@@ -50,39 +50,17 @@ function Section({ number, title, icon: Icon, children, color }) {
   );
 }
 
-function hasFact(value) {
-  return value != null && value !== '';
-}
-
-const FOCUS = 'outline-none focus-visible:outline-solid focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-accent-primary';
-
-export default function StrategyView({ isOpen, onClose, journal, variant = 'journal' }) {
+export default function StrategyView({ isOpen, onClose, journal }) {
   const cardRef = useRef(null);
   const [exporting, setExporting] = useState(false);
   const { isDark } = useTheme();
-  const onCloseRef = useRef(onClose);
-  onCloseRef.current = onClose;
-  const isPlan = variant === 'plan';
 
-  // Lock body scroll when modal is open — prevents pull-to-refresh.
-  // Escape and initial focus stay on this dialog; backtest uses the same reader.
+  // Lock body scroll when modal is open — prevents pull-to-refresh
   useEffect(() => {
-    if (!isOpen) return undefined;
-    document.body.style.overflow = 'hidden';
-    const previouslyFocused = document.activeElement;
-    const onKey = (event) => {
-      if (event.key !== 'Escape') return;
-      event.preventDefault();
-      onCloseRef.current?.();
-    };
-    document.addEventListener('keydown', onKey);
-    const frame = requestAnimationFrame(() => cardRef.current?.focus());
-    return () => {
-      cancelAnimationFrame(frame);
-      document.body.style.overflow = '';
-      document.removeEventListener('keydown', onKey);
-      if (previouslyFocused instanceof HTMLElement && previouslyFocused.isConnected) previouslyFocused.focus();
-    };
+    if (isOpen) {
+      document.body.style.overflow = 'hidden';
+      return () => { document.body.style.overflow = ''; };
+    }
   }, [isOpen]);
 
   if (!journal) return null;
@@ -184,17 +162,15 @@ export default function StrategyView({ isOpen, onClose, journal, variant = 'jour
             ref={cardRef}
             onClick={(e) => e.stopPropagation()}
             onTouchMove={(e) => e.stopPropagation()}
-            tabIndex={-1}
-            className="relative w-full max-w-lg md:max-w-2xl max-h-[90vh] overflow-y-auto overscroll-contain rounded-2xl shadow-2xl outline-none"
+            className="relative w-full max-w-lg md:max-w-2xl max-h-[90vh] overflow-y-auto overscroll-contain rounded-2xl shadow-2xl"
             style={{ background: cardBg, WebkitOverflowScrolling: 'touch' }}
           >
             {/* Top buttons — hidden during export */}
             <div data-export-hide="true" className="absolute top-4 left-4 z-10 flex items-center gap-2">
               <button
-                type="button"
                 onClick={handleShare}
                 disabled={exporting}
-                className={`p-1.5 min-h-10 min-w-10 rounded-lg ${btnBg} transition-colors cursor-pointer disabled:opacity-50 flex items-center justify-center gap-1.5 ${FOCUS}`}
+                className={`p-1.5 rounded-lg ${btnBg} transition-colors cursor-pointer disabled:opacity-50 flex items-center gap-1.5`}
                 title="ייצוא PDF"
                 aria-label="ייצוא PDF"
               >
@@ -208,10 +184,9 @@ export default function StrategyView({ isOpen, onClose, journal, variant = 'jour
                 )}
               </button>
               <button
-                type="button"
                 onClick={onClose}
                 aria-label="סגור"
-                className={`p-1.5 min-h-10 min-w-10 rounded-lg ${btnBg} transition-colors cursor-pointer inline-flex items-center justify-center ${FOCUS}`}
+                className={`p-1.5 rounded-lg ${btnBg} transition-colors cursor-pointer`}
               >
                 <X className="w-4 h-4" />
               </button>
@@ -225,28 +200,20 @@ export default function StrategyView({ isOpen, onClose, journal, variant = 'jour
                 style={{ background: color }}
               />
 
-              <p className={isPlan
-                ? `text-[11px] font-semibold tracking-wide ${textMuted} mb-3`
-                : `text-[10px] tracking-[0.3em] uppercase ${textMuted} mb-3 font-mono`}>
-                {isPlan ? 'תוכנית מסחר' : 'Strategy Journal'}
+              <p className={`text-[10px] tracking-[0.3em] uppercase ${textMuted} mb-3 font-mono`}>
+                Strategy Journal
               </p>
 
-              <h2 id="strategy-journal-title" className={`font-bold mb-2 ${isPlan ? 'text-2xl md:text-[28px] leading-tight' : 'text-2xl'}`}>
-                {isPlan ? (
-                  <span style={{ color }}>{journal.name}</span>
-                ) : (
-                  <>
-                    <span style={{ color }}>{journal.name.split(' ').slice(0, -1).join(' ')}</span>
-                    {journal.name.includes(' ') && (
-                      <span className={textSub}> {journal.name.split(' ').slice(-1)}</span>
-                    )}
-                    {!journal.name.includes(' ') && <span style={{ color }}>{journal.name}</span>}
-                  </>
+              <h2 id="strategy-journal-title" className="text-2xl font-bold mb-2">
+                <span style={{ color }}>{journal.name.split(' ').slice(0, -1).join(' ')}</span>
+                {journal.name.includes(' ') && (
+                  <span className={textSub}> {journal.name.split(' ').slice(-1)}</span>
                 )}
+                {!journal.name.includes(' ') && <span style={{ color }}>{journal.name}</span>}
               </h2>
 
               {journal.description && (
-                <p className={isPlan ? `text-sm leading-relaxed ${textSub} max-w-md mx-auto` : `text-sm ${textSub} max-w-xs mx-auto`}>{journal.description}</p>
+                <p className={`text-sm ${textSub} max-w-xs mx-auto`}>{journal.description}</p>
               )}
 
               {/* Tags */}
@@ -277,23 +244,6 @@ export default function StrategyView({ isOpen, onClose, journal, variant = 'jour
                   </span>
                 ))}
               </div>
-
-              {isPlan && (hasFact(journal.maxDailyLoss) || hasFact(journal.maxPositions)) && (
-                <p className={`mt-4 flex flex-wrap items-center justify-center gap-x-4 gap-y-1 text-xs ${textSub}`}>
-                  {hasFact(journal.maxDailyLoss) && (
-                    <span>
-                      הפסד יומי מקסימלי{' '}
-                      <b dir="ltr" className={`num-mono font-semibold ${textMain}`}>{journal.maxDailyLoss}%</b>
-                    </span>
-                  )}
-                  {hasFact(journal.maxPositions) && (
-                    <span>
-                      עסקאות במקביל{' '}
-                      <b dir="ltr" className={`num-mono font-semibold ${textMain}`}>{journal.maxPositions}</b>
-                    </span>
-                  )}
-                </p>
-              )}
             </div>
 
             {/* Content sections */}
