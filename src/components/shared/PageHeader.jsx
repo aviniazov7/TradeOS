@@ -20,7 +20,11 @@ import TabStrip from './TabStrip';
 //           icon actions) and a wrapping segmented tab control under it (every
 //           tab on screen, no horizontal scroll). From md up the header matches
 //           the other pages.
-export default function PageHeader({ icon: Icon, title, titleAside, subtitle, meta, tabs, tabsLead, actions, center, children, className = '', as = 'h1', mobileTabsFirst = false, compactMobile = false }) {
+//   readableAside — the aside is a named control (the backtest journal). Keep
+//           a readable width and let the action cluster wrap, instead of
+//           shrinking the label down to a glyph. Journal headers pass `center`
+//           stats and keep the older shrink.
+export default function PageHeader({ icon: Icon, title, titleAside, subtitle, meta, tabs, tabsLead, actions, center, children, className = '', as = 'h1', mobileTabsFirst = false, compactMobile = false, readableAside = false }) {
   const Title = as === 'h2' ? 'h2' : 'h1';
   const tabStrip = (variant) => tabs && (
     <TabStrip tabs={tabs.tabs} value={tabs.value} onChange={tabs.onChange} variant={variant} layoutKey={tabs.layoutKey || 'page-tab'} />
@@ -54,13 +58,15 @@ export default function PageHeader({ icon: Icon, title, titleAside, subtitle, me
               <Icon className={`${compactMobile ? 'w-4 h-4 md:w-5 md:h-5' : 'w-5 h-5'} text-accent-primary`} />
             </span>
           )}
-          <div className={compactMobile && center ? 'flex-1' : 'min-w-0 flex-1'}>
+          <div className={compactMobile && center ? 'flex-1' : readableAside ? 'min-w-0 flex-1 sm:min-w-64' : 'min-w-0 flex-1'}>
             {titleAside ? (
               <div className={`flex items-center min-w-0 w-full ${compactMobile ? 'flex-nowrap gap-2' : 'flex-wrap gap-x-3 gap-y-2'}`}>
-                <Title className={`${compactMobile ? 'text-lg md:text-2xl shrink-0' : 'text-xl md:text-2xl'} font-bold text-text-primary leading-tight`}>{title}</Title>
-                {/* Shrink the journal name before the stats, so a long name
-                    truncates instead of pushing "R ממוצע" onto a second line. */}
-                <div className="min-w-0 shrink overflow-hidden">{titleAside}</div>
+                <Title className={`${compactMobile ? 'text-lg md:text-2xl shrink-0' : `text-xl md:text-2xl${readableAside ? ' shrink-0' : ''}`} font-bold text-text-primary leading-tight`}>{title}</Title>
+                {/* Journal stats shrink a long name so "R ממוצע" stays on one
+                    line. A named control (backtest journal) must not: that
+                    slot's min-width of 0 collapsed even "יומן" to one letter
+                    once the actions shared the row. */}
+                <div className={center ? 'min-w-0 shrink overflow-hidden' : readableAside ? 'max-w-full shrink-0' : 'min-w-0 shrink overflow-hidden'}>{titleAside}</div>
                 {center && (
                   <div className="hidden md:flex shrink-0 items-center justify-center px-1">
                     {center}
