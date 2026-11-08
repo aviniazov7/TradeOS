@@ -6,7 +6,6 @@ import { LazyMotion, domAnimation } from 'framer-motion';
 import PlansPage from './PlansPage';
 import StrategyView from '../backtest/StrategyView';
 import { SYNTHETIC_PLANS } from './planOverviewFixtures';
-import { filterPlans, resolveSelection } from './planFields';
 
 const plansApi = vi.hoisted(() => ({
   plans: [],
@@ -56,17 +55,6 @@ function shell(node) {
   );
 }
 
-function setDesktop(matches) {
-  window.matchMedia = (query) => ({
-    matches,
-    media: query,
-    addEventListener() {},
-    removeEventListener() {},
-    addListener() {},
-    removeListener() {},
-  });
-}
-
 async function mount(node) {
   const el = document.createElement('div');
   document.body.appendChild(el);
@@ -90,33 +78,11 @@ function buttonNamed(name, root = document) {
   ));
 }
 
-function option(id) {
-  return document.querySelector(`[data-plan-id="${id}"]`);
+function card(name) {
+  return [...document.querySelectorAll('[data-testid="plan-card"]')].find((el) => el.textContent.includes(name));
 }
 
-function panel() {
-  return document.querySelector('#plan-section-panel');
-}
-
-function sectionTabs() {
-  return [...document.querySelectorAll('[aria-label="סעיפי התוכנית"] [role="tab"]')];
-}
-
-async function typeSearch(value) {
-  const input = document.querySelector('[aria-label="חיפוש תוכנית"]');
-  const setter = Object.getOwnPropertyDescriptor(window.HTMLInputElement.prototype, 'value').set;
-  await act(async () => {
-    setter.call(input, value);
-    input.dispatchEvent(new Event('input', { bubbles: true }));
-  });
-}
-
-async function openSection(label) {
-  const tab = sectionTabs().find((item) => item.textContent.trim() === label);
-  await act(async () => { tab.click(); });
-}
-
-describe('trading plans workspace', () => {
+describe('trading plans overview', () => {
   beforeAll(() => {
     globalThis.IS_REACT_ACT_ENVIRONMENT = true;
     const finished = Promise.resolve();
@@ -136,7 +102,6 @@ describe('trading plans workspace', () => {
   });
 
   beforeEach(() => {
-    setDesktop(true);
     plansApi.plans = SYNTHETIC_PLANS;
     plansApi.loading = false;
     plansApi.addPlan.mockClear();
@@ -145,126 +110,99 @@ describe('trading plans workspace', () => {
     document.body.innerHTML = '';
   });
 
-  it('selects the first plan and keeps every saved section reachable once', async () => {
+  it('shows the three-up card grid, real metadata, and the active count', async () => {
     const view = await mount(<PlansPage />);
-    const detail = document.querySelector('[data-testid="plan-detail"]');
-    expect(detail.dataset.open).toBe('true');
-    expect(detail.querySelector('#plan-detail-title').textContent.replace(/\s+/g, ' ').trim()).toBe('דמו — דיי טריידינג');
-    expect(option('demo-day').getAttribute('aria-current')).toBe('true');
-    expect([...option('demo-day').querySelectorAll('[data-meta="timeframes"] [dir="ltr"]')].map((el) => el.textContent)).toEqual(['15m', '1H', '4H']);
-    expect(buttonNamed('הכל').textContent.trim()).toBe('הכל');
-    expect(sectionTabs().map((tab) => tab.textContent.trim())[0]).toBe('סקירה');
-    expect(sectionTabs().filter((tab) => tab.textContent.trim() === 'צ׳קליסט')).toHaveLength(1);
-    expect(text(panel())).toContain('עסקאות תוך-יומיות לדוגמה');
-    expect(text(panel())).not.toContain('בדיקת חדשות');
-    expect(panel().querySelector('[role="checkbox"]')).toBeNull();
+    const summary = document.querySelector('[data-testid="plans-summary"]');
+    expect(text(summary)).toBe('3 פעילות מתוך 4');
+    expect(document.querySelector('[aria-label="חיפוש תוכנית"]')).toBeNull();
+    expect(document.querySelector('[data-testid="plans-workspace"]')).toBeNull();
 
-    const saved = [
-      ['כללי כניסה', 'ירידה ל-15m רק אחרי אישור מבנה'],
-      ['כללי יציאה', 'חצי פוזיציה'],
-      ['ניהול סיכונים', 'סיכון לדוגמה בלבד'],
-      ['ניהול עסקה', 'הזזת סטופ'],
-      ['צ׳קליסט', 'בדיקת חדשות'],
-      ['תנאי שוק', 'מגמה ברורה'],
-      ['שגרה יומית', 'רמות מהיום הקודם'],
-      ['יעדים', 'ביצוע לפי התוכנית'],
-      ['טעויות נפוצות', 'כניסה בלי אישור מבנה'],
-      ['דוגמאות כניסה', 'דוגמה סינתטית'],
-      ['הערות', 'דמו סינתטי'],
-    ];
-    for (const [label, snippet] of saved) {
-      await openSection(label);
-      expect(panel().dataset.section).not.toBe('overview');
-      expect(text(panel())).toContain(snippet);
-    }
-    expect(text(detail)).toContain('הפסד יומי');
-    expect(text(detail)).toContain('3%');
-    expect(text(detail)).toContain('מקסימום עסקאות');
-    expect(buttonNamed('עריכת דמו — דיי טריידינג')).toBeTruthy();
-    expect(buttonNamed('ייצוא PDF')).toBeTruthy();
-    expect(buttonNamed('מחיקת דמו — דיי טריידינג')).toBeTruthy();
+    const grid = summary.nextElementSibling;
+    expect(grid.className).toContain('xl:grid-cols-3');
+
+    const cards = [...document.querySelectorAll('[data-testid="plan-card"]')];
+    expect(cards.map((el) => el.querySelector('h3').textContent.trim())).toEqual(SYNTHETIC_PLANS.map((plan) => plan.name));
+
+    const day = card('דיי טריידינג');
+    expect(day.dataset.active).toBe('true');
+    expect(text(day)).toContain('פעילה');
+    expect(text(day)).toContain('ניתוח כיוון ב-4H לפני חיפוש אזור');
+    expect(text(day)).not.toContain('ירידה ל-15m');
+    expect(text(day)).toContain('BTCUSDT');
+    expect(text(day)).toContain('+2');
+    const timeframeRow = [...day.querySelectorAll('p')].find((row) => row.textContent.includes('טיימפריים'));
+    expect([...timeframeRow.querySelectorAll('[dir="ltr"]')].map((el) => el.textContent)).toEqual(['15m', '1H', '4H', '1D']);
+    expect(text(day)).toContain('London');
+    expect(text(day)).toContain('הפסד יומי');
+    expect(text(day)).toContain('3%');
+    expect(text(day)).toContain('עסקאות במקביל');
+    expect(text(day)).toContain("צ'קליסט 4");
+    expect(day.querySelector('[data-accent]').dataset.accent).toBe('#38bdf8');
+    expect(buttonNamed('צפייה בדמו — דיי טריידינג', day).textContent).toContain('צפה בתוכנית');
+    expect(buttonNamed('עריכת דמו — דיי טריידינג', day)).toBeTruthy();
+    expect(buttonNamed('מחיקת דמו — דיי טריידינג', day)).toBeTruthy();
+
+    const sparse = card('טיוטה');
+    expect(sparse.dataset.active).toBe('false');
+    expect(text(sparse)).toContain('לא פעילה');
+    expect(text(sparse)).not.toContain('הפסד יומי');
+    expect(text(sparse)).not.toContain("צ'קליסט");
+    expect(text(sparse)).not.toContain('כניסה');
+    expect(text(sparse)).not.toContain('טיימפריים');
+    expect(sparse.querySelector('[data-accent]').dataset.accent).toBe('#3b82f6');
+    expect(buttonNamed('צפייה בדמו — טיוטה', sparse)).toBeTruthy();
+
     expect(text()).not.toMatch(/אחוז הצלחה|win rate|Premium|שדרג/);
     const names = [...document.querySelectorAll('button')].map((btn) => btn.getAttribute('aria-label') || btn.textContent);
     expect(names.join(' ')).not.toMatch(/AI|מאמן/);
+    expect(buttonNamed('תוכנית חדשה')).toBeTruthy();
 
     await view.cleanup();
   });
 
-  it('filters by search and status, and selects a visible plan', async () => {
+  it('opens the saved plan in the existing dialog and keeps edit and delete', async () => {
     const view = await mount(<PlansPage />);
+    const day = card('דיי טריידינג');
 
-    await typeSearch('סווינג');
-    expect([...document.querySelectorAll('[data-testid="plan-option"]')].map((el) => el.dataset.planId)).toEqual(['demo-swing']);
-    expect(text(document.querySelector('#plan-detail-title'))).toContain('סווינג');
+    await act(async () => { buttonNamed('צפייה בדמו — דיי טריידינג', day).click(); });
+    const dialog = document.querySelector('[role="dialog"]');
+    expect(dialog).toBeTruthy();
+    expect(text(dialog)).toContain('Strategy Journal');
+    expect(dialog.querySelector('#strategy-journal-title').textContent.replace(/\s+/g, ' ').trim()).toContain('דמו — דיי טריידינג');
+    expect(text(dialog)).toContain('כללי כניסה');
+    expect(text(dialog)).toContain('ירידה ל-15m רק אחרי אישור מבנה');
+    expect(text(dialog)).toContain('כללי יציאה');
+    expect(text(dialog)).toContain('ניהול סיכונים');
+    expect(text(dialog)).toContain('בדיקת חדשות');
+    expect(dialog.querySelector('[aria-label="ייצוא PDF"]')).toBeTruthy();
 
-    await typeSearch('אין-תוכנית-כזו');
-    expect(document.querySelector('[data-testid="plan-option"]')).toBeNull();
-    expect(text(document.querySelector('[data-testid="plan-detail"]'))).toContain('אין תוכניות תואמות');
-    expect(text(document.querySelector('[data-testid="plan-detail"]'))).not.toContain('דיי טריידינג');
-
-    await typeSearch('');
-    await act(async () => { buttonNamed('לא פעילות').click(); });
-    expect([...document.querySelectorAll('[data-testid="plan-option"]')].map((el) => el.dataset.planId)).toEqual(['demo-sparse']);
-    expect(text(document.querySelector('#plan-detail-title'))).toContain('טיוטה');
-    expect(sectionTabs().map((tab) => tab.textContent.trim())).toEqual(['סקירה']);
-    expect(text(panel())).toContain('אין תקציר שמור');
-    expect(text(document.querySelector('[data-testid="plan-detail"]'))).not.toContain('הפסד יומי');
-
-    await act(async () => { buttonNamed('פעילות').click(); });
-    expect(option('demo-sparse')).toBeNull();
-    expect(option('demo-day')).toBeTruthy();
-
-    option('demo-day').focus();
     await act(async () => {
-      option('demo-day').dispatchEvent(new KeyboardEvent('keydown', { key: 'ArrowDown', bubbles: true }));
+      document.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true }));
     });
-    expect(option('demo-swing').getAttribute('aria-current')).toBe('true');
-    expect(text(document.querySelector('#plan-detail-title'))).toContain('סווינג');
+    expect(document.querySelector('#strategy-journal-title')).toBeNull();
+    expect(document.querySelector('[data-testid="plans-workspace"]')).toBeNull();
 
-    await view.cleanup();
-  });
-
-  it('keeps edit and delete, and returns from the mobile detail', async () => {
-    const view = await mount(<PlansPage />);
-    await act(async () => { buttonNamed('עריכת דמו — דיי טריידינג').click(); });
+    await act(async () => { buttonNamed('עריכת דמו — דיי טריידינג', day).click(); });
     expect(text()).toContain('עריכת תוכנית');
+    const nameInput = [...document.querySelectorAll('input')].find((input) => input.value === 'דמו — דיי טריידינג');
+    expect(nameInput).toBeTruthy();
     expect(text()).not.toContain('בחר טמפלייט מוכן');
     await act(async () => { buttonNamed('סגור').click(); });
 
-    await act(async () => { option('demo-sparse').click(); });
     await act(async () => { buttonNamed('מחיקת דמו — טיוטה').click(); });
     expect(text()).toContain('למחוק את "דמו — טיוטה"');
     await act(async () => { buttonNamed('מחק').click(); });
     expect(plansApi.deletePlan).toHaveBeenCalledWith('demo-sparse');
+
     await view.cleanup();
-
-    setDesktop(false);
-    const mobile = await mount(<PlansPage />);
-    const detail = document.querySelector('[data-testid="plan-detail"]');
-    expect(detail.dataset.open).toBe('false');
-    expect(detail.className).toContain('hidden');
-    await act(async () => { option('demo-supply').click(); });
-    expect(detail.dataset.open).toBe('true');
-    expect(document.querySelector('[data-testid="plans-list"]').className).toContain('hidden');
-    expect(text(document.querySelector('#plan-detail-title'))).toContain('היצע וביקוש');
-
-    await act(async () => { buttonNamed('חזרה לרשימה').click(); });
-    expect(detail.dataset.open).toBe('false');
-    expect(document.querySelector('[data-testid="plans-list"]').className).not.toContain('hidden');
-
-    await act(async () => { option('demo-supply').click(); });
-    await act(async () => {
-      document.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true }));
-    });
-    expect(detail.dataset.open).toBe('false');
-    await mobile.cleanup();
   });
 
   it('preserves the empty state, the create form, and the analytics tab', async () => {
     plansApi.plans = [];
     const view = await mount(<PlansPage />);
     expect(text()).toContain('אין תוכניות מסחר עדיין');
-    expect(document.querySelector('[data-testid="plans-workspace"]')).toBeNull();
+    expect(document.querySelector('[data-testid="plan-card"]')).toBeNull();
+    expect(document.querySelector('[data-testid="plans-summary"]')).toBeNull();
 
     await act(async () => { buttonNamed('צור את התוכנית הראשונה').click(); });
     expect(text()).toContain('תוכנית מסחר חדשה');
@@ -278,16 +216,6 @@ describe('trading plans workspace', () => {
     expect(buttonNamed('תוכנית חדשה')).toBeFalsy();
 
     await view.cleanup();
-  });
-});
-
-describe('plan selection helpers', () => {
-  it('drops a deleted id and keeps the next visible plan', () => {
-    const active = filterPlans(SYNTHETIC_PLANS, '', 'active');
-    expect(active.map((plan) => plan.id)).not.toContain('demo-sparse');
-    expect(resolveSelection(active, 'demo-sparse').id).toBe('demo-day');
-    expect(resolveSelection(active, 'demo-swing').id).toBe('demo-swing');
-    expect(resolveSelection([], 'demo-day')).toBeNull();
   });
 });
 
