@@ -36,3 +36,19 @@ export function tradeExamplesOf(plan) {
     example && (textOf(example.title) || textOf(example.description) || textOf(example.chartUrl))
   ));
 }
+
+export function filterPlans(plans, query, status) {
+  const needle = textOf(query).toLowerCase();
+  return plans.filter((plan) => {
+    if (status === 'active' && !plan.isActive) return false;
+    if (status === 'inactive' && plan.isActive) return false;
+    if (!needle) return true;
+    const haystack = [planName(plan), textOf(plan.description), ...listOf(plan.pairs)].join('\n').toLowerCase();
+    return haystack.includes(needle);
+  });
+}
+
+export function resolveSelection(plans, selectedId) {
+  if (!plans.length) return null;
+  return plans.find((plan) => plan.id === selectedId) || plans[0];
+}

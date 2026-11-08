@@ -1,138 +1,76 @@
-import { Pencil, Trash2 } from 'lucide-react';
 import CoinIcon from '../shared/CoinIcon';
-import { hasValue, listOf, planName, planSummaryText } from './planFields';
+import { listOf, planAccent, planName, textOf } from './planFields';
 
-const PAIR_LIMIT = 2;
+const PAIR_LIMIT = 3;
 const TIMEFRAME_LIMIT = 3;
 const SESSION_LIMIT = 2;
 const FOCUS = 'outline-none focus-visible:outline-solid focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-accent-primary';
 
-function MetaGroup({ children, label }) {
-  return <span className="inline-flex flex-wrap items-center gap-x-2 gap-y-1" aria-label={label}>{children}</span>;
-}
-
-export default function PlanSummary({ plan, onView, onEdit, onDelete }) {
+export default function PlanSummary({ plan, selected, onSelect }) {
   const name = planName(plan);
-  const summary = planSummaryText(plan);
+  const description = textOf(plan.description);
   const pairs = listOf(plan.pairs);
   const timeframes = listOf(plan.timeframes);
   const sessions = listOf(plan.sessions);
-  const checklistCount = listOf(plan.checklist).length;
+  const accent = planAccent(plan.color);
   const active = Boolean(plan.isActive);
-  const groups = [];
-
-  if (pairs.length > 0) {
-    groups.push(
-      <MetaGroup key="pairs" label="זוגות">
-        {pairs.slice(0, PAIR_LIMIT).map((pair) => (
-          <span key={pair} dir="ltr" className="inline-flex items-center gap-1 font-medium text-text-secondary">
-            <CoinIcon pair={pair} className="h-3.5 w-3.5" />
-            {pair}
-          </span>
-        ))}
-        {pairs.length > PAIR_LIMIT && <span>+{pairs.length - PAIR_LIMIT}</span>}
-      </MetaGroup>,
-    );
-  }
-
-  if (timeframes.length > 0) {
-    groups.push(
-      <MetaGroup key="timeframes" label="טיימפריים">
-        <span data-meta="timeframes" className="inline-flex flex-wrap gap-x-2">
-          {timeframes.slice(0, TIMEFRAME_LIMIT).map((timeframe) => (
-            <span key={timeframe} dir="ltr" className="num-mono font-medium text-text-secondary">{timeframe}</span>
-          ))}
-        </span>
-        {timeframes.length > TIMEFRAME_LIMIT && <span>+{timeframes.length - TIMEFRAME_LIMIT}</span>}
-      </MetaGroup>,
-    );
-  }
-
-  if (sessions.length > 0) {
-    groups.push(
-      <MetaGroup key="sessions" label="סשנים">
-        {sessions.slice(0, SESSION_LIMIT).map((session) => (
-          <span key={session}>{session}</span>
-        ))}
-        {sessions.length > SESSION_LIMIT && <span>+{sessions.length - SESSION_LIMIT}</span>}
-      </MetaGroup>,
-    );
-  }
-
-  if (hasValue(plan.maxDailyLoss)) {
-    groups.push(
-      <span key="loss">
-        הפסד יומי <b dir="ltr" className="num-mono font-semibold text-text-secondary">{plan.maxDailyLoss}%</b>
-      </span>,
-    );
-  }
-
-  if (checklistCount > 0) {
-    groups.push(
-      <span key="checklist">
-        צ׳קליסט <b className="num-mono font-semibold text-text-secondary">{checklistCount}</b>
-      </span>,
-    );
-  }
+  const shownPairs = pairs.slice(0, PAIR_LIMIT);
+  const shownTimeframes = timeframes.slice(0, TIMEFRAME_LIMIT);
+  const shownSessions = sessions.slice(0, SESSION_LIMIT);
 
   return (
-    <li
-      data-testid="plan-summary"
-      data-active={active ? 'true' : 'false'}
-      className="relative border-b border-border-primary py-6 md:py-7"
-    >
-      <div className="flex items-start gap-2 sm:gap-4">
-        <div className="min-w-0 flex-1">
-          <div className="flex items-start gap-x-3">
-            <h3 className="min-w-0 max-w-[calc(100%-4.5rem)] text-lg font-semibold leading-snug text-text-primary md:text-xl">
-              <button
-                type="button"
-                onClick={() => onView(plan)}
-                aria-label={`צפייה ב${name}`}
-                className={`line-clamp-2 cursor-pointer text-start after:absolute after:inset-0 ${FOCUS}`}
-              >
-                {name}
-              </button>
-            </h3>
-            <span className={`shrink-0 pt-1 text-xs font-medium ${active ? 'text-profit' : 'text-text-muted'}`}>
-              {active ? 'פעילה' : 'לא פעילה'}
-            </span>
-          </div>
-          {summary && (
-            <p className="mt-2 max-w-2xl text-sm leading-6 text-text-secondary line-clamp-2">{summary}</p>
-          )}
-          {groups.length > 0 && (
-            <p className="mt-3 flex flex-wrap items-center gap-y-1 text-[13px] leading-5 text-text-muted">
-              {groups.map((group, index) => (
-                <span key={group.key} className="inline-flex items-center">
-                  {index > 0 && <span aria-hidden className="px-2 text-text-muted">·</span>}
-                  {group}
-                </span>
-              ))}
-            </p>
-          )}
-        </div>
-        <div className="relative z-10 flex shrink-0 items-center">
-          <button
-            type="button"
-            onClick={() => onEdit(plan)}
-            aria-label={`עריכת ${name}`}
-            title="עריכה"
-            className={`inline-flex h-10 w-10 items-center justify-center rounded-lg text-text-secondary cursor-pointer hover:bg-bg-tertiary hover:text-text-primary ${FOCUS}`}
-          >
-            <Pencil className="h-4 w-4" aria-hidden />
-          </button>
-          <button
-            type="button"
-            onClick={() => onDelete(plan)}
-            aria-label={`מחיקת ${name}`}
-            title="מחיקה"
-            className={`inline-flex h-10 w-10 items-center justify-center rounded-lg text-text-secondary cursor-pointer hover:bg-bg-tertiary hover:text-loss ${FOCUS}`}
-          >
-            <Trash2 className="h-4 w-4" aria-hidden />
-          </button>
-        </div>
-      </div>
+    <li>
+      <button
+        type="button"
+        data-testid="plan-option"
+        data-plan-id={plan.id}
+        data-active={active ? 'true' : 'false'}
+        aria-current={selected ? 'true' : undefined}
+        onClick={() => onSelect(plan)}
+        className={`w-full cursor-pointer rounded-lg border p-3 text-start transition-colors ${selected ? 'border-accent-primary bg-accent-primary/10' : 'border-border-primary bg-transparent hover:border-border-hover'} ${FOCUS}`}
+      >
+        <span className="flex items-start justify-between gap-2">
+          <span className="flex min-w-0 items-start gap-2">
+            {accent && <span aria-hidden data-accent={accent} className="mt-1.5 h-2 w-2 shrink-0 rounded-full" style={{ backgroundColor: accent }} />}
+            <span className="line-clamp-2 text-sm font-semibold leading-5 text-text-primary">{name}</span>
+          </span>
+          <span className={`shrink-0 rounded-full border px-2 py-0.5 text-[11px] font-medium ${active ? 'border-profit/30 text-profit' : 'border-border-primary text-text-muted'}`}>
+            {active ? 'פעילה' : 'לא פעילה'}
+          </span>
+        </span>
+        {description && <span className="mt-1.5 line-clamp-2 block text-xs leading-5 text-text-secondary">{description}</span>}
+        {(shownPairs.length > 0 || shownTimeframes.length > 0 || shownSessions.length > 0) && (
+          <span className="mt-2 flex flex-col items-start gap-1.5">
+            {shownPairs.length > 0 && (
+              <span className="flex flex-wrap items-center gap-1.5">
+                {shownPairs.map((pair) => (
+                  <span key={pair} dir="ltr" className="inline-flex items-center gap-1 text-[11px] font-medium text-text-secondary">
+                    <CoinIcon pair={pair} className="h-3.5 w-3.5" />
+                    {pair}
+                  </span>
+                ))}
+                {pairs.length > PAIR_LIMIT && <span className="text-[11px] text-text-muted">עוד {pairs.length - PAIR_LIMIT}</span>}
+              </span>
+            )}
+            {shownTimeframes.length > 0 && (
+              <span data-meta="timeframes" className="flex flex-wrap gap-1">
+                {shownTimeframes.map((timeframe) => (
+                  <span key={timeframe} dir="ltr" className="num-mono rounded-md border border-border-primary px-1.5 py-0.5 text-[11px] font-medium text-text-secondary">{timeframe}</span>
+                ))}
+                {timeframes.length > TIMEFRAME_LIMIT && <span className="self-center text-[11px] text-text-muted">עוד {timeframes.length - TIMEFRAME_LIMIT}</span>}
+              </span>
+            )}
+            {shownSessions.length > 0 && (
+              <span className="flex flex-wrap gap-1">
+                {shownSessions.map((session) => (
+                  <span key={session} className="rounded-md bg-bg-tertiary px-1.5 py-0.5 text-[11px] text-text-secondary">{session}</span>
+                ))}
+                {sessions.length > SESSION_LIMIT && <span className="self-center text-[11px] text-text-muted">עוד {sessions.length - SESSION_LIMIT}</span>}
+              </span>
+            )}
+          </span>
+        )}
+      </button>
     </li>
   );
 }

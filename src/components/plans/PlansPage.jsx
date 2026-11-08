@@ -9,8 +9,7 @@ import toast from 'react-hot-toast';
 import { useTradingPlans } from '../../hooks/useTradingPlans';
 import { useProcesses } from '../../hooks/useProcesses';
 import { useProcessCategories } from '../../hooks/useProcessCategories';
-import PlanSummary from './PlanSummary';
-import PlanReader from './PlanReader';
+import PlanWorkspace from './PlanWorkspace';
 import PlanForm from './PlanForm';
 import ConfirmDialog from '../shared/ConfirmDialog';
 import Modal from '../shared/Modal';
@@ -42,7 +41,6 @@ export default function PlansPage() {
   const { allTimeframes, addTimeframe, removeTimeframe } = useUserTimeframes();
   const [formOpen, setFormOpen] = useState(false);
   const [editingPlan, setEditingPlan] = useState(null);
-  const [viewingPlan, setViewingPlan] = useState(null);
   const [deleteTarget, setDeleteTarget] = useState(null);
   const [tab, setTab] = useState('plans');
 
@@ -144,8 +142,6 @@ export default function PlansPage() {
     }
   };
 
-  const openPlan = plans.find((p) => p.id === viewingPlan?.id) || null;
-
   if (loading) return <PlansSkeleton />;
 
   const inputClass = 'w-full bg-bg-tertiary border border-border-primary rounded-lg px-3 py-2 text-sm text-text-primary outline-none focus:border-accent-primary transition-colors';
@@ -177,32 +173,12 @@ export default function PlansPage() {
 
           {/* Tab: Plans */}
           {tab === 'plans' && (
-            <>
-              {openPlan ? (
-                <PlanReader
-                  plan={openPlan}
-                  onBack={() => setViewingPlan(null)}
-                  onEdit={handleEdit}
-                  onDelete={setDeleteTarget}
-                />
-              ) : plans.length === 0 ? (
-                <EmptyState icon={ClipboardList} title="אין תוכניות מסחר עדיין" description="צור תוכנית מסחר לארגון האסטרטגיה והחוקים שלך"
-                  action={<button type="button" onClick={() => setFormOpen(true)} className="mt-2 px-4 py-2 bg-accent-primary text-bg-primary font-semibold rounded-lg hover:bg-accent-hover transition-colors cursor-pointer">צור את התוכנית הראשונה</button>} />
-              ) : (
-                <>
-                  <p data-testid="plans-summary" className="text-sm text-text-secondary">
-                    <span className="num-mono font-semibold text-text-primary">{plans.filter((p) => p.isActive).length}</span>
-                    {' פעילות מתוך '}
-                    <span className="num-mono font-semibold text-text-primary">{plans.length}</span>
-                  </p>
-                  <ul data-testid="plans-list" className="m-0 mt-4 list-none border-t border-border-primary p-0">
-                    {plans.map((p) => (
-                      <PlanSummary key={p.id} plan={p} onView={setViewingPlan} onEdit={handleEdit} onDelete={setDeleteTarget} />
-                    ))}
-                  </ul>
-                </>
-              )}
-            </>
+            plans.length === 0 ? (
+              <EmptyState icon={ClipboardList} title="אין תוכניות מסחר עדיין" description="צור תוכנית מסחר לארגון האסטרטגיה והחוקים שלך"
+                action={<button type="button" onClick={() => setFormOpen(true)} className="mt-2 px-4 py-2 bg-accent-primary text-bg-primary font-semibold rounded-lg hover:bg-accent-hover transition-colors cursor-pointer">צור את התוכנית הראשונה</button>} />
+            ) : (
+              <PlanWorkspace plans={plans} onEdit={handleEdit} onDelete={setDeleteTarget} />
+            )
           )}
 
           {/* Tab: Analyses (standalone processes) */}

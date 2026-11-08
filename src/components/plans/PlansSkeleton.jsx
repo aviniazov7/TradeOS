@@ -13,17 +13,20 @@ export default function PlansSkeleton() {
           <Skeleton variant="text" className="w-28 h-11 rounded-xl" />
         </div>
       </div>
-
-      <Skeleton variant="text" className="w-32 h-4" />
-
-      <div className="mt-2 border-t border-border-primary">
-        {[...Array(4)].map((_, i) => (
-          <div key={i} className="border-b border-border-primary py-6 md:py-7">
-            <Skeleton variant="text" className="w-48 max-w-full h-6" />
-            <Skeleton variant="text" className="w-full max-w-xl h-4 mt-3" />
-            <Skeleton variant="text" className="w-64 max-w-full h-3 mt-3" />
-          </div>
-        ))}
+      <div className="grid grid-cols-1 gap-3 lg:grid-cols-[minmax(16rem,3fr)_minmax(0,7fr)]">
+        <div className="flex flex-col gap-2">
+          {[0, 1, 2].map((item) => (
+            <div key={item} className="rounded-lg border border-border-primary p-3">
+              <Skeleton variant="text" className="w-32 h-4" />
+              <Skeleton variant="text" className="w-full h-3 mt-2" />
+            </div>
+          ))}
+        </div>
+        <div className="hidden lg:block rounded-xl border border-border-primary p-6">
+          <Skeleton variant="title" className="w-48 h-8" />
+          <Skeleton variant="text" className="w-full h-4 mt-6" />
+          <Skeleton variant="text" className="w-4/5 h-4 mt-2" />
+        </div>
       </div>
     </div>
   );
