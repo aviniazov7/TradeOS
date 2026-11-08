@@ -26,7 +26,11 @@ describe('CoinIcon CFD marks', () => {
   }
 
   it('draws a bundled coin, flag pair, or US flag instead of a letter badge', async () => {
-    const files = [['XAUUSD', '/logos/symbols/gold-coin.svg']];
+    const files = [
+      ['XAUUSD', '/logos/marks/gold.svg'],
+      ['XAU/USD', '/logos/marks/gold.svg'],
+      ['XAUUSD.R', '/logos/marks/gold.svg'],
+    ];
     const flags = ['EUR/USD', 'GBPUSD', 'USDJPY', 'US30', 'NAS100', 'US500'];
     for (const [pair, src] of files) {
       const view = await render(pair);
