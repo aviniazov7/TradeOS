@@ -19,6 +19,7 @@ export default function Header({ onToggleSidebar, sidebarOpen }) {
         onClick={onToggleSidebar}
         aria-label={sidebarOpen ? 'סגירת התפריט' : 'פתיחת התפריט'}
         aria-expanded={sidebarOpen}
+        data-tour="menu"
         className="relative z-20 p-1.5 rounded-lg text-text-muted hover:text-text-primary hover:bg-bg-tertiary transition-colors cursor-pointer shrink-0"
       >
         <m.div
@@ -53,7 +54,7 @@ export default function Header({ onToggleSidebar, sidebarOpen }) {
       <div className="flex-1 md:hidden" aria-hidden />
 
       {/* User avatar - leftmost in RTL, links to profile */}
-      <Link to="/profile" className="relative z-20 shrink-0">
+      <Link to="/profile" data-tour="settings" className="relative z-20 shrink-0">
         <span className="block rounded-full border border-border-primary hover:border-accent-primary transition-colors">
           <UserAvatar className="w-8 h-8" />
         </span>

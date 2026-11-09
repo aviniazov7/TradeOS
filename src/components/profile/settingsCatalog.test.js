@@ -26,5 +26,6 @@ describe('settings catalog', () => {
     expect(visibleSettingsSection('trading', { active: 'trading', query: 'סיסמה' })).toBe(false);
     expect(listedSettingsSections('מס').map((section) => section.id)).toEqual(['trading', 'reports']);
     expect(listedSettingsSections('אין דבר כזה')).toEqual([]);
+    expect(listedSettingsSections('סיור').map((section) => section.id)).toEqual(['general']);
   });
 });

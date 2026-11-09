@@ -104,6 +104,7 @@ describe('organized profile settings', () => {
     expect(text()).toContain('עדכונים ותזכורות במייל');
     expect(text()).toContain('מפתחות API');
     expect(text()).toContain('מצב בהיר');
+    expect(text()).toContain('הפעלת הסיור');
     expect(text()).toContain('תמיכה ומשוב');
     expect(text()).toContain('שיתוף האפליקציה');
     expect(text()).toContain('ייצוא נתונים');
@@ -118,6 +119,7 @@ describe('organized profile settings', () => {
     expect(text()).toContain('דמו');
     expect(text()).not.toContain('סוג מסחר');
     expect(text()).not.toContain('דוח מס שנתי');
+    expect(text()).not.toContain('הפעלת הסיור');
 
     const password = [...document.querySelectorAll('button')].find((button) => button.textContent.includes('שינוי סיסמה'));
     await act(async () => { password.click(); });

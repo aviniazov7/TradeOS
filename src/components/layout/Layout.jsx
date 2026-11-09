@@ -6,6 +6,7 @@ import MobileNav from './MobileNav';
 import BackgroundIcons from '../shared/BackgroundIcons';
 import PullToRefresh from '../shared/PullToRefresh';
 import OnboardingWizard from '../onboarding/OnboardingWizard';
+import UiTour from '../onboarding/UiTour';
 import PushNudge from '../shared/PushNudge';
 import EmailVerifyBanner from './EmailVerifyBanner';
 import StagingBanner from './StagingBanner';
@@ -89,6 +90,7 @@ export default function Layout() {
 
       <MobileNav />
       <OnboardingWizard />
+      <UiTour />
       <PushNudge />
     </div>
   );

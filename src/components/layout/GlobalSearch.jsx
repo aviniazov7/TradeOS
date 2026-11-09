@@ -182,6 +182,8 @@ export default function GlobalSearch() {
         type="button"
         onClick={openPalette}
         title="חיפוש (⌘K)"
+        aria-label="חיפוש"
+        data-tour="search"
         className="p-2 rounded-lg text-text-muted hover:text-text-primary hover:bg-bg-tertiary transition-colors cursor-pointer shrink-0"
       >
         <Search className="w-5 h-5" />

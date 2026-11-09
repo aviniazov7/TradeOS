@@ -3,7 +3,7 @@ import { passwordProblem } from '../../utils/passwordPolicy';
 import { authErrorHe } from '../../utils/authErrors';
 import { useNavigate } from 'react-router-dom';
 import { m, AnimatePresence } from 'framer-motion';
-import { LogOut, Trash2, Lock, Mail, Share2, Download, Eye, EyeOff, Sun, Moon, Trophy, Crown, ShieldCheck, Clock, ArrowLeft, ChevronRight, Check, Coins, LineChart, Briefcase, Receipt, ChevronLeft, Camera, Pencil } from 'lucide-react';
+import { LogOut, Trash2, Lock, Mail, Share2, Download, Eye, EyeOff, Sun, Moon, Trophy, Crown, ShieldCheck, Clock, ArrowLeft, ChevronRight, Check, Coins, LineChart, Briefcase, Receipt, ChevronLeft, Camera, Pencil, Compass } from 'lucide-react';
 import UserAvatar from '../shared/UserAvatar';
 import { makeAvatarDataUrl } from '../../utils/avatarImage';
 import { headerIconBtn } from '../shared/headerStyles';
@@ -29,6 +29,7 @@ import ApiKeysSection from './ApiKeysSection';
 import SettingsNav from './SettingsNav';
 import CustomTradeFieldsSettings from './CustomTradeFieldsSettings';
 import { SETTINGS_SECTIONS, visibleSettingsSection } from './settingsCatalog';
+import { replayUiTour } from '../../utils/uiTour';
 import { planExpiresMs } from '../../utils/premium';
 
 /* global __APP_BUILD__, __APP_BUILD_DATE__ */
@@ -545,6 +546,12 @@ export default function ProfilePage() {
           className="w-full flex items-center gap-3 px-5 py-4 text-sm text-text-primary hover:bg-bg-tertiary transition-colors cursor-pointer border-b border-border-primary">
           {isDark ? <Sun className="w-5 h-5 text-text-muted" /> : <Moon className="w-5 h-5 text-text-muted" />}
           {isDark ? 'מצב בהיר' : 'מצב כהה'}
+        </button>
+
+        <button type="button" onClick={() => replayUiTour(user?.uid)}
+          className="w-full flex items-center gap-3 px-5 py-4 text-sm text-text-primary hover:bg-bg-tertiary transition-colors cursor-pointer border-b border-border-primary">
+          <Compass className="w-5 h-5 text-text-muted" />
+          הפעלת הסיור
         </button>
 
         {/* Contact Developer */}

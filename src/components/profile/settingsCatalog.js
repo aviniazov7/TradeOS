@@ -37,7 +37,7 @@ export const SETTINGS_SECTIONS = [
   {
     id: 'general',
     label: 'כללי',
-    keywords: 'כללי ערכת נושא מצב בהיר מצב כהה theme dark light שיתוף האפליקציה ייצוא נתונים תמיכה ומשוב יצירת קשר',
+    keywords: 'כללי ערכת נושא מצב בהיר מצב כהה theme dark light שיתוף האפליקציה ייצוא נתונים תמיכה ומשוב יצירת קשר סיור הדרכה tour',
   },
   {
     id: 'account',

@@ -160,6 +160,7 @@ export default function MobileNav() {
             to="/journal?new=1"
             aria-label="עסקה חדשה"
             title="עסקה חדשה"
+            data-tour="new-trade"
             className="w-12 h-12 rounded-full grid place-items-center text-white bg-accent-muted hover:bg-accent-primary transition-colors"
             style={{ boxShadow: '0 6px 20px rgba(37,99,235,0.45)' }}
           >
