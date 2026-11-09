@@ -75,6 +75,10 @@ If `riskAmount` is omitted or 0, and the entry, stop, and size can price the ris
 
 `status` may be omitted: an exit price (or exits that close the position) becomes `closed`, partial exits become `partial`, otherwise `open`. `fees` defaults to 0, `leverage` to 1 (crypto and stocks). Futures (`assetClass: "futures_cme"`) require `contract.contracts`, `contract.pointValue`, and `contract.tickSize`.
 
+`custom` is optional. It is an object of field id (`f1`, `f2`, …) to a string or number. The ids and values are checked against the caller's `settings/customTradeFields` document (each field has `name`, `type` of `text`, `number`, or `select`, and `options` when the type is `select`). A text value is at most 80 characters. A number has to be finite. A select value has to be one of that field's options. An unknown id, a value of the wrong type, or a select value that is not an option is `400` (`custom.<id> …`) and nothing is written. Omit `custom` and the stored trade has no `custom` field, the same shape as every trade written before the field existed. `custom: {}` also stores no answers.
+
+The owner's `GET` and `POST` responses include `custom` when the trade has answers. A shared journal does not. Sharing never copies `custom`.
+
 Optional header `Idempotency-Key` (8–128 printable characters). The handler reserves one trade id on that key before it writes the trade. A repeat returns that same trade and does not write another one, including when the first attempt saved the trade but could not mark the key complete. The first response is `201`. A replay is `200` with `idempotentReplay: true`. A second request that arrives while the first is still in progress, before a trade has been stored, is `409` for 60 seconds. After that the same reserved id is used again, so a late retry still cannot create a second trade.
 
 ```bash
@@ -111,6 +115,8 @@ Results are ordered by **entryDate descending** (newest first). The same entry d
 
 Trades with no `entryDate` are omitted. Firestore's `orderBy` skips documents that do not have the field. Trades written by the app and by this API always store `entryDate`.
 
+A trade that has custom-field answers includes `custom` (`{ "f1": "לונדון" }`). A trade without answers omits `custom`. That is the key owner's list. A shared journal still does not include `custom`.
+
 ```bash
 curl -s "https://trade-os.tradeos.workers.dev/api/v1/trades?journalId=JOURNAL_ID&status=closed&from=2026-06-01&to=2026-06-30&limit=50" \
   -H "Authorization: Bearer $API_KEY"
@@ -128,7 +134,9 @@ Agents can call the same operations over MCP. See [MCP.md](./MCP.md).
 
 Updates one trade the key owns. The id is read under `users/{uid}/trades/{id}`, so a missing id and another user's id are both `404` (`trade not found`). Nothing in the body is applied in that case. `..` and a slash in the id are `400` (`invalid trade id`).
 
-The body is a JSON object with at least one field. `{}` is `400` (`body must include at least one field`). Only fields `POST /api/v1/trades` accepts are editable, including the `journal` alias. `id` and `createdAt` are immutable (`400`, `<field> is immutable`). Derived fields (`pnl`, `netPnl`, `pnlPercent`, `rrRatio`, `result`, `positionSize`, `margin`, `updatedAt`, `pnlFromExchange`) and any other key are `400` (`<field> is not editable`). Types and ranges are the same checks as create. A field you omit is left as stored.
+The body is a JSON object with at least one field. `{}` is `400` (`body must include at least one field`). Only fields `POST /api/v1/trades` accepts are editable, including the `journal` alias and `custom`. `id` and `createdAt` are immutable (`400`, `<field> is immutable`). Derived fields (`pnl`, `netPnl`, `pnlPercent`, `rrRatio`, `result`, `positionSize`, `margin`, `updatedAt`, `pnlFromExchange`) and any other key are `400` (`<field> is not editable`). Types and ranges are the same checks as create. A field you omit is left as stored.
+
+`custom` replaces the whole answer map and is checked against the current field definitions. `{}` removes `custom` from the trade. Omit `custom` and the stored answers stay, including a select value that is no longer one of the options. Sending `custom` again with that same stored select value is accepted. A new value that is not an option is `400`. An answer whose field was deleted is dropped the next time the trade is rewritten without a new `custom` object.
 
 The Worker merges the patch onto the stored trade, validates that merged trade the same way as create, and rewrites `pnl`, `netPnl`, `pnlPercent`, `rrRatio`, `result`, `positionSize`, and `margin`. `riskAmount` is derived again when the merged value is omitted or 0. `updatedAt` is the time of this write. `createdAt` stays the stored timestamp, even when `entryDate` changes. A stored `pnlFromExchange` is cleared so later reads use the price-based P&L. The update is one Firestore write. If that write fails, the trade is unchanged (`502`, `failed to write trade`).
 

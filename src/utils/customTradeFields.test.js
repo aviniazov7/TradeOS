@@ -4,11 +4,13 @@ import {
   addCustomField,
   computeCustomFieldStats,
   customFormState,
+  customFromCsvRow,
   customPayload,
   normalizeCustomFieldsDoc,
   removeCustomField,
   sanitizeCustomMap,
   tradeMatchesCustom,
+  validateApiCustom,
 } from './customTradeFields';
 
 const closed = (over) => ({
@@ -120,6 +122,26 @@ describe('computeCustomFieldStats', () => {
     expect(stats.find((group) => group.id === 'f2').rows).toEqual([
       expect.objectContaining({ label: '2', count: 2, pnl: 30, winRate: 50 }),
     ]);
+  });
+
+  it('checks API answers against the defined fields', () => {
+    const defs = [textField, numberField, selectField];
+    expect(validateApiCustom({ f1: 'לונדון', f2: 2, f3: 'A' }, defs).custom).toEqual({ f1: 'לונדון', f2: 2, f3: 'A' });
+    expect(validateApiCustom({}, defs).custom).toBeNull();
+    expect(validateApiCustom({ f9: 'x' }, defs).ok).toBe(false);
+    expect(validateApiCustom({ f3: 'C' }, defs).ok).toBe(false);
+    expect(validateApiCustom({ f3: 'C' }, defs, { f3: 'C' }).custom).toEqual({ f3: 'C' });
+    expect(validateApiCustom('לונדון', defs).ok).toBe(false);
+  });
+
+  it('reads only defined columns back from a CSV row', () => {
+    const defs = [textField, selectField];
+    expect(customFromCsvRow({ 'שדה: סשן': ' לונדון ', 'שדה: איכות': 'A', הערות: 'לא שדה' }, defs)).toEqual({
+      f1: 'לונדון', f3: 'A',
+    });
+    expect(customFromCsvRow({ 'שדה: סשן': 'לונדון' }, [])).toBeNull();
+    expect(customFromCsvRow({ 'שדה: איכות': 'לא ברשימה' }, defs)).toBeNull();
+    expect(customFromCsvRow({ זוג: 'BTCUSDT' }, defs)).toBeNull();
   });
 
   it('matches a filter only when the trade stores that answer', () => {

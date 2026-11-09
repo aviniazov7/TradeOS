@@ -114,7 +114,13 @@ export function memoryFirestore(projectId) {
     }
     if (method === 'PATCH') {
       const prev = docs.get(path) || {};
-      docs.set(path, { ...prev, ...JSON.parse(init.body).fields });
+      const incoming = JSON.parse(init.body).fields || {};
+      const next = { ...prev, ...incoming };
+      // A masked field that the body omits is deleted, matching the Firestore REST API.
+      for (const field of u.searchParams.getAll('updateMask.fieldPaths')) {
+        if (!Object.prototype.hasOwnProperty.call(incoming, field)) delete next[field];
+      }
+      docs.set(path, next);
       return response(200, {});
     }
     if (method === 'POST') {
