@@ -40,6 +40,7 @@ import JournalFormModal from './JournalFormModal';
 import { downloadCsv } from '../../utils/csv';
 import { JOURNAL_CSV_HEADERS, journalCsvRow } from '../../utils/tradeExport';
 import { TAG_LABELS } from '../../utils/constants';
+import { tradeHasMistake } from '../../utils/tagMistakeStats';
 import { setupLabel, tradeSetups } from '../../utils/setupStats';
 import { pageVariants, pageTransition } from '../../utils/animations';
 import { TRADE_PREFILL_KEY } from '../../utils/tradeFormHelpers';
@@ -48,7 +49,7 @@ import { CRYPTO_JOURNAL_TABS, OTHER_JOURNAL_TABS, resolveJournalTab } from '../.
 const TAB_LABELS = { trades: 'עסקאות', exchange: 'בורסה', analytics: 'אנליטיקה', calendar: 'יומן חודשי' };
 // Phone row: short labels. Four tabs (crypto) or three (stocks/futures) sit on one row.
 const TAB_MOBILE = { trades: 'עסקאות', exchange: 'בורסה', analytics: 'אנליטיקה', calendar: 'יומן' };
-const defaultFilters = { search: '', direction: '', result: '', status: '', strategy: '', setup: '', tag: '', timeframe: '', month: '', from: '', to: '' };
+const defaultFilters = { search: '', direction: '', result: '', status: '', strategy: '', setup: '', tag: '', mistake: '', timeframe: '', month: '', from: '', to: '' };
 const defaultSort = { key: 'date', dir: 'desc' };
 // Phone sort picker (desktop sorts by clicking column headers).
 const SORT_OPTIONS = [
@@ -422,7 +423,8 @@ export default function TradeJournal() {
       if (filters.strategy && t.strategy !== filters.strategy) return false;
       if (filters.setup && !tradeSetups(t).includes(filters.setup)) return false;
       if (filters.timeframe && (filters.timeframe === 'N/A' ? !!t.timeframe : t.timeframe !== filters.timeframe)) return false;
-      if (filters.tag && !(Array.isArray(t.tags) ? t.tags : []).includes(filters.tag)) return false;
+      if (filters.tag && !(Array.isArray(t.tags) ? t.tags : []).some((tag) => typeof tag === 'string' && tag.trim() === String(filters.tag).trim())) return false;
+      if (filters.mistake && !tradeHasMistake(t, filters.mistake)) return false;
       if (filters.month && monthKey(t) !== filters.month) return false;
       return true;
     }).sort((a, b) => getTime(b) - getTime(a));

@@ -69,3 +69,10 @@ export function computeTagStats(trades) {
 export function computeMistakeStats(trades) {
   return bucketStats(trades, (t) => cleanIds(t?.mistakes), mistakeLabel);
 }
+
+/** True when the trade's mistake list contains this id. A non-array is never a match. */
+export function tradeHasMistake(trade, id) {
+  const wanted = typeof id === 'string' ? id.trim() : '';
+  if (!wanted) return false;
+  return cleanIds(trade?.mistakes).includes(wanted);
+}
