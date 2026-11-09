@@ -58,7 +58,7 @@ import { NEWS_FEEDS, parseRssItems, handleNewsFeed } from './newsFeed.js';
 import { safeNotificationPath } from './pushNavigate.js';
 import { parseAltcoinSeasonIndex } from './altcoinSeason.js';
 import { handlePublicApi } from './publicApi.js';
-import { handleJournalShare } from './journalShare.js';
+import { handleJournalShare, bindPendingJournalShares } from './journalShare.js';
 import { handleMcp } from './mcp.js';
 
 // Binance's public market-data mirror — api.binance.com returns 403 to
@@ -1340,11 +1340,40 @@ async function lookupAuthUidByEmail(env, email) {
 
 // Email claim from a token verifyFirebaseToken already accepted.
 function emailFromVerifiedToken(token) {
+  const claims = verifiedEmailClaims(token);
+  return claims?.email && claims.email.includes('@') ? claims.email : null;
+}
+
+function verifiedEmailClaims(token) {
   try {
     const payload = JSON.parse(atob(String(token).split('.')[1].replace(/-/g, '+').replace(/_/g, '/')));
-    return typeof payload.email === 'string' && payload.email.includes('@') ? payload.email : null;
+    const email = typeof payload.email === 'string' ? payload.email : '';
+    return { email, emailVerified: payload.email_verified === true };
   } catch {
     return null;
+  }
+}
+
+// Any signed-in Worker call binds pending journal shares for that verified
+// email. Unverified addresses and token failures do nothing.
+async function bindSharesOnVerifiedSession(request, env) {
+  if (!env?.ALERTS_KV) return;
+  const header = request.headers.get('Authorization') || '';
+  const match = /^Bearer\s+(\S+)\s*$/i.exec(header.trim());
+  if (!match) return;
+  try {
+    const uid = await verifyFirebaseToken(match[1]);
+    if (!uid) return;
+    const claims = verifiedEmailClaims(match[1]);
+    if (!claims?.emailVerified) return;
+    await bindPendingJournalShares(env.ALERTS_KV, {
+      uid,
+      email: claims.email,
+      emailVerified: true,
+      nowMs: Date.now(),
+    });
+  } catch (err) {
+    console.error('journal share bind', err?.message || err);
   }
 }
 
@@ -4248,6 +4277,8 @@ async function handleRequest(request, env) {
 
   const cors = corsHeadersFor(request);
   if (request.method === 'OPTIONS') return new Response(null, { headers: cors });
+
+  await bindSharesOnVerifiedSession(request, env);
 
   // Journal shares. The viewer token is the credential; the body is the
   // filtered copy only. Owner routes use the Firebase token.

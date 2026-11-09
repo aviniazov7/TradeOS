@@ -77,12 +77,14 @@ function harness(extra = {}) {
     ['owner@example.com', OWNER],
     ...(extra.accounts || []),
   ]);
+  const identities = extra.identities || {};
   const bumps = [];
   const deps = {
     projectId: PROJECT,
     cors: { 'Access-Control-Allow-Origin': 'https://tradeos.test' },
     fetchFn: db.fetchFn,
-    verifyFirebaseToken: async (token) => ({ owner: OWNER, other: OTHER })[token] || null,
+    verifyFirebaseToken: async (token) => identities[token]?.uid || ({ owner: OWNER, other: OTHER })[token] || null,
+    identity: async (token) => identities[token] || null,
     getAdminToken: async () => 'admin-token',
     lookupAccountByEmail: async (email) => (accounts.has(email) ? accounts.get(email) : null),
     durableBump: async (objectName, key) => {
@@ -121,21 +123,66 @@ async function createShare(call, body = {}) {
   return { res, payload };
 }
 
+function comparable(res, payload) {
+  return {
+    status: res.status,
+    cache: res.headers.get('Cache-Control'),
+    message: payload.message,
+    root: Object.keys(payload).sort(),
+    share: Object.keys(payload.share).sort(),
+    shareStatus: payload.share.status,
+    fields: payload.share.fields,
+    journalId: payload.share.journalId,
+    expiresAt: payload.share.expiresAt,
+    token: /^[a-f0-9]{64}$/.test(payload.token),
+    leaksUid: Object.hasOwn(payload.share, 'viewerUid') || Object.hasOwn(payload.share, 'pending'),
+  };
+}
+
+function storedShare(kv, email) {
+  for (const [key, value] of kv.store) {
+    if (!key.startsWith('jshare:') || key.startsWith('jshare-')) continue;
+    const row = JSON.parse(value);
+    if (row.viewerEmail === email) return row;
+  }
+  return null;
+}
+
 describe('journal share worker', () => {
-  it('answers a missing account with the generic sentence and stores nothing', async () => {
+  it('gives a registered and an unregistered email the same response, and both links work', async () => {
     const { kv, call } = harness();
-    const { res, payload } = await createShare(call, { email: 'missing@example.com' });
-    expect(res.status).toBe(200);
-    expect(res.headers.get('Cache-Control')).toBe('private, no-store');
-    expect(payload).toEqual({ ok: true, message: SHARE_MESSAGE });
-    expect(JSON.stringify(payload)).not.toMatch(/לא נמצא|אינו רשום|not found|missing@example.com/i);
-    expect([...kv.store.keys()].some((key) => key.startsWith('jshare:'))).toBe(false);
+    const known = await createShare(call, { email: 'viewer@example.com' });
+    const unknown = await createShare(call, { email: 'missing@example.com' });
+    expect(comparable(known.res, known.payload)).toEqual(comparable(unknown.res, unknown.payload));
+    expect(known.payload.message).toBe(SHARE_MESSAGE);
+    expect(JSON.stringify(known.payload)).not.toMatch(/לא נמצא|אינו רשום|not found|pending/i);
+    expect(JSON.stringify(unknown.payload)).not.toMatch(/לא נמצא|אינו רשום|not found|pending/i);
+
+    const knownRow = storedShare(kv, 'viewer@example.com');
+    const pendingRow = storedShare(kv, 'missing@example.com');
+    expect(knownRow.viewerUid).toBe(VIEWER);
+    expect(knownRow.pending).toBe(false);
+    expect(pendingRow.viewerUid).toBeNull();
+    expect(pendingRow.pending).toBe(true);
+    expect(pendingRow.expiresAt).toBe(knownRow.expiresAt);
+
+    const knownView = await (await call(`/api/journal-shares/view/${known.payload.token}`, { token: '' })).json();
+    const pendingView = await (await call(`/api/journal-shares/view/${unknown.payload.token}`, { token: '' })).json();
+    expect(pendingView).toEqual(knownView);
+    expect(JSON.stringify(pendingView)).not.toContain(SECRET_NOTE);
+    expect(JSON.stringify(pendingView)).not.toContain(SECRET_ADDRESS);
   });
 
-  it('does not reveal the owner address either, and keeps the same sentence', async () => {
-    const { call } = harness();
-    const { payload } = await createShare(call, { email: 'owner@example.com' });
-    expect(payload).toEqual({ ok: true, message: SHARE_MESSAGE });
+  it('returns the same shape for the owner address and does not store a share', async () => {
+    const { kv, call } = harness();
+    const real = await createShare(call, { email: 'viewer@example.com' });
+    const self = await createShare(call, { email: 'owner@example.com' });
+    expect(comparable(self.res, self.payload).root).toEqual(comparable(real.res, real.payload).root);
+    expect(self.payload.message).toBe(SHARE_MESSAGE);
+    expect(storedShare(kv, 'owner@example.com')).toBeNull();
+    const view = await call(`/api/journal-shares/view/${self.payload.token}`, { token: '' });
+    expect(view.status).toBe(404);
+    expect(await view.json()).toEqual({ error: NO_DATA });
   });
 
   it('creates a share for a real account, audits only the owner, and filters the viewer copy', async () => {
@@ -245,6 +292,45 @@ describe('journal share worker', () => {
     expect(await stolen.json()).toEqual({ error: NO_DATA });
     const anon = await call('/api/journal-shares', { method: 'POST', token: '', body: { journalId: 'j1', email: 'viewer@example.com', days: 7 } });
     expect(anon.status).toBe(401);
+  });
+
+  it('binds a pending share only when the verified email matches', async () => {
+    const identities = {
+      viewer: { uid: VIEWER, email: 'missing@example.com', emailVerified: true },
+      lookalike: { uid: 'lookalikeuid123456789012345', email: 'missing+x@example.com', emailVerified: true },
+      unverified: { uid: 'newuid12345678901234567890', email: 'missing@example.com', emailVerified: false },
+    };
+    const { kv, call } = harness({ identities });
+    const { payload } = await createShare(call, { email: 'Missing@Example.com' });
+    const before = storedShare(kv, 'missing@example.com').expiresAt;
+    expect(storedShare(kv, 'missing@example.com').viewerUid).toBeNull();
+
+    await call('/api/journal-shares/bind', { method: 'POST', token: 'lookalike' });
+    await call('/api/journal-shares/bind', { method: 'POST', token: 'unverified' });
+    expect(storedShare(kv, 'missing@example.com')).toMatchObject({ viewerUid: null, pending: true, expiresAt: before });
+
+    const bound = await call('/api/journal-shares/bind', { method: 'POST', token: 'viewer' });
+    expect(bound.status).toBe(200);
+    expect(await bound.json()).toEqual({ ok: true });
+    expect(storedShare(kv, 'missing@example.com')).toMatchObject({
+      viewerUid: VIEWER, pending: false, expiresAt: before,
+    });
+    const view = await call(`/api/journal-shares/view/${payload.token}`, { token: '' });
+    expect(view.status).toBe(200);
+    expect(JSON.stringify(await view.json())).not.toContain(SECRET_NOTE);
+  });
+
+  it('never binds a pending share after it has expired', async () => {
+    const identities = {
+      viewer: { uid: VIEWER, email: 'later@example.com', emailVerified: true },
+    };
+    const { kv, clock, call } = harness({ identities });
+    await createShare(call, { email: 'later@example.com' });
+    clock.ms = NOW + 8 * 24 * 60 * 60 * 1000;
+    await call('/api/journal-shares/bind', { method: 'POST', token: 'viewer' });
+    expect(storedShare(kv, 'later@example.com')).toMatchObject({ viewerUid: null, pending: true });
+    const row = storedShare(kv, 'later@example.com');
+    expect(Date.parse(row.expiresAt)).toBe(NOW + 7 * 24 * 60 * 60 * 1000);
   });
 
   it('stops when the durable counter is hot or unavailable, and does not write', async () => {

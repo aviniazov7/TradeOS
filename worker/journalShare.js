@@ -26,6 +26,7 @@ const TOKEN_RE = /^[a-f0-9]{64}$/;
 const recordKey = (id) => `jshare:${id}`;
 const tokenKey = (hash) => `jshare-tok:${hash}`;
 const ownerKey = (uid, id) => `jshare-own:${uid}:${id}`;
+const mailKey = (emailHash, id) => `jshare-mail:${emailHash}:${id}`;
 const auditPrefix = (uid) => `jshare-audit:${uid}:`;
 
 function json(cors, status, body) {
@@ -249,6 +250,7 @@ export async function handleJournalShare(request, env, deps) {
   if (!uid) return json(cors, 401, { error: 'נדרשת התחברות' });
 
   if (request.method === 'GET' && path === '/api/journal-shares') return listShares(deps, cors, kv, uid, nowMs);
+  if (request.method === 'POST' && path === '/api/journal-shares/bind') return bindFromSignIn(request, deps, cors, kv, uid, nowMs);
   if (request.method === 'POST' && path === '/api/journal-shares') return createShare(request, deps, cors, kv, uid, nowMs);
 
   const revokeMatch = path.match(/^\/api\/journal-shares\/([a-f0-9]{32})\/revoke$/);
@@ -332,36 +334,91 @@ async function createShare(request, deps, cors, kv, uid, nowMs) {
     return json(cors, 503, { error: 'השירות אינו זמין זמנית. נסה שוב מאוחר יותר.' });
   }
 
-  // Same sentence whether the address has an account. No "not registered".
-  if (!viewerUid || viewerUid === uid) return json(cors, 200, { ok: true, message: SHARE_MESSAGE });
+  // Share-to-self stores nothing. The sentence and the JSON shape stay the
+  // same as a real share, so the body does not say which case this was.
+  const token = randomHex(32);
+  const createdAt = new Date(nowMs).toISOString();
+  if (viewerUid === uid) {
+    return json(cors, 200, issued(token, {
+      id: randomHex(16),
+      journalId: body.journalId,
+      viewerEmail: email,
+      fields,
+      status: 'active',
+      expiresAt: expiry.expiresAt,
+      createdAt,
+    }, nowMs));
+  }
 
   const id = randomHex(16);
-  const token = randomHex(32);
   const hash = await sha256Hex(token);
+  const emailHash = await sha256Hex(email);
   const share = {
     id,
     ownerUid: uid,
     journalId: body.journalId,
-    viewerUid,
+    viewerUid: viewerUid || null,
     viewerEmail: email,
+    pending: !viewerUid,
     tokenHash: hash,
     fields,
     status: 'active',
     expiresAt: expiry.expiresAt,
-    createdAt: new Date(nowMs).toISOString(),
-    updatedAt: new Date(nowMs).toISOString(),
+    createdAt,
+    updatedAt: createdAt,
   };
   const ttl = ttlFor(share.expiresAt, nowMs);
   await putJson(kv, recordKey(id), share, ttl);
   await kv.put(tokenKey(hash), id, { expirationTtl: ttl });
   await kv.put(ownerKey(uid, id), id, { expirationTtl: ttl });
+  await kv.put(mailKey(emailHash, id), id, { expirationTtl: ttl });
   await writeAudit(kv, uid, 'create', share, nowMs);
-  return json(cors, 200, {
+  return json(cors, 200, issued(token, share, nowMs));
+}
+
+function issued(token, share, nowMs) {
+  return {
     ok: true,
     message: SHARE_MESSAGE,
     token,
     share: publicShare(share, nowMs),
-  });
+  };
+}
+
+// Called when a verified Firebase email signs in or registers. Pending rows
+// for that exact address become bound to the uid. Expiry is not moved.
+export async function bindPendingJournalShares(kv, { uid, email, emailVerified, nowMs }) {
+  if (!kv || !uid || emailVerified !== true) return;
+  const normalized = emailOf(email);
+  if (!normalized) return;
+  const names = await listKeys(kv, `jshare-mail:${await sha256Hex(normalized)}:`);
+  for (const name of names) {
+    const id = name.slice(name.lastIndexOf(':') + 1);
+    const share = await loadShare(kv, id);
+    if (!share || share.status === 'revoked' || share.viewerUid) continue;
+    if (share.viewerEmail !== normalized || share.ownerUid === uid) continue;
+    if (!(Date.parse(share.expiresAt) > nowMs)) continue;
+    share.viewerUid = uid;
+    share.pending = false;
+    share.updatedAt = new Date(nowMs).toISOString();
+    await putJson(kv, recordKey(id), share, ttlFor(share.expiresAt, nowMs));
+    await writeAudit(kv, share.ownerUid, 'bind', share, nowMs);
+  }
+}
+
+async function bindFromSignIn(request, deps, cors, kv, uid, nowMs) {
+  const gate = await limited(deps, uid, 'jshare:bind', LIST_LIMIT);
+  if (gate.error) return limitResponse(cors, gate);
+  const identity = typeof deps.identity === 'function' ? await deps.identity(bearer(request)) : null;
+  if (identity && identity.uid === uid && identity.emailVerified === true) {
+    await bindPendingJournalShares(kv, {
+      uid,
+      email: identity.email,
+      emailVerified: true,
+      nowMs,
+    });
+  }
+  return json(cors, 200, { ok: true });
 }
 
 async function updateShare(request, deps, cors, kv, uid, id, nowMs) {
