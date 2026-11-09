@@ -42,6 +42,7 @@ const loadWalletDetailPage = () => import('./components/polymarket/WalletDetailP
 const loadMarketDetailPage = () => import('./components/polymarket/MarketDetailPage');
 const loadAdminPanel = () => import('./components/admin/AdminPanel');
 const loadTaxReport = () => import('./components/tax/TaxReportPage');
+const loadBusinessLedger = () => import('./components/business/BusinessLedgerPage');
 const Dashboard = lazy(loadDashboard);
 const TradeJournal = lazy(loadTradeJournal);
 const BacktestTracker = lazy(loadBacktestTracker);
@@ -66,6 +67,7 @@ const WalletDetailPage = lazy(loadWalletDetailPage);
 const MarketDetailPage = lazy(loadMarketDetailPage);
 const AdminPanel = lazy(loadAdminPanel);
 const TaxReportPage = lazy(loadTaxReport);
+const BusinessLedgerPage = lazy(loadBusinessLedger);
 
 // Sample notifications page for local dev and a hosting preview built with
 // VITE_ADMIN_NOTIF_PREVIEW=1. Production builds tree-shake the route.
@@ -157,6 +159,7 @@ function MainApp() {
                 <Route path="dca" element={<Navigate to="/portfolio?tab=dca" replace />} />
                 <Route path="wallets" element={<Navigate to="/portfolio?tab=wallets" replace />} />
                 <Route path="plans" element={<PlansPage />} />
+                <Route path="business" element={<BusinessLedgerPage />} />
                 <Route path="tax" element={<TaxReportPage />} />
                 <Route path="mentality" element={<MentalityZone />} />
                 <Route path="mentality/morning" element={<MorningJournal />} />
