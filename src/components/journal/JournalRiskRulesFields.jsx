@@ -56,7 +56,7 @@ export default function JournalRiskRulesFields({ value, onChange }) {
   const setRule = (key, patch) => onChange({ ...value, [key]: { ...value[key], ...patch } });
 
   return (
-    <div data-testid="journal-risk-rules" className="rounded-xl border border-border-primary p-3 space-y-3">
+    <div data-testid="journal-risk-rules" className="rounded-xl border border-border-primary p-3">
       <div>
         <p className="text-xs font-semibold text-text-primary">כללי סיכון</p>
         <p className="text-[11px] text-text-muted">
@@ -64,6 +64,7 @@ export default function JournalRiskRulesFields({ value, onChange }) {
           התראת ההפסד היומי בדולרים נשארת למעלה.
         </p>
       </div>
+      <div data-testid="journal-risk-rules-grid" className="mt-3 grid grid-cols-1 gap-3 lg:grid-cols-2">
       {NUMBER_RULES.map((rule) => (
         <RuleSwitch
           key={rule.key}
@@ -88,46 +89,49 @@ export default function JournalRiskRulesFields({ value, onChange }) {
           )}
         </RuleSwitch>
       ))}
-      <RuleSwitch
-        title="שעות מסחר (שעון ישראל)"
-        checked={value.tradingHours.enabled}
-        testId="journal-risk-hours"
-        onChange={(enabled) => setRule('tradingHours', { enabled })}
-      >
-        {value.tradingHours.enabled && (
-          <div className="grid grid-cols-2 gap-2">
-            <div>
-              <label className={labelClass} htmlFor="journal-risk-hours-start">מהשעה</label>
-              <input
-                id="journal-risk-hours-start"
-                type="time"
-                step="60"
-                dir="ltr"
-                value={value.tradingHours.start}
-                data-testid="journal-risk-hours-start"
-                onChange={(e) => setRule('tradingHours', { start: e.target.value })}
-                className={timeClass}
-              />
+      <div className="lg:col-span-2">
+        <RuleSwitch
+          title="שעות מסחר (שעון ישראל)"
+          checked={value.tradingHours.enabled}
+          testId="journal-risk-hours"
+          onChange={(enabled) => setRule('tradingHours', { enabled })}
+        >
+          {value.tradingHours.enabled && (
+            <div className="grid grid-cols-1 gap-2 lg:grid-cols-2">
+              <div>
+                <label className={labelClass} htmlFor="journal-risk-hours-start">מהשעה</label>
+                <input
+                  id="journal-risk-hours-start"
+                  type="time"
+                  step="60"
+                  dir="ltr"
+                  value={value.tradingHours.start}
+                  data-testid="journal-risk-hours-start"
+                  onChange={(e) => setRule('tradingHours', { start: e.target.value })}
+                  className={timeClass}
+                />
+              </div>
+              <div>
+                <label className={labelClass} htmlFor="journal-risk-hours-end">עד השעה</label>
+                <input
+                  id="journal-risk-hours-end"
+                  type="time"
+                  step="60"
+                  dir="ltr"
+                  value={value.tradingHours.end}
+                  data-testid="journal-risk-hours-end"
+                  onChange={(e) => setRule('tradingHours', { end: e.target.value })}
+                  className={timeClass}
+                />
+              </div>
             </div>
-            <div>
-              <label className={labelClass} htmlFor="journal-risk-hours-end">עד השעה</label>
-              <input
-                id="journal-risk-hours-end"
-                type="time"
-                step="60"
-                dir="ltr"
-                value={value.tradingHours.end}
-                data-testid="journal-risk-hours-end"
-                onChange={(e) => setRule('tradingHours', { end: e.target.value })}
-                className={timeClass}
-              />
-            </div>
-          </div>
-        )}
-        {value.tradingHours.enabled && (
-          <p className="text-[11px] text-text-muted">סוף החלון לא כלול. חלון יכול לחצות חצות. השעון הוא שעון ישראל.</p>
-        )}
-      </RuleSwitch>
+          )}
+          {value.tradingHours.enabled && (
+            <p className="text-[11px] text-text-muted">סוף החלון לא כלול. חלון יכול לחצות חצות. השעון הוא שעון ישראל.</p>
+          )}
+        </RuleSwitch>
+      </div>
+      </div>
     </div>
   );
 }
