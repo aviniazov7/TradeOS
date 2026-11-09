@@ -9,6 +9,7 @@ import { accountPeriodReturn } from '../../utils/accountReturn';
 import { filterTradesByPeriod, computeJournalAnalytics } from '../../utils/journalAnalytics';
 import { computeSetupStats } from '../../utils/setupStats';
 import SetupStatsTable from './SetupStatsTable';
+import TagMistakeStatsPanel from './TagMistakeStatsPanel';
 import StatCard from '../dashboard/StatCard';
 import StrategyPerformanceTable from '../dashboard/StrategyPerformanceTable';
 import MonthlyPerformanceTable from '../dashboard/MonthlyPerformanceTable';
@@ -243,6 +244,8 @@ export default function JournalAnalyticsTab({
               </div>
             )}
           </div>
+
+          <TagMistakeStatsPanel trades={periodTrades} onFilterJump={onFilterJump} />
 
           <SetupStatsTable stats={setupStats} onSetupClick={(name) => onFilterJump({ setup: name })} />
 

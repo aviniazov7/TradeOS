@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { computeMistakeStats, computeTagStats, mistakeLabel, tagLabel } from './tagMistakeStats';
+import { computeMistakeStats, computeTagStats, mistakeLabel, tagLabel, tradeHasMistake } from './tagMistakeStats';
 
 const closed = (over) => ({
   status: 'closed',
@@ -89,5 +89,11 @@ describe('computeMistakeStats', () => {
     expect(stats.find((row) => row.id === 'moved_sl')).toMatchObject({
       label: 'הזזת סטופ לוס', count: 1, pnl: -12,
     });
+  });
+
+  it('matches a mistake id only when the field is a list', () => {
+    expect(tradeHasMistake(closed({ mistakes: [' early_exit '] }), 'early_exit')).toBe(true);
+    expect(tradeHasMistake(closed({ mistakes: 'early_exit' }), 'early_exit')).toBe(false);
+    expect(tradeHasMistake(closed({ mistakes: ['moved_sl'] }), 'early_exit')).toBe(false);
   });
 });
