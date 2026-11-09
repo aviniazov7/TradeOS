@@ -41,6 +41,7 @@ PR של פיצ'ר  →  dev  →  בדיקה ב-staging  →  PR ‏dev→main (
 - staging נבדק על מה שנכנס מאז השחרור הקודם.
 - אין סודות ב-diff.
 - שינוי כללי Firestore, מיגרציה, או כתיבה לנתוני פרודקשן מסומנים בנפרד ודורשים אישור נפרד מאברהם. אישור השחרור לא מכסה אותם.
+- ניהול עסק: לפרסם קודם את כללי `users/{uid}/businessEntries` לפרודקשן, ורק אחרי שהפרסום הצליח להפוך את `BUSINESS_LEDGER_FIRESTORE_ENABLED` ב-`src/services/businessLedgerStore.js` ל-`true`. כל עוד הדגל `false` העמוד נשאר על דמו ולא קורא ולא כותב ל-Firestore. אסור להדליק את הדגל לפני פרסום הכללים.
 - סודות ה-Worker לא השתנו, או שהשינוי רשום במפורש.
 - תוכנית חזרה: `git revert` של ה-merge commit על `main` (בלי force push), ואז Rollback ל-release הקודם ב-Firebase Hosting. ה-Worker חוזר לפריסה של הקומיט הקודם על `main`. `CACHE_NAME` שכבר עלה לא מורידים ידנית.
 

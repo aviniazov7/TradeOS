@@ -281,6 +281,17 @@ service cloud.firestore {
           && isBoundedDoc(request.resource.data);
         allow delete: if request.auth != null && request.auth.uid == userId;
       }
+      match /businessEntries/{entryId} {
+        // Owner-only cash book (challenge fees, resets, payouts). Same privacy
+        // as the mental journal: admins do not read it. The field list is
+        // closed so a row cannot carry trading profit or an unbounded blob.
+        // Rules are in the repo only until a release publishes them. The
+        // client flag BUSINESS_LEDGER_FIRESTORE_ENABLED stays false until then.
+        allow read: if request.auth != null && request.auth.uid == userId;
+        allow create, update: if request.auth != null && request.auth.uid == userId
+          && isValidBusinessEntry(request.resource.data);
+        allow delete: if request.auth != null && request.auth.uid == userId;
+      }
       match /processes/{processId} {
         allow read: if request.auth != null && (request.auth.uid == userId || isAdmin());
         allow create, update: if request.auth != null && request.auth.uid == userId
@@ -560,6 +571,36 @@ service cloud.firestore {
     // megablob documents, not enforcing a strict schema.
     function isBoundedDoc(data) {
       return data.size() < 60;
+    }
+
+    // Prop-firm cash row. Exact keys, bounded values, and the field-count
+    // cap. cashOnly is true only for payout and withdrawal. journalId is a
+    // pointer or null, never a copy of journal profit (those keys are absent
+    // because they are not in the allowlist).
+    function isValidBusinessEntry(data) {
+      return isBoundedDoc(data)
+        && data.keys().hasOnly(['kind', 'category', 'amount', 'currency', 'date', 'month', 'journalId', 'note', 'cashOnly'])
+        && data.keys().hasAll(['kind', 'category', 'amount', 'currency', 'date', 'month', 'journalId', 'note', 'cashOnly'])
+        && data.kind in ['income', 'expense']
+        && data.category in ['challenge_fee', 'reset', 'subscription', 'payout', 'withdrawal', 'other']
+        && data.currency in ['USD', 'ILS', 'USDT']
+        && data.amount is number
+        && data.amount > 0
+        && data.amount <= 1000000000000
+        && data.date is string
+        && data.date.matches('^[0-9]{4}-(0[1-9]|1[0-2])-(0[1-9]|[12][0-9]|3[01])$')
+        && data.month is string
+        && data.month.matches('^[0-9]{4}-(0[1-9]|1[0-2])$')
+        && data.date.matches('^' + data.month + '-(0[1-9]|[12][0-9]|3[01])$')
+        && (data.journalId == null
+          || (data.journalId is string
+            && data.journalId.size() > 0
+            && data.journalId.size() <= 128
+            && data.journalId.matches('^[^\\r\\n]+$')))
+        && data.note is string
+        && data.note.size() <= 160
+        && data.cashOnly is bool
+        && data.cashOnly == (data.category in ['payout', 'withdrawal']);
     }
 
     // Leaderboard entry validation. Must match the exact shape the client
