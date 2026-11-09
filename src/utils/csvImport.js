@@ -6,6 +6,7 @@
 // with a misleading "no permission" error.
 
 import { CFD_INSTRUMENTS, DEFAULT_LEVERAGE, FUTURES_CONTRACTS } from './constants';
+import { customFromCsvRow } from './customTradeFields';
 
 // Header aliases per field, in PRIORITY order: when a file has two columns
 // that both fit a field, the earlier alias wins (e.g. gross P&L over net).
@@ -276,7 +277,7 @@ export function mappingHasSize(mapping = {}) {
  *
  * @param {object[]} rows      parsed rows (header → cell)
  * @param {object}   mapping   field → header
- * @param {object}   opts      { assetClass, existingTrades, now }
+ * @param {object}   opts      { assetClass, existingTrades, now, customFields }
  * @returns {{ trades: object[], skipped: {index:number, reason:string}[],
  *             counts: Record<string, number>, estimatedSize: number }}
  *
@@ -387,6 +388,8 @@ export function buildImportTrades(rows = [], mapping = {}, opts = {}) {
       status,
       source: 'csv_import',
     };
+    const custom = customFromCsvRow(row, opts.customFields);
+    if (custom) trade.custom = custom;
     // Only rows with a real entry date can be recognised again on re-import.
     if (parsedEntry) {
       const key = importKeyOf(trade);

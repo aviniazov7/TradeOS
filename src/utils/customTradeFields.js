@@ -204,6 +204,78 @@ export function sanitizeCustomMap(raw, defs) {
   return Object.keys(out).length ? out : null;
 }
 
+function definedFields(defs) {
+  if (Array.isArray(defs)) return normalizeCustomFieldsDoc({ fields: defs, seq: 0 }).fields;
+  return normalizeCustomFieldDefs(defs);
+}
+
+function previousCustomValue(previous, id) {
+  if (!previous || typeof previous !== 'object' || Array.isArray(previous)) return undefined;
+  const value = previous[id];
+  if (typeof value === 'number' && Number.isFinite(value)) return String(value);
+  if (typeof value === 'string') return value.trim();
+  return undefined;
+}
+
+/**
+ * Public API / MCP `custom`. Unknown ids and values that do not match the
+ * caller's field definitions are rejected. An empty object clears the map.
+ * A select value that is no longer an option is kept only when it is the
+ * value already stored on the trade.
+ */
+export function validateApiCustom(raw, defs, previous) {
+  if (raw == null) return { ok: true, custom: null };
+  if (typeof raw !== 'object' || Array.isArray(raw)) {
+    return { ok: false, error: 'custom must be an object' };
+  }
+  const fields = definedFields(defs);
+  const byId = new Map(fields.map((field) => [field.id, field]));
+  const out = {};
+  for (const [key, value] of Object.entries(raw)) {
+    const field = byId.get(key);
+    if (!field) return { ok: false, error: `custom.${key} is not a defined field` };
+    if (value == null || value === '') continue;
+    const coerced = coerceValue(value, field);
+    if (coerced == null) {
+      const limit = field.type === 'number' ? 'a number' : `a string of at most ${field.type === 'select' ? CUSTOM_OPTION_MAX : CUSTOM_TEXT_MAX} characters`;
+      return { ok: false, error: `custom.${key} must be ${limit}` };
+    }
+    if (field.type === 'select' && !field.options.includes(coerced) && coerced !== previousCustomValue(previous, key)) {
+      return { ok: false, error: `custom.${key} must be one of the field options` };
+    }
+    out[key] = coerced;
+  }
+  return { ok: true, custom: Object.keys(out).length ? out : null };
+}
+
+/** CSV column for one defined field. The prefix keeps it off the built-in headers. */
+export function customCsvHeader(field) {
+  return `שדה: ${field?.name || ''}`;
+}
+
+/** Answers from an exported row. Unknown columns and values that do not match a definition are left out. */
+export function customFromCsvRow(row, defs) {
+  const fields = definedFields(defs);
+  if (!row || typeof row !== 'object' || !fields.length) return null;
+  const raw = {};
+  for (const field of fields) {
+    const header = customCsvHeader(field);
+    if (!Object.prototype.hasOwnProperty.call(row, header)) continue;
+    const cell = row[header];
+    if (cell == null || String(cell).trim() === '') continue;
+    raw[field.id] = cell;
+  }
+  const cleaned = sanitizeCustomMap(raw, fields);
+  if (!cleaned) return null;
+  const out = {};
+  for (const field of fields) {
+    if (!Object.prototype.hasOwnProperty.call(cleaned, field.id)) continue;
+    if (field.type === 'select' && !field.options.includes(cleaned[field.id])) continue;
+    out[field.id] = cleaned[field.id];
+  }
+  return Object.keys(out).length ? out : null;
+}
+
 /** Controlled input strings for the trade form. Missing answers are ''. */
 export function customFormState(raw, defs) {
   const cleaned = sanitizeCustomMap(raw, defs) || {};

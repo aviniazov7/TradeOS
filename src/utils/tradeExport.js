@@ -3,6 +3,7 @@
 // (asset class, units, exits, gross vs net P&L, signed R, original stop).
 
 import { isClosedTrade } from './calculations';
+import { customCsvHeader, readCustomValue } from './customTradeFields';
 import { tradeSetups } from './setupStats';
 import { formatDateTime } from './formatters';
 
@@ -68,11 +69,21 @@ export const JOURNAL_CSV_HEADERS = [
 ];
 
 /**
- * One journal CSV row per trade, aligned with JOURNAL_CSV_HEADERS. Numbers
- * stay numbers (the CSV writer keeps negatives numeric for Excel); dates are
- * local dd/MM/yyyy HH:mm, which the CSV import reads back.
+ * Built-in columns, then one `שדה: <name>` column per defined custom field.
+ * No definitions means the original header list, so an older file still lines up.
  */
-export function journalCsvRow(t) {
+export function journalCsvHeaders(defs = []) {
+  const extra = (Array.isArray(defs) ? defs : []).map(customCsvHeader);
+  return extra.length ? [...JOURNAL_CSV_HEADERS, ...extra] : JOURNAL_CSV_HEADERS;
+}
+
+/**
+ * One journal CSV row per trade, aligned with journalCsvHeaders(defs). Numbers
+ * stay numbers (the CSV writer keeps negatives numeric for Excel); dates are
+ * local dd/MM/yyyy HH:mm, which the CSV import reads back. Trades without
+ * `custom` leave the extra cells empty.
+ */
+export function journalCsvRow(t, defs = []) {
   const entry = toDate(t.entryDate);
   const exit = toDate(t.exitDate);
   const net = netOf(t);
@@ -94,5 +105,9 @@ export function journalCsvRow(t) {
     t.timeframe || '', statusLabel(t), t.source || 'manual', t.entryReason || '', t.notes || '',
     list(t.tags), t.emotionBefore || '', t.emotionAfter || '', list(t.mistakes), t.confidenceRating ?? '',
     tradeSetups(t).join(' | '),
+    ...(Array.isArray(defs) ? defs : []).map((field) => {
+      const value = readCustomValue(t, field);
+      return value == null ? '' : value;
+    }),
   ];
 }

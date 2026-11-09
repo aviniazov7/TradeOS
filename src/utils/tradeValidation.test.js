@@ -59,12 +59,36 @@ describe('prepareApiTrade', () => {
   });
 
   it('drops unknown fields so callers cannot set derived pnl', () => {
-    const out = prepareApiTrade({ ...base, pnl: 9999, netPnl: 9999, role: 'admin', custom: { f1: 'secret' } });
+    const out = prepareApiTrade({ ...base, pnl: 9999, netPnl: 9999, role: 'admin' });
     expect(out.ok).toBe(true);
     expect(out.trade.pnl).toBeUndefined();
     expect(out.trade.role).toBeUndefined();
     expect(out.trade.custom).toBeUndefined();
-    expect(inspectApiTradePatch({ custom: { f1: 'secret' } }).ok).toBe(false);
+    expect(inspectApiTradePatch({ pnl: 1 }).ok).toBe(false);
+  });
+
+  it('accepts custom answers that match the defined fields and rejects the rest', () => {
+    const customFields = [
+      { id: 'f1', name: 'סשן', type: 'select', options: ['לונדון', 'ניו יורק'] },
+      { id: 'f2', name: 'ציון', type: 'number' },
+    ];
+    const rejected = prepareApiTrade({ ...base, custom: { f1: 'secret' } });
+    expect(rejected.ok).toBe(false);
+    expect(rejected.error).toMatch(/custom\.f1/);
+    expect(prepareApiTrade({ ...base, custom: { f9: 'x' } }, { customFields }).ok).toBe(false);
+    expect(prepareApiTrade({ ...base, custom: { f1: 'אסיה' } }, { customFields }).error).toMatch(/options/);
+    const out = prepareApiTrade({ ...base, custom: { f1: 'לונדון', f2: '2', extra: true } }, { customFields });
+    expect(out.ok).toBe(false);
+    const ok = prepareApiTrade({ ...base, custom: { f1: 'לונדון', f2: '2' } }, { customFields });
+    expect(ok.ok).toBe(true);
+    expect(ok.trade.custom).toEqual({ f1: 'לונדון', f2: 2 });
+    expect(prepareApiTrade({ ...base, custom: {} }, { customFields }).trade.custom).toBeNull();
+    expect(inspectApiTradePatch({ custom: { f1: 'לונדון' } }).ok).toBe(true);
+    const kept = prepareApiTrade(
+      { ...base, custom: { f1: 'אסיה', f2: 2 } },
+      { customFields, previousCustom: { f1: 'אסיה' }, customSent: true },
+    );
+    expect(kept.trade.custom).toEqual({ f1: 'אסיה', f2: 2 });
   });
 
   it('ignores pnlFromExchange from a public API client', () => {

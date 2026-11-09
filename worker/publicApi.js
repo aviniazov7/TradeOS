@@ -5,6 +5,7 @@
 // Durable Object. The pre-auth key-hash window stays on the edge counter
 // because the uid is not known yet. A request never writes KV just to be counted.
 
+import { normalizeCustomFieldDefs } from '../src/utils/customTradeFields.js';
 import { buildStoredTrade, withDerivedRiskAmount } from '../src/utils/tradeDoc.js';
 import { inspectApiTradePatch, prepareApiTrade, storedTradeInput } from '../src/utils/tradeValidation.js';
 import { computeApiStats } from '../src/utils/apiStats.js';
@@ -52,6 +53,15 @@ async function fsFetch(fetchFn, token, url, init = {}) {
     },
   });
   return res;
+}
+
+async function loadCustomFieldDefs(ctx) {
+  const doc = await readDoc(
+    ctx.fetchFn,
+    ctx.auth.admin,
+    `${ctx.base}/documents/users/${ctx.auth.uid}/settings/customTradeFields`,
+  );
+  return normalizeCustomFieldDefs(doc?.data);
 }
 
 async function readDoc(fetchFn, token, url) {
@@ -242,7 +252,14 @@ export async function createTrade(request, ctx) {
     if (!resolved.ok) return json(cors, resolved.status, { error: resolved.error });
     body = { ...body, journalId: resolved.journalId };
   }
-  const prepared = prepareApiTrade(body);
+  let customFields;
+  try {
+    customFields = await loadCustomFieldDefs(ctx);
+  } catch (err) {
+    console.error('custom fields read failed', err?.message || err);
+    return json(cors, 502, { error: 'failed to read custom fields' });
+  }
+  const prepared = prepareApiTrade(body, { customFields });
   if (!prepared.ok) return json(cors, 400, { error: prepared.error });
 
   const idem = request.headers.get('Idempotency-Key');
@@ -645,6 +662,7 @@ export async function updateTrade(tradeId, request, ctx) {
   const inspected = inspectApiTradePatch(body);
   if (!inspected.ok) return json(cors, 400, { error: inspected.error });
 
+  const customSent = Object.prototype.hasOwnProperty.call(body, 'custom');
   const patch = { ...body };
   delete patch.journal;
   const sentJournal = Object.prototype.hasOwnProperty.call(body, 'journal');
@@ -658,7 +676,17 @@ export async function updateTrade(tradeId, request, ctx) {
     patch.journalId = resolved.journalId;
   }
 
-  const prepared = prepareApiTrade({ ...storedTradeInput(existing.data), ...patch });
+  let customFields;
+  try {
+    customFields = await loadCustomFieldDefs(ctx);
+  } catch (err) {
+    console.error('custom fields read failed', err?.message || err);
+    return json(cors, 502, { error: 'failed to read custom fields' });
+  }
+  const prepared = prepareApiTrade(
+    { ...storedTradeInput(existing.data), ...patch },
+    { customFields, previousCustom: existing.data.custom, customSent },
+  );
   if (!prepared.ok) return json(cors, 400, { error: prepared.error });
 
   const now = nowDate(ctx);
@@ -670,8 +698,9 @@ export async function updateTrade(tradeId, request, ctx) {
   stored.updatedAt = now;
   if (existing.data.pnlFromExchange != null) stored.pnlFromExchange = null;
 
+  const clearCustom = existing.data.custom != null && stored.custom == null;
   try {
-    await patchDoc(ctx, tradeUrl, stored);
+    await patchDoc(ctx, tradeUrl, stored, clearCustom ? { deleteFields: ['custom'] } : undefined);
   } catch (err) {
     console.error('trade update failed', err?.message || err);
     return json(cors, 502, { error: 'failed to write trade' });
@@ -811,11 +840,14 @@ async function deleteDoc(ctx, url) {
   await fsFetch(ctx.fetchFn, ctx.auth.admin, url, { method: 'DELETE' }).catch(() => {});
 }
 
-async function patchDoc(ctx, url, fields) {
-  const mask = Object.keys(fields).map((name) => `updateMask.fieldPaths=${encodeURIComponent(name)}`).join('&');
+async function patchDoc(ctx, url, fields, { deleteFields = [] } = {}) {
+  const body = { ...fields };
+  for (const name of deleteFields) delete body[name];
+  const names = [...new Set([...Object.keys(body), ...deleteFields])];
+  const mask = names.map((name) => `updateMask.fieldPaths=${encodeURIComponent(name)}`).join('&');
   const res = await fsFetch(ctx.fetchFn, ctx.auth.admin, `${url}?${mask}`, {
     method: 'PATCH',
-    body: JSON.stringify({ fields: encodeFields(fields) }),
+    body: JSON.stringify({ fields: encodeFields(body) }),
   });
   if (!res.ok) {
     const err = new Error(`firestore ${res.status}`);

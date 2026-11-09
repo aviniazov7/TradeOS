@@ -1,3 +1,4 @@
+import { sanitizeCustomMap, validateApiCustom } from './customTradeFields';
 import { tradeSetups } from './setupStats';
 import { TRADINGVIEW_URL_RE } from './tradingViewLink';
 
@@ -23,7 +24,7 @@ const ALLOWED_FIELDS = [
   'entryReason', 'notes', 'emotionBefore', 'emotionAfter', 'mistakes',
   'session', 'tradingViewUrls', 'source', 'focusRating', 'planAdherenceRating',
   'stressRating', 'confidenceRating', 'assetClass', 'contract',
-  'externalId',
+  'externalId', 'custom',
 ];
 
 const NUMERIC = [
@@ -66,12 +67,13 @@ function shortText(v, max) {
  * Returns { ok: true, trade } or { ok: false, error }.
  * Derived pnl / positionSize are NOT applied here.
  */
-export function prepareApiTrade(body) {
+export function prepareApiTrade(body, { customFields, previousCustom, customSent } = {}) {
   if (!body || typeof body !== 'object' || Array.isArray(body)) {
     return { ok: false, error: 'JSON object body is required' };
   }
   const src = {};
   for (const key of ALLOWED_FIELDS) {
+    if (key === 'custom') continue;
     if (Object.prototype.hasOwnProperty.call(body, key)) src[key] = body[key];
   }
 
@@ -234,6 +236,20 @@ export function prepareApiTrade(body) {
   if (!(Number(src.originalStopLoss) > 0)) src.originalStopLoss = src.stopLoss || 0;
   if (!src.source) src.source = 'manual';
   src.journalId = journalId;
+
+  // `custom` is optional. A body that omits it leaves the key off this
+  // payload. A carried stored map (customSent: false) is reduced to the
+  // current field definitions. A map the caller sent is rejected unless
+  // every id and value matches those definitions.
+  if (Object.prototype.hasOwnProperty.call(body, 'custom')) {
+    if (customSent === false) {
+      src.custom = sanitizeCustomMap(body.custom, customFields || []) || null;
+    } else {
+      const checked = validateApiCustom(body.custom, customFields, previousCustom);
+      if (!checked.ok) return checked;
+      src.custom = checked.custom;
+    }
+  }
 
   // Exchange imports set pnlFromExchange before computeTradeFields on the
   // in-app path and do not call prepareApiTrade. A public API or MCP client

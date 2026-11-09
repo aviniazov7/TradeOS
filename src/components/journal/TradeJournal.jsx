@@ -39,7 +39,7 @@ import ExchangeProposals from './ExchangeProposals';
 import JournalSkeleton from './JournalSkeleton';
 import JournalFormModal from './JournalFormModal';
 import { downloadCsv } from '../../utils/csv';
-import { JOURNAL_CSV_HEADERS, journalCsvRow } from '../../utils/tradeExport';
+import { journalCsvHeaders, journalCsvRow } from '../../utils/tradeExport';
 import { TAG_LABELS } from '../../utils/constants';
 import { tradeHasMistake } from '../../utils/tagMistakeStats';
 import { tradeMatchesCustom } from '../../utils/customTradeFields';
@@ -607,7 +607,8 @@ export default function TradeJournal() {
     // units per asset class, exits, gross + net P&L, fees, signed R, original
     // stop. downloadCsv writes a UTF-8 BOM (Excel renders Hebrew), escapes
     // cells, neutralises formula injection and keeps negative numbers numeric.
-    downloadCsv(`trades_${localDayKey(new Date())}.csv`, JOURNAL_CSV_HEADERS, sortedTrades.map(journalCsvRow));
+    const headers = journalCsvHeaders(customFields);
+    downloadCsv(`trades_${localDayKey(new Date())}.csv`, headers, sortedTrades.map((trade) => journalCsvRow(trade, customFields)));
     toast.success('הקובץ הורד');
   };
 
@@ -919,7 +920,7 @@ export default function TradeJournal() {
       <Suspense fallback={null}>
         {importMounted && (
           <ImportTrades isOpen={importOpen} onClose={() => setImportOpen(false)} onImport={addTrade} onImportBulk={addTradesBulk}
-            assetClass={activeJournal?.assetClass || 'crypto'} existingTrades={trades} />
+            assetClass={activeJournal?.assetClass || 'crypto'} existingTrades={trades} customFields={customFields} />
         )}
       </Suspense>
       <Suspense fallback={null}>

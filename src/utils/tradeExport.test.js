@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { JOURNAL_CSV_HEADERS, journalCsvRow, exitsSummary, grossPnl, signedR, tradeUnits } from './tradeExport';
+import { JOURNAL_CSV_HEADERS, journalCsvHeaders, journalCsvRow, exitsSummary, grossPnl, signedR, tradeUnits } from './tradeExport';
 import { toCsv } from './csv';
 import { parseCSV, autoMapColumns, buildImportTrades } from './csvImport';
 
@@ -59,6 +59,29 @@ describe('journal CSV export', () => {
     const { trades } = buildImportTrades(rows, autoMapColumns(headers), { assetClass: 'crypto' });
     expect(trades).toHaveLength(1);
     expect(trades[0]).toMatchObject({ pair: 'BTCUSDT', quantity: 0.1, entryPrice: 50000, exitPrice: 51000, fees: 2, pnlFromExchange: 100, stopLoss: 49500 });
+    expect(trades[0].custom).toBeUndefined();
     expect(trades[0].entryDate.getHours()).toBe(10);
+  });
+
+  it('appends defined custom fields and round-trips them without changing a file that has none', () => {
+    const defs = [
+      { id: 'f1', name: 'סשן', type: 'text' },
+      { id: 'f2', name: 'ציון', type: 'number' },
+    ];
+    expect(journalCsvHeaders([])).toBe(JOURNAL_CSV_HEADERS);
+    expect(journalCsvRow(crypto)).toHaveLength(JOURNAL_CSV_HEADERS.length);
+    const headers = journalCsvHeaders(defs);
+    const row = journalCsvRow({ ...crypto, custom: { f1: 'לונדון, בוקר', f2: 2 } }, defs);
+    expect(row).toHaveLength(headers.length);
+    expect(row[headers.indexOf('שדה: סשן')]).toBe('לונדון, בוקר');
+    expect(row[headers.indexOf('שדה: ציון')]).toBe(2);
+    const csv = toCsv(headers, [row]);
+    expect(csv).toContain('"לונדון, בוקר"');
+    const parsed = parseCSV(csv);
+    const imported = buildImportTrades(parsed.rows, autoMapColumns(parsed.headers), { assetClass: 'crypto', customFields: defs });
+    expect(imported.trades[0].custom).toEqual({ f1: 'לונדון, בוקר', f2: 2 });
+    const plain = buildImportTrades(parsed.rows, autoMapColumns(parsed.headers), { assetClass: 'crypto' });
+    expect(plain.trades[0].custom).toBeUndefined();
+    expect(plain.trades[0].pair).toBe('BTCUSDT');
   });
 });
