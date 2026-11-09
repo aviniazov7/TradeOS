@@ -124,6 +124,29 @@ Pass `cursor` from the previous response to read the next page. A list with no e
 
 Agents can call the same operations over MCP. See [MCP.md](./MCP.md).
 
+## PATCH /api/v1/trades/{id}
+
+Updates one trade the key owns. The id is read under `users/{uid}/trades/{id}`, so a missing id and another user's id are both `404` (`trade not found`). Nothing in the body is applied in that case. `..` and a slash in the id are `400` (`invalid trade id`).
+
+The body is a JSON object with at least one field. `{}` is `400` (`body must include at least one field`). Only fields `POST /api/v1/trades` accepts are editable, including the `journal` alias. `id` and `createdAt` are immutable (`400`, `<field> is immutable`). Derived fields (`pnl`, `netPnl`, `pnlPercent`, `rrRatio`, `result`, `positionSize`, `margin`, `updatedAt`, `pnlFromExchange`) and any other key are `400` (`<field> is not editable`). Types and ranges are the same checks as create. A field you omit is left as stored.
+
+The Worker merges the patch onto the stored trade, validates that merged trade the same way as create, and rewrites `pnl`, `netPnl`, `pnlPercent`, `rrRatio`, `result`, `positionSize`, and `margin`. `riskAmount` is derived again when the merged value is omitted or 0. `updatedAt` is the time of this write. `createdAt` stays the stored timestamp, even when `entryDate` changes. A stored `pnlFromExchange` is cleared so later reads use the price-based P&L. The update is one Firestore write. If that write fails, the trade is unchanged (`502`, `failed to write trade`).
+
+`journalId` or `journal` moves the trade only when that journal is yours. A journal that is not yours is `404`. When both are sent, they must name the same journal.
+
+```bash
+curl -s -X PATCH https://trade-os.tradeos.workers.dev/api/v1/trades/TRADE_ID \
+  -H "Authorization: Bearer $API_KEY" \
+  -H "Content-Type: application/json" \
+  -d '{"exitPrice":120,"fees":1}'
+```
+
+```json
+{ "id": "TRADE_ID", "trade": { "id": "TRADE_ID", "pair": "BTCUSDT", "exitPrice": 120, "netPnl": 39, "updatedAt": "2026-06-16T12:00:00.000Z" } }
+```
+
+The response is `200` and the trade object has the same shape as `POST`.
+
 ## DELETE /api/v1/trades/{id}
 
 Deletes one trade. The id is read under `users/{uid}/trades/{id}`, so another user's trade is `404`, not deleted. A second delete of the same id is `404`. `..` and a slash in the id are `400`.
