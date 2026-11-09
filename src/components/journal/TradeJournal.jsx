@@ -24,6 +24,7 @@ import { useStockQuotes } from '../../hooks/useStockQuotes';
 import { stockSymbol } from '../../utils/stocks';
 import { headerPrimaryBtn, headerAiBtnDense, headerIconBtnDense, headerPlusBtnDense } from '../shared/headerStyles';
 import JournalSummaryBar from './JournalSummaryBar';
+import DailyLossBanner from './DailyLossBanner';
 import TradeTable from './TradeTable';
 import TradeFilters from './TradeFilters';
 import TimePeriodFilter from '../dashboard/TimePeriodFilter';
@@ -665,6 +666,14 @@ export default function TradeJournal() {
         )}
       />
 
+      {!showingDemo && (
+        <DailyLossBanner
+          alert={activeJournal?.dailyLossAlert}
+          trades={realTrades.filter((t) => !pendingDeletes.has(t.id))}
+          journalId={activeJournalId}
+        />
+      )}
+
       {tab === 'trades' && (
         <>
           {isStockJournal && <StockMarketPanel trades={trades} quotes={stockQuotes} />}
@@ -890,6 +899,7 @@ export default function TradeJournal() {
         {settingsMounted && (
           <JournalSettingsModal
             isOpen={settingsOpen}
+            demoActive={showingDemo}
             onClose={() => setSettingsOpen(false)}
             onArchive={(name) => { setArchiveTargetName(name); setArchiveAnimating(true); }}
             onImport={() => setImportOpen(true)}

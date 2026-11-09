@@ -9,13 +9,16 @@ import { isUnsetExchange } from '../../utils/constants';
 import PropFirmSettings from '../propfirm/PropFirmSettings';
 import { propFirmToForm, formToPropFirm } from '../propfirm/propFirmForm';
 import { normalizeCommissions } from '../../utils/tradeFormHelpers';
+import { dailyLossAlertPatch } from '../../utils/dailyLossAlert';
 
-export default function JournalSettingsModal({ isOpen, onClose, onArchive, onImport, onExport, canExport }) {
+export default function JournalSettingsModal({ isOpen, onClose, onArchive, onImport, onExport, canExport, demoActive = false }) {
   const { journals, activeJournal, activeJournalId, updateJournal, deleteJournal, archiveJournal } = useJournalContext();
   const [form, setForm] = useState({ name: '', exchange: '', initialBalance: '', currency: 'USDT', description: '', riskType: 'percent', riskValue: '', assetClass: 'crypto' });
   const [propForm, setPropForm] = useState(() => propFirmToForm(null));
   // Commission presets (string inputs; normalized on save). See the "עמלות" section.
   const [commissions, setCommissions] = useState({});
+  const [alertEnabled, setAlertEnabled] = useState(false);
+  const [alertAmount, setAlertAmount] = useState('');
   const [saving, setSaving] = useState(false);
   const [deleteOpen, setDeleteOpen] = useState(false);
   const [archiveOpen, setArchiveOpen] = useState(false);
@@ -34,6 +37,9 @@ export default function JournalSettingsModal({ isOpen, onClose, onArchive, onImp
       });
       setPropForm(propFirmToForm(activeJournal.propFirm));
       setCommissions(Object.fromEntries(Object.entries(activeJournal.commissions || {}).map(([k, v]) => [k, v ? String(v) : ''])));
+      const alert = activeJournal.dailyLossAlert;
+      setAlertEnabled(alert?.enabled === true);
+      setAlertAmount(alert?.amount > 0 ? String(alert.amount) : '');
     }
   }, [activeJournal, isOpen]);
 
@@ -45,6 +51,18 @@ export default function JournalSettingsModal({ isOpen, onClose, onArchive, onImp
       toast.error('הזינו גודל חשבון לחשבון הפרופ');
       return;
     }
+    if (alertEnabled && !(Number(alertAmount) > 0)) toast.error('הזינו סכום להתראת ההפסד היומי');
+    const alertPatch = dailyLossAlertPatch(activeJournal?.dailyLossAlert, {
+      enabled: alertEnabled,
+      amount: alertAmount,
+    });
+    const storedAlert = activeJournal?.dailyLossAlert;
+    const alertChanged = !!alertPatch && (
+      alertPatch.enabled !== storedAlert?.enabled
+      || alertPatch.amount !== (storedAlert?.amount ?? null)
+    );
+    if (demoActive && alertChanged) toast('במצב דמו ההתראה לא נשמרת.');
+    const alertWrite = demoActive ? undefined : alertPatch;
     setSaving(true);
     try {
       await updateJournal(activeJournalId, {
@@ -61,6 +79,7 @@ export default function JournalSettingsModal({ isOpen, onClose, onArchive, onImp
         // so turning it back on restores them.
         ...(propFirm.enabled || activeJournal?.propFirm ? { propFirm } : {}),
         commissions: normalizeCommissions(commissions),
+        ...(alertWrite ? { dailyLossAlert: alertWrite } : {}),
       });
       toast.success('היומן עודכן');
       onClose();
@@ -162,6 +181,34 @@ export default function JournalSettingsModal({ isOpen, onClose, onArchive, onImp
               onChange={(e) => setForm((f) => ({ ...f, riskValue: e.target.value }))}
               className={inputClass}
               placeholder={form.riskType === 'percent' ? 'למשל: 1' : 'למשל: 50'} />
+          </div>
+
+          <div className="rounded-xl border border-border-primary p-3 space-y-2">
+            <label className="flex items-center justify-between gap-3 cursor-pointer">
+              <span className="text-xs font-semibold text-text-primary">התראת הפסד יומי</span>
+              <input
+                type="checkbox"
+                checked={alertEnabled}
+                onChange={(e) => setAlertEnabled(e.target.checked)}
+                className="accent-loss"
+              />
+            </label>
+            <p className="text-[11px] text-text-muted">כשההפסד הנקי של היום מגיע לסכום, מופיע באנר. הרישום נשאר פתוח. לא משנה את תקרת התוכנית או את כללי הפרופ.</p>
+            {alertEnabled && (
+              <div>
+                <label className={labelClass}>הפסד יומי מקסימלי ($)</label>
+                <input
+                  type="number"
+                  min="0"
+                  step="any"
+                  inputMode="decimal"
+                  value={alertAmount}
+                  onChange={(e) => setAlertAmount(e.target.value)}
+                  className={inputClass}
+                  placeholder="למשל: 300"
+                />
+              </div>
+            )}
           </div>
 
           <PropFirmSettings value={propForm} onChange={setPropForm} />
