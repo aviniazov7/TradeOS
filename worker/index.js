@@ -58,6 +58,7 @@ import { NEWS_FEEDS, parseRssItems, handleNewsFeed } from './newsFeed.js';
 import { safeNotificationPath } from './pushNavigate.js';
 import { parseAltcoinSeasonIndex } from './altcoinSeason.js';
 import { handlePublicApi } from './publicApi.js';
+import { handleJournalShare, bindPendingJournalShares } from './journalShare.js';
 import { handleMcp } from './mcp.js';
 
 // Binance's public market-data mirror — api.binance.com returns 403 to
@@ -1316,13 +1317,63 @@ async function lookupAuthEmails(env, uids) {
   return out;
 }
 
+// Firebase Auth uid for an email address. An empty result is "no account",
+// not an error: the share route answers that case with one generic sentence.
+async function lookupAuthUidByEmail(env, email) {
+  const token = await getFirebaseAdminToken(env);
+  const res = await fetch('https://identitytoolkit.googleapis.com/v1/accounts:lookup', {
+    method: 'POST',
+    headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
+    body: JSON.stringify({ email: [email] }),
+  });
+  if (!res.ok) throw new Error(`auth lookup ${res.status}`);
+  const data = await res.json().catch(() => ({}));
+  const wanted = String(email || '').toLowerCase();
+  for (const user of data.users || []) {
+    if (typeof user?.email === 'string' && user.email.toLowerCase() === wanted
+      && typeof user.localId === 'string' && UID_RE.test(user.localId)) {
+      return user.localId;
+    }
+  }
+  return null;
+}
+
 // Email claim from a token verifyFirebaseToken already accepted.
 function emailFromVerifiedToken(token) {
+  const claims = verifiedEmailClaims(token);
+  return claims?.email && claims.email.includes('@') ? claims.email : null;
+}
+
+function verifiedEmailClaims(token) {
   try {
     const payload = JSON.parse(atob(String(token).split('.')[1].replace(/-/g, '+').replace(/_/g, '/')));
-    return typeof payload.email === 'string' && payload.email.includes('@') ? payload.email : null;
+    const email = typeof payload.email === 'string' ? payload.email : '';
+    return { email, emailVerified: payload.email_verified === true };
   } catch {
     return null;
+  }
+}
+
+// Any signed-in Worker call binds pending journal shares for that verified
+// email. Unverified addresses and token failures do nothing.
+async function bindSharesOnVerifiedSession(request, env) {
+  if (!env?.ALERTS_KV) return;
+  const header = request.headers.get('Authorization') || '';
+  const match = /^Bearer\s+(\S+)\s*$/i.exec(header.trim());
+  if (!match) return;
+  try {
+    const uid = await verifyFirebaseToken(match[1]);
+    if (!uid) return;
+    const claims = verifiedEmailClaims(match[1]);
+    if (!claims?.emailVerified) return;
+    await bindPendingJournalShares(env.ALERTS_KV, {
+      uid,
+      email: claims.email,
+      emailVerified: true,
+      nowMs: Date.now(),
+    });
+  } catch (err) {
+    console.error('journal share bind', err?.message || err);
   }
 }
 
@@ -4188,7 +4239,7 @@ function corsHeadersFor(request) {
   const allowedOrigin = isAllowedOrigin(origin) ? origin : ALLOWED_ORIGINS[0];
   return {
     'Access-Control-Allow-Origin': allowedOrigin,
-    'Access-Control-Allow-Methods': 'GET, POST, DELETE, OPTIONS',
+    'Access-Control-Allow-Methods': 'GET, POST, PATCH, DELETE, OPTIONS',
     'Access-Control-Allow-Headers': 'Content-Type, Authorization, Idempotency-Key, MCP-Protocol-Version, Mcp-Session-Id',
     'Vary': 'Origin',
   };
@@ -4226,6 +4277,21 @@ async function handleRequest(request, env) {
 
   const cors = corsHeadersFor(request);
   if (request.method === 'OPTIONS') return new Response(null, { headers: cors });
+
+  await bindSharesOnVerifiedSession(request, env);
+
+  // Journal shares. The viewer token is the credential; the body is the
+  // filtered copy only. Owner routes use the Firebase token.
+  if (path === '/api/journal-shares' || path.startsWith('/api/journal-shares/')) {
+    return handleJournalShare(request, env, {
+      verifyFirebaseToken,
+      getAdminToken: () => getFirebaseAdminToken(env),
+      lookupAccountByEmail: (email) => lookupAuthUidByEmail(env, email),
+      durableBump: (objectName, key, windowSec) => durableBump(env, objectName, key, windowSec),
+      projectId: FIREBASE_PROJECT_ID,
+      cors,
+    });
+  }
 
   // Public REST API for agents. Auth is a per-user API key or a Firebase ID
   // token. Handled before the app routes so /api/v1 never falls through.
