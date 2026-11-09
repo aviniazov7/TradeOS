@@ -784,6 +784,13 @@ input[type="number"] {
     bottom: calc(env(safe-area-inset-bottom, 0px) + 80px + var(--push-nudge-clearance, 4.75rem));
   }
 
+  /* The page padding only clears the tab bar (10.5rem). The notifications
+     banner sits 80px up and, once it wraps on a 390px screen, covers the
+     last analytics cards. Pad by that offset plus the measured banner. */
+  html[data-push-nudge='open'] #app-scroll > main {
+    padding-bottom: calc(env(safe-area-inset-bottom, 0px) + 80px + var(--push-nudge-clearance, 7.5rem));
+  }
+
   /* The "connect exchange" chip hangs off the tab bar and shares the banner's
      band. -2.75rem is its resting -top-11; the extra 0.5rem is air. */
   html[data-push-nudge='open'] .mobile-connect-chip {
