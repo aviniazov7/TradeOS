@@ -4,6 +4,7 @@ import { AnimatePresence, m } from 'framer-motion';
 import {
   LayoutDashboard,
   BookOpen,
+  NotebookPen,
   FlaskConical,
   ClipboardList,
   Landmark,
@@ -27,6 +28,7 @@ import { useAuth } from '../../contexts/AuthContext';
 const navItems = [
   { key: 'home', to: '/', label: 'בית', icon: LayoutDashboard },
   { key: 'journal', to: '/journal', label: 'יומן מסחר', icon: BookOpen, match: ['/terminal'] },
+  { key: 'notebook', to: '/notebook', label: 'מחברת', icon: NotebookPen },
   { key: 'backtest', to: '/backtest', label: 'בקטסט', icon: FlaskConical },
   { key: 'plans', to: '/plans', label: 'תוכניות מסחר', icon: ClipboardList },
   { key: 'business', to: '/business', label: 'ניהול עסק', icon: Landmark },

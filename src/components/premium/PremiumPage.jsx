@@ -2,7 +2,7 @@ import { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { m } from 'framer-motion';
 import {
-  Crown, Check, Bot, BookOpen, Wallet, Link2, Bell, BarChart3, Sparkles, Ticket, Loader2, Image, Layers, Trophy, Briefcase,
+  Crown, Check, Bot, BookOpen, NotebookPen, Wallet, Link2, Bell, BarChart3, Sparkles, Ticket, Loader2, Image, Layers, Trophy, Briefcase,
   ShieldCheck, CalendarClock, Minus,
 } from 'lucide-react';
 import toast from 'react-hot-toast';
@@ -13,7 +13,7 @@ import { redeemCoupon } from '../../services/couponService';
 import { planExpiresMs } from '../../utils/premium';
 import PageHeader from '../shared/PageHeader';
 
-const ICONS = { Bot, BookOpen, Wallet, Link2, Bell, BarChart3, Sparkles, Image, Layers, Trophy, Briefcase };
+const ICONS = { Bot, BookOpen, NotebookPen, Wallet, Link2, Bell, BarChart3, Sparkles, Image, Layers, Trophy, Briefcase };
 
 // The four things that make the upgrade worth it, shown next to the price.
 const HIGHLIGHTS = [
