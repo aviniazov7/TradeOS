@@ -6,7 +6,7 @@
 // import client code — userData.test.js asserts the two lists are identical).
 export const USER_SUBCOLLECTIONS = [
   'trades', 'journals', 'backtests', 'backtestJournals', 'dca',
-  'tradingPlans', 'notes', 'strategies', 'morningJournals', 'eveningJournals', 'businessEntries',
+  'tradingPlans', 'notes', 'strategies', 'morningJournals', 'eveningJournals', 'businessEntries', 'notebookEntries',
   'processes', 'polymarketWatch', 'polymarketStrategies', 'settings',
   'tradeImages', 'apiKeys', 'apiIdempotency',
 ];

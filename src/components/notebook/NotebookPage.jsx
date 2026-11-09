@@ -24,6 +24,7 @@ import {
 } from '../../utils/notebook';
 import { buildNotebookDemoEntries } from '../../utils/notebookDemo';
 import {
+  NOTEBOOK_FIRESTORE_ENABLED,
   NOTEBOOK_STORAGE_MODE,
   createNotebookStore,
 } from '../../services/notebookStore';
@@ -38,6 +39,7 @@ import {
 const MotionDiv = m.div;
 
 const PURPOSE = 'כאן כותבים הערה חופשית ליום מסחר, לשבוע, לרעיון או ללקח. זה לא הערת עסקה ולא יומן הבוקר או הערב.';
+const SAVING_OFF = 'השמירה לחשבון עדיין לא מופעלת.';
 
 const fieldClass = 'w-full min-h-11 bg-bg-tertiary border border-border-primary rounded-lg px-3 py-2 text-sm text-text-primary outline-none focus:border-accent-primary transition-colors';
 const labelClass = 'block text-xs font-medium text-text-secondary mb-1';
@@ -203,6 +205,7 @@ export default function NotebookPage({
 
   const choices = notebookJournalOptions(journals, { demo, current: draft.journalName });
   const preview = renderNotebookBody(draft.body);
+  const savingOff = !NOTEBOOK_FIRESTORE_ENABLED && (demo || store.enabled === false);
 
   return (
     <MotionDiv
@@ -242,9 +245,15 @@ export default function NotebookPage({
         )}
       />
 
+      {savingOff && (
+        <p data-testid="notebook-storage-note" role="status" className="mb-4 rounded-xl border border-border-primary bg-bg-secondary px-3.5 py-3 text-sm text-text-secondary leading-relaxed">
+          {SAVING_OFF}
+        </p>
+      )}
+
       {demo && (
         <p data-testid="notebook-demo-flag" role="status" className="mb-4 rounded-xl border border-breakeven/30 bg-breakeven/10 px-3.5 py-3 text-sm text-text-primary leading-relaxed">
-          מצב דמו. אלה רשומות לדוגמה על המסך בלבד — השמירה לחשבון עדיין לא מופעלת.
+          מצב דמו. אלה רשומות לדוגמה על המסך בלבד — הן לא נשמרות בחשבון.
         </p>
       )}
 
@@ -255,7 +264,7 @@ export default function NotebookPage({
           icon={NotebookPen}
           title="המחברת ריקה"
           description={storageOff
-            ? `${PURPOSE} השמירה לחשבון עדיין לא מופעלת. אפשר לראות דוגמה מסומנת על המסך.`
+            ? `${PURPOSE} ${SAVING_OFF} אפשר לראות דוגמה מסומנת על המסך.`
             : PURPOSE}
           actionLabel={storageOff ? 'מצב דמו' : 'רשומה חדשה'}
           onAction={storageOff ? enterDemo : openNew}
