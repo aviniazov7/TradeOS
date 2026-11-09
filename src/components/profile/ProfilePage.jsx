@@ -26,6 +26,8 @@ import NotificationSettings from './NotificationSettings';
 import MarketingEmailToggle from './MarketingEmailToggle';
 import ContactDeveloper from './ContactDeveloper';
 import ApiKeysSection from './ApiKeysSection';
+import SettingsNav from './SettingsNav';
+import { SETTINGS_SECTIONS, visibleSettingsSection } from './settingsCatalog';
 import { planExpiresMs } from '../../utils/premium';
 
 /* global __APP_BUILD__, __APP_BUILD_DATE__ */
@@ -114,6 +116,8 @@ export default function ProfilePage() {
   const [leaderboardLoading, setLeaderboardLoading] = useState(true);
   // Which asset classes the user trades (default crypto for back-compat).
   const [assetClasses, setAssetClasses] = useState(['crypto']);
+  const [settingsSection, setSettingsSection] = useState('all');
+  const [settingsQuery, setSettingsQuery] = useState('');
 
   useEffect(() => {
     if (!user) return;
@@ -312,14 +316,21 @@ export default function ProfilePage() {
   };
 
   const inputClass = 'w-full bg-bg-tertiary border border-border-primary rounded-lg px-3 py-2.5 text-sm text-text-primary outline-none focus:border-accent-primary transition-colors';
+  const showSettings = (id) => visibleSettingsSection(id, { active: settingsSection, query: settingsQuery });
+  const settingsMatchCount = SETTINGS_SECTIONS.filter((section) => showSettings(section.id)).length;
+  const chooseSettings = (id) => {
+    setSettingsSection(id);
+    setSettingsQuery('');
+  };
 
   return (
     <m.div variants={pageVariants} initial="initial" animate="animate" exit="exit" transition={pageTransition}
       className="px-4 py-6">
-      <div className="max-w-lg mx-auto">
+      {/* Same settings, same order. The nav only filters or searches them. */}
+      <div className="max-w-lg lg:max-w-4xl mx-auto lg:grid lg:grid-cols-[13.5rem_minmax(0,32rem)] lg:justify-center lg:gap-x-8 lg:items-start">
 
       {/* Profile hero: the picture (tap to change), name, email, plan. */}
-      <div className="relative overflow-hidden bg-bg-secondary border border-border-primary rounded-2xl p-5 mb-2">
+      <div className="relative overflow-hidden bg-bg-secondary border border-border-primary rounded-2xl p-5 mb-2 lg:col-start-2 lg:row-start-1 lg:mb-0">
         <div aria-hidden className="absolute inset-0 pointer-events-none"
           style={{ background: 'radial-gradient(80% 140% at 100% 0%, rgba(37,99,235,0.14) 0%, transparent 60%)' }} />
         <div className="relative flex items-center gap-4">
@@ -393,6 +404,21 @@ export default function ProfilePage() {
         </div>
       </div>
 
+      <div className="lg:col-start-1 lg:row-start-1 lg:row-span-2">
+        <SettingsNav
+          active={settingsSection}
+          query={settingsQuery}
+          onActive={chooseSettings}
+          onQuery={(value) => {
+            setSettingsQuery(value);
+            if (value.trim()) setSettingsSection('all');
+          }}
+        />
+      </div>
+
+      <div className="min-w-0 lg:col-start-2 lg:row-start-2">
+      {showSettings('trading') && (
+      <>
       {/* ── Section: Trading ─────────────────────────────────────── */}
       <SectionTitle>מסחר</SectionTitle>
 
@@ -444,7 +470,11 @@ export default function ProfilePage() {
           </button>
         )}
       </div>
+      </>
+      )}
 
+      {showSettings('plan') && (
+      <>
       {/* ── Section: Subscription ────────────────────────────────── */}
       <SectionTitle>מנוי</SectionTitle>
 
@@ -457,7 +487,11 @@ export default function ProfilePage() {
         isPremium={isPremium}
         onUpgrade={() => navigate('/premium')}
       />
+      </>
+      )}
 
+      {showSettings('reports') && (
+      <>
       {/* ── Section: Reports ─────────────────────────────────────── */}
       {/* Yearly tools that aren't daily destinations live here, not in the
           main menu. */}
@@ -475,7 +509,11 @@ export default function ProfilePage() {
           <ChevronLeft className="w-4 h-4 text-text-muted shrink-0" />
         </button>
       </div>
+      </>
+      )}
 
+      {showSettings('notifications') && (
+      <>
       {/* ── Section: Notifications ───────────────────────────────── */}
       <SectionTitle>התראות</SectionTitle>
       <div className={cardClass}>
@@ -484,9 +522,13 @@ export default function ProfilePage() {
         {/* Marketing email — on unless the user turned it off */}
         <MarketingEmailToggle />
       </div>
+      </>
+      )}
 
-      <ApiKeysSection />
+      {showSettings('api') && <ApiKeysSection />}
 
+      {showSettings('general') && (
+      <>
       {/* ── Section: General ─────────────────────────────────────── */}
       <SectionTitle>כללי</SectionTitle>
       <div className={cardClass}>
@@ -514,7 +556,11 @@ export default function ProfilePage() {
           {exporting ? 'מייצא...' : 'ייצוא נתונים'}
         </button>
       </div>
+      </>
+      )}
 
+      {showSettings('account') && (
+      <>
       {/* ── Section: Account ─────────────────────────────────────── */}
       <SectionTitle>חשבון</SectionTitle>
       <div className={cardClass}>
@@ -663,6 +709,18 @@ export default function ProfilePage() {
       <div className="text-center text-xs text-text-muted mt-2" dir="ltr">
         TradeOS v{APP_VERSION}{BUILD_LABEL}
       </div>
+      </>
+      )}
+
+      {!settingsMatchCount && (
+        <div role="status" data-testid="settings-empty" className="mt-4 bg-bg-secondary border border-border-primary rounded-2xl px-5 py-8 text-center">
+          <p className="text-sm font-semibold text-text-primary">לא נמצאו הגדרות תואמות</p>
+          <p className="text-xs text-text-muted mt-1">נסו מילה אחרת, או חזרו לכל הקטגוריות</p>
+          <button type="button" onClick={() => chooseSettings('all')} className="mt-3 text-sm font-semibold text-accent-primary hover:underline cursor-pointer">
+            הצגת כל ההגדרות
+          </button>
+        </div>
+      )}
 
       <Modal isOpen={deleteOpen} onClose={closeDelete} title={reauthStep ? 'אימות לפני מחיקה' : 'מחיקת חשבון'} maxWidth="max-w-sm">
         <p className="text-sm text-text-secondary mb-3">
@@ -713,6 +771,7 @@ export default function ProfilePage() {
           </button>
         </div>
       </Modal>
+      </div>
       </div>
     </m.div>
   );
