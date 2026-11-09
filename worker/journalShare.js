@@ -2,7 +2,8 @@
 // receives only filterJournalShare's copy. Share rows live in KV. Firestore is
 // read with the admin token and never written here, so this stage does not
 // publish rules. Storage, auth, email lookup and the rate-limit counter are
-// injected so the tests stay on synthetic data.
+// injected so the tests stay on synthetic data. Account deletion removes the
+// rows through purgeUserJournalShares.
 
 import { filterJournalShare, normalizeShareFields } from '../src/utils/journalShareFilter.js';
 import { decodeFields, docIdFromName, fsBase, sha256Hex } from './firestoreValues.js';
@@ -27,6 +28,10 @@ const recordKey = (id) => `jshare:${id}`;
 const tokenKey = (hash) => `jshare-tok:${hash}`;
 const ownerKey = (uid, id) => `jshare-own:${uid}:${id}`;
 const mailKey = (emailHash, id) => `jshare-mail:${emailHash}:${id}`;
+// Viewer index. Written on create when the address already has an account,
+// and on bind. Account deletion lists `jshare-to:{uid}:` for invites that
+// name this uid. Shares created before this index have no such key.
+const viewerKey = (uid, id) => `jshare-to:${uid}:${id}`;
 const auditPrefix = (uid) => `jshare-audit:${uid}:`;
 
 function json(cors, status, body) {
@@ -372,6 +377,7 @@ async function createShare(request, deps, cors, kv, uid, nowMs) {
   await kv.put(tokenKey(hash), id, { expirationTtl: ttl });
   await kv.put(ownerKey(uid, id), id, { expirationTtl: ttl });
   await kv.put(mailKey(emailHash, id), id, { expirationTtl: ttl });
+  if (viewerUid) await kv.put(viewerKey(viewerUid, id), id, { expirationTtl: ttl });
   await writeAudit(kv, uid, 'create', share, nowMs);
   return json(cors, 200, issued(token, share, nowMs));
 }
@@ -401,7 +407,9 @@ export async function bindPendingJournalShares(kv, { uid, email, emailVerified, 
     share.viewerUid = uid;
     share.pending = false;
     share.updatedAt = new Date(nowMs).toISOString();
-    await putJson(kv, recordKey(id), share, ttlFor(share.expiresAt, nowMs));
+    const ttl = ttlFor(share.expiresAt, nowMs);
+    await putJson(kv, recordKey(id), share, ttl);
+    await kv.put(viewerKey(uid, id), id, { expirationTtl: ttl });
     await writeAudit(kv, share.ownerUid, 'bind', share, nowMs);
   }
 }
@@ -442,6 +450,15 @@ async function updateShare(request, deps, cors, kv, uid, id, nowMs) {
   const ttl = ttlFor(share.expiresAt, nowMs);
   await putJson(kv, recordKey(id), share, ttl);
   if (share.tokenHash) await kv.put(tokenKey(share.tokenHash), id, { expirationTtl: ttl });
+  // The owner index is how account deletion finds this share. Refresh it with
+  // the record, or an extended share outlives the index and the link stays up.
+  await kv.put(ownerKey(uid, id), id, { expirationTtl: ttl });
+  if (typeof share.viewerEmail === 'string' && share.viewerEmail) {
+    await kv.put(mailKey(await sha256Hex(share.viewerEmail), id), id, { expirationTtl: ttl });
+  }
+  if (typeof share.viewerUid === 'string' && share.viewerUid) {
+    await kv.put(viewerKey(share.viewerUid, id), id, { expirationTtl: ttl });
+  }
   await writeAudit(kv, uid, 'update', share, nowMs);
   return json(cors, 200, { ok: true, share: publicShare(share, nowMs) });
 }
@@ -460,4 +477,127 @@ async function revokeShare(deps, cors, kv, uid, id, nowMs) {
     await writeAudit(kv, uid, 'revoke', share, nowMs);
   }
   return json(cors, 200, { ok: true, share: publicShare(share, nowMs) });
+}
+
+function report(log, ...parts) {
+  try {
+    if (typeof log === 'function') log(...parts);
+  } catch { /* a broken logger must not fail account deletion */ }
+}
+
+async function safeDel(kv, key, uid, result, log) {
+  if (typeof key !== 'string' || !key.startsWith('jshare')) return;
+  try {
+    await kv.delete(key);
+    result.keys += 1;
+  } catch (err) {
+    result.errors += 1;
+    report(log, 'journal share purge', uid, err?.message || err);
+  }
+}
+
+async function listOrEmpty(kv, prefix, uid, result, log) {
+  try {
+    return await listKeys(kv, prefix);
+  } catch (err) {
+    result.errors += 1;
+    report(log, 'journal share purge', uid, err?.message || err);
+    return [];
+  }
+}
+
+async function readShare(kv, id, uid, result, log) {
+  try {
+    return await loadShare(kv, id);
+  } catch (err) {
+    result.errors += 1;
+    report(log, 'journal share purge', uid, err?.message || err);
+    return null;
+  }
+}
+
+async function deleteMailKey(kv, share, id, uid, result, log) {
+  if (!share || typeof share.viewerEmail !== 'string' || !share.viewerEmail) return;
+  try {
+    await safeDel(kv, mailKey(await sha256Hex(share.viewerEmail), id), uid, result, log);
+  } catch (err) {
+    result.errors += 1;
+    report(log, 'journal share purge', uid, err?.message || err);
+  }
+}
+
+// Deletes this account's journal-share KV rows. Never throws: a KV error is
+// logged and counted, and the account deletion that called this still finishes.
+// Running it again deletes nothing.
+//
+// Owned shares are listed from `jshare-own:{uid}:{id}`. createShare has written
+// that index since the share endpoints landed (PR #661). For each id this
+// deletes the record (`jshare:`), the token (`jshare-tok:`), the owner index,
+// the mail invite (`jshare-mail:`), the viewer index (`jshare-to:`) and, after
+// the loop, the owner's audit rows (`jshare-audit:{uid}:`). The public link
+// then answers «אין נתונים», including when the token key itself could not be
+// deleted, as long as the record is gone.
+//
+// A record with no owner-index key cannot be found from the uid. The create
+// path writes the index in the same request as the record. The gap is a
+// partial write, or a row stored outside that path. Those keys are left in
+// place and expire with their TTL. This function does not scan every `jshare:`.
+//
+// Invites that name this uid as the viewer are listed from `jshare-to:{uid}:{id}`.
+// That index is written on create when the address already has an account, and
+// on bind. Only those invite keys are removed (the viewer index and the mail
+// key). The owner's record and token stay, so that owner's link keeps working.
+// Shares written before `jshare-to` have no viewer index, so deleting the
+// viewer does not remove their mail key. Deleting the owner still does,
+// through the owner index.
+export async function purgeUserJournalShares(kv, uid, log = console.error) {
+  const result = { shares: 0, invites: 0, keys: 0, errors: 0 };
+  if (!uid || typeof uid !== 'string') return result;
+  if (!kv || typeof kv.list !== 'function' || typeof kv.delete !== 'function') {
+    result.errors += 1;
+    report(log, 'journal share purge', uid, 'kv unavailable');
+    return result;
+  }
+
+  const ownerPrefix = `jshare-own:${uid}:`;
+  for (const name of await listOrEmpty(kv, ownerPrefix, uid, result, log)) {
+    const id = name.slice(ownerPrefix.length);
+    if (!SHARE_ID_RE.test(id)) {
+      await safeDel(kv, name, uid, result, log);
+      continue;
+    }
+    const share = await readShare(kv, id, uid, result, log);
+    if (share && share.ownerUid && share.ownerUid !== uid) {
+      report(log, 'journal share purge', uid, 'index does not match owner');
+      await safeDel(kv, name, uid, result, log);
+      continue;
+    }
+    if (typeof share?.tokenHash === 'string' && share.tokenHash) {
+      await safeDel(kv, tokenKey(share.tokenHash), uid, result, log);
+    }
+    await deleteMailKey(kv, share, id, uid, result, log);
+    if (typeof share?.viewerUid === 'string' && share.viewerUid) {
+      await safeDel(kv, viewerKey(share.viewerUid, id), uid, result, log);
+    }
+    await safeDel(kv, recordKey(id), uid, result, log);
+    await safeDel(kv, name, uid, result, log);
+    result.shares += 1;
+  }
+
+  for (const name of await listOrEmpty(kv, auditPrefix(uid), uid, result, log)) {
+    await safeDel(kv, name, uid, result, log);
+  }
+
+  const viewerPrefix = `jshare-to:${uid}:`;
+  for (const name of await listOrEmpty(kv, viewerPrefix, uid, result, log)) {
+    const id = name.slice(viewerPrefix.length);
+    if (SHARE_ID_RE.test(id)) {
+      const share = await readShare(kv, id, uid, result, log);
+      if (share?.viewerUid === uid) await deleteMailKey(kv, share, id, uid, result, log);
+    }
+    await safeDel(kv, name, uid, result, log);
+    result.invites += 1;
+  }
+
+  return result;
 }

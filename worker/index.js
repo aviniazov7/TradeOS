@@ -59,7 +59,7 @@ import { NEWS_FEEDS, parseRssItems, handleNewsFeed } from './newsFeed.js';
 import { safeNotificationPath } from './pushNavigate.js';
 import { parseAltcoinSeasonIndex } from './altcoinSeason.js';
 import { handlePublicApi } from './publicApi.js';
-import { handleJournalShare, bindPendingJournalShares } from './journalShare.js';
+import { handleJournalShare, bindPendingJournalShares, purgeUserJournalShares } from './journalShare.js';
 import { handleMcp } from './mcp.js';
 import {
   GUIDANCE_COACH_IDENTITY, GUIDANCE_COUPON_DESCRIPTION, GUIDANCE_WYCKOFF_IDENTITY,
@@ -1727,10 +1727,17 @@ async function pushexchIndexRemove(env, predicate) {
 // Remove EVERY per-user KV record for a deleted account: encrypted exchange
 // keys (+ their index entry, so the cron stops polling the exchange), push
 // subscriptions, notification schedule (+ the legacy usettings:ALL entry),
-// plan cache, AI quota doc and pending plan-expiry reminders. Used by both
-// the self-service and the admin deletion paths. Best-effort per key — one
-// failed delete must not stop the rest.
+// plan cache, AI quota doc, pending plan-expiry reminders, and journal-share
+// rows (owned shares, their tokens, and invite indexes that name this uid).
+// Used by both the self-service and the admin deletion paths. Best-effort per
+// key — one failed delete must not stop the rest, and a KV error in the share
+// purge must not fail the account deletion.
 async function purgeUserKv(env, uid) {
+  try {
+    await purgeUserJournalShares(env?.ALERTS_KV, uid);
+  } catch (e) {
+    console.error('journal share purge failed', uid, e?.message || e);
+  }
   const del = (k) => env.ALERTS_KV.delete(k).catch(() => {});
   const listAll = async (prefix) => {
     const names = [];
