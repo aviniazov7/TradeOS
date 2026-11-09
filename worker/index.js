@@ -26,6 +26,7 @@ import { unsubscribeUrl, verifyUnsubscribe, unsubscribePage, UID_RE } from './un
 import { purgeUserResidue } from './accountPurge.js';
 import { handleCspReport } from './cspReport.js';
 import { calendarAlertBody, CALENDAR_ALERT_TITLE } from './calendarAlert.js';
+import { calendarHttpResponse, readCalendarUpstream, resolveCalendarFeed } from './calendarFeed.js';
 import { emailShell, APP_URL, C as EMAIL_C, bg as emailBg, txt as emailTxt, esc as emailEsc, para as emailPara } from './emailTheme.js';
 import { buildDigestEmail, digestInboxText } from './adminDigest.js';
 import { classifyContact, contactDelivered, createAdminInboxDocument } from './adminInbox.js';
@@ -66,7 +67,6 @@ import { handleMcp } from './mcp.js';
 // (same /api/v3 spot surface) isn't geo-blocked. Futures (fapi) has no mirror.
 const BINANCE_SPOT = 'https://data-api.binance.vision/api/v3';
 const BINANCE_FUTURES = 'https://fapi.binance.com/fapi/v1';
-const CALENDAR_API = 'https://nfs.faireconomy.media/ff_calendar_thisweek.json';
 // Fast aggregated news. Free, no key, and materially faster than the RSS feeds
 // below: measured live, its newest item was 2 minutes old while the six RSS
 // sources ranged 12-53 minutes. It also carries Twitter/Truth Social posts
@@ -1809,10 +1809,8 @@ async function fetchEconomicCalendar(env) {
   const calCached = await caches.default.match(calCacheKey).catch(() => null);
   if (calCached) return calCached.json().catch(() => []);
   try {
-    const res = await fetch(CALENDAR_API);
-    if (!res.ok) return [];
-    const events = await res.json();
-    const filtered = (Array.isArray(events) ? events : [])
+    const events = await readCalendarUpstream();
+    const filtered = events
       .filter((e) => e.impact === 'High' && e.country === 'USD')
       .map((e) => ({ title: e.title, date: e.date, forecast: e.forecast || '', previous: e.previous || '' }));
     caches.default.put(calCacheKey, new Response(JSON.stringify(filtered), {
@@ -3608,17 +3606,8 @@ async function loadTrustedTranslationSources(env) {
   }
   const calendarTitles = [];
   try {
-    const r = await fetch('https://nfs.faireconomy.media/ff_calendar_thisweek.json', {
-      headers: { 'User-Agent': 'Mozilla/5.0 TradeOS' },
-      cf: { cacheTtl: 1800, cacheEverything: true },
-      signal: AbortSignal.timeout(8000),
-    });
-    if (r.ok) {
-      const events = await r.json();
-      if (Array.isArray(events)) {
-        for (const event of events) if (event?.title) calendarTitles.push(event.title);
-      }
-    }
+    const events = await readCalendarUpstream();
+    for (const event of events) if (event?.title) calendarTitles.push(event.title);
   } catch { /* uncached calendar titles are translated for the caller only */ }
   const sources = trustedTranslationSources({ feedItems, headlines, calendarTitles });
   TRUSTED_TR = { at: Date.now(), sources };
@@ -4356,20 +4345,12 @@ async function handleRequest(request, env) {
     return new Response(JSON.stringify({ ok: true, settings: s }), { headers: { ...cors, 'Content-Type': 'application/json' } });
   }
 
-  // Economic calendar proxy — fetch Forex Factory server-side (no CORS, no
-  // dependency on the flaky public allorigins proxy), with edge caching.
+  // Economic calendar proxy. Forex Factory is fetched here (no browser CORS).
+  // Errors are not cached; a saved week is returned when the source misses.
   if (request.method === 'GET' && path === '/calendar') {
-    try {
-      const r = await fetch('https://nfs.faireconomy.media/ff_calendar_thisweek.json', {
-        headers: { 'User-Agent': 'Mozilla/5.0 TradeOS' },
-        cf: { cacheTtl: 1800, cacheEverything: true },
-      });
-      if (!r.ok) return new Response(JSON.stringify({ error: 'upstream' }), { status: 502, headers: { ...cors, 'Content-Type': 'application/json' } });
-      const body = await r.text();
-      return new Response(body, { headers: { ...cors, 'Content-Type': 'application/json', 'Cache-Control': 'public, max-age=1800' } });
-    } catch {
-      return new Response(JSON.stringify({ error: 'fetch failed' }), { status: 502, headers: { ...cors, 'Content-Type': 'application/json' } });
-    }
+    const cache = typeof caches !== 'undefined' && caches?.default ? caches.default : null;
+    const result = await resolveCalendarFeed({ cache });
+    return calendarHttpResponse(result, cors);
   }
 
   // News → price attribution. Public read of the cron-prepared blob, same

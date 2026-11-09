@@ -12,6 +12,12 @@ import {
   loadCalendarFilters,
   saveCalendarFilters,
 } from '../../utils/econCalendarFilters';
+import {
+  CALENDAR_CACHE_TTL_MS,
+  CALENDAR_LOAD_ERROR,
+  CALENDAR_STALE_NOTICE,
+  readCalendarCache,
+} from '../../utils/econCalendarLoad';
 import { headlineNeedsTranslation } from '../../utils/newsHeadline';
 import { dropInvalidTranslations, isHebrewSafeText, isHebrewSafeTranslation, preferredHeadline, safeHebrew } from '../../utils/newsScript';
 import { safeHttpUrl } from '../../utils/urls';
@@ -96,7 +102,7 @@ function saveHeCache(map, key = HE_CACHE_KEY) {
 // ─── Economic Calendar (Forex Factory, fetched by the Worker) ───
 const WORKER_URL = import.meta.env.VITE_WORKER_URL || 'https://trade-os.tradeos.workers.dev';
 const CALENDAR_CACHE_KEY = 'tradeos_econ_calendar_v3';
-const CALENDAR_CACHE_TTL = 60 * 60 * 1000; // 1 hour
+const CALENDAR_CACHE_TTL = CALENDAR_CACHE_TTL_MS;
 
 const COUNTRIES = CALENDAR_COUNTRIES;
 const COUNTRY_CODES = COUNTRIES.map((c) => c.code);
@@ -210,43 +216,41 @@ export function EconomicCalendar() {
   const uid = user?.uid || null;
   const [events, setEvents] = useState(() => {
     try {
-      const cached = localStorage.getItem(CALENDAR_CACHE_KEY);
-      if (cached) {
-        const { data, ts } = JSON.parse(cached);
-        // Only use cache if it's fresh (within TTL)
-        if (Date.now() - ts < CALENDAR_CACHE_TTL && Array.isArray(data) && data.length > 0) return data;
-      }
-    } catch { /* ignore */ }
-    return [];
+      return readCalendarCache(localStorage.getItem(CALENDAR_CACHE_KEY), Date.now(), { ttl: CALENDAR_CACHE_TTL })?.events || [];
+    } catch { return []; }
   });
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState(null);
+  const [notice, setNotice] = useState(null);
   const [filters, setFilters] = useState(() => loadCalendarFilters(authLoading ? null : uid, COUNTRY_CODES));
   const [showCountryPicker, setShowCountryPicker] = useState(false);
   const [showImpactPicker, setShowImpactPicker] = useState(false);
   // Skip the save that would otherwise run on the same commit as a reload,
   // so account A's filters are never written under account B.
   const skipFilterSave = useRef(true);
+  const eventsCount = useRef(0);
+  eventsCount.current = events.length;
   // English event title -> Hebrew (same worker translate endpoint as the news
   // feed, KV-cached by title; event names are a small recurring set so this is
   // near-free after the first pass). Persisted so a remount doesn't re-call.
   const [heMap, setHeMap] = useState(() => loadHeCache(CAL_HE_CACHE_KEY));
 
   const fetchCalendar = useCallback(async () => {
-    // Check cache
+    let stored = null;
     try {
-      const cached = localStorage.getItem(CALENDAR_CACHE_KEY);
-      if (cached) {
-        const { data, ts } = JSON.parse(cached);
-        if (Date.now() - ts < CALENDAR_CACHE_TTL && Array.isArray(data) && data.length > 0) {
-          setEvents(data);
-          setLoading(false);
-          return;
-        }
-      }
+      stored = readCalendarCache(localStorage.getItem(CALENDAR_CACHE_KEY), Date.now(), { ttl: CALENDAR_CACHE_TTL });
     } catch { /* ignore */ }
-
-    if (events.length > 0) setLoading(false);
+    // A copy from the last hour is enough. Older than that, ask the Worker,
+    // and keep the saved week on screen if the source answers 502.
+    if (stored?.fresh) {
+      setEvents(stored.events);
+      setNotice(null);
+      setError(null);
+      setLoading(false);
+      return;
+    }
+    if (stored?.events?.length) setEvents(stored.events);
+    if (stored?.events?.length || eventsCount.current > 0) setLoading(false);
     else setLoading(true);
     setError(null);
 
@@ -259,21 +263,31 @@ export function EconomicCalendar() {
       if (res.ok) {
         const data = await res.json();
         if (Array.isArray(data) && data.length > 0) {
+          const stale = res.headers.get('X-Calendar-Stale') === '1';
           setEvents(data);
           try {
-            localStorage.setItem(CALENDAR_CACHE_KEY, JSON.stringify({ data, ts: Date.now() }));
+            // A stale worker reply must not look fresh, or "נסה שוב" would
+            // skip the network for an hour.
+            const ts = stale ? (stored?.ts ?? Date.now() - CALENDAR_CACHE_TTL - 1) : Date.now();
+            localStorage.setItem(CALENDAR_CACHE_KEY, JSON.stringify({ data, ts }));
           } catch { /* ignore */ }
+          setNotice(stale ? CALENDAR_STALE_NOTICE : null);
+          setError(null);
           setLoading(false);
           return;
         }
       }
-    } catch { /* show the error below */ }
+    } catch { /* fall through to the saved week or the hard error */ }
 
-    if (events.length === 0) {
-      setError('\u05DC\u05D0 \u05D4\u05E6\u05DC\u05D7\u05E0\u05D5 \u05DC\u05D8\u05E2\u05D5\u05DF \u05D0\u05EA \u05D4\u05D9\u05D5\u05DE\u05DF \u05D4\u05DB\u05DC\u05DB\u05DC\u05D9. \u05E0\u05E1\u05D4 \u05E9\u05D5\u05D1 \u05D1\u05E2\u05D5\u05D3 \u05DE\u05E1\u05E4\u05E8 \u05D3\u05E7\u05D5\u05EA.');
+    if (stored?.events?.length || eventsCount.current > 0) {
+      setNotice(CALENDAR_STALE_NOTICE);
+      setError(null);
+    } else {
+      setNotice(null);
+      setError(CALENDAR_LOAD_ERROR);
     }
     setLoading(false);
-  }, [events.length]);
+  }, []);
 
   useEffect(() => {
     fetchCalendar();
@@ -572,15 +586,30 @@ export function EconomicCalendar() {
         </div>
       )}
 
+      {/* The source missed, but a saved week is still on screen. */}
+      {notice && !loading && !error && (
+        <div role="status" className="mb-4 rounded-xl border border-border-primary bg-bg-secondary px-4 py-3 text-sm text-text-secondary">
+          <p>{notice}</p>
+          <button
+            type="button"
+            onClick={fetchCalendar}
+            className="mt-2 min-h-11 px-4 py-2 bg-accent-primary text-white rounded-lg hover:bg-accent-primary/90 transition-colors"
+          >
+            נסה שוב
+          </button>
+        </div>
+      )}
+
       {/* Error */}
       {error && !loading && (
-        <div className="bg-bg-secondary border border-border-primary rounded-xl p-8 text-center">
+        <div role="alert" className="bg-bg-secondary border border-border-primary rounded-xl p-8 text-center">
           <p className="text-text-muted mb-4">{error}</p>
           <button
+            type="button"
             onClick={fetchCalendar}
-            className="px-4 py-2 bg-accent-primary text-white rounded-lg hover:bg-accent-primary/90 transition-colors"
+            className="min-h-11 px-4 py-2 bg-accent-primary text-white rounded-lg hover:bg-accent-primary/90 transition-colors"
           >
-            {'\u05E0\u05E1\u05D4 \u05E9\u05D5\u05D1'}
+            נסה שוב
           </button>
         </div>
       )}
