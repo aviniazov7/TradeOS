@@ -153,7 +153,10 @@ describe('trading plans overview', () => {
     expect(buttonNamed('צפייה בדמו — טיוטה', sparse)).toBeTruthy();
 
     expect(text()).not.toMatch(/אחוז הצלחה|win rate|Premium|שדרג/);
-    const names = [...document.querySelectorAll('button')].map((btn) => btn.getAttribute('aria-label') || btn.textContent);
+    const names = [...document.querySelectorAll('button')]
+      .map((btn) => btn.getAttribute('aria-label') || btn.textContent)
+      .filter((name) => !name.includes('בנה תוכנית עם AI'));
+    expect(buttonNamed('בנה תוכנית עם AI')).toBeTruthy();
     expect(names.join(' ')).not.toMatch(/AI|מאמן/);
     expect(buttonNamed('תוכנית חדשה')).toBeTruthy();
 

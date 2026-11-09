@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react';
-import { m } from 'framer-motion';
+// <m.div> is the LazyMotion factory. Core no-unused-vars does not count JSX members.
+import { m } from 'framer-motion'; // eslint-disable-line no-unused-vars
 import { Plus, ClipboardList, Pencil, Trash2, ExternalLink, FileImage, Search } from 'lucide-react';
 import CoinIcon from '../shared/CoinIcon';
 import PairSearch from '../journal/PairSearch';
@@ -7,6 +8,11 @@ import TimeframeSelector from '../shared/TimeframeSelector';
 import { useUserTimeframes } from '../../hooks/useUserTimeframes';
 import toast from 'react-hot-toast';
 import { useTradingPlans } from '../../hooks/useTradingPlans';
+import { useAuth } from '../../contexts/AuthContext';
+import { planBuilderDemoEnabled, saveBuiltPlan } from '../../utils/planBuilderDemo';
+import PlanBuilderEntry from './PlanBuilderEntry';
+import PlanBuilderWizard from './PlanBuilderWizard';
+import PlanBuilderDemoBanner from './PlanBuilderDemoBanner';
 import { useProcesses } from '../../hooks/useProcesses';
 import { useProcessCategories } from '../../hooks/useProcessCategories';
 import PlanCard from './PlanCard';
@@ -36,12 +42,17 @@ function toImageUrl(url) {
 const defaultProcessForm = { category: '', chartUrl: '', description: '', coin: '', timeframe: '' };
 
 export default function PlansPage() {
-  const { plans, loading, addPlan, updatePlan, deletePlan } = useTradingPlans();
-  const { processes, loading: processesLoading, addProcess, updateProcess, deleteProcess } = useProcesses();
+  const { isPremium } = useAuth();
+  const demo = planBuilderDemoEnabled(typeof window === 'undefined' ? '' : window.location.search);
+  const { plans, loading, addPlan, updatePlan, deletePlan } = useTradingPlans({ suspend: demo });
+  const { processes, addProcess, updateProcess, deleteProcess } = useProcesses();
   const { allCategories, addCategory, removeCategory } = useProcessCategories();
   const { allTimeframes, addTimeframe, removeTimeframe } = useUserTimeframes();
   const [formOpen, setFormOpen] = useState(false);
   const [editingPlan, setEditingPlan] = useState(null);
+  const [wizardOpen, setWizardOpen] = useState(false);
+  const [wizardKey, setWizardKey] = useState(0);
+  const [aiDraft, setAiDraft] = useState(null);
   const [viewingPlan, setViewingPlan] = useState(null);
   const [deleteTarget, setDeleteTarget] = useState(null);
   const [tab, setTab] = useState('plans');
@@ -103,6 +114,17 @@ export default function PlansPage() {
     }
   };
 
+  const handleAiSave = async (data) => {
+    try {
+      const result = await saveBuiltPlan({ demo, addPlan, data });
+      if (result.saved) toast.success('התוכנית נוצרה');
+      else toast('דמו – לא נשמר');
+    } catch (error) {
+      console.error('Save plan failed:', error);
+      toast.error(error.code === 'permission-denied' ? 'אין הרשאה לשמור' : 'שגיאה בשמירת התוכנית — נסה שוב');
+    }
+  };
+
   const handleCloseForm = () => {
     setFormOpen(false);
     setEditingPlan(null);
@@ -161,8 +183,9 @@ export default function PlansPage() {
   const quietIconBtn = 'inline-flex min-h-10 min-w-10 items-center justify-center rounded-lg text-text-muted transition-colors cursor-pointer hover:bg-bg-tertiary outline-none focus-visible:outline-solid focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-accent-primary';
 
   return (
-    <m.div variants={pageVariants} initial="initial" animate="animate" exit="exit" transition={pageTransition}>
+      <m.div variants={pageVariants} initial="initial" animate="animate" exit="exit" transition={pageTransition}>
       <>
+          {demo && <PlanBuilderDemoBanner />}
           <PageHeader
             icon={ClipboardList}
             title="תוכניות מסחר"
@@ -170,6 +193,13 @@ export default function PlansPage() {
             tabs={{ tabs: [{ id: 'plans', label: 'תוכניות', count: plans.length }, { id: 'processes', label: 'אנליטיקה', count: processes.length }], value: tab, onChange: setTab, layoutKey: 'plans-tab' }}
             actions={(
               <div className="flex items-center gap-2 w-full sm:w-auto">
+                {tab === 'plans' && (
+                  <PlanBuilderEntry
+                    isPremium={!!isPremium}
+                    demo={demo}
+                    onOpen={() => { setWizardKey((key) => key + 1); setWizardOpen(true); }}
+                  />
+                )}
                 {tab === 'plans' && (
                   <button type="button" onClick={() => setFormOpen(true)} className={`${headerPrimaryBtn} flex-1 sm:flex-none`}>
                     <Plus className="w-4 h-4" /> תוכנית חדשה
@@ -358,6 +388,21 @@ export default function PlansPage() {
         </>
 
       <PlanForm isOpen={formOpen} onClose={handleCloseForm} plan={editingPlan} onSave={handleSave} />
+      <PlanBuilderWizard
+        key={wizardKey}
+        open={wizardOpen}
+        demo={demo}
+        onClose={() => setWizardOpen(false)}
+        onDraft={(plan) => { setWizardOpen(false); setAiDraft(plan); }}
+        requestPlan={(answers) => import('../../services/planBuilderService').then((mod) => mod.requestPlanBuilder(answers))}
+      />
+      <PlanForm
+        isOpen={!!aiDraft}
+        plan={aiDraft}
+        saveLabel="שמור תוכנית"
+        onClose={() => setAiDraft(null)}
+        onSave={handleAiSave}
+      />
       <StrategyView isOpen={!!viewingPlan} onClose={() => setViewingPlan(null)} journal={viewingPlan} />
 
       <ConfirmDialog isOpen={!!deleteTarget} onClose={() => setDeleteTarget(null)} onConfirm={handleDelete} title="מחיקת תוכנית" message={`למחוק את "${deleteTarget?.name}"? לא ניתן לבטל פעולה זו.`} />

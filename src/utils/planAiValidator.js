@@ -4,6 +4,7 @@
 // fewer than 60 top-level keys; this module only ever returns PLAN_AI_KEYS.
 
 import { SESSIONS } from './constants';
+import { planPairFromName } from './planSymbols';
 
 const TEXT_MAX = 4000;
 const NAME_MAX = 80;
@@ -241,7 +242,7 @@ export function validateAiPlan(input) {
   if (Object.prototype.hasOwnProperty.call(input, 'pairs')) {
     plan.pairs = cleanStringList(input.pairs, 'pairs', errors, {
       pattern: PAIR_RE,
-      normalize: (value) => value.toUpperCase(),
+      normalize: (value) => planPairFromName(value),
     });
   }
   if (Object.prototype.hasOwnProperty.call(input, 'timeframes')) {

@@ -45,7 +45,7 @@ import {
 import { trBucketKey, mergeTrBucket, lookupTr, TR_BUCKET_TTL, translationSource, trustedTranslationSources } from './newsTranslateCache.js';
 import { NEWS_TRANSLATE_PROMPT, NEWS_TRANSLATE_RETRY_PROMPT } from './newsTranslate.js';
 import { dropInvalidTranslations, partitionTranslations, sanitizeDigest } from '../src/utils/newsScript.js';
-import { PLAN_BUILDER_DAILY_LIMIT, validatePlanBuilderAnswers } from '../src/utils/planBuilderQuestions.js';
+import { PLAN_BUILDER_DAILY_LIMIT, draftFromAnswers, validatePlanBuilderAnswers } from '../src/utils/planBuilderQuestions.js';
 import { PLAN_AI_KEYS, validateAiPlan } from '../src/utils/planAiValidator.js';
 import { handleFxUsdIls } from './fxRates.js';
 import { handleHyperliquidRoute } from './hyperliquid.js';
@@ -2996,7 +2996,7 @@ const PLAN_BUILDER_SYSTEM_PROMPT = `אתה בונה טיוטת תוכנית מס
 אסור להבטיח רווח, תשואה או עסקה בטוחה. אל תשתמש בניסוחים כמו "מובטח", "ללא סיכון", "risk-free" או "guaranteed".
 החזר אובייקט JSON אחד בלבד, בלי טקסט מסביב, ורק עם המפתחות האלה:
 ${PLAN_AI_KEYS.join(', ')}
-name הוא שם קצר בעברית. שדות הטקסט בעברית. pairs הם סימולים באנגלית כמו BTCUSDT. timeframes כמו 15m או 4H. sessions רק מתוך London, New York, Asia, London/NY Overlap. maxDailyLoss הוא מספר בין 0 ל-100 או null. maxPositions הוא מספר שלם בין 1 ל-20 או null. isActive הוא true. color הוא #06b6d4.
+name הוא שם קצר בעברית. שדות הטקסט בעברית. pairs הם סימולים באנגלית כמו BTCUSDT, לא שמות כמו Bitcoin או ביטקוין. timeframes רק מהרשימה 1m, 3m, 5m, 15m, 30m, 1H, 2H, 4H, 1D, 1W. sessions רק מתוך London, New York, Asia, London/NY Overlap. maxDailyLoss הוא מספר בין 0 ל-100 או null. maxPositions הוא מספר שלם בין 1 ל-20 או null. isActive הוא true. color הוא #06b6d4. אם התשובות כוללות markets, timeframes, sessions, description, entry, exit, tradeManagement, marketConditions, dailyRoutine, mistakes, goals, risk, notes או מספרים, שמור את נוסח התשובה. מלא בעצמך רק שדה שלא נענה: name, checklist, color, tradeExamples, ושדות טקסט שדולגו.
 אל תמציא אחוזי הצלחה, תשואה, או עסקאות שלא נמסרו בנתונים.`;
 
 function planBuilderUserMessage(answers) {
@@ -3051,7 +3051,7 @@ async function generatePlanDraft(env, answers) {
   try { parsed = JSON.parse(content); }
   catch { return { ok: false, reason: 'invalid' }; }
 
-  const validated = validateAiPlan(parsed);
+  const validated = validateAiPlan(draftFromAnswers(parsed, answers));
   if (!validated.plan?.name) return { ok: false, reason: 'invalid' };
   return { ok: true, plan: validated.plan };
 }

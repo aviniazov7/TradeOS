@@ -20,7 +20,7 @@ const SYNTHETIC_PLAN = {
   riskManagement: 'אחוז קבוע',
   goals: 'עקביות',
   notes: 'בלי עסקאות נקמה',
-  pairs: ['ETHUSDT'],
+  pairs: ['Bitcoin'],
   timeframes: ['15m'],
   sessions: ['Asia'],
   maxDailyLoss: 1.5,
@@ -103,11 +103,19 @@ function quotaDoc(b) {
 function answersFor(style) {
   const values = {
     style,
-    markets: 'ETH',
+    markets: ['ETHUSDT'],
+    timeframes: ['1m', '1D'],
     sessions: ['Asia'],
+    description: 'תיאור סינתטי',
     entry: 'כניסה אחרי אישור',
     exit: 'יציאה ביעד',
+    tradeManagement: 'הזזת סטופ',
+    marketConditions: 'טרנד ברור',
+    dailyRoutine: 'בדיקת HTF',
+    mistakes: 'עסקת נקמה',
+    goals: 'עקביות',
     risk: 'אחוז קבוע',
+    notes: 'הערה סינתטית',
     maxDailyLoss: 1.5,
     maxPositions: 1,
   };
@@ -263,6 +271,8 @@ describe('POST /ai-plan-builder', () => {
     const body = await res.json();
     expect(body).toEqual({ ok: true, stub: false, plan: expect.objectContaining({ name: 'תוכנית סינתטית' }) });
     expect(body.plan.sessions).toEqual(['Asia']);
+    expect(body.plan.pairs).toEqual(['ETHUSDT']);
+    expect(body.plan.timeframes).toEqual(['1m', '1D']);
     expect(Object.keys(body)).toEqual(['ok', 'plan', 'stub']);
     expect(quota(kv, uid)).toMatchObject({ b: 1, u: 0 });
     expect(groq.calls).toHaveLength(1);
@@ -308,11 +318,13 @@ describe('POST /ai-plan-builder', () => {
       entryRules: 'כניסה אחרי BOS. רווח מובטח בכל עסקה.',
       goals: 'תשואה מובטחת של 10% בחודש',
     });
-    const res = await post(envFor(kv), { uid, body: payload('scalp') });
+    const sent = payload('scalp');
+    sent.answers = sent.answers.filter((item) => item.id !== 'goals');
+    const res = await post(envFor(kv), { uid, body: sent });
     expect(res.status).toBe(200);
     const body = await res.json();
     expect(body.stub).toBe(false);
-    expect(body.plan.entryRules).toBe('כניסה אחרי BOS.');
+    expect(body.plan.entryRules).toBe('כניסה אחרי אישור');
     expect(body.plan.goals).toBe('');
     expect(JSON.stringify(body)).not.toMatch(/מובטח|choices|gpt-oss/);
     expect(quota(kv, uid).b).toBe(1);
