@@ -9,6 +9,9 @@
 // it is read-only, so it is rejected. The connect dialog asks for that
 // read permission. No write-shaped probe is sent.
 
+import { classifyExchangeAuthError } from './exchangeNormalize.js';
+import { exchangeConnectMessage } from '../src/utils/exchangeConnectErrors.js';
+
 const enc = new TextEncoder();
 
 async function hmac(secret, msg, out = 'hex') {
@@ -37,10 +40,6 @@ export class KeyPermissionError extends Error {
     this.code = code;
   }
 }
-
-const NOT_READONLY = 'המפתח כולל הרשאות מסחר או משיכה. צור מפתח לקריאה בלבד (בלי Trade / Withdraw) ונסה שוב.';
-const CHECK_FAILED = 'לא הצלחנו לאמת שהמפתח הוא לקריאה בלבד. נסה שוב בעוד רגע.';
-const KEY_BAD = 'המפתח לא תקין, חסרות הרשאות קריאה, או שהבורסה דחתה את החיבור.';
 
 export function classifyBybitKey(result) {
   if (!result || result.readOnly === undefined || result.readOnly === null) return { ok: false, reason: 'unknown' };
@@ -100,8 +99,16 @@ export function classifyBinanceRestrictions(data) {
 
 function judgement(j) {
   if (j.ok) return { verified: true, supported: true };
-  if (j.reason === 'write') throw new KeyPermissionError('key_not_readonly', NOT_READONLY);
-  throw new KeyPermissionError('permission_check_failed', CHECK_FAILED);
+  if (j.reason === 'write') throw new KeyPermissionError('key_not_readonly', exchangeConnectMessage('key_not_readonly'));
+  throw new KeyPermissionError('permission_check_failed', exchangeConnectMessage('permission_check_failed'));
+}
+
+// The exchange text is used only to pick a reason. It is not returned or logged.
+function rejectUpstream(exchange, code, message) {
+  const text = String(message || '');
+  const reason = classifyExchangeAuthError(exchange, code, text)
+    || (/timeout|temporar|internal server|system error|service unavailable/i.test(text) ? 'provider_unavailable' : 'key_invalid');
+  throw new KeyPermissionError(reason, exchangeConnectMessage(reason));
 }
 
 const MEXC_READ = new Set([
@@ -146,7 +153,7 @@ export async function verifyExchangeKeyReadOnly(exchange, creds, fetchImpl = fet
         'X-BAPI-SIGN': sign,
         'X-BAPI-RECV-WINDOW': recvWindow,
       });
-      if (data.retCode !== 0) throw new KeyPermissionError('key_invalid', KEY_BAD);
+      if (data.retCode !== 0) rejectUpstream('bybit', data.retCode, data.retMsg);
       return judgement(classifyBybitKey(data.result));
     }
     if (exchange === 'okx') {
@@ -160,7 +167,7 @@ export async function verifyExchangeKeyReadOnly(exchange, creds, fetchImpl = fet
         'OK-ACCESS-PASSPHRASE': passphrase || '',
         'Content-Type': 'application/json',
       });
-      if (data.code !== '0') throw new KeyPermissionError('key_invalid', KEY_BAD);
+      if (data.code !== '0') rejectUpstream('okx', data.code, data.msg);
       return judgement(classifyOkxPerm(data.data?.[0]?.perm));
     }
     if (exchange === 'bitget') {
@@ -179,13 +186,15 @@ export async function verifyExchangeKeyReadOnly(exchange, creds, fetchImpl = fet
       }
       const v3 = '/api/v3/account/info';
       const second = await getJson(fetchImpl, `https://api.bitget.com${v3}`, await headersFor(v3, String(Date.now())));
-      if (second.code !== '00000') throw new KeyPermissionError('key_invalid', KEY_BAD);
+      if (second.code !== '00000') rejectUpstream('bitget', second.code, second.msg);
       return judgement(classifyBitgetV3(second.data));
     }
     if (exchange === 'mexc') {
       // Spot keys are alphanumeric. Reject anything else before it is placed
       // on a query string. GET only — this is not an order or a withdraw.
-      if (!/^[A-Za-z0-9]+$/.test(String(apiKey || ''))) throw new KeyPermissionError('key_invalid', KEY_BAD);
+      if (!/^[A-Za-z0-9]+$/.test(String(apiKey || ''))) {
+        throw new KeyPermissionError('key_invalid', exchangeConnectMessage('key_invalid'));
+      }
       const timestamp = Date.now().toString();
       const qs = `accessKey=${apiKey}&recvWindow=5000&timestamp=${timestamp}`;
       const signature = await hmac(apiSecret, qs);
@@ -194,7 +203,7 @@ export async function verifyExchangeKeyReadOnly(exchange, creds, fetchImpl = fet
         `https://api.mexc.com/api/v3/apiKeyInfo?${qs}&signature=${signature}`,
         { 'X-MEXC-APIKEY': apiKey },
       );
-      if (data.code || data.msg) throw new KeyPermissionError('key_invalid', KEY_BAD);
+      if (data.code || data.msg) rejectUpstream('mexc', data.code, data.msg);
       return judgement(classifyMexcKeyInfo(data));
     }
     if (exchange === 'binance') {
@@ -205,12 +214,12 @@ export async function verifyExchangeKeyReadOnly(exchange, creds, fetchImpl = fet
         `https://api.binance.com/sapi/v1/account/apiRestrictions?${qs}&signature=${sign}`,
         { 'X-MBX-APIKEY': apiKey },
       );
-      if (data.code && data.msg) throw new KeyPermissionError('key_invalid', KEY_BAD);
+      if (data.code && data.msg) rejectUpstream('binance', data.code, data.msg);
       return judgement(classifyBinanceRestrictions(data));
     }
   } catch (err) {
     if (err instanceof KeyPermissionError) throw err;
-    throw new KeyPermissionError('permission_check_failed', CHECK_FAILED);
+    throw new KeyPermissionError('provider_unavailable', exchangeConnectMessage('provider_unavailable'));
   }
   return { verified: false, supported: false };
 }

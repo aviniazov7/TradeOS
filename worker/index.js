@@ -53,6 +53,7 @@ import { handleCandlesRoute } from './candles.js';
 import { handleOpenOrdersRoute } from './openOrders.js';
 import { handleCoinGecko } from './coingeckoProxy.js';
 import { verifyExchangeKeyReadOnly, KeyPermissionError, STORABLE_EXCHANGES } from './exchangeKeyPermissions.js';
+import { exchangeConnectBody } from '../src/utils/exchangeConnectErrors.js';
 import { NEWS_FEEDS, parseRssItems, handleNewsFeed } from './newsFeed.js';
 import { safeNotificationPath } from './pushNavigate.js';
 import { parseAltcoinSeasonIndex } from './altcoinSeason.js';
@@ -4788,43 +4789,39 @@ async function handleRequest(request, env) {
   if (request.method === 'POST' && (path === '/exchange/credentials/store' || path === '/push/exchange-register')) {
     const token = (request.headers.get('Authorization') || '').replace('Bearer ', '');
     const uid = await verifyFirebaseToken(token);
-    if (!uid) return new Response(JSON.stringify({ error: 'unauthorized' }), { status: 401, headers: { ...cors, 'Content-Type': 'application/json' } });
-    if (!env.CREDS_ENCRYPTION_KEY) return new Response(JSON.stringify({ error: 'הצפנת מפתחות לא מוגדרת בשרת (CREDS_ENCRYPTION_KEY)' }), { status: 503, headers: { ...cors, 'Content-Type': 'application/json' } });
+    const connectError = (code) => {
+      const { status, body } = exchangeConnectBody(code);
+      return new Response(JSON.stringify(body), { status, headers: { ...cors, 'Content-Type': 'application/json' } });
+    };
+    if (!uid) return connectError('unauthorized');
+    if (!env.CREDS_ENCRYPTION_KEY) return connectError('service_unavailable');
     const { exchange, apiKey, apiSecret, passphrase } = await request.json().catch(() => ({}));
-    if (!exchange || !apiKey || !apiSecret) return new Response(JSON.stringify({ error: 'missing fields' }), { status: 400, headers: { ...cors, 'Content-Type': 'application/json' } });
-    // One client-facing failure. key_invalid vs key_not_readonly was an oracle
-    // for dumped keys. The specific code stays in the log.
-    const generic = () => new Response(JSON.stringify({
-      error: 'לא הצלחנו לשמור את המפתח. ודא שהוא לקריאה בלבד ונסה שוב.',
-    }), { status: 400, headers: { ...cors, 'Content-Type': 'application/json' } });
-    if (!validExchangeId(exchange) || !STORABLE_EXCHANGES.has(exchange)) return generic();
+    if (!exchange || !apiKey || !apiSecret) return connectError('missing_fields');
+    // Fixed sentence per reason. Never the key, the secret, or the raw reply.
+    if (!validExchangeId(exchange) || !STORABLE_EXCHANGES.has(exchange)) return connectError('unsupported');
     // A few attempts per hour, per user and per IP, before the exchange is called.
     const uidHits = await durableBump(env, uid, `store:${uid}`, 3600);
     const ip = request.headers.get('CF-Connecting-IP') || 'unknown';
     const ipName = `rlip:${(await sha256Hex(ip)).slice(0, 32)}`;
     const ipHits = await durableBump(env, ipName, 'store', 3600);
-    if (uidHits == null || ipHits == null) {
-      return new Response(JSON.stringify({ error: 'שירות החיבור אינו זמין זמנית. נסה שוב בעוד רגע.' }), { status: 503, headers: { ...cors, 'Content-Type': 'application/json' } });
-    }
-    if (uidHits > 5 || ipHits > 10) {
-      return new Response(JSON.stringify({ error: 'יותר מדי ניסיונות חיבור. נסה שוב בעוד שעה.' }), { status: 429, headers: { ...cors, 'Content-Type': 'application/json' } });
-    }
+    if (uidHits == null || ipHits == null) return connectError('service_unavailable');
+    if (uidHits > 5 || ipHits > 10) return connectError('rate_limited');
     let check;
     try {
       check = await verifyExchangeKeyReadOnly(exchange, { apiKey, apiSecret, passphrase });
     } catch (err) {
-      const code = err instanceof KeyPermissionError ? err.code : 'permission_check_failed';
+      const code = err instanceof KeyPermissionError ? err.code : 'provider_unavailable';
       console.warn('exchange key rejected', JSON.stringify({ uid, exchange, code }));
-      return generic();
+      return connectError(code);
     }
     if (!check?.supported || !check?.verified) {
       console.warn('exchange key rejected', JSON.stringify({ uid, exchange, code: 'unsupported' }));
-      return generic();
+      return connectError('unsupported');
     }
     try {
       await storeExchangeCreds(env, uid, exchange, { apiKey, apiSecret, passphrase });
     } catch {
-      return new Response(JSON.stringify({ error: 'failed to store credentials' }), { status: 500, headers: { ...cors, 'Content-Type': 'application/json' } });
+      return connectError('service_unavailable');
     }
     return new Response(JSON.stringify({ ok: true, readOnly: true }), { headers: { ...cors, 'Content-Type': 'application/json' } });
   }
