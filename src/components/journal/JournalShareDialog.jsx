@@ -16,6 +16,7 @@ import {
   maxShareDate,
   shareExpiryPatch,
   shareRequestBody,
+  journalShareLink,
   sharesForJournal,
 } from '../../utils/journalShareOwner';
 import { defaultShareFields } from '../../utils/journalShareFilter';
@@ -28,12 +29,12 @@ const choiceClass = (on) => `px-2.5 py-1.5 rounded-lg text-xs font-semibold bord
     : 'bg-bg-tertiary text-text-secondary border-border-primary hover:text-text-primary'
 }`;
 
-async function copyToken(token) {
+async function copyLink(link) {
   try {
-    await navigator.clipboard.writeText(token);
-    toast.success('הטוקן הועתק');
+    await navigator.clipboard.writeText(link);
+    toast.success('הקישור הועתק');
   } catch {
-    toast.error('העתיקו את הטוקן מהשדה');
+    toast.error('העתיקו את הקישור מהשדה');
   }
 }
 
@@ -191,28 +192,28 @@ export default function JournalShareDialog({
       <div className="space-y-4 pb-16" dir="rtl">
         <p className="text-xs leading-relaxed text-text-secondary">
           הצופה מקבל רק את מה שתדליקו. הערות, רגשות וקישורי גרף נשלחים רק יחד עם העסקאות.
-          יתרה חיה, כתובת בורסה ומפתחות API לא נשלחים אף פעם. אין מייל: אתם מעתיקים את הטוקן ושולחים אותו בעצמכם.
+          יתרה חיה, כתובת בורסה ומפתחות API לא נשלחים אף פעם. אין מייל: אתם מעתיקים את הקישור ושולחים אותו בעצמכם.
           התשובה זהה בין אם לכתובת יש חשבון ובין אם אין. חשבונות חינמיים יכולים לשתף.
         </p>
 
         {issued != null && (
           <div data-testid="share-created" className="rounded-xl border border-accent-primary/40 bg-accent-primary/10 p-3 space-y-2">
             <p className="text-sm font-semibold text-text-primary">{SHARE_CREATED_MESSAGE}</p>
-            <p className="text-[11px] text-text-muted">הטוקן מוצג פעם אחת. אחרי סגירת החלון אי אפשר להציג אותו שוב.</p>
+            <p className="text-[11px] text-text-muted">הקישור מוצג פעם אחת. אחרי סגירת החלון אי אפשר להציג אותו שוב.</p>
             <div className="flex gap-2">
               <input
                 readOnly
                 dir="ltr"
-                value={issued}
-                aria-label="טוקן השיתוף"
+                value={issued ? journalShareLink(issued, window.location.origin) : ''}
+                aria-label="קישור השיתוף"
                 data-testid="share-token"
                 onFocus={(event) => event.target.select()}
                 className={`${inputClass} font-mono text-xs`}
               />
               <button
                 type="button"
-                onClick={() => copyToken(issued)}
-                aria-label="העתקת הטוקן"
+                onClick={() => copyLink(issued ? journalShareLink(issued, window.location.origin) : '')}
+                aria-label="העתקת הקישור"
                 className="shrink-0 h-11 w-11 grid place-items-center rounded-lg border border-border-primary bg-bg-tertiary text-text-primary cursor-pointer"
               >
                 <Copy className="w-4 h-4" />

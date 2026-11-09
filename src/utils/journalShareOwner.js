@@ -4,6 +4,13 @@ import { normalizeShareFields } from './journalShareFilter';
 // registered address and an unknown address cannot be told apart.
 export const SHARE_CREATED_MESSAGE = 'אם הכתובת רשומה ב-TradeOS, השיתוף נשמר.';
 
+// Public read-only page. The token is the path segment; viewing does not sign in.
+export function journalShareLink(token, origin) {
+  const path = `/share/${encodeURIComponent(token)}`;
+  const base = String(origin || '').replace(/\/$/, '');
+  return base ? `${base}${path}` : path;
+}
+
 export const SHARE_DAY_OPTIONS = [7, 30, 90];
 
 export const SHARE_FIELD_ROWS = [
