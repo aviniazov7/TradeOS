@@ -45,6 +45,7 @@ import {
 import { trBucketKey, mergeTrBucket, lookupTr, TR_BUCKET_TTL, translationSource, trustedTranslationSources } from './newsTranslateCache.js';
 import { NEWS_TRANSLATE_PROMPT, NEWS_TRANSLATE_RETRY_PROMPT } from './newsTranslate.js';
 import { dropInvalidTranslations, partitionTranslations, sanitizeDigest } from '../src/utils/newsScript.js';
+import { PLAN_BUILDER_DAILY_LIMIT, PLAN_BUILDER_VERSION, validatePlanBuilderAnswers } from '../src/utils/planBuilderQuestions.js';
 import { handleFxUsdIls } from './fxRates.js';
 import { handleHyperliquidRoute } from './hyperliquid.js';
 import { handleCandlesRoute } from './candles.js';
@@ -1514,6 +1515,14 @@ const AI_DENY = {
   // The per-user quota object is missing or threw. Fail closed for every
   // tier — falling back to a KV read-modify-write is the race this replaced.
   unavailable: { status: 503, body: { error: 'שירות ה-AI אינו זמין זמנית. נסה שוב מאוחר יותר.' } },
+  planBuilder: { status: 429, body: {
+    error: `הגעת למכסת בניית התוכניות להיום (${PLAN_BUILDER_DAILY_LIMIT}). אפשר לנסות שוב מחר.`,
+    quotaExceeded: true,
+  } },
+  planPremium: { status: 403, body: {
+    error: 'בניית תוכנית מסחר עם AI זמינה למנויי Premium בלבד.',
+    premiumRequired: true,
+  } },
 };
 
 // Gate + charge one AI request. The per-user Durable Object applies
@@ -1522,7 +1531,7 @@ const AI_DENY = {
 // null when allowed, or a { status, body } to short-circuit with. `overrides`
 // replaces a deny body by reason (routes word the daily-quota message
 // differently). Hebrew 429 copy lives in AI_DENY and is unchanged.
-async function aiCharge(env, uid, premium, { chargeDaily = false, image = false, overrides = {} } = {}) {
+async function aiCharge(env, uid, premium, { chargeDaily = false, image = false, planBuilder = false, overrides = {} } = {}) {
   const deny = (reason) => {
     const base = AI_DENY[reason];
     if (!base) return AI_DENY.unavailable;
@@ -1537,12 +1546,14 @@ async function aiCharge(env, uid, premium, { chargeDaily = false, image = false,
   let plan;
   try {
     plan = await stub.charge({
-      now: Date.now(), date, premium, chargeDaily: !!chargeDaily, image: !!image, uid,
+      now: Date.now(), date, premium, chargeDaily: !!chargeDaily, image: !!image,
+      planBuilder: !!planBuilder, uid,
       limits: {
         premium: AI_PREMIUM_LIMITS,
         freeBurstPerMin: AI_FREE_BURST_PER_MIN,
         freeDaily: AI_DAILY_LIMIT,
         imageDaily: AI_IMAGE_DAILY_LIMIT,
+        planBuilderDaily: PLAN_BUILDER_DAILY_LIMIT,
       },
     });
   } catch (e) {
@@ -2971,6 +2982,61 @@ function packCoachStats(stats, budget) {
     if (estimateCoachTokens(json) <= budget) return json;
   }
   return COACH_STATS_OVERFLOW;
+}
+
+const PLAN_BUILDER_MAX_BODY = 24_000;
+
+// One shot of the fixed questions. No model call and no saved progress:
+// leaving the flow means starting over. Quota is charged only after the
+// answers validate, and only once.
+async function handlePlanBuilder(request, env, cors) {
+  const json = (status, body) => new Response(JSON.stringify(body), {
+    status, headers: { ...cors, 'Content-Type': 'application/json' },
+  });
+  try {
+    const authHeader = request.headers.get('Authorization') || '';
+    const token = authHeader.startsWith('Bearer ') ? authHeader.slice(7) : '';
+    const uid = await verifyFirebaseToken(token);
+    if (!uid) return json(401, { error: 'יש להתחבר כדי להשתמש בתכונה זו' });
+
+    const premium = await isUserPremium(env, token, uid);
+    if (!premium) {
+      return json(403, {
+        error: 'בניית תוכנית מסחר עם AI זמינה למנויי Premium בלבד.',
+        premiumRequired: true,
+      });
+    }
+
+    const declared = Number(request.headers.get('content-length') || 0);
+    if (Number.isFinite(declared) && declared > PLAN_BUILDER_MAX_BODY) {
+      return json(400, { error: 'הבקשה גדולה מדי' });
+    }
+    const raw = await request.text();
+    if (raw.length > PLAN_BUILDER_MAX_BODY) return json(400, { error: 'הבקשה גדולה מדי' });
+
+    let body;
+    try { body = JSON.parse(raw); }
+    catch { return json(400, { error: 'הבקשה אינה תקינה' }); }
+
+    const validated = validatePlanBuilderAnswers(body);
+    if (!validated.ok) {
+      return json(400, { error: 'התשובות אינן תקינות', errors: validated.errors.slice(0, 12) });
+    }
+
+    const gate = await aiCharge(env, uid, true, { planBuilder: true });
+    if (gate) return json(gate.status, gate.body);
+
+    return json(200, {
+      ok: true,
+      stub: true,
+      generating: false,
+      version: PLAN_BUILDER_VERSION,
+      answerIds: validated.ids,
+    });
+  } catch (err) {
+    console.error('plan builder failed', err?.message || err);
+    return json(500, { error: 'שגיאה פנימית' });
+  }
 }
 
 async function handleAICoach(request, env, cors) {
@@ -4578,6 +4644,12 @@ async function handleRequest(request, env) {
   // Same TradeAI quota as /ai-chat (free 20/day, Premium 200/day).
   if (request.method === 'POST' && path === '/ai-coach') {
     return handleAICoach(request, env, cors);
+  }
+
+  // Plan builder — auth, Premium, answer checks, then one plan-builder
+  // quota charge. Does not call a model and does not write a plan.
+  if (request.method === 'POST' && path === '/ai-plan-builder') {
+    return handlePlanBuilder(request, env, cors);
   }
 
   // Contact Developer — admin mailbox + email. Never a trade-style push.
