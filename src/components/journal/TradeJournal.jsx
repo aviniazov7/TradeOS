@@ -2,7 +2,7 @@ import { useState, useMemo, useEffect, useRef, useCallback, Suspense } from 'rea
 import { lazyWithChunkReload as lazy } from '../../utils/chunkReload';
 import { useSearchParams } from 'react-router-dom';
 import { m } from 'framer-motion';
-import { Plus, BookOpen, Settings, Undo2, BrainCircuit, ListChecks, Trash2, AlertTriangle, Sparkles, Briefcase, Loader2, Link2, FlaskConical } from 'lucide-react';
+import { Plus, BookOpen, Settings, Undo2, BrainCircuit, ListChecks, Trash2, AlertTriangle, Sparkles, Briefcase, Loader2, Link2, FlaskConical, Share2 } from 'lucide-react';
 import toast from 'react-hot-toast';
 import { useTrades } from '../../hooks/useTrades';
 import { useDemoMode } from '../../hooks/useDemoMode';
@@ -22,7 +22,8 @@ import StockMarketPanel from '../stocks/StockMarketPanel';
 import PropFirmPanel from '../propfirm/PropFirmPanel';
 import { useStockQuotes } from '../../hooks/useStockQuotes';
 import { stockSymbol } from '../../utils/stocks';
-import { headerPrimaryBtn, headerAiBtnDense, headerIconBtnDense, headerPlusBtnDense } from '../shared/headerStyles';
+import { headerPrimaryBtn, headerAiBtnDense, headerIconBtnDense, headerPlusBtnDense, headerShareBtnDense } from '../shared/headerStyles';
+import { useAuth } from '../../contexts/AuthContext';
 import JournalSummaryBar from './JournalSummaryBar';
 import DailyLossBanner from './DailyLossBanner';
 import TradeTable from './TradeTable';
@@ -77,6 +78,7 @@ const TradeForm = lazy(loadTradeForm);
 const AICoachPanel = lazy(() => import('./AICoachPanel'));
 const ImportTrades = lazy(() => import('./ImportTrades'));
 const JournalSettingsModal = lazy(() => import('./JournalSettingsModal'));
+const JournalShareDialog = lazy(() => import('./JournalShareDialog'));
 const TradeShareModal = lazy(() => import('./TradeShareModal'));
 
 // Mount a lazy modal only once it is first opened (so its chunk isn't fetched
@@ -96,6 +98,7 @@ function TabFallback() {
 }
 
 export default function TradeJournal() {
+  const { user } = useAuth();
   const { activeJournal, activeJournalId, journals, addJournal } = useJournalContext();
   const demoMode = useDemoMode();
   const {
@@ -173,6 +176,7 @@ export default function TradeJournal() {
   const [aiModalOpen, setAiModalOpen] = useState(false);
   const [importOpen, setImportOpen] = useState(false);
   const [settingsOpen, setSettingsOpen] = useState(false);
+  const [shareOpen, setShareOpen] = useState(false);
   // Zero-journals recovery — the switcher (and its create button) is hidden
   // when no journal exists, so the empty state must offer creation itself.
   const [createJournalOpen, setCreateJournalOpen] = useState(false);
@@ -204,6 +208,7 @@ export default function TradeJournal() {
   }, []);
   const importMounted = useOpenedOnce(importOpen);
   const settingsMounted = useOpenedOnce(settingsOpen);
+  const journalShareMounted = useOpenedOnce(shareOpen);
   const shareMounted = useOpenedOnce(!!shareTarget);
   // Render only a window of rows so the table stays fast with hundreds of trades.
   // Analytics/calendar still use the full `trades` array — this caps the DOM only.
@@ -651,6 +656,23 @@ export default function TradeJournal() {
               <Sparkles className="w-4 h-4 md:w-[18px] md:h-[18px]" />
               <span className="hidden md:inline">ניתוח AI</span>
             </button>
+            <button
+              type="button"
+              onClick={() => {
+                if (showingDemo) {
+                  toast('במצב דמו אי אפשר לשתף. כבו את הדמו כדי לשתף את היומן האמיתי.');
+                  return;
+                }
+                setShareOpen(true);
+              }}
+              className={headerShareBtnDense}
+              title="שיתוף היומן"
+              aria-label="שיתוף היומן"
+              data-testid="journal-share-open"
+            >
+              <Share2 className="w-4 h-4 md:w-[18px] md:h-[18px]" />
+              <span className="hidden md:inline">שיתוף</span>
+            </button>
             <button onClick={() => setSettingsOpen(true)} className={headerIconBtnDense} title="הגדרות יומן" aria-label="הגדרות יומן">
               <Settings className="w-4 h-4 md:w-[18px] md:h-[18px]" />
             </button>
@@ -905,6 +927,17 @@ export default function TradeJournal() {
             onImport={() => setImportOpen(true)}
             onExport={exportCSV}
             canExport={trades.length > 0}
+          />
+        )}
+      </Suspense>
+      <Suspense fallback={null}>
+        {journalShareMounted && (
+          <JournalShareDialog
+            isOpen={shareOpen}
+            onClose={() => setShareOpen(false)}
+            journal={activeJournal}
+            trades={realTrades.filter((trade) => !pendingDeletes.has(trade.id))}
+            ownerEmail={user?.email || ''}
           />
         )}
       </Suspense>
