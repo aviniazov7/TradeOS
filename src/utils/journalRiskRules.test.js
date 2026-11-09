@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { evaluateJournalRisk, jerusalemMinutes, jerusalemWeekStart } from './journalRiskRules';
+import { evaluateJournalRisk, jerusalemMinutes, jerusalemWeekStart, journalRiskRulesInput, journalRiskRulesInputRejected, journalRiskRulesPatch, journalRiskRulesSame } from './journalRiskRules';
 
 const NOW = new Date('2026-01-16T00:30:00Z');
 const TODAY = '2026-01-16T10:00:00Z';
@@ -230,5 +230,87 @@ describe('evaluateJournalRisk', () => {
     expect(evalRules(trades, { tradingHours: { enabled: true, start: '09:60', end: '17:00' } }).tradingHours.enabled).toBe(false);
     expect(evalRules(trades, { tradingHours: { enabled: true, start: '9', end: '17:00' } }).tradingHours.breached).toBe(false);
     expect(evalRules(trades, { tradingHours: { enabled: true, start: ' 9:00 ', end: '17:00' } }).tradingHours.breached).toBe(true);
+  });
+});
+
+describe('journalRiskRulesPatch', () => {
+  const off = {
+    weeklyLoss: { enabled: false, amount: '' },
+    dailyLossPercent: { enabled: false, percent: '' },
+    weeklyLossPercent: { enabled: false, percent: '' },
+    maxTradesPerDay: { enabled: false, count: '' },
+    tradingHours: { enabled: false, start: '', end: '' },
+  };
+
+  it('does not write a journal that never turned a rule on', () => {
+    expect(journalRiskRulesPatch(undefined, off)).toBeUndefined();
+    expect(journalRiskRulesPatch(null, {
+      ...off,
+      weeklyLoss: { enabled: true, amount: '' },
+      maxTradesPerDay: { enabled: true, count: '0' },
+      tradingHours: { enabled: true, start: '09:00', end: '09:00' },
+    })).toBeUndefined();
+  });
+
+  it('writes only the rules that were switched on with a positive value', () => {
+    expect(journalRiskRulesPatch(undefined, {
+      ...off,
+      weeklyLoss: { enabled: true, amount: '500' },
+      dailyLossPercent: { enabled: true, percent: '3' },
+      maxTradesPerDay: { enabled: true, count: '4' },
+      tradingHours: { enabled: true, start: ' 9:00 ', end: '02:00' },
+    })).toEqual({
+      weeklyLoss: { enabled: true, amount: 500 },
+      dailyLossPercent: { enabled: true, percent: 3 },
+      weeklyLossPercent: { enabled: false, percent: null },
+      maxTradesPerDay: { enabled: true, count: 4 },
+      tradingHours: { enabled: true, start: '09:00', end: '02:00' },
+    });
+  });
+
+  it('keeps a stored rule when it is switched off, and drops a value that is not positive', () => {
+    expect(journalRiskRulesPatch(
+      { weeklyLoss: { enabled: true, amount: 500 } },
+      { ...off, weeklyLoss: { enabled: false, amount: '500' } },
+    ).weeklyLoss).toEqual({ enabled: false, amount: 500 });
+    expect(journalRiskRulesPatch(
+      { weeklyLoss: { enabled: true, amount: 500 } },
+      { ...off, weeklyLoss: { enabled: true, amount: '0' } },
+    ).weeklyLoss).toEqual({ enabled: false, amount: null });
+  });
+
+  it('never writes while demo mode is on', () => {
+    const input = { ...off, maxTradesPerDay: { enabled: true, count: '3' } };
+    expect(journalRiskRulesPatch(undefined, input, { demo: true })).toBeUndefined();
+    expect(journalRiskRulesPatch(
+      { maxTradesPerDay: { enabled: true, count: 3 } },
+      off,
+      { demo: true },
+    )).toBeUndefined();
+  });
+
+  it('treats an unchanged form as the same rules, and a new cap as a change', () => {
+    const stored = {
+      weeklyLoss: { enabled: true, amount: 500 },
+      maxTradesPerDay: { enabled: false, count: 3 },
+    };
+    expect(journalRiskRulesSame(undefined, off)).toBe(true);
+    expect(journalRiskRulesSame(stored, journalRiskRulesInput(stored))).toBe(true);
+    expect(journalRiskRulesSame(stored, {
+      ...journalRiskRulesInput(stored),
+      weeklyLoss: { enabled: true, amount: '400' },
+    })).toBe(false);
+  });
+
+  it('rejects a switch that is on without a usable value', () => {
+    expect(journalRiskRulesInputRejected(off)).toBe(false);
+    expect(journalRiskRulesInputRejected({
+      ...off,
+      dailyLossPercent: { enabled: true, percent: '' },
+    })).toBe(true);
+    expect(journalRiskRulesInputRejected({
+      ...off,
+      tradingHours: { enabled: true, start: '22:00', end: '02:00' },
+    })).toBe(false);
   });
 });
