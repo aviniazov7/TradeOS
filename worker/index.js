@@ -58,6 +58,7 @@ import { NEWS_FEEDS, parseRssItems, handleNewsFeed } from './newsFeed.js';
 import { safeNotificationPath } from './pushNavigate.js';
 import { parseAltcoinSeasonIndex } from './altcoinSeason.js';
 import { handlePublicApi } from './publicApi.js';
+import { handleJournalShare } from './journalShare.js';
 import { handleMcp } from './mcp.js';
 
 // Binance's public market-data mirror — api.binance.com returns 403 to
@@ -1314,6 +1315,27 @@ async function lookupAuthEmails(env, uids) {
     }
   }
   return out;
+}
+
+// Firebase Auth uid for an email address. An empty result is "no account",
+// not an error: the share route answers that case with one generic sentence.
+async function lookupAuthUidByEmail(env, email) {
+  const token = await getFirebaseAdminToken(env);
+  const res = await fetch('https://identitytoolkit.googleapis.com/v1/accounts:lookup', {
+    method: 'POST',
+    headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
+    body: JSON.stringify({ email: [email] }),
+  });
+  if (!res.ok) throw new Error(`auth lookup ${res.status}`);
+  const data = await res.json().catch(() => ({}));
+  const wanted = String(email || '').toLowerCase();
+  for (const user of data.users || []) {
+    if (typeof user?.email === 'string' && user.email.toLowerCase() === wanted
+      && typeof user.localId === 'string' && UID_RE.test(user.localId)) {
+      return user.localId;
+    }
+  }
+  return null;
 }
 
 // Email claim from a token verifyFirebaseToken already accepted.
@@ -4188,7 +4210,7 @@ function corsHeadersFor(request) {
   const allowedOrigin = isAllowedOrigin(origin) ? origin : ALLOWED_ORIGINS[0];
   return {
     'Access-Control-Allow-Origin': allowedOrigin,
-    'Access-Control-Allow-Methods': 'GET, POST, DELETE, OPTIONS',
+    'Access-Control-Allow-Methods': 'GET, POST, PATCH, DELETE, OPTIONS',
     'Access-Control-Allow-Headers': 'Content-Type, Authorization, Idempotency-Key, MCP-Protocol-Version, Mcp-Session-Id',
     'Vary': 'Origin',
   };
@@ -4226,6 +4248,19 @@ async function handleRequest(request, env) {
 
   const cors = corsHeadersFor(request);
   if (request.method === 'OPTIONS') return new Response(null, { headers: cors });
+
+  // Journal shares. The viewer token is the credential; the body is the
+  // filtered copy only. Owner routes use the Firebase token.
+  if (path === '/api/journal-shares' || path.startsWith('/api/journal-shares/')) {
+    return handleJournalShare(request, env, {
+      verifyFirebaseToken,
+      getAdminToken: () => getFirebaseAdminToken(env),
+      lookupAccountByEmail: (email) => lookupAuthUidByEmail(env, email),
+      durableBump: (objectName, key, windowSec) => durableBump(env, objectName, key, windowSec),
+      projectId: FIREBASE_PROJECT_ID,
+      cors,
+    });
+  }
 
   // Public REST API for agents. Auth is a per-user API key or a Firebase ID
   // token. Handled before the app routes so /api/v1 never falls through.
