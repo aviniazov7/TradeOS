@@ -138,6 +138,7 @@ const LAZY_ROUTES = [
   ['AdminPanel', () => import('../../components/admin/AdminPanel')],
   ['TaxReportPage', () => import('../../components/tax/TaxReportPage')],
   ['BusinessLedgerPage', () => import('../../components/business/BusinessLedgerPage')],
+  ['NotebookPage', () => import('../../components/notebook/NotebookPage')],
   ['OpenPositionsTab', () => import('../../components/journal/OpenPositionsTab')],
   ['MarketsExplorer', () => import('../../components/polymarket/MarketsExplorer')],
   ['StrategyTab', () => import('../../components/polymarket/StrategyTab')],

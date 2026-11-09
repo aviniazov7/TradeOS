@@ -284,6 +284,9 @@ export const FREE_LIMITS = {
   // Prop-firm cash book. Free keeps the list and the monthly net.
   // The chart, the copyable report, and a longer list are Premium.
   businessEntries: 15,
+  // Trader notebook. Free keeps the list and text search.
+  // A longer list and the tag filter are Premium.
+  notebookEntries: 20,
 };
 
 // Premium pricing is billed in ILS. The journal stays in USD on purpose:
@@ -307,6 +310,7 @@ export const PREMIUM_FEATURES = [
   { icon: 'Bell', title: 'התראות עסקאות', free: 'בסיסי', premium: 'מתקדם' },
   { icon: 'BarChart3', title: 'אנליטיקה מתקדמת', free: '—', premium: 'כלול' },
   { icon: 'Briefcase', title: 'ניהול עסק', free: `עד ${FREE_LIMITS.businessEntries}`, premium: 'ללא הגבלה' },
+  { icon: 'NotebookPen', title: 'מחברת', free: `עד ${FREE_LIMITS.notebookEntries}`, premium: 'ללא הגבלה' },
   // Premium-gated page that was missing from the table entirely, so the one
   // feature nobody else has was also the one nobody was told about.
   { icon: 'Trophy', title: 'Polymarket — מכ"ם כסף חכם', free: '—', premium: 'כלול' },
