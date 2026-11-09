@@ -59,6 +59,7 @@ const NewsPage = lazy(loadNewsPage);
 const PremiumPage = lazy(loadPremiumPage);
 const CheckoutPage = lazy(loadCheckoutPage);
 const CouponLandingPage = lazy(loadCouponLanding);
+const JournalSharePage = lazy(() => import('./components/journal/JournalSharePage'));
 const RefundPolicyPage = lazy(loadRefundPolicy);
 const AccessibilityStatement = lazy(loadAccessibility);
 const WalletDetailPage = lazy(loadWalletDetailPage);
@@ -127,6 +128,9 @@ function MainApp() {
                   shared link works for logged-out friends; redeeming itself
                   sends them through /login and back. */}
               <Route path="/redeem/:code" element={<CouponLandingPage />} />
+              {/* Shared journal. The token is enough; the Worker checks it.
+                  No sign-in, so a pending email can still open the filtered copy. */}
+              <Route path="/share/:token" element={<JournalSharePage />} />
               {/* Accessibility statement — public (reachable without login, as
                   required for an Israeli-standard accessibility statement). */}
               <Route path="/accessibility" element={<AccessibilityStatement />} />

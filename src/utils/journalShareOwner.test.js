@@ -4,6 +4,7 @@ import { defaultShareFields } from './journalShareFilter';
 import {
   SHARE_CREATED_MESSAGE,
   effectiveShareFields,
+  journalShareLink,
   isOwnerEmail,
   shareExpiryPatch,
   shareRequestBody,
@@ -13,6 +14,12 @@ import {
 describe('journal share owner request', () => {
   it('uses the worker sentence, so the screen cannot invent a second wording', () => {
     expect(SHARE_CREATED_MESSAGE).toBe(SHARE_MESSAGE);
+  });
+
+  it('builds a public link that carries the token and no session', () => {
+    expect(journalShareLink('ab'.repeat(32), 'https://tradeoslive.web.app/')).toBe(
+      `https://tradeoslive.web.app/share/${'ab'.repeat(32)}`,
+    );
   });
 
   it('blocks the owner address without caring about letter case', () => {

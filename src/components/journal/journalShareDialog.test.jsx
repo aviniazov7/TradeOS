@@ -226,7 +226,7 @@ describe('journal share dialog', () => {
     });
     expect(created.body.expiresOn).toBeUndefined();
     expect(document.querySelector('[data-testid="share-created"]').textContent).toContain(SHARE_CREATED_MESSAGE);
-    expect(document.querySelector('[data-testid="share-token"]').value).toBe(TOKEN);
+    expect(document.querySelector('[data-testid="share-token"]').value).toBe(`${window.location.origin}/share/${TOKEN}`);
     expect(document.querySelector('[data-testid="share-list"]').textContent).not.toContain(TOKEN);
     expect(document.querySelector('[data-testid="share-list"]').textContent).toContain('new-viewer@example.com');
 
