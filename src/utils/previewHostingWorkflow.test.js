@@ -26,6 +26,7 @@ describe('main PR hosting preview workflow', () => {
     expect(preview).toMatch(/VITE_WORKER_URL:\s*https:\/\/trade-os\.tradeos\.workers\.dev/);
     expect(preview).toMatch(/VITE_ADMIN_NOTIF_PREVIEW:\s*'1'/);
     expect(preview).toMatch(/VITE_PLAN_BUILDER_DEMO:\s*'1'/);
+    expect(preview).toMatch(/VITE_PUBLIC_DEMO:\s*'1'/);
     expect(preview).toMatch(/VITE_FIREBASE_AUTH_DOMAIN:\s*tradeoslive\.web\.app/);
     expect(preview).toMatch(/FirebaseExtended\/action-hosting-deploy@v0/);
     expect(preview).toMatch(/secrets\.FIREBASE_SERVICE_ACCOUNT/);

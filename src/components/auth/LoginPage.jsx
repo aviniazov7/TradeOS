@@ -375,6 +375,15 @@ export default function LoginPage() {
             </button>
           </form>
 
+          {(import.meta.env.DEV || import.meta.env.VITE_PUBLIC_DEMO === '1') && (
+            <Link
+              to="/demo"
+              className="mt-3 flex h-11 w-full items-center justify-center rounded-xl border border-border-primary text-sm font-bold text-text-primary hover:bg-bg-tertiary transition-colors"
+            >
+              נסה את TradeOS
+            </Link>
+          )}
+
           <div className="mt-8 flex items-center justify-center gap-1.5 text-xs text-text-muted">
             <ShieldCheck className="w-3.5 h-3.5 text-profit" />
             הנתונים שלך מוצפנים ומאוחסנים בצורה מאובטחת

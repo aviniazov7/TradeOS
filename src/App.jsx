@@ -80,6 +80,13 @@ const PlanBuilderDemoPage = planBuilderDemoBuild
   ? lazy(() => import('./components/plans/PlanBuilderDemoPage'))
   : null;
 
+// Logged-out tour. Local dev, or a preview build with VITE_PUBLIC_DEMO=1.
+// Production leaves the route out of the bundle.
+const publicDemoBuild = import.meta.env.DEV || import.meta.env.VITE_PUBLIC_DEMO === '1';
+const PublicDemoPage = publicDemoBuild
+  ? lazy(() => import('./components/demo/PublicDemoPage'))
+  : null;
+
 // Preload the two most-likely-next routes during idle, and only once someone
 // is signed in. Doing this on /login downloaded Firestore, charts, and the
 // journal during Lighthouse (about 59 scripts) and competed with first paint.
@@ -225,6 +232,13 @@ export default function App() {
             <Route path="/plan-builder-demo" element={(
               <Suspense fallback={<LoadingSpinner />}>
                 <PlanBuilderDemoPage />
+              </Suspense>
+            )} />
+          )}
+          {PublicDemoPage && (
+            <Route path="/demo" element={(
+              <Suspense fallback={<LoadingSpinner />}>
+                <PublicDemoPage />
               </Suspense>
             )} />
           )}

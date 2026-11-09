@@ -51,6 +51,7 @@ jobs:
           VITE_WORKER_URL: https://trade-os.tradeos.workers.dev
           VITE_ADMIN_NOTIF_PREVIEW: '1'
           VITE_PLAN_BUILDER_DEMO: '1'
+          VITE_PUBLIC_DEMO: '1'
           VITE_FIREBASE_AUTH_DOMAIN: tradeoslive.web.app
         run: npm run build
 
