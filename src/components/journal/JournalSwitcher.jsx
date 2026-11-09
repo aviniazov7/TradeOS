@@ -29,12 +29,16 @@ export function journalDisplayName(journal, { connected } = {}) {
   return stripped;
 }
 
-// A real exchange mark only when one is connected. Otherwise a neutral book.
+// A journal tied to a venue keeps that venue's mark, even when the API is
+// not connected yet. The letter circle is only for a name with no logo.
+// The default manual book ("היומן שלי") stays unmarked until something is connected.
 function JournalMark({ journal, size = 'w-5 h-5', connected }) {
-  const manual = isUnsetExchange(journal?.exchange) || connected === false;
-  const exchange = manual ? '' : journal?.exchange;
+  const display = journalDisplayName(journal, { connected });
+  const genericManual = !journal?.name || journal.name === 'היומן שלי' || display === 'יומן ידני';
+  const hideBrand = isUnsetExchange(journal?.exchange) || (connected === false && genericManual);
+  const exchange = hideBrand ? '' : journal?.exchange;
   const logo = exchange ? getExchangeLogo(exchange) : null;
-  if (manual && (!journal?.name || journal.name === 'היומן שלי' || journalDisplayName(journal, { connected }) === 'יומן ידני')) {
+  if (!logo && genericManual) {
     return (
       <span
         data-testid="journal-manual"

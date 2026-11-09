@@ -7,6 +7,8 @@ import JournalSwitcher from './JournalSwitcher';
 const journals = [
   { id: 'j1', name: 'היומן שלי', exchange: 'binance', assetClass: 'crypto' },
   { id: 'j2', name: 'Alpha', exchange: '', assetClass: 'crypto' },
+  { id: 'j3', name: 'MEXC', exchange: 'mexc', assetClass: 'crypto' },
+  { id: 'j4', name: 'MEXC', exchange: '', assetClass: 'crypto' },
 ];
 
 vi.mock('react-router-dom', () => ({ useNavigate: () => () => {} }));
@@ -43,6 +45,24 @@ describe('manual journal switcher', () => {
     expect(el.textContent).not.toContain('Binance');
     expect(el.querySelector('img')).toBeNull();
     expect(el.querySelector('[data-testid="journal-manual"]')).toBeTruthy();
+    await act(async () => { root.unmount(); });
+    el.remove();
+  });
+
+  it('keeps the real MEXC mark when the API is not connected, and does not invent one from the name', async () => {
+    Object.defineProperty(window, 'innerWidth', { value: 390, configurable: true });
+    const el = document.createElement('div');
+    document.body.appendChild(el);
+    const root = createRoot(el);
+    await act(async () => { root.render(<JournalSwitcher compact />); });
+    const button = el.querySelector('button');
+    button.getBoundingClientRect = () => ({ right: 200, bottom: 80, left: 40, top: 40, width: 160, height: 40, x: 40, y: 40, toJSON() {} });
+    await act(async () => { button.click(); });
+    const menu = document.querySelector('[data-testid="journal-switcher-menu"]');
+    const imgs = [...menu.querySelectorAll('img')].map((n) => n.getAttribute('src'));
+    expect(imgs).toEqual(['/logos/exchanges/mexc.svg']);
+    const letters = [...menu.querySelectorAll('[data-testid="journal-letter"]')].map((n) => n.textContent);
+    expect(letters).toEqual(['A', 'M']);
     await act(async () => { root.unmount(); });
     el.remove();
   });
