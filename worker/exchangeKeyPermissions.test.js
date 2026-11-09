@@ -96,4 +96,58 @@ describe('verifyExchangeKeyReadOnly', () => {
     const fetchImpl = fetchJson({ enableReading: true, enableWithdrawals: true });
     await expect(verifyExchangeKeyReadOnly('binance', creds, fetchImpl)).rejects.toMatchObject({ code: 'key_not_readonly' });
   });
+
+  it('tells Bybit failures apart and never echoes the secret', async () => {
+    const secret = 'bybit-test-secret-QRSTUVWXYZ012345';
+    const cases = [
+      [{ retCode: 10010, retMsg: `ip ${secret}` }, 'ip_blocked'],
+      [{ retCode: 10003, retMsg: secret }, 'key_invalid'],
+      [{ retCode: 10004, retMsg: secret }, 'key_invalid'],
+      [{ retCode: 33004, retMsg: secret }, 'key_expired'],
+      [{ retCode: 10005, retMsg: secret }, 'no_permission'],
+      [{ retCode: 10016, retMsg: `system error ${secret}` }, 'provider_unavailable'],
+    ];
+    for (const [payload, code] of cases) {
+      const err = await verifyExchangeKeyReadOnly('bybit', { ...creds, apiSecret: secret }, fetchJson(payload)).catch((e) => e);
+      expect(err).toMatchObject({ code });
+      expect(err.message).not.toContain(secret);
+      expect(JSON.stringify(err)).not.toContain(secret);
+    }
+  });
+
+  it('tells MEXC failures apart and never echoes the key', async () => {
+    const apiKey = 'MEXCTESTKEYABCDEFGHIJKLMNOP';
+    const secret = 'mexc-test-secret-QRSTUVWXYZ012345';
+    const cases = [
+      [{ code: 406, msg: `whitelist ${apiKey}` }, 'ip_blocked'],
+      [{ code: 401, msg: secret }, 'key_invalid'],
+      [{ code: 602, msg: secret }, 'key_invalid'],
+      [{ code: 402, msg: secret }, 'key_expired'],
+    ];
+    for (const [payload, code] of cases) {
+      const err = await verifyExchangeKeyReadOnly('mexc', { apiKey, apiSecret: secret }, fetchJson(payload)).catch((e) => e);
+      expect(err).toMatchObject({ code });
+      expect(err.message).not.toContain(apiKey);
+      expect(err.message).not.toContain(secret);
+    }
+  });
+
+  it('maps a network failure to the provider message without the request URL', async () => {
+    const apiKey = 'MEXCTESTKEYABCDEFGHIJKLMNOP';
+    const fetchImpl = async () => {
+      throw new Error(`https://api.mexc.com/api/v3/apiKeyInfo?accessKey=${apiKey}`);
+    };
+    const err = await verifyExchangeKeyReadOnly('mexc', { apiKey, apiSecret: 's' }, fetchImpl).catch((e) => e);
+    expect(err).toMatchObject({ code: 'provider_unavailable' });
+    expect(err.message).not.toContain(apiKey);
+    expect(err.message).not.toContain('api.mexc.com');
+  });
+
+  it('still rejects a MEXC key that can trade', async () => {
+    const fetchImpl = fetchJson({ status: 'VALID', permissions: 'SPOT_ACCOUNT_READ,CONTRACT_DEAL_WRITE' });
+    const err = await verifyExchangeKeyReadOnly('mexc', creds, fetchImpl).catch((e) => e);
+    expect(err).toMatchObject({ code: 'key_not_readonly' });
+    expect(err.message).toContain('Read-Only');
+    expect(err.message).toContain('Trade');
+  });
 });
