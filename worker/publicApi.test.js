@@ -494,6 +494,121 @@ describe('public API v1', () => {
     expect(collection.status).toBe(405);
   });
 
+  it('patches one trade and recomputes derived fields without moving createdAt', async () => {
+    const db = memoryDb();
+    db.put('users/user1/journals/j1', { initialBalance: { doubleValue: 1000 } });
+    const created = await call('/api/v1/trades', { method: 'POST', db, body: tradeBody });
+    const id = (await created.json()).id;
+    const before = decodeFields(db.docs.get(`users/user1/trades/${id}`));
+    const clock = new Date('2026-06-16T08:00:00.000Z');
+    const extra = { now: () => clock };
+
+    const notes = await call(`/api/v1/trades/${id}`, {
+      method: 'PATCH', db, body: { notes: 'scaled out' }, extra,
+    });
+    expect(notes.status).toBe(200);
+    const noted = await notes.json();
+    expect(noted.trade).toMatchObject({
+      id, pair: 'BTCUSDT', notes: 'scaled out', pnl: 20, netPnl: 19, result: 'win', fees: 1,
+    });
+    expect(noted.trade.createdAt).toBe(before.createdAt);
+    expect(noted.trade.entryDate).toBe(before.entryDate);
+    expect(noted.trade.updatedAt).toBe('2026-06-16T08:00:00.000Z');
+
+    const repriced = await call(`/api/v1/trades/${id}`, {
+      method: 'PATCH', db, body: { exitPrice: 90, entryDate: '2026-01-02T00:00:00.000Z' }, extra,
+    });
+    expect(repriced.status).toBe(200);
+    const trade = (await repriced.json()).trade;
+    expect(trade).toMatchObject({
+      exitPrice: 90, pnl: -20, netPnl: -21, result: 'loss', pair: 'BTCUSDT', notes: 'scaled out',
+    });
+    expect(trade.createdAt).toBe(before.createdAt);
+    expect(trade.entryDate).toBe('2026-01-02T00:00:00.000Z');
+    expect(trade.updatedAt).toBe('2026-06-16T08:00:00.000Z');
+    expect([...db.docs.keys()].filter((key) => key.startsWith('users/user1/trades/'))).toEqual([
+      `users/user1/trades/${id}`,
+    ]);
+
+    const stats = await call('/api/v1/stats?journalId=j1', { db });
+    expect((await stats.json()).totalPnl).toBe(-21);
+  });
+
+  it('rejects a bad patch and does not reveal or change another user\'s trade', async () => {
+    const db = memoryDb();
+    db.put('users/user1/journals/j1', { initialBalance: { doubleValue: 1000 } });
+    db.put('users/user2/trades/secret', {
+      journalId: { stringValue: 'x' }, pair: { stringValue: 'BTCUSDT' }, fees: { doubleValue: 1 },
+      createdAt: { timestampValue: '2026-01-01T00:00:00.000Z' },
+    });
+    const created = await call('/api/v1/trades', { method: 'POST', db, body: tradeBody });
+    const id = (await created.json()).id;
+    const path = `users/user1/trades/${id}`;
+    const snapshot = () => JSON.stringify(db.docs.get(path));
+    const unchanged = snapshot();
+    const secretBefore = JSON.stringify(db.docs.get('users/user2/trades/secret'));
+
+    const empty = await call(`/api/v1/trades/${id}`, { method: 'PATCH', db, body: {} });
+    expect(empty.status).toBe(400);
+    expect((await empty.json()).error).toBe('body must include at least one field');
+
+    const unknown = await call(`/api/v1/trades/${id}`, { method: 'PATCH', db, body: { pnl: 999 } });
+    expect(unknown.status).toBe(400);
+    expect((await unknown.json()).error).toBe('pnl is not editable');
+
+    const immutableId = await call(`/api/v1/trades/${id}`, { method: 'PATCH', db, body: { id: 'other' } });
+    expect(immutableId.status).toBe(400);
+    expect((await immutableId.json()).error).toBe('id is immutable');
+
+    const immutableCreated = await call(`/api/v1/trades/${id}`, {
+      method: 'PATCH', db, body: { createdAt: '2020-01-01T00:00:00.000Z' },
+    });
+    expect(immutableCreated.status).toBe(400);
+    expect((await immutableCreated.json()).error).toBe('createdAt is immutable');
+
+    const badExit = await call(`/api/v1/trades/${id}`, { method: 'PATCH', db, body: { exitPrice: -1 } });
+    expect(badExit.status).toBe(400);
+    expect((await badExit.json()).error).toMatch(/exitPrice/);
+
+    const badDirection = await call(`/api/v1/trades/${id}`, { method: 'PATCH', db, body: { direction: 'up' } });
+    expect(badDirection.status).toBe(400);
+    expect((await badDirection.json()).error).toMatch(/direction/);
+
+    const foreignJournal = await call(`/api/v1/trades/${id}`, { method: 'PATCH', db, body: { journalId: 'theirs' } });
+    expect(foreignJournal.status).toBe(404);
+    expect((await foreignJournal.json()).error).toBe('journal not found');
+    expect(snapshot()).toBe(unchanged);
+
+    const missing = await call('/api/v1/trades/missing', { method: 'PATCH', db, body: { fees: 2 } });
+    expect(missing.status).toBe(404);
+    expect((await missing.json()).error).toBe('trade not found');
+
+    const foreign = await call('/api/v1/trades/secret', { method: 'PATCH', db, body: { fees: 9, pnl: 1 } });
+    expect(foreign.status).toBe(404);
+    expect((await foreign.json()).error).toBe('trade not found');
+    expect(JSON.stringify(db.docs.get('users/user2/trades/secret'))).toBe(secretBefore);
+
+    const badId = await call(`/api/v1/trades/${'a'.repeat(129)}`, { method: 'PATCH', db, body: { fees: 2 } });
+    expect(badId.status).toBe(400);
+    expect((await badId.json()).error).toBe('invalid trade id');
+
+    const inner = db.fetchFn;
+    const failed = await call(`/api/v1/trades/${id}`, {
+      method: 'PATCH', db, body: { fees: 4 },
+      extra: {
+        fetchFn: async (url, init = {}) => {
+          if ((init.method || 'GET') === 'PATCH' && String(url).includes(`/trades/${id}`)) {
+            return { status: 500, ok: false, json: async () => ({}), text: async () => '' };
+          }
+          return inner(url, init);
+        },
+      },
+    });
+    expect(failed.status).toBe(502);
+    expect((await failed.json()).error).toBe('failed to write trade');
+    expect(snapshot()).toBe(unchanged);
+  });
+
   it('rate limits a user without writing KV', async () => {
     const db = memoryDb();
     const res = await call('/api/v1/stats?journalId=j1', { db, extra: { rateLimit: async () => ({ count: 61 }) } });

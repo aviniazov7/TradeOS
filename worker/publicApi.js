@@ -6,7 +6,7 @@
 // because the uid is not known yet. A request never writes KV just to be counted.
 
 import { buildStoredTrade, withDerivedRiskAmount } from '../src/utils/tradeDoc.js';
-import { prepareApiTrade } from '../src/utils/tradeValidation.js';
+import { inspectApiTradePatch, prepareApiTrade, storedTradeInput } from '../src/utils/tradeValidation.js';
 import { computeApiStats } from '../src/utils/apiStats.js';
 import { windowBounds } from '../src/utils/dashboardStats.js';
 import { tradeImageIds } from '../src/utils/tradeImageSlots.js';
@@ -218,6 +218,7 @@ export async function handlePublicApi(request, env, deps) {
     if (path === '/api/v1/trades' && request.method === 'POST') return await createTrade(request, ctx);
     if (path === '/api/v1/trades' && request.method === 'GET') return await listTrades(url, ctx);
     const tradeItem = path.match(/^\/api\/v1\/trades\/([^/]+)$/);
+    if (tradeItem && request.method === 'PATCH') return await updateTrade(tradeItem[1], request, ctx);
     if (tradeItem && request.method === 'DELETE') return await deleteTrade(tradeItem[1], ctx);
     if (path === '/api/v1/stats' && request.method === 'GET') return await journalStats(url, ctx);
     if (path === '/api/v1/keys' && request.method === 'POST') return await createKey(request, ctx);
@@ -618,6 +619,64 @@ export async function listJournals(ctx) {
     return a.id < b.id ? -1 : a.id > b.id ? 1 : 0;
   });
   return json(ctx.cors, 200, { journals: rows.map(publicJournal) });
+}
+
+function preserveCreatedAt(stored, existing) {
+  const raw = existing?.createdAt;
+  if (raw == null || raw === '') return stored;
+  const createdAt = raw instanceof Date ? raw : new Date(raw);
+  if (Number.isNaN(createdAt.getTime())) return stored;
+  return { ...stored, createdAt };
+}
+
+export async function updateTrade(tradeId, request, ctx) {
+  const { cors, auth, base, fetchFn } = ctx;
+  if (typeof tradeId !== 'string') return json(cors, 400, { error: 'invalid trade id' });
+  let id;
+  try { id = decodeURIComponent(tradeId); } catch { return json(cors, 400, { error: 'invalid trade id' }); }
+  if (!validDocId(id)) return json(cors, 400, { error: 'invalid trade id' });
+
+  const tradeUrl = `${base}/documents/users/${auth.uid}/trades/${encodeURIComponent(id)}`;
+  const existing = await readDoc(fetchFn, auth.admin, tradeUrl);
+  if (!existing) return json(cors, 404, { error: 'trade not found' });
+
+  let body;
+  try { body = await request.json(); } catch { return json(cors, 400, { error: 'invalid JSON' }); }
+  const inspected = inspectApiTradePatch(body);
+  if (!inspected.ok) return json(cors, 400, { error: inspected.error });
+
+  const patch = { ...body };
+  delete patch.journal;
+  const sentJournal = Object.prototype.hasOwnProperty.call(body, 'journal');
+  const sentJournalId = Object.prototype.hasOwnProperty.call(body, 'journalId');
+  if (sentJournal || sentJournalId) {
+    const resolved = await resolveJournal(ctx, {
+      journalId: sentJournalId ? body.journalId : '',
+      journal: sentJournal ? body.journal : '',
+    });
+    if (!resolved.ok) return json(cors, resolved.status, { error: resolved.error });
+    patch.journalId = resolved.journalId;
+  }
+
+  const prepared = prepareApiTrade({ ...storedTradeInput(existing.data), ...patch });
+  if (!prepared.ok) return json(cors, 400, { error: prepared.error });
+
+  const now = nowDate(ctx);
+  let stored = withDerivedRiskAmount(buildStoredTrade(prepared.trade, {
+    journalId: prepared.trade.journalId,
+    now,
+  }));
+  stored = preserveCreatedAt(stored, existing.data);
+  stored.updatedAt = now;
+  if (existing.data.pnlFromExchange != null) stored.pnlFromExchange = null;
+
+  try {
+    await patchDoc(ctx, tradeUrl, stored);
+  } catch (err) {
+    console.error('trade update failed', err?.message || err);
+    return json(cors, 502, { error: 'failed to write trade' });
+  }
+  return json(cors, 200, { id, trade: { id, ...toPublicTrade(stored) } });
 }
 
 export async function deleteTrade(tradeId, ctx) {
