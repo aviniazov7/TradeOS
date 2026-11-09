@@ -130,6 +130,11 @@ describe('planAiRefund', () => {
     const r = planAiRefund(doc, { date: DATE, daily: true, image: true });
     expect(r).toMatchObject({ u: 2, i: 0, m: { s: NOW, c: 3 } });
   });
+  it('refunds a failed plan build without touching the chat counter or windows', () => {
+    const doc = { date: DATE, u: 4, i: 0, b: 2, m: { s: NOW, c: 1 }, h: null, d: null };
+    const r = planAiRefund(doc, { date: DATE, planBuilder: true });
+    expect(r).toMatchObject({ u: 4, b: 1, m: { s: NOW, c: 1 } });
+  });
   it('is a no-op (null) for another day or zero counters', () => {
     expect(planAiRefund({ date: '2026-10-06', u: 3 }, { date: DATE, daily: true })).toBeNull();
     expect(planAiRefund({ date: DATE, u: 0, i: 0 }, { date: DATE, daily: true, image: true })).toBeNull();

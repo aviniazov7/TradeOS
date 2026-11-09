@@ -106,16 +106,17 @@ export function planAiCharge(raw, { now, date, premium, chargeDaily, image, plan
   return { next: { date, u, i, b, m, h, d } };
 }
 
-// Undo the daily/image part of a charge after a provider failure (failed calls
-// don't burn quota). Rate windows are deliberately NOT refunded — they exist
-// to throttle hammering, failed or not. Returns the doc to persist, or null
-// when there is nothing to change (other day / already zero).
-export function planAiRefund(raw, { date, daily, image }) {
+// Undo the daily/image/plan-builder part of a charge after a provider failure
+// (failed calls don't burn that counter). Rate windows are deliberately NOT
+// refunded — they exist to throttle hammering, failed or not. Returns the doc
+// to persist, or null when there is nothing to change (other day / already zero).
+export function planAiRefund(raw, { date, daily, image, planBuilder }) {
   if (!raw || raw.date !== date) return null;
   const doc = normalizeQuotaDoc(raw, date);
   let changed = false;
   if (daily && doc.u > 0) { doc.u -= 1; changed = true; }
   if (image && doc.i > 0) { doc.i -= 1; changed = true; }
+  if (planBuilder && doc.b > 0) { doc.b -= 1; changed = true; }
   return changed ? doc : null;
 }
 
