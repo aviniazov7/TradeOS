@@ -60,7 +60,8 @@ export default function JournalRiskRulesFields({ value, onChange }) {
       <div>
         <p className="text-xs font-semibold text-text-primary">כללי סיכון</p>
         <p className="text-[11px] text-text-muted">
-          כל כלל כבוי עד שמפעילים אותו. ביומן מופיע סטטוס לקריאה בלבד, בלי חסימה של רישום ובלי באנר.
+          כל כלל כבוי עד שמפעילים אותו. בחריגה מופיע באנר ביומן ואזהרה בעסקה חדשה.
+          הרישום נשאר פתוח, ואפשר להסתיר את הבאנר להיום.
           התראת ההפסד היומי בדולרים נשארת למעלה.
         </p>
       </div>

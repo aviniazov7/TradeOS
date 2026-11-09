@@ -91,7 +91,8 @@ describe('journal risk rules settings', () => {
     expect(boxes).toHaveLength(5);
     expect(boxes.every((box) => box.checked === false)).toBe(true);
     expect(document.querySelector('[data-testid="journal-risk-rules"] input[type="number"]')).toBeNull();
-    expect(document.body.textContent).toContain('בלי חסימה של רישום ובלי באנר');
+    expect(document.body.textContent).toContain('הרישום נשאר פתוח');
+    expect(document.body.textContent).toContain('אפשר להסתיר את הבאנר להיום');
     await save();
     expect(state.updateJournal).toHaveBeenCalledOnce();
     const payload = state.updateJournal.mock.calls[0][1];

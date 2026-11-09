@@ -26,6 +26,7 @@ import { headerPrimaryBtn, headerAiBtnDense, headerIconBtnDense, headerPlusBtnDe
 import { useAuth } from '../../contexts/AuthContext';
 import JournalSummaryBar from './JournalSummaryBar';
 import DailyLossBanner from './DailyLossBanner';
+import JournalRiskBanner from './JournalRiskBanner';
 import JournalRiskStatus from './JournalRiskStatus';
 import TradeTable from './TradeTable';
 import TradeFilters from './TradeFilters';
@@ -47,6 +48,13 @@ import { useCustomTradeFields } from '../../hooks/useCustomTradeFields';
 import { setupLabel, tradeSetups } from '../../utils/setupStats';
 import { pageVariants, pageTransition } from '../../utils/animations';
 import { TRADE_PREFILL_KEY } from '../../utils/tradeFormHelpers';
+import { evaluateJournalRisk } from '../../utils/journalRiskRules';
+import {
+  journalRiskBreachNotice,
+  readRiskBreachDismissed,
+  riskBreachDismissToken,
+  writeRiskBreachDismissed,
+} from '../../utils/journalRiskNotice';
 import { CRYPTO_JOURNAL_TABS, OTHER_JOURNAL_TABS, resolveJournalTab } from '../../utils/journalTabs';
 
 const TAB_LABELS = { trades: 'עסקאות', exchange: 'בורסה', analytics: 'אנליטיקה', calendar: 'יומן חודשי' };
@@ -144,6 +152,7 @@ export default function TradeJournal() {
   const [editingTrade, setEditingTrade] = useState(null);
   const [tradePrefill, setTradePrefill] = useState(null);
   const [pendingDeletes, setPendingDeletes] = useState(new Set());
+  const [riskHiddenToken, setRiskHiddenToken] = useState('');
   const [filters, setFilters] = useState(() => {
     try {
       const saved = localStorage.getItem('tj_filters');
@@ -509,6 +518,29 @@ export default function TradeJournal() {
     return true;
   }, [showingDemo, editingTrade, trades, updateTrade, addTrade]);
 
+  const journalTrades = realTrades.filter((t) => !pendingDeletes.has(t.id));
+  const riskEval = !showingDemo && activeJournal?.riskRules
+    ? evaluateJournalRisk(journalTrades, activeJournal.riskRules, {
+      journalId: activeJournalId,
+      balance: activeJournal?.initialBalance,
+    })
+    : null;
+  const riskNotice = journalRiskBreachNotice(riskEval);
+  const riskDayKey = riskEval?.dayKey || '';
+  const riskToken = riskDayKey
+    ? riskBreachDismissToken(user?.uid, activeJournalId, riskDayKey)
+    : '';
+  const riskDismissed = Boolean(riskToken) && (
+    riskHiddenToken === riskToken
+    || readRiskBreachDismissed(localStorage, user?.uid, activeJournalId, riskDayKey)
+  );
+  const showRiskBreach = Boolean(riskNotice) && !riskDismissed;
+  const dismissRiskBanner = useCallback(() => {
+    if (!riskDayKey) return;
+    writeRiskBreachDismissed(localStorage, user?.uid, activeJournalId, riskDayKey);
+    setRiskHiddenToken(riskBreachDismissToken(user?.uid, activeJournalId, riskDayKey));
+  }, [riskDayKey, user?.uid, activeJournalId]);
+
   const handleEdit = (trade) => {
     if (showingDemo || isDemoTrade(trade)) { refuseDemoWrite(); return; }
     setEditingTrade(trade);
@@ -686,13 +718,16 @@ export default function TradeJournal() {
         <>
           <JournalRiskStatus
             rules={activeJournal?.riskRules}
-            trades={realTrades.filter((t) => !pendingDeletes.has(t.id))}
+            trades={journalTrades}
             journalId={activeJournalId}
             balance={activeJournal?.initialBalance}
           />
+          {showRiskBreach && (
+            <JournalRiskBanner notice={riskNotice} onDismiss={dismissRiskBanner} />
+          )}
           <DailyLossBanner
             alert={activeJournal?.dailyLossAlert}
-            trades={realTrades.filter((t) => !pendingDeletes.has(t.id))}
+            trades={journalTrades}
             journalId={activeJournalId}
           />
         </>
@@ -908,6 +943,8 @@ export default function TradeJournal() {
         {formMounted && (
           <TradeForm isOpen={formOpen} onClose={handleCloseForm} trade={editingTrade} onSave={handleSave}
             prefill={tradePrefill}
+            breachWarning={showRiskBreach && !editingTrade ? riskNotice.summary : null}
+            onDismissBreach={dismissRiskBanner}
             riskSettings={{ riskType: activeJournal?.riskType, riskValue: activeJournal?.riskValue, currentBalance: formBalance, balanceKnown: formBalanceKnown }}
             accountBalance={editingTrade ? balanceForTrade(returnBook, editingTrade) : (accountReturnMode ? returnBook.current : 0)}
             strictAccount={accountReturnMode}
