@@ -245,6 +245,7 @@ function TradeForm({
   isOpen, onClose, trade, onSave, riskSettings, livePrices = {},
   journalAssetClass = 'crypto', prefill = null, accountBalance = 0, strictAccount = false,
   customFields = [], customFieldsReady = false,
+  breachWarning = null, onDismissBreach = null,
 }) {
   // Asset class is owned by the JOURNAL — every trade inherits it, no per-trade
   // toggle. Editing a trade keeps that trade's own stored class.
@@ -1600,6 +1601,27 @@ function TradeForm({
       <form id="trade-ticket-form" onSubmit={handleSubmit} onKeyDown={handleFormKeyDown}
         className="lg:grid lg:grid-cols-[minmax(0,1fr)_288px] lg:gap-6 lg:items-start">
         <div className="min-w-0">
+          {!trade && breachWarning && (
+            <div
+              role="status"
+              dir="rtl"
+              data-testid="trade-risk-warning"
+              className="mb-3 flex items-start gap-2 rounded-xl border border-loss/30 bg-loss/10 px-3 py-2.5 text-loss"
+            >
+              <AlertTriangle className="w-4 h-4 shrink-0 mt-0.5 text-loss" />
+              <p className="min-w-0 flex-1 text-sm font-semibold text-loss">{breachWarning}</p>
+              {onDismissBreach && (
+                <button
+                  type="button"
+                  onClick={onDismissBreach}
+                  data-testid="trade-risk-warning-dismiss"
+                  className="shrink-0 h-11 px-3 rounded-lg border border-loss/30 text-xs font-semibold text-loss hover:bg-loss/15 transition-colors cursor-pointer"
+                >
+                  הסתר להיום
+                </button>
+              )}
+            </div>
+          )}
 
           {/* 01 — instrument & direction. Asset class is inherited from the
               journal — no per-trade toggle. */}
