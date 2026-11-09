@@ -5,6 +5,7 @@ import tailwindcss from '@tailwindcss/vite'
 import { cloudflare } from "@cloudflare/vite-plugin";
 import { readFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
+import { applyGuidanceMeta } from './src/utils/guidanceName.js';
 
 // Build stamp shown next to the marketing version in the profile footer:
 // the service-worker cache number (auto-bumped on every production release)
@@ -14,7 +15,12 @@ const swBuild = (() => {
 })();
 
 export default defineConfig({
-  plugins: [react(), tailwindcss(), cloudflare()],
+  plugins: [
+    react(),
+    tailwindcss(),
+    cloudflare(),
+    { name: 'guidance-meta', transformIndexHtml: applyGuidanceMeta },
+  ],
   define: {
     __APP_BUILD__: JSON.stringify(swBuild),
     __APP_BUILD_DATE__: JSON.stringify(new Date().toISOString()),
