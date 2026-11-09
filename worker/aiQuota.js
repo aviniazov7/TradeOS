@@ -10,6 +10,7 @@
 //     date: 'YYYY-MM-DD',  // Israel date the daily counters belong to
 //     u: 3,                // daily AI requests (text quota / progress bar)
 //     i: 1,                // daily chart-image analyses
+//     b: 1,                // daily plan-builder submissions (separate cap)
 //     m: { s, c },         // rolling 1-minute window  (s = start ms, c = count)
 //     h: { s, c },         // rolling 1-hour window
 //     d: { s, c },         // rolling 24-hour window (premium soft cap)
@@ -42,6 +43,7 @@ export function normalizeQuotaDoc(raw, date) {
     date,
     u: sameDay ? n(doc.u) : 0,
     i: sameDay ? n(doc.i) : 0,
+    b: sameDay ? n(doc.b) : 0,
     m: doc.m || null,
     h: doc.h || null,
     d: doc.d || null,
@@ -56,15 +58,17 @@ export function normalizeQuotaDoc(raw, date) {
  *   premium          — caller's plan
  *   chargeDaily      — count this request against the daily `u` counter
  *   image            — the request carries a chart image (premium-only)
+ *   planBuilder      — count this request against the daily `b` counter
  *   limits           — { premium: {minute,hour,day}, freeBurstPerMin,
- *                        freeDaily, imageDaily }
+ *                        freeDaily, imageDaily, planBuilderDaily }
  *
  * Returns { deny: reason } (reason ∈ minute|hour|day|burst|imagePremium|
- * imageQuota|daily) or { next } — the document to persist. The check order
- * matches the original route logic: rate windows → image gate → image
- * quota → daily quota.
+ * imageQuota|daily|planPremium|planBuilder) or { next } — the document to
+ * persist. The check order matches the original route logic: rate windows →
+ * image gate → image quota → daily quota → plan-builder quota. `b` is copied
+ * onto every next document so a later chat charge does not wipe it.
  */
-export function planAiCharge(raw, { now, date, premium, chargeDaily, image, limits }) {
+export function planAiCharge(raw, { now, date, premium, chargeDaily, image, planBuilder, limits }) {
   const doc = normalizeQuotaDoc(raw, date);
   const m = rollWindow(doc.m, now, AI_WINDOW_MS.minute);
   const h = rollWindow(doc.h, now, AI_WINDOW_MS.hour);
@@ -91,19 +95,28 @@ export function planAiCharge(raw, { now, date, premium, chargeDaily, image, limi
     if (!premium && u > limits.freeDaily) return { deny: 'daily' };
   }
 
-  return { next: { date, u, i, m, h, d } };
+  let b = doc.b;
+  if (planBuilder) {
+    if (!premium) return { deny: 'planPremium' };
+    const cap = Number(limits.planBuilderDaily);
+    b += 1;
+    if (!Number.isFinite(cap) || cap < 1 || b > cap) return { deny: 'planBuilder' };
+  }
+
+  return { next: { date, u, i, b, m, h, d } };
 }
 
-// Undo the daily/image part of a charge after a provider failure (failed calls
-// don't burn quota). Rate windows are deliberately NOT refunded — they exist
-// to throttle hammering, failed or not. Returns the doc to persist, or null
-// when there is nothing to change (other day / already zero).
-export function planAiRefund(raw, { date, daily, image }) {
+// Undo the daily/image/plan-builder part of a charge after a provider failure
+// (failed calls don't burn that counter). Rate windows are deliberately NOT
+// refunded — they exist to throttle hammering, failed or not. Returns the doc
+// to persist, or null when there is nothing to change (other day / already zero).
+export function planAiRefund(raw, { date, daily, image, planBuilder }) {
   if (!raw || raw.date !== date) return null;
   const doc = normalizeQuotaDoc(raw, date);
   let changed = false;
   if (daily && doc.u > 0) { doc.u -= 1; changed = true; }
   if (image && doc.i > 0) { doc.i -= 1; changed = true; }
+  if (planBuilder && doc.b > 0) { doc.b -= 1; changed = true; }
   return changed ? doc : null;
 }
 

@@ -1,4 +1,4 @@
-import { useState, useEffect, useId } from 'react';
+import { useState, useEffect, useId, useLayoutEffect, useRef } from 'react';
 import { useAuth } from '../../contexts/AuthContext';
 import { Navigate, useSearchParams, Link } from 'react-router-dom';
 import { Mail, Eye, EyeOff, Lock, User, Link2, BarChart3, Sparkles, Check, ShieldCheck, Loader2, AlertCircle } from 'lucide-react';
@@ -13,6 +13,7 @@ import { exchangeSyncBlurb } from '../exchange/exchangeConfig';
 import BrandMark from '../shared/BrandMark';
 import StagingBanner from '../layout/StagingBanner';
 import { rememberSignupMarketingChoice, clearSignupMarketingChoice } from '../../utils/marketingConsent';
+import { releaseLoginCredentialFocus } from '../../utils/loginAutofillRelease';
 
 // One line under the sign-up title on a phone. The desktop panel already
 // carries the longer pitch; this is the only value line a 390px screen sees.
@@ -76,6 +77,34 @@ export default function LoginPage() {
   // happened. Cleared as soon as the user edits a field or switches tab.
   const [formError, setFormError] = useState('');
   const [googleLoading, setGoogleLoading] = useState(false);
+  // True once this visit rendered the credential fields. A session that
+  // exists on the first render never showed them, so it leaves immediately.
+  // Set during render (not in an effect) so a fast auth callback cannot
+  // remove the fields before we know they were on screen.
+  const [sawLoginForm, setSawLoginForm] = useState(false);
+  if (!user && !sawLoginForm) setSawLoginForm(true);
+  const pageRef = useRef(null);
+  const googleButtonRef = useRef(null);
+  const [credentialFocusReleased, setCredentialFocusReleased] = useState(false);
+  const holdLoginForAutofill = Boolean(user) && sawLoginForm && !credentialFocusReleased;
+
+  // The saved-password popover is dismissed on a blur that happens while the
+  // field is still in the document. Hold the form for one frame after the
+  // session arrives so that blur is not lost in the same commit as <Navigate>.
+  // An empty password is read-only for that frame (see the input): WebKit
+  // then drops keychain eligibility. A typed password stays editable.
+  useLayoutEffect(() => {
+    if (!holdLoginForAutofill) return undefined;
+    releaseLoginCredentialFocus(pageRef.current);
+    let timeoutId = 0;
+    const frameId = window.requestAnimationFrame(() => {
+      timeoutId = window.setTimeout(() => setCredentialFocusReleased(true), 0);
+    });
+    return () => {
+      window.cancelAnimationFrame(frameId);
+      window.clearTimeout(timeoutId);
+    };
+  }, [holdLoginForAutofill]);
 
   // Warm the Google popup resolver after first paint, and again if the
   // pointer reaches the button first. The tap itself must not await the
@@ -101,7 +130,7 @@ export default function LoginPage() {
 
   // After a successful login, honour ?redirect=… (used by the coupon share
   // link) but only allow same-app relative paths to avoid open-redirects.
-  if (user) {
+  if (user && !holdLoginForAutofill) {
     const redirect = params.get('redirect');
     const safe = redirect && redirect.startsWith('/') && !redirect.startsWith('//') ? redirect : '/';
     return <Navigate to={safe} replace />;
@@ -110,6 +139,10 @@ export default function LoginPage() {
   const handleGoogle = async () => {
     if (mode === 'register') rememberSignupMarketingChoice(marketingEmails);
     else clearSignupMarketingChoice();
+    // The opener window is still active in this turn. Blur a focused
+    // email/password field before signInWithPopup deactivates it. Nothing
+    // is awaited here — Safari blocks window.open after an await.
+    releaseLoginCredentialFocus(pageRef.current, document, { preserveControlFocus: true });
     setGoogleLoading(true);
     try {
       // In an installed PWA this does signInWithRedirect (popup is blocked on
@@ -117,6 +150,15 @@ export default function LoginPage() {
       await loginWithGoogle();
     } catch (error) {
       setGoogleLoading(false);
+      const button = googleButtonRef.current;
+      // The button is still disabled until this setState renders. A disabled
+      // control cannot take focus, so clear that first, then return the
+      // keyboard user to the control they activated.
+      if (button?.isConnected) {
+        button.disabled = false;
+        try { button.focus({ preventScroll: true }); }
+        catch { try { button.focus(); } catch { /* ignore */ } }
+      }
       if (isSilentAuthError(error)) return; // the user closed the popup
       console.error('Google login failed:', error);
       setFormError(authErrorHe(error, 'שגיאה בהתחברות עם Google'));
@@ -166,7 +208,7 @@ export default function LoginPage() {
   };
 
   return (
-    <div className="min-h-dvh bg-bg-primary grid lg:grid-cols-2">
+    <div ref={pageRef} className="min-h-dvh bg-bg-primary grid lg:grid-cols-2">
       <StagingBanner className="lg:col-span-2" />
       {/* Brand panel — wide screens only */}
       <aside className="hidden lg:flex relative overflow-hidden flex-col items-center justify-between p-12 border-l border-border-primary bg-bg-secondary">
@@ -208,6 +250,10 @@ export default function LoginPage() {
 
       {/* Form */}
       <main className="flex flex-col items-center justify-center px-4 py-10 sm:px-8">
+        {/* Not a credential field and not in the tab order. Focus lands here
+            for one frame so Safari lets go of the password popover before the
+            login fields unmount. */}
+        <div tabIndex={-1} data-login-focus-sink="" className="sr-only" />
         <div className="w-full max-w-[400px]">
           <div className="lg:hidden flex justify-center mb-8"><BrandMark size="lg" /></div>
 
@@ -240,6 +286,7 @@ export default function LoginPage() {
           )}
 
           <button
+            ref={googleButtonRef}
             type="button"
             onClick={handleGoogle}
             onPointerEnter={() => preloadPopupResolver()}
@@ -290,6 +337,7 @@ export default function LoginPage() {
               <div className="relative">
                 <input id="lp-pass" type={showPassword ? 'text' : 'password'} value={password} onChange={(e) => { setPassword(e.target.value); setFormError(''); }}
                   placeholder="••••••••" dir="ltr" autoComplete={isLogin ? 'current-password' : 'new-password'}
+                  readOnly={holdLoginForAutofill && !password ? true : undefined}
                   aria-invalid={formError ? 'true' : undefined}
                   className={`${input} pl-10 pr-10 text-left`} />
                 <Lock className="absolute right-3 top-1/2 -translate-y-1/2 w-4 h-4 text-text-muted pointer-events-none" />

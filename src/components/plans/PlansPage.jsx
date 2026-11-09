@@ -1,5 +1,6 @@
-import { useState } from 'react';
-import { m } from 'framer-motion';
+import { useEffect, useState } from 'react';
+// <m.div> is the LazyMotion factory. Core no-unused-vars does not count JSX members.
+import { m } from 'framer-motion'; // eslint-disable-line no-unused-vars
 import { Plus, ClipboardList, Pencil, Trash2, ExternalLink, FileImage, Search } from 'lucide-react';
 import CoinIcon from '../shared/CoinIcon';
 import PairSearch from '../journal/PairSearch';
@@ -7,6 +8,11 @@ import TimeframeSelector from '../shared/TimeframeSelector';
 import { useUserTimeframes } from '../../hooks/useUserTimeframes';
 import toast from 'react-hot-toast';
 import { useTradingPlans } from '../../hooks/useTradingPlans';
+import { useAuth } from '../../contexts/AuthContext';
+import { planBuilderDemoEnabled, saveBuiltPlan } from '../../utils/planBuilderDemo';
+import PlanBuilderEntry from './PlanBuilderEntry';
+import PlanBuilderWizard from './PlanBuilderWizard';
+import PlanBuilderDemoBanner from './PlanBuilderDemoBanner';
 import { useProcesses } from '../../hooks/useProcesses';
 import { useProcessCategories } from '../../hooks/useProcessCategories';
 import PlanCard from './PlanCard';
@@ -36,12 +42,17 @@ function toImageUrl(url) {
 const defaultProcessForm = { category: '', chartUrl: '', description: '', coin: '', timeframe: '' };
 
 export default function PlansPage() {
-  const { plans, loading, addPlan, updatePlan, deletePlan } = useTradingPlans();
-  const { processes, loading: processesLoading, addProcess, updateProcess, deleteProcess } = useProcesses();
+  const { isPremium } = useAuth();
+  const demo = planBuilderDemoEnabled(typeof window === 'undefined' ? '' : window.location.search);
+  const { plans, loading, addPlan, updatePlan, deletePlan } = useTradingPlans({ suspend: demo });
+  const { processes, addProcess, updateProcess, deleteProcess } = useProcesses();
   const { allCategories, addCategory, removeCategory } = useProcessCategories();
   const { allTimeframes, addTimeframe, removeTimeframe } = useUserTimeframes();
   const [formOpen, setFormOpen] = useState(false);
   const [editingPlan, setEditingPlan] = useState(null);
+  const [wizardOpen, setWizardOpen] = useState(false);
+  const [wizardKey, setWizardKey] = useState(0);
+  const [aiDraft, setAiDraft] = useState(null);
   const [viewingPlan, setViewingPlan] = useState(null);
   const [deleteTarget, setDeleteTarget] = useState(null);
   const [tab, setTab] = useState('plans');
@@ -103,10 +114,32 @@ export default function PlansPage() {
     }
   };
 
+  const handleAiSave = async (data) => {
+    try {
+      const result = await saveBuiltPlan({ demo, addPlan, data });
+      if (result.saved) toast.success('התוכנית נוצרה');
+      else toast('דמו – לא נשמר');
+    } catch (error) {
+      console.error('Save plan failed:', error);
+      toast.error(error.code === 'permission-denied' ? 'אין הרשאה לשמור' : 'שגיאה בשמירת התוכנית — נסה שוב');
+    }
+  };
+
   const handleCloseForm = () => {
     setFormOpen(false);
     setEditingPlan(null);
   };
+
+  useEffect(() => {
+    if (!viewingPlan) return undefined;
+    const onKey = (event) => {
+      if (event.key !== 'Escape') return;
+      event.preventDefault();
+      setViewingPlan(null);
+    };
+    document.addEventListener('keydown', onKey);
+    return () => document.removeEventListener('keydown', onKey);
+  }, [viewingPlan]);
 
   // Process handlers
   const handleSaveProcess = async () => {
@@ -147,10 +180,12 @@ export default function PlansPage() {
   if (loading) return <PlansSkeleton />;
 
   const inputClass = 'w-full bg-bg-tertiary border border-border-primary rounded-lg px-3 py-2 text-sm text-text-primary outline-none focus:border-accent-primary transition-colors';
+  const quietIconBtn = 'inline-flex min-h-10 min-w-10 items-center justify-center rounded-lg text-text-muted transition-colors cursor-pointer hover:bg-bg-tertiary outline-none focus-visible:outline-solid focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-accent-primary';
 
   return (
-    <m.div variants={pageVariants} initial="initial" animate="animate" exit="exit" transition={pageTransition}>
+      <m.div variants={pageVariants} initial="initial" animate="animate" exit="exit" transition={pageTransition}>
       <>
+          {demo && <PlanBuilderDemoBanner />}
           <PageHeader
             icon={ClipboardList}
             title="תוכניות מסחר"
@@ -159,12 +194,19 @@ export default function PlansPage() {
             actions={(
               <div className="flex items-center gap-2 w-full sm:w-auto">
                 {tab === 'plans' && (
-                  <button onClick={() => setFormOpen(true)} className={`${headerPrimaryBtn} flex-1 sm:flex-none`}>
+                  <PlanBuilderEntry
+                    isPremium={!!isPremium}
+                    demo={demo}
+                    onOpen={() => { setWizardKey((key) => key + 1); setWizardOpen(true); }}
+                  />
+                )}
+                {tab === 'plans' && (
+                  <button type="button" onClick={() => setFormOpen(true)} className={`${headerPrimaryBtn} flex-1 sm:flex-none`}>
                     <Plus className="w-4 h-4" /> תוכנית חדשה
                   </button>
                 )}
                 {tab === 'processes' && (
-                  <button onClick={() => { setProcessForm(defaultProcessForm); setEditingProcessId(null); setProcessFormOpen(true); }} className={`${headerPrimaryBtn} flex-1 sm:flex-none`}>
+                  <button type="button" onClick={() => { setProcessForm(defaultProcessForm); setEditingProcessId(null); setProcessFormOpen(true); }} className={`${headerPrimaryBtn} flex-1 sm:flex-none`}>
                     <Plus className="w-4 h-4" /> הוסף ניתוח
                   </button>
                 )}
@@ -177,13 +219,20 @@ export default function PlansPage() {
             <>
               {plans.length === 0 ? (
                 <EmptyState icon={ClipboardList} title="אין תוכניות מסחר עדיין" description="צור תוכנית מסחר לארגון האסטרטגיה והחוקים שלך"
-                  action={<button onClick={() => setFormOpen(true)} className="mt-2 px-4 py-2 bg-accent-primary text-bg-primary font-semibold rounded-lg hover:bg-accent-hover transition-colors cursor-pointer">צור את התוכנית הראשונה</button>} />
+                  action={<button type="button" onClick={() => setFormOpen(true)} className="mt-2 px-4 py-2 bg-accent-primary text-bg-primary font-semibold rounded-lg hover:bg-accent-hover transition-colors cursor-pointer">צור את התוכנית הראשונה</button>} />
               ) : (
-                <m.div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-4" variants={staggerContainer} initial="initial" animate="animate">
-                  {plans.map((p) => (
-                    <PlanCard key={p.id} plan={p} onView={setViewingPlan} onEdit={handleEdit} onDelete={setDeleteTarget} />
-                  ))}
-                </m.div>
+                <>
+                  <p data-testid="plans-summary" className="mb-3 text-sm text-text-secondary md:mb-4">
+                    <span className="num-mono font-semibold text-text-primary">{plans.filter((p) => p.isActive).length}</span>
+                    {' פעילות מתוך '}
+                    <span className="num-mono font-semibold text-text-primary">{plans.length}</span>
+                  </p>
+                  <m.div className="grid grid-cols-1 items-stretch gap-3 md:grid-cols-2 md:gap-4 xl:grid-cols-3" variants={staggerContainer} initial="initial" animate="animate">
+                    {plans.map((p) => (
+                      <PlanCard key={p.id} plan={p} onView={setViewingPlan} onEdit={handleEdit} onDelete={setDeleteTarget} />
+                    ))}
+                  </m.div>
+                </>
               )}
             </>
           )}
@@ -284,9 +333,9 @@ export default function PlansPage() {
                   {filteredProcesses.length === 0 ? (
                     <EmptyState icon={FileImage} title="אין אנליטיקה בקטגוריה זו" description="בחר קטגוריה אחרת או הוסף ניתוח חדש" />
                   ) : (
-                <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4">
+                <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-3 md:gap-4">
                   {filteredProcesses.map((proc) => (
-                    <div key={proc.id} className="bg-bg-secondary rounded-2xl overflow-hidden hover:shadow-lg transition-all">
+                    <div key={proc.id} className="bg-bg-secondary border border-border-primary rounded-2xl overflow-hidden">
                       {toImageUrl(proc.chartUrl) && (
                         <a href={proc.chartUrl} target="_blank" rel="noopener noreferrer" className="block">
                           <img src={toImageUrl(proc.chartUrl)} alt={proc.title || 'ניתוח'} className="w-full object-contain" referrerPolicy="no-referrer" onError={(e) => { e.target.style.display = 'none'; }} />
@@ -311,21 +360,21 @@ export default function PlansPage() {
                           </div>
                           <div className="flex items-center gap-0.5 shrink-0">
                             {proc.chartUrl && (
-                              <a href={proc.chartUrl} target="_blank" rel="noopener noreferrer" className="p-1.5 rounded-lg text-text-muted hover:text-accent-primary hover:bg-bg-tertiary transition-colors">
+                              <a href={proc.chartUrl} target="_blank" rel="noopener noreferrer" aria-label="פתיחת הקישור" className={`${quietIconBtn} hover:text-accent-primary`}>
                                 <ExternalLink className="w-3.5 h-3.5" />
                               </a>
                             )}
-                            <button onClick={() => handleEditProcess(proc)} className="p-1.5 rounded-lg text-text-muted hover:text-accent-primary hover:bg-bg-tertiary transition-colors cursor-pointer">
+                            <button type="button" onClick={() => handleEditProcess(proc)} aria-label="עריכת ניתוח" className={`${quietIconBtn} hover:text-accent-primary`}>
                               <Pencil className="w-3.5 h-3.5" />
                             </button>
-                            <button onClick={() => setProcessDelTarget(proc.id)} className="p-1.5 rounded-lg text-text-muted hover:text-loss hover:bg-bg-tertiary transition-colors cursor-pointer">
+                            <button type="button" onClick={() => setProcessDelTarget(proc.id)} aria-label="מחיקת ניתוח" className={`${quietIconBtn} hover:text-loss`}>
                               <Trash2 className="w-3.5 h-3.5" />
                             </button>
                           </div>
                         </div>
                         {/* Description */}
                         {proc.description && (
-                          <p className="text-xs text-text-muted line-clamp-2 leading-relaxed">{proc.description}</p>
+                          <p className="text-xs text-text-secondary line-clamp-2 leading-relaxed">{proc.description}</p>
                         )}
                       </div>
                     </div>
@@ -339,6 +388,21 @@ export default function PlansPage() {
         </>
 
       <PlanForm isOpen={formOpen} onClose={handleCloseForm} plan={editingPlan} onSave={handleSave} />
+      <PlanBuilderWizard
+        key={wizardKey}
+        open={wizardOpen}
+        demo={demo}
+        onClose={() => setWizardOpen(false)}
+        onDraft={(plan) => { setWizardOpen(false); setAiDraft(plan); }}
+        requestPlan={(answers) => import('../../services/planBuilderService').then((mod) => mod.requestPlanBuilder(answers))}
+      />
+      <PlanForm
+        isOpen={!!aiDraft}
+        plan={aiDraft}
+        saveLabel="שמור תוכנית"
+        onClose={() => setAiDraft(null)}
+        onSave={handleAiSave}
+      />
       <StrategyView isOpen={!!viewingPlan} onClose={() => setViewingPlan(null)} journal={viewingPlan} />
 
       <ConfirmDialog isOpen={!!deleteTarget} onClose={() => setDeleteTarget(null)} onConfirm={handleDelete} title="מחיקת תוכנית" message={`למחוק את "${deleteTarget?.name}"? לא ניתן לבטל פעולה זו.`} />

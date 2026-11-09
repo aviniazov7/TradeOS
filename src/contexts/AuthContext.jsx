@@ -78,9 +78,9 @@ export function AuthProvider({ children }) {
       // Drop any prior profile listener before opening a new one.
       if (profileUnsub) { profileUnsub(); profileUnsub = null; }
       if (firebaseUser) {
-        // Show the app immediately. Firebase already restored the session
-        // from local persistence, so don't block the whole UI on a Firestore
-        // round-trip — that's what made every refresh feel slow.
+        // Show the app immediately. Firebase already restored this tab's
+        // session, so don't block the whole UI on a Firestore round-trip —
+        // that's what made every refresh feel slow.
         setUser(firebaseUser);
         setLoading(false);
 
@@ -279,6 +279,34 @@ export function AuthProvider({ children }) {
     needsEmailVerification, resendVerification, checkEmailVerified]);
 
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;
+}
+
+// The public demo route renders PlanForm, which reads timeframes through
+// useAuth. This provider supplies a logged-out value and does not subscribe
+// to Firebase, so that route never starts an auth listener or a Firestore read.
+const LOGGED_OUT_AUTH = {
+  user: null,
+  profile: null,
+  isAdmin: false,
+  isPremium: false,
+  plan: null,
+  loading: false,
+  loginWithGoogle: async () => {},
+  loginWithGoogleIdToken: async () => {},
+  registerWithEmail: async () => {},
+  loginWithEmail: async () => {},
+  logout: async () => {},
+  changePassword: async () => {},
+  resetPassword: async () => {},
+  deleteAccount: async () => {},
+  isEmailUser: false,
+  needsEmailVerification: false,
+  resendVerification: async () => {},
+  checkEmailVerified: async () => false,
+};
+
+export function LoggedOutAuth({ children }) {
+  return <AuthContext.Provider value={LOGGED_OUT_AUTH}>{children}</AuthContext.Provider>;
 }
 
 export function useAuth() {

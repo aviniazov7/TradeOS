@@ -102,11 +102,38 @@ describe('planAiCharge — premium', () => {
   });
 });
 
+describe('planAiCharge — plan builder', () => {
+  const limits = { ...LIMITS, planBuilderDaily: 3 };
+
+  it('counts a plan build on b and leaves the chat counter', () => {
+    const doc = chargeN(3, { premium: true, planBuilder: true, limits });
+    expect(doc.b).toBe(3);
+    expect(doc.u).toBe(0);
+    expect(planAiCharge(doc, { ...base, premium: true, planBuilder: true, limits })).toEqual({ deny: 'planBuilder' });
+  });
+  it('refuses a free caller before charging the plan counter', () => {
+    expect(planAiCharge(null, { ...base, premium: false, planBuilder: true, limits })).toEqual({ deny: 'planPremium' });
+  });
+  it('keeps b when a normal chat charge is written', () => {
+    const doc = { date: DATE, u: 1, i: 0, b: 2, m: null, h: null, d: null };
+    const r = planAiCharge(doc, { ...base, premium: true, chargeDaily: true });
+    expect(r.next).toMatchObject({ u: 2, b: 2 });
+  });
+  it('resets b on a new Israel date', () => {
+    expect(normalizeQuotaDoc({ date: '2026-10-06', u: 1, b: 3 }, DATE).b).toBe(0);
+  });
+});
+
 describe('planAiRefund', () => {
   it('refunds daily and image counters, not the rate windows', () => {
     const doc = { date: DATE, u: 3, i: 1, m: { s: NOW, c: 3 }, h: null, d: null };
     const r = planAiRefund(doc, { date: DATE, daily: true, image: true });
     expect(r).toMatchObject({ u: 2, i: 0, m: { s: NOW, c: 3 } });
+  });
+  it('refunds a failed plan build without touching the chat counter or windows', () => {
+    const doc = { date: DATE, u: 4, i: 0, b: 2, m: { s: NOW, c: 1 }, h: null, d: null };
+    const r = planAiRefund(doc, { date: DATE, planBuilder: true });
+    expect(r).toMatchObject({ u: 4, b: 1, m: { s: NOW, c: 1 } });
   });
   it('is a no-op (null) for another day or zero counters', () => {
     expect(planAiRefund({ date: '2026-10-06', u: 3 }, { date: DATE, daily: true })).toBeNull();

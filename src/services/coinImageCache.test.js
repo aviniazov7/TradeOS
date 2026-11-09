@@ -13,10 +13,17 @@ describe('SOL icon cache', () => {
     expect(getCachedImage('solusdt')).toBe(official);
   });
 
-  it('uses coins, flags, and the US flag for CFD symbols in the trade table', () => {
-    expect(getCachedImage('XAUUSD')).toBe('/logos/symbols/gold-coin.svg');
-    expect(getCachedImage('xau/usd')).toBe('/logos/symbols/gold-coin.svg');
-    expect(getCachedImage('GC')).toBe('/logos/marks/gold.svg');
+  it('uses the gold mark, a silver coin, flags, and the US flag for CFD symbols in the trade table', () => {
+    const gold = '/logos/marks/gold.svg';
+    expect(getCachedImage('XAUUSD')).toBe(gold);
+    expect(getCachedImage('xau/usd')).toBe(gold);
+    expect(getCachedImage('XAUUSD.R')).toBe(gold);
+    expect(getCachedImage('XAU')).toBe(gold);
+    expect(getCachedImage('XAUUSDT')).toBe(gold);
+    expect(getCachedImage('GC')).toBe(gold);
+    expect(getCachedImage('MGC')).toBe(gold);
+    cacheImage('XAUUSD', 'https://cdn.example/fake-gold.png');
+    expect(getCachedImage('XAUUSD')).toBe(gold);
     expect(getCachedImage('XAGUSD')).toBe('/logos/symbols/silver-coin.svg');
     expect(getCachedImage('SI')).toBe('/logos/marks/silver.svg');
     expect(getCachedImage('EURUSD')).toBe('/logos/symbols/eurusd.svg');

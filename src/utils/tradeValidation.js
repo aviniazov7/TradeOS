@@ -244,6 +244,37 @@ export function prepareApiTrade(body) {
   return { ok: true, trade: src };
 }
 
+const IMMUTABLE_PATCH_FIELDS = new Set(['id', 'createdAt']);
+
+/**
+ * A PATCH body may only name fields prepareApiTrade already accepts, plus the
+ * `journal` alias POST resolves. `id` and `createdAt` are rejected by name.
+ * An empty object is rejected so a no-op write cannot bump updatedAt.
+ */
+export function inspectApiTradePatch(body) {
+  if (!body || typeof body !== 'object' || Array.isArray(body)) {
+    return { ok: false, error: 'JSON object body is required' };
+  }
+  const keys = Object.keys(body);
+  if (keys.length === 0) return { ok: false, error: 'body must include at least one field' };
+  for (const key of keys) {
+    if (IMMUTABLE_PATCH_FIELDS.has(key)) return { ok: false, error: `${key} is immutable` };
+    if (key === 'journal') continue;
+    if (!ALLOWED_FIELDS.includes(key)) return { ok: false, error: `${key} is not editable` };
+  }
+  return { ok: true };
+}
+
+/** Editable fields from a stored trade, ready to merge with a patch and revalidate. */
+export function storedTradeInput(data) {
+  const src = {};
+  if (!data || typeof data !== 'object') return src;
+  for (const key of ALLOWED_FIELDS) {
+    if (Object.prototype.hasOwnProperty.call(data, key) && data[key] !== undefined) src[key] = data[key];
+  }
+  return src;
+}
+
 function normalizeExits(src) {
   if (src.exits == null) return null;
   if (!Array.isArray(src.exits) || src.exits.length > MAX_EXITS) {

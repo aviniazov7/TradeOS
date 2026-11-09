@@ -1,91 +1,186 @@
 import { m } from 'framer-motion';
-import { Pencil, Trash2, Eye, Clock, Shield, CheckSquare } from 'lucide-react';
-import { staggerItem, cardHover } from '../../utils/animations';
+import { Pencil, Trash2, Eye } from 'lucide-react';
+import { staggerItem } from '../../utils/animations';
 import { getSessionClasses } from '../../utils/constants';
 import CoinIcon from '../shared/CoinIcon';
+import Card from '../shared/Card';
+
+const PAIR_LIMIT = 4;
+const TIMEFRAME_LIMIT = 4;
+const SESSION_LIMIT = 3;
+const HEX_COLOR = /^#[0-9a-fA-F]{6}$/;
+const FOCUS = 'outline-none focus-visible:outline-solid focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-accent-primary';
+
+function listOf(value) {
+  return Array.isArray(value) ? value.filter((item) => item != null && String(item).trim() !== '') : [];
+}
+
+function firstLine(value) {
+  if (typeof value !== 'string') return '';
+  return value.split('\n').map((part) => part.trim()).find(Boolean) || '';
+}
+
+function hasValue(value) {
+  return value != null && value !== '';
+}
+
+function planAccent(color) {
+  return HEX_COLOR.test(color || '') ? color : '#3b82f6';
+}
+
+function planLabel(plan) {
+  return typeof plan.name === 'string' && plan.name.trim() ? plan.name.trim() : 'ללא שם';
+}
 
 export default function PlanCard({ plan, onView, onEdit, onDelete }) {
-  const checklistCount = plan.checklist?.length || 0;
+  const name = planLabel(plan);
+  const accent = planAccent(plan.color);
+  const description = typeof plan.description === 'string' ? plan.description.trim() : '';
+  const entryLine = firstLine(plan.entryRules);
+  const pairs = listOf(plan.pairs);
+  const timeframes = listOf(plan.timeframes);
+  const sessions = listOf(plan.sessions);
+  const shownPairs = pairs.slice(0, PAIR_LIMIT);
+  const shownTimeframes = timeframes.slice(0, TIMEFRAME_LIMIT);
+  const shownSessions = sessions.slice(0, SESSION_LIMIT);
+  const checklistCount = listOf(plan.checklist).length;
+  const showLoss = hasValue(plan.maxDailyLoss);
+  const showPositions = hasValue(plan.maxPositions);
+  const active = Boolean(plan.isActive);
 
   return (
-    <m.div
+    <Card
+      as={m.article}
       variants={staggerItem}
-      whileHover={cardHover}
-      className="bg-bg-secondary border border-border-primary rounded-xl p-5 transition-colors"
+      data-testid="plan-card"
+      data-active={active ? 'true' : 'false'}
+      aria-label={name}
+      className="rounded-2xl h-full min-w-0 p-4 md:p-5 flex flex-col gap-3 transition-colors hover:border-border-hover"
     >
-      <div className="flex items-center justify-between mb-3">
-        <h3 className="text-base font-semibold text-text-primary">{plan.name}</h3>
-        <span className={`flex items-center gap-1.5 text-xs font-medium ${plan.isActive ? 'text-profit' : 'text-text-muted'}`}>
-          <span className={`w-2 h-2 rounded-full ${plan.isActive ? 'bg-profit' : 'bg-text-muted'}`} />
-          {plan.isActive ? 'פעילה' : 'לא פעילה'}
+      <header className="flex items-start justify-between gap-3">
+        <div className="flex min-w-0 flex-1 items-start gap-2.5">
+          <span
+            aria-hidden
+            data-accent={accent}
+            className="mt-[0.45rem] h-2.5 w-2.5 shrink-0 rounded-full ring-1 ring-inset ring-border-hover"
+            style={{ backgroundColor: accent }}
+          />
+          <h3 className="text-[17px] md:text-lg font-bold leading-snug text-text-primary line-clamp-2" title={name}>
+            {name}
+          </h3>
+        </div>
+        <span className={`shrink-0 inline-flex items-center gap-1.5 rounded-full border px-2.5 py-1 text-xs font-semibold ${active ? 'border-profit/30 bg-profit/12 text-profit' : 'border-border-primary bg-bg-tertiary text-text-secondary'}`}>
+          <span className={`h-1.5 w-1.5 rounded-full ${active ? 'bg-profit' : 'bg-text-muted'}`} aria-hidden />
+          {active ? 'פעילה' : 'לא פעילה'}
         </span>
-      </div>
+      </header>
 
-      {plan.description && (
-        <p className="text-sm text-text-secondary line-clamp-2 mb-3">{plan.description}</p>
+      {description && (
+        <p className="text-sm leading-relaxed text-text-secondary line-clamp-3">{description}</p>
       )}
 
-      {/* Entry rules preview */}
-      {plan.entryRules && (
-        <p className="text-xs text-text-muted line-clamp-1 mb-3">
-          <span className="text-text-secondary font-medium">כניסה:</span> {plan.entryRules.split('\n')[0]}
-        </p>
+      {entryLine && (
+        <div className="rounded-xl border border-border-primary bg-bg-tertiary px-3 py-2.5">
+          <p className="text-[11px] font-semibold text-text-muted">כניסה</p>
+          <p className="mt-0.5 text-[13px] leading-relaxed text-text-secondary line-clamp-2">{entryLine}</p>
+        </div>
       )}
 
-      {/* Tags row */}
-      <div className="flex flex-wrap gap-1.5 mb-3">
-        {plan.pairs?.slice(0, 4).map((p) => (
-          <span key={p} className="inline-flex items-center gap-1 px-2 py-0.5 bg-accent-primary/10 text-accent-primary rounded text-[11px] font-medium">
-            <CoinIcon pair={p} className="w-3.5 h-3.5" />{p}
-          </span>
-        ))}
-        {plan.pairs?.length > 4 && (
-          <span className="px-2 py-0.5 bg-bg-tertiary text-text-muted rounded text-[11px]">+{plan.pairs.length - 4}</span>
+      <div className="mt-auto flex flex-col gap-2.5">
+        {shownPairs.length > 0 && (
+          <ul className="m-0 flex list-none flex-wrap items-center gap-x-3 gap-y-1.5 p-0" aria-label="זוגות">
+            {shownPairs.map((pair) => (
+              <li key={pair} dir="ltr" className="inline-flex max-w-full items-center gap-1.5 text-xs font-semibold text-text-primary">
+                <CoinIcon pair={pair} className="h-4 w-4" />
+                <span className="truncate">{pair}</span>
+              </li>
+            ))}
+            {pairs.length > PAIR_LIMIT && (
+              <li className="text-xs font-medium text-text-secondary">+{pairs.length - PAIR_LIMIT}</li>
+            )}
+          </ul>
         )}
-        {plan.timeframes?.slice(0, 3).map((t) => (
-          <span key={t} className="px-2 py-0.5 bg-bg-tertiary border border-border-primary rounded text-[10px] text-text-muted font-medium">
-            {t}
-          </span>
-        ))}
-        {plan.sessions?.slice(0, 2).map((s) => (
-          <span key={s} className={`px-2 py-0.5 rounded text-[10px] font-medium border ${getSessionClasses(s)}`}>
-            <Clock className="w-2.5 h-2.5 inline mr-0.5" />{s}
-          </span>
-        ))}
-      </div>
 
-      {/* Info badges */}
-      <div className="flex items-center gap-3 mb-4 text-[11px] text-text-muted">
-        {plan.maxDailyLoss && (
-          <span className="flex items-center gap-1">
-            <Shield className="w-3 h-3" />
-            הפסד יומי: {plan.maxDailyLoss}%
-          </span>
+        {shownTimeframes.length > 0 && (
+          <p className="flex flex-wrap items-center gap-x-2 gap-y-1 text-xs text-text-secondary">
+            <span className="text-text-muted">טיימפריים</span>
+            {shownTimeframes.map((timeframe) => (
+              <span key={timeframe} dir="ltr" className="num-mono text-[12px] font-semibold text-text-primary">{timeframe}</span>
+            ))}
+            {timeframes.length > TIMEFRAME_LIMIT && (
+              <span>+{timeframes.length - TIMEFRAME_LIMIT}</span>
+            )}
+          </p>
         )}
-        {checklistCount > 0 && (
-          <span className="flex items-center gap-1">
-            <CheckSquare className="w-3 h-3" />
-            {checklistCount} פריטים
-          </span>
-        )}
-      </div>
 
-      <div className="flex items-center justify-between pt-3 border-t border-border-primary">
-        <button
-          onClick={() => onView(plan)}
-          className="flex items-center gap-1.5 text-xs text-accent-primary hover:text-accent-hover transition-colors cursor-pointer"
-        >
-          <Eye className="w-3.5 h-3.5" /> צפה בתוכנית
-        </button>
-        <div className="flex gap-1">
-          <button onClick={() => onEdit(plan)} className="p-1.5 rounded-lg text-text-muted hover:text-accent-primary hover:bg-bg-tertiary transition-colors cursor-pointer">
-            <Pencil className="w-4 h-4" />
+        {shownSessions.length > 0 && (
+          <div className="flex flex-wrap items-center gap-1.5" aria-label="סשנים">
+            {shownSessions.map((session) => (
+              <span key={session} className={`rounded-md border px-2 py-0.5 text-[11px] font-medium ${getSessionClasses(session)}`}>
+                {session}
+              </span>
+            ))}
+            {sessions.length > SESSION_LIMIT && (
+              <span className="text-[11px] font-medium text-text-secondary">+{sessions.length - SESSION_LIMIT}</span>
+            )}
+          </div>
+        )}
+
+        {(showLoss || showPositions || checklistCount > 0) && (
+          <p className="flex flex-wrap gap-x-3 gap-y-1 text-xs text-text-secondary">
+            {showLoss && (
+              <span>
+                הפסד יומי{' '}
+                <b dir="ltr" className="num-mono font-semibold text-text-primary">{plan.maxDailyLoss}%</b>
+              </span>
+            )}
+            {showPositions && (
+              <span>
+                עסקאות במקביל{' '}
+                <b dir="ltr" className="num-mono font-semibold text-text-primary">{plan.maxPositions}</b>
+              </span>
+            )}
+            {checklistCount > 0 && (
+              <span>
+                צ'קליסט{' '}
+                <b className="num-mono font-semibold text-text-primary">{checklistCount}</b>
+              </span>
+            )}
+          </p>
+        )}
+
+        <div className="flex items-center justify-between gap-2 border-t border-border-primary pt-3">
+          <button
+            type="button"
+            onClick={() => onView(plan)}
+            aria-label={`צפייה ב${name}`}
+            className={`inline-flex min-h-10 items-center gap-1.5 rounded-lg px-1 text-sm font-semibold text-accent-hover cursor-pointer hover:text-accent-primary ${FOCUS}`}
+          >
+            <Eye className="h-4 w-4" aria-hidden />
+            צפה בתוכנית
           </button>
-          <button onClick={() => onDelete(plan)} className="p-1.5 rounded-lg text-text-muted hover:text-loss hover:bg-bg-tertiary transition-colors cursor-pointer">
-            <Trash2 className="w-4 h-4" />
-          </button>
+          <div className="flex items-center gap-1">
+            <button
+              type="button"
+              onClick={() => onEdit(plan)}
+              aria-label={`עריכת ${name}`}
+              title="עריכה"
+              className={`inline-flex h-10 w-10 items-center justify-center rounded-lg text-text-secondary cursor-pointer hover:bg-bg-tertiary hover:text-accent-primary ${FOCUS}`}
+            >
+              <Pencil className="h-4 w-4" aria-hidden />
+            </button>
+            <button
+              type="button"
+              onClick={() => onDelete(plan)}
+              aria-label={`מחיקת ${name}`}
+              title="מחיקה"
+              className={`inline-flex h-10 w-10 items-center justify-center rounded-lg text-text-secondary cursor-pointer hover:bg-bg-tertiary hover:text-loss ${FOCUS}`}
+            >
+              <Trash2 className="h-4 w-4" aria-hidden />
+            </button>
+          </div>
         </div>
       </div>
-    </m.div>
+    </Card>
   );
 }

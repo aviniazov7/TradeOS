@@ -296,6 +296,7 @@ export default function BacktestTracker() {
         icon={FlaskConical}
         title="בקטסט"
         titleAside={<BacktestSwitcher compact />}
+        readableAside
         tabs={{ tabs: [{ id: 'records', label: 'עסקאות', count: backtests.length }, { id: 'analytics', label: 'אנליטיקה' }], value: tab, onChange: setTab, layoutKey: 'backtest-tab' }}
         tabsLead={tab === 'analytics' ? <TimePeriodFilter value={period} onChange={setPeriod} /> : null}
         actions={(

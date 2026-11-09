@@ -6,7 +6,7 @@
 // No session id and no SSE stream. GET and DELETE are 405. POST is one
 // JSON-RPC message. Notifications get 202. Tool failures are isError results.
 
-import { authorizeApi, createTrade, deleteTrade, journalStats, listJournals, listTrades } from './publicApi.js';
+import { authorizeApi, createTrade, deleteTrade, journalStats, listJournals, listTrades, updateTrade } from './publicApi.js';
 
 const PROTOCOL_VERSIONS = ['2025-03-26', '2025-06-18', '2025-11-25'];
 const PREFERRED_PROTOCOL = '2025-11-25';
@@ -14,7 +14,7 @@ const PREFERRED_PROTOCOL = '2025-11-25';
 const TOOLS = [
   {
     name: 'list_journals',
-    description: 'List the journals (accounts) owned by the API key. Each row has id, name, and exchange (the broker, for example MEXC or Bybit), plus assetClass, currency, initialBalance, archived, starred, and isDefault. Use id or name with add_trade, list_trades, get_stats, and delete_trade. Omitting a journal elsewhere does not pick one of these for you.',
+    description: 'List the journals (accounts) owned by the API key. Each row has id, name, and exchange (the broker, for example MEXC or Bybit), plus assetClass, currency, initialBalance, archived, starred, and isDefault. Use id or name with add_trade, update_trade, list_trades, get_stats, and delete_trade. Omitting a journal elsewhere does not pick one of these for you.',
     inputSchema: { type: 'object', additionalProperties: false, properties: {} },
   },
   {
@@ -56,6 +56,48 @@ const TOOLS = [
           },
         },
         idempotencyKey: { type: 'string', description: '8–128 printable characters. A repeat returns the original trade.' },
+      },
+    },
+  },
+  {
+    name: 'update_trade',
+    description: 'Update one trade owned by the API key. Same checks as PATCH /api/v1/trades/{id}. id is required. Every other argument is optional and partial: omitted fields stay as stored. Only the properties listed here are accepted. id and createdAt cannot be changed. Sending no field besides id is rejected. Validation matches add_trade (types, ranges, futures contract). The Worker recomputes pnl, netPnl, pnlPercent, result, position size, margin, and R from the merged trade, and sets updatedAt. Another user\'s id is not found. Pass journalId or journal only when moving the trade to another journal you own.',
+    inputSchema: {
+      type: 'object',
+      additionalProperties: false,
+      required: ['id'],
+      properties: {
+        id: { type: 'string', minLength: 1, maxLength: 128, description: 'Trade id from add_trade or list_trades.' },
+        journalId: { type: 'string', description: 'Move the trade to this journal id. The journal must belong to the key owner.' },
+        journal: { type: 'string', description: 'Journal name (case-insensitive) or journal id to move the trade to.' },
+        pair: { type: 'string', description: 'Symbol, 1–30 characters. Example: BTCUSDT.' },
+        direction: { type: 'string', enum: ['long', 'short'] },
+        entryPrice: { type: 'number', exclusiveMinimum: 0 },
+        exitPrice: { type: 'number', minimum: 0 },
+        quantity: { type: 'number', exclusiveMinimum: 0 },
+        stopLoss: { type: 'number', minimum: 0 },
+        takeProfit: { type: 'number' },
+        leverage: { type: 'number', description: '1–200 for crypto and stocks.' },
+        fees: { type: 'number', minimum: 0 },
+        riskAmount: { type: 'number', description: 'Derived from entry, stop, and size when omitted or 0 on create. Send 0 to recompute it.' },
+        status: { type: 'string', enum: ['open', 'closed', 'partial'] },
+        assetClass: { type: 'string', enum: ['crypto', 'futures_cme', 'stocks'] },
+        entryDate: { type: 'string', description: 'ISO-8601. Does not change createdAt.' },
+        exitDate: { type: 'string', description: 'ISO-8601.' },
+        notes: { type: 'string' },
+        entryReason: { type: 'string' },
+        tags: { type: 'array', items: { type: 'string' } },
+        contract: {
+          type: 'object',
+          description: 'Required when assetClass is futures_cme.',
+          additionalProperties: false,
+          properties: {
+            symbol: { type: 'string' },
+            contracts: { type: 'number', exclusiveMinimum: 0 },
+            pointValue: { type: 'number', exclusiveMinimum: 0 },
+            tickSize: { type: 'number', exclusiveMinimum: 0 },
+          },
+        },
       },
     },
   },
@@ -148,12 +190,12 @@ function acceptsJson(request) {
   });
 }
 
-function tradeRequest(args) {
+function tradeRequest(args, { method = 'POST', path = '/api/v1/trades' } = {}) {
   const { idempotencyKey, ...trade } = args;
   const headers = { 'Content-Type': 'application/json' };
   if (idempotencyKey != null && idempotencyKey !== '') headers['Idempotency-Key'] = String(idempotencyKey);
-  return new Request('https://trade-os.internal/api/v1/trades', {
-    method: 'POST',
+  return new Request(`https://trade-os.internal${path}`, {
+    method,
     headers,
     body: JSON.stringify(trade),
   });
@@ -187,6 +229,15 @@ async function callTool(params, ctx) {
   }
   if (typeof args !== 'object' || Array.isArray(args)) return toolError('arguments must be an object');
   if (name === 'add_trade') return asTool(await createTrade(tradeRequest(args), ctx));
+  if (name === 'update_trade') {
+    const id = typeof args.id === 'string' ? args.id : '';
+    const patch = { ...args };
+    delete patch.id;
+    return asTool(await updateTrade(id, tradeRequest(patch, {
+      method: 'PATCH',
+      path: `/api/v1/trades/${encodeURIComponent(id)}`,
+    }), ctx));
+  }
   if (name === 'list_journals') return asTool(await listJournals(ctx));
   if (name === 'list_trades') {
     return asTool(await listTrades(queryUrl('/api/v1/trades', args, [
@@ -206,7 +257,7 @@ function initializeResult(params) {
     protocolVersion: PROTOCOL_VERSIONS.includes(requested) ? requested : PREFERRED_PROTOCOL,
     capabilities: { tools: { listChanged: false } },
     serverInfo: { name: 'tradeos', title: 'TradeOS', version: '1.0.0' },
-    instructions: 'TradeOS journal tools for the signed-in API key. list_journals returns id, name, and exchange. add_trade writes one trade to journalId or journal (optional idempotencyKey); omitting both is rejected. list_trades returns newest entryDate first unless order is asc, and lists every journal when no journal filter is passed. delete_trade removes one trade by id. get_stats is one journal, by journalId or journal. Dates are ISO-8601.',
+    instructions: 'TradeOS journal tools for the signed-in API key. list_journals returns id, name, and exchange. add_trade writes one trade to journalId or journal (optional idempotencyKey); omitting both is rejected. update_trade patches one trade by id and recomputes P&L; id and createdAt stay as stored. list_trades returns newest entryDate first unless order is asc, and lists every journal when no journal filter is passed. delete_trade removes one trade by id. get_stats is one journal, by journalId or journal. Dates are ISO-8601.',
   };
 }
 

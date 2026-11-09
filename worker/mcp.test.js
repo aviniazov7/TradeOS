@@ -82,7 +82,7 @@ describe('MCP streamable HTTP', () => {
     });
     const tools = await rpc(listed);
     expect(tools.result.tools.map((tool) => tool.name)).toEqual([
-      'list_journals', 'add_trade', 'list_trades', 'delete_trade', 'get_stats',
+      'list_journals', 'add_trade', 'update_trade', 'list_trades', 'delete_trade', 'get_stats',
     ]);
     for (const tool of tools.result.tools) {
       expect(tool.description.length).toBeGreaterThan(40);
@@ -132,6 +132,53 @@ describe('MCP streamable HTTP', () => {
     const failed = await rpc(invalid);
     expect(failed.result.isError).toBe(true);
     expect(failed.result.content[0].text).toMatch(/entryPrice/);
+  });
+
+  it('updates a trade through update_trade and rejects a derived field', async () => {
+    const db = memoryDb();
+    db.put('users/user1/journals/j1', { initialBalance: { doubleValue: 1000 } });
+    const created = await rpc(await mcp(db, { method: 'tools/call', params: { name: 'add_trade', arguments: tradeArgs } }));
+    const id = created.result.structuredContent.id;
+    const createdAt = created.result.structuredContent.trade.createdAt;
+
+    const updated = await rpc(await mcp(db, {
+      method: 'tools/call',
+      params: { name: 'update_trade', arguments: { id, fees: 3 } },
+    }));
+    expect(updated.result.isError).toBe(false);
+    expect(updated.result.structuredContent.trade).toMatchObject({
+      pair: 'BTCUSDT', exitPrice: 110, fees: 3, pnl: 20, netPnl: 17, result: 'win',
+    });
+    expect(updated.result.structuredContent.trade.createdAt).toBe(createdAt);
+    expect(JSON.parse(updated.result.content[0].text).id).toBe(id);
+
+    const repriced = await rpc(await mcp(db, {
+      method: 'tools/call',
+      params: { name: 'update_trade', arguments: { id, exitPrice: 120 } },
+    }));
+    expect(repriced.result.structuredContent.trade).toMatchObject({ exitPrice: 120, pnl: 40, netPnl: 37, fees: 3 });
+
+    const rejected = await rpc(await mcp(db, {
+      method: 'tools/call',
+      params: { name: 'update_trade', arguments: { id, pnl: 5 } },
+    }));
+    expect(rejected.result.isError).toBe(true);
+    expect(rejected.result.content[0].text).toMatch(/not editable/);
+
+    const empty = await rpc(await mcp(db, {
+      method: 'tools/call',
+      params: { name: 'update_trade', arguments: { id } },
+    }));
+    expect(empty.result.isError).toBe(true);
+    expect(empty.result.content[0].text).toMatch(/at least one field/);
+
+    const foreign = await rpc(await mcp(db, {
+      method: 'tools/call',
+      params: { name: 'update_trade', arguments: { id: 'secret', notes: 'nope' } },
+    }));
+    expect(foreign.result.isError).toBe(true);
+    expect(foreign.result.content[0].text).toBe('trade not found');
+    expect([...db.docs.keys()].filter((key) => key.startsWith('users/user1/trades/'))).toHaveLength(1);
   });
 
   it('lists newest first and computes stats through the shared functions', async () => {

@@ -73,6 +73,13 @@ const AdminNotificationsPreview = adminNotifPreview
   ? lazy(() => import('./components/admin/AdminNotificationsPreview'))
   : null;
 
+// Plan-builder click-through. Local dev, or a preview build with
+// VITE_PLAN_BUILDER_DEMO=1. Production leaves the route out of the bundle.
+const planBuilderDemoBuild = import.meta.env.DEV || import.meta.env.VITE_PLAN_BUILDER_DEMO === '1';
+const PlanBuilderDemoPage = planBuilderDemoBuild
+  ? lazy(() => import('./components/plans/PlanBuilderDemoPage'))
+  : null;
+
 // Preload the two most-likely-next routes during idle, and only once someone
 // is signed in. Doing this on /login downloaded Firestore, charts, and the
 // journal during Lighthouse (about 59 scripts) and competed with first paint.
@@ -212,6 +219,15 @@ export default function App() {
         <Routes>
           {/* Standalone popup page — outside AuthProvider so getRedirectResult isn't consumed by AuthContext */}
           <Route path="/auth-google" element={<AuthGooglePopup />} />
+          {/* Preview walkthrough. Outside AuthProvider so opening it does not
+              start Firebase Auth or a Firestore listener. */}
+          {PlanBuilderDemoPage && (
+            <Route path="/plan-builder-demo" element={(
+              <Suspense fallback={<LoadingSpinner />}>
+                <PlanBuilderDemoPage />
+              </Suspense>
+            )} />
+          )}
           {/* Main app with all providers */}
           <Route path="*" element={<MainApp />} />
         </Routes>

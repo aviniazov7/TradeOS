@@ -103,6 +103,7 @@ jobs:
         env:
           VITE_WORKER_URL: ${{ steps.target.outputs.worker_url }}
           VITE_ADMIN_NOTIF_PREVIEW: ${{ steps.target.outputs.kind == 'preview' && '1' || '' }}
+          VITE_PLAN_BUILDER_DEMO: ${{ steps.target.outputs.kind == 'preview' && '1' || '' }}
           # Same origin as the site. The OAuth client allows this host and
           # https://tradeoslive.web.app/__/auth/handler.
           VITE_FIREBASE_AUTH_DOMAIN: tradeoslive.web.app

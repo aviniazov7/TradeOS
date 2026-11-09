@@ -9,29 +9,33 @@ import {
 } from '../services/firestoreService';
 import { useAuth } from '../contexts/AuthContext';
 
-export function useTradingPlans() {
+export function useTradingPlans({ suspend = false } = {}) {
   const { user } = useAuth();
   const uid = user?.uid;
-  const [plans, setPlans] = useState(() => seedUserCollection(uid, 'tradingPlans').data);
-  const [loading, setLoading] = useState(() => seedUserCollection(uid, 'tradingPlans').loading);
+  const activeUid = suspend ? null : (uid || null);
+  const [plans, setPlans] = useState(() => (activeUid ? seedUserCollection(activeUid, 'tradingPlans').data : []));
+  const [loading, setLoading] = useState(() => (activeUid ? seedUserCollection(activeUid, 'tradingPlans').loading : false));
+  const [trackedUid, setTrackedUid] = useState(activeUid);
 
-  useEffect(() => {
-    if (!uid) {
+  // Reset when the signed-in user or the demo suspension changes. This stays
+  // in render so the effect below only subscribes.
+  if (activeUid !== trackedUid) {
+    setTrackedUid(activeUid);
+    if (!activeUid) {
       setPlans([]);
       setLoading(false);
-      return undefined;
-    }
-
-    const cached = seedUserCollection(uid, 'tradingPlans');
-    if (!cached.loading) {
-      setPlans(cached.data);
-      setLoading(false);
     } else {
-      setLoading(true);
+      const cached = seedUserCollection(activeUid, 'tradingPlans');
+      setPlans(cached.data);
+      setLoading(cached.loading);
     }
+  }
+
+  useEffect(() => {
+    if (!activeUid) return undefined;
 
     return subscribeToUserCollection(
-      uid,
+      activeUid,
       'tradingPlans',
       {},
       (data) => {
@@ -43,10 +47,10 @@ export function useTradingPlans() {
         setLoading(false);
       }
     );
-  }, [uid]);
+  }, [activeUid]);
 
   const addPlan = async (data) => {
-    if (!user) return;
+    if (suspend || !user) return;
     await addToUserCollection(user.uid, 'tradingPlans', {
       ...data,
       isActive: true,
@@ -56,7 +60,7 @@ export function useTradingPlans() {
   };
 
   const updatePlan = async (id, data) => {
-    if (!user) return;
+    if (suspend || !user) return;
     await updateUserDocument(user.uid, 'tradingPlans', id, {
       ...data,
       updatedAt: timestamp(),
@@ -64,7 +68,7 @@ export function useTradingPlans() {
   };
 
   const deletePlan = async (id) => {
-    if (!user) return;
+    if (suspend || !user) return;
     await deleteUserDocument(user.uid, 'tradingPlans', id);
   };
 
