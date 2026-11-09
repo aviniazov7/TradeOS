@@ -130,6 +130,7 @@ describe('מחברת', () => {
     expect(text()).toContain('המחברת ריקה');
     expect(text()).toContain('הערה חופשית ליום מסחר');
     expect(text()).toContain('השמירה לחשבון עדיין לא מופעלת');
+    expect(document.querySelector('[data-testid="notebook-storage-note"]').textContent).toContain('השמירה לחשבון עדיין לא מופעלת');
     expect(document.querySelector('[data-testid="notebook-demo-flag"]')).toBeNull();
     expect(document.querySelector('[data-testid="notebook-entry-demo-nb-lesson"]')).toBeNull();
     await act(async () => { buttonNamed('מצב דמו').click(); });
@@ -142,7 +143,7 @@ describe('מחברת', () => {
       <NotebookPage demo isPremium={false} journals={JOURNALS} now={NOW} />,
     );
     expect(document.querySelector('[data-testid="notebook-demo-flag"]').textContent).toContain('מצב דמו');
-    expect(document.querySelector('[data-testid="notebook-demo-flag"]').textContent).toContain('השמירה לחשבון עדיין לא מופעלת');
+    expect(document.querySelector('[data-testid="notebook-storage-note"]').textContent).toContain('השמירה לחשבון עדיין לא מופעלת');
     expect(text()).toContain('FTMO 100K');
     expect(text()).toContain('מרץ 2026');
     expect(text()).toContain('פברואר 2026');

@@ -394,7 +394,7 @@ export async function applyTradeCleanup(uid, { updates = [], deletes = [] }) {
 // dead uid after the user deletes their account.
 export const USER_SUBCOLLECTIONS = [
   'trades', 'journals', 'backtests', 'backtestJournals', 'dca',
-  'tradingPlans', 'notes', 'strategies', 'morningJournals', 'eveningJournals', 'businessEntries',
+  'tradingPlans', 'notes', 'strategies', 'morningJournals', 'eveningJournals', 'businessEntries', 'notebookEntries',
   'processes', 'polymarketWatch', 'polymarketStrategies', 'settings',
   'tradeImages', 'apiKeys', 'apiIdempotency',
 ];
