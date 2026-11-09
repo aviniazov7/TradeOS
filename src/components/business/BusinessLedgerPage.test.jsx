@@ -95,6 +95,8 @@ describe('ניהול עסק', () => {
     );
     expect(text()).toContain('אין רשומות עדיין');
     expect(text()).toContain('דמי אתגר, איפוסים, מנויים, תשלומים ומשיכות');
+    expect(text()).toContain('השמירה לחשבון עדיין לא מופעלת');
+    expect(document.querySelector('[data-testid="business-storage-note"]').textContent).toContain('השמירה לחשבון עדיין לא מופעלת');
     expect(document.querySelector('[data-testid="business-demo-flag"]')).toBeNull();
     expect(net('USD')).toBeNull();
     await act(async () => { buttonNamed('צפה בדוגמה').click(); });
@@ -107,6 +109,7 @@ describe('ניהול עסק', () => {
       <BusinessLedgerPage demo isPremium={false} journals={JOURNALS} now={NOW} />,
     );
     expect(document.querySelector('[data-testid="business-demo-flag"]').textContent).toContain('מצב דמו');
+    expect(document.querySelector('[data-testid="business-storage-note"]').textContent).toContain('השמירה לחשבון עדיין לא מופעלת');
     expect(text()).toContain('דמי אתגר');
     expect(text()).toContain('FTMO 100K');
     expect(net('USD').getAttribute('data-net')).toBe('245');

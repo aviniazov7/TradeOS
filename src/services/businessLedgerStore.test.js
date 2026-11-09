@@ -1,6 +1,8 @@
 import { readFileSync } from 'node:fs';
 import { describe, expect, it, vi } from 'vitest';
 import {
+  BUSINESS_LEDGER_COLLECTION,
+  BUSINESS_LEDGER_FIRESTORE_ENABLED,
   BUSINESS_LEDGER_STORAGE_MODE,
   createBusinessLedgerStore,
   createFirestoreBusinessLedgerStore,
@@ -52,16 +54,22 @@ describe('business ledger store', () => {
     expect(await store.list()).toEqual([]);
   });
 
-  it('leaves the Firestore stub disabled and unselected', async () => {
+  it('keeps the real Firestore store off while the flag is false', async () => {
     const fetchSpy = vi.spyOn(globalThis, 'fetch').mockRejectedValue(new Error('offline'));
+    expect(BUSINESS_LEDGER_FIRESTORE_ENABLED).toBe(false);
     expect(BUSINESS_LEDGER_STORAGE_MODE).toBe('disabled');
+    expect(BUSINESS_LEDGER_COLLECTION).toBe('businessEntries');
     expect(createBusinessLedgerStore().enabled).toBe(false);
     expect(createBusinessLedgerStore().kind).not.toBe('firestore');
 
     const firestore = createFirestoreBusinessLedgerStore();
     expect(firestore.enabled).toBe(false);
     expect(await firestore.list()).toEqual([]);
-    expect(await firestore.save(row())).toMatchObject({ ok: false, code: 'firestore_disabled' });
+    expect(await firestore.save(row())).toMatchObject({
+      ok: false,
+      code: 'firestore_disabled',
+      message: 'השמירה לחשבון עדיין לא מופעלת.',
+    });
     expect(await firestore.remove('a')).toMatchObject({ ok: false, code: 'firestore_disabled' });
     expect(await createBusinessLedgerStore('firestore').save(row())).toMatchObject({ code: 'firestore_disabled' });
     expect(fetchSpy).not.toHaveBeenCalled();
@@ -69,7 +77,79 @@ describe('business ledger store', () => {
 
     const src = readFileSync(new URL('./businessLedgerStore.js', import.meta.url), 'utf8');
     const page = readFileSync(new URL('../components/business/BusinessLedgerPage.jsx', import.meta.url), 'utf8');
-    expect(src).not.toMatch(/from ['"]firebase|firestoreService/);
+    expect(src).toMatch(/BUSINESS_LEDGER_FIRESTORE_ENABLED = false/);
+    expect(src).not.toMatch(/^import\s.+from\s+['"]firebase/m);
+    expect(src).not.toMatch(/^import\s.+firestoreService/m);
     expect(page).not.toMatch(/from ['"]firebase|firestoreService/);
+    expect(page).toContain('השמירה לחשבון עדיין לא מופעלת.');
+  });
+
+  it('writes only the bounded fields through a fake adapter, never the network', async () => {
+    const fetchSpy = vi.spyOn(globalThis, 'fetch').mockRejectedValue(new Error('offline'));
+    const docs = new Map();
+    const calls = [];
+    const io = {
+      async uid() { return 'u1'; },
+      async list(uid) {
+        calls.push(['list', uid]);
+        return [...docs.values()];
+      },
+      async set(uid, id, data) {
+        calls.push(['set', uid, id, data]);
+        docs.set(id, { id, ...data });
+      },
+      async remove(uid, id) {
+        calls.push(['remove', uid, id]);
+        docs.delete(id);
+      },
+    };
+    const store = createFirestoreBusinessLedgerStore(io);
+    const saved = await store.save(row({ note: 'אתגר', journalId: 'j-ftmo', netPnl: null }));
+    expect(saved.ok).toBe(true);
+    expect(saved.entry.cashOnly).toBe(false);
+    const written = docs.get(saved.entry.id);
+    expect(Object.keys(written).sort()).toEqual(['amount', 'cashOnly', 'category', 'currency', 'date', 'id', 'journalId', 'kind', 'month', 'note']);
+    expect(written).toMatchObject({
+      kind: 'expense',
+      category: 'challenge_fee',
+      amount: 100,
+      currency: 'USD',
+      date: '2026-03-04',
+      month: '2026-03',
+      journalId: 'j-ftmo',
+      note: 'אתגר',
+      cashOnly: false,
+    });
+    expect(written.netPnl).toBeUndefined();
+
+    const payout = await store.save(row({ kind: 'income', category: 'payout', amount: 40 }));
+    expect(docs.get(payout.entry.id).cashOnly).toBe(true);
+
+    const refused = await store.save(row({ kind: 'income', category: 'payout', netPnl: 900 }));
+    expect(refused.ok).toBe(false);
+    expect(refused.code).toBe('trading_profit');
+    const demo = await store.save(row({ demo: true }));
+    expect(demo).toMatchObject({ ok: false, code: 'demo' });
+    expect(calls.filter((call) => call[0] === 'set')).toHaveLength(2);
+
+    docs.set('poison', { id: 'poison', kind: 'expense', category: 'other', amount: 1, currency: 'EUR', date: '2026-03-04', note: '' });
+    const listed = await store.list();
+    expect(listed.map((entry) => entry.id).sort()).toEqual([payout.entry.id, saved.entry.id].sort());
+    expect(listed.every((entry) => entry.demo == null && entry.netPnl == null)).toBe(true);
+
+    expect((await store.remove(saved.entry.id)).ok).toBe(true);
+    expect(docs.has(saved.entry.id)).toBe(false);
+    expect(calls.some((call) => call[0] === 'list' && call[1] === 'u1')).toBe(true);
+    expect(fetchSpy).not.toHaveBeenCalled();
+    fetchSpy.mockRestore();
+
+    const signedOut = createFirestoreBusinessLedgerStore({
+      async uid() { return ''; },
+      async list() { throw new Error('should not list'); },
+      async set() { throw new Error('should not set'); },
+      async remove() { throw new Error('should not remove'); },
+    });
+    expect(await signedOut.list()).toEqual([]);
+    expect(await signedOut.save(row())).toMatchObject({ ok: false, code: 'storage' });
   });
 });
