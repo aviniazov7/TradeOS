@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react';
-import { Pencil, Trash2, Archive, Coins, LineChart, Upload, Download } from 'lucide-react';
+import { Pencil, Trash2, Archive, Coins, LineChart, Upload, Download, Share2 } from 'lucide-react';
 import toast from 'react-hot-toast';
 import Modal from '../shared/Modal';
 import ConfirmDialog from '../shared/ConfirmDialog';
@@ -11,7 +11,7 @@ import { propFirmToForm, formToPropFirm } from '../propfirm/propFirmForm';
 import { normalizeCommissions } from '../../utils/tradeFormHelpers';
 import { dailyLossAlertPatch } from '../../utils/dailyLossAlert';
 
-export default function JournalSettingsModal({ isOpen, onClose, onArchive, onImport, onExport, canExport, demoActive = false }) {
+export default function JournalSettingsModal({ isOpen, onClose, onArchive, onImport, onExport, canExport, onShare, demoActive = false }) {
   const { journals, activeJournal, activeJournalId, updateJournal, deleteJournal, archiveJournal } = useJournalContext();
   const [form, setForm] = useState({ name: '', exchange: '', initialBalance: '', currency: 'USDT', description: '', riskType: 'percent', riskValue: '', assetClass: 'crypto' });
   const [propForm, setPropForm] = useState(() => propFirmToForm(null));
@@ -257,6 +257,20 @@ export default function JournalSettingsModal({ isOpen, onClose, onArchive, onImp
             </button>
           </div>
         </form>
+
+        <div className="mt-4 pt-4 border-t border-border-primary space-y-2">
+          <p className="text-xs font-semibold text-text-primary">שיתוף יומן</p>
+          <p className="text-[11px] text-text-muted">שתפו את היומן הפעיל לטווח זמן. הצופה רואה רק את השדות שתבחרו, בלי אפשרות לערוך.</p>
+          <button
+            type="button"
+            onClick={() => onShare?.()}
+            data-testid="journal-share-open"
+            className="w-full flex items-center justify-center gap-2 py-2.5 rounded-lg bg-bg-tertiary text-text-primary hover:bg-border-hover transition-colors cursor-pointer text-sm font-semibold"
+          >
+            <Share2 className="w-4 h-4" />
+            שיתוף היומן
+          </button>
+        </div>
 
         <div className="mt-4 pt-4 border-t border-border-primary space-y-2">
           <p className="text-xs text-text-muted">ייבוא / ייצוא עסקאות</p>
