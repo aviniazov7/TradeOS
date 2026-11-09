@@ -54,8 +54,13 @@ export async function fetchSharedJournal(token, { fetchFn = fetch, base = WORKER
   const data = await res.json().catch(() => ({}));
   if (res.status === 404) return { ok: false, unavailable: false };
   if (!res.ok) return { ok: false, unavailable: true, message: typeof data.error === 'string' ? data.error : '' };
-  const share = data.share && typeof data.share === 'object' ? data.share : {};
-  return { ok: true, share, expiresAt: typeof data.expiresAt === 'string' ? data.expiresAt : '' };
+  // A real view always names its end date. A 200 that is not that shape
+  // (for example the Worker's plain-text fallback) is an outage, not an empty share.
+  const share = data.share && typeof data.share === 'object' ? data.share : null;
+  if (!share || typeof data.expiresAt !== 'string' || !data.expiresAt) {
+    return { ok: false, unavailable: true };
+  }
+  return { ok: true, share, expiresAt: data.expiresAt };
 }
 
 export const journalShareClient = createJournalShareClient();

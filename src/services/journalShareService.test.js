@@ -37,6 +37,13 @@ describe('fetchSharedJournal', () => {
     }
   });
 
+  it('treats a 200 that is not a share as an outage', async () => {
+    const plain = async () => new Response('TradeOS Worker', { status: 200, headers: { 'Content-Type': 'text/plain' } });
+    const empty = async () => new Response('{}', { status: 200, headers: { 'Content-Type': 'application/json' } });
+    expect(await fetchSharedJournal('tok', { fetchFn: plain, base: 'https://worker.test' })).toEqual({ ok: false, unavailable: true });
+    expect(await fetchSharedJournal('tok', { fetchFn: empty, base: 'https://worker.test' })).toEqual({ ok: false, unavailable: true });
+  });
+
   it('keeps an outage distinct from a dead link', async () => {
     const { fetchFn } = responder(503, { error: 'השירות אינו זמין זמנית. נסה שוב מאוחר יותר.' });
     const result = await fetchSharedJournal('tok', { fetchFn, base: 'https://worker.test' });
