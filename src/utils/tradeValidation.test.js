@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { prepareApiTrade } from './tradeValidation';
+import { inspectApiTradePatch, prepareApiTrade } from './tradeValidation';
 
 const base = {
   journalId: 'journal-1',
@@ -59,10 +59,12 @@ describe('prepareApiTrade', () => {
   });
 
   it('drops unknown fields so callers cannot set derived pnl', () => {
-    const out = prepareApiTrade({ ...base, pnl: 9999, netPnl: 9999, role: 'admin' });
+    const out = prepareApiTrade({ ...base, pnl: 9999, netPnl: 9999, role: 'admin', custom: { f1: 'secret' } });
     expect(out.ok).toBe(true);
     expect(out.trade.pnl).toBeUndefined();
     expect(out.trade.role).toBeUndefined();
+    expect(out.trade.custom).toBeUndefined();
+    expect(inspectApiTradePatch({ custom: { f1: 'secret' } }).ok).toBe(false);
   });
 
   it('ignores pnlFromExchange from a public API client', () => {

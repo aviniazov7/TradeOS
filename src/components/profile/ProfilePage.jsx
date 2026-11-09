@@ -27,6 +27,7 @@ import MarketingEmailToggle from './MarketingEmailToggle';
 import ContactDeveloper from './ContactDeveloper';
 import ApiKeysSection from './ApiKeysSection';
 import SettingsNav from './SettingsNav';
+import CustomTradeFieldsSettings from './CustomTradeFieldsSettings';
 import { SETTINGS_SECTIONS, visibleSettingsSection } from './settingsCatalog';
 import { planExpiresMs } from '../../utils/premium';
 
@@ -470,6 +471,13 @@ export default function ProfilePage() {
           </button>
         )}
       </div>
+      </>
+      )}
+
+      {showSettings('fields') && (
+      <>
+      <SectionTitle>שדות</SectionTitle>
+      <CustomTradeFieldsSettings />
       </>
       )}
 

@@ -6,6 +6,8 @@ import { summarizeTrades } from './journalAnalytics';
 // be shared on their own. Nothing here reads a network or a database.
 export const SHARE_FIELD_KEYS = ['trades', 'notes', 'emotions', 'balances', 'tradingView'];
 
+// Allowlist. `custom` is not here: a shared journal never includes the
+// owner's custom-field answers, even when trades themselves are shared.
 const TRADE_KEYS = [
   'id', 'journalId', 'pair', 'direction', 'status', 'orderType', 'marketType',
   'strategy', 'timeframe', 'session', 'trigger', 'assetClass',

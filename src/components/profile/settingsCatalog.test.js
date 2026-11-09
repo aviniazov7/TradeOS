@@ -8,7 +8,7 @@ import {
 describe('settings catalog', () => {
   it('keeps every settings category', () => {
     expect(SETTINGS_SECTIONS.map((section) => section.id)).toEqual([
-      'trading', 'plan', 'reports', 'notifications', 'api', 'general', 'account',
+      'trading', 'fields', 'plan', 'reports', 'notifications', 'api', 'general', 'account',
     ]);
   });
 

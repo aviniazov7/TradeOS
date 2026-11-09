@@ -41,7 +41,7 @@ const pnlColor = (v) => v >= 0 ? 'text-profit' : 'text-loss';
 export default function JournalAnalyticsTab({
   trades, period, onPeriodChange, stats,
   activeJournal, balanceIsLive, displayedCurrentBalance,
-  onFilterJump, onAddFirstTrade,
+  onFilterJump, onAddFirstTrade, customFields = [],
 }) {
   const periodTrades = useMemo(() => filterTradesByPeriod(trades, period), [trades, period]);
   const analytics = useMemo(() => computeJournalAnalytics(periodTrades), [periodTrades]);
@@ -245,7 +245,7 @@ export default function JournalAnalyticsTab({
             )}
           </div>
 
-          <TagMistakeStatsPanel trades={periodTrades} onFilterJump={onFilterJump} />
+          <TagMistakeStatsPanel trades={periodTrades} onFilterJump={onFilterJump} customFields={customFields} />
 
           <SetupStatsTable stats={setupStats} onSetupClick={(name) => onFilterJump({ setup: name })} />
 

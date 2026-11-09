@@ -241,7 +241,8 @@ service cloud.firestore {
         allow create, update: if request.auth != null && request.auth.uid == userId
           && (
             (settingId == 'exchanges' && exchangesSettingsOk(request.resource.data))
-            || (settingId != 'exchanges' && noSecretFieldNames(request.resource.data))
+            || (settingId == 'customTradeFields' && customTradeFieldsDocOk(request.resource.data))
+            || (settingId != 'exchanges' && settingId != 'customTradeFields' && noSecretFieldNames(request.resource.data))
           );
       }
       // Public-API keys. Metadata only (name, prefix, timestamps) — the hash
@@ -384,6 +385,69 @@ service cloud.firestore {
     // back-compat with every pre-existing trade) and CME futures, where
     // leverage is replaced by a contract spec (pointValue × contracts
     // drives dollar P&L — see docs/specs/futures-contracts.md).
+    // settings/customTradeFields — the journal's optional field list.
+    // ids are f1, f2, … and are never reused (seq only moves forward).
+    // A select stores its options; text and number do not.
+    function customOptionOk(item) {
+      return item is string && item.size() > 0 && item.size() <= 40;
+    }
+    function customOptionsOk(options) {
+      return options is list && options.size() >= 1 && options.size() <= 12
+        && (options.size() < 1 || customOptionOk(options[0]))
+        && (options.size() < 2 || customOptionOk(options[1]))
+        && (options.size() < 3 || customOptionOk(options[2]))
+        && (options.size() < 4 || customOptionOk(options[3]))
+        && (options.size() < 5 || customOptionOk(options[4]))
+        && (options.size() < 6 || customOptionOk(options[5]))
+        && (options.size() < 7 || customOptionOk(options[6]))
+        && (options.size() < 8 || customOptionOk(options[7]))
+        && (options.size() < 9 || customOptionOk(options[8]))
+        && (options.size() < 10 || customOptionOk(options[9]))
+        && (options.size() < 11 || customOptionOk(options[10]))
+        && (options.size() < 12 || customOptionOk(options[11]));
+    }
+    function customFieldDefOk(f) {
+      return f is map
+        && f.keys().hasOnly(['id', 'name', 'type', 'options'])
+        && f.id is string && f.id.matches('^f[1-9][0-9]{0,2}$')
+        && f.name is string && f.name.size() > 0 && f.name.size() <= 40
+        && f.type in ['text', 'number', 'select']
+        && (
+          (f.type == 'select' && customOptionsOk(f.options))
+          || (f.type != 'select' && !('options' in f))
+        );
+    }
+    function customFieldsListOk(list) {
+      return list is list && list.size() <= 12
+        && (list.size() < 1 || customFieldDefOk(list[0]))
+        && (list.size() < 2 || customFieldDefOk(list[1]))
+        && (list.size() < 3 || customFieldDefOk(list[2]))
+        && (list.size() < 4 || customFieldDefOk(list[3]))
+        && (list.size() < 5 || customFieldDefOk(list[4]))
+        && (list.size() < 6 || customFieldDefOk(list[5]))
+        && (list.size() < 7 || customFieldDefOk(list[6]))
+        && (list.size() < 8 || customFieldDefOk(list[7]))
+        && (list.size() < 9 || customFieldDefOk(list[8]))
+        && (list.size() < 10 || customFieldDefOk(list[9]))
+        && (list.size() < 11 || customFieldDefOk(list[10]))
+        && (list.size() < 12 || customFieldDefOk(list[11]));
+    }
+    function customTradeFieldsDocOk(data) {
+      return data.keys().hasOnly(['fields', 'seq'])
+        && data.seq is int && data.seq >= 0 && data.seq <= 999
+        && customFieldsListOk(data.fields);
+    }
+
+    // Optional trade.custom map: string id -> string or number. Rules cannot
+    // walk map values, so the type and length are enforced in
+    // sanitizeCustomMap. Here the map is size-capped and cannot carry a
+    // secret field name. A trade with no `custom` is unchanged.
+    function customMapOk(custom) {
+      return custom is map
+        && custom.size() <= 12
+        && !custom.keys().hasAny(secretFieldNames());
+    }
+
     function isValidTradeCommon(data) {
       return data.entryPrice is number && data.entryPrice > 0
         && data.quantity is number && data.quantity > 0
@@ -405,7 +469,9 @@ service cloud.firestore {
         // setups is optional. Trades written before the field existed omit it.
         && (!('setups' in data) || setupsFieldOk(data.setups))
         // Chart links are optional. Trades written before the field omit it.
-        && (!('tradingViewUrls' in data) || tradingViewUrlsOk(data.tradingViewUrls));
+        && (!('tradingViewUrls' in data) || tradingViewUrlsOk(data.tradingViewUrls))
+        // Custom answers are optional. Trades written before the field omit it.
+        && (!('custom' in data) || customMapOk(data.custom));
     }
 
     // Setup tags: a short list of short strings. Checked one index at a time
@@ -478,7 +544,11 @@ service cloud.firestore {
         // Only when this update touches setups. Legacy trades that never had
         // the field keep updating every other field exactly as before.
         && (!changed.hasAny(['setups']) || !('setups' in data) || setupsFieldOk(data.setups))
-        && (!changed.hasAny(['tradingViewUrls']) || !('tradingViewUrls' in data) || tradingViewUrlsOk(data.tradingViewUrls));
+        && (!changed.hasAny(['tradingViewUrls']) || !('tradingViewUrls' in data) || tradingViewUrlsOk(data.tradingViewUrls))
+        // Only when this update touches custom. A legacy trade that never had
+        // the field keeps updating every other field exactly as before.
+        // Deleting the field (it is absent after the write) is allowed.
+        && (!changed.hasAny(['custom']) || !('custom' in data) || customMapOk(data.custom));
     }
 
     // Minimal shape backstop for the free-form subcollections (journals,

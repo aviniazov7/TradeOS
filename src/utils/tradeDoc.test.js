@@ -85,6 +85,29 @@ describe('buildStoredTrade', () => {
     expect(stored.pnl).toBe(1000);
   });
 
+  it('leaves a trade without custom exactly as before, and stores a clean map', () => {
+    const plain = buildStoredTrade({
+      pair: 'BTCUSDT', direction: 'long', entryPrice: 100, exitPrice: 110,
+      quantity: 1, stopLoss: 90, leverage: 2, fees: 0,
+    }, { journalId: 'j1', now: NOW });
+    expect(plain.custom).toBeUndefined();
+    expect(Object.prototype.hasOwnProperty.call(plain, 'custom')).toBe(false);
+
+    const stored = buildStoredTrade({
+      pair: 'BTCUSDT', direction: 'long', entryPrice: 100, exitPrice: 110,
+      quantity: 1, stopLoss: 90, leverage: 2, fees: 0,
+      custom: { f1: '  לונדון ', f2: 2, nested: { secret: 'nope' }, apiKey: 'x' },
+    }, { journalId: 'j1', now: NOW });
+    expect(stored.custom).toEqual({ f1: 'לונדון', f2: 2 });
+    expect(stored.pnl).toBe(plain.pnl);
+
+    const cleared = buildStoredTrade({
+      pair: 'BTCUSDT', direction: 'long', entryPrice: 100, exitPrice: 110,
+      quantity: 1, stopLoss: 90, leverage: 2, fees: 0, custom: {},
+    }, { journalId: 'j1', now: NOW });
+    expect(cleared.custom).toBeUndefined();
+  });
+
   it('is what useTrades persists, with Firestore timestamps wrapped by the hook', () => {
     const src = readFileSync(new URL('../hooks/useTrades.js', import.meta.url), 'utf8');
     expect(src).toContain('buildStoredTrade(');
