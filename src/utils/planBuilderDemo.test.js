@@ -41,11 +41,14 @@ describe('plan builder answers', () => {
     expect(visiblePlanQuestions({ style: 'swing' }).map((question) => question.id)).not.toContain('sessions');
   });
 
-  it('rejects an empty answer and an oversized one', () => {
+  it('rejects an empty coin list and accepts a catalog symbol', () => {
     const markets = visiblePlanQuestions({}).find((question) => question.id === 'markets');
-    expect(planQuestionError(markets, '  ')).toBe('השלימו את התשובה');
-    expect(planQuestionError(markets, 'A'.repeat(markets.maxLength + 1))).toMatch(/תווים/);
-    expect(planQuestionError(markets, 'ETH')).toBe('');
+    expect(planQuestionError(markets, [])).toMatch(/מטבע/);
+    expect(planQuestionError(markets, ['NOTACOIN'])).toMatch(/תקינה/);
+    expect(planQuestionError(markets, ['BTCUSDT'])).toBe('');
+    const entry = visiblePlanQuestions({}).find((question) => question.id === 'entry');
+    expect(planQuestionError(entry, '  ')).toBe('השלימו את התשובה');
+    expect(planQuestionError(entry, 'A'.repeat(entry.maxLength + 1))).toMatch(/תווים/);
   });
 });
 
@@ -72,10 +75,11 @@ describe('plan builder errors and save', () => {
   });
 
   it('builds a synthetic plan and drops sessions for swing', () => {
-    const plan = demoPlanFromAnswers({ style: 'swing', entry: 'כניסה סינתטית' });
+    const plan = demoPlanFromAnswers({ style: 'swing', entry: 'כניסה סינתטית', markets: ['Bitcoin'] });
     expect(plan.name).toBe('תוכנית דמה');
     expect(plan.notes).toBe(PLAN_BUILDER_DEMO_BANNER);
     expect(plan.sessions).toEqual([]);
     expect(plan.entryRules).toBe('כניסה סינתטית');
+    expect(plan.pairs).toEqual(['BTCUSDT']);
   });
 });

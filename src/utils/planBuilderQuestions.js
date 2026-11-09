@@ -3,15 +3,31 @@
 // question may be skipped from an earlier answer; there is no saved session.
 // Leaving the flow means starting over.
 
-export const PLAN_BUILDER_VERSION = 1;
+import { SESSIONS, TIMEFRAMES } from './constants';
+import { PLAN_PAIR_LIMIT, normalizePlanPairs, planPairFromName } from './planSymbols';
+
+export const PLAN_BUILDER_VERSION = 2;
 
 // Separate from the shared TradeAI daily counter. One accepted submission
 // spends one of these. Resets with the Israel date on the quota document.
 export const PLAN_BUILDER_DAILY_LIMIT = 3;
 
 const TEXT = 2000;
-const SHORT = 200;
 
+const sessionOptions = SESSIONS.map((id) => ({
+  id,
+  label: {
+    London: 'לונדון',
+    'New York': 'ניו יורק',
+    Asia: 'אסיה',
+    'London/NY Overlap': 'חפיפה לונדון/ניו יורק',
+  }[id] || id,
+}));
+
+// Twelve questions. Sessions drop out for swing, so that path shows eleven.
+// Long answers are optional: skipping one leaves it for the draft to propose.
+// name, description, riskManagement, goals, notes, checklist, color and
+// trade examples are not asked; the draft fills them from the other answers.
 export const PLAN_QUESTIONS = [
   {
     id: 'style',
@@ -25,20 +41,20 @@ export const PLAN_QUESTIONS = [
   },
   {
     id: 'markets',
-    text: 'באילו שווקים או מטבעות אתה סוחר?',
-    type: 'text',
-    maxLength: SHORT,
+    text: 'באילו מטבעות אתה סוחר?',
+    type: 'symbols',
+  },
+  {
+    id: 'timeframes',
+    text: 'באילו טיימפריימים אתה סוחר?',
+    type: 'multi',
+    options: TIMEFRAMES.map((id) => ({ id, label: id })),
   },
   {
     id: 'sessions',
     text: 'באילו סשנים אתה סוחר?',
     type: 'multi',
-    options: [
-      { id: 'London', label: 'לונדון' },
-      { id: 'New York', label: 'ניו יורק' },
-      { id: 'Asia', label: 'אסיה' },
-      { id: 'London/NY Overlap', label: 'חפיפה לונדון/ניו יורק' },
-    ],
+    options: sessionOptions,
     // Swing trades are not tied to a session. The question is not asked.
     skipWhen: { id: 'style', equals: 'swing' },
   },
@@ -47,18 +63,42 @@ export const PLAN_QUESTIONS = [
     text: 'מתי אתה נכנס לעסקה?',
     type: 'text',
     maxLength: TEXT,
+    optional: true,
   },
   {
     id: 'exit',
-    text: 'מתי אתה יוצא מעסקה?',
+    text: 'מתי אתה יוצא, ומה היעד?',
     type: 'text',
     maxLength: TEXT,
+    optional: true,
   },
   {
-    id: 'risk',
-    text: 'איך אתה מגדיר את הסיכון לעסקה?',
+    id: 'tradeManagement',
+    text: 'איך אתה מנהל עסקה פתוחה?',
     type: 'text',
     maxLength: TEXT,
+    optional: true,
+  },
+  {
+    id: 'marketConditions',
+    text: 'באילו תנאי שוק אתה סוחר?',
+    type: 'text',
+    maxLength: TEXT,
+    optional: true,
+  },
+  {
+    id: 'dailyRoutine',
+    text: 'איך נראית השגרה היומית שלך?',
+    type: 'text',
+    maxLength: TEXT,
+    optional: true,
+  },
+  {
+    id: 'mistakes',
+    text: 'אילו טעויות אתה רוצה להימנע מהן?',
+    type: 'text',
+    maxLength: TEXT,
+    optional: true,
   },
   {
     id: 'maxDailyLoss',
@@ -135,6 +175,23 @@ function readMulti(question, value, errors) {
   return picked;
 }
 
+function readSymbols(question, value, errors) {
+  if (!Array.isArray(value) || value.length === 0 || value.length > PLAN_PAIR_LIMIT) {
+    errors.push(problem(question.id, 'wrong_type', `${question.id} must be a short list of symbols`));
+    return undefined;
+  }
+  const picked = [];
+  for (const item of value) {
+    const pair = typeof item === 'string' ? planPairFromName(item) : '';
+    if (!pair) {
+      errors.push(problem(question.id, 'invalid_value', `${question.id} has an unknown symbol`));
+      return undefined;
+    }
+    if (!picked.includes(pair)) picked.push(pair);
+  }
+  return picked;
+}
+
 function readNumber(question, value, errors) {
   if (typeof value !== 'number' || !Number.isFinite(value)) {
     errors.push(problem(question.id, 'wrong_type', `${question.id} must be a number`));
@@ -155,6 +212,7 @@ function readValue(question, value, errors) {
   if (question.type === 'text') return readText(question, value, errors);
   if (question.type === 'choice') return readChoice(question, value, errors);
   if (question.type === 'multi') return readMulti(question, value, errors);
+  if (question.type === 'symbols') return readSymbols(question, value, errors);
   if (question.type === 'number') return readNumber(question, value, errors);
   errors.push(problem(question.id, 'invalid_value', `${question.id} has an unknown type`));
   return undefined;
@@ -215,6 +273,7 @@ export function validatePlanBuilderAnswers(body) {
       continue;
     }
     if (!present) {
+      if (question.optional) continue;
       errors.push(problem(question.id, 'missing', `${question.id} is required`));
       continue;
     }
@@ -229,4 +288,34 @@ export function validatePlanBuilderAnswers(body) {
 
 export function activeQuestionIds(answers) {
   return PLAN_QUESTIONS.filter((question) => !isSkipped(question, answers)).map((question) => question.id);
+}
+
+const ANSWER_TEXT = {
+  entry: 'entryRules',
+  exit: 'exitRules',
+  tradeManagement: 'tradeManagement',
+  marketConditions: 'marketConditions',
+  dailyRoutine: 'dailyRoutine',
+};
+
+// Copy the trader's answers onto a draft before it is sanitized. Skipped
+// text stays whatever the draft already proposed. Symbols replace names.
+export function draftFromAnswers(plan, answers = {}) {
+  const next = plan && typeof plan === 'object' && !Array.isArray(plan) ? { ...plan } : {};
+  if (Array.isArray(answers.markets) && answers.markets.length) {
+    const pairs = normalizePlanPairs(answers.markets);
+    if (pairs.length) next.pairs = pairs;
+  }
+  if (Array.isArray(answers.timeframes) && answers.timeframes.length) next.timeframes = answers.timeframes;
+  if (answers.style === 'swing') next.sessions = [];
+  else if (Array.isArray(answers.sessions)) next.sessions = answers.sessions;
+  for (const [id, field] of Object.entries(ANSWER_TEXT)) {
+    if (typeof answers[id] === 'string' && answers[id].trim()) next[field] = answers[id].trim();
+  }
+  if (typeof answers.mistakes === 'string' && answers.mistakes.trim()) {
+    next.mistakesToAvoid = answers.mistakes.split(/[\n,]/).map((item) => item.trim()).filter(Boolean);
+  }
+  if (typeof answers.maxDailyLoss === 'number') next.maxDailyLoss = answers.maxDailyLoss;
+  if (typeof answers.maxPositions === 'number') next.maxPositions = answers.maxPositions;
+  return next;
 }

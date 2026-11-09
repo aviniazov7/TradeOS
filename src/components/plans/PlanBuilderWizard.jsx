@@ -1,6 +1,7 @@
 import { useState } from 'react';
 import { Sparkles } from 'lucide-react';
 import Modal from '../shared/Modal';
+import PlanSymbolPicker from './PlanSymbolPicker';
 import { demoPlanFromAnswers, planBuilderErrorMessage } from '../../utils/planBuilderDemo';
 import { planBuilderAnswerList, planQuestionError, visiblePlanQuestions } from '../../utils/planBuilderFlow';
 
@@ -9,6 +10,9 @@ const choiceClass = (on) => `min-h-11 w-full rounded-xl border px-3 py-2 text-st
   : 'border-border-primary bg-bg-tertiary text-text-secondary hover:border-border-hover'}`;
 
 function QuestionField({ question, value, onChange }) {
+  if (question.type === 'symbols') {
+    return <PlanSymbolPicker value={value} onChange={onChange} />;
+  }
   if (question.type === 'choice' || question.type === 'multi') {
     const selected = question.type === 'multi' ? (Array.isArray(value) ? value : []) : value;
     return (
@@ -81,6 +85,17 @@ export default function PlanBuilderWizard({ open, demo = false, onClose, onDraft
     setFieldError('');
   };
 
+  const skip = () => {
+    setAnswers((current) => {
+      const next = { ...current };
+      delete next[question.id];
+      return next;
+    });
+    setStep(index + 1);
+    setFieldError('');
+    setError('');
+  };
+
   const submit = async () => {
     const problem = planQuestionError(question, answers[question.id]);
     if (problem) { setFieldError(problem); return; }
@@ -113,6 +128,7 @@ export default function PlanBuilderWizard({ open, demo = false, onClose, onDraft
         {question && (
           <section className="rounded-2xl border border-border-primary bg-bg-secondary p-4">
             <h3 className="text-[17px] font-bold leading-snug text-text-primary">{question.text}</h3>
+            {question.optional && <p className="mt-1 text-xs text-text-muted">אפשר לדלג. הטיוטה תציע ניסוח.</p>}
             <div className="mt-3">
               <QuestionField question={question} value={answers[question.id]} onChange={setValue} />
             </div>
@@ -129,6 +145,16 @@ export default function PlanBuilderWizard({ open, demo = false, onClose, onDraft
           >
             חזרה
           </button>
+          {question?.optional && (
+            <button
+              type="button"
+              className="min-h-11 flex-1 rounded-xl border border-border-primary bg-bg-tertiary text-sm font-bold text-text-secondary cursor-pointer disabled:opacity-50"
+              disabled={loading}
+              onClick={skip}
+            >
+              דלג
+            </button>
+          )}
           <button
             type="button"
             className="min-h-11 flex-1 rounded-xl bg-accent-muted text-sm font-bold text-white cursor-pointer hover:bg-accent-primary disabled:opacity-50"

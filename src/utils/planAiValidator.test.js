@@ -54,6 +54,15 @@ describe('validateAiPlan', () => {
     }]);
   });
 
+  it('maps coin names to the form symbols', () => {
+    const out = validateAiPlan({
+      ...SYNTHETIC_PLAN,
+      pairs: ['Bitcoin', 'BTC', 'ביטקוין', 'ETH'],
+    });
+    expect(out.ok).toBe(true);
+    expect(out.plan.pairs).toEqual(['BTCUSDT', 'ETHUSDT']);
+  });
+
   it('fills missing fields and rejects a plan with no name', () => {
     const out = validateAiPlan({ description: 'טיוטה חלקית' });
     expect(out.ok).toBe(false);

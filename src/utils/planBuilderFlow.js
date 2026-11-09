@@ -1,4 +1,5 @@
 import { PLAN_QUESTIONS, activeQuestionIds } from './planBuilderQuestions';
+import { PLAN_PAIR_LIMIT, planPairFromName } from './planSymbols';
 
 const BY_ID = new Map(PLAN_QUESTIONS.map((question) => [question.id, question]));
 
@@ -7,10 +8,11 @@ export function visiblePlanQuestions(answers) {
 }
 
 export function planBuilderAnswerList(answers) {
-  return visiblePlanQuestions(answers).map((question) => ({
-    id: question.id,
-    value: answers[question.id],
-  }));
+  return visiblePlanQuestions(answers).flatMap((question) => {
+    const value = answers[question.id];
+    if (value === undefined || value === '') return [];
+    return [{ id: question.id, value }];
+  });
 }
 
 export function planQuestionError(question, value) {
@@ -18,6 +20,15 @@ export function planQuestionError(question, value) {
   if (question.type === 'choice') {
     const ok = question.options?.some((option) => option.id === value);
     return ok ? '' : 'בחרו אפשרות אחת';
+  }
+  if (question.type === 'symbols') {
+    if (!Array.isArray(value) || value.length === 0) return 'בחרו לפחות מטבע אחד';
+    if (value.length > PLAN_PAIR_LIMIT) return `עד ${PLAN_PAIR_LIMIT} מטבעות`;
+    const canonical = value.map((item) => planPairFromName(item));
+    if (canonical.some((pair) => !pair) || new Set(canonical).size !== canonical.length) {
+      return 'הבחירה אינה תקינה';
+    }
+    return '';
   }
   if (question.type === 'multi') {
     if (!Array.isArray(value) || value.length === 0) return 'בחרו לפחות אפשרות אחת';

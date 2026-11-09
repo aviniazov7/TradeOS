@@ -2,7 +2,7 @@
 // the query flag is present. Preview builds set VITE_PLAN_BUILDER_DEMO=1.
 // The returned plan is synthetic and must never be sent to a server.
 
-import { PLAN_BUILDER_DAILY_LIMIT } from './planBuilderQuestions';
+import { PLAN_BUILDER_DAILY_LIMIT, draftFromAnswers } from './planBuilderQuestions';
 
 export const PLAN_BUILDER_DEMO_BANNER = 'דמו – נתוני דמה';
 
@@ -31,27 +31,19 @@ export function planBuilderErrorMessage(status, body = {}) {
 
 // Fixed synthetic draft. Not a model response and not a saved plan.
 export function demoPlanFromAnswers(answers = {}) {
-  const swing = answers.style === 'swing';
-  return {
+  const plan = draftFromAnswers({
     name: 'תוכנית דמה',
     description: 'טיוטה סינתטית להדגמה. אין כאן נתוני מסחר אמיתיים.',
-    entryRules: typeof answers.entry === 'string' && answers.entry.trim()
-      ? answers.entry.trim()
-      : 'כניסה אחרי אישור מבנה על הגרף הסינתטי.',
-    exitRules: typeof answers.exit === 'string' && answers.exit.trim()
-      ? answers.exit.trim()
-      : 'יציאה ביעד שנקבע מראש.',
-    riskManagement: typeof answers.risk === 'string' && answers.risk.trim()
-      ? answers.risk.trim()
-      : 'סיכון קבוע לעסקה בדוגמה הזו.',
+    entryRules: 'כניסה אחרי אישור מבנה על הגרף הסינתטי.',
+    exitRules: 'יציאה ביעד שנקבע מראש.',
+    riskManagement: 'סיכון קבוע לעסקה בדוגמה הזו.',
     goals: 'עקביות בלבד.',
     notes: PLAN_BUILDER_DEMO_BANNER,
-    // No exchange symbols: the plan form would otherwise request a public coin icon.
-    pairs: [],
+    pairs: ['BTCUSDT'],
     timeframes: ['15m'],
-    sessions: swing ? [] : (Array.isArray(answers.sessions) && answers.sessions.length ? answers.sessions : ['Asia']),
-    maxDailyLoss: typeof answers.maxDailyLoss === 'number' ? answers.maxDailyLoss : 2,
-    maxPositions: typeof answers.maxPositions === 'number' ? answers.maxPositions : 1,
+    sessions: ['Asia'],
+    maxDailyLoss: 2,
+    maxPositions: 1,
     checklist: ['בדיקת דמה'],
     isActive: true,
     color: '#06b6d4',
@@ -60,7 +52,9 @@ export function demoPlanFromAnswers(answers = {}) {
     mistakesToAvoid: ['עסקת נקמה'],
     dailyRoutine: 'סקירה קצרה',
     tradeManagement: 'הזזת סטופ אחרי יעד ראשון',
-  };
+  }, answers);
+  if (!plan.pairs?.length) plan.pairs = ['BTCUSDT'];
+  return plan;
 }
 
 // The only write path. Demo returns without calling addPlan.

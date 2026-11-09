@@ -157,10 +157,20 @@ function Flow({ demo = false, requestPlan, onSave }) {
   );
 }
 
+async function pickSector(key) {
+  const button = document.querySelector(`[data-sector="${key}"]`);
+  expect(button, key).toBeTruthy();
+  await act(async () => { button.click(); });
+}
+
 async function finishWizard(style) {
   await pick(style);
   await clickButton('הבא');
-  await fill('markets', 'ETH');
+  expect(document.querySelector('[data-testid="plan-builder-wizard"]').dataset.question).toBe('markets');
+  await pickSector('bitcoin');
+  await clickButton('הבא');
+  expect(document.querySelector('[data-testid="plan-builder-wizard"]').dataset.question).toBe('timeframes');
+  await pick('15m');
   await clickButton('הבא');
   if (style !== 'swing') {
     expect(document.querySelector('[data-testid="plan-builder-wizard"]').dataset.question).toBe('sessions');
@@ -169,12 +179,10 @@ async function finishWizard(style) {
   } else {
     expect(document.querySelector('[data-testid="plan-builder-wizard"]').dataset.question).not.toBe('sessions');
   }
-  await fill('entry', 'כניסה סינתטית');
-  await clickButton('הבא');
-  await fill('exit', 'יציאה סינתטית');
-  await clickButton('הבא');
-  await fill('risk', 'סיכון סינתטי');
-  await clickButton('הבא');
+  for (const id of ['entry', 'exit', 'tradeManagement', 'marketConditions', 'dailyRoutine', 'mistakes']) {
+    expect(document.querySelector('[data-testid="plan-builder-wizard"]').dataset.question).toBe(id);
+    await clickButton('דלג');
+  }
   await fill('maxDailyLoss', '2');
   await clickButton('הבא');
   await fill('maxPositions', '1');
@@ -187,13 +195,15 @@ describe('plan builder wizard', () => {
     const view = await mount(<Flow requestPlan={requestPlan} onSave={vi.fn()} />);
     await pick('swing');
     await clickButton('הבא');
-    await fill('markets', 'ETH');
+    await pickSector('bitcoin');
     await clickButton('הבא');
-    expect(document.querySelector('[data-testid="plan-builder-wizard"]').dataset.question).toBe('entry');
+    expect(document.querySelector('[data-testid="plan-builder-wizard"]').dataset.question).toBe('timeframes');
     await clickButton('חזרה');
     await clickButton('חזרה');
     await pick('scalp');
     await clickButton('הבא');
+    await clickButton('הבא');
+    await pick('15m');
     await clickButton('הבא');
     expect(document.querySelector('[data-testid="plan-builder-wizard"]').dataset.question).toBe('sessions');
     expect(requestPlan).not.toHaveBeenCalled();
@@ -259,12 +269,14 @@ describe('plan builder wizard', () => {
     expect(document.body.textContent).toContain(PLAN_BUILDER_DEMO_BANNER);
     await finishWizard('swing');
     expect(requestPlan).not.toHaveBeenCalled();
-    expect(fetchSpy).not.toHaveBeenCalled();
     expect(planName()).toBe('תוכנית דמה');
+    expect(document.body.textContent).toContain('BTCUSDT');
+    const urls = fetchSpy.mock.calls.map((call) => String(call[0]));
+    expect(urls.some((url) => /firestore|googleapis\.com\/firestore|ai-plan-builder|api\.groq\.com/.test(url))).toBe(false);
     expect(plansApi.addPlan).not.toHaveBeenCalled();
     await clickButton('שמור תוכנית');
     expect(plansApi.addPlan).not.toHaveBeenCalled();
-    expect(fetchSpy).not.toHaveBeenCalled();
+    expect(fetchSpy.mock.calls.map((call) => String(call[0])).some((url) => /firestore|ai-plan-builder|api\.groq\.com/.test(url))).toBe(false);
     fetchSpy.mockRestore();
     await view.cleanup();
   });
