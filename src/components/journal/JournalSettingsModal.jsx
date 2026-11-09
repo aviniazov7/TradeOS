@@ -10,6 +10,13 @@ import PropFirmSettings from '../propfirm/PropFirmSettings';
 import { propFirmToForm, formToPropFirm } from '../propfirm/propFirmForm';
 import { normalizeCommissions } from '../../utils/tradeFormHelpers';
 import { dailyLossAlertPatch } from '../../utils/dailyLossAlert';
+import {
+  journalRiskRulesInput,
+  journalRiskRulesInputRejected,
+  journalRiskRulesPatch,
+  journalRiskRulesSame,
+} from '../../utils/journalRiskRules';
+import JournalRiskRulesFields from './JournalRiskRulesFields';
 
 export default function JournalSettingsModal({ isOpen, onClose, onArchive, onImport, onExport, canExport, onShare, demoActive = false }) {
   const { journals, activeJournal, activeJournalId, updateJournal, deleteJournal, archiveJournal } = useJournalContext();
@@ -19,6 +26,7 @@ export default function JournalSettingsModal({ isOpen, onClose, onArchive, onImp
   const [commissions, setCommissions] = useState({});
   const [alertEnabled, setAlertEnabled] = useState(false);
   const [alertAmount, setAlertAmount] = useState('');
+  const [riskForm, setRiskForm] = useState(() => journalRiskRulesInput(null));
   const [saving, setSaving] = useState(false);
   const [deleteOpen, setDeleteOpen] = useState(false);
   const [archiveOpen, setArchiveOpen] = useState(false);
@@ -40,6 +48,7 @@ export default function JournalSettingsModal({ isOpen, onClose, onArchive, onImp
       const alert = activeJournal.dailyLossAlert;
       setAlertEnabled(alert?.enabled === true);
       setAlertAmount(alert?.amount > 0 ? String(alert.amount) : '');
+      setRiskForm(journalRiskRulesInput(activeJournal.riskRules));
     }
   }, [activeJournal, isOpen]);
 
@@ -63,6 +72,14 @@ export default function JournalSettingsModal({ isOpen, onClose, onArchive, onImp
     );
     if (demoActive && alertChanged) toast('במצב דמו ההתראה לא נשמרת.');
     const alertWrite = demoActive ? undefined : alertPatch;
+    const storedRules = activeJournal?.riskRules;
+    const loadedRules = journalRiskRulesInput(storedRules);
+    const rulesDirty = JSON.stringify(riskForm) !== JSON.stringify(loadedRules);
+    const rulesChanged = !journalRiskRulesSame(storedRules, riskForm);
+    if (rulesDirty && journalRiskRulesInputRejected(riskForm)) toast.error('הזינו ערך תקין לכלל שהפעלתם');
+    if (demoActive && rulesChanged) toast('במצב דמו כללי הסיכון לא נשמרים.');
+    const rulesPatch = journalRiskRulesPatch(storedRules, riskForm, { demo: demoActive });
+    const rulesWrite = rulesChanged ? rulesPatch : undefined;
     setSaving(true);
     try {
       await updateJournal(activeJournalId, {
@@ -80,6 +97,7 @@ export default function JournalSettingsModal({ isOpen, onClose, onArchive, onImp
         ...(propFirm.enabled || activeJournal?.propFirm ? { propFirm } : {}),
         commissions: normalizeCommissions(commissions),
         ...(alertWrite ? { dailyLossAlert: alertWrite } : {}),
+        ...(rulesWrite ? { riskRules: rulesWrite } : {}),
       });
       toast.success('היומן עודכן');
       onClose();
@@ -210,6 +228,8 @@ export default function JournalSettingsModal({ isOpen, onClose, onArchive, onImp
               </div>
             )}
           </div>
+
+          <JournalRiskRulesFields value={riskForm} onChange={setRiskForm} />
 
           <PropFirmSettings value={propForm} onChange={setPropForm} />
           {/* ── עמלות (commission presets) ── pre-fills the fees field in the trade form. */}

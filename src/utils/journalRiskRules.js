@@ -3,8 +3,9 @@ import { jerusalemDayKey } from './dailyLossAlert';
 
 // Journal risk rules beyond the existing daily dollar alert.
 // Closed trades only. The clock is Asia/Jerusalem. The week starts on Sunday.
-// This module only measures. It does not read or write Firestore, and it does
-// not decide how a banner is drawn. Recording a trade stays allowed.
+// evaluateJournalRisk only measures. journalRiskRulesPatch only shapes the
+// object a journal may store. Neither reads nor writes Firestore, and neither
+// decides how a banner is drawn. Recording a trade stays allowed.
 
 const WEEKDAY_INDEX = { Sun: 0, Mon: 1, Tue: 2, Wed: 3, Thu: 4, Fri: 5, Sat: 6 };
 
@@ -252,4 +253,122 @@ export function evaluateJournalRisk(trades, rules, {
     tradingHours,
     breached,
   };
+}
+
+function roundMoneyOrNull(value) {
+  const n = positive(value);
+  if (n == null) return null;
+  const rounded = roundMoney(n);
+  return rounded > 0 ? rounded : null;
+}
+
+function clockOrNull(value) {
+  const minutes = parseClock(value);
+  return minutes == null ? null : clockLabel(minutes);
+}
+
+// A switch without a positive value, or without a real hour window, stays off.
+// A positive number is stored either way, so switching a rule off keeps the
+// number the form still holds. Empty clocks stay null.
+function normalizeJournalRiskRules(input) {
+  const weeklyAmount = roundMoneyOrNull(input?.weeklyLoss?.amount);
+  const dailyPercent = roundMoneyOrNull(input?.dailyLossPercent?.percent);
+  const weeklyPercent = roundMoneyOrNull(input?.weeklyLossPercent?.percent);
+  const trades = roundMoneyOrNull(input?.maxTradesPerDay?.count);
+  const start = clockOrNull(input?.tradingHours?.start);
+  const end = clockOrNull(input?.tradingHours?.end);
+  const hoursOn = start != null && end != null && start !== end;
+  return {
+    weeklyLoss: {
+      enabled: input?.weeklyLoss?.enabled === true && weeklyAmount != null,
+      amount: weeklyAmount,
+    },
+    dailyLossPercent: {
+      enabled: input?.dailyLossPercent?.enabled === true && dailyPercent != null,
+      percent: dailyPercent,
+    },
+    weeklyLossPercent: {
+      enabled: input?.weeklyLossPercent?.enabled === true && weeklyPercent != null,
+      percent: weeklyPercent,
+    },
+    maxTradesPerDay: {
+      enabled: input?.maxTradesPerDay?.enabled === true && trades != null,
+      count: trades,
+    },
+    tradingHours: {
+      enabled: input?.tradingHours?.enabled === true && hoursOn,
+      start,
+      end,
+    },
+  };
+}
+
+function rulesEnabled(rules) {
+  return rules.weeklyLoss.enabled
+    || rules.dailyLossPercent.enabled
+    || rules.weeklyLossPercent.enabled
+    || rules.maxTradesPerDay.enabled
+    || rules.tradingHours.enabled;
+}
+
+/** Form state for the journal settings. Missing rules are off and blank. */
+export function journalRiskRulesInput(rules) {
+  const number = (value) => {
+    const n = positive(value);
+    return n == null ? '' : String(n);
+  };
+  return {
+    weeklyLoss: {
+      enabled: rules?.weeklyLoss?.enabled === true,
+      amount: number(rules?.weeklyLoss?.amount),
+    },
+    dailyLossPercent: {
+      enabled: rules?.dailyLossPercent?.enabled === true,
+      percent: number(rules?.dailyLossPercent?.percent),
+    },
+    weeklyLossPercent: {
+      enabled: rules?.weeklyLossPercent?.enabled === true,
+      percent: number(rules?.weeklyLossPercent?.percent),
+    },
+    maxTradesPerDay: {
+      enabled: rules?.maxTradesPerDay?.enabled === true,
+      count: number(rules?.maxTradesPerDay?.count),
+    },
+    tradingHours: {
+      enabled: rules?.tradingHours?.enabled === true,
+      start: clockOrNull(rules?.tradingHours?.start) || '',
+      end: clockOrNull(rules?.tradingHours?.end) || '',
+    },
+  };
+}
+
+/**
+ * What to merge onto the journal. Undefined means "do not write the field",
+ * so a journal that never enabled a rule stays without it. Turning the last
+ * rule off keeps the field. Demo never writes.
+ */
+export function journalRiskRulesPatch(existing, input, { demo = false } = {}) {
+  if (demo) return undefined;
+  const next = normalizeJournalRiskRules(input);
+  if (existing == null && !rulesEnabled(next)) return undefined;
+  return next;
+}
+
+/** True when the form still matches what is already stored. */
+export function journalRiskRulesSame(existing, input) {
+  const next = journalRiskRulesPatch(existing, input);
+  const base = existing == null
+    ? undefined
+    : journalRiskRulesPatch(existing, journalRiskRulesInput(existing));
+  return JSON.stringify(next ?? null) === JSON.stringify(base ?? null);
+}
+
+/** A switch is on, but the value is empty, not positive, or not a real window. */
+export function journalRiskRulesInputRejected(input) {
+  const next = normalizeJournalRiskRules(input);
+  return (input?.weeklyLoss?.enabled === true && !next.weeklyLoss.enabled)
+    || (input?.dailyLossPercent?.enabled === true && !next.dailyLossPercent.enabled)
+    || (input?.weeklyLossPercent?.enabled === true && !next.weeklyLossPercent.enabled)
+    || (input?.maxTradesPerDay?.enabled === true && !next.maxTradesPerDay.enabled)
+    || (input?.tradingHours?.enabled === true && !next.tradingHours.enabled);
 }

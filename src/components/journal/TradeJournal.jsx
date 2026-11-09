@@ -26,6 +26,7 @@ import { headerPrimaryBtn, headerAiBtnDense, headerIconBtnDense, headerPlusBtnDe
 import { useAuth } from '../../contexts/AuthContext';
 import JournalSummaryBar from './JournalSummaryBar';
 import DailyLossBanner from './DailyLossBanner';
+import JournalRiskStatus from './JournalRiskStatus';
 import TradeTable from './TradeTable';
 import TradeFilters from './TradeFilters';
 import TimePeriodFilter from '../dashboard/TimePeriodFilter';
@@ -674,11 +675,19 @@ export default function TradeJournal() {
       />
 
       {!showingDemo && (
-        <DailyLossBanner
-          alert={activeJournal?.dailyLossAlert}
-          trades={realTrades.filter((t) => !pendingDeletes.has(t.id))}
-          journalId={activeJournalId}
-        />
+        <>
+          <JournalRiskStatus
+            rules={activeJournal?.riskRules}
+            trades={realTrades.filter((t) => !pendingDeletes.has(t.id))}
+            journalId={activeJournalId}
+            balance={activeJournal?.initialBalance}
+          />
+          <DailyLossBanner
+            alert={activeJournal?.dailyLossAlert}
+            trades={realTrades.filter((t) => !pendingDeletes.has(t.id))}
+            journalId={activeJournalId}
+          />
+        </>
       )}
 
       {tab === 'trades' && (
