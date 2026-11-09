@@ -179,7 +179,7 @@ async function finishWizard(style) {
   } else {
     expect(document.querySelector('[data-testid="plan-builder-wizard"]').dataset.question).not.toBe('sessions');
   }
-  for (const id of ['entry', 'exit', 'tradeManagement', 'marketConditions', 'dailyRoutine', 'mistakes']) {
+  for (const id of ['description', 'entry', 'exit', 'tradeManagement', 'marketConditions', 'dailyRoutine', 'mistakes', 'goals', 'risk', 'notes']) {
     expect(document.querySelector('[data-testid="plan-builder-wizard"]').dataset.question).toBe(id);
     await clickButton('דלג');
   }
@@ -254,6 +254,48 @@ describe('plan builder wizard', () => {
     expect(onSave).toHaveBeenCalledTimes(1);
     expect(plansApi.addPlan).toHaveBeenCalledTimes(1);
     expect(plansApi.addPlan.mock.calls[0][0].name).toBe('תוכנית סינתטית');
+    await view.cleanup();
+  });
+
+  it('shows market conditions, goals, description, and notes, and keeps the typed text', async () => {
+    const view = await mount(<Flow demo requestPlan={vi.fn(async () => { throw new Error('worker'); })} onSave={vi.fn()} />);
+    await pick('day');
+    await clickButton('הבא');
+    await pickSector('bitcoin');
+    await clickButton('הבא');
+    await pick('15m');
+    await clickButton('הבא');
+    await pick('London');
+    await clickButton('הבא');
+    const typed = {
+      description: 'תיאור שלי',
+      entry: 'כניסה שלי',
+      exit: 'יציאה שלי',
+      tradeManagement: 'ניהול שלי',
+      marketConditions: 'שוק שקט',
+      dailyRoutine: 'שגרה שלי',
+      mistakes: 'בלי נקמה',
+      goals: 'היעד שלי',
+      risk: 'סיכון שלי',
+      notes: 'הערה שלי',
+    };
+    for (const [id, value] of Object.entries(typed)) {
+      expect(document.querySelector('[data-testid="plan-builder-wizard"]').dataset.question).toBe(id);
+      expect(document.body.textContent).toMatch(/מתוך\s*16|16/);
+      await fill(id, value);
+      await clickButton('הבא');
+    }
+    await fill('maxDailyLoss', '2');
+    await clickButton('הבא');
+    await fill('maxPositions', '1');
+    await clickButton('בנה תוכנית');
+    const area = (placeholder) => [...document.querySelectorAll('textarea')].find((el) => el.getAttribute('placeholder')?.includes(placeholder));
+    expect(area('על מה התוכנית')?.value).toBe('תיאור שלי');
+    expect(area('יעד יומי')?.value).toBe('היעד שלי');
+    expect(area('מתי לסחור')?.value).toBe('שוק שקט');
+    expect(area('הערות')?.value).toBe('הערה שלי');
+    expect(document.body.textContent).not.toContain('שוק לדוגמה');
+    expect(document.body.textContent).not.toContain('עקביות בלבד');
     await view.cleanup();
   });
 

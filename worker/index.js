@@ -2996,7 +2996,7 @@ const PLAN_BUILDER_SYSTEM_PROMPT = `אתה בונה טיוטת תוכנית מס
 אסור להבטיח רווח, תשואה או עסקה בטוחה. אל תשתמש בניסוחים כמו "מובטח", "ללא סיכון", "risk-free" או "guaranteed".
 החזר אובייקט JSON אחד בלבד, בלי טקסט מסביב, ורק עם המפתחות האלה:
 ${PLAN_AI_KEYS.join(', ')}
-name הוא שם קצר בעברית. שדות הטקסט בעברית. pairs הם סימולים באנגלית כמו BTCUSDT, לא שמות כמו Bitcoin או ביטקוין. timeframes כמו 15m או 4H. sessions רק מתוך London, New York, Asia, London/NY Overlap. maxDailyLoss הוא מספר בין 0 ל-100 או null. maxPositions הוא מספר שלם בין 1 ל-20 או null. isActive הוא true. color הוא #06b6d4. אם התשובות כוללות markets, timeframes, sessions או מספרים, העתק אותם כמו שהם. name, description, riskManagement, goals, notes ו-checklist נכתבים על ידך כשהתשובות לא מכסות אותם.
+name הוא שם קצר בעברית. שדות הטקסט בעברית. pairs הם סימולים באנגלית כמו BTCUSDT, לא שמות כמו Bitcoin או ביטקוין. timeframes כמו 15m או 4H. sessions רק מתוך London, New York, Asia, London/NY Overlap. maxDailyLoss הוא מספר בין 0 ל-100 או null. maxPositions הוא מספר שלם בין 1 ל-20 או null. isActive הוא true. color הוא #06b6d4. אם התשובות כוללות markets, timeframes, sessions, description, entry, exit, tradeManagement, marketConditions, dailyRoutine, mistakes, goals, risk, notes או מספרים, שמור את נוסח התשובה. מלא בעצמך רק שדה שלא נענה: name, checklist, color, tradeExamples, ושדות טקסט שדולגו.
 אל תמציא אחוזי הצלחה, תשואה, או עסקאות שלא נמסרו בנתונים.`;
 
 function planBuilderUserMessage(answers) {

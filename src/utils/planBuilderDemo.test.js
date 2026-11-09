@@ -74,12 +74,24 @@ describe('plan builder errors and save', () => {
     expect(addPlan).toHaveBeenCalledWith({ name: 'תוכנית דמה' });
   });
 
-  it('builds a synthetic plan and drops sessions for swing', () => {
-    const plan = demoPlanFromAnswers({ style: 'swing', entry: 'כניסה סינתטית', markets: ['Bitcoin'] });
+  it('keeps typed answers and fills only the skipped fields', () => {
+    const plan = demoPlanFromAnswers({
+      style: 'swing',
+      markets: ['Bitcoin'],
+      entry: 'כניסה סינתטית',
+      description: 'תיאור שלי',
+      goals: 'היעד שלי',
+      notes: 'הערה שלי',
+      marketConditions: 'שוק שקט',
+    });
     expect(plan.name).toBe('תוכנית דמה');
-    expect(plan.notes).toBe(PLAN_BUILDER_DEMO_BANNER);
-    expect(plan.sessions).toEqual([]);
+    expect(plan.description).toBe('תיאור שלי');
+    expect(plan.goals).toBe('היעד שלי');
+    expect(plan.notes).toBe('הערה שלי');
+    expect(plan.marketConditions).toBe('שוק שקט');
     expect(plan.entryRules).toBe('כניסה סינתטית');
+    expect(plan.riskManagement).toBe('סיכון קבוע לעסקה בדוגמה הזו.');
+    expect(plan.sessions).toEqual([]);
     expect(plan.pairs).toEqual(['BTCUSDT']);
   });
 });

@@ -24,10 +24,10 @@ const sessionOptions = SESSIONS.map((id) => ({
   }[id] || id,
 }));
 
-// Twelve questions. Sessions drop out for swing, so that path shows eleven.
-// Long answers are optional: skipping one leaves it for the draft to propose.
-// name, description, riskManagement, goals, notes, checklist, color and
-// trade examples are not asked; the draft fills them from the other answers.
+// Sessions drop out for swing. Every other editable plan field is asked.
+// Long answers are optional: only a skipped one is left for the draft.
+// The draft itself writes the name, checklist, color, and trade examples.
+// The active switch stays on unless the trader changes it in the form.
 export const PLAN_QUESTIONS = [
   {
     id: 'style',
@@ -59,6 +59,13 @@ export const PLAN_QUESTIONS = [
     skipWhen: { id: 'style', equals: 'swing' },
   },
   {
+    id: 'description',
+    text: 'מה תיאור התוכנית?',
+    type: 'text',
+    maxLength: TEXT,
+    optional: true,
+  },
+  {
     id: 'entry',
     text: 'מתי אתה נכנס לעסקה?',
     type: 'text',
@@ -81,7 +88,7 @@ export const PLAN_QUESTIONS = [
   },
   {
     id: 'marketConditions',
-    text: 'באילו תנאי שוק אתה סוחר?',
+    text: 'תנאי שוק: באילו תנאים אתה סוחר?',
     type: 'text',
     maxLength: TEXT,
     optional: true,
@@ -96,6 +103,27 @@ export const PLAN_QUESTIONS = [
   {
     id: 'mistakes',
     text: 'אילו טעויות אתה רוצה להימנע מהן?',
+    type: 'text',
+    maxLength: TEXT,
+    optional: true,
+  },
+  {
+    id: 'goals',
+    text: 'מהם היעדים?',
+    type: 'text',
+    maxLength: TEXT,
+    optional: true,
+  },
+  {
+    id: 'risk',
+    text: 'איך מנוהל הסיכון?',
+    type: 'text',
+    maxLength: TEXT,
+    optional: true,
+  },
+  {
+    id: 'notes',
+    text: 'אילו הערות לשמור בתוכנית?',
     type: 'text',
     maxLength: TEXT,
     optional: true,
@@ -291,11 +319,15 @@ export function activeQuestionIds(answers) {
 }
 
 const ANSWER_TEXT = {
+  description: 'description',
   entry: 'entryRules',
   exit: 'exitRules',
   tradeManagement: 'tradeManagement',
   marketConditions: 'marketConditions',
   dailyRoutine: 'dailyRoutine',
+  goals: 'goals',
+  risk: 'riskManagement',
+  notes: 'notes',
 };
 
 // Copy the trader's answers onto a draft before it is sanitized. Skipped

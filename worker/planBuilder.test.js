@@ -106,12 +106,16 @@ function answersFor(style) {
     markets: ['ETHUSDT'],
     timeframes: ['15m'],
     sessions: ['Asia'],
+    description: 'תיאור סינתטי',
     entry: 'כניסה אחרי אישור',
     exit: 'יציאה ביעד',
     tradeManagement: 'הזזת סטופ',
     marketConditions: 'טרנד ברור',
     dailyRoutine: 'בדיקת HTF',
     mistakes: 'עסקת נקמה',
+    goals: 'עקביות',
+    risk: 'אחוז קבוע',
+    notes: 'הערה סינתטית',
     maxDailyLoss: 1.5,
     maxPositions: 1,
   };
@@ -314,7 +318,9 @@ describe('POST /ai-plan-builder', () => {
       entryRules: 'כניסה אחרי BOS. רווח מובטח בכל עסקה.',
       goals: 'תשואה מובטחת של 10% בחודש',
     });
-    const res = await post(envFor(kv), { uid, body: payload('scalp') });
+    const sent = payload('scalp');
+    sent.answers = sent.answers.filter((item) => item.id !== 'goals');
+    const res = await post(envFor(kv), { uid, body: sent });
     expect(res.status).toBe(200);
     const body = await res.json();
     expect(body.stub).toBe(false);

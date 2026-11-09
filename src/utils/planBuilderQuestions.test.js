@@ -16,12 +16,16 @@ function scalpAnswers(overrides = {}) {
     markets: ['BTCUSDT'],
     timeframes: ['15m'],
     sessions: ['London', 'New York'],
+    description: 'תיאור סינתטי',
     entry: 'פריצה מעל השיא של 15 דקות',
     exit: 'יעד קבוע או שבירת מבנה',
     tradeManagement: 'הזזת סטופ אחרי יעד',
     marketConditions: 'טרנד ברור',
     dailyRoutine: 'סקירה לפני הפתיחה',
     mistakes: 'בלי עסקת נקמה',
+    goals: 'עקביות סינתטית',
+    risk: 'אחוז קבוע',
+    notes: 'הערה סינתטית',
     maxDailyLoss: 2,
     maxPositions: 2,
     ...overrides,
@@ -37,6 +41,21 @@ function body(answers, extra = {}) {
 }
 
 describe('plan builder questions', () => {
+  it('asks description, goals, notes, and market conditions on every style', () => {
+    const asked = ['description', 'goals', 'notes', 'marketConditions', 'risk'];
+    const conditional = PLAN_QUESTIONS.filter((question) => question.skipWhen).map((question) => question.id);
+    expect(conditional).toEqual(['sessions']);
+    for (const id of asked) {
+      const question = PLAN_QUESTIONS.find((item) => item.id === id);
+      expect(question?.optional).toBe(true);
+      expect(question?.skipWhen).toBeUndefined();
+      expect(activeQuestionIds({ style: 'scalp' })).toContain(id);
+      expect(activeQuestionIds({ style: 'swing' })).toContain(id);
+    }
+    expect(activeQuestionIds({})).toHaveLength(PLAN_QUESTIONS.length);
+    expect(activeQuestionIds({ style: 'swing' })).toHaveLength(PLAN_QUESTIONS.length - 1);
+  });
+
   it('uses the journal session names', () => {
     const sessions = PLAN_QUESTIONS.find((question) => question.id === 'sessions');
     expect(sessions.options.map((option) => option.id)).toEqual([...SESSIONS]);
