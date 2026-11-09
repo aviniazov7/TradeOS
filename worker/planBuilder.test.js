@@ -104,7 +104,7 @@ function answersFor(style) {
   const values = {
     style,
     markets: ['ETHUSDT'],
-    timeframes: ['15m'],
+    timeframes: ['1m', '1D'],
     sessions: ['Asia'],
     description: 'תיאור סינתטי',
     entry: 'כניסה אחרי אישור',
@@ -272,7 +272,7 @@ describe('POST /ai-plan-builder', () => {
     expect(body).toEqual({ ok: true, stub: false, plan: expect.objectContaining({ name: 'תוכנית סינתטית' }) });
     expect(body.plan.sessions).toEqual(['Asia']);
     expect(body.plan.pairs).toEqual(['ETHUSDT']);
-    expect(body.plan.timeframes).toEqual(['15m']);
+    expect(body.plan.timeframes).toEqual(['1m', '1D']);
     expect(Object.keys(body)).toEqual(['ok', 'plan', 'stub']);
     expect(quota(kv, uid)).toMatchObject({ b: 1, u: 0 });
     expect(groq.calls).toHaveLength(1);

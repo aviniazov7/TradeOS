@@ -3,8 +3,35 @@
 // question may be skipped from an earlier answer; there is no saved session.
 // Leaving the flow means starting over.
 
-import { SESSIONS, TIMEFRAMES } from './constants';
+import { SESSIONS } from './constants';
 import { PLAN_PAIR_LIMIT, normalizePlanPairs, planPairFromName } from './planSymbols';
+
+// The plan form stores any of these. Its old dropdown only listed four of
+// them; custom entry and the plan templates already use the rest.
+export const PLAN_TIMEFRAMES = ['1m', '3m', '5m', '15m', '30m', '1H', '2H', '4H', '1D', '1W'];
+
+function timeframeMinutes(tf) {
+  const num = parseFloat(tf);
+  if (tf.endsWith('m')) return num;
+  if (tf.endsWith('H') || tf.endsWith('h')) return num * 60;
+  if (tf.endsWith('D') || tf.endsWith('d')) return num * 1440;
+  if (tf.endsWith('W') || tf.endsWith('w')) return num * 10080;
+  if (tf.endsWith('M')) return num * 43200;
+  return Infinity;
+}
+
+// Catalog first, then any timeframe the trader already saved on the form.
+export function planTimeframeChoices(extra = []) {
+  const seen = new Set(PLAN_TIMEFRAMES);
+  const merged = [...PLAN_TIMEFRAMES];
+  for (const tf of extra) {
+    if (typeof tf === 'string' && tf && !seen.has(tf)) {
+      seen.add(tf);
+      merged.push(tf);
+    }
+  }
+  return merged.sort((a, b) => timeframeMinutes(a) - timeframeMinutes(b));
+}
 
 export const PLAN_BUILDER_VERSION = 2;
 
@@ -48,7 +75,7 @@ export const PLAN_QUESTIONS = [
     id: 'timeframes',
     text: 'באילו טיימפריימים אתה סוחר?',
     type: 'multi',
-    options: TIMEFRAMES.map((id) => ({ id, label: id })),
+    options: PLAN_TIMEFRAMES.map((id) => ({ id, label: id })),
   },
   {
     id: 'sessions',

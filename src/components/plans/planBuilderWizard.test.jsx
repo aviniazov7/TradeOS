@@ -170,6 +170,9 @@ async function finishWizard(style) {
   await pickSector('bitcoin');
   await clickButton('הבא');
   expect(document.querySelector('[data-testid="plan-builder-wizard"]').dataset.question).toBe('timeframes');
+  expect([...document.querySelectorAll('[data-option]')].map((el) => el.dataset.option)).toEqual([
+    '1m', '3m', '5m', '15m', '30m', '1H', '2H', '4H', '1D', '1W',
+  ]);
   await pick('15m');
   await clickButton('הבא');
   if (style !== 'swing') {

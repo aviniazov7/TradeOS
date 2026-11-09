@@ -1,7 +1,8 @@
 import { describe, expect, it } from 'vitest';
 import { SESSIONS } from './constants';
 import {
-  PLAN_BUILDER_VERSION, PLAN_QUESTIONS, activeQuestionIds, validatePlanBuilderAnswers,
+  PLAN_BUILDER_VERSION, PLAN_QUESTIONS, PLAN_TIMEFRAMES, activeQuestionIds, planTimeframeChoices,
+  validatePlanBuilderAnswers,
 } from './planBuilderQuestions';
 
 // Synthetic answers. Not a user's journal and not a saved plan.
@@ -54,6 +55,23 @@ describe('plan builder questions', () => {
     }
     expect(activeQuestionIds({})).toHaveLength(PLAN_QUESTIONS.length);
     expect(activeQuestionIds({ style: 'swing' })).toHaveLength(PLAN_QUESTIONS.length - 1);
+  });
+
+  it('offers the plan form timeframe catalog and rejects anything outside it', () => {
+    const question = PLAN_QUESTIONS.find((item) => item.id === 'timeframes');
+    expect(question.options.map((option) => option.id)).toEqual([...PLAN_TIMEFRAMES]);
+    expect(question.type).toBe('multi');
+    const accepted = validatePlanBuilderAnswers(body(scalpAnswers({
+      timeframes: ['1m', '3m', '5m', '15m', '30m', '1H', '2H', '4H', '1D', '1W'],
+    })));
+    expect(accepted.ok).toBe(true);
+    expect(accepted.answers.timeframes).toEqual([...PLAN_TIMEFRAMES]);
+    const rejected = validatePlanBuilderAnswers(body(scalpAnswers({ timeframes: ['8H'] })));
+    expect(rejected.ok).toBe(false);
+    expect(rejected.errors).toContainEqual(expect.objectContaining({ id: 'timeframes', code: 'invalid_value' }));
+    expect(planTimeframeChoices(['15m', '8H', '12H'])).toEqual([
+      '1m', '3m', '5m', '15m', '30m', '1H', '2H', '4H', '8H', '12H', '1D', '1W',
+    ]);
   });
 
   it('uses the journal session names', () => {

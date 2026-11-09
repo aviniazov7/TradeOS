@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useMemo } from 'react';
 import { Plus, X, Sparkles, ChevronRight, ChevronLeft, ChevronDown, ChevronUp, Bitcoin, Layers, Dog, Landmark } from 'lucide-react';
 import toast from 'react-hot-toast';
 import Modal from '../shared/Modal';
@@ -7,6 +7,7 @@ import TimeframeSelector from '../shared/TimeframeSelector';
 import CoinIcon from '../shared/CoinIcon';
 import { SESSIONS, SECTORS, getSessionClasses } from '../../utils/constants';
 import { useUserTimeframes } from '../../hooks/useUserTimeframes';
+import { planTimeframeChoices } from '../../utils/planBuilderQuestions';
 
 const SECTOR_ICONS = { Bitcoin, Layers, Dog, Landmark };
 
@@ -108,6 +109,7 @@ const defaultForm = {
 
 export default function PlanForm({ isOpen, onClose, plan, onSave, saveLabel = '' }) {
   const { allTimeframes, addTimeframe, removeTimeframe } = useUserTimeframes();
+  const planTimeframes = useMemo(() => planTimeframeChoices(allTimeframes), [allTimeframes]);
   const [form, setForm] = useState(defaultForm);
   const [saving, setSaving] = useState(false);
   const [newItem, setNewItem] = useState('');
@@ -285,7 +287,7 @@ export default function PlanForm({ isOpen, onClose, plan, onSave, saveLabel = ''
           value={form.timeframes}
           onChange={(val) => update('timeframes', val)}
           multi
-          timeframes={allTimeframes}
+          timeframes={planTimeframes}
           onAdd={addTimeframe}
           onRemove={removeTimeframe}
         />
@@ -532,7 +534,7 @@ export default function PlanForm({ isOpen, onClose, plan, onSave, saveLabel = ''
                 value={form.timeframes}
                 onChange={(val) => update('timeframes', val)}
                 multi
-                timeframes={allTimeframes}
+                timeframes={planTimeframes}
                 onAdd={addTimeframe}
                 onRemove={removeTimeframe}
               />

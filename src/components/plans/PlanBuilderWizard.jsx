@@ -15,8 +15,9 @@ function QuestionField({ question, value, onChange }) {
   }
   if (question.type === 'choice' || question.type === 'multi') {
     const selected = question.type === 'multi' ? (Array.isArray(value) ? value : []) : value;
+    const chips = question.id === 'timeframes';
     return (
-      <div className="flex flex-col gap-2">
+      <div className={chips ? 'grid grid-cols-3 gap-2' : 'flex flex-col gap-2'}>
         {question.options.map((option) => {
           const on = question.type === 'multi' ? selected.includes(option.id) : selected === option.id;
           return (
@@ -25,7 +26,12 @@ function QuestionField({ question, value, onChange }) {
               type="button"
               data-option={option.id}
               aria-pressed={on}
-              className={choiceClass(on)}
+              dir={chips ? 'ltr' : undefined}
+              className={chips
+                ? `min-h-11 rounded-xl border px-2 text-center text-sm font-semibold num-mono transition-colors cursor-pointer ${on
+                  ? 'border-accent-primary/50 bg-accent-primary/15 text-text-primary'
+                  : 'border-border-primary bg-bg-tertiary text-text-secondary hover:border-border-hover'}`
+                : choiceClass(on)}
               onClick={() => {
                 if (question.type === 'choice') onChange(option.id);
                 else onChange(on ? selected.filter((id) => id !== option.id) : [...selected, option.id]);

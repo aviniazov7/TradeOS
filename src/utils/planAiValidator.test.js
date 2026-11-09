@@ -54,6 +54,15 @@ describe('validateAiPlan', () => {
     }]);
   });
 
+  it('keeps the plan timeframe catalog and normalizes the hour unit', () => {
+    const out = validateAiPlan({
+      ...SYNTHETIC_PLAN,
+      timeframes: ['1m', '3m', '5m', '15m', '30m', '1H', '2H', '4h', '1D', '1W'],
+    });
+    expect(out.ok).toBe(true);
+    expect(out.plan.timeframes).toEqual(['1m', '3m', '5m', '15m', '30m', '1H', '2H', '4H', '1D', '1W']);
+  });
+
   it('maps coin names to the form symbols', () => {
     const out = validateAiPlan({
       ...SYNTHETIC_PLAN,
