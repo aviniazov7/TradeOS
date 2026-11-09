@@ -281,6 +281,34 @@ export function AuthProvider({ children }) {
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;
 }
 
+// The public demo route renders PlanForm, which reads timeframes through
+// useAuth. This provider supplies a logged-out value and does not subscribe
+// to Firebase, so that route never starts an auth listener or a Firestore read.
+const LOGGED_OUT_AUTH = {
+  user: null,
+  profile: null,
+  isAdmin: false,
+  isPremium: false,
+  plan: null,
+  loading: false,
+  loginWithGoogle: async () => {},
+  loginWithGoogleIdToken: async () => {},
+  registerWithEmail: async () => {},
+  loginWithEmail: async () => {},
+  logout: async () => {},
+  changePassword: async () => {},
+  resetPassword: async () => {},
+  deleteAccount: async () => {},
+  isEmailUser: false,
+  needsEmailVerification: false,
+  resendVerification: async () => {},
+  checkEmailVerified: async () => false,
+};
+
+export function LoggedOutAuth({ children }) {
+  return <AuthContext.Provider value={LOGGED_OUT_AUTH}>{children}</AuthContext.Provider>;
+}
+
 export function useAuth() {
   const context = useContext(AuthContext);
   if (!context) {

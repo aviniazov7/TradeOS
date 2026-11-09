@@ -68,6 +68,8 @@ describe('production deploy stays on main', () => {
     expect(deploy).toMatch(/kind=production/);
     expect(deploy).toMatch(/worker_url=https:\/\/trade-os\.tradeos\.workers\.dev/);
     expect(deploy).not.toMatch(/VITE_STAGING_BANNER/);
+    expect(deploy).toMatch(/VITE_PLAN_BUILDER_DEMO: \$\{\{ steps\.target\.outputs\.kind == 'preview' && '1' \|\| '' \}\}/);
+    expect(staging).not.toMatch(/VITE_PLAN_BUILDER_DEMO/);
     expect(deploy).toMatch(/firebase-tools deploy --only hosting:app --project tradeos-91a58/);
     expect(deploy).toMatch(/steps\.target\.outputs\.kind == 'production' && env\.CLOUDFLARE_API_TOKEN != ''/);
     expect(deploy).toMatch(/working-directory: worker\n\s+run: npx wrangler deploy\n/);

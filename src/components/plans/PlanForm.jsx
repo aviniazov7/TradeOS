@@ -106,7 +106,7 @@ const defaultForm = {
   tradeManagement: '',
 };
 
-export default function PlanForm({ isOpen, onClose, plan, onSave }) {
+export default function PlanForm({ isOpen, onClose, plan, onSave, saveLabel = '' }) {
   const { allTimeframes, addTimeframe, removeTimeframe } = useUserTimeframes();
   const [form, setForm] = useState(defaultForm);
   const [saving, setSaving] = useState(false);
@@ -226,6 +226,7 @@ export default function PlanForm({ isOpen, onClose, plan, onSave }) {
     }
   };
 
+  const submitLabel = saving ? 'שומר...' : (saveLabel || (plan ? 'עדכן תוכנית' : 'צור תוכנית'));
   const inputClass = 'w-full bg-bg-tertiary border border-border-primary rounded-lg px-3 py-2 text-sm text-text-primary outline-none focus:border-accent-primary transition-colors';
   const labelClass = 'block text-xs text-text-muted mb-1';
   const sectionClass = 'text-sm font-semibold text-text-secondary mb-2 mt-5';
@@ -558,7 +559,7 @@ export default function PlanForm({ isOpen, onClose, plan, onSave }) {
           </button>
           <button type="submit" disabled={saving}
             className="flex-1 py-2.5 rounded-lg bg-accent-primary text-bg-primary font-semibold hover:bg-accent-hover transition-colors cursor-pointer disabled:opacity-50">
-            {saving ? 'שומר...' : plan ? 'עדכן תוכנית' : 'צור תוכנית'}
+            {submitLabel}
           </button>
         </div>
 
@@ -735,7 +736,7 @@ export default function PlanForm({ isOpen, onClose, plan, onSave }) {
                 }}
                 className="px-4 py-2.5 rounded-lg bg-accent-primary text-bg-primary text-sm font-semibold transition-colors cursor-pointer disabled:opacity-50"
               >
-                {saving ? 'שומר...' : plan ? 'עדכן תוכנית' : 'צור תוכנית'}
+                {submitLabel}
               </button>
             )}
           </div>
