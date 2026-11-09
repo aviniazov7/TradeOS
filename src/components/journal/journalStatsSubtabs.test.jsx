@@ -119,6 +119,34 @@ describe('tag and mistake sub-tabs', () => {
     expect(jump).toHaveBeenCalledWith({ mistake: 'early_exit' });
     await view.cleanup();
   });
+
+  it('breaks closed trades down by a custom field value', async () => {
+    const jump = vi.fn();
+    const fields = [{ id: 'f1', name: 'סשן', type: 'text' }];
+    const view = await mount(
+      <TagMistakeStatsPanel
+        trades={[
+          closed({ custom: { f1: 'לונדון' }, netPnl: 40 }),
+          closed({ status: 'open', exitPrice: 0, custom: { f1: 'לונדון' }, netPnl: 80 }),
+          closed({}),
+        ]}
+        customFields={fields}
+        onFilterJump={jump}
+      />,
+    );
+    const tab = [...view.el.querySelectorAll('[role="tab"]')].find((node) => node.textContent.includes('שדות'));
+    await click(tab);
+    const row = view.el.querySelector('[data-testid="custom-row-f1-0"]');
+    expect(row.textContent).toContain('לונדון');
+    expect(row.textContent).toContain('1');
+    await click(row);
+    expect(jump).toHaveBeenCalledWith({
+      customField: 'f1',
+      customValue: 'לונדון',
+      customLabel: 'סשן: לונדון',
+    });
+    await view.cleanup();
+  });
 });
 
 describe('analytics tag table stays in place', () => {

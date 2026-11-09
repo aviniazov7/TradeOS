@@ -10,6 +10,11 @@ export const SETTINGS_SECTIONS = [
     keywords: 'סוג מסחר קריפטו חוזים עתידיים מניות futures stocks crypto asset class',
   },
   {
+    id: 'fields',
+    label: 'שדות',
+    keywords: 'שדות מותאמים custom fields עסקה טקסט בחירה',
+  },
+  {
     id: 'plan',
     label: 'מנוי',
     keywords: 'מנוי פרימיום premium שדרוג חידוש תוכנית plan',

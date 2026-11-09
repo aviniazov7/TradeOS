@@ -17,6 +17,8 @@ vi.mock('../../services/firestoreService', () => ({
   patchUserSettings: (...args) => patchUserSettings(...args),
   deleteLeaderboardEntry: vi.fn(async () => {}),
   timestamp: () => ({ seconds: 1 }),
+  subscribeToUserSetting: () => () => {},
+  setUserSetting: vi.fn(async () => {}),
 }));
 
 vi.mock('../../services/authService', () => ({

@@ -11,6 +11,7 @@ const OTHER = 'otheruid123456789012345678';
 const VIEWER = 'vieweruid12345678901234567';
 const SECRET_NOTE = 'SECRET-NOTE';
 const SECRET_LINK = 'https://www.tradingview.com/chart/SECRET-LINK';
+const SECRET_CUSTOM = 'SECRET-CUSTOM';
 const SECRET_ADDRESS = '0xSECRETADDRESS';
 const LIVE_BALANCE = 99999;
 const OPENING = 424242;
@@ -53,6 +54,7 @@ function seedJournal(db) {
     entryReason: 'SECRET-REASON',
     emotionBefore: 'SECRET-FEAR',
     tradingViewUrls: [SECRET_LINK],
+    custom: { f1: SECRET_CUSTOM },
     apiKey: 'tos_on_trade',
     address: SECRET_ADDRESS,
   }));
@@ -217,6 +219,7 @@ describe('journal share worker', () => {
     expect(text).not.toContain(SECRET_NOTE);
     expect(text).not.toContain('SECRET-FEAR');
     expect(text).not.toContain(SECRET_LINK);
+    expect(text).not.toContain(SECRET_CUSTOM);
     expect(text).not.toContain(SECRET_ADDRESS);
     expect(text).not.toContain('FOREIGN-NOTE');
     expect(text).not.toContain('ETHUSDT');

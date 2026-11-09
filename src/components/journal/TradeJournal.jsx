@@ -41,6 +41,8 @@ import { downloadCsv } from '../../utils/csv';
 import { JOURNAL_CSV_HEADERS, journalCsvRow } from '../../utils/tradeExport';
 import { TAG_LABELS } from '../../utils/constants';
 import { tradeHasMistake } from '../../utils/tagMistakeStats';
+import { tradeMatchesCustom } from '../../utils/customTradeFields';
+import { useCustomTradeFields } from '../../hooks/useCustomTradeFields';
 import { setupLabel, tradeSetups } from '../../utils/setupStats';
 import { pageVariants, pageTransition } from '../../utils/animations';
 import { TRADE_PREFILL_KEY } from '../../utils/tradeFormHelpers';
@@ -49,7 +51,10 @@ import { CRYPTO_JOURNAL_TABS, OTHER_JOURNAL_TABS, resolveJournalTab } from '../.
 const TAB_LABELS = { trades: 'עסקאות', exchange: 'בורסה', analytics: 'אנליטיקה', calendar: 'יומן חודשי' };
 // Phone row: short labels. Four tabs (crypto) or three (stocks/futures) sit on one row.
 const TAB_MOBILE = { trades: 'עסקאות', exchange: 'בורסה', analytics: 'אנליטיקה', calendar: 'יומן' };
-const defaultFilters = { search: '', direction: '', result: '', status: '', strategy: '', setup: '', tag: '', mistake: '', timeframe: '', month: '', from: '', to: '' };
+const defaultFilters = {
+  search: '', direction: '', result: '', status: '', strategy: '', setup: '', tag: '', mistake: '',
+  timeframe: '', month: '', from: '', to: '', customField: '', customValue: '', customLabel: '',
+};
 const defaultSort = { key: 'date', dir: 'desc' };
 // Phone sort picker (desktop sorts by clicking column headers).
 const SORT_OPTIONS = [
@@ -105,6 +110,7 @@ export default function TradeJournal() {
   const {
     trades: realTrades, loading, addTrade, addTradesBulk, updateTrade, deleteTrade,
   } = useTrades(activeJournalId);
+  const { fields: customFields, ready: customFieldsReady } = useCustomTradeFields();
   const demoOverlay = useMemo(() => overlayDemo({
     active: demoMode.active && !loading,
     trades: realTrades,
@@ -425,6 +431,7 @@ export default function TradeJournal() {
       if (filters.timeframe && (filters.timeframe === 'N/A' ? !!t.timeframe : t.timeframe !== filters.timeframe)) return false;
       if (filters.tag && !(Array.isArray(t.tags) ? t.tags : []).some((tag) => typeof tag === 'string' && tag.trim() === String(filters.tag).trim())) return false;
       if (filters.mistake && !tradeHasMistake(t, filters.mistake)) return false;
+      if (filters.customField && !tradeMatchesCustom(t, filters.customField, filters.customValue)) return false;
       if (filters.month && monthKey(t) !== filters.month) return false;
       return true;
     }).sort((a, b) => getTime(b) - getTime(a));
@@ -785,6 +792,7 @@ export default function TradeJournal() {
                 onEdit={handleEdit}
                 onDelete={handleDeleteWithUndo}
                 onShare={setShareTarget}
+                customFields={customFields}
                 isLimitPending={isLimitPending}
                 returnBook={returnBook}
               />
@@ -849,6 +857,7 @@ export default function TradeJournal() {
             balanceIsLive={balanceIsLive}
             displayedCurrentBalance={displayedCurrentBalance}
             onFilterJump={filterAndJump}
+            customFields={customFields}
             onAddFirstTrade={() => { setTab('trades'); setFormOpen(true); }}
           />
         </Suspense>
@@ -893,6 +902,8 @@ export default function TradeJournal() {
             accountBalance={editingTrade ? balanceForTrade(returnBook, editingTrade) : (accountReturnMode ? returnBook.current : 0)}
             strictAccount={accountReturnMode}
             journalAssetClass={activeJournal?.assetClass || 'crypto'}
+            customFields={customFields}
+            customFieldsReady={customFieldsReady}
             livePrices={prices} />
         )}
       </Suspense>

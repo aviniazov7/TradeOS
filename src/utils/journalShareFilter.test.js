@@ -6,6 +6,7 @@ const SECRET_REASON = 'SECRET-REASON';
 const SECRET_FEAR = 'SECRET-FEAR';
 const SECRET_MISTAKE = 'SECRET-MISTAKE';
 const SECRET_LINK = 'https://www.tradingview.com/chart/SECRET-LINK';
+const SECRET_CUSTOM = 'SECRET-CUSTOM';
 const SECRET_ADDRESS = '0xSECRETADDRESS';
 const LIVE_BALANCE = 99999;
 
@@ -43,6 +44,7 @@ function trade(over = {}) {
     mistakes: SECRET_MISTAKE,
     focusRating: 2,
     tradingViewUrls: [SECRET_LINK],
+    custom: { f1: SECRET_CUSTOM, note: 'SECRET-CUSTOM-NOTE' },
     address: SECRET_ADDRESS,
     apiKey: 'tos_on_trade',
     liveBalance: LIVE_BALANCE,
@@ -86,6 +88,7 @@ describe('filterJournalShare', () => {
     expect(json).not.toContain(SECRET_NOTE);
     expect(json).not.toContain(SECRET_FEAR);
     expect(json).not.toContain(SECRET_LINK);
+    expect(json).not.toContain(SECRET_CUSTOM);
     expect(json).not.toContain(String(LIVE_BALANCE));
     expect(json).not.toContain(SECRET_ADDRESS);
     expect(keysOf(view).has('trades')).toBe(false);
@@ -133,7 +136,7 @@ describe('filterJournalShare', () => {
     expect(view.trades.map((row) => row.id)).toEqual(['t1']);
     expect(view.stats.net).toBe(-50);
     const keys = keysOf(view);
-    for (const key of ['notes', 'entryReason', 'emotionBefore', 'emotionAfter', 'mistakes', 'focusRating', 'tradingViewUrls', 'address', 'apiKey', 'liveBalance']) {
+    for (const key of ['notes', 'entryReason', 'emotionBefore', 'emotionAfter', 'mistakes', 'focusRating', 'tradingViewUrls', 'address', 'apiKey', 'liveBalance', 'custom']) {
       expect(keys.has(key)).toBe(false);
     }
     const json = JSON.stringify(view);

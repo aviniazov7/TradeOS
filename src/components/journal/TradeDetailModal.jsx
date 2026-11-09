@@ -12,6 +12,7 @@ import {
 } from '../../utils/formatters';
 import { MISTAKE_LABELS, getContractSpec, isCfdSpec } from '../../utils/constants';
 import { setupLabel, tradeSetups } from '../../utils/setupStats';
+import { readCustomValue } from '../../utils/customTradeFields';
 import { initialRiskUsd, isClosedTrade, signedTradeR, tradeShownPercent, tradeDurationMs } from '../../utils/calculations';
 import TradeExcursion from './TradeExcursion';
 import {
@@ -82,6 +83,7 @@ export default function TradeDetailModal({
   onShare,
   accountBalance = 0,
   strictAccount = false,
+  customFields = [],
 }) {
   if (!trade) return null;
 
@@ -359,6 +361,10 @@ export default function TradeDetailModal({
           </div>
         )}
 
+        {customFields.length > 0 && (
+          <CustomAnswers trade={trade} fields={customFields} />
+        )}
+
         {hasTags && (
           <div className="flex flex-wrap items-center gap-1.5">
             {tags.map((tag, i) => (
@@ -389,5 +395,24 @@ export default function TradeDetailModal({
       {/* Legacy data-URL screenshots, read-only. Hidden when the trade has none. */}
       {trade.id && <TradeScreenshots key={trade.id} tradeId={trade.id} pair={pair} />}
     </Modal>
+  );
+}
+
+function CustomAnswers({ trade, fields }) {
+  const rows = fields.map((field) => {
+    const value = readCustomValue(trade, field);
+    if (value == null || value === '') return null;
+    return { id: field.id, name: field.name, value: String(value), numeric: field.type === 'number' };
+  }).filter(Boolean);
+  if (!rows.length) return null;
+  return (
+    <div className="flex flex-wrap items-center gap-x-3 gap-y-1" data-testid="custom-answers">
+      {rows.map((row) => (
+        <span key={row.id} className="text-text-secondary">
+          <span className="text-text-muted">{row.name}: </span>
+          <span dir={row.numeric ? 'ltr' : undefined} className="text-text-primary font-medium">{row.value}</span>
+        </span>
+      ))}
+    </div>
   );
 }

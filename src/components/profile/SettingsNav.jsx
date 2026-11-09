@@ -1,9 +1,10 @@
-import { Bell, Crown, KeyRound, LayoutGrid, LineChart, Lock, Receipt, Search, SlidersHorizontal, X } from 'lucide-react';
+import { Bell, Crown, KeyRound, LayoutGrid, LineChart, ListPlus, Lock, Receipt, Search, SlidersHorizontal, X } from 'lucide-react';
 import { SETTINGS_ALL_ID, listedSettingsSections } from './settingsCatalog';
 
 const ICONS = {
   all: LayoutGrid,
   trading: LineChart,
+  fields: ListPlus,
   plan: Crown,
   reports: Receipt,
   notifications: Bell,

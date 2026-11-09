@@ -14,6 +14,7 @@ import {
   writeBatch,
   serverTimestamp,
   Timestamp,
+  deleteField,
   getCountFromServer,
   terminate,
   clearIndexedDbPersistence,
@@ -465,6 +466,11 @@ export function timestamp() {
  * hooks/components (service-layer convention, issue #216). */
 export function dateToTimestamp(date) {
   return Timestamp.fromDate(date);
+}
+
+/** Remove a field on update. Keeps `firebase/firestore` inside this service. */
+export function unsetField() {
+  return deleteField();
 }
 
 // Re-exported so callers append to array fields without importing

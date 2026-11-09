@@ -8,11 +8,13 @@ import {
   deleteUserDocument,
   timestamp,
   dateToTimestamp,
+  unsetField,
 } from '../services/firestoreService';
 import { deleteTradeImages } from '../services/tradeImageService';
 import { useAuth } from '../contexts/AuthContext';
 import { computeTradeFields, calculateFuturesNotional, usesContractMath } from '../utils/calculations';
 import { buildStoredTrade } from '../utils/tradeDoc';
+import { sanitizeCustomMap } from '../utils/customTradeFields';
 
 export function useTrades(journalId = null) {
   const { user } = useAuth();
@@ -102,22 +104,28 @@ export function useTrades(journalId = null) {
   const updateTrade = async (tradeId, tradeData) => {
     if (!user) throw new Error('No user');
     try {
-      const { pnl, pnlPercent, rrRatio, netPnl, result } = computeTradeFields(tradeData);
+      const hasCustom = Object.prototype.hasOwnProperty.call(tradeData, 'custom');
+      const { custom, ...rest } = tradeData;
+      const { pnl, pnlPercent, rrRatio, netPnl, result } = computeTradeFields(rest);
 
-      const isFutures = usesContractMath(tradeData);
+      const isFutures = usesContractMath(rest);
       const notional = isFutures
-        ? calculateFuturesNotional(tradeData.entryPrice, tradeData.contract.pointValue, tradeData.contract.contracts)
-        : tradeData.entryPrice * tradeData.quantity;
+        ? calculateFuturesNotional(rest.entryPrice, rest.contract.pointValue, rest.contract.contracts)
+        : rest.entryPrice * rest.quantity;
 
+      const cleaned = hasCustom ? sanitizeCustomMap(custom) : null;
       await updateUserDocument(user.uid, 'trades', tradeId, {
-        ...tradeData,
+        ...rest,
+        // An explicit empty custom removes the map. Omitting the key leaves
+        // whatever the trade already stored (a save that never touched it).
+        ...(hasCustom ? { custom: cleaned || unsetField() } : {}),
         pnl,
         pnlPercent,
         rrRatio,
         netPnl,
         result,
         positionSize: notional,
-        margin: isFutures ? notional : notional / (tradeData.leverage || 1),
+        margin: isFutures ? notional : notional / (rest.leverage || 1),
         updatedAt: timestamp(),
       });
     } catch (error) {
