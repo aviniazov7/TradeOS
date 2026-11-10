@@ -63,19 +63,16 @@ export default function CustomTradeFieldsSettings() {
 
   return (
     <div className="bg-bg-secondary border border-border-primary rounded-2xl p-4" data-testid="custom-fields-settings">
-      <h3 className="text-sm font-semibold text-text-primary mb-1">שדות מותאמים</h3>
+      <h3 className="text-sm font-semibold text-text-primary mb-1">שדות נוספים לעסקה</h3>
       <p className="text-xs text-text-muted mb-3">
-        שדות שמופיעים בטופס העסקה ובאנליטיקה.
-        {isPremium
-          ? ' אפשר להגדיר עד 12 שדות.'
-          : ' הגדרת שדה חדש זמינה ב-Premium. ערכים שכבר נשמרו נשארים גלויים.'}
+        הוסף שדות משלך לטופס העסקה, והם יופיעו בכל עסקה חדשה ובסטטיסטיקות. למשל: סטאפ (בחירה), ציון ביצוע (מספר), הערת כניסה (טקסט). עד 12 שדות.
       </p>
 
       {!ready ? (
         <div className="h-16 rounded-xl bg-bg-tertiary animate-pulse" />
       ) : fields.length === 0 ? (
         <p className="text-xs text-text-secondary" data-testid="custom-fields-empty">
-          {isPremium ? 'עדיין אין שדות. השדה הראשון יופיע בכל עסקה.' : 'אין שדות שמורים.'}
+          עוד לא הוספת שדות.
         </p>
       ) : (
         <ul className="space-y-2 mb-3">
@@ -118,7 +115,7 @@ export default function CustomTradeFieldsSettings() {
             value={name}
             onChange={(e) => { setName(e.target.value); setError(''); }}
             maxLength={40}
-            placeholder="שם השדה"
+            placeholder="שם השדה, למשל: סטאפ"
             aria-label="שם השדה"
             className={inputClass}
           />

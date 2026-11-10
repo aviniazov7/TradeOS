@@ -57,8 +57,10 @@ describe('custom field settings', () => {
       saveDoc,
     };
     const view = await mount();
+    expect(view.el.textContent).toContain('שדות נוספים לעסקה');
+    expect(view.el.textContent).toContain('הוסף שדות משלך לטופס העסקה');
     expect(view.el.textContent).toContain('סשן');
-    expect(view.el.textContent).toContain('ערכים שכבר נשמרו נשארים גלויים');
+    expect(view.el.textContent).not.toContain('שדות מותאמים');
     expect(view.el.querySelector('[data-testid="custom-field-form"]')).toBeNull();
     expect(view.el.querySelector('[aria-label="מחיקת סשן"]')).toBeNull();
     expect(view.el.textContent).toContain('שדרג ל-Premium');
@@ -70,8 +72,10 @@ describe('custom field settings', () => {
     saveDoc.mockClear();
     fieldsState = { doc: { fields: [], seq: 0 }, fields: [], ready: true, saveDoc };
     const view = await mount();
-    expect(view.el.textContent).toContain('עדיין אין שדות');
+    expect(view.el.textContent).toContain('עוד לא הוספת שדות.');
+    expect(view.el.textContent).toContain('סטאפ (בחירה)');
     const name = view.el.querySelector('[aria-label="שם השדה"]');
+    expect(name.getAttribute('placeholder')).toBe('שם השדה, למשל: סטאפ');
     await act(async () => { typeInto(name, 'סשן'); });
     const number = [...view.el.querySelectorAll('[role="radio"]')].find((node) => node.textContent === 'מספר');
     await act(async () => { number.click(); });

@@ -5,7 +5,13 @@ export const SETTINGS_SECTION_SCROLL_GAP = 16;
 
 export const SETTINGS_SECTIONS = [
   { id: 'trading', label: 'מסחר' },
-  { id: 'fields', label: 'שדות' },
+  {
+    id: 'fields',
+    label: 'שדות לעסקה',
+    // The visible name changed. The old name stays here so a search for it
+    // still means this section.
+    keywords: 'שדות מותאמים שדות נוספים לעסקה custom fields סטאפ ציון ביצוע הערת כניסה עסקה טקסט מספר בחירה',
+  },
   { id: 'plan', label: 'מנוי' },
   { id: 'reports', label: 'דוחות' },
   { id: 'notifications', label: 'התראות' },

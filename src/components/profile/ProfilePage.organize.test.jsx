@@ -106,7 +106,7 @@ describe('organized profile settings', () => {
       'trading', 'fields', 'plan', 'reports', 'notifications', 'api', 'general', 'account',
     ]);
     const titles = [...document.querySelectorAll('[data-settings-section] > h2')].map((heading) => heading.textContent.trim());
-    expect(titles).toEqual(['מסחר', 'שדות', 'מנוי', 'דוחות', 'התראות', 'API', 'כללי', 'חשבון']);
+    expect(titles).toEqual(['מסחר', 'שדות לעסקה', 'מנוי', 'דוחות', 'התראות', 'API', 'כללי', 'חשבון']);
 
     expect(text()).toContain('סוג מסחר');
     expect(text()).toContain('פתח את כל הכוח של TradeOS');

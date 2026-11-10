@@ -12,8 +12,11 @@ describe('settings catalog', () => {
       'trading', 'fields', 'plan', 'reports', 'notifications', 'api', 'general', 'account',
     ]);
     expect(SETTINGS_SECTIONS.map((section) => section.label)).toEqual([
-      'מסחר', 'שדות', 'מנוי', 'דוחות', 'התראות', 'API', 'כללי', 'חשבון',
+      'מסחר', 'שדות לעסקה', 'מנוי', 'דוחות', 'התראות', 'API', 'כללי', 'חשבון',
     ]);
+    const fields = SETTINGS_SECTIONS.find((section) => section.id === 'fields');
+    expect(fields.keywords).toContain('שדות מותאמים');
+    expect(fields.keywords).toContain('שדות נוספים לעסקה');
   });
 
   it('reads a section deep link and ignores unknown values', () => {
