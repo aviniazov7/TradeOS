@@ -26,7 +26,6 @@ import NotificationSettings from './NotificationSettings';
 import MarketingEmailToggle from './MarketingEmailToggle';
 import ContactDeveloper from './ContactDeveloper';
 import ApiKeysSection from './ApiKeysSection';
-import CustomTradeFieldsSettings from './CustomTradeFieldsSettings';
 import { SETTINGS_SECTIONS, scrollSettingsSectionIntoView, settingsSectionFromParam } from './settingsCatalog';
 import { replayUiTour } from '../../utils/uiTour';
 import { planExpiresMs } from '../../utils/premium';
@@ -481,11 +480,10 @@ export default function ProfilePage() {
             מסחר בכמה סוגים במקביל — שדרג ל-Premium
           </button>
         )}
+        <p className="text-[11px] text-text-muted mt-3" data-testid="custom-fields-settings-note">
+          שדות משלך לעסקה מוסיפים בטופס העסקה, בכפתור «+ שדה משלך».
+        </p>
       </div>
-      </SettingsSection>
-
-      <SettingsSection id="fields">
-      <CustomTradeFieldsSettings />
       </SettingsSection>
 
       <SettingsSection id="plan">

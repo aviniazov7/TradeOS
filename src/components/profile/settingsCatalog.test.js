@@ -9,14 +9,14 @@ import {
 describe('settings catalog', () => {
   it('keeps every settings section in page order', () => {
     expect(SETTINGS_SECTIONS.map((section) => section.id)).toEqual([
-      'trading', 'fields', 'plan', 'reports', 'notifications', 'api', 'general', 'account',
+      'trading', 'plan', 'reports', 'notifications', 'api', 'general', 'account',
     ]);
     expect(SETTINGS_SECTIONS.map((section) => section.label)).toEqual([
-      'מסחר', 'שדות לעסקה', 'מנוי', 'דוחות', 'התראות', 'API', 'כללי', 'חשבון',
+      'מסחר', 'מנוי', 'דוחות', 'התראות', 'API', 'כללי', 'חשבון',
     ]);
-    const fields = SETTINGS_SECTIONS.find((section) => section.id === 'fields');
-    expect(fields.keywords).toContain('שדות מותאמים');
-    expect(fields.keywords).toContain('שדות נוספים לעסקה');
+    const text = SETTINGS_SECTIONS.map((section) => `${section.label} ${section.keywords || ''}`).join(' ');
+    expect(text).not.toContain('שדות');
+    expect(settingsSectionFromParam('fields')).toBeNull();
   });
 
   it('reads a section deep link and ignores unknown values', () => {

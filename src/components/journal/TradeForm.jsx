@@ -42,6 +42,7 @@ import { formatCurrency, formatPercent } from '../../utils/formatters';
 import {
   customFormState, customPayload, customSaveProblem, tradeHasCustom,
 } from '../../utils/customTradeFields';
+import { useCustomTradeFieldEditor } from './CustomTradeFieldsEditor';
 
 registerLocale('he', he);
 
@@ -160,25 +161,32 @@ const fmtR = (r) => (r == null || !Number.isFinite(r) ? '—' : `${r < 0 ? '−'
 
 /** A numbered ticket section: caption on a hairline, optionally collapsible. */
 function Section({ n, title, aside, collapsible = false, open = true, onToggle, children }) {
-  const caption = (
+  const heading = (
     <>
       <span className="num-mono text-[10px] font-semibold text-accent-primary">{String(n).padStart(2, '0')}</span>
       <span className="text-xs font-semibold text-text-primary whitespace-nowrap">{title}</span>
-      <span className="flex-1 h-px bg-border-primary min-w-4" aria-hidden="true" />
-      {aside}
-      {collapsible && <ChevronDown className={`w-4 h-4 shrink-0 text-text-muted transition-transform ${open ? 'rotate-180' : ''}`} />}
     </>
   );
   return (
     <section className="pt-5 first:pt-0">
-      {collapsible ? (
-        <button type="button" onClick={onToggle} aria-expanded={open}
-          className="w-full flex items-center gap-2 cursor-pointer text-right rounded-lg outline-none focus-visible:ring-2 focus-visible:ring-accent-primary/40">
-          {caption}
-        </button>
-      ) : (
-        <div className="flex items-center gap-2">{caption}</div>
-      )}
+      <div className="flex flex-wrap items-center gap-x-2 gap-y-1">
+        {collapsible ? (
+          <button type="button" onClick={onToggle} aria-expanded={open}
+            className="flex items-center gap-2 cursor-pointer text-right rounded-lg outline-none focus-visible:ring-2 focus-visible:ring-accent-primary/40">
+            {heading}
+          </button>
+        ) : (
+          <div className="flex items-center gap-2">{heading}</div>
+        )}
+        <span className="flex-1 h-px bg-border-primary min-w-4" aria-hidden="true" />
+        {aside}
+        {collapsible && (
+          <button type="button" onClick={onToggle} aria-expanded={open} aria-label={open ? `סגירת ${title}` : `פתיחת ${title}`}
+            className="shrink-0 w-7 h-7 grid place-items-center rounded-lg text-text-muted cursor-pointer hover:bg-bg-tertiary">
+            <ChevronDown className={`w-4 h-4 transition-transform ${open ? 'rotate-180' : ''}`} />
+          </button>
+        )}
+      </div>
       {open && <div className="mt-3">{children}</div>}
     </section>
   );
@@ -245,6 +253,7 @@ function TradeForm({
   isOpen, onClose, trade, onSave, riskSettings, livePrices = {},
   journalAssetClass = 'crypto', prefill = null, accountBalance = 0, strictAccount = false,
   customFields = [], customFieldsReady = false,
+  customFieldsDoc = null, onSaveCustomFields, isPremium = false, onUpgradeCustomFields,
   breachWarning = null, onDismissBreach = null,
 }) {
   // Asset class is owned by the JOURNAL — every trade inherits it, no per-trade
@@ -293,6 +302,16 @@ function TradeForm({
   const [exitsOpenState, setExitsOpenState] = useState(null);
   const [fieldErrors, setFieldErrors] = useState({});
   const [discardOpen, setDiscardOpen] = useState(false);
+  const customFieldUi = useCustomTradeFieldEditor({
+    isPremium,
+    doc: customFieldsDoc,
+    fields: customFields,
+    ready: customFieldsReady,
+    active: isOpen,
+    onSave: onSaveCustomFields,
+    onUpgrade: onUpgradeCustomFields,
+    onRequestOpen: () => setJournalOpenState(true),
+  });
   const submitRef = useRef(null);
   // Identity of the ticket currently on screen. A later effect run for the
   // same ticket (parent re-render, new prefill object, refreshed trade) must
@@ -1051,7 +1070,7 @@ function TradeForm({
     }
     const t = e.target;
     if (!t || t.tagName === 'TEXTAREA' || e.defaultPrevented) return;
-    if (document.querySelector('.react-datepicker')) return;
+    if (document.querySelector('[data-popover], .react-datepicker')) return;
     if (t.tagName === 'INPUT' && !['checkbox', 'radio', 'submit', 'button', 'file'].includes(t.type)) {
       e.preventDefault();
       submitRef.current?.click();
@@ -2137,9 +2156,19 @@ function TradeForm({
           </Section>
 
           {/* 05 — journal & psychology. */}
-          <Section n={5} title="יומן ופסיכולוגיה" collapsible open={journalOpen} onToggle={() => setJournalOpenState(!journalOpen)}
-            aside={!journalOpen && journalSummary ? <span className="text-[10px] text-text-muted shrink-0">{journalSummary}</span> : null}>
+          <Section n={5} title="יומן ופסיכולוגיה" collapsible open={journalOpen} onToggle={() => {
+            const next = !journalOpen;
+            setJournalOpenState(next);
+            if (!next) customFieldUi.close();
+          }}
+            aside={(
+              <span className="inline-flex items-center gap-1.5 min-w-0 max-w-full">
+                {!journalOpen && journalSummary ? <span className="text-[10px] text-text-muted truncate max-w-[7rem] sm:max-w-[12rem]">{journalSummary}</span> : null}
+                {customFieldUi.trigger}
+              </span>
+            )}>
             <div className="space-y-3">
+              {customFieldUi.panel}
               <div className="grid md:grid-cols-2 gap-3">
                 <Field label="סיבת כניסה" htmlFor="tt-reason">
                   <textarea id="tt-reason" value={form.entryReason} onChange={(e) => update('entryReason', e.target.value)}
@@ -2167,7 +2196,7 @@ function TradeForm({
               {customFields.length > 0 && (
                 <div className="grid md:grid-cols-2 gap-3" data-testid="custom-trade-fields">
                   {customFields.map((field) => (
-                    <Field key={field.id} label={field.name} htmlFor={`custom-${field.id}`}>
+                    <Field key={field.id} label={field.name} htmlFor={`custom-${field.id}`} aside={customFieldUi.fieldActions(field)}>
                       {field.type === 'select' ? (
                         <SelectDropdown
                           id={`custom-${field.id}`}
@@ -2235,6 +2264,7 @@ function TradeForm({
       cancelText="המשך עריכה"
       confirmColor="amber"
     />
+    {customFieldUi.confirm}
     </>
   );
 }

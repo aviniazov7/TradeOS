@@ -92,7 +92,7 @@ function CustomFieldStats({ groups, defined, onFilterJump }) {
   if (!defined) {
     return (
       <p data-testid="custom-stats-empty" className="text-xs text-text-secondary">
-        אין שדות מותאמים. מגדירים אותם בהגדרות.
+        אין שדות משלך. מוסיפים אותם בטופס העסקה, בכפתור «+ שדה משלך».
       </p>
     );
   }
