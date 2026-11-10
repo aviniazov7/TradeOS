@@ -421,7 +421,7 @@ export function formatBusinessMonthReport(entries, month) {
   if (!isMonthKey(month)) return 'חודש לא תקין.';
   const found = summarizeBusinessLedger(entries).months.find((item) => item.month === month) || null;
   const lines = [
-    `ניהול עסק — ${monthTitle(month)}`,
+    `הכנסות והוצאות — ${monthTitle(month)}`,
     'ימים לפי שעון ירושלים. כל מטבע בנפרד, בלי המרה ובלי ערבוב.',
     '',
   ];

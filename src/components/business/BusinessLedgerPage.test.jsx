@@ -6,6 +6,8 @@ import { LazyMotion, domAnimation } from 'framer-motion';
 import { MemoryRouter } from 'react-router-dom';
 import BusinessLedgerPage from './BusinessLedgerPage';
 import Sidebar from '../layout/Sidebar';
+import GlobalSearch from '../layout/GlobalSearch';
+import { PREMIUM_FEATURES } from '../../utils/constants';
 import { createMemoryBusinessLedgerStore } from '../../services/businessLedgerStore';
 
 const NOW = new Date('2026-03-20T12:00:00Z');
@@ -25,6 +27,10 @@ vi.mock('../../contexts/JournalContext', () => ({
 
 vi.mock('../../services/adminInboxService', () => ({
   subscribeAdminMailboxUnread: () => () => {},
+}));
+
+vi.mock('../../services/firestoreService', () => ({
+  getUserCollectionDocs: vi.fn(async () => []),
 }));
 
 function shell(node) {
@@ -69,7 +75,7 @@ const sample = [
   { id: 'c', kind: 'expense', category: 'subscription', amount: 49, currency: 'ILS', date: '2026-03-06' },
 ];
 
-describe('ניהול עסק', () => {
+describe('הכנסות והוצאות', () => {
   beforeAll(() => {
     globalThis.IS_REACT_ACT_ENVIRONMENT = true;
     const finished = Promise.resolve();
@@ -89,10 +95,14 @@ describe('ניהול עסק', () => {
   });
 
   it('explains an empty book and does not show a sample until the demo flag is on', async () => {
+    const previousTitle = document.title;
     const enter = vi.fn();
     const view = await mount(
       <BusinessLedgerPage demo={false} isPremium={false} now={NOW} onEnterDemo={enter} />,
     );
+    expect(document.querySelector('h1').textContent).toBe('הכנסות והוצאות');
+    expect(document.title).toBe('הכנסות והוצאות · TradeOS');
+    expect(text()).not.toContain('ניהול עסק');
     expect(text()).toContain('אין רשומות עדיין');
     expect(text()).toContain('דמי אתגר, איפוסים, מנויים, תשלומים ומשיכות');
     expect(text()).toContain('השמירה לחשבון עדיין לא מופעלת');
@@ -102,6 +112,7 @@ describe('ניהול עסק', () => {
     await act(async () => { buttonNamed('צפה בדוגמה').click(); });
     expect(enter).toHaveBeenCalledOnce();
     await view.cleanup();
+    expect(document.title).toBe(previousTitle);
   });
 
   it('shows the marked demo, monthly nets per currency, and the free lock', async () => {
@@ -135,7 +146,7 @@ describe('ניהול עסק', () => {
     expect(document.querySelector('[data-testid="business-storage-note"]').textContent).toContain('השמירה לחשבון עדיין לא מופעלת');
     expect(net('USD').getAttribute('data-net')).toBe('245');
     expect(document.querySelector('[data-testid="business-chart"]')).toBeTruthy();
-    expect(document.querySelector('[data-testid="business-report"]').textContent).toContain('ניהול עסק');
+    expect(document.querySelector('[data-testid="business-report"]').textContent).toContain('הכנסות והוצאות');
     await view.cleanup();
   });
 
@@ -174,7 +185,7 @@ describe('ניהול עסק', () => {
     expect(text()).toContain('FTMO 100K');
     expect(document.querySelector('[data-testid="business-chart"]').getAttribute('data-currency')).toBe('USD');
     const report = document.querySelector('[data-testid="business-report"]').textContent;
-    expect(report).toContain('ניהול עסק — מרץ 2026');
+    expect(report).toContain('הכנסות והוצאות — מרץ 2026');
     expect(report).toContain('דולר (USD)');
     expect(report).toContain('שקל (ILS)');
     expect(report).not.toContain('294');
@@ -220,12 +231,28 @@ describe('ניהול עסק', () => {
     await view.cleanup();
   });
 
-  it('puts ניהול עסק in the side menu next to the other pages', async () => {
-    const view = await mount(<Sidebar mobileOpen onClose={() => {}} />);
+  it('puts הכנסות והוצאות in the menu, search, and premium comparison', async () => {
+    const view = await mount(
+      <>
+        <Sidebar mobileOpen onClose={() => {}} />
+        <GlobalSearch />
+      </>,
+    );
     const link = document.querySelector('nav[aria-label="תפריט ראשי"] a[href="/business"]');
-    expect(link.textContent).toContain('ניהול עסק');
+    expect(link.getAttribute('href')).toBe('/business');
+    expect(link.textContent).toContain('הכנסות והוצאות');
+    expect(link.textContent).not.toContain('ניהול עסק');
     const labels = [...document.querySelectorAll('nav[aria-label="תפריט ראשי"] a')].map((anchor) => anchor.textContent);
-    expect(labels.indexOf('תוכניות מסחר')).toBeLessThan(labels.indexOf('ניהול עסק'));
+    expect(labels.indexOf('תוכניות מסחר')).toBeLessThan(labels.indexOf('הכנסות והוצאות'));
+
+    await act(async () => { document.querySelector('button[aria-label="חיפוש"]').click(); });
+    await act(async () => { await Promise.resolve(); });
+    const searchLink = [...document.querySelectorAll('button')].find((btn) => btn.textContent.includes('הכנסות והוצאות'));
+    expect(searchLink).toBeTruthy();
+    expect(document.body.textContent).not.toContain('ניהול עסק');
+
+    const feature = PREMIUM_FEATURES.find((row) => row.icon === 'Briefcase');
+    expect(feature.title).toBe('הכנסות והוצאות');
     await view.cleanup();
   });
 });

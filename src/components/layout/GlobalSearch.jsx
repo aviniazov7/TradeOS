@@ -23,7 +23,7 @@ const PAGES = [
   { label: 'ארנקים', path: '/portfolio?tab=wallets', icon: Wallet, kw: 'wallets ארנק יתרה תיק החזקות' },
   { label: 'דוח מס', path: '/tax', icon: Receipt, kw: 'tax מס רווחי הון רואה חשבון דוח שנתי שקלים' },
   { label: 'תוכניות מסחר', path: '/plans', icon: ClipboardList, kw: 'plans תוכנית' },
-  { label: 'ניהול עסק', path: '/business', icon: Landmark, kw: 'עסק פרופ אתגר דמי איפוס מנוי תשלום משיכה ledger business' },
+  { label: 'הכנסות והוצאות', path: '/business', icon: Landmark, kw: 'הכנסות הוצאות ניהול עסק פרופ אתגר דמי איפוס מנוי תשלום משיכה ledger business' },
   { label: 'סקירת שוק', path: '/market', icon: Activity, kw: 'market שוק' },
   { label: 'ניתוח מטבע', path: '/market?tab=analysis', icon: LineChart, kw: 'analysis ניתוח מטבע שוק' },
   { label: 'מעקב לווייתנים', path: '/market?tab=whales', icon: Fish, kw: 'whales לווייתנים שוק' },

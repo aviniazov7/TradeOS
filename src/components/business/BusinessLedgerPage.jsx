@@ -50,6 +50,7 @@ import {
 
 const MotionDiv = m.div;
 
+const PAGE_TITLE = 'הכנסות והוצאות';
 const EMPTY_EXPLANATION = 'כאן עוקבים אחרי ההכנסות וההוצאות של אתגרי פרופ: דמי אתגר, איפוסים, מנויים, תשלומים ומשיכות. זה פנקס המזומן של העסק, בנפרד מרווח המסחר ביומן.';
 const SAVING_OFF = 'השמירה לחשבון עדיין לא מופעלת.';
 
@@ -123,6 +124,12 @@ export default function BusinessLedgerPage({
       ready: false,
     });
   }
+
+  useEffect(() => {
+    const prev = document.title;
+    document.title = `${PAGE_TITLE} · TradeOS`;
+    return () => { document.title = prev; };
+  }, []);
 
   useEffect(() => {
     let live = true;
@@ -243,7 +250,7 @@ export default function BusinessLedgerPage({
     >
       <PageHeader
         icon={Landmark}
-        title="ניהול עסק"
+        title={PAGE_TITLE}
         subtitle="הכנסות והוצאות של אתגרי פרופ. כל מטבע בנפרד, בלי קשר לרווח המסחר."
         meta={!premium ? (
           <p className="text-xs text-text-muted">

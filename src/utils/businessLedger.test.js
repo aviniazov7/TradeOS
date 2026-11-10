@@ -297,7 +297,7 @@ describe('formatBusinessMonthReport', () => {
   ];
 
   const marchReport = [
-    'ניהול עסק — מרץ 2026',
+    'הכנסות והוצאות — מרץ 2026',
     'ימים לפי שעון ירושלים. כל מטבע בנפרד, בלי המרה ובלי ערבוב.',
     '',
     'דולר (USD)',
@@ -341,7 +341,7 @@ describe('formatBusinessMonthReport', () => {
 
   it('states an empty month, and puts a Jerusalem midnight instant in the next month', () => {
     const empty = [
-      'ניהול עסק — אפריל 2026',
+      'הכנסות והוצאות — אפריל 2026',
       'ימים לפי שעון ירושלים. כל מטבע בנפרד, בלי המרה ובלי ערבוב.',
       '',
       'אין תנועות בחודש הזה.',
@@ -362,7 +362,7 @@ describe('formatBusinessMonthReport', () => {
     expect(visible(formatBusinessMonthReport([overnight], '2026-03'))).toContain('נטו: -$10.00');
     expect(visible(formatBusinessMonthReport([
       entry({ date: '2026-03-31T21:30:00Z', amount: 90, category: 'reset' }),
-    ], '2026-04'))).toContain('ניהול עסק — אפריל 2026');
+    ], '2026-04'))).toContain('הכנסות והוצאות — אפריל 2026');
     expect(visible(formatBusinessMonthReport([
       entry({ date: '2026-03-31T21:30:00Z', amount: 90, category: 'reset' }),
     ], '2026-03'))).toContain('אין תנועות בחודש הזה.');
