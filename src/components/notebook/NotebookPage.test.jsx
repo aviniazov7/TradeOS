@@ -8,6 +8,7 @@ import NotebookPage from './NotebookPage';
 import Sidebar from '../layout/Sidebar';
 import GlobalSearch from '../layout/GlobalSearch';
 import { createMemoryNotebookStore } from '../../services/notebookStore';
+import { displayNotebookDay } from './notebookView';
 
 const NOW = new Date('2026-03-20T12:00:00Z');
 const JOURNALS = [{ id: 'j-ftmo', name: 'FTMO 100K', archived: false }];
@@ -293,6 +294,9 @@ describe('מחברת', () => {
     await act(async () => { buttonNamed('שמירה').click(); });
     await act(async () => { await Promise.resolve(); });
     expect(text()).toContain('לקח מעודכן');
+    expect(text()).toContain('18/03/2026');
+    const edited = (await store.list()).find((entry) => entry.title === 'לקח מעודכן');
+    expect(edited.date).toBe('2026-03-18');
 
     const week = document.querySelector('[data-testid="notebook-entry-week"]');
     await act(async () => { buttonNamed('מחיקה', week).click(); });
@@ -313,6 +317,43 @@ describe('מחברת', () => {
     expect(listed.some((entry) => entry.title === 'הערה חדשה')).toBe(true);
     expect(document.body.querySelector('img')).toBeNull();
     await view.cleanup();
+  });
+
+  it('slices a civil day for display and does not parse it as a timestamp', () => {
+    expect(displayNotebookDay('2026-11-10')).toBe('10/11/2026');
+    expect(displayNotebookDay('2026-07-11')).toBe('11/07/2026');
+    expect(displayNotebookDay('2026-11-10T22:30:00.000Z')).toBe('');
+  });
+
+  it('defaults a new demo entry to the local calendar day, not the next day', async () => {
+    const cases = [
+      [new Date(2026, 10, 10, 14, 27), '10.11.2026', '10/11/2026', '2026-11-10'],
+      [new Date(2026, 10, 10, 0, 30), '10.11.2026', '10/11/2026', '2026-11-10'],
+      [new Date(2026, 10, 10, 23, 30), '10.11.2026', '10/11/2026', '2026-11-10'],
+      [new Date(2026, 6, 10, 14, 27), '10.07.2026', '10/07/2026', '2026-07-10'],
+      [new Date(2026, 6, 11, 0, 30), '11.07.2026', '11/07/2026', '2026-07-11'],
+      [new Date(2026, 6, 10, 23, 30), '10.07.2026', '10/07/2026', '2026-07-10'],
+    ];
+    for (const [now, field, shown, stored] of cases) {
+      const store = createMemoryNotebookStore([]);
+      const view = await mount(
+        <NotebookPage demo isPremium journals={JOURNALS} now={now} store={store} />,
+      );
+      await act(async () => { document.querySelector('[data-testid="notebook-add"]').click(); });
+      const dateBtn = document.getElementById('notebook-date');
+      expect(dateBtn.textContent, String(now)).toContain(field);
+      await act(async () => { setValue(document.getElementById('notebook-title'), 'היי'); });
+      await act(async () => { buttonNamed('שמירה').click(); });
+      await act(async () => { await Promise.resolve(); });
+      const row = (await store.list()).find((entry) => entry.title === 'היי');
+      expect(row.date, String(now)).toBe(stored);
+      expect(row.date, String(now)).not.toBe('2026-11-11');
+      const card = [...document.querySelectorAll('[data-testid^="notebook-entry-"]')]
+        .find((node) => node.textContent.includes('היי'));
+      expect(card.textContent, String(now)).toContain(shown);
+      expect(card.textContent, String(now)).not.toContain('11/11/2026');
+      await view.cleanup();
+    }
   });
 
   it('puts מחברת in the side menu next to the journal, and in search', async () => {

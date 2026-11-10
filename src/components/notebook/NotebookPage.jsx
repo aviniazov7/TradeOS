@@ -19,6 +19,7 @@ import {
   NOTEBOOK_LIMITS,
   groupNotebookByMonth,
   notebookDayKey,
+  notebookLocalDay,
   renderNotebookBody,
   searchNotebook,
 } from '../../utils/notebook';
@@ -56,7 +57,9 @@ function blankDraft(now) {
     title: '',
     body: '',
     tags: '',
-    date: '',
+    // Device calendar day (the menu-bar date). Not `toISOString()` (UTC) and
+    // not a `YYYY-MM-DD` parsed as UTC midnight.
+    date: notebookLocalDay(now),
     journalName: '',
     clock: now,
   };
@@ -185,11 +188,12 @@ export default function NotebookPage({
       setFormError(`במסלול החינמי אפשר עד ${FREE_LIMITS.notebookEntries} רשומות. שדרג ל-Premium לרשומות בלי הגבלה.`);
       return;
     }
+    const day = draft.date ? notebookLocalDay(draft.date) : '';
     const result = await store.save({
       title: draft.title,
       body: draft.body,
       tags: parseNotebookTags(draft.tags),
-      date: draft.date || null,
+      date: day || null,
       journalName: draft.journalName || null,
       ...(editing ? { id: editing.id, createdAt: editing.createdAt } : {}),
       updatedAt: clock,
