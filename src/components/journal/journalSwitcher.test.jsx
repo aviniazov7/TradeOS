@@ -78,10 +78,12 @@ describe('JournalSwitcher menu', () => {
     expect(letters).not.toContain('O');
     expect(menu.textContent).not.toContain('BookOpen');
     expect(button.getAttribute('data-testid')).toBe('journal-switcher');
-    expect(button.className).toContain('h-11');
+    expect(button.className).toContain('h-10');
+    expect(button.className).not.toContain('h-11');
     expect(button.className).toContain('w-full');
     expect(button.className).toContain('sm:h-8');
     expect(button.className).toContain('sm:w-auto');
+    expect(button.className).toContain('md:h-9');
     const name = [...button.querySelectorAll('span')].find((node) => node.textContent === 'Bybit');
     expect(name.className).toContain('truncate');
     expect(name.className).toContain('flex-1');

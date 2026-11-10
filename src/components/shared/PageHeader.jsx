@@ -20,8 +20,10 @@ import TabStrip from './TabStrip';
 //           and a wrapping segmented tab control under it (every tab on
 //           screen, no horizontal scroll). Below 640px the title aside (the
 //           journal selector) is its own full-width row under that title, so
-//           the name is readable. From sm up the aside stays on the title
-//           line, and from md up the header matches the other pages.
+//           the name is readable, at 40px tall. The tab row under it is 28px.
+//           Gaps between the title, selector, and tabs are 4px. From sm up
+//           the aside stays on the title line at the previous size, the tabs
+//           return to 36px, and from md up the header matches the other pages.
 //   readableAside — the aside is a named control (the backtest journal). Keep
 //           a readable width and let the action cluster wrap, instead of
 //           shrinking the label down to a glyph. Journal headers pass `center`
@@ -32,7 +34,7 @@ export default function PageHeader({ icon: Icon, title, titleAside, subtitle, me
     <TabStrip tabs={tabs.tabs} value={tabs.value} onChange={tabs.onChange} variant={variant} layoutKey={tabs.layoutKey || 'page-tab'} />
   );
   const mobileTabRow = tabs && (compactMobile ? (
-    <div data-testid="mobile-tabs" dir="rtl" className="md:hidden mt-2 w-full min-w-0 overflow-x-hidden rounded-xl bg-bg-tertiary border border-border-primary p-1">
+    <div data-testid="mobile-tabs" dir="rtl" className="md:hidden mt-1 w-full min-w-0 overflow-x-hidden rounded-xl bg-bg-tertiary border border-border-primary p-0.5 sm:mt-2 sm:p-1">
       {tabStrip('wrap')}
     </div>
   ) : (
@@ -45,17 +47,17 @@ export default function PageHeader({ icon: Icon, title, titleAside, subtitle, me
     // below it: menus that open from the header (journal switcher, period)
     // must hang over the content, not get cut at the header's bottom edge.
     // Only the decorative glow is clipped to the rounded corners.
-    <Card className={`relative z-20 ${compactMobile ? 'p-3 mb-3 md:p-6 md:mb-6' : 'p-4 md:p-6 mb-4 md:mb-6'} ${className}`}>
+    <Card className={`relative z-20 ${compactMobile ? 'px-3 py-2 mb-3 sm:p-3 md:p-6 md:mb-6' : 'p-4 md:p-6 mb-4 md:mb-6'} ${className}`}>
       <div aria-hidden className="absolute inset-0 rounded-[inherit] overflow-hidden pointer-events-none">
         <div className="absolute inset-0" style={{ background: 'radial-gradient(80% 140% at 100% 0%, rgba(37,99,235,0.14) 0%, transparent 60%)' }} />
       </div>
-      <div className={`relative flex flex-col lg:flex-row lg:items-center ${compactMobile ? 'gap-2 md:gap-4 lg:gap-6' : 'gap-4 lg:gap-6'}`}>
+      <div className={`relative flex flex-col lg:flex-row lg:items-center ${compactMobile ? 'gap-1 sm:gap-2 md:gap-4 lg:gap-6' : 'gap-4 lg:gap-6'}`}>
         {mobileTabsFirst && mobileTabRow}
         {/* Phones: actions wrap onto their own row under the title instead of
             squeezing it (basis-full); from sm up they sit beside it.
             compactMobile keeps them on the title row as icon buttons. */}
         <div className={compactMobile
-          ? `grid w-full flex-1 grid-cols-[auto_minmax(0,1fr)_auto] items-center gap-x-2 gap-y-2 sm:flex sm:flex-nowrap sm:items-center sm:gap-2 ${center ? '' : 'min-w-0'}`
+          ? `grid w-full flex-1 grid-cols-[auto_minmax(0,1fr)_auto] items-center gap-x-2 gap-y-1 sm:flex sm:flex-nowrap sm:items-center sm:gap-2 ${center ? '' : 'min-w-0'}`
           : `flex flex-1 min-w-0 flex-wrap ${subtitle || meta ? 'items-start' : 'items-center'} gap-3`}>
           {Icon && (
             <span className={`${compactMobile ? 'col-start-1 row-start-1 w-8 h-8 sm:col-auto sm:row-auto md:w-11 md:h-11' : 'w-10 h-10 md:w-11 md:h-11'} rounded-xl bg-accent-primary/12 border border-accent-primary/20 grid place-items-center shrink-0`}>

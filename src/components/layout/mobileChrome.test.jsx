@@ -133,6 +133,10 @@ describe('mobile chrome', () => {
     expect(document.querySelectorAll('h1')).toHaveLength(1);
     expect(phone.getAttribute('dir')).toBe('rtl');
     expect(phone.className).toContain('md:hidden');
+    expect(phone.className).toContain('mt-1');
+    expect(phone.className).toContain('p-0.5');
+    expect(phone.className).toContain('sm:mt-2');
+    expect(phone.className).toContain('sm:p-1');
     expect(phone.className).toContain('overflow-x-hidden');
     expect(phone.className).not.toContain('overflow-x-auto');
     expect(title.compareDocumentPosition(phone) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
@@ -145,7 +149,12 @@ describe('mobile chrome', () => {
     expect(tabs.map((t) => t.textContent.replace(/\s+/g, ''))).toEqual(['עסקאות113', 'בורסה', 'אנליטיקה', 'יומן']);
     tabs.forEach((tab) => {
       expect(tab.className).not.toContain('col-span-');
+      expect(tab.className).toContain('h-7');
+      expect(tab.className).toContain('sm:min-h-9');
     });
+    const titleRow = title.parentElement.parentElement.parentElement;
+    expect(titleRow.className).toContain('gap-y-1');
+    expect(titleRow.className).toContain('sm:gap-2');
     const active = phone.querySelector('[aria-selected="true"]');
     expect(active.textContent).toBe('בורסה');
     expect(active.className).toContain('text-accent-primary');

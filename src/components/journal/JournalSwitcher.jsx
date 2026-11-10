@@ -168,7 +168,7 @@ export default function JournalSwitcher({ compact }) {
             onClick={() => { if (!open) placeMenu(); setOpen(!open); }}
             aria-haspopup="listbox"
             aria-expanded={open}
-            className="h-11 w-full sm:h-8 sm:w-auto md:h-9 max-w-full min-w-0 overflow-hidden inline-flex items-center gap-2 sm:gap-1.5 px-3 sm:px-2 md:px-3 rounded-lg text-sm font-medium bg-bg-tertiary border border-border-primary hover:border-border-hover transition-colors cursor-pointer"
+            className="h-10 w-full sm:h-8 sm:w-auto md:h-9 max-w-full min-w-0 overflow-hidden inline-flex items-center gap-1.5 px-2.5 sm:px-2 md:px-3 rounded-lg text-sm font-medium bg-bg-tertiary border border-border-primary hover:border-border-hover transition-colors cursor-pointer"
           >
             <JournalMark journal={activeJournal} size="w-5 h-5" connected={connected} />
             <span className="truncate min-w-0 flex-1 sm:flex-initial sm:max-w-[360px] text-text-primary font-semibold">{journalDisplayName(activeJournal, { connected })}</span>
