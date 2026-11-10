@@ -41,11 +41,18 @@ const MESSAGES = {
 const DAY_RE = /^(\d{4})-(\d{2})-(\d{2})$/;
 const ID_RE = /^[A-Za-z0-9_-]{1,128}$/;
 
-const JERUSALEM_DAY = new Intl.DateTimeFormat('en-CA', {
+// Hour and minute are requested on purpose. A date-only format asks some
+// engines to resolve the civil day at UTC midnight, which moves the day in
+// any zone east or west of UTC. The parts below are read by type, not by
+// the locale's field order (`en-CA` is not a stable YYYY-MM-DD).
+const JERUSALEM_DAY = new Intl.DateTimeFormat('en-US', {
   timeZone: NOTEBOOK_TZ,
   year: 'numeric',
   month: '2-digit',
   day: '2-digit',
+  hour: '2-digit',
+  minute: '2-digit',
+  hourCycle: 'h23',
 });
 
 function fail(code) {
@@ -73,6 +80,23 @@ function realDay(year, month, day) {
   return dt.getUTCFullYear() === year && dt.getUTCMonth() === month - 1 && dt.getUTCDate() === day;
 }
 
+function formatLocalDay(date) {
+  const month = String(date.getMonth() + 1).padStart(2, '0');
+  const day = String(date.getDate()).padStart(2, '0');
+  return `${date.getFullYear()}-${month}-${day}`;
+}
+
+function formatJerusalemDay(instant) {
+  const parts = JERUSALEM_DAY.formatToParts(instant);
+  const bag = {};
+  for (const part of parts) bag[part.type] = part.value;
+  const year = Number(bag.year);
+  const month = Number(bag.month);
+  const day = Number(bag.day);
+  if (!realDay(year, month, day)) return '';
+  return `${String(year).padStart(4, '0')}-${String(month).padStart(2, '0')}-${String(day).padStart(2, '0')}`;
+}
+
 /**
  * Calendar day in Asia/Jerusalem (`YYYY-MM-DD`).
  * A date-only string is that civil day. An instant is converted. Invalid → ''.
@@ -91,10 +115,38 @@ export function notebookDayKey(value) {
     if (!/[T ]\d{2}:\d{2}/.test(trimmed)) return '';
     const parsed = new Date(trimmed);
     if (Number.isNaN(parsed.getTime())) return '';
-    return JERUSALEM_DAY.format(parsed);
+    return formatJerusalemDay(parsed);
   }
   const instant = asDate(value);
-  return instant ? JERUSALEM_DAY.format(instant) : '';
+  return instant ? formatJerusalemDay(instant) : '';
+}
+
+/**
+ * Civil day on the device clock (`YYYY-MM-DD`). This is the day the user
+ * sees as "today" (the menu-bar date), not the UTC day from `toISOString()`
+ * and not a `YYYY-MM-DD` parsed with `new Date(string)` (that is UTC midnight
+ * and lands on the previous local day west of UTC).
+ *
+ * A date-only string is that civil day in every timezone. An instant uses
+ * local year/month/day. Invalid → ''.
+ */
+export function notebookLocalDay(value = new Date()) {
+  if (typeof value === 'string') {
+    const trimmed = value.trim();
+    const match = DAY_RE.exec(trimmed);
+    if (match) {
+      const year = Number(match[1]);
+      const month = Number(match[2]);
+      const day = Number(match[3]);
+      return realDay(year, month, day) ? trimmed : '';
+    }
+    if (!/[T ]\d{2}:\d{2}/.test(trimmed)) return '';
+    const parsed = new Date(trimmed);
+    if (Number.isNaN(parsed.getTime())) return '';
+    return formatLocalDay(parsed);
+  }
+  const instant = value instanceof Date && !Number.isNaN(value.getTime()) ? value : asDate(value);
+  return instant ? formatLocalDay(instant) : '';
 }
 
 function fold(value) {

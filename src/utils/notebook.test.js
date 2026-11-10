@@ -1,3 +1,4 @@
+import { spawnSync } from 'node:child_process';
 import { Window } from 'happy-dom';
 import { describe, expect, it } from 'vitest';
 import {
@@ -5,6 +6,7 @@ import {
   collectNotebook,
   groupNotebookByMonth,
   notebookDayKey,
+  notebookLocalDay,
   renderNotebookBody,
   renderNotebookTitle,
   searchNotebook,
@@ -204,6 +206,85 @@ describe('notebookDayKey — Jerusalem month boundaries', () => {
     expect(groups.map((group) => group.month)).toEqual(['2026-03', '2026-02']);
     expect(groups[0].label).toBe('מרץ 2026');
     expect(groups[1].entries.map((row) => row.id)).toEqual(['feb']);
+  });
+});
+
+function dayOnClock(timeZone, input, { dateOnly = false } = {}) {
+  const moduleUrl = new URL('./notebook.js', import.meta.url).href;
+  const valueExpr = dateOnly
+    ? JSON.stringify(input)
+    : `new Date(${JSON.stringify(input)})`;
+  const parsedExpr = dateOnly
+    ? `new Date(${JSON.stringify(input)})`
+    : valueExpr;
+  const code = `
+    import { notebookLocalDay } from ${JSON.stringify(moduleUrl)};
+    const value = ${valueExpr};
+    const parsed = ${parsedExpr};
+    const month = String(parsed.getMonth() + 1).padStart(2, '0');
+    const day = String(parsed.getDate()).padStart(2, '0');
+    process.stdout.write(JSON.stringify({
+      day: notebookLocalDay(value),
+      parsedLocal: parsed.getFullYear() + '-' + month + '-' + day,
+      utc: parsed.toISOString().slice(0, 10),
+      offset: parsed.getTimezoneOffset(),
+    }));
+  `;
+  const node = globalThis.process;
+  const result = spawnSync(node.execPath, ['--input-type=module', '-e', code], {
+    env: { ...node.env, TZ: timeZone },
+    encoding: 'utf8',
+  });
+  if (result.status !== 0) throw new Error(result.stderr || result.stdout || 'date probe failed');
+  return JSON.parse(result.stdout);
+}
+
+describe('notebookLocalDay — the device calendar, not UTC', () => {
+  // Asia/Jerusalem is UTC+2 on 10 Nov 2026 and UTC+3 on 10 Jul 2026.
+  // Each row is [zone, instant, civil day, expected getTimezoneOffset].
+  const zones = [
+    // 14:27. The note opened then was saved as 11/11; the clock said 10/11.
+    ['Asia/Jerusalem', '2026-11-10T12:27:00Z', '2026-11-10', -120],
+    // 23:30, still the 10th. Adding the offset in hours would land on the 11th.
+    ['Asia/Jerusalem', '2026-11-10T21:30:00Z', '2026-11-10', -120],
+    // 00:30 the next morning. toISOString().slice(0, 10) is still the 10th.
+    ['Asia/Jerusalem', '2026-11-10T22:30:00Z', '2026-11-11', -120],
+    // 02:30, inside the winter offset, still the 10th.
+    ['Asia/Jerusalem', '2026-11-10T00:30:00Z', '2026-11-10', -120],
+    // Summer, UTC+3. 14:27, 23:30, and 00:30 the next day.
+    ['Asia/Jerusalem', '2026-07-10T11:27:00Z', '2026-07-10', -180],
+    ['Asia/Jerusalem', '2026-07-10T20:30:00Z', '2026-07-10', -180],
+    ['Asia/Jerusalem', '2026-07-10T21:30:00Z', '2026-07-11', -180],
+  ];
+
+  zones.forEach(([zone, iso, day, offset]) => {
+    it(`${zone} ${iso} → ${day}`, () => {
+      const got = dayOnClock(zone, iso);
+      expect(got.offset).toBe(offset);
+      expect(got.day).toBe(day);
+      expect(got.parsedLocal).toBe(day);
+      if (day !== got.utc) expect(got.utc).not.toBe(day);
+    });
+  });
+
+  it('keeps a YYYY-MM-DD string on that civil day west of UTC', () => {
+    const got = dayOnClock('Pacific/Honolulu', '2026-11-10', { dateOnly: true });
+    expect(got.offset).toBe(600);
+    expect(got.day).toBe('2026-11-10');
+    // new Date('2026-11-10') is UTC midnight, the previous evening in Honolulu.
+    expect(got.parsedLocal).toBe('2026-11-09');
+    expect(got.utc).toBe('2026-11-10');
+  });
+
+  it('reads local fields at midnight and just before midnight', () => {
+    expect(notebookLocalDay(new Date(2026, 10, 10, 0, 30))).toBe('2026-11-10');
+    expect(notebookLocalDay(new Date(2026, 10, 10, 14, 27))).toBe('2026-11-10');
+    expect(notebookLocalDay(new Date(2026, 10, 10, 23, 30))).toBe('2026-11-10');
+    expect(notebookLocalDay(new Date(2026, 6, 10, 0, 30))).toBe('2026-07-10');
+    expect(notebookLocalDay(new Date(2026, 6, 10, 23, 30))).toBe('2026-07-10');
+    expect(notebookLocalDay(new Date(2026, 6, 11, 0, 30))).toBe('2026-07-11');
+    expect(notebookLocalDay('2026-11-10')).toBe('2026-11-10');
+    expect(notebookLocalDay('2026-02-29')).toBe('');
   });
 });
 
