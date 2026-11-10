@@ -77,6 +77,16 @@ describe('JournalSwitcher menu', () => {
     expect(letters).toEqual(expect.arrayContaining(['A', 'ר', 'ב', 'א']));
     expect(letters).not.toContain('O');
     expect(menu.textContent).not.toContain('BookOpen');
+    expect(button.getAttribute('data-testid')).toBe('journal-switcher');
+    expect(button.className).toContain('h-11');
+    expect(button.className).toContain('w-full');
+    expect(button.className).toContain('sm:h-8');
+    expect(button.className).toContain('sm:w-auto');
+    const name = [...button.querySelectorAll('span')].find((node) => node.textContent === 'Bybit');
+    expect(name.className).toContain('truncate');
+    expect(name.className).toContain('flex-1');
+    expect(name.className).toContain('sm:max-w-[360px]');
+    expect(button.querySelector('svg')).toBeTruthy();
     await act(async () => { root.unmount(); });
     el.remove();
   });

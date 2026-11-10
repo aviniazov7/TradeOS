@@ -208,6 +208,16 @@ describe('mobile chrome', () => {
     expect(phone).toBeTruthy();
     expect(title.compareDocumentPosition(switcher) & following).toBeTruthy();
     expect(switcher.compareDocumentPosition(desktop) & following).toBeTruthy();
+    const aside = document.querySelector('[data-testid="mobile-title-aside"]');
+    expect(aside.className).toContain('col-span-3');
+    expect(aside.className).toContain('row-start-2');
+    expect(aside.className).toContain('w-full');
+    expect(aside.className).toContain('sm:w-auto');
+    expect(aside.className).toContain('sm:row-auto');
+    const actionRow = document.querySelector('.hidden.md\\:block')?.parentElement;
+    expect(actionRow.className).toContain('col-start-3');
+    expect(actionRow.className).toContain('row-start-1');
+    expect(title.parentElement.className).toContain('row-start-1');
     expect(desktop.compareDocumentPosition(desktopTabs) & following).toBeTruthy();
     expect(desktopTabs.contains(desktop)).toBe(false);
     expect(phoneTabs.compareDocumentPosition(phone) & following).toBeTruthy();
