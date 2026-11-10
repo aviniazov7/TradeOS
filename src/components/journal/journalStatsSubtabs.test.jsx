@@ -175,6 +175,8 @@ describe('analytics tag table stays in place', () => {
     );
     expect(view.el.textContent).toContain('ביצועים לפי תגית');
     expect(view.el.textContent).toContain('לפי תגיות וטעויות');
+    expect(view.el.querySelector('[data-testid="guidance-feature-label"]')).toBeNull();
+    expect(view.el.textContent).not.toContain('ליווי מקצועי');
     const heading = [...view.el.querySelectorAll('h3')].find((el) => el.textContent.includes('ביצועים לפי תגית'));
     const row = heading.parentElement.querySelector('tbody tr');
     expect(row.textContent).toContain('פריצה');

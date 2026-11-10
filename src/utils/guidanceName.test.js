@@ -62,7 +62,6 @@ describe('guidance display name', () => {
     expect(chat).toContain('GUIDANCE_CHAT_WELCOME');
     for (const rel of [
       'src/components/journal/TradeJournal.jsx',
-      'src/components/journal/JournalAnalyticsTab.jsx',
       'src/components/journal/AICoachPanel.jsx',
       'src/components/journal/JournalSettingsModal.jsx',
     ]) {
