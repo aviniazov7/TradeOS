@@ -53,9 +53,9 @@ vi.mock('../../utils/avatarImage', () => ({ makeAvatarDataUrl: vi.fn() }));
 vi.mock('./NotificationSettings', () => ({ default: () => <div>התראות Push</div> }));
 vi.mock('./ApiKeysSection', () => ({ default: () => <section><h2>API</h2><div>מפתחות API</div></section> }));
 
-function shell(node) {
+function shell(node, entry = '/profile') {
   return (
-    <MemoryRouter>
+    <MemoryRouter initialEntries={[entry]}>
       <LazyMotion features={domAnimation} strict>
         {node}
       </LazyMotion>
@@ -63,17 +63,11 @@ function shell(node) {
   );
 }
 
-function clickNav(id) {
-  const button = document.querySelector(`[data-testid="settings-nav-desktop"] [data-testid="settings-item-side-${id}"]`);
-  if (!button) throw new Error(`missing settings item ${id}`);
-  button.click();
-}
-
-async function mount() {
+async function mount(entry) {
   const el = document.createElement('div');
   document.body.appendChild(el);
   const root = createRoot(el);
-  await act(async () => { root.render(shell(<ProfilePage />)); });
+  await act(async () => { root.render(shell(<ProfilePage />, entry)); });
   await act(async () => { await Promise.resolve(); });
   return {
     cleanup: async () => {
@@ -81,6 +75,10 @@ async function mount() {
       el.remove();
     },
   };
+}
+
+function sectionIds() {
+  return [...document.querySelectorAll('[data-settings-section]')].map((section) => section.getAttribute('data-settings-section'));
 }
 
 describe('organized profile settings', () => {
@@ -94,9 +92,22 @@ describe('organized profile settings', () => {
     });
   });
 
-  it('lists every existing setting, then shows one category without dropping its actions', async () => {
+  it('lists every setting in one column, with no category sidebar', async () => {
     const view = await mount();
     const text = () => document.body.textContent;
+    const column = document.querySelector('[data-testid="settings-column"]');
+    expect(column.className).toContain('max-w-3xl');
+    expect(column.className).not.toContain('grid-cols');
+    expect(document.querySelector('[data-testid="settings-nav-desktop"]')).toBeNull();
+    expect(document.querySelector('[data-testid="settings-nav-mobile"]')).toBeNull();
+    expect(document.querySelector('[data-testid="settings-search"]')).toBeNull();
+    expect(document.querySelector('[aria-label="קטגוריות הגדרות"]')).toBeNull();
+    expect(sectionIds()).toEqual([
+      'trading', 'fields', 'plan', 'reports', 'notifications', 'api', 'general', 'account',
+    ]);
+    const titles = [...document.querySelectorAll('[data-settings-section] > h2')].map((heading) => heading.textContent.trim());
+    expect(titles).toEqual(['מסחר', 'שדות', 'מנוי', 'דוחות', 'התראות', 'API', 'כללי', 'חשבון']);
+
     expect(text()).toContain('סוג מסחר');
     expect(text()).toContain('פתח את כל הכוח של TradeOS');
     expect(text()).toContain('דוח מס שנתי');
@@ -113,50 +124,64 @@ describe('organized profile settings', () => {
     expect(text()).toContain('מחיקת חשבון');
     expect(text()).toContain('הצהרת נגישות');
     expect(text()).not.toContain('לוח מובילים');
-
-    await act(async () => { clickNav('account'); });
-    expect(text()).toContain('שינוי סיסמה');
     expect(text()).toContain('דמו');
-    expect(text()).not.toContain('סוג מסחר');
-    expect(text()).not.toContain('דוח מס שנתי');
-    expect(text()).not.toContain('הפעלת הסיור');
 
     const password = [...document.querySelectorAll('button')].find((button) => button.textContent.includes('שינוי סיסמה'));
     await act(async () => { password.click(); });
     expect(document.querySelector('input[placeholder="סיסמה נוכחית"]')).toBeTruthy();
+    expect(text()).toContain('סוג מסחר');
 
-    await act(async () => { clickNav('trading'); });
     const stocks = [...document.querySelectorAll('button')].find((button) => button.textContent.includes('מניות'));
     await act(async () => { stocks.click(); });
     expect(patchUserSettings).toHaveBeenCalledWith('synthetic-user', { assetClasses: ['stocks'] });
+    expect(text()).toContain('שינוי סיסמה');
     await view.cleanup();
   });
 
-  it('filters by the search box and can return to the full page', async () => {
-    const view = await mount();
-    const search = document.querySelector('[data-testid="settings-search"]');
-    await act(async () => {
-      const set = Object.getOwnPropertyDescriptor(window.HTMLInputElement.prototype, 'value').set;
-      set.call(search, 'סיסמה');
-      search.dispatchEvent(new Event('input', { bubbles: true }));
-      search.dispatchEvent(new Event('change', { bubbles: true }));
-    });
-    expect(document.body.textContent).toContain('שינוי סיסמה');
-    expect(document.body.textContent).not.toContain('סוג מסחר');
-    expect(document.body.textContent).not.toContain('מפתחות API');
+  it('scrolls to the section in ?section= and keeps the rest of the page', async () => {
+    const scroller = document.createElement('div');
+    scroller.id = 'app-scroll';
+    scroller.scrollTo = vi.fn();
+    document.body.appendChild(scroller);
+    const original = Element.prototype.getBoundingClientRect;
+    Element.prototype.getBoundingClientRect = function rect() {
+      const top = this.id === 'app-scroll' ? 100 : this.id === 'settings-account' ? 640 : 0;
+      return { top, bottom: top, left: 0, right: 0, width: 0, height: 0, x: 0, y: top, toJSON() { return {}; } };
+    };
+    try {
+      const view = await mount('/profile?section=account');
+      expect(sectionIds()).toContain('trading');
+      expect(document.body.textContent).toContain('סוג מסחר');
+      expect(document.body.textContent).toContain('שינוי סיסמה');
+      expect(scroller.scrollTo).toHaveBeenCalledWith({ top: 640 - 100 - 16, behavior: 'smooth' });
+      expect(document.activeElement?.id).toBe('settings-account');
+      await view.cleanup();
+    } finally {
+      Element.prototype.getBoundingClientRect = original;
+      scroller.remove();
+    }
+  });
 
-    await act(async () => {
-      const set = Object.getOwnPropertyDescriptor(window.HTMLInputElement.prototype, 'value').set;
-      set.call(search, 'אין דבר כזה');
-      search.dispatchEvent(new Event('input', { bubbles: true }));
-    });
-    expect(document.querySelector('[data-testid="settings-empty"]')).toBeTruthy();
-    expect(document.body.textContent).toContain('דמו');
+  it('scrolls to a hash anchor and ignores an unknown section', async () => {
+    const scroller = document.createElement('div');
+    scroller.id = 'app-scroll';
+    scroller.scrollTo = vi.fn();
+    document.body.appendChild(scroller);
+    const hashView = await mount('/profile#settings-reports');
+    expect(scroller.scrollTo).toHaveBeenCalled();
+    expect(document.activeElement?.id).toBe('settings-reports');
+    await hashView.cleanup();
+    scroller.scrollTo.mockClear();
 
-    const back = [...document.querySelectorAll('button')].find((button) => button.textContent.includes('הצגת כל ההגדרות'));
-    await act(async () => { back.click(); });
+    const unknown = await mount('/profile?section=nope');
+    expect(scroller.scrollTo).not.toHaveBeenCalled();
     expect(document.body.textContent).toContain('סוג מסחר');
     expect(document.body.textContent).toContain('מפתחות API');
-    await view.cleanup();
+    await unknown.cleanup();
+
+    const both = await mount('/profile?section=account#settings-reports');
+    expect(document.activeElement?.id).toBe('settings-account');
+    await both.cleanup();
+    scroller.remove();
   });
 });
