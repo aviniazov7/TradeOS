@@ -19,6 +19,7 @@ import JournalRCard from './JournalRCard';
 import { formatCurrency, formatPercent, formatDuration } from '../../utils/formatters';
 import { profitFactorText } from '../../utils/homeStats';
 import { TAG_LABELS } from '../../utils/constants';
+import { GUIDANCE_FEATURE_NAME } from '../../utils/guidanceName';
 import { staggerContainer } from '../../utils/animations';
 
 // recharts is ~414 kB — the chart cards load on demand inside this (already
@@ -62,6 +63,9 @@ export default function JournalAnalyticsTab({
 
   return (
     <>
+      <p data-testid="guidance-feature-label" className="mb-3 text-sm font-bold text-text-primary">
+        {GUIDANCE_FEATURE_NAME}
+      </p>
       {/* Empty gate: `analytics` is null when the PERIOD-FILTERED set has no
           closed trades. Two very different situations share that condition:
           a brand-new account (show onboarding copy + first-trade CTA) and a

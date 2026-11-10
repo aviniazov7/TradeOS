@@ -23,6 +23,7 @@ import PropFirmPanel from '../propfirm/PropFirmPanel';
 import { useStockQuotes } from '../../hooks/useStockQuotes';
 import { stockSymbol } from '../../utils/stocks';
 import { headerPrimaryBtn, headerAiBtnDense, headerIconBtnDense, headerPlusBtnDense } from '../shared/headerStyles';
+import { GUIDANCE_FEATURE_NAME } from '../../utils/guidanceName';
 import { useAuth } from '../../contexts/AuthContext';
 import JournalSummaryBar from './JournalSummaryBar';
 import DailyLossBanner from './DailyLossBanner';
@@ -695,9 +696,9 @@ export default function TradeJournal() {
         tabsLead={tab === 'analytics' ? <TimePeriodFilter value={period} onChange={setPeriod} /> : null}
         actions={(
           <div className="flex items-center gap-1.5 md:gap-2">
-            <button onClick={() => { if (showingDemo) toast('הניתוח הוא על נתוני הדמו, לא על החשבון שלך'); setAiModalOpen(true); }} className={headerAiBtnDense} title="ניתוח AI של המסחר שלך" aria-label="ניתוח AI">
+            <button onClick={() => { if (showingDemo) toast('הניתוח הוא על נתוני הדמו, לא על החשבון שלך'); setAiModalOpen(true); }} className={`${headerAiBtnDense} !w-auto px-2.5 md:px-3.5`} title={GUIDANCE_FEATURE_NAME} aria-label={GUIDANCE_FEATURE_NAME} data-testid="guidance-feature-button">
               <Sparkles className="w-4 h-4 md:w-[18px] md:h-[18px]" />
-              <span className="hidden md:inline">ניתוח AI</span>
+              <span>{GUIDANCE_FEATURE_NAME}</span>
             </button>
             <button onClick={() => setSettingsOpen(true)} className={headerIconBtnDense} title="הגדרות יומן" aria-label="הגדרות יומן">
               <Settings className="w-4 h-4 md:w-[18px] md:h-[18px]" />
@@ -921,7 +922,7 @@ export default function TradeJournal() {
         title={(
           <span className="inline-flex items-center gap-2">
             <BrainCircuit className="w-4 h-4" style={{ stroke: 'url(#ai-grad)' }} />
-            <span className="text-gradient font-bold">ניתוח AI</span>
+            <span className="text-gradient font-bold">{GUIDANCE_FEATURE_NAME}</span>
           </span>
         )}
       >

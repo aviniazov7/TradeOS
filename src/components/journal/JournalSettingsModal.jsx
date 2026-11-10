@@ -17,6 +17,7 @@ import {
   journalRiskRulesSame,
 } from '../../utils/journalRiskRules';
 import JournalRiskRulesFields from './JournalRiskRulesFields';
+import { GUIDANCE_FEATURE_NAME } from '../../utils/guidanceName';
 
 const FORM_ID = 'journal-settings-form';
 
@@ -381,6 +382,8 @@ export default function JournalSettingsModal({ isOpen, onClose, onArchive, onImp
             <div className="rounded-2xl border border-border-primary bg-bg-tertiary p-4">
               <Section n={6} title="שיתוף יומן" testId="journal-settings-section-share">
                 <div className="space-y-2">
+                  <p data-testid="guidance-feature-label" className="text-sm font-bold text-text-primary">{GUIDANCE_FEATURE_NAME}</p>
+                  <p className="text-[11px] text-text-muted">הניתוח האישי של היומן. הכפתור עם השם הזה נמצא בראש העמוד, גם במסך האנליטיקה.</p>
                   <p className="text-[11px] text-text-muted">שתפו את היומן הפעיל לטווח זמן. הצופה רואה רק את השדות שתבחרו, בלי אפשרות לערוך.</p>
                   <button
                     type="button"

@@ -116,10 +116,26 @@ describe('ניהול עסק', () => {
     expect(net('ILS').getAttribute('data-net')).toBe('-49');
     expect(net('USDT').getAttribute('data-net')).toBe('25');
     expect(document.querySelector('[data-testid="business-net-total"]')).toBeNull();
-    expect(document.querySelector('[data-testid="business-premium-lock"]')).toBeTruthy();
-    expect(document.querySelector('[data-testid="business-report"]')).toBeNull();
-    expect(document.querySelector('[data-testid="business-chart"]')).toBeNull();
+    expect(document.querySelector('[data-testid="business-premium-lock"]')).toBeNull();
+    expect(document.querySelector('[data-testid="business-report"]')).toBeTruthy();
+    expect(document.querySelector('[data-testid="business-chart"]')).toBeTruthy();
     expect(text()).toContain('מתוך 15');
+    await view.cleanup();
+  });
+
+  it('opens the demo summary and chart for a premium account when the global demo flag stays off', async () => {
+    const view = await mount(
+      <BusinessLedgerPage isPremium journals={JOURNALS} now={NOW} />,
+    );
+    expect(net('USD')).toBeNull();
+    expect(document.querySelector('[data-testid="business-chart"]')).toBeNull();
+    await act(async () => { buttonNamed('צפה בדוגמה').click(); });
+    await act(async () => { await Promise.resolve(); });
+    expect(document.querySelector('[data-testid="business-demo-flag"]').textContent).toContain('מצב דמו');
+    expect(document.querySelector('[data-testid="business-storage-note"]').textContent).toContain('השמירה לחשבון עדיין לא מופעלת');
+    expect(net('USD').getAttribute('data-net')).toBe('245');
+    expect(document.querySelector('[data-testid="business-chart"]')).toBeTruthy();
+    expect(document.querySelector('[data-testid="business-report"]').textContent).toContain('ניהול עסק');
     await view.cleanup();
   });
 

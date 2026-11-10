@@ -24,6 +24,7 @@ import { auditPlan } from '../../utils/planAudit';
 import { pickActivePlan } from '../../utils/pickActivePlan';
 import AnalystInsights from './AnalystInsights';
 import { formatCurrency, formatCurrencyShort } from '../../utils/formatters';
+import { GUIDANCE_FEATURE_NAME } from '../../utils/guidanceName';
 
 // Quick prompts the user can click to seed the report.
 const FREE_PROMPTS = [
@@ -652,7 +653,7 @@ export default function AICoachPanel({ trades }) {
           </span>
           <div className="min-w-0">
             <div className="flex items-center gap-2">
-              <h2 className="text-base font-bold text-text-primary">ניתוח AI אישי</h2>
+              <h2 className="text-base font-bold text-text-primary" data-testid="guidance-feature-label">{GUIDANCE_FEATURE_NAME}</h2>
               {isPremium && (
                 <span className="inline-flex items-center gap-1 text-[10px] px-1.5 py-0.5 rounded-full bg-accent-primary/15 text-accent-hover font-bold">
                   <Crown className="w-2.5 h-2.5" /> Premium

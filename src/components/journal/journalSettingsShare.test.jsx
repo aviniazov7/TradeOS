@@ -37,6 +37,7 @@ describe('journal settings share section', () => {
       root.render(<JournalSettingsModal isOpen onClose={() => {}} onShare={onShare} />);
     });
     expect(document.body.textContent).toContain('שיתוף יומן');
+    expect(document.querySelector('[data-testid="guidance-feature-label"]').textContent).toBe('ליווי מקצועי');
     const button = document.querySelector('[data-testid="journal-share-open"]');
     expect(button?.textContent).toContain('שיתוף היומן');
     await act(async () => { button.click(); });

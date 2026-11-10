@@ -60,6 +60,15 @@ describe('guidance display name', () => {
     expect(worker).toContain('GUIDANCE_COACH_IDENTITY');
     expect(worker).toContain('GUIDANCE_COUPON_DESCRIPTION');
     expect(chat).toContain('GUIDANCE_CHAT_WELCOME');
+    for (const rel of [
+      'src/components/journal/TradeJournal.jsx',
+      'src/components/journal/JournalAnalyticsTab.jsx',
+      'src/components/journal/AICoachPanel.jsx',
+      'src/components/journal/JournalSettingsModal.jsx',
+    ]) {
+      const source = readFileSync(join(ROOT, rel), 'utf8');
+      expect(source).toContain('GUIDANCE_FEATURE_NAME');
+    }
   });
 
   it('writes the name into the static meta tags', () => {

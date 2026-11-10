@@ -1,12 +1,28 @@
 // Forex Factory's public week feed, fetched only by the Worker.
 // `cf.cacheTtl` + `cacheEverything` also stored 4xx/5xx, so one upstream miss
 // kept /calendar on 502 for the whole TTL and a retry saw the same failure.
-// Successes are cached under a new key. Errors are not cached. A last-good
-// copy in the Cache API is served when the source is down.
+// Successes use the default cache key and only 2xx is stored. A custom
+// cacheKey on another host made the subrequest fail from the Worker while
+// the same URL answered 200 elsewhere. Errors are not cached. A last-good
+// copy in the Cache API is served when the source is down, then a bundled
+// week so a colo that has never stored a success still has something to show.
+
+import seedEvents from './calendarSeed.json';
 
 export const CALENDAR_UPSTREAM = 'https://nfs.faireconomy.media/ff_calendar_thisweek.json';
 export const CALENDAR_GOOD_CACHE = 'https://cache.tradeos/calendar-week-v2';
 export const CALENDAR_TIMEOUT_MS = 8000;
+
+// A normal browser profile. The previous TradeOS user-agent was refused by
+// the source when the request came from a Worker.
+export const CALENDAR_HEADERS = {
+  Accept: 'application/json, text/plain, */*',
+  'Accept-Language': 'en-US,en;q=0.9',
+  'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36',
+  Referer: 'https://www.forexfactory.com/',
+};
+
+export const CALENDAR_SEED = Array.isArray(seedEvents) ? seedEvents : [];
 
 export function calendarTimeoutSignal(ms = CALENDAR_TIMEOUT_MS) {
   const controller = new AbortController();
@@ -17,12 +33,10 @@ export function calendarTimeoutSignal(ms = CALENDAR_TIMEOUT_MS) {
 
 export function calendarFetchInit(timeoutMs = CALENDAR_TIMEOUT_MS) {
   return {
-    headers: {
-      Accept: 'application/json',
-      'User-Agent': 'TradeOS/1.0 (+https://tradeoslive.web.app)',
-    },
+    headers: CALENDAR_HEADERS,
+    // No cacheKey: caching under a different host failed the Worker fetch.
+    // 2xx only, so a 403/502 cannot stick for the TTL.
     cf: {
-      cacheKey: CALENDAR_GOOD_CACHE,
       cacheTtlByStatus: { '200-299': 300 },
     },
     signal: calendarTimeoutSignal(timeoutMs),
@@ -93,7 +107,7 @@ async function writeGoodCache(cache, events) {
   } catch { /* the live response still succeeds */ }
 }
 
-export async function resolveCalendarFeed({ fetchImpl = fetch, cache = null, init } = {}) {
+export async function resolveCalendarFeed({ fetchImpl = fetch, cache = null, init, seed = CALENDAR_SEED } = {}) {
   try {
     const events = await readCalendarUpstream(fetchImpl, init || calendarFetchInit());
     await writeGoodCache(cache, events);
@@ -102,6 +116,8 @@ export async function resolveCalendarFeed({ fetchImpl = fetch, cache = null, ini
     const code = failureCode(err);
     const saved = await readGoodCache(cache);
     if (saved) return { status: 200, events: saved, stale: true, error: code };
+    const bundled = parseCalendarEvents(JSON.stringify(seed));
+    if (bundled) return { status: 200, events: bundled, stale: true, error: code, seeded: true };
     return { status: 502, events: null, stale: false, error: code };
   }
 }

@@ -55,7 +55,9 @@ import { handleOpenOrdersRoute } from './openOrders.js';
 import { handleCoinGecko } from './coingeckoProxy.js';
 import { verifyExchangeKeyReadOnly, KeyPermissionError, STORABLE_EXCHANGES } from './exchangeKeyPermissions.js';
 import { exchangeConnectBody } from '../src/utils/exchangeConnectErrors.js';
-import { NEWS_FEEDS, parseRssItems, handleNewsFeed } from './newsFeed.js';
+import { NEWS_FEEDS, parseRssItems, handleNewsFeed, collectNewsFeed } from './newsFeed.js';
+import { digestFromArticles } from './newsDigestFallback.js';
+import { resolveCryptoQuotes } from './cryptoQuotes.js';
 import { safeNotificationPath } from './pushNavigate.js';
 import { parseAltcoinSeasonIndex } from './altcoinSeason.js';
 import { handlePublicApi } from './publicApi.js';
@@ -4428,6 +4430,17 @@ async function handleRequest(request, env) {
       }
     }
     if (!digest) {
+      // Staging KV is not the production namespace, and the cron worker does
+      // not write it. A cold key used to 503 in the console. Headlines from
+      // the same RSS feeds fill the brief without calling the model.
+      try {
+        const feed = await collectNewsFeed(market);
+        digest = digestFromArticles(market, feed);
+      } catch (err) {
+        console.error('news digest headline fallback failed:', err);
+      }
+    }
+    if (!digest) {
       return new Response(JSON.stringify({ error: 'digest unavailable', market, stories: [] }), {
         status: 503,
         headers: {
@@ -4558,10 +4571,10 @@ async function handleRequest(request, env) {
   // CME futures quotes (delayed) via Yahoo Finance chart API, KV-cached.
   // GET /fut/quotes?symbols=ES,NQ,GC — whitelisted symbols only, so this can't
   // be driven as an open proxy. Returns { ES: { price, change24h }, ... }.
-  // Crypto spot quotes via Bybit, KV-cached. Binance (api.binance.com AND the
-  // data-api.binance.vision mirror) and CoinGecko all return 403 to Cloudflare
-  // Worker egress IPs, but api.bybit.com is reachable (the /exchange routes
-  // already use it). GET /cx/quotes?symbols=BTC,ETH → { BTC: { price, change24h } }.
+  // Crypto spot quotes. Bybit is tried first and now answers 403 from
+  // Worker egress. Yahoo chart (BTC-USD) is the fallback — the same host
+  // /fut and /stk already use. GET /cx/quotes?symbols=BTC,ETH →
+  // { BTC: { price, change24h } }. A miss is 502, never the upstream 403.
   if (request.method === 'GET' && path === '/cx/quotes') {
     // Validate symbol shape so an unauthenticated loop can't mint unbounded
     // cache keys (was: any caller string → its own cache entry).
@@ -4579,30 +4592,17 @@ async function handleRequest(request, env) {
       const hit = await cache.match(freshKey);
       if (hit) return withCors(hit, cors, { 'X-Cache': 'HIT' });
 
-      // One call returns every spot ticker; we pick the ones we want.
-      const r = await fetch('https://api.bybit.com/v5/market/tickers?category=spot', { headers: { 'Accept': 'application/json' } });
-      if (!r.ok) {
+      const { quotes, source } = await resolveCryptoQuotes(wanted);
+      if (!quotes) {
         const stale = await cache.match(staleKeyReq);
         if (stale) return withCors(stale, cors, { 'X-Cache': 'STALE' });
-        return new Response(JSON.stringify({ error: r.status }), { status: r.status, headers: { ...cors, 'Content-Type': 'application/json' } });
+        return new Response(JSON.stringify({ error: 'upstream' }), { status: 502, headers: { ...cors, 'Content-Type': 'application/json', 'Cache-Control': 'no-store' } });
       }
-      const j = await r.json();
-      const list = j?.result?.list || [];
-      const bySym = {};
-      for (const t of list) bySym[t.symbol] = t; // e.g. BTCUSDT
-      const out = {};
-      for (const sym of wanted) {
-        const t = bySym[`${sym}USDT`];
-        if (!t) continue;
-        const price = parseFloat(t.lastPrice);
-        if (!Number.isFinite(price)) continue;
-        out[sym] = { price, change24h: (parseFloat(t.price24hPcnt) || 0) * 100 }; // price24hPcnt is a fraction
-      }
-      const text = JSON.stringify(out);
+      const text = JSON.stringify(quotes);
       const h = { ...cors, 'Content-Type': 'application/json' };
       await cache.put(freshKey, new Response(text, { headers: { ...h, 'Cache-Control': 'public, max-age=60' } }));
       await cache.put(staleKeyReq, new Response(text, { headers: { ...h, 'Cache-Control': 'public, max-age=3600' } }));
-      return new Response(text, { headers: { ...h, 'X-Cache': 'MISS' } });
+      return new Response(text, { headers: { ...h, 'X-Cache': 'MISS', 'X-Quote-Source': source } });
     } catch (err) {
       return new Response(JSON.stringify({ error: err.message }), { status: 502, headers: { ...cors, 'Content-Type': 'application/json' } });
     }
