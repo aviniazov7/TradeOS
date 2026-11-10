@@ -103,10 +103,14 @@ describe('organized profile settings', () => {
     expect(document.querySelector('[data-testid="settings-search"]')).toBeNull();
     expect(document.querySelector('[aria-label="קטגוריות הגדרות"]')).toBeNull();
     expect(sectionIds()).toEqual([
-      'trading', 'fields', 'plan', 'reports', 'notifications', 'api', 'general', 'account',
+      'trading', 'plan', 'reports', 'notifications', 'api', 'general', 'account',
     ]);
     const titles = [...document.querySelectorAll('[data-settings-section] > h2')].map((heading) => heading.textContent.trim());
-    expect(titles).toEqual(['מסחר', 'שדות לעסקה', 'מנוי', 'דוחות', 'התראות', 'API', 'כללי', 'חשבון']);
+    expect(titles).toEqual(['מסחר', 'מנוי', 'דוחות', 'התראות', 'API', 'כללי', 'חשבון']);
+    expect(text()).toContain('שדות משלך לעסקה מוסיפים בטופס העסקה');
+    expect(text()).not.toContain('שדות נוספים לעסקה');
+    expect(document.querySelector('[data-testid="custom-fields-settings"]')).toBeNull();
+    expect(document.querySelector('[data-testid="custom-field-form"]')).toBeNull();
 
     expect(text()).toContain('סוג מסחר');
     expect(text()).toContain('פתח את כל הכוח של TradeOS');

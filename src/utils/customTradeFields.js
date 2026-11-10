@@ -33,7 +33,7 @@ function cleanName(value) {
 function cleanOptions(raw) {
   const source = Array.isArray(raw)
     ? raw
-    : String(raw || '').split(/[\n,]/);
+    : String(raw || '').split(/[\n,]| \/ /);
   const out = [];
   const seen = new Set();
   for (const item of source) {
@@ -142,6 +142,32 @@ export function removeCustomField(doc, id) {
     fields: current.fields.filter((field) => field.id !== id),
     seq: current.seq,
   };
+}
+
+/**
+ * Change one field's name, type, or options. The id stays, so answers already
+ * stored on trades keep pointing at the same field. New ids are not minted.
+ */
+export function updateCustomField(doc, id, draft, { isPremium = false } = {}) {
+  const current = normalizeCustomFieldsDoc(doc);
+  if (!isPremium) return { ok: false, error: 'הגדרת שדה חדש זמינה ב-Premium' };
+  const index = current.fields.findIndex((field) => field.id === id);
+  if (index < 0) return { ok: false, error: 'השדה לא נמצא' };
+  const name = cleanName(draft?.name);
+  if (!name) return { ok: false, error: 'צריך שם עד 40 תווים' };
+  if (current.fields.some((field) => field.name === name && field.id !== id)) {
+    return { ok: false, error: 'כבר יש שדה בשם הזה' };
+  }
+  if (!FIELD_TYPES.includes(draft?.type)) return { ok: false, error: 'סוג לא מוכר' };
+  const field = { id, name, type: draft.type };
+  if (draft.type === 'select') {
+    const options = cleanOptions(draft.options);
+    if (!options.length) return { ok: false, error: 'לבחירה צריך לפחות אפשרות אחת' };
+    field.options = options;
+  }
+  const fields = current.fields.slice();
+  fields[index] = field;
+  return { ok: true, fields, seq: current.seq };
 }
 
 function parseCustomNumber(value) {

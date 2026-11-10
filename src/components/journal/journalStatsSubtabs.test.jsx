@@ -81,6 +81,10 @@ describe('tag and mistake sub-tabs', () => {
     await click(mistakes);
     expect(view.el.textContent).toContain('אין טעויות על העסקאות הסגורות בתקופה הזו.');
     expect(view.el.textContent).not.toContain('Premium');
+    const customTab = [...view.el.querySelectorAll('[role="tab"]')].find((tab) => tab.textContent.includes('שדות'));
+    await click(customTab);
+    expect(view.el.textContent).toContain('מוסיפים אותם בטופס העסקה');
+    expect(view.el.textContent).not.toContain('בהגדרות');
     await view.cleanup();
   });
 

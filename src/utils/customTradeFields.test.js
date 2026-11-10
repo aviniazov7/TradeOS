@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest';
 import { computeTagStats } from './tagMistakeStats';
 import {
   addCustomField,
+  updateCustomField,
   computeCustomFieldStats,
   customFormState,
   customFromCsvRow,
@@ -72,6 +73,31 @@ describe('custom field definitions', () => {
       { isPremium: true },
     );
     expect(saved.fields[0].options).toEqual(['A', 'B']);
+    const slashed = addCustomField(
+      { fields: [], seq: 0 },
+      { name: 'סטאפ', type: 'select', options: 'Breakout / Pullback' },
+      { isPremium: true },
+    );
+    expect(slashed.fields[0].options).toEqual(['Breakout', 'Pullback']);
+  });
+
+  it('edits a field in place and keeps its id', () => {
+    const first = addCustomField({ fields: [], seq: 0 }, { name: 'סשן', type: 'text' }, { isPremium: true });
+    const edited = updateCustomField(first, 'f1', { name: ' סטאפ ', type: 'select', options: 'Breakout, Pullback, Breakout' }, { isPremium: true });
+    expect(edited.ok).toBe(true);
+    expect(edited.seq).toBe(1);
+    expect(edited.fields).toEqual([{ id: 'f1', name: 'סטאפ', type: 'select', options: ['Breakout', 'Pullback'] }]);
+
+    const blocked = updateCustomField(edited, 'f1', { name: 'אחר', type: 'text' }, { isPremium: false });
+    expect(blocked.ok).toBe(false);
+
+    const second = addCustomField(edited, { name: 'ציון', type: 'number' }, { isPremium: true });
+    const clash = updateCustomField(second, 'f2', { name: 'סטאפ', type: 'text' }, { isPremium: true });
+    expect(clash.error).toBe('כבר יש שדה בשם הזה');
+    expect(updateCustomField(second, 'f9', { name: 'אחר', type: 'text' }, { isPremium: true }).ok).toBe(false);
+    const cleared = updateCustomField(second, 'f1', { name: 'סטאפ', type: 'text' }, { isPremium: true });
+    expect(cleared.fields[0]).toEqual({ id: 'f1', name: 'סטאפ', type: 'text' });
+    expect(cleared.seq).toBe(2);
   });
 });
 

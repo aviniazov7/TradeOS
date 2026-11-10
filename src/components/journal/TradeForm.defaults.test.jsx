@@ -116,4 +116,34 @@ describe('new trade defaults', () => {
     expect(buttonNamed('Spring')).toBeFalsy();
     expect(buttonNamed('BOS')).toBeTruthy();
   });
+
+  it('keeps your own fields on the ticket and opens the editor from the header', () => {
+    const el = document.createElement('div');
+    document.body.appendChild(el);
+    const root = createRoot(el);
+    const field = { id: 'f1', name: 'סשן', type: 'text' };
+    act(() => {
+      root.render(
+        <TradeForm
+          isOpen
+          onClose={() => {}}
+          onSave={() => {}}
+          isPremium
+          customFieldsReady
+          customFields={[field]}
+          customFieldsDoc={{ fields: [field], seq: 1 }}
+          onSaveCustomFields={() => {}}
+        />,
+      );
+    });
+    view = { unmount() { root.unmount(); el.remove(); } };
+    expect(buttonNamed('+ שדה משלך')).toBeTruthy();
+    expect(document.getElementById('custom-f1')).toBeNull();
+    expect(document.body.textContent).not.toContain('למשל: סטאפ — Breakout / Pullback');
+    click(buttonNamed('+ שדה משלך'));
+    expect(document.body.textContent).toContain('למשל: סטאפ — Breakout / Pullback');
+    expect(document.getElementById('custom-f1')).toBeTruthy();
+    expect(document.querySelector('[aria-label="עריכת סשן"]')).toBeTruthy();
+    expect(document.querySelector('[role="alert"]')).toBeNull();
+  });
 });

@@ -1,6 +1,6 @@
 import { useState, useMemo, useEffect, useRef, useCallback, Suspense } from 'react';
 import { lazyWithChunkReload as lazy } from '../../utils/chunkReload';
-import { useSearchParams } from 'react-router-dom';
+import { useNavigate, useSearchParams } from 'react-router-dom';
 import { m } from 'framer-motion';
 import { Plus, BookOpen, Settings, Undo2, BrainCircuit, ListChecks, Trash2, AlertTriangle, Sparkles, Briefcase, Loader2, Link2, FlaskConical } from 'lucide-react';
 import toast from 'react-hot-toast';
@@ -114,13 +114,17 @@ function TabFallback() {
 }
 
 export default function TradeJournal() {
-  const { user } = useAuth();
+  const navigate = useNavigate();
+  const { user, isPremium } = useAuth();
+  const openPremium = useCallback(() => navigate('/premium'), [navigate]);
   const { activeJournal, activeJournalId, journals, addJournal } = useJournalContext();
   const demoMode = useDemoMode();
   const {
     trades: realTrades, loading, addTrade, addTradesBulk, updateTrade, deleteTrade,
   } = useTrades(activeJournalId);
-  const { fields: customFields, ready: customFieldsReady } = useCustomTradeFields();
+  const {
+    fields: customFields, doc: customFieldsDoc, ready: customFieldsReady, saveDoc: saveCustomFields,
+  } = useCustomTradeFields();
   const demoOverlay = useMemo(() => overlayDemo({
     active: demoMode.active && !loading,
     trades: realTrades,
@@ -952,6 +956,10 @@ export default function TradeJournal() {
             journalAssetClass={activeJournal?.assetClass || 'crypto'}
             customFields={customFields}
             customFieldsReady={customFieldsReady}
+            customFieldsDoc={customFieldsDoc}
+            onSaveCustomFields={saveCustomFields}
+            isPremium={isPremium}
+            onUpgradeCustomFields={openPremium}
             livePrices={prices} />
         )}
       </Suspense>
