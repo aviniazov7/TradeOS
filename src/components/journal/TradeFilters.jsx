@@ -2,6 +2,7 @@ import { useState, useMemo } from 'react';
 import { Search, X, SlidersHorizontal } from 'lucide-react';
 import { useUserStrategies } from '../../hooks/useUserStrategies';
 import { TAG_LABELS } from '../../utils/constants';
+import { mistakeLabel } from '../../utils/tagMistakeStats';
 import { setupLabel, tradeSetups } from '../../utils/setupStats';
 import SelectDropdown from '../shared/SelectDropdown';
 import DateField from '../shared/DateField';
@@ -15,7 +16,10 @@ const btnClass = (active) =>
 
 const HEBREW_MONTHS = ['ינואר', 'פברואר', 'מרץ', 'אפריל', 'מאי', 'יוני', 'יולי', 'אוגוסט', 'ספטמבר', 'אוקטובר', 'נובמבר', 'דצמבר'];
 
-const EMPTY_FILTERS = { search: '', direction: '', result: '', status: '', strategy: '', setup: '', tag: '', timeframe: '', month: '', from: '', to: '' };
+const EMPTY_FILTERS = {
+  search: '', direction: '', result: '', status: '', strategy: '', setup: '', tag: '', mistake: '',
+  timeframe: '', month: '', from: '', to: '', customField: '', customValue: '', customLabel: '',
+};
 
 // From–to on the trade's entry date. Values stay YYYY-MM-DD (or '') so the
 // journal still compares them as strings. The fields use the same padding,
@@ -37,7 +41,8 @@ export default function TradeFilters({ filters, onChange, trades = [] }) {
   const toggle = (key, value) => set(key, filters[key] === value ? '' : value);
   const hasFilters = Object.values(filters).some(Boolean);
   // Search shows in its own box; a date range counts once.
-  const activeCount = [filters.direction, filters.result, filters.status, filters.strategy, filters.setup, filters.tag, filters.timeframe, filters.month, filters.from || filters.to].filter(Boolean).length;
+  const activeCount = [filters.direction, filters.result, filters.status, filters.strategy, filters.setup, filters.tag, filters.mistake, filters.customField, filters.timeframe, filters.month, filters.from || filters.to].filter(Boolean).length;
+  const clearCustom = () => onChange({ ...filters, customField: '', customValue: '', customLabel: '' });
 
   const allSetups = useMemo(() => {
     const names = new Set();
@@ -197,6 +202,16 @@ export default function TradeFilters({ filters, onChange, trades = [] }) {
                 </div>
               )}
             </div>
+            {filters.mistake && (
+              <button type="button" onClick={() => set('mistake', '')} className={`${btnClass(true)} inline-flex items-center gap-1`}>
+                {mistakeLabel(filters.mistake)} <X className="w-3 h-3" />
+              </button>
+            )}
+            {filters.customField && (
+              <button type="button" onClick={clearCustom} className={`${btnClass(true)} inline-flex items-center gap-1`}>
+                {filters.customLabel || filters.customValue} <X className="w-3 h-3" />
+              </button>
+            )}
           </div>
         )}
       </div>
@@ -268,8 +283,20 @@ export default function TradeFilters({ filters, onChange, trades = [] }) {
         )}
 
         {filters.timeframe && (
-          <button onClick={() => set('timeframe', '')} className={`${btnClass(true)} flex items-center gap-1`}>
+          <button type="button" onClick={() => set('timeframe', '')} className={`${btnClass(true)} flex items-center gap-1`}>
             {filters.timeframe} <X className="w-3 h-3" />
+          </button>
+        )}
+
+        {filters.mistake && (
+          <button type="button" onClick={() => set('mistake', '')} className={`${btnClass(true)} flex items-center gap-1`}>
+            {mistakeLabel(filters.mistake)} <X className="w-3 h-3" />
+          </button>
+        )}
+
+        {filters.customField && (
+          <button type="button" onClick={clearCustom} className={`${btnClass(true)} flex items-center gap-1`}>
+            {filters.customLabel || filters.customValue} <X className="w-3 h-3" />
           </button>
         )}
 

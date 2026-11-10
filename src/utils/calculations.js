@@ -133,11 +133,27 @@ export function isClosedTrade(t) {
  * landed on yesterday's key while "today" logic elsewhere uses local
  * midnight — every screen that groups by day must go through this helper.
  */
+const LOCAL_DAY_ONLY = /^(\d{4})-(\d{2})-(\d{2})$/;
+
 export function localDayKey(date = new Date()) {
+  // A civil day is not an instant. `new Date('YYYY-MM-DD')` is UTC midnight,
+  // so west of UTC the local getters return the previous day.
+  if (typeof date === 'string') {
+    const trimmed = date.trim();
+    const match = LOCAL_DAY_ONLY.exec(trimmed);
+    if (match) {
+      const year = Number(match[1]);
+      const month = Number(match[2]);
+      const day = Number(match[3]);
+      const probe = new Date(year, month - 1, day);
+      if (probe.getFullYear() !== year || probe.getMonth() !== month - 1 || probe.getDate() !== day) return '';
+      return `${match[1]}-${match[2]}-${match[3]}`;
+    }
+  }
   let d = date;
   if (typeof d?.toDate === 'function') d = d.toDate(); // Firestore Timestamp
   else if (!(d instanceof Date)) d = new Date(d);
-  if (Number.isNaN(d.getTime())) return '';
+  if (!(d instanceof Date) || Number.isNaN(d.getTime())) return '';
   return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
 }
 

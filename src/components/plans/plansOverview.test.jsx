@@ -186,7 +186,9 @@ describe('trading plans overview', () => {
     expect(document.querySelector('[data-testid="plans-workspace"]')).toBeNull();
 
     await act(async () => { buttonNamed('עריכת דמו — דיי טריידינג', day).click(); });
-    expect(text()).toContain('עריכת תוכנית');
+    const editTitle = document.querySelector('[role="dialog"] h2').textContent.replace(/\s+/g, ' ');
+    expect(editTitle).toContain('עריכת תוכנית');
+    expect(editTitle).not.toContain('תוכנית חדשה');
     const nameInput = [...document.querySelectorAll('input')].find((input) => input.value === 'דמו — דיי טריידינג');
     expect(nameInput).toBeTruthy();
     expect(text()).not.toContain('בחר טמפלייט מוכן');
@@ -208,7 +210,9 @@ describe('trading plans overview', () => {
     expect(document.querySelector('[data-testid="plans-summary"]')).toBeNull();
 
     await act(async () => { buttonNamed('צור את התוכנית הראשונה').click(); });
-    expect(text()).toContain('תוכנית מסחר חדשה');
+    const createTitle = document.querySelector('[role="dialog"] h2').textContent.replace(/\s+/g, ' ');
+    expect(createTitle).toContain('תוכנית חדשה');
+    expect(createTitle).not.toContain('עריכת תוכנית');
     expect(text()).toContain('בחר טמפלייט מוכן');
     await act(async () => { buttonNamed('סגור').click(); });
 

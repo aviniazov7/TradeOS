@@ -92,7 +92,7 @@ export default function HomeNextStep({ stage = 'fresh', showDemo = false, onDemo
             </p>
           )}
           <h2 className="text-[1.65rem] md:text-[2rem] font-extrabold text-text-primary leading-tight mt-2">
-            {fresh ? 'חבר בורסה — והבית מתמלא לבד' : 'הצעד הבא: העסקה הראשונה'}
+            {fresh ? 'כל המסחר שלך במקום אחד, מתחילים בחיבור בורסה' : 'הצעד הבא: העסקה הראשונה'}
           </h2>
           <p className="text-sm md:text-[15px] text-text-secondary leading-relaxed mt-2.5 max-w-xl">
             {fresh

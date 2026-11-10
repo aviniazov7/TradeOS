@@ -9,6 +9,7 @@ import { accountPeriodReturn } from '../../utils/accountReturn';
 import { filterTradesByPeriod, computeJournalAnalytics } from '../../utils/journalAnalytics';
 import { computeSetupStats } from '../../utils/setupStats';
 import SetupStatsTable from './SetupStatsTable';
+import TagMistakeStatsPanel from './TagMistakeStatsPanel';
 import StatCard from '../dashboard/StatCard';
 import StrategyPerformanceTable from '../dashboard/StrategyPerformanceTable';
 import MonthlyPerformanceTable from '../dashboard/MonthlyPerformanceTable';
@@ -18,6 +19,7 @@ import JournalRCard from './JournalRCard';
 import { formatCurrency, formatPercent, formatDuration } from '../../utils/formatters';
 import { profitFactorText } from '../../utils/homeStats';
 import { TAG_LABELS } from '../../utils/constants';
+import { GUIDANCE_FEATURE_NAME } from '../../utils/guidanceName';
 import { staggerContainer } from '../../utils/animations';
 
 // recharts is ~414 kB — the chart cards load on demand inside this (already
@@ -40,7 +42,7 @@ const pnlColor = (v) => v >= 0 ? 'text-profit' : 'text-loss';
 export default function JournalAnalyticsTab({
   trades, period, onPeriodChange, stats,
   activeJournal, balanceIsLive, displayedCurrentBalance,
-  onFilterJump, onAddFirstTrade,
+  onFilterJump, onAddFirstTrade, customFields = [],
 }) {
   const periodTrades = useMemo(() => filterTradesByPeriod(trades, period), [trades, period]);
   const analytics = useMemo(() => computeJournalAnalytics(periodTrades), [periodTrades]);
@@ -61,6 +63,9 @@ export default function JournalAnalyticsTab({
 
   return (
     <>
+      <p data-testid="guidance-feature-label" className="mb-3 text-sm font-bold text-text-primary">
+        {GUIDANCE_FEATURE_NAME}
+      </p>
       {/* Empty gate: `analytics` is null when the PERIOD-FILTERED set has no
           closed trades. Two very different situations share that condition:
           a brand-new account (show onboarding copy + first-trade CTA) and a
@@ -243,6 +248,8 @@ export default function JournalAnalyticsTab({
               </div>
             )}
           </div>
+
+          <TagMistakeStatsPanel trades={periodTrades} onFilterJump={onFilterJump} customFields={customFields} />
 
           <SetupStatsTable stats={setupStats} onSetupClick={(name) => onFilterJump({ setup: name })} />
 

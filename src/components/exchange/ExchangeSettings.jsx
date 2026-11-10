@@ -8,6 +8,7 @@ import toast from 'react-hot-toast';
 import { useNavigate } from 'react-router-dom';
 import { getUserSetting, setUserSetting } from '../../services/firestoreService';
 import { syncExchangeTrades, syncOpenPositions, fetchExchangeBalance, storeExchangeCredentials, deleteExchangeCredentials, getConnectedExchanges, KEY_PROBLEM_TEXT, isHyperliquidAddress, setHyperliquidAddressCache } from '../../services/exchangeService';
+import { exchangeConnectMessage } from '../../utils/exchangeConnectErrors';
 import { useAuth } from '../../contexts/AuthContext';
 import { useJournalContext } from '../../contexts/JournalContext';
 import { useExchangeImport } from '../../hooks/useExchangeImport';
@@ -533,7 +534,7 @@ export default function ExchangeSettings({ journalId: propJournalId, embedded = 
   const atFreeLimit = !isPremium && connectedCount >= FREE_LIMITS.exchanges;
 
   const goPremium = () => {
-    toast.error(`במסלול החינמי אפשר לחבר בורסה אחת. שדרג ל-Premium לחיבורים ללא הגבלה.`);
+    toast.error(exchangeConnectMessage('free_limit'));
     navigate('/premium');
   };
 

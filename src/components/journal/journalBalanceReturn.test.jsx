@@ -53,10 +53,16 @@ describe('journal return on balance', () => {
       <JournalSummaryBar trades={[trade]} accountBalance={1000} />,
     );
     const bar = document.querySelector('[data-testid="journal-header-stats"]');
-    expect(bar.className).toContain('flex');
-    expect(bar.className).toContain('flex-nowrap');
+    expect(bar.className).toContain('grid');
+    expect(bar.className).toContain('w-full');
+    expect(bar.className).toContain('grid-cols-5');
+    expect(bar.className).toContain('sm:flex');
+    expect(bar.className).toContain('sm:w-max');
+    expect(bar.className).toContain('sm:flex-nowrap');
+    expect(bar.className).toContain('md:justify-center');
     expect(bar.className).not.toContain('flex-wrap');
     expect(bar.className).not.toContain('grid-cols-2');
+    expect(bar.className).not.toContain('grid-cols-4');
     expect(bar.textContent).toContain('על היתרה');
     expect(bar.textContent).toContain('+1.00%');
     expect(bar.textContent).not.toContain('+100.00%');
@@ -66,6 +72,10 @@ describe('journal return on balance', () => {
   it('omits the account return when the journal has no balance', async () => {
     const view = await mount(<JournalSummaryBar trades={[trade]} />);
     const bar = document.querySelector('[data-testid="journal-header-stats"]');
+    expect(bar.className).toContain('grid-cols-4');
+    expect(bar.className).not.toContain('grid-cols-5');
+    const labels = [...bar.children].map((node) => node.getAttribute('title'));
+    expect(labels).toEqual(['עסקאות', 'רווח נקי', 'אחוז הצלחה', 'R ממוצע']);
     expect(bar.textContent).not.toContain('על היתרה');
     await view.cleanup();
   });

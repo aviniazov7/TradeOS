@@ -23,7 +23,12 @@ import PropFirmPanel from '../propfirm/PropFirmPanel';
 import { useStockQuotes } from '../../hooks/useStockQuotes';
 import { stockSymbol } from '../../utils/stocks';
 import { headerPrimaryBtn, headerAiBtnDense, headerIconBtnDense, headerPlusBtnDense } from '../shared/headerStyles';
+import { GUIDANCE_FEATURE_NAME } from '../../utils/guidanceName';
+import { useAuth } from '../../contexts/AuthContext';
 import JournalSummaryBar from './JournalSummaryBar';
+import DailyLossBanner from './DailyLossBanner';
+import JournalRiskBanner from './JournalRiskBanner';
+import JournalRiskStatus from './JournalRiskStatus';
 import TradeTable from './TradeTable';
 import TradeFilters from './TradeFilters';
 import TimePeriodFilter from '../dashboard/TimePeriodFilter';
@@ -36,17 +41,30 @@ import ExchangeProposals from './ExchangeProposals';
 import JournalSkeleton from './JournalSkeleton';
 import JournalFormModal from './JournalFormModal';
 import { downloadCsv } from '../../utils/csv';
-import { JOURNAL_CSV_HEADERS, journalCsvRow } from '../../utils/tradeExport';
+import { journalCsvHeaders, journalCsvRow } from '../../utils/tradeExport';
 import { TAG_LABELS } from '../../utils/constants';
+import { tradeHasMistake } from '../../utils/tagMistakeStats';
+import { tradeMatchesCustom } from '../../utils/customTradeFields';
+import { useCustomTradeFields } from '../../hooks/useCustomTradeFields';
 import { setupLabel, tradeSetups } from '../../utils/setupStats';
 import { pageVariants, pageTransition } from '../../utils/animations';
 import { TRADE_PREFILL_KEY } from '../../utils/tradeFormHelpers';
+import { evaluateJournalRisk } from '../../utils/journalRiskRules';
+import {
+  journalRiskBreachNotice,
+  readRiskBreachDismissed,
+  riskBreachDismissToken,
+  writeRiskBreachDismissed,
+} from '../../utils/journalRiskNotice';
 import { CRYPTO_JOURNAL_TABS, OTHER_JOURNAL_TABS, resolveJournalTab } from '../../utils/journalTabs';
 
 const TAB_LABELS = { trades: 'עסקאות', exchange: 'בורסה', analytics: 'אנליטיקה', calendar: 'יומן חודשי' };
 // Phone row: short labels. Four tabs (crypto) or three (stocks/futures) sit on one row.
 const TAB_MOBILE = { trades: 'עסקאות', exchange: 'בורסה', analytics: 'אנליטיקה', calendar: 'יומן' };
-const defaultFilters = { search: '', direction: '', result: '', status: '', strategy: '', setup: '', tag: '', timeframe: '', month: '', from: '', to: '' };
+const defaultFilters = {
+  search: '', direction: '', result: '', status: '', strategy: '', setup: '', tag: '', mistake: '',
+  timeframe: '', month: '', from: '', to: '', customField: '', customValue: '', customLabel: '',
+};
 const defaultSort = { key: 'date', dir: 'desc' };
 // Phone sort picker (desktop sorts by clicking column headers).
 const SORT_OPTIONS = [
@@ -76,6 +94,7 @@ const TradeForm = lazy(loadTradeForm);
 const AICoachPanel = lazy(() => import('./AICoachPanel'));
 const ImportTrades = lazy(() => import('./ImportTrades'));
 const JournalSettingsModal = lazy(() => import('./JournalSettingsModal'));
+const JournalShareDialog = lazy(() => import('./JournalShareDialog'));
 const TradeShareModal = lazy(() => import('./TradeShareModal'));
 
 // Mount a lazy modal only once it is first opened (so its chunk isn't fetched
@@ -95,11 +114,15 @@ function TabFallback() {
 }
 
 export default function TradeJournal() {
+  const { user } = useAuth();
   const { activeJournal, activeJournalId, journals, addJournal } = useJournalContext();
   const demoMode = useDemoMode();
   const {
     trades: realTrades, loading, addTrade, addTradesBulk, updateTrade, deleteTrade,
   } = useTrades(activeJournalId);
+  const {
+    fields: customFields, doc: customFieldsDoc, ready: customFieldsReady, saveDoc: saveCustomFields,
+  } = useCustomTradeFields();
   const demoOverlay = useMemo(() => overlayDemo({
     active: demoMode.active && !loading,
     trades: realTrades,
@@ -132,6 +155,7 @@ export default function TradeJournal() {
   const [editingTrade, setEditingTrade] = useState(null);
   const [tradePrefill, setTradePrefill] = useState(null);
   const [pendingDeletes, setPendingDeletes] = useState(new Set());
+  const [riskHiddenToken, setRiskHiddenToken] = useState('');
   const [filters, setFilters] = useState(() => {
     try {
       const saved = localStorage.getItem('tj_filters');
@@ -172,6 +196,7 @@ export default function TradeJournal() {
   const [aiModalOpen, setAiModalOpen] = useState(false);
   const [importOpen, setImportOpen] = useState(false);
   const [settingsOpen, setSettingsOpen] = useState(false);
+  const [shareOpen, setShareOpen] = useState(false);
   // Zero-journals recovery — the switcher (and its create button) is hidden
   // when no journal exists, so the empty state must offer creation itself.
   const [createJournalOpen, setCreateJournalOpen] = useState(false);
@@ -203,6 +228,7 @@ export default function TradeJournal() {
   }, []);
   const importMounted = useOpenedOnce(importOpen);
   const settingsMounted = useOpenedOnce(settingsOpen);
+  const journalShareMounted = useOpenedOnce(shareOpen);
   const shareMounted = useOpenedOnce(!!shareTarget);
   // Render only a window of rows so the table stays fast with hundreds of trades.
   // Analytics/calendar still use the full `trades` array — this caps the DOM only.
@@ -416,7 +442,9 @@ export default function TradeJournal() {
       if (filters.strategy && t.strategy !== filters.strategy) return false;
       if (filters.setup && !tradeSetups(t).includes(filters.setup)) return false;
       if (filters.timeframe && (filters.timeframe === 'N/A' ? !!t.timeframe : t.timeframe !== filters.timeframe)) return false;
-      if (filters.tag && !(Array.isArray(t.tags) ? t.tags : []).includes(filters.tag)) return false;
+      if (filters.tag && !(Array.isArray(t.tags) ? t.tags : []).some((tag) => typeof tag === 'string' && tag.trim() === String(filters.tag).trim())) return false;
+      if (filters.mistake && !tradeHasMistake(t, filters.mistake)) return false;
+      if (filters.customField && !tradeMatchesCustom(t, filters.customField, filters.customValue)) return false;
       if (filters.month && monthKey(t) !== filters.month) return false;
       return true;
     }).sort((a, b) => getTime(b) - getTime(a));
@@ -492,6 +520,29 @@ export default function TradeJournal() {
     }
     return true;
   }, [showingDemo, editingTrade, trades, updateTrade, addTrade]);
+
+  const journalTrades = realTrades.filter((t) => !pendingDeletes.has(t.id));
+  const riskEval = !showingDemo && activeJournal?.riskRules
+    ? evaluateJournalRisk(journalTrades, activeJournal.riskRules, {
+      journalId: activeJournalId,
+      balance: activeJournal?.initialBalance,
+    })
+    : null;
+  const riskNotice = journalRiskBreachNotice(riskEval);
+  const riskDayKey = riskEval?.dayKey || '';
+  const riskToken = riskDayKey
+    ? riskBreachDismissToken(user?.uid, activeJournalId, riskDayKey)
+    : '';
+  const riskDismissed = Boolean(riskToken) && (
+    riskHiddenToken === riskToken
+    || readRiskBreachDismissed(localStorage, user?.uid, activeJournalId, riskDayKey)
+  );
+  const showRiskBreach = Boolean(riskNotice) && !riskDismissed;
+  const dismissRiskBanner = useCallback(() => {
+    if (!riskDayKey) return;
+    writeRiskBreachDismissed(localStorage, user?.uid, activeJournalId, riskDayKey);
+    setRiskHiddenToken(riskBreachDismissToken(user?.uid, activeJournalId, riskDayKey));
+  }, [riskDayKey, user?.uid, activeJournalId]);
 
   const handleEdit = (trade) => {
     if (showingDemo || isDemoTrade(trade)) { refuseDemoWrite(); return; }
@@ -591,7 +642,8 @@ export default function TradeJournal() {
     // units per asset class, exits, gross + net P&L, fees, signed R, original
     // stop. downloadCsv writes a UTF-8 BOM (Excel renders Hebrew), escapes
     // cells, neutralises formula injection and keeps negative numbers numeric.
-    downloadCsv(`trades_${localDayKey(new Date())}.csv`, JOURNAL_CSV_HEADERS, sortedTrades.map(journalCsvRow));
+    const headers = journalCsvHeaders(customFields);
+    downloadCsv(`trades_${localDayKey(new Date())}.csv`, headers, sortedTrades.map((trade) => journalCsvRow(trade, customFields)));
     toast.success('הקובץ הורד');
   };
 
@@ -646,9 +698,9 @@ export default function TradeJournal() {
         tabsLead={tab === 'analytics' ? <TimePeriodFilter value={period} onChange={setPeriod} /> : null}
         actions={(
           <div className="flex items-center gap-1.5 md:gap-2">
-            <button onClick={() => { if (showingDemo) toast('הניתוח הוא על נתוני הדמו, לא על החשבון שלך'); setAiModalOpen(true); }} className={headerAiBtnDense} title="ניתוח AI של המסחר שלך" aria-label="ניתוח AI">
+            <button onClick={() => { if (showingDemo) toast('הניתוח הוא על נתוני הדמו, לא על החשבון שלך'); setAiModalOpen(true); }} className={`${headerAiBtnDense} !w-auto px-2.5 md:px-3.5`} title={GUIDANCE_FEATURE_NAME} aria-label={GUIDANCE_FEATURE_NAME} data-testid="guidance-feature-button">
               <Sparkles className="w-4 h-4 md:w-[18px] md:h-[18px]" />
-              <span className="hidden md:inline">ניתוח AI</span>
+              <span>{GUIDANCE_FEATURE_NAME}</span>
             </button>
             <button onClick={() => setSettingsOpen(true)} className={headerIconBtnDense} title="הגדרות יומן" aria-label="הגדרות יומן">
               <Settings className="w-4 h-4 md:w-[18px] md:h-[18px]" />
@@ -664,6 +716,25 @@ export default function TradeJournal() {
           </div>
         )}
       />
+
+      {!showingDemo && (
+        <>
+          <JournalRiskStatus
+            rules={activeJournal?.riskRules}
+            trades={journalTrades}
+            journalId={activeJournalId}
+            balance={activeJournal?.initialBalance}
+          />
+          {showRiskBreach && (
+            <JournalRiskBanner notice={riskNotice} onDismiss={dismissRiskBanner} />
+          )}
+          <DailyLossBanner
+            alert={activeJournal?.dailyLossAlert}
+            trades={journalTrades}
+            journalId={activeJournalId}
+          />
+        </>
+      )}
 
       {tab === 'trades' && (
         <>
@@ -769,6 +840,7 @@ export default function TradeJournal() {
                 onEdit={handleEdit}
                 onDelete={handleDeleteWithUndo}
                 onShare={setShareTarget}
+                customFields={customFields}
                 isLimitPending={isLimitPending}
                 returnBook={returnBook}
               />
@@ -833,6 +905,7 @@ export default function TradeJournal() {
             balanceIsLive={balanceIsLive}
             displayedCurrentBalance={displayedCurrentBalance}
             onFilterJump={filterAndJump}
+            customFields={customFields}
             onAddFirstTrade={() => { setTab('trades'); setFormOpen(true); }}
           />
         </Suspense>
@@ -851,7 +924,7 @@ export default function TradeJournal() {
         title={(
           <span className="inline-flex items-center gap-2">
             <BrainCircuit className="w-4 h-4" style={{ stroke: 'url(#ai-grad)' }} />
-            <span className="text-gradient font-bold">ניתוח AI</span>
+            <span className="text-gradient font-bold">{GUIDANCE_FEATURE_NAME}</span>
           </span>
         )}
       >
@@ -873,28 +946,54 @@ export default function TradeJournal() {
         {formMounted && (
           <TradeForm isOpen={formOpen} onClose={handleCloseForm} trade={editingTrade} onSave={handleSave}
             prefill={tradePrefill}
+            breachWarning={showRiskBreach && !editingTrade ? riskNotice.summary : null}
+            onDismissBreach={dismissRiskBanner}
             riskSettings={{ riskType: activeJournal?.riskType, riskValue: activeJournal?.riskValue, currentBalance: formBalance, balanceKnown: formBalanceKnown }}
             accountBalance={editingTrade ? balanceForTrade(returnBook, editingTrade) : (accountReturnMode ? returnBook.current : 0)}
             strictAccount={accountReturnMode}
             journalAssetClass={activeJournal?.assetClass || 'crypto'}
+            customFields={customFields}
+            customFieldsReady={customFieldsReady}
+            customFieldsDoc={customFieldsDoc}
+            onSaveCustomFields={saveCustomFields}
             livePrices={prices} />
         )}
       </Suspense>
       <Suspense fallback={null}>
         {importMounted && (
           <ImportTrades isOpen={importOpen} onClose={() => setImportOpen(false)} onImport={addTrade} onImportBulk={addTradesBulk}
-            assetClass={activeJournal?.assetClass || 'crypto'} existingTrades={trades} />
+            assetClass={activeJournal?.assetClass || 'crypto'} existingTrades={trades} customFields={customFields} />
         )}
       </Suspense>
       <Suspense fallback={null}>
         {settingsMounted && (
           <JournalSettingsModal
             isOpen={settingsOpen}
+            demoActive={showingDemo}
             onClose={() => setSettingsOpen(false)}
             onArchive={(name) => { setArchiveTargetName(name); setArchiveAnimating(true); }}
             onImport={() => setImportOpen(true)}
             onExport={exportCSV}
             canExport={trades.length > 0}
+            onShare={() => {
+              if (showingDemo) {
+                toast('במצב דמו אי אפשר לשתף. כבו את הדמו כדי לשתף את היומן האמיתי.');
+                return;
+              }
+              setSettingsOpen(false);
+              setShareOpen(true);
+            }}
+          />
+        )}
+      </Suspense>
+      <Suspense fallback={null}>
+        {journalShareMounted && (
+          <JournalShareDialog
+            isOpen={shareOpen}
+            onClose={() => setShareOpen(false)}
+            journal={activeJournal}
+            trades={realTrades.filter((trade) => !pendingDeletes.has(trade.id))}
+            ownerEmail={user?.email || ''}
           />
         )}
       </Suspense>

@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { handlePublicApi } from './publicApi.js';
 import { handleMcp } from './mcp.js';
+import { encodeFields } from './firestoreValues.js';
 import { memoryFirestore } from './memoryFirestore.js';
 
 const PROJECT = 'p';
@@ -88,6 +89,8 @@ describe('MCP streamable HTTP', () => {
       expect(tool.description.length).toBeGreaterThan(40);
       expect(tool.inputSchema.type).toBe('object');
     }
+    expect(tools.result.tools.find((tool) => tool.name === 'add_trade').inputSchema.properties.custom.type).toBe('object');
+    expect(tools.result.tools.find((tool) => tool.name === 'update_trade').inputSchema.properties.custom.type).toBe('object');
   });
 
   it('echoes an older protocol version and rejects an unknown one', async () => {
@@ -126,6 +129,23 @@ describe('MCP streamable HTTP', () => {
     expect(second.result.structuredContent.trade.pair).toBe('BTCUSDT');
     expect([...db.docs.keys()].filter((key) => key.startsWith('users/user1/trades/'))).toHaveLength(1);
     expect(db.fetchFn.mock.calls.every((call) => String(call[0]).includes('firestore.googleapis.com'))).toBe(true);
+
+    db.put('users/user1/settings/customTradeFields', encodeFields({
+      seq: 1,
+      fields: [{ id: 'f1', name: 'סשן', type: 'text' }],
+    }));
+    const withCustom = await rpc(await mcp(db, {
+      method: 'tools/call',
+      params: { name: 'add_trade', arguments: { ...tradeArgs, custom: { f1: 'לונדון' } } },
+    }));
+    expect(withCustom.result.isError).toBe(false);
+    expect(withCustom.result.structuredContent.trade.custom).toEqual({ f1: 'לונדון' });
+    const badCustom = await rpc(await mcp(db, {
+      method: 'tools/call',
+      params: { name: 'add_trade', arguments: { ...tradeArgs, custom: { f9: 'x' } } },
+    }));
+    expect(badCustom.result.isError).toBe(true);
+    expect(badCustom.result.content[0].text).toMatch(/custom\.f9/);
 
     const invalid = await mcp(db, { method: 'tools/call', params: { name: 'add_trade', arguments: { journalId: 'j1' } } });
     expect(invalid.status).toBe(200);

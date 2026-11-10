@@ -39,6 +39,10 @@ import { calculatePnLPercent, calculateRR, calculateNetPnL, calculatePartialPnL,
 import { categoryForSymbol, cryptoQuantityPnl, formatQuoteAmount } from '../../utils/pairCatalog';
 import { getSessionFromDate } from '../../utils/sessions';
 import { formatCurrency, formatPercent } from '../../utils/formatters';
+import {
+  customFormState, customPayload, customSaveProblem, tradeHasCustom,
+} from '../../utils/customTradeFields';
+import { useCustomTradeFieldEditor } from './CustomTradeFieldsEditor';
 
 registerLocale('he', he);
 
@@ -78,6 +82,7 @@ const defaultForm = {
   notes: '',
   tags: [],
   setups: [],
+  custom: {},
   emotionBefore: '',
   emotionAfter: '',
   mistakes: [],
@@ -156,25 +161,32 @@ const fmtR = (r) => (r == null || !Number.isFinite(r) ? '—' : `${r < 0 ? '−'
 
 /** A numbered ticket section: caption on a hairline, optionally collapsible. */
 function Section({ n, title, aside, collapsible = false, open = true, onToggle, children }) {
-  const caption = (
+  const heading = (
     <>
       <span className="num-mono text-[10px] font-semibold text-accent-primary">{String(n).padStart(2, '0')}</span>
       <span className="text-xs font-semibold text-text-primary whitespace-nowrap">{title}</span>
-      <span className="flex-1 h-px bg-border-primary min-w-4" aria-hidden="true" />
-      {aside}
-      {collapsible && <ChevronDown className={`w-4 h-4 shrink-0 text-text-muted transition-transform ${open ? 'rotate-180' : ''}`} />}
     </>
   );
   return (
     <section className="pt-5 first:pt-0">
-      {collapsible ? (
-        <button type="button" onClick={onToggle} aria-expanded={open}
-          className="w-full flex items-center gap-2 cursor-pointer text-right rounded-lg outline-none focus-visible:ring-2 focus-visible:ring-accent-primary/40">
-          {caption}
-        </button>
-      ) : (
-        <div className="flex items-center gap-2">{caption}</div>
-      )}
+      <div className="flex flex-wrap items-center gap-x-2 gap-y-1">
+        {collapsible ? (
+          <button type="button" onClick={onToggle} aria-expanded={open}
+            className="flex items-center gap-2 cursor-pointer text-right rounded-lg outline-none focus-visible:ring-2 focus-visible:ring-accent-primary/40">
+            {heading}
+          </button>
+        ) : (
+          <div className="flex items-center gap-2">{heading}</div>
+        )}
+        <span className="flex-1 h-px bg-border-primary min-w-4" aria-hidden="true" />
+        {aside}
+        {collapsible && (
+          <button type="button" onClick={onToggle} aria-expanded={open} aria-label={open ? `סגירת ${title}` : `פתיחת ${title}`}
+            className="shrink-0 w-7 h-7 grid place-items-center rounded-lg text-text-muted cursor-pointer hover:bg-bg-tertiary">
+            <ChevronDown className={`w-4 h-4 transition-transform ${open ? 'rotate-180' : ''}`} />
+          </button>
+        )}
+      </div>
       {open && <div className="mt-3">{children}</div>}
     </section>
   );
@@ -237,7 +249,13 @@ function RailBlock({ title, children }) {
   );
 }
 
-function TradeForm({ isOpen, onClose, trade, onSave, riskSettings, livePrices = {}, journalAssetClass = 'crypto', prefill = null, accountBalance = 0, strictAccount = false }) {
+function TradeForm({
+  isOpen, onClose, trade, onSave, riskSettings, livePrices = {},
+  journalAssetClass = 'crypto', prefill = null, accountBalance = 0, strictAccount = false,
+  customFields = [], customFieldsReady = false,
+  customFieldsDoc = null, onSaveCustomFields,
+  breachWarning = null, onDismissBreach = null,
+}) {
   // Asset class is owned by the JOURNAL — every trade inherits it, no per-trade
   // toggle. Editing a trade keeps that trade's own stored class.
   const newTradeAssetClass = ['futures_cme', 'stocks'].includes(journalAssetClass) ? journalAssetClass : 'crypto';
@@ -269,6 +287,11 @@ function TradeForm({ isOpen, onClose, trade, onSave, riskSettings, livePrices = 
   const [closePrice, setClosePrice] = useState('');
   const [closeDate, setCloseDate] = useState(null);
   const sessionManuallySet = useRef(false);
+  const customTouchedRef = useRef(false);
+  const customFieldsRef = useRef(customFields);
+  useEffect(() => {
+    customFieldsRef.current = customFields;
+  }, [customFields]);
   // Collapsible sections: null = automatic (see planOpen / journalOpen below),
   // true/false once the user toggles. Reset whenever the ticket opens.
   const [planOpenState, setPlanOpenState] = useState(null);
@@ -279,6 +302,14 @@ function TradeForm({ isOpen, onClose, trade, onSave, riskSettings, livePrices = 
   const [exitsOpenState, setExitsOpenState] = useState(null);
   const [fieldErrors, setFieldErrors] = useState({});
   const [discardOpen, setDiscardOpen] = useState(false);
+  const customFieldUi = useCustomTradeFieldEditor({
+    doc: customFieldsDoc,
+    fields: customFields,
+    ready: customFieldsReady,
+    active: isOpen,
+    onSave: onSaveCustomFields,
+    onRequestOpen: () => setJournalOpenState(true),
+  });
   const submitRef = useRef(null);
   // Identity of the ticket currently on screen. A later effect run for the
   // same ticket (parent re-render, new prefill object, refreshed trade) must
@@ -303,6 +334,7 @@ function TradeForm({ isOpen, onClose, trade, onSave, riskSettings, livePrices = 
       : `new:${prefillSessionKey(prefill)}`;
     if (openSessionRef.current === openKey) return;
     openSessionRef.current = openKey;
+    customTouchedRef.current = false;
 
     if (trade) {
       // Scale-in trades store every fill in `entries` while entryPrice /
@@ -444,6 +476,7 @@ function TradeForm({ isOpen, onClose, trade, onSave, riskSettings, livePrices = 
         tags: trade.tags ?? [],
         setups: tradeSetups(trade),
         mistakes: trade.mistakes ?? [],
+        custom: customFormState(trade.custom, customFieldsRef.current),
         chartLinks: chartLinksForEditor(trade),
         entryDate: parseDate(trade.entryDate),
         // A saved session stays. An empty one is filled the same way the
@@ -519,6 +552,24 @@ function TradeForm({ isOpen, onClose, trade, onSave, riskSettings, livePrices = 
     armBaselineRef.current = true;
   }, [trade, isOpen, prefill]); // allStrategies intentionally excluded — it only affects dropdown options, not form state; including it caused form resets mid-edit
 
+  // Field definitions can arrive after the ticket opens. Fill answers that
+  // were already on the trade without treating that as an edit.
+  useEffect(() => {
+    if (!isOpen || customTouchedRef.current) return;
+    const next = customFormState(trade?.custom, customFields);
+    setForm((current) => {
+      const prev = current.custom || {};
+      const keys = new Set([...Object.keys(prev), ...Object.keys(next)]);
+      const same = [...keys].every((key) => prev[key] === next[key]);
+      if (same) return current;
+      const clean = baselineRef.current == null || tradeFormFingerprint(current, {
+        manualQty, closeKind, closePrice, closeDate, feesAuto,
+      }) === baselineRef.current;
+      if (clean) armBaselineRef.current = true;
+      return { ...current, custom: next };
+    });
+  }, [isOpen, trade, customFields, manualQty, closeKind, closePrice, closeDate, feesAuto]);
+
   // Baseline is the form AFTER the open-reset commits, before the user types.
   // Captured in layout (before paint) so a fast click can't land in between.
   useLayoutEffect(() => {
@@ -547,6 +598,11 @@ function TradeForm({ isOpen, onClose, trade, onSave, riskSettings, livePrices = 
       }
     }
   }, [form.entryDate]);
+
+  const updateCustom = (id, value) => {
+    customTouchedRef.current = true;
+    setForm((f) => ({ ...f, custom: { ...(f.custom || {}), [id]: value } }));
+  };
 
   const update = (field, value) => {
     setForm((f) => {
@@ -984,8 +1040,9 @@ function TradeForm({ isOpen, onClose, trade, onSave, riskSettings, livePrices = 
   const riskOpen = riskOpenState ?? (!!trade && riskHasContent);
   const exitsOpen = exitsOpenState ?? (form.additionalExits.length > 0 || closeKind === 'stop');
   const filledChartLinks = (form.chartLinks || []).map((link) => String(link || '').trim()).filter(Boolean).length;
+  const customFilled = customFields.some((field) => String(form.custom?.[field.id] || '').trim());
   const journalHasContent = !!(form.entryReason?.trim() || form.notes?.trim() || form.tags?.length || form.mistakes?.length
-    || filledChartLinks || MENTAL_RATINGS.some((r) => form[r.key] !== 3));
+    || filledChartLinks || customFilled || MENTAL_RATINGS.some((r) => form[r.key] !== 3));
   const journalOpen = journalOpenState ?? (!!trade && journalHasContent);
   const scaleOpen = scaleOpenState ?? form.scaleIns.length > 0;
 
@@ -1011,7 +1068,7 @@ function TradeForm({ isOpen, onClose, trade, onSave, riskSettings, livePrices = 
     }
     const t = e.target;
     if (!t || t.tagName === 'TEXTAREA' || e.defaultPrevented) return;
-    if (document.querySelector('.react-datepicker')) return;
+    if (document.querySelector('[data-popover], .react-datepicker')) return;
     if (t.tagName === 'INPUT' && !['checkbox', 'radio', 'submit', 'button', 'file'].includes(t.type)) {
       e.preventDefault();
       submitRef.current?.click();
@@ -1248,6 +1305,13 @@ function TradeForm({ isOpen, onClose, trade, onSave, riskSettings, livePrices = 
         .filter(e => parseFloat(e.price) > 0 && !(isFutures ? parseFloat(e.contracts) : parseFloat(e.percent)))
         .map(e => parseFloat(e.price));
 
+      const customProblem = customFieldsReady ? customSaveProblem(form.custom, customFields) : '';
+      if (customProblem) {
+        formToast(customProblem);
+        setJournalOpenState(true);
+        return;
+      }
+
       const data = {
         pair: finalPair,
         direction: form.direction,
@@ -1287,6 +1351,9 @@ function TradeForm({ isOpen, onClose, trade, onSave, riskSettings, livePrices = 
         } : {}),
         tags: form.tags || [],
         setups: tradeSetups({ setups: form.setups }),
+        ...(customFieldsReady && (customFields.length || tradeHasCustom(trade))
+          ? { custom: customPayload(form.custom, customFields) }
+          : {}),
         entryDate: form.entryDate || new Date(),
         exitDate: form.exitDate || null,
         entryReason: form.entryReason,
@@ -1551,6 +1618,27 @@ function TradeForm({ isOpen, onClose, trade, onSave, riskSettings, livePrices = 
       <form id="trade-ticket-form" onSubmit={handleSubmit} onKeyDown={handleFormKeyDown}
         className="lg:grid lg:grid-cols-[minmax(0,1fr)_288px] lg:gap-6 lg:items-start">
         <div className="min-w-0">
+          {!trade && breachWarning && (
+            <div
+              role="status"
+              dir="rtl"
+              data-testid="trade-risk-warning"
+              className="mb-3 flex items-start gap-2 rounded-xl border border-loss/30 bg-loss/10 px-3 py-2.5 text-loss"
+            >
+              <AlertTriangle className="w-4 h-4 shrink-0 mt-0.5 text-loss" />
+              <p className="min-w-0 flex-1 text-sm font-semibold text-loss">{breachWarning}</p>
+              {onDismissBreach && (
+                <button
+                  type="button"
+                  onClick={onDismissBreach}
+                  data-testid="trade-risk-warning-dismiss"
+                  className="shrink-0 h-11 px-3 rounded-lg border border-loss/30 text-xs font-semibold text-loss hover:bg-loss/15 transition-colors cursor-pointer"
+                >
+                  הסתר להיום
+                </button>
+              )}
+            </div>
+          )}
 
           {/* 01 — instrument & direction. Asset class is inherited from the
               journal — no per-trade toggle. */}
@@ -2066,9 +2154,19 @@ function TradeForm({ isOpen, onClose, trade, onSave, riskSettings, livePrices = 
           </Section>
 
           {/* 05 — journal & psychology. */}
-          <Section n={5} title="יומן ופסיכולוגיה" collapsible open={journalOpen} onToggle={() => setJournalOpenState(!journalOpen)}
-            aside={!journalOpen && journalSummary ? <span className="text-[10px] text-text-muted shrink-0">{journalSummary}</span> : null}>
+          <Section n={5} title="יומן ופסיכולוגיה" collapsible open={journalOpen} onToggle={() => {
+            const next = !journalOpen;
+            setJournalOpenState(next);
+            if (!next) customFieldUi.close();
+          }}
+            aside={(
+              <span className="inline-flex items-center gap-1.5 min-w-0 max-w-full">
+                {!journalOpen && journalSummary ? <span className="text-[10px] text-text-muted truncate max-w-[7rem] sm:max-w-[12rem]">{journalSummary}</span> : null}
+                {customFieldUi.trigger}
+              </span>
+            )}>
             <div className="space-y-3">
+              {customFieldUi.panel}
               <div className="grid md:grid-cols-2 gap-3">
                 <Field label="סיבת כניסה" htmlFor="tt-reason">
                   <textarea id="tt-reason" value={form.entryReason} onChange={(e) => update('entryReason', e.target.value)}
@@ -2093,6 +2191,36 @@ function TradeForm({ isOpen, onClose, trade, onSave, riskSettings, livePrices = 
                     placeholder="בחר טעויות..." chipClass="bg-loss text-white" />
                 </Field>
               </div>
+              {customFields.length > 0 && (
+                <div className="grid md:grid-cols-2 gap-3" data-testid="custom-trade-fields">
+                  {customFields.map((field) => (
+                    <Field key={field.id} label={field.name} htmlFor={`custom-${field.id}`} aside={customFieldUi.fieldActions(field)}>
+                      {field.type === 'select' ? (
+                        <SelectDropdown
+                          id={`custom-${field.id}`}
+                          ariaLabel={field.name}
+                          value={form.custom?.[field.id] || ''}
+                          onChange={(value) => updateCustom(field.id, value)}
+                          options={(field.options || []).map((option) => ({ value: option, label: option }))}
+                          placeholder="בחירה"
+                          allowClear
+                        />
+                      ) : (
+                        <input
+                          id={`custom-${field.id}`}
+                          value={form.custom?.[field.id] || ''}
+                          onChange={(e) => updateCustom(field.id, e.target.value)}
+                          inputMode={field.type === 'number' ? 'decimal' : 'text'}
+                          dir={field.type === 'number' ? 'ltr' : undefined}
+                          maxLength={field.type === 'number' ? 24 : 80}
+                          className={field.type === 'number' ? numInputClass : inputClass}
+                          placeholder={field.type === 'number' ? '0' : ''}
+                        />
+                      )}
+                    </Field>
+                  ))}
+                </div>
+              )}
               {/* Mental ratings: 1–5 segmented. */}
               <div className="grid sm:grid-cols-2 gap-x-4 gap-y-3">
                 {MENTAL_RATINGS.map((rating) => {
@@ -2134,6 +2262,7 @@ function TradeForm({ isOpen, onClose, trade, onSave, riskSettings, livePrices = 
       cancelText="המשך עריכה"
       confirmColor="amber"
     />
+    {customFieldUi.confirm}
     </>
   );
 }

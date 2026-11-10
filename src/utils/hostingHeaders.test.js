@@ -165,6 +165,15 @@ describe('robots.txt / sitemap.xml', () => {
   const robots = read('robots.txt');
   const sitemap = read('sitemap.xml');
 
+  it('marks a shared journal private and out of search', () => {
+    const share = appHosting.headers.find((h) => h.source === '/share/**');
+    const value = (key) => share.headers.find((h) => h.key === key)?.value;
+    expect(value('Cache-Control')).toBe('private, no-store');
+    expect(value('X-Robots-Tag')).toBe('noindex, nofollow');
+    expect(read('robots.txt')).not.toMatch(/^Allow: \/share/m);
+    expect(read('sitemap.xml')).not.toMatch(/\/share/);
+  });
+
   it('keeps the signed-in app out of search and points at the sitemap', () => {
     expect(robots).toMatch(/^Disallow: \/$/m);
     expect(robots).toMatch(/^Sitemap: https:\/\/tradeoslive\.web\.app\/sitemap\.xml$/m);

@@ -60,7 +60,7 @@ export default function PropFirmSettings({ value: f, onChange }) {
   const refill = (presetId, phase, size) => set(presetFields(presetId, phase, size));
 
   return (
-    <div className="mt-4 pt-4 border-t border-border-primary">
+    <div>
       <button type="button" role="switch" aria-checked={f.enabled} onClick={() => set({ enabled: !f.enabled })}
         className="w-full flex items-center justify-between gap-3 cursor-pointer text-right">
         <span className="flex items-center gap-2.5 min-w-0">
@@ -163,7 +163,7 @@ export default function PropFirmSettings({ value: f, onChange }) {
               )}
             </div>
 
-            <div className="grid grid-cols-2 gap-2">
+            <div className="grid grid-cols-1 gap-2 lg:grid-cols-2">
               <div className="min-w-0">
                 <label className={labelClass}>ימי מסחר מינימליים</label>
                 <input type="number" min="0" step="1" inputMode="numeric" value={f.minTradingDays} placeholder="0"

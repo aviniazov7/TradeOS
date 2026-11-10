@@ -1,10 +1,23 @@
-import { useState, useEffect, useCallback, useMemo } from 'react';
+import { useState, useEffect, useCallback, useMemo, useRef } from 'react';
 import { useSearchParams } from 'react-router-dom';
 import { m, AnimatePresence } from 'framer-motion';
-import { Newspaper, ExternalLink, Clock, Filter, CalendarDays, Volume2, Globe, BrainCircuit, RefreshCw } from 'lucide-react';
+import { Newspaper, ExternalLink, Clock, Filter, CalendarDays, Volume2, Globe, BrainCircuit, RefreshCw, Search } from 'lucide-react';
 import { fetchNewsDigest, fetchNewsFeed, translateNews, unpackNewsTranslations } from '../../services/newsService';
 import WhyItMoved from './WhyItMoved';
+import { useAuth } from '../../contexts/AuthContext';
 import { hebrewEventTitle } from '../../utils/econCalendarTerms';
+import {
+  CALENDAR_COUNTRIES,
+  filterCalendarEvents,
+  loadCalendarFilters,
+  saveCalendarFilters,
+} from '../../utils/econCalendarFilters';
+import {
+  CALENDAR_CACHE_TTL_MS,
+  CALENDAR_LOAD_ERROR,
+  CALENDAR_STALE_NOTICE,
+  readCalendarCache,
+} from '../../utils/econCalendarLoad';
 import { headlineNeedsTranslation } from '../../utils/newsHeadline';
 import { dropInvalidTranslations, isHebrewSafeText, isHebrewSafeTranslation, preferredHeadline, safeHebrew } from '../../utils/newsScript';
 import { safeHttpUrl } from '../../utils/urls';
@@ -89,20 +102,10 @@ function saveHeCache(map, key = HE_CACHE_KEY) {
 // ─── Economic Calendar (Forex Factory, fetched by the Worker) ───
 const WORKER_URL = import.meta.env.VITE_WORKER_URL || 'https://trade-os.tradeos.workers.dev';
 const CALENDAR_CACHE_KEY = 'tradeos_econ_calendar_v3';
-const CALENDAR_CACHE_TTL = 60 * 60 * 1000; // 1 hour
+const CALENDAR_CACHE_TTL = CALENDAR_CACHE_TTL_MS;
 
-const COUNTRIES = [
-  { code: 'USD', flag: '\u{1F1FA}\u{1F1F8}', label: 'ארה"ב' },
-  { code: 'EUR', flag: '\u{1F1EA}\u{1F1FA}', label: 'אירופה' },
-  { code: 'GBP', flag: '\u{1F1EC}\u{1F1E7}', label: 'בריטניה' },
-  { code: 'JPY', flag: '\u{1F1EF}\u{1F1F5}', label: 'יפן' },
-  { code: 'AUD', flag: '\u{1F1E6}\u{1F1FA}', label: 'אוסטרליה' },
-  { code: 'CAD', flag: '\u{1F1E8}\u{1F1E6}', label: 'קנדה' },
-  { code: 'CHF', flag: '\u{1F1E8}\u{1F1ED}', label: 'שוויץ' },
-  { code: 'NZD', flag: '\u{1F1F3}\u{1F1FF}', label: 'ניו זילנד' },
-  { code: 'CNY', flag: '\u{1F1E8}\u{1F1F3}', label: 'סין' },
-];
-
+const COUNTRIES = CALENDAR_COUNTRIES;
+const COUNTRY_CODES = COUNTRIES.map((c) => c.code);
 const COUNTRY_MAP = Object.fromEntries(COUNTRIES.map((c) => [c.code, c]));
 
 const IMPACT_STYLES = {
@@ -208,45 +211,46 @@ function ImpactBars({ impact }) {
 
 
 // ─── Economic Calendar Component ───
-function EconomicCalendar() {
+export function EconomicCalendar() {
+  const { user, loading: authLoading } = useAuth();
+  const uid = user?.uid || null;
   const [events, setEvents] = useState(() => {
     try {
-      const cached = localStorage.getItem(CALENDAR_CACHE_KEY);
-      if (cached) {
-        const { data, ts } = JSON.parse(cached);
-        // Only use cache if it's fresh (within TTL)
-        if (Date.now() - ts < CALENDAR_CACHE_TTL && Array.isArray(data) && data.length > 0) return data;
-      }
-    } catch { /* ignore */ }
-    return [];
+      return readCalendarCache(localStorage.getItem(CALENDAR_CACHE_KEY), Date.now(), { ttl: CALENDAR_CACHE_TTL })?.events || [];
+    } catch { return []; }
   });
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState(null);
-  const [impactFilter, setImpactFilter] = useState('all');
-  const [selectedCountries, setSelectedCountries] = useState(new Set(['USD']));
+  const [notice, setNotice] = useState(null);
+  const [filters, setFilters] = useState(() => loadCalendarFilters(authLoading ? null : uid, COUNTRY_CODES));
   const [showCountryPicker, setShowCountryPicker] = useState(false);
   const [showImpactPicker, setShowImpactPicker] = useState(false);
-  const [timePeriod, setTimePeriod] = useState('thisWeek');
+  // Skip the save that would otherwise run on the same commit as a reload,
+  // so account A's filters are never written under account B.
+  const skipFilterSave = useRef(true);
+  const eventsCount = useRef(0);
+  eventsCount.current = events.length;
   // English event title -> Hebrew (same worker translate endpoint as the news
   // feed, KV-cached by title; event names are a small recurring set so this is
   // near-free after the first pass). Persisted so a remount doesn't re-call.
   const [heMap, setHeMap] = useState(() => loadHeCache(CAL_HE_CACHE_KEY));
 
   const fetchCalendar = useCallback(async () => {
-    // Check cache
+    let stored = null;
     try {
-      const cached = localStorage.getItem(CALENDAR_CACHE_KEY);
-      if (cached) {
-        const { data, ts } = JSON.parse(cached);
-        if (Date.now() - ts < CALENDAR_CACHE_TTL && Array.isArray(data) && data.length > 0) {
-          setEvents(data);
-          setLoading(false);
-          return;
-        }
-      }
+      stored = readCalendarCache(localStorage.getItem(CALENDAR_CACHE_KEY), Date.now(), { ttl: CALENDAR_CACHE_TTL });
     } catch { /* ignore */ }
-
-    if (events.length > 0) setLoading(false);
+    // A copy from the last hour is enough. Older than that, ask the Worker,
+    // and keep the saved week on screen if the source answers 502.
+    if (stored?.fresh) {
+      setEvents(stored.events);
+      setNotice(null);
+      setError(null);
+      setLoading(false);
+      return;
+    }
+    if (stored?.events?.length) setEvents(stored.events);
+    if (stored?.events?.length || eventsCount.current > 0) setLoading(false);
     else setLoading(true);
     setError(null);
 
@@ -259,21 +263,31 @@ function EconomicCalendar() {
       if (res.ok) {
         const data = await res.json();
         if (Array.isArray(data) && data.length > 0) {
+          const stale = res.headers.get('X-Calendar-Stale') === '1';
           setEvents(data);
           try {
-            localStorage.setItem(CALENDAR_CACHE_KEY, JSON.stringify({ data, ts: Date.now() }));
+            // A stale worker reply must not look fresh, or "נסה שוב" would
+            // skip the network for an hour.
+            const ts = stale ? (stored?.ts ?? Date.now() - CALENDAR_CACHE_TTL - 1) : Date.now();
+            localStorage.setItem(CALENDAR_CACHE_KEY, JSON.stringify({ data, ts }));
           } catch { /* ignore */ }
+          setNotice(stale ? CALENDAR_STALE_NOTICE : null);
+          setError(null);
           setLoading(false);
           return;
         }
       }
-    } catch { /* show the error below */ }
+    } catch { /* fall through to the saved week or the hard error */ }
 
-    if (events.length === 0) {
-      setError('\u05DC\u05D0 \u05D4\u05E6\u05DC\u05D7\u05E0\u05D5 \u05DC\u05D8\u05E2\u05D5\u05DF \u05D0\u05EA \u05D4\u05D9\u05D5\u05DE\u05DF \u05D4\u05DB\u05DC\u05DB\u05DC\u05D9. \u05E0\u05E1\u05D4 \u05E9\u05D5\u05D1 \u05D1\u05E2\u05D5\u05D3 \u05DE\u05E1\u05E4\u05E8 \u05D3\u05E7\u05D5\u05EA.');
+    if (stored?.events?.length || eventsCount.current > 0) {
+      setNotice(CALENDAR_STALE_NOTICE);
+      setError(null);
+    } else {
+      setNotice(null);
+      setError(CALENDAR_LOAD_ERROR);
     }
     setLoading(false);
-  }, [events.length]);
+  }, []);
 
   useEffect(() => {
     fetchCalendar();
@@ -313,50 +327,37 @@ function EconomicCalendar() {
 
   useEffect(() => { saveHeCache(heMap, CAL_HE_CACHE_KEY); }, [heMap]);
 
+  useEffect(() => {
+    if (authLoading) return;
+    skipFilterSave.current = true;
+    setFilters(loadCalendarFilters(uid, COUNTRY_CODES));
+  }, [authLoading, uid]);
+
+  useEffect(() => {
+    if (authLoading) return;
+    if (skipFilterSave.current) {
+      skipFilterSave.current = false;
+      return;
+    }
+    saveCalendarFilters(uid, filters, COUNTRY_CODES);
+  }, [authLoading, uid, filters]);
+
   const toggleCountry = (code) => {
-    setSelectedCountries((prev) => {
-      const next = new Set(prev);
-      if (next.has(code)) next.delete(code);
-      else next.add(code);
-      return next;
+    setFilters((prev) => {
+      const has = prev.countries.includes(code);
+      const countries = has ? prev.countries.filter((c) => c !== code) : [...prev.countries, code];
+      return { ...prev, countries };
     });
   };
 
-  const filtered = useMemo(() => {
-    const now = new Date();
-    const today = getDateOnly(now);
-    const yesterday = new Date(today); yesterday.setDate(yesterday.getDate() - 1);
-    const tomorrow = new Date(today); tomorrow.setDate(tomorrow.getDate() + 1);
-
-    const startOfThisWeek = new Date(today);
-    startOfThisWeek.setDate(today.getDate() - today.getDay());
-
-    let timeFiltered;
-    switch (timePeriod) {
-      case 'yesterday':
-        timeFiltered = events.filter((e) => sameDay(new Date(e.date), yesterday));
-        break;
-      case 'today':
-        timeFiltered = events.filter((e) => sameDay(new Date(e.date), today));
-        break;
-      case 'tomorrow':
-        timeFiltered = events.filter((e) => sameDay(new Date(e.date), tomorrow));
-        break;
-      case 'thisWeek':
-        timeFiltered = events;
-        break;
-      case 'upcoming':
-        timeFiltered = events.filter((e) => new Date(e.date) >= now);
-        break;
-      default:
-        timeFiltered = events;
-        break;
-    }
-
-    return timeFiltered
-      .filter((e) => selectedCountries.size === 0 || selectedCountries.has(e.country))
-      .filter((e) => impactFilter === 'all' || e.impact === impactFilter);
-  }, [events, timePeriod, selectedCountries, impactFilter]);
+  const filtered = useMemo(() => filterCalendarEvents(events, filters, {
+    labelOf: (event) => {
+      const he = hebrewEventTitle(event.title) || safeHebrew(heMap[event.title]) || '';
+      const country = COUNTRY_MAP[event.country];
+      const impact = IMPACT_STYLES[event.impact]?.label || '';
+      return `${he} ${country?.label || ''} ${impact}`;
+    },
+  }), [events, filters, heMap]);
 
   // Group by date
   const sortedDays = useMemo(() => {
@@ -377,19 +378,49 @@ function EconomicCalendar() {
     { key: 'upcoming', label: '\u05D4\u05D1\u05D0\u05D9\u05DD' },
   ];
 
+  const allCountries = filters.countries.length === COUNTRIES.length;
+
   return (
-    <>
+    <section dir="rtl" className="min-w-0" aria-label="יומן כלכלי">
       {/* Push alert an hour before each high-impact USD event (same setting as in the profile). */}
       <CalendarAlertToggle />
 
-      {/* Time Period Tabs */}
-      <div className="flex items-center gap-1 mb-4 overflow-x-auto pb-1">
+      <label className="relative block mb-3">
+        <Search className="pointer-events-none absolute top-1/2 -translate-y-1/2 start-3 w-4 h-4 text-text-muted" aria-hidden />
+        <input
+          type="text"
+          inputMode="search"
+          value={filters.query}
+          onChange={(e) => setFilters((prev) => ({ ...prev, query: e.target.value.slice(0, 80) }))}
+          placeholder="חיפוש אירוע, מטבע או מדינה"
+          aria-label="חיפוש ביומן הכלכלי"
+          autoComplete="off"
+          enterKeyHint="search"
+          className="w-full h-11 rounded-xl border border-border-primary bg-bg-secondary ps-10 pe-10 text-sm text-text-primary placeholder:text-text-muted outline-none focus:border-accent-primary/50"
+          style={bidiText}
+        />
+        {filters.query && (
+          <button
+            type="button"
+            aria-label="נקה חיפוש"
+            onClick={() => setFilters((prev) => ({ ...prev, query: '' }))}
+            className="absolute top-1/2 -translate-y-1/2 end-1.5 w-8 h-8 grid place-items-center rounded-lg text-text-muted hover:text-text-primary hover:bg-bg-tertiary"
+          >
+            &times;
+          </button>
+        )}
+      </label>
+
+      {/* Day / week range. The feed is already this week, so these chips narrow it. */}
+      <div className="flex items-center gap-1 mb-3 overflow-x-auto no-scrollbar pb-1 -mx-1 px-1">
         {timePeriods.map((tp) => (
           <button
             key={tp.key}
-            onClick={() => setTimePeriod(tp.key)}
-            className={`px-3 py-2 rounded-lg text-sm font-medium whitespace-nowrap transition-all ${
-              timePeriod === tp.key
+            type="button"
+            aria-pressed={filters.period === tp.key}
+            onClick={() => setFilters((prev) => ({ ...prev, period: tp.key }))}
+            className={`min-h-11 px-3.5 py-2 rounded-lg text-sm font-medium whitespace-nowrap shrink-0 transition-all ${
+              filters.period === tp.key
                 ? 'bg-accent-primary text-white shadow-md shadow-accent-primary/20'
                 : 'text-text-secondary hover:text-text-primary hover:bg-bg-tertiary'
             }`}
@@ -404,11 +435,12 @@ function EconomicCalendar() {
         {/* Country Picker */}
         <div className="relative">
           <button
+            type="button"
             onClick={() => setShowCountryPicker(!showCountryPicker)}
-            className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-sm bg-bg-secondary border border-border-primary text-text-secondary hover:text-text-primary transition-colors"
+            className="flex items-center gap-1.5 min-h-11 px-3 py-1.5 rounded-lg text-sm bg-bg-secondary border border-border-primary text-text-secondary hover:text-text-primary transition-colors"
           >
             <Globe className="w-4 h-4" />
-            {'\u05DE\u05D3\u05D9\u05E0\u05D5\u05EA'} ({selectedCountries.size})
+            {'\u05DE\u05D3\u05D9\u05E0\u05D5\u05EA'} ({filters.countries.length})
           </button>
 
           <AnimatePresence>
@@ -431,32 +463,36 @@ function EconomicCalendar() {
                   <div className="flex items-center justify-between mb-2 pb-2 border-b border-border-primary">
                     <span className="text-xs font-semibold text-text-primary">{'\u05E1\u05D9\u05E0\u05D5\u05DF \u05DE\u05D3\u05D9\u05E0\u05D5\u05EA'}</span>
                     <button
+                      type="button"
                       onClick={() => {
-                        if (selectedCountries.size === COUNTRIES.length) setSelectedCountries(new Set());
-                        else setSelectedCountries(new Set(COUNTRIES.map((c) => c.code)));
+                        setFilters((prev) => ({
+                          ...prev,
+                          countries: allCountries ? [] : COUNTRY_CODES,
+                        }));
                       }}
-                      className="text-[10px] text-accent-primary hover:underline"
+                      className="text-[10px] text-accent-primary hover:underline min-h-11 px-1"
                     >
-                      {selectedCountries.size === COUNTRIES.length ? '\u05E0\u05E7\u05D4 \u05D4\u05DB\u05DC' : '\u05D1\u05D7\u05E8 \u05D4\u05DB\u05DC'}
+                      {allCountries ? '\u05E0\u05E7\u05D4 \u05D4\u05DB\u05DC' : '\u05D1\u05D7\u05E8 \u05D4\u05DB\u05DC'}
                     </button>
                   </div>
                   <div className="space-y-1 max-h-[300px] overflow-y-auto">
                     {COUNTRIES.map((c) => (
                       <button
                         key={c.code}
+                        type="button"
                         onClick={() => toggleCountry(c.code)}
-                        className={`flex items-center gap-2 w-full px-2 py-1.5 rounded-lg text-sm transition-colors ${
-                          selectedCountries.has(c.code)
+                        className={`flex items-center gap-2 w-full min-h-11 px-2 py-1.5 rounded-lg text-sm transition-colors ${
+                          filters.countries.includes(c.code)
                             ? 'bg-accent-primary/15 text-accent-primary'
                             : 'text-text-secondary hover:bg-bg-tertiary'
                         }`}
                       >
                         <div className={`w-4 h-4 rounded border-2 flex items-center justify-center transition-colors ${
-                          selectedCountries.has(c.code)
+                          filters.countries.includes(c.code)
                             ? 'border-accent-primary bg-accent-primary'
                             : 'border-border-primary'
                         }`}>
-                          {selectedCountries.has(c.code) && (
+                          {filters.countries.includes(c.code) && (
                             <svg className="w-2.5 h-2.5 text-white" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={3}>
                               <path strokeLinecap="round" strokeLinejoin="round" d="M5 13l4 4L19 7" />
                             </svg>
@@ -477,11 +513,12 @@ function EconomicCalendar() {
         {/* Impact Filter \u2014 dropdown */}
         <div className="relative">
           <button
+            type="button"
             onClick={() => setShowImpactPicker(!showImpactPicker)}
-            className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-sm bg-bg-secondary border border-border-primary text-text-secondary hover:text-text-primary transition-colors"
+            className="flex items-center gap-1.5 min-h-11 px-3 py-1.5 rounded-lg text-sm bg-bg-secondary border border-border-primary text-text-secondary hover:text-text-primary transition-colors"
           >
             <Filter className="w-4 h-4" />
-            {IMPACT_OPTIONS.find((o) => o.key === impactFilter)?.label || IMPACT_OPTIONS[0].label}
+            {'חשיבות: '}{IMPACT_OPTIONS.find((o) => o.key === filters.impact)?.label || IMPACT_OPTIONS[0].label}
           </button>
 
           <AnimatePresence>
@@ -501,9 +538,10 @@ function EconomicCalendar() {
                   {IMPACT_OPTIONS.map((o) => (
                     <button
                       key={o.key}
-                      onClick={() => { setImpactFilter(o.key); setShowImpactPicker(false); }}
-                      className={`flex items-center gap-2 w-full px-2.5 py-2 rounded-lg text-sm transition-colors ${
-                        impactFilter === o.key ? 'bg-accent-primary/15 text-accent-primary' : 'text-text-secondary hover:bg-bg-tertiary'
+                      type="button"
+                      onClick={() => { setFilters((prev) => ({ ...prev, impact: o.key })); setShowImpactPicker(false); }}
+                      className={`flex items-center gap-2 w-full min-h-11 px-2.5 py-2 rounded-lg text-sm transition-colors ${
+                        filters.impact === o.key ? 'bg-accent-primary/15 text-accent-primary' : 'text-text-secondary hover:bg-bg-tertiary'
                       }`}
                     >
                       {o.dot && <span className={`w-2 h-2 rounded-full ${o.dot}`} />}
@@ -518,15 +556,15 @@ function EconomicCalendar() {
       </div>
 
       {/* Selected countries chips */}
-      {selectedCountries.size > 0 && selectedCountries.size < COUNTRIES.length && (
-        <div className="flex items-center gap-1.5 mb-4 overflow-x-auto pb-1">
-          {[...selectedCountries].map((code) => {
+      {filters.countries.length > 0 && filters.countries.length < COUNTRIES.length && (
+        <div className="flex items-center gap-1.5 mb-4 overflow-x-auto no-scrollbar pb-1">
+          {filters.countries.map((code) => {
             const c = COUNTRY_MAP[code];
             if (!c) return null;
             return (
-              <span key={code} className="flex items-center gap-1 px-2 py-1 bg-bg-tertiary rounded-full text-xs text-text-primary">
+              <span key={code} className="flex items-center gap-1 px-2 py-1 bg-bg-tertiary rounded-full text-xs text-text-primary shrink-0">
                 {c.flag} {c.label}
-                <button onClick={() => toggleCountry(code)} className="text-text-muted hover:text-text-primary mr-0.5">&times;</button>
+                <button type="button" aria-label={`הסר ${c.label}`} onClick={() => toggleCountry(code)} className="text-text-muted hover:text-text-primary min-w-6 min-h-6">&times;</button>
               </span>
             );
           })}
@@ -548,15 +586,30 @@ function EconomicCalendar() {
         </div>
       )}
 
+      {/* The source missed, but a saved week is still on screen. */}
+      {notice && !loading && !error && (
+        <div role="status" className="mb-4 rounded-xl border border-border-primary bg-bg-secondary px-4 py-3 text-sm text-text-secondary">
+          <p>{notice}</p>
+          <button
+            type="button"
+            onClick={fetchCalendar}
+            className="mt-2 min-h-11 px-4 py-2 bg-accent-primary text-white rounded-lg hover:bg-accent-primary/90 transition-colors"
+          >
+            נסה שוב
+          </button>
+        </div>
+      )}
+
       {/* Error */}
       {error && !loading && (
-        <div className="bg-bg-secondary border border-border-primary rounded-xl p-8 text-center">
+        <div role="alert" className="bg-bg-secondary border border-border-primary rounded-xl p-8 text-center">
           <p className="text-text-muted mb-4">{error}</p>
           <button
+            type="button"
             onClick={fetchCalendar}
-            className="px-4 py-2 bg-accent-primary text-white rounded-lg hover:bg-accent-primary/90 transition-colors"
+            className="min-h-11 px-4 py-2 bg-accent-primary text-white rounded-lg hover:bg-accent-primary/90 transition-colors"
           >
-            {'\u05E0\u05E1\u05D4 \u05E9\u05D5\u05D1'}
+            נסה שוב
           </button>
         </div>
       )}
@@ -565,7 +618,7 @@ function EconomicCalendar() {
       {!loading && !error && (
         <AnimatePresence mode="wait">
           <m.div
-            key={timePeriod + impactFilter + [...selectedCountries].join(',')}
+            key={`${filters.period}|${filters.impact}|${filters.countries.join(',')}`}
             initial={{ opacity: 0, y: 10 }}
             animate={{ opacity: 1, y: 0 }}
             exit={{ opacity: 0, y: -10 }}
@@ -611,7 +664,7 @@ function EconomicCalendar() {
                           transition={{ duration: 0.2, delay: i * 0.03 }}
                           className={`bg-bg-secondary border rounded-lg px-3 py-2.5 border-r-2 ${impact.border} hover:bg-bg-tertiary/30 transition-colors`}
                         >
-                          <div className="flex items-center gap-3">
+                          <div className="flex items-start sm:items-center gap-2 sm:gap-3">
                             {/* Right rail: time on top; currency + flag + impact on one row */}
                             <div className="flex flex-col items-center gap-1 shrink-0 w-[74px]">
                               <span className="text-sm font-bold text-text-primary num-mono leading-none">{formatTime(event.date)}</span>
@@ -629,7 +682,7 @@ function EconomicCalendar() {
                             <div className="flex-1 min-w-0">
                               <div className="flex items-start gap-1.5">
                                 {speech && <Volume2 className="w-3.5 h-3.5 text-text-muted flex-shrink-0 mt-0.5" />}
-                                <h4 className="text-sm font-semibold text-text-primary leading-snug" title={he ? event.title : undefined}>
+                                <h4 className="text-sm font-semibold text-text-primary leading-snug break-words" title={he ? event.title : undefined} style={bidiText}>
                                   {he || event.title}
                                 </h4>
                               </div>
@@ -673,10 +726,10 @@ function EconomicCalendar() {
           className="bg-bg-secondary border border-border-primary rounded-xl p-8 text-center"
         >
           <CalendarDays className="w-10 h-10 text-text-muted mx-auto mb-3" />
-          <p className="text-text-muted">{'\u05D0\u05D9\u05DF \u05D0\u05D9\u05E8\u05D5\u05E2\u05D9\u05DD \u05DC\u05D4\u05E6\u05D2\u05D4'}</p>
+          <p className="text-text-muted">{filters.query.trim() ? 'אין אירועים שתואמים לחיפוש' : 'אין אירועים להצגה'}</p>
         </m.div>
       )}
-    </>
+    </section>
   );
 }
 

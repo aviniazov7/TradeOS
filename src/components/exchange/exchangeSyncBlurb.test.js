@@ -2,12 +2,16 @@ import { describe, it, expect } from 'vitest';
 import { EXCHANGES, exchangeSyncBlurb, connectMode, connectionGuideNotes, exchangeGlowStyle } from './exchangeConfig';
 
 describe('exchangeSyncBlurb', () => {
-  it('states auto-sync for MEXC and Bybit, and a file import for Binance', () => {
+  it('describes auto-sync and file import without naming a venue', () => {
     const text = exchangeSyncBlurb(EXCHANGES);
-    expect(text).toBe('סנכרון אוטומטי מ-MEXC ו-Bybit · ייבוא קובץ מ-Binance');
+    expect(text).toBe('סנכרון אוטומטי מהבורסות שלך · ייבוא קבצי עסקאות');
+    expect(text).not.toMatch(/Bybit|MEXC|Binance|OKX|Bitget|Hyperliquid/);
     expect(text).not.toContain('בלי סנכרון');
     expect(text).not.toContain('ייבוא ידני');
     expect(EXCHANGES.find((e) => e.id === 'binance').canSync).toBe(false);
+    expect(EXCHANGES.filter((e) => e.canSync).map((e) => e.id).sort()).toEqual(
+      ['bitget', 'bybit', 'hyperliquid', 'mexc', 'okx'],
+    );
   });
 
   it('puts Binance on CSV import and keeps API keys for syncing venues', () => {

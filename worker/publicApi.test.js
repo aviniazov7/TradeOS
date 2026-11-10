@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { handlePublicApi } from './publicApi.js';
-import { decodeFields, sha256Hex } from './firestoreValues.js';
+import { decodeFields, encodeFields, sha256Hex } from './firestoreValues.js';
 import { memoryFirestore } from './memoryFirestore.js';
 
 const PROJECT = 'p';
@@ -74,9 +74,11 @@ describe('public API v1', () => {
       source: 'manual',
     });
     expect(payload.trade.pnlPercent).toBe(100);
+    expect(payload.trade.custom).toBeUndefined();
     const stored = [...db.docs.keys()].find((key) => key.startsWith('users/user1/trades/'));
     const fields = decodeFields(db.docs.get(stored));
     expect(fields.riskAmount).toBe(20);
+    expect(fields.custom).toBeUndefined();
     expect(fields.entryDate).toBe(payload.trade.entryDate);
   });
 
@@ -607,6 +609,45 @@ describe('public API v1', () => {
     expect(failed.status).toBe(502);
     expect((await failed.json()).error).toBe('failed to write trade');
     expect(snapshot()).toBe(unchanged);
+  });
+
+  it('stores custom answers that match the defined fields, lists them, and can clear them', async () => {
+    const db = memoryDb();
+    db.put('users/user1/journals/j1', { initialBalance: { doubleValue: 1000 } });
+    const undefinedField = await call('/api/v1/trades', {
+      method: 'POST', db, body: { ...tradeBody, custom: { f1: 'לונדון' } },
+    });
+    expect(undefinedField.status).toBe(400);
+    expect((await undefinedField.json()).error).toMatch(/custom\.f1/);
+    expect([...db.docs.keys()].filter((key) => key.startsWith('users/user1/trades/'))).toHaveLength(0);
+
+    db.put('users/user1/settings/customTradeFields', encodeFields({
+      seq: 2,
+      fields: [
+        { id: 'f1', name: 'סשן', type: 'text' },
+        { id: 'f2', name: 'ציון', type: 'number' },
+      ],
+    }));
+    const created = await call('/api/v1/trades', {
+      method: 'POST', db, body: { ...tradeBody, custom: { f1: 'לונדון', f2: '2' } },
+    });
+    expect(created.status).toBe(201);
+    const payload = await created.json();
+    expect(payload.trade.custom).toEqual({ f1: 'לונדון', f2: 2 });
+
+    const listed = await call('/api/v1/trades?journalId=j1', { db });
+    expect((await listed.json()).trades.map((trade) => trade.custom)).toEqual([{ f1: 'לונדון', f2: 2 }]);
+
+    const kept = await call(`/api/v1/trades/${payload.id}`, { method: 'PATCH', db, body: { fees: 3 } });
+    const keptBody = await kept.json();
+    expect(keptBody.trade.fees).toBe(3);
+    expect(keptBody.trade.custom).toEqual({ f1: 'לונדון', f2: 2 });
+
+    const cleared = await call(`/api/v1/trades/${payload.id}`, { method: 'PATCH', db, body: { custom: {} } });
+    expect(cleared.status).toBe(200);
+    expect((await cleared.json()).trade.custom).toBeUndefined();
+    expect(decodeFields(db.docs.get(`users/user1/trades/${payload.id}`)).custom).toBeUndefined();
+    expect(decodeFields(db.docs.get(`users/user1/trades/${payload.id}`)).fees).toBe(3);
   });
 
   it('rate limits a user without writing KV', async () => {

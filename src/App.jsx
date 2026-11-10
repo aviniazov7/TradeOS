@@ -42,6 +42,8 @@ const loadWalletDetailPage = () => import('./components/polymarket/WalletDetailP
 const loadMarketDetailPage = () => import('./components/polymarket/MarketDetailPage');
 const loadAdminPanel = () => import('./components/admin/AdminPanel');
 const loadTaxReport = () => import('./components/tax/TaxReportPage');
+const loadBusinessLedger = () => import('./components/business/BusinessLedgerPage');
+const loadNotebook = () => import('./components/notebook/NotebookPage');
 const Dashboard = lazy(loadDashboard);
 const TradeJournal = lazy(loadTradeJournal);
 const BacktestTracker = lazy(loadBacktestTracker);
@@ -59,12 +61,15 @@ const NewsPage = lazy(loadNewsPage);
 const PremiumPage = lazy(loadPremiumPage);
 const CheckoutPage = lazy(loadCheckoutPage);
 const CouponLandingPage = lazy(loadCouponLanding);
+const JournalSharePage = lazy(() => import('./components/journal/JournalSharePage'));
 const RefundPolicyPage = lazy(loadRefundPolicy);
 const AccessibilityStatement = lazy(loadAccessibility);
 const WalletDetailPage = lazy(loadWalletDetailPage);
 const MarketDetailPage = lazy(loadMarketDetailPage);
 const AdminPanel = lazy(loadAdminPanel);
 const TaxReportPage = lazy(loadTaxReport);
+const BusinessLedgerPage = lazy(loadBusinessLedger);
+const NotebookPage = lazy(loadNotebook);
 
 // Sample notifications page for local dev and a hosting preview built with
 // VITE_ADMIN_NOTIF_PREVIEW=1. Production builds tree-shake the route.
@@ -127,6 +132,9 @@ function MainApp() {
                   shared link works for logged-out friends; redeeming itself
                   sends them through /login and back. */}
               <Route path="/redeem/:code" element={<CouponLandingPage />} />
+              {/* Shared journal. The token is enough; the Worker checks it.
+                  No sign-in, so a pending email can still open the filtered copy. */}
+              <Route path="/share/:token" element={<JournalSharePage />} />
               {/* Accessibility statement — public (reachable without login, as
                   required for an Israeli-standard accessibility statement). */}
               <Route path="/accessibility" element={<AccessibilityStatement />} />
@@ -153,6 +161,8 @@ function MainApp() {
                 <Route path="dca" element={<Navigate to="/portfolio?tab=dca" replace />} />
                 <Route path="wallets" element={<Navigate to="/portfolio?tab=wallets" replace />} />
                 <Route path="plans" element={<PlansPage />} />
+                <Route path="business" element={<BusinessLedgerPage />} />
+                <Route path="notebook" element={<NotebookPage />} />
                 <Route path="tax" element={<TaxReportPage />} />
                 <Route path="mentality" element={<MentalityZone />} />
                 <Route path="mentality/morning" element={<MorningJournal />} />

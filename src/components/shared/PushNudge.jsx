@@ -4,7 +4,7 @@ import toast from 'react-hot-toast';
 import { useAuth } from '../../contexts/AuthContext';
 import { pushSupported, subscribeToPush } from '../../services/pushService';
 import { setUserSetting } from '../../services/firestoreService';
-import { clearPushNudgeChrome, publishPushNudgeChrome } from '../../utils/floatingChrome';
+import { clearPushNudgeChrome, publishPushNudgeChrome, pushNudgeBlockPx } from '../../utils/floatingChrome';
 
 const DISMISS_KEY = 'tradeos_pushNudgeDismissed';
 
@@ -30,13 +30,25 @@ export default function PushNudge() {
   useLayoutEffect(() => {
     if (!visible) return undefined;
     const el = bannerRef.current;
-    const sync = () => publishPushNudgeChrome(el?.getBoundingClientRect().height || 0);
+    const sync = () => {
+      const rect = el?.getBoundingClientRect();
+      const height = rect?.height || 0;
+      const block = rect ? pushNudgeBlockPx(rect.top, window.innerHeight) : null;
+      publishPushNudgeChrome(height, block);
+    };
     sync();
-    if (!el || typeof ResizeObserver === 'undefined') return () => clearPushNudgeChrome();
+    window.addEventListener('resize', sync);
+    if (!el || typeof ResizeObserver === 'undefined') {
+      return () => {
+        window.removeEventListener('resize', sync);
+        clearPushNudgeChrome();
+      };
+    }
     const ro = new ResizeObserver(sync);
     ro.observe(el);
     return () => {
       ro.disconnect();
+      window.removeEventListener('resize', sync);
       clearPushNudgeChrome();
     };
   }, [visible]);

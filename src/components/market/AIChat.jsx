@@ -9,6 +9,7 @@ import { formatAIText } from '../../utils/aiChatHelpers';
 import { detectCoinFromText } from '../../utils/technicals';
 import { fetchCoinChart } from '../../services/coingeckoApi';
 import { useAiUsage } from '../../hooks/useAiUsage';
+import { GUIDANCE_CHAT_WELCOME } from '../../utils/guidanceName';
 const ChatChart = lazy(() => import('./ChatChart'));
 
 const STORAGE_KEY = 'tradeos-ai-conversations';
@@ -52,7 +53,7 @@ function saveConversations(list) {
 
 const WELCOME_MESSAGE = {
   role: 'model',
-  text: 'שלום! אני TradeAI — המנטור שלך לשיטת ויקוף. אפשר לשאול אותי על שלבי איסוף ופיזור, LPSY, LPS, Spring, ניתוח Volume ועוד. רוצה ניתוח של צילום גרף? עבור לטאב "ניתוח גרפים". במה אוכל לעזור?',
+  text: GUIDANCE_CHAT_WELCOME,
 };
 
 // The questions worth asking about YOUR OWN book — answerable from the

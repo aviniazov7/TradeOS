@@ -800,6 +800,24 @@ input[type="number"] {
   }
 }
 
+/* The notifications banner is fixed. Page padding has to clear its top at
+   every width: a phone, a 640px window, and a desktop zoomed until `lg`
+   styles apply (`lg:bottom-6`, `lg:pb-6` alone leaves the banner on the
+   analytics cards). --push-nudge-block is the measured distance from the
+   banner top to the viewport bottom, plus a gap. Below lg it is never
+   smaller than the tab-bar pad. */
+html[data-push-nudge='open'] #app-scroll > main {
+  padding-bottom: max(
+    var(--push-nudge-block, 16rem),
+    calc(env(safe-area-inset-bottom, 0px) + 10.5rem)
+  );
+}
+@media (min-width: 1024px) {
+  html[data-push-nudge='open'] #app-scroll > main {
+    padding-bottom: var(--push-nudge-block, 10rem);
+  }
+}
+
 /* ─── Accessibility widget effects (toggled on <html> by AccessibilityWidget) ─── */
 /* High contrast — boost contrast/saturation of the whole app shell. */
 html.a11y-contrast body { filter: contrast(1.35) saturate(1.12); }

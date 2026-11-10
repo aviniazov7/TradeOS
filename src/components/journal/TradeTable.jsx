@@ -142,6 +142,7 @@ export default function TradeTable({
   trades, allTrades, liveById = {}, sort, onSortChange, showMonths = true,
   selectMode = false, selectedIds, onToggleSelect,
   onEdit, onDelete, onShare, isLimitPending, accountBalance = 0, returnBook = null,
+  customFields = [],
 }) {
   const [detailTrade, setDetailTrade] = useState(null);
   const monthTotals = useMemo(() => buildMonthTotals(allTrades || trades), [allTrades, trades]);
@@ -356,7 +357,7 @@ export default function TradeTable({
           </tbody>
         </table>
       </div>
-      <TradeDetailModal trade={detailTrade} isOpen={!!detailTrade} onClose={() => setDetailTrade(null)} onEdit={onEdit} onDelete={onDelete} onShare={onShare} accountBalance={balanceFor(detailTrade)} strictAccount={onAccount} />
+      <TradeDetailModal trade={detailTrade} isOpen={!!detailTrade} onClose={() => setDetailTrade(null)} onEdit={onEdit} onDelete={onDelete} onShare={onShare} accountBalance={balanceFor(detailTrade)} strictAccount={onAccount} customFields={customFields} />
     </>
   );
 }

@@ -137,6 +137,8 @@ const LAZY_ROUTES = [
   ['MarketDetailPage', () => import('../../components/polymarket/MarketDetailPage')],
   ['AdminPanel', () => import('../../components/admin/AdminPanel')],
   ['TaxReportPage', () => import('../../components/tax/TaxReportPage')],
+  ['BusinessLedgerPage', () => import('../../components/business/BusinessLedgerPage')],
+  ['NotebookPage', () => import('../../components/notebook/NotebookPage')],
   ['OpenPositionsTab', () => import('../../components/journal/OpenPositionsTab')],
   ['MarketsExplorer', () => import('../../components/polymarket/MarketsExplorer')],
   ['StrategyTab', () => import('../../components/polymarket/StrategyTab')],
@@ -178,6 +180,8 @@ describe('signed-in home renders', () => {
     );
     expect(html).toContain('עסקה חדשה');
     expect(html).toContain('חבר בורסה');
+    expect(html).toContain('כל המסחר שלך במקום אחד, מתחילים בחיבור בורסה');
+    expect(html).not.toContain('הבית מתמלא לבד');
     expect(html).toMatch(/בוקר טוב|צהריים טובים|ערב טוב|לילה טוב/);
   });
 

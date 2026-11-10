@@ -235,9 +235,19 @@ describe('isClosedTrade — the ONE closed predicate', () => {
 describe('localDayKey — local-midnight day bucketing', () => {
   it('formats a Date by LOCAL calendar day', () => {
     expect(localDayKey(new Date(2026, 7, 4, 0, 30))).toBe('2026-08-04');
+    expect(localDayKey(new Date(2026, 10, 10, 0, 30))).toBe('2026-11-10');
+    expect(localDayKey(new Date(2026, 10, 10, 23, 30))).toBe('2026-11-10');
+    expect(localDayKey(new Date(2026, 6, 10, 14, 27))).toBe('2026-07-10');
+    expect(localDayKey(new Date(2026, 6, 11, 0, 30))).toBe('2026-07-11');
   });
   it('accepts ISO strings and pads month/day', () => {
     expect(localDayKey(new Date(2026, 0, 5))).toBe('2026-01-05');
+  });
+  it('keeps a YYYY-MM-DD civil day instead of parsing UTC midnight', () => {
+    expect(localDayKey('2026-11-10')).toBe('2026-11-10');
+    expect(localDayKey(' 2026-07-11 ')).toBe('2026-07-11');
+    expect(localDayKey('2026-02-29')).toBe('');
+    expect(localDayKey('2026-04-31')).toBe('');
   });
   it('invalid input → empty string', () => {
     expect(localDayKey('not-a-date')).toBe('');

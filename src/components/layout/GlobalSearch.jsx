@@ -3,34 +3,11 @@ import { useNavigate } from 'react-router-dom';
 import { createPortal } from 'react-dom';
 import { m, AnimatePresence } from 'framer-motion';
 import {
-  Search, CornerDownLeft, LayoutDashboard, BookOpen, Brain, FlaskConical,
-  Coins, Wallet, ClipboardList, Activity, Bot, Newspaper, Crown, User,
-  Briefcase, Trophy, Fish, LineChart, Receipt, CandlestickChart,
+  Search, CornerDownLeft, BookOpen, FlaskConical, ClipboardList,
 } from 'lucide-react';
 import { getUserCollectionDocs } from '../../services/firestoreService';
 import { useAuth } from '../../contexts/AuthContext';
-
-// All navigable pages — shown as the default list, and matched by label/keywords.
-const PAGES = [
-  { label: 'דשבורד', path: '/', icon: LayoutDashboard, kw: 'בית home dashboard ראשי' },
-  { label: 'יומן מסחר', path: '/journal', icon: BookOpen, kw: 'עסקאות trades journal' },
-  { label: 'בורסה', path: '/journal?tab=exchange', icon: CandlestickChart, kw: 'terminal טרמינל עמדת מסחר trading desk פוזיציות פקודות פתוחות positions orders בורסה live exchange חיבור api מפתח בורסות' },
-  { label: 'האזור המנטלי', path: '/mentality', icon: Brain, kw: 'מנטל פסיכולוגיה mentality mindset' },
-  { label: 'בקטסט', path: '/backtest', icon: FlaskConical, kw: 'backtest' },
-  { label: 'החזקות', path: '/portfolio', icon: Briefcase, kw: 'portfolio תיק החזקות השקעות holdings' },
-  { label: 'מעקב DCA', path: '/portfolio?tab=dca', icon: Coins, kw: 'dca תיק החזקות' },
-  { label: 'ארנקים', path: '/portfolio?tab=wallets', icon: Wallet, kw: 'wallets ארנק יתרה תיק החזקות' },
-  { label: 'דוח מס', path: '/tax', icon: Receipt, kw: 'tax מס רווחי הון רואה חשבון דוח שנתי שקלים' },
-  { label: 'תוכניות מסחר', path: '/plans', icon: ClipboardList, kw: 'plans תוכנית' },
-  { label: 'סקירת שוק', path: '/market', icon: Activity, kw: 'market שוק' },
-  { label: 'ניתוח מטבע', path: '/market?tab=analysis', icon: LineChart, kw: 'analysis ניתוח מטבע שוק' },
-  { label: 'מעקב לווייתנים', path: '/market?tab=whales', icon: Fish, kw: 'whales לווייתנים שוק' },
-  { label: 'Polymarket', path: '/market?tab=polymarket', icon: Trophy, kw: 'polymarket פולימרקט הימורים שוק' },
-  { label: 'TradeAI', path: '/trade-ai', icon: Bot, kw: 'ai בינה מלאכותית' },
-  { label: 'חדשות', path: '/news', icon: Newspaper, kw: 'news' },
-  { label: 'שדרוג Premium', path: '/premium', icon: Crown, kw: 'premium פרימיום שדרוג' },
-  { label: 'פרופיל', path: '/profile', icon: User, kw: 'profile הגדרות settings חשבון' },
-];
+import { globalSearchPages } from './globalSearchPages';
 
 // Firestore collections searched for content matches; each maps to the page it lives on.
 const SEARCHABLE = [
@@ -131,10 +108,9 @@ export default function GlobalSearch() {
 
   const q = query.trim().toLowerCase();
 
-  const pageItems = useMemo(() => {
-    const list = q ? PAGES.filter((p) => `${p.label} ${p.kw}`.toLowerCase().includes(q)) : PAGES;
-    return list.map((p) => ({ kind: 'page', title: p.label, page: 'דף', path: p.path, icon: p.icon }));
-  }, [q]);
+  const pageItems = useMemo(() => (
+    globalSearchPages(q).map((p) => ({ kind: 'page', title: p.label, page: 'דף', path: p.path, icon: p.icon }))
+  ), [q]);
 
   const contentItems = useMemo(() => {
     if (!q || !allData) return [];
@@ -182,6 +158,8 @@ export default function GlobalSearch() {
         type="button"
         onClick={openPalette}
         title="חיפוש (⌘K)"
+        aria-label="חיפוש"
+        data-tour="search"
         className="p-2 rounded-lg text-text-muted hover:text-text-primary hover:bg-bg-tertiary transition-colors cursor-pointer shrink-0"
       >
         <Search className="w-5 h-5" />

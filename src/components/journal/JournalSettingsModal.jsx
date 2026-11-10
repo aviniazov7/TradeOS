@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react';
-import { Pencil, Trash2, Archive, Coins, LineChart, Upload, Download } from 'lucide-react';
+import { Trash2, Archive, Coins, LineChart, Upload, Download, Share2 } from 'lucide-react';
 import toast from 'react-hot-toast';
 import Modal from '../shared/Modal';
 import ConfirmDialog from '../shared/ConfirmDialog';
@@ -9,13 +9,71 @@ import { isUnsetExchange } from '../../utils/constants';
 import PropFirmSettings from '../propfirm/PropFirmSettings';
 import { propFirmToForm, formToPropFirm } from '../propfirm/propFirmForm';
 import { normalizeCommissions } from '../../utils/tradeFormHelpers';
+import { dailyLossAlertPatch } from '../../utils/dailyLossAlert';
+import {
+  journalRiskRulesInput,
+  journalRiskRulesInputRejected,
+  journalRiskRulesPatch,
+  journalRiskRulesSame,
+} from '../../utils/journalRiskRules';
+import JournalRiskRulesFields from './JournalRiskRulesFields';
+import { GUIDANCE_FEATURE_NAME } from '../../utils/guidanceName';
 
-export default function JournalSettingsModal({ isOpen, onClose, onArchive, onImport, onExport, canExport }) {
+const FORM_ID = 'journal-settings-form';
+
+/** Numbered section, same caption language as the new-trade ticket. */
+function Section({ n, title, testId, children }) {
+  return (
+    <section data-testid={testId} data-section-n={String(n)} data-section-title={title} className="pt-5 first:pt-0">
+      <div className="flex items-center gap-2">
+        <span className="num-mono text-[10px] font-semibold text-accent-primary">{String(n).padStart(2, '0')}</span>
+        <span className="text-xs font-semibold text-text-primary">{title}</span>
+        <span className="flex-1 h-px bg-border-primary min-w-4" aria-hidden="true" />
+      </div>
+      <div className="mt-3">{children}</div>
+    </section>
+  );
+}
+
+function Segmented({ value, onChange, options, ariaLabel }) {
+  return (
+    <div
+      role="radiogroup"
+      aria-label={ariaLabel}
+      className="flex h-10 gap-0.5 rounded-xl border border-border-primary bg-bg-tertiary p-0.5"
+    >
+      {options.map((opt) => {
+        const on = value === opt.value;
+        const Icon = opt.Icon;
+        return (
+          <button
+            key={opt.value}
+            type="button"
+            role="radio"
+            aria-checked={on}
+            onClick={() => onChange(opt.value)}
+            className={`flex min-w-0 flex-1 cursor-pointer items-center justify-center gap-1.5 rounded-[10px] text-xs font-semibold transition-colors ${
+              on ? 'bg-accent-primary/15 text-accent-primary' : 'text-text-muted hover:text-text-primary'
+            }`}
+          >
+            {Icon && <Icon className="h-3.5 w-3.5" />}
+            {opt.label}
+          </button>
+        );
+      })}
+    </div>
+  );
+}
+
+export default function JournalSettingsModal({ isOpen, onClose, onArchive, onImport, onExport, canExport, onShare, demoActive = false }) {
   const { journals, activeJournal, activeJournalId, updateJournal, deleteJournal, archiveJournal } = useJournalContext();
   const [form, setForm] = useState({ name: '', exchange: '', initialBalance: '', currency: 'USDT', description: '', riskType: 'percent', riskValue: '', assetClass: 'crypto' });
   const [propForm, setPropForm] = useState(() => propFirmToForm(null));
   // Commission presets (string inputs; normalized on save). See the "עמלות" section.
   const [commissions, setCommissions] = useState({});
+  const [alertEnabled, setAlertEnabled] = useState(false);
+  const [alertAmount, setAlertAmount] = useState('');
+  const [riskForm, setRiskForm] = useState(() => journalRiskRulesInput(null));
   const [saving, setSaving] = useState(false);
   const [deleteOpen, setDeleteOpen] = useState(false);
   const [archiveOpen, setArchiveOpen] = useState(false);
@@ -34,6 +92,10 @@ export default function JournalSettingsModal({ isOpen, onClose, onArchive, onImp
       });
       setPropForm(propFirmToForm(activeJournal.propFirm));
       setCommissions(Object.fromEntries(Object.entries(activeJournal.commissions || {}).map(([k, v]) => [k, v ? String(v) : ''])));
+      const alert = activeJournal.dailyLossAlert;
+      setAlertEnabled(alert?.enabled === true);
+      setAlertAmount(alert?.amount > 0 ? String(alert.amount) : '');
+      setRiskForm(journalRiskRulesInput(activeJournal.riskRules));
     }
   }, [activeJournal, isOpen]);
 
@@ -45,6 +107,26 @@ export default function JournalSettingsModal({ isOpen, onClose, onArchive, onImp
       toast.error('הזינו גודל חשבון לחשבון הפרופ');
       return;
     }
+    if (alertEnabled && !(Number(alertAmount) > 0)) toast.error('הזינו סכום להתראת ההפסד היומי');
+    const alertPatch = dailyLossAlertPatch(activeJournal?.dailyLossAlert, {
+      enabled: alertEnabled,
+      amount: alertAmount,
+    });
+    const storedAlert = activeJournal?.dailyLossAlert;
+    const alertChanged = !!alertPatch && (
+      alertPatch.enabled !== storedAlert?.enabled
+      || alertPatch.amount !== (storedAlert?.amount ?? null)
+    );
+    if (demoActive && alertChanged) toast('במצב דמו ההתראה לא נשמרת.');
+    const alertWrite = demoActive ? undefined : alertPatch;
+    const storedRules = activeJournal?.riskRules;
+    const loadedRules = journalRiskRulesInput(storedRules);
+    const rulesDirty = JSON.stringify(riskForm) !== JSON.stringify(loadedRules);
+    const rulesChanged = !journalRiskRulesSame(storedRules, riskForm);
+    if (rulesDirty && journalRiskRulesInputRejected(riskForm)) toast.error('הזינו ערך תקין לכלל שהפעלתם');
+    if (demoActive && rulesChanged) toast('במצב דמו כללי הסיכון לא נשמרים.');
+    const rulesPatch = journalRiskRulesPatch(storedRules, riskForm, { demo: demoActive });
+    const rulesWrite = rulesChanged ? rulesPatch : undefined;
     setSaving(true);
     try {
       await updateJournal(activeJournalId, {
@@ -61,6 +143,8 @@ export default function JournalSettingsModal({ isOpen, onClose, onArchive, onImp
         // so turning it back on restores them.
         ...(propFirm.enabled || activeJournal?.propFirm ? { propFirm } : {}),
         commissions: normalizeCommissions(commissions),
+        ...(alertWrite ? { dailyLossAlert: alertWrite } : {}),
+        ...(rulesWrite ? { riskRules: rulesWrite } : {}),
       });
       toast.success('היומן עודכן');
       onClose();
@@ -100,156 +184,266 @@ export default function JournalSettingsModal({ isOpen, onClose, onArchive, onImp
   const handleImport = () => { onClose(); onImport?.(); };
   const handleExport = () => { onClose(); onExport?.(); };
 
-  const inputClass = 'w-full bg-bg-tertiary border border-border-primary rounded-lg px-3 py-2.5 text-sm text-text-primary outline-none focus:border-accent-primary transition-colors text-right';
-  const labelClass = 'block text-xs text-text-muted mb-1';
+  const inputClass = 'w-full bg-bg-tertiary border border-border-primary rounded-xl px-3 text-sm text-text-primary outline-none focus:border-accent-primary transition-colors text-right';
+  const controlClass = `${inputClass} h-10`;
+  const labelClass = 'block text-[11px] text-text-muted mb-1';
+
+  const commissionField = (key, label, placeholder) => (
+    <div key={key}>
+      <label className={labelClass}>{label}</label>
+      <input
+        type="number"
+        step="any"
+        min="0"
+        inputMode="decimal"
+        value={commissions[key] ?? ''}
+        placeholder={placeholder}
+        onChange={(e) => setCommissions((c) => ({ ...c, [key]: e.target.value }))}
+        className={controlClass}
+      />
+    </div>
+  );
+
+  const footer = (
+    <div data-testid="journal-settings-footer" className="flex items-center gap-2.5">
+      <p className="hidden flex-1 text-[11px] text-text-muted lg:block">
+        <span className="num-mono" dir="ltr">Enter</span> לשמירה · <span className="num-mono">Esc</span> לסגירה
+      </p>
+      <button
+        type="button"
+        onClick={onClose}
+        className="h-10 flex-1 cursor-pointer rounded-xl border border-border-primary bg-bg-tertiary text-sm text-text-primary transition-colors hover:border-border-hover lg:w-32 lg:flex-none"
+      >
+        ביטול
+      </button>
+      <button
+        type="submit"
+        form={FORM_ID}
+        disabled={saving || !form.name.trim()}
+        className="h-10 flex-[1.4] cursor-pointer rounded-xl bg-accent-primary text-sm font-semibold text-black transition-colors hover:bg-accent-hover disabled:cursor-not-allowed disabled:opacity-50 lg:w-44 lg:flex-none"
+      >
+        {saving ? 'שומר...' : 'שמור שינויים'}
+      </button>
+    </div>
+  );
 
   return (
     <>
-      <Modal isOpen={isOpen} onClose={onClose} title="הגדרות יומן" maxWidth="max-w-md">
-        <form onSubmit={handleSave} className="space-y-3">
-          <div>
-            <label className={labelClass}>שם היומן</label>
-            <input type="text" value={form.name} onChange={(e) => setForm((f) => ({ ...f, name: e.target.value }))}
-              className={inputClass} placeholder="שם היומן שלך" />
-          </div>
-          <div>
-            <label className={labelClass}>סוג נכס</label>
-            <div className="flex rounded-lg overflow-hidden border border-border-primary">
-              {[{ id: 'crypto', label: 'קריפטו', Icon: Coins }, { id: 'futures_cme', label: 'חוזים עתידיים', Icon: LineChart }].map((opt) => (
-                <button key={opt.id} type="button" onClick={() => setForm((f) => ({ ...f, assetClass: opt.id }))}
-                  className={`flex-1 flex items-center justify-center gap-1.5 py-2 text-xs font-medium transition-colors cursor-pointer ${
-                    form.assetClass === opt.id ? 'bg-accent-primary text-bg-primary' : 'bg-bg-tertiary text-text-muted hover:text-text-primary'
-                  }`}>
-                  <opt.Icon className="w-3.5 h-3.5" />
-                  {opt.label}
-                </button>
-              ))}
-            </div>
-            <p className="text-[11px] text-text-muted mt-1">משפיע על עסקאות חדשות בלבד; עסקאות קיימות שומרות את הסוג שלהן.</p>
-          </div>
-          <ExchangeSearch
-            value={form.exchange}
-            onChange={(val) => setForm((f) => ({ ...f, exchange: val }))}
-          />
-          <div>
-            <label className={labelClass}>יתרה התחלתית ($)</label>
-            <input type="number" step="any" value={form.initialBalance}
-              onChange={(e) => setForm((f) => ({ ...f, initialBalance: e.target.value }))}
-              className={inputClass} placeholder="1000" />
-          </div>
-          <div>
-            <label className={labelClass}>תיאור (אופציונלי)</label>
-            <textarea value={form.description} onChange={(e) => setForm((f) => ({ ...f, description: e.target.value }))}
-              className={`${inputClass} h-16 resize-none`} placeholder="תיאור קצר של היומן..." />
-          </div>
-          <div>
-            <label className={labelClass}>סוג סיכון</label>
-            <div className="flex rounded-lg overflow-hidden border border-border-primary mb-2">
-              <button type="button" onClick={() => setForm((f) => ({ ...f, riskType: 'percent' }))}
-                className={`flex-1 py-2 text-xs font-medium transition-colors cursor-pointer ${
-                  form.riskType === 'percent' ? 'bg-accent-primary text-bg-primary' : 'bg-bg-tertiary text-text-muted hover:text-text-primary'
-                }`}>
-                % אחוז מהתיק
-              </button>
-              <button type="button" onClick={() => setForm((f) => ({ ...f, riskType: 'fixed' }))}
-                className={`flex-1 py-2 text-xs font-medium transition-colors cursor-pointer ${
-                  form.riskType === 'fixed' ? 'bg-accent-primary text-bg-primary' : 'bg-bg-tertiary text-text-muted hover:text-text-primary'
-                }`}>
-                $ סכום קבוע
-              </button>
-            </div>
-            <input type="number" step="any" value={form.riskValue}
-              onChange={(e) => setForm((f) => ({ ...f, riskValue: e.target.value }))}
-              className={inputClass}
-              placeholder={form.riskType === 'percent' ? 'למשל: 1' : 'למשל: 50'} />
-          </div>
-
-          <PropFirmSettings value={propForm} onChange={setPropForm} />
-          {/* ── עמלות (commission presets) ── pre-fills the fees field in the trade form. */}
-          <div className="rounded-xl border border-border-primary p-3 space-y-2">
-            <div>
-              <label className={labelClass + ' !mb-0 font-semibold'}>עמלות</label>
-              <p className="text-[11px] text-text-muted">טופס העסקה ימלא את שדה העמלות (הלוך-חזור) לפי הפריסט. אפשר לדרוס ידנית בכל עסקה.</p>
-            </div>
-            {(() => {
-              const field = (key, label, placeholder) => (
-                <div key={key}>
-                  <label className={labelClass}>{label}</label>
-                  <input type="number" step="any" min="0" inputMode="decimal" value={commissions[key] ?? ''} placeholder={placeholder}
-                    onChange={(e) => setCommissions((c) => ({ ...c, [key]: e.target.value }))} className={inputClass} />
+      <Modal isOpen={isOpen} onClose={onClose} title="הגדרות יומן" maxWidth="max-w-5xl" footer={footer}>
+        <form
+          id={FORM_ID}
+          data-testid="journal-settings-form"
+          onSubmit={handleSave}
+          className="grid grid-cols-1 items-start lg:grid-cols-[minmax(0,1fr)_288px] lg:gap-6"
+        >
+          <div className="min-w-0">
+            <Section n={1} title="פרטים בסיסיים" testId="journal-settings-section-basics">
+              <div data-testid="journal-settings-basics-grid" className="grid grid-cols-1 gap-3 lg:grid-cols-2">
+                <div>
+                  <label className={labelClass}>שם היומן</label>
+                  <input
+                    type="text"
+                    value={form.name}
+                    onChange={(e) => setForm((f) => ({ ...f, name: e.target.value }))}
+                    className={controlClass}
+                    placeholder="שם היומן שלך"
+                  />
                 </div>
-              );
-              if (form.assetClass === 'futures_cme') {
-                return field('futuresPerContractSide', '$ לחוזה לכל צד', '2.25');
-              }
-              if (form.assetClass === 'stocks') {
-                return (
-                  <div className="grid grid-cols-2 gap-2">
-                    {field('stockPerShare', '$ למניה', '0.005')}
-                    {field('stockMinPerOrder', 'מינימום $ להוראה', '1')}
+                <div>
+                  <label className={labelClass}>סוג נכס</label>
+                  <Segmented
+                    ariaLabel="סוג נכס"
+                    value={form.assetClass}
+                    onChange={(assetClass) => setForm((f) => ({ ...f, assetClass }))}
+                    options={[
+                      { value: 'crypto', label: 'קריפטו', Icon: Coins },
+                      { value: 'futures_cme', label: 'חוזים עתידיים', Icon: LineChart },
+                    ]}
+                  />
+                </div>
+                <div className="lg:col-span-2">
+                  <p className="text-[11px] text-text-muted">משפיע על עסקאות חדשות בלבד; עסקאות קיימות שומרות את הסוג שלהן.</p>
+                </div>
+                <ExchangeSearch
+                  value={form.exchange}
+                  onChange={(val) => setForm((f) => ({ ...f, exchange: val }))}
+                />
+                <div>
+                  <label className={labelClass}>יתרה התחלתית ($)</label>
+                  <input
+                    type="number"
+                    step="any"
+                    value={form.initialBalance}
+                    onChange={(e) => setForm((f) => ({ ...f, initialBalance: e.target.value }))}
+                    className={controlClass}
+                    placeholder="1000"
+                  />
+                </div>
+                <div className="lg:col-span-2">
+                  <label className={labelClass}>תיאור (אופציונלי)</label>
+                  <textarea
+                    value={form.description}
+                    onChange={(e) => setForm((f) => ({ ...f, description: e.target.value }))}
+                    className={`${inputClass} h-16 resize-none py-2.5`}
+                    placeholder="תיאור קצר של היומן..."
+                  />
+                </div>
+              </div>
+            </Section>
+
+            <Section n={2} title="סוג וגודל סיכון" testId="journal-settings-section-risk-size">
+              <div className="grid grid-cols-1 gap-3 lg:grid-cols-[minmax(0,1.2fr)_minmax(0,0.8fr)] lg:items-end">
+                <div>
+                  <label className={labelClass}>סוג סיכון</label>
+                  <Segmented
+                    ariaLabel="סוג סיכון"
+                    value={form.riskType}
+                    onChange={(riskType) => setForm((f) => ({ ...f, riskType }))}
+                    options={[
+                      { value: 'percent', label: '% אחוז מהתיק' },
+                      { value: 'fixed', label: '$ סכום קבוע' },
+                    ]}
+                  />
+                </div>
+                <input
+                  type="number"
+                  step="any"
+                  value={form.riskValue}
+                  onChange={(e) => setForm((f) => ({ ...f, riskValue: e.target.value }))}
+                  className={controlClass}
+                  placeholder={form.riskType === 'percent' ? 'למשל: 1' : 'למשל: 50'}
+                  aria-label="גודל סיכון"
+                />
+              </div>
+            </Section>
+
+            <Section n={3} title="כללי סיכון" testId="journal-settings-section-risk-rules">
+              <div className="space-y-3">
+                <div className="space-y-2 rounded-xl border border-border-primary p-3">
+                  <label className="flex cursor-pointer items-center justify-between gap-3">
+                    <span className="text-xs font-semibold text-text-primary">התראת הפסד יומי</span>
+                    <input
+                      type="checkbox"
+                      checked={alertEnabled}
+                      onChange={(e) => setAlertEnabled(e.target.checked)}
+                      className="accent-loss"
+                      data-testid="journal-daily-loss-alert"
+                    />
+                  </label>
+                  <p className="text-[11px] text-text-muted">כשההפסד הנקי של היום מגיע לסכום, מופיע באנר. הרישום נשאר פתוח. לא משנה את תקרת התוכנית או את כללי הפרופ.</p>
+                  {alertEnabled && (
+                    <div>
+                      <label className={labelClass}>הפסד יומי מקסימלי ($)</label>
+                      <input
+                        type="number"
+                        min="0"
+                        step="any"
+                        inputMode="decimal"
+                        value={alertAmount}
+                        onChange={(e) => setAlertAmount(e.target.value)}
+                        className={controlClass}
+                        placeholder="למשל: 300"
+                      />
+                    </div>
+                  )}
+                </div>
+                <JournalRiskRulesFields value={riskForm} onChange={setRiskForm} />
+              </div>
+            </Section>
+
+            <Section n={4} title="עמלות" testId="journal-settings-section-commissions">
+              <div className="space-y-2 rounded-xl border border-border-primary p-3">
+                <p className="text-[11px] text-text-muted">טופס העסקה ימלא את שדה העמלות (הלוך-חזור) לפי הפריסט. אפשר לדרוס ידנית בכל עסקה.</p>
+                {form.assetClass === 'futures_cme' ? (
+                  commissionField('futuresPerContractSide', '$ לחוזה לכל צד', '2.25')
+                ) : form.assetClass === 'stocks' ? (
+                  <div data-testid="journal-settings-commission-grid" className="grid grid-cols-1 gap-2 lg:grid-cols-2">
+                    {commissionField('stockPerShare', '$ למניה', '0.005')}
+                    {commissionField('stockMinPerOrder', 'מינימום $ להוראה', '1')}
                   </div>
-                );
-              }
-              return (
-                <div className="grid grid-cols-2 gap-2">
-                  {field('cryptoMakerPct', 'Maker (% מהנומינלי)', '0.02')}
-                  {field('cryptoTakerPct', 'Taker (% מהנומינלי)', '0.055')}
+                ) : (
+                  <div data-testid="journal-settings-commission-grid" className="grid grid-cols-1 gap-2 lg:grid-cols-2">
+                    {commissionField('cryptoMakerPct', 'Maker (% מהנומינלי)', '0.02')}
+                    {commissionField('cryptoTakerPct', 'Taker (% מהנומינלי)', '0.055')}
+                  </div>
+                )}
+              </div>
+            </Section>
+
+            <Section n={5} title="חשבון פרופ" testId="journal-settings-section-prop">
+              <PropFirmSettings value={propForm} onChange={setPropForm} />
+            </Section>
+          </div>
+
+          <aside
+            aria-label="שיתוף ופעולות"
+            className="mt-6 lg:sticky lg:top-16 lg:mt-0 lg:max-h-[calc(100dvh-13rem)] lg:self-start lg:overflow-y-auto lg:overscroll-contain"
+          >
+            <div className="rounded-2xl border border-border-primary bg-bg-tertiary p-4">
+              <Section n={6} title="שיתוף יומן" testId="journal-settings-section-share">
+                <div className="space-y-2">
+                  <p data-testid="guidance-feature-label" className="text-sm font-bold text-text-primary">{GUIDANCE_FEATURE_NAME}</p>
+                  <p className="text-[11px] text-text-muted">הניתוח האישי של היומן. הכפתור עם השם הזה נמצא בראש העמוד, גם במסך האנליטיקה.</p>
+                  <p className="text-[11px] text-text-muted">שתפו את היומן הפעיל לטווח זמן. הצופה רואה רק את השדות שתבחרו, בלי אפשרות לערוך.</p>
+                  <button
+                    type="button"
+                    onClick={() => onShare?.()}
+                    data-testid="journal-share-open"
+                    className="flex w-full cursor-pointer items-center justify-center gap-2 rounded-xl border border-border-primary bg-bg-secondary py-2.5 text-sm font-semibold text-text-primary transition-colors hover:bg-border-hover"
+                  >
+                    <Share2 className="h-4 w-4" />
+                    שיתוף היומן
+                  </button>
                 </div>
-              );
-            })()}
-          </div>
+              </Section>
 
-          <div className="flex gap-3 pt-2">
-            <button type="button" onClick={onClose}
-              className="flex-1 py-2.5 rounded-lg bg-bg-tertiary text-text-primary hover:bg-border-hover transition-colors cursor-pointer text-sm">
-              ביטול
-            </button>
-            <button type="submit" disabled={saving || !form.name.trim()}
-              className="flex-1 py-2.5 rounded-lg bg-accent-primary text-black font-semibold hover:bg-accent-hover transition-colors cursor-pointer disabled:opacity-50 text-sm">
-              {saving ? 'שומר...' : 'שמור שינויים'}
-            </button>
-          </div>
+              <Section n={7} title="ייבוא / ייצוא עסקאות" testId="journal-settings-section-io">
+                <div className="space-y-2">
+                  <button
+                    type="button"
+                    onClick={handleImport}
+                    className="flex w-full cursor-pointer items-center justify-center gap-2 rounded-xl border border-border-primary bg-bg-secondary py-2.5 text-sm text-text-primary transition-colors hover:bg-border-hover"
+                  >
+                    <Upload className="h-4 w-4" />
+                    ייבוא עסקאות מ-CSV
+                  </button>
+                  <button
+                    type="button"
+                    onClick={handleExport}
+                    disabled={!canExport}
+                    className="flex w-full cursor-pointer items-center justify-center gap-2 rounded-xl border border-border-primary bg-bg-secondary py-2.5 text-sm text-text-primary transition-colors hover:bg-border-hover disabled:cursor-not-allowed disabled:opacity-50"
+                  >
+                    <Download className="h-4 w-4" />
+                    ייצוא עסקאות ל-CSV
+                  </button>
+                </div>
+              </Section>
+
+              <Section n={8} title="אזור מסוכן" testId="journal-settings-section-danger">
+                <div className="space-y-2">
+                  <button
+                    type="button"
+                    onClick={() => setArchiveOpen(true)}
+                    className="flex w-full cursor-pointer items-center justify-center gap-2 rounded-xl py-2.5 text-sm text-amber-500 transition-colors hover:bg-amber-500/10"
+                  >
+                    <Archive className="h-4 w-4" />
+                    העברה לארכיון
+                  </button>
+                  {journals.length > 1 && (
+                    <button
+                      type="button"
+                      onClick={() => setDeleteOpen(true)}
+                      className="flex w-full cursor-pointer items-center justify-center gap-2 rounded-xl py-2.5 text-sm text-loss transition-colors hover:bg-loss/10"
+                    >
+                      <Trash2 className="h-4 w-4" />
+                      מחיקת יומן
+                    </button>
+                  )}
+                </div>
+              </Section>
+            </div>
+          </aside>
         </form>
-
-        <div className="mt-4 pt-4 border-t border-border-primary space-y-2">
-          <p className="text-xs text-text-muted">ייבוא / ייצוא עסקאות</p>
-          <button
-            type="button"
-            onClick={handleImport}
-            className="w-full flex items-center justify-center gap-2 py-2.5 rounded-lg bg-bg-tertiary text-text-primary hover:bg-border-hover transition-colors cursor-pointer text-sm"
-          >
-            <Upload className="w-4 h-4" />
-            ייבוא עסקאות מ-CSV
-          </button>
-          <button
-            type="button"
-            onClick={handleExport}
-            disabled={!canExport}
-            className="w-full flex items-center justify-center gap-2 py-2.5 rounded-lg bg-bg-tertiary text-text-primary hover:bg-border-hover transition-colors cursor-pointer text-sm disabled:opacity-50 disabled:cursor-not-allowed"
-          >
-            <Download className="w-4 h-4" />
-            ייצוא עסקאות ל-CSV
-          </button>
-        </div>
-
-        <div className="mt-4 pt-4 border-t border-border-primary space-y-2">
-          <button
-            onClick={() => setArchiveOpen(true)}
-            className="w-full flex items-center justify-center gap-2 py-2.5 rounded-lg text-amber-500 hover:bg-amber-500/10 transition-colors cursor-pointer text-sm"
-          >
-            <Archive className="w-4 h-4" />
-            העברה לארכיון
-          </button>
-          {journals.length > 1 && (
-            <button
-              onClick={() => setDeleteOpen(true)}
-              className="w-full flex items-center justify-center gap-2 py-2.5 rounded-lg text-loss hover:bg-loss/10 transition-colors cursor-pointer text-sm"
-            >
-              <Trash2 className="w-4 h-4" />
-              מחיקת יומן
-            </button>
-          )}
-        </div>
       </Modal>
 
       <ConfirmDialog

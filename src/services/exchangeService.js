@@ -1,5 +1,6 @@
 import { auth } from './firebase';
 import { getUserSetting } from './firestoreService';
+import { connectClientError } from '../utils/exchangeConnectErrors';
 
 const WORKER_URL =
   import.meta.env.VITE_WORKER_URL || 'https://trade-os.tradeos.workers.dev';
@@ -20,13 +21,22 @@ async function authedFetch(path, body, method = 'POST') {
 // exchange name and the Worker looks up the stored, decrypted credentials.
 
 export async function storeExchangeCredentials(exchange, { apiKey, apiSecret, passphrase } = {}) {
-  const res = await authedFetch('/exchange/credentials/store', {
-    exchange, apiKey, apiSecret, passphrase: passphrase || '',
-  });
+  let res;
+  try {
+    res = await authedFetch('/exchange/credentials/store', {
+      exchange, apiKey, apiSecret, passphrase: passphrase || '',
+    });
+  } catch {
+    const failure = connectClientError({ code: 'provider_unavailable' });
+    const err = new Error(failure.message);
+    err.code = failure.code;
+    throw err;
+  }
   const data = await res.json().catch(() => ({}));
   if (!res.ok || data.error) {
-    const err = new Error(data.message || data.error || 'שמירת המפתחות נכשלה');
-    if (data.error) err.code = data.error;
+    const failure = connectClientError(data);
+    const err = new Error(failure.message);
+    err.code = failure.code;
     throw err;
   }
   return { readOnly: data.readOnly === true };

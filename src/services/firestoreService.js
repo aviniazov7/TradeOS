@@ -14,6 +14,7 @@ import {
   writeBatch,
   serverTimestamp,
   Timestamp,
+  deleteField,
   getCountFromServer,
   terminate,
   clearIndexedDbPersistence,
@@ -393,7 +394,7 @@ export async function applyTradeCleanup(uid, { updates = [], deletes = [] }) {
 // dead uid after the user deletes their account.
 export const USER_SUBCOLLECTIONS = [
   'trades', 'journals', 'backtests', 'backtestJournals', 'dca',
-  'tradingPlans', 'notes', 'strategies', 'morningJournals', 'eveningJournals',
+  'tradingPlans', 'notes', 'strategies', 'morningJournals', 'eveningJournals', 'businessEntries', 'notebookEntries',
   'processes', 'polymarketWatch', 'polymarketStrategies', 'settings',
   'tradeImages', 'apiKeys', 'apiIdempotency',
 ];
@@ -465,6 +466,11 @@ export function timestamp() {
  * hooks/components (service-layer convention, issue #216). */
 export function dateToTimestamp(date) {
   return Timestamp.fromDate(date);
+}
+
+/** Remove a field on update. Keeps `firebase/firestore` inside this service. */
+export function unsetField() {
+  return deleteField();
 }
 
 // Re-exported so callers append to array fields without importing

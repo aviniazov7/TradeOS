@@ -19,7 +19,7 @@ const TOOLS = [
   },
   {
     name: 'add_trade',
-    description: 'Add one trade to a journal owned by the API key. Validation and stored fields match POST /api/v1/trades: pnl, netPnl, pnlPercent, result, position size, margin, and a derived risk amount when entry, stop, and size can price it. P&L is computed from prices and fees. pnlFromExchange is not accepted. Only the properties listed in this schema are accepted. Pass journalId or journal (the journal name, or its id). One of them is required — omitting both is rejected and does not guess a journal. Also required: pair, direction (long or short), entryPrice, quantity. status may be omitted — an exit price closes the trade, partial exits become partial, otherwise the trade stays open. fees default to 0 and leverage to 1 (crypto and stocks). Futures (assetClass futures_cme) need contract.contracts, contract.pointValue, and contract.tickSize. Pass idempotencyKey (8–128 printable characters) to make a retry return the original trade instead of writing another one.',
+    description: 'Add one trade to a journal owned by the API key. Validation and stored fields match POST /api/v1/trades: pnl, netPnl, pnlPercent, result, position size, margin, and a derived risk amount when entry, stop, and size can price it. P&L is computed from prices and fees. pnlFromExchange is not accepted. Only the properties listed in this schema are accepted. Pass journalId or journal (the journal name, or its id). One of them is required — omitting both is rejected and does not guess a journal. Also required: pair, direction (long or short), entryPrice, quantity. status may be omitted — an exit price closes the trade, partial exits become partial, otherwise the trade stays open. fees default to 0 and leverage to 1 (crypto and stocks). Futures (assetClass futures_cme) need contract.contracts, contract.pointValue, and contract.tickSize. Optional custom is an object of field id to string or number, checked against the user\'s settings/customTradeFields definitions. Unknown ids and values that do not match a field are rejected. Omit custom for a trade with no answers. Pass idempotencyKey (8–128 printable characters) to make a retry return the original trade instead of writing another one. A shared journal does not include custom.',
     inputSchema: {
       type: 'object',
       additionalProperties: false,
@@ -56,12 +56,17 @@ const TOOLS = [
           },
         },
         idempotencyKey: { type: 'string', description: '8–128 printable characters. A repeat returns the original trade.' },
+        custom: {
+          type: 'object',
+          additionalProperties: true,
+          description: 'Answers for fields defined on settings/customTradeFields. Keys are field ids (f1, f2, …). Text and select values are strings; a number field is a number. Unknown ids and values that do not match the definition are rejected. Omit for no answers.',
+        },
       },
     },
   },
   {
     name: 'update_trade',
-    description: 'Update one trade owned by the API key. Same checks as PATCH /api/v1/trades/{id}. id is required. Every other argument is optional and partial: omitted fields stay as stored. Only the properties listed here are accepted. id and createdAt cannot be changed. Sending no field besides id is rejected. Validation matches add_trade (types, ranges, futures contract). The Worker recomputes pnl, netPnl, pnlPercent, result, position size, margin, and R from the merged trade, and sets updatedAt. Another user\'s id is not found. Pass journalId or journal only when moving the trade to another journal you own.',
+    description: 'Update one trade owned by the API key. Same checks as PATCH /api/v1/trades/{id}. id is required. Every other argument is optional and partial: omitted fields stay as stored. Only the properties listed here are accepted. id and createdAt cannot be changed. Sending no field besides id is rejected. Validation matches add_trade (types, ranges, futures contract). The Worker recomputes pnl, netPnl, pnlPercent, result, position size, margin, and R from the merged trade, and sets updatedAt. Another user\'s id is not found. Pass journalId or journal only when moving the trade to another journal you own. custom replaces the whole answer map and is checked against the user\'s defined fields. Omit custom to keep the stored answers. {} clears them. A shared journal does not include custom.',
     inputSchema: {
       type: 'object',
       additionalProperties: false,
@@ -98,12 +103,17 @@ const TOOLS = [
             tickSize: { type: 'number', exclusiveMinimum: 0 },
           },
         },
+        custom: {
+          type: 'object',
+          additionalProperties: true,
+          description: 'Replaces the whole answer map. Keys are field ids defined on settings/customTradeFields. {} clears stored answers. Omit this argument to leave them unchanged.',
+        },
       },
     },
   },
   {
     name: 'list_trades',
-    description: 'List the caller\'s trades, newest entryDate first. The same entryDate ties break by document id in that same direction. Set order to "asc" for oldest first (id ascending on a tie). Optional filters: journalId or journal (name or id of a journal the key owner owns), status (open, closed, or partial), pair, direction (long or short), from, and to. Omitting the journal filter lists every journal, same as before. from and to filter the entry date (ISO-8601 or YYYY-MM-DD). limit is 1–100 and defaults to 50. Pass the previous nextCursor as cursor to read the next page; the cursor is only valid for the same filters and order. Trades with no entryDate are omitted.',
+    description: 'List the caller\'s trades, newest entryDate first. The same entryDate ties break by document id in that same direction. Set order to "asc" for oldest first (id ascending on a tie). Optional filters: journalId or journal (name or id of a journal the key owner owns), status (open, closed, or partial), pair, direction (long or short), from, and to. Omitting the journal filter lists every journal, same as before. from and to filter the entry date (ISO-8601 or YYYY-MM-DD). limit is 1–100 and defaults to 50. Pass the previous nextCursor as cursor to read the next page; the cursor is only valid for the same filters and order. Trades with no entryDate are omitted. Each trade includes custom when that trade has answers, and omits the field when it does not. A shared journal does not include custom; this list is only the key owner\'s trades.',
     inputSchema: {
       type: 'object',
       additionalProperties: false,
@@ -257,7 +267,7 @@ function initializeResult(params) {
     protocolVersion: PROTOCOL_VERSIONS.includes(requested) ? requested : PREFERRED_PROTOCOL,
     capabilities: { tools: { listChanged: false } },
     serverInfo: { name: 'tradeos', title: 'TradeOS', version: '1.0.0' },
-    instructions: 'TradeOS journal tools for the signed-in API key. list_journals returns id, name, and exchange. add_trade writes one trade to journalId or journal (optional idempotencyKey); omitting both is rejected. update_trade patches one trade by id and recomputes P&L; id and createdAt stay as stored. list_trades returns newest entryDate first unless order is asc, and lists every journal when no journal filter is passed. delete_trade removes one trade by id. get_stats is one journal, by journalId or journal. Dates are ISO-8601.',
+    instructions: 'TradeOS journal tools for the signed-in API key. list_journals returns id, name, and exchange. add_trade writes one trade to journalId or journal (optional idempotencyKey); omitting both is rejected. custom, when sent, is checked against settings/customTradeFields. update_trade patches one trade by id and recomputes P&L; id and createdAt stay as stored; omit custom to keep stored answers. list_trades returns newest entryDate first unless order is asc, includes custom only when a trade has answers, and lists every journal when no journal filter is passed. A shared journal never includes custom. delete_trade removes one trade by id. get_stats is one journal, by journalId or journal. Dates are ISO-8601.',
   };
 }
 

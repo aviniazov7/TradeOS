@@ -15,7 +15,7 @@ const NO_TRADES = [];
 // (crypto / CME futures with a contract spec / stocks at 1x), the same rule as
 // the trade form. existingTrades: the journal's trades, so re-importing the
 // same file skips rows that are already there instead of duplicating them.
-export default function ImportTrades({ isOpen, onClose, onImport, onImportBulk, assetClass = 'crypto', existingTrades = NO_TRADES }) {
+export default function ImportTrades({ isOpen, onClose, onImport, onImportBulk, assetClass = 'crypto', existingTrades = NO_TRADES, customFields = [] }) {
   const [file, setFile] = useState(null);
   const [parsed, setParsed] = useState(null);
   const [columnMapping, setColumnMapping] = useState({});
@@ -48,8 +48,8 @@ export default function ImportTrades({ isOpen, onClose, onImport, onImportBulk, 
   // reject (quantity ≤ 0, negative fees…) ever reaches the batch.
   const hasSizeMapping = mappingHasSize(columnMapping);
   const plan = useMemo(() => (parsed
-    ? buildImportTrades(parsed.rows, columnMapping, { assetClass: journalClass, existingTrades })
-    : { trades: [], skipped: [], counts: {}, estimatedSize: 0 }), [parsed, columnMapping, journalClass, existingTrades]);
+    ? buildImportTrades(parsed.rows, columnMapping, { assetClass: journalClass, existingTrades, customFields })
+    : { trades: [], skipped: [], counts: {}, estimatedSize: 0 }), [parsed, columnMapping, journalClass, existingTrades, customFields]);
   const validTrades = hasSizeMapping ? plan.trades.length : 0;
 
   const handleImport = async () => {

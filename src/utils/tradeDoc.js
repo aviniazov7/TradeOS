@@ -1,4 +1,5 @@
 import { calculateFuturesNotional, computeTradeFields, initialRiskUsd, usesContractMath } from './calculations';
+import { sanitizeCustomMap } from './customTradeFields';
 
 /**
  * The document the journal writes for a new trade. Shared by the client
@@ -29,7 +30,7 @@ export function buildStoredTrade(tradeData, { journalId = null, now = new Date()
     ? calculateFuturesNotional(tradeData.entryPrice, tradeData.contract.pointValue, tradeData.contract.contracts)
     : tradeData.entryPrice * tradeData.quantity;
 
-  return {
+  const stored = {
     ...tradeData,
     // Asset class is persisted explicitly so Firestore rules and analytics
     // can branch on it. Missing/absent means crypto — every pre-existing
@@ -48,6 +49,14 @@ export function buildStoredTrade(tradeData, { journalId = null, now = new Date()
     createdAt: safeEntryDate,
     updatedAt: clock,
   };
+  // `custom` is optional. A missing field, an empty map, or junk stays off
+  // the document so older trades keep the shape they had.
+  if (Object.prototype.hasOwnProperty.call(tradeData, 'custom')) {
+    const custom = sanitizeCustomMap(tradeData.custom);
+    if (custom) stored.custom = custom;
+    else delete stored.custom;
+  }
+  return stored;
 }
 
 /**

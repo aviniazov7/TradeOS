@@ -12,6 +12,7 @@ import {
   ONBOARDING_DISMISS_KEY, ONBOARDING_REOPEN_EVENT, shouldShowOnboarding,
   dismissOnboardingSession, readOnboardingStep, writeOnboardingStep, clearOnboardingStep,
 } from '../../utils/onboardingGate';
+import { publishWizardForTour } from '../../utils/uiTour';
 import { ONBOARDING_STEPS } from './onboardingSteps';
 
 function readDismissed() {
@@ -24,6 +25,7 @@ export default function OnboardingWizard() {
   const navigate = useNavigate();
   const { pathname } = useLocation();
   const [needsOnboarding, setNeedsOnboarding] = useState(false);
+  const [onboardingSettled, setOnboardingSettled] = useState(false);
   const [dismissed, setDismissed] = useState(readDismissed);
   const [step, setStep] = useState(0);
   const [direction, setDirection] = useState(1);
@@ -44,7 +46,7 @@ export default function OnboardingWizard() {
     let cancelled = false;
     getUserProfile(user.uid).then(({ exists, data }) => {
       if (!cancelled) setNeedsOnboarding(exists && data.onboardingCompleted === false);
-    }).catch(() => {});
+    }).catch(() => {}).finally(() => { if (!cancelled) setOnboardingSettled(true); });
     return () => { cancelled = true; };
   }, [user]);
 
@@ -67,6 +69,11 @@ export default function OnboardingWizard() {
     pathname,
     dismissed,
   });
+
+  useEffect(() => {
+    if (!onboardingSettled) return;
+    publishWizardForTour(show);
+  }, [onboardingSettled, show]);
 
   const complete = async () => {
     dismissOnboardingSession();
@@ -139,6 +146,7 @@ export default function OnboardingWizard() {
             role="dialog"
             aria-modal="true"
             aria-labelledby="onboarding-title"
+            data-testid="onboarding-wizard"
             className="relative max-w-md w-full rounded-2xl overflow-hidden border border-border-primary bg-bg-secondary"
             style={{ boxShadow: '0 32px 80px rgba(0,0,0,0.55)' }}
             initial={{ scale: 0.94, opacity: 0, y: 16 }}
