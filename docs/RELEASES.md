@@ -83,6 +83,7 @@ revert של merge commit <sha> על main, ו-rollback של Hosting ל-release ה
 
 | תאריך (ישראל) | מיזוג | מה נכנס, לפי היסטוריית git | תג | APP_VERSION |
 |--|--|--|--|--|
+| 2026-11-10 | ממתין למיזוג `dev` → `main` | #701 `571e4e4` | v2.3.1 אחרי המיזוג ל-`main` | 2.3.1 |
 | 2026-11-10 | [#698](https://github.com/aviniazov7/TradeOS/pull/698) `7f7cfba` | #657–#697 | [v2.3.0](https://github.com/aviniazov7/TradeOS/releases/tag/v2.3.0) | 2.3.0 |
 | 2026-11-09 | [#655](https://github.com/aviniazov7/TradeOS/pull/655) `be50d54` | #643–#654 | אין | 2.2.1 |
 | 2026-11-01 | [#642](https://github.com/aviniazov7/TradeOS/pull/642) `a8fe995` | #641 | אין | 2.2.1 |
