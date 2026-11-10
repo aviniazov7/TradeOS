@@ -53,8 +53,9 @@ const SHEETS = {
       { header: 'P&L נטו ($)', get: (t) => fmtNum(t.netPnl ?? t.pnl) },
       { header: 'אחוז P&L', get: (t) => fmtNum(t.pnlPercent) },
       // The field is rrRatio (t.rr never existed — the column exported empty
-      // forever). Stored unsigned; the sign comes from the pnl, matching the
-      // in-app display (formatRR) and the journal's CSV export.
+      // forever). Stored unsigned; the sign comes from the net P&L. This
+      // sheet keeps that price ratio. The journal CSV writes the table's
+      // net R (signedTradeR) instead.
       { header: 'R:R', get: (t) => (signedR(t) ? fmtNum(signedR(t)) : '') },
       { header: 'אסטרטגיה', get: (t) => t.strategy },
       { header: 'סשן', get: (t) => t.session },
