@@ -229,6 +229,9 @@ export default function PlanForm({ isOpen, onClose, plan, onSave, saveLabel = ''
   };
 
   const submitLabel = saving ? 'שומר...' : (saveLabel || (plan ? 'עדכן תוכנית' : 'צור תוכנית'));
+  // A saved plan has an id. An AI draft is filled in but unsaved, and a manual
+  // create passes no plan — both stay a new plan until the user saves.
+  const editingSavedPlan = Boolean(plan?.id);
   const inputClass = 'w-full bg-bg-tertiary border border-border-primary rounded-lg px-3 py-2 text-sm text-text-primary outline-none focus:border-accent-primary transition-colors';
   const labelClass = 'block text-xs text-text-muted mb-1';
   const sectionClass = 'text-sm font-semibold text-text-secondary mb-2 mt-5';
@@ -309,7 +312,7 @@ export default function PlanForm({ isOpen, onClose, plan, onSave, saveLabel = ''
   return (
     <Modal isOpen={isOpen} onClose={onClose} title={
       <span className="flex items-center gap-3 flex-wrap">
-        <span>{plan ? 'עריכת תוכנית' : 'תוכנית מסחר חדשה'}</span>
+        <span>{editingSavedPlan ? 'עריכת תוכנית' : 'תוכנית חדשה'}</span>
         {!plan && (
           <button
             type="button"

@@ -69,6 +69,12 @@ function planName() {
   return document.querySelector('input[placeholder="לדוגמה: סקאלפינג BTC"]')?.value;
 }
 
+function dialogTitle() {
+  const input = document.querySelector('input[placeholder="לדוגמה: סקאלפינג BTC"]');
+  const dialog = input?.closest('[role="dialog"]');
+  return dialog?.querySelector('h2')?.textContent.replace(/\s+/g, ' ').trim() || '';
+}
+
 function buttonNamed(name) {
   return [...document.querySelectorAll('button')].find((btn) => btn.textContent.replace(/\s+/g, ' ').trim() === name);
 }
@@ -237,6 +243,9 @@ describe('plan builder wizard', () => {
     expect(requestPlan).toHaveBeenCalledTimes(1);
     expect(onSave).not.toHaveBeenCalled();
     expect(planName()).toBe('תוכנית סינתטית');
+    expect(dialogTitle()).toContain('תוכנית חדשה');
+    expect(dialogTitle()).not.toContain('עריכת תוכנית');
+    expect(plansApi.addPlan).not.toHaveBeenCalled();
     await clickButton('ביטול');
     expect(onSave).not.toHaveBeenCalled();
     await view.cleanup();
@@ -315,6 +324,8 @@ describe('plan builder wizard', () => {
     await finishWizard('swing');
     expect(requestPlan).not.toHaveBeenCalled();
     expect(planName()).toBe('תוכנית דמה');
+    expect(dialogTitle()).toContain('תוכנית חדשה');
+    expect(dialogTitle()).not.toContain('עריכת תוכנית');
     expect(document.body.textContent).toContain('BTCUSDT');
     const urls = fetchSpy.mock.calls.map((call) => String(call[0]));
     expect(urls.some((url) => /firestore|googleapis\.com\/firestore|ai-plan-builder|api\.groq\.com/.test(url))).toBe(false);
