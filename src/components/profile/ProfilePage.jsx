@@ -1,7 +1,7 @@
 import { useState, useEffect, useRef } from 'react';
 import { passwordProblem } from '../../utils/passwordPolicy';
 import { authErrorHe } from '../../utils/authErrors';
-import { useNavigate } from 'react-router-dom';
+import { useLocation, useNavigate, useSearchParams } from 'react-router-dom';
 import { m, AnimatePresence } from 'framer-motion';
 import { LogOut, Trash2, Lock, Mail, Share2, Download, Eye, EyeOff, Sun, Moon, Trophy, Crown, ShieldCheck, Clock, ArrowLeft, ChevronRight, Check, Coins, LineChart, Briefcase, Receipt, ChevronLeft, Camera, Pencil, Compass } from 'lucide-react';
 import UserAvatar from '../shared/UserAvatar';
@@ -26,9 +26,8 @@ import NotificationSettings from './NotificationSettings';
 import MarketingEmailToggle from './MarketingEmailToggle';
 import ContactDeveloper from './ContactDeveloper';
 import ApiKeysSection from './ApiKeysSection';
-import SettingsNav from './SettingsNav';
 import CustomTradeFieldsSettings from './CustomTradeFieldsSettings';
-import { SETTINGS_SECTIONS, visibleSettingsSection } from './settingsCatalog';
+import { SETTINGS_SECTIONS, scrollSettingsSectionIntoView, settingsSectionFromParam } from './settingsCatalog';
 import { replayUiTour } from '../../utils/uiTour';
 import { planExpiresMs } from '../../utils/premium';
 
@@ -54,9 +53,26 @@ const ASSET_CLASSES = [
   { id: 'stocks', label: 'מניות', desc: 'מניות ו-ETF — AAPL, NVDA, SPY', Icon: Briefcase },
 ];
 
-// Small section heading that groups the settings cards into clear topics.
-function SectionTitle({ children }) {
-  return <h2 className="text-[11px] font-semibold text-text-muted px-1 mb-2 mt-6">{children}</h2>;
+// One topic on the settings column: a readable caption on a hairline, then
+// its cards. The id is the deep-link target (?section= or #settings-).
+function SettingsSection({ id, children }) {
+  const title = SETTINGS_SECTIONS.find((section) => section.id === id)?.label || id;
+  const titleId = `settings-${id}-title`;
+  return (
+    <section
+      id={`settings-${id}`}
+      data-settings-section={id}
+      aria-labelledby={titleId}
+      tabIndex={-1}
+      className="scroll-mt-4 outline-none"
+    >
+      <h2 id={titleId} className="flex items-center gap-2.5 mb-3 text-sm font-semibold text-text-primary">
+        <span>{title}</span>
+        <span className="flex-1 h-px bg-border-primary min-w-4" aria-hidden="true" />
+      </h2>
+      {children}
+    </section>
+  );
 }
 
 const cardClass = 'bg-bg-secondary border border-border-primary rounded-2xl overflow-hidden';
@@ -96,6 +112,23 @@ export default function ProfilePage() {
   };
   const { toggleTheme, isDark } = useTheme();
   const navigate = useNavigate();
+  const [searchParams] = useSearchParams();
+  const { hash } = useLocation();
+  const requestedSection = settingsSectionFromParam(searchParams.get('section'))
+    || settingsSectionFromParam(hash);
+
+  useEffect(() => {
+    if (!requestedSection) return undefined;
+    let cancelled = false;
+    // Layout scrolls #app-scroll to the top on a pathname change, and that
+    // effect runs after this one. The microtask lands the section afterwards.
+    queueMicrotask(() => {
+      if (cancelled) return;
+      if (!scrollSettingsSectionIntoView(requestedSection)) return;
+      document.getElementById(`settings-${requestedSection}`)?.focus({ preventScroll: true });
+    });
+    return () => { cancelled = true; };
+  }, [requestedSection]);
 
   const [showPasswordForm, setShowPasswordForm] = useState(false);
   const [currentPassword, setCurrentPassword] = useState('');
@@ -118,8 +151,6 @@ export default function ProfilePage() {
   const [leaderboardLoading, setLeaderboardLoading] = useState(true);
   // Which asset classes the user trades (default crypto for back-compat).
   const [assetClasses, setAssetClasses] = useState(['crypto']);
-  const [settingsSection, setSettingsSection] = useState('all');
-  const [settingsQuery, setSettingsQuery] = useState('');
 
   useEffect(() => {
     if (!user) return;
@@ -318,21 +349,15 @@ export default function ProfilePage() {
   };
 
   const inputClass = 'w-full bg-bg-tertiary border border-border-primary rounded-lg px-3 py-2.5 text-sm text-text-primary outline-none focus:border-accent-primary transition-colors';
-  const showSettings = (id) => visibleSettingsSection(id, { active: settingsSection, query: settingsQuery });
-  const settingsMatchCount = SETTINGS_SECTIONS.filter((section) => showSettings(section.id)).length;
-  const chooseSettings = (id) => {
-    setSettingsSection(id);
-    setSettingsQuery('');
-  };
 
   return (
     <m.div variants={pageVariants} initial="initial" animate="animate" exit="exit" transition={pageTransition}
       className="px-4 py-6">
-      {/* Same settings, same order. The nav only filters or searches them. */}
-      <div className="max-w-lg lg:max-w-4xl mx-auto lg:grid lg:grid-cols-[13.5rem_minmax(0,32rem)] lg:justify-center lg:gap-x-8 lg:items-start">
+      {/* Profile, then every setting in order. Deep links scroll; they do not hide the rest. */}
+      <div data-testid="settings-column" className="max-w-3xl mx-auto w-full min-w-0 flex flex-col gap-6">
 
       {/* Profile hero: the picture (tap to change), name, email, plan. */}
-      <div className="relative overflow-hidden bg-bg-secondary border border-border-primary rounded-2xl p-5 mb-2 lg:col-start-2 lg:row-start-1 lg:mb-0">
+      <div className="relative overflow-hidden bg-bg-secondary border border-border-primary rounded-2xl p-5">
         <div aria-hidden className="absolute inset-0 pointer-events-none"
           style={{ background: 'radial-gradient(80% 140% at 100% 0%, rgba(37,99,235,0.14) 0%, transparent 60%)' }} />
         <div className="relative flex items-center gap-4">
@@ -406,23 +431,8 @@ export default function ProfilePage() {
         </div>
       </div>
 
-      <div className="lg:col-start-1 lg:row-start-1 lg:row-span-2">
-        <SettingsNav
-          active={settingsSection}
-          query={settingsQuery}
-          onActive={chooseSettings}
-          onQuery={(value) => {
-            setSettingsQuery(value);
-            if (value.trim()) setSettingsSection('all');
-          }}
-        />
-      </div>
-
-      <div className="min-w-0 lg:col-start-2 lg:row-start-2">
-      {showSettings('trading') && (
-      <>
+      <SettingsSection id="trading">
       {/* ── Section: Trading ─────────────────────────────────────── */}
-      <SectionTitle>מסחר</SectionTitle>
 
       {/* Asset classes the user trades — drives the new-trade form default
           and which symbol catalog it shows. Multi-select. */}
@@ -472,20 +482,14 @@ export default function ProfilePage() {
           </button>
         )}
       </div>
-      </>
-      )}
+      </SettingsSection>
 
-      {showSettings('fields') && (
-      <>
-      <SectionTitle>שדות</SectionTitle>
+      <SettingsSection id="fields">
       <CustomTradeFieldsSettings />
-      </>
-      )}
+      </SettingsSection>
 
-      {showSettings('plan') && (
-      <>
+      <SettingsSection id="plan">
       {/* ── Section: Subscription ────────────────────────────────── */}
-      <SectionTitle>מנוי</SectionTitle>
 
       {/* Plan / Premium status — shows different states (admin, lifetime,
           expiring soon, normal premium, free). Brings the upgrade/renew CTA
@@ -496,15 +500,12 @@ export default function ProfilePage() {
         isPremium={isPremium}
         onUpgrade={() => navigate('/premium')}
       />
-      </>
-      )}
+      </SettingsSection>
 
-      {showSettings('reports') && (
-      <>
+      <SettingsSection id="reports">
       {/* ── Section: Reports ─────────────────────────────────────── */}
       {/* Yearly tools that aren't daily destinations live here, not in the
           main menu. */}
-      <SectionTitle>דוחות</SectionTitle>
       <div className={cardClass}>
         <button onClick={() => navigate('/tax')}
           className="w-full flex items-center gap-3 px-5 py-4 text-right hover:bg-bg-tertiary transition-colors cursor-pointer">
@@ -518,28 +519,24 @@ export default function ProfilePage() {
           <ChevronLeft className="w-4 h-4 text-text-muted shrink-0" />
         </button>
       </div>
-      </>
-      )}
+      </SettingsSection>
 
-      {showSettings('notifications') && (
-      <>
+      <SettingsSection id="notifications">
       {/* ── Section: Notifications ───────────────────────────────── */}
-      <SectionTitle>התראות</SectionTitle>
       <div className={cardClass}>
         {/* Push notifications */}
         <NotificationSettings />
         {/* Marketing email — on unless the user turned it off */}
         <MarketingEmailToggle />
       </div>
-      </>
-      )}
+      </SettingsSection>
 
-      {showSettings('api') && <ApiKeysSection />}
+      <SettingsSection id="api">
+      <ApiKeysSection />
+      </SettingsSection>
 
-      {showSettings('general') && (
-      <>
+      <SettingsSection id="general">
       {/* ── Section: General ─────────────────────────────────────── */}
-      <SectionTitle>כללי</SectionTitle>
       <div className={cardClass}>
         {/* Theme Toggle */}
         <button onClick={toggleTheme}
@@ -571,13 +568,10 @@ export default function ProfilePage() {
           {exporting ? 'מייצא...' : 'ייצוא נתונים'}
         </button>
       </div>
-      </>
-      )}
+      </SettingsSection>
 
-      {showSettings('account') && (
-      <>
+      <SettingsSection id="account">
       {/* ── Section: Account ─────────────────────────────────────── */}
-      <SectionTitle>חשבון</SectionTitle>
       <div className={cardClass}>
         {/* Password management — one entry point, with a 'forgot' link inside
             the form. The old standalone 'Reset via email' button used to live
@@ -724,18 +718,7 @@ export default function ProfilePage() {
       <div className="text-center text-xs text-text-muted mt-2" dir="ltr">
         TradeOS v{APP_VERSION}{BUILD_LABEL}
       </div>
-      </>
-      )}
-
-      {!settingsMatchCount && (
-        <div role="status" data-testid="settings-empty" className="mt-4 bg-bg-secondary border border-border-primary rounded-2xl px-5 py-8 text-center">
-          <p className="text-sm font-semibold text-text-primary">לא נמצאו הגדרות תואמות</p>
-          <p className="text-xs text-text-muted mt-1">נסו מילה אחרת, או חזרו לכל הקטגוריות</p>
-          <button type="button" onClick={() => chooseSettings('all')} className="mt-3 text-sm font-semibold text-accent-primary hover:underline cursor-pointer">
-            הצגת כל ההגדרות
-          </button>
-        </div>
-      )}
+      </SettingsSection>
 
       <Modal isOpen={deleteOpen} onClose={closeDelete} title={reauthStep ? 'אימות לפני מחיקה' : 'מחיקת חשבון'} maxWidth="max-w-sm">
         <p className="text-sm text-text-secondary mb-3">
@@ -787,7 +770,6 @@ export default function ProfilePage() {
         </div>
       </Modal>
       </div>
-      </div>
     </m.div>
   );
 }
@@ -820,7 +802,7 @@ function PlanCard({ profile, isAdmin, isPremium, onUpgrade }) {
   // 1. Admin → short, neutral, cyan
   if (isAdmin) {
     return (
-      <div className="bg-bg-secondary border border-accent-primary/30 rounded-2xl px-5 py-4 mb-4 flex items-center gap-3">
+      <div className="bg-bg-secondary border border-accent-primary/30 rounded-2xl px-5 py-4 flex items-center gap-3">
         <div className="w-10 h-10 rounded-xl bg-accent-primary/15 flex items-center justify-center text-accent-primary">
           <ShieldCheck className="w-5 h-5" />
         </div>
@@ -836,7 +818,7 @@ function PlanCard({ profile, isAdmin, isPremium, onUpgrade }) {
   if (isExpiringSoon) {
     const daysText = daysLeft === 0 ? 'היום' : daysLeft === 1 ? 'מחר' : `עוד ${daysLeft} ימים`;
     return (
-      <div className="relative overflow-hidden bg-gradient-to-br from-amber-500/15 via-bg-secondary to-bg-secondary border border-amber-500/40 rounded-2xl px-5 py-4 mb-4">
+      <div className="relative overflow-hidden bg-gradient-to-br from-amber-500/15 via-bg-secondary to-bg-secondary border border-amber-500/40 rounded-2xl px-5 py-4">
         <div className="flex items-start gap-3">
           <div className="w-10 h-10 rounded-xl bg-amber-500/20 flex items-center justify-center text-amber-400 shrink-0">
             <Clock className="w-5 h-5" />
@@ -861,7 +843,7 @@ function PlanCard({ profile, isAdmin, isPremium, onUpgrade }) {
   //    themselves; we don't sell a lifetime plan so the empty case is rare.
   if (isPremium) {
     return (
-      <div className="relative overflow-hidden bg-gradient-to-br from-amber-500/12 via-bg-secondary to-bg-secondary border border-amber-500/30 rounded-2xl px-5 py-4 mb-4">
+      <div className="relative overflow-hidden bg-gradient-to-br from-amber-500/12 via-bg-secondary to-bg-secondary border border-amber-500/30 rounded-2xl px-5 py-4">
         <div className="flex items-start gap-3">
           <div className="w-10 h-10 rounded-xl bg-amber-500/20 flex items-center justify-center text-amber-400 shrink-0">
             <Crown className="w-5 h-5" />
@@ -893,7 +875,7 @@ function PlanCard({ profile, isAdmin, isPremium, onUpgrade }) {
 
   // 5. Free → blue, inviting, feature bullets + CTA
   return (
-    <div className="relative overflow-hidden bg-gradient-to-br from-accent-primary/12 via-bg-secondary to-bg-secondary border border-accent-primary/30 rounded-2xl px-5 py-5 mb-4">
+    <div className="relative overflow-hidden bg-gradient-to-br from-accent-primary/12 via-bg-secondary to-bg-secondary border border-accent-primary/30 rounded-2xl px-5 py-5">
       <div className="flex items-center gap-3 mb-3">
         <div className="w-10 h-10 rounded-xl bg-accent-primary/20 flex items-center justify-center text-accent-primary shrink-0">
           <Crown className="w-5 h-5" />

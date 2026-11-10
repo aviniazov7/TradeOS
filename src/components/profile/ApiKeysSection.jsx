@@ -75,8 +75,7 @@ export default function ApiKeysSection() {
   const active = keys.filter((key) => !key.revokedAt);
 
   return (
-    <section>
-      <h2 className="text-[11px] font-semibold text-text-muted px-1 mb-2 mt-6">API</h2>
+    <>
       <div className={cardClass}>
         <div className="px-5 py-4 border-b border-border-primary">
           <div className="flex items-center gap-3">
@@ -156,6 +155,6 @@ export default function ApiKeysSection() {
         message="סוכנים שמשתמשים בו יפסיקו לעבוד מיד."
         confirmText="בטל מפתח"
       />
-    </section>
+    </>
   );
 }
