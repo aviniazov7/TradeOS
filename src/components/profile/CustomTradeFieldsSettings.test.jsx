@@ -87,4 +87,41 @@ describe('custom field settings', () => {
     });
     await view.cleanup();
   });
+
+  it('shows the name error only after an invalid add or past 40 characters', async () => {
+    auth = { isPremium: true };
+    saveDoc.mockClear();
+    fieldsState = { doc: { fields: [], seq: 0 }, fields: [], ready: true, saveDoc };
+    const view = await mount();
+    const name = () => view.el.querySelector('[aria-label="שם השדה"]');
+    const add = () => [...view.el.querySelectorAll('button')].find((button) => button.textContent.includes('הוספת שדה'));
+    const form = () => view.el.querySelector('[data-testid="custom-field-form"]');
+    const alert = () => view.el.querySelector('[role="alert"]');
+
+    expect(alert()).toBeNull();
+    expect(add().disabled).toBe(true);
+
+    await act(async () => { add().click(); });
+    expect(alert()).toBeNull();
+    expect(saveDoc).not.toHaveBeenCalled();
+
+    await act(async () => {
+      form().dispatchEvent(new Event('submit', { bubbles: true, cancelable: true }));
+    });
+    expect(alert().textContent).toBe('צריך שם עד 40 תווים');
+    expect(saveDoc).not.toHaveBeenCalled();
+
+    await act(async () => { typeInto(name(), 'סטאפ'); });
+    expect(alert()).toBeNull();
+    expect(add().disabled).toBe(false);
+
+    await act(async () => { typeInto(name(), 'א'.repeat(41)); });
+    expect(alert().textContent).toBe('צריך שם עד 40 תווים');
+    expect(saveDoc).not.toHaveBeenCalled();
+
+    await act(async () => { typeInto(name(), 'א'.repeat(40)); });
+    expect(alert()).toBeNull();
+    expect(add().disabled).toBe(false);
+    await view.cleanup();
+  });
 });

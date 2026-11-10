@@ -4,6 +4,7 @@ import { Crown, Trash2 } from 'lucide-react';
 import { useAuth } from '../../contexts/AuthContext';
 import { useCustomTradeFields } from '../../hooks/useCustomTradeFields';
 import {
+  CUSTOM_NAME_MAX,
   CUSTOM_TYPE_LABELS,
   addCustomField,
   removeCustomField,
@@ -28,7 +29,12 @@ export default function CustomTradeFieldsSettings() {
   const [type, setType] = useState('text');
   const [options, setOptions] = useState('');
   const [error, setError] = useState('');
+  const [nameAttempted, setNameAttempted] = useState(false);
   const [busy, setBusy] = useState(false);
+  const nameMissing = !name.trim();
+  const nameTooLong = name.length > CUSTOM_NAME_MAX;
+  // Empty is only an error after הוספת שדה. Too long shows as they type.
+  const nameError = (nameTooLong || (nameAttempted && nameMissing)) ? 'צריך שם עד 40 תווים' : '';
 
   const persist = async (next) => {
     setBusy(true);
@@ -44,11 +50,16 @@ export default function CustomTradeFieldsSettings() {
 
   const onAdd = async (e) => {
     e.preventDefault();
+    if (nameMissing || nameTooLong) {
+      setNameAttempted(true);
+      return;
+    }
     const result = addCustomField(doc, { name, type, options }, { isPremium });
     if (!result.ok) {
       setError(result.error);
       return;
     }
+    setNameAttempted(false);
     await persist({ fields: result.fields, seq: result.seq });
     setName('');
     setOptions('');
@@ -113,10 +124,15 @@ export default function CustomTradeFieldsSettings() {
         <form onSubmit={onAdd} className="mt-3 space-y-2" data-testid="custom-field-form">
           <input
             value={name}
-            onChange={(e) => { setName(e.target.value); setError(''); }}
-            maxLength={40}
+            onChange={(e) => {
+              const value = e.target.value;
+              setName(value);
+              setError('');
+              if (value.trim() && value.length <= CUSTOM_NAME_MAX) setNameAttempted(false);
+            }}
             placeholder="שם השדה, למשל: סטאפ"
             aria-label="שם השדה"
+            aria-invalid={nameError ? true : undefined}
             className={inputClass}
           />
           <div className="flex gap-1.5" role="radiogroup" aria-label="סוג השדה">
@@ -149,10 +165,10 @@ export default function CustomTradeFieldsSettings() {
               className={inputClass}
             />
           )}
-          {error && <p role="alert" className="text-[11px] text-loss">{error}</p>}
+          {(nameError || error) && <p role="alert" className="text-[11px] text-loss">{nameError || error}</p>}
           <button
             type="submit"
-            disabled={busy || !ready}
+            disabled={busy || !ready || nameMissing}
             className="h-10 px-4 rounded-xl bg-accent-primary text-bg-primary text-sm font-semibold cursor-pointer disabled:opacity-50"
           >
             {busy ? 'שומר...' : 'הוספת שדה'}
