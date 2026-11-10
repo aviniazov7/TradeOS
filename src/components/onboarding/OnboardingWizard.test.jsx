@@ -60,6 +60,9 @@ describe('OnboardingWizard', () => {
     localStorage.clear();
     setUserProfile.mockClear();
     const view = await mount();
+    expect(document.body.textContent).toContain('ברוכים הבאים ל-TradeOS');
+    expect(document.body.textContent).toContain('סנכרון אוטומטי מהבורסות שלך · ייבוא קבצי עסקאות');
+    expect(document.body.textContent).not.toMatch(/Bybit|MEXC|Binance/);
     const skip = [...document.querySelectorAll('button')].find((b) => b.textContent.trim() === 'דלג');
     expect(skip).toBeTruthy();
     await act(async () => { skip.click(); });

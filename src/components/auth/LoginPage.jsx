@@ -20,8 +20,8 @@ import { releaseLoginCredentialFocus } from '../../utils/loginAutofillRelease';
 export const SIGNUP_VALUE_LINE = 'יומן מסחר בעברית — חבר בורסה, עקוב אחרי כל עסקה, וקבל סוכן AI אישי.';
 
 // What the product does, in three lines — shown beside the form on wide screens.
-// The exchange line names auto-sync (MEXC, Bybit) and Binance file import.
-// Binance is never described as if trades pull in by themselves.
+// The exchange line stays generic: auto-sync from the user's venues, plus a
+// trade-file import. It does not name an exchange.
 const FEATURES = [
   { icon: Link2, title: 'חיבור לבורסה', text: exchangeSyncBlurb() },
   { icon: BarChart3, title: 'יומן ואנליטיקה', text: 'רווח/הפסד, R:R, אחוז הצלחה ופילוח לפי מטבע וסשן' },
