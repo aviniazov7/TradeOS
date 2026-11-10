@@ -1,8 +1,10 @@
 // Shared trade → export-row helpers for the journal's CSV export and the
-// profile's Excel export, so both files describe a trade the same way
-// (asset class, units, exits, gross vs net P&L, signed R, original stop).
+// profile's Excel export (asset class, units, exits, gross vs net P&L,
+// original stop). The journal CSV's % and R columns are the table's
+// "% נטו" and "R נטו" (tradeNetPercent / signedTradeR). The Excel sheet
+// still writes the stored price ratio via signedR.
 
-import { isClosedTrade } from './calculations';
+import { isClosedTrade, signedTradeR, tradeNetPercent } from './calculations';
 import { customCsvHeader, readCustomValue } from './customTradeFields';
 import { tradeSetups } from './setupStats';
 import { formatDateTime } from './formatters';
@@ -50,7 +52,8 @@ export function grossPnl(t) {
   return num(t?.pnl) ?? netOf(t) + (num(t?.fees) ?? 0);
 }
 
-/** rrRatio is stored unsigned; the sign comes from the net P&L (like the app). */
+/** Stored price ratio (rrRatio), signed by the net P&L. The Excel export uses this.
+ *  The journal table and CSV use signedTradeR (net P&L / initial risk) instead. */
 export function signedR(t) {
   const rr = Math.abs(num(t?.rrRatio) ?? 0);
   return netOf(t) < 0 ? -rr : rr;
@@ -88,10 +91,12 @@ export function journalCsvRow(t, defs = []) {
   const exit = toDate(t.exitDate);
   const net = netOf(t);
   const entryPrice = num(t.entryPrice);
-  const quantity = num(t.quantity);
-  const pnlPct = num(t.pnlPercent) ?? (entryPrice > 0 && quantity > 0
-    ? (net / (entryPrice * quantity)) * 100 * (num(t.leverage) || 1)
-    : 0);
+  // The table's "% נטו" / "R נטו". Stored pnlPercent is gross (fees never
+  // entered it) and rrRatio is an unsigned price ratio, so writing those
+  // made the file disagree with the row — including a sign flip when fees
+  // turned a small gross win into a net loss.
+  const pnlPct = tradeNetPercent(t);
+  const netR = signedTradeR(t);
   const { qty, unit } = tradeUnits(t);
   const cls = tradeAssetClass(t);
   const list = (v) => (Array.isArray(v) ? v.join(' ') : (v || ''));
@@ -101,7 +106,7 @@ export function journalCsvRow(t, defs = []) {
     num(t.stopLoss) ?? '', num(t.originalStopLoss) ?? '',
     qty ?? '', unit, round(num(t.positionSize)), cls === 'crypto' ? (num(t.leverage) ?? '') : 1,
     exitsSummary(t), round(grossPnl(t)), round(num(t.fees) ?? 0), round(net),
-    round(Number.isFinite(pnlPct) ? pnlPct : 0), round(signedR(t)), t.strategy || '',
+    round(Number.isFinite(pnlPct) ? pnlPct : 0), round(netR), t.strategy || '',
     t.timeframe || '', statusLabel(t), t.source || 'manual', t.entryReason || '', t.notes || '',
     list(t.tags), t.emotionBefore || '', t.emotionAfter || '', list(t.mistakes), t.confidenceRating ?? '',
     tradeSetups(t).join(' | '),
