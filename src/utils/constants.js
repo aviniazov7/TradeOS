@@ -309,7 +309,7 @@ export const PREMIUM_FEATURES = [
   { icon: 'Link2', title: 'חיבורי בורסה', free: `עד ${FREE_LIMITS.exchanges}`, premium: 'ללא הגבלה' },
   { icon: 'Bell', title: 'התראות עסקאות', free: 'בסיסי', premium: 'מתקדם' },
   { icon: 'BarChart3', title: 'אנליטיקה מתקדמת', free: '—', premium: 'כלול' },
-  { icon: 'Briefcase', title: 'ניהול עסק', free: `עד ${FREE_LIMITS.businessEntries}`, premium: 'ללא הגבלה' },
+  { icon: 'Briefcase', title: 'הכנסות והוצאות', free: `עד ${FREE_LIMITS.businessEntries}`, premium: 'ללא הגבלה' },
   { icon: 'NotebookPen', title: 'מחברת', free: `עד ${FREE_LIMITS.notebookEntries}`, premium: 'ללא הגבלה' },
   // Premium-gated page that was missing from the table entirely, so the one
   // feature nobody else has was also the one nobody was told about.

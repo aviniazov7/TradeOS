@@ -31,7 +31,7 @@ const navItems = [
   { key: 'notebook', to: '/notebook', label: 'מחברת', icon: NotebookPen },
   { key: 'backtest', to: '/backtest', label: 'בקטסט', icon: FlaskConical },
   { key: 'plans', to: '/plans', label: 'תוכניות מסחר', icon: ClipboardList },
-  { key: 'business', to: '/business', label: 'ניהול עסק', icon: Landmark },
+  { key: 'business', to: '/business', label: 'הכנסות והוצאות', icon: Landmark },
   { key: 'mentality', to: '/mentality', label: 'האזור המנטלי', icon: Brain },
   { key: 'ai', to: '/trade-ai', label: 'TradeAI', icon: Bot },
   { key: 'market', to: '/market', label: 'שוק', icon: Activity, match: ['/polymarket', '/whales'] },
