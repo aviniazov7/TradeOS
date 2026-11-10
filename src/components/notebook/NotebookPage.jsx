@@ -44,6 +44,11 @@ const SAVING_OFF = 'השמירה לחשבון עדיין לא מופעלת.';
 const fieldClass = 'w-full min-h-11 bg-bg-tertiary border border-border-primary rounded-lg px-3 py-2 text-sm text-text-primary outline-none focus:border-accent-primary transition-colors';
 const labelClass = 'block text-xs font-medium text-text-secondary mb-1';
 const quietBtn = 'h-10 px-3 inline-flex items-center justify-center rounded-lg border border-border-primary bg-bg-tertiary text-xs font-semibold text-text-secondary hover:text-text-primary cursor-pointer';
+// Idle and active are separate strings. Appending accent utilities onto quietBtn
+// loses: Tailwind keeps one border-color and one text color, and the base chip
+// wins, so a selected tag looked identical to the others.
+const tagChipIdle = 'h-10 px-3 inline-flex items-center justify-center rounded-lg border border-border-primary bg-bg-tertiary text-xs font-semibold text-text-secondary hover:text-text-primary cursor-pointer transition-colors';
+const tagChipActive = 'h-10 px-3 inline-flex items-center justify-center rounded-lg border border-accent-primary bg-accent-primary/15 text-xs font-semibold text-accent-hover cursor-pointer transition-colors';
 const bodyClass = 'notebook-body mt-2 text-sm text-text-secondary leading-relaxed break-words [&_p]:mb-2 [&_h1]:text-base [&_h1]:font-bold [&_h1]:text-text-primary [&_h2]:text-sm [&_h2]:font-bold [&_h2]:text-text-primary [&_h3]:text-sm [&_h3]:font-semibold [&_h3]:text-text-primary [&_strong]:text-text-primary [&_a]:text-accent-hover [&_code]:text-accent-primary [&_pre]:overflow-x-auto [&_pre]:rounded-lg [&_pre]:bg-bg-tertiary [&_pre]:p-2 [&_ul]:list-disc [&_ul]:pr-5 [&_blockquote]:border-r-2 [&_blockquote]:border-border-primary [&_blockquote]:pr-3';
 
 function blankDraft(now) {
@@ -296,7 +301,7 @@ export default function NotebookPage({
                   type="button"
                   aria-pressed={activeTag === ''}
                   onClick={() => setTag('')}
-                  className={activeTag === '' ? `${quietBtn} border-accent-primary/40 text-accent-hover` : quietBtn}
+                  className={activeTag === '' ? tagChipActive : tagChipIdle}
                 >
                   כל התגיות
                 </button>
@@ -306,7 +311,7 @@ export default function NotebookPage({
                     type="button"
                     aria-pressed={activeTag === item}
                     onClick={() => setTag(item)}
-                    className={activeTag === item ? `${quietBtn} border-accent-primary/40 text-accent-hover` : quietBtn}
+                    className={activeTag === item ? tagChipActive : tagChipIdle}
                   >
                     {item}
                   </button>

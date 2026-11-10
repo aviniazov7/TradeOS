@@ -13,6 +13,51 @@ function shiftMonthKey(month, delta) {
   return /^\d{4}-\d{2}$/.test(key) ? key : '';
 }
 
+/** Move a civil `YYYY-MM-DD` by whole days. Month and year boundaries roll over. */
+function shiftDayKey(day, deltaDays) {
+  const match = /^(\d{4})-(\d{2})-(\d{2})$/.exec(day || '');
+  if (!match || !Number.isFinite(deltaDays)) return '';
+  const shifted = new Date(Date.UTC(
+    Number(match[1]),
+    Number(match[2]) - 1,
+    Number(match[3]) + deltaDays,
+  ));
+  if (Number.isNaN(shifted.getTime())) return '';
+  const key = shifted.toISOString().slice(0, 10);
+  return /^\d{4}-\d{2}-\d{2}$/.test(key) ? key : '';
+}
+
+function daysBefore(today, days) {
+  const shifted = shiftDayKey(today, -Math.abs(days));
+  if (!shifted || shifted > today) return today;
+  return shifted;
+}
+
+/**
+ * Newest sample stays in the current month. Subtracting a couple of days on
+ * the 1st or 2nd would land in last month, so that case uses today itself.
+ */
+function recentDemoDay(today, days) {
+  const shifted = daysBefore(today, days);
+  if (shifted.slice(0, 7) === today.slice(0, 7)) return shifted;
+  return today;
+}
+
+/** Day 20 of the previous Jerusalem month. Always before `today`. */
+function previousMonthDemoDay(today) {
+  const prev = shiftMonthKey(today.slice(0, 7), -1);
+  const candidate = prev ? `${prev}-20` : '';
+  if (candidate && candidate <= today && notebookDayKey(candidate)) return candidate;
+  return daysBefore(today, 32);
+}
+
+function demoInstant(day, today, instant) {
+  if (!day || day >= today) return instant.toISOString();
+  // Noon UTC is 14:00 or 15:00 in Jerusalem, so the civil day stays `day`,
+  // and it is already over before the next Jerusalem day begins.
+  return `${day}T12:00:00.000Z`;
+}
+
 function journalNameForDemo(journals) {
   const found = (journals || []).find((journal) => journal && !journal.archived && journal.name);
   const name = typeof found?.name === 'string' ? found.name.trim() : '';
@@ -20,14 +65,18 @@ function journalNameForDemo(journals) {
 }
 
 /**
- * A few notes across two Jerusalem months. `now` only picks the month.
- * The text is synthetic.
+ * A few notes across two Jerusalem months. Days are relative to `now`
+ * (today minus a fixed offset, or today when that offset would leave the
+ * month or land in the future). The text is synthetic.
  */
 export function buildNotebookDemoEntries({ journals = [], now = new Date() } = {}) {
-  const day = notebookDayKey(now) || '2026-03-15';
-  const month = day.slice(0, 7);
-  const prev = shiftMonthKey(month, -1) || month;
+  const instant = now instanceof Date && !Number.isNaN(now.getTime()) ? now : new Date();
+  const today = notebookDayKey(instant) || notebookDayKey(new Date()) || '1970-01-01';
+  const lessonDay = recentDemoDay(today, 2);
+  const ideaDay = daysBefore(today, 9);
+  const weekDay = previousMonthDemoDay(today);
   const journalName = journalNameForDemo(journals);
+  const stamp = (day) => demoInstant(day, today, instant);
   const raw = [
     {
       id: 'demo-nb-lesson',
@@ -35,10 +84,10 @@ export function buildNotebookDemoEntries({ journals = [], now = new Date() } = {
       title: 'לקח על BTC',
       body: 'היום **לא רדפתי** אחרי הפריצה.\n\n- חיכיתי לאישור\n- שמרתי על הסיכון',
       tags: ['לקח', 'BTC'],
-      date: `${month}-18`,
+      date: lessonDay,
       journalName,
-      createdAt: `${month}-18T08:00:00Z`,
-      updatedAt: `${month}-18T08:00:00Z`,
+      createdAt: stamp(lessonDay),
+      updatedAt: stamp(lessonDay),
     },
     {
       id: 'demo-nb-idea',
@@ -46,9 +95,9 @@ export function buildNotebookDemoEntries({ journals = [], now = new Date() } = {
       title: 'רעיון Long',
       body: 'ETH עדיין מתחת ל-EMA. לא להיכנס לפני אישור.',
       tags: ['רעיון'],
-      date: `${month}-04`,
-      createdAt: `${month}-04T08:00:00Z`,
-      updatedAt: `${month}-04T08:00:00Z`,
+      date: ideaDay,
+      createdAt: stamp(ideaDay),
+      updatedAt: stamp(ideaDay),
     },
     {
       id: 'demo-nb-week',
@@ -56,10 +105,10 @@ export function buildNotebookDemoEntries({ journals = [], now = new Date() } = {
       title: 'סיכום שבוע',
       body: 'שבוע שקט. פחות עסקאות, יותר המתנה.',
       tags: ['שבוע'],
-      date: `${prev}-20`,
+      date: weekDay,
       journalName,
-      createdAt: `${prev}-20T08:00:00Z`,
-      updatedAt: `${prev}-20T08:00:00Z`,
+      createdAt: stamp(weekDay),
+      updatedAt: stamp(weekDay),
     },
   ];
   return raw.map((row) => {
