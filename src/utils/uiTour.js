@@ -95,24 +95,57 @@ export function isTourTargetVisible(el) {
   return rect.width > 0 && rect.height > 0;
 }
 
+// Scrim behind the tour. Darker than the first version so the page
+// (demo banner, new-trade button) recedes, without hiding the spotlight.
+export const UI_TOUR_SHADE = {
+  light: 'rgba(15, 23, 42, 0.62)',
+  dark: 'rgba(0, 0, 0, 0.78)',
+};
+
 export function tourCardPosition(rect, viewport, cardHeight = 176) {
   const margin = 12;
+  const gap = 12;
+  const height = Math.max(1, Number(cardHeight) || 176);
   const width = Math.min(320, Math.max(160, viewport.width - margin * 2));
+  const maxLeft = Math.max(margin, viewport.width - width - margin);
+  const maxTop = Math.max(margin, viewport.height - height - margin);
+  const clampLeft = (value) => Math.max(margin, Math.min(value, maxLeft));
+  const clampTop = (value) => Math.max(margin, Math.min(value, maxTop));
+
   if (!rect) {
     return {
-      top: Math.max(margin, (viewport.height - cardHeight) / 2),
-      left: Math.max(margin, (viewport.width - width) / 2),
+      top: clampTop((viewport.height - height) / 2),
+      left: clampLeft((viewport.width - width) / 2),
       width,
     };
   }
-  let left = rect.left + rect.width / 2 - width / 2;
-  left = Math.max(margin, Math.min(left, viewport.width - width - margin));
-  const belowTop = rect.bottom + margin;
-  const aboveTop = rect.top - margin - cardHeight;
-  const placeBelow = viewport.height - belowTop >= cardHeight + margin || rect.top < viewport.height * 0.45;
-  const top = placeBelow
-    ? Math.min(belowTop, Math.max(margin, viewport.height - cardHeight - margin))
-    : Math.max(margin, aboveTop);
+
+  const left = clampLeft(rect.left + rect.width / 2 - width / 2);
+  const belowTop = rect.bottom + gap;
+  const aboveTop = rect.top - gap - height;
+  const roomBelow = viewport.height - margin - belowTop;
+  const roomAbove = rect.top - gap - margin;
+  const fitsBelow = roomBelow >= height;
+  const fitsAbove = roomAbove >= height;
+  const targetMid = rect.top + (rect.bottom - rect.top) / 2;
+  const preferBelow = targetMid < viewport.height * 0.55;
+
+  let top;
+  if (preferBelow && fitsBelow) top = belowTop;
+  else if (!preferBelow && fitsAbove) top = aboveTop;
+  else if (fitsBelow) top = belowTop;
+  else if (fitsAbove) top = aboveTop;
+  else if (roomBelow >= roomAbove) top = clampTop(belowTop);
+  else top = clampTop(aboveTop);
+
+  const overlapsTarget = top < rect.bottom && top + height > rect.top;
+  if (overlapsTarget) {
+    if (fitsAbove) top = aboveTop;
+    else if (fitsBelow) top = belowTop;
+    else if (roomAbove >= roomBelow) top = clampTop(aboveTop);
+    else top = clampTop(belowTop);
+  }
+
   return { top, left, width };
 }
 

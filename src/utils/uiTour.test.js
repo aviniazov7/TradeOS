@@ -10,6 +10,7 @@ import {
   replayUiTour,
   shouldShowUiTour,
   tourCardPosition,
+  UI_TOUR_SHADE,
   visibleTourSteps,
   writeTourSeen,
 } from './uiTour';
@@ -81,5 +82,33 @@ describe('ui tour gate', () => {
     expect(above.top).toBeLessThan(700);
     expect(below.left).toBeGreaterThanOrEqual(12);
     expect(below.left + below.width).toBeLessThanOrEqual(390);
+  });
+
+  it('keeps a top-left settings target clear inside a phone and a desktop', () => {
+    const target = { top: 10, bottom: 54, left: 8, width: 40, height: 44 };
+    const height = 188;
+    for (const viewport of [{ width: 390, height: 844 }, { width: 1280, height: 800 }]) {
+      const card = tourCardPosition(target, viewport, height);
+      expect(card.top).toBeGreaterThanOrEqual(target.bottom + 12);
+      expect(card.top + height).toBeLessThanOrEqual(viewport.height - 12);
+      expect(card.left).toBeGreaterThanOrEqual(12);
+      expect(card.left + card.width).toBeLessThanOrEqual(viewport.width - 12);
+    }
+  });
+
+  it('keeps a bottom new-trade target clear on a phone', () => {
+    const viewport = { width: 390, height: 844 };
+    const target = { top: 760, bottom: 820, left: 170, width: 48, height: 60 };
+    const height = 188;
+    const card = tourCardPosition(target, viewport, height);
+    expect(card.top + height).toBeLessThanOrEqual(target.top - 12);
+    expect(card.top).toBeGreaterThanOrEqual(12);
+    expect(card.left).toBeGreaterThanOrEqual(12);
+    expect(card.left + card.width).toBeLessThanOrEqual(viewport.width - 12);
+  });
+
+  it('dims the page more than a light scrim in both themes', () => {
+    expect(UI_TOUR_SHADE.dark).toBe('rgba(0, 0, 0, 0.78)');
+    expect(UI_TOUR_SHADE.light).toBe('rgba(15, 23, 42, 0.62)');
   });
 });
