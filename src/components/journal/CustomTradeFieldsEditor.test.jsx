@@ -99,21 +99,34 @@ describe('custom fields on the trade form', () => {
     expect(view.el.querySelector('[role="alert"]')).toBeNull();
 
     const add = () => buttonNamed('הוספת שדה');
-    expect(add().disabled).toBe(false);
+    const name = () => view.el.querySelector('[aria-label="שם השדה"]');
+    expect(add().disabled).toBe(true);
     await act(async () => { add().click(); });
+    expect(view.el.querySelector('[role="alert"]')).toBeNull();
+    expect(onSave).not.toHaveBeenCalled();
+
+    await act(async () => { typeInto(name(), '   '); });
+    expect(add().disabled).toBe(true);
+    expect(view.el.querySelector('[role="alert"]')).toBeNull();
+
+    await act(async () => {
+      name().dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', bubbles: true }));
+    });
     expect(view.el.querySelector('[role="alert"]').textContent).toBe('צריך שם עד 40 תווים');
     expect(onSave).not.toHaveBeenCalled();
 
-    const name = () => view.el.querySelector('[aria-label="שם השדה"]');
     await act(async () => { typeInto(name(), 'סטאפ'); });
     expect(view.el.querySelector('[role="alert"]')).toBeNull();
+    expect(add().disabled).toBe(false);
 
     await act(async () => { typeInto(name(), 'א'.repeat(41)); });
     expect(view.el.querySelector('[role="alert"]').textContent).toBe('צריך שם עד 40 תווים');
+    expect(add().disabled).toBe(false);
     expect(onSave).not.toHaveBeenCalled();
 
     await act(async () => { typeInto(name(), 'א'.repeat(40)); });
     expect(view.el.querySelector('[role="alert"]')).toBeNull();
+    expect(add().disabled).toBe(false);
     await view.cleanup();
   });
 

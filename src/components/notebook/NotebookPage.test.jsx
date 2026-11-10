@@ -48,7 +48,7 @@ async function mount(node) {
   document.body.appendChild(el);
   const root = createRoot(el);
   await act(async () => { root.render(shell(node)); });
-  await act(async () => { await Promise.resolve(); });
+  await act(async () => { await new Promise((resolve) => setTimeout(resolve, 0)); });
   return {
     cleanup: async () => {
       await act(async () => { root.unmount(); });
@@ -130,12 +130,13 @@ describe('מחברת', () => {
     );
     expect(text()).toContain('המחברת ריקה');
     expect(text()).toContain('הערה חופשית ליום מסחר');
-    expect(text()).toContain('השמירה לחשבון עדיין לא מופעלת');
-    expect(document.querySelector('[data-testid="notebook-storage-note"]').textContent).toContain('השמירה לחשבון עדיין לא מופעלת');
+    expect(text()).not.toContain('השמירה לחשבון עדיין לא מופעלת');
+    expect(document.querySelector('[data-testid="notebook-storage-note"]')).toBeNull();
     expect(document.querySelector('[data-testid="notebook-demo-flag"]')).toBeNull();
     expect(document.querySelector('[data-testid="notebook-entry-demo-nb-lesson"]')).toBeNull();
-    await act(async () => { buttonNamed('מצב דמו').click(); });
-    expect(enter).toHaveBeenCalled();
+    expect(buttonNamed('מצב דמו')).toBeFalsy();
+    expect(document.querySelector('[data-testid="notebook-add"]').disabled).toBe(false);
+    expect(enter).not.toHaveBeenCalled();
     await view.cleanup();
   });
 
@@ -144,7 +145,7 @@ describe('מחברת', () => {
       <NotebookPage demo isPremium={false} journals={JOURNALS} now={NOW} />,
     );
     expect(document.querySelector('[data-testid="notebook-demo-flag"]').textContent).toContain('מצב דמו');
-    expect(document.querySelector('[data-testid="notebook-storage-note"]').textContent).toContain('השמירה לחשבון עדיין לא מופעלת');
+    expect(document.querySelector('[data-testid="notebook-storage-note"]')).toBeNull();
     expect(text()).toContain('FTMO 100K');
     expect(text()).toContain('מרץ 2026');
     expect(text()).toContain('פברואר 2026');
@@ -170,24 +171,11 @@ describe('מחברת', () => {
       <NotebookPage isPremium journals={JOURNALS} now={NOW} />,
     );
     expect(document.querySelector('[data-testid="notebook-search"]')).toBeNull();
-    expect(document.querySelector('[data-testid="notebook-add"]').disabled).toBe(true);
-    await act(async () => { buttonNamed('מצב דמו').click(); });
-    await act(async () => { await Promise.resolve(); });
-    expect(document.querySelector('[data-testid="notebook-demo-flag"]').textContent).toContain('מצב דמו');
-    expect(document.querySelector('[data-testid="notebook-storage-note"]').textContent).toContain('השמירה לחשבון עדיין לא מופעלת');
-    expect(document.querySelector('[data-testid="notebook-search"]')).toBeTruthy();
-    expect(document.querySelector('[data-testid="notebook-tag-filter"]')).toBeTruthy();
-    expect(document.querySelector('[data-testid="notebook-entry-demo-nb-lesson"]')).toBeTruthy();
-    const add = document.querySelector('[data-testid="notebook-add"]');
-    expect(add.disabled).toBe(false);
-    await act(async () => { add.click(); });
-    expect(document.getElementById('notebook-title')).toBeTruthy();
-    await act(async () => { setValue(document.getElementById('notebook-title'), 'הערה חדשה'); });
-    await act(async () => { setValue(document.getElementById('notebook-body'), 'נשמרת רק על המסך'); });
-    await act(async () => { buttonNamed('שמירה').click(); });
-    await act(async () => { await Promise.resolve(); });
-    expect(text()).toContain('הערה חדשה');
-    expect(document.querySelector('[data-testid="notebook-storage-note"]')).toBeTruthy();
+    expect(document.querySelector('[data-testid="notebook-add"]').disabled).toBe(false);
+    expect(document.querySelector('[data-testid="notebook-demo-flag"]')).toBeNull();
+    expect(document.querySelector('[data-testid="notebook-storage-note"]')).toBeNull();
+    expect(buttonNamed('מצב דמו')).toBeFalsy();
+    expect(document.querySelector('[data-testid="notebook-entry-demo-nb-lesson"]')).toBeNull();
     await view.cleanup();
   });
 

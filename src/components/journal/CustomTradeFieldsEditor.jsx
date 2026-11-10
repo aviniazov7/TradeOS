@@ -237,7 +237,7 @@ export function useCustomTradeFieldEditor({
           <button
             type="button"
             onClick={submit}
-            disabled={busy || !ready}
+            disabled={busy || !ready || nameMissing}
             className="h-10 px-3 rounded-xl bg-accent-primary text-bg-primary text-sm font-semibold cursor-pointer disabled:opacity-50"
           >
             {busy ? 'שומר...' : mode.kind === 'edit' ? 'שמירת שדה' : 'הוספת שדה'}

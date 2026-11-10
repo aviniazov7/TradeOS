@@ -48,7 +48,7 @@ async function mount(node) {
   document.body.appendChild(el);
   const root = createRoot(el);
   await act(async () => { root.render(shell(node)); });
-  await act(async () => { await Promise.resolve(); });
+  await act(async () => { await new Promise((resolve) => setTimeout(resolve, 0)); });
   return {
     cleanup: async () => {
       await act(async () => { root.unmount(); });
@@ -105,12 +105,12 @@ describe('הכנסות והוצאות', () => {
     expect(text()).not.toContain('ניהול עסק');
     expect(text()).toContain('אין רשומות עדיין');
     expect(text()).toContain('דמי אתגר, איפוסים, מנויים, תשלומים ומשיכות');
-    expect(text()).toContain('השמירה לחשבון עדיין לא מופעלת');
-    expect(document.querySelector('[data-testid="business-storage-note"]').textContent).toContain('השמירה לחשבון עדיין לא מופעלת');
+    expect(text()).not.toContain('השמירה לחשבון עדיין לא מופעלת');
+    expect(document.querySelector('[data-testid="business-storage-note"]')).toBeNull();
     expect(document.querySelector('[data-testid="business-demo-flag"]')).toBeNull();
     expect(net('USD')).toBeNull();
-    await act(async () => { buttonNamed('צפה בדוגמה').click(); });
-    expect(enter).toHaveBeenCalledOnce();
+    expect(buttonNamed('צפה בדוגמה')).toBeFalsy();
+    expect(enter).not.toHaveBeenCalled();
     await view.cleanup();
     expect(document.title).toBe(previousTitle);
   });
@@ -120,7 +120,7 @@ describe('הכנסות והוצאות', () => {
       <BusinessLedgerPage demo isPremium={false} journals={JOURNALS} now={NOW} />,
     );
     expect(document.querySelector('[data-testid="business-demo-flag"]').textContent).toContain('מצב דמו');
-    expect(document.querySelector('[data-testid="business-storage-note"]').textContent).toContain('השמירה לחשבון עדיין לא מופעלת');
+    expect(document.querySelector('[data-testid="business-storage-note"]')).toBeNull();
     expect(text()).toContain('דמי אתגר');
     expect(text()).toContain('FTMO 100K');
     expect(net('USD').getAttribute('data-net')).toBe('245');
@@ -140,13 +140,10 @@ describe('הכנסות והוצאות', () => {
     );
     expect(net('USD')).toBeNull();
     expect(document.querySelector('[data-testid="business-chart"]')).toBeNull();
-    await act(async () => { buttonNamed('צפה בדוגמה').click(); });
-    await act(async () => { await Promise.resolve(); });
-    expect(document.querySelector('[data-testid="business-demo-flag"]').textContent).toContain('מצב דמו');
-    expect(document.querySelector('[data-testid="business-storage-note"]').textContent).toContain('השמירה לחשבון עדיין לא מופעלת');
-    expect(net('USD').getAttribute('data-net')).toBe('245');
-    expect(document.querySelector('[data-testid="business-chart"]')).toBeTruthy();
-    expect(document.querySelector('[data-testid="business-report"]').textContent).toContain('הכנסות והוצאות');
+    expect(document.querySelector('[data-testid="business-storage-note"]')).toBeNull();
+    expect(document.querySelector('[data-testid="business-demo-flag"]')).toBeNull();
+    expect(buttonNamed('צפה בדוגמה')).toBeFalsy();
+    expect(document.querySelector('[data-testid="business-add"]')).toBeTruthy();
     await view.cleanup();
   });
 
