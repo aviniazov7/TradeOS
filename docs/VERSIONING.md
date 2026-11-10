@@ -13,7 +13,7 @@
 | **APP_VERSION** | הגרסה השיווקית (למשתמש) | ✋ **ידני בלבד** | `src/utils/constants.js` |
 | **CACHE_NAME** | מזהה קאש ל-Service Worker | 🤖 **אוטומטי** בכל push ל-main | `public/sw.js` |
 
-- **APP_VERSION** כרגע נעוץ על **`2.2.1`**. הוא לא עולה לבד. עולה רק כשמישהו מחליט.
+- **APP_VERSION** לא נעוץ למספר במסמך הזה. מקור האמת הוא `src/utils/constants.js`, והתג האחרון `vX.Y.Z` (GitHub Release). הוא לא עולה לבד. עולה רק כשמישהו מחליט.
 - **CACHE_NAME** (`tradeos-v###`) עולה אוטומטית בכל דיפלוי ל-main (דרך
   `scripts/bump-version.mjs`) — זה מה שמפעיל את חלון "גרסה חדשה זמינה" ומכריח
   את הדפדפן לטעון קוד חדש. **לא נוגעים בו ידנית.**
