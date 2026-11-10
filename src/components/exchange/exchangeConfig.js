@@ -36,14 +36,13 @@ export function connectionGuideNotes(exchange) {
 }
 
 /**
- * One sentence for marketing surfaces (login panel, onboarding). Positive
- * on both paths: auto-sync where it works, a file import for Binance.
- * Binance must not be described as if trades pull in by themselves.
+ * One sentence for marketing surfaces (login panel, onboarding).
+ * Names no venue. API sync covers Bybit, MEXC, OKX, Bitget and Hyperliquid;
+ * Binance is a trade-file import, and the journal also accepts common CSV
+ * exports. The line must not imply that every venue pulls trades by itself.
  */
-export function exchangeSyncBlurb(exchanges = EXCHANGES) {
-  const list = exchanges || [];
-  const name = (id, fallback) => list.find((e) => e?.id === id)?.name || fallback;
-  return `סנכרון אוטומטי מ-${name('mexc', 'MEXC')} ו-${name('bybit', 'Bybit')} · ייבוא קובץ מ-${name('binance', 'Binance')}`;
+export function exchangeSyncBlurb() {
+  return 'סנכרון אוטומטי מהבורסות שלך · ייבוא קבצי עסקאות';
 }
 
 function hexRgb(hex) {

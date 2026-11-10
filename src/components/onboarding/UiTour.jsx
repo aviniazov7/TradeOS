@@ -1,8 +1,9 @@
-import { useCallback, useEffect, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import { ChevronLeft, ChevronRight } from 'lucide-react';
 import { useAuth } from '../../contexts/AuthContext';
 import {
   UI_TOUR_REPLAY_EVENT,
+  UI_TOUR_SHADE,
   UI_TOUR_STEPS,
   UI_TOUR_WIZARD_EVENT,
   isTourCandidate,
@@ -39,6 +40,13 @@ export default function UiTour() {
   const [stepIndex, setStepIndex] = useState(0);
   const [steps, setSteps] = useState(() => UI_TOUR_STEPS.filter((step) => !step.optional));
   const [frame, setFrame] = useState(null);
+  const [cardHeight, setCardHeight] = useState(176);
+  const cardRef = useRef(null);
+  const setCardNode = useCallback((node) => {
+    cardRef.current = node;
+    const next = node?.offsetHeight || 0;
+    if (next) setCardHeight((height) => (height === next ? height : next));
+  }, []);
 
   if (uid && uid !== seenUid) {
     setSeenUid(uid);
@@ -89,9 +97,14 @@ export default function UiTour() {
       setStepIndex((index) => Math.min(index, usable.length - 1));
       const current = usable[Math.min(stepIndex, usable.length - 1)];
       const rect = measureTarget(current?.target);
-      const card = tourCardPosition(rect, { width: window.innerWidth, height: window.innerHeight });
+      const measured = cardRef.current?.offsetHeight;
+      const card = tourCardPosition(
+        rect,
+        { width: window.innerWidth, height: window.innerHeight },
+        measured || cardHeight,
+      );
       const light = document.documentElement.classList.contains('light');
-      setFrame({ rect, card, shade: light ? 'rgba(15, 23, 42, 0.46)' : 'rgba(0, 0, 0, 0.62)' });
+      setFrame({ rect, card, shade: light ? UI_TOUR_SHADE.light : UI_TOUR_SHADE.dark });
     };
     measure();
     window.addEventListener('resize', measure);
@@ -100,7 +113,7 @@ export default function UiTour() {
       window.removeEventListener('resize', measure);
       document.getElementById('app-scroll')?.removeEventListener('scroll', measure);
     };
-  }, [open, stepIndex]);
+  }, [open, stepIndex, cardHeight]);
 
   const finish = useCallback(() => {
     if (uid) writeTourSeen(uid);
@@ -126,10 +139,10 @@ export default function UiTour() {
   const last = stepIndex >= steps.length - 1;
 
   return (
-    <div className="fixed inset-0 z-[95]" role="dialog" aria-modal="true" aria-labelledby="ui-tour-title" dir="rtl" data-testid="ui-tour">
+    <div className="fixed inset-0 z-[120]" role="dialog" aria-modal="true" aria-labelledby="ui-tour-title" dir="rtl" data-testid="ui-tour">
       {frame.rect && (
         <div
-          className="absolute rounded-2xl border-2 border-accent-primary pointer-events-none"
+          className="absolute z-0 rounded-2xl border-2 border-accent-primary pointer-events-none"
           data-testid="ui-tour-ring"
           style={{
             top: frame.rect.top,
@@ -141,8 +154,16 @@ export default function UiTour() {
         />
       )}
       <div
-        className="absolute z-10 rounded-2xl border border-border-primary bg-bg-secondary p-4 text-text-primary"
-        style={{ top: frame.card.top, left: frame.card.left, width: frame.card.width, boxShadow: '0 24px 60px rgba(0,0,0,0.45)' }}
+        ref={setCardNode}
+        data-testid="ui-tour-card"
+        className="absolute z-10 rounded-2xl border border-border-primary p-4 text-text-primary"
+        style={{
+          top: frame.card.top,
+          left: frame.card.left,
+          width: frame.card.width,
+          background: 'var(--modal-header-solid)',
+          boxShadow: '0 24px 60px rgba(0,0,0,0.55)',
+        }}
       >
         <div className="flex items-center gap-2 mb-2">
           <div className="flex-1 flex gap-1" aria-hidden="true">

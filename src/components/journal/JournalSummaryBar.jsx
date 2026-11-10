@@ -6,10 +6,10 @@ import { formatRText } from '../../utils/signedNumbers';
 
 function Cell({ label, value, sub, valueClass = 'text-text-primary', className = '', title }) {
   return (
-    <div className={`shrink-0 ${className}`} title={title || label}>
-      <div className="text-[10px] text-text-muted leading-tight whitespace-nowrap">{label}</div>
-      <div className={`num-mono text-[11px] md:text-sm font-bold whitespace-nowrap leading-tight ${valueClass}`} dir="ltr" style={{ textAlign: 'right' }}>{value}</div>
-      {sub && <div className="text-[10px] text-text-muted leading-tight whitespace-nowrap">{sub}</div>}
+    <div className={`min-w-0 text-center sm:shrink-0 sm:text-start ${className}`} title={title || label}>
+      <div className="truncate text-[10px] text-text-muted leading-tight sm:overflow-visible sm:whitespace-nowrap">{label}</div>
+      <div className={`num-mono text-[11px] md:text-sm font-bold whitespace-nowrap leading-tight sm:text-right ${valueClass}`} dir="ltr">{value}</div>
+      {sub && <div className="truncate text-[10px] text-text-muted leading-tight sm:overflow-visible sm:whitespace-nowrap">{sub}</div>}
     </div>
   );
 }
@@ -41,10 +41,12 @@ export default function JournalSummaryBar({ trades, filtered, liveById = {}, acc
   // ps-4 between five figures pushed "R ממוצע" onto a second line around
   // 1024–1440px. Keep one row; the wider gap comes back only on a large screen.
   const rule = 'md:border-s md:border-border-primary md:ps-2 2xl:ps-4';
+  // Below 640px the figures share the card in equal columns (four, or five
+  // when the account return is shown). From sm the strip shrinks back to its
+  // content and sits in the title row on desktop.
+  const columns = showAccount ? 'grid-cols-5' : 'grid-cols-4';
   return (
-    // One strip at every width. The phone copy scrolls sideways if it must;
-    // the desktop copy sits in the title row and does not wrap.
-    <div data-testid="journal-header-stats" className="flex flex-nowrap items-center justify-between gap-x-2 w-max min-w-0 md:justify-center 2xl:gap-x-4">
+    <div data-testid="journal-header-stats" className={`grid w-full ${columns} items-start gap-x-1 sm:flex sm:w-max sm:min-w-0 sm:flex-nowrap sm:items-center sm:justify-between sm:gap-x-2 md:justify-center 2xl:gap-x-4`}>
       <Cell
         label={filtered ? 'עסקאות (לפי הסינון)' : 'עסקאות'}
         value={s.closed}

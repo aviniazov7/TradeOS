@@ -180,6 +180,8 @@ describe('signed-in home renders', () => {
     );
     expect(html).toContain('עסקה חדשה');
     expect(html).toContain('חבר בורסה');
+    expect(html).toContain('כל המסחר שלך במקום אחד, מתחילים בחיבור בורסה');
+    expect(html).not.toContain('הבית מתמלא לבד');
     expect(html).toMatch(/בוקר טוב|צהריים טובים|ערב טוב|לילה טוב/);
   });
 

@@ -3,7 +3,7 @@ import { act } from 'react';
 import { beforeAll, describe, expect, it, vi } from 'vitest';
 import { createRoot } from 'react-dom/client';
 import UiTour from './UiTour';
-import { UI_TOUR_WIZARD_EVENT, readTourSeen, replayUiTour } from '../../utils/uiTour';
+import { UI_TOUR_SHADE, UI_TOUR_WIZARD_EVENT, readTourSeen, replayUiTour } from '../../utils/uiTour';
 
 let profile;
 
@@ -63,7 +63,22 @@ describe('UiTour', () => {
     const tour = document.querySelector('[data-testid="ui-tour"]');
     expect(tour).toBeTruthy();
     expect(tour.textContent).toContain('התפריט');
-    expect(tour.querySelector('[data-testid="ui-tour-ring"]')).toBeTruthy();
+    expect(tour.className).toContain('z-[120]');
+    const ring = tour.querySelector('[data-testid="ui-tour-ring"]');
+    expect(ring).toBeTruthy();
+    expect(ring.style.boxShadow).toContain(UI_TOUR_SHADE.dark);
+    const card = tour.querySelector('[data-testid="ui-tour-card"]');
+    expect(card.style.background).toBe('var(--modal-header-solid)');
+    expect(card.className).toContain('border');
+    expect(card.className).not.toContain('bg-bg-secondary');
+    expect(card.style.boxShadow).toContain('rgba(0,0,0,0.55)');
+    const ringBottom = Number.parseFloat(ring.style.top) + Number.parseFloat(ring.style.height);
+    const cardTop = Number.parseFloat(card.style.top);
+    const cardLeft = Number.parseFloat(card.style.left);
+    const cardRight = cardLeft + Number.parseFloat(card.style.width);
+    expect(cardTop).toBeGreaterThanOrEqual(ringBottom);
+    expect(cardLeft).toBeGreaterThanOrEqual(12);
+    expect(cardRight).toBeLessThanOrEqual(window.innerWidth - 12);
     const skip = [...tour.querySelectorAll('button')].find((button) => button.textContent.trim() === 'דלג');
     await act(async () => { skip.click(); });
     expect(document.querySelector('[data-testid="ui-tour"]')).toBeNull();
